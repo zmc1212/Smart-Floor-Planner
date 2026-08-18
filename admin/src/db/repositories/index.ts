@@ -1,5 +1,4 @@
 export * from './admin-user-repository';
-export * from './acquisition-repository';
 export * from './action-permission-repository';
 export * from './ai-creation-model-profile-repository';
 export * from './ai-creation-repository';
@@ -33,4 +32,5 @@ export * from './referrer-network-repository';
 export * from './referral-lead-repository';
 export * from './appointment-repository';
 export * from './system-role-repository';
+export * from './staff-notification-repository';
 export * from './user-repository';

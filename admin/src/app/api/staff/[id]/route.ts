@@ -27,7 +27,6 @@ interface StaffUpdateBody {
   departmentId?: string | null;
   wechatId?: string;
   wechatQrAssetId?: string | null;
-  boundDesignerId?: string | null;
   assignmentPaused?: boolean;
 }
 
@@ -140,11 +139,6 @@ export async function PUT(
             }
 
             const nextRole = body.role || current.role;
-            if ((nextRole !== 'designer' || body.status === 'inactive') && current.role === 'designer') {
-              if ((await repository.findMeasurersForDesigner(current.id)).length > 0) {
-                throw new Error('璇ヨ璁″笀浠嶇粦瀹氭祴閲忓憳锛岃鍏堝畬鎴愭崲缁戞垨鍚敤璐﹀彿');
-              }
-            }
             const qrAssetId = body.wechatQrAssetId === undefined
               ? current.wechatQrAssetId
               : parseOptionalPostgresId(body.wechatQrAssetId, 'wechatQrAssetId');
@@ -173,25 +167,11 @@ export async function PUT(
                 }
               }
             }
-            const targetDesignerId = nextRole === 'measurer'
-              ? (body.boundDesignerId === undefined
-                ? current.boundDesignerId
-                : parseOptionalPostgresId(body.boundDesignerId, 'boundDesignerId'))
-              : null;
-            if (nextRole === 'measurer') {
-              if (!targetDesignerId) throw new Error('测量员必须绑定设计师');
-              const designer = await repository.findById(targetDesignerId);
-              if (!designer || designer.role !== 'designer' || designer.status !== 'active' || designer.enterpriseId !== current.enterpriseId) {
-                throw new Error('绑定的设计师必须是同企业启用中的设计师');
-              }
-            }
             const result = await repository.update(staffId, updateData, promoterIds);
             if (!result) return null;
             if (body.role && body.role !== current.role) {
               await new ActionPermissionRepository(transaction).deleteUserOverrides(staffId);
             }
-            if (targetDesignerId) await repository.replaceMeasurerDesignerBinding(staffId, targetDesignerId, current.enterpriseId!);
-            else await repository.deleteMeasurerDesignerBinding(staffId);
             return repository.findById(staffId);
           }
         );
@@ -273,11 +253,6 @@ export async function DELETE(
           context.enterpriseId!,
           async (transaction) => {
             const repository = new AdminUserRepository(transaction);
-            const target = await repository.findById(parsePostgresId(id));
-            if (target?.role === 'designer' && (await repository.findMeasurersForDesigner(target.id)).length > 0) {
-              throw new Error('该设计师仍绑定测量员，请先完成换绑');
-            }
-            await repository.deleteMeasurerDesignerBinding(parsePostgresId(id));
             return repository.delete(parsePostgresId(id));
           }
         );

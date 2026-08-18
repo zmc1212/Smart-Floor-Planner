@@ -65,7 +65,7 @@ test('Leads management exposes the canonical lead stages', () => {
   assert.match(componentJs, /\{ id: 'designing', query: 'designing', label: '方案设计' \}/);
 });
 
-test('Leads preserves the approved first-screen rhythm and delegates designer contact to the shared sheet', () => {
+test('Leads preserves the approved first-screen rhythm without legacy acquisition contact', () => {
   const pageWxml = fs.readFileSync(
     path.join(miniRoot, 'pages', 'leads-management', 'leads-management.wxml'),
     'utf8'
@@ -75,10 +75,8 @@ test('Leads preserves the approved first-screen rhythm and delegates designer co
     'utf8'
   );
   assert.doesNotMatch(componentWxml, /designer-contact-card|designer-qr/);
-  assert.match(pageWxml, /class="my-designer-entry"/);
-  assert.match(pageWxml, />我的设计师</);
-  assert.match(pageWxml, /<designer-contact-sheet/);
-  assert.match(pageJson, /\/components\/designer-contact-sheet\/designer-contact-sheet/);
+  assert.doesNotMatch(pageWxml, /my-designer-entry|我的设计师|designer-contact-sheet/);
+  assert.doesNotMatch(pageJson, /designer-contact-sheet/);
   const headerIndex = pageWxml.indexOf('class="page-header"');
   const summaryIndex = componentWxml.indexOf('class="lead-hero-card"');
   const workspaceIndex = componentWxml.indexOf('class="lead-workspace"');

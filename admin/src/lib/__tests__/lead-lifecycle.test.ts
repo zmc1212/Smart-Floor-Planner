@@ -45,11 +45,10 @@ test('purge blockers cover every protected relationship', () => {
     aiGenerationCount: 2,
     inFlightAiCount: 1,
     followUpCount: 3,
-    hasAcquisition: true,
     hasConversion: true,
     commissionCount: 4,
   });
-  assert.equal(blockers.length, 8);
+  assert.equal(blockers.length, 7);
   assert.deepEqual(getPurgeBlockers({
     leadId: 1n,
     archived: true,
@@ -58,7 +57,6 @@ test('purge blockers cover every protected relationship', () => {
     aiGenerationCount: 0,
     inFlightAiCount: 0,
     followUpCount: 0,
-    hasAcquisition: false,
     hasConversion: false,
     commissionCount: 0,
   }), []);

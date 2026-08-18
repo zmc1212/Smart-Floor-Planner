@@ -28,7 +28,6 @@ import {
   enterprises,
   floorPlans,
   inspirations,
-  leadAcquisitionCommissions,
   leadCommissions,
   leadLifecycleEvents,
   leads,
@@ -45,7 +44,6 @@ import {
 } from '@/db/schema';
 import {
   AdminUserRepository,
-  AcquisitionRepository,
   AiStylePresetRepository,
   AiCreationModelProfileRepository,
   AiCreationRepository,
@@ -3794,78 +3792,6 @@ test('every tenant foreign key and RLS predicate column has an index', async () 
       )
   `);
   assert.deepEqual(missingForeignKeyIndexes.rows, []);
-});
-
-test('acquisition workbench keeps confirmation independent from lead lifecycle and tenant scope', async () => {
-  let leadId: bigint | null = null;
-  try {
-    const created = await withTenantTransaction(enterpriseAId, async (transaction) => {
-      const lead = await new LeadRepository(transaction).create({
-        enterpriseId: enterpriseAId,
-        promoterId: promotionMeasurerAId,
-        assignedTo: promotionDesignerAId,
-        name: 'Acquisition workbench integration lead',
-        phone: `135${String(Date.now()).slice(-8)}`,
-        source: 'integration-test',
-        status: 'measuring',
-      });
-      const acquisition = new AcquisitionRepository(transaction);
-      const designerPending = await acquisition.listTasks({
-        role: 'designer',
-        staffId: promotionDesignerAId,
-        status: 'pending_confirmation',
-      });
-      const measurerPending = await acquisition.listTasks({
-        role: 'measurer',
-        staffId: promotionMeasurerAId,
-        status: 'pending_confirmation',
-      });
-      assert.equal(designerPending.rows.some((item) => item.lead.id === lead.id), true);
-      assert.equal(measurerPending.rows.some((item) => item.lead.id === lead.id), true);
-
-      const acquiredAt = new Date();
-      await transaction.update(leads).set({
-        acquiredAt,
-        acquiredBy: promotionDesignerAId,
-        updatedAt: acquiredAt,
-      }).where(eq(leads.id, lead.id));
-      await acquisition.createCommission({
-        leadId: lead.id,
-        enterpriseId: enterpriseAId,
-        measurerId: promotionMeasurerAId,
-        designerId: promotionDesignerAId,
-        commissionAmount: '10.00',
-        status: 'pending_settlement',
-        generatedAt: acquiredAt,
-      });
-      const confirmed = await acquisition.listTasks({
-        role: 'designer',
-        staffId: promotionDesignerAId,
-        status: 'confirmed',
-      });
-      const persistedLead = await new LeadRepository(transaction).findById(lead.id);
-      assert.equal(persistedLead?.status, 'measuring');
-      assert.equal(confirmed.rows.find((item) => item.lead.id === lead.id)?.commission?.status, 'pending_settlement');
-      return lead;
-    });
-    leadId = created.id;
-
-    const tenantBTasks = await withTenantTransaction(enterpriseBId, (transaction) =>
-      new AcquisitionRepository(transaction).listTasks({
-        role: 'designer',
-        staffId: promotionDesignerAId,
-        status: 'confirmed',
-      })
-    );
-    assert.equal(tenantBTasks.rows.some((item) => item.lead.id === leadId), false);
-  } finally {
-    if (leadId) {
-      await withPlatformTransaction(async (transaction) => {
-        await transaction.delete(leadAcquisitionCommissions).where(eq(leadAcquisitionCommissions.leadId, leadId!));
-        await transaction.delete(leads).where(eq(leads.id, leadId!));
-      });
-    }
-  }
 });
 
 test('surveying core repositories preserve bigint relations and tenant isolation', async () => {

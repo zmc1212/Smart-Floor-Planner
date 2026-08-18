@@ -1,9 +1,9 @@
 import { parsePostgresId } from '@/db/postgres-dto';
 import {
-  AcquisitionRepository,
   AdminUserRepository,
   LeadRepository,
   MiniProgramIdentityRepository,
+  StaffNotificationRepository,
 } from '@/db/repositories';
 import {
   withPlatformTransaction,
@@ -108,7 +108,7 @@ async function deliverLeadNotification(input: LeadDeliveryInput) {
     const leadId = parsePostgresId(input.lead.id, 'lead id');
     const metadata = { page: input.page, ...(input.metadata || {}) };
     await withTenantTransaction(enterpriseId, (transaction) =>
-      new AcquisitionRepository(transaction).createNotification({
+      new StaffNotificationRepository(transaction).create({
         enterpriseId,
         recipientStaffId: input.recipient.id,
         leadId,
@@ -121,7 +121,7 @@ async function deliverLeadNotification(input: LeadDeliveryInput) {
       })
     );
     const wechatLog = await withTenantTransaction(enterpriseId, (transaction) =>
-      new AcquisitionRepository(transaction).createNotification({
+      new StaffNotificationRepository(transaction).create({
         enterpriseId,
         recipientStaffId: input.recipient.id,
         leadId,
@@ -159,7 +159,7 @@ async function deliverLeadNotification(input: LeadDeliveryInput) {
       ? null
       : [result.code, result.error].filter(Boolean).join(': ') || 'Subscription delivery failed';
     await withTenantTransaction(enterpriseId, (transaction) =>
-      new AcquisitionRepository(transaction).markNotificationSent(
+      new StaffNotificationRepository(transaction).markSent(
         wechatLog.id,
         result.success ? 'sent' : input.recipient.openid ? 'failed' : 'skipped',
         errorMessage
@@ -337,55 +337,6 @@ export async function notifyDesignerOfAssignedLead(lead: LeadNotificationRecord,
       customerStatus: copy.status,
       note: copy.note,
       assignedAt: lead.assignedAt || lead.createdAt,
-    }),
-  });
-}
-
-export async function notifyDesignerOfPendingLead(lead: LeadNotificationRecord, designerId: string) {
-  const designer = await findNotificationRecipient(designerId, 'designer id');
-  if (!designer) return { success: false, error: 'designer unavailable' };
-  const copy = assignmentCopy('lead_pending_acquisition');
-  const page = `/packages/business/acquisition-center/acquisition-center?leadId=${encodeURIComponent(String(lead.id || ''))}`;
-  return deliverLeadNotification({
-    lead,
-    recipient: designer,
-    templateKind: 'lead_assignment',
-    notificationType: 'lead_pending_acquisition',
-    message: `收到客户线索：${lead.name}，待确认获客`,
-    dedupeKey: `lead_pending_acquisition:${String(lead.id)}`,
-    page,
-    buildData: (template) => buildLeadAssignmentPayload(template, {
-      customerName: lead.name,
-      customerStatus: copy.status,
-      note: copy.note,
-      assignedAt: lead.assignedAt || lead.createdAt,
-    }),
-  });
-}
-
-export async function notifyMeasurerOfAcquiredLead(
-  lead: LeadNotificationRecord,
-  measurerId: string,
-  commissionId?: string
-) {
-  const measurer = await findNotificationRecipient(measurerId, 'measurer id');
-  if (!measurer) return { success: false, error: 'measurer unavailable' };
-  const page = `/packages/business/acquisition-center/acquisition-center?leadId=${encodeURIComponent(String(lead.id || ''))}`;
-  return deliverLeadNotification({
-    lead,
-    recipient: measurer,
-    templateKind: 'workflow_todo',
-    notificationType: 'lead_acquired_commission_pending',
-    message: `设计师已确认${lead.name}获客，提成待结算`,
-    dedupeKey: `lead_acquired_commission_pending:${String(lead.id)}`,
-    page,
-    metadata: { commissionId: commissionId || null },
-    buildData: (template) => buildWorkflowTodoPayload(template, {
-      projectName: lead.communityName || lead.name,
-      owner: measurer.displayName || measurer.username,
-      currentStatus: '待结算',
-      todo: '查看获客提成',
-      note: `客户：${lead.name}`,
     }),
   });
 }

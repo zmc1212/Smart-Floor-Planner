@@ -67,12 +67,6 @@ export const enterprises = appSchema.table(
     )
       .notNull()
       .default('0'),
-    measurerAcquisitionFixedCommission: numeric(
-      'measurer_acquisition_fixed_commission',
-      { precision: 14, scale: 2 }
-    )
-      .notNull()
-      .default('0'),
     automationConfig: jsonObject<Record<string, unknown>>('automation_config'),
     aiConfig: jsonObject<Record<string, unknown>>('ai_config'),
     aiPolicy: jsonObject<Record<string, unknown>>('ai_policy'),
@@ -254,28 +248,6 @@ export const adminUserPromoters = appSchema.table(
       columns: [table.adminUserId, table.promoterId],
     }),
     index('admin_user_promoters_promoter_idx').on(table.promoterId),
-  ]
-);
-
-export const measurerDesignerBindings = appSchema.table(
-  'measurer_designer_bindings',
-  {
-    measurerId: bigint('measurer_id', { mode: 'bigint' })
-      .notNull()
-      .references(() => adminUsers.id, { onDelete: 'cascade' }),
-    designerId: bigint('designer_id', { mode: 'bigint' })
-      .notNull()
-      .references(() => adminUsers.id, { onDelete: 'restrict' }),
-    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
-      .notNull()
-      .references(() => enterprises.id, { onDelete: 'cascade' }),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    primaryKey({ name: 'measurer_designer_bindings_pkey', columns: [table.measurerId] }),
-    index('measurer_designer_bindings_designer_idx').on(table.designerId),
-    index('measurer_designer_bindings_enterprise_idx').on(table.enterpriseId),
   ]
 );
 
@@ -1237,11 +1209,6 @@ export const leads = appSchema.table(
     convertedFromStatus: text('converted_from_status'),
     contractAmount: numeric('contract_amount', { precision: 14, scale: 2 }),
     conversionNote: text('conversion_note'),
-    acquiredAt: timestamp('acquired_at', { withTimezone: true, mode: 'date' }),
-    acquiredBy: bigint('acquired_by', { mode: 'bigint' }).references(
-      () => adminUsers.id,
-      { onDelete: 'set null' }
-    ),
     archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
     archivedBy: bigint('archived_by', { mode: 'bigint' }).references(
       () => adminUsers.id,
@@ -1301,21 +1268,10 @@ export const leads = appSchema.table(
       table.assignmentStatus,
       table.createdAt
     ),
-    index('leads_assignee_acquired_created_idx').on(
-      table.assignedTo,
-      table.acquiredAt,
-      table.createdAt
-    ),
     index('leads_promoter_created_idx').on(
       table.promoterId,
       table.createdAt
     ),
-    index('leads_promoter_acquired_created_idx').on(
-      table.promoterId,
-      table.acquiredAt,
-      table.createdAt
-    ),
-    index('leads_acquired_by_idx').on(table.acquiredBy),
     index('leads_converted_by_idx').on(table.convertedBy),
     index('leads_enterprise_converted_at_idx').on(
       table.enterpriseId,
@@ -1657,42 +1613,6 @@ export const leadLifecycleEvents = appSchema.table(
       table.createdAt
     ),
     index('lead_lifecycle_events_actor_idx').on(table.actorId),
-  ]
-);
-
-export const leadAcquisitionCommissions = appSchema.table(
-  'lead_acquisition_commissions',
-  {
-    id: id(),
-    leadId: bigint('lead_id', { mode: 'bigint' })
-      .notNull()
-      .references(() => leads.id, { onDelete: 'cascade' }),
-    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
-      .notNull()
-      .references(() => enterprises.id, { onDelete: 'restrict' }),
-    measurerId: bigint('measurer_id', { mode: 'bigint' })
-      .notNull()
-      .references(() => adminUsers.id, { onDelete: 'restrict' }),
-    designerId: bigint('designer_id', { mode: 'bigint' })
-      .notNull()
-      .references(() => adminUsers.id, { onDelete: 'restrict' }),
-    commissionAmount: numeric('commission_amount', { precision: 14, scale: 2 }).notNull(),
-    status: text('status').notNull().default('pending_settlement'),
-    generatedAt: timestamp('generated_at', { withTimezone: true, mode: 'date' }).notNull(),
-    settledAt: timestamp('settled_at', { withTimezone: true, mode: 'date' }),
-    settledBy: bigint('settled_by', { mode: 'bigint' }).references(
-      () => adminUsers.id,
-      { onDelete: 'set null' }
-    ),
-    createdAt: createdAt(),
-    updatedAt: updatedAt(),
-  },
-  (table) => [
-    uniqueIndex('lead_acquisition_commissions_lead_uidx').on(table.leadId),
-    index('lead_acquisition_commissions_enterprise_status_idx').on(table.enterpriseId, table.status),
-    index('lead_acquisition_commissions_measurer_status_idx').on(table.measurerId, table.status),
-    index('lead_acquisition_commissions_designer_idx').on(table.designerId),
-    index('lead_acquisition_commissions_settled_by_idx').on(table.settledBy),
   ]
 );
 

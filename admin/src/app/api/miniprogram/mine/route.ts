@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import {
   EnterpriseRepository,
-  AcquisitionRepository,
   FloorPlanRepository,
   LeadRepository,
   MeasurementRepository,
+  StaffNotificationRepository,
 } from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { resolveProfileAvatarUrl } from '@/lib/miniprogram-profile';
@@ -62,13 +62,10 @@ const ACTIONS_BY_ROLE: Record<string, ActionItem[]> = {
     { key: 'settlement', label: '提成结算', sublabel: '查看收益明细', icon: 'wallet', target: 'commissions' },
   ],
   designer: [
-    { key: 'acquisition', label: '获客协作', sublabel: '确认客户微信交接', icon: 'clipboard-pen', target: 'acquisition' },
     { key: 'customers', label: '客户列表', sublabel: '服务客户线索', icon: 'users', target: 'leads' },
     { key: 'inspiration', label: '灵感库', sublabel: '查看设计灵感', icon: 'wallet', target: 'inspiration' },
   ],
   measurer: [
-    { key: 'acquisition', label: '获客协作', sublabel: '跟进微信交接', icon: 'clipboard-pen', target: 'acquisition' },
-    { key: 'commissions', label: '我的提成', sublabel: '查看获客奖励', icon: 'wallet', target: 'commissions' },
     { key: 'customers', label: '服务客户', sublabel: '查看客户信息', icon: 'users', target: 'leads' },
     { key: 'measure', label: '去量房', sublabel: '打开量房工具', icon: 'wallet', target: 'measure' },
   ],
@@ -210,23 +207,15 @@ export async function GET(request: Request) {
         ];
       }
     );
-    const acquisitionMeta = await withMiniProgramPostgresTransaction(
+    const notificationMeta = await withMiniProgramPostgresTransaction(
       context,
       async (transaction) => {
-        const repository = new AcquisitionRepository(transaction);
-        const unreadNotificationCount = (await repository.listNotifications(staffId, true)).length;
-        const acquisitionSummary = role === 'designer' || role === 'measurer'
-          ? await repository.taskSummary({ role, staffId }, month)
-          : null;
-        return { unreadNotificationCount, acquisitionSummary };
+        const unreadNotificationCount = (await new StaffNotificationRepository(transaction).list(staffId, true)).length;
+        return { unreadNotificationCount };
       }
     );
 
-    const actions = (ACTIONS_BY_ROLE[role] || ACTIONS_BY_ROLE.enterprise_admin).map((action) => (
-      action.target === 'acquisition'
-        ? { ...action, badgeCount: acquisitionMeta.acquisitionSummary?.pendingCount || 0 }
-        : action
-    ));
+    const actions = ACTIONS_BY_ROLE[role] || ACTIONS_BY_ROLE.enterprise_admin;
 
     return NextResponse.json({
       success: true,
@@ -246,7 +235,7 @@ export async function GET(request: Request) {
         },
         actions,
         workbenchCards,
-        unreadNotificationCount: acquisitionMeta.unreadNotificationCount,
+        unreadNotificationCount: notificationMeta.unreadNotificationCount,
         // Commercial workflow todos remain empty until that PostgreSQL domain switches.
         todos: [],
       },

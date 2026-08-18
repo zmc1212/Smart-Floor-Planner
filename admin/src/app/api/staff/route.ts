@@ -31,7 +31,6 @@ interface StaffCreateBody {
   promoterIds?: string[];
   wechatId?: string;
   wechatQrAssetId?: string;
-  boundDesignerId?: string;
 }
 
 const BUSINESS_ROLES = [
@@ -216,7 +215,6 @@ export async function POST(request: Request) {
           departmentId,
           wechatId,
           wechatQrAssetId,
-          boundDesignerId,
         } = body;
 
         if (!username || !password || !role) {
@@ -304,15 +302,6 @@ export async function POST(request: Request) {
               }
             }
 
-            const targetDesignerId = role === 'measurer' ? parseOptionalPostgresId(boundDesignerId, 'boundDesignerId') : null;
-            if (role === 'measurer') {
-              if (!targetDesignerId) throw new Error('测量员必须绑定设计师');
-              const designer = await repository.findById(targetDesignerId);
-              if (!designer || designer.role !== 'designer' || designer.status !== 'active' || designer.enterpriseId !== BigInt(targetEnterpriseId)) {
-                throw new Error('绑定的设计师必须是同企业启用中的设计师');
-              }
-            }
-
             const created = await repository.create(
               {
                 username: username.trim(),
@@ -330,7 +319,6 @@ export async function POST(request: Request) {
               targetPromoterIds
             );
             if (qrAssetId) await new AiCreationRepository(transaction).updateMediaAsset(qrAssetId, { ownerId: created.id });
-            if (targetDesignerId) await repository.replaceMeasurerDesignerBinding(created.id, targetDesignerId, BigInt(targetEnterpriseId));
             return repository.findById(created.id);
           }
         );

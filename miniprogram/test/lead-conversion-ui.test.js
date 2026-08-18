@@ -29,7 +29,7 @@ test('lead detail exposes conversion only through server-provided actions', () =
 test('conversion uses dedicated endpoints and preserves the business boundary copy', () => {
   assert.match(detailJs, /\/leads\/\$\{this\.data\.leadId\}\/convert/);
   assert.match(detailJs, /\/leads\/\$\{this\.data\.leadId\}\/revert-conversion/);
-  assert.match(detailWxml, /不会自动生成订单、扣款或结算获客提成/);
+  assert.match(detailWxml, /不会自动生成订单、扣款或生成提成记录/);
   assert.match(detailWxml, /mode="date"/);
   assert.match(detailWxml, /maxlength="200"/);
 });

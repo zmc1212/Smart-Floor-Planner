@@ -2,7 +2,7 @@ import { and, count, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import {
   aiGenerations,
   aiWorkflows,
-  leadAcquisitionCommissions,
+  leadCommissions,
   leadFloorPlans,
   leadLifecycleEvents,
   leads,
@@ -22,7 +22,6 @@ export interface LeadLifecycleImpact {
   aiGenerationCount: number;
   inFlightAiCount: number;
   followUpCount: number;
-  hasAcquisition: boolean;
   hasConversion: boolean;
   commissionCount: number;
 }
@@ -42,7 +41,6 @@ function impactMetadata(impact: LeadLifecycleImpact): Record<string, unknown> {
     aiGenerationCount: impact.aiGenerationCount,
     inFlightAiCount: impact.inFlightAiCount,
     followUpCount: impact.followUpCount,
-    hasAcquisition: impact.hasAcquisition,
     hasConversion: impact.hasConversion,
     commissionCount: impact.commissionCount,
   };
@@ -89,10 +87,10 @@ export class LeadLifecycleRepository {
         ))
         .groupBy(aiGenerations.leadId),
       this.transaction
-        .select({ leadId: leadAcquisitionCommissions.leadId, value: count() })
-        .from(leadAcquisitionCommissions)
-        .where(inArray(leadAcquisitionCommissions.leadId, ids))
-        .groupBy(leadAcquisitionCommissions.leadId),
+        .select({ leadId: leadCommissions.leadId, value: count() })
+        .from(leadCommissions)
+        .where(inArray(leadCommissions.leadId, ids))
+        .groupBy(leadCommissions.leadId),
       this.transaction
         .select({ leadId: leadLifecycleEvents.leadRecordId, value: count() })
         .from(leadLifecycleEvents)
@@ -116,7 +114,6 @@ export class LeadLifecycleRepository {
       aiGenerationCount: generationMap.get(lead.id) ?? 0,
       inFlightAiCount: inFlightMap.get(lead.id) ?? 0,
       followUpCount: Array.isArray(lead.followUpRecords) ? lead.followUpRecords.length : 0,
-      hasAcquisition: Boolean(lead.acquiredAt || lead.acquiredBy),
       hasConversion: Boolean(
         lead.convertedOn ||
         lead.convertedAt ||

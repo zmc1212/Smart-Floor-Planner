@@ -2,7 +2,5 @@
   "navigationBarTitleText": "客户线索管理",
   "navigationBarBackgroundColor": "#22C55E",
   "navigationBarTextStyle": "white",
-  "usingComponents": {
-    "designer-contact-sheet": "/components/designer-contact-sheet/designer-contact-sheet"
-  }
+  "usingComponents": {}
 }

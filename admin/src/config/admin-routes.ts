@@ -15,8 +15,6 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteEntry[] = [
   { key: 'media-storage', label: '媒体存储', href: '/media-storage', section: '平台管理中心' },
   { key: 'users', label: '用户审计', href: '/users', section: '平台管理中心' },
   { key: 'floorplans', label: '户型图库', href: '/floorplans', section: '户型图库' },
-  { key: 'acquisition-commissions', label: '获客提成', href: '/acquisition-commissions', section: '团队资产管理' },
-  { key: 'acquisition-commission-settings', label: '提成规则', href: '/acquisition-commissions/settings', section: '团队资产管理', permissionKey: 'acquisition-commissions' },
   { key: 'lead-commissions', label: '三方提成', href: '/lead-commissions', section: '团队资产管理' },
 ];
 

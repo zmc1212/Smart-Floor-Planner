@@ -15,7 +15,6 @@ import {
   adminUsers,
   departments,
   enterprises,
-  measurerDesignerBindings,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 
@@ -29,8 +28,6 @@ export interface AdminUserWithRelations extends AdminUserRecord {
   enterpriseName: string | null;
   departmentName: string | null;
   promoterIds: bigint[];
-  boundDesignerId?: bigint | null;
-  boundDesigner?: { id: bigint; displayName: string; username: string; role: string; wechatId: string | null; wechatQrAssetId: bigint | null } | null;
 }
 
 interface ListAdminUsersOptions {
@@ -70,28 +67,6 @@ export class AdminUserRepository {
       ...row,
       promoterIds: promoterMap.get(row.id) ?? [],
     }));
-  }
-
-  private async attachDesignerBindings<T extends AdminUserRecord>(rows: T[]) {
-    if (!rows.length) return rows.map((row) => ({ ...row, boundDesignerId: null, boundDesigner: null }));
-    const measurerIds = rows.filter((row) => row.role === 'measurer').map((row) => row.id);
-    if (!measurerIds.length) return rows.map((row) => ({ ...row, boundDesignerId: null, boundDesigner: null }));
-    const bindings = await this.transaction
-      .select({ binding: measurerDesignerBindings, designer: adminUsers })
-      .from(measurerDesignerBindings)
-      .innerJoin(adminUsers, eq(measurerDesignerBindings.designerId, adminUsers.id))
-      .where(inArray(measurerDesignerBindings.measurerId, measurerIds));
-    const map = new Map(bindings.map((row) => [row.binding.measurerId, row.designer]));
-    return rows.map((row) => {
-      const designer = map.get(row.id);
-      return {
-        ...row,
-        boundDesignerId: designer?.id ?? null,
-        boundDesigner: designer
-          ? { id: designer.id, displayName: designer.displayName, username: designer.username, role: designer.role, wechatId: designer.wechatId, wechatQrAssetId: designer.wechatQrAssetId }
-          : null,
-      };
-    });
   }
 
   private buildFilters(options: ListAdminUsersOptions) {
@@ -148,12 +123,12 @@ export class AdminUserRepository {
         .from(adminUsers)
         .where(where),
     ]);
-    const records = await this.attachDesignerBindings(await this.attachPromoters(
+    const records = await this.attachPromoters(
       joinedRows.map((row) => ({
         ...row.adminUser,
         enterpriseName: row.enterpriseName,
         departmentName: row.departmentName,
-      }))));
+      })));
 
     return {
       rows: records as AdminUserWithRelations[],
@@ -174,13 +149,13 @@ export class AdminUserRepository {
       .where(eq(adminUsers.id, id))
       .limit(1);
     if (!rows[0]) return null;
-    const [record] = await this.attachDesignerBindings(await this.attachPromoters([
+    const [record] = await this.attachPromoters([
       {
         ...rows[0].adminUser,
         enterpriseName: rows[0].enterpriseName,
         departmentName: rows[0].departmentName,
       },
-    ]));
+    ]);
     return record as AdminUserWithRelations;
   }
 
@@ -233,41 +208,6 @@ export class AdminUserRepository {
       .orderBy(asc(adminUsers.id))
       .limit(1);
     return rows[0]?.adminUser ?? null;
-  }
-
-  async findDesignerForMeasurer(measurerId: bigint) {
-    const rows = await this.transaction
-      .select({ designer: adminUsers })
-      .from(measurerDesignerBindings)
-      .innerJoin(adminUsers, eq(measurerDesignerBindings.designerId, adminUsers.id))
-      .where(and(
-        eq(measurerDesignerBindings.measurerId, measurerId),
-        eq(adminUsers.role, 'designer'),
-        eq(adminUsers.status, 'active')
-      ))
-      .limit(1);
-    return rows[0]?.designer ?? null;
-  }
-
-  async findMeasurersForDesigner(designerId: bigint) {
-    const rows = await this.transaction
-      .select({ measurer: adminUsers })
-      .from(measurerDesignerBindings)
-      .innerJoin(adminUsers, eq(measurerDesignerBindings.measurerId, adminUsers.id))
-      .where(and(eq(measurerDesignerBindings.designerId, designerId), eq(adminUsers.role, 'measurer')));
-    return rows.map((row) => row.measurer);
-  }
-
-  async replaceMeasurerDesignerBinding(measurerId: bigint, designerId: bigint, enterpriseId: bigint) {
-    await this.transaction
-      .insert(measurerDesignerBindings)
-      .values({ measurerId, designerId, enterpriseId })
-      .onConflictDoUpdate({ target: measurerDesignerBindings.measurerId, set: { designerId, enterpriseId, updatedAt: new Date() } });
-    return this.findDesignerForMeasurer(measurerId);
-  }
-
-  async deleteMeasurerDesignerBinding(measurerId: bigint) {
-    await this.transaction.delete(measurerDesignerBindings).where(eq(measurerDesignerBindings.measurerId, measurerId));
   }
 
   async existsWithPhone(phone: string, excludeId?: bigint) {

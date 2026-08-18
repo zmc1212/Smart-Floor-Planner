@@ -20,7 +20,6 @@ import {
 import { resolveWritableEnterpriseId } from '@/lib/tenant-route';
 import {
   notifyDesignerOfAssignedLead,
-  notifyDesignerOfPendingLead,
   notifyEnterpriseAdminOfNewLead,
 } from '@/lib/wechat-notification';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
@@ -75,10 +74,6 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const { page, limit } = parsePage(searchParams);
     const status = searchParams.get('status') || undefined;
-    const acquisitionStatusValue = searchParams.get('acquisitionStatus');
-    const acquisitionStatus = acquisitionStatusValue === 'pending_confirmation' || acquisitionStatusValue === 'confirmed'
-      ? acquisitionStatusValue
-      : undefined;
     const miniContext = await resolveMiniProgramContext(request);
 
     if (miniContext) {
@@ -89,7 +84,6 @@ export async function GET(request: Request) {
         );
       }
       const staffId = parsePostgresId(miniContext.staff._id, 'staff id');
-      const miniStaffRole = miniContext.staff.role;
       const baseOptions: LeadListOptions =
         miniContext.staff.role === 'enterprise_admin'
           ? {}
@@ -101,11 +95,8 @@ export async function GET(request: Request) {
         miniContext,
         async (transaction) => {
           const repository = new LeadRepository(transaction);
-          const designer = miniStaffRole === 'measurer'
-            ? await new AdminUserRepository(transaction).findDesignerForMeasurer(staffId)
-            : null;
           const [list, all, stats, todayNew] = await Promise.all([
-            repository.list({ ...baseOptions, status, acquisitionStatus, page, limit }),
+            repository.list({ ...baseOptions, status, page, limit }),
             repository.count(baseOptions),
             repository.countStatuses(baseOptions, [
               'new',
@@ -123,7 +114,7 @@ export async function GET(request: Request) {
               createdSince: startOfChinaBusinessDay(),
             }),
           ]);
-          return { list, all, stats, todayNew, designer };
+          return { list, all, stats, todayNew };
         }
       );
       const following = [
@@ -145,15 +136,6 @@ export async function GET(request: Request) {
           todayNew: result.todayNew,
           following,
         },
-        designerProfile: result.designer ? {
-          _id: result.designer.id.toString(),
-          displayName: result.designer.displayName,
-          username: result.designer.username,
-          wechatId: result.designer.wechatId,
-          wechatQrUrl: result.designer.wechatQrAssetId && result.designer.enterpriseId
-            ? getSignedMiniAiAssetUrl({ request, assetId: result.designer.wechatQrAssetId.toString(), enterpriseId: result.designer.enterpriseId.toString() })
-            : null,
-        } : null,
       });
     }
 
@@ -185,7 +167,6 @@ export async function GET(request: Request) {
       (transaction) =>
         new LeadRepository(transaction).list({
           status,
-          acquisitionStatus,
           source: searchParams.get('source') || undefined,
           staffId:
             context.role === 'designer' || context.role === 'measurer'
@@ -229,7 +210,7 @@ export async function POST(request: Request) {
     }
     if (String(body.status || '') === 'acquired') {
       return NextResponse.json(
-        { success: false, error: 'acquired 已从线索业务状态移除，请使用获客确认接口' },
+        { success: false, error: 'acquired 已从线索业务状态移除' },
         { status: 400 }
       );
     }
@@ -252,6 +233,12 @@ export async function POST(request: Request) {
       );
     }
     const role = miniContext?.staff?.role || adminContext?.role || 'user';
+    if (miniContext?.staff?.role === 'measurer') {
+      return NextResponse.json(
+        { success: false, error: '测量员不能通过旧录入流程创建客户，请使用推荐服务领取后的自动派单流程' },
+        { status: 403 }
+      );
+    }
     const actorStaffId = miniContext?.staff
       ? parsePostgresId(miniContext.staff._id, 'staff id')
       : adminContext
@@ -280,16 +267,6 @@ export async function POST(request: Request) {
         body.assignedTo,
         'assignedTo'
       );
-      const isMeasurerLead = role === 'measurer' && actorStaffId;
-
-      if (isMeasurerLead) {
-        promoterId = actorStaffId;
-        const designer = await admins.findDesignerForMeasurer(actorStaffId);
-        if (!designer) throw new Error('当前测量员尚未绑定设计师');
-        enterpriseId ??= designer.enterpriseId;
-        assignedTo = designer.id;
-      }
-
       const referencedStaffId = promoterId ?? assignedTo;
       if (referencedStaffId) {
         const referencedStaff = await admins.findById(referencedStaffId);
@@ -314,8 +291,7 @@ export async function POST(request: Request) {
         assignedTo = actorStaffId;
       }
 
-      let status = normalizeLeadStatus(isMeasurerLead ? 'new' : body.status || 'new');
-      if (isMeasurerLead) status = 'new';
+      let status = normalizeLeadStatus(body.status || 'new');
       if (assignedTo && (!body.status || body.status === 'new')) status = 'new';
       const floorPlanId = parseOptionalPostgresId(
         body.floorPlanId,
@@ -346,7 +322,6 @@ export async function POST(request: Request) {
 
       const existing = await leads.findByPhone(phone);
       if (existing?.archivedAt) throw archivedLeadExistsError();
-      const shouldNotifyDesigner = Boolean(isMeasurerLead && !existing && assignedTo);
       let lead = existing
         ? await leads.update(existing.id, {
             ...common,
@@ -379,7 +354,6 @@ export async function POST(request: Request) {
       }
       return {
         lead,
-        shouldNotifyDesigner,
         shouldNotifyEnterprise: !existing,
         shouldNotifyAssignedDesigner: Boolean(!existing && assignedTo),
         designerId: assignedTo,
@@ -397,9 +371,7 @@ export async function POST(request: Request) {
     };
     await Promise.allSettled([
       result.shouldNotifyEnterprise ? notifyEnterpriseAdminOfNewLead(notificationLead) : Promise.resolve(),
-      result.shouldNotifyDesigner && result.designerId
-        ? notifyDesignerOfPendingLead(notificationLead, result.designerId.toString())
-        : result.shouldNotifyAssignedDesigner && result.designerId
+      result.shouldNotifyAssignedDesigner && result.designerId
         ? notifyDesignerOfAssignedLead(
             notificationLead,
             result.designerId.toString()

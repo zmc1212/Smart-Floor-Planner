@@ -1,5 +1,4 @@
 import type {
-  AcquisitionCommissionWithRelations,
   AdminUserRecord,
   AiChatSessionRecord,
   CommissionWithRelations,
@@ -68,23 +67,6 @@ export function commissionToDto(record: CommissionWithRelations) {
   };
 }
 
-export function acquisitionCommissionToDto(record: AcquisitionCommissionWithRelations) {
-  return {
-    _id: record.id.toString(),
-    leadId: record.lead ? { _id: record.lead.id.toString(), name: record.lead.name, phone: record.lead.phone, communityName: record.lead.communityName, status: record.lead.status, archivedAt: record.lead.archivedAt, isArchived: Boolean(record.lead.archivedAt) } : record.leadId.toString(),
-    enterpriseId: record.enterpriseId.toString(),
-    measurerId: record.measurer ? { _id: record.measurer.id.toString(), displayName: record.measurer.displayName, username: record.measurer.username, role: record.measurer.role } : record.measurerId.toString(),
-    designerId: record.designer ? { _id: record.designer.id.toString(), displayName: record.designer.displayName, username: record.designer.username, role: record.designer.role } : record.designerId.toString(),
-    commissionAmount: Number(record.commissionAmount),
-    status: record.status,
-    generatedAt: record.generatedAt,
-    settledAt: record.settledAt,
-    settledBy: record.settledBy?.toString() ?? null,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  };
-}
-
 export function staffNotificationToDto(record: StaffNotificationWithLead) {
   return {
     _id: record.id.toString(),
@@ -120,7 +102,6 @@ export function enterpriseToDto(record: EnterpriseRecord) {
     groundPromotionFixedCommission: Number(
       record.groundPromotionFixedCommission
     ),
-    measurerAcquisitionFixedCommission: Number(record.measurerAcquisitionFixedCommission),
     automationConfig: record.automationConfig,
     aiConfig: record.aiConfig,
     aiPolicy: record.aiPolicy,
@@ -165,17 +146,6 @@ export function adminUserToDto(
           }
         : record.departmentId?.toString() ?? null,
     promoterIds: (record.promoterIds ?? []).map((id) => id.toString()),
-    boundDesignerId: (record as AdminUserWithRelations).boundDesignerId?.toString() ?? null,
-    boundDesigner: (record as AdminUserWithRelations).boundDesigner
-      ? {
-          _id: (record as AdminUserWithRelations).boundDesigner!.id.toString(),
-          displayName: (record as AdminUserWithRelations).boundDesigner!.displayName,
-          username: (record as AdminUserWithRelations).boundDesigner!.username,
-          role: (record as AdminUserWithRelations).boundDesigner!.role,
-          wechatId: (record as AdminUserWithRelations).boundDesigner!.wechatId,
-          wechatQrAssetId: (record as AdminUserWithRelations).boundDesigner!.wechatQrAssetId?.toString() ?? null,
-        }
-      : null,
     username: record.username,
     displayName: record.displayName,
     role: record.role,
@@ -292,19 +262,12 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
       : record.convertedBy?.toString() ?? null,
     contractAmount: record.contractAmount === null ? null : Number(record.contractAmount),
     conversionNote: record.conversionNote,
-    acquisitionStatus: record.acquiredAt ? 'confirmed' : 'pending_confirmation',
-    acquiredAt: record.acquiredAt,
-    acquiredBy: record.acquiredBy?.toString() ?? null,
     archivedAt: record.archivedAt,
     archivedBy: record.archivedUser
       ? staffSummaryToDto(record.archivedUser)
       : record.archivedBy?.toString() ?? null,
     archiveReason: record.archiveReason,
     archiveNote: record.archiveNote,
-    acquisitionCommissionStatus: record.acquisitionCommission?.status ?? null,
-    acquisitionCommissionAmount: record.acquisitionCommission
-      ? Number(record.acquisitionCommission.commissionAmount)
-      : null,
     notes: record.notes,
     assignedAt: record.assignedAt,
     floorPlanIds: record.floorPlanRecords.map((floorPlan) => floorPlanToDto(floorPlan, {

@@ -134,12 +134,7 @@ Page({
     activeFloorPlan: null,
     previousFloorPlans: [],
     staffRole: '',
-    canContactDesigner: false,
-    canViewAcquisition: false,
-    showDesignerSheet: false,
-    designerProfile: null,
     canScheduleAppointment: false,
-    acquisitionConfirmedTime: '',
     statusLabel: '新线索',
     nextAction: '开始正式量房',
     stageRail: buildStageRail('new'),
@@ -185,17 +180,10 @@ Page({
   applyLeadDetail(lead) {
     const formalPlans = getFormalPlans(lead).map(toPlanDisplay);
     const staffRole = getStaffRole();
-    const designerProfile = lead.assignedTo && typeof lead.assignedTo === 'object'
-      ? lead.assignedTo
-      : null;
     const conversionActions = lead.conversionActions || {};
     this.setData({
       lead,
       staffRole,
-      designerProfile,
-      acquisitionConfirmedTime: formatConfirmationDate(lead.acquiredAt),
-      canContactDesigner: staffRole === 'measurer' && Boolean(designerProfile && (designerProfile.wechatId || designerProfile.wechatQrUrl)),
-      canViewAcquisition: staffRole === 'measurer' || staffRole === 'designer',
       statusLabel: STATUS_LABELS[lead.status] || lead.status || '新线索',
       nextAction: getNextAction(lead.status),
       stageRail: buildStageRail(lead.status),
@@ -314,22 +302,6 @@ Page({
     } finally {
       this.setData({ conversionSubmitting: false });
     }
-  },
-
-  onOpenAcquisition() {
-    wx.navigateTo({ url: `/packages/business/acquisition-center/acquisition-center?leadId=${this.data.leadId}` });
-  },
-
-  onOpenDesignerContact() {
-    if (this.data.canContactDesigner) this.setData({ showDesignerSheet: true });
-  },
-
-  onCloseDesignerSheet() {
-    this.setData({ showDesignerSheet: false });
-  },
-
-  onRetryDesignerProfile() {
-    this.fetchLeadDetail();
   },
 
   onRetryDetail() {

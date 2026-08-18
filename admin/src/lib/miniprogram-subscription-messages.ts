@@ -25,7 +25,6 @@ const WORKFLOW_COPY: Record<string, { status: string; todo: string; note?: strin
 const ASSIGNMENT_COPY: Record<string, { status: string; note: string }> = {
   measure_assigned: { status: '待量房', note: '请按时完成量房' },
   design_assigned: { status: '待设计', note: '请开始方案设计' },
-  lead_pending_acquisition: { status: '待确认', note: '请确认客户交接' },
   lead_assigned: { status: '待跟进', note: '请尽快联系客户' },
 };
 
@@ -183,6 +182,6 @@ export function buildWorkflowNotificationPayload(input: {
   });
 }
 
-export function assignmentCopy(type: 'lead_pending_acquisition' | 'lead_assigned') {
+export function assignmentCopy(type: 'lead_assigned') {
   return ASSIGNMENT_COPY[type];
 }

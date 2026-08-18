@@ -3,7 +3,6 @@
   "navigationStyle": "custom",
   "usingComponents": {
     "lead-list": "/components/lead-list/lead-list",
-    "lead-modal": "/components/lead-modal/lead-modal",
-    "designer-contact-sheet": "/components/designer-contact-sheet/designer-contact-sheet"
+    "lead-modal": "/components/lead-modal/lead-modal"
   }
 }

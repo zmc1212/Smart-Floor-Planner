@@ -57,16 +57,12 @@ test('history records favor the shared project display name over legacy date tit
   assert.match(script, /projectSubtitle,/);
 });
 
-test('lead detail keeps acquisition collaboration out of the hero and reuses the shared designer sheet', () => {
+test('lead detail removes the legacy acquisition collaboration surface', () => {
   const script = fs.readFileSync(
     path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
-  assert.match(template, /class="acquisition-info"/);
-  assert.match(template, /联系设计师/);
-  assert.match(template, /查看协作记录/);
-  assert.match(template, /<designer-contact-sheet/);
-  assert.doesNotMatch(template, /onAcquireLead|确认已获客/);
-  assert.doesNotMatch(script, /onAcquireLead|canAcquireLead/);
+  assert.doesNotMatch(template, /acquisition-info|联系设计师|查看协作记录|designer-contact-sheet|确认已获客/);
+  assert.doesNotMatch(script, /onAcquireLead|canAcquireLead|onOpenAcquisition|onOpenDesignerContact/);
   assert.match(script, /const WORKFLOW_STAGES = \['新线索', '量房中', '方案设计', '已签约'\]/);
 });

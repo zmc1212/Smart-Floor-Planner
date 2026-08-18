@@ -66,37 +66,6 @@
       >撤销签约标记</button>
     </view>
   </view>
-  <view class="acquisition-info" wx:if="{{lead}}">
-    <view class="acquisition-info-heading">
-      <view>
-        <view class="acquisition-info-title">获客协作</view>
-        <view class="acquisition-info-subtitle">客户微信交接回执</view>
-      </view>
-      <view class="acquisition-info-status {{lead.acquisitionStatus === 'confirmed' ? 'is-confirmed' : ''}}">
-        {{lead.acquisitionStatus === 'confirmed' ? '已确认' : '待确认'}}
-      </view>
-    </view>
-    <view class="acquisition-info-grid">
-      <view class="acquisition-info-row">
-        <text>设计师</text>
-        <text>{{designerProfile ? (designerProfile.displayName || designerProfile.username) : '待分配'}}</text>
-      </view>
-      <view class="acquisition-info-row">
-        <text>微信交接</text>
-        <text>{{lead.acquisitionStatus === 'confirmed' ? '已确认' : '等待设计师确认'}}</text>
-      </view>
-      <view class="acquisition-info-row" wx:if="{{lead.acquisitionStatus === 'confirmed'}}">
-        <text>确认时间</text>
-        <text>{{acquisitionConfirmedTime}}</text>
-      </view>
-    </view>
-    <view class="acquisition-info-actions" wx:if="{{canContactDesigner || canViewAcquisition}}">
-      <view wx:if="{{canContactDesigner}}" class="acquisition-info-link" bindtap="onOpenDesignerContact">联系设计师 ›</view>
-      <view wx:if="{{canViewAcquisition}}" class="acquisition-info-link" bindtap="onOpenAcquisition">
-        {{staffRole === 'designer' && lead.acquisitionStatus !== 'confirmed' ? '去处理获客协作' : '查看协作记录'}} ›
-      </view>
-    </view>
-  </view>
   <view class="whole-home-card">
     <view class="whole-home-tab">正式量房</view>
     <view class="whole-home-copy">
@@ -146,13 +115,6 @@
 </view>
 <view class="loading-state" wx:else>加载中...</view>
 
-<designer-contact-sheet
-  visible="{{showDesignerSheet}}"
-  profile="{{designerProfile}}"
-  bindclose="onCloseDesignerSheet"
-  bindretry="onRetryDesignerProfile"
-/>
-
 <view class="conversion-sheet-mask" wx:if="{{showConversionSheet}}" catchtap="onCloseConversionSheet">
   <view class="conversion-sheet" catchtap="onSheetTap">
     <view class="conversion-sheet-handle"></view>
@@ -193,7 +155,7 @@
         bindinput="onConversionNoteInput"
       ></textarea>
     </view>
-    <view class="conversion-boundary-copy">仅更新客户业务状态，不会自动生成订单、扣款或结算获客提成。</view>
+    <view class="conversion-boundary-copy">仅更新客户业务状态，不会自动生成订单、扣款或生成提成记录。</view>
     <view class="conversion-sheet-actions">
       <button class="conversion-sheet-secondary" catchtap="onCloseConversionSheet" disabled="{{conversionSubmitting}}">取消</button>
       <button class="conversion-sheet-primary" catchtap="onConfirmConversion" loading="{{conversionSubmitting}}" disabled="{{conversionSubmitting || !conversionDate}}">确认已签约</button>

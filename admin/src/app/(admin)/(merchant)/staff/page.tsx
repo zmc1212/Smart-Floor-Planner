@@ -35,7 +35,6 @@ type StaffMember = {
   createdAt?: string;
   wechatId?: string | null;
   wechatQrAssetId?: string | null;
-  boundDesignerId?: string | null;
 };
 
 type StaffRole = 'enterprise_admin' | 'designer' | 'measurer' | 'salesperson';
@@ -49,7 +48,6 @@ type StaffForm = {
   departmentId?: string;
   wechatId?: string;
   wechatQrAssetId?: string;
-  boundDesignerId?: string;
 };
 
 type DepartmentForm = { name: string; parentId?: string };
@@ -139,7 +137,6 @@ export default function StaffPage() {
   const [departmentFormOpen, setDepartmentFormOpen] = useState(false);
   const [globalTenantId, setGlobalTenantId] = useState('all');
   const [overview, setOverview] = useState({ total: 0, designers: 0, measurers: 0 });
-  const [designers, setDesigners] = useState<StaffMember[]>([]);
   const [staffRole, setStaffRole] = useState<StaffRole>('designer');
   const [wechatQrAssetId, setWechatQrAssetId] = useState<string | null>(null);
   const [wechatQrPreviewUrl, setWechatQrPreviewUrl] = useState<string | null>(null);
@@ -215,16 +212,6 @@ export default function StaffPage() {
     setGlobalTenantId(tenantCookie?.split('=')[1] || 'all');
   }, []);
   useEffect(() => { void loadDepartments(); }, [loadDepartments]);
-  useEffect(() => {
-    if (!currentUser || requiresTenantSelection) return;
-    void fetch('/api/staff?roles=designer&limit=100')
-      .then(async (response) => {
-        const result = await response.json();
-        if (!response.ok || !result.success) throw new Error(result.error || '读取设计师列表失败');
-        setDesigners((result.data || []).filter((member: StaffMember) => member.status === 'active'));
-      })
-      .catch((error) => notify.error(error instanceof Error ? error.message : '读取设计师列表失败'));
-  }, [currentUser, requiresTenantSelection]);
   useEffect(() => { if (!requiresTenantSelection) void actionRef.current?.reload(); }, [requiresTenantSelection, selectedDepartmentId]);
   useEffect(() => {
     setStaffRole(editingStaff?.role || 'designer');
@@ -561,7 +548,6 @@ export default function StaffPage() {
           role: editingStaff.role,
           departmentId: departmentIdOf(editingStaff) || undefined,
           wechatId: editingStaff.wechatId || undefined,
-          boundDesignerId: editingStaff.boundDesignerId || undefined,
         } : { role: 'designer', departmentId: selectedDepartmentId || undefined }}
         modalProps={{ destroyOnHidden: true, maskClosable: false }}
         onOpenChange={(open) => { setStaffFormOpen(open); if (!open) setEditingStaff(null); }}
@@ -610,16 +596,6 @@ export default function StaffPage() {
               />
             </Form.Item>
           </>
-        ) : staffRole === 'measurer' ? (
-          <ProFormSelect
-            name="boundDesignerId"
-            label="绑定设计师"
-            options={designers.map((designer) => ({ label: `${designer.displayName || designer.username}${designer.wechatId ? ` (${designer.wechatId})` : ''}`, value: designer._id }))}
-            rules={[{ required: true, message: '请选择绑定设计师' }]}
-            disabled={designers.length === 0}
-            extra={designers.length === 0 ? '当前企业没有可绑定的启用设计师，请先新增或启用设计师。' : undefined}
-            fieldProps={{ placeholder: designers.length > 0 ? '请选择同企业的启用设计师' : '暂无可绑定设计师' }}
-          />
         ) : null}
       </ModalForm>
 

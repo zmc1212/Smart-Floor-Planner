@@ -6,10 +6,6 @@ const SUMMARY_ART = [
 ];
 
 const ACTION_PRESENTATION = {
-  acquisition: {
-    toneClass: 'tone-green',
-    iconPath: '/images/mine-icons/clipboard-pen.png'
-  },
   leads: {
     toneClass: 'tone-blue',
     iconPath: '/images/mine-v6/tool-leads.jpg'

@@ -15,7 +15,6 @@ import {
 import {
   adminUsers,
   floorPlans,
-  leadAcquisitionCommissions,
   customerAttributionLocks,
   leadFloorPlans,
   leads,
@@ -52,15 +51,10 @@ export interface LeadWithRelations extends LeadRecord {
   promoter: LeadStaffSummary | null;
   archivedUser: LeadStaffSummary | null;
   convertedUser: LeadStaffSummary | null;
-  acquisitionCommission: {
-    status: string;
-    commissionAmount: string;
-  } | null;
 }
 
 export interface LeadListOptions {
   status?: string;
-  acquisitionStatus?: 'pending_confirmation' | 'confirmed';
   source?: string;
   phone?: string;
   query?: string;
@@ -90,11 +84,6 @@ export class LeadRepository {
           ? eq(leads.status, variants[0])
           : inArray(leads.status, variants)
       );
-    }
-    if (options.acquisitionStatus === 'pending_confirmation') {
-      filters.push(isNull(leads.acquiredAt));
-    } else if (options.acquisitionStatus === 'confirmed') {
-      filters.push(isNotNull(leads.acquiredAt));
     }
     if (options.source) filters.push(eq(leads.source, options.source));
     if (options.phone) filters.push(eq(leads.phone, options.phone));
@@ -175,7 +164,7 @@ export class LeadRepository {
         )
       )
     );
-    const [staffRows, acquisitionRows] = await Promise.all([
+    const staffRows = await (
       staffIds.length > 0
         ? await this.transaction
             .select({
@@ -188,18 +177,9 @@ export class LeadRepository {
             })
             .from(adminUsers)
             .where(inArray(adminUsers.id, staffIds))
-        : [],
-      this.transaction
-        .select({
-          leadId: leadAcquisitionCommissions.leadId,
-          status: leadAcquisitionCommissions.status,
-          commissionAmount: leadAcquisitionCommissions.commissionAmount,
-        })
-        .from(leadAcquisitionCommissions)
-        .where(inArray(leadAcquisitionCommissions.leadId, leadIds)),
-    ]);
+        : []
+    );
     const staffMap = new Map(staffRows.map((staff) => [staff.id, staff]));
-    const acquisitionMap = new Map(acquisitionRows.map((item) => [item.leadId, item]));
 
     return rows.map((row) => ({
       ...row,
@@ -219,7 +199,6 @@ export class LeadRepository {
       promoter: row.promoterId ? staffMap.get(row.promoterId) ?? null : null,
       archivedUser: row.archivedBy ? staffMap.get(row.archivedBy) ?? null : null,
       convertedUser: row.convertedBy ? staffMap.get(row.convertedBy) ?? null : null,
-      acquisitionCommission: acquisitionMap.get(row.id) ?? null,
     }));
   }
 

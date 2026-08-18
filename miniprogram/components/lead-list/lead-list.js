@@ -67,7 +67,6 @@ Component({
     currentTabIndex: 0,
     allLeads: [],
     leads: [],
-    designerProfile: null,
     searchKeyword: '',
     loading: false,
     refreshing: false,
@@ -107,17 +106,14 @@ Component({
           const formatted = res.data.map((lead) => this.formatLead(lead));
           const allLeads = reset ? formatted : this.data.allLeads.concat(formatted);
 
-          const designerProfile = res.designerProfile || null;
           this.setData({
             allLeads,
             leads: this.filterLeads(allLeads, this.data.searchKeyword),
-            designerProfile,
             page: page + 1,
             hasMore: formatted.length === this.data.pageSize,
             loading: false,
             refreshing: false
           });
-          this.triggerEvent('profilechange', { profile: designerProfile });
 
           if (reset) {
             this.updateHeroStats(allLeads, res.stats);

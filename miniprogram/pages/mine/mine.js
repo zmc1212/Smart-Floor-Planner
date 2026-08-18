@@ -24,7 +24,6 @@ const FALLBACK_PROFILE = {
 const ACTION_TARGETS = {
   createPromotion: () => wx.navigateTo({ url: '/packages/business/promotion-record-detail/promotion-record-detail?mode=create' }),
   commissions: () => wx.navigateTo({ url: '/packages/business/commission-records/commission-records' }),
-  acquisition: () => wx.navigateTo({ url: '/packages/business/acquisition-center/acquisition-center' }),
   leads: () => wx.switchTab({ url: '/pages/leads-management/leads-management' }),
   inspiration: () => wx.navigateTo({ url: '/packages/business/inspiration/inspiration' }),
   measure: () => wx.switchTab({ url: '/pages/index/index' }),
@@ -403,7 +402,7 @@ Page({
             if (isTab) wx.switchTab({ url: tabPath });
             else wx.navigateTo({ url: metadataPage });
           } else if (leadId) {
-            wx.navigateTo({ url: `/packages/business/acquisition-center/acquisition-center?leadId=${leadId}` });
+            wx.navigateTo({ url: `/packages/business/lead-detail/lead-detail?id=${leadId}` });
           }
           const currentUnread = Number(this.data.mineData.unreadNotificationCount || 0);
           this.setData({ 'mineData.unreadNotificationCount': Math.max(0, currentUnread - 1) });

@@ -131,7 +131,6 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: '团队资产管理',
       items: [
         { key: 'staff', label: '员工管理', icon: UserSquare2, href: '/staff' },
-        { key: 'acquisition-commissions', label: '获客提成', icon: Coins, href: '/acquisition-commissions' },
         { key: 'lead-commissions', label: '三方提成', icon: Coins, href: '/lead-commissions' },
         { key: 'devices', label: '设备管理', icon: Smartphone, href: '/devices' },
       ]

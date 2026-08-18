@@ -1,7 +1,0 @@
-{
-  "navigationStyle": "custom",
-  "navigationBarTitleText": "获客协作",
-  "usingComponents": {
-    "designer-contact-sheet": "/components/designer-contact-sheet/designer-contact-sheet"
-  }
-}

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { acquisitionCommissionToDto, commissionToDto, parsePostgresId } from '@/db/postgres-dto';
-import { AcquisitionRepository, CommercialRepository } from '@/db/repositories';
+import { commissionToDto, parsePostgresId } from '@/db/postgres-dto';
+import { CommercialRepository } from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
 import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
@@ -12,13 +12,6 @@ export async function GET(request: Request) {
     const mpContext = await resolveMiniProgramContext(request);
     if (mpContext && mpContext.staff) {
       const { staff } = mpContext;
-
-      if (staff.role === 'measurer') {
-        const items = await withMiniProgramPostgresTransaction(mpContext, (transaction) =>
-          new AcquisitionRepository(transaction).listCommissions({ measurerId: parsePostgresId(staff._id, 'staff id') })
-        );
-        return NextResponse.json({ success: true, data: items.map(acquisitionCommissionToDto), type: 'lead_acquisition' });
-      }
 
       const items = await withMiniProgramPostgresTransaction(mpContext, (transaction) =>
         new CommercialRepository(transaction).listCommissions({ promoterId: staff.role === 'salesperson' ? parsePostgresId(staff._id, 'staff id') : undefined })
