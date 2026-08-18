@@ -35,6 +35,12 @@ Do not reopen a route marked `Hold` unless the user names it, a reproducible
 defect identifies it, its workflow contract changes, or a new design direction
 is explicitly approved.
 
+## Current route records
+
+| Route | Visual scope | Boundaries | Verification | Open issue |
+| --- | --- | --- | --- | --- |
+| `/lead-commissions` — merchant three-role commission workbench | Approved source `design-references/referrer-network-appointment-v1/phase-7-three-role-commission-admin-v1.png` (1487x1058 PNG, SHA-256 `DAA7ED1235C474F0C6A0D7FC625A5DD0BD9D97E54F580AB4CD530CE743AB2A1C`): header, separate referrer/designer/measurer rule cards, ledger filters, payable selection, confirmed batch paid action, and amount summaries | New route remains separate from `/acquisition-commissions`; route/API permission `lead-commissions` is limited to `super_admin`, `admin`, and `enterprise_admin`; tenant/RLS boundaries and the existing rule/report/paid APIs are unchanged | Focused ESLint and `npm run build` pass; build route manifest contains `/lead-commissions`, `/api/commission-rules`, `/api/lead-commissions`, and `/api/lead-commissions/mark-paid` | `http://localhost:3005` currently proxies to a four-day-old Docker image that returns 404 for this new route. Reopen when the current workspace runtime and an authenticated administrator session are available for visual comparison |
+
 ## Handoff
 
 When a refactor changes visible behavior, update the route's single current

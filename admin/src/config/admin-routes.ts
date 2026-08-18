@@ -17,6 +17,7 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteEntry[] = [
   { key: 'floorplans', label: '户型图库', href: '/floorplans', section: '户型图库' },
   { key: 'acquisition-commissions', label: '获客提成', href: '/acquisition-commissions', section: '团队资产管理' },
   { key: 'acquisition-commission-settings', label: '提成规则', href: '/acquisition-commissions/settings', section: '团队资产管理', permissionKey: 'acquisition-commissions' },
+  { key: 'lead-commissions', label: '三方提成', href: '/lead-commissions', section: '团队资产管理' },
 ];
 
 export function isAdminRouteActive(pathname: string, href: string) {

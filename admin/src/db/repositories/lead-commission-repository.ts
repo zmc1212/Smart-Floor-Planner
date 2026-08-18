@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseCommissionRules,
@@ -271,10 +271,19 @@ export class LeadCommissionRepository {
     return rows.length;
   }
 
-  async list(enterpriseId: bigint, options: { status?: string; leadId?: bigint } = {}) {
+  async list(enterpriseId: bigint, options: {
+    status?: string;
+    role?: CommissionRole;
+    leadId?: bigint;
+    createdFrom?: Date;
+    createdBefore?: Date;
+  } = {}) {
     const filters = [eq(leadCommissions.enterpriseId, enterpriseId)];
     if (options.status) filters.push(eq(leadCommissions.status, options.status));
+    if (options.role) filters.push(eq(leadCommissions.role, options.role));
     if (options.leadId) filters.push(eq(leadCommissions.leadId, options.leadId));
+    if (options.createdFrom) filters.push(gte(leadCommissions.createdAt, options.createdFrom));
+    if (options.createdBefore) filters.push(lt(leadCommissions.createdAt, options.createdBefore));
     const rows = await this.transaction
       .select({ commission: leadCommissions, lead: leads, beneficiary: users })
       .from(leadCommissions)

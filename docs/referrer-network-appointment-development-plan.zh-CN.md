@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Approved design / Phase 7 in progress`
+状态：`Approved design / Phase 7 implementation in progress`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -21,6 +21,8 @@ English mirror: [referrer-network-appointment-development-plan.md](./referrer-ne
 `design-references/` 由 Git 忽略，设计图只作为本机批准源，不得进入小程序包。若文件缺失或哈希不符，应先向产品负责人确认，不得自行换成近似设计。
 
 第 5 阶段的推荐人内部工作台使用 `design-references/referrer-network-appointment-v1/phase-5-referrer-workbench-v1.png`：`1024x1536` PNG，以 `390x844` 为构图基线；它只适用于已认证推荐人选择企业和进入服务码，不适用于客户匿名链路。该参考由 Antigravity 内置图像引擎重新生成；工具未暴露可验证的具体 Google 图像模型名，因此文档不将其误标为 `Gemini 3 Pro Image`。
+
+第 7 阶段后台三方提成工作台的批准设计源为 `design-references/referrer-network-appointment-v1/phase-7-three-role-commission-admin-v1.png`：`1487x1058` PNG，SHA-256 为 `DAA7ED1235C474F0C6A0D7FC625A5DD0BD9D97E54F580AB4CD530CE743AB2A1C`，由 Codex 内置生图能力生成并获准落地。它只适用于 `/lead-commissions` 的三角色规则卡、台账筛选、批量标记已支付和金额汇总；该图仅为桌面后台参考，不得切片或作为运行时 UI 素材，也不改变旧获客提成页面。
 
 ### 1.2 三屏业务映射
 
@@ -259,7 +261,7 @@ closed 为终止状态
 - 撤销签单时，未支付记录改为 `voided` 并保留原因；存在任一 `paid` 记录时返回业务冲突，必须先完成线下财务更正。
 - 报表按线索展示客户、推荐人、企业、设计师、测量员、预约、合同金额及三角色提成状态。
 
-第 7 阶段已实现服务端签单和提成账本切片：`LeadCommissionRepository` 为推荐网络线索在签单事务中锁定三条企业规则与三方受益人，按固定金额或比例以整数十进制单位计算并快照三条唯一 `payable` 记录。比例规则要求签约金额；撤销签单前会锁定提成记录，任何已支付记录都会阻止撤销，其余待支付记录写为 `voided` 并保留原因。提成报表为每条记录附带客户、推荐人关系、企业、设计师、测量员和当前有效预约上下文；企业管理员可使用规则读取/更新、报表读取和批量标记已支付 API。后台生产页面仍需单独的批准设计源后才能实施。旧获客线索在第 8 阶段下线前不具备推荐人/预分配测量员三方受益人时，保留其现有签单行为。
+第 7 阶段已实现服务端签单和提成账本切片：`LeadCommissionRepository` 为推荐网络线索在签单事务中锁定三条企业规则与三方受益人，按固定金额或比例以整数十进制单位计算并快照三条唯一 `payable` 记录。比例规则要求签约金额；撤销签单前会锁定提成记录，任何已支付记录都会阻止撤销，其余待支付记录写为 `voided` 并保留原因。提成报表为每条记录附带客户、推荐人关系、企业、设计师、测量员和当前有效预约上下文；批准的 `/lead-commissions` 工作台允许企业/平台管理员维护三条规则、按状态/角色/创建日期范围筛选真实台账、查看关联上下文并确认线下批量标记已支付。它与旧获客提成页面保持独立。旧获客线索在第 8 阶段下线前不具备推荐人/预分配测量员三方受益人时，保留其现有签单行为。
 
 ## 12. 计划 API 族
 
@@ -279,7 +281,7 @@ closed 为终止状态
 | 预约 | `GET/POST /api/appointments`、`POST /api/appointments/[id]/customer-reschedule`、`POST /api/appointments/[id]/internal-reschedule`、`POST /api/appointments/[id]/cancel`、`POST /api/appointments/[id]/complete`；第 5 阶段已完成，已接通版本乐观锁、客户/设计师/测量员/企业负责人边界、自动换测量员、事件审计，以及创建、改期、取消后的事务后员工和已授权客户订阅消息尝试。客户读取和改期仅在请求线索或预约确属本人后推导企业范围，不接受 token 或请求声明的企业 ID。 |
 | 日历与配置 | `GET/PUT /api/appointment-settings`、`GET/POST/DELETE /api/measurer-unavailability`；第 5 阶段已完成。 |
 | 客户项目与方案发布 | `GET /api/miniprogram/customer-projects/[leadId]`、`GET /api/miniprogram/customer-projects/[leadId]/published-generations/[generationId]/image`、`POST /api/leads/[id]/ai-publications`、`DELETE /api/leads/[id]/ai-publications/[generationId]`；阶段 6 后端切片已实现。客户读取只允许本人项目，设计师仅能发布/撤回自己负责线索的已成功 generation，企业负责人可管理本企业线索；已撤回或已删除 generation 绝不出现在客户聚合或图片端点。 |
-| 提成 | `GET/PUT /api/commission-rules`、`GET /api/lead-commissions`、`POST /api/lead-commissions/mark-paid`；第 7 阶段服务端已实现。规则只允许企业管理员/平台管理角色按租户读取和以版本乐观锁更新；报表和付款 API 只返回或修改本企业记录。 |
+| 提成 | `GET/PUT /api/commission-rules`、`GET /api/lead-commissions?status=&role=&fromDate=&toDate=`、`POST /api/lead-commissions/mark-paid`；第 7 阶段服务端已实现。规则只允许企业管理员/平台管理角色按租户读取和以版本乐观锁更新；报表和付款 API 只返回或修改本企业记录。 |
 
 所有企业接口使用现有 tenant route/context helper 和 RLS；内部重试接口必须使用服务身份，不能暴露给普通客户端。
 
@@ -299,7 +301,7 @@ closed 为终止状态
 - `packages/business/measurer-calendar/measurer-calendar`：已确认的测量员日程，提供不可用时间编辑入口。
 - `packages/business/measurer-unavailability/measurer-unavailability`：测量员仅维护本人不可用时段；使用原生日期/时段 picker、原因、保存和删除，API 仍在服务端强制角色和本人边界。
 
-后台优先复用当前商户路由边界，新增或替换：人员双码、预约设置、提成规则、三方提成报表。任何可见后台修改前必须先检查对应批准设计；没有设计源时只实现 API/模型，不自行创造生产 UI。
+第 7 阶段商户路由 `/lead-commissions` 已按批准后台设计源实现三条规则卡、状态/角色/日期台账筛选、真实关联报表列、带确认的批量标记已支付和金额汇总。它新增独立的 `lead-commissions` 导航与权限边界，不替换 `/acquisition-commissions`。其余后台工作仍需复用商户路由边界，并在可见实现前检查批准设计源。
 
 ## 14. 通知与可靠性
 
@@ -339,7 +341,7 @@ closed 为终止状态
 | 4. 选定设计生产实现 | `Completed` | `promotion-service-code` 与 `free-design-service` 两条路由按 `390x844` 实现三屏状态；服务码图片接口、扫码解析、手机号授权、幂等建线索、设计师二维码交付和无设计师待分配状态已接通。Antigravity 2.8.1 通过内置 `generate_image` 按固定 `3x2` prompt 和有序参考图生成画板，六个独立透明 PNG 已裁切、优化并接入 `packages/business/assets/referral-service-v1/`，均不超过 300KB。聚焦测试通过；真实微信开发者工具 automator 在 iPhone 12/13 Pro `390x844` 模拟器上完成精确路由、元素边界和包含原生胶囊的整窗截图核验。 |
 | 5. 预约与日历 | `Completed` | 已实现租户预约设置、测量员不可用时间、工作时段校验、首次预约、客户/内部改期、取消/完成、事件审计、版本乐观锁和数据库排斥约束；推荐人可在内部工作台查询活动企业关系、选择企业、展示受保护服务码，并以确认流程退出关系（历史归属不变）。负责设计师在尚无有效预约时可从线索详情进入预约页，填写地址并从服务端实时可用时段创建首次预约。Repository/RLS/并发集成测试及客户预约、改期、测量员日程、本人不可用时间编辑器和推荐人工作台路由已实现；首次预约和客户改期在 iPhone 12/13 Pro `390x844` 自动化模拟器中核验通栏 CTA 的窗口计算宽度与左右边距。创建、改期、取消在事务后尝试向员工和已授权客户投递订阅消息；首次预约入口、推荐人工作台、客户预约卡、客户改期、首次预约、测量员日程与不可用时间编辑器均已在真实微信开发者工具 `390x844` 模拟器逐路由确认顶层路由和包含原生胶囊的整窗截图。 |
 | 6. 客户项目、量房与 AI 发布 | `Completed` | 项目聚合 API、AI 发布/撤回事实、仅客户本人读取边界、完成正式户型摘要和受保护已发布方案预览均已实现。客户服务册不提供客户量房编辑入口或 graph 编辑路径。Repository/RLS 集成测试与小程序合同测试通过；真实微信开发者工具自动化已在 `390x844` 确认精确的 customer-project 顶层路由，并保存应用层截图及包含原生胶囊的宿主整窗截图。 |
-| 7. 签单与三方提成 | `In progress` | 已实现三规则 Repository、签单原子快照、三条唯一提成、已付/作废约束、RLS 报表和批量付款 API；后台生产报表/规则页面须等待批准设计源。 |
+| 7. 签单与三方提成 | `In progress` | 已实现三规则 Repository、签单原子快照、三条唯一提成、已付/作废约束、RLS 报表、批量付款 API 及批准的 `/lead-commissions` 规则/报表工作台。剩余退出核验为以已登录真实运行态对照批准设计；端口 3005 当前服务的是旧 Docker 镜像，不是本工作区。 |
 | 8. 旧流程下线 | `Not started` | 删除旧绑定、获客确认、旧工作台和旧获客提成；文档与权限清单一致。 |
 | 9. 清理演练与生产发布 | `Not started` | dry-run、备份恢复演练、指纹确认、审计报告和独立批准。 |
 

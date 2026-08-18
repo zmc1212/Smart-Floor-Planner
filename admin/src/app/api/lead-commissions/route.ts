@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { LeadCommissionRepository, type LeadCommissionWithRelations } from '@/db/repositories';
+import { COMMISSION_ROLES, LeadCommissionRepository, type CommissionRole, type LeadCommissionWithRelations } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
 import { httpErrorStatus } from '@/lib/http-error';
@@ -62,8 +62,24 @@ export async function GET(request: Request) {
       }
       const leadIdText = url.searchParams.get('leadId');
       const leadId = leadIdText ? parsePostgresId(leadIdText, 'lead id') : undefined;
+      const role = url.searchParams.get('role') || undefined;
+      if (role && !(COMMISSION_ROLES as readonly string[]).includes(role)) {
+        return NextResponse.json({ success: false, error: '提成角色无效' }, { status: 400 });
+      }
+      const parseDate = (value: string | null, label: string) => {
+        if (!value) return undefined;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw Object.assign(new Error(`${label}无效`), { status: 400 });
+        const date = new Date(`${value}T00:00:00.000Z`);
+        if (Number.isNaN(date.getTime())) throw Object.assign(new Error(`${label}无效`), { status: 400 });
+        return date;
+      };
+      const createdFrom = parseDate(url.searchParams.get('fromDate'), '开始日期');
+      const toDate = parseDate(url.searchParams.get('toDate'), '结束日期');
+      const createdBefore = toDate ? new Date(toDate.getTime() + 86_400_000) : undefined;
       const rows = await withTenantTransaction(enterpriseId, (transaction) =>
-        new LeadCommissionRepository(transaction).list(enterpriseId, { status, leadId })
+        new LeadCommissionRepository(transaction).list(enterpriseId, {
+          status, role: role as CommissionRole | undefined, leadId, createdFrom, createdBefore,
+        })
       );
       return NextResponse.json({ success: true, data: rows.map(dto) });
     });

@@ -818,6 +818,8 @@ test('referral signing snapshots three decimal-safe commissions and voids unpaid
       assert.equal(referrerCommission?.designer?.staffId, designer.id);
       assert.equal(referrerCommission?.measurer?.staffId, measurer.id);
       assert.equal(referrerCommission?.appointment, null);
+      assert.equal((await commissionRepository.list(enterpriseAId, { leadId: lead.id, role: 'designer' })).length, 1);
+      assert.equal((await commissionRepository.list(enterpriseAId, { leadId: lead.id, status: 'payable', createdFrom: new Date(commissions[0].createdAt.getTime() - 1), createdBefore: new Date(commissions[0].createdAt.getTime() + 1) })).length, 3);
 
       await new LeadLifecycleRepository(transaction).revertConversion({
         leadId: lead.id,

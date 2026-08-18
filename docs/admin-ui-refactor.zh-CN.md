@@ -31,6 +31,12 @@
 通用重构请求只能选择未记录或明确排队的路由。标记为 `Hold` 的路由只有在
 用户点名、存在可复现缺陷、工作流合同变化或获得新的设计方向批准时才能重开。
 
+## 当前路由记录
+
+| 路由 | 视觉范围 | 边界 | 核验 | 未决项 |
+| --- | --- | --- | --- | --- |
+| `/lead-commissions` — 商户三方提成工作台 | 批准设计源 `design-references/referrer-network-appointment-v1/phase-7-three-role-commission-admin-v1.png`（1487x1058 PNG，SHA-256 `DAA7ED1235C474F0C6A0D7FC625A5DD0BD9D97E54F580AB4CD530CE743AB2A1C`）：页头、推荐人/设计师/测量员独立规则卡、台账筛选、待支付选择、确认后的批量标记已支付和金额汇总 | 新路由与 `/acquisition-commissions` 保持独立；路由/API 权限 `lead-commissions` 限 `super_admin`、`admin`、`enterprise_admin`；租户/RLS 边界及既有规则、报表、付款 API 不变 | 聚焦 ESLint 与 `npm run build` 通过；构建路由表包含 `/lead-commissions`、`/api/commission-rules`、`/api/lead-commissions`、`/api/lead-commissions/mark-paid` | `http://localhost:3005` 当前代理至已运行四天的 Docker 旧镜像，新路由返回 404；待当前工作区运行态及已登录管理员会话可用后按批准图进行视觉比对 |
+
 ## 交接
 
 可见行为变化时同步更新该路由的唯一当前记录和中英文文件。只有实现细节变化、
