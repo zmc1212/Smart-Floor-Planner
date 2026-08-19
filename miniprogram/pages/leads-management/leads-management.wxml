@@ -29,6 +29,7 @@
       style="display: flex; height: 100%; flex: 1; min-height: 0; flex-direction: column;"
       id="leadList"
       openid="{{openid}}"
+      can-add="{{canCreateLead}}"
       bindadd="onOpenLeadModal"
     />
   </view>

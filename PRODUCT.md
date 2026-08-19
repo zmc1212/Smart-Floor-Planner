@@ -24,7 +24,7 @@ review their floor plans and continue into measurement or AI design.
 ## Design baseline
 
 The Mini Program follows `miniprogram/DESIGN.md`, `design-tokens.json`,
-`app.wxss`, and the brand-IP rules in
+`app.less`, and the brand-IP rules in
 `docs/design/jiakelai-brand-ip-guidelines.md`. The primary visual QA viewport is
 iPhone 13 Pro `390x844`, including the native WeChat capsule and safe areas.
 

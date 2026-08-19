@@ -19,6 +19,7 @@ export type CustomerProject = {
   lead: typeof leads.$inferSelect;
   enterpriseName: string;
   designer: Pick<typeof adminUsers.$inferSelect, 'id' | 'displayName' | 'wechatId' | 'wechatQrAssetId'> | null;
+  measurerName: string | null;
   appointment: (typeof measurementAppointments.$inferSelect & {
     measurerName: string | null;
   }) | null;
@@ -59,7 +60,7 @@ export class CustomerProjectRepository {
     const row = leadRows[0];
     if (!row || !row.lead.enterpriseId) return null;
 
-    const [designerRows, appointmentRows, formalFloorPlanRows, publications] = await Promise.all([
+    const [designerRows, measurerRows, appointmentRows, formalFloorPlanRows, publications] = await Promise.all([
       row.lead.assignedTo
         ? this.transaction
             .select({
@@ -70,6 +71,13 @@ export class CustomerProjectRepository {
             })
             .from(adminUsers)
             .where(eq(adminUsers.id, row.lead.assignedTo))
+            .limit(1)
+        : [],
+      row.lead.measurerId
+        ? this.transaction
+            .select({ displayName: adminUsers.displayName })
+            .from(adminUsers)
+            .where(eq(adminUsers.id, row.lead.measurerId))
             .limit(1)
         : [],
       this.transaction
@@ -103,6 +111,7 @@ export class CustomerProjectRepository {
       lead: row.lead,
       enterpriseName: row.enterpriseName,
       designer: designerRows[0] ?? null,
+      measurerName: measurerRows[0]?.displayName ?? null,
       appointment: appointmentRows[0]
         ? { ...appointmentRows[0].appointment, measurerName: appointmentRows[0].measurerName }
         : null,

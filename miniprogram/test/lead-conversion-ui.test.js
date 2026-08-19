@@ -13,7 +13,7 @@ const detailWxml = fs.readFileSync(
   'utf8'
 );
 const detailWxss = fs.readFileSync(
-  path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.wxss'),
+  path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.less'),
   'utf8'
 );
 

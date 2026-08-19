@@ -33,7 +33,7 @@
         <image class="filter-icon" src="/images/leads-v4/filter.png" mode="aspectFit" />
         <text class="filter-text">筛选</text>
       </view>
-      <view class="add-lead-button" bindtap="onAddLead">
+      <view wx:if="{{canAdd}}" class="add-lead-button" bindtap="onAddLead">
         <image class="add-lead-icon" src="/images/leads-ip-v1/plus-white.png" mode="aspectFit" />
         <text>新增客户</text>
       </view>
@@ -151,7 +151,7 @@
       <view class="empty-placeholder" wx:else>
         <image class="empty-icon-box" src="/images/mine-icons/users.png" mode="aspectFit" />
         <text class="empty-msg">{{searchKeyword ? '未找到匹配客户' : '暂无此类客户'}}</text>
-        <view class="empty-cta" bindtap="onAddLead">新增客户</view>
+        <view wx:if="{{canAdd}}" class="empty-cta" bindtap="onAddLead">新增客户</view>
       </view>
     </scroll-view>
   </view>

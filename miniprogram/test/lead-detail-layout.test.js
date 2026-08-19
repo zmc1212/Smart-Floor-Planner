@@ -4,7 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const styles = fs.readFileSync(
-  path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.wxss'),
+  path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.less'),
   'utf8'
 );
 const template = fs.readFileSync(
@@ -65,4 +65,22 @@ test('lead detail removes the legacy acquisition collaboration surface', () => {
   assert.doesNotMatch(template, /acquisition-info|联系设计师|查看协作记录|designer-contact-sheet|确认已获客/);
   assert.doesNotMatch(script, /onAcquireLead|canAcquireLead|onOpenAcquisition|onOpenDesignerContact/);
   assert.match(script, /const WORKFLOW_STAGES = \['新线索', '量房中', '方案设计', '已签约'\]/);
+});
+
+test('appointment and formal survey stay consecutive, with conversion below the measurement stack', () => {
+  const appointmentIndex = template.indexOf('class="appointment-entry"');
+  const surveyIndex = template.indexOf('class="whole-home-card"');
+  const historyIndex = template.indexOf('class="measurement-history"');
+  const conversionIndex = template.indexOf('class="conversion-card"');
+  assert.ok(appointmentIndex > -1);
+  assert.ok(surveyIndex > appointmentIndex);
+  assert.ok(historyIndex > surveyIndex);
+  assert.ok(conversionIndex > historyIndex);
+});
+
+test('appointment entry shares the lead-detail card gutter and uses a stacked full-width CTA', () => {
+  assert.match(styles, /\.appointment-entry\s*\{[^}]*flex-direction:\s*column;/s);
+  assert.match(styles, /\.appointment-entry\s*\{[^}]*margin:\s*0 0 18rpx;/s);
+  assert.doesNotMatch(styles, /\.appointment-entry\s*\{[^}]*margin:\s*20rpx 28rpx 0;/s);
+  assert.match(styles, /\.appointment-entry-action\s*\{[^}]*width:\s*100%;/s);
 });

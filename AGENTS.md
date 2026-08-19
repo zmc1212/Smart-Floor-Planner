@@ -194,7 +194,7 @@ staged change; split unrelated work.
 
 ### Mini Program Design And Navigation
 
-- Follow `miniprogram/DESIGN.md`, `design-tokens.json`, and `app.wxss` tokens for
+- Follow `miniprogram/DESIGN.md`, `design-tokens.json`, and `app.less` tokens for
   new UI. Preserve the bright green, calm home-design visual language.
 - Before designing or redesigning a Mini Program surface, also read
   `docs/design/jiakelai-brand-ip-guidelines.md`. Treat its confirmed

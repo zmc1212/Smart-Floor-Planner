@@ -72,7 +72,9 @@ function canAccess(
   context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>
 ) {
   if (context.kind === 'mini') {
-    if (!context.mini.staff) return lead.phone === context.mini.user.phone;
+    if (!context.mini.staff) {
+      return lead.customerUserId === parsePostgresId(context.mini.user._id, 'customer user id');
+    }
     return staffCanAccess(
       lead,
       context.mini.staff.role,

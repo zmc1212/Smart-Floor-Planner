@@ -1,6 +1,7 @@
 const api = require('../utils/api.js');
 const { openSurveyingEditor } = require('../utils/surveyNavigation.js');
 const { ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG } = require('../utils/debugConfig.js');
+const { roleForIdentity } = require('../utils/identity-navigation.js');
 
 const LEGACY_ITEMS = [
   { key: 'home', pagePath: '/pages/index/index', text: '首页', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
@@ -44,15 +45,19 @@ const ROLE_ITEMS = {
 function currentRole(globalData) {
   const bootstrap = globalData && globalData.bootstrap;
   if (bootstrap && bootstrap.current && ROLE_ITEMS[bootstrap.current.role]) return bootstrap.current.role;
-  return null;
+  // Bootstrap hydrates asynchronously on cold launch. Reuse the signed
+  // stored context so the first tab render matches the active identity.
+  const storedRole = roleForIdentity(globalData && globalData.userInfo);
+  return storedRole && ROLE_ITEMS[storedRole] ? storedRole : null;
 }
 
 function visibleItems(globalData) {
   const role = currentRole(globalData);
   if (role) {
-    const capabilities = globalData.bootstrap.current.capabilities || [];
+    const capabilities = (globalData.bootstrap && globalData.bootstrap.current
+      && globalData.bootstrap.current.capabilities) || [];
     return ROLE_ITEMS[role]
-      .filter((item) => capabilities.includes(item.capability))
+      .filter((item) => !capabilities.length || capabilities.includes(item.capability))
       .map((item) => ({ ...item, visible: true }));
   }
   const canUseAIDesign = Boolean(globalData && globalData.userInfo && globalData.userInfo.role === 'staff' && globalData.userInfo.enterpriseId);

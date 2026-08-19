@@ -44,20 +44,23 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const context = await resolveMiniProgramContext(request);
-    if (!context?.enterpriseId || context.mode !== 'staff' || !context.staff || !['designer', 'enterprise_admin'].includes(context.staff.role)) {
-      return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可创建预约' }, { status: 403 });
+    const isCustomer = context?.mode === 'customer';
+    if (!context || (!isCustomer && (!context.enterpriseId || context.mode !== 'staff' || !context.staff || !['designer', 'enterprise_admin'].includes(context.staff.role)))) {
+      return NextResponse.json({ success: false, error: '仅客户本人、负责设计师或企业负责人可创建预约' }, { status: 403 });
     }
     const body = await request.json();
-    const enterpriseId = parsePostgresId(context.enterpriseId, 'enterprise id');
     const leadId = parseAppointmentId(body.leadId, '线索');
     const appointment = await withMiniProgramPostgresTransaction(context, async (transaction) => {
       const repository = new AppointmentRepository(transaction);
-      const access = await repository.findLeadForAccess(enterpriseId, leadId);
-      if (context.staff!.role === 'designer' && access?.assignedTo !== BigInt(context.staff!._id)) {
+      const access = isCustomer
+        ? await repository.findCustomerLeadForAccess(BigInt(context.user._id), leadId)
+        : await repository.findLeadForAccess(parsePostgresId(context.enterpriseId!, 'enterprise id'), leadId);
+      if (!access?.enterpriseId) return null;
+      if (!isCustomer && context.staff!.role === 'designer' && access.assignedTo !== BigInt(context.staff!._id)) {
         return null;
       }
       return repository.create({
-        enterpriseId, leadId,
+        enterpriseId: access.enterpriseId, leadId,
         startAt: parseAppointmentDateTime(body.startAt, '开始时间'),
         endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
         address: parseAppointmentAddress(body.address),
@@ -66,6 +69,7 @@ export async function POST(request: Request) {
       });
     });
     if (!appointment) return NextResponse.json({ success: false, error: '无权操作该线索' }, { status: 403 });
+    const enterpriseId = appointment.enterpriseId;
     const startAt = new Date(appointment.timeRange.match(/[[(]([^,]+),/)?.[1].replaceAll('"', '') || '');
     if (!Number.isNaN(startAt.getTime())) {
       await Promise.allSettled([

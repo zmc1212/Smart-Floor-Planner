@@ -50,7 +50,7 @@ test('V3 page-role assets remain native artwork instead of flattened page screen
 test('AI design create V3 keeps production data and actions native', () => {
   const wxml = read('packages/ai-workflow/create/ai-design-create.wxml');
   const source = read('packages/ai-workflow/create/ai-design-create.js');
-  const wxss = read('packages/ai-workflow/create/ai-design-create.wxss');
+  const less = read('packages/ai-workflow/create/ai-design-create.less');
 
   assert.match(wxml, /class="create-step-track"/);
   assert.match(wxml, /bindtap="selectImage"/);
@@ -73,11 +73,11 @@ test('AI design create V3 keeps production data and actions native', () => {
   assert.match(source, /function deriveSubmitState/);
   assert.match(source, /请上传空间图/);
   assert.match(source, /availableBalance >= price/);
-  assert.match(wxss, /\.generate-button\.blocked/);
-  assert.match(wxss, /\.create-action-zone/);
-  assert.match(wxss, /\.scope-summary/);
-  assert.match(wxss, /height: 88rpx/);
-  assert.match(wxss, /@media \(max-width: 360px\)/);
+  assert.match(less, /\.generate-button\.blocked/);
+  assert.match(less, /\.create-action-zone/);
+  assert.match(less, /\.scope-summary/);
+  assert.match(less, /height: 88rpx/);
+  assert.match(less, /@media \(max-width: 360px\)/);
 
   for (const assetName of [
     'ai-create-style-modern.jpg',
@@ -130,16 +130,16 @@ test('AI history status filters preserve all processing states and exact termina
 test('AI history V3 keeps time, status progress, local icons, and compact card geometry native', () => {
   const page = loadPageConfig('packages/ai-workflow/history/ai-design-history.js');
   const wxml = read('packages/ai-workflow/history/ai-design-history.wxml');
-  const wxss = read('packages/ai-workflow/history/ai-design-history.wxss');
+  const less = read('packages/ai-workflow/history/ai-design-history.less');
 
   assert.match(wxml, /\{\{item\.timeLabel\}\}/);
   assert.match(wxml, /\/images\/leads-v4\/map-pin\.png/);
   assert.match(wxml, /\/images\/leads-v4\/chevron-right\.png/);
   assert.match(wxml, /class="history-progress-track"/);
   assert.match(wxml, /class="history-image history-image-placeholder"/);
-  assert.match(wxss, /min-height: 262rpx/);
-  assert.match(wxss, /grid-template-columns: 264rpx minmax\(0, 1fr\)/);
-  assert.match(wxss, /height: 66rpx/);
+  assert.match(less, /min-height: 262rpx/);
+  assert.match(less, /grid-template-columns: 264rpx minmax\(0, 1fr\)/);
+  assert.match(less, /height: 66rpx/);
 
   const now = new Date(2026, 7, 11, 12, 0).getTime();
   assert.equal(page.formatHistoryTime(new Date(2026, 7, 11, 10, 21).toISOString(), now), '今天 10:21');

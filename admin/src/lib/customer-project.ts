@@ -28,6 +28,7 @@ export function customerProjectToDto(request: Request, project: CustomerProject)
             : null,
         }
       : null,
+    measurerName: project.measurerName,
     appointment: project.appointment
       ? {
           id: project.appointment.id.toString(),

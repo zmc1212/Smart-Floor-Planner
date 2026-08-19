@@ -13,17 +13,18 @@ const componentWxml = fs.readFileSync(
   'utf8'
 );
 const componentWxss = fs.readFileSync(
-  path.join(miniRoot, 'components', 'lead-list', 'lead-list.wxss'),
+  path.join(miniRoot, 'components', 'lead-list', 'lead-list.less'),
   'utf8'
 );
 const pageWxss = fs.readFileSync(
-  path.join(miniRoot, 'pages', 'leads-management', 'leads-management.wxss'),
+  path.join(miniRoot, 'pages', 'leads-management', 'leads-management.less'),
   'utf8'
 );
 const leadsRoute = fs.readFileSync(
   path.join(miniRoot, '..', 'admin', 'src', 'app', 'api', 'leads', 'route.ts'),
   'utf8'
 );
+const appStyle = fs.readFileSync(path.join(miniRoot, 'app.less'), 'utf8');
 const {
   buildFloorPlanPreview,
   createWallSegments
@@ -101,6 +102,10 @@ test('Leads management search and filter controls are functional', () => {
   assert.match(componentJs, /filterLeads\(leads, keyword\)/);
   assert.match(componentJs, /wx\.showActionSheet/);
   assert.doesNotMatch(componentJs, /筛选功能开发中/);
+});
+
+test('role workbench host has an explicit full-height contract', () => {
+  assert.match(appStyle, /role-workbench\s*\{[\s\S]*display:\s*block;[\s\S]*height:\s*100%;/);
 });
 
 test('Leads list accepts bearer sessions without requiring a legacy OpenID', () => {

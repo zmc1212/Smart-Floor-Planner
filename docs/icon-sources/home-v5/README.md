@@ -8,7 +8,7 @@ the project-provided design reference:
 The reference is stored outside the Mini Program package. Crops are used only
 for the home hero scene, measurement illustration, service imagery, plan
 preview, and the two small header icons. Text, business data, status, and touch
-targets remain native WXML/WXSS rather than being baked into a full-page image.
+targets remain native WXML/Less rather than being baked into a full-page image.
 
 Service micro-assets are cropped to contain only their visual subject. In
 particular, `ai-wand.jpg`, `bluetooth-mark.jpg`, and `laser-device.jpg` exclude

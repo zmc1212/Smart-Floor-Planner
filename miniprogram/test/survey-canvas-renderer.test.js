@@ -512,6 +512,42 @@ function createScene(draft, viewport) {
   });
 }
 
+function closedDimensionPose(scene) {
+  return (scene.dimensions || [])
+    .filter((dimension) => dimension.kind === 'room-clear' || dimension.kind === 'building-overall')
+    .map((dimension) => ({
+      kind: dimension.kind,
+      label: dimension.label,
+      lane: dimension.lane,
+      start: dimension.startPoint,
+      end: dimension.endPoint,
+      normal: dimension.normal
+    }));
+}
+
+function projection(point, normal) {
+  return point.x * normal.x + point.y * normal.y;
+}
+
+function createProtrudingAdjacentRoomDraft() {
+  let draft = createWideClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 6000, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 6000, yMm: -1600 }, 1600);
+  draft = commitWall(draft, { xMm: 3200, yMm: -1600 }, 2800);
+  draft = commitWall(draft, { xMm: 3200, yMm: 0 }, 1600);
+  return surveyGraph.confirmClosure(draft);
+}
+
 function createRecordingContext() {
   const strokes = [];
   const fills = [];
@@ -847,6 +883,58 @@ test('a shared-corner preview renders the automatically inferred measurement sid
   assert.equal(scene.activeSegment.measurementSide, 'right');
   assert.equal(scene.closureGuide, null);
   assert.notEqual(scene.previewWall.start.yMm, scene.previewWall.topologyStart.yMm);
+});
+
+test('closed dimensions ignore an in-flight wallPreview and clear a held or committed chain', () => {
+  const closedDraft = createClosedRectangleDraft();
+  const closedPose = closedDimensionPose(createScene(closedDraft));
+  let floor = surveyGraph.getActiveFloor(closedDraft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  let draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(closedDraft),
+    target.pointMm,
+    target
+  );
+  draft = surveyGraph.startPreview(draft, { xMm: 0, yMm: 5000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'wallPreview');
+
+  const previewScene = createScene(draft);
+  assert.ok(previewScene.previewWall);
+  assert.deepEqual(closedDimensionPose(previewScene), closedPose);
+
+  const heldDraft = surveyGraph.holdPreviewForInput(draft);
+  assert.equal(surveyGraph.getActiveFloor(heldDraft).session.state, 'awaitingLength');
+  const heldPose = closedDimensionPose(createScene(heldDraft));
+  assert.notDeepEqual(heldPose, closedPose);
+  heldPose.filter((item) => item.normal && item.normal.y > 0.5).forEach((item) => {
+    const closedItem = closedPose.find((entry) => (
+      entry.kind === item.kind && entry.label === item.label && entry.lane === item.lane
+    ));
+    assert.ok(closedItem, `${item.kind} ${item.label} should still exist after hold`);
+    assert.ok(
+      projection(item.start, item.normal) > projection(closedItem.start, closedItem.normal) + 8,
+      `${item.kind} ${item.label} should move past the held preview`
+    );
+  });
+
+  const committedDraft = surveyGraph.commitPreviewLength(draft, 2800, 'manual');
+  const committedPose = closedDimensionPose(createScene(committedDraft));
+  assert.notDeepEqual(committedPose, closedPose);
+  committedPose.filter((item) => item.normal && item.normal.y > 0.5).forEach((item) => {
+    const closedItem = closedPose.find((entry) => (
+      entry.kind === item.kind && entry.label === item.label && entry.lane === item.lane
+    ));
+    assert.ok(closedItem, `${item.kind} ${item.label} should still exist after commit`);
+    assert.ok(
+      projection(item.start, item.normal) > projection(closedItem.start, closedItem.normal) + 8,
+      `${item.kind} ${item.label} should move past the committed wall`
+    );
+  });
 });
 
 test('closed room shell stays outside the boundary for either initial measurement side', () => {
@@ -1474,6 +1562,56 @@ test('deleting an exterior wall still invalidates its single closed room', () =>
   assert.equal(openedFloor.spaces.filter((space) => space.closed).length, 0);
   assert.equal(openedScene.closedSpaceFills.length, 0);
   assert.equal(openedFloor.session.state, 'wallCommitted');
+});
+
+test('deleting a protruding closed wall still clears remaining stubs from closed dimensions', () => {
+  const draft = createProtrudingAdjacentRoomDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+
+  let topWallId = '';
+  let topY = Infinity;
+  floor.walls.forEach((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    if (Math.abs(start.yMm - end.yMm) > 1) return;
+    const y = (start.yMm + end.yMm) / 2;
+    if (y < topY) {
+      topY = y;
+      topWallId = wall.id;
+    }
+  });
+  assert.ok(topWallId);
+  assert.ok(topY < -100);
+
+  const openedDraft = surveyGraph.deleteWall(draft, topWallId);
+  floor = surveyGraph.getActiveFloor(openedDraft);
+  const scene = createScene(openedDraft);
+  const leftoverWalls = scene.walls.filter((wall) => !wall.closed && !wall.lineOnly);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 1);
+  assert.ok(leftoverWalls.length >= 2);
+
+  const leftoverPoints = leftoverWalls.flatMap((wall) => [
+    wall.startPoint,
+    wall.endPoint,
+    wall.rawOuterStart,
+    wall.rawOuterEnd,
+    wall.outerStart,
+    wall.outerEnd
+  ].filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y)));
+  const topDimensions = closedDimensionPose(scene).filter((item) => item.normal && item.normal.y < -0.5);
+  assert.ok(topDimensions.length >= 2);
+  topDimensions.forEach((item) => {
+    const leftoverSupport = Math.max(...leftoverPoints.map((point) => projection(point, item.normal)));
+    assert.ok(
+      projection(item.start, item.normal) >= leftoverSupport + 59.999,
+      `${item.kind} ${item.label} should sit outside leftover stubs`
+    );
+    assert.ok(
+      projection(item.end, item.normal) >= leftoverSupport + 59.999,
+      `${item.kind} ${item.label} end should sit outside leftover stubs`
+    );
+  });
 });
 
 test('deleting an outer-face shared wall clears only its obsolete perimeter insets', () => {

@@ -98,8 +98,8 @@ Page({
     leadId: '',
     loading: true,
     appointment: null,
+    measurerName: '',
     designer: null,
-    enterpriseName: '',
     range: null,
     formalFloorPlan: null,
     publishedDesigns: [],
@@ -138,8 +138,8 @@ Page({
         : null;
       this.setData({
         appointment,
+        measurerName: project.measurerName || (appointment && appointment.measurerName) || '',
         designer: project.designer || null,
-        enterpriseName: project.enterprise && project.enterprise.name ? project.enterprise.name : '',
         range: appointment ? formatRange(appointment.timeRange) : null,
         formalFloorPlan,
         publishedDesigns,
@@ -173,6 +173,20 @@ Page({
     const { appointment, leadId } = this.data;
     if (!appointment) return;
     wx.navigateTo({ url: `/packages/business/appointment-reschedule/appointment-reschedule?leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}&version=${appointment.version}` });
+  },
+
+  bookAppointment() {
+    if (this.data.appointment || !this.data.leadId) return;
+    wx.navigateTo({ url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}&mode=customer` });
+  },
+
+  onShareAppMessage() {
+    const { leadId, appointment } = this.data;
+    if (!leadId || !appointment) return { title: '我的上门量房预约' };
+    return {
+      title: '我的上门量房预约',
+      path: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`,
+    };
   },
 
   previewPublishedDesign(event) {

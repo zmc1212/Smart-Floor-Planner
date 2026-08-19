@@ -1,3 +1,5 @@
+const { roleForIdentity } = require('../../utils/identity-navigation.js');
+
 Page({
   data: {
     openid: '',
@@ -5,12 +7,15 @@ Page({
     navBarHeightTotal: 0,
     capsuleRightInset: 190,
     pendingLeadId: '',
-    roleWorkbenchRole: ''
+    roleWorkbenchRole: '',
+    canCreateLead: false
   },
 
   getRoleWorkbenchRole() {
-    const bootstrap = getApp().globalData.bootstrap;
-    const role = bootstrap && bootstrap.current && bootstrap.current.role;
+    const globalData = getApp().globalData;
+    const bootstrap = globalData.bootstrap;
+    const role = (bootstrap && bootstrap.current && bootstrap.current.role)
+      || roleForIdentity(globalData.userInfo);
     return role === 'measurer' ? role : '';
   },
 
@@ -33,12 +38,14 @@ Page({
   onShow() {
     const app = getApp();
     this.syncTabBar();
+    const role = (app.globalData.bootstrap && app.globalData.bootstrap.current && app.globalData.bootstrap.current.role)
+      || roleForIdentity(app.globalData.userInfo);
     const roleWorkbenchRole = this.getRoleWorkbenchRole();
     if (roleWorkbenchRole) {
       this.setData({ roleWorkbenchRole });
       return;
     }
-    this.setData({ roleWorkbenchRole: '' });
+    this.setData({ roleWorkbenchRole: '', canCreateLead: role === 'enterprise_admin' || role === 'staff' });
     if (this.data.openid !== app.globalData.openid) {
       this.setData({
         openid: app.globalData.openid || ''

@@ -13,7 +13,7 @@ const editorWxml = fs.readFileSync(
   'utf8'
 );
 const editorWxss = fs.readFileSync(
-  path.join(miniRoot, 'packages', 'surveying', 'editor', 'surveying-editor.wxss'),
+  path.join(miniRoot, 'packages', 'surveying', 'editor', 'surveying-editor.less'),
   'utf8'
 );
 

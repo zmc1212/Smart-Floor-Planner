@@ -7,7 +7,7 @@ const projectRoot = path.resolve(__dirname, '..');
 
 test('Login page ships the approved Xiao K entry composition with live controls', () => {
   const wxml = fs.readFileSync(path.join(projectRoot, 'packages/business/login/login.wxml'), 'utf8');
-  const wxss = fs.readFileSync(path.join(projectRoot, 'packages/business/login/login.wxss'), 'utf8');
+  const less = fs.readFileSync(path.join(projectRoot, 'packages/business/login/login.less'), 'utf8');
 
   assert.match(wxml, /\/packages\/business\/assets\/login-v1\/hero-scene\.jpg/);
   assert.match(wxml, /家客来/);
@@ -19,10 +19,10 @@ test('Login page ships the approved Xiao K entry composition with live controls'
   assert.match(wxml, /灵感图库/);
   assert.match(wxml, /返回首页/);
 
-  assert.match(wxss, /\.hero-wrap\s*\{[\s\S]*height:\s*790rpx/);
-  assert.match(wxss, /\.login-card\s*\{[\s\S]*margin:\s*-66rpx 26rpx 0/);
-  assert.match(wxss, /\.feature-row\s*\{[\s\S]*height:\s*150rpx/);
-  assert.doesNotMatch(wxss, /\.bubble|\.target-icon|\.image-mountain/);
+  assert.match(less, /\.hero-wrap\s*\{[\s\S]*height:\s*790rpx/);
+  assert.match(less, /\.login-card\s*\{[\s\S]*margin:\s*-66rpx 26rpx 0/);
+  assert.match(less, /\.feature-row\s*\{[\s\S]*height:\s*150rpx/);
+  assert.doesNotMatch(less, /\.bubble|\.target-icon|\.image-mountain/);
 });
 
 test('Login visual assets are local, valid, and stay within the Mini Program budget', () => {

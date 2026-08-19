@@ -38,6 +38,10 @@ const STATUS_ICONS = {
 
 Component({
   properties: {
+    canAdd: {
+      type: Boolean,
+      value: true
+    },
     openid: {
       type: String,
       value: '',
@@ -259,6 +263,7 @@ Component({
     },
 
     onAddLead() {
+      if (!this.properties.canAdd) return;
       this.triggerEvent('add');
     },
 

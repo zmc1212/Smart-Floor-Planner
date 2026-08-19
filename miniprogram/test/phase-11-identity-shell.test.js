@@ -19,6 +19,8 @@ test('deep links are checked against server bootstrap capabilities', () => {
   };
   assert.equal(navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', customer), false);
   assert.equal(navigation.canAccessRoute('/packages/business/customer-project/customer-project', customer), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/appointment-booking/appointment-booking', customer), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/lead-detail/lead-detail', customer), false);
   assert.deepEqual(
     navigation.guardDeepLink('/packages/surveying/editor/surveying-editor', customer),
     {

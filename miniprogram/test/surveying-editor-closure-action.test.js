@@ -12,7 +12,7 @@ const editorWxml = fs.readFileSync(
   'utf8'
 );
 const editorWxss = fs.readFileSync(
-  path.join(__dirname, '..', 'packages', 'surveying', 'editor', 'surveying-editor.wxss'),
+  path.join(__dirname, '..', 'packages', 'surveying', 'editor', 'surveying-editor.less'),
   'utf8'
 );
 
@@ -25,15 +25,20 @@ test('the close action follows the graph minimum-wall rule for standalone and sh
   assert.match(editorScript, /left:\$\{roundPx\(actionX - actionRadius\)\}px; top:\$\{roundPx\(actionY - actionRadius\)\}px;/);
   assert.match(editorWxml, /wx:if="\{\{!componentEditorVisible && closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
   assert.match(editorWxml, /aria-label="闭合当前空间"[\s\S]*<cover-view class="closure-action-label">合<\/cover-view>/);
-  assert.match(editorWxss, /\.closure-action\s*\{\s*width: 56rpx;\s*height: 56rpx;\s*border: 0;\s*border-radius: 50%;\s*background: var\(--brand-primary\);/);
+  assert.match(editorWxss, /\.closure-action\s*\{[\s\S]*?width: 56rpx;[\s\S]*?height: 56rpx;[\s\S]*?border: 0;[\s\S]*?border-radius: 50%;[\s\S]*?background: var\(--brand-primary\);/);
+  assert.doesNotMatch(editorScript, /fillText\('合'/);
 });
 
 test('the right rail exposes a separately confirmed canvas-reset action', () => {
   assert.match(editorWxml, /class="rail-reset-canvas"[\s\S]*?bindtap="onRequestResetCanvas"/);
-  assert.match(editorWxml, /aria-label="清空画布后重新测量"[\s\S]*?清空重做/);
+  assert.match(editorWxml, /aria-label="清空画布后重新测量"[\s\S]*?rail-reset-canvas-label">清空</);
+  assert.doesNotMatch(editorWxml, /清空重做/);
   assert.match(editorScript, /onRequestResetCanvas\(\) \{[\s\S]*?wx\.showModal\([\s\S]*?this\.onResetCanvas\(\);/);
+  assert.match(editorScript, /confirmText: '清空重做'/);
   assert.match(editorScript, /onResetCanvas\(\) \{[\s\S]*?this\.history = \{ undo: \[\], redo: \[\] \};[\s\S]*?this\.pendingMeasurementRecords = \[\];/);
-  assert.match(editorWxss, /\.rail-reset-canvas\s*\{[\s\S]*?color:\s*#b42318;/);
+  assert.match(editorWxss, /\.rail-reset-canvas\s*\{[\s\S]*?height:\s*102rpx;[\s\S]*?border:\s*0;[\s\S]*?color:\s*#b42318;/);
+  assert.match(editorWxss, /\.rail-reset-canvas-icon\s*\{[\s\S]*?width:\s*36rpx;/);
+  assert.doesNotMatch(editorWxss, /rail-reset-canvas[\s\S]{0,220}border-top:/);
 });
 
 test('a placed cursor keeps its guide visibility when the canvas render data is returned', () => {
@@ -88,7 +93,15 @@ test('cursor dragging forwards only active snap geometry and clears it on every 
 test('canvas cursor drags reuse the lens layer without painting a second drag cursor', () => {
   assert.match(
     editorScript,
-    /updateCanvasCursorLens\(clientPoint, pointMm\)[\s\S]*?queueCursorDragCanvas\(clientPoint, \{ showCursor: false \}\)/
+    /updateCanvasCursorLens\(clientPoint, pointMm, target\)[\s\S]*?buildCursorLens\(\s*pointMm,\s*\(target && target\.type\) \|\| 'free'/
+  );
+  assert.match(
+    editorScript,
+    /resolvePreviewLensTarget\(session, previewPointMm\)[\s\S]*alignmentSnapGuide[\s\S]*closeCandidateType/
+  );
+  assert.match(
+    editorScript,
+    /updateCanvasCursorLens\(clientPoint, pointMm, target\)[\s\S]*?queueCursorDragCanvas\(clientPoint, \{ showCursor: false \}\)/
   );
   assert.match(
     editorScript,

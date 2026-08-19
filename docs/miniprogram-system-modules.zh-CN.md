@@ -20,10 +20,10 @@
 
 | 界面 | 运行路由 | 当前合同 | 状态/限制 |
 | --- | --- | --- | --- |
-| 首页与量房入口 | `pages/index/index` | 客户继续使用共用首页；已签名设计师、测量员、企业负责人分别进入角色工作台。设计师只看本人已派客户，测量员只看本人已确认日程和已派量房入口，企业负责人只看当前租户经营数据。本地 `ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG` 开关会跳过最近户型加载并直接新建量房 | Implemented/Limited；角色工作台读取服务端派生的 `GET /api/miniprogram/workbench` 聚合，并复用四个静态 Tab 路由。客户 TabBar 已增加“项目”入口并指向本人项目索引；调试开关仅限本地使用。新增角色态尚待登录态 `390x844` 原生胶囊核验 |
-| 线索与客户 | `pages/leads-management/leads-management`、`packages/business/lead-form/lead-form`、`packages/business/lead-detail/lead-detail` | 线索列表/详情、签约状态、正式户型摘要；负责设计师在尚无有效预约时可进入首次预约。静态角色 Tab 中，测量员只看到本人已确认预约任务；设计师和企业负责人仍进入各自已授权的客户入口。带 JWT 的员工会话无需 legacy OpenID 也可加载线索列表。推荐网络线索经现有签约接口进入 `converted` 时，服务端在同一事务快照推荐人、设计师、测量员三条提成 | Implemented/Limited；签约与预约入口权限由服务端执行，角色 Tab 条目按能力白名单生成；比例规则要求合同金额，已支付三方提成会阻止企业负责人撤销签约 |
+| 首页与量房入口 | `pages/index/index` | 客户继续使用共用首页；已签名设计师、测量员、企业负责人分别进入角色工作台。设计师只看本人已派客户，测量员只看本人已确认日程和已派量房入口，企业负责人只看当前租户经营数据。本地 `ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG` 开关会跳过最近户型加载并直接新建量房 | Implemented/Limited；角色工作台读取服务端派生的 `GET /api/miniprogram/workbench` 聚合，并复用四个静态 Tab 路由。冷启动期间，自定义 TabBar 与角色页面会先从本地已签名 `mode/staffRole` 上下文推导首屏，等待 bootstrap 刷新，避免设计师/客户短暂进入老板旧壳；角色工作台宿主补充明确的满高合同，避免空白页。客户 TabBar 已增加“项目”入口并指向本人项目索引；调试开关仅限本地使用。新增角色态尚待登录态 `390x844` 原生胶囊核验 |
+| 线索与客户 | `pages/leads-management/leads-management`、`packages/business/lead-form/lead-form`、`packages/business/lead-detail/lead-detail` | 线索列表/详情、签约状态、正式户型摘要；负责设计师在尚无有效预约时可进入首次预约，客户本人也可从项目册进入同一服务端预约流程。自动派发的测量员与待确认的上门时间分开显示。静态角色 Tab 中，测量员只看到本人已确认预约任务；设计师和企业负责人仍进入各自已授权的客户入口。带 JWT 的员工会话无需 legacy OpenID 也可加载线索列表。推荐网络线索经现有签约接口进入 `converted` 时，服务端在同一事务快照推荐人、设计师、测量员三条提成 | Implemented/Limited；签约、客户所有权与预约入口权限由服务端执行，角色 Tab 条目按能力白名单生成；比例规则要求合同金额，已支付三方提成会阻止企业负责人撤销签约 |
 | 报备与员工任务 | `packages/business/promotion-records/promotion-records`、`packages/business/promotion-record-detail/promotion-record-detail` | 企业报备和员工通知 | Implemented/Limited；微信投递可能被外部拒绝 |
-| 推荐人网络、预约与匿名领取 | `packages/business/onboarding/onboarding`、`packages/business/onboarding-debug/onboarding-debug`、`packages/business/referrer-workbench/referrer-workbench`、`packages/business/referrer-progress/referrer-progress`、`packages/business/referrer-earnings/referrer-earnings`、`packages/business/promotion-service-code/promotion-service-code`、`packages/business/free-design-service/free-design-service`、`packages/business/customer-projects/customer-projects`、`packages/business/customer-project/customer-project`、`packages/business/appointment-detail/appointment-detail`、`packages/business/appointment-reschedule/appointment-reschedule`、`packages/business/appointment-booking/appointment-booking`、`packages/business/measurer-calendar/measurer-calendar`、`packages/business/measurer-unavailability/measurer-unavailability`、`packages/business/identity-recovery/identity-recovery` | 按类型隔离的入驻、推广码、客户领取、项目和预约深层路由保持既有合同。客户项目索引仅返回当前 JWT 客户本人未归档项目的企业、阶段摘要和更新时间；推荐人进度/收益仅在当前签名成员关系下返回脱敏客户标识、服务事实和本人提成状态，绝不返回手机号、精确地址、户型 graph、内部预约原因或设计文件。推荐人工作台选择企业会先交换签名成员关系上下文并刷新会话，因此服务码、进度和收益始终使用同一边界。手机号授权前，有效入驻码会解析码类型和企业展示名称；开发版 `onboarding-debug` 可选择本地小程序码进入同一真实流程。预约动作继续按设计师、测量员、企业负责人和客户边界执行；推荐人工作台保留退出当前账号，只有服务端返回多个不同身份类型时才显示切换入口；身份失效会进入独立恢复页后重新登录 | Implemented/Limited；推荐人首次入驻、登录和带 JWT 的冷启动会进入推广工作台；已用真实登录态推荐人在 `390x844` 核验登录完成与冷启动，并保存包含原生胶囊的宿主截图。工作台现可进入当前企业的服务进度和本人收益，客户项目与预约 API 继续执行所有权、岗位权限和乐观锁；身份列表暂时不可用时不阻断推广工作台，但切换入口保持隐藏。第 12 阶段已按 bootstrap 显示当前可执行的推荐人/测量员入口，并在失效时清除会话且不展示失效企业；新增客户项目、推荐进度和收益页待真实登录态 `390x844` 核验，测量任务聚合、预约/方案发布登录态动作与完整角色生产 UI 仍待补，微信投递依赖外部配置 |
+| 推荐人网络、预约与匿名领取 | `packages/business/onboarding/onboarding`、`packages/business/onboarding-debug/onboarding-debug`、`packages/business/referrer-workbench/referrer-workbench`、`packages/business/referrer-progress/referrer-progress`、`packages/business/referrer-earnings/referrer-earnings`、`packages/business/promotion-service-code/promotion-service-code`、`packages/business/free-design-service/free-design-service`、`packages/business/customer-projects/customer-projects`、`packages/business/customer-project/customer-project`、`packages/business/appointment-detail/appointment-detail`、`packages/business/appointment-reschedule/appointment-reschedule`、`packages/business/appointment-booking/appointment-booking`、`packages/business/measurer-calendar/measurer-calendar`、`packages/business/measurer-unavailability/measurer-unavailability`、`packages/business/identity-recovery/identity-recovery` | 按类型隔离的入驻、推广码、客户领取、项目和预约深层路由保持既有合同。客户项目索引仅返回当前 JWT 客户本人未归档项目，并使用中立的免费设计服务名称；客户服务档案同样不展示企业品牌，但保留本人可读的真实服务事实。客户项目索引本身是客户 Tab 目标，挂载共享自定义 TabBar；项目服务档案仍是无 TabBar 的深层路由。推荐人进度/收益仅在当前签名成员关系下返回脱敏客户标识、服务事实和本人提成状态，绝不返回手机号、精确地址、户型 graph、内部预约原因或设计文件。推荐人工作台选择企业会先交换签名成员关系上下文并刷新会话，因此服务码、进度和收益始终使用同一边界。手机号授权前，有效入驻码会解析码类型和企业展示名称；开发版 `onboarding-debug` 可选择本地小程序码进入同一真实流程。预约动作继续按设计师、测量员、企业负责人和客户边界执行；推荐人工作台保留退出当前账号，只有服务端返回多个不同身份类型时才显示切换入口；身份失效会进入独立恢复页后重新登录 | Implemented/Limited；推荐人首次入驻、登录和带 JWT 的冷启动会进入推广工作台；已用真实登录态推荐人在 `390x844` 核验登录完成与冷启动，并保存包含原生胶囊的宿主截图。工作台现可进入当前企业的服务进度和本人收益，客户项目与预约 API 继续执行所有权、岗位权限和乐观锁；身份列表暂时不可用时不阻断推广工作台，但切换入口保持隐藏。客户可见项目页面统一采用“免费设计服务/免费设计与量房服务”中立文案，企业名称仅保留给内部/推荐人页面。第 12 阶段已按 bootstrap 显示当前可执行的推荐人/测量员入口，并在失效时清除会话且不展示失效企业；新增客户项目、推荐进度和收益页待真实登录态 `390x844` 核验，测量任务聚合、预约/方案发布登录态动作与完整角色生产 UI 仍待补，微信投递依赖外部配置 |
 | 提成记录 | `packages/business/commission-records/commission-records` | 适用商业角色的订单提成 | Implemented；结算仍由后台业务控制 |
 | 灵感库 | `packages/business/inspiration/inspiration` | 租户范围内灵感浏览和详情 | Implemented/Limited；媒体供应商为外部服务 |
 | AI 设计工作流 | `pages/ai-design/ai-design`、`packages/ai-workflow/*` | 客户/项目选择、方案入口、确认、结果、历史及线索范围的发布状态。绑定线索的成功结果允许负责设计师或企业负责人确认后发布到客户项目或撤回。静态角色 Tab 对测量员变为已派正式量房入口，对企业负责人变为已确认预约查看 | Implemented/Limited；供应商、点数、正式量房资格、线索责任人、发布可见性和工作台范围均由服务端控制；替代角色态尚待登录态 `390x844` 原生胶囊核验 |
@@ -37,9 +37,20 @@
 [`surveying-module/formal-surveying.md`](./surveying-module/formal-surveying.md)。
 `FloorPlan.layoutData` 只保存 v4 `surveyGraph`；wall graph、Canvas、尺寸、BLE
 读数、审计队列、撤销/重做、右侧工具栏经确认的清空重做操作和保存失败行为都必须遵守该合同。闭合、删墙和闭合墙上的拆分通过半边求面写入闭合空间，事务要求已保存空间与求面结果一致，否则拒绝该次编辑。Graph 节点只存中心线；工作面和单侧实体是读模型。删除两个闭合房间的共用墙会打通该界面并合并成一个闭合房间；共用界面被拆成共线多段时，删除其中任一段都会去掉整条共线共用墙。打通后若共线内角点被折叠，净尺寸计划仍须按折叠后的内边界给出每一段端点。打通形成的 L 型凹角保持矩形墙体相接，不得按凸角斜接把剩余外墙错进房间。节点求交按局部凸/凹（凸角外斜接、凹角重叠矩形、对侧共线只补外侧台阶）；Admin `surveyWallSolidPlan.js` 使用同一生成规则。内边闭合打通后仍保持各墙原有实体侧：内转角伸进合并房间，对侧共线墙保持台阶外皮并只补外侧台阶转角、内边仍与共用节点对齐，内 L 两墙保持矩形重叠相接，不得斜接成梯形缺口。
-封闭外墙中段的 T 型分支保持同一拓扑节点和实体墙。“内边/外边起步”只选择源墙边界的近侧/远侧起点及对应的首段起点内缩，不得再次解释为新分支墙相反的局部测量面。分支所有墙段统一使用 graph 侧工作面，并继承首段确定的实体侧；转向和源房间质心都不得重新翻面。触点按正交规则写入内部 graph，预览黑线、橙线、确认红线、实时尺寸端点和绿色光标必须重合在同一条连续工作路径上；相邻红线端点严格相等，拉出第二段时光标和红线不得横移一个墙厚。`measurementStartInsetMm`、`measurementStartExtensionMm` 和 `measurementEndInsetMm` 只记录真实边界或闭合修正，普通外边 T 转角不得自动生成一个墙厚的修正。预览、手工/BLE 确认、Canvas 和尺寸消费者统一按“拓扑长度 - 起点内缩 + 起点延伸 - 终点内缩”计算。以上 Canvas 派生投影不改变 graph 的中心线和闭合拓扑；T 链第二段及之后的转角只能补齐实体墙连接，不得回写前序墙段的测量内缩或缩短已确认读数。所有共享边闭合链在确认后都保持确认前的实体侧，包括“向外量墙、最后橙线吸附既有房间内边”的路径；不能将墙体翻到已对齐红线/橙线的另一侧或再叠加一个墙厚。最后光标命中既有墙的可见外边时，必须保留该外边工作坐标，并以短桥接连接拓扑角点，不得暗中投影回中心线。墙角续接和共享内墙分区仍遵守原有边界闭合规则。
+封闭外墙中段的 T 型分支保持同一拓扑节点和实体墙。“内边/外边起步”只选择源墙边界的近侧/远侧起点及对应的首段起点内缩，不得再次解释为新分支墙相反的局部测量面。分支所有墙段统一使用 graph 侧工作面，并继承首段确定的实体侧；转向和源房间质心都不得重新翻面。触点按正交规则写入内部 graph，预览黑线、橙线、确认红线、实时尺寸端点和绿色光标必须重合在同一条连续工作路径上；直线模式吸附顶点或闭合点时最多改一根轴，不得把橙线终点拷到离轴角点，拖墙放大镜显示实际吸附类型；相邻红线端点严格相等，拉出第二段时光标和红线不得横移一个墙厚。`measurementStartInsetMm`、`measurementStartExtensionMm` 和 `measurementEndInsetMm` 只记录真实边界或闭合修正，普通外边 T 转角不得自动生成一个墙厚的修正。预览、手工/BLE 确认、Canvas 和尺寸消费者统一按“拓扑长度 - 起点内缩 + 起点延伸 - 终点内缩”计算。闭合房间的 Canvas 尺寸带避让画布上现存的未闭合墙以及已静止的长度预览；`wallPreview` 拖动过程中的预览不推动这些尺寸带。以上 Canvas 派生投影不改变 graph 的中心线和闭合拓扑；T 链第二段及之后的转角只能补齐实体墙连接，不得回写前序墙段的测量内缩或缩短已确认读数。所有共享边闭合链在确认后都保持确认前的实体侧，包括“向外量墙、最后橙线吸附既有房间内边”的路径；不能将墙体翻到已对齐红线/橙线的另一侧或再叠加一个墙厚。最后光标命中既有墙的可见外边时，必须保留该外边工作坐标，并以短桥接连接拓扑角点，不得暗中投影回中心线。墙角续接和共享内墙分区仍遵守原有边界闭合规则。
 
 ## 共用 API 与工具
+
+### 共享 Less 工具类
+
+小程序使用 `miniprogram/project.config.json` 中配置的微信开发者工具
+`less` 编译插件。页面和组件样式源文件统一使用 `.less`；`app.less` 全局引入
+`styles/utilities.less`。新的 WXML 应直接复用布局、尺寸、文字、颜色、圆角、
+按钮和状态工具类（例如 `flex-row flex-1 justify-between gap-8`），不要在页面或
+组件中重复声明这些基础规则。页面特有的视觉规则仍保留在对应页面的 `.less` 中；
+运行时仍由工具编译为标准 WXSS。
+
+- 预约归属更新：客户项目册将自动派发的测量员与预约状态分开显示。客户本人对尚无有效预约的自有线索可进入 `appointment-booking`，通过 `POST /api/appointments` 创建首次时段；服务端可用性、客户所有权和自动换人规则仍是权威，员工创建权限不变。
 
 - 身份/上下文：`/api/auth/miniprogram`、`/api/miniprogram/bootstrap`、`/api/miniprogram/identity-contexts`、
   `/api/miniprogram/identity-contexts/switch` 及共用上下文解析器。身份列表每次从
@@ -56,6 +67,10 @@
 - 几何与 Canvas 源文件为 `miniprogram/utils/surveyWallGraph.js`、
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js` 及量房尺寸/实体规划器。
 - BLE 集成位于 `miniprogram/utils/bluetooth.js`；协议语义以仓库厂商文档为准。
+
+## 视觉巡检记录
+
+2026-08-19 按推荐人网络与预约量房开发计划逐阶段检查了 `390x844` 微信开发者工具渲染：推荐人工作台、推荐进度、推荐收益和客户项目索引的加载/空态/错误容器均保持胶囊安全区；工作台“服务进度/我的收益”改为 `flex` 等分并限制原生按钮宽度，修复中间边框叠加和窄屏溢出。预约创建页的禁用主按钮改为保持高对比白字，长场景文案增加 flex 收缩约束；无效线索的数据库英文错误改为中文恢复提示。预约详情、改期、正式项目册和入驻页的缺少上下文状态仍需真实业务数据做动作态验收。
 
 ## 维护规则
 

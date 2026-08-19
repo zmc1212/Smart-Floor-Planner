@@ -1,5 +1,5 @@
 <!--
-  企业入驻页：遵循 miniprogram/DESIGN.md、app.wxss 的绿色操作型页面规范。
+  企业入驻页：遵循 miniprogram/DESIGN.md、app.less 的绿色操作型页面规范。
   小K在此处担任“入驻引导员”；只使用现有独立透明角色资产，不复用客户匿名领取页布局或文案。
 -->
 <view class="onboarding-page state-{{pageState}}">

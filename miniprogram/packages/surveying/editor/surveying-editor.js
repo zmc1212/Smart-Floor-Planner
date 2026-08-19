@@ -96,7 +96,7 @@ const DIMENSION_LINE_CENTER_PX = 16;
 const DIMENSION_LABEL_HEIGHT_PX = 24;
 const DIMENSION_COLLISION_GAP_PX = 8;
 const DIMENSION_PRIMARY_GAP_PX = 22;
-const CURSOR_LENS_SIZE_PX = 180;
+const CURSOR_LENS_SIZE_PX = 120;
 const CURSOR_LENS_SCALE = 0.12;
 const BLE_DUPLICATE_WINDOW_MS = 800;
 const PHONE_LEVEL_TOLERANCE_DEG = 8;
@@ -1680,19 +1680,6 @@ Page({
     const controls = this.canvasControls || {};
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    if (controls.closeAction) {
-      const close = controls.closeAction;
-      ctx.beginPath();
-      ctx.fillStyle = '#16a34a';
-      ctx.arc(close.cx, close.cy, close.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('合', close.cx, close.cy + 1);
-    }
 
     if (controls.activeAngle) {
       const angle = controls.activeAngle;
@@ -3502,17 +3489,61 @@ Page({
     };
   },
 
+  resolvePreviewLensTarget(session, previewPointMm) {
+    if (!session) return { type: 'free', snapLine: '' };
+    const guide = session.alignmentSnapGuide;
+    if (guide) {
+      if (guide.type === 'start-vertex-closure') {
+        return { type: 'vertex', snapLine: guide.snapLine || '' };
+      }
+      if (
+        guide.type === 'vertex-axis' ||
+        guide.type === 'rectangle-third-wall' ||
+        guide.type === 'previous-diagonal-direction'
+      ) {
+        return {
+          type: 'alignment',
+          snapLine: guide.snapLine || '',
+          axis: guide.direction === 'vertical' ? 'x' : 'y'
+        };
+      }
+    }
+    const closePoint = session.closeCandidatePoint;
+    const snappedToClosePoint = !!(
+      previewPointMm &&
+      closePoint &&
+      surveyGraph.distanceMm(previewPointMm, closePoint) <= 1
+    );
+    if (snappedToClosePoint && session.closeCandidateType === 'shared-wall') {
+      return { type: 'wall', snapLine: session.activeSpaceSharedSnapLine || 'inner' };
+    }
+    if (
+      snappedToClosePoint &&
+      (session.closeCandidateType === 'merge' || session.closeCandidateType === 'start' || session.closeCandidateNodeId)
+    ) {
+      return { type: 'vertex', snapLine: '' };
+    }
+    if (session.closeCandidateType === 'shared-wall') {
+      return { type: 'wall', snapLine: session.activeSpaceSharedSnapLine || 'inner' };
+    }
+    return { type: 'free', snapLine: '' };
+  },
+
   isCursorLensActive() {
     return this.cursorPlacementState === 'dragging' || this.canvasCursorLensActive;
   },
 
-  updateCanvasCursorLens(clientPoint, pointMm) {
+  updateCanvasCursorLens(clientPoint, pointMm, target) {
     this.canvasCursorLensActive = true;
     const now = Date.now();
     const shouldUpdateLens = !this.data.cursorLensVisible ||
       now - this.cursorLensLastUpdateAt >= 80;
     const lensData = shouldUpdateLens
-      ? this.buildCursorLens(pointMm, 'free')
+      ? this.buildCursorLens(
+        pointMm,
+        (target && target.type) || 'free',
+        (target && target.snapLine) || ''
+      )
       : null;
     this.cursorDragSnapGuide = null;
     this.queueCursorDragCanvas(clientPoint, { showCursor: false });
@@ -4430,7 +4461,7 @@ Page({
       const previewPointMm = surveyGraph.getCursorDisplayPoint(previewFloor, previewFloor.session)
         || previewFloor.session.previewPoint
         || snappedMm;
-      this.updateCanvasCursorLens(point, previewPointMm);
+      this.updateCanvasCursorLens(point, previewPointMm, this.resolvePreviewLensTarget(previewFloor.session, previewPointMm));
       this.syncFromDraft();
       return;
     }

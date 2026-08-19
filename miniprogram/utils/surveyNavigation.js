@@ -4,6 +4,16 @@ const FORMAL_SERVER_DRAFT_ID_KEY = 'surveying_floorplan_id';
 function openSurveyingEditor(options) {
   const opts = options || {};
   const app = getApp();
+  const signedContext = app && app.globalData && (app.globalData.bootstrap || app.globalData.userInfo);
+  if (signedContext) {
+    const navigation = require('./identity-navigation.js');
+    if (!navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', signedContext)) {
+      if (typeof wx !== 'undefined' && wx.showToast) {
+        wx.showToast({ title: '当前身份不能进入量房编辑器', icon: 'none' });
+      }
+      return false;
+    }
+  }
   const startNewSurvey = !!opts.startNewSurvey;
   const newSurveyKey = startNewSurvey
     ? (opts.newSurveyKey || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
@@ -26,6 +36,7 @@ function openSurveyingEditor(options) {
   wx.navigateTo({
     url: `/packages/surveying/editor/surveying-editor${query.length ? `?${query.join('&')}` : ''}`
   });
+  return true;
 }
 
 function clearSurveyingEditorDraft(leadId, floorPlanId) {

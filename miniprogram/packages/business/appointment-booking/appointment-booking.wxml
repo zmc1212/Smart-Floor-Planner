@@ -6,7 +6,7 @@ FORM: Antigravity design source `phase-5-designer-appointment-booking-v1.png`; t
 <view class="booking-page sfp-page">
   <view class="booking-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
     <view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view>
-    <text class="nav-title">安排上门量房</text>
+    <text class="nav-title">{{customerMode ? '预约上门量房' : '安排上门量房'}}</text>
   </view>
 
   <view wx:if="{{loading}}" class="state-card sfp-card">正在读取客户和可用时段…</view>
@@ -14,7 +14,7 @@ FORM: Antigravity design source `phase-5-designer-appointment-booking-v1.png`; t
   <view wx:else class="booking-content">
     <view class="scene" aria-hidden="true">
       <image src="/packages/business/assets/appointment-booking-v1/schedule-guide.png" mode="aspectFit" />
-      <text>为客户选定真实可用时段</text>
+      <text>{{customerMode ? '请选择真实可用的上门时段' : '为客户选定真实可用时段'}}</text>
     </view>
 
     <view class="customer-card sfp-card">

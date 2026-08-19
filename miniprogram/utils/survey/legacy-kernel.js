@@ -1083,6 +1083,21 @@ function isAxisAlignedSegment(start, end) {
     Math.abs(end.yMm - start.yMm) <= RECTANGLE_ALIGNMENT_TOLERANCE_MM;
 }
 
+function isAxisAlignedWithAnchor(anchor, point, toleranceMm) {
+  const limit = typeof toleranceMm === 'number' ? toleranceMm : 1;
+  if (!anchor || !point) return false;
+  return Math.abs(anchor.xMm - point.xMm) <= limit ||
+    Math.abs(anchor.yMm - point.yMm) <= limit;
+}
+
+function constrainStraightSnapPoint(session, anchor, point, fallbackPoint) {
+  if (!point) return fallbackPoint;
+  if (!session || session.mode !== 'straight' || isAxisAlignedWithAnchor(anchor, point)) {
+    return point;
+  }
+  return fallbackPoint || point;
+}
+
 function getMinimumClosureSuggestionWallCount(floor, session) {
   if (!session || !session.activeSpaceSharedWallId) return 2;
   if (!isClosedBoundaryCorner(floor, session)) return 1;
@@ -2508,6 +2523,23 @@ function preservesOuterTInteriorProjection(session, projection) {
   );
 }
 
+function maybeMagnetizeProjectionToEndpoint(session, anchor, projection, nearestEndpoint) {
+  if (
+    !projection ||
+    !nearestEndpoint ||
+    nearestEndpoint.distanceMm > CLOSE_TOLERANCE_MM ||
+    preservesOuterTInteriorProjection(session, projection)
+  ) {
+    return;
+  }
+  if (session && session.mode === 'straight' && !isAxisAlignedWithAnchor(anchor, nearestEndpoint.node)) {
+    return;
+  }
+  projection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
+  projection.node = nearestEndpoint.node;
+  projection.t = nearestEndpoint.t;
+}
+
 function getSharedWallProjection(floor, session, point) {
   if (!session || !session.activeSpaceSharedWallId || !point) return null;
   const wall = getWall(floor, session.activeSpaceSharedWallId);
@@ -2520,6 +2552,7 @@ function getSharedWallProjection(floor, session, point) {
   if (startT !== null && Math.abs(projection.t - startT) * distanceMm(start, end) < MIN_WALL_LENGTH_MM) {
     return null;
   }
+  const anchor = getNode(floor, session.anchorNodeId);
   const endpointCandidates = [
     { node: start, t: 0 },
     { node: end, t: 1 }
@@ -2529,15 +2562,7 @@ function getSharedWallProjection(floor, session, point) {
       distanceMm: distanceMm(projection.point, candidate.node)
     }))
     .sort((a, b) => a.distanceMm - b.distanceMm)[0];
-  if (
-    nearestEndpoint &&
-    nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM &&
-    !preservesOuterTInteriorProjection(session, projection)
-  ) {
-    projection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
-    projection.node = nearestEndpoint.node;
-    projection.t = nearestEndpoint.t;
-  }
+  maybeMagnetizeProjectionToEndpoint(session, anchor, projection, nearestEndpoint);
   if (projection.t <= 0.0001) projection.node = start;
   if (projection.t >= 0.9999) projection.node = end;
   projection.wall = wall;
@@ -2581,15 +2606,12 @@ function findSharedWallClosureProjection(floor, session, point) {
         distanceMm: distanceMm(endProjection.point, candidate.node)
       }))
       .sort((a, b) => a.distanceMm - b.distanceMm)[0];
-    if (
-      nearestEndpoint &&
-      nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM &&
-      !preservesOuterTInteriorProjection(session, endProjection)
-    ) {
-      endProjection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
-      endProjection.node = nearestEndpoint.node;
-      endProjection.t = nearestEndpoint.t;
-    }
+    maybeMagnetizeProjectionToEndpoint(
+      session,
+      getNode(floor, session.anchorNodeId),
+      endProjection,
+      nearestEndpoint
+    );
 
     if (!best || endProjection.distanceMm < best.distanceMm) {
       best = Object.assign({}, endProjection, { wall, start, end });
@@ -2669,15 +2691,7 @@ function findAnySharedWallClosureProjection(floor, session, point) {
         distanceMm: distanceMm(projection.point, candidate.node)
       }))
       .sort((a, b) => a.distanceMm - b.distanceMm)[0];
-    if (
-      nearestEndpoint &&
-      nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM &&
-      !preservesOuterTInteriorProjection(session, projection)
-    ) {
-      projection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
-      projection.node = nearestEndpoint.node;
-      projection.t = nearestEndpoint.t;
-    }
+    maybeMagnetizeProjectionToEndpoint(session, anchor, projection, nearestEndpoint);
     const prefersTopologyEndpoint = projection.snapsToTopologyEndpoint &&
       (!best || !best.snapsToTopologyEndpoint ||
         projection.topologyEntryAlongMm < best.topologyEntryAlongMm);
@@ -3297,7 +3311,12 @@ function startPreview(draft, rawPoint) {
   if (rayIntersection) {
     const distToAnchor = distanceMm(anchor, previewPoint);
     if (distToAnchor > rayIntersection.distanceMm) {
-      previewPoint = rayIntersection.point;
+      previewPoint = constrainStraightSnapPoint(
+        session,
+        anchor,
+        rayIntersection.point,
+        previewPoint
+      );
     }
   }
   if (rayIntersection && rawOuterFaceProjection) {
@@ -3324,7 +3343,12 @@ function startPreview(draft, rawPoint) {
   } else if (rayIntersection) {
     const distToAnchor = distanceMm(anchor, previewPoint);
     if (distToAnchor > rayIntersection.distanceMm) {
-      previewPoint = rayIntersection.point;
+      previewPoint = constrainStraightSnapPoint(
+        session,
+        anchor,
+        rayIntersection.point,
+        previewPoint
+      );
     }
   }
   session.previewOuterFaceWallId = rawOuterFaceProjection ? rawOuterFaceProjection.wall.id : '';
@@ -3335,7 +3359,12 @@ function startPreview(draft, rawPoint) {
     previewPoint
   );
   if (partitionProjection) {
-    previewPoint = partitionProjection.point;
+    previewPoint = constrainStraightSnapPoint(
+      session,
+      anchor,
+      partitionProjection.point,
+      previewPoint
+    );
   }
   let previewMeasurementStartInsetMm = resolvePreviewMeasurementStartInsetMm(
     floor,
@@ -3428,7 +3457,14 @@ function startPreview(draft, rawPoint) {
           distanceMm(previewPoint, sharedProjection.point) <= CLOSE_TOLERANCE_MM
         )
       ) {
-        previewPoint = sharedProjection.point;
+        previewPoint = sharedProjection.snapsToTopologyEndpoint
+          ? sharedProjection.point
+          : constrainStraightSnapPoint(
+            session,
+            anchor,
+            sharedProjection.point,
+            previewPoint
+          );
         previewMeasurementStartInsetMm = resolvePreviewMeasurementStartInsetMm(
           floor,
           session,
@@ -3718,12 +3754,27 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     anchor,
     endPoint
   );
-  const closureProjection = partitionProjection || sharedProjection;
+  let closureProjection = partitionProjection || sharedProjection;
   const isClosingCurrentSpace = activeStartNode &&
     (activeWallCountBeforeCommit >= 2 || !!closureProjection || !!outerFaceProjection) &&
     (closureProjection || outerFaceProjection || distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM);
   if (closureProjection) {
-    endPoint = closureProjection.point;
+    const allowOffAxis = !!closureProjection.snapsToTopologyEndpoint;
+    const constrainedEndPoint = allowOffAxis
+      ? closureProjection.point
+      : constrainStraightSnapPoint(
+        session,
+        anchor,
+        closureProjection.point,
+        endPoint
+      );
+    if (constrainedEndPoint !== closureProjection.point) {
+      closureProjection = Object.assign({}, closureProjection, {
+        point: constrainedEndPoint,
+        node: null
+      });
+    }
+    endPoint = constrainedEndPoint;
   }
   const measurementStartInsetMm = normalizeMeasurementInset(
     session.previewMeasurementStartInsetMm

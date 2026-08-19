@@ -35,7 +35,11 @@ test('phase 13 portal pages use the scoped aggregate endpoints and preserve priv
 });
 
 test('phase 13 pages use custom navigation so their capsule-safe headers are the only navigation bar', () => {
-  for (const page of ['customer-projects/customer-projects', 'referrer-progress/referrer-progress', 'referrer-earnings/referrer-earnings']) {
+  assert.deepEqual(JSON.parse(source('packages/business/customer-projects/customer-projects.json')), {
+    navigationStyle: 'custom',
+    usingComponents: { 'custom-tab-bar': '/custom-tab-bar/index' },
+  });
+  for (const page of ['referrer-progress/referrer-progress', 'referrer-earnings/referrer-earnings']) {
     assert.deepEqual(JSON.parse(source(`packages/business/${page}.json`)), { navigationStyle: 'custom' });
   }
 });

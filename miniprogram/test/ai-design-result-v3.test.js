@@ -8,7 +8,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 test('AI design result restores the V3 delivery layout with only live actions', () => {
   const wxml = read('packages/ai-workflow/result/ai-design-result.wxml');
-  const wxss = read('packages/ai-workflow/result/ai-design-result.wxss');
+  const less = read('packages/ai-workflow/result/ai-design-result.less');
   const config = JSON.parse(read('packages/ai-workflow/result/ai-design-result.json'));
 
   assert.match(wxml, /方案已生成，看看效果如何吧！/);
@@ -24,17 +24,17 @@ test('AI design result restores the V3 delivery layout with only live actions', 
   assert.match(wxml, /bindtap="withdrawFromCustomer"/);
   assert.match(wxml, /class="result-delivery-character"/);
   assert.match(wxml, /wx:if="\{\{task\.showComparison\}\}"/);
-  assert.match(wxss, /\.delivery-bubble/);
-  assert.match(wxss, /\.result-delivery-character/);
-  assert.match(wxss, /\.before-label \{ left: 28rpx; background:/);
-  assert.match(wxss, /\.after-label \{ right: 28rpx; background:/);
-  assert.match(wxss, /min-height: 146rpx/);
-  assert.match(wxss, /min-height: 100rpx/);
-  assert.match(wxss, /\.summary-workflow-value/);
-  assert.match(wxss, /\.bottom-action:first-child/);
-  assert.match(wxss, /min-height: 64rpx/);
-  assert.match(wxss, /height: 84rpx/);
-  assert.match(wxss, /\.publication-panel/);
+  assert.match(less, /\.delivery-bubble/);
+  assert.match(less, /\.result-delivery-character/);
+  assert.match(less, /\.before-label \{ left: 28rpx; background:/);
+  assert.match(less, /\.after-label \{ right: 28rpx; background:/);
+  assert.match(less, /min-height: 146rpx/);
+  assert.match(less, /min-height: 100rpx/);
+  assert.match(less, /\.summary-workflow-value/);
+  assert.match(less, /\.bottom-action:first-child/);
+  assert.match(less, /min-height: 64rpx/);
+  assert.match(less, /height: 84rpx/);
+  assert.match(less, /\.publication-panel/);
   const script = read('packages/ai-workflow/result/ai-design-result.js');
   const service = read('utils/aiDesignService.js');
   assert.match(script, /getPublication\(task\.leadId, task\.id\)/);

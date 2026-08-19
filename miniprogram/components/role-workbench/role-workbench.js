@@ -110,7 +110,7 @@ Component({
         return {
           id: project.leadId,
           leadId: project.leadId,
-          title: project.enterprise && project.enterprise.name || '装修服务',
+          title: '免费设计与量房',
           subtitle: '预约、户型档案和已发布方案由本人查看',
           status: project.status,
           metaLabel: stage,

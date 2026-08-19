@@ -15,9 +15,12 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.ok(business.pages.includes('appointment-detail/appointment-detail'));
   assert.match(script, /\['designer', 'enterprise_admin'\]\.includes\(role\)/);
   assert.match(script, /\['measurer', 'enterprise_admin'\]\.includes\(role\)/);
-  assert.match(script, /appointment-reschedule\/appointment-reschedule\?mode=internal/);
+  assert.match(script, /appointment-reschedule\/appointment-reschedule\?mode=\$\{mode\}/);
   assert.match(script, /updateStatus\('cancel'/);
   assert.match(script, /updateStatus\('complete'/);
+  assert.match(script, /onShareAppMessage\(\)/);
+  assert.match(script, /const customerMode = options\.mode === 'customer'/);
+  assert.match(script, /mode = this\.data\.customerMode \? 'customer' : 'internal'/);
   assert.match(script, /请填写取消原因/);
   assert.match(wxml, /schedule-guide\.png/);
   assert.match(wxml, /wx:if="\{\{canComplete\}\}"/);

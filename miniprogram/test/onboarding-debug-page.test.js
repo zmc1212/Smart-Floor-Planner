@@ -23,7 +23,7 @@ function loadPage() {
 test('onboarding debug page is development-only and uses the native scanner for a real onboarding code', () => {
   const js = source('packages/business/onboarding-debug/onboarding-debug.js');
   const wxml = source('packages/business/onboarding-debug/onboarding-debug.wxml');
-  const wxss = source('packages/business/onboarding-debug/onboarding-debug.wxss');
+  const less = source('packages/business/onboarding-debug/onboarding-debug.less');
 
   assert.match(js, /envVersion === 'develop'/);
   assert.match(js, /wx\.scanCode/);
@@ -34,7 +34,7 @@ test('onboarding debug page is development-only and uses the native scanner for 
   assert.match(wxml, /开发版专用/);
   assert.match(wxml, /从电脑选择小程序码/);
   assert.match(wxml, /请求当前本地服务端/);
-  assert.match(wxss, /min-height:\s*92rpx/);
+  assert.match(less, /min-height:\s*92rpx/);
   assert.doesNotMatch(wxml, /open-type="getPhoneNumber"/);
 });
 

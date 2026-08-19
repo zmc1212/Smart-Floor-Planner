@@ -810,9 +810,10 @@ function createClosedDimensionPlan(input) {
   const exteriorPoints = outerRingSegments.length
     ? outerRingSegments.flatMap((wall) => [wall.start, wall.end])
     : exteriorWalls.flatMap((wall) => [wall.outerStart, wall.outerEnd]);
-  // A closed room remains the source of its permanent dimensions while an
-  // adjacent wall chain is being measured. Its annotations still need to sit
-  // outside that visible work-in-progress wall body rather than underneath it.
+  // A closed room remains the source of its permanent dimensions while other
+  // walls are still on the canvas. Annotations sit outside those unclosed wall
+  // bodies (and a stationary preview) rather than underneath them. An in-flight
+  // drag preview is omitted by the renderer until the length is committed.
   const clearancePoints = exteriorPoints.concat((options.clearancePoints || [])
     .filter((value) => value && Number.isFinite(value.x) && Number.isFinite(value.y)));
   const supportFor = (normal) => Math.max(...clearancePoints.map((value) => dot(value, normal)));

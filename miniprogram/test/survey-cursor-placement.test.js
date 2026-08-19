@@ -246,6 +246,67 @@ test('dragging an adjacent straight room onto a shared-wall closure point closes
   assert.equal(floor.session.state, 'spaceClosed');
 });
 
+function createOffAxisAdjacentPreview() {
+  let draft = createClosedDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = commitWall(draft, { xMm: 6000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 6000, yMm: 2000 }, 2000);
+  // Keep the live anchor 200mm off the existing room vertex. That offset is
+  // inside the 350mm endpoint magnet, which previously copied the vertex and
+  // turned a straight preview into a diagonal.
+  const liveDraft = surveyGraph.cloneDraft(draft);
+  const liveFloor = surveyGraph.getActiveFloor(liveDraft);
+  const anchor = surveyGraph.getNode(liveFloor, liveFloor.session.anchorNodeId);
+  anchor.yMm = 1800;
+  return surveyGraph.startPreview(liveDraft, { xMm: 3120, yMm: 1800 });
+}
+
+test('straight-wall preview near an off-axis vertex stays orthogonal instead of becoming a diagonal', () => {
+  const draft = createOffAxisAdjacentPreview();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const anchor = surveyGraph.getNode(floor, floor.session.anchorNodeId);
+  const preview = floor.session.previewPoint;
+  const sharesAxis = Math.abs(preview.xMm - anchor.xMm) <= 1 ||
+    Math.abs(preview.yMm - anchor.yMm) <= 1;
+
+  assert.equal(anchor.yMm, 1800);
+  assert.equal(sharesAxis, true);
+  assert.equal(preview.yMm, 1800);
+  assert.notDeepEqual(preview, { xMm: 3000, yMm: 2000 });
+});
+
+test('confirming a straight-wall preview near an off-axis vertex keeps an orthogonal wall', () => {
+  let draft = createOffAxisAdjacentPreview();
+  const previewFloor = surveyGraph.getActiveFloor(draft);
+  draft = surveyGraph.commitPreviewLength(
+    draft,
+    previewFloor.session.previewLengthMm,
+    'manual'
+  );
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[floor.walls.length - 1];
+  const start = surveyGraph.getNode(floor, wall.startNodeId);
+  const end = surveyGraph.getNode(floor, wall.endNodeId);
+  const sharesAxis = Math.abs(end.xMm - start.xMm) <= 1 ||
+    Math.abs(end.yMm - start.yMm) <= 1;
+
+  assert.equal(wall.mode, 'straight');
+  assert.equal(sharesAxis, true);
+  assert.equal(end.yMm, 1800);
+  assert.notDeepEqual({ xMm: end.xMm, yMm: end.yMm }, { xMm: 3000, yMm: 2000 });
+});
+
 test('cursor placement prefers an existing vertex over a nearby wall segment', () => {
   const floor = surveyGraph.getActiveFloor(createWallDraft());
   const target = surveyGraph.getCursorPlacementTarget(

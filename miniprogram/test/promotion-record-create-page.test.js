@@ -7,7 +7,7 @@ const miniRoot = path.resolve(__dirname, '..');
 const pageDir = path.join(miniRoot, 'packages', 'business', 'promotion-record-detail');
 const pageJs = fs.readFileSync(path.join(pageDir, 'promotion-record-detail.js'), 'utf8');
 const pageWxml = fs.readFileSync(path.join(pageDir, 'promotion-record-detail.wxml'), 'utf8');
-const pageWxss = fs.readFileSync(path.join(pageDir, 'promotion-record-detail.wxss'), 'utf8');
+const pageWxss = fs.readFileSync(path.join(pageDir, 'promotion-record-detail.less'), 'utf8');
 
 test('Enterprise report create mode matches the approved work-order structure', () => {
   assert.match(pageWxml, /packages\/business\/assets\/promotion-create\/hero-scene\.jpg/);

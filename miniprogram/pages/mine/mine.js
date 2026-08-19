@@ -3,6 +3,7 @@ const api = require('../../utils/api.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { openAIDesignTab } = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign } = require('../../utils/aiDesignAccess.js');
+const { roleForIdentity } = require('../../utils/identity-navigation.js');
 const session = require('../../utils/session.js');
 const {
   buildWorkbenchActions,
@@ -48,6 +49,8 @@ Page({
   data: {
     isLoggedIn: false,
     isStaff: false,
+    activeRole: '',
+    isRoleRestrictedUser: false,
     canUseAIDesign: false,
     loadingMine: false,
     mineError: '',
@@ -81,6 +84,10 @@ Page({
     this.syncNavigationMetrics();
     this.syncTabBar();
     const userInfo = app.globalData.userInfo || wx.getStorageSync('userInfo');
+    const activeRole = (app.globalData.bootstrap && app.globalData.bootstrap.current && app.globalData.bootstrap.current.role)
+      || roleForIdentity(userInfo);
+    const isStaffRole = ['designer', 'measurer', 'enterprise_admin'].includes(activeRole);
+    const isRoleRestrictedUser = ['customer', 'referrer'].includes(activeRole);
     const token = wx.getStorageSync('token');
     const openid = app.globalData.openid || wx.getStorageSync('openid') || (userInfo && userInfo.openid);
 
@@ -89,7 +96,9 @@ Page({
       app.globalData.openid = openid;
       this.setData({
         isLoggedIn: true,
-        isStaff: userInfo.role === 'staff',
+        isStaff: isStaffRole,
+        activeRole,
+        isRoleRestrictedUser,
         canUseAIDesign: canAccessAIDesign(userInfo),
         loadingMine: false,
         floorPlans: [],
@@ -97,7 +106,7 @@ Page({
         floorPlansLoading: false,
         floorPlansError: ''
       });
-      this.fetchMineData();
+      if (isStaffRole) this.fetchMineData();
       return;
     }
 
@@ -106,7 +115,9 @@ Page({
       app.globalData.openid = openid;
       this.setData({
         isLoggedIn: true,
-        isStaff: userInfo.role === 'staff',
+        isStaff: isStaffRole,
+        activeRole,
+        isRoleRestrictedUser,
         canUseAIDesign: canAccessAIDesign(userInfo),
         loadingMine: false,
         mineError: '',
@@ -122,9 +133,9 @@ Page({
           }
         }
       });
-      if (userInfo.role === 'staff') {
+      if (isStaffRole) {
         this.fetchMineData();
-      } else {
+      } else if (!isRoleRestrictedUser) {
         this.fetchMyFloorPlans();
       }
       return;
@@ -133,6 +144,8 @@ Page({
     this.setData({
       isLoggedIn: false,
       isStaff: false,
+      activeRole: '',
+      isRoleRestrictedUser: false,
       canUseAIDesign: false,
       loadingMine: false,
       mineError: '',
@@ -342,6 +355,7 @@ Page({
   },
 
   onOpenFloorPlan(e) {
+    if (this.data.isRoleRestrictedUser) return;
     const id = e.currentTarget.dataset.id;
     const floorPlan = this.data.floorPlans.find((item) => item._id === id);
     if (!floorPlan) return;
@@ -349,6 +363,7 @@ Page({
   },
 
   onAIGen(e) {
+    if (this.data.isRoleRestrictedUser) return;
     const id = e.currentTarget.dataset.id;
     const floorPlan = this.data.floorPlans.find((item) => item._id === id);
     if (!floorPlan) {
@@ -363,6 +378,7 @@ Page({
   },
 
   onCreateNew() {
+    if (this.data.isRoleRestrictedUser) return;
     wx.switchTab({ url: '/pages/index/index' });
   },
 

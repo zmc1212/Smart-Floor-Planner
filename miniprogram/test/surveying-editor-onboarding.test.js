@@ -7,7 +7,7 @@ const miniRoot = path.resolve(__dirname, '..');
 const editorDir = path.join(miniRoot, 'packages', 'surveying', 'editor');
 const editorScript = fs.readFileSync(path.join(editorDir, 'surveying-editor.js'), 'utf8');
 const editorWxml = fs.readFileSync(path.join(editorDir, 'surveying-editor.wxml'), 'utf8');
-const editorWxss = fs.readFileSync(path.join(editorDir, 'surveying-editor.wxss'), 'utf8');
+const editorWxss = fs.readFileSync(path.join(editorDir, 'surveying-editor.less'), 'utf8');
 const navigationScript = fs.readFileSync(path.join(miniRoot, 'utils', 'surveyNavigation.js'), 'utf8');
 const planRoute = fs.readFileSync(
   path.join(miniRoot, '..', 'admin', 'src', 'app', 'api', 'floorplans', '[id]', 'route.ts'),
@@ -43,7 +43,7 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.match(editorScript, /const movedWithoutTouchMove = !wasDragging && dragWasPending/);
   assert.match(editorScript, /const shouldUpdateLens = !wasDragging \|\| !this\.data\.cursorLensVisible \|\|/);
   assert.match(editorScript, /isCursorLensActive\(\) \{[\s\S]*this\.cursorPlacementState === 'dragging' \|\| this\.canvasCursorLensActive/);
-  assert.match(editorScript, /this\.draft = surveyGraph\.startPreview\(this\.draft, snappedMm\);[\s\S]*surveyGraph\.getCursorDisplayPoint\(previewFloor, previewFloor\.session\)[\s\S]*this\.updateCanvasCursorLens\(point, previewPointMm\);/);
+  assert.match(editorScript, /this\.draft = surveyGraph\.startPreview\(this\.draft, snappedMm\);[\s\S]*surveyGraph\.getCursorDisplayPoint\(previewFloor, previewFloor\.session\)[\s\S]*this\.updateCanvasCursorLens\(point, previewPointMm, this\.resolvePreviewLensTarget\(previewFloor\.session, previewPointMm\)\);/);
   assert.match(editorScript, /if \(movedWall\) \{[\s\S]*this\.clearCanvasCursorLens\(\);/);
   assert.match(editorScript, /lensMeta: this\.cursorLensMeta/);
   assert.doesNotMatch(editorScript, /SURVEYING_ONBOARDING_STEPS|onOnboardingNext|onOnboardingSkip/);
@@ -125,6 +125,7 @@ test('cursor magnifier uses one Canvas panel instead of a second native cover la
   assert.doesNotMatch(editorWxml, /cursor-lens/);
   assert.doesNotMatch(editorWxss, /\.cursor-lens/);
   assert.match(editorScript, /this\.cursorLensMeta = \{[\s\S]*coordinateLabel:/);
+  assert.match(editorScript, /const CURSOR_LENS_SIZE_PX = 120/);
 });
 
 test('formal surveying fixed chrome follows the compact high-fidelity reference geometry', () => {

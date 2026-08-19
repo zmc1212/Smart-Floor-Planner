@@ -44,6 +44,7 @@ Page({
     navigationRight: 96,
     appointmentId: '',
     leadId: '',
+    customerMode: false,
     staffRole: '',
     appointment: null,
     loading: true,
@@ -57,10 +58,12 @@ Page({
   onLoad(options) {
     const appointmentId = options.appointmentId || options.id || '';
     const leadId = options.leadId || '';
+    const customerMode = options.mode === 'customer';
     this.setData({
       ...navigationMetrics(),
       appointmentId,
       leadId,
+      customerMode,
       staffRole: getStaffRole(),
       loading: Boolean(leadId),
       error: leadId ? '' : '缺少客户线索信息，请返回后重新进入'
@@ -87,7 +90,7 @@ Page({
           statusLabel: STATUS_LABELS[appointment.status] || appointment.status
         },
         appointmentId: appointment.id,
-        canReschedule: confirmed && ['designer', 'enterprise_admin'].includes(role),
+        canReschedule: confirmed && (this.data.customerMode || ['designer', 'enterprise_admin'].includes(role)),
         canCancel: confirmed && ['designer', 'enterprise_admin'].includes(role),
         canComplete: confirmed && ['measurer', 'enterprise_admin'].includes(role)
       });
@@ -100,11 +103,20 @@ Page({
 
   onBack() { wx.navigateBack(); },
 
+  onShareAppMessage() {
+    const { leadId, appointment } = this.data;
+    return {
+      title: '上门量房预约卡片',
+      path: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId || '')}&appointmentId=${encodeURIComponent(appointment && appointment.id || '')}`,
+    };
+  },
+
   reschedule() {
     const appointment = this.data.appointment;
     if (!appointment || !this.data.canReschedule) return;
+    const mode = this.data.customerMode ? 'customer' : 'internal';
     wx.navigateTo({
-      url: `/packages/business/appointment-reschedule/appointment-reschedule?mode=internal&leadId=${encodeURIComponent(this.data.leadId)}&appointmentId=${encodeURIComponent(appointment.id)}&version=${appointment.version}`
+      url: `/packages/business/appointment-reschedule/appointment-reschedule?mode=${mode}&leadId=${encodeURIComponent(this.data.leadId)}&appointmentId=${encodeURIComponent(appointment.id)}&version=${appointment.version}`
     });
   },
 

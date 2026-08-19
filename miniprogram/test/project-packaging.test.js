@@ -106,7 +106,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
   for (const packageName of ['surveying', 'ai-workflow', 'business']) {
     const packageRoot = path.join(__dirname, '..', 'packages', packageName);
     const sourceFiles = fs.readdirSync(packageRoot, { recursive: true })
-      .filter((file) => /\.(js|json|wxml|wxss)$/.test(file));
+      .filter((file) => /\.(js|json|wxml|less)$/.test(file));
 
     for (const sourceFile of sourceFiles) {
       const source = fs.readFileSync(path.join(packageRoot, sourceFile), 'utf8');

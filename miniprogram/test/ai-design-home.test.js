@@ -23,7 +23,7 @@ const pageWxml = fs.readFileSync(
   'utf8'
 );
 const pageWxss = fs.readFileSync(
-  path.join(miniRoot, 'pages', 'ai-design', 'ai-design.wxss'),
+  path.join(miniRoot, 'pages', 'ai-design', 'ai-design.less'),
   'utf8'
 );
 const pageModelSource = fs.readFileSync(

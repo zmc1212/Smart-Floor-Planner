@@ -26,7 +26,7 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   const businessPackage = appConfig.subPackages.find((item) => item.root === 'packages/business');
   const wxml = source('packages/business/onboarding/onboarding.wxml');
   const js = source('packages/business/onboarding/onboarding.js');
-  const wxss = source('packages/business/onboarding/onboarding.wxss');
+  const less = source('packages/business/onboarding/onboarding.less');
 
   assert.ok(businessPackage.pages.includes('onboarding/onboarding'));
   assert.ok(businessPackage.pages.includes('onboarding-debug/onboarding-debug'));
@@ -44,9 +44,9 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.doesNotMatch(js, /debugOnboarding/);
   assert.match(js, /code_rotated/);
   assert.match(wxml, /navigationRight/);
-  assert.match(wxss, /safe-area-inset-bottom/);
-  assert.doesNotMatch(wxss, /font-size:\s*(?:1[0-9]|[0-9])rpx/);
-  assert.doesNotMatch(wxss, /transform:\s*scale\(/);
+  assert.match(less, /safe-area-inset-bottom/);
+  assert.doesNotMatch(less, /font-size:\s*(?:1[0-9]|[0-9])rpx/);
+  assert.doesNotMatch(less, /transform:\s*scale\(/);
 });
 
 test('onboarding code resolution records the resolved enterprise name before phone authorization', async () => {

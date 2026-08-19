@@ -22,13 +22,14 @@ test('designer appointment booking uses server availability and submits the sele
   const appJson = read('app.json');
   const pageJs = read('packages/business/appointment-booking/appointment-booking.js');
   const pageWxml = read('packages/business/appointment-booking/appointment-booking.wxml');
-  const pageWxss = read('packages/business/appointment-booking/appointment-booking.wxss');
+  const pageWxss = read('packages/business/appointment-booking/appointment-booking.less');
 
   assert.match(appJson, /appointment-booking\/appointment-booking/);
   assert.match(pageJs, /appointments\/availability\?leadId=/);
   assert.match(pageJs, /maxAdvanceDays/);
   assert.match(pageJs, /nextDates\(maxAdvanceDays\)/);
   assert.match(pageJs, /api\.request\('\/appointments', 'POST'/);
+  assert.match(pageJs, /customerMode: options\.mode === 'customer'/);
   assert.match(pageJs, /startAt: selectedSlot\.startAt/);
   assert.match(pageJs, /endAt: selectedSlot\.endAt/);
   assert.match(pageJs, /address: String\(address\)\.trim\(\)/);
@@ -43,6 +44,7 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageWxss, /env\(safe-area-inset-bottom\)/);
   assert.match(pageWxss, /\.back-chevron/);
   assert.match(pageWxss, /\.confirm-bar/);
+  assert.match(pageWxss, /\.confirm\[disabled\].*color: #ffffff/);
   assert.match(pageWxss, /\.confirm \{ display: block;/);
   assert.match(pageWxss, /font-size: 24rpx/);
 });
@@ -72,7 +74,7 @@ test('designer booking keeps every date the server makes available in the existi
 test('lead detail exposes first booking to scheduling roles only without a confirmed appointment', () => {
   const detailJs = read('packages/business/lead-detail/lead-detail.js');
   const detailWxml = read('packages/business/lead-detail/lead-detail.wxml');
-  const detailWxss = read('packages/business/lead-detail/lead-detail.wxss');
+  const detailWxss = read('packages/business/lead-detail/lead-detail.less');
 
   assert.match(detailJs, /\['designer', 'enterprise_admin'\]\.includes\(staffRole\)/);
   assert.match(detailJs, /item\.status === 'confirmed'/);

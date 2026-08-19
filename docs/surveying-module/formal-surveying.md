@@ -64,7 +64,9 @@ copy back to `layoutData`.
 - Closed-space fill and net area use derived inner wall faces, not topology-node
   polygon area or a bounding rectangle.
 - Dimensions are read models. They must not be written into `surveyGraph` or
-  alter the graph's topology.
+  alter the graph's topology. Closed-room Canvas lanes sit outside every
+  unclosed wall currently on the canvas plus a stationary length preview; an
+  in-flight `wallPreview` drag does not move those lanes.
 - Consumers must preserve wall openings, shared-wall thickness, closure rules,
   deletion/rejoin behavior, and the v4 schema. Deleting a wall shared by two
   closed rooms punches through that interface and merges them into one closed
@@ -93,10 +95,12 @@ copy back to `layoutData`.
   select opposite local measurement faces for the new branch. The first branch
   wall and every continuation use the graph-side working face and inherit the
   physical-body side fixed by that first wall. Neither turn direction nor the
-  source-space centroid may re-evaluate that side. Orthogonal gesture input is
+  source-space centroid may re-evaluate that side.   Orthogonal gesture input is
   stored on the internal graph, while the preview outline, orange/red path,
   live-dimension endpoints, and green cursor remain coincident on one continuous
-  path. Adjacent working faces meet at their line intersection, so the previous
+  path. Straight-mode vertex or closure snaps may change at most one axis; they
+  must not copy an off-axis vertex onto the orange preview. The wall-drag lens
+  reports the actual snap type. Adjacent working faces meet at their line intersection, so the previous
   red endpoint equals the following red start and a turn cannot shift either by
   one wall thickness. This display projection does not alter graph centreline
   or closure topology.

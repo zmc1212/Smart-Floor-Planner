@@ -25,7 +25,7 @@ index. The Chinese mirror is `AGENTS.zh-CN.md`.
   `docs/surveying-module/formal-surveying.md`.
 - Mini Program visual rules:
   `miniprogram/DESIGN.md`, `miniprogram/design-tokens.json`, and
-  `miniprogram/app.wxss`.
+  `miniprogram/app.less`.
 
 Roadmaps and implementation plans are historical planning references. Confirm
 current behavior in code and the current module inventories before describing or

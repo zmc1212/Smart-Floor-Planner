@@ -14,7 +14,11 @@ test('customer project consumes only the owner-only aggregate and renders appoin
   assert.match(page, /const formalFloorPlan = project\.formalFloorPlan/);
   assert.match(page, /decoratePublishedDesigns\(project\.publishedDesigns\)/);
   assert.match(wxml, /designer && designer\.displayName/);
-  assert.match(wxml, /appointment && appointment\.measurerName/);
+  assert.match(wxml, /measurerName \|\| '待分配'/);
+  assert.match(wxml, /预约量房/);
+  assert.match(page, /appointment-booking\/appointment-booking\?leadId=.*mode=customer/);
+  assert.match(page, /onShareAppMessage\(\)/);
+  assert.match(page, /appointment-detail\/appointment-detail\?mode=customer&leadId=/);
   assert.match(wxml, /正式量房形成的户型档案/);
   assert.match(wxml, /仅展示设计师主动发布的方案/);
 });
@@ -37,4 +41,16 @@ test('customer project ships only the three reviewed PNG assets extracted from t
     assert.equal(buffer.subarray(1, 4).toString(), 'PNG');
     assert.ok(buffer.length <= 300 * 1024, `${file} exceeds the generated-artwork budget`);
   }
+});
+
+test('customer-facing project surfaces hide enterprise branding', () => {
+  const index = fs.readFileSync(path.join(root, 'packages', 'business', 'customer-projects', 'customer-projects.wxml'), 'utf8');
+  const folio = fs.readFileSync(wxmlPath, 'utf8');
+  const workbench = fs.readFileSync(path.join(root, 'components', 'role-workbench', 'role-workbench.js'), 'utf8');
+  assert.match(index, /免费设计与量房/);
+  assert.doesNotMatch(index, /item\.enterprise\.name/);
+  assert.match(folio, /免费设计与量房服务/);
+  assert.doesNotMatch(folio, /enterpriseName|\{\{enterpriseName\}\}/);
+  assert.match(workbench, /title: '免费设计与量房'/);
+  assert.doesNotMatch(workbench, /project\.enterprise\s*&&\s*project\.enterprise\.name/);
 });

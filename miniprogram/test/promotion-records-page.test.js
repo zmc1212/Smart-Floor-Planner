@@ -13,7 +13,7 @@ const pageWxml = fs.readFileSync(
   'utf8'
 );
 const pageWxss = fs.readFileSync(
-  path.join(miniRoot, 'packages', 'business', 'promotion-records', 'promotion-records.wxss'),
+  path.join(miniRoot, 'packages', 'business', 'promotion-records', 'promotion-records.less'),
   'utf8'
 );
 const appConfig = JSON.parse(fs.readFileSync(path.join(miniRoot, 'app.json'), 'utf8'));

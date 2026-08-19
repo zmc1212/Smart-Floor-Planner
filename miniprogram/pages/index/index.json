@@ -6,7 +6,7 @@
     "lead-modal": "../../components/lead-modal/lead-modal",
     "ble-connector": "../../components/ble-connector/ble-connector",
     "lead-list": "../../components/lead-list/lead-list",
-    "role-workbench": "../../components/role-workbench/role-workbench"
+    "role-workbench": "/components/role-workbench/role-workbench"
   },
   "navigationStyle": "custom",
   "disableScroll": false

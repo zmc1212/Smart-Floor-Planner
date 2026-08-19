@@ -32,8 +32,15 @@ function buildStageRail(status) {
   }));
 }
 
-function getNextAction(status) {
+function getNextAction(status, staffRole) {
   const normalized = normalizeStatus(status);
+  if (staffRole === 'designer') {
+    if (normalized === 'new') return '等待测量员完成正式量房';
+    if (normalized === 'measuring') return '等待正式量房完成后进入方案设计';
+  }
+  if (staffRole === 'enterprise_admin' && ['new', 'measuring'].includes(normalized)) {
+    return '查看量房进度与服务安排';
+  }
   if (normalized === 'new') return '开始正式量房';
   if (normalized === 'measuring') return '完成墙图后进入方案设计';
   if (normalized === 'designing') return '等待方案沟通或客户确认';
@@ -144,6 +151,7 @@ Page({
     activeFloorPlan: null,
     previousFloorPlans: [],
     staffRole: '',
+    canEditMeasurements: false,
     appointment: null,
     canScheduleAppointment: false,
     statusLabel: '新线索',
@@ -196,7 +204,7 @@ Page({
       lead,
       staffRole,
       statusLabel: STATUS_LABELS[lead.status] || lead.status || '新线索',
-      nextAction: getNextAction(lead.status),
+      nextAction: getNextAction(lead.status, staffRole),
       stageRail: buildStageRail(lead.status),
       canMarkConverted: Boolean(conversionActions.canMarkConverted),
       canRevertConversion: Boolean(conversionActions.canRevertConversion),
@@ -204,6 +212,7 @@ Page({
       convertedTime: formatConfirmationDate(lead.convertedAt),
       convertedAmountText: formatContractAmount(lead.contractAmount),
       showInternalConversionDetails: ['enterprise_admin', 'designer', 'measurer', 'salesperson'].includes(staffRole),
+      canEditMeasurements: staffRole === 'measurer',
       conversionSkipsStages: !['designing', 'measured', 'assigned', 'quoting'].includes(lead.status),
       activeFloorPlan: formalPlans[0] || null,
       previousFloorPlans: formalPlans.slice(1),

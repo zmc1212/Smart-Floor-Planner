@@ -1,4 +1,4 @@
-@import "../account-common.wxss";
+@import "../account-common.less";
 
 page { height: 100%; overflow-y: auto; background: #f6f8f5; }
 .workbench-page { display: flex; min-height: 100vh; flex-direction: column; color: #172019; background: linear-gradient(180deg, #fcfdfb 0%, #f3f8f3 100%); }
@@ -28,8 +28,10 @@ page { height: 100%; overflow-y: auto; background: #f6f8f5; }
 .facts-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16rpx; }
 .facts-title { color: #26312a; font-size: 29rpx; font-weight: 700; }
 .facts-note { color: #728078; font-size: 20rpx; line-height: 1.4; text-align: right; }
-.facts-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 16rpx; margin-top: 22rpx; }
-.fact-action { display: flex; min-height: 88rpx; margin: 0; padding: 0 20rpx; align-items: center; justify-content: space-between; border: 1rpx solid #d8eadc; border-radius: 16rpx; color: #1d6f38; background: #f3fbf5; font-size: 26rpx; font-weight: 600; box-sizing: border-box; }
+.facts-actions { display: flex; min-width: 0; gap: 12rpx; margin-top: 22rpx; }
+.fact-action { display: flex; width: 0; min-width: 0 !important; min-height: 88rpx; margin: 0; padding: 0 16rpx; align-items: center; justify-content: space-between; flex: 1 1 0; overflow: hidden; border: 1rpx solid #d8eadc; border-radius: 16rpx; color: #1d6f38; background: #f3fbf5; font-size: 26rpx; font-weight: 600; box-sizing: border-box; }
+.fact-action > text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fact-action > .fact-chevron { flex: 0 0 auto; }
 .fact-action::after { border: 0; }
 .fact-chevron { width: 12rpx; height: 12rpx; border-top: 2rpx solid currentColor; border-right: 2rpx solid currentColor; transform: rotate(45deg); }
 .leave-action { margin: 32rpx auto 0; padding: 14rpx 28rpx; color: #69736d; background: transparent; font-size: 28rpx; line-height: 1.2; }
@@ -47,3 +49,8 @@ page { height: 100%; overflow-y: auto; background: #f6f8f5; }
   .guide-xiaok { right: 0; width: 220rpx; }
   .membership { max-width: 330rpx; font-size: 24rpx; }
 }
+
+/* Keep two-column actions and long benefit copy inside the viewport. */
+.benefit-row > view:last-child { min-width: 0; flex: 1; }
+.benefit-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.benefit-copy { overflow: hidden; text-overflow: ellipsis; }

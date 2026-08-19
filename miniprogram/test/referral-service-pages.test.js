@@ -21,7 +21,7 @@ const referralAssets = [
 test('promotion service screen keeps the public presentation anonymous and scanable', () => {
   const wxml = source('packages/business/promotion-service-code/promotion-service-code.wxml');
   const js = source('packages/business/promotion-service-code/promotion-service-code.js');
-  const wxss = source('packages/business/promotion-service-code/promotion-service-code.wxss');
+  const less = source('packages/business/promotion-service-code/promotion-service-code.less');
 
   assert.match(wxml, /免费上门测量/);
   assert.match(wxml, /免费设计师服务/);
@@ -31,14 +31,14 @@ test('promotion service screen keeps the public presentation anonymous and scana
   assert.match(js, /promotion-code\/image/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
   assert.match(js, /responseType:\s*'arraybuffer'/);
-  assert.match(wxss, /\.qr-stage\s*\{[\s\S]*width:\s*396rpx/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*396rpx/);
   assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);
 });
 
 test('free design service resolves before phone authorization and renders truthful outcomes', () => {
   const wxml = source('packages/business/free-design-service/free-design-service.wxml');
   const js = source('packages/business/free-design-service/free-design-service.js');
-  const wxss = source('packages/business/free-design-service/free-design-service.wxss');
+  const less = source('packages/business/free-design-service/free-design-service.less');
 
   assert.match(wxml, /open-type="getPhoneNumber"/);
   assert.match(wxml, /我已阅读并同意/);
@@ -55,9 +55,9 @@ test('free design service resolves before phone authorization and renders truthf
   assert.match(js, /pageState:\s*designerProfile\s*\?\s*'success'\s*:\s*'pending'/);
   assert.match(js, /wx\.setClipboardData/);
   assert.match(js, /wx\.saveImageToPhotosAlbum/);
-  assert.match(wxss, /@media \(max-width:\s*360px\)/);
-  assert.match(wxss, /\.claim-action\s*\{[^}]*align-self:\s*stretch/);
-  assert.match(wxss, /\.claim-action\s*\{[^}]*min-width:\s*100%/);
+  assert.match(less, /@media \(max-width:\s*360px\)/);
+  assert.match(less, /\.claim-action\s*\{[^}]*align-self:\s*stretch/);
+  assert.match(less, /\.claim-action\s*\{[^}]*min-width:\s*100%/);
   assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);
 });
 
@@ -73,8 +73,8 @@ test('Antigravity referral assets are transparent PNG files within the package l
 
 test('referral service primary copy respects the Mini Program type floor', () => {
   const styles = [
-    source('packages/business/promotion-service-code/promotion-service-code.wxss'),
-    source('packages/business/free-design-service/free-design-service.wxss')
+    source('packages/business/promotion-service-code/promotion-service-code.less'),
+    source('packages/business/free-design-service/free-design-service.less')
   ].join('\n');
   assert.doesNotMatch(styles, /font-size:\s*(?:1[0-9]|[0-9])rpx/);
   assert.doesNotMatch(styles, /transform:\s*scale\(/);

@@ -396,7 +396,20 @@ function joinActiveMeasurementPath(walls, previewWall) {
   }
 }
 
-function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale, previewWall) {
+function collectClosedDimensionClearanceWalls(walls, previewWall, session) {
+  const openWalls = (walls || []).filter((wall) => wall && !wall.lineOnly && !wall.closed);
+  // An in-flight drag keeps session.state === 'wallPreview'. Closed-room lanes
+  // must stay put until the length is committed or held for input.
+  const includePreview = !!(
+    previewWall &&
+    !previewWall.lineOnly &&
+    session &&
+    session.state !== 'wallPreview'
+  );
+  return includePreview ? openWalls.concat([previewWall]) : openWalls;
+}
+
+function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale, previewWall, session) {
   const dimensions = [];
   const accepted = [];
   const activeWalls = walls.filter((wall) => !wall.lineOnly && wall.isActiveMeasurement && !wall.closed);
@@ -434,7 +447,7 @@ function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, view
     spacePlans,
     outerRings,
     viewportScale,
-    activeWalls.concat(previewWall ? [previewWall] : [])
+    collectClosedDimensionClearanceWalls(walls, previewWall, session)
   ));
 
   return dimensions;
@@ -1061,7 +1074,8 @@ function createSurveyRenderScene(input) {
     projectedSpacePlans,
     wallSolidPlans.closed.rings,
     viewport.scale,
-    previewWall
+    previewWall,
+    session
   );
   const wallFaceOverrideBoundaries = projectedSpacePlans
     .filter((entry) => entry.hasWallFaceOverrides && entry.innerBoundaryPoints.length >= 3)
@@ -1995,7 +2009,7 @@ function createViewportInteractionScene(scene, viewport) {
 function createSurveyLensScene(input) {
   const opts = input || {};
   const centerPoint = opts.centerPoint || { xMm: 0, yMm: 0 };
-  const size = opts.size || 180;
+  const size = opts.size || 120;
   const scale = opts.scale || 0.12;
 
   return createSurveyRenderScene({
@@ -2063,7 +2077,7 @@ function drawCursorLensScene(ctx, scene, lensRect, meta) {
   if (!scene || !lensRect) return;
   const left = lensRect.left || 0;
   const top = lensRect.top || 0;
-  const size = lensRect.size || scene.rect.width || 180;
+  const size = lensRect.size || scene.rect.width || 120;
   const panelPadding = 8;
   const panelMetaHeight = 40;
   const panelLeft = left - panelPadding;

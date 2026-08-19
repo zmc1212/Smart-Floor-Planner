@@ -7,16 +7,17 @@
   <view wx:elif="{{error}}" class="state"><text>{{error}}</text><button class="retry" bindtap="load">重试</button></view>
   <view wx:else class="content">
     <view class="project-rail sfp-card">
-      <view class="rail-heading"><view><text class="rail-title">服务进度</text><text wx:if="{{enterpriseName}}" class="rail-enterprise">{{enterpriseName}}</text></view><image src="/packages/business/assets/customer-project-v1/project-delivery-xiao-k.png" mode="aspectFit" class="delivery-k" /></view>
+      <view class="rail-heading"><view><text class="rail-title">服务进度</text><text class="rail-enterprise">免费设计与量房服务</text></view><image src="/packages/business/assets/customer-project-v1/project-delivery-xiao-k.png" mode="aspectFit" class="delivery-k" /></view>
       <view class="stages"><block wx:for="{{stages}}" wx:key="label"><view class="stage {{item.state}}"><view class="stage-dot"></view><text class="stage-label">{{item.label}}</text></view><view wx:if="{{index < stages.length - 1}}" class="stage-line {{item.complete ? 'done' : ''}}"></view></block></view>
     </view>
     <view class="service-card sfp-card">
       <text class="section-title">本次服务</text>
       <view class="service-rows">
         <view class="service-person"><view class="avatar">设</view><view><text class="person-label">专属设计师</text><text class="person-title">{{designer && designer.displayName ? designer.displayName : '待分配'}}</text><text wx:if="{{designer && designer.wechatId}}" class="person-note">微信号：{{designer.wechatId}}</text></view></view>
-        <view class="service-person"><view class="avatar green">量</view><view><text class="person-label">测量伙伴</text><text class="person-title">{{appointment && appointment.measurerName ? appointment.measurerName : '待确认'}}</text><text class="person-note">负责上门正式量房</text></view></view>
+        <view class="service-person"><view class="avatar green">量</view><view><text class="person-label">测量伙伴</text><text class="person-title">{{measurerName || '待分配'}}</text><text class="person-note">负责上门正式量房</text></view></view>
       </view>
       <view wx:if="{{appointment}}" class="appointment-row"><view><text class="appointment-label">预约时间</text><text class="appointment-value">{{range.date}} {{range.time}}</text><text class="appointment-address">{{appointment.address}}</text></view><button class="reschedule sfp-secondary-action" bindtap="reschedule">改期</button></view>
+      <view wx:else class="appointment-pending"><view><text class="appointment-label">上门时间</text><text class="appointment-value">待确认</text><text class="appointment-address">请选择合适的可用时段</text></view><button class="book sfp-primary-action" bindtap="bookAppointment">预约量房</button></view>
     </view>
     <view class="folio-card sfp-card">
       <view class="folio-heading"><view><text class="section-title">我的户型</text><text class="section-subtitle">正式量房形成的户型档案</text></view><text wx:if="{{formalFloorPlan}}" class="complete-tag">已完成</text></view>

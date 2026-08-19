@@ -218,7 +218,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           </view>
         </view>
 
-        <view class="user-summary">
+        <view wx:if="{{!isRoleRestrictedUser}}" class="user-summary">
           <view>
             <view class="section-meta">我的空间档案</view>
             <view wx:if="{{floorPlansLoading}}" class="user-summary-title">正在读取户型</view>
@@ -229,7 +229,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           <button class="summary-action" bindtap="onCreateNew">新建量房</button>
         </view>
 
-        <view class="surface-section floorplan-section">
+        <view wx:if="{{!isRoleRestrictedUser}}" class="surface-section floorplan-section">
           <view class="section-heading-row">
             <view class="section-title">我的户型</view>
             <view class="section-meta">{{floorPlans.length}} 个</view>
@@ -262,7 +262,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           </view>
         </view>
 
-        <view class="user-actions">
+        <view wx:if="{{!isRoleRestrictedUser}}" class="user-actions">
           <view class="user-action tone-green" bindtap="onCreateNew" aria-role="button">
             <image src="/images/mine-icons/home.png" mode="aspectFit" /><text>开始量房</text>
           </view>

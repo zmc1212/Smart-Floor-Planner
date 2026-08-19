@@ -9,7 +9,7 @@ in the module inventory and the current restoration ledger.
 1. Current code, API responses, schemas, permissions, and tests.
 2. The approved route design source in
    `docs/miniprogram-design-restoration-ledger.md`.
-3. Shared values in `miniprogram/design-tokens.json` and `miniprogram/app.wxss`.
+3. Shared values in `miniprogram/design-tokens.json` and `miniprogram/app.less`.
 4. Brand-IP rules in `docs/design/jiakelai-brand-ip-guidelines.md`.
 
 A screenshot never authorizes invented data, functionality, or a second layout
@@ -20,9 +20,13 @@ real state matrix, role visibility, and safe-area assumptions.
 
 - Design requests remain design-only until the user explicitly authorizes
   implementation.
-- Once authorized, implement native WXML/WXSS/JS and packaged assets directly
+- Once authorized, implement native WXML/Less/JS and packaged assets directly
   against the approved source. HTML prototypes, heatmaps, overlays, and
   similarity scores are optional investigation evidence, never approval gates.
+- Reuse the global Less utilities from `styles/utilities.less` for layout
+  primitives such as `flex-row`, `flex-1`, `justify-between`, and `gap-8`.
+  Keep route-specific composition and visual rules in the route's own `.less`
+  file; do not copy utility definitions into pages or components.
 - Verify the route at iPhone 13 Pro `390x844`, including the native WeChat
   capsule and bottom safe area. Check narrow (`<=360px`) and tall devices when
   the layout contains fixed content.

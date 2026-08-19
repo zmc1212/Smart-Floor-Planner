@@ -14,5 +14,5 @@ exports use a magenta chroma-key pass followed by local alpha extraction, so
 the Mini Program hero's green diagonal remains visible behind the scene. They
 are project-owned production derivatives and may be used only inside Smart
 Floor Planner. Each image contains no product text, business values,
-interactive control, or customer data; all of those remain native WXML/WXSS
+interactive control, or customer data; all of those remain native WXML/Less
 content.

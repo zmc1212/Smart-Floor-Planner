@@ -23,10 +23,10 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/ai-workflow/create/ai-design-create': 'staff.design',
   '/packages/ai-workflow/result/ai-design-result': 'staff.design',
   '/packages/ai-workflow/history/ai-design-history': 'staff.design',
-  '/packages/business/lead-detail/lead-detail': 'staff.leads',
-  '/packages/business/lead-form/lead-form': 'staff.leads',
-  '/packages/business/appointment-booking/appointment-booking': 'staff.appointments',
-  '/packages/business/appointment-detail/appointment-detail': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
+  '/packages/business/lead-detail/lead-detail': ['staff.leads', 'staff.tasks', 'enterprise.customers'],
+  '/packages/business/lead-form/lead-form': ['staff.leads', 'enterprise.customers'],
+  '/packages/business/appointment-booking/appointment-booking': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
+  '/packages/business/appointment-detail/appointment-detail': ['customer.projects', 'staff.appointments', 'staff.schedule', 'enterprise.appointments'],
   '/packages/business/appointment-reschedule/appointment-reschedule': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
   '/packages/surveying/editor/surveying-editor': 'staff.surveying',
   '/packages/business/measurer-calendar/measurer-calendar': 'staff.schedule',
@@ -45,13 +45,16 @@ const ROUTE_CAPABILITIES = Object.freeze({
 
 function roleForIdentity(value) {
   if (!value) return null;
+  if ((value.mode === 'staff' || value.role === 'staff')
+    && ROLE_CAPABILITIES[value.staffRole]
+    && value.staffRole !== 'staff') {
+    return value.staffRole;
+  }
   if (value.role && ROLE_CAPABILITIES[value.role]) return value.role;
   if (value.mode === 'referrer') return 'referrer';
   if (value.mode === 'customer') return 'customer';
   if (value.mode === 'staff') {
-    return ROLE_CAPABILITIES[value.staffRole] && value.staffRole !== 'staff'
-      ? value.staffRole
-      : null;
+    return null;
   }
   return null;
 }

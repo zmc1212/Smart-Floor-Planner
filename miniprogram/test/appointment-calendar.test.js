@@ -62,6 +62,6 @@ test('phase-5 custom-navigation pages reserve the native capsule lane and keep t
   assert.match(rescheduleWxml, /查看后续日期/);
   assert.match(reschedule, /actionWidth: Math\.max\(0, Number\(windowInfo\.windowWidth \|\| 390\) - 24\)/);
   assert.match(rescheduleWxml, /class="confirm sfp-primary-action" style="width: \{\{actionWidth\}\}px;"/);
-  assert.match(source('packages/business/appointment-reschedule/appointment-reschedule.wxss'), /\.confirm-bar/);
-  assert.match(source('packages/business/appointment-reschedule/appointment-reschedule.wxss'), /\.confirm\{display:block;/);
+  assert.match(source('packages/business/appointment-reschedule/appointment-reschedule.less'), /\.confirm-bar/);
+  assert.match(source('packages/business/appointment-reschedule/appointment-reschedule.less'), /\.confirm\{display:block;/);
 });

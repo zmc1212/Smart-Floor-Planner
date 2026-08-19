@@ -127,7 +127,7 @@ test('referrer workbench exchanges the signed membership context before changing
 
 test('referrer workbench ships the Antigravity standalone asset and preserves the selected design contract', () => {
   const wxml = source('packages/business/referrer-workbench/referrer-workbench.wxml');
-  const wxss = source('packages/business/referrer-workbench/referrer-workbench.wxss');
+  const less = source('packages/business/referrer-workbench/referrer-workbench.less');
   const asset = fs.readFileSync(path.join(miniRoot, 'packages/business/assets/referrer-workbench-v1/service-code-guide.png'));
 
   assert.match(wxml, /推广服务/);
@@ -139,8 +139,10 @@ test('referrer workbench ships the Antigravity standalone asset and preserves th
   assert.match(wxml, /退出当前账号/);
   assert.match(wxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(wxml, /bindtap="onLogout"/);
-  assert.match(wxss, /account-common\.wxss/);
-  assert.match(wxss, /overflow-y:\s*auto/);
+  assert.match(less, /account-common\.less/);
+  assert.match(less, /overflow-y:\s*auto/);
+  assert.match(less, /\.facts-actions \{ display: flex; min-width: 0; gap: 12rpx;/);
+  assert.match(less, /\.fact-action \{ display: flex; width: 0; min-width: 0 !important;/);
   assert.match(wxml, /referrer-workbench-v1\/service-code-guide\.png/);
   assert.match(wxml, /navigationRight/);
   assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);

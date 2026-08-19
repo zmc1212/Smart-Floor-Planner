@@ -31,6 +31,48 @@
     </view>
     <button class="appointment-entry-action appointment-entry-action-secondary" bindtap="onOpenAppointment">查看预约</button>
   </view>
+  <view class="whole-home-card">
+    <view class="whole-home-tab">正式量房</view>
+    <view class="whole-home-copy">
+      <view class="whole-home-next-action">
+        <text class="whole-home-next-label">下一步</text>
+        <text class="whole-home-next-copy">{{nextAction}}</text>
+      </view>
+      <view class="whole-home-subtitle">{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始建立客户户型'}}</view>
+    </view>
+    <view wx:if="{{canEditMeasurements}}" class="whole-home-actions">
+      <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}} <text>›</text></view>
+      <view class="whole-home-secondary-actions" wx:if="{{activeFloorPlan}}">
+        <view class="whole-home-action secondary" bindtap="onStartNewMeasure">新增量房</view>
+        <view class="whole-home-action danger" bindtap="onDeleteMeasure">{{deleting ? '删除中' : '删除'}}</view>
+      </view>
+    </view>
+  </view>
+  <view class="measurement-history" wx:if="{{previousFloorPlans.length > 0}}">
+    <view class="measurement-history-heading">
+      <text>历史量房记录</text>
+      <text>{{previousFloorPlans.length}} 份</text>
+    </view>
+    <view
+      class="measurement-record"
+      wx:for="{{previousFloorPlans}}"
+      wx:key="_id"
+      data-id="{{item._id}}"
+      wx:if="{{canEditMeasurements}}"
+      bindtap="onContinueMeasure"
+      aria-role="button"
+      aria-label="继续量房 {{item.historyName}}"
+    >
+      <view class="measurement-record-copy">
+        <text class="measurement-record-name">{{item.historyName}}</text>
+        <text class="measurement-record-meta">{{item.displayMeta}}</text>
+      </view>
+      <view wx:if="{{canEditMeasurements}}" class="measurement-record-actions">
+        <view class="measurement-record-continue" data-id="{{item._id}}" catchtap="onContinueMeasure">继续</view>
+        <view class="measurement-record-delete" data-id="{{item._id}}" catchtap="onDeleteMeasure">删除</view>
+      </view>
+    </view>
+  </view>
   <view class="conversion-card" wx:if="{{lead && (canMarkConverted || lead.status === 'converted')}}">
     <view class="conversion-card-heading">
       <view class="conversion-card-copy">
@@ -71,47 +113,6 @@
         bindtap="onOpenRevertConversionSheet"
         disabled="{{conversionSubmitting}}"
       >撤销签约标记</button>
-    </view>
-  </view>
-  <view class="whole-home-card">
-    <view class="whole-home-tab">正式量房</view>
-    <view class="whole-home-copy">
-      <view class="whole-home-next-action">
-        <text class="whole-home-next-label">下一步</text>
-        <text class="whole-home-next-copy">{{nextAction}}</text>
-      </view>
-      <view class="whole-home-subtitle">{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始建立客户户型'}}</view>
-    </view>
-    <view class="whole-home-actions">
-      <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}} <text>›</text></view>
-      <view class="whole-home-secondary-actions" wx:if="{{activeFloorPlan}}">
-        <view class="whole-home-action secondary" bindtap="onStartNewMeasure">新增量房</view>
-        <view class="whole-home-action danger" bindtap="onDeleteMeasure">{{deleting ? '删除中' : '删除'}}</view>
-      </view>
-    </view>
-  </view>
-  <view class="measurement-history" wx:if="{{previousFloorPlans.length > 0}}">
-    <view class="measurement-history-heading">
-      <text>历史量房记录</text>
-      <text>{{previousFloorPlans.length}} 份</text>
-    </view>
-    <view
-      class="measurement-record"
-      wx:for="{{previousFloorPlans}}"
-      wx:key="_id"
-      data-id="{{item._id}}"
-      bindtap="onContinueMeasure"
-      aria-role="button"
-      aria-label="继续量房 {{item.historyName}}"
-    >
-      <view class="measurement-record-copy">
-        <text class="measurement-record-name">{{item.historyName}}</text>
-        <text class="measurement-record-meta">{{item.displayMeta}}</text>
-      </view>
-      <view class="measurement-record-actions">
-        <view class="measurement-record-continue" data-id="{{item._id}}" catchtap="onContinueMeasure">继续</view>
-        <view class="measurement-record-delete" data-id="{{item._id}}" catchtap="onDeleteMeasure">删除</view>
-      </view>
     </view>
   </view>
 </view>

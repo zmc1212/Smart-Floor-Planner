@@ -42,7 +42,7 @@ The board-level note about automatic lead insertion and assignment is an impleme
 4. Successful authorization atomically links or creates the customer, locks first valid attribution, creates the lead, and assigns a designer and provisional measurer.
 5. The success page shows only personal designer WeChat data, not the employer. Names, WeChat IDs, and QR images in the board are placeholders.
 6. An authenticated customer project or appointment card may show the service enterprise, designer, measurer, address, and appointment after lead creation. The anonymous boundary applies only to the public promotion and claim flow.
-7. Production must use native WXML/WXSS, semantic controls, and project icon assets. Never slice or paint the design board into product UI.
+7. Production must use native WXML/Less, semantic controls, and project icon assets. Never slice or paint the design board into product UI.
 8. Add a route to the English and Chinese restoration ledgers only after that runtime route exists; each route retains one current design source row.
 
 ### 1.4 Generated asset and production-path mapping

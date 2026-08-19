@@ -14,7 +14,7 @@ const customTabWxml = fs.readFileSync(
   'utf8'
 );
 const customTabWxss = fs.readFileSync(
-  path.join(miniRoot, 'custom-tab-bar', 'index.wxss'),
+  path.join(miniRoot, 'custom-tab-bar', 'index.less'),
   'utf8'
 );
 const aiDesignWxml = fs.readFileSync(
@@ -22,7 +22,7 @@ const aiDesignWxml = fs.readFileSync(
   'utf8'
 );
 const aiDesignWxss = fs.readFileSync(
-  path.join(miniRoot, 'pages', 'ai-design', 'ai-design.wxss'),
+  path.join(miniRoot, 'pages', 'ai-design', 'ai-design.less'),
   'utf8'
 );
 const aiDesignPageSource = fs.readFileSync(

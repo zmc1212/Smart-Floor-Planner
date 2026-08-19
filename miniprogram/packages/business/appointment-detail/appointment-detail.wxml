@@ -30,7 +30,7 @@ FORM: Service dispatch slip; approved appointment artwork is reused as a standal
       <view class="detail-row"><text>预约编号</text><text>#{{appointment.id}}</text></view>
     </view>
 
-    <view class="role-note" wx:if="{{appointment.status === 'confirmed'}}">设计师负责协调时间与取消，测量员完成上门后确认完成；企业负责人可处理全部动作。</view>
+    <view class="role-note" wx:if="{{appointment.status === 'confirmed'}}">{{customerMode ? '如需调整时间，请在截止时间前选择可用时段。' : '设计师负责协调时间与取消，测量员完成上门后确认完成；企业负责人可处理全部动作。'}}</view>
     <view class="finished-note" wx:else>该预约已结束，当前记录仅供查看。</view>
 
     <view class="actions" wx:if="{{canReschedule || canCancel || canComplete}}">

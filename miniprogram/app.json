@@ -95,7 +95,9 @@
       }
     ]
   },
-  "usingComponents": {},
+  "usingComponents": {
+    "role-workbench": "/components/role-workbench/role-workbench"
+  },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
   "permission": {

@@ -4,8 +4,8 @@ const path = require('node:path');
 const test = require('node:test');
 
 const tabBarPath = path.resolve(__dirname, '..', 'custom-tab-bar', 'index.js');
-const tabBarStylePath = path.resolve(__dirname, '..', 'custom-tab-bar', 'index.wxss');
-const appStylePath = path.resolve(__dirname, '..', 'app.wxss');
+const tabBarStylePath = path.resolve(__dirname, '..', 'custom-tab-bar', 'index.less');
+const appStylePath = path.resolve(__dirname, '..', 'app.less');
 
 function loadTabBarComponent(globalData) {
   const originals = {
@@ -105,6 +105,25 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
     globalData.bootstrap = { current: { role: 'enterprise_admin', capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'account'] } };
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['operations', 'customers', 'appointments', 'mine']);
+  } finally {
+    restore();
+  }
+});
+
+test('custom TabBar uses the stored signed role before bootstrap refresh completes', () => {
+  const globalData = {
+    userInfo: { role: 'staff', mode: 'staff', staffRole: 'designer' },
+    bootstrap: null
+  };
+  const { definition, restore } = loadTabBarComponent(globalData);
+
+  try {
+    const component = {
+      data: JSON.parse(JSON.stringify(definition.data)),
+      setData(update) { this.data = { ...this.data, ...update }; }
+    };
+    definition.methods.syncSelected.call(component);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'design', 'mine']);
   } finally {
     restore();
   }

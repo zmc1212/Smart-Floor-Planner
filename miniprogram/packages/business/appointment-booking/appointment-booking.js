@@ -60,7 +60,7 @@ Page({
     navigationHeight: 32,
     navigationRight: 96,
     actionWidth: 362,
-    leadId: '',
+    leadId: '', customerMode: false,
     customer: null,
     address: '',
     dates: [],
@@ -77,7 +77,7 @@ Page({
     const dates = nextDates();
     this.setData({
       ...navigationMetrics(),
-      leadId: String(options.leadId || options.id || ''),
+      leadId: String(options.leadId || options.id || ''), customerMode: options.mode === 'customer',
       dates,
       selectedDate: dates[0] && dates[0].key || '',
     });
@@ -97,7 +97,11 @@ Page({
       this.setData({ customer, address: customer.address });
       await this.loadSlots();
     } catch (error) {
-      this.setData({ error: error.message || error.error || '客户线索暂时无法读取' });
+      const rawMessage = error && (error.message || error.error) || '';
+      const message = /lead id must be a positive PostgreSQL bigint/i.test(rawMessage)
+        ? '客户线索暂时无法读取，请返回后重新进入。'
+        : rawMessage || '客户线索暂时无法读取';
+      this.setData({ error: message });
     } finally {
       this.setData({ loading: false });
     }

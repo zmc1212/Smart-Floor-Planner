@@ -3,6 +3,7 @@ const { prioritizeProcessingTasks } = require('../../utils/aiDesignTaskOrdering.
 const { consumeAIDesignContext, normalizeAIDesignContext } = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../utils/aiDesignAccess.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
+const { roleForIdentity } = require('../../utils/identity-navigation.js');
 const {
   decorateSourcePlan,
   decorateRecentResult,
@@ -151,8 +152,10 @@ Page({
   },
 
   getRoleWorkbenchRole() {
-    const bootstrap = getApp().globalData.bootstrap;
-    const role = bootstrap && bootstrap.current && bootstrap.current.role;
+    const globalData = getApp().globalData;
+    const bootstrap = globalData.bootstrap;
+    const role = (bootstrap && bootstrap.current && bootstrap.current.role)
+      || roleForIdentity(globalData.userInfo);
     return ['measurer', 'enterprise_admin'].includes(role) ? role : '';
   },
 
