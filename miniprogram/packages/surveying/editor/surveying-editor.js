@@ -290,6 +290,28 @@ function canStartWallDrag(state) {
     state === 'closing' || state === 'mergeClosing';
 }
 
+function shouldAutoConfirmSharedBoundaryClose(floor) {
+  const session = floor && floor.session;
+  if (!session || session.state !== 'closing' || session.closeCandidateType !== 'shared-wall') {
+    return false;
+  }
+  const lastWall = (floor.walls || [])[floor.walls.length - 1];
+  if (!lastWall) return false;
+  const endNode = surveyGraph.getNode(floor, lastWall.endNodeId);
+  const target = session.closeCandidatePoint || surveyGraph.getNode(floor, session.closeCandidateNodeId);
+  return !!(
+    endNode &&
+    target &&
+    surveyGraph.distanceMm(endNode, target) <= surveyGraph.CLOSE_TOLERANCE_MM
+  );
+}
+
+function maybeAutoConfirmSharedBoundaryClose(draft) {
+  const floor = surveyGraph.getActiveFloor(draft);
+  if (!shouldAutoConfirmSharedBoundaryClose(floor)) return draft;
+  return surveyGraph.confirmClosure(draft);
+}
+
 function isRestorableSurveyDraft(draft) {
   if (!draft || draft.kind !== 'survey-wall-graph' || draft.source !== 'surveying-editor') return false;
   if (!Array.isArray(draft.floors) || !draft.floors.length) return false;
@@ -515,6 +537,7 @@ Page({
     });
     this.syncFromDraft();
     if (this.serverDraftId) this.loadFormalFloorPlan(this.serverDraftId);
+    else if (leadId && !startNewSurvey) this.resolveLeadFloorPlan(leadId);
   },
 
   onReady() {
@@ -618,6 +641,28 @@ Page({
       return wx.getStorageSync(`${FORMAL_SERVER_DRAFT_ID_KEY}_${suffix}`) || '';
     } catch (err) {
       return '';
+    }
+  },
+
+  readLeadFloorPlanId(lead) {
+    if (!lead || typeof lead !== 'object') return '';
+    const primary = lead.primaryFloorPlanId;
+    if (primary && typeof primary === 'object' && primary._id) return String(primary._id);
+    if (primary) return String(primary);
+    const plans = Array.isArray(lead.floorPlanIds) ? lead.floorPlanIds : [];
+    const first = plans.find((plan) => plan && plan._id);
+    return first ? String(first._id) : '';
+  },
+
+  async resolveLeadFloorPlan(leadId) {
+    if (!leadId || this.isNewSurveySession) return;
+    try {
+      const res = await api.request(`/leads/${leadId}`, 'GET');
+      const floorPlanId = this.readLeadFloorPlanId(res && res.data);
+      if (!floorPlanId) return;
+      await this.loadFormalFloorPlan(floorPlanId);
+    } catch (err) {
+      wx.showToast({ title: (err && err.error) || err.message || '户型加载失败', icon: 'none' });
     }
   },
 
@@ -1029,9 +1074,15 @@ Page({
 
     const valueMm = Math.round(distanceInMeters * 1000);
     try {
-      const nextDraft = surveyGraph.commitPreviewLength(this.draft, valueMm, 'ble');
+      const nextDraft = maybeAutoConfirmSharedBoundaryClose(
+        surveyGraph.commitPreviewLength(this.draft, valueMm, 'ble')
+      );
+      const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
       this.applyDraft(nextDraft, { recordHistory: true });
-      wx.showToast({ title: '已更新当前墙体', icon: 'success' });
+      wx.showToast({
+        title: nextSession.state === 'spaceClosed' ? '已吸附闭合点并闭合' : '已更新当前墙体',
+        icon: 'success'
+      });
     } catch (err) {
       wx.showToast({ title: err.message || '更新墙体失败', icon: 'none' });
     }
@@ -3097,7 +3148,7 @@ Page({
       ? session.activeSpaceStartWallIndex
       : 0;
     const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
-    const minimumActiveWallCount = surveyGraph.getMinimumClosureSuggestionWallCount(floor, session);
+    const minimumActiveWallCount = surveyGraph.getMinimumActiveCloseWallCount(floor, session);
     if (activeWallCount + (session.previewPoint ? 1 : 0) < minimumActiveWallCount) {
       return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
     }
@@ -4697,15 +4748,19 @@ Page({
           return;
         }
         try {
-          const nextDraft = surveyGraph.commitPreviewLength(this.draft, session.previewLengthMm, 'preview');
+          const nextDraft = maybeAutoConfirmSharedBoundaryClose(
+            surveyGraph.commitPreviewLength(this.draft, session.previewLengthMm, 'preview')
+          );
           const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
           this.applyDraft(nextDraft, {
             recordHistory: true,
             historyDraft
           });
           wx.showToast({
-            title: (nextSession.state === 'closing' || nextSession.state === 'mergeClosing') ? '可闭合，点击“合”确认' : '墙体已确认',
-            icon: 'none'
+            title: nextSession.state === 'spaceClosed'
+              ? '已吸附闭合点并闭合'
+              : ((nextSession.state === 'closing' || nextSession.state === 'mergeClosing') ? '可闭合，点击“合”确认' : '墙体已确认'),
+            icon: nextSession.state === 'spaceClosed' ? 'success' : 'none'
           });
         } catch (err) {
           wx.showToast({ title: err.message || '成墙失败，请重试', icon: 'none' });
@@ -5367,7 +5422,9 @@ Page({
       }
 
       if (session.state === 'awaitingLength' || session.state === 'wallPreview') {
-        const nextDraft = surveyGraph.commitPreviewLength(this.draft, value, 'manual');
+        const nextDraft = maybeAutoConfirmSharedBoundaryClose(
+          surveyGraph.commitPreviewLength(this.draft, value, 'manual')
+        );
         const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
         this.applyDraft(nextDraft, {
           recordHistory: true,
@@ -5376,8 +5433,10 @@ Page({
         });
         this.angleRemeasureHistoryDraft = null;
         wx.showToast({
-          title: (nextSession.state === 'closing' || nextSession.state === 'mergeClosing') ? '可闭合，点击“合”确认' : '墙体已确认',
-          icon: 'none'
+          title: nextSession.state === 'spaceClosed'
+            ? '已吸附闭合点并闭合'
+            : ((nextSession.state === 'closing' || nextSession.state === 'mergeClosing') ? '可闭合，点击“合”确认' : '墙体已确认'),
+          icon: nextSession.state === 'spaceClosed' ? 'success' : 'none'
         });
         return;
       }

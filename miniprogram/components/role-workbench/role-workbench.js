@@ -68,7 +68,9 @@ Component({
           ...item,
           metaLabel: item.metaLabel || (item.timeRange ? rangeLabel(item.timeRange) : statusLabel(item.status)),
           actionLabel: item.actionLabel
-            || (item.action === 'survey' || item.canSurveyNow
+            || (item.canContinueSurvey
+              ? '继续量房'
+              : item.action === 'survey' || item.canSurveyNow
               ? '立即量房'
               : focus === 'survey'
                 ? '进入量房'
@@ -180,15 +182,12 @@ Component({
     openItem(event) {
       const item = event.currentTarget.dataset.item;
       if (!item) return;
-      if (this.properties.focus === 'survey' || item.action === 'survey' || item.canSurveyNow) {
-        if (!item.leadId) return;
-        openSurveyingEditor({ leadId: item.leadId, floorPlanId: item.floorPlanId || '' });
+      if (item.action === 'appointment' && item.appointmentId && item.leadId) {
+        this.openAppointment({ currentTarget: { dataset: { item } } });
         return;
       }
-      if (item.action === 'appointment' && item.appointmentId && item.leadId) {
-        wx.navigateTo({
-          url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}`,
-        });
+      if (this.properties.focus === 'survey' || item.action === 'survey' || item.canSurveyNow || item.canContinueSurvey) {
+        this.openSurvey({ currentTarget: { dataset: { item } } });
         return;
       }
       if (item.action === 'staffing') return;
@@ -245,6 +244,34 @@ Component({
       if (!item || !item.leadId) return;
       wx.navigateTo({
         url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}${this.properties.role === 'customer' ? '&mode=customer' : ''}`,
+      });
+    },
+
+    openAppointment(event) {
+      const item = event.currentTarget.dataset.item;
+      if (!item || !item.leadId || !item.appointmentId) return;
+      wx.navigateTo({
+        url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}`,
+      });
+    },
+
+    openSurvey(event) {
+      const item = event.currentTarget.dataset.item;
+      if (!item || !item.leadId) return;
+      openSurveyingEditor({
+        leadId: item.leadId,
+        floorPlanId: item.floorPlanId || '',
+        communityName: item.communityName || '',
+      });
+    },
+
+    openNewSurvey(event) {
+      const item = event.currentTarget.dataset.item;
+      if (!item || !item.leadId) return;
+      openSurveyingEditor({
+        leadId: item.leadId,
+        startNewSurvey: true,
+        communityName: item.communityName || '',
       });
     },
 

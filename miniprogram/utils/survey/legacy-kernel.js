@@ -586,6 +586,69 @@ function normalForMeasurementSide(start, end, side) {
   return side === 'left' ? leftNormal : rightNormal;
 }
 
+function perpendicularDistanceToLineMm(point, start, end) {
+  if (!point || !start || !end) return Infinity;
+  const dx = end.xMm - start.xMm;
+  const dy = end.yMm - start.yMm;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (!length) return distanceMm(point, start);
+  return Math.abs((point.xMm - start.xMm) * dy - (point.yMm - start.yMm) * dx) / length;
+}
+
+function resolveCollinearClosedOuterBodySide(floor, start, end, sourceSharedWallId) {
+  if (!floor || !start || !end) return '';
+  const midpoint = {
+    xMm: (Number(start.xMm) + Number(end.xMm)) / 2,
+    yMm: (Number(start.yMm) + Number(end.yMm)) / 2
+  };
+  const onFaceToleranceMm = 2;
+  const sourceSpace = sourceSharedWallId ? findClosedSpaceForWall(floor, sourceSharedWallId) : null;
+  let bestSide = '';
+  let bestOuterDist = onFaceToleranceMm;
+
+  (floor.walls || []).forEach((wall) => {
+    const wallSpace = findClosedSpaceForWall(floor, wall.id);
+    if (!wallSpace) return;
+    // Sitting on the source room's own outer is an intentional offset of that
+    // room, not a flush continuation of a neighbour facade.
+    if (sourceSpace && wallSpace.id === sourceSpace.id) return;
+    const segment = buildBaseWallSegment(floor, wall);
+    if (!segment) return;
+    const topologyDist = Math.max(
+      perpendicularDistanceToLineMm(start, segment.start, segment.end),
+      perpendicularDistanceToLineMm(end, segment.start, segment.end)
+    );
+    const outerDist = Math.max(
+      perpendicularDistanceToLineMm(start, segment.outerStart, segment.outerEnd),
+      perpendicularDistanceToLineMm(end, segment.outerStart, segment.outerEnd)
+    );
+    const thicknessMm = Number(segment.thicknessMm) || DEFAULT_THICKNESS_MM;
+    if (
+      outerDist > bestOuterDist ||
+      topologyDist < thicknessMm * 0.5 ||
+      outerDist >= topologyDist - 1
+    ) {
+      return;
+    }
+
+    const towardCenter = {
+      x: (segment.start.xMm + segment.end.xMm) / 2 - midpoint.xMm,
+      y: (segment.start.yMm + segment.end.yMm) / 2 - midpoint.yMm
+    };
+    const leftNormal = normalForMeasurementSide(start, end, 'left');
+    const rightNormal = normalForMeasurementSide(start, end, 'right');
+    if (!leftNormal || !rightNormal) return;
+    const leftScore = leftNormal.x * towardCenter.x + leftNormal.y * towardCenter.y;
+    const rightScore = rightNormal.x * towardCenter.x + rightNormal.y * towardCenter.y;
+    if (Math.max(Math.abs(leftScore), Math.abs(rightScore)) < 0.25) return;
+
+    bestOuterDist = outerDist;
+    bestSide = leftScore >= rightScore ? 'left' : 'right';
+  });
+
+  return bestSide;
+}
+
 function resolveStableAxisMeasurementSide(start, end) {
   const leftNormal = normalForMeasurementSide(start, end, 'left');
   const rightNormal = normalForMeasurementSide(start, end, 'right');
@@ -1104,6 +1167,26 @@ function getMinimumClosureSuggestionWallCount(floor, session) {
   return 3;
 }
 
+function getMinimumDirectBoundaryCloseWallCount(floor, session) {
+  if (!session || !session.activeSpaceSharedWallId) return 2;
+  if (!isClosedBoundaryCorner(floor, session)) return 1;
+  return 2;
+}
+
+function getMinimumActiveCloseWallCount(floor, session) {
+  const hasSharedBoundary = !!(
+    session &&
+    (session.activeSpaceSharedWallId || session.closeCandidateSharedWallId)
+  );
+  if (session && session.closeCandidateType === 'merge') {
+    return getMinimumClosureSuggestionWallCount(floor, session);
+  }
+  if (hasSharedBoundary) {
+    return getMinimumDirectBoundaryCloseWallCount(floor, session);
+  }
+  return 3;
+}
+
 function findMergeClosurePlan(floor, session, endPoint) {
   if (!floor || !session || !endPoint) return null;
 
@@ -1119,11 +1202,12 @@ function findMergeClosurePlan(floor, session, endPoint) {
   // A reset cursor can begin a new wall chain from an existing boundary. In
   // that case, one measured wall plus a new closing edge can form a room by
   // following the existing boundary back to the snapped start point.
-  // Closed-corner continuations may use the opposite corner as a snap
-  // reference on their second wall, but that reference must not become a
-  // closure suggestion until a third new wall exists.
+  // Closed-corner continuations may use the opposite corner as an axis snap
+  // on their second wall. That alignment must not become an inferred extra-wall
+  // merge. If the second wall itself lands on an existing boundary that already
+  // completes a face with the start edge, treat it as a direct shared-wall close.
   const minimumSharedWallCount = isClosedBoundaryCorner(floor, session) && session.mode === 'straight'
-    ? 2
+    ? getMinimumDirectBoundaryCloseWallCount(floor, session)
     : getMinimumClosureSuggestionWallCount(floor, session);
   if (
     session.activeSpaceSharedWallId &&
@@ -3581,8 +3665,9 @@ function startPreview(draft, rawPoint) {
     rectangleSnap.guide || vertexAxisSnap.guide || directionSnap.guide;
 
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
-  const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
-  if (activeStartNode && activeWallCount + 1 >= minimumClosureWallCount) {
+  const directCloseWallCount = getMinimumDirectBoundaryCloseWallCount(floor, session);
+  const inferredMergeWallCount = getMinimumClosureSuggestionWallCount(floor, session);
+  if (activeStartNode && activeWallCount + 1 >= directCloseWallCount) {
     // A final drag can land on the visible outer face of a perpendicular
     // closed wall. That is not the same topology point as the wall centre:
     // forcing it onto the centre line turns the visible vertical orange edge
@@ -3673,10 +3758,13 @@ function startPreview(draft, rawPoint) {
         previewPoint,
         sharedProjection.wall.id
       );
-    } else if (distanceMm(previewPoint, activeStartNode) <= CLOSE_TOLERANCE_MM) {
+    } else if (
+      activeWallCount + 1 >= inferredMergeWallCount &&
+      distanceMm(previewPoint, activeStartNode) <= CLOSE_TOLERANCE_MM
+    ) {
       session.closeCandidateNodeId = activeStartNode.id;
       session.closeCandidateType = 'start';
-    } else {
+    } else if (activeWallCount + 1 >= inferredMergeWallCount) {
       const mergeCandidate = findMergeClosureCandidate(floor, session, previewPoint);
       if (mergeCandidate) {
         session.closeCandidateNodeId = mergeCandidate.id;
@@ -3898,8 +3986,8 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   endPoint = preservesOuterTWorkingLength ? measuredEndPoint : confirmedVertexAxisSnap.point;
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCountBeforeCommit = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
-  const canCloseWithSharedBoundary = activeWallCountBeforeCommit + 1 >= minimumClosureWallCount;
+  const canCloseWithSharedBoundary = activeWallCountBeforeCommit + 1 >=
+    getMinimumDirectBoundaryCloseWallCount(floor, session);
   const outerFaceProjection = canCloseWithSharedBoundary
     ? findOuterFaceClosureProjection(
       floor,
@@ -4274,10 +4362,7 @@ function confirmClosure(draft) {
   const startWallIndex = session.activeSpaceStartWallIndex || 0;
   const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
   const closeCandidateSharedWallId = session.closeCandidateSharedWallId;
-  const hasSharedBoundary = !!(session.activeSpaceSharedWallId || closeCandidateSharedWallId);
-  const minimumActiveWallCount = session.activeSpaceSharedWallId
-    ? getMinimumClosureSuggestionWallCount(floor, session)
-    : (hasSharedBoundary ? 2 : 3);
+  const minimumActiveWallCount = getMinimumActiveCloseWallCount(floor, session);
 
   if (session.state === 'closing' && session.closeCandidateType === 'partition') {
     const partitionWall = getLastWall(floor);
@@ -4344,18 +4429,33 @@ function confirmClosure(draft) {
   mergeCollinearDegree2Walls(floor);
 
   const newWallIds = floor.walls.slice(startWallIndex).map((wall) => wall.id);
-  if (session.closeCandidateType === 'shared-wall') {
-    // The orange closing line is the live body reference. It can terminate on
-    // the source room's inner face even when the new chain was measured toward
-    // the exterior. Lock the still-open chain's render side before adding its
-    // room: afterwards centroid inference would put this body on the opposite
-    // side of that already-visible line (one wall thickness away).
-    floor.walls.slice(startWallIndex).forEach((wall) => {
-      if (!wall.bodyNormalSide && (wall.measurementSide === 'left' || wall.measurementSide === 'right')) {
-        wall.bodyNormalSide = wall.measurementSide;
-      }
-    });
-  }
+  // The orange closing line is the live body reference. It can terminate on
+  // the source room's inner face even when the new chain was measured toward
+  // the exterior. A wall aligned to a neighbour's visible outer must keep that
+  // outer as the working face; locking to measurementSide here would extrude
+  // another thickness. Remaining empty sides still lock to the confirmed
+  // measurement side before centroid inference can flip them.
+  floor.walls.slice(startWallIndex).forEach((wall) => {
+    const wallStart = getNode(floor, wall.startNodeId);
+    const wallEnd = getNode(floor, wall.endNodeId);
+    const outerBodySide = resolveCollinearClosedOuterBodySide(
+      floor,
+      wallStart,
+      wallEnd,
+      session.activeSpaceSharedWallId
+    );
+    if (outerBodySide) {
+      wall.bodyNormalSide = outerBodySide;
+      return;
+    }
+    if (
+      session.closeCandidateType === 'shared-wall' &&
+      !wall.bodyNormalSide &&
+      (wall.measurementSide === 'left' || wall.measurementSide === 'right')
+    ) {
+      wall.bodyNormalSide = wall.measurementSide;
+    }
+  });
   const excludedWallIds = {};
   newWallIds.forEach((wallId) => { excludedWallIds[wallId] = true; });
 
@@ -5575,6 +5675,8 @@ module.exports = {
   buildSpaceDimensionPlan,
   getClosurePath,
   getMinimumClosureSuggestionWallCount,
+  getMinimumDirectBoundaryCloseWallCount,
+  getMinimumActiveCloseWallCount,
   calculateSpaceAreaMm2,
   setMode,
   placeCursor,

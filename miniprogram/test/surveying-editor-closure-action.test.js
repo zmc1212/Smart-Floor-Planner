@@ -19,7 +19,7 @@ const editorWxss = fs.readFileSync(
 test('the close action follows the graph minimum-wall rule for standalone and shared starts', () => {
   assert.match(
     editorScript,
-    /const minimumActiveWallCount = surveyGraph\.getMinimumClosureSuggestionWallCount\(floor, session\)/
+    /const minimumActiveWallCount = surveyGraph\.getMinimumActiveCloseWallCount\(floor, session\)/
   );
   assert.match(editorScript, /const actionVisible = session\.state === 'closing' \|\| session\.state === 'mergeClosing'/);
   assert.match(editorScript, /left:\$\{roundPx\(actionX - actionRadius\)\}px; top:\$\{roundPx\(actionY - actionRadius\)\}px;/);
@@ -157,5 +157,9 @@ test('releasing a straight-wall drag on any valid closure target closes immediat
   assert.match(
     editorScript,
     /surveyGraph\.isDirectClosureHit\(floor, session, releasePointMm\)[\s\S]*?surveyGraph\.confirmClosure\(this\.draft\)[\s\S]*?已吸附闭合点并闭合/
+  );
+  assert.match(
+    editorScript,
+    /maybeAutoConfirmSharedBoundaryClose\(\s*surveyGraph\.commitPreviewLength\(this\.draft, session\.previewLengthMm, 'preview'\)/
   );
 });

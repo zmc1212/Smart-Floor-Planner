@@ -109,6 +109,11 @@ function request(url, method = 'GET', data = {}, options = {}) {
   });
 }
 
+// Some WeChat DevTools builds retain the module's callable export shape during
+// hot reload. Keep the canonical method available on that shape as well, so
+// existing `api.request(...)` consumers remain valid.
+request.request = request;
+
 function downloadFile(url, options = {}) {
   const app = getApp();
   const token = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');

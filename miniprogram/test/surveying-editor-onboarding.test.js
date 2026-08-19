@@ -14,6 +14,13 @@ const planRoute = fs.readFileSync(
   'utf8'
 );
 
+test('opening a lead without floorPlanId still loads that lead\'s existing cloud plan', () => {
+  assert.match(editorScript, /resolveLeadFloorPlan\(leadId\)/);
+  assert.match(editorScript, /if \(this\.serverDraftId\) this\.loadFormalFloorPlan\(this\.serverDraftId\);\s*else if \(leadId && !startNewSurvey\) this\.resolveLeadFloorPlan\(leadId\);/);
+  assert.match(editorScript, /api\.request\(`\/leads\/\$\{leadId\}`, 'GET'\)/);
+  assert.match(editorScript, /readLeadFloorPlanId\(/);
+});
+
 test('formal surveying titles resolve to the linked community instead of a formal-survey label', () => {
   assert.match(navigationScript, /communityName: opts\.communityName \|\| ''/);
   assert.match(editorScript, /title: context\.communityName \|\| '未填写小区'/);

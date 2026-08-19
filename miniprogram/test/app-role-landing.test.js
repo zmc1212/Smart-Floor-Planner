@@ -89,3 +89,35 @@ test('an invalid signed context clears the session and enters explicit recovery'
     global.wx = originalWx;
   }
 });
+
+test('branding sync tolerates a wrapped API request export', async () => {
+  const apiPath = require.resolve('../utils/api.js');
+  const apiModule = require(apiPath);
+  const originalExports = apiModule;
+  const originalWx = global.wx;
+  const originalPages = global.getCurrentPages;
+  const calls = [];
+
+  require.cache[apiPath].exports = {
+    default: {
+      request: async (url, method) => {
+        calls.push([url, method]);
+        return { success: true, data: { name: '测试企业' } };
+      }
+    }
+  };
+  const definition = loadAppDefinition();
+  global.wx = {};
+  global.getCurrentPages = () => [];
+  const app = { globalData: {} };
+
+  try {
+    await definition.syncBranding.call(app, '123');
+    assert.deepEqual(calls, [['/branding/123', 'GET']]);
+    assert.deepEqual(app.globalData.branding, { name: '测试企业' });
+  } finally {
+    require.cache[apiPath].exports = originalExports;
+    global.wx = originalWx;
+    global.getCurrentPages = originalPages;
+  }
+});

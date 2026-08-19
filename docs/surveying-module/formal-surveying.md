@@ -24,7 +24,9 @@ copy back to `layoutData`.
 
 - The only formal measurement page is
   `miniprogram/packages/surveying/editor/surveying-editor.*`.
-- Every entry carries `leadId` and/or `floorPlanId`.
+- Every entry carries `leadId` and/or `floorPlanId`. A lead-only entry
+  without `floorPlanId` resolves that lead's primary cloud plan instead of
+  opening a blank canvas.
 - Admin viewers, DXF, 3D, AI, and Mini Program read models derive from the v4
   graph through adapters; they do not maintain a second editable geometry.
 - Graph and renderer sources are `miniprogram/utils/surveyWallGraph.js`,
@@ -65,7 +67,11 @@ copy back to `layoutData`.
 
 - A physical wall is stored once. An inferred orthogonal close absorbs a
   collinear continuation into the last measured wall instead of storing a
-  butt joint. Loading a saved draft also folds remaining collinear degree-2
+  butt joint. Two new walls started from a closed-room corner close against
+  the existing boundary when the second wall lands on an adjacent wall and
+  completes a face with the start edge; axis-aligning to a distant corner
+  without hitting an existing wall still does not infer extra closing walls.
+  Loading a saved draft also folds remaining collinear degree-2
   splices into one wall. Deleting a wall that opens a single closed room
   restores the remaining loop as the active chain and offers the missing-edge
   close when the dangling ends still determine it. Resetting the cursor onto
@@ -145,6 +151,8 @@ copy back to `layoutData`.
   preserves its pre-close body side, including an exterior-facing measurement
   whose final orange line snaps to a source room's inner face. Closing cannot
   move that aligned red/orange edge to the opposite side by one wall thickness.
+  A new wall aligned to a neighbouring closed room's visible outer keeps that
+  outer as its working face on close and must not extrude another thickness.
   When the final cursor hits a source wall's visible outer face, the close must
   retain that physical outer coordinate and bridge to the topology corner rather
   than silently projecting it to the centre line.

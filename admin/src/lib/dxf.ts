@@ -202,8 +202,40 @@ function addFloorDimensions(dxf: DxfWriterType, floor: SurveyFloor, bodies: Wall
     }),
   }).items as DimensionItem[];
   dimensionItems.forEach((item) => {
-    const start = add(item.start, offset); const extensionStart = add(item.extensionStart, offset); const extensionEnd = add(item.extensionEnd, offset);
-    dxf.addAlignedDim(point3d(extensionStart.x, extensionStart.y), point3d(extensionEnd.x, extensionEnd.y), { layerName: DXF_LAYER_NAMES.dimensions, insertionPoint: point3d(start.x, start.y), text: String(item.label) });
+    // `start/end` are the offset dimension-line endpoints in the shared
+    // planner; `extensionStart/End` are the measured wall points. The writer
+    // wants the measured pair first and one point on the offset line as its
+    // insertion point. Passing the offset endpoint itself makes CAD emit a
+    // long diagonal leader from one side of the dimension.
+    const dimensionStart = add(item.start, offset); const dimensionEnd = add(item.end, offset);
+    const extensionStart = add(item.extensionStart, offset); const extensionEnd = add(item.extensionEnd, offset);
+    const measuredMid = { x: (extensionStart.x + extensionEnd.x) / 2, y: (extensionStart.y + extensionEnd.y) / 2 };
+    const dimensionMid = { x: (dimensionStart.x + dimensionEnd.x) / 2, y: (dimensionStart.y + dimensionEnd.y) / 2 };
+    const measuredDirection = { x: extensionEnd.x - extensionStart.x, y: extensionEnd.y - extensionStart.y };
+    const measuredLengthSquared = measuredDirection.x ** 2 + measuredDirection.y ** 2;
+    const parallelProjection = measuredLengthSquared
+      ? ((dimensionMid.x - measuredMid.x) * measuredDirection.x + (dimensionMid.y - measuredMid.y) * measuredDirection.y) / measuredLengthSquared
+      : 0;
+    const insertionPoint = {
+      x: dimensionMid.x - parallelProjection * measuredDirection.x,
+      y: dimensionMid.y - parallelProjection * measuredDirection.y,
+    };
+    // AutoCAD needs both the dimension definition point (10/20) and the
+    // text midpoint (11/21).  `@tarikjabiri/dxf` exposes those fields through
+    // DimensionOptions, but does not derive them from `insertionPoint`.
+    // Omitting them makes viewers fall back to an origin/default and produces
+    // the long diagonal leaders seen in the exported drawing.
+    const dimension = dxf.addAlignedDim(point3d(extensionStart.x, extensionStart.y), point3d(extensionEnd.x, extensionEnd.y), {
+      layerName: DXF_LAYER_NAMES.dimensions,
+      definitionPoint: point3d(dimensionStart.x, dimensionStart.y),
+      middlePoint: point3d(dimensionMid.x, dimensionMid.y),
+      insertionPoint: point3d(insertionPoint.x, insertionPoint.y),
+      text: String(item.label),
+    });
+    // Keep the dimension's explicit text position aligned with the dimension
+    // line.  The extra insertion point (12/22) is retained for consumers that
+    // understand the library's extended aligned-dimension representation.
+    dimension.middlePoint = point3d(dimensionMid.x, dimensionMid.y);
   });
 }
 

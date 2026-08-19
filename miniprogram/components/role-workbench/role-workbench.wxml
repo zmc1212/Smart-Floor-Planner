@@ -114,19 +114,21 @@
           <view class="item-copy">
             <view class="item-title-row">
               <text class="item-title">{{item.title}}</text>
-              <view wx:if="{{item.status === 'confirmed' || item.canSurveyNow}}" class="item-tag-green">
-                <text>{{item.status === 'confirmed' ? '待上门' : '户型已就绪'}}</text>
+              <view wx:if="{{item.statusBadge}}" class="item-tag-green">
+                <text>{{item.statusBadge}}</text>
               </view>
             </view>
             <text class="item-subtitle">{{item.subtitle}}</text>
             <text class="item-meta">{{item.metaLabel}}</text>
             <view class="item-cta-row">
-              <view wx:if="{{item.canSurveyNow}}" class="item-cta" catchtap="openItem" data-item="{{item}}">立即量房</view>
+              <view wx:if="{{item.canSurveyNow || item.canContinueSurvey}}" class="item-cta" catchtap="openSurvey" data-item="{{item}}">{{item.canContinueSurvey ? '继续量房' : '立即量房'}}</view>
+              <view wx:if="{{item.canStartNewSurvey}}" class="item-cta item-cta-secondary" catchtap="openNewSurvey" data-item="{{item}}">新增量房</view>
               <view wx:if="{{item.canReschedule}}" class="item-cta" catchtap="openReschedule" data-item="{{item}}">{{item.actionLabel || '改期'}}</view>
               <view wx:elif="{{item.canBookAppointment}}" class="item-cta item-cta-secondary" catchtap="openBooking" data-item="{{item}}">{{item.canRebook ? (item.actionLabel || '重新预约') : '预约上门'}}</view>
+              <view wx:elif="{{item.action === 'appointment' && item.appointmentId}}" class="item-cta item-cta-secondary" catchtap="openAppointment" data-item="{{item}}">查看预约</view>
             </view>
           </view>
-          <view wx:if="{{!(item.canSurveyNow || item.canBookAppointment || item.canReschedule)}}" class="item-action">
+          <view wx:if="{{!(item.canSurveyNow || item.canContinueSurvey || item.canStartNewSurvey || item.canBookAppointment || item.canReschedule || (item.action === 'appointment' && item.appointmentId))}}" class="item-action">
             <text>{{item.actionLabel}}</text>
             <view class="chevron"></view>
           </view>

@@ -6,6 +6,9 @@ page {
   background: #f8faf9;
   --sfp-custom-tabbar-height: 116rpx;
   --sfp-custom-tabbar-safe-height: calc(116rpx + env(safe-area-inset-bottom));
+  --sfp-tab-icon-size: 32rpx;
+  --sfp-tab-label-size: 16rpx;
+  --sfp-tabbar-shadow: 0 -1rpx 0 #e6ede8;
 }
 
 .workbench-page {
@@ -66,8 +69,8 @@ page {
 .identity-badge-pill {
   display: inline-flex;
   min-width: 0;
-  width: 170rpx;
-  max-width: 170rpx;
+  width: 180rpx;
+  max-width: 180rpx;
   height: 36rpx;
   margin-left: 8rpx;
   padding: 0 14rpx;
@@ -98,21 +101,21 @@ page {
 }
 
 .nav-action-icon {
-  width: 28rpx;
-  height: 28rpx;
+  width: 24rpx;
+  height: 24rpx;
   opacity: 0.88;
 }
 
 .nav-scan-icon {
-  width: 30rpx;
-  height: 30rpx;
+  width: 24rpx;
+  height: 24rpx;
 }
 
 /* Page Content */
 .workbench-content {
   display: flex;
   min-height: 0;
-  padding: 10rpx 40rpx calc(132rpx + env(safe-area-inset-bottom));
+  padding: 10rpx 40rpx calc(156rpx + env(safe-area-inset-bottom));
   flex: 1;
   flex-direction: column;
   box-sizing: border-box;
@@ -329,6 +332,10 @@ page {
   margin-top: 32rpx;
 }
 
+.section-container + .section-container {
+  margin-top: 40rpx;
+}
+
 .section-header-row {
   display: flex;
   align-items: center;
@@ -369,6 +376,7 @@ page {
 }
 
 .section-count-badge {
+  display: inline-flex;
   width: 88rpx;
   height: 28rpx;
   padding: 0;
@@ -378,6 +386,8 @@ page {
   font-size: 14rpx;
   font-weight: 700;
   line-height: 1.3;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Enterprise Scroll */

@@ -37,10 +37,17 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   const appConfig = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'app.json'), 'utf8'));
 
   assert.match(component, /['"]\/miniprogram\/workbench['"]/);
-  assert.match(component, /openSurveyingEditor\(\{ leadId: item\.leadId, floorPlanId: item\.floorPlanId \|\| '' \}\)/);
+  assert.match(component, /openSurveyingEditor\(\{\s*leadId: item\.leadId,\s*floorPlanId: item\.floorPlanId \|\| '',\s*communityName: item\.communityName \|\| '',\s*\}\)/);
+  assert.match(component, /startNewSurvey: true/);
+  assert.match(component, /openSurvey\(/);
+  assert.match(componentTemplate, /catchtap="openSurvey"/);
   assert.match(component, /staff-activity-code\/staff-activity-code/);
+  assert.match(componentTemplate, /继续量房/);
+  assert.match(componentTemplate, /新增量房/);
   assert.match(componentTemplate, /立即量房/);
   assert.match(componentTemplate, /预约上门/);
+  assert.match(componentTemplate, /item\.statusBadge/);
+  assert.match(componentTemplate, /item\.canStartNewSurvey/);
   assert.match(componentTemplate, /\/images\/page-ip-v3\/mine\.png/);
   assert.doesNotMatch(component, /enterpriseId\s*[:=]|staffId\s*[:=]/);
   assert.match(home, /<role-workbench[^>]+focus="overview"/);

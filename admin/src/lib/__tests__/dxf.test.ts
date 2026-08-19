@@ -4,6 +4,7 @@ import { Parser } from '@dxfjs/parser';
 import {
   DxfExportError,
   DXF_LAYER_NAMES,
+  dxfContentDisposition,
   generateFormalSurveyDxf,
   getFormalSurveyLayoutForDxf,
   safeDxfFileName,
@@ -74,6 +75,23 @@ test('formal DXF uses the open-source writer and is readable by a DXF parser', a
   assert.ok(parsed.entities.lwPolylines.length > 0);
   assert.ok(parsed.entities.arcs.length > 0);
   assert.ok(parsed.entities.lines.length > 0);
+
+  const dimensions = dxf.split('0\nDIMENSION').slice(1);
+  assert.ok(dimensions.length > 0);
+  dimensions.forEach((dimension) => {
+    const value = (code: number) => Number(dimension.match(new RegExp(`\\n${code}\\n([-+0-9.eE]+)`))?.[1]);
+    const definitionX = value(10); const definitionY = value(20);
+    const middleX = value(11); const middleY = value(21);
+    const insertionX = value(12); const insertionY = value(22);
+    const firstX = value(13); const firstY = value(23);
+    const secondX = value(14); const secondY = value(24);
+    assert.ok(Number.isFinite(definitionX) && Number.isFinite(definitionY), `dimension definition point is missing: ${dimension.slice(0, 260)}`);
+    assert.ok(Number.isFinite(middleX) && Number.isFinite(middleY), `dimension text midpoint is missing: ${dimension.slice(0, 260)}`);
+    const directionX = secondX - firstX; const directionY = secondY - firstY;
+    const midpointX = (firstX + secondX) / 2; const midpointY = (firstY + secondY) / 2;
+    const projectionError = Math.abs((insertionX - midpointX) * directionX + (insertionY - midpointY) * directionY);
+    assert.ok(projectionError < 0.001, `dimension insertion projection error ${projectionError}: ${dimension.slice(0, 260)}`);
+  });
 });
 
 test('formal DXF rejects non-completed and non-closed floor plans', () => {
@@ -86,4 +104,7 @@ test('formal DXF rejects non-completed and non-closed floor plans', () => {
 
 test('DXF download filename excludes unsafe path characters', () => {
   assert.equal(safeDxfFileName('户型: A/B', '42'), 'FloorPlan_户型_ A_B_42.dxf');
+  const disposition = dxfContentDisposition('户型: A/B', '42');
+  assert.equal(disposition, 'attachment; filename="FloorPlan_42.dxf"; filename*=UTF-8\'\'FloorPlan_%E6%88%B7%E5%9E%8B_%20A_B_42.dxf');
+  assert.ok([...disposition].every((character) => character.charCodeAt(0) <= 255));
 });

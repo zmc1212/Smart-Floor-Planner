@@ -3,8 +3,13 @@ import { parsePostgresId } from '@/db/postgres-dto';
 import { AdminUserRepository, AppointmentRepository, LeadRepository } from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
-import { resolveLeadServiceStage } from '@/lib/lead-service-stage';
-import { buildStaffingGapItems, isAssignmentEligibleStaff } from '@/lib/miniprogram-workbench';
+import {
+  buildStaffingGapItems,
+  buildWorkbenchAppointmentItem,
+  buildWorkbenchLeadItem,
+  isAssignmentEligibleStaff,
+  isMeasurerWorkbenchSurveyLead,
+} from '@/lib/miniprogram-workbench';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,37 +26,7 @@ function leadItem(
   lead: Awaited<ReturnType<LeadRepository['list']>>['rows'][number],
   action = 'lead'
 ) {
-  const plan = lead.primaryFloorPlanRecord || lead.floorPlanRecords?.[0] || null;
-  const pendingSurvey = ['new', 'measuring'].includes(lead.status || 'new');
-  const surveyAction = action === 'survey';
-  const stage = resolveLeadServiceStage({
-    leadStatus: lead.status,
-    assignmentStatus: lead.assignmentStatus,
-    measurerId: lead.measurerId,
-    appointment: lead.appointment,
-    hasFormalFloorPlan: Boolean(plan && plan.status === 'completed'),
-  });
-  return {
-    id: lead.id.toString(),
-    leadId: lead.id.toString(),
-    floorPlanId: plan?.id.toString() || '',
-    title: lead.name || '客户',
-    subtitle: lead.communityName || '待补充服务地址',
-    meta: stage.label,
-    metaLabel: stage.label,
-    status: lead.status || 'new',
-    serviceStage: stage.key,
-    nextAction: stage.nextAction,
-    updatedAt: lead.updatedAt,
-    action: surveyAction ? 'survey' : action,
-    canSurveyNow: surveyAction && pendingSurvey,
-    canBookAppointment: (surveyAction || action === 'rebook') && (
-      stage.key === 'measurer_assigned'
-      || stage.key === 'appointment_expired'
-      || stage.key === 'awaiting_rebooking'
-    ),
-    canRebook: stage.key === 'appointment_expired' || stage.key === 'awaiting_rebooking',
-  };
+  return buildWorkbenchLeadItem(lead, action);
 }
 
 function appointmentItem(
@@ -59,33 +34,7 @@ function appointmentItem(
   lead?: Awaited<ReturnType<LeadRepository['findByIds']>>[number],
   options: { allowRebook?: boolean } = {}
 ) {
-  const plan = lead?.primaryFloorPlanRecord || lead?.floorPlanRecords[0] || null;
-  const expired = appointment.status === 'expired';
-  const allowRebook = Boolean(options.allowRebook && expired);
-  const stage = resolveLeadServiceStage({
-    leadStatus: lead?.status,
-    assignmentStatus: lead?.assignmentStatus,
-    measurerId: lead?.measurerId,
-    appointment,
-    hasFormalFloorPlan: Boolean(plan && plan.status === 'completed'),
-  });
-  return {
-    id: appointment.id.toString(),
-    appointmentId: appointment.id.toString(),
-    leadId: appointment.leadId.toString(),
-    floorPlanId: plan?.id.toString() || '',
-    title: lead?.name || '客户量房',
-    subtitle: appointment.address || lead?.communityName || '地址待确认',
-    meta: appointment.timeRange,
-    timeRange: appointment.timeRange,
-    status: appointment.status,
-    serviceStage: stage.key,
-    nextAction: stage.nextAction,
-    metaLabel: expired ? '已过期' : stage.label,
-    action: allowRebook ? 'rebook' : 'appointment',
-    canBookAppointment: allowRebook,
-    canRebook: allowRebook,
-  };
+  return buildWorkbenchAppointmentItem(appointment, lead, options);
 }
 
 export async function GET(request: Request) {
@@ -156,9 +105,12 @@ export async function GET(request: Request) {
         const leadMap = new Map(leadRows.map((item) => [item.id, item]));
         const appointmentItems = confirmedRows.map((item) => appointmentItem(item, leadMap.get(item.leadId)));
         const expiredItems = expiredRows.map((item) => appointmentItem(item, leadMap.get(item.leadId)));
-        const scheduledIds = new Set(confirmedRows.map((item) => item.leadId.toString()));
+        const occupiedIds = new Set([
+          ...confirmedRows.map((item) => item.leadId.toString()),
+          ...expiredRows.map((item) => item.leadId.toString()),
+        ]);
         const unscheduled = surveyList.rows
-          .filter((lead) => ['new', 'measuring'].includes(lead.status || 'new') && !scheduledIds.has(lead.id.toString()))
+          .filter((lead) => isMeasurerWorkbenchSurveyLead(lead, occupiedIds))
           .map((lead) => leadItem(lead, 'survey'));
         const items = [...expiredItems, ...unscheduled, ...appointmentItems];
         return {
@@ -168,7 +120,7 @@ export async function GET(request: Request) {
           summary: [
             { key: 'schedule', label: '已确认日程', value: appointmentItems.length, detail: '当前本人预约', tone: 'green' },
             { key: 'expired', label: '过期待处理', value: expiredItems.length, detail: '不再占用已确认档期', tone: 'orange' },
-            { key: 'survey', label: '待量房任务', value: unscheduled.length + appointmentItems.length, detail: '可立即量房或查看预约', tone: 'blue' },
+            { key: 'survey', label: '待量房任务', value: unscheduled.length + appointmentItems.length, detail: '可继续量房、新增量房或查看预约', tone: 'blue' },
           ],
           primaryItems: items.slice(0, 6),
           tasks: items,

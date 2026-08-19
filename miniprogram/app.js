@@ -1,3 +1,16 @@
+const api = require('./utils/api.js');
+
+function resolveApiRequest(apiModule) {
+  if (typeof apiModule === 'function') return apiModule;
+  if (!apiModule) return null;
+  if (typeof apiModule.request === 'function') return apiModule.request;
+  if (typeof apiModule.default === 'function') return apiModule.default;
+  if (apiModule.default && typeof apiModule.default.request === 'function') {
+    return apiModule.default.request;
+  }
+  return null;
+}
+
 App({
   globalData: {
     userInfo: null,
@@ -32,7 +45,8 @@ App({
       this.globalData.userInfo = userInfo || null;
       this.globalData.openid = openid || (userInfo && userInfo.openid) || null;
       console.log('会话已恢复 (JWT)');
-      if (userInfo) this.syncProfessionalContext();
+      // Branding is synchronized after the signed session/bootstrap refresh
+      // below, when the API module and enterprise context are ready.
       this.hydrateStoredSession();
     } else if (openid || userInfo) {
       // Legacy-only storage cannot prove the active signed context.
@@ -84,7 +98,6 @@ App({
   async hydrateStoredSession() {
     if (this.globalData.sessionHydrating || !this.globalData.token) return;
     this.globalData.sessionHydrating = true;
-    const api = require('./utils/api.js');
     const token = this.globalData.token;
     try {
       const refreshed = await api.request('/auth/miniprogram', 'POST', {
@@ -239,9 +252,15 @@ App({
   },
 
   async syncBranding(enterpriseId) {
-    const api = require('./utils/api.js');
     try {
-      const res = await api.request(`/branding/${enterpriseId}`, 'GET');
+      // Keep this compatible with both the normal CommonJS API export and
+      // WeChat's occasionally wrapped module shape after a hot reload.
+      const request = resolveApiRequest(api);
+      if (typeof request !== 'function') {
+        throw new TypeError('Mini Program API request method is unavailable');
+      }
+
+      const res = await request(`/branding/${enterpriseId}`, 'GET');
       if (res.success && res.data) {
         this.globalData.branding = res.data;
         console.log('App: Branding synced:', res.data);

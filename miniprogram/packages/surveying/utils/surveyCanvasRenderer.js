@@ -641,7 +641,7 @@ function buildClosureGuide(floor, session, project) {
     : 0;
   const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
   const previewCountsAsWall = !!session.previewPoint;
-  const minimumActiveWallCount = surveyGraph.getMinimumClosureSuggestionWallCount(floor, session);
+  const minimumActiveWallCount = surveyGraph.getMinimumActiveCloseWallCount(floor, session);
   if (activeWallCount + (previewCountsAsWall ? 1 : 0) < minimumActiveWallCount) {
     return null;
   }
