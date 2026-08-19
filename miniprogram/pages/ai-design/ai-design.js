@@ -147,6 +147,13 @@ Page({
     recipeTotalPages: 1,
     recipeTotal: 0,
     heroRecipe: null,
+    roleWorkbenchRole: '',
+  },
+
+  getRoleWorkbenchRole() {
+    const bootstrap = getApp().globalData.bootstrap;
+    const role = bootstrap && bootstrap.current && bootstrap.current.role;
+    return ['measurer', 'enterprise_admin'].includes(role) ? role : '';
   },
 
   onLoad(options) {
@@ -163,6 +170,13 @@ Page({
   },
 
   onShow() {
+    const roleWorkbenchRole = this.getRoleWorkbenchRole();
+    if (roleWorkbenchRole) {
+      this.setData({ roleWorkbenchRole });
+      this.syncTabBar();
+      return;
+    }
+    this.setData({ roleWorkbenchRole: '' });
     if (!canAccessAIDesign()) {
       this.recentPageVisible = false;
       this.stopRecentPolling();

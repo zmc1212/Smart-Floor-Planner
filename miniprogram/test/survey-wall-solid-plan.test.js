@@ -201,3 +201,72 @@ test('same-side collinear walls do not grow an extra thickness stub', () => {
   assert.equal(plan.joinPolygons.length, 0);
   assertArea(areaOfPlan(plan), 200 * 2000);
 });
+
+test('concave inner L keeps overlapping rectangles and does not fill the room', () => {
+  const plan = createWallSolidPlan({
+    walls: [
+      {
+        id: 'leftover',
+        start: { x: 0, y: 0 },
+        end: { x: 1000, y: 0 },
+        outerStart: { x: 0, y: 200 },
+        outerEnd: { x: 1000, y: 200 },
+        thickness: 200,
+        polygon: rectangle(0, 0, 1000, 200)
+      },
+      {
+        id: 'branch',
+        start: { x: 1000, y: 0 },
+        end: { x: 1000, y: 1000 },
+        outerStart: { x: 800, y: 0 },
+        outerEnd: { x: 800, y: 1000 },
+        thickness: 200,
+        polygon: rectangle(800, 0, 200, 1000)
+      }
+    ]
+  });
+
+  assert.equal(pointInPolygon({ x: 700, y: 400 }, plan.rings[0]), false);
+  assert.equal(pointInPolygon({ x: 900, y: 100 }, plan.rings[0]), true);
+  assertArea(areaOfPlan(plan), 1000 * 200 + 200 * 800);
+});
+
+test('opposite-thickness join ignores non-incident wall mass', () => {
+  const plan = createWallSolidPlan({
+    walls: [
+      {
+        id: 'upper',
+        start: { x: 6000, y: 0 },
+        end: { x: 6000, y: -2000 },
+        outerStart: { x: 5800, y: 0 },
+        outerEnd: { x: 5800, y: -2000 },
+        thickness: 200,
+        polygon: rectangle(5800, -2000, 200, 2000)
+      },
+      {
+        id: 'lower',
+        start: { x: 6000, y: 0 },
+        end: { x: 6000, y: 4000 },
+        outerStart: { x: 6200, y: 0 },
+        outerEnd: { x: 6200, y: 4000 },
+        thickness: 200,
+        polygon: rectangle(6000, 0, 200, 4000)
+      },
+      {
+        id: 'distant',
+        start: { x: -80000, y: 0 },
+        end: { x: -80000, y: 40000 },
+        outerStart: { x: -79800, y: 0 },
+        outerEnd: { x: -79800, y: 40000 },
+        thickness: 200,
+        polygon: rectangle(-80000, 0, 200, 40000)
+      }
+    ]
+  });
+
+  const jointRing = plan.rings.find((ring) => ring.some((point) => (
+    Math.abs(point.x - 5800) < 1 || Math.abs(point.x - 6200) < 1
+  ))) || plan.rings[0];
+  assert.equal(pointInPolygon({ x: 5900, y: 100 }, jointRing), false);
+  assert.equal(pointInPolygon({ x: 6100, y: -100 }, jointRing), true);
+});

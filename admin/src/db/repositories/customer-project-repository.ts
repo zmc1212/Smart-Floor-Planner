@@ -26,6 +26,16 @@ export type CustomerProject = {
   publications: CustomerProjectPublication[];
 };
 
+export type CustomerProjectIndexItem = {
+  leadId: bigint;
+  enterpriseName: string;
+  status: string;
+  updatedAt: Date;
+  appointmentStatus: string | null;
+  hasFormalFloorPlan: boolean;
+  publishedDesignCount: number;
+};
+
 function hasResultImage(output: unknown) {
   if (!output || typeof output !== 'object' || Array.isArray(output)) return false;
   const imageUrl = (output as Record<string, unknown>).imageUrl;
@@ -99,6 +109,50 @@ export class CustomerProjectRepository {
       formalFloorPlan: formalFloorPlanRows[0] ?? null,
       publications,
     };
+  }
+
+  async listCustomerProjects(customerUserId: bigint): Promise<CustomerProjectIndexItem[]> {
+    const rows = await this.transaction
+      .select({
+        leadId: leads.id,
+        enterpriseName: enterprises.name,
+        status: leads.status,
+        updatedAt: leads.updatedAt,
+        appointmentStatus: sql<string | null>`(
+          select ${measurementAppointments.status}
+          from app.measurement_appointments
+          where ${measurementAppointments.leadId} = ${leads.id}
+          order by ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
+          limit 1
+        )`,
+        hasFormalFloorPlan: sql<boolean>`exists (
+          select 1
+          from app.floor_plans
+          where ${floorPlans.id} = ${leads.primaryFloorPlanId}
+            and ${floorPlans.enterpriseId} = ${leads.enterpriseId}
+            and ${floorPlans.status} = 'completed'
+            and ${floorPlans.layoutData} ->> 'version' = '4'
+            and ${floorPlans.layoutData} ->> 'measurementMode' = 'surveying'
+            and ${floorPlans.layoutData} #>> '{surveyGraph,kind}' = 'survey-wall-graph'
+        )`,
+        publishedDesignCount: sql<number>`(
+          select count(*)::int
+          from app.ai_generation_publications publication
+          inner join app.ai_generations generation on generation.id = publication.generation_id
+          where publication.lead_id = ${leads.id}
+            and publication.enterprise_id = ${leads.enterpriseId}
+            and publication.withdrawn_at is null
+            and generation.status = 'succeeded'
+            and generation.deleted_at is null
+            and coalesce(generation.output ->> 'imageUrl', '') <> ''
+        )`,
+      })
+      .from(leads)
+      .innerJoin(enterprises, eq(leads.enterpriseId, enterprises.id))
+      .where(and(eq(leads.customerUserId, customerUserId), isNull(leads.archivedAt)))
+      .orderBy(desc(leads.updatedAt), desc(leads.id));
+
+    return rows;
   }
 
   async findCustomerPublishedGeneration(customerUserId: bigint, leadId: bigint, generationId: bigint) {

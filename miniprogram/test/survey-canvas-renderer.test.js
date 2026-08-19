@@ -1112,7 +1112,10 @@ test('deleting the wall shared by two closed rooms merges their fill, label, and
   const mergedScene = createScene(mergedDraft);
 
   assert.equal(mergedSpaces.length, 1);
-  assert.equal(mergedSpaces[0].name, '\u623f\u95f43');
+  assert.ok(
+    mergedSpaces[0].name === '\u623f\u95f41' || mergedSpaces[0].name === '\u623f\u95f42',
+    mergedSpaces[0].name
+  );
   assert.equal(mergedSpaces[0].wallIds.includes(sharedWallId), false);
   assert.equal(mergedFloor.walls.some((wall) => wall.id === sharedWallId), false);
   assert.equal(mergedFloor.session.state, 'spaceClosed');

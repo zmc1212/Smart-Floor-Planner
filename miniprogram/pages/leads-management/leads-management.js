@@ -4,7 +4,14 @@ Page({
     statusBarHeight: 0,
     navBarHeightTotal: 0,
     capsuleRightInset: 190,
-    pendingLeadId: ''
+    pendingLeadId: '',
+    roleWorkbenchRole: ''
+  },
+
+  getRoleWorkbenchRole() {
+    const bootstrap = getApp().globalData.bootstrap;
+    const role = bootstrap && bootstrap.current && bootstrap.current.role;
+    return role === 'measurer' ? role : '';
   },
 
   onLoad(options) {
@@ -26,6 +33,12 @@ Page({
   onShow() {
     const app = getApp();
     this.syncTabBar();
+    const roleWorkbenchRole = this.getRoleWorkbenchRole();
+    if (roleWorkbenchRole) {
+      this.setData({ roleWorkbenchRole });
+      return;
+    }
+    this.setData({ roleWorkbenchRole: '' });
     if (this.data.openid !== app.globalData.openid) {
       this.setData({
         openid: app.globalData.openid || ''

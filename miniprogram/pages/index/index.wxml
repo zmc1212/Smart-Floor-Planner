@@ -1,4 +1,6 @@
 <view class="home-page sfp-tab-page">
+  <role-workbench wx:if="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" />
+  <block wx:else>
   <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}" enhanced>
     <view class="home-content">
       <view class="hero-stage">
@@ -146,4 +148,5 @@
     </view>
   </scroll-view>
   <ble-connector show="{{showBLEConnector}}" bindclose="onCloseBLEConnector" bindsuccess="onBLESuccess" />
+  </block>
 </view>

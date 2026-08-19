@@ -78,6 +78,53 @@ test('referrer workbench keeps identity switching and logout reachable from the 
   }
 });
 
+test('referrer workbench exchanges the signed membership context before changing enterprises', async () => {
+  const definition = loadPage();
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const requests = [];
+  const app = {
+    globalData: { token: 'old-token', userInfo: { id: 'user-1' }, bootstrap: { current: {} }, sessionHydrated: true },
+    async hydrateStoredSession() { this.hydrated = true; }
+  };
+  api.request = async (...args) => {
+    requests.push(args);
+    if (args[0] === '/miniprogram/identity-contexts/switch') return { token: 'membership-token' };
+    return { token: 'refreshed-token', user: { id: 'user-1' }, openid: 'openid-1' };
+  };
+  global.getApp = () => app;
+  global.wx = { setStorageSync() {}, showToast() {} };
+  const context = {
+    data: {
+      ...definition.data,
+      selectedMembershipId: 'membership-1',
+      memberships: [
+        { id: 'membership-1', enterpriseId: 'enterprise-1' },
+        { id: 'membership-2', enterpriseId: 'enterprise-2' }
+      ]
+    },
+    setData(next) { Object.assign(this.data, next); }
+  };
+
+  try {
+    await definition.selectMembership.call(context, { currentTarget: { dataset: { id: 'membership-2' } } });
+    assert.deepEqual(requests[0], [
+      '/miniprogram/identity-contexts/switch',
+      'POST',
+      { mode: 'referrer', enterpriseId: 'enterprise-2', referrerMembershipId: 'membership-2' }
+    ]);
+    assert.deepEqual(requests[1], ['/auth/miniprogram', 'POST', { type: 'refresh', token: 'membership-token' }]);
+    assert.equal(context.data.selectedMembershipId, 'membership-2');
+    assert.equal(app.hydrated, true);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+  }
+});
+
 test('referrer workbench ships the Antigravity standalone asset and preserves the selected design contract', () => {
   const wxml = source('packages/business/referrer-workbench/referrer-workbench.wxml');
   const wxss = source('packages/business/referrer-workbench/referrer-workbench.wxss');

@@ -82,7 +82,7 @@ test('an invalid signed context clears the session and enters explicit recovery'
     await definition.hydrateStoredSession.call(app);
     assert.equal(app.globalData.token, null);
     assert.equal(app.globalData.sessionRecovery.reason, 'identity_context_invalid');
-    assert.deepEqual(relaunched, ['/packages/business/login/login?recovery=identity_context_invalid']);
+    assert.deepEqual(relaunched, ['/packages/business/identity-recovery/identity-recovery?reason=identity_context_invalid']);
     assert.deepEqual(removed.sort(), ['openid', 'token', 'userInfo']);
   } finally {
     api.request = originalRequest;

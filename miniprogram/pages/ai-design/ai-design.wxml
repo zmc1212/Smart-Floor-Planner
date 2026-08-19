@@ -1,5 +1,8 @@
 <!-- Approved source: design-references/ai-design/ai-recipe-discovery-home-v2/ -->
 <view class="ai-page sfp-tab-page">
+  <role-workbench wx:if="{{roleWorkbenchRole === 'measurer'}}" role="measurer" focus="survey" />
+  <role-workbench wx:elif="{{roleWorkbenchRole === 'enterprise_admin'}}" role="enterprise_admin" focus="appointments" />
+  <block wx:else>
   <scroll-view
     scroll-y
     enhanced
@@ -156,4 +159,5 @@
       <view wx:if="{{recipeError}}" class="search-error"><text>{{recipeError}}</text><view bindtap="retryRecipes">重试</view></view>
     </view>
   </view>
+  </block>
 </view>

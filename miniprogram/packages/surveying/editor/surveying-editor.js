@@ -3931,9 +3931,13 @@ Page({
       confirmColor: '#d71920',
       success: (res) => {
         if (!res.confirm) return;
-        const nextDraft = surveyGraph.deleteWall(this.draft, wallId);
-        this.applyDraft(nextDraft, { recordHistory: true });
-        wx.showToast({ title: '墙体已删除', icon: 'none' });
+        try {
+          const nextDraft = surveyGraph.deleteWall(this.draft, wallId);
+          this.applyDraft(nextDraft, { recordHistory: true });
+          wx.showToast({ title: '墙体已删除', icon: 'none' });
+        } catch (err) {
+          wx.showToast({ title: err.message || '删除失败，请重试', icon: 'none' });
+        }
       }
     });
   },

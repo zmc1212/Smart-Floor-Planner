@@ -36,6 +36,9 @@
         "onboarding/onboarding",
         "onboarding-debug/onboarding-debug",
         "referrer-workbench/referrer-workbench",
+        "referrer-progress/referrer-progress",
+        "referrer-earnings/referrer-earnings",
+        "customer-projects/customer-projects",
         "customer-project/customer-project",
         "appointment-detail/appointment-detail",
         "appointment-reschedule/appointment-reschedule",
@@ -47,6 +50,7 @@
         "profile-edit/profile-edit",
         "settings/settings",
         "identity-switch/identity-switch",
+        "identity-recovery/identity-recovery",
         "account-security/account-security"
       ]
     }

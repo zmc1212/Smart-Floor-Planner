@@ -35,6 +35,7 @@ FORM: Antigravity design source `phase-5-referrer-workbench-v1.png`; composite r
           wx:key="id"
           class="membership {{selectedMembershipId === item.id ? 'membership-active' : ''}}"
           data-id="{{item.id}}"
+          disabled="{{!!switchingMembershipId}}"
           bindtap="selectMembership"
         >{{item.enterpriseName}}</button>
       </view>
@@ -51,6 +52,14 @@ FORM: Antigravity design source `phase-5-referrer-workbench-v1.png`; composite r
         <view><text class="benefit-title">免费设计师服务</text><text class="benefit-copy">为客户建立服务档案后安排设计师</text></view>
       </view>
       <button class="show-code sfp-primary-action" bindtap="showServiceCode">展示服务码</button>
+    </view>
+
+    <view class="referrer-facts sfp-card">
+      <view class="facts-heading"><text class="facts-title">我的服务记录</text><text class="facts-note">仅展示当前企业的脱敏事实</text></view>
+      <view class="facts-actions">
+        <button class="fact-action" bindtap="openProgress"><text>服务进度</text><view class="fact-chevron"></view></button>
+        <button class="fact-action" bindtap="openEarnings"><text>我的收益</text><view class="fact-chevron"></view></button>
+      </view>
     </view>
 
     <button class="leave-action" loading="{{exitingId === selectedMembershipId}}" disabled="{{!!exitingId}}" bindtap="leaveSelectedEnterprise">退出该企业</button>
@@ -70,3 +79,4 @@ FORM: Antigravity design source `phase-5-referrer-workbench-v1.png`; composite r
     <button class="danger-action workbench-logout" bindtap="onLogout">退出当前账号</button>
   </view>
 </view>
+<custom-tab-bar />

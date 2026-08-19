@@ -124,7 +124,7 @@ App({
           lastValidIdentityContext: this.globalData.lastValidIdentityContext || wx.getStorageSync('lastValidIdentityContext') || null
         };
         this.globalData.sessionHydrated = true;
-        wx.reLaunch({ url: '/packages/business/login/login?recovery=identity_context_invalid' });
+        wx.reLaunch({ url: `/packages/business/identity-recovery/identity-recovery?reason=${encodeURIComponent(error.code || 'identity_context_invalid')}` });
       } else {
         this.globalData.sessionRecovery = {
           reason: 'bootstrap_unavailable',
@@ -163,7 +163,7 @@ App({
     if (this.globalData.deepLinkRedirecting || !this.globalData.bootstrap) return;
     const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
     const current = pages.length ? `/${pages[pages.length - 1].route}` : '';
-    if (!current || current.includes('/login') || current.includes('/onboarding') || current.includes('/free-design-service')) return;
+    if (!current || current.includes('/login') || current.includes('/identity-recovery') || current.includes('/onboarding') || current.includes('/free-design-service')) return;
     const navigation = require('./utils/identity-navigation.js');
     const result = navigation.guardDeepLink(current, this.globalData.bootstrap);
     if (result.allowed || !result.redirectPath || result.redirectPath === current) return;

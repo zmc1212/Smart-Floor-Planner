@@ -33,14 +33,14 @@
 | 测量与 BLE 设备 | `/measurements`、`/devices` | 测量、设备、绑定、审计 Repository | 平台/企业分配边界；Implemented | 仅支持协议文档定义的测距仪 |
 | AI 工作室与生成 | AI 工作流、资产、供应商、价格、点数页面 | PostgreSQL AI Repository 与供应商适配器 | 平台及租户 AI 权限；Implemented/Limited | 供应商可用性和图片存储依赖外部服务 |
 | 媒体存储 | `/media-storage`；`npm run db:backup`、`npm run db:restore-drill`、`npm run db:cleanup:dry-run` 和 `npm run db:cleanup:execute` | `media_assets`、供应商配置、存储适配器；备份输出 PostgreSQL 自定义 dump 与耗时，恢复演练只使用 `smart_floor_planner_restore_drill` 并在移除该演练库前校验当前 app schema；清理 dry-run 会在只读事务中启用现有的平台读取范围，再校验目标指纹并输出七牛候选清单；执行命令要求精确指纹、已审核清单 SHA-256、显式本地正式库开关及操作者身份，才会以单事务清理数据库并输出审计 | 平台管理员；Implemented/Limited | 非空七牛清单仍须在人工审核后异步删除；执行命令不调用七牛 |
-| 小程序支撑 API | 诊断页及共用 API handler；匿名领取生产路由已接入小程序 | 身份/上下文、双码/推荐成员 API；`GET /api/miniprogram/bootstrap` 以签名 JWT 实时校验 `contextVersion` 与活动上下文，返回当前角色、有效角色组、企业/成员关系、落点、能力白名单和服务端徽标摘要，无效上下文返回 `identity_context_invalid`。`/api/miniprogram/codes/resolve` 会在手机号授权前返回入驻码类型和目标企业展示名称，或为推广码签发 10 分钟待确认来源。`/api/miniprogram/referrer-memberships/[id]/promotion-code/image` 返回由微信生成的受保护 PNG/JPEG，`/api/miniprogram/referrals/authorize-and-create-lead` 原子关联客户、锁归属、建线索和派单；第 5 阶段提供预约 API；第 6 阶段提供客户项目聚合、仅客户本人读取的已发布方案图片，以及设计师/企业负责人发布或撤回方案 API | 推广解析和服务码图片对客户匿名、对推荐人成员关系受保护；客户项目按 `customer_user_id` 校验，不信任客户端企业上下文；预约 API 按客户本人、负责设计师、已指派测量员或企业负责人隔离并使用租户事务；`/api/miniprogram/notification-template` 对已认证身份提供配置以便客户订阅授权；Implemented/Limited | 客户项目使用完成户型摘要和受保护已发布方案图片，不暴露可编辑 graph 或量房编辑器。预约创建、改期、取消在事务后尝试投递员工及已授权客户；微信小程序码生成、授权和通知依赖外部配置 |
+| 小程序支撑 API | 诊断页及共用 API handler；匿名领取生产路由已接入小程序 | 身份/上下文、双码/推荐成员 API；`GET /api/miniprogram/bootstrap` 以签名 JWT 实时校验 `contextVersion` 与活动上下文，返回当前角色、有效角色组、企业/成员关系、落点、能力白名单和服务端徽标摘要，无效上下文返回 `identity_context_invalid`。`/api/miniprogram/codes/resolve` 会在手机号授权前返回入驻码类型和目标企业展示名称，或为推广码签发 10 分钟待确认来源。`/api/miniprogram/referrer-memberships/[id]/promotion-code/image` 返回由微信生成的受保护 PNG/JPEG，`/api/miniprogram/referrals/authorize-and-create-lead` 原子关联客户、锁归属、建线索和派单；第 5 阶段提供预约 API；第 6 阶段提供客户项目聚合、仅客户本人读取的已发布方案图片，以及设计师/企业负责人发布或撤回方案 API；第 13 阶段新增仅客户本人的 `GET /api/miniprogram/customer-projects` 索引，以及按签名成员关系读取的 `GET /api/miniprogram/referrer-progress`、`GET /api/miniprogram/referrer-earnings`；第 14 阶段新增面向当前签名设计师、测量员或企业负责人的 `GET /api/miniprogram/workbench` | 推广解析和服务码图片对客户匿名、对推荐人成员关系受保护；客户项目端点按 `customer_user_id` 校验，不信任客户端企业上下文；推荐人进度与收益同时校验 JWT 用户和当前活动成员关系再查询。工作台从签名上下文推导员工角色、企业和员工范围：设计师只取得本人已派线索，测量员只取得本人已确认预约及关联任务，企业负责人只取得当前租户的线索/预约聚合。预约 API 按客户本人、负责设计师、已指派测量员或企业负责人隔离并使用租户事务；`/api/miniprogram/notification-template` 对已认证身份提供配置以便客户订阅授权；Implemented/Limited | 客户项目使用完成户型摘要和受保护已发布方案图片，不暴露可编辑 graph 或量房编辑器。推荐人聚合只暴露脱敏客户标识、服务事实和本人提成状态。工作台摘要只读，继续使用既有权威线索、预约和正式量房入口合同。预约创建、改期、取消在事务后尝试投递员工及已授权客户；微信小程序码生成、授权和通知依赖外部配置 |
 | 通知、自动化与诊断 | 通知设置、提醒运行时、诊断 | 通知模板、调度器、运维记录 | 平台/企业角色；Implemented/Limited | 微信可能拒绝订阅通知投递 |
 
 ## 正式量房边界
 
 权威合同见 [`surveying-module/formal-surveying.md`](./surveying-module/formal-surveying.md)。
 `FloorPlan.layoutData` 只包含 `version: 4`、`measurementMode: 'surveying'` 和
-`surveyGraph`；测量是不可变审计，尺寸和房间摘要是派生读模型。
+`surveyGraph`；测量是不可变审计，尺寸和房间摘要是派生读模型。户型查看器的墙体并集使用 `admin/src/lib/surveyWallSolidPlan.js`，与小程序同一套局部凸/凹求交规则。
 
 ## 提成边界
 

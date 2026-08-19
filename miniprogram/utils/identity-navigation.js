@@ -1,10 +1,10 @@
 const ROLE_LANDING_PATHS = Object.freeze({
   customer: '/pages/index/index',
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
-  staff: '/pages/mine/mine',
-  designer: '/pages/leads-management/leads-management',
-  measurer: '/packages/business/measurer-calendar/measurer-calendar',
-  enterprise_admin: '/pages/mine/mine'
+  staff: '/pages/index/index',
+  designer: '/pages/index/index',
+  measurer: '/pages/index/index',
+  enterprise_admin: '/pages/index/index'
 });
 
 const ROLE_CAPABILITIES = Object.freeze({
@@ -17,9 +17,9 @@ const ROLE_CAPABILITIES = Object.freeze({
 });
 
 const ROUTE_CAPABILITIES = Object.freeze({
-  '/pages/index/index': 'customer.service',
-  '/pages/leads-management/leads-management': 'staff.leads',
-  '/pages/ai-design/ai-design': 'staff.design',
+  '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations'],
+  '/pages/leads-management/leads-management': ['staff.leads', 'staff.tasks', 'enterprise.customers'],
+  '/pages/ai-design/ai-design': ['staff.design', 'staff.surveying', 'enterprise.appointments'],
   '/packages/ai-workflow/create/ai-design-create': 'staff.design',
   '/packages/ai-workflow/result/ai-design-result': 'staff.design',
   '/packages/ai-workflow/history/ai-design-history': 'staff.design',
@@ -32,7 +32,10 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/measurer-calendar/measurer-calendar': 'staff.schedule',
   '/packages/business/measurer-unavailability/measurer-unavailability': 'staff.schedule',
   '/packages/business/referrer-workbench/referrer-workbench': 'referrer.promotion',
+  '/packages/business/referrer-progress/referrer-progress': 'referrer.progress',
+  '/packages/business/referrer-earnings/referrer-earnings': 'referrer.earnings',
   '/packages/business/promotion-service-code/promotion-service-code': 'referrer.promotion',
+  '/packages/business/customer-projects/customer-projects': 'customer.projects',
   '/packages/business/customer-project/customer-project': 'customer.projects',
   '/pages/mine/mine': 'account',
   '/packages/business/settings/settings': 'account',

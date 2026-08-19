@@ -1,4 +1,7 @@
 {
   "navigationStyle": "custom",
-  "disableScroll": false
+  "disableScroll": false,
+  "usingComponents": {
+    "custom-tab-bar": "/custom-tab-bar/index"
+  }
 }

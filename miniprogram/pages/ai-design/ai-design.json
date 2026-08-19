@@ -2,5 +2,8 @@
   "navigationStyle": "custom",
   "backgroundColor": "#f8f8f4",
   "backgroundTextStyle": "dark",
-  "enablePullDownRefresh": true
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "role-workbench": "/components/role-workbench/role-workbench"
+  }
 }

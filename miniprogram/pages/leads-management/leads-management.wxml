@@ -6,6 +6,8 @@
   FORM: 用户指定 all-pages-ip-v1 参考图；精确还原任务不适用概念随机种子。
 -->
 <view class="page-container sfp-tab-page">
+  <role-workbench wx:if="{{roleWorkbenchRole}}" role="measurer" focus="tasks" />
+  <block wx:else>
   <view class="top-safe" style="height: {{statusBarHeight}}px;"></view>
 
   <view class="page-header" style="padding-right: {{capsuleRightInset}}px;">
@@ -31,4 +33,5 @@
     />
   </view>
 
+  </block>
 </view>

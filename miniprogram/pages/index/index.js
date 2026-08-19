@@ -134,6 +134,13 @@ Page({
     hasPreciseLocation: false,
     locationFailed: false,
     bleAutoConnecting: false,
+    roleWorkbenchRole: '',
+  },
+
+  getRoleWorkbenchRole() {
+    const bootstrap = getApp().globalData.bootstrap;
+    const role = bootstrap && bootstrap.current && bootstrap.current.role;
+    return ['customer', 'designer', 'measurer', 'enterprise_admin'].includes(role) ? role : '';
   },
 
   onLoad: function () {
@@ -158,7 +165,9 @@ Page({
       currentCity: this.data.hasPreciseLocation ? this.data.currentCity : this.deriveCurrentCity(userInfo),
       homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
       quickTools: QUICK_TOOLS,
+      roleWorkbenchRole: this.getRoleWorkbenchRole(),
     }, () => {
+      if (this.data.roleWorkbenchRole) return;
       this.syncHomeDashboard();
       this.fetchHomeDashboard();
       this.initLocation();
@@ -173,6 +182,12 @@ Page({
 
     const app = getApp();
     const userInfo = app.globalData.userInfo || null;
+
+    const roleWorkbenchRole = this.getRoleWorkbenchRole();
+    if (roleWorkbenchRole) {
+      this.setData({ roleWorkbenchRole, userInfo, isStaff: roleWorkbenchRole !== 'customer' });
+      return;
+    }
 
     if (app.globalData.requireLeadFirst) {
       app.globalData.requireLeadFirst = false;
@@ -194,7 +209,9 @@ Page({
       currentCity: this.data.hasPreciseLocation ? this.data.currentCity : this.deriveCurrentCity(userInfo),
       homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
       quickTools: QUICK_TOOLS,
+      roleWorkbenchRole,
     }, () => {
+      if (this.data.roleWorkbenchRole) return;
       this.syncHomeDashboard();
       this.fetchHomeDashboard();
       // Only re-init if city is still empty

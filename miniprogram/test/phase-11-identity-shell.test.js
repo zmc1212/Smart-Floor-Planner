@@ -31,8 +31,8 @@ test('deep links are checked against server bootstrap capabilities', () => {
 });
 
 test('staff roles retain distinct landing and capability contracts', () => {
-  assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'designer' }), '/pages/leads-management/leads-management');
-  assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'measurer' }), '/packages/business/measurer-calendar/measurer-calendar');
+  assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'designer' }), '/pages/index/index');
+  assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'measurer' }), '/pages/index/index');
   assert.equal(navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', { mode: 'staff', staffRole: 'measurer' }), true);
-  assert.equal(navigation.canAccessRoute('/pages/ai-design/ai-design', { mode: 'staff', staffRole: 'measurer' }), false);
+  assert.equal(navigation.canAccessRoute('/pages/ai-design/ai-design', { mode: 'staff', staffRole: 'measurer' }), true);
 });

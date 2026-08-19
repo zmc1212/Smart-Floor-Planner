@@ -27,6 +27,7 @@ Page({
     error: '',
     memberships: [],
     selectedMembershipId: '',
+    switchingMembershipId: '',
     identityCount: 0,
   },
 
@@ -54,9 +55,17 @@ Page({
         console.warn('Failed to read identity contexts for referrer workbench', identityError);
       }
       const memberships = (result.data || []).filter((item) => item.status === 'active');
-      const selectedMembershipId = memberships.some((item) => item.id === this.data.selectedMembershipId)
-        ? this.data.selectedMembershipId
-        : (memberships[0] && memberships[0].id) || '';
+      const app = typeof getApp === 'function' ? getApp() : null;
+      const signedMembershipId = String(
+        app && app.globalData && app.globalData.bootstrap && app.globalData.bootstrap.current
+          && app.globalData.bootstrap.current.context && app.globalData.bootstrap.current.context.referrerMembershipId
+          || ''
+      );
+      const selectedMembershipId = memberships.some((item) => item.id === signedMembershipId)
+        ? signedMembershipId
+        : memberships.some((item) => item.id === this.data.selectedMembershipId)
+          ? this.data.selectedMembershipId
+          : (memberships[0] && memberships[0].id) || '';
       this.setData({ memberships, selectedMembershipId, identityCount });
     } catch (error) {
       this.setData({ error: error.message || error.error || '暂时无法读取推广企业' });
@@ -65,10 +74,51 @@ Page({
     }
   },
 
-  selectMembership(event) {
+  async selectMembership(event) {
     const membershipId = String(event.currentTarget.dataset.id || '');
-    if (this.data.memberships.some((item) => item.id === membershipId)) {
+    const membership = this.data.memberships.find((item) => item.id === membershipId);
+    if (!membership || membershipId === this.data.selectedMembershipId || this.data.switchingMembershipId) return;
+
+    const app = typeof getApp === 'function' ? getApp() : null;
+    const oldToken = app && app.globalData && app.globalData.token;
+    const oldUserInfo = app && app.globalData && app.globalData.userInfo;
+    const oldBootstrap = app && app.globalData && app.globalData.bootstrap;
+    this.setData({ switchingMembershipId: membershipId });
+    try {
+      const switched = await api.request('/miniprogram/identity-contexts/switch', 'POST', {
+        mode: 'referrer',
+        enterpriseId: membership.enterpriseId,
+        referrerMembershipId: membership.id,
+      });
+      if (!switched.token) throw new Error('企业身份刷新失败');
+
+      if (app && app.globalData) app.globalData.token = switched.token;
+      wx.setStorageSync('token', switched.token);
+      const refreshed = await api.request('/auth/miniprogram', 'POST', { type: 'refresh', token: switched.token });
+      if (!refreshed.token || !refreshed.user) throw new Error('企业会话刷新失败');
+      if (app && app.globalData) {
+        app.globalData.token = refreshed.token;
+        app.globalData.userInfo = refreshed.user;
+        app.globalData.openid = refreshed.openid || refreshed.user.openid || null;
+        app.globalData.sessionHydrated = false;
+        app.globalData.bootstrap = null;
+      }
+      wx.setStorageSync('token', refreshed.token);
+      wx.setStorageSync('userInfo', refreshed.user);
+      if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
+      if (app && typeof app.hydrateStoredSession === 'function') await app.hydrateStoredSession();
       this.setData({ selectedMembershipId: membershipId });
+      wx.showToast({ title: '已切换推广企业', icon: 'success' });
+    } catch (error) {
+      if (app && app.globalData) {
+        app.globalData.token = oldToken;
+        app.globalData.userInfo = oldUserInfo;
+        app.globalData.bootstrap = oldBootstrap;
+      }
+      if (oldToken) wx.setStorageSync('token', oldToken);
+      wx.showToast({ title: error.message || error.error || '切换失败，请重试', icon: 'none' });
+    } finally {
+      this.setData({ switchingMembershipId: '' });
     }
   },
 
@@ -78,6 +128,14 @@ Page({
     wx.navigateTo({
       url: `/packages/business/promotion-service-code/promotion-service-code?membershipId=${encodeURIComponent(membershipId)}`,
     });
+  },
+
+  openProgress() {
+    wx.navigateTo({ url: '/packages/business/referrer-progress/referrer-progress' });
+  },
+
+  openEarnings() {
+    wx.navigateTo({ url: '/packages/business/referrer-earnings/referrer-earnings' });
   },
 
   onOpenIdentitySwitch() {

@@ -134,7 +134,7 @@ test('standalone channel promoters cannot open or preload enterprise AI design',
   assert.equal(canAccessAIDesign({ role: 'user', enterpriseId: '42' }), false);
   assert.match(customTabSource, /requiresEnterprise: true/);
   assert.match(customTabSource, /visible: !item\.requiresEnterprise \|\| canUseAIDesign/);
-  assert.match(customTabSource, /compactMeasureTab: !canUseAIDesign/);
+  assert.match(customTabSource, /compactMeasureTab: list\.some\(\(item\) => item\.center\)/);
   assert.match(customTabWxml, /wx:if="\{\{item\.visible !== false\}\}"/);
   assert.match(customTabWxml, /center-icon-compact/);
   assert.match(customTabWxml, /center-image-compact/);

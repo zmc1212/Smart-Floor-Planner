@@ -1,0 +1,42 @@
+<view class="role-workbench sfp-tab-page">
+  <scroll-view scroll-y class="role-scroll" enhanced show-scrollbar="{{false}}">
+    <view class="role-content">
+      <view class="role-hero">
+        <view class="role-copy">
+          <text class="role-eyebrow">{{role === 'customer' ? '服务向导' : role === 'designer' ? '方案协调' : role === 'measurer' ? '测量协作' : '企业调度'}}</text>
+          <text class="role-title">{{title}}</text>
+          <text class="role-subtitle">{{subtitle}}</text>
+        </view>
+        <image class="role-mascot" src="/images/page-ip-v3/mine.png" mode="aspectFit" />
+      </view>
+
+      <view wx:if="{{focus === 'overview'}}" class="summary-grid">
+        <view wx:for="{{summary}}" wx:key="key" class="summary-card tone-{{item.tone}}">
+          <text class="summary-label">{{item.label}}</text>
+          <view class="summary-value"><text>{{item.value}}</text><text class="summary-unit">项</text></view>
+          <text class="summary-detail">{{item.detail}}</text>
+        </view>
+      </view>
+
+      <view class="section-head">
+        <text>{{role === 'customer' ? '我的服务' : focus === 'tasks' ? '我的任务' : focus === 'survey' ? '可进入量房' : focus === 'appointments' ? '预约安排' : '优先处理'}}</text>
+        <view wx:if="{{secondary && focus === 'overview'}}" class="section-link" bindtap="openSecondary"><text>{{secondary.label}}</text><view class="chevron"></view></view>
+      </view>
+
+      <view wx:if="{{loading}}" class="state-block"><text>正在读取真实工作数据</text></view>
+      <view wx:elif="{{error}}" class="state-block"><text>{{error}}</text><view class="retry" bindtap="load">重新加载</view></view>
+      <view wx:elif="{{items.length}}" class="item-list">
+        <view wx:for="{{items}}" wx:key="id" class="work-item" data-item="{{item}}" bindtap="openItem" hover-class="work-item-pressed">
+          <view class="item-marker tone-{{item.status === 'confirmed' ? 'green' : 'blue'}}"></view>
+          <view class="item-copy">
+            <text class="item-title">{{item.title}}</text>
+            <text class="item-subtitle">{{item.subtitle}}</text>
+            <text class="item-meta">{{item.metaLabel}}</text>
+          </view>
+          <view class="item-action"><text>{{role === 'customer' ? '查看项目' : item.actionLabel}}</text><view class="chevron"></view></view>
+        </view>
+      </view>
+      <view wx:else class="state-block empty"><text>{{emptyCopy}}</text><view wx:if="{{secondary}}" class="retry" bindtap="openSecondary">{{secondary.label}}</view></view>
+    </view>
+  </scroll-view>
+</view>

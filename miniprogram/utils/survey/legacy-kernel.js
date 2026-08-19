@@ -21,6 +21,8 @@ const {
 } = require('./core/constants.js');
 const vector2 = require('./geometry/vector2.js');
 const openingDomain = require('./domain/opening.js');
+const { syncClosedSpacesFromFaces } = require('./topology/space-sync.js');
+const wallFaces = require('./read-model/wall-faces.js');
 
 let idSeed = 1;
 const TRANSACTION_DRAFT_SYMBOL = Symbol.for('smart-floor-planner.survey-transaction-draft');
@@ -32,6 +34,13 @@ function nowIso() {
 function nextId(prefix) {
   idSeed += 1;
   return `${prefix}-${Date.now().toString(36)}-${idSeed}`;
+}
+
+function syncFloorSpaces(floor, inheritOverrides) {
+  return syncClosedSpacesFromFaces(floor, {
+    nextId,
+    inheritOverrides: inheritOverrides || null
+  });
 }
 
 function cloneDraft(draft) {
@@ -305,10 +314,7 @@ function getWallMeasurementInsets(wall) {
 }
 
 function getMeasuredWallLength(floor, wall) {
-  const coordinateLength = getWallCoordinateLength(floor, wall);
-  const insets = getWallMeasurementInsets(wall);
-  const startExtension = normalizeMeasurementExtension(wall && wall.measurementStartExtensionMm);
-  return Math.max(0, coordinateLength - insets.start + startExtension - insets.end);
+  return wallFaces.measuredReadingMm(getWallCoordinateLength(floor, wall), wall);
 }
 
 function calculateBoundaryCentroid(floor, wallIds) {
@@ -451,47 +457,22 @@ function buildBaseWallSegment(floor, wall, options) {
   const end = opts.endPoint || getNode(floor, wall.endNodeId);
   if (!start || !end) return null;
 
-  const dx = end.xMm - start.xMm;
-  const dy = end.yMm - start.yMm;
-  const rawLength = Math.sqrt(dx * dx + dy * dy);
-  if (!rawLength) return null;
-
-  const direction = { x: dx / rawLength, y: dy / rawLength };
-  const leftNormal = { x: direction.y, y: -direction.x };
-  const rightNormal = { x: -direction.y, y: direction.x };
   const closedSpace = findClosedSpaceForWall(floor, wall.id);
   const centroid = closedSpace ? calculateBoundaryCentroid(floor, closedSpace.wallIds) : null;
-  const midpoint = {
-    xMm: (start.xMm + end.xMm) / 2,
-    yMm: (start.yMm + end.yMm) / 2
-  };
-  const outward = centroid
-    ? { x: midpoint.xMm - centroid.xMm, y: midpoint.yMm - centroid.yMm }
-    : null;
-  // A shared-boundary closure records the visible body side while the chain is
-  // still open. When that chain later becomes a room, deriving the normal from
-  // the new room centroid could flip a completed wall across its red line.
-  const persistedNormal = wall.bodyNormalSide === 'left'
-    ? leftNormal
-    : (wall.bodyNormalSide === 'right' ? rightNormal : null);
-  // Normal closed-room walls expand away from their room centroid. A wall
-  // participating in a shared-boundary closure carries its pre-close physical
-  // side explicitly instead.
-  const normal = persistedNormal || (outward && dot(leftNormal, outward) >= dot(rightNormal, outward)
-    ? leftNormal
-    : (outward ? rightNormal : (wall.measurementSide === 'left' ? leftNormal : rightNormal)));
   const thicknessMm = resolveRenderThicknessMm(wall, opts);
+  const faces = wallFaces.projectWallFaces(wall, start, end, thicknessMm, centroid);
+  if (!faces) return null;
 
   return {
     wall,
     start,
     end,
-    direction,
-    normal,
+    direction: faces.direction,
+    normal: faces.normal,
     thicknessMm,
     lengthMm: distanceMm(start, end),
-    outerStart: addVector(start, normal, thicknessMm),
-    outerEnd: addVector(end, normal, thicknessMm)
+    outerStart: faces.outerStart,
+    outerEnd: faces.outerEnd
   };
 }
 
@@ -1972,6 +1953,7 @@ function findNearestOuterVertex(floor, point, maxDistanceMm) {
             xMm: Math.round(candidate.pointMm.xMm),
             yMm: Math.round(candidate.pointMm.yMm)
           },
+          topologyPointMm: { xMm: node.xMm, yMm: node.yMm },
           nodeId: node.id,
           wallId: wall.id,
           snapLine: 'outer',
@@ -2200,6 +2182,8 @@ function findWallSnapProjection(floor, point) {
   return findNearestSharedEndpointProjection(floor, point) || findNearestWallProjection(floor, point);
 }
 
+// Unique extend rule: orthogonal and collinear, degree-1 anchor, and the last
+// wall is not already in a closed space. Any other drag commits a new wall.
 function canExtendLastWall(floor, session, anchor, endPoint, measurementSide, isClosingCurrentSpace) {
   if (isClosingCurrentSpace || !anchor || !endPoint) return false;
 
@@ -2487,13 +2471,16 @@ function getCursorDisplayPoint(floor, session) {
 function getOrCreateSnapNode(floor, projection) {
   if (!projection) return null;
   if (projection.node) return projection.node;
-  if (projection.snapLine !== 'outer') {
-    if (projection.t <= 0.0001) return projection.start;
-    if (projection.t >= 0.9999) return projection.end;
-  }
-
-  const existing = floor.nodes.find((node) => distanceMm(node, projection.point) <= 1);
-  return existing || addNode(floor, projection.point);
+  const centerline = projection.snapLine === 'outer' && projection.start && projection.end
+    ? projectPointToWallSegment(projection.point, projection.start, projection.end)
+    : null;
+  const point = centerline && centerline.point ? centerline.point : projection.point;
+  const t = centerline && typeof centerline.t === 'number' ? centerline.t : projection.t;
+  if (t <= 0.0001) return projection.start;
+  if (t >= 0.9999) return projection.end;
+  if (!point) return null;
+  const existing = floor.nodes.find((node) => distanceMm(node, point) <= 1);
+  return existing || addNode(floor, point);
 }
 
 function getOrCreateWallCenterNode(floor, wallId, point) {
@@ -2986,37 +2973,11 @@ function splitClosedSpaceWithPartition(floor, session, partitionWall) {
   const endNode = partitionWall && getNode(floor, partitionWall.endNodeId);
   if (!sourceSpace || !startNode || !endNode || !partitionWall) return false;
 
+  const closedBefore = (floor.spaces || []).filter((space) => space && space.closed).length;
   splitWallAtNodes(floor, session.activeSpaceSharedWallId, [startNode.id]);
   splitWallAtNodes(floor, session.closeCandidateSharedWallId, [endNode.id]);
-
-  const refreshedSource = (floor.spaces || []).find((space) => space.id === sourceSpace.id);
-  const boundaryPaths = findClosedBoundaryPathsBetweenNodes(
-    floor,
-    refreshedSource,
-    startNode.id,
-    endNode.id
-  );
-  if (boundaryPaths.length !== 2) return false;
-
-  const firstWallIds = boundaryPaths[0].concat(partitionWall.id);
-  const secondWallIds = boundaryPaths[1].concat(partitionWall.id);
-  if (
-    buildSpaceBoundaryPoints(floor, firstWallIds).length < 3 ||
-    buildSpaceBoundaryPoints(floor, secondWallIds).length < 3
-  ) {
-    return false;
-  }
-
-  refreshedSource.wallIds = firstWallIds;
-  const roomIndex = floor.spaces.filter((space) => space.closed).length + 1;
-  floor.spaces.push({
-    id: nextId('space'),
-    name: `\u623f\u95f4${roomIndex}`,
-    wallIds: secondWallIds,
-    closed: true,
-    source: 'measured'
-  });
-  return true;
+  syncFloorSpaces(floor);
+  return (floor.spaces || []).filter((space) => space && space.closed).length >= closedBefore + 1;
 }
 
 function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
@@ -3819,6 +3780,10 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     wall.measuredAt = nowIso();
   } else {
     if (activeWallCountBeforeCommit === 0 && session.activeSpaceSharedWallId && session.activeSpaceSharedWallMiddle) {
+      const splitSource = getWall(floor, session.activeSpaceSharedWallId);
+      const splitClosedSpace = !!(splitSource && (floor.spaces || []).some((space) => (
+        space && space.closed && Array.isArray(space.wallIds) && space.wallIds.indexOf(splitSource.id) !== -1
+      )));
       const splitResult = splitWallAtNodes(floor, session.activeSpaceSharedWallId, [anchor.id]);
       const snappedSegments = splitResult.segmentIds
         .map((wallId) => getWall(floor, wallId))
@@ -3831,6 +3796,10 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
         session.activeSpaceSharedStartT = snappedWall.startNodeId === anchor.id ? 0 : 1;
       }
       session.activeSpaceStartWallIndex = floor.walls.length;
+      if (splitClosedSpace) {
+        syncFloorSpaces(floor);
+        session.fullValidationAfterClosedSplit = true;
+      }
     }
     endNode = closureProjection ? getOrCreateSnapNode(floor, closureProjection) : addNode(floor, endPoint);
     wall = {
@@ -4227,35 +4196,14 @@ function confirmClosure(draft) {
     throw new Error('公共边未连通，请从相邻墙边重新吸附光标');
   }
 
-  const wallIds = newWallIds.concat(sharedWallIds.length ? sharedWallIds : sharedBoundaryWallIds);
-  const hasSameSpace = floor.spaces.some((space) => {
-    if (!space.closed || !Array.isArray(space.wallIds) || space.wallIds.length !== wallIds.length) return false;
-    return space.wallIds.every((wallId, index) => wallId === wallIds[index]);
-  });
-
-  if (!hasSameSpace) {
-    const roomIndex = floor.spaces.filter((space) => space.closed).length + 1;
-    const wallFaceOverrides = session.activeSpaceSharedSnapLine === 'inner'
-      ? sharedWallIds.reduce((overrides, wallId) => {
-        // The selected inner corner is the topology face of the existing room.
-        // The adjacent room occupies the other side of that same physical wall,
-        // so its clear boundary must use the opposite (offset) face. The new
-        // room's measured walls already exclude the shared wall body through
-        // their endpoint insets; keeping the topology face here would add the
-        // same thickness back into room dimensions and area.
-        overrides[wallId] = 'offset';
-        return overrides;
-      }, {})
-      : undefined;
-    floor.spaces.push({
-      id: nextId('space'),
-      name: `\u623f\u95f4${roomIndex}`,
-      wallIds,
-      ...(wallFaceOverrides ? { wallFaceOverrides } : {}),
-      closed: true,
-      source: 'measured'
-    });
-  }
+  const inheritOverrides = session.activeSpaceSharedSnapLine === 'inner' && sharedWallIds.length
+    ? {
+      wallIds: sharedWallIds,
+      face: 'offset',
+      preferWallIds: newWallIds
+    }
+    : null;
+  syncFloorSpaces(floor, inheritOverrides);
 
   session.state = 'spaceClosed';
   session.anchorNodeId = '';
@@ -4527,7 +4475,7 @@ function collectCollinearSharedWallIds(floor, sharedWallIds, seedWallId) {
   return [...collected];
 }
 
-function planMergedSpaceForDeletedSharedWall(floor, wallId) {
+function planRemovedWallsForDeletedSharedWall(floor, wallId) {
   // Two room faces separated by one physical wall become one face when that
   // wall is removed. A split shared wall is still one interface: deleting any
   // collinear shared segment punches through the whole run.
@@ -4535,52 +4483,23 @@ function planMergedSpaceForDeletedSharedWall(floor, wallId) {
     space && space.closed && Array.isArray(space.wallIds) &&
     space.wallIds.indexOf(wallId) !== -1
   ));
-  if (affectedSpaces.length !== 2) return null;
+  if (affectedSpaces.length !== 2) return [wallId];
   const secondWallIds = new Set(affectedSpaces[1].wallIds);
   const sharedWallIds = affectedSpaces[0].wallIds.filter((id) => secondWallIds.has(id));
-  if (!sharedWallIds.length || sharedWallIds.indexOf(wallId) === -1) return null;
-  const removedWallIds = collectCollinearSharedWallIds(floor, sharedWallIds, wallId);
-  const removedSet = new Set(removedWallIds);
-  const boundaryWallIds = [...new Set(affectedSpaces.flatMap((space) => (
-    space.wallIds.filter((id) => !removedSet.has(id))
-  )))];
-  const orderedWallIds = orderClosedBoundaryWallIds(floor, boundaryWallIds);
-  if (orderedWallIds.length !== boundaryWallIds.length) return null;
-  const wallFaceOverrides = {};
-  orderedWallIds.forEach((boundaryWallId) => {
-    const owner = affectedSpaces.find((space) => space.wallIds.indexOf(boundaryWallId) !== -1);
-    const face = owner && owner.wallFaceOverrides && owner.wallFaceOverrides[boundaryWallId];
-    if (face === 'topology' || face === 'offset') wallFaceOverrides[boundaryWallId] = face;
-  });
-  const maxRoomNumber = (floor.spaces || []).reduce((max, space) => {
-    const match = space && typeof space.name === 'string' && space.name.match(/^\u623f\u95f4(\d+)$/);
-    return match ? Math.max(max, Number(match[1])) : max;
-  }, 0);
-  return {
-    removedWallIds,
-    space: {
-      id: nextId('space'),
-      name: `\u623f\u95f4${maxRoomNumber + 1}`,
-      wallIds: orderedWallIds,
-      ...(Object.keys(wallFaceOverrides).length ? { wallFaceOverrides } : {}),
-      closed: true,
-      source: 'measured'
-    }
-  };
+  if (!sharedWallIds.length || sharedWallIds.indexOf(wallId) === -1) return [wallId];
+  return collectCollinearSharedWallIds(floor, sharedWallIds, wallId);
 }
 
-function clearDeletedSharedWallBoundaryInsets(floor, mergedSpace, deletedWalls) {
+function clearDeletedSharedWallBoundaryInsets(floor, deletedWalls) {
   const walls = Array.isArray(deletedWalls) ? deletedWalls.filter(Boolean) : [deletedWalls];
-  if (!floor || !mergedSpace || !walls.length || !Array.isArray(mergedSpace.wallIds)) return [];
+  if (!floor || !walls.length) return [];
   const deletedNodeIds = new Set();
   walls.forEach((deletedWall) => {
     if (deletedWall.startNodeId) deletedNodeIds.add(deletedWall.startNodeId);
     if (deletedWall.endNodeId) deletedNodeIds.add(deletedWall.endNodeId);
   });
   const repairedWallIds = [];
-  mergedSpace.wallIds.forEach((wallId) => {
-    const boundaryWall = getWall(floor, wallId);
-    if (!boundaryWall) return;
+  (floor.walls || []).forEach((boundaryWall) => {
     const startInsetMm = normalizeMeasurementInset(boundaryWall.measurementStartInsetMm);
     const clearsStartInset = deletedNodeIds.has(boundaryWall.startNodeId) && startInsetMm > 0;
     const clearsEndInset = deletedNodeIds.has(boundaryWall.endNodeId) &&
@@ -4620,25 +4539,23 @@ function deleteWall(draft, wallId) {
     wallIndex === floor.walls.length - 1 &&
     wallIndex >= activeStartWallIndex &&
     wallIndex > activeStartWallIndex;
-  const mergePlan = planMergedSpaceForDeletedSharedWall(floor, targetId);
-  const mergedSpace = mergePlan && mergePlan.space;
-  const removedWallIds = new Set(mergePlan && mergePlan.removedWallIds || [targetId]);
+  const punchThroughSharedWall = (floor.spaces || []).filter((space) => (
+    space && space.closed && Array.isArray(space.wallIds) && space.wallIds.indexOf(targetId) !== -1
+  )).length === 2;
+  const removedWallIds = new Set(planRemovedWallsForDeletedSharedWall(floor, targetId));
   removedWallIds.add(targetId);
   const deletedWalls = [...removedWallIds].map((id) => getWall(floor, id)).filter(Boolean);
   const deletedNodeIds = [...new Set(deletedWalls.flatMap((item) => [item.startNodeId, item.endNodeId]))];
   const deletedStartNode = getNode(floor, wall.startNodeId);
   floor.walls = floor.walls.filter((item) => !removedWallIds.has(item.id));
   floor.openings = ensureOpenings(floor).filter((opening) => !removedWallIds.has(opening.wallId));
-  floor.spaces = (floor.spaces || []).filter((space) => {
-    return !Array.isArray(space.wallIds) || space.wallIds.indexOf(targetId) === -1;
-  });
   let repairedBoundaryWallIds = deletedNodeIds.flatMap((nodeId) => recomputeSplitNodeBodyInsets(floor, nodeId));
-  if (mergedSpace) {
-    floor.spaces.push(mergedSpace);
+  if (punchThroughSharedWall) {
     repairedBoundaryWallIds = repairedBoundaryWallIds.concat(
-      clearDeletedSharedWallBoundaryInsets(floor, mergedSpace, deletedWalls)
+      clearDeletedSharedWallBoundaryInsets(floor, deletedWalls)
     );
   }
+  syncFloorSpaces(floor);
 
   refreshWallMetrics(floor);
   if (repairedBoundaryWallIds.length) {
@@ -4678,7 +4595,8 @@ function deleteWall(draft, wallId) {
     session.activeSpaceSharedSnapLine = '';
   }
 
-  if (mergedSpace) {
+  const closedAfter = (floor.spaces || []).filter((space) => space && space.closed).length;
+  if (deletesClosedSpaceWall && closedAfter) {
     session.anchorNodeId = '';
     session.state = 'spaceClosed';
   } else if (floor.walls.length) {

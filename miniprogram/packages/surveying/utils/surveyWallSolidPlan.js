@@ -231,7 +231,25 @@ function polygonCentroid(polygons) {
   return { x: x / count, y: y / count };
 }
 
-function oppositeThicknessJoin(joint, first, second, interior) {
+function isInteriorOfWall(point, joint, wall) {
+  const outer = projectPointToOuterEdge(wall, joint);
+  if (!outer || !point) return false;
+  const offset = vectorBetween(joint, outer);
+  return (point.x - joint.x) * offset.x + (point.y - joint.y) * offset.y < -EPSILON;
+}
+
+function innerVoteCount(hull, joint, incident) {
+  const centroid = polygonCentroid([hull]);
+  if (!centroid) return Infinity;
+  return incident.filter((wall) => isInteriorOfWall(centroid, joint, wall)).length;
+}
+
+function hullIsInterior(hull, incident, joint) {
+  if (!hull || !hull.length || !incident || !incident.length) return false;
+  return incident.every((wall) => isInteriorOfWall(polygonCentroid([hull]), joint, wall));
+}
+
+function oppositeThicknessJoin(joint, first, second, incident) {
   const firstOuter = projectPointToOuterEdge(first, joint);
   const secondOuter = projectPointToOuterEdge(second, joint);
   const firstOffset = firstOuter && vectorBetween(joint, firstOuter);
@@ -251,19 +269,20 @@ function oppositeThicknessJoin(joint, first, second, interior) {
     hull.length >= 3 && Math.abs(signedArea(hull)) > EPSILON
   ));
   if (candidates.length <= 1) return candidates;
-  if (!interior) return candidates;
-  // Keep inner faces aligned with the shared node. Extending thickness into the
-  // room shifts the whole step by one wall. Fill the outer step corner instead.
-  return candidates.slice().sort((firstHull, secondHull) => (
-    distance(polygonCentroid([secondHull]), interior) - distance(polygonCentroid([firstHull]), interior)
-  )).slice(0, 1);
+  const voters = incident && incident.length ? incident : [first, second];
+  const localMass = polygonCentroid(voters.map((wall) => wall.polygon).filter(Boolean));
+  return candidates.slice().sort((firstHull, secondHull) => {
+    const voteDelta = innerVoteCount(firstHull, joint, voters) - innerVoteCount(secondHull, joint, voters);
+    if (voteDelta) return voteDelta;
+    if (!localMass) return 0;
+    return distance(polygonCentroid([secondHull]), localMass) - distance(polygonCentroid([firstHull]), localMass);
+  }).slice(0, 1);
 }
 
 function buildJoinPolygons(walls) {
   const geometryWalls = (walls || []).filter((wall) => (
     wall && wall.start && wall.end && wall.outerStart && wall.outerEnd
   ));
-  const interior = polygonCentroid(geometryWalls.map((wall) => wall.polygon).filter(Boolean));
   const endpoints = new Map();
   geometryWalls.forEach((wall) => {
     [wall.start, wall.end].forEach((point) => endpoints.set(pointKey(point), snapPoint(point)));
@@ -294,11 +313,21 @@ function buildJoinPolygons(walls) {
         const second = incident[secondIndex];
         const intersection = infiniteLineIntersection(first.outerStart, first.outerEnd, second.outerStart, second.outerEnd);
         const limit = maxThickness * 4;
-        if (intersection && distance(intersection, joint) <= limit) points.push(intersection);
+        if (
+          intersection &&
+          distance(intersection, joint) <= limit &&
+          !incident.every((wall) => isInteriorOfWall(intersection, joint, wall))
+        ) {
+          points.push(intersection);
+        }
       }
     }
     const hull = convexHull(points);
-    if (hull.length >= 3 && Math.abs(signedArea(hull)) > EPSILON) {
+    if (
+      hull.length >= 3 &&
+      Math.abs(signedArea(hull)) > EPSILON &&
+      !hullIsInterior(hull, incident, joint)
+    ) {
       joins.push(hull);
       return;
     }
@@ -307,7 +336,7 @@ function buildJoinPolygons(walls) {
     // aligned at the shared node instead of shifting one wall into the room.
     for (let firstIndex = 0; firstIndex < incident.length; firstIndex += 1) {
       for (let secondIndex = firstIndex + 1; secondIndex < incident.length; secondIndex += 1) {
-        oppositeThicknessJoin(joint, incident[firstIndex], incident[secondIndex], interior)
+        oppositeThicknessJoin(joint, incident[firstIndex], incident[secondIndex], incident)
           .forEach((join) => joins.push(join));
       }
     }

@@ -48,6 +48,19 @@ copy back to `layoutData`.
 
 - A physical wall is stored once. Shared-wall faces and room boundaries are
   derived from wall direction, thickness, and each space's ordered `wallIds`.
+  `confirmClosure`, `deleteWall`, and closed-wall splits write those `wallIds`
+  by syncing closed spaces from half-edge faces (`extractFaces` /
+  `syncClosedSpacesFromFaces`). The transaction then requires the saved spaces
+  to equal the extracted faces; a mismatch rejects the operation. Graph nodes
+  store centerline millimetres only. Working (red/orange) faces and one-sided
+  bodies are read models from centerline + thickness + `measurementSide` /
+  `bodyNormalSide`; display hits pair an outer point with its centerline node
+  and must not write outer coordinates as `node.xMm`. Adjacent working-line
+  endpoints meet at their line intersection, and confirmed readings use
+  `topology length - start inset + start extension - end inset`. The H5 catalog
+  plus shared-wall deletion remains the gesture-regression matrix; invariant
+  tests in `test/survey-kernel-invariants.test.js` lock the face-write,
+  working-line, and reading rules.
 - Closed-space fill and net area use derived inner wall faces, not topology-node
   polygon area or a bounding rectangle.
 - Dimensions are read models. They must not be written into `surveyGraph` or
@@ -62,7 +75,12 @@ copy back to `layoutData`.
   millimetre start and end points, so Canvas can render the merged room. An
   L-shaped concave corner created by that punch-through keeps overlapping
   rectangular wall solids; it must not convex-miter the remaining outer wall
-  into the room. Inner-face closures keep each remaining wall's original body
+  into the room. Node joins use local convex/concave predicates: convex outer
+  corners keep an outer miter, concave inner corners keep overlapping
+  rectangles, and collinear opposite-thickness walls fill only the outer step
+  so inner faces stay aligned at the shared node. Admin
+  `admin/src/lib/surveyWallSolidPlan.js` uses the same join generator as the
+  Mini Program planner. Inner-face closures keep each remaining wall's original body
   side, so the merged inner L extends into the room and collinear walls with
   opposite thickness stay a stepped facade. The two remaining walls at that
   inner L keep overlapping rectangular solids; they must not convex-miter a
@@ -106,7 +124,12 @@ copy back to `layoutData`.
 ## Verification
 
 Use focused wall-graph, renderer, dimension, persistence, and BLE tests for
-changes to this contract. Real-device or WeChat DevTools evidence is required
+changes to this contract. Topology writes through `confirmClosure`,
+`deleteWall`, and closed-wall `commitPreviewLength` must keep closed `spaces`
+aligned with extracted half-edge faces;
+`test/survey-topology-face-shadow-matrix.test.js` and
+`test/survey-kernel-invariants.test.js` are the catalog and invariant gates.
+Real-device or WeChat DevTools evidence is required
 when the change involves native Canvas, BLE, or host UI behavior.
 The user-supplied exterior-T measurement screenshots are the behavior reference
 for inner/outer chains. The H5 outer-start right-preview, right-continuation,

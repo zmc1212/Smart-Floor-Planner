@@ -27,7 +27,8 @@ function runSurveyTransaction(draft, operationName, mutator, options) {
     delete nextDraft[TRANSACTION_DRAFT_SYMBOL];
   }
   nextDraft.updatedAt = transactionTime;
-  const validation = validateSurveyDraft(nextDraft, { mode: options && options.mode || 'quick' });
+  const resolvedOptions = typeof options === 'function' ? (options(nextDraft) || {}) : (options || {});
+  const validation = validateSurveyDraft(nextDraft, { mode: resolvedOptions.mode || 'quick' });
   if (!validation.valid) throw new SurveyInvariantError(operationName, validation);
   return nextDraft;
 }

@@ -114,8 +114,13 @@ function extractFaces(floor) {
     edges.sort((left, right) => {
       const leftNode = index.nodesById.get(left.to);
       const rightNode = index.nodesById.get(right.to);
-      return Math.atan2(leftNode.yMm - origin.yMm, leftNode.xMm - origin.xMm) -
-        Math.atan2(rightNode.yMm - origin.yMm, rightNode.xMm - origin.xMm);
+      const leftAngle = Math.atan2(leftNode.yMm - origin.yMm, leftNode.xMm - origin.xMm);
+      const rightAngle = Math.atan2(rightNode.yMm - origin.yMm, rightNode.xMm - origin.xMm);
+      if (Math.abs(leftAngle - rightAngle) > 1e-9) return leftAngle - rightAngle;
+      const leftLength = Math.hypot(leftNode.xMm - origin.xMm, leftNode.yMm - origin.yMm);
+      const rightLength = Math.hypot(rightNode.xMm - origin.xMm, rightNode.yMm - origin.yMm);
+      if (Math.abs(leftLength - rightLength) > 0.5) return leftLength - rightLength;
+      return left.wallId < right.wallId ? -1 : 1;
     });
   });
   const edgesById = new Map(halfEdges.map((edge) => [edge.id, edge]));

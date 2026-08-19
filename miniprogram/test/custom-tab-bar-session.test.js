@@ -71,6 +71,45 @@ test('custom TabBar refreshes Design visibility after the active account changes
   }
 });
 
+test('custom TabBar uses the signed bootstrap role instead of the legacy staff split', () => {
+  const globalData = {
+    userInfo: { role: 'staff', enterpriseId: 'enterprise-1' },
+    bootstrap: { current: { role: 'customer', capabilities: ['customer.service', 'customer.projects', 'account'] } }
+  };
+  const { definition, restore } = loadTabBarComponent(globalData);
+
+  try {
+    const component = {
+      data: JSON.parse(JSON.stringify(definition.data)),
+      setData(update) { this.data = { ...this.data, ...update }; }
+    };
+
+    definition.methods.syncSelected.call(component);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['service', 'projects', 'mine']);
+    assert.equal(component.data.list.some((item) => item.key === 'measure'), false);
+    assert.equal(component.data.list.some((item) => item.key === 'leads'), false);
+
+    globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'staff.appointments', 'staff.design', 'account'] } };
+    definition.methods.syncSelected.call(component);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'design', 'mine']);
+    assert.equal(component.data.list.some((item) => item.key === 'measure'), false);
+
+    globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'account'] } };
+    definition.methods.syncSelected.call(component);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'mine']);
+
+    globalData.bootstrap = { current: { role: 'measurer', capabilities: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'account'] } };
+    definition.methods.syncSelected.call(component);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['schedule', 'tasks', 'survey', 'mine']);
+
+    globalData.bootstrap = { current: { role: 'enterprise_admin', capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'account'] } };
+    definition.methods.syncSelected.call(component);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['operations', 'customers', 'appointments', 'mine']);
+  } finally {
+    restore();
+  }
+});
+
 test('custom TabBar keeps the Measure label above iOS bottom safe areas', () => {
   const tabBarStyles = fs.readFileSync(tabBarStylePath, 'utf8');
   const appStyles = fs.readFileSync(appStylePath, 'utf8');

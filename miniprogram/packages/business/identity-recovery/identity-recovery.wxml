@@ -1,0 +1,18 @@
+<view class="recovery-page">
+  <view class="recovery-hero">
+    <view class="recovery-copy">
+      <text class="recovery-kicker">身份管家 · 小K</text>
+      <text class="recovery-title">{{title}}</text>
+      <text class="recovery-detail">{{detail}}</text>
+    </view>
+    <image class="recovery-art" src="../assets/account-v1/settings-guardian-scene-v3.png" mode="aspectFit" aria-hidden="true" />
+  </view>
+  <view class="recovery-card">
+    <image class="recovery-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+    <view>
+      <text class="recovery-card-title">不会展示失效身份的数据</text>
+      <text class="recovery-card-detail">重新登录后，只会显示服务端确认仍有效的身份。</text>
+    </view>
+  </view>
+  <button class="recovery-action" bindtap="onRelogin">重新登录</button>
+</view>

@@ -367,6 +367,18 @@ export class AppointmentRepository {
       .orderBy(sql`lower(${measurementAppointments.timeRange}) asc`, asc(measurementAppointments.id));
   }
 
+  async listConfirmedByEnterprise(enterpriseId: bigint, limit = 6) {
+    return this.transaction
+      .select()
+      .from(measurementAppointments)
+      .where(and(
+        eq(measurementAppointments.enterpriseId, enterpriseId),
+        eq(measurementAppointments.status, 'confirmed')
+      ))
+      .orderBy(sql`lower(${measurementAppointments.timeRange}) asc`, asc(measurementAppointments.id))
+      .limit(Math.min(Math.max(limit, 1), 50));
+  }
+
   async reschedule(input: {
     enterpriseId: bigint;
     appointmentId: bigint;

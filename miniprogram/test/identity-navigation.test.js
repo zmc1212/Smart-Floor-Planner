@@ -15,7 +15,7 @@ test('role landing keeps referrers out of the generic home shell', () => {
     navigation.getRoleLanding({ mode: 'referrer' }),
     '/packages/business/referrer-workbench/referrer-workbench'
   );
-  assert.equal(navigation.getRoleLanding({ role: 'staff' }), '/pages/mine/mine');
+  assert.equal(navigation.getRoleLanding({ role: 'staff' }), '/pages/index/index');
   assert.equal(navigation.getRoleLanding({ mode: 'customer' }), '/pages/index/index');
 });
 

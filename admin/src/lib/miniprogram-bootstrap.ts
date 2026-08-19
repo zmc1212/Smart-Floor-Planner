@@ -14,9 +14,9 @@ export type MiniProgramRole =
 export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
   customer: '/pages/index/index',
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
-  designer: '/pages/leads-management/leads-management',
-  measurer: '/packages/business/measurer-calendar/measurer-calendar',
-  enterprise_admin: '/pages/mine/mine',
+  designer: '/pages/index/index',
+  measurer: '/pages/index/index',
+  enterprise_admin: '/pages/index/index',
 };
 
 const ROLE_LABELS: Record<MiniProgramRole, string> = {

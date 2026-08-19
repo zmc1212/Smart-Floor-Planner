@@ -6,7 +6,7 @@ const spaceDomain = require('../domain/space.js');
 const polygon = require('../geometry/polygon.js');
 const segment = require('../geometry/segment.js');
 const { createTopologyIndex } = require('../topology/topology-index.js');
-const { extractFaces } = require('../topology/face-extractor.js');
+const { compareClosedSpacesToFaces } = require('../topology/face-shadow.js');
 
 function issue(code, path, message, details) {
   return Object.assign({ code, path, message }, details ? { details } : {});
@@ -158,34 +158,11 @@ function validateFull(floor, index, errors, warnings) {
   });
 
   if (!errors.length) {
-    const faceResult = extractFaces(floor);
-    const closedSpaces = floor.spaces.filter((space) => space.closed);
-    if (faceResult.faces.length !== closedSpaces.length) {
-      errors.push(issue('FACE_SPACE_MISMATCH', 'spaces', `半边诊断得到 ${faceResult.faces.length} 个有界面，但墙图保存了 ${closedSpaces.length} 个闭合空间`, {
-        faceCount: faceResult.faces.length,
-        spaceCount: closedSpaces.length
-      }));
-    } else {
-      const availableFaces = faceResult.faces.slice();
-      closedSpaces.forEach((space) => {
-        const boundaryKey = (space.wallIds || []).slice().sort().join('|');
-        const faceIndex = availableFaces.findIndex((face) => face.wallIds.slice().sort().join('|') === boundaryKey);
-        if (faceIndex < 0) {
-          errors.push(issue('FACE_BOUNDARY_MISMATCH', `spaces.${space.id}.wallIds`, `空间 ${space.id} 的边界与 Face shadow 不一致`));
-          return;
-        }
-        const face = availableFaces.splice(faceIndex, 1)[0];
-        const nodeCycle = spaceDomain.buildSpaceNodeCycle(space, index);
-        const spaceAreaMm2 = polygon.area(nodeCycle.map((nodeId) => index.nodesById.get(nodeId)));
-        if (Math.abs(spaceAreaMm2 - face.areaMm2) > 1) {
-          errors.push(issue('FACE_AREA_MISMATCH', `spaces.${space.id}`, `空间 ${space.id} 的拓扑面积与 Face shadow 不一致`, {
-            spaceAreaMm2,
-            faceAreaMm2: face.areaMm2
-          }));
-        }
-      });
-    }
-    faceResult.dangles.forEach((dangle) => {
+    const shadow = compareClosedSpacesToFaces(floor);
+    shadow.mismatches.forEach((mismatch) => {
+      errors.push(issue(mismatch.code, mismatch.path, mismatch.message, mismatch.details));
+    });
+    shadow.dangles.forEach((dangle) => {
       warnings.push(issue('DANGLE_WALL', `walls.${dangle.wallId}`, `墙体 ${dangle.wallId} 未参与任何有界 Face`, dangle));
     });
   } else {
