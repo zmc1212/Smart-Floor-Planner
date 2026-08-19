@@ -1,6 +1,6 @@
 # Referrer Network and Measurement Appointment Development Plan
 
-Status: `Phase 10 in progress / Phase 11 completed`
+Status: `Phase 10 in progress / Phase 11 completed / Phase 16 implemented`
 
 This document is the durable implementation entry point for the breaking redesign covering multi-enterprise referrers, phone-authorized lead creation, automatic assignment, measurement appointments, published AI designs, conversion, and three-role commissions. Current code, PostgreSQL schema, migrations, and module inventories remain the authority for implemented behavior. Every table, API, and route in this plan remains `Planned` until code and tests prove otherwise.
 
@@ -36,7 +36,7 @@ The board-level note about automatic lead insertion and assignment is an impleme
 
 ### 1.3 Immutable UI and privacy rules
 
-1. The promotion code, scan landing page, phone authorization page, and authorization success page must not show a renovation-company name, company logo, enterprise selector, joined-enterprise count, or copy that identifies the receiving enterprise.
+1. The promotion code, scan landing page, phone authorization page, and authorization success page must not show a renovation-company name, company logo, enterprise selector, joined-enterprise count, or copy that identifies the receiving enterprise. That anonymity boundary applies only to the **public referrer promotion path**. A staff-activity landing page may and should show the serving enterprise name/brand because the company is acquiring leads itself; the success page still delivers only the designer’s personal WeChat contact.
 2. A referrer selects the target enterprise inside the authenticated workbench. The enterprise relationship is resolved server-side from the short token and is neither plaintext QR data nor customer-visible content.
 3. A scan records only a pending referral source. It does not create a business identity or lead before phone authorization.
 4. Successful authorization atomically links or creates the customer, locks first valid attribution, creates the lead, and assigns a designer and provisional measurer.
@@ -74,6 +74,18 @@ Enterprise dual-code onboarding
   -> designer generates and explicitly publishes an AI design
   -> designer or enterprise administrator confirms conversion
   -> snapshot three commission rules and create three payables
+```
+
+A parallel staff-activity acquisition track shares the same lead lifecycle, formal survey, AI publication, and conversion, instead of a second lead type:
+
+```text
+Designer or measurer presents a personal activity code
+  -> customer scans and authorizes
+  -> attribution lock + lead source=staff_activity (referrer may be null)
+  -> presenter is locked as measurerId; a designer presenter also becomes assignedTo, a measurer presenter still gets min-load designer assignment
+  -> enter formal surveying immediately, or the presenter creates the first appointment
+  -> merge with the referrer track: surveying submit -> designing -> publish -> convert
+  -> snapshot designer + measurer payables only; the same person doing both jobs gets two rows with the same beneficiary
 ```
 
 The canonical lead lifecycle remains:
@@ -137,9 +149,10 @@ Phase 1 persists the target tables below in `admin/src/db/schema.ts` and migrati
 | `referrer_profiles` | One profile per base referrer user. |
 | `referrer_enterprise_memberships` | Referrer, enterprise, state, joined/left timestamps; active relationship unique and historical rows retained. |
 | `referrer_promotion_codes` | Membership, random short-token hash, state, version; one current code per active membership. |
-| `promotion_scan_audits` | Token, WeChat session, result, IP/device summary, and time; no OpenID copied to leads. |
+| `staff_activity_codes` | Phase 16: staff + enterprise, token hash, state, version; one current activity code per active designer/measurer. |
+| `promotion_scan_audits` | Token, WeChat session, result, IP/device summary, and time; no OpenID copied to leads. May reference a promotion code or a staff activity code. |
 | `customer_attribution_locks` | Customer user, active lead, membership, enterprise, locked/released times; partial unique index permits one active lock per customer. |
-| Extended `leads` | Customer user, referrer membership, measurer, attribution time, assignment state/error; `assigned_to` remains designer. |
+| Extended `leads` | Customer user, nullable referrer membership, measurer, `source=referrer_network\|staff_activity`, attribution time, assignment state/error; `assigned_to` remains designer. |
 | `lead_assignment_events` | Automatic designer/measurer assignments, retries, replacements, and failure reasons. |
 | `enterprise_appointment_settings` | Weekly hours, default duration, step, horizon, and customer cutoff. |
 | `staff_unavailability_periods` | Measurer leave/unavailable `tstzrange`, reason, and actor. |
@@ -212,9 +225,9 @@ Lead creation provisionally assigns an active same-enterprise measurer. Stable s
 3. `last_assigned_at NULLS FIRST`.
 4. Staff ID ascending.
 
-The first appointment or reschedule retains the provisional measurer if available; otherwise choose the lowest-load available measurer using the same tie-breaks.
+The first appointment or reschedule retains the provisional measurer if available; otherwise choose the lowest-load available measurer using the same tie-breaks. **`source=staff_activity` exception: never auto-replace the measurer on a slot conflict.** The staff who presented the activity code stays `measurerId`; a conflict returns the slot as unavailable so the presenter can pick another time. Manual internal replacement with a reason remains allowed.
 
-Assignments lock candidate statistics or use retryable conditional updates. No eligible staff leaves the lead intact with `assignment_pending`, a reason code, and an administrator notification. Staff onboarding, profile completion, or assignment re-enable triggers idempotent retry.
+Assignments lock candidate statistics or use retryable conditional updates. No eligible staff leaves the lead intact with `assignment_pending`, a reason code, and an administrator notification. Staff onboarding, profile completion, or assignment re-enable triggers idempotent retry. Staff-activity retries must not rewrite the locked presenter `measurerId`.
 
 ## 9. Appointments and rescheduling
 
@@ -253,7 +266,7 @@ Phase 6 is implemented through the owner-only customer-project aggregate: `Custo
 
 - Enterprises configure separate referrer, designer, and measurer rules as fixed amount or contract percentage.
 - If any role uses percentage, conversion requires a positive contract amount.
-- The conversion transaction snapshots all rules, beneficiaries, and contract amount and creates three unique `(lead_id, role)` `payable` rows.
+- The conversion transaction snapshots payable rows by lead `source`: `referrer_network` still creates three unique `(lead_id, role)` `payable` records for referrer, designer, and measurer; `staff_activity` snapshots designer and measurer only, does not require an active referrer rule, and does not require the measurer staff row to have role `measurer`. The same `beneficiaryUserId` may appear on both designer and measurer rows.
 - Monetary computation uses decimal arithmetic, never JavaScript floating point. Repository tests lock the rounding rule.
 - Enterprise administrators mark offline payments `paid` individually or in bulk. The platform does not pay funds.
 - Conversion reversal marks unpaid rows `voided` with a reason. Any `paid` row blocks direct reversal until offline correction is complete.
@@ -273,14 +286,15 @@ Exact route names may be adjusted within an implementation slice to match App Ro
 | Onboarding | `POST /api/miniprogram/onboarding/staff`, `POST /api/miniprogram/onboarding/referrer`; implemented in phase 2. |
 | Referrers | `GET /api/miniprogram/referrer-memberships`, `DELETE /api/miniprogram/referrer-memberships/[id]`, `GET /api/miniprogram/referrer-memberships/[id]/promotion-code`; implemented in phase 2. |
 | Service-code image | `GET /api/miniprogram/referrer-memberships/[id]/promotion-code/image`; implemented in phase 4, validates the active membership and calls the WeChat Mini Program code provider outside the database transaction, returning non-cacheable PNG/JPEG bytes. It uses the same `getwxacodeunlimit` `develop` environment as enterprise onboarding codes. |
-| Customer lead creation | `POST /api/miniprogram/referrals/authorize-and-create-lead`; phase 3 implements customer-context/direct WeChat phone authorization, idempotent attribution, and atomic lead creation/assignment. |
+| Customer lead creation | `POST /api/miniprogram/referrals/authorize-and-create-lead`; phase 3 implements customer-context/direct WeChat phone authorization, idempotent attribution, and atomic lead creation/assignment. Phase 16 accepts a referrer pending source or a staff-activity pending source; activity leads use `source=staff_activity` and lock the presenter as `measurerId`. |
+| Staff activity codes | `GET /api/miniprogram/staff-activity-code`, `GET /api/miniprogram/staff-activity-code/image`; implemented in phase 16. Only active designers/measurers may issue a code; designers need a complete WeChat ID and live QR asset. `POST /api/miniprogram/codes/resolve` adds `kind: staff_activity` and may return the enterprise name on the activity landing. |
 | Assignment | `POST /api/internal/lead-assignments/[leadId]/retry`; phase 3 implements this for service identity authenticated by an `INTERNAL_SECRET` of at least 32 characters. |
 | Availability | `GET /api/appointments/availability`; phase 5 is complete and returns candidate-measurer availability plus the enterprise time zone, duration, step, and maximum advance-day boundary from enterprise schedules, active appointments, and unavailability. |
-| Appointments | `GET/POST /api/appointments`, `POST /api/appointments/[id]/customer-reschedule`, `POST /api/appointments/[id]/internal-reschedule`, `POST /api/appointments/[id]/cancel`, `POST /api/appointments/[id]/complete`; phase 5 is complete with optimistic versions, customer/designer/measurer/enterprise-owner boundaries, automatic measurer replacement, event audit, and post-commit staff and subscribed-customer notification attempts for create, reschedule, and cancellation. Customer reads and reschedules derive their tenant from the customer-owned lead or appointment rather than accepting an enterprise ID from the token or request. |
+| Appointments | `GET/POST /api/appointments`, `POST /api/appointments/[id]/customer-reschedule`, `POST /api/appointments/[id]/internal-reschedule`, `POST /api/appointments/[id]/address`, `POST /api/appointments/[id]/cancel`, `POST /api/appointments/[id]/complete`; phase 5 is complete with optimistic versions, customer/designer/measurer/enterprise-owner boundaries, automatic measurer replacement, event audit, and post-commit staff and subscribed-customer notification attempts for create, reschedule, and cancellation. The address endpoint lets the assigned designer or measurer complete the service address after booking and records an `address_updated` event. Completing an appointment now requires a linked completed formal v4 survey floor plan with at least one closed space; otherwise the endpoint returns `appointment_survey_required` (409). Customer reads and reschedules derive their tenant from the customer-owned lead or appointment rather than accepting an enterprise ID from the token or request. |
 | Calendar/settings | `GET/PUT /api/appointment-settings`, `GET/POST/DELETE /api/measurer-unavailability`; phase 5 is complete. |
 | Customer project and design publication | `GET /api/miniprogram/customer-projects/[leadId]`, `GET /api/miniprogram/customer-projects/[leadId]/published-generations/[generationId]/image`, `POST /api/leads/[id]/ai-publications`, `DELETE /api/leads/[id]/ai-publications/[generationId]`; the Phase 6 backend slice is implemented. Customer reads are restricted to the owning project; designers may only publish/withdraw succeeded generations for their assigned leads, while enterprise administrators may manage their tenant's leads. Withdrawn or deleted generations never appear in the customer aggregate or image endpoint. |
 | Startup and identity shell | `GET /api/miniprogram/bootstrap`; implemented in Phase 11. The server validates the signed JWT `contextVersion` and active staff/referrer relations, then returns the current role, valid role groups, enterprise/membership context, landing path, capability allowlist, and server-owned badge summary. Invalid contexts return `identity_context_invalid` and never fall back to customer mode. |
-| Commissions | `GET/PUT /api/commission-rules`, `GET /api/lead-commissions?status=&role=&fromDate=&toDate=`, `POST /api/lead-commissions/mark-paid`; implemented in the Phase 7 server slice. Rules are tenant-scoped and can only be read/updated with optimistic versions by enterprise/platform administrators; report and payout APIs only return or mutate records in that enterprise. |
+| Commissions | `GET/PUT /api/commission-rules`, `GET /api/lead-commissions?status=&role=&fromDate=&toDate=&source=`, `POST /api/lead-commissions/mark-paid`; implemented in the Phase 7 server slice, with source filtering in Phase 16. Rules are tenant-scoped and can only be read/updated with optimistic versions by enterprise/platform administrators; report and payout APIs only return or mutate records in that enterprise. |
 
 Enterprise endpoints use existing tenant route/context helpers and RLS. Internal retries use a service identity and are not exposed to ordinary clients.
 
@@ -295,9 +309,9 @@ The phase-5 runtime routes now exist and are recorded against their approved pha
 
 - `packages/business/referrer-workbench/referrer-workbench`: memberships, internal enterprise selection, promotion-code entry.
 - `packages/business/customer-project/customer-project`: the approved Phase 6 customer project folio renders the real appointment, designer/measurer, completed formal-plan summary, and explicitly published design cards; the protected design-image endpoint is read into an app-local file before customer preview. It intentionally has no customer measurement-editor entry or editable floor-plan viewer.
-- `packages/business/appointment-detail/appointment-detail`: the real dispatch record and role-limited internal reschedule, cancel, and completion actions.
+- `packages/business/appointment-detail/appointment-detail`: the real dispatch record and role-limited internal reschedule, cancel, completion, and service-address actions; the assigned designer and measurer may both add or correct the address from appointment detail.
 - `packages/business/appointment-reschedule/appointment-reschedule`: server-calculated customer availability plus customer reschedule or internal reschedule with an optional audit reason.
-- `packages/business/appointment-booking/appointment-booking`: the assigned designer enters from a lead without a confirmed appointment, provides the service address, selects a server-calculated real slot, and creates the first appointment.
+- `packages/business/appointment-booking/appointment-booking`: the assigned designer enters from a lead without a confirmed appointment, provides the service address, selects a server-calculated real slot, and creates the first appointment; appointment detail remains the follow-up entry when the address needs completion.
 - `packages/business/measurer-calendar/measurer-calendar`: confirmed measurer itinerary with an entry to manage unavailability.
 - `packages/business/measurer-unavailability/measurer-unavailability`: measurers manage only their own unavailable periods with native date/time pickers, optional reason, save, and delete; server APIs continue to enforce role and ownership.
 - `packages/business/onboarding/onboarding`: staff/referrer join-code landing route. It resolves the code type before phone authorization, collects the authorization, selects only `designer` or `measurer` for staff, calls the existing onboarding endpoint, and switches to the returned context.
@@ -425,6 +439,7 @@ Update this status table incrementally and update both module inventories and af
 | 13. Customer and referrer loops | `In progress` | `GET /api/miniprogram/customer-projects` now exposes an owned, unarchived customer-project index from the current JWT. Selecting another enterprise in the referrer workbench exchanges the signed `referrerMembershipId` context before refreshing the session; service code, `GET /api/miniprogram/referrer-progress`, and `GET /api/miniprogram/referrer-earnings` consequently share one active membership boundary. The aggregates return only masked customer labels, service stage/update facts, and the referrer's payable, paid, or voided earnings. Customer/referrer negative authorization tests and focused Mini Program tests pass; the new routes still need authenticated `390x844` native-capsule QA. |
 | 14. Designer, measurer, and enterprise-owner loops | `In progress` | `GET /api/miniprogram/workbench` now derives the signed staff role, enterprise, and staff scope in the tenant transaction; Admin adds `GET /api/workbench/staff`, which derives designer/measurer scope from the Cookie session for the role-specific home workbench. Designers receive only assigned leads and appointments, measurers only own confirmed appointments and linked survey tasks, and enterprise owners only tenant lead/confirmed-appointment aggregates. The existing static Tab routes now render `Workbench/Customers/Design/Mine`, `Schedule/Tasks/Survey/Mine`, or `Operations/Customers/Appointments/Mine` by capability; measurer survey entry uses the sole formal editor with assigned context. Focused navigation tests pass. Authenticated Admin role QA, `390x844` native-capsule QA, and real multi-role data acceptance remain pending. |
 | 15. Real five-role end-to-end acceptance | `Planned` | Use real WeChat accounts or real contexts on one account to verify service code through authorization, assignment, appointment, survey, publication, conversion, and commissions. Cover cold launch, switching, revocation, notification failure, pagination, and negative deep links, then close every affected route with `390x844` native-capsule evidence and bilingual documentation. |
+| 16. Staff activity acquisition track | `Completed` | Added `staff_activity_codes`, a third resolve kind, nullable-referrer attribution locks, presenter-locked `measurerId`, designer dual-assignment or min-load designer fill, floor-plan `measurerId` authorization, no auto-replace on the activity track, unscheduled survey workbench tasks, and source-based 2/3 commission snapshots. The Mini Program activity-code page reuses the referrer service-code visual language and may show enterprise branding; `390x844` native-capsule QA remains pending. |
 
 ## 17. Test and acceptance matrix
 
@@ -486,7 +501,10 @@ These decisions do not require repeated confirmation unless the product owner ch
 - Customers do not use staff leads, formal-survey editing, or AI production tools; enterprise owners do not automatically receive designer/measurer hands-on entries.
 - Exactly one identity context is active at a time; invalid context requires explicit recovery and never silently falls back to ordinary-user UI.
 - Staff and referrer onboarding takes effect immediately without review.
-- Measurers are provisionally assigned and automatically replaced on appointment conflict.
+- Measurers are provisionally assigned and automatically replaced on appointment conflict; `staff_activity` leads never auto-replace the measurer.
+- Staff identity remains a single `designer` / `measurer` role. `measurerId` may point at a designer employee as a task assignment, not a second identity. Enterprise owners still must switch into a designer/measurer identity to operate.
+- Staff activity codes create leads through customer scan-and-authorize; do not restore measurer-typed customer intake.
+- Activity leads are not written into referrer progress/earnings and do not auto-create fake appointments.
 - Customers select only server-confirmed availability; reschedules take effect immediately.
 - Customers cannot cancel appointments themselves.
 - Commissions are offline enterprise ledgers; the platform does not pay.

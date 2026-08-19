@@ -247,7 +247,7 @@ export class LeadLifecycleRepository {
         contractAmount: input.contractAmount,
       }
     );
-    if (rows[0].referrerMembershipId || rows[0].measurerId) {
+    if (rows[0].source === 'staff_activity' || rows[0].referrerMembershipId || rows[0].measurerId) {
       await new LeadCommissionRepository(this.transaction).snapshotForConvertedLead(input.leadId);
     }
     return rows[0];

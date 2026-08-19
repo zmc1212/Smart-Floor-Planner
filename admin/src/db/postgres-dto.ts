@@ -239,6 +239,16 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
     enterpriseId: record.enterpriseId?.toString() ?? null,
     promoterId:
       staffSummaryToDto(record.promoter) ?? record.promoterId?.toString() ?? null,
+    referrer: record.referrer
+      ? {
+          _id: record.referrer.id.toString(),
+          membershipId: record.referrer.membershipId.toString(),
+          displayName: record.referrer.displayName,
+          username: record.referrer.username,
+          phone: record.referrer.phone,
+          role: record.referrer.role,
+        }
+      : null,
     assignedTo:
       record.assignedUser
         ? {

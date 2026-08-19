@@ -19,7 +19,7 @@ import {
 import {
   hashReferralIdempotencyKey,
   normalizeReferralIdempotencyKey,
-  openPendingReferralSource,
+  openPendingClaimSource,
 } from '@/lib/referral-attribution';
 import {
   notifyDesignerOfAssignedLead,
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
         message: 'A customer token or WeChat phone authorization is required',
       });
     }
-    const source = openPendingReferralSource(body.pendingSource);
+    const source = openPendingClaimSource(body.pendingSource);
     if (!source) {
       return referrerNetworkError('pending_source_invalid', {
         status: 400,
@@ -157,6 +157,13 @@ export async function POST(request: Request) {
               claim.lead.assignedTo.toString()
             )
           : Promise.resolve(),
+        claim.lead.measurerId &&
+        claim.lead.measurerId.toString() !== claim.lead.assignedTo?.toString()
+          ? notifyDesignerOfAssignedLead(
+              notificationLead,
+              claim.lead.measurerId.toString()
+            )
+          : Promise.resolve(),
         claim.lead.assignmentStatus === 'assignment_pending'
           ? notifyEnterpriseAdminOfAssignmentPending(notificationLead, {
               reasonCode: claim.lead.assignmentErrorCode || 'assignment_pending',
@@ -189,7 +196,7 @@ export async function POST(request: Request) {
             createdAt: claim.lead.createdAt,
           },
           designerProfile:
-            designer && claim.lead.enterpriseId
+            designer && claim.lead.enterpriseId && claim.kind !== 'existing_attribution'
               ? {
                   displayName: designer.displayName || designer.username,
                   wechatId: designer.wechatId,

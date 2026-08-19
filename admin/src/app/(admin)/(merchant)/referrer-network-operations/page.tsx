@@ -48,6 +48,7 @@ type Readiness = {
   events: JoinCodeEvent[];
   activeReferrerMemberships: number;
   activeReferrerPromotionCodes: number;
+  activeStaffActivityCodes: number;
   staff: StaffMember[];
   appointmentSettings: {
     configured: boolean;
@@ -270,6 +271,7 @@ export default function ReferrerNetworkOperationsPage() {
   const checklist = [
     { label: '推荐人入驻准备', ready: isActiveCode(codeByType.referrer) && (readiness?.activeReferrerMemberships || 0) > 0, detail: `${readiness?.activeReferrerMemberships || 0} 个活动推荐人成员关系`, href: '#enterprise-join-codes', actionLabel: '管理入驻码' },
     { label: '推广服务码前置条件', ready: (readiness?.activeReferrerPromotionCodes || 0) > 0, detail: `${readiness?.activeReferrerPromotionCodes || 0}/${readiness?.activeReferrerMemberships || 0} 个活动推荐人成员关系已有服务码`, href: '#enterprise-join-codes', actionLabel: '查看双码' },
+    { label: '可派活动码的设计师/测量员', ready: eligibility.eligibleDesigners.length + eligibility.eligibleMeasurers.length > 0, detail: `${readiness?.activeStaffActivityCodes || 0} 份活动码 · ${eligibility.eligibleDesigners.length + eligibility.eligibleMeasurers.length} 人可出示（设计师须微信号和二维码完整）`, href: '/staff', actionLabel: '管理员工' },
     { label: '可派单设计师', ready: eligibility.eligibleDesigners.length > 0, detail: `${eligibility.eligibleDesigners.length}/${eligibility.designers.length} 人资料完整且未暂停`, href: '/staff', actionLabel: '管理员工' },
     { label: '可派单测量员', ready: eligibility.eligibleMeasurers.length > 0, detail: `${eligibility.eligibleMeasurers.length}/${eligibility.measurers.length} 人启用且未暂停`, href: '/staff', actionLabel: '管理员工' },
     { label: '预约设置', ready: Boolean(readiness?.appointmentSettings.configured), detail: readiness?.appointmentSettings ? `${readiness.appointmentSettings.timezone} · ${readiness.appointmentSettings.defaultDurationMinutes} 分钟/次 · ${readiness.appointmentSettings.maxAdvanceDays} 天内${readiness.appointmentSettings.configured ? '' : '（默认值待确认）'}` : '尚未读取', href: '/appointment-settings', actionLabel: '配置预约' },

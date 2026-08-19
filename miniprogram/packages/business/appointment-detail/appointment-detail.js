@@ -52,7 +52,8 @@ Page({
     error: '',
     canReschedule: false,
     canCancel: false,
-    canComplete: false
+    canComplete: false,
+    canUpdateAddress: false
   },
 
   onLoad(options) {
@@ -95,7 +96,8 @@ Page({
         appointmentId: appointment.id,
         canReschedule: confirmed && (this.data.customerMode || ['designer', 'enterprise_admin'].includes(role)),
         canCancel: confirmed && ['designer', 'enterprise_admin'].includes(role),
-        canComplete: confirmed && ['measurer', 'enterprise_admin'].includes(role)
+        canComplete: confirmed && ['measurer', 'enterprise_admin'].includes(role),
+        canUpdateAddress: confirmed && ['designer', 'measurer', 'enterprise_admin'].includes(role)
       });
     } catch (error) {
       this.setData({ error: error.error || error.message || '预约详情加载失败' });
@@ -120,6 +122,36 @@ Page({
     const mode = this.data.customerMode ? 'customer' : 'internal';
     wx.navigateTo({
       url: `/packages/business/appointment-reschedule/appointment-reschedule?mode=${mode}&leadId=${encodeURIComponent(this.data.leadId)}&appointmentId=${encodeURIComponent(appointment.id)}&version=${appointment.version}`
+    });
+  },
+
+  updateAddress() {
+    const appointment = this.data.appointment;
+    if (!appointment || !this.data.canUpdateAddress || this.data.acting) return;
+    wx.showModal({
+      title: appointment.address ? '修改服务地址' : '补充服务地址',
+      editable: true,
+      content: appointment.address || '',
+      placeholderText: '请输入详细上门地址',
+      confirmText: '保存地址',
+      success: async (result) => {
+        if (!result.confirm || this.data.acting) return;
+        const address = String(result.content || '').trim();
+        if (!address) {
+          wx.showToast({ title: '请填写服务地址', icon: 'none' });
+          return;
+        }
+        this.setData({ acting: true });
+        try {
+          await api.request(`/appointments/${appointment.id}/address`, 'POST', { address, version: appointment.version });
+          wx.showToast({ title: '服务地址已保存', icon: 'success' });
+          await this.load();
+        } catch (error) {
+          wx.showToast({ title: error.error || error.message || '保存地址失败，请重试', icon: 'none' });
+        } finally {
+          this.setData({ acting: false });
+        }
+      }
     });
   },
 

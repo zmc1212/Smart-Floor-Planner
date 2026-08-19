@@ -902,6 +902,74 @@ test('referral signing snapshots three decimal-safe commissions and voids unpaid
   }
 });
 
+test('staff activity conversion snapshots designer and measurer rows even when they share a beneficiary', async () => {
+  let leadId: bigint | null = null;
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+  const createdUserIds: bigint[] = [];
+  const createdStaffIds: bigint[] = [];
+  try {
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const [designerUser, customerUser] = await transaction.insert(users).values([
+        { enterpriseId: enterpriseAId, nickname: `Activity designer ${suffix}` },
+        { enterpriseId: enterpriseAId, nickname: `Activity customer ${suffix}` },
+      ]).returning({ id: users.id });
+      createdUserIds.push(designerUser.id, customerUser.id);
+      const designer = await new AdminUserRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        userId: designerUser.id,
+        username: `${testRunKey}-activity-designer-${suffix}`,
+        passwordHash: 'test-hash',
+        displayName: 'Activity Dual Staff',
+        role: 'designer',
+      });
+      createdStaffIds.push(designer.id);
+      const commissionRepository = new LeadCommissionRepository(transaction);
+      await commissionRepository.updateRules(enterpriseAId, designer.id, [
+        { role: 'referrer', calculationType: 'fixed', value: '10.0000', status: 'disabled', version: 1 },
+        { role: 'designer', calculationType: 'fixed', value: '88.0000', status: 'active', version: 1 },
+        { role: 'measurer', calculationType: 'fixed', value: '22.0000', status: 'active', version: 1 },
+      ]);
+      const lead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        customerUserId: customerUser.id,
+        assignedTo: designer.id,
+        measurerId: designer.id,
+        name: 'Staff activity commission lead',
+        phone: `134${String(Date.now()).slice(-8)}`,
+        source: 'staff_activity',
+        status: 'designing',
+      });
+      leadId = lead.id;
+      await new LeadLifecycleRepository(transaction).convert({
+        leadId: lead.id,
+        actorId: designer.id,
+        convertedOn: chinaDateString(),
+        contractAmount: '1000.00',
+        conversionNote: null,
+      });
+      const commissions = await commissionRepository.list(enterpriseAId, { leadId: lead.id, source: 'staff_activity' });
+      assert.equal(commissions.length, 2);
+      assert.deepEqual(
+        commissions.map((item) => [item.role, item.payableAmount]).sort(),
+        [['designer', '88.00'], ['measurer', '22.00']]
+      );
+      assert.equal(commissions.every((item) => item.beneficiaryUserId === designerUser.id && item.status === 'payable'), true);
+      assert.equal((await commissionRepository.list(enterpriseAId, { leadId: lead.id, source: 'referrer_network' })).length, 0);
+    });
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (leadId) {
+        await transaction.delete(leadCommissions).where(eq(leadCommissions.leadId, leadId));
+        await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, leadId));
+        await transaction.delete(leads).where(eq(leads.id, leadId));
+      }
+      await transaction.delete(enterpriseCommissionRules).where(eq(enterpriseCommissionRules.enterpriseId, enterpriseAId));
+      if (createdStaffIds.length) await transaction.delete(adminUsers).where(inArray(adminUsers.id, createdStaffIds));
+      if (createdUserIds.length) await transaction.delete(users).where(inArray(users.id, createdUserIds));
+    });
+  }
+});
+
 after(async () => {
   if (enterpriseAId && enterpriseBId) {
     await withPlatformTransaction(async (transaction) => {

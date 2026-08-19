@@ -15,17 +15,32 @@ import {
   leads,
   referrerEnterpriseMemberships,
   referrerPromotionCodes,
+  staffActivityCodes,
   users,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 import { LeadRepository, type LeadWithRelations } from './lead-repository';
 
 export interface ReferralPendingSourceRecord {
+  kind?: 'referrer';
   promotionCodeId: bigint;
   membershipId: bigint;
   version: number;
   expired?: boolean;
 }
+
+export interface StaffActivityPendingSourceRecord {
+  kind: 'staff_activity';
+  activityCodeId: bigint;
+  staffId: bigint;
+  enterpriseId: bigint;
+  version: number;
+  expired?: boolean;
+}
+
+export type ClaimPendingSourceRecord =
+  | ReferralPendingSourceRecord
+  | StaffActivityPendingSourceRecord;
 
 export type ReferralLeadClaimResult = {
   kind: 'created' | 'idempotent' | 'existing_attribution';
@@ -98,6 +113,21 @@ export class ReferralLeadRepository {
     return rows[0] ?? null;
   }
 
+  async findActiveCustomerAttribution(customerUserId: bigint) {
+    const rows = await this.transaction
+      .select({ lock: customerAttributionLocks, lead: leads })
+      .from(customerAttributionLocks)
+      .innerJoin(leads, eq(customerAttributionLocks.leadId, leads.id))
+      .where(
+        and(
+          eq(customerAttributionLocks.customerUserId, customerUserId),
+          isNull(customerAttributionLocks.releasedAt)
+        )
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   private async validateSource(source: ReferralPendingSourceRecord) {
     const rows = await this.transaction
       .select({
@@ -120,6 +150,47 @@ export class ReferralLeadRepository {
       )
       .limit(1)
       .for('share');
+    return rows[0] ?? null;
+  }
+
+  private async validateStaffActivitySource(source: StaffActivityPendingSourceRecord) {
+    const rows = await this.transaction
+      .select({
+        code: staffActivityCodes,
+        staff: adminUsers,
+      })
+      .from(staffActivityCodes)
+      .innerJoin(adminUsers, eq(staffActivityCodes.staffId, adminUsers.id))
+      .where(
+        and(
+          eq(staffActivityCodes.id, source.activityCodeId),
+          eq(staffActivityCodes.version, source.version),
+          eq(staffActivityCodes.status, 'active'),
+          eq(staffActivityCodes.staffId, source.staffId),
+          eq(staffActivityCodes.enterpriseId, source.enterpriseId),
+          eq(adminUsers.id, source.staffId),
+          eq(adminUsers.status, 'active')
+        )
+      )
+      .limit(1)
+      .for('share');
+    const row = rows[0];
+    if (!row || !['designer', 'measurer'].includes(row.staff.role)) return null;
+    return row;
+  }
+
+  private async findAssignedStaff(staffId: bigint | null, enterpriseId: bigint) {
+    if (!staffId) return null;
+    const rows = await this.transaction
+      .select()
+      .from(adminUsers)
+      .where(
+        and(
+          eq(adminUsers.id, staffId),
+          eq(adminUsers.enterpriseId, enterpriseId)
+        )
+      )
+      .limit(1);
     return rows[0] ?? null;
   }
 
@@ -249,7 +320,7 @@ export class ReferralLeadRepository {
   }
 
   async authorizeAndCreateLead(input: {
-    source: ReferralPendingSourceRecord;
+    source: ClaimPendingSourceRecord;
     customerUserId: bigint;
     idempotencyKeyHash: string;
     name?: string | null;
@@ -272,8 +343,15 @@ export class ReferralLeadRepository {
       throw referralError('phone_authorization_required', '请先授权手机号', 403);
     }
 
-    const source = await this.validateSource(input.source);
-    if (!source) {
+    const staffActivitySource =
+      input.source.kind === 'staff_activity' ? input.source : null;
+    const referralSource = staffActivitySource
+      ? null
+      : await this.validateSource(input.source);
+    const activitySource = staffActivitySource
+      ? await this.validateStaffActivitySource(staffActivitySource)
+      : null;
+    if (!referralSource && !activitySource) {
       throw referralError('pending_source_invalid', '推广来源无效或已失效', 410);
     }
 
@@ -298,21 +376,33 @@ export class ReferralLeadRepository {
       };
     }
 
-    await this.lockKey(`enterprise-assignment:${source.membership.enterpriseId.toString()}`);
-    const designer = await this.findDesignerCandidate(
-      source.membership.enterpriseId
-    );
-    const measurer = await this.findMeasurerCandidate(
-      source.membership.enterpriseId
-    );
+    const enterpriseId = referralSource
+      ? referralSource.membership.enterpriseId
+      : activitySource!.code.enterpriseId;
+    await this.lockKey(`enterprise-assignment:${enterpriseId.toString()}`);
+
+    let designer: typeof adminUsers.$inferSelect | null = null;
+    let measurer: typeof adminUsers.$inferSelect | null = null;
+    if (activitySource) {
+      measurer = activitySource.staff;
+      designer =
+        activitySource.staff.role === 'designer'
+          ? activitySource.staff
+          : await this.findDesignerCandidate(enterpriseId);
+    } else {
+      designer = await this.findDesignerCandidate(enterpriseId);
+      measurer = await this.findMeasurerCandidate(enterpriseId);
+    }
+
     const now = new Date();
     const assignmentErrorCode = this.assignmentErrorCode(designer, measurer);
     const createdRows = await this.transaction
       .insert(leads)
       .values({
-        enterpriseId: source.membership.enterpriseId,
+        enterpriseId,
         customerUserId: input.customerUserId,
-        referrerMembershipId: source.membership.id,
+        referrerMembershipId: referralSource?.membership.id ?? null,
+        promoterId: activitySource?.staff.id ?? null,
         measurerId: measurer?.id ?? null,
         assignedTo: designer?.id ?? null,
         assignedAt: designer ? now : null,
@@ -325,7 +415,7 @@ export class ReferralLeadRepository {
         communityName: input.communityName?.trim().slice(0, 160) || null,
         city: input.city?.trim().slice(0, 80) || null,
         stylePreference: input.stylePreference?.trim().slice(0, 120) || null,
-        source: 'referrer_network',
+        source: activitySource ? 'staff_activity' : 'referrer_network',
         status: 'new',
         followUpRecords: [],
       })
@@ -334,10 +424,10 @@ export class ReferralLeadRepository {
     if (!lead) throw referralError('lead_create_failed', '线索创建失败', 500);
 
     await this.transaction.insert(customerAttributionLocks).values({
-      enterpriseId: source.membership.enterpriseId,
+      enterpriseId,
       customerUserId: input.customerUserId,
       leadId: lead.id,
-      referrerMembershipId: source.membership.id,
+      referrerMembershipId: referralSource?.membership.id ?? null,
       lockedAt: now,
     });
 
@@ -347,24 +437,26 @@ export class ReferralLeadRepository {
         .set({ lastAssignedAt: now, updatedAt: now })
         .where(eq(adminUsers.id, designer.id));
     }
-    if (measurer) {
+    if (measurer && measurer.id !== designer?.id) {
       await this.transaction
         .update(adminUsers)
         .set({ lastAssignedAt: now, updatedAt: now })
         .where(eq(adminUsers.id, measurer.id));
     }
     await this.transaction.insert(leadAssignmentEvents).values({
-      enterpriseId: source.membership.enterpriseId,
+      enterpriseId,
       leadId: lead.id,
       eventType: assignmentErrorCode ? 'assignment_pending' : 'assignment_created',
       designerId: designer?.id ?? null,
       measurerId: measurer?.id ?? null,
       actorUserId: input.customerUserId,
       errorCode: assignmentErrorCode,
-      reason: 'referrer_attribution',
+      reason: activitySource ? 'staff_activity_attribution' : 'referrer_attribution',
       metadata: {
         authorizationIdempotencyKeyHash: input.idempotencyKeyHash,
-        promotionCodeId: source.code.id.toString(),
+        ...(referralSource
+          ? { promotionCodeId: referralSource.code.id.toString() }
+          : { activityCodeId: activitySource!.code.id.toString() }),
       },
     });
 
@@ -391,26 +483,31 @@ export class ReferralLeadRepository {
     }
 
     await this.lockKey(`enterprise-assignment:${current.enterpriseId.toString()}`);
+    const staffActivity = current.source === 'staff_activity';
     const currentDesigner = await this.findEligibleStaff(
       current.assignedTo,
       'designer',
       current.enterpriseId
     );
-    const currentMeasurer = await this.findEligibleStaff(
-      current.measurerId,
-      'measurer',
-      current.enterpriseId
-    );
+    const currentMeasurer = staffActivity
+      ? await this.findAssignedStaff(current.measurerId, current.enterpriseId)
+      : await this.findEligibleStaff(
+          current.measurerId,
+          'measurer',
+          current.enterpriseId
+        );
     const designer = currentDesigner ?? (await this.findDesignerCandidate(current.enterpriseId));
-    const measurer = currentMeasurer ?? (await this.findMeasurerCandidate(current.enterpriseId));
+    const measurer = staffActivity
+      ? currentMeasurer
+      : currentMeasurer ?? (await this.findMeasurerCandidate(current.enterpriseId));
     const now = new Date();
-    const errorCode = this.assignmentErrorCode(designer, measurer);
+    const errorCode = this.assignmentErrorCode(designer, measurer || (staffActivity ? currentMeasurer : null));
     const assignmentStatus = errorCode ? 'assignment_pending' : 'assigned';
     const updatedRows = await this.transaction
       .update(leads)
       .set({
         assignedTo: designer?.id ?? null,
-        measurerId: measurer?.id ?? null,
+        measurerId: staffActivity ? current.measurerId : measurer?.id ?? null,
         assignedAt: designer ? current.assignedAt ?? now : null,
         assignmentStatus,
         assignmentErrorCode: errorCode,

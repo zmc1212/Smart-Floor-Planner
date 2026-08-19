@@ -38,6 +38,7 @@ Component({
     items: [],
     emptyCopy: '',
     secondary: null,
+    activityCode: null,
   },
 
   lifetimes: {
@@ -66,7 +67,13 @@ Component({
         const items = (source || []).map((item) => ({
           ...item,
           metaLabel: item.metaLabel || (item.timeRange ? rangeLabel(item.timeRange) : statusLabel(item.status)),
-          actionLabel: focus === 'survey' ? '进入量房' : item.action === 'appointment' ? '查看预约' : '查看客户',
+          actionLabel: item.action === 'survey' || item.canSurveyNow
+            ? '立即量房'
+            : focus === 'survey'
+              ? '进入量房'
+              : item.action === 'appointment'
+                ? '查看预约'
+                : '查看客户',
         }));
         const emptyCopy = isCustomer
           ? '完成服务后，项目会出现在这里'
@@ -79,7 +86,7 @@ Component({
               : payload.role === 'designer'
                 ? '当前没有已派客户'
                 : payload.role === 'measurer'
-                  ? '今天没有已确认安排'
+                  ? '今天没有已确认安排或待量房任务'
                   : '当前没有需要处理的异常';
         this.setData({
           title: payload.title || '工作台',
@@ -88,6 +95,7 @@ Component({
           items,
           emptyCopy,
           secondary: payload.secondary || null,
+          activityCode: payload.activityCode || null,
           loading: false,
         });
       } catch (error) {
@@ -133,7 +141,7 @@ Component({
     openItem(event) {
       const item = event.currentTarget.dataset.item;
       if (!item) return;
-      if (this.properties.focus === 'survey') {
+      if (this.properties.focus === 'survey' || item.action === 'survey' || item.canSurveyNow) {
         if (!item.leadId) return;
         openSurveyingEditor({ leadId: item.leadId, floorPlanId: item.floorPlanId || '' });
         return;
@@ -163,7 +171,21 @@ Component({
         wx.switchTab({ url: '/pages/ai-design/ai-design' });
       } else if (target === 'unavailability') {
         wx.navigateTo({ url: '/packages/business/measurer-unavailability/measurer-unavailability' });
+      } else if (target === 'activity-code') {
+        wx.navigateTo({ url: '/packages/business/staff-activity-code/staff-activity-code' });
       }
+    },
+
+    openActivityCode() {
+      wx.navigateTo({ url: '/packages/business/staff-activity-code/staff-activity-code' });
+    },
+
+    openBooking(event) {
+      const item = event.currentTarget.dataset.item;
+      if (!item || !item.leadId) return;
+      wx.navigateTo({
+        url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}`,
+      });
     },
   },
 });

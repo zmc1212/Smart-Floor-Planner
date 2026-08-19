@@ -33,7 +33,7 @@ function safeToken(value) {
   } catch (error) {
     // Keep the original value when the QR scene is not URI encoded.
   }
-  return /^[A-Za-z0-9_-]{32}$/.test(decoded) ? `rp_${decoded}` : decoded;
+  return /^[A-Za-z0-9_-]{32}$/.test(decoded) ? decoded : decoded;
 }
 
 function deviceSummary() {
@@ -56,6 +56,38 @@ function claimErrorMessage(error) {
   return '服务领取暂未完成，请检查网络后重试。';
 }
 
+function applyClaimResult(page, response) {
+  if (response.existingAttribution || (response.data && response.data.existingAttribution)) {
+    page.setData({
+      submitting: false,
+      pageState: 'existing',
+      pendingSource: '',
+      enterpriseName: '',
+      designerProfile: null,
+      lead: response.data && response.data.lead || null,
+      errorMessage: ''
+    });
+    return;
+  }
+  const designerProfile = response.data && response.data.designerProfile || null;
+  page.setData({
+    submitting: false,
+    pageState: designerProfile ? 'success' : 'pending',
+    designerProfile,
+    lead: response.data && response.data.lead || null
+  });
+  if (designerProfile && designerProfile.wechatQrUrl) {
+    page.loadDesignerQr(designerProfile.wechatQrUrl);
+  }
+}
+
+function resolveErrorMessage(error) {
+  const code = error && error.code;
+  const expired = code === 'code_rotated' || code === 'code_disabled' || code === 'code_expired';
+  if (expired) return '该服务码已更新，请联系推荐人或现场员工出示最新服务码。';
+  return '服务码暂时无法识别，请重新扫码或稍后重试。';
+}
+
 Page({
   data: {
     navigationTop: 24,
@@ -67,6 +99,8 @@ Page({
     agreed: false,
     submitting: false,
     errorMessage: '',
+    claimKind: '',
+    enterpriseName: '',
     designerProfile: null,
     designerQrPath: '',
     designerQrLoading: false,
@@ -98,20 +132,34 @@ Page({
         sessionKey: this.idempotencyKey,
         deviceSummary: deviceSummary()
       });
-      if (!response.data || response.data.kind !== 'referral' || !response.data.pendingSource) {
+      if (!response.data || (response.data.kind !== 'referral' && response.data.kind !== 'staff_activity')) {
+        throw new Error('服务码类型无效');
+      }
+      if (response.data.existingAttribution) {
+        this.setData({
+          pageState: 'existing',
+          pendingSource: '',
+          claimKind: response.data.kind,
+          enterpriseName: '',
+          lead: response.data.lead || null,
+          errorMessage: ''
+        });
+        return;
+      }
+      if (!response.data.pendingSource) {
         throw new Error('服务码类型无效');
       }
       this.setData({
         pageState: 'ready',
         pendingSource: response.data.pendingSource,
+        claimKind: response.data.kind,
+        enterpriseName: response.data.enterpriseName || '',
         errorMessage: ''
       });
     } catch (error) {
-      const code = error && error.code;
-      const expired = code === 'code_rotated' || code === 'code_disabled' || code === 'code_expired';
       this.setData({
         pageState: 'error',
-        errorMessage: expired ? '该服务码已更新，请联系推荐人出示最新服务码。' : '服务码暂时无法识别，请重新扫码或稍后重试。'
+        errorMessage: resolveErrorMessage(error)
       });
     }
   },
@@ -143,16 +191,7 @@ Page({
         { headers: { 'Idempotency-Key': this.idempotencyKey } }
       );
       await this.persistCustomerSession(response);
-      const designerProfile = response.data && response.data.designerProfile || null;
-      this.setData({
-        submitting: false,
-        pageState: designerProfile ? 'success' : 'pending',
-        designerProfile,
-        lead: response.data && response.data.lead || null
-      });
-      if (designerProfile && designerProfile.wechatQrUrl) {
-        this.loadDesignerQr(designerProfile.wechatQrUrl);
-      }
+      applyClaimResult(this, response);
     } catch (error) {
       this.setData({
         submitting: false,

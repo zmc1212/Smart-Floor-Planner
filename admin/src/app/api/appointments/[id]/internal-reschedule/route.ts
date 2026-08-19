@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { AppointmentRepository } from '@/db/repositories';
+import { AdminUserRepository, AppointmentRepository } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { appointmentToDto, parseAppointmentDateTime, parseAppointmentVersion } from '@/lib/appointment-api';
 import { httpErrorStatus } from '@/lib/http-error';
@@ -21,15 +21,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const appointmentId = BigInt((await params).id);
       const appointment = await withAdminPostgresTransaction(admin, async (transaction) => {
         const repository = new AppointmentRepository(transaction);
+        const staffId = parsePostgresId(admin.userId, 'user id');
+        const actorUserId = await new AdminUserRepository(transaction).findLinkedUserId(staffId);
         const access = await repository.findById(enterpriseId, appointmentId);
-        if (admin.role === 'designer' && access?.appointment.designerId !== parsePostgresId(admin.userId, 'user id')) return null;
+        if (admin.role === 'designer' && access?.appointment.designerId !== staffId) return null;
         return repository.reschedule({
           enterpriseId,
           appointmentId,
           startAt: parseAppointmentDateTime(body.startAt, '开始时间'),
           endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
           expectedVersion: parseAppointmentVersion(body.version),
-          actorUserId: parsePostgresId(admin.userId, 'user id'),
+          actorUserId,
           reason: typeof body.reason === 'string' ? body.reason : '',
           eventKey: `admin-internal-rescheduled:${randomUUID()}`,
         });

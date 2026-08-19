@@ -262,6 +262,12 @@
     @apply rounded-lg;
   }
 
+  /* Keep modal content and footer actions visually separate, including countable text areas. */
+  .ant-modal .ant-modal-footer {
+    margin-top: 20px;
+    padding-top: 14px;
+  }
+
   .admin-page-frame .ant-pro-table-search {
     @apply border-b border-border;
   }

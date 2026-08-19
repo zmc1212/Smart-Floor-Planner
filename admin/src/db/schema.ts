@@ -451,6 +451,34 @@ export const referrerPromotionCodes = appSchema.table(
   ]
 );
 
+export const staffActivityCodes = appSchema.table(
+  'staff_activity_codes',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    staffId: bigint('staff_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'restrict' }),
+    tokenHash: text('token_hash').notNull(),
+    status: text('status').notNull().default('active'),
+    version: integer('version').notNull().default(1),
+    disabledAt: timestamp('disabled_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('staff_activity_codes_token_hash_uidx').on(table.tokenHash),
+    uniqueIndex('staff_activity_codes_active_staff_uidx')
+      .on(table.staffId)
+      .where(sql`${table.status} = 'active'`),
+    index('staff_activity_codes_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    index('staff_activity_codes_staff_created_idx').on(table.staffId, table.createdAt),
+    check('staff_activity_codes_status_check', sql`${table.status} in ('active', 'rotated', 'disabled')`),
+  ]
+);
+
 export const promotionScanAudits = appSchema.table(
   'promotion_scan_audits',
   {
@@ -460,6 +488,10 @@ export const promotionScanAudits = appSchema.table(
       .references(() => enterprises.id, { onDelete: 'restrict' }),
     promotionCodeId: bigint('promotion_code_id', { mode: 'bigint' }).references(
       () => referrerPromotionCodes.id,
+      { onDelete: 'set null' }
+    ),
+    staffActivityCodeId: bigint('staff_activity_code_id', { mode: 'bigint' }).references(
+      () => staffActivityCodes.id,
       { onDelete: 'set null' }
     ),
     tokenHash: text('token_hash').notNull(),
@@ -472,6 +504,7 @@ export const promotionScanAudits = appSchema.table(
   (table) => [
     index('promotion_scan_audits_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
     index('promotion_scan_audits_promotion_code_idx').on(table.promotionCodeId),
+    index('promotion_scan_audits_staff_activity_code_idx').on(table.staffActivityCodeId),
     index('promotion_scan_audits_token_created_idx').on(table.tokenHash, table.createdAt),
   ]
 );

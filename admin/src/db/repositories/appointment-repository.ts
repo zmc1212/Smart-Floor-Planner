@@ -3,6 +3,8 @@ import {
   adminUsers,
   enterpriseAppointmentSettings,
   leads,
+  floorPlans,
+  leadFloorPlans,
   measurementAppointmentEvents,
   measurementAppointments,
   staffUnavailabilityPeriods,
@@ -16,6 +18,7 @@ import {
   localDateInTimeZone,
   normalizeWeeklyAppointmentSchedule,
 } from '@/lib/appointment-scheduling';
+import { parseFormalSurveyLayout } from '@/lib/survey-graph';
 
 export type AppointmentSettingsInput = {
   timezone?: string;
@@ -172,7 +175,23 @@ export class AppointmentRepository {
     return !appointments[0] && !unavailable[0];
   }
 
-  private async measurerCandidates(enterpriseId: bigint, preferredId: bigint | null) {
+  private async measurerCandidates(
+    enterpriseId: bigint,
+    preferredId: bigint | null,
+    options: { lockPreferred?: boolean } = {}
+  ) {
+    if (options.lockPreferred && preferredId) {
+      const rows = await this.transaction
+        .select()
+        .from(adminUsers)
+        .where(and(
+          eq(adminUsers.id, preferredId),
+          eq(adminUsers.enterpriseId, enterpriseId),
+          eq(adminUsers.status, 'active')
+        ))
+        .limit(1);
+      return rows;
+    }
     const pendingLeadCount = sql<number>`(
       select count(*)::int from app.leads appointment_load
       where appointment_load.measurer_id = ${adminUsers.id}
@@ -197,8 +216,13 @@ export class AppointmentRepository {
     return rows.map((row) => row.staff);
   }
 
-  private async resolveMeasurer(enterpriseId: bigint, preferredId: bigint | null, timeRange: string) {
-    for (const candidate of await this.measurerCandidates(enterpriseId, preferredId)) {
+  private async resolveMeasurer(
+    enterpriseId: bigint,
+    preferredId: bigint | null,
+    timeRange: string,
+    options: { lockPreferred?: boolean } = {}
+  ) {
+    for (const candidate of await this.measurerCandidates(enterpriseId, preferredId, options)) {
       if (await this.isMeasurerAvailable(candidate.id, timeRange)) return candidate;
     }
     return null;
@@ -230,7 +254,11 @@ export class AppointmentRepository {
       durationMinutes: settings.defaultDurationMinutes,
       stepMinutes: settings.slotStepMinutes,
     });
-    const candidates = await this.measurerCandidates(input.enterpriseId, lead.measurerId);
+    const candidates = await this.measurerCandidates(
+      input.enterpriseId,
+      lead.measurerId,
+      { lockPreferred: lead.source === 'staff_activity' }
+    );
     const available = [] as Array<{ startAt: Date; endAt: Date; measurerId: bigint }>;
     for (const slot of slots) {
       if (slot.startAt <= new Date()) continue;
@@ -280,7 +308,7 @@ export class AppointmentRepository {
     startAt: Date;
     endAt: Date;
     address: string;
-    actorUserId: bigint;
+    actorUserId: bigint | null;
     eventKey: string;
   }) {
     const lead = await this.findLead(input.enterpriseId, input.leadId, true);
@@ -292,7 +320,12 @@ export class AppointmentRepository {
     }
     await this.assertBookableSlot(input.enterpriseId, input.startAt, input.endAt);
     const timeRange = range(input.startAt, input.endAt);
-    const measurer = await this.resolveMeasurer(input.enterpriseId, lead.measurerId, timeRange);
+    const measurer = await this.resolveMeasurer(
+      input.enterpriseId,
+      lead.measurerId,
+      timeRange,
+      { lockPreferred: lead.source === 'staff_activity' }
+    );
     if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用测量员', 409);
     const [appointment] = await this.transaction
       .insert(measurementAppointments)
@@ -380,6 +413,28 @@ export class AppointmentRepository {
       .orderBy(asc(measurementAppointments.createdAt));
   }
 
+  async hasCompletedFormalSurveyForLead(enterpriseId: bigint, leadId: bigint) {
+    const rows = await this.transaction
+      .select({ layoutData: floorPlans.layoutData })
+      .from(leadFloorPlans)
+      .innerJoin(floorPlans, eq(leadFloorPlans.floorPlanId, floorPlans.id))
+      .where(and(
+        eq(leadFloorPlans.leadId, leadId),
+        eq(floorPlans.enterpriseId, enterpriseId),
+        eq(floorPlans.status, 'completed'),
+        sql`${floorPlans.layoutData} ->> 'version' = '4'`,
+        sql`${floorPlans.layoutData} ->> 'measurementMode' = 'surveying'`,
+        sql`${floorPlans.layoutData} #>> '{surveyGraph,kind}' = 'survey-wall-graph'`
+      ));
+
+    return rows.some(({ layoutData }) => {
+      const layout = parseFormalSurveyLayout(layoutData);
+      return !!layout?.surveyGraph.floors.some((floor) =>
+        (floor.spaces || []).some((space) => space.closed === true)
+      );
+    });
+  }
+
   async listByMeasurer(enterpriseId: bigint, measurerId: bigint) {
     return this.transaction
       .select()
@@ -422,7 +477,7 @@ export class AppointmentRepository {
     startAt: Date;
     endAt: Date;
     expectedVersion: number;
-    actorUserId: bigint;
+    actorUserId: bigint | null;
     eventKey: string;
     reason?: string | null;
     customerUserId?: bigint;
@@ -448,7 +503,12 @@ export class AppointmentRepository {
     }
     await this.assertBookableSlot(input.enterpriseId, input.startAt, input.endAt);
     const timeRange = range(input.startAt, input.endAt);
-    const measurer = await this.resolveMeasurer(input.enterpriseId, current.appointment.measurerId, timeRange);
+    const measurer = await this.resolveMeasurer(
+      input.enterpriseId,
+      current.appointment.measurerId,
+      timeRange,
+      { lockPreferred: current.lead.source === 'staff_activity' }
+    );
     if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用测量员', 409);
     const rows = await this.transaction
       .update(measurementAppointments)
@@ -487,7 +547,7 @@ export class AppointmentRepository {
     appointmentId: bigint;
     address: string;
     expectedVersion: number;
-    actorUserId: bigint;
+    actorUserId: bigint | null;
     eventKey: string;
   }) {
     const current = await this.findById(input.enterpriseId, input.appointmentId, true);
@@ -545,6 +605,9 @@ export class AppointmentRepository {
     }
     if (current.appointment.version !== input.expectedVersion) {
       throw appointmentError('appointment_version_conflict', '预约已被其他操作更新，请刷新后重试', 409);
+    }
+    if (input.status === 'completed' && !(await this.hasCompletedFormalSurveyForLead(input.enterpriseId, current.appointment.leadId))) {
+      throw appointmentError('appointment_survey_required', '请先完成并保存正式量房数据', 409);
     }
     if (input.status === 'cancelled' && !input.reason?.trim()) {
       throw appointmentError('appointment_reason_required', '请填写取消原因', 400);

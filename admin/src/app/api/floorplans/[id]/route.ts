@@ -6,7 +6,7 @@ import {
 } from '@/db/repositories';
 import { canAccessMiniProgramFloorPlan } from '@/lib/floor-plan-access';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
-import { canDeleteLeadFloorPlan } from '@/lib/lead-status';
+import { canStaffMutateLeadSurvey } from '@/lib/lead-staff-access';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
@@ -143,9 +143,13 @@ export async function PUT(
           : null;
         if (
           context.staff &&
-          context.staff.role !== 'enterprise_admin' &&
-          lead.promoterId !== staffId &&
-          lead.assignedTo !== staffId
+          !canStaffMutateLeadSurvey({
+            staffRole: context.staff.role,
+            staffId,
+            promoterId: lead.promoterId,
+            assignedTo: lead.assignedTo,
+            measurerId: lead.measurerId,
+          })
         ) {
           throw new Error('Lead access denied');
         }

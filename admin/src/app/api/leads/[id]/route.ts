@@ -47,7 +47,8 @@ function staffCanAccess(
     role === 'admin' ||
     role === 'super_admin' ||
     lead.promoterId === staffId ||
-    lead.assignedTo === staffId
+    lead.assignedTo === staffId ||
+    lead.measurerId === staffId
   );
 }
 

@@ -19,6 +19,8 @@ import {
   leadFloorPlans,
   leads,
   measurementAppointments,
+  referrerEnterpriseMemberships,
+  referrerProfiles,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 import {
@@ -45,12 +47,22 @@ export interface LeadStaffSummary {
   wechatQrAssetId?: bigint | null;
 }
 
+export interface LeadReferrerSummary {
+  id: bigint;
+  membershipId: bigint;
+  displayName: string;
+  username: string;
+  phone?: string | null;
+  role: 'referrer';
+}
+
 export interface LeadWithRelations extends LeadRecord {
   floorPlanRecords: LeadFloorPlanRecord[];
   primaryFloorPlanRecord: LeadFloorPlanRecord | null;
   assignedUser: LeadStaffSummary | null;
   measurerUser?: LeadStaffSummary | null;
   promoter: LeadStaffSummary | null;
+  referrer?: LeadReferrerSummary | null;
   archivedUser: LeadStaffSummary | null;
   convertedUser: LeadStaffSummary | null;
   appointment?: typeof measurementAppointments.$inferSelect | null;
@@ -62,7 +74,7 @@ export interface LeadListOptions {
   phone?: string;
   query?: string;
   staffId?: bigint;
-  staffVisibility?: 'assigned' | 'promoted-or-assigned';
+  staffVisibility?: 'assigned' | 'promoted-or-assigned' | 'measurer';
   page?: number;
   limit?: number;
   createdSince?: Date;
@@ -103,7 +115,9 @@ export class LeadRepository {
     }
     if (options.staffId) {
       filters.push(
-        options.staffVisibility === 'promoted-or-assigned'
+        options.staffVisibility === 'measurer'
+          ? eq(leads.measurerId, options.staffId)
+          : options.staffVisibility === 'promoted-or-assigned'
           ? or(
               eq(leads.promoterId, options.staffId),
               eq(leads.assignedTo, options.staffId)
@@ -183,6 +197,35 @@ export class LeadRepository {
         : []
     );
     const staffMap = new Map(staffRows.map((staff) => [staff.id, staff]));
+    const membershipIds = Array.from(
+      new Set(
+        rows
+          .map((row) => row.referrerMembershipId)
+          .filter((value): value is bigint => value !== null)
+      )
+    );
+    const referrerRows = membershipIds.length
+      ? await this.transaction
+          .select({
+            membershipId: referrerEnterpriseMemberships.id,
+            id: referrerProfiles.userId,
+            profileDisplayName: referrerProfiles.displayName,
+            profilePhone: referrerProfiles.phone,
+          })
+          .from(referrerEnterpriseMemberships)
+          .innerJoin(referrerProfiles, eq(referrerEnterpriseMemberships.referrerId, referrerProfiles.id))
+          .where(inArray(referrerEnterpriseMemberships.id, membershipIds))
+      : [];
+    const referrerMap = new Map(
+      referrerRows.map((referrer) => [referrer.membershipId, {
+        id: referrer.id,
+        membershipId: referrer.membershipId,
+        displayName: referrer.profileDisplayName || referrer.profilePhone || '未命名推广人',
+        username: referrer.profilePhone || '',
+        phone: referrer.profilePhone || null,
+        role: 'referrer' as const,
+      }])
+    );
     const appointmentRows = await this.transaction
       .select()
       .from(measurementAppointments)
@@ -214,6 +257,9 @@ export class LeadRepository {
         ? staffMap.get(row.measurerId) ?? null
         : null,
       promoter: row.promoterId ? staffMap.get(row.promoterId) ?? null : null,
+      referrer: row.referrerMembershipId
+        ? referrerMap.get(row.referrerMembershipId) ?? null
+        : null,
       archivedUser: row.archivedBy ? staffMap.get(row.archivedBy) ?? null : null,
       convertedUser: row.convertedBy ? staffMap.get(row.convertedBy) ?? null : null,
       appointment: appointmentMap.get(row.id) ?? null,

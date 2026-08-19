@@ -10,14 +10,21 @@ import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const context = await resolveMiniProgramContext(request);
-    if (!context?.enterpriseId || context.mode !== 'staff' || !context.staff || !['measurer', 'enterprise_admin'].includes(context.staff.role)) return NextResponse.json({ success: false, error: '仅测量员或企业负责人可完成预约' }, { status: 403 });
+    if (!context?.enterpriseId || context.mode !== 'staff' || !context.staff || !['designer', 'measurer', 'enterprise_admin'].includes(context.staff.role)) return NextResponse.json({ success: false, error: '仅已派测量员或企业负责人可完成预约' }, { status: 403 });
     const body = await request.json();
     const enterpriseId = parsePostgresId(context.enterpriseId, 'enterprise id');
     const appointmentId = BigInt((await params).id);
     const appointment = await withMiniProgramPostgresTransaction(context, async (transaction) => {
       const repository = new AppointmentRepository(transaction);
       const access = await repository.findById(enterpriseId, appointmentId);
-      if (context.staff!.role === 'measurer' && access?.appointment.measurerId !== BigInt(context.staff!._id)) return null;
+      if (context.staff!.role !== 'enterprise_admin' && access?.appointment.measurerId !== BigInt(context.staff!._id)) return null;
+      if (!access) return null;
+      if (!(await repository.hasCompletedFormalSurveyForLead(enterpriseId, access.appointment.leadId))) {
+        throw Object.assign(new Error('请先完成并保存正式量房数据'), {
+          code: 'appointment_survey_required',
+          status: 409,
+        });
+      }
       return repository.updateStatus({ enterpriseId, appointmentId, expectedVersion: parseAppointmentVersion(body.version), actorUserId: BigInt(context.user._id), status: 'completed', eventKey: `completed:${randomUUID()}` });
     });
     if (!appointment) return NextResponse.json({ success: false, error: '无权操作该预约' }, { status: 403 });

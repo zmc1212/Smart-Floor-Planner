@@ -32,9 +32,9 @@ function buildStageRail(status) {
   }));
 }
 
-function getNextAction(status, staffRole) {
+function getNextAction(status, staffRole, isAssignedMeasurer) {
   const normalized = normalizeStatus(status);
-  if (staffRole === 'designer') {
+  if (staffRole === 'designer' && !isAssignedMeasurer) {
     if (normalized === 'new') return '等待测量员完成正式量房';
     if (normalized === 'measuring') return '等待正式量房完成后进入方案设计';
   }
@@ -134,6 +134,19 @@ function getStaffRole() {
   return user.staffRole || (user.role === 'staff' ? '' : user.role) || '';
 }
 
+function getStaffId() {
+  const app = getApp();
+  const user = app && app.globalData && app.globalData.userInfo;
+  if (!user) return '';
+  return String(user.staffId || '');
+}
+
+function staffIdOf(value) {
+  if (value == null) return '';
+  if (typeof value === 'object') return String(value._id || value.id || '');
+  return String(value);
+}
+
 function appointmentSummary(value) {
   const match = String(value || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
   if (!match) return '上门时间待确认';
@@ -199,12 +212,14 @@ Page({
   applyLeadDetail(lead) {
     const formalPlans = getFormalPlans(lead).map(toPlanDisplay);
     const staffRole = getStaffRole();
+    const staffId = getStaffId();
+    const isAssignedMeasurer = Boolean(staffId) && staffIdOf(lead.measurerId) === staffId;
     const conversionActions = lead.conversionActions || {};
     this.setData({
       lead,
       staffRole,
       statusLabel: STATUS_LABELS[lead.status] || lead.status || '新线索',
-      nextAction: getNextAction(lead.status, staffRole),
+      nextAction: getNextAction(lead.status, staffRole, isAssignedMeasurer),
       stageRail: buildStageRail(lead.status),
       canMarkConverted: Boolean(conversionActions.canMarkConverted),
       canRevertConversion: Boolean(conversionActions.canRevertConversion),
@@ -212,16 +227,16 @@ Page({
       convertedTime: formatConfirmationDate(lead.convertedAt),
       convertedAmountText: formatContractAmount(lead.contractAmount),
       showInternalConversionDetails: ['enterprise_admin', 'designer', 'measurer', 'salesperson'].includes(staffRole),
-      canEditMeasurements: staffRole === 'measurer',
+      canEditMeasurements: staffRole === 'measurer' || isAssignedMeasurer,
       conversionSkipsStages: !['designing', 'measured', 'assigned', 'quoting'].includes(lead.status),
       activeFloorPlan: formalPlans[0] || null,
       previousFloorPlans: formalPlans.slice(1),
       loading: false
     });
-    this.refreshAppointmentEntry(staffRole, lead);
+    this.refreshAppointmentEntry(staffRole, lead, isAssignedMeasurer);
   },
 
-  async refreshAppointmentEntry(staffRole, lead) {
+  async refreshAppointmentEntry(staffRole, lead, isAssignedMeasurer) {
     const canOpen = ['designer', 'measurer', 'enterprise_admin'].includes(staffRole)
       && lead
       && this.data.leadId;
@@ -232,9 +247,16 @@ Page({
     try {
       const result = await api.request(`/appointments?leadId=${encodeURIComponent(this.data.leadId)}`, 'GET');
       const appointment = (result.data || []).find((item) => item.status === 'confirmed') || null;
+      const canBook = !appointment
+        && !['closed', 'converted'].includes(lead.status)
+        && (
+          staffRole === 'enterprise_admin'
+          || staffRole === 'designer'
+          || (staffRole === 'measurer' && lead.source === 'staff_activity' && isAssignedMeasurer)
+        );
       this.setData({
         appointment: appointment ? { ...appointment, summary: appointmentSummary(appointment.timeRange) } : null,
-        canScheduleAppointment: !appointment && ['designer', 'enterprise_admin'].includes(staffRole) && !['closed', 'converted'].includes(lead.status)
+        canScheduleAppointment: canBook
       });
     } catch (error) {
       this.setData({ appointment: null, canScheduleAppointment: false });

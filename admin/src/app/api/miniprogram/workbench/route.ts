@@ -15,8 +15,10 @@ function currentRole(context: Awaited<ReturnType<typeof resolveMiniProgramContex
     : null;
 }
 
-function leadItem(lead: Awaited<ReturnType<LeadRepository['list']>>['rows'][number]) {
+function leadItem(lead: Awaited<ReturnType<LeadRepository['list']>>['rows'][number], action = 'lead') {
   const plan = lead.primaryFloorPlanRecord || lead.floorPlanRecords[0] || null;
+  const pendingSurvey = ['new', 'measuring'].includes(lead.status || 'new');
+  const surveyAction = action === 'survey';
   return {
     id: lead.id.toString(),
     leadId: lead.id.toString(),
@@ -26,7 +28,9 @@ function leadItem(lead: Awaited<ReturnType<LeadRepository['list']>>['rows'][numb
     meta: lead.status || 'new',
     status: lead.status || 'new',
     updatedAt: lead.updatedAt,
-    action: 'lead',
+    action: surveyAction ? 'survey' : 'lead',
+    canSurveyNow: surveyAction && pendingSurvey,
+    canBookAppointment: surveyAction && pendingSurvey && !lead.appointment,
   };
 }
 
@@ -68,10 +72,16 @@ export async function GET(request: Request) {
 
       if (role === 'designer') {
         const scope = { staffId, staffVisibility: 'assigned' as const };
-        const [leadList, statusCounts] = await Promise.all([
+        const measurerScope = { staffId, staffVisibility: 'measurer' as const };
+        const [leadList, statusCounts, surveyList] = await Promise.all([
           leads.list({ ...scope, page: 1, limit: 6, orderBy: 'updatedAt' }),
           leads.countStatuses(scope, ['new', 'contacted', 'measuring', 'measured', 'assigned', 'designing', 'quoting']),
+          leads.list({ ...measurerScope, page: 1, limit: 20, orderBy: 'updatedAt' }),
         ]);
+        const surveyTasks = surveyList.rows
+          .filter((lead) => ['new', 'measuring'].includes(lead.status || 'new'))
+          .map((lead) => leadItem(lead, 'survey'));
+        const surveyIds = new Set(surveyTasks.map((item) => item.leadId));
         const activeCount = Object.values(statusCounts).reduce((sum, value) => sum + value, 0);
         return {
           role,
@@ -79,29 +89,40 @@ export async function GET(request: Request) {
           subtitle: '优先推进本人负责的客户与方案',
           summary: [
             { key: 'active', label: '待推进客户', value: activeCount, detail: '仅本人负责', tone: 'green' },
-            { key: 'measuring', label: '待量房交接', value: Number(statusCounts.measuring || 0), detail: '等待正式量房', tone: 'blue' },
+            { key: 'measuring', label: '待量房交接', value: Number(statusCounts.measuring || 0) + surveyTasks.length, detail: '可立即量房或等待正式量房', tone: 'blue' },
             { key: 'design', label: '方案协作', value: Number(statusCounts.measured || 0) + Number(statusCounts.designing || 0), detail: '可继续方案工作', tone: 'orange' },
           ],
-          primaryItems: leadList.rows.map(leadItem),
+          primaryItems: leadList.rows.map((lead) => leadItem(lead, surveyIds.has(lead.id.toString()) ? 'survey' : 'lead')),
+          tasks: surveyTasks,
+          activityCode: { label: '出示活动码', target: 'activity-code' },
           secondary: { label: '查看全部客户', target: 'customers' },
         };
       }
 
       if (role === 'measurer') {
-        const appointmentRows = await appointments.listByMeasurer(enterpriseId, staffId);
+        const [appointmentRows, surveyList] = await Promise.all([
+          appointments.listByMeasurer(enterpriseId, staffId),
+          leads.list({ staffId, staffVisibility: 'measurer', page: 1, limit: 20, orderBy: 'updatedAt' }),
+        ]);
         const leadRows = await leads.findByIds(appointmentRows.map((item) => item.leadId));
         const leadMap = new Map(leadRows.map((item) => [item.id, item]));
-        const items = appointmentRows.map((item) => appointmentItem(item, leadMap.get(item.leadId)));
+        const appointmentItems = appointmentRows.map((item) => appointmentItem(item, leadMap.get(item.leadId)));
+        const scheduledIds = new Set(appointmentRows.map((item) => item.leadId.toString()));
+        const unscheduled = surveyList.rows
+          .filter((lead) => ['new', 'measuring'].includes(lead.status || 'new') && !scheduledIds.has(lead.id.toString()))
+          .map((lead) => leadItem(lead, 'survey'));
+        const items = [...unscheduled, ...appointmentItems];
         return {
           role,
           title: '今日测量台',
-          subtitle: '只显示已指派的日程与量房任务',
+          subtitle: '已指派日程、无预约待量房和活动码获客都在这里',
           summary: [
-            { key: 'schedule', label: '已确认日程', value: items.length, detail: '当前本人预约', tone: 'green' },
-            { key: 'survey', label: '待量房任务', value: items.filter((item) => Boolean(item.floorPlanId)).length, detail: '从任务进入正式量房', tone: 'blue' },
+            { key: 'schedule', label: '已确认日程', value: appointmentItems.length, detail: '当前本人预约', tone: 'green' },
+            { key: 'survey', label: '待量房任务', value: items.length, detail: '可立即量房或查看预约', tone: 'blue' },
           ],
           primaryItems: items.slice(0, 6),
           tasks: items,
+          activityCode: { label: '出示活动码', target: 'activity-code' },
           secondary: { label: '维护不可用时间', target: 'unavailability' },
         };
       }

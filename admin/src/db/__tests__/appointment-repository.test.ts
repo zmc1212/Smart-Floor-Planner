@@ -5,6 +5,8 @@ import { eq, inArray } from 'drizzle-orm';
 import {
   adminUsers,
   enterprises,
+  floorPlans,
+  leadFloorPlans,
   leads,
   measurementAppointmentEvents,
   measurementAppointments,
@@ -79,6 +81,7 @@ after(async () => {
       await transaction.delete(measurementAppointmentEvents).where(eq(measurementAppointmentEvents.enterpriseId, enterpriseId));
       await transaction.delete(measurementAppointments).where(eq(measurementAppointments.enterpriseId, enterpriseId));
       await transaction.delete(staffUnavailabilityPeriods).where(eq(staffUnavailabilityPeriods.enterpriseId, enterpriseId));
+      await transaction.delete(floorPlans).where(eq(floorPlans.enterpriseId, enterpriseId));
       await transaction.delete(leads).where(eq(leads.enterpriseId, enterpriseId));
       await transaction.delete(adminUsers).where(eq(adminUsers.enterpriseId, enterpriseId));
       await transaction.delete(enterprises).where(inArray(enterprises.id, [enterpriseId, otherEnterpriseId]));
@@ -131,6 +134,51 @@ test('rescheduling, unavailability, and tenant RLS preserve appointment boundari
     new AppointmentRepository(transaction).listByLead(enterpriseId, bookedLeadId)
   ).then((rows) => rows[0] ?? null);
   assert.ok(appointment);
+
+  const surveyBeforeSave = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).hasCompletedFormalSurveyForLead(enterpriseId, bookedLeadId)
+  );
+  assert.equal(surveyBeforeSave, false);
+  await assert.rejects(
+    () => withTenantTransaction(enterpriseId, (transaction) => new AppointmentRepository(transaction).updateStatus({
+      enterpriseId,
+      appointmentId: appointment!.id,
+      expectedVersion: appointment!.version,
+      actorUserId,
+      status: 'completed',
+      eventKey: `${runKey}-blocked-complete`,
+    })),
+    (error: { code?: string; status?: number }) => {
+      assert.equal(error.code, 'appointment_survey_required');
+      assert.equal(error.status, 409);
+      return true;
+    }
+  );
+
+  await withTenantTransaction(enterpriseId, async (transaction) => {
+    const [floorPlan] = await transaction.insert(floorPlans).values({
+      enterpriseId,
+      creatorId: actorUserId,
+      staffId: measurerId,
+      name: `${runKey}-survey`,
+      source: 'surveying',
+      status: 'completed',
+      completedAt: new Date(),
+      layoutData: {
+        version: 4,
+        measurementMode: 'surveying',
+        surveyGraph: {
+          kind: 'survey-wall-graph',
+          floors: [{ id: 'floor-1', spaces: [{ id: 'room-1', closed: true }] }],
+        },
+      },
+    }).returning();
+    await transaction.insert(leadFloorPlans).values({ leadId: bookedLeadId, floorPlanId: floorPlan!.id, measurementSequence: 1 });
+  });
+  const surveyAfterSave = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).hasCompletedFormalSurveyForLead(enterpriseId, bookedLeadId)
+  );
+  assert.equal(surveyAfterSave, true);
 
   const nextSlot = nextBookableSlot('13:00');
   const rescheduled = await withTenantTransaction(enterpriseId, (transaction) =>
@@ -185,4 +233,47 @@ test('rescheduling, unavailability, and tenant RLS preserve appointment boundari
     new AppointmentRepository(transaction).listByLead(enterpriseId, bookedLeadId)
   );
   assert.deepEqual(crossTenant, []);
+});
+
+test('staff activity appointments keep the presenter measurer instead of auto-replacing', async () => {
+  const extraMeasurerId = await withTenantTransaction(enterpriseId, async (transaction) => {
+    return (await new AdminUserRepository(transaction).create({
+      enterpriseId, username: `${runKey}-extra-measurer`, passwordHash: 'test-only', displayName: '候补测量员', role: 'measurer', status: 'active', assignmentPaused: false,
+    })).id;
+  });
+  const activityLeadId = await withTenantTransaction(enterpriseId, async (transaction) => {
+    return (await new LeadRepository(transaction).create({
+      enterpriseId, assignedTo: designerId, measurerId, customerUserId: actorUserId,
+      name: '活动码客户', phone: `19${String(Date.now()).slice(-9)}`, source: 'staff_activity', assignmentStatus: 'assigned',
+    })).id;
+  });
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).createUnavailability({
+      enterpriseId, staffId: measurerId, startAt: nextBookableSlot('10:00').startAt, endAt: nextBookableSlot('10:00').endAt,
+      reason: '现场占用', createdBy: designerId,
+    })
+  );
+  await assert.rejects(
+    () => withTenantTransaction(enterpriseId, (transaction) => new AppointmentRepository(transaction).create({
+      enterpriseId, leadId: activityLeadId, startAt: nextBookableSlot('10:00').startAt, endAt: nextBookableSlot('10:00').endAt,
+      address: '活动小区 1 号', actorUserId, eventKey: `${runKey}-activity-locked`,
+    })),
+    (error: { code?: string }) => {
+      assert.equal(error.code, 'appointment_no_measurer_available');
+      return true;
+    }
+  );
+  const swappedLeadId = await withTenantTransaction(enterpriseId, async (transaction) => {
+    return (await new LeadRepository(transaction).create({
+      enterpriseId, assignedTo: designerId, measurerId, customerUserId: actorUserId,
+      name: '可换人客户', phone: `20${String(Date.now()).slice(-9)}`, source: 'referrer_network', assignmentStatus: 'assigned',
+    })).id;
+  });
+  const swapped = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).create({
+      enterpriseId, leadId: swappedLeadId, startAt: nextBookableSlot('10:00').startAt, endAt: nextBookableSlot('10:00').endAt,
+      address: '可换人小区 1 号', actorUserId, eventKey: `${runKey}-activity-swap-control`,
+    })
+  );
+  assert.equal(swapped.measurerId, extraMeasurerId);
 });

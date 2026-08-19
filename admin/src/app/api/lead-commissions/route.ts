@@ -11,7 +11,7 @@ function dto(record: LeadCommissionWithRelations) {
     enterpriseId: record.enterpriseId.toString(),
     lead: record.lead ? {
       id: record.lead.id.toString(), name: record.lead.name, phone: record.lead.phone,
-      communityName: record.lead.communityName, status: record.lead.status, contractAmount: record.lead.contractAmount,
+      communityName: record.lead.communityName, status: record.lead.status, contractAmount: record.lead.contractAmount, source: record.lead.source,
     } : null,
     enterprise: record.enterprise ? { id: record.enterprise.id.toString(), name: record.enterprise.name } : null,
     customer: record.customer ? { id: record.customer.id.toString(), nickname: record.customer.nickname, phone: record.customer.phone } : null,
@@ -73,12 +73,16 @@ export async function GET(request: Request) {
         if (Number.isNaN(date.getTime())) throw Object.assign(new Error(`${label}无效`), { status: 400 });
         return date;
       };
+      const source = url.searchParams.get('source') || undefined;
+      if (source && !['referrer_network', 'staff_activity'].includes(source)) {
+        return NextResponse.json({ success: false, error: '线索来源无效' }, { status: 400 });
+      }
       const createdFrom = parseDate(url.searchParams.get('fromDate'), '开始日期');
       const toDate = parseDate(url.searchParams.get('toDate'), '结束日期');
       const createdBefore = toDate ? new Date(toDate.getTime() + 86_400_000) : undefined;
       const rows = await withTenantTransaction(enterpriseId, (transaction) =>
         new LeadCommissionRepository(transaction).list(enterpriseId, {
-          status, role: role as CommissionRole | undefined, leadId, createdFrom, createdBefore,
+          status, role: role as CommissionRole | undefined, leadId, createdFrom, createdBefore, source,
         })
       );
       return NextResponse.json({ success: true, data: rows.map(dto) });

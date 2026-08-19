@@ -38,6 +38,9 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
 
   assert.match(component, /['"]\/miniprogram\/workbench['"]/);
   assert.match(component, /openSurveyingEditor\(\{ leadId: item\.leadId, floorPlanId: item\.floorPlanId \|\| '' \}\)/);
+  assert.match(component, /staff-activity-code\/staff-activity-code/);
+  assert.match(componentTemplate, /立即量房/);
+  assert.match(componentTemplate, /预约上门/);
   assert.match(componentTemplate, /\/images\/page-ip-v3\/mine\.png/);
   assert.doesNotMatch(component, /enterpriseId\s*[:=]|staffId\s*[:=]/);
   assert.match(home, /<role-workbench[^>]+focus="overview"/);

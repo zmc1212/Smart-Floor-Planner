@@ -45,6 +45,7 @@ export const DELETE_TABLES = new Set([
   'enterprise_join_code_events',
   'referrer_enterprise_memberships',
   'referrer_promotion_codes',
+  'staff_activity_codes',
   'promotion_scan_audits',
   'promotion_enterprise_records',
   'leads',

@@ -20,7 +20,10 @@
 
       <view class="section-head">
         <text>{{role === 'customer' ? '我的服务' : focus === 'tasks' ? '我的任务' : focus === 'survey' ? '可进入量房' : focus === 'appointments' ? '预约安排' : '优先处理'}}</text>
-        <view wx:if="{{secondary && focus === 'overview'}}" class="section-link" bindtap="openSecondary"><text>{{secondary.label}}</text><view class="chevron"></view></view>
+        <view wx:if="{{focus === 'overview'}}" class="section-links">
+          <view wx:if="{{activityCode}}" class="section-link" bindtap="openActivityCode"><text>{{activityCode.label}}</text><view class="chevron"></view></view>
+          <view wx:if="{{secondary}}" class="section-link" bindtap="openSecondary"><text>{{secondary.label}}</text><view class="chevron"></view></view>
+        </view>
       </view>
 
       <view wx:if="{{loading}}" class="state-block"><text>正在读取真实工作数据</text></view>
@@ -32,8 +35,12 @@
             <text class="item-title">{{item.title}}</text>
             <text class="item-subtitle">{{item.subtitle}}</text>
             <text class="item-meta">{{item.metaLabel}}</text>
+            <view wx:if="{{item.canSurveyNow || item.canBookAppointment}}" class="item-cta-row">
+              <view wx:if="{{item.canSurveyNow}}" class="item-cta" catchtap="openItem" data-item="{{item}}">立即量房</view>
+              <view wx:if="{{item.canBookAppointment}}" class="item-cta item-cta-secondary" catchtap="openBooking" data-item="{{item}}">预约上门</view>
+            </view>
           </view>
-          <view class="item-action"><text>{{role === 'customer' ? '查看项目' : item.actionLabel}}</text><view class="chevron"></view></view>
+          <view wx:if="{{!(item.canSurveyNow || item.canBookAppointment)}}" class="item-action"><text>{{role === 'customer' ? '查看项目' : item.actionLabel}}</text><view class="chevron"></view></view>
         </view>
       </view>
       <view wx:else class="state-block empty"><text>{{emptyCopy}}</text><view wx:if="{{secondary}}" class="retry" bindtap="openSecondary">{{secondary.label}}</view></view>

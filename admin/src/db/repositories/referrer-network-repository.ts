@@ -10,6 +10,7 @@ import {
   referrerEnterpriseMemberships,
   referrerProfiles,
   referrerPromotionCodes,
+  staffActivityCodes,
   users,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
@@ -71,6 +72,16 @@ export function createEnterpriseJoinToken(
     .subarray(0, TOKEN_BYTES)
     .toString('base64url');
   return `ej_${digest}`;
+}
+
+export function createStaffActivityToken(staffId: bigint, version: number) {
+  const digest = crypto
+    .createHmac('sha256', tokenSecret())
+    .update(`staff-activity:${staffId.toString()}:${version}`)
+    .digest()
+    .subarray(0, TOKEN_BYTES)
+    .toString('base64url');
+  return `sa_${digest}`;
 }
 
 export function createReferrerPromotionToken(
@@ -407,6 +418,154 @@ export class ReferrerNetworkRepository {
       });
     }
     return { code, membership, result };
+  }
+
+  async resolveStaffActivityToken(input: {
+    token: string;
+    sessionKey?: string | null;
+    ipHash?: string | null;
+    deviceSummary?: Record<string, unknown>;
+  }) {
+    const tokenHash = hashReferrerNetworkToken(input.token);
+    const rows = await this.transaction
+      .select({
+        code: staffActivityCodes,
+        staff: adminUsers,
+        enterpriseName: enterprises.name,
+      })
+      .from(staffActivityCodes)
+      .innerJoin(adminUsers, eq(staffActivityCodes.staffId, adminUsers.id))
+      .innerJoin(enterprises, eq(staffActivityCodes.enterpriseId, enterprises.id))
+      .where(eq(staffActivityCodes.tokenHash, tokenHash))
+      .limit(1);
+    const row = rows[0] ?? null;
+    const result = !row
+      ? 'code_not_found'
+      : row.code.status === 'active' &&
+          row.staff.status === 'active' &&
+          ['designer', 'measurer'].includes(row.staff.role)
+        ? 'ok'
+        : 'code_disabled';
+    if (row) {
+      await this.transaction.insert(promotionScanAudits).values({
+        enterpriseId: row.code.enterpriseId,
+        staffActivityCodeId: row.code.id,
+        tokenHash,
+        sessionKey: input.sessionKey ?? null,
+        result,
+        ipHash: input.ipHash ?? null,
+        deviceSummary: input.deviceSummary ?? {},
+      });
+    }
+    return {
+      code: row?.code ?? null,
+      staff: row?.staff ?? null,
+      enterpriseName: row?.enterpriseName ?? null,
+      result,
+    };
+  }
+
+  async countActiveStaffActivityCodes(enterpriseId: bigint) {
+    const rows = await this.transaction
+      .select({ value: count() })
+      .from(staffActivityCodes)
+      .where(
+        and(
+          eq(staffActivityCodes.enterpriseId, enterpriseId),
+          eq(staffActivityCodes.status, 'active')
+        )
+      );
+    return Number(rows[0]?.value ?? 0);
+  }
+
+  private async designerProfileComplete(staff: typeof adminUsers.$inferSelect) {
+    if (staff.role !== 'designer') return true;
+    if (!staff.wechatId?.trim() || !staff.wechatQrAssetId) return false;
+    const rows = await this.transaction
+      .select({ id: adminUsers.id })
+      .from(adminUsers)
+      .where(
+        and(
+          eq(adminUsers.id, staff.id),
+          sql`exists (
+            select 1
+            from app.media_assets assignment_qr
+            where assignment_qr.id = ${staff.wechatQrAssetId}
+              and assignment_qr.enterprise_id = ${staff.enterpriseId}
+              and assignment_qr.deleted_at is null
+          )`
+        )
+      )
+      .limit(1);
+    return Boolean(rows[0]);
+  }
+
+  private async ensureStaffActivityCode(staff: typeof adminUsers.$inferSelect) {
+    const currentRows = await this.transaction
+      .select()
+      .from(staffActivityCodes)
+      .where(
+        and(
+          eq(staffActivityCodes.staffId, staff.id),
+          eq(staffActivityCodes.status, 'active')
+        )
+      )
+      .limit(1);
+    if (currentRows[0]) return currentRows[0];
+    const previousRows = await this.transaction
+      .select({ version: staffActivityCodes.version })
+      .from(staffActivityCodes)
+      .where(eq(staffActivityCodes.staffId, staff.id))
+      .orderBy(desc(staffActivityCodes.version))
+      .limit(1);
+    const version = (previousRows[0]?.version ?? 0) + 1;
+    const token = createStaffActivityToken(staff.id, version);
+    const created = await this.transaction
+      .insert(staffActivityCodes)
+      .values({
+        enterpriseId: staff.enterpriseId!,
+        staffId: staff.id,
+        tokenHash: hashReferrerNetworkToken(token),
+        status: 'active',
+        version,
+      })
+      .returning();
+    return created[0];
+  }
+
+  async getStaffActivityCode(userId: bigint, staffId: bigint) {
+    const rows = await this.transaction
+      .select({
+        staff: adminUsers,
+        enterpriseName: enterprises.name,
+      })
+      .from(adminUsers)
+      .innerJoin(enterprises, eq(adminUsers.enterpriseId, enterprises.id))
+      .where(
+        and(
+          eq(adminUsers.id, staffId),
+          eq(adminUsers.userId, userId),
+          eq(adminUsers.status, 'active')
+        )
+      )
+      .limit(1)
+      .for('update');
+    const row = rows[0];
+    if (!row?.staff.enterpriseId) return { ok: false as const, code: 'staff_not_found' as const };
+    if (!['designer', 'measurer'].includes(row.staff.role)) {
+      return { ok: false as const, code: 'staff_role_unsupported' as const };
+    }
+    if (!(await this.designerProfileComplete(row.staff))) {
+      return { ok: false as const, code: 'designer_profile_incomplete' as const };
+    }
+    const code = await this.ensureStaffActivityCode(row.staff);
+    return {
+      ok: true as const,
+      code,
+      token: createStaffActivityToken(code.staffId, code.version),
+      staff: row.staff,
+      enterpriseName: row.enterpriseName,
+    };
   }
 
   async onboardStaff(input: {

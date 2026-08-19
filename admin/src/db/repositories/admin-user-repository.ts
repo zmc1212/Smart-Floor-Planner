@@ -159,6 +159,15 @@ export class AdminUserRepository {
     return record as AdminUserWithRelations;
   }
 
+  async findLinkedUserId(id: bigint) {
+    const rows = await this.transaction
+      .select({ userId: adminUsers.userId })
+      .from(adminUsers)
+      .where(eq(adminUsers.id, id))
+      .limit(1);
+    return rows[0]?.userId ?? null;
+  }
+
   async findByUsernameOrPhone(identifier: string, activeOnly = false) {
     const identityFilter = or(
       eq(adminUsers.username, identifier),

@@ -18,6 +18,21 @@ const referralAssets = [
   'privacy-lock.png',
 ];
 
+test('staff activity code reuses the promotion visual language and may show the enterprise name', () => {
+  const wxml = source('packages/business/staff-activity-code/staff-activity-code.wxml');
+  const js = source('packages/business/staff-activity-code/staff-activity-code.js');
+  const less = source('packages/business/staff-activity-code/staff-activity-code.less');
+
+  assert.match(wxml, /免费上门测量/);
+  assert.match(wxml, /免费设计师服务/);
+  assert.match(wxml, /微信扫码领取服务/);
+  assert.match(wxml, /enterpriseName/);
+  assert.match(js, /\/miniprogram\/staff-activity-code/);
+  assert.match(js, /staff-activity-code\/image/);
+  assert.match(js, /free-design-service\/free-design-service\?token=/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*396rpx/);
+});
+
 test('promotion service screen keeps the public presentation anonymous and scanable', () => {
   const wxml = source('packages/business/promotion-service-code/promotion-service-code.wxml');
   const js = source('packages/business/promotion-service-code/promotion-service-code.js');
@@ -50,15 +65,21 @@ test('free design service resolves before phone authorization and renders truthf
   }
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/referrals\/authorize-and-create-lead/);
-  assert.match(js, /`rp_\$\{decoded\}`/);
+  assert.match(js, /kind !== 'referral' && response.data.kind !== 'staff_activity'/);
   assert.match(js, /'Idempotency-Key'/);
+  assert.match(js, /response\.existingAttribution/);
+  assert.match(js, /pageState:\s*'existing'/);
   assert.match(js, /pageState:\s*designerProfile\s*\?\s*'success'\s*:\s*'pending'/);
+  assert.match(wxml, /pageState === 'existing'/);
+  assert.match(wxml, /本次扫码不会重复领取/);
   assert.match(js, /wx\.setClipboardData/);
   assert.match(js, /wx\.saveImageToPhotosAlbum/);
   assert.match(less, /@media \(max-width:\s*360px\)/);
   assert.match(less, /\.claim-action\s*\{[^}]*align-self:\s*stretch/);
   assert.match(less, /\.claim-action\s*\{[^}]*min-width:\s*100%/);
-  assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);
+  assert.doesNotMatch(wxml, /装修公司/);
+  assert.match(wxml, /enterpriseName/);
+  assert.match(wxml, /claimKind === 'staff_activity'/);
 });
 
 test('Antigravity referral assets are transparent PNG files within the package limit', () => {
@@ -74,6 +95,7 @@ test('Antigravity referral assets are transparent PNG files within the package l
 test('referral service primary copy respects the Mini Program type floor', () => {
   const styles = [
     source('packages/business/promotion-service-code/promotion-service-code.less'),
+    source('packages/business/staff-activity-code/staff-activity-code.less'),
     source('packages/business/free-design-service/free-design-service.less')
   ].join('\n');
   assert.doesNotMatch(styles, /font-size:\s*(?:1[0-9]|[0-9])rpx/);

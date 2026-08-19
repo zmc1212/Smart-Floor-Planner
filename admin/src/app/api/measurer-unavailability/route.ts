@@ -18,9 +18,9 @@ export async function GET(request: Request) {
     const admin = mini ? null : await getTenantContext(request);
     const enterpriseId = mini?.enterpriseId || admin?.enterpriseId;
     if (!enterpriseId) return NextResponse.json({ success: false, error: '需要有效企业上下文' }, { status: 401 });
-    if (mini && (mini.mode !== 'staff' || !mini.staff || !['measurer', 'enterprise_admin'].includes(mini.staff.role))) return NextResponse.json({ success: false, error: '无权查看不可用时间' }, { status: 403 });
+    if (mini && (mini.mode !== 'staff' || !mini.staff || !['designer', 'measurer', 'enterprise_admin'].includes(mini.staff.role))) return NextResponse.json({ success: false, error: '无权查看不可用时间' }, { status: 403 });
     const targetStaffId = new URL(request.url).searchParams.get('staffId');
-    const staffId = mini?.staff?.role === 'measurer' ? BigInt(mini.staff._id) : targetStaffId ? parseAppointmentId(targetStaffId, '测量员') : undefined;
+    const staffId = mini?.staff?.role === 'enterprise_admin' && targetStaffId ? parseAppointmentId(targetStaffId, '测量员') : mini?.staff ? BigInt(mini.staff._id) : targetStaffId ? parseAppointmentId(targetStaffId, '测量员') : undefined;
     const read = (transaction: PostgresTransaction) => new AppointmentRepository(transaction).listUnavailability(parsePostgresId(enterpriseId, 'enterprise id'), staffId);
     const rows = mini ? await withMiniProgramPostgresTransaction(mini, read) : await withAdminPostgresTransaction(admin!, read);
     return NextResponse.json({ success: true, data: rows.map(dto) });
@@ -32,9 +32,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const mini = await resolveMiniProgramContext(request);
-    if (!mini?.enterpriseId || mini.mode !== 'staff' || !mini.staff || !['measurer', 'enterprise_admin'].includes(mini.staff.role)) return NextResponse.json({ success: false, error: '仅测量员或企业负责人可设置不可用时间' }, { status: 403 });
+    if (!mini?.enterpriseId || mini.mode !== 'staff' || !mini.staff || !['designer', 'measurer', 'enterprise_admin'].includes(mini.staff.role)) return NextResponse.json({ success: false, error: '仅设计师、测量员或企业负责人可设置不可用时间' }, { status: 403 });
     const body = await request.json();
-    const staffId = mini.staff.role === 'measurer' ? BigInt(mini.staff._id) : parseAppointmentId(body.staffId, '测量员');
+    const staffId = mini.staff.role === 'enterprise_admin' ? parseAppointmentId(body.staffId, '测量员') : BigInt(mini.staff._id);
     const row = await withMiniProgramPostgresTransaction(mini, (transaction) => new AppointmentRepository(transaction).createUnavailability({
       enterpriseId: parsePostgresId(mini.enterpriseId!, 'enterprise id'), staffId,
       startAt: parseAppointmentDateTime(body.startAt, '开始时间'), endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
@@ -49,11 +49,11 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const mini = await resolveMiniProgramContext(request);
-    if (!mini?.enterpriseId || mini.mode !== 'staff' || !mini.staff || !['measurer', 'enterprise_admin'].includes(mini.staff.role)) return NextResponse.json({ success: false, error: '仅测量员或企业负责人可删除不可用时间' }, { status: 403 });
+    if (!mini?.enterpriseId || mini.mode !== 'staff' || !mini.staff || !['designer', 'measurer', 'enterprise_admin'].includes(mini.staff.role)) return NextResponse.json({ success: false, error: '仅设计师、测量员或企业负责人可删除不可用时间' }, { status: 403 });
     const id = parseAppointmentId(new URL(request.url).searchParams.get('id'), '不可用时间');
     const deleted = await withMiniProgramPostgresTransaction(mini, async (transaction) => {
       const repository = new AppointmentRepository(transaction);
-      if (mini.staff!.role === 'measurer') {
+      if (mini.staff!.role !== 'enterprise_admin') {
         const own = (await repository.listUnavailability(parsePostgresId(mini.enterpriseId!, 'enterprise id'), BigInt(mini.staff!._id))).some((row) => row.id === id);
         if (!own) return false;
       }

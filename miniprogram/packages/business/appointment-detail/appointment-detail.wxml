@@ -26,17 +26,18 @@ FORM: Service dispatch slip; approved appointment artwork is reused as a standal
       <text class="date">{{appointment.dateText}}</text>
       <text class="time">{{appointment.timeText}}</text>
       <view class="hairline"></view>
-      <view class="detail-row"><text>上门地址</text><text>{{appointment.address}}</text></view>
+      <view class="detail-row"><text>上门地址</text><text>{{appointment.address || '待补充'}}</text></view>
       <view class="detail-row"><text>预约编号</text><text>#{{appointment.id}}</text></view>
     </view>
 
     <view class="role-note" wx:if="{{appointment.status === 'confirmed'}}">{{customerMode ? '如需调整时间，请在截止时间前选择可用时段。' : '设计师负责协调时间与取消，测量员完成上门后确认完成；企业负责人可处理全部动作。'}}</view>
     <view class="finished-note" wx:else>该预约已结束，当前记录仅供查看。</view>
 
-    <view class="actions" wx:if="{{canReschedule || canCancel || canComplete}}">
+    <view class="actions" wx:if="{{canReschedule || canCancel || canComplete || canUpdateAddress}}">
       <button wx:if="{{canComplete}}" class="primary sfp-primary-action" loading="{{acting}}" bindtap="complete">确认完成量房</button>
       <button wx:if="{{canReschedule}}" class="secondary" disabled="{{acting}}" bindtap="reschedule">调整上门时间</button>
       <button wx:if="{{canCancel}}" class="danger" disabled="{{acting}}" bindtap="cancel">取消本次预约</button>
+      <button wx:if="{{canUpdateAddress}}" class="secondary" loading="{{acting}}" disabled="{{acting}}" bindtap="updateAddress">{{appointment.address ? '修改服务地址' : '补充服务地址'}}</button>
     </view>
   </view>
 </view>

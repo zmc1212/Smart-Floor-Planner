@@ -176,6 +176,13 @@
       "when": 1786958699948,
       "tag": "0024_same_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787126400000,
+      "tag": "0025_staff_activity_codes",
+      "breakpoints": true
     }
   ]
 }

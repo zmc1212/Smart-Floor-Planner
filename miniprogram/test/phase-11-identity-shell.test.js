@@ -39,5 +39,10 @@ test('staff roles retain distinct landing and capability contracts', () => {
   assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'designer' }), '/pages/index/index');
   assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'measurer' }), '/pages/index/index');
   assert.equal(navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', { mode: 'staff', staffRole: 'measurer' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', { mode: 'staff', staffRole: 'designer' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/staff-activity-code/staff-activity-code', { mode: 'staff', staffRole: 'designer' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/staff-activity-code/staff-activity-code', { mode: 'staff', staffRole: 'measurer' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/appointment-booking/appointment-booking', { mode: 'staff', staffRole: 'measurer' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/measurer-unavailability/measurer-unavailability', { mode: 'staff', staffRole: 'designer' }), true);
   assert.equal(navigation.canAccessRoute('/pages/ai-design/ai-design', { mode: 'staff', staffRole: 'measurer' }), true);
 });

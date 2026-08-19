@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { AppointmentRepository } from '@/db/repositories';
+import { AdminUserRepository, AppointmentRepository } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { appointmentToDto, parseAppointmentAddress, parseAppointmentVersion } from '@/lib/appointment-api';
 import { httpErrorStatus } from '@/lib/http-error';
@@ -34,6 +34,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const userId = parsePostgresId(admin.userId, 'user id');
       const appointment = await withAdminPostgresTransaction(admin, async (transaction) => {
         const repository = new AppointmentRepository(transaction);
+        const actorUserId = await new AdminUserRepository(transaction).findLinkedUserId(userId);
         const access = await repository.findById(enterpriseId, appointmentId);
         if (!access || !canUpdate(admin.role as StaffRole, access.appointment, userId)) return null;
         return repository.updateAddress({
@@ -41,7 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           appointmentId,
           address,
           expectedVersion: version,
-          actorUserId: userId,
+          actorUserId,
           eventKey: `admin-address-updated:${randomUUID()}`,
         });
       });

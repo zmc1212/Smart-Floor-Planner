@@ -13,6 +13,7 @@ import {
   referrerEnterpriseMemberships,
   referrerProfiles,
   referrerPromotionCodes,
+  staffActivityCodes,
   users,
 } from '@/db/schema';
 import {
@@ -94,7 +95,8 @@ async function createCustomer(suffix: string) {
 async function createAssignmentStaff(
   enterpriseId: bigint,
   role: 'designer' | 'measurer',
-  suffix: string
+  suffix: string,
+  userId?: bigint
 ) {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     let qrAssetId: bigint | null = null;
@@ -110,6 +112,7 @@ async function createAssignmentStaff(
     }
     const staff = await new AdminUserRepository(transaction).create({
       enterpriseId,
+      userId: userId ?? null,
       username: `${runKey}-${suffix}`,
       passwordHash: 'test-only',
       displayName: `${role}-${suffix}`,
@@ -164,6 +167,9 @@ after(async () => {
       await transaction
         .delete(leads)
         .where(inArray(leads.enterpriseId, enterpriseIds));
+      await transaction
+        .delete(staffActivityCodes)
+        .where(inArray(staffActivityCodes.enterpriseId, enterpriseIds));
       await transaction
         .delete(referrerPromotionCodes)
         .where(inArray(referrerPromotionCodes.enterpriseId, enterpriseIds));
@@ -381,4 +387,97 @@ test('no candidates preserve the lead and a later retry fills both roles', async
       )
   );
   assert.equal(pendingRows.some((lead) => lead.id === pending.lead.id), true);
+});
+
+test('staff activity claims lock the presenter as measurer and skip referrer commission source', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-activity`,
+      code: `${runKey}-activity`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  const enterpriseId = enterprise.id;
+  const designerUser = await createCustomer('activity-designer-user');
+  const measurerUser = await createCustomer('activity-measurer-user');
+  const designer = await createAssignmentStaff(enterpriseId, 'designer', 'activity-designer', designerUser.id);
+  const measurer = await createAssignmentStaff(enterpriseId, 'measurer', 'activity-measurer', measurerUser.id);
+  const dualSource = await withPlatformTransaction(async (transaction) => {
+    const activity = await new ReferrerNetworkRepository(transaction).getStaffActivityCode(
+      designerUser.id,
+      designer.id
+    );
+    assert.equal(activity.ok, true);
+    if (!activity.ok) throw new Error('activity code missing');
+    return {
+      kind: 'staff_activity' as const,
+      activityCodeId: activity.code.id,
+      staffId: designer.id,
+      enterpriseId,
+      version: activity.code.version,
+      expired: false,
+    };
+  });
+  const dualCustomer = await createCustomer('activity-dual');
+  const dual = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source: dualSource,
+      customerUserId: dualCustomer.id,
+      idempotencyKeyHash: `${runKey}-activity-dual`,
+    })
+  );
+  assert.equal(dual.kind, 'created');
+  assert.equal(dual.lead.source, 'staff_activity');
+  assert.equal(dual.lead.referrerMembershipId, null);
+  assert.equal(dual.lead.measurerId, designer.id);
+  assert.equal(dual.lead.assignedTo, designer.id);
+  assert.equal(dual.lead.promoterId, designer.id);
+
+  const measurerSource = await withPlatformTransaction(async (transaction) => {
+    const activity = await new ReferrerNetworkRepository(transaction).getStaffActivityCode(
+      measurerUser.id,
+      measurer.id
+    );
+    assert.equal(activity.ok, true);
+    if (!activity.ok) throw new Error('activity code missing');
+    return {
+      kind: 'staff_activity' as const,
+      activityCodeId: activity.code.id,
+      staffId: measurer.id,
+      enterpriseId,
+      version: activity.code.version,
+      expired: false,
+    };
+  });
+  const measurerCustomer = await createCustomer('activity-measurer-customer');
+  const presented = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source: measurerSource,
+      customerUserId: measurerCustomer.id,
+      idempotencyKeyHash: `${runKey}-activity-measurer`,
+    })
+  );
+  assert.equal(presented.kind, 'created');
+  assert.equal(presented.lead.source, 'staff_activity');
+  assert.equal(presented.lead.measurerId, measurer.id);
+  assert.equal(presented.lead.assignedTo, designer.id);
+
+  const reused = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source: measurerSource,
+      customerUserId: dualCustomer.id,
+      idempotencyKeyHash: `${runKey}-activity-preserve`,
+    })
+  );
+  assert.equal(reused.kind, 'existing_attribution');
+  assert.equal(reused.lead.id, dual.lead.id);
+
+  const lockedRetry = await withTenantTransaction(enterpriseId, (transaction) =>
+    new ReferralLeadRepository(transaction).retryLeadAssignment({
+      leadId: presented.lead.id,
+      reason: 'staff_pool_changed',
+    })
+  );
+  assert.equal(lockedRetry?.lead.measurerId, measurer.id);
 });

@@ -25,6 +25,18 @@ export function buildPromotionServicePath(token: string) {
   return path;
 }
 
+export function buildStaffActivityServicePath(token: string) {
+  const normalized = token.trim();
+  if (!/^sa_[A-Za-z0-9_-]{24,}$/.test(normalized)) {
+    throw new Error('Invalid staff activity token');
+  }
+  const path = `${PROMOTION_SERVICE_PAGE}?token=${encodeURIComponent(normalized)}`;
+  if (Buffer.byteLength(path, 'utf8') > 128) {
+    throw new Error('Staff activity service path exceeds the WeChat code limit');
+  }
+  return path;
+}
+
 export function buildEnterpriseOnboardingPath(token: string) {
   const normalized = token.trim();
   if (!/^ej_[A-Za-z0-9_-]{32}$/.test(normalized)) {
@@ -125,6 +137,13 @@ export async function createPromotionServiceCode(
   options: MiniProgramCodeOptions = {}
 ) {
   return createMiniProgramCode(buildPromotionServicePath(token), token, options);
+}
+
+export async function createStaffActivityServiceCode(
+  token: string,
+  options: MiniProgramCodeOptions = {}
+) {
+  return createMiniProgramCode(buildStaffActivityServicePath(token), token, options);
 }
 
 export async function createEnterpriseOnboardingCode(

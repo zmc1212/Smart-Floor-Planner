@@ -26,7 +26,7 @@ export type CommissionRuleInput = {
 };
 
 export type LeadCommissionWithRelations = typeof leadCommissions.$inferSelect & {
-  lead: Pick<typeof leads.$inferSelect, 'id' | 'name' | 'phone' | 'communityName' | 'status' | 'contractAmount'> | null;
+  lead: Pick<typeof leads.$inferSelect, 'id' | 'name' | 'phone' | 'communityName' | 'status' | 'contractAmount' | 'source'> | null;
   beneficiary: Pick<typeof users.$inferSelect, 'id' | 'nickname' | 'phone'> | null;
   enterprise: Pick<typeof enterprises.$inferSelect, 'id' | 'name'> | null;
   customer: Pick<typeof users.$inferSelect, 'id' | 'nickname' | 'phone'> | null;
@@ -171,19 +171,25 @@ export class LeadCommissionRepository {
     const lead = leadRows[0];
     if (!lead?.enterpriseId) return null;
 
-    if (!lead.referrerMembershipId || !lead.assignedTo || !lead.measurerId) {
+    if (lead.source === 'staff_activity') {
+      if (!lead.assignedTo || !lead.measurerId) {
+        throw commissionError('commission_beneficiary_missing', '活动线索尚未具备设计师和测量员提成受益人');
+      }
+    } else if (!lead.referrerMembershipId || !lead.assignedTo || !lead.measurerId) {
       throw commissionError('commission_beneficiary_missing', '线索尚未具备推荐人、设计师和测量员三方提成受益人');
     }
     const [referrerRows, staffRows] = await Promise.all([
-      this.transaction
-        .select({ userId: referrerProfiles.userId })
-        .from(referrerEnterpriseMemberships)
-        .innerJoin(referrerProfiles, eq(referrerEnterpriseMemberships.referrerId, referrerProfiles.id))
-        .where(and(
-          eq(referrerEnterpriseMemberships.id, lead.referrerMembershipId),
-          eq(referrerEnterpriseMemberships.enterpriseId, lead.enterpriseId)
-        ))
-        .limit(1),
+      lead.source === 'staff_activity' || !lead.referrerMembershipId
+        ? Promise.resolve([] as Array<{ userId: bigint }>)
+        : this.transaction
+          .select({ userId: referrerProfiles.userId })
+          .from(referrerEnterpriseMemberships)
+          .innerJoin(referrerProfiles, eq(referrerEnterpriseMemberships.referrerId, referrerProfiles.id))
+          .where(and(
+            eq(referrerEnterpriseMemberships.id, lead.referrerMembershipId),
+            eq(referrerEnterpriseMemberships.enterpriseId, lead.enterpriseId)
+          ))
+          .limit(1),
       this.transaction
         .select({ id: adminUsers.id, userId: adminUsers.userId, role: adminUsers.role })
         .from(adminUsers)
@@ -192,17 +198,33 @@ export class LeadCommissionRepository {
           inArray(adminUsers.id, [lead.assignedTo, lead.measurerId])
         )),
     ]);
-    const designer = staffRows.find((staff) => staff.id === lead.assignedTo && staff.role === 'designer');
-    const measurer = staffRows.find((staff) => staff.id === lead.measurerId && staff.role === 'measurer');
-    if (!referrerRows[0]?.userId || !designer?.userId || !measurer?.userId) {
+    const designer = staffRows.find((staff) => staff.id === lead.assignedTo);
+    const measurer = staffRows.find((staff) => staff.id === lead.measurerId);
+    if (lead.source === 'staff_activity') {
+      if (!designer?.userId || !measurer?.userId) {
+        throw commissionError('commission_beneficiary_missing', '活动线索提成受益人身份不完整');
+      }
+      return {
+        lead,
+        roles: ['designer', 'measurer'] as const,
+        beneficiaryUserIds: {
+          designer: designer.userId,
+          measurer: measurer.userId,
+        },
+      };
+    }
+    const designerRole = staffRows.find((staff) => staff.id === lead.assignedTo && staff.role === 'designer');
+    const measurerRole = staffRows.find((staff) => staff.id === lead.measurerId && staff.role === 'measurer');
+    if (!referrerRows[0]?.userId || !designerRole?.userId || !measurerRole?.userId) {
       throw commissionError('commission_beneficiary_missing', '三方提成受益人身份不完整');
     }
     return {
       lead,
+      roles: COMMISSION_ROLES,
       beneficiaryUserIds: {
         referrer: referrerRows[0].userId,
-        designer: designer.userId,
-        measurer: measurer.userId,
+        designer: designerRole.userId,
+        measurer: measurerRole.userId,
       } satisfies Record<CommissionRole, bigint>,
     };
   }
@@ -210,30 +232,35 @@ export class LeadCommissionRepository {
   async snapshotForConvertedLead(leadId: bigint) {
     const context = await this.commissionContext(leadId);
     if (!context) return [];
-    const { lead, beneficiaryUserIds } = context;
+    const { lead, beneficiaryUserIds, roles } = context;
     const rules = await this.listRules(lead.enterpriseId!);
     const ruleByRole = new Map(rules.map((rule) => [rule.role, rule]));
-    const missing = COMMISSION_ROLES.find((role) => ruleByRole.get(role)?.status !== 'active');
+    const missing = roles.find((role) => ruleByRole.get(role)?.status !== 'active');
     if (missing) {
       throw commissionError('commission_rule_unavailable', `${missing} 提成规则未启用`);
     }
-    const percentageRule = rules.some((rule) => rule.calculationType === 'percentage');
+    const snapshotRules = rules.filter((rule) => (roles as readonly string[]).includes(rule.role));
+    const percentageRule = snapshotRules.some((rule) => rule.calculationType === 'percentage');
     if (percentageRule && !lead.contractAmount) {
       throw commissionError('commission_contract_amount_required', '存在比例提成规则，签单必须填写签约金额', 400);
     }
-    const values = COMMISSION_ROLES.map((role) => {
+    const values = roles.map((role) => {
       const rule = ruleByRole.get(role)!;
+      const beneficiaryUserId = beneficiaryUserIds[role as keyof typeof beneficiaryUserIds];
+      if (!beneficiaryUserId) {
+        throw commissionError('commission_beneficiary_missing', '提成受益人身份不完整');
+      }
       return {
         enterpriseId: lead.enterpriseId!,
         leadId: lead.id,
         role,
-        beneficiaryUserId: beneficiaryUserIds[role],
+        beneficiaryUserId,
         ruleType: rule.calculationType,
         ruleValue: rule.value,
         ruleVersion: rule.version,
         contractAmount: lead.contractAmount,
         payableAmount: calculatePayableCommission(rule.calculationType as CommissionCalculationType, rule.value, lead.contractAmount),
-        status: 'payable',
+        status: 'payable' as const,
       };
     });
     const created = await this.transaction
@@ -241,12 +268,12 @@ export class LeadCommissionRepository {
       .values(values)
       .onConflictDoNothing({ target: [leadCommissions.leadId, leadCommissions.role] })
       .returning();
-    if (created.length === COMMISSION_ROLES.length) return created;
+    if (created.length === roles.length) return created;
     const existing = await this.transaction
       .select()
       .from(leadCommissions)
       .where(eq(leadCommissions.leadId, leadId));
-    if (existing.length !== COMMISSION_ROLES.length) {
+    if (existing.length !== roles.length) {
       throw commissionError('commission_snapshot_conflict', '签单提成快照不完整，请联系管理员处理');
     }
     return existing;
@@ -277,11 +304,13 @@ export class LeadCommissionRepository {
     leadId?: bigint;
     createdFrom?: Date;
     createdBefore?: Date;
+    source?: string;
   } = {}) {
     const filters = [eq(leadCommissions.enterpriseId, enterpriseId)];
     if (options.status) filters.push(eq(leadCommissions.status, options.status));
     if (options.role) filters.push(eq(leadCommissions.role, options.role));
     if (options.leadId) filters.push(eq(leadCommissions.leadId, options.leadId));
+    if (options.source) filters.push(eq(leads.source, options.source));
     if (options.createdFrom) filters.push(gte(leadCommissions.createdAt, options.createdFrom));
     if (options.createdBefore) filters.push(lt(leadCommissions.createdAt, options.createdBefore));
     const rows = await this.transaction
@@ -344,7 +373,7 @@ export class LeadCommissionRepository {
       const measurer = lead?.measurerId ? staffMap.get(lead.measurerId) : null;
       return {
         ...row.commission,
-        lead: lead ? { id: lead.id, name: lead.name, phone: lead.phone, communityName: lead.communityName, status: lead.status, contractAmount: lead.contractAmount } : null,
+        lead: lead ? { id: lead.id, name: lead.name, phone: lead.phone, communityName: lead.communityName, status: lead.status, contractAmount: lead.contractAmount, source: lead.source } : null,
         beneficiary: row.beneficiary,
         enterprise: lead?.enterpriseId ? enterpriseMap.get(lead.enterpriseId) ?? null : null,
         customer: lead?.customerUserId ? userMap.get(lead.customerUserId) ?? null : null,

@@ -18,6 +18,8 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(script, /appointment-reschedule\/appointment-reschedule\?mode=\$\{mode\}/);
   assert.match(script, /updateStatus\('cancel'/);
   assert.match(script, /updateStatus\('complete'/);
+  assert.match(script, /canUpdateAddress/);
+  assert.match(script, /appointments\/\$\{appointment\.id\}\/address/);
   assert.match(script, /onShareAppMessage\(\)/);
   assert.match(script, /const customerMode = options\.mode === 'customer'/);
   assert.match(script, /mode = this\.data\.customerMode \? 'customer' : 'internal'/);
@@ -26,6 +28,8 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(wxml, /wx:if="\{\{canComplete\}\}"/);
   assert.match(wxml, /wx:if="\{\{canReschedule\}\}"/);
   assert.match(wxml, /wx:if="\{\{canCancel\}\}"/);
+  assert.match(wxml, /补充服务地址/);
+  assert.match(wxml, /actions[\s\S]*class="secondary"[^>]*>\{\{appointment\.address/);
 });
 
 test('internal reschedule reuses real availability and keeps the audit reason optional', () => {
@@ -79,6 +83,7 @@ test('appointment detail derives lifecycle actions from the signed staff role', 
       assert.equal(context.data.canReschedule, staffRole === 'designer');
       assert.equal(context.data.canCancel, staffRole === 'designer');
       assert.equal(context.data.canComplete, staffRole === 'measurer');
+      assert.equal(context.data.canUpdateAddress, true);
     }
 
     global.getApp = () => ({ globalData: { userInfo: { role: 'user', mode: 'customer' } } });
@@ -93,6 +98,7 @@ test('appointment detail derives lifecycle actions from the signed staff role', 
     assert.equal(customerContext.data.canReschedule, false);
     assert.equal(customerContext.data.canCancel, false);
     assert.equal(customerContext.data.canComplete, false);
+    assert.equal(customerContext.data.canUpdateAddress, false);
     assert.ok(requestUrls.every((url) => url.includes('appointmentId=appointment-1')));
   } finally {
     api.request = originalRequest;

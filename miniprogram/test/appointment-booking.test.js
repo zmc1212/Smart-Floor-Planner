@@ -76,7 +76,9 @@ test('lead detail exposes first booking to scheduling roles only without a confi
   const detailWxml = read('packages/business/lead-detail/lead-detail.wxml');
   const detailWxss = read('packages/business/lead-detail/lead-detail.less');
 
-  assert.match(detailJs, /\['designer', 'enterprise_admin'\]\.includes\(staffRole\)/);
+  assert.match(detailJs, /staffRole === 'enterprise_admin'/);
+  assert.match(detailJs, /staffRole === 'designer'/);
+  assert.match(detailJs, /staffRole === 'measurer' && lead\.source === 'staff_activity'/);
   assert.match(detailJs, /item\.status === 'confirmed'/);
   assert.match(detailJs, /appointment-booking\/appointment-booking\?leadId=/);
   assert.match(detailWxml, /wx:if="\{\{canScheduleAppointment\}\}"/);

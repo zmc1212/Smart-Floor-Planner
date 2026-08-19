@@ -3,15 +3,19 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  openPendingClaimSource,
   openPendingReferralSource,
   sealPendingReferralSource,
+  sealPendingStaffActivitySource,
 } from '@/lib/referral-attribution';
 import { resetWechatAccessTokenCacheForTests } from '@/lib/wechat-access-token';
 import {
   buildEnterpriseOnboardingPath,
   buildPromotionServicePath,
+  buildStaffActivityServicePath,
   createEnterpriseOnboardingCode,
   createPromotionServiceCode,
+  createStaffActivityServiceCode,
   ENTERPRISE_ONBOARDING_PAGE,
   getMiniProgramCodeContentType,
   PROMOTION_SERVICE_PAGE,
@@ -37,6 +41,7 @@ test('pending referral sources are opaque, authenticated, and time limited', () 
     now: new Date('2026-08-17T00:09:59.000Z'),
   });
   assert.deepEqual(opened, {
+    kind: 'referrer',
     promotionCodeId: BigInt(17),
     membershipId: BigInt(23),
     version: 4,
@@ -54,6 +59,36 @@ test('pending referral sources are opaque, authenticated, and time limited', () 
     openPendingReferralSource(`${token.slice(0, -1)}x`, { now }),
     null
   );
+});
+
+test('pending staff activity sources are opaque and open through the claim union', () => {
+  const now = new Date('2026-08-17T00:00:00.000Z');
+  const token = sealPendingStaffActivitySource(
+    {
+      activityCodeId: BigInt(31),
+      staffId: BigInt(41),
+      enterpriseId: BigInt(51),
+      version: 2,
+    },
+    { now, ttlSeconds: 600 }
+  );
+
+  assert.match(token, /^pas_[A-Za-z0-9_-]+$/);
+  const packed = Buffer.from(token.slice(4), 'base64url').toString('utf8');
+  assert.equal(packed.includes('"s":"41"'), false);
+
+  const opened = openPendingClaimSource(token, {
+    now: new Date('2026-08-17T00:09:59.000Z'),
+  });
+  assert.deepEqual(opened, {
+    kind: 'staff_activity',
+    activityCodeId: BigInt(31),
+    staffId: BigInt(41),
+    enterpriseId: BigInt(51),
+    version: 2,
+    expiresAt: new Date('2026-08-17T00:10:00.000Z'),
+    expired: false,
+  });
 });
 
 test('promotion service codes use the anonymous claim route and real WeChat image bytes', async () => {
@@ -98,6 +133,50 @@ test('promotion service codes use the anonymous claim route and real WeChat imag
     assert.equal(body.width, 430);
     assert.deepEqual(body.line_color, { r: 8, g: 137, b: 57 });
     assert.equal(JSON.stringify(body).includes('enterprise'), false);
+  } finally {
+    resetWechatAccessTokenCacheForTests();
+    if (previousAppId === undefined) delete process.env.WX_APPID;
+    else process.env.WX_APPID = previousAppId;
+    if (previousSecret === undefined) delete process.env.WX_APPSECRET;
+    else process.env.WX_APPSECRET = previousSecret;
+  }
+});
+
+test('staff activity service codes reuse the claim route and real WeChat image bytes', async () => {
+  const previousAppId = process.env.WX_APPID;
+  const previousSecret = process.env.WX_APPSECRET;
+  process.env.WX_APPID = 'wx_test_app';
+  process.env.WX_APPSECRET = 'test_secret';
+  resetWechatAccessTokenCacheForTests();
+
+  const token = `sa_${'C'.repeat(32)}`;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url.includes('/cgi-bin/token')) {
+      return new Response(
+        JSON.stringify({ access_token: 'wechat_access_token', expires_in: 7200 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(png, {
+      status: 200,
+      headers: { 'Content-Type': 'image/png' },
+    });
+  }) as typeof fetch;
+
+  try {
+    assert.equal(
+      buildStaffActivityServicePath(token),
+      `${PROMOTION_SERVICE_PAGE}?token=${token}`
+    );
+    const bytes = await createStaffActivityServiceCode(token, { fetchImpl });
+    assert.deepEqual([...bytes], [...png]);
+    const body = JSON.parse(String(calls[1].init?.body));
+    assert.equal(body.scene, 'C'.repeat(32));
+    assert.equal(body.page, PROMOTION_SERVICE_PAGE);
   } finally {
     resetWechatAccessTokenCacheForTests();
     if (previousAppId === undefined) delete process.env.WX_APPID;
@@ -334,6 +413,30 @@ test('enterprise join-code rotation does not return a plaintext token', () => {
 
   assert.match(route, /data:\s*enterpriseJoinCodeToDto\(result\.code\)/);
   assert.doesNotMatch(route, /token:\s*result\.token/);
+});
+
+test('claim resolve and authorize preserve an existing customer project instead of a new claim', () => {
+  const resolve = readFileSync(
+    path.join(process.cwd(), 'src/app/api/miniprogram/codes/resolve/route.ts'),
+    'utf8'
+  );
+  const authorize = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/api/miniprogram/referrals/authorize-and-create-lead/route.ts'
+    ),
+    'utf8'
+  );
+  const repository = readFileSync(
+    path.join(process.cwd(), 'src/db/repositories/referral-lead-repository.ts'),
+    'utf8'
+  );
+
+  assert.match(repository, /async findActiveCustomerAttribution\(/);
+  assert.match(resolve, /findActiveCustomerAttribution/);
+  assert.match(resolve, /existingAttribution:\s*true/);
+  assert.match(resolve, /pendingSource:\s*null/);
+  assert.match(authorize, /claim\.kind !== 'existing_attribution'/);
 });
 
 test('onboarding code resolution returns its enterprise display name without exposing the token', () => {

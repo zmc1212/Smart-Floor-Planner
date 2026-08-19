@@ -19,7 +19,7 @@ const DELETE_ORDER = [
   'lead_floor_plans', 'measurements', 'floor_plans', 'leads',
   'ai_creation_batch_reference_assets', 'ai_creation_task_reference_assets',
   'commission_records', 'enterprise_orders', 'workflow_notification_logs',
-  'promotion_enterprise_records', 'promotion_scan_audits', 'referrer_promotion_codes',
+  'promotion_enterprise_records', 'promotion_scan_audits', 'staff_activity_codes', 'referrer_promotion_codes',
   'referrer_enterprise_memberships', 'referrer_profiles', 'enterprise_join_code_events',
   'enterprise_join_codes', 'enterprise_commission_rules', 'enterprise_appointment_settings',
   'enterprise_role_capabilities', 'admin_user_capability_overrides', 'admin_user_promoters',
