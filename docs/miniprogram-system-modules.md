@@ -173,6 +173,11 @@ route's own `.less` file. The compiled runtime still receives standard WXSS.
   detail request includes the selected `appointmentId` for direct lookup. This
   preserves access after an automatic measurer replacement while filtering out
   appointments assigned to another measurer.
+- The authenticated measurer's `GET /api/appointments` calendar response joins
+  each assigned lead's real `customerName` and `customerPhone`, so the existing
+  calendar card and `电话联系` action use the same server-authorized contact.
+  Customer, referrer, designer, and Admin appointment payloads retain their
+  existing contact boundaries.
 - Graph and Canvas sources are `miniprogram/utils/surveyWallGraph.js`,
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js`, and the
   surveying dimension/solid planners.

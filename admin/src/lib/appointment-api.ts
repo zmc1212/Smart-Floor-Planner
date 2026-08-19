@@ -26,7 +26,10 @@ export function parseAppointmentAddress(value: unknown) {
   return address;
 }
 
-export function appointmentToDto(record: AppointmentRecord) {
+export function appointmentToDto(
+  record: AppointmentRecord,
+  customerContact?: { name?: string | null; phone?: string | null }
+) {
   return {
     id: record.id.toString(),
     enterpriseId: record.enterpriseId.toString(),
@@ -40,5 +43,12 @@ export function appointmentToDto(record: AppointmentRecord) {
     updatedByUserId: record.updatedByUserId?.toString() ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+    // Only the authenticated measurer's calendar supplies this optional
+    // contact. Other appointment callers keep the existing appointment-only
+    // payload and their current privacy boundary.
+    ...(customerContact ? {
+      customerName: customerContact.name || '客户',
+      customerPhone: customerContact.phone || '',
+    } : {}),
   };
 }

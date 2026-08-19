@@ -74,6 +74,10 @@
 - 测量员读取预约详情时按预约记录持久化的 `measurerId` 做授权，而不只依赖线索上的
   临时 `measurerId`；详情请求同时携带被点击的 `appointmentId` 做直接读取。自动换派
   测量员后，当前预约仍可正常打开，同时不会返回分派给其他测量员的预约。
+- 已登录测量员调用 `GET /api/appointments` 读取日程时，服务端会合并其本人已派预约所
+  属线索的真实 `customerName` 和 `customerPhone`，因此既有日程卡片和“电话联系”使用
+  同一份已授权客户联系信息；客户、推荐人、设计师及后台预约载荷继续遵守原有联系信息
+  边界。
 - 几何与 Canvas 源文件为 `miniprogram/utils/surveyWallGraph.js`、
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js` 及量房尺寸/实体规划器。
 - BLE 集成位于 `miniprogram/utils/bluetooth.js`；协议语义以仓库厂商文档为准。

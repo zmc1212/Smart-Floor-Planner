@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { AdminUserRepository, AppointmentRepository } from '@/db/repositories';
+import { AdminUserRepository, AppointmentRepository, LeadRepository } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { appointmentToDto, parseAppointmentAddress, parseAppointmentDateTime, parseAppointmentId } from '@/lib/appointment-api';
 import { httpErrorStatus } from '@/lib/http-error';
@@ -19,6 +19,7 @@ export async function GET(request: Request) {
       const searchParams = new URL(request.url).searchParams;
       const leadIdText = searchParams.get('leadId');
       const appointmentIdText = searchParams.get('appointmentId');
+      const measurerCustomerContacts = new Map<string, { name: string; phone: string }>();
       const data = await withMiniProgramPostgresTransaction(context, async (transaction) => {
         const repository = new AppointmentRepository(transaction);
         if (context.mode === 'customer') {
@@ -38,7 +39,22 @@ export async function GET(request: Request) {
           return appointment ? [appointment] : null;
         }
         if (context.mode === 'staff' && context.staff?.role === 'measurer' && !leadIdText) {
-          return repository.listByMeasurer(enterpriseId, BigInt(context.staff._id), ['confirmed', 'expired']);
+          const appointments = await repository.listByMeasurer(
+            enterpriseId,
+            BigInt(context.staff._id),
+            ['confirmed', 'expired']
+          );
+          const leads = await new LeadRepository(transaction).findByIds(
+            appointments.map((appointment) => appointment.leadId),
+            { includeArchived: true }
+          );
+          leads.forEach((lead) => {
+            measurerCustomerContacts.set(lead.id.toString(), {
+              name: lead.name,
+              phone: lead.phone,
+            });
+          });
+          return appointments;
         }
         const leadId = parseAppointmentId(leadIdText, '线索');
         const lead = await repository.findLeadForAccess(enterpriseId, leadId);
@@ -58,7 +74,13 @@ export async function GET(request: Request) {
         return repository.listByLead(enterpriseId, leadId);
       });
       if (!data) return NextResponse.json({ success: false, error: '无权查看该预约' }, { status: 403 });
-      return NextResponse.json({ success: true, data: data.map(appointmentToDto) });
+      return NextResponse.json({
+        success: true,
+        data: data.map((appointment) => appointmentToDto(
+          appointment,
+          measurerCustomerContacts.get(appointment.leadId.toString())
+        )),
+      });
     }
 
     // Keep the legacy Admin bearer/cookie path after Mini Program context
@@ -76,7 +98,7 @@ export async function GET(request: Request) {
         return repository.listByLead(parsePostgresId(admin.enterpriseId!, 'enterprise id'), leadId);
       });
       if (!data) return NextResponse.json({ success: false, error: '无权查看该预约' }, { status: 403 });
-      return NextResponse.json({ success: true, data: data.map(appointmentToDto) });
+      return NextResponse.json({ success: true, data: data.map((appointment) => appointmentToDto(appointment)) });
     }
     return NextResponse.json({ success: false, error: '需要有效登录身份' }, { status: 401 });
   } catch (error) {

@@ -128,6 +128,7 @@ Page({
           ...parsed,
           statusLabel: x.status === 'expired' ? '已过期' : x.status === 'confirmed' ? '待上门' : x.status === 'completed' ? '已完成' : x.status || '待上门',
           customerName: x.customerName || x.leadName || '客户',
+          customerPhone: x.customerPhone || x.phone || x.leadPhone || '',
           designerName: x.designerName || '专属设计师',
           community: x.community || x.address || '量房预约',
         };
@@ -221,7 +222,7 @@ Page({
 
   callCustomer(event) {
     const item = event.currentTarget.dataset.item;
-    const phone = item && (item.customerPhone || item.phone || item.leadPhone);
+    const phone = item && String(item.customerPhone || item.phone || item.leadPhone || '').trim();
     if (!phone) {
       wx.showToast({ title: '暂未提供客户电话', icon: 'none' });
       return;
