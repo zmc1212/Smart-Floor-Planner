@@ -3,7 +3,7 @@ const ROLE_LANDING_PATHS = Object.freeze({
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
   staff: '/pages/index/index',
   designer: '/pages/index/index',
-  measurer: '/packages/business/measurer-calendar/measurer-calendar',
+  measurer: '/pages/index/index',
   enterprise_admin: '/pages/index/index'
 });
 

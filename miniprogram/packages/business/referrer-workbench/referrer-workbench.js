@@ -17,6 +17,37 @@ function navigationMetrics() {
   };
 }
 
+function formatMonthDayTime(value) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const mins = String(d.getMinutes()).padStart(2, '0');
+  return `${month}-${date} ${hours}:${mins}`;
+}
+
+function isToday(value) {
+  if (!value) return false;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return false;
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+function formatMoney(amount) {
+  const num = Number(amount || 0);
+  if (Number.isNaN(num) || num === 0) return '0.00';
+  return num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function stageTagClass(stageKey) {
+  if (['design_published', 'converted'].includes(stageKey)) return 'design-ready';
+  if (['survey_completed', 'appointment_confirmed'].includes(stageKey)) return 'settled';
+  return 'default-tag';
+}
+
 Page({
   data: {
     navigationTop: 24,
@@ -27,8 +58,15 @@ Page({
     error: '',
     memberships: [],
     selectedMembershipId: '',
+    selectedEnterpriseName: '',
     switchingMembershipId: '',
     identityCount: 0,
+    userName: '',
+    todayScans: 0,
+    totalClients: 0,
+    pendingEarnings: '0.00',
+    progressCount: 0,
+    milestones: [],
   },
 
   onLoad() {
@@ -51,7 +89,6 @@ Page({
           ? new Set(identityResult.contexts.map((context) => context && context.mode).filter(Boolean)).size
           : 0;
       } catch (identityError) {
-        // The promotion workbench remains usable when the optional switch list is temporarily unavailable.
         console.warn('Failed to read identity contexts for referrer workbench', identityError);
       }
       const memberships = (result.data || []).filter((item) => item.status === 'active');
@@ -66,7 +103,94 @@ Page({
         : memberships.some((item) => item.id === this.data.selectedMembershipId)
           ? this.data.selectedMembershipId
           : (memberships[0] && memberships[0].id) || '';
-      this.setData({ memberships, selectedMembershipId, identityCount });
+
+      const selected = memberships.find((item) => item.id === selectedMembershipId);
+      const selectedEnterpriseName = selected ? selected.enterpriseName : '';
+
+      const userInfo = (app && app.globalData && app.globalData.userInfo)
+        || (typeof wx !== 'undefined' && typeof wx.getStorageSync === 'function' ? wx.getStorageSync('userInfo') : null)
+        || {};
+      const userName = userInfo.displayName || userInfo.name || (userInfo.phone ? `用户${userInfo.phone.slice(-4)}` : '推广人');
+
+      let todayScans = 0;
+      let totalClients = 0;
+      let pendingEarnings = '0.00';
+      let progressCount = 0;
+      let milestones = [];
+
+      if (selectedMembershipId) {
+        try {
+          const [progressRes, earningsRes] = await Promise.all([
+            api.request('/miniprogram/referrer-progress', 'GET').catch(() => null),
+            api.request('/miniprogram/referrer-earnings', 'GET').catch(() => null),
+          ]);
+
+          const progressItems = (progressRes && progressRes.data && Array.isArray(progressRes.data.items)) ? progressRes.data.items : [];
+          const earningsItems = (earningsRes && earningsRes.data && Array.isArray(earningsRes.data.items)) ? earningsRes.data.items : [];
+
+          totalClients = progressItems.length;
+          progressCount = progressItems.length;
+          todayScans = progressItems.filter((item) => isToday(item.updatedAt) || isToday(item.convertedAt)).length;
+
+          const payableSum = earningsItems
+            .filter((item) => item.status === 'payable')
+            .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+          pendingEarnings = formatMoney(payableSum);
+
+          const earningsByCustomer = new Map();
+          for (const earn of earningsItems) {
+            if (earn.customerLabel && !earningsByCustomer.has(earn.customerLabel)) {
+              earningsByCustomer.set(earn.customerLabel, earn);
+            }
+          }
+
+          milestones = progressItems.slice(0, 5).map((item) => {
+            const earn = earningsByCustomer.get(item.customerLabel);
+            let rewardLabel = '';
+            let rewardClass = '';
+            if (earn) {
+              if (earn.status === 'paid') {
+                rewardLabel = `已到账 ¥${Number(earn.amount || 0).toFixed(0)}`;
+                rewardClass = 'paid';
+              } else if (earn.status === 'payable') {
+                rewardLabel = `预估 +¥${Number(earn.amount || 0).toFixed(0)}`;
+                rewardClass = 'payable';
+              }
+            }
+
+            const stageKey = (item.stage && item.stage.key) || 'claimed';
+            const stageLabel = (item.stage && item.stage.label) || '新线索';
+            const timeStr = formatMonthDayTime(item.updatedAt);
+            const desc = `${timeStr ? timeStr + ' · ' : ''}${item.stage && item.stage.nextAction ? item.stage.nextAction : '跟进中'}`;
+
+            return {
+              id: item.id,
+              customerLabel: item.customerLabel,
+              stageKey,
+              stageLabel,
+              stageClass: stageTagClass(stageKey),
+              rewardLabel,
+              rewardClass,
+              desc,
+            };
+          });
+        } catch (metricsErr) {
+          console.warn('Failed to load promoter metrics', metricsErr);
+        }
+      }
+
+      this.setData({
+        memberships,
+        selectedMembershipId,
+        selectedEnterpriseName,
+        identityCount,
+        userName,
+        todayScans,
+        totalClients,
+        pendingEarnings,
+        progressCount,
+        milestones,
+      });
     } catch (error) {
       this.setData({ error: error.message || error.error || '暂时无法读取推广企业' });
     } finally {
@@ -107,7 +231,10 @@ Page({
       wx.setStorageSync('userInfo', refreshed.user);
       if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
       if (app && typeof app.hydrateStoredSession === 'function') await app.hydrateStoredSession();
-      this.setData({ selectedMembershipId: membershipId });
+      this.setData({
+        selectedMembershipId: membershipId,
+        selectedEnterpriseName: membership.enterpriseName,
+      });
       wx.showToast({ title: '已切换推广企业', icon: 'success' });
     } catch (error) {
       if (app && app.globalData) {
@@ -136,6 +263,10 @@ Page({
 
   openEarnings() {
     wx.navigateTo({ url: '/packages/business/referrer-earnings/referrer-earnings' });
+  },
+
+  onAddEnterprise() {
+    wx.navigateTo({ url: '/packages/business/onboarding/onboarding' });
   },
 
   onOpenIdentitySwitch() {

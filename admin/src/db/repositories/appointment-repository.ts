@@ -765,6 +765,7 @@ export class AppointmentRepository {
           select 1 from app.measurement_appointments confirmed
           where confirmed.lead_id = ${measurementAppointments.leadId}
             and confirmed.status = 'confirmed'
+            and upper(confirmed.time_range) > now()
         )`,
         sql`${leads.status} in ('new', 'measuring')`
       ))
@@ -788,6 +789,7 @@ export class AppointmentRepository {
           select 1 from app.measurement_appointments confirmed
           where confirmed.lead_id = ${measurementAppointments.leadId}
             and confirmed.status = 'confirmed'
+            and upper(confirmed.time_range) > now()
         )`,
         sql`${leads.status} in ('new', 'measuring')`,
         sql`${measurementAppointments.updatedAt} + make_interval(hours => coalesce((${enterprises.automationConfig} ->> 'reminderIntervalHours')::int, 24)) <= ${now.toISOString()}::timestamptz`

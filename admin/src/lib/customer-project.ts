@@ -1,11 +1,91 @@
-import type { CustomerProject, CustomerProjectIndexItem } from '@/db/repositories';
+import type { CustomerProject, CustomerProjectIndexItem, CustomerProjectPublication } from '@/db/repositories';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
 import { resolveCustomerHomeAction } from '@/lib/lead-service-stage';
+
+export const LEGACY_PUBLISHED_SCHEME_ID = 'legacy';
+export const LEGACY_PUBLISHED_SCHEME_TITLE = '其他效果图';
 
 function record(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function generationTitle(generation: CustomerProjectPublication['generation'], fallback: string) {
+  const input = record(generation.input);
+  if (typeof input.recipeName === 'string' && input.recipeName.trim()) return input.recipeName.trim();
+  if (typeof input.style === 'string' && input.style.trim()) return input.style.trim();
+  if (typeof input.userMessage === 'string' && input.userMessage.trim()) return input.userMessage.trim();
+  return fallback;
+}
+
+export type PublishedDesignDto = {
+  id: string;
+  generationId: string;
+  type: string;
+  stageKey: string | null;
+  title: string;
+  publishedAt: Date;
+  imageEndpoint: string;
+};
+
+export type PublishedSchemeDto = {
+  id: string;
+  workflowId: string | null;
+  title: string;
+  publishedAt: Date;
+  images: PublishedDesignDto[];
+};
+
+export function groupPublishedSchemes(
+  publications: CustomerProjectPublication[],
+  leadId: string
+): PublishedSchemeDto[] {
+  const groups = new Map<string, PublishedSchemeDto>();
+  const order: string[] = [];
+  for (const { publication, generation } of publications) {
+    const workflowId = publication.workflowId?.toString() || null;
+    const groupId = workflowId || LEGACY_PUBLISHED_SCHEME_ID;
+    const title = publication.schemeTitle?.trim()
+      || (workflowId ? '设计方案' : LEGACY_PUBLISHED_SCHEME_TITLE);
+    const image: PublishedDesignDto = {
+      id: publication.id.toString(),
+      generationId: generation.id.toString(),
+      type: generation.type,
+      stageKey: generation.stageKey,
+      title: generationTitle(generation, title),
+      publishedAt: publication.publishedAt,
+      imageEndpoint: `/api/miniprogram/customer-projects/${leadId}/published-generations/${generation.id.toString()}/image`,
+    };
+    const existing = groups.get(groupId);
+    if (!existing) {
+      groups.set(groupId, {
+        id: groupId,
+        workflowId,
+        title,
+        publishedAt: publication.publishedAt,
+        images: [image],
+      });
+      order.push(groupId);
+      continue;
+    }
+    existing.images.push(image);
+    if (publication.publishedAt > existing.publishedAt) existing.publishedAt = publication.publishedAt;
+    if (publication.schemeTitle?.trim()) existing.title = publication.schemeTitle.trim();
+  }
+  for (const scheme of groups.values()) {
+    scheme.images.sort((left, right) => {
+      const leftPublication = publications.find((item) => item.publication.id.toString() === left.id);
+      const rightPublication = publications.find((item) => item.publication.id.toString() === right.id);
+      const leftOrder = leftPublication?.publication.sortOrder ?? 0;
+      const rightOrder = rightPublication?.publication.sortOrder ?? 0;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+      return left.publishedAt.getTime() - right.publishedAt.getTime();
+    });
+  }
+  return order
+    .map((id) => groups.get(id)!)
+    .sort((left, right) => right.publishedAt.getTime() - left.publishedAt.getTime());
 }
 
 export function customerProjectToDto(
@@ -16,13 +96,15 @@ export function customerProjectToDto(
   const leadId = project.lead.id.toString();
   const enterpriseId = project.lead.enterpriseId!.toString();
   const hasFormalFloorPlan = Boolean(project.formalFloorPlan);
+  const publishedSchemes = groupPublishedSchemes(project.publications, leadId);
+  const publishedDesigns = publishedSchemes.flatMap((scheme) => scheme.images);
   const home = resolveCustomerHomeAction({
     leadStatus: project.lead.status,
     assignmentStatus: project.lead.assignmentStatus,
     measurerId: project.lead.measurerId,
     appointment: project.appointment,
     hasFormalFloorPlan,
-    publishedDesignCount: project.publications.length,
+    publishedDesignCount: publishedDesigns.length,
     customerRescheduleCutoffHours: options.customerRescheduleCutoffHours,
   });
   return {
@@ -72,22 +154,8 @@ export function customerProjectToDto(
           updatedAt: project.formalFloorPlan.updatedAt,
         }
       : null,
-    publishedDesigns: project.publications.map(({ publication, generation }) => {
-      const input = record(generation.input);
-      return {
-        id: publication.id.toString(),
-        generationId: generation.id.toString(),
-        type: generation.type,
-        stageKey: generation.stageKey,
-        title: typeof input.recipeName === 'string'
-          ? input.recipeName
-          : typeof input.style === 'string'
-            ? input.style
-            : '设计方案',
-        publishedAt: publication.publishedAt,
-        imageEndpoint: `/api/miniprogram/customer-projects/${leadId}/published-generations/${generation.id.toString()}/image`,
-      };
-    }),
+    publishedSchemes,
+    publishedDesigns,
   };
 }
 

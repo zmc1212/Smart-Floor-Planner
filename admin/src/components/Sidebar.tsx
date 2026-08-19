@@ -135,7 +135,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: 'AI 辅助设计',
       items: [
         { key: 'ai-create', permissionKey: 'ai-scenarios', label: 'AI 创作台', icon: Sparkles, href: '/ai-studio/create', newTab: true },
-        { key: 'ai-scenarios', label: 'AI 设计', icon: Sparkles, href: '/ai-studio/scenarios' },
+        { key: 'ai-scenarios', label: 'AI 工作台', icon: Sparkles, href: '/ai-studio/scenarios' },
         { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
         { key: 'ai-presets', label: 'AI 预设配置', icon: Settings, href: '/ai-presets' },
       ]

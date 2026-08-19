@@ -21,7 +21,7 @@ not create a new customer, appointment, survey, design, or earnings business con
 
 The implementation reuses the four static Mini Program Tab routes as signed role shells: customer
 `Service/Projects/Mine`, referrer `Promotion/Progress/Earnings/Mine`, designer
-`Workbench/Customers/Design/Mine`, measurer `Schedule/Tasks/Survey/Mine`, and enterprise owner
+`Workbench/Customers/Design/Mine`, measurer `Workbench/Tasks/Survey/Mine`, and enterprise owner
 `Operations/Customers/Appointments/Mine`. Every workbench reads only the server aggregate for the
 signed identity; measurers enter the formal editor only from assigned tasks, and blank or simulated
 tabs remain prohibited. The role scene reuses the exact standalone Xiao K asset referenced by the
@@ -54,7 +54,7 @@ cut from the board.
 | Customer | `/pages/index/index` | Service guide opens “my renovation service”: stage, appointment, next action | Owned service state, appointment, completed v4 summary, published designs | Staff lead pool, BLE, survey editor, AI production, signing/commission management |
 | Referrer | `/packages/business/referrer-workbench/referrer-workbench` | Promotion steward opens “enterprise service desk”: choose enterprise, present code | Current membership, active code, masked milestones, own commission state | Phone/WeChat/address, wall graph, internal appointment reason, enterprise rules |
 | Designer | `/pages/index/index` (role workbench) | Case coordinator sorts “customers to move forward” | Own assigned leads, appointments, completed plan summaries, own generation/publication state | Others’ leads, measurer leave, enterprise commission rules, free survey entry |
-| Measurer | `/pages/index/index` (role schedule) | Measurement partner opens “today’s measurement desk” | Own appointments, unavailability, assigned survey tasks, formal-survey entry | Design publication, signing, referrer earnings, tenant rules, unassigned customers |
+| Measurer | `/pages/index/index` (role workbench) | Measurement partner opens “today’s measurement desk” | Own appointments, unavailability, assigned survey tasks, formal-survey entry | Design publication, signing, referrer earnings, tenant rules, unassigned customers |
 | Enterprise owner | `/pages/index/index` (role operations) | Dispatch observer opens “operations view”: exceptions and approvals first | Tenant exceptions, customer summary, appointment exceptions, existing authorized approvals | Designer/measurer tools inherited implicitly; switch identity for hands-on work |
 
 Because the Mini Program has a small static Tab route set, phase 14 renders enterprise operations at
@@ -71,7 +71,7 @@ the survey primary entry.
 | Customer | `Service / Project / Mine` | `customer.service`, `customer.projects`, `account` | Server-owned appointment/project counts; failures say unavailable |
 | Referrer | `Promotion / Progress / Earnings / Mine` | `referrer.promotion`, `referrer.progress`, `referrer.earnings`, `account` | Masked milestones and own payout state for the active membership |
 | Designer | `Workbench / Customers / Design / Mine` | `staff.leads`, `staff.appointments`, `staff.design`, `account` | Own follow-up/appointment/publication state; no fake numbers |
-| Measurer | `Schedule / Tasks / Survey / Mine` | `staff.schedule`, `staff.tasks`, `staff.surveying`, `account` | Own appointments and handoff tasks; survey opens assigned context only |
+| Measurer | `Workbench / Tasks / Survey / Mine` | `staff.schedule`, `staff.tasks`, `staff.surveying`, `account` | Own appointments and handoff tasks; calendar remains a workbench entry, and survey opens assigned context only |
 | Enterprise owner | `Operations / Customers / Appointments / Mine` | `enterprise.operations`, `enterprise.customers`, `enterprise.appointments`, `account` | Tenant exception/approval/appointment state, not employee personal work |
 
 Use brand green and a pale-mint active state, neutral gray elsewhere, and the existing local licensed
@@ -141,7 +141,7 @@ The user authorized extension of the current Mini Program style. Phase 12 now im
 role-allowlisted navigation, an identity-recovery page that exposes no invalid-tenant data, and
 server-owned Tab badges from role-scoped todo counts. Failed counts show `暂时无法读取` instead of a
 local zero. Customer Service home, enterprise Operations exceptions, the Appointments tab, measurer
-Schedule, and designer WeChat self-service consume the shared `serviceStage`/`nextActionKind`. Each
+Workbench, and designer WeChat self-service consume the shared `serviceStage`/`nextActionKind`. Each
 changed runtime route still needs `390x844` native-host verification before its restoration-ledger
 row changes.
 

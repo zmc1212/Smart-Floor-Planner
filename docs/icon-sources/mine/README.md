@@ -42,6 +42,7 @@ are the editable sources and retain their supplied asset rights.
   `clipboard-check`
 - `clipboard-pen.png`: `clipboard-pen-line`
 - `bell.png`: `bell`
+- `scan.png`: `scan-line`
 - `shield-check.png`: `shield-check`
 - `log-out.png`: `log-out`
 - `tab-ai.png`, `tab-ai-active.png`: `sparkles`, rendered at `96x96` from the

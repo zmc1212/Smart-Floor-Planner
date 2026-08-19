@@ -69,7 +69,7 @@ export function buildMiniProgramBadges(input: {
     );
   } else if (input.role === 'measurer') {
     counts = {
-      ...counted('schedule', Number(facts.measurerTodayCount || 0)),
+      ...counted('workbench', Number(facts.measurerTodayCount || 0)),
       ...counted('tasks', Number(facts.measurerTaskCount || 0)),
     };
   } else if (input.role === 'enterprise_admin') {

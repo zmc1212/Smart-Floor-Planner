@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   adminUsers,
   aiGenerationPublications,
@@ -44,6 +44,10 @@ export type CustomerProjectIndexItem = {
   hasFormalFloorPlan: boolean;
   publishedDesignCount: number;
 };
+
+function operationalAppointmentOrderSql() {
+  return sql`case when ${measurementAppointments.status} = 'confirmed' and upper(${measurementAppointments.timeRange}) > now() then 0 else 1 end`;
+}
 
 function hasResultImage(output: unknown) {
   if (!output || typeof output !== 'object' || Array.isArray(output)) return false;
@@ -94,8 +98,7 @@ export class CustomerProjectRepository {
         .leftJoin(adminUsers, eq(measurementAppointments.measurerId, adminUsers.id))
         .where(eq(measurementAppointments.leadId, leadId))
         .orderBy(
-          sql`case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end`,
-          desc(measurementAppointments.updatedAt),
+          operationalAppointmentOrderSql(),
           desc(measurementAppointments.id)
         )
         .limit(1),
@@ -142,32 +145,32 @@ export class CustomerProjectRepository {
           select ${measurementAppointments.id}
           from app.measurement_appointments
           where ${measurementAppointments.leadId} = ${leads.id}
-          order by case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end,
-            ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
+          order by ${operationalAppointmentOrderSql()},
+            ${measurementAppointments.id} desc
           limit 1
         )`,
         appointmentVersion: sql<number | null>`(
           select ${measurementAppointments.version}
           from app.measurement_appointments
           where ${measurementAppointments.leadId} = ${leads.id}
-          order by case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end,
-            ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
+          order by ${operationalAppointmentOrderSql()},
+            ${measurementAppointments.id} desc
           limit 1
         )`,
         appointmentStatus: sql<string | null>`(
           select ${measurementAppointments.status}
           from app.measurement_appointments
           where ${measurementAppointments.leadId} = ${leads.id}
-          order by case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end,
-            ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
+          order by ${operationalAppointmentOrderSql()},
+            ${measurementAppointments.id} desc
           limit 1
         )`,
         appointmentTimeRange: sql<string | null>`(
           select ${measurementAppointments.timeRange}::text
           from app.measurement_appointments
           where ${measurementAppointments.leadId} = ${leads.id}
-          order by case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end,
-            ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
+          order by ${operationalAppointmentOrderSql()},
+            ${measurementAppointments.id} desc
           limit 1
         )`,
         customerRescheduleCutoffHours: sql<number>`coalesce(${enterpriseAppointmentSettings.customerRescheduleCutoffHours}, 2)`,
@@ -224,7 +227,7 @@ export class CustomerProjectRepository {
       ))
       .orderBy(
         desc(aiGenerationPublications.publishedAt),
-        aiGenerationPublications.sortOrder,
+        asc(aiGenerationPublications.sortOrder),
         desc(aiGenerationPublications.id)
       );
   }

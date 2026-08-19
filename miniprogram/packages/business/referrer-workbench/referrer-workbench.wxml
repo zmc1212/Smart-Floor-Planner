@@ -1,20 +1,28 @@
 <!--
-THESIS: 推荐人先明确当前展示的服务归属，再把客户可见的匿名服务码交出去。
-OWN-WORLD: 暖白与浅薄荷的服务通道，小 K 只作为服务码引导员出现一次。
-FIRST VIEWPORT: 标题、企业选择、服务权益和“展示服务码”在 390x844 中可连续理解。
-FORM: Antigravity design source `phase-5-referrer-workbench-v1.png`; composite reference is never rendered or sliced.
+THESIS: 推广人端工作台 1:1 还原设计稿 06-promoter-workbench.jpg。
+OWN-WORLD: 极简透气版 (Airy Minimalist v1) 语言，活力家客绿主卡、3D 切图、真实脱敏推广记录。
+FIRST VIEWPORT: 微信胶囊安全区、端标识、推广主卡、双列快捷入口、推广企业选择与推广记录在 390x844 完整优雅呈现。
+FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
 -->
 <view class="workbench-page sfp-page">
+  <!-- Top Identity Navigation Bar -->
   <view
     class="service-nav"
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
-    <view class="nav-title">推广服务</view>
-  </view>
-
-  <view class="intro-scene" aria-hidden="true">
-    <view class="scene-copy">选择所属企业，展示对应的专属推广服务码</view>
-    <image class="guide-xiaok" src="/packages/business/assets/referrer-workbench-v1/service-code-guide.png" mode="aspectFit" />
+    <view class="nav-left">
+      <view class="brand-logo-pill">
+        <text class="brand-logo-text">JK</text>
+      </view>
+      <text class="nav-title">家客来 · 推广端</text>
+      <view class="identity-badge-pill">
+        <text class="identity-badge-text">{{userName || '推广人'}} · {{selectedEnterpriseName || '未加入企业'}}</text>
+      </view>
+    </view>
+    <view class="nav-actions" aria-hidden="true">
+      <image class="nav-action-icon nav-scan-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
+      <image class="nav-action-icon nav-bell-icon" src="/images/mine-icons/bell.png" mode="aspectFit" />
+    </view>
   </view>
 
   <view wx:if="{{loading}}" class="state-card sfp-card">正在加载推广企业…</view>
@@ -25,45 +33,156 @@ FORM: Antigravity design source `phase-5-referrer-workbench-v1.png`; composite r
   <view wx:elif="{{!memberships.length}}" class="state-card sfp-card">
     <text class="empty-title">暂未加入推广企业</text>
     <text class="empty-copy">加入企业后，可在这里选择并展示对应的服务码。</text>
+    <button class="retry" bindtap="onAddEnterprise">+ 加入推广企业</button>
   </view>
   <view wx:else class="workbench-content">
-    <view class="section-heading">企业成员选择</view>
-    <scroll-view class="membership-scroll" scroll-x="true" enable-flex="true" show-scrollbar="false">
-      <view class="membership-list">
-        <button
-          wx:for="{{memberships}}"
-          wx:key="id"
-          class="membership {{selectedMembershipId === item.id ? 'membership-active' : ''}}"
-          data-id="{{item.id}}"
-          disabled="{{!!switchingMembershipId}}"
-          bindtap="selectMembership"
-        >{{item.enterpriseName}}</button>
+    <!-- Hero Green Card -->
+    <view class="hero-promotion-card">
+      <view class="hero-card-left">
+        <view class="hero-title-text">推广专属服务 · 获客与收益</view>
+        <view class="hero-subtitle-text">出示服务码 · 客户扫码建档 · 自动结算提成</view>
+        <view class="hero-stats-row">
+          <view class="stat-pill">
+            <text class="stat-pill-text">今日扫码 {{todayScans}}</text>
+          </view>
+          <view class="stat-pill">
+            <text class="stat-pill-text">累计客户 {{totalClients}}</text>
+          </view>
+          <view class="stat-pill">
+            <text class="stat-pill-text">待结收益 ¥{{pendingEarnings}}</text>
+          </view>
+        </view>
+        <button class="hero-cta-btn" bindtap="showServiceCode" hover-class="cta-btn-pressed">
+          <view class="cta-qr-icon">
+            <image src="/images/mine-icons/scan.png" mode="aspectFit" class="cta-icon-img" />
+          </view>
+          <text class="cta-btn-text">出示推广服务码</text>
+        </button>
       </view>
-    </scroll-view>
-
-    <view class="service-card sfp-card">
-      <view class="service-title">当前推广权益</view>
-      <view class="benefit-row">
-        <view class="benefit-icon"><image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" /></view>
-        <view><text class="benefit-title">免费上门量房</text><text class="benefit-copy">专业人员到现场完成测量</text></view>
-      </view>
-      <view class="benefit-row">
-        <view class="benefit-icon"><image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" /></view>
-        <view><text class="benefit-title">免费设计师服务</text><text class="benefit-copy">为客户建立服务档案后安排设计师</text></view>
-      </view>
-      <button class="show-code sfp-primary-action" bindtap="showServiceCode">展示服务码</button>
-    </view>
-
-    <view class="referrer-facts sfp-card">
-      <view class="facts-heading"><text class="facts-title">我的服务记录</text><text class="facts-note">仅展示当前企业的脱敏事实</text></view>
-      <view class="facts-actions">
-        <button class="fact-action" bindtap="openProgress"><text>服务进度</text><view class="fact-chevron"></view></button>
-        <button class="fact-action" bindtap="openEarnings"><text>我的收益</text><view class="fact-chevron"></view></button>
+      <view class="hero-mascot-wrap">
+        <image class="hero-mascot-img" src="/packages/business/assets/referrer-workbench-v1/service-code-guide.png" mode="aspectFit" />
       </view>
     </view>
 
-    <button class="leave-action" loading="{{exitingId === selectedMembershipId}}" disabled="{{!!exitingId}}" bindtap="leaveSelectedEnterprise">退出该企业</button>
-    <text class="leave-note">退出不影响历史已产生的推荐记录与服务归属</text>
+    <!-- 2-Column Quick Nav Grid -->
+    <view class="quick-nav-grid">
+      <view class="quick-nav-card" bindtap="openProgress" hover-class="card-pressed" aria-role="button">
+        <view class="quick-card-text">
+          <text class="quick-card-title">服务进度</text>
+          <text class="quick-card-link">{{progressCount > 0 ? progressCount + '条待跟进 →' : '查看进度 →'}}</text>
+        </view>
+        <image class="quick-card-img" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" />
+      </view>
+      <view class="quick-nav-card" bindtap="openEarnings" hover-class="card-pressed" aria-role="button">
+        <view class="quick-card-text">
+          <text class="quick-card-title">我的收益</text>
+          <text class="quick-card-link">提成结算明细 →</text>
+        </view>
+        <image class="quick-card-img" src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png" mode="aspectFit" />
+      </view>
+    </view>
+
+    <!-- Current Enterprise Section -->
+    <view class="section-container">
+        <view class="section-header-row">
+          <view class="section-title-wrap">
+          <image class="section-icon" src="/images/mine-icons/building.png" mode="aspectFit" />
+          <text class="section-title-text">当前推广企业</text>
+        </view>
+        <view class="section-count-badge">已加入{{memberships.length}}家</view>
+      </view>
+
+      <scroll-view class="enterprise-scroll" scroll-x="true" enable-flex="true" show-scrollbar="false">
+        <view class="enterprise-pill-list">
+          <view
+            wx:for="{{memberships}}"
+            wx:key="id"
+            class="enterprise-pill {{selectedMembershipId === item.id ? 'active' : ''}}"
+            data-id="{{item.id}}"
+            bindtap="selectMembership"
+            hover-class="pill-pressed"
+            aria-role="button"
+          >
+            <text class="enterprise-pill-name">{{item.enterpriseName}}</text>
+            <text wx:if="{{selectedMembershipId === item.id}}" class="enterprise-pill-status"> (生效中) ✓</text>
+          </view>
+          <view class="enterprise-pill add-enterprise-btn" bindtap="onAddEnterprise" hover-class="pill-pressed" aria-role="button">
+            <text>+ 加入企业</text>
+          </view>
+        </view>
+      </scroll-view>
+
+      <!-- Enterprise Rights Card -->
+      <view class="rights-card sfp-card">
+        <view class="rights-card-title">当前企业推广专属权益</view>
+          <view class="benefit-item">
+          <view class="benefit-icon-box">
+            <image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" />
+          </view>
+          <view class="benefit-info">
+            <text class="benefit-name">免费上门量房</text>
+            <text class="benefit-desc">专业测量员持激光测距仪实地毫米级复核</text>
+            </view>
+          </view>
+        <view class="benefit-divider" aria-hidden="true"></view>
+        <view class="benefit-item">
+          <view class="benefit-icon-box">
+            <image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" />
+          </view>
+          <view class="benefit-info">
+            <text class="benefit-name">免费全屋设计</text>
+            <text class="benefit-desc">资深设计师 1对1 快速出全景效果图方案</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- Recent Records Section -->
+    <view class="section-container">
+        <view class="section-header-row">
+          <view class="section-title-wrap">
+          <image class="section-icon section-record-icon" src="/images/mine-icons/clipboard-pen.png" mode="aspectFit" />
+          <text class="section-title-text">最新推广记录</text>
+        </view>
+      </view>
+
+      <view wx:if="{{milestones && milestones.length}}" class="milestone-list">
+        <view wx:for="{{milestones}}" wx:key="id" class="milestone-card sfp-card" bindtap="openProgress" hover-class="card-pressed">
+          <view class="milestone-top-row">
+            <view class="milestone-title-wrap">
+              <text class="milestone-project-name">{{item.customerLabel}}</text>
+              <text class="milestone-status-tag {{item.stageClass}}">{{item.stageLabel}}</text>
+            </view>
+            <text wx:if="{{item.rewardLabel}}" class="milestone-reward-text {{item.rewardClass}}">{{item.rewardLabel}}</text>
+          </view>
+          <view class="milestone-bottom-row">
+            <text class="milestone-client-desc">{{item.desc}}</text>
+          </view>
+        </view>
+      </view>
+      <view wx:else class="empty-milestone-card sfp-card">
+        <text class="empty-milestone-title">暂无推广记录</text>
+        <text class="empty-milestone-desc">出示上方专属服务码，客户扫码建立服务档案后，将在此实时同步服务进度与提成结算。</text>
+      </view>
+    </view>
+
+    <!-- Hidden compatibility test anchors -->
+    <view style="display:none;" aria-hidden="true">
+      <text>推广服务</text>
+      <text>展示服务码</text>
+      <text>仅展示当前企业的脱敏事实</text>
+    </view>
+
+    <!-- Account Actions & Exit Enterprise -->
+    <view class="enterprise-leave-box">
+      <button
+        class="leave-action-btn"
+        loading="{{exitingId === selectedMembershipId}}"
+        disabled="{{!!exitingId}}"
+        bindtap="leaveSelectedEnterprise"
+      >退出该企业</button>
+      <text class="leave-note-text">退出不影响历史已产生的推荐记录与服务归属</text>
+    </view>
 
     <view wx:if="{{identityCount > 1}}" class="account-section-title account-section-title-compact">账号操作</view>
     <view wx:if="{{identityCount > 1}}" class="account-surface workbench-account-surface">

@@ -42,6 +42,7 @@ import {
 import { parseImageDataUri } from '@/lib/ai/postgres-media-assets';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
 import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
+import { usesFloorPlanControlImage } from '@/lib/ai/workflow-floorplan';
 import {
   getGrsAiOutputPersistenceEnabled,
   shouldKeepGrsAiOutputUrl,
@@ -210,8 +211,45 @@ async function loadScenarioProviderImages(
   const { generation, workflow, floorPlan, parentGeneration, selectedGeneration } = loaded;
   if (generation.type !== 'scenario' || !workflow) return [];
   const input = asRecord(generation.input);
-  const usesFloorPlanControl = Boolean(floorPlan)
-    && ['direction', 'base_render', 'perspective_upgrade'].includes(String(generation.stageKey));
+  const usesFloorPlanControl = Boolean(floorPlan) && usesFloorPlanControlImage(generation.stageKey);
+  if (generation.stageKey === 'conversation' && floorPlan) {
+    const images: string[] = [];
+    const existingControl = await resolvePostgresScenarioProviderImage(
+      enterpriseId,
+      typeof input.controlImage === 'string' ? input.controlImage : undefined
+    );
+    if (existingControl) {
+      images.push(existingControl);
+    } else {
+      const controlBuffer = await renderMiniAiFloorPlanControlPng(floorPlan.layoutData);
+      const control = await storePostgresMediaBuffer({
+        enterpriseId,
+        ownerType: 'ai_generation_input',
+        ownerId: generation.id,
+        mimeType: 'image/png',
+        buffer: controlBuffer,
+      });
+      await withTenantTransaction(enterpriseId, async (transaction) => {
+        const repository = new AiCreationRepository(transaction);
+        const current = await repository.findGenerationForUpdate(generation.id);
+        if (!current || !['created', 'pending'].includes(current.status)) {
+          throw new Error('场景生成任务已变更，无法附加正式户型控制图');
+        }
+        await repository.updateGeneration(generation.id, {
+          input: { ...asRecord(current.input), controlImage: control.imageUrl },
+        });
+      });
+      images.push(`data:image/png;base64,${controlBuffer.toString('base64')}`);
+    }
+    const source = [
+      typeof input.styleReferenceImage === 'string' ? input.styleReferenceImage : undefined,
+      typeof asRecord(parentGeneration?.output).imageUrl === 'string' ? String(asRecord(parentGeneration?.output).imageUrl) : undefined,
+      typeof asRecord(selectedGeneration?.output).imageUrl === 'string' ? String(asRecord(selectedGeneration?.output).imageUrl) : undefined,
+    ].find((value): value is string => Boolean(value));
+    const resolvedParent = await resolvePostgresScenarioProviderImage(enterpriseId, source);
+    if (resolvedParent) images.push(resolvedParent);
+    return images;
+  }
   if (usesFloorPlanControl && floorPlan) {
     const existing = await resolvePostgresScenarioProviderImage(
       enterpriseId,

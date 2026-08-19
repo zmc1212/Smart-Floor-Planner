@@ -6,6 +6,7 @@ import {
   adminUsers,
   aiGenerationPublications,
   aiGenerations,
+  aiWorkflows,
   enterprises,
   floorPlans,
   leadFloorPlans,
@@ -30,6 +31,9 @@ let designerId: bigint;
 let leadId: bigint;
 let floorPlanId: bigint;
 let generationId: bigint;
+let workflowId: bigint;
+let schemeGenerationA: bigint;
+let schemeGenerationB: bigint;
 
 before(async () => {
   loadEnvConfig(process.cwd());
@@ -91,6 +95,44 @@ before(async () => {
       input: { recipeName: '现代舒居方案' },
     }).returning();
     generationId = generation!.id;
+    const [workflow] = await transaction.insert(aiWorkflows).values({
+      enterpriseId,
+      leadId,
+      operatorId: designerId,
+      title: '灯光设计',
+      sourceFloorPlanId: floorPlanId,
+      sourceAssetRole: 'floor_plan',
+      currentStageKey: 'conversation',
+    }).returning();
+    workflowId = workflow!.id;
+    const extra = await transaction.insert(aiGenerations).values([
+      {
+        enterpriseId,
+        operatorId: designerId,
+        leadId,
+        workflowId,
+        floorPlanId,
+        type: 'scenario',
+        status: 'succeeded',
+        stageKey: 'conversation',
+        output: { imageUrl: 'https://example.invalid/light-a.png' },
+        input: { userMessage: '客厅暖光' },
+      },
+      {
+        enterpriseId,
+        operatorId: designerId,
+        leadId,
+        workflowId,
+        floorPlanId,
+        type: 'scenario',
+        status: 'succeeded',
+        stageKey: 'conversation',
+        output: { imageUrl: 'https://example.invalid/light-b.png' },
+        input: { userMessage: '再暗一点' },
+      },
+    ]).returning();
+    schemeGenerationA = extra[0]!.id;
+    schemeGenerationB = extra[1]!.id;
   });
 });
 
@@ -99,6 +141,7 @@ after(async () => {
     if (enterpriseId) {
       await transaction.delete(aiGenerationPublications).where(eq(aiGenerationPublications.enterpriseId, enterpriseId));
       await transaction.delete(aiGenerations).where(eq(aiGenerations.enterpriseId, enterpriseId));
+      await transaction.delete(aiWorkflows).where(eq(aiWorkflows.enterpriseId, enterpriseId));
       await transaction.delete(leadFloorPlans).where(eq(leadFloorPlans.leadId, leadId));
       await transaction.delete(floorPlans).where(eq(floorPlans.enterpriseId, enterpriseId));
       await transaction.delete(leads).where(eq(leads.enterpriseId, enterpriseId));
@@ -186,4 +229,54 @@ test('concurrent publication retries create one active customer-visible fact', a
     new CustomerProjectRepository(transaction).findCustomerProject(customerUserId, leadId)
   );
   assert.equal(project?.publications.filter((item) => item.generation.id === generationId).length, 1);
+});
+
+test('scheme publication replaces the customer-visible set for one conversation and groups leftover singles', async () => {
+  const first = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).publishScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      title: '灯光设计',
+      generationIds: [schemeGenerationA],
+      publishedBy: designerId,
+    })
+  );
+  assert.equal(first.kind, 'published');
+
+  const replaced = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).publishScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      title: '灯光设计终稿',
+      generationIds: [schemeGenerationA, schemeGenerationB],
+      publishedBy: designerId,
+    })
+  );
+  assert.equal(replaced.kind, 'published');
+  if (replaced.kind !== 'published') return;
+  assert.equal(replaced.title, '灯光设计终稿');
+  assert.deepEqual(replaced.publications.map((item) => item.generation.id), [schemeGenerationA, schemeGenerationB]);
+
+  const project = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).findCustomerProject(customerUserId, leadId)
+  );
+  const schemeRows = project?.publications.filter((item) => item.publication.workflowId === workflowId) || [];
+  assert.equal(schemeRows.length, 2);
+  assert.equal(schemeRows[0]?.publication.schemeTitle, '灯光设计终稿');
+
+  const withdrawn = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).withdrawScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      withdrawnBy: designerId,
+    })
+  );
+  assert.equal(withdrawn.kind, 'withdrawn');
+  const afterWithdraw = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).findCustomerProject(customerUserId, leadId)
+  );
+  assert.equal(afterWithdraw?.publications.some((item) => item.publication.workflowId === workflowId), false);
 });

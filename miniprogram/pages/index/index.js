@@ -403,6 +403,33 @@ Page({
       recentPlans: [],
       hasPreciseLocation: false,
       locationFailed: false,
+      dashboardStats: [
+        { key: 'plans', label: '已保存方案', value: cloudPlans.length, unit: '个', glyph: '档', tone: 'green' },
+        { key: 'templates', label: 'AI 生成案例', value: (this.data.layoutTemplates || []).length, unit: '个', glyph: 'AI', tone: 'yellow' },
+        { key: 'records', label: '量房记录', value: totalMeasuredRooms, unit: '次', glyph: '图', tone: 'blue' },
+        { key: 'rooms', label: '客户线索', value: plannedRooms.length || totalRooms, unit: '条', glyph: '客', tone: 'purple' },
+      ],
+      recentPlans: buildRecentPlans(cloudPlans.map((plan) => {
+        const metaInfo = this.formatPlanMeta(plan);
+        return {
+          _id: plan._id,
+          id: plan._id,
+          name: plan.name || '未命名方案',
+          updatedAt: metaInfo.meta,
+          status: plan.status || 'draft',
+        };
+      })),
+    });
+  },
+
+  onLeadSuccess: function (e) {
+    this.setData({
+      showLeadModal: false,
+      plannedRooms: [],
+      currentProject_id: null,
+      recentPlans: [],
+      hasPreciseLocation: false,
+      locationFailed: false,
     }, () => {
       this.syncHomeDashboard();
     });
@@ -434,6 +461,36 @@ Page({
     wx.navigateTo({
       url: '/packages/business/lead-form/lead-form',
     });
+  },
+
+  onOpenCustomerArchive: function () {
+    const recentPlan = (this.data.recentPlans || [])[0];
+    if (recentPlan && recentPlan._id) {
+      wx.navigateTo({
+        url: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(recentPlan._id)}`,
+      });
+      return;
+    }
+    wx.navigateTo({
+      url: '/packages/business/customer-projects/customer-projects',
+    });
+  },
+
+  onOpenAppointmentBooking: function () {
+    wx.navigateTo({
+      url: '/packages/business/appointment-booking/appointment-booking?mode=customer',
+    });
+  },
+
+  onOpenDesignScheme: function () {
+    const recentPlan = (this.data.recentPlans || [])[0];
+    if (recentPlan && recentPlan._id) {
+      wx.navigateTo({
+        url: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(recentPlan._id)}`,
+      });
+      return;
+    }
+    this.onOpenAIDesign();
   },
 
   onQuickBluetoothTap: function () {

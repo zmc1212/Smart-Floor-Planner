@@ -20,6 +20,29 @@ const ACTION_PRESENTATION = {
   }
 };
 
+const ROLE_LABELS = {
+  customer: '普通用户',
+  referrer: '推广人',
+  designer: '设计师',
+  measurer: '测量员',
+  enterprise_admin: '企业负责人',
+  admin: '平台负责人',
+  super_admin: '平台负责人'
+};
+
+function profileForIdentity(userInfo, role) {
+  const info = userInfo || {};
+  const activeRole = role || info.staffRole || (info.mode === 'referrer' ? 'referrer' : 'customer');
+  return {
+    name: info.nickname || info.name || '微信用户',
+    avatar: info.avatar || info.avatarUrl || '',
+    enterpriseName: info.enterpriseName || info.communityName || '',
+    phoneMasked: info.phoneMasked || '',
+    role: activeRole,
+    roleLabel: ROLE_LABELS[activeRole] || '普通用户'
+  };
+}
+
 function decorateActions(actions) {
   return (actions || []).map((item, index) => {
     const presentation =
@@ -122,6 +145,7 @@ function getFloorPlanRoomCount(layoutData) {
 }
 
 module.exports = {
+  profileForIdentity,
   decorateActions,
   buildWorkbenchActions,
   decorateSummaryCards,

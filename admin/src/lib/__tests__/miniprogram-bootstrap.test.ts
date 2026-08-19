@@ -27,6 +27,13 @@ test('bootstrap exposes the current signed role and only valid role contexts', (
   assert.deepEqual(result.badges, unavailableMiniProgramBadges());
 });
 
+test('measurer bootstrap lands at the role workbench', () => {
+  const measurer = { ...customer, mode: 'staff' as const, staffRole: 'measurer' as const };
+  const result = buildMiniProgramBootstrap({ current: measurer, contexts: [measurer] });
+  assert.equal(result.current.role, 'measurer');
+  assert.equal(result.current.landingPath, '/pages/index/index');
+});
+
 test('customer badges count reschedule and rebook work on Service and omit zeros', () => {
   assert.deepEqual(buildMiniProgramBadges({
     role: 'customer',
@@ -54,7 +61,7 @@ test('staff and owner badges stay inside the active role and never invent zeros'
   assert.deepEqual(buildMiniProgramBadges({
     role: 'measurer',
     facts: { measurerTodayCount: 2, measurerTaskCount: 3 },
-  }).counts, { schedule: 2, tasks: 3 });
+  }).counts, { workbench: 2, tasks: 3 });
   assert.deepEqual(buildMiniProgramBadges({
     role: 'enterprise_admin',
     facts: { ownerExceptionCount: 5, ownerExpiredCount: 2 },

@@ -4,8 +4,8 @@ import { FloorPlanRepository } from '@/db/repositories';
 import { canAccessMiniProgramFloorPlan } from '@/lib/floor-plan-access';
 import {
   DxfExportError,
+  dxfContentDisposition,
   generateFormalSurveyDxf,
-  safeDxfFileName,
 } from '@/lib/dxf';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
@@ -32,7 +32,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'application/dxf; charset=utf-8',
-        'Content-Disposition': `attachment; filename="${safeDxfFileName(plan.name, id)}"`,
+        'Content-Disposition': dxfContentDisposition(plan.name, id),
         'Cache-Control': 'private, no-store',
       },
     });

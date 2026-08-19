@@ -6,6 +6,7 @@ const { canAccessAIDesign } = require('../../utils/aiDesignAccess.js');
 const { roleForIdentity } = require('../../utils/identity-navigation.js');
 const session = require('../../utils/session.js');
 const {
+  profileForIdentity,
   buildWorkbenchActions,
   buildDashboardSlices,
   getFloorPlanRoomCount
@@ -101,12 +102,17 @@ Page({
         isRoleRestrictedUser,
         canUseAIDesign: canAccessAIDesign(userInfo),
         loadingMine: false,
+        mineData: {
+          ...this.data.mineData,
+          profile: profileForIdentity(userInfo, activeRole)
+        },
         floorPlans: [],
         mineError: '',
         floorPlansLoading: false,
         floorPlansError: ''
       });
       if (isStaffRole) this.fetchMineData();
+      else if (isRoleRestrictedUser) this.fetchProfileData();
       return;
     }
 
@@ -125,12 +131,7 @@ Page({
         floorPlansError: '',
         mineData: {
           ...this.data.mineData,
-          profile: {
-            ...FALLBACK_PROFILE,
-            name: userInfo.nickname || userInfo.name || '微信用户',
-            avatar: userInfo.avatar || userInfo.avatarUrl || '',
-            phoneMasked: userInfo.phoneMasked || ''
-          }
+          profile: profileForIdentity(userInfo, activeRole)
         }
       });
       if (isStaffRole) {
@@ -138,6 +139,7 @@ Page({
       } else if (!isRoleRestrictedUser) {
         this.fetchMyFloorPlans();
       }
+      if (isRoleRestrictedUser) this.fetchProfileData();
       return;
     }
 
@@ -197,6 +199,30 @@ Page({
 
   goToLogin() {
     wx.navigateTo({ url: '/packages/business/login/login' });
+  },
+
+  async fetchProfileData() {
+    try {
+      const res = await api.request('/miniprogram/profile', 'GET');
+      const profile = res.data || {};
+      this.setData({
+        mineData: {
+          ...this.data.mineData,
+          profile: { ...FALLBACK_PROFILE, ...profile }
+        }
+      });
+      app.globalData.userInfo = {
+        ...(app.globalData.userInfo || {}),
+        role: profile.role || this.data.activeRole,
+        mode: profile.role === 'referrer' ? 'referrer' : (app.globalData.userInfo || {}).mode,
+        enterpriseName: profile.enterpriseName,
+        nickname: profile.name,
+        avatar: profile.avatar
+      };
+      wx.setStorageSync('userInfo', app.globalData.userInfo);
+    } catch (err) {
+      if (err && err.statusCode === 401) this.clearSession();
+    }
   },
 
   async fetchMineData() {

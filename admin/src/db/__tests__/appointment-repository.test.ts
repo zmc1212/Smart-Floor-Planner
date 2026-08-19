@@ -21,6 +21,7 @@ import {
 } from '@/db/repositories';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { localDateInTimeZone, zonedDateTimeToUtc } from '@/lib/appointment-scheduling';
+import { leadToDto } from '@/db/postgres-dto';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 
 const runKey = `appointment-${process.pid}-${Date.now()}`;
@@ -336,4 +337,21 @@ test('rebooking succeeds after a past-end confirmed appointment remains on the l
   );
   assert.equal(persisted.length, 2);
   assert.equal(persisted.some((item) => item.id === rebooked.id && item.status === 'confirmed'), true);
+
+  await withPlatformTransaction(async (transaction) => {
+    await transaction.execute(sql`
+      update app.measurement_appointments
+      set status = 'confirmed',
+          created_at = now() + interval '1 minute',
+          updated_at = now() + interval '1 minute',
+          time_range = tstzrange(now() - interval '4 hours', now() - interval '2 hours', '[)')
+      where id = ${firstAppointment.id}
+    `);
+  });
+
+  const listed = await withTenantTransaction(enterpriseId, (transaction) =>
+    new LeadRepository(transaction).findById(rebookLeadId)
+  );
+  assert.equal(listed?.appointment?.id, rebooked.id);
+  assert.equal(leadToDto(listed!).serviceStage, 'appointment_confirmed');
 });

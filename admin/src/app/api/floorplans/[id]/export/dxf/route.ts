@@ -4,8 +4,8 @@ import { FloorPlanRepository } from '@/db/repositories';
 import { getTenantContext } from '@/lib/auth';
 import {
   DxfExportError,
+  dxfContentDisposition,
   generateFormalSurveyDxf,
-  safeDxfFileName,
 } from '@/lib/dxf';
 import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
@@ -41,7 +41,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'application/dxf',
-        'Content-Disposition': `attachment; filename="${safeDxfFileName(plan.name, id)}"`,
+        'Content-Disposition': dxfContentDisposition(plan.name, id),
         'Cache-Control': 'private, no-store',
       },
     });

@@ -1,6 +1,7 @@
 import { parsePostgresId } from '@/db/postgres-dto';
 import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { AiWorkflowRepository, type AiWorkflowRecord } from '@/db/repositories/ai-workflow-repository';
+import { CustomerProjectRepository } from '@/db/repositories/customer-project-repository';
 import { LeadLifecycleRepository } from '@/db/repositories/lead-lifecycle-repository';
 import { LeadRepository } from '@/db/repositories/lead-repository';
 import { withTenantTransaction } from '@/db/transaction';
@@ -272,6 +273,11 @@ export async function getPostgresAiWorkflowContext(input: {
     if (!lead) throw notFound('客户线索不存在或无权访问');
 
     const generations = await new AiCreationRepository(transaction).listGenerationsByWorkflowId(workflow.id);
+    const publications = await new CustomerProjectRepository(transaction).listActivePublications(
+      enterpriseId,
+      workflow.leadId
+    );
+    const publishedImages = publications.filter((item) => item.publication.workflowId === workflow.id);
     const availability = getAiWorkflowStageAvailabilityFromDocs(
       workflow,
       generations.map((generation) => ({
@@ -311,6 +317,13 @@ export async function getPostgresAiWorkflowContext(input: {
         followUpCount: Array.isArray(lead.followUpRecords) ? lead.followUpRecords.length : 0,
       },
       generations: generations.map((generation) => serializeAiGeneration({ ...generation, _id: generation.id })),
+      publishedScheme: publishedImages.length
+        ? {
+            title: publishedImages[0]?.publication.schemeTitle || workflow.title,
+            publishedAt: publishedImages[0]?.publication.publishedAt,
+            generationIds: publishedImages.map((item) => item.generation.id.toString()),
+          }
+        : null,
     };
   });
 }

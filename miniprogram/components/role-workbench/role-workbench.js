@@ -97,6 +97,12 @@ Component({
                 : payload.role === 'measurer'
                   ? '今天没有已确认安排或待量房任务'
                   : '当前没有需要处理的异常';
+        const app = getApp();
+        const userInfo = (app && app.globalData && app.globalData.userInfo) || {};
+        const bootstrap = (app && app.globalData && app.globalData.bootstrap) || {};
+        const staffName = userInfo.displayName || userInfo.name || (bootstrap.current && bootstrap.current.staffName) || '';
+        const enterpriseName = (bootstrap.enterprise && bootstrap.enterprise.name) || userInfo.enterpriseName || '';
+
         this.setData({
           title: payload.title || '工作台',
           subtitle: payload.subtitle || '',
@@ -105,6 +111,8 @@ Component({
           emptyCopy,
           secondary: payload.secondary || null,
           activityCode: payload.activityCode || null,
+          staffName,
+          enterpriseName,
           loading: false,
         });
       } catch (error) {
@@ -238,6 +246,26 @@ Component({
       wx.navigateTo({
         url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}${this.properties.role === 'customer' ? '&mode=customer' : ''}`,
       });
+    },
+
+    openCustomers() {
+      wx.switchTab({ url: '/pages/leads-management/leads-management' });
+    },
+
+    openAIDesign() {
+      wx.switchTab({ url: '/pages/ai-design/ai-design' });
+    },
+
+    openCalendar() {
+      wx.navigateTo({ url: '/packages/business/measurer-calendar/measurer-calendar' });
+    },
+
+    openUnavailability() {
+      wx.navigateTo({ url: '/packages/business/measurer-unavailability/measurer-unavailability' });
+    },
+
+    openSurveyDirect() {
+      openSurveyingEditor({});
     },
   },
 });

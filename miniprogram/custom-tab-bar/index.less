@@ -41,8 +41,8 @@
 
 .tab-icon {
   position: relative;
-  width: 56rpx;
-  height: 56rpx;
+  width: var(--sfp-tab-icon-size, 56rpx);
+  height: var(--sfp-tab-icon-size, 56rpx);
   margin: 0;
   border-radius: 0;
   background: transparent;
@@ -55,8 +55,8 @@
 
 .tab-image {
   display: block;
-  width: 56rpx;
-  height: 56rpx;
+  width: var(--sfp-tab-icon-size, 56rpx);
+  height: var(--sfp-tab-icon-size, 56rpx);
 }
 
 .center-icon {
@@ -99,7 +99,7 @@
 .tab-item.center .tab-text {
   margin-top: 2rpx;
   color: currentColor;
-  font-size: 24rpx;
+  font-size: var(--sfp-tab-label-size, 24rpx);
   line-height: 1;
   font-weight: 400;
   transform: none;

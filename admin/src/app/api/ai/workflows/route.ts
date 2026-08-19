@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withTenantRoute } from '@/lib/tenant-route';
-import type { AiWorkflowSourceAssetRole } from '@/lib/ai/workflow-stages';
+import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { parsePostgresId } from '@/db/postgres-dto';
 import {
   createPostgresAiWorkflow,
@@ -15,6 +15,7 @@ interface CreateWorkflowBody {
   sourceImage?: string;
   sourceFloorPlanId?: string;
   sourceAssetRole?: AiWorkflowSourceAssetRole;
+  currentStageKey?: AiWorkflowStageKey;
 }
 
 export async function GET(req: Request) {
@@ -65,6 +66,7 @@ export async function POST(req: Request) {
             sourceImage: body.sourceImage,
             sourceFloorPlanId: body.sourceFloorPlanId,
             sourceAssetRole: body.sourceAssetRole,
+            currentStageKey: body.currentStageKey,
           }
         );
       } catch (error) {

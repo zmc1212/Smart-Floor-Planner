@@ -11,6 +11,7 @@ import {
   users,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { selectOperationalAppointment } from '@/lib/lead-service-stage';
 
 export const COMMISSION_ROLES = ['referrer', 'designer', 'measurer'] as const;
 export type CommissionRole = (typeof COMMISSION_ROLES)[number];
@@ -344,10 +345,9 @@ export class LeadCommissionRepository {
         : [],
       leadIds.length
         ? this.transaction
-            .select({ id: measurementAppointments.id, leadId: measurementAppointments.leadId, address: measurementAppointments.address, timeRange: measurementAppointments.timeRange, status: measurementAppointments.status })
+            .select({ id: measurementAppointments.id, leadId: measurementAppointments.leadId, address: measurementAppointments.address, timeRange: measurementAppointments.timeRange, status: measurementAppointments.status, createdAt: measurementAppointments.createdAt })
             .from(measurementAppointments)
-            .where(and(inArray(measurementAppointments.leadId, leadIds), eq(measurementAppointments.status, 'confirmed')))
-            .orderBy(desc(measurementAppointments.createdAt), desc(measurementAppointments.id))
+            .where(inArray(measurementAppointments.leadId, leadIds))
         : [],
     ]);
     const userIds = [...new Set([
@@ -363,8 +363,15 @@ export class LeadCommissionRepository {
     const staffMap = new Map(staffRows.map((staff) => [staff.id, staff]));
     const userMap = new Map(userRows.map((user) => [user.id, user]));
     const appointmentMap = new Map<bigint, (typeof appointmentRows)[number]>();
+    const appointmentsByLead = new Map<bigint, typeof appointmentRows>();
     for (const appointment of appointmentRows) {
-      if (!appointmentMap.has(appointment.leadId)) appointmentMap.set(appointment.leadId, appointment);
+      const current = appointmentsByLead.get(appointment.leadId);
+      if (current) current.push(appointment);
+      else appointmentsByLead.set(appointment.leadId, [appointment]);
+    }
+    for (const [leadId, appointments] of appointmentsByLead) {
+      const selected = selectOperationalAppointment(appointments);
+      if (selected) appointmentMap.set(leadId, selected);
     }
     return rows.map((row) => {
       const lead = row.lead;

@@ -208,7 +208,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <view class="profile-copy">
               <view class="profile-name-row">
                 <text class="profile-name">{{mineData.profile.name || '微信用户'}}</text>
-                <text class="role-badge">普通用户</text>
+                <text class="role-badge">{{mineData.profile.roleLabel || (activeRole === 'referrer' ? '推广人' : '普通用户')}}</text>
               </view>
               <view class="profile-detail-row verified">
                 <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />

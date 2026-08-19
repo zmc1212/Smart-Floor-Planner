@@ -71,38 +71,38 @@ function request(url, method = 'GET', data = {}, options = {}) {
       }
 
       wx.request({
-      url: `${baseUrl}${url}`,
-      method,
-      data,
-      timeout: options.timeout || 30000,
-      header: {
-        'content-type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : '',
-        ...(options.headers || {})
-      },
-      success: (res) => {
-        if (res.statusCode === 401) {
-          if (!options.suppressUnauthorized) handleUnauthorized(url, token);
-          reject({ error: 'Unauthorized', statusCode: 401 });
-          return;
-        }
+        url: `${baseUrl}${url}`,
+        method,
+        data,
+        timeout: options.timeout || 30000,
+        header: {
+          'content-type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : '',
+          ...(options.headers || {})
+        },
+        success: (res) => {
+          if (res.statusCode === 401) {
+            if (!options.suppressUnauthorized) handleUnauthorized(url, token);
+            reject({ error: 'Unauthorized', statusCode: 401 });
+            return;
+          }
 
-        if (res.statusCode >= 200 && res.statusCode < 300 && res.data.success) {
-          resolve(res.data);
-        } else {
-          reject(res.data || { error: 'Request failed', statusCode: res.statusCode });
-        }
-      },
-      fail: (err) => {
-        if (baseIndex < baseUrls.length - 1) {
-          console.warn(`Request to ${baseUrl}${url} failed, retrying next API base:`, err);
-          send(baseIndex + 1);
-          return;
-        }
+          if (res.statusCode >= 200 && res.statusCode < 300 && res.data.success) {
+            resolve(res.data);
+          } else {
+            reject(res.data || { error: 'Request failed', statusCode: res.statusCode });
+          }
+        },
+        fail: (err) => {
+          if (baseIndex < baseUrls.length - 1) {
+            console.warn(`Request to ${baseUrl}${url} failed, retrying next API base:`, err);
+            send(baseIndex + 1);
+            return;
+          }
 
-        reject(err);
-      }
-    });
+          reject(err);
+        }
+      });
     };
 
     send(0);

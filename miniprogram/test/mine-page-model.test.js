@@ -6,8 +6,23 @@ const {
   decorateSummaryCards,
   decorateTodos,
   buildDashboardSlices,
-  getFloorPlanRoomCount
+  getFloorPlanRoomCount,
+  profileForIdentity
 } = require('../pages/mine/mine-model.js');
+
+test('Mine profile uses the signed referrer identity and latest cached display name', () => {
+  assert.deepEqual(
+    profileForIdentity({ nickname: '我设置的姓名', mode: 'referrer' }, 'referrer'),
+    {
+      name: '我设置的姓名',
+      avatar: '',
+      enterpriseName: '',
+      phoneMasked: '',
+      role: 'referrer',
+      roleLabel: '推广人'
+    }
+  );
+});
 
 test('Mine floor-plan room count uses closed version-4 survey spaces across floors', () => {
   const layoutData = {

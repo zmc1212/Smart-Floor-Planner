@@ -19,6 +19,7 @@ export const MINI_PROGRAM_ROLE_LABELS: Record<string, string> = {
   super_admin: '平台负责人',
   designer: '设计师',
   measurer: '测量员',
+  referrer: '推广人',
   viewer: '员工账号',
   user: '普通用户',
 };
@@ -206,7 +207,11 @@ export function serializeMiniProgramProfile(input: {
   const user = input.user || input.context.user;
   const staff = input.staff === undefined ? input.context.staff : input.staff;
   const isStaff = Boolean(staff);
-  const role = staff?.role || 'user';
+  const role = input.context.mode === 'referrer'
+    ? 'referrer'
+    : input.context.mode === 'customer'
+      ? 'user'
+      : staff?.role || 'user';
   const phone = staff?.phone || String(user.phone || '');
   const userId = '_id' in user
     ? String(user._id || '')

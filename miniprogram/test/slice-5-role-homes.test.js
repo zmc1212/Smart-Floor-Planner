@@ -41,11 +41,11 @@ test('enterprise appointments tab leaves the AI design shell', () => {
   assert.match(navigation, /'\/pages\/ai-design\/ai-design': \['staff\.design', 'staff\.surveying'\]/);
 });
 
-test('measurer schedule tab keeps expired appointments out of the confirmed list', () => {
+test('measurer workbench keeps the calendar itinerary separate from confirmed appointments', () => {
   const tabBar = source('custom-tab-bar/index.js');
   const calendar = source('packages/business/measurer-calendar/measurer-calendar.js');
   const calendarTemplate = source('packages/business/measurer-calendar/measurer-calendar.wxml');
-  assert.match(tabBar, /key: 'schedule'[\s\S]*pagePath: '\/packages\/business\/measurer-calendar\/measurer-calendar'/);
+  assert.match(tabBar, /key: 'workbench'[\s\S]*pagePath: '\/pages\/index\/index'/);
   assert.match(calendar, /confirmed: items\.filter\(\(item\) => item\.status === 'confirmed'\)/);
   assert.match(calendar, /history: items\.filter\(\(item\) => item\.status !== 'confirmed'\)/);
   assert.match(calendarTemplate, /待处理 \/ 历史/);

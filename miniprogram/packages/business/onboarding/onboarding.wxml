@@ -16,7 +16,7 @@
     <view class="state-copy">请稍候，正在校验本次企业入驻资格。</view>
   </view>
 
-  <scroll-view wx:elif="{{pageState === 'ready' || pageState === 'submitting'}}" scroll-y class="onboarding-scroll">
+  <scroll-view wx:elif="{{pageState === 'ready' || pageState === 'submitting' || pageState === 'name'}}" scroll-y class="onboarding-scroll">
     <view class="onboarding-content">
       <view class="welcome-panel">
         <view class="welcome-copy">
@@ -58,7 +58,7 @@
         <view>手机号仅用于确认你的服务身份，不会向其他人员公开。</view>
       </view>
 
-      <button class="join-action {{pageState === 'submitting' ? 'is-disabled' : ''}}" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{pageState === 'submitting'}}" disabled="{{pageState === 'submitting'}}">
+      <button class="join-action {{pageState === 'submitting' ? 'is-disabled' : ''}}" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{pageState === 'submitting' && !nameSheetVisible}}" disabled="{{pageState === 'submitting' || nameSheetVisible}}">
         授权手机号并加入
       </button>
     </view>
@@ -76,5 +76,15 @@
     <view class="state-title">暂未完成入驻</view>
     <view class="state-copy">{{errorMessage}}</view>
     <button class="state-action" bindtap="onRetry">重新校验</button>
+  </view>
+
+  <view wx:if="{{nameSheetVisible}}" class="name-overlay" catchtouchmove="preventMove">
+    <view class="name-card">
+      <view class="section-title">设置推荐人姓名</view>
+      <view class="section-copy">企业会用这个姓名识别你，请填写真实姓名。</view>
+      <input class="name-input" value="{{displayName}}" maxlength="30" placeholder="请输入真实姓名" placeholder-class="name-placeholder" bindinput="onDisplayNameInput" />
+      <view class="name-counter">{{displayName.length}} / 30</view>
+      <button class="join-action {{pageState === 'submitting' ? 'is-disabled' : ''}}" loading="{{pageState === 'submitting'}}" disabled="{{pageState === 'submitting'}}" bindtap="onConfirmReferrerName">确认加入</button>
+    </view>
   </view>
 </view>

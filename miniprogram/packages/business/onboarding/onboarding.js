@@ -34,6 +34,8 @@ function usableDisplayName(value) {
   if (['推荐人', '微信用户', '微信员工'].includes(name)) return '';
   return name;
 }
+
+function onboardingErrorMessage(error) {
   const code = error && error.code;
   if (['code_rotated', 'code_disabled', 'code_expired'].includes(code)) {
     return '该入驻码已更新或停用，请联系企业管理员获取最新二维码。';
@@ -60,6 +62,8 @@ Page({
     codeType: '',
     enterpriseName: '',
     selectedStaffRole: 'designer',
+    displayName: '',
+    nameSheetVisible: false,
     submitting: false,
     errorMessage: '',
     joinedLabel: ''
@@ -104,6 +108,10 @@ Page({
     if (role === 'designer' || role === 'measurer') this.setData({ selectedStaffRole: role });
   },
 
+  onDisplayNameInput(event) {
+    this.setData({ displayName: String((event.detail && event.detail.value) || '').slice(0, 30) });
+  },
+
   async onGetPhoneNumber(event) {
     if (this.data.pageState !== 'ready' || this.data.submitting) return;
     if (!event.detail || event.detail.errMsg !== 'getPhoneNumber:ok' || !event.detail.code) {
@@ -113,31 +121,69 @@ Page({
 
     this.setData({ submitting: true, pageState: 'submitting', errorMessage: '' });
     try {
-      await api.phoneLogin(event.detail.code);
-      const endpoint = this.data.codeType === 'staff'
-        ? '/miniprogram/onboarding/staff'
-        : '/miniprogram/onboarding/referrer';
-      const payload = {
-        token: this.data.onboardingToken,
-        ...(this.data.codeType === 'staff' ? { role: this.data.selectedStaffRole } : {})
-      };
-      const response = await api.request(endpoint, 'POST', payload);
-      if (!response.token) throw new Error('入驻结果缺少身份凭据');
-      await this.persistOnboardingSession(response);
-      this.setData({
-        submitting: false,
-        pageState: 'success',
-        joinedLabel: this.data.codeType === 'staff'
-          ? (this.data.selectedStaffRole === 'designer' ? '设计师' : '测量员')
-          : '推荐人'
-      });
+      const login = await api.phoneLogin(event.detail.code);
+      if (this.data.codeType === 'referrer') {
+        this.setData({
+          submitting: false,
+          pageState: 'name',
+          nameSheetVisible: true,
+          displayName: usableDisplayName(login && login.user && login.user.nickname)
+        });
+        return;
+      }
+      await this.submitOnboarding();
     } catch (error) {
       this.setData({
         submitting: false,
         pageState: 'error',
+        nameSheetVisible: false,
         errorMessage: onboardingErrorMessage(error)
       });
     }
+  },
+
+  async onConfirmReferrerName() {
+    if (this.data.pageState !== 'name' || this.data.submitting) return;
+    const displayName = usableDisplayName(this.data.displayName);
+    if (!displayName) {
+      wx.showToast({ title: '请填写真实姓名', icon: 'none' });
+      return;
+    }
+    this.setData({ submitting: true, pageState: 'submitting', displayName, errorMessage: '' });
+    try {
+      await this.submitOnboarding();
+    } catch (error) {
+      this.setData({
+        submitting: false,
+        pageState: 'name',
+        nameSheetVisible: true,
+        errorMessage: onboardingErrorMessage(error)
+      });
+      wx.showToast({ title: onboardingErrorMessage(error), icon: 'none' });
+    }
+  },
+
+  async submitOnboarding() {
+    const endpoint = this.data.codeType === 'staff'
+      ? '/miniprogram/onboarding/staff'
+      : '/miniprogram/onboarding/referrer';
+    const payload = {
+      token: this.data.onboardingToken,
+      ...(this.data.codeType === 'staff'
+        ? { role: this.data.selectedStaffRole }
+        : { displayName: usableDisplayName(this.data.displayName) })
+    };
+    const response = await api.request(endpoint, 'POST', payload);
+    if (!response.token) throw new Error('入驻结果缺少身份凭据');
+    await this.persistOnboardingSession(response);
+    this.setData({
+      submitting: false,
+      nameSheetVisible: false,
+      pageState: 'success',
+      joinedLabel: this.data.codeType === 'staff'
+        ? (this.data.selectedStaffRole === 'designer' ? '设计师' : '测量员')
+        : '推荐人'
+    });
   },
 
   async persistOnboardingSession(response) {
@@ -173,6 +219,7 @@ Page({
 
   onRetry() {
     if (this.data.submitting) return;
+    this.setData({ nameSheetVisible: false, displayName: '' });
     this.resolveOnboardingCode();
   },
 
@@ -181,5 +228,7 @@ Page({
       delta: 1,
       fail: () => wx.reLaunch({ url: '/pages/index/index' })
     });
-  }
+  },
+
+  preventMove() {}
 });

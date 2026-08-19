@@ -60,6 +60,37 @@ export function isAppointmentPastEnd(appointment: AppointmentStageInput, now = n
   return Boolean(bounds && bounds.endAt.getTime() <= now.getTime());
 }
 
+export function isActiveConfirmedAppointment(appointment: AppointmentStageInput, now = new Date()) {
+  return Boolean(appointment && appointment.status === 'confirmed' && !isAppointmentPastEnd(appointment, now));
+}
+
+type OperationalAppointment = AppointmentStageInput & {
+  id?: string | bigint | number | null;
+  createdAt?: Date | string | null;
+};
+
+function appointmentCreatedAtMs(appointment: OperationalAppointment) {
+  if (!appointment?.createdAt) return 0;
+  const value = appointment.createdAt instanceof Date
+    ? appointment.createdAt.getTime()
+    : new Date(appointment.createdAt).getTime();
+  return Number.isNaN(value) ? 0 : value;
+}
+
+export function selectOperationalAppointment<T extends OperationalAppointment>(
+  appointments: T[],
+  now = new Date()
+): T | null {
+  if (!appointments.length) return null;
+  return [...appointments].sort((left, right) => {
+    const rankDiff = Number(isActiveConfirmedAppointment(right, now)) - Number(isActiveConfirmedAppointment(left, now));
+    if (rankDiff !== 0) return rankDiff;
+    const createdDiff = appointmentCreatedAtMs(right) - appointmentCreatedAtMs(left);
+    if (createdDiff !== 0) return createdDiff;
+    return String(right.id ?? '').localeCompare(String(left.id ?? ''), undefined, { numeric: true });
+  })[0] ?? null;
+}
+
 export function isAppointmentInProgress(appointment: AppointmentStageInput, now = new Date()) {
   if (!appointment || appointment.status !== 'confirmed') return false;
   const bounds = parseAppointmentBounds(appointment.timeRange);

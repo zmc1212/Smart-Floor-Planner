@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useRef, useState, type Key } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState, type Key } from 'react';
 import {
   PageContainer,
   ProCard,
@@ -38,6 +38,7 @@ import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getLeadNextAction, getLeadStatusLabel, getLeadWorkflowStep, LEAD_WORKFLOW_STEPS } from '@/lib/lead-status';
+import { canRebookAppointment, resolveLeadServiceStage } from '@/lib/lead-service-stage';
 
 type StaffReference = {
   _id: string;
@@ -146,15 +147,13 @@ type AppointmentDateOption = {
   label: string;
 };
 
-type AiPublication = {
-  generationId: string;
+type AiSchemePublication = {
+  id: string;
+  workflowId?: string | null;
+  title: string;
   publishedAt?: string;
-};
-
-type PublishableGeneration = {
-  generationId: string;
-  type?: string;
-  updatedAt?: string;
+  imageCount: number;
+  generationIds: string[];
 };
 
 const APPOINTMENT_STATUS_LABELS: Record<string, string> = {
@@ -371,7 +370,7 @@ function getSurveyGraphStats(layoutData: unknown) {
   };
 }
 
-export default function LeadsPage() {
+function LeadsPage() {
   const actionRef = useRef<ActionType>(null);
   const leadListRequestRef = useRef<AbortController | null>(null);
   const leadDetailRequestRef = useRef<AbortController | null>(null);
@@ -428,8 +427,7 @@ export default function LeadsPage() {
   const [completeSubmitting, setCompleteSubmitting] = useState(false);
   const [publicationLoading, setPublicationLoading] = useState(false);
   const [publicationUpdatingId, setPublicationUpdatingId] = useState<string | null>(null);
-  const [publications, setPublications] = useState<AiPublication[]>([]);
-  const [publishableGenerations, setPublishableGenerations] = useState<PublishableGeneration[]>([]);
+  const [publications, setPublications] = useState<AiSchemePublication[]>([]);
 
   useEffect(() => () => {
     leadListRequestRef.current?.abort();
@@ -473,7 +471,6 @@ export default function LeadsPage() {
     leadDetailRequestRef.current = controller;
     setSelectedLead(lead);
     setPublications([]);
-    setPublishableGenerations([]);
     try {
       const response = await fetch(`/api/leads/${lead._id}`, { signal: controller.signal });
       const result = await response.json();
@@ -495,14 +492,12 @@ export default function LeadsPage() {
   const loadPublications = async (leadId: string) => {
     setPublicationLoading(true);
     try {
-      const response = await fetch(`/api/leads/${leadId}/ai-publications`);
+      const response = await fetch(`/api/leads/${leadId}/ai-scheme-publications`);
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '读取方案发布状态失败');
       setPublications(Array.isArray(result.data) ? result.data : []);
-      setPublishableGenerations(Array.isArray(result.publishable) ? result.publishable : []);
     } catch (error) {
       setPublications([]);
-      setPublishableGenerations([]);
       notify.error(error instanceof Error ? error.message : '读取方案发布状态失败');
     } finally {
       setPublicationLoading(false);
@@ -524,7 +519,6 @@ export default function LeadsPage() {
     setCancelOpen(false);
     setCancelReason('');
     setPublications([]);
-    setPublishableGenerations([]);
   };
 
   const cancelAppointment = async () => {
@@ -591,39 +585,18 @@ export default function LeadsPage() {
     }
   };
 
-  const publishGeneration = async (generationId: string) => {
-    if (!selectedLead) return;
-    setPublicationUpdatingId(generationId);
-    try {
-      const response = await fetch(`/api/leads/${selectedLead._id}/ai-publications`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ generationId }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '发布方案失败');
-      notify.success('方案已发布给客户');
-      await loadPublications(selectedLead._id);
-      await refreshLeads();
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '发布方案失败');
-    } finally {
-      setPublicationUpdatingId(null);
-    }
-  };
-
-  const withdrawGeneration = async (generationId: string) => {
-    if (!selectedLead) return;
+  const withdrawScheme = async (scheme: AiSchemePublication) => {
+    if (!selectedLead || !scheme.workflowId) return;
     const confirmed = await confirmAction({
       title: '撤回客户方案',
-      description: '撤回后，客户将不能继续在项目中查看这张方案。',
+      description: `撤回后，客户将不能继续在项目中查看「${scheme.title}」这套方案。`,
       confirmText: '确认撤回',
       destructive: true,
     });
     if (!confirmed) return;
-    setPublicationUpdatingId(generationId);
+    setPublicationUpdatingId(scheme.id);
     try {
-      const response = await fetch(`/api/leads/${selectedLead._id}/ai-publications/${generationId}`, { method: 'DELETE' });
+      const response = await fetch(`/api/leads/${selectedLead._id}/ai-scheme-publications/${scheme.workflowId}`, { method: 'DELETE' });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '撤回方案失败');
       notify.success('方案已撤回');
@@ -669,7 +642,25 @@ export default function LeadsPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '创建预约失败');
-      setSelectedLead((current) => current ? { ...current, appointment: result.data } : current);
+      const appointment = result.data;
+      const stage = resolveLeadServiceStage({
+        leadStatus: selectedLead.status,
+        assignmentStatus: selectedLead.assignmentStatus,
+        measurerId: getStaffId(selectedLead.measurerId),
+        appointment,
+      });
+      setSelectedLead((current) => current ? {
+        ...current,
+        appointment,
+        serviceStage: stage.key,
+        serviceStageLabel: stage.label,
+        nextAction: stage.nextAction,
+        canRebook: canRebookAppointment({
+          leadStatus: current.status,
+          assignmentStatus: current.assignmentStatus,
+          appointment,
+        }),
+      } : current);
       setAppointmentOpen(false);
       notify.success('预约上门量房时间已设置');
       await refreshLeads();
@@ -1836,52 +1827,36 @@ export default function LeadsPage() {
                     <Tag color={publications.length ? 'green' : 'default'}>{publications.length ? '已发布' : '仅内部可见'}</Tag>
                   </Flex>
                   <Button size="small" icon={<FilePenLine size={14} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${selectedLead._id}`)}>
-                    前往 AI 创作台
+                    前往 AI 工作台
                   </Button>
                 </Flex>
                 {publicationLoading ? (
                   <Typography.Text type="secondary">读取发布状态中…</Typography.Text>
-                ) : publications.length || publishableGenerations.length ? (
+                ) : publications.length ? (
                   <Flex vertical gap={8}>
                     {publications.map((item) => (
-                      <Flex key={item.generationId} align="center" justify="space-between" gap={12} className="rounded-lg border border-border bg-card p-3">
+                      <Flex key={item.id} align="center" justify="space-between" gap={12} className="rounded-lg border border-border bg-card p-3">
                         <Flex vertical gap={2} className="min-w-0">
-                          <Typography.Text strong>方案 #{item.generationId.slice(-6)}</Typography.Text>
-                          <Typography.Text type="secondary" className="text-xs">发布于 {formatDate(item.publishedAt)}</Typography.Text>
+                          <Typography.Text strong>{item.title}</Typography.Text>
+                          <Typography.Text type="secondary" className="text-xs">
+                            {item.imageCount} 张效果图 · 发布于 {formatDate(item.publishedAt)}
+                          </Typography.Text>
                         </Flex>
-                        <Button
-                          size="small"
-                          danger
-                          loading={publicationUpdatingId === item.generationId}
-                          onClick={() => void withdrawGeneration(item.generationId)}
-                        >
-                          撤回
-                        </Button>
-                      </Flex>
-                    ))}
-                    {publishableGenerations
-                      .filter((item) => !publications.some((published) => published.generationId === item.generationId))
-                      .map((item) => (
-                        <Flex key={item.generationId} align="center" justify="space-between" gap={12} className="rounded-lg border border-dashed border-border bg-muted/30 p-3">
-                          <Flex vertical gap={2} className="min-w-0">
-                            <Typography.Text strong>可发布方案 #{item.generationId.slice(-6)}</Typography.Text>
-                            <Typography.Text type="secondary" className="text-xs">
-                              {item.type || 'AI 方案'} · 更新于 {formatDate(item.updatedAt)}
-                            </Typography.Text>
-                          </Flex>
+                        {item.workflowId ? (
                           <Button
                             size="small"
-                            type="primary"
-                            loading={publicationUpdatingId === item.generationId}
-                            onClick={() => void publishGeneration(item.generationId)}
+                            danger
+                            loading={publicationUpdatingId === item.id}
+                            onClick={() => void withdrawScheme(item)}
                           >
-                            发布给客户
+                            撤回
                           </Button>
-                        </Flex>
-                      ))}
+                        ) : null}
+                      </Flex>
+                    ))}
                   </Flex>
                 ) : (
-                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已完成且可发布的 AI 方案" />
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有发送给客户的方案，请在 AI 工作台勾选效果图后发送" />
                 )}
               </Flex>
             ) : null}
@@ -2047,5 +2022,13 @@ function LeadCardField({
       <Typography.Text strong ellipsis={{ tooltip: value }}>{value}</Typography.Text>
       {detail ? <Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: detail }}>{detail}</Typography.Text> : null}
     </Flex>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">正在加载线索...</div>}>
+      <LeadsPage />
+    </Suspense>
   );
 }

@@ -129,6 +129,7 @@ export async function GET(request: Request) {
       avatar: typeof user.avatar === 'string' ? user.avatar : '',
     });
     if (!staff) {
+      const isReferrer = context.mode === 'referrer';
       return NextResponse.json({
         success: true,
         data: {
@@ -137,10 +138,10 @@ export async function GET(request: Request) {
             name: user.nickname || user.username || '微信用户',
             avatar,
             username: user.username || '',
-            enterpriseName: user.communityName || '',
+            enterpriseName: enterprise?.name || user.communityName || '',
             phoneMasked: maskPhone(user.phone),
-            roleLabel: '普通用户',
-            role: 'user',
+            roleLabel: isReferrer ? '推广人' : '普通用户',
+            role: isReferrer ? 'referrer' : 'user',
             canChangePassword: false,
           },
           actions: [],

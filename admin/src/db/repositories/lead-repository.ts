@@ -24,6 +24,7 @@ import {
   referrerProfiles,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { selectOperationalAppointment } from '@/lib/lead-service-stage';
 import {
   getLeadStatusVariants,
   normalizeLeadStatus,
@@ -281,20 +282,19 @@ export class LeadRepository {
     const appointmentRows = await this.transaction
       .select()
       .from(measurementAppointments)
-      .where(inArray(measurementAppointments.leadId, leadIds))
-      .orderBy(desc(measurementAppointments.createdAt), desc(measurementAppointments.id));
-    const appointmentMap = new Map<bigint, typeof measurementAppointments.$inferSelect>();
+      .where(inArray(measurementAppointments.leadId, leadIds));
+    const appointmentsByLead = new Map<bigint, typeof appointmentRows>();
     for (const appointment of appointmentRows) {
-      const current = appointmentMap.get(appointment.leadId);
-      if (!current && appointment.status === 'confirmed') {
-        appointmentMap.set(appointment.leadId, appointment);
-      }
+      const current = appointmentsByLead.get(appointment.leadId);
+      if (current) current.push(appointment);
+      else appointmentsByLead.set(appointment.leadId, [appointment]);
     }
-    for (const appointment of appointmentRows) {
-      if (!appointmentMap.has(appointment.leadId)) {
-        appointmentMap.set(appointment.leadId, appointment);
-      }
-    }
+    const appointmentMap = new Map(
+      [...appointmentsByLead.entries()].map(([leadId, appointments]) => [
+        leadId,
+        selectOperationalAppointment(appointments),
+      ])
+    );
 
     return rows.map((row) => ({
       ...row,

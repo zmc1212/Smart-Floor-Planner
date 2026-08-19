@@ -86,6 +86,7 @@ test('workflow floor-plan context includes wall topology and opening constraints
 
 test('direction always uses image editing even when a stored preset still says generation', () => {
   assert.equal(resolveWorkflowImageMode('direction', 'generation'), 'edit');
+  assert.equal(resolveWorkflowImageMode('conversation', 'generation'), 'edit');
   assert.equal(resolveWorkflowImageMode('base_render', 'edit'), 'edit');
   assert.equal(resolveWorkflowImageMode('proposal_pack', 'generation'), 'generation');
 });

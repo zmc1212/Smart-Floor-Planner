@@ -238,3 +238,9 @@ export function generateFormalSurveyDxf(layoutData: unknown, status?: string) {
 export function safeDxfFileName(name: string | null | undefined, id: string) {
   const normalized = String(name || 'FloorPlan').replace(/[\\/:*?"<>|\r\n]+/g, '_').trim() || 'FloorPlan'; return `FloorPlan_${normalized}_${id}.dxf`;
 }
+
+export function dxfContentDisposition(name: string | null | undefined, id: string) {
+  const fileName = safeDxfFileName(name, id);
+  const asciiFallback = `FloorPlan_${String(id).replace(/[^A-Za-z0-9_-]/g, '_')}.dxf`;
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}

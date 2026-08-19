@@ -31,7 +31,7 @@ const ROLE_ITEMS = {
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   measurer: [
-    { key: 'schedule', capability: 'staff.schedule', pagePath: '/packages/business/measurer-calendar/measurer-calendar', text: '日程', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'workbench', capability: 'staff.schedule', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'tasks', capability: 'staff.tasks', pagePath: '/pages/leads-management/leads-management', text: '任务', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
     { key: 'survey', capability: 'staff.surveying', pagePath: '/pages/ai-design/ai-design', text: '量房', tab: true, iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }

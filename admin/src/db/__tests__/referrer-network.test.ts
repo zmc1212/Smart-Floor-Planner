@@ -290,6 +290,22 @@ test('referrer memberships cap at three and exit disables the promotion token', 
     assert.equal(roster.length, 1);
     assert.equal(roster[0].displayName, 'Test referrer');
     assert.equal(roster[0].phone, userPhone);
+    const renamed = await repository.onboardReferrer({
+      token: joinCodes[0].token,
+      userId,
+      contextVersion,
+      displayName: 'Renamed Referrer',
+      membershipLimit: 3,
+    });
+    assert.equal(renamed.ok, true);
+    if (renamed.ok) {
+      assert.equal(renamed.idempotent, true);
+      assert.equal(renamed.user.nickname, 'Renamed Referrer');
+    }
+    assert.equal(
+      (await repository.listEnterpriseReferrerMemberships(enterpriseIds[0]))[0]?.displayName,
+      'Renamed Referrer'
+    );
     assert.equal(
       (await repository.listEnterpriseReferrerMemberships(enterpriseIds[0], { query: userPhone.slice(-4) })).length,
       1

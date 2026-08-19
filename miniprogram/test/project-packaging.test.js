@@ -32,6 +32,20 @@ test('source package keeps the Mini Program runtime directories', () => {
   }
 });
 
+test('source package excludes customer-project board artwork that is not used at runtime', () => {
+  const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
+  const ignoredFiles = new Set(
+    projectConfig.packOptions.ignore
+      .filter((rule) => rule.type === 'file')
+      .map((rule) => rule.value)
+  );
+
+  assert.deepEqual(ignoredFiles, new Set([
+    'packages/business/assets/customer-project-v1/project-delivery-xiao-k.png',
+    'packages/business/assets/customer-project-v1/formal-floor-plan-archive.png',
+  ]));
+});
+
 test('runtime artwork excludes WebP and keeps the AI project folio as PNG', () => {
   const root = path.join(__dirname, '..');
   const runtimeFiles = fs.readdirSync(root, { recursive: true });

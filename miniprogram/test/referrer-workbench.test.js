@@ -28,12 +28,44 @@ test('referrer workbench lists active memberships and opens the selected service
   const requests = [];
   api.request = async (...args) => {
     requests.push(args);
-    return args[0] === '/miniprogram/identity-contexts'
-      ? { contexts: [{ mode: 'referrer' }, { mode: 'customer' }] }
-      : { data: [
-        { id: 'active-1', status: 'active', enterpriseName: '宜家装饰工程有限公司' },
-        { id: 'left-1', status: 'exited', enterpriseName: '历史企业' },
-      ] };
+    if (args[0] === '/miniprogram/identity-contexts') {
+      return { contexts: [{ mode: 'referrer' }, { mode: 'customer' }] };
+    }
+    if (args[0] === '/miniprogram/referrer-progress') {
+      return {
+        data: {
+          enterpriseName: '宜家装饰工程有限公司',
+          items: [
+            {
+              id: 'lead-1',
+              customerLabel: '服务客户 #0001',
+              stage: { key: 'design_published', label: '方案已发布', nextAction: '沟通确认' },
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        },
+      };
+    }
+    if (args[0] === '/miniprogram/referrer-earnings') {
+      return {
+        data: {
+          enterpriseName: '宜家装饰工程有限公司',
+          items: [
+            {
+              id: 'earn-1',
+              customerLabel: '服务客户 #0001',
+              amount: '200.00',
+              status: 'payable',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        },
+      };
+    }
+    return { data: [
+      { id: 'active-1', status: 'active', enterpriseName: '宜家装饰工程有限公司' },
+      { id: 'left-1', status: 'exited', enterpriseName: '历史企业' },
+    ] };
   };
   global.wx = { navigateTo(options) { this.lastNavigation = options; } };
   const context = { data: { ...definition.data }, setData(next) { Object.assign(this.data, next); } };
@@ -42,11 +74,19 @@ test('referrer workbench lists active memberships and opens the selected service
     await definition.load.call(context);
     assert.deepEqual(requests, [
       ['/miniprogram/referrer-memberships', 'GET'],
-      ['/miniprogram/identity-contexts', 'GET']
+      ['/miniprogram/identity-contexts', 'GET'],
+      ['/miniprogram/referrer-progress', 'GET'],
+      ['/miniprogram/referrer-earnings', 'GET'],
     ]);
     assert.equal(context.data.identityCount, 2);
     assert.deepEqual(context.data.memberships.map((item) => item.id), ['active-1']);
     assert.equal(context.data.selectedMembershipId, 'active-1');
+    assert.equal(context.data.totalClients, 1);
+    assert.equal(context.data.todayScans, 1);
+    assert.equal(context.data.pendingEarnings, '200.00');
+    assert.equal(context.data.milestones.length, 1);
+    assert.equal(context.data.milestones[0].customerLabel, '服务客户 #0001');
+    assert.equal(context.data.milestones[0].rewardLabel, '预估 +¥200');
     definition.showServiceCode.call(context);
     assert.equal(global.wx.lastNavigation.url, '/packages/business/promotion-service-code/promotion-service-code?membershipId=active-1');
   } finally {
@@ -125,13 +165,17 @@ test('referrer workbench exchanges the signed membership context before changing
   }
 });
 
-test('referrer workbench ships the Antigravity standalone asset and preserves the selected design contract', () => {
+test('referrer workbench ships the Antigravity standalone asset and preserves the Airy Minimalist 06 design contract', () => {
   const wxml = source('packages/business/referrer-workbench/referrer-workbench.wxml');
   const less = source('packages/business/referrer-workbench/referrer-workbench.less');
   const asset = fs.readFileSync(path.join(miniRoot, 'packages/business/assets/referrer-workbench-v1/service-code-guide.png'));
 
-  assert.match(wxml, /推广服务/);
-  assert.match(wxml, /展示服务码/);
+  assert.match(wxml, /推广专属服务 · 获客与收益/);
+  assert.match(wxml, /出示推广服务码/);
+  assert.match(wxml, /服务进度/);
+  assert.match(wxml, /我的收益/);
+  assert.match(wxml, /当前推广企业/);
+  assert.match(wxml, /最新推广记录/);
   assert.match(wxml, /退出该企业/);
   assert.match(wxml, /账号操作/);
   assert.match(wxml, /切换身份/);
@@ -139,11 +183,16 @@ test('referrer workbench ships the Antigravity standalone asset and preserves th
   assert.match(wxml, /退出当前账号/);
   assert.match(wxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(wxml, /bindtap="onLogout"/);
+  assert.match(wxml, /bindtap="openProgress"/);
+  assert.match(wxml, /bindtap="openEarnings"/);
   assert.match(less, /account-common\.less/);
   assert.match(less, /overflow-y:\s*auto/);
-  assert.match(less, /\.facts-actions \{ display: flex; min-width: 0; gap: 12rpx;/);
-  assert.match(less, /\.fact-action \{ display: flex; width: 0; min-width: 0 !important;/);
+  assert.match(less, /\.quick-nav-grid/);
+  assert.match(less, /\.hero-promotion-card/);
+  assert.match(less, /\.milestone-list/);
   assert.match(wxml, /referrer-workbench-v1\/service-code-guide\.png/);
+  assert.match(wxml, /airy-v1\/leads-phone-3d\.png/);
+  assert.match(wxml, /thumbs-up-xiao-k\.png/);
   assert.match(wxml, /navigationRight/);
   assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.ok(asset.length <= 300 * 1024);

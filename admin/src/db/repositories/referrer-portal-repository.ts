@@ -10,7 +10,7 @@ import {
   referrerEnterpriseMemberships,
   referrerProfiles,
 } from '@/db/schema';
-import { resolveLeadServiceStage } from '@/lib/lead-service-stage';
+import { resolveLeadServiceStage, selectOperationalAppointment } from '@/lib/lead-service-stage';
 import type { PostgresTransaction } from '@/db/transaction';
 
 type ReferrerMembershipScope = {
@@ -78,8 +78,7 @@ export class ReferrerPortalRepository {
           updatedAt: measurementAppointments.updatedAt,
         })
         .from(measurementAppointments)
-        .where(and(eq(measurementAppointments.enterpriseId, enterpriseId), inArray(measurementAppointments.leadId, leadIds)))
-        .orderBy(desc(measurementAppointments.updatedAt), desc(measurementAppointments.id)),
+        .where(and(eq(measurementAppointments.enterpriseId, enterpriseId), inArray(measurementAppointments.leadId, leadIds))),
       this.transaction
         .select({ leadId: aiGenerationPublications.leadId, publishedAt: aiGenerationPublications.publishedAt })
         .from(aiGenerationPublications)
@@ -108,8 +107,15 @@ export class ReferrerPortalRepository {
           ))
       : [];
     const appointmentByLead = new Map<bigint, (typeof appointmentRows)[number]>();
+    const appointmentsByLead = new Map<bigint, typeof appointmentRows>();
     for (const appointment of appointmentRows) {
-      if (!appointmentByLead.has(appointment.leadId)) appointmentByLead.set(appointment.leadId, appointment);
+      const current = appointmentsByLead.get(appointment.leadId);
+      if (current) current.push(appointment);
+      else appointmentsByLead.set(appointment.leadId, [appointment]);
+    }
+    for (const [leadId, appointments] of appointmentsByLead) {
+      const selected = selectOperationalAppointment(appointments);
+      if (selected) appointmentByLead.set(leadId, selected);
     }
     const publishedAtByLead = new Map<bigint, Date>();
     for (const publication of publicationRows) {

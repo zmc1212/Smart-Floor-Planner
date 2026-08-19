@@ -500,6 +500,25 @@ test('claim resolve and authorize preserve an existing customer project instead 
   assert.match(authorize, /claim\.kind !== 'existing_attribution'/);
 });
 
+test('referrer onboarding requires a display name and does not fall back to a placeholder', () => {
+  const route = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/api/miniprogram/onboarding/referrer/route.ts'
+    ),
+    'utf8'
+  );
+  const repository = readFileSync(
+    path.join(process.cwd(), 'src/db/repositories/referrer-network-repository.ts'),
+    'utf8'
+  );
+
+  assert.match(route, /display_name_required/);
+  assert.doesNotMatch(route, /displayName \|\| authenticated\.user\.nickname/);
+  assert.match(repository, /displayName !== profile\.displayName/);
+  assert.match(repository, /nickname: displayName/);
+});
+
 test('onboarding code resolution returns its enterprise display name without exposing the token', () => {
   const route = readFileSync(
     path.join(

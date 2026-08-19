@@ -5,8 +5,28 @@ import {
   decodeManagedAvatarReference,
   encodeManagedAvatarReference,
   resolveProfileAvatarUrl,
+  serializeMiniProgramProfile,
   verifyProfileAvatarSignature,
 } from '@/lib/miniprogram-profile';
+
+test('referrer profile keeps the current display name and role from the signed context', () => {
+  const profile = serializeMiniProgramProfile({
+    request: new Request('https://api.example.com/api/miniprogram/profile'),
+    context: {
+      mode: 'referrer',
+      referrerMembershipId: '9',
+      enterpriseId: '7',
+      enterprise: { _id: '7', name: '示例企业', code: 'demo' },
+      staff: null,
+      user: { _id: '12', nickname: '我设置的姓名', phone: '13800138000' },
+    } as any,
+  });
+
+  assert.equal(profile.name, '我设置的姓名');
+  assert.equal(profile.role, 'referrer');
+  assert.equal(profile.roleLabel, '推广人');
+  assert.equal(profile.isStaff, false);
+});
 
 test('managed profile avatar references round-trip without exposing storage details in URLs', () => {
   const encoded = encodeManagedAvatarReference({

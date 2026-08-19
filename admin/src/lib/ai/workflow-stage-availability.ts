@@ -66,10 +66,10 @@ export function canRunStageFromState(input: {
 
   if (!stageKey) return { available: false, reason: '缺少阶段标识' };
 
-  if (stageKey === 'direction' || stageKey === 'base_render') {
+  if (stageKey === 'direction' || stageKey === 'base_render' || stageKey === 'conversation') {
     return workflow.sourceImage || workflow.sourceFloorPlanId
       ? { available: true }
-      : { available: false, reason: '需要先提供起点素材或户型图' };
+      : { available: false, reason: stageKey === 'conversation' ? '需要先关联正式户型' : '需要先提供起点素材或户型图' };
   }
 
   if (stageKey === 'premium_board') {

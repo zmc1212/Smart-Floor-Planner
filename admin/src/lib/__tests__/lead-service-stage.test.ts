@@ -6,6 +6,7 @@ import {
   parseAppointmentBounds,
   resolveCustomerHomeAction,
   resolveLeadServiceStage,
+  selectOperationalAppointment,
 } from '@/lib/lead-service-stage';
 
 const range = '[2026-08-19T01:00:00.000Z,2026-08-19T03:00:00.000Z)';
@@ -150,4 +151,36 @@ test('customer home exposes one next action from the shared service stage', () =
     leadStatus: 'designing',
     hasFormalFloorPlan: true,
   }).kind, 'view_project');
+});
+
+test('operational appointment prefers an active confirmed rebooking over an older expired row', () => {
+  const now = new Date('2026-08-19T14:30:00.000Z');
+  const expired = {
+    id: 1n,
+    status: 'expired',
+    timeRange: '[2026-08-19T01:00:00.000Z,2026-08-19T03:00:00.000Z)',
+    createdAt: new Date('2026-08-19T01:00:00.000Z'),
+  };
+  const pastConfirmed = {
+    id: 2n,
+    status: 'confirmed',
+    timeRange: '[2026-08-19T07:00:00.000Z,2026-08-19T09:00:00.000Z)',
+    createdAt: new Date('2026-08-19T14:00:00.000Z'),
+  };
+  const rebooked = {
+    id: 3n,
+    status: 'confirmed',
+    timeRange: '[2026-08-20T07:00:00.000Z,2026-08-20T09:00:00.000Z)',
+    createdAt: new Date('2026-08-19T10:00:00.000Z'),
+  };
+
+  const selected = selectOperationalAppointment([expired, pastConfirmed, rebooked], now);
+  assert.equal(selected?.id, 3n);
+  assert.equal(resolveLeadServiceStage({
+    leadStatus: 'measuring',
+    assignmentStatus: 'assigned',
+    measurerId: '1',
+    appointment: selected,
+    now,
+  }).key, 'appointment_confirmed');
 });

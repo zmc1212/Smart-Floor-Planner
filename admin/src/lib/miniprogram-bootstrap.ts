@@ -19,7 +19,7 @@ export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
   customer: '/pages/index/index',
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
   designer: '/pages/index/index',
-  measurer: '/packages/business/measurer-calendar/measurer-calendar',
+  measurer: '/pages/index/index',
   enterprise_admin: '/pages/index/index',
 };
 

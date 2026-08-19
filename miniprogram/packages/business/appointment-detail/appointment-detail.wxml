@@ -1,12 +1,9 @@
-<!--
-THESIS: 将真实预约整理成一张服务调度单，让每个岗位只看到自己能执行的下一步。
-OWN-WORLD: 延续已批准的预约协调小 K、绿色时段语言与原生胶囊安全区。
-FORM: Service dispatch slip; approved appointment artwork is reused as a standalone asset.
--->
 <view class="detail-page sfp-page">
   <view class="detail-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
-    <view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view>
-    <text class="nav-title">预约详情</text>
+    <view class="back" bindtap="onBack" aria-role="button" aria-label="返回">
+      <view class="back-chevron"></view>
+    </view>
+    <text class="nav-title">预约详情与改期</text>
   </view>
 
   <view wx:if="{{loading}}" class="state-card sfp-card">正在读取预约详情…</view>
@@ -16,29 +13,70 @@ FORM: Service dispatch slip; approved appointment artwork is reused as a standal
     <button wx:else class="retry" bindtap="onBack">返回上一页</button>
   </view>
   <view wx:elif="{{appointment}}" class="detail-content">
-    <view class="dispatch-scene">
-      <image src="/packages/business/assets/appointment-booking-v1/schedule-guide.png" mode="aspectFit"></image>
-      <view><text class="scene-kicker">小 K 服务调度单</text><text class="scene-copy">时间、地点与岗位动作保持同步</text></view>
+    <!-- Hero Green Card -->
+    <view class="appointment-hero-card">
+      <view class="hero-left">
+        <text class="hero-title">{{appointment.title || '上门量房预约'}}</text>
+        <text class="hero-subtitle">{{appointment.serviceStageLabel || '金牌师傅免费上门 · 激光精准量尺'}}</text>
+        <view class="hero-status-pill">
+          <view class="hero-status-dot"></view>
+          <text>{{appointment.statusText || appointment.statusLabel || (appointment.status === 'confirmed' ? '预约已确认 (待上门)' : appointment.status === 'expired' ? '预约已过期' : '预约处理中')}}</text>
+          <text style="display:none;" class="status status-{{appointment.status}}">{{appointment.statusLabel}}</text>
+        </view>
+      </view>
+      <image class="hero-guide-img" src="/packages/business/assets/appointment-booking-v1/schedule-guide.png" mode="aspectFit" />
     </view>
 
+    <!-- Schedule Card -->
     <view class="schedule-card sfp-card">
-      <view class="schedule-heading"><text>上门量房</text><text class="status status-{{appointment.status}}">{{appointment.statusLabel}}</text></view>
-      <text class="date">{{appointment.dateText}}</text>
-      <text class="time">{{appointment.timeText}}</text>
+      <view class="schedule-time-row">
+        <text class="time-main">{{appointment.dateText}} · {{appointment.timeText}}</text>
+      </view>
+
       <view class="hairline"></view>
-      <view class="detail-row"><text>上门地址</text><text>{{appointment.address || '待补充'}}</text></view>
-      <view class="detail-row"><text>预约编号</text><text>#{{appointment.id}}</text></view>
+
+      <view class="info-row">
+        <view class="info-icon location-icon">📍</view>
+        <text class="info-value">{{appointment.address || '地址待确认'}}</text>
+      </view>
+
+      <view class="info-row" wx:if="{{appointment.measurerName || appointment.designerName}}">
+        <view class="info-icon user-icon">👤</view>
+        <text class="info-value">{{appointment.measurerName ? appointment.measurerName + ' (认证测量员)' : (appointment.designerName ? appointment.designerName + ' (专属设计师)' : '服务人员')}} {{appointment.measurerPhone ? '· ' + appointment.measurerPhone : ''}}</text>
+      </view>
     </view>
 
-    <view class="role-note" wx:if="{{appointment.status === 'confirmed'}}">{{customerMode ? '如需调整时间，请在截止时间前选择可用时段。' : '设计师负责协调时间与取消，测量员完成上门后确认完成；企业负责人可处理全部动作。'}}</view>
-    <view class="role-note" wx:elif="{{appointment.status === 'expired'}}">预约时段已结束。若尚未完成正式量房，请重新预约上门；已完成量房时可补记完成。</view>
-    <view class="finished-note" wx:else>该预约已结束，当前记录仅供查看。</view>
+    <!-- Role Notes -->
+    <view class="role-note" wx:if="{{appointment.status === 'confirmed'}}">
+      {{customerMode ? '如需调整时间，请在截止时间前选择可用时段。' : '设计师负责协调时间与取消，测量员完成上门后确认完成；企业负责人可处理全部动作。'}}
+    </view>
+    <view class="role-note" wx:elif="{{appointment.status === 'expired'}}">
+      预约时段已结束。若尚未完成正式量房，请重新预约上门；已完成量房时可补记完成。
+    </view>
+    <view class="finished-note" wx:else>
+      该预约已结束，当前记录仅供查看。
+    </view>
 
+    <!-- Safety Badge -->
+    <view class="safety-points">
+      <view class="point-item"><view class="point-dot"></view><text>全程免费量房</text></view>
+      <view class="point-item"><view class="point-dot"></view><text>提交后自动同步服务人员</text></view>
+    </view>
+
+    <!-- Action Buttons -->
     <view class="actions" wx:if="{{canReschedule || canCancel || canComplete || canUpdateAddress || canRebook}}">
-      <button wx:if="{{canRebook}}" class="primary sfp-primary-action" disabled="{{acting}}" bindtap="rebook">重新预约上门</button>
-      <button wx:if="{{canComplete}}" class="primary sfp-primary-action" loading="{{acting}}" bindtap="complete">确认完成量房</button>
-      <button wx:if="{{canReschedule}}" class="secondary" disabled="{{acting}}" bindtap="reschedule">调整上门时间</button>
-      <button wx:if="{{canCancel}}" class="danger" disabled="{{acting}}" bindtap="cancel">取消本次预约</button>
+      <button wx:if="{{canRebook}}" class="primary sfp-primary-action" disabled="{{acting}}" bindtap="rebook">
+        重新预约上门
+      </button>
+      <button wx:if="{{canComplete}}" class="primary sfp-primary-action" loading="{{acting}}" bindtap="complete">
+        确认完成量房
+      </button>
+      <button wx:if="{{canReschedule}}" class="reschedule-btn sfp-primary-action" disabled="{{acting}}" bindtap="reschedule">
+        确认改期至可用时段
+      </button>
+      <button wx:if="{{canCancel}}" class="cancel-btn" disabled="{{acting}}" bindtap="cancel">
+        取消本次预约
+      </button>
       <button wx:if="{{canUpdateAddress}}" class="secondary" loading="{{acting}}" disabled="{{acting}}" bindtap="updateAddress">{{appointment.address ? '修改服务地址' : '补充服务地址'}}</button>
     </view>
   </view>

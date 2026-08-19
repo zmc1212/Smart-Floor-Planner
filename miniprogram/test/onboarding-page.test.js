@@ -41,6 +41,9 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.match(js, /enterpriseName/);
   assert.match(wxml, /正在加入企业/);
   assert.match(wxml, /\{\{enterpriseName\}\}/);
+  assert.match(wxml, /设置推荐人姓名/);
+  assert.match(js, /displayName/);
+  assert.match(js, /onConfirmReferrerName/);
   assert.doesNotMatch(js, /debugOnboarding/);
   assert.match(js, /code_rotated/);
   assert.match(wxml, /navigationRight/);
@@ -79,4 +82,69 @@ test('onboarding role selection is limited to supported staff roles', () => {
   assert.equal(context.data.selectedStaffRole, 'measurer');
   definition.onChooseStaffRole.call(context, { currentTarget: { dataset: { role: 'enterprise_admin' } } });
   assert.equal(context.data.selectedStaffRole, 'measurer');
+});
+
+test('referrer onboarding opens a name sheet after phone authorization and submits displayName', async () => {
+  const definition = loadPage();
+  const originalRequest = api.request;
+  const originalPhoneLogin = api.phoneLogin;
+  const originalGetApp = global.getApp;
+  const originalWx = global.wx;
+  const calls = [];
+  const toasts = [];
+  global.wx = {
+    ...(originalWx || {}),
+    showToast: (options) => { toasts.push(options); },
+    setStorageSync() {},
+    getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 24 }),
+    getMenuButtonBoundingClientRect: () => ({ left: 296, top: 24, height: 32 })
+  };
+  global.getApp = () => ({
+    globalData: { sessionRecovery: null },
+    hydrateStoredSession: async () => {}
+  });
+  api.phoneLogin = async () => ({ success: true, token: 'phone', user: { nickname: '微信用户' } });
+  api.request = async (path, _method, body) => {
+    calls.push({ path, body });
+    if (path === '/miniprogram/onboarding/referrer') return { token: 'onboard-jwt' };
+    if (path === '/auth/miniprogram') return { user: { nickname: '王推荐' }, openid: 'o1' };
+    throw new Error(path);
+  };
+  try {
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'ready',
+        codeType: 'referrer',
+        onboardingToken: 'ej_ABCDEFGHIJKLMNOPQRSTUVWXYZ123456'
+      },
+      setData(next) { Object.assign(this.data, next); },
+      submitOnboarding: definition.submitOnboarding,
+      persistOnboardingSession: definition.persistOnboardingSession
+    };
+
+    await definition.onGetPhoneNumber.call(context, {
+      detail: { errMsg: 'getPhoneNumber:ok', code: 'phone-code' }
+    });
+    assert.equal(context.data.pageState, 'name');
+    assert.equal(context.data.nameSheetVisible, true);
+    assert.equal(context.data.displayName, '');
+    assert.equal(calls.length, 0);
+
+    await definition.onConfirmReferrerName.call(context);
+    assert.equal(toasts[0].title, '请填写真实姓名');
+    assert.equal(calls.length, 0);
+
+    context.data.displayName = '王推荐';
+    await definition.onConfirmReferrerName.call(context);
+    assert.equal(calls[0].path, '/miniprogram/onboarding/referrer');
+    assert.equal(calls[0].body.displayName, '王推荐');
+    assert.equal(context.data.pageState, 'success');
+    assert.equal(context.data.nameSheetVisible, false);
+  } finally {
+    api.request = originalRequest;
+    api.phoneLogin = originalPhoneLogin;
+    global.getApp = originalGetApp;
+    global.wx = originalWx;
+  }
 });

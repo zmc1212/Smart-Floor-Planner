@@ -1,4 +1,6 @@
-const api=require('../../../utils/api');
+const api = require('../../../utils/api');
+const { openSurveyingEditor } = require('../../../utils/surveyNavigation.js');
+
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
   let menuRect = null;
@@ -10,22 +12,162 @@ function navigationMetrics() {
     navigationRight: Math.max(94, Number(windowInfo.windowWidth || 390) - menuLeft + 10),
   };
 }
-function slot(range){const m=String(range||'').match(/[[(]([^,]+),([^\])]+)[\])]/);if(!m)return {time:'待确认'};const s=new Date(m[1].replaceAll('"','')),e=new Date(m[2].replaceAll('"',''));const p=x=>String(x).padStart(2,'0');return {time:`${p(s.getHours())}:${p(s.getMinutes())} - ${p(e.getHours())}:${p(e.getMinutes())}`};}
+
+function padZero(num) {
+  return String(num).padStart(2, '0');
+}
+
+function formatDateKey(d) {
+  return `${d.getFullYear()}-${padZero(d.getMonth() + 1)}-${padZero(d.getDate())}`;
+}
+
+function parseSlot(range) {
+  const m = String(range || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
+  if (!m) {
+    return { time: '待确认', dateKey: '', dateLabel: '', startHour: 0 };
+  }
+  const s = new Date(m[1].replaceAll('"', ''));
+  const e = new Date(m[2].replaceAll('"', ''));
+  const dateKey = formatDateKey(s);
+  const dateLabel = `${s.getMonth() + 1}/${s.getDate()}`;
+  return {
+    time: `${padZero(s.getHours())}:${padZero(s.getMinutes())} - ${padZero(e.getHours())}:${padZero(e.getMinutes())}`,
+    dateKey,
+    dateLabel,
+    startHour: s.getHours(),
+  };
+}
+
 Page({
-  data: { navigationTop: 24, navigationHeight: 32, navigationRight: 96, loading: true, confirmed: [], history: [], error: '', showBack: true },
+  data: {
+    navigationTop: 24,
+    navigationHeight: 32,
+    navigationRight: 96,
+    loading: true,
+    error: '',
+    showBack: true,
+    currentMonthText: '',
+    selectedDateKey: '',
+    selectedDateTitle: '今日待上门任务',
+    todayDateKey: '',
+    weekDays: [],
+    allAppointments: [],
+    selectedAppointments: [],
+    confirmed: [],
+    history: [],
+    todayCount: 0,
+    weekCount: 0,
+    completedCount: 0,
+  },
+
   onLoad() {
     const pages = getCurrentPages();
-    this.setData({ ...navigationMetrics(), showBack: Boolean(pages && pages.length > 1) });
+    const now = new Date();
+    const todayKey = formatDateKey(now);
+    const monthText = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+    this.setData({
+      ...navigationMetrics(),
+      showBack: Boolean(pages && pages.length > 1),
+      currentMonthText: monthText,
+      todayDateKey: todayKey,
+      selectedDateKey: todayKey,
+    });
   },
-  onShow() { this.load(); },
+
+  onShow() {
+    this.load();
+  },
+
+  buildWeekDays(refDate, appointments) {
+    const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const current = new Date(refDate);
+    const day = current.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    const monday = new Date(current);
+    monday.setDate(current.getDate() + diffToMonday);
+
+    const todayKey = formatDateKey(new Date());
+    const days = [];
+    const taskCountMap = {};
+
+    (appointments || []).forEach((item) => {
+      if (item.dateKey && item.status === 'confirmed') {
+        taskCountMap[item.dateKey] = (taskCountMap[item.dateKey] || 0) + 1;
+      }
+    });
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const key = formatDateKey(d);
+      const isToday = key === todayKey;
+      const dayName = isToday ? '今天' : dayNames[d.getDay()];
+      const taskCount = taskCountMap[key] || 0;
+
+      days.push({
+        key,
+        dayName,
+        dateLabel: `${d.getMonth() + 1}/${d.getDate()}`,
+        isToday,
+        hasTask: taskCount > 0,
+        taskCount,
+      });
+    }
+
+    return days;
+  },
+
   async load() {
     this.setData({ loading: true, error: '' });
     try {
       const r = await api.request('/appointments', 'GET');
-      const items = (r.data || []).map((x) => ({ ...x, ...slot(x.timeRange), statusLabel: x.status === 'expired' ? '已过期' : x.status === 'confirmed' ? '已确认' : x.status }));
+      const items = (r.data || []).map((x) => {
+        const parsed = parseSlot(x.timeRange);
+        return {
+          ...x,
+          ...parsed,
+          statusLabel: x.status === 'expired' ? '已过期' : x.status === 'confirmed' ? '待上门' : x.status === 'completed' ? '已完成' : x.status || '待上门',
+          customerName: x.customerName || x.leadName || '客户',
+          designerName: x.designerName || '专属设计师',
+          community: x.community || x.address || '量房预约',
+        };
+      });
+
+      const confirmed = items.filter((item) => item.status === 'confirmed');
+      const history = items.filter((item) => item.status !== 'confirmed');
+
+      const now = new Date();
+      const todayKey = this.data.todayDateKey || formatDateKey(now);
+      const weekDays = this.buildWeekDays(now, items);
+
+      // Counts calculation
+      const todayCount = confirmed.filter((item) => item.dateKey === todayKey).length;
+      const weekDateKeys = new Set(weekDays.map((w) => w.key));
+      const weekCount = confirmed.filter((item) => weekDateKeys.has(item.dateKey)).length;
+      const completedCount = items.filter((item) => item.status === 'completed').length || history.length;
+
+      const selectedKey = this.data.selectedDateKey || todayKey;
+      let selectedList = confirmed.filter((item) => item.dateKey === selectedKey);
+      if (!selectedList.length && selectedKey === todayKey) {
+        selectedList = confirmed.filter((item) => !item.dateKey || item.dateKey === todayKey);
+      }
+
+      const isTodaySelected = selectedKey === todayKey;
+      const selectedDayObj = weekDays.find((d) => d.key === selectedKey);
+      const selectedDateTitle = isTodaySelected
+        ? `今日待上门任务 (${selectedDayObj ? selectedDayObj.dateLabel : ''})`
+        : `${selectedDayObj ? selectedDayObj.dateLabel + ' ' + selectedDayObj.dayName : selectedKey} 待上门任务`;
+
       this.setData({
+        allAppointments: items,
         confirmed: items.filter((item) => item.status === 'confirmed'),
         history: items.filter((item) => item.status !== 'confirmed'),
+        weekDays,
+        todayCount,
+        weekCount,
+        completedCount,
+        selectedAppointments: selectedList,
+        selectedDateTitle,
       });
     } catch (e) {
       this.setData({ error: e.message || '日程加载失败' });
@@ -33,13 +175,82 @@ Page({
       this.setData({ loading: false });
     }
   },
-  manageUnavailability() {
-    wx.navigateTo({ url: '/packages/business/measurer-unavailability/measurer-unavailability' });
+
+  selectDay(event) {
+    const key = event.currentTarget.dataset.date;
+    if (!key) return;
+
+    const { confirmed, todayDateKey, weekDays } = this.data;
+    const isTodaySelected = key === todayDateKey;
+    const selectedDayObj = weekDays.find((d) => d.key === key);
+    const selectedDateTitle = isTodaySelected
+      ? `今日待上门任务 (${selectedDayObj ? selectedDayObj.dateLabel : ''})`
+      : `${selectedDayObj ? selectedDayObj.dateLabel + ' ' + selectedDayObj.dayName : key} 待上门任务`;
+
+    let selectedList = confirmed.filter((item) => item.dateKey === key);
+    if (!selectedList.length && isTodaySelected) {
+      selectedList = confirmed.filter((item) => !item.dateKey || item.dateKey === key);
+    }
+
+    this.setData({
+      selectedDateKey: key,
+      selectedAppointments: selectedList,
+      selectedDateTitle,
+    });
   },
+
   openAppointment(event) {
     const item = event.currentTarget.dataset.item;
-    if (!item || !item.id || !item.leadId) return;
-    wx.navigateTo({ url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.id)}` });
+    const id = item && (item.id || item._id);
+    if (!id) return;
+    wx.navigateTo({
+      url: `/packages/business/appointment-detail/appointment-detail?id=${encodeURIComponent(id)}`,
+    });
   },
-  onBack() { wx.navigateBack(); },
+
+  startSurvey(event) {
+    const item = event.currentTarget.dataset.item;
+    if (!item) return;
+    const leadId = item.leadId || item.id || item._id;
+    const floorPlanId = item.floorPlanId;
+    openSurveyingEditor({
+      leadId,
+      floorPlanId,
+    });
+  },
+
+  callCustomer(event) {
+    const item = event.currentTarget.dataset.item;
+    const phone = item && (item.customerPhone || item.phone || item.leadPhone);
+    if (!phone) {
+      wx.showToast({ title: '暂未提供客户电话', icon: 'none' });
+      return;
+    }
+    wx.makePhoneCall({ phoneNumber: phone });
+  },
+
+  openNavigation(event) {
+    const item = event.currentTarget.dataset.item;
+    const address = item && (item.address || item.community);
+    if (!address) {
+      wx.showToast({ title: '暂无详细地址信息', icon: 'none' });
+      return;
+    }
+    wx.showToast({ title: `正在开启导航: ${address}`, icon: 'none' });
+  },
+
+  manageUnavailability() {
+    wx.navigateTo({
+      url: '/packages/business/measurer-unavailability/measurer-unavailability',
+    });
+  },
+
+  onBack() {
+    const pages = getCurrentPages();
+    if (pages && pages.length > 1) {
+      wx.navigateBack({ delta: 1 });
+    } else {
+      wx.switchTab({ url: '/pages/index/index' });
+    }
+  },
 });

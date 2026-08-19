@@ -259,10 +259,10 @@ closed 为终止状态
 - 正式户型继续使用 v4 `surveyGraph` 合同，单位为毫米；本计划不得引入旧编辑器或旧 `layoutData`。
 - 正式量房提交后，线索从 `new/measuring` 推进为 `designing`。
 - AI 生成任务与“客户可见发布事实”分离；只有 `ai_generation_publications` 中活动发布的方案可见。
-- 客户项目页统一展示设计师名片、最新预约、正式户型摘要和已发布方案。
+- 客户项目页统一展示设计师名片、最新预约、正式户型摘要和已发布命名方案图集。
 - 公共匿名领取链路不展示装修公司；进入本人项目和预约后按业务合同展示服务企业。
 
-阶段 6 已通过仅客户本人读取的项目聚合落地：`CustomerProjectRepository` 将企业、设计师名片、当前预约、完成的 v4 正式户型摘要和活动发布方案聚合为只读项目；读取强制以 `customer_user_id` 校验，不能以手机号或客户端企业上下文代替。负责设计师或企业负责人只能发布/撤回属于该线索且已成功的 AI generation；撤回保留生成记录，但立即从客户聚合和受保护图片端点隐藏。已批准的客户项目页展示服务进度、真实设计师/测量员及预约、完成的正式户型摘要和主动发布的方案卡；受保护方案图片以认证请求读取为小程序本地临时文件后才预览。正式户型卡保持摘要，因为客户 API 不暴露可编辑 graph，也不提供客户量房编辑入口。
+阶段 6 已通过仅客户本人读取的项目聚合落地：`CustomerProjectRepository` 将企业、设计师名片、当前预约、完成的 v4 正式户型摘要和活动发布方案聚合为只读项目，并分组为 `publishedSchemes`。读取强制以 `customer_user_id` 校验，不能以手机号或客户端企业上下文代替。后台工作台从线索对话勾选效果图后发送命名方案图集（`POST /api/leads/[id]/ai-scheme-publications`）；小程序设计师仍可按单张成功 generation 发布。撤回保留生成记录，但立即从客户聚合和受保护图片端点隐藏。已批准的客户项目页展示服务进度、真实设计师/测量员及预约、完成的正式户型摘要，以及按方案名嵌套的效果图网格（预览队列不出该方案）。无 workflow 的小程序单图归入「其他效果图」。受保护方案图片以认证请求读取为小程序本地临时文件后才预览。正式户型卡保持摘要，因为客户 API 不暴露可编辑 graph，也不提供客户量房编辑入口。
 
 ## 11. 签单与三方提成
 
@@ -294,7 +294,7 @@ closed 为终止状态
 | 可用时段 | `GET /api/appointments/availability`；第 5 阶段已完成，按企业排班、时长/步长、活动预约与不可用时间返回候选测量员可用时段，以及企业时区、时长、步长和最远可预约天数边界。 |
 | 预约 | `GET/POST /api/appointments`、`POST /api/appointments/[id]/customer-reschedule`、`POST /api/appointments/[id]/internal-reschedule`、`POST /api/appointments/[id]/address`、`POST /api/appointments/[id]/cancel`、`POST /api/appointments/[id]/complete`；第 5 阶段已完成，已接通版本乐观锁、客户/设计师/测量员/企业负责人边界、自动换测量员、事件审计，以及创建、改期、取消后的事务后员工和已授权客户订阅消息尝试。地址接口允许已分配设计师或测量员在预约创建后补充服务地址，并写入 `address_updated` 事件。完成预约还要求线索关联已完成的正式 v4 量房户型且至少存在一个闭合空间；否则接口返回 `appointment_survey_required`（409）。客户读取和改期仅在请求线索或预约确属本人后推导企业范围，不接受 token 或请求声明的企业 ID。 |
 | 日历与配置 | `GET/PUT /api/appointment-settings`、`GET/POST/DELETE /api/measurer-unavailability`；第 5 阶段已完成。 |
-| 客户项目与方案发布 | `GET /api/miniprogram/customer-projects/[leadId]`、`GET /api/miniprogram/customer-projects/[leadId]/published-generations/[generationId]/image`、`POST /api/leads/[id]/ai-publications`、`DELETE /api/leads/[id]/ai-publications/[generationId]`；阶段 6 后端切片已实现。客户读取只允许本人项目，设计师仅能发布/撤回自己负责线索的已成功 generation，企业负责人可管理本企业线索；已撤回或已删除 generation 绝不出现在客户聚合或图片端点。 |
+| 客户项目与方案发布 | `GET /api/miniprogram/customer-projects/[leadId]`、`GET /api/miniprogram/customer-projects/[leadId]/published-generations/[generationId]/image`、`POST /api/leads/[id]/ai-publications`、`DELETE /api/leads/[id]/ai-publications/[generationId]`、`POST /api/leads/[id]/ai-scheme-publications`、`DELETE /api/leads/[id]/ai-scheme-publications/[workflowId]`。客户读取仍只允许本人项目。后台设计师从线索对话勾选效果图后发送命名方案图集；小程序设计师仍可按单张成功 generation 发布。客户 DTO 将活动发布分组为 `publishedSchemes`（对话方案套，无 workflow 的单图归入「其他效果图」）。已撤回或已删除 generation 绝不出现在客户聚合或图片端点。 |
 | 启动与身份外壳 | `GET /api/miniprogram/bootstrap`；第 11 阶段实现。服务端按当前签名 JWT 实时校验 `contextVersion`、活动员工/推荐人关系，返回当前角色、有效角色组、企业/成员上下文、落点、能力白名单和服务端徽标摘要；无效上下文返回 `identity_context_invalid`，不回退客户身份。 |
 | 提成 | `GET/PUT /api/commission-rules`、`GET /api/lead-commissions?status=&role=&fromDate=&toDate=&source=`、`POST /api/lead-commissions/mark-paid`；第 7 阶段服务端已实现，第 16 阶段增加来源筛选。规则只允许企业管理员/平台管理角色按租户读取和以版本乐观锁更新；报表和付款 API 只返回或修改本企业记录。 |
 
@@ -310,13 +310,13 @@ closed 为终止状态
 第 5 阶段运行路由已按各自已批准的第 5 阶段设计源写入两份设计还原台账：
 
 - `packages/business/referrer-workbench/referrer-workbench`：推荐人企业关系、内部企业选择和推广码入口。
-- `packages/business/customer-project/customer-project`：已批准的第 6 阶段客户项目服务册展示真实预约、设计师/测量员、完成正式户型摘要和主动发布方案；受保护方案图片读取为小程序本地文件后再供客户预览。该页面刻意不提供客户量房编辑入口或可编辑户型查看器。
+- `packages/business/customer-project/customer-project`：已批准的第 6 阶段客户项目服务册展示真实预约、设计师/测量员、完成正式户型摘要和按方案名分组的主动发布图集；受保护方案图片读取为小程序本地文件后再供客户预览。该页面刻意不提供客户量房编辑入口或可编辑户型查看器。
 - `packages/business/appointment-detail/appointment-detail`：真实服务调度记录及按岗位限制的内部改期、取消、完成和服务地址补录动作；已分配设计师与测量员都可在预约详情中补充或修正地址。
 - `packages/business/appointment-reschedule/appointment-reschedule`：服务端计算可用时段，支持客户改期或调整原因选填的内部改期。
 - `packages/business/appointment-booking/appointment-booking`：负责设计师从无有效预约的线索详情进入，填写上门地址、选择服务端实时计算的可用时段并创建首次预约；若首次预约时地址未完整确认，后续由预约详情补录。
 - `packages/business/measurer-calendar/measurer-calendar`：已确认的测量员日程，提供不可用时间编辑入口。
 - `packages/business/measurer-unavailability/measurer-unavailability`：测量员仅维护本人不可用时段；使用原生日期/时段 picker、原因、保存和删除，API 仍在服务端强制角色和本人边界。
-- `packages/business/onboarding/onboarding`：员工/推荐人入驻码落地页；它在手机号授权前解析码类型，收集授权，员工只选择 `designer` 或 `measurer`，调用既有入驻接口并切换到返回身份上下文。
+- `packages/business/onboarding/onboarding`：员工/推荐人入驻码落地页；它在手机号授权前解析码类型，收集授权，员工只选择 `designer` 或 `measurer`，推荐人在手机号授权后必须填写真实姓名，再调用既有入驻接口并切换到返回身份上下文。
 - `packages/business/identity-switch/identity-switch`：列出服务端活动身份上下文，交换签名上下文令牌，刷新完整会话，并重新进入所选客户/员工/推荐人界面。
 
 第 7 阶段商户路由 `/lead-commissions` 已按既有 Admin UI 方向实现三条规则卡、状态/角色/日期台账筛选、真实关联报表列、带确认的批量标记已支付和金额汇总。它新增独立的 `lead-commissions` 导航与权限边界，不替换 `/acquisition-commissions`。其余功能型后台工作遵循双语 Admin UI 重构约定及既有 Ant Design/Admin Pro 路由模式。
@@ -346,10 +346,10 @@ closed 为终止状态
 
 | 当前身份 | 默认落点与导航 | 必须完成的核心任务 | 明确禁止出现 |
 | --- | --- | --- | --- |
-| 客户 | `服务 / 项目 / 我的` | 查看本人服务进度、当前预约、正式户型摘要和已发布方案；在允许窗口内改期 | 员工线索池、正式量房编辑器、BLE、AI 生产工具、签单/提成管理 |
+| 客户 | `服务 / 项目 / 我的` | 查看本人服务进度、当前预约、正式户型摘要和已发布命名方案图集；在允许窗口内改期 | 员工线索池、正式量房编辑器、BLE、AI 生产工具、签单/提成管理 |
 | 推荐人 | `推广 / 进度 / 收益 / 我的` | 在工作台内选择服务企业、展示推广服务码、查看脱敏后的客户服务里程碑和本人提成状态 | 客户手机号、精确地址、可编辑户型、预约内部原因、员工调度和企业规则 |
 | 设计师 | `工作台 / 客户 / 设计 / 我的` | 处理本人被派线索、创建或协调预约、查看正式量房结果、生成并发布方案、推进签约协作 | 测量员请假维护、他人线索、企业级提成配置、无项目约束的自由量房入口 |
-| 测量员 | `日程 / 任务 / 量房 / 我的` | 查看本人预约、维护不可用时间、从已指派任务进入唯一正式量房编辑器、完成量房交接 | 设计发布、签约、推荐人收益、企业规则和未指派客户数据 |
+| 测量员 | `工作台 / 任务 / 量房 / 我的` | 先进入角色工作台，再查看本人预约、维护不可用时间、从已指派任务进入唯一正式量房编辑器、完成量房交接 | 设计发布、签约、推荐人收益、企业规则和未指派客户数据 |
 | 企业负责人 | `经营 / 客户 / 预约 / 我的` | 查看本企业异常与关键指标、处理派单/预约异常、查看客户全流程、执行现有受权签约和移动审批 | 以负责人身份直接继承设计师或测量员工具；需要实操时必须切换到对应员工身份 |
 
 TabBar 使用角色白名单生成，不保留所有身份共用的固定中心“量房”按钮。只有测量员身份显示量房主入口；设计师和企业负责人只能从有权限的线索/户型上下文进入只读结果或现有业务动作，客户和推荐人永远不显示量房编辑入口。客户端隐藏、深链守卫和服务端授权必须三层一致，不能把“页面上看不到”当成权限控制。
@@ -431,15 +431,15 @@ TabBar 使用角色白名单生成，不保留所有身份共用的固定中心�
 | 3. 客户授权与自动派单 | `Completed` | 两阶段扫码、原子用户关联/建线索、首次有效归属、稳定最小负载派单、无候选保留、事务后通知、服务身份及员工池变化重试已实现；Repository/RLS/并发测试通过。 |
 | 4. 选定设计生产实现 | `Completed` | `promotion-service-code` 与 `free-design-service` 两条路由按 `390x844` 实现三屏状态；服务码图片接口、扫码解析、手机号授权、幂等建线索、设计师二维码交付和无设计师待分配状态已接通。Antigravity 2.8.1 通过内置 `generate_image` 按固定 `3x2` prompt 和有序参考图生成画板，六个独立透明 PNG 已裁切、优化并接入 `packages/business/assets/referral-service-v1/`，均不超过 300KB。聚焦测试通过；真实微信开发者工具 automator 在 iPhone 12/13 Pro `390x844` 模拟器上完成精确路由、元素边界和包含原生胶囊的整窗截图核验。 |
 | 5. 预约与日历 | `Completed` | 租户预约设置、不可用时间、工作时段、首次预约、客户/内部改期、取消/完成、事件审计、乐观版本和排斥约束均已实现。后台设置单可确认默认策略；线索详情和测量员日程进入真实预约调度页，每个岗位只显示被允许的动作，取消原因必填，内部改期原因选填并在填写时写入审计。既有预约状态保留 `390x844` 证据；新增详情与内部动作状态待刷新截图。 |
-| 6. 客户项目、量房与 AI 发布 | `Completed` | 项目聚合、发布/撤回事实、仅客户本人读取、完成正式户型摘要和受保护预览均已实现。AI 结果页现在读取真实发布状态，并允许负责设计师或企业负责人确认后发布/撤回。客户服务册不提供量房编辑或 graph 编辑路径。既有客户项目证据继续有效；新增结果控制待刷新截图。 |
+| 6. 客户项目、量房与 AI 发布 | `Completed` | 项目聚合、仅客户本人读取、完成正式户型摘要和受保护预览均已实现。后台工作台对话发送命名多图方案；小程序设计师仍可按单张成功 generation 发布。客户服务册按方案名分组（无 workflow 单图归入「其他效果图」），不提供量房编辑或 graph 编辑路径。第 6 阶段视觉语言仍为设计源；分组相册的原生胶囊重截待补。 |
 | 7. 签单与三方提成 | `Completed` | 已实现三规则 Repository、签单原子快照、三条唯一提成、已付/作废约束、RLS 报表、批量付款 API 及批准的 `/lead-commissions` 规则/报表工作台。聚焦 PostgreSQL 提成测试、生产构建及认证 `localhost:3006` 对批准桌面工作台的视觉核验均已完成。 |
 | 8. 旧流程下线 | `Completed` | 运行时 schema、接口、菜单、旧工作台和小程序旧联系入口均已删除。PostgreSQL 合同测试和小程序测试通过；历史数据库对象和业务数据保留至第 9 阶段清理演练获得单独批准后处理。 |
 | 9. 清理演练与生产发布 | `Completed` | 已在用户确认的本地 Docker 正式 volume 完成：只读 dry-run、目标指纹和空七牛清单确认、清理前完整备份、单事务业务数据清理、JSON/Markdown 审计以及清理前备份的恢复演练。平台管理员、角色权限、套餐、平台/媒体/AI 配置、提示词及迁移记录均保留；业务表已清空，七牛无候选对象。 |
 | 10. 后台运营与全流程验收工作台 | `In progress` | `/referrer-network-operations` 现为就绪枢纽；`/join-codes` 负责双码作业与审计；`/referrers` 列出推荐人姓名/手机号并支持停用后续扫码；`/appointment-settings` 已进「推荐网络」侧栏分组并展示/确认企业预约策略。后台线索详情现已通过 Cookie 会话取消/完成预约、重新预约，以及发布/撤回 AI 方案，与小程序岗位边界一致；`GET /api/miniprogram/bootstrap` 现按当前身份返回真实 Tab 徽标，失败显示「暂时无法读取」。认证后台视觉核验已在 `http://localhost:3006` 完成，仅 JWT 的设计师线索空态及真实登录态推荐人登录/冷启动工作台均已在 `390x844` 完成原生宿主胶囊核验；预约和方案发布的登录态动作、徽标与五角色首页仍需真实已派线索数据复核。 |
 | 11. 身份启动与权限外壳 | `Completed` | `GET /api/miniprogram/bootstrap` 返回当前签名角色、有效角色组、企业/成员上下文、落点、能力白名单和服务端徽标摘要；冷启动、登录、入驻、领取和切换均先刷新校验；撤权/停用/版本变化清理会话并保留恢复原因；身份导航拒绝未知身份和越权深链，不静默回落客户界面。上下文撤权、停用、多角色恢复及深链负向测试通过。 |
 | 12. 角色信息架构与设计批准 | `In progress` | 用户已批准沿用当前小程序风格。`docs/miniprogram-role-shell-design-v1.*` 定义五角色目标、白名单、恢复状态和安全区；生产已实现 bootstrap 驱动的当前真实路由导航、不泄露失效企业数据的恢复页，以及按身份待办计数的 Tab 徽标（失败显示「暂时无法读取」）。各路由还原台账待 `390x844` 核验。 |
-| 13. 客户与推荐人闭环 | `In progress` | 已实现客户项目索引 `GET /api/miniprogram/customer-projects`，仅按当前 JWT 客户读取本人未归档项目的阶段摘要；推荐人工作台选择其他企业时会先交换签名 `referrerMembershipId` 上下文并刷新会话，故服务码、`GET /api/miniprogram/referrer-progress` 与 `GET /api/miniprogram/referrer-earnings` 始终使用同一当前成员关系边界。聚合只返回脱敏客户标识、服务阶段/更新时间及本人应付、已付或作废收益。客户服务 Tab 徽标统计待改期/待重约，推荐人进度/收益徽标统计未完结里程碑与待付收益。客户/推荐人负向权限测试与小程序聚焦测试通过；新增路由尚待真实登录态 `390x844` 原生胶囊核验。 |
-| 14. 设计师、测量员与企业负责人闭环 | `In progress` | `GET /api/miniprogram/workbench` 现于租户事务中从签名员工上下文推导角色、企业和员工范围；企业负责人经营台返回待派失败、过期未重约和人员缺口，预约 Tab 进入 `enterprise-appointments` 真实列表（含过期），不再占用 `pages/ai-design`。测量员「日程」进入 `measurer-calendar`，过期预约离开已确认列表。客户服务首屏消费共享 `serviceStage`/`nextActionKind`。设计师可在 `profile-edit` 自助维护微信号和二维码。bootstrap 徽标分别统计设计师待跟进与过期、测量员今日任务、负责人异常（含过期未重约）。后台新增 `GET /api/workbench/staff`。聚焦导航/徽标测试已通过，后台角色登录态与小程序登录态 `390x844` 原生胶囊核验、真实多角色数据验收待完成。 |
+| 13. 客户与推荐人闭环 | `In progress` | 已实现客户项目索引 `GET /api/miniprogram/customer-projects`，仅按当前 JWT 客户读取本人未归档项目的阶段摘要；项目册将已发布图片分组为命名方案图集（`publishedSchemes`），无 workflow 的小程序单图归入「其他效果图」。推荐人工作台选择其他企业时会先交换签名 `referrerMembershipId` 上下文并刷新会话，故服务码、`GET /api/miniprogram/referrer-progress` 与 `GET /api/miniprogram/referrer-earnings` 始终使用同一当前成员关系边界。聚合只返回脱敏客户标识、服务阶段/更新时间及本人应付、已付或作废收益。客户服务 Tab 徽标统计待改期/待重约，推荐人进度/收益徽标统计未完结里程碑与待付收益。客户/推荐人负向权限测试与小程序聚焦测试通过；分组相册的原生胶囊核验待补。 |
+| 14. 设计师、测量员与企业负责人闭环 | `In progress` | `GET /api/miniprogram/workbench` 现于租户事务中从签名员工上下文推导角色、企业和员工范围；企业负责人经营台返回待派失败、过期未重约和人员缺口，预约 Tab 进入 `enterprise-appointments` 真实列表（含过期），不再占用 `pages/ai-design`。测量员进入角色工作台，再由其中的日程入口打开 `measurer-calendar`；过期预约离开已确认列表。客户服务首屏消费共享 `serviceStage`/`nextActionKind`。设计师可在 `profile-edit` 自助维护微信号和二维码。bootstrap 徽标分别统计设计师待跟进与过期、测量员工作台今日/任务、负责人异常（含过期未重约）。后台新增 `GET /api/workbench/staff`。聚焦导航/徽标测试已通过，后台角色登录态与小程序登录态 `390x844` 原生胶囊核验、真实多角色数据验收待完成。 |
 | 15. 五角色真实全流程验收 | `Planned` | 使用真实微信账号或同一账号的真实多上下文，从推广码到客户授权、派单、预约、量房、发布、签约和三方提成逐步验收；覆盖冷启动、切换、撤权、通知失败、分页和深链负向场景，并完成每个受影响路由的 `390x844` 原生胶囊证据与双语文档收口。 |
 | 16. 员工活动码获客轨 | `Completed` | 新增 `staff_activity_codes`、扫码解析第三种码、可空推荐人归属锁、出示人锁定 `measurerId`、设计师兼任或自动派设计师、户型 `measurerId` 授权、活动线禁止自动换测量员、无预约待量房工作台任务、按来源快照 2/3 条提成。小程序活动码页沿用推荐人服务码视觉语言并允许企业品牌；`390x844` 原生胶囊核验待补。 |
 
@@ -458,7 +458,7 @@ TabBar 使用角色白名单生成，不保留所有身份共用的固定中心�
 - 推荐人隐私：进度与收益可核对，但手机号、精确地址、户型 graph、内部预约原因和设计文件不可见。
 - 角色深链：复制或转发其他角色页面时由服务端拒绝，客户端显示恢复路径且不闪现越权内容。
 - 通知：创建、改期、换人、取消、失败重试；微信失败不影响业务事务。
-- 量房/AI：只有正式 v4 户型；只有主动发布的 AI 方案对客户可见。
+- 量房/AI：只有正式 v4 户型；只有主动发布的命名方案图集对客户可见。
 - 签单：比例规则要求合同金额；一个事务生成三条记录；已支付提成阻止撤销。
 - 清理：备份可恢复；业务表为空；平台配置与提示词素材完整；七牛删除清单与审计一致。
 

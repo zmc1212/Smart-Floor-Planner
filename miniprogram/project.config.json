@@ -13,6 +13,14 @@
       {
         "type": "folder",
         "value": ".impeccable"
+      },
+      {
+        "type": "file",
+        "value": "packages/business/assets/customer-project-v1/project-delivery-xiao-k.png"
+      },
+      {
+        "type": "file",
+        "value": "packages/business/assets/customer-project-v1/formal-floor-plan-archive.png"
       }
     ],
     "include": []

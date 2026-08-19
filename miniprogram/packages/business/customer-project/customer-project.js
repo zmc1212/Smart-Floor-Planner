@@ -30,7 +30,8 @@ function formatPlanDate(value) {
 function buildProjectStages(project) {
   const hasAppointment = Boolean(project && project.appointment && project.appointment.status === 'confirmed');
   const hasFormalFloorPlan = Boolean(project && project.formalFloorPlan);
-  const hasPublishedDesign = Array.isArray(project && project.publishedDesigns) && project.publishedDesigns.length > 0;
+  const hasPublishedDesign = (Array.isArray(project && project.publishedSchemes) && project.publishedSchemes.length > 0)
+    || (Array.isArray(project && project.publishedDesigns) && project.publishedDesigns.length > 0);
   const stages = [
     { label: '预约确认', complete: hasAppointment },
     { label: '正式量房', complete: hasFormalFloorPlan },
@@ -90,6 +91,18 @@ function decoratePublishedDesigns(items) {
   }));
 }
 
+function decoratePublishedSchemes(schemes, designs) {
+  if (Array.isArray(schemes) && schemes.length) {
+    return schemes.map((scheme) => ({
+      ...scheme,
+      images: decoratePublishedDesigns(scheme && scheme.images),
+    }));
+  }
+  const images = decoratePublishedDesigns(designs);
+  if (!images.length) return [];
+  return [{ id: 'legacy', title: '其他效果图', images }];
+}
+
 Page({
   data: {
     navigationTop: 24,
@@ -102,6 +115,7 @@ Page({
     designer: null,
     range: null,
     formalFloorPlan: null,
+    publishedSchemes: [],
     publishedDesigns: [],
     stages: buildProjectStages(null),
     serviceStageLabel: '',
@@ -133,7 +147,8 @@ Page({
       const result = await api.request(`/miniprogram/customer-projects/${encodeURIComponent(this.data.leadId)}`, 'GET');
       const project = result.data || {};
       const appointment = project.appointment || null;
-      const publishedDesigns = decoratePublishedDesigns(project.publishedDesigns);
+      const publishedSchemes = decoratePublishedSchemes(project.publishedSchemes, project.publishedDesigns);
+      const publishedDesigns = publishedSchemes.flatMap((scheme) => scheme.images);
       const formalFloorPlan = project.formalFloorPlan
         ? {
             ...project.formalFloorPlan,
@@ -146,6 +161,7 @@ Page({
         designer: project.designer || null,
         range: appointment ? formatRange(appointment.timeRange) : null,
         formalFloorPlan,
+        publishedSchemes,
         publishedDesigns,
         stages: buildProjectStages(project),
         serviceStageLabel: project.serviceStageLabel || '',
@@ -153,7 +169,7 @@ Page({
         canRebook: Boolean(project.canRebook),
         canReschedule: Boolean(project.canReschedule),
       });
-      this.loadPublishedImages(publishedDesigns);
+      this.loadPublishedImages(publishedSchemes);
     } catch (error) {
       this.setData({ error: error.message || error.error || '暂时无法加载服务档案' });
     } finally {
@@ -161,20 +177,26 @@ Page({
     }
   },
 
-  async loadPublishedImages(designs) {
+  async loadPublishedImages(schemes) {
     const requestId = this._publishedImageRequestId;
-    const hydrated = await Promise.all((designs || []).map(async (design) => {
-      if (!design.imageEndpoint) return { ...design, imageState: 'error' };
-      try {
-        const imagePath = await fetchPublishedImage(design.imageEndpoint, `${this.data.leadId}-${design.generationId || design.id}`);
-        return { ...design, imagePath, imageState: 'loaded' };
-      } catch (error) {
-        console.warn('Failed to load customer published design image', error);
-        return { ...design, imageState: 'error' };
-      }
-    }));
+    const hydrated = await Promise.all((schemes || []).map(async (scheme) => ({
+      ...scheme,
+      images: await Promise.all((scheme.images || []).map(async (design) => {
+        if (!design.imageEndpoint) return { ...design, imageState: 'error' };
+        try {
+          const imagePath = await fetchPublishedImage(design.imageEndpoint, `${this.data.leadId}-${design.generationId || design.id}`);
+          return { ...design, imagePath, imageState: 'loaded' };
+        } catch (error) {
+          console.warn('Failed to load customer published design image', error);
+          return { ...design, imageState: 'error' };
+        }
+      })),
+    })));
     if (requestId !== this._publishedImageRequestId) return;
-    this.setData({ publishedDesigns: hydrated });
+    this.setData({
+      publishedSchemes: hydrated,
+      publishedDesigns: hydrated.flatMap((scheme) => scheme.images),
+    });
   },
 
   reschedule() {
@@ -199,10 +221,12 @@ Page({
   },
 
   previewPublishedDesign(event) {
+    const schemeIndex = Number(event.currentTarget.dataset.schemeIndex);
     const index = Number(event.currentTarget.dataset.index);
-    const design = this.data.publishedDesigns[index];
+    const scheme = this.data.publishedSchemes[schemeIndex];
+    const design = scheme && scheme.images && scheme.images[index];
     if (!design || !design.imagePath) return;
-    const urls = this.data.publishedDesigns.map((item) => item.imagePath).filter(Boolean);
+    const urls = (scheme.images || []).map((item) => item.imagePath).filter(Boolean);
     wx.previewImage({ current: design.imagePath, urls });
   },
 
