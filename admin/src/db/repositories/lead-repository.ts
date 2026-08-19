@@ -18,6 +18,7 @@ import {
   customerAttributionLocks,
   leadFloorPlans,
   leads,
+  measurementAppointments,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 import {
@@ -48,9 +49,11 @@ export interface LeadWithRelations extends LeadRecord {
   floorPlanRecords: LeadFloorPlanRecord[];
   primaryFloorPlanRecord: LeadFloorPlanRecord | null;
   assignedUser: LeadStaffSummary | null;
+  measurerUser?: LeadStaffSummary | null;
   promoter: LeadStaffSummary | null;
   archivedUser: LeadStaffSummary | null;
   convertedUser: LeadStaffSummary | null;
+  appointment?: typeof measurementAppointments.$inferSelect | null;
 }
 
 export interface LeadListOptions {
@@ -158,7 +161,7 @@ export class LeadRepository {
     const staffIds = Array.from(
       new Set(
         rows.flatMap((row) =>
-          [row.assignedTo, row.promoterId, row.archivedBy, row.convertedBy].filter(
+          [row.assignedTo, row.measurerId, row.promoterId, row.archivedBy, row.convertedBy].filter(
             (value): value is bigint => value !== null
           )
         )
@@ -180,6 +183,17 @@ export class LeadRepository {
         : []
     );
     const staffMap = new Map(staffRows.map((staff) => [staff.id, staff]));
+    const appointmentRows = await this.transaction
+      .select()
+      .from(measurementAppointments)
+      .where(inArray(measurementAppointments.leadId, leadIds))
+      .orderBy(desc(measurementAppointments.createdAt), desc(measurementAppointments.id));
+    const appointmentMap = new Map<bigint, typeof measurementAppointments.$inferSelect>();
+    for (const appointment of appointmentRows) {
+      if (appointment.status === 'confirmed' && !appointmentMap.has(appointment.leadId)) {
+        appointmentMap.set(appointment.leadId, appointment);
+      }
+    }
 
     return rows.map((row) => ({
       ...row,
@@ -196,9 +210,13 @@ export class LeadRepository {
       assignedUser: row.assignedTo
         ? staffMap.get(row.assignedTo) ?? null
         : null,
+      measurerUser: row.measurerId
+        ? staffMap.get(row.measurerId) ?? null
+        : null,
       promoter: row.promoterId ? staffMap.get(row.promoterId) ?? null : null,
       archivedUser: row.archivedBy ? staffMap.get(row.archivedBy) ?? null : null,
       convertedUser: row.convertedBy ? staffMap.get(row.convertedBy) ?? null : null,
+      appointment: appointmentMap.get(row.id) ?? null,
     }));
   }
 

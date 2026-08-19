@@ -52,6 +52,10 @@ page {
   --text-inverse: #FFFFFF;
   --text-brand: #22C55E;
 
+  /* Shared primary-action disabled state. Keep the label readable on green. */
+  --action-disabled-bg: #A9D9B8;
+  --action-disabled-text: #FFFFFF;
+
   /* Background */
   --bg-page: #F3F4F6;
   --bg-surface: #FFFFFF;
@@ -288,8 +292,8 @@ role-workbench {
 
 /* Appointment action buttons must remain readable while disabled. */
 .confirm[disabled] {
-  color: #ffffff;
-  background: #a9d9b8;
+  color: var(--action-disabled-text);
+  background: var(--action-disabled-bg);
   box-shadow: none;
   opacity: 1;
 }

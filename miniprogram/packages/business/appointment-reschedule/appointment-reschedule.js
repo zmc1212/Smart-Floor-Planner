@@ -55,7 +55,6 @@ Page({
     const slot = this.data.selectedSlot;
     const reason = String(this.data.reason || '').trim();
     if (!slot || this.data.submitting) return;
-    if (this.data.internalMode && !reason) { wx.showToast({ title: '请填写调整原因', icon: 'none' }); return; }
     this.setData({ submitting: true });
     try {
       const action = this.data.internalMode ? 'internal-reschedule' : 'customer-reschedule';

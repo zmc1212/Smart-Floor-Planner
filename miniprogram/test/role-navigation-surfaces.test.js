@@ -63,3 +63,28 @@ test('customer projects tab route mounts the shared TabBar and reserves its safe
   assert.match(template, /<custom-tab-bar\s*\/>/);
   assert.match(styles, /padding-bottom:\s*calc\(156rpx \+ env\(safe-area-inset-bottom\)\)/);
 });
+
+test('referrer progress and earnings are direct role-tab destinations', () => {
+  const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
+  for (const route of ['referrer-progress/referrer-progress', 'referrer-earnings/referrer-earnings']) {
+    const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', route + '.json'), 'utf8'));
+    assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
+  }
+  assert.match(tabBar, /key: 'progress', capability: 'referrer\.progress'/);
+  assert.match(tabBar, /key: 'earnings', capability: 'referrer\.earnings'/);
+});
+
+test('role-specific workbenches hide customer and non-measurer survey creation controls', () => {
+  const mine = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'mine', 'mine.wxml'), 'utf8');
+  const leadDetail = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'lead-detail', 'lead-detail.wxml'), 'utf8');
+  const leadList = fs.readFileSync(path.join(miniProgramRoot, 'components', 'lead-list', 'lead-list.wxml'), 'utf8');
+  const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'surveyNavigation.js'), 'utf8');
+
+  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser\}\}" class="user-summary"/);
+  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser\}\}" class="surface-section floorplan-section"/);
+  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser\}\}" class="user-actions"/);
+  assert.match(leadDetail, /wx:if="\{\{canEditMeasurements\}\}" class="whole-home-actions"/);
+  assert.match(leadDetail, /wx:if="\{\{canEditMeasurements\}\}" class="measurement-record-actions"/);
+  assert.match(leadList, /wx:if="\{\{canAdd\}\}" class="add-lead-button"/);
+  assert.match(navigation, /canAccessRoute\('\/packages\/surveying\/editor\/surveying-editor', signedContext\)/);
+});

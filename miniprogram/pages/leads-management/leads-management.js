@@ -45,7 +45,7 @@ Page({
       this.setData({ roleWorkbenchRole });
       return;
     }
-    this.setData({ roleWorkbenchRole: '', canCreateLead: role === 'enterprise_admin' || role === 'staff' });
+    this.setData({ roleWorkbenchRole: '', canCreateLead: role === 'enterprise_admin' });
     if (this.data.openid !== app.globalData.openid) {
       this.setData({
         openid: app.globalData.openid || ''

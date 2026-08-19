@@ -5,6 +5,7 @@ import { PageContainer } from '@ant-design/pro-components';
 import { Loader2 } from 'lucide-react';
 import MerchantDashboard from '@/components/MerchantDashboard';
 import PlatformDashboard from '@/components/PlatformDashboard';
+import StaffWorkbench from '@/components/dashboard/StaffWorkbench';
 
 type AdminHomeDashboardProps = {
   displayName: string;
@@ -20,7 +21,14 @@ export default function AdminHomeDashboard({
   enterpriseName,
 }: AdminHomeDashboardProps) {
   const isPlatformAdmin = role === 'super_admin' || role === 'admin';
-  const title = isPlatformAdmin ? '平台管理中心' : '企业工作台';
+  const isStaff = role === 'designer' || role === 'measurer';
+  const title = isPlatformAdmin
+    ? '平台管理中心'
+    : role === 'designer'
+      ? '设计师工作台'
+      : role === 'measurer'
+        ? '测量员工作台'
+        : '企业工作台';
   const content = isPlatformAdmin
     ? '全局业务数据概览'
     : `欢迎回来，${displayName}。这里是 ${enterpriseName || '个人'} 工作台。`;
@@ -36,6 +44,8 @@ export default function AdminHomeDashboard({
         <Suspense fallback={<div className="flex items-center justify-center py-20"><Loader2 className="animate-spin text-primary" size={40} /></div>}>
           {isPlatformAdmin ? (
             <PlatformDashboard />
+          ) : isStaff ? (
+            <StaffWorkbench role={role as 'designer' | 'measurer'} />
           ) : (
             <MerchantDashboard
               admin={{ displayName, username, role, enterpriseName }}

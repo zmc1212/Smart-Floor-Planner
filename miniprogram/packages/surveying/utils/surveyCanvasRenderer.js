@@ -2058,6 +2058,20 @@ function clearDraggingCursor(ctx, rect, options) {
   ctx.restore();
 }
 
+function drawCloseAction(ctx, close) {
+  if (!ctx || !close) return;
+  const radius = close.radius || 14;
+  ctx.beginPath();
+  ctx.fillStyle = '#16a34a';
+  ctx.arc(close.cx, close.cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('合', close.cx, close.cy + 1);
+}
+
 function drawRoundedRectPath(ctx, left, top, width, height, radius) {
   const safeRadius = Math.min(radius, width / 2, height / 2);
   ctx.beginPath();
@@ -2079,7 +2093,7 @@ function drawCursorLensScene(ctx, scene, lensRect, meta) {
   const top = lensRect.top || 0;
   const size = lensRect.size || scene.rect.width || 120;
   const panelPadding = 8;
-  const panelMetaHeight = 40;
+  const panelMetaHeight = 44;
   const panelLeft = left - panelPadding;
   const panelTop = top - panelPadding;
   const panelWidth = size + panelPadding * 2;
@@ -2143,15 +2157,15 @@ function drawCursorLensScene(ctx, scene, lensRect, meta) {
   ctx.restore();
 
   if (!meta) return;
-  const footerY = top + size + 29;
+  const snapY = top + size + 16;
+  const coordY = top + size + 32;
   ctx.save();
   ctx.fillStyle = '#374151';
   ctx.font = '600 10px sans-serif';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
-  ctx.fillText(meta.snapLabel || '', panelLeft + 10, footerY);
-  ctx.textAlign = 'right';
-  ctx.fillText(meta.coordinateLabel || '', panelLeft + panelWidth - 10, footerY);
+  ctx.fillText(meta.snapLabel || '', panelLeft + 10, snapY);
+  ctx.fillText(meta.coordinateLabel || '', panelLeft + 10, coordY);
   ctx.restore();
 }
 
@@ -2248,6 +2262,7 @@ function drawDraggingCursor(ctx, rect, point, options) {
     options && options.lensRect,
     options && options.lensMeta
   );
+  drawCloseAction(ctx, options && options.closeAction);
   ctx.restore();
 }
 
@@ -2465,6 +2480,7 @@ module.exports = {
   drawSurveyScene,
   drawSurveyInteractionScene,
   drawDraggingCursor,
+  drawCloseAction,
   clearDraggingCursor,
   resolveViewportInteractionTransform,
   createViewportInteractionScene,

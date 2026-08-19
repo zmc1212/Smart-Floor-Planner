@@ -84,7 +84,7 @@
     </view>
     <button
       wx:if="{{canMarkConverted}}"
-      class="conversion-primary-action"
+      class="conversion-primary-action flex-row justify-center"
       bindtap="onOpenConversionSheet"
       disabled="{{conversionSubmitting}}"
       aria-label="标记客户已签约"

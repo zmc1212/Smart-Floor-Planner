@@ -24,7 +24,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/ai-workflow/result/ai-design-result': 'staff.design',
   '/packages/ai-workflow/history/ai-design-history': 'staff.design',
   '/packages/business/lead-detail/lead-detail': ['staff.leads', 'staff.tasks', 'enterprise.customers'],
-  '/packages/business/lead-form/lead-form': ['staff.leads', 'enterprise.customers'],
+  '/packages/business/lead-form/lead-form': 'enterprise.customers',
   '/packages/business/appointment-booking/appointment-booking': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
   '/packages/business/appointment-detail/appointment-detail': ['customer.projects', 'staff.appointments', 'staff.schedule', 'enterprise.appointments'],
   '/packages/business/appointment-reschedule/appointment-reschedule': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
@@ -34,6 +34,11 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/referrer-workbench/referrer-workbench': 'referrer.promotion',
   '/packages/business/referrer-progress/referrer-progress': 'referrer.progress',
   '/packages/business/referrer-earnings/referrer-earnings': 'referrer.earnings',
+  '/packages/business/promotion-records/promotion-records': 'enterprise.customers',
+  '/packages/business/promotion-record-detail/promotion-record-detail': 'enterprise.customers',
+  '/packages/business/commission-records/commission-records': 'enterprise.operations',
+  '/packages/business/inspiration/inspiration': 'staff.design',
+  '/packages/business/recommendations/index': 'staff.design',
   '/packages/business/promotion-service-code/promotion-service-code': 'referrer.promotion',
   '/packages/business/customer-projects/customer-projects': 'customer.projects',
   '/packages/business/customer-project/customer-project': 'customer.projects',
@@ -53,6 +58,7 @@ function roleForIdentity(value) {
   if (value.role && ROLE_CAPABILITIES[value.role]) return value.role;
   if (value.mode === 'referrer') return 'referrer';
   if (value.mode === 'customer') return 'customer';
+  if (value.role === 'user') return 'customer';
   if (value.mode === 'staff') {
     return null;
   }

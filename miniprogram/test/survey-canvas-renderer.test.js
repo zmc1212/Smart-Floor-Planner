@@ -2153,6 +2153,55 @@ test('cursor lens reuses the formal wall scene around the drag target', () => {
   )));
 });
 
+test('cursor lens stacks snap and coordinate labels so four-digit values do not overlap', () => {
+  const draft = createTwoClosedRoomsWithSharedDoorDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const scene = surveyCanvasRenderer.createSurveyLensScene({
+    floor,
+    session: floor.session,
+    centerPoint: { xMm: 2636, yMm: 3106 },
+    size: 120,
+    scale: 0.12
+  });
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 390, height: 650 },
+    { x: 220, y: 420 },
+    {
+      dpr: 1,
+      lensScene: scene,
+      lensRect: { left: 20, top: 98, size: 120 },
+      lensMeta: { snapLabel: '外边顶点延长吸附', coordinateLabel: 'X 2636 / Y 3106' }
+    }
+  );
+  const snap = recorder.texts.find((detail) => detail.text === '外边顶点延长吸附');
+  const coords = recorder.texts.find((detail) => detail.text === 'X 2636 / Y 3106');
+  assert.ok(snap);
+  assert.ok(coords);
+  assert.equal(snap.x, coords.x);
+  assert.ok(coords.y - snap.y >= 14);
+});
+
+test('cursor drag overlay can paint the close action without a second green cursor', () => {
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 390, height: 650 },
+    { x: 220, y: 420 },
+    {
+      dpr: 1,
+      showCursor: false,
+      closeAction: { cx: 80, cy: 140, radius: 14 }
+    }
+  );
+  assert.ok(recorder.texts.some((detail) => detail.text === '合' && detail.x === 80 && detail.y === 141));
+  assert.ok(recorder.fills.some((recordedPath) => (
+    recordedPath.some((command) => command[0] === 'arc' && command[1] === 80 && command[2] === 140 && command[3] === 14)
+  )));
+  assert.equal(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'), false);
+});
+
 test('closed dimensions use quiet permanent labels instead of the live blue treatment', () => {
   const scene = createScene(createClosedRectangleDraft());
   const recorder = createRecordingContext();

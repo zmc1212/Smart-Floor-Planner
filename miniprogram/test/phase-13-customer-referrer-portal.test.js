@@ -40,7 +40,10 @@ test('phase 13 pages use custom navigation so their capsule-safe headers are the
     usingComponents: { 'custom-tab-bar': '/custom-tab-bar/index' },
   });
   for (const page of ['referrer-progress/referrer-progress', 'referrer-earnings/referrer-earnings']) {
-    assert.deepEqual(JSON.parse(source(`packages/business/${page}.json`)), { navigationStyle: 'custom' });
+    assert.deepEqual(JSON.parse(source(`packages/business/${page}.json`)), {
+      navigationStyle: 'custom',
+      usingComponents: { 'custom-tab-bar': '/custom-tab-bar/index' }
+    });
   }
 });
 

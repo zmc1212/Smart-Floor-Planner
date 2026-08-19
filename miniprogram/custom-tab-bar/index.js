@@ -20,6 +20,8 @@ const ROLE_ITEMS = {
   ],
   referrer: [
     { key: 'promotion', capability: 'referrer.promotion', pagePath: '/packages/business/referrer-workbench/referrer-workbench', text: '推广', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'progress', capability: 'referrer.progress', pagePath: '/packages/business/referrer-progress/referrer-progress', text: '进度', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
+    { key: 'earnings', capability: 'referrer.earnings', pagePath: '/packages/business/referrer-earnings/referrer-earnings', text: '收益', iconPath: '/images/mine-icons/wallet.png', selectedIconPath: '/images/mine-icons/wallet.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   designer: [

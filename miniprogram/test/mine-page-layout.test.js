@@ -26,3 +26,32 @@ test('Mine workbench keeps four columns on narrow real-device viewports', () => 
     /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/
   );
 });
+
+test('Mine header stays above the profile card and role artwork', () => {
+  assert.match(
+    mineStyles,
+    /\.mine-header\s*\{[\s\S]*?z-index:\s*5/
+  );
+  assert.match(
+    mineStyles,
+    /\.profile-card\s*\{[\s\S]*?z-index:\s*2/
+  );
+  assert.match(
+    mineStyles,
+    /\.mine-role-scene\s*\{[\s\S]*?z-index:\s*3/
+  );
+});
+
+test('Mine profile card follows the safe header in normal flow', () => {
+  const profileCardBlock = mineStyles.match(/\.profile-card\s*\{([\s\S]*?)\}/);
+
+  assert.ok(profileCardBlock, 'profile-card rule should exist');
+  assert.match(
+    profileCardBlock[1],
+    /position:\s*relative[\s\S]*?margin-top:\s*28rpx/
+  );
+  assert.match(
+    mineStyles,
+    /\.user-profile-hero\s*\{[\s\S]*?height:\s*400rpx/
+  );
+});

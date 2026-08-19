@@ -248,6 +248,21 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
         :
       record.assignedTo?.toString() ??
       null,
+    measurerId:
+      record.measurerUser
+        ? staffSummaryToDto(record.measurerUser)
+        : record.measurerId?.toString() ?? null,
+    appointment: record.appointment
+      ? {
+          id: record.appointment.id.toString(),
+          address: record.appointment.address,
+          timeRange: record.appointment.timeRange,
+          status: record.appointment.status,
+          version: record.appointment.version,
+          createdAt: record.appointment.createdAt,
+          updatedAt: record.appointment.updatedAt,
+        }
+      : null,
     name: record.name,
     phone: record.phone,
     communityName: record.communityName,

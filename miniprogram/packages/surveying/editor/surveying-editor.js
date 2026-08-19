@@ -1495,7 +1495,8 @@ Page({
           lensScene: this.cursorLensScene,
           lensRect: this.cursorLensRect,
           lensMeta: this.cursorLensMeta,
-          snapGuide: this.cursorDragSnapGuide
+          snapGuide: this.cursorDragSnapGuide,
+          closeAction: this.canvasControls && this.canvasControls.closeAction
         }
       );
     };
@@ -1575,6 +1576,29 @@ Page({
         viewport
       }
     );
+    this.drawViewportInteractionControls(viewport);
+  },
+
+  drawViewportInteractionControls(viewport) {
+    const interaction = this.viewportInteraction;
+    const close = this.canvasControls && this.canvasControls.closeAction;
+    const ctx = this.surveyCtx;
+    const rect = (interaction && interaction.baseScene && interaction.baseScene.rect) || this.canvasRect;
+    if (!interaction || !close || !ctx || !rect) return;
+    const transform = surveyCanvasRenderer.resolveViewportInteractionTransform(
+      interaction.baseViewport,
+      viewport,
+      rect
+    );
+    const dpr = this.surveyCanvasDpr || 1;
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    surveyCanvasRenderer.drawCloseAction(ctx, {
+      cx: close.cx * transform.scale + transform.translateX,
+      cy: close.cy * transform.scale + transform.translateY,
+      radius: close.radius || 14
+    });
+    ctx.restore();
   },
 
   clearViewportInteractionCanvas() {
@@ -1680,6 +1704,10 @@ Page({
     const controls = this.canvasControls || {};
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (controls.closeAction && !this.isCursorLensActive()) {
+      surveyCanvasRenderer.drawCloseAction(ctx, controls.closeAction);
+    }
 
     if (controls.activeAngle) {
       const angle = controls.activeAngle;
@@ -2406,7 +2434,7 @@ Page({
       canSwitchInitialMeasurementSide: this.isFirstMeasurePositionStage(floor, session),
       closureGuideVisible: renderData.closureGuideVisible,
       closureGuideStyle: renderData.closureGuideStyle,
-      closeActionVisible: renderData.closeActionVisible,
+      closeActionVisible: renderData.closeActionVisible && !this.isCursorLensActive(),
       closeActionStyle: renderData.closeActionStyle,
       selectedWall,
       selectedOpening,

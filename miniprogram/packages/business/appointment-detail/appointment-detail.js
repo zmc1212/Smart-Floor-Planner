@@ -77,7 +77,10 @@ Page({
   async load() {
     this.setData({ loading: true, error: '' });
     try {
-      const result = await api.request(`/appointments?leadId=${encodeURIComponent(this.data.leadId)}`, 'GET');
+      const result = await api.request(
+        `/appointments?leadId=${encodeURIComponent(this.data.leadId)}&appointmentId=${encodeURIComponent(this.data.appointmentId)}`,
+        'GET'
+      );
       const items = result.data || [];
       const appointment = items.find((item) => item.id === this.data.appointmentId) || items[0];
       if (!appointment) throw new Error('未找到预约记录');

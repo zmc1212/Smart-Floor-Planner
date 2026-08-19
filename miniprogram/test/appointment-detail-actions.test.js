@@ -28,12 +28,14 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(wxml, /wx:if="\{\{canCancel\}\}"/);
 });
 
-test('internal reschedule reuses real availability and requires an audit reason', () => {
+test('internal reschedule reuses real availability and keeps the audit reason optional', () => {
   const script = read('packages/business/appointment-reschedule/appointment-reschedule.js');
   const wxml = read('packages/business/appointment-reschedule/appointment-reschedule.wxml');
   assert.match(script, /query\.mode === 'internal'/);
   assert.match(script, /internal-reschedule/);
-  assert.match(script, /请填写调整原因/);
+  assert.doesNotMatch(script, /请填写调整原因/);
+  assert.match(wxml, /disabled="\{\{!selectedSlot\}\}"/);
+  assert.match(wxml, /调整原因（选填）/);
   assert.match(wxml, /wx:if="\{\{internalMode\}\}"/);
   assert.match(wxml, /bindinput="onReasonInput"/);
 });
@@ -51,13 +53,17 @@ test('appointment detail derives lifecycle actions from the signed staff role', 
     getMenuButtonBoundingClientRect: () => ({ left: 280, top: 24, height: 32 }),
     navigateTo() {}
   };
-  api.request = async () => ({ data: [{
+  const requestUrls = [];
+  api.request = async (url) => {
+    requestUrls.push(url);
+    return { data: [{
     id: 'appointment-1',
     status: 'confirmed',
     version: 2,
     address: '测试小区',
     timeRange: '["2026-08-20T01:00:00.000Z","2026-08-20T03:00:00.000Z"]'
-  }] });
+    }] };
+  };
 
   try {
     for (const staffRole of ['designer', 'measurer']) {
@@ -87,6 +93,7 @@ test('appointment detail derives lifecycle actions from the signed staff role', 
     assert.equal(customerContext.data.canReschedule, false);
     assert.equal(customerContext.data.canCancel, false);
     assert.equal(customerContext.data.canComplete, false);
+    assert.ok(requestUrls.every((url) => url.includes('appointmentId=appointment-1')));
   } finally {
     api.request = originalRequest;
     global.Page = originalPage;

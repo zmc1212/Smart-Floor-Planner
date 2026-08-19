@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useCallback, useEffect, useRef, useState, type Key } from 'react';
 import {
   PageContainer,
+  ProCard,
   ProTable,
   type ActionType,
   type ProColumns,
@@ -12,6 +13,7 @@ import {
 import {
   Button,
   Alert,
+  Checkbox,
   Descriptions,
   Drawer,
   Empty,
@@ -19,6 +21,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Pagination,
   Segmented,
   Select,
   Space,
@@ -27,8 +30,8 @@ import {
   Timeline,
   Typography,
 } from 'antd';
-import { useRouter } from 'next/navigation';
-import { Archive, BadgeCheck, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Trash2, Undo2, Users } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Archive, BadgeCheck, CalendarDays, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Trash2, Undo2, Users } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -86,6 +89,14 @@ type Lead = {
   };
   promoterId?: StaffReference | string | null;
   assignedTo?: StaffReference | string | null;
+  measurerId?: StaffReference | string | null;
+  appointment?: {
+    id: string;
+    address?: string;
+    timeRange?: string;
+    status?: string;
+    version?: number;
+  } | null;
   floorPlanIds?: FloorPlan[];
   primaryFloorPlanId?: FloorPlan | string | null;
   followUpRecords?: FollowUpRecord[];
@@ -179,6 +190,26 @@ function formatDate(value?: string | Date) {
   return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString('zh-CN');
 }
 
+function formatAppointmentRange(range?: string | null) {
+  if (!range) return '';
+  const values = range.replace(/^[[(]|[)]]$/g, '').replaceAll('"', '').split(',');
+  if (values.length < 2) return range;
+  const start = formatDate(values[0]);
+  const end = formatDate(values[1]);
+  return end === '-' ? start : `${start} - ${end}`;
+}
+
+function appointmentBoundary(range?: string | null, index = 0) {
+  if (!range) return '';
+  const values = range.replace(/^[[(]|[)]]$/g, '').replaceAll('"', '').split(',');
+  const value = values[index]?.trim();
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+  return local.toISOString().slice(0, 16);
+}
+
 function chinaDateValue() {
   return new Date(Date.now() + 8 * 60 * 60 * 1000)
     .toISOString()
@@ -244,6 +275,7 @@ export default function LeadsPage() {
   const leadDetailRequestRef = useRef<AbortController | null>(null);
   const confirmAction = useConfirmDialog();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -269,11 +301,33 @@ export default function LeadsPage() {
   const [conversionSubmitting, setConversionSubmitting] = useState(false);
   const [revertConversionOpen, setRevertConversionOpen] = useState(false);
   const [revertReason, setRevertReason] = useState('');
+  const [appointmentOpen, setAppointmentOpen] = useState(false);
+  const [appointmentStart, setAppointmentStart] = useState('');
+  const [appointmentEnd, setAppointmentEnd] = useState('');
+  const [appointmentAddress, setAppointmentAddress] = useState('');
+  const [appointmentSubmitting, setAppointmentSubmitting] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleLead, setRescheduleLead] = useState<Lead | null>(null);
+  const [rescheduleStart, setRescheduleStart] = useState('');
+  const [rescheduleEnd, setRescheduleEnd] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
 
   useEffect(() => () => {
     leadListRequestRef.current?.abort();
     leadDetailRequestRef.current?.abort();
   }, []);
+
+  useEffect(() => {
+    const leadId = searchParams.get('leadId');
+    if (!leadId) return;
+    void fetch(`/api/leads/${leadId}`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || '线索详情加载失败');
+        setSelectedLead(result.data);
+      })
+      .catch((error) => notify.error(error instanceof Error ? error.message : '线索详情加载失败'));
+  }, [searchParams]);
 
   useEffect(() => {
     void fetch('/api/leads/capabilities')
@@ -321,6 +375,69 @@ export default function LeadsPage() {
     setConversionOpen(false);
     setRevertConversionOpen(false);
     setRevertReason('');
+    setAppointmentOpen(false);
+    setRescheduleOpen(false);
+    setRescheduleLead(null);
+  };
+
+  const createAppointment = async () => {
+    if (!selectedLead || !appointmentStart || !appointmentEnd || !appointmentAddress.trim()) return;
+    setAppointmentSubmitting(true);
+    try {
+      const response = await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId: selectedLead._id, startAt: new Date(appointmentStart).toISOString(), endAt: new Date(appointmentEnd).toISOString(), address: appointmentAddress.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '创建预约失败');
+      setSelectedLead((current) => current ? { ...current, appointment: result.data } : current);
+      setAppointmentOpen(false);
+      notify.success('预约上门量房时间已设置');
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '创建预约失败');
+    } finally {
+      setAppointmentSubmitting(false);
+    }
+  };
+
+  const openReschedule = (lead: Lead) => {
+    if (!lead.appointment) return;
+    setRescheduleLead(lead);
+    setRescheduleStart(appointmentBoundary(lead.appointment.timeRange, 0));
+    setRescheduleEnd(appointmentBoundary(lead.appointment.timeRange, 1));
+    setRescheduleReason('客户已确认新的上门时间');
+    setRescheduleOpen(true);
+  };
+
+  const rescheduleAppointment = async () => {
+    const appointment = rescheduleLead?.appointment;
+    if (!appointment || !rescheduleStart || !rescheduleEnd || !rescheduleReason.trim()) return;
+    setAppointmentSubmitting(true);
+    try {
+      const response = await fetch(`/api/appointments/${appointment.id}/internal-reschedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          startAt: new Date(rescheduleStart).toISOString(),
+          endAt: new Date(rescheduleEnd).toISOString(),
+          version: appointment.version,
+          reason: rescheduleReason.trim(),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '修改预约失败');
+      setSelectedLead((current) => current ? { ...current, appointment: result.data } : current);
+      setRescheduleOpen(false);
+      setRescheduleLead(null);
+      notify.success('预约时间已修改，并已记录交接原因');
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '修改预约失败');
+    } finally {
+      setAppointmentSubmitting(false);
+    }
   };
 
   const updateLead = async (
@@ -600,6 +717,18 @@ export default function LeadsPage() {
       render: (_, lead) => getStaffName(lead.assignedTo) || '未绑定设计师',
     },
     {
+      title: '量房安排',
+      key: 'survey-assignment',
+      hideInSearch: true,
+      width: 260,
+      render: (_, lead) => (
+        <Flex vertical gap={4}>
+          <Typography.Text>{getStaffName(lead.measurerId) || '未绑定测量员'}</Typography.Text>
+          {lead.appointment ? <><Typography.Text type="secondary" className="text-xs">{formatAppointmentRange(lead.appointment.timeRange)}</Typography.Text><Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: lead.appointment.address || '地址待确认' }}>{lead.appointment.address || '地址待确认'}</Typography.Text></> : <Typography.Text type="secondary" className="text-xs">尚未预约上门</Typography.Text>}
+        </Flex>
+      ),
+    },
+    {
       title: '提交日期',
       dataIndex: 'createdAt',
       valueType: 'dateTime',
@@ -713,7 +842,92 @@ export default function LeadsPage() {
             onChange: setSelectedRowKeys,
           } : false}
           pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-          scroll={{ x: 1240 }}
+          cardProps={false}
+          tableViewRender={(tableProps) => {
+            const rows = (tableProps.dataSource || []) as Lead[];
+            const pagination = tableProps.pagination;
+            const rowSelection = tableProps.rowSelection;
+            return (
+              <Flex vertical gap={12} className="lead-card-list">
+                {tableProps.loading ? (
+                  <ProCard bordered loading bodyStyle={{ minHeight: 120 }} />
+                ) : rows.length ? rows.map((lead) => {
+                  const isSelected = Boolean(rowSelection?.selectedRowKeys?.some((key) => String(key) === lead._id));
+                  const toggleSelection = (checked: boolean) => {
+                    if (!rowSelection?.onChange) return;
+                    const currentKeys = (rowSelection.selectedRowKeys || []).map((key) => String(key));
+                    const nextKeys = checked
+                      ? [...new Set([...currentKeys, lead._id])]
+                      : currentKeys.filter((key) => key !== lead._id);
+                    const nextRows = rows.filter((item) => nextKeys.includes(item._id));
+                    rowSelection.onChange(nextKeys, nextRows, { type: 'all' });
+                  };
+                  return (
+                    <ProCard
+                      key={lead._id}
+                      bordered
+                      className="lead-record-card"
+                      bodyStyle={{ padding: 16 }}
+                    >
+                      <Flex vertical gap={14}>
+                        <Flex align="start" justify="space-between" gap={16} wrap>
+                          <Flex align="start" gap={12} className="min-w-0">
+                            {rowSelection ? <Checkbox checked={isSelected} onChange={(event) => toggleSelection(event.target.checked)} aria-label={`选择${lead.name}`} /> : null}
+                            <Flex vertical gap={4} className="min-w-0">
+                              <Flex align="center" gap={8} wrap>
+                                <Typography.Title level={5} className="!mb-0">{lead.name}</Typography.Title>
+                                <Tag color={getStatusColor(lead.status)}>{getLeadStatusLabel(lead.status)}</Tag>
+                              </Flex>
+                              <Typography.Text type="secondary" ellipsis={{ tooltip: lead.communityName || '未记录小区' }}>
+                                {lead.communityName || '未记录小区'} · {lead.phone || '暂无联系电话'}
+                              </Typography.Text>
+                            </Flex>
+                          </Flex>
+                          <Space size={8} wrap>
+                            <Button size="small" icon={<Eye size={14} />} onClick={() => void openLeadDetail(lead)}>详情</Button>
+                            {archiveState === 'active' ? (
+                              <Button size="small" icon={<FilePenLine size={14} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}>
+                                {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
+                              </Button>
+                            ) : null}
+                          </Space>
+                        </Flex>
+
+                        <div className="grid grid-cols-1 gap-3 border-y border-border/70 py-3 sm:grid-cols-2 xl:grid-cols-4">
+                          <LeadCardField label="渠道人员" value={getStaffName(lead.promoterId) || '系统录入'} />
+                          <LeadCardField label="绑定设计师" value={getStaffName(lead.assignedTo) || '未绑定设计师'} />
+                          <LeadCardField label="测量员" value={getStaffName(lead.measurerId) || '未绑定测量员'} />
+                          <LeadCardField
+                            label="预约上门量房"
+                            value={lead.appointment ? formatAppointmentRange(lead.appointment.timeRange) : '尚未预约'}
+                            detail={lead.appointment?.address || (lead.appointment ? '地址待确认' : '可在详情中设置')}
+                          />
+                        </div>
+
+                        <Flex align="center" justify="space-between" gap={12} wrap>
+                          <Flex gap={12} wrap>
+                            <Typography.Text type="secondary">来源：{lead.source || '未知'}</Typography.Text>
+                            <Typography.Text type="secondary">提交：{formatDate(lead.createdAt)}</Typography.Text>
+                            {lead.area ? <Typography.Text type="secondary">意向面积：{lead.area} m2</Typography.Text> : null}
+                          </Flex>
+                          {archiveState === 'active' && capabilities.canManageArchive ? (
+                            <Button size="small" icon={<Archive size={14} />} disabled={archiveLoading} onClick={() => void openArchive([lead])}>归档</Button>
+                          ) : archiveState === 'archived' ? (
+                            <Space size={8}>
+                              <Button size="small" icon={<RotateCcw size={14} />} disabled={Boolean(deletingId)} loading={deletingId === lead._id} onClick={() => void restoreLead(lead)}>恢复</Button>
+                              {capabilities.canPurge ? <Button size="small" danger icon={<Trash2 size={14} />} disabled={Boolean(deletingId)} loading={deletingId === lead._id} onClick={() => void openPurge(lead)}>永久删除</Button> : null}
+                            </Space>
+                          ) : null}
+                          {archiveState === 'active' && lead.appointment ? <Button size="small" icon={<CalendarDays size={14} />} onClick={() => openReschedule(lead)}>改预约</Button> : null}
+                        </Flex>
+                      </Flex>
+                    </ProCard>
+                  );
+                }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无符合条件的客户线索" />}
+                {pagination && typeof pagination !== 'boolean' ? <Flex justify="end" className="pt-2"><Pagination {...pagination} size="small" /></Flex> : null}
+              </Flex>
+            );
+          }}
           request={async (params) => {
             leadListRequestRef.current?.abort();
             const controller = new AbortController();
@@ -810,6 +1024,40 @@ export default function LeadsPage() {
             <Typography.Text strong>备注（可选）</Typography.Text>
             <Input.TextArea value={archiveNote} maxLength={500} showCount autoSize={{ minRows: 2, maxRows: 4 }} onChange={(event) => setArchiveNote(event.target.value)} />
           </Flex>
+        </Flex>
+      </Modal>
+
+      <Modal
+        open={rescheduleOpen}
+        title={rescheduleLead ? `为${rescheduleLead.name}修改预约` : '修改预约'}
+        okText="保存新时间"
+        cancelText="取消"
+        okButtonProps={{ loading: appointmentSubmitting, disabled: !rescheduleStart || !rescheduleEnd || !rescheduleReason.trim() }}
+        onCancel={() => setRescheduleOpen(false)}
+        onOk={() => void rescheduleAppointment()}
+      >
+        <Flex vertical gap={12}>
+          <Alert showIcon type="info" message="这是代客户改期" description="设计师与客户通过微信或电话确认后，可在这里代为调整上门时间；保存后会写入预约审计并通知相关人员。" />
+          <Input type="datetime-local" value={rescheduleStart} onChange={(event) => setRescheduleStart(event.target.value)} />
+          <Input type="datetime-local" value={rescheduleEnd} onChange={(event) => setRescheduleEnd(event.target.value)} />
+          <Input.TextArea value={rescheduleReason} maxLength={200} showCount autoSize={{ minRows: 2, maxRows: 4 }} placeholder="填写客户确认方式或改期原因" onChange={(event) => setRescheduleReason(event.target.value)} />
+        </Flex>
+      </Modal>
+
+      <Modal
+        open={appointmentOpen}
+        title="设置预约上门量房"
+        okText="确认预约"
+        cancelText="取消"
+        okButtonProps={{ loading: appointmentSubmitting, disabled: !appointmentStart || !appointmentEnd || !appointmentAddress.trim() }}
+        onCancel={() => setAppointmentOpen(false)}
+        onOk={() => void createAppointment()}
+      >
+        <Flex vertical gap={12}>
+          <Typography.Text type="secondary">请为客户设置测量员上门服务的时间和地址。</Typography.Text>
+          <Input type="datetime-local" value={appointmentStart} onChange={(event) => setAppointmentStart(event.target.value)} />
+          <Input type="datetime-local" value={appointmentEnd} onChange={(event) => setAppointmentEnd(event.target.value)} />
+          <Input value={appointmentAddress} placeholder="上门地址" onChange={(event) => setAppointmentAddress(event.target.value)} />
         </Flex>
       </Modal>
 
@@ -1002,6 +1250,18 @@ export default function LeadsPage() {
               </Flex>
             </Flex>
 
+            <Descriptions
+              title="量房安排"
+              bordered
+              size="small"
+              column={1}
+              items={[
+                { key: 'measurer', label: '测量员', children: getStaffName(selectedLead.measurerId) || '未绑定测量员' },
+                { key: 'appointment', label: '预约上门时间', children: selectedLead.appointment ? `${formatAppointmentRange(selectedLead.appointment.timeRange)} · ${selectedLead.appointment.address || '地址待确认'}` : '尚未预约' },
+              ]}
+              extra={!selectedLead.archivedAt ? selectedLead.appointment ? <Button icon={<CalendarDays size={15} />} onClick={() => openReschedule(selectedLead)}>改预约</Button> : <Button type="primary" icon={<ClipboardCheck size={15} />} onClick={() => { setAppointmentAddress(selectedLead.communityName || ''); setAppointmentOpen(true); }}>设置预约</Button> : null}
+            />
+
               <Steps
                 size="small"
                 current={getLeadWorkflowStep(selectedLead.status)}
@@ -1154,6 +1414,24 @@ function RelatedFloorPlans({
           </Flex>
         );
       }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关联的实测记录" />}
+    </Flex>
+  );
+}
+
+function LeadCardField({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
+  return (
+    <Flex vertical gap={3} className="min-w-0">
+      <Typography.Text type="secondary" className="text-xs">{label}</Typography.Text>
+      <Typography.Text strong ellipsis={{ tooltip: value }}>{value}</Typography.Text>
+      {detail ? <Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: detail }}>{detail}</Typography.Text> : null}
     </Flex>
   );
 }

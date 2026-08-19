@@ -25,8 +25,16 @@ test('the close action follows the graph minimum-wall rule for standalone and sh
   assert.match(editorScript, /left:\$\{roundPx\(actionX - actionRadius\)\}px; top:\$\{roundPx\(actionY - actionRadius\)\}px;/);
   assert.match(editorWxml, /wx:if="\{\{!componentEditorVisible && closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
   assert.match(editorWxml, /aria-label="闭合当前空间"[\s\S]*<cover-view class="closure-action-label">合<\/cover-view>/);
-  assert.match(editorWxss, /\.closure-action\s*\{[\s\S]*?width: 56rpx;[\s\S]*?height: 56rpx;[\s\S]*?border: 0;[\s\S]*?border-radius: 50%;[\s\S]*?background: var\(--brand-primary\);/);
-  assert.doesNotMatch(editorScript, /fillText\('合'/);
+  assert.match(editorWxss, /\.closure-action\s*\{[\s\S]*?width: 56rpx;[\s\S]*?height: 56rpx;[\s\S]*?border: 0;[\s\S]*?border-radius: 50%;[\s\S]*?background: transparent;[\s\S]*?opacity: 0;/);
+  assert.match(editorScript, /if \(controls\.closeAction && !this\.isCursorLensActive\(\)\) \{/);
+  assert.match(editorScript, /closeActionVisible: renderData\.closeActionVisible && !this\.isCursorLensActive\(\)/);
+  assert.match(editorScript, /closeAction: this\.canvasControls && this\.canvasControls\.closeAction/);
+  assert.match(editorScript, /surveyCanvasRenderer\.drawCloseAction\(ctx, controls\.closeAction\)/);
+  assert.match(editorScript, /drawViewportInteractionControls\(viewport\)/);
+  assert.match(
+    editorScript,
+    /cx: close\.cx \* transform\.scale \+ transform\.translateX[\s\S]*cy: close\.cy \* transform\.scale \+ transform\.translateY/
+  );
 });
 
 test('the right rail exposes a separately confirmed canvas-reset action', () => {
@@ -141,7 +149,7 @@ test('a placed cursor stays resettable after a room closes, then explicitly ente
 test('viewport gestures render on the primary canvas instead of the cursor overlay', () => {
   assert.match(
     editorScript,
-    /drawViewportInteractionFrame\(viewport\)[\s\S]*?this\.surveyCtx,[\s\S]*?dpr: this\.surveyCanvasDpr \|\| 1/
+    /drawViewportInteractionFrame\(viewport\)[\s\S]*?this\.surveyCtx,[\s\S]*?dpr: this\.surveyCanvasDpr \|\| 1[\s\S]*?this\.drawViewportInteractionControls\(viewport\)/
   );
 });
 

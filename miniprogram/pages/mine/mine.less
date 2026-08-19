@@ -60,7 +60,9 @@
 
 .mine-header {
   position: relative;
-  z-index: 2;
+  // Keep capsule-safe title and account actions above the role artwork while
+  // the profile card follows this header in normal flow.
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -144,11 +146,11 @@
 }
 
 .profile-card {
-  position: absolute;
+  position: relative;
   z-index: 2;
   width: 520rpx;
-  bottom: 24rpx;
-  left: 28rpx;
+  margin-top: 28rpx;
+  left: auto;
   display: flex;
   min-height: 208rpx;
   padding: 22rpx 30rpx;
@@ -867,7 +869,7 @@
 }
 
 .user-profile-hero {
-  height: 336rpx;
+  height: 400rpx;
 }
 
 .compact-profile-card {

@@ -68,7 +68,7 @@ page { height: 100%; overflow: hidden; background: #fbfdfb; }
 
 .claim-action { width: auto; min-width: 100%; min-height: 92rpx; margin-top: auto; margin-right: 0; margin-bottom: 0; margin-left: 0; align-self: stretch; border: 0; border-radius: 16rpx; color: #ffffff; background: linear-gradient(135deg, #0eb44d 0%, #079c3f 100%); box-shadow: 0 10rpx 22rpx rgba(10, 158, 65, 0.2); box-sizing: border-box; font-size: 28rpx; font-weight: 700; line-height: 92rpx; }
 .claim-action::after { border: 0; }
-.claim-action.is-disabled { color: #ffffff; background: #a9d9b8; box-shadow: none; }
+.claim-action.is-disabled { color: var(--action-disabled-text); background: var(--action-disabled-bg); box-shadow: none; }
 .agreement-row { display: flex; min-height: 52rpx; margin-top: 10rpx; align-items: center; justify-content: center; gap: 10rpx; color: #555f58; font-size: 20rpx; line-height: 1.4; }
 .agreement-row text { color: #088f3d; }
 .agreement-check { position: relative; display: flex; width: 28rpx; height: 28rpx; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid #a6afa8; border-radius: 50%; box-sizing: border-box; }
@@ -98,7 +98,7 @@ page { height: 100%; overflow: hidden; background: #fbfdfb; }
 .designer-action::after { border: 0; }
 .designer-action.secondary { color: #087c36; background: #eef8f1; }
 .designer-action.primary { color: #ffffff; background: #0da846; }
-.designer-action.primary[disabled] { color: #ffffff; background: #aad9b8; }
+.designer-action.primary[disabled] { color: var(--action-disabled-text); background: var(--action-disabled-bg); }
 .archive-ready { display: flex; min-height: 62rpx; margin-top: 12rpx; align-items: center; gap: 12rpx; color: #273129; font-size: 24rpx; font-weight: 600; }
 .archive-check { width: 26rpx; height: 14rpx; border-bottom: 4rpx solid #0aa747; border-left: 4rpx solid #0aa747; transform: translateY(-3rpx) rotate(-45deg); }
 

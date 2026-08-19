@@ -331,6 +331,19 @@ export class AppointmentRepository {
     return rows[0] ?? null;
   }
 
+  async findByIdAndMeasurer(enterpriseId: bigint, appointmentId: bigint, measurerId: bigint) {
+    const rows = await this.transaction
+      .select()
+      .from(measurementAppointments)
+      .where(and(
+        eq(measurementAppointments.id, appointmentId),
+        eq(measurementAppointments.enterpriseId, enterpriseId),
+        eq(measurementAppointments.measurerId, measurerId)
+      ))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async findCustomerAppointmentForAccess(customerUserId: bigint, appointmentId: bigint) {
     const rows = await this.transaction
       .select({ appointment: measurementAppointments, lead: leads })
@@ -355,6 +368,18 @@ export class AppointmentRepository {
       .orderBy(asc(measurementAppointments.createdAt));
   }
 
+  async listByLeadAndMeasurer(enterpriseId: bigint, leadId: bigint, measurerId: bigint) {
+    return this.transaction
+      .select()
+      .from(measurementAppointments)
+      .where(and(
+        eq(measurementAppointments.enterpriseId, enterpriseId),
+        eq(measurementAppointments.leadId, leadId),
+        eq(measurementAppointments.measurerId, measurerId)
+      ))
+      .orderBy(asc(measurementAppointments.createdAt));
+  }
+
   async listByMeasurer(enterpriseId: bigint, measurerId: bigint) {
     return this.transaction
       .select()
@@ -362,6 +387,18 @@ export class AppointmentRepository {
       .where(and(
         eq(measurementAppointments.enterpriseId, enterpriseId),
         eq(measurementAppointments.measurerId, measurerId),
+        eq(measurementAppointments.status, 'confirmed')
+      ))
+      .orderBy(sql`lower(${measurementAppointments.timeRange}) asc`, asc(measurementAppointments.id));
+  }
+
+  async listByDesigner(enterpriseId: bigint, designerId: bigint) {
+    return this.transaction
+      .select()
+      .from(measurementAppointments)
+      .where(and(
+        eq(measurementAppointments.enterpriseId, enterpriseId),
+        eq(measurementAppointments.designerId, designerId),
         eq(measurementAppointments.status, 'confirmed')
       ))
       .orderBy(sql`lower(${measurementAppointments.timeRange}) asc`, asc(measurementAppointments.id));
@@ -408,8 +445,6 @@ export class AppointmentRepository {
       if (!start || Date.now() > start.getTime() - settings.customerRescheduleCutoffHours * 3_600_000) {
         throw appointmentError('appointment_customer_cutoff', '已超过客户可改期时间', 409);
       }
-    } else if (!input.reason?.trim()) {
-      throw appointmentError('appointment_reason_required', '请填写内部改期原因', 400);
     }
     await this.assertBookableSlot(input.enterpriseId, input.startAt, input.endAt);
     const timeRange = range(input.startAt, input.endAt);
@@ -443,6 +478,54 @@ export class AppointmentRepository {
       reason: input.reason?.trim().slice(0, 200) || null,
       eventKey: input.eventKey,
       metadata: {},
+    });
+    return appointment;
+  }
+
+  async updateAddress(input: {
+    enterpriseId: bigint;
+    appointmentId: bigint;
+    address: string;
+    expectedVersion: number;
+    actorUserId: bigint;
+    eventKey: string;
+  }) {
+    const current = await this.findById(input.enterpriseId, input.appointmentId, true);
+    if (!current || current.appointment.status !== 'confirmed') {
+      throw appointmentError('appointment_not_found', '预约不存在或不可更新地址', 404);
+    }
+    if (current.appointment.version !== input.expectedVersion) {
+      throw appointmentError('appointment_version_conflict', '预约已被其他操作更新，请刷新后重试', 409);
+    }
+    const address = input.address.trim().slice(0, 300);
+    if (!address) throw appointmentError('appointment_address_required', '请填写上门地址', 400);
+    if (address === current.appointment.address) return current.appointment;
+    const rows = await this.transaction
+      .update(measurementAppointments)
+      .set({
+        address,
+        version: current.appointment.version + 1,
+        updatedByUserId: input.actorUserId,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(measurementAppointments.id, current.appointment.id),
+        eq(measurementAppointments.version, input.expectedVersion)
+      ))
+      .returning();
+    const appointment = rows[0];
+    if (!appointment) throw appointmentError('appointment_version_conflict', '预约已被其他操作更新，请刷新后重试', 409);
+    await this.transaction.insert(measurementAppointmentEvents).values({
+      enterpriseId: input.enterpriseId,
+      appointmentId: appointment.id,
+      eventType: 'address_updated',
+      previousTimeRange: appointment.timeRange,
+      timeRange: appointment.timeRange,
+      measurerId: appointment.measurerId,
+      actorUserId: input.actorUserId,
+      reason: '补充或修正服务地址',
+      eventKey: input.eventKey,
+      metadata: { previousAddress: current.appointment.address, address },
     });
     return appointment;
   }

@@ -38,7 +38,7 @@ page { height: 100%; overflow: hidden; background: #fbfdfb; }
 .join-action, .state-action { min-height: 92rpx; margin: 28rpx 0 0; border: 0; border-radius: 16rpx; color: #ffffff; background: linear-gradient(135deg, #0eb44d 0%, #079c3f 100%); box-shadow: 0 10rpx 22rpx rgba(10, 158, 65, 0.2); font-size: 28rpx; font-weight: 700; line-height: 92rpx; }
 .join-action::after, .state-action::after { border: 0; }
 .join-action:active, .state-action:active { opacity: 0.84; }
-.join-action.is-disabled { background: #a9d9b8; box-shadow: none; }
+.join-action.is-disabled { background: var(--action-disabled-bg); box-shadow: none; }
 
 .onboarding-state { display: flex; min-height: 0; padding: 22rpx 44rpx calc(36rpx + env(safe-area-inset-bottom)); align-items: center; justify-content: center; flex: 1; flex-direction: column; box-sizing: border-box; text-align: center; }
 .resolving-ring { width: 92rpx; height: 92rpx; border: 8rpx solid #dff3e6; border-top-color: #0baa48; border-radius: 50%; animation: onboarding-spin 0.8s linear infinite; }

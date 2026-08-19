@@ -111,12 +111,17 @@ test('appointments enforce the measurer range exclusion constraint and retain au
     return {
       lead: await repository.findCustomerLeadForAccess(actorUserId, bookedLeadId),
       appointment: await repository.findCustomerAppointmentForAccess(actorUserId, persisted.appointments[0]!.id),
+      assignedMeasurerAppointments: await repository.listByLeadAndMeasurer(enterpriseId, bookedLeadId, persisted.appointments[0]!.measurerId),
+      otherMeasurerAppointments: await repository.listByLeadAndMeasurer(enterpriseId, bookedLeadId, -1n),
       otherCustomerLead: await repository.findCustomerLeadForAccess(-1n, bookedLeadId),
       otherCustomerAppointment: await repository.findCustomerAppointmentForAccess(-1n, persisted.appointments[0]!.id),
     };
   });
   assert.equal(customerAccess.lead?.id, bookedLeadId);
   assert.equal(customerAccess.appointment?.appointment.id, persisted.appointments[0]!.id);
+  assert.equal(customerAccess.assignedMeasurerAppointments.length, 1);
+  assert.equal(customerAccess.assignedMeasurerAppointments[0]?.id, persisted.appointments[0]!.id);
+  assert.deepEqual(customerAccess.otherMeasurerAppointments, []);
   assert.equal(customerAccess.otherCustomerLead, null);
   assert.equal(customerAccess.otherCustomerAppointment, null);
 });
@@ -135,6 +140,14 @@ test('rescheduling, unavailability, and tenant RLS preserve appointment boundari
     })
   );
   assert.equal(rescheduled.version, 2);
+
+  const internallyRescheduled = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).reschedule({
+      enterpriseId, appointmentId: appointment!.id, startAt: nextBookableSlot('16:00').startAt, endAt: nextBookableSlot('16:00').endAt,
+      expectedVersion: rescheduled.version, actorUserId, eventKey: `${runKey}-internal-reschedule`,
+    })
+  );
+  assert.equal(internallyRescheduled.version, 3);
 
   await withTenantTransaction(enterpriseId, (transaction) =>
     new AppointmentRepository(transaction).createUnavailability({

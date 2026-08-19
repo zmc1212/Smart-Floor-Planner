@@ -89,6 +89,10 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
     assert.equal(component.data.list.some((item) => item.key === 'measure'), false);
     assert.equal(component.data.list.some((item) => item.key === 'leads'), false);
 
+    globalData.bootstrap = { current: { role: 'referrer', capabilities: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'] } };
+    definition.methods.syncSelected.call(component);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['promotion', 'progress', 'earnings', 'mine']);
+
     globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'staff.appointments', 'staff.design', 'account'] } };
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'design', 'mine']);

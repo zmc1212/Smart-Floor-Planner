@@ -7,6 +7,7 @@ test('unknown identity never silently resolves to the customer landing', () => {
   assert.equal(navigation.getRoleLanding({ mode: 'unknown' }), null);
   assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'salesperson' }), null);
   assert.equal(navigation.navigateToRoleLanding({ mode: 'unknown' }), false);
+  assert.equal(navigation.roleForIdentity({ role: 'user' }), 'customer');
 });
 
 test('deep links are checked against server bootstrap capabilities', () => {
@@ -21,6 +22,8 @@ test('deep links are checked against server bootstrap capabilities', () => {
   assert.equal(navigation.canAccessRoute('/packages/business/customer-project/customer-project', customer), true);
   assert.equal(navigation.canAccessRoute('/packages/business/appointment-booking/appointment-booking', customer), true);
   assert.equal(navigation.canAccessRoute('/packages/business/lead-detail/lead-detail', customer), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/commission-records/commission-records', customer), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/promotion-records/promotion-records', customer), false);
   assert.deepEqual(
     navigation.guardDeepLink('/packages/surveying/editor/surveying-editor', customer),
     {
