@@ -133,6 +133,57 @@ test('custom TabBar uses the stored signed role before bootstrap refresh complet
   }
 });
 
+test('custom TabBar paints server badge counts and never fills local zeros', () => {
+  const globalData = {
+    userInfo: { role: 'staff', mode: 'staff', staffRole: 'designer' },
+    bootstrap: {
+      current: { role: 'designer', capabilities: ['staff.leads', 'staff.appointments', 'staff.design', 'account'] },
+      badges: { status: 'ok', message: null, counts: { workbench: 6 } }
+    }
+  };
+  const { definition, restore } = loadTabBarComponent(globalData);
+
+  try {
+    const component = {
+      data: JSON.parse(JSON.stringify(definition.data)),
+      setData(update) { this.data = { ...this.data, ...update }; }
+    };
+    definition.methods.syncSelected.call(component);
+    const workbench = component.data.list.find((item) => item.key === 'workbench');
+    const customers = component.data.list.find((item) => item.key === 'customers');
+    assert.equal(workbench.badgeText, '6');
+    assert.equal(customers.badgeText, '');
+    assert.equal(component.data.badgeUnavailable, false);
+    assert.equal(component.data.badgeUnavailableText, '');
+  } finally {
+    restore();
+  }
+});
+
+test('custom TabBar shows recoverable unread copy instead of a local zero when badges fail', () => {
+  const globalData = {
+    userInfo: { role: 'user', mode: 'customer' },
+    bootstrap: {
+      current: { role: 'customer', capabilities: ['customer.service', 'customer.projects', 'account'] },
+      badges: { status: 'unavailable', message: '暂时无法读取', counts: {} }
+    }
+  };
+  const { definition, restore } = loadTabBarComponent(globalData);
+
+  try {
+    const component = {
+      data: JSON.parse(JSON.stringify(definition.data)),
+      setData(update) { this.data = { ...this.data, ...update }; }
+    };
+    definition.methods.syncSelected.call(component);
+    assert.equal(component.data.badgeUnavailable, true);
+    assert.equal(component.data.badgeUnavailableText, '暂时无法读取');
+    assert.equal(component.data.list.every((item) => !item.badgeText), true);
+  } finally {
+    restore();
+  }
+});
+
 test('custom TabBar keeps the Measure label above iOS bottom safe areas', () => {
   const tabBarStyles = fs.readFileSync(tabBarStylePath, 'utf8');
   const appStyles = fs.readFileSync(appStylePath, 'utf8');
@@ -143,4 +194,9 @@ test('custom TabBar keeps the Measure label above iOS bottom safe areas', () => 
   assert.match(tabBarStyles, /padding-bottom:\s*constant\(safe-area-inset-bottom\)/);
   assert.match(tabBarStyles, /padding-bottom:\s*env\(safe-area-inset-bottom\)/);
   assert.match(tabBarStyles, /\.tab-item\.center \.tab-text\s*\{[\s\S]*?top:\s*96rpx[\s\S]*?line-height:\s*28rpx/);
+  const tabBarMarkup = fs.readFileSync(path.resolve(__dirname, '..', 'custom-tab-bar', 'index.wxml'), 'utf8');
+  assert.match(tabBarMarkup, /item\.badgeText/);
+  assert.match(tabBarMarkup, /badgeUnavailableText/);
+  assert.match(tabBarStyles, /\.tab-badge\s*\{[\s\S]*?font-size:\s*20rpx/);
+  assert.match(tabBarStyles, /\.tabbar-badge-error\s*\{[\s\S]*?font-size:\s*20rpx/);
 });

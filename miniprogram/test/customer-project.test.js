@@ -51,6 +51,6 @@ test('customer-facing project surfaces hide enterprise branding', () => {
   assert.doesNotMatch(index, /item\.enterprise\.name/);
   assert.match(folio, /免费设计与量房服务/);
   assert.doesNotMatch(folio, /enterpriseName|\{\{enterpriseName\}\}/);
-  assert.match(workbench, /title: '免费设计与量房'/);
+  assert.match(workbench, /title: '我的装修服务'/);
   assert.doesNotMatch(workbench, /project\.enterprise\s*&&\s*project\.enterprise\.name/);
 });

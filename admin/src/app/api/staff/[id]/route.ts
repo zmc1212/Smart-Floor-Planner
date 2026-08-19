@@ -143,7 +143,10 @@ export async function PUT(
               ? current.wechatQrAssetId
               : parseOptionalPostgresId(body.wechatQrAssetId, 'wechatQrAssetId');
             const nextWechatId = body.wechatId === undefined ? current.wechatId : body.wechatId.trim();
-            if (nextRole === 'designer' && (!nextWechatId || !qrAssetId)) {
+            const updatingDesignerProfile =
+              nextRole === 'designer' &&
+              (body.role !== undefined || body.wechatId !== undefined || body.wechatQrAssetId !== undefined);
+            if (updatingDesignerProfile && (!nextWechatId || !qrAssetId)) {
               throw new Error('设计师必须填写微信号并上传个人二维码');
             }
             if (qrAssetId && qrAssetId !== current.wechatQrAssetId) {

@@ -167,6 +167,7 @@ Page({
     canEditMeasurements: false,
     appointment: null,
     canScheduleAppointment: false,
+    canRebookAppointment: false,
     statusLabel: '新线索',
     nextAction: '开始正式量房',
     stageRail: buildStageRail('new'),
@@ -218,8 +219,8 @@ Page({
     this.setData({
       lead,
       staffRole,
-      statusLabel: STATUS_LABELS[lead.status] || lead.status || '新线索',
-      nextAction: getNextAction(lead.status, staffRole, isAssignedMeasurer),
+      statusLabel: lead.serviceStageLabel || STATUS_LABELS[lead.status] || lead.status || '新线索',
+      nextAction: lead.nextAction || getNextAction(lead.status, staffRole, isAssignedMeasurer),
       stageRail: buildStageRail(lead.status),
       canMarkConverted: Boolean(conversionActions.canMarkConverted),
       canRevertConversion: Boolean(conversionActions.canRevertConversion),
@@ -241,14 +242,17 @@ Page({
       && lead
       && this.data.leadId;
     if (!canOpen) {
-      this.setData({ appointment: null, canScheduleAppointment: false });
+      this.setData({ appointment: null, canScheduleAppointment: false, canRebookAppointment: false });
       return;
     }
     try {
       const result = await api.request(`/appointments?leadId=${encodeURIComponent(this.data.leadId)}`, 'GET');
-      const appointment = (result.data || []).find((item) => item.status === 'confirmed') || null;
-      const canBook = !appointment
-        && !['closed', 'converted'].includes(lead.status)
+      const items = result.data || [];
+      const appointment = items.find((item) => item.status === 'confirmed')
+        || items.find((item) => item.status === 'expired' || item.status === 'cancelled')
+        || items[0]
+        || null;
+      const canBook = Boolean(lead.canRebook)
         && (
           staffRole === 'enterprise_admin'
           || staffRole === 'designer'
@@ -256,10 +260,11 @@ Page({
         );
       this.setData({
         appointment: appointment ? { ...appointment, summary: appointmentSummary(appointment.timeRange) } : null,
-        canScheduleAppointment: canBook
+        canScheduleAppointment: canBook,
+        canRebookAppointment: canBook && Boolean(appointment)
       });
     } catch (error) {
-      this.setData({ appointment: null, canScheduleAppointment: false });
+      this.setData({ appointment: null, canScheduleAppointment: false, canRebookAppointment: false });
     }
   },
 

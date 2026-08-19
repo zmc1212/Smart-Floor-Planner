@@ -116,6 +116,12 @@ export interface ReferrerMembershipRecord {
   promotionCode: typeof referrerPromotionCodes.$inferSelect | null;
 }
 
+export interface EnterpriseReferrerMembershipRecord {
+  membership: typeof referrerEnterpriseMemberships.$inferSelect;
+  displayName: string;
+  promotionCode: typeof referrerPromotionCodes.$inferSelect | null;
+}
+
 export class ReferrerNetworkRepository {
   constructor(private readonly transaction: PostgresTransaction) {}
 
@@ -880,6 +886,72 @@ export class ReferrerNetworkRepository {
       user: updatedUsers[0],
       idempotent: false,
     };
+  }
+
+  async listEnterpriseReferrerMemberships(enterpriseId: bigint): Promise<EnterpriseReferrerMembershipRecord[]> {
+    return this.transaction
+      .select({
+        membership: referrerEnterpriseMemberships,
+        displayName: referrerProfiles.displayName,
+        promotionCode: referrerPromotionCodes,
+      })
+      .from(referrerEnterpriseMemberships)
+      .innerJoin(
+        referrerProfiles,
+        eq(referrerProfiles.id, referrerEnterpriseMemberships.referrerId)
+      )
+      .leftJoin(
+        referrerPromotionCodes,
+        and(
+          eq(referrerPromotionCodes.membershipId, referrerEnterpriseMemberships.id),
+          eq(referrerPromotionCodes.status, 'active')
+        )
+      )
+      .where(eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId))
+      .orderBy(
+        desc(referrerEnterpriseMemberships.status),
+        desc(referrerEnterpriseMemberships.joinedAt),
+        asc(referrerEnterpriseMemberships.id)
+      );
+  }
+
+  async disableEnterpriseReferrerMembership(enterpriseId: bigint, membershipId: bigint) {
+    const rows = await this.transaction
+      .select({ membership: referrerEnterpriseMemberships, userId: referrerProfiles.userId })
+      .from(referrerEnterpriseMemberships)
+      .innerJoin(referrerProfiles, eq(referrerProfiles.id, referrerEnterpriseMemberships.referrerId))
+      .where(and(
+        eq(referrerEnterpriseMemberships.id, membershipId),
+        eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId)
+      ))
+      .limit(1)
+      .for('update');
+    const current = rows[0];
+    if (!current) return null;
+    if (current.membership.status !== 'active') {
+      return { membership: current.membership, idempotent: true };
+    }
+    const now = new Date();
+    const updated = await this.transaction
+      .update(referrerEnterpriseMemberships)
+      .set({ status: 'disabled', exitedAt: now, updatedAt: now })
+      .where(eq(referrerEnterpriseMemberships.id, membershipId))
+      .returning();
+    await this.transaction
+      .update(referrerPromotionCodes)
+      .set({ status: 'disabled', disabledAt: now, updatedAt: now })
+      .where(and(
+        eq(referrerPromotionCodes.membershipId, membershipId),
+        eq(referrerPromotionCodes.status, 'active')
+      ));
+    await this.transaction
+      .update(users)
+      .set({
+        contextVersion: sql`${users.contextVersion} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(users.id, current.userId));
+    return { membership: updated[0], idempotent: false };
   }
 
   async listReferrerMemberships(userId: bigint): Promise<ReferrerMembershipRecord[]> {

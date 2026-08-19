@@ -10,6 +10,7 @@ import {
   referrerEnterpriseMemberships,
   referrerProfiles,
 } from '@/db/schema';
+import { resolveLeadServiceStage } from '@/lib/lead-service-stage';
 import type { PostgresTransaction } from '@/db/transaction';
 
 type ReferrerMembershipScope = {
@@ -20,22 +21,6 @@ type ReferrerMembershipScope = {
 
 function maskedCustomerLabel(leadId: bigint) {
   return `服务客户 #${leadId.toString().slice(-4).padStart(4, '0')}`;
-}
-
-function progressStage(input: {
-  convertedAt: Date | null;
-  hasPublishedDesign: boolean;
-  hasFormalFloorPlan: boolean;
-  appointmentStatus: string | null;
-  assignmentStatus: string;
-}) {
-  if (input.convertedAt) return { key: 'converted', label: '已签约' };
-  if (input.hasPublishedDesign) return { key: 'design_published', label: '方案已发布' };
-  if (input.hasFormalFloorPlan) return { key: 'survey_completed', label: '正式量房已完成' };
-  if (input.appointmentStatus === 'completed') return { key: 'appointment_completed', label: '上门服务已完成' };
-  if (input.appointmentStatus === 'confirmed') return { key: 'appointment_confirmed', label: '已确认上门服务' };
-  if (input.assignmentStatus === 'assigned') return { key: 'assigned', label: '服务人员已安排' };
-  return { key: 'claimed', label: '客户已领取服务' };
 }
 
 export class ReferrerPortalRepository {
@@ -86,7 +71,12 @@ export class ReferrerPortalRepository {
     const leadIds = progressLeads.map((lead) => lead.id);
     const [appointmentRows, publicationRows] = await Promise.all([
       this.transaction
-        .select({ leadId: measurementAppointments.leadId, status: measurementAppointments.status, updatedAt: measurementAppointments.updatedAt })
+        .select({
+          leadId: measurementAppointments.leadId,
+          status: measurementAppointments.status,
+          timeRange: measurementAppointments.timeRange,
+          updatedAt: measurementAppointments.updatedAt,
+        })
         .from(measurementAppointments)
         .where(and(eq(measurementAppointments.enterpriseId, enterpriseId), inArray(measurementAppointments.leadId, leadIds)))
         .orderBy(desc(measurementAppointments.updatedAt), desc(measurementAppointments.id)),
@@ -133,12 +123,13 @@ export class ReferrerPortalRepository {
         const appointment = appointmentByLead.get(lead.id) ?? null;
         const publishedAt = publishedAtByLead.get(lead.id) ?? null;
         const hasFormalFloorPlan = Boolean(lead.primaryFloorPlanId && completedPlanIds.has(lead.primaryFloorPlanId));
-        const stage = progressStage({
-          convertedAt: lead.convertedAt,
-          hasPublishedDesign: Boolean(publishedAt),
-          hasFormalFloorPlan,
-          appointmentStatus: appointment?.status ?? null,
+        const stage = resolveLeadServiceStage({
+          leadStatus: lead.status,
           assignmentStatus: lead.assignmentStatus,
+          measurerId: lead.assignmentStatus === 'assigned' ? 'assigned' : null,
+          appointment: appointment ? { status: appointment.status, timeRange: appointment.timeRange } : null,
+          hasFormalFloorPlan,
+          publishedDesignCount: publishedAt ? 1 : 0,
         });
         const updatedAt = [lead.updatedAt, appointment?.updatedAt, publishedAt, lead.convertedAt]
           .filter((value): value is Date => Boolean(value))

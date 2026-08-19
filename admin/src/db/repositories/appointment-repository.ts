@@ -1,7 +1,8 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseAppointmentSettings,
+  enterprises,
   leads,
   floorPlans,
   leadFloorPlans,
@@ -146,10 +147,73 @@ export class AppointmentRepository {
     const rows = await this.transaction
       .select()
       .from(measurementAppointments)
-      .where(and(eq(measurementAppointments.leadId, leadId), eq(measurementAppointments.status, 'confirmed')))
+      .where(and(
+        eq(measurementAppointments.leadId, leadId),
+        eq(measurementAppointments.status, 'confirmed'),
+        sql`upper(${measurementAppointments.timeRange}) > now()`
+      ))
       .limit(1)
       .for('update');
     return rows[0] ?? null;
+  }
+
+  private async expireStaleConfirmedAppointmentsForLead(leadId: bigint) {
+    const stale = await this.transaction
+      .select()
+      .from(measurementAppointments)
+      .where(and(
+        eq(measurementAppointments.leadId, leadId),
+        eq(measurementAppointments.status, 'confirmed'),
+        sql`upper(${measurementAppointments.timeRange}) <= now()`
+      ))
+      .for('update');
+    for (const row of stale) {
+      await this.transaction.execute(sql.raw('SAVEPOINT expire_stale_appointment'));
+      try {
+        const expired = await this.expireAppointmentRow(row);
+        if (!expired) {
+          await this.transaction.execute(sql.raw('ROLLBACK TO SAVEPOINT expire_stale_appointment'));
+          continue;
+        }
+        await this.transaction.execute(sql.raw('RELEASE SAVEPOINT expire_stale_appointment'));
+      } catch {
+        // Older databases may not yet allow the expired status; past-end confirmed rows
+        // no longer block booking through activeAppointmentForLead.
+        await this.transaction.execute(sql.raw('ROLLBACK TO SAVEPOINT expire_stale_appointment'));
+      }
+    }
+  }
+
+  private async expireAppointmentRow(current: AppointmentRecord, now = new Date()) {
+    const rows = await this.transaction
+      .update(measurementAppointments)
+      .set({
+        status: 'expired',
+        version: current.version + 1,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(measurementAppointments.id, current.id),
+        eq(measurementAppointments.version, current.version),
+        eq(measurementAppointments.status, 'confirmed')
+      ))
+      .returning();
+    const appointment = rows[0];
+    if (!appointment) return null;
+    await this.transaction.insert(measurementAppointmentEvents).values({
+      enterpriseId: appointment.enterpriseId,
+      appointmentId: appointment.id,
+      eventType: 'expired',
+      previousTimeRange: current.timeRange,
+      timeRange: appointment.timeRange,
+      previousMeasurerId: appointment.measurerId,
+      measurerId: appointment.measurerId,
+      actorUserId: null,
+      reason: '预约时段已结束',
+      eventKey: `appointment_expired:${appointment.id.toString()}:${current.version}`,
+      metadata: {},
+    });
+    return appointment;
   }
 
   private async isMeasurerAvailable(measurerId: bigint, timeRange: string) {
@@ -315,6 +379,7 @@ export class AppointmentRepository {
     if (!lead || lead.archivedAt || lead.status === 'closed' || !lead.assignedTo) {
       throw appointmentError('appointment_lead_not_ready', '线索尚未完成设计师派单', 409);
     }
+    await this.expireStaleConfirmedAppointmentsForLead(input.leadId);
     if (await this.activeAppointmentForLead(input.leadId)) {
       throw appointmentError('appointment_already_exists', '该线索已有有效预约', 409);
     }
@@ -435,16 +500,20 @@ export class AppointmentRepository {
     });
   }
 
-  async listByMeasurer(enterpriseId: bigint, measurerId: bigint) {
+  async listByMeasurer(enterpriseId: bigint, measurerId: bigint, statuses: string[] = ['confirmed']) {
     return this.transaction
       .select()
       .from(measurementAppointments)
       .where(and(
         eq(measurementAppointments.enterpriseId, enterpriseId),
         eq(measurementAppointments.measurerId, measurerId),
-        eq(measurementAppointments.status, 'confirmed')
+        inArray(measurementAppointments.status, statuses)
       ))
-      .orderBy(sql`lower(${measurementAppointments.timeRange}) asc`, asc(measurementAppointments.id));
+      .orderBy(
+        sql`case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end`,
+        sql`lower(${measurementAppointments.timeRange}) asc`,
+        asc(measurementAppointments.id)
+      );
   }
 
   async listByDesigner(enterpriseId: bigint, designerId: bigint) {
@@ -460,14 +529,22 @@ export class AppointmentRepository {
   }
 
   async listConfirmedByEnterprise(enterpriseId: bigint, limit = 6) {
+    return this.listByEnterprise(enterpriseId, ['confirmed'], limit);
+  }
+
+  async listByEnterprise(enterpriseId: bigint, statuses: string[] = ['confirmed', 'expired'], limit = 20) {
     return this.transaction
       .select()
       .from(measurementAppointments)
       .where(and(
         eq(measurementAppointments.enterpriseId, enterpriseId),
-        eq(measurementAppointments.status, 'confirmed')
+        inArray(measurementAppointments.status, statuses)
       ))
-      .orderBy(sql`lower(${measurementAppointments.timeRange}) asc`, asc(measurementAppointments.id))
+      .orderBy(
+        sql`case when ${measurementAppointments.status} = 'expired' then 0 when ${measurementAppointments.status} = 'confirmed' then 1 else 2 end`,
+        sql`lower(${measurementAppointments.timeRange}) asc`,
+        asc(measurementAppointments.id)
+      )
       .limit(Math.min(Math.max(limit, 1), 50));
   }
 
@@ -600,7 +677,13 @@ export class AppointmentRepository {
     eventKey: string;
   }) {
     const current = await this.findById(input.enterpriseId, input.appointmentId, true);
-    if (!current || current.appointment.status !== 'confirmed') {
+    if (!current) {
+      throw appointmentError('appointment_not_found', '预约不存在或不可操作', 404);
+    }
+    if (input.status === 'cancelled' && current.appointment.status !== 'confirmed') {
+      throw appointmentError('appointment_not_found', '预约不存在或不可操作', 404);
+    }
+    if (input.status === 'completed' && !['confirmed', 'expired'].includes(current.appointment.status)) {
       throw appointmentError('appointment_not_found', '预约不存在或不可操作', 404);
     }
     if (current.appointment.version !== input.expectedVersion) {
@@ -637,6 +720,80 @@ export class AppointmentRepository {
       metadata: {},
     });
     return appointment;
+  }
+
+  async expireOverdue(input: { now?: Date; limit?: number } = {}) {
+    const now = input.now || new Date();
+    const limit = Math.min(Math.max(input.limit || 100, 1), 500);
+    const due = await this.transaction
+      .select()
+      .from(measurementAppointments)
+      .where(and(
+        eq(measurementAppointments.status, 'confirmed'),
+        sql`upper(${measurementAppointments.timeRange}) <= ${now.toISOString()}::timestamptz`
+      ))
+      .orderBy(asc(measurementAppointments.id))
+      .limit(limit)
+      .for('update');
+    const expired: AppointmentRecord[] = [];
+    for (const current of due) {
+      await this.transaction.execute(sql.raw('SAVEPOINT expire_overdue_appointment'));
+      try {
+        const appointment = await this.expireAppointmentRow(current, now);
+        if (!appointment) {
+          await this.transaction.execute(sql.raw('ROLLBACK TO SAVEPOINT expire_overdue_appointment'));
+          continue;
+        }
+        await this.transaction.execute(sql.raw('RELEASE SAVEPOINT expire_overdue_appointment'));
+        expired.push(appointment);
+      } catch {
+        await this.transaction.execute(sql.raw('ROLLBACK TO SAVEPOINT expire_overdue_appointment'));
+      }
+    }
+    return expired;
+  }
+
+  async listExpiredUnbooked(enterpriseId: bigint, limit = 20) {
+    return this.transaction
+      .select({ appointment: measurementAppointments, lead: leads })
+      .from(measurementAppointments)
+      .innerJoin(leads, eq(measurementAppointments.leadId, leads.id))
+      .where(and(
+        eq(measurementAppointments.enterpriseId, enterpriseId),
+        eq(measurementAppointments.status, 'expired'),
+        sql`not exists (
+          select 1 from app.measurement_appointments confirmed
+          where confirmed.lead_id = ${measurementAppointments.leadId}
+            and confirmed.status = 'confirmed'
+        )`,
+        sql`${leads.status} in ('new', 'measuring')`
+      ))
+      .orderBy(asc(sql`upper(${measurementAppointments.timeRange})`))
+      .limit(Math.min(Math.max(limit, 1), 50));
+  }
+
+  async listExpiredUnbookedDue(now = new Date(), limit = 100) {
+    return this.transaction
+      .select({
+        appointment: measurementAppointments,
+        lead: leads,
+        reminderIntervalHours: sql<number>`coalesce((${enterprises.automationConfig} ->> 'reminderIntervalHours')::int, 24)`,
+      })
+      .from(measurementAppointments)
+      .innerJoin(leads, eq(measurementAppointments.leadId, leads.id))
+      .innerJoin(enterprises, eq(measurementAppointments.enterpriseId, enterprises.id))
+      .where(and(
+        eq(measurementAppointments.status, 'expired'),
+        sql`not exists (
+          select 1 from app.measurement_appointments confirmed
+          where confirmed.lead_id = ${measurementAppointments.leadId}
+            and confirmed.status = 'confirmed'
+        )`,
+        sql`${leads.status} in ('new', 'measuring')`,
+        sql`${measurementAppointments.updatedAt} + make_interval(hours => coalesce((${enterprises.automationConfig} ->> 'reminderIntervalHours')::int, 24)) <= ${now.toISOString()}::timestamptz`
+      ))
+      .orderBy(asc(measurementAppointments.updatedAt), asc(measurementAppointments.id))
+      .limit(Math.min(Math.max(limit, 1), 200));
   }
 
   async listUnavailability(enterpriseId: bigint, staffId?: bigint) {

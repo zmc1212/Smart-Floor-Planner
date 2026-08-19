@@ -46,6 +46,7 @@ const LEGACY_EXPORTS = [
   'projectWallFaces',
   'projectWorkingFace',
   'remeasureSelectedWall',
+  'repairCollinearDegree2Walls',
   'reopenLastDiagonalWallForAngle',
   'resetCursor',
   'resolveBodyNormal',

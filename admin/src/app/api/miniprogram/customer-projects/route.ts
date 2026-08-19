@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { CustomerProjectRepository } from '@/db/repositories';
+import { customerProjectIndexToDto } from '@/lib/customer-project';
 import { requireMiniProgramPortalMode } from '@/lib/miniprogram-portal-authority';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
@@ -17,15 +18,7 @@ export async function GET(request: Request) {
     );
     return NextResponse.json({
       success: true,
-      data: projects.map((project) => ({
-        leadId: project.leadId.toString(),
-        enterprise: { name: project.enterpriseName },
-        status: project.status,
-        updatedAt: project.updatedAt,
-        appointmentStatus: project.appointmentStatus,
-        hasFormalFloorPlan: project.hasFormalFloorPlan,
-        publishedDesignCount: project.publishedDesignCount,
-      })),
+      data: projects.map(customerProjectIndexToDto),
     });
   } catch (error) {
     const status = (error as { status?: number }).status || 400;

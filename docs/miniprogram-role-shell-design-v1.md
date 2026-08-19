@@ -138,8 +138,11 @@ the structural, state, and safe-area text source; no full-page screenshot is pac
 ## 9. Implementation and verification status
 
 The user authorized extension of the current Mini Program style. Phase 12 now implements bootstrap
-role-allowlisted navigation and an identity-recovery page that exposes no invalid-tenant data. The
-complete five-role business tabs and aggregates remain phase-13/14 work. Each changed runtime route
-still needs `390x844` native-host verification before its restoration-ledger row changes.
+role-allowlisted navigation, an identity-recovery page that exposes no invalid-tenant data, and
+server-owned Tab badges from role-scoped todo counts. Failed counts show `暂时无法读取` instead of a
+local zero. Customer Service home, enterprise Operations exceptions, the Appointments tab, measurer
+Schedule, and designer WeChat self-service consume the shared `serviceStage`/`nextActionKind`. Each
+changed runtime route still needs `390x844` native-host verification before its restoration-ledger
+row changes.
 
 Chinese mirror: [miniprogram-role-shell-design-v1.zh-CN.md](./miniprogram-role-shell-design-v1.zh-CN.md)

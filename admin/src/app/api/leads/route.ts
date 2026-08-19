@@ -167,6 +167,8 @@ export async function GET(request: Request) {
       (transaction) =>
         new LeadRepository(transaction).list({
           status,
+          assignmentStatus: searchParams.get('assignmentStatus') || undefined,
+          serviceStage: searchParams.get('serviceStage') || undefined,
           source: searchParams.get('source') || undefined,
           staffId:
             context.role === 'designer' || context.role === 'measurer'

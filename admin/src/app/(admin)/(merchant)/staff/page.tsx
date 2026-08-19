@@ -5,6 +5,7 @@ import {
   ModalForm,
   PageContainer,
   ProFormSelect,
+  ProFormSwitch,
   ProFormText,
   ProTable,
   type ActionType,
@@ -35,6 +36,7 @@ type StaffMember = {
   createdAt?: string;
   wechatId?: string | null;
   wechatQrAssetId?: string | null;
+  assignmentPaused?: boolean;
 };
 
 type StaffRole = 'enterprise_admin' | 'designer' | 'measurer' | 'salesperson';
@@ -48,6 +50,7 @@ type StaffForm = {
   departmentId?: string;
   wechatId?: string;
   wechatQrAssetId?: string;
+  assignmentPaused?: boolean;
 };
 
 type DepartmentForm = { name: string; parentId?: string };
@@ -319,6 +322,15 @@ export default function StaffPage() {
     },
     { title: '联系电话', dataIndex: 'phone', width: 160, hideInSearch: true, render: (value) => value || <Typography.Text type="secondary">未填写</Typography.Text> },
     { title: '所属部门', key: 'department', width: 180, hideInSearch: true, render: (_, member) => <Typography.Text>{departmentNameOf(member, departments)}</Typography.Text> },
+    {
+      title: '自动派单',
+      key: 'assignmentPaused',
+      width: 120,
+      hideInSearch: true,
+      render: (_, member) => ['designer', 'measurer'].includes(member.role)
+        ? <Tag color={member.status === 'active' && !member.assignmentPaused ? 'green' : 'default'}>{member.assignmentPaused ? '已暂停' : member.status === 'active' ? '可参与' : '账号未启用'}</Tag>
+        : <Typography.Text type="secondary">不适用</Typography.Text>,
+    },
     { title: '创建时间', dataIndex: 'createdAt', valueType: 'dateTime', width: 180, hideInSearch: true, render: (_, member) => member.createdAt ? new Date(member.createdAt).toLocaleString() : '-' },
     {
       title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 180, hideInSearch: true,
@@ -548,7 +560,8 @@ export default function StaffPage() {
           role: editingStaff.role,
           departmentId: departmentIdOf(editingStaff) || undefined,
           wechatId: editingStaff.wechatId || undefined,
-        } : { role: 'designer', departmentId: selectedDepartmentId || undefined }}
+          assignmentPaused: Boolean(editingStaff.assignmentPaused),
+        } : { role: 'designer', departmentId: selectedDepartmentId || undefined, assignmentPaused: false }}
         modalProps={{ destroyOnHidden: true, maskClosable: false }}
         onOpenChange={(open) => { setStaffFormOpen(open); if (!open) setEditingStaff(null); }}
         onFinish={saveStaff}
@@ -566,6 +579,13 @@ export default function StaffPage() {
           rules={[{ required: true, message: '请选择岗位角色' }]}
           fieldProps={{ onChange: (value) => setStaffRole(value as StaffRole) }}
         />
+        {['designer', 'measurer'].includes(staffRole) ? (
+          <ProFormSwitch
+            name="assignmentPaused"
+            label="暂停自动派单"
+            extra="暂停后不会再被自动分配新线索；现有已派线索不受影响。"
+          />
+        ) : null}
         {staffRole === 'designer' ? (
           <>
             <ProFormText name="wechatId" label="微信号" rules={[{ required: true, message: '请输入设计师微信号' }]} />

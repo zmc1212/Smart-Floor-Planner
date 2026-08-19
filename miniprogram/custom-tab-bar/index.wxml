@@ -1,4 +1,5 @@
 <view wx:if="{{!suppressed}}" class="tabbar-shell">
+  <view wx:if="{{badgeUnavailable}}" class="tabbar-badge-error">{{badgeUnavailableText}}</view>
   <view class="tabbar">
     <view
       wx:if="{{item.visible !== false}}"
@@ -11,6 +12,7 @@
       <view class="tab-icon {{item.center ? 'center-icon' : ''}} {{item.center && compactMeasureTab ? 'center-icon-compact' : ''}}">
         <image wx:if="{{item.center}}" class="tab-image center-image {{compactMeasureTab ? 'center-image-compact' : ''}}" src="/images/mine-icons/tab-measure-k.png" mode="aspectFit" />
         <image wx:else class="tab-image" src="{{selected === index ? item.selectedIconPath : item.iconPath}}" mode="aspectFit" />
+        <view wx:if="{{item.badgeText}}" class="tab-badge">{{item.badgeText}}</view>
       </view>
       <text class="tab-text">{{item.text}}</text>
     </view>

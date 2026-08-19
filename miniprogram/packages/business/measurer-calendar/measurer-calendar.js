@@ -12,14 +12,21 @@ function navigationMetrics() {
 }
 function slot(range){const m=String(range||'').match(/[[(]([^,]+),([^\])]+)[\])]/);if(!m)return {time:'待确认'};const s=new Date(m[1].replaceAll('"','')),e=new Date(m[2].replaceAll('"',''));const p=x=>String(x).padStart(2,'0');return {time:`${p(s.getHours())}:${p(s.getMinutes())} - ${p(e.getHours())}:${p(e.getMinutes())}`};}
 Page({
-  data: { navigationTop: 24, navigationHeight: 32, navigationRight: 96, loading: true, items: [], error: '' },
-  onLoad() { this.setData(navigationMetrics()); },
+  data: { navigationTop: 24, navigationHeight: 32, navigationRight: 96, loading: true, confirmed: [], history: [], error: '', showBack: true },
+  onLoad() {
+    const pages = getCurrentPages();
+    this.setData({ ...navigationMetrics(), showBack: Boolean(pages && pages.length > 1) });
+  },
   onShow() { this.load(); },
   async load() {
     this.setData({ loading: true, error: '' });
     try {
       const r = await api.request('/appointments', 'GET');
-      this.setData({ items: (r.data || []).map((x) => ({ ...x, ...slot(x.timeRange) })) });
+      const items = (r.data || []).map((x) => ({ ...x, ...slot(x.timeRange), statusLabel: x.status === 'expired' ? '已过期' : x.status === 'confirmed' ? '已确认' : x.status }));
+      this.setData({
+        confirmed: items.filter((item) => item.status === 'confirmed'),
+        history: items.filter((item) => item.status !== 'confirmed'),
+      });
     } catch (e) {
       this.setData({ error: e.message || '日程加载失败' });
     } finally {

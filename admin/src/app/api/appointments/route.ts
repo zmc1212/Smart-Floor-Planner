@@ -38,7 +38,7 @@ export async function GET(request: Request) {
           return appointment ? [appointment] : null;
         }
         if (context.mode === 'staff' && context.staff?.role === 'measurer' && !leadIdText) {
-          return repository.listByMeasurer(enterpriseId, BigInt(context.staff._id));
+          return repository.listByMeasurer(enterpriseId, BigInt(context.staff._id), ['confirmed', 'expired']);
         }
         const leadId = parseAppointmentId(leadIdText, '线索');
         const lead = await repository.findLeadForAccess(enterpriseId, leadId);

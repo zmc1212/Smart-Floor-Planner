@@ -17,6 +17,7 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteEntry[] = [
   { key: 'floorplans', label: '户型图库', href: '/floorplans', section: '户型图库' },
   { key: 'lead-commissions', label: '三方提成', href: '/lead-commissions', section: '团队资产管理' },
   { key: 'referrer-network-operations', label: '推荐网络运营', href: '/referrer-network-operations', section: '团队资产管理' },
+  { key: 'appointment-settings', label: '预约设置', href: '/appointment-settings', section: '团队资产管理', permissionKey: 'referrer-network-operations' },
 ];
 
 export function isAdminRouteActive(pathname: string, href: string) {

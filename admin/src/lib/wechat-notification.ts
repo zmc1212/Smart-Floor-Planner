@@ -349,7 +349,7 @@ export async function notifyAppointmentStaff(input: {
   address: string;
   startsAt: Date;
   eventKey: string;
-  eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled';
+  eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled' | 'expired';
 }) {
   try {
     const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
@@ -360,7 +360,11 @@ export async function notifyAppointmentStaff(input: {
       findNotificationRecipient(input.designerId.toString(), 'designer id'),
       findNotificationRecipient(input.measurerId.toString(), 'measurer id'),
     ]);
-    const action = input.eventType === 'cancelled' ? '预约已取消' : input.eventType === 'created' ? '已创建上门预约' : '预约时间已更新';
+    const action = input.eventType === 'cancelled'
+      ? '预约已取消'
+      : input.eventType === 'expired'
+        ? '预约已过期，请重新预约'
+        : input.eventType === 'created' ? '已创建上门预约' : '预约时间已更新';
     const results = await Promise.all(recipients.filter(Boolean).map((recipient) =>
       deliverLeadNotification({
         lead: { ...lead, id: lead.id, enterpriseId: lead.enterpriseId?.toString() },
@@ -371,7 +375,7 @@ export async function notifyAppointmentStaff(input: {
         metadata: { appointmentEvent: input.eventType },
         buildData: (template) => buildMeasurementAppointmentPayload(template, {
           customerName: lead.name, phone: lead.phone, community: input.address,
-          measurementAt: input.startsAt, reminder: input.eventType === 'cancelled' ? '预约已取消' : '请按时到场',
+          measurementAt: input.startsAt, reminder: input.eventType === 'cancelled' ? '预约已取消' : input.eventType === 'expired' ? '请重新预约上门' : '请按时到场',
         }),
       })
     ));
@@ -387,7 +391,7 @@ export async function notifyCustomerOfAppointment(input: {
   leadId: bigint;
   address: string;
   startsAt: Date;
-  eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled';
+  eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled' | 'expired';
 }) {
   try {
     const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
@@ -405,7 +409,9 @@ export async function notifyCustomerOfAppointment(input: {
 
     const action = input.eventType === 'cancelled'
       ? '预约已取消'
-      : input.eventType === 'created'
+      : input.eventType === 'expired'
+        ? '预约已过期，请重新预约'
+        : input.eventType === 'created'
         ? '上门量房已预约'
         : '预约时间已更新';
     return await sendSubscriptionMessage({

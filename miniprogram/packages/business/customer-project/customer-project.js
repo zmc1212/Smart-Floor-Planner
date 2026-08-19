@@ -104,6 +104,10 @@ Page({
     formalFloorPlan: null,
     publishedDesigns: [],
     stages: buildProjectStages(null),
+    serviceStageLabel: '',
+    nextAction: '',
+    canRebook: false,
+    canReschedule: false,
     error: '',
   },
 
@@ -144,6 +148,10 @@ Page({
         formalFloorPlan,
         publishedDesigns,
         stages: buildProjectStages(project),
+        serviceStageLabel: project.serviceStageLabel || '',
+        nextAction: project.nextAction || '',
+        canRebook: Boolean(project.canRebook),
+        canReschedule: Boolean(project.canReschedule),
       });
       this.loadPublishedImages(publishedDesigns);
     } catch (error) {
@@ -170,13 +178,14 @@ Page({
   },
 
   reschedule() {
-    const { appointment, leadId } = this.data;
-    if (!appointment) return;
+    const { appointment, leadId, canReschedule } = this.data;
+    if (!appointment || !canReschedule) return;
     wx.navigateTo({ url: `/packages/business/appointment-reschedule/appointment-reschedule?leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}&version=${appointment.version}` });
   },
 
   bookAppointment() {
-    if (this.data.appointment || !this.data.leadId) return;
+    if (!this.data.leadId) return;
+    if (this.data.appointment && !this.data.canRebook) return;
     wx.navigateTo({ url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}&mode=customer` });
   },
 

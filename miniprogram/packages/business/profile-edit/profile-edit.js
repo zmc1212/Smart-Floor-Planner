@@ -19,11 +19,15 @@ Page({
   data: {
     loading: true,
     saving: false,
+    uploadingQr: false,
     loadError: '',
     profile: {},
     nickname: '',
     pendingAvatarPath: '',
-    defaultAvatar: DEFAULT_AVATAR
+    defaultAvatar: DEFAULT_AVATAR,
+    isDesigner: false,
+    wechatId: '',
+    wechatQrUrl: '',
   },
 
   onLoad() {
@@ -35,7 +39,9 @@ Page({
     try {
       const result = await api.request('/miniprogram/profile', 'GET');
       const profile = result.data || {};
-      this.setData({ loading: false, profile, nickname: profile.name || '' });
+      const isDesigner = profile.role === 'designer';
+      this.setData({ loading: false, profile, nickname: profile.name || '', isDesigner });
+      if (isDesigner) await this.loadWechatProfile();
     } catch (error) {
       this.setData({
         loading: false,
@@ -49,6 +55,48 @@ Page({
     if (avatarUrl) this.setData({ pendingAvatarPath: avatarUrl });
   },
 
+  async loadWechatProfile() {
+    try {
+      const result = await api.request('/miniprogram/staff/wechat-profile', 'GET');
+      const data = result.data || {};
+      this.setData({
+        wechatId: data.wechatId || '',
+        wechatQrUrl: data.wechatQrUrl || '',
+      });
+    } catch (error) {
+      wx.showToast({ title: (error && error.error) || '微信资料读取失败', icon: 'none' });
+    }
+  },
+
+  onWechatIdInput(event) {
+    this.setData({ wechatId: event.detail.value });
+  },
+
+  onChooseWechatQr() {
+    if (this.data.uploadingQr) return;
+    wx.chooseMedia({
+      count: 1,
+      mediaType: ['image'],
+      sourceType: ['album', 'camera'],
+      success: async (result) => {
+        const filePath = result.tempFiles && result.tempFiles[0] && result.tempFiles[0].tempFilePath;
+        if (!filePath) return;
+        this.setData({ uploadingQr: true });
+        try {
+          const upload = await api.uploadStaffWechatQr(filePath);
+          this.setData({
+            uploadingQr: false,
+            wechatQrUrl: upload.data && upload.data.wechatQrUrl ? upload.data.wechatQrUrl : this.data.wechatQrUrl,
+          });
+          wx.showToast({ title: '二维码已更新', icon: 'success' });
+        } catch (error) {
+          this.setData({ uploadingQr: false });
+          wx.showToast({ title: (error && error.error) || '二维码上传失败', icon: 'none' });
+        }
+      },
+    });
+  },
+
   onNicknameInput(event) {
     this.setData({ nickname: event.detail.value });
   },
@@ -60,6 +108,11 @@ Page({
       wx.showToast({ title: '昵称应为 1–30 个字符', icon: 'none' });
       return;
     }
+    const wechatId = String(this.data.wechatId || '').trim();
+    if (this.data.isDesigner && (!wechatId || wechatId.length > 64)) {
+      wx.showToast({ title: '请填写 1–64 个字符的微信号', icon: 'none' });
+      return;
+    }
     this.setData({ saving: true });
     try {
       let avatar = this.data.profile.avatar || '';
@@ -68,6 +121,9 @@ Page({
         avatar = upload.data && upload.data.avatar ? upload.data.avatar : avatar;
       }
       const result = await api.request('/miniprogram/profile', 'PATCH', { nickname });
+      if (this.data.isDesigner) {
+        await api.request('/miniprogram/staff/wechat-profile', 'PATCH', { wechatId });
+      }
       const profile = { ...(result.data || {}), avatar: (result.data && result.data.avatar) || avatar };
       syncStoredProfile(profile);
       this.setData({ saving: false, profile, nickname: profile.name, pendingAvatarPath: '' });

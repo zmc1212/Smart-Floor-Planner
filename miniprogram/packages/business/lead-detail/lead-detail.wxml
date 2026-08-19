@@ -20,13 +20,14 @@
   <view class="appointment-entry" wx:if="{{canScheduleAppointment}}">
     <view class="appointment-entry-copy">
       <text class="appointment-entry-title">上门量房</text>
-      <text class="appointment-entry-note">先从真实可用时段安排首次上门服务</text>
+      <text class="appointment-entry-note">{{canRebookAppointment ? (lead.nextAction || '预约已过期或已取消，请选择新的上门时段') : '先从真实可用时段安排首次上门服务'}}</text>
     </view>
-    <button class="appointment-entry-action" bindtap="onScheduleAppointment">安排上门量房</button>
+    <button class="appointment-entry-action" wx:if="{{canRebookAppointment}}" bindtap="onScheduleAppointment">重新预约上门</button>
+    <button class="appointment-entry-action" wx:else bindtap="onScheduleAppointment">安排上门量房</button>
   </view>
   <view class="appointment-entry" wx:elif="{{appointment}}">
     <view class="appointment-entry-copy">
-      <text class="appointment-entry-title">上门量房 · 已确认</text>
+      <text class="appointment-entry-title">上门量房 · {{lead.serviceStageLabel || '已确认'}}</text>
       <text class="appointment-entry-note">{{appointment.summary}} · {{appointment.address}}</text>
     </view>
     <button class="appointment-entry-action appointment-entry-action-secondary" bindtap="onOpenAppointment">查看预约</button>

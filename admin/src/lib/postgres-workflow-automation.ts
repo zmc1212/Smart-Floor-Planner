@@ -35,6 +35,7 @@ import {
   buildWorkflowNotificationPayload,
   resolveWorkflowTemplateKind,
 } from '@/lib/miniprogram-subscription-messages';
+import { expireOverdueAppointmentsAndNotify } from '@/lib/appointment-expiry';
 import type { PromotionNotificationJob } from '@/lib/postgres-promotion-workflow';
 
 export const DEFAULT_AUTOMATION_CONFIG = {
@@ -692,7 +693,13 @@ export async function runWorkflowReminderScan() {
     }
   }
   const protection = await runProtectionExpiryScan();
-  return { scanned: records.length, processed, protectionReleased: protection.released };
+  const appointments = await expireOverdueAppointmentsAndNotify({ now });
+  return {
+    scanned: records.length,
+    processed,
+    protectionReleased: protection.released,
+    expiredAppointments: appointments.expired,
+  };
 }
 
 export async function runProtectionExpiryScan() {

@@ -1,0 +1,4 @@
+<view class="page sfp-tab-page">
+  <role-workbench role="enterprise_admin" focus="appointments" />
+</view>
+<custom-tab-bar />

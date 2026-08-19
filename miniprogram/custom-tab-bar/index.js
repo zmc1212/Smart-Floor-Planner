@@ -31,7 +31,7 @@ const ROLE_ITEMS = {
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   measurer: [
-    { key: 'schedule', capability: 'staff.schedule', pagePath: '/pages/index/index', text: '日程', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'schedule', capability: 'staff.schedule', pagePath: '/packages/business/measurer-calendar/measurer-calendar', text: '日程', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'tasks', capability: 'staff.tasks', pagePath: '/pages/leads-management/leads-management', text: '任务', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
     { key: 'survey', capability: 'staff.surveying', pagePath: '/pages/ai-design/ai-design', text: '量房', tab: true, iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
@@ -39,7 +39,7 @@ const ROLE_ITEMS = {
   enterprise_admin: [
     { key: 'operations', capability: 'enterprise.operations', pagePath: '/pages/index/index', text: '经营', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'customers', capability: 'enterprise.customers', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
-    { key: 'appointments', capability: 'enterprise.appointments', pagePath: '/pages/ai-design/ai-design', text: '预约', tab: true, iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
+    { key: 'appointments', capability: 'enterprise.appointments', pagePath: '/packages/business/enterprise-appointments/enterprise-appointments', text: '预约', iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ]
 };
@@ -66,11 +66,29 @@ function visibleItems(globalData) {
   return LEGACY_ITEMS.map((item) => ({ ...item, visible: !item.requiresEnterprise || canUseAIDesign }));
 }
 
+function applyServerBadges(list, badges) {
+  const unavailable = Boolean(badges && badges.status === 'unavailable');
+  const counts = (!unavailable && badges && badges.status === 'ok' && badges.counts) || {};
+  return {
+    list: list.map((item) => {
+      const count = Number(counts[item.key] || 0);
+      return {
+        ...item,
+        badgeText: count > 0 ? (count > 99 ? '99+' : String(count)) : ''
+      };
+    }),
+    badgeUnavailable: unavailable,
+    badgeUnavailableText: unavailable ? (badges.message || '暂时无法读取') : ''
+  };
+}
+
 Component({
   data: {
     selected: 0,
     suppressed: false,
     compactMeasureTab: true,
+    badgeUnavailable: false,
+    badgeUnavailableText: '',
     list: LEGACY_ITEMS
   },
 
@@ -142,7 +160,11 @@ Component({
 
     syncSelected() {
       const globalData = (getApp() && getApp().globalData) || {};
-      const list = visibleItems(globalData);
+      const decorated = applyServerBadges(
+        visibleItems(globalData),
+        globalData.bootstrap && globalData.bootstrap.badges
+      );
+      const list = decorated.list;
       const pages = getCurrentPages();
       const current = pages && pages.length ? `/${pages[pages.length - 1].route}` : '';
       const index = list.findIndex((item) => item.pagePath === current && !item.center);
@@ -150,6 +172,8 @@ Component({
         list,
         compactMeasureTab: list.some((item) => item.center) && list.filter((item) => item.visible).length === 4,
         selected: index >= 0 && list[index].visible ? index : this.data.selected,
+        badgeUnavailable: decorated.badgeUnavailable,
+        badgeUnavailableText: decorated.badgeUnavailableText
       });
     }
   }

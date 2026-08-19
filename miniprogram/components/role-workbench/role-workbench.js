@@ -67,16 +67,25 @@ Component({
         const items = (source || []).map((item) => ({
           ...item,
           metaLabel: item.metaLabel || (item.timeRange ? rangeLabel(item.timeRange) : statusLabel(item.status)),
-          actionLabel: item.action === 'survey' || item.canSurveyNow
-            ? '立即量房'
-            : focus === 'survey'
-              ? '进入量房'
-              : item.action === 'appointment'
-                ? '查看预约'
-                : '查看客户',
+          actionLabel: item.actionLabel
+            || (item.action === 'survey' || item.canSurveyNow
+              ? '立即量房'
+              : focus === 'survey'
+                ? '进入量房'
+                : item.action === 'appointment'
+                  ? '查看预约'
+                  : item.action === 'staffing'
+                    ? '需补人'
+                    : item.action === 'rebook'
+                      ? '重新预约'
+                      : item.action === 'reschedule'
+                        ? '改期'
+                        : this.properties.role === 'customer'
+                          ? '看项目'
+                          : '查看客户'),
         }));
         const emptyCopy = isCustomer
-          ? '完成服务后，项目会出现在这里'
+          ? '还没有进行中的服务'
           : focus === 'survey'
           ? '暂无可进入的已指派量房任务'
           : focus === 'tasks'
@@ -107,31 +116,53 @@ Component({
     },
 
     customerPayload(projects) {
-      const items = (projects || []).map((project) => {
-        const stage = Number(project.publishedDesignCount || 0) > 0
-          ? '方案已发布'
-          : project.hasFormalFloorPlan
-            ? '正式量房已完成'
-            : project.appointmentStatus === 'confirmed'
-              ? '已确认上门服务'
-              : '服务准备中';
-        return {
-          id: project.leadId,
-          leadId: project.leadId,
-          title: '免费设计与量房',
-          subtitle: '预约、户型档案和已发布方案由本人查看',
-          status: project.status,
-          metaLabel: stage,
-          action: 'customer-project',
-        };
-      });
+      const urgency = {
+        appointment_expired: 0,
+        awaiting_rebooking: 1,
+        appointment_in_progress: 2,
+        appointment_confirmed: 3,
+        survey_completed: 4,
+        design_published: 5,
+        measurer_assigned: 6,
+        assignment_pending: 7,
+        claimed: 8,
+        converted: 9,
+        closed: 10,
+      };
+      const ranked = [...(projects || [])].sort((left, right) =>
+        (urgency[left.serviceStage] ?? 20) - (urgency[right.serviceStage] ?? 20)
+      );
+      const featured = ranked[0] || null;
+      const items = featured ? [{
+        id: featured.leadId,
+        leadId: featured.leadId,
+        appointmentId: featured.appointmentId,
+        appointmentVersion: featured.appointmentVersion,
+        title: featured.serviceStageLabel || '当前服务',
+        subtitle: featured.appointmentSummary || featured.nextAction || '预约、户型档案和已发布方案由本人查看',
+        status: featured.status,
+        serviceStage: featured.serviceStage,
+        metaLabel: featured.appointmentSummary || featured.serviceStageLabel || '服务准备中',
+        nextActionKind: featured.nextActionKind,
+        action: featured.nextActionKind === 'rebook'
+          ? 'rebook'
+          : featured.nextActionKind === 'reschedule'
+            ? 'reschedule'
+            : 'customer-project',
+        actionLabel: featured.nextActionLabel || '看项目',
+        canBookAppointment: featured.nextActionKind === 'rebook',
+        canReschedule: featured.nextActionKind === 'reschedule',
+        canRebook: featured.nextActionKind === 'rebook',
+      }] : [];
       return {
         role: 'customer',
         title: '我的装修服务',
-        subtitle: '查看属于您的预约、正式量房与设计方案',
+        subtitle: featured
+          ? (featured.appointmentSummary || featured.nextAction || '查看属于您的预约、正式量房与设计方案')
+          : '领取服务后，当前阶段和下一步会出现在这里',
         summary: [
-          { key: 'projects', label: '服务项目', value: items.length, detail: '仅本人可查看', tone: 'green' },
-          { key: 'published', label: '已发布方案', value: (projects || []).filter((item) => Number(item.publishedDesignCount || 0) > 0).length, detail: '设计师主动发布', tone: 'orange' },
+          { key: 'stage', label: '当前阶段', value: featured ? 1 : 0, detail: featured ? featured.serviceStageLabel : '暂无进行中的服务', tone: featured && (featured.canRebook || featured.canReschedule) ? 'orange' : 'green' },
+          { key: 'next', label: '下一步', value: featured ? 1 : 0, detail: featured ? (featured.nextActionLabel || featured.nextAction) : '还没有进行中的服务', tone: 'green' },
         ],
         primaryItems: items,
         secondary: { label: '查看全部项目', target: 'projects' },
@@ -152,6 +183,17 @@ Component({
         });
         return;
       }
+      if (item.action === 'staffing') return;
+      if (item.action === 'reschedule' && item.leadId && item.appointmentId) {
+        this.openReschedule({ currentTarget: { dataset: { item } } });
+        return;
+      }
+      if (item.action === 'rebook' && item.leadId) {
+        wx.navigateTo({
+          url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}${this.properties.role === 'customer' ? '&mode=customer' : ''}`,
+        });
+        return;
+      }
       if (item.action === 'customer-project' && item.leadId) {
         wx.navigateTo({ url: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(item.leadId)}` });
         return;
@@ -168,9 +210,11 @@ Component({
       } else if (target === 'projects') {
         wx.navigateTo({ url: '/packages/business/customer-projects/customer-projects' });
       } else if (target === 'appointments') {
-        wx.switchTab({ url: '/pages/ai-design/ai-design' });
+        wx.reLaunch({ url: '/packages/business/enterprise-appointments/enterprise-appointments' });
       } else if (target === 'unavailability') {
         wx.navigateTo({ url: '/packages/business/measurer-unavailability/measurer-unavailability' });
+      } else if (target === 'calendar') {
+        wx.navigateTo({ url: '/packages/business/measurer-calendar/measurer-calendar' });
       } else if (target === 'activity-code') {
         wx.navigateTo({ url: '/packages/business/staff-activity-code/staff-activity-code' });
       }
@@ -180,11 +224,19 @@ Component({
       wx.navigateTo({ url: '/packages/business/staff-activity-code/staff-activity-code' });
     },
 
+    openReschedule(event) {
+      const item = event.currentTarget.dataset.item;
+      if (!item || !item.leadId || !item.appointmentId) return;
+      wx.navigateTo({
+        url: `/packages/business/appointment-reschedule/appointment-reschedule?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}&version=${encodeURIComponent(item.appointmentVersion || 0)}`,
+      });
+    },
+
     openBooking(event) {
       const item = event.currentTarget.dataset.item;
       if (!item || !item.leadId) return;
       wx.navigateTo({
-        url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}`,
+        url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}${this.properties.role === 'customer' ? '&mode=customer' : ''}`,
       });
     },
   },

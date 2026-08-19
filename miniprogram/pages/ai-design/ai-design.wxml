@@ -1,7 +1,6 @@
 <!-- Approved source: design-references/ai-design/ai-recipe-discovery-home-v2/ -->
 <view class="ai-page sfp-tab-page">
   <role-workbench wx:if="{{roleWorkbenchRole === 'measurer'}}" role="measurer" focus="survey" />
-  <role-workbench wx:elif="{{roleWorkbenchRole === 'enterprise_admin'}}" role="enterprise_admin" focus="appointments" />
   <block wx:else>
   <scroll-view
     scroll-y

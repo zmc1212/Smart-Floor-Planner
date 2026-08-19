@@ -35,12 +35,13 @@
             <text class="item-title">{{item.title}}</text>
             <text class="item-subtitle">{{item.subtitle}}</text>
             <text class="item-meta">{{item.metaLabel}}</text>
-            <view wx:if="{{item.canSurveyNow || item.canBookAppointment}}" class="item-cta-row">
+            <view wx:if="{{item.canSurveyNow || item.canBookAppointment || item.canReschedule}}" class="item-cta-row">
               <view wx:if="{{item.canSurveyNow}}" class="item-cta" catchtap="openItem" data-item="{{item}}">立即量房</view>
-              <view wx:if="{{item.canBookAppointment}}" class="item-cta item-cta-secondary" catchtap="openBooking" data-item="{{item}}">预约上门</view>
+              <view wx:if="{{item.canReschedule}}" class="item-cta" catchtap="openReschedule" data-item="{{item}}">{{item.actionLabel || '改期'}}</view>
+              <view wx:elif="{{item.canBookAppointment}}" class="item-cta item-cta-secondary" catchtap="openBooking" data-item="{{item}}">{{item.canRebook ? (item.actionLabel || '重新预约') : '预约上门'}}</view>
             </view>
           </view>
-          <view wx:if="{{!(item.canSurveyNow || item.canBookAppointment)}}" class="item-action"><text>{{role === 'customer' ? '查看项目' : item.actionLabel}}</text><view class="chevron"></view></view>
+          <view wx:if="{{!(item.canSurveyNow || item.canBookAppointment || item.canReschedule)}}" class="item-action"><text>{{item.actionLabel}}</text><view class="chevron"></view></view>
         </view>
       </view>
       <view wx:else class="state-block empty"><text>{{emptyCopy}}</text><view wx:if="{{secondary}}" class="retry" bindtap="openSecondary">{{secondary.label}}</view></view>

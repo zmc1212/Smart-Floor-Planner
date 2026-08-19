@@ -584,9 +584,9 @@ Page({
     const floor = surveyGraph.getActiveFloor(restored);
     const session = floor.session || {};
     if (session.state === 'wallPreview' || session.state === 'awaitingLength' || session.state === 'remeasureAwaitingInput') {
-      return surveyGraph.cancelPending(restored);
+      return surveyGraph.repairCollinearDegree2Walls(surveyGraph.cancelPending(restored));
     }
-    return restored;
+    return surveyGraph.repairCollinearDegree2Walls(restored);
   },
 
   loadFormalDraft(leadId, serverDraft, draftKey) {

@@ -22,7 +22,7 @@ export async function GET(request: Request) {
         const actorId = parsePostgresId(context.userId, 'actorId');
         const data = await withTenantTransaction(context.enterpriseId!, async (transaction) => {
           const network = new ReferrerNetworkRepository(transaction);
-          const [codes, events, activeReferrerMemberships, activeReferrerPromotionCodes, activeStaffActivityCodes, staff, appointmentSettings, commissionRules] = await Promise.all([
+          const [codes, events, activeReferrerMemberships, activeReferrerPromotionCodes, activeStaffActivityCodes, staff, appointmentSettings, commissionRules, referrerMemberships] = await Promise.all([
             network.listEnterpriseJoinCodes(enterpriseId),
             network.listEnterpriseJoinCodeEvents(enterpriseId),
             network.countActiveReferrerMemberships(enterpriseId),
@@ -31,6 +31,7 @@ export async function GET(request: Request) {
             new AdminUserRepository(transaction).list({ roles: ['designer', 'measurer'], page: 1, limit: 200 }),
             new AppointmentRepository(transaction).getSettings(enterpriseId),
             new LeadCommissionRepository(transaction).listRules(enterpriseId, actorId),
+            network.listEnterpriseReferrerMemberships(enterpriseId),
           ]);
           return {
             codes: codes.map(enterpriseJoinCodeToDto),
@@ -49,6 +50,14 @@ export async function GET(request: Request) {
             activeReferrerPromotionCodes,
             activeStaffActivityCodes,
             staff: staff.rows.map((member) => adminUserToDto(member)),
+            referrerMemberships: referrerMemberships.map((item) => ({
+              id: item.membership.id.toString(),
+              displayName: item.displayName || '推荐人',
+              status: item.membership.status,
+              joinedAt: item.membership.joinedAt,
+              exitedAt: item.membership.exitedAt,
+              hasActivePromotionCode: item.promotionCode?.status === 'active',
+            })),
             appointmentSettings: {
               id: appointmentSettings.id.toString(),
               configured: appointmentSettings.updatedAt.getTime() > appointmentSettings.createdAt.getTime(),

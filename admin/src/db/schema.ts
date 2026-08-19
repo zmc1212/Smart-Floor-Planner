@@ -1491,7 +1491,7 @@ export const measurementAppointments = appSchema.table(
     index('measurement_appointments_designer_range_idx').on(table.designerId, table.timeRange),
     index('measurement_appointments_measurer_range_idx').on(table.measurerId, table.timeRange),
     index('measurement_appointments_updated_by_user_idx').on(table.updatedByUserId),
-    check('measurement_appointments_status_check', sql`${table.status} in ('confirmed', 'cancelled', 'completed')`),
+    check('measurement_appointments_status_check', sql`${table.status} in ('confirmed', 'cancelled', 'completed', 'expired')`),
     check('measurement_appointments_version_check', sql`${table.version} > 0`),
   ]
 );

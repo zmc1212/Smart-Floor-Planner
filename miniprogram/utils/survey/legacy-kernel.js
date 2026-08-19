@@ -1843,6 +1843,169 @@ function removeUnreferencedNodes(floor) {
   floor.nodes = floor.nodes.filter((node) => used[node.id]);
 }
 
+function nodeIncidentWallCount(floor, nodeId) {
+  return (floor.walls || []).reduce((count, wall) => (
+    count + ((wall.startNodeId === nodeId || wall.endNodeId === nodeId) ? 1 : 0)
+  ), 0);
+}
+
+function wallBelongsToClosedSpace(floor, wallId) {
+  return (floor.spaces || []).some((space) => (
+    space && space.closed && Array.isArray(space.wallIds) && space.wallIds.indexOf(wallId) !== -1
+  ));
+}
+
+function isForwardCollinearOpenPair(floor, first, second) {
+  if (!first || !second || first.endNodeId !== second.startNodeId) return false;
+  if (first.status !== 'confirmed' || second.status !== 'confirmed') return false;
+  if (first.mode !== second.mode) return false;
+  if (Number(first.thicknessMm) !== Number(second.thicknessMm)) return false;
+  if (nodeIncidentWallCount(floor, first.endNodeId) !== 2) return false;
+  if (wallBelongsToClosedSpace(floor, first.id) || wallBelongsToClosedSpace(floor, second.id)) return false;
+  const firstStart = getNode(floor, first.startNodeId);
+  const joint = getNode(floor, first.endNodeId);
+  const secondEnd = getNode(floor, second.endNodeId);
+  if (!firstStart || !joint || !secondEnd) return false;
+  const previousAngle = angleDeg(firstStart, joint);
+  const extensionAngle = angleDeg(joint, secondEnd);
+  return Math.abs(normalizeSignedAngle(extensionAngle - previousAngle)) <= WALL_EXTENSION_DIRECTION_TOLERANCE_DEG;
+}
+
+function absorbForwardCollinearWall(floor, first, second) {
+  const originalKeepLength = getWallCoordinateLength(floor, first);
+  first.endNodeId = second.endNodeId;
+  first.measurementEndInsetMm = second.measurementEndInsetMm || 0;
+  first.lengthMm = getMeasuredWallLength(floor, first);
+  first.angleDeg = angleDeg(getNode(floor, first.startNodeId), getNode(floor, first.endNodeId));
+  if (
+    first.inputSource === 'closure-merge' ||
+    first.inputSource === 'closure-preview' ||
+    second.inputSource === 'closure-merge' ||
+    second.inputSource === 'closure-preview'
+  ) {
+    first.inputSource = 'closure-merge';
+  }
+  (floor.openings || []).forEach((opening) => {
+    if (opening.wallId !== second.id) return;
+    opening.wallId = first.id;
+    opening.centerOffsetMm = Math.round((opening.centerOffsetMm || 0) + originalKeepLength);
+  });
+  (floor.spaces || []).forEach((space) => {
+    if (!Array.isArray(space.wallIds)) return;
+    space.wallIds = space.wallIds.filter((wallId) => wallId !== second.id);
+  });
+  floor.walls = floor.walls.filter((wall) => wall.id !== second.id);
+}
+
+function oppositeMeasurementSide(side) {
+  if (side === 'left') return 'right';
+  if (side === 'right') return 'left';
+  return side || '';
+}
+
+function reverseWallDirection(floor, wall) {
+  const startNodeId = wall.startNodeId;
+  const coordinateLength = getWallCoordinateLength(floor, wall);
+  wall.startNodeId = wall.endNodeId;
+  wall.endNodeId = startNodeId;
+  const startInset = wall.measurementStartInsetMm || 0;
+  wall.measurementStartInsetMm = wall.measurementEndInsetMm || 0;
+  wall.measurementEndInsetMm = startInset;
+  wall.measurementSide = oppositeMeasurementSide(wall.measurementSide);
+  wall.bodyNormalSide = oppositeMeasurementSide(wall.bodyNormalSide);
+  wall.angleDeg = angleDeg(getNode(floor, wall.startNodeId), getNode(floor, wall.endNodeId));
+  (floor.openings || []).forEach((opening) => {
+    if (opening.wallId !== wall.id) return;
+    opening.centerOffsetMm = Math.round(coordinateLength - (opening.centerOffsetMm || 0));
+  });
+}
+
+function orientWallEndToNode(floor, wall, nodeId) {
+  if (!wall || !nodeId) return false;
+  if (wall.endNodeId === nodeId) return true;
+  if (wall.startNodeId !== nodeId) return false;
+  reverseWallDirection(floor, wall);
+  return wall.endNodeId === nodeId;
+}
+
+function orientWallStartToNode(floor, wall, nodeId) {
+  if (!wall || !nodeId) return false;
+  if (wall.startNodeId === nodeId) return true;
+  if (wall.endNodeId !== nodeId) return false;
+  reverseWallDirection(floor, wall);
+  return wall.startNodeId === nodeId;
+}
+
+function isCollinearThroughNode(floor, first, second, nodeId) {
+  if (!first || !second || !nodeId) return false;
+  if (first.status !== 'confirmed' || second.status !== 'confirmed') return false;
+  if (first.mode !== second.mode) return false;
+  if (Number(first.thicknessMm) !== Number(second.thicknessMm)) return false;
+  const firstOtherId = first.startNodeId === nodeId ? first.endNodeId : (
+    first.endNodeId === nodeId ? first.startNodeId : ''
+  );
+  const secondOtherId = second.startNodeId === nodeId ? second.endNodeId : (
+    second.endNodeId === nodeId ? second.startNodeId : ''
+  );
+  if (!firstOtherId || !secondOtherId || firstOtherId === secondOtherId) return false;
+  const firstOther = getNode(floor, firstOtherId);
+  const joint = getNode(floor, nodeId);
+  const secondOther = getNode(floor, secondOtherId);
+  if (!firstOther || !joint || !secondOther) return false;
+  const incomingAngle = angleDeg(firstOther, joint);
+  const outgoingAngle = angleDeg(joint, secondOther);
+  return Math.abs(normalizeSignedAngle(outgoingAngle - incomingAngle)) <= WALL_EXTENSION_DIRECTION_TOLERANCE_DEG;
+}
+
+function mergeCollinearOpenChain(floor, fromIndex) {
+  let index = Math.max(0, fromIndex || 0);
+  while (index < (floor.walls || []).length - 1) {
+    const first = floor.walls[index];
+    const second = floor.walls[index + 1];
+    if (!isForwardCollinearOpenPair(floor, first, second)) {
+      index += 1;
+      continue;
+    }
+    absorbForwardCollinearWall(floor, first, second);
+  }
+}
+
+function mergeCollinearDegree2Walls(floor) {
+  let merged = true;
+  while (merged) {
+    merged = false;
+    const nodes = floor.nodes || [];
+    for (let nodeIndex = 0; nodeIndex < nodes.length; nodeIndex += 1) {
+      const node = nodes[nodeIndex];
+      if (!node || !node.id) continue;
+      const incident = (floor.walls || []).filter((wall) => (
+        wall.startNodeId === node.id || wall.endNodeId === node.id
+      ));
+      if (incident.length !== 2) continue;
+      const first = incident[0];
+      const second = incident[1];
+      if (!isCollinearThroughNode(floor, first, second, node.id)) continue;
+      if (!orientWallEndToNode(floor, first, node.id)) continue;
+      if (!orientWallStartToNode(floor, second, node.id)) continue;
+      if (first.endNodeId !== second.startNodeId) continue;
+      absorbForwardCollinearWall(floor, first, second);
+      merged = true;
+      break;
+    }
+  }
+}
+
+function repairCollinearDegree2Walls(draft) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  mergeCollinearDegree2Walls(floor);
+  if ((floor.spaces || []).some((space) => space && space.closed)) {
+    syncFloorSpaces(floor);
+  }
+  removeUnreferencedNodes(floor);
+  return touchDraft(next);
+}
+
 function validateLength(lengthMm) {
   const parsed = Number(lengthMm);
   if (!Number.isInteger(parsed) || parsed < MIN_WALL_LENGTH_MM) {
@@ -2198,7 +2361,8 @@ function findWallSnapProjection(floor, point) {
 }
 
 // Unique extend rule: orthogonal and collinear, degree-1 anchor, and the last
-// wall is not already in a closed space. Any other drag commits a new wall.
+// wall is not already in a closed space. Session-side switching does not split
+// one physical wall. Any other drag commits a new wall.
 function canExtendLastWall(floor, session, anchor, endPoint, measurementSide, isClosingCurrentSpace) {
   if (isClosingCurrentSpace || !anchor || !endPoint) return false;
 
@@ -2208,8 +2372,7 @@ function canExtendLastWall(floor, session, anchor, endPoint, measurementSide, is
     return false;
   }
   if (lastWall.status !== 'confirmed' || lastWall.mode !== session.mode ||
-      Number(lastWall.thicknessMm) !== Number(session.thicknessMm) ||
-      lastWall.measurementSide !== measurementSide) {
+      Number(lastWall.thicknessMm) !== Number(session.thicknessMm)) {
     return false;
   }
   if (floor.spaces.some((space) => (
@@ -4042,16 +4205,23 @@ function confirmClosure(draft) {
         closureStartNode,
         closureEndNode
       );
+      const lastWall = index === 0 ? getLastWall(floor) : null;
+      // The inferred first closure leg may continue the last confirmed wall
+      // after session-side restoration or switching has changed the current
+      // measurement side. Geometry still represents one physical wall, so
+      // test that continuation with the wall's persisted side.
+      const continuationMeasurementSide = lastWall && lastWall.measurementSide
+        ? lastWall.measurementSide
+        : measurementSide;
       const extendLastWall = index === 0 && canExtendLastWall(
         floor,
         session,
         closureStartNode,
         closureEndNode,
-        measurementSide,
+        continuationMeasurementSide,
         false
       );
       if (extendLastWall) {
-        const lastWall = getLastWall(floor);
         lastWall.endNodeId = closureEndNode.id;
         lastWall.measurementEndInsetMm = measurementEndInsetMm;
         lastWall.lengthMm = getMeasuredWallLength(floor, lastWall);
@@ -4170,6 +4340,8 @@ function confirmClosure(draft) {
 
   lastWall.endNodeId = session.closeCandidateNodeId;
   refreshWallMetrics(floor);
+  mergeCollinearOpenChain(floor, startWallIndex);
+  mergeCollinearDegree2Walls(floor);
 
   const newWallIds = floor.walls.slice(startWallIndex).map((wall) => wall.id);
   if (session.closeCandidateType === 'shared-wall') {
@@ -4255,6 +4427,11 @@ function confirmClosure(draft) {
     }
     : null;
   syncFloorSpaces(floor, inheritOverrides);
+  const wallCountBeforeRepair = (floor.walls || []).length;
+  mergeCollinearDegree2Walls(floor);
+  if ((floor.walls || []).length !== wallCountBeforeRepair) {
+    syncFloorSpaces(floor, inheritOverrides);
+  }
 
   session.state = 'spaceClosed';
   session.anchorNodeId = '';
@@ -4571,6 +4748,102 @@ function clearDeletedSharedWallBoundaryInsets(floor, deletedWalls) {
   return repairedWallIds;
 }
 
+function refreshStandaloneClosureSuggestion(floor, session) {
+  session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.closeCandidateType = '';
+  session.closeCandidateSharedWallId = '';
+  const anchor = getNode(floor, session.anchorNodeId);
+  const activeStartNode = getNode(floor, session.activeSpaceStartNodeId);
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
+  if (!anchor || !activeStartNode || activeWallCount < 2) {
+    session.state = 'wallCommitted';
+    return;
+  }
+  if (activeWallCount >= 3 && distanceMm(anchor, activeStartNode) <= CLOSE_TOLERANCE_MM) {
+    session.state = 'closing';
+    session.closeCandidateNodeId = activeStartNode.id;
+    session.closeCandidateType = 'start';
+    return;
+  }
+  const mergeCandidate = findMergeClosureCandidate(floor, session, anchor);
+  if (mergeCandidate) {
+    session.state = 'mergeClosing';
+    session.closeCandidateNodeId = mergeCandidate.id;
+    session.closeCandidateType = 'merge';
+    return;
+  }
+  session.state = 'wallCommitted';
+}
+
+function restoreOpenedSpaceChain(floor, session, fromNodeId, toNodeId) {
+  if (!floor || !session || !fromNodeId || !toNodeId || fromNodeId === toNodeId) return false;
+  const pathWallIds = findWallPathBetweenNodes(floor, fromNodeId, toNodeId, {});
+  if (pathWallIds.length < 2) return false;
+
+  const pathIdSet = {};
+  pathWallIds.forEach((wallId) => { pathIdSet[wallId] = true; });
+  const otherWalls = (floor.walls || []).filter((wall) => !pathIdSet[wall.id]);
+  const pathWalls = pathWallIds.map((wallId) => getWall(floor, wallId)).filter(Boolean);
+  if (pathWalls.length !== pathWallIds.length) return false;
+
+  const oriented = [];
+  let previousNodeId = fromNodeId;
+  for (let index = 0; index < pathWalls.length; index += 1) {
+    const wall = pathWalls[index];
+    if (wall.startNodeId === previousNodeId) {
+      oriented.push({ wall, reverse: false });
+      previousNodeId = wall.endNodeId;
+    } else if (wall.endNodeId === previousNodeId) {
+      oriented.push({ wall, reverse: true });
+      previousNodeId = wall.startNodeId;
+    } else {
+      return false;
+    }
+  }
+  if (previousNodeId !== toNodeId) return false;
+
+  oriented.forEach((entry) => {
+    if (entry.reverse) reverseWallDirection(floor, entry.wall);
+  });
+  floor.walls = otherWalls.concat(oriented.map((entry) => entry.wall));
+  refreshWallMetrics(floor);
+  session.activeSpaceStartNodeId = fromNodeId;
+  session.activeSpaceStartWallIndex = otherWalls.length;
+  session.activeSpaceSharedWallId = '';
+  session.activeSpaceSharedStartT = null;
+  session.activeSpaceSharedWallMiddle = false;
+  session.activeSpaceSharedSnapLine = '';
+  session.anchorNodeId = toNodeId;
+  refreshStandaloneClosureSuggestion(floor, session);
+  return true;
+}
+
+function findConnectedDanglingPartner(floor, nodeId) {
+  if (!floor || !nodeId) return '';
+  const degrees = {};
+  (floor.walls || []).forEach((wall) => {
+    if (!wall) return;
+    degrees[wall.startNodeId] = (degrees[wall.startNodeId] || 0) + 1;
+    degrees[wall.endNodeId] = (degrees[wall.endNodeId] || 0) + 1;
+  });
+  if ((degrees[nodeId] || 0) !== 1) return '';
+  const connected = Object.keys(degrees).filter((otherId) => (
+    otherId !== nodeId &&
+    degrees[otherId] === 1 &&
+    findWallPathBetweenNodes(floor, otherId, nodeId, {}).length >= 2
+  ));
+  return connected.length === 1 ? connected[0] : '';
+}
+
+function resumeOpenChainAtDanglingNode(floor, session, nodeId) {
+  const partnerId = findConnectedDanglingPartner(floor, nodeId);
+  return !!(partnerId && restoreOpenedSpaceChain(floor, session, partnerId, nodeId));
+}
+
 function deleteWall(draft, wallId) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
@@ -4647,19 +4920,25 @@ function deleteWall(draft, wallId) {
   }
 
   const closedAfter = (floor.spaces || []).filter((space) => space && space.closed).length;
-  if (deletesClosedSpaceWall && closedAfter) {
-    session.anchorNodeId = '';
-    session.state = 'spaceClosed';
-  } else if (floor.walls.length) {
-    const lastEnd = getLastEndNode(floor);
-    session.anchorNodeId = lastEnd ? lastEnd.id : '';
-    session.state = 'wallCommitted';
-  } else if (deletedStartNode) {
-    session.anchorNodeId = deletedStartNode.id;
-    session.state = 'cursorPlaced';
-  } else {
-    session.anchorNodeId = '';
-    session.state = 'idle';
+  const restoredOpenedChain = deletesClosedSpaceWall &&
+    !punchThroughSharedWall &&
+    !closedAfter &&
+    restoreOpenedSpaceChain(floor, session, wall.startNodeId, wall.endNodeId);
+  if (!restoredOpenedChain) {
+    if (deletesClosedSpaceWall && closedAfter) {
+      session.anchorNodeId = '';
+      session.state = 'spaceClosed';
+    } else if (floor.walls.length) {
+      const lastEnd = getLastEndNode(floor);
+      session.anchorNodeId = lastEnd ? lastEnd.id : '';
+      session.state = 'wallCommitted';
+    } else if (deletedStartNode) {
+      session.anchorNodeId = deletedStartNode.id;
+      session.state = 'cursorPlaced';
+    } else {
+      session.anchorNodeId = '';
+      session.state = 'idle';
+    }
   }
 
   removeUnreferencedNodes(floor);
@@ -4738,6 +5017,30 @@ function snapCursorToWall(draft, point, target) {
   const node = getOrCreateSnapNode(floor, topologyProjection);
 
   if (!node) return next;
+
+  session.previewPoint = null;
+  session.previewLengthMm = 0;
+  session.previewAngleDeg = 0;
+  session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
+  session.pendingWallId = '';
+  session.selectedWallId = '';
+  session.selectedOpeningId = '';
+  session.alignmentSnapGuide = null;
+
+  if (resumeOpenChainAtDanglingNode(floor, session, node.id)) {
+    const incidentWall = (floor.walls || []).find((wall) => (
+      wall.endNodeId === node.id || wall.startNodeId === node.id
+    ));
+    session.lastWallSnapNodeId = node.id;
+    session.lastWallSnapWallId = incidentWall ? incidentWall.id : '';
+    session.lastWallSnapT = incidentWall && incidentWall.endNodeId === node.id ? 1 : 0;
+    session.lastWallSnapWallMiddle = false;
+    session.lastWallSnapLine = (projection && projection.snapLine) || 'inner';
+    return touchDraft(next);
+  }
 
   let snappedWall = topologyProjection && topologyProjection.wall;
   let snappedT = topologyProjection && topologyProjection.t;
@@ -5283,6 +5586,7 @@ module.exports = {
   cancelPending,
   commitPreviewLength,
   confirmClosure,
+  repairCollinearDegree2Walls,
   selectWall,
   selectOpening,
   addOpeningToWall,

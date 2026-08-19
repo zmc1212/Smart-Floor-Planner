@@ -27,6 +27,7 @@ import {
   HardDrive,
   Image,
   Network,
+  CalendarClock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
@@ -134,6 +135,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'staff', label: '员工管理', icon: UserSquare2, href: '/staff' },
         { key: 'lead-commissions', label: '三方提成', icon: Coins, href: '/lead-commissions' },
         { key: 'referrer-network-operations', label: '推荐网络运营', icon: Network, href: '/referrer-network-operations' },
+        { key: 'appointment-settings', permissionKey: 'referrer-network-operations', label: '预约设置', icon: CalendarClock, href: '/appointment-settings' },
         { key: 'devices', label: '设备管理', icon: Smartphone, href: '/devices' },
       ]
     }

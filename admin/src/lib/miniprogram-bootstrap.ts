@@ -2,6 +2,10 @@ import type {
   MiniProgramIdentityContextRecord,
   MiniProgramIdentityMode,
 } from '@/db/repositories';
+import {
+  type MiniProgramBadgeSummary,
+  unavailableMiniProgramBadges,
+} from '@/lib/miniprogram-badges';
 import { miniProgramIdentityContextToDto } from '@/lib/miniprogram-identity-context';
 
 export type MiniProgramRole =
@@ -15,7 +19,7 @@ export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
   customer: '/pages/index/index',
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
   designer: '/pages/index/index',
-  measurer: '/pages/index/index',
+  measurer: '/packages/business/measurer-calendar/measurer-calendar',
   enterprise_admin: '/pages/index/index',
 };
 
@@ -51,6 +55,7 @@ export function getMiniProgramRole(
 export function buildMiniProgramBootstrap(input: {
   current: MiniProgramIdentityContextRecord;
   contexts: MiniProgramIdentityContextRecord[];
+  badges?: MiniProgramBadgeSummary;
 }) {
   const currentRole = getMiniProgramRole(input.current);
   if (!currentRole) throw new Error('MINIPROGRAM_IDENTITY_ROLE_UNSUPPORTED');
@@ -84,9 +89,9 @@ export function buildMiniProgramBootstrap(input: {
       capabilities: [...ROLE_CAPABILITIES[currentRole]],
       landingPath: MINI_PROGRAM_ROLE_LANDINGS[currentRole],
     },
-    // Badge counts are deliberately server-owned. An empty object means no
-    // count has been queried yet; clients must not synthesize local numbers.
-    badges: {},
+    // Badge counts are server-owned. Unknown or failed queries stay
+    // unavailable instead of a local zero.
+    badges: input.badges || unavailableMiniProgramBadges(),
     recovery: {
       canSwitch: roles.length > 1,
       validRoleCount: roles.length,

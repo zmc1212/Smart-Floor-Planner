@@ -3,7 +3,7 @@ const ROLE_LANDING_PATHS = Object.freeze({
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
   staff: '/pages/index/index',
   designer: '/pages/index/index',
-  measurer: '/pages/index/index',
+  measurer: '/packages/business/measurer-calendar/measurer-calendar',
   enterprise_admin: '/pages/index/index'
 });
 
@@ -19,7 +19,7 @@ const ROLE_CAPABILITIES = Object.freeze({
 const ROUTE_CAPABILITIES = Object.freeze({
   '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations'],
   '/pages/leads-management/leads-management': ['staff.leads', 'staff.tasks', 'enterprise.customers'],
-  '/pages/ai-design/ai-design': ['staff.design', 'staff.surveying', 'enterprise.appointments'],
+  '/pages/ai-design/ai-design': ['staff.design', 'staff.surveying'],
   '/packages/ai-workflow/create/ai-design-create': 'staff.design',
   '/packages/ai-workflow/result/ai-design-result': 'staff.design',
   '/packages/ai-workflow/history/ai-design-history': 'staff.design',
@@ -30,6 +30,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/appointment-reschedule/appointment-reschedule': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
   '/packages/surveying/editor/surveying-editor': ['staff.surveying', 'staff.leads'],
   '/packages/business/measurer-calendar/measurer-calendar': 'staff.schedule',
+  '/packages/business/enterprise-appointments/enterprise-appointments': 'enterprise.appointments',
   '/packages/business/measurer-unavailability/measurer-unavailability': ['staff.schedule', 'staff.appointments'],
   '/packages/business/referrer-workbench/referrer-workbench': 'referrer.promotion',
   '/packages/business/referrer-progress/referrer-progress': 'referrer.progress',

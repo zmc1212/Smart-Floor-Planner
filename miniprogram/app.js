@@ -110,6 +110,7 @@ App({
       this.syncProfessionalContext();
       this.restoreRoleLanding();
       this.guardCurrentRoute();
+      this.refreshCustomTabBar();
     } catch (error) {
       if (error && (error.statusCode === 401 || error.error === 'Unauthorized')) {
         this.globalData.token = null;
@@ -172,6 +173,19 @@ App({
       url: result.redirectPath,
       complete: () => { this.globalData.deepLinkRedirecting = false; }
     });
+  },
+  refreshCustomTabBar() {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    const page = pages.length ? pages[pages.length - 1] : null;
+    if (!page) return;
+    if (typeof page.getTabBar === 'function') {
+      const tabBar = page.getTabBar();
+      if (tabBar && typeof tabBar.syncSelected === 'function') tabBar.syncSelected();
+    }
+    if (typeof page.selectComponent === 'function') {
+      const embedded = page.selectComponent('custom-tab-bar');
+      if (embedded && typeof embedded.syncSelected === 'function') embedded.syncSelected();
+    }
   },
   handleReferral(options) {
     const query = options.query || {};

@@ -43,6 +43,15 @@ type StaffMember = {
   wechatQrAssetId: string | null;
 };
 
+type ReferrerMember = {
+  id: string;
+  displayName: string;
+  status: string;
+  joinedAt: string;
+  exitedAt: string | null;
+  hasActivePromotionCode: boolean;
+};
+
 type Readiness = {
   codes: JoinCode[];
   events: JoinCodeEvent[];
@@ -50,6 +59,7 @@ type Readiness = {
   activeReferrerPromotionCodes: number;
   activeStaffActivityCodes: number;
   staff: StaffMember[];
+  referrerMemberships: ReferrerMember[];
   appointmentSettings: {
     configured: boolean;
     configuredAt: string | null;
@@ -93,6 +103,8 @@ export default function ReferrerNetworkOperationsPage() {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [actingType, setActingType] = useState<JoinCodeType | null>(null);
+  const [actingStaffId, setActingStaffId] = useState<string | null>(null);
+  const [actingMembershipId, setActingMembershipId] = useState<string | null>(null);
   const [onboardingCode, setOnboardingCode] = useState<{
     codeType: JoinCodeType;
     imageUrl: string;
@@ -248,6 +260,56 @@ export default function ReferrerNetworkOperationsPage() {
     link.remove();
   };
 
+  const toggleAssignmentPause = async (member: StaffMember) => {
+    const nextPaused = !member.assignmentPaused;
+    const accepted = await confirm({
+      title: nextPaused ? `暂停${member.displayName || member.username}的自动派单` : `恢复${member.displayName || member.username}的自动派单`,
+      description: nextPaused
+        ? '暂停后该员工不会再被自动分配新线索；已派线索和历史预约不受影响。'
+        : '恢复后该员工将重新进入自动派单池，系统会尝试重试待派线索。',
+      confirmText: nextPaused ? '暂停派单' : '恢复派单',
+    });
+    if (!accepted) return;
+    setActingStaffId(member._id);
+    try {
+      const response = await fetch(`/api/staff/${member._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignmentPaused: nextPaused }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '更新派单开关失败');
+      notify.success(nextPaused ? '已暂停自动派单' : '已恢复自动派单');
+      await loadReadiness();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '更新派单开关失败');
+    } finally {
+      setActingStaffId(null);
+    }
+  };
+
+  const disableReferrerMembership = async (member: ReferrerMember) => {
+    if (member.status !== 'active') return;
+    const accepted = await confirm({
+      title: `停用 ${member.displayName} 的后续扫码`,
+      description: '停用后该推荐人不能再出示活动推广码获客；历史线索和提成记录保持不变。',
+      confirmText: '停用后续扫码',
+    });
+    if (!accepted) return;
+    setActingMembershipId(member.id);
+    try {
+      const response = await fetch(`/api/enterprise/referrer-memberships/${member.id}/disable`, { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '停用推荐人失败');
+      notify.success('已停用后续扫码');
+      await loadReadiness();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '停用推荐人失败');
+    } finally {
+      setActingMembershipId(null);
+    }
+  };
+
   const staffColumns: ProColumns<StaffMember>[] = [
     { title: '员工', key: 'staff', render: (_, item) => <Flex vertical gap={0}><Typography.Text strong>{item.displayName || item.username}</Typography.Text><Typography.Text type="secondary" className="text-xs">@{item.username}</Typography.Text></Flex> },
     { title: '岗位', dataIndex: 'role', width: 100, render: (_, item) => <Tag color={item.role === 'designer' ? 'blue' : 'gold'}>{ROLE_LABELS[item.role]}</Tag> },
@@ -258,6 +320,25 @@ export default function ReferrerNetworkOperationsPage() {
       const eligible = item.status === 'active' && !item.assignmentPaused && (item.role === 'measurer' || Boolean(item.wechatId && item.wechatQrAssetId));
       return <Tag color={eligible ? 'green' : 'red'}>{eligible ? '可自动派单' : '暂不可派单'}</Tag>;
     } },
+    { title: '操作', key: 'actions', width: 140, render: (_, item) => (
+      <Button
+        size="small"
+        loading={actingStaffId === item._id}
+        onClick={() => void toggleAssignmentPause(item)}
+      >
+        {item.assignmentPaused ? '恢复派单' : '暂停派单'}
+      </Button>
+    ) },
+  ];
+
+  const referrerColumns: ProColumns<ReferrerMember>[] = [
+    { title: '展示名', dataIndex: 'displayName' },
+    { title: '加入时间', dataIndex: 'joinedAt', width: 180, render: (_, item) => formatTime(item.joinedAt) },
+    { title: '活动推广码', key: 'code', width: 120, render: (_, item) => <Tag color={item.hasActivePromotionCode ? 'green' : 'default'}>{item.hasActivePromotionCode ? '可出示' : '无活动码'}</Tag> },
+    { title: '成员状态', dataIndex: 'status', width: 110, render: (_, item) => <Tag color={item.status === 'active' ? 'green' : 'default'}>{item.status === 'active' ? '活动' : item.status === 'disabled' ? '已停用' : '已退出'}</Tag> },
+    { title: '操作', key: 'actions', width: 140, render: (_, item) => item.status === 'active'
+      ? <Button size="small" danger loading={actingMembershipId === item.id} onClick={() => void disableReferrerMembership(item)}>停用后续扫码</Button>
+      : '—' },
   ];
 
   const eventColumns: ProColumns<JoinCodeEvent>[] = [
@@ -321,6 +402,12 @@ export default function ReferrerNetworkOperationsPage() {
               <Flex justify="space-between" align="center" wrap="wrap" gap={12}><Typography.Title level={4} className="!mb-0">自动派单资格</Typography.Title><Link href="/staff"><Button>前往员工管理</Button></Link></Flex>
               <div className="grid gap-4 py-4 md:grid-cols-2"><Card><Statistic title="可派单设计师" value={eligibility.eligibleDesigners.length} prefix={<UsersRound size={18} />} suffix={`/ ${eligibility.designers.length}`} /></Card><Card><Statistic title="可派单测量员" value={eligibility.eligibleMeasurers.length} prefix={<Wrench size={18} />} suffix={`/ ${eligibility.measurers.length}`} /></Card></div>
               <ProTable<StaffMember> rowKey="_id" loading={loading} dataSource={readiness?.staff || []} columns={staffColumns} search={false} options={false} pagination={false} scroll={{ x: 900 }} />
+            </section>
+
+            <section aria-label="推荐人成员">
+              <Typography.Title level={4}>推荐人成员</Typography.Title>
+              <Alert className="mb-4" showIcon type="info" message="只管理后续扫码资格" description="停用不会改写历史线索或提成；后台不展示推广令牌明文，活动码仍由推荐人本人在小程序出示。" />
+              <ProTable<ReferrerMember> rowKey="id" loading={loading} dataSource={readiness?.referrerMemberships || []} columns={referrerColumns} search={false} options={false} pagination={{ defaultPageSize: 10, showSizeChanger: true }} scroll={{ x: 760 }} />
             </section>
 
             <section aria-label="验收准备清单">

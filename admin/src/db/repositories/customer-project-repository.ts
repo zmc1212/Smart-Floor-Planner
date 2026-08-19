@@ -3,6 +3,7 @@ import {
   adminUsers,
   aiGenerationPublications,
   aiGenerations,
+  enterpriseAppointmentSettings,
   enterprises,
   floorPlans,
   leads,
@@ -31,8 +32,14 @@ export type CustomerProjectIndexItem = {
   leadId: bigint;
   enterpriseName: string;
   status: string;
+  assignmentStatus: string | null;
+  measurerId: bigint | null;
   updatedAt: Date;
+  appointmentId: bigint | null;
+  appointmentVersion: number | null;
   appointmentStatus: string | null;
+  appointmentTimeRange?: string | null;
+  customerRescheduleCutoffHours: number;
   hasFormalFloorPlan: boolean;
   publishedDesignCount: number;
 };
@@ -84,11 +91,12 @@ export class CustomerProjectRepository {
         .select({ appointment: measurementAppointments, measurerName: adminUsers.displayName })
         .from(measurementAppointments)
         .leftJoin(adminUsers, eq(measurementAppointments.measurerId, adminUsers.id))
-        .where(and(
-          eq(measurementAppointments.leadId, leadId),
-          eq(measurementAppointments.status, 'confirmed')
-        ))
-        .orderBy(desc(measurementAppointments.updatedAt), desc(measurementAppointments.id))
+        .where(eq(measurementAppointments.leadId, leadId))
+        .orderBy(
+          sql`case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end`,
+          desc(measurementAppointments.updatedAt),
+          desc(measurementAppointments.id)
+        )
         .limit(1),
       row.lead.primaryFloorPlanId
         ? this.transaction
@@ -126,14 +134,42 @@ export class CustomerProjectRepository {
         leadId: leads.id,
         enterpriseName: enterprises.name,
         status: leads.status,
+        assignmentStatus: leads.assignmentStatus,
+        measurerId: leads.measurerId,
         updatedAt: leads.updatedAt,
+        appointmentId: sql<bigint | null>`(
+          select ${measurementAppointments.id}
+          from app.measurement_appointments
+          where ${measurementAppointments.leadId} = ${leads.id}
+          order by case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end,
+            ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
+          limit 1
+        )`,
+        appointmentVersion: sql<number | null>`(
+          select ${measurementAppointments.version}
+          from app.measurement_appointments
+          where ${measurementAppointments.leadId} = ${leads.id}
+          order by case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end,
+            ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
+          limit 1
+        )`,
         appointmentStatus: sql<string | null>`(
           select ${measurementAppointments.status}
           from app.measurement_appointments
           where ${measurementAppointments.leadId} = ${leads.id}
-          order by ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
+          order by case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end,
+            ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
           limit 1
         )`,
+        appointmentTimeRange: sql<string | null>`(
+          select ${measurementAppointments.timeRange}::text
+          from app.measurement_appointments
+          where ${measurementAppointments.leadId} = ${leads.id}
+          order by case when ${measurementAppointments.status} = 'confirmed' then 0 else 1 end,
+            ${measurementAppointments.updatedAt} desc, ${measurementAppointments.id} desc
+          limit 1
+        )`,
+        customerRescheduleCutoffHours: sql<number>`coalesce(${enterpriseAppointmentSettings.customerRescheduleCutoffHours}, 2)`,
         hasFormalFloorPlan: sql<boolean>`exists (
           select 1
           from app.floor_plans
@@ -158,6 +194,7 @@ export class CustomerProjectRepository {
       })
       .from(leads)
       .innerJoin(enterprises, eq(leads.enterpriseId, enterprises.id))
+      .leftJoin(enterpriseAppointmentSettings, eq(enterpriseAppointmentSettings.enterpriseId, leads.enterpriseId))
       .where(and(eq(leads.customerUserId, customerUserId), isNull(leads.archivedAt)))
       .orderBy(desc(leads.updatedAt), desc(leads.id));
 
@@ -185,6 +222,28 @@ export class CustomerProjectRepository {
         sql`coalesce(${aiGenerations.output} ->> 'imageUrl', '') <> ''`
       ))
       .orderBy(desc(aiGenerationPublications.publishedAt), desc(aiGenerationPublications.id));
+  }
+
+  async listPublishableGenerations(enterpriseId: bigint, leadId: bigint) {
+    const publishedIds = sql`(
+      select ${aiGenerationPublications.generationId}
+      from ${aiGenerationPublications}
+      where ${aiGenerationPublications.enterpriseId} = ${enterpriseId}
+        and ${aiGenerationPublications.leadId} = ${leadId}
+        and ${aiGenerationPublications.withdrawnAt} is null
+    )`;
+    return this.transaction
+      .select()
+      .from(aiGenerations)
+      .where(and(
+        eq(aiGenerations.enterpriseId, enterpriseId),
+        eq(aiGenerations.leadId, leadId),
+        eq(aiGenerations.status, 'succeeded'),
+        isNull(aiGenerations.deletedAt),
+        sql`coalesce(${aiGenerations.output} ->> 'imageUrl', '') <> ''`,
+        sql`${aiGenerations.id} not in ${publishedIds}`
+      ))
+      .orderBy(desc(aiGenerations.updatedAt), desc(aiGenerations.id));
   }
 
   async publish(input: {

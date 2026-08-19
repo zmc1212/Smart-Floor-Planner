@@ -13,8 +13,11 @@ function navigationMetrics() {
 }
 
 function projectStage(item) {
+  if (item.serviceStageLabel) return { label: item.serviceStageLabel, tone: item.serviceStage || 'preparing' };
   if (Number(item.publishedDesignCount || 0) > 0) return { label: '方案已发布', tone: 'published' };
   if (item.hasFormalFloorPlan) return { label: '正式量房已完成', tone: 'surveyed' };
+  if (item.appointmentStatus === 'expired') return { label: '预约已过期', tone: 'expired' };
+  if (item.appointmentStatus === 'cancelled') return { label: '待重新预约', tone: 'preparing' };
   if (item.appointmentStatus === 'confirmed') return { label: '已确认上门服务', tone: 'scheduled' };
   if (item.appointmentStatus === 'completed') return { label: '上门服务已完成', tone: 'surveyed' };
   return { label: '服务准备中', tone: 'preparing' };

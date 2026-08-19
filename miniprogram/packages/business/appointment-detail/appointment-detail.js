@@ -3,7 +3,8 @@ const api = require('../../../utils/api');
 const STATUS_LABELS = {
   confirmed: '已确认',
   completed: '已完成',
-  cancelled: '已取消'
+  cancelled: '已取消',
+  expired: '已过期'
 };
 
 function navigationMetrics() {
@@ -53,7 +54,8 @@ Page({
     canReschedule: false,
     canCancel: false,
     canComplete: false,
-    canUpdateAddress: false
+    canUpdateAddress: false,
+    canRebook: false
   },
 
   onLoad(options) {
@@ -86,6 +88,7 @@ Page({
       const appointment = items.find((item) => item.id === this.data.appointmentId) || items[0];
       if (!appointment) throw new Error('未找到预约记录');
       const confirmed = appointment.status === 'confirmed';
+      const expired = appointment.status === 'expired';
       const role = this.data.staffRole;
       this.setData({
         appointment: {
@@ -96,8 +99,10 @@ Page({
         appointmentId: appointment.id,
         canReschedule: confirmed && (this.data.customerMode || ['designer', 'enterprise_admin'].includes(role)),
         canCancel: confirmed && ['designer', 'enterprise_admin'].includes(role),
-        canComplete: confirmed && ['measurer', 'enterprise_admin'].includes(role),
-        canUpdateAddress: confirmed && ['designer', 'measurer', 'enterprise_admin'].includes(role)
+        canComplete: (confirmed || expired) && ['measurer', 'enterprise_admin'].includes(role),
+        canUpdateAddress: confirmed && ['designer', 'measurer', 'enterprise_admin'].includes(role),
+        canRebook: (expired || appointment.status === 'cancelled')
+          && (this.data.customerMode || ['designer', 'measurer', 'enterprise_admin'].includes(role))
       });
     } catch (error) {
       this.setData({ error: error.error || error.message || '预约详情加载失败' });
@@ -114,6 +119,14 @@ Page({
       title: '上门量房预约卡片',
       path: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId || '')}&appointmentId=${encodeURIComponent(appointment && appointment.id || '')}`,
     };
+  },
+
+  rebook() {
+    if (!this.data.canRebook || !this.data.leadId) return;
+    const mode = this.data.customerMode ? 'customer' : 'internal';
+    wx.navigateTo({
+      url: `/packages/business/appointment-booking/appointment-booking?mode=${mode}&leadId=${encodeURIComponent(this.data.leadId)}`
+    });
   },
 
   reschedule() {

@@ -19,6 +19,7 @@ import {
   ENTERPRISE_ONBOARDING_PAGE,
   getMiniProgramCodeContentType,
   PROMOTION_SERVICE_PAGE,
+  resolveMiniProgramCodeEnvironment,
 } from '@/lib/wechat-miniprogram-code';
 
 test('pending referral sources are opaque, authenticated, and time limited', () => {
@@ -270,15 +271,13 @@ test('WeChat JPEG Mini Program code bytes are accepted and preserve their media 
   }
 });
 
-test('Mini Program codes remain on the develop version in a production server process', async () => {
+test('Mini Program codes use getwxacode with full path when env is release', async () => {
   const previousAppId = process.env.WX_APPID;
   const previousSecret = process.env.WX_APPSECRET;
-  const previousNodeEnv = process.env.NODE_ENV;
-  const previousCodeEnvironment = process.env.WX_MINIPROGRAM_CODE_ENV_VERSION;
+  const previousCodeEnv = process.env.WECHAT_MINIPROGRAM_CODE_ENV;
   process.env.WX_APPID = 'wx_test_app';
   process.env.WX_APPSECRET = 'test_secret';
-  process.env.NODE_ENV = 'production';
-  process.env.WX_MINIPROGRAM_CODE_ENV_VERSION = 'release';
+  process.env.WECHAT_MINIPROGRAM_CODE_ENV = 'release';
   resetWechatAccessTokenCacheForTests();
 
   const token = `ej_${'D'.repeat(32)}`;
@@ -301,22 +300,50 @@ test('Mini Program codes remain on the develop version in a production server pr
 
   try {
     await createEnterpriseOnboardingCode(token, { fetchImpl });
-    assert.match(calls[1].url, /\/wxa\/getwxacodeunlimit\?/);
+    assert.match(calls[1].url, /\/wxa\/getwxacode\?/);
+    assert.doesNotMatch(calls[1].url, /getwxacodeunlimit/);
     const body = JSON.parse(String(calls[1].init?.body));
-    assert.equal(body.scene, 'D'.repeat(32));
-    assert.equal(body.page, ENTERPRISE_ONBOARDING_PAGE);
-    assert.equal(body.env_version, 'develop');
-    assert.equal(body.check_path, false);
+    assert.equal(body.path, `${ENTERPRISE_ONBOARDING_PAGE}?token=${token}`);
+    assert.equal(body.scene, undefined);
+    assert.equal(body.env_version, undefined);
+    assert.equal(body.width, 430);
   } finally {
     resetWechatAccessTokenCacheForTests();
     if (previousAppId === undefined) delete process.env.WX_APPID;
     else process.env.WX_APPID = previousAppId;
     if (previousSecret === undefined) delete process.env.WX_APPSECRET;
     else process.env.WX_APPSECRET = previousSecret;
+    if (previousCodeEnv === undefined) delete process.env.WECHAT_MINIPROGRAM_CODE_ENV;
+    else process.env.WECHAT_MINIPROGRAM_CODE_ENV = previousCodeEnv;
+  }
+});
+
+test('resolveMiniProgramCodeEnvironment respects explicit, env var, and NODE_ENV fallbacks', () => {
+  const previousCodeEnv = process.env.WECHAT_MINIPROGRAM_CODE_ENV;
+  const previousNodeEnv = process.env.NODE_ENV;
+
+  try {
+    assert.equal(resolveMiniProgramCodeEnvironment('release'), 'release');
+    assert.equal(resolveMiniProgramCodeEnvironment('trial'), 'trial');
+    assert.equal(resolveMiniProgramCodeEnvironment('develop'), 'develop');
+    assert.equal(resolveMiniProgramCodeEnvironment('invalid'), 'develop');
+
+    process.env.WECHAT_MINIPROGRAM_CODE_ENV = 'trial';
+    assert.equal(resolveMiniProgramCodeEnvironment(), 'trial');
+    assert.equal(resolveMiniProgramCodeEnvironment(null), 'trial');
+    assert.equal(resolveMiniProgramCodeEnvironment('release'), 'release');
+
+    delete process.env.WECHAT_MINIPROGRAM_CODE_ENV;
+    process.env.NODE_ENV = 'production';
+    assert.equal(resolveMiniProgramCodeEnvironment(), 'release');
+
+    process.env.NODE_ENV = 'development';
+    assert.equal(resolveMiniProgramCodeEnvironment(), 'develop');
+  } finally {
+    if (previousCodeEnv === undefined) delete process.env.WECHAT_MINIPROGRAM_CODE_ENV;
+    else process.env.WECHAT_MINIPROGRAM_CODE_ENV = previousCodeEnv;
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousNodeEnv;
-    if (previousCodeEnvironment === undefined) delete process.env.WX_MINIPROGRAM_CODE_ENV_VERSION;
-    else process.env.WX_MINIPROGRAM_CODE_ENV_VERSION = previousCodeEnvironment;
   }
 });
 
@@ -433,6 +460,7 @@ test('claim resolve and authorize preserve an existing customer project instead 
   );
 
   assert.match(repository, /async findActiveCustomerAttribution\(/);
+  assert.match(repository, /releaseInactiveAttributionLocks/);
   assert.match(resolve, /findActiveCustomerAttribution/);
   assert.match(resolve, /existingAttribution:\s*true/);
   assert.match(resolve, /pendingSource:\s*null/);

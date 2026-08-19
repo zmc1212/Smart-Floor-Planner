@@ -89,6 +89,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'appointment-reschedule/appointment-reschedule',
         'appointment-booking/appointment-booking',
         'measurer-calendar/measurer-calendar',
+        'enterprise-appointments/enterprise-appointments',
         'measurer-unavailability/measurer-unavailability',
         'inspiration/inspiration',
         'recommendations/index',

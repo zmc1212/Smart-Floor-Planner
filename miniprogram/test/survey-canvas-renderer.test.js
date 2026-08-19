@@ -1561,7 +1561,8 @@ test('deleting an exterior wall still invalidates its single closed room', () =>
 
   assert.equal(openedFloor.spaces.filter((space) => space.closed).length, 0);
   assert.equal(openedScene.closedSpaceFills.length, 0);
-  assert.equal(openedFloor.session.state, 'wallCommitted');
+  assert.equal(openedFloor.session.state, 'mergeClosing');
+  assert.equal(openedFloor.session.closeCandidateType, 'merge');
 });
 
 test('deleting a protruding closed wall still clears remaining stubs from closed dimensions', () => {

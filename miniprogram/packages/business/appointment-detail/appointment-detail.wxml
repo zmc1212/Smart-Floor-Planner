@@ -31,9 +31,11 @@ FORM: Service dispatch slip; approved appointment artwork is reused as a standal
     </view>
 
     <view class="role-note" wx:if="{{appointment.status === 'confirmed'}}">{{customerMode ? '如需调整时间，请在截止时间前选择可用时段。' : '设计师负责协调时间与取消，测量员完成上门后确认完成；企业负责人可处理全部动作。'}}</view>
+    <view class="role-note" wx:elif="{{appointment.status === 'expired'}}">预约时段已结束。若尚未完成正式量房，请重新预约上门；已完成量房时可补记完成。</view>
     <view class="finished-note" wx:else>该预约已结束，当前记录仅供查看。</view>
 
-    <view class="actions" wx:if="{{canReschedule || canCancel || canComplete || canUpdateAddress}}">
+    <view class="actions" wx:if="{{canReschedule || canCancel || canComplete || canUpdateAddress || canRebook}}">
+      <button wx:if="{{canRebook}}" class="primary sfp-primary-action" disabled="{{acting}}" bindtap="rebook">重新预约上门</button>
       <button wx:if="{{canComplete}}" class="primary sfp-primary-action" loading="{{acting}}" bindtap="complete">确认完成量房</button>
       <button wx:if="{{canReschedule}}" class="secondary" disabled="{{acting}}" bindtap="reschedule">调整上门时间</button>
       <button wx:if="{{canCancel}}" class="danger" disabled="{{acting}}" bindtap="cancel">取消本次预约</button>

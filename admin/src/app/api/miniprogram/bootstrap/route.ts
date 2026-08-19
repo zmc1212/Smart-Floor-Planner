@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
 import { MiniProgramIdentityRepository } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
-import { withPlatformTransaction } from '@/db/transaction';
+import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
+import {
+  buildMiniProgramBadges,
+  loadMiniProgramBadgeCounts,
+  unavailableMiniProgramBadges,
+} from '@/lib/miniprogram-badges';
 import {
   buildMiniProgramBootstrap,
   getMiniProgramRole,
@@ -60,7 +65,8 @@ export async function GET(request: Request) {
         { status: 401 }
       );
     }
-    if (!getMiniProgramRole(result.current)) {
+    const role = getMiniProgramRole(result.current);
+    if (!role) {
       return NextResponse.json(
         {
           success: false,
@@ -71,9 +77,32 @@ export async function GET(request: Request) {
       );
     }
 
+    let badges = unavailableMiniProgramBadges();
+    try {
+      const facts = result.current.enterpriseId
+        ? await withTenantTransaction(result.current.enterpriseId, (transaction) =>
+          loadMiniProgramBadgeCounts({
+            transaction,
+            userId: parsePostgresId(payload.sub, 'user id'),
+            current: result.current,
+            role,
+          }))
+        : await withPlatformTransaction((transaction) =>
+          loadMiniProgramBadgeCounts({
+            transaction,
+            userId: parsePostgresId(payload.sub, 'user id'),
+            current: result.current,
+            role,
+          }));
+      badges = buildMiniProgramBadges({ role, facts });
+    } catch (error) {
+      console.error('[MiniProgramBootstrap] Badge load failed:', error);
+      badges = unavailableMiniProgramBadges();
+    }
+
     return NextResponse.json({
       success: true,
-      ...buildMiniProgramBootstrap(result),
+      ...buildMiniProgramBootstrap({ ...result, badges }),
     });
   } catch (error) {
     console.error('[MiniProgramBootstrap] Error:', error);

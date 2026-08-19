@@ -7,6 +7,7 @@ import {
 import { canAccessMiniProgramFloorPlan } from '@/lib/floor-plan-access';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
 import { canStaffMutateLeadSurvey } from '@/lib/lead-staff-access';
+import { canDeleteLeadFloorPlan } from '@/lib/lead-status';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';

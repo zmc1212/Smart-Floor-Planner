@@ -9,9 +9,19 @@ export type MiniProgramCodeEnvironment = 'release' | 'trial' | 'develop';
 
 export type MiniProgramCodeOptions = {
   fetchImpl?: typeof fetch;
+  envVersion?: MiniProgramCodeEnvironment;
 };
 
-const MINI_PROGRAM_CODE_ENVIRONMENT: MiniProgramCodeEnvironment = 'develop';
+export function resolveMiniProgramCodeEnvironment(
+  explicit?: string | null
+): MiniProgramCodeEnvironment {
+  const configured = (explicit ?? process.env.WECHAT_MINIPROGRAM_CODE_ENV ?? '').trim();
+  if (configured === 'release' || configured === 'trial' || configured === 'develop') {
+    return configured;
+  }
+  if (process.env.NODE_ENV === 'production') return 'release';
+  return 'develop';
+}
 
 export function buildPromotionServicePath(token: string) {
   const normalized = token.trim();
@@ -55,7 +65,7 @@ async function createMiniProgramCode(
   options: MiniProgramCodeOptions = {}
 ) {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const envVersion = MINI_PROGRAM_CODE_ENVIRONMENT;
+  const envVersion = options.envVersion ?? resolveMiniProgramCodeEnvironment();
   const accessToken = await getWechatAccessToken({ fetchImpl });
   const isRelease = envVersion === 'release';
   const page = path.split('?')[0];

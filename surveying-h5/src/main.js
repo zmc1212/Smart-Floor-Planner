@@ -605,6 +605,30 @@ function exposeAutomationApi() {
       page.syncFromDraft({ numberPadVisible: false });
       return window.__surveyingH5.getSnapshot();
     },
+    setViewport: (viewport) => {
+      page.draft = surveyGraph.updateViewport(page.draft, viewport || {});
+      page.refreshCanvasRect();
+      page.syncFromDraft({ numberPadVisible: false });
+      return window.__surveyingH5.getSnapshot();
+    },
+    getCursorClientPoint: () => {
+      const floor = surveyGraph.getActiveFloor(page.draft);
+      const cursor = surveyGraph.getCursorDisplayPoint(floor, floor.session);
+      if (!cursor || !page.canvasRect) return null;
+      return page.mmToClientPoint(cursor);
+    },
+    mmToClientPoint: (point) => {
+      if (!point || !page.canvasRect) return null;
+      return page.mmToClientPoint(point);
+    },
+    getCloseActionClientPoint: () => {
+      const action = page.canvasControls && page.canvasControls.closeAction;
+      if (!action || !page.canvasRect) return null;
+      return {
+        x: page.canvasRect.left + action.cx,
+        y: page.canvasRect.top + action.cy
+      };
+    },
     runScenario: (key) => {
       buildScenario(key);
       return window.__surveyingH5.getSnapshot();

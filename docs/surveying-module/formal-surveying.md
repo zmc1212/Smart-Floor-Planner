@@ -46,7 +46,16 @@ copy back to `layoutData`.
 
 ## Geometry invariants
 
-- A physical wall is stored once. Shared-wall faces and room boundaries are
+- A physical wall is stored once. An inferred orthogonal close absorbs a
+  collinear continuation into the last measured wall instead of storing a
+  butt joint. Loading a saved draft also folds remaining collinear degree-2
+  splices into one wall. Deleting a wall that opens a single closed room
+  restores the remaining loop as the active chain and offers the missing-edge
+  close when the dangling ends still determine it. Resetting the cursor onto
+  either dangling vertex resumes that same open chain instead of starting a
+  new room from the existing wall. Dragging back along that
+  restored last wall shortens it instead of reporting overlap with the
+  measured wall. Shared-wall faces and room boundaries are
   derived from wall direction, thickness, and each space's ordered `wallIds`.
   `confirmClosure`, `deleteWall`, and closed-wall splits write those `wallIds`
   by syncing closed spaces from half-edge faces (`extractFaces` /

@@ -1,0 +1,7 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "role-workbench": "/components/role-workbench/role-workbench",
+    "custom-tab-bar": "/custom-tab-bar/index"
+  }
+}

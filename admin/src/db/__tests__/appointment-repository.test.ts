@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { loadEnvConfig } from '@next/env';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterprises,
@@ -276,4 +276,64 @@ test('staff activity appointments keep the presenter measurer instead of auto-re
     })
   );
   assert.equal(swapped.measurerId, extraMeasurerId);
+});
+
+test('rebooking succeeds after a past-end confirmed appointment remains on the lead', async () => {
+  const rebookLeadId = await withTenantTransaction(enterpriseId, async (transaction) => {
+    return (await new LeadRepository(transaction).create({
+      enterpriseId, assignedTo: designerId, measurerId, customerUserId: actorUserId,
+      name: '重约客户', phone: `21${String(Date.now()).slice(-9)}`, source: 'appointment-test', assignmentStatus: 'assigned',
+    })).id;
+  });
+  const firstDay = localDateInTimeZone(nextBookableSlot('09:00').startAt, 'Asia/Shanghai');
+  const firstAvailability = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).listAvailability({
+      enterpriseId,
+      leadId: rebookLeadId,
+      date: firstDay,
+    })
+  );
+  const firstOpenSlot = firstAvailability.available.at(-1);
+  assert.ok(firstOpenSlot, 'expected an open slot for the initial booking');
+  const firstAppointment = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).create({
+      enterpriseId, leadId: rebookLeadId, startAt: firstOpenSlot.startAt, endAt: firstOpenSlot.endAt,
+      address: '重约小区 1 号', actorUserId, eventKey: `${runKey}-rebook-first`,
+    })
+  );
+  await withPlatformTransaction(async (transaction) => {
+    await transaction.execute(sql`
+      update app.measurement_appointments
+      set time_range = tstzrange(now() - interval '4 hours', now() - interval '2 hours', '[)')
+      where id = ${firstAppointment.id}
+    `);
+  });
+
+  const nextSlot = nextBookableSlot('17:00');
+  const availability = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).listAvailability({
+      enterpriseId,
+      leadId: rebookLeadId,
+      date: localDateInTimeZone(nextSlot.startAt, 'Asia/Shanghai'),
+    })
+  );
+  const openSlot = availability.available.find((slot) =>
+    slot.startAt.getTime() !== firstOpenSlot.startAt.getTime()
+  ) || availability.available.at(-1);
+  assert.ok(openSlot, 'expected an open slot for rebooking');
+
+  const rebooked = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).create({
+      enterpriseId, leadId: rebookLeadId, startAt: openSlot.startAt, endAt: openSlot.endAt,
+      address: '重约小区 2 号', actorUserId, eventKey: `${runKey}-rebook-second`,
+    })
+  );
+
+  assert.notEqual(rebooked.id, firstAppointment.id);
+  assert.equal(rebooked.status, 'confirmed');
+  const persisted = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).listByLead(enterpriseId, rebookLeadId)
+  );
+  assert.equal(persisted.length, 2);
+  assert.equal(persisted.some((item) => item.id === rebooked.id && item.status === 'confirmed'), true);
 });

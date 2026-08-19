@@ -10,6 +10,7 @@ import {
   isNull,
   max,
   or,
+  sql,
   type SQL,
 } from 'drizzle-orm';
 import {
@@ -70,6 +71,8 @@ export interface LeadWithRelations extends LeadRecord {
 
 export interface LeadListOptions {
   status?: string;
+  assignmentStatus?: string;
+  serviceStage?: string;
   source?: string;
   phone?: string;
   query?: string;
@@ -99,6 +102,55 @@ export class LeadRepository {
           ? eq(leads.status, variants[0])
           : inArray(leads.status, variants)
       );
+    }
+    if (options.assignmentStatus && options.assignmentStatus !== 'all') {
+      filters.push(eq(leads.assignmentStatus, options.assignmentStatus));
+    }
+    if (options.serviceStage) {
+      const hasConfirmedFuture = sql`exists (
+        select 1 from app.measurement_appointments ma
+        where ma.lead_id = ${leads.id} and ma.status = 'confirmed'
+          and upper(ma.time_range) > now()
+      )`;
+      const hasConfirmedInProgress = sql`exists (
+        select 1 from app.measurement_appointments ma
+        where ma.lead_id = ${leads.id} and ma.status = 'confirmed'
+          and lower(ma.time_range) <= now() and upper(ma.time_range) > now()
+      )`;
+      const hasExpiredOrPastConfirmed = sql`exists (
+        select 1 from app.measurement_appointments ma
+        where ma.lead_id = ${leads.id}
+          and (ma.status = 'expired' or (ma.status = 'confirmed' and upper(ma.time_range) <= now()))
+      )`;
+      const hasCancelledNoConfirmed = sql`(
+        exists (
+          select 1 from app.measurement_appointments ma
+          where ma.lead_id = ${leads.id} and ma.status = 'cancelled'
+        ) and not ${hasConfirmedFuture}
+      )`;
+      switch (options.serviceStage) {
+        case 'appointment_confirmed':
+          filters.push(hasConfirmedFuture);
+          break;
+        case 'appointment_in_progress':
+          filters.push(hasConfirmedInProgress);
+          break;
+        case 'appointment_expired':
+          filters.push(hasExpiredOrPastConfirmed);
+          filters.push(sql`not ${hasConfirmedFuture}`);
+          break;
+        case 'awaiting_rebooking':
+          filters.push(hasCancelledNoConfirmed);
+          filters.push(sql`not ${hasExpiredOrPastConfirmed}`);
+          break;
+        case 'measurer_assigned':
+          filters.push(isNotNull(leads.measurerId));
+          filters.push(eq(leads.assignmentStatus, 'assigned'));
+          filters.push(sql`not ${hasConfirmedFuture}`);
+          filters.push(sql`not ${hasExpiredOrPastConfirmed}`);
+          filters.push(sql`not ${hasCancelledNoConfirmed}`);
+          break;
+      }
     }
     if (options.source) filters.push(eq(leads.source, options.source));
     if (options.phone) filters.push(eq(leads.phone, options.phone));
@@ -233,7 +285,13 @@ export class LeadRepository {
       .orderBy(desc(measurementAppointments.createdAt), desc(measurementAppointments.id));
     const appointmentMap = new Map<bigint, typeof measurementAppointments.$inferSelect>();
     for (const appointment of appointmentRows) {
-      if (appointment.status === 'confirmed' && !appointmentMap.has(appointment.leadId)) {
+      const current = appointmentMap.get(appointment.leadId);
+      if (!current && appointment.status === 'confirmed') {
+        appointmentMap.set(appointment.leadId, appointment);
+      }
+    }
+    for (const appointment of appointmentRows) {
+      if (!appointmentMap.has(appointment.leadId)) {
         appointmentMap.set(appointment.leadId, appointment);
       }
     }

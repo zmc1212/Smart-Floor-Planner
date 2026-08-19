@@ -32,10 +32,11 @@ import {
   Typography,
 } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Archive, BadgeCheck, CalendarDays, ChevronLeft, ChevronRight, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Trash2, Undo2, Users } from 'lucide-react';
+import { Archive, BadgeCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Send, Trash2, Undo2, Users, XCircle } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getLeadNextAction, getLeadStatusLabel, getLeadWorkflowStep, LEAD_WORKFLOW_STEPS } from '@/lib/lead-status';
 
 type StaffReference = {
@@ -92,6 +93,12 @@ type Lead = {
   referrer?: StaffReference | string | null;
   assignedTo?: StaffReference | string | null;
   measurerId?: StaffReference | string | null;
+  assignmentStatus?: string | null;
+  assignmentErrorCode?: string | null;
+  serviceStage?: string | null;
+  serviceStageLabel?: string | null;
+  nextAction?: string | null;
+  canRebook?: boolean;
   appointment?: {
     id: string;
     address?: string;
@@ -137,6 +144,36 @@ type AppointmentSlot = {
 type AppointmentDateOption = {
   key: string;
   label: string;
+};
+
+type AiPublication = {
+  generationId: string;
+  publishedAt?: string;
+};
+
+type PublishableGeneration = {
+  generationId: string;
+  type?: string;
+  updatedAt?: string;
+};
+
+const APPOINTMENT_STATUS_LABELS: Record<string, string> = {
+  confirmed: '已确认',
+  completed: '已完成',
+  cancelled: '已取消',
+  expired: '已过期',
+};
+
+const ASSIGNMENT_STATUS_LABELS: Record<string, string> = {
+  assigned: '已派单',
+  assignment_pending: '待派单',
+  not_requested: '未请求派单',
+};
+
+const ASSIGNMENT_ERROR_LABELS: Record<string, string> = {
+  designer_unavailable: '暂无可用设计师',
+  measurer_unavailable: '暂无可用测量员',
+  designer_and_measurer_unavailable: '设计师和测量员都不可用',
 };
 
 const ARCHIVE_REASON_OPTIONS = [
@@ -190,12 +227,49 @@ function getStatusColor(status: string) {
   return 'cyan';
 }
 
+function getAssignmentStatusLabel(status?: string | null, errorCode?: string | null) {
+  if (status === 'assignment_pending') {
+    return errorCode ? ASSIGNMENT_ERROR_LABELS[errorCode] || '待派单' : '待派单';
+  }
+  return ASSIGNMENT_STATUS_LABELS[status || ''] || '未派单';
+}
+
 function getStaffName(
   value: StaffReference | string | null | undefined
 ) {
   if (!value) return '';
   if (typeof value === 'object') return value.displayName || value.username || '';
   return value;
+}
+
+function getStaffId(value: StaffReference | string | null | undefined) {
+  if (!value) return '';
+  if (typeof value === 'object') return value._id || '';
+  return value;
+}
+
+function canCancelLeadAppointment(lead: Lead, role?: string | null, userId?: string | null) {
+  if (!role || !userId || !lead.appointment) return false;
+  if (lead.appointment.status !== 'confirmed') return false;
+  if (!['designer', 'enterprise_admin'].includes(role)) return false;
+  if (role === 'enterprise_admin') return true;
+  return getStaffId(lead.assignedTo) === userId;
+}
+
+function canCompleteLeadAppointment(lead: Lead, role?: string | null, userId?: string | null) {
+  if (!role || !userId || !lead.appointment) return false;
+  const status = lead.appointment.status;
+  if (status !== 'confirmed' && status !== 'expired') return false;
+  if (!['measurer', 'enterprise_admin', 'designer'].includes(role)) return false;
+  if (role === 'enterprise_admin') return true;
+  return getStaffId(lead.measurerId) === userId;
+}
+
+function canManageLeadPublications(lead: Lead, role?: string | null, userId?: string | null) {
+  if (!role || !userId || lead.archivedAt) return false;
+  if (!['designer', 'enterprise_admin'].includes(role)) return false;
+  if (role === 'enterprise_admin') return true;
+  return getStaffId(lead.assignedTo) === userId;
 }
 
 function formatDate(value?: string | Date) {
@@ -304,6 +378,7 @@ export default function LeadsPage() {
   const confirmAction = useConfirmDialog();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user: currentUser } = useCurrentUser();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -327,6 +402,7 @@ export default function LeadsPage() {
   const [conversionAmount, setConversionAmount] = useState<number | null>(null);
   const [conversionNote, setConversionNote] = useState('');
   const [conversionSubmitting, setConversionSubmitting] = useState(false);
+  const [retryingAssignmentId, setRetryingAssignmentId] = useState<string | null>(null);
   const [revertConversionOpen, setRevertConversionOpen] = useState(false);
   const [revertReason, setRevertReason] = useState('');
   const [appointmentOpen, setAppointmentOpen] = useState(false);
@@ -346,6 +422,14 @@ export default function LeadsPage() {
   const [selectedSlot, setSelectedSlot] = useState<AppointmentSlot | null>(null);
   const [slotLoading, setSlotLoading] = useState(false);
   const [slotError, setSlotError] = useState('');
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [completeSubmitting, setCompleteSubmitting] = useState(false);
+  const [publicationLoading, setPublicationLoading] = useState(false);
+  const [publicationUpdatingId, setPublicationUpdatingId] = useState<string | null>(null);
+  const [publications, setPublications] = useState<AiPublication[]>([]);
+  const [publishableGenerations, setPublishableGenerations] = useState<PublishableGeneration[]>([]);
 
   useEffect(() => () => {
     leadListRequestRef.current?.abort();
@@ -388,11 +472,16 @@ export default function LeadsPage() {
     const controller = new AbortController();
     leadDetailRequestRef.current = controller;
     setSelectedLead(lead);
+    setPublications([]);
+    setPublishableGenerations([]);
     try {
       const response = await fetch(`/api/leads/${lead._id}`, { signal: controller.signal });
       const result = await response.json();
       if (!controller.signal.aborted && response.ok && result.success) {
         setSelectedLead(result.data);
+        if (canManageLeadPublications(result.data, currentUser?.role, currentUser?._id)) {
+          void loadPublications(result.data._id);
+        }
       } else if (!controller.signal.aborted) {
         notify.error(result.error || '线索详情加载失败');
       }
@@ -400,6 +489,23 @@ export default function LeadsPage() {
       if (!controller.signal.aborted) {
         notify.error(error instanceof Error ? error.message : '线索详情加载失败');
       }
+    }
+  };
+
+  const loadPublications = async (leadId: string) => {
+    setPublicationLoading(true);
+    try {
+      const response = await fetch(`/api/leads/${leadId}/ai-publications`);
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '读取方案发布状态失败');
+      setPublications(Array.isArray(result.data) ? result.data : []);
+      setPublishableGenerations(Array.isArray(result.publishable) ? result.publishable : []);
+    } catch (error) {
+      setPublications([]);
+      setPublishableGenerations([]);
+      notify.error(error instanceof Error ? error.message : '读取方案发布状态失败');
+    } finally {
+      setPublicationLoading(false);
     }
   };
 
@@ -415,6 +521,141 @@ export default function LeadsPage() {
     setAddressLead(null);
     setRescheduleOpen(false);
     setRescheduleLead(null);
+    setCancelOpen(false);
+    setCancelReason('');
+    setPublications([]);
+    setPublishableGenerations([]);
+  };
+
+  const cancelAppointment = async () => {
+    const appointment = selectedLead?.appointment;
+    if (!appointment || !cancelReason.trim()) return;
+    setCancelSubmitting(true);
+    try {
+      const response = await fetch(`/api/appointments/${appointment.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: appointment.version, reason: cancelReason.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '取消预约失败');
+      setSelectedLead((current) => current ? {
+        ...current,
+        appointment: result.data,
+        canRebook: true,
+        serviceStage: 'awaiting_rebooking',
+        serviceStageLabel: '待重新预约',
+        nextAction: '选择新时段',
+      } : current);
+      setCancelOpen(false);
+      setCancelReason('');
+      notify.success('预约已取消');
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '取消预约失败');
+    } finally {
+      setCancelSubmitting(false);
+    }
+  };
+
+  const completeAppointment = async () => {
+    const appointment = selectedLead?.appointment;
+    if (!appointment) return;
+    const confirmed = await confirmAction({
+      title: '确认完成量房',
+      description: '确认测量员已完成本次上门服务。此操作会结束当前预约，且需要先完成正式量房数据保存。',
+      confirmText: '确认完成',
+    });
+    if (!confirmed) return;
+    setCompleteSubmitting(true);
+    try {
+      const response = await fetch(`/api/appointments/${appointment.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: appointment.version }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        if (result.code === 'appointment_survey_required') {
+          throw new Error('请先完成并保存正式量房数据');
+        }
+        throw new Error(result.error || '完成预约失败');
+      }
+      setSelectedLead((current) => current ? { ...current, appointment: result.data } : current);
+      notify.success('预约已完成');
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '完成预约失败');
+    } finally {
+      setCompleteSubmitting(false);
+    }
+  };
+
+  const publishGeneration = async (generationId: string) => {
+    if (!selectedLead) return;
+    setPublicationUpdatingId(generationId);
+    try {
+      const response = await fetch(`/api/leads/${selectedLead._id}/ai-publications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generationId }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '发布方案失败');
+      notify.success('方案已发布给客户');
+      await loadPublications(selectedLead._id);
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '发布方案失败');
+    } finally {
+      setPublicationUpdatingId(null);
+    }
+  };
+
+  const withdrawGeneration = async (generationId: string) => {
+    if (!selectedLead) return;
+    const confirmed = await confirmAction({
+      title: '撤回客户方案',
+      description: '撤回后，客户将不能继续在项目中查看这张方案。',
+      confirmText: '确认撤回',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setPublicationUpdatingId(generationId);
+    try {
+      const response = await fetch(`/api/leads/${selectedLead._id}/ai-publications/${generationId}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '撤回方案失败');
+      notify.success('方案已撤回');
+      await loadPublications(selectedLead._id);
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '撤回方案失败');
+    } finally {
+      setPublicationUpdatingId(null);
+    }
+  };
+
+  const retryAssignment = async (lead: Lead) => {
+    setRetryingAssignmentId(lead._id);
+    try {
+      const response = await fetch(`/api/leads/${lead._id}/retry-assignment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: 'admin_retry_from_leads' }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '派单重试失败');
+      notify.success(result.data?.assignmentStatus === 'assigned' ? '派单已成功' : '已重新尝试派单');
+      if (selectedLead?._id === lead._id && result.data) {
+        setSelectedLead((current) => current ? { ...current, ...result.data } : current);
+      }
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '派单重试失败');
+    } finally {
+      setRetryingAssignmentId(null);
+    }
   };
 
   const createAppointment = async () => {
@@ -802,12 +1043,31 @@ export default function LeadsPage() {
 
   const columns: ProColumns<Lead>[] = [
     {
+      title: '服务阶段',
+      dataIndex: 'serviceStage',
+      valueType: 'select',
+      valueEnum: {
+        claimed: '新线索',
+        assignment_pending: '待派单',
+        measurer_assigned: '已匹配测量员',
+        appointment_confirmed: '已预约',
+        appointment_in_progress: '上门中',
+        appointment_expired: '已过期',
+        awaiting_rebooking: '待重约',
+        survey_completed: '量房完成',
+        design_published: '方案已发布',
+        converted: '已签约',
+        closed: '已关闭',
+      },
+      width: 150,
+      render: (_, lead) => <Tag color={getStatusColor(lead.status)}>{lead.serviceStageLabel || getLeadStatusLabel(lead.status)}</Tag>,
+    },
+    {
       title: '业务状态',
       dataIndex: 'status',
       valueType: 'select',
       valueEnum: STATUS_LABELS,
-      width: 150,
-      render: (_, lead) => <Tag color={getStatusColor(lead.status)}>{getLeadStatusLabel(lead.status)}</Tag>,
+      hideInTable: true,
     },
     {
       title: '客户 / 小区',
@@ -845,6 +1105,13 @@ export default function LeadsPage() {
       hideInSearch: true,
       width: 180,
       render: (_, lead) => getStaffName(lead.assignedTo) || '未绑定设计师',
+    },
+    {
+      title: '派单',
+      dataIndex: 'assignmentStatus',
+      valueType: 'select',
+      valueEnum: ASSIGNMENT_STATUS_LABELS,
+      hideInTable: true,
     },
     {
       title: '量房安排',
@@ -1060,7 +1327,7 @@ export default function LeadsPage() {
                             <Flex vertical gap={4} className="min-w-0">
                               <Flex align="center" gap={8} wrap>
                                 <Typography.Title level={5} className="!mb-0">{lead.name}</Typography.Title>
-                                <Tag color={getStatusColor(lead.status)}>{getLeadStatusLabel(lead.status)}</Tag>
+                                <Tag color={getStatusColor(lead.status)}>{lead.serviceStageLabel || getLeadStatusLabel(lead.status)}</Tag>
                               </Flex>
                               <Typography.Text type="secondary" ellipsis={{ tooltip: lead.communityName || '未记录小区' }}>
                                 {lead.communityName || '未记录小区'} · {lead.phone || '暂无联系电话'}
@@ -1087,6 +1354,10 @@ export default function LeadsPage() {
                           <LeadCardField label="绑定设计师" value={getStaffName(lead.assignedTo) || '未绑定设计师'} />
                           <LeadCardField label="测量员" value={getStaffName(lead.measurerId) || '未绑定测量员'} />
                           <LeadCardField
+                            label="派单"
+                            value={getAssignmentStatusLabel(lead.assignmentStatus, lead.assignmentErrorCode)}
+                          />
+                          <LeadCardField
                             label="预约上门量房"
                             value={lead.appointment ? formatAppointmentRange(lead.appointment.timeRange) : '尚未预约'}
                             detail={lead.appointment?.address || (lead.appointment ? '地址待确认' : '可在详情中设置')}
@@ -1107,7 +1378,12 @@ export default function LeadsPage() {
                               {capabilities.canPurge ? <Button size="small" danger icon={<Trash2 size={14} />} disabled={Boolean(deletingId)} loading={deletingId === lead._id} onClick={() => void openPurge(lead)}>永久删除</Button> : null}
                             </Space>
                           ) : null}
-                          {archiveState === 'active' && lead.appointment ? <Button size="small" icon={<CalendarDays size={14} />} onClick={() => openReschedule(lead)}>改预约</Button> : null}
+                          {archiveState === 'active' && lead.assignmentStatus === 'assignment_pending' ? (
+                            <Button size="small" loading={retryingAssignmentId === lead._id} onClick={() => void retryAssignment(lead)}>重试派单</Button>
+                          ) : null}
+                          {archiveState === 'active' && lead.appointment?.status === 'confirmed' && !lead.canRebook ? (
+                            <Button size="small" icon={<CalendarDays size={14} />} onClick={() => openReschedule(lead)}>改预约</Button>
+                          ) : null}
                         </Flex>
                       </Flex>
                     </ProCard>
@@ -1126,6 +1402,8 @@ export default function LeadsPage() {
               limit: String(params.pageSize || 20),
             });
             if (params.status) query.set('status', String(params.status));
+            if (params.serviceStage) query.set('serviceStage', String(params.serviceStage));
+            if (params.assignmentStatus) query.set('assignmentStatus', String(params.assignmentStatus));
             query.set('archiveState', archiveState);
             try {
               const response = await fetch(`/api/leads?${query.toString()}`, { signal: controller.signal });
@@ -1433,6 +1711,31 @@ export default function LeadsPage() {
         </Flex>
       </Modal>
 
+      <Modal
+        open={cancelOpen}
+        zIndex={1300}
+        title="取消本次预约"
+        okText="确认取消"
+        cancelText="返回"
+        okButtonProps={{ danger: true, loading: cancelSubmitting, disabled: !cancelReason.trim() }}
+        onCancel={() => { if (!cancelSubmitting) { setCancelOpen(false); setCancelReason(''); } }}
+        onOk={() => void cancelAppointment()}
+      >
+        <Flex vertical gap={12} className="pb-3">
+          <Alert showIcon type="warning" message="取消后客户需重新预约上门" description="请填写取消原因，系统会通知设计师、测量员和已授权客户。" />
+          <Flex vertical gap={4}>
+            <Input.TextArea
+              value={cancelReason}
+              maxLength={200}
+              autoSize={{ minRows: 2, maxRows: 4 }}
+              placeholder="请填写取消原因"
+              onChange={(event) => setCancelReason(event.target.value)}
+            />
+            <Typography.Text type="secondary" className="self-end text-xs">{cancelReason.length} / 200</Typography.Text>
+          </Flex>
+        </Flex>
+      </Modal>
+
       <Drawer
         open={Boolean(selectedLead)}
         width={640}
@@ -1458,7 +1761,7 @@ export default function LeadsPage() {
             <Flex align="center" justify="space-between" gap={16} wrap>
               <Flex vertical gap={4}>
                 <Typography.Text type="secondary">{selectedLead.phone || '-'}</Typography.Text>
-                <Tag color={getStatusColor(selectedLead.status)}>{getLeadStatusLabel(selectedLead.status)}</Tag>
+                <Tag color={getStatusColor(selectedLead.status)}>{selectedLead.serviceStageLabel || getLeadStatusLabel(selectedLead.status)}</Tag>
               </Flex>
               <Flex vertical gap={2} className="min-w-44" align="end">
                 <Typography.Text type="secondary">创建时绑定设计师</Typography.Text>
@@ -1475,9 +1778,43 @@ export default function LeadsPage() {
               column={1}
               items={[
                 { key: 'measurer', label: '测量员', children: getStaffName(selectedLead.measurerId) || '未绑定测量员' },
-                { key: 'appointment', label: '预约上门时间', children: selectedLead.appointment ? `${formatAppointmentRange(selectedLead.appointment.timeRange)} · ${selectedLead.appointment.address || '地址待确认'}` : '尚未预约' },
+                {
+                  key: 'appointment',
+                  label: '预约上门时间',
+                  children: selectedLead.appointment
+                    ? `${formatAppointmentRange(selectedLead.appointment.timeRange)} · ${selectedLead.appointment.address || '地址待确认'}`
+                    : '尚未预约',
+                },
+                ...(selectedLead.appointment?.status ? [{
+                  key: 'appointmentStatus',
+                  label: '预约状态',
+                  children: APPOINTMENT_STATUS_LABELS[selectedLead.appointment.status] || selectedLead.appointment.status,
+                }] : []),
               ]}
-              extra={!selectedLead.archivedAt ? selectedLead.appointment ? <Space wrap><Button icon={<CalendarDays size={15} />} onClick={() => openReschedule(selectedLead)}>改预约</Button><Button icon={<FilePenLine size={15} />} onClick={() => openAddressEditor(selectedLead)}>{selectedLead.appointment.address ? '修改地址' : '补充地址'}</Button></Space> : <Button type="primary" icon={<ClipboardCheck size={15} />} onClick={() => openAppointmentPicker(selectedLead)}>设置预约</Button> : null}
+              extra={!selectedLead.archivedAt ? (
+                selectedLead.canRebook || !selectedLead.appointment ? (
+                  <Button type="primary" icon={<ClipboardCheck size={15} />} onClick={() => openAppointmentPicker(selectedLead)}>
+                    {selectedLead.canRebook ? '重新预约' : '设置预约'}
+                  </Button>
+                ) : (
+                  <Space wrap>
+                    {selectedLead.appointment.status === 'confirmed' ? (
+                      <>
+                        <Button icon={<CalendarDays size={15} />} onClick={() => openReschedule(selectedLead)}>改预约</Button>
+                        <Button icon={<FilePenLine size={15} />} onClick={() => openAddressEditor(selectedLead)}>
+                          {selectedLead.appointment.address ? '修改地址' : '补充地址'}
+                        </Button>
+                      </>
+                    ) : null}
+                    {canCancelLeadAppointment(selectedLead, currentUser?.role, currentUser?._id) ? (
+                      <Button danger icon={<XCircle size={15} />} onClick={() => { setCancelReason(''); setCancelOpen(true); }}>取消预约</Button>
+                    ) : null}
+                    {canCompleteLeadAppointment(selectedLead, currentUser?.role, currentUser?._id) ? (
+                      <Button icon={<CheckCircle2 size={15} />} loading={completeSubmitting} onClick={() => void completeAppointment()}>完成预约</Button>
+                    ) : null}
+                  </Space>
+                )
+              ) : null}
             />
 
               <Steps
@@ -1487,8 +1824,67 @@ export default function LeadsPage() {
               />
 
               <Typography.Text type="secondary">
-                下一步：{getLeadNextAction(selectedLead.status)}
+                下一步：{selectedLead.nextAction || getLeadNextAction(selectedLead.status)}
               </Typography.Text>
+
+            {canManageLeadPublications(selectedLead, currentUser?.role, currentUser?._id) ? (
+              <Flex vertical gap={12}>
+                <Flex align="center" justify="space-between" gap={12} wrap>
+                  <Flex align="center" gap={8}>
+                    <Send size={16} />
+                    <Typography.Text strong>客户可见方案</Typography.Text>
+                    <Tag color={publications.length ? 'green' : 'default'}>{publications.length ? '已发布' : '仅内部可见'}</Tag>
+                  </Flex>
+                  <Button size="small" icon={<FilePenLine size={14} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${selectedLead._id}`)}>
+                    前往 AI 创作台
+                  </Button>
+                </Flex>
+                {publicationLoading ? (
+                  <Typography.Text type="secondary">读取发布状态中…</Typography.Text>
+                ) : publications.length || publishableGenerations.length ? (
+                  <Flex vertical gap={8}>
+                    {publications.map((item) => (
+                      <Flex key={item.generationId} align="center" justify="space-between" gap={12} className="rounded-lg border border-border bg-card p-3">
+                        <Flex vertical gap={2} className="min-w-0">
+                          <Typography.Text strong>方案 #{item.generationId.slice(-6)}</Typography.Text>
+                          <Typography.Text type="secondary" className="text-xs">发布于 {formatDate(item.publishedAt)}</Typography.Text>
+                        </Flex>
+                        <Button
+                          size="small"
+                          danger
+                          loading={publicationUpdatingId === item.generationId}
+                          onClick={() => void withdrawGeneration(item.generationId)}
+                        >
+                          撤回
+                        </Button>
+                      </Flex>
+                    ))}
+                    {publishableGenerations
+                      .filter((item) => !publications.some((published) => published.generationId === item.generationId))
+                      .map((item) => (
+                        <Flex key={item.generationId} align="center" justify="space-between" gap={12} className="rounded-lg border border-dashed border-border bg-muted/30 p-3">
+                          <Flex vertical gap={2} className="min-w-0">
+                            <Typography.Text strong>可发布方案 #{item.generationId.slice(-6)}</Typography.Text>
+                            <Typography.Text type="secondary" className="text-xs">
+                              {item.type || 'AI 方案'} · 更新于 {formatDate(item.updatedAt)}
+                            </Typography.Text>
+                          </Flex>
+                          <Button
+                            size="small"
+                            type="primary"
+                            loading={publicationUpdatingId === item.generationId}
+                            onClick={() => void publishGeneration(item.generationId)}
+                          >
+                            发布给客户
+                          </Button>
+                        </Flex>
+                      ))}
+                  </Flex>
+                ) : (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无已完成且可发布的 AI 方案" />
+                )}
+              </Flex>
+            ) : null}
 
             {selectedLead.conversionActions?.canMarkConverted ? (
               <Flex

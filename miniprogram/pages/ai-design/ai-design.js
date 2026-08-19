@@ -156,7 +156,7 @@ Page({
     const bootstrap = globalData.bootstrap;
     const role = (bootstrap && bootstrap.current && bootstrap.current.role)
       || roleForIdentity(globalData.userInfo);
-    return ['measurer', 'enterprise_admin'].includes(role) ? role : '';
+    return role === 'measurer' ? 'measurer' : '';
   },
 
   onLoad(options) {

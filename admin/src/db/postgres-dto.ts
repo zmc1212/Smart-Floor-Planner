@@ -18,6 +18,8 @@ import type {
   StaffNotificationWithLead,
 } from '@/db/repositories';
 import { getFloorPlanDisplay, type FloorPlanDisplayLead } from '@/lib/floor-plan-display';
+import { canRebookAppointment, resolveLeadServiceStage } from '@/lib/lead-service-stage';
+import { isFormalSurveyLayout, parseFormalSurveyLayout } from '@/lib/survey-graph';
 
 export function aiChatSessionSummaryToDto(record: AiChatSessionRecord) {
   return {
@@ -234,6 +236,20 @@ function staffSummaryToDto(
 }
 
 export function leadToDto(record: LeadWithRelations, options: { designerWechatQrUrl?: string | null; includeDesignerWechat?: boolean } = {}) {
+  const hasFormalFloorPlan = [record.primaryFloorPlanRecord, ...(record.floorPlanRecords || [])]
+    .filter(Boolean)
+    .some((plan) => {
+      if (!plan || plan.status !== 'completed' || !isFormalSurveyLayout(plan.layoutData)) return false;
+      const layout = parseFormalSurveyLayout(plan.layoutData);
+      return !!layout?.surveyGraph.floors.some((floor) => (floor.spaces || []).some((space) => space.closed === true));
+    });
+  const serviceStage = resolveLeadServiceStage({
+    leadStatus: record.status,
+    assignmentStatus: record.assignmentStatus,
+    measurerId: record.measurerId,
+    appointment: record.appointment,
+    hasFormalFloorPlan,
+  });
   return {
     _id: record.id.toString(),
     enterpriseId: record.enterpriseId?.toString() ?? null,
@@ -281,6 +297,17 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
     city: record.city,
     source: record.source,
     status: record.status,
+    assignmentStatus: record.assignmentStatus,
+    assignmentErrorCode: record.assignmentErrorCode,
+    serviceStage: serviceStage.key,
+    serviceStageLabel: serviceStage.label,
+    nextAction: serviceStage.nextAction,
+    canRebook: canRebookAppointment({
+      leadStatus: record.status,
+      assignmentStatus: record.assignmentStatus,
+      appointment: record.appointment,
+      hasFormalFloorPlan,
+    }),
     convertedOn: record.convertedOn,
     convertedAt: record.convertedAt,
     convertedBy: record.convertedUser

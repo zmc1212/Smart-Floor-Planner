@@ -1,11 +1,15 @@
 <view class="page sfp-page">
-  <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"><view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view><text>量房日程</text><text class="month">本周</text></view>
+  <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"><view wx:if="{{showBack}}" class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view><text>量房日程</text><text class="month">本周</text></view>
   <view class="week"><view wx:for="{{['一','二','三','四','五','六','日']}}" wx:key="*this" class="weekday">周{{item}}</view></view>
   <view wx:if="{{loading}}" class="state">正在加载日程…</view>
   <view wx:elif="{{error}}" class="state">{{error}}</view>
   <view wx:else class="list">
-    <view wx:for="{{items}}" wx:key="id" class="appointment sfp-card" data-item="{{item}}" bindtap="openAppointment" hover-class="appointment-pressed" aria-role="button" aria-label="查看预约 {{item.address}}"><view class="top"><text class="time">{{item.time}}</text><text class="tag">已确认</text></view><text class="address">{{item.address}}</text><view class="appointment-footer"><text class="meta">客户量房 · 请提前到场</text><text class="open-label">查看预约</text></view></view>
-    <view wx:if="{{!items.length}}" class="state">本周暂未安排量房</view>
+    <text class="section-label">已确认</text>
+    <view wx:for="{{confirmed}}" wx:key="id" class="appointment sfp-card" data-item="{{item}}" bindtap="openAppointment" hover-class="appointment-pressed" aria-role="button" aria-label="查看预约 {{item.address}}"><view class="top"><text class="time">{{item.time}}</text><text class="tag">已确认</text></view><text class="address">{{item.address}}</text><view class="appointment-footer"><text class="meta">客户量房 · 请提前到场</text><text class="open-label">查看预约</text></view></view>
+    <view wx:if="{{!confirmed.length}}" class="state">本周暂未安排量房</view>
+    <text class="section-label">待处理 / 历史</text>
+    <view wx:for="{{history}}" wx:key="id" class="appointment sfp-card" data-item="{{item}}" bindtap="openAppointment" hover-class="appointment-pressed" aria-role="button" aria-label="查看预约 {{item.address}}"><view class="top"><text class="time">{{item.time}}</text><text class="tag">{{item.statusLabel}}</text></view><text class="address">{{item.address}}</text><view class="appointment-footer"><text class="meta">{{item.status === 'expired' ? '已过结束时间，不再占用已确认档期' : '历史预约'}}</text><text class="open-label">查看预约</text></view></view>
+    <view wx:if="{{!history.length}}" class="state">暂无过期或历史预约</view>
   </view>
   <view class="unavailable" bindtap="manageUnavailability" hover-class="unavailable-pressed" aria-role="button">
     <view><text>时间不可预约</text><text>设置个人不可用时段，避免排期冲突</text></view>

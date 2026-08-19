@@ -3,9 +3,11 @@ import {
   asc,
   desc,
   eq,
+  inArray,
   isNotNull,
   isNull,
   ne,
+  or,
   sql,
 } from 'drizzle-orm';
 import {
@@ -105,7 +107,8 @@ export class ReferralLeadRepository {
       .where(
         and(
           eq(customerAttributionLocks.customerUserId, customerUserId),
-          isNull(customerAttributionLocks.releasedAt)
+          isNull(customerAttributionLocks.releasedAt),
+          isNull(leads.archivedAt)
         )
       )
       .limit(1)
@@ -121,11 +124,44 @@ export class ReferralLeadRepository {
       .where(
         and(
           eq(customerAttributionLocks.customerUserId, customerUserId),
-          isNull(customerAttributionLocks.releasedAt)
+          isNull(customerAttributionLocks.releasedAt),
+          isNull(leads.archivedAt)
         )
       )
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  private async releaseInactiveAttributionLocks(customerUserId: bigint) {
+    const now = new Date();
+    const stale = await this.transaction
+      .select({ id: customerAttributionLocks.id })
+      .from(customerAttributionLocks)
+      .innerJoin(leads, eq(customerAttributionLocks.leadId, leads.id))
+      .where(
+        and(
+          eq(customerAttributionLocks.customerUserId, customerUserId),
+          isNull(customerAttributionLocks.releasedAt),
+          or(isNotNull(leads.archivedAt), eq(leads.status, 'closed'))
+        )
+      );
+    if (!stale.length) return;
+    await this.transaction
+      .update(customerAttributionLocks)
+      .set({
+        releasedAt: now,
+        releaseReason: 'lead_inactive',
+        updatedAt: now,
+      })
+      .where(
+        and(
+          inArray(
+            customerAttributionLocks.id,
+            stale.map((row) => row.id)
+          ),
+          isNull(customerAttributionLocks.releasedAt)
+        )
+      );
   }
 
   private async validateSource(source: ReferralPendingSourceRecord) {
@@ -347,7 +383,7 @@ export class ReferralLeadRepository {
       input.source.kind === 'staff_activity' ? input.source : null;
     const referralSource = staffActivitySource
       ? null
-      : await this.validateSource(input.source);
+      : await this.validateSource(input.source as ReferralPendingSourceRecord);
     const activitySource = staffActivitySource
       ? await this.validateStaffActivitySource(staffActivitySource)
       : null;
@@ -375,6 +411,7 @@ export class ReferralLeadRepository {
         lead: await this.loadLead(existing.lead.id),
       };
     }
+    await this.releaseInactiveAttributionLocks(input.customerUserId);
 
     const enterpriseId = referralSource
       ? referralSource.membership.enterpriseId
@@ -384,11 +421,20 @@ export class ReferralLeadRepository {
     let designer: typeof adminUsers.$inferSelect | null = null;
     let measurer: typeof adminUsers.$inferSelect | null = null;
     if (activitySource) {
-      measurer = activitySource.staff;
-      designer =
-        activitySource.staff.role === 'designer'
-          ? activitySource.staff
-          : await this.findDesignerCandidate(enterpriseId);
+      const sourceStaff = activitySource.staff;
+      if (sourceStaff.assignmentPaused) {
+        measurer = null;
+        designer =
+          sourceStaff.role === 'designer'
+            ? null
+            : await this.findDesignerCandidate(enterpriseId);
+      } else if (sourceStaff.role === 'designer') {
+        designer = sourceStaff;
+        measurer = sourceStaff;
+      } else {
+        measurer = sourceStaff;
+        designer = await this.findDesignerCandidate(enterpriseId);
+      }
     } else {
       designer = await this.findDesignerCandidate(enterpriseId);
       measurer = await this.findMeasurerCandidate(enterpriseId);

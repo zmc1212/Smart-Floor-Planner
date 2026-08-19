@@ -1,5 +1,6 @@
 const API_BASE_URLS = Object.freeze({
-  local: 'http://192.168.10.111:3006/api',
+  // local: 'http://192.168.10.111:3006/api',
+  local: 'http://124.70.90.30:9966/api',
   production: 'https://smartfloor.zlyun168.com/api',
 });
 
@@ -105,6 +106,41 @@ function request(url, method = 'GET', data = {}, options = {}) {
     };
 
     send(0);
+  });
+}
+
+function uploadStaffWechatQr(filePath) {
+  const app = getApp();
+  const token = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
+  const baseUrl = getBaseUrls()[0];
+  return new Promise((resolve, reject) => {
+    wx.uploadFile({
+      url: `${baseUrl}/miniprogram/staff/wechat-qr`,
+      filePath,
+      name: 'file',
+      timeout: 30000,
+      header: { Authorization: token ? `Bearer ${token}` : '' },
+      success(res) {
+        let payload = null;
+        try {
+          payload = JSON.parse(res.data || '{}');
+        } catch (error) {
+          reject({ error: '二维码上传响应无法解析' });
+          return;
+        }
+        if (res.statusCode === 401) {
+          handleUnauthorized('/miniprogram/staff/wechat-qr', token);
+          reject({ error: '登录已过期，请重新登录', statusCode: 401 });
+          return;
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300 && payload.success) {
+          resolve(payload);
+          return;
+        }
+        reject(payload || { error: '二维码上传失败' });
+      },
+      fail: reject
+    });
   });
 }
 
@@ -218,6 +254,7 @@ module.exports = {
   ACTIVE_API_ENVIRONMENT,
   API_BASE_URLS,
   uploadProfileAvatar,
+  uploadStaffWechatQr,
   phoneLogin,
   passwordLogin
 };

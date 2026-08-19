@@ -1483,6 +1483,281 @@ test('a collinear closed-corner closure stays aligned and extends the current wa
   assert.equal(extendedWall.inputSource, 'closure-merge');
 });
 
+test('an inferred collinear closure remains one wall when the session side differs', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 5400, yMm: 0 }, 5400);
+  draft = commitWall(draft, { xMm: 5400, yMm: -4080 }, 4080);
+  draft = commitWall(draft, { xMm: 15580, yMm: -4080 }, 10180);
+  draft = commitWall(draft, { xMm: 15580, yMm: -10630 }, 6550);
+  draft = commitWall(draft, { xMm: 7030, yMm: -10630 }, 8550);
+
+  const pendingFloor = surveyGraph.getActiveFloor(draft);
+  const topWallId = pendingFloor.walls.at(-1).id;
+  pendingFloor.session.measurementSide = pendingFloor.walls.at(-1).measurementSide === 'left'
+    ? 'right'
+    : 'left';
+
+  const closedFloor = surveyGraph.getActiveFloor(surveyGraph.confirmClosure(draft));
+  const topWall = surveyGraph.getWall(closedFloor, topWallId);
+  const topStart = surveyGraph.getNode(closedFloor, topWall.startNodeId);
+  const topEnd = surveyGraph.getNode(closedFloor, topWall.endNodeId);
+
+  assert.equal(closedFloor.session.state, 'spaceClosed');
+  assert.equal(closedFloor.walls.length, 6);
+  assert.equal(closedFloor.spaces.filter((space) => space.closed).length, 1);
+  assert.deepEqual(
+    [topStart.xMm, topEnd.xMm].sort((first, second) => first - second),
+    [0, 15580]
+  );
+  assert.equal(topStart.yMm, -10630);
+  assert.equal(topEnd.yMm, -10630);
+  assert.equal(topWall.lengthMm, 15580);
+  assert.equal(topWall.inputSource, 'closure-merge');
+});
+
+test('a collinear close preview stays one wall when the session side differs', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 5400, yMm: 0 }, 5400);
+  draft = commitWall(draft, { xMm: 5400, yMm: -4080 }, 4080);
+  draft = commitWall(draft, { xMm: 15580, yMm: -4080 }, 10180);
+  draft = commitWall(draft, { xMm: 15580, yMm: -10630 }, 6550);
+  draft = commitWall(draft, { xMm: 7030, yMm: -10630 }, 8550);
+
+  const pendingFloor = surveyGraph.getActiveFloor(draft);
+  const topWallId = pendingFloor.walls.at(-1).id;
+  pendingFloor.session.measurementSide = pendingFloor.walls.at(-1).measurementSide === 'left'
+    ? 'right'
+    : 'left';
+  draft = surveyGraph.startPreview(draft, { xMm: 0, yMm: -10630 });
+
+  const closedFloor = surveyGraph.getActiveFloor(surveyGraph.confirmClosure(draft));
+  const topWall = surveyGraph.getWall(closedFloor, topWallId);
+  const topStart = surveyGraph.getNode(closedFloor, topWall.startNodeId);
+  const topEnd = surveyGraph.getNode(closedFloor, topWall.endNodeId);
+  const topWalls = closedFloor.walls.filter((wall) => {
+    const start = surveyGraph.getNode(closedFloor, wall.startNodeId);
+    const end = surveyGraph.getNode(closedFloor, wall.endNodeId);
+    return start.yMm === -10630 && end.yMm === -10630;
+  });
+
+  assert.equal(closedFloor.session.state, 'spaceClosed');
+  assert.equal(closedFloor.walls.length, 6);
+  assert.equal(topWalls.length, 1);
+  assert.equal(topWalls[0].id, topWallId);
+  assert.deepEqual(
+    [topStart.xMm, topEnd.xMm].sort((first, second) => first - second),
+    [0, 15580]
+  );
+  assert.equal(topStart.yMm, -10630);
+  assert.equal(topEnd.yMm, -10630);
+  assert.equal(topWall.lengthMm, 15580);
+});
+
+test('repair folds a reversed collinear splice in a closed L top wall', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 5400, yMm: 0 }, 5400);
+  draft = commitWall(draft, { xMm: 5400, yMm: -4080 }, 4080);
+  draft = commitWall(draft, { xMm: 15580, yMm: -4080 }, 10180);
+  draft = commitWall(draft, { xMm: 15580, yMm: -10630 }, 6550);
+  draft = commitWall(draft, { xMm: 7030, yMm: -10630 }, 8550);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const split = JSON.parse(JSON.stringify(draft));
+  const floor = surveyGraph.getActiveFloor(split);
+  const topWall = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start.yMm === -10630 && end.yMm === -10630;
+  });
+  const start = surveyGraph.getNode(floor, topWall.startNodeId);
+  const end = surveyGraph.getNode(floor, topWall.endNodeId);
+  const rightNodeId = start.xMm >= end.xMm ? topWall.startNodeId : topWall.endNodeId;
+  const leftNodeId = start.xMm >= end.xMm ? topWall.endNodeId : topWall.startNodeId;
+  const mid = {
+    id: 'node-collinear-splice',
+    xMm: 7030,
+    yMm: -10630
+  };
+  floor.nodes.push(mid);
+  topWall.startNodeId = rightNodeId;
+  topWall.endNodeId = mid.id;
+  topWall.lengthMm = Math.abs((start.xMm >= end.xMm ? start.xMm : end.xMm) - 7030);
+  floor.walls.push(Object.assign({}, topWall, {
+    id: 'wall-collinear-splice',
+    startNodeId: leftNodeId,
+    endNodeId: mid.id,
+    lengthMm: Math.abs((start.xMm >= end.xMm ? end.xMm : start.xMm) - 7030)
+  }));
+  floor.spaces.forEach((space) => {
+    if (Array.isArray(space.wallIds) && space.wallIds.indexOf(topWall.id) !== -1) {
+      space.wallIds.push('wall-collinear-splice');
+    }
+  });
+
+  const repaired = surveyGraph.repairCollinearDegree2Walls(split);
+  const repairedFloor = surveyGraph.getActiveFloor(repaired);
+  const topWalls = repairedFloor.walls.filter((wall) => {
+    const startNode = surveyGraph.getNode(repairedFloor, wall.startNodeId);
+    const endNode = surveyGraph.getNode(repairedFloor, wall.endNodeId);
+    return startNode.yMm === -10630 && endNode.yMm === -10630;
+  });
+  const validation = surveyGraph.validateSurveyDraft(repaired, { mode: 'full' });
+
+  assert.equal(repairedFloor.session.state, 'spaceClosed');
+  assert.equal(repairedFloor.walls.length, 6);
+  assert.equal(topWalls.length, 1);
+  assert.deepEqual(
+    [surveyGraph.getNode(repairedFloor, topWalls[0].startNodeId).xMm,
+      surveyGraph.getNode(repairedFloor, topWalls[0].endNodeId).xMm].sort((first, second) => first - second),
+    [0, 15580]
+  );
+  assert.equal(validation.valid, true);
+});
+
+test('deleting the merged top wall of a closed L offers the missing-edge close', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 5400, yMm: 0 }, 5400);
+  draft = commitWall(draft, { xMm: 5400, yMm: -4080 }, 4080);
+  draft = commitWall(draft, { xMm: 15580, yMm: -4080 }, 10180);
+  draft = commitWall(draft, { xMm: 15580, yMm: -10630 }, 6550);
+  draft = commitWall(draft, { xMm: 7030, yMm: -10630 }, 8550);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const topWall = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start.yMm === -10630 && end.yMm === -10630;
+  });
+
+  draft = surveyGraph.deleteWall(draft, topWall.id);
+  floor = surveyGraph.getActiveFloor(draft);
+  const anchor = surveyGraph.getNode(floor, floor.session.anchorNodeId);
+  const startNode = surveyGraph.getNode(floor, floor.session.activeSpaceStartNodeId);
+  const closurePath = surveyGraph.getClosurePath(floor, floor.session);
+
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 0);
+  assert.equal(floor.walls.length, 5);
+  assert.equal(floor.session.state, 'mergeClosing');
+  assert.equal(floor.session.closeCandidateType, 'merge');
+  assert.equal(anchor.yMm, -10630);
+  assert.equal(startNode.yMm, -10630);
+  assert.deepEqual(
+    [anchor.xMm, startNode.xMm].sort((first, second) => first - second),
+    [0, 15580]
+  );
+  assert.equal(closurePath.length, 2);
+
+  const closed = surveyGraph.confirmClosure(draft);
+  const closedFloor = surveyGraph.getActiveFloor(closed);
+  const topWalls = closedFloor.walls.filter((wall) => {
+    const start = surveyGraph.getNode(closedFloor, wall.startNodeId);
+    const end = surveyGraph.getNode(closedFloor, wall.endNodeId);
+    return start.yMm === -10630 && end.yMm === -10630;
+  });
+  assert.equal(closedFloor.session.state, 'spaceClosed');
+  assert.equal(closedFloor.spaces.filter((space) => space.closed).length, 1);
+  assert.equal(topWalls.length, 1);
+});
+
+test('dragging back along the opened L chain shortens instead of reporting overlap', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 5400, yMm: 0 }, 5400);
+  draft = commitWall(draft, { xMm: 5400, yMm: -4080 }, 4080);
+  draft = commitWall(draft, { xMm: 15580, yMm: -4080 }, 10180);
+  draft = commitWall(draft, { xMm: 15580, yMm: -10630 }, 6550);
+  draft = commitWall(draft, { xMm: 7030, yMm: -10630 }, 8550);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const topWall = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start.yMm === -10630 && end.yMm === -10630;
+  });
+  draft = surveyGraph.deleteWall(draft, topWall.id);
+  floor = surveyGraph.getActiveFloor(draft);
+  const lastWall = floor.walls[floor.walls.length - 1];
+  const lastStart = surveyGraph.getNode(floor, lastWall.startNodeId);
+  const anchor = surveyGraph.getNode(floor, floor.session.anchorNodeId);
+  const shortenPoint = {
+    xMm: Math.round(lastStart.xMm + (anchor.xMm - lastStart.xMm) * 0.75),
+    yMm: Math.round(lastStart.yMm + (anchor.yMm - lastStart.yMm) * 0.75)
+  };
+  draft = surveyGraph.startPreview(draft, shortenPoint);
+  draft = surveyGraph.commitPreviewLength(
+    draft,
+    surveyGraph.getActiveFloor(draft).session.previewLengthMm,
+    'preview'
+  );
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.walls.length, 5);
+  assert.notEqual(floor.session.state, 'spaceClosed');
+});
+
+test('resetting onto the opened L left vertex and dragging down shortens instead of duplicating', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 5400, yMm: 0 }, 5400);
+  draft = commitWall(draft, { xMm: 5400, yMm: -4080 }, 4080);
+  draft = commitWall(draft, { xMm: 15580, yMm: -4080 }, 10180);
+  draft = commitWall(draft, { xMm: 15580, yMm: -10630 }, 6550);
+  draft = commitWall(draft, { xMm: 7030, yMm: -10630 }, 8550);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const topWall = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start.yMm === -10630 && end.yMm === -10630;
+  });
+  draft = surveyGraph.deleteWall(draft, topWall.id);
+  floor = surveyGraph.getActiveFloor(draft);
+  const leftTop = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: -10630 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    leftTop.pointMm,
+    leftTop
+  );
+  floor = surveyGraph.getActiveFloor(draft);
+  const lastWall = floor.walls[floor.walls.length - 1];
+  const lastStart = surveyGraph.getNode(floor, lastWall.startNodeId);
+  const lastLength = lastWall.lengthMm;
+
+  assert.equal(floor.walls.length, 5);
+  assert.equal(floor.session.state, 'mergeClosing');
+  assert.equal(floor.session.closeCandidateType, 'merge');
+  assert.equal(floor.session.activeSpaceSharedWallId, '');
+  assert.equal(surveyGraph.getNode(floor, floor.session.anchorNodeId).xMm, 0);
+  assert.equal(surveyGraph.getNode(floor, floor.session.anchorNodeId).yMm, -10630);
+
+  const downPoint = { xMm: 0, yMm: -8000 };
+  draft = surveyGraph.startPreview(draft, downPoint);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(
+    surveyGraph.isDirectClosureHit(floor, floor.session, downPoint),
+    false
+  );
+  draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'preview');
+  floor = surveyGraph.getActiveFloor(draft);
+  const shortened = floor.walls[floor.walls.length - 1];
+  const validation = surveyGraph.validateSurveyDraft(draft, { mode: 'full' });
+
+  assert.equal(floor.walls.length, 5);
+  assert.ok(shortened.lengthMm < lastLength);
+  assert.equal(lastStart.id, shortened.startNodeId);
+  assert.equal(validation.valid, true, validation.errors.map((error) => error.message).join('; '));
+});
+
 test('an offset adjacent room closes through the source shared wall without swallowing the first room', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
@@ -2069,6 +2344,5 @@ test('releasing closing wall at outer corner directly auto-closes without needin
   floor = surveyGraph.getActiveFloor(draft);
   assert.equal(surveyGraph.isDirectClosureHit(floor, floor.session, { xMm: 6200, yMm: 0 }), true);
 });
-
 
 

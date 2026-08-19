@@ -2,6 +2,7 @@ import { and, count, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import {
   aiGenerations,
   aiWorkflows,
+  customerAttributionLocks,
   leadCommissions,
   leadFloorPlans,
   leadLifecycleEvents,
@@ -145,6 +146,19 @@ export class LeadLifecycleRepository {
       .where(and(eq(leads.id, input.leadId), isNull(leads.archivedAt)))
       .returning();
     if (!rows[0]) return null;
+    await this.transaction
+      .update(customerAttributionLocks)
+      .set({
+        releasedAt: now,
+        releaseReason: 'lead_archived',
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(customerAttributionLocks.leadId, input.leadId),
+          isNull(customerAttributionLocks.releasedAt)
+        )
+      );
     await this.recordEvent(input.leadId, rows[0].enterpriseId, input.actorId, 'archived', input.reason, impactMetadata(input.impact));
     return rows[0];
   }
@@ -168,6 +182,29 @@ export class LeadLifecycleRepository {
       .where(and(eq(leads.id, leadId), isNotNull(leads.archivedAt)))
       .returning();
     if (!rows[0]) return null;
+    const customerUserId = rows[0].customerUserId;
+    if (customerUserId) {
+      const active = await this.transaction
+        .select({ id: customerAttributionLocks.id })
+        .from(customerAttributionLocks)
+        .where(
+          and(
+            eq(customerAttributionLocks.customerUserId, customerUserId),
+            isNull(customerAttributionLocks.releasedAt)
+          )
+        )
+        .limit(1);
+      if (!active[0]) {
+        await this.transaction
+          .update(customerAttributionLocks)
+          .set({
+            releasedAt: null,
+            releaseReason: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(customerAttributionLocks.leadId, leadId));
+      }
+    }
     await this.recordEvent(leadId, rows[0].enterpriseId, actorId, 'restored', current[0].archiveReason, {});
     return rows[0];
   }

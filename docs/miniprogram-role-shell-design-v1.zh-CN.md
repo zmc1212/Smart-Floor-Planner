@@ -140,8 +140,10 @@ TabBar 由服务端 bootstrap 的 `current.capabilities` 生成；客户端隐�
 
 ## 9. 实施与验收状态
 
-用户已授权直接沿用现有小程序风格。第 12 阶段已落地 bootstrap 角色白名单导航与不泄露
-失效企业数据的身份恢复页；五角色的完整业务 Tab 和聚合数据仍依赖第 13/14 阶段。实施完成
-后仍须逐路由完成 `390x844` 原生宿主核验，并替换中英文还原台账的相应行。
+用户已授权直接沿用现有小程序风格。第 12 阶段已落地 bootstrap 角色白名单导航、不泄露
+失效企业数据的身份恢复页，以及按当前身份待办计数的服务端 Tab 徽标；失败显示「暂时无法读取」，
+不以本地 0 占位。客户服务首屏、企业经营异常台、预约 Tab、测量员日程和设计师
+资料自助已消费共享 `serviceStage`/`nextActionKind`；各路由还原台账仍须等待 `390x844`
+原生宿主核验后才可更新。
 
 English mirror: [miniprogram-role-shell-design-v1.md](./miniprogram-role-shell-design-v1.md)

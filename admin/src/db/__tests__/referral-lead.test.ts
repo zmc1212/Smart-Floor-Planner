@@ -328,6 +328,49 @@ test('concurrent authorization creates one active attribution and retry survives
   assert.notEqual(replacement.lead.id, first.lead.id);
 });
 
+test('an archived lead does not block a later claim', async () => {
+  const enterpriseId = enterpriseIds[0];
+  const source = await createSource(enterpriseId, 'archive-reclaim');
+  const customer = await createCustomer('archive-reclaim');
+  const first = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source,
+      customerUserId: customer.id,
+      idempotencyKeyHash: `${runKey}-archive-first`,
+    })
+  );
+  assert.equal(first.kind, 'created');
+
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    transaction
+      .update(leads)
+      .set({ archivedAt: new Date(), updatedAt: new Date() })
+      .where(eq(leads.id, first.lead.id))
+  );
+
+  const second = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source,
+      customerUserId: customer.id,
+      idempotencyKeyHash: `${runKey}-archive-second`,
+    })
+  );
+  assert.equal(second.kind, 'created');
+  assert.notEqual(second.lead.id, first.lead.id);
+
+  const locks = await withPlatformTransaction((transaction) =>
+    transaction
+      .select()
+      .from(customerAttributionLocks)
+      .where(eq(customerAttributionLocks.customerUserId, customer.id))
+  );
+  assert.equal(locks.filter((lock) => lock.releasedAt === null).length, 1);
+  assert.equal(
+    locks.find((lock) => lock.releasedAt === null)?.leadId,
+    second.lead.id
+  );
+});
+
 test('no candidates preserve the lead and a later retry fills both roles', async () => {
   const enterpriseId = enterpriseIds[1];
   const source = await createSource(enterpriseId, 'pending');
