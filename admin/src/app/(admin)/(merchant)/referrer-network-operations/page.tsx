@@ -1,25 +1,19 @@
 'use client';
-/* eslint-disable @next/next/no-img-element -- QR codes are transient authenticated Blob URLs. */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
-import { Alert, Button, Card, Descriptions, Drawer, Flex, Space, Statistic, Tag, Typography } from 'antd';
-import { CheckCircle2, Download, Eye, RefreshCw, RotateCw, ShieldOff, UsersRound, Wrench } from 'lucide-react';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Alert, Button, Card, Flex, Space, Statistic, Tag, Typography } from 'antd';
+import { CheckCircle2, RefreshCw, UsersRound, Wrench } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type JoinCodeType = 'staff' | 'referrer';
 
 type JoinCode = {
-  id: string;
   codeType: JoinCodeType;
   status: string;
-  version: number;
   expiresAt: string | null;
-  disabledAt: string | null;
-  createdAt: string;
 };
 
 type JoinCodeEvent = {
@@ -34,22 +28,11 @@ type JoinCodeEvent = {
 
 type StaffMember = {
   _id: string;
-  username: string;
-  displayName: string;
   role: 'designer' | 'measurer';
   status: string;
   assignmentPaused: boolean;
   wechatId: string | null;
   wechatQrAssetId: string | null;
-};
-
-type ReferrerMember = {
-  id: string;
-  displayName: string;
-  status: string;
-  joinedAt: string;
-  exitedAt: string | null;
-  hasActivePromotionCode: boolean;
 };
 
 type Readiness = {
@@ -59,28 +42,19 @@ type Readiness = {
   activeReferrerPromotionCodes: number;
   activeStaffActivityCodes: number;
   staff: StaffMember[];
-  referrerMemberships: ReferrerMember[];
   appointmentSettings: {
     configured: boolean;
-    configuredAt: string | null;
     timezone: string;
     defaultDurationMinutes: number;
-    slotStepMinutes: number;
     maxAdvanceDays: number;
-    customerRescheduleCutoffHours: number;
   };
-  commissionRules: Array<{ role: string; status: string; calculationType: string; value: string }>;
+  commissionRules: Array<{ role: string; status: string }>;
   wechatMiniProgramCodeProviderConfigured: boolean;
 };
 
 const CODE_LABELS: Record<JoinCodeType, string> = {
   staff: '员工入驻码',
   referrer: '推荐人入驻码',
-};
-
-const ROLE_LABELS: Record<StaffMember['role'], string> = {
-  designer: '设计师',
-  measurer: '测量员',
 };
 
 function formatTime(value: string | null | undefined) {
@@ -98,18 +72,9 @@ function isActiveCode(code: JoinCode | undefined) {
 }
 
 export default function ReferrerNetworkOperationsPage() {
-  const confirm = useConfirmDialog();
   const { user } = useCurrentUser();
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [loading, setLoading] = useState(true);
-  const [actingType, setActingType] = useState<JoinCodeType | null>(null);
-  const [actingStaffId, setActingStaffId] = useState<string | null>(null);
-  const [actingMembershipId, setActingMembershipId] = useState<string | null>(null);
-  const [onboardingCode, setOnboardingCode] = useState<{
-    codeType: JoinCodeType;
-    imageUrl: string;
-    imageType: 'image/png' | 'image/jpeg';
-  } | null>(null);
   const [globalTenantId, setGlobalTenantId] = useState('all');
 
   const requiresTenantSelection = Boolean(
@@ -145,15 +110,6 @@ export default function ReferrerNetworkOperationsPage() {
     void loadReadiness();
   }, [loadReadiness, requiresTenantSelection]);
 
-  useEffect(() => {
-    if (!onboardingCode) return;
-    const timeout = window.setTimeout(() => setOnboardingCode(null), 90_000);
-    return () => {
-      window.clearTimeout(timeout);
-      URL.revokeObjectURL(onboardingCode.imageUrl);
-    };
-  }, [onboardingCode]);
-
   const codeByType = useMemo(() => {
     const result: Partial<Record<JoinCodeType, JoinCode>> = {};
     for (const code of readiness?.codes || []) {
@@ -174,173 +130,6 @@ export default function ReferrerNetworkOperationsPage() {
     };
   }, [readiness?.staff]);
 
-  const loadOnboardingCode = async (codeType: JoinCodeType, options: { confirm?: boolean } = {}) => {
-    if (options.confirm !== false) {
-      const accepted = await confirm({
-        title: `查看${CODE_LABELS[codeType]}`,
-        description: '将生成仅供当前企业使用的微信小程序码，90 秒后自动隐藏。请仅发送给需要入驻的人员。',
-        confirmText: '生成二维码',
-      });
-      if (!accepted) return;
-    }
-    setActingType(codeType);
-    try {
-      const response = await fetch(`/api/enterprise/join-codes/${codeType}/image`, { method: 'POST' });
-      if (!response.ok) {
-        const result = await response.json().catch(() => null);
-        throw new Error(result?.error || '生成入驻二维码失败');
-      }
-      const image = await response.blob();
-      if (image.type !== 'image/png' && image.type !== 'image/jpeg') {
-        throw new Error('入驻二维码格式无效');
-      }
-      setOnboardingCode({ codeType, imageType: image.type, imageUrl: URL.createObjectURL(image) });
-      notify.success(`${CODE_LABELS[codeType]}已生成，可供微信扫码入驻`);
-      await loadReadiness();
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '生成入驻二维码失败');
-    } finally {
-      setActingType(null);
-    }
-  };
-
-  const rotateCode = async (codeType: JoinCodeType) => {
-    const accepted = await confirm({
-      title: `换新${CODE_LABELS[codeType]}`,
-      description: '换新后旧码立即失效。确认已通知仍在使用旧码的人员后再继续。',
-      confirmText: '换新入驻码',
-      destructive: true,
-    });
-    if (!accepted) return;
-    setActingType(codeType);
-    try {
-      const response = await fetch(`/api/enterprise/join-codes/${codeType}/rotate`, { method: 'POST' });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '换新入驻码失败');
-      notify.success(`${CODE_LABELS[codeType]}已换新，旧码已失效`);
-      await loadReadiness();
-      await loadOnboardingCode(codeType, { confirm: false });
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '换新入驻码失败');
-    } finally {
-      setActingType(null);
-    }
-  };
-
-  const disableCode = async (codeType: JoinCodeType) => {
-    const accepted = await confirm({
-      title: `停用${CODE_LABELS[codeType]}`,
-      description: '停用后不能继续用此码入驻；已建立的员工、推荐人关系和历史业务记录不会被修改。',
-      confirmText: '停用入驻码',
-      destructive: true,
-    });
-    if (!accepted) return;
-    setActingType(codeType);
-    try {
-      const response = await fetch(`/api/enterprise/join-codes/${codeType}/disable`, { method: 'POST' });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '停用入驻码失败');
-      setOnboardingCode(null);
-      notify.success(`${CODE_LABELS[codeType]}已停用`);
-      await loadReadiness();
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '停用入驻码失败');
-    } finally {
-      setActingType(null);
-    }
-  };
-
-  const downloadOnboardingCode = () => {
-    if (!onboardingCode) return;
-    const link = document.createElement('a');
-    link.href = onboardingCode.imageUrl;
-    link.download = `${onboardingCode.codeType}-onboarding-code.${onboardingCode.imageType === 'image/jpeg' ? 'jpg' : 'png'}`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  };
-
-  const toggleAssignmentPause = async (member: StaffMember) => {
-    const nextPaused = !member.assignmentPaused;
-    const accepted = await confirm({
-      title: nextPaused ? `暂停${member.displayName || member.username}的自动派单` : `恢复${member.displayName || member.username}的自动派单`,
-      description: nextPaused
-        ? '暂停后该员工不会再被自动分配新线索；已派线索和历史预约不受影响。'
-        : '恢复后该员工将重新进入自动派单池，系统会尝试重试待派线索。',
-      confirmText: nextPaused ? '暂停派单' : '恢复派单',
-    });
-    if (!accepted) return;
-    setActingStaffId(member._id);
-    try {
-      const response = await fetch(`/api/staff/${member._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignmentPaused: nextPaused }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '更新派单开关失败');
-      notify.success(nextPaused ? '已暂停自动派单' : '已恢复自动派单');
-      await loadReadiness();
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '更新派单开关失败');
-    } finally {
-      setActingStaffId(null);
-    }
-  };
-
-  const disableReferrerMembership = async (member: ReferrerMember) => {
-    if (member.status !== 'active') return;
-    const accepted = await confirm({
-      title: `停用 ${member.displayName} 的后续扫码`,
-      description: '停用后该推荐人不能再出示活动推广码获客；历史线索和提成记录保持不变。',
-      confirmText: '停用后续扫码',
-    });
-    if (!accepted) return;
-    setActingMembershipId(member.id);
-    try {
-      const response = await fetch(`/api/enterprise/referrer-memberships/${member.id}/disable`, { method: 'POST' });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '停用推荐人失败');
-      notify.success('已停用后续扫码');
-      await loadReadiness();
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '停用推荐人失败');
-    } finally {
-      setActingMembershipId(null);
-    }
-  };
-
-  const staffColumns: ProColumns<StaffMember>[] = [
-    { title: '员工', key: 'staff', render: (_, item) => <Flex vertical gap={0}><Typography.Text strong>{item.displayName || item.username}</Typography.Text><Typography.Text type="secondary" className="text-xs">@{item.username}</Typography.Text></Flex> },
-    { title: '岗位', dataIndex: 'role', width: 100, render: (_, item) => <Tag color={item.role === 'designer' ? 'blue' : 'gold'}>{ROLE_LABELS[item.role]}</Tag> },
-    { title: '账号', dataIndex: 'status', width: 100, render: (value) => <Tag color={value === 'active' ? 'green' : 'default'}>{value === 'active' ? '启用' : value}</Tag> },
-    { title: '派单', key: 'assignment', width: 110, render: (_, item) => <Tag color={item.status === 'active' && !item.assignmentPaused ? 'green' : 'default'}>{item.assignmentPaused ? '已暂停' : item.status === 'active' ? '可参与' : '账号未启用'}</Tag> },
-    { title: '设计师资料', key: 'designerProfile', render: (_, item) => item.role === 'designer' ? <Tag color={item.wechatId && item.wechatQrAssetId ? 'green' : 'orange'}>{item.wechatId && item.wechatQrAssetId ? '微信号及二维码完整' : '缺少微信号或二维码'}</Tag> : '不适用' },
-    { title: '最终资格', key: 'eligible', width: 110, render: (_, item) => {
-      const eligible = item.status === 'active' && !item.assignmentPaused && (item.role === 'measurer' || Boolean(item.wechatId && item.wechatQrAssetId));
-      return <Tag color={eligible ? 'green' : 'red'}>{eligible ? '可自动派单' : '暂不可派单'}</Tag>;
-    } },
-    { title: '操作', key: 'actions', width: 140, render: (_, item) => (
-      <Button
-        size="small"
-        loading={actingStaffId === item._id}
-        onClick={() => void toggleAssignmentPause(item)}
-      >
-        {item.assignmentPaused ? '恢复派单' : '暂停派单'}
-      </Button>
-    ) },
-  ];
-
-  const referrerColumns: ProColumns<ReferrerMember>[] = [
-    { title: '展示名', dataIndex: 'displayName' },
-    { title: '加入时间', dataIndex: 'joinedAt', width: 180, render: (_, item) => formatTime(item.joinedAt) },
-    { title: '活动推广码', key: 'code', width: 120, render: (_, item) => <Tag color={item.hasActivePromotionCode ? 'green' : 'default'}>{item.hasActivePromotionCode ? '可出示' : '无活动码'}</Tag> },
-    { title: '成员状态', dataIndex: 'status', width: 110, render: (_, item) => <Tag color={item.status === 'active' ? 'green' : 'default'}>{item.status === 'active' ? '活动' : item.status === 'disabled' ? '已停用' : '已退出'}</Tag> },
-    { title: '操作', key: 'actions', width: 140, render: (_, item) => item.status === 'active'
-      ? <Button size="small" danger loading={actingMembershipId === item.id} onClick={() => void disableReferrerMembership(item)}>停用后续扫码</Button>
-      : '—' },
-  ];
-
   const eventColumns: ProColumns<JoinCodeEvent>[] = [
     { title: '时间', dataIndex: 'createdAt', width: 180, render: (_, item) => formatTime(item.createdAt) },
     { title: '码类型', dataIndex: 'codeType', width: 120, render: (_, item) => CODE_LABELS[item.codeType] },
@@ -350,8 +139,8 @@ export default function ReferrerNetworkOperationsPage() {
   ];
 
   const checklist = [
-    { label: '推荐人入驻准备', ready: isActiveCode(codeByType.referrer) && (readiness?.activeReferrerMemberships || 0) > 0, detail: `${readiness?.activeReferrerMemberships || 0} 个活动推荐人成员关系`, href: '#enterprise-join-codes', actionLabel: '管理入驻码' },
-    { label: '推广服务码前置条件', ready: (readiness?.activeReferrerPromotionCodes || 0) > 0, detail: `${readiness?.activeReferrerPromotionCodes || 0}/${readiness?.activeReferrerMemberships || 0} 个活动推荐人成员关系已有服务码`, href: '#enterprise-join-codes', actionLabel: '查看双码' },
+    { label: '推荐人入驻准备', ready: isActiveCode(codeByType.referrer) && (readiness?.activeReferrerMemberships || 0) > 0, detail: `${readiness?.activeReferrerMemberships || 0} 个活动推荐人成员关系`, href: '/join-codes', actionLabel: '管理入驻码' },
+    { label: '推广服务码前置条件', ready: (readiness?.activeReferrerPromotionCodes || 0) > 0, detail: `${readiness?.activeReferrerPromotionCodes || 0}/${readiness?.activeReferrerMemberships || 0} 个活动推荐人成员关系已有服务码`, href: '/referrers', actionLabel: '查看推荐人' },
     { label: '可派活动码的设计师/测量员', ready: eligibility.eligibleDesigners.length + eligibility.eligibleMeasurers.length > 0, detail: `${readiness?.activeStaffActivityCodes || 0} 份活动码 · ${eligibility.eligibleDesigners.length + eligibility.eligibleMeasurers.length} 人可出示（设计师须微信号和二维码完整）`, href: '/staff', actionLabel: '管理员工' },
     { label: '可派单设计师', ready: eligibility.eligibleDesigners.length > 0, detail: `${eligibility.eligibleDesigners.length}/${eligibility.designers.length} 人资料完整且未暂停`, href: '/staff', actionLabel: '管理员工' },
     { label: '可派单测量员', ready: eligibility.eligibleMeasurers.length > 0, detail: `${eligibility.eligibleMeasurers.length}/${eligibility.measurers.length} 人启用且未暂停`, href: '/staff', actionLabel: '管理员工' },
@@ -366,7 +155,7 @@ export default function ReferrerNetworkOperationsPage() {
         breadcrumbRender={false}
         className="admin-page-container"
         title="推荐网络运营与验收"
-        content="在当前企业边界内管理双码、核对自动派单资格，并用真实状态准备推荐人—客户—量房—方案—签单闭环验收。"
+        content="只展示当前企业的就绪状态和跳转入口。入驻码、推荐人通讯录和预约策略已拆到独立页面处理。"
         extra={<Button icon={<RefreshCw size={16} />} loading={loading} onClick={() => void loadReadiness()}>刷新状态</Button>}
       >
         {requiresTenantSelection ? (
@@ -375,63 +164,62 @@ export default function ReferrerNetworkOperationsPage() {
           <Flex vertical gap={20}>
             <Alert showIcon type="info" message="工作台只显示已发生的业务事实" description="不会创建测试客户、线索、预约、量房、AI 方案或签单；人工验收仍须使用真实小程序账号完成手机号授权和客户所有权校验。" />
 
-            <section id="enterprise-join-codes" aria-label="入驻码管理">
-              <Typography.Title level={4}>企业双码</Typography.Title>
-              <div className="grid gap-4 lg:grid-cols-2">
-                {(['staff', 'referrer'] as JoinCodeType[]).map((type) => {
-                  const code = codeByType[type];
-                  const active = isActiveCode(code);
-                  return <Card key={type} loading={loading} title={CODE_LABELS[type]} extra={<Tag color={active ? 'green' : 'default'}>{active ? '生效中' : '未生效'}</Tag>}>
-                    <Descriptions size="small" column={2} items={[
-                      { key: 'version', label: '版本', children: code ? `v${code.version}` : '尚未创建' },
-                      { key: 'expiry', label: '失效时间', children: code?.expiresAt ? formatTime(code.expiresAt) : '未设置' },
-                      { key: 'created', label: '创建时间', children: formatTime(code?.createdAt) },
-                      { key: 'disabled', label: '停用时间', children: formatTime(code?.disabledAt) },
-                    ]} />
-                    <Space wrap className="mt-4">
-                      {active ? <Button icon={<Eye size={15} />} loading={actingType === type} onClick={() => void loadOnboardingCode(type)}>查看二维码</Button> : null}
-                      <Button type="primary" danger={active} icon={<RotateCw size={15} />} loading={actingType === type} onClick={() => void rotateCode(type)}>{active ? '换新' : '创建入驻码'}</Button>
-                      {active ? <Button danger icon={<ShieldOff size={15} />} loading={actingType === type} onClick={() => void disableCode(type)}>停用</Button> : null}
-                    </Space>
-                  </Card>;
-                })}
+            <section aria-label="运营摘要">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <Card loading={loading}><Statistic title="活动推荐人" value={readiness?.activeReferrerMemberships || 0} prefix={<UsersRound size={18} />} /></Card>
+                <Card loading={loading}><Statistic title="可出示推广码" value={readiness?.activeReferrerPromotionCodes || 0} suffix={`/ ${readiness?.activeReferrerMemberships || 0}`} /></Card>
+                <Card loading={loading}><Statistic title="可派单设计师" value={eligibility.eligibleDesigners.length} prefix={<UsersRound size={18} />} suffix={`/ ${eligibility.designers.length}`} /></Card>
+                <Card loading={loading}><Statistic title="可派单测量员" value={eligibility.eligibleMeasurers.length} prefix={<Wrench size={18} />} suffix={`/ ${eligibility.measurers.length}`} /></Card>
               </div>
-            </section>
-
-            <section aria-label="派单资格">
-              <Flex justify="space-between" align="center" wrap="wrap" gap={12}><Typography.Title level={4} className="!mb-0">自动派单资格</Typography.Title><Link href="/staff"><Button>前往员工管理</Button></Link></Flex>
-              <div className="grid gap-4 py-4 md:grid-cols-2"><Card><Statistic title="可派单设计师" value={eligibility.eligibleDesigners.length} prefix={<UsersRound size={18} />} suffix={`/ ${eligibility.designers.length}`} /></Card><Card><Statistic title="可派单测量员" value={eligibility.eligibleMeasurers.length} prefix={<Wrench size={18} />} suffix={`/ ${eligibility.measurers.length}`} /></Card></div>
-              <ProTable<StaffMember> rowKey="_id" loading={loading} dataSource={readiness?.staff || []} columns={staffColumns} search={false} options={false} pagination={false} scroll={{ x: 900 }} />
-            </section>
-
-            <section aria-label="推荐人成员">
-              <Typography.Title level={4}>推荐人成员</Typography.Title>
-              <Alert className="mb-4" showIcon type="info" message="只管理后续扫码资格" description="停用不会改写历史线索或提成；后台不展示推广令牌明文，活动码仍由推荐人本人在小程序出示。" />
-              <ProTable<ReferrerMember> rowKey="id" loading={loading} dataSource={readiness?.referrerMemberships || []} columns={referrerColumns} search={false} options={false} pagination={{ defaultPageSize: 10, showSizeChanger: true }} scroll={{ x: 760 }} />
             </section>
 
             <section aria-label="验收准备清单">
-              <Flex justify="space-between" align="center" wrap="wrap" gap={12}><Typography.Title level={4} className="!mb-0">全流程验收准备清单</Typography.Title><Space wrap><Link href="/lead-commissions"><Button>前往三方提成</Button></Link><Link href="/leads"><Button>前往线索转化</Button></Link></Space></Flex>
+              <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
+                <Typography.Title level={4} className="!mb-0">全流程验收准备清单</Typography.Title>
+                <Space wrap>
+                  <Link href="/join-codes"><Button>管理入驻码</Button></Link>
+                  <Link href="/referrers"><Button>查看推荐人</Button></Link>
+                  <Link href="/appointment-settings"><Button>预约设置</Button></Link>
+                  <Link href="/lead-commissions"><Button>前往三方提成</Button></Link>
+                  <Link href="/leads"><Button>前往线索转化</Button></Link>
+                </Space>
+              </Flex>
               <div className="grid gap-3 py-4 lg:grid-cols-2">
-                {checklist.map((item) => <Card key={item.label} size="small"><Flex align="center" gap={12} wrap="wrap"><CheckCircle2 size={20} className={item.ready ? 'text-green-600' : 'text-slate-400'} /><Flex vertical gap={1} className="min-w-0 flex-1"><Typography.Text strong>{item.label}</Typography.Text><Typography.Text type="secondary">{item.detail}</Typography.Text></Flex><Tag color={item.ready ? 'green' : 'orange'}>{item.ready ? '已就绪' : '待处理'}</Tag><Link href={item.href}><Button size="small" type={item.ready ? 'default' : 'primary'}>{item.actionLabel}</Button></Link></Flex></Card>)}
+                {checklist.map((item) => (
+                  <Card key={item.label} size="small">
+                    <Flex align="center" gap={12} wrap="wrap">
+                      <CheckCircle2 size={20} className={item.ready ? 'text-green-600' : 'text-slate-400'} />
+                      <Flex vertical gap={1} className="min-w-0 flex-1">
+                        <Typography.Text strong>{item.label}</Typography.Text>
+                        <Typography.Text type="secondary">{item.detail}</Typography.Text>
+                      </Flex>
+                      <Tag color={item.ready ? 'green' : 'orange'}>{item.ready ? '已就绪' : '待处理'}</Tag>
+                      <Link href={item.href}><Button size="small" type={item.ready ? 'default' : 'primary'}>{item.actionLabel}</Button></Link>
+                    </Flex>
+                  </Card>
+                ))}
               </div>
             </section>
 
-            <section aria-label="双码审计"><Typography.Title level={4}>双码审计</Typography.Title><ProTable<JoinCodeEvent> rowKey="id" loading={loading} dataSource={readiness?.events || []} columns={eventColumns} search={false} options={false} pagination={{ defaultPageSize: 10, showSizeChanger: true }} scroll={{ x: 760 }} /></section>
+            <section aria-label="最近双码审计">
+              <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
+                <Typography.Title level={4} className="!mb-0">最近双码审计</Typography.Title>
+                <Link href="/join-codes"><Button>查看全部审计</Button></Link>
+              </Flex>
+              <ProTable<JoinCodeEvent>
+                rowKey="id"
+                loading={loading}
+                dataSource={(readiness?.events || []).slice(0, 5)}
+                columns={eventColumns}
+                search={false}
+                options={false}
+                pagination={false}
+                scroll={{ x: 760 }}
+              />
+            </section>
           </Flex>
         )}
       </PageContainer>
-
-      <Drawer open={Boolean(onboardingCode)} title={onboardingCode ? CODE_LABELS[onboardingCode.codeType] : '入驻二维码'} width={560} destroyOnHidden onClose={() => setOnboardingCode(null)}>
-        <Flex vertical gap={16}>
-          <Alert showIcon type="warning" message="受控短时展示" description="二维码将在 90 秒后自动隐藏；旧码换新或停用后，已保存二维码也会立即失效。请仅发送给需要入驻当前企业的人员。" />
-          <Flex vertical align="center" gap={12} className="rounded-lg bg-slate-50 p-6">
-            {onboardingCode ? <img src={onboardingCode.imageUrl} alt={`${CODE_LABELS[onboardingCode.codeType]}微信小程序码`} className="h-72 w-72 max-w-full rounded bg-white p-2" /> : null}
-            <Typography.Text type="secondary">微信扫一扫，进入小程序后完成入驻</Typography.Text>
-          </Flex>
-          <Button type="primary" icon={<Download size={16} />} onClick={downloadOnboardingCode}>下载二维码</Button>
-        </Flex>
-      </Drawer>
     </div>
   );
 }

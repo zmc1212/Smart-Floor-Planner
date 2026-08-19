@@ -1,8 +1,9 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   adminUsers,
   aiGenerationPublications,
   aiGenerations,
+  aiWorkflows,
   enterpriseAppointmentSettings,
   enterprises,
   floorPlans,
@@ -221,7 +222,11 @@ export class CustomerProjectRepository {
         isNull(aiGenerations.deletedAt),
         sql`coalesce(${aiGenerations.output} ->> 'imageUrl', '') <> ''`
       ))
-      .orderBy(desc(aiGenerationPublications.publishedAt), desc(aiGenerationPublications.id));
+      .orderBy(
+        desc(aiGenerationPublications.publishedAt),
+        aiGenerationPublications.sortOrder,
+        desc(aiGenerationPublications.id)
+      );
   }
 
   async listPublishableGenerations(enterpriseId: bigint, leadId: bigint) {
@@ -318,5 +323,132 @@ export class CustomerProjectRepository {
       ))
       .returning();
     return { kind: rows[0] ? 'withdrawn' as const : 'publication_not_found' as const, lead, publication: rows[0] ?? null };
+  }
+
+  async publishScheme(input: {
+    enterpriseId: bigint;
+    leadId: bigint;
+    workflowId: bigint;
+    title: string;
+    generationIds: bigint[];
+    publishedBy: bigint;
+  }) {
+    const leadRows = await this.transaction
+      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt })
+      .from(leads)
+      .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
+      .for('update')
+      .limit(1);
+    const lead = leadRows[0];
+    if (!lead) return { kind: 'lead_not_found' as const };
+    if (lead.archivedAt) return { kind: 'lead_archived' as const };
+
+    const uniqueIds = Array.from(new Map(input.generationIds.map((id) => [id.toString(), id])).values());
+    if (!uniqueIds.length) return { kind: 'empty_selection' as const, lead };
+
+    const workflowRows = await this.transaction
+      .select({ id: aiWorkflows.id, title: aiWorkflows.title, leadId: aiWorkflows.leadId })
+      .from(aiWorkflows)
+      .where(and(
+        eq(aiWorkflows.id, input.workflowId),
+        eq(aiWorkflows.enterpriseId, input.enterpriseId),
+        eq(aiWorkflows.leadId, input.leadId)
+      ))
+      .limit(1);
+    const workflow = workflowRows[0];
+    if (!workflow) return { kind: 'workflow_not_found' as const, lead };
+
+    const generationRows = await this.transaction
+      .select({
+        id: aiGenerations.id,
+        output: aiGenerations.output,
+        workflowId: aiGenerations.workflowId,
+        status: aiGenerations.status,
+        deletedAt: aiGenerations.deletedAt,
+      })
+      .from(aiGenerations)
+      .where(and(
+        inArray(aiGenerations.id, uniqueIds),
+        eq(aiGenerations.enterpriseId, input.enterpriseId),
+        eq(aiGenerations.leadId, input.leadId)
+      ));
+    const generationById = new Map(generationRows.map((row) => [row.id.toString(), row]));
+    const publishable = uniqueIds.every((id) => {
+      const generation = generationById.get(id.toString());
+      return Boolean(
+        generation
+        && generation.workflowId === input.workflowId
+        && generation.status === 'succeeded'
+        && !generation.deletedAt
+        && hasResultImage(generation.output)
+      );
+    });
+    if (!publishable) return { kind: 'generation_not_publishable' as const, lead };
+
+    const now = new Date();
+    const title = input.title.trim() || workflow.title || '设计方案';
+    await this.transaction
+      .update(aiGenerationPublications)
+      .set({ withdrawnAt: now, withdrawnBy: input.publishedBy, updatedAt: now })
+      .where(and(
+        eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+        eq(aiGenerationPublications.leadId, input.leadId),
+        eq(aiGenerationPublications.workflowId, input.workflowId),
+        isNull(aiGenerationPublications.withdrawnAt)
+      ));
+    await this.transaction
+      .update(aiGenerationPublications)
+      .set({ withdrawnAt: now, withdrawnBy: input.publishedBy, updatedAt: now })
+      .where(and(
+        eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+        eq(aiGenerationPublications.leadId, input.leadId),
+        inArray(aiGenerationPublications.generationId, uniqueIds),
+        isNull(aiGenerationPublications.withdrawnAt)
+      ));
+    await this.transaction.insert(aiGenerationPublications).values(
+      uniqueIds.map((generationId, index) => ({
+        enterpriseId: input.enterpriseId,
+        leadId: input.leadId,
+        generationId,
+        workflowId: input.workflowId,
+        schemeTitle: title,
+        sortOrder: index,
+        publishedBy: input.publishedBy,
+        publishedAt: now,
+      }))
+    );
+
+    const publications = (await this.listActivePublications(input.enterpriseId, input.leadId))
+      .filter((item) => item.publication.workflowId === input.workflowId);
+    return { kind: 'published' as const, lead, publications, title };
+  }
+
+  async withdrawScheme(input: {
+    enterpriseId: bigint;
+    leadId: bigint;
+    workflowId: bigint;
+    withdrawnBy: bigint;
+  }) {
+    const leadRows = await this.transaction
+      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt })
+      .from(leads)
+      .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
+      .for('update')
+      .limit(1);
+    const lead = leadRows[0];
+    if (!lead) return { kind: 'lead_not_found' as const };
+    if (lead.archivedAt) return { kind: 'lead_archived' as const };
+
+    const rows = await this.transaction
+      .update(aiGenerationPublications)
+      .set({ withdrawnAt: new Date(), withdrawnBy: input.withdrawnBy, updatedAt: new Date() })
+      .where(and(
+        eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+        eq(aiGenerationPublications.leadId, input.leadId),
+        eq(aiGenerationPublications.workflowId, input.workflowId),
+        isNull(aiGenerationPublications.withdrawnAt)
+      ))
+      .returning();
+    return { kind: rows[0] ? 'withdrawn' as const : 'publication_not_found' as const, lead, publications: rows };
   }
 }

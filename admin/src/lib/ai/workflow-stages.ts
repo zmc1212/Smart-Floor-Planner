@@ -1,6 +1,7 @@
 export type AiWorkflowCategory = 'main' | 'advanced';
 
 export type AiWorkflowStageKey =
+  | 'conversation'
   | 'direction'
   | 'base_render'
   | 'soft_furnishing'
@@ -31,6 +32,15 @@ export interface AiWorkflowStageDefinition {
 
 export const AI_WORKFLOW_STAGE_DEFINITIONS: Record<AiWorkflowStageKey, AiWorkflowStageDefinition> =
   {
+    conversation: {
+      key: 'conversation',
+      name: '方案对话',
+      actionLabel: '继续出图',
+      description: '围绕同一套方案用自然语言多轮出图，勾选满意效果图后发给客户。',
+      inputHint: '正式户型 + 上一轮效果图',
+      outputHint: '对话效果图',
+      category: 'main',
+    },
     direction: {
       key: 'direction',
       name: '选风格',

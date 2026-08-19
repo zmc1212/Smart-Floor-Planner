@@ -17,6 +17,8 @@ hierarchy without runtime filters.
 They are rendered as transparent PNG files in
 `miniprogram/packages/surveying/assets/icons/` and its `angle/` subdirectory
 for the native Mini Program.
+The existing `save-draft.png` is also reused by the formal-surveying CAD export
+control; no additional icon asset or licence is introduced.
 
 Copyright (c) 2026 Lucide Icons and Contributors
 

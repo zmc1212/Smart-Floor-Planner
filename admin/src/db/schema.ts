@@ -2339,6 +2339,12 @@ export const aiGenerationPublications = appSchema.table(
     generationId: bigint('generation_id', { mode: 'bigint' })
       .notNull()
       .references(() => aiGenerations.id, { onDelete: 'restrict' }),
+    workflowId: bigint('workflow_id', { mode: 'bigint' }).references(
+      () => aiWorkflows.id,
+      { onDelete: 'set null' }
+    ),
+    schemeTitle: text('scheme_title'),
+    sortOrder: integer('sort_order').notNull().default(0),
     publishedBy: bigint('published_by', { mode: 'bigint' }).references(
       () => adminUsers.id,
       { onDelete: 'set null' }
@@ -2360,6 +2366,7 @@ export const aiGenerationPublications = appSchema.table(
       .where(sql`${table.withdrawnAt} is null`),
     index('ai_generation_publications_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
     index('ai_generation_publications_lead_published_idx').on(table.leadId, table.publishedAt),
+    index('ai_generation_publications_workflow_published_idx').on(table.workflowId, table.publishedAt),
     index('ai_generation_publications_published_by_idx').on(table.publishedBy),
     index('ai_generation_publications_withdrawn_by_idx').on(table.withdrawnBy),
   ]

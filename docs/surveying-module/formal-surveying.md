@@ -31,6 +31,23 @@ copy back to `layoutData`.
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js`,
   `surveyDimensionPlan.js`, and `surveyWallSolidPlan.js`.
 
+## CAD/DXF export
+
+- `GET /api/floorplans/[id]/export/dxf` is the Admin-cookie download endpoint;
+  `GET /api/miniprogram/floorplans/[id]/export/dxf` is the Bearer-JWT endpoint.
+  Both use their existing tenant/assigned-staff access boundary.
+- Export is read-only and accepts only a `completed` formal v4 graph with at
+  least one closed space. It never writes or stores a second `layoutData` copy.
+- `admin/src/lib/dxf.ts` is a thin adapter over `@tarikjabiri/dxf@2.8.9` (MIT).
+  It writes AutoCAD 2007+ DXF in millimetres, with wall, opening, dimension,
+  space, and floor-title layers. Floors are placed side by side while retaining
+  each floor's internal coordinates; no customer data or project title block is
+  exported.
+- The Mini Program keeps its CAD control disabled until the cloud plan is
+  completed. A download is saved to the Mini Program file domain and offered to
+  the system document handler; devices without a DXF handler are told to send
+  the file to a CAD-capable device.
+
 ## Measurement and audit rules
 
 - Manual and BLE readings are recorded as measurement audits with value, unit,

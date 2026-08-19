@@ -2,9 +2,13 @@ import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { FloorPlanRepository } from '@/db/repositories';
 import { getTenantContext } from '@/lib/auth';
-import { DXFGenerator } from '@/lib/dxf';
+import {
+  DxfExportError,
+  generateFormalSurveyDxf,
+  safeDxfFileName,
+} from '@/lib/dxf';
 import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
-import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
+import { isFormalSurveyLayout } from '@/lib/survey-graph';
 
 export async function GET(
   request: Request,
@@ -30,22 +34,24 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Floor plan does not use the formal surveyGraph contract' }, { status: 400 });
     }
 
-    const rooms = adaptSurveyGraphToRooms(plan.layoutData);
-    const dxfGen = new DXFGenerator(plan.name || 'FloorPlan');
-    const dxfString = dxfGen.generateFromData(rooms);
+    const dxfString = generateFormalSurveyDxf(plan.layoutData, plan.status);
 
     // Return DXF as a downloadable file
     const response = new NextResponse(dxfString, {
       status: 200,
       headers: {
         'Content-Type': 'application/dxf',
-        'Content-Disposition': `attachment; filename="FloorPlan_${plan.name || id}.dxf"`,
+        'Content-Disposition': `attachment; filename="${safeDxfFileName(plan.name, id)}"`,
+        'Cache-Control': 'private, no-store',
       },
     });
 
     return response;
   } catch (error: unknown) {
     console.error('DXF Export Error:', error);
+    if (error instanceof DxfExportError) {
+      return NextResponse.json({ success: false, error: error.message, code: error.code }, { status: error.status });
+    }
     const message = error instanceof Error ? error.message : 'DXF export failed';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }

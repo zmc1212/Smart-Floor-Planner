@@ -12,8 +12,20 @@ export type SurveyWall = {
   measurementStartInsetMm?: number;
   measurementStartExtensionMm?: number;
   measurementEndInsetMm?: number;
+  measurementSide?: 'left' | 'right';
+  bodyNormalSide?: 'left' | 'right';
 };
-export type SurveyOpening = { id: string; wallId: string; type: 'door' | 'window'; centerOffsetMm?: number; widthMm?: number; heightMm?: number; sillHeightMm?: number };
+export type SurveyOpening = {
+  id: string;
+  wallId: string;
+  type: 'door' | 'window';
+  centerOffsetMm?: number;
+  widthMm?: number;
+  heightMm?: number;
+  sillHeightMm?: number;
+  openDirection?: 'inside' | 'outside';
+  modelCategory?: string;
+};
 export type SurveySpace = {
   id: string;
   name?: string;

@@ -6,7 +6,7 @@ import type {
   MiniProgramIdentityRepository,
   ReferrerMembershipRecord,
 } from '@/db/repositories';
-import type { enterpriseJoinCodes } from '@/db/schema';
+import type { enterpriseJoinCodeEvents, enterpriseJoinCodes } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 import { parsePostgresId } from '@/db/postgres-dto';
 import {
@@ -72,6 +72,23 @@ export function enterpriseJoinCodeToDto(
     disabledAt: code.disabledAt,
     createdAt: code.createdAt,
     updatedAt: code.updatedAt,
+  };
+}
+
+export function enterpriseJoinCodeEventToDto(input: {
+  event: typeof enterpriseJoinCodeEvents.$inferSelect;
+  codeType: string;
+}) {
+  return {
+    id: input.event.id.toString(),
+    joinCodeId: input.event.joinCodeId.toString(),
+    codeType: input.codeType,
+    eventType: input.event.eventType,
+    result: input.event.result,
+    actorUserId: input.event.actorUserId?.toString() ?? null,
+    actorStaffId: input.event.actorStaffId?.toString() ?? null,
+    metadata: input.event.metadata ?? {},
+    createdAt: input.event.createdAt,
   };
 }
 

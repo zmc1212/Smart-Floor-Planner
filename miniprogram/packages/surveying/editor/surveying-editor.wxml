@@ -104,6 +104,14 @@
         <cover-image class="topbar-chip-icon" src="/packages/surveying/assets/icons/save-draft.png" mode="aspectFit"></cover-image>
         <cover-view>保存</cover-view>
       </cover-view>
+      <cover-view
+        class="topbar-chip cad-export {{floorPlanStatus === 'completed' ? '' : 'disabled'}}"
+        bindtap="onExportCad"
+        aria-label="{{floorPlanStatus === 'completed' ? '导出 CAD' : '完成量房后可导出 CAD'}}"
+      >
+        <cover-image class="topbar-chip-icon" src="/packages/surveying/assets/icons/save-draft.png" mode="aspectFit"></cover-image>
+        <cover-view>CAD</cover-view>
+      </cover-view>
       <cover-view class="topbar-chip finish" bindtap="onSubmitFloorPlan">
         <cover-image class="topbar-chip-icon finish-icon" src="/packages/surveying/assets/icons/angle/circle-check.png" mode="aspectFit"></cover-image>
         <cover-view>完成</cover-view>

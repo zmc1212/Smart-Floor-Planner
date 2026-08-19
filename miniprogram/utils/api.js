@@ -109,6 +109,35 @@ function request(url, method = 'GET', data = {}, options = {}) {
   });
 }
 
+function downloadFile(url, options = {}) {
+  const app = getApp();
+  const token = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
+  const baseUrl = getBaseUrls()[0];
+  return new Promise((resolve, reject) => {
+    wx.downloadFile({
+      url: `${baseUrl}${url}`,
+      timeout: options.timeout || 60000,
+      header: {
+        Authorization: token ? `Bearer ${token}` : '',
+        ...(options.headers || {})
+      },
+      success(res) {
+        if (res.statusCode === 401) {
+          if (!options.suppressUnauthorized) handleUnauthorized(url, token);
+          reject({ error: '登录已过期，请重新登录', statusCode: 401 });
+          return;
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300 && res.tempFilePath) {
+          resolve(res);
+          return;
+        }
+        reject({ error: '文件下载失败', statusCode: res.statusCode });
+      },
+      fail: reject
+    });
+  });
+}
+
 function uploadStaffWechatQr(filePath) {
   const app = getApp();
   const token = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
@@ -250,6 +279,7 @@ async function passwordLogin(username, password) {
 
 module.exports = {
   request,
+  downloadFile,
   getBaseUrls,
   ACTIVE_API_ENVIRONMENT,
   API_BASE_URLS,

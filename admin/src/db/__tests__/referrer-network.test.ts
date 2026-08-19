@@ -249,9 +249,10 @@ test('referrer memberships cap at three and exit disables the promotion token', 
         })
       );
     }
+    const userPhone = `137${Date.now().toString().slice(-8)}`;
     const userRows = await transaction
       .insert(users)
-      .values({ phone: `137${Date.now().toString().slice(-8)}` })
+      .values({ phone: userPhone })
       .returning();
     const userId = userRows[0].id;
     userIds.push(userId);
@@ -285,6 +286,18 @@ test('referrer memberships cap at three and exit disables the promotion token', 
     }
     assert.equal(contextVersion, 4);
     assert.equal((await repository.listReferrerMemberships(userId)).length, 3);
+    const roster = await repository.listEnterpriseReferrerMemberships(enterpriseIds[0]);
+    assert.equal(roster.length, 1);
+    assert.equal(roster[0].displayName, 'Test referrer');
+    assert.equal(roster[0].phone, userPhone);
+    assert.equal(
+      (await repository.listEnterpriseReferrerMemberships(enterpriseIds[0], { query: userPhone.slice(-4) })).length,
+      1
+    );
+    assert.equal(
+      (await repository.listEnterpriseReferrerMemberships(enterpriseIds[0], { query: 'nomatch-referrer' })).length,
+      0
+    );
     assert.equal(
       await repository.countActiveReferrerPromotionCodes(enterpriseIds[1]),
       1

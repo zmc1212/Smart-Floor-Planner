@@ -314,6 +314,7 @@ Page({
     measurementSide: 'left',
     thicknessMm: 200,
     formalNotice: '正式量房草稿',
+    floorPlanStatus: '',
     showFormalExtras: false,
     coreTools: buildCoreTools('straight', 200),
     reservedTools: RESERVED_TOOLS,
@@ -702,6 +703,7 @@ Page({
       this.setData({
         communityName,
         title: communityName || '未填写小区',
+        floorPlanStatus: res.data.status || 'draft',
         formalNotice: res.data.status === 'completed' ? '已完成量房' : '已恢复正式草稿'
       });
       this.syncFromDraft();
@@ -4106,7 +4108,8 @@ Page({
       await this.saveFormalFloorPlan('draft');
       wx.hideLoading();
       this.setData({
-        formalNotice: '草稿已保存到服务端'
+        formalNotice: '草稿已保存到服务端',
+        floorPlanStatus: 'draft'
       });
       wx.showToast({ title: '已保存草稿', icon: 'success' });
     } catch (err) {
@@ -4130,11 +4133,52 @@ Page({
       await this.saveFormalFloorPlan('completed');
       wx.hideLoading();
       this.guideSessionCompleted = true;
-      this.syncFromDraft({ formalNotice: '量房已完成' });
+      this.syncFromDraft({ formalNotice: '量房已完成', floorPlanStatus: 'completed' });
       wx.showToast({ title: '量房已完成', icon: 'success' });
     } catch (err) {
       wx.hideLoading();
       wx.showToast({ title: (err && err.error) || '提交失败', icon: 'none' });
+    }
+  },
+
+  async onExportCad() {
+    const floorPlanId = this.serverDraftId || this.data.serverDraftId || this.getStoredServerDraftId(this.data.leadId || '');
+    if (this.data.floorPlanStatus !== 'completed' || !floorPlanId) {
+      wx.showToast({ title: '请先完成并保存量房', icon: 'none' });
+      return;
+    }
+
+    wx.showLoading({ title: '生成 CAD...' });
+    try {
+      const response = await api.downloadFile(`/miniprogram/floorplans/${floorPlanId}/export/dxf`);
+      const fileManager = wx.getFileSystemManager();
+      fileManager.saveFile({
+        tempFilePath: response.tempFilePath,
+        success: (saved) => {
+          wx.openDocument({
+            filePath: saved.savedFilePath,
+            fileType: 'dxf',
+            showMenu: true,
+            success: () => wx.showToast({ title: 'CAD 已生成', icon: 'success' }),
+            fail: () => wx.showModal({
+              title: 'CAD 文件已生成',
+              content: '当前设备无法直接打开 DXF，请将文件转发到 CAD 设备或在电脑端打开。',
+              showCancel: false,
+              confirmText: '知道了'
+            })
+          });
+        },
+        fail: () => wx.showModal({
+          title: 'CAD 文件已生成',
+          content: '文件已下载，但当前设备无法保存到文件域，请转发到 CAD 设备处理。',
+          showCancel: false,
+          confirmText: '知道了'
+        })
+      });
+    } catch (err) {
+      wx.showToast({ title: (err && err.error) || 'CAD 导出失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
     }
   },
 

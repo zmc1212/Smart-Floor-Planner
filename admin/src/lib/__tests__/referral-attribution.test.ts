@@ -384,7 +384,7 @@ test('enterprise onboarding workbench accepts both WeChat image formats', () => 
   const page = readFileSync(
     path.join(
       process.cwd(),
-      'src/app/(admin)/(merchant)/referrer-network-operations/page.tsx'
+      'src/app/(admin)/(merchant)/join-codes/page.tsx'
     ),
     'utf8'
   );
@@ -427,6 +427,39 @@ test('enterprise onboarding readiness distinguishes active promotion codes from 
   assert.match(route, /network\.countActiveReferrerPromotionCodes\(enterpriseId\)/);
   assert.match(page, /activeReferrerPromotionCodes/);
   assert.match(page, /活动推荐人成员关系已有服务码/);
+});
+
+test('referrer network operations workbench is a readiness hub without dual-code or roster tables', () => {
+  const page = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/(admin)/(merchant)/referrer-network-operations/page.tsx'
+    ),
+    'utf8'
+  );
+  const sidebar = readFileSync(
+    path.join(process.cwd(), 'src/components/Sidebar.tsx'),
+    'utf8'
+  );
+  const roster = readFileSync(
+    path.join(process.cwd(), 'src/app/(admin)/(merchant)/referrers/page.tsx'),
+    'utf8'
+  );
+  const joinCodes = readFileSync(
+    path.join(process.cwd(), 'src/app/api/enterprise/join-codes/route.ts'),
+    'utf8'
+  );
+
+  assert.match(page, /href: '\/join-codes'/);
+  assert.match(page, /href: '\/referrers'/);
+  assert.doesNotMatch(page, /loadOnboardingCode/);
+  assert.doesNotMatch(page, /停用后续扫码/);
+  assert.match(sidebar, /title: '推荐网络'[\s\S]*href: '\/join-codes'[\s\S]*href: '\/referrers'[\s\S]*href: '\/appointment-settings'/);
+  assert.match(roster, /dataIndex: 'phone'/);
+  assert.match(roster, /\/api\/enterprise\/referrer-memberships/);
+  assert.match(joinCodes, /codes:\s*codes\.map\(enterpriseJoinCodeToDto\)/);
+  assert.match(joinCodes, /events:\s*events\.map\(enterpriseJoinCodeEventToDto\)/);
+  assert.doesNotMatch(joinCodes, /token/);
 });
 
 test('enterprise join-code rotation does not return a plaintext token', () => {

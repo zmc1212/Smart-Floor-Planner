@@ -340,6 +340,27 @@ export class ReferralLeadRepository {
     return rows[0] ?? null;
   }
 
+  private async findEligibleActivityPresenter(
+    staffId: bigint | null,
+    enterpriseId: bigint
+  ) {
+    if (!staffId) return null;
+    const rows = await this.transaction
+      .select()
+      .from(adminUsers)
+      .where(
+        and(
+          eq(adminUsers.id, staffId),
+          eq(adminUsers.enterpriseId, enterpriseId),
+          eq(adminUsers.status, 'active'),
+          eq(adminUsers.assignmentPaused, false),
+          sql`${adminUsers.role} in ('designer', 'measurer')`
+        )
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   private assignmentErrorCode(
     designer: typeof adminUsers.$inferSelect | null,
     measurer: typeof adminUsers.$inferSelect | null
@@ -536,7 +557,12 @@ export class ReferralLeadRepository {
       current.enterpriseId
     );
     const currentMeasurer = staffActivity
-      ? await this.findAssignedStaff(current.measurerId, current.enterpriseId)
+      ? current.measurerId
+        ? await this.findAssignedStaff(current.measurerId, current.enterpriseId)
+        : await this.findEligibleActivityPresenter(
+            current.promoterId,
+            current.enterpriseId
+          )
       : await this.findEligibleStaff(
           current.measurerId,
           'measurer',
@@ -547,13 +573,13 @@ export class ReferralLeadRepository {
       ? currentMeasurer
       : currentMeasurer ?? (await this.findMeasurerCandidate(current.enterpriseId));
     const now = new Date();
-    const errorCode = this.assignmentErrorCode(designer, measurer || (staffActivity ? currentMeasurer : null));
+    const errorCode = this.assignmentErrorCode(designer, measurer);
     const assignmentStatus = errorCode ? 'assignment_pending' : 'assigned';
     const updatedRows = await this.transaction
       .update(leads)
       .set({
         assignedTo: designer?.id ?? null,
-        measurerId: staffActivity ? current.measurerId : measurer?.id ?? null,
+        measurerId: measurer?.id ?? (staffActivity ? current.measurerId : null),
         assignedAt: designer ? current.assignedAt ?? now : null,
         assignmentStatus,
         assignmentErrorCode: errorCode,

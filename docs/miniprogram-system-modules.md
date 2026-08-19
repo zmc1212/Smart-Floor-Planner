@@ -57,6 +57,12 @@ right-rail confirmed canvas-clear/restart action, and save failure behavior
 must follow that contract. Closed `spaces` written by `confirmClosure`,
 `deleteWall`, and closed-wall splits come from half-edge faces; the same
 transaction rejects the edit if saved spaces and extracted faces diverge.
+The persistent top-bar CAD action is disabled until the cloud plan is
+`completed`; it downloads through `GET /api/miniprogram/floorplans/[id]/export/dxf`,
+which reuses Mini Program floor-plan access control and the same formal-v4 /
+closed-space validation as the Admin endpoint. The app saves the DXF to its
+file domain and opens the system document handler; an unavailable DXF handler
+shows a transfer-to-CAD-device prompt. The file is generated on demand only.
 Graph nodes stay on the centerline; working faces and one-sided bodies are
 read models. Deleting a wall shared by two closed rooms punches
 through that interface and merges them into one closed room, including when the

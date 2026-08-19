@@ -144,10 +144,14 @@ export function buildWorkflowFloorPlanContext(layoutData: unknown) {
   ].join(' ');
 }
 
+export function usesFloorPlanControlImage(stageKey?: string | null) {
+  return ['direction', 'base_render', 'perspective_upgrade', 'conversation'].includes(String(stageKey || ''));
+}
+
 export function resolveWorkflowImageMode(
   stageKey: AiWorkflowStageKey,
   configuredMode: unknown
 ): 'generation' | 'edit' {
-  if (stageKey === 'direction') return 'edit';
+  if (stageKey === 'direction' || stageKey === 'conversation') return 'edit';
   return configuredMode === 'generation' ? 'generation' : 'edit';
 }

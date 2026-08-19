@@ -31,8 +31,13 @@ export async function POST(request: Request) {
     if (!token) return referrerNetworkError('invalid_token');
     const displayName =
       typeof body.displayName === 'string'
-        ? body.displayName.trim().slice(0, 60)
+        ? body.displayName.trim().slice(0, 30)
         : '';
+    if (!displayName) {
+      return referrerNetworkError('display_name_required', {
+        message: '请填写推荐人姓名',
+      });
+    }
     const result = await withPlatformTransaction(async (transaction) => {
       const identities = new MiniProgramIdentityRepository(transaction);
       const authenticated = await validateMiniProgramIdentity(
@@ -46,8 +51,7 @@ export async function POST(request: Request) {
         token,
         userId: authenticated.user.id,
         contextVersion: authenticated.user.contextVersion,
-        displayName:
-          displayName || authenticated.user.nickname || '推荐人',
+        displayName,
         membershipLimit: await repository.getMembershipLimit(),
       });
       if (!onboarding.ok) {

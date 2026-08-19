@@ -28,7 +28,12 @@ function safeToken(value) {
   return /^[A-Za-z0-9_-]{32}$/.test(decoded) ? `ej_${decoded}` : decoded;
 }
 
-function onboardingErrorMessage(error) {
+function usableDisplayName(value) {
+  const name = String(value || '').trim();
+  if (!name || name.length > 30) return '';
+  if (['推荐人', '微信用户', '微信员工'].includes(name)) return '';
+  return name;
+}
   const code = error && error.code;
   if (['code_rotated', 'code_disabled', 'code_expired'].includes(code)) {
     return '该入驻码已更新或停用，请联系企业管理员获取最新二维码。';
@@ -38,6 +43,9 @@ function onboardingErrorMessage(error) {
   }
   if (code === 'membership_limit_reached') {
     return '当前微信的推荐人企业数量已达上限，请先退出不再服务的企业。';
+  }
+  if (code === 'display_name_required') {
+    return '请填写真实姓名后再加入。';
   }
   return '暂时无法完成入驻，请检查网络后重试或联系企业管理员。';
 }

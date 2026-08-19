@@ -48,6 +48,7 @@ export type CreatePostgresWorkflowInput = {
   sourceFloorPlanId?: string | bigint;
   sourceImage?: string;
   sourceAssetRole?: AiWorkflowSourceAssetRole;
+  currentStageKey?: AiWorkflowStageKey;
 };
 
 export type UpdatePostgresWorkflowStateInput = {
@@ -106,6 +107,7 @@ function serializePostgresWorkflow(workflow: AiWorkflowRecord) {
 
 function stagePresetNumber(stageKey: AiWorkflowStageKey) {
   const map: Record<AiWorkflowStageKey, string> = {
+    conversation: '6',
     direction: '1',
     base_render: '6',
     soft_furnishing: '2',
@@ -250,7 +252,7 @@ export async function createPostgresAiWorkflow(input: CreatePostgresWorkflowInpu
       sourceImage,
       sourceFloorPlanId,
       sourceAssetRole,
-      currentStageKey: 'direction',
+      currentStageKey: input.currentStageKey || 'direction',
     });
     return workflow;
   });

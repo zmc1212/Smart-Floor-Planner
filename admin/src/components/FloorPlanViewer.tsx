@@ -827,6 +827,7 @@ function Scene3D({ rooms }: { rooms: Room[] }) {
 }
 
 function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerData; layoutData: FormalSurveyingLayout }) {
+  const [isExporting, setIsExporting] = useState(false);
   const floor = getActiveSurveyFloor(layoutData.surveyGraph);
   const nodeMap = useMemo(() => getSurveyNodeMap(floor), [floor]);
   const bounds = useMemo(() => getSurveyBounds(floor), [floor]);
@@ -922,6 +923,32 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
   const roomTitleSize = Math.max(72, Math.min(120, drawingScale / 42));
   const roomDetailSize = Math.max(54, Math.min(86, drawingScale / 56));
 
+  const handleFormalDxfExport = async () => {
+    if (planData.status !== 'completed' || isExporting) return;
+    setIsExporting(true);
+    try {
+      const response = await fetch(`/api/floorplans/${planData._id}/export/dxf`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || '导出 CAD 失败');
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${planData.name || 'formal-floor-plan'}.dxf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      notify.success('CAD 文件已导出');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '导出 CAD 失败，请稍后重试');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <div className="z-20 flex items-center justify-between border-b bg-card px-5 py-3 sm:px-6">
@@ -938,18 +965,31 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-2 text-center">
-          {[
-            ['墙体', stats.walls],
-            ['空间', stats.spaces],
-            ['门窗', stats.openings],
-            ['节点', stats.nodes],
-          ].map(([label, value]) => (
-            <div key={label} className="min-w-16 rounded-md bg-muted px-3 py-2">
-              <div className="text-base font-semibold">{value}</div>
-              <div className="text-xs font-medium text-muted-foreground">{label}</div>
-            </div>
-          ))}
+        <div className="flex items-center gap-3">
+          <div className="grid grid-cols-4 gap-2 text-center">
+            {[
+              ['墙体', stats.walls],
+              ['空间', stats.spaces],
+              ['门窗', stats.openings],
+              ['节点', stats.nodes],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-16 rounded-md bg-muted px-3 py-2">
+                <div className="text-base font-semibold">{value}</div>
+                <div className="text-xs font-medium text-muted-foreground">{label}</div>
+              </div>
+            ))}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleFormalDxfExport}
+            disabled={planData.status !== 'completed' || isExporting}
+            aria-label={planData.status === 'completed' ? '导出 CAD' : '户型完成后可导出 CAD'}
+          >
+            {isExporting ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}
+            {isExporting ? '生成中…' : '导出 CAD'}
+          </Button>
         </div>
       </div>
 

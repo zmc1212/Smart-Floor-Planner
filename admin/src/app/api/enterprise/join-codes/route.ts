@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server';
 import { ReferrerNetworkRepository } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
-import { enterpriseJoinCodeToDto } from '@/lib/referrer-network-api';
+import {
+  enterpriseJoinCodeEventToDto,
+  enterpriseJoinCodeToDto,
+} from '@/lib/referrer-network-api';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 export const dynamic = 'force-dynamic';
@@ -16,18 +19,24 @@ export async function GET(request: Request) {
         requireEnterprise: true,
       },
       async (context) => {
-        const rows = await withTenantTransaction(
+        const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+        const { codes, events } = await withTenantTransaction(
           context.enterpriseId!,
-          (transaction) =>
-            new ReferrerNetworkRepository(
-              transaction
-            ).listEnterpriseJoinCodes(
-              parsePostgresId(context.enterpriseId, 'enterpriseId')
-            )
+          async (transaction) => {
+            const network = new ReferrerNetworkRepository(transaction);
+            const [codeRows, eventRows] = await Promise.all([
+              network.listEnterpriseJoinCodes(enterpriseId),
+              network.listEnterpriseJoinCodeEvents(enterpriseId),
+            ]);
+            return { codes: codeRows, events: eventRows };
+          }
         );
         return NextResponse.json({
           success: true,
-          data: rows.map(enterpriseJoinCodeToDto),
+          data: {
+            codes: codes.map(enterpriseJoinCodeToDto),
+            events: events.map(enterpriseJoinCodeEventToDto),
+          },
         });
       }
     );

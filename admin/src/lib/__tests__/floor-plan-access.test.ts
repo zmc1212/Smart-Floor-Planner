@@ -41,3 +41,17 @@ test('enterprise administrators retain the enterprise boundary', () => {
     true
   );
 });
+
+test('enterprise administrators cannot export a different tenant plan', () => {
+  assert.equal(
+    canAccessMiniProgramFloorPlan(
+      { ...plan, enterpriseId: 7n },
+      {
+        user: { _id: '11' },
+        enterpriseId: '8',
+        staff: { _id: '24', enterpriseId: '8', role: 'enterprise_admin' },
+      }
+    ),
+    false
+  );
+});

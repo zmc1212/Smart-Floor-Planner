@@ -16,8 +16,10 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteEntry[] = [
   { key: 'users', label: '用户审计', href: '/users', section: '平台管理中心' },
   { key: 'floorplans', label: '户型图库', href: '/floorplans', section: '户型图库' },
   { key: 'lead-commissions', label: '三方提成', href: '/lead-commissions', section: '团队资产管理' },
-  { key: 'referrer-network-operations', label: '推荐网络运营', href: '/referrer-network-operations', section: '团队资产管理' },
-  { key: 'appointment-settings', label: '预约设置', href: '/appointment-settings', section: '团队资产管理', permissionKey: 'referrer-network-operations' },
+  { key: 'referrer-network-operations', label: '运营工作台', href: '/referrer-network-operations', section: '推荐网络' },
+  { key: 'join-codes', label: '入驻码', href: '/join-codes', section: '推荐网络', permissionKey: 'referrer-network-operations' },
+  { key: 'referrers', label: '推荐人', href: '/referrers', section: '推荐网络', permissionKey: 'referrer-network-operations' },
+  { key: 'appointment-settings', label: '预约设置', href: '/appointment-settings', section: '推荐网络', permissionKey: 'referrer-network-operations' },
 ];
 
 export function isAdminRouteActive(pathname: string, href: string) {

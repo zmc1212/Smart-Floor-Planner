@@ -11,6 +11,12 @@ Git 历史保留。
   右侧工具栏经确认的清空重做、BLE 读数和正式保存。
 - 空间填充、净面积、墙体实体和尺寸均从 graph 派生；不保存 legacy layout 副本。
 - 后台查看器、DXF、3D 和 AI 使用同一 graph 的只读适配器。
+- 已完成且至少有一个闭合空间的正式 v4 户型可导出施工 DXF；后台 Cookie 端点为
+  `GET /api/floorplans/[id]/export/dxf`，小程序 Bearer-JWT 端点为
+  `GET /api/miniprogram/floorplans/[id]/export/dxf`。适配器只读取 graph，使用
+  `@tarikjabiri/dxf@2.8.9`（MIT）生成 AutoCAD 2007+、毫米单位的图层化 DXF；
+  多楼层横向排布，不输出客户资料或项目图框。小程序完成态才启用 CAD，文件保存到
+  小程序文件域后交给系统文档处理；设备不能打开 DXF 时提示转发至 CAD 设备。
 
 ## 数据与入口合同
 

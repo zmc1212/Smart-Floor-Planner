@@ -7,7 +7,10 @@ import {
 } from '@/db/repositories';
 import { adminUserToDto, parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
-import { enterpriseJoinCodeToDto } from '@/lib/referrer-network-api';
+import {
+  enterpriseJoinCodeEventToDto,
+  enterpriseJoinCodeToDto,
+} from '@/lib/referrer-network-api';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 export const dynamic = 'force-dynamic';
@@ -35,24 +38,15 @@ export async function GET(request: Request) {
           ]);
           return {
             codes: codes.map(enterpriseJoinCodeToDto),
-            events: events.map(({ event, codeType }) => ({
-              id: event.id.toString(),
-              joinCodeId: event.joinCodeId.toString(),
-              codeType,
-              eventType: event.eventType,
-              result: event.result,
-              actorUserId: event.actorUserId?.toString() ?? null,
-              actorStaffId: event.actorStaffId?.toString() ?? null,
-              metadata: event.metadata ?? {},
-              createdAt: event.createdAt,
-            })),
+            events: events.map(enterpriseJoinCodeEventToDto),
             activeReferrerMemberships,
             activeReferrerPromotionCodes,
             activeStaffActivityCodes,
             staff: staff.rows.map((member) => adminUserToDto(member)),
             referrerMemberships: referrerMemberships.map((item) => ({
               id: item.membership.id.toString(),
-              displayName: item.displayName || '推荐人',
+              displayName: item.displayName || item.phone || '未命名推荐人',
+              phone: item.phone || null,
               status: item.membership.status,
               joinedAt: item.membership.joinedAt,
               exitedAt: item.membership.exitedAt,

@@ -524,3 +524,79 @@ test('staff activity claims lock the presenter as measurer and skip referrer com
   );
   assert.equal(lockedRetry?.lead.measurerId, measurer.id);
 });
+
+test('staff activity retry assigns a presenter who was paused at claim time', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-paused-activity`,
+      code: `${runKey}-paused-activity`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  const enterpriseId = enterprise.id;
+  const designerUser = await createCustomer('paused-activity-designer-user');
+  const measurerUser = await createCustomer('paused-activity-measurer-user');
+  const designer = await createAssignmentStaff(
+    enterpriseId,
+    'designer',
+    'paused-activity-designer',
+    designerUser.id
+  );
+  const measurer = await createAssignmentStaff(
+    enterpriseId,
+    'measurer',
+    'paused-activity-measurer',
+    measurerUser.id
+  );
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    new AdminUserRepository(transaction).update(measurer.id, {
+      assignmentPaused: true,
+    })
+  );
+  const source = await withPlatformTransaction(async (transaction) => {
+    const activity = await new ReferrerNetworkRepository(transaction).getStaffActivityCode(
+      measurerUser.id,
+      measurer.id
+    );
+    assert.equal(activity.ok, true);
+    if (!activity.ok) throw new Error('activity code missing');
+    return {
+      kind: 'staff_activity' as const,
+      activityCodeId: activity.code.id,
+      staffId: measurer.id,
+      enterpriseId,
+      version: activity.code.version,
+      expired: false,
+    };
+  });
+  const customer = await createCustomer('paused-activity-customer');
+  const pending = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source,
+      customerUserId: customer.id,
+      idempotencyKeyHash: `${runKey}-paused-activity`,
+    })
+  );
+  assert.equal(pending.kind, 'created');
+  assert.equal(pending.lead.assignedTo, designer.id);
+  assert.equal(pending.lead.measurerId, null);
+  assert.equal(pending.lead.promoterId, measurer.id);
+  assert.equal(pending.lead.assignmentErrorCode, 'measurer_unavailable');
+
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    new AdminUserRepository(transaction).update(measurer.id, {
+      assignmentPaused: false,
+    })
+  );
+  const retried = await withTenantTransaction(enterpriseId, (transaction) =>
+    new ReferralLeadRepository(transaction).retryLeadAssignment({
+      leadId: pending.lead.id,
+      reason: 'presenter_unpaused',
+    })
+  );
+  assert.equal(retried?.kind, 'assigned');
+  assert.equal(retried?.lead.assignedTo, designer.id);
+  assert.equal(retried?.lead.measurerId, measurer.id);
+  assert.equal(retried?.lead.assignmentErrorCode, null);
+});

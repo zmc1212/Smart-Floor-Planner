@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { and, asc, count, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseJoinCodeEvents,
@@ -119,8 +119,11 @@ export interface ReferrerMembershipRecord {
 export interface EnterpriseReferrerMembershipRecord {
   membership: typeof referrerEnterpriseMemberships.$inferSelect;
   displayName: string;
+  phone: string | null;
   promotionCode: typeof referrerPromotionCodes.$inferSelect | null;
 }
+
+export type ReferrerMembershipStatus = 'active' | 'disabled' | 'exited';
 
 export class ReferrerNetworkRepository {
   constructor(private readonly transaction: PostgresTransaction) {}
@@ -738,7 +741,7 @@ export class ReferrerNetworkRepository {
       }
     | { ok: false; code: ReferrerOnboardingCode }
   > {
-    const user = await this.findUserForUpdate(input.userId);
+    let user = await this.findUserForUpdate(input.userId);
     if (!user || user.contextVersion !== input.contextVersion) {
       return { ok: false, code: 'code_not_found' };
     }
@@ -792,17 +795,37 @@ export class ReferrerNetworkRepository {
       });
       return { ok: false, code: 'referrer_disabled' };
     }
+    const displayName = input.displayName.trim();
     if (!profile) {
       const created = await this.transaction
         .insert(referrerProfiles)
         .values({
           userId: user.id,
-          displayName: input.displayName,
+          displayName,
           phone: user.phone,
           status: 'active',
         })
         .returning();
       profile = created[0];
+    } else if (displayName && displayName !== profile.displayName) {
+      const updated = await this.transaction
+        .update(referrerProfiles)
+        .set({
+          displayName,
+          phone: profile.phone || user.phone,
+          updatedAt: new Date(),
+        })
+        .where(eq(referrerProfiles.id, profile.id))
+        .returning();
+      profile = updated[0];
+    }
+    if (displayName && displayName !== (user.nickname || '')) {
+      const updatedUsers = await this.transaction
+        .update(users)
+        .set({ nickname: displayName, updatedAt: new Date() })
+        .where(eq(users.id, user.id))
+        .returning();
+      user = updatedUsers[0] ?? user;
     }
 
     const existingRows = await this.transaction
@@ -888,11 +911,29 @@ export class ReferrerNetworkRepository {
     };
   }
 
-  async listEnterpriseReferrerMemberships(enterpriseId: bigint): Promise<EnterpriseReferrerMembershipRecord[]> {
+  async listEnterpriseReferrerMemberships(
+    enterpriseId: bigint,
+    options: { query?: string; status?: ReferrerMembershipStatus } = {}
+  ): Promise<EnterpriseReferrerMembershipRecord[]> {
+    const filters = [eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId)];
+    if (options.status) {
+      filters.push(eq(referrerEnterpriseMemberships.status, options.status));
+    }
+    const query = options.query?.trim().replace(/[%_]/g, '\\$&');
+    if (query) {
+      const pattern = `%${query}%`;
+      filters.push(
+        or(
+          ilike(referrerProfiles.displayName, pattern),
+          ilike(referrerProfiles.phone, pattern)
+        )!
+      );
+    }
     return this.transaction
       .select({
         membership: referrerEnterpriseMemberships,
         displayName: referrerProfiles.displayName,
+        phone: referrerProfiles.phone,
         promotionCode: referrerPromotionCodes,
       })
       .from(referrerEnterpriseMemberships)
@@ -907,7 +948,7 @@ export class ReferrerNetworkRepository {
           eq(referrerPromotionCodes.status, 'active')
         )
       )
-      .where(eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId))
+      .where(and(...filters))
       .orderBy(
         desc(referrerEnterpriseMemberships.status),
         desc(referrerEnterpriseMemberships.joinedAt),

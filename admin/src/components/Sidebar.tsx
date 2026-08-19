@@ -28,6 +28,8 @@ import {
   Image,
   Network,
   CalendarClock,
+  QrCode,
+  UsersRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
@@ -113,6 +115,15 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       ]
     },
     {
+      title: '推荐网络',
+      items: [
+        { key: 'referrer-network-operations', label: '运营工作台', icon: Network, href: '/referrer-network-operations' },
+        { key: 'join-codes', permissionKey: 'referrer-network-operations', label: '入驻码', icon: QrCode, href: '/join-codes' },
+        { key: 'referrers', permissionKey: 'referrer-network-operations', label: '推荐人', icon: UsersRound, href: '/referrers' },
+        { key: 'appointment-settings', permissionKey: 'referrer-network-operations', label: '预约设置', icon: CalendarClock, href: '/appointment-settings' },
+      ]
+    },
+    {
       title: '户型图库',
       items: [
         { key: 'floorplans', label: '户型图库', icon: Map, href: '/floorplans' },
@@ -134,8 +145,6 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'staff', label: '员工管理', icon: UserSquare2, href: '/staff' },
         { key: 'lead-commissions', label: '三方提成', icon: Coins, href: '/lead-commissions' },
-        { key: 'referrer-network-operations', label: '推荐网络运营', icon: Network, href: '/referrer-network-operations' },
-        { key: 'appointment-settings', permissionKey: 'referrer-network-operations', label: '预约设置', icon: CalendarClock, href: '/appointment-settings' },
         { key: 'devices', label: '设备管理', icon: Smartphone, href: '/devices' },
       ]
     }
