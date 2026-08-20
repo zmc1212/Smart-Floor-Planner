@@ -27,6 +27,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         quality?: string;
         templateId?: string;
         count?: number;
+        workflowId?: string;
       };
       if (!body.modelProfileId) {
         return NextResponse.json({ success: false, error: '请选择模型' }, { status: 400 });
@@ -50,6 +51,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         },
         templateId: body.templateId,
         count: body.count,
+        workflowId: body.workflowId,
       });
       await Promise.allSettled(result.generations.map((generation) =>
         submitPostgresCreationGeneration({

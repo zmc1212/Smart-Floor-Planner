@@ -107,13 +107,22 @@ test('a draft floor plan still lets the measurer continue or start another surve
   assert.equal(item.statusBadge, '量房中');
 });
 
-test('measurer workbench keeps assigned floor-plan leads after the survey leaves pending status', () => {
+test('measurer workbench pending survey excludes completed floor plans after the visit is done', () => {
   assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({ status: 'new' }), new Set()), true);
+  assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
+    primaryFloorPlanRecord: { id: 91n, status: 'draft' },
+    floorPlanRecords: [{ id: 91n, status: 'draft' }],
+  }), new Set()), true, 'draft plans remain continue-survey work');
   assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
     status: 'designing',
     primaryFloorPlanRecord: { id: 88n, status: 'completed' },
     floorPlanRecords: [{ id: 88n, status: 'completed' }],
-  }), new Set()), true);
+  }), new Set()), false, 'completed v4 surveys leave the pending queue');
+  assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
+    status: 'measuring',
+    primaryFloorPlanRecord: { id: 88n, status: 'completed' },
+    floorPlanRecords: [{ id: 88n, status: 'completed' }],
+  }), new Set()), false, 'formal completion outranks a leftover measuring status');
   assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
     status: 'designing',
     primaryFloorPlanRecord: { id: 88n, status: 'completed' },

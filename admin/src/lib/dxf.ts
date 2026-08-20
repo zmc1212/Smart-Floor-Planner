@@ -1,10 +1,14 @@
 import {
+  DimensionType,
   DxfWriter,
+  LWPolylineFlags,
   MTextAttachmentPoint,
   TextHorizontalAlignment,
   TextVerticalAlignment,
   Units,
+  point2d,
   point3d,
+  type DxfDimStyle,
   type DxfWriter as DxfWriterType,
 } from '@tarikjabiri/dxf';
 import { createClosedDimensionPlan } from '@/lib/surveyDimensionPlan.js';
@@ -17,11 +21,43 @@ import {
   type SurveySpace,
   type SurveyWall,
 } from '@/lib/survey-graph';
+import {
+  addModelSpaceSheet,
+  addNorthArrowBlock,
+  DXF_DRAWING_TITLE,
+  DXF_NORTH_BLOCK,
+  type DxfSheetMeta,
+} from '@/lib/dxf-sheet';
 
 export const DXF_EXPORT_STATUS = 'completed';
+export { DXF_DRAWING_TITLE, DXF_NORTH_BLOCK };
+export type FormalSurveyDxfSheet = DxfSheetMeta;
 export const DXF_LAYER_NAMES = Object.freeze({
-  walls: 'SFP-WALLS', openings: 'SFP-OPENINGS', dimensions: 'SFP-DIMENSIONS', spaces: 'SFP-SPACES', floors: 'SFP-FLOORS',
+  walls: '墙',
+  doors: '门',
+  windows: '窗',
+  dimensions: '尺寸标注',
+  spaces: '空间名称',
+  north: '指北针',
 });
+export const DXF_DIM_STYLE_NAMES = Object.freeze({
+  inner: '标注线-内墙',
+  outer: '标注线',
+});
+export const DXF_TEXT_STYLE_NAME = '黑体';
+export const DXF_ISO_DASH_LINETYPE = 'ACAD_ISO03W100';
+export const DXF_ARCH_TICK_BLOCK = '_ARCHTICK';
+export const DXF_DOOR_BLOCK = 'DOOR';
+const DXF_SHEET_LAYER = '0';
+const DEFAULT_LAYER_LINEWEIGHT = -3;
+const DEFAULT_CEILING_HEIGHT_MM = 2800;
+const ROOM_LABEL_TEXT_HEIGHT = 120;
+const DOOR_LEAF_THICKNESS_RATIO = 0.044;
+const DOOR_JAMB_MM = 50;
+const WINDOW_RAIL_INSETS = [0.08, 0.32, 0.68, 0.92];
+const NORTH_ARROW_COLOR = 2;
+// Rotated linear dim: type 0 + referenced-by-this (32) + user text position (128).
+const ROTATED_DIMENSION_TYPE = DimensionType.Default | DimensionType.ReferencedByThis | 128;
 
 export class DxfExportError extends Error {
   readonly status: number;
@@ -41,7 +77,14 @@ type Opening = {
 type WallBody = {
   wall: SurveyWall; start: Point; end: Point; outerStart: Point; outerEnd: Point; direction: Vec; normal: Vec; thickness: number;
 };
-type DimensionItem = { start: Point; end: Point; extensionStart: Point; extensionEnd: Point; label: string | number };
+type DimensionItem = {
+  start: Point; end: Point; extensionStart: Point; extensionEnd: Point; label: string | number; kind?: string;
+};
+type WallSolidInput = {
+  id: string; start: Point; end: Point; outerStart: Point; outerEnd: Point; thickness: number; polygon: Point[];
+};
+type WallSolidPlan = { rings: Point[][]; segments: Array<{ start: Point; end: Point }> };
+const MIN_WALL_EDGE_MM = 1;
 
 function numberOr(value: unknown, fallback = 0) { const number = Number(value); return Number.isFinite(number) ? number : fallback; }
 function distance(first: Point, second: Point) { return Math.hypot(second.x - first.x, second.y - first.y); }
@@ -60,26 +103,98 @@ function polygonCentroid(points: Point[]) {
   return Math.abs(twiceArea) < 0.000001 ? null : { x: x / (3 * twiceArea), y: y / (3 * twiceArea) };
 }
 
+function polygonAreaAbs(points: Point[]) {
+  if (points.length < 3) return 0;
+  let twiceArea = 0;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    twiceArea += point.x * next.y - next.x * point.y;
+  });
+  return Math.abs(twiceArea) / 2;
+}
+
+function polygonPerimeter(points: Point[]) {
+  return points.reduce((sum, point, index) => sum + distance(point, points[(index + 1) % points.length]), 0);
+}
+
+function intersectInfiniteLines(firstStart: Point, firstEnd: Point, secondStart: Point, secondEnd: Point) {
+  const first = subtract(firstEnd, firstStart);
+  const second = subtract(secondEnd, secondStart);
+  const denominator = first.x * second.y - first.y * second.x;
+  if (Math.abs(denominator) < 0.000001) return null;
+  const amount = ((secondStart.x - firstStart.x) * second.y - (secondStart.y - firstStart.y) * second.x) / denominator;
+  return add(firstStart, scale(first, amount));
+}
+
+function metersFromMm(value: number, digits = 2) {
+  return (value / 1000).toFixed(digits);
+}
+
+function areaM2FromMm2(value: number) {
+  return (value / 1_000_000).toFixed(2);
+}
+
+function modelSpaceBounds(dxf: DxfWriterType) {
+  const box = dxf.modelSpace.boundingBox();
+  return { minX: box.tl.x, maxY: box.tl.y, maxX: box.br.x, minY: box.br.y };
+}
+
 function nodeMap(floor: SurveyFloor) {
   return new Map((floor.nodes || []).flatMap((node) => node.id ? [[node.id, { ...node, xMm: numberOr(node.xMm), yMm: numberOr(node.yMm) } as Node] as const] : []));
 }
 
-function spacePoints(floor: SurveyFloor, space: SurveySpace, nodes: Map<string, Node>) {
+function spaceWallLoop(floor: SurveyFloor, space: SurveySpace, nodes: Map<string, Node>) {
   const walls = (space.wallIds || []).map((id) => (floor.walls || []).find((wall) => wall.id === id));
-  if (walls.some((wall) => !wall) || walls.length < 3) return [] as Point[];
+  if (walls.some((wall) => !wall) || walls.length < 3) return [] as Array<{ wall: SurveyWall; start: Point; end: Point }>;
   const first = walls[0]!;
   const trace = (reverse: boolean) => {
-    const initial = reverse ? first.endNodeId : first.startNodeId; if (!initial) return [] as Point[];
-    let current = initial; const points: Point[] = [];
+    const initial = reverse ? first.endNodeId : first.startNodeId; if (!initial) return [] as Array<{ wall: SurveyWall; start: Point; end: Point }>;
+    let current = initial; const loop: Array<{ wall: SurveyWall; start: Point; end: Point }> = [];
     for (const wall of walls) {
-      if (!wall) return [] as Point[];
+      if (!wall) return [] as Array<{ wall: SurveyWall; start: Point; end: Point }>;
       const next = wall.startNodeId === current ? wall.endNodeId : wall.endNodeId === current ? wall.startNodeId : '';
-      const point = nodes.get(current); if (!next || !point) return [] as Point[];
-      points.push({ x: point.xMm, y: point.yMm }); current = next;
+      const startNode = nodes.get(current); const endNode = next ? nodes.get(next) : null;
+      if (!next || !startNode || !endNode) return [] as Array<{ wall: SurveyWall; start: Point; end: Point }>;
+      loop.push({ wall, start: { x: startNode.xMm, y: startNode.yMm }, end: { x: endNode.xMm, y: endNode.yMm } });
+      current = next;
     }
-    return current === initial ? points : [] as Point[];
+    return current === initial ? loop : [];
   };
   const forward = trace(false); return forward.length ? forward : trace(true);
+}
+
+function spacePoints(floor: SurveyFloor, space: SurveySpace, nodes: Map<string, Node>) {
+  return spaceWallLoop(floor, space, nodes).map((edge) => edge.start);
+}
+
+function spaceInnerPolygon(floor: SurveyFloor, space: SurveySpace, bodiesById: Map<string, WallBody>, nodes: Map<string, Node>) {
+  const loop = spaceWallLoop(floor, space, nodes);
+  const centroid = polygonCentroid(loop.map((edge) => edge.start));
+  if (!centroid || loop.length < 3) return [] as Point[];
+  const faces = loop.map(({ wall, start }) => {
+    const body = bodiesById.get(wall.id); if (!body) return null;
+    const override = space.wallFaceOverrides?.[wall.id];
+    const topologyMid = scale(add(body.start, body.end), 0.5);
+    const oppositeMid = scale(add(body.outerStart, body.outerEnd), 0.5);
+    const usesOffset = override === 'offset' || (override !== 'topology' && distance(centroid, oppositeMid) < distance(centroid, topologyMid));
+    let lineStart = usesOffset ? body.outerStart : body.start;
+    let lineEnd = usesOffset ? body.outerEnd : body.end;
+    if (distance(start, lineEnd) < distance(start, lineStart)) {
+      const swapped = lineStart; lineStart = lineEnd; lineEnd = swapped;
+    }
+    return { lineStart, lineEnd, thickness: body.thickness };
+  });
+  if (faces.some((face) => !face)) return [] as Point[];
+  return faces.map((current, index) => {
+    const previous = faces[(index - 1 + faces.length) % faces.length]!;
+    const hit = intersectInfiniteLines(previous.lineStart, previous.lineEnd, current!.lineStart, current!.lineEnd);
+    const cornerLimit = Math.max(previous.thickness, current!.thickness, MIN_WALL_EDGE_MM) * 4;
+    return hit && distance(hit, current!.lineStart) <= cornerLimit ? hit : current!.lineStart;
+  });
+}
+
+function roomLabelValue(name: string, areaMm2: number, ceilingHeightMm: number, perimeterMm: number) {
+  return `${name}\\P面积:${areaM2FromMm2(areaMm2)}㎡\\P高度:${metersFromMm(ceilingHeightMm)}m\\P周长:${metersFromMm(perimeterMm)}m`;
 }
 
 function wallEndpoints(wall: SurveyWall, nodes: Map<string, Node>) {
@@ -117,80 +232,261 @@ function localOpeningGeometry(body: WallBody, opening: Opening) {
   return { start, end, outerStart: add(start, scale(body.normal, body.thickness)), outerEnd: add(end, scale(body.normal, body.thickness)), center, width };
 }
 
+function applyMetricDimStyle(style: DxfDimStyle, textHeight: number, textStyleHandle: string) {
+  style.DIMSCALE = 1;
+  style.DIMASZ = 50;
+  style.DIMEXO = 50;
+  style.DIMEXE = 50;
+  style.DIMDLE = 0;
+  style.DIMTXT = textHeight;
+  style.DIMGAP = 50;
+  style.DIMDEC = 0;
+  style.DIMTDEC = 0;
+  style.DIMTIH = 0;
+  style.DIMTOH = 0;
+  style.DIMTAD = 1;
+  style.DIMZIN = 8;
+  style.DIMCLRD = 193;
+  style.DIMCLRE = 193;
+  style.DIMCLRT = 35;
+  style.DIMLUNIT = 2;
+  style.DIMDSEP = 46;
+  style.DIMBLK = DXF_ARCH_TICK_BLOCK;
+  style.DIMTXSTY = textStyleHandle;
+  style.DIMLWD = DEFAULT_LAYER_LINEWEIGHT;
+  style.DIMLWE = DEFAULT_LAYER_LINEWEIGHT;
+}
+
+function addArchTickBlock(dxf: DxfWriterType) {
+  const block = dxf.addBlock(DXF_ARCH_TICK_BLOCK);
+  block.addLWPolyline(
+    [{ point: point2d(-0.5, -0.5) }, { point: point2d(0.5, 0.5) }],
+    { layerName: DXF_SHEET_LAYER, constantWidth: 0.15 },
+  );
+}
+
+function addDoorBlock(dxf: DxfWriterType) {
+  const block = dxf.addBlock(DXF_DOOR_BLOCK);
+  const inherit = { layerName: DXF_SHEET_LAYER };
+  const leaf = DOOR_LEAF_THICKNESS_RATIO;
+  block.addLWPolyline(
+    [
+      { point: point2d(0, 0) },
+      { point: point2d(1, 0) },
+      { point: point2d(1, leaf) },
+      { point: point2d(0, leaf) },
+    ],
+    { ...inherit, flags: LWPolylineFlags.Closed },
+  );
+  // DXF arcs are always CCW. A unit leaf along +X swings 90° into +Y.
+  block.addArc(point3d(0, 0), 1, 0, 90, { ...inherit, lineType: DXF_ISO_DASH_LINETYPE });
+}
+
 function createDxfWriter() {
-  const dxf = new DxfWriter(); dxf.setUnits(Units.Millimeters);
-  dxf.addLayer(DXF_LAYER_NAMES.walls, 7, 'Continuous'); dxf.addLayer(DXF_LAYER_NAMES.openings, 5, 'Continuous');
-  dxf.addLayer(DXF_LAYER_NAMES.dimensions, 2, 'Continuous'); dxf.addLayer(DXF_LAYER_NAMES.spaces, 3, 'Continuous'); dxf.addLayer(DXF_LAYER_NAMES.floors, 6, 'Continuous');
+  const dxf = new DxfWriter();
+  dxf.setUnits(Units.Millimeters);
+  dxf.setVariable('$MEASUREMENT', { 70: 1 });
+  dxf.addLType(DXF_ISO_DASH_LINETYPE, 'ISO dash __ __ __ __ __ __ __ __ __ __ __ __ __', [12, -18]);
+  const heiti = dxf.tables.addStyle(DXF_TEXT_STYLE_NAME);
+  heiti.fontFileName = 'simhei.ttf';
+  addArchTickBlock(dxf);
+  addDoorBlock(dxf);
+  addNorthArrowBlock(dxf, DXF_TEXT_STYLE_NAME);
+  dxf.addLayer(DXF_LAYER_NAMES.walls, 7, 'Continuous');
+  dxf.addLayer(DXF_LAYER_NAMES.doors, 3, 'Continuous');
+  dxf.addLayer(DXF_LAYER_NAMES.windows, 3, 'Continuous');
+  dxf.addLayer(DXF_LAYER_NAMES.dimensions, 193, 'Continuous');
+  dxf.addLayer(DXF_LAYER_NAMES.spaces, 35, 'Continuous');
+  dxf.addLayer(DXF_LAYER_NAMES.north, 251, 'Continuous');
+  const sheetLayer = dxf.layer(DXF_SHEET_LAYER);
+  if (sheetLayer) sheetLayer.colorNumber = 4;
+  applyMetricDimStyle(dxf.addDimStyle(DXF_DIM_STYLE_NAMES.inner), 135, heiti.handle);
+  applyMetricDimStyle(dxf.addDimStyle(DXF_DIM_STYLE_NAMES.outer), 180, heiti.handle);
   return dxf;
 }
 
-function addPolyline(dxf: DxfWriterType, points: Point[], layerName: string, closed = true) {
-  if (points.length < 2) return;
-  dxf.addLWPolyline(points.map((point) => ({ point: { x: point.x, y: point.y } })), { layerName, flags: closed ? 1 : 0 });
+function stringifyFormalSurveyDxf(dxf: DxfWriterType) {
+  const box = dxf.modelSpace.boundingBox();
+  dxf.setVariable('$EXTMIN', { 10: box.tl.x, 20: box.br.y, 30: 0 });
+  dxf.setVariable('$EXTMAX', { 10: box.br.x, 20: box.tl.y, 30: 0 });
+  // The writer emits DIMBLK as both name (5) and pointer (342). Keep the AutoCAD
+  // name and drop 342 so strict parsers that only accept handles in 342 stay valid.
+  return dxf.stringify()
+    .replaceAll('\n370\n0\n390\n0', `\n370\n${DEFAULT_LAYER_LINEWEIGHT}\n390\n0`)
+    .replaceAll(/\n342\n[^\n]+\n/g, '\n');
 }
 
-function addOpeningSymbol(dxf: DxfWriterType, body: WallBody, opening: Opening) {
-  const geometry = localOpeningGeometry(body, opening); if (!geometry) return;
-  const { start, end, outerStart, outerEnd } = geometry; const options = { layerName: DXF_LAYER_NAMES.openings };
-  dxf.addLine(point3d(start.x, start.y), point3d(outerStart.x, outerStart.y), options); dxf.addLine(point3d(end.x, end.y), point3d(outerEnd.x, outerEnd.y), options);
-  if (opening.type === 'window') {
-    const midpoint = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }; const rail = add(midpoint, scale(body.normal, body.thickness / 2));
-    dxf.addLine(point3d(start.x, start.y), point3d(end.x, end.y), options);
-    dxf.addLine(point3d(rail.x - body.direction.x * (geometry.width / 2), rail.y - body.direction.y * (geometry.width / 2)), point3d(rail.x + body.direction.x * (geometry.width / 2), rail.y + body.direction.y * (geometry.width / 2)), options);
-    return;
-  }
-  if (opening.modelCategory === 'sliding-door') {
-    const railA = add(start, scale(body.normal, body.thickness * 0.32));
-    const railB = add(start, scale(body.normal, body.thickness * 0.68));
-    dxf.addLine(point3d(railA.x, railA.y), point3d(railA.x + body.direction.x * geometry.width, railA.y + body.direction.y * geometry.width), options);
-    dxf.addLine(point3d(railB.x, railB.y), point3d(railB.x + body.direction.x * geometry.width, railB.y + body.direction.y * geometry.width), options);
-    return;
-  }
-  const opensOutside = opening.openDirection === 'outside'; const hinge = opensOutside ? end : start; const radius = Math.max(100, geometry.width);
-  if (opening.modelCategory === 'double-door') {
-    const halfWidth = Math.max(100, geometry.width / 2);
-    [start, end].forEach((doubleHinge, index) => {
-      const hingePoint = add(doubleHinge, scale(body.normal, opensOutside ? body.thickness : 0));
-      const arcStart = Math.atan2(body.normal.y, body.normal.x) * 180 / Math.PI;
-      const sweep = index === 0 ? (opensOutside ? 90 : -90) : (opensOutside ? -90 : 90);
-      dxf.addArc(point3d(hingePoint.x, hingePoint.y), halfWidth, arcStart, arcStart + sweep, options);
-      const leafEnd = add(hingePoint, scale(body.direction, index === 0 ? halfWidth : -halfWidth));
-      dxf.addLine(point3d(hingePoint.x, hingePoint.y), point3d(leafEnd.x, leafEnd.y), options);
-    });
-    return;
-  }
-  const hingePoint = add(hinge, scale(body.normal, opensOutside ? body.thickness : 0)); const arcStart = Math.atan2(body.normal.y, body.normal.x) * 180 / Math.PI;
-  dxf.addArc(point3d(hingePoint.x, hingePoint.y), radius, arcStart, arcStart + (opensOutside ? 90 : -90), options);
-  dxf.addLine(point3d(hingePoint.x, hingePoint.y), point3d(opensOutside ? start.x : end.x, opensOutside ? start.y : end.y), options);
+function openingLayerName(opening: Opening) {
+  return opening.type === 'window' ? DXF_LAYER_NAMES.windows : DXF_LAYER_NAMES.doors;
 }
 
-function addWallWithOpeningGaps(dxf: DxfWriterType, body: WallBody, openings: Opening[], offset: Vec) {
+function remainingWallRanges(body: WallBody, openings: Opening[]) {
   const length = distance(body.start, body.end);
   const gaps = openings
     .map((opening) => localOpeningGeometry(body, opening))
     .filter((geometry): geometry is NonNullable<ReturnType<typeof localOpeningGeometry>> => !!geometry)
     .map((geometry) => ({ start: Math.max(0, geometry.center - geometry.width / 2), end: Math.min(length, geometry.center + geometry.width / 2) }))
     .sort((first, second) => first.start - second.start);
-  const segments: Array<{ start: number; end: number }> = [];
+  const ranges: Array<{ start: number; end: number }> = [];
   let cursor = 0;
   gaps.forEach((gap) => {
-    if (gap.start > cursor) segments.push({ start: cursor, end: gap.start });
+    if (gap.start > cursor) ranges.push({ start: cursor, end: gap.start });
     cursor = Math.max(cursor, gap.end);
   });
-  if (cursor < length) segments.push({ start: cursor, end: length });
-  segments.forEach((segment) => {
-    if (segment.end - segment.start < 1) return;
-    const start = add(body.start, scale(body.direction, segment.start));
-    const end = add(body.start, scale(body.direction, segment.end));
-    addPolyline(dxf, [start, end, add(end, scale(body.normal, body.thickness)), add(start, scale(body.normal, body.thickness))].map((point) => add(point, offset)), DXF_LAYER_NAMES.walls);
+  if (cursor < length) ranges.push({ start: cursor, end: length });
+  return ranges.filter((range) => range.end - range.start >= MIN_WALL_EDGE_MM);
+}
+
+function remnantWallSolidInput(body: WallBody, range: { start: number; end: number }, index: number): WallSolidInput {
+  const start = add(body.start, scale(body.direction, range.start));
+  const end = add(body.start, scale(body.direction, range.end));
+  const outerStart = add(start, scale(body.normal, body.thickness));
+  const outerEnd = add(end, scale(body.normal, body.thickness));
+  return {
+    id: `${body.wall.id}:${index}`,
+    start,
+    end,
+    outerStart,
+    outerEnd,
+    thickness: body.thickness,
+    polygon: [start, end, outerEnd, outerStart],
+  };
+}
+
+function uncutWallSolidInputs(bodies: WallBody[]): WallSolidInput[] {
+  return bodies.map((body) => remnantWallSolidInput(body, { start: 0, end: distance(body.start, body.end) }, 0));
+}
+
+function gappedWallSolidInputs(bodies: WallBody[], openings: Opening[]): WallSolidInput[] {
+  return bodies.flatMap((body) => remainingWallRanges(body, openings.filter((opening) => opening.wallId === body.wall.id))
+    .map((range, index) => remnantWallSolidInput(body, range, index)));
+}
+
+function wallSolidEdges(plan: WallSolidPlan) {
+  if (plan.rings.length) {
+    return plan.rings.flatMap((ring) => ring.map((point, index) => ({ start: point, end: ring[(index + 1) % ring.length] })));
+  }
+  return plan.segments;
+}
+
+function angleDeg(vector: Vec) {
+  return Math.atan2(vector.y, vector.x) * 180 / Math.PI;
+}
+
+function addOpeningRails(dxf: DxfWriterType, body: WallBody, geometry: NonNullable<ReturnType<typeof localOpeningGeometry>>, layerName: string) {
+  WINDOW_RAIL_INSETS.forEach((inset) => {
+    const start = add(geometry.start, scale(body.normal, body.thickness * inset));
+    const end = add(geometry.end, scale(body.normal, body.thickness * inset));
+    dxf.addLine(point3d(start.x, start.y), point3d(end.x, end.y), { layerName });
   });
+}
+
+function addDoorJambs(
+  dxf: DxfWriterType,
+  body: WallBody,
+  geometry: NonNullable<ReturnType<typeof localOpeningGeometry>>,
+  layerName: string,
+) {
+  const jamb = Math.min(DOOR_JAMB_MM, Math.max(20, geometry.width / 8));
+  const closed = { layerName, flags: LWPolylineFlags.Closed };
+  const rectangle = (origin: Point, along: Vec, through: Vec) => {
+    const a = origin;
+    const b = add(origin, along);
+    const c = add(b, through);
+    const d = add(origin, through);
+    dxf.addLWPolyline(
+      [{ point: point2d(a.x, a.y) }, { point: point2d(b.x, b.y) }, { point: point2d(c.x, c.y) }, { point: point2d(d.x, d.y) }],
+      closed,
+    );
+  };
+  rectangle(geometry.start, scale(body.direction, jamb), scale(body.normal, body.thickness));
+  rectangle(geometry.end, scale(body.direction, -jamb), scale(body.normal, body.thickness));
+}
+
+function insertDoorLeaf(
+  dxf: DxfWriterType,
+  hinge: Point,
+  leafDir: Vec,
+  swingDir: Vec,
+  width: number,
+  layerName: string,
+  mirrored = false,
+) {
+  const ccwPerp = { x: -leafDir.y, y: leafDir.x };
+  const ySign = ccwPerp.x * swingDir.x + ccwPerp.y * swingDir.y >= 0 ? 1 : -1;
+  dxf.addInsert(DXF_DOOR_BLOCK, point3d(hinge.x, hinge.y), {
+    layerName,
+    rotationAngle: angleDeg(leafDir),
+    scaleFactor: { x: (mirrored ? -1 : 1) * width, y: ySign * width, z: 1 },
+  });
+}
+
+function addOpeningSymbol(dxf: DxfWriterType, body: WallBody, opening: Opening) {
+  const geometry = localOpeningGeometry(body, opening); if (!geometry) return;
+  const layerName = openingLayerName(opening);
+  if (opening.type === 'window' || opening.modelCategory === 'sliding-door') {
+    addOpeningRails(dxf, body, geometry, layerName);
+    return;
+  }
+  const opensOutside = opening.openDirection === 'outside';
+  const swingDir = opensOutside ? body.normal : scale(body.normal, -1);
+  const hingeStart = opensOutside ? geometry.outerStart : geometry.start;
+  const hingeEnd = opensOutside ? geometry.outerEnd : geometry.end;
+  const leafWidth = Math.max(100, geometry.width);
+  if (opening.modelCategory === 'double-door') {
+    const halfWidth = Math.max(100, geometry.width / 2);
+    insertDoorLeaf(dxf, hingeStart, body.direction, swingDir, halfWidth, layerName);
+    insertDoorLeaf(dxf, hingeEnd, body.direction, swingDir, halfWidth, layerName, true);
+    addDoorJambs(dxf, body, geometry, layerName);
+    return;
+  }
+  insertDoorLeaf(dxf, hingeStart, body.direction, swingDir, leafWidth, layerName);
+  addDoorJambs(dxf, body, geometry, layerName);
+}
+
+function addFloorWalls(dxf: DxfWriterType, bodies: WallBody[], openings: Opening[], offset: Vec) {
+  const solidPlan = createWallSolidPlan({ walls: gappedWallSolidInputs(bodies, openings) }) as WallSolidPlan;
+  wallSolidEdges(solidPlan).forEach((edge) => {
+    const start = add(edge.start, offset);
+    const end = add(edge.end, offset);
+    if (distance(start, end) < MIN_WALL_EDGE_MM) return;
+    dxf.addLine(point3d(start.x, start.y), point3d(end.x, end.y), { layerName: DXF_LAYER_NAMES.walls });
+  });
+}
+
+function dimensionAxisAngle(start: Point, end: Point) {
+  return Math.abs(end.x - start.x) >= Math.abs(end.y - start.y) ? 0 : 90;
+}
+
+function dimensionStyleName(kind?: string) {
+  return kind === 'building-overall' || kind === 'chain-total'
+    ? DXF_DIM_STYLE_NAMES.outer
+    : DXF_DIM_STYLE_NAMES.inner;
+}
+
+function addLinearFloorDimension(dxf: DxfWriterType, item: DimensionItem, offset: Vec) {
+  const dimensionStart = add(item.start, offset);
+  const dimensionEnd = add(item.end, offset);
+  const extensionStart = add(item.extensionStart, offset);
+  const extensionEnd = add(item.extensionEnd, offset);
+  const dimensionMid = { x: (dimensionStart.x + dimensionEnd.x) / 2, y: (dimensionStart.y + dimensionEnd.y) / 2 };
+  const dimension = dxf.addLinearDim(point3d(extensionStart.x, extensionStart.y), point3d(extensionEnd.x, extensionEnd.y), {
+    layerName: DXF_LAYER_NAMES.dimensions,
+    styleName: dimensionStyleName(item.kind),
+    angle: dimensionAxisAngle(dimensionStart, dimensionEnd),
+    definitionPoint: point3d(dimensionStart.x, dimensionStart.y),
+    middlePoint: point3d(dimensionMid.x, dimensionMid.y),
+    rotation: 0,
+    text: String(Math.round(Number(item.label))),
+  });
+  Object.assign(dimension, { dimensionType: ROTATED_DIMENSION_TYPE });
 }
 
 function addFloorDimensions(dxf: DxfWriterType, floor: SurveyFloor, bodies: WallBody[], offset: Vec) {
   const allPoints = bodies.flatMap((body) => [body.start, body.end, body.outerStart, body.outerEnd]); if (!allPoints.length) return;
   const floorBounds = bounds(allPoints); const drawingScale = Math.max(floorBounds.maxX - floorBounds.minX, floorBounds.maxY - floorBounds.minY);
   const dimensionOffset = Math.max(160, drawingScale * 0.035);
-  const solidPlan = createWallSolidPlan({ walls: bodies.map((body) => ({ id: body.wall.id, start: body.start, end: body.end, outerStart: body.outerStart, outerEnd: body.outerEnd, thickness: body.thickness, polygon: [body.start, body.end, body.outerEnd, body.outerStart] })) }) as { rings: Point[][] };
+  const solidPlan = createWallSolidPlan({ walls: uncutWallSolidInputs(bodies) }) as WallSolidPlan;
   const dimensionItems = createClosedDimensionPlan({
     baseGap: dimensionOffset * 0.28, laneGap: Math.max(120, drawingScale / 40) * 1.45, groupTolerance: Math.max(12, drawingScale * 0.002), measurementUnitsPerCoordinate: 1,
     walls: bodies.map((body) => ({ id: body.wall.id, start: body.start, end: body.end, coordinateLength: numberOr(body.wall.lengthMm, distance(body.start, body.end)), measurementLength: numberOr(body.wall.lengthMm, distance(body.start, body.end)), thickness: body.thickness, outerStart: body.outerStart, outerEnd: body.outerEnd })),
@@ -201,53 +497,35 @@ function addFloorDimensions(dxf: DxfWriterType, floor: SurveyFloor, bodies: Wall
       return { id: opening.id, wallId: opening.wallId || '', type: opening.type || 'window', start: center - width / 2, end: center + width / 2 };
     }),
   }).items as DimensionItem[];
-  dimensionItems.forEach((item) => {
-    // `start/end` are the offset dimension-line endpoints in the shared
-    // planner; `extensionStart/End` are the measured wall points. The writer
-    // wants the measured pair first and one point on the offset line as its
-    // insertion point. Passing the offset endpoint itself makes CAD emit a
-    // long diagonal leader from one side of the dimension.
-    const dimensionStart = add(item.start, offset); const dimensionEnd = add(item.end, offset);
-    const extensionStart = add(item.extensionStart, offset); const extensionEnd = add(item.extensionEnd, offset);
-    const measuredMid = { x: (extensionStart.x + extensionEnd.x) / 2, y: (extensionStart.y + extensionEnd.y) / 2 };
-    const dimensionMid = { x: (dimensionStart.x + dimensionEnd.x) / 2, y: (dimensionStart.y + dimensionEnd.y) / 2 };
-    const measuredDirection = { x: extensionEnd.x - extensionStart.x, y: extensionEnd.y - extensionStart.y };
-    const measuredLengthSquared = measuredDirection.x ** 2 + measuredDirection.y ** 2;
-    const parallelProjection = measuredLengthSquared
-      ? ((dimensionMid.x - measuredMid.x) * measuredDirection.x + (dimensionMid.y - measuredMid.y) * measuredDirection.y) / measuredLengthSquared
-      : 0;
-    const insertionPoint = {
-      x: dimensionMid.x - parallelProjection * measuredDirection.x,
-      y: dimensionMid.y - parallelProjection * measuredDirection.y,
-    };
-    // AutoCAD needs both the dimension definition point (10/20) and the
-    // text midpoint (11/21).  `@tarikjabiri/dxf` exposes those fields through
-    // DimensionOptions, but does not derive them from `insertionPoint`.
-    // Omitting them makes viewers fall back to an origin/default and produces
-    // the long diagonal leaders seen in the exported drawing.
-    const dimension = dxf.addAlignedDim(point3d(extensionStart.x, extensionStart.y), point3d(extensionEnd.x, extensionEnd.y), {
-      layerName: DXF_LAYER_NAMES.dimensions,
-      definitionPoint: point3d(dimensionStart.x, dimensionStart.y),
-      middlePoint: point3d(dimensionMid.x, dimensionMid.y),
-      insertionPoint: point3d(insertionPoint.x, insertionPoint.y),
-      text: String(item.label),
-    });
-    // Keep the dimension's explicit text position aligned with the dimension
-    // line.  The extra insertion point (12/22) is retained for consumers that
-    // understand the library's extended aligned-dimension representation.
-    dimension.middlePoint = point3d(dimensionMid.x, dimensionMid.y);
+  dimensionItems.forEach((item) => addLinearFloorDimension(dxf, item, offset));
+}
+
+function addFloorSpaceLabels(dxf: DxfWriterType, floor: SurveyFloor, bodies: WallBody[], offset: Vec) {
+  const nodes = nodeMap(floor);
+  const bodiesById = new Map(bodies.map((body) => [body.wall.id, body]));
+  const ceilingHeightMm = Math.round(numberOr(floor.ceilingHeightMm, DEFAULT_CEILING_HEIGHT_MM) || DEFAULT_CEILING_HEIGHT_MM);
+  (floor.spaces || []).filter((space) => space.closed).forEach((space, index) => {
+    const inner = spaceInnerPolygon(floor, space, bodiesById, nodes);
+    const centroid = polygonCentroid(inner); if (!centroid || inner.length < 3) return;
+    const label = dxf.addMText(
+      point3d(centroid.x + offset.x, centroid.y + offset.y),
+      ROOM_LABEL_TEXT_HEIGHT,
+      roomLabelValue(space.name || `空间 ${index + 1}`, polygonAreaAbs(inner), ceilingHeightMm, polygonPerimeter(inner)),
+      { layerName: DXF_LAYER_NAMES.spaces, attachmentPoint: MTextAttachmentPoint.MiddleCenter, width: 2200 },
+    );
+    label.textStyle = DXF_TEXT_STYLE_NAME;
   });
 }
 
 function addFloorToDxf(dxf: DxfWriterType, floor: SurveyFloor, offset: Vec) {
   const bodies = floorBodies(floor); if (!bodies.length) return null;
-  bodies.forEach((body) => addWallWithOpeningGaps(dxf, body, ((floor.openings || []) as Opening[]).filter((opening) => opening.wallId === body.wall.id), offset));
+  addFloorWalls(dxf, bodies, (floor.openings || []) as Opening[], offset);
   ((floor.openings || []) as Opening[]).forEach((opening) => { const body = bodies.find((item) => item.wall.id === opening.wallId); if (body) addOpeningSymbol(dxf, { ...body, start: add(body.start, offset), end: add(body.end, offset), outerStart: add(body.outerStart, offset), outerEnd: add(body.outerEnd, offset) }, opening); });
-  const nodes = nodeMap(floor);
-  (floor.spaces || []).filter((space) => space.closed).forEach((space, index) => { const centroid = polygonCentroid(spacePoints(floor, space, nodes)); if (!centroid) return; dxf.addMText(point3d(centroid.x + offset.x, centroid.y + offset.y), 160, space.name || `空间 ${index + 1}`, { layerName: DXF_LAYER_NAMES.spaces, attachmentPoint: MTextAttachmentPoint.MiddleCenter }); });
+  addFloorSpaceLabels(dxf, floor, bodies, offset);
   addFloorDimensions(dxf, floor, bodies, offset);
   const allPoints = bodies.flatMap((body) => [body.start, body.end, body.outerStart, body.outerEnd]); const floorBounds = bounds(allPoints);
-  dxf.addText(point3d(floorBounds.minX + offset.x, floorBounds.minY + offset.y - 500), 220, floor.name || '楼层', { layerName: DXF_LAYER_NAMES.floors, horizontalAlignment: TextHorizontalAlignment.Left, verticalAlignment: TextVerticalAlignment.Top });
+  const floorTitle = dxf.addText(point3d(floorBounds.minX + offset.x, floorBounds.minY + offset.y - 500), 220, floor.name || '楼层', { layerName: DXF_LAYER_NAMES.spaces, horizontalAlignment: TextHorizontalAlignment.Left, verticalAlignment: TextVerticalAlignment.Top });
+  floorTitle.textStyle = DXF_TEXT_STYLE_NAME;
   return { width: floorBounds.maxX - floorBounds.minX, minX: floorBounds.minX, minY: floorBounds.minY };
 }
 
@@ -258,13 +536,19 @@ export function getFormalSurveyLayoutForDxf(layoutData: unknown, status?: string
   return layout;
 }
 
-export function generateFormalSurveyDxf(layoutData: unknown, status?: string) {
+export function generateFormalSurveyDxf(layoutData: unknown, status?: string, sheet?: FormalSurveyDxfSheet) {
   const layout = getFormalSurveyLayoutForDxf(layoutData, status); const dxf = createDxfWriter(); let cursorX = 0; let exportedFloors = 0;
   for (const floor of layout.surveyGraph.floors) {
     const bodies = floorBodies(floor); if (!bodies.length) continue; const allPoints = bodies.flatMap((body) => [body.start, body.end, body.outerStart, body.outerEnd]); const floorBounds = bounds(allPoints);
     const result = addFloorToDxf(dxf, floor, { x: cursorX - floorBounds.minX, y: -floorBounds.minY }); if (result) { cursorX += result.width + 3000; exportedFloors += 1; }
   }
-  if (!exportedFloors) throw new DxfExportError('户型没有可导出的墙体', 409, 'DXF_EXPORT_EMPTY'); return dxf.stringify();
+  if (!exportedFloors) throw new DxfExportError('户型没有可导出的墙体', 409, 'DXF_EXPORT_EMPTY');
+  addModelSpaceSheet(dxf, modelSpaceBounds(dxf), {
+    textStyleName: DXF_TEXT_STYLE_NAME,
+    northLayerName: DXF_LAYER_NAMES.north,
+    meta: sheet,
+  });
+  return stringifyFormalSurveyDxf(dxf);
 }
 
 export function safeDxfFileName(name: string | null | undefined, id: string) {

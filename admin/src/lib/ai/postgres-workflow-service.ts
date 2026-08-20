@@ -32,11 +32,13 @@ import { getAiCreditPrice } from '@/lib/ai/credits';
 import { resolvePostgresScenarioProviderImage } from '@/lib/ai/postgres-creation-runtime';
 import { executePostgresWorkflowChat } from '@/lib/ai/postgres-workflow-chat';
 import type { AiChatMessage } from '@/lib/ai/provider-types';
-import { parseImageDataUri } from '@/lib/ai/postgres-media-assets';
+import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
+import { workbenchFloorPlanPreviewPath } from '@/lib/ai/workbench-studio';
 import { leadArchivedError } from '@/lib/lead-lifecycle';
 import {
   getPostgresAssetIdFromImageUrl,
   getPostgresMediaAssetImageUrl,
+  parseImageDataUri,
   storePostgresMediaBuffer,
 } from '@/lib/ai/postgres-media-assets';
 
@@ -287,6 +289,9 @@ export async function getPostgresAiWorkflowContext(input: {
       }))
     );
     const latestGeneration = generations[0];
+    const boundFloorPlan = workflow.sourceFloorPlanId
+      ? lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId)
+      : undefined;
 
     return {
       workflow: {
@@ -296,6 +301,12 @@ export async function getPostgresAiWorkflowContext(input: {
           ? serializeAiGeneration({ ...latestGeneration, _id: latestGeneration.id })
           : undefined,
         stageState: availability,
+        floorPlanPreviewUrl: workflow.sourceFloorPlanId
+          ? workbenchFloorPlanPreviewPath(String(workflow.id))
+          : undefined,
+        sourceFloorPlan: boundFloorPlan
+          ? { id: String(boundFloorPlan.id), name: boundFloorPlan.name || '正式户型' }
+          : null,
       },
       lead: {
         id: String(lead.id),
@@ -452,6 +463,31 @@ export async function getPostgresAiWorkflowSourceImage(input: {
     }
     return workflow.sourceImage;
   });
+}
+
+/**
+ * Renders the bound formal survey-graph control PNG for designer comparison.
+ * Sharp runs after the RLS-scoped database read.
+ */
+export async function getPostgresAiWorkflowFloorPlanPreview(input: {
+  enterpriseId: string | bigint;
+  workflowId: string | bigint;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const workflowId = parsePostgresId(input.workflowId, 'workflowId');
+  const layoutData = await withTenantTransaction(enterpriseId, async (transaction) => {
+    const workflow = await new AiWorkflowRepository(transaction).findById(workflowId);
+    if (!workflow) throw notFound('方案会话不存在或无权访问');
+    if (!workflow.sourceFloorPlanId) throw notFound('方案尚未关联正式户型');
+
+    const lead = await new LeadRepository(transaction).findById(workflow.leadId);
+    if (!lead) throw notFound('客户线索不存在或无权访问');
+    const floorPlan = lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId);
+    if (!floorPlan) throw notFound('方案关联的正式户型不存在或无权访问');
+    assertEligibleWorkflowFloorPlan(floorPlan);
+    return floorPlan.layoutData;
+  });
+  return renderMiniAiFloorPlanControlPng(layoutData);
 }
 
 /**

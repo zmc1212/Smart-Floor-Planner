@@ -118,6 +118,42 @@ test('referrer workbench keeps identity switching and logout reachable from the 
   }
 });
 
+test('referrer workbench scans an onboarding code before opening the add-enterprise flow', () => {
+  const definition = loadPage();
+  const originalWx = global.wx;
+  let scanOptions;
+  let navigation;
+  const toasts = [];
+  global.wx = {
+    scanCode(options) { scanOptions = options; },
+    navigateTo(options) { navigation = options; },
+    showToast(options) { toasts.push(options); }
+  };
+
+  try {
+    definition.onAddEnterprise();
+    assert.equal(scanOptions.onlyFromCamera, false);
+    assert.deepEqual(scanOptions.scanType, ['qrCode']);
+
+    scanOptions.success({ path: 'packages/business/onboarding/onboarding?scene=ABC' });
+    assert.equal(navigation.url, '/packages/business/onboarding/onboarding?scene=ABC');
+
+    navigation = null;
+    scanOptions.success({ path: 'pages/index/index' });
+    assert.equal(navigation, null);
+    assert.match(toasts.at(-1).title, /企业提供的入驻码/);
+
+    scanOptions.success({ path: 'packages/business/onboarding/onboarding?foo=bar' });
+    assert.equal(navigation, null);
+    assert.match(toasts.at(-1).title, /企业提供的入驻码/);
+
+    scanOptions.fail({ errMsg: 'scanCode:fail unavailable' });
+    assert.match(toasts.at(-1).title, /扫码失败/);
+  } finally {
+    global.wx = originalWx;
+  }
+});
+
 test('referrer workbench exchanges the signed membership context before changing enterprises', async () => {
   const definition = loadPage();
   const api = require('../utils/api.js');
@@ -168,6 +204,7 @@ test('referrer workbench exchanges the signed membership context before changing
 test('referrer workbench ships the Antigravity standalone asset and preserves the Airy Minimalist 06 design contract', () => {
   const wxml = source('packages/business/referrer-workbench/referrer-workbench.wxml');
   const less = source('packages/business/referrer-workbench/referrer-workbench.less');
+  const js = source('packages/business/referrer-workbench/referrer-workbench.js');
   const asset = fs.readFileSync(path.join(miniRoot, 'packages/business/assets/referrer-workbench-v1/service-code-guide.png'));
 
   assert.match(wxml, /推广专属服务 · 获客与收益/);
@@ -190,6 +227,13 @@ test('referrer workbench ships the Antigravity standalone asset and preserves th
   assert.match(less, /\.quick-nav-grid/);
   assert.match(less, /\.hero-promotion-card/);
   assert.match(less, /\.milestone-list/);
+  assert.doesNotMatch(less, /\.enterprise-pill:nth-child/);
+  assert.match(less, /\.enterprise-pill\s*\{[^}]*flex-shrink:\s*0/s);
+  assert.match(less, /\.enterprise-pill\s*\{[^}]*font-size:\s*24rpx/s);
+  assert.match(less, /\.quick-card-title\s*\{[^}]*font-size:\s*28rpx/s);
+  assert.match(less, /\.benefit-desc\s*\{[^}]*font-size:\s*20rpx/s);
+  assert.match(js, /wx\.scanCode\(/);
+  assert.match(js, /企业提供的入驻码/);
   assert.match(wxml, /referrer-workbench-v1\/service-code-guide\.png/);
   assert.match(wxml, /airy-v1\/leads-phone-3d\.png/);
   assert.match(wxml, /thumbs-up-xiao-k\.png/);

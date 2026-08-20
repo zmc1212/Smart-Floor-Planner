@@ -517,6 +517,7 @@ export const platformConfigs = appSchema.table(
     mediaStorage: jsonObject<Record<string, unknown>>('media_storage'),
     promotionConfig: jsonObject<Record<string, unknown>>('promotion_config'),
     notificationConfig: jsonObject<Record<string, unknown>>('notification_config'),
+    miniProgramCodeConfig: jsonObject<Record<string, unknown>>('mini_program_code_config'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

@@ -14,6 +14,7 @@ import {
   createPromotionServiceCode,
   getMiniProgramCodeContentType,
 } from '@/lib/wechat-miniprogram-code';
+import { getPlatformMiniProgramCodeConfig } from '@/lib/platform-mini-program-code-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,7 +61,8 @@ export async function GET(
   }
 
   try {
-    const image = await createPromotionServiceCode(result.promotion.token);
+    const { environment } = await getPlatformMiniProgramCodeConfig();
+    const image = await createPromotionServiceCode(result.promotion.token, { envVersion: environment });
     const contentType = getMiniProgramCodeContentType(image) ?? 'application/octet-stream';
     const extension = contentType === 'image/jpeg' ? 'jpg' : 'png';
     return new NextResponse(image, {

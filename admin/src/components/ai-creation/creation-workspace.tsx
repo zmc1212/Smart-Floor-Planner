@@ -754,7 +754,7 @@ export function CreationWorkspace() {
             <p className="text-sm leading-6 text-[#b3b3b3]">{message}</p>
             <div className="mt-6 flex flex-wrap gap-3">
               <button type="button" onClick={retryBootstrap} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#7047ff] px-4 text-sm font-medium text-white hover:bg-[#805cff]"><RefreshCw className="size-4" />重试</button>
-              <Link href="/ai-studio/scenarios" className="inline-flex h-9 items-center rounded-lg border border-white/10 px-4 text-sm text-[#d7d7dc] hover:bg-white/5">返回 AI 工作台</Link>
+          <Link href="/ai-studio/scenarios" className="inline-flex h-9 items-center rounded-lg border border-white/10 px-4 text-sm text-[#d7d7dc] hover:bg-white/5">打开 AI 工作台</Link>
             </div>
           </div>
         </div>

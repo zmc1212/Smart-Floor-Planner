@@ -55,7 +55,8 @@ export function groupPublishedSchemes(
       stageKey: generation.stageKey,
       title: generationTitle(generation, title),
       publishedAt: publication.publishedAt,
-      imageEndpoint: `/api/miniprogram/customer-projects/${leadId}/published-generations/${generation.id.toString()}/image`,
+      // The Mini Program API client already appends paths to an `/api` base URL.
+      imageEndpoint: `/miniprogram/customer-projects/${leadId}/published-generations/${generation.id.toString()}/image`,
     };
     const existing = groups.get(groupId);
     if (!existing) {

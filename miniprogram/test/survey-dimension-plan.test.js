@@ -378,7 +378,21 @@ test('closed dimensions clear an active wall chain that extends beyond the room 
   });
 });
 
-test('adjacent rooms create an exterior clear chain without dimensioning the shared wall', () => {
+test('closed single room emits wall-thickness ticks beside room-clear spans', () => {
+  const room = createSpacePlan('room', [
+    { x: 0, y: 0 }, { x: 2100, y: 0 }, { x: 2100, y: 3160 }, { x: 0, y: 3160 }
+  ]);
+  const outerRing = [
+    { x: -200, y: -200 }, { x: 2300, y: -200 }, { x: 2300, y: 3360 }, { x: -200, y: 3360 }
+  ];
+  const plan = createClosedDimensionPlan(createClosedPlanInput(room, outerRing));
+  const thickness = plan.items.filter((item) => item.kind === 'wall-thickness');
+
+  assert.deepEqual(thickness.map((item) => item.label).sort(), ['200', '200', '200', '200', '200', '200', '200', '200']);
+  assert.equal(thickness.every((item) => item.lane === 0), true);
+});
+
+test('adjacent rooms emit shared-wall thickness on the outer chain', () => {
   const left = createSpacePlan('left', [
     { x: 0, y: 0 }, { x: 3370, y: 0 }, { x: 3370, y: 3160 }, { x: 0, y: 3160 }
   ]);
@@ -398,6 +412,7 @@ test('adjacent rooms create an exterior clear chain without dimensioning the sha
   assert.equal(clear.filter((item) => item.sourceSpaceId === 'right').length, 3);
   assert.equal(clear.some((item) => item.sourceWallId === 'left-wall-1'), false);
   assert.equal(clear.some((item) => item.sourceWallId === 'right-wall-3'), false);
+  assert.ok(plan.items.some((item) => item.kind === 'wall-thickness' && item.label === '200'));
 });
 
 test('door positioning stays inside the clear and overall dimension lanes', () => {
@@ -491,11 +506,27 @@ test('L, U, and stepped orthogonal rooms use directed edges and keep dimensions 
       fixture.outer.includes(item.extensionStart) && fixture.outer.includes(item.extensionEnd)
     )), true, fixture.id);
     assert.ok(plan.items.filter((item) => item.kind === 'room-clear').length >= 6, fixture.id);
-    plan.items.forEach((item) => {
+    plan.items.filter((item) => item.kind === 'building-overall').forEach((item) => {
       const outlineSupport = Math.max(...fixture.outer.map((point) => projection(point, item.normal)));
       assert.ok(projection(item.start, item.normal) >= outlineSupport + 99.999, item.id);
       assert.ok(projection(item.end, item.normal) >= outlineSupport + 99.999, item.id);
     });
+    plan.items.filter((item) => item.kind === 'room-clear' || item.kind === 'wall-thickness').forEach((item) => {
+      const faceSupport = Math.max(
+        projection(item.extensionStart, item.normal),
+        projection(item.extensionEnd, item.normal)
+      );
+      assert.ok(projection(item.start, item.normal) >= faceSupport + 99.999, item.id);
+    });
+    if (fixture.id === 'l-room') {
+      const notch = plan.items.find((item) => (
+        item.kind === 'room-clear'
+        && Math.abs(item.extensionStart.x - 2000) < 1
+        && Math.abs(item.extensionEnd.x - 2000) < 1
+      ));
+      assert.ok(notch, 'L-notch room-clear should exist');
+      assert.ok(notch.start.x < 2600, 'L-notch dimension must stay on the recessed face');
+    }
   });
 });
 

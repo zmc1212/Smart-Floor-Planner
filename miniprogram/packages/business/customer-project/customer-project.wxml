@@ -29,7 +29,7 @@
 
     <view class="personnel-grid">
       <view class="person-card">
-        <view class="person-avatar designer-avatar">🎨</view>
+        <image class="person-avatar designer-avatar" src="/images/airy-v1/xiao-k-designer-3d.png" mode="aspectFit" />
         <view class="person-info">
           <view class="person-role-tag">专属设计师</view>
           <text class="person-name">{{designer && designer.displayName ? designer.displayName : '待分配设计师'}}</text>
@@ -38,7 +38,7 @@
       </view>
 
       <view class="person-card">
-        <view class="person-avatar measurer-avatar">📏</view>
+        <image class="person-avatar measurer-avatar" src="/images/airy-v1/xiao-k-measurer-3d.png" mode="aspectFit" />
         <view class="person-info">
           <view class="person-role-tag">金牌量房师傅</view>
           <text class="person-name">{{measurerName || '待分配量房员'}}</text>
@@ -51,22 +51,22 @@
     <view class="section-card sfp-card" wx:if="{{formalFloorPlan}}">
       <view class="section-header">
         <view class="section-title-wrap">
-          <text class="section-icon">📐</text>
+          <image class="section-icon" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit" />
           <text class="section-title">{{formalFloorPlan.name || 'CAD 户型档案 (正式量房形成的户型档案)'}}</text>
         </view>
         <text class="section-badge">{{formalFloorPlan.displayCompletedAt || '量房已完成'}}</text>
       </view>
-      <view class="cad-preview-container" bindtap="previewFloorPlan" hover-class="card-pressed" aria-role="button" aria-label="查看CAD高清大图">
+      <view class="cad-preview-container">
         <image class="cad-image" src="/images/airy-v1/cad-blueprint-3d.png" mode="aspectFit" />
         <view class="preview-chip">
-          <text>🔍 点击查看高清大图</text>
+          <text>正式量房户型档案</text>
         </view>
       </view>
     </view>
     <view class="section-card sfp-card" wx:else>
       <view class="section-header">
         <view class="section-title-wrap">
-          <text class="section-icon">📐</text>
+          <image class="section-icon" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit" />
           <text class="section-title">我的户型档案</text>
         </view>
         <text class="section-badge">等待量房</text>

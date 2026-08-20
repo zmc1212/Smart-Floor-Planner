@@ -4,6 +4,8 @@ import {
   AiCreationModelProfileRepository,
   AiCreationRepository,
   AiWorkflowRepository,
+  LeadLifecycleRepository,
+  LeadRepository,
   type AiCreationModelProfileRecord,
   type AiGenerationRecord,
 } from '@/db/repositories';
@@ -15,10 +17,13 @@ import {
 } from '@/db/transaction';
 import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
 import { getPostgresImageModelPrice, serializePostgresCatalogProfile } from '@/lib/ai/image-model-catalog';
-import { getPostgresMediaAssetImageUrl } from '@/lib/ai/postgres-media-assets';
+import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
+import { getPostgresMediaAssetImageUrl, storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import { getActivePromptTemplate } from '@/lib/ai/prompt-library-query';
 import { resolveGrsImageParameters, type GrsResolutionTier } from '@/lib/ai/grs-image-models';
 import { capabilityForLogicalModel, type AiLogicalModelKey } from '@/lib/ai/provider-types';
+import { assertEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
+import { leadArchivedError } from '@/lib/lead-lifecycle';
 
 type CreationParameters = {
   aspectRatio: string;
@@ -193,6 +198,49 @@ export async function createPostgresCreationTask(input: {
   });
 }
 
+async function resolveWorkflowCreationBinding(input: {
+  enterpriseId: bigint;
+  workflowId: bigint;
+}) {
+  return withTenantTransaction(input.enterpriseId, async (transaction) => {
+    const workflow = await new AiWorkflowRepository(transaction).findById(input.workflowId);
+    if (!workflow || workflow.status !== 'active') {
+      throw Object.assign(new Error('方案对话不存在或无权访问'), { status: 404 });
+    }
+    await new LeadLifecycleRepository(transaction).lockByIds([workflow.leadId]);
+    const lead = await new LeadRepository(transaction).findById(workflow.leadId);
+    if (!lead) throw Object.assign(new Error('客户线索不存在或无权访问'), { status: 404 });
+    if (lead.archivedAt) throw leadArchivedError();
+    const floorPlan = workflow.sourceFloorPlanId
+      ? lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId) || null
+      : null;
+    if (!floorPlan) {
+      throw Object.assign(new Error('请先关联合格的正式户型再出图'), {
+        status: 400,
+        code: 'WORKFLOW_FLOOR_PLAN_REQUIRED',
+      });
+    }
+    assertEligibleWorkflowFloorPlan(floorPlan);
+    const generations = await new AiCreationRepository(transaction).listGenerationsByWorkflowId(workflow.id);
+    const activeGeneration = generations.find((generation) =>
+      ['created', 'pending', 'processing'].includes(generation.status)
+    );
+    if (activeGeneration) {
+      throw Object.assign(new Error('当前对话仍有出图任务进行中，请稍候再试'), {
+        status: 409,
+        code: 'ACTIVE_GENERATION_EXISTS',
+        generationId: activeGeneration.id.toString(),
+      });
+    }
+    return {
+      workflowId: workflow.id,
+      leadId: workflow.leadId,
+      floorPlanId: floorPlan.id,
+      layoutData: floorPlan.layoutData,
+    };
+  });
+}
+
 export async function preparePostgresCreationBatch(input: {
   enterpriseId: string;
   operatorId: string;
@@ -204,6 +252,7 @@ export async function preparePostgresCreationBatch(input: {
   parameters?: ParameterRequest;
   templateId?: string;
   count?: number;
+  workflowId?: string;
 }) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const operatorId = parsePostgresId(input.operatorId, 'operatorId');
@@ -217,9 +266,30 @@ export async function preparePostgresCreationBatch(input: {
     getEnabledCatalogProfile(modelProfileId),
     input.templateId ? getActivePromptTemplate(input.templateId) : Promise.resolve(null),
   ]);
-  const referenceAssetIds = [...new Set((input.referenceAssetIds || []).map((id) => parsePostgresId(id, 'referenceAssetId')))];
+  let referenceAssetIds = [...new Set((input.referenceAssetIds || []).map((id) => parsePostgresId(id, 'referenceAssetId')))];
   const capabilities = profile.capabilities || {};
   const maxReferenceImages = Number(capabilities.maxReferenceImages || 0);
+  const workflowBinding = input.workflowId
+    ? await resolveWorkflowCreationBinding({
+      enterpriseId,
+      workflowId: parsePostgresId(input.workflowId, 'workflowId'),
+    })
+    : null;
+  if (workflowBinding) {
+    if (!capabilities.supportsReferenceImages || maxReferenceImages < 1) {
+      throw Object.assign(new Error('当前模型不支持参考图，无法带入正式户型控制图，请更换模型'), { status: 400 });
+    }
+    if (referenceAssetIds.length >= maxReferenceImages) {
+      throw Object.assign(new Error(`户型控制图会占用 1 张参考图，当前模型最多 ${maxReferenceImages} 张`), { status: 400 });
+    }
+    const control = await storePostgresMediaBuffer({
+      enterpriseId,
+      ownerType: 'ai_generation_input',
+      mimeType: 'image/png',
+      buffer: await renderMiniAiFloorPlanControlPng(workflowBinding.layoutData),
+    });
+    referenceAssetIds = [control.asset.id, ...referenceAssetIds];
+  }
   if (referenceAssetIds.length > maxReferenceImages || (referenceAssetIds.length && !capabilities.supportsReferenceImages)) {
     throw new Error(`当前模型最多支持 ${maxReferenceImages} 张参考图`);
   }
@@ -252,7 +322,10 @@ export async function preparePostgresCreationBatch(input: {
       prompt,
       negativePrompt: input.negativePrompt?.trim() || null,
       modelProfileSnapshot: profileSnapshot,
-      parameterSnapshot: parameters,
+      parameterSnapshot: {
+        ...parameters,
+        ...(workflowBinding ? { floorPlanControlAssetId: referenceAssetIds[0]?.toString() } : {}),
+      },
       requestedCount: count,
       status: 'pending',
       creditsEstimate: price.credits * BigInt(count),
@@ -283,8 +356,16 @@ export async function preparePostgresCreationBatch(input: {
       capability: referenceAssetIds.length ? 'image.edit' : 'image.generate',
       logicalModelKey,
       status: 'pending',
+      ...(workflowBinding ? {
+        workflowId: workflowBinding.workflowId,
+        leadId: workflowBinding.leadId,
+        floorPlanId: workflowBinding.floorPlanId,
+        channel: 'admin',
+        stageKey: 'conversation',
+      } : {}),
       input: {
-        style: 'free_create',
+        style: workflowBinding ? 'conversation' : 'free_create',
+        userMessage: prompt,
         customPrompt: prompt,
         outputAspectRatio: parameters.aspectRatio,
         outputSize: parameters.resolutionTier,
@@ -303,6 +384,12 @@ export async function preparePostgresCreationBatch(input: {
       lastBatchId: batch.id,
       status: 'active',
     });
+    if (workflowBinding) {
+      await new AiWorkflowRepository(transaction).update(workflowBinding.workflowId, {
+        currentStageKey: 'conversation',
+        lastGenerationId: generations[generations.length - 1]?.id,
+      });
+    }
     return { taskId, batch, generations };
   });
 }

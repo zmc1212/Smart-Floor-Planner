@@ -7,6 +7,7 @@ import {
   dxfContentDisposition,
   generateFormalSurveyDxf,
 } from '@/lib/dxf';
+import { resolveFormalSurveyDxfSheet } from '@/lib/dxf-export-sheet';
 import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
 
@@ -21,27 +22,28 @@ export async function GET(
     }
     const { id } = await params;
 
-    const plan = await withAdminPostgresTransaction(context, (transaction) =>
-      new FloorPlanRepository(transaction).findById(
+    const loaded = await withAdminPostgresTransaction(context, async (transaction) => {
+      const plan = await new FloorPlanRepository(transaction).findById(
         parsePostgresId(id, 'floor plan id')
-      )
-    );
-    if (!plan) {
+      );
+      if (!plan) return null;
+      return { plan, sheet: await resolveFormalSurveyDxfSheet(transaction, plan) };
+    });
+    if (!loaded) {
       return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
     }
 
-    if (!isFormalSurveyLayout(plan.layoutData)) {
+    if (!isFormalSurveyLayout(loaded.plan.layoutData)) {
       return NextResponse.json({ success: false, error: 'Floor plan does not use the formal surveyGraph contract' }, { status: 400 });
     }
 
-    const dxfString = generateFormalSurveyDxf(plan.layoutData, plan.status);
+    const dxfString = generateFormalSurveyDxf(loaded.plan.layoutData, loaded.plan.status, loaded.sheet);
 
-    // Return DXF as a downloadable file
     const response = new NextResponse(dxfString, {
       status: 200,
       headers: {
         'Content-Type': 'application/dxf',
-        'Content-Disposition': dxfContentDisposition(plan.name, id),
+        'Content-Disposition': dxfContentDisposition(loaded.plan.name, id),
         'Cache-Control': 'private, no-store',
       },
     });

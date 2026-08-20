@@ -6,6 +6,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const pagePath = path.join(root, 'packages', 'business', 'customer-project', 'customer-project.js');
 const wxmlPath = path.join(root, 'packages', 'business', 'customer-project', 'customer-project.wxml');
+const lessPath = path.join(root, 'packages', 'business', 'customer-project', 'customer-project.less');
 
 test('customer project consumes only the owner-only aggregate and renders appointment, formal-plan summary, and explicit publications', () => {
   const page = fs.readFileSync(pagePath, 'utf8');
@@ -57,4 +58,14 @@ test('customer-facing project surfaces hide enterprise branding', () => {
   assert.doesNotMatch(folio, /enterpriseName|\{\{enterpriseName\}\}/);
   assert.match(workbench, /title: '我的装修服务'/);
   assert.doesNotMatch(workbench, /project\.enterprise\s*&&\s*project\.enterprise\.name/);
+});
+
+test('customer project template and stylesheet stay aligned for the restored archive layout', () => {
+  const wxml = fs.readFileSync(wxmlPath, 'utf8');
+  const less = fs.readFileSync(lessPath, 'utf8');
+  for (const className of ['project-hero-card', 'timeline-row', 'personnel-grid', 'person-card', 'section-card', 'cad-preview-container']) {
+    assert.match(wxml, new RegExp(`class="[^\"]*${className}`));
+    assert.match(less, new RegExp(`\\.${className}(?:[\\s,{])`));
+  }
+  assert.doesNotMatch(wxml, /🎨|📏|📐|🔍/);
 });

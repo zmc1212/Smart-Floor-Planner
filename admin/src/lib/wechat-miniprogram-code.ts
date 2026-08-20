@@ -1,11 +1,12 @@
 import { getWechatAccessToken } from '@/lib/wechat-access-token';
+import type { MiniProgramCodeEnvironment } from '@/lib/mini-program-code-environment';
 
 export const PROMOTION_SERVICE_PAGE =
   'packages/business/free-design-service/free-design-service';
 export const ENTERPRISE_ONBOARDING_PAGE =
   'packages/business/onboarding/onboarding';
 
-export type MiniProgramCodeEnvironment = 'release' | 'trial' | 'develop';
+export type { MiniProgramCodeEnvironment } from '@/lib/mini-program-code-environment';
 
 export type MiniProgramCodeOptions = {
   fetchImpl?: typeof fetch;

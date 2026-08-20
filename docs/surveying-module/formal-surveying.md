@@ -41,10 +41,26 @@ copy back to `layoutData`.
 - Export is read-only and accepts only a `completed` formal v4 graph with at
   least one closed space. It never writes or stores a second `layoutData` copy.
 - `admin/src/lib/dxf.ts` is a thin adapter over `@tarikjabiri/dxf@2.8.9` (MIT).
-  It writes AutoCAD 2007+ DXF in millimetres, with wall, opening, dimension,
-  space, and floor-title layers. Floors are placed side by side while retaining
-  each floor's internal coordinates; no customer data or project title block is
-  exported.
+  It writes AutoCAD 2007+ DXF in millimetres, with Chinese CAD layers (`墙`,
+  `门`, `窗`, `尺寸标注`, `空间名称`, `指北针`), millimetre DIMSTYLE
+  (`标注线` / `标注线-内墙`), `_ARCHTICK`, `黑体`, and `ACAD_ISO03W100`
+  door-swing dashes. Floors are placed side by side while retaining
+  each floor's internal coordinates. Closed rooms write four-line MTEXT
+  (name, inner-face area m², ceiling height m, inner-face perimeter m) at
+  the room centroid. A cyan model-space title block and north-arrow block
+  wrap the drawing with the sheet name `原始户型平面图`, a computed plot
+  scale, the plan completion date, the linked lead's enterprise as 公司, and
+  the lead's assigned designer as 设计师; customer phone and address are not
+  exported. Both export endpoints resolve that sheet metadata in the same
+  tenant transaction as the floor plan. Walls are opening-gapped rectangles unioned by
+  `surveyWallSolidPlan` and written as inner/outer `LINE` faces plus jambs,
+  not per-wall thickness rectangles. Hinged doors are a unit `DOOR` block
+  (leaf + CCW 90° arc) inserted on the opening face; sliding doors and
+  windows are double rails inside the opening, not wall-centerline geometry.
+  Dimensions reuse `createClosedDimensionPlan`: inner segments (including wall
+  thickness) become rotated `AcDbRotatedDimension` entities styled
+  `标注线-内墙`, overall outer lengths use `标注线`, with integer-millimetre
+  text and axis angles 0 or 90. Aligned dimensions are not written.
 - The Mini Program keeps its CAD control disabled until the cloud plan is
   completed. A download is saved to the Mini Program file domain and offered to
   the system document handler; devices without a DXF handler are told to send

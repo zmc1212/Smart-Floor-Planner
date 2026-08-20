@@ -14,8 +14,16 @@ Git 历史保留。
 - 已完成且至少有一个闭合空间的正式 v4 户型可导出施工 DXF；后台 Cookie 端点为
   `GET /api/floorplans/[id]/export/dxf`，小程序 Bearer-JWT 端点为
   `GET /api/miniprogram/floorplans/[id]/export/dxf`。适配器只读取 graph，使用
-  `@tarikjabiri/dxf@2.8.9`（MIT）生成 AutoCAD 2007+、毫米单位的图层化 DXF；
-  多楼层横向排布，不输出客户资料或项目图框。小程序完成态才启用 CAD，文件保存到
+  `@tarikjabiri/dxf@2.8.9`（MIT）生成 AutoCAD 2007+、毫米单位的图层化 DXF，图层为
+  `墙`/`门`/`窗`/`尺寸标注`/`空间名称`/`指北针`，并带毫米 DIMSTYLE、`_ARCHTICK`、
+  黑体和门扇弧虚线；墙体按开口切开后交给 `surveyWallSolidPlan` 并集，导出内外皮
+  `LINE`（含门垛），不再按墙段输出厚度矩形。平开门为洞口面上的 `DOOR` 块
+  （门扇 + 逆时针 90° 弧）`INSERT`；推拉门和窗为洞口内双轨，不画在墙中心线。
+  尺寸复用 `createClosedDimensionPlan`，写成旋转 `AcDbRotatedDimension`：内圈分段
+  （含墙厚）用 `标注线-内墙`，外圈总长用 `标注线`，文字为整毫米，角度按轴取 0 或 90，
+  不再写 Aligned DIMENSION。闭合房间在质心写四行 MTEXT（名称、内皮面积㎡、层高 m、
+  内皮周长 m）。多楼层横向排布，整图套青色模型空间图框、右侧标题栏和指北针块，
+  图纸名为「原始户型平面图」，并带计算比例、户型完成日期；公司取关联客户线索的企业名（无线索时用户型租户），设计师取线索负责设计师，不写客户电话地址。后台与小程序导出端点在同一租户事务中解析这些图框字段。小程序完成态才启用 CAD，文件保存到
   小程序文件域后交给系统文档处理；设备不能打开 DXF 时提示转发至 CAD 设备。
 
 ## 数据与入口合同

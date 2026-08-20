@@ -1,6 +1,18 @@
 const api = require('../../../utils/api.js');
 const session = require('../../../utils/session.js');
 
+const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
+
+function onboardingUrlFromScanResult(scanResult) {
+  const rawPath = String(scanResult && scanResult.path || '').trim();
+  const queryIndex = rawPath.indexOf('?');
+  const route = (queryIndex === -1 ? rawPath : rawPath.slice(0, queryIndex))
+    .replace(/^\/+/, '');
+  const query = queryIndex === -1 ? '' : rawPath.slice(queryIndex + 1);
+  if (route !== ONBOARDING_ROUTE || !/(^|&)(token|scene)=[^&]+/.test(query)) return '';
+  return `/${ONBOARDING_ROUTE}${rawPath.slice(queryIndex)}`;
+}
+
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
   let menuRect = null;
@@ -266,7 +278,25 @@ Page({
   },
 
   onAddEnterprise() {
-    wx.navigateTo({ url: '/packages/business/onboarding/onboarding' });
+    wx.scanCode({
+      onlyFromCamera: false,
+      scanType: ['qrCode'],
+      success: (result) => {
+        const url = onboardingUrlFromScanResult(result);
+        if (!url) {
+          wx.showToast({ title: '请扫描企业提供的入驻码', icon: 'none' });
+          return;
+        }
+        wx.navigateTo({
+          url,
+          fail: () => wx.showToast({ title: '无法打开入驻页，请重新扫码', icon: 'none' })
+        });
+      },
+      fail: (error) => {
+        if (String(error && error.errMsg || '').includes('cancel')) return;
+        wx.showToast({ title: '扫码失败，请确认二维码有效', icon: 'none' });
+      }
+    });
   },
 
   onOpenIdentitySwitch() {

@@ -773,6 +773,28 @@ function createExteriorDimensionPlan(input) {
   return { items };
 }
 
+function extraClearanceSupport(points, normal) {
+  if (!points || !points.length) return Number.NEGATIVE_INFINITY;
+  return Math.max(...points.map((value) => dot(value, normal)));
+}
+
+function overlappingOutlineSupport(outlineSegments, normal, direction, minProjection, maxProjection, tolerance) {
+  let support = Number.NEGATIVE_INFINITY;
+  outlineSegments.forEach((segment) => {
+    const frame = createOrthogonalFrame(segment, tolerance);
+    if (!frame || normalKey(frame.outward) !== normalKey(normal)) return;
+    const segmentMin = Math.min(dot(segment.start, direction), dot(segment.end, direction));
+    const segmentMax = Math.max(dot(segment.start, direction), dot(segment.end, direction));
+    if (Math.min(maxProjection, segmentMax) - Math.max(minProjection, segmentMin) <= tolerance * 0.25) return;
+    support = Math.max(support, dot(segment.start, normal), dot(segment.end, normal));
+  });
+  return support;
+}
+
+function dimensionPointAtSupport(value, normal, support, gap) {
+  return add(value, scale(normal, Math.max(0, support - dot(value, normal)) + gap));
+}
+
 /**
  * Builds the two semantic dimension bands used after orthogonal spaces close:
  * room clear spans nearest the building, then the physical building bounds.
@@ -814,9 +836,27 @@ function createClosedDimensionPlan(input) {
   // walls are still on the canvas. Annotations sit outside those unclosed wall
   // bodies (and a stationary preview) rather than underneath them. An in-flight
   // drag preview is omitted by the renderer until the length is committed.
-  const clearancePoints = exteriorPoints.concat((options.clearancePoints || [])
-    .filter((value) => value && Number.isFinite(value.x) && Number.isFinite(value.y)));
-  const supportFor = (normal) => Math.max(...clearancePoints.map((value) => dot(value, normal)));
+  const extraClearancePoints = (options.clearancePoints || [])
+    .filter((value) => value && Number.isFinite(value.x) && Number.isFinite(value.y));
+  const extraClearanceFor = (normal) => extraClearanceSupport(extraClearancePoints, normal);
+  const supportFor = (normal) => Math.max(
+    extraClearanceFor(normal),
+    ...exteriorPoints.map((value) => dot(value, normal))
+  );
+  const localSupportFor = (normal, direction, minProjection, maxProjection, fallbackPoints) => {
+    const outlineSupport = overlappingOutlineSupport(
+      outlineSegments,
+      normal,
+      direction,
+      minProjection,
+      maxProjection,
+      tolerance
+    );
+    const fallbackSupport = fallbackPoints && fallbackPoints.length
+      ? Math.max(...fallbackPoints.map((value) => dot(value, normal)))
+      : Number.NEGATIVE_INFINITY;
+    return Math.max(outlineSupport, fallbackSupport, extraClearanceFor(normal));
+  };
   const sideGroups = new Map();
 
   outlineSegments.forEach((wall) => {
@@ -827,6 +867,7 @@ function createClosedDimensionPlan(input) {
         key: sideKey,
         normal: frame.outward,
         direction: frame.direction,
+        lineNormal: frame.lineNormal,
         walls: []
       });
     }
@@ -869,10 +910,12 @@ function createClosedDimensionPlan(input) {
     const doorOpenings = getDoorOpeningsForWall(wall, doorOpeningsByWall);
     if (!doorOpenings.length) return;
     const frame = createOrthogonalFrame(wall, tolerance);
-    const support = supportFor(frame.outward);
     const coordinateLength = Math.max(0.0001, Number(wall.coordinateLength || distance(wall.start, wall.end)));
     const measurementLength = Math.max(0, Number(wall.measurementLength || coordinateLength * measurementScale));
     const wallDirection = wallFrame(wall).direction;
+    const wallMin = Math.min(dot(wall.start, frame.direction), dot(wall.end, frame.direction));
+    const wallMax = Math.max(dot(wall.start, frame.direction), dot(wall.end, frame.direction));
+    const support = localSupportFor(frame.outward, frame.direction, wallMin, wallMax, [wall.outerStart, wall.outerEnd]);
     const segments = [];
     let cursor = 0;
     doorOpenings.forEach((opening) => {
@@ -889,10 +932,7 @@ function createClosedDimensionPlan(input) {
       const topologyEnd = add(wall.start, scale(wallDirection, safeEnd));
       const outerStart = exteriorPoint(Object.assign({}, wall, wallFrame(wall)), topologyStart);
       const outerEnd = exteriorPoint(Object.assign({}, wall, wallFrame(wall)), topologyEnd);
-      const dimensionPoint = (value) => add(value, scale(
-        frame.outward,
-        Math.max(0, support - dot(value, frame.outward)) + baseGap
-      ));
+      const dimensionPoint = (value) => dimensionPointAtSupport(value, frame.outward, support, baseGap);
       items.push(createDimensionItem({
         id: `dimension-opening:${wall.sourceWallId}:${index}`,
         kind: 'opening-segment',
@@ -918,9 +958,7 @@ function createClosedDimensionPlan(input) {
   mergedRooms.forEach((run, index) => {
     if (run.maxProjection - run.minProjection <= tolerance * 0.25) return;
     const sideKey = normalKey(run.normal);
-    const support = supportFor(run.normal);
     const lane = sidesWithDoorDimensions.has(sideKey) ? 1 : 0;
-    const gap = baseGap + laneGap * lane;
     const extensionStart = add(
       scale(run.direction, run.minProjection),
       scale(run.lineNormal, run.lineProjection)
@@ -929,10 +967,15 @@ function createClosedDimensionPlan(input) {
       scale(run.direction, run.maxProjection),
       scale(run.lineNormal, run.lineProjection)
     );
-    const dimensionPoint = (value) => add(value, scale(
+    const support = localSupportFor(
       run.normal,
-      Math.max(0, support - dot(value, run.normal)) + gap
-    ));
+      run.direction,
+      run.minProjection,
+      run.maxProjection,
+      [extensionStart, extensionEnd]
+    );
+    const gap = baseGap + laneGap * lane;
+    const dimensionPoint = (value) => dimensionPointAtSupport(value, run.normal, support, gap);
     items.push(createDimensionItem({
       id: `dimension-room:${run.sourceSpaceId}:${sideKey}:${index}`,
       kind: 'room-clear',
@@ -951,6 +994,84 @@ function createClosedDimensionPlan(input) {
       distance: gap
     }));
     sidesWithRoomDimensions.add(sideKey);
+  });
+
+  const maxThickness = Math.max(80, maxWallThickness);
+  sideGroups.forEach((side) => {
+    const lineBuckets = new Map();
+    side.walls.forEach((wall) => {
+      const lineKey = roundKey(dot(wall.start, side.lineNormal), tolerance);
+      const startProjection = dot(wall.start, side.direction);
+      const endProjection = dot(wall.end, side.direction);
+      const list = lineBuckets.get(lineKey) || [];
+      list.push(Object.assign({}, wall, {
+        startProjection: Math.min(startProjection, endProjection),
+        endProjection: Math.max(startProjection, endProjection),
+        lineProjection: dot(wall.start, side.lineNormal)
+      }));
+      lineBuckets.set(lineKey, list);
+    });
+    const roomsOnSide = mergedRooms.filter((run) => normalKey(run.normal) === side.key);
+    const lane = sidesWithDoorDimensions.has(side.key) ? 1 : 0;
+    const gap = baseGap + laneGap * lane;
+    lineBuckets.forEach((bucket) => {
+      splitContinuousRuns(bucket, tolerance).forEach((outlineRun, runIndex) => {
+        const runMin = outlineRun.minProjection;
+        const runMax = outlineRun.maxProjection;
+        const lineProjection = outlineRun.entries[0].lineProjection;
+        const runSupport = Math.max(
+          extraClearanceFor(side.normal),
+          ...outlineRun.entries.flatMap((wall) => [dot(wall.start, side.normal), dot(wall.end, side.normal)])
+        );
+        const covers = roomsOnSide
+          .map((room) => ({
+            min: Math.max(runMin, room.minProjection),
+            max: Math.min(runMax, room.maxProjection)
+          }))
+          .filter((span) => span.max - span.min > tolerance * 0.25)
+          .sort((first, second) => first.min - second.min);
+        const cuts = [runMin];
+        covers.forEach((span) => {
+          if (span.min - cuts[cuts.length - 1] > tolerance) cuts.push(span.min);
+          if (span.max - cuts[cuts.length - 1] > tolerance) cuts.push(span.max);
+        });
+        if (runMax - cuts[cuts.length - 1] > tolerance) cuts.push(runMax);
+        for (let index = 0; index < cuts.length - 1; index += 1) {
+          const startProjection = cuts[index];
+          const endProjection = cuts[index + 1];
+          const covered = covers.some((span) => (
+            startProjection >= span.min - tolerance && endProjection <= span.max + tolerance
+          ));
+          if (covered) continue;
+          const length = endProjection - startProjection;
+          if (length < 50 || length > maxThickness + tolerance * 4) continue;
+          const extensionStart = add(
+            scale(side.direction, startProjection),
+            scale(side.lineNormal, lineProjection)
+          );
+          const extensionEnd = add(
+            scale(side.direction, endProjection),
+            scale(side.lineNormal, lineProjection)
+          );
+          const dimensionPoint = (value) => dimensionPointAtSupport(value, side.normal, runSupport, gap);
+          items.push(createDimensionItem({
+            id: `dimension-thickness:${side.key}:${runIndex}:${index}`,
+            kind: 'wall-thickness',
+            groupId: `dimension-thickness:${side.key}`,
+            label: length * measurementScale,
+            lane,
+            start: extensionStart,
+            end: extensionEnd,
+            dimensionStart: dimensionPoint(extensionStart),
+            dimensionEnd: dimensionPoint(extensionEnd),
+            extensionStart,
+            extensionEnd,
+            normal: side.normal,
+            distance: gap
+          }));
+        }
+      });
+    });
   });
 
   sideGroups.forEach((side) => {

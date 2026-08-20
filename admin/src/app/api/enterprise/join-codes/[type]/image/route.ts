@@ -7,6 +7,7 @@ import {
   createEnterpriseOnboardingCode,
   getMiniProgramCodeContentType,
 } from '@/lib/wechat-miniprogram-code';
+import { getPlatformMiniProgramCodeConfig } from '@/lib/platform-mini-program-code-config';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +42,8 @@ export async function POST(
           );
         }
         try {
-          const image = await createEnterpriseOnboardingCode(revealed.token);
+          const { environment } = await getPlatformMiniProgramCodeConfig();
+          const image = await createEnterpriseOnboardingCode(revealed.token, { envVersion: environment });
           const contentType = getMiniProgramCodeContentType(image) ?? 'application/octet-stream';
           const extension = contentType === 'image/jpeg' ? 'jpg' : 'png';
           return new NextResponse(image, {

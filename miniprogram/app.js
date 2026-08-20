@@ -24,6 +24,8 @@ App({
     justLoggedIn: false,
     sessionHydrated: false,
     sessionHydrating: false,
+    sessionHydrationToken: null,
+    sessionHydrationPromise: null,
     bootstrap: null,
     sessionRecovery: null,
     lastValidIdentityContext: null,
@@ -96,60 +98,84 @@ App({
   },
 
   async hydrateStoredSession() {
-    if (this.globalData.sessionHydrating || !this.globalData.token) return;
-    this.globalData.sessionHydrating = true;
-    const token = this.globalData.token;
-    try {
-      const refreshed = await api.request('/auth/miniprogram', 'POST', {
-        type: 'refresh',
-        token
-      }, { suppressUnauthorized: true });
-      if (!refreshed || !refreshed.token || !refreshed.user) throw new Error('Session refresh failed');
-      this.globalData.token = refreshed.token;
-      this.globalData.userInfo = refreshed.user;
-      this.globalData.openid = refreshed.openid || refreshed.user.openid || null;
-      wx.setStorageSync('token', refreshed.token);
-      wx.setStorageSync('userInfo', refreshed.user);
-      if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
-      this.globalData.sessionHydrated = true;
-      const bootstrap = await api.request('/miniprogram/bootstrap', 'GET', {}, { suppressUnauthorized: true });
-      if (!bootstrap || !bootstrap.current || !bootstrap.current.context) {
-        throw Object.assign(new Error('Identity bootstrap failed'), { statusCode: 401, error: 'Identity bootstrap failed' });
+    const currentToken = this.globalData.token;
+    if (!currentToken) return;
+    if (this.globalData.sessionHydrating) {
+      if (this.globalData.sessionHydrationToken === currentToken) {
+        return this.globalData.sessionHydrationPromise;
       }
-      this.globalData.bootstrap = bootstrap;
-      this.globalData.lastValidIdentityContext = bootstrap.current.context;
-      this.globalData.sessionRecovery = null;
-      wx.setStorageSync('lastValidIdentityContext', bootstrap.current.context);
-      this.syncProfessionalContext();
-      this.restoreRoleLanding();
-      this.guardCurrentRoute();
-      this.refreshCustomTabBar();
-    } catch (error) {
-      if (error && (error.statusCode === 401 || error.error === 'Unauthorized')) {
-        this.globalData.token = null;
-        this.globalData.userInfo = null;
-        this.globalData.openid = null;
-        wx.removeStorageSync('token');
-        wx.removeStorageSync('userInfo');
-        wx.removeStorageSync('openid');
-        this.globalData.bootstrap = null;
-        this.globalData.sessionRecovery = {
-          reason: error.code || 'identity_context_invalid',
-          lastValidIdentityContext: this.globalData.lastValidIdentityContext || wx.getStorageSync('lastValidIdentityContext') || null
-        };
-        this.globalData.sessionHydrated = true;
-        wx.reLaunch({ url: `/packages/business/identity-recovery/identity-recovery?reason=${encodeURIComponent(error.code || 'identity_context_invalid')}` });
-      } else {
-        this.globalData.sessionRecovery = {
-          reason: 'bootstrap_unavailable',
-          retryable: true,
-          lastValidIdentityContext: this.globalData.lastValidIdentityContext || wx.getStorageSync('lastValidIdentityContext') || null
-        };
-        this.globalData.sessionHydrated = true;
-      }
-    } finally {
-      this.globalData.sessionHydrating = false;
+      await this.globalData.sessionHydrationPromise;
+      return this.hydrateStoredSession();
     }
+
+    this.globalData.sessionHydrating = true;
+    this.globalData.sessionHydrationToken = currentToken;
+    let activeToken = currentToken;
+    const hydration = (async () => {
+      try {
+        const refreshed = await api.request('/auth/miniprogram', 'POST', {
+          type: 'refresh',
+          token: activeToken
+        }, { suppressUnauthorized: true });
+        // A newer login can finish while an old cold-start refresh is pending.
+        // That old task must not overwrite or clear the newer signed session.
+        if (this.globalData.token !== activeToken) return;
+        if (!refreshed || !refreshed.token || !refreshed.user) throw new Error('Session refresh failed');
+        activeToken = refreshed.token;
+        this.globalData.token = activeToken;
+        this.globalData.userInfo = refreshed.user;
+        this.globalData.openid = refreshed.openid || refreshed.user.openid || null;
+        wx.setStorageSync('token', activeToken);
+        wx.setStorageSync('userInfo', refreshed.user);
+        if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
+        this.globalData.sessionHydrated = true;
+        const bootstrap = await api.request('/miniprogram/bootstrap', 'GET', {}, { suppressUnauthorized: true });
+        if (this.globalData.token !== activeToken) return;
+        if (!bootstrap || !bootstrap.current || !bootstrap.current.context) {
+          throw Object.assign(new Error('Identity bootstrap failed'), { statusCode: 401, error: 'Identity bootstrap failed' });
+        }
+        this.globalData.bootstrap = bootstrap;
+        this.globalData.lastValidIdentityContext = bootstrap.current.context;
+        this.globalData.sessionRecovery = null;
+        wx.setStorageSync('lastValidIdentityContext', bootstrap.current.context);
+        this.syncProfessionalContext();
+        this.restoreRoleLanding();
+        this.guardCurrentRoute();
+        this.refreshCustomTabBar();
+      } catch (error) {
+        if (this.globalData.token !== activeToken) return;
+        if (error && (error.statusCode === 401 || error.error === 'Unauthorized')) {
+          this.globalData.token = null;
+          this.globalData.userInfo = null;
+          this.globalData.openid = null;
+          wx.removeStorageSync('token');
+          wx.removeStorageSync('userInfo');
+          wx.removeStorageSync('openid');
+          this.globalData.bootstrap = null;
+          this.globalData.sessionRecovery = {
+            reason: error.code || 'identity_context_invalid',
+            lastValidIdentityContext: this.globalData.lastValidIdentityContext || wx.getStorageSync('lastValidIdentityContext') || null
+          };
+          this.globalData.sessionHydrated = true;
+          wx.reLaunch({ url: `/packages/business/identity-recovery/identity-recovery?reason=${encodeURIComponent(error.code || 'identity_context_invalid')}` });
+        } else {
+          this.globalData.sessionRecovery = {
+            reason: 'bootstrap_unavailable',
+            retryable: true,
+            lastValidIdentityContext: this.globalData.lastValidIdentityContext || wx.getStorageSync('lastValidIdentityContext') || null
+          };
+          this.globalData.sessionHydrated = true;
+        }
+      } finally {
+        if (this.globalData.sessionHydrationPromise === hydration) {
+          this.globalData.sessionHydrating = false;
+          this.globalData.sessionHydrationToken = null;
+          this.globalData.sessionHydrationPromise = null;
+        }
+      }
+    })();
+    this.globalData.sessionHydrationPromise = hydration;
+    return hydration;
   },
 
   restoreRoleLanding() {

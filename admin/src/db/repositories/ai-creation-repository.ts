@@ -6,6 +6,7 @@ import {
   eq,
   ilike,
   inArray,
+  isNotNull,
   max,
   or,
   sql,
@@ -87,6 +88,20 @@ export class AiCreationRepository {
       .where(and(eq(aiCreationTasks.id, id), sql`${aiCreationTasks.deletedAt} is null`))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  async findLatestCreationTaskIdForWorkflow(workflowId: bigint) {
+    const rows = await this.transaction
+      .select({ creationTaskId: aiGenerations.creationTaskId })
+      .from(aiGenerations)
+      .where(and(
+        eq(aiGenerations.workflowId, workflowId),
+        isNotNull(aiGenerations.creationTaskId),
+        sql`${aiGenerations.deletedAt} is null`
+      ))
+      .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id))
+      .limit(1);
+    return rows[0]?.creationTaskId ?? null;
   }
 
   async loadTaskView(id: bigint): Promise<AiCreationTaskView | null> {

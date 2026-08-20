@@ -91,6 +91,7 @@ import {
   createPostgresAiWorkflowManualGeneration,
   createPostgresAiWorkflow,
   getPostgresAiWorkflowContext,
+  getPostgresAiWorkflowFloorPlanPreview,
   getPostgresAiWorkflowSourceImage,
   listPostgresAiWorkflows,
   preparePostgresAiWorkflowStage,
@@ -2495,6 +2496,198 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
       }
       if (resultAssetId) await transaction.delete(mediaAssets).where(eq(mediaAssets.id, resultAssetId));
       if (assetId) await transaction.delete(mediaAssets).where(eq(mediaAssets.id, assetId));
+    });
+  }
+});
+
+test('PostgreSQL workbench creation batch requires an eligible workflow floor plan', async () => {
+  let leadId: bigint | null = null;
+  let workflowId: bigint | null = null;
+  let taskId: bigint | null = null;
+  try {
+    const profiles = await listPostgresExecutableImageModelProfiles();
+    const profile = profiles.find((item) => item.key === 'grs-gpt-image-2');
+    assert.ok(profile);
+    const lead = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'Workbench floor-plan required lead',
+        phone: `138${String(Date.now()).slice(-8)}`,
+        source: 'integration-test',
+        status: 'new',
+      })
+    );
+    leadId = lead.id;
+    const workflow = await createPostgresAiWorkflow({
+      enterpriseId: enterpriseAId,
+      operatorId: promotionDesignerAId,
+      leadId: lead.id,
+      sourceImage: 'data:image/png;base64,AA==',
+    });
+    workflowId = workflow.id;
+    const task = await createPostgresCreationTask({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      modelProfileId: profile!.id.toString(),
+      title: 'Workbench conversation',
+      prompt: 'Living room warm light',
+    });
+    taskId = task.id;
+    await assert.rejects(
+      preparePostgresCreationBatch({
+        enterpriseId: enterpriseAId.toString(),
+        operatorId: promotionDesignerAId.toString(),
+        taskId: task.id.toString(),
+        modelProfileId: profile!.id.toString(),
+        prompt: 'Living room warm light',
+        parameters: { aspectRatio: '1:1', resolutionTier: '1K' },
+        count: 1,
+        workflowId: workflow.id.toString(),
+      }),
+      /请先关联合格的正式户型/
+    );
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (taskId) {
+        await transaction.delete(aiGenerations).where(eq(aiGenerations.creationTaskId, taskId));
+        await transaction.delete(aiCreationTasks).where(eq(aiCreationTasks.id, taskId));
+      }
+      if (workflowId) await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
+      if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
+    });
+  }
+});
+
+test('PostgreSQL workbench floor-plan preview renders the bound survey control PNG', async () => {
+  const eligibleLayout = {
+    version: 4,
+    measurementMode: 'surveying',
+    surveyGraph: {
+      kind: 'survey-wall-graph',
+      activeFloorId: 'floor-1',
+      floors: [{
+        id: 'floor-1',
+        name: '一层',
+        ceilingHeightMm: 2800,
+        nodes: [
+          { id: 'n1', xMm: 0, yMm: 0 },
+          { id: 'n2', xMm: 4000, yMm: 0 },
+          { id: 'n3', xMm: 4000, yMm: 3000 },
+          { id: 'n4', xMm: 0, yMm: 3000 },
+        ],
+        walls: [
+          { id: 'w1', startNodeId: 'n1', endNodeId: 'n2' },
+          { id: 'w2', startNodeId: 'n2', endNodeId: 'n3' },
+          { id: 'w3', startNodeId: 'n3', endNodeId: 'n4' },
+          { id: 'w4', startNodeId: 'n4', endNodeId: 'n1' },
+        ],
+        openings: [],
+        spaces: [
+          { id: 'living', name: '客厅', wallIds: ['w1', 'w2', 'w3', 'w4'], closed: true },
+        ],
+      }],
+    },
+  };
+  let userId: bigint | null = null;
+  let leadId: bigint | null = null;
+  let floorPlanId: bigint | null = null;
+  let workflowId: bigint | null = null;
+  let imageOnlyWorkflowId: bigint | null = null;
+  try {
+    const created = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const user = await new UserRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        role: 'user',
+        openid: `${testRunKey}-workbench-floorplan-user`,
+        nickname: 'Workbench Floor Plan Customer',
+      });
+      const plan = await new FloorPlanRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        creatorId: user.id,
+        staffId: promotionDesignerAId,
+        name: 'Workbench control plan',
+        layoutData: eligibleLayout,
+        source: 'surveying',
+        status: 'completed',
+        completedAt: new Date(),
+      });
+      const leadRepository = new LeadRepository(transaction);
+      const lead = await leadRepository.create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'Workbench floor-plan preview lead',
+        phone: `136${String(Date.now()).slice(-8)}`,
+        source: 'integration-test',
+        status: 'new',
+      });
+      await leadRepository.linkFloorPlan(lead.id, plan.id);
+      return { user, plan, lead };
+    });
+    userId = created.user.id;
+    floorPlanId = created.plan.id;
+    leadId = created.lead.id;
+
+    const workflow = await createPostgresAiWorkflow({
+      enterpriseId: enterpriseAId,
+      operatorId: promotionDesignerAId,
+      leadId: created.lead.id,
+      sourceFloorPlanId: created.plan.id,
+      title: '灯光设计',
+    });
+    workflowId = workflow.id;
+
+    const context = await getPostgresAiWorkflowContext({
+      enterpriseId: enterpriseAId,
+      workflowId: workflow.id,
+    });
+    assert.equal(context.workflow.floorPlanPreviewUrl, `/api/ai/workflows/${workflow.id}/floor-plan-preview?v=2`);
+    assert.equal(context.workflow.sourceFloorPlan?.id, String(created.plan.id));
+    assert.equal(context.workflow.sourceFloorPlan?.name, 'Workbench control plan');
+
+    const png = await getPostgresAiWorkflowFloorPlanPreview({
+      enterpriseId: enterpriseAId,
+      workflowId: workflow.id,
+    });
+    assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(png.length > 1000);
+
+    await assert.rejects(
+      () => getPostgresAiWorkflowFloorPlanPreview({
+        enterpriseId: enterpriseBId,
+        workflowId: workflow.id,
+      }),
+      /方案会话不存在或无权访问/
+    );
+
+    const imageOnly = await createPostgresAiWorkflow({
+      enterpriseId: enterpriseAId,
+      operatorId: promotionDesignerAId,
+      leadId: created.lead.id,
+      sourceImage: 'data:image/png;base64,AA==',
+      title: '无户型对话',
+    });
+    imageOnlyWorkflowId = imageOnly.id;
+    const imageOnlyContext = await getPostgresAiWorkflowContext({
+      enterpriseId: enterpriseAId,
+      workflowId: imageOnly.id,
+    });
+    assert.equal(imageOnlyContext.workflow.floorPlanPreviewUrl, undefined);
+    assert.equal(imageOnlyContext.workflow.sourceFloorPlan, null);
+    await assert.rejects(
+      () => getPostgresAiWorkflowFloorPlanPreview({
+        enterpriseId: enterpriseAId,
+        workflowId: imageOnly.id,
+      }),
+      /方案尚未关联正式户型/
+    );
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (imageOnlyWorkflowId) await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, imageOnlyWorkflowId));
+      if (workflowId) await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
+      if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
+      if (floorPlanId) await transaction.delete(floorPlans).where(eq(floorPlans.id, floorPlanId));
+      if (userId) await transaction.delete(users).where(eq(users.id, userId));
     });
   }
 });

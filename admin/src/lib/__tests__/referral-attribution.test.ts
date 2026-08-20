@@ -9,6 +9,7 @@ import {
   sealPendingStaffActivitySource,
 } from '@/lib/referral-attribution';
 import { resetWechatAccessTokenCacheForTests } from '@/lib/wechat-access-token';
+import { normalizePlatformMiniProgramCodeConfig } from '@/lib/platform-mini-program-code-config';
 import {
   buildEnterpriseOnboardingPath,
   buildPromotionServicePath,
@@ -344,6 +345,27 @@ test('resolveMiniProgramCodeEnvironment respects explicit, env var, and NODE_ENV
     else process.env.WECHAT_MINIPROGRAM_CODE_ENV = previousCodeEnv;
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousNodeEnv;
+  }
+});
+
+test('platform code environment only accepts the three WeChat deployment targets', () => {
+  assert.deepEqual(normalizePlatformMiniProgramCodeConfig(), { environment: 'develop' });
+  assert.deepEqual(normalizePlatformMiniProgramCodeConfig({ environment: 'trial' }), { environment: 'trial' });
+  assert.deepEqual(normalizePlatformMiniProgramCodeConfig({ environment: 'release' }), { environment: 'release' });
+  assert.deepEqual(normalizePlatformMiniProgramCodeConfig({ environment: 'invalid' as never }), { environment: 'develop' });
+});
+
+test('all Mini Program code image endpoints read the single platform environment', () => {
+  const routes = [
+    'src/app/api/enterprise/join-codes/[type]/image/route.ts',
+    'src/app/api/miniprogram/referrer-memberships/[id]/promotion-code/image/route.ts',
+    'src/app/api/miniprogram/staff-activity-code/image/route.ts',
+  ];
+
+  for (const routePath of routes) {
+    const route = readFileSync(path.join(process.cwd(), routePath), 'utf8');
+    assert.match(route, /getPlatformMiniProgramCodeConfig/);
+    assert.match(route, /envVersion:\s*environment/);
   }
 });
 

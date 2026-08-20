@@ -1,4 +1,4 @@
-import { resolveLeadServiceStage } from '@/lib/lead-service-stage';
+import { resolveLeadServiceStage, type LeadServiceStage } from '@/lib/lead-service-stage';
 
 export function isAssignmentEligibleStaff(member: {
   role?: string | null;
@@ -85,6 +85,13 @@ export function selectWorkbenchFloorPlan(lead: WorkbenchLeadInput) {
   })[0] || null;
 }
 
+const COMPLETED_MEASURER_SURVEY_STAGES = new Set<LeadServiceStage>([
+  'survey_completed',
+  'design_published',
+  'converted',
+  'closed',
+]);
+
 export function isMeasurerWorkbenchSurveyLead(
   lead: WorkbenchLeadInput,
   occupiedLeadIds: Set<string>
@@ -92,9 +99,16 @@ export function isMeasurerWorkbenchSurveyLead(
   if (occupiedLeadIds.has(String(lead.id))) return false;
   const status = lead.status || 'new';
   if (['converted', 'closed'].includes(status)) return false;
-  const pending = ['new', 'measuring'].includes(status);
-  const hasPlan = Boolean(selectWorkbenchFloorPlan(lead));
-  return pending || hasPlan;
+  const plan = selectWorkbenchFloorPlan(lead);
+  const stage = resolveLeadServiceStage({
+    leadStatus: status,
+    assignmentStatus: lead.assignmentStatus,
+    measurerId: lead.measurerId,
+    appointment: lead.appointment,
+    hasFormalFloorPlan: plan?.status === 'completed',
+  });
+  if (COMPLETED_MEASURER_SURVEY_STAGES.has(stage.key)) return false;
+  return ['new', 'measuring'].includes(status) || Boolean(plan && plan.status !== 'completed');
 }
 
 export function buildWorkbenchAppointmentItem(

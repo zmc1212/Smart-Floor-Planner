@@ -212,6 +212,13 @@ const STATUS_LABELS = Object.fromEntries(
   STATUS_OPTIONS.map((item) => [item.value, item.label])
 );
 
+function openAiWorkbench(leadId: string, workflowId?: string) {
+  const params = new URLSearchParams();
+  params.set('leadId', leadId);
+  if (workflowId) params.set('workflowId', workflowId);
+  window.open(`/ai-studio/scenarios?${params.toString()}`, '_blank', 'noopener,noreferrer');
+}
+
 function getFloorPlanSourceLabel(source?: string | null) {
   if (source === 'kujiale') return '酷家乐';
   if (source === 'template') return '模板';
@@ -1150,7 +1157,7 @@ function LeadsPage() {
           </Button>
           {archiveState === 'active' ? (
             <>
-              <Button size="small" icon={<FilePenLine size={14} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}>
+              <Button size="small" icon={<FilePenLine size={14} />} onClick={() => openAiWorkbench(lead._id)}>
                 {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
               </Button>
               {capabilities.canManageArchive ? (
@@ -1328,7 +1335,7 @@ function LeadsPage() {
                           <Space size={8} wrap>
                             <Button size="small" icon={<Eye size={14} />} onClick={() => void openLeadDetail(lead)}>详情</Button>
                             {archiveState === 'active' ? (
-                              <Button size="small" icon={<FilePenLine size={14} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}>
+                              <Button size="small" icon={<FilePenLine size={14} />} onClick={() => openAiWorkbench(lead._id)}>
                                 {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
                               </Button>
                             ) : null}
@@ -1734,7 +1741,7 @@ function LeadsPage() {
         title={selectedLead ? `${selectedLead.name}的线索详情` : '线索详情'}
         onClose={closeLeadDetail}
         extra={selectedLead && !selectedLead.archivedAt ? (
-          <Button icon={<FilePenLine size={16} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${selectedLead._id}`)}>
+          <Button icon={<FilePenLine size={16} />} onClick={() => openAiWorkbench(selectedLead._id)}>
             {selectedLead.floorPlanIds?.length || selectedLead.followUpRecords?.length ? '查看方案' : '开始方案'}
           </Button>
         ) : null}
@@ -1826,7 +1833,7 @@ function LeadsPage() {
                     <Typography.Text strong>客户可见方案</Typography.Text>
                     <Tag color={publications.length ? 'green' : 'default'}>{publications.length ? '已发布' : '仅内部可见'}</Tag>
                   </Flex>
-                  <Button size="small" icon={<FilePenLine size={14} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${selectedLead._id}`)}>
+                  <Button size="small" icon={<FilePenLine size={14} />} onClick={() => openAiWorkbench(selectedLead._id)}>
                     前往 AI 工作台
                   </Button>
                 </Flex>

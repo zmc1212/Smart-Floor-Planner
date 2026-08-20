@@ -17,9 +17,24 @@ export async function GET(request: Request) {
       const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
       const limit = Math.min(30, Math.max(1, Number(url.searchParams.get('limit')) || 12));
       const query = url.searchParams.get('q')?.trim();
+      const workflowId = url.searchParams.get('workflowId')?.trim();
       await reconcilePostgresCreationTasks(enterpriseId.toString()).catch((error) =>
         console.error('[AI Creation PostgreSQL Reconcile]', error)
       );
+      if (workflowId) {
+        const view = await withTenantTransaction(enterpriseId, async (transaction) => {
+          const repository = new AiCreationRepository(transaction);
+          const taskId = await repository.findLatestCreationTaskIdForWorkflow(
+            parsePostgresId(workflowId, 'workflowId')
+          );
+          return taskId ? repository.loadTaskView(taskId) : null;
+        });
+        return NextResponse.json({
+          success: true,
+          data: view ? [serializePostgresCreationTask(view)] : [],
+          pagination: { page: 1, limit: 1, total: view ? 1 : 0, totalPages: view ? 1 : 0 },
+        });
+      }
       const listed = await withTenantTransaction(enterpriseId, async (transaction) => {
         const repository = new AiCreationRepository(transaction);
         const result = await repository.listTasks({ page, limit, query });

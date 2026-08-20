@@ -116,8 +116,23 @@ test('single-room control image includes only openings on the selected room wall
   layoutWithOpenings.surveyGraph.floors[0].openings = [
     { id: 'living-door', wallId: 'w1', type: 'door', centerOffsetMm: 1000, widthMm: 900 },
     { id: 'bedroom-window', wallId: 'w6', type: 'window', centerOffsetMm: 1500, widthMm: 1200 },
+    { id: 'bedroom-slider', wallId: 'w5', type: 'door', modelCategory: 'sliding-door', centerOffsetMm: 2000, widthMm: 1600 },
   ];
 
-  const svg = createMiniAiFloorPlanControlSvg(layoutWithOpenings, 1024, 'bedroom');
-  assert.equal((svg.match(/<line /g) || []).length, 7);
+  const bedroom = createMiniAiFloorPlanControlSvg(layoutWithOpenings, 1024, 'bedroom');
+  const living = createMiniAiFloorPlanControlSvg(layoutWithOpenings, 1024, 'living');
+  const whole = createMiniAiFloorPlanControlSvg(layoutWithOpenings);
+
+  assert.match(bedroom, /data-opening="window"/);
+  assert.match(bedroom, /data-opening="sliding-door"/);
+  assert.doesNotMatch(bedroom, /data-opening="door"/);
+  assert.doesNotMatch(bedroom, /data-kind="door-swing"/);
+  assert.match(living, /data-opening="door"/);
+  assert.match(living, /data-kind="door-swing"/);
+  assert.doesNotMatch(living, /data-opening="window"/);
+  assert.match(whole, /data-kind="door-swing"/);
+  assert.match(whole, /data-opening="window"/);
+  assert.match(whole, /data-opening="sliding-door"/);
+  assert.match(whole, />门</);
+  assert.match(whole, />窗</);
 });

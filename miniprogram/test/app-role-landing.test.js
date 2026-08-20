@@ -90,6 +90,71 @@ test('an invalid signed context clears the session and enters explicit recovery'
   }
 });
 
+test('a stale cold-start refresh cannot invalidate a newer phone-login session', async () => {
+  const definition = loadAppDefinition();
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  const removed = [];
+  const relaunched = [];
+  let rejectOldRefresh;
+  global.wx = {
+    getStorageSync() { return null; },
+    setStorageSync() {},
+    removeStorageSync(key) { removed.push(key); },
+    reLaunch(options) { relaunched.push(options.url); }
+  };
+  api.request = async (url, method, data) => {
+    if (url === '/auth/miniprogram' && data.token === 'old-token') {
+      return new Promise((resolve, reject) => { rejectOldRefresh = reject; });
+    }
+    if (url === '/auth/miniprogram' && data.token === 'new-token') {
+      return { token: 'new-refreshed-token', user: { mode: 'staff', openid: 'new-openid' }, openid: 'new-openid' };
+    }
+    if (url === '/miniprogram/bootstrap') {
+      return { current: { context: { mode: 'staff' } } };
+    }
+    throw new Error(`Unexpected request: ${url} ${method}`);
+  };
+  const app = {
+    globalData: {
+      token: 'old-token',
+      userInfo: { mode: 'customer' },
+      openid: 'old-openid',
+      sessionHydrating: false,
+      sessionHydrated: false,
+      sessionHydrationToken: null,
+      sessionHydrationPromise: null,
+      bootstrap: null,
+      sessionRecovery: null,
+      lastValidIdentityContext: null
+    },
+    syncProfessionalContext() {},
+    restoreRoleLanding() {},
+    guardCurrentRoute() {},
+    refreshCustomTabBar() {},
+    hydrateStoredSession: definition.hydrateStoredSession
+  };
+
+  try {
+    const oldHydration = definition.hydrateStoredSession.call(app);
+    await Promise.resolve();
+    app.globalData.token = 'new-token';
+    app.globalData.userInfo = { mode: 'staff' };
+    const newHydration = definition.hydrateStoredSession.call(app);
+    rejectOldRefresh({ error: 'Unauthorized', statusCode: 401, code: 'identity_context_invalid' });
+    await Promise.all([oldHydration, newHydration]);
+
+    assert.equal(app.globalData.token, 'new-refreshed-token');
+    assert.equal(app.globalData.sessionRecovery, null);
+    assert.deepEqual(removed, []);
+    assert.deepEqual(relaunched, []);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+  }
+});
+
 test('branding sync tolerates a wrapped API request export', async () => {
   const apiPath = require.resolve('../utils/api.js');
   const apiModule = require(apiPath);

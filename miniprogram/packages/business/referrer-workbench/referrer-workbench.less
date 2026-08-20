@@ -85,7 +85,7 @@ page {
 .identity-badge-text {
   overflow: hidden;
   color: #3a4d40;
-  font-size: 16rpx;
+  font-size: 20rpx;
   font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -178,7 +178,7 @@ page {
 
 .hero-subtitle-text {
   margin-top: 8rpx;
-  font-size: 18rpx;
+  font-size: 22rpx;
   line-height: 1.4;
   color: rgba(255, 255, 255, 0.9);
 }
@@ -204,15 +204,15 @@ page {
 }
 
 .stat-pill-text {
-  font-size: 16rpx;
+  font-size: 24rpx;
   font-weight: 600;
   color: #ffffff;
   white-space: nowrap;
 }
 
 .stat-pill:nth-child(1),
-.stat-pill:nth-child(2) { width: 120rpx; }
-.stat-pill:nth-child(3) { width: 144rpx; }
+.stat-pill:nth-child(2) { min-width: 156rpx; }
+.stat-pill:nth-child(3) { min-width: 242rpx; }
 
 .hero-cta-btn {
   display: inline-flex;
@@ -251,7 +251,7 @@ page {
 
 .cta-btn-text {
   color: #00a854;
-  font-size: 20rpx;
+  font-size: 26rpx;
   font-weight: 800;
   line-height: 1;
 }
@@ -307,7 +307,7 @@ page {
 
 .quick-card-title {
   color: #183426;
-  font-size: 24rpx;
+  font-size: 28rpx;
   font-weight: 800;
   line-height: 1.25;
 }
@@ -315,7 +315,7 @@ page {
 .quick-card-link {
   margin-top: 12rpx;
   color: #00c365;
-  font-size: 16rpx;
+  font-size: 24rpx;
   font-weight: 700;
   line-height: 1.3;
 }
@@ -377,13 +377,13 @@ page {
 
 .section-count-badge {
   display: inline-flex;
-  width: 88rpx;
-  height: 28rpx;
+  min-width: 112rpx;
+  height: 36rpx;
   padding: 0;
   border-radius: 14rpx;
   background: #e8f7ee;
   color: #00a854;
-  font-size: 14rpx;
+  font-size: 20rpx;
   font-weight: 700;
   line-height: 1.3;
   align-items: center;
@@ -416,16 +416,12 @@ page {
   border-radius: 23rpx;
   color: #4b5563;
   background: #ffffff;
-  font-size: 16rpx;
+  font-size: 24rpx;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   box-sizing: border-box;
 }
-
-.enterprise-pill:nth-child(1) { width: 220rpx; }
-.enterprise-pill:nth-child(2) { width: 180rpx; }
-.enterprise-pill:nth-child(3) { width: 150rpx; }
 
 .enterprise-pill.active {
   border-color: #00c365;
@@ -470,7 +466,7 @@ page {
 .rights-card-title {
   margin-bottom: 16rpx;
   color: #183426;
-  font-size: 18rpx;
+  font-size: 24rpx;
   font-weight: 700;
   line-height: 1.25;
 }
@@ -511,7 +507,7 @@ page {
 
 .benefit-name {
   color: #183426;
-  font-size: 18rpx;
+  font-size: 24rpx;
   font-weight: 700;
   line-height: 1.25;
 }
@@ -519,7 +515,7 @@ page {
 .benefit-desc {
   margin-top: 2rpx;
   color: #728078;
-  font-size: 14rpx;
+  font-size: 20rpx;
   line-height: 1.35;
 }
 
@@ -564,7 +560,7 @@ page {
 .milestone-project-name {
   overflow: hidden;
   color: #183426;
-  font-size: 18rpx;
+  font-size: 24rpx;
   font-weight: 800;
   line-height: 1.25;
   text-overflow: ellipsis;
@@ -574,7 +570,7 @@ page {
 .milestone-status-tag {
   padding: 4rpx 12rpx;
   border-radius: 14rpx;
-  font-size: 14rpx;
+  font-size: 20rpx;
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
@@ -597,7 +593,7 @@ page {
 
 .milestone-reward-text {
   color: #00c365;
-  font-size: 18rpx;
+  font-size: 24rpx;
   font-weight: 800;
   line-height: 1.25;
   white-space: nowrap;
@@ -618,7 +614,7 @@ page {
 
 .milestone-client-desc {
   color: #9ca3af;
-  font-size: 14rpx;
+  font-size: 20rpx;
   line-height: 1.35;
 }
 
@@ -643,7 +639,7 @@ page {
 .empty-milestone-desc {
   margin-top: 10rpx;
   color: #8e9e94;
-  font-size: 22rpx;
+  font-size: 24rpx;
   line-height: 1.45;
   max-width: 520rpx;
 }
@@ -737,9 +733,5 @@ page {
   .hero-mascot-wrap {
     width: 220rpx;
     height: 210rpx;
-  }
-  .enterprise-pill {
-    max-width: 320rpx;
-    font-size: 24rpx;
   }
 }

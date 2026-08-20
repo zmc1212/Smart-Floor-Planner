@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { AppointmentRepository, LeadRepository } from '@/db/repositories';
 import { getTenantContext } from '@/lib/auth';
+import { isMeasurerWorkbenchSurveyLead } from '@/lib/miniprogram-workbench';
 import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 
 export const dynamic = 'force-dynamic';
@@ -91,9 +92,9 @@ export async function GET(request: Request) {
       const appointmentLeads = await leads.findByIds(appointmentRows.map((item) => item.leadId));
       const leadMap = new Map(appointmentLeads.map((item) => [item.id, item]));
       const appointmentItems = appointmentRows.map((item) => itemFromAppointment(item, leadMap.get(item.leadId)));
-      const scheduledIds = new Set(appointmentRows.map((item) => item.leadId.toString()));
+      const occupiedIds = new Set(appointmentRows.map((item) => item.leadId.toString()));
       const unscheduled = surveyList.rows
-        .filter((lead) => ['new', 'measuring'].includes(lead.status || 'new') && !scheduledIds.has(lead.id.toString()))
+        .filter((lead) => isMeasurerWorkbenchSurveyLead(lead, occupiedIds))
         .map((lead) => itemFromLead(lead, { canSurveyNow: true, canBookAppointment: !lead.appointment }));
       const taskItems = [...unscheduled, ...appointmentItems];
       return {

@@ -7,6 +7,7 @@ import {
   dxfContentDisposition,
   generateFormalSurveyDxf,
 } from '@/lib/dxf';
+import { resolveFormalSurveyDxfSheet } from '@/lib/dxf-export-sheet';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 
@@ -20,19 +21,21 @@ export async function GET(
     const context = await resolveMiniProgramContext(request);
     if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     const { id } = await params;
-    const plan = await withMiniProgramPostgresTransaction(context, (transaction) =>
-      new FloorPlanRepository(transaction).findById(parsePostgresId(id, 'floor plan id'))
-    );
-    if (!plan || !canAccessMiniProgramFloorPlan(plan, context)) {
+    const loaded = await withMiniProgramPostgresTransaction(context, async (transaction) => {
+      const plan = await new FloorPlanRepository(transaction).findById(parsePostgresId(id, 'floor plan id'));
+      if (!plan || !canAccessMiniProgramFloorPlan(plan, context)) return null;
+      return { plan, sheet: await resolveFormalSurveyDxfSheet(transaction, plan) };
+    });
+    if (!loaded) {
       return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
     }
 
-    const dxf = generateFormalSurveyDxf(plan.layoutData, plan.status);
+    const dxf = generateFormalSurveyDxf(loaded.plan.layoutData, loaded.plan.status, loaded.sheet);
     return new NextResponse(dxf, {
       status: 200,
       headers: {
         'Content-Type': 'application/dxf; charset=utf-8',
-        'Content-Disposition': dxfContentDisposition(plan.name, id),
+        'Content-Disposition': dxfContentDisposition(loaded.plan.name, id),
         'Cache-Control': 'private, no-store',
       },
     });

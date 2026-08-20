@@ -46,6 +46,14 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
 
 const LEGACY_AI_PERMISSIONS = ['ai-designer', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing'];
 
+function passThrough(request: NextRequest) {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-admin-pathname', request.nextUrl.pathname);
+  return NextResponse.next({
+    request: { headers: requestHeaders },
+  });
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -66,10 +74,10 @@ export async function proxy(request: NextRequest) {
         return NextResponse.redirect(new URL('/', request.url));
       } catch {
         // Invalid token, allow access to login
-        return NextResponse.next();
+        return passThrough(request);
       }
     }
-    return NextResponse.next();
+    return passThrough(request);
   }
 
   // 2. Check for auth token
@@ -95,7 +103,7 @@ export async function proxy(request: NextRequest) {
 
     // Super admins have all permissions
     if (role === 'super_admin' || role === 'admin') {
-      return NextResponse.next();
+      return passThrough(request);
     }
 
     // Check permissions for the current route
@@ -113,7 +121,7 @@ export async function proxy(request: NextRequest) {
       // Prevent redirect loop: if already at root and missing dashboard permission, just proceed 
       // and let the application components handle the empty state/unauthorized view
       if (pathname === '/') {
-        return NextResponse.next();
+        return passThrough(request);
       }
 
       if (pathname.startsWith('/api/')) {
@@ -124,7 +132,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/', request.url));
     }
 
-    return NextResponse.next();
+    return passThrough(request);
   } catch (error) {
     console.error('Middleware Auth Error:', error);
     const response = NextResponse.redirect(new URL('/login', request.url));

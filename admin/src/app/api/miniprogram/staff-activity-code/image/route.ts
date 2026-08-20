@@ -14,6 +14,7 @@ import {
   createStaffActivityServiceCode,
   getMiniProgramCodeContentType,
 } from '@/lib/wechat-miniprogram-code';
+import { getPlatformMiniProgramCodeConfig } from '@/lib/platform-mini-program-code-config';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +57,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const image = await createStaffActivityServiceCode(result.activity.token);
+    const { environment } = await getPlatformMiniProgramCodeConfig();
+    const image = await createStaffActivityServiceCode(result.activity.token, { envVersion: environment });
     const contentType = getMiniProgramCodeContentType(image) ?? 'application/octet-stream';
     const extension = contentType === 'image/jpeg' ? 'jpg' : 'png';
     return new NextResponse(image, {

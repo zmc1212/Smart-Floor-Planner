@@ -83,5 +83,8 @@ test('published schemes group by workflow and collect ungrouped singles', () => 
   assert.equal(schemes[1]?.id, 'legacy');
   assert.equal(schemes[1]?.title, LEGACY_PUBLISHED_SCHEME_TITLE);
   assert.equal(schemes[1]?.images[0]?.title, '现代舒居');
-  assert.match(schemes[0]?.images[0]?.imageEndpoint || '', /published-generations\/100\/image/);
+  assert.equal(
+    schemes[0]?.images[0]?.imageEndpoint,
+    '/miniprogram/customer-projects/7/published-generations/100/image'
+  );
 });

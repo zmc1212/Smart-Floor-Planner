@@ -120,7 +120,7 @@ export async function GET(request: Request) {
           summary: [
             { key: 'schedule', label: '已确认日程', value: appointmentItems.length, detail: '当前本人预约', tone: 'green' },
             { key: 'expired', label: '过期待处理', value: expiredItems.length, detail: '不再占用已确认档期', tone: 'orange' },
-            { key: 'survey', label: '待量房任务', value: unscheduled.length + appointmentItems.length, detail: '可继续量房、新增量房或查看预约', tone: 'blue' },
+            { key: 'survey', label: '待量房任务', value: unscheduled.length, detail: '尚未完成正式量房的已派任务', tone: 'blue' },
           ],
           primaryItems: items.slice(0, 6),
           tasks: items,

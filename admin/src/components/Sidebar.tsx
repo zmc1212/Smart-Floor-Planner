@@ -29,6 +29,7 @@ import {
   Network,
   CalendarClock,
   QrCode,
+  SlidersHorizontal,
   UsersRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -89,6 +90,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'ai-providers', label: 'AI 供应商', icon: Cable, href: '/ai-providers' },
         { key: 'ai-models', permissionKey: 'ai-providers', label: '生图模型', icon: Image, href: '/ai-models' },
         { key: 'media-storage', label: '媒体存储', icon: HardDrive, href: '/media-storage' },
+        { key: 'mini-program-code-settings', label: '小程序码环境', icon: SlidersHorizontal, href: '/mini-program-code-settings' },
         { key: 'ai-credit-prices', label: 'AI 点数价格', icon: Coins, href: '/ai-credit-prices' },
         { key: 'roles', label: '角色权限管理', icon: Shield, href: '/roles' },
         { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
@@ -135,7 +137,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: 'AI 辅助设计',
       items: [
         { key: 'ai-create', permissionKey: 'ai-scenarios', label: 'AI 创作台', icon: Sparkles, href: '/ai-studio/create', newTab: true },
-        { key: 'ai-scenarios', label: 'AI 工作台', icon: Sparkles, href: '/ai-studio/scenarios' },
+        { key: 'ai-scenarios', label: 'AI 工作台', icon: Sparkles, href: '/ai-studio/scenarios', newTab: true },
         { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
         { key: 'ai-presets', label: 'AI 预设配置', icon: Settings, href: '/ai-presets' },
       ]

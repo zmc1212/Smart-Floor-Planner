@@ -13,7 +13,7 @@ import {
 } from '@/lib/appointment-scheduling';
 import { customerProjectIndexToDto } from '@/lib/customer-project';
 import { parseAppointmentBounds } from '@/lib/lead-service-stage';
-import { buildStaffingGapItems, isAssignmentEligibleStaff } from '@/lib/miniprogram-workbench';
+import { buildStaffingGapItems, isAssignmentEligibleStaff, isMeasurerWorkbenchSurveyLead } from '@/lib/miniprogram-workbench';
 
 type BadgeRole = 'customer' | 'referrer' | 'designer' | 'measurer' | 'enterprise_admin';
 
@@ -158,12 +158,14 @@ export async function loadMiniProgramBadgeCounts(input: {
       leads.list({ staffId, staffVisibility: 'measurer', page: 1, limit: 50, orderBy: 'updatedAt' }),
     ]);
     const confirmedRows = appointmentRows.filter((item) => item.status === 'confirmed');
+    const expiredRows = appointmentRows.filter((item) => item.status === 'expired');
     const measurerTodayCount = confirmedRows.filter((item) => isAppointmentOnLocalDate(item.timeRange, today)).length;
-    const expiredCount = appointmentRows.filter((item) => item.status === 'expired').length;
-    const scheduledIds = new Set(confirmedRows.map((item) => item.leadId.toString()));
-    const unscheduledCount = surveyList.rows.filter((lead) => (
-      ['new', 'measuring'].includes(lead.status || 'new') && !scheduledIds.has(lead.id.toString())
-    )).length;
+    const expiredCount = expiredRows.length;
+    const occupiedIds = new Set([
+      ...confirmedRows.map((item) => item.leadId.toString()),
+      ...expiredRows.map((item) => item.leadId.toString()),
+    ]);
+    const unscheduledCount = surveyList.rows.filter((lead) => isMeasurerWorkbenchSurveyLead(lead, occupiedIds)).length;
     return {
       measurerTodayCount,
       measurerTaskCount: expiredCount + unscheduledCount,

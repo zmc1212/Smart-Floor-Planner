@@ -13,6 +13,7 @@ export const ADMIN_ROUTE_CONFIG: AdminRouteEntry[] = [
   { key: 'ai-presets', label: 'AI 预设配置', href: '/ai-presets', section: 'AI 辅助设计' },
   { key: 'ai-credit-prices', label: 'AI 点数价格', href: '/ai-credit-prices', section: '平台管理中心' },
   { key: 'media-storage', label: '媒体存储', href: '/media-storage', section: '平台管理中心' },
+  { key: 'mini-program-code-settings', label: '小程序码环境', href: '/mini-program-code-settings', section: '平台管理中心' },
   { key: 'users', label: '用户审计', href: '/users', section: '平台管理中心' },
   { key: 'floorplans', label: '户型图库', href: '/floorplans', section: '户型图库' },
   { key: 'lead-commissions', label: '三方提成', href: '/lead-commissions', section: '团队资产管理' },
