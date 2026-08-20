@@ -1438,7 +1438,11 @@ function LeadsPage() {
             const pagination = tableProps.pagination;
             const rowSelection = tableProps.rowSelection;
             return (
-              <Flex vertical gap={12} className="lead-card-list px-4 pb-5 pt-3 sm:px-5">
+              <Flex
+                vertical
+                className="lead-card-list"
+                style={{ gap: 16, padding: 16, background: 'color-mix(in oklab, var(--muted) 52%, var(--card))' }}
+              >
                 {tableProps.loading ? (
                   <ProCard bordered loading bodyStyle={{ minHeight: 120 }} />
                 ) : rows.length ? rows.map((lead) => {
@@ -1457,33 +1461,75 @@ function LeadsPage() {
                       key={lead._id}
                       bordered
                       className="lead-record-card"
-                      bodyStyle={{ padding: 16 }}
+                      bodyStyle={{ padding: 0 }}
                     >
-                      <Flex vertical gap={14}>
-                        <Flex align="start" justify="space-between" gap={16} wrap>
-                          <Flex align="start" gap={12} className="min-w-0">
+                      <Flex vertical>
+                        <Flex
+                          align="start"
+                          justify="space-between"
+                          gap={16}
+                          wrap
+                          className="border-b border-border bg-muted/35 px-5 py-4"
+                          style={{ gap: 16, padding: '16px 20px', borderBottom: '1px solid var(--border)', background: 'color-mix(in oklab, var(--muted) 35%, var(--card))' }}
+                        >
+                          <Flex align="start" gap={12} className="min-w-0" style={{ gap: 12 }}>
                             {rowSelection ? <Checkbox checked={isSelected} onChange={(event) => toggleSelection(event.target.checked)} aria-label={`选择${lead.name}`} /> : null}
-                            <Flex vertical gap={4} className="min-w-0">
-                              <Flex align="center" gap={8} wrap>
+                            <Flex vertical gap={6} className="min-w-0" style={{ gap: 8 }}>
+                              <Flex align="center" gap={8} wrap style={{ gap: 12 }}>
                                 <Typography.Title level={5} className="!mb-0">{lead.name}</Typography.Title>
-                                <Tag color={getStatusColor(lead.status)}>{lead.serviceStageLabel || getLeadStatusLabel(lead.status)}</Tag>
+                                <Tag color={getStatusColor(lead.status)} style={{ marginInlineStart: 4 }}>{lead.serviceStageLabel || getLeadStatusLabel(lead.status)}</Tag>
                               </Flex>
-                              <Typography.Text type="secondary" ellipsis={{ tooltip: lead.communityName || '未记录小区' }}>
-                                {lead.communityName || '未记录小区'} · {lead.phone || '暂无联系电话'}
-                              </Typography.Text>
+                              <Flex gap={12} wrap style={{ gap: 16 }}>
+                                <Typography.Text type="secondary">{lead.phone || '暂无联系电话'}</Typography.Text>
+                                <Typography.Text type="secondary" ellipsis={{ tooltip: lead.communityName || '未记录小区' }}>
+                                  {lead.communityName || '未记录小区'}
+                                </Typography.Text>
+                              </Flex>
+                              <Flex gap={6} wrap style={{ gap: 8, marginTop: 2 }}>
+                                <Tag bordered={false} className="!m-0">{getLeadSourceLabel(lead.source)}</Tag>
+                                {lead.area ? <Tag bordered={false} className="!m-0">{lead.area} ㎡</Tag> : null}
+                                {lead.stylePreference ? <Tag bordered={false} className="!m-0">{lead.stylePreference}</Tag> : null}
+                              </Flex>
                             </Flex>
                           </Flex>
-                          <Space size={8} wrap>
+                          <Flex align="center" wrap style={{ gap: 12 }}>
                             <Button size="small" icon={<Eye size={14} />} onClick={() => void openLeadDetail(lead)}>详情</Button>
                             {archiveState === 'active' ? (
-                              <Button size="small" icon={<FilePenLine size={14} />} onClick={() => openAiWorkbench(lead._id)}>
+                              <Button type="primary" size="small" icon={<FilePenLine size={14} />} onClick={() => openAiWorkbench(lead._id)}>
                                 {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
                               </Button>
                             ) : null}
-                          </Space>
+                          </Flex>
                         </Flex>
 
-                        <div className="grid grid-cols-1 gap-3 border-y border-border/70 py-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="grid gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_minmax(17rem,0.7fr)]" style={{ gap: 20, padding: 20 }}>
+                          <Flex vertical gap={10} className="min-w-0" style={{ gap: 12 }}>
+                            <Flex align="center" justify="space-between" gap={12} wrap style={{ gap: 12 }}>
+                              <Typography.Text strong>当前转化进度</Typography.Text>
+                              <Typography.Text type="secondary" className="text-xs">下一步：{lead.nextAction || getLeadNextAction(lead.status)}</Typography.Text>
+                            </Flex>
+                            <Steps
+                              size="small"
+                              current={getLeadWorkflowStep(lead.status)}
+                              items={LEAD_WORKFLOW_STEPS.map((title) => ({ title }))}
+                            />
+                          </Flex>
+
+                          <Flex vertical gap={5} className="min-w-0 border-l-0 border-border/80 pl-0 xl:border-l xl:pl-5" style={{ gap: 8, borderLeft: '1px solid var(--border)', paddingLeft: 20 }}>
+                            <Typography.Text type="secondary" className="text-xs">上门量房</Typography.Text>
+                            <Typography.Text strong ellipsis={{ tooltip: lead.appointment ? formatAppointmentRange(lead.appointment.timeRange) : '尚未预约' }}>
+                              {lead.appointment ? formatAppointmentRange(lead.appointment.timeRange) : '尚未预约'}
+                            </Typography.Text>
+                            <Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: lead.appointment?.address || (lead.appointment ? '地址待确认' : '可在详情中设置') }}>
+                              {lead.appointment?.address || (lead.appointment ? '地址待确认' : '可在详情中设置')}
+                            </Typography.Text>
+                            {archiveState === 'active' && lead.appointment?.status === 'confirmed' && !lead.canRebook ? (
+                              <Button size="small" icon={<CalendarDays size={14} />} className="mt-1 self-start" onClick={() => openReschedule(lead)}>改预约</Button>
+                            ) : null}
+                          </Flex>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-x-5 gap-y-4 border-t border-border px-5 py-4 sm:grid-cols-2 xl:grid-cols-4" style={{ columnGap: 20, rowGap: 16, padding: '16px 20px', borderTop: '1px solid var(--border)' }}>
                           <LeadStaffCardField
                             label={lead.source === 'referrer_network' ? '推广人' : '渠道人员'}
                             staff={lead.source === 'referrer_network' ? lead.referrer : lead.promoterId}
@@ -1492,42 +1538,42 @@ function LeadsPage() {
                           <LeadStaffCardField label="绑定设计师" staff={lead.assignedTo} fallback="未绑定设计师" />
                           <LeadStaffCardField label="测量员" staff={lead.measurerId} fallback="未绑定测量员" />
                           <LeadCardField
-                            label="派单"
+                            label="派单状态"
                             value={getAssignmentStatusLabel(lead.assignmentStatus, lead.assignmentErrorCode)}
-                          />
-                          <LeadCardField
-                            label="预约上门量房"
-                            value={lead.appointment ? formatAppointmentRange(lead.appointment.timeRange) : '尚未预约'}
-                            detail={lead.appointment?.address || (lead.appointment ? '地址待确认' : '可在详情中设置')}
+                            detail={lead.assignmentStatus === 'assignment_pending' ? '可在下方重试派单' : undefined}
                           />
                         </div>
 
-                        <Flex align="center" justify="space-between" gap={12} wrap>
-                          <Flex gap={12} wrap>
-                            <Typography.Text type="secondary">来源：{getLeadSourceLabel(lead.source)}</Typography.Text>
-                            <Typography.Text type="secondary">提交：{formatDate(lead.createdAt)}</Typography.Text>
-                            {lead.area ? <Typography.Text type="secondary">意向面积：{lead.area} m2</Typography.Text> : null}
+                        <Flex align="center" justify="space-between" gap={12} wrap className="border-t border-border bg-muted/20 px-5 py-3" style={{ gap: 12, padding: '12px 20px', borderTop: '1px solid var(--border)', background: 'color-mix(in oklab, var(--muted) 20%, var(--card))' }}>
+                          <Flex gap={12} wrap style={{ gap: 12 }}>
+                            <Typography.Text type="secondary" className="text-xs">来源：{getLeadSourceLabel(lead.source)}</Typography.Text>
+                            <Typography.Text type="secondary" className="text-xs">提交：{formatDate(lead.createdAt)}</Typography.Text>
                           </Flex>
-                          {archiveState === 'active' && capabilities.canManageArchive ? (
-                            <Button size="small" icon={<Archive size={14} />} disabled={archiveLoading} onClick={() => void openArchive([lead])}>归档</Button>
-                          ) : archiveState === 'archived' ? (
-                            <Space size={8}>
+                          <Flex align="center" wrap style={{ gap: 12 }}>
+                            {archiveState === 'active' && lead.assignmentStatus === 'assignment_pending' ? (
+                              <Button size="small" loading={retryingAssignmentId === lead._id} onClick={() => void retryAssignment(lead)}>重试派单</Button>
+                            ) : null}
+                            {archiveState === 'active' && capabilities.canManageArchive ? (
+                              <Button size="small" icon={<Archive size={14} />} disabled={archiveLoading} onClick={() => void openArchive([lead])}>归档</Button>
+                            ) : archiveState === 'archived' ? (
                               <Button size="small" icon={<RotateCcw size={14} />} disabled={Boolean(deletingId)} loading={deletingId === lead._id} onClick={() => void restoreLead(lead)}>恢复</Button>
-                              {capabilities.canPurge ? <Button size="small" danger icon={<Trash2 size={14} />} disabled={Boolean(deletingId)} loading={deletingId === lead._id} onClick={() => void openPurge(lead)}>永久删除</Button> : null}
-                            </Space>
-                          ) : null}
-                          {archiveState === 'active' && lead.assignmentStatus === 'assignment_pending' ? (
-                            <Button size="small" loading={retryingAssignmentId === lead._id} onClick={() => void retryAssignment(lead)}>重试派单</Button>
-                          ) : null}
-                          {archiveState === 'active' && lead.appointment?.status === 'confirmed' && !lead.canRebook ? (
-                            <Button size="small" icon={<CalendarDays size={14} />} onClick={() => openReschedule(lead)}>改预约</Button>
-                          ) : null}
+                            ) : null}
+                            {archiveState === 'archived' && capabilities.canPurge ? <Button size="small" danger icon={<Trash2 size={14} />} disabled={Boolean(deletingId)} loading={deletingId === lead._id} onClick={() => void openPurge(lead)}>永久删除</Button> : null}
+                          </Flex>
                         </Flex>
                       </Flex>
                     </ProCard>
                   );
                 }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无符合条件的客户线索" />}
-                {pagination && typeof pagination !== 'boolean' ? <Flex justify="end"><Pagination {...pagination} size="small" /></Flex> : null}
+                {pagination && typeof pagination !== 'boolean' ? (
+                  <Flex
+                    justify="end"
+                    className="lead-card-pagination"
+                    style={{ minHeight: 52, padding: '12px 16px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--card)' }}
+                  >
+                    <Pagination {...pagination} size="small" />
+                  </Flex>
+                ) : null}
               </Flex>
             );
           }}

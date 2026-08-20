@@ -6,6 +6,11 @@ const {
   shouldOfferCommunitySync,
   syncAddressToLeadCommunity,
 } = require('../../../utils/appointmentCommunitySync.js');
+const {
+  timeText,
+  appointmentDates,
+  formatConfirmRescheduleLabel,
+} = require('../../../utils/appointmentSlotPicker.js');
 
 const STATUS_LABELS = {
   confirmed: '已确认',
@@ -181,7 +186,19 @@ Page({
     leadCommunityName: '',
     canEditProfile: false,
     canRebook: false,
-    canNavigate: false
+    canNavigate: false,
+    dates: [],
+    dateOffset: 0,
+    maxAdvanceDays: 30,
+    selectedDate: '',
+    slots: [],
+    selectedSlot: null,
+    selectedSlotStart: '',
+    reason: '',
+    slotsLoading: false,
+    slotsError: '',
+    rescheduleSubmitting: false,
+    confirmRescheduleLabel: '确认改期至可用时段',
   },
 
   onLoad(options) {
@@ -227,6 +244,9 @@ Page({
         address: appointment.address,
         customerMode: this.data.customerMode,
       });
+      const canReschedule = lifecycleOpen && confirmed
+        && (this.data.customerMode || ['designer', 'enterprise_admin'].includes(role));
+      const dates = canReschedule ? appointmentDates(0, this.data.maxAdvanceDays) : [];
       this.setData({
         appointment: {
           ...appointment,
@@ -235,7 +255,7 @@ Page({
         },
         appointmentId: appointment.id,
         leadId,
-        canReschedule: lifecycleOpen && confirmed && (this.data.customerMode || ['designer', 'enterprise_admin'].includes(role)),
+        canReschedule,
         canCancel: lifecycleOpen && confirmed && ['designer', 'enterprise_admin'].includes(role),
         canComplete: lifecycleOpen && lifecycle.canComplete,
         canStartSurvey: lifecycleOpen && lifecycle.canStartSurvey,
@@ -247,8 +267,21 @@ Page({
         canEditProfile,
         canRebook: lifecycleOpen && (expired || appointment.status === 'cancelled')
           && (this.data.customerMode || ['designer', 'measurer', 'enterprise_admin'].includes(role)),
-        canNavigate: confirmed && hasCoordinates(appointment)
+        canNavigate: confirmed && hasCoordinates(appointment),
+        dateOffset: 0,
+        dates,
+        selectedDate: dates[0] && dates[0].key || '',
+        selectedSlot: null,
+        selectedSlotStart: '',
+        reason: '',
+        confirmRescheduleLabel: '确认改期至可用时段',
+        slotsError: '',
       });
+      if (canReschedule) {
+        await this.loadSlots();
+      } else {
+        this.setData({ slots: [], slotsLoading: false, slotsError: '' });
+      }
     } catch (error) {
       this.setData({ error: error.error || error.message || '预约详情加载失败' });
     } finally {
@@ -274,13 +307,106 @@ Page({
     });
   },
 
-  reschedule() {
-    const appointment = this.data.appointment;
-    if (!appointment || !this.data.canReschedule) return;
-    const mode = this.data.customerMode ? 'customer' : 'internal';
-    wx.navigateTo({
-      url: `/packages/business/appointment-reschedule/appointment-reschedule?mode=${mode}&leadId=${encodeURIComponent(this.data.leadId)}&appointmentId=${encodeURIComponent(appointment.id)}&version=${appointment.version}`
+  async loadSlots() {
+    if (!this.data.canReschedule || !this.data.leadId || !this.data.selectedDate) return;
+    this.setData({
+      slotsLoading: true,
+      slotsError: '',
+      selectedSlot: null,
+      selectedSlotStart: '',
+      confirmRescheduleLabel: '确认改期至可用时段',
     });
+    try {
+      const response = await api.request(
+        `/appointments/availability?leadId=${encodeURIComponent(this.data.leadId)}&date=${this.data.selectedDate}`,
+        'GET'
+      );
+      const maxAdvanceDays = Number.isInteger(Number(response.data && response.data.maxAdvanceDays))
+        ? Number(response.data.maxAdvanceDays)
+        : this.data.maxAdvanceDays;
+      this.setData({
+        maxAdvanceDays,
+        dates: appointmentDates(this.data.dateOffset, maxAdvanceDays),
+        slots: (response.data && response.data.slots || []).map((slot) => ({
+          ...slot,
+          label: `${timeText(slot.startAt)} - ${timeText(slot.endAt)}`,
+        })),
+      });
+    } catch (error) {
+      this.setData({
+        slots: [],
+        slotsError: error.error || error.message || '可用时段加载失败',
+      });
+    } finally {
+      this.setData({ slotsLoading: false });
+    }
+  },
+
+  chooseDate(event) {
+    const selectedDate = event.currentTarget.dataset.date;
+    if (!selectedDate || selectedDate === this.data.selectedDate) return;
+    this.setData({ selectedDate });
+    this.loadSlots();
+  },
+
+  previousDates() {
+    const dateOffset = Math.max(0, this.data.dateOffset - 5);
+    if (dateOffset === this.data.dateOffset) return;
+    const dates = appointmentDates(dateOffset, this.data.maxAdvanceDays);
+    this.setData({ dateOffset, dates, selectedDate: dates[0] && dates[0].key || '' });
+    this.loadSlots();
+  },
+
+  nextDates() {
+    const dateOffset = this.data.dateOffset + 5;
+    if (dateOffset > this.data.maxAdvanceDays) return;
+    const dates = appointmentDates(dateOffset, this.data.maxAdvanceDays);
+    if (!dates.length) return;
+    this.setData({ dateOffset, dates, selectedDate: dates[0] && dates[0].key || '' });
+    this.loadSlots();
+  },
+
+  chooseSlot(event) {
+    const selectedSlot = event.currentTarget.dataset.slot;
+    this.setData({
+      selectedSlot,
+      selectedSlotStart: selectedSlot && selectedSlot.startAt || '',
+      confirmRescheduleLabel: formatConfirmRescheduleLabel({ selectedSlot }),
+    });
+  },
+
+  onReasonInput(event) {
+    this.setData({ reason: event.detail.value });
+  },
+
+  async submitReschedule() {
+    const appointment = this.data.appointment;
+    const slot = this.data.selectedSlot;
+    if (!appointment || !this.data.canReschedule || !slot || this.data.rescheduleSubmitting) return;
+    this.setData({ rescheduleSubmitting: true });
+    try {
+      const action = this.data.customerMode ? 'customer-reschedule' : 'internal-reschedule';
+      const reason = String(this.data.reason || '').trim();
+      await api.request(`/appointments/${appointment.id}/${action}`, 'POST', {
+        startAt: slot.startAt,
+        endAt: slot.endAt,
+        version: this.data.appointment.version,
+        ...(this.data.customerMode ? {} : { reason }),
+      });
+      wx.showToast({ title: '改期成功', icon: 'success' });
+      this.setData({
+        selectedSlot: null,
+        selectedSlotStart: '',
+        reason: '',
+        confirmRescheduleLabel: '确认改期至可用时段',
+      });
+      await this.load();
+    } catch (error) {
+      wx.showToast({ title: error.error || error.message || '改期失败', icon: 'none' });
+      await this.load();
+    } finally {
+      this.setData({ rescheduleSubmitting: false });
+    }
   },
 
   updateAddress() {

@@ -16,7 +16,18 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.ok(business.pages.includes('appointment-detail/appointment-detail'));
   assert.match(script, /\['designer', 'enterprise_admin'\]\.includes\(role\)/);
   assert.match(script, /\['measurer', 'enterprise_admin'\]\.includes\(role\)/);
-  assert.match(script, /appointment-reschedule\/appointment-reschedule\?mode=\$\{mode\}/);
+  assert.doesNotMatch(script, /appointment-reschedule\/appointment-reschedule/);
+  assert.match(script, /appointments\/availability/);
+  assert.match(script, /customer-reschedule/);
+  assert.match(script, /internal-reschedule/);
+  assert.match(script, /appointmentSlotPicker/);
+  assert.match(script, /formatConfirmRescheduleLabel/);
+  assert.match(script, /confirmRescheduleLabel/);
+  assert.match(script, /loadSlots/);
+  assert.match(script, /chooseDate/);
+  assert.match(script, /chooseSlot/);
+  assert.match(script, /submitReschedule/);
+  assert.match(script, /version:\s*this\.data\.appointment\.version|version:\s*appointment\.version/);
   assert.match(script, /updateStatus\('cancel'/);
   assert.match(script, /updateStatus\('complete'/);
   assert.match(script, /canUpdateAddress/);
@@ -26,7 +37,6 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(script, /coordinateSystem: 'gcj02'/);
   assert.match(script, /onShareAppMessage\(\)/);
   assert.match(script, /const customerMode = options\.mode === 'customer'/);
-  assert.match(script, /mode = this\.data\.customerMode \? 'customer' : 'internal'/);
   assert.match(script, /请填写取消原因/);
   assert.match(wxml, /schedule-guide\.png/);
   assert.match(script, /canStartSurvey/);
@@ -34,10 +44,12 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(script, /function resolveLeadLifecycle/);
   assert.match(script, /hasCompletedFormalSurvey/);
   assert.match(script, /\['converted', 'closed'\]/);
-  assert.match(wxml, /wx:if="\{\{canStartSurvey\}\}"/);
-  assert.match(wxml, /wx:if="\{\{canComplete\}\}"/);
+  assert.match(wxml, /wx:if="\{\{canStartSurvey\}\}"|wx:if="\{\{canStartSurvey && canReschedule\}\}"/);
+  assert.match(wxml, /wx:if="\{\{canComplete\}\}"|wx:if="\{\{canComplete && canReschedule\}\}"|wx:elif="\{\{canComplete\}\}"/);
   assert.match(wxml, /wx:if="\{\{canReschedule\}\}"/);
   assert.match(wxml, /wx:if="\{\{canCancel\}\}"/);
+  assert.match(wxml, /confirm-bar/);
+  assert.match(wxml, /确认改期|confirmRescheduleLabel/);
   assert.match(wxml, /补充服务地址/);
   assert.match(wxml, /同步到客户小区/);
   assert.match(wxml, /一键导航至量房地点/);
@@ -50,18 +62,22 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(wxml, /canStartSurvey[\s\S]*📐/);
   assert.match(styles, /\.action-secondary\s*\{[^}]*background:\s*#f8faf9;/s);
   assert.match(styles, /\.secondary-row\s*\{[^}]*display:\s*flex;/s);
+  assert.match(styles, /\.confirm-bar/);
 });
 
 test('internal reschedule reuses real availability and keeps the audit reason optional', () => {
-  const script = read('packages/business/appointment-reschedule/appointment-reschedule.js');
-  const wxml = read('packages/business/appointment-reschedule/appointment-reschedule.wxml');
-  assert.match(script, /query\.mode === 'internal'/);
+  const script = read('packages/business/appointment-detail/appointment-detail.js');
+  const wxml = read('packages/business/appointment-detail/appointment-detail.wxml');
   assert.match(script, /internal-reschedule/);
+  assert.match(script, /customer-reschedule/);
   assert.doesNotMatch(script, /请填写调整原因/);
-  assert.match(wxml, /disabled="\{\{!selectedSlot\}\}"/);
+  assert.match(wxml, /disabled="\{\{!selectedSlot \|\| rescheduleSubmitting\}\}"/);
   assert.match(wxml, /调整原因（选填）/);
-  assert.match(wxml, /wx:if="\{\{internalMode\}\}"/);
+  assert.match(wxml, /wx:if="\{\{!customerMode\}\}"/);
   assert.match(wxml, /bindinput="onReasonInput"/);
+  assert.match(wxml, /bindtap="chooseDate"/);
+  assert.match(wxml, /bindtap="chooseSlot"/);
+  assert.match(wxml, /bindtap="submitReschedule"/);
 });
 
 test('appointment detail derives lifecycle actions from the signed staff role', async () => {

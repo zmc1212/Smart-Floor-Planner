@@ -49,11 +49,13 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(componentTemplate, /继续量房/);
   assert.match(componentTemplate, /新增量房/);
   assert.doesNotMatch(componentTemplate, /xiao-k-mascot-3d\.png/);
-  assert.match(componentTemplate, /thumbs-up-xiao-k\.png/);
+  assert.match(componentTemplate, /\/images\/airy-v1\/thumbs-up-xiao-k\.png/);
   assert.match(componentTemplate, /xiao-k-designer-3d\.png/);
   assert.match(componentTemplate, /xiao-k-measurer-3d\.png/);
   assert.doesNotMatch(home, /xiao-k-mascot-3d\.png/);
-  assert.match(home, /thumbs-up-xiao-k\.png/);
+  assert.match(home, /\/images\/airy-v1\/thumbs-up-xiao-k\.png/);
+  assert.doesNotMatch(componentTemplate, /packages\/business\/assets\/referral-service-v1\/thumbs-up-xiao-k\.png/);
+  assert.doesNotMatch(home, /packages\/business\/assets\/referral-service-v1\/thumbs-up-xiao-k\.png/);
   assert.match(componentTemplate, /立即量房/);
   assert.match(componentTemplate, /预约上门/);
   assert.match(componentTemplate, /item\.statusBadge/);

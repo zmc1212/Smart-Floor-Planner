@@ -29,7 +29,12 @@ test('customer project consumes only the owner-only aggregate and renders archiv
   assert.match(page, /appointment-booking\/appointment-booking\?leadId=.*mode=customer/);
   assert.match(page, /onShareAppMessage\(\)/);
   assert.match(page, /contactDesigner\(\)/);
+  assert.match(page, /showContactSheet/);
+  assert.match(page, /hasDesignerContact/);
+  assert.match(page, /copyDesignerWechatId/);
   assert.match(page, /buildPublishedSchemeLabel/);
+  assert.match(wxml, /designer-contact-sheet/);
+  assert.match(wxml, /canContactDesigner/);
 });
 
 test('customer published designs and floor plan preview use protected endpoints as authenticated bytes', () => {
@@ -75,8 +80,9 @@ test('customer project template and stylesheet stay aligned for the restored arc
     assert.match(wxml, new RegExp(`class="[^\"]*${className}`));
     assert.match(less, new RegExp(`\\.${className}(?:[\\s,{])`));
   }
-  assert.match(wxml, /customer-project-v1\/project-delivery-xiao-k\.png/);
+  assert.match(wxml, /\/images\/airy-v1\/project-delivery-xiao-k\.png/);
   assert.doesNotMatch(wxml, /xiao-k-mascot-3d\.png/);
+  assert.doesNotMatch(wxml, /packages\/business\/assets\/customer-project-v1\/project-delivery-xiao-k\.png/);
   assert.match(less, /\.booking-action,\s*\n?\.booking-secondary \{[\s\S]*?border-radius: 999rpx;[\s\S]*?\}/);
   assert.match(less, /\.booking-action,\s*\n?\.booking-secondary \{[\s\S]*?align-items: center;[\s\S]*?justify-content: center;[\s\S]*?\}/);
   assert.match(less, /\.booking-actions > \.booking-action \+ \.booking-secondary[\s\S]*?margin-top: 16rpx;/);

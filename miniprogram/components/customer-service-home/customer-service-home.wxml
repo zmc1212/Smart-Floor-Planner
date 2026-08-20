@@ -143,4 +143,10 @@
       </scroll-view>
     </view>
   </view>
+
+  <designer-contact-sheet
+    visible="{{showContactSheet}}"
+    designer="{{designer}}"
+    bind:close="closeContactSheet"
+  />
 </view>

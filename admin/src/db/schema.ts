@@ -396,6 +396,88 @@ export const enterpriseJoinCodeEvents = appSchema.table(
   ]
 );
 
+/** Platform-global Mini Program enterprise-registration codes (`er_…`). No enterprise_id. */
+export const platformEnterpriseRegistrationCodes = appSchema.table(
+  'platform_enterprise_registration_codes',
+  {
+    id: id(),
+    tokenHash: text('token_hash').notNull(),
+    status: text('status').notNull().default('active'),
+    version: integer('version').notNull().default(1),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
+    createdBy: bigint('created_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    disabledBy: bigint('disabled_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    disabledAt: timestamp('disabled_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('platform_enterprise_registration_codes_token_hash_uidx').on(
+      table.tokenHash
+    ),
+    uniqueIndex('platform_enterprise_registration_codes_active_uidx')
+      .on(sql`(true)`)
+      .where(sql`${table.status} = 'active'`),
+    index('platform_enterprise_registration_codes_created_idx').on(
+      table.createdAt
+    ),
+    index('platform_enterprise_registration_codes_created_by_idx').on(
+      table.createdBy
+    ),
+    index('platform_enterprise_registration_codes_disabled_by_idx').on(
+      table.disabledBy
+    ),
+    check(
+      'platform_enterprise_registration_codes_status_check',
+      sql`${table.status} in ('active', 'rotated', 'disabled', 'expired')`
+    ),
+  ]
+);
+
+export const platformEnterpriseRegistrationCodeEvents = appSchema.table(
+  'platform_enterprise_registration_code_events',
+  {
+    id: id(),
+    registrationCodeId: bigint('registration_code_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => platformEnterpriseRegistrationCodes.id, {
+        onDelete: 'cascade',
+      }),
+    eventType: text('event_type').notNull(),
+    actorUserId: bigint('actor_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    actorStaffId: bigint('actor_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    result: text('result').notNull(),
+    metadata: jsonObject<Record<string, unknown>>('metadata'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('platform_enterprise_registration_code_events_code_idx').on(
+      table.registrationCodeId
+    ),
+    index('platform_enterprise_registration_code_events_created_idx').on(
+      table.createdAt
+    ),
+    index('platform_enterprise_registration_code_events_actor_user_idx').on(
+      table.actorUserId
+    ),
+    index('platform_enterprise_registration_code_events_actor_staff_idx').on(
+      table.actorStaffId
+    ),
+  ]
+);
+
 export const referrerEnterpriseMemberships = appSchema.table(
   'referrer_enterprise_memberships',
   {

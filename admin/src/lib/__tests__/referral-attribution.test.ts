@@ -360,6 +360,7 @@ test('all Mini Program code image endpoints read the single platform environment
     'src/app/api/enterprise/join-codes/[type]/image/route.ts',
     'src/app/api/miniprogram/referrer-memberships/[id]/promotion-code/image/route.ts',
     'src/app/api/miniprogram/staff-activity-code/image/route.ts',
+    'src/app/api/admin/enterprise-registration-codes/image/route.ts',
   ];
 
   for (const routePath of routes) {

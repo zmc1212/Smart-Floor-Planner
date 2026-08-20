@@ -5,6 +5,8 @@ export const PROMOTION_SERVICE_PAGE =
   'packages/business/free-design-service/free-design-service';
 export const ENTERPRISE_ONBOARDING_PAGE =
   'packages/business/onboarding/onboarding';
+export const ENTERPRISE_REGISTRATION_PAGE =
+  'packages/business/enterprise-register/enterprise-register';
 
 export type { MiniProgramCodeEnvironment } from '@/lib/mini-program-code-environment';
 
@@ -56,6 +58,20 @@ export function buildEnterpriseOnboardingPath(token: string) {
   const path = `${ENTERPRISE_ONBOARDING_PAGE}?token=${encodeURIComponent(normalized)}`;
   if (Buffer.byteLength(path, 'utf8') > 128) {
     throw new Error('Enterprise onboarding path exceeds the WeChat code limit');
+  }
+  return path;
+}
+
+export function buildEnterpriseRegistrationPath(token: string) {
+  const normalized = token.trim();
+  if (!/^er_[A-Za-z0-9_-]{32}$/.test(normalized)) {
+    throw new Error('Invalid enterprise registration token');
+  }
+  const path = `${ENTERPRISE_REGISTRATION_PAGE}?token=${encodeURIComponent(normalized)}`;
+  if (Buffer.byteLength(path, 'utf8') > 128) {
+    throw new Error(
+      'Enterprise registration path exceeds the WeChat code limit'
+    );
   }
   return path;
 }
@@ -162,4 +178,15 @@ export async function createEnterpriseOnboardingCode(
   options: MiniProgramCodeOptions = {}
 ) {
   return createMiniProgramCode(buildEnterpriseOnboardingPath(token), token, options);
+}
+
+export async function createEnterpriseRegistrationCode(
+  token: string,
+  options: MiniProgramCodeOptions = {}
+) {
+  return createMiniProgramCode(
+    buildEnterpriseRegistrationPath(token),
+    token,
+    options
+  );
 }

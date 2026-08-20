@@ -78,8 +78,8 @@ Logo：预留位置，导出时合成 brand-logo.png
 | --- | --- | --- | --- | --- |
 | A01 | 客户服务首页 / 工作台 | `pages/index/index`（客户） | `01-customer-workbench.jpg` | 客户主场景；早期阶段以 `docs/superpowers/specs/2026-08-21-customer-service-home-stage-companion-design.md` 为准（小 K 阶段陪伴），不强制空双缩略图 01 |
 | A02 | 客户项目服务档案 | `packages/business/customer-project/customer-project` | `02-customer-project-archive.jpg` | 项目详情，不是项目索引 |
-| A03 | 预约详情 | `packages/business/appointment-detail/appointment-detail` | `03-appointment-reschedule.jpg` | 与改期共用一张稿 |
-| A04 | 预约改期 | `packages/business/appointment-reschedule/appointment-reschedule` | `03-appointment-reschedule.jpg` | 已确认预约后的改期状态 |
+| A03 | 预约详情 | `packages/business/appointment-detail/appointment-detail` | `03-appointment-reschedule.jpg` + `docs/superpowers/specs/2026-08-21-appointment-detail-inline-reschedule-design.md` | 详情内嵌改期日历；员工次要动作分区 |
+| A04 | 预约改期（兼容壳） | `packages/business/appointment-reschedule/appointment-reschedule` | 同上 | 深链 `redirectTo` 详情；无独立 UI |
 | A05 | 设计师工作台 | `pages/index/index`（设计师） | `04b-designer-workbench-dashboard.jpg` | 含「我的」经营大盘五卡；旧基线 `04-designer-workbench.jpg` 仍可对照 |
 | A06 | 测量员工作台 | `pages/index/index`（测量员） | `05b-measurer-workbench-dashboard.jpg` | 含「我的」经营大盘五卡；旧基线 `05-measurer-workbench.jpg` 仍可对照 |
 | A07 | 推荐人工作台 | `packages/business/referrer-workbench/referrer-workbench` | `06b-promoter-workbench-signed-count.jpg` | Hero 增加已签约数量位；不上完整经营大盘 |

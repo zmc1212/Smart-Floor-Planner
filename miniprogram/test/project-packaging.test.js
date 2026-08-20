@@ -41,9 +41,7 @@ test('source package excludes historical artwork that is not used at runtime', (
   );
 
   assert.deepEqual(ignoredFiles, new Set([
-    'packages/business/assets/customer-project-v1/project-delivery-xiao-k.png',
     'packages/business/assets/customer-project-v1/formal-floor-plan-archive.png',
-    'images/airy-v1/xiao-k-designer-3d.png',
     'images/ai-design-empty-v2/stage-art.jpg',
     'images/home-v5/plan-preview.jpg',
     'images/home-v5/ai-preview.jpg',

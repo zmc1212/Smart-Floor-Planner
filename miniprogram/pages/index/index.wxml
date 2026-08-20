@@ -31,7 +31,7 @@
             <text class="hero-title">选户型 · 免费设计整屋</text>
             <text class="hero-subtitle">量房进度与AI方案实时同步</text>
           </view>
-          <image class="hero-mascot" src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png" mode="aspectFit" />
+          <image class="hero-mascot" src="/images/airy-v1/thumbs-up-xiao-k.png" mode="aspectFit" />
         </view>
 
         <!-- Inner White Service Card -->

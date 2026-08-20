@@ -403,7 +403,7 @@ Component({
       const item = event.currentTarget.dataset.item;
       if (!item || !item.leadId || !item.appointmentId) return;
       wx.navigateTo({
-        url: `/packages/business/appointment-reschedule/appointment-reschedule?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}&version=${encodeURIComponent(item.appointmentVersion || 0)}`,
+        url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}`,
       });
     },
 

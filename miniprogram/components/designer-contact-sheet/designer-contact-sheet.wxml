@@ -1,0 +1,37 @@
+<view wx:if="{{visible}}" class="dcs-mask" bindtap="onClose" aria-role="dialog" aria-label="联系设计师">
+  <view class="dcs-sheet" catchtap="noop">
+    <view class="dcs-head">
+      <text class="dcs-title">微信联系设计师</text>
+      <text class="dcs-close" bindtap="onClose">关闭</text>
+    </view>
+
+    <view class="dcs-meta">
+      <text class="dcs-name">{{displayName}}</text>
+      <text class="dcs-role">专属设计师</text>
+    </view>
+
+    <view wx:if="{{hasQr}}" class="dcs-qr-block">
+      <image
+        wx:if="{{qrPath}}"
+        class="dcs-qr"
+        src="{{qrPath}}"
+        mode="aspectFit"
+        show-menu-by-longpress="{{true}}"
+        bindtap="onPreviewQr"
+        aria-label="设计师微信二维码，长按可识别添加"
+      />
+      <view wx:elif="{{qrLoading}}" class="dcs-qr-state">正在加载二维码…</view>
+      <view wx:else class="dcs-qr-state error">
+        <text>二维码暂时无法读取</text>
+        <text class="dcs-retry" bindtap="onRetryQr">重试</text>
+      </view>
+      <text class="dcs-hint">长按识别二维码，添加设计师为好友</text>
+    </view>
+
+    <view wx:if="{{wechatId}}" class="dcs-wechat-row">
+      <text class="dcs-wechat">微信号：{{wechatId}}</text>
+      <text class="dcs-copy" bindtap="onCopyWechat">复制微信号</text>
+    </view>
+    <text wx:elif="{{!hasQr}}" class="dcs-empty">设计师联系方式暂未提供</text>
+  </view>
+</view>

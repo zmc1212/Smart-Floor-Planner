@@ -3,10 +3,15 @@ const {
   buildCompanionState,
   buildProgressPills,
 } = require('../../utils/customerServiceHome.js');
+const {
+  hasDesignerContact,
+  designerShortcutDescription,
+  copyDesignerWechatId,
+} = require('../../utils/designerContact.js');
 
 const FREE_DESIGN_ROUTE = 'packages/business/free-design-service/free-design-service';
 const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
-const XIAO_K_IMAGE = '/packages/business/assets/customer-project-v1/project-delivery-xiao-k.png';
+const XIAO_K_IMAGE = '/images/airy-v1/project-delivery-xiao-k.png';
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -167,6 +172,7 @@ Component({
     showXiaoK: true,
     xiaoKImage: XIAO_K_IMAGE,
     showSwitcherSheet: false,
+    showContactSheet: false,
   },
 
   lifetimes: {
@@ -220,6 +226,7 @@ Component({
             showSchemeThumb: false,
             showXiaoK: true,
             showSwitcherSheet: false,
+            showContactSheet: false,
           });
           return;
         }
@@ -256,9 +263,7 @@ Component({
             || ''
         );
         const designer = detailFailed ? null : ((detail && detail.designer) || null);
-        const designerShortcutDesc = designer && designer.wechatId
-          ? '微信号可复制联系'
-          : '设计师匹配后可联系';
+        const designerShortcutDesc = designerShortcutDescription(designer);
         const mediaMode = detailFailed ? 'xiao_k' : companion.mediaMode;
         const progressPills = buildProgressPills(
           (detail && detail.serviceStage) || (featuredListItem && featuredListItem.serviceStage) || ''
@@ -288,6 +293,7 @@ Component({
           showXiaoK: true,
           loading: false,
           showSwitcherSheet: false,
+          showContactSheet: false,
         });
 
         if (!detailFailed && detail) {
@@ -407,13 +413,13 @@ Component({
     },
 
     openReschedule() {
-      const { leadId, appointmentId, appointmentVersion } = this.data;
-      if (!leadId || !appointmentId || appointmentVersion === '') {
+      const { leadId, appointmentId } = this.data;
+      if (!leadId || !appointmentId) {
         wx.showToast({ title: '暂时无法改期，请稍后再试', icon: 'none' });
         return;
       }
       wx.navigateTo({
-        url: `/packages/business/appointment-reschedule/appointment-reschedule?leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointmentId)}&version=${encodeURIComponent(appointmentVersion)}`,
+        url: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointmentId)}`,
       });
     },
 
@@ -458,11 +464,14 @@ Component({
     },
 
     openDesignerShortcut() {
-      const wechatId = this.data.designer && this.data.designer.wechatId;
-      if (wechatId) {
-        wx.setClipboardData({
-          data: wechatId,
-          success: () => wx.showToast({ title: '微信号已复制', icon: 'success' }),
+      const designer = this.data.designer;
+      if (hasDesignerContact(designer)) {
+        if (designer.wechatQrUrl) {
+          this.setData({ showContactSheet: true });
+          return;
+        }
+        copyDesignerWechatId(designer.wechatId, { withSearchHint: true }).catch(() => {
+          wx.showToast({ title: '复制失败，请稍后重试', icon: 'none' });
         });
         return;
       }
@@ -470,6 +479,10 @@ Component({
         wx.showToast({ title: this.data.designerSoftCopy || '设计师匹配后可联系', icon: 'none' });
         this.openArchive();
       }
+    },
+
+    closeContactSheet() {
+      this.setData({ showContactSheet: false });
     },
 
     openSwitcher() {
@@ -484,7 +497,7 @@ Component({
     selectSwitcherProject(event) {
       const leadId = String((event.currentTarget.dataset && event.currentTarget.dataset.leadId) || '');
       if (!leadId) return;
-      this.setData({ selectedLeadId: leadId, showSwitcherSheet: false }, () => this.load());
+      this.setData({ selectedLeadId: leadId, showSwitcherSheet: false, showContactSheet: false }, () => this.load());
     },
 
     retry() {

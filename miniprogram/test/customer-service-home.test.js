@@ -134,16 +134,17 @@ test('customer-service-home component follows stage-companion contract', () => {
   assert.doesNotMatch(wxml, /查看全部项目/);
   assert.doesNotMatch(wxml, />我的服务</);
 
-  assert.match(js, /customer-project-v1\/project-delivery-xiao-k\.png/);
+  assert.match(js, /\/images\/airy-v1\/project-delivery-xiao-k\.png/);
   assert.doesNotMatch(js, /xiao-k-mascot-3d\.png/);
+  assert.doesNotMatch(js, /packages\/business\/assets\/customer-project-v1\/project-delivery-xiao-k\.png/);
   assert.match(js, /['"`]\/miniprogram\/customer-projects['"`]/);
   assert.match(js, /\/miniprogram\/customer-projects\/\$\{(?:encodeURIComponent\()?featuredLeadId/);
   assert.match(js, /customer-project\?leadId=/);
   assert.match(js, /switchTab\(\{\s*url:\s*'\/pages\/mine\/mine'/);
   assert.doesNotMatch(js, /customer-projects\/customer-projects/);
   assert.match(js, /appointmentId=\$\{(?:encodeURIComponent\()?appointmentId/);
-  assert.match(js, /version=\$\{(?:encodeURIComponent\()?appointmentVersion/);
-  assert.match(js, /appointment-reschedule\/appointment-reschedule\?leadId=/);
+  assert.match(js, /appointment-detail\/appointment-detail\?mode=customer/);
+  assert.doesNotMatch(js, /appointment-reschedule\/appointment-reschedule\?leadId=/);
   assert.match(js, /wx\.scanCode/);
   assert.match(js, /free-design-service\/free-design-service/);
   assert.match(js, /onboarding\/onboarding/);
@@ -155,6 +156,12 @@ test('customer-service-home component follows stage-companion contract', () => {
   assert.doesNotMatch(attachedBody[1], /this\.load\(/);
   assert.match(js, /softRefresh/);
   assert.match(js, /forceLoading:\s*true/);
+  assert.match(js, /designerShortcutDescription/);
+  assert.match(js, /hasDesignerContact/);
+  assert.match(js, /showContactSheet/);
+  assert.match(js, /designer-contact-sheet|closeContactSheet/);
+  assert.match(wxml, /designer-contact-sheet/);
+  assert.match(json.usingComponents['designer-contact-sheet'], /designer-contact-sheet/);
 });
 
 test('customer-projects list route is a redirect shell for deep links only', () => {

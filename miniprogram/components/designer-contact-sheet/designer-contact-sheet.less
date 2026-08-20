@@ -1,0 +1,157 @@
+.dcs-mask {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(16, 28, 22, 0.42);
+}
+
+.dcs-sheet {
+  width: 100%;
+  padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  border-radius: 28rpx 28rpx 0 0;
+  background: #f8faf9;
+  box-sizing: border-box;
+}
+
+.dcs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.dcs-title {
+  color: #183426;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.dcs-close {
+  color: #1f9d55;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.dcs-meta {
+  margin-bottom: 24rpx;
+}
+
+.dcs-name,
+.dcs-role,
+.dcs-hint,
+.dcs-wechat,
+.dcs-empty,
+.dcs-qr-state {
+  display: block;
+}
+
+.dcs-name {
+  color: #183426;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.dcs-role {
+  margin-top: 6rpx;
+  color: #8e9e94;
+  font-size: 22rpx;
+  line-height: 1.35;
+}
+
+.dcs-qr-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24rpx;
+  border-radius: 22rpx;
+  background: #fff;
+  box-shadow: inset 0 0 0 1rpx rgba(207, 220, 207, 0.65);
+}
+
+.dcs-qr {
+  width: 360rpx;
+  height: 360rpx;
+  background: #f5f8f5;
+}
+
+.dcs-qr-state {
+  display: flex;
+  width: 360rpx;
+  height: 360rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  color: #69806f;
+  background: #f5f8f5;
+  font-size: 24rpx;
+  line-height: 1.4;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.dcs-qr-state.error {
+  color: #8b6b3f;
+  background: #fcf7ed;
+}
+
+.dcs-retry {
+  color: #1f9d55;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.dcs-hint {
+  margin-top: 18rpx;
+  color: #728078;
+  font-size: 22rpx;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.dcs-wechat-row {
+  display: flex;
+  margin-top: 22rpx;
+  padding: 22rpx 24rpx;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  border-radius: 18rpx;
+  background: #fff;
+  box-shadow: inset 0 0 0 1rpx rgba(207, 220, 207, 0.65);
+}
+
+.dcs-wechat {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #26312a;
+  font-size: 24rpx;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dcs-copy {
+  flex: none;
+  color: #1f9d55;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.dcs-empty {
+  margin-top: 12rpx;
+  color: #728078;
+  font-size: 24rpx;
+  line-height: 1.45;
+  text-align: center;
+}

@@ -73,6 +73,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: '平台管理中心',
       items: [
         { key: 'enterprises', label: '企业管理', icon: Building2, href: '/enterprises' },
+        { key: 'enterprise-registration-codes', permissionKey: 'enterprises', label: '企业开户码', icon: QrCode, href: '/enterprise-registration-codes' },
         { key: 'ai-providers', label: 'AI 供应商', icon: Cable, href: '/ai-providers' },
         { key: 'ai-models', permissionKey: 'ai-providers', label: '生图模型', icon: Image, href: '/ai-models' },
         { key: 'media-storage', label: '媒体存储', icon: HardDrive, href: '/media-storage' },

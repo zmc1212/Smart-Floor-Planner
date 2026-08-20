@@ -28,8 +28,9 @@ test('customer AI schemes folio is read-only and consumes publishedSchemes', () 
   assert.match(page, /responseType: 'arraybuffer'/);
   assert.doesNotMatch(wxml, /进入 AI 设计|继续出图|材质微调|导出方案包/);
   assert.doesNotMatch(page, /onOpenAIDesign|publishScheme|withdrawPublication|exportSchemePack/);
-  assert.match(wxml, /customer-project-v1\/project-delivery-xiao-k\.png/);
+  assert.match(wxml, /\/images\/airy-v1\/project-delivery-xiao-k\.png/);
   assert.doesNotMatch(wxml, /xiao-k-mascot-3d\.png/);
+  assert.doesNotMatch(wxml, /packages\/business\/assets\/customer-project-v1\/project-delivery-xiao-k\.png/);
   assert.match(wxml, /客户 AI 方案/);
   assert.match(wxml, /交付时间轴/);
   assert.match(wxml, /全屏预览/);

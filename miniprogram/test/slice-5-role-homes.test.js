@@ -13,7 +13,9 @@ test('customer service home shows one featured stage and a single next action', 
   assert.match(workbench, /nextActionKind === 'book'/);
   assert.match(workbench, /nextActionKind === 'reschedule'/);
   assert.match(workbench, /nextActionKind === 'rebook'/);
-  assert.match(workbench, /appointment-reschedule\/appointment-reschedule/);
+  assert.match(workbench, /appointment-detail\/appointment-detail\?leadId=/);
+  assert.doesNotMatch(workbench, /appointment-reschedule\/appointment-reschedule\?leadId=\{/);
+  assert.doesNotMatch(workbench, /appointment-detail\/appointment-detail\?mode=customer&leadId=\{/);
   assert.match(workbench, /还没有进行中的服务/);
   assert.match(template, /item\.canReschedule/);
   assert.match(template, /item\.actionLabel/);

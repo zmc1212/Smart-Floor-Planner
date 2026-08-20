@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  EnterpriseRegistrationCodeRepository,
   EnterpriseRepository,
   MiniProgramIdentityRepository,
   ReferralLeadRepository,
@@ -22,9 +23,11 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+const PLATFORM_REGISTRATION_DISPLAY_NAME = '家客来企业入驻';
+
 function tokenCandidates(token: string) {
   if (/^[A-Za-z0-9_-]{32}$/.test(token)) {
-    return [`ej_${token}`, `rp_${token}`, `sa_${token}`];
+    return [`ej_${token}`, `rp_${token}`, `sa_${token}`, `er_${token}`];
   }
   return [token];
 }
@@ -52,6 +55,9 @@ export async function POST(request: Request) {
           ? authenticatedUser.id
           : null;
       const repository = new ReferrerNetworkRepository(transaction);
+      const registrationCodes = new EnterpriseRegistrationCodeRepository(
+        transaction
+      );
       const leads = new ReferralLeadRepository(transaction);
       const withExistingProject = async <T extends {
         kind: string;
@@ -81,6 +87,21 @@ export async function POST(request: Request) {
         };
       };
       for (const candidate of tokenCandidates(token)) {
+        if (candidate.startsWith('er_')) {
+          const registration = await registrationCodes.resolve(
+            candidate,
+            actorUserId
+          );
+          if (registration.code || registration.result !== 'code_not_found') {
+            return {
+              kind: 'enterprise_registration' as const,
+              codeType: null,
+              result: registration.result,
+              displayName: PLATFORM_REGISTRATION_DISPLAY_NAME,
+            };
+          }
+          continue;
+        }
         const joinCode = await repository.resolveEnterpriseJoinToken(
           candidate,
           actorUserId
@@ -170,6 +191,12 @@ export async function POST(request: Request) {
           ? {
               codeType: result.codeType,
               enterpriseName: result.enterpriseName,
+            }
+          : {}),
+        ...(result.kind === 'enterprise_registration'
+          ? {
+              displayName: result.displayName,
+              valid: true,
             }
           : {}),
         ...(result.kind === 'referral' || result.kind === 'staff_activity'

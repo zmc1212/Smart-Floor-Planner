@@ -13,7 +13,6 @@
     <button wx:else class="retry" bindtap="onBack">返回上一页</button>
   </view>
   <view wx:elif="{{appointment}}" class="detail-content">
-    <!-- Hero Green Card -->
     <view class="appointment-hero-card">
       <view class="hero-left">
         <text class="hero-title">{{appointment.title || '上门量房预约'}}</text>
@@ -21,32 +20,29 @@
         <view class="hero-status-pill">
           <view class="hero-status-dot"></view>
           <text>{{appointment.statusText || appointment.statusLabel || (appointment.status === 'confirmed' ? '预约已确认 (待上门)' : appointment.status === 'expired' ? '预约已过期' : '预约处理中')}}</text>
-          <text style="display:none;" class="status status-{{appointment.status}}">{{appointment.statusLabel}}</text>
         </view>
       </view>
       <image class="hero-guide-img" src="/packages/business/assets/appointment-booking-v1/schedule-guide.png" mode="aspectFit" />
     </view>
 
-    <!-- Schedule Card -->
     <view class="schedule-card sfp-card">
       <view class="schedule-time-row">
         <text class="time-main">{{appointment.dateText}} · {{appointment.timeText}}</text>
       </view>
-
       <view class="hairline"></view>
-
       <view class="info-row">
         <view class="info-icon location-icon">📍</view>
-        <view class="location-value"><text class="info-value">{{appointment.address || '地址待确认'}}</text><text wx:if="{{appointment.locationName}}" class="location-name">{{appointment.locationName}}</text></view>
+        <view class="location-value">
+          <text class="info-value">{{appointment.address || '地址待确认'}}</text>
+          <text wx:if="{{appointment.locationName}}" class="location-name">{{appointment.locationName}}</text>
+        </view>
       </view>
-
       <view class="info-row" wx:if="{{appointment.measurerName || appointment.designerName}}">
         <view class="info-icon user-icon">👤</view>
         <text class="info-value">{{appointment.measurerName ? appointment.measurerName + ' (认证测量员)' : (appointment.designerName ? appointment.designerName + ' (专属设计师)' : '服务人员')}} {{appointment.measurerPhone ? '· ' + appointment.measurerPhone : ''}}</text>
       </view>
     </view>
 
-    <!-- Role Notes -->
     <view class="role-note" wx:if="{{appointment.status === 'confirmed'}}">
       {{customerMode ? '如需调整时间，请在截止时间前选择可用时段。' : '设计师负责协调时间与取消，测量员完成上门后确认完成；企业负责人可处理全部动作。'}}
     </view>
@@ -57,29 +53,64 @@
       该预约已结束，当前记录仅供查看。
     </view>
 
-    <!-- Safety Badge -->
+    <view class="reschedule-panel sfp-card" wx:if="{{canReschedule}}">
+      <view class="reschedule-head">
+        <text class="reschedule-title">调整上门时段</text>
+        <text class="reschedule-desc">师傅实时可用排班</text>
+      </view>
+      <view class="date-picker">
+        <view class="window-button {{dateOffset===0?'disabled':''}}" bindtap="previousDates" aria-role="button" aria-label="查看更早日期">
+          <view class="chevron previous"></view>
+        </view>
+        <view class="days">
+          <view
+            wx:for="{{dates}}"
+            wx:key="key"
+            class="day {{selectedDate===item.key?'active':''}}"
+            data-date="{{item.key}}"
+            bindtap="chooseDate"
+          >
+            <text>{{item.label}}</text>
+            <text>{{item.key.slice(5)}}</text>
+          </view>
+        </view>
+        <view class="window-button {{dateOffset+dates.length>maxAdvanceDays?'disabled':''}}" bindtap="nextDates" aria-role="button" aria-label="查看后续日期">
+          <view class="chevron"></view>
+        </view>
+      </view>
+      <view wx:if="{{slotsLoading}}" class="slots-loading">正在计算可用时段…</view>
+      <view wx:elif="{{slotsError}}" class="slots-loading">{{slotsError}}</view>
+      <view wx:else class="slots">
+        <view
+          wx:for="{{slots}}"
+          wx:key="startAt"
+          class="slot {{selectedSlotStart===item.startAt?'selected':''}}"
+          data-slot="{{item}}"
+          bindtap="chooseSlot"
+        >
+          <text>{{item.label}}</text>
+          <view wx:if="{{selectedSlotStart===item.startAt}}" class="slot-check"></view>
+        </view>
+        <text wx:if="{{!slots.length}}" class="slots-empty">当天暂无可用时段</text>
+      </view>
+      <view class="reason-field" wx:if="{{!customerMode}}">
+        <text>调整原因（选填）</text>
+        <textarea value="{{reason}}" maxlength="200" auto-height placeholder="可填写原因，便于客户与服务人员了解变更" bindinput="onReasonInput"></textarea>
+      </view>
+    </view>
+
     <view class="safety-points">
       <view class="point-item"><view class="point-dot"></view><text>全程免费量房</text></view>
       <view class="point-item"><view class="point-dot"></view><text>提交后自动同步服务人员</text></view>
     </view>
 
-    <!-- Action Buttons -->
-    <view class="actions" wx:if="{{canReschedule || canCancel || canComplete || canStartSurvey || canUpdateAddress || canSyncCommunity || canRebook || canNavigate}}">
-      <button wx:if="{{canRebook}}" class="primary sfp-primary-action" disabled="{{acting}}" bindtap="rebook">
-        重新预约上门
-      </button>
-      <button wx:if="{{canStartSurvey}}" class="primary sfp-primary-action" disabled="{{acting}}" bindtap="startSurvey">
+    <view class="staff-secondary" wx:if="{{!customerMode && (canStartSurvey || canComplete || canUpdateAddress || canNavigate || canSyncCommunity)}}">
+      <button wx:if="{{canStartSurvey && canReschedule}}" class="primary sfp-primary-action" disabled="{{acting}}" bindtap="startSurvey">
         <text class="btn-icon">📐</text>
         <text>{{startSurveyLabel}}</text>
       </button>
-      <button wx:if="{{canComplete}}" class="primary sfp-primary-action" loading="{{acting}}" bindtap="complete">
+      <button wx:if="{{canComplete && canReschedule}}" class="primary sfp-primary-action" loading="{{acting}}" bindtap="complete">
         确认完成量房
-      </button>
-      <button wx:if="{{canReschedule}}" class="reschedule-btn sfp-primary-action" disabled="{{acting}}" bindtap="reschedule">
-        确认改期至可用时段
-      </button>
-      <button wx:if="{{canCancel}}" class="cancel-btn" disabled="{{acting}}" bindtap="cancel">
-        取消本次预约
       </button>
       <view class="secondary-row" wx:if="{{canUpdateAddress || canNavigate}}">
         <view
@@ -105,7 +136,29 @@
           <text class="btn-label">一键导航至量房地点</text>
         </view>
       </view>
-      <button wx:if="{{canSyncCommunity}}" class="cancel-btn" loading="{{acting}}" disabled="{{acting}}" bindtap="syncCommunity">同步到客户小区</button>
+      <button wx:if="{{canSyncCommunity}}" class="cancel-btn outline-btn" loading="{{acting}}" disabled="{{acting}}" bindtap="syncCommunity">同步到客户小区</button>
+    </view>
+  </view>
+
+  <view class="confirm-bar" wx:if="{{appointment && !loading && !error}}">
+    <view wx:if="{{canReschedule}}" class="confirm-bar-row {{canCancel ? 'has-cancel' : 'confirm-only'}}">
+      <button wx:if="{{canCancel}}" class="cancel-btn sticky-cancel" disabled="{{acting || rescheduleSubmitting}}" bindtap="cancel">取消本次预约</button>
+      <button
+        class="primary sfp-primary-action sticky-confirm"
+        disabled="{{!selectedSlot || rescheduleSubmitting}}"
+        loading="{{rescheduleSubmitting}}"
+        bindtap="submitReschedule"
+      >{{confirmRescheduleLabel}}</button>
+    </view>
+    <view wx:elif="{{canRebook}}">
+      <button class="primary sfp-primary-action sticky-confirm" disabled="{{acting}}" bindtap="rebook">重新预约上门</button>
+    </view>
+    <view wx:elif="{{!customerMode && (canStartSurvey || canComplete)}}">
+      <button wx:if="{{canStartSurvey}}" class="primary sfp-primary-action sticky-confirm" disabled="{{acting}}" bindtap="startSurvey">
+        <text class="btn-icon">📐</text>
+        <text>{{startSurveyLabel}}</text>
+      </button>
+      <button wx:elif="{{canComplete}}" class="primary sfp-primary-action sticky-confirm" loading="{{acting}}" bindtap="complete">确认完成量房</button>
     </view>
   </view>
 </view>

@@ -146,7 +146,7 @@ export function referrerNetworkError(
       ? 404
       : ['code_rotated', 'code_disabled', 'code_expired'].includes(code)
         ? 410
-        : ['staff_enterprise_conflict', 'membership_limit_reached'].includes(code)
+        : ['staff_enterprise_conflict', 'membership_limit_reached', 'phone_mismatch'].includes(code)
           ? 409
           : 400);
   return NextResponse.json(

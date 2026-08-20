@@ -17,7 +17,7 @@
           <text class="hero-title">{{heroTitle || '我的装修服务'}}</text>
           <text class="hero-subtitle">{{heroSubtitle || '免费量房与设计方案全纪录'}}</text>
         </view>
-        <image class="hero-mascot" src="/packages/business/assets/customer-project-v1/project-delivery-xiao-k.png" mode="aspectFit" aria-label="小K" />
+        <image class="hero-mascot" src="/images/airy-v1/project-delivery-xiao-k.png" mode="aspectFit" aria-label="小K" />
       </view>
       <view class="timeline-row">
         <block wx:for="{{stages}}" wx:key="label">
@@ -36,7 +36,7 @@
           <text class="person-role">专属设计师</text>
           <view class="person-name-row">
             <text class="person-name">{{designerLine}}</text>
-            <view wx:if="{{designer && designer.wechatId}}" class="person-chevron"></view>
+            <view wx:if="{{canContactDesigner}}" class="person-chevron"></view>
           </view>
         </view>
       </view>
@@ -156,4 +156,10 @@
     <button wx:if="{{featuredDelivery && featuredDelivery.imagePath}}" class="footer-primary sfp-primary-action" open-type="share">保存/分享我的方案</button>
     <button wx:else class="footer-primary sfp-primary-action" bindtap="saveOrShareScheme">保存/分享我的方案</button>
   </view>
+
+  <designer-contact-sheet
+    visible="{{showContactSheet}}"
+    designer="{{designer}}"
+    bind:close="closeContactSheet"
+  />
 </view>

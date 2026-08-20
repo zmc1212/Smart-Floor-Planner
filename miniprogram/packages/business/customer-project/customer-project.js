@@ -1,4 +1,8 @@
 const api = require('../../../utils/api');
+const {
+  hasDesignerContact,
+  copyDesignerWechatId,
+} = require('../../../utils/designerContact');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -154,6 +158,8 @@ Page({
     appointmentBadge: '',
     bookingHint: '',
     error: '',
+    canContactDesigner: false,
+    showContactSheet: false,
   },
 
   onLoad(query) {
@@ -196,6 +202,8 @@ Page({
         appointment,
         measurerName: project.measurerName || (appointment && appointment.measurerName) || '',
         designer: project.designer || null,
+        canContactDesigner: hasDesignerContact(project.designer),
+        showContactSheet: false,
         designerLine: buildDesignerLine(project.designer),
         measurerLine: buildMeasurerLine(
           project.measurerName || (appointment && appointment.measurerName) || '',
@@ -294,7 +302,9 @@ Page({
   reschedule() {
     const { appointment, leadId, canReschedule } = this.data;
     if (!appointment || !canReschedule) return;
-    wx.navigateTo({ url: `/packages/business/appointment-reschedule/appointment-reschedule?leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}&version=${appointment.version}` });
+    wx.navigateTo({
+      url: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`,
+    });
   },
 
   openAppointment() {
@@ -312,15 +322,22 @@ Page({
   },
 
   contactDesigner() {
-    const wechatId = this.data.designer && this.data.designer.wechatId;
-    if (!wechatId) {
+    const designer = this.data.designer;
+    if (!hasDesignerContact(designer)) {
       wx.showToast({ title: '设计师联系方式暂未提供', icon: 'none' });
       return;
     }
-    wx.setClipboardData({
-      data: wechatId,
-      success: () => wx.showToast({ title: '微信号已复制', icon: 'success' }),
+    if (designer.wechatQrUrl) {
+      this.setData({ showContactSheet: true });
+      return;
+    }
+    copyDesignerWechatId(designer.wechatId, { withSearchHint: true }).catch(() => {
+      wx.showToast({ title: '复制失败，请稍后重试', icon: 'none' });
     });
+  },
+
+  closeContactSheet() {
+    this.setData({ showContactSheet: false });
   },
 
   previewFloorPlan() {

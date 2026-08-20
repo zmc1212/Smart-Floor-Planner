@@ -225,6 +225,13 @@
       "when": 1787242800000,
       "tag": "0031_lead_commission_adjust_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1787246400000,
+      "tag": "0032_platform_enterprise_registration_codes",
+      "breakpoints": true
     }
   ]
 }

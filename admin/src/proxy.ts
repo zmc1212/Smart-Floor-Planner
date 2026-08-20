@@ -5,6 +5,7 @@ import * as jose from 'jose';
 const ROUTE_PERMISSIONS: Record<string, string> = {
   '/': 'dashboard',
   '/enterprises': 'enterprises',
+  '/enterprise-registration-codes': 'enterprises',
   '/ai-providers': 'ai-providers',
   '/ai-models': 'ai-providers',
   '/ai-presets': 'ai-presets',
@@ -37,6 +38,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/enterprise/referrer-network-readiness': 'referrer-network-operations',
   '/api/appointment-settings': 'referrer-network-operations',
   '/api/enterprises': 'enterprises',
+  '/api/admin/enterprise-registration-codes': 'enterprises',
   '/ai-studio': 'ai-scenarios',
   '/api/ai/workflows': 'ai-scenarios',
   '/api/ai/workflow-leads': 'ai-scenarios',

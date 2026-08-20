@@ -19,7 +19,7 @@
           <text class="hero-title">{{heroTitle}}</text>
           <text class="hero-subtitle">{{heroSubtitle}}</text>
         </view>
-        <image class="hero-mascot" src="/packages/business/assets/customer-project-v1/project-delivery-xiao-k.png" mode="aspectFit" aria-label="小K" />
+        <image class="hero-mascot" src="/images/airy-v1/project-delivery-xiao-k.png" mode="aspectFit" aria-label="小K" />
       </view>
 
       <scroll-view wx:if="{{showSchemeChips}}" class="scheme-chips" scroll-x enable-flex>

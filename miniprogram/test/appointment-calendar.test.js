@@ -10,8 +10,8 @@ function source(relativePath) {
   return fs.readFileSync(path.join(miniRoot, relativePath), 'utf8');
 }
 
-function loadReschedulePage() {
-  const pagePath = require.resolve('../packages/business/appointment-reschedule/appointment-reschedule.js');
+function loadDetailPage() {
+  const pagePath = require.resolve('../packages/business/appointment-detail/appointment-detail.js');
   const originalPage = global.Page;
   let definition;
   global.Page = (next) => { definition = next; };
@@ -21,13 +21,34 @@ function loadReschedulePage() {
   return definition;
 }
 
-test('customer reschedule honours the server appointment horizon and retains the selected slot identity', async () => {
-  const definition = loadReschedulePage();
+test('detail inline reschedule honours the server appointment horizon and retains the selected slot identity', async () => {
+  const definition = loadDetailPage();
+  assert.equal(typeof definition.loadSlots, 'function');
+  assert.equal(typeof definition.chooseSlot, 'function');
   const originalRequest = api.request;
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  global.wx = {
+    getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 24 }),
+    getMenuButtonBoundingClientRect: () => ({ left: 280, top: 24, height: 32 }),
+  };
+  global.getApp = () => ({ globalData: { userInfo: { role: 'staff', staffRole: 'designer' } } });
   const slot = { startAt: '2026-08-20T01:00:00.000Z', endAt: '2026-08-20T03:00:00.000Z' };
-  api.request = async () => ({ data: { maxAdvanceDays: 7, slots: [slot] } });
+  api.request = async (url) => {
+    if (String(url).includes('/appointments/availability')) {
+      return { data: { maxAdvanceDays: 7, slots: [slot] } };
+    }
+    return { data: [] };
+  };
   const context = {
-    data: { ...definition.data, leadId: '1', selectedDate: '2026-08-20' },
+    data: {
+      ...definition.data,
+      leadId: '1',
+      selectedDate: '2026-08-20',
+      dateOffset: 0,
+      maxAdvanceDays: 30,
+      canReschedule: true,
+    },
     setData(next) { Object.assign(this.data, next); },
   };
   try {
@@ -37,15 +58,18 @@ test('customer reschedule honours the server appointment horizon and retains the
     assert.equal(context.data.slots[0].label, '09:00 - 11:00');
     definition.chooseSlot.call(context, { currentTarget: { dataset: { slot: context.data.slots[0] } } });
     assert.equal(context.data.selectedSlotStart, slot.startAt);
+    assert.match(context.data.confirmRescheduleLabel || '', /^确认改期至/);
   } finally {
     api.request = originalRequest;
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
   }
 });
 
-test('phase-5 custom-navigation pages reserve the native capsule lane and keep the calendar pager accessible', () => {
+test('phase-5 custom-navigation pages reserve the native capsule lane; reschedule is a redirect shell', () => {
   const pages = [
     'packages/business/customer-project/customer-project',
-    'packages/business/appointment-reschedule/appointment-reschedule',
+    'packages/business/appointment-detail/appointment-detail',
     'packages/business/measurer-calendar/measurer-calendar',
     'packages/business/measurer-unavailability/measurer-unavailability',
   ];
@@ -54,14 +78,14 @@ test('phase-5 custom-navigation pages reserve the native capsule lane and keep t
     assert.match(source(`${page}.wxml`), /padding-right: \{\{navigationRight\}\}px/);
     assert.match(source(`${page}.wxml`), /bindtap="onBack"/);
   }
-  const reschedule = source('packages/business/appointment-reschedule/appointment-reschedule.js');
-  const rescheduleWxml = source('packages/business/appointment-reschedule/appointment-reschedule.wxml');
-  assert.match(reschedule, /maxAdvanceDays/);
-  assert.match(reschedule, /previousDates\(\)/);
-  assert.match(reschedule, /nextDates\(\)/);
-  assert.match(rescheduleWxml, /查看后续日期/);
-  assert.match(reschedule, /actionWidth: Math\.max\(0, Number\(windowInfo\.windowWidth \|\| 390\) - 24\)/);
-  assert.match(rescheduleWxml, /class="confirm sfp-primary-action" style="width: \{\{actionWidth\}\}px;"/);
-  assert.match(source('packages/business/appointment-reschedule/appointment-reschedule.less'), /\.confirm-bar/);
-  assert.match(source('packages/business/appointment-reschedule/appointment-reschedule.less'), /\.confirm\{display:block;/);
+
+  const shell = source('packages/business/appointment-reschedule/appointment-reschedule.js');
+  assert.match(shell, /redirectTo/);
+  assert.match(shell, /appointment-detail\/appointment-detail/);
+  assert.match(shell, /mode !== 'internal'|mode === 'internal'/);
+  assert.match(shell, /mode=customer/);
+  assert.match(shell, /预约信息不完整|缺少预约/);
+  assert.doesNotMatch(shell, /loadSlots/);
+  assert.doesNotMatch(shell, /previousDates/);
+  assert.doesNotMatch(source('packages/business/appointment-reschedule/appointment-reschedule.wxml'), /confirm-bar/);
 });
