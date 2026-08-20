@@ -1,5 +1,6 @@
 <view class="home-page sfp-tab-page">
-  <role-workbench wx:if="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" />
+  <customer-service-home wx:if="{{roleWorkbenchRole === 'customer'}}" />
+  <role-workbench wx:elif="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" />
   <block wx:else>
   <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}" enhanced>
     <view class="home-content">
