@@ -20,6 +20,6 @@ test('workbench reserves one reference slot for the floor-plan control image', (
 });
 
 test('workbench floor-plan preview path is scoped to the conversation', () => {
-  assert.equal(workbenchFloorPlanPreviewPath('42'), '/api/ai/workflows/42/floor-plan-preview?v=2');
+  assert.equal(workbenchFloorPlanPreviewPath('42'), '/api/ai/workflows/42/floor-plan-preview?v=3');
   assert.equal(workbenchFloorPlanPreviewPath('  '), '');
 });

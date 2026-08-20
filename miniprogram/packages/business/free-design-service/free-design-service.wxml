@@ -1,9 +1,9 @@
 <!--
-THESIS: 领取过程是一张透明的服务确认单，先授权、后建档，结果只交付真实设计师资料。
-OWN-WORLD: 暖白服务纸、品牌绿路径节点、克制的线框图标和单一绿色主动作。
-STORY: 客户看懂两项服务与两步流程，同意隐私说明后授权手机号并获得设计师微信。
-FIRST VIEWPORT: 胶囊左侧标题；ready 状态的服务内容、流程、隐私与 CTA 同屏，success 状态完整展示设计师资料与操作。
-FORM: 批准的 selected option A 中/右屏，信息结构采用 option B；精确设计源已锁定，未运行概念 seed。
+THESIS: 领取过程是一张透明的服务确认单，先确认、再授权、后建档，结果只交付真实设计师资料。
+OWN-WORLD: 极简透气版暖白纸面、家客绿步骤条、克制线框图标和单一绿色主动作。
+STORY: 客户看懂两项服务与两步流程，同意隐私说明后授权手机号，并获得已匹配设计师或等待派单。
+FIRST VIEWPORT: 胶囊左侧品牌锁；ready、phoneAuth、success、pending 各自在 390x844 同屏展示主内容与 CTA。
+FORM: design-references/miniprogram-airy-minimalist-v1/10-free-design-confirm.jpg, 11-free-design-phone-auth.jpg, 12-free-design-success.jpg, 13-free-design-assignment-pending.jpg
 -->
 <view class="claim-page state-{{pageState}}">
   <view
@@ -11,117 +11,315 @@ FORM: 批准的 selected option A 中/右屏，信息结构采用 option B；精
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
     <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
-      <image src="/images/back-arrow.png" mode="aspectFit" />
+      <view class="back-chevron"></view>
     </view>
-    <view class="nav-title">{{pageState === 'success' || pageState === 'pending' ? '服务已领取' : pageState === 'existing' ? '服务档案' : '确认领取'}}</view>
+    <view class="brand-lockup">
+      <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+      <text class="brand-name">家客来</text>
+      <view class="nav-divider"></view>
+      <text class="nav-title">{{navTitle}}</text>
+    </view>
   </view>
 
   <view wx:if="{{pageState === 'resolving'}}" class="claim-state resolving-state">
     <view class="resolving-mark"></view>
-    <view class="state-title">正在确认服务</view>
-    <view class="state-copy">请稍候，正在校验本次服务领取资格。</view>
+    <text class="state-title">正在确认服务</text>
+    <text class="state-copy">请稍候，正在校验本次服务领取资格。</text>
   </view>
 
-  <view wx:elif="{{pageState === 'ready' || pageState === 'submitting'}}" class="claim-ready">
-    <view class="ready-heading">
-      <view class="ready-title">领取免费量房设计服务</view>
-      <view wx:if="{{enterpriseName}}" class="ready-enterprise">{{enterpriseName}}</view>
-      <view class="ready-subtitle">{{claimKind === 'staff_activity' ? '现场员工为您对接量房与设计师服务' : '简单两步，专属设计师为您服务'}}</view>
+  <view wx:elif="{{pageState === 'ready'}}" class="claim-ready">
+    <view class="ready-hero">
+      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
+      <view class="hero-copy">
+        <text class="ready-title">领取免费量房设计服务</text>
+        <text wx:if="{{enterpriseName}}" class="ready-enterprise">{{enterpriseName}}</text>
+        <text class="ready-subtitle">{{claimKind === 'staff_activity' ? '现场员工为您对接量房与设计师服务' : '简单两步，专属设计师为您服务'}}</text>
+      </view>
+      <image
+        class="hero-xiaok"
+        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
+        mode="aspectFit"
+      />
     </view>
 
     <view class="service-block">
-      <view class="block-title">服务内容</view>
+      <view class="block-title-row">
+        <view class="title-leaf"></view>
+        <text class="block-title">服务内容</text>
+        <view class="title-leaf title-leaf-flip"></view>
+      </view>
       <view class="service-pair">
         <view class="service-item">
-          <view class="service-icon"><image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" /></view>
-          <view class="service-label">上门测量</view>
+          <view class="service-icon">
+            <image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" />
+          </view>
+          <text class="service-label">上门量房</text>
         </view>
-        <view class="service-plus">+</view>
+        <view class="service-split"></view>
         <view class="service-item">
-          <view class="service-icon"><image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" /></view>
-          <view class="service-label">设计师服务</view>
+          <view class="service-icon">
+            <image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" />
+          </view>
+          <text class="service-label">设计师服务</text>
         </view>
       </view>
     </view>
 
     <view class="process-block">
-      <view class="block-title">领取流程</view>
+      <view class="block-title-row">
+        <view class="title-leaf"></view>
+        <text class="block-title">领取流程</text>
+        <view class="title-leaf title-leaf-flip"></view>
+      </view>
       <view class="process-row">
         <view class="process-item">
-          <view class="process-node"><image src="/packages/business/assets/referral-service-v1/phone-authorization.png" mode="aspectFit" /></view>
-          <view class="process-label">授权手机号</view>
+          <view class="process-index">1</view>
+          <view class="process-node">
+            <image src="/packages/business/assets/referral-service-v1/phone-authorization.png" mode="aspectFit" />
+          </view>
+          <text class="process-label">授权手机号</text>
         </view>
-        <view class="process-line"><view class="process-arrow"></view></view>
+        <view class="process-line">
+          <view class="process-arrow"></view>
+        </view>
         <view class="process-item">
-          <view class="process-node"><image src="/packages/business/assets/referral-service-v1/designer-matching.png" mode="aspectFit" /></view>
-          <view class="process-label">{{claimKind === 'staff_activity' ? '现场员工对接' : '自动匹配设计师'}}</view>
+          <view class="process-index">2</view>
+          <view class="process-node">
+            <image src="/packages/business/assets/referral-service-v1/designer-matching.png" mode="aspectFit" />
+          </view>
+          <text class="process-label">{{claimKind === 'staff_activity' ? '现场员工对接' : '自动匹配设计师'}}</text>
         </view>
       </view>
     </view>
 
     <view class="privacy-note">
       <image src="/packages/business/assets/referral-service-v1/privacy-lock.png" mode="aspectFit" />
-      <view>手机号仅用于本次家装服务联系，我们将严格保护您的隐私安全</view>
+      <view class="privacy-copy">
+        <text>手机号仅用于本次家装服务联系</text>
+        <text>我们将严格保护您的隐私安全</text>
+      </view>
     </view>
 
     <button
-      class="claim-action {{!agreed || pageState === 'submitting' ? 'is-disabled' : ''}}"
-      open-type="getPhoneNumber"
-      bindgetphonenumber="onGetPhoneNumber"
-      loading="{{pageState === 'submitting'}}"
-      disabled="{{!agreed || pageState === 'submitting'}}"
+      class="claim-action {{!agreed ? 'is-disabled' : ''}}"
+      bindtap="onStartPhoneAuth"
+      disabled="{{!agreed}}"
     >一键授权手机号</button>
 
     <view class="agreement-row" bindtap="onToggleAgreement" aria-role="checkbox" aria-checked="{{agreed}}">
-      <view class="agreement-check {{agreed ? 'is-checked' : ''}}"><view wx:if="{{agreed}}" class="check-mark"></view></view>
-      <view>我已阅读并同意<text>《隐私保护说明》</text></view>
+      <view class="agreement-check {{agreed ? 'is-checked' : ''}}">
+        <view wx:if="{{agreed}}" class="check-mark"></view>
+      </view>
+      <text>我已阅读并同意<text class="agreement-link">《隐私保护说明》</text></text>
     </view>
+  </view>
+
+  <view wx:elif="{{pageState === 'phoneAuth'}}" class="claim-auth">
+    <view class="claim-stepper">
+      <view class="step done">
+        <view class="step-dot"><view class="step-check"></view></view>
+        <text class="step-label">扫码领取</text>
+      </view>
+      <view class="step-rail is-solid"></view>
+      <view class="step current">
+        <view class="step-dot">2</view>
+        <text class="step-label">手机号授权</text>
+      </view>
+      <view class="step-rail"></view>
+      <view class="step">
+        <view class="step-dot">3</view>
+        <text class="step-label">设计师匹配</text>
+      </view>
+    </view>
+
+    <view class="auth-hero">
+      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
+      <view class="hero-copy">
+        <text class="ready-title">授权手机号，开始服务</text>
+        <text class="ready-subtitle">仅用于本次免费量房与设计服务联系</text>
+      </view>
+      <image
+        class="hero-xiaok"
+        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
+        mode="aspectFit"
+      />
+    </view>
+
+    <view class="auth-card">
+      <view class="block-title-row">
+        <view class="title-leaf"></view>
+        <text class="block-title">手机号授权</text>
+        <view class="title-leaf title-leaf-flip"></view>
+      </view>
+      <view class="auth-reason">
+        <view class="reason-icon">
+          <image src="/packages/business/assets/referral-service-v1/phone-authorization.png" mode="aspectFit" />
+        </view>
+        <text class="reason-copy">用于预约量房联系</text>
+      </view>
+      <view class="auth-reason">
+        <view class="reason-icon">
+          <image src="/packages/business/assets/login-v1/wechat.png" mode="aspectFit" />
+        </view>
+        <text class="reason-copy">用于接收设计师微信</text>
+      </view>
+      <view class="auth-privacy">
+        <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+        <text>我们不会公开或出售您的手机号</text>
+      </view>
+    </view>
+
+    <button
+      class="claim-action"
+      open-type="getPhoneNumber"
+      bindgetphonenumber="onGetPhoneNumber"
+      loading="{{submitting}}"
+      disabled="{{submitting}}"
+    >允许微信授权手机号</button>
+    <view class="later-link" bindtap="onSkipAuth" aria-role="button">暂不授权</view>
   </view>
 
   <view wx:elif="{{pageState === 'success'}}" class="claim-success">
-    <view class="success-mark"><view class="success-check"></view></view>
-    <view class="success-title">设计师已为你分配</view>
-    <view class="success-subtitle">请保存设计师微信，方便后续沟通</view>
+    <view class="claim-stepper">
+      <view class="step done">
+        <view class="step-dot"><view class="step-check"></view></view>
+        <text class="step-label">扫码领取</text>
+      </view>
+      <view class="step-rail is-solid"></view>
+      <view class="step done">
+        <view class="step-dot"><view class="step-check"></view></view>
+        <text class="step-label">手机号授权</text>
+      </view>
+      <view class="step-rail is-solid"></view>
+      <view class="step current">
+        <view class="step-dot">3</view>
+        <text class="step-label">设计师匹配</text>
+      </view>
+    </view>
+
+    <view class="success-hero">
+      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
+      <view class="hero-copy">
+        <text class="ready-title">服务已建立</text>
+        <text class="ready-subtitle accent">专属设计师已为你匹配</text>
+      </view>
+      <image
+        class="hero-xiaok"
+        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
+        mode="aspectFit"
+      />
+    </view>
 
     <view class="designer-sheet">
-      <view class="designer-avatar"><image src="/images/mine-icons/user.png" mode="aspectFit" /></view>
-      <view class="designer-name">{{designerProfile.displayName || '专属设计师'}}</view>
-      <view class="designer-wechat">微信号：{{designerProfile.wechatId}}</view>
-
-      <view class="designer-qr-wrap">
-        <view wx:if="{{designerQrLoading}}" class="designer-qr-loading">二维码加载中</view>
-        <view wx:elif="{{designerQrError}}" class="designer-qr-error">
-          <view>二维码暂时无法读取</view>
-          <button bindtap="onRetryDesignerQr">重新获取</button>
+      <view class="designer-head">
+        <view class="designer-avatar">
+          <image src="/images/mine-icons/user.png" mode="aspectFit" />
         </view>
-        <image wx:elif="{{designerQrPath}}" class="designer-qr" src="{{designerQrPath}}" mode="aspectFit" show-menu-by-longpress />
-        <view wx:else class="designer-qr-error">设计师暂未提供二维码</view>
+        <view class="designer-meta">
+          <text class="designer-name">{{designerProfile.displayName || '专属设计师'}}</text>
+          <text class="designer-role">专属设计师</text>
+        </view>
       </view>
-      <view class="qr-helper">长按或保存二维码，添加设计师微信</view>
-
-      <view class="designer-actions">
-        <button class="designer-action secondary" bindtap="onCopyWechat">复制微信号</button>
-        <button class="designer-action primary" bindtap="onSaveQr" disabled="{{!designerQrPath}}">保存二维码</button>
+      <view class="designer-hairline"></view>
+      <view class="designer-wechat-row">
+        <image class="wechat-mark" src="/packages/business/assets/login-v1/wechat.png" mode="aspectFit" />
+        <text class="designer-wechat">微信号：{{designerProfile.wechatId || '暂未提供'}}</text>
+        <text wx:if="{{designerProfile.wechatId}}" class="copy-link" bindtap="onCopyWechat">复制微信号</text>
       </view>
     </view>
 
-    <view class="archive-ready">
-      <view class="archive-check"></view>
-      <view>服务档案已建立</view>
+    <view class="next-card">
+      <view class="next-row">
+        <view class="next-item">
+          <view class="next-icon">
+            <image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" />
+          </view>
+          <text class="next-label">免费量房</text>
+        </view>
+        <view class="next-arrow"></view>
+        <view class="next-item">
+          <view class="next-icon chat-icon">
+            <view class="chat-bubble"></view>
+          </view>
+          <text class="next-label">设计师沟通</text>
+        </view>
+      </view>
+      <view class="next-note">
+        <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+        <text>后续预约与方案沟通将通过微信联系</text>
+      </view>
     </view>
+
+    <button class="claim-action" bindtap="onOpenProject">查看我的服务档案</button>
+    <view class="later-link" bindtap="onLater" aria-role="button">稍后再看</view>
   </view>
 
-  <view wx:elif="{{pageState === 'pending' || pageState === 'existing'}}" class="claim-state pending-state">
-    <view class="pending-mark"><view class="pending-clock"></view></view>
-    <view class="state-title">服务档案已建立</view>
-    <view class="state-copy">{{pageState === 'existing' ? '你已有进行中的服务，本次扫码不会重复领取。' : '设计师正在分配中，完成后会在你的客户项目中显示。'}}</view>
-    <button class="state-action" bindtap="onOpenProject">查看服务档案</button>
+  <view wx:elif="{{pageState === 'pending' || pageState === 'existing'}}" class="claim-pending">
+    <view class="claim-stepper">
+      <view class="step done">
+        <view class="step-dot"><view class="step-check"></view></view>
+        <text class="step-label">扫码领取</text>
+      </view>
+      <view class="step-rail is-solid"></view>
+      <view class="step done">
+        <view class="step-dot"><view class="step-check"></view></view>
+        <text class="step-label">手机号授权</text>
+      </view>
+      <view class="step-rail is-dashed"></view>
+      <view class="step pending-step">
+        <view class="step-dot">3</view>
+        <text class="step-label">设计师匹配</text>
+      </view>
+    </view>
+
+    <view class="pending-hero">
+      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
+      <view class="hero-copy">
+        <text class="ready-title">{{pageState === 'existing' ? '服务档案已建立' : '服务已领取'}}</text>
+        <text class="ready-subtitle">{{pageState === 'existing' ? '你已有进行中的服务，本次扫码不会重复领取。' : '我们正在为你匹配合适的设计师'}}</text>
+      </view>
+      <image
+        class="hero-xiaok"
+        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
+        mode="aspectFit"
+      />
+    </view>
+
+    <view class="status-card">
+      <view class="status-row">
+        <view class="status-item done">
+          <view class="status-dot"><view class="step-check"></view></view>
+          <text class="status-title">服务已建立</text>
+          <text class="status-copy">我们已收到你的需求</text>
+        </view>
+        <view class="status-wave"></view>
+        <view class="status-item">
+          <view class="status-dot"></view>
+          <text class="status-title">量房安排</text>
+          <text class="status-copy">我们将为你安排量房</text>
+        </view>
+        <view class="status-wave"></view>
+        <view class="status-item">
+          <view class="status-dot"></view>
+          <text class="status-title">设计师沟通</text>
+          <text class="status-copy">匹配后将为你安排沟通</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="pending-note">
+      <image src="/packages/business/assets/login-v1/wechat.png" mode="aspectFit" />
+      <text>{{pageState === 'existing' ? '可在服务档案中查看当前进度' : '匹配完成后，我们会通过微信通知你'}}</text>
+    </view>
+
+    <button class="claim-action" bindtap="onOpenProject">查看服务档案</button>
+    <view class="later-link" bindtap="onLater" aria-role="button">稍后再看</view>
   </view>
 
   <view wx:else class="claim-state error-state">
     <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-    <view class="state-title">本次服务暂未领取</view>
-    <view class="state-copy">{{errorMessage}}</view>
+    <text class="state-title">本次服务暂未领取</text>
+    <text class="state-copy">{{errorMessage}}</text>
     <button class="state-action" bindtap="onRetry">重新确认</button>
   </view>
 </view>

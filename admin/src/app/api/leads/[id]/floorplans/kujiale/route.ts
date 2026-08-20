@@ -12,6 +12,7 @@ import {
 } from '@/db/repositories';
 import type { PostgresTransaction } from '@/db/transaction';
 import { getTenantContext, type TenantContext } from '@/lib/auth';
+import { persistAndAttachFloorPlanPreview } from '@/lib/floor-plan-preview';
 import {
   convertKujialeDetailToLayoutData,
   getKujialeFloorPlanDetail,
@@ -224,11 +225,12 @@ export async function POST(
               persistImport(transaction, leadId, detail, context)
           );
 
+    const floorPlan = await persistAndAttachFloorPlanPreview(result.floorPlan);
     return NextResponse.json({
       success: true,
       data: {
         lead: leadToDto(result.lead),
-        floorPlan: floorPlanToDto(result.floorPlan),
+        floorPlan: floorPlanToDto(floorPlan),
       },
     });
   } catch (error: unknown) {

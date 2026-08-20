@@ -34,6 +34,7 @@ import { executePostgresWorkflowChat } from '@/lib/ai/postgres-workflow-chat';
 import type { AiChatMessage } from '@/lib/ai/provider-types';
 import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
 import { workbenchFloorPlanPreviewPath } from '@/lib/ai/workbench-studio';
+import { renderFloorPlanPreviewPng } from '@/lib/floor-plan-preview';
 import { leadArchivedError } from '@/lib/lead-lifecycle';
 import {
   getPostgresAssetIdFromImageUrl,
@@ -475,19 +476,24 @@ export async function getPostgresAiWorkflowFloorPlanPreview(input: {
 }) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const workflowId = parsePostgresId(input.workflowId, 'workflowId');
-  const layoutData = await withTenantTransaction(enterpriseId, async (transaction) => {
+  const floorPlan = await withTenantTransaction(enterpriseId, async (transaction) => {
     const workflow = await new AiWorkflowRepository(transaction).findById(workflowId);
     if (!workflow) throw notFound('方案会话不存在或无权访问');
     if (!workflow.sourceFloorPlanId) throw notFound('方案尚未关联正式户型');
 
     const lead = await new LeadRepository(transaction).findById(workflow.leadId);
     if (!lead) throw notFound('客户线索不存在或无权访问');
-    const floorPlan = lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId);
-    if (!floorPlan) throw notFound('方案关联的正式户型不存在或无权访问');
-    assertEligibleWorkflowFloorPlan(floorPlan);
-    return floorPlan.layoutData;
+    const boundPlan = lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId);
+    if (!boundPlan) throw notFound('方案关联的正式户型不存在或无权访问');
+    assertEligibleWorkflowFloorPlan(boundPlan);
+    return boundPlan;
   });
-  return renderMiniAiFloorPlanControlPng(layoutData);
+  try {
+    return await renderFloorPlanPreviewPng(floorPlan);
+  } catch (error) {
+    console.error('[AI Workflow Floor Plan Preview] canvas snapshot failed, using SVG fallback', error);
+    return renderMiniAiFloorPlanControlPng(floorPlan.layoutData);
+  }
 }
 
 /**

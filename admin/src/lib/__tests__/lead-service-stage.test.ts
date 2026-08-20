@@ -145,6 +145,26 @@ test('customer home exposes one next action from the shared service stage', () =
     leadStatus: 'measuring',
     assignmentStatus: 'assigned',
     measurerId: '1',
+  }).kind, 'book');
+
+  assert.deepEqual(resolveCustomerHomeAction({
+    leadStatus: 'measuring',
+    assignmentStatus: 'assigned',
+    measurerId: '1',
+  }), {
+    kind: 'book',
+    label: '预约上门',
+    stageKey: 'measurer_assigned',
+    stageLabel: '已匹配测量员',
+    nextAction: '预约上门量房时间',
+    appointmentSummary: '已匹配设计师和测量员，请预约上门量房时间',
+    canReschedule: false,
+    canRebook: true,
+  });
+
+  assert.equal(resolveCustomerHomeAction({
+    leadStatus: 'new',
+    assignmentStatus: 'assignment_pending',
   }).kind, 'wait_designer');
 
   assert.equal(resolveCustomerHomeAction({

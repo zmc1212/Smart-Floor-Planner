@@ -17,6 +17,7 @@ import {
   withAdminPostgresTransaction,
   withMiniProgramPostgresTransaction,
 } from '@/lib/postgres-request-scope';
+import { persistAndAttachFloorPlanPreview } from '@/lib/floor-plan-preview';
 import { canStaffMutateLeadSurvey } from '@/lib/lead-staff-access';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
 
@@ -160,13 +161,14 @@ export async function POST(request: Request) {
         return { plan: created, lead: linkedLead };
       }
     );
+    const plan = await persistAndAttachFloorPlanPreview(createdResult.plan);
     return NextResponse.json(
       {
         success: true,
-        data: floorPlanToDto(createdResult.plan, {
+        data: floorPlanToDto(plan, {
           lead: createdResult.lead,
           measurementSequence: createdResult.lead?.floorPlanRecords.find(
-            (record) => record.id === createdResult.plan.id
+            (record) => record.id === plan.id
           )?.measurementSequence,
         }),
       },

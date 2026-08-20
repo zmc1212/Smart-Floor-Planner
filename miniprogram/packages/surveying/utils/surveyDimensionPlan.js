@@ -1,8 +1,8 @@
 /*
  * Formal survey drawing dimensions.
  *
- * This module is deliberately dependency-free so the Mini Program Canvas and
- * the admin SVG viewer produce the same engineering-style annotation plan.
+ * This module is deliberately dependency-free so the Mini Program Canvas,
+ * the Admin read-only canvas viewer, and DXF export share one annotation plan.
  * It consumes a read model only; formal v4 surveyGraph data remains unchanged.
  */
 
@@ -778,17 +778,22 @@ function extraClearanceSupport(points, normal) {
   return Math.max(...points.map((value) => dot(value, normal)));
 }
 
-function overlappingOutlineSupport(outlineSegments, normal, direction, minProjection, maxProjection, tolerance) {
-  let support = Number.NEGATIVE_INFINITY;
+function overlappingOutlineSupport(outlineSegments, normal, direction, minProjection, maxProjection, tolerance, fallbackPoints) {
+  const innerSupport = fallbackPoints && fallbackPoints.length
+    ? Math.max(...fallbackPoints.map((value) => dot(value, normal)))
+    : Number.NEGATIVE_INFINITY;
+  let nearest = Number.POSITIVE_INFINITY;
   outlineSegments.forEach((segment) => {
     const frame = createOrthogonalFrame(segment, tolerance);
     if (!frame || normalKey(frame.outward) !== normalKey(normal)) return;
     const segmentMin = Math.min(dot(segment.start, direction), dot(segment.end, direction));
     const segmentMax = Math.max(dot(segment.start, direction), dot(segment.end, direction));
     if (Math.min(maxProjection, segmentMax) - Math.max(minProjection, segmentMin) <= tolerance * 0.25) return;
-    support = Math.max(support, dot(segment.start, normal), dot(segment.end, normal));
+    const segmentSupport = Math.max(dot(segment.start, normal), dot(segment.end, normal));
+    if (segmentSupport + tolerance < innerSupport) return;
+    nearest = Math.min(nearest, segmentSupport);
   });
-  return support;
+  return nearest === Number.POSITIVE_INFINITY ? Number.NEGATIVE_INFINITY : nearest;
 }
 
 function dimensionPointAtSupport(value, normal, support, gap) {
@@ -850,7 +855,8 @@ function createClosedDimensionPlan(input) {
       direction,
       minProjection,
       maxProjection,
-      tolerance
+      tolerance,
+      fallbackPoints
     );
     const fallbackSupport = fallbackPoints && fallbackPoints.length
       ? Math.max(...fallbackPoints.map((value) => dot(value, normal)))

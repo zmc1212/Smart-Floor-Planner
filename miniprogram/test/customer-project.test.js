@@ -17,6 +17,8 @@ test('customer project consumes only the owner-only aggregate and renders appoin
   assert.match(wxml, /designer && designer\.displayName/);
   assert.match(wxml, /measurerName \|\| '待分配'/);
   assert.match(wxml, /预约量房/);
+  assert.match(wxml, /bindtap="bookAppointment"/);
+  assert.match(wxml, /预约上门量房/);
   assert.match(page, /appointment-booking\/appointment-booking\?leadId=.*mode=customer/);
   assert.match(page, /onShareAppMessage\(\)/);
   assert.match(page, /appointment-detail\/appointment-detail\?mode=customer&leadId=/);

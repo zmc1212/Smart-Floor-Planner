@@ -47,6 +47,27 @@
       </view>
     </view>
 
+    <view class="section-card sfp-card">
+      <view class="section-header">
+        <view class="section-title-wrap">
+          <text class="section-title">上门量房预约</text>
+        </view>
+        <text class="section-badge">{{appointmentBadge || '服务准备中'}}</text>
+      </view>
+      <view wx:if="{{appointment && range}}" class="appointment-facts">
+        <text class="appointment-time">{{range.date}} {{range.time}}</text>
+        <text class="appointment-address">{{appointment.address || '地址待确认'}}</text>
+      </view>
+      <view wx:else class="empty-folio-box">
+        <text class="empty-note">{{bookingHint || nextAction || '完成派单后即可预约上门量房'}}</text>
+      </view>
+      <view class="booking-actions">
+        <button wx:if="{{canRebook}}" class="booking-action sfp-primary-action" bindtap="bookAppointment">{{appointment ? '重新预约上门' : '预约上门量房'}}</button>
+        <button wx:elif="{{canReschedule}}" class="booking-action sfp-primary-action" bindtap="reschedule">改期</button>
+        <button wx:if="{{appointment}}" class="booking-secondary" bindtap="openAppointment">查看预约</button>
+      </view>
+    </view>
+
     <!-- CAD Floor Plan Section -->
     <view class="section-card sfp-card" wx:if="{{formalFloorPlan}}">
       <view class="section-header">
@@ -105,6 +126,7 @@
       </block>
       <view wx:else class="empty-folio"><image src="/packages/business/assets/customer-project-v1/published-design-folio.png" mode="aspectFit" class="empty-art" /><view><text class="empty-title">设计师正在准备方案</text><text class="empty-note">方案发布后，您可以在这里查看成果</text></view></view>
     </view>
-    <text wx:if="{{appointment}}" class="hint">如需调整时间，请在截止时间前选择可用时段</text>
+    <text wx:if="{{appointment && canReschedule}}" class="hint">如需调整时间，请在截止时间前选择可用时段</text>
+    <text wx:elif="{{canRebook && !appointment}}" class="hint">可自己预约上门，也可微信联系设计师代为预约</text>
   </view>
 </view>

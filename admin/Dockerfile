@@ -37,6 +37,7 @@ ENV NODE_ENV=production
 ENV HOSTNAME="0.0.0.0"
 ENV PORT=3005
 
+RUN apk add --no-cache font-noto-cjk libc6-compat
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 RUN mkdir -p /data/ai-assets && chown -R nextjs:nodejs /data/ai-assets
@@ -51,6 +52,7 @@ COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
+COPY --from=builder /app/node_modules/@napi-rs ./node_modules/@napi-rs
 
 USER nextjs
 

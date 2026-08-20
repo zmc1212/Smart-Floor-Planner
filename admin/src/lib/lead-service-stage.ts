@@ -34,7 +34,7 @@ export const LEAD_SERVICE_STAGE_NEXT_ACTIONS: Record<LeadServiceStage, string> =
   appointment_expired: '重新预约上门',
   awaiting_rebooking: '选择新的上门时段',
   appointment_confirmed: '按预约上门，窗口内可改期',
-  measurer_assigned: '创建首次上门预约',
+  measurer_assigned: '预约上门量房时间',
   assignment_pending: '补齐可用设计师或测量员后重试派单',
   claimed: '等待自动派单或联系客户',
 };
@@ -155,13 +155,14 @@ export function canRebookAppointment(input: {
   return isAppointmentPastEnd(appointment, input.now);
 }
 
-export type CustomerHomeActionKind = 'reschedule' | 'rebook' | 'view_project' | 'wait_designer' | 'none';
+export type CustomerHomeActionKind = 'book' | 'reschedule' | 'rebook' | 'view_project' | 'wait_designer' | 'none';
 
 export const CUSTOMER_HOME_ACTION_LABELS: Record<CustomerHomeActionKind, string> = {
+  book: '预约上门',
   reschedule: '改期',
   rebook: '重新预约',
   view_project: '看项目',
-  wait_designer: '等待设计师',
+  wait_designer: '等待派单',
   none: '查看项目',
 };
 
@@ -207,6 +208,7 @@ export function describeCustomerAppointment(input: {
   if (input.serviceStage === 'appointment_confirmed') {
     return formatCustomerAppointmentTime(input.appointment?.timeRange) || '已预约上门量房';
   }
+  if (input.serviceStage === 'measurer_assigned') return '已匹配设计师和测量员，请预约上门量房时间';
   return LEAD_SERVICE_STAGE_NEXT_ACTIONS[input.serviceStage];
 }
 
@@ -233,9 +235,10 @@ export function resolveCustomerHomeAction(input: {
   if (stage.key === 'closed') kind = 'none';
   else if (['converted', 'design_published', 'survey_completed', 'appointment_in_progress'].includes(stage.key)) {
     kind = 'view_project';
-  } else if (stage.key === 'appointment_expired' || stage.key === 'awaiting_rebooking') kind = 'rebook';
+  }   else if (stage.key === 'appointment_expired' || stage.key === 'awaiting_rebooking') kind = 'rebook';
   else if (stage.key === 'appointment_confirmed') kind = canReschedule ? 'reschedule' : 'view_project';
-  else if (['measurer_assigned', 'assignment_pending', 'claimed'].includes(stage.key)) kind = 'wait_designer';
+  else if (stage.key === 'measurer_assigned' && canRebook) kind = 'book';
+  else if (['assignment_pending', 'claimed'].includes(stage.key)) kind = 'wait_designer';
   return {
     kind,
     label: CUSTOMER_HOME_ACTION_LABELS[kind],

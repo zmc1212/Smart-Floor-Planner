@@ -136,9 +136,13 @@ test('formal DXF uses the open-source writer and is readable by a DXF parser', a
   const outerDimStyle = namedTableRecord(dxf, 'DIMSTYLE', DXF_DIM_STYLE_NAMES.outer);
   assert.match(innerDimStyle, /\n41\n50(?:\.0+)?\n/);
   assert.match(innerDimStyle, /\n140\n135(?:\.0+)?\n/);
+  assert.match(innerDimStyle, /\n147\n10(?:\.0+)?\n/);
+  assert.match(innerDimStyle, /\n77\n2\n/);
   assert.match(innerDimStyle, /\n271\n0\n/);
   assert.match(innerDimStyle, new RegExp(`\\n5\\n${DXF_ARCH_TICK_BLOCK}\\n`));
   assert.match(outerDimStyle, /\n140\n180(?:\.0+)?\n/);
+  assert.match(outerDimStyle, /\n147\n10(?:\.0+)?\n/);
+  assert.match(outerDimStyle, /\n77\n2\n/);
   assert.match(outerDimStyle, new RegExp(`\\n5\\n${DXF_ARCH_TICK_BLOCK}\\n`));
   assert.equal(parsed.entities.lwPolylines.filter((entity) => entity.layerName === DXF_LAYER_NAMES.walls).length, 0);
   assert.equal(parsed.entities.arcs.length, 0);
@@ -207,12 +211,27 @@ test('formal DXF walls are unioned inner/outer lines with opening jambs', async 
 test('formal DXF openings use door blocks and in-opening rails', async () => {
   const dxf = generateFormalSurveyDxf(layout, 'completed');
   const doorBlock = dxf.split('0\nBLOCK\n').slice(1).find((record) => record.includes(`\n2\n${DXF_DOOR_BLOCK}\n`)) || '';
-  assert.match(doorBlock, /\n0\nLINE\n/);
+  assert.match(doorBlock, /\n0\nLWPOLYLINE\n/);
   assert.match(doorBlock, /\n0\nARC\n/);
   assert.match(doorBlock, /\n50\n0(?:\.0+)?\n/);
   assert.match(doorBlock, /\n51\n90(?:\.0+)?\n/);
   assert.doesNotMatch(doorBlock, /\n51\n-/);
   assert.match(doorBlock, new RegExp(DXF_ISO_DASH_LINETYPE));
+  const leafVertices = [...(doorBlock.split('0\nLWPOLYLINE\n')[1]?.matchAll(/\n10\n([-+0-9.eE]+)\n20\n([-+0-9.eE]+)/g) || [])]
+    .map((match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+  assert.ok(leafVertices.length >= 4);
+  assert.ok(Math.max(...leafVertices.map((point) => point.x)) < 0.1, 'open door leaf thickness stays along X');
+  assert.ok(Math.max(...leafVertices.map((point) => point.y)) > 0.9, 'open door leaf extends along +Y into the room');
+  const doorArc = doorBlock.split('0\nARC\n')[1] || '';
+  assert.match(doorArc, /\n62\n252\n/);
+
+  const archTick = dxf.split('0\nBLOCK\n').slice(1).find((record) => record.includes(`\n2\n${DXF_ARCH_TICK_BLOCK}\n`)) || '';
+  assert.match(archTick, /\n0\nLWPOLYLINE\n/);
+  assert.doesNotMatch(archTick, /\n0\n3DFACE\n/);
+
+  const northBlock = dxf.split('0\nBLOCK\n').slice(1).find((record) => record.includes(`\n2\n${DXF_NORTH_BLOCK}\n`)) || '';
+  assert.match(northBlock, /\n62\n2\n/);
+  assert.match(northBlock, /\n0\nCIRCLE\n/);
 
   const parsed = await new Parser().parse(dxf);
   assert.equal(parsed.entities.arcs.length, 0);
@@ -234,8 +253,13 @@ test('formal DXF openings use door blocks and in-opening rails', async () => {
   assert.ok(doubleLeaves.some((insert) => insert.xScale < 0));
 
   const windowLines = parsed.entities.lines.filter((line) => line.layerName === DXF_LAYER_NAMES.windows);
-  assert.ok(windowLines.some((line) => lineCoversRange(line, 'y', 5064, 1140, 2340)));
-  assert.ok(windowLines.some((line) => lineCoversRange(line, 'y', 5136, 1140, 2340)));
+  assert.ok(windowLines.length >= 4);
+  [5040, 5080, 5120, 5160].forEach((x) => {
+    assert.ok(windowLines.some((line) => lineCoversRange(line, 'y', x, 1140, 2340)), `missing inset window rail at x=${x}`);
+  });
+  assert.equal(windowLines.some((line) => lineCoversRange(line, 'y', 5064, 1140, 2340)), false, 'window rails should not hug the old 32%/68% pair');
+  assert.equal(windowLines.some((line) => lineCoversRange(line, 'y', 5000, 1140, 2340)), false, 'window rails stay off the inner wall face');
+  assert.equal(windowLines.some((line) => lineCoversRange(line, 'y', 5200, 1140, 2340)), false, 'window rails stay off the outer wall face');
   assert.equal(windowLines.some((line) => lineCoversRange(line, 'y', 5100, 1140, 2340)), false, 'window rails stay inside the opening, not on the wall centerline');
 
   const slidingLines = parsed.entities.lines.filter((line) => line.layerName === DXF_LAYER_NAMES.doors);
@@ -271,6 +295,12 @@ test('formal DXF room labels use inner-face metrics and a model-space sheet', as
   assert.match(dxf, /张工/);
   assert.match(dxf, /2026-08-20/);
   assert.match(dxf, /1:35/);
+  const sheetLabels = [...dxf.matchAll(/\n1\n(公司|项目名称|图纸名称|设计师|比例|日期)\n/g)].map((match) => match[1]);
+  assert.deepEqual(sheetLabels.slice(0, 6), ['公司', '项目名称', '图纸名称', '设计师', '比例', '日期']);
+  assert.ok(
+    dimensionRecords(dxf).some((dimension) => /\n1\n(?:180|200|240)\n/.test(dimension)),
+    'inner chain includes wall-thickness ticks',
+  );
   const parsed = await new Parser().parse(dxf);
   assert.ok(parsed.entities.inserts.some((insert) => insert.blockName === DXF_NORTH_BLOCK));
   assert.ok(parsed.entities.lwPolylines.some((entity) => entity.layerName === '0'));

@@ -41,7 +41,7 @@ import {
 } from '@/lib/ai/provider-registry';
 import { parseImageDataUri } from '@/lib/ai/postgres-media-assets';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
-import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
+import { resolveFloorPlanControlPng } from '@/lib/floor-plan-preview';
 import { usesFloorPlanControlImage } from '@/lib/ai/workflow-floorplan';
 import {
   getGrsAiOutputPersistenceEnabled,
@@ -221,7 +221,7 @@ async function loadScenarioProviderImages(
     if (existingControl) {
       images.push(existingControl);
     } else {
-      const controlBuffer = await renderMiniAiFloorPlanControlPng(floorPlan.layoutData);
+      const controlBuffer = await resolveFloorPlanControlPng(floorPlan);
       const control = await storePostgresMediaBuffer({
         enterpriseId,
         ownerType: 'ai_generation_input',
@@ -257,7 +257,7 @@ async function loadScenarioProviderImages(
     );
     if (existing) return [existing];
 
-    const controlBuffer = await renderMiniAiFloorPlanControlPng(floorPlan.layoutData);
+    const controlBuffer = await resolveFloorPlanControlPng(floorPlan);
     const control = await storePostgresMediaBuffer({
       enterpriseId,
       ownerType: 'ai_generation_input',

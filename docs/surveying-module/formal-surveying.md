@@ -27,8 +27,13 @@ copy back to `layoutData`.
 - Every entry carries `leadId` and/or `floorPlanId`. A lead-only entry
   without `floorPlanId` resolves that lead's primary cloud plan instead of
   opening a blank canvas.
-- Admin viewers, DXF, 3D, AI, and Mini Program read models derive from the v4
-  graph through adapters; they do not maintain a second editable geometry.
+- Admin `/floorplans/[id]` draws the 2D plan with the Mini Program
+  `surveyCanvasRenderer` (read-only pan/zoom, no graph writes). Completed
+  formal v4 saves export that same canvas as a PNG snapshot stored on
+  `floor_plans.preview_asset_id` (`media_assets.ownerType: floor_plan_preview`);
+  the URL is not written into `layoutData`. DXF, 3D, AI,
+  and Mini Program read models derive from the v4 graph through adapters; they
+  do not maintain a second editable geometry.
 - Graph and renderer sources are `miniprogram/utils/surveyWallGraph.js`,
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js`,
   `surveyDimensionPlan.js`, and `surveyWallSolidPlan.js`.
@@ -47,20 +52,23 @@ copy back to `layoutData`.
   door-swing dashes. Floors are placed side by side while retaining
   each floor's internal coordinates. Closed rooms write four-line MTEXT
   (name, inner-face area m², ceiling height m, inner-face perimeter m) at
-  the room centroid. A cyan model-space title block and north-arrow block
-  wrap the drawing with the sheet name `原始户型平面图`, a computed plot
-  scale, the plan completion date, the linked lead's enterprise as 公司, and
+  the room centroid with `\P` line breaks. A cyan model-space full-height
+  right title panel and yellow north-arrow block wrap the drawing with the
+  sheet name `原始户型平面图`, a computed plot scale, the plan completion
+  date, the linked lead's enterprise as 公司 at the top of the panel, and
   the lead's assigned designer as 设计师; customer phone and address are not
   exported. Both export endpoints resolve that sheet metadata in the same
   tenant transaction as the floor plan. Walls are opening-gapped rectangles unioned by
   `surveyWallSolidPlan` and written as inner/outer `LINE` faces plus jambs,
   not per-wall thickness rectangles. Hinged doors are a unit `DOOR` block
-  (leaf + CCW 90° arc) inserted on the opening face; sliding doors and
-  windows are double rails inside the opening, not wall-centerline geometry.
-  Dimensions reuse `createClosedDimensionPlan`: inner segments (including wall
-  thickness) become rotated `AcDbRotatedDimension` entities styled
-  `标注线-内墙`, overall outer lengths use `标注线`, with integer-millimetre
-  text and axis angles 0 or 90. Aligned dimensions are not written.
+  (open 90° thick leaf + gray dashed CCW arc) inserted on the opening face with
+  50mm jamb rectangles; sliding doors remain double rails and windows use four
+  inset in-opening lines away from the wall faces. `_ARCHTICK` is the diagonal
+  architectural tick. Dimensions reuse `createClosedDimensionPlan`: inner
+  segments including wall-thickness ticks become rotated `AcDbRotatedDimension`
+  entities styled `标注线-内墙`, overall outer lengths use `标注线`, with
+  integer-millimetre text, `DIMTAD` 2 / `DIMGAP` 10, and axis angles 0 or 90. Recessed L-notch spans stay on their local face. Aligned dimensions are
+  not written.
 - The Mini Program keeps its CAD control disabled until the cloud plan is
   completed. A download is saved to the Mini Program file domain and offered to
   the system document handler; devices without a DXF handler are told to send

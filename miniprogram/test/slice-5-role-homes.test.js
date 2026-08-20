@@ -10,6 +10,7 @@ test('customer service home shows one featured stage and a single next action', 
   const workbench = source('components/role-workbench/role-workbench.js');
   const template = source('components/role-workbench/role-workbench.wxml');
   assert.match(workbench, /featured\.nextActionKind/);
+  assert.match(workbench, /nextActionKind === 'book'/);
   assert.match(workbench, /nextActionKind === 'reschedule'/);
   assert.match(workbench, /nextActionKind === 'rebook'/);
   assert.match(workbench, /appointment-reschedule\/appointment-reschedule/);

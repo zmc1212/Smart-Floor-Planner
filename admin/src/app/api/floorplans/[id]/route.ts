@@ -4,6 +4,7 @@ import {
   FloorPlanRepository,
   LeadRepository,
 } from '@/db/repositories';
+import { persistAndAttachFloorPlanPreview } from '@/lib/floor-plan-preview';
 import { canAccessMiniProgramFloorPlan } from '@/lib/floor-plan-access';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
 import { canStaffMutateLeadSurvey } from '@/lib/lead-staff-access';
@@ -167,7 +168,8 @@ export async function PUT(
         { status: 404 }
       );
     }
-    return NextResponse.json({ success: true, data: floorPlanToDto(updated) });
+    const plan = await persistAndAttachFloorPlanPreview(updated);
+    return NextResponse.json({ success: true, data: floorPlanToDto(plan) });
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     return NextResponse.json(

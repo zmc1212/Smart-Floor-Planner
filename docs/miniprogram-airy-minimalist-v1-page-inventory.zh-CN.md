@@ -93,22 +93,22 @@ Logo：预留位置，导出时合成 brand-logo.png
 | :---: | --- | --- | --- | --- |
 | [x] | P01 | 服务码展示模板（推荐人 / 员工共用） | `packages/business/promotion-service-code/promotion-service-code` | `09-promotion-service-code.jpg` |
 | [x] | P02 | 扫码后确认领取服务 | `packages/business/free-design-service/free-design-service` | `10-free-design-confirm.jpg` |
-| — | P03 | ~~手机号授权~~（已合并至 P02） | `packages/business/free-design-service/free-design-service` | 不再单独产出 |
+| [x] | P03 | 手机号授权 | `packages/business/free-design-service/free-design-service` | `11-free-design-phone-auth.jpg` |
 | [x] | P04 | 授权成功、已分配设计师 | `packages/business/free-design-service/free-design-service` | `12-free-design-success.jpg` |
 | [x] | P05 | 已领取但暂未分配设计师 | `packages/business/free-design-service/free-design-service` | `13-free-design-assignment-pending.jpg` |
 | [x] | P06 | 客户已有未关闭服务归属 | `packages/business/free-design-service/free-design-service` | `14-free-design-existing-attribution.jpg` |
-| — | P07 | 员工活动码展示（复用 P01 模板） | `packages/business/staff-activity-code/staff-activity-code` | 不再单独产出 |
+| [x] | P07 | 员工活动码展示（复用 P01 模板） | `packages/business/staff-activity-code/staff-activity-code` | `09-promotion-service-code.jpg` |
 | [x] | P08 | 员工/推荐人扫码入驻 | `packages/business/onboarding/onboarding` | `16-onboarding.jpg` |
 | [x] | P09 | 入驻失效、停用、换码恢复 | `packages/business/onboarding/onboarding` | `17-onboarding-recovery.jpg` |
 
 `onboarding-debug` 仅开发版使用，不建议单独投入高保真设计；如需调试稿，可命名为
 `debug-onboarding-scanner.jpg`，并明确标注“开发版”。
 
-> P02 已包含“确认领取 + 微信手机号授权”这一单一用户动作；点击授权后直接进入
-> P04（已匹配）、P05（匹配中）或 P06（已有进行中服务）之一。P03 不应作为独立页面实施。
+> P02 确认领取后进入同一路由的 P03 手机号授权态；微信 `getPhoneNumber` 发生在 P03。
+> 授权完成后进入 P04（已匹配）、P05（匹配中）或 P06（已有进行中服务）之一。
 
-> P07 复用 P01 的服务码展示结构（顶部身份信息、服务码、权益说明和保存/分享操作）；
-> 仅按员工活动码的真实数据替换标题、归属门店、有效状态与文案，不另起一套版式或交互。
+> P07 复用 P01 的服务码展示结构（顶部品牌锁、服务码主卡、三项承诺和出示/分享操作）；
+> 仅按员工活动码的真实数据替换企业名称，不另起一套版式或交互。
 
 ## 4. 待生成：五角色信息架构与工作台
 

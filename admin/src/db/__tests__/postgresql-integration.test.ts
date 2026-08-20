@@ -87,6 +87,7 @@ import {
 import { listWorkbenchTodos } from '@/lib/postgres-workflow-automation';
 import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
 import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
+import { RENDER_REVISION } from '@/lib/survey-canvas-runtime';
 import {
   createPostgresAiWorkflowManualGeneration,
   createPostgresAiWorkflow,
@@ -2641,7 +2642,7 @@ test('PostgreSQL workbench floor-plan preview renders the bound survey control P
       enterpriseId: enterpriseAId,
       workflowId: workflow.id,
     });
-    assert.equal(context.workflow.floorPlanPreviewUrl, `/api/ai/workflows/${workflow.id}/floor-plan-preview?v=2`);
+    assert.equal(context.workflow.floorPlanPreviewUrl, `/api/ai/workflows/${workflow.id}/floor-plan-preview?v=3`);
     assert.equal(context.workflow.sourceFloorPlan?.id, String(created.plan.id));
     assert.equal(context.workflow.sourceFloorPlan?.name, 'Workbench control plan');
 
@@ -2651,6 +2652,11 @@ test('PostgreSQL workbench floor-plan preview renders the bound survey control P
     });
     assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.ok(png.length > 1000);
+    const storedPlan = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new FloorPlanRepository(transaction).findById(created.plan.id)
+    );
+    assert.ok(storedPlan?.previewAssetId);
+    assert.equal(storedPlan?.previewRenderRevision, RENDER_REVISION);
 
     await assert.rejects(
       () => getPostgresAiWorkflowFloorPlanPreview({

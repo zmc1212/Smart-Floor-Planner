@@ -217,6 +217,9 @@ export function floorPlanToDto(
     externalSource: record.externalSource,
     status: record.status,
     completedAt: record.completedAt,
+    previewUrl: record.previewAssetId
+      ? `/api/floorplans/${record.id.toString()}/preview?v=${encodeURIComponent(record.previewRenderRevision || '0')}`
+      : null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

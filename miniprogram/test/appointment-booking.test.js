@@ -30,6 +30,7 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageJs, /nextDates\(maxAdvanceDays\)/);
   assert.match(pageJs, /api\.request\('\/appointments', 'POST'/);
   assert.match(pageJs, /customerMode: options\.mode === 'customer'/);
+  assert.match(pageJs, /appointment_already_exists/);
   assert.match(pageJs, /startAt: selectedSlot\.startAt/);
   assert.match(pageJs, /endAt: selectedSlot\.endAt/);
   assert.match(pageJs, /address: String\(address\)\.trim\(\)/);

@@ -122,6 +122,8 @@ Page({
     nextAction: '',
     canRebook: false,
     canReschedule: false,
+    appointmentBadge: '',
+    bookingHint: '',
     error: '',
   },
 
@@ -155,6 +157,8 @@ Page({
             displayCompletedAt: formatPlanDate(project.formalFloorPlan.completedAt || project.formalFloorPlan.updatedAt),
           }
         : null;
+      const canRebook = Boolean(project.canRebook);
+      const canReschedule = Boolean(project.canReschedule);
       this.setData({
         appointment,
         measurerName: project.measurerName || (appointment && appointment.measurerName) || '',
@@ -166,8 +170,12 @@ Page({
         stages: buildProjectStages(project),
         serviceStageLabel: project.serviceStageLabel || '',
         nextAction: project.nextAction || '',
-        canRebook: Boolean(project.canRebook),
-        canReschedule: Boolean(project.canReschedule),
+        canRebook,
+        canReschedule,
+        appointmentBadge: project.serviceStageLabel || '服务准备中',
+        bookingHint: canRebook && !appointment
+          ? '请选择上门量房时间，也可微信联系设计师代为预约'
+          : (project.nextAction || ''),
       });
       this.loadPublishedImages(publishedSchemes);
     } catch (error) {
@@ -203,6 +211,14 @@ Page({
     const { appointment, leadId, canReschedule } = this.data;
     if (!appointment || !canReschedule) return;
     wx.navigateTo({ url: `/packages/business/appointment-reschedule/appointment-reschedule?leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}&version=${appointment.version}` });
+  },
+
+  openAppointment() {
+    const { appointment, leadId } = this.data;
+    if (!appointment || !leadId) return;
+    wx.navigateTo({
+      url: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`,
+    });
   },
 
   bookAppointment() {

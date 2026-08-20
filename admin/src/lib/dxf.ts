@@ -54,8 +54,7 @@ const DEFAULT_CEILING_HEIGHT_MM = 2800;
 const ROOM_LABEL_TEXT_HEIGHT = 120;
 const DOOR_LEAF_THICKNESS_RATIO = 0.044;
 const DOOR_JAMB_MM = 50;
-const WINDOW_RAIL_INSETS = [0.08, 0.32, 0.68, 0.92];
-const NORTH_ARROW_COLOR = 2;
+const WINDOW_RAIL_INSETS = [0.2, 0.4, 0.6, 0.8];
 // Rotated linear dim: type 0 + referenced-by-this (32) + user text position (128).
 const ROTATED_DIMENSION_TYPE = DimensionType.Default | DimensionType.ReferencedByThis | 128;
 
@@ -239,12 +238,12 @@ function applyMetricDimStyle(style: DxfDimStyle, textHeight: number, textStyleHa
   style.DIMEXE = 50;
   style.DIMDLE = 0;
   style.DIMTXT = textHeight;
-  style.DIMGAP = 50;
+  style.DIMGAP = 10;
   style.DIMDEC = 0;
   style.DIMTDEC = 0;
   style.DIMTIH = 0;
   style.DIMTOH = 0;
-  style.DIMTAD = 1;
+  style.DIMTAD = 2;
   style.DIMZIN = 8;
   style.DIMCLRD = 193;
   style.DIMCLRE = 193;
@@ -272,14 +271,14 @@ function addDoorBlock(dxf: DxfWriterType) {
   block.addLWPolyline(
     [
       { point: point2d(0, 0) },
-      { point: point2d(1, 0) },
-      { point: point2d(1, leaf) },
-      { point: point2d(0, leaf) },
+      { point: point2d(leaf, 0) },
+      { point: point2d(leaf, 1) },
+      { point: point2d(0, 1) },
     ],
     { ...inherit, flags: LWPolylineFlags.Closed },
   );
-  // DXF arcs are always CCW. A unit leaf along +X swings 90° into +Y.
-  block.addArc(point3d(0, 0), 1, 0, 90, { ...inherit, lineType: DXF_ISO_DASH_LINETYPE });
+  // DXF arcs are always CCW. An open unit leaf along +Y is reached by a 0–90° swing.
+  block.addArc(point3d(0, 0), 1, 0, 90, { ...inherit, colorNumber: 252, lineType: DXF_ISO_DASH_LINETYPE });
 }
 
 function createDxfWriter() {
@@ -373,8 +372,14 @@ function angleDeg(vector: Vec) {
   return Math.atan2(vector.y, vector.x) * 180 / Math.PI;
 }
 
-function addOpeningRails(dxf: DxfWriterType, body: WallBody, geometry: NonNullable<ReturnType<typeof localOpeningGeometry>>, layerName: string) {
-  WINDOW_RAIL_INSETS.forEach((inset) => {
+function addOpeningRails(
+  dxf: DxfWriterType,
+  body: WallBody,
+  geometry: NonNullable<ReturnType<typeof localOpeningGeometry>>,
+  layerName: string,
+  insets: number[],
+) {
+  insets.forEach((inset) => {
     const start = add(geometry.start, scale(body.normal, body.thickness * inset));
     const end = add(geometry.end, scale(body.normal, body.thickness * inset));
     dxf.addLine(point3d(start.x, start.y), point3d(end.x, end.y), { layerName });
@@ -424,8 +429,12 @@ function insertDoorLeaf(
 function addOpeningSymbol(dxf: DxfWriterType, body: WallBody, opening: Opening) {
   const geometry = localOpeningGeometry(body, opening); if (!geometry) return;
   const layerName = openingLayerName(opening);
-  if (opening.type === 'window' || opening.modelCategory === 'sliding-door') {
-    addOpeningRails(dxf, body, geometry, layerName);
+  if (opening.type === 'window') {
+    addOpeningRails(dxf, body, geometry, layerName, WINDOW_RAIL_INSETS);
+    return;
+  }
+  if (opening.modelCategory === 'sliding-door') {
+    addOpeningRails(dxf, body, geometry, layerName, [0.32, 0.68]);
     return;
   }
   const opensOutside = opening.openDirection === 'outside';

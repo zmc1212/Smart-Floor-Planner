@@ -15,7 +15,8 @@ import {
   releasePostgresCreationGenerationCredits,
 } from '@/lib/ai/postgres-creation-service';
 import { createPostgresAiWorkflow } from '@/lib/ai/postgres-workflow-service';
-import { resolveMiniAiFloorPlanTarget, renderMiniAiFloorPlanControlPng, type MiniAiTargetScope } from '@/lib/ai/mini-ai-floorplan';
+import { resolveMiniAiFloorPlanTarget, type MiniAiTargetScope } from '@/lib/ai/mini-ai-floorplan';
+import { resolveFloorPlanControlPng } from '@/lib/floor-plan-preview';
 import type { MiniAiContext } from '@/lib/ai/mini-ai-auth';
 import { getSignedMiniAiAssetUrl, getSignedMiniAiTaskResultUrl } from '@/lib/ai/mini-ai-assets';
 import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-types';
@@ -218,7 +219,14 @@ export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, con
   if (sourceTask && !sourceAsset) throw new Error('来源成果图片不可用');
   const spaceAsset = await cloneAsset(enterpriseId, sourceAsset || space);
   const referenceAsset = await cloneAsset(enterpriseId, reference);
-  const controlAsset = plan ? (await storePostgresMediaBuffer({ enterpriseId, ownerType: 'ai_generation_input', mimeType: 'image/png', buffer: await renderMiniAiFloorPlanControlPng(plan.layoutData, 1024, target?.targetScope === 'single_room' ? target.roomId : undefined) })).asset : null;
+  const controlAsset = plan
+    ? (await storePostgresMediaBuffer({
+        enterpriseId,
+        ownerType: 'ai_generation_input',
+        mimeType: 'image/png',
+        buffer: await resolveFloorPlanControlPng(plan),
+      })).asset
+    : null;
   const roomData = target ? { summary: target.summary, roomId: target.roomId, targetScope: target.targetScope, targetLabel: target.targetLabel, roomCount: target.roomCount, ...(target.targetScope === 'whole_floor_plan' ? { navigationRenderVersion: MINI_AI_WHOLE_PLAN_RENDER_VERSION } : {}) } : undefined;
   const generation = await withTenantTransaction(enterpriseId, async (transaction) => {
     if (leadId) await assertMiniAiGenerationLeadActive(transaction, { leadId, floorPlanId: plan?.id ?? null });

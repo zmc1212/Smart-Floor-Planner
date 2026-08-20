@@ -167,7 +167,12 @@ Page({
       wx.showToast({ title: '预约已确认', icon: 'success' });
       setTimeout(() => wx.navigateBack(), 700);
     } catch (error) {
-      wx.showToast({ title: error.message || error.error || '创建预约失败', icon: 'none' });
+      const alreadyBooked = error && error.code === 'appointment_already_exists';
+      wx.showToast({
+        title: alreadyBooked ? '该线索已有预约，请返回查看' : (error.message || error.error || '创建预约失败'),
+        icon: 'none',
+      });
+      if (alreadyBooked) setTimeout(() => wx.navigateBack(), 700);
     } finally {
       this.setData({ submitting: false });
     }

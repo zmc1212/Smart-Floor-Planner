@@ -11,8 +11,8 @@ export function workbenchMaxUserReferenceImages(maxReferenceImages: number) {
   return Math.max(0, Math.trunc(Number(maxReferenceImages) || 0) - 1);
 }
 
-/** Designer-only survey-graph control preview for a bound workbench conversation. */
-export const WORKBENCH_FLOOR_PLAN_PREVIEW_VERSION = '2';
+/** Designer-only survey-canvas snapshot preview for a bound workbench conversation. */
+export const WORKBENCH_FLOOR_PLAN_PREVIEW_VERSION = '3';
 
 export function workbenchFloorPlanPreviewPath(workflowId: string) {
   const id = workflowId.trim();

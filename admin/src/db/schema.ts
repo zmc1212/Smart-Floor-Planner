@@ -1712,6 +1712,11 @@ export const floorPlans = appSchema.table(
       withTimezone: true,
       mode: 'date',
     }),
+    previewAssetId: bigint('preview_asset_id', { mode: 'bigint' }).references(
+      () => mediaAssets.id,
+      { onDelete: 'set null' }
+    ),
+    previewRenderRevision: text('preview_render_revision'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -1750,6 +1755,7 @@ export const floorPlans = appSchema.table(
       sql`(${table.externalSource} ->> 'provider')`,
       sql`(${table.externalSource} ->> 'externalId')`
     ),
+    index('floor_plans_preview_asset_idx').on(table.previewAssetId),
   ]
 );
 

@@ -111,7 +111,7 @@ export async function loadMiniProgramBadgeCounts(input: {
     for (const project of projects) {
       const nextActionKind = customerProjectIndexToDto(project).nextActionKind;
       if (nextActionKind === 'reschedule') customerRescheduleCount += 1;
-      if (nextActionKind === 'rebook') customerRebookCount += 1;
+      if (nextActionKind === 'rebook' || nextActionKind === 'book') customerRebookCount += 1;
     }
     return { customerRescheduleCount, customerRebookCount };
   }

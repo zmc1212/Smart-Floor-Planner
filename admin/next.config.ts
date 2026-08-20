@@ -19,6 +19,7 @@ const localIps = getLocalExternalIps();
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  serverExternalPackages: ['@napi-rs/canvas'],
   // @ts-ignore - Support for Next.js 15+ allowed origins
   allowedDevOrigins: [...localIps, 'localhost:3002', '127.0.0.1:3002'],
   experimental: {

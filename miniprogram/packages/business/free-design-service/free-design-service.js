@@ -61,6 +61,7 @@ function applyClaimResult(page, response) {
     page.setData({
       submitting: false,
       pageState: 'existing',
+      navTitle: navTitleFor('existing'),
       pendingSource: '',
       enterpriseName: '',
       designerProfile: null,
@@ -73,6 +74,7 @@ function applyClaimResult(page, response) {
   page.setData({
     submitting: false,
     pageState: designerProfile ? 'success' : 'pending',
+    navTitle: navTitleFor(designerProfile ? 'success' : 'pending'),
     designerProfile,
     lead: response.data && response.data.lead || null
   });
@@ -88,12 +90,21 @@ function resolveErrorMessage(error) {
   return '服务码暂时无法识别，请重新扫码或稍后重试。';
 }
 
+function navTitleFor(state) {
+  if (state === 'phoneAuth') return '手机号授权';
+  if (state === 'success') return '服务已建立';
+  if (state === 'pending') return '服务匹配中';
+  if (state === 'existing') return '服务档案';
+  return '确认领取';
+}
+
 Page({
   data: {
     navigationTop: 24,
     navigationHeight: 32,
     navigationRight: 96,
     pageState: 'resolving',
+    navTitle: '确认领取',
     promotionToken: '',
     pendingSource: '',
     agreed: false,
@@ -122,10 +133,14 @@ Page({
   async resolvePromotionCode() {
     const token = this.data.promotionToken;
     if (!token) {
-      this.setData({ pageState: 'error', errorMessage: '未识别到有效服务码，请重新扫码进入。' });
+      this.setData({
+        pageState: 'error',
+        navTitle: navTitleFor('error'),
+        errorMessage: '未识别到有效服务码，请重新扫码进入。'
+      });
       return;
     }
-    this.setData({ pageState: 'resolving', errorMessage: '' });
+    this.setData({ pageState: 'resolving', navTitle: navTitleFor('resolving'), errorMessage: '' });
     try {
       const response = await api.request('/miniprogram/codes/resolve', 'POST', {
         token,
@@ -138,6 +153,7 @@ Page({
       if (response.data.existingAttribution) {
         this.setData({
           pageState: 'existing',
+          navTitle: navTitleFor('existing'),
           pendingSource: '',
           claimKind: response.data.kind,
           enterpriseName: '',
@@ -151,6 +167,7 @@ Page({
       }
       this.setData({
         pageState: 'ready',
+        navTitle: navTitleFor('ready'),
         pendingSource: response.data.pendingSource,
         claimKind: response.data.kind,
         enterpriseName: response.data.enterpriseName || '',
@@ -159,6 +176,7 @@ Page({
     } catch (error) {
       this.setData({
         pageState: 'error',
+        navTitle: navTitleFor('error'),
         errorMessage: resolveErrorMessage(error)
       });
     }
@@ -169,14 +187,28 @@ Page({
     this.setData({ agreed: !this.data.agreed });
   },
 
-  async onGetPhoneNumber(event) {
+  onStartPhoneAuth() {
     if (!this.data.agreed || this.data.pageState !== 'ready' || this.data.submitting) return;
+    this.setData({ pageState: 'phoneAuth', navTitle: navTitleFor('phoneAuth') });
+  },
+
+  onSkipAuth() {
+    if (this.data.submitting) return;
+    this.setData({ pageState: 'ready', navTitle: navTitleFor('ready') });
+  },
+
+  onLater() {
+    wx.navigateBack({ delta: 1, fail: () => wx.switchTab({ url: '/pages/index/index' }) });
+  },
+
+  async onGetPhoneNumber(event) {
+    if (!this.data.agreed || this.data.pageState !== 'phoneAuth' || this.data.submitting) return;
     if (!event.detail || event.detail.errMsg !== 'getPhoneNumber:ok' || !event.detail.code) {
       wx.showToast({ title: '需要授权手机号才能建立服务档案', icon: 'none' });
       return;
     }
 
-    this.setData({ submitting: true, pageState: 'submitting', errorMessage: '' });
+    this.setData({ submitting: true, errorMessage: '' });
     try {
       const code = await loginCode();
       const response = await api.request(
@@ -196,6 +228,7 @@ Page({
       this.setData({
         submitting: false,
         pageState: 'error',
+        navTitle: navTitleFor('error'),
         errorMessage: claimErrorMessage(error)
       });
     }
@@ -309,6 +342,10 @@ Page({
   },
 
   onBack() {
+    if (this.data.pageState === 'phoneAuth' && !this.data.submitting) {
+      this.setData({ pageState: 'ready', navTitle: navTitleFor('ready') });
+      return;
+    }
     wx.navigateBack({ delta: 1, fail: () => wx.switchTab({ url: '/pages/index/index' }) });
   }
 });

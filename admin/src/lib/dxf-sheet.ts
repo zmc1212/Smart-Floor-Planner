@@ -91,27 +91,27 @@ export function addModelSpaceSheet(
   const span = Math.max(width, height);
   const margin = Math.max(700, span * 0.08);
   const titleWidth = Math.max(2400, Math.min(4200, span * 0.24));
-  const rowHeight = Math.max(260, Math.min(400, span * 0.032));
-  const framePad = Math.max(50, span * 0.008);
   const scale = estimatePlotScale(width, height);
   const rows: Array<[string, string]> = [
+    ['公司', options.meta?.enterpriseName?.trim() || ''],
     ['项目名称', options.meta?.planName?.trim() || '户型'],
     ['图纸名称', DXF_DRAWING_TITLE],
+    ['设计师', options.meta?.designerName?.trim() || ''],
     ['比例', `1:${scale}`],
     ['日期', formatDxfSheetDate(options.meta?.date)],
-    ['公司', options.meta?.enterpriseName?.trim() || ''],
-    ['设计师', options.meta?.designerName?.trim() || ''],
   ];
-  const titleHeight = rowHeight * rows.length;
+  const framePad = Math.max(50, span * 0.008);
   const innerLeft = drawing.minX - margin;
   const innerBottom = drawing.minY - margin;
   const innerTop = drawing.maxY + margin;
   const innerRight = drawing.maxX + margin;
   const titleLeft = innerRight;
   const titleRight = titleLeft + titleWidth;
+  const minRowHeight = Math.max(260, Math.min(400, span * 0.032));
+  const contentTop = Math.max(innerTop, innerBottom + minRowHeight * rows.length);
   const titleBottom = innerBottom;
-  const titleTop = titleBottom + titleHeight;
-  const contentTop = Math.max(innerTop, titleTop);
+  const titleTop = contentTop;
+  const rowHeight = (titleTop - titleBottom) / rows.length;
   const outerLeft = innerLeft - framePad;
   const outerBottom = innerBottom - framePad;
   const outerRight = titleRight + framePad;
@@ -120,19 +120,18 @@ export function addModelSpaceSheet(
   dxf.addRectangle(point2d(outerLeft, outerTop), point2d(outerRight, outerBottom), frame);
   dxf.addRectangle(point2d(innerLeft, contentTop), point2d(titleRight, innerBottom), frame);
   dxf.addLine(point3d(titleLeft, innerBottom), point3d(titleLeft, contentTop), frame);
-  dxf.addLine(point3d(titleLeft, titleTop), point3d(titleRight, titleTop), frame);
   const labelWidth = titleWidth * 0.38;
-  const textInset = Math.max(40, rowHeight * 0.16);
-  const labelHeight = rowHeight * 0.34;
-  const valueHeight = rowHeight * 0.38;
+  const textInset = Math.max(40, rowHeight * 0.12);
+  const labelHeight = Math.min(rowHeight * 0.22, 220);
+  const valueHeight = Math.min(rowHeight * 0.28, 280);
   rows.forEach(([label, value], index) => {
     const top = titleTop - rowHeight * index;
     const bottom = top - rowHeight;
     dxf.addLine(point3d(titleLeft, bottom), point3d(titleRight, bottom), frame);
     dxf.addLine(point3d(titleLeft + labelWidth, bottom), point3d(titleLeft + labelWidth, top), frame);
-    styleText(dxf, titleLeft + textInset, (top + bottom) / 2, labelHeight, label, options.textStyleName, TextHorizontalAlignment.Left, TextVerticalAlignment.Middle);
+    styleText(dxf, titleLeft + textInset, top - textInset, labelHeight, label, options.textStyleName, TextHorizontalAlignment.Left, TextVerticalAlignment.Top);
     if (value) {
-      styleText(dxf, titleLeft + labelWidth + textInset, (top + bottom) / 2, valueHeight, value, options.textStyleName, TextHorizontalAlignment.Left, TextVerticalAlignment.Middle);
+      styleText(dxf, titleLeft + labelWidth + textInset, top - textInset, valueHeight, value, options.textStyleName, TextHorizontalAlignment.Left, TextVerticalAlignment.Top);
     }
   });
   const titleTextHeight = Math.max(180, span * 0.028);

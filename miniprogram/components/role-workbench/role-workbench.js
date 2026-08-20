@@ -154,13 +154,13 @@ Component({
         serviceStage: featured.serviceStage,
         metaLabel: featured.appointmentSummary || featured.serviceStageLabel || '服务准备中',
         nextActionKind: featured.nextActionKind,
-        action: featured.nextActionKind === 'rebook'
-          ? 'rebook'
+        action: featured.nextActionKind === 'rebook' || featured.nextActionKind === 'book'
+          ? featured.nextActionKind
           : featured.nextActionKind === 'reschedule'
             ? 'reschedule'
             : 'customer-project',
         actionLabel: featured.nextActionLabel || '看项目',
-        canBookAppointment: featured.nextActionKind === 'rebook',
+        canBookAppointment: featured.nextActionKind === 'rebook' || featured.nextActionKind === 'book',
         canReschedule: featured.nextActionKind === 'reschedule',
         canRebook: featured.nextActionKind === 'rebook',
       }] : [];
@@ -195,7 +195,7 @@ Component({
         this.openReschedule({ currentTarget: { dataset: { item } } });
         return;
       }
-      if (item.action === 'rebook' && item.leadId) {
+      if ((item.action === 'rebook' || item.action === 'book') && item.leadId) {
         wx.navigateTo({
           url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(item.leadId)}${this.properties.role === 'customer' ? '&mode=customer' : ''}`,
         });

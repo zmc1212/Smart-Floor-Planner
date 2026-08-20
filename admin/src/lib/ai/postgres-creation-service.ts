@@ -17,7 +17,7 @@ import {
 } from '@/db/transaction';
 import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
 import { getPostgresImageModelPrice, serializePostgresCatalogProfile } from '@/lib/ai/image-model-catalog';
-import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
+import { resolveFloorPlanControlPng } from '@/lib/floor-plan-preview';
 import { getPostgresMediaAssetImageUrl, storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import { getActivePromptTemplate } from '@/lib/ai/prompt-library-query';
 import { resolveGrsImageParameters, type GrsResolutionTier } from '@/lib/ai/grs-image-models';
@@ -237,6 +237,10 @@ async function resolveWorkflowCreationBinding(input: {
       leadId: workflow.leadId,
       floorPlanId: floorPlan.id,
       layoutData: floorPlan.layoutData,
+      status: floorPlan.status,
+      previewAssetId: floorPlan.previewAssetId,
+      previewRenderRevision: floorPlan.previewRenderRevision,
+      enterpriseId: floorPlan.enterpriseId,
     };
   });
 }
@@ -286,7 +290,14 @@ export async function preparePostgresCreationBatch(input: {
       enterpriseId,
       ownerType: 'ai_generation_input',
       mimeType: 'image/png',
-      buffer: await renderMiniAiFloorPlanControlPng(workflowBinding.layoutData),
+      buffer: await resolveFloorPlanControlPng({
+        id: workflowBinding.floorPlanId,
+        enterpriseId: workflowBinding.enterpriseId || enterpriseId,
+        layoutData: workflowBinding.layoutData,
+        status: workflowBinding.status,
+        previewAssetId: workflowBinding.previewAssetId,
+        previewRenderRevision: workflowBinding.previewRenderRevision,
+      }),
     });
     referenceAssetIds = [control.asset.id, ...referenceAssetIds];
   }

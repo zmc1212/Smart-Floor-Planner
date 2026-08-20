@@ -23,14 +23,16 @@ test('staff activity code reuses the promotion visual language and may show the 
   const js = source('packages/business/staff-activity-code/staff-activity-code.js');
   const less = source('packages/business/staff-activity-code/staff-activity-code.less');
 
-  assert.match(wxml, /免费上门测量/);
-  assert.match(wxml, /免费设计师服务/);
-  assert.match(wxml, /微信扫码领取服务/);
+  assert.match(wxml, /免费设计服务/);
+  assert.match(wxml, /免费上门量房 · 专业设计师服务/);
+  assert.match(wxml, /请客户扫描此码/);
+  assert.match(wxml, /让客户扫码领取/);
   assert.match(wxml, /enterpriseName/);
+  assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
   assert.match(js, /\/miniprogram\/staff-activity-code/);
   assert.match(js, /staff-activity-code\/image/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
-  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*396rpx/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
 });
 
 test('promotion service screen keeps the public presentation anonymous and scanable', () => {
@@ -38,15 +40,19 @@ test('promotion service screen keeps the public presentation anonymous and scana
   const js = source('packages/business/promotion-service-code/promotion-service-code.js');
   const less = source('packages/business/promotion-service-code/promotion-service-code.less');
 
-  assert.match(wxml, /免费上门测量/);
-  assert.match(wxml, /免费设计师服务/);
-  assert.match(wxml, /微信扫码领取服务/);
+  assert.match(wxml, /免费设计服务/);
+  assert.match(wxml, /免费上门量房 · 专业设计师服务/);
+  assert.match(wxml, /请客户扫描此码/);
   assert.match(wxml, /0元服务/);
+  assert.match(wxml, /设计师匹配/);
+  assert.match(wxml, /让客户扫码领取/);
+  assert.match(wxml, /open-type="share"/);
   assert.match(wxml, /referral-service-v1\/thumbs-up-xiao-k\.png/);
+  assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
   assert.match(js, /promotion-code\/image/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
   assert.match(js, /responseType:\s*'arraybuffer'/);
-  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*396rpx/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
   assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);
 });
 
@@ -57,12 +63,18 @@ test('free design service resolves before phone authorization and renders truthf
 
   assert.match(wxml, /open-type="getPhoneNumber"/);
   assert.match(wxml, /我已阅读并同意/);
-  assert.match(wxml, /设计师已为你分配/);
+  assert.match(wxml, /一键授权手机号/);
+  assert.match(wxml, /允许微信授权手机号/);
+  assert.match(wxml, /pageState === 'phoneAuth'/);
+  assert.match(wxml, /专属设计师已为你匹配/);
+  assert.match(wxml, /服务已建立/);
+  assert.match(wxml, /服务已领取/);
+  assert.match(wxml, /我们正在为你匹配合适的设计师/);
   assert.match(wxml, /服务档案已建立/);
-  assert.match(wxml, /设计师正在分配中/);
   for (const asset of referralAssets.slice(1)) {
     assert.match(wxml, new RegExp(`referral-service-v1/${asset.replace('.', '\\.')}`));
   }
+  assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/referrals\/authorize-and-create-lead/);
   assert.match(js, /kind !== 'referral' && response.data.kind !== 'staff_activity'/);
@@ -70,6 +82,8 @@ test('free design service resolves before phone authorization and renders truthf
   assert.match(js, /response\.existingAttribution/);
   assert.match(js, /pageState:\s*'existing'/);
   assert.match(js, /pageState:\s*designerProfile\s*\?\s*'success'\s*:\s*'pending'/);
+  assert.match(js, /onStartPhoneAuth/);
+  assert.match(js, /pageState !== 'phoneAuth'/);
   assert.match(wxml, /pageState === 'existing'/);
   assert.match(wxml, /本次扫码不会重复领取/);
   assert.match(js, /wx\.setClipboardData/);
