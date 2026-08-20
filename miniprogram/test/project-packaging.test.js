@@ -32,7 +32,7 @@ test('source package keeps the Mini Program runtime directories', () => {
   }
 });
 
-test('source package excludes customer-project board artwork that is not used at runtime', () => {
+test('source package excludes historical artwork that is not used at runtime', () => {
   const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
   const ignoredFiles = new Set(
     projectConfig.packOptions.ignore
@@ -43,6 +43,11 @@ test('source package excludes customer-project board artwork that is not used at
   assert.deepEqual(ignoredFiles, new Set([
     'packages/business/assets/customer-project-v1/project-delivery-xiao-k.png',
     'packages/business/assets/customer-project-v1/formal-floor-plan-archive.png',
+    'images/airy-v1/xiao-k-designer-3d.png',
+    'images/ai-design-empty-v2/stage-art.jpg',
+    'images/home-v5/plan-preview.jpg',
+    'images/home-v5/ai-preview.jpg',
+    'images/ai-design-stage-active-glow-v1.png',
   ]));
 });
 
@@ -78,6 +83,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'recipe-detail/recipe-detail',
         'recipe-project/recipe-project',
         'recipe-confirm/recipe-confirm',
+        'scheme-studio/scheme-studio',
       ],
     },
     {
@@ -99,6 +105,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'referrer-earnings/referrer-earnings',
         'customer-projects/customer-projects',
         'customer-project/customer-project',
+        'customer-ai-schemes/customer-ai-schemes',
         'appointment-detail/appointment-detail',
         'appointment-reschedule/appointment-reschedule',
         'appointment-booking/appointment-booking',

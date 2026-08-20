@@ -1,0 +1,239 @@
+function maxUserReferenceImages(maxReferenceImages) {
+  return Math.max(0, Math.trunc(Number(maxReferenceImages) || 0) - 1);
+}
+
+function findModel(bootstrap, modelProfileId) {
+  return (bootstrap?.models || []).find((item) => item.id === modelProfileId) || null;
+}
+
+function getUnitPrice(model, resolutionTier) {
+  const price = (model?.prices || []).find((item) => item.resolutionTier === resolutionTier);
+  return Number(price?.credits || 0);
+}
+
+function createDefaultDraft(bootstrap) {
+  const model = bootstrap?.models?.[0] || null;
+  return {
+    prompt: '',
+    negativePrompt: '',
+    modelProfileId: model?.id || '',
+    aspectRatio: model?.defaults?.aspectRatio || '1:1',
+    resolutionTier: model?.defaults?.resolutionTier || '1K',
+    count: 1,
+    templateId: '',
+    templateName: '',
+    referenceAssets: [],
+  };
+}
+
+function applyModelDefaults(draft, model) {
+  if (!model) return draft;
+  const resolutionTier = (model.resolutionTiers || []).includes(model.defaults?.resolutionTier)
+    ? model.defaults.resolutionTier
+    : (model.resolutionTiers?.[0] || model.defaults?.resolutionTier || '1K');
+  return {
+    ...draft,
+    modelProfileId: model.id,
+    aspectRatio: model.defaults?.aspectRatio || draft.aspectRatio || '1:1',
+    resolutionTier,
+  };
+}
+
+function buildDraftFromBatch(batch, bootstrap) {
+  if (!batch || String(batch.id).startsWith('legacy-')) {
+    return {
+      ...createDefaultDraft(bootstrap),
+      prompt: batch?.prompt || '',
+    };
+  }
+  const parameterSnapshot = batch.parameterSnapshot || {};
+  const referenceAssets = (batch.referenceAssetIds || [])
+    .map((id) => ({ id, previewUrl: '' }))
+    .filter((item) => item.id);
+  return {
+    prompt: batch.prompt || '',
+    negativePrompt: batch.negativePrompt || '',
+    modelProfileId: batch.modelProfileId || bootstrap?.models?.[0]?.id || '',
+    aspectRatio: parameterSnapshot.aspectRatio || '1:1',
+    resolutionTier: parameterSnapshot.resolutionTier || '1K',
+    count: Number(batch.requestedCount || 1),
+    templateId: parameterSnapshot.templateId || '',
+    templateName: '',
+    referenceAssets,
+  };
+}
+
+function estimateCredits(draft, bootstrap) {
+  const model = findModel(bootstrap, draft.modelProfileId);
+  return getUnitPrice(model, draft.resolutionTier) * Math.max(1, Number(draft.count || 1));
+}
+
+function buildComposerViewState(draft, bootstrap, options = {}) {
+  const model = findModel(bootstrap, draft.modelProfileId);
+  const maxRefs = maxUserReferenceImages(model?.maxReferenceImages || 0);
+  const unitPrice = getUnitPrice(model, draft.resolutionTier);
+  const estimatedCredits = unitPrice * Math.max(1, Number(draft.count || 1));
+  const balance = Number(bootstrap?.account?.availableBalance || 0);
+  const provider = bootstrap?.provider || {};
+  const promptReady = Boolean(String(draft.prompt || '').trim());
+  const modelReady = Boolean(draft.modelProfileId);
+  const priceReady = unitPrice > 0;
+  const creditsReady = balance >= estimatedCredits;
+  const providerReady = Boolean(provider.actionEnabled);
+  const referenceCount = (draft.referenceAssets || []).length;
+  const editReady = !referenceCount || Boolean(provider.supportsEdit);
+  let blockedReason = '';
+  if (!promptReady) blockedReason = '请输入提示词';
+  else if (!modelReady) blockedReason = '请选择模型';
+  else if (!priceReady) blockedReason = '当前分辨率不可用';
+  else if (!providerReady) blockedReason = '当前企业未开放 AI 创作';
+  else if (!editReady) blockedReason = '尚未配置图片编辑模型';
+  else if (!creditsReady) blockedReason = `点数不足，需要 ${estimatedCredits} 点`;
+
+  const aspectOptions = (model?.aspectRatios || ['1:1', '4:3', '3:4', '16:9', '9:16']).map((value) => ({
+    value,
+    label: value,
+    active: draft.aspectRatio === value,
+  }));
+  const resolutionOptions = (model?.resolutionTiers || ['1K', '2K', '4K']).map((value) => ({
+    value,
+    label: value,
+    active: draft.resolutionTier === value,
+  }));
+  const countOptions = [1, 2, 3, 4].map((value) => ({
+    value,
+    label: `${value} 张`,
+    active: Number(draft.count) === value,
+  }));
+  const modelOptions = (bootstrap?.models || []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    active: item.id === draft.modelProfileId,
+  }));
+
+  return {
+    draft,
+    model,
+    maxRefs,
+    unitPrice,
+    estimatedCredits,
+    balance,
+    canSubmit: !options.generating
+      && !options.assisting
+      && !options.uploading
+      && promptReady
+      && modelReady
+      && priceReady
+      && providerReady
+      && editReady
+      && creditsReady,
+    blockedReason,
+    aspectOptions,
+    resolutionOptions,
+    countOptions,
+    modelOptions,
+    modelLabel: model?.name || '选择模型',
+    aspectLabel: draft.aspectRatio || '1:1',
+    resolutionLabel: draft.resolutionTier || '1K',
+    countLabel: `${Math.max(1, Number(draft.count || 1))} 张`,
+    referenceAssets: draft.referenceAssets || [],
+    hasReferences: referenceCount > 0,
+    canAddReference: referenceCount < maxRefs,
+    creditSummary: creditsReady
+      ? `预计消耗 ${estimatedCredits} 点 · 可用 ${balance} 点`
+      : `需要 ${estimatedCredits} 点 · 可用 ${balance} 点`,
+  };
+}
+
+const PREFERRED_TEMPLATE_CATEGORY_NAME = '热门必备';
+const TEMPLATE_PAGE_SIZE = 40;
+
+function flattenPromptCategories(categories) {
+  const list = Array.isArray(categories) ? categories : [];
+  const childrenByParent = new Map();
+  for (const category of list) {
+    const key = category.parentSourceId || 'root';
+    const children = childrenByParent.get(key) || [];
+    children.push(category);
+    childrenByParent.set(key, children);
+  }
+  const result = [];
+  const visit = (parentSourceId) => {
+    for (const category of childrenByParent.get(parentSourceId) || []) {
+      result.push(category);
+      visit(category.sourceId);
+    }
+  };
+  visit('root');
+  return result;
+}
+
+function buildTemplateCategoryChips(categories, selectedCategoryId) {
+  const flat = flattenPromptCategories(categories);
+  const chips = [{
+    id: '__all__',
+    name: '全部',
+    active: !selectedCategoryId,
+  }];
+  for (const category of flat) {
+    chips.push({
+      id: category.sourceId,
+      name: category.name,
+      level: category.level,
+      active: selectedCategoryId === category.sourceId,
+    });
+  }
+  return chips;
+}
+
+function resolvePreferredTemplateCategoryId(categories) {
+  const flat = flattenPromptCategories(categories);
+  const preferred = flat.find((item) => item.name === PREFERRED_TEMPLATE_CATEGORY_NAME);
+  return preferred?.sourceId || '';
+}
+
+function buildTemplateListParams({
+  categoryId = '',
+  query = '',
+  page = 1,
+  limit = TEMPLATE_PAGE_SIZE,
+} = {}) {
+  const params = {
+    page: Math.max(1, Number(page) || 1),
+    limit: Math.min(100, Math.max(1, Number(limit) || TEMPLATE_PAGE_SIZE)),
+  };
+  const trimmedQuery = String(query || '').trim();
+  if (trimmedQuery) params.q = trimmedQuery;
+  if (categoryId && !trimmedQuery) params.categorySourceId = categoryId;
+  return params;
+}
+
+function parseTemplateListPayload(payload) {
+  const items = Array.isArray(payload?.items)
+    ? payload.items
+    : (Array.isArray(payload) ? payload : []);
+  const total = Number(payload?.pagination?.total);
+  return {
+    items,
+    total: Number.isFinite(total) ? total : items.length,
+    page: Number(payload?.pagination?.page) || 1,
+  };
+}
+
+module.exports = {
+  PREFERRED_TEMPLATE_CATEGORY_NAME,
+  TEMPLATE_PAGE_SIZE,
+  applyModelDefaults,
+  buildComposerViewState,
+  buildDraftFromBatch,
+  buildTemplateCategoryChips,
+  buildTemplateListParams,
+  createDefaultDraft,
+  estimateCredits,
+  findModel,
+  flattenPromptCategories,
+  getUnitPrice,
+  maxUserReferenceImages,
+  parseTemplateListPayload,
+  resolvePreferredTemplateCategoryId,
+};

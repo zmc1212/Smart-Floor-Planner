@@ -162,7 +162,6 @@ export class ReferrerPortalRepository {
         eq(leadCommissions.role, 'referrer'),
         eq(leadCommissions.beneficiaryUserId, userId),
         eq(leads.enterpriseId, enterpriseId),
-        eq(leads.referrerMembershipId, membershipId),
         isNull(leads.archivedAt)
       ))
       .orderBy(desc(leadCommissions.createdAt), desc(leadCommissions.id));

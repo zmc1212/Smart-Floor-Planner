@@ -7,7 +7,6 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Bot,
-  CircleUserRound,
   Coins,
   Columns2,
   Copy,
@@ -18,24 +17,24 @@ import {
   Images,
   Loader2,
   Maximize2,
+  Minus,
   Moon,
   PanelsTopLeft,
   Pencil,
   Plus,
   RefreshCw,
+  RotateCw,
   Search,
   Send,
   Sparkles,
   Sun,
   WandSparkles,
   X,
+  Trash2,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { notify } from '@/components/ui/operation-feedback';
+import { Button, ConfigProvider, Input, Modal, Select } from 'antd';
+import { notify } from '@/components/admin/operation-feedback';
+import { studioDarkAntdTheme, studioLightAntdTheme } from '@/components/admin/studio-antd-theme';
 import { ImageEditorDialog } from '@/components/ai-creation/image-editor-dialog';
 import { TemplateLibraryDialog } from '@/components/ai-creation/template-library-dialog';
 import type {
@@ -69,7 +68,7 @@ type LeadSummary = {
   floorPlans: FloorPlanOption[];
   workflowCount?: number;
 };
-type WorkflowSummary = { id: string; title: string; generationCount?: number };
+type WorkflowSummary = { id: string; title: string; generationCount?: number; publishedCount?: number };
 type WorkflowDetail = {
   workflow: WorkflowSummary & {
     sourceFloorPlanId?: string;
@@ -80,6 +79,7 @@ type WorkflowDetail = {
   generations: Array<{
     id: string;
     status: string;
+    published?: boolean;
     input?: { userMessage?: string; customPrompt?: string };
     output?: { imageUrl?: string };
     errorMessage?: string | null;
@@ -89,8 +89,10 @@ type WorkflowDetail = {
 };
 type TemplateDetail = PromptTemplate & { parameterTemplate?: { parameters?: Record<string, unknown> } };
 
-const darkSelectItemClassName = 'text-[#f5f5f5] focus:bg-white/10 focus:text-white data-[state=checked]:bg-white/[0.08] data-[state=checked]:text-white';
-const lightSelectItemClassName = 'text-[#171717] focus:bg-[#f3faf4] focus:text-[#171717] data-[state=checked]:bg-[#e8f6ea] data-[state=checked]:text-[#166534]';
+const darkSelectPopupClassName = '[&_.ant-select-item]:!text-[#f5f5f5] [&_.ant-select-item-option-active]:!bg-white/10 [&_.ant-select-item-option-selected]:!bg-white/[0.08] [&_.ant-select-item-option-selected]:!text-white';
+const lightSelectPopupClassName = '[&_.ant-select-item]:!text-[#171717] [&_.ant-select-item-option-active]:!bg-[#f3faf4] [&_.ant-select-item-option-selected]:!bg-[#e8f6ea] [&_.ant-select-item-option-selected]:!text-[#166534]';
+const darkIconButtonClassName = '!border-0 !bg-transparent !text-[#e5e5ea] hover:!bg-white/10 hover:!text-white';
+const lightIconButtonClassName = '!border-0 !bg-transparent !text-[#171717] hover:!bg-black/[0.06] hover:!text-[#166534]';
 
 async function readJson(response: Response) {
   const payload = await response.json().catch(() => ({}));
@@ -131,6 +133,7 @@ function GenerationTile({
   onReuse,
   onEdit,
   onToggle,
+  onDelete,
 }: {
   generation?: CreationGeneration;
   batchStatus?: CreationBatch['status'];
@@ -140,8 +143,10 @@ function GenerationTile({
   onReuse: (generation: CreationGeneration) => void;
   onEdit: (generation: CreationGeneration) => void;
   onToggle: (generation: CreationGeneration, selected: boolean) => void;
+  onDelete?: (generation: CreationGeneration) => void;
 }) {
   const tileClass = dark ? 'bg-[#2a2b31]' : 'bg-[#eef3ee]';
+  const iconButtonClass = dark ? darkIconButtonClassName : lightIconButtonClassName;
   if (!generation || ['created', 'pending', 'processing'].includes(generation.status) || batchStatus === 'processing' || batchStatus === 'pending') {
     if (generation && (generation.status === 'failed' || (!generation.imageUrl && generation.status !== 'pending' && generation.status !== 'processing' && generation.status !== 'created'))) {
       return (
@@ -183,14 +188,23 @@ function GenerationTile({
       <button type="button" onClick={() => onPreview(generation)} className="h-full w-full">
         <img src={generation.imageUrl} alt="AI 生成结果" className="h-full w-full object-contain" />
       </button>
-      <label className={cn('absolute bottom-2 left-2 flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium', dark ? 'bg-[#202126]/95 text-white' : 'bg-white/95 text-[#166534]')}>
-        <input type="checkbox" checked={selected} onChange={(event) => onToggle(generation, event.target.checked)} />
-        发给客户
-      </label>
+      {generation.published ? (
+        <span className="absolute right-2 top-2 rounded-md bg-[#16a34a] px-2 py-1 text-[11px] font-medium text-white shadow-sm">已发送</span>
+      ) : (
+        <label className={cn('absolute bottom-2 left-2 flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium', dark ? 'bg-[#202126]/95 text-white' : 'bg-white/95 text-[#166534]')}>
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(event) => onToggle(generation, event.target.checked)}
+          />
+          发给客户
+        </label>
+      )}
       <div className={cn('absolute left-1/2 top-2 flex -translate-x-1/2 items-center gap-1 rounded-lg p-1.5 opacity-0 shadow-xl backdrop-blur transition group-hover:opacity-100 group-focus-within:opacity-100', dark ? 'bg-[#202126]/95 text-[#e5e5ea]' : 'bg-white/95 text-[#171717]')}>
-        <Button size="icon-sm" variant="secondary" asChild title="下载"><a href={generation.imageUrl} download={`ai-workbench-${generation.id}.png`}><Download /></a></Button>
-        <Button size="icon-sm" variant="secondary" onClick={() => onReuse(generation)} title="基于此图继续"><Copy /></Button>
-        <Button size="icon-sm" variant="secondary" onClick={() => onEdit(generation)} title="编辑"><Pencil /></Button>
+        <Button size="small" type="text" className={iconButtonClass} href={generation.imageUrl} download={`ai-workbench-${generation.id}.png`} title="下载" icon={<Download size={14} />} />
+        <Button size="small" type="text" className={iconButtonClass} onClick={() => onReuse(generation)} title="基于此图继续" icon={<Copy size={14} />} />
+        <Button size="small" type="text" className={iconButtonClass} onClick={() => onEdit(generation)} title="编辑" icon={<Pencil size={14} />} />
+        {onDelete ? <Button size="small" type="text" className={iconButtonClass} onClick={() => onDelete(generation)} title="删除轮次" icon={<Trash2 size={14} />} /> : null}
       </div>
     </div>
   );
@@ -231,6 +245,9 @@ export function WorkbenchWorkspace() {
   const [previewGeneration, setPreviewGeneration] = useState<CreationGeneration | null>(null);
   const [floorPlanOpen, setFloorPlanOpen] = useState(false);
   const [compareFloorPlan, setCompareFloorPlan] = useState(true);
+  const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewRotation, setPreviewRotation] = useState(0);
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
   const [editorGeneration, setEditorGeneration] = useState<CreationGeneration | null>(null);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -240,6 +257,8 @@ export function WorkbenchWorkspace() {
   const [sendOpen, setSendOpen] = useState(false);
   const [sendTitle, setSendTitle] = useState('');
   const [sendingScheme, setSendingScheme] = useState(false);
+  const [deletingGeneration, setDeletingGeneration] = useState(false);
+  const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
   const [referenceStackExpanded, setReferenceStackExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -262,11 +281,19 @@ export function WorkbenchWorkspace() {
     muted: dark ? 'text-[#8d8d94]' : 'text-[#526052]',
     selected: dark ? 'border-[#7047ff]/70 bg-[#7047ff]/10' : 'border-emerald-500 bg-emerald-50',
     card: dark ? 'border-transparent bg-white/[0.035] hover:bg-white/[0.07]' : 'border-[#e5e9e5] bg-background hover:bg-[#f3faf4]',
-    input: dark ? 'border-white/10 bg-white/[0.06] text-white placeholder:text-[#77777e] focus-visible:ring-[#7047ff]' : 'border-[#e5e9e5] bg-white text-[#171717] placeholder:text-[#8aa08a] focus-visible:ring-[#16a34a]',
+    input: dark ? '!border-white/10 !bg-white/[0.06] !text-white placeholder:!text-[#77777e]' : '!border-[#e5e9e5] !bg-white !text-[#171717] placeholder:!text-[#8aa08a]',
     iconBtn: dark ? 'border-white/10 bg-white/[0.04] text-[#b3b3b3] hover:text-white' : 'border-[#e5e9e5] bg-white text-[#526052] hover:text-[#166534]',
-    selectTrigger: dark ? 'border-[#37373b] bg-[#222226] text-[#f5f5f5]' : 'border-[#e5e9e5] bg-white text-[#171717]',
-    selectContent: dark ? 'border-white/10 bg-[#18191d] text-white' : 'border-[#e5e9e5] bg-white text-[#171717]',
-    selectItem: dark ? darkSelectItemClassName : lightSelectItemClassName,
+    ghostBtn: dark ? '!border-white/10 !bg-white/[0.04] !text-[#b3b3b3] hover:!border-white/25 hover:!text-white' : '!border-[#e5e9e5] !bg-white !text-[#526052] hover:!border-[#16a34a] hover:!text-[#166534]',
+    primaryBtn: dark ? '!border-none !bg-[#7047ff] !text-white hover:!bg-[#6034ee] disabled:!opacity-50' : '!border-none !bg-[#16a34a] !text-white hover:!bg-[#15803d] disabled:!opacity-50',
+    selectBox: dark ? 'border-[#37373b] bg-[#222226] text-[#f5f5f5]' : 'border-[#e5e9e5] bg-white text-[#171717]',
+    selectTrigger: dark ? '[&_.ant-select-selector]:!rounded-lg [&_.ant-select-selector]:!border-[#37373b] [&_.ant-select-selector]:!bg-[#222226] [&_.ant-select-selection-item]:!text-[#f5f5f5] [&_.ant-select-selection-placeholder]:!text-[#77777e] [&_.ant-select-arrow]:!text-[#f5f5f5]' : '[&_.ant-select-selector]:!rounded-lg [&_.ant-select-selector]:!border-[#e5e9e5] [&_.ant-select-selector]:!bg-white [&_.ant-select-selection-item]:!text-[#171717] [&_.ant-select-selection-placeholder]:!text-[#8aa08a] [&_.ant-select-arrow]:!text-[#8aa08a]',
+    selectPopup: dark ? cn('border border-white/10 bg-[#18191d] text-white', darkSelectPopupClassName) : cn('border border-[#e5e9e5] bg-white text-[#171717]', lightSelectPopupClassName),
+    modal: dark
+      ? '[&_.ant-modal-content]:!border [&_.ant-modal-content]:!border-white/15 [&_.ant-modal-content]:!bg-[#1b1c20] [&_.ant-modal-content]:!text-white [&_.ant-modal-header]:!bg-transparent [&_.ant-modal-title]:!text-white [&_.ant-modal-close]:!text-[#b3b3b3] [&_.ant-modal-footer]:!border-0'
+      : '[&_.ant-modal-content]:!border [&_.ant-modal-content]:!border-[#e5e9e5] [&_.ant-modal-content]:!bg-white [&_.ant-modal-content]:!text-[#171717] [&_.ant-modal-header]:!bg-transparent [&_.ant-modal-title]:!text-[#171717] [&_.ant-modal-footer]:!border-0',
+    mediaModal: dark
+      ? '[&_.ant-modal-content]:!border [&_.ant-modal-content]:!border-white/10 [&_.ant-modal-content]:!bg-[#111216] [&_.ant-modal-content]:!text-white [&_.ant-modal-header]:!bg-transparent [&_.ant-modal-title]:!text-white [&_.ant-modal-close]:!text-[#b3b3b3]'
+      : '[&_.ant-modal-content]:!border [&_.ant-modal-content]:!border-[#e5e9e5] [&_.ant-modal-content]:!bg-white [&_.ant-modal-content]:!text-[#171717] [&_.ant-modal-header]:!bg-transparent [&_.ant-modal-title]:!text-[#171717]',
     accent: dark ? 'text-[#7047ff]' : 'text-[#16a34a]',
     generate: dark ? 'bg-gradient-to-r from-[#9447ff] to-[#5f2cff] shadow-[0_0_24px_rgba(104,49,255,0.2)]' : 'bg-[#16a34a] hover:bg-[#15803d]',
     badge: dark ? 'bg-[#7047ff]/20 text-[#b8a8ff]' : 'bg-[#e8f6ea] text-[#166534]',
@@ -363,8 +390,17 @@ export function WorkbenchWorkspace() {
   );
   useEffect(() => {
     if (!hasProcessing || !selectedWorkflowId) return;
-    const timer = window.setInterval(() => loadConversation(selectedWorkflowId, true), 4000);
-    return () => window.clearInterval(timer);
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      await loadConversation(selectedWorkflowId, true);
+      if (!cancelled) timer = window.setTimeout(poll, 4000);
+    };
+    timer = window.setTimeout(poll, 4000);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [hasProcessing, loadConversation, selectedWorkflowId]);
 
   useEffect(() => {
@@ -400,8 +436,19 @@ export function WorkbenchWorkspace() {
   const estimatedCredits = unitPrice * count;
   const hasEnabledPrice = unitPrice > 0;
   const conversationBatches = useMemo(() => {
+    const publishedByGenerationId = new Map((detail?.generations || []).map((generation) => [
+      generation.id,
+      Boolean(generation.published),
+    ]));
     const real = task ? [...task.batches].sort((left, right) => left.sequence - right.sequence) : [];
     const claimed = new Set(real.flatMap((batch) => batch.generations.map((generation) => generation.id)));
+    const patchedReal = real.map((batch) => ({
+      ...batch,
+      generations: batch.generations.map((generation) => ({
+        ...generation,
+        published: publishedByGenerationId.has(generation.id) ? publishedByGenerationId.get(generation.id) : false,
+      })),
+    }));
     const legacy = (detail?.generations || [])
       .filter((generation) => !claimed.has(generation.id))
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id))
@@ -421,12 +468,13 @@ export function WorkbenchWorkspace() {
           id: generation.id,
           status: generation.status as CreationGeneration['status'],
           imageUrl: generation.output?.imageUrl,
+          published: Boolean(generation.published),
           error: generation.errorMessage || undefined,
           retryCount: 0,
           createdAt: generation.createdAt,
         }],
       } satisfies CreationBatch));
-    return [...legacy.map((batch, index) => ({ ...batch, sequence: index + 1 })), ...real.map((batch, index) => ({ ...batch, sequence: legacy.length + index + 1 }))];
+    return [...legacy.map((batch, index) => ({ ...batch, sequence: index + 1 })), ...patchedReal.map((batch, index) => ({ ...batch, sequence: legacy.length + index + 1 }))];
   }, [detail?.generations, task]);
   const hasTaskStage = conversationBatches.length > 0;
   const currentBatchRetryable = Boolean(selectedBatch && (selectedBatch.status === 'failed' || selectedBatch.status === 'partial'));
@@ -698,11 +746,13 @@ export function WorkbenchWorkspace() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           workflowId: selectedWorkflowId,
-          title: sendTitle.trim() || detail?.workflow.title,
+          title: detail?.publishedScheme
+            ? (detail.workflow.title?.trim() || '设计方案')
+            : (sendTitle.trim() || detail?.workflow.title),
           generationIds: selectedImageIds,
         }),
       }));
-      notify.success('方案已发送给客户');
+      notify.success(detail?.publishedScheme ? '方案已更新到客户' : '方案已发送给客户');
       setSendOpen(false);
       setSelectedImageIds([]);
       await loadConversation(selectedWorkflowId, true);
@@ -710,6 +760,49 @@ export function WorkbenchWorkspace() {
       notify.error(error instanceof Error ? error.message : '发送方案失败');
     } finally {
       setSendingScheme(false);
+    }
+  };
+
+  const deleteGeneration = async (generation: CreationGeneration) => {
+    if (!selectedWorkflowId || !selectedLeadId) return;
+    if (deletingGeneration) return;
+    if (!window.confirm('确定删除该轮次？已删除的图片将从客户方案中移除，并无法在该方案里继续确认。')) return;
+
+    setDeletingGeneration(true);
+    try {
+      await readJson(await fetch(`/api/ai/workflows/${selectedWorkflowId}/generations/${generation.id}`, { method: 'DELETE' }));
+      notify.success('已删除轮次');
+      setSelectedImageIds([]);
+      await Promise.all([
+        loadConversation(selectedWorkflowId, true),
+        loadWorkflows(selectedLeadId),
+      ]);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '删除轮次失败');
+    } finally {
+      setDeletingGeneration(false);
+    }
+  };
+
+  const deleteWorkflow = async (workflowId: string) => {
+    if (!selectedLeadId) return;
+    if (deletingWorkflowId) return;
+    if (!window.confirm('确定删除该方案？删除后客户侧已确认图片将移除，且该方案无法继续编辑。')) return;
+
+    setDeletingWorkflowId(workflowId);
+    try {
+      await readJson(await fetch(`/api/ai/workflows/${workflowId}`, { method: 'DELETE' }));
+      notify.success('方案已删除');
+
+      if (selectedWorkflowId === workflowId) {
+        setSelectedWorkflowId('');
+        syncQuery(selectedLeadId, '');
+      }
+      await loadWorkflows(selectedLeadId);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '删除方案失败');
+    } finally {
+      setDeletingWorkflowId(null);
     }
   };
 
@@ -747,10 +840,11 @@ export function WorkbenchWorkspace() {
   }
 
   return (
-    <div className={cn('fixed inset-0 flex h-screen min-h-[720px] min-w-0 flex-col overflow-hidden font-sans lg:min-w-[1024px]', t.page)}>
+    <ConfigProvider theme={dark ? studioDarkAntdTheme : studioLightAntdTheme}>
+      <div className={cn('fixed inset-0 flex h-screen min-h-[720px] min-w-0 flex-col overflow-hidden font-sans lg:min-w-[1024px]', t.page)}>
       <header className={cn('relative z-40 flex h-[68px] min-w-0 items-center justify-between border-b px-3', t.header)}>
         <div className="flex min-w-0 items-center gap-4">
-          <Link href="/" className="flex items-center gap-2" title="返回管理后台">
+          <Link href="/" className="flex items-center gap-2" title="家客来">
             <NextImage src="/brand-logo.png" alt="" aria-hidden="true" width={28} height={28} className="shrink-0 rounded-md" />
             <span className="hidden text-[15px] font-semibold sm:inline">家客来</span>
           </Link>
@@ -762,16 +856,25 @@ export function WorkbenchWorkspace() {
             <span className={cn('hidden rounded-full px-3 py-1 text-xs sm:inline', t.badge)}>已发给客户 · {detail.publishedScheme.generationIds.length} 张</span>
           ) : null}
           <Button
-            size="sm"
+            size="small"
+            type="primary"
             disabled={!selectedImageIds.length}
             onClick={() => {
               if (!selectedImageIds.length) return notify.error('请先勾选要发给客户的效果图');
-              setSendTitle(detail?.publishedScheme?.title || detail?.workflow.title || '设计方案');
+              if (!detail?.publishedScheme) {
+                setSendTitle(detail?.workflow.title || '设计方案');
+              }
               setSendOpen(true);
             }}
-            className={cn('hidden sm:inline-flex', dark ? 'bg-[#7047ff] text-white hover:bg-[#6034ee]' : 'bg-[#16a34a] text-white hover:bg-[#15803d]')}
+            className={cn(
+              'hidden sm:inline-flex disabled:!opacity-100',
+              dark
+                ? '!bg-[#7047ff] hover:!bg-[#6034ee] disabled:!border-transparent disabled:!bg-[#2a2b31] disabled:!text-[#8d8d94]'
+                : '!bg-[#16a34a] hover:!bg-[#15803d] disabled:!border-transparent disabled:!bg-[#e8eee8] disabled:!text-[#8aa08a]',
+            )}
+            icon={<Send className="size-4" />}
           >
-            <Send className="size-4" />发送给客户{selectedImageIds.length ? `（${selectedImageIds.length}）` : ''}
+            {detail?.publishedScheme ? '更新客户方案' : '发送给客户'}{selectedImageIds.length ? `（${selectedImageIds.length}）` : ''}
           </Button>
           <button type="button" title={dark ? '切换日间主题' : '切换夜间主题'} onClick={() => persistTheme(dark ? 'light' : 'dark')} className={cn('flex size-9 items-center justify-center rounded-full border', t.iconBtn)}>
             {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
@@ -781,7 +884,6 @@ export function WorkbenchWorkspace() {
             <strong className="font-semibold">{bootstrap.account.availableBalance}</strong>
           </div>
           <Link href="/ai-studio/create" target="_blank" rel="noopener noreferrer" title="打开 AI 创作台" className={cn('flex size-9 items-center justify-center rounded-full border', t.iconBtn)}><Sparkles className="size-4" /></Link>
-          <Link href="/" title="返回管理后台" className={cn('flex size-9 items-center justify-center rounded-full border', t.iconBtn)}><CircleUserRound className="size-5" /></Link>
         </div>
       </header>
 
@@ -825,15 +927,33 @@ export function WorkbenchWorkspace() {
             {selectedLeadId && workflowsLoading ? <div className={cn('p-4 text-sm', t.muted)}>正在加载对话…</div> : null}
             {selectedLeadId && !workflowsLoading && !workflows.length ? <div className={cn('p-8 text-center text-sm', t.muted)}>还没有方案对话</div> : null}
             {workflows.map((workflow) => (
-              <button
+              <div
                 key={workflow.id}
-                type="button"
                 onClick={() => { setSelectedWorkflowId(workflow.id); syncQuery(selectedLeadId, workflow.id); }}
                 className={cn('mb-2 w-full rounded-lg border p-3 text-left', selectedWorkflowId === workflow.id ? t.selected : cn('border', t.card))}
               >
-                <div className="font-medium">{workflow.title}</div>
-                <div className={cn('mt-1 text-xs', t.muted)}>{workflow.generationCount || 0} 轮出图</div>
-              </button>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-medium truncate">{workflow.title}</div>
+                    <div className={cn('mt-1 text-xs', t.muted)}>
+                      {workflow.publishedCount ? `已确认 ${workflow.publishedCount} 张` : `${workflow.generationCount || 0} 轮出图`}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void deleteWorkflow(workflow.id);
+                    }}
+                    disabled={deletingWorkflowId === workflow.id}
+                    title="删除方案"
+                    className={cn('inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[11px]', dark ? 'border-white/10 text-[#d5d5da] hover:bg-white/5' : 'border-[#e5e9e5] text-[#8e9e94] hover:bg-[#f3faf4]')}
+                  >
+                    <Trash2 className="size-3.5" />
+                    删除
+                  </button>
+                </div>
+              </div>
             ))}
           </div>
         </section>
@@ -893,12 +1013,17 @@ export function WorkbenchWorkspace() {
                                 key={generation?.id || `pending-${batch.id}-${index}`}
                                 generation={generation}
                                 batchStatus={batch.status}
-                                selected={Boolean(generation && selectedImageIds.includes(generation.id))}
+                                selected={Boolean(generation && !generation.published && selectedImageIds.includes(generation.id))}
                                 dark={dark}
-                                onPreview={(generation) => { setCompareFloorPlan(true); setPreviewGeneration(generation); }}
+                                onPreview={(generation) => { setCompareFloorPlan(true); setPreviewGeneration(generation); setPreviewZoom(1); setPreviewRotation(0); setPreviewFullscreen(false); }}
                                 onReuse={(item) => { void reuseGeneration(item); }}
                                 onEdit={setEditorGeneration}
-                                onToggle={(item, checked) => setSelectedImageIds((current) => checked ? [...current.filter((id) => id !== item.id), item.id] : current.filter((id) => id !== item.id))}
+                                onToggle={(item, checked) => {
+                                  if (!checked || !item.published) {
+                                    setSelectedImageIds((current) => checked ? [...current.filter((id) => id !== item.id), item.id] : current.filter((id) => id !== item.id));
+                                  }
+                                }}
+                                onDelete={(generation) => void deleteGeneration(generation)}
                               />
                             ))}
                           </div>
@@ -952,7 +1077,7 @@ export function WorkbenchWorkspace() {
                   <span className={cn('flex size-5 items-center justify-center rounded-full text-[10px] font-semibold text-white', dark ? 'bg-[#7047ff]' : 'bg-[#16a34a]')}>AI</span>
                   预计消耗 <strong className={dark ? 'text-[#f0d567]' : 'text-[#166534]'}>{actionEstimatedCredits}</strong> 点
                 </div>
-                <div className="grid min-h-0 grid-cols-[64px_minmax(0,1fr)] gap-3 sm:grid-cols-[84px_minmax(0,1fr)]">
+                <div className="grid h-full min-h-0 grid-cols-[64px_minmax(0,1fr)] gap-3 sm:grid-cols-[84px_minmax(0,1fr)]">
                   <div
                     className="relative flex h-[98px] items-center justify-center overflow-visible"
                     onMouseEnter={() => setReferenceStackExpanded(true)}
@@ -979,9 +1104,19 @@ export function WorkbenchWorkspace() {
                     )}
                     <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" multiple className="hidden" onChange={(event) => { if (event.target.files) void uploadReferenceFiles(Array.from(event.target.files)); event.target.value = ''; }} />
                   </div>
-                  <div className="relative min-h-0 pt-0.5">
-                    {selectedTemplate ? <div className={cn('mb-1 flex items-center gap-2 text-[11px]', dark ? 'text-[#9f8cff]' : 'text-[#166534]')}><PanelsTopLeft className="size-3" /><span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span><button type="button" onClick={() => setSelectedTemplate(null)} title="取消模板"><X className="size-3" /></button></div> : null}
-                    <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={model?.description || '描述空间、风格、材质、光线与构图，或从提示词模板中选择'} className={cn('scrollbar-hide h-full min-h-0 resize-none border-0 bg-transparent p-0 text-base leading-6 shadow-none focus-visible:ring-0', dark ? 'text-[#b3b3b3] placeholder:text-[#77777e]' : 'text-[#171717] placeholder:text-[#8aa08a]')} />
+                  <div className="relative flex h-full min-h-0 flex-col pt-0.5 [&_.ant-input]:!h-full [&_.ant-input]:!min-h-0 [&_textarea]:!h-full [&_textarea]:!min-h-0">
+                    {selectedTemplate ? <div className={cn('mb-1 flex shrink-0 items-center gap-2 text-[11px]', dark ? 'text-[#9f8cff]' : 'text-[#166534]')}><PanelsTopLeft className="size-3" /><span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span><button type="button" onClick={() => setSelectedTemplate(null)} title="取消模板"><X className="size-3" /></button></div> : null}
+                    <Input.TextArea
+                      value={prompt}
+                      onChange={(event) => setPrompt(event.target.value)}
+                      autoSize={false}
+                      placeholder={model?.description || '描述空间、风格、材质、光线与构图，或从提示词模板中选择'}
+                      className={cn(
+                        'scrollbar-hide !h-full min-h-0 flex-1 resize-none !border-0 !bg-transparent p-0 text-base leading-6 !shadow-none focus:!shadow-none',
+                        dark ? '!text-[#b3b3b3] placeholder:!text-[#77777e]' : '!text-[#171717] placeholder:!text-[#8aa08a]',
+                      )}
+                      styles={{ textarea: { height: '100%', minHeight: 0 } }}
+                    />
                   </div>
                 </div>
                 <div aria-label="对话框操作" className="absolute right-3 top-3 flex h-10 items-center gap-2 lg:-right-[60px] lg:bottom-0 lg:top-auto lg:h-[86px] lg:w-12 lg:flex-col">
@@ -989,39 +1124,56 @@ export function WorkbenchWorkspace() {
                   <button type="button" onClick={() => setPromptExpanded(true)} title="全屏编辑提示词" className={cn('flex size-[30px] items-center justify-center rounded-full', t.muted)}><Maximize2 className="size-4" /></button>
                 </div>
                 <div className="grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible sm:flex sm:flex-wrap lg:flex-nowrap">
-                  <Select value={modelProfileId} onValueChange={(value) => { setModelProfileId(value); applyModelDefaults(bootstrap.models.find((item) => item.id === value)); }}>
-                    <SelectTrigger className={cn('col-span-2 h-10 w-full shrink-0 rounded-lg px-3 text-sm sm:w-[186px]', t.selectTrigger)}><Bot className={cn('size-4', t.accent)} /><SelectValue placeholder="选择模型" /></SelectTrigger>
-                    <SelectContent className={t.selectContent}><SelectGroup>{bootstrap.models.map((item) => <SelectItem key={item.id} value={item.id} className={t.selectItem}>{item.name}</SelectItem>)}</SelectGroup></SelectContent>
-                  </Select>
-                  <Select value={String(count)} onValueChange={(value) => setCount(Number(value))}>
-                    <SelectTrigger className={cn('h-10 w-full shrink-0 rounded-lg px-3 text-sm sm:w-[104px]', t.selectTrigger)}><Images className="size-4" /><SelectValue /></SelectTrigger>
-                    <SelectContent className={t.selectContent}><SelectGroup>{[1, 2, 3, 4].map((value) => <SelectItem key={value} value={String(value)} className={t.selectItem}>{value}张</SelectItem>)}</SelectGroup></SelectContent>
-                  </Select>
+                  <Select
+                    value={modelProfileId || undefined}
+                    onChange={(value) => { setModelProfileId(value); applyModelDefaults(bootstrap.models.find((item) => item.id === value)); }}
+                    placeholder="选择模型"
+                    className={cn('col-span-2 h-10 w-full shrink-0 sm:w-[186px]', t.selectTrigger)}
+                    popupClassName={t.selectPopup}
+                    options={bootstrap.models.map((item) => ({ value: item.id, label: item.name }))}
+                    suffixIcon={<Bot className={cn('size-4', t.accent)} />}
+                  />
+                  <Select
+                    value={String(count)}
+                    onChange={(value) => setCount(Number(value))}
+                    className={cn('h-10 w-full shrink-0 sm:w-[104px]', t.selectTrigger)}
+                    popupClassName={t.selectPopup}
+                    options={[1, 2, 3, 4].map((value) => ({ value: String(value), label: `${value}张` }))}
+                    suffixIcon={<Images className="size-4" />}
+                  />
                   {resolutionTier !== 'CUSTOM' ? (
-                    <Select value={aspectRatio} onValueChange={setAspectRatio}>
-                      <SelectTrigger className={cn('h-10 w-full shrink-0 rounded-lg px-3 text-sm sm:w-[128px]', t.selectTrigger)}><Crop className="size-4" /><SelectValue /></SelectTrigger>
-                      <SelectContent className={t.selectContent}><SelectGroup>{availableAspectRatios.map((item) => <SelectItem key={item} value={item} className={t.selectItem}>{item === 'auto' ? '自动比例' : item}</SelectItem>)}</SelectGroup></SelectContent>
-                    </Select>
+                    <Select
+                      value={aspectRatio}
+                      onChange={setAspectRatio}
+                      className={cn('h-10 w-full shrink-0 sm:w-[128px]', t.selectTrigger)}
+                      popupClassName={t.selectPopup}
+                      options={availableAspectRatios.map((item) => ({ value: item, label: item === 'auto' ? '自动比例' : item }))}
+                      suffixIcon={<Crop className="size-4" />}
+                    />
                   ) : null}
-                  <Select value={resolutionTier} onValueChange={(value) => {
-                    const nextTier = value as typeof resolutionTier;
-                    const nextRatios = model?.aspectRatiosByResolutionTier?.[nextTier] || model?.aspectRatios || [];
-                    setResolutionTier(nextTier);
-                    if (nextTier !== 'CUSTOM' && !nextRatios.includes(aspectRatio)) {
-                      setAspectRatio(nextRatios.includes(model?.defaults.aspectRatio || '') ? model?.defaults.aspectRatio || nextRatios[0] : nextRatios[0]);
-                    }
-                  }}>
-                    <SelectTrigger className={cn('h-10 w-full shrink-0 rounded-lg px-3 text-sm sm:w-[116px]', t.selectTrigger)}><Maximize2 className="size-4" /><SelectValue /></SelectTrigger>
-                    <SelectContent className={t.selectContent}><SelectGroup>{(model?.resolutionTiers || []).map((item) => <SelectItem key={item} value={item} className={t.selectItem}>{item === 'CUSTOM' ? '自定义' : item}</SelectItem>)}</SelectGroup></SelectContent>
-                  </Select>
+                  <Select
+                    value={resolutionTier}
+                    onChange={(value) => {
+                      const nextTier = value as typeof resolutionTier;
+                      const nextRatios = model?.aspectRatiosByResolutionTier?.[nextTier] || model?.aspectRatios || [];
+                      setResolutionTier(nextTier);
+                      if (nextTier !== 'CUSTOM' && !nextRatios.includes(aspectRatio)) {
+                        setAspectRatio(nextRatios.includes(model?.defaults.aspectRatio || '') ? model?.defaults.aspectRatio || nextRatios[0] : nextRatios[0]);
+                      }
+                    }}
+                    className={cn('h-10 w-full shrink-0 sm:w-[116px]', t.selectTrigger)}
+                    popupClassName={t.selectPopup}
+                    options={(model?.resolutionTiers || []).map((item) => ({ value: item, label: item === 'CUSTOM' ? '自定义' : item }))}
+                    suffixIcon={<Maximize2 className="size-4" />}
+                  />
                   {resolutionTier === 'CUSTOM' && model?.supportsCustomSize ? (
-                    <div className={cn('col-span-2 flex h-10 items-center justify-center gap-1 rounded-lg border px-2', t.selectTrigger)}>
+                    <div className={cn('col-span-2 flex h-10 items-center justify-center gap-1 rounded-lg border px-2', t.selectBox)}>
                       <Input aria-label="自定义宽度" type="number" min={16} max={3840} step={16} value={customWidth} onChange={(event) => setCustomWidth(Number(event.target.value))} className="h-8 w-[76px] border-0 bg-transparent px-1 text-center text-sm shadow-none focus-visible:ring-0" />
                       <span className={cn('text-xs', t.muted)}>x</span>
                       <Input aria-label="自定义高度" type="number" min={16} max={3840} step={16} value={customHeight} onChange={(event) => setCustomHeight(Number(event.target.value))} className="h-8 w-[76px] border-0 bg-transparent px-1 text-center text-sm shadow-none focus-visible:ring-0" />
                     </div>
                   ) : null}
-                  <button type="button" onClick={() => setTemplateOpen(true)} className={cn('flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-sm sm:w-[124px]', t.selectTrigger)}><PanelsTopLeft className="size-4" />提示词模板</button>
+                  <button type="button" onClick={() => setTemplateOpen(true)} className={cn('flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-sm sm:w-[124px]', t.selectBox)}><PanelsTopLeft className="size-4" />提示词模板</button>
                   <button
                     type="button"
                     disabled={generating || retrying || currentBatchActive || !prompt.trim() || !modelProfileId || !hasEnabledPrice}
@@ -1044,94 +1196,165 @@ export function WorkbenchWorkspace() {
         if (added && extraPrompt) setPrompt((current) => current.trim() ? `${current.trim()}\n${extraPrompt}` : extraPrompt);
       }} />
 
-      <Dialog open={promptExpanded} onOpenChange={setPromptExpanded}>
-        <DialogContent className={cn('max-w-3xl sm:rounded-xl', dark ? 'border-white/15 bg-[#1b1c20] text-white' : 'border-[#e5e9e5] bg-white')}>
-          <DialogHeader><DialogTitle className="text-base">编辑提示词</DialogTitle><DialogDescription className="sr-only">编辑本次生成使用的正向和负向提示词。</DialogDescription></DialogHeader>
-          <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} className={cn('min-h-64 resize-none leading-6', dark ? 'border-white/10 bg-[#222328] text-white' : 'border-[#e5e9e5]')} />
-          <div><label className={cn('mb-2 block text-xs', t.muted)}>不希望出现的内容（可选）</label><Textarea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} className={cn('min-h-24 resize-none', dark ? 'border-white/10 bg-[#222328] text-white' : 'border-[#e5e9e5]')} /></div>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { setPrompt(''); setNegativePrompt(''); }}>清空</Button><Button className={cn('text-white', dark ? 'bg-[#7047ff] hover:bg-[#6034ee]' : 'bg-[#16a34a] hover:bg-[#15803d]')} onClick={() => setPromptExpanded(false)}>完成</Button></div>
-        </DialogContent>
-      </Dialog>
+      <Modal
+        open={promptExpanded}
+        onCancel={() => setPromptExpanded(false)}
+        title="编辑提示词"
+        width={768}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button onClick={() => { setPrompt(''); setNegativePrompt(''); }}>清空</Button>
+            <Button type="primary" className={cn(dark ? '!bg-[#7047ff] hover:!bg-[#6034ee]' : '!bg-[#16a34a] hover:!bg-[#15803d]')} onClick={() => setPromptExpanded(false)}>完成</Button>
+          </div>
+        }
+        className={dark ? '[&_.ant-modal-content]:bg-[#1b1c20] [&_.ant-modal-content]:text-white [&_.ant-modal-header]:bg-[#1b1c20] [&_.ant-modal-title]:text-white [&_.ant-modal-close]:text-white' : undefined}
+      >
+        <span className="sr-only">编辑本次生成使用的正向和负向提示词。</span>
+        <Input.TextArea value={prompt} onChange={(event) => setPrompt(event.target.value)} className={cn('min-h-64 resize-none leading-6', dark ? 'border-white/10 bg-[#222328] text-white' : 'border-[#e5e9e5]')} />
+        <div className="mt-4"><label className={cn('mb-2 block text-xs', t.muted)}>不希望出现的内容（可选）</label><Input.TextArea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} className={cn('min-h-24 resize-none', dark ? 'border-white/10 bg-[#222328] text-white' : 'border-[#e5e9e5]')} /></div>
+      </Modal>
 
-      <Dialog open={Boolean(previewGeneration)} onOpenChange={(open) => { if (!open) setPreviewGeneration(null); }}>
-        <DialogContent className={cn('grid h-[90vh] max-w-[92vw] grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 sm:rounded-xl', dark ? 'border-white/10 bg-[#111216] text-white' : 'border-[#e5e9e5] bg-white')}>
-          <DialogHeader className="flex flex-row items-center justify-between space-y-0 pr-10">
-            <div>
-              <DialogTitle className="text-base">{compareFloorPlan && floorPlanPreviewUrl ? '户型对照' : '生成结果预览'}</DialogTitle>
-              <DialogDescription className="sr-only">对照客户户型与 AI 效果图，或单独查看生成结果。</DialogDescription>
-            </div>
-            {floorPlanPreviewUrl ? (
-              <button
-                type="button"
-                onClick={() => setCompareFloorPlan((current) => !current)}
-                className={cn('inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs', t.iconBtn)}
-              >
-                <Columns2 className="size-3.5" />
-                {compareFloorPlan ? '只看效果图' : '对照户型'}
-              </button>
-            ) : null}
-          </DialogHeader>
-          <div className={cn('min-h-0', compareFloorPlan && floorPlanPreviewUrl ? 'grid grid-cols-2 gap-3' : 'flex items-center justify-center')}>
-            {compareFloorPlan && floorPlanPreviewUrl ? (
-              <figure className={cn('flex min-h-0 flex-col overflow-hidden rounded-lg border', dark ? 'border-white/10 bg-black' : 'border-[#e5e9e5] bg-black')}>
-                <figcaption className={cn('shrink-0 px-3 py-2 text-xs', t.muted)}>客户户型 · {sourceFloorPlanName}</figcaption>
-                <img src={floorPlanPreviewUrl} alt="客户户型对照图" className="min-h-0 w-full flex-1 object-contain" />
-              </figure>
-            ) : null}
-            <figure className={cn('flex min-h-0 flex-col overflow-hidden', compareFloorPlan && floorPlanPreviewUrl ? cn('rounded-lg border', dark ? 'border-white/10 bg-black/40' : 'border-[#e5e9e5] bg-[#f6f8f6]') : '')}>
-              {compareFloorPlan && floorPlanPreviewUrl ? <figcaption className={cn('shrink-0 px-3 py-2 text-xs', t.muted)}>AI 效果图</figcaption> : null}
-              {previewGeneration?.imageUrl ? <img src={previewGeneration.imageUrl} alt="生成结果大图" className="min-h-0 w-full flex-1 object-contain" /> : null}
+      <Modal
+        open={Boolean(previewGeneration)}
+        onCancel={() => { setPreviewGeneration(null); setPreviewZoom(1); setPreviewRotation(0); setPreviewFullscreen(false); }}
+        title={compareFloorPlan && floorPlanPreviewUrl ? '户型对照' : '生成结果预览'}
+        footer={null}
+        width={previewFullscreen ? '100vw' : '92vw'}
+        style={previewFullscreen ? { top: 0, maxWidth: '100vw', paddingBottom: 0, margin: 0 } : { top: 24 }}
+        styles={{
+          body: { height: previewFullscreen ? 'calc(100dvh - 110px)' : 'calc(90vh - 110px)', padding: 12 },
+          content: previewFullscreen ? { borderRadius: 0, height: '100dvh' } : undefined,
+        }}
+        className={cn(
+          previewFullscreen ? '[&_.ant-modal]:!max-w-none [&_.ant-modal]:!w-full [&_.ant-modal]:!m-0 [&_.ant-modal]:!p-0' : undefined,
+          dark ? '[&_.ant-modal-content]:bg-[#111216] [&_.ant-modal-content]:text-white [&_.ant-modal-header]:bg-[#111216] [&_.ant-modal-title]:text-white [&_.ant-modal-close]:text-white' : undefined,
+        )}
+      >
+        <span className="sr-only">对照客户户型与 AI 效果图，或单独查看生成结果。</span>
+        <div className="mb-3 flex items-center justify-end">
+          {floorPlanPreviewUrl ? (
+            <button
+              type="button"
+              onClick={() => setCompareFloorPlan((current) => !current)}
+              className={cn('inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs', t.iconBtn)}
+            >
+              <Columns2 className="size-3.5" />
+              {compareFloorPlan ? '只看效果图' : '对照户型'}
+            </button>
+          ) : null}
+        </div>
+        <div className={cn('h-full min-h-0', compareFloorPlan && floorPlanPreviewUrl ? 'grid grid-cols-2 gap-3' : 'flex items-center justify-center')}>
+          {compareFloorPlan && floorPlanPreviewUrl ? (
+            <figure className={cn('flex min-h-0 flex-col overflow-hidden rounded-lg border', dark ? 'border-white/10 bg-black' : 'border-[#e5e9e5] bg-black')}>
+              <figcaption className={cn('shrink-0 px-3 py-2 text-xs', t.muted)}>客户户型 · {sourceFloorPlanName}</figcaption>
+              <img src={floorPlanPreviewUrl} alt="客户户型对照图" className="min-h-0 w-full flex-1 object-contain" />
             </figure>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={floorPlanOpen} onOpenChange={setFloorPlanOpen}>
-        <DialogContent className={cn('grid h-[90vh] max-w-[92vw] grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 sm:rounded-xl', dark ? 'border-white/10 bg-[#111216] text-white' : 'border-[#e5e9e5] bg-white')}>
-          <DialogHeader className="flex flex-row items-center justify-between space-y-0 pr-10">
-            <div>
-              <DialogTitle className="text-base">客户户型 · {sourceFloorPlanName}</DialogTitle>
-              <DialogDescription className="sr-only">查看当前方案绑定的正式量房控制图，便于对照 AI 效果图结构。</DialogDescription>
+          ) : null}
+          <figure className={cn('relative flex h-full min-h-0 w-full flex-col overflow-hidden', compareFloorPlan && floorPlanPreviewUrl ? cn('rounded-lg border', dark ? 'border-white/10 bg-black/40' : 'border-[#e5e9e5] bg-[#f6f8f6]') : cn('rounded-lg', dark ? 'bg-black/30' : 'bg-[#f6f8f6]'))}>
+            {compareFloorPlan && floorPlanPreviewUrl ? <figcaption className={cn('shrink-0 px-3 py-2 text-xs', t.muted)}>AI 效果图</figcaption> : null}
+            <div className="relative min-h-0 flex-1 overflow-hidden">
+              {previewGeneration?.imageUrl ? <img src={previewGeneration.imageUrl} alt="生成结果大图" className="absolute inset-0 h-full w-full origin-center object-contain transition-transform duration-200" style={{ transform: `scale(${previewZoom}) rotate(${previewRotation}deg)` }} /> : null}
+              {!compareFloorPlan || !floorPlanPreviewUrl ? (
+                <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-white/10 bg-black/70 p-1.5 text-white shadow-xl backdrop-blur">
+                  <Button size="small" type="text" className="text-white" title="放大图片" onClick={() => setPreviewZoom((value) => Math.min(3, value + 0.2))} icon={<Plus size={14} />} />
+                  <Button size="small" type="text" className="text-white" title="缩小图片" onClick={() => setPreviewZoom((value) => Math.max(0.4, value - 0.2))} icon={<Minus size={14} />} />
+                  <Button size="small" type="text" className="text-white" title="恢复原始比例" onClick={() => { setPreviewZoom(1); setPreviewRotation(0); }}>1:1</Button>
+                  <Button size="small" type="text" className="text-white" title="顺时针旋转图片" onClick={() => setPreviewRotation((value) => value + 90)} icon={<RotateCw size={14} />} />
+                  <Button size="small" type="text" className="text-white" title="全屏预览" onClick={() => setPreviewFullscreen((value) => !value)} icon={<Maximize2 size={14} />} />
+                  {previewGeneration?.imageUrl ? <Button size="small" type="text" className="text-white" href={previewGeneration.imageUrl} download={`ai-workbench-${previewGeneration.id}.png`} title="下载图片" icon={<Download size={14} />} /> : null}
+                </div>
+              ) : null}
             </div>
-            {sourceFloorPlanId ? (
-              <Link href={`/floorplans/${sourceFloorPlanId}`} target="_blank" rel="noopener noreferrer" className={cn('inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs', t.iconBtn)}>
-                <ExternalLink className="size-3.5" />打开正式户型
-              </Link>
-            ) : null}
-          </DialogHeader>
-          <div className="flex min-h-0 items-center justify-center overflow-hidden rounded-lg bg-black">
-            {floorPlanPreviewUrl ? <img src={floorPlanPreviewUrl} alt="客户户型对照图大图" className="max-h-full max-w-full object-contain" /> : null}
-          </div>
-        </DialogContent>
-      </Dialog>
+          </figure>
+        </div>
+      </Modal>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className={cn('max-w-md sm:rounded-xl', dark ? 'border-white/15 bg-[#1b1c20] text-white' : 'border-[#e5e9e5] bg-white')}>
-          <DialogHeader><DialogTitle className="text-base">新建方案对话</DialogTitle><DialogDescription className="sr-only">为当前客户新建一个命名方案对话并关联合格正式户型。</DialogDescription></DialogHeader>
-          <label className={cn('text-xs', t.muted)}>方案名称</label>
-          <Input value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder="例如 灯光设计" className={t.input} />
-          <label className={cn('text-xs', t.muted)}>关联正式户型</label>
-          <Select value={createFloorPlanId} onValueChange={setCreateFloorPlanId}>
-            <SelectTrigger className={t.selectTrigger}><SelectValue placeholder="选择户型" /></SelectTrigger>
-            <SelectContent className={t.selectContent}>{eligibleFloorPlans.map((plan) => <SelectItem key={plan.id} value={plan.id} className={t.selectItem}>{plan.name || '正式户型'}</SelectItem>)}</SelectContent>
-          </Select>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button disabled={creating || !createFloorPlanId} className={cn('text-white', dark ? 'bg-[#7047ff] hover:bg-[#6034ee]' : 'bg-[#16a34a] hover:bg-[#15803d]')} onClick={() => void createConversation()}>{creating ? '创建中…' : '创建'}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <Modal
+        open={floorPlanOpen}
+        onCancel={() => setFloorPlanOpen(false)}
+        title={`客户户型 · ${sourceFloorPlanName}`}
+        footer={null}
+        width="92vw"
+        style={{ top: 24 }}
+        styles={{ body: { height: 'calc(90vh - 110px)', padding: 12 } }}
+        className={dark ? '[&_.ant-modal-content]:bg-[#111216] [&_.ant-modal-content]:text-white [&_.ant-modal-header]:bg-[#111216] [&_.ant-modal-title]:text-white [&_.ant-modal-close]:text-white' : undefined}
+      >
+        <span className="sr-only">查看当前方案绑定的正式量房控制图，便于对照 AI 效果图结构。</span>
+        <div className="mb-3 flex justify-end">
+          {sourceFloorPlanId ? (
+            <Link href={`/floorplans/${sourceFloorPlanId}`} target="_blank" rel="noopener noreferrer" className={cn('inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs', t.iconBtn)}>
+              <ExternalLink className="size-3.5" />打开正式户型
+            </Link>
+          ) : null}
+        </div>
+        <div className="flex h-[calc(90vh-160px)] min-h-0 items-center justify-center overflow-hidden rounded-lg bg-black">
+          {floorPlanPreviewUrl ? <img src={floorPlanPreviewUrl} alt="客户户型对照图大图" className="max-h-full max-w-full object-contain" /> : null}
+        </div>
+      </Modal>
 
-      <Dialog open={sendOpen} onOpenChange={setSendOpen}>
-        <DialogContent className={cn('max-w-md sm:rounded-xl', dark ? 'border-white/15 bg-[#1b1c20] text-white' : 'border-[#e5e9e5] bg-white')}>
-          <DialogHeader><DialogTitle className="text-base">发送给客户</DialogTitle><DialogDescription>客户将在小程序项目里看到这一套方案，共 {selectedImageIds.length} 张效果图。</DialogDescription></DialogHeader>
-          <Input value={sendTitle} onChange={(event) => setSendTitle(event.target.value)} placeholder="方案名称，例如 灯光设计" className={t.input} />
+      <Modal
+        open={createOpen}
+        onCancel={() => setCreateOpen(false)}
+        title="新建方案对话"
+        footer={
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setSendOpen(false)}>取消</Button>
-            <Button disabled={sendingScheme} className={cn('text-white', dark ? 'bg-[#7047ff] hover:bg-[#6034ee]' : 'bg-[#16a34a] hover:bg-[#15803d]')} onClick={() => void sendScheme()}>{sendingScheme ? '发送中…' : '确认发送'}</Button>
+            <Button className={t.iconBtn} onClick={() => setCreateOpen(false)}>取消</Button>
+            <Button type="primary" disabled={creating || !createFloorPlanId} className={cn(dark ? '!bg-[#7047ff] hover:!bg-[#6034ee]' : '!bg-[#16a34a] hover:!bg-[#15803d]')} onClick={() => void createConversation()}>{creating ? '创建中…' : '创建'}</Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        }
+        className={dark ? '[&_.ant-modal-content]:bg-[#1b1c20] [&_.ant-modal-content]:text-white [&_.ant-modal-header]:bg-[#1b1c20] [&_.ant-modal-title]:text-white [&_.ant-modal-close]:text-white' : undefined}
+      >
+        <span className="sr-only">为当前客户新建一个命名方案对话并关联合格正式户型。</span>
+        <label className={cn('mb-1 block text-xs', t.muted)}>方案名称</label>
+        <Input value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder="例如 灯光设计" className={t.input} />
+        <label className={cn('mb-1 mt-4 block text-xs', t.muted)}>关联正式户型</label>
+        <Select
+          value={createFloorPlanId || undefined}
+          onChange={setCreateFloorPlanId}
+          placeholder="选择户型"
+          className={cn('w-full', t.selectTrigger)}
+          popupClassName={t.selectPopup}
+          options={eligibleFloorPlans.map((plan) => ({ value: plan.id, label: plan.name || '正式户型' }))}
+        />
+      </Modal>
+
+      <Modal
+        open={sendOpen}
+        onCancel={() => setSendOpen(false)}
+        title={detail?.publishedScheme ? '更新客户方案' : '发送给客户'}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button className={t.iconBtn} onClick={() => setSendOpen(false)}>取消</Button>
+            <Button
+              type="primary"
+              disabled={sendingScheme}
+              className={cn(dark ? '!bg-[#7047ff] hover:!bg-[#6034ee]' : '!bg-[#16a34a] hover:!bg-[#15803d]')}
+              onClick={() => void sendScheme()}
+            >
+              {sendingScheme ? '发送中…' : detail?.publishedScheme ? '确认更新' : '确认发送'}
+            </Button>
+          </div>
+        }
+        className={dark ? '[&_.ant-modal-content]:bg-[#1b1c20] [&_.ant-modal-content]:text-white [&_.ant-modal-header]:bg-[#1b1c20] [&_.ant-modal-title]:text-white [&_.ant-modal-close]:text-white' : undefined}
+      >
+        <p className={cn('mb-4 text-sm', t.muted)}>
+          {detail?.publishedScheme
+            ? `已确认且未选中的图保持不变，将加入/更新本次勾选的 ${selectedImageIds.length} 张效果图。`
+            : `客户将在小程序项目里看到这一套方案，共 ${selectedImageIds.length} 张效果图。`}
+        </p>
+        {detail?.publishedScheme ? (
+          <p className={cn('rounded-md border px-3 py-2 text-sm', dark ? 'border-white/10 bg-white/5' : 'border-[#e5e9e5] bg-[#f7faf7]')}>
+            方案名称：<span className="font-medium">{detail.workflow.title}</span>
+            <span className={cn('mt-1 block text-xs', t.muted)}>与顶部方案名称一致，如需修改请先在顶部重命名。</span>
+          </p>
+        ) : (
+          <>
+            <label className={cn('mb-1 block text-xs', t.muted)}>方案名称</label>
+            <Input value={sendTitle} onChange={(event) => setSendTitle(event.target.value)} placeholder="方案名称，例如 灯光设计" className={t.input} />
+          </>
+        )}
+      </Modal>
     </div>
+    </ConfigProvider>
   );
 }

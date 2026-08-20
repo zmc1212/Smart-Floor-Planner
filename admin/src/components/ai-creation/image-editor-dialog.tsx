@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { Button, ConfigProvider, Input, Modal } from 'antd';
 import { Circle, Download, Highlighter, MousePointer2, Pencil, Redo2, Square, Undo2, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { studioDarkAntdTheme } from '@/components/admin/studio-antd-theme';
+
+const { TextArea } = Input;
 
 type AnnotationTool = 'rectangle' | 'circle' | 'arrow' | 'pen' | 'marker';
 
@@ -208,33 +209,87 @@ export function ImageEditorDialog({
   ];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl border-white/10 bg-[#17181d] p-6 text-white sm:rounded-2xl">
-        <DialogHeader className="flex-row items-start justify-between pr-8">
-          <div><p className="text-[11px] tracking-[0.12em] text-[#9a9aa2]">图片编辑器</p><DialogTitle className="mt-1 text-xl">图片编辑</DialogTitle><DialogDescription className="sr-only">使用标注工具编辑生成图片并保存为参考图。</DialogDescription></div>
-        </DialogHeader>
-        <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_220px] gap-4">
-          <div className="min-w-0 rounded-2xl border border-white/10 bg-[#202126] p-3">
-            <div className="flex min-h-[400px] items-center justify-center overflow-auto rounded-xl bg-[linear-gradient(45deg,#17181d_25%,transparent_25%),linear-gradient(-45deg,#17181d_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#17181d_75%),linear-gradient(-45deg,transparent_75%,#17181d_75%)] bg-[length:20px_20px] bg-[position:0_0,0_10px,10px_-10px,-10px_0px]">
-              <canvas ref={canvasRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} className="max-h-[58vh] max-w-full touch-none cursor-crosshair rounded-lg shadow-2xl" />
-            </div>
-            <p className="mt-3 text-xs text-[#b1b1b8]">选择工具后在图片上添加标注；点击“使用”将其作为下一次创作的参考图。</p>
-          </div>
-          <div className="flex min-h-0 flex-col rounded-2xl border border-white/10 bg-[#202126]">
-            <div className="border-b border-white/10 px-4 py-3 text-sm font-medium">补充提示词</div>
-            <Textarea value={extraPrompt} onChange={(event) => setExtraPrompt(event.target.value)} placeholder="描述希望修改的内容" className="min-h-48 flex-1 resize-none border-0 bg-transparent p-4 text-sm text-white shadow-none placeholder:text-[#74747c] focus-visible:ring-0" />
-          </div>
+    <ConfigProvider theme={studioDarkAntdTheme}>
+    <Modal
+      open={open}
+      onCancel={() => onOpenChange(false)}
+      footer={null}
+      width="72rem"
+      centered
+      destroyOnHidden
+      title={
+        <div>
+          <p className="text-[11px] tracking-[0.12em] text-[#9a9aa2]">图片编辑器</p>
+          <span className="mt-1 block text-xl text-white">图片编辑</span>
         </div>
-        <div className="flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
-          {toolButtons.map(({ value, label, icon: Icon }) => <Button key={value} type="button" size="icon" variant="outline" title={label} onClick={() => setTool(value)} className={cn('border-white/10 bg-[#24252b] text-[#d8d8df] hover:bg-white/10 hover:text-white', tool === value && 'border-[#8d67ff] bg-[#6e45ef]/20 text-white')}><Icon className="size-4" /></Button>)}
-          <span className="mx-1 h-6 w-px bg-white/10" />
-          {colors.map((value) => <button key={value} type="button" title={value} onClick={() => setColor(value)} className={cn('size-7 rounded-full border-2 border-transparent', color === value && 'border-white')} style={{ backgroundColor: value }} />)}
-          <span className="mx-1 h-6 w-px bg-white/10" />
-          <Button type="button" size="icon" variant="ghost" title="撤销" disabled={historyIndex <= 0} onClick={undo}><Undo2 /></Button>
-          <Button type="button" size="icon" variant="ghost" title="重做" disabled={historyIndex >= history.length - 1} onClick={redo}><Redo2 /></Button>
-          <div className="ml-auto flex items-center gap-2"><Button type="button" variant="outline" className="border-white/10 bg-[#24252b] text-white hover:bg-white/10" onClick={download}><Download />下载</Button><Button type="button" disabled={saving} className="bg-[#7047ff] text-white hover:bg-[#5d37dd]" onClick={useAnnotatedImage}>{saving ? '处理中' : '使用'}</Button><Button type="button" variant="ghost" title="关闭" onClick={() => onOpenChange(false)}><X /></Button></div>
+      }
+      classNames={{
+        content: 'border border-white/10 bg-[#17181d] text-white sm:rounded-2xl',
+        header: 'border-0 bg-transparent',
+        body: 'p-0 pt-2',
+      }}
+      styles={{
+        content: { padding: 24 },
+      }}
+    >
+      <span className="sr-only">使用标注工具编辑生成图片并保存为参考图。</span>
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_220px] gap-4">
+        <div className="min-w-0 rounded-2xl border border-white/10 bg-[#202126] p-3">
+          <div className="flex min-h-[400px] items-center justify-center overflow-auto rounded-xl bg-[linear-gradient(45deg,#17181d_25%,transparent_25%),linear-gradient(-45deg,#17181d_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#17181d_75%),linear-gradient(-45deg,transparent_75%,#17181d_75%)] bg-[length:20px_20px] bg-[position:0_0,0_10px,10px_-10px,-10px_0px]">
+            <canvas ref={canvasRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} className="max-h-[58vh] max-w-full touch-none cursor-crosshair rounded-lg shadow-2xl" />
+          </div>
+          <p className="mt-3 text-xs text-[#b1b1b8]">选择工具后在图片上添加标注；点击“使用”将其作为下一次创作的参考图。</p>
         </div>
-      </DialogContent>
-    </Dialog>
+        <div className="flex min-h-0 flex-col rounded-2xl border border-white/10 bg-[#202126]">
+          <div className="border-b border-white/10 px-4 py-3 text-sm font-medium">补充提示词</div>
+          <TextArea
+            value={extraPrompt}
+            onChange={(event) => setExtraPrompt(event.target.value)}
+            placeholder="描述希望修改的内容"
+            className="min-h-48 flex-1 resize-none !border-0 !bg-transparent p-4 text-sm !text-white !shadow-none placeholder:!text-[#74747c] focus:!shadow-none"
+          />
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/10 pt-4">
+        {toolButtons.map(({ value, label, icon: Icon }) => (
+          <Button
+            key={value}
+            type="default"
+            size="small"
+            title={label}
+            onClick={() => setTool(value)}
+            className={cn(
+              'border-white/10 bg-[#24252b] text-[#d8d8df] hover:!border-white/20 hover:!bg-white/10 hover:!text-white',
+              tool === value && '!border-[#8d67ff] !bg-[#6e45ef]/20 !text-white'
+            )}
+            icon={<Icon className="size-4" />}
+          />
+        ))}
+        <span className="mx-1 h-6 w-px bg-white/10" />
+        {colors.map((value) => (
+          <button
+            key={value}
+            type="button"
+            title={value}
+            onClick={() => setColor(value)}
+            className={cn('size-7 rounded-full border-2 border-transparent', color === value && 'border-white')}
+            style={{ backgroundColor: value }}
+          />
+        ))}
+        <span className="mx-1 h-6 w-px bg-white/10" />
+        <Button type="text" size="small" title="撤销" disabled={historyIndex <= 0} onClick={undo} className="text-white hover:!bg-white/10" icon={<Undo2 className="size-4" />} />
+        <Button type="text" size="small" title="重做" disabled={historyIndex >= history.length - 1} onClick={redo} className="text-white hover:!bg-white/10" icon={<Redo2 className="size-4" />} />
+        <div className="ml-auto flex items-center gap-2">
+          <Button type="default" className="border-white/10 bg-[#24252b] text-white hover:!border-white/20 hover:!bg-white/10 hover:!text-white" onClick={download} icon={<Download className="size-4" />}>
+            下载
+          </Button>
+          <Button type="primary" disabled={saving} className="!bg-[#7047ff] !text-white hover:!bg-[#5d37dd]" onClick={useAnnotatedImage}>
+            {saving ? '处理中' : '使用'}
+          </Button>
+          <Button type="text" title="关闭" onClick={() => onOpenChange(false)} className="text-white hover:!bg-white/10" icon={<X className="size-4" />} />
+        </div>
+      </div>
+    </Modal>
+    </ConfigProvider>
   );
 }

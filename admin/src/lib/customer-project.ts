@@ -1,9 +1,26 @@
 import type { CustomerProject, CustomerProjectIndexItem, CustomerProjectPublication } from '@/db/repositories';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
+import { getWorkflowStageDefinition } from '@/lib/ai/workflow-stages';
+import { getFloorPlanDisplay } from '@/lib/floor-plan-display';
 import { resolveCustomerHomeAction } from '@/lib/lead-service-stage';
 
 export const LEGACY_PUBLISHED_SCHEME_ID = 'legacy';
 export const LEGACY_PUBLISHED_SCHEME_TITLE = '其他效果图';
+
+/** Internal style/stage keys must never surface as customer-facing image titles. */
+const INTERNAL_GENERATION_TITLE_KEYS = new Set([
+  'conversation',
+  'direction',
+  'base_render',
+  'soft_furnishing',
+  'proposal_pack',
+  'lighting',
+  'tour_board',
+  'premium_board',
+  'perspective_upgrade',
+  'cad_detail',
+  'free_create',
+]);
 
 function record(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -11,12 +28,53 @@ function record(value: unknown) {
     : {};
 }
 
+function text(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function formatAreaLabel(area: unknown) {
+  const numeric = Number(area);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '';
+  const rounded = Math.round(numeric);
+  return `${rounded}m²`;
+}
+
+function formatShortSurveyDate(value?: Date | string | null) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getMonth() + 1}/${date.getDate()}已量房`;
+}
+
+function buildCustomerProjectIdentity(project: CustomerProject) {
+  const display = getFloorPlanDisplay(
+    { name: project.formalFloorPlan?.name || null },
+    { lead: project.lead },
+  );
+  const communityName = text(project.lead.communityName);
+  const customerName = text(project.lead.name);
+  const areaLabel = formatAreaLabel(project.lead.area);
+  const heroTitle = communityName && customerName && customerName !== communityName
+    ? `${communityName} ${customerName}`
+    : display.projectTitle;
+  const navSubtitle = [communityName || display.projectTitle, areaLabel].filter(Boolean).join(' · ');
+  return {
+    heroTitle,
+    heroSubtitle: '免费量房与设计方案全纪录',
+    navSubtitle,
+    areaLabel,
+  };
+}
+
 function generationTitle(generation: CustomerProjectPublication['generation'], fallback: string) {
   const input = record(generation.input);
-  if (typeof input.recipeName === 'string' && input.recipeName.trim()) return input.recipeName.trim();
-  if (typeof input.style === 'string' && input.style.trim()) return input.style.trim();
-  if (typeof input.userMessage === 'string' && input.userMessage.trim()) return input.userMessage.trim();
-  return fallback;
+  // Never expose designer prompts (userMessage) — they are internal production text.
+  const recipeName = text(input.recipeName);
+  if (recipeName && !INTERNAL_GENERATION_TITLE_KEYS.has(recipeName)) return recipeName;
+  const style = text(input.style);
+  if (style && !INTERNAL_GENERATION_TITLE_KEYS.has(style)) return style;
+  if (fallback) return fallback;
+  return getWorkflowStageDefinition(generation.stageKey)?.name || '效果图';
 }
 
 export type PublishedDesignDto = {
@@ -108,8 +166,23 @@ export function customerProjectToDto(
     publishedDesignCount: publishedDesigns.length,
     customerRescheduleCutoffHours: options.customerRescheduleCutoffHours,
   });
+  const identity = buildCustomerProjectIdentity(project);
+  const featuredScheme = publishedSchemes[0]
+    ? {
+        id: publishedSchemes[0].id,
+        title: publishedSchemes[0].title,
+        styleTag: publishedSchemes[0].title.startsWith('#')
+          ? publishedSchemes[0].title
+          : `#${publishedSchemes[0].title}`,
+        imageEndpoint: publishedSchemes[0].images[0]?.imageEndpoint || null,
+        generationId: publishedSchemes[0].images[0]?.generationId || null,
+        imageCount: publishedSchemes[0].images.length,
+      }
+    : null;
   return {
     leadId,
+    ...identity,
+    featuredScheme,
     enterprise: { name: project.enterpriseName },
     status: project.lead.status,
     serviceStage: home.stageKey,
@@ -139,6 +212,10 @@ export function customerProjectToDto(
       ? {
           id: project.appointment.id.toString(),
           address: project.appointment.address,
+          locationName: project.appointment.locationName,
+          latitude: project.appointment.latitude == null ? null : Number(project.appointment.latitude),
+          longitude: project.appointment.longitude == null ? null : Number(project.appointment.longitude),
+          coordinateSystem: project.appointment.coordinateSystem,
           timeRange: project.appointment.timeRange,
           status: project.appointment.status,
           version: project.appointment.version,
@@ -153,6 +230,11 @@ export function customerProjectToDto(
           status: project.formalFloorPlan.status,
           completedAt: project.formalFloorPlan.completedAt,
           updatedAt: project.formalFloorPlan.updatedAt,
+          areaLabel: identity.areaLabel,
+          previewEndpoint: `/miniprogram/customer-projects/${leadId}/formal-floor-plan/preview`,
+          surveyStatusLabel: formatShortSurveyDate(
+            project.formalFloorPlan.completedAt || project.formalFloorPlan.updatedAt
+          ),
         }
       : null,
     publishedSchemes,

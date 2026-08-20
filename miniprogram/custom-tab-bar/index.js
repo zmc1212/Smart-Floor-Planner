@@ -15,7 +15,6 @@ const LEGACY_ITEMS = [
 const ROLE_ITEMS = {
   customer: [
     { key: 'service', capability: 'customer.service', pagePath: '/pages/index/index', text: '服务', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
-    { key: 'projects', capability: 'customer.projects', pagePath: '/packages/business/customer-projects/customer-projects', text: '项目', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   referrer: [
@@ -32,8 +31,7 @@ const ROLE_ITEMS = {
   ],
   measurer: [
     { key: 'workbench', capability: 'staff.schedule', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
-    { key: 'tasks', capability: 'staff.tasks', pagePath: '/pages/leads-management/leads-management', text: '任务', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
-    { key: 'survey', capability: 'staff.surveying', pagePath: '/pages/ai-design/ai-design', text: '量房', tab: true, iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
+    { key: 'customers', capability: 'staff.tasks', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   enterprise_admin: [

@@ -1,21 +1,24 @@
-<view class="project-page sfp-page">
+<view class="archive-page sfp-page">
   <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
     <view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view>
-    <text class="nav-title">我的家装项目</text>
+    <view class="nav-copy">
+      <text class="nav-title">我的服务档案</text>
+      <text wx:if="{{navSubtitle}}" class="nav-subtitle">{{navSubtitle}}</text>
+    </view>
   </view>
+
   <view wx:if="{{loading}}" class="state">正在加载服务档案…</view>
   <view wx:elif="{{error}}" class="state"><text>{{error}}</text><button class="retry" bindtap="load">重试</button></view>
+
   <view wx:else class="content">
-    <!-- Hero Timeline Card -->
     <view class="project-hero-card">
       <view class="hero-top-row">
         <view class="hero-text-wrap">
-          <text class="hero-title">服务全周期档案</text>
-          <text class="hero-subtitle">{{serviceStageLabel ? serviceStageLabel + ' · ' + (nextAction || '服务推进中') : '免费设计与量房服务'}}</text>
+          <text class="hero-title">{{heroTitle || '我的装修服务'}}</text>
+          <text class="hero-subtitle">{{heroSubtitle || '免费量房与设计方案全纪录'}}</text>
         </view>
-        <image class="hero-mascot" src="/images/airy-v1/xiao-k-mascot-3d.png" mode="aspectFit" />
+        <image class="hero-mascot" src="/packages/business/assets/customer-project-v1/project-delivery-xiao-k.png" mode="aspectFit" aria-label="小K" />
       </view>
-
       <view class="timeline-row">
         <block wx:for="{{stages}}" wx:key="label">
           <view class="timeline-step {{item.state}} {{item.complete ? 'done' : ''}}">
@@ -28,26 +31,24 @@
     </view>
 
     <view class="personnel-grid">
-      <view class="person-card">
-        <image class="person-avatar designer-avatar" src="/images/airy-v1/xiao-k-designer-3d.png" mode="aspectFit" />
+      <view class="person-card" bindtap="contactDesigner" aria-role="button" aria-label="联系专属设计师">
         <view class="person-info">
-          <view class="person-role-tag">专属设计师</view>
-          <text class="person-name">{{designer && designer.displayName ? designer.displayName : '待分配设计师'}}</text>
-          <text class="person-desc">{{designer && designer.wechatId ? '微信号：' + designer.wechatId : (designer && designer.phone ? '电话：' + designer.phone : '专属设计师1对1出方案')}}</text>
+          <text class="person-role">专属设计师</text>
+          <view class="person-name-row">
+            <text class="person-name">{{designerLine}}</text>
+            <view wx:if="{{designer && designer.wechatId}}" class="person-chevron"></view>
+          </view>
         </view>
       </view>
-
       <view class="person-card">
-        <image class="person-avatar measurer-avatar" src="/images/airy-v1/xiao-k-measurer-3d.png" mode="aspectFit" />
         <view class="person-info">
-          <view class="person-role-tag">金牌量房师傅</view>
-          <text class="person-name">{{measurerName || '待分配量房员'}}</text>
-          <text class="person-desc">{{measurerName ? '激光精准测距 · 上门量尺' : '预约后安排专属师傅'}}</text>
+          <text class="person-role">测量师师傅</text>
+          <text class="person-name">{{measurerLine}}</text>
         </view>
       </view>
     </view>
 
-    <view class="section-card sfp-card">
+    <view wx:if="{{showBookingPanel}}" class="section-card sfp-card">
       <view class="section-header">
         <view class="section-title-wrap">
           <text class="section-title">上门量房预约</text>
@@ -68,65 +69,91 @@
       </view>
     </view>
 
-    <!-- CAD Floor Plan Section -->
-    <view class="section-card sfp-card" wx:if="{{formalFloorPlan}}">
+    <view class="section-card sfp-card">
       <view class="section-header">
         <view class="section-title-wrap">
           <image class="section-icon" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit" />
-          <text class="section-title">{{formalFloorPlan.name || 'CAD 户型档案 (正式量房形成的户型档案)'}}</text>
+          <text class="section-title">户型档案</text>
         </view>
-        <text class="section-badge">{{formalFloorPlan.displayCompletedAt || '量房已完成'}}</text>
+        <text wx:if="{{formalFloorPlan}}" class="section-badge">已归档{{formalFloorPlan.areaLabel ? ' · ' + formalFloorPlan.areaLabel : ''}}</text>
+        <text wx:else class="section-badge muted">等待量房</text>
       </view>
-      <view class="cad-preview-container">
-        <image class="cad-image" src="/images/airy-v1/cad-blueprint-3d.png" mode="aspectFit" />
-        <view class="preview-chip">
-          <text>正式量房户型档案</text>
+      <view wx:if="{{formalFloorPlan}}" class="floor-preview-container" bindtap="previewFloorPlan" aria-role="button" aria-label="查看高清户型图">
+        <image wx:if="{{floorPlanImagePath}}" class="floor-preview-image" src="{{floorPlanImagePath}}" mode="aspectFit" />
+        <image wx:elif="{{floorPlanImageState === 'loading'}}" class="floor-preview-image placeholder" src="/packages/business/assets/customer-project-v1/formal-floor-plan-archive.png" mode="aspectFit" />
+        <view wx:else class="floor-preview-fallback">
+          <image class="floor-preview-image placeholder" src="/packages/business/assets/customer-project-v1/formal-floor-plan-archive.png" mode="aspectFit" />
         </view>
+        <view class="preview-action-chip"><text>查看高清户型图</text><view class="chip-arrow"></view></view>
       </view>
-    </view>
-    <view class="section-card sfp-card" wx:else>
-      <view class="section-header">
-        <view class="section-title-wrap">
-          <image class="section-icon" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit" />
-          <text class="section-title">我的户型档案</text>
-        </view>
-        <text class="section-badge">等待量房</text>
-      </view>
-      <view class="empty-folio-box">
-        <text class="empty-note">完成正式量房后，CAD 户型图将自动归档并展示于此</text>
+      <view wx:else class="empty-folio-box">
+        <text class="empty-note">完成正式量房后，户型图将自动归档并展示于此</text>
       </view>
     </view>
 
-    <!-- Hidden compatibility test anchors -->
+    <view class="section-card sfp-card">
+      <view class="section-header">
+        <view class="section-title-wrap">
+          <image class="section-icon sparkle-icon" src="/images/airy-v1/palette-recipe-3d.png" mode="aspectFit" />
+          <text class="section-title">交付方案</text>
+        </view>
+        <text wx:if="{{featuredDelivery}}" class="section-meta">{{featuredDelivery.publishedLabel}}</text>
+        <text wx:else class="section-meta">方案准备中</text>
+      </view>
+      <view wx:if="{{featuredDelivery}}" class="delivery-preview" bindtap="previewFeaturedDelivery" aria-role="button" aria-label="查看方案详情">
+        <view class="delivery-image-frame">
+          <view class="published-grid">
+            <view wx:for="{{featuredDelivery.images || []}}" wx:for-item="design" wx:key="generationId" class="published-item">
+              <view class="published-image-frame">
+                <image wx:if="{{design.imageState === 'loaded'}}" class="published-image" src="{{design.imagePath}}" mode="aspectFill" />
+                <view wx:elif="{{design.imageState === 'loading'}}" class="image-state">读取中…</view>
+                <view wx:else class="image-state error">暂不可读</view>
+              </view>
+              <text class="published-title">已发布 · {{design.title || '设计方案'}}</text>
+            </view>
+          </view>
+          <view wx:if="{{featuredDelivery.styleTag}}" class="delivery-style-tag">{{featuredDelivery.styleTag}}</view>
+          <view class="delivery-action-chip"><text>详情</text><view class="chip-arrow dark"></view></view>
+        </view>
+      </view>
+      <view wx:else class="empty-folio">
+        <image src="/packages/business/assets/customer-project-v1/published-design-folio.png" mode="aspectFit" class="empty-art" />
+        <view>
+          <text class="empty-title">设计师正在准备方案</text>
+          <text class="empty-note">方案发布后，您可以在这里查看成果</text>
+        </view>
+      </view>
+      <view wx:if="{{publishedSchemes.length > 1}}" class="more-schemes">
+        <view class="more-schemes-heading">
+          <text class="more-schemes-label">更多已发布方案</text>
+          <text class="more-schemes-action" bindtap="openAllAiSchemes" aria-role="button">查看全部方案 ›</text>
+        </view>
+        <view class="published-grid">
+          <view wx:for="{{publishedSchemes}}" wx:for-item="scheme" wx:for-index="schemeIndex" wx:key="id" wx:if="{{schemeIndex > 0}}" class="published-item" bindtap="previewPublishedDesign" data-scheme-index="{{schemeIndex}}" data-index="0" aria-role="button" aria-label="查看已发布设计方案">
+            <view class="published-image-frame">
+              <image wx:if="{{scheme.images[0].imageState === 'loaded'}}" class="published-image" src="{{scheme.images[0].imagePath}}" mode="aspectFill" />
+              <view wx:elif="{{scheme.images[0].imageState === 'loading'}}" class="image-state">读取中…</view>
+              <view wx:else class="image-state error">暂不可读</view>
+            </view>
+            <text class="published-title">{{scheme.title || '设计方案'}}</text>
+          </view>
+        </view>
+      </view>
+      <view wx:elif="{{featuredDelivery}}" class="more-schemes">
+        <text class="more-schemes-action" bindtap="openAllAiSchemes" aria-role="button">查看全部方案 ›</text>
+      </view>
+    </view>
+
     <view style="display:none;" aria-hidden="true">
       <text>{{measurerName || '待分配'}}</text>
       <text>预约量房</text>
+      <text>预约上门量房</text>
     </view>
+  </view>
 
-    <view class="folio-card sfp-card">
-      <view class="folio-heading"><view><text class="section-title">设计方案</text><text class="section-subtitle">仅展示设计师主动发布的方案</text></view><text wx:if="{{publishedSchemes.length}}" class="complete-tag">{{publishedSchemes.length}} 套</text></view>
-      <block wx:if="{{publishedSchemes.length}}">
-        <view wx:for="{{publishedSchemes}}" wx:for-item="scheme" wx:for-index="schemeIndex" wx:key="id" class="scheme-group">
-          <view class="scheme-heading">
-            <text class="scheme-title">{{scheme.title || '设计方案'}}</text>
-            <text class="scheme-count">{{scheme.images.length}} 张</text>
-          </view>
-          <view class="published-grid">
-            <view wx:for="{{scheme.images}}" wx:for-item="item" wx:for-index="imageIndex" wx:key="id" class="published-item" bindtap="previewPublishedDesign" data-scheme-index="{{schemeIndex}}" data-index="{{imageIndex}}" aria-role="button" aria-label="查看已发布设计方案">
-              <view class="published-image-frame">
-                <image wx:if="{{item.imageState === 'loaded'}}" class="published-image" src="{{item.imagePath}}" mode="aspectFill" />
-                <view wx:elif="{{item.imageState === 'loading'}}" class="image-state">正在读取方案…</view>
-                <view wx:else class="image-state error">方案图片暂不可读</view>
-              </view>
-              <text class="published-title">{{item.title || scheme.title || '设计方案'}}</text>
-              <view class="published-status"><view class="published-status-dot"></view><text>已发布</text></view>
-            </view>
-          </view>
-        </view>
-      </block>
-      <view wx:else class="empty-folio"><image src="/packages/business/assets/customer-project-v1/published-design-folio.png" mode="aspectFit" class="empty-art" /><view><text class="empty-title">设计师正在准备方案</text><text class="empty-note">方案发布后，您可以在这里查看成果</text></view></view>
-    </view>
-    <text wx:if="{{appointment && canReschedule}}" class="hint">如需调整时间，请在截止时间前选择可用时段</text>
-    <text wx:elif="{{canRebook && !appointment}}" class="hint">可自己预约上门，也可微信联系设计师代为预约</text>
+  <view wx:if="{{!loading && !error}}" class="footer-bar">
+    <button class="footer-outline" bindtap="contactDesigner">微信联系设计师</button>
+    <button wx:if="{{featuredDelivery && featuredDelivery.imagePath}}" class="footer-primary sfp-primary-action" open-type="share">保存/分享我的方案</button>
+    <button wx:else class="footer-primary sfp-primary-action" bindtap="saveOrShareScheme">保存/分享我的方案</button>
   </view>
 </view>

@@ -47,6 +47,7 @@ import {
   getGrsAiOutputPersistenceEnabled,
   shouldKeepGrsAiOutputUrl,
 } from '@/lib/media-storage/config-service';
+import { postgresCreationReconciliationGate } from '@/lib/ai/reconciliation-gate';
 
 type ProviderRequest = Omit<AiImageSubmitInput, 'model'> & {
   logicalModelKey: 'image.generate.standard' | 'image.edit.standard';
@@ -510,7 +511,7 @@ export async function submitPostgresCreationGeneration(input: { enterpriseId: st
  * Reconciles due PostgreSQL provider tasks for either one tenant or the
  * platform scheduler. Provider I/O always occurs after the claim transaction.
  */
-export async function reconcilePostgresCreationTasks(enterpriseId?: string, limit = 12) {
+async function reconcilePostgresCreationTasksOnce(enterpriseId?: string, limit = 12) {
   const claims = await claimPostgresCreationProviderPolls({ enterpriseId, limit });
   await Promise.allSettled(claims.map(async (claim) => {
     const scopedEnterpriseId = parsePostgresId(claim.enterpriseId, 'enterpriseId');
@@ -554,4 +555,11 @@ export async function reconcilePostgresCreationTasks(enterpriseId?: string, limi
     }
   }));
   return claims.length;
+}
+
+export async function reconcilePostgresCreationTasks(enterpriseId?: string, limit = 12) {
+  const scope = enterpriseId ? `tenant:${enterpriseId}` : 'platform';
+  return postgresCreationReconciliationGate.run(scope, () =>
+    reconcilePostgresCreationTasksOnce(enterpriseId, limit)
+  );
 }

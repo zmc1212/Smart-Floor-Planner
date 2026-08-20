@@ -1476,6 +1476,10 @@ export const measurementAppointments = appSchema.table(
       .notNull()
       .references(() => adminUsers.id, { onDelete: 'restrict' }),
     address: text('address').notNull(),
+    locationName: text('location_name'),
+    latitude: numeric('latitude', { precision: 10, scale: 7 }),
+    longitude: numeric('longitude', { precision: 10, scale: 7 }),
+    coordinateSystem: text('coordinate_system'),
     timeRange: tstzrange('time_range').notNull(),
     status: text('status').notNull().default('confirmed'),
     version: integer('version').notNull().default(1),
@@ -1492,6 +1496,10 @@ export const measurementAppointments = appSchema.table(
     index('measurement_appointments_designer_range_idx').on(table.designerId, table.timeRange),
     index('measurement_appointments_measurer_range_idx').on(table.measurerId, table.timeRange),
     index('measurement_appointments_updated_by_user_idx').on(table.updatedByUserId),
+    check('measurement_appointments_coordinate_system_check', sql`(
+      (${table.latitude} is null and ${table.longitude} is null and ${table.coordinateSystem} is null)
+      or (${table.latitude} between -90 and 90 and ${table.longitude} between -180 and 180 and ${table.coordinateSystem} = 'gcj02')
+    )`),
     check('measurement_appointments_status_check', sql`${table.status} in ('confirmed', 'cancelled', 'completed', 'expired')`),
     check('measurement_appointments_version_check', sql`${table.version} > 0`),
   ]
@@ -1590,6 +1598,16 @@ export const leadCommissions = appSchema.table(
     ruleVersion: integer('rule_version').notNull(),
     contractAmount: numeric('contract_amount', { precision: 14, scale: 2 }),
     payableAmount: numeric('payable_amount', { precision: 14, scale: 2 }).notNull(),
+    originalPayableAmount: numeric('original_payable_amount', { precision: 14, scale: 2 }).notNull(),
+    originalBeneficiaryUserId: bigint('original_beneficiary_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    adjustedAt: timestamp('adjusted_at', { withTimezone: true, mode: 'date' }),
+    adjustedBy: bigint('adjusted_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    adjustReason: text('adjust_reason'),
     status: text('status').notNull().default('payable'),
     paidAt: timestamp('paid_at', { withTimezone: true, mode: 'date' }),
     paidBy: bigint('paid_by', { mode: 'bigint' }).references(
@@ -1609,12 +1627,15 @@ export const leadCommissions = appSchema.table(
     uniqueIndex('lead_commissions_lead_role_uidx').on(table.leadId, table.role),
     index('lead_commissions_enterprise_status_idx').on(table.enterpriseId, table.status),
     index('lead_commissions_beneficiary_status_idx').on(table.beneficiaryUserId, table.status),
+    index('lead_commissions_original_beneficiary_idx').on(table.originalBeneficiaryUserId),
     index('lead_commissions_paid_by_idx').on(table.paidBy),
     index('lead_commissions_voided_by_idx').on(table.voidedBy),
+    index('lead_commissions_adjusted_by_idx').on(table.adjustedBy),
     check('lead_commissions_role_check', sql`${table.role} in ('referrer', 'designer', 'measurer')`),
     check('lead_commissions_rule_type_check', sql`${table.ruleType} in ('fixed', 'percentage')`),
     check('lead_commissions_status_check', sql`${table.status} in ('payable', 'paid', 'voided')`),
     check('lead_commissions_amount_check', sql`${table.payableAmount} >= 0`),
+    check('lead_commissions_original_amount_check', sql`${table.originalPayableAmount} >= 0`),
   ]
 );
 

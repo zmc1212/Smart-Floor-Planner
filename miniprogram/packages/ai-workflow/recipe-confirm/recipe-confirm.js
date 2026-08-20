@@ -1,4 +1,33 @@
 const aiService = require('../../../utils/aiDesignService.js');
+const {
+  openSchemeStudio,
+  shouldOpenSchemeStudio,
+} = require('../../../utils/aiDesignNavigation.js');
+
+function redirectAfterRecipeTask(task, { run = false } = {}) {
+  if (!task || !task.id) {
+    wx.showToast({ title: '任务创建失败', icon: 'none' });
+    return;
+  }
+
+  if (run && ['created', 'pending'].includes(task.status)) {
+    aiService.runTask(task.id).catch(() => {});
+  }
+
+  if (shouldOpenSchemeStudio(task)) {
+    openSchemeStudio({
+      leadId: task.leadId,
+      workflowId: task.workflowId,
+      floorPlanId: task.floorPlanId,
+      redirect: true,
+    });
+    return;
+  }
+
+  wx.redirectTo({
+    url: `/packages/ai-workflow/result/ai-design-result?id=${task.id}${run ? '&run=1' : ''}`,
+  });
+}
 
 Page({
   data: {
@@ -125,9 +154,19 @@ Page({
         roomId: this.data.roomId || undefined, workflowId: this.data.selectedWorkflowId || undefined,
         createNewWorkflow: this.data.createNewWorkflow,
       });
-      wx.redirectTo({ url: `/packages/ai-workflow/result/ai-design-result?id=${task.id}&run=1` });
+      redirectAfterRecipeTask(task, { run: true });
     } catch (error) {
-      if (error.existingTaskId) { wx.redirectTo({ url: `/packages/ai-workflow/result/ai-design-result?id=${error.existingTaskId}` }); return; }
+      if (error.existingTaskId) {
+        try {
+          const existing = await aiService.getTask(error.existingTaskId);
+          redirectAfterRecipeTask(existing, {
+            run: ['created', 'pending'].includes(existing && existing.status),
+          });
+        } catch (lookupError) {
+          wx.redirectTo({ url: `/packages/ai-workflow/result/ai-design-result?id=${error.existingTaskId}` });
+        }
+        return;
+      }
       if (error.code === 'WORKFLOW_CONFLICT' && Array.isArray(error.workflows)) {
         this.setData({ submitting: false, workflows: error.workflows, workflowConflictOpen: true }); return;
       }

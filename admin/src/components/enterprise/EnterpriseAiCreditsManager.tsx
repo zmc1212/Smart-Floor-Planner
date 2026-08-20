@@ -13,7 +13,7 @@ import {
 import { Button, Card, Checkbox, Flex, Statistic, Tabs, Tag, Typography } from 'antd';
 import { Coins, RefreshCw, RotateCcw, Save } from 'lucide-react';
 import { useFetch } from '@/hooks/useFetch';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 
 type CreditsData = {
   account: { balance: number; frozenBalance: number; availableBalance: number };

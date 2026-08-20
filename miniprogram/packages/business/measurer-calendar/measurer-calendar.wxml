@@ -148,8 +148,11 @@
   <!-- Unavailability / Time-off Block -->
   <view class="unavailability-card sfp-card" bindtap="manageUnavailability" hover-class="card-pressed" aria-role="button">
     <view class="unavail-left">
-      <text class="unavail-title">不可预约时段 / 请假</text>
-      <text class="unavail-desc">维护个人休息与不可用时段，避免排期冲突</text>
+      <view class="unavail-title-row">
+        <text class="unavail-icon">⏱️</text>
+        <text class="unavail-title">不可预约时段 / 请假设置</text>
+      </view>
+      <text class="unavail-desc">维护个人休息与不可用时段，避免排期派单冲突</text>
     </view>
     <view class="unavail-add-btn" aria-label="管理不可预约时间">
       <view class="add-plus"></view>

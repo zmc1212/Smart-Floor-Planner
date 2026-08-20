@@ -1,8 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+/* eslint-disable @next/next/no-img-element -- Cropping preview uses dynamic blob/data URLs. */
+'use client';
+
+import React, { useState, useRef } from 'react';
 import ReactCrop, { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Button, Modal } from 'antd';
 
 interface ImageCropperDialogProps {
   open: boolean;
@@ -21,12 +23,6 @@ export default function ImageCropperDialog({ open, onOpenChange, imageUrl, onCro
   });
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
-
-  useEffect(() => {
-    if (open) {
-      setPreviewImageUrl(null);
-    }
-  }, [open, imageUrl]);
 
   const handleGeneratePreview = () => {
     if (!imageRef.current || !crop.width || !crop.height) {
@@ -80,53 +76,55 @@ export default function ImageCropperDialog({ open, onOpenChange, imageUrl, onCro
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{previewImageUrl ? '预览提取的风格图' : '框选心仪的风格'}</DialogTitle>
-          <DialogDescription>
-            {previewImageUrl 
-              ? '请确认提取的高清局部大图是否清晰、完整。如果满意，点击确认即可根据此图生成基准效果图。' 
-              : '从多风格拼图中框选出您最满意的一个角落，我们将以此作为下一步的风格参考。'
-            }
-          </DialogDescription>
-        </DialogHeader>
-        
-        <div className="flex justify-center items-center bg-zinc-50 rounded-xl p-4 overflow-auto max-h-[65vh]">
-          {previewImageUrl ? (
-            <img 
-              src={previewImageUrl} 
-              alt="预览选区"
-              style={{ maxHeight: '55vh', maxWidth: '100%', width: 'auto', height: 'auto', display: 'block', margin: '0 auto' }}
-              className="rounded-lg shadow-sm border border-zinc-200"
-            />
-          ) : (
-            <ReactCrop crop={crop} onChange={(c) => setCrop(c)}>
-              <img 
-                ref={imageRef} 
-                src={imageUrl} 
-                alt="裁剪选区"
-                style={{ maxHeight: '55vh', maxWidth: '100%', width: 'auto', height: 'auto', display: 'block', margin: '0 auto' }}
-                crossOrigin="anonymous"
-              />
-            </ReactCrop>
-          )}
-        </div>
+    <Modal
+      open={open}
+      onCancel={() => onOpenChange(false)}
+      afterOpenChange={(visible) => {
+        if (visible) setPreviewImageUrl(null);
+      }}
+      width={768}
+      title={previewImageUrl ? '预览提取的风格图' : '框选心仪的风格'}
+      footer={
+        previewImageUrl ? (
+          <>
+            <Button onClick={() => setPreviewImageUrl(null)}>重新框选</Button>
+            <Button type="primary" onClick={handleFinalConfirm}>确认并生成基准图</Button>
+          </>
+        ) : (
+          <>
+            <Button onClick={() => onOpenChange(false)}>取消</Button>
+            <Button type="primary" onClick={handleGeneratePreview}>预览提取结果</Button>
+          </>
+        )
+      }
+    >
+      <p className="text-sm text-muted-foreground">
+        {previewImageUrl
+          ? '请确认提取的高清局部大图是否清晰、完整。如果满意，点击确认即可根据此图生成基准效果图。'
+          : '从多风格拼图中框选出您最满意的一个角落，我们将以此作为下一步的风格参考。'
+        }
+      </p>
 
-        <DialogFooter>
-          {previewImageUrl ? (
-            <>
-              <Button variant="outline" onClick={() => setPreviewImageUrl(null)}>重新框选</Button>
-              <Button className="bg-zinc-950 text-white" onClick={handleFinalConfirm}>确认并生成基准图</Button>
-            </>
-          ) : (
-            <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
-              <Button className="bg-zinc-950 text-white" onClick={handleGeneratePreview}>预览提取结果</Button>
-            </>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <div className="mt-4 flex justify-center items-center bg-zinc-50 rounded-xl p-4 overflow-auto max-h-[65vh]">
+        {previewImageUrl ? (
+          <img
+            src={previewImageUrl}
+            alt="预览选区"
+            style={{ maxHeight: '55vh', maxWidth: '100%', width: 'auto', height: 'auto', display: 'block', margin: '0 auto' }}
+            className="rounded-lg shadow-sm border border-zinc-200"
+          />
+        ) : (
+          <ReactCrop crop={crop} onChange={(c) => setCrop(c)}>
+            <img
+              ref={imageRef}
+              src={imageUrl}
+              alt="裁剪选区"
+              style={{ maxHeight: '55vh', maxWidth: '100%', width: 'auto', height: 'auto', display: 'block', margin: '0 auto' }}
+              crossOrigin="anonymous"
+            />
+          </ReactCrop>
+        )}
+      </div>
+    </Modal>
   );
 }

@@ -12,7 +12,7 @@ import {
 import { Tag, Typography } from 'antd';
 import { Bluetooth, ChartNoAxesCombined, Ruler, ScanLine } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 
 interface MeasurementItem {
   _id: string;

@@ -307,6 +307,94 @@ test('confirming a straight-wall preview near an off-axis vertex keeps an orthog
   assert.notDeepEqual({ xMm: end.xMm, yMm: end.yMm }, { xMm: 3000, yMm: 2000 });
 });
 
+function wallIsDiagonal(floor, wall) {
+  const start = surveyGraph.getNode(floor, wall.startNodeId);
+  const end = surveyGraph.getNode(floor, wall.endNodeId);
+  return Math.abs(end.xMm - start.xMm) > 1 && Math.abs(end.yMm - start.yMm) > 1;
+}
+
+function createThicknessOvershootAdjacentRoomDraft() {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2466, yMm: 0 }, 2466);
+  draft = commitWall(draft, { xMm: 2466, yMm: 3406 }, 3406);
+  draft = commitWall(draft, { xMm: 0, yMm: 3406 }, 2466);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3406);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 2466, yMm: 3406 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = commitWall(draft, { xMm: 2466, yMm: 6367 }, 2961);
+  draft = commitWall(draft, { xMm: -200, yMm: 6367 }, 2666);
+  const preview = surveyGraph.startPreview(draft, { xMm: -200, yMm: 3406 });
+  return surveyGraph.confirmClosure(preview);
+}
+
+test('closing a one-thickness overshoot keeps orthogonal walls and a short bridge', () => {
+  const draft = createThicknessOvershootAdjacentRoomDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const secondRoom = floor.spaces.find((space) => space.name === '房间2');
+  const diagonalWalls = floor.walls.filter((wall) => wallIsDiagonal(floor, wall));
+  const leftWall = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return Math.abs(start.xMm + 200) <= 1 && Math.abs(end.xMm + 200) <= 1;
+  });
+  const bridge = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    const xs = [start.xMm, end.xMm].sort((a, b) => a - b);
+    return Math.abs(start.yMm - 3406) <= 1 && Math.abs(end.yMm - 3406) <= 1 &&
+      Math.abs(xs[0] + 200) <= 1 && Math.abs(xs[1]) <= 1;
+  });
+
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(secondRoom.closed, true);
+  assert.deepEqual(diagonalWalls, []);
+  assert.ok(leftWall);
+  assert.ok(bridge);
+  assert.equal(surveyGraph.buildSpaceDimensionPlan(floor, secondRoom).inner.widthMm, 2666);
+});
+
+test('closing a third room against the overshoot does not put a diagonal in the shared wall', () => {
+  let draft = createThicknessOvershootAdjacentRoomDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = commitWall(draft, { xMm: -2183, yMm: 0 }, 2183);
+  draft = commitWall(draft, { xMm: -2183, yMm: 6367 }, 6367);
+  draft = surveyGraph.startPreview(draft, { xMm: 0, yMm: 6367 });
+  draft = surveyGraph.confirmClosure(draft);
+
+  floor = surveyGraph.getActiveFloor(draft);
+  const room3 = floor.spaces.find((space) => space.name === '房间3');
+  const diagonalWalls = floor.walls.filter((wall) => wallIsDiagonal(floor, wall));
+  const sharedDiagonal = (room3.wallIds || [])
+    .map((wallId) => surveyGraph.getWall(floor, wallId))
+    .filter((wall) => wall && wallIsDiagonal(floor, wall));
+
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 3);
+  assert.deepEqual(diagonalWalls, []);
+  assert.deepEqual(sharedDiagonal, []);
+});
+
 test('cursor placement prefers an existing vertex over a nearby wall segment', () => {
   const floor = surveyGraph.getActiveFloor(createWallDraft());
   const target = surveyGraph.getCursorPlacementTarget(
@@ -1391,9 +1479,13 @@ test('shared-corner measurement-side switching updates preview, committed wall, 
   );
   draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
   draft = surveyGraph.startPreview(draft, { xMm: 0, yMm: 5000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  const inferredSide = floor.session.previewMeasurementSide;
   draft = surveyGraph.setMeasurementSide(draft, 'left');
   floor = surveyGraph.getActiveFloor(draft);
   assert.equal(floor.session.previewMeasurementSide, 'left');
+  assert.equal(floor.session.previewBodyNormalSide, inferredSide);
+  assert.equal(floor.session.measurementSideUserSet, true);
 
   draft = surveyGraph.commitPreviewLength(draft, 3000, 'manual');
   floor = surveyGraph.getActiveFloor(draft);
@@ -1401,6 +1493,7 @@ test('shared-corner measurement-side switching updates preview, committed wall, 
   const committedStart = surveyGraph.getNode(floor, committedWall.startNodeId);
   const committedEnd = surveyGraph.getNode(floor, committedWall.endNodeId);
   assert.equal(committedWall.measurementSide, 'left');
+  assert.equal(committedWall.bodyNormalSide, inferredSide);
   assert.equal(committedWall.measurementStartInsetMm, 200);
   assert.equal(committedWall.lengthMm, 3000);
   assert.equal(Math.hypot(
@@ -1418,10 +1511,12 @@ test('shared-corner measurement-side switching updates preview, committed wall, 
   draft = surveyGraph.setMeasurementSide(draft, 'right', floor.walls.at(-1).id);
   floor = surveyGraph.getActiveFloor(draft);
   assert.equal(floor.walls.at(-1).measurementSide, 'right');
+  assert.equal(floor.walls.at(-1).bodyNormalSide, inferredSide);
 
   draft = surveyGraph.startPreview(draft, { xMm: 1800, yMm: 5200 });
   floor = surveyGraph.getActiveFloor(draft);
   assert.equal(floor.session.previewMeasurementSide, 'right');
+  assert.equal(floor.session.previewBodyNormalSide, inferredSide);
 });
 
 test('remeasuring an inset wall changes only the measured segment length', () => {
@@ -2082,7 +2177,9 @@ test('two new walls that land on an adjacent closed room close against the exist
   draft = surveyGraph.startPreview(draft, { xMm: 2880, yMm: 5000 });
   floor = surveyGraph.getActiveFloor(draft);
 
-  assert.deepEqual(floor.session.previewPoint, { xMm: 3000, yMm: 5000 });
+  // Keep the orange preview on the working face (y=5200 after the prior outer
+  // start). Copying the topology corner at y=5000 would bend the straight wall.
+  assert.deepEqual(floor.session.previewPoint, { xMm: 3000, yMm: 5200 });
   assert.equal(floor.session.closeCandidateType, 'shared-wall');
   assert.equal(
     surveyGraph.isDirectClosureHit(floor, floor.session, { xMm: 2880, yMm: 5000 }),
@@ -2477,10 +2574,12 @@ test('dragging closing wall deeply downward along adjacent wall clamps at source
   draft = commitWall(draft, { xMm: 3000, yMm: -2000 }, 2000);
   draft = commitWall(draft, { xMm: 6200, yMm: -2000 }, 3200);
 
-  // Drag Wall 3 deeply downward past y=0 to (6200, 2000)
+  // Drag Wall 3 deeply downward past y=0 to (6200, 2000). Clamp stays on the
+  // outer working x=6200 at the shared wall's y=0; do not copy the topology
+  // corner at x=6000 onto the orange line (that would create a diagonal).
   draft = surveyGraph.startPreview(draft, { xMm: 6200, yMm: 2000 });
   floor = surveyGraph.getActiveFloor(draft);
-  assert.deepEqual(floor.session.previewPoint, { xMm: 6000, yMm: 0 });
+  assert.deepEqual(floor.session.previewPoint, { xMm: 6200, yMm: 0 });
   assert.equal(floor.session.closeCandidateSharedWallId !== '', true);
 
   draft = surveyGraph.confirmClosure(draft);

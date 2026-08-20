@@ -8,7 +8,7 @@ import { Avatar, Button, Dropdown, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import EnterpriseEditorDialog from '@/components/enterprise/EnterpriseEditorDialog';
 import type { EnterpriseListItem } from '@/components/enterprise/types';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 
 const ENTERPRISE_STATUS = {
   pending_approval: { text: '待审核', status: 'Warning' },

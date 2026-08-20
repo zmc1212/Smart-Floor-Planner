@@ -7,6 +7,15 @@ import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope
 
 export const dynamic = 'force-dynamic';
 
+function publicMiniProgramError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message : fallback;
+  if (/failed query|select\s+/i.test(message)) {
+    console.error('[customer-project GET]', error);
+    return fallback;
+  }
+  return message || fallback;
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ leadId: string }> }) {
   try {
     const context = await resolveMiniProgramContext(request);
@@ -24,7 +33,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ lead
     return NextResponse.json({ success: true, data: customerProjectToDto(request, project) });
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : '读取客户项目失败' },
+      { success: false, error: publicMiniProgramError(error, '读取客户项目失败') },
       { status: 400 }
     );
   }

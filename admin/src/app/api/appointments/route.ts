@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { AdminUserRepository, AppointmentRepository, LeadRepository } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
-import { appointmentToDto, parseAppointmentAddress, parseAppointmentDateTime, parseAppointmentId } from '@/lib/appointment-api';
+import { appointmentToDto, parseAppointmentAddress, parseAppointmentDateTime, parseAppointmentId, parseAppointmentLocation } from '@/lib/appointment-api';
 import { httpErrorStatus } from '@/lib/http-error';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getTenantContext } from '@/lib/auth';
@@ -135,6 +135,7 @@ export async function POST(request: Request) {
           startAt: parseAppointmentDateTime(body.startAt, '开始时间'),
           endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
           address: parseAppointmentAddress(body.address),
+          location: parseAppointmentLocation(body.location),
           actorUserId,
           eventKey: `admin-created:${randomUUID()}`,
         });
@@ -177,6 +178,7 @@ export async function POST(request: Request) {
         startAt: parseAppointmentDateTime(body.startAt, '开始时间'),
         endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
         address: parseAppointmentAddress(body.address),
+        location: parseAppointmentLocation(body.location),
         actorUserId: BigInt(context.user._id),
         eventKey: `created:${randomUUID()}`,
       });

@@ -16,6 +16,14 @@ function recipePreviewSignaturePayload(recipeId: string, enterpriseId: string, e
   return `recipe-preview:${recipeId}:${enterpriseId}:${expires}`;
 }
 
+function studioGenerationSignaturePayload(generationId: string, enterpriseId: string, expires: number) {
+  return `studio-generation:${generationId}:${enterpriseId}:${expires}`;
+}
+
+function studioFloorPlanPreviewSignaturePayload(workflowId: string, enterpriseId: string, expires: number) {
+  return `studio-floor-plan:${workflowId}:${enterpriseId}:${expires}`;
+}
+
 export function createMiniAiAssetSignature(assetId: string, enterpriseId: string, expires: number) {
   return crypto.createHmac('sha256', secret()).update(signaturePayload(assetId, enterpriseId, expires)).digest('hex');
 }
@@ -150,6 +158,74 @@ export function getSignedMiniAiRecipePreviewUrl(input: {
   const signature = createMiniAiRecipePreviewSignature(input.recipeId, input.enterpriseId, expires);
   const url = new URL(
     `/api/miniprogram/ai/recipes/${input.recipeId}/preview`,
+    getMiniAiPublicRequestUrl(input.request)
+  );
+  url.searchParams.set('tenant', input.enterpriseId);
+  url.searchParams.set('expires', String(expires));
+  url.searchParams.set('signature', signature);
+  return url.toString();
+}
+
+export function createMiniAiStudioGenerationSignature(generationId: string, enterpriseId: string, expires: number) {
+  return crypto.createHmac('sha256', secret()).update(studioGenerationSignaturePayload(generationId, enterpriseId, expires)).digest('hex');
+}
+
+export function verifyMiniAiStudioGenerationSignature(input: {
+  generationId: string;
+  enterpriseId: string;
+  expires: number;
+  signature: string;
+}) {
+  if (!Number.isFinite(input.expires) || input.expires < Math.floor(Date.now() / 1000)) return false;
+  const expected = createMiniAiStudioGenerationSignature(input.generationId, input.enterpriseId, input.expires);
+  if (expected.length !== input.signature.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(input.signature));
+}
+
+export function getSignedMiniAiStudioGenerationUrl(input: {
+  request: Request;
+  generationId: string;
+  enterpriseId: string;
+  ttlSeconds?: number;
+}) {
+  const expires = Math.floor(Date.now() / 1000) + (input.ttlSeconds || 3600);
+  const signature = createMiniAiStudioGenerationSignature(input.generationId, input.enterpriseId, expires);
+  const url = new URL(
+    `/api/miniprogram/ai/studio/generations/${input.generationId}/image`,
+    getMiniAiPublicRequestUrl(input.request)
+  );
+  url.searchParams.set('tenant', input.enterpriseId);
+  url.searchParams.set('expires', String(expires));
+  url.searchParams.set('signature', signature);
+  return url.toString();
+}
+
+export function createMiniAiStudioFloorPlanPreviewSignature(workflowId: string, enterpriseId: string, expires: number) {
+  return crypto.createHmac('sha256', secret()).update(studioFloorPlanPreviewSignaturePayload(workflowId, enterpriseId, expires)).digest('hex');
+}
+
+export function verifyMiniAiStudioFloorPlanPreviewSignature(input: {
+  workflowId: string;
+  enterpriseId: string;
+  expires: number;
+  signature: string;
+}) {
+  if (!Number.isFinite(input.expires) || input.expires < Math.floor(Date.now() / 1000)) return false;
+  const expected = createMiniAiStudioFloorPlanPreviewSignature(input.workflowId, input.enterpriseId, input.expires);
+  if (expected.length !== input.signature.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(input.signature));
+}
+
+export function getSignedMiniAiStudioFloorPlanPreviewUrl(input: {
+  request: Request;
+  workflowId: string;
+  enterpriseId: string;
+  ttlSeconds?: number;
+}) {
+  const expires = Math.floor(Date.now() / 1000) + (input.ttlSeconds || 3600);
+  const signature = createMiniAiStudioFloorPlanPreviewSignature(input.workflowId, input.enterpriseId, expires);
+  const url = new URL(
+    `/api/miniprogram/ai/studio/workflows/${input.workflowId}/floor-plan-preview`,
     getMiniAiPublicRequestUrl(input.request)
   );
   url.searchParams.set('tenant', input.enterpriseId);

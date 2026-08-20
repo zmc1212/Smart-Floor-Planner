@@ -1,0 +1,49 @@
+---
+description: Mini Program typography floors and native sheet motion for styles/WXML
+globs: miniprogram/**/*.{less,wxss,wxml}
+alwaysApply: false
+---
+
+# Mini Program typography and sheet motion
+
+Authoritative floors live in `AGENTS.md` (Mini Program Design And Navigation) and
+`miniprogram/DESIGN.md` (Layout and readability / Panel and sheet motion).
+`miniprogram/design-tokens.json` `fontSize` values are rpx reference numbers only.
+
+## Type scale (minimums)
+
+| Role | Minimum | Typical use |
+| --- | --- | --- |
+| Page / nav title | `32rpx` | `nav-title`, page H1 |
+| Section title | `28rpx` | Card title, round title |
+| Primary copy / action / business value / tappable chip | `24rpx` (key CTA may use `26–28rpx`) | Send, switch, scheme chip, Composer submit |
+| Secondary helper / time / meta | `22rpx` | Subtitle, prompt summary, points copy |
+| Tertiary badge | `20rpx` | On-image corner marks only (e.g. “已确认”) |
+| Forbidden | `<20rpx` | Status, action, business value, or required explanation |
+
+- Prefer `22rpx+` for helpers; do not land readable secondary copy on exactly
+  `20rpx` unless it is a tertiary badge.
+- Primary actions and primary copy must not use `20rpx`.
+- Never use `transform: scale(...)` or image-embedded text to bypass floors.
+
+## Restoration checklist (before editing visible UI)
+
+1. Scan the touched Less/WXSS for `font-size` and map each rule to the table.
+2. Raise any operational / business / helper text below its floor.
+3. Keep `20rpx` only on explicit tertiary badge selectors (e.g. published /
+   confirmed corner badges).
+4. If adding or changing a bottom sheet / menu / dialog panel, add mask fade +
+   panel `translateY` (~`240ms`, `ease-out`); on close, wait ~`260ms` before
+   clearing `visible`.
+5. Do not introduce Vant, TDesign, or other component libraries for motion.
+
+## Sheet motion pattern
+
+```text
+mask: opacity 0→1 (~240ms)
+panel: translateY(100%)→0 (~240ms) ease-out
+close: reverse; finish animation before setData hide
+```
+
+WXML: bind an `open` class from the existing `*Visible` flag.
+Less: `transition` on the same mask/panel nodes.

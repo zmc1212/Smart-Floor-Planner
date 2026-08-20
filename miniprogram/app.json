@@ -19,7 +19,8 @@
         "history/ai-design-history",
         "recipe-detail/recipe-detail",
         "recipe-project/recipe-project",
-        "recipe-confirm/recipe-confirm"
+        "recipe-confirm/recipe-confirm",
+        "scheme-studio/scheme-studio"
       ]
     },
     {
@@ -41,6 +42,7 @@
         "referrer-earnings/referrer-earnings",
         "customer-projects/customer-projects",
         "customer-project/customer-project",
+        "customer-ai-schemes/customer-ai-schemes",
         "appointment-detail/appointment-detail",
         "appointment-reschedule/appointment-reschedule",
         "appointment-booking/appointment-booking",
@@ -108,7 +110,6 @@
     }
   },
   "requiredPrivateInfos": [
-    "chooseLocation",
-    "getLocation"
+    "chooseLocation"
   ]
 }

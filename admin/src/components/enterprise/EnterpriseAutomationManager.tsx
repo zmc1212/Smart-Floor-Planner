@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import {
   ProForm,
@@ -7,7 +7,7 @@ import {
 } from '@ant-design/pro-components';
 import { Card, Col, Flex, Row, Typography } from 'antd';
 import { Bell, Clock3, Save } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { EnterpriseListItem } from './types';
 
 interface EnterpriseAutomationManagerProps {
@@ -21,7 +21,6 @@ interface AutomationFormState {
   designTaskSlaHours: number;
   reminderIntervalHours: number;
   maxReminderTimes: number;
-  browserNotificationEnabled: boolean;
   miniprogramNotificationEnabled: boolean;
 }
 
@@ -32,7 +31,6 @@ function buildAutomationForm(enterprise: EnterpriseListItem): AutomationFormStat
     designTaskSlaHours: enterprise.automationConfig?.designTaskSlaHours ?? 72,
     reminderIntervalHours: enterprise.automationConfig?.reminderIntervalHours ?? 24,
     maxReminderTimes: enterprise.automationConfig?.maxReminderTimes ?? 3,
-    browserNotificationEnabled: enterprise.automationConfig?.browserNotificationEnabled !== false,
     miniprogramNotificationEnabled: enterprise.automationConfig?.miniprogramNotificationEnabled !== false,
   };
 }
@@ -79,14 +77,6 @@ export default function EnterpriseAutomationManager({
           <Row gutter={[24, 12]}>
             <Col xs={24} md={12}>
               <ProFormSwitch
-                name="browserNotificationEnabled"
-                label="浏览器通知"
-                tooltip="只控制后台浏览器系统弹窗，不影响站内通知记录。"
-                fieldProps={{ checkedChildren: '已开启', unCheckedChildren: '已关闭' }}
-              />
-            </Col>
-            <Col xs={24} md={12}>
-              <ProFormSwitch
                 name="miniprogramNotificationEnabled"
                 label="微信小程序通知"
                 tooltip="控制微信订阅消息发送；关闭后会记录跳过日志。"
@@ -95,7 +85,7 @@ export default function EnterpriseAutomationManager({
             </Col>
           </Row>
           <Typography.Paragraph type="secondary" className="!mb-0 !mt-2">
-            浏览器和小程序通知可以独立关闭，系统仍会保留通知处理记录。
+            关闭小程序通知后仍会保留站内通知与处理日志。
           </Typography.Paragraph>
         </Card>
 

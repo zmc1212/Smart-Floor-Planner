@@ -27,7 +27,8 @@ export async function GET(
         parsePostgresId(id, 'floor plan id')
       );
       if (!plan) return null;
-      return { plan, sheet: await resolveFormalSurveyDxfSheet(transaction, plan) };
+      const { sheet, fileName } = await resolveFormalSurveyDxfSheet(transaction, plan);
+      return { plan, sheet, fileName };
     });
     if (!loaded) {
       return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
@@ -43,7 +44,7 @@ export async function GET(
       status: 200,
       headers: {
         'Content-Type': 'application/dxf',
-        'Content-Disposition': dxfContentDisposition(loaded.plan.name, id),
+        'Content-Disposition': dxfContentDisposition(loaded.fileName, id),
         'Cache-Control': 'private, no-store',
       },
     });

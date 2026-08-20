@@ -21,6 +21,26 @@
       {
         "type": "file",
         "value": "packages/business/assets/customer-project-v1/formal-floor-plan-archive.png"
+      },
+      {
+        "type": "file",
+        "value": "images/airy-v1/xiao-k-designer-3d.png"
+      },
+      {
+        "type": "file",
+        "value": "images/ai-design-empty-v2/stage-art.jpg"
+      },
+      {
+        "type": "file",
+        "value": "images/home-v5/plan-preview.jpg"
+      },
+      {
+        "type": "file",
+        "value": "images/home-v5/ai-preview.jpg"
+      },
+      {
+        "type": "file",
+        "value": "images/ai-design-stage-active-glow-v1.png"
       }
     ],
     "include": []

@@ -1,0 +1,116 @@
+<view class="schemes-page sfp-page">
+  <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
+    <view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view>
+    <view class="nav-copy">
+      <text class="nav-title">客户 AI 方案</text>
+    </view>
+  </view>
+
+  <view wx:if="{{loading}}" class="state">正在加载方案册…</view>
+  <view wx:elif="{{error}}" class="state">
+    <text>{{error}}</text>
+    <button class="retry" bindtap="load">重试</button>
+  </view>
+
+  <block wx:else>
+    <view class="content">
+      <view class="hero-card">
+        <view class="hero-copy">
+          <text class="hero-title">{{heroTitle}}</text>
+          <text class="hero-subtitle">{{heroSubtitle}}</text>
+        </view>
+        <image class="hero-mascot" src="/packages/business/assets/customer-project-v1/project-delivery-xiao-k.png" mode="aspectFit" aria-label="小K" />
+      </view>
+
+      <scroll-view wx:if="{{showSchemeChips}}" class="scheme-chips" scroll-x enable-flex>
+        <view
+          wx:for="{{schemes}}"
+          wx:key="id"
+          class="scheme-chip {{selectedSchemeId === item.id ? 'active' : ''}}"
+          data-scheme-id="{{item.id}}"
+          bindtap="selectScheme"
+          aria-role="button"
+          aria-label="切换到{{item.chipLabel}}"
+        >
+          <text>{{item.chipLabel}}</text>
+          <view wx:if="{{selectedSchemeId === item.id}}" class="chip-check" aria-hidden="true"></view>
+        </view>
+      </scroll-view>
+
+      <view wx:if="{{selectedScheme}}" class="preview-card">
+        <view class="preview-frame" bindtap="previewCurrentScheme" aria-role="button" aria-label="全屏预览当前方案">
+          <image
+            wx:if="{{selectedScheme.cover && selectedScheme.cover.imageState === 'loaded'}}"
+            class="preview-image"
+            src="{{selectedScheme.cover.imagePath}}"
+            mode="aspectFill"
+          />
+          <view wx:elif="{{selectedScheme.cover && selectedScheme.cover.imageState === 'loading'}}" class="image-state">读取中…</view>
+          <view wx:else class="image-state error">暂不可读</view>
+          <view class="preview-style-tag">{{selectedScheme.styleTag}}</view>
+          <view class="preview-action-chip">
+            <text>全屏预览</text>
+            <view class="chip-arrow"></view>
+          </view>
+        </view>
+        <text wx:if="{{selectedScheme.deliveryLabel}}" class="preview-meta">{{selectedScheme.deliveryLabel}}</text>
+      </view>
+
+      <view wx:if="{{selectedScheme}}" class="timeline-section">
+        <text class="timeline-title">交付时间轴 · 第 {{selectedScheme.roundIndex}} 轮</text>
+        <view class="timeline-list">
+          <view
+            wx:for="{{timelineImages}}"
+            wx:key="generationId"
+            class="timeline-item {{index === 0 ? 'active' : ''}}"
+            data-generation-id="{{item.generationId}}"
+            bindtap="previewCurrentScheme"
+            aria-role="button"
+            aria-label="预览{{item.displayTitle || '效果图'}}"
+          >
+            <view class="timeline-rail">
+              <view class="timeline-dot"></view>
+              <view wx:if="{{index < timelineImages.length - 1}}" class="timeline-line"></view>
+            </view>
+            <view class="timeline-card">
+              <view class="timeline-head">
+                <text class="timeline-time">{{item.timeLabel}}</text>
+                <text class="timeline-stage {{index === 0 ? 'active' : ''}}">{{item.stageLabel}}</text>
+              </view>
+              <view class="timeline-body">
+                <view class="timeline-thumb">
+                  <image wx:if="{{item.imageState === 'loaded'}}" src="{{item.imagePath}}" mode="aspectFill" />
+                  <view wx:elif="{{item.imageState === 'loading'}}" class="image-state compact">读取中…</view>
+                  <view wx:else class="image-state compact error">暂不可读</view>
+                </view>
+                <view class="timeline-copy">
+                  <text class="timeline-name">{{item.displayTitle || '效果图'}}</text>
+                  <text class="timeline-hint">{{item.displayHint || '点击预览'}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:else class="empty-card">
+        <text class="empty-title">设计师尚未发布方案</text>
+        <text class="empty-note">方案发布后，可在这里按轮次浏览全部交付图</text>
+      </view>
+    </view>
+
+    <view class="footer-bar">
+      <button class="footer-outline" bindtap="onBack">{{backLabel}}</button>
+      <button
+        wx:if="{{showShareAction && selectedScheme && selectedScheme.cover && selectedScheme.cover.imagePath}}"
+        class="footer-primary sfp-primary-action"
+        open-type="share"
+      >保存/分享当前方案</button>
+      <button
+        wx:elif="{{showShareAction && selectedScheme}}"
+        class="footer-primary sfp-primary-action"
+        bindtap="saveOrShareScheme"
+      >保存/分享当前方案</button>
+    </view>
+  </block>
+</view>

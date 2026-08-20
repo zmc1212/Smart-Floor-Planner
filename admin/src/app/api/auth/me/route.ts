@@ -75,7 +75,7 @@ export async function GET(request: Request) {
       result.admin.role,
       result.admin.menuPermissions
     );
-    return NextResponse.json({
+    const response = NextResponse.json({
       success: true,
       data: {
         ...data,
@@ -83,6 +83,43 @@ export async function GET(request: Request) {
         workbenchType: getWorkbenchType(result.admin.role),
       },
     });
+
+    // Keep the auth cookie permissions in sync with role-menu changes so route
+    // guards and API checks match /api/auth/me without requiring a re-login.
+    const tokenPermissions = Array.isArray(payload.permissions)
+      ? (payload.permissions as string[])
+      : [];
+    const permissionsChanged =
+      tokenPermissions.length !== effectivePermissions.length ||
+      effectivePermissions.some((permission) => !tokenPermissions.includes(permission));
+    if (permissionsChanged) {
+      const refreshedToken = await new jose.SignJWT({
+        id: result.admin.id.toString(),
+        username: result.admin.username,
+        displayName: result.admin.displayName,
+        role: result.admin.role,
+        enterpriseId: result.admin.enterpriseId?.toString() || null,
+        permissions: effectivePermissions,
+      })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuedAt()
+        .setExpirationTime('24h')
+        .sign(secret);
+      const secureAuthCookie =
+        process.env.NODE_ENV === 'production' &&
+        process.env.AUTH_COOKIE_SECURE !== 'false';
+      response.cookies.set({
+        name: 'auth_token',
+        value: refreshedToken,
+        httpOnly: true,
+        secure: secureAuthCookie,
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24,
+        path: '/',
+      });
+    }
+
+    return response;
   } catch {
     return NextResponse.json(
       { success: false, error: '登录失效' },

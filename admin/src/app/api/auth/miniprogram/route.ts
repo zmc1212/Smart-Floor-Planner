@@ -11,6 +11,7 @@ import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
 import {
   defaultMiniProgramIdentityContext,
+  isMiniProgramIdentityContextSupported,
   miniProgramIdentityContextToDto,
   signMiniProgramIdentityContextToken,
 } from '@/lib/miniprogram-identity-context';
@@ -149,7 +150,7 @@ export async function POST(request: Request) {
           parsePostgresId(payload.sub, 'user id')
         );
         if (!user || user.contextVersion !== payload.contextVersion) return null;
-        const selectedContext = await identities.selectContext(user.id, {
+        const requestedContext = await identities.selectContext(user.id, {
           mode: payload.mode,
           enterpriseId: payload.enterpriseId
             ? parsePostgresId(payload.enterpriseId, 'enterprise id')
@@ -164,7 +165,13 @@ export async function POST(request: Request) {
               )
             : null,
         });
-        if (!selectedContext) return null;
+        if (!requestedContext) return null;
+        const contexts = await identities.listContexts(user.id);
+        const selectedContext = isMiniProgramIdentityContextSupported(
+          requestedContext
+        )
+          ? requestedContext
+          : defaultMiniProgramIdentityContext(contexts);
         return {
           user,
           staff: selectedContext.staffId
@@ -254,16 +261,33 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('[UnifiedAuth] Error:', error);
-    const status = [
-      'WECHAT_IDENTITY_ALREADY_LINKED',
-      'WECHAT_USER_ALREADY_LINKED',
-      'STAFF_PHONE_LINKED_TO_OTHER_USER',
-    ].includes(message)
-      ? 409
-      : 500;
+    const identityConflictMessages: Record<string, { code: string; error: string }> = {
+      STAFF_PHONE_LINKED_TO_OTHER_USER: {
+        code: 'staff_phone_linked_to_other_user',
+        error:
+          '该手机号已绑定其他微信账号，请使用绑定该号的微信登录，或联系企业管理员。',
+      },
+      WECHAT_IDENTITY_ALREADY_LINKED: {
+        code: 'wechat_identity_conflict',
+        error:
+          '当前微信已绑定其他账号，请换用本人微信登录，或联系企业管理员处理。',
+      },
+      WECHAT_USER_ALREADY_LINKED: {
+        code: 'wechat_identity_conflict',
+        error:
+          '当前微信已绑定其他账号，请换用本人微信登录，或联系企业管理员处理。',
+      },
+    };
+    const conflict = identityConflictMessages[message];
+    if (conflict) {
+      return NextResponse.json(
+        { success: false, code: conflict.code, error: conflict.error },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       { success: false, error: message },
-      { status }
+      { status: 500 }
     );
   }
 }

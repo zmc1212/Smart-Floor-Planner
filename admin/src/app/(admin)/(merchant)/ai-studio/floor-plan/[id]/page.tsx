@@ -1,6 +1,6 @@
 'use client';
 
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -17,8 +17,7 @@ import {
   Sparkles,
   Type,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Button, Tag } from 'antd';
 import {
   buildLabelRenderData,
   escapeSvgText,
@@ -226,7 +225,7 @@ export default function GenerationDetailPage() {
           <Info size={32} />
         </div>
         <p className="text-lg font-bold">{error}</p>
-        <Button variant="outline" onClick={() => router.back()}>
+        <Button onClick={() => router.back()}>
           返回列表
         </Button>
       </div>
@@ -244,25 +243,21 @@ export default function GenerationDetailPage() {
       <main className="mx-auto max-w-[1480px] px-5 py-6 sm:px-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b pb-6">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => router.back()}>
-              <ChevronLeft size={24} />
-            </Button>
+            <Button type="text" icon={<ChevronLeft size={24} />} aria-label="返回" onClick={() => router.back()} />
             <div>
               <h1 className="text-2xl font-semibold">方案详情</h1>
               <div className="mt-1 flex items-center gap-2">
-                <Badge variant="outline" className="rounded-md font-medium">
-                  ID: {id.slice(-6).toUpperCase()}
-                </Badge>
+                <Tag className="rounded-md font-medium">ID: {id.slice(-6).toUpperCase()}</Tag>
                 {data.status === 'succeeded' && (
-                  <Badge className="border-none bg-emerald-100 text-xs font-medium text-emerald-800">已完成</Badge>
+                  <Tag bordered={false} className="bg-emerald-100 text-xs font-medium text-emerald-800">已完成</Tag>
                 )}
                 {data.status === 'failed' && (
-                  <Badge className="border-none bg-destructive/10 text-xs font-medium text-destructive">生成失败</Badge>
+                  <Tag bordered={false} className="bg-destructive/10 text-xs font-medium text-destructive">生成失败</Tag>
                 )}
                 {(data.status === 'processing' || data.status === 'pending') && (
-                  <Badge className="animate-pulse border-none bg-primary/10 text-xs font-medium text-primary">
+                  <Tag bordered={false} className="animate-pulse bg-primary/10 text-xs font-medium text-primary">
                     渲染中 {data.progress}%
-                  </Badge>
+                  </Tag>
                 )}
               </div>
             </div>
@@ -270,20 +265,20 @@ export default function GenerationDetailPage() {
 
           {data.status === 'succeeded' && (
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" className="gap-2" onClick={() => window.open(imageUrl, '_blank')}>
-                <ExternalLink size={16} /> 查看原图
+              <Button icon={<ExternalLink size={16} />} onClick={() => window.open(imageUrl, '_blank')}>
+                查看原图
               </Button>
               <Button
-                variant="outline"
-                className="gap-2"
+                icon={downloadingLabel ? undefined : <Download size={16} />}
+                loading={downloadingLabel}
                 onClick={handleDownloadLabeled}
                 disabled={downloadingLabel || !overlaySvg}
               >
-                {downloadingLabel ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
                 下载标注版
               </Button>
               <Button
-                className="gap-2"
+                type="primary"
+                icon={<Download size={16} />}
                 onClick={() => {
                   const a = document.createElement('a');
                   a.href = imageUrl;
@@ -291,7 +286,7 @@ export default function GenerationDetailPage() {
                   a.click();
                 }}
               >
-                <Download size={16} /> 下载原图
+                下载原图
               </Button>
             </div>
           )}
@@ -314,7 +309,7 @@ export default function GenerationDetailPage() {
                   </div>
                   <h2 className="mb-2 text-xl font-bold">生成失败</h2>
                   <p className="mb-6 max-w-md text-muted-foreground">{data.error || 'AI 服务响应异常，请尝试重新生成'}</p>
-                  <Button variant="outline" onClick={() => router.push(getBackPath(data.type))}>
+                  <Button onClick={() => router.push(getBackPath(data.type))}>
                     返回重新生成
                   </Button>
                 </div>

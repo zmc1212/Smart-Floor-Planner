@@ -271,6 +271,7 @@ export async function getPostgresAiWorkflowContext(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const workflow = await new AiWorkflowRepository(transaction).findById(workflowId);
     if (!workflow) throw notFound('方案会话不存在或无权访问');
+    if (workflow.status !== 'active') throw notFound('方案会话不存在或无权访问');
 
     const lead = await new LeadRepository(transaction).findById(workflow.leadId);
     if (!lead) throw notFound('客户线索不存在或无权访问');
@@ -281,6 +282,7 @@ export async function getPostgresAiWorkflowContext(input: {
       workflow.leadId
     );
     const publishedImages = publications.filter((item) => item.publication.workflowId === workflow.id);
+    const publishedGenerationIdSet = new Set(publishedImages.map((item) => item.generation.id.toString()));
     const availability = getAiWorkflowStageAvailabilityFromDocs(
       workflow,
       generations.map((generation) => ({
@@ -328,7 +330,11 @@ export async function getPostgresAiWorkflowContext(input: {
           })),
         followUpCount: Array.isArray(lead.followUpRecords) ? lead.followUpRecords.length : 0,
       },
-      generations: generations.map((generation) => serializeAiGeneration({ ...generation, _id: generation.id })),
+      generations: generations.map((generation) => serializeAiGeneration({
+        ...generation,
+        _id: generation.id,
+        published: publishedGenerationIdSet.has(generation.id.toString()),
+      })),
       publishedScheme: publishedImages.length
         ? {
             title: publishedImages[0]?.publication.schemeTitle || workflow.title,
@@ -388,6 +394,17 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
       ),
       new AiCreationRepository(transaction).listGenerationsByWorkflowIds(workflowIds),
     ]);
+
+    const publishedCountsByWorkflowId = new Map<bigint, number>();
+    if (requestedLeadId) {
+      const activePublications = await new CustomerProjectRepository(transaction).listActivePublications(enterpriseId, requestedLeadId);
+      for (const item of activePublications) {
+        const workflowId = item.publication.workflowId;
+        if (!workflowId) continue;
+        publishedCountsByWorkflowId.set(workflowId, (publishedCountsByWorkflowId.get(workflowId) ?? 0) + 1);
+      }
+    }
+
     const leadById = new Map(workflowLeads.map((lead) => [lead.id, lead]));
     const generationsByWorkflow = new Map<bigint, typeof generations>();
     for (const generation of generations) {
@@ -408,6 +425,7 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
         return {
           ...serializePostgresWorkflow(workflow),
           generationCount: workflowGenerations.length,
+          publishedCount: publishedCountsByWorkflowId.get(workflow.id) ?? 0,
           latestGeneration: workflowGenerations[0]
             ? serializeAiGeneration({ ...workflowGenerations[0], _id: workflowGenerations[0].id })
             : undefined,

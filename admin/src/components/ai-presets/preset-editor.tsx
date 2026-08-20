@@ -14,7 +14,7 @@ import {
 } from '@ant-design/pro-components';
 import { Alert, Button, Card, Col, Empty, Flex, Result, Row, Skeleton, Tag } from 'antd';
 import { Save } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useFetch } from '@/hooks/useFetch';
 import {

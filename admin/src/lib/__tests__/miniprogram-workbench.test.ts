@@ -1,11 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildEnterpriseExpiredExceptionItem,
+  buildEnterprisePendingExceptionItem,
+  buildEnterpriseStaffingExceptionItem,
+  buildOpsDashboardCards,
+  buildOpsDashboardSubtitle,
   buildStaffingGapItems,
+  buildStaffLoadQuickNav,
   buildWorkbenchAppointmentItem,
   buildWorkbenchLeadItem,
+  compareDesignerWorkbenchItems,
+  computeSigningRate,
+  formatGrowthDetail,
+  formatSigningRateDetail,
   isAssignmentEligibleStaff,
   isMeasurerWorkbenchSurveyLead,
+  previousComparablePeriodRange,
+  resolveWorkbenchPeriod,
+  selectMeasurerWorkbenchAppointments,
+  shouldIncludeMeasurerWorkbenchAppointment,
+  shanghaiWeekRange,
 } from '@/lib/miniprogram-workbench';
 
 function surveyLead(overrides: Record<string, unknown> = {}) {
@@ -95,6 +110,27 @@ test('a linked floor plan hides booking and reopens the existing plan instead of
   assert.equal(item.statusBadge, '户型已就绪');
 });
 
+test('published designs show a published badge on designer workbench items', () => {
+  const item = buildWorkbenchLeadItem(surveyLead({
+    primaryFloorPlanRecord: { id: 88n, status: 'completed', updatedAt: new Date('2026-08-19T16:00:00.000Z') },
+    floorPlanRecords: [{ id: 88n, status: 'completed', updatedAt: new Date('2026-08-19T16:00:00.000Z') }],
+    status: 'designing',
+    publishedDesignCount: 3,
+  }), 'lead');
+  assert.equal(item.serviceStage, 'design_published');
+  assert.equal(item.statusBadge, '方案已发布');
+  assert.equal(item.nextAction, '沟通确认或标记签约');
+});
+
+test('designer workbench prioritizes unpublished survey work ahead of published follow-ups', () => {
+  const sorted = [
+    { serviceStage: 'design_published', updatedAt: new Date('2026-08-20T12:00:00.000Z') },
+    { serviceStage: 'survey_completed', updatedAt: new Date('2026-08-19T12:00:00.000Z') },
+  ].sort(compareDesignerWorkbenchItems);
+  assert.equal(sorted[0].serviceStage, 'survey_completed');
+  assert.equal(sorted[1].serviceStage, 'design_published');
+});
+
 test('a draft floor plan still lets the measurer continue or start another survey', () => {
   const item = buildWorkbenchLeadItem(surveyLead({
     primaryFloorPlanRecord: { id: 91n, status: 'draft', updatedAt: new Date('2026-08-19T16:00:00.000Z') },
@@ -131,6 +167,55 @@ test('measurer workbench pending survey excludes completed floor plans after the
   assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({ status: 'converted' }), new Set()), false);
 });
 
+test('measurer workbench keeps only the current appointment task for each lead', () => {
+  const selected = selectMeasurerWorkbenchAppointments([
+    { id: 41n, leadId: 11n, status: 'expired', timeRange: '["2026-08-10T01:00:00.000Z","2026-08-10T02:00:00.000Z")' },
+    { id: 42n, leadId: 11n, status: 'confirmed', timeRange: '["2026-08-21T01:00:00.000Z","2026-08-21T02:00:00.000Z")' },
+    { id: 43n, leadId: 12n, status: 'expired', timeRange: '["2026-08-11T01:00:00.000Z","2026-08-11T02:00:00.000Z")' },
+    { id: 44n, leadId: 12n, status: 'expired', timeRange: '["2026-08-12T01:00:00.000Z","2026-08-12T02:00:00.000Z")' },
+  ]);
+
+  assert.deepEqual(selected.map((appointment) => [String(appointment.leadId), String(appointment.id), appointment.status]), [
+    ['11', '42', 'confirmed'],
+    ['12', '44', 'expired'],
+  ]);
+});
+
+test('expired appointments drop from the measurer workbench once the formal v4 survey is completed', () => {
+  const completedLead = surveyLead({
+    id: 923n,
+    status: 'designing',
+    primaryFloorPlanRecord: { id: 237n, status: 'completed' },
+    floorPlanRecords: [{ id: 237n, status: 'completed' }],
+  });
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(completedLead, { status: 'expired' }), false);
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(completedLead, { status: 'confirmed' }), true);
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(surveyLead({
+    primaryFloorPlanRecord: { id: 91n, status: 'draft' },
+    floorPlanRecords: [{ id: 91n, status: 'draft' }],
+  }), { status: 'expired' }), true);
+});
+
+test('converted leads leave the measurer workbench even with a confirmed appointment', () => {
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(surveyLead({ status: 'converted' }), { status: 'confirmed' }), false);
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(surveyLead({ status: 'closed' }), { status: 'expired' }), false);
+});
+
+test('converted designer follow-up items stay terminal without rebook or survey CTAs', () => {
+  const item = buildWorkbenchLeadItem(surveyLead({
+    id: 77n,
+    name: '签约客户',
+    status: 'converted',
+    primaryFloorPlanRecord: { id: 9n, status: 'completed' },
+    floorPlanRecords: [{ id: 9n, status: 'completed' }],
+  }), 'lead');
+  assert.equal(item.serviceStage, 'converted');
+  assert.equal(item.statusBadge, '已签约');
+  assert.equal(item.canSurveyNow, false);
+  assert.equal(item.canRebook, false);
+  assert.equal(item.canBookAppointment, false);
+});
+
 test('confirmed appointments with a completed floor plan reopen that plan instead of a blank survey', () => {
   const item = buildWorkbenchAppointmentItem({
     id: 55n,
@@ -151,4 +236,142 @@ test('confirmed appointments with a completed floor plan reopen that plan instea
   assert.equal(item.canStartNewSurvey, true);
   assert.equal(item.canSurveyNow, false);
   assert.equal(item.statusBadge, '户型已就绪');
+});
+
+test('expired appointments on converted leads stay terminal and never reopen booking', () => {
+  const item = buildWorkbenchAppointmentItem({
+    id: 88n,
+    leadId: 501n,
+    address: '火凤凰',
+    timeRange: '["2026-08-20T05:00:00.000Z","2026-08-20T06:00:00.000Z")',
+    status: 'expired',
+  }, surveyLead({
+    id: 501n,
+    name: '高容海',
+    status: 'converted',
+  }), { allowRebook: true });
+  assert.equal(item.serviceStage, 'converted');
+  assert.equal(item.nextAction, '已签约，无需继续推进');
+  assert.equal(item.metaLabel, '已签约');
+  assert.equal(item.statusBadge, '已签约');
+  assert.equal(item.action, 'appointment');
+  assert.equal(item.canRebook, false);
+  assert.equal(item.canBookAppointment, false);
+  assert.equal(item.canContinueSurvey, false);
+});
+
+test('enterprise operations format growth and exception cards from real workbench facts', () => {
+  assert.equal(formatGrowthDetail(128, 111), '↑ 15% 较上期');
+  assert.equal(formatGrowthDetail(0, 0), '暂无环比');
+
+  const pending = buildEnterprisePendingExceptionItem({
+    id: 11n,
+    name: '802',
+    communityName: '万科 · 未来之光',
+    status: 'new',
+    assignmentErrorCode: '目标区域暂无可用测量员',
+    updatedAt: new Date('2026-08-20T09:30:00.000Z'),
+  });
+  assert.match(pending.title, /自动派单失败 · 万科 · 未来之光 · 802/);
+  assert.equal(pending.actionLabel, '去指派');
+  assert.equal(pending.exceptionTone, 'red');
+
+  const expired = buildEnterpriseExpiredExceptionItem({
+    id: 12n,
+    name: '301',
+    communityName: '保利 · 天汇',
+    status: 'measuring',
+    updatedAt: new Date('2026-08-19T08:00:00.000Z'),
+  }, { id: 99n, leadId: 12n });
+  assert.match(expired.title, /预约过期未改期 · 保利 · 天汇 · 301/);
+  assert.equal(expired.actionLabel, '查看详情');
+  assert.equal(expired.exceptionTone, 'orange');
+
+  const staffing = buildEnterpriseStaffingExceptionItem(buildStaffingGapItems({
+    eligibleDesignerCount: 1,
+    eligibleMeasurerCount: 0,
+  })[0]);
+  assert.equal(staffing.actionLabel, '查看详情');
+  assert.equal(buildStaffLoadQuickNav({ eligibleDesignerCount: 1, eligibleMeasurerCount: 0 }).desc, '测量员紧缺 →');
+});
+
+test('workbench period helpers resolve Shanghai week/month/year and custom inclusive ranges', () => {
+  const now = new Date('2026-08-20T04:00:00.000Z'); // Shanghai 2026-08-20 12:00
+  const month = resolveWorkbenchPeriod({ period: 'month', now });
+  assert.equal(month.kind, 'month');
+  assert.equal(month.label, '本月');
+  assert.equal(month.start.toISOString(), '2026-07-31T16:00:00.000Z');
+  assert.equal(month.end.toISOString(), '2026-08-31T16:00:00.000Z');
+
+  const week = shanghaiWeekRange(now);
+  assert.equal(week.start.toISOString(), '2026-08-16T16:00:00.000Z'); // Monday 00:00 Shanghai
+  assert.equal(week.end.toISOString(), '2026-08-23T16:00:00.000Z');
+
+  const year = resolveWorkbenchPeriod({ period: 'year', now });
+  assert.equal(year.start.toISOString(), '2025-12-31T16:00:00.000Z');
+  assert.equal(year.end.toISOString(), '2026-12-31T16:00:00.000Z');
+
+  const custom = resolveWorkbenchPeriod({
+    period: 'custom',
+    from: '2026-08-01',
+    to: '2026-08-20',
+    now,
+  });
+  assert.equal(custom.kind, 'custom');
+  assert.equal(custom.fromDate, '2026-08-01');
+  assert.equal(custom.toDate, '2026-08-20');
+  assert.equal(custom.start.toISOString(), '2026-07-31T16:00:00.000Z');
+  assert.equal(custom.end.toISOString(), '2026-08-20T16:00:00.000Z');
+
+  assert.throws(
+    () => resolveWorkbenchPeriod({ period: 'custom', from: '2026-08-20', to: '2026-08-01' }),
+    /起止日期/
+  );
+
+  const previousMonth = previousComparablePeriodRange(month);
+  assert.equal(previousMonth.start.toISOString(), '2026-06-30T16:00:00.000Z');
+  assert.equal(previousMonth.end.toISOString(), '2026-07-31T16:00:00.000Z');
+});
+
+test('signing rate uses same-window new leads and is null when the denominator is zero', () => {
+  assert.equal(computeSigningRate(36, 128), 28.1);
+  assert.equal(computeSigningRate(0, 0), null);
+  assert.equal(computeSigningRate(5, 0), null);
+  assert.equal(formatSigningRateDetail(5, 0), '暂无新增线索');
+  assert.equal(formatSigningRateDetail(9, 42), '已签约 ÷ 新增线索');
+
+  const emptyDenom = buildOpsDashboardCards({
+    newLeadCount: 0,
+    previousLeadCount: 0,
+    completedSurveys: 0,
+    draftFormalPlans: 0,
+    schemeDeliveryRate: 0,
+    schemeDeliveryDetail: '暂无交付用时',
+    signedCount: 2,
+    includeContractAmount: false,
+  });
+  assert.equal(emptyDenom.signingRate, null);
+  assert.equal(emptyDenom.cards.find((card) => card.key === 'signingRate')?.value, '—');
+  assert.equal(emptyDenom.cards.find((card) => card.key === 'signingRate')?.detail, '暂无新增线索');
+
+  const withAmount = buildOpsDashboardCards({
+    newLeadCount: 128,
+    previousLeadCount: 111,
+    completedSurveys: 94,
+    draftFormalPlans: 1,
+    schemeDeliveryRate: 88,
+    schemeDeliveryDetail: '平均用时 1.2 天',
+    signedCount: 36,
+    contractAmountSum: 2860000,
+    includeContractAmount: true,
+  });
+  assert.equal(withAmount.signingRate, 28.1);
+  assert.equal(withAmount.cards.length, 5);
+  assert.equal(withAmount.cards.find((card) => card.key === 'signedCount')?.detail, '签约金额 ¥286万');
+  assert.equal(buildOpsDashboardSubtitle('enterprise', '本月'), '全店 · 本月');
+  assert.equal(buildOpsDashboardSubtitle('personal', '本月'), '我的 · 本月');
+  assert.equal(
+    buildOpsDashboardSubtitle('enterprise', '2026-08-01 ~ 2026-08-20'),
+    '全店 · 2026-08-01 ~ 2026-08-20'
+  );
 });

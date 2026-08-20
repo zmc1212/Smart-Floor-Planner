@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseCommissionRules,
@@ -24,6 +24,18 @@ export type CommissionRuleInput = {
   value: string;
   status: CommissionRuleStatus;
   version: number;
+};
+
+export type AdjustPayableInput = {
+  payableAmount?: string;
+  beneficiaryUserId?: bigint;
+  reason?: string;
+};
+
+export type CommissionBeneficiaryOption = {
+  userId: bigint;
+  displayName: string;
+  phone: string | null;
 };
 
 export type LeadCommissionWithRelations = typeof leadCommissions.$inferSelect & {
@@ -251,16 +263,23 @@ export class LeadCommissionRepository {
       if (!beneficiaryUserId) {
         throw commissionError('commission_beneficiary_missing', '提成受益人身份不完整');
       }
+      const payableAmount = calculatePayableCommission(
+        rule.calculationType as CommissionCalculationType,
+        rule.value,
+        lead.contractAmount
+      );
       return {
         enterpriseId: lead.enterpriseId!,
         leadId: lead.id,
         role,
         beneficiaryUserId,
+        originalBeneficiaryUserId: beneficiaryUserId,
         ruleType: rule.calculationType,
         ruleValue: rule.value,
         ruleVersion: rule.version,
         contractAmount: lead.contractAmount,
-        payableAmount: calculatePayableCommission(rule.calculationType as CommissionCalculationType, rule.value, lead.contractAmount),
+        payableAmount,
+        originalPayableAmount: payableAmount,
         status: 'payable' as const,
       };
     });
@@ -332,7 +351,12 @@ export class LeadCommissionRepository {
         : [],
       membershipIds.length
         ? this.transaction
-            .select({ membershipId: referrerEnterpriseMemberships.id, userId: referrerProfiles.userId })
+            .select({
+              membershipId: referrerEnterpriseMemberships.id,
+              userId: referrerProfiles.userId,
+              displayName: referrerProfiles.displayName,
+              phone: referrerProfiles.phone,
+            })
             .from(referrerEnterpriseMemberships)
             .innerJoin(referrerProfiles, eq(referrerEnterpriseMemberships.referrerId, referrerProfiles.id))
             .where(inArray(referrerEnterpriseMemberships.id, membershipIds))
@@ -348,7 +372,14 @@ export class LeadCommissionRepository {
             .select({ id: measurementAppointments.id, leadId: measurementAppointments.leadId, address: measurementAppointments.address, timeRange: measurementAppointments.timeRange, status: measurementAppointments.status, createdAt: measurementAppointments.createdAt })
             .from(measurementAppointments)
             .where(inArray(measurementAppointments.leadId, leadIds))
-        : [],
+        : Promise.resolve([] as Array<{
+            id: bigint;
+            leadId: bigint;
+            address: string;
+            timeRange: string;
+            status: string;
+            createdAt: Date;
+          }>),
     ]);
     const userIds = [...new Set([
       ...rows.map((row) => row.commission.beneficiaryUserId),
@@ -363,7 +394,7 @@ export class LeadCommissionRepository {
     const staffMap = new Map(staffRows.map((staff) => [staff.id, staff]));
     const userMap = new Map(userRows.map((user) => [user.id, user]));
     const appointmentMap = new Map<bigint, (typeof appointmentRows)[number]>();
-    const appointmentsByLead = new Map<bigint, typeof appointmentRows>();
+    const appointmentsByLead = new Map<bigint, Array<(typeof appointmentRows)[number]>>();
     for (const appointment of appointmentRows) {
       const current = appointmentsByLead.get(appointment.leadId);
       if (current) current.push(appointment);
@@ -384,7 +415,14 @@ export class LeadCommissionRepository {
         beneficiary: row.beneficiary,
         enterprise: lead?.enterpriseId ? enterpriseMap.get(lead.enterpriseId) ?? null : null,
         customer: lead?.customerUserId ? userMap.get(lead.customerUserId) ?? null : null,
-        referrer: membership ? { membershipId: membership.membershipId, userId: membership.userId, nickname: userMap.get(membership.userId)?.nickname ?? null, phone: userMap.get(membership.userId)?.phone ?? null } : null,
+        referrer: membership
+          ? {
+              membershipId: membership.membershipId,
+              userId: membership.userId,
+              nickname: membership.displayName || membership.phone || userMap.get(membership.userId)?.nickname || '未命名推广人',
+              phone: membership.phone || userMap.get(membership.userId)?.phone || null,
+            }
+          : null,
         designer: designer ? { staffId: designer.id, userId: designer.userId, displayName: designer.displayName, phone: designer.phone } : null,
         measurer: measurer ? { staffId: measurer.id, userId: measurer.userId, displayName: measurer.displayName, phone: measurer.phone } : null,
         appointment: lead ? appointmentMap.get(lead.id) ?? null : null,
@@ -410,5 +448,155 @@ export class LeadCommissionRepository {
       .set({ status: 'paid', paidAt: new Date(), paidBy: actorId, updatedAt: new Date() })
       .where(and(eq(leadCommissions.enterpriseId, enterpriseId), inArray(leadCommissions.id, uniqueIds), eq(leadCommissions.status, 'payable')))
       .returning();
+  }
+
+  async listEligibleBeneficiaries(enterpriseId: bigint, role: CommissionRole): Promise<CommissionBeneficiaryOption[]> {
+    assertCommissionRole(role);
+    if (role === 'referrer') {
+      const rows = await this.transaction
+        .select({
+          userId: referrerProfiles.userId,
+          displayName: referrerProfiles.displayName,
+          phone: referrerProfiles.phone,
+        })
+        .from(referrerEnterpriseMemberships)
+        .innerJoin(referrerProfiles, eq(referrerEnterpriseMemberships.referrerId, referrerProfiles.id))
+        .where(and(
+          eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId),
+          eq(referrerEnterpriseMemberships.status, 'active'),
+          eq(referrerProfiles.status, 'active')
+        ))
+        .orderBy(asc(referrerProfiles.displayName), asc(referrerProfiles.userId));
+      return rows.map((row) => ({
+        userId: row.userId,
+        displayName: row.displayName || row.phone || '未命名推荐人',
+        phone: row.phone,
+      }));
+    }
+
+    const rows = await this.transaction
+      .select({
+        userId: adminUsers.userId,
+        displayName: adminUsers.displayName,
+        phone: adminUsers.phone,
+      })
+      .from(adminUsers)
+      .where(and(
+        eq(adminUsers.enterpriseId, enterpriseId),
+        eq(adminUsers.role, role),
+        eq(adminUsers.status, 'active'),
+        isNotNull(adminUsers.userId)
+      ))
+      .orderBy(asc(adminUsers.displayName), asc(adminUsers.id));
+    return rows
+      .filter((row): row is { userId: bigint; displayName: string; phone: string | null } => row.userId !== null)
+      .map((row) => ({
+        userId: row.userId,
+        displayName: row.displayName,
+        phone: row.phone,
+      }));
+  }
+
+  private async assertEligibleBeneficiary(
+    enterpriseId: bigint,
+    role: CommissionRole,
+    beneficiaryUserId: bigint
+  ) {
+    if (role === 'referrer') {
+      const rows = await this.transaction
+        .select({ userId: referrerProfiles.userId })
+        .from(referrerEnterpriseMemberships)
+        .innerJoin(referrerProfiles, eq(referrerEnterpriseMemberships.referrerId, referrerProfiles.id))
+        .where(and(
+          eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId),
+          eq(referrerEnterpriseMemberships.status, 'active'),
+          eq(referrerProfiles.status, 'active'),
+          eq(referrerProfiles.userId, beneficiaryUserId)
+        ))
+        .limit(1);
+      if (!rows[0]) {
+        throw commissionError('commission_beneficiary_ineligible', '目标受益人不是本企业活动推荐人成员', 400);
+      }
+      return;
+    }
+
+    const rows = await this.transaction
+      .select({ id: adminUsers.id })
+      .from(adminUsers)
+      .where(and(
+        eq(adminUsers.enterpriseId, enterpriseId),
+        eq(adminUsers.role, role),
+        eq(adminUsers.userId, beneficiaryUserId),
+        eq(adminUsers.status, 'active')
+      ))
+      .limit(1);
+    if (!rows[0]) {
+      throw commissionError(
+        'commission_beneficiary_ineligible',
+        role === 'designer' ? '目标受益人不是本企业已绑定的设计师' : '目标受益人不是本企业已绑定的测量员',
+        400
+      );
+    }
+  }
+
+  async adjustPayable(
+    enterpriseId: bigint,
+    commissionId: bigint,
+    actorId: bigint,
+    input: AdjustPayableInput
+  ) {
+    const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+    if (input.payableAmount === undefined && input.beneficiaryUserId === undefined) {
+      throw commissionError('commission_adjust_fields_required', '请至少调整应付金额或受益人之一', 400);
+    }
+
+    const rows = await this.transaction
+      .select()
+      .from(leadCommissions)
+      .where(and(eq(leadCommissions.id, commissionId), eq(leadCommissions.enterpriseId, enterpriseId)))
+      .for('update');
+    const current = rows[0];
+    if (!current) {
+      throw commissionError('commission_not_found', '提成记录不存在或不属于本企业');
+    }
+    if (current.status !== 'payable') {
+      throw commissionError('commission_not_payable', '仅待支付提成可调整');
+    }
+
+    assertCommissionRole(current.role);
+    let nextAmount = current.payableAmount;
+    let nextBeneficiary = current.beneficiaryUserId;
+
+    if (input.payableAmount !== undefined) {
+      nextAmount = formatDecimal(parseDecimal(input.payableAmount, 2), 2);
+    }
+    if (input.beneficiaryUserId !== undefined) {
+      await this.assertEligibleBeneficiary(enterpriseId, current.role, input.beneficiaryUserId);
+      nextBeneficiary = input.beneficiaryUserId;
+    }
+    if (nextAmount === current.payableAmount && nextBeneficiary === current.beneficiaryUserId) {
+      throw commissionError('commission_adjust_noop', '应付金额与受益人均未变化', 400);
+    }
+
+    const updated = await this.transaction
+      .update(leadCommissions)
+      .set({
+        payableAmount: nextAmount,
+        beneficiaryUserId: nextBeneficiary,
+        adjustedAt: new Date(),
+        adjustedBy: actorId,
+        adjustReason: reason || null,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(leadCommissions.id, commissionId),
+        eq(leadCommissions.enterpriseId, enterpriseId),
+        eq(leadCommissions.status, 'payable')
+      ))
+      .returning();
+    if (!updated[0]) {
+      throw commissionError('commission_not_payable', '仅待支付提成可调整');
+    }
+    return updated[0];
   }
 }

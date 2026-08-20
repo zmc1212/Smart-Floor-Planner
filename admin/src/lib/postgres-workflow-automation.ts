@@ -44,7 +44,6 @@ export const DEFAULT_AUTOMATION_CONFIG = {
   designTaskSlaHours: 72,
   reminderIntervalHours: 24,
   maxReminderTimes: 3,
-  browserNotificationEnabled: true,
   miniprogramNotificationEnabled: true,
 };
 

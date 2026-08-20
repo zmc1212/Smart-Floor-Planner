@@ -4,8 +4,8 @@ import { useRef, useState } from 'react';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Button, Card, Flex, Space, Statistic, Tag, Typography } from 'antd';
 import { CheckCircle2, CircleDollarSign } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { notify } from '@/components/admin/operation-feedback';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type CommissionStatus = 'pending_settlement' | 'paid' | 'voided';

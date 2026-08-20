@@ -18,8 +18,8 @@ import {
 import { Button, Flex, Space, Tag, Typography } from 'antd';
 import { CircleCheck, PackageOpen, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
-import { notify } from '@/components/ui/operation-feedback';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { notify } from '@/components/admin/operation-feedback';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type Reference = {

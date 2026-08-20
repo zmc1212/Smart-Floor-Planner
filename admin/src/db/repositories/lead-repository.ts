@@ -44,6 +44,7 @@ export interface LeadStaffSummary {
   id: bigint;
   displayName: string;
   username: string;
+  phone?: string | null;
   role: string;
   wechatId?: string | null;
   wechatQrAssetId?: bigint | null;
@@ -82,6 +83,9 @@ export interface LeadListOptions {
   page?: number;
   limit?: number;
   createdSince?: Date;
+  createdBefore?: Date;
+  convertedSince?: Date;
+  convertedBefore?: Date;
   orderBy?: 'createdAt' | 'updatedAt';
   archiveState?: 'active' | 'archived' | 'all';
 }
@@ -166,6 +170,15 @@ export class LeadRepository {
     if (options.createdSince) {
       filters.push(gte(leads.createdAt, options.createdSince));
     }
+    if (options.createdBefore) {
+      filters.push(sql`${leads.createdAt} < ${options.createdBefore}`);
+    }
+    if (options.convertedSince) {
+      filters.push(gte(leads.convertedAt, options.convertedSince));
+    }
+    if (options.convertedBefore) {
+      filters.push(sql`${leads.convertedAt} < ${options.convertedBefore}`);
+    }
     if (options.staffId) {
       filters.push(
         options.staffVisibility === 'measurer'
@@ -241,6 +254,7 @@ export class LeadRepository {
               id: adminUsers.id,
               displayName: adminUsers.displayName,
               username: adminUsers.username,
+              phone: adminUsers.phone,
               role: adminUsers.role,
               wechatId: adminUsers.wechatId,
               wechatQrAssetId: adminUsers.wechatQrAssetId,
@@ -348,6 +362,16 @@ export class LeadRepository {
   async count(options: LeadListOptions = {}) {
     const rows = await this.transaction
       .select({ value: count() })
+      .from(leads)
+      .where(this.buildFilters(options));
+    return Number(rows[0]?.value ?? 0);
+  }
+
+  async sumContractAmount(options: LeadListOptions = {}) {
+    const rows = await this.transaction
+      .select({
+        value: sql<string>`coalesce(sum(${leads.contractAmount}), 0)`,
+      })
       .from(leads)
       .where(this.buildFilters(options));
     return Number(rows[0]?.value ?? 0);

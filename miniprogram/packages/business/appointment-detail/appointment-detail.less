@@ -147,6 +147,8 @@ page {
   color: #2c4235;
   font-weight: 500;
 }
+.location-value { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4rpx; }
+.location-name { color: #718076; font-size: 20rpx; line-height: 1.4; }
 
 .role-note,
 .finished-note {
@@ -203,6 +205,18 @@ page {
   border: none;
 }
 
+.actions .primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  line-height: 1;
+  background: #00c365;
+  color: #ffffff;
+  box-shadow: 0 8rpx 20rpx rgba(0, 195, 101, 0.25);
+  border: none;
+}
+
 .reschedule-btn {
   background: #00c365;
   color: #ffffff;
@@ -213,13 +227,55 @@ page {
 .cancel-btn {
   background: #ffffff;
   color: #183426;
-  border: 1rpx solid #d5ded8;
+  border: 1rpx solid #e5e7eb;
 }
 
-.secondary {
-  background: #f0f5f1;
-  color: #183426;
-  border: none;
+.secondary-row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.action-btn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  height: 84rpx;
+  border-radius: 16rpx;
+  box-sizing: border-box;
+}
+
+.action-secondary {
+  background: #f8faf9;
+  border: 1rpx solid #e5e7eb;
+  color: #374151;
+}
+
+.action-full {
+  flex: 1 1 100%;
+}
+
+.btn-icon {
+  font-size: 24rpx;
+  line-height: 1;
+}
+
+.btn-label {
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.btn-pressed {
+  opacity: 0.85;
+}
+
+.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 .state-card {

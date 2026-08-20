@@ -32,23 +32,9 @@ import {
   SlidersHorizontal,
   UsersRound,
 } from 'lucide-react';
+import { Button, Drawer, Select } from 'antd';
 import { cn } from '@/lib/utils';
-import { buttonVariants } from '@/components/ui/button';
-import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { useBrowserNotification } from '@/hooks/useBrowserNotification';
 import { isAdminRouteActive } from '@/config/admin-routes';
 
 // --- Types ---
@@ -175,9 +161,11 @@ const NavItem = memo(function NavItem({
       aria-current={isActive ? 'page' : undefined}
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2 transition-colors duration-200 group relative",
-        isActive 
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+        // `!` keeps Tailwind ahead of Ant Design's unlayered `a { color: colorLink }`
+        // until `@layer antd` is active via AntdRegistry.
+        isActive
+          ? "bg-primary/10 !text-primary"
+          : "!text-muted-foreground hover:!text-foreground hover:bg-muted"
       )}
       title={collapsed ? item.label : undefined}
     >
@@ -234,19 +222,18 @@ const SidebarContent = memo(function SidebarContent({
             </div>
             {(admin?.role === 'super_admin' || admin?.role === 'admin') && (
               <div className="min-w-0 flex-1" onClick={(e) => e.stopPropagation()}>
-                <Select value={globalTenantId} onValueChange={handleTenantChange}>
-                  <SelectTrigger className="h-8 w-full min-w-0 border-input bg-muted text-[11px] font-medium text-muted-foreground shadow-none transition-colors hover:text-foreground focus:ring-0">
-                    <SelectValue placeholder="全局企业视图" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-xl border-border bg-popover text-popover-foreground shadow-lg">
-                    <SelectItem value="all" className="rounded-lg text-xs font-bold text-primary">-- 所有企业 --</SelectItem>
-                    {enterprises.map(ent => (
-                      <SelectItem key={ent._id} value={ent._id} className="rounded-lg text-xs">
-                        {ent.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Select
+                  size="small"
+                  value={globalTenantId}
+                  onChange={handleTenantChange}
+                  placeholder="全局企业视图"
+                  className="w-full min-w-0"
+                  popupMatchSelectWidth={false}
+                  options={[
+                    { value: 'all', label: '-- 所有企业 --' },
+                    ...enterprises.map((ent) => ({ value: ent._id, label: ent.name })),
+                  ]}
+                />
               </div>
             )}
           </div>
@@ -368,11 +355,11 @@ const SidebarContent = memo(function SidebarContent({
 export default function Sidebar() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [enterprises, setEnterprises] = useState<SidebarEnterprise[]>([]);
   const [globalTenantId, setGlobalTenantId] = useState<string>('all');
 
   const { user: admin } = useCurrentUser();
-  useBrowserNotification();
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed');
@@ -473,24 +460,33 @@ export default function Sidebar() {
           <NextImage src="/brand-logo.png" alt="" aria-hidden="true" width={28} height={28} className="rounded-lg" />
           <h1 className="text-sm font-bold">家客来</h1>
         </div>
-        <Sheet>
-          <SheetTrigger aria-label="打开导航菜单" className={cn(buttonVariants({ variant: "ghost", size: "icon-lg" }), "h-10 w-10 md:hidden")}>
-            <Menu size={20} />
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72 border-none">
-            <SheetTitle className="sr-only">管理导航</SheetTitle>
-            <SidebarContent 
-              collapsed={false} 
-              admin={admin}
-              enterprises={enterprises}
-              globalTenantId={globalTenantId}
-              handleTenantChange={handleTenantChange}
-              handleLogout={handleLogout}
-              pathname={pathname}
-              hasMenuPermission={hasMenuPermission}
-            />
-          </SheetContent>
-        </Sheet>
+        <Button
+          type="text"
+          aria-label="打开导航菜单"
+          onClick={() => setIsMobileNavOpen(true)}
+          className="h-10 w-10 md:hidden"
+          icon={<Menu size={20} />}
+        />
+        <Drawer
+          placement="left"
+          open={isMobileNavOpen}
+          onClose={() => setIsMobileNavOpen(false)}
+          closable={false}
+          width={288}
+          styles={{ body: { padding: 0 } }}
+        >
+          <h2 className="sr-only">管理导航</h2>
+          <SidebarContent 
+            collapsed={false} 
+            admin={admin}
+            enterprises={enterprises}
+            globalTenantId={globalTenantId}
+            handleTenantChange={handleTenantChange}
+            handleLogout={handleLogout}
+            pathname={pathname}
+            hasMenuPermission={hasMenuPermission}
+          />
+        </Drawer>
       </div>
     </>
   );

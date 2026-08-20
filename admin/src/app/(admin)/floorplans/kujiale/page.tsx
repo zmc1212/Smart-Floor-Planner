@@ -1,31 +1,33 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { PageContainer } from '@ant-design/pro-components';
 import {
-  ArrowLeft,
+  Button,
+  Card,
+  Cascader,
+  Col,
+  Empty,
+  Flex,
+  Input,
+  Pagination,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  Typography,
+} from 'antd';
+import {
   Building2,
   Copy,
   ExternalLink,
   ImageIcon,
-  Loader2,
   MapPin,
   Search,
 } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
-import { Badge } from '@/components/ui/badge';
-import { Button, buttonVariants } from '@/components/ui/button';
-import { Cascader, type CascaderOption } from '@/components/ui/cascader';
-import { Input } from '@/components/ui/input';
-import { Pagination } from '@/components/ui/pagination';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
+import { notify } from '@/components/admin/operation-feedback';
 
 type KujialeCityGroup = {
   province: string;
@@ -52,6 +54,12 @@ type KujialeFloorPlanCard = {
     wallCenterLine?: string;
     [key: string]: unknown;
   };
+};
+
+type CityCascaderOption = {
+  value: string;
+  label: string;
+  children?: Array<{ value: string; label: string }>;
 };
 
 const DEFAULT_CITY_ID = '175';
@@ -88,6 +96,7 @@ function buildPlanTitle(plan: KujialeFloorPlanCard) {
 }
 
 export default function KujialeFloorPlanSearchPage() {
+  const router = useRouter();
   const [cities, setCities] = useState<KujialeCityGroup[]>([]);
   const [provinceName, setProvinceName] = useState(DEFAULT_PROVINCE_NAME);
   const [cityId, setCityId] = useState(DEFAULT_CITY_ID);
@@ -110,7 +119,7 @@ export default function KujialeFloorPlanSearchPage() {
     [cities],
   );
 
-  const cascaderOptions = useMemo<CascaderOption[]>(() => {
+  const cascaderOptions = useMemo<CityCascaderOption[]>(() => {
     if (!cities.length) {
       return [
         {
@@ -226,215 +235,223 @@ export default function KujialeFloorPlanSearchPage() {
   };
 
   useEffect(() => {
-    fetchCities();
+    void fetchCities();
   }, []);
 
   return (
-    <div className="min-h-full bg-background text-foreground">
-      <main className="mx-auto flex max-w-[1480px] flex-col gap-7 px-5 py-6 sm:px-7 sm:py-8">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="flex flex-col gap-2">
-            <Link
-              href="/floorplans"
-              className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-2 text-muted-foreground')}
-            >
-              <ArrowLeft size={16} />
-              返回本地户型图库
-            </Link>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">酷家乐户型搜索</h1>
-              <p className="mt-2 text-sm text-muted-foreground">
-                按城市和小区查询酷家乐已开放户型图，当前仅展示结果，不导入本地户型库。
-              </p>
-            </div>
-          </div>
-          <Badge variant="outline" className="w-fit px-3 py-1 text-muted-foreground">
-            sandbox-openapi
-          </Badge>
-        </div>
-
-        <section className="rounded-lg border bg-card p-4">
-          <div className="grid gap-3 lg:grid-cols-[280px_1fr_170px_170px_auto]">
-            <Cascader
-              options={cascaderOptions}
-              value={[provinceName, cityId]}
-              onValueChange={handleCityPathChange}
-              placeholder={citiesLoading ? '城市加载中' : '选择省份 / 城市'}
-              disabled={citiesLoading}
-            />
-
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-              <Input
-                value={communityName}
-                onChange={(event) => setCommunityName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') searchFloorPlans(1);
-                }}
-                placeholder="输入小区名称，如 左邻右舍"
-                className="h-10 bg-background pl-10"
-              />
-            </div>
-
-            <Select value={specType} onValueChange={setSpecType}>
-              <SelectTrigger className="h-10 bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SPEC_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Select value={areaType} onValueChange={setAreaType}>
-              <SelectTrigger className="h-10 bg-background">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {AREA_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Button
-              onClick={() => searchFloorPlans(1)}
-              disabled={loading}
-              className="h-10 px-5"
-            >
-              {loading ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
-              搜索
-            </Button>
-          </div>
-        </section>
-
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <MapPin size={15} />
-            当前城市：{selectedCity ? `${selectedCity.province} / ${selectedCity.name}` : `${provinceName} / ${DEFAULT_CITY_NAME}`}
-          </div>
-          {searched && !loading && (
-            <div>
-              共 {pagination.total} 个匹配户型
-            </div>
-          )}
-        </div>
-
-        {loading ? (
-          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 text-muted-foreground">
-            <Loader2 className="mb-4 animate-spin" size={36} />
-            <p className="text-sm font-medium">正在查询酷家乐户型图...</p>
-          </div>
-        ) : results.length > 0 ? (
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {results.map((plan) => (
-            <article key={plan.externalId} className="overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:border-primary/40">
-                <button
-                  type="button"
-                  onClick={() => handleOpenPreview(plan.previewUrl)}
-                  className="relative flex aspect-[4/3] w-full items-center justify-center bg-muted/40"
+    <div className="admin-page-frame">
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title="酷家乐户型搜索"
+        content="按城市和小区查询酷家乐已开放户型图，当前仅展示结果，不导入本地户型库。"
+        onBack={() => router.push('/floorplans')}
+        extra={<Tag>sandbox-openapi</Tag>}
+      >
+        <Space direction="vertical" size={16} className="w-full">
+          <Card className="admin-panel-card" size="small">
+            <Row gutter={[12, 12]} align="middle">
+              <Col xs={24} lg={6}>
+                <Cascader
+                  className="w-full"
+                  options={cascaderOptions}
+                  value={[provinceName, cityId]}
+                  onChange={(value) => handleCityPathChange((value as string[]) || [])}
+                  placeholder={citiesLoading ? '城市加载中' : '选择省份 / 城市'}
+                  disabled={citiesLoading}
+                  allowClear={false}
+                  changeOnSelect={false}
+                />
+              </Col>
+              <Col xs={24} lg={8}>
+                <Input
+                  allowClear
+                  value={communityName}
+                  onChange={(event) => setCommunityName(event.target.value)}
+                  onPressEnter={() => void searchFloorPlans(1)}
+                  placeholder="输入小区名称，如 左邻右舍"
+                  prefix={<Search size={16} />}
+                />
+              </Col>
+              <Col xs={24} sm={12} lg={4}>
+                <Select
+                  className="w-full"
+                  value={specType}
+                  onChange={setSpecType}
+                  options={SPEC_OPTIONS}
+                />
+              </Col>
+              <Col xs={24} sm={12} lg={4}>
+                <Select
+                  className="w-full"
+                  value={areaType}
+                  onChange={setAreaType}
+                  options={AREA_OPTIONS}
+                />
+              </Col>
+              <Col xs={24} lg={2}>
+                <Button
+                  type="primary"
+                  block
+                  loading={loading}
+                  icon={<Search size={16} />}
+                  onClick={() => void searchFloorPlans(1)}
                 >
-                  {plan.previewUrl ? (
-                    <img
-                      src={plan.previewUrl}
-                      alt={buildPlanTitle(plan)}
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <ImageIcon className="text-muted-foreground/40" size={42} />
-                  )}
-                  <span className="absolute right-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
-                    {plan.sourceLabel || '酷家乐'}
-                  </span>
-                </button>
+                  搜索
+                </Button>
+              </Col>
+            </Row>
+          </Card>
 
-                <div className="flex flex-col gap-4 p-4">
-                  <div>
-                    <h2 className="line-clamp-2 text-base font-semibold">{buildPlanTitle(plan)}</h2>
-                    <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                      <Building2 size={14} />
-                      <span className="truncate">{plan.communityName || '-'}</span>
-                    </div>
-                  </div>
+          <Flex justify="space-between" align="center" wrap gap={8}>
+            <Typography.Text type="secondary">
+              <Space size={6}>
+                <MapPin size={15} />
+                当前城市：{selectedCity ? `${selectedCity.province} / ${selectedCity.name}` : `${provinceName} / ${DEFAULT_CITY_NAME}`}
+              </Space>
+            </Typography.Text>
+            {searched && !loading ? (
+              <Typography.Text type="secondary">共 {pagination.total} 个匹配户型</Typography.Text>
+            ) : null}
+          </Flex>
 
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground">建筑面积</p>
-                      <p className="mt-1 font-semibold">{formatArea(plan)}</p>
-                    </div>
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground">套内面积</p>
-                      <p className="mt-1 font-semibold">{plan.rawSummary?.srcArea || '-'}</p>
-                    </div>
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground">户室</p>
-                      <p className="mt-1 font-semibold">{plan.layoutLabel || '-'}</p>
-                    </div>
-                    <div className="rounded-md bg-muted/40 p-3">
-                      <p className="text-xs text-muted-foreground">公开类型</p>
-                      <p className="mt-1 font-semibold">{plan.rawSummary?.publicType || '-'}</p>
-                    </div>
-                  </div>
+          {loading ? (
+            <Card className="admin-panel-card">
+              <Flex vertical align="center" justify="center" className="min-h-[320px]">
+                <Spin tip="正在查询酷家乐户型图..." />
+              </Flex>
+            </Card>
+          ) : results.length > 0 ? (
+            <>
+              <Row gutter={[16, 16]}>
+                {results.map((plan) => (
+                  <Col key={plan.externalId} xs={24} md={12} xl={8}>
+                    <Card
+                      className="admin-panel-card h-full"
+                      cover={(
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPreview(plan.previewUrl)}
+                          className="relative flex aspect-[4/3] w-full items-center justify-center bg-[var(--ant-color-fill-alter)] border-0 cursor-pointer p-0"
+                        >
+                          {plan.previewUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={plan.previewUrl}
+                              alt={buildPlanTitle(plan)}
+                              className="h-full w-full object-contain"
+                            />
+                          ) : (
+                            <ImageIcon className="text-[var(--ant-color-text-quaternary)]" size={42} />
+                          )}
+                          <Tag className="!absolute !right-3 !top-3 !m-0">
+                            {plan.sourceLabel || '酷家乐'}
+                          </Tag>
+                        </button>
+                      )}
+                      actions={[
+                        <Button
+                          key="copy"
+                          type="text"
+                          icon={<Copy size={15} />}
+                          aria-label="复制 planId"
+                          onClick={() => void handleCopyPlanId(plan.externalId)}
+                        >
+                          复制标识
+                        </Button>,
+                        <Button
+                          key="preview"
+                          type="text"
+                          icon={<ExternalLink size={15} />}
+                          aria-label="打开预览图"
+                          onClick={() => handleOpenPreview(plan.previewUrl)}
+                        >
+                          预览
+                        </Button>,
+                      ]}
+                    >
+                      <Space direction="vertical" size={12} className="w-full">
+                        <div>
+                          <Typography.Title level={5} className="!mb-1 !mt-0" ellipsis={{ rows: 2, tooltip: buildPlanTitle(plan) }}>
+                            {buildPlanTitle(plan)}
+                          </Typography.Title>
+                          <Typography.Text type="secondary">
+                            <Space size={6}>
+                              <Building2 size={14} />
+                              <span className="truncate">{plan.communityName || '-'}</span>
+                            </Space>
+                          </Typography.Text>
+                        </div>
 
-                  <div className="flex items-center justify-between gap-3 border-t pt-4">
-                    <div className="min-w-0 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">户型标识</span>
-                      <span className="ml-2 break-all">{plan.externalId}</span>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="outline"
-                        title="复制 planId"
-                        onClick={() => handleCopyPlanId(plan.externalId)}
-                      >
-                        <Copy size={15} />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="outline"
-                        title="打开预览图"
-                        onClick={() => handleOpenPreview(plan.previewUrl)}
-                      >
-                        <ExternalLink size={15} />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 px-6 text-center">
-            <div className="mb-4 rounded-full bg-muted p-4">
-              <Search className="text-muted-foreground/50" size={32} />
-            </div>
-            <h2 className="text-lg font-semibold">{searched ? '未找到匹配户型' : '输入小区名称开始搜索'}</h2>
-            <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              {searched
-                ? '可以更换城市、简化小区关键词，或放宽户室和面积筛选后重试。'
-                : '默认使用杭州城市 ID，也可以先切换城市再查询酷家乐户型图。'}
-            </p>
-          </div>
-        )}
+                        <Row gutter={[8, 8]}>
+                          <Col span={12}>
+                            <Card size="small" type="inner">
+                              <Typography.Text type="secondary" className="text-xs">建筑面积</Typography.Text>
+                              <div className="mt-1 font-semibold">{formatArea(plan)}</div>
+                            </Card>
+                          </Col>
+                          <Col span={12}>
+                            <Card size="small" type="inner">
+                              <Typography.Text type="secondary" className="text-xs">套内面积</Typography.Text>
+                              <div className="mt-1 font-semibold">{plan.rawSummary?.srcArea || '-'}</div>
+                            </Card>
+                          </Col>
+                          <Col span={12}>
+                            <Card size="small" type="inner">
+                              <Typography.Text type="secondary" className="text-xs">户室</Typography.Text>
+                              <div className="mt-1 font-semibold">{plan.layoutLabel || '-'}</div>
+                            </Card>
+                          </Col>
+                          <Col span={12}>
+                            <Card size="small" type="inner">
+                              <Typography.Text type="secondary" className="text-xs">公开类型</Typography.Text>
+                              <div className="mt-1 font-semibold">{plan.rawSummary?.publicType || '-'}</div>
+                            </Card>
+                          </Col>
+                        </Row>
 
-        {!loading && results.length > 0 && (
-          <Pagination
-            total={pagination.total}
-            page={pagination.page}
-            limit={pagination.limit}
-            totalPages={pagination.totalPages}
-            onChange={searchFloorPlans}
-          />
-        )}
-      </main>
+                        <Typography.Text type="secondary" className="text-xs break-all">
+                          <Typography.Text strong>户型标识</Typography.Text>
+                          <span className="ml-2">{plan.externalId}</span>
+                        </Typography.Text>
+                      </Space>
+                    </Card>
+                  </Col>
+                ))}
+              </Row>
+
+              <Flex justify="center">
+                <Pagination
+                  current={pagination.page}
+                  pageSize={pagination.limit}
+                  total={pagination.total}
+                  showSizeChanger={false}
+                  onChange={(page) => void searchFloorPlans(page)}
+                />
+              </Flex>
+            </>
+          ) : (
+            <Card className="admin-panel-card">
+              <Empty
+                className="min-h-[280px] flex flex-col justify-center"
+                image={<Search className="text-[var(--ant-color-text-quaternary)]" size={32} />}
+                description={(
+                  <Space direction="vertical" size={4}>
+                    <Typography.Text strong>
+                      {searched ? '未找到匹配户型' : '输入小区名称开始搜索'}
+                    </Typography.Text>
+                    <Typography.Text type="secondary">
+                      {searched
+                        ? '可以更换城市、简化小区关键词，或放宽户室和面积筛选后重试。'
+                        : '默认使用杭州城市 ID，也可以先切换城市再查询酷家乐户型图。'}
+                    </Typography.Text>
+                  </Space>
+                )}
+              />
+            </Card>
+          )}
+        </Space>
+      </PageContainer>
     </div>
   );
 }

@@ -61,7 +61,7 @@ test('staff and owner badges stay inside the active role and never invent zeros'
   assert.deepEqual(buildMiniProgramBadges({
     role: 'measurer',
     facts: { measurerTodayCount: 2, measurerTaskCount: 3 },
-  }).counts, { workbench: 2, tasks: 3 });
+  }).counts, { workbench: 5 });
   assert.deepEqual(buildMiniProgramBadges({
     role: 'enterprise_admin',
     facts: { ownerExceptionCount: 5, ownerExpiredCount: 2 },

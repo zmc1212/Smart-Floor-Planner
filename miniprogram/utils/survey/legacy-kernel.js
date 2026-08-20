@@ -81,6 +81,8 @@ function createSession() {
     lastWallSnapWallMiddle: false,
     lastWallSnapLine: '',
     previewMeasurementSide: '',
+    previewBodyNormalSide: '',
+    measurementSideUserSet: false,
     previewMeasurementStartInsetMm: 0,
     previewMeasurementStartExtensionMm: 0,
     previewMeasurementEndInsetMm: 0,
@@ -88,6 +90,12 @@ function createSession() {
     // face. Keep that intent only for the active preview/confirmation pair.
     previewOuterFaceWallId: ''
   };
+}
+
+function resetPreviewSideLock(session) {
+  if (!session) return;
+  session.previewBodyNormalSide = '';
+  session.measurementSideUserSet = false;
 }
 
 function createSurveyDraft() {
@@ -186,6 +194,12 @@ function ensureSessionSpaceTracking(floor) {
   }
   if (typeof session.previewMeasurementSide !== 'string') {
     session.previewMeasurementSide = '';
+  }
+  if (typeof session.previewBodyNormalSide !== 'string') {
+    session.previewBodyNormalSide = '';
+  }
+  if (typeof session.measurementSideUserSet !== 'boolean') {
+    session.measurementSideUserSet = false;
   }
   if (!Number.isFinite(Number(session.previewMeasurementStartInsetMm))) {
     session.previewMeasurementStartInsetMm = 0;
@@ -1157,6 +1171,17 @@ function constrainStraightSnapPoint(session, anchor, point, fallbackPoint) {
   if (!point) return fallbackPoint;
   if (!session || session.mode !== 'straight' || isAxisAlignedWithAnchor(anchor, point)) {
     return point;
+  }
+  // An off-axis topology corner is still a valid clamp target for one axis.
+  // Project it onto the current straight ray instead of copying both axes
+  // (which would bend the wall into a diagonal).
+  if (fallbackPoint && anchor) {
+    const projected = isHorizontalSegment(anchor, fallbackPoint)
+      ? { xMm: point.xMm, yMm: anchor.yMm }
+      : { xMm: anchor.xMm, yMm: point.yMm };
+    if (distanceMm(anchor, projected) >= 1) {
+      return projected;
+    }
   }
   return fallbackPoint || point;
 }
@@ -3637,9 +3662,33 @@ function startPreview(draft, rawPoint) {
     previewMeasurementEndInsetMm,
     previewMeasurementStartExtensionMm
   );
-  let previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(floor, session, anchor, previewPoint);
+  const inferredMeasurementSide = resolveBoundaryAlignedMeasurementSide(
+    floor,
+    session,
+    anchor,
+    previewPoint
+  );
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  if (activeWallCount === 0 && session.activeSpaceSharedWallId) {
+  const lastWall = activeWallCount > 0 ? (floor.walls || [])[floor.walls.length - 1] : null;
+  if (
+    session.measurementSideUserSet &&
+    lastWall &&
+    (lastWall.bodyNormalSide === 'left' || lastWall.bodyNormalSide === 'right')
+  ) {
+    session.previewBodyNormalSide = lastWall.bodyNormalSide;
+  }
+  let previewMeasurementSide = inferredMeasurementSide;
+  if (
+    session.measurementSideUserSet &&
+    (session.previewMeasurementSide === 'left' || session.previewMeasurementSide === 'right')
+  ) {
+    previewMeasurementSide = session.previewMeasurementSide;
+  } else if (
+    session.measurementSideUserSet &&
+    (session.measurementSide === 'left' || session.measurementSide === 'right')
+  ) {
+    previewMeasurementSide = session.measurementSide;
+  } else if (activeWallCount === 0 && session.activeSpaceSharedWallId) {
     session.measurementSide = previewMeasurementSide;
   }
 
@@ -3705,14 +3754,15 @@ function startPreview(draft, rawPoint) {
           distanceMm(previewPoint, sharedProjection.point) <= CLOSE_TOLERANCE_MM
         )
       ) {
-        previewPoint = sharedProjection.snapsToTopologyEndpoint
-          ? sharedProjection.point
-          : constrainStraightSnapPoint(
-            session,
-            anchor,
-            sharedProjection.point,
-            previewPoint
-          );
+        // Keep the orange preview on-axis. Copying an off-axis topology corner
+        // here turns a straight wall into a diagonal; confirmClosure bridges
+        // the remaining thickness gap after the orthogonal wall is committed.
+        previewPoint = constrainStraightSnapPoint(
+          session,
+          anchor,
+          sharedProjection.point,
+          previewPoint
+        );
         previewMeasurementStartInsetMm = resolvePreviewMeasurementStartInsetMm(
           floor,
           session,
@@ -3729,16 +3779,18 @@ function startPreview(draft, rawPoint) {
           previewMeasurementStartInsetMm = snappedStartAdjustment.insetMm;
           previewMeasurementStartExtensionMm = snappedStartAdjustment.extensionMm;
         }
-        previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(
-          floor,
-          session,
-          anchor,
-          previewPoint
-        );
+        if (!session.measurementSideUserSet) {
+          previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(
+            floor,
+            session,
+            anchor,
+            previewPoint
+          );
+          session.previewMeasurementSide = previewMeasurementSide;
+        }
         session.previewPoint = previewPoint;
         session.previewLengthMm = previewLengthMm;
         session.previewAngleDeg = angleDeg(anchor, previewPoint);
-        session.previewMeasurementSide = previewMeasurementSide;
         if (!session.alignmentSnapGuide && distanceMm(previewPoint, rawPoint) > 0) {
           session.alignmentSnapGuide = {
             type: 'rectangle-third-wall',
@@ -4010,19 +4062,23 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     (activeWallCountBeforeCommit >= 2 || !!closureProjection || !!outerFaceProjection) &&
     (closureProjection || outerFaceProjection || distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM);
   if (closureProjection) {
-    const allowOffAxis = !!closureProjection.snapsToTopologyEndpoint;
-    const constrainedEndPoint = allowOffAxis
-      ? closureProjection.point
-      : constrainStraightSnapPoint(
-        session,
-        anchor,
-        closureProjection.point,
-        endPoint
-      );
-    if (constrainedEndPoint !== closureProjection.point) {
+    // Straight mode may change at most one axis. Never copy an off-axis
+    // topology endpoint onto the confirmed wall; confirmClosure adds a short
+    // orthogonal bridge for the remaining thickness gap.
+    const constrainedEndPoint = constrainStraightSnapPoint(
+      session,
+      anchor,
+      closureProjection.point,
+      endPoint
+    );
+    if (distanceMm(constrainedEndPoint, closureProjection.point) > 1) {
       closureProjection = Object.assign({}, closureProjection, {
         point: constrainedEndPoint,
-        node: null
+        node: null,
+        // Force getOrCreateSnapNode to keep the on-axis working point instead of
+        // falling back through a stale endpoint parameter (t=0/1).
+        t: 0.5,
+        snapsToTopologyEndpoint: false
       });
     }
     endPoint = constrainedEndPoint;
@@ -4116,10 +4172,11 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       angleDeg: angleDeg(anchor, endNode),
       thicknessMm: session.thicknessMm,
       measurementSide,
-      // Preserve the exterior-start case immediately. Shared-boundary closure
-      // below also locks every active wall, including chains started on an
-      // inner face and ending on another inner face.
-      bodyNormalSide: session.activeSpaceSharedSnapLine === 'outer' ? measurementSide : '',
+      // Preserve the exterior-start case immediately. Shared-boundary first
+      // walls also lock the inferred body side so toggling the measuring edge
+      // can move the redline without flipping occupancy.
+      bodyNormalSide: session.previewBodyNormalSide ||
+        (session.activeSpaceSharedSnapLine === 'outer' ? measurementSide : ''),
       measurementStartInsetMm,
       measurementStartExtensionMm,
       measurementEndInsetMm,
@@ -4211,6 +4268,45 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   }
 
   return touchDraft(next);
+}
+
+function wallKeepsStrictAxis(start, end) {
+  return isAxisAlignedWithAnchor(start, end, 1);
+}
+
+function attachStraightWallToCloseNode(floor, wall, targetNode, inputSource) {
+  if (!wall || !targetNode) return wall;
+  const start = getNode(floor, wall.startNodeId);
+  const end = getNode(floor, wall.endNodeId);
+  if (!start || !end) return wall;
+  if (end.id === targetNode.id) return wall;
+  const keepAxis = wall.mode !== 'diagonal' && wallKeepsStrictAxis(start, end);
+  if (!keepAxis || wallKeepsStrictAxis(start, targetNode)) {
+    wall.endNodeId = targetNode.id;
+    return wall;
+  }
+  if (!wallKeepsStrictAxis(end, targetNode) || distanceMm(end, targetNode) <= 0.001) {
+    throw new Error(`闭合误差超过 ${CLOSE_TOLERANCE_MM} mm，请补测最后一面墙`);
+  }
+  const bridge = {
+    id: nextId('wall'),
+    startNodeId: end.id,
+    endNodeId: targetNode.id,
+    mode: 'straight',
+    lengthMm: distanceMm(end, targetNode),
+    angleDeg: angleDeg(end, targetNode),
+    thicknessMm: wall.thicknessMm,
+    measurementSide: wall.measurementSide,
+    bodyNormalSide: wall.bodyNormalSide || '',
+    measurementStartInsetMm: 0,
+    measurementStartExtensionMm: 0,
+    measurementEndInsetMm: 0,
+    inputSource: inputSource || 'closure-bridge',
+    status: 'confirmed',
+    measuredAt: nowIso()
+  };
+  floor.walls.push(bridge);
+  return bridge;
 }
 
 function confirmClosure(draft) {
@@ -4329,7 +4425,8 @@ function confirmClosure(draft) {
           angleDeg: angleDeg(closureStartNode, closureEndNode),
           thicknessMm: session.thicknessMm,
           measurementSide,
-          bodyNormalSide: session.activeSpaceSharedSnapLine === 'outer' ? measurementSide : '',
+          bodyNormalSide: session.previewBodyNormalSide ||
+            (session.activeSpaceSharedSnapLine === 'outer' ? measurementSide : ''),
           measurementStartInsetMm: 0,
           measurementEndInsetMm,
           inputSource: 'closure-merge',
@@ -4400,7 +4497,7 @@ function confirmClosure(draft) {
     return next;
   }
 
-  const lastWall = getLastWall(floor);
+  let lastWall = getLastWall(floor);
   const oldEndNodeId = lastWall.endNodeId;
   const oldEndNode = getNode(floor, oldEndNodeId);
   let closeTargetNode = getNode(floor, session.closeCandidateNodeId);
@@ -4423,10 +4520,16 @@ function confirmClosure(draft) {
     throw new Error(`闭合误差超过 ${CLOSE_TOLERANCE_MM} mm，请补测最后一面墙`);
   }
 
-  lastWall.endNodeId = session.closeCandidateNodeId;
+  lastWall = attachStraightWallToCloseNode(
+    floor,
+    lastWall,
+    closeTargetNode,
+    'closure-bridge'
+  );
   refreshWallMetrics(floor);
   mergeCollinearOpenChain(floor, startWallIndex);
   mergeCollinearDegree2Walls(floor);
+  lastWall = getLastWall(floor);
 
   const newWallIds = floor.walls.slice(startWallIndex).map((wall) => wall.id);
   // The orange closing line is the live body reference. It can terminate on
@@ -4482,14 +4585,20 @@ function confirmClosure(draft) {
     }
   }
 
-  // For an outer-face closure the last new wall terminates at the outer face
-  // coordinate (one wall thickness away from the topology centre-line). The
-  // shared-wall insertion step above resolved sharedCloseNodeId to the topology
-  // projection on the centre-line. If they differ, redirect the last wall's end
-  // to the topology node so the new wall chain forms a continuous closed loop
-  // with the shared boundary segment.
+  // Outer-face closure ends one thickness off the topology centre-line. Keep
+  // that working coordinate and add a short orthogonal bridge to the shared
+  // corner instead of copying the off-axis vertex onto the last straight wall.
   if (closeCandidateSharedWallId && sharedCloseNodeId !== closeTargetNode.id) {
-    lastWall.endNodeId = sharedCloseNodeId;
+    lastWall = attachStraightWallToCloseNode(
+      floor,
+      lastWall,
+      getNode(floor, sharedCloseNodeId),
+      'closure-bridge'
+    );
+    if (lastWall && newWallIds.indexOf(lastWall.id) === -1) {
+      newWallIds.push(lastWall.id);
+      excludedWallIds[lastWall.id] = true;
+    }
   }
   
   if ((session.activeSpaceSharedWallId && sharedStartNodeId !== session.activeSpaceStartNodeId) || 
@@ -5068,6 +5177,7 @@ function startWallSnap(draft) {
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
   session.activeSpaceSharedSnapLine = '';
+  resetPreviewSideLock(session);
 
   return touchDraft(next);
 }
@@ -5129,6 +5239,7 @@ function snapCursorToWall(draft, point, target) {
   session.selectedWallId = '';
   session.selectedOpeningId = '';
   session.alignmentSnapGuide = null;
+  resetPreviewSideLock(session);
 
   if (resumeOpenChainAtDanglingNode(floor, session, node.id)) {
     const incidentWall = (floor.walls || []).find((wall) => (
@@ -5254,17 +5365,32 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
 function setMeasurementSide(draft, side, wallId) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
+  const session = floor.session;
   const targetSide = side === 'left' ? 'left' : 'right';
-  const targetWallId = wallId || floor.session.selectedWallId;
+  const targetWallId = wallId || session.selectedWallId;
   const wall = targetWallId ? getWall(floor, targetWallId) : null;
 
   // The measuring edge establishes the convention for a free-standing wall
   // chain. A chain snapped to an existing boundary inherits that boundary side.
-  if (!canSetInitialMeasurementSide(floor, floor.session, wall && wall.id)) return next;
+  if (!canSetInitialMeasurementSide(floor, session, wall && wall.id)) return next;
 
-  floor.session.measurementSide = targetSide;
-  if (floor.session.previewPoint) {
-    floor.session.previewMeasurementSide = targetSide;
+  const previousSide = wall && (wall.measurementSide === 'left' || wall.measurementSide === 'right')
+    ? wall.measurementSide
+    : (session.previewMeasurementSide === 'left' || session.previewMeasurementSide === 'right'
+      ? session.previewMeasurementSide
+      : session.measurementSide);
+  session.measurementSideUserSet = true;
+  session.measurementSide = targetSide;
+  if (session.previewPoint) {
+    session.previewMeasurementSide = targetSide;
+  }
+  if (session.activeSpaceSharedWallId && (previousSide === 'left' || previousSide === 'right')) {
+    if (!session.previewBodyNormalSide) {
+      session.previewBodyNormalSide = previousSide;
+    }
+    if (wall && !wall.bodyNormalSide) {
+      wall.bodyNormalSide = session.previewBodyNormalSide;
+    }
   }
   if (wall) {
     wall.measurementSide = targetSide;
@@ -5340,6 +5466,7 @@ function placeNewWallChainCursor(draft, point) {
   session.lastWallSnapWallId = '';
   session.lastWallSnapT = null;
   session.lastWallSnapLine = '';
+  resetPreviewSideLock(session);
   return touchDraft(next);
 }
 
@@ -5384,6 +5511,7 @@ function resetCursor(draft) {
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
   session.activeSpaceSharedSnapLine = '';
+  resetPreviewSideLock(session);
 
   const lastSnapNode = session.lastWallSnapNodeId ? getNode(floor, session.lastWallSnapNodeId) : null;
   const lastSnapWall = session.lastWallSnapWallId ? getWall(floor, session.lastWallSnapWallId) : null;

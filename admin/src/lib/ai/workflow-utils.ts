@@ -12,6 +12,8 @@ type GenerationLike = {
   isSelectedBaseline?: boolean;
   nextRecommendedStage?: string | null;
   status: string;
+  published?: boolean | null;
+  publicationId?: unknown;
   input?: unknown;
   output?: unknown;
   errorMessage?: string | null;
@@ -112,6 +114,7 @@ export function serializeAiGeneration(generation: GenerationLike) {
       generation.updatedAt instanceof Date
         ? generation.updatedAt.toISOString()
         : String(generation.updatedAt),
+    published: generation.published === undefined ? undefined : Boolean(generation.published),
   };
 }
 

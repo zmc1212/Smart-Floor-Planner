@@ -37,6 +37,9 @@ export type CreationGeneration = {
   id: string;
   status: 'created' | 'pending' | 'processing' | 'succeeded' | 'failed' | 'cancelled';
   imageUrl?: string;
+  // When loading a workflow detail, the backend may attach whether this generation
+  // has already been published (confirmed) to the customer under the workflow.
+  published?: boolean;
   error?: string;
   provider?: string;
   model?: string;

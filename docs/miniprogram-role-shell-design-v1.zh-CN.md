@@ -23,7 +23,7 @@
 新的客户、预约、量房、方案或收益业务合同。
 
 当前实施复用四个静态 Tab 路由作为签名角色外壳：客户为“服务/项目/我的”，推荐人为
-“推广/进度/收益/我的”，设计师为“工作台/客户/设计/我的”，测量员为“工作台/任务/量房/我的”，
+“推广/进度/收益/我的”，设计师为“工作台/客户/设计/我的”，测量员为“工作台/我的”，
 企业负责人为“经营/客户/预约/我的”。每个工作区只读取当前签名身份的服务端聚合；测量员
 只能从已指派任务进入唯一正式量房编辑器，绝不以空白或模拟 Tab 占位。
 
@@ -72,10 +72,10 @@ TabBar 由服务端 bootstrap 的 `current.capabilities` 生成；客户端隐�
 
 | 角色 | 顺序与文案 | 入口能力 | 徽标来源 |
 | --- | --- | --- | --- |
-| 客户 | `服务 / 项目 / 我的` | `customer.service`、`customer.projects`、`account` | 服务端本人预约/项目待办计数；失败显示“暂时无法读取” |
+| 客户 | `服务 / 我的` | `customer.service`、`account` | 服务端本人待预约/待改期/待重约计数；失败显示“暂时无法读取”。服务首屏直达档案；`customer.projects` 仍守卫档案/列表 API，`customer-projects` 仅为重定向壳 |
 | 推荐人 | `推广 / 进度 / 收益 / 我的` | `referrer.promotion`、`referrer.progress`、`referrer.earnings`、`account` | 当前成员关系的脱敏里程碑和收益状态；不显示客户数量猜测 |
 | 设计师 | `工作台 / 客户 / 设计 / 我的` | `staff.leads`、`staff.appointments`、`staff.design`、`account` | 本人待跟进/预约/发布状态；无数据不显示假数字 |
-| 测量员 | `工作台 / 任务 / 量房 / 我的` | `staff.schedule`、`staff.tasks`、`staff.surveying`、`account` | 本人预约和待交接任务；日程保留为工作台入口，“量房”只进入已指派上下文 |
+| 测量员 | `工作台 / 客户 / 我的` | `staff.schedule`、`staff.tasks`、`account` | 工作台 Tab 聚合今日预约；“客户”Tab 用于查看已量房完成客户与相关跟进/交接状态；量房相关深层编辑器仍由任务上下文触发 |
 | 企业负责人 | `经营 / 客户 / 预约 / 我的` | `enterprise.operations`、`enterprise.customers`、`enterprise.appointments`、`account` | 当前租户异常/审批/预约异常；不混入员工个人待办 |
 
 当前项使用品牌绿和浅薄荷底，其他项使用中性灰；图标使用现有本地授权图标集。推荐人

@@ -6,7 +6,7 @@ import { Ellipsis, Images, Pencil, Plus, RefreshCw, TestTube2, Trash2, WalletCar
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Button, Dropdown, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import type { Provider } from '@/components/ai-providers/types';
 
 type ProviderAction = 'test' | 'models' | 'balance' | 'disable' | 'delete';

@@ -24,9 +24,9 @@ function loadPageConfig(relativePath) {
 
 test('V3 page-role assets remain native artwork instead of flattened page screenshots', () => {
   const aiHome = read('pages/ai-design/ai-design.wxml');
-  assert.match(aiHome, /class="recipe-hero"/);
+  assert.match(aiHome, /class="create-scheme-hero"/);
   assert.match(aiHome, /class="recipe-waterfall"/);
-  assert.match(aiHome, /\/images\/ai-recipe\/recipe-atelier-hero\.jpg/);
+  assert.match(aiHome, /\/images\/airy-v1\/xiao-k-designer-3d\.png/);
   assert.doesNotMatch(aiHome, /\/images\/page-ip-v3\/ai-home\.png/);
 
   const references = [
@@ -137,6 +137,8 @@ test('AI history V3 keeps time, status progress, local icons, and compact card g
   assert.match(wxml, /\/images\/leads-v4\/chevron-right\.png/);
   assert.match(wxml, /class="history-progress-track"/);
   assert.match(wxml, /class="history-image history-image-placeholder"/);
+  assert.match(wxml, /进入方案/);
+  assert.match(wxml, /catchtap="openScheme"/);
   assert.match(less, /min-height: 262rpx/);
   assert.match(less, /grid-template-columns: 264rpx minmax\(0, 1fr\)/);
   assert.match(less, /height: 66rpx/);
@@ -150,6 +152,18 @@ test('AI history V3 keeps time, status progress, local icons, and compact card g
   assert.equal(decorated.modeTitle, '空间换风格');
   assert.equal(decorated.statusClass, 'processing');
   assert.equal(decorated.statusLabel, '生成中 68%');
+  assert.equal(decorated.canOpenScheme, false);
+
+  const schemeItem = page.decorateHistoryItem({
+    status: 'succeeded',
+    mode: 'floor_plan_render',
+    leadId: '11',
+    workflowId: '22',
+    floorPlanId: '33',
+    updatedAt: new Date(2026, 7, 11, 10, 21).toISOString(),
+  });
+  assert.equal(schemeItem.canOpenScheme, true);
+  assert.match(read('packages/ai-workflow/history/ai-design-history.js'), /openSchemeStudio/);
 });
 
 test('recommendations expose only the native share path after a real local selection', () => {

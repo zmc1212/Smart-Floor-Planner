@@ -33,7 +33,13 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageJs, /appointment_already_exists/);
   assert.match(pageJs, /startAt: selectedSlot\.startAt/);
   assert.match(pageJs, /endAt: selectedSlot\.endAt/);
-  assert.match(pageJs, /address: String\(address\)\.trim\(\)/);
+  assert.match(pageJs, /address: addressText/);
+  assert.match(pageJs, /appointmentCommunitySync/);
+  assert.match(pageJs, /shouldOfferCommunitySync/);
+  assert.match(pageJs, /同步到客户小区/);
+  assert.match(pageJs, /wx\.chooseLocation/);
+  assert.match(pageJs, /coordinateSystem: 'gcj02'/);
+  assert.match(pageJs, /location,/);
   assert.match(pageJs, /getMenuButtonBoundingClientRect/);
   assert.match(pageWxml, /packages\/business\/assets\/appointment-booking-v1\/schedule-guide\.png/);
   assert.match(pageWxml, /class="back-chevron"/);
@@ -41,6 +47,8 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageJs, /actionWidth: Math\.max\(0, Number\(windowInfo\.windowWidth \|\| 390\) - 28\)/);
   assert.match(pageWxml, /class="confirm sfp-primary-action" style="width: \{\{actionWidth\}\}px;"/);
   assert.match(pageWxml, /确认预约/);
+  assert.match(pageWxml, /量房地点/);
+  assert.match(pageWxml, /地图选择/);
   assert.match(pageWxml, /系统将安排合适的量房伙伴上门/);
   assert.match(pageWxss, /env\(safe-area-inset-bottom\)/);
   assert.match(pageWxss, /\.back-chevron/);
@@ -48,6 +56,29 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageWxss, /\.confirm\[disabled\].*color: #ffffff/);
   assert.match(pageWxss, /\.confirm \{ display: block;/);
   assert.match(pageWxss, /font-size: 24rpx/);
+});
+
+test('booking saves a GCJ-02 map point and keeps manual address entry available', () => {
+  const definition = loadBookingPage();
+  const originalWx = global.wx;
+  global.wx = {
+    chooseLocation({ success }) {
+      success({ name: '阳光花园', address: '广东省广州市天河区阳光路 1 号', latitude: 23.1291, longitude: 113.2644 });
+    },
+  };
+  const context = {
+    data: { ...definition.data, address: '' },
+    setData(next) { Object.assign(this.data, next); },
+  };
+  try {
+    definition.chooseLocation.call(context);
+    assert.deepEqual(context.data.location, {
+      locationName: '阳光花园', latitude: 23.1291, longitude: 113.2644, coordinateSystem: 'gcj02',
+    });
+    assert.equal(context.data.address, '广东省广州市天河区阳光路 1 号');
+  } finally {
+    global.wx = originalWx;
+  }
 });
 
 test('designer booking keeps every date the server makes available in the existing date scroller', async () => {
@@ -85,5 +116,7 @@ test('lead detail exposes first booking to scheduling roles only without a confi
   assert.match(detailWxml, /wx:if="\{\{canScheduleAppointment\}\}"/);
   assert.match(detailWxml, />安排上门量房<\/button>/);
   assert.match(detailWxml, />查看预约<\/button>/);
+  assert.match(detailJs, /customer-ai-schemes\/customer-ai-schemes\?leadId=/);
+  assert.doesNotMatch(detailJs, /ai-design-result\?id=/);
   assert.match(detailWxss, /\.appointment-entry-action/);
 });

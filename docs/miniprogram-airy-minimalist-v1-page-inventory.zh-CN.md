@@ -65,10 +65,10 @@ Logo：预留位置，导出时合成 brand-logo.png
 
 | 身份/页面族 | 允许的 TabBar | 深层页面规则 |
 | --- | --- | --- |
-| 客户 | `服务 / 项目 / 我的` | `customer-project`、预约详情、首次预约和改期均无 TabBar；`customer-projects` 才是“项目”Tab |
+| 客户 | `服务 / 我的` | `customer-project`、`customer-ai-schemes`、预约详情、首次预约和改期均无 TabBar；`customer-projects` 仅为旧深链重定向壳（不再作产品列表）；服务首屏直达档案，列表 API 供给排序/切换；已发布方案册经线索详情/项目档案深链进入 |
 | 推荐人 | `推广 / 进度 / 收益 / 我的` | `referrer-progress` 与 `referrer-earnings` 挂载当前推荐人 TabBar；不得显示客户/员工导航 |
 | 设计师 | `工作台 / 客户 / 设计 / 我的` | 资料、设置、账号安全、AI 工作流子页均为深层页，无 TabBar |
-| 测量员 | `工作台 / 任务 / 量房 / 我的` | 不可用时间、预约详情和正式量房编辑器均为深层页，无 TabBar |
+| 测量员 | `工作台 / 客户 / 我的` | 不可用时间、预约详情和正式量房编辑器均为深层页；“客户”Tab 用于查看已量房完成客户与统计入口 |
 | 企业负责人 | `经营 / 客户 / 预约 / 我的` | `enterprise-appointments` 是“预约”Tab；线索详情、预约详情和资料页均无 TabBar |
 | 身份恢复/切换 | 无 | 身份列表、恢复、资料编辑、设置、账号安全均不得套用任一角色的底部导航 |
 
@@ -76,13 +76,13 @@ Logo：预留位置，导出时合成 brand-logo.png
 
 | 编号 | 页面 | 运行路由 | 当前文件 | 备注 |
 | --- | --- | --- | --- | --- |
-| A01 | 客户服务首页 / 工作台 | `pages/index/index`（客户） | `01-customer-workbench.jpg` | 客户主场景 |
+| A01 | 客户服务首页 / 工作台 | `pages/index/index`（客户） | `01-customer-workbench.jpg` | 客户主场景；早期阶段以 `docs/superpowers/specs/2026-08-21-customer-service-home-stage-companion-design.md` 为准（小 K 阶段陪伴），不强制空双缩略图 01 |
 | A02 | 客户项目服务档案 | `packages/business/customer-project/customer-project` | `02-customer-project-archive.jpg` | 项目详情，不是项目索引 |
 | A03 | 预约详情 | `packages/business/appointment-detail/appointment-detail` | `03-appointment-reschedule.jpg` | 与改期共用一张稿 |
 | A04 | 预约改期 | `packages/business/appointment-reschedule/appointment-reschedule` | `03-appointment-reschedule.jpg` | 已确认预约后的改期状态 |
-| A05 | 设计师工作台 | `pages/index/index`（设计师） | `04-designer-workbench.jpg` | 角色首页 |
-| A06 | 测量员工作台 | `pages/index/index`（测量员） | `05-measurer-workbench.jpg` | 角色首页 |
-| A07 | 推荐人工作台 | `packages/business/referrer-workbench/referrer-workbench` | `06-promoter-workbench.jpg` | 企业选择和服务码入口 |
+| A05 | 设计师工作台 | `pages/index/index`（设计师） | `04b-designer-workbench-dashboard.jpg` | 含「我的」经营大盘五卡；旧基线 `04-designer-workbench.jpg` 仍可对照 |
+| A06 | 测量员工作台 | `pages/index/index`（测量员） | `05b-measurer-workbench-dashboard.jpg` | 含「我的」经营大盘五卡；旧基线 `05-measurer-workbench.jpg` 仍可对照 |
+| A07 | 推荐人工作台 | `packages/business/referrer-workbench/referrer-workbench` | `06b-promoter-workbench-signed-count.jpg` | Hero 增加已签约数量位；不上完整经营大盘 |
 | A08 | 测量员量房日程 | `packages/business/measurer-calendar/measurer-calendar` | `07-measurer-calendar.jpg` | 含不可用时间入口，但不含编辑器 |
 
 ## 3. 待生成：推荐网络与获客链路（最高优先级）
@@ -92,8 +92,8 @@ Logo：预留位置，导出时合成 brand-logo.png
 | 勾选 | 编号 | 页面/状态 | 运行路由 | 建议文件名 |
 | :---: | --- | --- | --- | --- |
 | [x] | P01 | 服务码展示模板（推荐人 / 员工共用） | `packages/business/promotion-service-code/promotion-service-code` | `09-promotion-service-code.jpg` |
-| [x] | P02 | 扫码后确认领取服务 | `packages/business/free-design-service/free-design-service` | `10-free-design-confirm.jpg` |
-| [x] | P03 | 手机号授权 | `packages/business/free-design-service/free-design-service` | `11-free-design-phone-auth.jpg` |
+| [x] | P02 | 扫码后确认领取服务（历史对照稿；生产链路已跳过） | `packages/business/free-design-service/free-design-service` | `10-free-design-confirm.jpg` |
+| [x] | P03 | 手机号授权（扫码落地态） | `packages/business/free-design-service/free-design-service` | `11-free-design-phone-auth.jpg` |
 | [x] | P04 | 授权成功、已分配设计师 | `packages/business/free-design-service/free-design-service` | `12-free-design-success.jpg` |
 | [x] | P05 | 已领取但暂未分配设计师 | `packages/business/free-design-service/free-design-service` | `13-free-design-assignment-pending.jpg` |
 | [x] | P06 | 客户已有未关闭服务归属 | `packages/business/free-design-service/free-design-service` | `14-free-design-existing-attribution.jpg` |
@@ -104,7 +104,7 @@ Logo：预留位置，导出时合成 brand-logo.png
 `onboarding-debug` 仅开发版使用，不建议单独投入高保真设计；如需调试稿，可命名为
 `debug-onboarding-scanner.jpg`，并明确标注“开发版”。
 
-> P02 确认领取后进入同一路由的 P03 手机号授权态；微信 `getPhoneNumber` 发生在 P03。
+> 生产扫码解析成功后直接进入同一路由的 P03 手机号授权态（跳过 P02 确认领取）；微信 `getPhoneNumber` 发生在 P03。
 > 授权完成后进入 P04（已匹配）、P05（匹配中）或 P06（已有进行中服务）之一。
 
 > P07 复用 P01 的服务码展示结构（顶部品牌锁、服务码主卡、三项承诺和出示/分享操作）；
@@ -116,10 +116,10 @@ Logo：预留位置，导出时合成 brand-logo.png
 
 | 勾选 | 编号 | 页面 | 运行路由 | 建议文件名 |
 | :---: | --- | --- | --- | --- |
-| [x] | R01 | 企业负责人经营工作台 | `pages/index/index`（企业负责人） | `18-enterprise-operations-workbench.jpg` |
+| [x] | R01 | 企业负责人经营工作台 | `pages/index/index`（企业负责人） | `18b-enterprise-ops-dashboard-period.jpg`（自定义 sheet `18c`；旧基线 `18` 可对照） |
 | [x] | R02 | 企业负责人客户列表 | `pages/leads-management/leads-management`（企业负责人） | `19-enterprise-customer-list.jpg` |
 | [x] | R03 | 企业负责人预约列表 | `packages/business/enterprise-appointments/enterprise-appointments` | `20-enterprise-appointments.jpg` |
-| [x] | R04 | 客户项目索引 | `packages/business/customer-projects/customer-projects` | `21-customer-project-index.jpg` |
+| [x] | R04 | 客户项目索引（已退役为深链重定向壳） | `packages/business/customer-projects/customer-projects` | `21-customer-project-index.jpg`（产品列表 UI 已退役；首屏阶段陪伴承接排序/切换） |
 | [x] | R05 | 推荐人服务进度 | `packages/business/referrer-progress/referrer-progress` | `22-referrer-progress.jpg` |
 | [x] | R06 | 推荐人收益 | `packages/business/referrer-earnings/referrer-earnings` | `23-referrer-earnings.jpg` |
 | [x] | R07 | 设计师客户列表 | `pages/leads-management/leads-management`（设计师） | `24-designer-customer-list.jpg` |
@@ -157,6 +157,8 @@ Logo：预留位置，导出时合成 brand-logo.png
 | [x] | D05 | 生成前确认 | `packages/ai-workflow/recipe-confirm/recipe-confirm` | `41-ai-recipe-confirm.jpg` |
 | [x] | D06 | 生成中、失败、结果交付 | `packages/ai-workflow/result/ai-design-result` | `42-ai-design-result-states.jpg` |
 | [x] | D07 | 历史任务 | `packages/ai-workflow/history/ai-design-history` | `43-ai-design-history.jpg` |
+| [x] | D08 | 客户 AI 方案册（纯展示时间轴） | `packages/business/customer-ai-schemes/customer-ai-schemes` | `44-customer-ai-scheme-timeline.jpg` |
+| [x] | D09 | 设计师 AI 方案工作台 | `packages/ai-workflow/scheme-studio/scheme-studio` | `45-ai-scheme-studio.jpg`、`45b-ai-scheme-studio-templates.jpg` |
 
 ## 7. 剩余页面的锁定合同
 
@@ -165,10 +167,10 @@ Logo：预留位置，导出时合成 brand-logo.png
 
 | 编号 | 锁定合同 |
 | --- | --- |
-| R01 | 企业负责人 `pages/index/index` 的**有数据异常台**。标题、副标题、三项摘要和异常条目直接使用 `GET /api/miniprogram/workbench` 的 `title`、`subtitle`、`summary`、`primaryItems`；只表达待派失败、过期未重约和人员缺口。允许企业负责人 TabBar，不得绘制派单、签约、人员管理等未接通操作。 |
+| R01 | 企业负责人 `pages/index/index` 的**有数据异常台 + 可筛选经营大盘**。标题、副标题、三项摘要和异常条目直接使用 `GET /api/miniprogram/workbench` 的 `title`、`subtitle`、`summary`、`primaryItems`；只表达待派失败、过期未重约和人员缺口。经营大盘为只读五卡 KPI（新增线索/已完成量房/方案交付率/已签约/签单率），支持周期 chips 与自定义 sheet；允许展示签约金额 detail。允许企业负责人 TabBar，不得绘制派单、签约操作、人员管理等未接通动作（签约事实只作 KPI，首页不做改状态）。 |
 | R02 | 企业负责人客户 Tab 的**有数据列表**。只使用当前线索列表真实字段和现有搜索/进入详情动作；“新增客户”仅企业负责人可见且只能出现一次。不得加入户型风格、项目面积、收费、分派或列表接口未返回的客户资料。 |
 | R03 | 企业负责人“预约”Tab 的**有数据列表**。页面壳复用工作台真实 `title/subtitle`，列表区只显示接口返回的 `confirmed` 与 `expired` 预约项及现有进入预约详情动作；TabBar 为 `经营/客户/预约/我的`，选中“预约”。 |
-| R04 | 客户项目索引的**有数据列表**。仅显示当前 JWT 客户本人的中立“免费设计服务”项目名称、阶段摘要、更新时间和进入项目档案的动作；不展示企业品牌、内部人员、户型风格或非本人项目。TabBar 仅为 `服务/项目/我的`，选中“项目”。 |
+| R04 | 客户项目索引**产品列表已退役**。运行时 `customer-projects` 仅为深链重定向壳（排序后进 `customer-project` 或回落「服务」Tab）。多项目切换与排序由服务首屏阶段陪伴承接；历史稿 `21-customer-project-index.jpg` 不再作为生产列表 UI 源。 |
 | R05 | 推荐人服务进度的**有数据状态**。锁定标题“当前企业的服务事实”和隐私说明；单项只能有脱敏客户标识、`stage.label`、按代码格式化的“`M月D日更新`”。禁止相对时间、客户项目名、地址、面积、电话、内部原因，以及自行补出的三段或多段进度条。 |
 | R06 | 推荐人收益的**有数据状态**。只显示当前成员关系的待支付/已支付汇总、脱敏客户标识、金额和支付状态；不得出现项目名、面积、成交日期、客户联系方式或收益以外的服务事实。TabBar 为 `推广/进度/收益/我的`，选中“收益”。 |
 | R07 | 设计师客户 Tab 的**有数据列表**。只显示当前已授权客户及既有进入详情动作；不得显示“新增客户”、企业经营统计、他人客户或负责人操作。TabBar 为 `工作台/客户/设计/我的`，选中“客户”。 |
@@ -191,6 +193,8 @@ Logo：预留位置，导出时合成 brand-logo.png
 | D05 | 生成前确认的**可提交状态**。仅汇总已选项目、空间、配方和当前实际消耗/确认信息；禁止添加付款、审批、签约或接口不存在的前置条件。无 TabBar。 |
 | D06 | 生成中、失败、结果交付分别产出独立文件。结果页仅使用真实任务状态、生成结果、发布/撤回权限和既有动作；不得在一个文件混合转圈、失败提示和成功交付。无 TabBar。 |
 | D07 | 历史任务的**有数据列表**。只展示当前用户/授权范围内的真实任务摘要、状态、时间和现有进入结果动作；不得将其他客户任务、消费明细或批量管理能力加入页面。无 TabBar。 |
+| D08 | 客户 AI 方案册的**多轮已发布有数据主态**。只读：自定义导航「客户 AI 方案」、客户摘要 Hero、横向方案轮次 chips、当前轮主预览、当前轮交付时间轴、底部返回与（客户）保存/分享。方案轮次与图片来自已发布 `publishedSchemes`/`groupPublishedSchemes`；点击预览走 `wx.previewImage`。禁止生成、发布/撤回、材质微调、导出方案包及任何 AI 工作台编辑入口。无 TabBar。单轮/空态/图片不可读为后续状态稿。 |
+| D09 | 设计师 `scheme-studio` 的**有轮次主态**。胶囊安全自定义导航、横向方案 chips、项目卡、出图轮次时间线；底部为悬浮 AI 输入 dock（`45c`：点数条 + 提示词 + 参考/模型/比例/模板/设置 + 圆形生成），「设置」打开 `45d` 出图设置半屏；「模板」为封面网格 + 分类/搜索 + 先放大再使用。数据走 Mini Studio API。无 TabBar。 |
 
 ## 8. 每个页面至少需要补的状态稿
 
@@ -216,7 +220,7 @@ Logo：预留位置，导出时合成 brand-logo.png
 2. **角色落点**：R01–R08，先补企业负责人，再补客户项目索引和推荐人进度/收益。
 3. **身份恢复**：R09–R13。
 4. **预约与量房**：S01–S06。
-5. **AI 方案链路**：D01–D07。
+5. **AI 方案链路**：D01–D09（D08 为客户侧只读方案册；D09 为设计师方案工作台）。
 6. **最后补异常/空/加载状态**，并用同一页面编号追加状态后缀，例如 `32-appointment-booking-empty.jpg`。
 
 ## 10. 现有旧设计源（不是 Airy 新稿）

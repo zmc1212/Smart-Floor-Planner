@@ -1,0 +1,64 @@
+<h2>设计稿 · 第 2 节：阶段文案与小K动作</h2>
+<p class="subtitle">解决你截图里的重复文案：标题 / 副标题 / 内嵌区各说一件事，不叠同一句。</p>
+
+<div class="section">
+  <h3>文案分层（硬规则）</h3>
+  <ul>
+    <li><b>Hero 副标题</b>：只用 <code>appointmentSummary</code>（客户可读的一句话状态）</li>
+    <li><b>内嵌区标题</b>：只用「下一步：{主 CTA 文案}」或已交付摘要，不重复副标题</li>
+    <li><b>内嵌区说明</b>：一句陪伴解释（小K口吻），不复述副标题全文</li>
+    <li><b>微进度 pill</b>：匹配 → 预约 → 量房 → 方案（已完成绿 / 当前橙 / 未到灰）</li>
+    <li>阶段标签「已匹配测量员」不再单独做列表卡标题（那是重复源）</li>
+  </ul>
+</div>
+
+<div class="mockup">
+  <div class="mockup-header">关键客户态示意（内嵌区内容）</div>
+  <div class="mockup-body" style="display:grid;gap:10px;font-family:system-ui;font-size:13px;">
+    <div style="display:grid;grid-template-columns:88px 1fr;gap:10px;background:#f7faf7;border-radius:12px;padding:10px;border:1px solid #e3ece4;">
+      <div style="background:#dff5e8;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;color:#1f9d55;padding:8px;">小K<br>等待派单</div>
+      <div><b>等待派单</b><br><span style="color:#666;font-size:12px;">服务向导正在为你匹配设计师和测量员</span><br><span style="font-size:11px;color:#999;">主 CTA：等待派单（禁用或弱化）· 次：服务档案</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:88px 1fr;gap:10px;background:#f7faf7;border-radius:12px;padding:10px;border:1px solid #e3ece4;">
+      <div style="background:#dff5e8;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;color:#1f9d55;padding:8px;">小K<br>引导预约</div>
+      <div><b>下一步：预约上门</b><br><span style="color:#666;font-size:12px;">人员已就位，选一个方便上门的时段</span><br><span style="font-size:11px;color:#999;">副标题仅一句：已匹配设计师和测量员，请预约…</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:88px 1fr;gap:10px;background:#f7faf7;border-radius:12px;padding:10px;border:1px solid #e3ece4;">
+      <div style="background:#dff5e8;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;color:#1f9d55;padding:8px;">小K<br>日程提醒</div>
+      <div><b>下一步：改期 / 看服务档案</b><br><span style="color:#666;font-size:12px;">按约定上门；窗口内可改期</span><br><span style="font-size:11px;color:#999;">副标题用真实时间：3月21日 14:00 上门量房</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:88px 1fr;gap:10px;background:#f7faf7;border-radius:12px;padding:10px;border:1px solid #e3ece4;">
+      <div style="background:#dff5e8;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;color:#1f9d55;padding:8px;">小K<br>+户型缩略</div>
+      <div><b>量房完成 · 可进服务档案</b><br><span style="color:#666;font-size:12px;">正式户型已入库，设计师正在准备方案</span><br><span style="font-size:11px;color:#999;">有预览图则替换小K位；无图仍留小K</span></div>
+    </div>
+    <div style="display:grid;grid-template-columns:88px 1fr;gap:10px;background:#f7faf7;border-radius:12px;padding:10px;border:1px solid #e3ece4;">
+      <div style="background:#dff5e8;border-radius:10px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:11px;color:#1f9d55;padding:8px;">方案图<br>或小K</div>
+      <div><b>方案已发布 · 我的服务档案</b><br><span style="color:#666;font-size:12px;">设计师已交付，可在档案里查看与保存</span><br><span style="font-size:11px;color:#999;">优先展示已发布方案缩略图</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>阶段 → 小K / 主 CTA / 内嵌媒体</h3>
+  <table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead>
+      <tr style="text-align:left;border-bottom:1px solid #ddd;">
+        <th style="padding:6px;">阶段</th>
+        <th style="padding:6px;">小K动作</th>
+        <th style="padding:6px;">主 CTA</th>
+        <th style="padding:6px;">内嵌媒体</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #eee;"><td style="padding:6px;">claimed / assignment_pending</td><td style="padding:6px;">等待派单</td><td style="padding:6px;">等待派单</td><td style="padding:6px;">小K only</td></tr>
+      <tr style="border-bottom:1px solid #eee;"><td style="padding:6px;">measurer_assigned</td><td style="padding:6px;">引导预约</td><td style="padding:6px;">预约上门</td><td style="padding:6px;">小K only</td></tr>
+      <tr style="border-bottom:1px solid #eee;"><td style="padding:6px;">appointment_confirmed</td><td style="padding:6px;">日程提醒</td><td style="padding:6px;">改期 或 服务档案</td><td style="padding:6px;">小K only</td></tr>
+      <tr style="border-bottom:1px solid #eee;"><td style="padding:6px;">expired / awaiting_rebooking</td><td style="padding:6px;">协助重约</td><td style="padding:6px;">重新预约</td><td style="padding:6px;">小K only</td></tr>
+      <tr style="border-bottom:1px solid #eee;"><td style="padding:6px;">survey_completed</td><td style="padding:6px;">展示户型</td><td style="padding:6px;">我的服务档案</td><td style="padding:6px;">户型预览优先，否则小K</td></tr>
+      <tr style="border-bottom:1px solid #eee;"><td style="padding:6px;">design_published / converted</td><td style="padding:6px;">成果交付</td><td style="padding:6px;">我的服务档案</td><td style="padding:6px;">方案缩略优先</td></tr>
+    </tbody>
+  </table>
+  <p style="font-size:12px;color:#666;margin-top:8px;">客户侧主 CTA 文案「看项目」统一改为「我的服务档案」。次 CTA 恒为进档案（无 lead 时隐藏）。</p>
+</div>
+
+<p class="subtitle">第 2 节可以吗？回复「可以」进入第 3 节（下线「我的项目」页与深链兼容）；要改直接说。</p>

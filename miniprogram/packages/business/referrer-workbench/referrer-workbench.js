@@ -76,6 +76,7 @@ Page({
     userName: '',
     todayScans: 0,
     totalClients: 0,
+    signedCount: 0,
     pendingEarnings: '0.00',
     progressCount: 0,
     milestones: [],
@@ -126,6 +127,7 @@ Page({
 
       let todayScans = 0;
       let totalClients = 0;
+      let signedCount = 0;
       let pendingEarnings = '0.00';
       let progressCount = 0;
       let milestones = [];
@@ -143,6 +145,7 @@ Page({
           totalClients = progressItems.length;
           progressCount = progressItems.length;
           todayScans = progressItems.filter((item) => isToday(item.updatedAt) || isToday(item.convertedAt)).length;
+          signedCount = progressItems.filter((item) => item.stage && item.stage.key === 'converted').length;
 
           const payableSum = earningsItems
             .filter((item) => item.status === 'payable')
@@ -199,6 +202,7 @@ Page({
         userName,
         todayScans,
         totalClients,
+        signedCount,
         pendingEarnings,
         progressCount,
         milestones,

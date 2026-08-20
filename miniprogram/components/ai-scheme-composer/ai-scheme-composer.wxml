@@ -1,0 +1,254 @@
+<view class="composer-root">
+  <view class="composer-shell dock">
+    <view wx:if="{{view}}" class="credit-pill">{{view.creditSummary}}</view>
+    <view wx:else class="credit-pill muted">加载模型与点数配置中</view>
+
+    <textarea
+      class="prompt-input"
+      value="{{draft.prompt}}"
+      maxlength="2000"
+      placeholder="描述空间、光线与风格，一键出图"
+      bindinput="onPromptInput"
+      auto-height
+      show-confirm-bar="{{false}}"
+      disabled="{{!view}}"
+    ></textarea>
+
+    <view wx:if="{{view && (view.hasReferences || view.canAddReference)}}" class="reference-row">
+      <view
+        wx:if="{{view.canAddReference}}"
+        class="reference-add compact {{uploading ? 'disabled' : ''}}"
+        bindtap="uploadReference"
+      >
+        <text class="reference-add-icon">+</text>
+      </view>
+      <scroll-view wx:if="{{view.hasReferences}}" scroll-x enhanced show-scrollbar="{{false}}" class="reference-scroll">
+        <view class="reference-track">
+          <view wx:for="{{view.referenceAssets}}" wx:key="id" class="reference-item compact">
+            <image wx:if="{{item.previewUrl}}" class="reference-image" src="{{item.previewUrl}}" mode="aspectFill"></image>
+            <view wx:else class="reference-image placeholder"></view>
+            <view class="reference-remove" data-id="{{item.id}}" catchtap="removeReference">×</view>
+          </view>
+        </view>
+      </scroll-view>
+      <text wx:if="{{!view.hasReferences && !view.canAddReference}}" class="reference-hint">当前模型不支持参考图</text>
+    </view>
+
+    <view class="dock-tools">
+      <view class="dock-tools-scroll">
+        <view
+          class="dock-chip {{uploading || !view || !view.canAddReference ? 'disabled' : ''}}"
+          bindtap="uploadReference"
+        >
+          <text class="dock-chip-mark">+</text>
+          <text>参考</text>
+        </view>
+        <view class="dock-chip" data-type="model" bindtap="openPicker">
+          <text>{{view.modelLabel || '模型'}}</text>
+        </view>
+        <view class="dock-chip" data-type="aspect" bindtap="openPicker">
+          <text>{{view.aspectLabel || '比例'}}</text>
+        </view>
+        <view class="dock-chip action" bindtap="openTemplates">模板</view>
+        <view class="dock-chip" bindtap="openSettings">设置</view>
+      </view>
+      <view
+        class="generate-fab {{!view || !view.canSubmit ? 'blocked' : ''}}"
+        bindtap="submitGeneration"
+      >
+        <view class="generate-fab-spark"></view>
+        <text class="generate-fab-label">{{generating ? '提交' : '生成'}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{settingsMounted}}" class="sheet-root settings-layer">
+    <view class="sheet-mask {{settingsOpen ? 'open' : ''}}" catchtap="closeSettings"></view>
+    <view class="sheet-panel tall settings-panel {{settingsOpen ? 'open' : ''}}" catchtap="noop">
+      <view class="sheet-head">
+        <text class="sheet-title">出图设置</text>
+        <view class="sheet-close" bindtap="closeSettings">×</view>
+      </view>
+      <scroll-view wx:if="{{view}}" scroll-y class="settings-scroll">
+        <view class="settings-section">
+          <text class="settings-label">比例</text>
+          <view class="settings-chips">
+            <view
+              wx:for="{{view.aspectOptions}}"
+              wx:key="value"
+              class="settings-chip {{item.active ? 'active' : ''}}"
+              data-field="aspectRatio"
+              data-value="{{item.value}}"
+              bindtap="selectSettingChip"
+            >{{item.label}}</view>
+          </view>
+        </view>
+        <view class="settings-section">
+          <text class="settings-label">出图张数</text>
+          <view class="settings-chips">
+            <view
+              wx:for="{{view.countOptions}}"
+              wx:key="value"
+              class="settings-chip {{item.active ? 'active' : ''}}"
+              data-field="count"
+              data-value="{{item.value}}"
+              bindtap="selectSettingChip"
+            >{{item.label}}</view>
+          </view>
+        </view>
+        <view class="settings-section">
+          <text class="settings-label">分辨率</text>
+          <view class="settings-chips">
+            <view
+              wx:for="{{view.resolutionOptions}}"
+              wx:key="value"
+              class="settings-chip {{item.active ? 'active' : ''}}"
+              data-field="resolutionTier"
+              data-value="{{item.value}}"
+              bindtap="selectSettingChip"
+            >{{item.label}}</view>
+          </view>
+        </view>
+
+        <view class="settings-list">
+          <view class="settings-row" data-type="model" bindtap="openPicker">
+            <text class="settings-row-title">模型</text>
+            <text class="settings-row-value">{{view.modelLabel || '选择模型'}}</text>
+            <view class="settings-row-chevron"></view>
+          </view>
+          <view class="settings-row" bindtap="openTemplates">
+            <text class="settings-row-title">提示词模板</text>
+            <text class="settings-row-value">{{draft.templateName || '未选择'}}</text>
+            <view class="settings-row-chevron"></view>
+          </view>
+          <view class="settings-row {{assisting ? 'disabled' : ''}}" bindtap="assistPrompt">
+            <text class="settings-row-title">提示词优化</text>
+            <text class="settings-row-value">{{assisting ? '优化中…' : '一键优化'}}</text>
+            <view class="settings-row-chevron"></view>
+          </view>
+        </view>
+
+        <view class="settings-credit">{{view.creditSummary}}</view>
+      </scroll-view>
+      <view class="settings-footer">
+        <view class="settings-apply" bindtap="closeSettings">应用并继续编辑</view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{pickerMounted}}" class="sheet-root picker-layer">
+    <view class="sheet-mask {{pickerVisible ? 'open' : ''}}" catchtap="closePicker"></view>
+    <view class="sheet-panel {{pickerVisible ? 'open' : ''}}" catchtap="noop">
+      <view class="sheet-head">
+        <text class="sheet-title">{{pickerTitle}}</text>
+        <view class="sheet-close" bindtap="closePicker">×</view>
+      </view>
+      <scroll-view scroll-y class="sheet-scroll">
+        <view
+          wx:for="{{pickerOptions}}"
+          wx:key="value"
+          class="sheet-option {{item.active ? 'active' : ''}}"
+          data-value="{{item.value}}"
+          bindtap="selectPickerOption"
+        >
+          <text>{{item.label}}</text>
+          <text wx:if="{{item.active}}" class="sheet-check">✓</text>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <view wx:if="{{templateSheetMounted}}" class="sheet-root template-layer">
+    <view class="sheet-mask {{templateSheetOpen ? 'open' : ''}}" catchtap="closeTemplates"></view>
+    <view class="sheet-panel tall {{templateSheetOpen ? 'open' : ''}}" catchtap="noop">
+      <view class="sheet-head">
+        <text class="sheet-title">提示词模板</text>
+        <view class="sheet-close" bindtap="closeTemplates">×</view>
+      </view>
+
+      <view class="template-filters">
+        <view class="template-search">
+          <input
+            class="template-search-input"
+            value="{{templateQuery}}"
+            placeholder="搜索风格、空间或模板"
+            confirm-type="search"
+            bindinput="onTemplateQueryInput"
+            bindconfirm="onTemplateQueryConfirm"
+          />
+          <view wx:if="{{templateQuery}}" class="template-search-clear" bindtap="clearTemplateQuery">清除</view>
+        </view>
+        <scroll-view wx:if="{{templateCategoryChips.length}}" scroll-x enhanced show-scrollbar="{{false}}" class="template-category-scroll">
+          <view class="template-category-track">
+            <view
+              wx:for="{{templateCategoryChips}}"
+              wx:key="id"
+              class="template-category-chip {{item.active ? 'active' : ''}}"
+              data-id="{{item.id}}"
+              bindtap="selectTemplateCategory"
+            >{{item.name}}</view>
+          </view>
+        </scroll-view>
+      </view>
+
+      <view wx:if="{{templateLoading && !templates.length}}" class="sheet-loading">正在加载模板...</view>
+      <scroll-view wx:else scroll-y class="sheet-scroll template-sheet-scroll" bindscrolltolower="loadMoreTemplates">
+        <view wx:if="{{!templates.length}}" class="sheet-empty">{{templateQuery ? '没有匹配的模板' : '暂无可用模板'}}</view>
+        <view wx:else class="template-grid">
+          <view
+            wx:for="{{templates}}"
+            wx:key="id"
+            class="template-card {{draft.templateId === item.id ? 'selected' : ''}}"
+          >
+            <view
+              class="template-cover"
+              data-id="{{item.id}}"
+              catchtap="previewTemplateImage"
+            >
+              <image
+                wx:if="{{item.previewUrl && !item.previewFailed}}"
+                class="template-cover-image"
+                src="{{item.previewUrl}}"
+                mode="aspectFill"
+                data-id="{{item.id}}"
+                binderror="onTemplateImageError"
+              ></image>
+              <view wx:else class="template-cover-placeholder">
+                <text>模板</text>
+              </view>
+              <view wx:if="{{item.previewUrl && !item.previewFailed}}" class="template-zoom-hint">查看大图</view>
+            </view>
+            <text class="template-name">{{item.name}}</text>
+            <view class="template-use" data-id="{{item.id}}" bindtap="selectTemplate">使用此模板</view>
+          </view>
+        </view>
+        <view wx:if="{{templateHasMore}}" class="template-load-more {{templateLoadingMore ? 'disabled' : ''}}" bindtap="loadMoreTemplates">
+          {{templateLoadingMore ? '加载中...' : '加载更多'}}
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+
+  <view wx:if="{{templatePreviewVisible}}" class="template-preview-mask" catchtap="closeTemplatePreview">
+    <view class="template-preview-panel" catchtap="noop">
+      <view class="template-preview-head">
+        <text class="template-preview-title">{{templatePreview.name || '模板预览'}}</text>
+        <view class="sheet-close" bindtap="closeTemplatePreview">×</view>
+      </view>
+      <view class="template-preview-body">
+        <image
+          wx:if="{{templatePreview.previewUrl}}"
+          class="template-preview-image"
+          src="{{templatePreview.previewUrl}}"
+          mode="aspectFit"
+          bindtap="openNativeTemplatePreview"
+        ></image>
+        <view wx:else class="sheet-empty">暂无预览图</view>
+      </view>
+      <view class="template-preview-actions">
+        <view class="template-preview-secondary" bindtap="closeTemplatePreview">关闭</view>
+        <view class="template-preview-primary" data-id="{{templatePreview.id}}" bindtap="selectTemplate">使用此模板</view>
+      </view>
+    </view>
+  </view>
+</view>

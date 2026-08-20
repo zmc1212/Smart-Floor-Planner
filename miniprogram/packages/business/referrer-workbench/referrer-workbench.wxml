@@ -49,6 +49,9 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
             <text class="stat-pill-text">累计客户 {{totalClients}}</text>
           </view>
           <view class="stat-pill">
+            <text class="stat-pill-text">已签约 {{signedCount}}</text>
+          </view>
+          <view class="stat-pill">
             <text class="stat-pill-text">待结收益 ¥{{pendingEarnings}}</text>
           </view>
         </view>

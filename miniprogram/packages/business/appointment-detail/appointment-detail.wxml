@@ -37,7 +37,7 @@
 
       <view class="info-row">
         <view class="info-icon location-icon">📍</view>
-        <text class="info-value">{{appointment.address || '地址待确认'}}</text>
+        <view class="location-value"><text class="info-value">{{appointment.address || '地址待确认'}}</text><text wx:if="{{appointment.locationName}}" class="location-name">{{appointment.locationName}}</text></view>
       </view>
 
       <view class="info-row" wx:if="{{appointment.measurerName || appointment.designerName}}">
@@ -64,9 +64,13 @@
     </view>
 
     <!-- Action Buttons -->
-    <view class="actions" wx:if="{{canReschedule || canCancel || canComplete || canUpdateAddress || canRebook}}">
+    <view class="actions" wx:if="{{canReschedule || canCancel || canComplete || canStartSurvey || canUpdateAddress || canSyncCommunity || canRebook || canNavigate}}">
       <button wx:if="{{canRebook}}" class="primary sfp-primary-action" disabled="{{acting}}" bindtap="rebook">
         重新预约上门
+      </button>
+      <button wx:if="{{canStartSurvey}}" class="primary sfp-primary-action" disabled="{{acting}}" bindtap="startSurvey">
+        <text class="btn-icon">📐</text>
+        <text>{{startSurveyLabel}}</text>
       </button>
       <button wx:if="{{canComplete}}" class="primary sfp-primary-action" loading="{{acting}}" bindtap="complete">
         确认完成量房
@@ -77,7 +81,31 @@
       <button wx:if="{{canCancel}}" class="cancel-btn" disabled="{{acting}}" bindtap="cancel">
         取消本次预约
       </button>
-      <button wx:if="{{canUpdateAddress}}" class="secondary" loading="{{acting}}" disabled="{{acting}}" bindtap="updateAddress">{{appointment.address ? '修改服务地址' : '补充服务地址'}}</button>
+      <view class="secondary-row" wx:if="{{canUpdateAddress || canNavigate}}">
+        <view
+          wx:if="{{canUpdateAddress}}"
+          class="action-btn action-secondary {{canNavigate ? '' : 'action-full'}} {{acting ? 'is-disabled' : ''}}"
+          hover-class="{{acting ? 'none' : 'btn-pressed'}}"
+          aria-role="button"
+          aria-label="{{appointment.address ? '修改服务地址' : '补充服务地址'}}"
+          bindtap="updateAddress"
+        >
+          <text class="btn-icon">✏️</text>
+          <text class="btn-label">{{appointment.address ? '修改服务地址' : '补充服务地址'}}</text>
+        </view>
+        <view
+          wx:if="{{canNavigate}}"
+          class="action-btn action-secondary {{canUpdateAddress ? '' : 'action-full'}} {{acting ? 'is-disabled' : ''}}"
+          hover-class="{{acting ? 'none' : 'btn-pressed'}}"
+          aria-role="button"
+          aria-label="一键导航至量房地点"
+          bindtap="openNavigation"
+        >
+          <text class="btn-icon">📍</text>
+          <text class="btn-label">一键导航至量房地点</text>
+        </view>
+      </view>
+      <button wx:if="{{canSyncCommunity}}" class="cancel-btn" loading="{{acting}}" disabled="{{acting}}" bindtap="syncCommunity">同步到客户小区</button>
     </view>
   </view>
 </view>

@@ -88,3 +88,43 @@ test('published schemes group by workflow and collect ungrouped singles', () => 
     '/miniprogram/customer-projects/7/published-generations/100/image'
   );
 });
+
+test('published image titles never expose designer prompts or internal style keys', () => {
+  const now = new Date('2026-08-20T08:00:00.000Z');
+  const publications = [
+    {
+      publication: {
+        id: 21n,
+        workflowId: 9n,
+        schemeTitle: '灯光设计',
+        sortOrder: 0,
+        publishedAt: now,
+      },
+      generation: {
+        id: 301n,
+        type: 'free_create',
+        stageKey: 'conversation',
+        input: { style: 'conversation', userMessage: '客厅加暖光' },
+      },
+    },
+    {
+      publication: {
+        id: 22n,
+        workflowId: 9n,
+        schemeTitle: '灯光设计',
+        sortOrder: 1,
+        publishedAt: now,
+      },
+      generation: {
+        id: 302n,
+        type: 'free_create',
+        stageKey: 'conversation',
+        input: { style: 'conversation' },
+      },
+    },
+  ] as unknown as CustomerProjectPublication[];
+
+  const schemes = groupPublishedSchemes(publications, '7');
+  assert.equal(schemes[0]?.images[0]?.title, '灯光设计');
+  assert.equal(schemes[0]?.images[1]?.title, '灯光设计');
+});

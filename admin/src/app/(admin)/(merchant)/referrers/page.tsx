@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Alert, Button, Flex, Tag, Typography } from 'antd';
 import { ArrowLeft } from 'lucide-react';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
-import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
+import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type ReferrerMember = {

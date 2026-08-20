@@ -1,17 +1,170 @@
 <view class="page sfp-page">
-  <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"><view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view><view><text class="nav-title">不可预约时间</text><text class="nav-subtitle">量房日程 · 我的安排</text></view></view>
-  <view class="scene" aria-hidden="true"><view class="scene-ruler"></view><view class="scene-calendar"><view></view><view></view><view></view><view></view><view class="scene-calendar-active"></view><view></view></view></view>
-  <view class="editor sfp-card">
-    <picker mode="date" value="{{date}}" bindchange="onDateChange"><view class="date-row"><text>日期</text><text>{{date}}</text></view></picker>
-    <view class="hairline"></view>
-    <view class="time-row"><picker mode="time" value="{{startTime}}" bindchange="onStartTimeChange"><view class="time-picker"><text>开始时间</text><text>{{startTime}}</text></view></picker><picker mode="time" value="{{endTime}}" bindchange="onEndTimeChange"><view class="time-picker"><text>结束时间</text><text>{{endTime}}</text></view></picker></view>
-    <view class="reason-label">原因备注（选填）</view>
-    <input class="reason-input sfp-input-surface" value="{{reason}}" maxlength="100" placeholder="如午休、个人事务" bindinput="onReasonInput" />
-    <button class="save sfp-primary-action" loading="{{saving}}" disabled="{{saving}}" bindtap="save">保存不可用时间</button>
+  <!-- Custom Navigation Bar -->
+  <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
+    <view class="back" bindtap="onBack" aria-role="button" aria-label="返回">
+      <view class="back-chevron"></view>
+    </view>
+    <text class="nav-title">不可用时段管理</text>
   </view>
-  <view class="section-head"><text>已设时段（{{periods.length}}）</text></view>
-  <view wx:if="{{loading}}" class="state">正在加载已设时段…</view>
-  <view wx:elif="{{error}}" class="state"><text>{{error}}</text><button class="retry" bindtap="load">重试</button></view>
-  <view wx:elif="{{periods.length}}" class="period-list"><view wx:for="{{periods}}" wx:key="id" class="period sfp-card"><view><text class="period-time">{{item.date}} {{item.time}}</text><text wx:if="{{item.reason}}" class="period-reason">{{item.reason}}</text></view><button class="delete" data-id="{{item.id}}" loading="{{deletingId === item.id}}" disabled="{{deletingId === item.id}}" bindtap="remove">删除</button></view></view>
-  <view wx:else class="state">还没有设置不可预约时段</view>
+
+  <!-- Friendly Notice Hero Card -->
+  <view class="guide-notice-card">
+    <view class="guide-badge">💡 智能排班防护说明</view>
+    <text class="guide-desc">设置不可用时段后，系统与设计师端在派工或客户预约时将自动规避此时段，确保您的个人休息与行程无冲突。</text>
+  </view>
+
+  <!-- Add Unavailability Form Card -->
+  <view class="editor-card sfp-card">
+    <view class="form-section-title">
+      <text class="section-title-text">添加不可用时段</text>
+    </view>
+
+    <!-- 1. Date Selector -->
+    <view class="form-field-group">
+      <text class="field-label">日期选择</text>
+      <picker mode="date" value="{{date}}" bindchange="onDateChange">
+        <view class="date-picker-box" hover-class="box-pressed">
+          <view class="date-left">
+            <text class="picker-icon">📅</text>
+            <text class="picker-value">{{date}}</text>
+          </view>
+          <view class="picker-change-text">
+            <text>更改日期</text>
+            <view class="small-chevron"></view>
+          </view>
+        </view>
+      </picker>
+    </view>
+
+    <!-- 2. Time Slot Segmented Selector -->
+    <view class="form-field-group">
+      <text class="field-label">时段范围</text>
+      <view class="slot-chips-grid">
+        <view
+          class="slot-chip {{slotMode === 'all_day' ? 'chip-active' : ''}}"
+          data-mode="all_day"
+          bindtap="selectSlotMode"
+          hover-class="chip-pressed"
+        >
+          <text>全天不可用</text>
+        </view>
+        <view
+          class="slot-chip {{slotMode === 'morning' ? 'chip-active' : ''}}"
+          data-mode="morning"
+          bindtap="selectSlotMode"
+          hover-class="chip-pressed"
+        >
+          <text>上午 09:00-12:00</text>
+        </view>
+        <view
+          class="slot-chip {{slotMode === 'afternoon' ? 'chip-active' : ''}}"
+          data-mode="afternoon"
+          bindtap="selectSlotMode"
+          hover-class="chip-pressed"
+        >
+          <text>下午 13:00-18:00</text>
+        </view>
+        <view
+          class="slot-chip {{slotMode === 'custom' ? 'chip-active' : ''}}"
+          data-mode="custom"
+          bindtap="selectSlotMode"
+          hover-class="chip-pressed"
+        >
+          <text>自定义时段</text>
+        </view>
+      </view>
+
+      <!-- Custom Time Pickers (visible if custom mode) -->
+      <view wx:if="{{slotMode === 'custom'}}" class="custom-time-row">
+        <picker mode="time" value="{{startTime}}" bindchange="onStartTimeChange">
+          <view class="time-picker-box">
+            <text class="time-box-label">开始时间</text>
+            <text class="time-box-val">{{startTime}}</text>
+          </view>
+        </picker>
+        <view class="time-separator">-</view>
+        <picker mode="time" value="{{endTime}}" bindchange="onEndTimeChange">
+          <view class="time-picker-box">
+            <text class="time-box-label">结束时间</text>
+            <text class="time-box-val">{{endTime}}</text>
+          </view>
+        </picker>
+      </view>
+    </view>
+
+    <!-- 3. Reason & Preset Tags -->
+    <view class="form-field-group">
+      <view class="field-label-row">
+        <text class="field-label">原因备注（选填）</text>
+        <text class="char-counter">{{reason.length || 0}}/30</text>
+      </view>
+      <view class="preset-tags-row">
+        <view
+          wx:for="{{presetTags}}"
+          wx:key="*this"
+          class="preset-tag {{reason === item ? 'tag-selected' : ''}}"
+          data-tag="{{item}}"
+          bindtap="selectPresetTag"
+          hover-class="tag-pressed"
+        >
+          <text>{{item}}</text>
+        </view>
+      </view>
+      <input
+        class="reason-input sfp-input-surface"
+        value="{{reason}}"
+        maxlength="30"
+        placeholder="选填具体备注（如：外出培训或个人调休）"
+        bindinput="onReasonInput"
+      />
+    </view>
+
+    <!-- Save CTA -->
+    <button class="save-cta-btn sfp-primary-action" loading="{{saving}}" disabled="{{saving}}" bindtap="save" hover-class="btn-pressed">
+      保存并生效
+    </button>
+  </view>
+
+  <!-- Configured Unavailability List Section -->
+  <view class="section-head">
+    <text class="section-head-title">已设置的不可用时段 ({{periods.length}})</text>
+  </view>
+
+  <!-- States & List -->
+  <view wx:if="{{loading}}" class="state-card sfp-card">正在加载已设时段…</view>
+  <view wx:elif="{{error}}" class="state-card sfp-card">
+    <text class="state-error-text">{{error}}</text>
+    <button class="state-retry-btn" bindtap="load">重试</button>
+  </view>
+  <view wx:elif="{{periods.length}}" class="period-list">
+    <view wx:for="{{periods}}" wx:key="id" class="period-card sfp-card">
+      <view class="period-main-info">
+        <view class="period-time-row">
+          <text class="period-date-text">{{item.date}}</text>
+          <text class="period-time-text">{{item.time}}</text>
+          <view class="period-status-badge">
+            <view class="status-dot"></view>
+            <text>生效中</text>
+          </view>
+        </view>
+        <view wx:if="{{item.reason}}" class="period-reason-pill">
+          <text>{{item.reason}}</text>
+        </view>
+      </view>
+      <view
+        class="delete-btn {{deletingId === item.id ? 'delete-btn-disabled' : ''}}"
+        data-id="{{item.id}}"
+        bindtap="remove"
+        hover-class="delete-pressed"
+        aria-role="button"
+        aria-label="删除不可用时段"
+      >
+        <text>{{deletingId === item.id ? '删除中…' : '删除'}}</text>
+      </view>
+    </view>
+  </view>
+  <view wx:else class="empty-card sfp-card">
+    <text class="empty-text">当前暂未设置不可预约时段</text>
+    <text class="empty-subtext">如需请假、调休或外出，可在上方添加时段</text>
+  </view>
 </view>

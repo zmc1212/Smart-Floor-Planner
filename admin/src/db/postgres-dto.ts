@@ -233,12 +233,17 @@ function staffSummaryToDto(
         _id: record.id.toString(),
         displayName: record.displayName,
         username: record.username,
+        phone: record.phone || null,
         role: record.role,
       }
     : null;
 }
 
-export function leadToDto(record: LeadWithRelations, options: { designerWechatQrUrl?: string | null; includeDesignerWechat?: boolean } = {}) {
+export function leadToDto(record: LeadWithRelations, options: {
+  designerWechatQrUrl?: string | null;
+  includeDesignerWechat?: boolean;
+  publishedDesignCount?: number;
+} = {}) {
   const hasFormalFloorPlan = [record.primaryFloorPlanRecord, ...(record.floorPlanRecords || [])]
     .filter(Boolean)
     .some((plan) => {
@@ -252,6 +257,7 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
     measurerId: record.measurerId,
     appointment: record.appointment,
     hasFormalFloorPlan,
+    publishedDesignCount: options.publishedDesignCount,
   });
   return {
     _id: record.id.toString(),
@@ -285,6 +291,10 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
       ? {
           id: record.appointment.id.toString(),
           address: record.appointment.address,
+          locationName: record.appointment.locationName,
+          latitude: record.appointment.latitude == null ? null : Number(record.appointment.latitude),
+          longitude: record.appointment.longitude == null ? null : Number(record.appointment.longitude),
+          coordinateSystem: record.appointment.coordinateSystem,
           timeRange: record.appointment.timeRange,
           status: record.appointment.status,
           version: record.appointment.version,
@@ -305,6 +315,7 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
     serviceStage: serviceStage.key,
     serviceStageLabel: serviceStage.label,
     nextAction: serviceStage.nextAction,
+    publishedDesignCount: Number(options.publishedDesignCount || 0),
     canRebook: canRebookAppointment({
       leadStatus: record.status,
       assignmentStatus: record.assignmentStatus,

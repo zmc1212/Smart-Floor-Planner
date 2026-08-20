@@ -5,7 +5,7 @@ import { PageContainer } from '@ant-design/pro-components';
 import { Alert, Button, Card, Checkbox, Empty, Flex, Result, Skeleton, Tag, Typography } from 'antd';
 import { RefreshCw, Save, ShieldCheck } from 'lucide-react';
 import { ALL_MENUS } from '@/lib/admin-user-roles';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type RoleConfig = {

@@ -21,12 +21,6 @@ function formatRange(range) {
   return { date: `${start.getFullYear()}-${two(start.getMonth() + 1)}-${two(start.getDate())}`, time: `${two(start.getHours())}:${two(start.getMinutes())} - ${two(end.getHours())}:${two(end.getMinutes())}` };
 }
 
-function formatPlanDate(value) {
-  const date = new Date(value || '');
-  if (Number.isNaN(date.getTime())) return '正式量房已完成';
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日完成`;
-}
-
 function buildProjectStages(project) {
   const hasAppointment = Boolean(project && project.appointment && project.appointment.status === 'confirmed');
   const hasFormalFloorPlan = Boolean(project && project.formalFloorPlan);
@@ -34,8 +28,9 @@ function buildProjectStages(project) {
     || (Array.isArray(project && project.publishedDesigns) && project.publishedDesigns.length > 0);
   const stages = [
     { label: '预约确认', complete: hasAppointment },
-    { label: '正式量房', complete: hasFormalFloorPlan },
-    { label: '方案已发布', complete: hasPublishedDesign },
+    { label: '免费量房', complete: hasFormalFloorPlan },
+    { label: '设计出图', complete: hasPublishedDesign },
+    { label: '方案交付', complete: hasPublishedDesign },
   ];
   const currentIndex = stages.findIndex((item) => !item.complete);
   return stages.map((item, index) => ({
@@ -49,7 +44,7 @@ function getAuthToken() {
   return (app && app.globalData && app.globalData.token) || wx.getStorageSync('token') || '';
 }
 
-function fetchPublishedImage(endpoint, cacheKey) {
+function fetchProtectedImage(endpoint, cacheKey) {
   const baseUrl = api.getBaseUrls()[0];
   const token = getAuthToken();
   return new Promise((resolve, reject) => {
@@ -66,11 +61,11 @@ function fetchPublishedImage(endpoint, cacheKey) {
         const contentType = String(response.header && (response.header['content-type'] || response.header['Content-Type']) || '').toLowerCase();
         const extension = contentType.includes('png') ? 'png' : contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' : '';
         if (!extension) {
-          reject(new Error('已发布方案图片格式不受支持'));
+          reject(new Error('图片格式不受支持'));
           return;
         }
-        const safeKey = String(cacheKey || 'published').replace(/[^a-zA-Z0-9_-]/g, '');
-        const filePath = `${wx.env.USER_DATA_PATH}/customer-project-design-${safeKey || 'published'}.${extension}`;
+        const safeKey = String(cacheKey || 'asset').replace(/[^a-zA-Z0-9_-]/g, '');
+        const filePath = `${wx.env.USER_DATA_PATH}/customer-project-${safeKey || 'asset'}.${extension}`;
         wx.getFileSystemManager().writeFile({
           filePath,
           data: response.data,
@@ -78,7 +73,7 @@ function fetchPublishedImage(endpoint, cacheKey) {
           fail: (error) => reject(error instanceof Error ? error : new Error(error && error.errMsg || '图片临时文件写入失败')),
         });
       },
-      fail: (error) => reject(error instanceof Error ? error : new Error(error && error.errMsg || '已发布方案图片读取失败')),
+      fail: (error) => reject(error instanceof Error ? error : new Error(error && error.errMsg || '图片读取失败')),
     });
   });
 }
@@ -103,6 +98,31 @@ function decoratePublishedSchemes(schemes, designs) {
   return [{ id: 'legacy', title: '其他效果图', images }];
 }
 
+function buildPublishedSchemeLabel(scheme) {
+  const title = String(scheme && (scheme.title || scheme.schemeTitle) || '').trim().replace(/^#+/, '');
+  if (!title) return '已发布方案';
+  return `已发布${title.endsWith('方案') ? title : `${title}方案`}`;
+}
+
+function buildDesignerLine(designer) {
+  if (!designer || !designer.displayName) return '待分配设计师';
+  return designer.wechatId ? `${designer.displayName} · 在线沟通` : `${designer.displayName} · 专属服务`;
+}
+
+function buildMeasurerLine(measurerName, formalFloorPlan) {
+  if (!measurerName) return '待分配量房员';
+  if (formalFloorPlan && formalFloorPlan.surveyStatusLabel) {
+    return `${measurerName} · ${formalFloorPlan.surveyStatusLabel}`;
+  }
+  return `${measurerName} · 待上门量房`;
+}
+
+function shouldShowBookingPanel(project) {
+  if (!project) return false;
+  if (project.canRebook || project.canReschedule) return true;
+  return Boolean(project.appointment && !project.formalFloorPlan);
+}
+
 Page({
   data: {
     navigationTop: 24,
@@ -113,22 +133,31 @@ Page({
     appointment: null,
     measurerName: '',
     designer: null,
+    designerLine: '待分配设计师',
+    measurerLine: '待分配量房员',
     range: null,
     formalFloorPlan: null,
+    floorPlanImagePath: '',
+    floorPlanImageState: '',
+    featuredDelivery: null,
     publishedSchemes: [],
     publishedDesigns: [],
     stages: buildProjectStages(null),
+    heroTitle: '',
+    heroSubtitle: '',
+    navSubtitle: '',
     serviceStageLabel: '',
     nextAction: '',
     canRebook: false,
     canReschedule: false,
+    showBookingPanel: false,
     appointmentBadge: '',
     bookingHint: '',
     error: '',
   },
 
   onLoad(query) {
-    this._publishedImageRequestId = 0;
+    this._assetRequestId = 0;
     this.setData({ ...navigationMetrics(), leadId: query.leadId || query.id || '' });
     this.load();
   },
@@ -138,12 +167,12 @@ Page({
   },
 
   onUnload() {
-    this._publishedImageRequestId = (this._publishedImageRequestId || 0) + 1;
+    this._assetRequestId = (this._assetRequestId || 0) + 1;
   },
 
   async load() {
     if (!this.data.leadId) return this.setData({ loading: false, error: '缺少客户项目' });
-    this._publishedImageRequestId = (this._publishedImageRequestId || 0) + 1;
+    this._assetRequestId = (this._assetRequestId || 0) + 1;
     this.setData({ loading: true, error: '' });
     try {
       const result = await api.request(`/miniprogram/customer-projects/${encodeURIComponent(this.data.leadId)}`, 'GET');
@@ -151,10 +180,14 @@ Page({
       const appointment = project.appointment || null;
       const publishedSchemes = decoratePublishedSchemes(project.publishedSchemes, project.publishedDesigns);
       const publishedDesigns = publishedSchemes.flatMap((scheme) => scheme.images);
-      const formalFloorPlan = project.formalFloorPlan
+      const formalFloorPlan = project.formalFloorPlan || null;
+      const featuredDelivery = project.featuredScheme
         ? {
-            ...project.formalFloorPlan,
-            displayCompletedAt: formatPlanDate(project.formalFloorPlan.completedAt || project.formalFloorPlan.updatedAt),
+            ...project.featuredScheme,
+            publishedLabel: buildPublishedSchemeLabel(project.featuredScheme),
+            imagePath: '',
+            imageState: project.featuredScheme.imageEndpoint ? 'loading' : 'error',
+            images: [],
           }
         : null;
       const canRebook = Boolean(project.canRebook);
@@ -163,21 +196,33 @@ Page({
         appointment,
         measurerName: project.measurerName || (appointment && appointment.measurerName) || '',
         designer: project.designer || null,
+        designerLine: buildDesignerLine(project.designer),
+        measurerLine: buildMeasurerLine(
+          project.measurerName || (appointment && appointment.measurerName) || '',
+          formalFloorPlan
+        ),
         range: appointment ? formatRange(appointment.timeRange) : null,
         formalFloorPlan,
+        floorPlanImagePath: '',
+        floorPlanImageState: formalFloorPlan && formalFloorPlan.previewEndpoint ? 'loading' : '',
+        featuredDelivery,
         publishedSchemes,
         publishedDesigns,
         stages: buildProjectStages(project),
+        heroTitle: project.heroTitle || '',
+        heroSubtitle: project.heroSubtitle || '免费量房与设计方案全纪录',
+        navSubtitle: project.navSubtitle || '',
         serviceStageLabel: project.serviceStageLabel || '',
         nextAction: project.nextAction || '',
         canRebook,
         canReschedule,
+        showBookingPanel: shouldShowBookingPanel({ ...project, formalFloorPlan, appointment, canRebook, canReschedule }),
         appointmentBadge: project.serviceStageLabel || '服务准备中',
         bookingHint: canRebook && !appointment
           ? '请选择上门量房时间，也可微信联系设计师代为预约'
           : (project.nextAction || ''),
       });
-      this.loadPublishedImages(publishedSchemes);
+      this.loadProtectedAssets(formalFloorPlan, featuredDelivery, publishedSchemes);
     } catch (error) {
       this.setData({ error: error.message || error.error || '暂时无法加载服务档案' });
     } finally {
@@ -185,14 +230,27 @@ Page({
     }
   },
 
-  async loadPublishedImages(schemes) {
-    const requestId = this._publishedImageRequestId;
-    const hydrated = await Promise.all((schemes || []).map(async (scheme) => ({
+  async loadProtectedAssets(formalFloorPlan, featuredDelivery, schemes) {
+    const requestId = this._assetRequestId;
+    const tasks = [];
+
+    if (formalFloorPlan && formalFloorPlan.previewEndpoint) {
+      tasks.push(
+        fetchProtectedImage(formalFloorPlan.previewEndpoint, `${this.data.leadId}-floor-plan`)
+          .then((imagePath) => ({ type: 'floorPlan', imagePath }))
+          .catch((error) => {
+            console.warn('Failed to load customer floor plan preview', error);
+            return { type: 'floorPlan', imageState: 'error' };
+          })
+      );
+    }
+
+    const schemeResults = await Promise.all((schemes || []).map(async (scheme) => ({
       ...scheme,
       images: await Promise.all((scheme.images || []).map(async (design) => {
         if (!design.imageEndpoint) return { ...design, imageState: 'error' };
         try {
-          const imagePath = await fetchPublishedImage(design.imageEndpoint, `${this.data.leadId}-${design.generationId || design.id}`);
+          const imagePath = await fetchProtectedImage(design.imageEndpoint, `${this.data.leadId}-${design.generationId || design.id}`);
           return { ...design, imagePath, imageState: 'loaded' };
         } catch (error) {
           console.warn('Failed to load customer published design image', error);
@@ -200,11 +258,37 @@ Page({
         }
       })),
     })));
-    if (requestId !== this._publishedImageRequestId) return;
-    this.setData({
-      publishedSchemes: hydrated,
-      publishedDesigns: hydrated.flatMap((scheme) => scheme.images),
-    });
+
+    if (requestId !== this._assetRequestId) return;
+
+    const assetResults = await Promise.all(tasks);
+    const next = {
+      publishedSchemes: schemeResults,
+      publishedDesigns: schemeResults.flatMap((scheme) => scheme.images),
+    };
+
+    for (const item of assetResults) {
+      if (item.type === 'floorPlan') {
+        next.floorPlanImagePath = item.imagePath || '';
+        next.floorPlanImageState = item.imageState || (item.imagePath ? 'loaded' : 'error');
+      }
+    }
+
+    if (schemeResults[0] && schemeResults[0].images[0]) {
+      const first = schemeResults[0].images[0];
+      next.featuredDelivery = {
+        id: schemeResults[0].id,
+        title: schemeResults[0].title,
+        publishedLabel: buildPublishedSchemeLabel(schemeResults[0]),
+        styleTag: schemeResults[0].title.startsWith('#') ? schemeResults[0].title : `#${schemeResults[0].title}`,
+        images: schemeResults[0].images,
+        imagePath: first.imagePath || '',
+        imageState: first.imageState,
+        generationId: first.generationId || first.id,
+      };
+    }
+
+    this.setData(next);
   },
 
   reschedule() {
@@ -227,23 +311,118 @@ Page({
     wx.navigateTo({ url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}&mode=customer` });
   },
 
-  onShareAppMessage() {
-    const { leadId, appointment } = this.data;
-    if (!leadId || !appointment) return { title: '我的上门量房预约' };
-    return {
-      title: '我的上门量房预约',
-      path: `/packages/business/appointment-detail/appointment-detail?mode=customer&leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`,
-    };
+  contactDesigner() {
+    const wechatId = this.data.designer && this.data.designer.wechatId;
+    if (!wechatId) {
+      wx.showToast({ title: '设计师联系方式暂未提供', icon: 'none' });
+      return;
+    }
+    wx.setClipboardData({
+      data: wechatId,
+      success: () => wx.showToast({ title: '微信号已复制', icon: 'success' }),
+    });
+  },
+
+  previewFloorPlan() {
+    const { floorPlanImagePath } = this.data;
+    if (!floorPlanImagePath) {
+      wx.showToast({ title: '户型图正在加载', icon: 'none' });
+      return;
+    }
+    wx.previewImage({ current: floorPlanImagePath, urls: [floorPlanImagePath] });
+  },
+
+  previewFeaturedDelivery() {
+    const delivery = this.data.featuredDelivery;
+    if (!delivery) return;
+    wx.showActionSheet({
+      itemList: ['详情', '保存到相册'],
+      success: (result) => {
+        if (result.tapIndex === 0) {
+          this.openAiSchemes(delivery.id);
+          return;
+        }
+        if (result.tapIndex === 1) {
+          if (!delivery.imagePath) {
+            wx.showToast({ title: '方案图片加载中，请稍后重试', icon: 'none' });
+            return;
+          }
+          this.saveImageToAlbum(delivery.imagePath);
+        }
+      },
+    });
   },
 
   previewPublishedDesign(event) {
     const schemeIndex = Number(event.currentTarget.dataset.schemeIndex);
-    const index = Number(event.currentTarget.dataset.index);
     const scheme = this.data.publishedSchemes[schemeIndex];
-    const design = scheme && scheme.images && scheme.images[index];
-    if (!design || !design.imagePath) return;
-    const urls = (scheme.images || []).map((item) => item.imagePath).filter(Boolean);
-    wx.previewImage({ current: design.imagePath, urls });
+    if (!scheme) return;
+    this.openAiSchemes(scheme.id);
+  },
+
+  openAiSchemes(schemeId) {
+    if (!this.data.leadId) return;
+    const query = [
+      `leadId=${encodeURIComponent(this.data.leadId)}`,
+      'mode=customer',
+    ];
+    if (schemeId) query.push(`schemeId=${encodeURIComponent(schemeId)}`);
+    wx.navigateTo({
+      url: `/packages/business/customer-ai-schemes/customer-ai-schemes?${query.join('&')}`,
+    });
+  },
+
+  openAllAiSchemes() {
+    this.openAiSchemes('');
+  },
+
+  collectPublishedImageUrls() {
+    return this.data.publishedSchemes
+      .flatMap((scheme) => (scheme.images || []).map((item) => item.imagePath))
+      .filter(Boolean);
+  },
+
+  async saveOrShareScheme() {
+    const delivery = this.data.featuredDelivery;
+    if (!delivery || !delivery.imagePath) {
+      wx.showToast({ title: '方案尚未发布', icon: 'none' });
+      return;
+    }
+    await this.saveImageToAlbum(delivery.imagePath);
+  },
+
+  async saveImageToAlbum(filePath) {
+    try {
+      await wx.saveImageToPhotosAlbum({ filePath });
+      wx.showToast({ title: '方案已保存到相册', icon: 'success' });
+    } catch (error) {
+      const message = error && error.errMsg || '';
+      if (message.includes('auth deny') || message.includes('auth denied')) {
+        wx.showModal({
+          title: '需要相册权限',
+          content: '请在设置中允许保存图片到相册，或使用底部分享按钮转发方案。',
+          confirmText: '去设置',
+          success: (result) => result.confirm && wx.openSetting(),
+        });
+        return;
+      }
+      wx.showToast({ title: '保存失败，请稍后重试', icon: 'none' });
+    }
+  },
+
+  onShareAppMessage() {
+    const { leadId, featuredDelivery, heroTitle } = this.data;
+    if (featuredDelivery && featuredDelivery.imagePath) {
+      return {
+        title: heroTitle ? `${heroTitle} · 我的设计方案` : '我的设计方案',
+        path: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(leadId)}`,
+        imageUrl: featuredDelivery.imagePath,
+      };
+    }
+    return {
+      title: heroTitle ? `${heroTitle} · 我的服务档案` : '我的服务档案',
+      path: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(leadId)}`,
+    };
   },
 
   onBack() { wx.navigateBack(); },

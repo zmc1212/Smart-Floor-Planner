@@ -7,6 +7,7 @@
       <text class="info">小区：{{lead.communityName || '未填写'}}</text>
       <view class="lead-status-summary">
         <text class="status-pill">{{statusLabel}}</text>
+        <view wx:if="{{canEditProfile}}" class="profile-edit-action" bindtap="onEditProfile" aria-role="button" aria-label="补充客户资料">补充资料</view>
       </view>
     </view>
     <image class="lead-detail-scene" src="/packages/business/assets/leads/lead-detail.png" mode="aspectFit"></image>
@@ -17,30 +18,35 @@
       <text>{{item.label}}</text>
     </view>
   </view>
-  <view class="appointment-entry" wx:if="{{canScheduleAppointment}}">
-    <view class="appointment-entry-copy">
-      <text class="appointment-entry-title">上门量房</text>
-      <text class="appointment-entry-note">{{canRebookAppointment ? (lead.nextAction || '预约已过期或已取消，请选择新的上门时段') : '先从真实可用时段安排首次上门服务'}}</text>
-    </view>
-    <button class="appointment-entry-action" wx:if="{{canRebookAppointment}}" bindtap="onScheduleAppointment">重新预约上门</button>
-    <button class="appointment-entry-action" wx:else bindtap="onScheduleAppointment">安排上门量房</button>
-  </view>
-  <view class="appointment-entry" wx:elif="{{appointment}}">
-    <view class="appointment-entry-copy">
-      <text class="appointment-entry-title">上门量房 · {{lead.serviceStageLabel || '已确认'}}</text>
-      <text class="appointment-entry-note">{{appointment.summary}} · {{appointment.address}}</text>
-    </view>
-    <button class="appointment-entry-action appointment-entry-action-secondary" bindtap="onOpenAppointment">查看预约</button>
-  </view>
   <view class="whole-home-card">
-    <view class="whole-home-tab">正式量房</view>
-    <view class="whole-home-copy">
+    <view class="whole-home-tab">{{lead.serviceStage === 'design_published' ? '方案交付' : '正式量房'}}</view>
+    <view class="whole-home-head">
       <view class="whole-home-next-action">
         <text class="whole-home-next-label">下一步</text>
         <text class="whole-home-next-copy">{{nextAction}}</text>
       </view>
-      <view class="whole-home-subtitle">{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始建立客户户型'}}</view>
     </view>
+    <view class="whole-home-address" wx:if="{{appointment}}">{{appointment.address || appointment.summary}}</view>
+    <view class="whole-home-address" wx:elif="{{canScheduleAppointment}}">{{canRebookAppointment ? (lead.nextAction || '预约已过期或已取消，请选择新的上门时段') : '先从真实可用时段安排首次上门服务'}}</view>
+    <view class="whole-home-address" wx:else>{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始建立客户户型'}}</view>
+    <button
+      wx:if="{{canScheduleAppointment && canRebookAppointment}}"
+      class="whole-home-appointment-action"
+      bindtap="onScheduleAppointment"
+      aria-label="重新预约上门"
+    >重新预约上门</button>
+    <button
+      wx:elif="{{canScheduleAppointment}}"
+      class="whole-home-appointment-action"
+      bindtap="onScheduleAppointment"
+      aria-label="安排上门量房"
+    >安排上门量房</button>
+    <button
+      wx:elif="{{appointment}}"
+      class="whole-home-appointment-action is-secondary"
+      bindtap="onOpenAppointment"
+      aria-label="查看预约"
+    >查看预约</button>
     <view wx:if="{{canEditMeasurements}}" class="whole-home-actions">
       <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}} <text>›</text></view>
       <view class="whole-home-secondary-actions" wx:if="{{activeFloorPlan}}">
@@ -49,20 +55,46 @@
       </view>
     </view>
   </view>
-  <view class="measurement-history" wx:if="{{previousFloorPlans.length > 0}}">
-    <view class="measurement-history-heading">
-      <text>历史量房记录</text>
-      <text>{{previousFloorPlans.length}} 份</text>
+  <view class="published-schemes-card" wx:if="{{publishedSchemes.length > 0}}">
+    <view class="published-schemes-heading">
+      <text class="published-schemes-title">已发布方案</text>
+      <text class="published-schemes-meta">{{publishedSchemes.length}} 轮</text>
     </view>
     <view
-      class="measurement-record"
+      class="published-scheme-item"
+      wx:for="{{publishedSchemes}}"
+      wx:for-index="schemeIndex"
+      wx:key="id"
+      data-scheme-index="{{schemeIndex}}"
+      bindtap="onOpenPublishedScheme"
+      aria-role="button"
+      aria-label="查看已发布方案 {{item.title}}"
+    >
+      <view class="published-scheme-thumb {{item.coverPath ? '' : 'is-empty'}}">
+        <image wx:if="{{item.coverPath}}" class="published-scheme-thumb-image" src="{{item.coverPath}}" mode="aspectFill" />
+      </view>
+      <view class="published-scheme-copy">
+        <text class="published-scheme-name">{{item.title}}</text>
+        <text class="published-scheme-meta">{{item.displayMeta}}</text>
+      </view>
+      <text class="published-scheme-action">查看 ›</text>
+    </view>
+    <button class="published-schemes-secondary" bindtap="onOpenAllPublishedSchemes" aria-label="查看全部方案">查看全部方案</button>
+    <button class="published-schemes-primary" bindtap="onOpenAIDesignWorkbench" aria-label="进入 AI 设计工作台">进入 AI 设计</button>
+  </view>
+  <view class="measurement-history" wx:if="{{previousFloorPlans.length > 0}}">
+    <view class="measurement-history-heading">
+      <text class="measurement-history-title">历史量房记录</text>
+      <text class="measurement-history-meta">{{previousFloorPlans.length}} 份</text>
+    </view>
+    <view
+      class="measurement-record {{canEditMeasurements ? '' : 'is-readonly'}}"
       wx:for="{{previousFloorPlans}}"
       wx:key="_id"
       data-id="{{item._id}}"
-      wx:if="{{canEditMeasurements}}"
-      bindtap="onContinueMeasure"
-      aria-role="button"
-      aria-label="继续量房 {{item.historyName}}"
+      bindtap="onHistoryRecordTap"
+      aria-role="{{canEditMeasurements ? 'button' : 'text'}}"
+      aria-label="{{canEditMeasurements ? '继续量房 ' + item.historyName : item.historyName}}"
     >
       <view class="measurement-record-copy">
         <text class="measurement-record-name">{{item.historyName}}</text>

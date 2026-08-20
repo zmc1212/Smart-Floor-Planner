@@ -1,10 +1,10 @@
-'use client';
+﻿'use client';
 
 import React, { useMemo, useState } from 'react';
 import { Loader2, Sparkles } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from 'antd';
 import ImageCropperDialog from '@/components/ai-studio/ImageCropperDialog';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { useFetch } from '@/hooks/useFetch';
 import {
   ADVANCED_WORKFLOW_TOOLS,
@@ -353,13 +353,13 @@ export function WorkflowStageActionButton({
 
   return (
     <Button
-      type="button"
+      htmlType="button"
       disabled={disabled}
       title={action.disabledReason}
       onClick={() => onRun(action)}
       className={className}
+      icon={isRunning ? <Loader2 className="animate-spin" size={16} /> : idlePrefix || <Sparkles size={16} />}
     >
-      {isRunning ? <Loader2 className="mr-2 animate-spin" size={16} /> : idlePrefix || <Sparkles className="mr-2" size={16} />}
       {action.label}
     </Button>
   );

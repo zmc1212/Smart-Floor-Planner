@@ -4,11 +4,6 @@ page {
   height: 100%;
   overflow-y: auto;
   background: #f8faf9;
-  --sfp-custom-tabbar-height: 116rpx;
-  --sfp-custom-tabbar-safe-height: calc(116rpx + env(safe-area-inset-bottom));
-  --sfp-tab-icon-size: 32rpx;
-  --sfp-tab-label-size: 16rpx;
-  --sfp-tabbar-shadow: 0 -1rpx 0 #e6ede8;
 }
 
 .workbench-page {
@@ -211,8 +206,9 @@ page {
 }
 
 .stat-pill:nth-child(1),
-.stat-pill:nth-child(2) { min-width: 156rpx; }
-.stat-pill:nth-child(3) { min-width: 242rpx; }
+.stat-pill:nth-child(2),
+.stat-pill:nth-child(3),
+.stat-pill:nth-child(4) { min-width: 148rpx; }
 
 .hero-cta-btn {
   display: inline-flex;

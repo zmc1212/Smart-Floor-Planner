@@ -13,7 +13,13 @@ import {
 } from '@/lib/appointment-scheduling';
 import { customerProjectIndexToDto } from '@/lib/customer-project';
 import { parseAppointmentBounds } from '@/lib/lead-service-stage';
-import { buildStaffingGapItems, isAssignmentEligibleStaff, isMeasurerWorkbenchSurveyLead } from '@/lib/miniprogram-workbench';
+import {
+  buildStaffingGapItems,
+  isAssignmentEligibleStaff,
+  isMeasurerWorkbenchSurveyLead,
+  selectMeasurerWorkbenchAppointments,
+  shouldIncludeMeasurerWorkbenchAppointment,
+} from '@/lib/miniprogram-workbench';
 
 type BadgeRole = 'customer' | 'referrer' | 'designer' | 'measurer' | 'enterprise_admin';
 
@@ -68,10 +74,10 @@ export function buildMiniProgramBadges(input: {
       Number(facts.designerFollowUpCount || 0) + Number(facts.designerExpiredCount || 0)
     );
   } else if (input.role === 'measurer') {
-    counts = {
-      ...counted('workbench', Number(facts.measurerTodayCount || 0)),
-      ...counted('tasks', Number(facts.measurerTaskCount || 0)),
-    };
+    counts = counted(
+      'workbench',
+      Number(facts.measurerTodayCount || 0) + Number(facts.measurerTaskCount || 0)
+    );
   } else if (input.role === 'enterprise_admin') {
     counts = {
       ...counted('operations', Number(facts.ownerExceptionCount || 0)),
@@ -157,8 +163,16 @@ export async function loadMiniProgramBadgeCounts(input: {
       appointments.listByMeasurer(enterpriseId, staffId, ['confirmed', 'expired']),
       leads.list({ staffId, staffVisibility: 'measurer', page: 1, limit: 50, orderBy: 'updatedAt' }),
     ]);
-    const confirmedRows = appointmentRows.filter((item) => item.status === 'confirmed');
-    const expiredRows = appointmentRows.filter((item) => item.status === 'expired');
+    const currentAppointmentRows = selectMeasurerWorkbenchAppointments(appointmentRows);
+    const leadIds = currentAppointmentRows.map((item) => item.leadId);
+    const leadRows = leadIds.length ? await leads.findByIds(leadIds) : [];
+    const leadMap = new Map(leadRows.map((item) => [item.id, item]));
+    const confirmedRows = currentAppointmentRows
+      .filter((item) => item.status === 'confirmed')
+      .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(item.leadId), item));
+    const expiredRows = currentAppointmentRows
+      .filter((item) => item.status === 'expired')
+      .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(item.leadId), item));
     const measurerTodayCount = confirmedRows.filter((item) => isAppointmentOnLocalDate(item.timeRange, today)).length;
     const expiredCount = expiredRows.length;
     const occupiedIds = new Set([

@@ -1,0 +1,85 @@
+<h2>设计稿 · 第 1 节：客户服务首页结构</h2>
+<p class="subtitle">基于 A 阶段陪伴卡 + 多项目「还有 N 个服务」切换。看整页是否对，再往下细化空态文案。</p>
+
+<div class="mockup">
+  <div class="mockup-header">客户 Tab「服务」· 390 宽线框</div>
+  <div class="mockup-body" style="max-width:360px;margin:0 auto;background:#f6faf6;padding:12px 12px 24px;font-family:system-ui;border-radius:16px;">
+    <!-- nav -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div>
+        <div style="font-weight:800;font-size:16px;">家客来 · 服务向导</div>
+        <div style="font-size:11px;color:#1f9d55;">专业服务</div>
+      </div>
+      <div style="display:flex;gap:8px;color:#888;font-size:12px;">扫码 · 通知</div>
+    </div>
+
+    <!-- hero -->
+    <div style="background:linear-gradient(160deg,#1f9d55,#2db86a);border-radius:20px;padding:14px;color:#fff;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div>
+          <div style="font-weight:800;font-size:17px;">我的装修服务</div>
+          <div style="font-size:12px;opacity:.92;margin-top:4px;">已匹配设计师和测量员，请预约上门量房</div>
+        </div>
+        <div style="width:44px;height:44px;border-radius:14px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:22px;">🏠</div>
+      </div>
+
+      <div style="background:#fff;color:#222;border-radius:14px;padding:12px;margin-top:12px;display:flex;gap:10px;">
+        <div style="width:76px;height:76px;border-radius:14px;background:linear-gradient(180deg,#e8f8ee,#cdeed9);display:flex;align-items:center;justify-content:center;text-align:center;font-size:10px;color:#1f9d55;flex-shrink:0;">
+          小K<br>引导预约
+        </div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:700;font-size:14px;">下一步：预约上门</div>
+          <div style="font-size:11px;color:#666;margin-top:4px;">设计师、测量员已就位</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;">
+            <span style="font-size:10px;background:#e8f8ee;color:#1f9d55;padding:2px 7px;border-radius:999px;">匹配 ✓</span>
+            <span style="font-size:10px;background:#fff7e6;color:#c27a00;padding:2px 7px;border-radius:999px;">预约中</span>
+            <span style="font-size:10px;background:#f2f2f2;color:#999;padding:2px 7px;border-radius:999px;">量房</span>
+            <span style="font-size:10px;background:#f2f2f2;color:#999;padding:2px 7px;border-radius:999px;">方案</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+        <div style="background:#111;color:#fff;border-radius:999px;text-align:center;padding:10px;font-size:13px;font-weight:600;">预约上门</div>
+        <div style="background:rgba(255,255,255,.2);border-radius:999px;text-align:center;padding:10px;font-size:13px;">我的服务档案</div>
+      </div>
+    </div>
+
+    <!-- multi project -->
+    <div style="margin-top:10px;background:#fff;border:1px solid #e3ece4;border-radius:12px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:12px;color:#555;">还有 <b style="color:#1f9d55;">1</b> 个进行中的服务</span>
+      <span style="font-size:12px;color:#1f9d55;">切换 ›</span>
+    </div>
+
+    <!-- secondary -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+      <div style="background:#fff;border-radius:14px;padding:12px;border:1px solid #e8eee8;">
+        <div style="font-weight:700;font-size:13px;">预约量房</div>
+        <div style="font-size:11px;color:#777;margin-top:4px;">免费上门精准量尺</div>
+      </div>
+      <div style="background:#fff;border-radius:14px;padding:12px;border:1px solid #e8eee8;">
+        <div style="font-weight:700;font-size:13px;">专属设计师</div>
+        <div style="font-size:11px;color:#777;margin-top:4px;">1对1沟通方案</div>
+      </div>
+    </div>
+
+    <div style="margin-top:14px;font-size:11px;color:#888;line-height:1.5;">
+      ✕ 删除「我的服务」重复列表卡<br>
+      ✕ 删除「查看全部项目」→「我的项目」中间页<br>
+      ✓ 档案入口直达 <code>customer-project</code>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>本节约定</h3>
+  <ul>
+    <li><b>Hero</b>：当前优先服务；空态用小K阶段陪伴，有真图再换缩略图</li>
+    <li><b>主 CTA</b>：跟 <code>nextActionKind</code>（如预约上门）；次 CTA：我的服务档案</li>
+    <li><b>多项目</b>：仅当 N≥2 时出现「还有 N 个… / 切换」半屏列表，点选即换 Hero，不进旧「我的项目」页</li>
+    <li><b>下区</b>：预约量房 + 专属设计师两张快捷卡（有数据时展示真实状态，无则引导）</li>
+    <li><b>下线</b>：<code>customer-projects</code> 列表页与首页「查看全部项目」入口</li>
+  </ul>
+</div>
+
+<p class="subtitle">这一节的信息架构可以吗？回复「可以」继续第 2 节（各阶段文案与小K动作）；要改直接说。</p>

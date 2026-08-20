@@ -40,9 +40,20 @@ real state matrix, role visibility, and safe-area assumptions.
   artwork anchored to a stable parent.
 - Reserve the native capsule lane before placing titles or actions. Never center
   text through the capsule or let controls overlap it.
-- Primary labels, actions, body copy, and business values are at least `24rpx`;
-  metadata and helper text are at least `20rpx`. Required text is native text,
-  not image-embedded copy.
+- Required text is native text, not image-embedded copy. Authoritative type
+  floors (rpx at the `390x844` baseline):
+
+  | Role | Minimum | Typical use |
+  | --- | --- | --- |
+  | Page / nav title | `32rpx` | `nav-title`, page H1 |
+  | Section title | `28rpx` | Card title, round title |
+  | Primary copy / action / business value / tappable chip | `24rpx` (key CTA may use `26–28rpx`) | Send, switch, scheme chip, Composer submit |
+  | Secondary helper / time / meta | `22rpx` | Subtitle, prompt summary, points copy |
+  | Tertiary badge | `20rpx` | On-image corner marks only (e.g. “已确认”) |
+  | Forbidden | `<20rpx` | Any status, action, business value, or required explanation; no `transform: scale` to shrink readable text |
+
+  Prefer raising helpers to `22rpx+` rather than landing on exactly `20rpx`.
+  Primary actions and primary copy must not use `20rpx`.
 - Keep touch targets reachable, visibly pressed, and at least `44px` logical
   height where the platform permits. Do not use `transform: scale(...)` to hide
   a responsive or readability defect.
@@ -50,6 +61,18 @@ real state matrix, role visibility, and safe-area assumptions.
   mixed Unicode symbols are not product icons.
 - Hairline separators use a short `1px` line with half-axis scaling rather than
   a visually heavy full border.
+
+## Panel and sheet motion
+
+- Do not introduce third-party Mini Program UI libraries (Vant, TDesign, etc.)
+  for overlays or sheets. Use existing Less plus enter/exit classes.
+- Bottom operation panels and picker/template sheets share one native pattern:
+  - Mask: opacity `0 → 1` (~`240ms`).
+  - Panel: `translateY(100%) → 0` (~`240ms`, `ease-out`).
+  - Close: reverse the same transitions; finish the animation (~`260ms`) before
+    clearing the `visible` flag so the panel does not snap shut.
+- Drive open state with an `open` class bound to the existing `*Visible` flags;
+  put `transition` on the same mask/panel nodes WeChat animates.
 
 ## Native and Canvas rules
 

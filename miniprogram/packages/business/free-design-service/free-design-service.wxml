@@ -1,9 +1,9 @@
 <!--
-THESIS: 领取过程是一张透明的服务确认单，先确认、再授权、后建档，结果只交付真实设计师资料。
+THESIS: 扫码即进入手机号授权，授权后交付真实设计师资料或待匹配结果。
 OWN-WORLD: 极简透气版暖白纸面、家客绿步骤条、克制线框图标和单一绿色主动作。
-STORY: 客户看懂两项服务与两步流程，同意隐私说明后授权手机号，并获得已匹配设计师或等待派单。
-FIRST VIEWPORT: 胶囊左侧品牌锁；ready、phoneAuth、success、pending 各自在 390x844 同屏展示主内容与 CTA。
-FORM: design-references/miniprogram-airy-minimalist-v1/10-free-design-confirm.jpg, 11-free-design-phone-auth.jpg, 12-free-design-success.jpg, 13-free-design-assignment-pending.jpg
+STORY: 客户扫码后直接授权手机号，完成两步流程并获得已匹配设计师或等待派单。
+FIRST VIEWPORT: 胶囊左侧品牌锁；phoneAuth、success、pending、existing 各自在 390x844 同屏展示主内容与 CTA。
+FORM: design-references/miniprogram-airy-minimalist-v1/11-free-design-phone-auth.jpg, 12-free-design-success.jpg, 13-free-design-assignment-pending.jpg, 14-free-design-existing-attribution.jpg
 -->
 <view class="claim-page state-{{pageState}}">
   <view
@@ -27,93 +27,6 @@ FORM: design-references/miniprogram-airy-minimalist-v1/10-free-design-confirm.jp
     <text class="state-copy">请稍候，正在校验本次服务领取资格。</text>
   </view>
 
-  <view wx:elif="{{pageState === 'ready'}}" class="claim-ready">
-    <view class="ready-hero">
-      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
-      <view class="hero-copy">
-        <text class="ready-title">领取免费量房设计服务</text>
-        <text wx:if="{{enterpriseName}}" class="ready-enterprise">{{enterpriseName}}</text>
-        <text class="ready-subtitle">{{claimKind === 'staff_activity' ? '现场员工为您对接量房与设计师服务' : '简单两步，专属设计师为您服务'}}</text>
-      </view>
-      <image
-        class="hero-xiaok"
-        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
-        mode="aspectFit"
-      />
-    </view>
-
-    <view class="service-block">
-      <view class="block-title-row">
-        <view class="title-leaf"></view>
-        <text class="block-title">服务内容</text>
-        <view class="title-leaf title-leaf-flip"></view>
-      </view>
-      <view class="service-pair">
-        <view class="service-item">
-          <view class="service-icon">
-            <image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" />
-          </view>
-          <text class="service-label">上门量房</text>
-        </view>
-        <view class="service-split"></view>
-        <view class="service-item">
-          <view class="service-icon">
-            <image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" />
-          </view>
-          <text class="service-label">设计师服务</text>
-        </view>
-      </view>
-    </view>
-
-    <view class="process-block">
-      <view class="block-title-row">
-        <view class="title-leaf"></view>
-        <text class="block-title">领取流程</text>
-        <view class="title-leaf title-leaf-flip"></view>
-      </view>
-      <view class="process-row">
-        <view class="process-item">
-          <view class="process-index">1</view>
-          <view class="process-node">
-            <image src="/packages/business/assets/referral-service-v1/phone-authorization.png" mode="aspectFit" />
-          </view>
-          <text class="process-label">授权手机号</text>
-        </view>
-        <view class="process-line">
-          <view class="process-arrow"></view>
-        </view>
-        <view class="process-item">
-          <view class="process-index">2</view>
-          <view class="process-node">
-            <image src="/packages/business/assets/referral-service-v1/designer-matching.png" mode="aspectFit" />
-          </view>
-          <text class="process-label">{{claimKind === 'staff_activity' ? '现场员工对接' : '自动匹配设计师'}}</text>
-        </view>
-      </view>
-    </view>
-
-    <view class="privacy-note">
-      <image src="/packages/business/assets/referral-service-v1/privacy-lock.png" mode="aspectFit" />
-      <view class="privacy-copy">
-        <text>手机号仅用于本次家装服务联系</text>
-        <text>我们将严格保护您的隐私安全</text>
-      </view>
-    </view>
-
-    <button
-      class="claim-action {{!agreed ? 'is-disabled' : ''}}"
-      bindtap="onStartPhoneAuth"
-      disabled="{{!agreed}}"
-    >一键授权手机号</button>
-
-    <view class="agreement-row" bindtap="onToggleAgreement" aria-role="checkbox" aria-checked="{{agreed}}">
-      <view class="agreement-check {{agreed ? 'is-checked' : ''}}">
-        <view wx:if="{{agreed}}" class="check-mark"></view>
-      </view>
-      <text>我已阅读并同意<text class="agreement-link">《隐私保护说明》</text></text>
-    </view>
-  </view>
-
   <view wx:elif="{{pageState === 'phoneAuth'}}" class="claim-auth">
     <view class="claim-stepper">
       <view class="step done">
@@ -134,8 +47,10 @@ FORM: design-references/miniprogram-airy-minimalist-v1/10-free-design-confirm.jp
 
     <view class="auth-hero">
       <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
+      <view class="hero-blob" aria-hidden="true"></view>
       <view class="hero-copy">
         <text class="ready-title">授权手机号，开始服务</text>
+        <text wx:if="{{enterpriseName}}" class="ready-enterprise">{{enterpriseName}}</text>
         <text class="ready-subtitle">仅用于本次免费量房与设计服务联系</text>
       </view>
       <image
@@ -199,9 +114,10 @@ FORM: design-references/miniprogram-airy-minimalist-v1/10-free-design-confirm.jp
 
     <view class="success-hero">
       <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
+      <view class="hero-blob" aria-hidden="true"></view>
       <view class="hero-copy">
-        <text class="ready-title">服务已建立</text>
-        <text class="ready-subtitle accent">专属设计师已为你匹配</text>
+        <text class="ready-title success-title">服务已建立</text>
+        <text class="ready-subtitle">专属设计师已为你匹配</text>
       </view>
       <image
         class="hero-xiaok"
@@ -254,7 +170,53 @@ FORM: design-references/miniprogram-airy-minimalist-v1/10-free-design-confirm.jp
     <view class="later-link" bindtap="onLater" aria-role="button">稍后再看</view>
   </view>
 
-  <view wx:elif="{{pageState === 'pending' || pageState === 'existing'}}" class="claim-pending">
+  <view wx:elif="{{pageState === 'existing'}}" class="claim-existing">
+    <view class="existing-hero">
+      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
+      <view class="hero-blob" aria-hidden="true"></view>
+      <view class="hero-copy">
+        <text class="ready-title">你已有进行中的服务</text>
+        <text class="ready-subtitle">无需重复领取，我们将继续为你保留当前服务安排</text>
+      </view>
+      <image
+        class="hero-xiaok existing-xiaok"
+        src="/packages/business/assets/referral-service-v1/xiao-k-existing-service.png"
+        mode="aspectFit"
+      />
+    </view>
+
+    <view class="existing-card">
+      <view class="existing-head">
+        <view class="existing-icon">
+          <image src="/images/mine-icons/clipboard-pen.png" mode="aspectFit" />
+        </view>
+        <text class="existing-service-name">免费设计服务 · {{existingServiceLabel || '客户'}}</text>
+      </view>
+      <view class="existing-timeline">
+        <view class="timeline-rail"></view>
+        <view class="timeline-node">
+          <view class="timeline-dot is-active"></view>
+          <view class="timeline-copy">
+            <text class="timeline-title">{{serviceStageLabel || '服务进行中'}}</text>
+            <text class="timeline-meta">{{lastUpdateLabel || '最近更新：今天'}}</text>
+          </view>
+        </view>
+      </view>
+      <button class="claim-action existing-primary" bindtap="onOpenProject">查看服务档案</button>
+      <button
+        class="claim-action-outline {{designerProfile && designerProfile.wechatId ? '' : 'is-disabled'}}"
+        bindtap="onContactDesigner"
+        disabled="{{!(designerProfile && designerProfile.wechatId)}}"
+      >联系当前设计师</button>
+    </view>
+
+    <view class="existing-note">
+      <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+      <text>当前服务归属已保留，不会重复创建新的服务记录</text>
+    </view>
+  </view>
+
+  <view wx:elif="{{pageState === 'pending'}}" class="claim-pending">
     <view class="claim-stepper">
       <view class="step done">
         <view class="step-dot"><view class="step-check"></view></view>
@@ -275,8 +237,8 @@ FORM: design-references/miniprogram-airy-minimalist-v1/10-free-design-confirm.jp
     <view class="pending-hero">
       <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
       <view class="hero-copy">
-        <text class="ready-title">{{pageState === 'existing' ? '服务档案已建立' : '服务已领取'}}</text>
-        <text class="ready-subtitle">{{pageState === 'existing' ? '你已有进行中的服务，本次扫码不会重复领取。' : '我们正在为你匹配合适的设计师'}}</text>
+        <text class="ready-title">服务已领取</text>
+        <text class="ready-subtitle">我们正在为你匹配合适的设计师</text>
       </view>
       <image
         class="hero-xiaok"
@@ -309,7 +271,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/10-free-design-confirm.jp
 
     <view class="pending-note">
       <image src="/packages/business/assets/login-v1/wechat.png" mode="aspectFit" />
-      <text>{{pageState === 'existing' ? '可在服务档案中查看当前进度' : '匹配完成后，我们会通过微信通知你'}}</text>
+      <text>匹配完成后，我们会通过微信通知你</text>
     </view>
 
     <button class="claim-action" bindtap="onOpenProject">查看服务档案</button>

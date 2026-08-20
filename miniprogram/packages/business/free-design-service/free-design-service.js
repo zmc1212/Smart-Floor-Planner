@@ -50,9 +50,26 @@ function deviceSummary() {
 
 function claimErrorMessage(error) {
   const code = error && error.code;
+  const raw = error && (error.error || error.message);
   if (code === 'pending_source_invalid') return '本次服务领取已超时，请重新扫描服务码。';
   if (code === 'wechat_user_mismatch') return '当前微信与登录账号不一致，请切换账号后重试。';
   if (code === 'customer_context_required') return '请先切换到客户身份后再领取服务。';
+  if (
+    code === 'staff_phone_linked_to_other_user' ||
+    raw === 'STAFF_PHONE_LINKED_TO_OTHER_USER'
+  ) {
+    return '该手机号已绑定其他微信账号，请换本人手机号授权，或联系企业管理员处理。';
+  }
+  if (
+    code === 'wechat_identity_conflict' ||
+    raw === 'WECHAT_IDENTITY_ALREADY_LINKED' ||
+    raw === 'WECHAT_USER_ALREADY_LINKED'
+  ) {
+    return '当前微信已绑定其他账号，请换用本人微信重试，或联系企业管理员处理。';
+  }
+  if (typeof raw === 'string' && raw && !/^[A-Z][A-Z0-9_]+$/.test(raw)) {
+    return raw;
+  }
   return '服务领取暂未完成，请检查网络后重试。';
 }
 
@@ -68,6 +85,7 @@ function applyClaimResult(page, response) {
       lead: response.data && response.data.lead || null,
       errorMessage: ''
     });
+    hydrateExistingAttribution(page);
     return;
   }
   const designerProfile = response.data && response.data.designerProfile || null;
@@ -90,12 +108,83 @@ function resolveErrorMessage(error) {
   return '服务码暂时无法识别，请重新扫码或稍后重试。';
 }
 
+const EXISTING_STAGE_LABELS = {
+  new: '服务准备中',
+  contacted: '设计师沟通中',
+  measuring: '量房安排中',
+  measured: '量房已完成',
+  assigned: '设计师沟通中',
+  designing: '设计师沟通中',
+  quoting: '方案沟通中',
+};
+
+function maskCustomerName(name) {
+  const raw = String(name || '').trim();
+  if (!raw) return '客户';
+  if (raw.length === 1) return `${raw}*`;
+  return `${raw.charAt(0)}*`;
+}
+
+function formatRelativeUpdate(value) {
+  if (!value) return '最近更新：待同步';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '最近更新：待同步';
+  const now = new Date();
+  if (date.toDateString() === now.toDateString()) return '最近更新：今天';
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return '最近更新：昨天';
+  return `最近更新：${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function existingStageLabel(lead) {
+  if (!lead) return '服务进行中';
+  return EXISTING_STAGE_LABELS[lead.status] || '服务进行中';
+}
+
 function navTitleFor(state) {
   if (state === 'phoneAuth') return '手机号授权';
   if (state === 'success') return '服务已建立';
   if (state === 'pending') return '服务匹配中';
-  if (state === 'existing') return '服务档案';
-  return '确认领取';
+  if (state === 'existing') return '服务已存在';
+  return '手机号授权';
+}
+
+async function hydrateExistingAttribution(page) {
+  const lead = page.data.lead;
+  const leadId = lead && lead.id;
+  const app = getApp();
+  const fallbackName = maskCustomerName(
+    (app.globalData.userInfo && app.globalData.userInfo.nickname) || (lead && lead.name)
+  );
+  const fallbackStage = existingStageLabel(lead);
+  const fallbackUpdate = formatRelativeUpdate(lead && lead.createdAt);
+  if (!leadId) {
+    page.setData({
+      existingServiceLabel: fallbackName,
+      serviceStageLabel: fallbackStage,
+      lastUpdateLabel: fallbackUpdate,
+    });
+    return;
+  }
+  try {
+    const project = await api.request(`/miniprogram/customer-projects/${encodeURIComponent(leadId)}`, 'GET');
+    const updatedAt = (project.appointment && project.appointment.updatedAt)
+      || (project.formalFloorPlan && project.formalFloorPlan.updatedAt)
+      || (lead && lead.createdAt);
+    page.setData({
+      existingServiceLabel: fallbackName,
+      serviceStageLabel: project.serviceStageLabel || fallbackStage,
+      lastUpdateLabel: formatRelativeUpdate(updatedAt),
+      designerProfile: project.designer || page.data.designerProfile || null,
+    });
+  } catch (error) {
+    page.setData({
+      existingServiceLabel: fallbackName,
+      serviceStageLabel: fallbackStage,
+      lastUpdateLabel: fallbackUpdate,
+    });
+  }
 }
 
 Page({
@@ -104,10 +193,9 @@ Page({
     navigationHeight: 32,
     navigationRight: 96,
     pageState: 'resolving',
-    navTitle: '确认领取',
+    navTitle: '手机号授权',
     promotionToken: '',
     pendingSource: '',
-    agreed: false,
     submitting: false,
     errorMessage: '',
     claimKind: '',
@@ -116,7 +204,10 @@ Page({
     designerQrPath: '',
     designerQrLoading: false,
     designerQrError: false,
-    lead: null
+    lead: null,
+    existingServiceLabel: '',
+    serviceStageLabel: '',
+    lastUpdateLabel: ''
   },
 
   onLoad(options) {
@@ -160,14 +251,15 @@ Page({
           lead: response.data.lead || null,
           errorMessage: ''
         });
+        hydrateExistingAttribution(this);
         return;
       }
       if (!response.data.pendingSource) {
         throw new Error('服务码类型无效');
       }
       this.setData({
-        pageState: 'ready',
-        navTitle: navTitleFor('ready'),
+        pageState: 'phoneAuth',
+        navTitle: navTitleFor('phoneAuth'),
         pendingSource: response.data.pendingSource,
         claimKind: response.data.kind,
         enterpriseName: response.data.enterpriseName || '',
@@ -182,19 +274,9 @@ Page({
     }
   },
 
-  onToggleAgreement() {
-    if (this.data.submitting) return;
-    this.setData({ agreed: !this.data.agreed });
-  },
-
-  onStartPhoneAuth() {
-    if (!this.data.agreed || this.data.pageState !== 'ready' || this.data.submitting) return;
-    this.setData({ pageState: 'phoneAuth', navTitle: navTitleFor('phoneAuth') });
-  },
-
   onSkipAuth() {
     if (this.data.submitting) return;
-    this.setData({ pageState: 'ready', navTitle: navTitleFor('ready') });
+    this.onLater();
   },
 
   onLater() {
@@ -202,7 +284,7 @@ Page({
   },
 
   async onGetPhoneNumber(event) {
-    if (!this.data.agreed || this.data.pageState !== 'phoneAuth' || this.data.submitting) return;
+    if (this.data.pageState !== 'phoneAuth' || this.data.submitting) return;
     if (!event.detail || event.detail.errMsg !== 'getPhoneNumber:ok' || !event.detail.code) {
       wx.showToast({ title: '需要授权手机号才能建立服务档案', icon: 'none' });
       return;
@@ -337,15 +419,24 @@ Page({
     wx.switchTab({ url: '/pages/mine/mine' });
   },
 
+  onContactDesigner() {
+    const wechatId = this.data.designerProfile && this.data.designerProfile.wechatId;
+    if (!wechatId) {
+      wx.showToast({ title: '设计师联系方式暂未提供', icon: 'none' });
+      return;
+    }
+    wx.setClipboardData({
+      data: wechatId,
+      success: () => wx.showToast({ title: '微信号已复制', icon: 'success' }),
+    });
+  },
+
   onRetry() {
     this.resolvePromotionCode();
   },
 
   onBack() {
-    if (this.data.pageState === 'phoneAuth' && !this.data.submitting) {
-      this.setData({ pageState: 'ready', navTitle: navTitleFor('ready') });
-      return;
-    }
+    if (this.data.submitting) return;
     wx.navigateBack({ delta: 1, fail: () => wx.switchTab({ url: '/pages/index/index' }) });
   }
 });

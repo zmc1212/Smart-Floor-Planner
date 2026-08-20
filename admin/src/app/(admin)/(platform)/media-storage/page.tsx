@@ -24,7 +24,7 @@ import {
 } from '@ant-design/pro-components';
 import { Alert, Button, Card, Dropdown, Flex, Modal, Result, Skeleton, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { useFetch } from '@/hooks/useFetch';
 
 type StorageStats = {

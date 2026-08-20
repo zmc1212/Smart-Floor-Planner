@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { Card, Flex, Tag, Typography } from 'antd';
-import { Bell, Smartphone, Sparkles, Workflow } from 'lucide-react';
+import { Smartphone, Sparkles, Workflow } from 'lucide-react';
 import { EnterpriseListItem } from './types';
 
 interface EnterpriseOverviewCardsProps {
@@ -19,7 +19,6 @@ function SummaryRow({ label, value }: { label: ReactNode; value: ReactNode }) {
 }
 
 export default function EnterpriseOverviewCards({ enterprise }: EnterpriseOverviewCardsProps) {
-  const browserNotificationEnabled = enterprise.automationConfig?.browserNotificationEnabled !== false;
   const miniprogramNotificationEnabled = enterprise.automationConfig?.miniprogramNotificationEnabled !== false;
 
   return (
@@ -40,7 +39,6 @@ export default function EnterpriseOverviewCards({ enterprise }: EnterpriseOvervi
           <SummaryRow label="设计 SLA" value={`${enterprise.automationConfig?.designTaskSlaHours || 72} 小时`} />
           <SummaryRow label="提醒间隔" value={`${enterprise.automationConfig?.reminderIntervalHours || 24} 小时`} />
           <SummaryRow label="最多提醒次数" value={enterprise.automationConfig?.maxReminderTimes || 3} />
-          <SummaryRow label={<span className="inline-flex items-center gap-2"><Bell size={14} />浏览器通知</span>} value={<Tag color={browserNotificationEnabled ? 'success' : 'default'}>{browserNotificationEnabled ? '已开启' : '已关闭'}</Tag>} />
           <SummaryRow label={<span className="inline-flex items-center gap-2"><Smartphone size={14} />微信小程序通知</span>} value={<Tag color={miniprogramNotificationEnabled ? 'success' : 'default'}>{miniprogramNotificationEnabled ? '已开启' : '已关闭'}</Tag>} />
         </Flex>
       </Card>

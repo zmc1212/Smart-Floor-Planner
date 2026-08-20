@@ -1,6 +1,6 @@
 'use client';
 
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import React, { useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Canvas } from '@react-three/fiber';
@@ -8,26 +8,10 @@ import { MapControls, PerspectiveCamera, OrthographicCamera, Text, Center, Bound
 import * as THREE from 'three';
 import { Activity, Download, Loader2, Wand2, Sparkles } from 'lucide-react';
 import BackButton from '@/components/BackButton';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import { Button, Modal, Select } from 'antd';
 import { cn } from "@/lib/utils";
 import SurveyCanvasHost from '@/components/survey/SurveyCanvasHost';
+import { fileNameFromContentDisposition } from '@/lib/dxf';
 
 // @see react-best-practices: rendering-hoist-jsx — 静态常量提升到模块级别
 const STYLE_OPTIONS = [
@@ -559,7 +543,10 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `${planData.name || 'formal-floor-plan'}.dxf`;
+      anchor.download = fileNameFromContentDisposition(
+        response.headers.get('Content-Disposition'),
+        `${planData.name || 'formal-floor-plan'}.dxf`,
+      );
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -603,9 +590,8 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
             ))}
           </div>
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
+            htmlType="button"
+            size="small"
             onClick={handleFormalDxfExport}
             disabled={planData.status !== 'completed' || isExporting}
             aria-label={planData.status === 'completed' ? '导出 CAD' : '户型完成后可导出 CAD'}
@@ -651,7 +637,10 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `FloorPlan_${planData.name || planData._id}.dxf`;
+      a.download = fileNameFromContentDisposition(
+        res.headers.get('Content-Disposition'),
+        `FloorPlan_${planData.name || planData._id}.dxf`,
+      );
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -759,96 +748,92 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
         <div className="flex items-center gap-4">
           {lead && (
             <div className="flex items-center gap-2 mr-4">
-              <Dialog open={showAIDialog} onOpenChange={setShowAIDialog}>
-                <DialogTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    disabled={isGenerating}
-                    className="flex h-9 items-center gap-2 px-3 text-xs font-medium"
+              <Button
+                type="text"
+                disabled={isGenerating}
+                onClick={() => setShowAIDialog(true)}
+                className="flex h-9 items-center gap-2 px-3 text-xs font-medium"
+              >
+                {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                {isGenerating ? 'AI 设计中...' : 'AI 风格生成'}
+              </Button>
+              <Modal
+                open={showAIDialog}
+                onCancel={() => setShowAIDialog(false)}
+                width={448}
+                title={
+                  <span className="flex items-center gap-2 text-lg font-semibold">
+                    <Sparkles className="text-primary" size={20} />
+                    AI 智能风格预览
+                  </span>
+                }
+                footer={[
+                  <Button
+                    key="cancel"
+                    type="text"
+                    onClick={() => setShowAIDialog(false)}
+                    className="h-10 px-4"
                   >
-                    {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                    {isGenerating ? 'AI 设计中...' : 'AI 风格生成'}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md overflow-hidden rounded-lg p-0">
-                  <DialogHeader className="border-b bg-muted/30 p-6 pb-5">
-                    <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
-                      <Sparkles className="text-primary" size={20} />
-                      AI 智能风格预览
-                    </DialogTitle>
-                    <DialogDescription>
-                      选择目标设计风格，系统将基于当前户型生成 3D 渲染方案
-                    </DialogDescription>
-                  </DialogHeader>
-                  
-                  <div className="space-y-5 p-6">
-                    <div className="space-y-3">
-                      <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">目标设计风格</Label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {STYLE_OPTIONS.map((style) => (
-                          <div 
-                            key={style.id}
-                            onClick={() => setAiPreset({...aiPreset, style: style.id})}
-                            className={cn(
-                              "flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors",
-                              aiPreset.style === style.id 
-                                ? "border-primary bg-primary/5 shadow-sm"
-                                : "bg-card hover:bg-muted/50"
-                            )}
-                          >
-                            <span className="text-xl">{style.icon}</span>
-                            <span className={cn(
-                              "text-sm font-bold",
-                              aiPreset.style === style.id ? "text-primary" : "text-muted-foreground"
-                            )}>{style.label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    取消
+                  </Button>,
+                  <Button
+                    key="generate"
+                    type="primary"
+                    onClick={handleAIGenerate}
+                    className="h-10 px-5"
+                  >
+                    开始生成方案
+                  </Button>,
+                ]}
+              >
+                <p className="text-sm text-muted-foreground">
+                  选择目标设计风格，系统将基于当前户型生成 3D 渲染方案
+                </p>
 
-                    <div className="space-y-3">
-                      <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">空间场景</Label>
-                      <Select 
-                        value={aiPreset.roomType} 
-                        onValueChange={(val) => setAiPreset({...aiPreset, roomType: val})}
-                      >
-                        <SelectTrigger className="h-10 rounded-md bg-muted/50 font-medium">
-                          <SelectValue placeholder="选择空间" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-md">
-                          {ROOM_TYPE_OPTIONS.map(room => (
-                            <SelectItem key={room.id} value={room.id} className="rounded-sm font-medium">
-                              {room.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                <div className="space-y-5 py-5">
+                  <div className="space-y-3">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">目标设计风格</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      {STYLE_OPTIONS.map((style) => (
+                        <div 
+                          key={style.id}
+                          onClick={() => setAiPreset({...aiPreset, style: style.id})}
+                          className={cn(
+                            "flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors",
+                            aiPreset.style === style.id 
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "bg-card hover:bg-muted/50"
+                          )}
+                        >
+                          <span className="text-xl">{style.icon}</span>
+                          <span className={cn(
+                            "text-sm font-bold",
+                            aiPreset.style === style.id ? "text-primary" : "text-muted-foreground"
+                          )}>{style.label}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
-                  <DialogFooter className="border-t bg-muted/20 p-6 pt-4">
-                    <Button 
-                      variant="ghost" 
-                      onClick={() => setShowAIDialog(false)}
-                      className="h-10 px-4"
-                    >
-                      取消
-                    </Button>
-                    <Button 
-                      onClick={handleAIGenerate}
-                      className="h-10 px-5"
-                    >
-                      开始生成方案
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
+                  <div className="space-y-3">
+                    <label htmlFor="ai-room-type" className="block text-[10px] font-bold uppercase tracking-widest text-muted-foreground">空间场景</label>
+                    <Select
+                      id="ai-room-type"
+                      value={aiPreset.roomType}
+                      onChange={(val) => setAiPreset({...aiPreset, roomType: val})}
+                      placeholder="选择空间"
+                      size="large"
+                      className="w-full"
+                      options={ROOM_TYPE_OPTIONS.map((room) => ({ value: room.id, label: room.label }))}
+                    />
+                  </div>
+                </div>
+              </Modal>
 
             </div>
           )}
 
           <Button 
-            variant="outline" 
             onClick={handleExportDXF}
             disabled={isExporting}
             className="flex h-9 items-center gap-2 px-3 text-xs font-medium"

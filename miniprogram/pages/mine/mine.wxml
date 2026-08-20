@@ -1,10 +1,57 @@
 <!--
-THESIS: “我的”是设计与交付人员的移动工作台，优先呈现身份、业务数字、工具和下一步任务。
+THESIS: “我的”是身份管家与账号中心，顶部保留资料卡，下方集中通知、权限与账号入口。
 OWN-WORLD: 柔白底、清透薄荷场景、绿/蓝/橙/紫四组工具色，以及来自 v6 参考稿的真实室内切图。
-STORY: 用户确认身份，扫描进度，进入角色化工具，处理待办，再继续 AI 设计或账户操作。
-FIRST VIEWPORT: 标题操作区与室内场景融合；半透明资料卡压住场景；统计、工作台、待办与 AI 横幅紧凑衔接。
+STORY: 用户确认身份，扫描进度，进入角色化工具，处理待办，并在同一页完成账号与系统权限管理。
+FIRST VIEWPORT: 标题操作区与室内场景融合；半透明资料卡压住场景；账号菜单紧随其后或接在工作台内容之后。
 FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 的层级和构图。
 -->
+<template name="mineAccountPanel">
+  <view class="mine-account-panel">
+    <view class="account-section-title">通知与权限</view>
+    <view class="account-surface">
+      <view class="account-row" hover-class="account-row-pressed" bindtap="onEnableNotification" aria-role="button">
+        <image class="account-row-icon" src="/images/mine-icons/bell.png" mode="aspectFit" />
+        <view class="account-row-copy">
+          <view class="account-row-label">订阅任务通知</view>
+          <view class="account-row-helper">接收客户交接与工作任务提醒</view>
+        </view>
+        <view class="account-row-status {{notificationAccepted ? 'account-row-status-active' : ''}}">{{notificationStatus}}</view>
+        <view class="account-chevron"></view>
+      </view>
+      <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenSystemSettings" aria-role="button">
+        <image class="account-row-icon" src="/images/mine-v6/settings.png" mode="aspectFit" />
+        <view class="account-row-copy">
+          <view class="account-row-label">微信权限管理</view>
+          <view class="account-row-helper">查看通知、相册等系统授权</view>
+        </view>
+        <view class="account-chevron"></view>
+      </view>
+    </view>
+
+    <view class="account-section-title">账号</view>
+    <view class="account-surface">
+      <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenIdentitySwitch" aria-role="button">
+        <image class="account-row-icon" src="/images/mine-icons/users.png" mode="aspectFit" />
+        <view class="account-row-copy">
+          <view class="account-row-label">当前身份</view>
+          <view class="account-row-helper">{{identityLabel}}{{identityCount > 1 ? ' · 可切换' : ''}}</view>
+        </view>
+        <view class="account-chevron"></view>
+      </view>
+      <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenAccountSecurity" aria-role="button">
+        <image class="account-row-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+        <view class="account-row-copy">
+          <view class="account-row-label">账号与安全</view>
+          <view class="account-row-helper">查看登录账号、手机号和密码设置</view>
+        </view>
+        <view class="account-chevron"></view>
+      </view>
+    </view>
+
+    <button class="danger-action mine-logout-action" bindtap="onLogout">退出当前账号</button>
+  </view>
+</template>
+
 <view class="mine-page sfp-tab-page">
   <scroll-view class="mine-scroll" scroll-y enhanced show-scrollbar="{{false}}">
     <view wx:if="{{!isLoggedIn}}" class="login-state">
@@ -49,9 +96,6 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
                 <image src="/images/mine-icons/edit.png" mode="aspectFit" />
                 <text>编辑资料</text>
               </button>
-              <button class="settings-button" aria-label="账号设置" bindtap="onOpenSettings">
-                <image src="/images/mine-v6/settings.png" mode="aspectFit" />
-              </button>
             </view>
           </view>
 
@@ -74,7 +118,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           </view>
         </view>
 
-        <scroll-view class="stats-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+        <scroll-view wx:if="{{!isRoleShellMine}}" class="stats-scroll" scroll-x enhanced show-scrollbar="{{false}}">
           <view class="stats-row">
             <view
               wx:for="{{summaryCards}}"
@@ -92,7 +136,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           </view>
         </scroll-view>
 
-        <view class="surface-section workbench-section">
+        <view wx:if="{{!isRoleShellMine}}" class="surface-section workbench-section">
           <view class="section-heading-row">
             <view class="section-title">我的工作台</view>
             <view class="section-meta all-tools-label">
@@ -120,7 +164,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           </view>
         </view>
 
-        <view class="surface-section todo-section">
+        <view wx:if="{{!isRoleShellMine}}" class="surface-section todo-section">
           <view class="section-heading-row">
             <view class="section-title">我的待办</view>
             <view class="section-link" bindtap="onOpenAllTodos" aria-role="button">
@@ -162,7 +206,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           </view>
         </view>
 
-        <view wx:if="{{canUseAIDesign}}" class="ai-banner" bindtap="onOpenAIHome" aria-role="button" aria-label="进入 AI 设计空间">
+        <view wx:if="{{canUseAIDesign && !isRoleShellMine}}" class="ai-banner" bindtap="onOpenAIHome" aria-role="button" aria-label="进入 AI 设计空间">
           <image class="ai-banner-image" src="/images/mine-v6/ai-room.jpg" mode="aspectFill" />
           <view class="ai-banner-copy">
             <view class="ai-banner-kicker">AI 设计空间</view>
@@ -173,20 +217,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           <view class="ai-banner-arrow"><view class="css-chevron"></view></view>
         </view>
 
-        <view class="account-strip">
-          <view class="account-action" bindtap="onOpenNotifications" aria-role="button">
-            <image src="/images/mine-icons/bell.png" mode="aspectFit" />
-            <text wx:if="{{mineData.unreadNotificationCount}}" class="notification-badge">{{mineData.unreadNotificationCount}}</text>
-            <text>通知提醒</text>
-          </view>
-          <view class="account-divider"></view>
-          <view class="account-action" bindtap="onOpenAccountSecurity" aria-role="button">
-            <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-            <text>账号与安全</text>
-          </view>
-        </view>
-
-        <button class="logout-button" bindtap="onLogout">切换账号 / 退出登录</button>
+        <template is="mineAccountPanel" />
       </view>
 
       <view wx:else class="user-dashboard">
@@ -199,9 +230,6 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             style="margin-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
           >
             <view class="mine-title">我的</view>
-            <button class="settings-button" aria-label="账号设置" bindtap="onOpenSettings">
-              <image src="/images/mine-v6/settings.png" mode="aspectFit" />
-            </button>
           </view>
           <view class="profile-card compact-profile-card">
             <image class="avatar" src="{{mineData.profile.avatar || defaultAvatarUrl}}" mode="aspectFill" />
@@ -270,7 +298,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <image src="/images/mine-icons/bulb.png" mode="aspectFit" /><text>AI 设计</text>
           </view>
         </view>
-        <button class="logout-button" bindtap="onLogout">切换账号 / 退出登录</button>
+        <template is="mineAccountPanel" />
       </view>
     </view>
   </scroll-view>

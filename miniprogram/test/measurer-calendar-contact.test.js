@@ -60,3 +60,25 @@ test('measurer calendar retains the assigned customer name and phone from the ap
     global.wx = originalWx;
   }
 });
+
+test('measurer calendar opens native navigation only for an appointment with coordinates', () => {
+  const definition = loadPage();
+  const originalWx = global.wx;
+  const openCalls = [];
+  global.wx = {
+    openLocation(options) { openCalls.push(options); },
+    showToast() {},
+  };
+  try {
+    definition.openNavigation.call({}, {
+      currentTarget: { dataset: { item: {
+        address: '阳光花园 1 栋 201', locationName: '阳光花园', latitude: 23.1291, longitude: 113.2644,
+      } } },
+    });
+    assert.deepEqual(openCalls, [{
+      latitude: 23.1291, longitude: 113.2644, name: '阳光花园', address: '阳光花园 1 栋 201', scale: 18,
+    }]);
+  } finally {
+    global.wx = originalWx;
+  }
+});

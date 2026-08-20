@@ -21,7 +21,7 @@ not create a new customer, appointment, survey, design, or earnings business con
 
 The implementation reuses the four static Mini Program Tab routes as signed role shells: customer
 `Service/Projects/Mine`, referrer `Promotion/Progress/Earnings/Mine`, designer
-`Workbench/Customers/Design/Mine`, measurer `Workbench/Tasks/Survey/Mine`, and enterprise owner
+`Workbench/Customers/Design/Mine`, measurer `Workbench/Mine`, and enterprise owner
 `Operations/Customers/Appointments/Mine`. Every workbench reads only the server aggregate for the
 signed identity; measurers enter the formal editor only from assigned tasks, and blank or simulated
 tabs remain prohibited. The role scene reuses the exact standalone Xiao K asset referenced by the
@@ -68,10 +68,10 @@ the survey primary entry.
 
 | Role | Items | Capabilities | Badge source |
 | --- | --- | --- | --- |
-| Customer | `Service / Project / Mine` | `customer.service`, `customer.projects`, `account` | Server-owned appointment/project counts; failures say unavailable |
+| Customer | `Service / Mine` | `customer.service`, `account` | Server-owned reschedule/rebook counts; failures say unavailable. Service home opens the archive directly; `customer.projects` still guards archive/list API access while `customer-projects` is only a redirect shell |
 | Referrer | `Promotion / Progress / Earnings / Mine` | `referrer.promotion`, `referrer.progress`, `referrer.earnings`, `account` | Masked milestones and own payout state for the active membership |
 | Designer | `Workbench / Customers / Design / Mine` | `staff.leads`, `staff.appointments`, `staff.design`, `account` | Own follow-up/appointment/publication state; no fake numbers |
-| Measurer | `Workbench / Tasks / Survey / Mine` | `staff.schedule`, `staff.tasks`, `staff.surveying`, `account` | Own appointments and handoff tasks; calendar remains a workbench entry, and survey opens assigned context only |
+| Measurer | `Workbench / Customers / Mine` | `staff.schedule`, `staff.tasks`, `account` | Workbench tab aggregates today's appointments; “Customers” tab lets measurers inspect completed-survey customers and related handoff status. Formal-survey editor remains reachable only from task context deep links |
 | Enterprise owner | `Operations / Customers / Appointments / Mine` | `enterprise.operations`, `enterprise.customers`, `enterprise.appointments`, `account` | Tenant exception/approval/appointment state, not employee personal work |
 
 Use brand green and a pale-mint active state, neutral gray elsewhere, and the existing local licensed

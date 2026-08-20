@@ -1,6 +1,8 @@
 const api = require('../../../utils/api.js');
 const { getRoleLanding } = require('../../../utils/identity-navigation.js');
 
+const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
+
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
   let menuRect = null;
@@ -35,6 +37,25 @@ function usableDisplayName(value) {
   return name;
 }
 
+function isRecoveryCode(code) {
+  return ['code_rotated', 'code_disabled', 'code_expired', 'staff_enterprise_conflict', 'membership_limit_reached'].includes(code);
+}
+
+function navTitleFor(state) {
+  if (state === 'recovery') return '入驻恢复';
+  return '欢迎加入';
+}
+
+function onboardingUrlFromScanResult(scanResult) {
+  const rawPath = String(scanResult && scanResult.path || '').trim();
+  const queryIndex = rawPath.indexOf('?');
+  const route = (queryIndex === -1 ? rawPath : rawPath.slice(0, queryIndex))
+    .replace(/^\/+/, '');
+  const query = queryIndex === -1 ? '' : rawPath.slice(queryIndex + 1);
+  if (route !== ONBOARDING_ROUTE || !/(^|&)(token|scene)=[^&]+/.test(query)) return '';
+  return `/${ONBOARDING_ROUTE}${rawPath.slice(queryIndex)}`;
+}
+
 function onboardingErrorMessage(error) {
   const code = error && error.code;
   if (['code_rotated', 'code_disabled', 'code_expired'].includes(code)) {
@@ -52,11 +73,33 @@ function onboardingErrorMessage(error) {
   return '暂时无法完成入驻，请检查网络后重试或联系企业管理员。';
 }
 
+function applyOnboardingFailure(page, error) {
+  const code = error && error.code;
+  if (isRecoveryCode(code)) {
+    page.setData({
+      submitting: false,
+      nameSheetVisible: false,
+      pageState: 'recovery',
+      navTitle: navTitleFor('recovery'),
+      errorMessage: onboardingErrorMessage(error),
+    });
+    return;
+  }
+  page.setData({
+    submitting: false,
+    nameSheetVisible: false,
+    pageState: 'error',
+    navTitle: navTitleFor('error'),
+    errorMessage: onboardingErrorMessage(error),
+  });
+}
+
 Page({
   data: {
     navigationTop: 24,
     navigationHeight: 32,
     navigationRight: 96,
+    navTitle: '欢迎加入',
     pageState: 'resolving',
     onboardingToken: '',
     codeType: '',
@@ -78,10 +121,14 @@ Page({
   async resolveOnboardingCode() {
     const token = this.data.onboardingToken;
     if (!token) {
-      this.setData({ pageState: 'error', errorMessage: '未识别到有效入驻码，请重新扫码进入。' });
+      this.setData({
+        pageState: 'recovery',
+        navTitle: navTitleFor('recovery'),
+        errorMessage: '未识别到有效入驻码，请重新扫码进入。',
+      });
       return;
     }
-    this.setData({ pageState: 'resolving', errorMessage: '' });
+    this.setData({ pageState: 'resolving', navTitle: navTitleFor('ready'), errorMessage: '' });
     try {
       const response = await api.request('/miniprogram/codes/resolve', 'POST', { token });
       if (
@@ -94,11 +141,12 @@ Page({
       }
       this.setData({
         pageState: 'ready',
+        navTitle: navTitleFor('ready'),
         codeType: response.data.codeType,
         enterpriseName: String(response.data.enterpriseName).trim()
       });
     } catch (error) {
-      this.setData({ pageState: 'error', errorMessage: onboardingErrorMessage(error) });
+      applyOnboardingFailure(this, error);
     }
   },
 
@@ -133,12 +181,7 @@ Page({
       }
       await this.submitOnboarding();
     } catch (error) {
-      this.setData({
-        submitting: false,
-        pageState: 'error',
-        nameSheetVisible: false,
-        errorMessage: onboardingErrorMessage(error)
-      });
+      applyOnboardingFailure(this, error);
     }
   },
 
@@ -153,6 +196,10 @@ Page({
     try {
       await this.submitOnboarding();
     } catch (error) {
+      if (isRecoveryCode(error && error.code)) {
+        applyOnboardingFailure(this, error);
+        return;
+      }
       this.setData({
         submitting: false,
         pageState: 'name',
@@ -221,6 +268,32 @@ Page({
     if (this.data.submitting) return;
     this.setData({ nameSheetVisible: false, displayName: '' });
     this.resolveOnboardingCode();
+  },
+
+  onOpenIdentitySwitch() {
+    wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' });
+  },
+
+  onScanNewInvite() {
+    wx.scanCode({
+      onlyFromCamera: false,
+      scanType: ['qrCode'],
+      success: (result) => {
+        const url = onboardingUrlFromScanResult(result);
+        if (!url) {
+          wx.showToast({ title: '请扫描企业提供的入驻码', icon: 'none' });
+          return;
+        }
+        wx.redirectTo({
+          url,
+          fail: () => wx.showToast({ title: '无法打开入驻页，请重新扫码', icon: 'none' })
+        });
+      },
+      fail: (error) => {
+        if (String(error && error.errMsg || '').includes('cancel')) return;
+        wx.showToast({ title: '扫码失败，请确认二维码有效', icon: 'none' });
+      }
+    });
   },
 
   onBack() {

@@ -34,6 +34,7 @@ let generationId: bigint;
 let workflowId: bigint;
 let schemeGenerationA: bigint;
 let schemeGenerationB: bigint;
+let schemeGenerationC: bigint;
 
 before(async () => {
   loadEnvConfig(process.cwd());
@@ -130,9 +131,22 @@ before(async () => {
         output: { imageUrl: 'https://example.invalid/light-b.png' },
         input: { userMessage: '再暗一点' },
       },
+      {
+        enterpriseId,
+        operatorId: designerId,
+        leadId,
+        workflowId,
+        floorPlanId,
+        type: 'scenario',
+        status: 'succeeded',
+        stageKey: 'conversation',
+        output: { imageUrl: 'https://example.invalid/light-c.png' },
+        input: { userMessage: '再亮一点' },
+      },
     ]).returning();
     schemeGenerationA = extra[0]!.id;
     schemeGenerationB = extra[1]!.id;
+    schemeGenerationC = extra[2]!.id;
   });
 });
 
@@ -231,7 +245,7 @@ test('concurrent publication retries create one active customer-visible fact', a
   assert.equal(project?.publications.filter((item) => item.generation.id === generationId).length, 1);
 });
 
-test('scheme publication replaces the customer-visible set for one conversation and groups leftover singles', async () => {
+test('scheme publication merges incremental selections within one conversation', async () => {
   const first = await withTenantTransaction(enterpriseId, (transaction) =>
     new CustomerProjectRepository(transaction).publishScheme({
       enterpriseId,
@@ -244,39 +258,63 @@ test('scheme publication replaces the customer-visible set for one conversation 
   );
   assert.equal(first.kind, 'published');
 
-  const replaced = await withTenantTransaction(enterpriseId, (transaction) =>
+  const merged = await withTenantTransaction(enterpriseId, (transaction) =>
     new CustomerProjectRepository(transaction).publishScheme({
       enterpriseId,
       leadId,
       workflowId,
       title: '灯光设计终稿',
-      generationIds: [schemeGenerationA, schemeGenerationB],
+      generationIds: [schemeGenerationC],
       publishedBy: designerId,
     })
   );
-  assert.equal(replaced.kind, 'published');
-  if (replaced.kind !== 'published') return;
-  assert.equal(replaced.title, '灯光设计终稿');
-  assert.deepEqual(replaced.publications.map((item) => item.generation.id), [schemeGenerationA, schemeGenerationB]);
+  assert.equal(merged.kind, 'published');
+  if (merged.kind !== 'published') return;
+  assert.equal(merged.title, '灯光设计终稿');
 
   const project = await withTenantTransaction(enterpriseId, (transaction) =>
     new CustomerProjectRepository(transaction).findCustomerProject(customerUserId, leadId)
   );
   const schemeRows = project?.publications.filter((item) => item.publication.workflowId === workflowId) || [];
   assert.equal(schemeRows.length, 2);
-  assert.equal(schemeRows[0]?.publication.schemeTitle, '灯光设计终稿');
+  assert.deepEqual(new Set(schemeRows.map((item) => item.generation.id)), new Set([schemeGenerationA, schemeGenerationC]));
 
-  const withdrawn = await withTenantTransaction(enterpriseId, (transaction) =>
-    new CustomerProjectRepository(transaction).withdrawScheme({
+  // Order is stable: new images are appended after existing confirmed images.
+  const ordered = [...schemeRows].sort((l, r) => l.publication.sortOrder - r.publication.sortOrder);
+  assert.equal(ordered[0]?.generation.id, schemeGenerationA);
+  assert.equal(ordered[1]?.generation.id, schemeGenerationC);
+  assert.equal(ordered[1]?.publication.schemeTitle, '灯光设计终稿');
+});
+
+test('scheme publication replacement withdraws the parent generation inside one conversation', async () => {
+  // Mark B as an edited replacement of A.
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    transaction.update(aiGenerations)
+      .set({ parentGenerationId: schemeGenerationA })
+      .where(eq(aiGenerations.id, schemeGenerationB))
+  );
+
+  const published = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).publishScheme({
       enterpriseId,
       leadId,
       workflowId,
-      withdrawnBy: designerId,
+      title: '灯光设计终稿',
+      generationIds: [schemeGenerationB],
+      publishedBy: designerId,
     })
   );
-  assert.equal(withdrawn.kind, 'withdrawn');
-  const afterWithdraw = await withTenantTransaction(enterpriseId, (transaction) =>
+  assert.equal(published.kind, 'published');
+
+  const project = await withTenantTransaction(enterpriseId, (transaction) =>
     new CustomerProjectRepository(transaction).findCustomerProject(customerUserId, leadId)
   );
-  assert.equal(afterWithdraw?.publications.some((item) => item.publication.workflowId === workflowId), false);
+  const schemeRows = project?.publications.filter((item) => item.publication.workflowId === workflowId) || [];
+  assert.equal(schemeRows.length, 2);
+
+  // Parent A should be withdrawn, leaving only B active in this workflow,
+  // but other unrelated confirmed images in the scheme should remain.
+  const activeGenerationIds = new Set(schemeRows.map((item) => item.generation.id));
+  assert.equal(activeGenerationIds.has(schemeGenerationA), false);
+  assert.equal(activeGenerationIds.has(schemeGenerationB), true);
 });

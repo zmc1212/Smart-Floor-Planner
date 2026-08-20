@@ -49,25 +49,34 @@ copy back to `layoutData`.
   It writes AutoCAD 2007+ DXF in millimetres, with Chinese CAD layers (`墙`,
   `门`, `窗`, `尺寸标注`, `空间名称`, `指北针`), millimetre DIMSTYLE
   (`标注线` / `标注线-内墙`), `_ARCHTICK`, `黑体`, and `ACAD_ISO03W100`
-  door-swing dashes. Floors are placed side by side while retaining
-  each floor's internal coordinates. Closed rooms write four-line MTEXT
+  door-swing dashes. Floors are placed side by side; survey Y is negated so CAD matches the
+  canvas/viewer orientation, then fitted into a fixed
+  landscape sheet (30640×21660 model units, matching the reference CAD
+  template). Floor content (walls + dimension padding) scales up or down
+  uniformly to fill ~90% of the left draw zone; the title-block plot scale is
+  sheet-based (~1:85), matching the reference template. Closed rooms write four-line MTEXT
   (name, inner-face area m², ceiling height m, inner-face perimeter m) at
-  the room centroid with `\P` line breaks. A cyan model-space full-height
-  right title panel and yellow north-arrow block wrap the drawing with the
-  sheet name `原始户型平面图`, a computed plot scale, the plan completion
-  date, the linked lead's enterprise as 公司 at the top of the panel, and
+  the room centroid with `\P` line breaks on layer `空间名称` (ACI 7). A cyan
+  model-space double frame with rounded outer corners, a full-height right title
+  panel with stacked Chinese / English / value text (no mid-cell vertical split), and a yellow filled north-arrow block wrap the
+  drawing with the sheet name `原始户型平面图`, a computed plot scale, the plan completion
+  date, the project title and download filename as customer name + community + area (filename also appends export time; fallback plan name),
+  the linked lead's enterprise as 公司名称 at the top of the panel, and
   the lead's assigned designer as 设计师; customer phone and address are not
   exported. Both export endpoints resolve that sheet metadata in the same
   tenant transaction as the floor plan. Walls are opening-gapped rectangles unioned by
   `surveyWallSolidPlan` and written as inner/outer `LINE` faces plus jambs,
   not per-wall thickness rectangles. Hinged doors are a unit `DOOR` block
-  (open 90° thick leaf + gray dashed CCW arc) inserted on the opening face with
+  (green open 90° thick leaf + gray dashed CCW arc) inserted on the opening face with
   50mm jamb rectangles; sliding doors remain double rails and windows use four
   inset in-opening lines away from the wall faces. `_ARCHTICK` is the diagonal
   architectural tick. Dimensions reuse `createClosedDimensionPlan`: inner
   segments including wall-thickness ticks become rotated `AcDbRotatedDimension`
   entities styled `标注线-内墙`, overall outer lengths use `标注线`, with
-  integer-millimetre text, `DIMTAD` 2 / `DIMGAP` 10, and axis angles 0 or 90. Recessed L-notch spans stay on their local face. Aligned dimensions are
+  integer-millimetre text in magenta (DIMCLRT 193), `DIMTAD` 2 / `DIMGAP` 10,
+  wider exterior standoff (first lane ≈ 14% of plan span), DIMEXO clearance so extension lines do not cover walls, and axis angles 0 or 90. The DXF writer places each
+  dimension on the planned `dimensionStart`/`dimensionEnd` line rather than on
+  the wall face. Recessed L-notch spans stay on their local face. Aligned dimensions are
   not written.
 - The Mini Program keeps its CAD control disabled until the cloud plan is
   completed. A download is saved to the Mini Program file domain and offered to
@@ -179,7 +188,11 @@ copy back to `layoutData`.
   outer as its working face on close and must not extrude another thickness.
   When the final cursor hits a source wall's visible outer face, the close must
   retain that physical outer coordinate and bridge to the topology corner rather
-  than silently projecting it to the centre line.
+  than silently projecting it to the centre line. A one-thickness overshoot in
+  straight mode likewise keeps the last wall axis-aligned; `confirmClosure`
+  adds a short orthogonal `closure-bridge` instead of yanking that wall onto an
+  off-axis topology corner (which would leave a diagonal seam in the shared
+  wall body).
   Vertex continuations and shared internal-wall partitions retain their
   boundary closure rules.
 

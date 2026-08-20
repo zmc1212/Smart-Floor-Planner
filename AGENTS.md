@@ -280,12 +280,20 @@ staged change; split unrelated work.
   the navigation bar and safe area. Lists, dynamic content, accessibility text,
   and smaller viewports may scroll, but critical actions must not be hidden by
   avoidable spacing.
-- At the `390x844` baseline, primary labels, actions, body copy, and business
-  values must render at `24rpx` (about `12px`) or larger. Secondary metadata and
-  helper text must render at `20rpx` (about `10px`) or larger. Text below
-  `20rpx` is reserved for nonessential decorative annotations only and must
-  never carry an action, status, business value, or required explanation. Do
-  not use `transform: scale(...)` or image-embedded text to bypass these floors.
+- At the `390x844` baseline, Mini Program typography floors are:
+  - Page / nav titles: at least `32rpx` (`nav-title`, page H1).
+  - Section titles: at least `28rpx` (card titles, round titles).
+  - Primary labels, actions, body copy, business values, and tappable chips: at
+    least `24rpx` (about `12px`); key CTAs may use `26–28rpx`.
+  - Secondary metadata and helper text: at least `22rpx` (subtitles, prompt
+    summaries, time, points copy). Prefer this floor over landing on exactly
+    `20rpx` for readable helpers.
+  - Tertiary badges only: `20rpx` is allowed solely for non-primary on-image
+    badges (for example a “已确认” corner mark) that are not the main reading
+    path.
+  - Forbidden: any text below `20rpx` that carries an action, status, business
+    value, or required explanation. Do not use `transform: scale(...)` or
+    image-embedded text to bypass these floors.
 - Use one coherent, locally stored, license-documented icon set for primary
   actions. Do not ship emoji, mixed Unicode symbols, or multi-stroke CSS-drawn
   icons as product icons; CSS is reserved for simple geometry such as status

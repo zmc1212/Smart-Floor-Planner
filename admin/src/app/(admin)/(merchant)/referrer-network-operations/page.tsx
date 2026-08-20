@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import { Alert, Button, Card, Flex, Space, Statistic, Tag, Typography } from 'antd';
 import { CheckCircle2, RefreshCw, UsersRound, Wrench } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type JoinCodeType = 'staff' | 'referrer';

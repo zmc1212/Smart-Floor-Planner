@@ -27,27 +27,29 @@ export default async function AdminLayout({
   const pathname = (await headers()).get('x-admin-pathname') || '';
   if (isCreationStudioPath(pathname)) {
     return (
-      <div className="min-h-screen bg-zinc-100">
-        <FetchInterceptor />
-        {children}
-      </div>
+      <AdminAntdProvider>
+        <div className="min-h-screen bg-zinc-100">
+          <FetchInterceptor />
+          {children}
+        </div>
+      </AdminAntdProvider>
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-zinc-50/50">
-      <FetchInterceptor />
-      {/* Permanent sidebar on desktop, drawer on mobile is handled inside Sidebar component */}
-      <Sidebar />
-      
-      {/* Main Content Area */}
-      <AdminAntdProvider>
+    <AdminAntdProvider>
+      <div className="flex min-h-screen bg-zinc-50/50">
+        <FetchInterceptor />
+        {/* Permanent sidebar on desktop, drawer on mobile is handled inside Sidebar component */}
+        <Sidebar />
+
+        {/* Main Content Area */}
         <main className="flex-1 flex min-w-0 flex-col">
           <div className="mt-14 flex-1 overflow-y-auto md:mt-0">
             {children}
           </div>
         </main>
-      </AdminAntdProvider>
-    </div>
+      </div>
+    </AdminAntdProvider>
   );
 }

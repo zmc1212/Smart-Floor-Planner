@@ -1,7 +1,7 @@
 'use client';
 
 import { Info, Wallet } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from 'antd';
 
 interface AiQuotaBarProps {
   quota: { remaining?: number; balance?: number; frozenBalance?: number; availableBalance?: number; credits?: { balance?: number; frozenBalance?: number; availableBalance?: number } } | null;
@@ -28,7 +28,11 @@ export default function AiQuotaBar({ quota, loading, onRecharge }: AiQuotaBarPro
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>可用 {available}</span><span>账户 {balance}</span><span>冻结 {frozen}</span></div>
         </div>
       </div>
-      {onRecharge ? <Button variant="ghost" size="sm" className="self-start text-muted-foreground sm:self-auto" onClick={onRecharge}><Info data-icon="inline-start" />点数说明</Button> : null}
+      {onRecharge ? (
+        <Button type="text" size="small" className="self-start text-muted-foreground sm:self-auto" onClick={onRecharge} icon={<Info size={14} />}>
+          点数说明
+        </Button>
+      ) : null}
     </section>
   );
 }

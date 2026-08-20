@@ -24,9 +24,17 @@ import {
 import {
   addModelSpaceSheet,
   addNorthArrowBlock,
+  estimateDimensionLaneGaps,
+  estimateDimensionPadding,
+  fitDrawingToSheet,
+  getFixedSheetLayout,
+  mapSheetPoint,
   DXF_DRAWING_TITLE,
   DXF_NORTH_BLOCK,
+  DXF_SHEET_HEIGHT,
+  DXF_SHEET_WIDTH,
   type DxfSheetMeta,
+  type SheetFitTransform,
 } from '@/lib/dxf-sheet';
 
 export const DXF_EXPORT_STATUS = 'completed';
@@ -77,7 +85,14 @@ type WallBody = {
   wall: SurveyWall; start: Point; end: Point; outerStart: Point; outerEnd: Point; direction: Vec; normal: Vec; thickness: number;
 };
 type DimensionItem = {
-  start: Point; end: Point; extensionStart: Point; extensionEnd: Point; label: string | number; kind?: string;
+  start: Point;
+  end: Point;
+  dimensionStart?: Point;
+  dimensionEnd?: Point;
+  extensionStart: Point;
+  extensionEnd: Point;
+  label: string | number;
+  kind?: string;
 };
 type WallSolidInput = {
   id: string; start: Point; end: Point; outerStart: Point; outerEnd: Point; thickness: number; polygon: Point[];
@@ -139,7 +154,9 @@ function modelSpaceBounds(dxf: DxfWriterType) {
 }
 
 function nodeMap(floor: SurveyFloor) {
-  return new Map((floor.nodes || []).flatMap((node) => node.id ? [[node.id, { ...node, xMm: numberOr(node.xMm), yMm: numberOr(node.yMm) } as Node] as const] : []));
+  // Canvas Y grows downward with +yMm; CAD Y grows upward. Negate so the DXF
+  // matches the formal viewer / Mini Program on-screen orientation.
+  return new Map((floor.nodes || []).flatMap((node) => node.id ? [[node.id, { ...node, xMm: numberOr(node.xMm), yMm: -numberOr(node.yMm) } as Node] as const] : []));
 }
 
 function spaceWallLoop(floor: SurveyFloor, space: SurveySpace, nodes: Map<string, Node>) {
@@ -231,14 +248,16 @@ function localOpeningGeometry(body: WallBody, opening: Opening) {
   return { start, end, outerStart: add(start, scale(body.normal, body.thickness)), outerEnd: add(end, scale(body.normal, body.thickness)), center, width };
 }
 
-function applyMetricDimStyle(style: DxfDimStyle, textHeight: number, textStyleHandle: string) {
+function applyMetricDimStyle(style: DxfDimStyle, textHeight: number, textStyleHandle: string, annotationScale = 1) {
+  const scale = Math.max(0.05, annotationScale);
   style.DIMSCALE = 1;
-  style.DIMASZ = 50;
-  style.DIMEXO = 50;
-  style.DIMEXE = 50;
+  style.DIMASZ = 50 * scale;
+  // Keep extension lines clear of wall faces (do not cover the floor plan).
+  style.DIMEXO = 280 * scale;
+  style.DIMEXE = 60 * scale;
   style.DIMDLE = 0;
-  style.DIMTXT = textHeight;
-  style.DIMGAP = 10;
+  style.DIMTXT = textHeight * scale;
+  style.DIMGAP = 10 * scale;
   style.DIMDEC = 0;
   style.DIMTDEC = 0;
   style.DIMTIH = 0;
@@ -247,7 +266,7 @@ function applyMetricDimStyle(style: DxfDimStyle, textHeight: number, textStyleHa
   style.DIMZIN = 8;
   style.DIMCLRD = 193;
   style.DIMCLRE = 193;
-  style.DIMCLRT = 35;
+  style.DIMCLRT = 193;
   style.DIMLUNIT = 2;
   style.DIMDSEP = 46;
   style.DIMBLK = DXF_ARCH_TICK_BLOCK;
@@ -275,13 +294,13 @@ function addDoorBlock(dxf: DxfWriterType) {
       { point: point2d(leaf, 1) },
       { point: point2d(0, 1) },
     ],
-    { ...inherit, flags: LWPolylineFlags.Closed },
+    { ...inherit, colorNumber: 3, flags: LWPolylineFlags.Closed },
   );
   // DXF arcs are always CCW. An open unit leaf along +Y is reached by a 0–90° swing.
   block.addArc(point3d(0, 0), 1, 0, 90, { ...inherit, colorNumber: 252, lineType: DXF_ISO_DASH_LINETYPE });
 }
 
-function createDxfWriter() {
+function createDxfWriter(annotationScale = 1) {
   const dxf = new DxfWriter();
   dxf.setUnits(Units.Millimeters);
   dxf.setVariable('$MEASUREMENT', { 70: 1 });
@@ -295,12 +314,12 @@ function createDxfWriter() {
   dxf.addLayer(DXF_LAYER_NAMES.doors, 3, 'Continuous');
   dxf.addLayer(DXF_LAYER_NAMES.windows, 3, 'Continuous');
   dxf.addLayer(DXF_LAYER_NAMES.dimensions, 193, 'Continuous');
-  dxf.addLayer(DXF_LAYER_NAMES.spaces, 35, 'Continuous');
+  dxf.addLayer(DXF_LAYER_NAMES.spaces, 7, 'Continuous');
   dxf.addLayer(DXF_LAYER_NAMES.north, 251, 'Continuous');
   const sheetLayer = dxf.layer(DXF_SHEET_LAYER);
   if (sheetLayer) sheetLayer.colorNumber = 4;
-  applyMetricDimStyle(dxf.addDimStyle(DXF_DIM_STYLE_NAMES.inner), 135, heiti.handle);
-  applyMetricDimStyle(dxf.addDimStyle(DXF_DIM_STYLE_NAMES.outer), 180, heiti.handle);
+  applyMetricDimStyle(dxf.addDimStyle(DXF_DIM_STYLE_NAMES.inner), 135, heiti.handle, annotationScale);
+  applyMetricDimStyle(dxf.addDimStyle(DXF_DIM_STYLE_NAMES.outer), 180, heiti.handle, annotationScale);
   return dxf;
 }
 
@@ -378,10 +397,12 @@ function addOpeningRails(
   geometry: NonNullable<ReturnType<typeof localOpeningGeometry>>,
   layerName: string,
   insets: number[],
+  localOffset: Vec,
+  fit: SheetFitTransform,
 ) {
   insets.forEach((inset) => {
-    const start = add(geometry.start, scale(body.normal, body.thickness * inset));
-    const end = add(geometry.end, scale(body.normal, body.thickness * inset));
+    const start = mapFloorPoint(add(geometry.start, scale(body.normal, body.thickness * inset)), localOffset, fit);
+    const end = mapFloorPoint(add(geometry.end, scale(body.normal, body.thickness * inset)), localOffset, fit);
     dxf.addLine(point3d(start.x, start.y), point3d(end.x, end.y), { layerName });
   });
 }
@@ -391,14 +412,16 @@ function addDoorJambs(
   body: WallBody,
   geometry: NonNullable<ReturnType<typeof localOpeningGeometry>>,
   layerName: string,
+  localOffset: Vec,
+  fit: SheetFitTransform,
 ) {
   const jamb = Math.min(DOOR_JAMB_MM, Math.max(20, geometry.width / 8));
   const closed = { layerName, flags: LWPolylineFlags.Closed };
   const rectangle = (origin: Point, along: Vec, through: Vec) => {
-    const a = origin;
-    const b = add(origin, along);
-    const c = add(b, through);
-    const d = add(origin, through);
+    const a = mapFloorPoint(origin, localOffset, fit);
+    const b = mapFloorPoint(add(origin, along), localOffset, fit);
+    const c = mapFloorPoint(add(add(origin, along), through), localOffset, fit);
+    const d = mapFloorPoint(add(origin, through), localOffset, fit);
     dxf.addLWPolyline(
       [{ point: point2d(a.x, a.y) }, { point: point2d(b.x, b.y) }, { point: point2d(c.x, c.y) }, { point: point2d(d.x, d.y) }],
       closed,
@@ -415,26 +438,36 @@ function insertDoorLeaf(
   swingDir: Vec,
   width: number,
   layerName: string,
+  localOffset: Vec,
+  fit: SheetFitTransform,
   mirrored = false,
 ) {
   const ccwPerp = { x: -leafDir.y, y: leafDir.x };
   const ySign = ccwPerp.x * swingDir.x + ccwPerp.y * swingDir.y >= 0 ? 1 : -1;
-  dxf.addInsert(DXF_DOOR_BLOCK, point3d(hinge.x, hinge.y), {
+  const mapped = mapFloorPoint(hinge, localOffset, fit);
+  const leafScale = width * fit.scale;
+  dxf.addInsert(DXF_DOOR_BLOCK, point3d(mapped.x, mapped.y), {
     layerName,
     rotationAngle: angleDeg(leafDir),
-    scaleFactor: { x: (mirrored ? -1 : 1) * width, y: ySign * width, z: 1 },
+    scaleFactor: { x: (mirrored ? -1 : 1) * leafScale, y: ySign * leafScale, z: 1 },
   });
 }
 
-function addOpeningSymbol(dxf: DxfWriterType, body: WallBody, opening: Opening) {
+function addOpeningSymbol(
+  dxf: DxfWriterType,
+  body: WallBody,
+  opening: Opening,
+  localOffset: Vec,
+  fit: SheetFitTransform,
+) {
   const geometry = localOpeningGeometry(body, opening); if (!geometry) return;
   const layerName = openingLayerName(opening);
   if (opening.type === 'window') {
-    addOpeningRails(dxf, body, geometry, layerName, WINDOW_RAIL_INSETS);
+    addOpeningRails(dxf, body, geometry, layerName, WINDOW_RAIL_INSETS, localOffset, fit);
     return;
   }
   if (opening.modelCategory === 'sliding-door') {
-    addOpeningRails(dxf, body, geometry, layerName, [0.32, 0.68]);
+    addOpeningRails(dxf, body, geometry, layerName, [0.32, 0.68], localOffset, fit);
     return;
   }
   const opensOutside = opening.openDirection === 'outside';
@@ -444,21 +477,25 @@ function addOpeningSymbol(dxf: DxfWriterType, body: WallBody, opening: Opening) 
   const leafWidth = Math.max(100, geometry.width);
   if (opening.modelCategory === 'double-door') {
     const halfWidth = Math.max(100, geometry.width / 2);
-    insertDoorLeaf(dxf, hingeStart, body.direction, swingDir, halfWidth, layerName);
-    insertDoorLeaf(dxf, hingeEnd, body.direction, swingDir, halfWidth, layerName, true);
-    addDoorJambs(dxf, body, geometry, layerName);
+    insertDoorLeaf(dxf, hingeStart, body.direction, swingDir, halfWidth, layerName, localOffset, fit);
+    insertDoorLeaf(dxf, hingeEnd, body.direction, swingDir, halfWidth, layerName, localOffset, fit, true);
+    addDoorJambs(dxf, body, geometry, layerName, localOffset, fit);
     return;
   }
-  insertDoorLeaf(dxf, hingeStart, body.direction, swingDir, leafWidth, layerName);
-  addDoorJambs(dxf, body, geometry, layerName);
+  insertDoorLeaf(dxf, hingeStart, body.direction, swingDir, leafWidth, layerName, localOffset, fit);
+  addDoorJambs(dxf, body, geometry, layerName, localOffset, fit);
 }
 
-function addFloorWalls(dxf: DxfWriterType, bodies: WallBody[], openings: Opening[], offset: Vec) {
+function mapFloorPoint(point: Point, localOffset: Vec, fit: SheetFitTransform) {
+  return mapSheetPoint(point.x + localOffset.x, point.y + localOffset.y, fit);
+}
+
+function addFloorWalls(dxf: DxfWriterType, bodies: WallBody[], openings: Opening[], localOffset: Vec, fit: SheetFitTransform) {
   const solidPlan = createWallSolidPlan({ walls: gappedWallSolidInputs(bodies, openings) }) as WallSolidPlan;
   wallSolidEdges(solidPlan).forEach((edge) => {
-    const start = add(edge.start, offset);
-    const end = add(edge.end, offset);
-    if (distance(start, end) < MIN_WALL_EDGE_MM) return;
+    const start = mapFloorPoint(edge.start, localOffset, fit);
+    const end = mapFloorPoint(edge.end, localOffset, fit);
+    if (distance(start, end) < MIN_WALL_EDGE_MM * fit.scale) return;
     dxf.addLine(point3d(start.x, start.y), point3d(end.x, end.y), { layerName: DXF_LAYER_NAMES.walls });
   });
 }
@@ -473,17 +510,17 @@ function dimensionStyleName(kind?: string) {
     : DXF_DIM_STYLE_NAMES.inner;
 }
 
-function addLinearFloorDimension(dxf: DxfWriterType, item: DimensionItem, offset: Vec) {
-  const dimensionStart = add(item.start, offset);
-  const dimensionEnd = add(item.end, offset);
-  const extensionStart = add(item.extensionStart, offset);
-  const extensionEnd = add(item.extensionEnd, offset);
-  const dimensionMid = { x: (dimensionStart.x + dimensionEnd.x) / 2, y: (dimensionStart.y + dimensionEnd.y) / 2 };
+function addLinearFloorDimension(dxf: DxfWriterType, item: DimensionItem, localOffset: Vec, fit: SheetFitTransform) {
+  const extensionStart = mapFloorPoint(item.extensionStart, localOffset, fit);
+  const extensionEnd = mapFloorPoint(item.extensionEnd, localOffset, fit);
+  const lineStart = mapFloorPoint(item.dimensionStart ?? item.start, localOffset, fit);
+  const lineEnd = mapFloorPoint(item.dimensionEnd ?? item.end, localOffset, fit);
+  const dimensionMid = { x: (lineStart.x + lineEnd.x) / 2, y: (lineStart.y + lineEnd.y) / 2 };
   const dimension = dxf.addLinearDim(point3d(extensionStart.x, extensionStart.y), point3d(extensionEnd.x, extensionEnd.y), {
     layerName: DXF_LAYER_NAMES.dimensions,
     styleName: dimensionStyleName(item.kind),
-    angle: dimensionAxisAngle(dimensionStart, dimensionEnd),
-    definitionPoint: point3d(dimensionStart.x, dimensionStart.y),
+    angle: dimensionAxisAngle(lineStart, lineEnd),
+    definitionPoint: point3d(lineStart.x, lineStart.y),
     middlePoint: point3d(dimensionMid.x, dimensionMid.y),
     rotation: 0,
     text: String(Math.round(Number(item.label))),
@@ -491,13 +528,13 @@ function addLinearFloorDimension(dxf: DxfWriterType, item: DimensionItem, offset
   Object.assign(dimension, { dimensionType: ROTATED_DIMENSION_TYPE });
 }
 
-function addFloorDimensions(dxf: DxfWriterType, floor: SurveyFloor, bodies: WallBody[], offset: Vec) {
+function addFloorDimensions(dxf: DxfWriterType, floor: SurveyFloor, bodies: WallBody[], localOffset: Vec, fit: SheetFitTransform) {
   const allPoints = bodies.flatMap((body) => [body.start, body.end, body.outerStart, body.outerEnd]); if (!allPoints.length) return;
   const floorBounds = bounds(allPoints); const drawingScale = Math.max(floorBounds.maxX - floorBounds.minX, floorBounds.maxY - floorBounds.minY);
-  const dimensionOffset = Math.max(160, drawingScale * 0.035);
+  const { baseGap, laneGap } = estimateDimensionLaneGaps(drawingScale);
   const solidPlan = createWallSolidPlan({ walls: uncutWallSolidInputs(bodies) }) as WallSolidPlan;
   const dimensionItems = createClosedDimensionPlan({
-    baseGap: dimensionOffset * 0.28, laneGap: Math.max(120, drawingScale / 40) * 1.45, groupTolerance: Math.max(12, drawingScale * 0.002), measurementUnitsPerCoordinate: 1,
+    baseGap, laneGap, groupTolerance: Math.max(12, drawingScale * 0.002), measurementUnitsPerCoordinate: 1,
     walls: bodies.map((body) => ({ id: body.wall.id, start: body.start, end: body.end, coordinateLength: numberOr(body.wall.lengthMm, distance(body.start, body.end)), measurementLength: numberOr(body.wall.lengthMm, distance(body.start, body.end)), thickness: body.thickness, outerStart: body.outerStart, outerEnd: body.outerEnd })),
     spaces: (floor.spaces || []).filter((space) => space.closed), outerRings: solidPlan.rings || [],
     openings: ((floor.openings || []) as Opening[]).map((opening) => {
@@ -506,34 +543,46 @@ function addFloorDimensions(dxf: DxfWriterType, floor: SurveyFloor, bodies: Wall
       return { id: opening.id, wallId: opening.wallId || '', type: opening.type || 'window', start: center - width / 2, end: center + width / 2 };
     }),
   }).items as DimensionItem[];
-  dimensionItems.forEach((item) => addLinearFloorDimension(dxf, item, offset));
+  dimensionItems.forEach((item) => addLinearFloorDimension(dxf, item, localOffset, fit));
 }
 
-function addFloorSpaceLabels(dxf: DxfWriterType, floor: SurveyFloor, bodies: WallBody[], offset: Vec) {
+function addFloorSpaceLabels(dxf: DxfWriterType, floor: SurveyFloor, bodies: WallBody[], localOffset: Vec, fit: SheetFitTransform) {
   const nodes = nodeMap(floor);
   const bodiesById = new Map(bodies.map((body) => [body.wall.id, body]));
   const ceilingHeightMm = Math.round(numberOr(floor.ceilingHeightMm, DEFAULT_CEILING_HEIGHT_MM) || DEFAULT_CEILING_HEIGHT_MM);
+  const labelHeight = ROOM_LABEL_TEXT_HEIGHT * fit.scale;
   (floor.spaces || []).filter((space) => space.closed).forEach((space, index) => {
     const inner = spaceInnerPolygon(floor, space, bodiesById, nodes);
     const centroid = polygonCentroid(inner); if (!centroid || inner.length < 3) return;
+    const mapped = mapFloorPoint(centroid, localOffset, fit);
     const label = dxf.addMText(
-      point3d(centroid.x + offset.x, centroid.y + offset.y),
-      ROOM_LABEL_TEXT_HEIGHT,
+      point3d(mapped.x, mapped.y),
+      labelHeight,
       roomLabelValue(space.name || `空间 ${index + 1}`, polygonAreaAbs(inner), ceilingHeightMm, polygonPerimeter(inner)),
-      { layerName: DXF_LAYER_NAMES.spaces, attachmentPoint: MTextAttachmentPoint.MiddleCenter, width: 2200 },
+      { layerName: DXF_LAYER_NAMES.spaces, attachmentPoint: MTextAttachmentPoint.MiddleCenter, width: 2200 * fit.scale },
     );
     label.textStyle = DXF_TEXT_STYLE_NAME;
   });
 }
 
-function addFloorToDxf(dxf: DxfWriterType, floor: SurveyFloor, offset: Vec) {
+function addFloorToDxf(dxf: DxfWriterType, floor: SurveyFloor, localOffset: Vec, fit: SheetFitTransform) {
   const bodies = floorBodies(floor); if (!bodies.length) return null;
-  addFloorWalls(dxf, bodies, (floor.openings || []) as Opening[], offset);
-  ((floor.openings || []) as Opening[]).forEach((opening) => { const body = bodies.find((item) => item.wall.id === opening.wallId); if (body) addOpeningSymbol(dxf, { ...body, start: add(body.start, offset), end: add(body.end, offset), outerStart: add(body.outerStart, offset), outerEnd: add(body.outerEnd, offset) }, opening); });
-  addFloorSpaceLabels(dxf, floor, bodies, offset);
-  addFloorDimensions(dxf, floor, bodies, offset);
-  const allPoints = bodies.flatMap((body) => [body.start, body.end, body.outerStart, body.outerEnd]); const floorBounds = bounds(allPoints);
-  const floorTitle = dxf.addText(point3d(floorBounds.minX + offset.x, floorBounds.minY + offset.y - 500), 220, floor.name || '楼层', { layerName: DXF_LAYER_NAMES.spaces, horizontalAlignment: TextHorizontalAlignment.Left, verticalAlignment: TextVerticalAlignment.Top });
+  addFloorWalls(dxf, bodies, (floor.openings || []) as Opening[], localOffset, fit);
+  ((floor.openings || []) as Opening[]).forEach((opening) => {
+    const body = bodies.find((item) => item.wall.id === opening.wallId);
+    if (body) addOpeningSymbol(dxf, body, opening, localOffset, fit);
+  });
+  addFloorSpaceLabels(dxf, floor, bodies, localOffset, fit);
+  addFloorDimensions(dxf, floor, bodies, localOffset, fit);
+  const allPoints = bodies.flatMap((body) => [body.start, body.end, body.outerStart, body.outerEnd]);
+  const floorBounds = bounds(allPoints);
+  const titlePoint = mapFloorPoint({ x: floorBounds.minX, y: floorBounds.minY - 500 }, localOffset, fit);
+  const floorTitle = dxf.addText(
+    point3d(titlePoint.x, titlePoint.y),
+    220 * fit.scale,
+    floor.name || '楼层',
+    { layerName: DXF_LAYER_NAMES.spaces, horizontalAlignment: TextHorizontalAlignment.Left, verticalAlignment: TextVerticalAlignment.Top },
+  );
   floorTitle.textStyle = DXF_TEXT_STYLE_NAME;
   return { width: floorBounds.maxX - floorBounds.minX, minX: floorBounds.minX, minY: floorBounds.minY };
 }
@@ -545,27 +594,104 @@ export function getFormalSurveyLayoutForDxf(layoutData: unknown, status?: string
   return layout;
 }
 
-export function generateFormalSurveyDxf(layoutData: unknown, status?: string, sheet?: FormalSurveyDxfSheet) {
-  const layout = getFormalSurveyLayoutForDxf(layoutData, status); const dxf = createDxfWriter(); let cursorX = 0; let exportedFloors = 0;
+function computeNormalizedDrawingBounds(layout: FormalSurveyLayout) {
+  let cursorX = 0;
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
   for (const floor of layout.surveyGraph.floors) {
-    const bodies = floorBodies(floor); if (!bodies.length) continue; const allPoints = bodies.flatMap((body) => [body.start, body.end, body.outerStart, body.outerEnd]); const floorBounds = bounds(allPoints);
-    const result = addFloorToDxf(dxf, floor, { x: cursorX - floorBounds.minX, y: -floorBounds.minY }); if (result) { cursorX += result.width + 3000; exportedFloors += 1; }
+    const bodies = floorBodies(floor);
+    if (!bodies.length) continue;
+    const allPoints = bodies.flatMap((body) => [body.start, body.end, body.outerStart, body.outerEnd]);
+    const floorBounds = bounds(allPoints);
+    const offsetX = cursorX - floorBounds.minX;
+    const offsetY = -floorBounds.minY;
+    allPoints.forEach((point) => {
+      const x = point.x + offsetX;
+      const y = point.y + offsetY;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y - 500);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    });
+    cursorX += floorBounds.maxX - floorBounds.minX + 3000;
+  }
+  if (!Number.isFinite(minX)) return null;
+  const width = maxX - minX;
+  const height = maxY - minY;
+  const pad = estimateDimensionPadding(width, height);
+  return {
+    minX: minX - pad,
+    minY: minY - pad,
+    maxX: maxX + pad,
+    maxY: maxY + pad,
+  };
+}
+
+export function generateFormalSurveyDxf(layoutData: unknown, status?: string, sheet?: FormalSurveyDxfSheet) {
+  const layout = getFormalSurveyLayoutForDxf(layoutData, status);
+  const rawBounds = computeNormalizedDrawingBounds(layout);
+  if (!rawBounds) throw new DxfExportError('户型没有可导出的墙体', 409, 'DXF_EXPORT_EMPTY');
+  const sheetLayout = getFixedSheetLayout();
+  const fit = fitDrawingToSheet(rawBounds, sheetLayout);
+  const dxf = createDxfWriter(fit.scale);
+  let cursorX = 0;
+  let exportedFloors = 0;
+  for (const floor of layout.surveyGraph.floors) {
+    const bodies = floorBodies(floor);
+    if (!bodies.length) continue;
+    const allPoints = bodies.flatMap((body) => [body.start, body.end, body.outerStart, body.outerEnd]);
+    const floorBounds = bounds(allPoints);
+    const result = addFloorToDxf(dxf, floor, {
+      x: cursorX - floorBounds.minX,
+      y: -floorBounds.minY,
+    }, fit);
+    if (result) {
+      cursorX += result.width + 3000;
+      exportedFloors += 1;
+    }
   }
   if (!exportedFloors) throw new DxfExportError('户型没有可导出的墙体', 409, 'DXF_EXPORT_EMPTY');
-  addModelSpaceSheet(dxf, modelSpaceBounds(dxf), {
+  addModelSpaceSheet(dxf, { minX: 0, minY: 0, maxX: DXF_SHEET_WIDTH, maxY: DXF_SHEET_HEIGHT }, {
     textStyleName: DXF_TEXT_STYLE_NAME,
     northLayerName: DXF_LAYER_NAMES.north,
     meta: sheet,
+    plotScale: fit.plotScale,
+    sheet: sheetLayout,
   });
   return stringifyFormalSurveyDxf(dxf);
 }
 
-export function safeDxfFileName(name: string | null | undefined, id: string) {
-  const normalized = String(name || 'FloorPlan').replace(/[\\/:*?"<>|\r\n]+/g, '_').trim() || 'FloorPlan'; return `FloorPlan_${normalized}_${id}.dxf`;
+export function safeDxfFileName(name: string | null | undefined) {
+  const normalized = String(name || '户型')
+    .replace(/[\\/:*?\"<>|\r\n]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180) || '户型';
+  return /\.dxf$/i.test(normalized) ? normalized : `${normalized}.dxf`;
 }
 
-export function dxfContentDisposition(name: string | null | undefined, id: string) {
-  const fileName = safeDxfFileName(name, id);
-  const asciiFallback = `FloorPlan_${String(id).replace(/[^A-Za-z0-9_-]/g, '_')}.dxf`;
-  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+export function dxfContentDisposition(fileName: string | null | undefined, asciiFallbackId?: string) {
+  const resolved = safeDxfFileName(fileName);
+  const asciiFallback = `FloorPlan_${String(asciiFallbackId || 'export').replace(/[^A-Za-z0-9_-]+/g, '_') || 'export'}.dxf`;
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(resolved)}`;
+}
+
+/** Prefer RFC 5987 filename* from Content-Disposition, else quoted filename. */
+export function fileNameFromContentDisposition(header: string | null | undefined, fallback: string) {
+  const value = String(header || '');
+  const utf = value.match(/filename\*=(?:UTF-8''|utf-8'')([^;]+)/i);
+  if (utf?.[1]) {
+    try {
+      return decodeURIComponent(utf[1].trim().replace(/^\"|\"$/g, ''));
+    } catch {
+      /* keep falling through */
+    }
+  }
+  const quoted = value.match(/filename=\"([^\"]+)\"/i);
+  if (quoted?.[1]) return quoted[1];
+  const plain = value.match(/filename=([^;]+)/i);
+  if (plain?.[1]) return plain[1].trim().replace(/^\"|\"$/g, '');
+  return fallback;
 }

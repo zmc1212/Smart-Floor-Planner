@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { AntdRegistry } from "@ant-design/nextjs-registry";
-import { OperationFeedbackToaster } from "@/components/ui/operation-feedback";
-import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog";
+import { OperationFeedbackToaster } from "@/components/admin/operation-feedback";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,9 +19,7 @@ export default function RootLayout({
       className="h-full antialiased"
     >
       <body className="min-h-full flex flex-col">
-        <AntdRegistry>
-          <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
-        </AntdRegistry>
+        <AntdRegistry layer>{children}</AntdRegistry>
         <OperationFeedbackToaster />
       </body>
     </html>

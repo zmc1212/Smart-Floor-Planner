@@ -42,7 +42,7 @@ test('lead-detail scene is anchored to its hero instead of covering measurement 
 test('each historical measurement record opens its own plan while delete remains isolated', () => {
   assert.match(
     template,
-    /class="measurement-record"[\s\S]*?data-id="\{\{item\._id\}\}"[\s\S]*?bindtap="onContinueMeasure"/
+    /class="measurement-record[\s\S]*?data-id="\{\{item\._id\}\}"[\s\S]*?bindtap="onHistoryRecordTap"/
   );
   assert.match(template, /class="measurement-record-continue"[^>]*catchtap="onContinueMeasure"/);
   assert.match(template, /class="measurement-record-delete"[^>]*catchtap="onDeleteMeasure"/);
@@ -67,20 +67,29 @@ test('lead detail removes the legacy acquisition collaboration surface', () => {
   assert.match(script, /const WORKFLOW_STAGES = \['新线索', '量房中', '方案设计', '已签约'\]/);
 });
 
-test('appointment and formal survey stay consecutive, with conversion below the measurement stack', () => {
-  const appointmentIndex = template.indexOf('class="appointment-entry"');
+test('formal-survey keeps next-action right of the tab, address on its own row, and full-width appointment CTA', () => {
+  assert.doesNotMatch(template, /class="appointment-entry"/);
+  assert.doesNotMatch(template, /class="whole-home-main"/);
+  assert.match(template, /class="whole-home-head"/);
+  assert.match(template, /class="whole-home-address"/);
+  assert.match(template, /class="whole-home-appointment-action"/);
+  assert.match(template, /安排上门量房/);
+  assert.match(template, /查看预约/);
+  assert.match(styles, /\.whole-home-head\s*\{[^}]*justify-content:\s*flex-end;/s);
+  assert.match(styles, /\.whole-home-appointment-action\s*\{[^}]*width:\s*100%;/s);
+  assert.match(styles, /\.whole-home-appointment-action\s*\{[^}]*height:\s*84rpx;/s);
+  assert.match(styles, /\.conversion-primary-action\s*\{[^}]*height:\s*84rpx;/s);
   const surveyIndex = template.indexOf('class="whole-home-card"');
+  const schemesIndex = template.indexOf('class="published-schemes-card"');
   const historyIndex = template.indexOf('class="measurement-history"');
   const conversionIndex = template.indexOf('class="conversion-card"');
-  assert.ok(appointmentIndex > -1);
-  assert.ok(surveyIndex > appointmentIndex);
-  assert.ok(historyIndex > surveyIndex);
+  assert.ok(surveyIndex > -1);
+  assert.ok(schemesIndex > surveyIndex);
+  assert.ok(historyIndex > schemesIndex);
   assert.ok(conversionIndex > historyIndex);
 });
 
-test('appointment entry shares the lead-detail card gutter and uses a stacked full-width CTA', () => {
-  assert.match(styles, /\.appointment-entry\s*\{[^}]*flex-direction:\s*column;/s);
-  assert.match(styles, /\.appointment-entry\s*\{[^}]*margin:\s*0 0 18rpx;/s);
-  assert.doesNotMatch(styles, /\.appointment-entry\s*\{[^}]*margin:\s*20rpx 28rpx 0;/s);
-  assert.match(styles, /\.appointment-entry-action\s*\{[^}]*width:\s*100%;/s);
+test('formal-survey address row stays full-width below the next-action head', () => {
+  assert.match(styles, /\.whole-home-address\s*\{[^}]*display:\s*block;/s);
+  assert.doesNotMatch(styles, /\.appointment-entry\s*\{/);
 });

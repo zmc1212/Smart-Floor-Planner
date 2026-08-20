@@ -1,6 +1,10 @@
 const aiService = require('../../utils/aiDesignService.js');
 const { prioritizeProcessingTasks } = require('../../utils/aiDesignTaskOrdering.js');
-const { consumeAIDesignContext, normalizeAIDesignContext } = require('../../utils/aiDesignNavigation.js');
+const {
+  consumeAIDesignContext,
+  normalizeAIDesignContext,
+  openSchemeStudio,
+} = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../utils/aiDesignAccess.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { roleForIdentity } = require('../../utils/identity-navigation.js');
@@ -15,6 +19,8 @@ const {
   buildProjectPickerView,
   chooseDefaultProjectGroup,
   chooseDefaultProject,
+  buildRecentProjects,
+  shouldOpenSchemeStudioFromContext,
 } = require('./ai-design-model.js');
 
 const WORKFLOW_DEFINITIONS = [
@@ -98,6 +104,7 @@ Page({
     workflows: WORKFLOW_DEFINITIONS,
     provider: { available: false, supportsEdit: false, supportsGenerate: false },
     recent: [],
+    recentProjects: [],
     heroResults: [],
     heroSlides: [],
     activeHeroSlide: 0,
@@ -110,7 +117,9 @@ Page({
     selectedSource: null,
     sourcePickerOpen: false,
     sourcePickerStep: 'plans',
+    createSchemePicker: false,
     activeSourcePlan: null,
+    enterpriseName: '',
     schemeOptions: [],
     selectedWorkflow: null,
     workflowPickerOpen: false,
@@ -169,7 +178,24 @@ Page({
     } catch (error) {
       // Search history is a convenience only; discovery remains usable without storage.
     }
-    this.applyNavigationContext(options);
+    const context = this.applyNavigationContext(options);
+    if (shouldOpenSchemeStudioFromContext(context)) {
+      openSchemeStudio(context);
+    }
+  },
+
+  resolveEnterpriseName() {
+    try {
+      const app = typeof getApp === 'function' ? getApp() : null;
+      const globalData = (app && app.globalData) || {};
+      const bootstrap = globalData.bootstrap || {};
+      const userInfo = globalData.userInfo || {};
+      return (bootstrap.enterprise && bootstrap.enterprise.name)
+        || userInfo.enterpriseName
+        || '';
+    } catch (error) {
+      return '';
+    }
   },
 
   onShow() {
@@ -179,7 +205,10 @@ Page({
       this.syncTabBar();
       return;
     }
-    this.setData({ roleWorkbenchRole: '' });
+    this.setData({
+      roleWorkbenchRole: '',
+      enterpriseName: this.resolveEnterpriseName(),
+    });
     if (!canAccessAIDesign()) {
       this.recentPageVisible = false;
       this.stopRecentPolling();
@@ -193,6 +222,11 @@ Page({
     this.stopRecentPolling();
     const pendingContext = consumeAIDesignContext();
     if (pendingContext) {
+      if (shouldOpenSchemeStudioFromContext(pendingContext)) {
+        this.applyNavigationContext(pendingContext);
+        openSchemeStudio(pendingContext);
+        return;
+      }
       this.applyNavigationContext(pendingContext, () => this.loadData());
       return;
     }
@@ -274,6 +308,7 @@ Page({
       targetScope: context.targetScope || '',
       workflowId: context.workflowId || '',
     }, callback);
+    return context;
   },
 
   async loadData() {
@@ -392,7 +427,7 @@ Page({
       });
       const decoratedHeroResults = heroResults.map((item) => decorateRecentResult({
         ...item,
-        modeTitle: MODE_TITLES[item.mode] || '璁捐鎴愭灉',
+        modeTitle: MODE_TITLES[item.mode] || '设计成果',
       }));
       const heroSlides = buildHeroSlides(decoratedHeroResults, selectedSource);
       const sourcePickerOpen = false;
@@ -401,6 +436,7 @@ Page({
         workflows: decoratedWorkflows,
         provider,
         recent,
+        recentProjects: buildRecentProjects(sources),
         heroResults: decoratedHeroResults,
         heroSlides,
         activeHeroSlide: 0,
@@ -410,6 +446,8 @@ Page({
         ...projectPickerState,
         selectedSource,
         sourcePickerOpen,
+        createSchemePicker: false,
+        enterpriseName: this.resolveEnterpriseName(),
         floorPlanId: selectedSource ? selectedSource.floorPlanId : (sourcePlans.length ? this.data.floorPlanId : ''),
         leadId: selectedSource ? selectedSource.leadId : (sourcePlans.length ? this.data.leadId : ''),
         roomId: selectedSource ? selectedSource.roomId : (sourcePlans.length ? this.data.roomId : ''),
@@ -669,14 +707,23 @@ Page({
         && selectedWorkflow.targetContext.recommendedMiniMode;
       const decoratedHeroResults = heroResults.map((item) => decorateRecentResult({
         ...item,
-        modeTitle: MODE_TITLES[item.mode] || '璁捐鎴愭灉',
+        modeTitle: MODE_TITLES[item.mode] || '设计成果',
       }));
       const heroSlides = buildHeroSlides(decoratedHeroResults, selectedSource);
+      const sources = selectedSource
+        ? this.data.sources.map((item) => (
+          item.floorPlanId === selectedSource.floorPlanId
+            ? { ...item, ...selectedSource, selected: true }
+            : item
+        ))
+        : this.data.sources;
       this.setData({
         recent,
+        recentProjects: buildRecentProjects(sources),
         heroResults: decoratedHeroResults,
         heroSlides,
         activeHeroSlide: Math.min(this.data.activeHeroSlide, Math.max(0, heroSlides.length - 1)),
+        sources,
         selectedSource,
         schemeOptions,
         selectedWorkflow,
@@ -813,6 +860,46 @@ Page({
     });
   },
 
+  openCreateScheme() {
+    if (!this.data.sources.length) {
+      wx.showToast({ title: '暂无可关联的正式户型', icon: 'none' });
+      return;
+    }
+    const projectGroup = chooseDefaultProjectGroup(
+      this.data.sources,
+      this.data.selectedSource && this.data.selectedSource.floorPlanId
+    );
+    this.setData({
+      createSchemePicker: true,
+      sourcePickerOpen: true,
+      sourcePickerStep: 'plans',
+      activeSourcePlan: null,
+      projectGroup,
+      projectSearch: '',
+      ...buildProjectPickerView(this.data.sources, projectGroup, ''),
+    });
+    this.setTabBarHidden(true);
+  },
+
+  openRecentProject(event) {
+    const plan = this.data.recentProjects[Number(event.currentTarget.dataset.index)];
+    if (!plan) return;
+    if (!plan.eligibility || !plan.eligibility.eligible) {
+      openSurveyingEditor({
+        leadId: plan.leadId,
+        leadName: plan.leadName,
+        communityName: plan.communityName,
+        floorPlanId: plan.floorPlanId,
+      });
+      return;
+    }
+    openSchemeStudio({
+      leadId: plan.leadId,
+      floorPlanId: plan.floorPlanId,
+      workflowId: plan.activeWorkflow && plan.activeWorkflow.id,
+    });
+  },
+
   openSourcePicker() {
     if (!this.data.sources.length) {
       wx.showToast({ title: '暂无可关联的正式户型', icon: 'none' });
@@ -823,6 +910,7 @@ Page({
       this.data.selectedSource && this.data.selectedSource.floorPlanId
     );
     this.setData({
+      createSchemePicker: true,
       sourcePickerOpen: true,
       sourcePickerStep: 'plans',
       activeSourcePlan: null,
@@ -845,6 +933,7 @@ Page({
         this.data.selectedSource && this.data.selectedSource.floorPlanId
       );
     this.setData({
+      createSchemePicker: true,
       sourcePickerOpen: true,
       sourcePickerStep: 'plans',
       activeSourcePlan: null,
@@ -856,7 +945,13 @@ Page({
   },
 
   closeSourcePicker() {
-    this.setData({ sourcePickerOpen: false, sourcePickerStep: 'plans', activeSourcePlan: null, projectSearch: '' });
+    this.setData({
+      sourcePickerOpen: false,
+      sourcePickerStep: 'plans',
+      activeSourcePlan: null,
+      projectSearch: '',
+      createSchemePicker: false,
+    });
     this.setTabBarHidden(false);
   },
 
@@ -891,6 +986,7 @@ Page({
     ));
     this.setData({
       sources,
+      recentProjects: buildRecentProjects(sources),
       ...buildProjectPickerView(sources, this.data.projectGroup, this.data.projectSearch),
     });
   },
@@ -905,6 +1001,16 @@ Page({
         leadName: plan.leadName,
         communityName: plan.communityName,
         floorPlanId: plan.floorPlanId,
+      });
+      return;
+    }
+    if (this.data.createSchemePicker) {
+      this.setData({ createSchemePicker: false, sourcePickerOpen: false });
+      this.setTabBarHidden(false);
+      openSchemeStudio({
+        leadId: plan.leadId,
+        floorPlanId: plan.floorPlanId,
+        workflowId: plan.activeWorkflow && plan.activeWorkflow.id,
       });
       return;
     }
@@ -923,7 +1029,11 @@ Page({
       });
       return;
     }
-    this.applySource(plan, 'whole_floor_plan');
+    openSchemeStudio({
+      leadId: plan.leadId,
+      floorPlanId: plan.floorPlanId,
+      workflowId: plan.activeWorkflow && plan.activeWorkflow.id,
+    });
   },
 
   backSourcePlans() {
@@ -1037,7 +1147,7 @@ Page({
         && selectedWorkflow.targetContext.recommendedMiniMode;
       const decoratedHeroResults = heroResults.map((item) => decorateRecentResult({
         ...item,
-        modeTitle: MODE_TITLES[item.mode] || '璁捐鎴愭灉',
+        modeTitle: MODE_TITLES[item.mode] || '设计成果',
       }));
       const heroSlides = buildHeroSlides(decoratedHeroResults, source);
       this.setData({

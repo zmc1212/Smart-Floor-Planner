@@ -19,6 +19,7 @@ import {
   localDateInTimeZone,
   normalizeWeeklyAppointmentSchedule,
 } from '@/lib/appointment-scheduling';
+import type { AppointmentLocationInput } from '@/lib/appointment-api';
 import { parseFormalSurveyLayout } from '@/lib/survey-graph';
 
 export type AppointmentSettingsInput = {
@@ -372,6 +373,7 @@ export class AppointmentRepository {
     startAt: Date;
     endAt: Date;
     address: string;
+    location?: AppointmentLocationInput | null;
     actorUserId: bigint | null;
     eventKey: string;
   }) {
@@ -400,6 +402,10 @@ export class AppointmentRepository {
         designerId: lead.assignedTo,
         measurerId: measurer.id,
         address: input.address.trim().slice(0, 300),
+        locationName: input.location?.locationName || null,
+        latitude: input.location?.latitude || null,
+        longitude: input.location?.longitude || null,
+        coordinateSystem: input.location?.coordinateSystem || null,
         timeRange,
         updatedByUserId: input.actorUserId,
       })
@@ -623,6 +629,7 @@ export class AppointmentRepository {
     enterpriseId: bigint;
     appointmentId: bigint;
     address: string;
+    location?: AppointmentLocationInput | null;
     expectedVersion: number;
     actorUserId: bigint | null;
     eventKey: string;
@@ -636,11 +643,29 @@ export class AppointmentRepository {
     }
     const address = input.address.trim().slice(0, 300);
     if (!address) throw appointmentError('appointment_address_required', '请填写上门地址', 400);
-    if (address === current.appointment.address) return current.appointment;
+    const nextLocation = input.location === undefined
+      ? {
+          locationName: current.appointment.locationName,
+          latitude: current.appointment.latitude,
+          longitude: current.appointment.longitude,
+          coordinateSystem: current.appointment.coordinateSystem,
+        }
+      : {
+          locationName: input.location?.locationName || null,
+          latitude: input.location?.latitude || null,
+          longitude: input.location?.longitude || null,
+          coordinateSystem: input.location?.coordinateSystem || null,
+        };
+    if (address === current.appointment.address
+      && nextLocation.locationName === current.appointment.locationName
+      && nextLocation.latitude === current.appointment.latitude
+      && nextLocation.longitude === current.appointment.longitude
+      && nextLocation.coordinateSystem === current.appointment.coordinateSystem) return current.appointment;
     const rows = await this.transaction
       .update(measurementAppointments)
       .set({
         address,
+        ...nextLocation,
         version: current.appointment.version + 1,
         updatedByUserId: input.actorUserId,
         updatedAt: new Date(),
@@ -662,7 +687,17 @@ export class AppointmentRepository {
       actorUserId: input.actorUserId,
       reason: '补充或修正服务地址',
       eventKey: input.eventKey,
-      metadata: { previousAddress: current.appointment.address, address },
+      metadata: {
+        previousAddress: current.appointment.address,
+        address,
+        previousLocation: {
+          locationName: current.appointment.locationName,
+          latitude: current.appointment.latitude,
+          longitude: current.appointment.longitude,
+          coordinateSystem: current.appointment.coordinateSystem,
+        },
+        location: nextLocation,
+      },
     });
     return appointment;
   }

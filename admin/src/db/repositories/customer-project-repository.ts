@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   adminUsers,
   aiGenerationPublications,
@@ -210,6 +210,28 @@ export class CustomerProjectRepository {
     return project?.publications.find((item) => item.generation.id === generationId) ?? null;
   }
 
+  async countPublishedDesignsByLeadIds(enterpriseId: bigint, leadIds: bigint[]) {
+    if (!leadIds.length) return new Map<string, number>();
+    const rows = await this.transaction
+      .select({
+        leadId: aiGenerationPublications.leadId,
+        value: count(),
+      })
+      .from(aiGenerationPublications)
+      .innerJoin(aiGenerations, eq(aiGenerationPublications.generationId, aiGenerations.id))
+      .where(and(
+        eq(aiGenerationPublications.enterpriseId, enterpriseId),
+        inArray(aiGenerationPublications.leadId, leadIds),
+        isNull(aiGenerationPublications.withdrawnAt),
+        eq(aiGenerations.enterpriseId, enterpriseId),
+        eq(aiGenerations.status, 'succeeded'),
+        isNull(aiGenerations.deletedAt),
+        sql`coalesce(${aiGenerations.output} ->> 'imageUrl', '') <> ''`
+      ))
+      .groupBy(aiGenerationPublications.leadId);
+    return new Map(rows.map((row) => [row.leadId.toString(), Number(row.value ?? 0)]));
+  }
+
   async listActivePublications(enterpriseId: bigint, leadId: bigint): Promise<CustomerProjectPublication[]> {
     return this.transaction
       .select({ publication: aiGenerationPublications, generation: aiGenerations })
@@ -366,6 +388,7 @@ export class CustomerProjectRepository {
         id: aiGenerations.id,
         output: aiGenerations.output,
         workflowId: aiGenerations.workflowId,
+        parentGenerationId: aiGenerations.parentGenerationId,
         status: aiGenerations.status,
         deletedAt: aiGenerations.deletedAt,
       })
@@ -390,15 +413,59 @@ export class CustomerProjectRepository {
 
     const now = new Date();
     const title = input.title.trim() || workflow.title || '设计方案';
-    await this.transaction
-      .update(aiGenerationPublications)
-      .set({ withdrawnAt: now, withdrawnBy: input.publishedBy, updatedAt: now })
+    const selectionSet = new Set(uniqueIds.map((id) => id.toString()));
+
+    // Active publications that already exist for this workflow
+    const workflowActivePubs = await this.transaction
+      .select({
+        generationId: aiGenerationPublications.generationId,
+        sortOrder: aiGenerationPublications.sortOrder,
+      })
+      .from(aiGenerationPublications)
       .where(and(
         eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
         eq(aiGenerationPublications.leadId, input.leadId),
         eq(aiGenerationPublications.workflowId, input.workflowId),
         isNull(aiGenerationPublications.withdrawnAt)
       ));
+
+    const existingSelectedPubs = await this.transaction
+      .select({
+        generationId: aiGenerationPublications.generationId,
+        sortOrder: aiGenerationPublications.sortOrder,
+      })
+      .from(aiGenerationPublications)
+      .where(and(
+        eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+        eq(aiGenerationPublications.leadId, input.leadId),
+        eq(aiGenerationPublications.workflowId, input.workflowId),
+        inArray(aiGenerationPublications.generationId, uniqueIds),
+        isNull(aiGenerationPublications.withdrawnAt)
+      ));
+    const existingSelectedSortByGen = new Map(existingSelectedPubs.map((row) => [row.generationId.toString(), row.sortOrder]));
+
+    const parentGenerationIds = Array.from(new Set(generationRows
+      .map((row) => row.parentGenerationId)
+      .filter((id): id is bigint => Boolean(id))));
+    const parentPubs = parentGenerationIds.length
+      ? await this.transaction
+        .select({
+          generationId: aiGenerationPublications.generationId,
+          sortOrder: aiGenerationPublications.sortOrder,
+        })
+        .from(aiGenerationPublications)
+        .where(and(
+          eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+          eq(aiGenerationPublications.leadId, input.leadId),
+          eq(aiGenerationPublications.workflowId, input.workflowId),
+          inArray(aiGenerationPublications.generationId, parentGenerationIds),
+          isNull(aiGenerationPublications.withdrawnAt)
+        ))
+      : [];
+    const parentSortByGen = new Map(parentPubs.map((row) => [row.generationId.toString(), row.sortOrder]));
+
+    // 1) Withdraw any active publications for the selected generations in other workflows
+    // to satisfy the unique constraint on (generation_id) when active.
     await this.transaction
       .update(aiGenerationPublications)
       .set({ withdrawnAt: now, withdrawnBy: input.publishedBy, updatedAt: now })
@@ -406,20 +473,110 @@ export class CustomerProjectRepository {
         eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
         eq(aiGenerationPublications.leadId, input.leadId),
         inArray(aiGenerationPublications.generationId, uniqueIds),
+        isNull(aiGenerationPublications.withdrawnAt),
+        sql`${aiGenerationPublications.workflowId} is distinct from ${input.workflowId}`
+      ));
+
+    // 2) Replacement: if a selected generation was edited from a parent generation,
+    // withdraw the parent publication (unless the parent itself is selected).
+    const parentToWithdraw = new Set<bigint>();
+    for (const generationId of uniqueIds) {
+      const generation = generationById.get(generationId.toString());
+      if (!generation?.parentGenerationId) continue;
+      const parentId = generation.parentGenerationId;
+      if (!parentSortByGen.has(parentId.toString())) continue;
+      if (selectionSet.has(parentId.toString())) continue;
+      parentToWithdraw.add(parentId);
+    }
+    const parentToWithdrawIds = Array.from(parentToWithdraw);
+    if (parentToWithdrawIds.length) {
+      await this.transaction
+        .update(aiGenerationPublications)
+        .set({ withdrawnAt: now, withdrawnBy: input.publishedBy, updatedAt: now })
+        .where(and(
+          eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+          eq(aiGenerationPublications.leadId, input.leadId),
+          eq(aiGenerationPublications.workflowId, input.workflowId),
+          inArray(aiGenerationPublications.generationId, parentToWithdrawIds),
+          isNull(aiGenerationPublications.withdrawnAt)
+        ));
+    }
+
+    // 3) Keep the scheme title in sync for all active images in this workflow.
+    await this.transaction
+      .update(aiGenerationPublications)
+      .set({ schemeTitle: title, updatedAt: now })
+      .where(and(
+        eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+        eq(aiGenerationPublications.leadId, input.leadId),
+        eq(aiGenerationPublications.workflowId, input.workflowId),
         isNull(aiGenerationPublications.withdrawnAt)
       ));
-    await this.transaction.insert(aiGenerationPublications).values(
-      uniqueIds.map((generationId, index) => ({
+
+    // 4) Append new images to the end of the existing active order (except replaced parents).
+    const withdrawnParentSortOrders = new Set(parentToWithdrawIds.map((id) => id.toString()));
+    const remainingSortOrders = workflowActivePubs
+      .filter((row) => !withdrawnParentSortOrders.has(row.generationId.toString()))
+      .map((row) => row.sortOrder);
+    const remainingMaxSortOrder = remainingSortOrders.length ? Math.max(...remainingSortOrders) : -1;
+    let appendSortOrder = remainingMaxSortOrder + 1;
+
+    // 5) Update existing publications for selected generations (and compute replacement sort orders).
+    for (const generationId of uniqueIds) {
+      const hasExisting = existingSelectedSortByGen.has(generationId.toString());
+      if (!hasExisting) continue;
+      const generation = generationById.get(generationId.toString());
+      if (!generation) continue;
+      const replacementParentId = generation.parentGenerationId;
+      const replacementSort = replacementParentId && parentSortByGen.has(replacementParentId.toString())
+        && !selectionSet.has(replacementParentId.toString())
+        ? parentSortByGen.get(replacementParentId.toString())
+        : undefined;
+      const targetSortOrder = replacementSort ?? existingSelectedSortByGen.get(generationId.toString()) ?? 0;
+      await this.transaction
+        .update(aiGenerationPublications)
+        .set({
+          schemeTitle: title,
+          sortOrder: targetSortOrder,
+          publishedBy: input.publishedBy,
+          publishedAt: now,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+          eq(aiGenerationPublications.leadId, input.leadId),
+          eq(aiGenerationPublications.workflowId, input.workflowId),
+          eq(aiGenerationPublications.generationId, generationId),
+          isNull(aiGenerationPublications.withdrawnAt)
+        ));
+    }
+
+    // 6) Insert missing publications for newly selected generations.
+    const missingIds = uniqueIds.filter((id) => !existingSelectedSortByGen.has(id.toString()));
+    for (const generationId of missingIds) {
+      const generation = generationById.get(generationId.toString());
+      if (!generation) continue;
+
+      const replacementParentId = generation.parentGenerationId;
+      const replacementSort = replacementParentId && parentSortByGen.has(replacementParentId.toString())
+        && !selectionSet.has(replacementParentId.toString())
+        ? parentSortByGen.get(replacementParentId.toString())
+        : undefined;
+
+      const targetSortOrder = replacementSort ?? appendSortOrder;
+      if (replacementSort === undefined) appendSortOrder += 1;
+
+      await this.transaction.insert(aiGenerationPublications).values({
         enterpriseId: input.enterpriseId,
         leadId: input.leadId,
         generationId,
         workflowId: input.workflowId,
         schemeTitle: title,
-        sortOrder: index,
+        sortOrder: targetSortOrder,
         publishedBy: input.publishedBy,
         publishedAt: now,
-      }))
-    );
+      });
+    }
 
     const publications = (await this.listActivePublications(input.enterpriseId, input.leadId))
       .filter((item) => item.publication.workflowId === input.workflowId);

@@ -44,8 +44,10 @@ Page({
     deletingId: '',
     error: '',
     date: localDate(),
-    startTime: '12:00',
-    endTime: '13:30',
+    slotMode: 'afternoon',
+    startTime: '13:00',
+    endTime: '18:00',
+    presetTags: ['调休休假', '外出培训', '个人事务', '设备检修'],
     reason: '',
     periods: [],
   },
@@ -63,8 +65,26 @@ Page({
     }
   },
   onDateChange(event) { this.setData({ date: event.detail.value }); },
-  onStartTimeChange(event) { this.setData({ startTime: event.detail.value }); },
-  onEndTimeChange(event) { this.setData({ endTime: event.detail.value }); },
+  selectSlotMode(event) {
+    const mode = event.currentTarget.dataset.mode;
+    if (!mode) return;
+    if (mode === 'all_day') {
+      this.setData({ slotMode: mode, startTime: '09:00', endTime: '18:00' });
+    } else if (mode === 'morning') {
+      this.setData({ slotMode: mode, startTime: '09:00', endTime: '12:00' });
+    } else if (mode === 'afternoon') {
+      this.setData({ slotMode: mode, startTime: '13:00', endTime: '18:00' });
+    } else {
+      this.setData({ slotMode: 'custom' });
+    }
+  },
+  selectPresetTag(event) {
+    const tag = event.currentTarget.dataset.tag;
+    if (!tag) return;
+    this.setData({ reason: this.data.reason === tag ? '' : tag });
+  },
+  onStartTimeChange(event) { this.setData({ startTime: event.detail.value, slotMode: 'custom' }); },
+  onEndTimeChange(event) { this.setData({ endTime: event.detail.value, slotMode: 'custom' }); },
   onReasonInput(event) { this.setData({ reason: event.detail.value }); },
   async save() {
     if (this.data.saving) return;

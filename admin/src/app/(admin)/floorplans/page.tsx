@@ -9,7 +9,7 @@ import {
 } from '@ant-design/pro-components';
 import { Button, Flex, Tag, Typography } from 'antd';
 import { Eye, Search } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { getAdminRoute } from '@/config/admin-routes';
 
 type SurveySpace = {

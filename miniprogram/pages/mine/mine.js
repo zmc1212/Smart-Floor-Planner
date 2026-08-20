@@ -11,8 +11,18 @@ const {
   buildDashboardSlices,
   getFloorPlanRoomCount
 } = require('./mine-model.js');
+const {
+  readNotificationState,
+  refreshAccountSettingsState
+} = require('../../utils/account-settings-state.js');
+const { requestNotification } = require('../../utils/notification.js');
 
 const DEFAULT_AVATAR = '/images/mine-v6/profile-avatar.jpg';
+const ROLE_SHELL_MINE_ROLES = ['designer', 'measurer', 'enterprise_admin'];
+
+function isRoleShellMineRole(role) {
+  return ROLE_SHELL_MINE_ROLES.includes(role);
+}
 
 const FALLBACK_PROFILE = {
   name: '员工账号',
@@ -52,6 +62,7 @@ Page({
     isStaff: false,
     activeRole: '',
     isRoleRestrictedUser: false,
+    isRoleShellMine: false,
     canUseAIDesign: false,
     loadingMine: false,
     mineError: '',
@@ -74,7 +85,12 @@ Page({
     navigationTop: 47,
     navigationHeight: 32,
     navigationRight: 14,
-    defaultAvatarUrl: DEFAULT_AVATAR
+    defaultAvatarUrl: DEFAULT_AVATAR,
+    notificationStatus: '读取中',
+    notificationAccepted: false,
+    notificationRequesting: false,
+    identityLabel: '读取中',
+    identityCount: 0
   },
 
   onLoad() {
@@ -95,11 +111,13 @@ Page({
     if (token && userInfo) {
       app.globalData.userInfo = userInfo;
       app.globalData.openid = openid;
+      const isRoleShellMine = isRoleShellMineRole(activeRole);
       this.setData({
         isLoggedIn: true,
         isStaff: isStaffRole,
         activeRole,
         isRoleRestrictedUser,
+        isRoleShellMine,
         canUseAIDesign: canAccessAIDesign(userInfo),
         loadingMine: false,
         mineData: {
@@ -113,17 +131,20 @@ Page({
       });
       if (isStaffRole) this.fetchMineData();
       else if (isRoleRestrictedUser) this.fetchProfileData();
+      refreshAccountSettingsState(this);
       return;
     }
 
     if (openid && userInfo) {
       app.globalData.userInfo = userInfo;
       app.globalData.openid = openid;
+      const isRoleShellMine = isRoleShellMineRole(activeRole);
       this.setData({
         isLoggedIn: true,
         isStaff: isStaffRole,
         activeRole,
         isRoleRestrictedUser,
+        isRoleShellMine,
         canUseAIDesign: canAccessAIDesign(userInfo),
         loadingMine: false,
         mineError: '',
@@ -140,6 +161,7 @@ Page({
         this.fetchMyFloorPlans();
       }
       if (isRoleRestrictedUser) this.fetchProfileData();
+      refreshAccountSettingsState(this);
       return;
     }
 
@@ -148,6 +170,7 @@ Page({
       isStaff: false,
       activeRole: '',
       isRoleRestrictedUser: false,
+      isRoleShellMine: false,
       canUseAIDesign: false,
       loadingMine: false,
       mineError: '',
@@ -226,7 +249,10 @@ Page({
   },
 
   async fetchMineData() {
-    this.setData({ loadingMine: true, mineError: '' });
+    this.setData({
+      loadingMine: !this.data.isRoleShellMine,
+      mineError: ''
+    });
     try {
       const res = await api.request('/miniprogram/mine', 'GET');
       const data = res.data || {};
@@ -271,9 +297,12 @@ Page({
         this.fetchMyFloorPlans();
       }
     } catch (err) {
+      const fallbackError = this.data.isRoleShellMine
+        ? '资料暂时无法加载，请检查网络后重试'
+        : '工作台加载失败，请检查网络后重试';
       this.setData({
         loadingMine: false,
-        mineError: (err && err.error) || '工作台加载失败，请检查网络后重试'
+        mineError: (err && err.error) || fallbackError
       });
       if (err && err.statusCode === 401) {
         this.clearSession();
@@ -409,58 +438,39 @@ Page({
   },
 
   async onEnableNotification() {
-    const { requestNotification } = require('../../utils/notification.js');
+    if (this.data.notificationRequesting) return;
+    this.setData({ notificationRequesting: true });
     try {
       await requestNotification();
-    } catch (e) {
-      console.error('Notification enable failed', e);
+    } catch (error) {
+      console.error('Notification subscription failed', error);
+    } finally {
+      this.setData({ notificationRequesting: false });
+      await readNotificationState(this, false);
     }
   },
 
-  async onOpenNotifications() {
-    try {
-      const result = await api.request('/miniprogram/notifications?unread=1', 'GET');
-      const notifications = result.data || [];
-      if (!notifications.length) {
-        wx.showToast({ title: '暂无未读通知', icon: 'none' });
-        return;
-      }
-      wx.showActionSheet({
-        itemList: notifications.slice(0, 6).map((item) => item.message || '客户线索通知'),
-        success: async ({ tapIndex }) => {
-          const item = notifications[tapIndex];
-          if (!item) return;
-          await api.request('/miniprogram/notifications/read', 'POST', { ids: [item._id] });
-          const leadId = item.leadId && (item.leadId._id || item.leadId);
-          const metadataPage = item.metadata && item.metadata.page ? String(item.metadata.page) : '';
-          if (metadataPage) {
-            const tabPath = metadataPage.split('?')[0];
-            const isTab = [
-              '/pages/index/index',
-              '/pages/leads-management/leads-management',
-              '/pages/ai-design/ai-design',
-              '/pages/mine/mine'
-            ].includes(tabPath);
-            if (isTab) wx.switchTab({ url: tabPath });
-            else wx.navigateTo({ url: metadataPage });
-          } else if (leadId) {
-            wx.navigateTo({ url: `/packages/business/lead-detail/lead-detail?id=${leadId}` });
-          }
-          const currentUnread = Number(this.data.mineData.unreadNotificationCount || 0);
-          this.setData({ 'mineData.unreadNotificationCount': Math.max(0, currentUnread - 1) });
+  onOpenSystemSettings() {
+    if (!wx.openSetting) {
+      wx.showToast({ title: '当前微信版本不支持权限设置', icon: 'none' });
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      wx.openSetting({
+        complete: async () => {
+          await readNotificationState(this);
+          resolve();
         }
       });
-    } catch (error) {
-      wx.showToast({ title: (error && error.error) || '通知加载失败', icon: 'none' });
-    }
+    });
+  },
+
+  onOpenIdentitySwitch() {
+    wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' });
   },
 
   onEditProfile() {
     wx.navigateTo({ url: '/packages/business/profile-edit/profile-edit' });
-  },
-
-  onOpenSettings() {
-    wx.navigateTo({ url: '/packages/business/settings/settings' });
   },
 
   onOpenAccountSecurity() {
@@ -492,7 +502,12 @@ Page({
       remainingTodos: [],
       summaryCards: [],
       displayTodos: [],
-      overviewCards: []
+      overviewCards: [],
+      notificationStatus: '读取中',
+      notificationAccepted: false,
+      notificationRequesting: false,
+      identityLabel: '读取中',
+      identityCount: 0
     });
     this.syncTabBar();
   },

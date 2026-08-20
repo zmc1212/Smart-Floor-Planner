@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { PageContainer } from '@ant-design/pro-components';
 import { Alert, Button, Card, Col, Flex, Form, Input, InputNumber, Row, Select, Space, Switch, Typography } from 'antd';
 import { ArrowLeft, CalendarClock, Plus, Save, Trash2 } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 
 type DayKey = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 type DaySetting = { enabled: boolean; windows: Array<{ start: string; end: string }> };

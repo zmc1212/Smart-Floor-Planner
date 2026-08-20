@@ -2,7 +2,7 @@
   <view class="custom-header" style="height: {{navBarHeightTotal}}px;">
     <view class="header-content" style="margin-top: {{statusBarHeight}}px; height: {{navBarHeightTotal - statusBarHeight}}px;">
       <view class="back-btn" bindtap="onBack">‹</view>
-      <view class="page-title">客户资料</view>
+      <view class="page-title">{{pageTitle}}</view>
     </view>
   </view>
 
@@ -10,12 +10,14 @@
     <view class="content-shell">
       <view class="lead-intake-hero">
         <view class="lead-intake-copy">
-          <view class="lead-intake-title">让<text>家</text>更懂你</view>
-          <view class="lead-intake-subtitle">完善资料，获得更精准的服务与方案</view>
+          <view class="lead-intake-title" wx:if="{{!isEditMode}}">让<text>家</text>更懂你</view>
+          <view class="lead-intake-title" wx:else>完善<text>客户</text>资料</view>
+          <view class="lead-intake-subtitle">{{isEditMode ? '补充小区、面积和风格，方便后续服务跟进' : '完善资料，获得更精准的服务与方案'}}</view>
         </view>
         <image class="lead-intake-scene" src="/packages/business/assets/leads/lead-form.png" mode="aspectFit"></image>
       </view>
 
+      <block wx:if="{{!isEditMode}}">
       <view class="recent-head">
         <text class="recent-title">最近客户</text>
         <view class="refresh-action" bindtap="onRefreshRecent">
@@ -41,6 +43,7 @@
       </view>
 
       <view class="section-divider"></view>
+      </block>
 
       <view class="form-panel">
         <view class="form-group">
@@ -89,8 +92,8 @@
       </view>
 
       <view class="submit-wrap">
-        <button class="submit-btn" hover-class="submit-btn-hover" bindtap="onSubmit" loading="{{loading}}" disabled="{{loading}}">
-          立即提交
+        <button class="submit-btn" hover-class="submit-btn-hover" bindtap="onSubmit" loading="{{loading || pageLoading}}" disabled="{{loading || pageLoading}}">
+          {{submitLabel}}
         </button>
         <view class="privacy-note">
           <image class="privacy-icon" src="/packages/business/assets/leads/lead-privacy-icon.png" mode="widthFix"></image>

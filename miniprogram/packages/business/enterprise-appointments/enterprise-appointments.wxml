@@ -1,4 +1,85 @@
 <view class="page sfp-tab-page">
-  <role-workbench role="enterprise_admin" focus="appointments" />
+  <view
+    class="nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="nav-copy">
+      <text class="nav-title">预约调度中心</text>
+      <text class="nav-subtitle">{{weekSubtitle}}</text>
+    </view>
+  </view>
+
+  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}">
+    <scroll-view scroll-x class="day-strip" enhanced show-scrollbar="{{false}}">
+      <view class="day-strip-inner">
+        <view
+          wx:for="{{weekDays}}"
+          wx:key="key"
+          class="day-card {{selectedDateKey === item.key ? 'day-active' : ''}}"
+          data-date="{{item.key}}"
+          bindtap="selectDay"
+          hover-class="day-pressed"
+          aria-role="button"
+          aria-label="{{item.dayName}} {{item.dateLabel}}"
+        >
+          <text class="day-name">{{item.dayName}}</text>
+          <text class="day-date">{{item.dateLabel}}</text>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view class="section-header">
+      <text class="section-title">{{selectedDateTitle}} ({{selectedAppointments.length}}单)</text>
+    </view>
+
+    <view wx:if="{{loading}}" class="state-card">正在读取企业预约排期…</view>
+    <view wx:elif="{{error}}" class="state-card">
+      <text class="state-error">{{error}}</text>
+      <view class="retry" bindtap="load">重新加载</view>
+    </view>
+    <view wx:elif="{{!selectedAppointments.length}}" class="state-card empty">
+      <text class="empty-title">当天暂无需要协调的预约</text>
+      <text class="empty-desc">可切换上方日期查看本周其他排期</text>
+    </view>
+
+    <view wx:else class="appointment-list">
+      <view
+        wx:for="{{selectedAppointments}}"
+        wx:key="id"
+        class="appointment-card tone-{{item.tone}} {{item.openable ? '' : 'card-readonly'}}"
+        data-item="{{item}}"
+        bindtap="openAppointment"
+        hover-class="{{item.openable ? 'card-pressed' : ''}}"
+        aria-role="{{item.openable ? 'button' : 'text'}}"
+        aria-label="{{item.openable ? '查看预约 ' + item.placeLabel : item.headerLine}}"
+      >
+        <view class="card-accent"></view>
+        <view class="card-body">
+          <view class="card-header">
+            <text class="header-line">{{item.headerLine}}</text>
+            <view class="status-tag tag-{{item.tone}}">
+              <text>{{item.statusLabel}}</text>
+            </view>
+          </view>
+
+          <text class="customer-line">{{item.customerLine}}</text>
+
+          <view class="card-footer">
+            <view class="footer-status">
+              <view class="status-dot tone-{{item.tone}}"></view>
+              <text class="footer-text">{{item.footerText}}</text>
+            </view>
+            <view
+              wx:if="{{item.showRescheduleCta}}"
+              class="cta-btn"
+              data-item="{{item}}"
+              catchtap="openAppointment"
+              hover-class="cta-pressed"
+            >{{item.ctaLabel}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
 </view>
 <custom-tab-bar />

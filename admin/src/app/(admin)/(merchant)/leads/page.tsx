@@ -34,8 +34,8 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Archive, BadgeCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Send, Trash2, Undo2, Users, XCircle } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
-import { notify } from '@/components/ui/operation-feedback';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { notify } from '@/components/admin/operation-feedback';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getLeadNextAction, getLeadStatusLabel, getLeadWorkflowStep, LEAD_WORKFLOW_STEPS } from '@/lib/lead-status';
 import { canRebookAppointment, resolveLeadServiceStage } from '@/lib/lead-service-stage';
@@ -44,6 +44,7 @@ type StaffReference = {
   _id: string;
   displayName?: string;
   username?: string;
+  phone?: string | null;
   role?: string;
 };
 
@@ -212,11 +213,21 @@ const STATUS_LABELS = Object.fromEntries(
   STATUS_OPTIONS.map((item) => [item.value, item.label])
 );
 
+const LEAD_SOURCE_LABELS: Record<string, string> = {
+  referrer_network: '推荐人网络',
+  staff_activity: '员工活动码',
+};
+
 function openAiWorkbench(leadId: string, workflowId?: string) {
   const params = new URLSearchParams();
   params.set('leadId', leadId);
   if (workflowId) params.set('workflowId', workflowId);
   window.open(`/ai-studio/scenarios?${params.toString()}`, '_blank', 'noopener,noreferrer');
+}
+
+function getLeadSourceLabel(source?: string | null) {
+  if (!source) return '未知';
+  return LEAD_SOURCE_LABELS[source] || source;
 }
 
 function getFloorPlanSourceLabel(source?: string | null) {
@@ -277,6 +288,36 @@ function canManageLeadPublications(lead: Lead, role?: string | null, userId?: st
   if (role === 'enterprise_admin') return true;
   return getStaffId(lead.assignedTo) === userId;
 }
+
+function canEditLeadProfile(lead: Lead, role?: string | null, userId?: string | null) {
+  if (!role || !userId || lead.archivedAt) return false;
+  if (['admin', 'super_admin', 'enterprise_admin'].includes(role)) return true;
+  if (role === 'designer') return getStaffId(lead.assignedTo) === userId;
+  if (role === 'measurer') return getStaffId(lead.measurerId) === userId;
+  return false;
+}
+
+const LEAD_COMMUNITY_MAX = 160;
+
+function shouldOfferCommunitySync(
+  lead: Lead,
+  address: string,
+  role?: string | null,
+  userId?: string | null
+) {
+  if (!canEditLeadProfile(lead, role, userId)) return false;
+  if (String(lead.communityName || '').trim()) return false;
+  return Boolean(address.trim());
+}
+
+const LEAD_STYLE_OPTIONS = [
+  '现代简约',
+  '北欧风格',
+  '奶油风',
+  '新中式',
+  '工业风',
+  '法式轻奢',
+];
 
 function formatDate(value?: string | Date) {
   if (!value) return '-';
@@ -435,6 +476,15 @@ function LeadsPage() {
   const [publicationLoading, setPublicationLoading] = useState(false);
   const [publicationUpdatingId, setPublicationUpdatingId] = useState<string | null>(null);
   const [publications, setPublications] = useState<AiSchemePublication[]>([]);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileSubmitting, setProfileSubmitting] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    phone: '',
+    communityName: '',
+    area: '',
+    stylePreference: '',
+  });
 
   useEffect(() => () => {
     leadListRequestRef.current?.abort();
@@ -671,6 +721,7 @@ function LeadsPage() {
       setAppointmentOpen(false);
       notify.success('预约上门量房时间已设置');
       await refreshLeads();
+      void offerSyncCommunityFromAddress(selectedLead, appointmentAddress.trim());
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '创建预约失败');
     } finally {
@@ -766,16 +817,57 @@ function LeadsPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '更新服务地址失败');
+      const savedAddress = appointmentAddress.trim();
+      const leadForSync = addressLead;
       setSelectedLead((current) => current ? { ...current, appointment: result.data } : current);
       setAddressOpen(false);
       setAddressLead(null);
       notify.success('服务地址已更新');
       await refreshLeads();
+      if (leadForSync) {
+        void offerSyncCommunityFromAddress(leadForSync, savedAddress);
+      }
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '更新服务地址失败');
     } finally {
       setAppointmentSubmitting(false);
     }
+  };
+
+  const offerSyncCommunityFromAddress = (lead: Lead, address: string) => {
+    if (!shouldOfferCommunitySync(lead, address, currentUser?.role, currentUser?._id)) return;
+    const communityName = address.trim().slice(0, LEAD_COMMUNITY_MAX);
+    Modal.confirm({
+      title: '同步到客户小区',
+      content: '是否将上门地址写入客户资料中的小区？',
+      okText: '同步写入',
+      cancelText: '暂不',
+      zIndex: 1400,
+      onOk: async () => {
+        try {
+          const response = await fetch(`/api/leads/${lead._id}`);
+          const current = await response.json();
+          if (!response.ok || !current.success) throw new Error(current.error || '读取客户资料失败');
+          if (String(current.data?.communityName || '').trim()) {
+            notify.info('客户已有小区，未覆盖');
+            return;
+          }
+          const save = await fetch(`/api/leads/${lead._id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ communityName }),
+          });
+          const saved = await save.json();
+          if (!save.ok || !saved.success) throw new Error(saved.error || '写入客户小区失败');
+          setSelectedLead(saved.data);
+          notify.success('已写入客户小区');
+          await refreshLeads();
+        } catch (error) {
+          notify.error(error instanceof Error ? error.message : '写入客户小区失败');
+          throw error;
+        }
+      },
+    });
   };
 
   const rescheduleAppointment = async () => {
@@ -828,6 +920,55 @@ function LeadsPage() {
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '线索更新失败');
       return false;
+    }
+  };
+
+  const openProfileEditor = (lead: Lead) => {
+    setProfileForm({
+      name: lead.name || '',
+      phone: lead.phone || '',
+      communityName: lead.communityName || '',
+      area: lead.area ? String(lead.area) : '',
+      stylePreference: lead.stylePreference || '',
+    });
+    setProfileOpen(true);
+  };
+
+  const saveLeadProfile = async () => {
+    if (!selectedLead || profileSubmitting) return;
+    const name = profileForm.name.trim();
+    const phone = profileForm.phone.trim();
+    const communityName = profileForm.communityName.trim();
+    if (!name) {
+      notify.error('请输入客户称呼');
+      return;
+    }
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      notify.error('请输入有效的手机号');
+      return;
+    }
+    if (!communityName) {
+      notify.error('请输入小区名称');
+      return;
+    }
+    const areaValue = profileForm.area.trim();
+    const area = areaValue ? Number(areaValue) : null;
+    if (areaValue && (!Number.isFinite(area) || area <= 0)) {
+      notify.error('请输入有效的房屋面积');
+      return;
+    }
+    setProfileSubmitting(true);
+    try {
+      const succeeded = await updateLead(selectedLead._id, {
+        name,
+        phone,
+        communityName,
+        area: area ?? null,
+        stylePreference: profileForm.stylePreference.trim() || null,
+      });
+      if (succeeded) setProfileOpen(false);
+    } finally {
+      setProfileSubmitting(false);
     }
   };
 
@@ -1297,7 +1438,7 @@ function LeadsPage() {
             const pagination = tableProps.pagination;
             const rowSelection = tableProps.rowSelection;
             return (
-              <Flex vertical gap={12} className="lead-card-list">
+              <Flex vertical gap={12} className="lead-card-list px-4 pb-5 pt-3 sm:px-5">
                 {tableProps.loading ? (
                   <ProCard bordered loading bodyStyle={{ minHeight: 120 }} />
                 ) : rows.length ? rows.map((lead) => {
@@ -1343,14 +1484,13 @@ function LeadsPage() {
                         </Flex>
 
                         <div className="grid grid-cols-1 gap-3 border-y border-border/70 py-3 sm:grid-cols-2 xl:grid-cols-4">
-                          <LeadCardField
+                          <LeadStaffCardField
                             label={lead.source === 'referrer_network' ? '推广人' : '渠道人员'}
-                            value={lead.source === 'referrer_network'
-                              ? getStaffName(lead.referrer) || '未识别推广人'
-                              : getStaffName(lead.promoterId) || '系统录入'}
+                            staff={lead.source === 'referrer_network' ? lead.referrer : lead.promoterId}
+                            fallback={lead.source === 'referrer_network' ? '未识别推广人' : '系统录入'}
                           />
-                          <LeadCardField label="绑定设计师" value={getStaffName(lead.assignedTo) || '未绑定设计师'} />
-                          <LeadCardField label="测量员" value={getStaffName(lead.measurerId) || '未绑定测量员'} />
+                          <LeadStaffCardField label="绑定设计师" staff={lead.assignedTo} fallback="未绑定设计师" />
+                          <LeadStaffCardField label="测量员" staff={lead.measurerId} fallback="未绑定测量员" />
                           <LeadCardField
                             label="派单"
                             value={getAssignmentStatusLabel(lead.assignmentStatus, lead.assignmentErrorCode)}
@@ -1364,7 +1504,7 @@ function LeadsPage() {
 
                         <Flex align="center" justify="space-between" gap={12} wrap>
                           <Flex gap={12} wrap>
-                            <Typography.Text type="secondary">来源：{lead.source || '未知'}</Typography.Text>
+                            <Typography.Text type="secondary">来源：{getLeadSourceLabel(lead.source)}</Typography.Text>
                             <Typography.Text type="secondary">提交：{formatDate(lead.createdAt)}</Typography.Text>
                             {lead.area ? <Typography.Text type="secondary">意向面积：{lead.area} m2</Typography.Text> : null}
                           </Flex>
@@ -1387,7 +1527,7 @@ function LeadsPage() {
                     </ProCard>
                   );
                 }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无符合条件的客户线索" />}
-                {pagination && typeof pagination !== 'boolean' ? <Flex justify="end" className="pt-2"><Pagination {...pagination} size="small" /></Flex> : null}
+                {pagination && typeof pagination !== 'boolean' ? <Flex justify="end"><Pagination {...pagination} size="small" /></Flex> : null}
               </Flex>
             );
           }}
@@ -1592,6 +1732,81 @@ function LeadsPage() {
               <Input value={purgeConfirmation} onChange={(event) => setPurgeConfirmation(event.target.value)} />
             </Flex>
           ) : null}
+        </Flex>
+      </Modal>
+
+      <Modal
+        open={profileOpen}
+        title="补充客户资料"
+        destroyOnHidden
+        okText="保存"
+        cancelText="取消"
+        confirmLoading={profileSubmitting}
+        onCancel={() => { if (!profileSubmitting) setProfileOpen(false); }}
+        onOk={() => void saveLeadProfile()}
+      >
+        <Flex vertical gap={16} className="pb-3">
+          <Alert
+            showIcon
+            type="info"
+            message="更新客户基础资料"
+            description="修改后会同步到小程序线索详情、预约与项目展示；不会变更设计师绑定或提成受益人。"
+          />
+          <Flex vertical gap={6}>
+            <Typography.Text strong>客户称呼</Typography.Text>
+            <Input
+              maxLength={50}
+              value={profileForm.name}
+              placeholder="请输入客户称呼"
+              onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))}
+            />
+          </Flex>
+          <Flex vertical gap={6}>
+            <Typography.Text strong>手机号码</Typography.Text>
+            <Input
+              maxLength={11}
+              value={profileForm.phone}
+              placeholder="请输入手机号"
+              onChange={(event) => setProfileForm((current) => ({ ...current, phone: event.target.value }))}
+            />
+          </Flex>
+          <Flex vertical gap={6}>
+            <Typography.Text strong>小区名称</Typography.Text>
+            <Input
+              maxLength={100}
+              value={profileForm.communityName}
+              placeholder="请输入小区名称"
+              onChange={(event) => setProfileForm((current) => ({ ...current, communityName: event.target.value }))}
+            />
+          </Flex>
+          <Flex vertical gap={6}>
+            <Typography.Text strong>意向面积（选填）</Typography.Text>
+            <InputNumber
+              className="w-full"
+              min={1}
+              max={99999}
+              precision={0}
+              controls={false}
+              addonAfter="m²"
+              placeholder="请输入房屋面积"
+              value={profileForm.area ? Number(profileForm.area) : null}
+              onChange={(value) => setProfileForm((current) => ({
+                ...current,
+                area: value == null ? '' : String(value),
+              }))}
+            />
+          </Flex>
+          <Flex vertical gap={6}>
+            <Typography.Text strong>偏好风格（选填）</Typography.Text>
+            <Select
+              allowClear
+              className="w-full"
+              placeholder="请选择意向风格"
+              options={LEAD_STYLE_OPTIONS.map((value) => ({ label: value, value }))}
+              value={profileForm.stylePreference || undefined}
+              onChange={(value) => setProfileForm((current) => ({ ...current, stylePreference: value || '' }))}
+            />
+          </Flex>
         </Flex>
       </Modal>
 
@@ -1916,15 +2131,26 @@ function LeadsPage() {
             ) : null}
 
             <Descriptions
+              title="客户资料"
               bordered
               size="small"
               column={1}
+              extra={selectedLead && !selectedLead.archivedAt && canEditLeadProfile(selectedLead, currentUser?.role, currentUser?._id) ? (
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<FilePenLine size={14} />}
+                  onClick={() => openProfileEditor(selectedLead)}
+                >
+                  补充资料
+                </Button>
+              ) : null}
               items={[
                 { key: 'community', label: '小区名称', children: selectedLead.communityName || '-' },
                 { key: 'promoter', label: selectedLead.source === 'referrer_network' ? '推广人' : '录入人员', children: selectedLead.source === 'referrer_network' ? getStaffName(selectedLead.referrer) || '未识别推广人' : getStaffName(selectedLead.promoterId) || '系统' },
                 { key: 'area', label: '意向面积', children: selectedLead.area ? `${selectedLead.area} m2` : '-' },
                 { key: 'style', label: '偏好风格', children: selectedLead.stylePreference || '-' },
-                { key: 'source', label: '来源渠道', children: selectedLead.source || '-' },
+                { key: 'source', label: '来源渠道', children: getLeadSourceLabel(selectedLead.source) },
               ]}
             />
 
@@ -2028,6 +2254,26 @@ function LeadCardField({
       <Typography.Text type="secondary" className="text-xs">{label}</Typography.Text>
       <Typography.Text strong ellipsis={{ tooltip: value }}>{value}</Typography.Text>
       {detail ? <Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: detail }}>{detail}</Typography.Text> : null}
+    </Flex>
+  );
+}
+
+function LeadStaffCardField({
+  label,
+  staff,
+  fallback,
+}: {
+  label: string;
+  staff: StaffReference | string | null | undefined;
+  fallback: string;
+}) {
+  const name = getStaffName(staff) || fallback;
+  const phone = typeof staff === 'object' && staff ? staff.phone : null;
+  return (
+    <Flex vertical gap={3} className="min-w-0">
+      <Typography.Text type="secondary" className="text-xs">{label}</Typography.Text>
+      <Typography.Text strong ellipsis={{ tooltip: name }}>姓名：{name}</Typography.Text>
+      <Typography.Text style={{ color: '#1677ff' }} ellipsis={{ tooltip: phone || '未记录' }}>手机号：{phone || '未记录'}</Typography.Text>
     </Flex>
   );
 }

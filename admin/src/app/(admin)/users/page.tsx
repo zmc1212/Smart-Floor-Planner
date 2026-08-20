@@ -9,7 +9,7 @@ import {
 } from '@ant-design/pro-components';
 import { Avatar, Button, Flex, Tag, Typography } from 'antd';
 import { ExternalLink, UserRound } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { getAdminRoute } from '@/config/admin-routes';
 
 type UserAuditItem = {

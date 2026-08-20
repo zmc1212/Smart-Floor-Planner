@@ -2840,6 +2840,7 @@ Page({
       measurementStartExtensionMm: session.previewMeasurementStartExtensionMm || 0,
       measurementEndInsetMm: session.previewMeasurementEndInsetMm || 0,
       measurementSide: session.previewMeasurementSide || session.measurementSide,
+      bodyNormalSide: session.previewBodyNormalSide || '',
       status: 'preview'
     };
     const previewThicknessMap = Object.assign({}, renderThicknessMmMap, {
@@ -3127,7 +3128,7 @@ Page({
     }, safeArea);
     const control = {
       key: 'measure-position',
-      arrowAxis: leftNormal,
+      arrowAxis: sideNormal,
       button
     };
 
@@ -4203,11 +4204,29 @@ Page({
     try {
       const response = await api.downloadFile(`/miniprogram/floorplans/${floorPlanId}/export/dxf`);
       const fileManager = wx.getFileSystemManager();
+      const header = response.header || {};
+      const disposition = header['Content-Disposition'] || header['content-disposition'] || '';
+      let downloadName = `户型_${Date.now()}.dxf`;
+      const utfMatch = String(disposition).match(/filename\*=(?:UTF-8''|utf-8'')([^;]+)/i);
+      if (utfMatch && utfMatch[1]) {
+        try {
+          downloadName = decodeURIComponent(utfMatch[1].trim().replace(/^"|"$/g, ''));
+        } catch (error) {
+          // keep fallback
+        }
+      } else {
+        const plainMatch = String(disposition).match(/filename="([^"]+)"/i) || String(disposition).match(/filename=([^;]+)/i);
+        if (plainMatch && plainMatch[1]) downloadName = plainMatch[1].trim().replace(/^"|"$/g, '');
+      }
+      downloadName = String(downloadName || '户型.dxf').replace(/[\\/:*?"<>|\r\n]+/g, '_');
+      if (!/\.dxf$/i.test(downloadName)) downloadName = `${downloadName}.dxf`;
+      const destPath = `${wx.env.USER_DATA_PATH}/${downloadName}`;
       fileManager.saveFile({
         tempFilePath: response.tempFilePath,
+        filePath: destPath,
         success: (saved) => {
           wx.openDocument({
-            filePath: saved.savedFilePath,
+            filePath: saved.savedFilePath || destPath,
             fileType: 'dxf',
             showMenu: true,
             success: () => wx.showToast({ title: 'CAD 已生成', icon: 'success' }),
@@ -4219,12 +4238,32 @@ Page({
             })
           });
         },
-        fail: () => wx.showModal({
-          title: 'CAD 文件已生成',
-          content: '文件已下载，但当前设备无法保存到文件域，请转发到 CAD 设备处理。',
-          showCancel: false,
-          confirmText: '知道了'
-        })
+        fail: () => {
+          // Older runtimes may reject custom filePath; fall back to default save.
+          fileManager.saveFile({
+            tempFilePath: response.tempFilePath,
+            success: (saved) => {
+              wx.openDocument({
+                filePath: saved.savedFilePath,
+                fileType: 'dxf',
+                showMenu: true,
+                success: () => wx.showToast({ title: 'CAD 已生成', icon: 'success' }),
+                fail: () => wx.showModal({
+                  title: 'CAD 文件已生成',
+                  content: '当前设备无法直接打开 DXF，请将文件转发到 CAD 设备或在电脑端打开。',
+                  showCancel: false,
+                  confirmText: '知道了'
+                })
+              });
+            },
+            fail: () => wx.showModal({
+              title: 'CAD 文件已生成',
+              content: '文件已下载，但当前设备无法保存到文件域，请转发到 CAD 设备处理。',
+              showCancel: false,
+              confirmText: '知道了'
+            })
+          });
+        }
       });
     } catch (err) {
       wx.showToast({ title: (err && err.error) || 'CAD 导出失败', icon: 'none' });

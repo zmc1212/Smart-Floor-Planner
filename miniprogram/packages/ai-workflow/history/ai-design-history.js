@@ -1,5 +1,6 @@
 const aiService = require('../../../utils/aiDesignService.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
+const { openSchemeStudio } = require('../../../utils/aiDesignNavigation.js');
 
 const MODE_TITLES = {
   reference_recreate: '参考图复刻',
@@ -34,6 +35,7 @@ function decorateHistoryItem(item, project) {
     timeLabel: formatHistoryTime(item.updatedAt || item.createdAt),
     statusClass: processing ? 'processing' : item.status === 'failed' ? 'failed' : 'succeeded',
     statusLabel: processing ? (item.recipeId ? '生成中' : `生成中 ${item.progress}%`) : item.status === 'failed' ? '生成失败' : '已完成',
+    canOpenScheme: Boolean(item.leadId && item.workflowId),
   };
 }
 
@@ -126,6 +128,16 @@ Page({
 
   openResult(event) {
     wx.navigateTo({ url: `/packages/ai-workflow/result/ai-design-result?id=${event.currentTarget.dataset.id}` });
+  },
+
+  openScheme(event) {
+    const item = this.data.items.find((entry) => entry.id === event.currentTarget.dataset.id);
+    if (!item || !item.canOpenScheme) return;
+    openSchemeStudio({
+      leadId: item.leadId,
+      workflowId: item.workflowId,
+      floorPlanId: item.floorPlanId,
+    });
   },
 
   reuse(event) {

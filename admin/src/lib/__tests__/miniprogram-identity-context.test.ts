@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  defaultMiniProgramIdentityContext,
+  isMiniProgramIdentityContextSupported,
   miniProgramIdentityContextToDto,
   signMiniProgramIdentityContextToken,
 } from '@/lib/miniprogram-identity-context';
@@ -75,5 +77,38 @@ test('identity context DTO serializes bigint identifiers explicitly', () => {
       staffDisplayName: null,
       referrerMembershipId: '33',
     }
+  );
+});
+
+test('platform-only staff contexts fall back to a supported referrer context', () => {
+  const customer = {
+    mode: 'customer' as const,
+    enterpriseId: null,
+    enterpriseName: null,
+    staffId: null,
+    staffRole: null,
+    staffDisplayName: null,
+    referrerMembershipId: null,
+  };
+  const platformAdmin = {
+    ...customer,
+    mode: 'staff' as const,
+    enterpriseId: BigInt(8),
+    staffId: BigInt(9),
+    staffRole: 'admin',
+    staffDisplayName: 'Platform Admin',
+  };
+  const referrer = {
+    ...customer,
+    mode: 'referrer' as const,
+    enterpriseId: BigInt(8),
+    enterpriseName: 'Tenant A',
+    referrerMembershipId: BigInt(10),
+  };
+
+  assert.equal(isMiniProgramIdentityContextSupported(platformAdmin), false);
+  assert.equal(
+    defaultMiniProgramIdentityContext([customer, platformAdmin, referrer]),
+    referrer
   );
 });

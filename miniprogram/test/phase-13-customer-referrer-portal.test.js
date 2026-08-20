@@ -26,6 +26,11 @@ test('phase 13 portal pages use the scoped aggregate endpoints and preserve priv
   const workbench = source('packages/business/referrer-workbench/referrer-workbench.wxml');
   const workbenchScript = source('packages/business/referrer-workbench/referrer-workbench.js');
   assert.match(customer, /\/miniprogram\/customer-projects/);
+  assert.match(customer, /rankCustomerProjects/);
+  assert.match(customer, /wx\.redirectTo/);
+  assert.match(customer, /customer-project\/customer-project\?leadId=/);
+  assert.match(customer, /wx\.switchTab\(\{\s*url:\s*['"]\/pages\/index\/index['"]/);
+  assert.doesNotMatch(source('packages/business/customer-projects/customer-projects.wxml'), /project-list|project-card|我的项目/);
   assert.match(progress, /\/miniprogram\/referrer-progress/);
   assert.match(earnings, /\/miniprogram\/referrer-earnings/);
   assert.match(workbench, /仅展示当前企业的脱敏事实/);
@@ -37,7 +42,6 @@ test('phase 13 portal pages use the scoped aggregate endpoints and preserve priv
 test('phase 13 pages use custom navigation so their capsule-safe headers are the only navigation bar', () => {
   assert.deepEqual(JSON.parse(source('packages/business/customer-projects/customer-projects.json')), {
     navigationStyle: 'custom',
-    usingComponents: { 'custom-tab-bar': '/custom-tab-bar/index' },
   });
   for (const page of ['referrer-progress/referrer-progress', 'referrer-earnings/referrer-earnings']) {
     assert.deepEqual(JSON.parse(source(`packages/business/${page}.json`)), {
@@ -47,10 +51,18 @@ test('phase 13 pages use custom navigation so their capsule-safe headers are the
   }
 });
 
-test('customer Service workspace reads only the owned project index instead of the staff workbench', () => {
-  const index = source('pages/index/index.js');
-  const workbench = source('components/role-workbench/role-workbench.js');
-  assert.match(index, /\['customer', 'designer', 'measurer', 'enterprise_admin'\]/);
-  assert.match(workbench, /isCustomer \? '\/miniprogram\/customer-projects' : '\/miniprogram\/workbench'/);
-  assert.match(workbench, /action === 'customer-project'/);
+test('customer Service workspace mounts stage companion instead of staff workbench list', () => {
+  const indexJs = source('pages/index/index.js');
+  const indexWxml = source('pages/index/index.wxml');
+  const indexJson = JSON.parse(source('pages/index/index.json'));
+  const companion = source('components/customer-service-home/customer-service-home.js');
+  assert.match(indexJs, /\['customer', 'designer', 'measurer', 'enterprise_admin'\]/);
+  assert.equal(
+    indexJson.usingComponents['customer-service-home'],
+    '/components/customer-service-home/customer-service-home'
+  );
+  assert.match(indexWxml, /<customer-service-home wx:if="\{\{roleWorkbenchRole === 'customer'\}\}"\s*\/>/);
+  assert.match(indexWxml, /<role-workbench wx:elif="\{\{roleWorkbenchRole\}\}"[^>]*focus="overview"/);
+  assert.doesNotMatch(indexJs, /customer-projects\/customer-projects/);
+  assert.match(companion, /['"`]\/miniprogram\/customer-projects['"`]/);
 });

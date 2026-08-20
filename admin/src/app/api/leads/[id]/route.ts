@@ -5,6 +5,7 @@ import {
   parsePostgresId,
 } from '@/db/postgres-dto';
 import {
+  CustomerProjectRepository,
   LeadRepository,
   LeadLifecycleRepository,
   type LeadUpdate,
@@ -31,6 +32,7 @@ import {
   getPurgeBlockers,
   leadArchivedError,
 } from '@/lib/lead-lifecycle';
+import { groupPublishedSchemes } from '@/lib/customer-project';
 import { httpErrorStatus } from '@/lib/http-error';
 
 function errorMessage(error: unknown) {
@@ -88,10 +90,51 @@ function canAccess(
   return true;
 }
 
+function schemeSummary(scheme: ReturnType<typeof groupPublishedSchemes>[number], leadId: string) {
+  return {
+    id: scheme.id,
+    workflowId: scheme.workflowId,
+    title: scheme.title,
+    publishedAt: scheme.publishedAt,
+    imageCount: scheme.images.length,
+    generationIds: scheme.images.map((image) => image.generationId),
+    images: scheme.images.map((image) => ({
+      id: image.id,
+      generationId: image.generationId,
+      title: image.title,
+      stageKey: image.stageKey,
+      publishedAt: image.publishedAt,
+      imageEndpoint: `/leads/${leadId}/published-generations/${image.generationId}/image`,
+    })),
+  };
+}
+
+async function loadLeadPublicationFacts(
+  context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>,
+  lead: LeadWithRelations
+) {
+  if (!lead.enterpriseId) {
+    return { publishedDesignCount: 0, publishedSchemes: [] as ReturnType<typeof schemeSummary>[] };
+  }
+  const enterpriseId = lead.enterpriseId;
+  const leadId = lead.id;
+  return withLeadTransaction(context, async (transaction) => {
+    const publications = await new CustomerProjectRepository(transaction).listActivePublications(enterpriseId, leadId);
+    const publishedSchemes = groupPublishedSchemes(publications, leadId.toString()).map((scheme) =>
+      schemeSummary(scheme, leadId.toString())
+    );
+    return {
+      publishedDesignCount: publications.length,
+      publishedSchemes,
+    };
+  });
+}
+
 function dtoForContext(
   request: Request,
   lead: LeadWithRelations,
-  context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>
+  context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>,
+  publicationFacts?: { publishedDesignCount: number; publishedSchemes: ReturnType<typeof schemeSummary>[] }
 ) {
   const role = context.kind === 'mini' ? context.mini.staff?.role || '' : context.admin.role;
   const actorId = context.kind === 'mini'
@@ -106,12 +149,14 @@ function dtoForContext(
     designerWechatQrUrl: include && assetId && lead.enterpriseId
       ? getSignedMiniAiAssetUrl({ request, assetId: assetId.toString(), enterpriseId: lead.enterpriseId.toString() })
       : null,
+    publishedDesignCount: publicationFacts?.publishedDesignCount,
   });
   if (context.kind === 'mini' && !context.mini.staff) {
     dto = redactLeadConversionDetailsForConsumer(dto);
   }
   return {
     ...dto,
+    publishedSchemes: publicationFacts?.publishedSchemes || [],
     conversionActions: getLeadConversionActions(lead, role, actorId),
   };
 }
@@ -162,7 +207,8 @@ export async function GET(
         );
       }
     }
-    return NextResponse.json({ success: true, data: dtoForContext(request, lead, context) });
+    const publicationFacts = await loadLeadPublicationFacts(context, lead);
+    return NextResponse.json({ success: true, data: dtoForContext(request, lead, context, publicationFacts) });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: errorMessage(error) },
@@ -269,7 +315,8 @@ export async function PUT(
         { status: 404 }
       );
     }
-    return NextResponse.json({ success: true, data: dtoForContext(request, updated, context) });
+    const publicationFacts = await loadLeadPublicationFacts(context, updated);
+    return NextResponse.json({ success: true, data: dtoForContext(request, updated, context, publicationFacts) });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, code: (error as { code?: string }).code, error: errorMessage(error) },

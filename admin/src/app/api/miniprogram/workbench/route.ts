@@ -1,14 +1,25 @@
 import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
-import { AdminUserRepository, AppointmentRepository, LeadRepository } from '@/db/repositories';
+import { AdminUserRepository, AppointmentRepository, CustomerProjectRepository, LeadRepository } from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import {
+  buildEnterpriseExpiredExceptionItem,
+  buildEnterprisePendingExceptionItem,
+  buildEnterpriseStaffingExceptionItem,
   buildStaffingGapItems,
+  buildStaffLoadQuickNav,
   buildWorkbenchAppointmentItem,
   buildWorkbenchLeadItem,
+  compareDesignerWorkbenchItems,
+  countActiveEnterprisePublications,
   isAssignmentEligibleStaff,
   isMeasurerWorkbenchSurveyLead,
+  loadOpsDashboard,
+  resolveWorkbenchPeriod,
+  selectMeasurerWorkbenchAppointments,
+  shouldIncludeMeasurerWorkbenchAppointment,
+  type WorkbenchPeriodRange,
 } from '@/lib/miniprogram-workbench';
 
 export const dynamic = 'force-dynamic';
@@ -24,17 +35,27 @@ function currentRole(context: Awaited<ReturnType<typeof resolveMiniProgramContex
 
 function leadItem(
   lead: Awaited<ReturnType<LeadRepository['list']>>['rows'][number],
-  action = 'lead'
+  action = 'lead',
+  publishedDesignCount = 0
 ) {
-  return buildWorkbenchLeadItem(lead, action);
+  return buildWorkbenchLeadItem({ ...lead, publishedDesignCount }, action);
 }
 
 function appointmentItem(
   appointment: Awaited<ReturnType<AppointmentRepository['listByMeasurer']>>[number],
   lead?: Awaited<ReturnType<LeadRepository['findByIds']>>[number],
-  options: { allowRebook?: boolean } = {}
+  options: { allowRebook?: boolean; publishedDesignCount?: number } = {}
 ) {
-  return buildWorkbenchAppointmentItem(appointment, lead, options);
+  return buildWorkbenchAppointmentItem(appointment, lead ? { ...lead, publishedDesignCount: options.publishedDesignCount || 0 } : lead, options);
+}
+
+function parsePeriod(request: Request) {
+  const url = new URL(request.url);
+  return resolveWorkbenchPeriod({
+    period: url.searchParams.get('period'),
+    from: url.searchParams.get('from'),
+    to: url.searchParams.get('to'),
+  });
 }
 
 export async function GET(request: Request) {
@@ -48,6 +69,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: '当前身份没有此工作台权限' }, { status: 403 });
     }
 
+    let period: WorkbenchPeriodRange;
+    try {
+      period = parsePeriod(request);
+    } catch (error) {
+      return NextResponse.json({
+        success: false,
+        error: error instanceof Error ? error.message : '周期参数无效',
+      }, { status: 400 });
+    }
+
     const data = await withMiniProgramPostgresTransaction(context, async (transaction) => {
       const leads = new LeadRepository(transaction);
       const appointments = new AppointmentRepository(transaction);
@@ -57,26 +88,52 @@ export async function GET(request: Request) {
       if (role === 'designer') {
         const scope = { staffId, staffVisibility: 'assigned' as const };
         const measurerScope = { staffId, staffVisibility: 'measurer' as const };
-        const [leadList, statusCounts, surveyList, expiredUnbooked] = await Promise.all([
+        const [leadList, statusCounts, surveyList, expiredUnbooked, opsDashboard] = await Promise.all([
           leads.list({ ...scope, page: 1, limit: 6, orderBy: 'updatedAt' }),
           leads.countStatuses(scope, ['new', 'contacted', 'measuring', 'measured', 'assigned', 'designing', 'quoting']),
           leads.list({ ...measurerScope, page: 1, limit: 20, orderBy: 'updatedAt' }),
           appointments.listExpiredUnbooked(enterpriseId, 20),
+          loadOpsDashboard(transaction, {
+            enterpriseId,
+            period,
+            scope,
+            includeContractAmount: false,
+          }),
         ]);
+        const publicationLeadIds = [
+          ...leadList.rows.map((row) => row.id),
+          ...surveyList.rows.map((row) => row.id),
+          ...expiredUnbooked.map((row) => row.lead.id),
+        ];
+        const publishedCounts = await new CustomerProjectRepository(transaction).countPublishedDesignsByLeadIds(
+          enterpriseId,
+          [...new Set(publicationLeadIds.map((id) => id.toString()))].map((id) => BigInt(id))
+        );
+        const publishedCountFor = (leadId: bigint | number | string) => publishedCounts.get(String(leadId)) || 0;
         const ownExpired = expiredUnbooked
           .filter((row) => row.lead.assignedTo === staffId)
-          .map((row) => leadItem({ ...row.lead, appointment: row.appointment, floorPlanRecords: [], primaryFloorPlanRecord: null, assignedUser: null, promoter: null, archivedUser: null, convertedUser: null }, 'rebook'));
+          .map((row) => leadItem({
+            ...row.lead,
+            appointment: row.appointment,
+            floorPlanRecords: [],
+            primaryFloorPlanRecord: null,
+            assignedUser: null,
+            promoter: null,
+            archivedUser: null,
+            convertedUser: null,
+          }, 'rebook', publishedCountFor(row.lead.id)));
         const surveyTasks = surveyList.rows
           .filter((lead) => ['new', 'measuring'].includes(lead.status || 'new'))
-          .map((lead) => leadItem(lead, 'survey'));
+          .map((lead) => leadItem(lead, 'survey', publishedCountFor(lead.id)));
         const surveyIds = new Set(surveyTasks.map((item) => item.leadId));
         const expiredIds = new Set(ownExpired.map((item) => item.leadId));
         const followUps = [
           ...ownExpired,
           ...leadList.rows
             .filter((lead) => !expiredIds.has(lead.id.toString()))
-            .map((lead) => leadItem(lead, surveyIds.has(lead.id.toString()) ? 'survey' : 'lead')),
-        ];
+            .filter((lead) => !['converted', 'closed'].includes(lead.status || 'new'))
+            .map((lead) => leadItem(lead, surveyIds.has(lead.id.toString()) ? 'survey' : 'lead', publishedCountFor(lead.id))),
+        ].sort(compareDesignerWorkbenchItems);
         const activeCount = Object.values(statusCounts).reduce((sum, value) => sum + value, 0);
         return {
           role,
@@ -91,18 +148,31 @@ export async function GET(request: Request) {
           tasks: [...ownExpired, ...surveyTasks],
           activityCode: { label: '出示活动码', target: 'activity-code' },
           secondary: { label: '查看全部客户', target: 'customers' },
+          ...opsDashboard,
         };
       }
 
       if (role === 'measurer') {
-        const [appointmentRows, surveyList] = await Promise.all([
+        const scope = { staffId, staffVisibility: 'measurer' as const };
+        const [appointmentRows, surveyList, opsDashboard] = await Promise.all([
           appointments.listByMeasurer(enterpriseId, staffId, ['confirmed', 'expired']),
-          leads.list({ staffId, staffVisibility: 'measurer', page: 1, limit: 20, orderBy: 'updatedAt' }),
+          leads.list({ ...scope, page: 1, limit: 20, orderBy: 'updatedAt' }),
+          loadOpsDashboard(transaction, {
+            enterpriseId,
+            period,
+            scope,
+            includeContractAmount: false,
+          }),
         ]);
-        const confirmedRows = appointmentRows.filter((item) => item.status === 'confirmed');
-        const expiredRows = appointmentRows.filter((item) => item.status === 'expired');
-        const leadRows = await leads.findByIds(appointmentRows.map((item) => item.leadId));
+        const currentAppointmentRows = selectMeasurerWorkbenchAppointments(appointmentRows);
+        const leadRows = await leads.findByIds(currentAppointmentRows.map((item) => item.leadId));
         const leadMap = new Map(leadRows.map((item) => [item.id, item]));
+        const confirmedRows = currentAppointmentRows
+          .filter((item) => item.status === 'confirmed')
+          .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(item.leadId), item));
+        const expiredRows = currentAppointmentRows
+          .filter((item) => item.status === 'expired')
+          .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(item.leadId), item));
         const appointmentItems = confirmedRows.map((item) => appointmentItem(item, leadMap.get(item.leadId)));
         const expiredItems = expiredRows.map((item) => appointmentItem(item, leadMap.get(item.leadId)));
         const occupiedIds = new Set([
@@ -126,56 +196,76 @@ export async function GET(request: Request) {
           tasks: items,
           activityCode: { label: '出示活动码', target: 'activity-code' },
           secondary: { label: '查看量房日程', target: 'calendar' },
+          ...opsDashboard,
         };
       }
 
-      const [pendingAssignments, expiredUnbooked, staffList, appointmentRows] = await Promise.all([
+      const [pendingAssignments, expiredUnbooked, staffList, appointmentRows, opsDashboard] = await Promise.all([
         leads.list({ assignmentStatus: 'assignment_pending', page: 1, limit: 20, orderBy: 'updatedAt' }),
         appointments.listExpiredUnbooked(enterpriseId, 20),
         new AdminUserRepository(transaction).list({ roles: ['designer', 'measurer'], status: 'active', page: 1, limit: 200 }),
         appointments.listByEnterprise(enterpriseId, ['confirmed', 'expired'], 20),
+        loadOpsDashboard(transaction, {
+          enterpriseId,
+          period,
+          includeContractAmount: true,
+        }),
       ]);
-      const appointmentLeads = await leads.findByIds(appointmentRows.map((item) => item.leadId));
+      const eligibleDesignerCount = staffList.rows.filter((member) => member.role === 'designer' && isAssignmentEligibleStaff(member)).length;
+      const eligibleMeasurerCount = staffList.rows.filter((member) => member.role === 'measurer' && isAssignmentEligibleStaff(member)).length;
+      const [
+        appointmentLeads,
+        measuringCount,
+        assignedNewCount,
+        deliveredCount,
+      ] = await Promise.all([
+        leads.findByIds(appointmentRows.map((item) => item.leadId)),
+        leads.count({ status: 'measuring' }),
+        leads.count({ status: 'new', assignmentStatus: 'assigned' }),
+        countActiveEnterprisePublications(transaction, enterpriseId),
+      ]);
       const appointmentLeadMap = new Map(appointmentLeads.map((item) => [item.id, item]));
-      const pendingItems = pendingAssignments.rows.map((lead) => ({
-        ...leadItem(lead, 'lead'),
-        subtitle: lead.assignmentErrorCode || '补齐可用设计师或测量员后重试',
-        metaLabel: '待派失败',
-      }));
-      const expiredItems = expiredUnbooked.map((row) => ({
-        ...leadItem({
-          ...row.lead,
-          appointment: row.appointment,
-          floorPlanRecords: [],
-          primaryFloorPlanRecord: null,
-          assignedUser: null,
-          promoter: null,
-          archivedUser: null,
-          convertedUser: null,
-        }, 'rebook'),
-        appointmentId: row.appointment.id.toString(),
-        action: 'appointment',
-        canBookAppointment: false,
-        canRebook: false,
-        metaLabel: '过期未重约',
-      }));
+      const pendingItems = pendingAssignments.rows.map((lead) => buildEnterprisePendingExceptionItem(lead));
+      const expiredItems = expiredUnbooked.map((row) => buildEnterpriseExpiredExceptionItem({
+        ...row.lead,
+        appointment: row.appointment,
+        floorPlanRecords: [],
+        primaryFloorPlanRecord: null,
+        assignedUser: null,
+        promoter: null,
+        archivedUser: null,
+        convertedUser: null,
+      }, row.appointment));
       const staffingItems = buildStaffingGapItems({
-        eligibleDesignerCount: staffList.rows.filter((member) => member.role === 'designer' && isAssignmentEligibleStaff(member)).length,
-        eligibleMeasurerCount: staffList.rows.filter((member) => member.role === 'measurer' && isAssignmentEligibleStaff(member)).length,
-      });
+        eligibleDesignerCount,
+        eligibleMeasurerCount,
+      }).map((item) => buildEnterpriseStaffingExceptionItem(item));
       const exceptionItems = [...staffingItems, ...pendingItems, ...expiredItems];
+      const pendingSurveyCount = measuringCount + assignedNewCount;
       return {
         role,
-        title: '企业经营异常台',
-        subtitle: '只处理待派失败、过期未重约和人员缺口；实操请切到设计师或测量员身份',
+        title: '门店经营与全盘调度',
+        subtitle: '派单跟踪 · 测量调度 · 方案交付',
         summary: [
-          { key: 'pending', label: '待派失败', value: pendingItems.length, detail: '需要补人后重试', tone: 'orange' },
-          { key: 'expired', label: '过期未重约', value: expiredItems.length, detail: '预约结束仍未新建', tone: 'orange' },
-          { key: 'staffing', label: '人员缺口', value: staffingItems.length, detail: staffingItems.length ? '无可用设计师或测量员' : '派单人员齐全', tone: staffingItems.length ? 'orange' : 'green' },
+          { key: 'pending', label: '待派单', value: pendingAssignments.total, detail: '待分派或派单失败', tone: 'orange' },
+          { key: 'survey', label: '待量房', value: pendingSurveyCount, detail: '尚未完成正式量房', tone: 'blue' },
+          { key: 'delivered', label: '已交付', value: deliveredCount, detail: '客户可见方案', tone: 'green' },
+        ],
+        quickNav: [
+          {
+            key: 'pendingLeads',
+            title: '待处理线索',
+            desc: pendingAssignments.total > 0 ? `${pendingAssignments.total} 条待分派 →` : '暂无待分派 →',
+            tone: pendingAssignments.total > 0 ? 'green' : 'green',
+            target: 'customers',
+          },
+          buildStaffLoadQuickNav({ eligibleDesignerCount, eligibleMeasurerCount }),
         ],
         primaryItems: exceptionItems.slice(0, 8),
         appointments: appointmentRows.map((item) => appointmentItem(item, appointmentLeadMap.get(item.leadId))),
+        activityCode: { label: '出示员工活动码', target: 'activity-code' },
         secondary: { label: '查看预约安排', target: 'appointments' },
+        ...opsDashboard,
       };
     });
 

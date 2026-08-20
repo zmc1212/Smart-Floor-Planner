@@ -37,8 +37,9 @@
             <view wx:if="{{item.statusClass === 'processing' && !item.recipeId}}" class="history-progress-track"><view class="history-progress-bar" style="width: {{item.progress}}%;"></view></view>
           </view>
           <view class="item-actions">
-            <button class="mini-action" data-id="{{item.id}}" bindtap="reuse">再设计</button>
-            <button class="mini-action danger" data-id="{{item.id}}" bindtap="remove">删除</button>
+            <button wx:if="{{item.canOpenScheme}}" class="mini-action primary" data-id="{{item.id}}" catchtap="openScheme">进入方案</button>
+            <button class="mini-action" data-id="{{item.id}}" catchtap="reuse">再设计</button>
+            <button class="mini-action danger" data-id="{{item.id}}" catchtap="remove">删除</button>
           </view>
         </view>
         <image class="history-chevron" src="/images/leads-v4/chevron-right.png" mode="aspectFit" data-id="{{item.id}}" bindtap="openResult"></image>

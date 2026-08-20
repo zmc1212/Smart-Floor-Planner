@@ -213,7 +213,7 @@ test('closed-boundary first previews expose the current measurement-position act
 });
 
 test('the measurement-position control draws a vector arrow along the wall normal', () => {
-  assert.match(editorScript, /arrowAxis: leftNormal/);
+  assert.match(editorScript, /arrowAxis: sideNormal/);
   assert.match(editorScript, /const arrowAngle = Math\.atan2\(arrowAxis\.y, arrowAxis\.x\)/);
   assert.match(editorScript, /ctx\.rotate\(arrowAngle\)/);
   assert.doesNotMatch(editorScript, /ctx\.fillText\(measure\.label/);

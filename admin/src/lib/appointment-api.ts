@@ -26,6 +26,39 @@ export function parseAppointmentAddress(value: unknown) {
   return address;
 }
 
+export type AppointmentLocationInput = {
+  locationName: string;
+  latitude: string;
+  longitude: string;
+  coordinateSystem: 'gcj02';
+};
+
+export function parseAppointmentLocation(value: unknown): AppointmentLocationInput | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw httpError('地图位置无效', 400);
+  }
+  const location = value as Record<string, unknown>;
+  const latitude = Number(location.latitude);
+  const longitude = Number(location.longitude);
+  const locationName = typeof location.locationName === 'string' ? location.locationName.trim() : '';
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw httpError('地图坐标无效，请重新选择地点', 400);
+  }
+  if (locationName.length > 200) throw httpError('地图地点名称不能超过 200 字', 400);
+  if (location.coordinateSystem !== 'gcj02') {
+    throw httpError('仅支持微信地图 GCJ-02 坐标', 400);
+  }
+  return {
+    locationName,
+    latitude: latitude.toFixed(7),
+    longitude: longitude.toFixed(7),
+    coordinateSystem: 'gcj02',
+  };
+}
+
 export function appointmentToDto(
   record: AppointmentRecord,
   customerContact?: { name?: string | null; phone?: string | null }
@@ -37,6 +70,10 @@ export function appointmentToDto(
     designerId: record.designerId.toString(),
     measurerId: record.measurerId.toString(),
     address: record.address,
+    locationName: record.locationName,
+    latitude: record.latitude == null ? null : Number(record.latitude),
+    longitude: record.longitude == null ? null : Number(record.longitude),
+    coordinateSystem: record.coordinateSystem,
     timeRange: record.timeRange,
     status: record.status,
     version: record.version,

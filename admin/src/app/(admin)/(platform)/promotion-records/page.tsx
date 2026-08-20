@@ -18,8 +18,8 @@ import {
 } from '@ant-design/pro-components';
 import { Alert, Button, Card, Drawer, Flex, Input, Modal, Space, Tag, Typography } from 'antd';
 import { Check, Eye, RefreshCw, Undo2, UserPlus, Users, X } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { notify } from '@/components/admin/operation-feedback';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 const stageLabels: Record<string, string> = {

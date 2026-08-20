@@ -67,6 +67,7 @@ import {
   MiniProgramIdentityRepository,
   PlatformConfigRepository,
   PromptLibraryRepository,
+  ReferrerPortalRepository,
   SystemRoleRepository,
   UserRepository,
   MeasurementRepository,
@@ -811,6 +812,17 @@ test('referral signing snapshots three decimal-safe commissions and voids unpaid
         ['referrer', '125.00'],
       ]);
       assert.equal(commissions.every((item) => item.status === 'payable'), true);
+      assert.equal(
+        commissions.every(
+          (item) =>
+            item.originalPayableAmount === item.payableAmount &&
+            item.originalBeneficiaryUserId === item.beneficiaryUserId &&
+            item.adjustedAt == null &&
+            item.adjustedBy == null &&
+            item.adjustReason == null
+        ),
+        true
+      );
       const referrerCommission = commissions.find((item) => item.role === 'referrer');
       assert.equal(referrerCommission?.enterprise?.name.includes(testRunKey), true);
       assert.equal(referrerCommission?.customer?.id, customerUser.id);
@@ -956,6 +968,15 @@ test('staff activity conversion snapshots designer and measurer rows even when t
         [['designer', '88.00'], ['measurer', '22.00']]
       );
       assert.equal(commissions.every((item) => item.beneficiaryUserId === designerUser.id && item.status === 'payable'), true);
+      assert.equal(
+        commissions.every(
+          (item) =>
+            item.originalPayableAmount === item.payableAmount &&
+            item.originalBeneficiaryUserId === item.beneficiaryUserId &&
+            item.adjustedAt == null
+        ),
+        true
+      );
       assert.equal((await commissionRepository.list(enterpriseAId, { leadId: lead.id, source: 'referrer_network' })).length, 0);
     });
   } finally {
@@ -964,6 +985,370 @@ test('staff activity conversion snapshots designer and measurer rows even when t
         await transaction.delete(leadCommissions).where(eq(leadCommissions.leadId, leadId));
         await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, leadId));
         await transaction.delete(leads).where(eq(leads.id, leadId));
+      }
+      await transaction.delete(enterpriseCommissionRules).where(eq(enterpriseCommissionRules.enterpriseId, enterpriseAId));
+      if (createdStaffIds.length) await transaction.delete(adminUsers).where(inArray(adminUsers.id, createdStaffIds));
+      if (createdUserIds.length) await transaction.delete(users).where(inArray(users.id, createdUserIds));
+    });
+  }
+});
+
+test('commission report reads referrer profile when the base user has no tenant', async () => {
+  let leadId: bigint | null = null;
+  let membershipId: bigint | null = null;
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+  const createdUserIds: bigint[] = [];
+  const createdStaffIds: bigint[] = [];
+  try {
+    let referrerUserId: bigint | null = null;
+    await withPlatformTransaction(async (transaction) => {
+      const [referrerUser] = await transaction.insert(users).values([
+        { nickname: `Tenantless referrer ${suffix}`, phone: `158${String(Date.now()).slice(-8)}` },
+      ]).returning({ id: users.id });
+      referrerUserId = referrerUser.id;
+      createdUserIds.push(referrerUser.id);
+    });
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const [designerUser, measurerUser, customerUser] = await transaction.insert(users).values([
+        { enterpriseId: enterpriseAId, nickname: `Profile designer ${suffix}` },
+        { enterpriseId: enterpriseAId, nickname: `Profile measurer ${suffix}` },
+        { enterpriseId: enterpriseAId, nickname: `Profile customer ${suffix}` },
+      ]).returning({ id: users.id });
+      createdUserIds.push(designerUser.id, measurerUser.id, customerUser.id);
+      const staffRepository = new AdminUserRepository(transaction);
+      const [designer, measurer] = await Promise.all([
+        staffRepository.create({
+          enterpriseId: enterpriseAId,
+          userId: designerUser.id,
+          username: `${testRunKey}-profile-designer-${suffix}`,
+          passwordHash: 'test-hash',
+          displayName: 'Profile Designer',
+          role: 'designer',
+        }),
+        staffRepository.create({
+          enterpriseId: enterpriseAId,
+          userId: measurerUser.id,
+          username: `${testRunKey}-profile-measurer-${suffix}`,
+          passwordHash: 'test-hash',
+          displayName: 'Profile Measurer',
+          role: 'measurer',
+        }),
+      ]);
+      createdStaffIds.push(designer.id, measurer.id);
+      const [profile] = await transaction.insert(referrerProfiles).values({
+        userId: referrerUserId!,
+        displayName: 'grh推荐人',
+        phone: '13164649401',
+      }).returning();
+      const [membership] = await transaction.insert(referrerEnterpriseMemberships).values({
+        referrerId: profile.id,
+        enterpriseId: enterpriseAId,
+      }).returning();
+      membershipId = membership.id;
+      const commissionRepository = new LeadCommissionRepository(transaction);
+      await commissionRepository.updateRules(enterpriseAId, designer.id, [
+        { role: 'referrer', calculationType: 'fixed', value: '10.0000', status: 'active', version: 1 },
+        { role: 'designer', calculationType: 'fixed', value: '20.0000', status: 'active', version: 1 },
+        { role: 'measurer', calculationType: 'fixed', value: '30.0000', status: 'active', version: 1 },
+      ]);
+      const lead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        customerUserId: customerUser.id,
+        referrerMembershipId: membership.id,
+        assignedTo: designer.id,
+        measurerId: measurer.id,
+        name: 'Tenantless referrer commission lead',
+        phone: `157${String(Date.now()).slice(-8)}`,
+        source: 'referrer_network',
+        status: 'designing',
+      });
+      leadId = lead.id;
+      await new LeadLifecycleRepository(transaction).convert({
+        leadId: lead.id,
+        actorId: designer.id,
+        convertedOn: chinaDateString(),
+        contractAmount: '1000.00',
+        conversionNote: null,
+      });
+      const commissions = await commissionRepository.list(enterpriseAId, { leadId: lead.id });
+      assert.deepEqual(commissions.map((item) => item.role).sort(), ['designer', 'measurer', 'referrer']);
+      assert.equal(commissions.every((item) => item.referrer?.nickname === 'grh推荐人'), true);
+      assert.equal(commissions.every((item) => item.referrer?.phone === '13164649401'), true);
+      assert.equal(commissions.every((item) => item.referrer?.userId === referrerUserId), true);
+    });
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (leadId) {
+        await transaction.delete(leadCommissions).where(eq(leadCommissions.leadId, leadId));
+        await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, leadId));
+        await transaction.delete(leads).where(eq(leads.id, leadId));
+      }
+      if (membershipId) {
+        await transaction.delete(referrerEnterpriseMemberships).where(eq(referrerEnterpriseMemberships.id, membershipId));
+      }
+      if (createdUserIds.length) {
+        await transaction.delete(referrerProfiles).where(inArray(referrerProfiles.userId, createdUserIds));
+      }
+      await transaction.delete(enterpriseCommissionRules).where(eq(enterpriseCommissionRules.enterpriseId, enterpriseAId));
+      if (createdStaffIds.length) await transaction.delete(adminUsers).where(inArray(adminUsers.id, createdStaffIds));
+      if (createdUserIds.length) await transaction.delete(users).where(inArray(users.id, createdUserIds));
+    });
+  }
+});
+
+test('payable commission adjust updates amount or beneficiary, rejects paid/voided and ineligible targets, and keeps markPaid/void/listEarnings consistent', async () => {
+  let adjustLeadId: bigint | null = null;
+  let paidLeadId: bigint | null = null;
+  let voidLeadId: bigint | null = null;
+  let membershipAId: bigint | null = null;
+  let membershipBId: bigint | null = null;
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+  const createdUserIds: bigint[] = [];
+  const createdStaffIds: bigint[] = [];
+  try {
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const [referrerA, referrerB, designerUser, designerAltUser, measurerUser, customerUser] = await transaction.insert(users).values([
+        { enterpriseId: enterpriseAId, nickname: `Adjust referrer A ${suffix}`, phone: `151${String(Date.now()).slice(-8)}` },
+        { enterpriseId: enterpriseAId, nickname: `Adjust referrer B ${suffix}`, phone: `152${String(Date.now()).slice(-8)}` },
+        { enterpriseId: enterpriseAId, nickname: `Adjust designer ${suffix}` },
+        { enterpriseId: enterpriseAId, nickname: `Adjust designer alt ${suffix}` },
+        { enterpriseId: enterpriseAId, nickname: `Adjust measurer ${suffix}` },
+        { enterpriseId: enterpriseAId, nickname: `Adjust customer ${suffix}` },
+      ]).returning({ id: users.id });
+      createdUserIds.push(referrerA.id, referrerB.id, designerUser.id, designerAltUser.id, measurerUser.id, customerUser.id);
+      const staffRepository = new AdminUserRepository(transaction);
+      const [designer, designerAlt, measurer] = await Promise.all([
+        staffRepository.create({
+          enterpriseId: enterpriseAId,
+          userId: designerUser.id,
+          username: `${testRunKey}-adjust-designer-${suffix}`,
+          passwordHash: 'test-hash',
+          displayName: 'Adjust Designer',
+          role: 'designer',
+        }),
+        staffRepository.create({
+          enterpriseId: enterpriseAId,
+          userId: designerAltUser.id,
+          username: `${testRunKey}-adjust-designer-alt-${suffix}`,
+          passwordHash: 'test-hash',
+          displayName: 'Adjust Designer Alt',
+          role: 'designer',
+        }),
+        staffRepository.create({
+          enterpriseId: enterpriseAId,
+          userId: measurerUser.id,
+          username: `${testRunKey}-adjust-measurer-${suffix}`,
+          passwordHash: 'test-hash',
+          displayName: 'Adjust Measurer',
+          role: 'measurer',
+        }),
+      ]);
+      createdStaffIds.push(designer.id, designerAlt.id, measurer.id);
+      const [profileA, profileB] = await transaction.insert(referrerProfiles).values([
+        { userId: referrerA.id, displayName: 'Adjust Referrer A' },
+        { userId: referrerB.id, displayName: 'Adjust Referrer B' },
+      ]).returning();
+      const [membershipA, membershipB] = await transaction.insert(referrerEnterpriseMemberships).values([
+        { referrerId: profileA.id, enterpriseId: enterpriseAId },
+        { referrerId: profileB.id, enterpriseId: enterpriseAId },
+      ]).returning();
+      membershipAId = membershipA.id;
+      membershipBId = membershipB.id;
+
+      const commissionRepository = new LeadCommissionRepository(transaction);
+      const portal = new ReferrerPortalRepository(transaction);
+      await commissionRepository.updateRules(enterpriseAId, designer.id, [
+        { role: 'referrer', calculationType: 'fixed', value: '100.0000', status: 'active', version: 1 },
+        { role: 'designer', calculationType: 'fixed', value: '50.0000', status: 'active', version: 1 },
+        { role: 'measurer', calculationType: 'fixed', value: '20.0000', status: 'active', version: 1 },
+      ]);
+
+      const adjustLead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        customerUserId: customerUser.id,
+        referrerMembershipId: membershipA.id,
+        assignedTo: designer.id,
+        measurerId: measurer.id,
+        name: 'Adjust payable commission lead',
+        phone: `153${String(Date.now()).slice(-8)}`,
+        source: 'referrer_network',
+        status: 'designing',
+      });
+      adjustLeadId = adjustLead.id;
+      await new LeadLifecycleRepository(transaction).convert({
+        leadId: adjustLead.id,
+        actorId: designer.id,
+        convertedOn: chinaDateString(),
+        contractAmount: '1000.00',
+        conversionNote: null,
+      });
+      const adjustRows = await commissionRepository.list(enterpriseAId, { leadId: adjustLead.id });
+      const referrerRow = adjustRows.find((item) => item.role === 'referrer');
+      const designerRow = adjustRows.find((item) => item.role === 'designer');
+      assert.ok(referrerRow && designerRow);
+      assert.equal(referrerRow.payableAmount, '100.00');
+      assert.equal(referrerRow.originalPayableAmount, '100.00');
+      assert.equal(referrerRow.beneficiaryUserId, referrerA.id);
+      assert.equal(referrerRow.originalBeneficiaryUserId, referrerA.id);
+
+      const amountAdjusted = await commissionRepository.adjustPayable(enterpriseAId, referrerRow.id, designer.id, {
+        payableAmount: '166.50',
+        reason: 'contract bonus',
+      });
+      assert.equal(amountAdjusted.payableAmount, '166.50');
+      assert.equal(amountAdjusted.originalPayableAmount, '100.00');
+      assert.equal(amountAdjusted.beneficiaryUserId, referrerA.id);
+      assert.equal(amountAdjusted.originalBeneficiaryUserId, referrerA.id);
+      assert.equal(amountAdjusted.adjustReason, 'contract bonus');
+      assert.equal(amountAdjusted.adjustedBy, designer.id);
+      assert.ok(amountAdjusted.adjustedAt);
+
+      const amountAdjustedWithoutReason = await commissionRepository.adjustPayable(enterpriseAId, referrerRow.id, designer.id, {
+        payableAmount: '170.00',
+      });
+      assert.equal(amountAdjustedWithoutReason.payableAmount, '170.00');
+      assert.equal(amountAdjustedWithoutReason.originalPayableAmount, '100.00');
+      assert.equal(amountAdjustedWithoutReason.adjustReason, null);
+      assert.equal(amountAdjustedWithoutReason.adjustedBy, designer.id);
+      assert.ok(amountAdjustedWithoutReason.adjustedAt);
+
+      const earningsBeforeSwap = await portal.listEarnings(referrerA.id, membershipA.id, enterpriseAId);
+      assert.ok(earningsBeforeSwap);
+      assert.equal(earningsBeforeSwap.items.some((item) => item.id === referrerRow.id.toString() && item.amount === '170.00'), true);
+
+      const beneficiaryAdjusted = await commissionRepository.adjustPayable(enterpriseAId, referrerRow.id, designer.id, {
+        beneficiaryUserId: referrerB.id,
+        reason: 'reassign referrer payout',
+      });
+      assert.equal(beneficiaryAdjusted.payableAmount, '166.50');
+      assert.equal(beneficiaryAdjusted.beneficiaryUserId, referrerB.id);
+      assert.equal(beneficiaryAdjusted.originalBeneficiaryUserId, referrerA.id);
+      assert.equal(beneficiaryAdjusted.originalPayableAmount, '100.00');
+      assert.equal(beneficiaryAdjusted.adjustReason, 'reassign referrer payout');
+
+      const oldEarnings = await portal.listEarnings(referrerA.id, membershipA.id, enterpriseAId);
+      const newEarnings = await portal.listEarnings(referrerB.id, membershipB.id, enterpriseAId);
+      assert.ok(oldEarnings && newEarnings);
+      assert.equal(oldEarnings.items.some((item) => item.id === referrerRow.id.toString()), false);
+      assert.equal(newEarnings.items.some((item) => item.id === referrerRow.id.toString() && item.amount === '170.00'), true);
+
+      await assert.rejects(
+        () => commissionRepository.adjustPayable(enterpriseAId, designerRow.id, designer.id, {
+          beneficiaryUserId: measurerUser.id,
+          reason: 'wrong role',
+        }),
+        /不是本企业已绑定的设计师/
+      );
+      await assert.rejects(
+        () => commissionRepository.adjustPayable(enterpriseAId, referrerRow.id, designer.id, {
+          beneficiaryUserId: designerUser.id,
+          reason: 'staff is not referrer',
+        }),
+        /不是本企业活动推荐人成员/
+      );
+
+      const designerAdjusted = await commissionRepository.adjustPayable(enterpriseAId, designerRow.id, designer.id, {
+        payableAmount: '55.25',
+        beneficiaryUserId: designerAltUser.id,
+        reason: 'designer payout correction',
+      });
+      assert.equal(designerAdjusted.payableAmount, '55.25');
+      assert.equal(designerAdjusted.beneficiaryUserId, designerAltUser.id);
+      assert.equal(designerAdjusted.originalPayableAmount, '50.00');
+      assert.equal(designerAdjusted.originalBeneficiaryUserId, designerUser.id);
+
+      const paidLead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        customerUserId: customerUser.id,
+        referrerMembershipId: membershipA.id,
+        assignedTo: designer.id,
+        measurerId: measurer.id,
+        name: 'Adjust paid reject lead',
+        phone: `154${String(Date.now()).slice(-8)}`,
+        source: 'referrer_network',
+        status: 'designing',
+      });
+      paidLeadId = paidLead.id;
+      await new LeadLifecycleRepository(transaction).convert({
+        leadId: paidLead.id,
+        actorId: designer.id,
+        convertedOn: chinaDateString(),
+        contractAmount: '1000.00',
+        conversionNote: null,
+      });
+      const paidRows = await commissionRepository.list(enterpriseAId, { leadId: paidLead.id, role: 'measurer' });
+      assert.equal(paidRows.length, 1);
+      await commissionRepository.adjustPayable(enterpriseAId, paidRows[0].id, designer.id, {
+        payableAmount: '33.00',
+        reason: 'pre-pay tweak',
+      });
+      const [markedPaid] = await commissionRepository.markPaid(enterpriseAId, [paidRows[0].id], designer.id);
+      assert.equal(markedPaid.status, 'paid');
+      assert.equal(markedPaid.payableAmount, '33.00');
+      await assert.rejects(
+        () => commissionRepository.adjustPayable(enterpriseAId, paidRows[0].id, designer.id, {
+          payableAmount: '1.00',
+          reason: 'after paid',
+        }),
+        /仅待支付提成可调整/
+      );
+
+      const voidLead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        customerUserId: customerUser.id,
+        referrerMembershipId: membershipA.id,
+        assignedTo: designer.id,
+        measurerId: measurer.id,
+        name: 'Adjust void reject lead',
+        phone: `155${String(Date.now()).slice(-8)}`,
+        source: 'referrer_network',
+        status: 'designing',
+      });
+      voidLeadId = voidLead.id;
+      await new LeadLifecycleRepository(transaction).convert({
+        leadId: voidLead.id,
+        actorId: designer.id,
+        convertedOn: chinaDateString(),
+        contractAmount: '1000.00',
+        conversionNote: null,
+      });
+      const voidSourceRows = await commissionRepository.list(enterpriseAId, { leadId: voidLead.id, role: 'referrer' });
+      assert.equal(voidSourceRows.length, 1);
+      await commissionRepository.adjustPayable(enterpriseAId, voidSourceRows[0].id, designer.id, {
+        payableAmount: '12.00',
+        reason: 'pre-void tweak',
+      });
+      await new LeadLifecycleRepository(transaction).revertConversion({
+        leadId: voidLead.id,
+        actorId: designer.id,
+        reason: 'void after adjust',
+      });
+      const voidedRows = await commissionRepository.list(enterpriseAId, { leadId: voidLead.id });
+      assert.equal(voidedRows.every((item) => item.status === 'voided' && item.voidReason === 'void after adjust'), true);
+      assert.equal(voidedRows.find((item) => item.role === 'referrer')?.payableAmount, '12.00');
+      await assert.rejects(
+        () => commissionRepository.adjustPayable(enterpriseAId, voidSourceRows[0].id, designer.id, {
+          payableAmount: '9.00',
+          reason: 'after void',
+        }),
+        /仅待支付提成可调整/
+      );
+    });
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      for (const leadId of [adjustLeadId, paidLeadId, voidLeadId]) {
+        if (!leadId) continue;
+        await transaction.delete(leadCommissions).where(eq(leadCommissions.leadId, leadId));
+        await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, leadId));
+        await transaction.delete(leads).where(eq(leads.id, leadId));
+      }
+      for (const membershipId of [membershipAId, membershipBId]) {
+        if (membershipId) {
+          await transaction.delete(referrerEnterpriseMemberships).where(eq(referrerEnterpriseMemberships.id, membershipId));
+        }
+      }
+      if (createdUserIds.length) {
+        await transaction.delete(referrerProfiles).where(inArray(referrerProfiles.userId, createdUserIds));
       }
       await transaction.delete(enterpriseCommissionRules).where(eq(enterpriseCommissionRules.enterpriseId, enterpriseAId));
       if (createdStaffIds.length) await transaction.delete(adminUsers).where(inArray(adminUsers.id, createdStaffIds));
@@ -1037,6 +1422,10 @@ after(async () => {
           .delete(users)
           .where(inArray(users.id, identityUserIds));
       }
+      // Ensure tenant media assets don't block enterprise cleanup.
+      await transaction
+        .delete(mediaAssets)
+        .where(inArray(mediaAssets.enterpriseId, [enterpriseAId, enterpriseBId]));
       await transaction
         .delete(enterprises)
         .where(inArray(enterprises.id, [enterpriseAId, enterpriseBId]));

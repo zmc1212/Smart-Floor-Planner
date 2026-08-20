@@ -216,14 +216,29 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error('[Referral authorization]', error);
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'STAFF_PHONE_LINKED_TO_OTHER_USER') {
+      return referrerNetworkError('staff_phone_linked_to_other_user', {
+        status: 409,
+        message:
+          '该手机号已绑定其他微信账号，请换本人手机号授权，或联系企业管理员处理。',
+      });
+    }
+    if (
+      message === 'WECHAT_IDENTITY_ALREADY_LINKED' ||
+      message === 'WECHAT_USER_ALREADY_LINKED'
+    ) {
+      return referrerNetworkError('wechat_identity_conflict', {
+        status: 409,
+        message:
+          '当前微信已绑定其他账号，请换用本人微信重试，或联系企业管理员处理。',
+      });
+    }
     return NextResponse.json(
       {
         success: false,
         code: (error as { code?: string }).code,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Unable to authorize referral service',
+        error: message || 'Unable to authorize referral service',
       },
       { status: httpErrorStatus(error, 400) }
     );

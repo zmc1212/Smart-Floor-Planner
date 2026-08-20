@@ -204,8 +204,11 @@ Page({
     const item = event.currentTarget.dataset.item;
     const id = item && (item.id || item._id);
     if (!id) return;
+    const leadId = item && item.leadId;
+    const query = [`id=${encodeURIComponent(id)}`];
+    if (leadId) query.push(`leadId=${encodeURIComponent(leadId)}`);
     wx.navigateTo({
-      url: `/packages/business/appointment-detail/appointment-detail?id=${encodeURIComponent(id)}`,
+      url: `/packages/business/appointment-detail/appointment-detail?${query.join('&')}`,
     });
   },
 
@@ -232,12 +235,19 @@ Page({
 
   openNavigation(event) {
     const item = event.currentTarget.dataset.item;
-    const address = item && (item.address || item.community);
-    if (!address) {
-      wx.showToast({ title: '暂无详细地址信息', icon: 'none' });
+    const latitude = Number(item && item.latitude);
+    const longitude = Number(item && item.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      wx.showToast({ title: '暂未记录地图位置，请联系补充', icon: 'none' });
       return;
     }
-    wx.showToast({ title: `正在开启导航: ${address}`, icon: 'none' });
+    wx.openLocation({
+      latitude,
+      longitude,
+      name: item.locationName || item.community || item.address || '量房地点',
+      address: item.address || '',
+      scale: 18,
+    });
   },
 
   manageUnavailability() {

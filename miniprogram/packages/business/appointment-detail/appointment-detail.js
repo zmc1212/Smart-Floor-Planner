@@ -1,4 +1,11 @@
 const api = require('../../../utils/api');
+const surveyLayout = require('../../../utils/surveyLayout.js');
+const { openSurveyingEditor } = require('../../../utils/surveyNavigation.js');
+const {
+  canEditLeadProfile,
+  shouldOfferCommunitySync,
+  syncAddressToLeadCommunity,
+} = require('../../../utils/appointmentCommunitySync.js');
 
 const STATUS_LABELS = {
   confirmed: '已确认',
@@ -25,6 +32,13 @@ function getStaffRole() {
   return user && (user.staffRole || (user.role === 'staff' ? '' : user.role)) || '';
 }
 
+function getStaffId() {
+  const app = getApp();
+  const user = app && app.globalData && app.globalData.userInfo;
+  if (!user) return '';
+  return String(user.staffId || '');
+}
+
 function parseRange(value) {
   const match = String(value || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
   if (!match) return { dateText: '时间待确认', timeText: '—' };
@@ -36,6 +50,111 @@ function parseRange(value) {
     dateText: `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日 周${'日一二三四五六'[start.getDay()]}`,
     timeText: `${pad(start.getHours())}:${pad(start.getMinutes())} - ${pad(end.getHours())}:${pad(end.getMinutes())}`
   };
+}
+
+function hasCoordinates(appointment) {
+  return appointment && appointment.latitude != null && appointment.longitude != null
+    && Number.isFinite(Number(appointment.latitude))
+    && Number.isFinite(Number(appointment.longitude));
+}
+
+function collectLeadPlans(lead) {
+  const plans = [];
+  const primary = lead && lead.primaryFloorPlanId;
+  if (primary && typeof primary === 'object' && primary._id) plans.push(primary);
+  (Array.isArray(lead && lead.floorPlanIds) ? lead.floorPlanIds : []).forEach((plan) => {
+    if (plan && plan._id) plans.push(plan);
+  });
+  const seen = Object.create(null);
+  return plans.filter((plan) => {
+    const id = String(plan._id);
+    if (!id || seen[id]) return false;
+    seen[id] = true;
+    return true;
+  });
+}
+
+function hasCompletedFormalSurvey(lead) {
+  return collectLeadPlans(lead).some((plan) => {
+    if (plan.status !== 'completed') return false;
+    const layout = surveyLayout.parseFormalSurveyLayout(plan.layoutData);
+    if (!layout) return false;
+    const floors = layout.surveyGraph && layout.surveyGraph.floors;
+    if (!Array.isArray(floors)) return false;
+    return floors.some((floor) => (floor.spaces || []).some((space) => space.closed === true));
+  });
+}
+
+function selectLeadFloorPlan(lead) {
+  return collectLeadPlans(lead).sort((left, right) => {
+    const leftTime = new Date(left.updatedAt || 0).getTime();
+    const rightTime = new Date(right.updatedAt || 0).getTime();
+    return rightTime - leftTime;
+  })[0] || null;
+}
+
+function buildAppointmentsQuery(leadId, appointmentId) {
+  const params = [];
+  if (leadId) params.push(`leadId=${encodeURIComponent(leadId)}`);
+  if (appointmentId) params.push(`appointmentId=${encodeURIComponent(appointmentId)}`);
+  return `/appointments?${params.join('&')}`;
+}
+
+async function resolveLeadLifecycle(appointment, role) {
+  const staffSurveyRole = ['measurer', 'enterprise_admin'].includes(role);
+  const lifecycleOpen = appointment.status === 'confirmed' || appointment.status === 'expired';
+  const emptyProfile = {
+    communityName: '',
+    canEditProfile: false,
+  };
+  if (!appointment.leadId) {
+    return {
+      leadTerminal: false,
+      canComplete: false,
+      canStartSurvey: false,
+      startSurveyLabel: '开始量房',
+      surveyFloorPlanId: '',
+      ...emptyProfile,
+    };
+  }
+  try {
+    const leadResult = await api.request(`/leads/${encodeURIComponent(appointment.leadId)}`, 'GET');
+    const lead = leadResult.data;
+    const profile = {
+      communityName: String(lead && lead.communityName || '').trim(),
+      canEditProfile: canEditLeadProfile(lead, role, getStaffId()),
+    };
+    const leadTerminal = ['converted', 'closed'].includes(String(lead && lead.status || ''));
+    if (leadTerminal || !lifecycleOpen || !staffSurveyRole) {
+      return {
+        leadTerminal,
+        canComplete: false,
+        canStartSurvey: false,
+        startSurveyLabel: '开始量房',
+        surveyFloorPlanId: '',
+        ...profile,
+      };
+    }
+    const activePlan = selectLeadFloorPlan(lead);
+    const surveyReady = hasCompletedFormalSurvey(lead);
+    return {
+      leadTerminal: false,
+      canComplete: surveyReady,
+      canStartSurvey: !surveyReady,
+      startSurveyLabel: activePlan ? '继续量房' : '开始量房',
+      surveyFloorPlanId: activePlan ? String(activePlan._id) : '',
+      ...profile,
+    };
+  } catch (error) {
+    return {
+      leadTerminal: false,
+      canComplete: false,
+      canStartSurvey: staffSurveyRole && lifecycleOpen,
+      startSurveyLabel: '开始量房',
+      surveyFloorPlanId: '',
+      ...emptyProfile,
+    };
+  }
 }
 
 Page({
@@ -54,8 +173,15 @@ Page({
     canReschedule: false,
     canCancel: false,
     canComplete: false,
+    canStartSurvey: false,
+    startSurveyLabel: '开始量房',
+    surveyFloorPlanId: '',
     canUpdateAddress: false,
-    canRebook: false
+    canSyncCommunity: false,
+    leadCommunityName: '',
+    canEditProfile: false,
+    canRebook: false,
+    canNavigate: false
   },
 
   onLoad(options) {
@@ -68,20 +194,20 @@ Page({
       leadId,
       customerMode,
       staffRole: getStaffRole(),
-      loading: Boolean(leadId),
-      error: leadId ? '' : '缺少客户线索信息，请返回后重新进入'
+      loading: Boolean(appointmentId || leadId),
+      error: (appointmentId || leadId) ? '' : '缺少预约信息，请返回后重新进入'
     });
   },
 
   onShow() {
-    if (this.data.leadId) this.load();
+    if (this.data.appointmentId || this.data.leadId) this.load();
   },
 
   async load() {
     this.setData({ loading: true, error: '' });
     try {
       const result = await api.request(
-        `/appointments?leadId=${encodeURIComponent(this.data.leadId)}&appointmentId=${encodeURIComponent(this.data.appointmentId)}`,
+        buildAppointmentsQuery(this.data.leadId, this.data.appointmentId),
         'GET'
       );
       const items = result.data || [];
@@ -90,6 +216,17 @@ Page({
       const confirmed = appointment.status === 'confirmed';
       const expired = appointment.status === 'expired';
       const role = this.data.staffRole;
+      const leadId = appointment.leadId || this.data.leadId;
+      const lifecycle = await resolveLeadLifecycle(appointment, role);
+      const lifecycleOpen = !lifecycle.leadTerminal;
+      const canEditProfile = Boolean(lifecycle.canEditProfile);
+      const leadCommunityName = String(lifecycle.communityName || '');
+      const canSyncCommunity = shouldOfferCommunitySync({
+        canEditProfile,
+        communityName: leadCommunityName,
+        address: appointment.address,
+        customerMode: this.data.customerMode,
+      });
       this.setData({
         appointment: {
           ...appointment,
@@ -97,12 +234,20 @@ Page({
           statusLabel: STATUS_LABELS[appointment.status] || appointment.status
         },
         appointmentId: appointment.id,
-        canReschedule: confirmed && (this.data.customerMode || ['designer', 'enterprise_admin'].includes(role)),
-        canCancel: confirmed && ['designer', 'enterprise_admin'].includes(role),
-        canComplete: (confirmed || expired) && ['measurer', 'enterprise_admin'].includes(role),
-        canUpdateAddress: confirmed && ['designer', 'measurer', 'enterprise_admin'].includes(role),
-        canRebook: (expired || appointment.status === 'cancelled')
-          && (this.data.customerMode || ['designer', 'measurer', 'enterprise_admin'].includes(role))
+        leadId,
+        canReschedule: lifecycleOpen && confirmed && (this.data.customerMode || ['designer', 'enterprise_admin'].includes(role)),
+        canCancel: lifecycleOpen && confirmed && ['designer', 'enterprise_admin'].includes(role),
+        canComplete: lifecycleOpen && lifecycle.canComplete,
+        canStartSurvey: lifecycleOpen && lifecycle.canStartSurvey,
+        startSurveyLabel: lifecycle.startSurveyLabel,
+        surveyFloorPlanId: lifecycle.surveyFloorPlanId,
+        canUpdateAddress: lifecycleOpen && confirmed && ['designer', 'measurer', 'enterprise_admin'].includes(role),
+        canSyncCommunity,
+        leadCommunityName,
+        canEditProfile,
+        canRebook: lifecycleOpen && (expired || appointment.status === 'cancelled')
+          && (this.data.customerMode || ['designer', 'measurer', 'enterprise_admin'].includes(role)),
+        canNavigate: confirmed && hasCoordinates(appointment)
       });
     } catch (error) {
       this.setData({ error: error.error || error.message || '预约详情加载失败' });
@@ -141,11 +286,44 @@ Page({
   updateAddress() {
     const appointment = this.data.appointment;
     if (!appointment || !this.data.canUpdateAddress || this.data.acting) return;
+    const hasLocation = hasCoordinates(appointment);
+    wx.showActionSheet({
+      itemList: hasLocation
+        ? ['在地图上选择地点', '手动修改详细地址', '移除地图位置']
+        : ['在地图上选择地点', '手动修改详细地址'],
+      success: (choice) => {
+        if (choice.tapIndex === 0) this.chooseLocationForAddress(appointment);
+        if (choice.tapIndex === 1) this.editAddressText(appointment);
+        if (choice.tapIndex === 2 && hasLocation) {
+          this.saveAddress(appointment, appointment.address, null);
+        }
+      },
+    });
+  },
+
+  chooseLocationForAddress(appointment) {
+    wx.chooseLocation({
+      success: async (result) => {
+        const locationName = String(result.name || result.address || '').trim().slice(0, 200);
+        const suggestedAddress = String(result.address || locationName || '').trim().slice(0, 300);
+        const address = String(appointment.address || '').trim() || suggestedAddress;
+        if (!address) return;
+        await this.saveAddress(appointment, address, {
+          locationName,
+          latitude: result.latitude,
+          longitude: result.longitude,
+          coordinateSystem: 'gcj02',
+        });
+      },
+    });
+  },
+
+  editAddressText(appointment) {
     wx.showModal({
-      title: appointment.address ? '修改服务地址' : '补充服务地址',
+      title: appointment.address ? '修改详细地址' : '补充详细地址',
       editable: true,
       content: appointment.address || '',
-      placeholderText: '请输入详细上门地址',
+      placeholderText: '请输入小区、楼栋、单元和门牌号',
       confirmText: '保存地址',
       success: async (result) => {
         if (!result.confirm || this.data.acting) return;
@@ -154,17 +332,91 @@ Page({
           wx.showToast({ title: '请填写服务地址', icon: 'none' });
           return;
         }
-        this.setData({ acting: true });
-        try {
-          await api.request(`/appointments/${appointment.id}/address`, 'POST', { address, version: appointment.version });
-          wx.showToast({ title: '服务地址已保存', icon: 'success' });
-          await this.load();
-        } catch (error) {
-          wx.showToast({ title: error.error || error.message || '保存地址失败，请重试', icon: 'none' });
-        } finally {
-          this.setData({ acting: false });
-        }
+        await this.saveAddress(appointment, address);
       }
+    });
+  },
+
+  async saveAddress(appointment, address, location) {
+    this.setData({ acting: true });
+    try {
+      await api.request(`/appointments/${appointment.id}/address`, 'POST', {
+        address,
+        ...(location === undefined ? {} : { location }),
+        version: appointment.version,
+      });
+      wx.showToast({ title: '服务地址已保存', icon: 'success' });
+      await this.load();
+      this.offerCommunitySync(String(address || '').trim());
+    } catch (error) {
+      wx.showToast({ title: error.error || error.message || '保存地址失败，请重试', icon: 'none' });
+    } finally {
+      this.setData({ acting: false });
+    }
+  },
+
+  offerCommunitySync(address) {
+    if (!shouldOfferCommunitySync({
+      canEditProfile: this.data.canEditProfile,
+      communityName: this.data.leadCommunityName,
+      address,
+      customerMode: this.data.customerMode,
+    })) {
+      return;
+    }
+    wx.showModal({
+      title: '同步到客户小区',
+      content: '是否将上门地址写入客户资料中的小区？',
+      confirmText: '同步写入',
+      cancelText: '暂不',
+      success: (result) => {
+        if (result.confirm) this.syncCommunityFromAddress(address);
+      },
+    });
+  },
+
+  async syncCommunityFromAddress(address) {
+    const leadId = this.data.leadId;
+    const addressText = String(address || (this.data.appointment && this.data.appointment.address) || '').trim();
+    if (!leadId || !addressText || this.data.acting) return;
+    this.setData({ acting: true });
+    try {
+      const result = await syncAddressToLeadCommunity(api, leadId, addressText);
+      if (result.synced) {
+        this.setData({ leadCommunityName: addressText.slice(0, 160), canSyncCommunity: false });
+        wx.showToast({ title: '已写入客户小区', icon: 'success' });
+        return;
+      }
+      if (result.reason === 'already_set') {
+        this.setData({ canSyncCommunity: false });
+        wx.showToast({ title: '客户已有小区，未覆盖', icon: 'none' });
+        return;
+      }
+      wx.showToast({ title: '地址为空，无法同步', icon: 'none' });
+    } catch (error) {
+      wx.showToast({ title: error.error || error.message || '同步客户小区失败', icon: 'none' });
+    } finally {
+      this.setData({ acting: false });
+    }
+  },
+
+  syncCommunity() {
+    if (!this.data.canSyncCommunity) return;
+    this.syncCommunityFromAddress(this.data.appointment && this.data.appointment.address);
+  },
+
+  openNavigation() {
+    const appointment = this.data.appointment;
+    if (!hasCoordinates(appointment)) {
+      wx.showToast({ title: '暂未记录地图位置，请先补充地点', icon: 'none' });
+      return;
+    }
+    wx.openLocation({
+      latitude: Number(appointment.latitude),
+      longitude: Number(appointment.longitude),
+      name: appointment.locationName || appointment.address || '量房地点',
+      address: appointment.address || '',
+      scale: 18,
     });
   },
 
@@ -200,6 +452,16 @@ Page({
       success: async (result) => {
         if (result.confirm) await this.updateStatus('complete', { version: appointment.version }, '预约已完成');
       }
+    });
+  },
+
+  startSurvey() {
+    const appointment = this.data.appointment;
+    if (!appointment || !this.data.canStartSurvey || this.data.acting) return;
+    openSurveyingEditor({
+      leadId: appointment.leadId || this.data.leadId,
+      floorPlanId: this.data.surveyFloorPlanId || '',
+      communityName: appointment.locationName || appointment.address || '',
     });
   },
 

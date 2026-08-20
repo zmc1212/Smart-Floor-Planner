@@ -1,6 +1,7 @@
 'use client';
 
-import { ConfigProvider } from 'antd';
+import { App, ConfigProvider } from 'antd';
+import { ConfirmDialogProvider } from '@/components/admin/confirm-dialog';
 
 export function AdminAntdProvider({ children }: { children: React.ReactNode }) {
   return (
@@ -22,7 +23,9 @@ export function AdminAntdProvider({ children }: { children: React.ReactNode }) {
         },
       }}
     >
-      {children}
+      <App>
+        <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
+      </App>
     </ConfigProvider>
   );
 }

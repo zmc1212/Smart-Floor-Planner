@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CalendarDays, ClipboardList, ExternalLink, Map, Sparkles } from 'lucide-react';
 import { Alert, Badge, Button, Card, Col, Empty, Flex, List, Row, Skeleton, Statistic, Tag } from 'antd';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
+import OpsDashboardPanel from '@/components/dashboard/OpsDashboardPanel';
 
 type WorkItem = { id: string; leadId: string; floorPlanId?: string | null; title: string; subtitle: string; phone?: string | null; status: string; updatedAt?: string; timeRange?: string; canSurveyNow?: boolean; canBookAppointment?: boolean };
 type Summary = { key: string; label: string; value: number; tone: string };
@@ -30,6 +31,7 @@ export default function StaffWorkbench({ role }: { role: 'designer' | 'measurer'
   const items = data.role === 'designer' ? data.leads || [] : data.tasks || [];
   const surveyTasks = data.tasks || [];
   return <Flex vertical gap={20} className="dashboard-stack">
+    <OpsDashboardPanel />
     <Row gutter={[16, 16]}>{data.summary.map((item) => <Col key={item.key} xs={12} sm={6}><Card className="admin-panel-card" size="small"><Statistic title={item.label} value={item.value} /></Card></Col>)}</Row>
     {data.role === 'measurer' ? <Alert showIcon type="info" message="正式 BLE 量房入口仍在小程序" description="后台用于查看预约和无预约待量房任务；立即量房请使用小程序正式量房编辑器。" action={<Button type="link" href="/measurements">查看量房记录</Button>} /> : null}
     {data.role === 'designer' && surveyTasks.some((item) => item.canSurveyNow) ? <Alert showIcon type="info" message="活动码获客可立即量房" description="出示活动码后，你可作为本条线索的测量员进入小程序正式量房，无需先预约。" /> : null}

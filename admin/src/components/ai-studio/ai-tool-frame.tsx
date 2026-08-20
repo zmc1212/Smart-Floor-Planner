@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { ArrowLeft, type LucideIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from 'antd';
 
 interface AiToolFrameProps {
   title: string;
@@ -27,8 +27,13 @@ export function AiToolFrame({
         <header className="mb-7 flex flex-col gap-5 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             {onBack ? (
-              <Button variant="ghost" size="sm" className="mb-4 -ml-2 text-muted-foreground" onClick={onBack}>
-                <ArrowLeft data-icon="inline-start" />
+              <Button
+                type="text"
+                size="small"
+                className="mb-4 -ml-2 text-muted-foreground"
+                onClick={onBack}
+                icon={<ArrowLeft size={14} />}
+              >
                 返回快捷工具
               </Button>
             ) : null}

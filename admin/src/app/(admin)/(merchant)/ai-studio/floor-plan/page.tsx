@@ -1,6 +1,6 @@
 'use client';
 
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -14,16 +14,8 @@ import {
   RefreshCw,
   Sparkles,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Button, Select, Tag } from 'antd';
 import { cn } from '@/lib/utils';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import AiQuotaBar from '@/components/ai-studio/AiQuotaBar';
 import RechargeDialog from '@/components/ai-studio/RechargeDialog';
 import { useFetch } from '@/hooks/useFetch';
@@ -79,6 +71,11 @@ const LOADING_STAGES = [
   '正在处理边缘细节...',
   '即将完成...',
 ];
+
+const SOURCE_SELECT_CLASS =
+  'w-full text-base font-medium [&_.ant-select-selector]:!h-14 [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!border-muted [&_.ant-select-selector]:!bg-muted/20 [&_.ant-select-selection-item]:!flex [&_.ant-select-selection-item]:!items-center [&_.ant-select-selection-placeholder]:!flex [&_.ant-select-selection-placeholder]:!items-center';
+
+const SOURCE_SELECT_POPUP_CLASS = 'rounded-2xl border-none shadow-2xl';
 
 function getRooms(plan?: FloorPlanItem) {
   const layoutData = plan?.layoutData;
@@ -235,9 +232,7 @@ export function AiFloorPlanLegacyPage() {
               <PenTool size={20} />
             </div>
             <h1 className="text-2xl font-semibold tracking-tight">AI 室内平面</h1>
-            <Badge variant="outline" className="text-muted-foreground">
-              Beta
-            </Badge>
+            <Tag className="text-muted-foreground">Beta</Tag>
           </div>
           <p className="text-sm text-muted-foreground">
             选择已有户型图，一键转换为彩色、CAD、3D、手绘等多种平面表现风格。
@@ -252,54 +247,54 @@ export function AiFloorPlanLegacyPage() {
           <div className="space-y-6 lg:col-span-2">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Select
-                value={selectedPlanId}
-                onValueChange={(value) => {
+                value={selectedPlanId || undefined}
+                onChange={(value) => {
                   setSelectedPlanId(value);
                   setSelectedRoomIndex('-1');
                 }}
-              >
-                <SelectTrigger className="h-14 rounded-2xl border-muted bg-muted/20 text-base font-medium">
-                  <SelectValue placeholder="选择一个户型图作为 AI 输入源..." />
-                </SelectTrigger>
-                <SelectContent className="rounded-2xl border-none shadow-2xl">
-                  {loadingPlans ? (
+                placeholder="选择一个户型图作为 AI 输入源..."
+                loading={loadingPlans}
+                className={SOURCE_SELECT_CLASS}
+                classNames={{ popup: { root: SOURCE_SELECT_POPUP_CLASS } }}
+                notFoundContent={
+                  loadingPlans ? (
                     <div className="p-6 text-center text-sm text-muted-foreground">
                       <Loader2 className="mx-auto mb-2 animate-spin" size={20} />
                       加载中...
                     </div>
-                  ) : floorPlans.length === 0 ? (
-                    <div className="p-6 text-center text-sm text-muted-foreground">暂无户型图，请先通过小程序量房采集</div>
                   ) : (
-                    floorPlans.map((plan) => (
-                      <SelectItem key={plan._id} value={plan._id} className="rounded-xl py-3">
-                        <div className="flex items-center gap-3">
-                          <Map size={16} className="text-muted-foreground" />
-                          <div>
-                            <span className="font-medium">{plan.name || '未命名户型'}</span>
-                            <span className="ml-2 text-xs text-muted-foreground">{getRooms(plan).length} 个房间</span>
-                          </div>
-                        </div>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+                    <div className="p-6 text-center text-sm text-muted-foreground">暂无户型图，请先通过小程序量房采集</div>
+                  )
+                }
+                options={floorPlans.map((plan) => ({
+                  value: plan._id,
+                  label: (
+                    <div className="flex items-center gap-3">
+                      <Map size={16} className="text-muted-foreground" />
+                      <div>
+                        <span className="font-medium">{plan.name || '未命名户型'}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{getRooms(plan).length} 个房间</span>
+                      </div>
+                    </div>
+                  ),
+                }))}
+              />
 
-              <Select value={selectedRoomIndex} onValueChange={setSelectedRoomIndex} disabled={!selectedPlanId}>
-                <SelectTrigger className="h-14 rounded-2xl border-muted bg-muted/20 text-base font-medium">
-                  <SelectValue placeholder="选择生成范围..." />
-                </SelectTrigger>
-                <SelectContent className="rounded-2xl border-none shadow-2xl">
-                  <SelectItem value="-1" className="rounded-xl py-3">
-                    <span className="font-medium">全部房间（完整户型）</span>
-                  </SelectItem>
-                  {selectedRooms.map((room, idx) => (
-                    <SelectItem key={room.id || idx} value={idx.toString()} className="rounded-xl py-3">
-                      <span className="font-medium">{room.name || `房间 ${idx + 1}`}</span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Select
+                value={selectedRoomIndex}
+                onChange={setSelectedRoomIndex}
+                disabled={!selectedPlanId}
+                placeholder="选择生成范围..."
+                className={SOURCE_SELECT_CLASS}
+                classNames={{ popup: { root: SOURCE_SELECT_POPUP_CLASS } }}
+                options={[
+                  { value: '-1', label: <span className="font-medium">全部房间（完整户型）</span> },
+                  ...selectedRooms.map((room, idx) => ({
+                    value: idx.toString(),
+                    label: <span className="font-medium">{room.name || `房间 ${idx + 1}`}</span>,
+                  })),
+                ]}
+              />
             </div>
 
             <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-dashed bg-muted/30">
@@ -320,7 +315,7 @@ export function AiFloorPlanLegacyPage() {
                 <div className="relative h-full w-full">
                   <img src={selectedPreset.mockImageUrl} alt={selectedPreset.name} className="h-full w-full object-contain" />
                   <div className="absolute bottom-4 left-4">
-                    <Badge className="border-none bg-black/70 text-white">{selectedPreset.name}</Badge>
+                    <Tag bordered={false} className="bg-black/70 text-white">{selectedPreset.name}</Tag>
                   </div>
                 </div>
               ) : (
@@ -385,21 +380,15 @@ export function AiFloorPlanLegacyPage() {
             </div>
 
             <Button
-              className="h-12 w-full rounded-lg text-base font-semibold shadow-sm disabled:opacity-50"
+              type="primary"
+              block
+              className="h-12 rounded-lg text-base font-semibold shadow-sm"
               disabled={isGenerating || !selectedPlanId || presets.length === 0}
+              loading={isGenerating}
+              icon={isGenerating ? undefined : <Sparkles size={20} />}
               onClick={handleGenerate}
             >
-              {isGenerating ? (
-                <>
-                  <Loader2 className="mr-2 animate-spin" size={20} />
-                  AI 生成中...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2" size={20} />
-                  开始生成
-                </>
-              )}
+              {isGenerating ? 'AI 生成中...' : '开始生成'}
             </Button>
 
             {history.length > 0 && (

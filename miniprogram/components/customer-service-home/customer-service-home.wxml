@@ -1,0 +1,146 @@
+<view class="customer-service-home sfp-tab-page">
+  <scroll-view scroll-y class="csh-scroll" enhanced show-scrollbar="{{false}}">
+    <view class="csh-content">
+      <view
+        class="identity-nav"
+        style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+      >
+        <view class="identity-left">
+          <view class="brand-mark">
+            <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+          </view>
+          <text class="identity-role-name">家客来 · 服务向导</text>
+          <view class="identity-tag">
+            <text>专业服务</text>
+          </view>
+        </view>
+        <view class="identity-actions">
+          <view class="qr-btn" bindtap="openScan" aria-role="button" aria-label="扫码">
+            <image class="action-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
+          </view>
+          <view class="bell-btn" bindtap="openBell" aria-role="button" aria-label="通知">
+            <image class="action-icon" src="/images/mine-icons/bell.png" mode="aspectFit" />
+          </view>
+        </view>
+      </view>
+
+      <view wx:if="{{loading}}" class="state-block">
+        <text>正在读取你的装修服务</text>
+      </view>
+      <view wx:elif="{{error}}" class="state-block">
+        <text>{{error}}</text>
+        <view class="retry" bindtap="retry">重新加载</view>
+      </view>
+
+      <block wx:else>
+        <view class="csh-hero-card">
+          <view class="hero-top-row">
+            <view class="hero-text-wrap">
+              <text class="hero-title">我的装修服务</text>
+              <text class="hero-subtitle">{{subtitle}}</text>
+            </view>
+          </view>
+
+          <view class="hero-inset">
+            <view class="inset-media {{mediaMode}}">
+              <image
+                wx:if="{{showFloorPlanThumb}}"
+                class="media-thumb floor-plan"
+                src="{{floorPlanImagePath}}"
+                mode="aspectFill"
+              />
+              <image
+                wx:if="{{showSchemeThumb}}"
+                class="media-thumb scheme"
+                src="{{schemeImagePath}}"
+                mode="aspectFill"
+              />
+              <image
+                wx:if="{{showXiaoK}}"
+                class="media-xiaok"
+                src="{{xiaoKImage}}"
+                mode="aspectFit"
+              />
+            </view>
+            <view class="inset-copy">
+              <text class="inset-title">{{insetTitle}}</text>
+              <text wx:if="{{insetHelper}}" class="inset-helper">{{insetHelper}}</text>
+              <view class="progress-pills">
+                <view
+                  wx:for="{{progressPills}}"
+                  wx:key="key"
+                  class="progress-pill tone-{{item.tone}}"
+                >
+                  <text>{{item.label}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <view
+            class="hero-cta primary {{nextActionKind === 'wait_designer' ? 'weak' : ''}}"
+            bindtap="onPrimaryCta"
+            hover-class="btn-pressed"
+          >
+            <text>{{primaryCta.label}}</text>
+          </view>
+          <view
+            wx:if="{{showSecondaryCta}}"
+            class="hero-cta secondary"
+            bindtap="onSecondaryCta"
+            hover-class="btn-pressed"
+            aria-label="我的服务档案"
+          >
+            <text>我的服务档案</text>
+          </view>
+        </view>
+
+        <view wx:if="{{showSwitcher}}" class="switcher-strip" bindtap="openSwitcher" hover-class="card-pressed">
+          <text class="switcher-copy">还有 {{switcherCount}} 个进行中的服务</text>
+          <text class="switcher-action">切换</text>
+        </view>
+
+        <view wx:if="{{!isEmpty}}" class="shortcut-grid">
+          <view class="shortcut-card" bindtap="openBookShortcut" hover-class="card-pressed">
+            <view class="shortcut-text">
+              <text class="shortcut-title">预约量房</text>
+              <text class="shortcut-desc">免费上门精准量尺</text>
+            </view>
+            <image class="shortcut-art" src="/images/airy-v1/laser-meter-3d.png" mode="aspectFit" />
+          </view>
+          <view class="shortcut-card" bindtap="openDesignerShortcut" hover-class="card-pressed">
+            <view class="shortcut-text">
+              <text class="shortcut-title">专属设计师</text>
+              <text class="shortcut-desc">{{designerShortcutDesc}}</text>
+            </view>
+            <image class="shortcut-art" src="/images/airy-v1/designer-easel-3d.png" mode="aspectFit" />
+          </view>
+        </view>
+      </block>
+    </view>
+  </scroll-view>
+
+  <view wx:if="{{showSwitcherSheet}}" class="switcher-mask" bindtap="closeSwitcher">
+    <view class="switcher-sheet" catchtap="noop">
+      <view class="switcher-sheet-head">
+        <text class="switcher-sheet-title">切换进行中的服务</text>
+        <text class="switcher-sheet-close" bindtap="closeSwitcher">关闭</text>
+      </view>
+      <scroll-view scroll-y class="switcher-sheet-list">
+        <view
+          wx:for="{{switcherProjects}}"
+          wx:key="leadId"
+          class="switcher-row {{item.leadId === leadId ? 'active' : ''}}"
+          data-lead-id="{{item.leadId}}"
+          bindtap="selectSwitcherProject"
+        >
+          <view class="switcher-row-text">
+            <text class="switcher-row-title">{{item.switcherTitle}}</text>
+            <text class="switcher-row-summary">{{item.appointmentSummary || '服务进行中'}}</text>
+            <text class="switcher-row-meta">{{item.updatedLabel}}</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
+</view>

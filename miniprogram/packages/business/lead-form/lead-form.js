@@ -33,7 +33,12 @@ Page({
     navBarHeightTotal: 0,
     isStaff: false,
     loading: false,
+    pageLoading: false,
+    isEditMode: false,
+    leadId: '',
     floorPlanId: '',
+    pageTitle: '客户资料',
+    submitLabel: '立即提交',
     styleOptions: ['现代简约', '北欧风格', '奶油风', '新中式', '工业风', '法式轻奢'],
     formData: {
       name: '',
@@ -51,6 +56,8 @@ Page({
     const systemInfo = wx.getSystemInfoSync();
     const menuButton = wx.getMenuButtonBoundingClientRect();
     const navBarHeightTotal = menuButton.bottom + (menuButton.top - systemInfo.statusBarHeight);
+    const leadId = options.leadId || options.id || '';
+    const isEditMode = options.mode === 'edit' && Boolean(leadId);
 
     const userInfo = app.globalData.userInfo || {};
     const isStaff = userInfo.role === 'staff';
@@ -59,11 +66,43 @@ Page({
       statusBarHeight: systemInfo.statusBarHeight,
       navBarHeightTotal,
       isStaff,
+      leadId,
+      isEditMode,
+      pageTitle: isEditMode ? '补充客户资料' : '客户资料',
+      submitLabel: isEditMode ? '保存资料' : '立即提交',
       floorPlanId: options.floorPlanId || ''
     });
 
+    if (isEditMode) {
+      this.loadLeadForEdit(leadId);
+      return;
+    }
+
     if (isStaff) {
       this.fetchRecentLeads();
+    }
+  },
+
+  async loadLeadForEdit(leadId) {
+    this.setData({ pageLoading: true });
+    try {
+      const res = await api.request(`/leads/${encodeURIComponent(leadId)}`, 'GET');
+      if (!res.success || !res.data) throw new Error(res.error || '客户资料加载失败');
+      const lead = res.data;
+      this.setData({
+        formData: {
+          name: lead.name || '',
+          phone: lead.phone || '',
+          communityName: lead.communityName || '',
+          area: lead.area ? String(lead.area) : '',
+          stylePreference: lead.stylePreference || ''
+        }
+      });
+    } catch (err) {
+      wx.showToast({ title: (err && err.error) || '客户资料加载失败', icon: 'none' });
+      setTimeout(() => this.onBack(), 1200);
+    } finally {
+      this.setData({ pageLoading: false });
     }
   },
 
@@ -140,9 +179,9 @@ Page({
   },
 
   async onSubmit() {
-    if (this.data.loading) return;
+    if (this.data.loading || this.data.pageLoading) return;
 
-    const { formData, floorPlanId } = this.data;
+    const { formData, floorPlanId, isEditMode, leadId } = this.data;
 
     if (!formData.name) {
       return wx.showToast({ title: '请输入称呼', icon: 'none' });
@@ -159,13 +198,30 @@ Page({
     try {
       const app = getApp();
       const payload = {
-        ...formData,
-        openid: app.globalData.openid,
-        source: 'MiniProgram',
-        floorPlanId
+        name: formData.name.trim(),
+        phone: formData.phone.trim(),
+        communityName: formData.communityName.trim(),
+        area: formData.area ? parseFloat(formData.area) : null,
+        stylePreference: formData.stylePreference || null,
       };
 
-      const res = await api.request('/leads', 'POST', payload);
+      if (isEditMode) {
+        const res = await api.request(`/leads/${encodeURIComponent(leadId)}`, 'PUT', payload);
+        if (!res.success) {
+          wx.showToast({ title: res.error || '保存失败', icon: 'none' });
+          return;
+        }
+        wx.showToast({ title: '资料已保存', icon: 'success' });
+        setTimeout(() => this.onBack(), 800);
+        return;
+      }
+
+      const res = await api.request('/leads', 'POST', {
+        ...payload,
+        openid: app.globalData.openid,
+        source: 'MiniProgram',
+        floorPlanId: floorPlanId || undefined
+      });
 
       if (res.success) {
         wx.showToast({ title: '提交成功', icon: 'success' });

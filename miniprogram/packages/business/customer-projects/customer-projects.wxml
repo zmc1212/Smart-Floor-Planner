@@ -1,9 +1,3 @@
-<view class="project-index sfp-page">
-  <view class="service-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"><text class="nav-title">我的项目</text></view>
-  <view class="intro sfp-hero-card"><text class="intro-eyebrow">装修服务档案</text><text class="intro-title">每一步服务，都留在这里</text><text class="intro-copy">查看预约、正式量房与设计师已发布的方案。</text></view>
-  <view wx:if="{{loading}}" class="state-card sfp-card">正在加载项目…</view>
-  <view wx:elif="{{error}}" class="state-card sfp-card"><text>{{error}}</text><button class="retry" bindtap="load">重新加载</button></view>
-  <view wx:elif="{{!projects.length}}" class="state-card sfp-card"><text class="empty-title">暂时还没有项目</text><text class="empty-copy">开始服务后，项目进度会显示在这里。</text><button class="return-action sfp-primary-action" bindtap="backToService">返回服务</button></view>
-  <view wx:else class="project-list"><view wx:for="{{projects}}" wx:key="leadId" class="project-card sfp-card" bindtap="openProject" data-id="{{item.leadId}}" hover-class="project-card-pressed" aria-role="button"><view class="project-top"><view><text class="enterprise">免费设计与量房</text><text class="updated">{{item.updatedLabel}}</text></view><view class="stage {{item.stage.tone}}">{{item.stage.label}}</view></view><view class="project-body"><text class="project-title">我的装修服务</text><text class="project-copy">预约、户型档案和已发布方案都由本人查看。</text></view><view class="project-open">查看服务档案<view class="chevron"></view></view></view></view>
+<view class="redirect-shell sfp-page" aria-busy="{{loading}}">
+  <view wx:if="{{loading}}" class="redirect-loading">正在打开服务…</view>
 </view>
-<custom-tab-bar />

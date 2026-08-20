@@ -133,7 +133,6 @@ function automationConfig(value: Record<string, unknown> | null | undefined) {
     designTaskSlaHours: Number(value?.designTaskSlaHours ?? 72),
     reminderIntervalHours: Number(value?.reminderIntervalHours ?? 24),
     maxReminderTimes: Number(value?.maxReminderTimes ?? 3),
-    browserNotificationEnabled: value?.browserNotificationEnabled !== false,
     miniprogramNotificationEnabled: value?.miniprogramNotificationEnabled !== false,
   };
 }

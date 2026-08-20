@@ -22,27 +22,10 @@ import {
   Upload,
   PanelRightOpen,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button, Drawer, Input, Modal, Tag } from 'antd';
 import { cn } from '@/lib/utils';
-import { Badge } from '@/components/ui/badge';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import type { ChatAction, ChatCard, ChatFloorPlanOption, ChatUiPayload, ChatWorkflowDetail } from '@/lib/ai/chat-ui';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import {
   useAiWorkflowRunner,
   WorkflowActionPanel,
@@ -494,9 +477,8 @@ export default function ChatInterface({
     return (
       <Button
         key={`${action.kind}-${action.kind === 'confirm_tool' ? action.actionName : action.value}-${index}`}
-        type="button"
-        size="sm"
-        variant={isPrimary ? 'default' : 'outline'}
+        htmlType="button"
+        size="small"
         disabled={isLoading || isActionRunning}
         onClick={() => handleChatAction(action, card)}
         className={cn(
@@ -505,9 +487,10 @@ export default function ChatInterface({
             ? 'bg-zinc-900 text-white hover:bg-zinc-800'
             : 'border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50'
         )}
+        icon={<Icon size={14} />}
+        iconPosition="end"
       >
         {action.label}
-        <Icon size={14} className="ml-1.5" />
       </Button>
     );
   };
@@ -652,9 +635,9 @@ export default function ChatInterface({
               </p>
             </div>
             {selectedResult?.isSelectedBaseline && (
-              <Badge className="border-none bg-emerald-50 text-[10px] font-black text-emerald-700">
+              <Tag bordered={false} className="border-none bg-emerald-50 text-[10px] font-black text-emerald-700">
                 当前定稿
-              </Badge>
+              </Tag>
             )}
           </div>
 
@@ -695,9 +678,8 @@ export default function ChatInterface({
 
           {canSelectBaseline && selectedResult && (
             <Button
-              type="button"
-              size="sm"
-              variant="outline"
+              htmlType="button"
+              size="small"
               disabled={isLoading || isActionRunning}
               onClick={() =>
                 setPendingAction({
@@ -770,9 +752,8 @@ export default function ChatInterface({
                   </div>
                   {!item.isSelectedBaseline && !item.id.endsWith('-latest') && (
                     <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
+                      htmlType="button"
+                      size="small"
                       disabled={isLoading || isActionRunning}
                       onClick={(event) => {
                         event.stopPropagation();
@@ -825,13 +806,13 @@ export default function ChatInterface({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge className="border-none bg-emerald-50 text-[10px] font-black text-emerald-700">
+                <Tag bordered={false} className="border-none bg-emerald-50 text-[10px] font-black text-emerald-700">
                   当前工作流
-                </Badge>
+                </Tag>
                 {card.badge && (
-                  <Badge className="border-none bg-amber-50 text-[10px] font-black text-amber-700">
+                  <Tag bordered={false} className="border-none bg-amber-50 text-[10px] font-black text-amber-700">
                     {card.badge}
-                  </Badge>
+                  </Tag>
                 )}
               </div>
               <h3 className="mt-3 truncate text-lg font-black tracking-tight text-zinc-950">{card.title}</h3>
@@ -926,9 +907,9 @@ export default function ChatInterface({
               <div className="flex flex-wrap items-center gap-2">
                 <p className="truncate text-sm font-black text-zinc-900">已定位方案：{card.title}</p>
                 {card.badge && (
-                  <Badge className="border-none bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
+                  <Tag bordered={false} className="border-none bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
                     {card.badge}
-                  </Badge>
+                  </Tag>
                 )}
               </div>
               <p className="mt-1 text-xs font-semibold text-emerald-700 xl:text-zinc-500">
@@ -937,16 +918,15 @@ export default function ChatInterface({
             </div>
           </div>
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
+            htmlType="button"
+            size="small"
             onClick={() => {
               setSelectedWorkflowId(card.id);
               setIsWorkflowSheetOpen(true);
             }}
             className="mt-3 h-9 w-full justify-center rounded-xl border-emerald-100 bg-white text-xs font-black text-emerald-700 hover:bg-emerald-50 xl:hidden"
+            icon={<PanelRightOpen size={14} />}
           >
-            <PanelRightOpen size={14} className="mr-1.5" />
             打开方案工作区
           </Button>
           <button
@@ -1001,9 +981,9 @@ export default function ChatInterface({
           <div className="mt-4 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-black text-zinc-800">创建 AI 设计工作流</p>
-              <Badge className="border-none bg-white text-[10px] font-black text-zinc-500">
+              <Tag bordered={false} className="border-none bg-white text-[10px] font-black text-zinc-500">
                 {floorPlans.length > 0 ? `${floorPlans.length} 份户型图可用` : '暂无户型图'}
-              </Badge>
+              </Tag>
             </div>
             <p className="mt-2 text-xs font-medium leading-5 text-zinc-500">
               可使用已有户型图数据创建，也可以上传参考图创建。图片只用于本次创建请求，不会写入对话卡片。
@@ -1063,10 +1043,9 @@ export default function ChatInterface({
         <div className="p-4 shrink-0">
           <Button
             onClick={onNewChat}
-            variant="outline"
             className="w-full justify-start"
+            icon={<PlusCircle size={16} />}
           >
-            <PlusCircle data-icon="inline-start" />
             <span className="font-semibold">新对话</span>
           </Button>
         </div>
@@ -1147,19 +1126,18 @@ export default function ChatInterface({
           <div className="flex items-center gap-2">
             {activeWorkflowCard && (
               <Button
-                type="button"
-                variant="outline"
-                size="sm"
+                htmlType="button"
+                size="small"
                 onClick={() => setIsWorkflowSheetOpen(true)}
                 className="xl:hidden"
+                icon={<PanelRightOpen size={14} />}
               >
-                <PanelRightOpen size={14} className="mr-1.5" />
                 方案工作区
               </Button>
             )}
-            <Badge variant="secondary" className="text-[10px] font-semibold uppercase tracking-widest">
+            <Tag bordered={false} className="text-[10px] font-semibold uppercase tracking-widest">
               LongCat Flash
-            </Badge>
+            </Tag>
           </div>
         </div>
 
@@ -1245,7 +1223,7 @@ export default function ChatInterface({
                 <p className="truncate font-black text-indigo-800">{latestContext.label}</p>
                 <p className="truncate font-medium text-indigo-500">后续提问会自动带上该上下文</p>
               </div>
-              <Badge className="shrink-0 border-none bg-white text-indigo-700">上下文已锁定</Badge>
+              <Tag bordered={false} className="shrink-0 border-none bg-white text-indigo-700">上下文已锁定</Tag>
             </div>
           )}
           <form 
@@ -1268,14 +1246,13 @@ export default function ChatInterface({
                 className="h-14 pl-6 pr-16 rounded-[20px] bg-zinc-50 border-zinc-100 focus:bg-white focus:border-indigo-200 focus:ring-indigo-100 transition-all text-base placeholder:text-zinc-400"
                 disabled={isLoading}
               />
-              <Button 
-                type="submit"
+              <Button
+                htmlType="submit"
                 disabled={!input.trim() || isLoading}
                 className="absolute right-2 top-2 h-10 w-10 rounded-xl bg-zinc-900 text-white hover:bg-zinc-800 transition-all shadow-lg"
-                size="icon"
-              >
-                <Send size={18} />
-              </Button>
+                size="small"
+                icon={<Send size={18} />}
+              />
             </div>
           </form>
           <p className="mt-4 text-center text-[10px] text-zinc-400 font-medium uppercase tracking-widest">
@@ -1286,29 +1263,25 @@ export default function ChatInterface({
       <aside className="hidden w-[420px] shrink-0 border-l border-zinc-100 bg-white xl:flex 2xl:w-[480px]">
         {renderWorkflowWorkspace(activeWorkflowCard)}
       </aside>
-      <Sheet open={isWorkflowSheetOpen} onOpenChange={setIsWorkflowSheetOpen}>
-        <SheetContent side="right" className="w-full max-w-none p-0 sm:max-w-xl">
-          <SheetHeader className="sr-only">
-            <SheetTitle>方案工作区</SheetTitle>
-            <SheetDescription>查看当前 AI 设计工作流详情</SheetDescription>
-          </SheetHeader>
-          {renderWorkflowWorkspace(activeWorkflowCard)}
-        </SheetContent>
-      </Sheet>
-      <Dialog open={Boolean(pendingAction)} onOpenChange={(open) => !open && !isActionRunning && setPendingAction(null)}>
-        <DialogContent className="max-w-md rounded-3xl border-none p-0 shadow-2xl">
-          <DialogHeader className="border-b bg-zinc-50 p-6">
-            <DialogTitle className="text-xl font-black">
-              {pendingAction?.confirmTitle || '确认执行该操作？'}
-            </DialogTitle>
-            <DialogDescription className="leading-6">
-              {pendingAction?.confirmDescription || '该操作会更新当前方案状态。'}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="p-6 pt-4">
+      <Drawer
+        open={isWorkflowSheetOpen}
+        onClose={() => setIsWorkflowSheetOpen(false)}
+        width={576}
+        title="方案工作区"
+        styles={{ body: { padding: 0, height: 'calc(100% - 55px)' } }}
+      >
+        {renderWorkflowWorkspace(activeWorkflowCard)}
+      </Drawer>
+      <Modal
+        open={Boolean(pendingAction)}
+        onCancel={() => {
+          if (!isActionRunning) setPendingAction(null);
+        }}
+        title={pendingAction?.confirmTitle || '确认执行该操作？'}
+        footer={
+          <div className="flex justify-end gap-2">
             <Button
-              type="button"
-              variant="outline"
+              htmlType="button"
               disabled={isActionRunning}
               onClick={() => setPendingAction(null)}
               className="rounded-2xl"
@@ -1316,74 +1289,36 @@ export default function ChatInterface({
               取消
             </Button>
             <Button
-              type="button"
+              htmlType="button"
+              type="primary"
               disabled={isActionRunning}
               onClick={handleConfirmAction}
-              className="rounded-2xl bg-zinc-900 text-white hover:bg-zinc-800"
+              className="rounded-2xl bg-zinc-900 text-white hover:!bg-zinc-800"
+              icon={isActionRunning ? <Loader2 className="animate-spin" size={16} /> : undefined}
             >
-              {isActionRunning ? <Loader2 className="mr-2 animate-spin" size={16} /> : null}
               确认执行
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
+          </div>
+        }
+      >
+        <p className="leading-6 text-zinc-600">
+          {pendingAction?.confirmDescription || '该操作会更新当前方案状态。'}
+        </p>
+      </Modal>
+      <Modal
         open={Boolean(floorPlanPicker)}
-        onOpenChange={(open) => {
-          if (!open && !isActionRunning) {
+        onCancel={() => {
+          if (!isActionRunning) {
             setFloorPlanPicker(null);
             setSelectedFloorPlanId('');
           }
         }}
-      >
-        <DialogContent className="max-w-lg rounded-3xl border-none p-0 shadow-2xl">
-          <DialogHeader className="border-b bg-zinc-50 p-6">
-            <DialogTitle className="text-xl font-black">
-              为{floorPlanPicker?.leadTitle || '客户'}选择户型图
-            </DialogTitle>
-            <DialogDescription className="leading-6">
-              选择一份户型图数据创建 AI 设计工作流；如果没有合适户型图，也可以改为上传参考图。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="max-h-[360px] overflow-y-auto p-6">
-            {floorPlanPicker?.floorPlans.length ? (
-              <div className="space-y-2">
-                {floorPlanPicker.floorPlans.map((plan) => (
-                  <button
-                    key={plan.id}
-                    type="button"
-                    onClick={() => setSelectedFloorPlanId(plan.id)}
-                    disabled={isActionRunning}
-                    className={cn(
-                      'w-full rounded-2xl border px-4 py-3 text-left transition-all',
-                      selectedFloorPlanId === plan.id
-                        ? 'border-zinc-900 bg-zinc-900 text-white'
-                        : 'border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50'
-                    )}
-                  >
-                    <p className="truncate text-sm font-black">{plan.name || '未命名户型图'}</p>
-                    <p className={cn(
-                      'mt-1 truncate text-xs font-medium',
-                      selectedFloorPlanId === plan.id ? 'text-zinc-300' : 'text-zinc-400'
-                    )}>
-                      {[plan.status, plan.createdAt].filter(Boolean).join(' / ') || '户型图数据'}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-center">
-                <p className="text-sm font-black text-zinc-800">当前客户暂无户型图</p>
-                <p className="mt-2 text-xs leading-5 text-zinc-500">
-                  请改用上传参考图创建，后续仍可回到工作流页补充或更换素材。
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="border-t p-6 pt-4">
+        title={`为${floorPlanPicker?.leadTitle || '客户'}选择户型图`}
+        width={512}
+        footer={
+          <div className="flex justify-end gap-2">
             <Button
-              type="button"
-              variant="outline"
+              htmlType="button"
               disabled={isActionRunning}
               onClick={() => {
                 if (floorPlanPicker) {
@@ -1398,17 +1333,57 @@ export default function ChatInterface({
               上传参考图
             </Button>
             <Button
-              type="button"
+              htmlType="button"
+              type="primary"
               disabled={isActionRunning || !selectedFloorPlanId}
               onClick={handleFloorPlanCreate}
-              className="rounded-2xl bg-zinc-900 text-white hover:bg-zinc-800"
+              className="rounded-2xl bg-zinc-900 text-white hover:!bg-zinc-800"
+              icon={isActionRunning ? <Loader2 className="animate-spin" size={16} /> : undefined}
             >
-              {isActionRunning ? <Loader2 className="mr-2 animate-spin" size={16} /> : null}
               确认创建
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        }
+      >
+        <p className="mb-4 leading-6 text-zinc-600">
+          选择一份户型图数据创建 AI 设计工作流；如果没有合适户型图，也可以改为上传参考图。
+        </p>
+        <div className="max-h-[360px] overflow-y-auto">
+          {floorPlanPicker?.floorPlans.length ? (
+            <div className="space-y-2">
+              {floorPlanPicker.floorPlans.map((plan) => (
+                <button
+                  key={plan.id}
+                  type="button"
+                  onClick={() => setSelectedFloorPlanId(plan.id)}
+                  disabled={isActionRunning}
+                  className={cn(
+                    'w-full rounded-2xl border px-4 py-3 text-left transition-all',
+                    selectedFloorPlanId === plan.id
+                      ? 'border-zinc-900 bg-zinc-900 text-white'
+                      : 'border-zinc-200 bg-white text-zinc-800 hover:bg-zinc-50'
+                  )}
+                >
+                  <p className="truncate text-sm font-black">{plan.name || '未命名户型图'}</p>
+                  <p className={cn(
+                    'mt-1 truncate text-xs font-medium',
+                    selectedFloorPlanId === plan.id ? 'text-zinc-300' : 'text-zinc-400'
+                  )}>
+                    {[plan.status, plan.createdAt].filter(Boolean).join(' / ') || '户型图数据'}
+                  </p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-center">
+              <p className="text-sm font-black text-zinc-800">当前客户暂无户型图</p>
+              <p className="mt-2 text-xs leading-5 text-zinc-500">
+                请改用上传参考图创建，后续仍可回到工作流页补充或更换素材。
+              </p>
+            </div>
+          )}
+        </div>
+      </Modal>
       <input
         ref={fileInputRef}
         type="file"

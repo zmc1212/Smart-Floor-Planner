@@ -10,11 +10,12 @@ test('AI Design discovery renders real recipe browsing instead of the four-stage
   const wxml = read('pages/ai-design/ai-design.wxml');
   const source = read('pages/ai-design/ai-design.js');
   const service = read('utils/aiDesignService.js');
-  assert.match(wxml, />装修配方</);
+  assert.match(wxml, /热门空间风格配方/);
   assert.match(wxml, /class="recipe-waterfall"/);
   assert.match(wxml, /class="featured-recipe-strip"/);
-  assert.match(wxml, /class="recipe-header-tools"/);
-  assert.match(wxml, />设计记录<\/text>/);
+  assert.match(wxml, /class="create-scheme-hero"/);
+  assert.match(wxml, /最近设计项目/);
+  assert.match(wxml, />设计记录</);
   assert.match(wxml, /bindtap="openRecipeDetail"/);
   assert.doesNotMatch(wxml, /project-hero-stage-rail/);
   assert.match(source, /loadRecipes\(\{ page: 1, limit: 24 \}\)/);
@@ -37,6 +38,11 @@ test('recipe flow contains detail, project, scope, photo, confirmation, and work
   assert.match(confirm, /选择要继续的客户方案/);
   assert.match(confirmScript, /WORKFLOW_CONFLICT/);
   assert.match(confirmScript, /recipeId: this\.data\.recipeId/);
+  assert.match(confirmScript, /redirectAfterRecipeTask/);
+  assert.match(confirmScript, /shouldOpenSchemeStudio/);
+  assert.match(confirmScript, /openSchemeStudio/);
+  assert.match(confirmScript, /runTask\(task\.id\)/);
+  assert.doesNotMatch(confirmScript, /ai-design-result\?id=\$\{task\.id\}&run=1/);
 });
 
 test('recipe identity stays visible in result and history without exposing prompts', () => {

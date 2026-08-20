@@ -19,6 +19,20 @@ function normalizeAIDesignContext(options = {}) {
   return context;
 }
 
+function shouldOpenSchemeStudio(options = {}) {
+  const context = normalizeAIDesignContext(options);
+  return !!(context.leadId && (context.workflowId || context.floorPlanId));
+}
+
+function buildSchemeStudioUrl(options = {}) {
+  const context = normalizeAIDesignContext(options);
+  const query = ['leadId', 'workflowId', 'floorPlanId']
+    .filter((key) => context[key])
+    .map((key) => `${key}=${encodeURIComponent(context[key])}`)
+    .join('&');
+  return `/packages/ai-workflow/scheme-studio/scheme-studio?${query}`;
+}
+
 function openAIDesignTab(options = {}) {
   if (!ensureAIDesignAccess()) return false;
 
@@ -53,9 +67,43 @@ function consumeAIDesignContext() {
   return normalizeAIDesignContext(context);
 }
 
+function openSchemeStudio(options = {}) {
+  if (!ensureAIDesignAccess()) return false;
+
+  const context = normalizeAIDesignContext(options);
+  if (!context.leadId) {
+    wx.showToast({ title: '缺少客户线索', icon: 'none' });
+    return false;
+  }
+
+  const url = buildSchemeStudioUrl(context);
+  const navigate = options.redirect ? wx.redirectTo : wx.navigateTo;
+  navigate({
+    url,
+    fail(error) {
+      console.error('Open scheme studio failed:', error);
+      wx.showToast({ title: '打开方案工作台失败', icon: 'none' });
+    },
+  });
+
+  return true;
+}
+
+/** Prefer scheme-studio when lead + floor plan/workflow are known; otherwise open the Design tab. */
+function openAIDesignEntry(options = {}) {
+  if (shouldOpenSchemeStudio(options)) {
+    return openSchemeStudio(options);
+  }
+  return openAIDesignTab(options);
+}
+
 module.exports = {
   AI_DESIGN_TAB_URL,
+  buildSchemeStudioUrl,
   consumeAIDesignContext,
   normalizeAIDesignContext,
+  openAIDesignEntry,
   openAIDesignTab,
+  openSchemeStudio,
+  shouldOpenSchemeStudio,
 };

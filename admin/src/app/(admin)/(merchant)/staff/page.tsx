@@ -14,9 +14,9 @@ import {
 import { Alert, Avatar, Button, Card, Drawer, Flex, Form, Select, Space, Switch, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
 import { FolderPlus, Pencil, Plus, ShieldCheck, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
-import { ImageUploadField } from '@/components/ui/image-upload-field';
-import { notify } from '@/components/ui/operation-feedback';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { ImageUploadField } from '@/components/admin/image-upload-field';
+import { notify } from '@/components/admin/operation-feedback';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type Department = {

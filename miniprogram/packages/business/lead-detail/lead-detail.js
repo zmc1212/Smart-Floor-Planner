@@ -1,6 +1,7 @@
 const api = require('../../../utils/api.js');
 const surveyLayout = require('../../../utils/surveyLayout.js');
 const { openSurveyingEditor, clearSurveyingEditorDraft } = require('../../../utils/surveyNavigation.js');
+const { openAIDesignEntry } = require('../../../utils/aiDesignNavigation.js');
 
 const STATUS_LABELS = {
   new: '新线索',
@@ -16,6 +17,13 @@ const STATUS_LABELS = {
 };
 
 const WORKFLOW_STAGES = ['新线索', '量房中', '方案设计', '已签约'];
+
+const POST_SURVEY_SERVICE_STAGES = new Set([
+  'survey_completed',
+  'design_published',
+  'converted',
+  'closed',
+]);
 
 function normalizeStatus(status) {
   if (['contacted', 'acquired'].includes(status)) return 'new';
@@ -67,6 +75,90 @@ function getFormalPlans(lead) {
     seen[id] = true;
     return true;
   });
+}
+
+function formatSchemeDate(value) {
+  const date = new Date(value || '');
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function getAuthToken() {
+  const app = getApp();
+  return (app && app.globalData && app.globalData.token) || wx.getStorageSync('token') || '';
+}
+
+function fetchProtectedImage(endpoint, cacheKey) {
+  const baseUrl = api.getBaseUrls()[0];
+  const token = getAuthToken();
+  return new Promise((resolve, reject) => {
+    wx.request({
+      url: `${String(baseUrl).replace(/\/+$/, '')}${endpoint}`,
+      method: 'GET',
+      responseType: 'arraybuffer',
+      header: { Authorization: token ? `Bearer ${token}` : '' },
+      success(response) {
+        if (response.statusCode !== 200 || !response.data) {
+          reject(new Error(`HTTP ${response.statusCode}`));
+          return;
+        }
+        const contentType = String(
+          response.header && (response.header['content-type'] || response.header['Content-Type']) || ''
+        ).toLowerCase();
+        const extension = contentType.includes('png')
+          ? 'png'
+          : contentType.includes('jpeg') || contentType.includes('jpg')
+            ? 'jpg'
+            : '';
+        if (!extension) {
+          reject(new Error('图片格式不受支持'));
+          return;
+        }
+        const safeKey = String(cacheKey || 'asset').replace(/[^a-zA-Z0-9_-]/g, '');
+        const filePath = `${wx.env.USER_DATA_PATH}/lead-detail-${safeKey || 'asset'}.${extension}`;
+        wx.getFileSystemManager().writeFile({
+          filePath,
+          data: response.data,
+          success: () => resolve(filePath),
+          fail: (error) => reject(error instanceof Error ? error : new Error(error && error.errMsg || '图片临时文件写入失败')),
+        });
+      },
+      fail: (error) => reject(error instanceof Error ? error : new Error(error && error.errMsg || '图片读取失败')),
+    });
+  });
+}
+
+function resolveSchemeCoverEndpoint(scheme, leadId) {
+  const images = Array.isArray(scheme && scheme.images) ? scheme.images : [];
+  const cover = images.length ? images[images.length - 1] : null;
+  if (cover && cover.imageEndpoint) return cover.imageEndpoint;
+  const generationId = cover && cover.generationId
+    || (Array.isArray(scheme && scheme.generationIds) ? scheme.generationIds[scheme.generationIds.length - 1] : '');
+  if (!generationId || !leadId) return '';
+  return `/leads/${leadId}/published-generations/${generationId}/image`;
+}
+
+function decoratePublishedScheme(scheme, leadId) {
+  const imageCount = Number(scheme && scheme.imageCount)
+    || (Array.isArray(scheme && scheme.images) ? scheme.images.length : 0)
+    || (Array.isArray(scheme && scheme.generationIds) ? scheme.generationIds.length : 0);
+  const coverEndpoint = resolveSchemeCoverEndpoint(scheme, leadId);
+  return {
+    ...scheme,
+    imageCount,
+    coverEndpoint,
+    coverPath: '',
+    displayMeta: [
+      '已发布',
+      formatSchemeDate(scheme && scheme.publishedAt),
+    ].filter(Boolean).join(' · '),
+  };
+}
+
+function shouldHideOperationalAppointment(lead) {
+  if (!lead) return true;
+  if (POST_SURVEY_SERVICE_STAGES.has(lead.serviceStage)) return true;
+  return ['measured', 'assigned', 'designing', 'quoting', 'converted', 'closed'].includes(lead.status);
 }
 
 function formatPlanDate(value) {
@@ -141,6 +233,15 @@ function getStaffId() {
   return String(user.staffId || '');
 }
 
+function canEditLeadProfile(lead, staffRole, staffId) {
+  if (!lead || lead.archivedAt) return false;
+  if (staffRole === 'enterprise_admin') return true;
+  if (!staffId) return false;
+  if (staffRole === 'designer' && staffIdOf(lead.assignedTo) === staffId) return true;
+  if (staffRole === 'measurer' && staffIdOf(lead.measurerId) === staffId) return true;
+  return false;
+}
+
 function staffIdOf(value) {
   if (value == null) return '';
   if (typeof value === 'object') return String(value._id || value.id || '');
@@ -165,6 +266,7 @@ Page({
     previousFloorPlans: [],
     staffRole: '',
     canEditMeasurements: false,
+    canEditProfile: false,
     appointment: null,
     canScheduleAppointment: false,
     canRebookAppointment: false,
@@ -186,6 +288,7 @@ Page({
     revertConversionReason: '',
     conversionSubmitting: false,
     conversionSkipsStages: false,
+    publishedSchemes: [],
     loading: true,
     errorMessage: '',
     deleting: false
@@ -212,6 +315,8 @@ Page({
 
   applyLeadDetail(lead) {
     const formalPlans = getFormalPlans(lead).map(toPlanDisplay);
+    const publishedSchemes = (Array.isArray(lead.publishedSchemes) ? lead.publishedSchemes : [])
+      .map((scheme) => decoratePublishedScheme(scheme, this.data.leadId));
     const staffRole = getStaffRole();
     const staffId = getStaffId();
     const isAssignedMeasurer = Boolean(staffId) && staffIdOf(lead.measurerId) === staffId;
@@ -228,16 +333,42 @@ Page({
       convertedTime: formatConfirmationDate(lead.convertedAt),
       convertedAmountText: formatContractAmount(lead.contractAmount),
       showInternalConversionDetails: ['enterprise_admin', 'designer', 'measurer', 'salesperson'].includes(staffRole),
+      canEditProfile: canEditLeadProfile(lead, staffRole, staffId),
       canEditMeasurements: staffRole === 'measurer' || isAssignedMeasurer,
       conversionSkipsStages: !['designing', 'measured', 'assigned', 'quoting'].includes(lead.status),
       activeFloorPlan: formalPlans[0] || null,
       previousFloorPlans: formalPlans.slice(1),
+      publishedSchemes,
       loading: false
     });
     this.refreshAppointmentEntry(staffRole, lead, isAssignedMeasurer);
+    this.loadPublishedSchemeCovers(publishedSchemes);
+  },
+
+  async loadPublishedSchemeCovers(schemes) {
+    const list = Array.isArray(schemes) ? schemes : [];
+    if (!list.length) return;
+    const updates = {};
+    await Promise.all(list.map(async (scheme, index) => {
+      if (!scheme || !scheme.coverEndpoint) return;
+      try {
+        const coverPath = await fetchProtectedImage(
+          scheme.coverEndpoint,
+          `${this.data.leadId}-${scheme.id || index}-cover`
+        );
+        updates[`publishedSchemes[${index}].coverPath`] = coverPath;
+      } catch (error) {
+        // Keep mint placeholder when protected cover cannot load.
+      }
+    }));
+    if (Object.keys(updates).length) this.setData(updates);
   },
 
   async refreshAppointmentEntry(staffRole, lead, isAssignedMeasurer) {
+    if (shouldHideOperationalAppointment(lead)) {
+      this.setData({ appointment: null, canScheduleAppointment: false, canRebookAppointment: false });
+      return;
+    }
     const canOpen = ['designer', 'measurer', 'enterprise_admin'].includes(staffRole)
       && lead
       && this.data.leadId;
@@ -373,6 +504,38 @@ Page({
     });
   },
 
+  onOpenPublishedScheme(event) {
+    const schemeIndex = Number(event.currentTarget.dataset.schemeIndex);
+    const scheme = this.data.publishedSchemes[schemeIndex];
+    if (!scheme || !this.data.leadId) return;
+    const schemeId = encodeURIComponent(scheme.id || '');
+    wx.navigateTo({
+      url: `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(this.data.leadId)}&schemeId=${schemeId}&mode=staff`,
+    });
+  },
+
+  onOpenAllPublishedSchemes() {
+    if (!this.data.leadId || !this.data.publishedSchemes.length) return;
+    wx.navigateTo({
+      url: `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(this.data.leadId)}&mode=staff`,
+    });
+  },
+
+  onOpenAIDesignWorkbench() {
+    const plan = this.data.activeFloorPlan;
+    openAIDesignEntry({
+      leadId: this.data.leadId,
+      floorPlanId: plan && plan._id,
+    });
+  },
+
+  onEditProfile() {
+    if (!this.data.canEditProfile || !this.data.leadId) return;
+    wx.navigateTo({
+      url: `/packages/business/lead-form/lead-form?mode=edit&leadId=${encodeURIComponent(this.data.leadId)}`
+    });
+  },
+
   onStartMeasure() {
     const plan = this.data.activeFloorPlan;
     openSurveyingEditor({
@@ -390,6 +553,11 @@ Page({
       communityName: this.data.lead && this.data.lead.communityName,
       startNewSurvey: true
     });
+  },
+
+  onHistoryRecordTap(e) {
+    if (!this.data.canEditMeasurements) return;
+    this.onContinueMeasure(e);
   },
 
   onContinueMeasure(e) {

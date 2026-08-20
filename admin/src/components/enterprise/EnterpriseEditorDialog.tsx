@@ -7,8 +7,8 @@ import {
   ProFormText,
 } from '@ant-design/pro-components';
 import { Flex, Form, Row, Col, Typography } from 'antd';
-import { notify } from '@/components/ui/operation-feedback';
-import { ImageUploadField } from '@/components/ui/image-upload-field';
+import { notify } from '@/components/admin/operation-feedback';
+import { ImageUploadField } from '@/components/admin/image-upload-field';
 import {
   DEFAULT_ENTERPRISE_FORM,
   EnterpriseFormState,

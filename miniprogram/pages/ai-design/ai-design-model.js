@@ -250,6 +250,47 @@ function chooseDefaultProject(projects, requestedFloorPlanId = '', requestedWork
     || null;
 }
 
+function decorateRecentProject(plan) {
+  const group = plan.projectGroup || 'ready';
+  const hasWorkflow = !!(plan.activeWorkflow && plan.activeWorkflow.id);
+  let schemeActionLabel = '去出图';
+  let schemeActionTone = 'solid';
+  if (group === 'needs_survey') {
+    schemeActionLabel = '继续量房';
+    schemeActionTone = 'muted';
+  } else if (hasWorkflow || group === 'in_progress') {
+    schemeActionLabel = '查看方案';
+    schemeActionTone = 'outline';
+  }
+  const stageLabel = plan.activeWorkflow && plan.activeWorkflow.currentStageLabel;
+  return {
+    ...plan,
+    coverUrl: (plan.navigationPreview && plan.navigationPreview.imageUrl) || PROJECT_FOLIO_COVER,
+    schemeActionLabel,
+    schemeActionTone,
+    progressCopy: plan.statusLabel
+      || (stageLabel ? `${stageLabel} · 进行中` : '')
+      || (group === 'ready' ? '正式量房已就绪 · 待生成效果图' : '正式量房'),
+  };
+}
+
+function buildRecentProjects(sources, limit = 6) {
+  const rank = { in_progress: 0, ready: 1, needs_survey: 2 };
+  return (sources || [])
+    .map(decorateRecentProject)
+    .slice()
+    .sort((left, right) => {
+      const groupDelta = (rank[left.projectGroup] ?? 9) - (rank[right.projectGroup] ?? 9);
+      if (groupDelta !== 0) return groupDelta;
+      return Date.parse(right.updatedAt || '') - Date.parse(left.updatedAt || '');
+    })
+    .slice(0, limit);
+}
+
+function shouldOpenSchemeStudioFromContext(context = {}) {
+  return !!(context.leadId && (context.workflowId || context.floorPlanId));
+}
+
 function resolveStageIndex(workflow) {
   if (!workflow) return 0;
   const stageKey = workflow.currentStageKey || workflow.stageKey;
@@ -497,6 +538,9 @@ module.exports = {
   buildProjectPickerView,
   chooseDefaultProjectGroup,
   chooseDefaultProject,
+  decorateRecentProject,
+  buildRecentProjects,
+  shouldOpenSchemeStudioFromContext,
   buildStageRail,
   buildPrimaryAction,
   buildSecondaryActions,

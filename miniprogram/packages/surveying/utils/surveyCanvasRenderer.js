@@ -10,7 +10,7 @@ const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
 const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
-const RENDER_REVISION = 'degree-aware-branch-working-face-v17';
+const RENDER_REVISION = 'shared-boundary-toggle-redline-face-v18';
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
 // Blue cursor coordinates use a denser cadence than the closure cue so the
@@ -283,10 +283,18 @@ function applyMeasurementFace(wall, measurementFace) {
   });
 }
 
-function resolveActiveMeasurementFace() {
-  // Inner/outer T snapping selects the near/far start on the source boundary;
-  // it does not select opposite local faces for the new branch wall. Every
-  // segment in the branch therefore uses one graph-side working face.
+function resolveActiveMeasurementFace(wall) {
+  const bodySide = wall && (wall.bodyNormalSide || (wall.wall && wall.wall.bodyNormalSide));
+  const measureSide = wall && wall.measurementSide;
+  // A shared-boundary first wall can keep the inferred occupancy while the
+  // operator moves the measuring edge to the opposite face.
+  if (
+    (bodySide === 'left' || bodySide === 'right') &&
+    (measureSide === 'left' || measureSide === 'right') &&
+    bodySide !== measureSide
+  ) {
+    return 'outer';
+  }
   return 'inner';
 }
 
@@ -571,6 +579,7 @@ function buildWallScene(floor, wall, options) {
     relativeAngle,
     interiorAngleDeg,
     measurementSide: wall.measurementSide,
+    bodyNormalSide: wall.bodyNormalSide || '',
     thicknessPx,
     // The measured wall path is the inside face (local y = 0).  Keep the
     // signed offset to its outside face so components can sit on the real
@@ -609,6 +618,7 @@ function buildPreviewWall(floor, session, options) {
     angleInteriorDeg: session.previewInteriorAngleDeg,
     thicknessMm: session.thicknessMm,
     measurementSide: session.previewMeasurementSide || session.measurementSide,
+    bodyNormalSide: session.previewBodyNormalSide || '',
     measurementStartInsetMm: session.previewMeasurementStartInsetMm || 0,
     measurementStartExtensionMm: session.previewMeasurementStartExtensionMm || 0,
     measurementEndInsetMm: session.previewMeasurementEndInsetMm || 0,
@@ -618,7 +628,7 @@ function buildPreviewWall(floor, session, options) {
     [previewWall.id]: getVisualThicknessPx(previewWall.thicknessMm, options.viewport.scale) / options.viewport.scale
   });
 
-  return applyMeasurementFace(buildWallScene(floor, previewWall, Object.assign({}, options, {
+  const sceneWall = buildWallScene(floor, previewWall, Object.assign({}, options, {
     startPoint: anchor,
     endPoint: session.previewPoint,
     previousWall: (floor.walls || [])[floor.walls.length - 1] || null,
@@ -628,7 +638,8 @@ function buildPreviewWall(floor, session, options) {
     useExplicitNext: true,
     preview: true,
     lineOnly: session.state === 'wallPreview'
-  })), options.measurementFace);
+  }));
+  return applyMeasurementFace(sceneWall, resolveActiveMeasurementFace(sceneWall));
 }
 
 function buildClosureGuide(floor, session, project) {
@@ -935,15 +946,10 @@ function createSurveyRenderScene(input) {
   const activeWallStartIndex = Number.isInteger(session.activeSpaceStartWallIndex)
     ? Math.max(0, Math.min(session.activeSpaceStartWallIndex, (floor.walls || []).length))
     : 0;
-  const activeWallCount = Math.max(0, (floor.walls || []).length - activeWallStartIndex);
-  const previewMeasurementFace = resolveActiveMeasurementFace(
-    session,
-    activeWallStartIndex + activeWallCount,
-    activeWallStartIndex
-  );
   // The graph stays topology-centred. Inner/outer T snapping only chooses the
   // source-boundary start; the branch keeps one local working face and body
-  // side through every turn.
+  // side through every turn. An explicit first-wall measurement-side toggle
+  // may paint the redline on the opposite face without flipping occupancy.
   const wallEntries = (floor.walls || []).map((wall, index) => ({
     index,
     wall: buildWallScene(floor, wall, {
@@ -958,8 +964,7 @@ function createSurveyRenderScene(input) {
     project,
     viewport,
     renderThicknessMmMap,
-    selectedWallId: session.selectedWallId,
-    measurementFace: previewMeasurementFace
+    selectedWallId: session.selectedWallId
   });
   const branchBodyOffsetSign = resolveTBranchBodyOffsetSign(
     session,
@@ -989,7 +994,7 @@ function createSurveyRenderScene(input) {
       : null;
 
     const measurementFace = isActiveMeasurement
-      ? resolveActiveMeasurementFace(session, activeWallIndex, activeWallStartIndex)
+      ? resolveActiveMeasurementFace(wall)
       : 'inner';
     return applyMeasurementFace(Object.assign(wall, {
       closed: !!closedWallIds[wall.id],
@@ -1009,7 +1014,7 @@ function createSurveyRenderScene(input) {
       previewWall,
       resolveActiveWallBodyOffsetSign(branchBodyOffsetSign)
     ),
-    previewMeasurementFace
+    resolveActiveMeasurementFace(previewWall)
   );
   joinActiveMeasurementPath(walls, previewWall);
   const solidWalls = walls.concat(previewWall && !previewWall.lineOnly ? [previewWall] : []);

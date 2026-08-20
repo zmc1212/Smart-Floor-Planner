@@ -2,6 +2,28 @@ const app = getApp();
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 
+function loginErrorMessage(error) {
+  const code = error && error.code;
+  const raw = error && (error.error || error.message);
+  if (
+    code === 'staff_phone_linked_to_other_user' ||
+    raw === 'STAFF_PHONE_LINKED_TO_OTHER_USER'
+  ) {
+    return '该手机号已绑定其他微信账号，请使用绑定该号的微信登录，或联系企业管理员。';
+  }
+  if (
+    code === 'wechat_identity_conflict' ||
+    raw === 'WECHAT_IDENTITY_ALREADY_LINKED' ||
+    raw === 'WECHAT_USER_ALREADY_LINKED'
+  ) {
+    return '当前微信已绑定其他账号，请换用本人微信登录，或联系企业管理员处理。';
+  }
+  if (typeof raw === 'string' && raw && !/^[A-Z][A-Z0-9_]+$/.test(raw)) {
+    return raw;
+  }
+  return '登录失败，请稍后重试';
+}
+
 Page({
   data: {
     loginType: 'phone',
@@ -110,10 +132,20 @@ Page({
     } catch (err) {
       wx.hideLoading();
       this.setData({ loading: false });
+      const title = loginErrorMessage(err);
+      if (title.length > 20) {
+        wx.showModal({
+          title: '无法登录',
+          content: title,
+          showCancel: false,
+          confirmText: '知道了'
+        });
+        return;
+      }
       wx.showToast({
-        title: err.error || err.message || '登录失败',
+        title,
         icon: 'none',
-        duration: 2000
+        duration: 2500
       });
     }
   },

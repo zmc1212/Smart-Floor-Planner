@@ -43,9 +43,28 @@ export async function GET(request: Request) {
         leadIds,
         operatorId,
       });
+      const generationCountByWorkflowId = new Map<bigint, number>();
+      generations.forEach((generation) => {
+        if (!generation.workflowId) return;
+        generationCountByWorkflowId.set(
+          generation.workflowId,
+          (generationCountByWorkflowId.get(generation.workflowId) || 0) + 1,
+        );
+      });
       const activeWorkflowByPlan = new Map<bigint, typeof activeWorkflows[number]>();
       activeWorkflows.forEach((workflow) => {
-        if (workflow.sourceFloorPlanId && !activeWorkflowByPlan.has(workflow.sourceFloorPlanId)) {
+        if (!workflow.sourceFloorPlanId) return;
+        const current = activeWorkflowByPlan.get(workflow.sourceFloorPlanId);
+        if (!current) {
+          activeWorkflowByPlan.set(workflow.sourceFloorPlanId, workflow);
+          return;
+        }
+        const currentCount = generationCountByWorkflowId.get(current.id) || 0;
+        const nextCount = generationCountByWorkflowId.get(workflow.id) || 0;
+        // listActiveForProjectIndex is newest-first; keep the newer row unless an
+        // older sibling actually has more generations (avoids empty bootstrap
+        // workflows shadowing Admin-created schemes on the Mini Program home).
+        if (nextCount > currentCount) {
           activeWorkflowByPlan.set(workflow.sourceFloorPlanId, workflow);
         }
       });

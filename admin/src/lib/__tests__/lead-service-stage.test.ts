@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   canCustomerReschedule,
   canRebookAppointment,
+  CUSTOMER_HOME_ACTION_LABELS,
   parseAppointmentBounds,
   resolveCustomerHomeAction,
   resolveLeadServiceStage,
@@ -70,6 +71,18 @@ test('survey completion outranks an expired appointment', () => {
     appointment: { status: 'expired', timeRange: range },
     hasFormalFloorPlan: true,
   }), false);
+});
+
+test('published customer designs advance the service stage ahead of survey completion', () => {
+  const stage = resolveLeadServiceStage({
+    leadStatus: 'designing',
+    assignmentStatus: 'assigned',
+    measurerId: '1',
+    hasFormalFloorPlan: true,
+    publishedDesignCount: 2,
+  });
+  assert.equal(stage.key, 'design_published');
+  assert.equal(stage.nextAction, '沟通确认或标记签约');
 });
 
 test('rebooking is allowed after expiry or cancel when survey is not done', () => {
@@ -171,6 +184,14 @@ test('customer home exposes one next action from the shared service stage', () =
     leadStatus: 'designing',
     hasFormalFloorPlan: true,
   }).kind, 'view_project');
+
+  assert.equal(CUSTOMER_HOME_ACTION_LABELS.view_project, '我的服务档案');
+  assert.equal(CUSTOMER_HOME_ACTION_LABELS.none, '我的服务档案');
+
+  assert.equal(resolveCustomerHomeAction({
+    leadStatus: 'designing',
+    hasFormalFloorPlan: true,
+  }).label, '我的服务档案');
 });
 
 test('operational appointment prefers an active confirmed rebooking over an older expired row', () => {

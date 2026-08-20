@@ -17,7 +17,6 @@ const DEFAULT_ENTERPRISE_AUTOMATION_CONFIG = {
   designTaskSlaHours: 72,
   reminderIntervalHours: 24,
   maxReminderTimes: 3,
-  browserNotificationEnabled: true,
   miniprogramNotificationEnabled: true,
 };
 
@@ -45,8 +44,6 @@ function normalizeAutomationConfig(
       automationConfig?.maxReminderTimes ||
         DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.maxReminderTimes
     ),
-    browserNotificationEnabled:
-      automationConfig?.browserNotificationEnabled !== false,
     miniprogramNotificationEnabled:
       automationConfig?.miniprogramNotificationEnabled !== false,
   };

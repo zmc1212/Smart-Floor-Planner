@@ -14,8 +14,8 @@ import {
 } from '@ant-design/pro-components';
 import { Button, Dropdown, Flex, Space, Tag, Tooltip, Typography, type MenuProps } from 'antd';
 import { CheckCircle2, Ellipsis, Plus } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { notify } from '@/components/admin/operation-feedback';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type OrderStatus = 'draft' | 'signed' | 'paid' | 'cancelled';

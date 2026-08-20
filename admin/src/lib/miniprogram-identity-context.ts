@@ -22,11 +22,26 @@ export function miniProgramIdentityContextToDto(
   };
 }
 
+export function isMiniProgramIdentityContextSupported(
+  context: Pick<MiniProgramIdentityContextRecord, 'mode' | 'staffRole'>
+) {
+  if (context.mode === 'customer' || context.mode === 'referrer') return true;
+  return context.mode === 'staff' && [
+    'designer',
+    'measurer',
+    'enterprise_admin',
+  ].includes(context.staffRole || '');
+}
+
 export function defaultMiniProgramIdentityContext(
   contexts: MiniProgramIdentityContextRecord[]
 ) {
   return (
-    contexts.find((context) => context.mode === 'staff') ??
+    contexts.find(
+      (context) =>
+        context.mode === 'staff' &&
+        isMiniProgramIdentityContextSupported(context)
+    ) ??
     contexts.find((context) => context.mode === 'referrer') ??
     contexts[0]
   );

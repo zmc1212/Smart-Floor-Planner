@@ -22,7 +22,6 @@ export interface EnterpriseListItem {
     designTaskSlaHours?: number;
     reminderIntervalHours?: number;
     maxReminderTimes?: number;
-    browserNotificationEnabled?: boolean;
     miniprogramNotificationEnabled?: boolean;
   };
   aiConfig?: {

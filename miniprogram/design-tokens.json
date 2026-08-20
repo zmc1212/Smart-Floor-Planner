@@ -64,6 +64,15 @@
       }
     }
   },
+  "fontSize": {
+    "navTitle": 32,
+    "sectionTitle": 28,
+    "body": 24,
+    "meta": 22,
+    "badge": 20,
+    "_unit": "rpx",
+    "_note": "Authoritative Mini Program floors; Less may still write rpx literals. See DESIGN.md and AGENTS.md."
+  },
   "font": {
     "family": {
       "cn": "Source Han Sans",

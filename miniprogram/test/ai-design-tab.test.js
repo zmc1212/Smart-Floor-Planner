@@ -37,7 +37,7 @@ const aiDesignPageConfig = JSON.parse(fs.readFileSync(
   path.join(miniRoot, 'pages', 'ai-design', 'ai-design.json'),
   'utf8'
 ));
-const { normalizeAIDesignContext } = require('../utils/aiDesignNavigation.js');
+const { normalizeAIDesignContext, shouldOpenSchemeStudio, buildSchemeStudioUrl } = require('../utils/aiDesignNavigation.js');
 const { canAccessAIDesign } = require('../utils/aiDesignAccess.js');
 
 test('Design replaces Inspiration as the primary immersive design tab', () => {
@@ -77,18 +77,16 @@ test('AI Design uses the shared tab-page scrolling contract', () => {
   assert.match(aiDesignWxml, /bindrefresherrefresh="onRefresh"/);
   assert.match(aiDesignWxss, /\.recipe-search-overlay[^}]+position:\s*fixed/);
   assert.match(aiDesignWxss, /safe-area-inset-bottom/);
-  assert.match(aiDesignWxml, /class="recipe-hero"/);
-  assert.doesNotMatch(aiDesignWxml, /class="scene-navigator/);
+  assert.match(aiDesignWxml, /class="create-scheme-hero"/);
+  assert.match(aiDesignWxml, /最近设计项目/);
+  assert.match(aiDesignWxml, /wx:for="\{\{recentProjects\}\}"/);
+  assert.match(aiDesignWxml, /bindtap="openRecentProject"/);
+  assert.match(aiDesignWxml, /bindtap="openCreateScheme"/);
   assert.match(aiDesignWxml, /class="recipe-waterfall"/);
-  assert.doesNotMatch(aiDesignWxml, /workflowId|提示词|模型/);
-  return;
-  assert.match(aiDesignPageSource, /syncTabBar\(\) \{[\s\S]*tabBar\.syncSelected\(\)/);
-  assert.match(customTabSource, /suppressed: false/);
-  assert.match(customTabWxml, /wx:if="\{\{!suppressed\}\}" class="tabbar-shell"/);
-  assert.match(aiDesignPageSource, /setTabBarHidden\(hidden\)/);
-  assert.match(aiDesignPageSource, /openSourcePicker\(\) \{[\s\S]*this\.setTabBarHidden\(true\)/);
-  assert.match(aiDesignPageSource, /closeSourcePicker\(\) \{[\s\S]*this\.setTabBarHidden\(false\)/);
-  assert.match(aiDesignPageSource, /syncImmersiveNavigationMetrics\(\)/);
+  assert.match(aiDesignPageSource, /openSchemeStudio/);
+  assert.match(aiDesignPageSource, /shouldOpenSchemeStudioFromContext/);
+  assert.doesNotMatch(aiDesignWxml, /class="scene-navigator/);
+  assert.doesNotMatch(aiDesignWxml, /提示词|模型/);
 });
 
 test('the center Measure action uses the approved background-free Xiao K rangefinder', () => {
@@ -126,6 +124,22 @@ test('contextual AI entries preserve plan and room scope across switchTab', () =
     roomId: 'room-2',
     targetScope: 'single_room',
   });
+  assert.equal(shouldOpenSchemeStudio({ leadId: '1', floorPlanId: '2' }), true);
+  assert.equal(shouldOpenSchemeStudio({ leadId: '1', workflowId: '3' }), true);
+  assert.equal(shouldOpenSchemeStudio({ leadId: '1' }), false);
+  assert.equal(shouldOpenSchemeStudio({ floorPlanId: '2' }), false);
+  assert.equal(
+    buildSchemeStudioUrl({ leadId: '1', workflowId: '2', floorPlanId: '3' }),
+    '/packages/ai-workflow/scheme-studio/scheme-studio?leadId=1&workflowId=2&floorPlanId=3'
+  );
+
+  const indexSource = fs.readFileSync(path.join(miniRoot, 'pages', 'index', 'index.js'), 'utf8');
+  const leadDetailSource = fs.readFileSync(
+    path.join(miniRoot, 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    'utf8'
+  );
+  assert.match(indexSource, /openAIDesignEntry/);
+  assert.match(leadDetailSource, /openAIDesignEntry/);
 });
 
 test('standalone channel promoters cannot open or preload enterprise AI design', () => {

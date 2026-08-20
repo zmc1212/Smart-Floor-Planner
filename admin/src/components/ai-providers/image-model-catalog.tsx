@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Save } from 'lucide-react';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import { Button, Empty, InputNumber, Radio, Space, Switch, Tag, Typography } from 'antd';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import type { ImageModel } from './types';
 
 export default function ImageModelCatalog() {

@@ -1,4 +1,4 @@
-<!-- Approved source: design-references/ai-design/ai-recipe-discovery-home-v2/ -->
+<!-- Approved source: design-references/miniprogram-airy-minimalist-v1/37-ai-design-workbench.jpg (D01) -->
 <view class="ai-page sfp-tab-page">
   <role-workbench wx:if="{{roleWorkbenchRole === 'measurer'}}" role="measurer" focus="survey" />
   <block wx:else>
@@ -15,34 +15,32 @@
   >
     <view class="recipe-shell" style="--ai-navigation-top: {{navigationTop}}px; padding-top: {{navigationTop}}px;">
       <view class="recipe-header" style="padding-right: {{navigationRight}}px;">
-        <view class="recipe-heading-copy">
-          <text class="recipe-page-title">装修配方</text>
-          <text class="recipe-page-subtitle">把好设计，配进客户的家</text>
+        <view class="ai-brand-lockup">
+          <image class="ai-brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit"></image>
+          <view class="recipe-heading-copy">
+            <text class="recipe-page-title">AI 方案创作</text>
+            <text class="recipe-page-subtitle">{{enterpriseName ? enterpriseName + ' · 空间智能出图中心' : '空间智能出图中心'}}</text>
+          </view>
         </view>
-      </view>
-
-      <view class="recipe-header-tools">
-        <view class="my-design-link" bindtap="openHistory" aria-role="button" aria-label="查看设计记录">
+        <view class="header-history-link" bindtap="openHistory" aria-role="button" aria-label="查看设计记录">
           <image class="my-design-icon" src="/images/leads-v4/clock-blue.png" mode="aspectFit"></image>
           <text>设计记录</text>
         </view>
-        <view class="recipe-credit-pill" aria-label="当前可用点数">
-          <view class="credit-seal"></view>
-          <text>{{hasLoadedOnce ? account.availableBalance : '--'}}</text>
-          <text class="credit-unit">点</text>
-        </view>
       </view>
 
-      <view class="recipe-hero" data-id="{{heroRecipe.id}}" bindtap="openRecipeDetail">
-        <image class="recipe-hero-image" src="/images/ai-recipe/recipe-atelier-hero.jpg" mode="aspectFill"></image>
-        <view class="recipe-hero-shade"></view>
-        <view class="recipe-hero-copy">
-          <text class="recipe-hero-role">小 K · 空间配方调配师</text>
-          <text class="recipe-hero-title">把户型\n翻成理想家</text>
-          <text class="recipe-hero-subtitle">从正式墙图开始，选择喜欢的空间方案</text>
-          <view class="recipe-hero-action">翻开本周方案 <view class="action-arrow"></view></view>
+      <view class="create-scheme-hero" bindtap="openCreateScheme" aria-role="button" aria-label="创建全新 AI 设计方案">
+        <view class="create-scheme-copy">
+          <view class="create-scheme-title-row">
+            <view class="create-plus">+</view>
+            <text class="create-scheme-title">创建全新 AI 设计方案</text>
+          </view>
+          <text class="create-scheme-subtitle">已连接量房数据库 · 30秒极速生成渲染方案</text>
+          <view class="create-credit-pill" aria-label="当前可用点数">
+            <view class="credit-bolt"></view>
+            <text>算力充足 {{hasLoadedOnce ? account.availableBalance : '--'}}</text>
+          </view>
         </view>
-        <text class="recipe-hero-bookmark">空间方案册</text>
+        <image class="create-scheme-mascot" src="/images/airy-v1/xiao-k-designer-3d.png" mode="aspectFit"></image>
       </view>
 
       <view class="recipe-input-switch" aria-label="选择设计输入方式">
@@ -64,7 +62,7 @@
       </view>
 
       <view class="recipe-section-head">
-        <view><text class="recipe-section-title">装修配方</text><text class="recipe-section-copy">选择喜欢的效果，套进客户户型</text></view>
+        <view><text class="recipe-section-title">热门空间风格配方</text><text class="recipe-section-copy">选择喜欢的效果，套进客户户型</text></view>
         <view class="recipe-search-button" bindtap="openRecipeSearch" aria-role="button" aria-label="搜索装修配方">
           <image src="/images/mine-icons/search.png" mode="aspectFit"></image>
         </view>
@@ -135,8 +133,105 @@
         <view wx:if="{{recipeLoadingMore}}" class="recipe-more-state">正在翻开更多配方…</view>
         <view wx:elif="{{recipePage >= recipeTotalPages && recipes.length}}" class="recipe-more-state">已浏览全部 {{recipeTotal}} 份配方</view>
       </block>
+
+      <view class="recent-section-head">
+        <text class="recipe-section-title">最近设计项目</text>
+        <view wx:if="{{sources.length}}" class="recent-section-link" bindtap="openCreateScheme">全部项目</view>
+      </view>
+
+      <view wx:if="{{loading && !hasLoadedOnce}}" class="recent-loading shimmer"></view>
+      <view wx:elif="{{!recentProjects.length}}" class="recent-empty-state">
+        <text class="empty-title">还没有可继续的设计项目</text>
+        <text class="empty-copy">选择客户正式量房后，即可创建 AI 设计方案。</text>
+        <view class="empty-action" bindtap="openCreateScheme">创建 AI 设计方案</view>
+      </view>
+      <view wx:else class="recent-project-list">
+        <view
+          wx:for="{{recentProjects}}"
+          wx:key="floorPlanId"
+          class="recent-project-card {{item.projectGroup}}"
+          data-index="{{index}}"
+          bindtap="openRecentProject"
+          hover-class="recent-project-pressed"
+        >
+          <view class="recent-project-cover">
+            <image
+              wx:if="{{item.coverUrl && !item.previewLoadFailed}}"
+              src="{{item.coverUrl}}"
+              mode="aspectFill"
+              data-source-key="{{item.sourceKey}}"
+              binderror="onProjectPreviewError"
+            ></image>
+            <image wx:else src="{{projectFolioCover}}" mode="aspectFill"></image>
+          </view>
+          <view class="recent-project-copy">
+            <text class="recent-project-title">{{item.projectDisplayTitle}}</text>
+            <text class="recent-project-meta">{{item.progressCopy}}</text>
+          </view>
+          <view
+            class="recent-project-action {{item.schemeActionTone}}"
+            catchtap="openRecentProject"
+            data-index="{{index}}"
+          >{{item.schemeActionLabel}}</view>
+        </view>
+      </view>
     </view>
   </scroll-view>
+
+  <view wx:if="{{sourcePickerOpen}}" class="source-picker-mask" bindtap="closeSourcePicker">
+    <view class="source-sheet" catchtap="noop">
+      <view class="sheet-handle"></view>
+      <text class="sheet-title">选择客户设计项目</text>
+      <text class="sheet-copy">按客户找到对应的正式量房，进入方案工作台</text>
+      <view class="project-search">
+        <image src="/images/mine-icons/search.png" mode="aspectFit"></image>
+        <input placeholder="搜索客户或小区" value="{{projectSearch}}" bindinput="onProjectSearch" />
+      </view>
+      <scroll-view scroll-x enhanced show-scrollbar="{{false}}" class="project-group-scroll">
+        <view class="project-groups">
+          <view
+            wx:for="{{projectGroups}}"
+            wx:key="key"
+            class="project-group {{item.active ? 'active' : ''}}"
+            data-group="{{item.key}}"
+            bindtap="selectProjectGroup"
+          >
+            <text>{{item.label}}</text>
+            <text>{{item.count}}</text>
+          </view>
+        </view>
+      </scroll-view>
+      <scroll-view scroll-y enhanced show-scrollbar="{{false}}" class="source-sheet-list">
+        <view wx:if="{{!filteredProjects.length}}" class="project-empty-copy">{{projectEmptyCopy}}</view>
+        <view wx:else class="picker-project-list">
+          <view
+            wx:for="{{filteredProjects}}"
+            wx:key="floorPlanId"
+            class="picker-project-card {{item.projectGroup}}"
+            data-index="{{index}}"
+            bindtap="selectProjectCard"
+          >
+            <view class="picker-project-cover">
+              <image
+                wx:if="{{item.navigationPreview.imageUrl && !item.previewLoadFailed}}"
+                src="{{item.navigationPreview.imageUrl}}"
+                mode="aspectFill"
+                data-source-key="{{item.sourceKey}}"
+                binderror="onProjectPreviewError"
+              ></image>
+              <image wx:else src="{{projectFolioCover}}" mode="aspectFill"></image>
+            </view>
+            <view class="picker-project-copy">
+              <text>{{item.projectDisplayTitle}}</text>
+              <text>{{item.statusLabel}}</text>
+              <text>正式量房 · {{item.closedRoomCount || 0}} 个闭合空间</text>
+            </view>
+            <view class="picker-project-action">{{item.actionLabel}}</view>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+  </view>
 
   <view wx:if="{{recipeSearchOpen}}" class="recipe-search-overlay">
     <view class="search-safe" style="height: {{navigationTop + navigationHeight}}px;"></view>

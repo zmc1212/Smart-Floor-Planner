@@ -2449,6 +2449,69 @@ test('an outer-corner committed wall keeps its redline and live dimension on the
   )));
 });
 
+test('toggling measurement side on a closed-corner preview moves the redline to the opposite face', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  draft = surveyGraph.placeNewWallChainCursor(draft, { xMm: 3000, yMm: 2000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  if (target) {
+    draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  }
+  draft = surveyGraph.holdPreviewForInput(surveyGraph.startPreview(draft, { xMm: 3000, yMm: 5000 }));
+  const before = createScene(draft);
+  const originalSide = before.previewWall.measurementSide;
+  const originalOffsetSign = Math.sign(before.previewWall.outerOffsetPx);
+  const nextSide = originalSide === 'right' ? 'left' : 'right';
+
+  draft = surveyGraph.setMeasurementSide(draft, nextSide);
+  const after = createScene(draft);
+
+  assert.equal(after.previewWall.measurementSide, nextSide);
+  assert.equal(Math.sign(after.previewWall.outerOffsetPx), originalOffsetSign);
+  assert.equal(after.previewWall.measurementFace, 'outer');
+  assert.deepEqual(after.previewWall.measurementStartPoint, after.previewWall.outerStart);
+  assert.deepEqual(after.previewWall.measurementEndPoint, after.previewWall.outerEnd);
+  assert.deepEqual(after.cursor.point, after.previewWall.measurementEndPoint);
+  assert.notDeepEqual(after.previewWall.measurementStartPoint, before.previewWall.measurementStartPoint);
+});
+
+test('toggling measurement side on a committed closed-corner wall keeps occupancy and moves the redline', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  draft = surveyGraph.placeNewWallChainCursor(draft, { xMm: 3000, yMm: 2000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  if (target) {
+    draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  }
+  draft = commitWall(draft, { xMm: 3000, yMm: 5000 }, 2800);
+  const before = createScene(draft);
+  const activeBefore = before.walls.find((wall) => wall.isActiveMeasurement);
+  const originalOffsetSign = Math.sign(activeBefore.outerOffsetPx);
+  const nextSide = activeBefore.measurementSide === 'right' ? 'left' : 'right';
+
+  draft = surveyGraph.setMeasurementSide(draft, nextSide, activeBefore.id);
+  const after = createScene(draft);
+  const activeAfter = after.walls.find((wall) => wall.isActiveMeasurement);
+  const liveDimension = after.dimensions.find((dimension) => dimension.wall === activeAfter);
+
+  assert.equal(activeAfter.measurementSide, nextSide);
+  assert.equal(Math.sign(activeAfter.outerOffsetPx), originalOffsetSign);
+  assert.equal(activeAfter.measurementFace, 'outer');
+  assert.deepEqual(activeAfter.measurementStartPoint, activeAfter.outerStart);
+  assert.deepEqual(activeAfter.measurementEndPoint, activeAfter.outerEnd);
+  assert.equal(liveDimension.measurementFace, 'outer');
+});
+
 test('an inner-corner outward branch starts its body and redline at the exterior face', () => {
   let draft = createClosedRectangleDraft();
   let floor = surveyGraph.getActiveFloor(draft);

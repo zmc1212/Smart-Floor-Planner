@@ -1,0 +1,60 @@
+<h2>设计稿 · 第 3 节：下线「我的项目」与深链兼容</h2>
+<p class="subtitle">产品入口删除中间列表页；列表 API 仍留给首页排序与切换器用。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">现在（要改掉）</div>
+    <div class="mockup-body" style="font-family:system-ui;font-size:13px;line-height:1.6;">
+      <div style="padding:8px;background:#fff5f5;border-radius:8px;border:1px solid #f0c2c2;">
+        服务首页「查看全部项目」<br>
+        → <b>我的项目</b>（列表页）<br>
+        → 再点进「我的服务档案」
+      </div>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">目标</div>
+    <div class="mockup-body" style="font-family:system-ui;font-size:13px;line-height:1.6;">
+      <div style="padding:8px;background:#f0faf3;border-radius:8px;border:1px solid #b7e0c4;">
+        服务首页主/次 CTA<br>
+        → <b>我的服务档案</b>（带 leadId）<br>
+        多项目：首页内「切换」半屏，不经中间页
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>路由与 API</h3>
+  <ul>
+    <li><b>保留</b> <code>GET /api/miniprogram/customer-projects</code>：首页拉列表、按紧急度选 featured、切换器数据源</li>
+    <li><b>保留</b> <code>customer-project?leadId=</code>：唯一客户服务档案页（设计 02）</li>
+    <li><b>下线产品入口</b>：首页不再出现「查看全部项目」；其它文案不再引导去列表页</li>
+    <li><b>兼容壳</b>：保留 <code>packages/business/customer-projects/customer-projects</code> 路由注册，但 <code>onLoad</code> 立即 redirect：
+      <ul>
+        <li>若能读到列表且有优先项 → <code>redirectTo</code> 对应 <code>customer-project?leadId=</code></li>
+        <li>否则 → <code>switchTab</code> 回服务首页</li>
+      </ul>
+      旧分享/收藏/文档深链不会 404，也不再渲染列表 UI
+    </li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>其它入口对齐</h3>
+  <ul>
+    <li><code>free-design-service</code>「查看我的服务档案」：继续直达 <code>customer-project</code>（已有则保持）</li>
+    <li><code>index.js</code> / <code>role-workbench</code> 里所有 <code>customer-projects</code> 导航改为档案或首页内切换</li>
+    <li>客户 TabBar 仍是「服务 / 我的」，不新增「项目」Tab</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h3>文档台账（开发时同步）</h3>
+  <ul>
+    <li>中英文还原台账：<code>customer-projects</code> 改为「兼容深链 redirect，不再作为产品列表页」</li>
+    <li>中英文模块清单：客户服务首页入口改为直达档案；列表 API Limited/Implemented 说明切换用途</li>
+  </ul>
+</div>
+
+<p class="subtitle">第 3 节可以吗？回复「可以」后我会把完整设计规格写入 docs 并请你终审；要改直接说。</p>

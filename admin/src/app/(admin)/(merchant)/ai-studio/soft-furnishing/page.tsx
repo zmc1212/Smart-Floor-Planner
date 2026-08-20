@@ -1,6 +1,6 @@
 'use client';
 
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -12,15 +12,13 @@ import {
   ChevronLeft,
   Image as ImageIcon,
   Lamp,
-  Loader2,
   PanelTop,
   Sofa,
   Sparkles,
   Upload,
   X,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Button, Tag } from 'antd';
 import { cn } from '@/lib/utils';
 import AiQuotaBar from '@/components/ai-studio/AiQuotaBar';
 import RechargeDialog from '@/components/ai-studio/RechargeDialog';
@@ -293,9 +291,7 @@ export function AiSoftFurnishingLegacyPage() {
                 <Sofa size={20} />
               </div>
               <h1 className="text-2xl font-semibold tracking-tight">AI 软装设计</h1>
-              <Badge variant="outline" className="text-muted-foreground">
-                Prompt First
-              </Badge>
+              <Tag className="text-muted-foreground">Prompt First</Tag>
             </div>
             <p className="text-sm text-muted-foreground">
               先生成软装提示词，再基于毛坯现场图渲染效果图。系统会尽量保持户型空间结构不变，并把你选择的家具类型写入提示词。
@@ -485,16 +481,17 @@ export function AiSoftFurnishingLegacyPage() {
             </div>
 
             <div className="mt-7 grid grid-cols-2 gap-3">
-              <Button variant="outline" className="h-12 rounded-xl font-bold" onClick={() => router.back()}>
-                <ChevronLeft size={16} className="mr-2" />
+              <Button className="h-12 rounded-xl font-bold" icon={<ChevronLeft size={16} />} onClick={() => router.back()}>
                 上一步
               </Button>
               <Button
-                className="h-12 rounded-xl bg-emerald-600 font-bold text-white hover:bg-emerald-500"
+                type="primary"
+                className="h-12 rounded-xl !bg-emerald-600 font-bold text-white hover:!bg-emerald-500"
                 disabled={isRendering || !sourceImage || selectedItems.length === 0 || presets.length === 0}
+                loading={isRendering}
+                icon={isRendering ? undefined : <Sparkles size={18} />}
                 onClick={handleRender}
               >
-                {isRendering ? <Loader2 size={18} className="mr-2 animate-spin" /> : <Sparkles size={18} className="mr-2" />}
                 开始渲染
               </Button>
             </div>

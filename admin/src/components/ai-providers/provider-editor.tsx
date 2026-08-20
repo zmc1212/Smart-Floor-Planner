@@ -16,7 +16,7 @@ import {
 } from '@ant-design/pro-components';
 import { Button, Card, Col, Empty, Flex, Input, Row, Select, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { useFetch } from '@/hooks/useFetch';
 import { AI_PROVIDER_ADAPTER_MANIFESTS, getProviderAdapterManifest, type ProviderAdapterConfigField } from '@/lib/ai/provider-adapter-manifest';
 import {

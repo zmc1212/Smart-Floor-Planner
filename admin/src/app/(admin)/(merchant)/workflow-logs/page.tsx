@@ -17,7 +17,7 @@ import {
   PlayCircle,
   ShieldAlert,
 } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type LogStatus = 'sent' | 'failed' | 'skipped';

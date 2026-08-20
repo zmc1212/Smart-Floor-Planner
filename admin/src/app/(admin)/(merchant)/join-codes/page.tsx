@@ -6,8 +6,8 @@ import Link from 'next/link';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import { Alert, Button, Card, Descriptions, Drawer, Flex, Space, Tag, Typography } from 'antd';
 import { ArrowLeft, Download, Eye, RefreshCw, RotateCw, ShieldOff } from 'lucide-react';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
-import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
+import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type JoinCodeType = 'staff' | 'referrer';

@@ -1,0 +1,87 @@
+<h2>客户「服务」首页：这次做到哪一步？</h2>
+<p class="subtitle">先定范围，再谈文案和跳转细节。点选一项即可。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">现状（你截图里的）</div>
+    <div class="mockup-body" style="background:#f4f7f4;padding:16px;font-family:system-ui;">
+      <div style="background:#1f9d55;border-radius:16px;padding:14px;color:#fff;margin-bottom:14px;">
+        <div style="font-weight:700;">我的装修服务</div>
+        <div style="opacity:.9;font-size:12px;margin-top:6px;">已匹配设计师和测量员，请预约上门量房时间</div>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <span style="background:#fff;color:#1f9d55;border-radius:999px;padding:4px 10px;font-size:11px;">当前阶段 1</span>
+          <span style="background:#fff;color:#1f9d55;border-radius:999px;padding:4px 10px;font-size:11px;">下一步 1</span>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <strong>我的服务</strong>
+        <span style="color:#1f9d55;font-size:12px;">查看全部项目 &gt;</span>
+      </div>
+      <div style="background:#fff;border-radius:12px;padding:12px;border:1px solid #e5ebe5;">
+        <div style="font-weight:700;">已匹配测量员</div>
+        <div style="color:#666;font-size:12px;margin-top:6px;border-left:3px solid #4a90e2;padding-left:8px;">
+          已匹配设计师和测量员…<br>
+          <span style="opacity:.7;">已匹配设计师和测量员…（重复一行）</span>
+        </div>
+        <div style="margin-top:10px;background:#d9f5e3;color:#1f9d55;text-align:center;border-radius:8px;padding:8px;font-size:13px;">预约上门</div>
+      </div>
+      <p style="font-size:12px;color:#888;margin-top:10px;">链路：首页 → 我的项目 → 再进服务档案</p>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">已批准设计稿 01</div>
+    <div class="mockup-body" style="background:#f7faf7;padding:16px;font-family:system-ui;">
+      <div style="background:linear-gradient(135deg,#1f9d55,#2db86a);border-radius:18px;padding:16px;color:#fff;">
+        <div style="font-weight:700;font-size:18px;">选户型·免费设计整屋</div>
+        <div style="opacity:.9;font-size:12px;margin-top:4px;">量房进度与AI方案实时同步</div>
+        <div style="background:#fff;color:#222;border-radius:12px;padding:10px;margin-top:12px;">
+          <div style="display:flex;justify-content:space-between;gap:8px;">
+            <strong style="font-size:13px;">万科·未来之光 · 108m²</strong>
+            <span style="color:#1f9d55;font-size:12px;">● 量房已完成</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <div style="flex:1;height:48px;background:#eee;border-radius:8px;"></div>
+            <div style="flex:1;height:48px;background:#ddd;border-radius:8px;"></div>
+          </div>
+        </div>
+        <div style="margin-top:12px;background:#111;color:#fff;text-align:center;border-radius:999px;padding:10px;font-size:13px;">查看我的服务档案</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+        <div style="background:#fff;border-radius:12px;padding:12px;border:1px solid #e8eee8;">
+          <strong style="font-size:13px;">预约量房</strong>
+          <div style="font-size:11px;color:#777;margin-top:4px;">免费上门精准量尺</div>
+        </div>
+        <div style="background:#fff;border-radius:12px;padding:12px;border:1px solid #e8eee8;">
+          <strong style="font-size:13px;">专属设计师</strong>
+          <div style="font-size:11px;color:#777;margin-top:4px;">1对1出全屋方案</div>
+        </div>
+      </div>
+      <p style="font-size:12px;color:#888;margin-top:10px;">首页主 CTA 直达「我的服务档案」</p>
+    </div>
+  </div>
+</div>
+
+<div class="options" style="margin-top:20px;">
+  <div class="option" data-choice="a-minimal" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>最小修复</h3>
+      <p>保留当前 role-workbench 壳层：去掉重复文案；「查看全部」直达当前服务档案；删除「我的项目」列表页。不做大视觉重做。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b-restore-01" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>按批准稿 01 还原（推荐）</h3>
+      <p>客户首页回到 <code>01-customer-workbench</code>：绿色 Hero、项目摘要、主按钮「查看我的服务档案」、预约/设计师双卡；顺带修掉重复文案与多余中间页。</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c-new-redesign" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>重新出一版设计</h3>
+      <p>不以 01 为准，先做新布局方案再开发。周期更长，需要你再批一版设计源。</p>
+    </div>
+  </div>
+</div>

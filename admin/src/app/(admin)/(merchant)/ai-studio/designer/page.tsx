@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import ChatInterface from '@/components/ai-studio/ChatInterface';
 import { Sparkles } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { notify } from '@/components/admin/operation-feedback';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { AiToolFrame } from '@/components/ai-studio/ai-tool-frame';
 import type { ChatAction, ChatUiPayload } from '@/lib/ai/chat-ui';
 import { useRouter } from 'next/navigation';

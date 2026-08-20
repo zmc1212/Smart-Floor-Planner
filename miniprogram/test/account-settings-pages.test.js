@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { refreshAccountSettingsState } = require('../utils/account-settings-state.js');
 
 const projectRoot = path.resolve(__dirname, '..');
 const notificationTemplates = [
@@ -45,60 +46,71 @@ function createPage(definition) {
   };
 }
 
-test('Mine routes edit, settings, and security actions to separate real pages', () => {
+test('Mine hosts account settings inline and routes deep pages separately', () => {
   const appConfig = JSON.parse(read('app.json'));
   const business = appConfig.subPackages.find((item) => item.root === 'packages/business');
   const mineWxml = read('pages/mine/mine.wxml');
   const mineJs = read('pages/mine/mine.js');
+  const settingsJs = read('packages/business/settings/settings.js');
 
   assert.ok(business.pages.includes('profile-edit/profile-edit'));
   assert.ok(business.pages.includes('settings/settings'));
   assert.ok(business.pages.includes('account-security/account-security'));
   assert.ok(business.pages.includes('identity-switch/identity-switch'));
   assert.match(mineWxml, /编辑资料[\s\S]*bindtap="onEditProfile"|bindtap="onEditProfile"[\s\S]*编辑资料/);
-  assert.match(mineWxml, /settings-button[^>]*bindtap="onOpenSettings"/);
+  assert.doesNotMatch(mineWxml, /bindtap="onOpenSettings"/);
+  assert.match(mineWxml, /mineAccountPanel/);
+  assert.match(mineWxml, /bindtap="onEnableNotification"/);
+  assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(mineWxml, /账号与安全[\s\S]*onOpenAccountSecurity|onOpenAccountSecurity[\s\S]*账号与安全/);
   assert.match(mineJs, /onEditProfile\(\)[\s\S]*profile-edit\/profile-edit/);
-  assert.match(mineJs, /onOpenSettings\(\)[\s\S]*settings\/settings/);
   assert.match(mineJs, /onOpenAccountSecurity\(\)[\s\S]*account-security\/account-security/);
+  assert.match(mineJs, /onOpenIdentitySwitch\(\)[\s\S]*identity-switch\/identity-switch/);
+  assert.match(settingsJs, /switchTab\([\s\S]*pages\/mine\/mine/);
 });
 
 test('Account pages use the approved account-v1 scenes while keeping live controls native', () => {
-  const sceneNames = [
-    'profile-dossier-scene-v3.png',
-    'settings-guardian-scene-v3.png',
-    'security-guardian-scene-v3.png',
-  ];
-  const pageSources = [
-    read('packages/business/profile-edit/profile-edit.wxml'),
-    read('packages/business/settings/settings.wxml'),
-    read('packages/business/account-security/account-security.wxml'),
+  const heroPages = [
+    {
+      source: read('packages/business/profile-edit/profile-edit.wxml'),
+      scene: 'profile-dossier-scene-v3.png'
+    },
+    {
+      source: read('packages/business/identity-switch/identity-switch.wxml'),
+      scene: 'settings-guardian-scene-v3.png'
+    },
+    {
+      source: read('packages/business/account-security/account-security.wxml'),
+      scene: 'security-guardian-scene-v3.png'
+    }
   ];
 
-  for (const sceneName of sceneNames) {
-    const scenePath = path.join(projectRoot, 'packages', 'business', 'assets', 'account-v1', sceneName);
-    assert.ok(fs.existsSync(scenePath), `${sceneName} must be a local runtime asset`);
-    assert.ok(fs.statSync(scenePath).size <= 200 * 1024, `${sceneName} must remain package-sized`);
+  for (const { scene } of heroPages) {
+    const scenePath = path.join(projectRoot, 'packages', 'business', 'assets', 'account-v1', scene);
+    assert.ok(fs.existsSync(scenePath), `${scene} must be a local runtime asset`);
+    assert.ok(fs.statSync(scenePath).size <= 200 * 1024, `${scene} must remain package-sized`);
     const bytes = fs.readFileSync(scenePath);
     assert.equal(bytes.toString('ascii', 1, 4), 'PNG');
-    assert.equal(bytes[25], 6, `${sceneName} must retain an RGBA alpha channel`);
+    assert.equal(bytes[25], 6, `${scene} must retain an RGBA alpha channel`);
   }
 
-  for (const [index, source] of pageSources.entries()) {
-    assert.match(source, new RegExp(sceneNames[index].replace('.', '\\.')));
+  for (const { source, scene } of heroPages) {
+    assert.match(source, new RegExp(scene.replace('.', '\\.')));
     assert.match(source, /<view class="account-hero-copy">/);
     assert.match(source, /<image class="account-hero-art"/);
     assert.doesNotMatch(source, /design-references/);
   }
 
-  assert.match(pageSources[0], /<input class="field-input"/);
-  assert.match(pageSources[0], /class="account-profile-card"/);
-  assert.match(pageSources[0], /class="account-avatar-shell"/);
-  assert.match(pageSources[0], /class="account-profile-avatar"[^>]*mode="aspectFill"/);
-  assert.doesNotMatch(pageSources[0], /class="profile-card"/);
-  assert.match(pageSources[1], /bindtap="onEnableNotification"/);
-  assert.match(pageSources[1], /bindtap="onOpenIdentitySwitch"/);
-  assert.match(pageSources[2], /bindtap="onChangePassword"/);
+  const mineWxml = read('pages/mine/mine.wxml');
+  assert.match(heroPages[0].source, /<input class="field-input"/);
+  assert.match(heroPages[0].source, /class="account-profile-card"/);
+  assert.match(heroPages[0].source, /class="account-avatar-shell"/);
+  assert.match(heroPages[0].source, /class="account-profile-avatar"[^>]*mode="aspectFill"/);
+  assert.doesNotMatch(heroPages[0].source, /class="profile-card"/);
+  assert.match(mineWxml, /bindtap="onEnableNotification"/);
+  assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
+  assert.doesNotMatch(mineWxml, /settings-guardian-scene-v3\.png/);
+  assert.match(heroPages[2].source, /bindtap="onChangePassword"/);
 });
 
 test('Identity switch uses server contexts and refreshes the signed session', () => {
@@ -235,7 +247,7 @@ test('Successful password change clears the session and returns to login', async
   }
 });
 
-test('Settings reflects accepted subscription state and opens WeChat settings', async () => {
+test('Mine reflects accepted subscription state and opens WeChat settings', async () => {
   const originalWx = global.wx;
   const api = require('../utils/api.js');
   const originalRequest = api.request;
@@ -259,8 +271,8 @@ test('Settings reflects accepted subscription state and opens WeChat settings', 
   };
 
   try {
-    const page = createPage(loadPage('packages/business/settings/settings.js'));
-    await page.onShow();
+    const page = createPage(loadPage('pages/mine/mine.js'));
+    await refreshAccountSettingsState(page);
     assert.equal(page.data.notificationStatus, '已允许');
     assert.equal(page.data.notificationAccepted, true);
     await page.onOpenSystemSettings();
@@ -271,7 +283,12 @@ test('Settings reflects accepted subscription state and opens WeChat settings', 
   }
 });
 
-test('Settings keeps rejected subscription state explicit', async () => {
+test('Settings route redirects to the Mine tab for backward-compatible deep links', () => {
+  const settingsJs = read('packages/business/settings/settings.js');
+  assert.match(settingsJs, /switchTab\([\s\S]*\/pages\/mine\/mine/);
+});
+
+test('Mine keeps rejected subscription state explicit', async () => {
   const originalWx = global.wx;
   const api = require('../utils/api.js');
   const originalRequest = api.request;
@@ -289,8 +306,8 @@ test('Settings keeps rejected subscription state explicit', async () => {
     }
   };
   try {
-    const page = createPage(loadPage('packages/business/settings/settings.js'));
-    await page.onShow();
+    const page = createPage(loadPage('pages/mine/mine.js'));
+    await refreshAccountSettingsState(page);
     assert.equal(page.data.notificationStatus, '已拒绝');
     assert.equal(page.data.notificationAccepted, false);
   } finally {
@@ -299,7 +316,7 @@ test('Settings keeps rejected subscription state explicit', async () => {
   }
 });
 
-test('Settings shows a truthful partial subscription count', async () => {
+test('Mine shows a truthful partial subscription count', async () => {
   const originalWx = global.wx;
   const api = require('../utils/api.js');
   const originalRequest = api.request;
@@ -322,8 +339,8 @@ test('Settings shows a truthful partial subscription count', async () => {
     }
   };
   try {
-    const page = createPage(loadPage('packages/business/settings/settings.js'));
-    await page.onShow();
+    const page = createPage(loadPage('pages/mine/mine.js'));
+    await refreshAccountSettingsState(page);
     assert.equal(page.data.notificationStatus, '已允许 2/4');
     assert.equal(page.data.notificationAccepted, true);
   } finally {
@@ -332,7 +349,7 @@ test('Settings shows a truthful partial subscription count', async () => {
   }
 });
 
-test('Settings gives the subscription main switch precedence over cached item grants', async () => {
+test('Mine gives the subscription main switch precedence over cached item grants', async () => {
   const originalWx = global.wx;
   const api = require('../utils/api.js');
   const originalRequest = api.request;
@@ -351,8 +368,8 @@ test('Settings gives the subscription main switch precedence over cached item gr
     }
   };
   try {
-    const page = createPage(loadPage('packages/business/settings/settings.js'));
-    await page.onShow();
+    const page = createPage(loadPage('pages/mine/mine.js'));
+    await refreshAccountSettingsState(page);
     assert.equal(page.data.notificationStatus, '已关闭');
     assert.equal(page.data.notificationAccepted, false);
   } finally {

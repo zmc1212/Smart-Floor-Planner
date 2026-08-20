@@ -5,7 +5,7 @@ import { Alert, Button, Card, Result, Segmented, Space, Tag, Typography } from '
 import { PageContainer } from '@ant-design/pro-components';
 import { QrCode } from 'lucide-react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 
 type CodeEnvironment = 'develop' | 'trial' | 'release';
 

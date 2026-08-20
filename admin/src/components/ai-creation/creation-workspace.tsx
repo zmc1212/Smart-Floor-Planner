@@ -37,18 +37,9 @@ import {
   WandSparkles,
   X,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { notify } from '@/components/ui/operation-feedback';
+import { Button, ConfigProvider, Dropdown, Input, Modal, Select } from 'antd';
+import { notify } from '@/components/admin/operation-feedback';
+import { studioDarkAntdTheme } from '@/components/admin/studio-antd-theme';
 import { cn } from '@/lib/utils';
 import { ImageEditorDialog } from './image-editor-dialog';
 import { TemplateLibraryDialog } from './template-library-dialog';
@@ -61,6 +52,8 @@ import type {
   CreationWorkflow,
   PromptTemplate,
 } from './types';
+
+const { TextArea } = Input;
 
 type BootstrapData = {
   account: { balance: number; frozenBalance: number; availableBalance: number };
@@ -87,7 +80,14 @@ type GenerationDraft = {
   count: number;
 };
 
-const darkSelectItemClassName = 'text-[#f5f5f5] focus:bg-white/10 focus:text-white data-[state=checked]:bg-white/[0.08] data-[state=checked]:text-white';
+const darkSelectClassName =
+  '[&_.ant-select-selector]:!rounded-lg [&_.ant-select-selector]:!border-[#37373b] [&_.ant-select-selector]:!bg-[#222226] [&_.ant-select-selector]:!text-[#f5f5f5] [&_.ant-select-selection-item]:!text-[#f5f5f5] [&_.ant-select-arrow]:!text-[#f5f5f5]';
+const darkSelectPopupClassName =
+  'border border-white/10 bg-[#18191d] text-[#f5f5f5] [&_.ant-select-item]:text-[#f5f5f5] [&_.ant-select-item-option-active]:!bg-white/10 [&_.ant-select-item-option-selected]:!bg-white/[0.08]';
+const iconToolbarButtonClassName =
+  'inline-flex !h-7 !w-7 !min-w-7 items-center justify-center !border-0 !bg-transparent !p-0 text-[#e5e5ea] hover:!bg-white/10 hover:!text-white';
+const secondaryToolbarButtonClassName =
+  'border-white/10 bg-[#24252b] text-[#e7e7eb] hover:!border-white/20 hover:!bg-[#303138] hover:!text-white';
 
 async function readJson(response: Response) {
   const payload = await response.json().catch(() => ({}));
@@ -225,14 +225,20 @@ function GenerationTile({
         <img src={generation.imageUrl} alt="AI 生成结果" className="h-full w-full object-contain" />
       </button>
       <div className="absolute left-1/2 top-2 flex -translate-x-1/2 items-center gap-1 rounded-lg bg-[#202126]/95 p-1.5 text-[#e5e5ea] opacity-0 shadow-xl backdrop-blur transition group-hover:opacity-100 group-focus-within:opacity-100">
-        <Button size="icon-sm" variant="secondary" asChild title="下载">
-          <a href={generation.imageUrl} download={`ai-creation-${generation.id}.png`}><Download /></a>
-        </Button>
-        <Button size="icon-sm" variant="secondary" onClick={() => onReuse(generation)} title="引用为参考图"><Copy /></Button>
-        <Button size="icon-sm" variant="secondary" onClick={() => onCompare(generation)} title="对比"><Columns2 /></Button>
-        <Button size="icon-sm" variant="secondary" onClick={() => onEdit(generation)} title="编辑"><Pencil /></Button>
-        <Button size="icon-sm" variant="secondary" onClick={() => onAttach(generation)} title="归入客户方案"><FolderInput /></Button>
-        <Button size="icon-sm" variant="secondary" className="text-[#ff8388] hover:text-[#ffaaaa]" onClick={onDelete} title="删除"><Trash2 /></Button>
+        <Button
+          type="default"
+          size="small"
+          title="下载"
+          href={generation.imageUrl}
+          download={`ai-creation-${generation.id}.png`}
+          className={iconToolbarButtonClassName}
+          icon={<Download className="size-3.5" />}
+        />
+        <Button type="default" size="small" onClick={() => onReuse(generation)} title="引用为参考图" className={iconToolbarButtonClassName} icon={<Copy className="size-3.5" />} />
+        <Button type="default" size="small" onClick={() => onCompare(generation)} title="对比" className={iconToolbarButtonClassName} icon={<Columns2 className="size-3.5" />} />
+        <Button type="default" size="small" onClick={() => onEdit(generation)} title="编辑" className={iconToolbarButtonClassName} icon={<Pencil className="size-3.5" />} />
+        <Button type="default" size="small" onClick={() => onAttach(generation)} title="归入客户方案" className={iconToolbarButtonClassName} icon={<FolderInput className="size-3.5" />} />
+        <Button type="default" size="small" className={cn(iconToolbarButtonClassName, '!text-[#ff8388] hover:!text-[#ffaaaa]')} onClick={onDelete} title="删除" icon={<Trash2 className="size-3.5" />} />
       </div>
       {generation.workflowId ? (
         <span className="absolute left-2 top-2 rounded-md bg-[#7047ff] px-2 py-1 text-[11px] font-medium text-white">已归入方案</span>
@@ -371,8 +377,17 @@ export function CreationWorkspace() {
   const hasProcessing = tasks.some((task) => task.batches.some((batch) => batch.status === 'processing' || batch.status === 'pending'));
   useEffect(() => {
     if (!hasProcessing) return;
-    const timer = window.setInterval(() => loadTasks(true), 4500);
-    return () => window.clearInterval(timer);
+    let cancelled = false;
+    let timer: number | undefined;
+    const poll = async () => {
+      await loadTasks(true);
+      if (!cancelled) timer = window.setTimeout(poll, 4500);
+    };
+    timer = window.setTimeout(poll, 4500);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [hasProcessing, loadTasks]);
 
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
@@ -764,6 +779,7 @@ export function CreationWorkspace() {
   }
 
   return (
+    <ConfigProvider theme={studioDarkAntdTheme}>
     <div className="fixed inset-0 h-screen min-h-[720px] min-w-0 overflow-x-hidden overflow-y-auto bg-[#16171b] font-sans text-[#f6f7fb] lg:min-w-[1024px] lg:overflow-hidden">
       <header className="relative z-40 flex h-[68px] min-w-0 items-center justify-between border-b border-white/[0.08] bg-[#16171b] px-3 lg:min-w-[1024px]">
         <div className="flex min-w-0 items-center gap-4">
@@ -805,7 +821,7 @@ export function CreationWorkspace() {
             <div className="px-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#77777e]" />
-                <Input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="按提示词搜索任务" className="h-8 border-white/10 bg-white/[0.06] pl-9 text-xs text-white placeholder:text-[#77777e] focus-visible:ring-[#7047ff]" />
+                <Input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} placeholder="按提示词搜索任务" className="h-8 border-white/10 bg-white/[0.06] pl-9 text-xs text-white placeholder:text-[#77777e] focus:border-[#7047ff]" />
               </div>
               <p className="py-2 text-right text-[11px] text-[#8d8d94]">已展示 {filteredTasks.length} 条</p>
             </div>
@@ -832,10 +848,47 @@ export function CreationWorkspace() {
                       <div className="truncate text-xs font-medium text-[#eeeeF2]">{task.title}</div>
                       <div className="mt-1 flex items-center gap-2 text-[11px] text-[#85858c]"><span>{formatTime(task.updatedAt)}</span>{batch ? <span className={cn(batch.status === 'failed' && 'text-red-400', batch.status === 'succeeded' && 'text-emerald-400')}>{statusLabel(batch.status)}</span> : null}</div>
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild onClick={(event) => event.stopPropagation()}><Button variant="ghost" size="icon-xs" className="text-[#8d8d94] opacity-0 group-hover:opacity-100"><MoreHorizontal /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="border-white/10 bg-[#202126] text-white"><DropdownMenuItem onSelect={() => chooseTask(task)}><RefreshCw />复用参数</DropdownMenuItem><DropdownMenuItem className="text-red-400" onSelect={() => deleteTask(task)}><Trash2 />删除</DropdownMenuItem></DropdownMenuContent>
-                    </DropdownMenu>
+                    <Dropdown
+                      trigger={['click']}
+                      menu={{
+                        items: [
+                          {
+                            key: 'reuse',
+                            label: (
+                              <span className="inline-flex items-center gap-2">
+                                <RefreshCw className="size-3.5" />
+                                复用参数
+                              </span>
+                            ),
+                            onClick: () => chooseTask(task),
+                          },
+                          {
+                            key: 'delete',
+                            danger: true,
+                            label: (
+                              <span className="inline-flex items-center gap-2">
+                                <Trash2 className="size-3.5" />
+                                删除
+                              </span>
+                            ),
+                            onClick: () => deleteTask(task),
+                          },
+                        ],
+                      }}
+                      popupRender={(menu) => (
+                        <div className="rounded-md border border-white/10 bg-[#202126] text-white shadow-xl [&_.ant-dropdown-menu]:bg-transparent [&_.ant-dropdown-menu]:shadow-none [&_.ant-dropdown-menu-item]:text-white [&_.ant-dropdown-menu-item:hover]:!bg-white/10">
+                          {menu}
+                        </div>
+                      )}
+                    >
+                      <Button
+                        type="text"
+                        size="small"
+                        className="!text-[#8d8d94] opacity-0 group-hover:opacity-100 hover:!bg-white/10 hover:!text-white"
+                        icon={<MoreHorizontal className="size-4" />}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                    </Dropdown>
                   </div>
                 );
               })}
@@ -1012,7 +1065,7 @@ export function CreationWorkspace() {
               </div>
               <div className="relative min-h-0 pt-0.5">
                 {selectedTemplate ? <div className="mb-1 flex items-center gap-2 text-[11px] text-[#9f8cff]"><PanelsTopLeft className="size-3" /><span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span><button type="button" onClick={() => setSelectedTemplate(null)} title="取消模板"><X className="size-3" /></button></div> : null}
-                <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={model?.description || '描述空间、风格、材质、光线与构图，或从提示词模板中选择'} className="scrollbar-hide h-full min-h-0 resize-none border-0 bg-transparent p-0 text-base leading-6 text-[#b3b3b3] shadow-none placeholder:text-[#77777e] focus-visible:ring-0" />
+                <TextArea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={model?.description || '描述空间、风格、材质、光线与构图，或从提示词模板中选择'} className="scrollbar-hide h-full min-h-0 resize-none !border-0 !bg-transparent p-0 text-base leading-6 !text-[#b3b3b3] !shadow-none placeholder:!text-[#77777e] focus:!shadow-none" />
               </div>
             </div>
 
@@ -1022,25 +1075,56 @@ export function CreationWorkspace() {
             </div>
 
             <div className="grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible sm:flex sm:flex-wrap lg:flex-nowrap lg:overflow-x-auto lg:overflow-y-hidden">
-              <Select value={modelProfileId} onValueChange={(value) => { setModelProfileId(value); applyModelDefaults(bootstrap.models.find((item) => item.id === value)); }}>
-                <SelectTrigger className="col-span-2 h-10 w-full shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] focus:ring-[#7047ff] sm:w-[186px]"><Bot className="size-4 text-[#7047ff]" /><SelectValue placeholder="选择模型" /></SelectTrigger>
-                <SelectContent className="border-white/10 bg-[#18191d] text-[#f5f5f5]"><SelectGroup>{bootstrap.models.map((item) => <SelectItem key={item.id} value={item.id} className={darkSelectItemClassName}>{item.name}</SelectItem>)}</SelectGroup></SelectContent>
-              </Select>
-              <Select value={String(count)} onValueChange={(value) => setCount(Number(value))}><SelectTrigger className="h-10 w-full shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] sm:w-[104px]"><Images className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white"><SelectGroup>{[1, 2, 3, 4].map((value) => <SelectItem key={value} value={String(value)} className={darkSelectItemClassName}>{value}张</SelectItem>)}</SelectGroup></SelectContent></Select>
-              {resolutionTier !== 'CUSTOM' ? <Select value={aspectRatio} onValueChange={setAspectRatio}><SelectTrigger className="h-10 w-full shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] sm:w-[128px]"><Crop className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white"><SelectGroup>{availableAspectRatios.map((item) => <SelectItem key={item} value={item} className={darkSelectItemClassName}>{item === 'auto' ? '自动比例' : item}</SelectItem>)}</SelectGroup></SelectContent></Select> : null}
-              <Select value={resolutionTier} onValueChange={(value) => {
-                const nextTier = value as typeof resolutionTier;
-                const nextRatios = model?.aspectRatiosByResolutionTier?.[nextTier] || model?.aspectRatios || [];
-                setResolutionTier(nextTier);
-                if (nextTier !== 'CUSTOM' && !nextRatios.includes(aspectRatio)) {
-                  setAspectRatio(nextRatios.includes(model?.defaults.aspectRatio || '') ? model?.defaults.aspectRatio || nextRatios[0] : nextRatios[0]);
-                }
-              }}><SelectTrigger className="h-10 w-full shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] sm:w-[116px]"><Maximize2 className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white"><SelectGroup>{(model?.resolutionTiers || []).map((item) => <SelectItem key={item} value={item} className={darkSelectItemClassName}>{item === 'CUSTOM' ? '自定义' : item}</SelectItem>)}</SelectGroup></SelectContent></Select>
+              <Select
+                value={modelProfileId || undefined}
+                placeholder="选择模型"
+                onChange={(value) => {
+                  setModelProfileId(value);
+                  applyModelDefaults(bootstrap.models.find((item) => item.id === value));
+                }}
+                className={cn(darkSelectClassName, 'col-span-2 h-10 w-full shrink-0 sm:w-[186px] [&_.ant-select-selector]:!h-10')}
+                popupClassName={darkSelectPopupClassName}
+                options={bootstrap.models.map((item) => ({ value: item.id, label: item.name }))}
+                suffixIcon={<Bot className="size-4 text-[#7047ff]" />}
+              />
+              <Select
+                value={String(count)}
+                onChange={(value) => setCount(Number(value))}
+                className={cn(darkSelectClassName, 'h-10 w-full shrink-0 sm:w-[104px] [&_.ant-select-selector]:!h-10')}
+                popupClassName={darkSelectPopupClassName}
+                options={[1, 2, 3, 4].map((value) => ({ value: String(value), label: `${value}张` }))}
+                suffixIcon={<Images className="size-4 text-[#f5f5f5]" />}
+              />
+              {resolutionTier !== 'CUSTOM' ? (
+                <Select
+                  value={aspectRatio}
+                  onChange={setAspectRatio}
+                  className={cn(darkSelectClassName, 'h-10 w-full shrink-0 sm:w-[128px] [&_.ant-select-selector]:!h-10')}
+                  popupClassName={darkSelectPopupClassName}
+                  options={availableAspectRatios.map((item) => ({ value: item, label: item === 'auto' ? '自动比例' : item }))}
+                  suffixIcon={<Crop className="size-4 text-[#f5f5f5]" />}
+                />
+              ) : null}
+              <Select
+                value={resolutionTier}
+                onChange={(value) => {
+                  const nextTier = value as typeof resolutionTier;
+                  const nextRatios = model?.aspectRatiosByResolutionTier?.[nextTier] || model?.aspectRatios || [];
+                  setResolutionTier(nextTier);
+                  if (nextTier !== 'CUSTOM' && !nextRatios.includes(aspectRatio)) {
+                    setAspectRatio(nextRatios.includes(model?.defaults.aspectRatio || '') ? model?.defaults.aspectRatio || nextRatios[0] : nextRatios[0]);
+                  }
+                }}
+                className={cn(darkSelectClassName, 'h-10 w-full shrink-0 sm:w-[116px] [&_.ant-select-selector]:!h-10')}
+                popupClassName={darkSelectPopupClassName}
+                options={(model?.resolutionTiers || []).map((item) => ({ value: item, label: item === 'CUSTOM' ? '自定义' : item }))}
+                suffixIcon={<Maximize2 className="size-4 text-[#f5f5f5]" />}
+              />
               {resolutionTier === 'CUSTOM' && model?.supportsCustomSize ? (
                 <div className="col-span-2 flex h-10 w-full shrink-0 items-center justify-center gap-1 rounded-lg border border-[#37373b] bg-[#222226] px-2 sm:w-auto">
-                  <Input aria-label="自定义宽度" title="自定义宽度（16 的倍数）" type="number" min={16} max={3840} step={16} value={customWidth} onChange={(event) => setCustomWidth(Number(event.target.value))} className="h-8 w-[76px] border-0 bg-transparent px-1 text-center text-sm text-white shadow-none focus-visible:ring-0" />
+                  <Input aria-label="自定义宽度" title="自定义宽度（16 的倍数）" type="number" min={16} max={3840} step={16} value={customWidth} onChange={(event) => setCustomWidth(Number(event.target.value))} className="h-8 w-[76px] !border-0 !bg-transparent px-1 text-center text-sm !text-white !shadow-none focus:!shadow-none" />
                   <span className="text-xs text-[#77777e]">x</span>
-                  <Input aria-label="自定义高度" title="自定义高度（16 的倍数）" type="number" min={16} max={3840} step={16} value={customHeight} onChange={(event) => setCustomHeight(Number(event.target.value))} className="h-8 w-[76px] border-0 bg-transparent px-1 text-center text-sm text-white shadow-none focus-visible:ring-0" />
+                  <Input aria-label="自定义高度" title="自定义高度（16 的倍数）" type="number" min={16} max={3840} step={16} value={customHeight} onChange={(event) => setCustomHeight(Number(event.target.value))} className="h-8 w-[76px] !border-0 !bg-transparent px-1 text-center text-sm !text-white !shadow-none focus:!shadow-none" />
                   <span className="text-xs text-[#77777e]">px</span>
                 </div>
               ) : null}
@@ -1061,133 +1145,242 @@ export function CreationWorkspace() {
 
       <TemplateLibraryDialog open={templateOpen} onOpenChange={setTemplateOpen} selectedTemplateId={selectedTemplate?.id} onSelect={applyTemplate} />
 
-      <Dialog open={promptExpanded} onOpenChange={setPromptExpanded}>
-        <DialogContent className="max-w-3xl border-white/15 bg-[#1b1c20] text-white sm:rounded-xl">
-          <DialogHeader><DialogTitle className="text-base">编辑提示词</DialogTitle><DialogDescription className="sr-only">编辑本次生成使用的正向和负向提示词。</DialogDescription></DialogHeader>
-          <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="描述空间、风格、材质、光线与构图" className="min-h-64 resize-none border-white/10 bg-[#222328] leading-6 text-white placeholder:text-[#77777e]" />
-          <div><label className="mb-2 block text-xs text-[#a7a7ad]">不希望出现的内容（可选）</label><Textarea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} className="min-h-24 resize-none border-white/10 bg-[#222328] text-white" /></div>
-          <div className="flex justify-end gap-2"><Button variant="outline" className="border-white/15 bg-transparent text-white hover:bg-white/10" onClick={() => { setPrompt(''); setNegativePrompt(''); }}>清空</Button><Button className="bg-[#7047ff] text-white hover:bg-[#6034ee]" onClick={() => setPromptExpanded(false)}>完成</Button></div>
-        </DialogContent>
-      </Dialog>
+      <Modal
+        open={promptExpanded}
+        onCancel={() => setPromptExpanded(false)}
+        footer={null}
+        title={<span className="text-base text-white">编辑提示词</span>}
+        width="48rem"
+        destroyOnHidden
+        classNames={{
+          content: 'border border-white/15 bg-[#1b1c20] text-white sm:rounded-xl',
+          header: 'border-0 bg-transparent',
+          body: 'pt-2',
+        }}
+      >
+        <span className="sr-only">编辑本次生成使用的正向和负向提示词。</span>
+        <TextArea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="描述空间、风格、材质、光线与构图" className="min-h-64 resize-none border-white/10 bg-[#222328] leading-6 !text-white placeholder:!text-[#77777e]" />
+        <div className="mt-4">
+          <label className="mb-2 block text-xs text-[#a7a7ad]">不希望出现的内容（可选）</label>
+          <TextArea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} className="min-h-24 resize-none border-white/10 bg-[#222328] !text-white" />
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button className="border-white/15 bg-transparent text-white hover:!border-white/25 hover:!bg-white/10 hover:!text-white" onClick={() => { setPrompt(''); setNegativePrompt(''); }}>清空</Button>
+          <Button type="primary" className="!bg-[#7047ff] !text-white hover:!bg-[#6034ee]" onClick={() => setPromptExpanded(false)}>完成</Button>
+        </div>
+      </Modal>
 
-      <Dialog open={Boolean(attachGeneration)} onOpenChange={(open) => !open && setAttachGeneration(null)}>
-        <DialogContent className="max-w-md border-white/15 bg-[#1b1c20] text-white sm:rounded-xl">
-          <DialogHeader><DialogTitle className="text-base">归入客户方案</DialogTitle><DialogDescription className="sr-only">选择要归档生成结果的客户方案。</DialogDescription></DialogHeader>
-          <Select value={attachWorkflowId} onValueChange={setAttachWorkflowId}>
-            <SelectTrigger className="w-full border-white/10 bg-[#222328]"><SelectValue placeholder="选择客户方案" /></SelectTrigger>
-            <SelectContent className="border-white/10 bg-[#18191d] text-white">
-              {bootstrap.workflows.map((workflow) => <SelectItem key={workflow.id} value={workflow.id} className={darkSelectItemClassName}>{workflow.leadName ? `${workflow.leadName} · ` : ''}{workflow.title}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" className="border-white/15 bg-transparent text-white hover:bg-white/10" onClick={() => setAttachGeneration(null)}>取消</Button>
-            <Button className="bg-[#7047ff] text-white hover:bg-[#6034ee]" disabled={!attachWorkflowId} onClick={attachToWorkflow}><Check />确认归入</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <Modal
+        open={Boolean(attachGeneration)}
+        onCancel={() => setAttachGeneration(null)}
+        footer={null}
+        title={<span className="text-base text-white">归入客户方案</span>}
+        width={448}
+        destroyOnHidden
+        classNames={{
+          content: 'border border-white/15 bg-[#1b1c20] text-white sm:rounded-xl',
+          header: 'border-0 bg-transparent',
+          body: 'pt-2',
+        }}
+      >
+        <span className="sr-only">选择要归档生成结果的客户方案。</span>
+        <Select
+          value={attachWorkflowId || undefined}
+          placeholder="选择客户方案"
+          onChange={setAttachWorkflowId}
+          className={cn(darkSelectClassName, 'w-full [&_.ant-select-selector]:!border-white/10 [&_.ant-select-selector]:!bg-[#222328]')}
+          popupClassName={darkSelectPopupClassName}
+          options={bootstrap.workflows.map((workflow) => ({
+            value: workflow.id,
+            label: `${workflow.leadName ? `${workflow.leadName} · ` : ''}${workflow.title}`,
+          }))}
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button className="border-white/15 bg-transparent text-white hover:!border-white/25 hover:!bg-white/10 hover:!text-white" onClick={() => setAttachGeneration(null)}>取消</Button>
+          <Button type="primary" className="!bg-[#7047ff] !text-white hover:!bg-[#6034ee]" disabled={!attachWorkflowId} onClick={attachToWorkflow} icon={<Check className="size-4" />}>确认归入</Button>
+        </div>
+      </Modal>
 
-      <Dialog open={Boolean(previewGeneration)} onOpenChange={(open) => !open && setPreviewGeneration(null)}>
-        <DialogContent className={cn('border-white/10 bg-[#111216] p-3 sm:rounded-xl', previewFullscreen ? 'h-screen w-screen max-w-none' : 'h-[90vh] max-w-[92vw]')}>
-          <DialogHeader className="sr-only"><DialogTitle>生成结果预览</DialogTitle><DialogDescription>查看、缩放、旋转或下载生成结果。</DialogDescription></DialogHeader>
-          <div className="relative flex h-full items-center justify-center overflow-hidden">
-            {previewGeneration?.imageUrl ? <img src={previewGeneration.imageUrl} alt="生成结果大图" className="max-h-full max-w-full object-contain transition-transform" style={{ transform: `scale(${previewZoom}) rotate(${previewRotation}deg)` }} /> : null}
-            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-white/10 bg-black/70 p-1.5 backdrop-blur">
-              <Button size="icon-sm" variant="secondary" title="放大图片" onClick={() => setPreviewZoom((value) => Math.min(3, value + 0.2))}><Plus /></Button>
-              <Button size="icon-sm" variant="secondary" title="缩小图片" onClick={() => setPreviewZoom((value) => Math.max(0.4, value - 0.2))}><Minus /></Button>
-              <Button size="sm" variant="secondary" title="恢复原始比例" onClick={() => { setPreviewZoom(1); setPreviewRotation(0); }}>1:1</Button>
-              <Button size="icon-sm" variant="secondary" title="顺时针旋转图片" onClick={() => setPreviewRotation((value) => value + 90)}><RotateCw /></Button>
-              <Button size="icon-sm" variant="secondary" title="全屏预览" onClick={() => setPreviewFullscreen((value) => !value)}><Maximize2 /></Button>
-              {previewGeneration?.imageUrl ? <Button size="icon-sm" variant="secondary" asChild title="下载图片"><a href={previewGeneration.imageUrl} download={`ai-creation-${previewGeneration.id}.png`}><Download /></a></Button> : null}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={previewReferenceIndex !== null} onOpenChange={(open) => !open && setPreviewReferenceIndex(null)}>
-        <DialogContent className={cn('grid grid-rows-[auto_minmax(0,1fr)_auto] gap-3 border-white/10 bg-[#111216] p-4 text-white sm:rounded-xl', previewFullscreen ? 'h-screen w-screen max-w-none' : 'h-[90vh] max-w-[92vw]')}>
-          <DialogHeader>
-            <DialogTitle className="text-base">图片预览</DialogTitle>
-            <DialogDescription className="sr-only">查看、切换、缩放、旋转或下载已上传的参考图片。</DialogDescription>
-          </DialogHeader>
-          <div className="relative min-h-0 overflow-hidden rounded-lg bg-black/25">
-            {previewReference ? <img src={previewReference.previewUrl} alt={`参考图 ${(previewReferenceIndex || 0) + 1} 大图`} className="h-full w-full object-contain transition-transform" style={{ transform: `scale(${previewZoom}) rotate(${previewRotation}deg)` }} /> : null}
-            {assets.length > 1 ? (
-              <>
-                <Button size="icon-sm" variant="secondary" className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80" title="查看上一张图片" onClick={() => { setPreviewReferenceIndex((current) => current === null ? 0 : (current - 1 + assets.length) % assets.length); setPreviewZoom(1); setPreviewRotation(0); }}><ChevronRight className="size-4 rotate-180" /></Button>
-                <Button size="icon-sm" variant="secondary" className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80" title="查看下一张图片" onClick={() => { setPreviewReferenceIndex((current) => current === null ? 0 : (current + 1) % assets.length); setPreviewZoom(1); setPreviewRotation(0); }}><ChevronRight className="size-4" /></Button>
-              </>
+      <Modal
+        open={Boolean(previewGeneration)}
+        onCancel={() => setPreviewGeneration(null)}
+        footer={null}
+        title={null}
+        closable
+        destroyOnHidden
+        width={previewFullscreen ? '100vw' : '92vw'}
+        centered={!previewFullscreen}
+        classNames={{
+          content: cn('border border-white/10 bg-[#111216] sm:rounded-xl', previewFullscreen && '!rounded-none'),
+          body: 'p-0',
+        }}
+        styles={{
+          content: {
+            height: previewFullscreen ? '100vh' : '90vh',
+            maxWidth: previewFullscreen ? '100vw' : '92vw',
+            padding: 12,
+            ...(previewFullscreen ? { top: 0, margin: 0, maxWidth: '100vw' } : {}),
+          },
+          body: { height: '100%', padding: 0 },
+        }}
+      >
+        <span className="sr-only">生成结果预览</span>
+        <span className="sr-only">查看、缩放、旋转或下载生成结果。</span>
+        <div className="relative flex h-full items-center justify-center overflow-hidden">
+          {previewGeneration?.imageUrl ? <img src={previewGeneration.imageUrl} alt="生成结果大图" className="max-h-full max-w-full object-contain transition-transform" style={{ transform: `scale(${previewZoom}) rotate(${previewRotation}deg)` }} /> : null}
+          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-white/10 bg-black/70 p-1.5 backdrop-blur">
+            <Button type="default" size="small" title="放大图片" className={iconToolbarButtonClassName} onClick={() => setPreviewZoom((value) => Math.min(3, value + 0.2))} icon={<Plus className="size-3.5" />} />
+            <Button type="default" size="small" title="缩小图片" className={iconToolbarButtonClassName} onClick={() => setPreviewZoom((value) => Math.max(0.4, value - 0.2))} icon={<Minus className="size-3.5" />} />
+            <Button type="default" size="small" title="恢复原始比例" className={secondaryToolbarButtonClassName} onClick={() => { setPreviewZoom(1); setPreviewRotation(0); }}>1:1</Button>
+            <Button type="default" size="small" title="顺时针旋转图片" className={iconToolbarButtonClassName} onClick={() => setPreviewRotation((value) => value + 90)} icon={<RotateCw className="size-3.5" />} />
+            <Button type="default" size="small" title="全屏预览" className={iconToolbarButtonClassName} onClick={() => setPreviewFullscreen((value) => !value)} icon={<Maximize2 className="size-3.5" />} />
+            {previewGeneration?.imageUrl ? (
+              <Button type="default" size="small" title="下载图片" href={previewGeneration.imageUrl} download={`ai-creation-${previewGeneration.id}.png`} className={iconToolbarButtonClassName} icon={<Download className="size-3.5" />} />
             ) : null}
-            <div className="absolute right-3 top-3 flex items-center gap-1 rounded-lg border border-white/10 bg-black/70 p-1.5 backdrop-blur">
-              <Button size="icon-sm" variant="secondary" title="放大图片" onClick={() => setPreviewZoom((value) => Math.min(3, value + 0.2))}><Plus /></Button>
-              <Button size="icon-sm" variant="secondary" title="缩小图片" onClick={() => setPreviewZoom((value) => Math.max(0.4, value - 0.2))}><Minus /></Button>
-              <Button size="sm" variant="secondary" title="恢复原始比例" onClick={() => { setPreviewZoom(1); setPreviewRotation(0); }}>1:1</Button>
-              <Button size="icon-sm" variant="secondary" title="顺时针旋转图片" onClick={() => setPreviewRotation((value) => value + 90)}><RotateCw /></Button>
-              <Button size="icon-sm" variant="secondary" title="全屏预览" onClick={() => setPreviewFullscreen((value) => !value)}><Maximize2 /></Button>
-              {previewReference ? <Button size="icon-sm" variant="secondary" asChild title="下载图片"><a href={previewReference.previewUrl} download={`ai-reference-${previewReference.id}.png`}><Download /></a></Button> : null}
-            </div>
           </div>
-          {assets.length > 1 ? <div aria-label="参考图缩略图列表" className="flex justify-center gap-3 overflow-x-auto pb-1">
-            {assets.map((asset, index) => <button key={asset.id} type="button" title={`查看第 ${index + 1} 张参考图`} aria-label={`查看第 ${index + 1} 张参考图`} onClick={() => { setPreviewReferenceIndex(index); setActiveReferenceIndex(index); setPreviewZoom(1); setPreviewRotation(0); }} className={cn('relative h-20 w-16 shrink-0 overflow-hidden rounded-md border-2 bg-[#24252b] transition', previewReferenceIndex === index ? 'border-[#8b72ff] shadow-[0_0_0_2px_rgba(112,71,255,0.28)]' : 'border-white/15 hover:border-white/40')}><img src={asset.previewUrl} alt={`缩略图 ${index + 1}`} className="h-full w-full object-cover" /><span className="absolute left-1 top-1 rounded bg-black/65 px-1 text-[10px] font-semibold text-white">{index + 1}</span></button>)}
-          </div> : null}
-        </DialogContent>
-      </Dialog>
+        </div>
+      </Modal>
 
-      <Dialog open={Boolean(compareGeneration)} onOpenChange={(open) => { if (!open) { setCompareGeneration(null); setCompareFullscreen(false); } }}>
-        <DialogContent hideCloseButton className={cn('grid-rows-[auto_auto_minmax(0,1fr)] border-white/10 bg-[#1b1c20] p-5 text-white sm:rounded-2xl', compareFullscreen ? '!inset-0 !h-[100dvh] !w-[100dvw] !max-w-none !translate-x-0 !translate-y-0 !rounded-none !border-0 !p-4 !shadow-none' : 'max-w-6xl')}>
-          <DialogHeader><DialogTitle className="text-base">方案对比</DialogTitle><DialogDescription className="sr-only">比较参考图与生成结果并调整对比方式。</DialogDescription></DialogHeader>
-          <button type="button" aria-label="关闭方案对比" title="关闭方案对比" onClick={() => { setCompareGeneration(null); setCompareFullscreen(false); }} className="absolute right-4 top-4 z-20 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"><X className="size-5" /></button>
-          {compareGeneration?.imageUrl && assets[0]?.previewUrl ? (() => {
-            const generatedUrl = compareGeneration.imageUrl;
-            const referenceUrl = assets[0].previewUrl;
-            const imageA = compareSwapped ? generatedUrl : referenceUrl;
-            const imageB = compareSwapped ? referenceUrl : generatedUrl;
-            const vertical = compareLayout === 'vertical';
-            return <>
-              <div className="flex flex-wrap items-center gap-2 [&>button]:border [&>button]:border-white/10 [&>button]:bg-[#24252b] [&>button]:text-[#e7e7eb] [&>button:hover]:bg-[#303138]">
-                <Button size="sm" variant="secondary" onClick={() => setCompareSwapped((value) => !value)}>交换</Button>
-                <Button size="sm" variant={compareMode === 'reference' ? 'default' : 'secondary'} className={cn(compareMode === 'reference' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('reference')}>只看 A 图</Button>
-                <Button size="sm" variant={compareMode === 'generated' ? 'default' : 'secondary'} className={cn(compareMode === 'generated' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('generated')}>只看 B 图</Button>
-                <Button size="sm" variant={compareMode === 'split' ? 'default' : 'secondary'} className={cn(compareMode === 'split' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('split')}><Columns2 />分割对比</Button>
-                <Button size="sm" variant={compareMode === 'sync' ? 'default' : 'secondary'} className={cn(compareMode === 'sync' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('sync')}><Images />同步对比</Button>
-                <span className="h-6 w-px bg-white/10" />
-                <Button size="sm" variant={compareLayout === 'horizontal' ? 'default' : 'secondary'} className={cn(compareLayout === 'horizontal' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareLayout('horizontal')}>左右</Button>
-                <Button size="sm" variant={compareLayout === 'vertical' ? 'default' : 'secondary'} className={cn(compareLayout === 'vertical' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareLayout('vertical')}>上下</Button>
-                <Button size="sm" variant="secondary" onClick={() => { setCompareSwapped(false); setCompareMode('split'); setCompareLayout('horizontal'); setSplitPosition(50); }}>居中</Button>
-                <Button size="sm" variant="secondary" onClick={() => setCompareFullscreen((value) => !value)}><Maximize2 />全屏</Button>
-                <Button size="icon-sm" variant="secondary" title="下载对比图" onClick={() => { void downloadComparison(); }}><Download /></Button>
-              </div>
-              <div className={cn('flex min-h-0 items-center justify-center overflow-auto rounded-xl border border-white/10 bg-[#111216] p-3', compareFullscreen ? 'h-full' : 'mt-4 h-[min(62vh,620px)]')}>
-                {compareMode === 'reference' ? <img src={imageA} alt="方案 A" className="max-h-full max-w-full object-contain" /> : null}
-                {compareMode === 'generated' ? <img src={imageB} alt="方案 B" className="max-h-full max-w-full object-contain" /> : null}
-                {compareMode === 'split' ? <div ref={compareViewportRef} className="relative h-full w-full overflow-hidden">
-                  <img src={imageB} alt="方案 B" className="absolute inset-0 h-full w-full object-contain" />
-                  <img src={imageA} alt="方案 A" className="absolute inset-0 h-full w-full object-contain" style={{ clipPath: vertical ? `inset(0 0 ${100 - splitPosition}% 0)` : `inset(0 ${100 - splitPosition}% 0 0)` }} />
-                  <span className="absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white">A</span>
-                  <span className="absolute bottom-2 right-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white">B</span>
-                  <button
-                    type="button"
-                    aria-label="拖动分割线"
-                    title="拖动分割线"
-                    className={cn('absolute z-10 touch-none', vertical ? 'inset-x-0 h-8 -translate-y-1/2 cursor-row-resize' : 'inset-y-0 w-8 -translate-x-1/2 cursor-col-resize')}
-                    style={vertical ? { top: `${splitPosition}%` } : { left: `${splitPosition}%` }}
-                    onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); moveSplitDivider(event); }}
-                    onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) moveSplitDivider(event); }}
-                    onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
-                  >
-                    <span className={cn('absolute left-1/2 top-1/2 flex items-center justify-center rounded-full border border-white/30 bg-[#2c2d32] text-white shadow-lg', vertical ? 'h-5 w-9 -translate-x-1/2 -translate-y-1/2' : 'h-9 w-5 -translate-x-1/2 -translate-y-1/2')}>
-                      {vertical ? <GripHorizontal className="size-3" /> : <GripVertical className="size-3" />}
-                    </span>
-                  </button>
-                  <span aria-hidden className={cn('pointer-events-none absolute z-[5] bg-white shadow-[0_0_6px_rgba(0,0,0,0.65)]', vertical ? 'inset-x-0 h-px -translate-y-1/2' : 'inset-y-0 w-px -translate-x-1/2')} style={vertical ? { top: `${splitPosition}%` } : { left: `${splitPosition}%` }} />
-                </div> : null}
-                {compareMode === 'sync' ? <div className={cn('flex h-full w-full gap-3', vertical ? 'flex-col' : 'flex-row')}><img src={imageA} alt="方案 A" className="min-h-0 min-w-0 flex-1 object-contain" /><img src={imageB} alt="方案 B" className="min-h-0 min-w-0 flex-1 object-contain" /></div> : null}
-              </div>
-            </>;
-          })() : <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-white/15 text-sm text-[#a3a3aa]">引用一张参考图后，即可进行方案对比。</div>}
-        </DialogContent>
-      </Dialog>
+      <Modal
+        open={previewReferenceIndex !== null}
+        onCancel={() => setPreviewReferenceIndex(null)}
+        footer={null}
+        title={<span className="text-base text-white">图片预览</span>}
+        destroyOnHidden
+        width={previewFullscreen ? '100vw' : '92vw'}
+        centered={!previewFullscreen}
+        classNames={{
+          content: cn('border border-white/10 bg-[#111216] text-white sm:rounded-xl', previewFullscreen && '!rounded-none'),
+          header: 'border-0 bg-transparent',
+          body: 'pt-2',
+        }}
+        styles={{
+          content: {
+            height: previewFullscreen ? '100vh' : '90vh',
+            maxWidth: previewFullscreen ? '100vw' : '92vw',
+            padding: 16,
+            display: 'grid',
+            gridTemplateRows: 'auto minmax(0, 1fr) auto',
+            ...(previewFullscreen ? { top: 0, margin: 0 } : {}),
+          },
+        }}
+      >
+        <span className="sr-only">查看、切换、缩放、旋转或下载已上传的参考图片。</span>
+        <div className="relative min-h-0 overflow-hidden rounded-lg bg-black/25">
+          {previewReference ? <img src={previewReference.previewUrl} alt={`参考图 ${(previewReferenceIndex || 0) + 1} 大图`} className="h-full w-full object-contain transition-transform" style={{ transform: `scale(${previewZoom}) rotate(${previewRotation}deg)` }} /> : null}
+          {assets.length > 1 ? (
+            <>
+              <Button type="default" size="small" className={cn(iconToolbarButtonClassName, 'absolute left-2 top-1/2 -translate-y-1/2 !bg-black/60 hover:!bg-black/80')} title="查看上一张图片" onClick={() => { setPreviewReferenceIndex((current) => current === null ? 0 : (current - 1 + assets.length) % assets.length); setPreviewZoom(1); setPreviewRotation(0); }} icon={<ChevronRight className="size-4 rotate-180" />} />
+              <Button type="default" size="small" className={cn(iconToolbarButtonClassName, 'absolute right-2 top-1/2 -translate-y-1/2 !bg-black/60 hover:!bg-black/80')} title="查看下一张图片" onClick={() => { setPreviewReferenceIndex((current) => current === null ? 0 : (current + 1) % assets.length); setPreviewZoom(1); setPreviewRotation(0); }} icon={<ChevronRight className="size-4" />} />
+            </>
+          ) : null}
+          <div className="absolute right-3 top-3 flex items-center gap-1 rounded-lg border border-white/10 bg-black/70 p-1.5 backdrop-blur">
+            <Button type="default" size="small" title="放大图片" className={iconToolbarButtonClassName} onClick={() => setPreviewZoom((value) => Math.min(3, value + 0.2))} icon={<Plus className="size-3.5" />} />
+            <Button type="default" size="small" title="缩小图片" className={iconToolbarButtonClassName} onClick={() => setPreviewZoom((value) => Math.max(0.4, value - 0.2))} icon={<Minus className="size-3.5" />} />
+            <Button type="default" size="small" title="恢复原始比例" className={secondaryToolbarButtonClassName} onClick={() => { setPreviewZoom(1); setPreviewRotation(0); }}>1:1</Button>
+            <Button type="default" size="small" title="顺时针旋转图片" className={iconToolbarButtonClassName} onClick={() => setPreviewRotation((value) => value + 90)} icon={<RotateCw className="size-3.5" />} />
+            <Button type="default" size="small" title="全屏预览" className={iconToolbarButtonClassName} onClick={() => setPreviewFullscreen((value) => !value)} icon={<Maximize2 className="size-3.5" />} />
+            {previewReference ? (
+              <Button type="default" size="small" title="下载图片" href={previewReference.previewUrl} download={`ai-reference-${previewReference.id}.png`} className={iconToolbarButtonClassName} icon={<Download className="size-3.5" />} />
+            ) : null}
+          </div>
+        </div>
+        {assets.length > 1 ? (
+          <div aria-label="参考图缩略图列表" className="mt-3 flex justify-center gap-3 overflow-x-auto pb-1">
+            {assets.map((asset, index) => (
+              <button
+                key={asset.id}
+                type="button"
+                title={`查看第 ${index + 1} 张参考图`}
+                aria-label={`查看第 ${index + 1} 张参考图`}
+                onClick={() => { setPreviewReferenceIndex(index); setActiveReferenceIndex(index); setPreviewZoom(1); setPreviewRotation(0); }}
+                className={cn('relative h-20 w-16 shrink-0 overflow-hidden rounded-md border-2 bg-[#24252b] transition', previewReferenceIndex === index ? 'border-[#8b72ff] shadow-[0_0_0_2px_rgba(112,71,255,0.28)]' : 'border-white/15 hover:border-white/40')}
+              >
+                <img src={asset.previewUrl} alt={`缩略图 ${index + 1}`} className="h-full w-full object-cover" />
+                <span className="absolute left-1 top-1 rounded bg-black/65 px-1 text-[10px] font-semibold text-white">{index + 1}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(compareGeneration)}
+        onCancel={() => { setCompareGeneration(null); setCompareFullscreen(false); }}
+        footer={null}
+        closable={false}
+        title={<span className="text-base text-white">方案对比</span>}
+        destroyOnHidden
+        width={compareFullscreen ? '100vw' : '72rem'}
+        centered={!compareFullscreen}
+        classNames={{
+          content: cn('border border-white/10 bg-[#1b1c20] text-white sm:rounded-2xl', compareFullscreen && '!rounded-none !border-0 !shadow-none'),
+          header: 'border-0 bg-transparent',
+          body: 'pt-2',
+        }}
+        styles={{
+          content: {
+            padding: compareFullscreen ? 16 : 20,
+            ...(compareFullscreen
+              ? { top: 0, margin: 0, height: '100dvh', maxWidth: '100dvw', width: '100dvw' }
+              : {}),
+          },
+        }}
+      >
+        <span className="sr-only">比较参考图与生成结果并调整对比方式。</span>
+        <button type="button" aria-label="关闭方案对比" title="关闭方案对比" onClick={() => { setCompareGeneration(null); setCompareFullscreen(false); }} className="absolute right-4 top-4 z-20 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"><X className="size-5" /></button>
+        {compareGeneration?.imageUrl && assets[0]?.previewUrl ? (() => {
+          const generatedUrl = compareGeneration.imageUrl;
+          const referenceUrl = assets[0].previewUrl;
+          const imageA = compareSwapped ? generatedUrl : referenceUrl;
+          const imageB = compareSwapped ? referenceUrl : generatedUrl;
+          const vertical = compareLayout === 'vertical';
+          return <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="small" className={secondaryToolbarButtonClassName} onClick={() => setCompareSwapped((value) => !value)}>交换</Button>
+              <Button size="small" className={cn(secondaryToolbarButtonClassName, compareMode === 'reference' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('reference')}>只看 A 图</Button>
+              <Button size="small" className={cn(secondaryToolbarButtonClassName, compareMode === 'generated' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('generated')}>只看 B 图</Button>
+              <Button size="small" className={cn(secondaryToolbarButtonClassName, compareMode === 'split' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('split')} icon={<Columns2 className="size-3.5" />}>分割对比</Button>
+              <Button size="small" className={cn(secondaryToolbarButtonClassName, compareMode === 'sync' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('sync')} icon={<Images className="size-3.5" />}>同步对比</Button>
+              <span className="h-6 w-px bg-white/10" />
+              <Button size="small" className={cn(secondaryToolbarButtonClassName, compareLayout === 'horizontal' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareLayout('horizontal')}>左右</Button>
+              <Button size="small" className={cn(secondaryToolbarButtonClassName, compareLayout === 'vertical' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareLayout('vertical')}>上下</Button>
+              <Button size="small" className={secondaryToolbarButtonClassName} onClick={() => { setCompareSwapped(false); setCompareMode('split'); setCompareLayout('horizontal'); setSplitPosition(50); }}>居中</Button>
+              <Button size="small" className={secondaryToolbarButtonClassName} onClick={() => setCompareFullscreen((value) => !value)} icon={<Maximize2 className="size-3.5" />}>全屏</Button>
+              <Button size="small" className={iconToolbarButtonClassName} title="下载对比图" onClick={() => { void downloadComparison(); }} icon={<Download className="size-3.5" />} />
+            </div>
+            <div className={cn('flex min-h-0 items-center justify-center overflow-auto rounded-xl border border-white/10 bg-[#111216] p-3', compareFullscreen ? 'mt-3 h-full' : 'mt-4 h-[min(62vh,620px)]')}>
+              {compareMode === 'reference' ? <img src={imageA} alt="方案 A" className="max-h-full max-w-full object-contain" /> : null}
+              {compareMode === 'generated' ? <img src={imageB} alt="方案 B" className="max-h-full max-w-full object-contain" /> : null}
+              {compareMode === 'split' ? <div ref={compareViewportRef} className="relative h-full w-full overflow-hidden">
+                <img src={imageB} alt="方案 B" className="absolute inset-0 h-full w-full object-contain" />
+                <img src={imageA} alt="方案 A" className="absolute inset-0 h-full w-full object-contain" style={{ clipPath: vertical ? `inset(0 0 ${100 - splitPosition}% 0)` : `inset(0 ${100 - splitPosition}% 0 0)` }} />
+                <span className="absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white">A</span>
+                <span className="absolute bottom-2 right-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white">B</span>
+                <button
+                  type="button"
+                  aria-label="拖动分割线"
+                  title="拖动分割线"
+                  className={cn('absolute z-10 touch-none', vertical ? 'inset-x-0 h-8 -translate-y-1/2 cursor-row-resize' : 'inset-y-0 w-8 -translate-x-1/2 cursor-col-resize')}
+                  style={vertical ? { top: `${splitPosition}%` } : { left: `${splitPosition}%` }}
+                  onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); moveSplitDivider(event); }}
+                  onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) moveSplitDivider(event); }}
+                  onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
+                >
+                  <span className={cn('absolute left-1/2 top-1/2 flex items-center justify-center rounded-full border border-white/30 bg-[#2c2d32] text-white shadow-lg', vertical ? 'h-5 w-9 -translate-x-1/2 -translate-y-1/2' : 'h-9 w-5 -translate-x-1/2 -translate-y-1/2')}>
+                    {vertical ? <GripHorizontal className="size-3" /> : <GripVertical className="size-3" />}
+                  </span>
+                </button>
+                <span aria-hidden className={cn('pointer-events-none absolute z-[5] bg-white shadow-[0_0_6px_rgba(0,0,0,0.65)]', vertical ? 'inset-x-0 h-px -translate-y-1/2' : 'inset-y-0 w-px -translate-x-1/2')} style={vertical ? { top: `${splitPosition}%` } : { left: `${splitPosition}%` }} />
+              </div> : null}
+              {compareMode === 'sync' ? <div className={cn('flex h-full w-full gap-3', vertical ? 'flex-col' : 'flex-row')}><img src={imageA} alt="方案 A" className="min-h-0 min-w-0 flex-1 object-contain" /><img src={imageB} alt="方案 B" className="min-h-0 min-w-0 flex-1 object-contain" /></div> : null}
+            </div>
+          </>;
+        })() : <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-white/15 text-sm text-[#a3a3aa]">引用一张参考图后，即可进行方案对比。</div>}
+      </Modal>
 
       <ImageEditorDialog imageUrl={editorGeneration?.imageUrl} open={Boolean(editorGeneration)} onOpenChange={(open) => !open && setEditorGeneration(null)} onUse={useAnnotatedImage} />
     </div>
+    </ConfigProvider>
   );
 }

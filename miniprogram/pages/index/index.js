@@ -2,7 +2,7 @@ var util = require('../../utils/util.js');
 const api = require('../../utils/api.js');
 const templateUtils = require('../../utils/templates.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
-const { openAIDesignTab } = require('../../utils/aiDesignNavigation.js');
+const { openAIDesignEntry } = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign } = require('../../utils/aiDesignAccess.js');
 const { roleForIdentity } = require('../../utils/identity-navigation.js');
 
@@ -132,8 +132,6 @@ Page({
     homeTemplates: [],
     homeDashboard: null,
     activeProjectTitle: '当前量房项目',
-    hasPreciseLocation: false,
-    locationFailed: false,
     bleAutoConnecting: false,
     roleWorkbenchRole: '',
   },
@@ -165,7 +163,7 @@ Page({
       openid: app.globalData.openid || '',
       isStaff: (userInfo && userInfo.role === 'staff'),
       canUseAIDesign: canAccessAIDesign(userInfo),
-      currentCity: this.data.hasPreciseLocation ? this.data.currentCity : this.deriveCurrentCity(userInfo),
+      currentCity: this.deriveCurrentCity(userInfo) || this.data.currentCity,
       homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
       quickTools: QUICK_TOOLS,
       roleWorkbenchRole: this.getRoleWorkbenchRole(),
@@ -173,7 +171,6 @@ Page({
       if (this.data.roleWorkbenchRole) return;
       this.syncHomeDashboard();
       this.fetchHomeDashboard();
-      this.initLocation();
     });
   },
 
@@ -209,7 +206,7 @@ Page({
       canUseAIDesign: canAccessAIDesign(userInfo),
       userInfo: userInfo,
       openid: app.globalData.openid || '',
-      currentCity: this.data.hasPreciseLocation ? this.data.currentCity : this.deriveCurrentCity(userInfo),
+      currentCity: this.deriveCurrentCity(userInfo) || this.data.currentCity,
       homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
       quickTools: QUICK_TOOLS,
       roleWorkbenchRole,
@@ -217,10 +214,6 @@ Page({
       if (this.data.roleWorkbenchRole) return;
       this.syncHomeDashboard();
       this.fetchHomeDashboard();
-      // Only re-init if city is still empty
-      if (!this.data.currentCity && !this.data.hasPreciseLocation) {
-        this.initLocation();
-      }
       this.handleBluetoothAfterLogin();
     });
   },
@@ -268,53 +261,6 @@ Page({
     const communityName = userInfo && userInfo.communityName ? String(userInfo.communityName) : '';
     const cityMatch = communityName.match(/([\u4e00-\u9fa5]+(?:市|区|县))/);
     return cityMatch && cityMatch[1] ? cityMatch[1] : '';
-  },
-
-  onLocationTap: function() {
-    this.initLocation(true);
-  },
-
-  initLocation: function (force = false) {
-    const that = this;
-    
-    // Check if we already have a precise location in this session unless forced
-    if (!force && this.data.hasPreciseLocation) return;
-    
-    this.setData({ locationFailed: false });
-
-    wx.getLocation({
-      type: 'gcj02',
-      success: (res) => {
-        console.log('获取经纬度成功:', res.latitude, res.longitude);
-        that.fetchCityByCoords(res.latitude, res.longitude);
-      },
-      fail: (err) => {
-        console.warn('获取经纬度失败', err);
-        that.setData({ locationFailed: true });
-        if (force) {
-          wx.showToast({ title: '请在设置中开启定位权限', icon: 'none' });
-        }
-      }
-    });
-  },
-
-  async fetchCityByCoords(latitude, longitude) {
-    try {
-      const res = await api.request('/location/reverse', 'POST', { latitude, longitude });
-      if (res.success && res.data && res.data.city) {
-        this.setData({
-          currentCity: res.data.city,
-          hasPreciseLocation: true
-        });
-        
-        // Optionally update user profile on backend
-        if (this.data.userInfo) {
-          api.request('/users/me', 'PUT', { city: res.data.city }).catch(e => {});
-        }
-      }
-    } catch (err) {
-      console.error('Reverse geocode failed', err);
-    }
   },
 
   parseLayoutData: function (layoutData) {
@@ -401,35 +347,6 @@ Page({
       plannedRooms: [],
       currentProject_id: null,
       recentPlans: [],
-      hasPreciseLocation: false,
-      locationFailed: false,
-      dashboardStats: [
-        { key: 'plans', label: '已保存方案', value: cloudPlans.length, unit: '个', glyph: '档', tone: 'green' },
-        { key: 'templates', label: 'AI 生成案例', value: (this.data.layoutTemplates || []).length, unit: '个', glyph: 'AI', tone: 'yellow' },
-        { key: 'records', label: '量房记录', value: totalMeasuredRooms, unit: '次', glyph: '图', tone: 'blue' },
-        { key: 'rooms', label: '客户线索', value: plannedRooms.length || totalRooms, unit: '条', glyph: '客', tone: 'purple' },
-      ],
-      recentPlans: buildRecentPlans(cloudPlans.map((plan) => {
-        const metaInfo = this.formatPlanMeta(plan);
-        return {
-          _id: plan._id,
-          id: plan._id,
-          name: plan.name || '未命名方案',
-          updatedAt: metaInfo.meta,
-          status: plan.status || 'draft',
-        };
-      })),
-    });
-  },
-
-  onLeadSuccess: function (e) {
-    this.setData({
-      showLeadModal: false,
-      plannedRooms: [],
-      currentProject_id: null,
-      recentPlans: [],
-      hasPreciseLocation: false,
-      locationFailed: false,
     }, () => {
       this.syncHomeDashboard();
     });
@@ -464,16 +381,17 @@ Page({
   },
 
   onOpenCustomerArchive: function () {
-    const recentPlan = (this.data.recentPlans || [])[0];
-    if (recentPlan && recentPlan._id) {
+    const app = getApp();
+    const leadId = (app.globalData && app.globalData.activeLeadId)
+      || (this.data.homeDashboard && this.data.homeDashboard.activeLeadId)
+      || '';
+    if (leadId) {
       wx.navigateTo({
-        url: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(recentPlan._id)}`,
+        url: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(leadId)}`,
       });
       return;
     }
-    wx.navigateTo({
-      url: '/packages/business/customer-projects/customer-projects',
-    });
+    wx.showToast({ title: '暂无服务档案', icon: 'none' });
   },
 
   onOpenAppointmentBooking: function () {
@@ -483,10 +401,13 @@ Page({
   },
 
   onOpenDesignScheme: function () {
-    const recentPlan = (this.data.recentPlans || [])[0];
-    if (recentPlan && recentPlan._id) {
+    const app = getApp();
+    const leadId = (app.globalData && app.globalData.activeLeadId)
+      || (this.data.homeDashboard && this.data.homeDashboard.activeLeadId)
+      || '';
+    if (leadId) {
       wx.navigateTo({
-        url: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(recentPlan._id)}`,
+        url: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(leadId)}`,
       });
       return;
     }
@@ -521,7 +442,11 @@ Page({
     }
 
     const floorPlanId = this.data.currentProject_id;
-    openAIDesignTab(floorPlanId ? { floorPlanId } : {});
+    const leadId = (getApp().globalData && getApp().globalData.activeLeadId) || '';
+    openAIDesignEntry({
+      ...(leadId ? { leadId } : {}),
+      ...(floorPlanId ? { floorPlanId } : {}),
+    });
   },
 
   onOpenLeads: function () {
@@ -668,7 +593,6 @@ Page({
         this.setData({
           homeDashboard: res.data,
           currentCity: res.data.user && res.data.user.city ? res.data.user.city : this.data.currentCity,
-          hasPreciseLocation: !!(res.data.user && res.data.user.city) || this.data.hasPreciseLocation,
           branding: res.data.user ? res.data.user.branding || this.data.branding : this.data.branding,
         }, () => {
           this.syncHomeDashboard();
@@ -741,7 +665,9 @@ Page({
     var roomId = e.detail.id;
     var room = this.data.plannedRooms.find(function (r) { return r.id === roomId; });
     if (room) {
-      openAIDesignTab({
+      var leadId = (getApp().globalData && getApp().globalData.activeLeadId) || '';
+      openAIDesignEntry({
+        ...(leadId ? { leadId } : {}),
         floorPlanId: this.data.currentProject_id,
         roomId,
       });

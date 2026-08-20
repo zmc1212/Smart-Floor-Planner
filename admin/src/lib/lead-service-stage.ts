@@ -161,9 +161,9 @@ export const CUSTOMER_HOME_ACTION_LABELS: Record<CustomerHomeActionKind, string>
   book: '预约上门',
   reschedule: '改期',
   rebook: '重新预约',
-  view_project: '看项目',
+  view_project: '我的服务档案',
   wait_designer: '等待派单',
-  none: '查看项目',
+  none: '我的服务档案',
 };
 
 export function canCustomerReschedule(input: {

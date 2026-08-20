@@ -243,161 +243,71 @@ test('project index task states drive truthful progress, recovery, stale, and co
   assert.equal(continuation.sourceResultTaskId, 'task-3');
 });
 
-test('AI Design home exposes the approved recipe discovery hierarchy without technical workflow controls', () => {
-  assert.match(pageWxml, />装修配方</);
-  assert.match(pageWxml, /class="recipe-hero"/);
-  assert.match(pageWxml, /小 K · 空间配方调配师/);
-  assert.match(pageWxml, /class="recipe-header-tools"/);
-  assert.match(pageWxml, />设计记录<\/text>/);
+test('AI Design home exposes the D01 workbench hierarchy with recipes and recent projects', () => {
+  assert.match(pageWxml, />AI 方案创作</);
+  assert.match(pageWxml, /class="create-scheme-hero"/);
+  assert.match(pageWxml, /创建全新 AI 设计方案/);
+  assert.match(pageWxml, /热门空间风格配方/);
+  assert.match(pageWxml, /最近设计项目/);
+  assert.match(pageWxml, /wx:for="\{\{recentProjects\}\}"/);
+  assert.match(pageWxml, /bindtap="openRecentProject"/);
+  assert.match(pageWxml, /bindtap="openCreateScheme"/);
   assert.match(pageWxml, /bindtap="openHistory"/);
-  assert.doesNotMatch(pageWxml, /class="recipe-header-actions"/);
-  assert.doesNotMatch(pageWxss, /\.recipe-credit-pill\s*\{[^}]*position:\s*absolute/);
+  assert.match(pageWxml, />设计记录</);
+  assert.match(pageWxml, /class="create-credit-pill"/);
   assert.match(pageWxml, /bindtap="switchRecipeInputMode"/);
   assert.match(pageWxml, /bindtap="openRecipeSearch"/);
   assert.match(pageWxml, /class="featured-recipe-strip"/);
   assert.match(pageWxml, /class="recipe-waterfall"/);
   assert.match(pageWxml, /wx:for="\{\{column\.items\}\}"/);
+  assert.match(pageWxml, /<text class="sheet-title">选择客户设计项目<\/text>/);
+  assert.match(pageWxml, /37-ai-design-workbench\.jpg/);
   assert.match(pageSource, /loadRecipes/);
   assert.match(pageSource, /openRecipeDetail/);
-  assert.doesNotMatch(pageWxml, /workflowId|提示词|模型|四阶段/);
+  assert.match(pageSource, /buildRecentProjects/);
+  assert.match(pageSource, /openSchemeStudio/);
+  assert.match(pageSource, /shouldOpenSchemeStudioFromContext/);
+  assert.match(pageModelSource, /function buildRecentProjects/);
+  assert.match(pageModelSource, /查看方案/);
+  assert.match(pageModelSource, /去出图/);
+  assert.doesNotMatch(pageWxml, /提示词|模型|四阶段/);
   assert.doesNotMatch(pageWxml, /class="plan-default-scene"|class="project-hero-stage-rail"/);
-  const hero = fs.readFileSync(path.join(miniRoot, 'images', 'ai-recipe', 'recipe-atelier-hero.jpg'));
-  assert.equal(hero.subarray(0, 2).toString('hex'), 'ffd8');
-  assert.ok(hero.length <= 300 * 1024, 'recipe hero exceeds the generated-artwork budget');
-  return;
-  assert.match(pageWxml, /class="plan-navigator reference-plan-navigator"/);
-  assert.match(pageWxml, />AI设计工作台</);
-  assert.match(pageWxml, /class="project-hero-context"/);
-  assert.match(pageWxml, /bindtap="openSourcePicker"/);
-  assert.match(pageWxml, /class="project-group-tabs"/);
-  assert.match(pageWxml, /bindinput="onProjectSearch"/);
-  assert.match(pageWxml, /bindtap="selectProjectCard"/);
-  assert.match(pageWxml, /item\.statusLabel/);
-  assert.match(pageWxml, /item\.actionLabel/);
-  assert.match(pageWxml, /wx:if="\{\{!item\.navigatorView\.walls\.length\}\}" class="project-mini-placeholder-wrap"/);
-  assert.doesNotMatch(pageWxml, /class="project-mini-empty"/);
-  assert.doesNotMatch(pageSource, /workflowPickerOpen:\s*schemeOptions\.length > 1/);
-  assert.match(pageWxml, /class="plan-hero-swiper"/);
-  assert.match(pageWxml, /bindtap="openHeroSlide"/);
-  assert.match(pageWxml, /src="\/images\/generated-hero-bleed-v2\.png"/);
-  assert.match(pageWxml, /class="plan-default-scene-image scene-image"[^>]*mode="aspectFill"/);
-  const projectHero = fs.readFileSync(path.join(miniRoot, 'images', 'generated-hero-bleed-v2.png'));
-  assert.equal(projectHero.subarray(1, 4).toString(), 'PNG');
-  assert.ok(projectHero.length <= 300 * 1024, 'project Hero exceeds the generated-artwork budget');
-  const projectFolioCover = fs.readFileSync(path.join(miniRoot, 'images', 'ai-design-project-folio-cover-v1.png'));
-  assert.equal(projectFolioCover.subarray(1, 4).toString(), 'PNG');
-  assert.ok(projectFolioCover.length <= 300 * 1024, 'project-folio cover exceeds the generated-artwork budget');
-  const emptyHero = fs.readFileSync(path.join(miniRoot, 'images', 'ai-design-empty-v2', 'stage-art.jpg'));
-  assert.equal(emptyHero.subarray(0, 2).toString('hex'), 'ffd8');
-  assert.ok(emptyHero.length <= 100 * 1024, 'empty-state hero exceeds the 100KB artwork budget');
-  for (const stepAsset of ['step-customer.png', 'step-survey.png', 'step-ai.png']) {
-    const stepIcon = fs.readFileSync(path.join(miniRoot, 'images', 'ai-design-empty-v2', stepAsset));
-    assert.equal(stepIcon.subarray(1, 4).toString(), 'PNG');
-    assert.ok(stepIcon.length <= 20 * 1024, `${stepAsset} exceeds the 20KB process-icon budget`);
-  }
-  assert.match(pageWxml, /class="project-hero-primary/);
-  assert.match(pageWxml, /class="home-project-query"/);
-  assert.match(pageWxml, /class="home-project-search"/);
-  assert.match(pageWxml, /class="home-project-filter"/);
-  assert.match(pageWxml, /class="space-scheme-strip"/);
-  assert.match(pageWxml, /class="space-scheme-card/);
-  assert.match(pageWxml, /wx:for="\{\{sources\}\}"/);
-  assert.match(pageWxml, /bindtap="selectHomeProjectCard"/);
-  assert.match(pageWxml, /\{\{progressLabel\}\} · \{\{selectedSource\.projectProgress\}\}%/);
-  assert.doesNotMatch(pageWxml, /project-hero-progress-head">\s*<text>\{\{selectedSource\.statusLabel\}\}/);
-  assert.match(pageWxml, /class="space-mini-plan"/);
-  assert.doesNotMatch(pageWxml, /selectedSource\.floorPlanId === item\.floorPlanId \? '\/images\/generated-hero-bleed-v2\.png'/);
-  assert.match(pageWxml, /class="design-preparation-card"/);
-  assert.match(pageWxml, /bindtap="openPreparationProjects"/);
-  assert.doesNotMatch(pageWxml, /class="hero-room-rail"/);
-  assert.doesNotMatch(pageWxml, /class="project-state-panel/);
-  assert.match(pageWxml, /class="project-tool-dock secondary-tool-dock"/);
-  assert.match(pageWxml, /primaryAction\.buttonLabel/);
-  assert.match(pageWxml, /workflow\.credits/);
-  assert.match(pageWxml, /\/images\/mine-icons\/tab-measure-k\.png/);
-  assert.doesNotMatch(pageWxml, /\/images\/page-ip-v3\/ai-home\.png/);
-  assert.doesNotMatch(pageWxml, /class="scene-navigator/);
-  assert.doesNotMatch(pageWxml, /bindtap="focusSceneWaypoint"/);
-  assert.match(pageWxml, /class="project-empty-stage"/);
-  assert.match(pageWxml, /\/images\/ai-design-empty-v2\/stage-art\.jpg/);
-  assert.match(pageWxml, /\/images\/ai-design-empty-v2\/step-customer\.png/);
-  assert.match(pageWxml, /\/images\/ai-design-empty-v2\/step-survey\.png/);
-  assert.match(pageWxml, /\/images\/ai-design-empty-v2\/step-ai\.png/);
-  assert.match(pageWxml, />从一条客户量房开始</);
-  assert.match(pageWxml, />选择正式量房，建立第一个空间基准</);
-  assert.match(pageWxml, />选择客户量房</);
-  assert.match(pageWxml, />可开始设计</);
-  assert.match(pageWxml, /class="empty-source-card"/);
-  assert.match(pageWxml, /class="design-preparation-card empty-preparation-card"/);
-  assert.match(pageWxml, /<block wx:if="\{\{selectedSource\}\}">\s*<view wx:if="\{\{historyLoadError\}\}"/);
-  assert.match(pageWxml, /heroSlides\.length/);
-  assert.match(pageWxml, /loading && !hasLoadedOnce/);
-  assert.match(pageWxml, /loadError && !hasLoadedOnce/);
-  assert.match(pageWxml, /result\.displayImageUrl/);
-  assert.match(pageWxml, /historyLoadError/);
-  assert.doesNotMatch(pageWxml, /navigationPreview\.task\.progress \|\| 10/);
-  assert.match(pageModelSource, /生成 3D 户型导览图/);
-  assert.doesNotMatch(pageWxml, /class="workflow-grid"/);
-  assert.doesNotMatch(pageWxml, />AI 设计</);
-  assert.match(pageWxss, /\.reference-plan-navigator\s*\{[^}]*margin:\s*0;/);
-  assert.match(pageWxss, /\.reference-plan-stage\s*\{[^}]*height:\s*568rpx/);
-  assert.doesNotMatch(pageWxss, /\.reference-plan-stage\.has-default-hero\s*\{[\s\S]*height:/);
-  assert.match(pageWxss, /\.plan-default-scene-image\s*\{[^}]*display:\s*block/);
-  assert.doesNotMatch(pageWxss, /\.plan-default-scene-image\s*\{[^}]*margin-top:/);
-  assert.doesNotMatch(pageWxss, /\.plan-default-scene-image\s*\{[^}]*height:\s*calc/);
-  assert.match(pageWxss, /\.with-plan \.page-subtitle-line \.page-subtitle\s*\{[^}]*color:\s*#6f7479;[^}]*text-shadow:\s*none/);
-  assert.match(pageWxss, /\.project-hero-context\s*\{[^}]*left:\s*20rpx;[^}]*right:\s*20rpx;[^}]*top:\s*20rpx/);
-  assert.match(pageWxml, /class="project-hero-progress /);
-  assert.match(pageWxml, /class="project-hero-stage-rail"/);
-  assert.match(pageWxml, /class="project-hero-stage-glow"/);
-  assert.match(pageWxml, /\/images\/ai-design-stage-active-glow-v1\.png/);
-  assert.match(pageWxml, /class="project-hero-label">当前客户<\/text>/);
-  assert.match(pageWxml, /class="project-hero-meta">正式量房 · \{\{selectedSource\.projectSubtitle\}\} · \{\{selectedSource\.closedRoomCount\}\} 个闭合空间<\/text>/);
-  assert.doesNotMatch(pageWxml, /class="plan-default-scene-shade"/);
-  assert.match(pageWxss, /\.plan-hero-image,\s*\.plan-default-scene-image\s*\{[^}]*width:\s*100%;[^}]*height:\s*100%/);
-  assert.match(pageWxss, /\.project-state-chip\s*\{[^}]*min-height:\s*44rpx;[^}]*line-height:\s*44rpx/);
-  assert.match(pageWxss, /\.project-hero-identity\s*\{[^}]*width:\s*448rpx;[^}]*margin-top:\s*21rpx/);
-  assert.match(pageWxss, /\.project-hero-stage-glow\s*\{[^}]*width:\s*96rpx;[^}]*height:\s*96rpx/);
-  assert.match(pageWxss, /\.project-hero-stage\.current \.project-hero-stage-node\s*\{[^}]*background:\s*#12c95a;[^}]*border:\s*3rpx solid #fff;[^}]*rgba\(55, 255, 119, 0\.68\)/);
-  assert.match(pageWxml, /class="project-source-result-half"/);
-  assert.match(pageWxml, /class="project-source-preview project-source-preview-wide"/);
-  assert.match(pageWxml, /wx:elif="\{\{item\.projectGroup !== 'needs_survey'\}\}"[\s\S]*?class="space-scheme-image project-folio-cover"/);
-  assert.match(pageWxml, /class="project-source-image project-folio-cover"/);
-  assert.match(pageSource, /projectFolioCover:\s*PROJECT_FOLIO_COVER/);
-  assert.match(pageModelSource, /PROJECT_FOLIO_COVER\s*=\s*'\/images\/ai-design-project-folio-cover-v1\.png'/);
-  assert.match(pageWxml, /\/images\/ai-design-switch-arrows-v1\.png/);
-  assert.match(pageWxml, /\/images\/ai-design-preparation-art-v1\.jpg/);
-  assert.match(pageWxml, /binderror="onProjectPreviewError"/);
-  assert.match(pageSource, /onProjectPreviewError\(event\)/);
-  assert.doesNotMatch(pageWxml, /class="scene-source-card"/);
-  assert.doesNotMatch(pageWxml, /sceneNavigation/);
-  assert.doesNotMatch(pageWxml, /class="plan-hero-caption"/);
-  assert.doesNotMatch(pageWxml, /class="preview-progress"/);
-  assert.doesNotMatch(pageWxml, /class="scene-index"/);
-  assert.doesNotMatch(pageWxml, />0[1-4]</);
-  assert.doesNotMatch(pageWxml, /class="discovery-handle"/);
-  assert.match(pageWxml, />最近方案</);
-  assert.match(pageWxml, /class="result-progress-track"/);
-  assert.match(pageWxss, /var\(--ai-navigation-top,\s*24px\)/);
-  assert.match(pageWxss, /\.project-hero-primary\s*\{[^}]*min-width:\s*175rpx;[^}]*min-height:\s*66rpx/);
-  assert.match(pageWxss, /\.project-hero-primary\s*\{[^}]*box-sizing:\s*border-box/);
-  assert.match(pageWxss, /@media \(max-width: 360px\)[\s\S]*?\.reference-plan-navigator\s*\{[^}]*margin-right:\s*0;[^}]*margin-left:\s*0/);
-  assert.match(pageWxss, /@media \(max-width: 360px\)[\s\S]*?\.reference-plan-stage\s*\{[^}]*height:\s*568rpx/);
-  assert.match(pageWxss, /\.space-scheme-card\s*\{[^}]*width:\s*320rpx;[^}]*height:\s*380rpx/);
-  assert.match(pageWxss, /\.space-scheme-card\s*\{[^}]*border-radius:\s*16rpx/);
-  assert.match(pageWxss, /\.design-preparation-card\s*\{[^}]*height:\s*112rpx/);
-  assert.match(pageWxss, /\.design-preparation-card\s*\{[^}]*margin:\s*28rpx -2rpx 0;[^}]*border-radius:\s*18rpx/);
-  assert.match(pageWxss, /\.source-sheet\s*\{[^}]*height:\s*49vh/);
-  assert.match(pageWxss, /\.source-sheet \.project-source-preview\s*\{[^}]*width:\s*270rpx;[^}]*min-height:\s*150rpx/);
-  assert.match(pageWxss, /\.project-source-preview-wide\s*\{[^}]*width:\s*270rpx;[^}]*min-height:\s*150rpx/);
-  assert.match(pageWxss, /\.source-sheet \.project-source-item\s*\{[^}]*min-height:\s*170rpx;[^}]*margin-bottom:\s*16rpx/);
-  assert.match(pageWxss, /\.source-sheet \.project-source-action\s*\{[^}]*width:\s*128rpx;[^}]*min-height:\s*68rpx/);
-  assert.match(pageWxml, /<text class="sheet-title">选择客户设计项目<\/text>/);
-  assert.match(pageWxml, /按客户找到对应的正式量房/);
-  assert.match(pageWxml, /class="project-source-progress"/);
-  assert.match(pageWxml, /class="project-source-current-check"/);
-  assert.match(pageWxss, /\.project-tool-item\s*\{[^}]*min-height:\s*116rpx/);
-  assert.match(pageWxss, /\.project-group-tab\s*\{[^}]*min-height:\s*62rpx/);
-  assert.match(pageWxss, /\.project-source-action\s*\{[^}]*min-height:\s*64rpx/);
-  assert.match(pageWxss, /\.project-source-action text\s*\{[^}]*white-space:\s*nowrap/);
+  const designerMascot = fs.readFileSync(path.join(miniRoot, 'images', 'airy-v1', 'xiao-k-designer-3d.png'));
+  assert.equal(designerMascot.subarray(1, 4).toString(), 'PNG');
+  assert.ok(designerMascot.length <= 300 * 1024, 'designer mascot exceeds the generated-artwork budget');
+});
+
+test('recent project cards prefer in-progress schemes and map D01 action labels', () => {
+  const {
+    buildRecentProjects,
+    shouldOpenSchemeStudioFromContext,
+  } = require('../pages/ai-design/ai-design-model.js');
+  const projects = buildRecentProjects([
+    decorateSourcePlan({
+      floorPlanId: 'ready-1',
+      projectDisplayTitle: '保利·天汇 804室',
+      projectGroup: 'ready',
+      uiState: 'ready',
+      statusLabel: '正式量房已就绪',
+      updatedAt: '2026-08-19T10:00:00.000Z',
+    }),
+    decorateSourcePlan({
+      floorPlanId: 'active-1',
+      projectDisplayTitle: '万科·未来之光 1202室',
+      projectGroup: 'in_progress',
+      uiState: 'continue',
+      statusLabel: '继续设计 · 风格方案',
+      activeWorkflow: { id: 'wf-1', currentStageLabel: '风格方案' },
+      updatedAt: '2026-08-20T10:00:00.000Z',
+    }),
+  ]);
+  assert.deepEqual(projects.map((item) => item.floorPlanId), ['active-1', 'ready-1']);
+  assert.equal(projects[0].schemeActionLabel, '查看方案');
+  assert.equal(projects[0].schemeActionTone, 'outline');
+  assert.equal(projects[1].schemeActionLabel, '去出图');
+  assert.equal(projects[1].schemeActionTone, 'solid');
+  assert.equal(shouldOpenSchemeStudioFromContext({ leadId: '1', workflowId: '2' }), true);
+  assert.equal(shouldOpenSchemeStudioFromContext({ leadId: '1', floorPlanId: '3' }), true);
+  assert.equal(shouldOpenSchemeStudioFromContext({ leadId: '1' }), false);
+  assert.equal(shouldOpenSchemeStudioFromContext({}), false);
 });

@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Card, Row, Skeleton } from 'antd';
 import { ArrowUpRight, Building2, Cable, Coins, Map, Users } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import OverviewStatCard from '@/components/dashboard/OverviewStatCard';
 
 type PlatformStats = {

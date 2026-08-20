@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import { Alert, Button, Flex, InputNumber, Switch, Tag, Typography } from 'antd';
 import { Save } from 'lucide-react';
-import { notify } from '@/components/ui/operation-feedback';
+import { notify } from '@/components/admin/operation-feedback';
 import { useFetch } from '@/hooks/useFetch';
 
 type PriceItem = {
