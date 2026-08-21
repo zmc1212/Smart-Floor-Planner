@@ -213,3 +213,19 @@ test('External preview images win and missing floor plans stay explicit', () => 
   assert.equal(empty.type, 'empty');
   assert.equal(empty.segments.length, 0);
 });
+
+test('Leads list does not background-poll or re-enter pull-to-refresh', () => {
+  const pageJs = fs.readFileSync(
+    path.join(miniRoot, 'pages', 'leads-management', 'leads-management.js'),
+    'utf8'
+  );
+  assert.match(componentJs, /if \(this\._fetching\)/);
+  assert.match(componentJs, /observer\(newVal, oldVal\)/);
+  assert.match(componentJs, /if \(newVal && newVal !== oldVal\)/);
+  assert.match(componentJs, /this\._closingRefresher = true/);
+  assert.match(componentJs, /if \(this\._fetching \|\| this\._closingRefresher\) return;/);
+  assert.doesNotMatch(componentJs, /this\.setData\(\{ refreshing: true \}\)/);
+  assert.match(pageJs, /if \(this\._listReady\)/);
+  assert.match(pageJs, /leadList\.fetchLeads\(true\)/);
+  assert.match(pageJs, /onLeadSuccess\(\)[\s\S]*leadList\.onRefresh\(\)/);
+});

@@ -37,7 +37,12 @@ are the editable sources and retain their supplied asset rights.
 - `search.png`: `search`
 - `user.png`: `user`
 - `users.png`: `users`
-- `wallet.png`: `wallet`
+- `earn-g.png`, `earn-a.png`: `tab-earnings.svg`, rendered
+  at `96x96`; the inactive and active variants use the same wallet-and-income
+  geometry for the earnings and commission TabBar items.
+- `book-g.png`, `book-a-active.png`: `tab-appointment.svg`,
+  rendered at `96x96`; the calendar-check geometry is reserved for the
+  enterprise Appointments TabBar item.
 - `todo-green.png`, `todo-blue.png`, `todo-orange.png`: `calendar-check` or
   `clipboard-check`
 - `clipboard-pen.png`: `clipboard-pen-line`

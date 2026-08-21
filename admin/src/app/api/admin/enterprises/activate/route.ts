@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import {
@@ -9,6 +8,10 @@ import {
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
+import {
+  ENTERPRISE_ADMIN_INITIAL_PASSWORD,
+  hashEnterpriseAdminInitialPassword,
+} from '@/lib/enterprise-admin-provision';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 export const dynamic = 'force-dynamic';
@@ -103,7 +106,7 @@ export async function POST(request: Request) {
           });
           await adminUsers.create({
             username: phone,
-            passwordHash: await bcrypt.hash('Admin123456', 10),
+            passwordHash: await hashEnterpriseAdminInitialPassword(),
             displayName: record.contactPerson,
             role: 'enterprise_admin',
             enterpriseId: enterprise.id,
@@ -125,7 +128,7 @@ export async function POST(request: Request) {
             enterpriseId: result.enterprise.id.toString(),
             enterpriseName: result.enterprise.name,
             adminUsername: result.username,
-            tempPassword: 'Admin123456',
+            tempPassword: ENTERPRISE_ADMIN_INITIAL_PASSWORD,
           },
         });
       }

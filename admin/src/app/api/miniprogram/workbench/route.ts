@@ -263,7 +263,7 @@ export async function GET(request: Request) {
         ],
         primaryItems: exceptionItems.slice(0, 8),
         appointments: appointmentRows.map((item) => appointmentItem(item, appointmentLeadMap.get(item.leadId))),
-        activityCode: { label: '出示员工活动码', target: 'activity-code' },
+        activityCode: { label: '出示入驻码', target: 'join-codes' },
         secondary: { label: '查看预约安排', target: 'appointments' },
         ...opsDashboard,
       };

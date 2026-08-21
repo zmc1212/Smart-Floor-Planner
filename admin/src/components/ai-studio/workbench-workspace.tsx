@@ -14,6 +14,7 @@ import {
   Download,
   ExternalLink,
   FileImage,
+  Home,
   Images,
   Loader2,
   Maximize2,
@@ -48,6 +49,8 @@ import type {
 import {
   readStoredWorkbenchTheme,
   WORKBENCH_THEME_STORAGE_KEY,
+  WORKBENCH_WHOLE_FLOOR_SCOPE_KEY,
+  workbenchComposerControlPreviewUrl,
   workbenchMaxUserReferenceImages,
   type WorkbenchTheme,
 } from '@/lib/ai/workbench-studio';
@@ -61,6 +64,12 @@ type BootstrapData = {
 };
 
 type FloorPlanOption = { id: string; name?: string; status?: string };
+type ClosedRoomOption = {
+  roomId: string;
+  roomName: string;
+  roomSize: string;
+  openingCount?: number;
+};
 type LeadSummary = {
   id: string;
   name: string;
@@ -73,7 +82,12 @@ type WorkflowDetail = {
   workflow: WorkflowSummary & {
     sourceFloorPlanId?: string;
     floorPlanPreviewUrl?: string;
-    sourceFloorPlan?: { id: string; name?: string } | null;
+    sourceFloorPlan?: {
+      id: string;
+      name?: string;
+      rooms?: ClosedRoomOption[];
+      closedRoomCount?: number;
+    } | null;
   };
   lead: { id: string; name: string; communityName?: string; floorPlans: FloorPlanOption[] };
   generations: Array<{
@@ -122,6 +136,19 @@ function userReferenceIds(batch: CreationBatch) {
 function batchResolutionTier(batch: CreationBatch): '1K' | '2K' | '4K' | 'CUSTOM' {
   const storedTier = batch.parameterSnapshot.resolutionTier || batch.parameterSnapshot.size?.toUpperCase() || '1K';
   return ['1K', '2K', '4K', 'CUSTOM'].includes(storedTier) ? storedTier as '1K' | '2K' | '4K' | 'CUSTOM' : '1K';
+}
+
+function batchScopeSelection(batch: CreationBatch) {
+  const scope = batch.parameterSnapshot.targetScope;
+  const roomId = String(batch.parameterSnapshot.roomId || '').trim();
+  if (scope === 'single_room' && roomId) return roomId;
+  return WORKBENCH_WHOLE_FLOOR_SCOPE_KEY;
+}
+
+function batchScopeLabel(batch: CreationBatch) {
+  const label = String(batch.parameterSnapshot.targetLabel || '').trim();
+  if (label) return label;
+  return batch.parameterSnapshot.targetScope === 'single_room' ? '单房间' : '完整户型';
 }
 
 function GenerationTile({
@@ -235,6 +262,7 @@ export function WorkbenchWorkspace() {
   const [customWidth, setCustomWidth] = useState(1024);
   const [customHeight, setCustomHeight] = useState(1024);
   const [count, setCount] = useState(1);
+  const [scopeSelection, setScopeSelection] = useState(WORKBENCH_WHOLE_FLOOR_SCOPE_KEY);
   const [assets, setAssets] = useState<CreationAsset[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDetail | null>(null);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -380,6 +408,7 @@ export function WorkbenchWorkspace() {
     setAssets([]);
     setPrompt('');
     setSelectedTemplate(null);
+    setScopeSelection(WORKBENCH_WHOLE_FLOOR_SCOPE_KEY);
     setFloorPlanOpen(false);
     setPreviewGeneration(null);
   }, [loadConversation, selectedWorkflowId]);
@@ -428,6 +457,46 @@ export function WorkbenchWorkspace() {
   const floorPlanPreviewUrl = detail?.workflow.floorPlanPreviewUrl || '';
   const sourceFloorPlanId = detail?.workflow.sourceFloorPlan?.id || detail?.workflow.sourceFloorPlanId || '';
   const sourceFloorPlanName = detail?.workflow.sourceFloorPlan?.name || '正式户型';
+  const closedRooms = useMemo(
+    () => detail?.workflow.sourceFloorPlan?.rooms || [],
+    [detail?.workflow.sourceFloorPlan?.rooms],
+  );
+  const closedRoomCount = detail?.workflow.sourceFloorPlan?.closedRoomCount
+    ?? closedRooms.length;
+  const scopeOptions = useMemo(() => ([
+    {
+      value: WORKBENCH_WHOLE_FLOOR_SCOPE_KEY,
+      label: `完整户型 · ${closedRoomCount} 个闭合空间`,
+      title: '完整户型',
+    },
+    ...closedRooms.map((room) => ({
+      value: room.roomId,
+      label: `${room.roomName} · ${room.roomSize}`,
+      title: room.roomName,
+    })),
+  ]), [closedRoomCount, closedRooms]);
+  const targetScope = scopeSelection === WORKBENCH_WHOLE_FLOOR_SCOPE_KEY ? 'whole_floor_plan' : 'single_room';
+  const selectedRoomId = targetScope === 'single_room' ? scopeSelection : '';
+  const selectedRoom = closedRooms.find((room) => room.roomId === selectedRoomId);
+  const controlPreviewUrl = sourceFloorPlanId
+    ? workbenchComposerControlPreviewUrl(selectedWorkflowId, scopeSelection)
+    : '';
+  const controlPreviewAlt = targetScope === 'single_room'
+    ? `${selectedRoom?.roomName || '房间'}控制图`
+    : '完整户型控制图';
+
+  useEffect(() => {
+    if (!closedRooms.length) {
+      setScopeSelection(WORKBENCH_WHOLE_FLOOR_SCOPE_KEY);
+      return;
+    }
+    setScopeSelection((current) => (
+      current === WORKBENCH_WHOLE_FLOOR_SCOPE_KEY || closedRooms.some((room) => room.roomId === current)
+        ? current
+        : WORKBENCH_WHOLE_FLOOR_SCOPE_KEY
+    ));
+  }, [closedRooms, selectedWorkflowId]);
+
   const selectedBatch = latestBatch(task);
   const model = bootstrap?.models.find((item) => item.id === modelProfileId);
   const maxUserRefs = workbenchMaxUserReferenceImages(model?.maxReferenceImages || 0);
@@ -486,6 +555,7 @@ export function WorkbenchWorkspace() {
     || aspectRatio !== (selectedBatch.parameterSnapshot.aspectRatio || '1:1')
     || resolutionTier !== selectedBatchTier
     || count !== selectedBatch.requestedCount
+    || scopeSelection !== batchScopeSelection(selectedBatch)
     || assets.map((asset) => asset.id).join(',') !== userReferenceIds(selectedBatch).join(',')
   ));
   const shouldRetryCurrentBatch = Boolean(currentBatchRetryable && !composerChangedFromSelectedBatch && selectedBatch && !String(selectedBatch.id).startsWith('legacy-'));
@@ -522,6 +592,7 @@ export function WorkbenchWorkspace() {
     setCustomHeight(batch.parameterSnapshot.height || 1024);
     setCount(batch.requestedCount || 1);
     setSelectedTemplate(batch.parameterSnapshot.templateId ? { id: batch.parameterSnapshot.templateId } as TemplateDetail : null);
+    setScopeSelection(batchScopeSelection(batch));
     setAssets(userReferenceIds(batch).map((id) => ({ id, previewUrl: `/api/ai/assets/${id}/image` })));
   };
 
@@ -607,6 +678,10 @@ export function WorkbenchWorkspace() {
       height: sourceBatch.parameterSnapshot.height || 1024,
       templateId: sourceBatch.parameterSnapshot.templateId,
       count: sourceBatch.requestedCount || 1,
+      targetScope: sourceBatch.parameterSnapshot.targetScope === 'single_room' ? 'single_room' as const : 'whole_floor_plan' as const,
+      roomId: sourceBatch.parameterSnapshot.targetScope === 'single_room'
+        ? String(sourceBatch.parameterSnapshot.roomId || '')
+        : '',
     } : {
       prompt,
       negativePrompt,
@@ -618,6 +693,8 @@ export function WorkbenchWorkspace() {
       height: customHeight,
       templateId: selectedTemplate?.id,
       count,
+      targetScope,
+      roomId: selectedRoomId,
     };
     const draftModel = bootstrap?.models.find((item) => item.id === draft.modelProfileId);
     const draftUnitPrice = draftModel?.prices.find((price) => price.resolutionTier === draft.resolutionTier)?.credits || 0;
@@ -660,6 +737,8 @@ export function WorkbenchWorkspace() {
           templateId: draft.templateId,
           count: draft.count,
           workflowId: selectedWorkflowId,
+          targetScope: draft.targetScope,
+          roomId: draft.roomId || undefined,
         }),
       }));
       setTask(generated.data.task);
@@ -1004,7 +1083,15 @@ export function WorkbenchWorkspace() {
                         <article key={batch.id} className={cn('shrink-0 rounded-xl border p-3', isLatest ? t.round : t.roundIdle)}>
                           <div className="mb-3 flex items-start gap-3">
                             <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium', t.badge)}>第 {batch.sequence} 轮</span>
-                            <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-5">{batch.prompt}</p>
+                            <div className="min-w-0 flex-1">
+                              <p className="whitespace-pre-wrap text-sm leading-5">{batch.prompt}</p>
+                              {!String(batch.id).startsWith('legacy-') ? (
+                                <p className={cn('mt-1 text-[11px]', t.muted)}>
+                                  应用到：{batchScopeLabel(batch)}
+                                  {batch.parameterSnapshot.targetScope === 'single_room' ? ' · 单房间' : ' · 整屋方案'}
+                                </p>
+                              ) : null}
+                            </div>
                             <time className={cn('shrink-0 text-[11px]', t.muted)} dateTime={batch.createdAt}>{formatDateTime(batch.createdAt)}</time>
                           </div>
                           <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-1">
@@ -1058,7 +1145,7 @@ export function WorkbenchWorkspace() {
                   {!dark ? (
                     <div className="flex h-full flex-col items-center justify-center text-center">
                       <h2 className="text-2xl font-semibold">今天想为这位客户出什么方案？</h2>
-                      <p className={cn('mt-3 text-sm', t.muted)}>左上角可对照客户户型。出图时控制图会自动带入。选择模型、模板或直接描述空间、光线与材质。</p>
+                      <p className={cn('mt-3 text-sm', t.muted)}>左上角可对照客户户型。出图前先选择完整户型或单房间；控制图会按作用域自动带入。选择模型、模板或直接描述空间、光线与材质。</p>
                     </div>
                   ) : <h2 className="sr-only">今天想为这位客户出什么方案？</h2>}
                 </div>
@@ -1083,21 +1170,42 @@ export function WorkbenchWorkspace() {
                     onMouseEnter={() => setReferenceStackExpanded(true)}
                     onMouseLeave={() => setReferenceStackExpanded(false)}
                   >
-                    {assets.length ? (
+                    {controlPreviewUrl || assets.length ? (
                       <div className="relative h-[86px] w-[71px] overflow-visible">
+                        {controlPreviewUrl ? (
+                          <div
+                            className={cn('absolute left-0 top-1.5 h-[78px] w-[61px] overflow-hidden rounded-md border bg-black shadow-[0_6px_14px_rgba(0,0,0,0.28)]', dark ? 'border-[#8b72ff]/80' : 'border-[#16a34a]/80')}
+                            style={{ zIndex: 0 }}
+                          >
+                            <img key={controlPreviewUrl} src={controlPreviewUrl} alt={controlPreviewAlt} className="h-full w-full object-contain" />
+                            <span className="absolute inset-x-0 bottom-0 bg-black/65 px-1 py-0.5 text-center text-[10px] leading-3 text-white">控制图</span>
+                          </div>
+                        ) : null}
                         {assets.map((asset, index) => {
-                          const offsetX = referenceStackExpanded ? index * 65 : index * 4;
+                          const stackIndex = index + (controlPreviewUrl ? 1 : 0);
+                          const offsetX = referenceStackExpanded ? stackIndex * 65 : stackIndex * 4;
                           return (
                             <div
                               key={asset.id}
                               className="absolute left-0 top-1.5 h-[78px] w-[61px] overflow-hidden rounded-md border border-[#8b72ff]/80 bg-[#222226] shadow-[0_6px_14px_rgba(0,0,0,0.28)]"
-                              style={{ transform: `translate3d(${offsetX}px, 0, 0)`, zIndex: index + 1 }}
+                              style={{ transform: `translate3d(${offsetX}px, 0, 0)`, zIndex: stackIndex + 1 }}
                             >
                               <img src={asset.previewUrl} alt={`参考图 ${index + 1}`} className="h-full w-full object-cover" />
                               <button type="button" aria-label={`删除第 ${index + 1} 张参考图`} className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#414148] text-white" onClick={() => setAssets((current) => current.filter((item) => item.id !== asset.id))}><X className="size-3" /></button>
                             </div>
                           );
                         })}
+                        {maxUserRefs > assets.length ? (
+                          <button
+                            type="button"
+                            aria-label="上传参考图"
+                            disabled={uploading}
+                            onClick={() => fileInputRef.current?.click()}
+                            className={cn('absolute -bottom-1 -right-1 z-20 flex size-6 items-center justify-center rounded-full text-white disabled:opacity-40', dark ? 'bg-[#7047ff]' : 'bg-[#16a34a]')}
+                          >
+                            {uploading ? <Loader2 className="size-3 animate-spin" /> : <Plus className="size-3.5" />}
+                          </button>
+                        ) : null}
                       </div>
                     ) : (
                       <button type="button" aria-label="上传参考图" disabled={uploading || !maxUserRefs} onClick={() => fileInputRef.current?.click()} className={cn('flex h-[86px] w-[71px] -rotate-[12deg] items-center justify-center rounded-md border-2 disabled:opacity-40', dark ? 'border-[#7047ff] bg-[#222226] text-white' : 'border-[#16a34a] bg-[#f3faf4] text-[#166534]')}>{uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-6" />}</button>
@@ -1123,12 +1231,31 @@ export function WorkbenchWorkspace() {
                   <button type="button" disabled={assisting || !prompt.trim()} onClick={() => void assistPrompt()} title="优化提示词" className={cn('flex size-[30px] items-center justify-center rounded-full disabled:opacity-40', t.muted)}>{assisting ? <Loader2 className="size-4 animate-spin" /> : <WandSparkles className="size-4" />}</button>
                   <button type="button" onClick={() => setPromptExpanded(true)} title="全屏编辑提示词" className={cn('flex size-[30px] items-center justify-center rounded-full', t.muted)}><Maximize2 className="size-4" /></button>
                 </div>
-                <div className="grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible sm:flex sm:flex-wrap lg:flex-nowrap">
+                <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap">
+                  <Select
+                    value={scopeSelection}
+                    onChange={setScopeSelection}
+                    placeholder="应用到哪里"
+                    aria-label="应用到哪里"
+                    optionLabelProp="title"
+                    className={cn('h-10 min-w-0 flex-1 basis-[132px] sm:max-w-[168px]', t.selectTrigger)}
+                    popupClassName={t.selectPopup}
+                    options={scopeOptions}
+                    suffixIcon={<Home className={cn('size-4', t.accent)} />}
+                    popupRender={(menu) => (
+                      <div>
+                        {menu}
+                        <div className={cn('border-t px-3 py-2 text-[11px] leading-4', dark ? 'border-white/10 text-[#8d8d94]' : 'border-[#e5e9e5] text-[#526052]')}>
+                          只应用到当前选择，不自动为其他房间生成、不额外扣点。
+                        </div>
+                      </div>
+                    )}
+                  />
                   <Select
                     value={modelProfileId || undefined}
                     onChange={(value) => { setModelProfileId(value); applyModelDefaults(bootstrap.models.find((item) => item.id === value)); }}
                     placeholder="选择模型"
-                    className={cn('col-span-2 h-10 w-full shrink-0 sm:w-[186px]', t.selectTrigger)}
+                    className={cn('h-10 min-w-0 flex-1 basis-[132px] sm:max-w-[168px]', t.selectTrigger)}
                     popupClassName={t.selectPopup}
                     options={bootstrap.models.map((item) => ({ value: item.id, label: item.name }))}
                     suffixIcon={<Bot className={cn('size-4', t.accent)} />}
@@ -1136,7 +1263,7 @@ export function WorkbenchWorkspace() {
                   <Select
                     value={String(count)}
                     onChange={(value) => setCount(Number(value))}
-                    className={cn('h-10 w-full shrink-0 sm:w-[104px]', t.selectTrigger)}
+                    className={cn('h-10 w-[88px] shrink-0', t.selectTrigger)}
                     popupClassName={t.selectPopup}
                     options={[1, 2, 3, 4].map((value) => ({ value: String(value), label: `${value}张` }))}
                     suffixIcon={<Images className="size-4" />}
@@ -1145,7 +1272,7 @@ export function WorkbenchWorkspace() {
                     <Select
                       value={aspectRatio}
                       onChange={setAspectRatio}
-                      className={cn('h-10 w-full shrink-0 sm:w-[128px]', t.selectTrigger)}
+                      className={cn('h-10 w-[88px] shrink-0', t.selectTrigger)}
                       popupClassName={t.selectPopup}
                       options={availableAspectRatios.map((item) => ({ value: item, label: item === 'auto' ? '自动比例' : item }))}
                       suffixIcon={<Crop className="size-4" />}
@@ -1161,7 +1288,7 @@ export function WorkbenchWorkspace() {
                         setAspectRatio(nextRatios.includes(model?.defaults.aspectRatio || '') ? model?.defaults.aspectRatio || nextRatios[0] : nextRatios[0]);
                       }
                     }}
-                    className={cn('h-10 w-full shrink-0 sm:w-[116px]', t.selectTrigger)}
+                    className={cn('h-10 w-[88px] shrink-0', t.selectTrigger)}
                     popupClassName={t.selectPopup}
                     options={(model?.resolutionTiers || []).map((item) => ({ value: item, label: item === 'CUSTOM' ? '自定义' : item }))}
                     suffixIcon={<Maximize2 className="size-4" />}
@@ -1173,12 +1300,12 @@ export function WorkbenchWorkspace() {
                       <Input aria-label="自定义高度" type="number" min={16} max={3840} step={16} value={customHeight} onChange={(event) => setCustomHeight(Number(event.target.value))} className="h-8 w-[76px] border-0 bg-transparent px-1 text-center text-sm shadow-none focus-visible:ring-0" />
                     </div>
                   ) : null}
-                  <button type="button" onClick={() => setTemplateOpen(true)} className={cn('flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-lg border px-3 text-sm sm:w-[124px]', t.selectBox)}><PanelsTopLeft className="size-4" />提示词模板</button>
+                  <button type="button" onClick={() => setTemplateOpen(true)} className={cn('flex h-10 min-w-0 flex-1 basis-[108px] items-center justify-center gap-1.5 rounded-lg border px-2 text-sm sm:max-w-[124px]', t.selectBox)}><PanelsTopLeft className="size-4 shrink-0" />提示词模板</button>
                   <button
                     type="button"
                     disabled={generating || retrying || currentBatchActive || !prompt.trim() || !modelProfileId || !hasEnabledPrice}
                     onClick={shouldRetryCurrentBatch ? () => { void retryCurrentBatch(); } : () => { void submitGeneration(); }}
-                    className={cn('col-span-2 ml-0 flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl px-3 text-base text-white hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[#6b6b6b] disabled:bg-none disabled:opacity-100 sm:ml-auto sm:w-[152px]', t.generate)}
+                    className={cn('ml-0 flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl px-3 text-base text-white hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[#6b6b6b] disabled:bg-none disabled:opacity-100 sm:ml-auto sm:w-[136px]', t.generate)}
                   >
                     {generating || retrying || currentBatchActive ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                     {retrying ? '重试中' : currentBatchActive ? '生成中' : shouldRetryCurrentBatch ? '重试本轮' : hasTaskStage ? '开始新一轮' : '开始生图'}

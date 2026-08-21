@@ -358,6 +358,7 @@ test('platform code environment only accepts the three WeChat deployment targets
 test('all Mini Program code image endpoints read the single platform environment', () => {
   const routes = [
     'src/app/api/enterprise/join-codes/[type]/image/route.ts',
+    'src/app/api/miniprogram/enterprise-join-codes/[type]/image/route.ts',
     'src/app/api/miniprogram/referrer-memberships/[id]/promotion-code/image/route.ts',
     'src/app/api/miniprogram/staff-activity-code/image/route.ts',
     'src/app/api/admin/enterprise-registration-codes/image/route.ts',
@@ -385,6 +386,55 @@ test('promotion code image route keeps provider failures stable and private', ()
   assert.doesNotMatch(route, /error:\s*error\s+instanceof\s+Error/);
 });
 
+test('miniprogram enterprise join-code image route is enterprise_admin only and private', () => {
+  const route = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/api/miniprogram/enterprise-join-codes/[type]/image/route.ts'
+    ),
+    'utf8'
+  );
+  const list = readFileSync(
+    path.join(process.cwd(), 'src/app/api/miniprogram/enterprise-join-codes/route.ts'),
+    'utf8'
+  );
+
+  assert.match(list, /enterprise_admin_required/);
+  assert.match(list, /listEnterpriseJoinCodes/);
+  assert.doesNotMatch(list, /token:/);
+  assert.match(route, /enterprise_admin_required/);
+  assert.match(route, /revealActiveEnterpriseJoinCode/);
+  assert.match(route, /createEnterpriseOnboardingCode/);
+  assert.match(route, /wechat_code_unavailable[\s\S]*status:\s*502/);
+  assert.match(route, /Cache-Control': 'private, no-store/);
+});
+
+test('miniprogram enterprise join-code mutate routes mirror Admin rotate/disable', () => {
+  const rotate = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/api/miniprogram/enterprise-join-codes/[type]/rotate/route.ts'
+    ),
+    'utf8'
+  );
+  const disable = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/api/miniprogram/enterprise-join-codes/[type]/disable/route.ts'
+    ),
+    'utf8'
+  );
+
+  assert.match(rotate, /enterprise_admin_required/);
+  assert.match(rotate, /rotateEnterpriseJoinCode/);
+  assert.match(rotate, /enterpriseJoinCodeToDto/);
+  assert.doesNotMatch(rotate, /token:/);
+  assert.match(disable, /enterprise_admin_required/);
+  assert.match(disable, /disableEnterpriseJoinCode/);
+  assert.match(disable, /active_code_not_found/);
+  assert.doesNotMatch(disable, /token:/);
+});
+
 test('enterprise onboarding image route is tenant-protected and keeps provider failures private', () => {
   const route = readFileSync(
     path.join(
@@ -404,16 +454,43 @@ test('enterprise onboarding image route is tenant-protected and keeps provider f
 });
 
 test('enterprise onboarding workbench accepts both WeChat image formats', () => {
-  const page = readFileSync(
-    path.join(
-      process.cwd(),
-      'src/app/(admin)/(merchant)/join-codes/page.tsx'
-    ),
+  const helper = readFileSync(
+    path.join(process.cwd(), 'src/components/admin/miniprogram-code-qr.tsx'),
     'utf8'
   );
 
-  assert.match(page, /image\.type !== 'image\/png' && image\.type !== 'image\/jpeg'/);
-  assert.doesNotMatch(page, /image\.type !== 'image\/png'\) throw new Error\('入驻二维码格式无效'\)/);
+  assert.match(helper, /image\.type !== 'image\/png' && image\.type !== 'image\/jpeg'/);
+  assert.doesNotMatch(helper, /image\.type !== 'image\/png'\) throw new Error\('入驻二维码格式无效'\)/);
+});
+
+test('admin code pages show the current QR without rotating or a timed hide', () => {
+  const joinCodes = readFileSync(
+    path.join(process.cwd(), 'src/app/(admin)/(merchant)/join-codes/page.tsx'),
+    'utf8'
+  );
+  const registration = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/(admin)/(platform)/enterprise-registration-codes/page.tsx'
+    ),
+    'utf8'
+  );
+  const helper = readFileSync(
+    path.join(process.cwd(), 'src/components/admin/miniprogram-code-qr.tsx'),
+    'utf8'
+  );
+
+  for (const page of [joinCodes, registration]) {
+    assert.match(page, /MiniProgramCodeQr/);
+    assert.match(page, /fetchMiniProgramCodeQr/);
+    assert.doesNotMatch(page, /90_000/);
+    assert.doesNotMatch(page, /confirmText: '生成二维码'/);
+    assert.doesNotMatch(page, /Drawer/);
+  }
+  assert.match(joinCodes, /\/api\/enterprise\/join-codes\/\$\{codeType\}\/rotate/);
+  assert.match(registration, /\/api\/admin\/enterprise-registration-codes\/rotate/);
+  assert.match(helper, /method: 'POST'/);
+  assert.match(helper, /当前有效二维码可直接查看/);
 });
 
 test('enterprise onboarding workbench links code-provider readiness to delivery diagnostics', () => {

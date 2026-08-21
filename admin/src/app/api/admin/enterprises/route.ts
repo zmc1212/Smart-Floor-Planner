@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import { enterpriseToDto } from '@/db/postgres-dto';
 import {
@@ -8,6 +7,8 @@ import {
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
+import { hashEnterpriseAdminInitialPassword } from '@/lib/enterprise-admin-provision';
+import { isEnterpriseStatus } from '@/lib/enterprise-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -133,7 +134,9 @@ export async function POST(request: Request) {
           const enterprise = await enterprises.create({
             name: String(body.name).trim(),
             code: String(body.code).trim(),
-            status: String(body.status || 'pending_approval'),
+            status: isEnterpriseStatus(body.status)
+              ? body.status
+              : 'pending_approval',
             registrationMode: 'manual',
             contactPerson,
             address: body.address ? String(body.address) : null,
@@ -162,7 +165,7 @@ export async function POST(request: Request) {
             }
             await adminUsers.create({
               username: phone,
-              passwordHash: await bcrypt.hash('Admin123456', 10),
+              passwordHash: await hashEnterpriseAdminInitialPassword(),
               displayName: contactPerson.name
                 ? String(contactPerson.name)
                 : '',

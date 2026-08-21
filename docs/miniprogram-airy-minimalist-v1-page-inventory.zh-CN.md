@@ -67,9 +67,9 @@ Logo：预留位置，导出时合成 brand-logo.png
 | --- | --- | --- |
 | 客户 | `服务 / 我的` | `customer-project`、`customer-ai-schemes`、预约详情、首次预约和改期均无 TabBar；`customer-projects` 仅为旧深链重定向壳（不再作产品列表）；服务首屏直达档案，列表 API 供给排序/切换；已发布方案册经线索详情/项目档案深链进入 |
 | 推荐人 | `推广 / 进度 / 收益 / 我的` | `referrer-progress` 与 `referrer-earnings` 挂载当前推荐人 TabBar；不得显示客户/员工导航 |
-| 设计师 | `工作台 / 客户 / 设计 / 我的` | 资料、设置、账号安全、AI 工作流子页均为深层页，无 TabBar |
-| 测量员 | `工作台 / 客户 / 我的` | 不可用时间、预约详情和正式量房编辑器均为深层页；“客户”Tab 用于查看已量房完成客户与统计入口 |
-| 企业负责人 | `经营 / 客户 / 预约 / 我的` | `enterprise-appointments` 是“预约”Tab；线索详情、预约详情和资料页均无 TabBar |
+| 设计师 | `工作台 / 客户 / 设计 / 收益 / 我的` | 资料、设置、账号安全、AI 工作流子页均为深层页，无 TabBar；`staff-earnings` 挂载当前设计师 TabBar |
+| 测量员 | `工作台 / 客户 / 收益 / 我的` | 不可用时间、预约详情和正式量房编辑器均为深层页；“客户”Tab 用于查看已量房完成客户与统计入口；`staff-earnings` 挂载当前测量员 TabBar |
+| 企业负责人 | `经营 / 客户 / 预约 / 提成 / 我的` | `enterprise-appointments` 是“预约”Tab；`enterprise-commissions` 是“提成”发放台账 Tab；线索详情、预约详情和资料页均无 TabBar |
 | 身份恢复/切换 | 无 | 身份列表、恢复、资料编辑、设置、账号安全均不得套用任一角色的底部导航 |
 
 ## 2. 已有 Airy Minimalist 新稿
@@ -119,6 +119,7 @@ Logo：预留位置，导出时合成 brand-logo.png
 | [x] | R01 | 企业负责人经营工作台 | `pages/index/index`（企业负责人） | `18b-enterprise-ops-dashboard-period.jpg`（自定义 sheet `18c`；旧基线 `18` 可对照） |
 | [x] | R02 | 企业负责人客户列表 | `pages/leads-management/leads-management`（企业负责人） | `19-enterprise-customer-list.jpg` |
 | [x] | R03 | 企业负责人预约列表 | `packages/business/enterprise-appointments/enterprise-appointments` | `20-enterprise-appointments.jpg` |
+| [x] | — | 企业负责人提成发放 | `packages/business/enterprise-commissions/enterprise-commissions` | 无独立设计稿；复用 `referrer-earnings` 第 13 阶段语言，数据对齐后台 `/lead-commissions` 三张金额卡 |
 | [x] | R04 | 客户项目索引（已退役为深链重定向壳） | `packages/business/customer-projects/customer-projects` | `21-customer-project-index.jpg`（产品列表 UI 已退役；首屏阶段陪伴承接排序/切换） |
 | [x] | R05 | 推荐人服务进度 | `packages/business/referrer-progress/referrer-progress` | `22-referrer-progress.jpg` |
 | [x] | R06 | 推荐人收益 | `packages/business/referrer-earnings/referrer-earnings` | `23-referrer-earnings.jpg` |
@@ -167,7 +168,7 @@ Logo：预留位置，导出时合成 brand-logo.png
 
 | 编号 | 锁定合同 |
 | --- | --- |
-| R01 | 企业负责人 `pages/index/index` 的**有数据异常台 + 可筛选经营大盘**。标题、副标题、三项摘要和异常条目直接使用 `GET /api/miniprogram/workbench` 的 `title`、`subtitle`、`summary`、`primaryItems`；只表达待派失败、过期未重约和人员缺口。经营大盘为只读五卡 KPI（新增线索/已完成量房/方案交付率/已签约/签单率），支持周期 chips 与自定义 sheet；允许展示签约金额 detail。允许企业负责人 TabBar，不得绘制派单、签约操作、人员管理等未接通动作（签约事实只作 KPI，首页不做改状态）。 |
+| R01 | 企业负责人 `pages/index/index` 的**有数据异常台 + 可筛选经营大盘**。标题、副标题、三项摘要和异常条目直接使用 `GET /api/miniprogram/workbench` 的 `title`、`subtitle`、`summary`、`primaryItems`；只表达待派失败、过期未重约和人员缺口（人员缺口「查看详情」为原生说明弹窗，不进入人员管理页）。Hero CTA 为「出示入驻码」，进入 `enterprise-join-codes` 出示并管理后台员工/推荐人双码（生成/换新/停用；非员工活动码）。经营大盘为只读五卡 KPI（新增线索/已完成量房/方案交付率/已签约/签单率），支持周期 chips 与自定义 sheet；允许展示签约金额 detail。允许企业负责人 TabBar，不得绘制派单、签约操作、人员管理等未接通动作（签约事实只作 KPI，首页不做改状态）。 |
 | R02 | 企业负责人客户 Tab 的**有数据列表**。只使用当前线索列表真实字段和现有搜索/进入详情动作；“新增客户”仅企业负责人可见且只能出现一次。不得加入户型风格、项目面积、收费、分派或列表接口未返回的客户资料。 |
 | R03 | 企业负责人“预约”Tab 的**有数据列表**。页面壳复用工作台真实 `title/subtitle`，列表区只显示接口返回的 `confirmed` 与 `expired` 预约项及现有进入预约详情动作；TabBar 为 `经营/客户/预约/我的`，选中“预约”。 |
 | R04 | 客户项目索引**产品列表已退役**。运行时 `customer-projects` 仅为深链重定向壳（排序后进 `customer-project` 或回落「服务」Tab）。多项目切换与排序由服务首屏阶段陪伴承接；历史稿 `21-customer-project-index.jpg` 不再作为生产列表 UI 源。 |
@@ -194,7 +195,7 @@ Logo：预留位置，导出时合成 brand-logo.png
 | D06 | 生成中、失败、结果交付分别产出独立文件。结果页仅使用真实任务状态、生成结果、发布/撤回权限和既有动作；不得在一个文件混合转圈、失败提示和成功交付。无 TabBar。 |
 | D07 | 历史任务的**有数据列表**。只展示当前用户/授权范围内的真实任务摘要、状态、时间和现有进入结果动作；不得将其他客户任务、消费明细或批量管理能力加入页面。无 TabBar。 |
 | D08 | 客户 AI 方案册的**多轮已发布有数据主态**。只读：自定义导航「客户 AI 方案」、客户摘要 Hero、横向方案轮次 chips、当前轮主预览、当前轮交付时间轴、底部返回与（客户）保存/分享。方案轮次与图片来自已发布 `publishedSchemes`/`groupPublishedSchemes`；点击预览走 `wx.previewImage`。禁止生成、发布/撤回、材质微调、导出方案包及任何 AI 工作台编辑入口。无 TabBar。单轮/空态/图片不可读为后续状态稿。 |
-| D09 | 设计师 `scheme-studio` 的**有轮次主态**。胶囊安全自定义导航、横向方案 chips、项目卡、出图轮次时间线；底部为悬浮 AI 输入 dock（`45c`：点数条 + 提示词 + 参考/模型/比例/模板/设置 + 圆形生成），「设置」打开 `45d` 出图设置半屏；「模板」为封面网格 + 分类/搜索 + 先放大再使用。数据走 Mini Studio API。无 TabBar。 |
+| D09 | 设计师 `scheme-studio`：方案 chips/项目卡/轮次时间线；底部悬浮 AI dock 默认收缩，聚焦展开（`45c`/`45d`）；滚动留白 + 渐变 scrim 避免挡住方案与白底粘连。模板 sheet：分类/搜索/先放大再使用。无 TabBar。 |
 
 ## 8. 每个页面至少需要补的状态稿
 

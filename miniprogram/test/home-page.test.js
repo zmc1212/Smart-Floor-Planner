@@ -24,6 +24,30 @@ function createPage(definition, data = {}) {
   };
 }
 
+test('未登录访问首页会进入家客来登录入口，而非停留在旧访客首页', () => {
+  const definition = loadHomePageDefinition();
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const switchedTabs = [];
+
+  global.getApp = () => ({ globalData: {} });
+  global.wx = {
+    getStorageSync: () => '',
+    switchTab: ({ url }) => switchedTabs.push(url),
+  };
+
+  try {
+    const page = createPage(definition);
+    definition.onLoad.call(page);
+
+    assert.deepEqual(switchedTabs, ['/pages/mine/mine']);
+    assert.equal(page.data.redirectingToVisitorGateway, true);
+  } finally {
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+  }
+});
+
 test('Home uses the shared community-first identity for every recent-plan title', () => {
   const page = createPage(loadHomePageDefinition(), {
     homeDashboard: {

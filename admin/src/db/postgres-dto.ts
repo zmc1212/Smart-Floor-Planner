@@ -6,6 +6,7 @@ import type {
   DepartmentRecord,
   DeviceWithRelations,
   EnterpriseRecord,
+  EnterpriseStatusEventRecord,
   EnterpriseOrderWithRelations,
   FloorPlanRecord,
   FloorPlanWithCreator,
@@ -107,8 +108,24 @@ export function enterpriseToDto(record: EnterpriseRecord) {
     automationConfig: record.automationConfig,
     aiConfig: record.aiConfig,
     aiPolicy: record.aiPolicy,
+    statusReason: record.statusReason ?? null,
+    statusChangedAt: record.statusChangedAt ?? null,
+    statusChangedByAdminId: record.statusChangedByAdminId?.toString() ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
+  };
+}
+
+export function enterpriseStatusEventToDto(record: EnterpriseStatusEventRecord) {
+  return {
+    _id: record.id.toString(),
+    enterpriseId: record.enterpriseId.toString(),
+    fromStatus: record.fromStatus,
+    toStatus: record.toStatus,
+    action: record.action,
+    reason: record.reason ?? null,
+    actorAdminId: record.actorAdminId?.toString() ?? null,
+    createdAt: record.createdAt,
   };
 }
 

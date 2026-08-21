@@ -11,6 +11,11 @@
   height: 100%;
 }
 
+.guest-page {
+  height: 100vh;
+  min-height: 100%;
+}
+
 .mine-content {
   min-height: 100%;
   padding-bottom: 34rpx;
@@ -994,15 +999,49 @@
 
 .login-state {
   min-height: 100%;
-  padding: calc(120rpx + env(safe-area-inset-top)) 32rpx 48rpx;
+  padding: 0 32rpx calc(48rpx + env(safe-area-inset-bottom));
+  background:
+    linear-gradient(152deg, rgba(234, 248, 236, 0.72) 0%, rgba(255, 255, 255, 0) 30%),
+    #fbfcfa;
   box-sizing: border-box;
 }
 
+.guest-brand-lockup {
+  display: flex;
+  padding-bottom: 28rpx;
+  align-items: center;
+  gap: 16rpx;
+  box-sizing: content-box;
+}
+
+.guest-brand-logo {
+  width: 58rpx;
+  height: 58rpx;
+  flex-shrink: 0;
+}
+
+.guest-brand-name {
+  display: flex;
+  align-items: baseline;
+  color: #222a25;
+  font-size: 30rpx;
+  font-weight: 700;
+  letter-spacing: -0.4rpx;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.guest-brand-divider {
+  margin: 0 8rpx;
+  color: #8c968f;
+  font-weight: 400;
+}
+
 .login-visual {
-  height: 340rpx;
+  height: 366rpx;
   overflow: hidden;
   border-radius: 28rpx;
-  background: #eef6f0;
+  background: #eef8f1;
   box-shadow: 0 14rpx 34rpx rgba(44, 59, 49, 0.08);
 }
 
@@ -1012,19 +1051,20 @@
 }
 
 .login-copy {
-  padding: 38rpx 8rpx 0;
+  padding: 42rpx 8rpx 0;
 }
 
 .login-kicker {
   color: #248d4c;
-  font-size: 20rpx;
+  font-size: 24rpx;
   font-weight: 700;
+  line-height: 1.2;
 }
 
 .login-title {
   margin-top: 14rpx;
   color: #202521;
-  font-size: 46rpx;
+  font-size: 42rpx;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -1039,6 +1079,43 @@
 .login-button {
   width: 100%;
   margin-top: 36rpx;
+  border-radius: 20rpx;
+  background: linear-gradient(110deg, #1ec45a 0%, #16b950 100%);
+  box-shadow: 0 12rpx 24rpx rgba(28, 177, 79, 0.2);
+}
+
+.login-trust-note {
+  display: flex;
+  min-height: 68rpx;
+  margin-top: 30rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  color: #7b847d;
+  font-size: 22rpx;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.login-trust-mark {
+  position: relative;
+  width: 28rpx;
+  height: 28rpx;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+.login-trust-mark::after {
+  position: absolute;
+  top: 7rpx;
+  left: 9rpx;
+  width: 8rpx;
+  height: 4rpx;
+  content: "";
+  border-bottom: 2rpx solid #ffffff;
+  border-left: 2rpx solid #ffffff;
+  transform: rotate(-45deg);
 }
 
 @media (max-width: 360px) {

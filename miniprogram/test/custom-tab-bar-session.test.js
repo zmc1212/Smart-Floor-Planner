@@ -40,9 +40,10 @@ function loadTabBarComponent(globalData) {
   };
 }
 
-test('custom TabBar refreshes Design visibility after the active account changes', () => {
+test('custom TabBar is hidden when no signed identity is available', () => {
   const globalData = {
-    userInfo: { role: 'staff', enterpriseId: '' }
+    userInfo: null,
+    bootstrap: null
   };
   const { definition, restore } = loadTabBarComponent(globalData);
 
@@ -55,17 +56,9 @@ test('custom TabBar refreshes Design visibility after the active account changes
     };
 
     definition.methods.syncSelected.call(component);
-    assert.equal(component.data.list.find((item) => item.key === 'ai-design').visible, false);
-    assert.equal(component.data.list.filter((item) => item.visible).length, 4);
-    assert.equal(component.data.compactMeasureTab, true);
-
-    globalData.userInfo = { role: 'staff', enterpriseId: 'enterprise-1' };
-    definition.methods.syncSelected.call(component);
-
-    assert.equal(component.data.list.find((item) => item.key === 'ai-design').visible, true);
-    assert.equal(component.data.list.filter((item) => item.visible).length, 5);
-    assert.equal(component.data.compactMeasureTab, false);
-    assert.equal(component.data.selected, 4);
+    assert.deepEqual(component.data.list, []);
+    assert.equal(component.data.suppressed, true);
+    assert.equal(component.data.badgeUnavailable, false);
   } finally {
     restore();
   }
@@ -93,26 +86,56 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['promotion', 'progress', 'earnings', 'mine']);
 
-    globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'staff.appointments', 'staff.design', 'account'] } };
+    globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'] } };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'design', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'design', 'earnings', 'mine']);
     assert.equal(component.data.list.some((item) => item.key === 'measure'), false);
 
     globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'account'] } };
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'mine']);
 
-    globalData.bootstrap = { current: { role: 'measurer', capabilities: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'account'] } };
+    globalData.bootstrap = { current: { role: 'measurer', capabilities: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'] } };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'earnings', 'mine']);
     assert.equal(component.data.list[0].pagePath, '/pages/index/index');
 
-    globalData.bootstrap = { current: { role: 'enterprise_admin', capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'account'] } };
+    globalData.bootstrap = { current: { role: 'enterprise_admin', capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'] } };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['operations', 'customers', 'appointments', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['operations', 'customers', 'appointments', 'commissions', 'mine']);
   } finally {
     restore();
   }
+});
+
+test('earnings and appointments use paired TabBar icon states', () => {
+  const { ROLE_ITEMS } = require(tabBarPath);
+  const assetRoot = path.resolve(__dirname, '..', 'images', 'mine-icons');
+  const expectedAssets = [
+    'earn-g.png',
+    'earn-a.png',
+    'book-g.png',
+    'book-a-active.png',
+  ];
+
+  for (const filename of expectedAssets) {
+    const asset = fs.readFileSync(path.join(assetRoot, filename));
+    assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(asset.readUInt32BE(16), 96);
+    assert.equal(asset.readUInt32BE(20), 96);
+    assert.ok(asset.length <= 10 * 1024, `${filename} exceeds the 10KB icon budget`);
+  }
+
+  for (const role of ['referrer', 'designer', 'measurer', 'enterprise_admin']) {
+    const key = role === 'enterprise_admin' ? 'commissions' : 'earnings';
+    const earnings = ROLE_ITEMS[role].find((item) => item.key === key);
+    assert.equal(earnings.iconPath, '/images/mine-icons/earn-g.png');
+    assert.equal(earnings.selectedIconPath, '/images/mine-icons/earn-a.png');
+  }
+
+  const appointments = ROLE_ITEMS.enterprise_admin.find((item) => item.key === 'appointments');
+  assert.equal(appointments.iconPath, '/images/mine-icons/book-g.png');
+  assert.equal(appointments.selectedIconPath, '/images/mine-icons/book-a-active.png');
 });
 
 test('custom TabBar uses the stored signed role before bootstrap refresh completes', () => {
@@ -128,7 +151,7 @@ test('custom TabBar uses the stored signed role before bootstrap refresh complet
       setData(update) { this.data = { ...this.data, ...update }; }
     };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'design', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'design', 'earnings', 'mine']);
   } finally {
     restore();
   }
@@ -138,7 +161,7 @@ test('custom TabBar paints server badge counts and never fills local zeros', () 
   const globalData = {
     userInfo: { role: 'staff', mode: 'staff', staffRole: 'designer' },
     bootstrap: {
-      current: { role: 'designer', capabilities: ['staff.leads', 'staff.appointments', 'staff.design', 'account'] },
+      current: { role: 'designer', capabilities: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'] },
       badges: { status: 'ok', message: null, counts: { workbench: 6 } }
     }
   };

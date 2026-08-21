@@ -1,8 +1,6 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
-import { Suspense, useCallback, useEffect, useRef, useState, type Key } from 'react';
+import { useCallback, useEffect, useRef, useState, type Key } from 'react';
 import {
   PageContainer,
   ProCard,
@@ -31,7 +29,6 @@ import {
   Timeline,
   Typography,
 } from 'antd';
-import { useRouter, useSearchParams } from 'next/navigation';
 import { Archive, BadgeCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Send, Trash2, Undo2, Users, XCircle } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/admin/operation-feedback';
@@ -216,6 +213,7 @@ const STATUS_LABELS = Object.fromEntries(
 const LEAD_SOURCE_LABELS: Record<string, string> = {
   referrer_network: '推荐人网络',
   staff_activity: '员工活动码',
+  manual_entry: '企业录入',
 };
 
 function openAiWorkbench(leadId: string, workflowId?: string) {
@@ -423,10 +421,10 @@ function LeadsPage() {
   const leadListRequestRef = useRef<AbortController | null>(null);
   const leadDetailRequestRef = useRef<AbortController | null>(null);
   const confirmAction = useConfirmDialog();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const { user: currentUser } = useCurrentUser();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const selectedLeadRef = useRef<Lead | null>(null);
+  selectedLeadRef.current = selectedLead;
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -492,7 +490,7 @@ function LeadsPage() {
   }, []);
 
   useEffect(() => {
-    const leadId = searchParams.get('leadId');
+    const leadId = new URLSearchParams(window.location.search).get('leadId');
     if (!leadId) return;
     void fetch(`/api/leads/${leadId}`)
       .then(async (response) => {
@@ -501,7 +499,7 @@ function LeadsPage() {
         setSelectedLead(result.data);
       })
       .catch((error) => notify.error(error instanceof Error ? error.message : '线索详情加载失败'));
-  }, [searchParams]);
+  }, []);
 
   useEffect(() => {
     void fetch('/api/leads/capabilities')
@@ -521,6 +519,59 @@ function LeadsPage() {
   const refreshLeads = useCallback(async () => {
     await actionRef.current?.reload();
   }, []);
+
+  const requestLeads = useCallback(async (params: {
+    current?: number;
+    pageSize?: number;
+    status?: string;
+    serviceStage?: string;
+    assignmentStatus?: string;
+  }) => {
+    leadListRequestRef.current?.abort();
+    const controller = new AbortController();
+    leadListRequestRef.current = controller;
+    const query = new URLSearchParams({
+      page: String(params.current || 1),
+      limit: String(params.pageSize || 20),
+    });
+    if (params.status) query.set('status', String(params.status));
+    if (params.serviceStage) query.set('serviceStage', String(params.serviceStage));
+    if (params.assignmentStatus) query.set('assignmentStatus', String(params.assignmentStatus));
+    query.set('archiveState', archiveState);
+    try {
+      const response = await fetch(`/api/leads?${query.toString()}`, { signal: controller.signal });
+      const result = await response.json() as LeadListResponse;
+      if (!response.ok || !result.success) throw new Error(result.error || '线索列表加载失败');
+      setVisibleLeads(result.data || []);
+      const selectedLeadId = selectedLeadRef.current?._id;
+      if (selectedLeadId) {
+        const refreshed = result.data?.find((lead) => lead._id === selectedLeadId);
+        if (refreshed) setSelectedLead((current) => current ? { ...current, ...refreshed } : current);
+      }
+      const nextOverview = {
+        total: result.data?.length || 0,
+        measuring: (result.data || []).filter((lead) => lead.status === 'measuring').length,
+        assigned: (result.data || []).filter((lead) => ['measured', 'assigned', 'designing', 'quoting'].includes(lead.status)).length,
+        converted: (result.data || []).filter((lead) => lead.status === 'converted').length,
+      };
+      setOverview((current) => (
+        current.total === nextOverview.total &&
+        current.measuring === nextOverview.measuring &&
+        current.assigned === nextOverview.assigned &&
+        current.converted === nextOverview.converted
+          ? current
+          : nextOverview
+      ));
+      return {
+        data: result.data || [],
+        total: result.pagination?.total || 0,
+        success: true,
+      };
+    } catch (error) {
+      if (controller.signal.aborted) return { data: [], total: 0, success: false };
+      throw error;
+    }
+  }, [archiveState]);
 
   const openLeadDetail = async (lead: Lead) => {
     leadDetailRequestRef.current?.abort();
@@ -1577,51 +1628,7 @@ function LeadsPage() {
               </Flex>
             );
           }}
-          request={async (params) => {
-            leadListRequestRef.current?.abort();
-            const controller = new AbortController();
-            leadListRequestRef.current = controller;
-            const query = new URLSearchParams({
-              page: String(params.current || 1),
-              limit: String(params.pageSize || 20),
-            });
-            if (params.status) query.set('status', String(params.status));
-            if (params.serviceStage) query.set('serviceStage', String(params.serviceStage));
-            if (params.assignmentStatus) query.set('assignmentStatus', String(params.assignmentStatus));
-            query.set('archiveState', archiveState);
-            try {
-              const response = await fetch(`/api/leads?${query.toString()}`, { signal: controller.signal });
-              const result = await response.json() as LeadListResponse;
-              if (!response.ok || !result.success) throw new Error(result.error || '线索列表加载失败');
-              setVisibleLeads(result.data || []);
-              if (selectedLead) {
-                const refreshed = result.data?.find((lead) => lead._id === selectedLead._id);
-                if (refreshed) setSelectedLead((current) => current ? { ...current, ...refreshed } : current);
-              }
-              const nextOverview = {
-                total: result.data?.length || 0,
-                measuring: (result.data || []).filter((lead) => lead.status === 'measuring').length,
-                assigned: (result.data || []).filter((lead) => ['measured', 'assigned', 'designing', 'quoting'].includes(lead.status)).length,
-                converted: (result.data || []).filter((lead) => lead.status === 'converted').length,
-              };
-              setOverview((current) => (
-                current.total === nextOverview.total &&
-                current.measuring === nextOverview.measuring &&
-                current.assigned === nextOverview.assigned &&
-                current.converted === nextOverview.converted
-                  ? current
-                  : nextOverview
-              ));
-              return {
-                data: result.data || [],
-                total: result.pagination?.total || 0,
-                success: true,
-              };
-            } catch (error) {
-              if (controller.signal.aborted) return { data: [], total: 0, success: false };
-              throw error;
-            }
-          }}
+          request={requestLeads}
           onRequestError={(error) => notify.error(error instanceof Error ? error.message : '线索列表加载失败')}
         />
       </PageContainer>
@@ -2324,10 +2331,4 @@ function LeadStaffCardField({
   );
 }
 
-export default function Page() {
-  return (
-    <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">正在加载线索...</div>}>
-      <LeadsPage />
-    </Suspense>
-  );
-}
+export default LeadsPage;

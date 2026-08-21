@@ -1,14 +1,15 @@
-import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
-import { enterpriseToDto, parsePostgresId } from '@/db/postgres-dto';
 import {
-  AdminUserRepository,
+  enterpriseStatusEventToDto,
+  enterpriseToDto,
+  parsePostgresId,
+} from '@/db/postgres-dto';
+import {
   EnterpriseRepository,
   type EnterpriseUpdate,
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,6 @@ interface EnterprisePatchBody {
   name?: string;
   code?: string;
   contactPerson?: Record<string, unknown>;
-  status?: string;
   logo?: string;
   branding?: Record<string, unknown>;
   groundPromotionFixedCommission?: number;
@@ -96,12 +96,22 @@ export async function GET(
       async (context) => {
         const { id } = await params;
         if (context.role === 'enterprise_admin' && context.enterpriseId !== id) {
-          return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+          return NextResponse.json(
+            { success: false, error: 'Forbidden' },
+            { status: 403 }
+          );
         }
-        const enterprise = await withPlatformTransaction((transaction) =>
-          new EnterpriseRepository(transaction).findById(parsePostgresId(id))
-        );
-        if (!enterprise) {
+        const payload = await withPlatformTransaction(async (transaction) => {
+          const enterprises = new EnterpriseRepository(transaction);
+          const enterprise = await enterprises.findById(parsePostgresId(id));
+          if (!enterprise) return null;
+          const statusEvents =
+            context.role === 'super_admin' || context.role === 'admin'
+              ? await enterprises.listStatusEvents(enterprise.id, 20)
+              : [];
+          return { enterprise, statusEvents };
+        });
+        if (!payload) {
           return NextResponse.json(
             { success: false, error: 'Enterprise not found' },
             { status: 404 }
@@ -109,7 +119,12 @@ export async function GET(
         }
         return NextResponse.json({
           success: true,
-          data: sanitizeEnterpriseForResponse(enterpriseToDto(enterprise)),
+          data: {
+            ...sanitizeEnterpriseForResponse(
+              enterpriseToDto(payload.enterprise)
+            ),
+            statusEvents: payload.statusEvents.map(enterpriseStatusEventToDto),
+          },
         });
       }
     );
@@ -133,72 +148,52 @@ export async function PATCH(
       async (context) => {
         const { id } = await params;
         if (context.role === 'enterprise_admin' && context.enterpriseId !== id) {
-          return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+          return NextResponse.json(
+            { success: false, error: 'Forbidden' },
+            { status: 403 }
+          );
         }
         const enterpriseId = parsePostgresId(id);
-        const body = (await request.json()) as EnterprisePatchBody;
-        const enterprise = await withPlatformTransaction(
-          async (transaction) => {
-            const enterprises = new EnterpriseRepository(transaction);
-            const adminUsers = new AdminUserRepository(transaction);
-            const current = await enterprises.findById(enterpriseId);
-            if (!current) return null;
+        const body = (await request.json()) as EnterprisePatchBody & {
+          status?: unknown;
+        };
+        if (body.status !== undefined) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                '企业状态请通过 POST /api/admin/enterprises/[id]/status 变更',
+            },
+            { status: 400 }
+          );
+        }
+        const enterprise = await withPlatformTransaction(async (transaction) => {
+          const enterprises = new EnterpriseRepository(transaction);
+          const current = await enterprises.findById(enterpriseId);
+          if (!current) return null;
 
-            const updateData: EnterpriseUpdate = {};
-            if (body.name !== undefined) updateData.name = body.name;
-            if (body.code !== undefined) updateData.code = body.code;
-            if (body.contactPerson !== undefined) {
-              updateData.contactPerson = body.contactPerson;
-            }
-            if (body.status !== undefined) updateData.status = body.status;
-            if (body.logo !== undefined) updateData.logo = body.logo;
-            if (body.branding !== undefined) {
-              updateData.branding = body.branding;
-            }
-            if (body.groundPromotionFixedCommission !== undefined) {
-              updateData.groundPromotionFixedCommission = String(
-                Number(body.groundPromotionFixedCommission)
-              );
-            }
-            if (body.automationConfig !== undefined) {
-              updateData.automationConfig = normalizeAutomationConfig(
-                body.automationConfig
-              );
-            }
-            const updated = await enterprises.update(
-              enterpriseId,
-              updateData
-            );
-            if (!updated) return null;
-
-            const contact = updated.contactPerson;
-            const phone =
-              typeof contact.phone === 'string' ? contact.phone.trim() : '';
-            if (body.status === 'active' && phone) {
-              const existingUser =
-                await adminUsers.findByUsernameOrPhone(phone);
-              if (!existingUser) {
-                await adminUsers.create({
-                  username: phone,
-                  passwordHash: await bcrypt.hash('Admin123456', 10),
-                  displayName:
-                    typeof contact.name === 'string' ? contact.name : '',
-                  role: 'enterprise_admin',
-                  enterpriseId: updated.id,
-                  phone,
-                  menuPermissions: DEFAULT_PERMISSIONS.enterprise_admin,
-                  status: 'active',
-                });
-              } else if (existingUser.enterpriseId !== updated.id) {
-                throw Object.assign(
-                  new Error(`手机号 ${phone} 已被其他企业账号使用`),
-                  { code: 'ACCOUNT_CONFLICT' }
-                );
-              }
-            }
-            return updated;
+          const updateData: EnterpriseUpdate = {};
+          if (body.name !== undefined) updateData.name = body.name;
+          if (body.code !== undefined) updateData.code = body.code;
+          if (body.contactPerson !== undefined) {
+            updateData.contactPerson = body.contactPerson;
           }
-        );
+          if (body.logo !== undefined) updateData.logo = body.logo;
+          if (body.branding !== undefined) {
+            updateData.branding = body.branding;
+          }
+          if (body.groundPromotionFixedCommission !== undefined) {
+            updateData.groundPromotionFixedCommission = String(
+              Number(body.groundPromotionFixedCommission)
+            );
+          }
+          if (body.automationConfig !== undefined) {
+            updateData.automationConfig = normalizeAutomationConfig(
+              body.automationConfig
+            );
+          }
+          return enterprises.update(enterpriseId, updateData);
+        });
 
         if (!enterprise) {
           return NextResponse.json(

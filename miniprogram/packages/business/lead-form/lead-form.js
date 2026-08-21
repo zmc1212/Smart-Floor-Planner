@@ -219,7 +219,7 @@ Page({
       const res = await api.request('/leads', 'POST', {
         ...payload,
         openid: app.globalData.openid,
-        source: 'MiniProgram',
+        source: 'manual_entry',
         floorPlanId: floorPlanId || undefined
       });
 

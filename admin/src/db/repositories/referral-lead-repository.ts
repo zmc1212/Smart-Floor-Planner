@@ -530,6 +530,77 @@ export class ReferralLeadRepository {
     return { kind: 'created', lead: await this.loadLead(lead.id) };
   }
 
+  async createManualEntryLead(input: {
+    enterpriseId: bigint;
+    actorStaffId: bigint | null;
+    actorUserId: bigint | null;
+    name: string;
+    phone: string;
+    communityName?: string | null;
+    area?: string | null;
+    stylePreference?: string | null;
+    city?: string | null;
+    notes?: string | null;
+  }): Promise<{ lead: LeadWithRelations }> {
+    await this.lockKey(`enterprise-assignment:${input.enterpriseId.toString()}`);
+    const designer = await this.findDesignerCandidate(input.enterpriseId);
+    const measurer = await this.findMeasurerCandidate(input.enterpriseId);
+    const now = new Date();
+    const assignmentErrorCode = this.assignmentErrorCode(designer, measurer);
+    const createdRows = await this.transaction
+      .insert(leads)
+      .values({
+        enterpriseId: input.enterpriseId,
+        customerUserId: null,
+        referrerMembershipId: null,
+        promoterId: input.actorStaffId,
+        measurerId: measurer?.id ?? null,
+        assignedTo: designer?.id ?? null,
+        assignedAt: designer ? now : null,
+        assignmentStatus: assignmentErrorCode ? 'assignment_pending' : 'assigned',
+        assignmentErrorCode,
+        name: input.name.trim().slice(0, 120),
+        phone: input.phone.trim(),
+        communityName: input.communityName?.trim().slice(0, 160) || null,
+        area: input.area || null,
+        city: input.city?.trim().slice(0, 80) || null,
+        stylePreference: input.stylePreference?.trim().slice(0, 120) || null,
+        notes: input.notes?.trim() || null,
+        source: 'manual_entry',
+        status: 'new',
+        followUpRecords: [],
+      })
+      .returning();
+    const lead = createdRows[0];
+    if (!lead) throw referralError('lead_create_failed', '线索创建失败', 500);
+
+    if (designer) {
+      await this.transaction
+        .update(adminUsers)
+        .set({ lastAssignedAt: now, updatedAt: now })
+        .where(eq(adminUsers.id, designer.id));
+    }
+    if (measurer && measurer.id !== designer?.id) {
+      await this.transaction
+        .update(adminUsers)
+        .set({ lastAssignedAt: now, updatedAt: now })
+        .where(eq(adminUsers.id, measurer.id));
+    }
+    await this.transaction.insert(leadAssignmentEvents).values({
+      enterpriseId: input.enterpriseId,
+      leadId: lead.id,
+      eventType: assignmentErrorCode ? 'assignment_pending' : 'assignment_created',
+      designerId: designer?.id ?? null,
+      measurerId: measurer?.id ?? null,
+      actorUserId: input.actorUserId,
+      errorCode: assignmentErrorCode,
+      reason: 'manual_entry',
+      metadata: {},
+    });
+
+    return { lead: await this.loadLead(lead.id) };
+  }
+
   async retryLeadAssignment(input: {
     leadId: bigint;
     reason: string;

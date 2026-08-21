@@ -22,10 +22,6 @@
             <text class="recipe-page-subtitle">{{enterpriseName ? enterpriseName + ' · 空间智能出图中心' : '空间智能出图中心'}}</text>
           </view>
         </view>
-        <view class="header-history-link" bindtap="openHistory" aria-role="button" aria-label="查看设计记录">
-          <image class="my-design-icon" src="/images/leads-v4/clock-blue.png" mode="aspectFit"></image>
-          <text>设计记录</text>
-        </view>
       </view>
 
       <view class="create-scheme-hero" bindtap="openCreateScheme" aria-role="button" aria-label="创建全新 AI 设计方案">
@@ -44,15 +40,13 @@
       </view>
 
       <view class="recipe-input-switch" aria-label="选择设计输入方式">
-        <view class="recipe-input-option {{recipeInputMode === 'floor_plan' ? 'active' : ''}}" data-mode="floor_plan" bindtap="switchRecipeInputMode">
+        <view class="recipe-input-option is-static" aria-disabled="true">
           <image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
           <view class="input-option-copy"><text>按户型设计</text><text>整屋或单个房间</text></view>
-          <view class="input-chevron"></view>
         </view>
-        <view class="recipe-input-option {{recipeInputMode === 'photo' ? 'active' : ''}}" data-mode="photo" bindtap="switchRecipeInputMode">
+        <view class="recipe-input-option is-static" aria-disabled="true">
           <image src="/images/ai-design-icons/reference.png" mode="aspectFit"></image>
           <view class="input-option-copy"><text>拍照改造</text><text>保留现场视角</text></view>
-          <view class="input-chevron"></view>
         </view>
       </view>
 
@@ -98,7 +92,7 @@
               <view wx:else class="recipe-card-placeholder"><image src="/images/ai-design-icons/palette.png" mode="aspectFit"></image><text>空间方案册</text></view>
               <view class="recipe-card-shade"></view>
               <view class="featured-card-copy">
-                <text class="featured-card-meta">{{item.supportsWholeFloorPlan ? '完整户型 / 单房间' : '需要现场照片'}} · {{workflows[2].credits}} 点</text>
+                <text class="featured-card-meta">{{item.supportsWholeFloorPlan ? '完整户型 / 单房间' : '需要现场照片'}} · {{item.recipeCredits}} 点</text>
                 <text class="featured-card-title">{{item.name}}</text>
                 <text class="featured-card-subtitle">{{item.categoryName}}</text>
               </view>
@@ -123,7 +117,7 @@
               <view class="waterfall-copy">
                 <text class="waterfall-space">{{recipe.spaceLabel}}</text>
                 <text class="waterfall-title">{{recipe.name}}</text>
-                <text class="waterfall-meta">{{recipe.supportsWholeFloorPlan ? '适用完整户型' : '需要现场照片'}} <text>{{recipeInputMode === 'photo' ? workflows[1].credits : workflows[2].credits}} 点</text></text>
+                <text class="waterfall-meta">{{recipe.supportsWholeFloorPlan ? '适用完整户型' : '需要现场照片'}} <text>{{recipe.recipeCredits}} 点</text></text>
               </view>
               <view class="waterfall-go"><view class="action-arrow"></view></view>
             </view>

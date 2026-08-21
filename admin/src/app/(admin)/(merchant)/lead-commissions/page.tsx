@@ -475,6 +475,7 @@ export default function LeadCommissionsPage() {
       valueEnum: {
         referrer_network: '推荐人网络',
         staff_activity: '员工活动码',
+        manual_entry: '企业录入',
       },
       fieldProps: { allowClear: true, placeholder: '全部来源' },
     },

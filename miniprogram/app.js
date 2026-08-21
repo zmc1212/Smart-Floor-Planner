@@ -191,8 +191,20 @@ App({
     this.globalData.roleLandingRestoreRetries = 0;
     const current = pages[pages.length - 1].route || '';
     const rootRoutes = new Set(['pages/index/index', 'pages/mine/mine']);
-    if (!rootRoutes.has(current)) return;
+    const scanLandingRoutes = new Set([
+      'packages/business/enterprise-register/enterprise-register'
+    ]);
     const navigation = require('./utils/identity-navigation.js');
+    if (scanLandingRoutes.has(current)) {
+      const identity = {
+        ...this.globalData.userInfo,
+        ...((this.globalData.bootstrap && this.globalData.bootstrap.current) || {})
+      };
+      const role = navigation.roleForIdentity(identity);
+      if (!['designer', 'measurer', 'enterprise_admin', 'referrer'].includes(role)) return;
+    } else if (!rootRoutes.has(current)) {
+      return;
+    }
     if (!navigation.navigateToRoleLanding({
       ...this.globalData.userInfo,
       ...(this.globalData.bootstrap && this.globalData.bootstrap.current || {})
@@ -203,7 +215,7 @@ App({
     if (this.globalData.deepLinkRedirecting || !this.globalData.bootstrap) return;
     const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
     const current = pages.length ? `/${pages[pages.length - 1].route}` : '';
-    if (!current || current.includes('/login') || current.includes('/identity-recovery') || current.includes('/onboarding') || current.includes('/free-design-service')) return;
+    if (!current || current.includes('/login') || current.includes('/identity-recovery') || current.includes('/onboarding') || current.includes('/enterprise-register') || current.includes('/free-design-service')) return;
     const navigation = require('./utils/identity-navigation.js');
     const result = navigation.guardDeepLink(current, this.globalData.bootstrap);
     if (result.allowed || !result.redirectPath || result.redirectPath === current) return;

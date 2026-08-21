@@ -7,6 +7,7 @@ import {
 import {
   AdminUserRepository,
   LeadRepository,
+  ReferralLeadRepository,
   type LeadListOptions,
   type LeadUpdate,
 } from '@/db/repositories';
@@ -20,6 +21,7 @@ import {
 import { resolveWritableEnterpriseId } from '@/lib/tenant-route';
 import {
   notifyDesignerOfAssignedLead,
+  notifyEnterpriseAdminOfAssignmentPending,
   notifyEnterpriseAdminOfNewLead,
 } from '@/lib/wechat-notification';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
@@ -235,12 +237,13 @@ export async function POST(request: Request) {
       );
     }
     const role = miniContext?.staff?.role || adminContext?.role || 'user';
-    if (miniContext?.staff?.role === 'measurer') {
+    if (role === 'designer' || role === 'measurer') {
       return NextResponse.json(
-        { success: false, error: '测量员不能通过旧录入流程创建客户，请使用推荐服务领取后的自动派单流程' },
+        { success: false, error: '仅企业负责人可手动录入客户，录入后将自动派设计师和测量员' },
         { status: 403 }
       );
     }
+    const usesManualEntryAssignment = ['enterprise_admin', 'admin', 'super_admin'].includes(role);
     const actorStaffId = miniContext?.staff
       ? parsePostgresId(miniContext.staff._id, 'staff id')
       : adminContext
@@ -261,6 +264,71 @@ export async function POST(request: Request) {
       let enterpriseId = explicitEnterpriseId
         ? parsePostgresId(explicitEnterpriseId, 'enterpriseId')
         : null;
+      const floorPlanId = parseOptionalPostgresId(
+        body.floorPlanId,
+        'floorPlanId'
+      );
+      const area = Number(body.area);
+      const communityName =
+        typeof body.communityName === 'string'
+          ? body.communityName.trim() || null
+          : null;
+      const stylePreference =
+        typeof body.stylePreference === 'string'
+          ? body.stylePreference.trim() || null
+          : null;
+      const city =
+        typeof body.city === 'string' ? body.city.trim() || null : null;
+      const notes = typeof body.notes === 'string' ? body.notes : null;
+      const areaValue = Number.isFinite(area) && area > 0 ? String(area) : null;
+
+      const existing = await leads.findByPhone(phone);
+      if (existing?.archivedAt) throw archivedLeadExistsError();
+
+      if (usesManualEntryAssignment) {
+        if (!enterpriseId) {
+          throw Object.assign(new Error('请先选择企业'), { status: 400 });
+        }
+        let lead = existing
+          ? await leads.update(existing.id, {
+              name: existing.name || name,
+              communityName: communityName ?? existing.communityName,
+              area: areaValue ?? existing.area,
+              stylePreference: stylePreference ?? existing.stylePreference,
+              city: city ?? existing.city,
+              notes: notes ?? existing.notes,
+            })
+          : (await new ReferralLeadRepository(transaction).createManualEntryLead({
+              enterpriseId,
+              actorStaffId,
+              actorUserId: miniContext?.user?._id
+                ? parsePostgresId(miniContext.user._id, 'user id')
+                : actorStaffId
+                  ? await admins.findLinkedUserId(actorStaffId)
+                  : null,
+              name,
+              phone,
+              communityName,
+              area: areaValue,
+              stylePreference,
+              city,
+              notes,
+            })).lead;
+        if (!lead) throw new Error('Failed to persist lead');
+        if (floorPlanId) {
+          lead = await leads.linkFloorPlan(lead.id, floorPlanId);
+          if (!lead) throw new Error('Floor plan not found in this scope');
+        }
+        return {
+          lead,
+          created: !existing,
+          designerId: lead.assignedTo,
+          measurerId: lead.measurerId,
+          assignmentPending: lead.assignmentStatus === 'assignment_pending',
+          assignmentErrorCode: lead.assignmentErrorCode,
+        };
+      }
+
       let promoterId = parseOptionalPostgresId(
         body.promoterId,
         'promoterId'
@@ -289,41 +357,24 @@ export async function POST(request: Request) {
         assignedTo =
           (await admins.findDesignerForPromoter(promoterId))?.id ?? null;
       }
-      if (!assignedTo && actorStaffId && role !== 'user') {
-        assignedTo = actorStaffId;
-      }
 
       let status = normalizeLeadStatus(body.status || 'new');
       if (assignedTo && (!body.status || body.status === 'new')) status = 'new';
-      const floorPlanId = parseOptionalPostgresId(
-        body.floorPlanId,
-        'floorPlanId'
-      );
-      const area = Number(body.area);
       const common: LeadUpdate = {
         enterpriseId,
         promoterId,
         assignedTo,
         assignedAt: assignedTo ? new Date() : null,
         status,
-        communityName:
-          typeof body.communityName === 'string'
-            ? body.communityName.trim() || null
-            : null,
-        area: Number.isFinite(area) && area > 0 ? String(area) : null,
-        stylePreference:
-          typeof body.stylePreference === 'string'
-            ? body.stylePreference.trim() || null
-            : null,
-        city:
-          typeof body.city === 'string' ? body.city.trim() || null : null,
+        communityName,
+        area: areaValue,
+        stylePreference,
+        city,
         source:
           typeof body.source === 'string' ? body.source : 'unknown',
-        notes: typeof body.notes === 'string' ? body.notes : null,
+        notes,
       };
 
-      const existing = await leads.findByPhone(phone);
-      if (existing?.archivedAt) throw archivedLeadExistsError();
       let lead = existing
         ? await leads.update(existing.id, {
             ...common,
@@ -356,9 +407,11 @@ export async function POST(request: Request) {
       }
       return {
         lead,
-        shouldNotifyEnterprise: !existing,
-        shouldNotifyAssignedDesigner: Boolean(!existing && assignedTo),
+        created: !existing,
         designerId: assignedTo,
+        measurerId: lead.measurerId,
+        assignmentPending: false,
+        assignmentErrorCode: null,
       };
     };
 
@@ -372,12 +425,26 @@ export async function POST(request: Request) {
       enterpriseId: lead.enterpriseId?.toString(),
     };
     await Promise.allSettled([
-      result.shouldNotifyEnterprise ? notifyEnterpriseAdminOfNewLead(notificationLead) : Promise.resolve(),
-      result.shouldNotifyAssignedDesigner && result.designerId
+      result.created ? notifyEnterpriseAdminOfNewLead(notificationLead) : Promise.resolve(),
+      result.created && result.designerId
         ? notifyDesignerOfAssignedLead(
             notificationLead,
             result.designerId.toString()
           )
+        : Promise.resolve(),
+      result.created &&
+      result.measurerId &&
+      result.measurerId.toString() !== result.designerId?.toString()
+        ? notifyDesignerOfAssignedLead(
+            notificationLead,
+            result.measurerId.toString()
+          )
+        : Promise.resolve(),
+      result.created && result.assignmentPending
+        ? notifyEnterpriseAdminOfAssignmentPending(notificationLead, {
+            reasonCode: result.assignmentErrorCode || 'assignment_pending',
+            eventKey: `manual-entry:${lead.id.toString()}`,
+          })
         : Promise.resolve(),
     ]);
 

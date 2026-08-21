@@ -17,3 +17,33 @@ export function requireMiniProgramPortalMode(
     });
   }
 }
+
+export function requireMiniProgramStaffEarnings(context: MiniProgramContext) {
+  const role = context.staff?.role;
+  if (
+    context.mode !== 'staff'
+    || !context.enterpriseId
+    || !context.staff?._id
+    || (role !== 'designer' && role !== 'measurer')
+  ) {
+    throw Object.assign(new Error('仅设计师或测量员可查看岗位收益'), {
+      status: 403,
+      code: 'miniprogram_portal_forbidden',
+    });
+  }
+  return role;
+}
+
+export function requireMiniProgramEnterpriseAdmin(context: MiniProgramContext) {
+  if (
+    context.mode !== 'staff'
+    || !context.enterpriseId
+    || !context.staff?._id
+    || context.staff.role !== 'enterprise_admin'
+  ) {
+    throw Object.assign(new Error('仅企业负责人可查看提成发放台账'), {
+      status: 403,
+      code: 'miniprogram_portal_forbidden',
+    });
+  }
+}

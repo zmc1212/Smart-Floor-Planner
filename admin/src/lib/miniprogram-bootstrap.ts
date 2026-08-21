@@ -34,9 +34,9 @@ const ROLE_LABELS: Record<MiniProgramRole, string> = {
 const ROLE_CAPABILITIES: Record<MiniProgramRole, string[]> = {
   customer: ['customer.service', 'customer.projects', 'account'],
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
-  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'account'],
-  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'account'],
-  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'account'],
+  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'],
+  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
+  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
 };
 
 export function getMiniProgramRole(

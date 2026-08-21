@@ -7,6 +7,7 @@ import {
 } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
+import { isEnterpriseOperationallyActive } from '@/lib/enterprise-status';
 
 export interface SessionUser {
   id: string;
@@ -24,6 +25,8 @@ export interface SessionUser {
   enterpriseName: string | null;
 }
 
+const PLATFORM_ROLES = new Set(['super_admin', 'admin']);
+
 export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   try {
     const cookieStore = await cookies();
@@ -40,6 +43,18 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
         parsePostgresId(payload.id, 'session user id')
       );
       if (!admin || admin.status !== 'active') return null;
+
+      if (admin.enterpriseId && !PLATFORM_ROLES.has(admin.role)) {
+        const boundEnterprise = await new EnterpriseRepository(
+          transaction
+        ).findById(admin.enterpriseId);
+        if (
+          !boundEnterprise ||
+          !isEnterpriseOperationallyActive(boundEnterprise.status)
+        ) {
+          return null;
+        }
+      }
 
       let enterpriseId = admin.enterpriseId;
       let enterpriseName = admin.enterpriseName;

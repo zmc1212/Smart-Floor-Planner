@@ -2,6 +2,7 @@ import {
   AdminUserRepository,
   AppointmentRepository,
   CustomerProjectRepository,
+  LeadCommissionRepository,
   LeadRepository,
   ReferrerPortalRepository,
   type MiniProgramIdentityContextRecord,
@@ -42,6 +43,8 @@ export type MiniProgramBadgeFacts = {
   ownerExpiredCount?: number;
   referrerOpenProgressCount?: number;
   referrerPayableCount?: number;
+  staffPayableCount?: number;
+  ownerPayableCount?: number;
 };
 
 export function unavailableMiniProgramBadges(): MiniProgramBadgeSummary {
@@ -69,19 +72,26 @@ export function buildMiniProgramBadges(input: {
       Number(facts.customerRescheduleCount || 0) + Number(facts.customerRebookCount || 0)
     );
   } else if (input.role === 'designer') {
-    counts = counted(
-      'workbench',
-      Number(facts.designerFollowUpCount || 0) + Number(facts.designerExpiredCount || 0)
-    );
+    counts = {
+      ...counted(
+        'workbench',
+        Number(facts.designerFollowUpCount || 0) + Number(facts.designerExpiredCount || 0)
+      ),
+      ...counted('earnings', Number(facts.staffPayableCount || 0)),
+    };
   } else if (input.role === 'measurer') {
-    counts = counted(
-      'workbench',
-      Number(facts.measurerTodayCount || 0) + Number(facts.measurerTaskCount || 0)
-    );
+    counts = {
+      ...counted(
+        'workbench',
+        Number(facts.measurerTodayCount || 0) + Number(facts.measurerTaskCount || 0)
+      ),
+      ...counted('earnings', Number(facts.staffPayableCount || 0)),
+    };
   } else if (input.role === 'enterprise_admin') {
     counts = {
       ...counted('operations', Number(facts.ownerExceptionCount || 0)),
       ...counted('appointments', Number(facts.ownerExpiredCount || 0)),
+      ...counted('commissions', Number(facts.ownerPayableCount || 0)),
     };
   } else if (input.role === 'referrer') {
     counts = {
@@ -143,23 +153,34 @@ export async function loadMiniProgramBadgeCounts(input: {
   const leads = new LeadRepository(transaction);
   const appointments = new AppointmentRepository(transaction);
 
-  if (role === 'designer') {
-    const scope = { staffId, staffVisibility: 'assigned' as const };
-    const [statusCounts, expiredUnbooked] = await Promise.all([
-      leads.countStatuses(scope, ['new', 'contacted', 'measuring', 'measured', 'assigned', 'designing', 'quoting']),
-      appointments.listExpiredUnbooked(enterpriseId, 50),
-    ]);
-    const designerExpiredCount = expiredUnbooked.filter((row) => row.lead.assignedTo === staffId).length;
-    const activeCount = Object.values(statusCounts).reduce((sum, value) => sum + value, 0);
-    return {
-      designerFollowUpCount: Math.max(0, activeCount - designerExpiredCount),
-      designerExpiredCount,
-    };
-  }
+  if (role === 'designer' || role === 'measurer') {
+    const earningsQuery = new LeadCommissionRepository(transaction).listOwnStaffEarnings({
+      userId,
+      enterpriseId,
+      staffId,
+      role,
+      enterpriseName: current.enterpriseName || '',
+    });
 
-  if (role === 'measurer') {
+    if (role === 'designer') {
+      const scope = { staffId, staffVisibility: 'assigned' as const };
+      const [earnings, statusCounts, expiredUnbooked] = await Promise.all([
+        earningsQuery,
+        leads.countStatuses(scope, ['new', 'contacted', 'measuring', 'measured', 'assigned', 'designing', 'quoting']),
+        appointments.listExpiredUnbooked(enterpriseId, 50),
+      ]);
+      const designerExpiredCount = expiredUnbooked.filter((row) => row.lead.assignedTo === staffId).length;
+      const activeCount = Object.values(statusCounts).reduce((sum, value) => sum + value, 0);
+      return {
+        designerFollowUpCount: Math.max(0, activeCount - designerExpiredCount),
+        designerExpiredCount,
+        staffPayableCount: (earnings.items || []).filter((item) => item.status === 'payable').length,
+      };
+    }
+
     const today = localDateInTimeZone(new Date(), DEFAULT_APPOINTMENT_TIMEZONE);
-    const [appointmentRows, surveyList] = await Promise.all([
+    const [earnings, appointmentRows, surveyList] = await Promise.all([
+      earningsQuery,
       appointments.listByMeasurer(enterpriseId, staffId, ['confirmed', 'expired']),
       leads.list({ staffId, staffVisibility: 'measurer', page: 1, limit: 50, orderBy: 'updatedAt' }),
     ]);
@@ -183,13 +204,15 @@ export async function loadMiniProgramBadgeCounts(input: {
     return {
       measurerTodayCount,
       measurerTaskCount: expiredCount + unscheduledCount,
+      staffPayableCount: (earnings.items || []).filter((item) => item.status === 'payable').length,
     };
   }
 
-  const [pendingAssignments, expiredUnbooked, staffList] = await Promise.all([
+  const [pendingAssignments, expiredUnbooked, staffList, ownerPayableCount] = await Promise.all([
     leads.list({ assignmentStatus: 'assignment_pending', page: 1, limit: 1, orderBy: 'updatedAt' }),
     appointments.listExpiredUnbooked(enterpriseId, 50),
     new AdminUserRepository(transaction).list({ roles: ['designer', 'measurer'], status: 'active', page: 1, limit: 200 }),
+    new LeadCommissionRepository(transaction).countEnterprisePayable(enterpriseId),
   ]);
   const staffingCount = buildStaffingGapItems({
     eligibleDesignerCount: staffList.rows.filter((member) => member.role === 'designer' && isAssignmentEligibleStaff(member)).length,
@@ -199,5 +222,6 @@ export async function loadMiniProgramBadgeCounts(input: {
   return {
     ownerExceptionCount: pendingAssignments.total + ownerExpiredCount + staffingCount,
     ownerExpiredCount,
+    ownerPayableCount,
   };
 }

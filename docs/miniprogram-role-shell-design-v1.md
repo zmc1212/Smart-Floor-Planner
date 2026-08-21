@@ -21,7 +21,7 @@ not create a new customer, appointment, survey, design, or earnings business con
 
 The implementation reuses the four static Mini Program Tab routes as signed role shells: customer
 `Service/Projects/Mine`, referrer `Promotion/Progress/Earnings/Mine`, designer
-`Workbench/Customers/Design/Mine`, measurer `Workbench/Mine`, and enterprise owner
+`Workbench/Customers/Design/Earnings/Mine`, measurer `Workbench/Customers/Earnings/Mine`, and enterprise owner
 `Operations/Customers/Appointments/Mine`. Every workbench reads only the server aggregate for the
 signed identity; measurers enter the formal editor only from assigned tasks, and blank or simulated
 tabs remain prohibited. The role scene reuses the exact standalone Xiao K asset referenced by the
@@ -53,9 +53,9 @@ cut from the board.
 | --- | --- | --- | --- | --- |
 | Customer | `/pages/index/index` | Service guide opens “my renovation service”: stage, appointment, next action | Owned service state, appointment, completed v4 summary, published designs | Staff lead pool, BLE, survey editor, AI production, signing/commission management |
 | Referrer | `/packages/business/referrer-workbench/referrer-workbench` | Promotion steward opens “enterprise service desk”: choose enterprise, present code | Current membership, active code, masked milestones, own commission state | Phone/WeChat/address, wall graph, internal appointment reason, enterprise rules |
-| Designer | `/pages/index/index` (role workbench) | Case coordinator sorts “customers to move forward” | Own assigned leads, appointments, completed plan summaries, own generation/publication state | Others’ leads, measurer leave, enterprise commission rules, free survey entry |
-| Measurer | `/pages/index/index` (role workbench) | Measurement partner opens “today’s measurement desk” | Own appointments, unavailability, assigned survey tasks, formal-survey entry | Design publication, signing, referrer earnings, tenant rules, unassigned customers |
-| Enterprise owner | `/pages/index/index` (role operations) | Dispatch observer opens “operations view”: exceptions and approvals first | Tenant exceptions, customer summary, appointment exceptions, existing authorized approvals | Designer/measurer tools inherited implicitly; switch identity for hands-on work |
+| Designer | `/pages/index/index` (role workbench) | Case coordinator sorts “customers to move forward” | Own assigned leads, appointments, completed plan summaries, own generation/publication state, own commission state | Others’ leads, measurer leave, enterprise commission rules, free survey entry |
+| Measurer | `/pages/index/index` (role workbench) | Measurement partner opens “today’s measurement desk” | Own appointments, unavailability, assigned survey tasks, formal-survey entry, own commission state | Design publication, signing, referrer earnings, tenant rules, unassigned customers |
+| Enterprise owner | `/pages/index/index` (role operations) | Dispatch observer opens “operations view”: exceptions and approvals first | Tenant exceptions, customer summary, appointment exceptions, existing authorized approvals, tenant payout ledger | Designer/measurer tools inherited implicitly; switch identity for hands-on work |
 
 Because the Mini Program has a small static Tab route set, phase 14 renders enterprise operations at
 `/pages/index/index`; `/pages/mine/mine` remains identity and account management.
@@ -70,12 +70,16 @@ the survey primary entry.
 | --- | --- | --- | --- |
 | Customer | `Service / Mine` | `customer.service`, `account` | Server-owned reschedule/rebook counts; failures say unavailable. Service home opens the archive directly; `customer.projects` still guards archive/list API access while `customer-projects` is only a redirect shell |
 | Referrer | `Promotion / Progress / Earnings / Mine` | `referrer.promotion`, `referrer.progress`, `referrer.earnings`, `account` | Masked milestones and own payout state for the active membership |
-| Designer | `Workbench / Customers / Design / Mine` | `staff.leads`, `staff.appointments`, `staff.design`, `account` | Own follow-up/appointment/publication state; no fake numbers |
-| Measurer | `Workbench / Customers / Mine` | `staff.schedule`, `staff.tasks`, `account` | Workbench tab aggregates today's appointments; “Customers” tab lets measurers inspect completed-survey customers and related handoff status. Formal-survey editor remains reachable only from task context deep links |
-| Enterprise owner | `Operations / Customers / Appointments / Mine` | `enterprise.operations`, `enterprise.customers`, `enterprise.appointments`, `account` | Tenant exception/approval/appointment state, not employee personal work |
+| Designer | `Workbench / Customers / Design / Earnings / Mine` | `staff.leads`, `staff.appointments`, `staff.design`, `staff.earnings`, `account` | Own follow-up/appointment/publication state plus payable own commissions; no fake numbers |
+| Measurer | `Workbench / Customers / Earnings / Mine` | `staff.schedule`, `staff.tasks`, `staff.earnings`, `account` | Workbench tab aggregates today's appointments; “Customers” tab lets measurers inspect completed-survey customers and related handoff status. Earnings shows own payable/paid commissions. Formal-survey editor remains reachable only from task context deep links |
+| Enterprise owner | `Operations / Customers / Appointments / Commissions / Mine` | `enterprise.operations`, `enterprise.customers`, `enterprise.appointments`, `enterprise.commissions`, `account` | Tenant exception/approval/appointment state plus payable commission count, not employee personal work |
 
 Use brand green and a pale-mint active state, neutral gray elsewhere, and the existing local licensed
-icon set. Referrers select an enterprise inside the workbench rather than adding an enterprise TabBar item.
+icon set. The approved `design-references/tabbar-icons/tabbar-earnings-appointment-v1.png` reference maps
+Earnings and Commissions to the paired `tab-earnings` wallet-and-income assets, and the enterprise-owner
+Appointments item to the paired `tab-appointment` calendar-check assets; every pair has neutral and active
+states with identical geometry. Referrers select an enterprise inside the workbench rather than adding an
+enterprise TabBar item.
 
 ## 5. Identity selection and recovery states
 

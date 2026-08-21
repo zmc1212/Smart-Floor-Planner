@@ -1,0 +1,77 @@
+<view class="portal-page sfp-page">
+  <view class="portal-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
+    <text class="nav-title">提成发放</text>
+  </view>
+  <view class="portal-intro sfp-hero-card">
+    <text class="intro-title">本企业应付提成台账</text>
+    <text class="intro-copy">线下打款后在此确认已付。平台不代发资金，也不调整金额或受益人。</text>
+    <text wx:if="{{enterpriseName}}" class="enterprise-name">{{enterpriseName}}</text>
+    <view class="summary-row summary-row-three">
+      <view>
+        <text class="summary-label">待支付</text>
+        <text class="summary-value">{{payableTotal}}</text>
+      </view>
+      <view>
+        <text class="summary-label">已支付</text>
+        <text class="summary-value">{{paidTotal}}</text>
+      </view>
+      <view>
+        <text class="summary-label">已作废</text>
+        <text class="summary-value">{{voidedTotal}}</text>
+      </view>
+    </view>
+  </view>
+  <view class="filter-row">
+    <view
+      wx:for="{{filters}}"
+      wx:key="value"
+      class="filter-chip {{filter === item.value ? 'filter-chip-active' : ''}}"
+      data-filter="{{item.value}}"
+      bindtap="selectFilter"
+    >{{item.label}}</view>
+  </view>
+  <view wx:if="{{loading}}" class="state-card sfp-card">正在读取提成台账…</view>
+  <view wx:elif="{{error}}" class="state-card sfp-card">
+    <text>{{error}}</text>
+    <button class="retry" bindtap="load">重新加载</button>
+  </view>
+  <view wx:elif="{{!groups.length}}" class="state-card sfp-card">
+    <text class="empty-title">暂时还没有提成记录</text>
+    <text class="empty-copy">客户签约后，应付给推荐人、设计师和测量员的提成会显示在这里。</text>
+    <button class="return-action sfp-primary-action" bindtap="backToOperations">返回经营</button>
+  </view>
+  <view wx:else class="fact-list">
+    <view wx:for="{{groups}}" wx:for-item="group" wx:key="leadId" class="lead-group">
+      <view class="lead-head">
+        <view class="lead-copy">
+          <text class="customer-label">{{group.customerLabel}}</text>
+          <text class="source-label">{{group.sourceLabel}}</text>
+        </view>
+        <view
+          wx:if="{{group.canMarkGroup}}"
+          class="group-mark"
+          data-ids="{{group.payableIds}}"
+          bindtap="markPaid"
+        >{{group.markGroupLabel}}</view>
+      </view>
+      <view wx:for="{{group.items}}" wx:for-item="item" wx:key="id" class="fact-card sfp-card">
+        <view class="fact-top">
+          <text class="role-label">{{item.roleLabel}} · {{item.beneficiaryLabel}}</text>
+          <text class="amount">{{item.amountLabel}}</text>
+        </view>
+        <view class="earning-meta">
+          <text class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</text>
+          <view
+            wx:if="{{item.canMarkPaid}}"
+            class="mark-paid"
+            data-id="{{item.id}}"
+            bindtap="markPaid"
+          >已线下打款</view>
+          <text wx:elif="{{item.status === 'paid'}}">已完成线下支付</text>
+          <text wx:else>已作废，不发放</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>
+<custom-tab-bar />

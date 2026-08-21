@@ -1,11 +1,26 @@
+export interface EnterpriseStatusEventItem {
+  _id: string;
+  enterpriseId: string;
+  fromStatus: string;
+  toStatus: string;
+  action: 'approve' | 'reject' | 'disable' | 'enable' | 'resubmit_review';
+  reason: string | null;
+  actorAdminId: string | null;
+  createdAt?: string | Date;
+}
+
 export interface EnterpriseListItem {
   _id: string;
   name: string;
   code: string;
-  status: 'pending_approval' | 'active' | 'disabled';
+  status: 'pending_approval' | 'active' | 'disabled' | 'rejected';
   registrationMode: 'self_service' | 'manual';
   createdAt?: string;
   logo?: string;
+  statusReason?: string | null;
+  statusChangedAt?: string | Date | null;
+  statusChangedByAdminId?: string | null;
+  statusEvents?: EnterpriseStatusEventItem[];
   branding?: {
     primaryColor?: string;
     accentColor?: string;

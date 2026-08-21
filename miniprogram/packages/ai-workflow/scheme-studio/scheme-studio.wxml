@@ -16,7 +16,7 @@
   </view>
 
   <scroll-view scroll-y enhanced show-scrollbar="{{false}}" class="studio-scroll">
-    <view class="studio-shell">
+    <view class="studio-shell {{composerDockExpanded ? 'dock-expanded' : ''}}">
       <view wx:if="{{loading || creating}}" class="state-panel">
         <view class="state-spinner"></view>
         <text class="state-title">{{creating ? '正在创建方案' : '正在加载方案'}}</text>
@@ -172,7 +172,13 @@
     </view>
   </scroll-view>
 
-  <view wx:if="{{bootstrap && composerDraft && view}}" class="composer-dock">
+  <view
+    wx:if="{{bootstrap && composerDraft && view}}"
+    class="composer-dock {{composerKeyboardHeight > 0 ? 'keyboard-open' : ''}}"
+    style="bottom: {{composerKeyboardHeight}}px;"
+  >
+    <view class="composer-dock-scrim"></view>
+    <view class="composer-dock-panel">
     <ai-scheme-composer
       bootstrap="{{bootstrap}}"
       draft="{{composerDraft}}"
@@ -200,7 +206,10 @@
       bind:templateimageerror="onTemplateImageError"
       bind:assistprompt="assistPrompt"
       bind:submit="submitGeneration"
+      bind:dockexpandchange="onComposerDockExpandChange"
+      bind:keyboardheightchange="onComposerKeyboardHeightChange"
     ></ai-scheme-composer>
+    </view>
   </view>
 
   <view wx:if="{{menuMounted}}" class="sheet-root">

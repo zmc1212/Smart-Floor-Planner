@@ -31,6 +31,8 @@ Component({
 
   data: {
     view: null,
+    dockExpanded: false,
+    keyboardHeight: 0,
     pickerType: '',
     pickerMounted: false,
     pickerVisible: false,
@@ -78,7 +80,28 @@ Component({
   },
 
   lifetimes: {
+    attached() {
+      this._onKeyboardHeightChange = (res) => {
+        const height = Math.max(0, Math.floor(Number(res && res.height) || 0));
+        if (height === this.data.keyboardHeight) return;
+        this.setData({ keyboardHeight: height });
+        this.triggerEvent('keyboardheightchange', { height });
+        if (height > 0) {
+          this.clearCollapseTimer();
+          this.setDockExpanded(true);
+        }
+      };
+      if (typeof wx.onKeyboardHeightChange === 'function') {
+        wx.onKeyboardHeightChange(this._onKeyboardHeightChange);
+      }
+    },
+
     detached() {
+      this.clearCollapseTimer();
+      if (typeof wx.offKeyboardHeightChange === 'function' && this._onKeyboardHeightChange) {
+        wx.offKeyboardHeightChange(this._onKeyboardHeightChange);
+      }
+      this.triggerEvent('keyboardheightchange', { height: 0 });
       clearSheetTimer(this, PICKER_SHEET.openKey);
       clearSheetTimer(this, SETTINGS_SHEET.openKey);
       clearSheetTimer(this, TEMPLATE_SHEET.openKey);
@@ -86,17 +109,70 @@ Component({
   },
 
   methods: {
+    clearCollapseTimer() {
+      if (this._collapseTimer) {
+        clearTimeout(this._collapseTimer);
+        this._collapseTimer = null;
+      }
+    },
+
+    setDockExpanded(expanded) {
+      const next = Boolean(expanded);
+      if (this.data.dockExpanded === next) return;
+      this.setData({ dockExpanded: next });
+      this.triggerEvent('dockexpandchange', { expanded: next });
+    },
+
+    expandDock() {
+      this.clearCollapseTimer();
+      this.setDockExpanded(true);
+    },
+
+    collapseDock() {
+      if (
+        this.data.keyboardHeight > 0
+        || this.data.settingsOpen
+        || this.data.pickerVisible
+        || this.data.templateSheetOpen
+        || this.data.templatePreviewVisible
+      ) {
+        return;
+      }
+      this.setDockExpanded(false);
+    },
+
+    onPromptFocus() {
+      this.clearCollapseTimer();
+      this.setDockExpanded(true);
+    },
+
+    onPromptBlur() {
+      this.clearCollapseTimer();
+      this._collapseTimer = setTimeout(() => {
+        this.collapseDock();
+      }, 220);
+    },
+
+    holdDockExpanded() {
+      this.clearCollapseTimer();
+      this.setDockExpanded(true);
+    },
+
     onPromptInput(event) {
       this.triggerEvent('draftchange', { field: 'prompt', value: event.detail.value });
     },
 
     openSettings() {
       if (!this.data.view) return;
+      this.holdDockExpanded();
       openSheet(this, SETTINGS_SHEET);
     },
 
     closeSettings() {
-      closeSheet(this, SETTINGS_SHEET);
+      closeSheet(this, SETTINGS_SHEET, () => {
+        this.clearCollapseTimer();
+        this._collapseTimer = setTimeout(() => this.collapseDock(), 220);
+      });
     },
 
     selectSettingChip(event) {
@@ -113,6 +189,7 @@ Component({
       const { type } = event.currentTarget.dataset;
       const view = this.data.view;
       if (!view || !type) return;
+      this.holdDockExpanded();
       let title = '';
       let options = [];
       if (type === 'model') {
@@ -143,6 +220,8 @@ Component({
     closePicker() {
       closeSheet(this, PICKER_SHEET, () => {
         this.setData({ pickerType: '', pickerOptions: [] });
+        this.clearCollapseTimer();
+        this._collapseTimer = setTimeout(() => this.collapseDock(), 220);
       });
     },
 
@@ -164,15 +243,18 @@ Component({
 
     uploadReference() {
       if (!this.data.view || !this.data.view.canAddReference || this.properties.uploading) return;
+      this.holdDockExpanded();
       this.triggerEvent('uploadreference');
     },
 
     removeReference(event) {
       const { id } = event.currentTarget.dataset;
+      this.holdDockExpanded();
       this.triggerEvent('removereference', { id });
     },
 
     openTemplates() {
+      this.holdDockExpanded();
       this.triggerEvent('opentemplates');
     },
 
@@ -258,10 +340,12 @@ Component({
 
     assistPrompt() {
       if (this.properties.assisting) return;
+      this.holdDockExpanded();
       this.triggerEvent('assistprompt');
     },
 
     submitGeneration() {
+      this.holdDockExpanded();
       if (!this.data.view || !this.data.view.canSubmit) {
         if (this.data.view?.blockedReason) {
           wx.showToast({ title: this.data.view.blockedReason, icon: 'none' });

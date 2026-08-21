@@ -10,9 +10,9 @@ const ROLE_LANDING_PATHS = Object.freeze({
 const ROLE_CAPABILITIES = Object.freeze({
   customer: ['customer.service', 'customer.projects', 'account'],
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
-  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'account'],
-  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'account'],
-  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'account'],
+  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'],
+  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
+  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
   staff: ['staff.leads', 'staff.appointments', 'account']
 });
 
@@ -31,10 +31,12 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/surveying/editor/surveying-editor': ['staff.surveying', 'staff.leads'],
   '/packages/business/measurer-calendar/measurer-calendar': 'staff.schedule',
   '/packages/business/enterprise-appointments/enterprise-appointments': 'enterprise.appointments',
+  '/packages/business/enterprise-commissions/enterprise-commissions': 'enterprise.commissions',
   '/packages/business/measurer-unavailability/measurer-unavailability': ['staff.schedule', 'staff.appointments'],
   '/packages/business/referrer-workbench/referrer-workbench': 'referrer.promotion',
   '/packages/business/referrer-progress/referrer-progress': 'referrer.progress',
   '/packages/business/referrer-earnings/referrer-earnings': 'referrer.earnings',
+  '/packages/business/staff-earnings/staff-earnings': 'staff.earnings',
   '/packages/business/promotion-records/promotion-records': 'enterprise.customers',
   '/packages/business/promotion-record-detail/promotion-record-detail': 'enterprise.customers',
   '/packages/business/commission-records/commission-records': 'enterprise.operations',
@@ -42,6 +44,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/recommendations/index': 'staff.design',
   '/packages/business/promotion-service-code/promotion-service-code': 'referrer.promotion',
   '/packages/business/staff-activity-code/staff-activity-code': ['staff.leads', 'staff.tasks', 'staff.schedule'],
+  '/packages/business/enterprise-join-codes/enterprise-join-codes': 'enterprise.operations',
   '/packages/business/customer-projects/customer-projects': 'customer.projects',
   '/packages/business/customer-project/customer-project': 'customer.projects',
   '/packages/business/customer-ai-schemes/customer-ai-schemes': ['customer.projects', 'staff.leads', 'staff.tasks', 'enterprise.customers'],

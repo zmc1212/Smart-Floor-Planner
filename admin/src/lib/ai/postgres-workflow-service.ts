@@ -32,9 +32,9 @@ import { getAiCreditPrice } from '@/lib/ai/credits';
 import { resolvePostgresScenarioProviderImage } from '@/lib/ai/postgres-creation-runtime';
 import { executePostgresWorkflowChat } from '@/lib/ai/postgres-workflow-chat';
 import type { AiChatMessage } from '@/lib/ai/provider-types';
-import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
+import { resolveCreationBatchControlPng } from '@/lib/ai/creation-batch-floorplan';
+import { resolveMiniAiFloorPlanTarget } from '@/lib/ai/mini-ai-floorplan';
 import { workbenchFloorPlanPreviewPath } from '@/lib/ai/workbench-studio';
-import { renderFloorPlanPreviewPng } from '@/lib/floor-plan-preview';
 import { leadArchivedError } from '@/lib/lead-lifecycle';
 import {
   getPostgresAssetIdFromImageUrl,
@@ -42,6 +42,17 @@ import {
   parseImageDataUri,
   storePostgresMediaBuffer,
 } from '@/lib/ai/postgres-media-assets';
+import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
+
+function serializeWorkflowClosedRooms(layoutData: unknown) {
+  if (!isFormalSurveyLayout(layoutData)) return [];
+  return adaptSurveyGraphToRooms(layoutData).map((room) => ({
+    roomId: room.id,
+    roomName: room.name,
+    roomSize: `${(room.width / 10).toFixed(2)} m x ${(room.height / 10).toFixed(2)} m`,
+    openingCount: room.openings.length,
+  }));
+}
 
 export type CreatePostgresWorkflowInput = {
   enterpriseId: string | bigint;
@@ -295,6 +306,9 @@ export async function getPostgresAiWorkflowContext(input: {
     const boundFloorPlan = workflow.sourceFloorPlanId
       ? lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId)
       : undefined;
+    const closedRooms = boundFloorPlan
+      ? serializeWorkflowClosedRooms(boundFloorPlan.layoutData)
+      : [];
 
     return {
       workflow: {
@@ -308,7 +322,12 @@ export async function getPostgresAiWorkflowContext(input: {
           ? workbenchFloorPlanPreviewPath(String(workflow.id))
           : undefined,
         sourceFloorPlan: boundFloorPlan
-          ? { id: String(boundFloorPlan.id), name: boundFloorPlan.name || '正式户型' }
+          ? {
+              id: String(boundFloorPlan.id),
+              name: boundFloorPlan.name || '正式户型',
+              rooms: closedRooms,
+              closedRoomCount: closedRooms.length,
+            }
           : null,
       },
       lead: {
@@ -485,15 +504,18 @@ export async function getPostgresAiWorkflowSourceImage(input: {
 }
 
 /**
- * Renders the bound formal survey-graph control PNG for designer comparison.
- * Sharp runs after the RLS-scoped database read.
+ * Renders the bound formal control PNG for designer comparison and the composer
+ * reference slot. Whole-plan uses the stored survey-canvas snapshot; a roomId
+ * uses the same single-room crop the creation batch uploads as the first reference.
  */
 export async function getPostgresAiWorkflowFloorPlanPreview(input: {
   enterpriseId: string | bigint;
   workflowId: string | bigint;
+  roomId?: string;
 }) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const workflowId = parsePostgresId(input.workflowId, 'workflowId');
+  const requestedRoomId = typeof input.roomId === 'string' ? input.roomId.trim() : '';
   const floorPlan = await withTenantTransaction(enterpriseId, async (transaction) => {
     const workflow = await new AiWorkflowRepository(transaction).findById(workflowId);
     if (!workflow) throw notFound('方案会话不存在或无权访问');
@@ -506,12 +528,18 @@ export async function getPostgresAiWorkflowFloorPlanPreview(input: {
     assertEligibleWorkflowFloorPlan(boundPlan);
     return boundPlan;
   });
+  let target;
   try {
-    return await renderFloorPlanPreviewPng(floorPlan);
+    target = resolveMiniAiFloorPlanTarget(
+      floorPlan.layoutData,
+      requestedRoomId ? 'single_room' : 'whole_floor_plan',
+      requestedRoomId || undefined,
+    );
   } catch (error) {
-    console.error('[AI Workflow Floor Plan Preview] canvas snapshot failed, using SVG fallback', error);
-    return renderMiniAiFloorPlanControlPng(floorPlan.layoutData);
+    throw Object.assign(error instanceof Error ? error : new Error('无法解析户型设计范围'), { status: 400 });
   }
+  const control = await resolveCreationBatchControlPng(floorPlan, target);
+  return control.buffer;
 }
 
 /**

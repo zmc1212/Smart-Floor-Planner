@@ -4,6 +4,7 @@ import { parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
 import { httpErrorStatus } from '@/lib/http-error';
 import { withTenantRoute } from '@/lib/tenant-route';
+import { isLeadCommissionSource } from '@/lib/lead-source';
 
 function dto(record: LeadCommissionWithRelations) {
   return {
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
         return date;
       };
       const source = url.searchParams.get('source') || undefined;
-      if (source && !['referrer_network', 'staff_activity'].includes(source)) {
+      if (source && !isLeadCommissionSource(source)) {
         return NextResponse.json({ success: false, error: '线索来源无效' }, { status: 400 });
       }
       const createdFrom = parseDate(url.searchParams.get('fromDate'), '开始日期');

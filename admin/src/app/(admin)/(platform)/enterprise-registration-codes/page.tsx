@@ -1,12 +1,18 @@
 'use client';
-/* eslint-disable @next/next/no-img-element -- QR codes are transient authenticated Blob URLs. */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
-import { Alert, Button, Card, Descriptions, Drawer, Flex, Result, Space, Tag, Typography } from 'antd';
-import { Copy, Download, Eye, RefreshCw, RotateCw, ShieldOff } from 'lucide-react';
+import { Alert, Button, Card, Descriptions, Flex, Result, Space, Tag } from 'antd';
+import { Copy, RefreshCw, RotateCw, ShieldOff } from 'lucide-react';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
+import {
+  MiniProgramCodeQr,
+  describeMiniProgramCodeQrError,
+  fetchMiniProgramCodeQr,
+  revokeMiniProgramCodeQr,
+  type MiniProgramCodeQrImage,
+} from '@/components/admin/miniprogram-code-qr';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
@@ -51,10 +57,14 @@ export default function EnterpriseRegistrationCodesPage() {
   const [events, setEvents] = useState<RegistrationCodeEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
-  const [qrCode, setQrCode] = useState<{
-    imageUrl: string;
-    imageType: 'image/png' | 'image/jpeg';
-  } | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<MiniProgramCodeQrImage | null>(null);
+  const loadedCodeIdRef = useRef<string | null>(null);
+  const inflightCodeIdRef = useRef<string | null>(null);
+  const qrCodeRef = useRef<MiniProgramCodeQrImage | null>(null);
+  const activeCodeIdRef = useRef<string | null>(null);
+  qrCodeRef.current = qrCode;
 
   const loadCodes = useCallback(async () => {
     if (!canManage) return;
@@ -83,54 +93,68 @@ export default function EnterpriseRegistrationCodesPage() {
   }, [canManage, loadCodes]);
 
   useEffect(() => {
-    if (!qrCode) return;
-    const timeout = window.setTimeout(() => setQrCode(null), 90_000);
-    return () => {
-      window.clearTimeout(timeout);
-      URL.revokeObjectURL(qrCode.imageUrl);
-    };
-  }, [qrCode]);
+    return () => revokeMiniProgramCodeQr(qrCodeRef.current);
+  }, []);
 
-  const loadQr = async (options: { confirm?: boolean } = {}) => {
-    if (options.confirm !== false) {
-      const accepted = await confirm({
-        title: '查看企业开户码',
-        description:
-          '将生成平台级微信小程序开户码，90 秒后自动隐藏。请仅发送给需要申请开户的企业联系人。',
-        confirmText: '生成二维码',
-      });
-      if (!accepted) return;
-    }
-    setActing(true);
+  const loadQr = useCallback(async (codeId: string, options: { notifySuccess?: boolean } = {}) => {
+    inflightCodeIdRef.current = codeId;
+    setQrLoading(true);
+    setQrError(null);
     try {
-      const response = await fetch(
-        '/api/admin/enterprise-registration-codes/image',
-        { method: 'POST' }
-      );
-      if (!response.ok) {
-        const result = await response.json().catch(() => null);
-        throw new Error(result?.error || '生成开户二维码失败');
+      const image = await fetchMiniProgramCodeQr('/api/admin/enterprise-registration-codes/image');
+      if (activeCodeIdRef.current !== codeId) {
+        revokeMiniProgramCodeQr(image);
+        return;
       }
-      const image = await response.blob();
-      if (image.type !== 'image/png' && image.type !== 'image/jpeg') {
-        throw new Error('开户二维码格式无效');
-      }
-      setQrCode({ imageType: image.type, imageUrl: URL.createObjectURL(image) });
-      notify.success('企业开户码已生成，可供微信扫码申请开户');
-      await loadCodes();
+      setQrCode((current) => {
+        revokeMiniProgramCodeQr(current);
+        return image;
+      });
+      loadedCodeIdRef.current = codeId;
+      if (options.notifySuccess) notify.success('已展示当前有效开户码，未换新');
     } catch (error) {
-      notify.error(error instanceof Error ? error.message : '生成开户二维码失败');
+      if (activeCodeIdRef.current !== codeId) return;
+      loadedCodeIdRef.current = null;
+      const message = describeMiniProgramCodeQrError(error, '读取开户二维码失败');
+      setQrError(message);
+      if (options.notifySuccess) notify.error(message);
     } finally {
-      setActing(false);
+      if (inflightCodeIdRef.current === codeId) {
+        inflightCodeIdRef.current = null;
+        setQrLoading(false);
+      }
     }
-  };
+  }, []);
+
+  const active = isActiveCode(code);
+
+  useEffect(() => {
+    if (!active || !code) {
+      activeCodeIdRef.current = null;
+      loadedCodeIdRef.current = null;
+      inflightCodeIdRef.current = null;
+      setQrLoading(false);
+      setQrError(null);
+      setQrCode((current) => {
+        revokeMiniProgramCodeQr(current);
+        return null;
+      });
+      return;
+    }
+    activeCodeIdRef.current = code.id;
+    if (loadedCodeIdRef.current === code.id || inflightCodeIdRef.current === code.id) return;
+    inflightCodeIdRef.current = code.id;
+    void loadQr(code.id);
+  }, [active, code, loadQr]);
 
   const rotateCode = async () => {
     const accepted = await confirm({
-      title: '换新企业开户码',
-      description: '换新后旧码立即失效。确认已通知仍在使用旧码的申请人后再继续。',
-      confirmText: '换新开户码',
-      destructive: true,
+      title: active ? '换新企业开户码' : '创建企业开户码',
+      description: active
+        ? '换新后旧码立即失效。确认已通知仍在使用旧码的申请人后再继续。'
+        : '将创建平台级企业开户码，供微信扫码申请开户。',
+      confirmText: active ? '换新开户码' : '创建开户码',
+      destructive: active,
     });
     if (!accepted) return;
     setActing(true);
@@ -143,9 +167,9 @@ export default function EnterpriseRegistrationCodesPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || '换新开户码失败');
       }
-      notify.success('企业开户码已换新，旧码已失效');
+      notify.success(active ? '企业开户码已换新，旧码已失效' : '企业开户码已创建');
+      loadedCodeIdRef.current = null;
       await loadCodes();
-      await loadQr({ confirm: false });
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '换新开户码失败');
     } finally {
@@ -171,7 +195,6 @@ export default function EnterpriseRegistrationCodesPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || '停用开户码失败');
       }
-      setQrCode(null);
       notify.success('企业开户码已停用');
       await loadCodes();
     } catch (error) {
@@ -241,15 +264,13 @@ export default function EnterpriseRegistrationCodesPage() {
     );
   }
 
-  const active = isActiveCode(code);
-
   return (
     <div className="admin-page-frame">
       <PageContainer
         breadcrumbRender={false}
         className="admin-page-container"
         title="企业开户码"
-        content="平台级小程序扫码开户入口。与商户员工/推荐人入驻码（ej_）隔离；后台不展示令牌明文。"
+        content="平台级小程序扫码开户入口。生效中的码可直接查看和下载；换新才会让旧码失效。与商户员工/推荐人入驻码（ej_）隔离；后台不展示令牌明文。"
         extra={(
           <Space>
             <Button icon={<Copy size={16} />} onClick={() => void copyWebRegisterLink()}>
@@ -294,11 +315,6 @@ export default function EnterpriseRegistrationCodesPage() {
               ]}
             />
             <Space wrap className="mt-4">
-              {active ? (
-                <Button icon={<Eye size={15} />} loading={acting} onClick={() => void loadQr()}>
-                  查看二维码
-                </Button>
-              ) : null}
               <Button
                 type="primary"
                 danger={active}
@@ -319,6 +335,19 @@ export default function EnterpriseRegistrationCodesPage() {
                 </Button>
               ) : null}
             </Space>
+            {active ? (
+              <MiniProgramCodeQr
+                alt="企业开户二维码"
+                value={qrCode}
+                loading={qrLoading}
+                error={qrError}
+                onReload={() => {
+                  if (!code) return;
+                  void loadQr(code.id, { notifySuccess: true });
+                }}
+                onDownload={downloadQr}
+              />
+            ) : null}
           </Card>
 
           <Card title="近期审计">
@@ -333,32 +362,6 @@ export default function EnterpriseRegistrationCodesPage() {
             />
           </Card>
         </Flex>
-
-        <Drawer
-          title="企业开户二维码"
-          open={Boolean(qrCode)}
-          onClose={() => setQrCode(null)}
-          width={360}
-          destroyOnClose
-        >
-          {qrCode ? (
-            <Flex vertical gap={16} align="center">
-              <Typography.Paragraph type="secondary" className="mb-0 text-center">
-                90 秒后自动隐藏。请勿将图片发布到公开渠道。
-              </Typography.Paragraph>
-              <img
-                src={qrCode.imageUrl}
-                alt="企业开户二维码"
-                width={240}
-                height={240}
-                style={{ borderRadius: 12, background: '#fff' }}
-              />
-              <Button icon={<Download size={15} />} onClick={downloadQr}>
-                下载二维码
-              </Button>
-            </Flex>
-          ) : null}
-        </Drawer>
       </PageContainer>
     </div>
   );

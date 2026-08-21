@@ -252,10 +252,13 @@ test('AI Design home exposes the D01 workbench hierarchy with recipes and recent
   assert.match(pageWxml, /wx:for="\{\{recentProjects\}\}"/);
   assert.match(pageWxml, /bindtap="openRecentProject"/);
   assert.match(pageWxml, /bindtap="openCreateScheme"/);
-  assert.match(pageWxml, /bindtap="openHistory"/);
-  assert.match(pageWxml, />设计记录</);
+  assert.doesNotMatch(pageWxml, /bindtap="openHistory"/);
+  assert.doesNotMatch(pageWxml, />设计记录</);
+  assert.match(pageSource, /openHistory\(\)/);
+  assert.match(aiServiceSource, /\/miniprogram\/ai\/history/);
   assert.match(pageWxml, /class="create-credit-pill"/);
-  assert.match(pageWxml, /bindtap="switchRecipeInputMode"/);
+  assert.doesNotMatch(pageWxml, /bindtap="switchRecipeInputMode"/);
+  assert.match(pageWxml, /aria-disabled="true"/);
   assert.match(pageWxml, /bindtap="openRecipeSearch"/);
   assert.match(pageWxml, /class="featured-recipe-strip"/);
   assert.match(pageWxml, /class="recipe-waterfall"/);

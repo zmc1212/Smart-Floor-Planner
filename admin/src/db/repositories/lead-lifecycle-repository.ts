@@ -11,6 +11,7 @@ import {
 import type { PostgresTransaction } from '@/db/transaction';
 import { LeadCommissionRepository } from '@/db/repositories/lead-commission-repository';
 import { httpError } from '@/lib/http-error';
+import { shouldSnapshotLeadCommissions } from '@/lib/lead-source';
 import { normalizeLeadStatus } from '@/lib/lead-status';
 
 const IN_FLIGHT_AI_STATUSES = ['created', 'pending', 'processing'];
@@ -284,7 +285,7 @@ export class LeadLifecycleRepository {
         contractAmount: input.contractAmount,
       }
     );
-    if (rows[0].source === 'staff_activity' || rows[0].referrerMembershipId || rows[0].measurerId) {
+    if (shouldSnapshotLeadCommissions(rows[0])) {
       await new LeadCommissionRepository(this.transaction).snapshotForConvertedLead(input.leadId);
     }
     return rows[0];

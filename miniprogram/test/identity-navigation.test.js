@@ -48,3 +48,9 @@ test('login completion always enters the signed identity landing', () => {
     /finishLogin\(\)\s*\{\s*navigateToRoleLanding\(app\.globalData\.userInfo\);\s*\}/
   );
 });
+
+test('login does not bounce back to the enterprise open-account scan landing', () => {
+  assert.match(loginSource, /shouldStayOnLoginPage/);
+  assert.match(loginSource, /enterprise-register/);
+  assert.match(loginSource, /options\.mode === 'password'/);
+});

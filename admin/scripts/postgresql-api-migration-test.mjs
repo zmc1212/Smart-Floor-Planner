@@ -296,11 +296,11 @@ async function runCoreScenarios(credentials) {
   });
 
   const tenantLogin = await check('Tenant administrator login', 'POST', '/api/auth/login', {
-    body: { username: enterprisePhone, password: 'Admin123456' }, expectedStatuses: [200], requiredPath: 'data.role',
+    body: { username: enterprisePhone, password: '123456' }, expectedStatuses: [200], requiredPath: 'data.role',
   });
   tenantCookie = cookieFrom(tenantLogin.setCookie);
   const miniLogin = await check('Mini Program password login', 'POST', '/api/auth/miniprogram', {
-    body: { type: 'password', username: enterprisePhone, password: 'Admin123456' }, expectedStatuses: [200], requiredPath: 'token',
+    body: { type: 'password', username: enterprisePhone, password: '123456' }, expectedStatuses: [200], requiredPath: 'token',
   });
   miniToken = String(miniLogin.body.token);
   resources.openid = String(miniLogin.body.openid || `${runKey}-openid`);

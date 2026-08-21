@@ -1,63 +1,78 @@
 <view class="composer-root">
-  <view class="composer-shell dock">
-    <view wx:if="{{view}}" class="credit-pill">{{view.creditSummary}}</view>
-    <view wx:else class="credit-pill muted">加载模型与点数配置中</view>
+  <view class="composer-shell dock {{dockExpanded ? 'expanded' : 'collapsed'}} {{keyboardHeight > 0 ? 'keyboard-open' : ''}}" catchtap="expandDock">
+    <view wx:if="{{view}}" class="credit-bar">{{view.creditSummary}}</view>
+    <view wx:else class="credit-bar muted">加载模型与点数配置中</view>
 
-    <textarea
-      class="prompt-input"
-      value="{{draft.prompt}}"
-      maxlength="2000"
-      placeholder="描述空间、光线与风格，一键出图"
-      bindinput="onPromptInput"
-      auto-height
-      show-confirm-bar="{{false}}"
-      disabled="{{!view}}"
-    ></textarea>
-
-    <view wx:if="{{view && (view.hasReferences || view.canAddReference)}}" class="reference-row">
-      <view
-        wx:if="{{view.canAddReference}}"
-        class="reference-add compact {{uploading ? 'disabled' : ''}}"
-        bindtap="uploadReference"
-      >
-        <text class="reference-add-icon">+</text>
-      </view>
-      <scroll-view wx:if="{{view.hasReferences}}" scroll-x enhanced show-scrollbar="{{false}}" class="reference-scroll">
-        <view class="reference-track">
-          <view wx:for="{{view.referenceAssets}}" wx:key="id" class="reference-item compact">
-            <image wx:if="{{item.previewUrl}}" class="reference-image" src="{{item.previewUrl}}" mode="aspectFill"></image>
-            <view wx:else class="reference-image placeholder"></view>
-            <view class="reference-remove" data-id="{{item.id}}" catchtap="removeReference">×</view>
+    <view wx:if="{{dockExpanded}}" class="dock-expanded" catchtap="noop">
+      <view class="dock-tools">
+        <view class="dock-tools-scroll">
+          <view
+            class="dock-chip {{uploading || !view || !view.canAddReference ? 'disabled' : ''}}"
+            bindtap="uploadReference"
+          >
+            <text class="dock-chip-mark">+</text>
+            <text>参考</text>
           </view>
+          <view class="dock-chip" data-type="model" bindtap="openPicker">
+            <text>{{view.modelLabel || '模型'}}</text>
+          </view>
+          <view class="dock-chip" data-type="aspect" bindtap="openPicker">
+            <text>{{view.aspectLabel || '比例'}}</text>
+          </view>
+          <view class="dock-chip action" bindtap="openTemplates">模板</view>
+          <view class="dock-chip" bindtap="openSettings">设置</view>
         </view>
-      </scroll-view>
-      <text wx:if="{{!view.hasReferences && !view.canAddReference}}" class="reference-hint">当前模型不支持参考图</text>
-    </view>
-
-    <view class="dock-tools">
-      <view class="dock-tools-scroll">
         <view
-          class="dock-chip {{uploading || !view || !view.canAddReference ? 'disabled' : ''}}"
+          class="generate-fab {{!view || !view.canSubmit ? 'blocked' : ''}}"
+          bindtap="submitGeneration"
+        >
+          <view class="generate-fab-spark"></view>
+          <text class="generate-fab-label">{{generating ? '提交' : '生成'}}</text>
+        </view>
+      </view>
+
+      <view wx:if="{{view && (view.hasReferences || view.canAddReference)}}" class="reference-row">
+        <view
+          wx:if="{{view.canAddReference}}"
+          class="reference-add compact {{uploading ? 'disabled' : ''}}"
           bindtap="uploadReference"
         >
-          <text class="dock-chip-mark">+</text>
-          <text>参考</text>
+          <text class="reference-add-icon">+</text>
         </view>
-        <view class="dock-chip" data-type="model" bindtap="openPicker">
-          <text>{{view.modelLabel || '模型'}}</text>
-        </view>
-        <view class="dock-chip" data-type="aspect" bindtap="openPicker">
-          <text>{{view.aspectLabel || '比例'}}</text>
-        </view>
-        <view class="dock-chip action" bindtap="openTemplates">模板</view>
-        <view class="dock-chip" bindtap="openSettings">设置</view>
+        <scroll-view wx:if="{{view.hasReferences}}" scroll-x enhanced show-scrollbar="{{false}}" class="reference-scroll">
+          <view class="reference-track">
+            <view wx:for="{{view.referenceAssets}}" wx:key="id" class="reference-item compact">
+              <image wx:if="{{item.previewUrl}}" class="reference-image" src="{{item.previewUrl}}" mode="aspectFill"></image>
+              <view wx:else class="reference-image placeholder"></view>
+              <view class="reference-remove" data-id="{{item.id}}" catchtap="removeReference">×</view>
+            </view>
+          </view>
+        </scroll-view>
+        <text wx:if="{{!view.hasReferences && !view.canAddReference}}" class="reference-hint">当前模型不支持参考图</text>
       </view>
+    </view>
+
+    <view class="prompt-row">
+      <textarea
+        class="prompt-input"
+        value="{{draft.prompt}}"
+        maxlength="2000"
+        placeholder="描述空间、光线与风格，一键出图"
+        bindinput="onPromptInput"
+        bindfocus="onPromptFocus"
+        bindblur="onPromptBlur"
+        auto-height="{{dockExpanded && keyboardHeight <= 0}}"
+        show-confirm-bar="{{false}}"
+        disabled="{{!view}}"
+        adjust-position="{{false}}"
+        hold-keyboard="{{true}}"
+      ></textarea>
       <view
-        class="generate-fab {{!view || !view.canSubmit ? 'blocked' : ''}}"
-        bindtap="submitGeneration"
+        wx:if="{{!dockExpanded}}"
+        class="generate-fab compact {{!view || !view.canSubmit ? 'blocked' : ''}}"
+        catchtap="submitGeneration"
       >
         <view class="generate-fab-spark"></view>
-        <text class="generate-fab-label">{{generating ? '提交' : '生成'}}</text>
       </view>
     </view>
   </view>

@@ -38,6 +38,33 @@ test('staff activity code reuses the promotion visual language and may show the 
   assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
 });
 
+test('enterprise join codes present dual codes with generate, rotate, and disable', () => {
+  const wxml = source('packages/business/enterprise-join-codes/enterprise-join-codes.wxml');
+  const js = source('packages/business/enterprise-join-codes/enterprise-join-codes.js');
+  const less = source('packages/business/enterprise-join-codes/enterprise-join-codes.less');
+  const json = JSON.parse(source('packages/business/enterprise-join-codes/enterprise-join-codes.json'));
+
+  assert.equal(json.navigationStyle, 'custom');
+  assert.match(wxml, /出示入驻码/);
+  assert.match(wxml, /生成入驻码/);
+  assert.match(wxml, /换新/);
+  assert.match(wxml, /停用/);
+  assert.match(wxml, /enterpriseName/);
+  assert.match(js, /员工入驻码/);
+  assert.match(js, /推荐人入驻码/);
+  assert.doesNotMatch(wxml, /出示员工活动码|免费设计服务|让客户扫码领取|推荐网络 → 企业双码/);
+  assert.match(js, /\/miniprogram\/enterprise-join-codes/);
+  assert.match(js, /enterprise-join-codes\/\$\{encodeURIComponent\(codeType\)\}\/image/);
+  assert.match(js, /\/rotate['"`]/);
+  assert.match(js, /\/disable['"`]/);
+  assert.match(js, /wx\.showModal/);
+  assert.match(js, /wx\.showToast/);
+  assert.doesNotMatch(js, /staff-activity-code/);
+  assert.match(less, /\.code-tab\.active/);
+  assert.match(less, /\.manage-primary/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
+});
+
 test('promotion service screen keeps the public presentation anonymous and scanable', () => {
   const wxml = source('packages/business/promotion-service-code/promotion-service-code.wxml');
   const js = source('packages/business/promotion-service-code/promotion-service-code.js');
@@ -137,6 +164,7 @@ test('referral service primary copy respects the Mini Program type floor', () =>
   const styles = [
     source('packages/business/promotion-service-code/promotion-service-code.less'),
     source('packages/business/staff-activity-code/staff-activity-code.less'),
+    source('packages/business/enterprise-join-codes/enterprise-join-codes.less'),
     source('packages/business/free-design-service/free-design-service.less')
   ].join('\n');
   assert.doesNotMatch(styles, /font-size:\s*(?:1[0-9]|[0-9])rpx/);

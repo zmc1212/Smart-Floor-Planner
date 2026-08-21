@@ -1,12 +1,18 @@
 'use client';
-/* eslint-disable @next/next/no-img-element -- QR codes are transient authenticated Blob URLs. */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
-import { Alert, Button, Card, Descriptions, Drawer, Flex, Space, Tag, Typography } from 'antd';
-import { ArrowLeft, Download, Eye, RefreshCw, RotateCw, ShieldOff } from 'lucide-react';
+import { Alert, Button, Card, Descriptions, Flex, Space, Tag, Typography } from 'antd';
+import { ArrowLeft, RefreshCw, RotateCw, ShieldOff } from 'lucide-react';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
+import {
+  MiniProgramCodeQr,
+  describeMiniProgramCodeQrError,
+  fetchMiniProgramCodeQr,
+  revokeMiniProgramCodeQr,
+  type MiniProgramCodeQrImage,
+} from '@/components/admin/miniprogram-code-qr';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
@@ -37,6 +43,8 @@ const CODE_LABELS: Record<JoinCodeType, string> = {
   referrer: '推荐人入驻码',
 };
 
+const JOIN_CODE_TYPES: JoinCodeType[] = ['staff', 'referrer'];
+
 function formatTime(value: string | null | undefined) {
   if (!value) return '—';
   const date = new Date(value);
@@ -58,12 +66,14 @@ export default function JoinCodesPage() {
   const [events, setEvents] = useState<JoinCodeEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [actingType, setActingType] = useState<JoinCodeType | null>(null);
-  const [onboardingCode, setOnboardingCode] = useState<{
-    codeType: JoinCodeType;
-    imageUrl: string;
-    imageType: 'image/png' | 'image/jpeg';
-  } | null>(null);
+  const [qrLoadingByType, setQrLoadingByType] = useState<Partial<Record<JoinCodeType, boolean>>>({});
+  const [qrByType, setQrByType] = useState<Partial<Record<JoinCodeType, MiniProgramCodeQrImage>>>({});
+  const [qrErrorByType, setQrErrorByType] = useState<Partial<Record<JoinCodeType, string>>>({});
   const [globalTenantId, setGlobalTenantId] = useState('all');
+  const loadedIdsRef = useRef<Partial<Record<JoinCodeType, string>>>({});
+  const inflightIdsRef = useRef<Partial<Record<JoinCodeType, string>>>({});
+  const qrByTypeRef = useRef(qrByType);
+  qrByTypeRef.current = qrByType;
 
   const requiresTenantSelection = Boolean(
     user && ['super_admin', 'admin'].includes(user.role) && globalTenantId === 'all'
@@ -101,13 +111,10 @@ export default function JoinCodesPage() {
   }, [loadCodes, requiresTenantSelection]);
 
   useEffect(() => {
-    if (!onboardingCode) return;
-    const timeout = window.setTimeout(() => setOnboardingCode(null), 90_000);
     return () => {
-      window.clearTimeout(timeout);
-      URL.revokeObjectURL(onboardingCode.imageUrl);
+      JOIN_CODE_TYPES.forEach((type) => revokeMiniProgramCodeQr(qrByTypeRef.current[type]));
     };
-  }, [onboardingCode]);
+  }, []);
 
   const codeByType = useMemo(() => {
     const result: Partial<Record<JoinCodeType, JoinCode>> = {};
@@ -117,42 +124,78 @@ export default function JoinCodesPage() {
     return result;
   }, [codes]);
 
-  const loadOnboardingCode = async (codeType: JoinCodeType, options: { confirm?: boolean } = {}) => {
-    if (options.confirm !== false) {
-      const accepted = await confirm({
-        title: `查看${CODE_LABELS[codeType]}`,
-        description: '将生成仅供当前企业使用的微信小程序码，90 秒后自动隐藏。请仅发送给需要入驻的人员。',
-        confirmText: '生成二维码',
-      });
-      if (!accepted) return;
-    }
-    setActingType(codeType);
+  const loadOnboardingCode = useCallback(async (
+    codeType: JoinCodeType,
+    codeId: string,
+    options: { notifySuccess?: boolean } = {}
+  ) => {
+    inflightIdsRef.current[codeType] = codeId;
+    setQrLoadingByType((current) => ({ ...current, [codeType]: true }));
+    setQrErrorByType((current) => ({ ...current, [codeType]: undefined }));
     try {
-      const response = await fetch(`/api/enterprise/join-codes/${codeType}/image`, { method: 'POST' });
-      if (!response.ok) {
-        const result = await response.json().catch(() => null);
-        throw new Error(result?.error || '生成入驻二维码失败');
+      const image = await fetchMiniProgramCodeQr(`/api/enterprise/join-codes/${codeType}/image`);
+      if (loadedIdsRef.current[codeType] !== codeId && inflightIdsRef.current[codeType] !== codeId) {
+        revokeMiniProgramCodeQr(image);
+        return;
       }
-      const image = await response.blob();
-      if (image.type !== 'image/png' && image.type !== 'image/jpeg') {
-        throw new Error('入驻二维码格式无效');
+      setQrByType((current) => {
+        revokeMiniProgramCodeQr(current[codeType]);
+        return { ...current, [codeType]: image };
+      });
+      loadedIdsRef.current[codeType] = codeId;
+      if (options.notifySuccess) {
+        notify.success(`${CODE_LABELS[codeType]}当前有效二维码已展示，未换新`);
       }
-      setOnboardingCode({ codeType, imageType: image.type, imageUrl: URL.createObjectURL(image) });
-      notify.success(`${CODE_LABELS[codeType]}已生成，可供微信扫码入驻`);
-      await loadCodes();
     } catch (error) {
-      notify.error(error instanceof Error ? error.message : '生成入驻二维码失败');
+      if (inflightIdsRef.current[codeType] !== codeId && loadedIdsRef.current[codeType] !== codeId) return;
+      loadedIdsRef.current[codeType] = undefined;
+      const message = describeMiniProgramCodeQrError(error, '读取入驻二维码失败');
+      setQrErrorByType((current) => ({ ...current, [codeType]: message }));
+      if (options.notifySuccess) notify.error(message);
     } finally {
-      setActingType(null);
+      if (inflightIdsRef.current[codeType] === codeId) {
+        inflightIdsRef.current[codeType] = undefined;
+        setQrLoadingByType((current) => ({ ...current, [codeType]: false }));
+      }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    for (const type of JOIN_CODE_TYPES) {
+      const code = codeByType[type];
+      if (!isActiveCode(code) || !code) {
+        loadedIdsRef.current[type] = undefined;
+        inflightIdsRef.current[type] = undefined;
+        setQrLoadingByType((current) => (
+          current[type] ? { ...current, [type]: false } : current
+        ));
+        setQrErrorByType((current) => (
+          current[type] ? { ...current, [type]: undefined } : current
+        ));
+        setQrByType((current) => {
+          if (!current[type]) return current;
+          revokeMiniProgramCodeQr(current[type]);
+          const next = { ...current };
+          delete next[type];
+          return next;
+        });
+        continue;
+      }
+      if (loadedIdsRef.current[type] === code.id || inflightIdsRef.current[type] === code.id) continue;
+      inflightIdsRef.current[type] = code.id;
+      void loadOnboardingCode(type, code.id);
+    }
+  }, [codeByType, loadOnboardingCode]);
 
   const rotateCode = async (codeType: JoinCodeType) => {
+    const active = isActiveCode(codeByType[codeType]);
     const accepted = await confirm({
-      title: `换新${CODE_LABELS[codeType]}`,
-      description: '换新后旧码立即失效。确认已通知仍在使用旧码的人员后再继续。',
-      confirmText: '换新入驻码',
-      destructive: true,
+      title: active ? `换新${CODE_LABELS[codeType]}` : `创建${CODE_LABELS[codeType]}`,
+      description: active
+        ? '换新后旧码立即失效。确认已通知仍在使用旧码的人员后再继续。'
+        : '将创建仅供当前企业使用的入驻码，供微信扫码入驻。',
+      confirmText: active ? '换新入驻码' : '创建入驻码',
+      destructive: active,
     });
     if (!accepted) return;
     setActingType(codeType);
@@ -160,9 +203,9 @@ export default function JoinCodesPage() {
       const response = await fetch(`/api/enterprise/join-codes/${codeType}/rotate`, { method: 'POST' });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '换新入驻码失败');
-      notify.success(`${CODE_LABELS[codeType]}已换新，旧码已失效`);
+      notify.success(active ? `${CODE_LABELS[codeType]}已换新，旧码已失效` : `${CODE_LABELS[codeType]}已创建`);
+      loadedIdsRef.current[codeType] = undefined;
       await loadCodes();
-      await loadOnboardingCode(codeType, { confirm: false });
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '换新入驻码失败');
     } finally {
@@ -183,7 +226,6 @@ export default function JoinCodesPage() {
       const response = await fetch(`/api/enterprise/join-codes/${codeType}/disable`, { method: 'POST' });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '停用入驻码失败');
-      setOnboardingCode(null);
       notify.success(`${CODE_LABELS[codeType]}已停用`);
       await loadCodes();
     } catch (error) {
@@ -193,11 +235,12 @@ export default function JoinCodesPage() {
     }
   };
 
-  const downloadOnboardingCode = () => {
-    if (!onboardingCode) return;
+  const downloadOnboardingCode = (codeType: JoinCodeType) => {
+    const qr = qrByType[codeType];
+    if (!qr) return;
     const link = document.createElement('a');
-    link.href = onboardingCode.imageUrl;
-    link.download = `${onboardingCode.codeType}-onboarding-code.${onboardingCode.imageType === 'image/jpeg' ? 'jpg' : 'png'}`;
+    link.href = qr.imageUrl;
+    link.download = `${codeType}-onboarding-code.${qr.imageType === 'image/jpeg' ? 'jpg' : 'png'}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -217,7 +260,7 @@ export default function JoinCodesPage() {
         breadcrumbRender={false}
         className="admin-page-container"
         title="入驻码"
-        content="管理当前企业的员工入驻码和推荐人入驻码。后台不展示令牌明文；已入驻关系不会因换码或停用而被改写。"
+        content="管理当前企业的员工入驻码和推荐人入驻码。生效中的码可直接查看和下载；换新才会让旧码失效。后台不展示令牌明文；已入驻关系不会因换码或停用而被改写。"
         extra={(
           <Space>
             <Link href="/referrer-network-operations"><Button icon={<ArrowLeft size={16} />}>返回运营工作台</Button></Link>
@@ -232,7 +275,7 @@ export default function JoinCodesPage() {
             <section id="enterprise-join-codes" aria-label="入驻码管理">
               <Typography.Title level={4}>企业双码</Typography.Title>
               <div className="grid gap-4 lg:grid-cols-2">
-                {(['staff', 'referrer'] as JoinCodeType[]).map((type) => {
+                {JOIN_CODE_TYPES.map((type) => {
                   const code = codeByType[type];
                   const active = isActiveCode(code);
                   return (
@@ -244,10 +287,22 @@ export default function JoinCodesPage() {
                         { key: 'disabled', label: '停用时间', children: formatTime(code?.disabledAt) },
                       ]} />
                       <Space wrap className="mt-4">
-                        {active ? <Button icon={<Eye size={15} />} loading={actingType === type} onClick={() => void loadOnboardingCode(type)}>查看二维码</Button> : null}
                         <Button type="primary" danger={active} icon={<RotateCw size={15} />} loading={actingType === type} onClick={() => void rotateCode(type)}>{active ? '换新' : '创建入驻码'}</Button>
                         {active ? <Button danger icon={<ShieldOff size={15} />} loading={actingType === type} onClick={() => void disableCode(type)}>停用</Button> : null}
                       </Space>
+                      {active ? (
+                        <MiniProgramCodeQr
+                          alt={`${CODE_LABELS[type]}微信小程序码`}
+                          value={qrByType[type] || null}
+                          loading={Boolean(qrLoadingByType[type])}
+                          error={qrErrorByType[type] || null}
+                          onReload={() => {
+                            if (!code) return;
+                            void loadOnboardingCode(type, code.id, { notifySuccess: true });
+                          }}
+                          onDownload={() => downloadOnboardingCode(type)}
+                        />
+                      ) : null}
                     </Card>
                   );
                 })}
@@ -261,17 +316,6 @@ export default function JoinCodesPage() {
           </Flex>
         )}
       </PageContainer>
-
-      <Drawer open={Boolean(onboardingCode)} title={onboardingCode ? CODE_LABELS[onboardingCode.codeType] : '入驻二维码'} width={560} destroyOnHidden onClose={() => setOnboardingCode(null)}>
-        <Flex vertical gap={16}>
-          <Alert showIcon type="warning" message="受控短时展示" description="二维码将在 90 秒后自动隐藏；旧码换新或停用后，已保存二维码也会立即失效。请仅发送给需要入驻当前企业的人员。" />
-          <Flex vertical align="center" gap={12} className="rounded-lg bg-slate-50 p-6">
-            {onboardingCode ? <img src={onboardingCode.imageUrl} alt={`${CODE_LABELS[onboardingCode.codeType]}微信小程序码`} className="h-72 w-72 max-w-full rounded bg-white p-2" /> : null}
-            <Typography.Text type="secondary">微信扫一扫，进入小程序后完成入驻</Typography.Text>
-          </Flex>
-          <Button type="primary" icon={<Download size={16} />} onClick={downloadOnboardingCode}>下载二维码</Button>
-        </Flex>
-      </Drawer>
     </div>
   );
 }

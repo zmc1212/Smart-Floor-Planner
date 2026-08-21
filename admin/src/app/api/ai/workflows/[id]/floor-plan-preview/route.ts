@@ -15,9 +15,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       if (!isPostgresWorkflowId(id)) {
         return NextResponse.json({ success: false, error: '方案会话不存在或无权访问' }, { status: 404 });
       }
+      const roomId = new URL(req.url).searchParams.get('roomId') || undefined;
       const buffer = await getPostgresAiWorkflowFloorPlanPreview({
         enterpriseId: context.enterpriseId!,
         workflowId: id,
+        roomId,
       });
       return new NextResponse(new Uint8Array(buffer), {
         headers: {

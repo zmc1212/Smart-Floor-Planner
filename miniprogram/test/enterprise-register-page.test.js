@@ -50,6 +50,12 @@ test('enterprise-register page is registered and restores er_ scene tokens', () 
   assert.match(wxml, /授权手机号/);
   assert.match(wxml, /提交开户申请/);
   assert.match(wxml, /申请已提交/);
+  assert.match(wxml, /初始密码为 123456/);
+  assert.match(wxml, /已有账号，去登录/);
+  assert.match(wxml, /bindtap="onGoToLogin"/);
+  assert.match(wxml, /该手机号已有账号/);
+  assert.match(js, /mode=password/);
+  assert.match(less, /identity-link/);
   assert.match(wxml, /navigationRight/);
   assert.match(less, /safe-area-inset-bottom/);
   assert.doesNotMatch(less, /font-size:\s*(?:1[0-9]|[0-9])rpx/);
@@ -112,4 +118,45 @@ test('formReady requires authorized phone and enterprise fields', () => {
     }),
     true
   );
+});
+
+test('leaveRegistrationTarget sends workbench identities to role landing and others to password login', () => {
+  loadPage();
+  const {
+    leaveRegistrationTarget
+  } = require('../packages/business/enterprise-register/enterprise-register.js');
+  assert.deepEqual(
+    leaveRegistrationTarget({ mode: 'staff', staffRole: 'enterprise_admin' }),
+    { action: 'role_landing', url: '/pages/index/index', clearSession: false }
+  );
+  assert.deepEqual(
+    leaveRegistrationTarget({ mode: 'customer' }),
+    {
+      action: 'login',
+      url: '/packages/business/login/login?mode=password',
+      clearSession: true
+    }
+  );
+  assert.deepEqual(
+    leaveRegistrationTarget(null),
+    {
+      action: 'login',
+      url: '/packages/business/login/login?mode=password',
+      clearSession: true
+    }
+  );
+});
+
+test('ACCOUNT_CONFLICT after approval opens the already-account exit instead of retry-only error', () => {
+  const definition = loadPage();
+  const { applyFailure } = require('../packages/business/enterprise-register/enterprise-register.js');
+  const context = {
+    data: { ...definition.data, submitting: true, pageState: 'submitting' },
+    setData(next) {
+      Object.assign(this.data, next);
+    }
+  };
+  applyFailure(context, { code: 'ACCOUNT_CONFLICT' });
+  assert.equal(context.data.pageState, 'account');
+  assert.match(context.data.errorMessage, /已注册/);
 });

@@ -993,6 +993,80 @@ test('staff activity conversion snapshots designer and measurer rows even when t
   }
 });
 
+test('manual entry conversion snapshots designer and measurer rows without a referrer', async () => {
+  let leadId: bigint | null = null;
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+  const createdUserIds: bigint[] = [];
+  const createdStaffIds: bigint[] = [];
+  try {
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const [designerUser, measurerUser] = await transaction.insert(users).values([
+        { enterpriseId: enterpriseAId, nickname: `Manual designer ${suffix}` },
+        { enterpriseId: enterpriseAId, nickname: `Manual measurer ${suffix}` },
+      ]).returning({ id: users.id });
+      createdUserIds.push(designerUser.id, measurerUser.id);
+      const designer = await new AdminUserRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        userId: designerUser.id,
+        username: `${testRunKey}-manual-designer-${suffix}`,
+        passwordHash: 'test-hash',
+        displayName: 'Manual Designer',
+        role: 'designer',
+      });
+      const measurer = await new AdminUserRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        userId: measurerUser.id,
+        username: `${testRunKey}-manual-measurer-${suffix}`,
+        passwordHash: 'test-hash',
+        displayName: 'Manual Measurer',
+        role: 'measurer',
+      });
+      createdStaffIds.push(designer.id, measurer.id);
+      const commissionRepository = new LeadCommissionRepository(transaction);
+      await commissionRepository.updateRules(enterpriseAId, designer.id, [
+        { role: 'referrer', calculationType: 'fixed', value: '10.0000', status: 'active', version: 1 },
+        { role: 'designer', calculationType: 'fixed', value: '80.0000', status: 'active', version: 1 },
+        { role: 'measurer', calculationType: 'fixed', value: '20.0000', status: 'active', version: 1 },
+      ]);
+      const lead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        assignedTo: designer.id,
+        measurerId: measurer.id,
+        name: 'Manual entry commission lead',
+        phone: `135${String(Date.now()).slice(-8)}`,
+        source: 'manual_entry',
+        status: 'designing',
+      });
+      leadId = lead.id;
+      await new LeadLifecycleRepository(transaction).convert({
+        leadId: lead.id,
+        actorId: designer.id,
+        convertedOn: chinaDateString(),
+        contractAmount: '2000.00',
+        conversionNote: null,
+      });
+      const commissions = await commissionRepository.list(enterpriseAId, { leadId: lead.id, source: 'manual_entry' });
+      assert.equal(commissions.length, 2);
+      assert.deepEqual(
+        commissions.map((item) => [item.role, item.payableAmount]).sort(),
+        [['designer', '80.00'], ['measurer', '20.00']]
+      );
+      assert.equal((await commissionRepository.list(enterpriseAId, { leadId: lead.id, source: 'staff_activity' })).length, 0);
+    });
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (leadId) {
+        await transaction.delete(leadCommissions).where(eq(leadCommissions.leadId, leadId));
+        await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, leadId));
+        await transaction.delete(leads).where(eq(leads.id, leadId));
+      }
+      await transaction.delete(enterpriseCommissionRules).where(eq(enterpriseCommissionRules.enterpriseId, enterpriseAId));
+      if (createdStaffIds.length) await transaction.delete(adminUsers).where(inArray(adminUsers.id, createdStaffIds));
+      if (createdUserIds.length) await transaction.delete(users).where(inArray(users.id, createdUserIds));
+    });
+  }
+});
+
 test('commission report reads referrer profile when the base user has no tenant', async () => {
   let leadId: bigint | null = null;
   let membershipId: bigint | null = null;
@@ -3041,6 +3115,23 @@ test('PostgreSQL workbench floor-plan preview renders the bound survey control P
     });
     assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.ok(png.length > 1000);
+
+    const roomPng = await getPostgresAiWorkflowFloorPlanPreview({
+      enterpriseId: enterpriseAId,
+      workflowId: workflow.id,
+      roomId: 'living',
+    });
+    assert.deepEqual([...roomPng.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(roomPng.length > 1000);
+    await assert.rejects(
+      () => getPostgresAiWorkflowFloorPlanPreview({
+        enterpriseId: enterpriseAId,
+        workflowId: workflow.id,
+        roomId: 'missing-room',
+      }),
+      /所选房间不属于该户型或尚未闭合/,
+    );
+
     const storedPlan = await withTenantTransaction(enterpriseAId, (transaction) =>
       new FloorPlanRepository(transaction).findById(created.plan.id)
     );

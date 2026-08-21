@@ -53,6 +53,52 @@ test('role landing retries until the root page is available after session hydrat
   }
 });
 
+test('role landing leaves the enterprise open-account scan page for workbench identities only', () => {
+  const definition = loadAppDefinition();
+  const previousWx = global.wx;
+  const previousPages = global.getCurrentPages;
+  const relaunched = [];
+  global.wx = {
+    reLaunch(options) { relaunched.push(options.url); },
+    switchTab() {},
+  };
+
+  try {
+    global.getCurrentPages = () => [{
+      route: 'packages/business/enterprise-register/enterprise-register'
+    }];
+    const adminApp = {
+      globalData: {
+        userInfo: { mode: 'staff', staffRole: 'enterprise_admin' },
+        bootstrap: { current: { mode: 'staff', staffRole: 'enterprise_admin', role: 'enterprise_admin' } },
+        roleLandingRedirected: false,
+        roleLandingRestoreRetries: 0,
+      },
+      restoreRoleLanding: definition.restoreRoleLanding,
+    };
+    definition.restoreRoleLanding.call(adminApp);
+    assert.deepEqual(relaunched, ['/pages/index/index']);
+    assert.equal(adminApp.globalData.roleLandingRedirected, true);
+
+    relaunched.length = 0;
+    const customerApp = {
+      globalData: {
+        userInfo: { mode: 'customer' },
+        bootstrap: { current: { mode: 'customer', role: 'customer' } },
+        roleLandingRedirected: false,
+        roleLandingRestoreRetries: 0,
+      },
+      restoreRoleLanding: definition.restoreRoleLanding,
+    };
+    definition.restoreRoleLanding.call(customerApp);
+    assert.deepEqual(relaunched, []);
+    assert.equal(customerApp.globalData.roleLandingRedirected, false);
+  } finally {
+    global.wx = previousWx;
+    global.getCurrentPages = previousPages;
+  }
+});
+
 test('an invalid signed context clears the session and enters explicit recovery', async () => {
   const definition = loadAppDefinition();
   const api = require('../utils/api.js');

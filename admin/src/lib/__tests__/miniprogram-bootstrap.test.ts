@@ -56,16 +56,16 @@ test('customer badges count reschedule and rebook work on Service and omit zeros
 test('staff and owner badges stay inside the active role and never invent zeros', () => {
   assert.deepEqual(buildMiniProgramBadges({
     role: 'designer',
-    facts: { designerFollowUpCount: 4, designerExpiredCount: 2 },
-  }).counts, { workbench: 6 });
+    facts: { designerFollowUpCount: 4, designerExpiredCount: 2, staffPayableCount: 3 },
+  }).counts, { workbench: 6, earnings: 3 });
   assert.deepEqual(buildMiniProgramBadges({
     role: 'measurer',
-    facts: { measurerTodayCount: 2, measurerTaskCount: 3 },
-  }).counts, { workbench: 5 });
+    facts: { measurerTodayCount: 2, measurerTaskCount: 3, staffPayableCount: 1 },
+  }).counts, { workbench: 5, earnings: 1 });
   assert.deepEqual(buildMiniProgramBadges({
     role: 'enterprise_admin',
-    facts: { ownerExceptionCount: 5, ownerExpiredCount: 2 },
-  }).counts, { operations: 5, appointments: 2 });
+    facts: { ownerExceptionCount: 5, ownerExpiredCount: 2, ownerPayableCount: 4 },
+  }).counts, { operations: 5, appointments: 2, commissions: 4 });
   assert.deepEqual(buildMiniProgramBadges({
     role: 'referrer',
     facts: { referrerOpenProgressCount: 3, referrerPayableCount: 1 },
@@ -93,4 +93,11 @@ test('staff role mapping does not collapse designer and measurer capabilities', 
   assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'measurer' }), 'measurer');
   assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'enterprise_admin' }), 'enterprise_admin');
   assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'salesperson' }), null);
+  const designer = { ...customer, mode: 'staff' as const, staffRole: 'designer' as const };
+  const measurer = { ...customer, mode: 'staff' as const, staffRole: 'measurer' as const };
+  assert.ok(buildMiniProgramBootstrap({ current: designer, contexts: [designer] }).current.capabilities.includes('staff.earnings'));
+  assert.ok(buildMiniProgramBootstrap({ current: measurer, contexts: [measurer] }).current.capabilities.includes('staff.earnings'));
+  const owner = { ...customer, mode: 'staff' as const, staffRole: 'enterprise_admin' as const };
+  assert.ok(buildMiniProgramBootstrap({ current: owner, contexts: [owner] }).current.capabilities.includes('enterprise.commissions'));
+  assert.equal(buildMiniProgramBootstrap({ current: owner, contexts: [owner] }).current.capabilities.includes('staff.earnings'), false);
 });

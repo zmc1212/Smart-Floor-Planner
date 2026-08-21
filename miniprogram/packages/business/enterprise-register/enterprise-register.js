@@ -1,6 +1,19 @@
 const api = require('../../../utils/api.js');
+const session = require('../../../utils/session.js');
+const {
+  getRoleLanding,
+  navigateToRoleLanding,
+  roleForIdentity
+} = require('../../../utils/identity-navigation.js');
 
 const REGISTER_ROUTE = 'packages/business/enterprise-register/enterprise-register';
+const WORKBENCH_ROLES = new Set([
+  'designer',
+  'measurer',
+  'enterprise_admin',
+  'referrer'
+]);
+const LOGIN_FROM_REGISTER_URL = `${session.LOGIN_URL}?mode=password`;
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -59,8 +72,45 @@ function registerErrorMessage(error) {
   return (error && error.message) || '暂时无法提交开户申请，请检查网络后重试。';
 }
 
+function currentSignedIdentity() {
+  const app = typeof getApp === 'function' ? getApp() : null;
+  const globalData = (app && app.globalData) || {};
+  return {
+    ...(globalData.userInfo || {}),
+    ...((globalData.bootstrap && globalData.bootstrap.current) || {})
+  };
+}
+
+function isWorkbenchIdentity(identity) {
+  return WORKBENCH_ROLES.has(roleForIdentity(identity));
+}
+
+function leaveRegistrationTarget(identity) {
+  if (isWorkbenchIdentity(identity)) {
+    return {
+      action: 'role_landing',
+      url: getRoleLanding(identity),
+      clearSession: false
+    };
+  }
+  return {
+    action: 'login',
+    url: LOGIN_FROM_REGISTER_URL,
+    clearSession: true
+  };
+}
+
 function applyFailure(page, error) {
   const code = error && error.code;
+  if (code === 'ACCOUNT_CONFLICT') {
+    page.setData({
+      submitting: false,
+      pageState: 'account',
+      navTitle: '去登录',
+      errorMessage: registerErrorMessage(error)
+    });
+    return;
+  }
   if (isRecoveryCode(code)) {
     page.setData({
       submitting: false,
@@ -108,7 +158,39 @@ Page({
   onLoad(options) {
     const registrationToken = safeToken(options.token || options.scene);
     this.setData({ ...navigationMetrics(), registrationToken });
+    if (this.leaveIfWorkbenchSignedIn()) return;
     this.resolveRegistrationCode();
+  },
+
+  onShow() {
+    this.leaveIfWorkbenchSignedIn();
+  },
+
+  leaveIfWorkbenchSignedIn() {
+    const identity = currentSignedIdentity();
+    if (!isWorkbenchIdentity(identity)) return false;
+    navigateToRoleLanding(identity);
+    return true;
+  },
+
+  onGoToLogin() {
+    const target = leaveRegistrationTarget(currentSignedIdentity());
+    if (target.action === 'role_landing') {
+      navigateToRoleLanding(currentSignedIdentity());
+      return;
+    }
+    if (target.clearSession) {
+      session.clearSession();
+      const app = typeof getApp === 'function' ? getApp() : null;
+      if (app && app.globalData) {
+        app.globalData.sessionHydrated = false;
+        app.globalData.roleLandingRedirected = false;
+      }
+    }
+    wx.reLaunch({
+      url: target.url,
+      fail: () => wx.switchTab({ url: '/pages/mine/mine' })
+    });
   },
 
   async resolveRegistrationCode() {
@@ -221,7 +303,7 @@ Page({
   },
 
   onDone() {
-    wx.switchTab({ url: '/pages/index/index' });
+    this.onGoToLogin();
   }
 });
 
@@ -229,5 +311,8 @@ module.exports = {
   safeToken,
   isRecoveryCode,
   formReady,
+  applyFailure,
+  isWorkbenchIdentity,
+  leaveRegistrationTarget,
   REGISTER_ROUTE
 };

@@ -268,8 +268,46 @@ page {
   font-weight: 700;
 }
 
-.state-action::after {
+.state-action::after,
+.state-action-secondary::after {
   border: none;
+}
+
+.state-action-secondary {
+  display: flex;
+  width: 100%;
+  max-width: 480rpx;
+  height: 88rpx;
+  margin-top: 16rpx;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid #d5ddd8;
+  border-radius: 999rpx;
+  background: transparent;
+  color: #183426;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.identity-link {
+  display: flex;
+  min-height: 52rpx;
+  margin-top: 14rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  color: #00c365;
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.link-chevron {
+  width: 10rpx;
+  height: 10rpx;
+  border-top: 2rpx solid #00c365;
+  border-right: 2rpx solid #00c365;
+  transform: rotate(45deg);
 }
 
 .success-mark {

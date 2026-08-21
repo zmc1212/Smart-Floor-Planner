@@ -600,3 +600,85 @@ test('staff activity retry assigns a presenter who was paused at claim time', as
   assert.equal(retried?.lead.measurerId, measurer.id);
   assert.equal(retried?.lead.assignmentErrorCode, null);
 });
+
+test('manual entry assigns the staff pool and never binds a customer WeChat user', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-manual`,
+      code: `${runKey}-manual`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  const ownerUser = await createCustomer('manual-owner-user');
+  const owner = await withTenantTransaction(enterprise.id, (transaction) =>
+    new AdminUserRepository(transaction).create({
+      enterpriseId: enterprise.id,
+      userId: ownerUser.id,
+      username: `${runKey}-manual-owner`,
+      passwordHash: 'test-only',
+      displayName: 'enterprise-admin-owner',
+      role: 'enterprise_admin',
+      status: 'active',
+      assignmentPaused: false,
+    })
+  );
+  const designer = await createAssignmentStaff(enterprise.id, 'designer', 'manual-designer');
+  const measurer = await createAssignmentStaff(enterprise.id, 'measurer', 'manual-measurer');
+  const created = await withTenantTransaction(enterprise.id, (transaction) =>
+    new ReferralLeadRepository(transaction).createManualEntryLead({
+      enterpriseId: enterprise.id,
+      actorStaffId: owner.id,
+      actorUserId: ownerUser.id,
+      name: '手工客户',
+      phone: `16${String(Date.now()).slice(-9)}`,
+      communityName: '测试小区',
+    })
+  );
+  assert.equal(created.lead.source, 'manual_entry');
+  assert.equal(created.lead.customerUserId, null);
+  assert.equal(created.lead.referrerMembershipId, null);
+  assert.equal(created.lead.promoterId, owner.id);
+  assert.equal(created.lead.assignedTo, designer.id);
+  assert.equal(created.lead.measurerId, measurer.id);
+  assert.equal(created.lead.assignmentStatus, 'assigned');
+  assert.notEqual(created.lead.assignedTo, owner.id);
+});
+
+test('manual entry stays pending without a pool and retry fills both roles', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-manual-pending`,
+      code: `${runKey}-manual-pending`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  const pending = await withTenantTransaction(enterprise.id, (transaction) =>
+    new ReferralLeadRepository(transaction).createManualEntryLead({
+      enterpriseId: enterprise.id,
+      actorStaffId: null,
+      actorUserId: null,
+      name: '待派手工客户',
+      phone: `17${String(Date.now()).slice(-9)}`,
+    })
+  );
+  assert.equal(pending.lead.source, 'manual_entry');
+  assert.equal(pending.lead.assignmentStatus, 'assignment_pending');
+  assert.equal(pending.lead.assignmentErrorCode, 'designer_and_measurer_unavailable');
+  assert.equal(pending.lead.assignedTo, null);
+  assert.equal(pending.lead.measurerId, null);
+
+  const designer = await createAssignmentStaff(enterprise.id, 'designer', 'manual-retry-designer');
+  const measurer = await createAssignmentStaff(enterprise.id, 'measurer', 'manual-retry-measurer');
+  const retried = await withTenantTransaction(enterprise.id, (transaction) =>
+    new ReferralLeadRepository(transaction).retryLeadAssignment({
+      leadId: pending.lead.id,
+      reason: 'manual_entry_pool_ready',
+    })
+  );
+  assert.equal(retried?.kind, 'assigned');
+  assert.equal(retried?.lead.assignedTo, designer.id);
+  assert.equal(retried?.lead.measurerId, measurer.id);
+  assert.equal(retried?.lead.source, 'manual_entry');
+});

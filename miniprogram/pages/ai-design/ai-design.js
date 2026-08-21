@@ -62,6 +62,22 @@ function splitRecipeColumns(recipes) {
   return columns;
 }
 
+function resolveRecipeInputMode(recipe) {
+  const inputTypes = Array.isArray(recipe && recipe.inputTypes) ? recipe.inputTypes : [];
+  return inputTypes.includes('photo') && !inputTypes.includes('floor_plan') ? 'photo' : 'floor_plan';
+}
+
+function decorateVisibleRecipe(recipe, workflows) {
+  const inputMode = resolveRecipeInputMode(recipe);
+  const workflowKey = inputMode === 'photo' ? 'style_transform' : 'floor_plan_render';
+  const workflow = (workflows || []).find((item) => item.key === workflowKey);
+  return {
+    ...recipe,
+    inputMode,
+    recipeCredits: normalizeCredits(workflow && workflow.credits),
+  };
+}
+
 function buildSelectedSource(plan, targetScope, room) {
   if (!plan) return null;
   if (targetScope === 'single_room' && !room) return null;
@@ -138,7 +154,6 @@ Page({
     navigationTop: 24,
     navigationHeight: 32,
     navigationRight: 96,
-    recipeInputMode: 'floor_plan',
     recipeSpaceFilters: RECIPE_SPACE_FILTERS.map((item, index) => ({ ...item, active: index === 0 })),
     recipeSpaceFilter: 'all',
     recipeQuery: '',
@@ -486,29 +501,19 @@ Page({
   },
 
   applyRecipeFilters() {
-    const inputMode = this.data.recipeInputMode;
     const spaceFilter = this.data.recipeSpaceFilter;
-    const inputRecipes = (this.data.recipes || []).filter((recipe) => (
-      (recipe.inputTypes || []).includes(inputMode)
-    ));
-    const visibleRecipes = inputRecipes.filter((recipe) => {
+    const visibleRecipes = (this.data.recipes || []).filter((recipe) => {
       if (spaceFilter === 'all') return true;
       if (spaceFilter === 'dining_kitchen') return ['dining_room', 'kitchen'].includes(recipe.spaceKey);
       return recipe.spaceKey === spaceFilter;
     });
-    const resolvedRecipes = visibleRecipes.length ? visibleRecipes : inputRecipes;
+    const resolvedRecipes = visibleRecipes.map((recipe) => decorateVisibleRecipe(recipe, this.data.workflows));
     this.setData({
       visibleRecipes: resolvedRecipes,
       featuredRecipes: resolvedRecipes.slice(0, 4),
       recipeColumns: splitRecipeColumns(resolvedRecipes),
       heroRecipe: resolvedRecipes[0] || null,
     });
-  },
-
-  switchRecipeInputMode(event) {
-    const mode = event.currentTarget.dataset.mode;
-    if (!['floor_plan', 'photo'].includes(mode) || mode === this.data.recipeInputMode) return;
-    this.setData({ recipeInputMode: mode }, () => this.applyRecipeFilters());
   },
 
   selectRecipeSpace(event) {
@@ -603,8 +608,9 @@ Page({
   openRecipeDetail(event) {
     const id = event.currentTarget.dataset.id;
     if (!id) return;
+    const recipe = (this.data.recipes || []).find((item) => String(item.id) === String(id));
     wx.navigateTo({
-      url: `/packages/ai-workflow/recipe-detail/recipe-detail?id=${encodeURIComponent(id)}&inputMode=${this.data.recipeInputMode}`,
+      url: `/packages/ai-workflow/recipe-detail/recipe-detail?id=${encodeURIComponent(id)}&inputMode=${resolveRecipeInputMode(recipe)}`,
     });
   },
 

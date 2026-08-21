@@ -42,21 +42,24 @@ Page({
       || roleForIdentity(app.globalData.userInfo);
     const roleWorkbenchRole = this.getRoleWorkbenchRole();
     if (roleWorkbenchRole) {
-      this.setData({ roleWorkbenchRole });
+      if (this.data.roleWorkbenchRole !== roleWorkbenchRole) {
+        this.setData({ roleWorkbenchRole });
+      }
       return;
     }
-    this.setData({ roleWorkbenchRole: '', canCreateLead: role === 'enterprise_admin' });
-    if (this.data.openid !== app.globalData.openid) {
-      this.setData({
-        openid: app.globalData.openid || ''
-      });
+    const nextOpenid = app.globalData.openid || '';
+    const canCreateLead = role === 'enterprise_admin';
+    const patch = {};
+    if (this.data.roleWorkbenchRole) patch.roleWorkbenchRole = '';
+    if (this.data.canCreateLead !== canCreateLead) patch.canCreateLead = canCreateLead;
+    if (this.data.openid !== nextOpenid) patch.openid = nextOpenid;
+    if (Object.keys(patch).length) this.setData(patch);
+
+    if (this._listReady) {
+      const leadList = this.selectComponent('#leadList');
+      if (leadList) leadList.fetchLeads(true);
     }
-    
-    // Trigger refresh in lead-list component if needed
-    const leadList = this.selectComponent('#leadList');
-    if (leadList) {
-      leadList.onRefresh();
-    }
+    this._listReady = true;
     if (this.data.pendingLeadId) {
       const leadId = this.data.pendingLeadId;
       this.setData({ pendingLeadId: '' });

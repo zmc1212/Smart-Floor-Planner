@@ -1,11 +1,17 @@
 import bcrypt from 'bcryptjs';
 import * as jose from 'jose';
 import { NextResponse } from 'next/server';
-import { AdminUserRepository } from '@/db/repositories';
+import { AdminUserRepository, EnterpriseRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
+import {
+  enterpriseAccessDeniedMessage,
+  isEnterpriseOperationallyActive,
+} from '@/lib/enterprise-status';
 import { getEffectivePermissions } from '@/lib/staff-access';
 
 export const dynamic = 'force-dynamic';
+
+const PLATFORM_ROLES = new Set(['super_admin', 'admin']);
 
 export async function POST(request: Request) {
   try {
@@ -18,19 +24,46 @@ export async function POST(request: Request) {
       );
     }
 
-    const admin = await withPlatformTransaction((transaction) =>
-      new AdminUserRepository(transaction).findByUsernameOrPhone(
-        username.trim(),
-        true
-      )
-    );
-    if (!admin || !(await bcrypt.compare(password, admin.passwordHash))) {
+    const authResult = await withPlatformTransaction(async (transaction) => {
+      const admin = await new AdminUserRepository(
+        transaction
+      ).findByUsernameOrPhone(username.trim(), true);
+      if (!admin || !(await bcrypt.compare(password, admin.passwordHash))) {
+        return { kind: 'invalid_credentials' as const };
+      }
+
+      if (admin.enterpriseId && !PLATFORM_ROLES.has(admin.role)) {
+        const enterprise = await new EnterpriseRepository(
+          transaction
+        ).findById(admin.enterpriseId);
+        if (
+          !enterprise ||
+          !isEnterpriseOperationallyActive(enterprise.status)
+        ) {
+          return {
+            kind: 'enterprise_blocked' as const,
+            message: enterpriseAccessDeniedMessage(enterprise?.status),
+          };
+        }
+      }
+
+      return { kind: 'ok' as const, admin };
+    });
+
+    if (authResult.kind === 'invalid_credentials') {
       return NextResponse.json(
         { success: false, error: '用户名或密码错误' },
         { status: 401 }
       );
     }
+    if (authResult.kind === 'enterprise_blocked') {
+      return NextResponse.json(
+        { success: false, error: authResult.message },
+        { status: 401 }
+      );
+    }
 
+    const admin = authResult.admin;
     const effectivePermissions = await getEffectivePermissions(
       admin.role,
       admin.menuPermissions

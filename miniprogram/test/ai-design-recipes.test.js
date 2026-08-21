@@ -15,10 +15,17 @@ test('AI Design discovery renders real recipe browsing instead of the four-stage
   assert.match(wxml, /class="featured-recipe-strip"/);
   assert.match(wxml, /class="create-scheme-hero"/);
   assert.match(wxml, /最近设计项目/);
-  assert.match(wxml, />设计记录</);
+  assert.doesNotMatch(wxml, />设计记录</);
+  assert.doesNotMatch(wxml, /bindtap="openHistory"/);
+  assert.match(service, /\/miniprogram\/ai\/history/);
   assert.match(wxml, /bindtap="openRecipeDetail"/);
+  assert.doesNotMatch(wxml, /bindtap="switchRecipeInputMode"/);
+  assert.doesNotMatch(wxml, /class="input-chevron"/);
+  assert.match(wxml, /aria-disabled="true"/);
   assert.doesNotMatch(wxml, /project-hero-stage-rail/);
   assert.match(source, /loadRecipes\(\{ page: 1, limit: 24 \}\)/);
+  assert.doesNotMatch(source, /visibleRecipes\.length \? visibleRecipes/);
+  assert.match(source, /decorateVisibleRecipe/);
   assert.match(service, /\/miniprogram\/ai\/recipes/);
 });
 

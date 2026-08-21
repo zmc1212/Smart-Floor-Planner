@@ -102,26 +102,39 @@
       >
         <text>提交开户申请</text>
       </button>
+
+      <view class="identity-link" bindtap="onGoToLogin" aria-role="button">
+        <text>已有账号，去登录</text>
+        <view class="link-chevron"></view>
+      </view>
     </view>
   </scroll-view>
 
   <view wx:elif="{{pageState === 'recovery'}}" class="register-state recovery-state">
     <view class="state-title">当前开户码暂不可用</view>
     <view class="state-copy">{{errorMessage}}</view>
-    <button class="state-action" bindtap="onOpenIdentitySwitch">切换可用身份</button>
+    <button class="state-action" bindtap="onGoToLogin">去登录</button>
+    <button class="state-action-secondary" bindtap="onOpenIdentitySwitch">切换可用身份</button>
   </view>
 
   <view wx:elif="{{pageState === 'success'}}" class="register-state success-state">
     <view class="success-mark"><view class="success-check"></view></view>
     <view class="state-title">申请已提交</view>
-    <view class="state-copy">资料已进入平台审核。审核通过后，可用该手机号登录管理后台与小程序。</view>
-    <button class="state-action" bindtap="onDone">返回首页</button>
+    <view class="state-copy">资料已进入平台审核。审核通过后，可用该手机号登录管理后台与小程序，初始密码为 123456。</view>
+    <button class="state-action" bindtap="onGoToLogin">去登录</button>
+  </view>
+
+  <view wx:elif="{{pageState === 'account'}}" class="register-state error-state">
+    <view class="state-title">该手机号已有账号</view>
+    <view class="state-copy">{{errorMessage}}</view>
+    <button class="state-action" bindtap="onGoToLogin">去登录</button>
   </view>
 
   <view wx:else class="register-state error-state">
     <image src="/images/mine-icons/shield-check.png" mode="aspectFit" aria-label="开户校验提示" />
     <view class="state-title">暂未完成提交</view>
     <view class="state-copy">{{errorMessage}}</view>
-    <button class="state-action" bindtap="onRetry">重新校验</button>
+    <button class="state-action" bindtap="onGoToLogin">去登录</button>
+    <button class="state-action-secondary" bindtap="onRetry">重新校验</button>
   </view>
 </view>

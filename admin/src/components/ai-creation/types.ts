@@ -64,6 +64,10 @@ export type CreationBatch = {
     size?: string;
     quality?: string;
     templateId?: string;
+    floorPlanControlAssetId?: string;
+    targetScope?: 'whole_floor_plan' | 'single_room';
+    targetLabel?: string;
+    roomId?: string;
   };
   requestedCount: number;
   status: 'pending' | 'processing' | 'succeeded' | 'partial' | 'failed';

@@ -2,7 +2,10 @@
   <scroll-view scroll-y class="role-scroll" enhanced show-scrollbar="{{false}}">
     <view class="role-content">
       <block wx:if="{{role === 'enterprise_admin' && focus === 'overview'}}">
-        <view class="identity-nav">
+        <view
+          class="identity-nav"
+          style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+        >
           <view class="identity-left">
             <view class="brand-mark">
               <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
@@ -13,7 +16,7 @@
             </view>
           </view>
           <view class="identity-actions">
-            <view class="qr-btn" bindtap="openActivityCode" aria-role="button" aria-label="扫码/活动码">
+            <view class="qr-btn" bindtap="openActivityCode" aria-role="button" aria-label="出示入驻码">
               <image class="action-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
             </view>
             <view class="bell-btn" bindtap="openSecondary" aria-role="button" aria-label="预约安排">
@@ -142,7 +145,10 @@
       </block>
 
       <block wx:else>
-        <view class="identity-nav">
+        <view
+          class="identity-nav"
+          style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+        >
           <view class="identity-left">
             <view class="brand-mark">
               <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
@@ -314,37 +320,6 @@
         <view wx:else class="state-block empty">
           <text>{{emptyCopy}}</text>
           <view wx:if="{{secondary}}" class="retry" bindtap="openSecondary">{{secondary.label}}</view>
-        </view>
-
-        <view wx:if="{{role === 'designer' && focus === 'overview'}}" class="recipes-section">
-          <view class="recipes-header">
-            <view class="recipes-title-wrap">
-              <text class="recipes-icon">🎨</text>
-              <text class="recipes-title">常用配方</text>
-            </view>
-            <view class="recipes-tabs">
-              <text class="tab-item active">客厅</text>
-              <text class="tab-item">卧室</text>
-              <text class="tab-item">全屋</text>
-            </view>
-          </view>
-
-          <view class="recipes-grid">
-            <view class="recipe-card" bindtap="openAIDesign" hover-class="card-pressed">
-              <image class="recipe-cover" src="/images/airy-v1/recipe-wood-cream.png" mode="aspectFill" />
-              <view class="recipe-bottom-bar">
-                <text class="recipe-name">原木奶油风</text>
-                <view class="apply-pill"><text>套用</text></view>
-              </view>
-            </view>
-            <view class="recipe-card" bindtap="openAIDesign" hover-class="card-pressed">
-              <image class="recipe-cover" src="/images/airy-v1/recipe-minimal-living.png" mode="aspectFill" />
-              <view class="recipe-bottom-bar">
-                <text class="recipe-name">极简无主灯</text>
-                <view class="apply-pill"><text>套用</text></view>
-              </view>
-            </view>
-          </view>
         </view>
       </block>
     </view>

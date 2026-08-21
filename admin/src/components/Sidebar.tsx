@@ -157,6 +157,7 @@ const NavItem = memo(function NavItem({
   return (
     <Link
       href={item.href}
+      prefetch={isActive ? false : undefined}
       target={item.newTab ? '_blank' : undefined}
       rel={item.newTab ? 'noopener noreferrer' : undefined}
       aria-current={isActive ? 'page' : undefined}

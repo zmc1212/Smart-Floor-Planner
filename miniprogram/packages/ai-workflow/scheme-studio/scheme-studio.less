@@ -91,7 +91,12 @@
 }
 
 .studio-shell {
-  padding: 8rpx 24rpx calc(340rpx + env(safe-area-inset-bottom));
+  padding: 8rpx 24rpx calc(220rpx + env(safe-area-inset-bottom));
+  transition: padding-bottom 240ms ease-out;
+}
+
+.studio-shell.dock-expanded {
+  padding-bottom: calc(400rpx + env(safe-area-inset-bottom));
 }
 
 button::after {
@@ -345,6 +350,10 @@ button::after {
   color: #4e6658;
 }
 
+.empty-rounds {
+  margin-top: 24rpx;
+}
+
 .round-list {
   margin-top: 24rpx;
   display: flex;
@@ -572,6 +581,32 @@ button::after {
   right: 0;
   bottom: 0;
   z-index: 20;
+  padding-top: 48rpx;
+  transition: bottom 120ms ease-out;
+}
+
+.composer-dock.keyboard-open {
+  padding-top: 24rpx;
+}
+
+.composer-dock-scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(248, 250, 249, 0) 0%,
+    rgba(232, 239, 234, 0.72) 38%,
+    rgba(232, 239, 234, 0.96) 100%
+  );
+}
+
+.composer-dock-panel {
+  position: relative;
+  z-index: 1;
 }
 
 .sheet-root {

@@ -73,6 +73,8 @@ Page({
     task: null,
     bootstrap: null,
     composerDraft: null,
+    composerDockExpanded: false,
+    composerKeyboardHeight: 0,
     generating: false,
     assisting: false,
     uploadingReference: false,
@@ -169,6 +171,7 @@ Page({
   onUnload() {
     this.clearTemplateQueryTimer();
     this.stopPolling();
+    this.setData({ composerKeyboardHeight: 0, composerDockExpanded: false });
     clearSheetTimer(this, MENU_SHEET.openKey);
     clearSheetTimer(this, RENAME_SHEET.openKey);
     clearSheetTimer(this, SEND_SHEET.openKey);
@@ -532,6 +535,15 @@ Page({
   onComposerDraftChange(event) {
     const { field, value } = event.detail;
     this.setData({ composerDraft: { ...this.data.composerDraft, [field]: value } });
+  },
+
+  onComposerDockExpandChange(event) {
+    this.setData({ composerDockExpanded: Boolean(event.detail && event.detail.expanded) });
+  },
+
+  onComposerKeyboardHeightChange(event) {
+    const height = Math.max(0, Math.floor(Number(event.detail && event.detail.height) || 0));
+    this.setData({ composerKeyboardHeight: height });
   },
 
   onComposerModelChange(event) {

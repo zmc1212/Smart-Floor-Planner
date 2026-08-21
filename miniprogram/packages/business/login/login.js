@@ -2,6 +2,12 @@ const app = getApp();
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 
+function shouldStayOnLoginPage(pages, previousRoute) {
+  const stack = Array.isArray(pages) ? pages : [];
+  if (stack.length <= 1) return true;
+  return String(previousRoute || '').includes('enterprise-register');
+}
+
 function loginErrorMessage(error) {
   const code = error && error.code;
   const raw = error && (error.error || error.message);
@@ -36,7 +42,16 @@ Page({
     if (options && options.recovery === 'identity_context_invalid') {
       wx.showToast({ title: '身份已变更，请重新登录', icon: 'none' });
     }
-    if (app.globalData.openid && app.globalData.userInfo) {
+    if (options && options.mode === 'password') {
+      this.setData({ loginType: 'password' });
+    }
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    const previousRoute = pages.length >= 2 ? (pages[pages.length - 2].route || '') : '';
+    if (
+      app.globalData.openid &&
+      app.globalData.userInfo &&
+      !shouldStayOnLoginPage(pages, previousRoute)
+    ) {
       wx.navigateBack();
     }
   },

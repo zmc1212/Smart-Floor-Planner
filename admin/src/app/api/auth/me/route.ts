@@ -7,11 +7,33 @@ import {
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import {
+  enterpriseAccessDeniedMessage,
+  isEnterpriseOperationallyActive,
+} from '@/lib/enterprise-status';
+import {
   getEffectivePermissions,
   getWorkbenchType,
 } from '@/lib/staff-access';
 
 export const dynamic = 'force-dynamic';
+
+const PLATFORM_ROLES = new Set(['super_admin', 'admin']);
+
+function clearAuthCookie(response: NextResponse) {
+  const secureAuthCookie =
+    process.env.NODE_ENV === 'production' &&
+    process.env.AUTH_COOKIE_SECURE !== 'false';
+  response.cookies.set({
+    name: 'auth_token',
+    value: '',
+    httpOnly: true,
+    secure: secureAuthCookie,
+    sameSite: 'lax',
+    maxAge: 0,
+    path: '/',
+  });
+  return response;
+}
 
 export async function GET(request: Request) {
   try {
@@ -54,12 +76,41 @@ export async function GET(request: Request) {
       const enterprise = enterpriseId
         ? await new EnterpriseRepository(transaction).findById(enterpriseId)
         : null;
-      return { admin, enterprise };
+
+      if (
+        admin.enterpriseId &&
+        !PLATFORM_ROLES.has(admin.role)
+      ) {
+        const boundEnterprise = await new EnterpriseRepository(
+          transaction
+        ).findById(admin.enterpriseId);
+        if (
+          !boundEnterprise ||
+          !isEnterpriseOperationallyActive(boundEnterprise.status)
+        ) {
+          return {
+            blocked: true as const,
+            message: enterpriseAccessDeniedMessage(boundEnterprise?.status),
+          };
+        }
+      }
+
+      return { admin, enterprise, blocked: false as const };
     });
     if (!result) {
-      return NextResponse.json(
-        { success: false, error: '用户不存在或已禁用' },
-        { status: 401 }
+      return clearAuthCookie(
+        NextResponse.json(
+          { success: false, error: '用户不存在或已禁用' },
+          { status: 401 }
+        )
+      );
+    }
+    if (result.blocked) {
+      return clearAuthCookie(
+        NextResponse.json(
+          { success: false, error: result.message },
+          { status: 401 }
+        )
       );
     }
 
@@ -84,14 +135,14 @@ export async function GET(request: Request) {
       },
     });
 
-    // Keep the auth cookie permissions in sync with role-menu changes so route
-    // guards and API checks match /api/auth/me without requiring a re-login.
     const tokenPermissions = Array.isArray(payload.permissions)
       ? (payload.permissions as string[])
       : [];
     const permissionsChanged =
       tokenPermissions.length !== effectivePermissions.length ||
-      effectivePermissions.some((permission) => !tokenPermissions.includes(permission));
+      effectivePermissions.some(
+        (permission) => !tokenPermissions.includes(permission)
+      );
     if (permissionsChanged) {
       const refreshedToken = await new jose.SignJWT({
         id: result.admin.id.toString(),
@@ -121,9 +172,11 @@ export async function GET(request: Request) {
 
     return response;
   } catch {
-    return NextResponse.json(
-      { success: false, error: '登录失效' },
-      { status: 401 }
+    return clearAuthCookie(
+      NextResponse.json(
+        { success: false, error: '登录失效' },
+        { status: 401 }
+      )
     );
   }
 }

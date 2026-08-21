@@ -134,6 +134,16 @@ Page({
     activeProjectTitle: '当前量房项目',
     bleAutoConnecting: false,
     roleWorkbenchRole: '',
+    redirectingToVisitorGateway: false,
+  },
+
+  redirectToVisitorGateway() {
+    if (this.data.redirectingToVisitorGateway) return;
+    this.setData({ redirectingToVisitorGateway: true });
+    wx.switchTab({
+      url: '/pages/mine/mine',
+      fail: () => this.setData({ redirectingToVisitorGateway: false })
+    });
   },
 
   getRoleWorkbenchRole() {
@@ -145,6 +155,11 @@ Page({
   },
 
   onLoad: function () {
+    if (!this.isLoggedIn()) {
+      this.redirectToVisitorGateway();
+      return;
+    }
+
     var sysInfo = wx.getSystemInfoSync();
     var menuButtonInfo = wx.getMenuButtonBoundingClientRect();
     var navBarContentHeight = (menuButtonInfo.top - sysInfo.statusBarHeight) * 2 + menuButtonInfo.height;
@@ -175,6 +190,11 @@ Page({
   },
 
   onShow: async function () {
+    if (!this.isLoggedIn()) {
+      this.redirectToVisitorGateway();
+      return;
+    }
+
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
     if (tabBar) {
       tabBar.syncSelected();

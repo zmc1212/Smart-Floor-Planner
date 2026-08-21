@@ -28,6 +28,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         templateId?: string;
         count?: number;
         workflowId?: string;
+        targetScope?: string;
+        roomId?: string;
       };
       if (!body.modelProfileId) {
         return NextResponse.json({ success: false, error: '请选择模型' }, { status: 400 });
@@ -52,6 +54,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         templateId: body.templateId,
         count: body.count,
         workflowId: body.workflowId,
+        targetScope: body.targetScope,
+        roomId: body.roomId,
       });
       await Promise.allSettled(result.generations.map((generation) =>
         submitPostgresCreationGeneration({

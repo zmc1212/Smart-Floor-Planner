@@ -185,7 +185,12 @@ Component({
 
   pageLifetimes: {
     show() {
+      if (this._pageVisible) return;
+      this._pageVisible = true;
       this.load();
+    },
+    hide() {
+      this._pageVisible = false;
     },
   },
 

@@ -23,6 +23,22 @@ function statusLabel(status) {
   })[status] || '服务跟进';
 }
 
+function navigationMetrics() {
+  const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+  let menuRect = null;
+  try {
+    menuRect = wx.getMenuButtonBoundingClientRect();
+  } catch (error) {
+    menuRect = null;
+  }
+  const menuLeft = Number((menuRect && menuRect.left) || windowInfo.windowWidth - 94);
+  return {
+    navigationTop: Number((menuRect && menuRect.top) || windowInfo.statusBarHeight || 24),
+    navigationHeight: Number((menuRect && menuRect.height) || 32),
+    navigationRight: Math.max(94, Number(windowInfo.windowWidth || 390) - menuLeft + 10),
+  };
+}
+
 Component({
   properties: {
     role: { type: String, value: '' },
@@ -30,6 +46,9 @@ Component({
   },
 
   data: {
+    navigationTop: 24,
+    navigationHeight: 32,
+    navigationRight: 96,
     loading: true,
     error: '',
     title: '',
@@ -59,11 +78,22 @@ Component({
   },
 
   lifetimes: {
-    attached() { this.load(); },
+    attached() {
+      this._pageVisible = true;
+      this.setData(navigationMetrics());
+      this.load();
+    },
   },
 
   pageLifetimes: {
-    show() { this.load(); },
+    show() {
+      if (this._pageVisible) return;
+      this._pageVisible = true;
+      this.load();
+    },
+    hide() {
+      this._pageVisible = false;
+    },
   },
 
   methods: {
@@ -95,6 +125,8 @@ Component({
     },
 
     async load() {
+      if (this._fetching) return;
+      this._fetching = true;
       this.setData({ loading: true, error: '' });
       try {
         const isCustomer = this.properties.role === 'customer';
@@ -185,6 +217,8 @@ Component({
           loading: false,
           error: error.error || error.message || '工作台加载失败，请检查网络后重试',
         });
+      } finally {
+        this._fetching = false;
       }
     },
 
@@ -315,12 +349,7 @@ Component({
         return;
       }
       if (item.action === 'staffing') {
-        wx.showModal({
-          title: '人员缺口',
-          content: item.subtitle || item.nextAction || '请在管理后台补齐可用设计师或测量员后重试派单。',
-          showCancel: false,
-          confirmText: '知道了',
-        });
+        this.openStaffingGap(item);
         return;
       }
       if (item.action === 'reschedule' && item.leadId && item.appointmentId) {
@@ -358,16 +387,31 @@ Component({
       }
     },
 
+    openStaffingGap(item) {
+      wx.showModal({
+        title: item.title || '人员缺口',
+        content: item.subtitle || item.nextAction || '请在管理后台补齐可用设计师或测量员后重试派单。',
+        showCancel: false,
+        confirmText: '知道了',
+      });
+    },
+
     openEnterpriseException(event) {
       const item = event.currentTarget.dataset.item;
       if (!item) return;
+      if (item.action === 'staffing') {
+        this.openStaffingGap(item);
+        return;
+      }
       if (item.action === 'appointment' && item.appointmentId && item.leadId) {
         this.openAppointment({ currentTarget: { dataset: { item } } });
         return;
       }
       if (item.leadId) {
         wx.navigateTo({ url: `/packages/business/lead-detail/lead-detail?id=${encodeURIComponent(item.leadId)}` });
+        return;
       }
+      wx.showToast({ title: '暂无对应处理入口', icon: 'none' });
     },
 
     openSecondary() {
@@ -392,10 +436,17 @@ Component({
         wx.navigateTo({ url: '/packages/business/measurer-calendar/measurer-calendar' });
       } else if (target === 'activity-code') {
         wx.navigateTo({ url: '/packages/business/staff-activity-code/staff-activity-code' });
+      } else if (target === 'join-codes') {
+        wx.navigateTo({ url: '/packages/business/enterprise-join-codes/enterprise-join-codes' });
       }
     },
 
     openActivityCode() {
+      const target = this.data.activityCode && this.data.activityCode.target;
+      if (target === 'join-codes') {
+        wx.navigateTo({ url: '/packages/business/enterprise-join-codes/enterprise-join-codes' });
+        return;
+      }
       wx.navigateTo({ url: '/packages/business/staff-activity-code/staff-activity-code' });
     },
 

@@ -3,14 +3,6 @@ const { openSurveyingEditor } = require('../utils/surveyNavigation.js');
 const { ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG } = require('../utils/debugConfig.js');
 const { roleForIdentity } = require('../utils/identity-navigation.js');
 
-const LEGACY_ITEMS = [
-  { key: 'home', pagePath: '/pages/index/index', text: '首页', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
-  { key: 'leads', pagePath: '/pages/leads-management/leads-management', text: '线索', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
-  { key: 'measure', pagePath: '/packages/surveying/editor/surveying-editor', text: '量房', center: true },
-  { key: 'ai-design', pagePath: '/pages/ai-design/ai-design', text: '设计', requiresEnterprise: true, visible: false, iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
-  { key: 'mine', pagePath: '/pages/mine/mine', text: '我的', iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
-];
-
 // Only expose destinations with an executable route and a matching server capability.
 const ROLE_ITEMS = {
   customer: [
@@ -20,24 +12,27 @@ const ROLE_ITEMS = {
   referrer: [
     { key: 'promotion', capability: 'referrer.promotion', pagePath: '/packages/business/referrer-workbench/referrer-workbench', text: '推广', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'progress', capability: 'referrer.progress', pagePath: '/packages/business/referrer-progress/referrer-progress', text: '进度', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
-    { key: 'earnings', capability: 'referrer.earnings', pagePath: '/packages/business/referrer-earnings/referrer-earnings', text: '收益', iconPath: '/images/mine-icons/wallet.png', selectedIconPath: '/images/mine-icons/wallet.png' },
+    { key: 'earnings', capability: 'referrer.earnings', pagePath: '/packages/business/referrer-earnings/referrer-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   designer: [
     { key: 'workbench', capability: 'staff.leads', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'customers', capability: 'staff.leads', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
     { key: 'design', capability: 'staff.design', pagePath: '/pages/ai-design/ai-design', text: '设计', tab: true, iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
+    { key: 'earnings', capability: 'staff.earnings', pagePath: '/packages/business/staff-earnings/staff-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   measurer: [
     { key: 'workbench', capability: 'staff.schedule', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'customers', capability: 'staff.tasks', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
+    { key: 'earnings', capability: 'staff.earnings', pagePath: '/packages/business/staff-earnings/staff-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   enterprise_admin: [
     { key: 'operations', capability: 'enterprise.operations', pagePath: '/pages/index/index', text: '经营', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'customers', capability: 'enterprise.customers', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
-    { key: 'appointments', capability: 'enterprise.appointments', pagePath: '/packages/business/enterprise-appointments/enterprise-appointments', text: '预约', iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
+    { key: 'appointments', capability: 'enterprise.appointments', pagePath: '/packages/business/enterprise-appointments/enterprise-appointments', text: '预约', iconPath: '/images/mine-icons/book-g.png', selectedIconPath: '/images/mine-icons/book-a-active.png' },
+    { key: 'commissions', capability: 'enterprise.commissions', pagePath: '/packages/business/enterprise-commissions/enterprise-commissions', text: '提成', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ]
 };
@@ -60,8 +55,9 @@ function visibleItems(globalData) {
       .filter((item) => !capabilities.length || capabilities.includes(item.capability))
       .map((item) => ({ ...item, visible: true }));
   }
-  const canUseAIDesign = Boolean(globalData && globalData.userInfo && globalData.userInfo.role === 'staff' && globalData.userInfo.enterpriseId);
-  return LEGACY_ITEMS.map((item) => ({ ...item, visible: !item.requiresEnterprise || canUseAIDesign }));
+  // A visitor has no signed identity and therefore no business navigation.
+  // Do not fall back to legacy staff tabs while a session is absent or invalid.
+  return [];
 }
 
 function applyServerBadges(list, badges) {
@@ -87,7 +83,7 @@ Component({
     compactMeasureTab: true,
     badgeUnavailable: false,
     badgeUnavailableText: '',
-    list: LEGACY_ITEMS
+    list: []
   },
 
   lifetimes: {
@@ -168,6 +164,7 @@ Component({
       const index = list.findIndex((item) => item.pagePath === current && !item.center);
       this.setData({
         list,
+        suppressed: list.length === 0,
         compactMeasureTab: list.some((item) => item.center) && list.filter((item) => item.visible).length === 4,
         selected: index >= 0 && list[index].visible ? index : this.data.selected,
         badgeUnavailable: decorated.badgeUnavailable,

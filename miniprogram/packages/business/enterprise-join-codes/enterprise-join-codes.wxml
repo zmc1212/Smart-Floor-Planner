@@ -1,0 +1,116 @@
+<!--
+THESIS: 企业负责人当场出示并管理员工/推荐人入驻码，对齐后台企业双码。
+OWN-WORLD: 复用极简透气版服务码出示模板（09），双码 Tab + 出示主卡 + 底部管理动作。
+STORY: 负责人切换双码、出示扫码，必要时生成/换新/停用；查看不会换新。
+FIRST VIEWPORT: 胶囊左侧品牌锁；双码 Tab、出示主卡与管理 CTA 在 390x844 同屏可达。
+FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code.jpg
+-->
+<view class="service-code-page">
+  <view
+    class="service-nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="brand-lockup">
+      <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+      <text class="brand-name">家客来</text>
+      <view class="nav-divider"></view>
+      <text class="nav-title">出示入驻码</text>
+    </view>
+  </view>
+
+  <view class="service-code-content">
+    <view class="code-tabs">
+      <view
+        wx:for="{{tabs}}"
+        wx:key="codeType"
+        class="code-tab {{activeType === item.codeType ? 'active' : ''}}"
+        data-type="{{item.codeType}}"
+        bindtap="selectTab"
+      >
+        <text>{{item.label}}</text>
+      </view>
+    </view>
+
+    <view class="code-hero">
+      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
+      <view class="hero-leaf hero-leaf-br" aria-hidden="true"></view>
+      <text wx:if="{{enterpriseName}}" class="hero-enterprise">{{enterpriseName}}</text>
+      <text class="hero-title">{{activeCopy.title}}</text>
+      <text class="hero-subtitle">{{activeCopy.subtitle}}</text>
+
+      <view class="qr-row">
+        <view class="qr-stage">
+          <view wx:if="{{loading}}" class="qr-loading">
+            <view class="qr-loading-grid"></view>
+            <text class="qr-state-copy">入驻码加载中</text>
+          </view>
+          <view wx:elif="{{!hasActive}}" class="qr-error">
+            <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+            <text class="qr-state-title">暂无生效入驻码</text>
+            <text class="qr-state-copy">生成后即可出示给员工或推荐人扫码入驻</text>
+          </view>
+          <view wx:elif="{{errorMessage}}" class="qr-error">
+            <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+            <text class="qr-state-title">入驻码暂不可用</text>
+            <text class="qr-state-copy">{{errorMessage}}</text>
+            <button class="qr-retry" bindtap="onRetry" disabled="{{acting}}">重新查看</button>
+          </view>
+          <image wx:else class="service-qr" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
+        </view>
+        <view class="scan-guide" aria-hidden="true">
+          <image
+            class="guide-xiaok"
+            src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
+            mode="aspectFit"
+          />
+          <view class="scan-plaque">
+            <view class="scan-glyph"></view>
+            <text class="scan-plaque-text">请扫码</text>
+          </view>
+        </view>
+      </view>
+      <text class="scan-copy">{{activeCopy.scanCopy}}</text>
+    </view>
+
+    <view class="service-promises">
+      <view class="promise-item" wx:for="{{activeCopy.promises}}" wx:key="title">
+        <view class="promise-icon">
+          <text class="promise-mark">{{item.mark}}</text>
+        </view>
+        <text class="promise-title">{{item.title}}</text>
+        <text class="promise-copy">{{item.copy}}</text>
+      </view>
+    </view>
+
+    <view class="info-bar">
+      <image class="info-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+      <text class="info-copy">{{hasActive ? activeCopy.info : '查看不会换新；换新后旧码立即失效'}}</text>
+    </view>
+
+    <view wx:if="{{!hasActive}}" class="manage-actions">
+      <button
+        class="manage-primary"
+        loading="{{acting}}"
+        disabled="{{acting || loading}}"
+        bindtap="onGenerate"
+        hover-class="manage-pressed"
+      >生成入驻码</button>
+    </view>
+    <view wx:else class="manage-actions split">
+      <button
+        class="manage-secondary"
+        loading="{{acting}}"
+        disabled="{{acting || loading}}"
+        bindtap="onRotate"
+        hover-class="manage-pressed"
+      >换新</button>
+      <button
+        class="manage-danger"
+        loading="{{acting}}"
+        disabled="{{acting || loading}}"
+        bindtap="onDisable"
+        hover-class="manage-pressed"
+      >停用</button>
+    </view>
+  </view>
+</view>

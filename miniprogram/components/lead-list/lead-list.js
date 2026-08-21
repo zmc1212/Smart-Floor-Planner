@@ -45,8 +45,8 @@ Component({
     openid: {
       type: String,
       value: '',
-      observer(newVal) {
-        if (newVal) {
+      observer(newVal, oldVal) {
+        if (newVal && newVal !== oldVal) {
           this.fetchLeads(true);
         }
       }
@@ -88,7 +88,10 @@ Component({
 
   methods: {
     async fetchLeads(reset = false) {
-      if (this.data.loading) return;
+      if (this._fetching) {
+        if (reset) this._pendingReset = true;
+        return;
+      }
 
       const page = reset ? 1 : this.data.page;
       const app = getApp();
@@ -100,6 +103,7 @@ Component({
 
       if (!hasSession) return;
 
+      this._fetching = true;
       this.setData({ loading: true, errorMessage: '' });
 
       try {
@@ -120,8 +124,7 @@ Component({
             leads: this.filterLeads(allLeads, this.data.searchKeyword),
             page: page + 1,
             hasMore: formatted.length === this.data.pageSize,
-            loading: false,
-            refreshing: false
+            loading: false
           });
 
           if (reset) {
@@ -130,7 +133,6 @@ Component({
         } else {
           this.setData({
             loading: false,
-            refreshing: false,
             errorMessage: (res && res.error) || '暂时无法获取客户线索'
           });
         }
@@ -138,8 +140,16 @@ Component({
         console.error('Fetch leads failed', err);
         this.setData({
           loading: false,
-          refreshing: false,
           errorMessage: (err && err.error) || '网络异常，请稍后重试'
+        });
+      } finally {
+        const shouldReplay = this._pendingReset;
+        this._pendingReset = false;
+        this._fetching = false;
+        this._closingRefresher = true;
+        this.setData({ refreshing: false }, () => {
+          this._closingRefresher = false;
+          if (shouldReplay) this.fetchLeads(true);
         });
       }
     },
@@ -227,7 +237,7 @@ Component({
     },
 
     onRefresh() {
-      this.setData({ refreshing: true });
+      if (this._fetching || this._closingRefresher) return;
       this.fetchLeads(true);
     },
 

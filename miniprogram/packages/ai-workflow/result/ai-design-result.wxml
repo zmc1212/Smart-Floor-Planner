@@ -118,7 +118,7 @@
             <text class="summary-value">{{task.recipeName || task.modeTitle}}</text>
           </view>
           <view class="summary-item">
-            <image class="summary-icon summary-icon-credit" src="/images/mine-icons/wallet.png" mode="aspectFit"></image>
+            <image class="summary-icon summary-icon-credit" src="/images/mine-icons/earn-a.png" mode="aspectFit"></image>
             <text class="summary-label">消耗点数</text>
             <text class="summary-value summary-points">{{task.credits}} 点</text>
           </view>

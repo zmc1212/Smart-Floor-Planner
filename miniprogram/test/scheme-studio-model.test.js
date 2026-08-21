@@ -266,6 +266,7 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   const script = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.js'), 'utf8');
   const pageJson = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.json'), 'utf8');
   const composerWxml = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.wxml'), 'utf8');
+  const composerLess = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
   const service = fs.readFileSync(path.join(miniRoot, 'utils/aiDesignService.js'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniRoot, 'utils/aiDesignNavigation.js'), 'utf8');
 
@@ -293,8 +294,22 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(composerWxml, /templateSheetMounted/);
   assert.match(composerWxml, /settingsMounted/);
   assert.match(composerWxml, /composer-shell dock/);
+  assert.match(composerWxml, /dockExpanded/);
   assert.match(composerWxml, /generate-fab/);
   assert.match(composerWxml, /出图设置/);
+  assert.match(composerWxml, /credit-bar/);
+  assert.match(composerLess, /\.credit-bar\s*\{[^}]*background:\s*#00c365/);
+  assert.match(composerLess, /\.credit-bar\s*\{[^}]*color:\s*#fff/);
+  assert.match(less, /\.empty-rounds\s*\{[^}]*margin-top:\s*24rpx/);
+  assert.match(wxml, /dock-expanded/);
+  assert.match(wxml, /onComposerDockExpandChange/);
+  assert.match(composerWxml, /adjust-position=\"\{\{false\}\}\"/);
+  assert.match(composerWxml, /keyboard-open/);
+  assert.match(wxml, /composerKeyboardHeight/);
+  assert.match(wxml, /onComposerKeyboardHeightChange/);
+  assert.match(less, /\.composer-dock-scrim/);
+  assert.match(less, /\.studio-shell\.dock-expanded/);
+  assert.doesNotMatch(less, /\.composer-dock\s*>\s*\*/);
   assert.match(composerWxml, /sheet-mask \{\{pickerVisible \? 'open' : ''\}\}/);
   assert.match(composerWxml, /sheet-panel \{\{pickerVisible \? 'open' : ''\}\}/);
   assert.match(wxml, /openGenerationActions/);

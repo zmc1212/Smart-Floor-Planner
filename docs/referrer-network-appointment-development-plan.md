@@ -155,7 +155,7 @@ Phase 1 persists the target tables below in `admin/src/db/schema.ts` and migrati
 | `staff_activity_codes` | Phase 16: staff + enterprise, token hash, state, version; one current activity code per active designer/measurer. |
 | `promotion_scan_audits` | Token, WeChat session, result, IP/device summary, and time; no OpenID copied to leads. May reference a promotion code or a staff activity code. |
 | `customer_attribution_locks` | Customer user, active lead, membership, enterprise, locked/released times; partial unique index permits one active lock per customer. |
-| Extended `leads` | Customer user, nullable referrer membership, measurer, `source=referrer_network\|staff_activity`, attribution time, assignment state/error; `assigned_to` remains designer. |
+| Extended `leads` | Customer user, nullable referrer membership, measurer, `source=referrer_network\|staff_activity\|manual_entry`, attribution time, assignment state/error; `assigned_to` remains designer. |
 | `lead_assignment_events` | Automatic designer/measurer assignments, retries, replacements, and failure reasons. |
 | `enterprise_appointment_settings` | Weekly hours, default duration, step, horizon, and customer cutoff. |
 | `staff_unavailability_periods` | Measurer leave/unavailable `tstzrange`, reason, and actor. |
@@ -269,7 +269,7 @@ Phase 6 is implemented through the owner-only customer-project aggregate: `Custo
 
 - Enterprises configure separate referrer, designer, and measurer rules as fixed amount or contract percentage.
 - If any role uses percentage, conversion requires a positive contract amount.
-- The conversion transaction snapshots payable rows by lead `source`: `referrer_network` still creates three unique `(lead_id, role)` `payable` records for referrer, designer, and measurer; `staff_activity` snapshots designer and measurer only, does not require an active referrer rule, and does not require the measurer staff row to have role `measurer`. The same `beneficiaryUserId` may appear on both designer and measurer rows.
+- The conversion transaction snapshots payable rows by lead `source`: `referrer_network` still creates three unique `(lead_id, role)` `payable` records for referrer, designer, and measurer; `staff_activity` and `manual_entry` snapshot designer and measurer only, do not require an active referrer rule, and do not require the measurer staff row to have role `measurer`. The same `beneficiaryUserId` may appear on both designer and measurer rows. `manual_entry` uses the referral-network staff pool (measurer may be replaced on appointment conflict) and does not bind `customer_user_id`.
 - Monetary computation uses decimal arithmetic, never JavaScript floating point. Repository tests lock the rounding rule.
 - Enterprise administrators mark offline payments `paid` individually or in bulk. The platform does not pay funds.
 - While a row remains `payable`, enterprise/platform administrators may adjust its current `payableAmount` and/or `beneficiaryUserId` with an optional reason; immutable original snapshot columns and rule snapshot fields stay unchanged. `paid`/`voided` rows reject adjustment.
@@ -351,9 +351,9 @@ The Mini Program serves five business workbench roles: customer, referrer, desig
 | --- | --- | --- | --- |
 | Customer | `Service / Mine` | Read owned service progress, current appointment, formal-plan summary, and named published scheme albums; book the visit after measurer assignment, and reschedule inside the allowed window | Staff lead pool, formal surveying editor, BLE, AI production tools, conversion/commission administration |
 | Referrer | `Promote / Progress / Earnings / Mine` | Select the service enterprise inside the workbench, show its service code, and read masked customer milestones plus own commission state | Customer phone, precise address, editable plan, internal appointment reasons, staff dispatch, or enterprise rules |
-| Designer | `Workbench / Customers / Design / Mine` | Process assigned leads, create or coordinate appointments, consume formal survey results, generate/publish designs, and collaborate on conversion | Measurer unavailability, other designers' leads, enterprise commission configuration, or context-free surveying |
-| Measurer | `Workbench / Customers / Mine` | Start in the role workbench, read today's appointments; use the “Customers” tab to inspect completed-survey customers and handoff status. Formal-survey editor remains reachable only from task-context deep links | Design publication, conversion, referrer earnings, enterprise rules, or unassigned customer data |
-| Enterprise owner | `Operations / Customers / Appointments / Mine` | Read tenant exceptions and key measures, resolve assignment/appointment exceptions, inspect the customer lifecycle, and perform existing authorized conversion/mobile approvals | Implicit designer or measurer tools; hands-on work requires switching to that staff identity |
+| Designer | `Workbench / Customers / Design / Earnings / Mine` | Process assigned leads, create or coordinate appointments, consume formal survey results, generate/publish designs, collaborate on conversion, and read own commissions | Measurer unavailability, other designers' leads, enterprise commission configuration, or context-free surveying |
+| Measurer | `Workbench / Customers / Earnings / Mine` | Start in the role workbench, read today's appointments; use the “Customers” tab to inspect completed-survey customers and handoff status; read own commissions. Formal-survey editor remains reachable only from task-context deep links | Design publication, conversion, referrer earnings, enterprise rules, or unassigned customer data |
+| Enterprise owner | `Operations / Customers / Appointments / Commissions / Mine` | Read tenant exceptions and key measures, resolve assignment/appointment exceptions, inspect the customer lifecycle, mark offline commission payouts, and perform existing authorized conversion/mobile approvals | Implicit designer or measurer tools; hands-on work requires switching to that staff identity |
 
 The tab bar is generated from a role allowlist and no longer preserves a universal center Survey action. Only the measurer context exposes surveying as a primary entry. Designers and enterprise owners reach permitted read-only results or existing actions from a lead/floor-plan context; customers and referrers never see the survey editor. Client visibility, deep-link guards, and server authorization must agree; hiding a control is not access control.
 
@@ -447,6 +447,8 @@ Update this status table incrementally and update both module inventories and af
 | 16. Staff activity acquisition track | `Completed` | Added `staff_activity_codes`, a third resolve kind, nullable-referrer attribution locks, presenter-locked `measurerId`, designer dual-assignment or min-load designer fill, floor-plan `measurerId` authorization, no auto-replace on the activity track, unscheduled survey workbench tasks, and source-based 2/3 commission snapshots. The Mini Program activity-code page reuses the referrer service-code visual language and may show enterprise branding; `390x844` native-capsule QA remains pending. |
 
 ## 17. Test and acceptance matrix
+
+Internal-tester walkthrough (accounts, readiness checklist, referrer/staff-activity tracks, expiry rebooking, negative permissions, and a defect template): [referrer-network-internal-test-handbook.zh-CN.md](./referrer-network-internal-test-handbook.zh-CN.md).
 
 - Identity: ordinary customer account creation; no forged enterprise context; stale tokens expire after relationship change.
 - Dual codes: type isolation, immediate rotation invalidation, one staff enterprise, default three referrer memberships, historical ownership retained after leave.

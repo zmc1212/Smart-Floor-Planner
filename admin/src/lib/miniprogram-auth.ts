@@ -114,6 +114,31 @@ export async function resolveMiniProgramContext(
         ? await new EnterpriseRepository(transaction).findById(enterpriseId)
         : null;
 
+      const enterpriseActive =
+        !enterpriseRecord || enterpriseRecord.status === 'active';
+      if (!enterpriseActive) {
+        // Staff/referrer workbenches require an active enterprise; drop the
+        // whole context so callers treat the session as unavailable.
+        if (
+          selectedContext.mode === 'staff' ||
+          selectedContext.mode === 'referrer'
+        ) {
+          console.warn(
+            `[Auth] MiniProgram blocked inactive enterprise ${enterpriseId?.toString()} status=${enterpriseRecord?.status}`
+          );
+          return null;
+        }
+        // Customer mode keeps the user but loses inactive enterprise branding.
+        return {
+          user,
+          staff: null,
+          enterprise: null,
+          enterpriseId: undefined,
+          mode: selectedContext.mode,
+          referrerMembershipId: undefined,
+        };
+      }
+
       return {
         user,
         staff,

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { Building2, Check, Copy, Ellipsis, Eye, Plus } from 'lucide-react';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
-import { Avatar, Button, Dropdown, Space, Tag, Typography } from 'antd';
+import { Avatar, Button, Dropdown, Input, Modal, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import EnterpriseEditorDialog from '@/components/enterprise/EnterpriseEditorDialog';
 import type { EnterpriseListItem } from '@/components/enterprise/types';
@@ -14,12 +14,29 @@ const ENTERPRISE_STATUS = {
   pending_approval: { text: '待审核', status: 'Warning' },
   active: { text: '正常', status: 'Success' },
   disabled: { text: '已停用', status: 'Default' },
+  rejected: { text: '已拒绝', status: 'Error' },
+};
+
+type StatusAction = 'approve' | 'reject' | 'disable' | 'enable' | 'resubmit_review';
+
+const ACTION_LABEL: Record<StatusAction, string> = {
+  approve: '审核通过',
+  reject: '拒绝审核',
+  disable: '停用企业',
+  enable: '启用企业',
+  resubmit_review: '重新提交审核',
 };
 
 function EnterpriseStatus({ status }: { status: EnterpriseListItem['status'] }) {
   if (status === 'active') return <Tag color="success">正常</Tag>;
   if (status === 'pending_approval') return <Tag color="warning">待审核</Tag>;
+  if (status === 'rejected') return <Tag color="error">已拒绝</Tag>;
   return <Tag>已停用</Tag>;
+}
+
+function truncateReason(reason?: string | null) {
+  if (!reason) return null;
+  return reason.length > 24 ? `${reason.slice(0, 24)}…` : reason;
 }
 
 export default function EnterprisesPage() {
@@ -28,6 +45,11 @@ export default function EnterprisesPage() {
   const [editingEnterprise, setEditingEnterprise] = useState<EnterpriseListItem | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [workingId, setWorkingId] = useState('');
+  const [reasonModal, setReasonModal] = useState<{
+    enterprise: EnterpriseListItem;
+    action: Extract<StatusAction, 'reject' | 'disable'>;
+  } | null>(null);
+  const [reasonDraft, setReasonDraft] = useState('');
 
   const copyInvitationLink = async () => {
     try {
@@ -40,23 +62,42 @@ export default function EnterprisesPage() {
     }
   };
 
-  const updateStatus = async (enterprise: EnterpriseListItem, status: EnterpriseListItem['status']) => {
-    setWorkingId(`${enterprise._id}:${status}`);
+  const runStatusAction = async (
+    enterprise: EnterpriseListItem,
+    action: StatusAction,
+    reason?: string
+  ) => {
+    setWorkingId(`${enterprise._id}:${action}`);
     try {
-      const response = await fetch(`/api/admin/enterprises/${enterprise._id}`, {
-        method: 'PATCH',
+      const response = await fetch(`/api/admin/enterprises/${enterprise._id}/status`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ action, reason }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '企业状态更新失败');
       await actionRef.current?.reload();
-      notify.success('企业状态已更新');
+      notify.success(`${ACTION_LABEL[action]}成功`);
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '企业状态更新失败');
     } finally {
       setWorkingId('');
     }
+  };
+
+  const confirmStatusAction = (enterprise: EnterpriseListItem, action: StatusAction) => {
+    if (action === 'reject' || action === 'disable') {
+      setReasonDraft('');
+      setReasonModal({ enterprise, action });
+      return;
+    }
+    Modal.confirm({
+      title: ACTION_LABEL[action],
+      content: `确认对「${enterprise.name}」执行${ACTION_LABEL[action]}？`,
+      okText: '确认',
+      cancelText: '取消',
+      onOk: () => runStatusAction(enterprise, action),
+    });
   };
 
   const columns: ProColumns<EnterpriseListItem>[] = [
@@ -99,10 +140,19 @@ export default function EnterprisesPage() {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 120,
+      width: 160,
       valueType: 'select',
       valueEnum: ENTERPRISE_STATUS,
-      render: (_, enterprise) => <EnterpriseStatus status={enterprise.status} />,
+      render: (_, enterprise) => (
+        <Space direction="vertical" size={0}>
+          <EnterpriseStatus status={enterprise.status} />
+          {truncateReason(enterprise.statusReason) ? (
+            <Typography.Text type="secondary" className="text-xs" title={enterprise.statusReason || undefined}>
+              {truncateReason(enterprise.statusReason)}
+            </Typography.Text>
+          ) : null}
+        </Space>
+      ),
     },
     {
       title: 'AI 概览',
@@ -147,19 +197,64 @@ export default function EnterprisesPage() {
               setIsEditorOpen(true);
             },
           },
-          enterprise.status === 'pending_approval' ? {
-            key: 'approve',
-            label: '审核通过',
-            disabled: Boolean(workingId),
-            onClick: () => updateStatus(enterprise, 'active'),
-          } : null,
         ];
-        return <Space size={8}>
-          <Button key="overview" size="small" icon={<Eye size={14} />} href={`/enterprises/${enterprise._id}`}>详情</Button>
-          <Dropdown key="more" menu={{ items }} trigger={['click']}>
-            <Button size="small" aria-label={`${enterprise.name} 更多操作`} loading={workingId.startsWith(`${enterprise._id}:`)} icon={<Ellipsis size={16} />} />
-          </Dropdown>
-        </Space>;
+
+        if (enterprise.status === 'pending_approval') {
+          items.push(
+            {
+              key: 'approve',
+              label: '审核通过',
+              disabled: Boolean(workingId),
+              onClick: () => confirmStatusAction(enterprise, 'approve'),
+            },
+            {
+              key: 'reject',
+              label: '拒绝审核',
+              danger: true,
+              disabled: Boolean(workingId),
+              onClick: () => confirmStatusAction(enterprise, 'reject'),
+            }
+          );
+        } else if (enterprise.status === 'rejected') {
+          items.push(
+            {
+              key: 'resubmit',
+              label: '重新提交审核',
+              disabled: Boolean(workingId),
+              onClick: () => confirmStatusAction(enterprise, 'resubmit_review'),
+            },
+            {
+              key: 'approve',
+              label: '审核通过',
+              disabled: Boolean(workingId),
+              onClick: () => confirmStatusAction(enterprise, 'approve'),
+            }
+          );
+        } else if (enterprise.status === 'active') {
+          items.push({
+            key: 'disable',
+            label: '停用企业',
+            danger: true,
+            disabled: Boolean(workingId),
+            onClick: () => confirmStatusAction(enterprise, 'disable'),
+          });
+        } else if (enterprise.status === 'disabled') {
+          items.push({
+            key: 'enable',
+            label: '启用企业',
+            disabled: Boolean(workingId),
+            onClick: () => confirmStatusAction(enterprise, 'enable'),
+          });
+        }
+
+        return (
+          <Space size={8}>
+            <Button key="overview" size="small" icon={<Eye size={14} />} href={`/enterprises/${enterprise._id}`}>详情</Button>
+            <Dropdown key="more" menu={{ items }} trigger={['click']}>
+              <Button size="small" aria-label={`${enterprise.name} 更多操作`} loading={workingId.startsWith(`${enterprise._id}:`)} icon={<Ellipsis size={16} />} />
+            </Dropdown>
+          </Space>
+        );
       },
     },
   ];
@@ -228,6 +323,39 @@ export default function EnterprisesPage() {
           await actionRef.current?.reload();
         }}
       />
+
+      <Modal
+        title={reasonModal ? ACTION_LABEL[reasonModal.action] : '操作原因'}
+        open={Boolean(reasonModal)}
+        okText="确认"
+        cancelText="取消"
+        confirmLoading={Boolean(reasonModal && workingId.startsWith(`${reasonModal.enterprise._id}:`))}
+        okButtonProps={{ disabled: reasonDraft.trim().length < 4 }}
+        onCancel={() => {
+          setReasonModal(null);
+          setReasonDraft('');
+        }}
+        onOk={async () => {
+          if (!reasonModal) return;
+          await runStatusAction(reasonModal.enterprise, reasonModal.action, reasonDraft.trim());
+          setReasonModal(null);
+          setReasonDraft('');
+        }}
+      >
+        <Typography.Paragraph type="secondary">
+          {reasonModal
+            ? `请填写对「${reasonModal.enterprise.name}」执行${ACTION_LABEL[reasonModal.action]}的原因（4-200 字）。`
+            : null}
+        </Typography.Paragraph>
+        <Input.TextArea
+          value={reasonDraft}
+          onChange={(event) => setReasonDraft(event.target.value)}
+          rows={4}
+          maxLength={200}
+          showCount
+          placeholder="请输入原因"
+        />
+      </Modal>
     </div>
   );
 }

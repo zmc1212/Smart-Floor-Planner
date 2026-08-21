@@ -46,6 +46,8 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(component, /openSurvey\(/);
   assert.match(componentTemplate, /catchtap="openSurvey"/);
   assert.match(component, /staff-activity-code\/staff-activity-code/);
+  assert.match(component, /enterprise-join-codes\/enterprise-join-codes/);
+  assert.match(component, /target === 'join-codes'/);
   assert.match(componentTemplate, /继续量房/);
   assert.match(componentTemplate, /新增量房/);
   assert.doesNotMatch(componentTemplate, /xiao-k-mascot-3d\.png/);
@@ -68,16 +70,36 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(leads, /<role-workbench[^>]+role="measurer"[^>]+focus="tasks"/);
   assert.match(design, /role="measurer" focus="survey"/);
   assert.doesNotMatch(design, /enterprise_admin/);
-  assert.match(styles, /env\(safe-area-inset-top\)/);
+  assert.match(component, /getMenuButtonBoundingClientRect/);
+  assert.match(component, /navigationRight/);
+  assert.match(componentTemplate, /padding-right: \{\{navigationRight\}\}px/);
+  assert.match(styles, /margin:\s*0 -28rpx 20rpx/);
+  assert.match(styles, /env\(safe-area-inset-bottom\)/);
   assert.match(styles, /font-size:24rpx/);
   assert.match(componentTemplate, /role === 'enterprise_admin' && focus === 'overview'/);
   assert.match(componentTemplate, /经营大盘/);
   assert.match(componentTemplate, /dashboardPeriod\.subtitle/);
   assert.match(componentTemplate, /需优先处理事项（异常监控）/);
-  assert.match(componentTemplate, /出示员工活动码|activityCode\.label/);
+  assert.match(componentTemplate, /出示入驻码|activityCode\.label/);
   assert.match(component, /openQuickNav/);
   assert.match(component, /openEnterpriseException/);
   assert.match(component, /payload\.dashboard/);
+});
+
+test('enterprise staffing exceptions open an explanation instead of a silent no-op', () => {
+  const component = fs.readFileSync(path.join(miniProgramRoot, 'components', 'role-workbench', 'role-workbench.js'), 'utf8');
+  const componentTemplate = fs.readFileSync(path.join(miniProgramRoot, 'components', 'role-workbench', 'role-workbench.wxml'), 'utf8');
+  const exceptionHandler = component.match(/openEnterpriseException\(event\) \{[\s\S]*?\n    \},/);
+  const staffingHandler = component.match(/openStaffingGap\(item\) \{[\s\S]*?\n    \},/);
+
+  assert.match(componentTemplate, /bindtap="openEnterpriseException"/);
+  assert.match(componentTemplate, /catchtap="openEnterpriseException"/);
+  assert.ok(exceptionHandler, 'openEnterpriseException handler should exist');
+  assert.ok(staffingHandler, 'openStaffingGap handler should exist');
+  assert.match(exceptionHandler[0], /item\.action === 'staffing'/);
+  assert.match(exceptionHandler[0], /this\.openStaffingGap\(item\)/);
+  assert.match(exceptionHandler[0], /wx\.showToast/);
+  assert.match(staffingHandler[0], /wx\.showModal/);
 });
 
 test('customer projects route is a deep-link redirect shell, not a TabBar list', () => {
@@ -116,6 +138,51 @@ test('referrer progress and earnings are direct role-tab destinations', () => {
   }
   assert.match(tabBar, /key: 'progress', capability: 'referrer\.progress'/);
   assert.match(tabBar, /key: 'earnings', capability: 'referrer\.earnings'/);
+});
+
+test('designer and measurer earnings are direct role-tab destinations', () => {
+  const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
+  const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'identity-navigation.js'), 'utf8');
+  const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'staff-earnings', 'staff-earnings.json'), 'utf8'));
+  const template = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'staff-earnings', 'staff-earnings.wxml'), 'utf8');
+  const page = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'staff-earnings', 'staff-earnings.js'), 'utf8');
+  const appConfig = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'app.json'), 'utf8'));
+  const business = appConfig.subPackages.find((entry) => entry.root === 'packages/business');
+
+  assert.ok(business.pages.includes('staff-earnings/staff-earnings'));
+  assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
+  assert.match(template, /<custom-tab-bar\s*\/>/);
+  assert.match(template, /我的收益/);
+  assert.match(page, /['"`]\/miniprogram\/staff-earnings['"`]/);
+  assert.match(navigation, /staff-earnings\/staff-earnings': 'staff\.earnings'/);
+  assert.match(tabBar, /capability: 'staff\.earnings'[\s\S]*pagePath: '\/packages\/business\/staff-earnings\/staff-earnings'/);
+  assert.match(tabBar, /designer: \[[\s\S]*key: 'earnings', capability: 'staff\.earnings'/);
+  assert.match(tabBar, /measurer: \[[\s\S]*key: 'earnings', capability: 'staff\.earnings'/);
+});
+
+test('enterprise owner commissions are a payout ledger tab with mark-paid', () => {
+  const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
+  const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'identity-navigation.js'), 'utf8');
+  const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.json'), 'utf8'));
+  const template = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.wxml'), 'utf8');
+  const page = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.js'), 'utf8');
+  const appConfig = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'app.json'), 'utf8'));
+  const business = appConfig.subPackages.find((entry) => entry.root === 'packages/business');
+
+  assert.ok(business.pages.includes('enterprise-commissions/enterprise-commissions'));
+  assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
+  assert.match(template, /<custom-tab-bar\s*\/>/);
+  assert.match(template, /提成发放/);
+  assert.match(template, /已线下打款/);
+  assert.match(template, /待支付/);
+  assert.match(template, /已作废/);
+  assert.match(page, /['"`]\/miniprogram\/enterprise-commissions['"`]/);
+  assert.match(page, /['"`]\/miniprogram\/enterprise-commissions\/mark-paid['"`]/);
+  assert.match(page, /确认标记已支付/);
+  assert.match(navigation, /enterprise-commissions\/enterprise-commissions': 'enterprise\.commissions'/);
+  assert.match(tabBar, /key: 'commissions', capability: 'enterprise\.commissions'/);
+  assert.match(tabBar, /text: '提成'/);
+  assert.doesNotMatch(page, /commission-records/);
 });
 
 test('role shell staff Mine hides legacy workbench sections', () => {

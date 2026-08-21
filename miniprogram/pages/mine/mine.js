@@ -27,7 +27,7 @@ function isRoleShellMineRole(role) {
 const FALLBACK_PROFILE = {
   name: '员工账号',
   avatar: '',
-  enterpriseName: '智能量房助手',
+  enterpriseName: '家客来',
   phoneMasked: '',
   roleLabel: '员工账号',
   role: ''

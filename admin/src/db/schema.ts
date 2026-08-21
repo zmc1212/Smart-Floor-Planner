@@ -70,12 +70,25 @@ export const enterprises = appSchema.table(
     automationConfig: jsonObject<Record<string, unknown>>('automation_config'),
     aiConfig: jsonObject<Record<string, unknown>>('ai_config'),
     aiPolicy: jsonObject<Record<string, unknown>>('ai_policy'),
+    statusReason: text('status_reason'),
+    statusChangedAt: timestamp('status_changed_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    statusChangedByAdminId: bigint('status_changed_by_admin_id', {
+      mode: 'bigint',
+    }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (table) => [
     uniqueIndex('enterprises_code_uidx').on(table.code),
     index('enterprises_status_created_idx').on(table.status, table.createdAt),
+    index('enterprises_status_changed_by_idx').on(table.statusChangedByAdminId),
+    check(
+      'enterprises_status_check',
+      sql`${table.status} in ('pending_approval', 'active', 'disabled', 'rejected')`
+    ),
   ]
 );
 
@@ -169,6 +182,36 @@ export const adminUsers = appSchema.table(
       table.departmentId
     ),
     index('admin_users_wechat_qr_asset_idx').on(table.wechatQrAssetId),
+  ]
+);
+
+export const enterpriseStatusEvents = appSchema.table(
+  'enterprise_status_events',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    fromStatus: text('from_status').notNull(),
+    toStatus: text('to_status').notNull(),
+    action: text('action').notNull(),
+    reason: text('reason'),
+    actorAdminId: bigint('actor_admin_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('enterprise_status_events_enterprise_created_idx').on(
+      table.enterpriseId,
+      table.createdAt
+    ),
+    index('enterprise_status_events_actor_idx').on(table.actorAdminId),
+    check(
+      'enterprise_status_events_action_check',
+      sql`${table.action} in ('approve', 'reject', 'disable', 'enable', 'resubmit_review')`
+    ),
   ]
 );
 

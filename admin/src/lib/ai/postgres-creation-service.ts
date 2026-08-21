@@ -17,7 +17,11 @@ import {
 } from '@/db/transaction';
 import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
 import { getPostgresImageModelPrice, serializePostgresCatalogProfile } from '@/lib/ai/image-model-catalog';
-import { resolveFloorPlanControlPng } from '@/lib/floor-plan-preview';
+import {
+  buildCreationBatchRoomData,
+  resolveCreationBatchControlPng,
+  resolveCreationBatchFloorPlanScope,
+} from '@/lib/ai/creation-batch-floorplan';
 import { getPostgresMediaAssetImageUrl, storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import { getActivePromptTemplate } from '@/lib/ai/prompt-library-query';
 import { resolveGrsImageParameters, type GrsResolutionTier } from '@/lib/ai/grs-image-models';
@@ -257,6 +261,8 @@ export async function preparePostgresCreationBatch(input: {
   templateId?: string;
   count?: number;
   workflowId?: string;
+  targetScope?: string;
+  roomId?: string;
 }) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const operatorId = parsePostgresId(input.operatorId, 'operatorId');
@@ -265,6 +271,10 @@ export async function preparePostgresCreationBatch(input: {
   const prompt = input.prompt.trim();
   if (!prompt) throw new Error('请输入提示词');
   if (prompt.length > 12000) throw new Error('提示词不能超过 12000 个字符');
+  const requestedRoomId = typeof input.roomId === 'string' ? input.roomId.trim() : '';
+  if ((input.targetScope || requestedRoomId) && !input.workflowId) {
+    throw Object.assign(new Error('设计范围仅可在方案对话出图时指定'), { status: 400 });
+  }
   const count = Math.min(4, Math.max(1, Math.trunc(Number(input.count) || 1)));
   const [profile, template] = await Promise.all([
     getEnabledCatalogProfile(modelProfileId),
@@ -279,25 +289,37 @@ export async function preparePostgresCreationBatch(input: {
       workflowId: parsePostgresId(input.workflowId, 'workflowId'),
     })
     : null;
-  if (workflowBinding) {
+  const floorPlanScope = workflowBinding
+    ? resolveCreationBatchFloorPlanScope({
+      layoutData: workflowBinding.layoutData,
+      prompt,
+      targetScope: input.targetScope,
+      roomId: requestedRoomId || undefined,
+    })
+    : null;
+  let roomData = floorPlanScope?.roomData;
+  const providerPrompt = floorPlanScope?.providerPrompt || prompt;
+  if (workflowBinding && floorPlanScope) {
     if (!capabilities.supportsReferenceImages || maxReferenceImages < 1) {
       throw Object.assign(new Error('当前模型不支持参考图，无法带入正式户型控制图，请更换模型'), { status: 400 });
     }
     if (referenceAssetIds.length >= maxReferenceImages) {
       throw Object.assign(new Error(`户型控制图会占用 1 张参考图，当前模型最多 ${maxReferenceImages} 张`), { status: 400 });
     }
+    const controlImage = await resolveCreationBatchControlPng({
+      id: workflowBinding.floorPlanId,
+      enterpriseId: workflowBinding.enterpriseId || enterpriseId,
+      layoutData: workflowBinding.layoutData,
+      status: workflowBinding.status,
+      previewAssetId: workflowBinding.previewAssetId,
+      previewRenderRevision: workflowBinding.previewRenderRevision,
+    }, floorPlanScope.target);
+    roomData = buildCreationBatchRoomData(floorPlanScope.target, controlImage.controlKind);
     const control = await storePostgresMediaBuffer({
       enterpriseId,
       ownerType: 'ai_generation_input',
       mimeType: 'image/png',
-      buffer: await resolveFloorPlanControlPng({
-        id: workflowBinding.floorPlanId,
-        enterpriseId: workflowBinding.enterpriseId || enterpriseId,
-        layoutData: workflowBinding.layoutData,
-        status: workflowBinding.status,
-        previewAssetId: workflowBinding.previewAssetId,
-        previewRenderRevision: workflowBinding.previewRenderRevision,
-      }),
+      buffer: controlImage.buffer,
     });
     referenceAssetIds = [control.asset.id, ...referenceAssetIds];
   }
@@ -335,7 +357,13 @@ export async function preparePostgresCreationBatch(input: {
       modelProfileSnapshot: profileSnapshot,
       parameterSnapshot: {
         ...parameters,
-        ...(workflowBinding ? { floorPlanControlAssetId: referenceAssetIds[0]?.toString() } : {}),
+        ...(workflowBinding ? {
+          floorPlanControlAssetId: referenceAssetIds[0]?.toString(),
+          targetScope: roomData?.targetScope || 'whole_floor_plan',
+          targetLabel: roomData?.targetLabel || '完整户型',
+          ...(roomData?.roomId ? { roomId: roomData.roomId } : {}),
+          ...(roomData?.controlKind ? { controlKind: roomData.controlKind } : {}),
+        } : {}),
       },
       requestedCount: count,
       status: 'pending',
@@ -377,7 +405,8 @@ export async function preparePostgresCreationBatch(input: {
       input: {
         style: workflowBinding ? 'conversation' : 'free_create',
         userMessage: prompt,
-        customPrompt: prompt,
+        customPrompt: providerPrompt,
+        ...(roomData ? { roomData } : {}),
         outputAspectRatio: parameters.aspectRatio,
         outputSize: parameters.resolutionTier,
         creationParameterSnapshot: {
