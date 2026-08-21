@@ -7,6 +7,11 @@ import { CheckCircle2, RefreshCw, UsersRound, Wrench } from 'lucide-react';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import {
+  getCodeAuditEventTypeLabel,
+  getCodeAuditResultLabel,
+  getCodeAuditResultTagColor,
+} from '@/lib/code-audit-labels';
 
 type JoinCodeType = 'staff' | 'referrer';
 
@@ -57,6 +62,8 @@ type ResetCount = { table: string; label: string; count: number };
 type ResetPreview = {
   enterpriseId: string;
   enterpriseName: string;
+  mode?: 'reset' | 'purge';
+  retainOperator?: boolean;
   retainedOperatorAdminUserId: string | null;
   retainedOperatorDisplayName: string | null;
   counts: ResetCount[];
@@ -89,9 +96,11 @@ export default function ReferrerNetworkOperationsPage() {
   const [loading, setLoading] = useState(true);
   const [globalTenantId, setGlobalTenantId] = useState('all');
   const [resetPreview, setResetPreview] = useState<ResetPreview | null>(null);
+  const [purgePreview, setPurgePreview] = useState<ResetPreview | null>(null);
   const [resetPreviewLoading, setResetPreviewLoading] = useState(false);
   const [resetConfirmName, setResetConfirmName] = useState('');
   const [resetExecuting, setResetExecuting] = useState(false);
+  const [purgeExecuting, setPurgeExecuting] = useState(false);
 
   const requiresTenantSelection = Boolean(
     user && ['super_admin', 'admin'].includes(user.role) && globalTenantId === 'all'
@@ -116,13 +125,25 @@ export default function ReferrerNetworkOperationsPage() {
     if (requiresTenantSelection) return;
     setResetPreviewLoading(true);
     try {
-      const response = await fetch('/api/enterprise/enterprise-reset/preview');
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '预览清空范围失败');
-      setResetPreview(result.data);
+      const [resetResponse, purgeResponse] = await Promise.all([
+        fetch('/api/enterprise/enterprise-reset/preview'),
+        fetch('/api/enterprise/enterprise-reset/preview?mode=purge'),
+      ]);
+      const resetResult = await resetResponse.json();
+      const purgeResult = await purgeResponse.json();
+      if (!resetResponse.ok || !resetResult.success) {
+        throw new Error(resetResult.error || '预览清空范围失败');
+      }
+      setResetPreview(resetResult.data);
+      if (purgeResponse.ok && purgeResult.success) {
+        setPurgePreview(purgeResult.data);
+      } else {
+        setPurgePreview(null);
+      }
       setResetConfirmName('');
     } catch (error) {
       setResetPreview(null);
+      setPurgePreview(null);
       notify.error(error instanceof Error ? error.message : '预览清空范围失败');
     } finally {
       setResetPreviewLoading(false);
@@ -180,6 +201,60 @@ export default function ReferrerNetworkOperationsPage() {
     }
   }, [confirm, loadReadiness, loadResetPreview, resetConfirmName, resetPreview]);
 
+  const executeEnterprisePurge = useCallback(async () => {
+    const target = purgePreview || resetPreview;
+    if (!target) return;
+    if (resetConfirmName.trim() !== target.enterpriseName) {
+      notify.error('请输入与企业全名完全一致的确认文字');
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: '确认删除整家企业（含企业壳）？',
+      destructive: true,
+      confirmText: '确认删除整家企业',
+      cancelText: '取消',
+      description: (
+        <Flex vertical gap={8}>
+          <Typography.Text>
+            将清空本企业全部业务数据，并删除企业壳与全部员工账号（含负责人）。刷新后需重新开户/建企，不能再凭原账号登录本企业后台。
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            预览合计约 {purgePreview?.totalRows ?? target.totalRows} 行；不删对象存储文件，也不影响其他企业与全局用户表。
+          </Typography.Text>
+          <Typography.Text type="danger">此操作不可恢复。</Typography.Text>
+        </Flex>
+      ),
+    });
+    if (!confirmed) return;
+
+    setPurgeExecuting(true);
+    try {
+      const response = await fetch('/api/enterprise/enterprise-purge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmEnterpriseName: resetConfirmName.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '删除整家企业失败');
+
+      const isMerchantOperator = user?.role === 'enterprise_admin';
+      if (isMerchantOperator) {
+        notify.success(result.data?.retainedNote || '整家企业已删除，请重新开户');
+        await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined);
+        window.location.href = '/login';
+        return;
+      }
+
+      notify.success(result.data?.retainedNote || '整家企业已删除');
+      window.location.href = '/enterprises';
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '删除整家企业失败');
+    } finally {
+      setPurgeExecuting(false);
+    }
+  }, [confirm, purgePreview, resetConfirmName, resetPreview, user?.role]);
+
   useEffect(() => {
     const tenant = document.cookie.split('; ').find((item) => item.startsWith('global_tenant_id='));
     setGlobalTenantId(tenant?.split('=')[1] || 'all');
@@ -190,6 +265,7 @@ export default function ReferrerNetworkOperationsPage() {
       setLoading(false);
       setReadiness(null);
       setResetPreview(null);
+      setPurgePreview(null);
       setResetPreviewLoading(false);
       return;
     }
@@ -220,8 +296,22 @@ export default function ReferrerNetworkOperationsPage() {
   const eventColumns: ProColumns<JoinCodeEvent>[] = [
     { title: '时间', dataIndex: 'createdAt', width: 180, render: (_, item) => formatTime(item.createdAt) },
     { title: '码类型', dataIndex: 'codeType', width: 120, render: (_, item) => CODE_LABELS[item.codeType] },
-    { title: '动作', dataIndex: 'eventType', width: 140 },
-    { title: '结果', dataIndex: 'result', width: 160, render: (_, item) => <Tag color={item.result === 'active' || item.result === 'joined' ? 'green' : 'default'}>{item.result}</Tag> },
+    {
+      title: '动作',
+      dataIndex: 'eventType',
+      width: 160,
+      render: (_, item) => getCodeAuditEventTypeLabel(item.eventType),
+    },
+    {
+      title: '结果',
+      dataIndex: 'result',
+      width: 180,
+      render: (_, item) => (
+        <Tag color={getCodeAuditResultTagColor(item.result)}>
+          {getCodeAuditResultLabel(item.result)}
+        </Tag>
+      ),
+    },
     { title: '操作者', key: 'actor', render: (_, item) => item.actorStaffId ? `员工 #${item.actorStaffId}` : item.actorUserId ? `用户 #${item.actorUserId}` : '系统/匿名扫码' },
   ];
 
@@ -319,18 +409,19 @@ export default function ReferrerNetworkOperationsPage() {
                   <Alert
                     showIcon
                     type="warning"
-                    message="内测专用：从入驻重跑"
-                    description="将删除本企业员工、入驻码、推荐人、预约/提成规则、线索与全部闭环数据。你仍可登录后台，但需重新发码并从入驻开始。不删企业壳与对象存储文件，也不影响其他企业。"
+                    message="内测专用：两档危险操作"
+                    description="「清空并重跑入驻」保留企业壳与当前操作者账号，需重新发码入驻。「删除整家企业」会连同企业壳与全部员工账号（含负责人）一并删除，刷新后需重新开户/建企。均不删对象存储文件，也不影响其他企业。"
                   />
                   {resetPreview ? (
                     <>
                       <Typography.Paragraph className="!mb-0">
                         企业：<Typography.Text strong>{resetPreview.enterpriseName}</Typography.Text>
                         {' · '}
-                        预览合计约 {resetPreview.totalRows} 行
+                        重跑预览约 {resetPreview.totalRows} 行
+                        {purgePreview ? ` · 整企删除预览约 ${purgePreview.totalRows} 行` : ''}
                         {resetPreview.retainedOperatorDisplayName
-                          ? ` · 将保留操作者：${resetPreview.retainedOperatorDisplayName}`
-                          : ' · 当前企业未匹配到可保留的操作者员工账号'}
+                          ? ` · 重跑将保留操作者：${resetPreview.retainedOperatorDisplayName}`
+                          : ' · 重跑时当前企业未匹配到可保留的操作者员工账号'}
                       </Typography.Paragraph>
                       <Table
                         size="small"
@@ -338,7 +429,7 @@ export default function ReferrerNetworkOperationsPage() {
                         pagination={false}
                         dataSource={resetPreview.counts.filter((item) => item.count > 0)}
                         columns={[
-                          { title: '类别', dataIndex: 'label' },
+                          { title: '类别（重跑入驻预览）', dataIndex: 'label' },
                           { title: '行数', dataIndex: 'count', width: 96 },
                         ]}
                         locale={{ emptyText: '当前企业几乎没有可清业务数据' }}
@@ -351,17 +442,29 @@ export default function ReferrerNetworkOperationsPage() {
                           value={resetConfirmName}
                           placeholder="输入企业全名"
                           onChange={(event) => setResetConfirmName(event.target.value)}
-                          disabled={resetExecuting}
+                          disabled={resetExecuting || purgeExecuting}
                         />
                         <Space wrap>
                           <Button
                             danger
                             type="primary"
                             loading={resetExecuting}
-                            disabled={resetConfirmName.trim() !== resetPreview.enterpriseName}
+                            disabled={
+                              purgeExecuting || resetConfirmName.trim() !== resetPreview.enterpriseName
+                            }
                             onClick={() => void executeEnterpriseReset()}
                           >
                             清空并重跑入驻
+                          </Button>
+                          <Button
+                            danger
+                            loading={purgeExecuting}
+                            disabled={
+                              resetExecuting || resetConfirmName.trim() !== resetPreview.enterpriseName
+                            }
+                            onClick={() => void executeEnterprisePurge()}
+                          >
+                            删除整家企业（含企业壳）
                           </Button>
                           <Button href="/join-codes">清空后去入驻码</Button>
                         </Space>

@@ -483,9 +483,13 @@ test('admin code pages show the current QR without rotating or a timed hide', ()
   for (const page of [joinCodes, registration]) {
     assert.match(page, /MiniProgramCodeQr/);
     assert.match(page, /fetchMiniProgramCodeQr/);
+    assert.match(page, /getCodeAuditEventTypeLabel/);
+    assert.match(page, /getCodeAuditResultLabel/);
     assert.doesNotMatch(page, /90_000/);
     assert.doesNotMatch(page, /confirmText: '生成二维码'/);
     assert.doesNotMatch(page, /Drawer/);
+    assert.doesNotMatch(page, /\{item\.result\}/);
+    assert.doesNotMatch(page, /dataIndex: 'eventType', width: 140 \}/);
   }
   assert.match(joinCodes, /\/api\/enterprise\/join-codes\/\$\{codeType\}\/rotate/);
   assert.match(registration, /\/api\/admin\/enterprise-registration-codes\/rotate/);
@@ -503,6 +507,9 @@ test('enterprise onboarding workbench links code-provider readiness to delivery 
   );
 
   assert.match(page, /微信小程序服务码能力[\s\S]*href: '\/workflow-logs'[\s\S]*actionLabel: '查看送达记录'/);
+  assert.match(page, /getCodeAuditEventTypeLabel/);
+  assert.match(page, /getCodeAuditResultLabel/);
+  assert.doesNotMatch(page, /\{item\.result\}/);
   assert.doesNotMatch(page, /actionLabel: '查看通知配置'/);
 });
 

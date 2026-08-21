@@ -27,9 +27,14 @@ export async function GET(request: Request) {
       async (context) => {
         const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
         const actorAdminUserId = parsePostgresId(context.userId, 'actorAdminUserId');
-        const data = await withPlatformTransaction((transaction) =>
-          new TenantEnterpriseResetRepository(transaction).preview(enterpriseId, actorAdminUserId)
-        );
+        const mode = new URL(request.url).searchParams.get('mode');
+        const data = await withPlatformTransaction((transaction) => {
+          const repository = new TenantEnterpriseResetRepository(transaction);
+          if (mode === 'purge') {
+            return repository.previewPurge(enterpriseId);
+          }
+          return repository.preview(enterpriseId, actorAdminUserId);
+        });
         return NextResponse.json({ success: true, data });
       }
     );

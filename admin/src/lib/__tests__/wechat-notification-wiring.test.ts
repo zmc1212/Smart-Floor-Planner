@@ -11,7 +11,18 @@ test('staff notification delivery resolves openid from wechat_identities when st
   assert.match(source, /findWechatIdentityByUserId/);
   assert.match(source, /notifyCustomerOfDesignPublished/);
   assert.match(source, /notifyDesignerOfSurveyCompleted/);
+  assert.match(source, /notifyEnterpriseContactOfJoinResult/);
   assert.match(source, /design_published/);
+  assert.match(source, /enterprise_join_result/);
+});
+
+test('enterprise status approve and reject dispatch join-result notifications after commit', () => {
+  const source = readFileSync(
+    join(adminSrc, 'app/api/admin/enterprises/[id]/status/route.ts'),
+    'utf8'
+  );
+  assert.match(source, /notifyEnterpriseContactOfJoinResult/);
+  assert.match(source, /action === 'approve' \|\| action === 'reject'/);
 });
 
 test('assignment retry notifies measurer when distinct from designer', () => {

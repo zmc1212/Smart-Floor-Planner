@@ -14,6 +14,11 @@ import {
 } from '@/components/admin/miniprogram-code-qr';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import {
+  getCodeAuditEventTypeLabel,
+  getCodeAuditResultLabel,
+  getCodeAuditResultTagColor,
+} from '@/lib/code-audit-labels';
 
 type JoinCodeType = 'staff' | 'referrer';
 
@@ -248,8 +253,22 @@ export default function JoinCodesPage() {
   const eventColumns: ProColumns<JoinCodeEvent>[] = [
     { title: '时间', dataIndex: 'createdAt', width: 180, render: (_, item) => formatTime(item.createdAt) },
     { title: '码类型', dataIndex: 'codeType', width: 120, render: (_, item) => CODE_LABELS[item.codeType] },
-    { title: '动作', dataIndex: 'eventType', width: 140 },
-    { title: '结果', dataIndex: 'result', width: 160, render: (_, item) => <Tag color={item.result === 'active' || item.result === 'joined' ? 'green' : 'default'}>{item.result}</Tag> },
+    {
+      title: '动作',
+      dataIndex: 'eventType',
+      width: 160,
+      render: (_, item) => getCodeAuditEventTypeLabel(item.eventType),
+    },
+    {
+      title: '结果',
+      dataIndex: 'result',
+      width: 180,
+      render: (_, item) => (
+        <Tag color={getCodeAuditResultTagColor(item.result)}>
+          {getCodeAuditResultLabel(item.result)}
+        </Tag>
+      ),
+    },
     { title: '操作者', key: 'actor', render: (_, item) => item.actorStaffId ? `员工 #${item.actorStaffId}` : item.actorUserId ? `用户 #${item.actorUserId}` : '系统/匿名扫码' },
   ];
 

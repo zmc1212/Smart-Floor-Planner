@@ -30,6 +30,8 @@ export function isMiniProgramIdentityContextSupported(
     'designer',
     'measurer',
     'enterprise_admin',
+    'admin',
+    'super_admin',
   ].includes(context.staffRole || '');
 }
 

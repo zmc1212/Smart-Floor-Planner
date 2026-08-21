@@ -9,6 +9,7 @@ import {
   enterpriseCommissionRules,
   enterpriseJoinCodeEvents,
   enterpriseJoinCodes,
+  enterpriseStatusEvents,
   enterprises,
   leads,
   referrerEnterpriseMemberships,
@@ -253,11 +254,14 @@ test('tenant enterprise reset keeps operator and enterprise shell, wipes busines
     const repository = new TenantEnterpriseResetRepository(transaction);
     const preview = await repository.preview(enterpriseId, operatorId);
     assert.equal(preview.enterpriseName, enterpriseName);
+    assert.equal(preview.mode, 'reset');
+    assert.equal(preview.retainOperator, true);
     assert.equal(preview.retainedOperatorAdminUserId, operatorId.toString());
     assert.ok(preview.totalRows > 0);
 
     const result = await repository.execute(enterpriseId, operatorId);
     assert.equal(result.retainedOperatorAdminUserId, operatorId.toString());
+    assert.equal(result.enterpriseDeleted, undefined);
 
     const [enterprise] = await transaction
       .select()
@@ -329,5 +333,138 @@ test('tenant enterprise reset keeps operator and enterprise shell, wipes busines
       actorStaffId: operatorId,
     });
     assert.match(referrerCode.token, /^ej_/);
+  });
+});
+
+test('tenant enterprise purge deletes shell, all staff, and status events; keeps other tenants and global users', async () => {
+  const purgeKey = `${runKey}-purge`;
+  let purgeEnterpriseId!: bigint;
+  let purgeStaffId!: bigint;
+  let purgeDesignerId!: bigint;
+  let purgeLinkedUserId!: bigint;
+
+  await withPlatformTransaction(async (transaction) => {
+    const enterprisesRepository = new EnterpriseRepository(transaction);
+    const staff = new AdminUserRepository(transaction);
+    const network = new ReferrerNetworkRepository(transaction);
+
+    purgeEnterpriseId = (
+      await enterprisesRepository.create({
+        name: `${purgeKey}-co`,
+        code: `${purgeKey}-co`,
+        status: 'active',
+      })
+    ).id;
+
+    purgeStaffId = (
+      await staff.create({
+        enterpriseId: purgeEnterpriseId,
+        username: `${purgeKey}-owner`,
+        passwordHash: 'test-hash',
+        displayName: '待删负责人',
+        role: 'enterprise_admin',
+        menuPermissions: ['referrer-network-operations'],
+      })
+    ).id;
+    purgeDesignerId = (
+      await staff.create({
+        enterpriseId: purgeEnterpriseId,
+        username: `${purgeKey}-designer`,
+        passwordHash: 'test-hash',
+        displayName: '待删设计师',
+        role: 'designer',
+        menuPermissions: ['dashboard'],
+      })
+    ).id;
+
+    await network.rotateEnterpriseJoinCode({
+      enterpriseId: purgeEnterpriseId,
+      codeType: 'staff',
+      actorStaffId: purgeStaffId,
+    });
+
+    const [customer] = await transaction
+      .insert(users)
+      .values({
+        phone: `137${String(Date.now()).slice(-8)}`,
+        nickname: `${purgeKey}-customer`,
+        enterpriseId: purgeEnterpriseId,
+      })
+      .returning();
+    purgeLinkedUserId = customer.id;
+
+    await new LeadRepository(transaction).create({
+      enterpriseId: purgeEnterpriseId,
+      assignedTo: purgeDesignerId,
+      customerUserId: purgeLinkedUserId,
+      name: '待删客户',
+      phone: customer.phone || '13700000000',
+      source: 'referrer_network',
+      assignmentStatus: 'assigned',
+    });
+
+    await enterprisesRepository.applyStatusAction({
+      enterpriseId: purgeEnterpriseId,
+      action: 'disable',
+      reason: 'purge-test',
+      actorAdminId: purgeStaffId,
+    });
+  });
+
+  await withPlatformTransaction(async (transaction) => {
+    const repository = new TenantEnterpriseResetRepository(transaction);
+    const preview = await repository.previewPurge(purgeEnterpriseId);
+    assert.equal(preview.mode, 'purge');
+    assert.equal(preview.retainOperator, false);
+    assert.equal(preview.retainedOperatorAdminUserId, null);
+    assert.ok(preview.counts.some((item) => item.table === 'enterprises' && item.count === 1));
+    assert.ok(preview.counts.some((item) => item.table === 'admin_users' && item.count >= 2));
+    assert.ok(preview.counts.some((item) => item.table === 'enterprise_status_events' && item.count >= 1));
+
+    const result = await repository.purge(purgeEnterpriseId);
+    assert.equal(result.enterpriseDeleted, true);
+
+    const remainingEnterprise = await transaction
+      .select()
+      .from(enterprises)
+      .where(eq(enterprises.id, purgeEnterpriseId));
+    assert.equal(remainingEnterprise.length, 0);
+
+    const remainingStaff = await transaction
+      .select()
+      .from(adminUsers)
+      .where(inArray(adminUsers.id, [purgeStaffId, purgeDesignerId]));
+    assert.equal(remainingStaff.length, 0);
+
+    const zeroTables = await Promise.all([
+      transaction.select({ value: count() }).from(leads).where(eq(leads.enterpriseId, purgeEnterpriseId)),
+      transaction
+        .select({ value: count() })
+        .from(enterpriseJoinCodes)
+        .where(eq(enterpriseJoinCodes.enterpriseId, purgeEnterpriseId)),
+      transaction
+        .select({ value: count() })
+        .from(enterpriseStatusEvents)
+        .where(eq(enterpriseStatusEvents.enterpriseId, purgeEnterpriseId)),
+    ]);
+    for (const rows of zeroTables) {
+      assert.equal(Number(rows[0]?.value || 0), 0);
+    }
+
+    const [otherEnterprise] = await transaction
+      .select()
+      .from(enterprises)
+      .where(eq(enterprises.id, otherEnterpriseId));
+    assert.ok(otherEnterprise);
+
+    const [otherStaff] = await transaction
+      .select()
+      .from(adminUsers)
+      .where(eq(adminUsers.id, otherEnterpriseStaffId));
+    assert.ok(otherStaff);
+
+    const [linkedUser] = await transaction.select().from(users).where(eq(users.id, purgeLinkedUserId));
+    assert.ok(linkedUser);
+    assert.equal(linkedUser.enterpriseId, null);
   });
 });

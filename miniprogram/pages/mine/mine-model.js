@@ -26,8 +26,9 @@ const ROLE_LABELS = {
   designer: '设计师',
   measurer: '测量员',
   enterprise_admin: '企业负责人',
-  admin: '平台负责人',
-  super_admin: '平台负责人'
+  platform_admin: '平台管理员',
+  admin: '平台管理员',
+  super_admin: '平台管理员'
 };
 
 function profileForIdentity(userInfo, role) {

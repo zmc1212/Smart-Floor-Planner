@@ -80,7 +80,7 @@ test('identity context DTO serializes bigint identifiers explicitly', () => {
   );
 });
 
-test('platform-only staff contexts fall back to a supported referrer context', () => {
+test('platform-only staff contexts are supported Mini Program workbench roles', () => {
   const customer = {
     mode: 'customer' as const,
     enterpriseId: null,
@@ -106,9 +106,9 @@ test('platform-only staff contexts fall back to a supported referrer context', (
     referrerMembershipId: BigInt(10),
   };
 
-  assert.equal(isMiniProgramIdentityContextSupported(platformAdmin), false);
+  assert.equal(isMiniProgramIdentityContextSupported(platformAdmin), true);
   assert.equal(
     defaultMiniProgramIdentityContext([customer, platformAdmin, referrer]),
-    referrer
+    platformAdmin
   );
 });

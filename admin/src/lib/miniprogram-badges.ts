@@ -22,7 +22,13 @@ import {
   shouldIncludeMeasurerWorkbenchAppointment,
 } from '@/lib/miniprogram-workbench';
 
-type BadgeRole = 'customer' | 'referrer' | 'designer' | 'measurer' | 'enterprise_admin';
+type BadgeRole =
+  | 'customer'
+  | 'referrer'
+  | 'designer'
+  | 'measurer'
+  | 'enterprise_admin'
+  | 'platform_admin';
 
 export const MINI_PROGRAM_BADGE_UNAVAILABLE_MESSAGE = '暂时无法读取';
 
@@ -146,6 +152,8 @@ export async function loadMiniProgramBadgeCounts(input: {
       referrerPayableCount: (earnings?.items || []).filter((item) => item.status === 'payable').length,
     };
   }
+
+  if (role === 'platform_admin') return {};
 
   if (!current.enterpriseId || !current.staffId) return {};
   const enterpriseId = current.enterpriseId;

@@ -37,6 +37,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/enterprise/referrer-memberships': 'referrer-network-operations',
   '/api/enterprise/referrer-network-readiness': 'referrer-network-operations',
   '/api/enterprise/enterprise-reset': 'referrer-network-operations',
+  '/api/enterprise/enterprise-purge': 'referrer-network-operations',
   '/api/appointment-settings': 'referrer-network-operations',
   '/api/enterprises': 'enterprises',
   '/api/admin/enterprise-registration-codes': 'enterprises',

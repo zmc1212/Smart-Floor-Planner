@@ -11,6 +11,7 @@ const notificationTemplates = [
   ['new_lead', 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjq4xest9GRc'],
   ['measurement_appointment', 'CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl'],
   ['design_published', 'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'],
+  ['enterprise_join_result', 'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk'],
 ];
 
 function notificationConfig() {
@@ -330,10 +331,8 @@ test('Mine shows a truthful partial subscription count', async () => {
       options.success({
         subscriptionsSetting: {
           itemSettings: {
-            [notificationTemplates[0][1]]: 'accept',
-            [notificationTemplates[1][1]]: 'accept',
-            [notificationTemplates[2][1]]: 'reject',
-            [notificationTemplates[3][1]]: 'reject'
+            [notificationTemplates[3][1]]: 'accept',
+            [notificationTemplates[4][1]]: 'reject'
           }
         }
       });
@@ -342,7 +341,7 @@ test('Mine shows a truthful partial subscription count', async () => {
   try {
     const page = createPage(loadPage('pages/mine/mine.js'));
     await refreshAccountSettingsState(page);
-    assert.equal(page.data.notificationStatus, '已允许 2/4');
+    assert.equal(page.data.notificationStatus, '已允许 1/2');
     assert.equal(page.data.notificationAccepted, true);
   } finally {
     api.request = originalRequest;

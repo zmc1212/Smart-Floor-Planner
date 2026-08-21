@@ -42,6 +42,7 @@ test('enterprise-register page is registered and restores er_ scene tokens', () 
   assert.match(js, /`er_\$\{decoded\}`/);
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/enterprise-registration/);
+  assert.match(js, /requestSubscribeKinds\(\['enterprise_join_result'\]/);
   assert.match(js, /phone_mismatch/);
   assert.match(js, /pageState:\s*'recovery'/);
   assert.match(wxml, /open-type="getPhoneNumber"/);

@@ -33,34 +33,32 @@ export async function POST(request: Request) {
         const confirmEnterpriseName = String(body.confirmEnterpriseName || '').trim();
         if (!confirmEnterpriseName) {
           return NextResponse.json(
-            { success: false, error: '请输入企业全名以确认清空' },
+            { success: false, error: '请输入企业全名以确认删除整家企业' },
             { status: 400 }
           );
         }
 
         const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
-        const actorAdminUserId = parsePostgresId(context.userId, 'actorAdminUserId');
 
         const data = await withPlatformTransaction(async (transaction) => {
           const repository = new TenantEnterpriseResetRepository(transaction);
-          const preview = await repository.preview(enterpriseId, actorAdminUserId);
+          const preview = await repository.previewPurge(enterpriseId);
           if (preview.enterpriseName !== confirmEnterpriseName) {
-            throw Object.assign(new Error('企业全名不匹配，已取消清空'), {
+            throw Object.assign(new Error('企业全名不匹配，已取消删除'), {
               status: 400,
               code: 'enterprise_name_mismatch',
             });
           }
-          return repository.execute(enterpriseId, actorAdminUserId);
+          return repository.purge(enterpriseId);
         });
 
         return NextResponse.json({
           success: true,
           data: {
             ...data,
-            enterpriseDeleted: false,
-            retainedNote: data.retainedOperatorAdminUserId
-              ? `已保留操作者账号：${data.retainedOperatorDisplayName || data.retainedOperatorAdminUserId}`
-              : '当前企业未保留任何员工账号（平台管理员可通过全局企业切换继续管理）',
+            enterpriseDeleted: true,
+            retainedNote:
+              '企业壳与全部员工账号已删除。商户负责人需重新开户/建企；平台管理员可在企业列表继续管理其他企业。',
           },
         });
       }
@@ -70,9 +68,9 @@ export async function POST(request: Request) {
       error && typeof error === 'object' && 'status' in error && typeof (error as { status: unknown }).status === 'number'
         ? (error as { status: number }).status
         : 500;
-    console.error('[enterprise-reset]', error);
+    console.error('[enterprise-purge]', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : '清空失败' },
+      { success: false, error: error instanceof Error ? error.message : '删除整家企业失败' },
       { status }
     );
   }

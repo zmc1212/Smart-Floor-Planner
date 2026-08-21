@@ -52,7 +52,8 @@ type NotificationTemplateKind =
   | 'lead_assignment'
   | 'new_lead'
   | 'measurement_appointment'
-  | 'design_published';
+  | 'design_published'
+  | 'enterprise_join_result';
 
 type NotificationConfigForm = {
   version: 2;
@@ -74,6 +75,7 @@ const TEMPLATE_FIELDS: Array<{
   { kind: 'new_lead', label: '新增客户成功通知', help: '新线索创建后通知企业负责人。' },
   { kind: 'measurement_appointment', label: '上门量房提醒', help: '预约创建、改期、取消或过期时通知设计师、测量员和客户。' },
   { kind: 'design_published', label: '设计案例发布提醒', help: '方案对客户可见后通知客户本人。' },
+  { kind: 'enterprise_join_result', label: '入驻申请结果通知', help: '平台审核通过或驳回企业入驻申请后通知企业联系人。' },
 ];
 
 const STATUS_OPTIONS: Array<{ label: string; value: LogStatus }> = [
@@ -270,13 +272,13 @@ export default function WorkflowLogsPage() {
             <Card title="小程序订阅消息模板" className="admin-panel-card">
               <Flex vertical gap={16}>
                 <Typography.Paragraph type="secondary" className="!mb-0">
-                  五个模板用于小程序按身份聚合授权（单次最多三项）；服务端按通知类型选择模板并只发送其允许的关键词字段。
+                  六个模板用于小程序按身份聚合授权（单次最多三项）；服务端按通知类型选择模板并只发送其允许的关键词字段。入驻结果模板在开户页单独请求授权。
                 </Typography.Paragraph>
                 <Alert
                   type="info"
                   showIcon
                   message="保存后立即生效"
-                  description="已登录小程序会在下一次授权时按当前身份拉取模板；此前已授权的用户需要按微信规则重新授权。客户授权上门量房与方案发布；设计师/测量员授权指派、预约与待办；企业负责人授权新线索与待办。"
+                  description="已登录小程序会在下一次授权时按当前身份拉取模板；此前已授权的用户需要按微信规则重新授权。客户授权上门量房与方案发布；设计师/测量员授权指派、预约与待办；企业负责人授权新线索与待办；开户申请人在提交前授权入驻结果通知。"
                 />
                 {notificationConfig ? (
                   <ProForm<NotificationConfigForm>

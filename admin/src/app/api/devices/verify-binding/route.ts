@@ -34,7 +34,13 @@ export async function POST(request: Request) {
       if (!matchedDevice) {
         return {
           authorized: false,
-          message: '该设备未在系统中注册或未指派',
+          message: '该设备未在系统中注册或未指派企业',
+        };
+      }
+      if (!matchedDevice.enterpriseId) {
+        return {
+          authorized: false,
+          message: '该设备未分配企业，无法使用',
         };
       }
 
@@ -54,21 +60,7 @@ export async function POST(request: Request) {
           message: '未能识别当前员工，无法验证设备授权',
         };
       }
-      if (
-        matchedDevice.assignedUsers.length > 0 &&
-        !matchedDevice.assignedUsers.some(
-          (assignedUser) => assignedUser.id === staff.id
-        )
-      ) {
-        return {
-          authorized: false,
-          message: '该设备已绑定给其他员工，您无权使用',
-        };
-      }
-      if (
-        matchedDevice.enterpriseId &&
-        matchedDevice.enterpriseId !== staff.enterpriseId
-      ) {
+      if (matchedDevice.enterpriseId !== staff.enterpriseId) {
         return {
           authorized: false,
           message: '您无权使用该公司的设备',

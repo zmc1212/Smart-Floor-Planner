@@ -885,40 +885,38 @@ function LeadsPage() {
     }
   };
 
-  const offerSyncCommunityFromAddress = (lead: Lead, address: string) => {
+  const offerSyncCommunityFromAddress = async (lead: Lead, address: string) => {
     if (!shouldOfferCommunitySync(lead, address, currentUser?.role, currentUser?._id)) return;
     const communityName = address.trim().slice(0, LEAD_COMMUNITY_MAX);
-    Modal.confirm({
+    const confirmed = await confirmAction({
       title: '同步到客户小区',
-      content: '是否将上门地址写入客户资料中的小区？',
-      okText: '同步写入',
+      description: '是否将上门地址写入客户资料中的小区？',
+      confirmText: '同步写入',
       cancelText: '暂不',
       zIndex: 1400,
-      onOk: async () => {
-        try {
-          const response = await fetch(`/api/leads/${lead._id}`);
-          const current = await response.json();
-          if (!response.ok || !current.success) throw new Error(current.error || '读取客户资料失败');
-          if (String(current.data?.communityName || '').trim()) {
-            notify.info('客户已有小区，未覆盖');
-            return;
-          }
-          const save = await fetch(`/api/leads/${lead._id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ communityName }),
-          });
-          const saved = await save.json();
-          if (!save.ok || !saved.success) throw new Error(saved.error || '写入客户小区失败');
-          setSelectedLead(saved.data);
-          notify.success('已写入客户小区');
-          await refreshLeads();
-        } catch (error) {
-          notify.error(error instanceof Error ? error.message : '写入客户小区失败');
-          throw error;
-        }
-      },
     });
+    if (!confirmed) return;
+    try {
+      const response = await fetch(`/api/leads/${lead._id}`);
+      const current = await response.json();
+      if (!response.ok || !current.success) throw new Error(current.error || '读取客户资料失败');
+      if (String(current.data?.communityName || '').trim()) {
+        notify.info('客户已有小区，未覆盖');
+        return;
+      }
+      const save = await fetch(`/api/leads/${lead._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ communityName }),
+      });
+      const saved = await save.json();
+      if (!save.ok || !saved.success) throw new Error(saved.error || '写入客户小区失败');
+      setSelectedLead(saved.data);
+      notify.success('已写入客户小区');
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '写入客户小区失败');
+    }
   };
 
   const rescheduleAppointment = async () => {

@@ -151,7 +151,7 @@ Page({
     const bootstrap = globalData.bootstrap;
     const role = (bootstrap && bootstrap.current && bootstrap.current.role)
       || roleForIdentity(globalData.userInfo);
-    return ['customer', 'designer', 'measurer', 'enterprise_admin'].includes(role) ? role : '';
+    return ['customer', 'designer', 'measurer', 'enterprise_admin', 'platform_admin'].includes(role) ? role : '';
   },
 
   onLoad: function () {

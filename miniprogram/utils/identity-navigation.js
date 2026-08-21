@@ -4,7 +4,8 @@ const ROLE_LANDING_PATHS = Object.freeze({
   staff: '/pages/index/index',
   designer: '/pages/index/index',
   measurer: '/pages/index/index',
-  enterprise_admin: '/pages/index/index'
+  enterprise_admin: '/pages/index/index',
+  platform_admin: '/pages/index/index'
 });
 
 const ROLE_CAPABILITIES = Object.freeze({
@@ -13,11 +14,12 @@ const ROLE_CAPABILITIES = Object.freeze({
   designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'],
   measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
   enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
+  platform_admin: ['platform.devices', 'account'],
   staff: ['staff.leads', 'staff.appointments', 'account']
 });
 
 const ROUTE_CAPABILITIES = Object.freeze({
-  '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations'],
+  '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations', 'platform.devices'],
   '/pages/leads-management/leads-management': ['staff.leads', 'staff.tasks', 'enterprise.customers'],
   '/pages/ai-design/ai-design': ['staff.design', 'staff.surveying'],
   '/packages/ai-workflow/create/ai-design-create': 'staff.design',
@@ -57,6 +59,10 @@ const ROUTE_CAPABILITIES = Object.freeze({
 
 function roleForIdentity(value) {
   if (!value) return null;
+  if (value.staffRole === 'admin' || value.staffRole === 'super_admin'
+    || value.role === 'admin' || value.role === 'super_admin') {
+    return 'platform_admin';
+  }
   if ((value.mode === 'staff' || value.role === 'staff')
     && ROLE_CAPABILITIES[value.staffRole]
     && value.staffRole !== 'staff') {

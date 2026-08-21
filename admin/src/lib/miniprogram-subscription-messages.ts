@@ -160,6 +160,26 @@ export function buildDesignPublishedPayload(
   return payload;
 }
 
+export function buildEnterpriseJoinResultPayload(
+  template: SubscriptionTemplateConfig,
+  input: {
+    notifiedAt?: Date | string | null;
+    result?: unknown;
+    contactPerson?: unknown;
+    appliedAt?: Date | string | null;
+    storeName?: unknown;
+  }
+) {
+  const keys = template.keywordKeys;
+  const payload: SubscriptionMessagePayload = {};
+  payloadEntry(payload, keys.notifiedAt, formatWeChatDateTime(input.notifiedAt));
+  payloadEntry(payload, keys.result, truncateWeChatText(input.result, 5, '已处理'));
+  payloadEntry(payload, keys.contactPerson, truncateWeChatText(input.contactPerson, 20, '联系人'));
+  payloadEntry(payload, keys.appliedAt, formatWeChatDateTime(input.appliedAt));
+  payloadEntry(payload, keys.storeName, truncateWeChatText(input.storeName, 20, '装修公司'));
+  return payload;
+}
+
 export function resolveWorkflowTemplateKind(notificationType: string): SubscriptionTemplateKind {
   return notificationType === 'measure_assigned' || notificationType === 'design_assigned'
     ? 'lead_assignment'

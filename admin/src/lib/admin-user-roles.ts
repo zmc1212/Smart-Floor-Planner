@@ -97,7 +97,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'promotion-records',
   ],
   salesperson: ['dashboard', 'promotion-records'],
-  measurer: ['dashboard', 'leads', 'measurements', 'devices', 'floorplans'],
+  measurer: ['dashboard', 'leads', 'measurements', 'floorplans'],
   viewer: [
     'dashboard',
     'floorplans',

@@ -14,6 +14,7 @@ import {
   EnterpriseStatusTransitionError,
 } from '@/lib/enterprise-status';
 import { withTenantRoute } from '@/lib/tenant-route';
+import { notifyEnterpriseContactOfJoinResult } from '@/lib/wechat-notification';
 
 export const dynamic = 'force-dynamic';
 
@@ -126,6 +127,22 @@ export async function POST(
             { success: false, error: 'Enterprise not found' },
             { status: 404 }
           );
+        }
+
+        const action = String(body.action || '');
+        if (action === 'approve' || action === 'reject') {
+          const enterprise = result.applied.enterprise;
+          void notifyEnterpriseContactOfJoinResult({
+            enterpriseName: enterprise.name,
+            contactPerson: enterprise.contactPerson as {
+              name?: unknown;
+              phone?: unknown;
+            } | null,
+            appliedAt: enterprise.createdAt,
+            result: action === 'approve' ? 'approved' : 'rejected',
+          }).catch((error) => {
+            console.error('Enterprise join result notification dispatch failed:', error);
+          });
         }
 
         return NextResponse.json({

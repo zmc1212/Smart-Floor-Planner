@@ -7,6 +7,7 @@ export const SUBSCRIPTION_TEMPLATE_KINDS = [
   'new_lead',
   'measurement_appointment',
   'design_published',
+  'enterprise_join_result',
 ] as const;
 
 export type SubscriptionTemplateKind = (typeof SUBSCRIPTION_TEMPLATE_KINDS)[number];
@@ -91,6 +92,17 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
       content: 'thing1',
       publishedAt: 'time2',
       note: 'thing3',
+    },
+  },
+  enterprise_join_result: {
+    title: '入驻申请结果通知',
+    templateId: 'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk',
+    keywordKeys: {
+      notifiedAt: 'time1',
+      result: 'phrase2',
+      contactPerson: 'thing3',
+      appliedAt: 'time4',
+      storeName: 'thing5',
     },
   },
 };

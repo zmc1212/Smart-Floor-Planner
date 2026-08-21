@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ModalForm,
   PageContainer,
-  ProFormDependency,
   ProFormSelect,
   ProFormText,
   ProFormTextArea,
@@ -39,8 +38,6 @@ type Device = {
   description?: string | null;
   status: DeviceStatus;
   enterpriseId?: string | Reference | null;
-  assignedUserId?: string | Reference | null;
-  assignedUsers?: Reference[];
   createdAt?: string;
 };
 
@@ -48,7 +45,6 @@ type DeviceForm = {
   code: string;
   description?: string;
   enterpriseId?: string;
-  assignedUserIds?: string[];
   status?: DeviceStatus;
 };
 
@@ -61,7 +57,7 @@ const UNASSIGNED_VALUE = '__unassigned__';
 
 const STATUS_OPTIONS: Array<{ value: DeviceStatus; label: string }> = [
   { value: 'unassigned', label: '闲置' },
-  { value: 'assigned', label: '已绑定' },
+  { value: 'assigned', label: '已分配企业' },
   { value: 'maintenance', label: '维护中' },
   { value: 'lost', label: '遗失' },
 ];
@@ -74,25 +70,6 @@ function getReferenceId(value?: string | Reference | null) {
 function getReferenceName(value?: string | Reference | null) {
   if (!value || typeof value === 'string') return '';
   return value.displayName || value.username || value.name || '';
-}
-
-function getAssignedUserIds(device: Device) {
-  const assignedUsers = device.assignedUsers || [];
-  if (assignedUsers.length > 0) {
-    return assignedUsers.map((assignedUser) => getReferenceId(assignedUser));
-  }
-  const assignedUserId = getReferenceId(device.assignedUserId);
-  return assignedUserId ? [assignedUserId] : [];
-}
-
-function getRoleLabel(role?: string) {
-  const labels: Record<string, string> = {
-    designer: '设计师',
-    salesperson: '渠道地推',
-    measurer: '量房师',
-    enterprise_admin: '企业管理员',
-  };
-  return labels[role || ''] || role || '员工';
 }
 
 function getStatusLabel(status: DeviceStatus) {
@@ -116,45 +93,19 @@ export default function DevicesPage() {
   const confirmAction = useConfirmDialog();
   const { user: rawCurrentUser } = useCurrentUser();
   const currentUser = rawCurrentUser as CurrentUser | null;
-  const [staff, setStaff] = useState<Reference[]>([]);
   const [enterprises, setEnterprises] = useState<Reference[]>([]);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [overview, setOverview] = useState({ total: 0, assigned: 0, maintenance: 0, unassigned: 0 });
+  const [overview, setOverview] = useState({
+    total: 0,
+    assigned: 0,
+    maintenance: 0,
+    unassigned: 0,
+  });
 
-  const canManage = ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser?.role || '');
-  const canChangeEnterprise = ['super_admin', 'admin'].includes(currentUser?.role || '');
-
-  const fetchStaff = useCallback(async (enterpriseId?: string) => {
-    try {
-      const staffQuery = new URLSearchParams({ limit: '50' });
-      if (
-        canChangeEnterprise &&
-        enterpriseId &&
-        enterpriseId !== UNASSIGNED_VALUE
-      ) {
-        staffQuery.set('enterpriseId', enterpriseId);
-      }
-      const [staffResponse, promoterResponse] = await Promise.all([
-        fetch(`/api/staff?${staffQuery.toString()}`),
-        fetch('/api/staff?scope=unassigned-promoters&limit=50'),
-      ]);
-      const [staffResult, promoterResult] = await Promise.all([
-        staffResponse.json(),
-        promoterResponse.json(),
-      ]);
-      const staffById = new Map(
-        [
-          ...(staffResponse.ok && staffResult.success ? staffResult.data || [] : []),
-          ...(promoterResponse.ok && promoterResult.success ? promoterResult.data || [] : []),
-        ].map((member: Reference) => [member._id, member])
-      );
-      setStaff(Array.from(staffById.values()));
-    } catch {
-      // Editing remains available when optional assignment choices cannot load.
-    }
-  }, [canChangeEnterprise]);
+  const canManage = ['super_admin', 'admin'].includes(currentUser?.role || '');
+  const canChangeEnterprise = canManage;
 
   const fetchEnterprises = useCallback(async () => {
     try {
@@ -165,10 +116,6 @@ export default function DevicesPage() {
       // Enterprise choices are available only to platform administrators.
     }
   }, []);
-
-  useEffect(() => {
-    void fetchStaff();
-  }, [fetchStaff]);
 
   useEffect(() => {
     if (canChangeEnterprise) void fetchEnterprises();
@@ -185,49 +132,38 @@ export default function DevicesPage() {
     [enterprises]
   );
 
-  const getStaffOptions = useCallback(
-    (enterpriseId?: string) => {
-      const resolvedEnterpriseId = enterpriseId === UNASSIGNED_VALUE ? '' : enterpriseId || '';
-      const visibleStaff = !resolvedEnterpriseId
-        ? staff
-        : staff.filter((member) => getReferenceId(member.enterpriseId) === resolvedEnterpriseId);
-      return visibleStaff.map((member) => ({
-          label: `${getReferenceName(member) || member._id}（${getRoleLabel(member.role)}）`,
-          value: member._id,
-        }));
-    },
-    [staff]
-  );
-
   const saveDevice = async (values: DeviceForm) => {
     const isEdit = Boolean(editingDevice);
-    const enterpriseId = values.enterpriseId === UNASSIGNED_VALUE ? null : values.enterpriseId || null;
-    const assignedUserIds = values.assignedUserIds || [];
+    const enterpriseId =
+      values.enterpriseId === UNASSIGNED_VALUE
+        ? null
+        : values.enterpriseId || null;
     const payload = isEdit
       ? {
           code: values.code.trim(),
           description: values.description?.trim() || '',
           enterpriseId: canChangeEnterprise ? enterpriseId : undefined,
-          assignedUserIds,
           status: values.status,
         }
       : {
           code: values.code.trim(),
           description: values.description?.trim() || '',
-          enterpriseId: currentUser?.role === 'enterprise_admin'
-            ? getReferenceId(currentUser.enterpriseId)
-            : enterpriseId,
-          assignedUserIds,
-          status: currentUser?.role === 'enterprise_admin' ? 'assigned' : 'unassigned',
+          enterpriseId,
+          status: enterpriseId ? 'assigned' : 'unassigned',
         };
     try {
-      const response = await fetch(isEdit ? `/api/devices/${editingDevice?._id}` : '/api/devices', {
-        method: isEdit ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        isEdit ? `/api/devices/${editingDevice?._id}` : '/api/devices',
+        {
+          method: isEdit ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
       const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '设备保存失败');
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '设备保存失败');
+      }
       notify.success(isEdit ? '设备已更新' : '设备已录入');
       setFormOpen(false);
       setEditingDevice(null);
@@ -250,9 +186,13 @@ export default function DevicesPage() {
     if (!confirmed) return;
     setDeletingId(device._id);
     try {
-      const response = await fetch(`/api/devices/${device._id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/devices/${device._id}`, {
+        method: 'DELETE',
+      });
       const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '删除设备失败');
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '删除设备失败');
+      }
       notify.success('设备已删除');
       await actionRef.current?.reload();
     } catch (error) {
@@ -273,19 +213,31 @@ export default function DevicesPage() {
       title: '状态',
       dataIndex: 'status',
       valueType: 'select',
-      valueEnum: Object.fromEntries(STATUS_OPTIONS.map((item) => [item.value, item.label])),
+      valueEnum: Object.fromEntries(
+        STATUS_OPTIONS.map((item) => [item.value, item.label])
+      ),
       width: 120,
-      render: (_, item) => <Tag color={getStatusColor(item.status)}>{getStatusLabel(item.status)}</Tag>,
+      render: (_, item) => (
+        <Tag color={getStatusColor(item.status)}>
+          {getStatusLabel(item.status)}
+        </Tag>
+      ),
     },
     {
-      title: '设备编码',
+      title: '设备编码 / MAC',
       dataIndex: 'code',
       hideInSearch: true,
       width: 260,
       render: (_, item) => (
         <Flex vertical gap={4}>
-          <Typography.Text strong code>{item.code}</Typography.Text>
-          <Typography.Text type="secondary" ellipsis={{ tooltip: item.description || '无备注' }} className="text-xs">
+          <Typography.Text strong code>
+            {item.code}
+          </Typography.Text>
+          <Typography.Text
+            type="secondary"
+            ellipsis={{ tooltip: item.description || '无备注' }}
+            className="text-xs"
+          >
             {item.description || '无备注'}
           </Typography.Text>
         </Flex>
@@ -296,28 +248,8 @@ export default function DevicesPage() {
       key: 'enterprise',
       hideInSearch: true,
       width: 220,
-      render: (_, item) => getReferenceName(item.enterpriseId) || '未分配企业',
-    },
-    {
-      title: '绑定人员',
-      key: 'assignee',
-      hideInSearch: true,
-      width: 260,
-      render: (_, item) => {
-        const assignedUsers = item.assignedUsers || [];
-        if (assignedUsers.length === 0) {
-          return getReferenceName(item.assignedUserId) || '未指定人员';
-        }
-        return (
-          <Space size={[4, 4]} wrap>
-            {assignedUsers.map((assignedUser) => (
-              <Tag key={getReferenceId(assignedUser)}>
-                {getReferenceName(assignedUser) || getReferenceId(assignedUser)}
-              </Tag>
-            ))}
-          </Space>
-        );
-      },
+      render: (_, item) =>
+        getReferenceName(item.enterpriseId) || '未分配企业',
     },
     {
       title: '录入时间',
@@ -338,10 +270,24 @@ export default function DevicesPage() {
         const isDeleting = deletingId === item._id;
         return (
           <Space size={8}>
-            <Button size="small" icon={<Pencil size={14} />} onClick={() => { setEditingDevice(item); setFormOpen(true); }}>
+            <Button
+              size="small"
+              icon={<Pencil size={14} />}
+              onClick={() => {
+                setEditingDevice(item);
+                setFormOpen(true);
+              }}
+            >
               编辑
             </Button>
-            <Button size="small" danger loading={isDeleting} disabled={isDeleting} icon={<Trash2 size={14} />} onClick={() => void deleteDevice(item)}>
+            <Button
+              size="small"
+              danger
+              loading={isDeleting}
+              disabled={isDeleting}
+              icon={<Trash2 size={14} />}
+              onClick={() => void deleteDevice(item)}
+            >
               删除
             </Button>
           </Space>
@@ -355,21 +301,55 @@ export default function DevicesPage() {
       <PageContainer
         breadcrumbRender={false}
         className="admin-page-container"
-        title="测距仪设备池"
-        content="维护设备资产、企业归属、员工绑定与运行状态。"
-        extra={canManage ? [
-          <Button key="create" type="primary" icon={<Plus size={16} />} onClick={() => { setEditingDevice(null); setFormOpen(true); }}>
-            录入设备
-          </Button>,
-        ] : undefined}
+        title={canManage ? '测距仪设备池' : '企业设备列表'}
+        content={
+          canManage
+            ? '平台录入测距仪 MAC、分配企业与维护运行状态。企业侧仅可查看本企业设备。'
+            : '查看本企业已分配的测距仪设备。设备录入与分配由平台管理员完成。'
+        }
+        extra={
+          canManage
+            ? [
+                <Button
+                  key="create"
+                  type="primary"
+                  icon={<Plus size={16} />}
+                  onClick={() => {
+                    setEditingDevice(null);
+                    setFormOpen(true);
+                  }}
+                >
+                  录入设备
+                </Button>,
+              ]
+            : undefined
+        }
       >
         <ModuleOverview
           ariaLabel="设备池概览"
           items={[
-            { label: '当前筛选设备', value: overview.total, icon: <PackageOpen size={18} /> },
-            { label: '已绑定人员', value: overview.assigned, icon: <CircleCheck size={18} />, tone: 'success' },
-            { label: '维护处理中', value: overview.maintenance, icon: <Wrench size={18} />, tone: 'warning' },
-            { label: '待分配设备', value: overview.unassigned, icon: <PackageOpen size={18} /> },
+            {
+              label: '当前筛选设备',
+              value: overview.total,
+              icon: <PackageOpen size={18} />,
+            },
+            {
+              label: '已分配企业',
+              value: overview.assigned,
+              icon: <CircleCheck size={18} />,
+              tone: 'success',
+            },
+            {
+              label: '维护处理中',
+              value: overview.maintenance,
+              icon: <Wrench size={18} />,
+              tone: 'warning',
+            },
+            {
+              label: '待分配设备',
+              value: overview.unassigned,
+              icon: <PackageOpen size={18} />,
+            },
           ]}
         />
         <ProTable<Device>
@@ -380,32 +360,49 @@ export default function DevicesPage() {
           search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
           options={{ reload: true, density: true, setting: true }}
           pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-          scroll={{ x: 1120 }}
+          scroll={{ x: 900 }}
           request={async (params) => {
             const response = await fetch('/api/devices');
             const result = await response.json();
-            if (!response.ok || !result.success) throw new Error(result.error || '设备列表加载失败');
-            const keyword = String(params.keyword || '').trim().toLocaleLowerCase();
+            if (!response.ok || !result.success) {
+              throw new Error(result.error || '设备列表加载失败');
+            }
+            const keyword = String(params.keyword || '')
+              .trim()
+              .toLocaleLowerCase();
             const rows = (result.data || []).filter((item: Device) => {
-              const matchesKeyword = !keyword || [item.code, item.description]
-                .filter(Boolean)
-                .some((value) => value?.toLocaleLowerCase().includes(keyword));
-              return matchesKeyword && (!params.status || item.status === params.status);
+              const matchesKeyword =
+                !keyword ||
+                [item.code, item.description]
+                  .filter(Boolean)
+                  .some((value) =>
+                    value?.toLocaleLowerCase().includes(keyword)
+                  );
+              return (
+                matchesKeyword &&
+                (!params.status || item.status === params.status)
+              );
             });
             const nextOverview = {
               total: rows.length,
-              assigned: rows.filter((item: Device) => item.status === 'assigned').length,
-              maintenance: rows.filter((item: Device) => item.status === 'maintenance').length,
-              unassigned: rows.filter((item: Device) => item.status === 'unassigned').length,
+              assigned: rows.filter(
+                (item: Device) => item.status === 'assigned'
+              ).length,
+              maintenance: rows.filter(
+                (item: Device) => item.status === 'maintenance'
+              ).length,
+              unassigned: rows.filter(
+                (item: Device) => item.status === 'unassigned'
+              ).length,
             };
-            setOverview((current) => (
+            setOverview((current) =>
               current.total === nextOverview.total &&
               current.assigned === nextOverview.assigned &&
               current.maintenance === nextOverview.maintenance &&
               current.unassigned === nextOverview.unassigned
                 ? current
                 : nextOverview
-            ));
+            );
             const pageSize = Number(params.pageSize || 20);
             const current = Number(params.current || 1);
             return {
@@ -414,82 +411,102 @@ export default function DevicesPage() {
               success: true,
             };
           }}
-          onRequestError={(error) => notify.error(error instanceof Error ? error.message : '设备列表加载失败')}
+          onRequestError={(error) =>
+            notify.error(
+              error instanceof Error ? error.message : '设备列表加载失败'
+            )
+          }
         />
       </PageContainer>
 
-      <ModalForm<DeviceForm>
-        key={editingDevice?._id || 'create-device'}
-        formRef={formRef}
-        title={editingDevice ? '编辑设备' : '录入设备'}
-        open={formOpen}
-        initialValues={editingDevice ? {
-          code: editingDevice.code,
-          description: editingDevice.description || '',
-          enterpriseId: getReferenceId(editingDevice.enterpriseId) || UNASSIGNED_VALUE,
-          assignedUserIds: getAssignedUserIds(editingDevice),
-          status: editingDevice.status,
-        } : {
-          status: 'unassigned',
-        }}
-        modalProps={{ destroyOnHidden: true, maskClosable: false }}
-        onOpenChange={(open) => {
-          setFormOpen(open);
-          if (!open) setEditingDevice(null);
-        }}
-        onValuesChange={(changedValues, allValues) => {
-          const updates: Partial<DeviceForm> = {};
-          if ('enterpriseId' in changedValues) {
-            updates.assignedUserIds = [];
-            void fetchStaff(changedValues.enterpriseId);
+      {canManage ? (
+        <ModalForm<DeviceForm>
+          key={editingDevice?._id || 'create-device'}
+          formRef={formRef}
+          title={editingDevice ? '编辑设备' : '录入设备'}
+          open={formOpen}
+          initialValues={
+            editingDevice
+              ? {
+                  code: editingDevice.code,
+                  description: editingDevice.description || '',
+                  enterpriseId:
+                    getReferenceId(editingDevice.enterpriseId) ||
+                    UNASSIGNED_VALUE,
+                  status: editingDevice.status,
+                }
+              : {
+                  status: 'unassigned',
+                  enterpriseId: UNASSIGNED_VALUE,
+                }
+          }
+          modalProps={{ destroyOnHidden: true, maskClosable: false }}
+          onOpenChange={(open) => {
+            setFormOpen(open);
+            if (!open) setEditingDevice(null);
+          }}
+          onValuesChange={(changedValues, allValues) => {
+            const updates: Partial<DeviceForm> = {};
             if (
+              'enterpriseId' in changedValues &&
               changedValues.enterpriseId === UNASSIGNED_VALUE &&
               allValues.status === 'assigned'
             ) {
               updates.status = 'unassigned';
             }
-          }
-          if (
-            'assignedUserIds' in changedValues &&
-            changedValues.assignedUserIds.length > 0 &&
-            allValues.status === 'unassigned'
-          ) {
-            updates.status = 'assigned';
-          }
-          if (Object.keys(updates).length > 0) {
-            formRef.current?.setFieldsValue(updates);
-          }
-        }}
-        onFinish={saveDevice}
-        submitter={{
-          searchConfig: { submitText: editingDevice ? '保存设备' : '确认录入' },
-          render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex>,
-        }}
-      >
-        <ProFormText
-          name="code"
-          label="设备编码 / MAC"
-          rules={[{ required: true, message: '请输入设备编码或 MAC' }]}
-          fieldProps={{ placeholder: '例如：SN-123456', className: 'font-mono' }}
-        />
-        <ProFormTextArea name="description" label="备注" fieldProps={{ rows: 3, placeholder: '例如：杭州分公司备机' }} />
-        {canChangeEnterprise ? (
-          <ProFormSelect name="enterpriseId" label="归属企业" options={enterpriseOptions} />
-        ) : null}
-        <ProFormDependency name={['enterpriseId']}>
-          {({ enterpriseId }) => (
+            if (
+              'enterpriseId' in changedValues &&
+              changedValues.enterpriseId &&
+              changedValues.enterpriseId !== UNASSIGNED_VALUE &&
+              allValues.status === 'unassigned'
+            ) {
+              updates.status = 'assigned';
+            }
+            if (Object.keys(updates).length > 0) {
+              formRef.current?.setFieldsValue(updates);
+            }
+          }}
+          onFinish={saveDevice}
+          submitter={{
+            searchConfig: {
+              submitText: editingDevice ? '保存设备' : '确认录入',
+            },
+            render: (_, dom) => (
+              <Flex justify="end" gap={12} style={{ marginTop: 24 }}>
+                {dom}
+              </Flex>
+            ),
+          }}
+        >
+          <ProFormText
+            name="code"
+            label="设备编码 / MAC"
+            rules={[{ required: true, message: '请输入设备 MAC（BLE deviceId）' }]}
+            fieldProps={{
+              placeholder: '例如：5C:FF:30:27:A4:00',
+              className: 'font-mono',
+            }}
+          />
+          <ProFormTextArea
+            name="description"
+            label="备注"
+            fieldProps={{ rows: 3, placeholder: '例如：杭州分公司备机' }}
+          />
+          <ProFormSelect
+            name="enterpriseId"
+            label="归属企业"
+            options={enterpriseOptions}
+          />
+          {editingDevice ? (
             <ProFormSelect
-              name="assignedUserIds"
-              label="绑定人员"
-              options={getStaffOptions(enterpriseId)}
-              fieldProps={{ mode: 'multiple', placeholder: '可选择多名人员' }}
+              name="status"
+              label="状态"
+              options={STATUS_OPTIONS}
+              rules={[{ required: true, message: '请选择设备状态' }]}
             />
-          )}
-        </ProFormDependency>
-        {editingDevice ? (
-          <ProFormSelect name="status" label="状态" options={STATUS_OPTIONS} rules={[{ required: true, message: '请选择设备状态' }]} />
-        ) : null}
-      </ModalForm>
+          ) : null}
+        </ModalForm>
+      ) : null}
     </div>
   );
 }

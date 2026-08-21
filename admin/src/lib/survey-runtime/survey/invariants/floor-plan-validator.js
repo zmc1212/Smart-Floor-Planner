@@ -147,7 +147,11 @@ function validateFull(floor, index, errors, warnings) {
     const nodeCycle = spaceDomain.buildSpaceNodeCycle(space, index);
     const points = nodeCycle.map((nodeId) => index.nodesById.get(nodeId));
     if (points.length >= 4 && polygon.hasSelfIntersection(points)) {
-      errors.push(issue('SELF_INTERSECTING_SPACE', `spaces.${space.id}`, `闭合空间 ${space.id} 存在自交`));
+      errors.push(issue(
+        'SELF_INTERSECTING_SPACE',
+        `spaces.${space.id}`,
+        '闭合轮廓存在自交，请调整墙体后再闭合'
+      ));
     }
   });
   index.spacesByWallId.forEach((spaces, wallId) => {

@@ -120,7 +120,11 @@ copy back to `layoutData`.
   `confirmClosure`, `deleteWall`, and closed-wall splits write those `wallIds`
   by syncing closed spaces from half-edge faces (`extractFaces` /
   `syncClosedSpacesFromFaces`). The transaction then requires the saved spaces
-  to equal the extracted faces; a mismatch rejects the operation. Graph nodes
+  to equal the extracted faces; a mismatch rejects the operation. Full-mode
+  self-intersection checks use proper edge crossings only after collapsing
+  zero-length ring points, so shared-wall splits and thickness bridges on a
+  valid adjacent-room close must not reject with `SELF_INTERSECTING_SPACE`.
+  Graph nodes
   store centerline millimetres only. Working (red/orange) faces and one-sided
   bodies are read models from centerline + thickness + `measurementSide` /
   `bodyNormalSide`; display hits pair an outer point with its centerline node

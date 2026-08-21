@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildDesignPublishedPayload,
+  buildEnterpriseJoinResultPayload,
   buildLeadAssignmentPayload,
   buildMeasurementAppointmentPayload,
   buildNewLeadPayload,
@@ -29,7 +30,7 @@ test('legacy single-template config normalizes to V2 while preserving the old ID
   assert.equal(normalized.miniprogramTemplateId, normalized.templates.workflow_todo.templateId);
 });
 
-test('five subscription template IDs must remain distinct', () => {
+test('six subscription template IDs must remain distinct', () => {
   const normalized = normalizePlatformNotificationConfig();
   assert.deepEqual(SUBSCRIPTION_TEMPLATE_KINDS, [
     'workflow_todo',
@@ -37,10 +38,15 @@ test('five subscription template IDs must remain distinct', () => {
     'new_lead',
     'measurement_appointment',
     'design_published',
+    'enterprise_join_result',
   ]);
   assert.equal(
     normalized.templates.design_published.templateId,
     'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'
+  );
+  assert.equal(
+    normalized.templates.enterprise_join_result.templateId,
+    'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk'
   );
   assert.doesNotThrow(() => validateDistinctTemplateIds(normalized.templates));
   normalized.templates.new_lead.templateId = normalized.templates.workflow_todo.templateId;
@@ -102,6 +108,21 @@ test('payload builders emit only the approved keyword keys', () => {
   });
   assert.deepEqual(Object.keys(published), ['thing1', 'time2', 'thing3']);
   assert.equal(published.time2.value, '2026-08-13 15:00:00');
+
+  const joinResult = buildEnterpriseJoinResultPayload(
+    DEFAULT_SUBSCRIPTION_TEMPLATES.enterprise_join_result,
+    {
+      notifiedAt: '2026-08-21T08:00:00.000Z',
+      result: '审核通过',
+      contactPerson: '张三',
+      appliedAt: '2026-08-20T07:00:00.000Z',
+      storeName: '家客来装修',
+    }
+  );
+  assert.deepEqual(Object.keys(joinResult), ['time1', 'phrase2', 'thing3', 'time4', 'thing5']);
+  assert.equal(joinResult.phrase2.value, '审核通过');
+  assert.equal(joinResult.time1.value, '2026-08-21 16:00:00');
+  assert.equal(joinResult.time4.value, '2026-08-20 15:00:00');
 });
 
 test('new-lead selected time falls back from assignment to creation time', () => {

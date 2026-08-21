@@ -7,6 +7,7 @@ import {
   enterpriseAppointmentSettings,
   enterpriseCommissionRules,
   enterpriseJoinCodes,
+  enterpriseStatusEvents,
   enterprises,
   floorPlans,
   leads,
@@ -20,6 +21,7 @@ import {
   aiGenerations,
   aiWorkflows,
   leadCommissions,
+  users,
   workflowNotificationLogs,
 } from '@/db/schema';
 
@@ -29,9 +31,13 @@ export type EnterpriseResetCount = {
   count: number;
 };
 
+export type EnterpriseResetMode = 'reset' | 'purge';
+
 export type EnterpriseResetPreview = {
   enterpriseId: string;
   enterpriseName: string;
+  mode: EnterpriseResetMode;
+  retainOperator: boolean;
   retainedOperatorAdminUserId: string | null;
   retainedOperatorDisplayName: string | null;
   counts: EnterpriseResetCount[];
@@ -40,6 +46,7 @@ export type EnterpriseResetPreview = {
 
 export type EnterpriseResetResult = EnterpriseResetPreview & {
   deleted: EnterpriseResetCount[];
+  enterpriseDeleted?: boolean;
 };
 
 function asCount(value: unknown) {
@@ -85,6 +92,8 @@ export class TenantEnterpriseResetRepository {
     return null;
   }
 
+  // Tables share an enterprise_id column; keep the helper table-agnostic.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Drizzle table variance
   private async countEq(table: any, enterpriseId: bigint) {
     const rows = await this.transaction
       .select({ value: count() })
@@ -93,7 +102,11 @@ export class TenantEnterpriseResetRepository {
     return asCount(rows[0]?.value);
   }
 
-  private async collectCounts(enterpriseId: bigint, retainedOperatorId: bigint | null) {
+  private async collectCounts(
+    enterpriseId: bigint,
+    retainedOperatorId: bigint | null,
+    mode: EnterpriseResetMode
+  ) {
     const staffWhere = retainedOperatorId
       ? and(eq(adminUsers.enterpriseId, enterpriseId), notInArray(adminUsers.id, [retainedOperatorId]))
       : eq(adminUsers.enterpriseId, enterpriseId);
@@ -136,7 +149,11 @@ export class TenantEnterpriseResetRepository {
         label: '提成规则',
         count: await this.countEq(enterpriseCommissionRules, enterpriseId),
       },
-      { table: 'admin_users', label: '其他员工账号', count: asCount(staffRows[0]?.value) },
+      {
+        table: 'admin_users',
+        label: mode === 'purge' ? '全部员工账号' : '其他员工账号',
+        count: asCount(staffRows[0]?.value),
+      },
       { table: 'departments', label: '部门', count: await this.countEq(departments, enterpriseId) },
       { table: 'media_assets', label: '企业媒体记录', count: await this.countEq(mediaAssets, enterpriseId) },
       {
@@ -155,10 +172,20 @@ export class TenantEnterpriseResetRepository {
         count: await this.countEq(aiCreditAccounts, enterpriseId),
       },
     ];
+
+    if (mode === 'purge') {
+      counts.push({
+        table: 'enterprise_status_events',
+        label: '企业状态事件',
+        count: await this.countEq(enterpriseStatusEvents, enterpriseId),
+      });
+      counts.push({ table: 'enterprises', label: '企业壳', count: 1 });
+    }
+
     return counts;
   }
 
-  async preview(enterpriseId: bigint, actorAdminUserId: bigint): Promise<EnterpriseResetPreview> {
+  private async loadEnterprise(enterpriseId: bigint) {
     const [enterprise] = await this.transaction
       .select({ id: enterprises.id, name: enterprises.name })
       .from(enterprises)
@@ -167,14 +194,35 @@ export class TenantEnterpriseResetRepository {
     if (!enterprise) {
       throw Object.assign(new Error('企业不存在'), { status: 404, code: 'enterprise_not_found' });
     }
+    return enterprise;
+  }
 
+  async preview(enterpriseId: bigint, actorAdminUserId: bigint): Promise<EnterpriseResetPreview> {
+    const enterprise = await this.loadEnterprise(enterpriseId);
     const retained = await this.resolveRetainedOperator(enterpriseId, actorAdminUserId);
-    const counts = await this.collectCounts(enterpriseId, retained?.id ?? null);
+    const counts = await this.collectCounts(enterpriseId, retained?.id ?? null, 'reset');
     return {
       enterpriseId: enterprise.id.toString(),
       enterpriseName: enterprise.name,
+      mode: 'reset',
+      retainOperator: true,
       retainedOperatorAdminUserId: retained?.id.toString() ?? null,
       retainedOperatorDisplayName: retained?.displayName ?? null,
+      counts,
+      totalRows: counts.reduce((sum, item) => sum + item.count, 0),
+    };
+  }
+
+  async previewPurge(enterpriseId: bigint): Promise<EnterpriseResetPreview> {
+    const enterprise = await this.loadEnterprise(enterpriseId);
+    const counts = await this.collectCounts(enterpriseId, null, 'purge');
+    return {
+      enterpriseId: enterprise.id.toString(),
+      enterpriseName: enterprise.name,
+      mode: 'purge',
+      retainOperator: false,
+      retainedOperatorAdminUserId: null,
+      retainedOperatorDisplayName: null,
       counts,
       totalRows: counts.reduce((sum, item) => sum + item.count, 0),
     };
@@ -185,11 +233,15 @@ export class TenantEnterpriseResetRepository {
     return { table, label, count: asCount(result.rowCount) } satisfies EnterpriseResetCount;
   }
 
-  async execute(enterpriseId: bigint, actorAdminUserId: bigint): Promise<EnterpriseResetResult> {
-    const preview = await this.preview(enterpriseId, actorAdminUserId);
-    const retainedId = preview.retainedOperatorAdminUserId
-      ? BigInt(preview.retainedOperatorAdminUserId)
-      : null;
+  /**
+   * Deletes all enterprise-scoped business rows and staff (optionally retaining one operator).
+   * Does not touch enterprise_status_events or the enterprises shell row.
+   */
+  private async wipeEnterpriseScopedData(
+    enterpriseId: bigint,
+    options: { retainOperatorId: bigint | null }
+  ): Promise<EnterpriseResetCount[]> {
+    const retainedId = options.retainOperatorId;
 
     if (retainedId) {
       await this.transaction
@@ -326,7 +378,7 @@ export class TenantEnterpriseResetRepository {
     } else {
       deleted.push(
         await this.execDelete(
-          '其他员工账号',
+          '全部员工账号',
           'admin_users',
           sql`delete from app.admin_users where enterprise_id = ${enterpriseId}`
         )
@@ -341,9 +393,62 @@ export class TenantEnterpriseResetRepository {
       )
     );
 
+    return deleted;
+  }
+
+  async execute(enterpriseId: bigint, actorAdminUserId: bigint): Promise<EnterpriseResetResult> {
+    const preview = await this.preview(enterpriseId, actorAdminUserId);
+    const retainedId = preview.retainedOperatorAdminUserId
+      ? BigInt(preview.retainedOperatorAdminUserId)
+      : null;
+
+    const deleted = await this.wipeEnterpriseScopedData(enterpriseId, {
+      retainOperatorId: retainedId,
+    });
+
     return {
       ...preview,
       deleted,
+      totalRows: deleted.reduce((sum, item) => sum + item.count, 0),
+    };
+  }
+
+  async purge(enterpriseId: bigint): Promise<EnterpriseResetResult> {
+    const preview = await this.previewPurge(enterpriseId);
+    const deleted = await this.wipeEnterpriseScopedData(enterpriseId, { retainOperatorId: null });
+
+    deleted.push(
+      await this.execDelete(
+        '企业状态事件',
+        'enterprise_status_events',
+        sql`delete from app.enterprise_status_events where enterprise_id = ${enterpriseId}`
+      )
+    );
+
+    // Detach global end-users from this enterprise; do not delete the user rows.
+    const clearedUsers = await this.transaction
+      .update(users)
+      .set({ enterpriseId: null, updatedAt: new Date() })
+      .where(eq(users.enterpriseId, enterpriseId))
+      .returning({ id: users.id });
+    deleted.push({
+      table: 'users',
+      label: '解除企业引用的全局用户',
+      count: clearedUsers.length,
+    });
+
+    deleted.push(
+      await this.execDelete(
+        '企业壳',
+        'enterprises',
+        sql`delete from app.enterprises where id = ${enterpriseId}`
+      )
+    );
+
+    return {
+      ...preview,
+      deleted,
+      enterpriseDeleted: true,
       totalRows: deleted.reduce((sum, item) => sum + item.count, 0),
     };
   }

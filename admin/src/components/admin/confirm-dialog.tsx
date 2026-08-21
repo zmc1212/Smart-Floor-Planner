@@ -14,6 +14,8 @@ type ConfirmOptions = {
   confirmText?: ReactNode;
   cancelText?: ReactNode;
   destructive?: boolean;
+  /** Raise above nested drawers/modals when needed. */
+  zIndex?: number;
 };
 
 type ConfirmAction = (options: ConfirmOptions) => Promise<boolean>;
@@ -32,6 +34,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
         cancelText: options.cancelText || '取消',
         okButtonProps: options.destructive ? { danger: true } : undefined,
         centered: true,
+        ...(typeof options.zIndex === 'number' ? { zIndex: options.zIndex } : {}),
         onOk: () => {
           resolve(true);
         },

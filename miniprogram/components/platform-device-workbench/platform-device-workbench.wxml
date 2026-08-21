@@ -1,0 +1,130 @@
+<view class="platform-device-workbench sfp-tab-page">
+  <scroll-view scroll-y class="platform-scroll" enhanced show-scrollbar="{{false}}">
+    <view class="platform-content">
+      <view
+        class="identity-nav"
+        style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+      >
+        <view class="identity-left">
+          <view class="brand-mark">
+            <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+          </view>
+          <text class="identity-role-name">家客来 · 平台端</text>
+          <view class="identity-tag">
+            <text>设备录入</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="hero-card">
+        <view class="hero-text-wrap">
+          <text class="hero-title">测距仪企业分配</text>
+          <text class="hero-subtitle">扫描附近多台 LDMStudio 4D，勾选或一键分配给企业</text>
+        </view>
+        <image class="hero-mascot" src="/images/airy-v1/laser-meter-3d.png" mode="aspectFit" />
+      </view>
+
+      <view class="panel">
+        <text class="panel-title">蓝牙扫描录入</text>
+        <text class="panel-status">{{statusText}}</text>
+
+        <button
+          class="primary-btn"
+          loading="{{scanning}}"
+          disabled="{{scanning || assigning}}"
+          bindtap="onScanNearby"
+        >
+          一键打开蓝牙并扫描附近设备
+        </button>
+
+        <view class="field">
+          <text class="field-label">归属企业</text>
+          <picker
+            mode="selector"
+            range="{{enterpriseNames}}"
+            value="{{enterpriseIndex}}"
+            bindchange="onEnterpriseChange"
+            disabled="{{!enterpriseNames.length}}"
+          >
+            <view class="picker-value">
+              {{enterpriseNames[enterpriseIndex] || '暂无企业'}}
+            </view>
+          </picker>
+        </view>
+
+        <view class="field">
+          <text class="field-label">备注（可选，批量共用）</text>
+          <input
+            class="field-input"
+            placeholder="例如：本批杭州分公司备机"
+            value="{{description}}"
+            bindinput="onDescriptionInput"
+          />
+        </view>
+
+        <view wx:if="{{scannedDevices.length}}" class="scan-toolbar">
+          <view class="select-all" bindtap="onToggleSelectAll">
+            <view class="check {{allSelected ? 'on' : ''}}"></view>
+            <text>全选（已选 {{selectedCount}}/{{scannedDevices.length}}）</text>
+          </view>
+        </view>
+
+        <view wx:if="{{scannedDevices.length}}" class="scan-list">
+          <view
+            wx:for="{{scannedDevices}}"
+            wx:key="deviceId"
+            class="scan-item"
+            data-id="{{item.deviceId}}"
+            bindtap="onToggleDevice"
+          >
+            <view class="check {{item.checked ? 'on' : ''}}"></view>
+            <view class="scan-main">
+              <text class="scan-code">{{item.deviceId}}</text>
+              <text class="scan-name">{{item.name}}</text>
+            </view>
+          </view>
+        </view>
+
+        <view class="action-row">
+          <button
+            class="secondary-btn half"
+            loading="{{assigning}}"
+            disabled="{{assigning || scanning || !selectedCount}}"
+            bindtap="onAssignSelected"
+          >
+            分配勾选
+          </button>
+          <button
+            class="secondary-btn half solid"
+            loading="{{assigning}}"
+            disabled="{{assigning || scanning || !scannedDevices.length}}"
+            bindtap="onAssignAll"
+          >
+            一键全部分配
+          </button>
+        </view>
+      </view>
+
+      <view class="panel list-panel">
+        <view class="panel-head">
+          <text class="panel-title">已登记设备</text>
+          <text class="panel-action" bindtap="load">刷新</text>
+        </view>
+        <view wx:if="{{loading}}" class="empty-copy">加载中...</view>
+        <view wx:elif="{{error}}" class="empty-copy error">{{error}}</view>
+        <view wx:elif="{{!devices.length}}" class="empty-copy">暂无设备，请先蓝牙扫描录入</view>
+        <view wx:else class="device-list">
+          <view wx:for="{{devices}}" wx:key="_id" class="device-item">
+            <view class="device-main">
+              <text class="device-code">{{item.code}}</text>
+              <text class="device-enterprise">
+                {{item.enterpriseId && item.enterpriseId.name ? item.enterpriseId.name : '未分配企业'}}
+              </text>
+            </view>
+            <text class="device-status">{{item.status === 'assigned' ? '已分配' : item.status}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

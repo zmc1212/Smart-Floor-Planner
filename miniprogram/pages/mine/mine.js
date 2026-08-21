@@ -18,7 +18,7 @@ const {
 const { requestNotification } = require('../../utils/notification.js');
 
 const DEFAULT_AVATAR = '/images/mine-v6/profile-avatar.jpg';
-const ROLE_SHELL_MINE_ROLES = ['designer', 'measurer', 'enterprise_admin'];
+const ROLE_SHELL_MINE_ROLES = ['designer', 'measurer', 'enterprise_admin', 'platform_admin'];
 
 function isRoleShellMineRole(role) {
   return ROLE_SHELL_MINE_ROLES.includes(role);

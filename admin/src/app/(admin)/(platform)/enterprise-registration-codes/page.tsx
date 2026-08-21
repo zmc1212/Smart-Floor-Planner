@@ -15,6 +15,11 @@ import {
 } from '@/components/admin/miniprogram-code-qr';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import {
+  getCodeAuditEventTypeLabel,
+  getCodeAuditResultLabel,
+  getCodeAuditResultTagColor,
+} from '@/lib/code-audit-labels';
 
 type RegistrationCode = {
   id: string;
@@ -231,14 +236,19 @@ export default function EnterpriseRegistrationCodesPage() {
       width: 180,
       render: (_, item) => formatTime(item.createdAt),
     },
-    { title: '动作', dataIndex: 'eventType', width: 140 },
+    {
+      title: '动作',
+      dataIndex: 'eventType',
+      width: 160,
+      render: (_, item) => getCodeAuditEventTypeLabel(item.eventType),
+    },
     {
       title: '结果',
       dataIndex: 'result',
-      width: 160,
+      width: 180,
       render: (_, item) => (
-        <Tag color={item.result === 'active' || item.result === 'submitted' ? 'green' : 'default'}>
-          {item.result}
+        <Tag color={getCodeAuditResultTagColor(item.result)}>
+          {getCodeAuditResultLabel(item.result)}
         </Tag>
       ),
     },

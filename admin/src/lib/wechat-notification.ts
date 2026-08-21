@@ -4,6 +4,7 @@ import {
   LeadRepository,
   MiniProgramIdentityRepository,
   StaffNotificationRepository,
+  UserRepository,
 } from '@/db/repositories';
 import {
   withPlatformTransaction,
@@ -12,6 +13,7 @@ import {
 import {
   assignmentCopy,
   buildDesignPublishedPayload,
+  buildEnterpriseJoinResultPayload,
   buildLeadAssignmentPayload,
   buildMeasurementAppointmentPayload,
   buildNewLeadPayload,
@@ -570,6 +572,55 @@ export async function notifyDesignerOfSurveyCompleted(input: {
     });
   } catch (error) {
     console.error('Survey completed notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
+}
+
+export async function notifyEnterpriseContactOfJoinResult(input: {
+  enterpriseName: string;
+  contactPerson?: { name?: unknown; phone?: unknown } | null;
+  appliedAt?: Date | string | null;
+  result: 'approved' | 'rejected';
+}) {
+  try {
+    const phone =
+      typeof input.contactPerson?.phone === 'string'
+        ? input.contactPerson.phone.trim()
+        : '';
+    if (!phone) {
+      return { success: false, skipped: true, error: 'contact phone unavailable' };
+    }
+
+    const user = await withPlatformTransaction((transaction) =>
+      new UserRepository(transaction).findByPhone(phone)
+    );
+    if (!user?.openid) {
+      return { success: false, skipped: true, error: 'contact openid unavailable' };
+    }
+
+    const template = await getMiniProgramSubscriptionTemplate('enterprise_join_result');
+    if (!template?.templateId) {
+      return { success: false, skipped: true, error: 'subscription template unavailable' };
+    }
+
+    const contactName =
+      typeof input.contactPerson?.name === 'string'
+        ? input.contactPerson.name.trim()
+        : '';
+    return await sendSubscriptionMessage({
+      touser: user.openid,
+      template_id: template.templateId,
+      page: '/pages/mine/mine',
+      data: buildEnterpriseJoinResultPayload(template, {
+        notifiedAt: new Date(),
+        result: input.result === 'approved' ? '审核通过' : '审核不通过',
+        contactPerson: contactName || '联系人',
+        appliedAt: input.appliedAt,
+        storeName: input.enterpriseName,
+      }),
+    });
+  } catch (error) {
+    console.error('Enterprise join result notification failed:', error);
     return { success: false, error: deliveryError(error) };
   }
 }

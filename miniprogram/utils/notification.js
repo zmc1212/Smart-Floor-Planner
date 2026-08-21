@@ -4,7 +4,8 @@ const TEMPLATE_ORDER = [
   'lead_assignment',
   'new_lead',
   'measurement_appointment',
-  'design_published'
+  'design_published',
+  'enterprise_join_result'
 ];
 const ROLE_SUBSCRIBE_KINDS = Object.freeze({
   customer: ['measurement_appointment', 'design_published'],
@@ -127,30 +128,24 @@ function categorizeSubscriptionResult(templateIds, response) {
   return result;
 }
 
-async function requestNotification(options = {}) {
-  const role = resolveSubscribeRole(options && options.role);
-  const kinds = getSubscribeKindsForRole(role);
-  if (!kinds.length) {
-    wx.showToast({ title: '当前身份无需订阅通知', icon: 'none' });
-    return emptySubscriptionResult([]);
-  }
+function resolveTemplateIdsForKinds(config, kinds) {
+  if (!config || !Array.isArray(kinds) || !kinds.length) return [];
+  return kinds
+    .map((kind) => {
+      const match = config.templates.find((template) => template.type === kind);
+      return match && match.templateId;
+    })
+    .filter(Boolean);
+}
 
-  const config = await refreshTemplateConfig();
-  const templateIds = config
-    ? kinds
-      .map((kind) => {
-        const match = config.templates.find((template) => template.type === kind);
-        return match && match.templateId;
-      })
-      .filter(Boolean)
-    : [];
-
+async function requestSubscribeMessageForTemplateIds(templateIds, options = {}) {
+  const quiet = Boolean(options && options.quiet);
   if (!wx.requestSubscribeMessage) {
-    wx.showToast({ title: '当前微信版本不支持订阅消息', icon: 'none' });
+    if (!quiet) wx.showToast({ title: '当前微信版本不支持订阅消息', icon: 'none' });
     return emptySubscriptionResult(templateIds, false);
   }
   if (!templateIds.length) {
-    wx.showToast({ title: '通知配置暂不可用，请稍后重试', icon: 'none' });
+    if (!quiet) wx.showToast({ title: '通知配置暂不可用，请稍后重试', icon: 'none' });
     return emptySubscriptionResult([]);
   }
   if (templateIds.length > 3) {
@@ -163,17 +158,19 @@ async function requestNotification(options = {}) {
       success(response) {
         const requested = templateIds.slice(0, 3);
         const result = categorizeSubscriptionResult(requested, response);
-        if (result.accepted.length === requested.length) {
-          wx.showToast({ title: '通知已开启', icon: 'success' });
-        } else if (result.accepted.length > 0) {
-          wx.showToast({ title: `已开启 ${result.accepted.length}/${requested.length} 项`, icon: 'none' });
-        } else {
-          wx.showToast({ title: '未开启通知', icon: 'none' });
+        if (!quiet) {
+          if (result.accepted.length === requested.length) {
+            wx.showToast({ title: '通知已开启', icon: 'success' });
+          } else if (result.accepted.length > 0) {
+            wx.showToast({ title: `已开启 ${result.accepted.length}/${requested.length} 项`, icon: 'none' });
+          } else {
+            wx.showToast({ title: '未开启通知', icon: 'none' });
+          }
         }
         resolve(result);
       },
       fail(error) {
-        if (error.errCode === 20004) {
+        if (!quiet && error.errCode === 20004) {
           wx.showModal({
             title: '开启通知',
             content: '请在设置中开启消息通知，否则无法接收任务提醒。',
@@ -183,10 +180,39 @@ async function requestNotification(options = {}) {
             }
           });
         }
+        if (quiet) {
+          resolve(emptySubscriptionResult(templateIds));
+          return;
+        }
         reject(error);
       }
     });
   });
+}
+
+async function requestNotification(options = {}) {
+  const role = resolveSubscribeRole(options && options.role);
+  const kinds = getSubscribeKindsForRole(role);
+  if (!kinds.length) {
+    wx.showToast({ title: '当前身份无需订阅通知', icon: 'none' });
+    return emptySubscriptionResult([]);
+  }
+
+  const config = await refreshTemplateConfig();
+  const templateIds = resolveTemplateIdsForKinds(config, kinds);
+  return requestSubscribeMessageForTemplateIds(templateIds, options);
+}
+
+async function requestSubscribeKinds(kinds, options = {}) {
+  const requestedKinds = Array.isArray(kinds)
+    ? kinds.filter((kind) => TEMPLATE_ORDER.includes(kind))
+    : [];
+  if (!requestedKinds.length) {
+    return emptySubscriptionResult([]);
+  }
+  const config = await refreshTemplateConfig();
+  const templateIds = resolveTemplateIdsForKinds(config, requestedKinds);
+  return requestSubscribeMessageForTemplateIds(templateIds, options);
 }
 
 module.exports = {
@@ -194,6 +220,7 @@ module.exports = {
   TEMPLATE_ORDER,
   ROLE_SUBSCRIBE_KINDS,
   requestNotification,
+  requestSubscribeKinds,
   getTemplateConfig,
   getTemplateIds,
   getSubscribeKindsForRole,

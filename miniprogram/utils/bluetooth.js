@@ -15,6 +15,11 @@ var _deviceName = ''; // 存储当前连接的设备名称
 var _hasTriggeredReady = false; // 确保就绪回调仅触发一次
 var _hasRequestedDeviceIdCode = false; // 每次连接只查询一次 ATC001# 机器 ID
 var _dataBuffersByChannel = {};
+var _enrollMode = false;
+var _enrollCollectMode = false;
+var _onEnrollDeviceFound = null;
+var _onEnrollScanComplete = null;
+var _enrollFoundById = {};
 
 var _heartbeatTimer = null;
 var _lastResponseTime = 0;
@@ -69,11 +74,16 @@ function requestDeviceIdCode() {
   sendBLECommand('ATC001#');
 }
 
-function initBLE(callback, connectCallback, disconnectCallback, silent = false) {
+function initBLE(callback, connectCallback, disconnectCallback, silent = false, options = {}) {
   _onMeasureCallback = callback;
   _onConnectCallback = connectCallback;
   _onDisconnectCallback = disconnectCallback;
   _verifyingDevices = {}; // 重置验证状态
+  _enrollMode = Boolean(options && options.enrollMode);
+  _enrollCollectMode = Boolean(options && options.enrollCollectMode);
+  _onEnrollDeviceFound = (_enrollCollectMode && options && options.onDeviceFound) || null;
+  _onEnrollScanComplete = (_enrollCollectMode && options && options.onComplete) || null;
+  _enrollFoundById = {};
   wx.openBluetoothAdapter({
     success: function (res) {
       // 注册全局断开监听 (仅注册一次)
@@ -87,24 +97,84 @@ function initBLE(callback, connectCallback, disconnectCallback, silent = false) 
         _isStateChangeRegistered = true;
       }
 
-      if (!silent) wx.showLoading({ title: '搜索测距仪...', mask: true });
-      startScan(silent);
+      if (!silent) {
+        wx.showLoading({
+          title: '搜索测距仪...',
+          mask: true
+        });
+      }
+      startScan(silent, options && options.scanMs);
     },
     fail: function (err) {
       if (!silent) wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
+      if (_enrollCollectMode && _onEnrollScanComplete) {
+        _onEnrollScanComplete({ success: false, devices: [], error: 'bluetooth_unavailable' });
+      }
       wx.onBluetoothAdapterStateChange(function (res) {
         if (res.available) {
           if (!silent) wx.showLoading({ title: '搜索测距仪...', mask: true });
-          startScan(silent);
+          startScan(silent, options && options.scanMs);
         }
       });
     }
   });
 }
 
-function startScan(silent = false) {
+/** 平台录入：扫描收集多台 LDMStudio，只读 deviceId/MAC，不建立连接。 */
+function scanBLEForEnrollment(onDeviceFound, onComplete, options) {
+  var opts = options || {};
+  return initBLE(
+    function () {},
+    function () {},
+    function () {},
+    Boolean(opts.silent),
+    {
+      enrollMode: true,
+      enrollCollectMode: true,
+      onDeviceFound: onDeviceFound,
+      onComplete: onComplete,
+      scanMs: opts.scanMs || 10000
+    }
+  );
+}
+
+function initBLEForEnrollment(connectCallback, disconnectCallback, silent = false) {
+  return initBLE(
+    function () {},
+    connectCallback,
+    disconnectCallback,
+    silent,
+    { enrollMode: true }
+  );
+}
+
+function finishEnrollCollectScan(silent, reason) {
+  if (_scanTimer) {
+    clearTimeout(_scanTimer);
+    _scanTimer = null;
+  }
+  try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
+  if (!silent) wx.hideLoading();
+  var devices = Object.keys(_enrollFoundById).map(function (id) {
+    return _enrollFoundById[id];
+  });
+  console.log('[BLE enroll collect] done reason=' + reason + ' count=' + devices.length);
+  if (_onEnrollScanComplete) {
+    _onEnrollScanComplete({
+      success: devices.length > 0,
+      devices: devices,
+      reason: reason
+    });
+  }
+  _enrollCollectMode = false;
+  _onEnrollDeviceFound = null;
+  _onEnrollScanComplete = null;
+}
+
+function startScan(silent = false, scanMs) {
   if (_isConnecting) return;
   _foundDevices = []; // 重置搜索列表
+  if (_enrollCollectMode) _enrollFoundById = {};
 
   // 前置检查安卓系统定位权限与开关
   try {
@@ -127,6 +197,9 @@ function startScan(silent = false) {
             showCancel: false
           });
         }
+        if (_enrollCollectMode) {
+          finishEnrollCollectScan(true, 'permission_denied');
+        }
         return;
       }
     }
@@ -134,9 +207,21 @@ function startScan(silent = false) {
     console.error('获取系统设置失败', err);
   }
 
-  // 设置 10 秒搜索超时 (验证需要额外时间)
+  var timeoutMs = Number(scanMs) > 0 ? Number(scanMs) : 10000;
+  // 设置搜索超时 (验证需要额外时间)
   if (_scanTimer) clearTimeout(_scanTimer);
   _scanTimer = setTimeout(function () {
+    if (_enrollCollectMode) {
+      finishEnrollCollectScan(silent, 'timeout');
+      if (!silent && Object.keys(_enrollFoundById).length === 0) {
+        wx.showModal({
+          title: '未发现设备',
+          content: '未搜索到 LDMStudio 4D，请确保测距仪已开机并靠近手机。',
+          showCancel: false
+        });
+      }
+      return;
+    }
     if (!_isConnecting) {
       wx.stopBluetoothDevicesDiscovery();
       if (!silent) {
@@ -147,12 +232,14 @@ function startScan(silent = false) {
 
         wx.showModal({
           title: '未发现设备',
-          content: '未搜索到授权的测距仪，请确保设备已开启、已在后台录入编码并靠近手机。',
+          content: _enrollMode
+            ? '未搜索到 LDMStudio 4D，请确保测距仪已开机并靠近手机。'
+            : '未搜索到授权的测距仪，请确保设备已开启、已在后台录入编码并靠近手机。',
           showCancel: false
         });
       }
     }
-  }, 10000);
+  }, timeoutMs);
 
   wx.startBluetoothDevicesDiscovery({
     allowDuplicatesKey: false,
@@ -167,9 +254,34 @@ function startScan(silent = false) {
           if (name.trim().includes(TARGET_DEVICE_NAME) && !_isConnecting) {
             _foundDevices.push(device);
             logDiscoveredDevice(device, name.trim());
+
+            if (_enrollCollectMode) {
+              var mac = String(device.deviceId || '').trim().toUpperCase();
+              if (!mac || _enrollFoundById[mac]) continue;
+              var found = {
+                deviceId: mac,
+                name: name.trim() || TARGET_DEVICE_NAME,
+                rssi: device.RSSI
+              };
+              _enrollFoundById[mac] = found;
+              console.log('录入扫描收集设备:', found.name, found.deviceId);
+              if (_onEnrollDeviceFound) _onEnrollDeviceFound(found);
+              continue;
+            }
             
             if (_verifyingDevices[device.deviceId]) return; // 已验证或验证中
             _verifyingDevices[device.deviceId] = true;
+
+            if (_enrollMode) {
+              if (_isConnecting) return;
+              _isConnecting = true;
+              if (_scanTimer) clearTimeout(_scanTimer);
+              wx.stopBluetoothDevicesDiscovery();
+              if (!silent) wx.hideLoading();
+              console.log('录入模式：跳过授权校验，直接连接:', name, device.deviceId);
+              connectDevice(device.deviceId, name.trim(), silent);
+              return;
+            }
 
             console.log('搜索到设备，请求后台验证...', name, 'ID:', device.deviceId);
 
@@ -205,6 +317,9 @@ function startScan(silent = false) {
     fail: function (err) {
       console.log('搜索设备失败', err);
       if (_scanTimer) clearTimeout(_scanTimer);
+      if (_enrollCollectMode) {
+        finishEnrollCollectScan(silent, 'scan_failed');
+      }
       if (!silent) {
         wx.hideLoading();
         
@@ -317,7 +432,7 @@ function getCharacteristics(deviceId, serviceId) {
           if (!_hasTriggeredReady && _onConnectCallback) {
             _hasTriggeredReady = true;
             console.log('🚀 发现写入通道，设备就绪');
-            _onConnectCallback(true, _deviceName);
+            _onConnectCallback(true, _deviceName, _deviceId);
           }
 
           // 等待通知特征值订阅完成后，读取厂商协议中的稳定机器 ID。
@@ -499,6 +614,7 @@ function handleDisconnect(reason) {
   _writeCharacteristics = [];
   _dataBuffersByChannel = {};
   _hasRequestedDeviceIdCode = false;
+  _enrollMode = false;
   stopHeartbeat();
   
   wx.closeBLEConnection({ deviceId: tempId }).catch(function(){});
@@ -701,6 +817,8 @@ function getCurrentDeviceInfo() {
 
 module.exports = {
   initBLE: initBLE,
+  initBLEForEnrollment: initBLEForEnrollment,
+  scanBLEForEnrollment: scanBLEForEnrollment,
   closeBLE: closeBLE,
   sendBLECommand: sendBLECommand,
   autoConnectBLE: autoConnectBLE,
@@ -709,5 +827,6 @@ module.exports = {
   setTemporaryMeasureCallback: setTemporaryMeasureCallback,
   restoreMeasureCallback: restoreMeasureCallback,
   getCurrentDeviceInfo: getCurrentDeviceInfo,
-  hasRememberedDevice: hasRememberedDevice
+  hasRememberedDevice: hasRememberedDevice,
+  TARGET_DEVICE_NAME: TARGET_DEVICE_NAME
 };

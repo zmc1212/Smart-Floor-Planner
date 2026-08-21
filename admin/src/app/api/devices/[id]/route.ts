@@ -5,7 +5,6 @@ import {
   parsePostgresId,
 } from '@/db/postgres-dto';
 import {
-  AdminUserRepository,
   DeviceRepository,
   type DeviceUpdate,
 } from '@/db/repositories';
@@ -18,7 +17,7 @@ import { withTenantRoute } from '@/lib/tenant-route';
 
 export const dynamic = 'force-dynamic';
 
-const WRITE_ROLES = ['super_admin', 'admin', 'enterprise_admin'] as const;
+const WRITE_ROLES = ['super_admin', 'admin'] as const;
 const DEVICE_STATUSES = new Set([
   'unassigned',
   'assigned',
@@ -33,24 +32,6 @@ function errorMessage(error: unknown) {
 function postgresErrorCode(error: unknown) {
   const details = error as { code?: string; cause?: { code?: string } };
   return details.code ?? details.cause?.code;
-}
-
-function parseAssignedUserIds(value: unknown, fallback: bigint[]) {
-  if (value === undefined) return fallback;
-  const rawValues = Array.isArray(value) ? value : value == null ? [] : [value];
-  const ids = new Map<string, bigint>();
-  for (const value of rawValues) {
-    if (value == null || value === '') continue;
-    const id = parsePostgresId(value, 'assignedUserIds');
-    ids.set(id.toString(), id);
-  }
-  return [...ids.values()];
-}
-
-function isAssignedUser(
-  user: Awaited<ReturnType<AdminUserRepository['findById']>>
-): user is NonNullable<Awaited<ReturnType<AdminUserRepository['findById']>>> {
-  return Boolean(user);
 }
 
 export async function PATCH(
@@ -81,7 +62,7 @@ export async function PATCH(
 
             const input: DeviceUpdate = {};
             if (body.code !== undefined) {
-              const code = String(body.code).trim();
+              const code = String(body.code).trim().toUpperCase();
               if (!code) throw new Error('设备编码不能为空');
               input.code = code;
             }
@@ -90,57 +71,21 @@ export async function PATCH(
             }
             const requestedStatus = body.status ?? current.status;
 
-            const assignedUserIds = parseAssignedUserIds(
-              body.assignedUserIds ?? body.assignedUserId,
-              current.assignedUsers.map((assignedUser) => assignedUser.id)
-            );
-            const assignedUsers = await Promise.all(
-              assignedUserIds.map((assignedUserId) =>
-                new AdminUserRepository(transaction).findById(assignedUserId)
-              )
-            );
-            if (assignedUsers.some((assignedUser) => !assignedUser)) {
-              throw new Error('Assigned staff not found in this scope');
-            }
-            const resolvedAssignedUsers = assignedUsers.filter(
-              isAssignedUser
-            );
-
             let enterpriseId = current.enterpriseId;
-            if (context.role === 'enterprise_admin') {
-              enterpriseId = parsePostgresId(
-                context.enterpriseId,
-                'enterpriseId'
-              );
-            } else if (body.enterpriseId !== undefined) {
+            if (body.enterpriseId !== undefined) {
               enterpriseId = parseOptionalPostgresId(
                 body.enterpriseId,
                 'enterpriseId'
               );
             }
-            if (!enterpriseId && resolvedAssignedUsers[0]?.enterpriseId) {
-              enterpriseId = resolvedAssignedUsers[0].enterpriseId;
-            }
-            if (
-              resolvedAssignedUsers.some(
-                (assignedUser) => assignedUser.enterpriseId !== enterpriseId
-              )
-            ) {
-              throw new Error(
-                enterpriseId
-                  ? 'Assigned staff belongs to another enterprise'
-                  : 'An unassigned device can only be assigned to staff without an enterprise'
-              );
-            }
             input.status = normalizeDeviceBindingStatus(
               requestedStatus,
-              assignedUserIds.length > 0,
               Boolean(enterpriseId)
             );
             input.enterpriseId = enterpriseId;
-            input.assignedUserId = assignedUserIds[0] ?? null;
+            input.assignedUserId = null;
 
-            return repository.update(deviceId, input, assignedUserIds);
+            return repository.update(deviceId, input, []);
           }
         );
         if (!device) {
@@ -157,10 +102,7 @@ export async function PATCH(
     return NextResponse.json(
       {
         success: false,
-        error:
-          code === '23505'
-            ? '设备编码已存在'
-            : errorMessage(error),
+        error: code === '23505' ? '设备编码已存在' : errorMessage(error),
       },
       { status: code === '23505' ? 409 : 500 }
     );

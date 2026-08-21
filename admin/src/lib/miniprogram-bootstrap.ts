@@ -13,7 +13,8 @@ export type MiniProgramRole =
   | 'referrer'
   | 'designer'
   | 'measurer'
-  | 'enterprise_admin';
+  | 'enterprise_admin'
+  | 'platform_admin';
 
 export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
   customer: '/pages/index/index',
@@ -21,6 +22,7 @@ export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
   designer: '/pages/index/index',
   measurer: '/pages/index/index',
   enterprise_admin: '/pages/index/index',
+  platform_admin: '/pages/index/index',
 };
 
 const ROLE_LABELS: Record<MiniProgramRole, string> = {
@@ -29,6 +31,7 @@ const ROLE_LABELS: Record<MiniProgramRole, string> = {
   designer: '设计师',
   measurer: '测量员',
   enterprise_admin: '企业负责人',
+  platform_admin: '平台管理员',
 };
 
 const ROLE_CAPABILITIES: Record<MiniProgramRole, string[]> = {
@@ -37,6 +40,7 @@ const ROLE_CAPABILITIES: Record<MiniProgramRole, string[]> = {
   designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'],
   measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
   enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
+  platform_admin: ['platform.devices', 'account'],
 };
 
 export function getMiniProgramRole(
@@ -48,6 +52,9 @@ export function getMiniProgramRole(
     if (context.staffRole === 'designer') return 'designer';
     if (context.staffRole === 'measurer') return 'measurer';
     if (context.staffRole === 'enterprise_admin') return 'enterprise_admin';
+    if (context.staffRole === 'admin' || context.staffRole === 'super_admin') {
+      return 'platform_admin';
+    }
   }
   return null;
 }

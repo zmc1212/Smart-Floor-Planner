@@ -10,11 +10,12 @@ const templates = [
   { type: 'new_lead', title: '新增客户成功通知', templateId: 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjq4xest9GRc' },
   { type: 'measurement_appointment', title: '上门量房提醒', templateId: 'CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl' },
   { type: 'design_published', title: '设计案例发布提醒', templateId: 'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag' },
+  { type: 'enterprise_join_result', title: '入驻申请结果通知', templateId: 'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk' },
 ];
 
 test('versioned notification config requires every semantic template and ignores legacy scalar cache', () => {
   assert.equal(notification.normalizeTemplateConfig({ miniprogramTemplateId: 'legacy' }), null);
-  assert.equal(notification.normalizeTemplateConfig({ version: 2, templates: templates.slice(0, 4) }), null);
+  assert.equal(notification.normalizeTemplateConfig({ version: 2, templates: templates.slice(0, 5) }), null);
   assert.deepEqual(
     notification.normalizeTemplateConfig({ version: 2, templates }).templates.map((item) => item.type),
     notification.TEMPLATE_ORDER
@@ -34,6 +35,34 @@ test('role-scoped subscribe kinds stay within the WeChat three-template limit', 
   assert.equal(notification.getSubscribeKindsForRole('enterprise_admin').length, 2);
   assert.deepEqual(notification.getSubscribeKindsForRole('referrer'), []);
   assert.ok(notification.getSubscribeKindsForRole('customer').includes('design_published'));
+  assert.ok(notification.TEMPLATE_ORDER.includes('enterprise_join_result'));
+});
+
+test('enterprise join result can be requested outside role-scoped Mine authorization', async () => {
+  const originalWx = global.wx;
+  const originalRequest = api.request;
+  let requestedIds = [];
+  api.request = async () => ({ data: { version: 2, templates } });
+  global.wx = {
+    getStorageSync() { return ''; },
+    setStorageSync() {},
+    showToast() {
+      throw new Error('quiet subscribe must not toast');
+    },
+    requestSubscribeMessage(options) {
+      requestedIds = options.tmplIds;
+      options.success({ [templates[5].templateId]: 'accept' });
+    }
+  };
+
+  try {
+    const result = await notification.requestSubscribeKinds(['enterprise_join_result'], { quiet: true });
+    assert.deepEqual(requestedIds, [templates[5].templateId]);
+    assert.deepEqual(result.accepted, [templates[5].templateId]);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+  }
 });
 
 test('notification authorization requests role-scoped templates and returns every result state', async () => {

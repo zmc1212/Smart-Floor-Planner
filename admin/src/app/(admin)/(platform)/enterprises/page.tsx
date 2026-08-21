@@ -8,6 +8,7 @@ import { Avatar, Button, Dropdown, Input, Modal, Space, Tag, Typography } from '
 import type { MenuProps } from 'antd';
 import EnterpriseEditorDialog from '@/components/enterprise/EnterpriseEditorDialog';
 import type { EnterpriseListItem } from '@/components/enterprise/types';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { notify } from '@/components/admin/operation-feedback';
 
 const ENTERPRISE_STATUS = {
@@ -41,6 +42,7 @@ function truncateReason(reason?: string | null) {
 
 export default function EnterprisesPage() {
   const actionRef = useRef<ActionType>(null);
+  const confirmAction = useConfirmDialog();
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [editingEnterprise, setEditingEnterprise] = useState<EnterpriseListItem | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -85,19 +87,20 @@ export default function EnterprisesPage() {
     }
   };
 
-  const confirmStatusAction = (enterprise: EnterpriseListItem, action: StatusAction) => {
+  const confirmStatusAction = async (enterprise: EnterpriseListItem, action: StatusAction) => {
     if (action === 'reject' || action === 'disable') {
       setReasonDraft('');
       setReasonModal({ enterprise, action });
       return;
     }
-    Modal.confirm({
+    const confirmed = await confirmAction({
       title: ACTION_LABEL[action],
-      content: `确认对「${enterprise.name}」执行${ACTION_LABEL[action]}？`,
-      okText: '确认',
+      description: `确认对「${enterprise.name}」执行${ACTION_LABEL[action]}？`,
+      confirmText: '确认',
       cancelText: '取消',
-      onOk: () => runStatusAction(enterprise, action),
     });
+    if (!confirmed) return;
+    await runStatusAction(enterprise, action);
   };
 
   const columns: ProColumns<EnterpriseListItem>[] = [

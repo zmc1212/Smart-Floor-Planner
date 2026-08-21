@@ -217,7 +217,7 @@ test('role shell staff Mine hides legacy workbench sections', () => {
   assert.match(mine, /wx:if="\{\{!isRoleShellMine\}\}" class="surface-section workbench-section"/);
   assert.match(mine, /wx:if="\{\{!isRoleShellMine\}\}" class="surface-section todo-section"/);
   assert.match(mine, /wx:if="\{\{canUseAIDesign && !isRoleShellMine\}\}" class="ai-banner"/);
-  assert.match(mineJs, /ROLE_SHELL_MINE_ROLES = \['designer', 'measurer', 'enterprise_admin'\]/);
+  assert.match(mineJs, /ROLE_SHELL_MINE_ROLES = \['designer', 'measurer', 'enterprise_admin', 'platform_admin'\]/);
 });
 
 test('role-specific workbenches hide customer and non-measurer survey creation controls', () => {

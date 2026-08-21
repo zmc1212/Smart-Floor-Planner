@@ -6,6 +6,7 @@ import { Button, Card, Col, Flex, Input, Modal, Row, Skeleton, Space, Tag, Timel
 import { Settings2, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import EnterpriseEditorDialog from '@/components/enterprise/EnterpriseEditorDialog';
 import EnterpriseOverviewCards from '@/components/enterprise/EnterpriseOverviewCards';
 import {
@@ -50,6 +51,7 @@ export default function EnterpriseDetailPage() {
   const { data: enterprise, isLoading, mutate } = useFetch<EnterpriseListItem>(
     enterpriseId ? `/api/admin/enterprises/${enterpriseId}` : null,
   );
+  const confirmAction = useConfirmDialog();
   const [showEditor, setShowEditor] = useState(false);
   const [workingAction, setWorkingAction] = useState('');
   const [reasonModalAction, setReasonModalAction] = useState<'reject' | 'disable' | null>(null);
@@ -83,20 +85,21 @@ export default function EnterpriseDetailPage() {
     }
   };
 
-  const confirmStatusAction = (action: EnterpriseStatusEventItem['action']) => {
+  const confirmStatusAction = async (action: EnterpriseStatusEventItem['action']) => {
     if (!enterprise) return;
     if (action === 'reject' || action === 'disable') {
       setReasonDraft('');
       setReasonModalAction(action);
       return;
     }
-    Modal.confirm({
+    const confirmed = await confirmAction({
       title: ACTION_LABEL[action],
-      content: `确认对「${enterprise.name}」执行${ACTION_LABEL[action]}？`,
-      okText: '确认',
+      description: `确认对「${enterprise.name}」执行${ACTION_LABEL[action]}？`,
+      confirmText: '确认',
       cancelText: '取消',
-      onOk: () => runStatusAction(action),
     });
+    if (!confirmed) return;
+    await runStatusAction(action);
   };
 
   if (isLoading || !enterprise) {

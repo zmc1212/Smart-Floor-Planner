@@ -7,6 +7,7 @@
     "ble-connector": "../../components/ble-connector/ble-connector",
     "lead-list": "../../components/lead-list/lead-list",
     "role-workbench": "/components/role-workbench/role-workbench",
+    "platform-device-workbench": "/components/platform-device-workbench/platform-device-workbench",
     "customer-service-home": "/components/customer-service-home/customer-service-home"
   },
   "navigationStyle": "custom",

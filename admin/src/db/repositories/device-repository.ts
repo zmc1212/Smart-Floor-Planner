@@ -127,6 +127,16 @@ export class DeviceRepository {
     return (await this.attachAssignedUsers(this.normalize(rows)))[0];
   }
 
+  async findByCode(code: string) {
+    const normalized = code.trim().toUpperCase();
+    if (!normalized) return null;
+    const rows = await this.selectWithRelations()
+      .where(eq(devices.code, normalized))
+      .limit(1);
+    if (!rows[0]) return null;
+    return (await this.attachAssignedUsers(this.normalize(rows)))[0];
+  }
+
   async findLatestAssignedToUser(assignedUserId: bigint) {
     const rows = await this.selectWithRelations()
       .where(eq(devices.status, 'assigned'))

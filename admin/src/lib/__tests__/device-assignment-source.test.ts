@@ -5,11 +5,18 @@ import test from 'node:test';
 import { normalizeDeviceBindingStatus } from '../device-binding-status';
 
 const srcRoot = path.resolve(__dirname, '..', '..');
-const staffRoute = fs.readFileSync(path.join(srcRoot, 'app', 'api', 'staff', 'route.ts'), 'utf8');
 const deviceRoute = fs.readFileSync(path.join(srcRoot, 'app', 'api', 'devices', 'route.ts'), 'utf8');
 const deviceDetailRoute = fs.readFileSync(path.join(srcRoot, 'app', 'api', 'devices', '[id]', 'route.ts'), 'utf8');
 const devicesPage = fs.readFileSync(
   path.join(srcRoot, 'app', '(admin)', '(merchant)', 'devices', 'page.tsx'),
+  'utf8'
+);
+const verifyBindingRoute = fs.readFileSync(
+  path.join(srcRoot, 'app', 'api', 'devices', 'verify-binding', 'route.ts'),
+  'utf8'
+);
+const enrollRoute = fs.readFileSync(
+  path.join(srcRoot, 'app', 'api', 'miniprogram', 'devices', 'route.ts'),
   'utf8'
 );
 const transactionScope = fs.readFileSync(
@@ -17,38 +24,27 @@ const transactionScope = fs.readFileSync(
   'utf8'
 );
 
-test('standalone devices can load standalone channel promoters without widening enterprise assignments', () => {
-  assert.match(staffRoute, /scope === 'unassigned-promoters'/);
-  assert.match(staffRoute, /roles: \['salesperson'\]/);
-  assert.match(staffRoute, /withoutEnterprise: true/);
-  assert.match(staffRoute, /roles: \['super_admin', 'admin'\]/);
+test('device writes are limited to platform administrators', () => {
   for (const route of [deviceRoute, deviceDetailRoute]) {
-    assert.match(route, /parseAssignedUserIds/);
-    assert.match(route, /resolvedAssignedUsers\.some/);
-    assert.match(route, /An unassigned device can only be assigned to staff without an enterprise/);
+    assert.match(route, /WRITE_ROLES = \['super_admin', 'admin'\]/);
+    assert.doesNotMatch(route, /assignedUserIds/);
   }
+  assert.match(deviceRoute, /'enterprise_admin'/);
+  assert.doesNotMatch(deviceDetailRoute, /enterprise_admin/);
 });
 
-test('device assignment routes accept multi-user bindings', () => {
-  for (const route of [deviceRoute, deviceDetailRoute]) {
-    assert.match(route, /assignedUserIds/);
-    assert.match(route, /Promise\.all/);
-  }
-});
-
-test('platform administrators save standalone device assignments in platform scope', () => {
+test('platform administrators save devices in platform device scope', () => {
   assert.match(transactionScope, /withDevicePostgresTransaction/);
   assert.match(transactionScope, /if \(isPlatformRole\(context\.role\)\)/);
   assert.match(deviceRoute, /withDevicePostgresTransaction/);
   assert.match(deviceDetailRoute, /withDevicePostgresTransaction/);
-  assert.doesNotMatch(deviceRoute, /withAdminPostgresTransaction/);
 });
 
-test('platform administrators can load active staff for the enterprise selected in the device form', () => {
-  assert.match(staffRoute, /searchParams\.get\('enterpriseId'\)/);
-  assert.match(staffRoute, /status: 'active'/);
-  assert.match(devicesPage, /staffQuery\.set\('enterpriseId', enterpriseId\)/);
-  assert.match(devicesPage, /void fetchStaff\(changedValues\.enterpriseId\)/);
+test('admin devices page no longer binds staff users', () => {
+  assert.doesNotMatch(devicesPage, /assignedUserIds/);
+  assert.doesNotMatch(devicesPage, /绑定人员/);
+  assert.match(devicesPage, /canManage = \['super_admin', 'admin'\]/);
+  assert.match(devicesPage, /设备编码 \/ MAC/);
 });
 
 test('duplicate device codes return a business error instead of a raw query', () => {
@@ -58,8 +54,23 @@ test('duplicate device codes return a business error instead of a raw query', ()
   }
 });
 
-test('a holder makes an otherwise idle device eligible for authorization', () => {
-  assert.equal(normalizeDeviceBindingStatus('unassigned', true, false), 'assigned');
-  assert.equal(normalizeDeviceBindingStatus('maintenance', true, false), 'maintenance');
-  assert.equal(normalizeDeviceBindingStatus('assigned', false, false), 'unassigned');
+test('enterprise ownership makes an otherwise idle device assigned', () => {
+  assert.equal(normalizeDeviceBindingStatus('unassigned', true), 'assigned');
+  assert.equal(normalizeDeviceBindingStatus('maintenance', true), 'maintenance');
+  assert.equal(normalizeDeviceBindingStatus('assigned', false), 'unassigned');
+});
+
+test('verify-binding authorizes by enterprise ownership only', () => {
+  assert.doesNotMatch(verifyBindingRoute, /assignedUsers/);
+  assert.match(verifyBindingRoute, /matchedDevice\.enterpriseId !== staff\.enterpriseId/);
+  assert.match(verifyBindingRoute, /未分配企业/);
+});
+
+test('miniprogram device enroll is platform-admin only and upserts by MAC code', () => {
+  assert.match(enrollRoute, /isPlatformAdmin/);
+  assert.match(enrollRoute, /findByCode/);
+  assert.match(enrollRoute, /normalizeDeviceBindingStatus/);
+  assert.match(enrollRoute, /assignedUserId: null/);
+  assert.match(enrollRoute, /parseDeviceCodes/);
+  assert.match(enrollRoute, /body\.devices/);
 });

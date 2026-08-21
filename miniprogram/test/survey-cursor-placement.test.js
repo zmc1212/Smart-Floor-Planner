@@ -1940,6 +1940,46 @@ test('resetting onto the opened L left vertex and dragging down shortens instead
   assert.equal(validation.valid, true, validation.errors.map((error) => error.message).join('; '));
 });
 
+test('mid-wall U under a closed room closes against the far corner without self-intersection', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2526, yMm: 0 }, 2526);
+  draft = commitWall(draft, { xMm: 2526, yMm: 3080 }, 3080);
+  draft = commitWall(draft, { xMm: 0, yMm: 3080 }, 2526);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3080);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 200, yMm: 3080 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = commitWall(draft, { xMm: 200, yMm: 7211 }, 4131);
+  draft = commitWall(draft, { xMm: 2526, yMm: 7211 }, 2326);
+  draft = surveyGraph.startPreview(draft, { xMm: 2526, yMm: 3080 });
+  floor = surveyGraph.getActiveFloor(draft);
+
+  assert.equal(floor.session.state, 'wallPreview');
+  assert.ok(floor.session.closeCandidateType === 'shared-wall' || floor.session.closeCandidateType === 'merge');
+  assert.equal(
+    surveyGraph.isDirectClosureHit(floor, floor.session, floor.session.previewPoint),
+    true
+  );
+
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  const validation = surveyGraph.validateSurveyDraft(draft, { mode: 'full' });
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(validation.valid, true, validation.errors.map((error) => error.message).join('; '));
+});
+
 test('an offset adjacent room closes through the source shared wall without swallowing the first room', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });

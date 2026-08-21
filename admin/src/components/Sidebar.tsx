@@ -82,6 +82,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'roles', label: '角色权限管理', icon: Shield, href: '/roles' },
         { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
         { key: 'users', label: '用户审计', icon: Users, href: '/users' },
+        { key: 'devices', label: '设备管理', icon: Smartphone, href: '/devices' },
       ]
     },
     {
@@ -134,7 +135,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'staff', label: '员工管理', icon: UserSquare2, href: '/staff' },
         { key: 'lead-commissions', label: '三方提成', icon: Coins, href: '/lead-commissions' },
-        { key: 'devices', label: '设备管理', icon: Smartphone, href: '/devices' },
+        { key: 'devices', label: '设备列表', icon: Smartphone, href: '/devices' },
       ]
     }
   ]
@@ -281,7 +282,15 @@ const SidebarContent = memo(function SidebarContent({
 
         {/* Render Merchant Menus */}
         {MENU_CONFIG.merchant.map((category) => {
-          const visibleItems = category.items.filter(item => hasMenuPermission(item.permissionKey || item.key));
+          const visibleItems = category.items.filter((item) => {
+            if (
+              item.key === 'devices' &&
+              (admin?.role === 'super_admin' || admin?.role === 'admin')
+            ) {
+              return false;
+            }
+            return hasMenuPermission(item.permissionKey || item.key);
+          });
           if (visibleItems.length === 0) return null;
 
           return (

@@ -4,14 +4,12 @@ export type DeviceBindingStatus =
   | 'maintenance'
   | 'lost';
 
+/** Normalize status from enterprise ownership (not staff bindings). */
 export function normalizeDeviceBindingStatus(
   status: DeviceBindingStatus,
-  hasAssignedUser: boolean,
   hasEnterprise: boolean
 ): DeviceBindingStatus {
-  if (hasAssignedUser && status === 'unassigned') return 'assigned';
-  if (!hasAssignedUser && !hasEnterprise && status === 'assigned') {
-    return 'unassigned';
-  }
+  if (hasEnterprise && status === 'unassigned') return 'assigned';
+  if (!hasEnterprise && status === 'assigned') return 'unassigned';
   return status;
 }

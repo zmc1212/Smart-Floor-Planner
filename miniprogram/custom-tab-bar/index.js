@@ -34,6 +34,10 @@ const ROLE_ITEMS = {
     { key: 'appointments', capability: 'enterprise.appointments', pagePath: '/packages/business/enterprise-appointments/enterprise-appointments', text: '预约', iconPath: '/images/mine-icons/book-g.png', selectedIconPath: '/images/mine-icons/book-a-active.png' },
     { key: 'commissions', capability: 'enterprise.commissions', pagePath: '/packages/business/enterprise-commissions/enterprise-commissions', text: '提成', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
+  ],
+  platform_admin: [
+    { key: 'devices', capability: 'platform.devices', pagePath: '/pages/index/index', text: '设备', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ]
 };
 
