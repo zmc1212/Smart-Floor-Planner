@@ -36,7 +36,12 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
             <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
             <text class="qr-state-title">服务码暂不可用</text>
             <text class="qr-state-copy">{{errorMessage}}</text>
-            <button class="qr-retry" bindtap="onRetry">重新生成</button>
+            <button
+              wx:if="{{errorAction === 'profile'}}"
+              class="qr-retry"
+              bindtap="onFixProfile"
+            >去完善资料</button>
+            <button wx:else class="qr-retry" bindtap="onRetry">重新生成</button>
           </view>
           <image wx:else class="service-qr" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
         </view>

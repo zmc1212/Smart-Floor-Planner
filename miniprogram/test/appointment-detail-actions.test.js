@@ -62,6 +62,15 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(wxml, /canStartSurvey[\s\S]*📐/);
   assert.match(styles, /\.action-secondary\s*\{[^}]*background:\s*#f8faf9;/s);
   assert.match(styles, /\.secondary-row\s*\{[^}]*display:\s*flex;/s);
+  assert.match(styles, /\.secondary-row\s*\{[^}]*gap:\s*16rpx;/s);
+  assert.match(styles, /\.action-btn\s*\{[^}]*flex:\s*1 1 0;/s);
+  assert.match(styles, /\.confirm-bar-row\s*\{[^}]*gap:\s*20rpx;/s);
+  assert.match(styles, /\.sticky-cancel[^}]*flex:\s*0\.9 1 0/);
+  assert.match(styles, /\.sticky-confirm[^}]*flex:\s*1\.3 1 0/);
+  assert.doesNotMatch(styles, /flex:\s*0 0 240rpx/);
+  assert.match(styles, /\.confirm-bar\s*\{[^}]*background:\s*rgba\(248,\s*250,\s*249/s);
+  assert.match(styles, /\.confirm-bar\s*\{[^}]*padding:\s*20rpx 28rpx calc\(20rpx \+ env\(safe-area-inset-bottom\)\)/s);
+  assert.match(styles, /\.detail-page\s*\{[^}]*padding-bottom:\s*calc\(200rpx \+ env\(safe-area-inset-bottom\)\)/s);
   assert.match(styles, /\.confirm-bar/);
 });
 

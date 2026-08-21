@@ -15,7 +15,7 @@ test('source package excludes development-only directories', () => {
 
   assert.deepEqual(
     ignoredDirectories,
-    new Set(['test', 'dev-log', '.impeccable'])
+    new Set(['test', 'dev-log', '.impeccable', 'scripts', 'node_modules'])
   );
 });
 
@@ -42,11 +42,78 @@ test('source package excludes historical artwork that is not used at runtime', (
 
   assert.deepEqual(ignoredFiles, new Set([
     'packages/business/assets/customer-project-v1/formal-floor-plan-archive.png',
+    'packages/business/assets/referral-service-v1/designer-matching.png',
+    'packages/business/assets/referral-service-v1/privacy-lock.png',
     'images/ai-design-empty-v2/stage-art.jpg',
     'images/home-v5/plan-preview.jpg',
     'images/home-v5/ai-preview.jpg',
     'images/ai-design-stage-active-glow-v1.png',
+    'images/generated-hero-bleed-v2.png',
+    'images/login-hero.png',
+    'images/airy-v1/xiao-k-mascot-3d.png',
+    'images/home-ip-v1/measure-k.png',
+    'tmp-lshape-preview.js',
+    'tmp-preview-check.js',
+    'DESIGN.md',
+    'design-tokens.json',
   ]));
+});
+
+test('business subpackage source stays under the WeChat 2MB subpackage limit', () => {
+  const miniRoot = path.join(__dirname, '..');
+  const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
+  const ignoredFiles = new Set(
+    projectConfig.packOptions.ignore
+      .filter((rule) => rule.type === 'file')
+      .map((rule) => rule.value.replace(/\\/g, '/'))
+  );
+  const businessRoot = path.join(miniRoot, 'packages', 'business');
+  let total = 0;
+  for (const file of fs.readdirSync(businessRoot, { recursive: true })) {
+    const absolute = path.join(businessRoot, file);
+    if (!fs.statSync(absolute).isFile()) continue;
+    const packagedPath = path.posix.join('packages/business', file.replace(/\\/g, '/'));
+    if (ignoredFiles.has(packagedPath)) continue;
+    total += fs.statSync(absolute).size;
+  }
+  assert.ok(
+    total <= 2048 * 1024,
+    `packages/business source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB subpackage limit`
+  );
+});
+
+test('main package source stays under the WeChat 2MB main-package limit', () => {
+  const miniRoot = path.join(__dirname, '..');
+  const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
+  const ignoredFiles = new Set(
+    projectConfig.packOptions.ignore
+      .filter((rule) => rule.type === 'file')
+      .map((rule) => rule.value.replace(/\\/g, '/'))
+  );
+  const ignoredFolders = new Set(
+    projectConfig.packOptions.ignore
+      .filter((rule) => rule.type === 'folder')
+      .map((rule) => rule.value.replace(/\\/g, '/'))
+  );
+  ignoredFolders.add('node_modules');
+  ignoredFolders.add('packages');
+  ignoredFolders.add('scripts');
+  ignoredFolders.add('.cloudbase');
+
+  let total = 0;
+  for (const file of fs.readdirSync(miniRoot, { recursive: true })) {
+    const absolute = path.join(miniRoot, file);
+    if (!fs.statSync(absolute).isFile()) continue;
+    const packagedPath = file.replace(/\\/g, '/');
+    const top = packagedPath.split('/')[0];
+    if (ignoredFolders.has(top)) continue;
+    if (ignoredFiles.has(packagedPath)) continue;
+    total += fs.statSync(absolute).size;
+  }
+  assert.ok(
+    total <= 2048 * 1024,
+    `main package source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB main-package limit`
+  );
 });
 
 test('runtime artwork excludes WebP and keeps the AI project folio as PNG', () => {

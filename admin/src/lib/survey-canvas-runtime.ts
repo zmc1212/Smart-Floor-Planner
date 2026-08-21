@@ -7,7 +7,11 @@ type SurveyCanvasRuntime = {
 };
 
 const resolved = rendererModule as SurveyCanvasRuntime & { default?: SurveyCanvasRuntime };
-const runtime = resolved.createSurveyRenderScene ? resolved : resolved.default;
+const runtime = (
+  typeof resolved.createSurveyRenderScene === 'function'
+    ? resolved
+    : resolved.default
+) as SurveyCanvasRuntime | undefined;
 
 if (!runtime?.createSurveyRenderScene || !runtime.drawSurveyScene) {
   throw new Error('Survey canvas runtime failed to load createSurveyRenderScene/drawSurveyScene');

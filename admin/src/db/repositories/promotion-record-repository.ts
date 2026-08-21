@@ -358,7 +358,10 @@ export interface WorkflowNotificationWithRelations
     PromotionRecord,
     'id' | 'enterpriseName' | 'contactPerson' | 'businessStage' | 'ownershipStatus'
   > | null;
-  recipientStaff: Pick<PromotionStaffSummary, 'id' | 'displayName' | 'role'> | null;
+  recipientStaff: (Pick<
+    PromotionStaffSummary,
+    'id' | 'displayName' | 'username' | 'role'
+  > & { phone?: string | null }) | null;
 }
 
 export class WorkflowNotificationRepository {
@@ -403,6 +406,8 @@ export class WorkflowNotificationRepository {
             .select({
               id: adminUsers.id,
               displayName: adminUsers.displayName,
+              username: adminUsers.username,
+              phone: adminUsers.phone,
               role: adminUsers.role,
             })
             .from(adminUsers)

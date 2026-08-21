@@ -46,8 +46,10 @@ test('lead detail and customer project deep-link into the schemes folio', () => 
   assert.match(leadDetail, /customer-ai-schemes\/customer-ai-schemes\?leadId=/);
   assert.match(leadDetail, /mode=staff/);
   assert.match(leadDetail, /openAIDesignEntry/);
+  assert.match(leadDetail, /canOpenAIDesignWorkbench/);
   assert.match(leadWxml, /查看全部方案/);
   assert.match(leadWxml, /进入 AI 设计/);
+  assert.match(leadWxml, /publishedSchemes\.length > 0 \|\| canOpenAIDesign/);
   assert.match(customerProject, /customer-ai-schemes\/customer-ai-schemes\?/);
   assert.match(customerProject, /mode=customer/);
   assert.match(customerProject, /openAiSchemes/);

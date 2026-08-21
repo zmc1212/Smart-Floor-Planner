@@ -20,8 +20,9 @@ const PROGRESS_PILL_LABELS = {
 };
 
 const STAGE_INSET_HELPER = {
-  claimed: '等待派单',
-  assignment_pending: '等待派单',
+  // Pending match: CTA is「等待派单」— helper must not repeat that label.
+  claimed: '匹配完成后可预约上门',
+  assignment_pending: '匹配完成后可预约上门',
   measurer_assigned: '引导预约',
   appointment_confirmed: '日程提醒',
   appointment_expired: '协助重约',
@@ -91,8 +92,12 @@ function buildInsetTitle(project) {
   return STAGE_INSET_TITLES[project.serviceStage] || '服务进行中';
 }
 
-function resolveInsetHelper(serviceStage, subtitle) {
+function resolveInsetHelper(serviceStage, subtitle, primaryLabel) {
   let insetHelper = STAGE_INSET_HELPER[serviceStage] || '';
+  // CTA labels stay on the primary button only — never mirror them in the inset.
+  if (insetHelper && primaryLabel && insetHelper === primaryLabel) {
+    return '';
+  }
   if (insetHelper && subtitle && insetHelper === subtitle) {
     const prefixed = `小K陪你推进：${STAGE_INSET_HELPER[serviceStage]}`;
     insetHelper = prefixed !== subtitle ? prefixed : '服务向导小K陪你推进当前阶段';
@@ -132,7 +137,7 @@ function buildCompanionState({ projects = [], selectedLeadId } = {}) {
   const primaryKind = featured.nextActionKind || 'none';
   const primaryLabel = resolvePrimaryLabel(featured);
   const subtitle = featured.appointmentSummary || '';
-  const insetHelper = resolveInsetHelper(featured.serviceStage, subtitle);
+  const insetHelper = resolveInsetHelper(featured.serviceStage, subtitle, primaryLabel);
   const insetTitle = buildInsetTitle(featured);
   const showSecondaryCta = SECONDARY_CTA_KINDS.has(primaryKind);
 

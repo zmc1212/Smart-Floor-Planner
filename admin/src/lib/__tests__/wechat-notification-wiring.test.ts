@@ -12,8 +12,12 @@ test('staff notification delivery resolves openid from wechat_identities when st
   assert.match(source, /notifyCustomerOfDesignPublished/);
   assert.match(source, /notifyDesignerOfSurveyCompleted/);
   assert.match(source, /notifyEnterpriseContactOfJoinResult/);
+  assert.match(source, /notifyReferrerOfSigningCommission/);
+  assert.match(source, /notifyEnterpriseAdminOfLeadConverted/);
   assert.match(source, /design_published/);
   assert.match(source, /enterprise_join_result/);
+  assert.match(source, /signing_commission/);
+  assert.match(source, /lead_converted/);
 });
 
 test('enterprise status approve and reject dispatch join-result notifications after commit', () => {
@@ -23,6 +27,11 @@ test('enterprise status approve and reject dispatch join-result notifications af
   );
   assert.match(source, /notifyEnterpriseContactOfJoinResult/);
   assert.match(source, /action === 'approve' \|\| action === 'reject'/);
+});
+
+test('lead convert notifies referrer commission and enterprise owner after commit', () => {
+  const source = readFileSync(join(adminSrc, 'app/api/leads/[id]/convert/route.ts'), 'utf8');
+  assert.match(source, /notifyConvertedLeadParties/);
 });
 
 test('assignment retry notifies measurer when distinct from designer', () => {
@@ -52,4 +61,26 @@ test('formal floor-plan completion notifies the assigned designer', () => {
   const createRoute = readFileSync(join(adminSrc, 'app/api/floorplans/route.ts'), 'utf8');
   assert.match(updateRoute, /notifyDesignerOfSurveyCompleted/);
   assert.match(createRoute, /notifyDesignerOfSurveyCompleted/);
+});
+
+test('reminder cron only runs appointment expiry and promotion routes no longer dispatch workflow notifications', () => {
+  const scan = readFileSync(join(adminSrc, 'lib/postgres-workflow-automation.ts'), 'utf8');
+  assert.match(scan, /expireOverdueAppointmentsAndNotify/);
+  assert.match(scan, /Legacy promotion follow-up/);
+  assert.doesNotMatch(scan, /notificationType: 'follow_up_overdue'/);
+  assert.doesNotMatch(scan, /notificationType: 'measure_overdue'/);
+  assert.doesNotMatch(scan, /notificationType: 'design_overdue'/);
+
+  const promotionWorkflow = readFileSync(join(adminSrc, 'lib/postgres-promotion-workflow.ts'), 'utf8');
+  assert.doesNotMatch(promotionWorkflow, /notificationJobs\.push/);
+  assert.match(promotionWorkflow, /notificationJobs: \[\]/);
+
+  for (const relative of [
+    'app/api/promotion-records/route.ts',
+    'app/api/promotion-records/[id]/route.ts',
+    'app/api/promotion-records/conflicts/route.ts',
+  ]) {
+    const route = readFileSync(join(adminSrc, relative), 'utf8');
+    assert.doesNotMatch(route, /dispatchWorkflowNotifications/);
+  }
 });

@@ -199,6 +199,8 @@ function startScan(silent = false, scanMs) {
         }
         if (_enrollCollectMode) {
           finishEnrollCollectScan(true, 'permission_denied');
+        } else if (_onConnectCallback) {
+          _onConnectCallback(false);
         }
         return;
       }
@@ -226,9 +228,6 @@ function startScan(silent = false, scanMs) {
       wx.stopBluetoothDevicesDiscovery();
       if (!silent) {
         wx.hideLoading();
-        
-        var isAndroid = false;
-        try { isAndroid = wx.getSystemInfoSync().platform === 'android'; } catch(e){}
 
         wx.showModal({
           title: '未发现设备',
@@ -238,6 +237,8 @@ function startScan(silent = false, scanMs) {
           showCancel: false
         });
       }
+      // 搜不到授权设备时必须回调失败，否则连接弹窗会一直 loading 且无法关闭
+      if (_onConnectCallback) _onConnectCallback(false);
     }
   }, timeoutMs);
 
@@ -317,8 +318,11 @@ function startScan(silent = false, scanMs) {
     fail: function (err) {
       console.log('搜索设备失败', err);
       if (_scanTimer) clearTimeout(_scanTimer);
+      _scanTimer = null;
       if (_enrollCollectMode) {
         finishEnrollCollectScan(silent, 'scan_failed');
+      } else if (_onConnectCallback) {
+        _onConnectCallback(false);
       }
       if (!silent) {
         wx.hideLoading();
@@ -335,6 +339,21 @@ function startScan(silent = false, scanMs) {
       }
     }
   });
+}
+
+/**
+ * 取消进行中的 BLE 搜索（不主动断开已建立的连接）。
+ * 供连接弹窗关闭时解除 loading 锁。
+ */
+function cancelBLEDiscovery() {
+  if (_scanTimer) {
+    clearTimeout(_scanTimer);
+    _scanTimer = null;
+  }
+  try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
+  if (!_deviceId) {
+    _isConnecting = false;
+  }
 }
 
 function connectDevice(deviceId, name, silent = false) {
@@ -820,6 +839,7 @@ module.exports = {
   initBLEForEnrollment: initBLEForEnrollment,
   scanBLEForEnrollment: scanBLEForEnrollment,
   closeBLE: closeBLE,
+  cancelBLEDiscovery: cancelBLEDiscovery,
   sendBLECommand: sendBLECommand,
   autoConnectBLE: autoConnectBLE,
   setCallbacks: setCallbacks,

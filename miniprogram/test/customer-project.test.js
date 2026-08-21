@@ -50,14 +50,16 @@ test('customer published designs and floor plan preview use protected endpoints 
   assert.match(wxml, /bindtap="previewFloorPlan"/);
 });
 
-test('customer project keeps the three reviewed PNG source assets extracted from the Phase 6 asset board', () => {
+test('customer project keeps the packaged Phase 6 folio PNG and uses main-package Xiao K', () => {
   const assetRoot = path.join(root, 'packages', 'business', 'assets', 'customer-project-v1');
-  const files = ['project-delivery-xiao-k.png', 'formal-floor-plan-archive.png', 'published-design-folio.png'];
-  for (const file of files) {
-    const buffer = fs.readFileSync(path.join(assetRoot, file));
-    assert.equal(buffer.subarray(1, 4).toString(), 'PNG');
-    assert.ok(buffer.length <= 300 * 1024, `${file} exceeds the generated-artwork budget`);
-  }
+  const folio = fs.readFileSync(path.join(assetRoot, 'published-design-folio.png'));
+  assert.equal(folio.subarray(1, 4).toString(), 'PNG');
+  assert.ok(folio.length <= 300 * 1024, 'published-design-folio.png exceeds the generated-artwork budget');
+
+  const airyMascot = fs.readFileSync(path.join(root, 'images', 'airy-v1', 'project-delivery-xiao-k.png'));
+  assert.equal(airyMascot.subarray(1, 4).toString(), 'PNG');
+  assert.equal(fs.existsSync(path.join(assetRoot, 'project-delivery-xiao-k.png')), false);
+  assert.equal(fs.existsSync(path.join(assetRoot, 'formal-floor-plan-archive.png')), true);
 });
 
 test('customer-facing project surfaces hide enterprise branding', () => {
@@ -83,6 +85,8 @@ test('customer project template and stylesheet stay aligned for the restored arc
   assert.match(wxml, /\/images\/airy-v1\/project-delivery-xiao-k\.png/);
   assert.doesNotMatch(wxml, /xiao-k-mascot-3d\.png/);
   assert.doesNotMatch(wxml, /packages\/business\/assets\/customer-project-v1\/project-delivery-xiao-k\.png/);
+  assert.doesNotMatch(wxml, /formal-floor-plan-archive\.png/);
+  assert.match(wxml, /floorPlanImageState === 'loading'/);
   assert.match(less, /\.booking-action,\s*\n?\.booking-secondary \{[\s\S]*?border-radius: 999rpx;[\s\S]*?\}/);
   assert.match(less, /\.booking-action,\s*\n?\.booking-secondary \{[\s\S]*?align-items: center;[\s\S]*?justify-content: center;[\s\S]*?\}/);
   assert.match(less, /\.booking-actions > \.booking-action \+ \.booking-secondary[\s\S]*?margin-top: 16rpx;/);

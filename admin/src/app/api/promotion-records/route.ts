@@ -4,7 +4,6 @@ import { PromotionRecordRepository } from '@/db/repositories';
 import { withMiniProgramPostgresTransaction, withPromotionPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
-import { dispatchWorkflowNotifications } from '@/lib/postgres-workflow-automation';
 import {
   buildPromotionListOptions,
   createPromotionRecord,
@@ -109,18 +108,6 @@ export async function POST(request: Request) {
       result = await withPromotionPostgresTransaction(b2bContext, (transaction) =>
         createPromotionRecord(transaction, body, actor)
       );
-    }
-
-    if (result.record) {
-      for (const job of result.notificationJobs) {
-        await dispatchWorkflowNotifications({
-          record: result.record,
-          notificationType: job.notificationType,
-          recipientRoles: job.recipientRoles,
-          message: job.message,
-          dedupeSuffix: job.dedupeSuffix,
-        });
-      }
     }
 
     return NextResponse.json(

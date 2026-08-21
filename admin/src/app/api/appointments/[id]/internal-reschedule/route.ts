@@ -11,29 +11,36 @@ import { notifyAppointmentStaff, notifyCustomerOfAppointment } from '@/lib/wecha
 
 export const dynamic = 'force-dynamic';
 
+function canInternalReschedule(role: string, designerId: bigint, staffId: bigint) {
+  return role === 'enterprise_admin' || (role === 'designer' && designerId === staffId);
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const admin = await getTenantContext(request);
-    if (admin) {
-      if (!admin.enterpriseId || !['designer', 'enterprise_admin'].includes(admin.role)) return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可改期' }, { status: 403 });
+    // Resolve Mini Program staff before Admin JWT so a designer Bearer token is
+    // never treated as an Admin session (payload.id is users.id, not admin_users.id).
+    const miniContext = await resolveMiniProgramContext(request);
+    if (miniContext) {
+      if (!miniContext.enterpriseId || miniContext.mode !== 'staff' || !miniContext.staff || !['designer', 'enterprise_admin'].includes(miniContext.staff.role)) {
+        return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可改期' }, { status: 403 });
+      }
       const body = await request.json();
-      const enterpriseId = parsePostgresId(admin.enterpriseId, 'enterprise id');
-      const appointmentId = BigInt((await params).id);
-      const appointment = await withAdminPostgresTransaction(admin, async (transaction) => {
+      const enterpriseId = parsePostgresId(miniContext.enterpriseId, 'enterprise id');
+      const appointmentId = parsePostgresId((await params).id, 'appointment id');
+      const staffId = BigInt(miniContext.staff._id);
+      const appointment = await withMiniProgramPostgresTransaction(miniContext, async (transaction) => {
         const repository = new AppointmentRepository(transaction);
-        const staffId = parsePostgresId(admin.userId, 'user id');
-        const actorUserId = await new AdminUserRepository(transaction).findLinkedUserId(staffId);
         const access = await repository.findById(enterpriseId, appointmentId);
-        if (admin.role === 'designer' && access?.appointment.designerId !== staffId) return null;
+        if (!access || !canInternalReschedule(miniContext.staff!.role, access.appointment.designerId, staffId)) return null;
         return repository.reschedule({
           enterpriseId,
           appointmentId,
           startAt: parseAppointmentDateTime(body.startAt, '开始时间'),
           endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
           expectedVersion: parseAppointmentVersion(body.version),
-          actorUserId,
+          actorUserId: BigInt(miniContext.user._id),
           reason: typeof body.reason === 'string' ? body.reason : '',
-          eventKey: `admin-internal-rescheduled:${randomUUID()}`,
+          eventKey: `internal-rescheduled:${randomUUID()}`,
         });
       });
       if (!appointment) return NextResponse.json({ success: false, error: '无权操作该预约' }, { status: 403 });
@@ -46,20 +53,30 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       }
       return NextResponse.json({ success: true, data: appointmentToDto(appointment) });
     }
-    const context = await resolveMiniProgramContext(request);
-    if (!context?.enterpriseId || context.mode !== 'staff' || !context.staff || !['designer', 'enterprise_admin'].includes(context.staff.role)) return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可改期' }, { status: 403 });
+
+    const admin = await getTenantContext(request);
+    if (!admin?.enterpriseId || !['designer', 'enterprise_admin'].includes(admin.role)) {
+      return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可改期' }, { status: admin ? 403 : 401 });
+    }
     const body = await request.json();
-    const enterpriseId = parsePostgresId(context.enterpriseId, 'enterprise id');
-    const appointmentId = BigInt((await params).id);
-    const appointment = await withMiniProgramPostgresTransaction(context, async (transaction) => {
+    const enterpriseId = parsePostgresId(admin.enterpriseId, 'enterprise id');
+    const appointmentId = parsePostgresId((await params).id, 'appointment id');
+    const staffId = parsePostgresId(admin.userId, 'user id');
+    const appointment = await withAdminPostgresTransaction(admin, async (transaction) => {
       const repository = new AppointmentRepository(transaction);
+      const actorUserId = await new AdminUserRepository(transaction).findLinkedUserId(staffId);
+      if (actorUserId == null) return null;
       const access = await repository.findById(enterpriseId, appointmentId);
-      if (context.staff!.role === 'designer' && access?.appointment.designerId !== BigInt(context.staff!._id)) return null;
+      if (!access || !canInternalReschedule(admin.role, access.appointment.designerId, staffId)) return null;
       return repository.reschedule({
-        enterpriseId, appointmentId,
-        startAt: parseAppointmentDateTime(body.startAt, '开始时间'), endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
-        expectedVersion: parseAppointmentVersion(body.version), actorUserId: BigInt(context.user._id),
-        reason: typeof body.reason === 'string' ? body.reason : '', eventKey: `internal-rescheduled:${randomUUID()}`,
+        enterpriseId,
+        appointmentId,
+        startAt: parseAppointmentDateTime(body.startAt, '开始时间'),
+        endAt: parseAppointmentDateTime(body.endAt, '结束时间'),
+        expectedVersion: parseAppointmentVersion(body.version),
+        actorUserId,
+        reason: typeof body.reason === 'string' ? body.reason : '',
+        eventKey: `admin-internal-rescheduled:${randomUUID()}`,
       });
     });
     if (!appointment) return NextResponse.json({ success: false, error: '无权操作该预约' }, { status: 403 });

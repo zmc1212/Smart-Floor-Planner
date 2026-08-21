@@ -242,6 +242,16 @@ function canEditLeadProfile(lead, staffRole, staffId) {
   return false;
 }
 
+/** Designer AI entry after formal survey — not gated on already-published schemes. */
+function canOpenAIDesignWorkbench(lead, staffRole, formalPlans) {
+  if (!lead || lead.archivedAt) return false;
+  if (staffRole !== 'designer') return false;
+  if (['converted', 'closed'].includes(lead.status)) return false;
+  if (!Array.isArray(formalPlans) || formalPlans.length === 0) return false;
+  if (normalizeStatus(lead.status) === 'designing') return true;
+  return ['survey_completed', 'design_published'].includes(lead.serviceStage);
+}
+
 function staffIdOf(value) {
   if (value == null) return '';
   if (typeof value === 'object') return String(value._id || value.id || '');
@@ -289,6 +299,7 @@ Page({
     conversionSubmitting: false,
     conversionSkipsStages: false,
     publishedSchemes: [],
+    canOpenAIDesign: false,
     loading: true,
     errorMessage: '',
     deleting: false
@@ -339,6 +350,7 @@ Page({
       activeFloorPlan: formalPlans[0] || null,
       previousFloorPlans: formalPlans.slice(1),
       publishedSchemes,
+      canOpenAIDesign: canOpenAIDesignWorkbench(lead, staffRole, formalPlans),
       loading: false
     });
     this.refreshAppointmentEntry(staffRole, lead, isAssignedMeasurer);
@@ -522,6 +534,7 @@ Page({
   },
 
   onOpenAIDesignWorkbench() {
+    if (!this.data.canOpenAIDesign) return;
     const plan = this.data.activeFloorPlan;
     openAIDesignEntry({
       leadId: this.data.leadId,

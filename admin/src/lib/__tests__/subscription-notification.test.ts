@@ -4,8 +4,10 @@ import {
   buildDesignPublishedPayload,
   buildEnterpriseJoinResultPayload,
   buildLeadAssignmentPayload,
+  buildLeadConvertedPayload,
   buildMeasurementAppointmentPayload,
   buildNewLeadPayload,
+  buildSigningCommissionPayload,
   buildWorkflowNotificationPayload,
   buildWorkflowTodoPayload,
   resolveWorkflowTemplateKind,
@@ -30,7 +32,7 @@ test('legacy single-template config normalizes to V2 while preserving the old ID
   assert.equal(normalized.miniprogramTemplateId, normalized.templates.workflow_todo.templateId);
 });
 
-test('six subscription template IDs must remain distinct', () => {
+test('eight subscription template IDs must remain distinct', () => {
   const normalized = normalizePlatformNotificationConfig();
   assert.deepEqual(SUBSCRIPTION_TEMPLATE_KINDS, [
     'workflow_todo',
@@ -39,6 +41,8 @@ test('six subscription template IDs must remain distinct', () => {
     'measurement_appointment',
     'design_published',
     'enterprise_join_result',
+    'signing_commission',
+    'lead_converted',
   ]);
   assert.equal(
     normalized.templates.design_published.templateId,
@@ -47,6 +51,14 @@ test('six subscription template IDs must remain distinct', () => {
   assert.equal(
     normalized.templates.enterprise_join_result.templateId,
     'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk'
+  );
+  assert.equal(
+    normalized.templates.signing_commission.templateId,
+    'aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU'
+  );
+  assert.equal(
+    normalized.templates.lead_converted.templateId,
+    'WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo'
   );
   assert.doesNotThrow(() => validateDistinctTemplateIds(normalized.templates));
   normalized.templates.new_lead.templateId = normalized.templates.workflow_todo.templateId;
@@ -123,6 +135,25 @@ test('payload builders emit only the approved keyword keys', () => {
   assert.equal(joinResult.phrase2.value, '审核通过');
   assert.equal(joinResult.time1.value, '2026-08-21 16:00:00');
   assert.equal(joinResult.time4.value, '2026-08-20 15:00:00');
+
+  const signing = buildSigningCommissionPayload(
+    DEFAULT_SUBSCRIPTION_TEMPLATES.signing_commission,
+    {
+      rewardType: '签单提成',
+      note: '张三已签约',
+      amount: '1280.5',
+    }
+  );
+  assert.deepEqual(Object.keys(signing), ['thing1', 'thing2', 'amount4']);
+  assert.equal(signing.amount4.value, '¥1280.50');
+
+  const converted = buildLeadConvertedPayload(DEFAULT_SUBSCRIPTION_TEMPLATES.lead_converted, {
+    notifiedAt: '2026-08-21T08:00:00.000Z',
+    tip: '张三已签约',
+  });
+  assert.deepEqual(Object.keys(converted), ['time1', 'thing2']);
+  assert.equal(converted.time1.value, '2026-08-21 16:00:00');
+  assert.equal(converted.thing2.value, '张三已签约');
 });
 
 test('new-lead selected time falls back from assignment to creation time', () => {

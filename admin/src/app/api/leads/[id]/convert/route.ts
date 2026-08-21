@@ -14,6 +14,7 @@ import {
   withAdminPostgresTransaction,
   withMiniProgramPostgresTransaction,
 } from '@/lib/postgres-request-scope';
+import { notifyConvertedLeadParties } from '@/lib/wechat-notification';
 
 export async function POST(
   request: Request,
@@ -68,6 +69,14 @@ export async function POST(
         { success: false, error: '线索不存在或无权操作' },
         { status: 404 }
       );
+    }
+    if (updated.enterpriseId) {
+      void notifyConvertedLeadParties({
+        enterpriseId: updated.enterpriseId,
+        leadId: updated.id,
+      }).catch((error) => {
+        console.error('Converted lead notification dispatch failed:', error);
+      });
     }
     return NextResponse.json({
       success: true,

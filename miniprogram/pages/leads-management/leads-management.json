@@ -3,7 +3,6 @@
   "navigationStyle": "custom",
   "usingComponents": {
     "lead-list": "/components/lead-list/lead-list",
-    "lead-modal": "/components/lead-modal/lead-modal",
-    "role-workbench": "/components/role-workbench/role-workbench"
+    "lead-modal": "/components/lead-modal/lead-modal"
   }
 }

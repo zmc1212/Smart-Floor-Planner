@@ -180,6 +180,46 @@ export function buildEnterpriseJoinResultPayload(
   return payload;
 }
 
+export function formatWeChatAmount(value: unknown, fallback = '¥0.00') {
+  const numeric = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? Number(value.trim().replace(/,/g, ''))
+      : Number.NaN;
+  if (!Number.isFinite(numeric)) return fallback;
+  return `¥${numeric.toFixed(2)}`;
+}
+
+export function buildSigningCommissionPayload(
+  template: SubscriptionTemplateConfig,
+  input: {
+    rewardType?: unknown;
+    note?: unknown;
+    amount?: unknown;
+  }
+) {
+  const keys = template.keywordKeys;
+  const payload: SubscriptionMessagePayload = {};
+  payloadEntry(payload, keys.rewardType, truncateWeChatText(input.rewardType, 20, '签单提成'));
+  payloadEntry(payload, keys.note, truncateWeChatText(input.note, 20, '已签约，提成待结算'));
+  payloadEntry(payload, keys.amount, formatWeChatAmount(input.amount));
+  return payload;
+}
+
+export function buildLeadConvertedPayload(
+  template: SubscriptionTemplateConfig,
+  input: {
+    notifiedAt?: Date | string | null;
+    tip?: unknown;
+  }
+) {
+  const keys = template.keywordKeys;
+  const payload: SubscriptionMessagePayload = {};
+  payloadEntry(payload, keys.notifiedAt, formatWeChatDateTime(input.notifiedAt));
+  payloadEntry(payload, keys.tip, truncateWeChatText(input.tip, 20, '客户已签约'));
+  return payload;
+}
+
 export function resolveWorkflowTemplateKind(notificationType: string): SubscriptionTemplateKind {
   return notificationType === 'measure_assigned' || notificationType === 'design_assigned'
     ? 'lead_assignment'

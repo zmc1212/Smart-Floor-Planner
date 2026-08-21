@@ -231,10 +231,6 @@ export async function GET(request: Request) {
         appointment: row.appointment,
         floorPlanRecords: [],
         primaryFloorPlanRecord: null,
-        assignedUser: null,
-        promoter: null,
-        archivedUser: null,
-        convertedUser: null,
       }, row.appointment));
       const staffingItems = buildStaffingGapItems({
         eligibleDesignerCount,

@@ -123,23 +123,12 @@ Page({
         await app.hydrateStoredSession();
         if (app.globalData.sessionRecovery) throw new Error('身份资料已失效，请重新登录');
 
-        // Fix: Use modal to create a new user gesture for notification request
-        wx.showModal({
+        // Modal creates a fresh user gesture for requestSubscribeMessage
+        const { offerNotificationAuthorization } = require('../../../utils/notification.js');
+        offerNotificationAuthorization({
           title: '登录成功',
-          content: '建议开启消息通知，以便及时接收任务提醒与业务进度。',
-          confirmText: '开启通知',
           cancelText: '直接进入',
-          success: async (modalRes) => {
-            if (modalRes.confirm) {
-              const { requestNotification } = require('../../../utils/notification.js');
-              try {
-                await requestNotification();
-              } catch (e) {
-                console.error('Notification request failed', e);
-              }
-            }
-            this.finishLogin();
-          }
+          onDone: () => this.finishLogin()
         });
       } else {
         throw new Error(res.error || '登录失败');

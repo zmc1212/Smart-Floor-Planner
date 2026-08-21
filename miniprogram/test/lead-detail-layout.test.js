@@ -89,6 +89,20 @@ test('formal-survey keeps next-action right of the tab, address on its own row, 
   assert.ok(conversionIndex > historyIndex);
 });
 
+test('designer AI design CTA appears after formal survey without requiring published schemes', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    'utf8'
+  );
+  assert.match(script, /function canOpenAIDesignWorkbench\(/);
+  assert.match(script, /staffRole !== 'designer'/);
+  assert.match(script, /canOpenAIDesign: canOpenAIDesignWorkbench\(/);
+  assert.match(script, /if \(!this\.data\.canOpenAIDesign\) return;/);
+  assert.match(template, /wx:if="\{\{publishedSchemes\.length > 0 \|\| canOpenAIDesign\}\}"/);
+  assert.match(template, /wx:if="\{\{canOpenAIDesign\}\}"[\s\S]*?进入 AI 设计/);
+  assert.match(template, /量房完成，可开始出图/);
+});
+
 test('formal-survey address row stays full-width below the next-action head', () => {
   assert.match(styles, /\.whole-home-address\s*\{[^}]*display:\s*block;/s);
   assert.doesNotMatch(styles, /\.appointment-entry\s*\{/);

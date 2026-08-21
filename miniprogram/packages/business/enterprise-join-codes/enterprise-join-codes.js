@@ -47,15 +47,21 @@ function navigationMetrics() {
 }
 
 function confirmModal(options) {
+  // WeChat caps confirmText/cancelText at 4 characters; longer values make
+  // showModal fail with no UI, which looks like a dead tap.
+  const confirmText = String(options.confirmText || '确定').slice(0, 4);
   return new Promise((resolve) => {
     wx.showModal({
       title: options.title,
       content: options.content,
-      confirmText: options.confirmText || '确定',
+      confirmText,
       confirmColor: options.destructive ? '#E11D48' : '#00C365',
       cancelText: '取消',
       success: (result) => resolve(Boolean(result.confirm)),
-      fail: () => resolve(false)
+      fail: () => {
+        wx.showToast({ title: '确认弹窗打开失败，请重试', icon: 'none' });
+        resolve(false);
+      }
     });
   });
 }
@@ -206,7 +212,7 @@ Page({
       content: hasActive
         ? '换新后旧码立即失效。请确认已通知仍在使用旧码的人员后再继续。'
         : '将创建仅供当前企业使用的入驻码，供微信扫码入驻。',
-      confirmText: hasActive ? '换新入驻码' : '生成入驻码',
+      confirmText: hasActive ? '确认换新' : '确认生成',
       destructive: hasActive
     });
     if (!accepted) return;
@@ -236,7 +242,7 @@ Page({
     const accepted = await confirmModal({
       title: `停用${label}`,
       content: '停用后不能继续用此码入驻；已建立的员工、推荐人关系和历史业务记录不会被修改。',
-      confirmText: '停用入驻码',
+      confirmText: '确认停用',
       destructive: true
     });
     if (!accepted) return;

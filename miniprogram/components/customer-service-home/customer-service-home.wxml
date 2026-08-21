@@ -82,7 +82,7 @@
             bindtap="onPrimaryCta"
             hover-class="btn-pressed"
           >
-            <text>{{primaryCta.label}}</text>
+            <text class="hero-cta-label">{{primaryCta.label}}</text>
           </view>
           <view
             wx:if="{{showSecondaryCta}}"
@@ -91,7 +91,7 @@
             hover-class="btn-pressed"
             aria-label="我的服务档案"
           >
-            <text>我的服务档案</text>
+            <text class="hero-cta-label">我的服务档案</text>
           </view>
         </view>
 

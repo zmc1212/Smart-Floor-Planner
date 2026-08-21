@@ -23,7 +23,8 @@ export async function PATCH(
     const { id } = await params;
     const staffId = parsePostgresId(id);
     const body = (await request.json()) as { assignmentPaused?: unknown };
-    if (typeof body.assignmentPaused !== 'boolean') {
+    const assignmentPaused = body.assignmentPaused;
+    if (typeof assignmentPaused !== 'boolean') {
       return NextResponse.json(
         { success: false, error: '请提供 assignmentPaused 布尔值' },
         { status: 400 }
@@ -37,7 +38,7 @@ export async function PATCH(
       if (current.role !== 'designer' && current.role !== 'measurer') {
         throw Object.assign(new Error('只能调整设计师或测量员派单状态'), { status: 403 });
       }
-      return repository.update(staffId, { assignmentPaused: body.assignmentPaused });
+      return repository.update(staffId, { assignmentPaused });
     });
 
     if (!updated) {
@@ -45,7 +46,7 @@ export async function PATCH(
     }
 
     if (
-      body.assignmentPaused === false
+      assignmentPaused === false
       && updated.enterpriseId
       && updated.status === 'active'
       && !updated.assignmentPaused

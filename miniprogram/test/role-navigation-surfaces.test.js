@@ -67,7 +67,8 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(home, /<role-workbench[^>]+focus="overview"/);
   assert.equal(homeConfig.usingComponents['role-workbench'], '/components/role-workbench/role-workbench');
   assert.equal(appConfig.usingComponents['role-workbench'], '/components/role-workbench/role-workbench');
-  assert.match(leads, /<role-workbench[^>]+role="measurer"[^>]+focus="tasks"/);
+  assert.doesNotMatch(leads, /role-workbench/);
+  assert.match(leads, /<lead-list/);
   assert.match(design, /role="measurer" focus="survey"/);
   assert.doesNotMatch(design, /enterprise_admin/);
   assert.match(component, /getMenuButtonBoundingClientRect/);

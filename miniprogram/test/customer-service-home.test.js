@@ -103,6 +103,7 @@ test('falls back to kind labels when nextActionLabel missing', () => {
   });
   assert.equal(wait.primaryCta.label, '等待派单');
   assert.equal(wait.insetTitle, '服务匹配中');
+  assert.notEqual(wait.insetHelper, wait.primaryCta.label);
 });
 
 test('claimed insetHelper avoids repeating appointmentSummary subtitle', () => {
@@ -116,6 +117,23 @@ test('claimed insetHelper avoids repeating appointmentSummary subtitle', () => {
   });
   assert.equal(state.subtitle, '等待派单');
   assert.notEqual(state.insetHelper, state.subtitle);
+  assert.notEqual(state.insetHelper, state.primaryCta.label);
+});
+
+test('pending match keeps 等待派单 only on the primary CTA', () => {
+  const state = buildCompanionState({
+    projects: [{
+      leadId: '1',
+      serviceStage: 'assignment_pending',
+      appointmentSummary: '正在为您匹配设计师和测量员',
+      nextActionKind: 'wait_designer',
+      nextActionLabel: '等待派单',
+    }],
+  });
+  assert.equal(state.primaryCta.label, '等待派单');
+  assert.equal(state.insetTitle, '服务匹配中');
+  assert.equal(state.insetHelper, '匹配完成后可预约上门');
+  assert.notEqual(state.insetHelper, '等待派单');
 });
 
 test('customer-service-home component follows stage-companion contract', () => {

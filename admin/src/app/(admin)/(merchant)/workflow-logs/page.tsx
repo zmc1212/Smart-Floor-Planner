@@ -32,6 +32,8 @@ type WorkflowLog = {
   recipientStaffId?: {
     _id: string;
     displayName?: string | null;
+    username?: string | null;
+    phone?: string | null;
     role?: string | null;
   } | string | null;
   recipientRole?: string | null;
@@ -53,7 +55,9 @@ type NotificationTemplateKind =
   | 'new_lead'
   | 'measurement_appointment'
   | 'design_published'
-  | 'enterprise_join_result';
+  | 'enterprise_join_result'
+  | 'signing_commission'
+  | 'lead_converted';
 
 type NotificationConfigForm = {
   version: 2;
@@ -76,6 +80,8 @@ const TEMPLATE_FIELDS: Array<{
   { kind: 'measurement_appointment', label: '上门量房提醒', help: '预约创建、改期、取消或过期时通知设计师、测量员和客户。' },
   { kind: 'design_published', label: '设计案例发布提醒', help: '方案对客户可见后通知客户本人。' },
   { kind: 'enterprise_join_result', label: '入驻申请结果通知', help: '平台审核通过或驳回企业入驻申请后通知企业联系人。' },
+  { kind: 'signing_commission', label: '推广奖励到账提醒', help: '推荐网络线索签单且提成快照成功后通知推荐人。' },
+  { kind: 'lead_converted', label: '客户已成交提醒', help: '客户签单成功后通知企业负责人。' },
 ];
 
 const STATUS_OPTIONS: Array<{ label: string; value: LogStatus }> = [
@@ -91,16 +97,68 @@ const STATUS_META: Record<LogStatus, { label: string; color: string }> = {
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  follow_up_created: '新跟进提醒',
-  follow_up_overdue: '跟进超时',
-  conflict_pending: '报备冲突',
-  measure_assigned: '测量派单',
-  measure_overdue: '测量超时',
-  measure_submitted: '测量完成',
-  design_assigned: '设计派单',
-  design_overdue: '设计超时',
-  design_completed: '设计完成',
-  record_closed: '流程关闭',
+  lead_created: '新增客户',
+  lead_assigned: '客户指派',
+  lead_assignment_pending: '待派单',
+  measurement_appointment_created: '预约创建',
+  measurement_appointment_rescheduled: '预约改期',
+  measurement_appointment_cancelled: '预约取消',
+  measurement_appointment_expired: '预约过期',
+  survey_completed: '量房完成',
+  design_published: '方案发布',
+  signing_commission: '推广奖励到账',
+  lead_converted: '客户已成交',
+  enterprise_join_result: '入驻审核结果',
+  // Historical promotion-report rows may still appear in the ledger.
+  follow_up_created: '（旧）新跟进提醒',
+  follow_up_overdue: '（旧）跟进超时',
+  conflict_pending: '（旧）报备冲突',
+  measure_assigned: '（旧）测量派单',
+  measure_overdue: '（旧）测量超时',
+  measure_submitted: '（旧）测量完成',
+  design_assigned: '（旧）设计派单',
+  design_overdue: '（旧）设计超时',
+  design_completed: '（旧）设计完成',
+  record_closed: '（旧）流程关闭',
+};
+
+const TYPE_REASONS: Record<string, string> = {
+  lead_created: '新线索创建，通知企业负责人',
+  lead_assigned: '线索已派单，通知设计师或测量员',
+  lead_assignment_pending: '暂无可用员工，催促负责人处理待派单',
+  measurement_appointment_created: '上门量房预约已确认',
+  measurement_appointment_rescheduled: '上门量房预约已改期',
+  measurement_appointment_cancelled: '上门量房预约已取消',
+  measurement_appointment_expired: '上门量房预约已过期',
+  survey_completed: '正式量房完成，提醒设计师发布方案',
+  design_published: '方案已对客户可见',
+  signing_commission: '签单成功，通知推荐人提成入账',
+  lead_converted: '签单成功，通知企业负责人',
+  enterprise_join_result: '平台审核企业入驻申请结果',
+  follow_up_created: '旧报备流程通知，已停发',
+  follow_up_overdue: '旧报备流程通知，已停发',
+  conflict_pending: '旧报备流程通知，已停发',
+  measure_assigned: '旧报备流程通知，已停发',
+  measure_overdue: '旧报备流程通知，已停发',
+  measure_submitted: '旧报备流程通知，已停发',
+  design_assigned: '旧报备流程通知，已停发',
+  design_overdue: '旧报备流程通知，已停发',
+  design_completed: '旧报备流程通知，已停发',
+  record_closed: '旧报备流程通知，已停发',
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  station: '站内提醒',
+  miniprogram_sub: '微信订阅消息',
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  salesperson: '业务员',
+  measurer: '测量员',
+  designer: '设计师',
+  enterprise_admin: '企业负责人',
+  admin: '平台管理员',
+  super_admin: '超级管理员',
 };
 
 function formatDate(value?: string | null) {
@@ -119,15 +177,51 @@ function contactPerson(log: WorkflowLog) {
     : '无联系人';
 }
 
-function recipientName(log: WorkflowLog) {
+function recipientStaff(log: WorkflowLog) {
   return log.recipientStaffId && typeof log.recipientStaffId !== 'string'
-    ? log.recipientStaffId.displayName || log.recipientRole || '系统角色待办'
-    : log.recipientRole || '系统角色待办';
+    ? log.recipientStaffId
+    : null;
 }
 
-function logMessage(log: WorkflowLog) {
-  const reason = log.metadata?.reason;
-  return log.errorMessage || log.message || (typeof reason === 'string' ? reason : '') || '-';
+function recipientDisplayName(log: WorkflowLog) {
+  const staff = recipientStaff(log);
+  return staff?.displayName || staff?.username || log.recipientRole || '未指定接收人';
+}
+
+function recipientUsername(log: WorkflowLog) {
+  return recipientStaff(log)?.username || '-';
+}
+
+function recipientPhone(log: WorkflowLog) {
+  const phone = recipientStaff(log)?.phone;
+  return phone && String(phone).trim() ? String(phone).trim() : '未登记电话';
+}
+
+function recipientRoleLabel(log: WorkflowLog) {
+  const role = recipientStaff(log)?.role || log.recipientRole || '';
+  return ROLE_LABELS[role] || role || '未指定角色';
+}
+
+function channelLabel(log: WorkflowLog) {
+  return CHANNEL_LABELS[String(log.channel || '')] || log.channel || '未知通道';
+}
+
+function sendReason(log: WorkflowLog) {
+  return TYPE_REASONS[log.notificationType]
+    || TYPE_LABELS[log.notificationType]
+    || log.notificationType
+    || '系统通知';
+}
+
+function deliveryNote(log: WorkflowLog) {
+  if (log.errorMessage) return log.errorMessage;
+  if (log.status === 'sent' && log.channel === 'station') {
+    return '已写入站内提醒；不等于微信已送达';
+  }
+  if (log.status === 'sent' && log.channel === 'miniprogram_sub') {
+    return '微信接口已接受；需用户此前授权对应模板';
+  }
+  return log.message || '-';
 }
 
 export default function WorkflowLogsPage() {
@@ -174,7 +268,7 @@ export default function WorkflowLogsPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || '提醒扫描执行失败');
       }
-      notify.success(`提醒扫描已执行，处理 ${result.data?.processed || 0} 条记录`);
+      notify.success(`预约过期扫描已执行，过期 ${result.data?.expiredAppointments || 0} 条`);
       await actionRef.current?.reload();
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '提醒扫描执行失败');
@@ -191,52 +285,77 @@ export default function WorkflowLogsPage() {
       valueEnum: Object.fromEntries(
         STATUS_OPTIONS.map((option) => [option.value, option.label]),
       ),
-      width: 130,
+      width: 140,
       render: (_, log) => {
         const status = STATUS_META[log.status];
-        return <Tag color={status.color}>{status.label}</Tag>;
+        return (
+          <Flex vertical gap={4}>
+            <Tag color={status.color}>{status.label}</Tag>
+            <Typography.Text type="secondary" className="text-xs">{channelLabel(log)}</Typography.Text>
+          </Flex>
+        );
       },
     },
     {
       title: '通知类型',
       dataIndex: 'notificationType',
-      width: 170,
+      width: 140,
       hideInSearch: true,
       render: (_, log) => TYPE_LABELS[log.notificationType] || log.notificationType,
     },
     {
+      title: '接收人',
+      key: 'recipient',
+      width: 220,
+      hideInSearch: true,
+      render: (_, log) => (
+        <Flex vertical gap={2}>
+          <Typography.Text strong ellipsis>{recipientDisplayName(log)}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs" ellipsis>
+            用户名：{recipientUsername(log)}
+          </Typography.Text>
+          <Typography.Text type="secondary" className="text-xs" ellipsis>
+            电话：{recipientPhone(log)}
+          </Typography.Text>
+          <Typography.Text type="secondary" className="text-xs">{recipientRoleLabel(log)}</Typography.Text>
+        </Flex>
+      ),
+    },
+    {
+      title: '发送原因',
+      key: 'reason',
+      width: 260,
+      hideInSearch: true,
+      render: (_, log) => (
+        <Typography.Text ellipsis={{ tooltip: sendReason(log) }}>
+          {sendReason(log)}
+        </Typography.Text>
+      ),
+    },
+    {
+      title: '结果说明',
+      key: 'deliveryNote',
+      width: 280,
+      hideInSearch: true,
+      render: (_, log) => (
+        <Typography.Text
+          type={log.status === 'failed' ? 'danger' : 'secondary'}
+          ellipsis={{ tooltip: deliveryNote(log) }}
+        >
+          {deliveryNote(log)}
+        </Typography.Text>
+      ),
+    },
+    {
       title: '企业 / 报备',
       key: 'business',
-      width: 220,
+      width: 200,
       hideInSearch: true,
       render: (_, log) => (
         <Flex vertical gap={2}>
           <Typography.Text strong ellipsis>{enterpriseName(log)}</Typography.Text>
           <Typography.Text type="secondary" className="text-xs" ellipsis>{contactPerson(log)}</Typography.Text>
         </Flex>
-      ),
-    },
-    {
-      title: '接收对象',
-      key: 'recipient',
-      width: 190,
-      hideInSearch: true,
-      render: (_, log) => (
-        <Flex vertical gap={2}>
-          <Typography.Text>{recipientName(log)}</Typography.Text>
-          <Typography.Text type="secondary" className="text-xs">{log.recipientRole || '未指定角色'}</Typography.Text>
-        </Flex>
-      ),
-    },
-    {
-      title: '通知内容',
-      key: 'message',
-      width: 360,
-      hideInSearch: true,
-      render: (_, log) => (
-        <Typography.Text type={log.status === 'failed' ? 'danger' : 'secondary'} ellipsis={{ tooltip: logMessage(log) }}>
-          {logMessage(log)}
-        </Typography.Text>
       ),
     },
     {
@@ -254,7 +373,7 @@ export default function WorkflowLogsPage() {
         breadcrumbRender={false}
         className="admin-page-container"
         title="通知记录"
-        content="查看系统自动发送的站内提醒和小程序订阅消息结果。"
+        content="查看小程序订阅与站内提醒结果。现行仅保留推荐网络服务阶段通知；旧企业报备催办已停发。"
         extra={canRunScan ? [
           <Button
             key="scan"
@@ -263,7 +382,7 @@ export default function WorkflowLogsPage() {
             loading={scanRunning}
             onClick={() => void runReminderScan()}
           >
-            执行提醒扫描
+            执行预约过期扫描
           </Button>,
         ] : undefined}
       >
@@ -375,7 +494,7 @@ export default function WorkflowLogsPage() {
           <section className="flex flex-col gap-4" aria-labelledby="workflow-log-table-title">
             <div>
               <Typography.Title id="workflow-log-table-title" level={4} className="!mb-1">通知明细</Typography.Title>
-              <Typography.Text type="secondary">按发送状态筛选日志，并通过失败内容追踪待处理问题。</Typography.Text>
+              <Typography.Text type="secondary">按发送状态筛选；接收人含用户名与电话，发送原因与结果说明可区分站内提醒和微信订阅。</Typography.Text>
             </div>
             <ProTable<WorkflowLog>
               className="admin-data-table admin-mobile-filter-stack"
@@ -385,7 +504,7 @@ export default function WorkflowLogsPage() {
               search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
               options={{ reload: true, density: true, setting: true }}
               pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-              scroll={{ x: 1120 }}
+              scroll={{ x: 1420 }}
               request={async (params) => {
                 const query = new URLSearchParams({
                   page: String(params.current || 1),

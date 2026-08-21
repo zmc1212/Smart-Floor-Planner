@@ -36,6 +36,12 @@ import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { getLeadNextAction, getLeadStatusLabel, getLeadWorkflowStep, LEAD_WORKFLOW_STEPS } from '@/lib/lead-status';
 import { canRebookAppointment, resolveLeadServiceStage } from '@/lib/lead-service-stage';
+import {
+  ASSIGNMENT_STATUS_LABELS,
+  getAssignmentPendingHint,
+  getAssignmentStatusLabel,
+  needsStaffWechatForAssignment,
+} from '@/lib/lead-assignment-feedback';
 
 type StaffReference = {
   _id: string;
@@ -161,18 +167,6 @@ const APPOINTMENT_STATUS_LABELS: Record<string, string> = {
   expired: '已过期',
 };
 
-const ASSIGNMENT_STATUS_LABELS: Record<string, string> = {
-  assigned: '已派单',
-  assignment_pending: '待派单',
-  not_requested: '未请求派单',
-};
-
-const ASSIGNMENT_ERROR_LABELS: Record<string, string> = {
-  designer_unavailable: '暂无可用设计师',
-  measurer_unavailable: '暂无可用测量员',
-  designer_and_measurer_unavailable: '设计师和测量员都不可用',
-};
-
 const ARCHIVE_REASON_OPTIONS = [
   { label: '无意向', value: 'no_intent' },
   { label: '失联', value: 'lost_contact' },
@@ -240,13 +234,6 @@ function getStatusColor(status: string) {
   if (status === 'converted') return 'orange';
   if (status === 'closed') return 'default';
   return 'cyan';
-}
-
-function getAssignmentStatusLabel(status?: string | null, errorCode?: string | null) {
-  if (status === 'assignment_pending') {
-    return errorCode ? ASSIGNMENT_ERROR_LABELS[errorCode] || '待派单' : '待派单';
-  }
-  return ASSIGNMENT_STATUS_LABELS[status || ''] || '未派单';
 }
 
 function getStaffName(
@@ -727,7 +714,17 @@ function LeadsPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '派单重试失败');
-      notify.success(result.data?.assignmentStatus === 'assigned' ? '派单已成功' : '已重新尝试派单');
+      const nextStatus = result.data?.assignmentStatus as string | undefined;
+      const nextErrorCode = (result.data?.assignmentErrorCode as string | null | undefined) ?? null;
+      if (nextStatus === 'assigned') {
+        notify.success('派单已成功');
+      } else {
+        const reason = getAssignmentStatusLabel('assignment_pending', nextErrorCode);
+        notify.warning(`派单未完成：${reason}`, {
+          description: getAssignmentPendingHint(nextErrorCode),
+          duration: 6000,
+        });
+      }
       if (selectedLead?._id === lead._id && result.data) {
         setSelectedLead((current) => current ? { ...current, ...result.data } : current);
       }
@@ -1002,7 +999,7 @@ function LeadsPage() {
     }
     const areaValue = profileForm.area.trim();
     const area = areaValue ? Number(areaValue) : null;
-    if (areaValue && (!Number.isFinite(area) || area <= 0)) {
+    if (areaValue && (area === null || !Number.isFinite(area) || area <= 0)) {
       notify.error('请输入有效的房屋面积');
       return;
     }
@@ -1589,7 +1586,11 @@ function LeadsPage() {
                           <LeadCardField
                             label="派单状态"
                             value={getAssignmentStatusLabel(lead.assignmentStatus, lead.assignmentErrorCode)}
-                            detail={lead.assignmentStatus === 'assignment_pending' ? '可在下方重试派单' : undefined}
+                            detail={
+                              lead.assignmentStatus === 'assignment_pending'
+                                ? getAssignmentPendingHint(lead.assignmentErrorCode)
+                                : undefined
+                            }
                           />
                         </div>
 
@@ -1600,7 +1601,12 @@ function LeadsPage() {
                           </Flex>
                           <Flex align="center" wrap style={{ gap: 12 }}>
                             {archiveState === 'active' && lead.assignmentStatus === 'assignment_pending' ? (
-                              <Button size="small" loading={retryingAssignmentId === lead._id} onClick={() => void retryAssignment(lead)}>重试派单</Button>
+                              <>
+                                {needsStaffWechatForAssignment(lead.assignmentErrorCode) ? (
+                                  <Button size="small" href="/staff">去员工管理</Button>
+                                ) : null}
+                                <Button size="small" loading={retryingAssignmentId === lead._id} onClick={() => void retryAssignment(lead)}>重试派单</Button>
+                              </>
                             ) : null}
                             {archiveState === 'active' && capabilities.canManageArchive ? (
                               <Button size="small" icon={<Archive size={14} />} disabled={archiveLoading} onClick={() => void openArchive([lead])}>归档</Button>

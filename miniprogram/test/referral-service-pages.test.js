@@ -37,8 +37,15 @@ test('staff activity code reuses the promotion visual language and may show the 
   assert.doesNotMatch(less, /\.share-scan\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /\/miniprogram\/staff-activity-code/);
   assert.match(js, /staff-activity-code\/image/);
+  assert.match(js, /designer_profile_incomplete/);
+  assert.match(js, /profile-edit\/profile-edit/);
+  assert.match(js, /onFixProfile/);
+  assert.match(wxml, /去完善资料/);
+  assert.match(wxml, /errorAction === 'profile'/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
   assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*min-height:\s*292rpx/);
+  assert.match(less, /\.qr-state-copy\s*\{[\s\S]*font-size:\s*22rpx/);
 });
 
 test('enterprise join codes present dual codes with generate, rotate, and disable', () => {
@@ -64,6 +71,18 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
   assert.match(js, /\/disable['"`]/);
   assert.match(js, /wx\.showModal/);
   assert.match(js, /wx\.showToast/);
+  assert.match(js, /确认生成|确认换新|确认停用/);
+  assert.doesNotMatch(js, /confirmText:\s*hasActive\s*\?\s*'换新入驻码'\s*:\s*'生成入驻码'/);
+  assert.doesNotMatch(js, /confirmText:\s*'停用入驻码'/);
+  const confirmTexts = [...js.matchAll(/confirmText:\s*hasActive\s*\?\s*'([^']+)'\s*:\s*'([^']+)'/g)]
+    .flatMap((match) => [match[1], match[2]]);
+  const disableConfirm = js.match(/onDisable[\s\S]*?confirmText:\s*'([^']+)'/);
+  if (disableConfirm) confirmTexts.push(disableConfirm[1]);
+  assert.ok(confirmTexts.length >= 3, 'expected generate/rotate/disable confirmText literals');
+  confirmTexts.forEach((text) => {
+    assert.ok(String(text).length <= 4, `wx.showModal confirmText must be ≤4 chars: ${text}`);
+  });
+  assert.match(js, /确认弹窗打开失败/);
   assert.doesNotMatch(js, /staff-activity-code/);
   assert.match(less, /\.code-tab\.active/);
   assert.match(less, /\.manage-primary/);
@@ -125,6 +144,8 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/referrals\/authorize-and-create-lead/);
+  assert.match(js, /offerNotificationAuthorization/);
+  assert.match(js, /role:\s*'customer'/);
   assert.match(js, /kind !== 'referral' && response.data.kind !== 'staff_activity'/);
   assert.match(js, /'Idempotency-Key'/);
   assert.match(js, /response\.existingAttribution/);

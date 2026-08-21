@@ -536,7 +536,7 @@ export function WorkbenchWorkspace() {
         referenceAssetIds: [],
         modelProfileId: '',
         modelProfileSnapshot: { id: '', key: '', name: '', description: '', sourceModelSourceIds: [], sourceType: 'grs_catalog', adapterType: 'grs', remoteModel: '', family: 'gpt-image-2', catalogVersion: '', supportsReferenceImages: false, maxReferenceImages: 0, aspectRatios: [], aspectRatiosByResolutionTier: {}, sizes: [], qualities: [], resolutionTiers: [], supportsCustomSize: false, defaults: { aspectRatio: '1:1', size: '1K', quality: 'medium', resolutionTier: '1K' }, isDefault: false, prices: [] } as CreationModelProfile,
-        parameterSnapshot: { aspectRatio: '1:1' },
+        parameterSnapshot: { aspectRatio: '1:1' } as CreationBatch['parameterSnapshot'],
         requestedCount: 1,
         status: (generation.status === 'succeeded' ? 'succeeded' : generation.status === 'failed' ? 'failed' : 'processing') as CreationBatch['status'],
         creditsEstimate: 0,

@@ -84,6 +84,31 @@ test('Leads preserves the approved first-screen rhythm without legacy acquisitio
   assert.ok(headerIndex >= 0 && summaryIndex >= 0 && workspaceIndex > summaryIndex);
 });
 
+test('Measurer Customers tab shares the staff lead list instead of the workbench', () => {
+  const pageWxml = fs.readFileSync(
+    path.join(miniRoot, 'pages', 'leads-management', 'leads-management.wxml'),
+    'utf8'
+  );
+  const pageJs = fs.readFileSync(
+    path.join(miniRoot, 'pages', 'leads-management', 'leads-management.js'),
+    'utf8'
+  );
+  const pageJson = fs.readFileSync(
+    path.join(miniRoot, 'pages', 'leads-management', 'leads-management.json'),
+    'utf8'
+  );
+  const tabBar = fs.readFileSync(
+    path.join(miniRoot, 'custom-tab-bar', 'index.js'),
+    'utf8'
+  );
+  assert.doesNotMatch(pageWxml, /role-workbench|roleWorkbenchRole/);
+  assert.doesNotMatch(pageJs, /getRoleWorkbenchRole|roleWorkbenchRole/);
+  assert.doesNotMatch(pageJson, /role-workbench/);
+  assert.match(pageWxml, /<lead-list/);
+  assert.match(pageJs, /canCreateLead = role === 'enterprise_admin'/);
+  assert.match(tabBar, /measurer: \[[\s\S]*key: 'customers', capability: 'staff\.tasks'[\s\S]*leads-management/);
+});
+
 test('Leads list scroller receives the complete remaining page height', () => {
   const pageWxml = fs.readFileSync(
     path.join(miniRoot, 'pages', 'leads-management', 'leads-management.wxml'),

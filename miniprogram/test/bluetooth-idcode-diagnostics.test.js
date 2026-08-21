@@ -23,3 +23,25 @@ test('BLE diagnostics validate and log the 16-byte IDCODE response frame', () =>
   assert.match(bluetoothSource, /idCodeHex=/);
   assert.match(bluetoothSource, /idCodeAscii=/);
 });
+
+test('BLE scan failure paths notify the connect callback so the connector can unlock', () => {
+  assert.match(bluetoothSource, /function cancelBLEDiscovery\(\)/);
+  assert.match(bluetoothSource, /搜不到授权设备时必须回调失败/);
+  assert.match(bluetoothSource, /permission_denied[\s\S]*_onConnectCallback\(false\)/);
+  assert.match(bluetoothSource, /scan_failed[\s\S]*_onConnectCallback\(false\)/);
+  assert.match(
+    fs.readFileSync(path.join(__dirname, '..', 'utils', 'bluetooth.js'), 'utf8'),
+    /cancelBLEDiscovery: cancelBLEDiscovery/
+  );
+
+  const connectorSource = fs.readFileSync(
+    path.join(__dirname, '..', 'components', 'ble-connector', 'ble-connector.js'),
+    'utf8'
+  );
+  assert.match(connectorSource, /bluetooth\.cancelBLEDiscovery\(\)/);
+  assert.match(
+    connectorSource,
+    /onClose\(\) \{\s*if \(this\.data\.connecting\) \{\s*bluetooth\.cancelBLEDiscovery\(\);/
+  );
+  assert.match(connectorSource, /onClose\(\) \{[\s\S]*?this\.triggerEvent\('close'\);/);
+});

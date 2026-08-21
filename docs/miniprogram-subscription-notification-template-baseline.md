@@ -1,6 +1,6 @@
 # Mini Program Subscription Notification Template Baseline
 
-Status: `Limited` (six-template configuration and runtime mappings are implemented for workflow, assignment, new-lead, design-published, and enterprise-join-result; a real on-site measurement appointment trigger remains limited).
+Status: `Limited` (eight-template configuration and runtime mappings are implemented for workflow, assignment, new-lead, design-published, enterprise-join-result, referrer signing commission, and enterprise lead-converted; a real on-site measurement appointment trigger remains limited).
 
 Date: 2026-08-21
 
@@ -16,35 +16,42 @@ This document is the current implementation contract for WeChat Mini Program pub
 | 4 | `measurement_appointment` | `上门量房提醒` | A confirmed, explicit on-site measurement appointment | `CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl` | `thing1` name; `phone_number2` phone; `thing3` community; `time6` measurement time; `thing7` reminder |
 | 5 | `design_published` | `设计案例发布提醒` | A design scheme becomes visible to the customer | `XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag` | `thing1` content; `time2` published time; `thing3` note |
 | 6 | `enterprise_join_result` | `入驻申请结果通知` | Platform approve or reject of an enterprise self-service application | `wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk` | `time1` notification time; `phrase2` result; `thing3` store contact; `time4` application time; `thing5` store name |
+| 7 | `signing_commission` | `推广奖励到账提醒` | Referrer signing success / payable commission credit | `aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU` | `thing1` reward type; `thing2` note; `amount4` reward amount |
+| 8 | `lead_converted` | `客户已成交提醒` | Enterprise owner signing-success reminder | `WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo` | `time1` notification time; `thing2` warm tip |
 
 ## Runtime Mapping
 
 | Notification type | Template | Status |
 | --- | --- | --- |
-| `follow_up_created`, `follow_up_overdue`, `conflict_pending`, `measure_overdue`, `measure_submitted`, `design_overdue`, `design_completed`, `record_closed`, `lead_acquired_commission_pending`, and other generic workflow reminders | `workflow_todo` | `Implemented` |
-| `measure_assigned`, `design_assigned`, `lead_assigned`, and `lead_pending_acquisition` | `lead_assignment` | `Implemented` |
 | Enterprise-administrator notification after new lead creation | `new_lead` | `Implemented` |
-| Confirmed on-site measurement appointment | `measurement_appointment` | `Limited`: appointment events exist for create/reschedule/cancel/expire paths; keep field contract strict. |
+| Designer/measurer notification after successful assignment | `lead_assignment` | `Implemented` |
+| Enterprise-administrator nudge while assignment is pending | `workflow_todo` | `Implemented` |
+| Confirmed on-site measurement appointment (create/reschedule/cancel/expire) | `measurement_appointment` | `Limited`: appointment event paths exist; keep field contract strict. |
+| Designer nudge after formal survey completion | `workflow_todo` | `Implemented` |
 | Design scheme visible to the customer | `design_published` | `Implemented` |
 | Enterprise status `approve` / `reject` after `POST /api/admin/enterprises/[id]/status` | `enterprise_join_result` | `Implemented`: recipient is the enterprise `contactPerson.phone` resolved through `users` → `wechat_identities.openid`. Missing openid/template or WeChat rejection never rolls back the status transition. Web `/register` applicants without Mini Program subscribe authorization may be skipped. |
+| Referrer payable commission after `POST /api/leads/[id]/convert` when a `role=referrer` snapshot row exists | `signing_commission` | `Implemented`: WeChat-only best-effort to the commission beneficiary openid; designers/measurers are not recipients of this template. |
+| Enterprise-administrator signing success after the same convert commit | `lead_converted` | `Implemented`: uses `staff_notifications` plus WeChat; designers/measurers/customers are not recipients. |
+| Legacy promotion `follow_up_*` / `measure_*` / `design_*` / `conflict_pending` / `record_closed` | — | `Retired`: create/update promotion routes and the reminder cron no longer send these; historical `workflow_notification_logs` remain readable only. |
 
 Until a real appointment feature exists, `new_lead.time5` uses the approved transitional rule: `assignedAt` first, then `createdAt`. It must not pretend to be a future appointment.
 
 ## Implemented Contract
 
-- `platform_configs.notification_config` stores a `version: 2` six-template map with IDs, keyword contracts, and optional `legacyTemplateId`. Reading and PATCHing the former single `miniprogramTemplateId` remains compatible for one release.
-- `GET/PATCH /api/platform/notification-config` lets platform `admin`/`super_admin` users maintain six non-empty, valid, distinct IDs. `/workflow-logs` uses its existing configuration card and shared operation feedback.
-- `GET /api/miniprogram/notification-template` returns an ordered six-template list plus the deprecated single-value alias to authenticated Mini Program users. The client caches only a complete V2 configuration and has no bundled template-ID fallback.
-- Login, Mine, and Settings request role-scoped templates in one `wx.requestSubscribeMessage` call (at most three). Enterprise open-account (`enterprise-register`) requests only `enterprise_join_result` quietly before submit; refusal does not block the application.
-- Server builders emit only approved keys and normalize empty values, character limits, and China-time `YYYY-MM-DD HH:mm:ss` values. `phrase2` for join results is `审核通过` or `审核不通过`.
-- Workflow dispatch writes its station log first. Lead dispatch writes `staff_notifications` `in_app` first, then attempts WeChat and records `sent`, `failed`, or `skipped`. Enterprise join-result delivery is WeChat-only and best-effort after the status commit. Missing openids/templates and WeChat failures never roll back business data.
+- `platform_configs.notification_config` stores a `version: 2` eight-template map with IDs, keyword contracts, and optional `legacyTemplateId`. Reading and PATCHing the former single `miniprogramTemplateId` remains compatible for one release.
+- `GET/PATCH /api/platform/notification-config` lets platform `admin`/`super_admin` users maintain eight non-empty, valid, distinct IDs. `/workflow-logs` uses its existing configuration card and shared operation feedback.
+- `GET /api/miniprogram/notification-template` returns an ordered eight-template list plus the deprecated single-value alias to authenticated Mini Program users. The client caches only a complete V2 configuration and has no bundled template-ID fallback.
+- Login, Mine, and Settings request role-scoped templates in one `wx.requestSubscribeMessage` call (at most three): customer 2, designer/measurer 3, enterprise owner 3 (`new_lead` + `workflow_todo` + `lead_converted`), referrer 1 (`signing_commission`). Enterprise open-account (`enterprise-register`) requests only `enterprise_join_result` quietly before submit; refusal does not block the application.
+- Server builders emit only approved keys and normalize empty values, character limits, and China-time `YYYY-MM-DD HH:mm:ss` values. `phrase2` for join results is `审核通过` or `审核不通过`. Signing commission `amount4` uses `¥xx.xx`.
+- Workflow dispatch for **legacy promotion reports is retired**. Lead/appointment/signing notifications write `staff_notifications` `in_app` first (where applicable), then attempt WeChat and record `sent`, `failed`, or `skipped`. Enterprise join-result and referrer signing-commission delivery remain WeChat-only best-effort after commit. Missing openids/templates and WeChat failures never roll back business data.
+- `/api/automation/reminders/run` only runs appointment expiry for the current matrix; it no longer scans promotion follow-up / `measureDueAt` / `designDueAt` / protection-pool nudges.
 - Duplicate-phone lead intake reuses the existing lead and emits no new enterprise-administrator or designer notification.
 
 ## Handoff Checklist
 
-- [x] All six templates appear in `我的模板`.
-- [x] All six IDs and exact keyword keys are recorded.
-- [x] Admin configuration stores six typed IDs.
+- [x] All eight templates appear in `我的模板`.
+- [x] All eight IDs and exact keyword keys are recorded.
+- [x] Admin configuration stores eight typed IDs.
 - [x] The Mini Program authorizes role-scoped templates and separately authorizes join-result on open-account submit.
 - [x] Server payloads contain only keys accepted by the selected template.
 - [x] In-app delivery, channel-scoped deduplication, and WeChat failure logs are preserved where applicable.

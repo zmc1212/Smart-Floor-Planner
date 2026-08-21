@@ -107,11 +107,14 @@ copy back to `layoutData`.
   Loading a saved draft also folds remaining collinear degree-2
   splices into one wall. Deleting a wall that opens a single closed room
   restores the remaining loop as the active chain and offers the missing-edge
-  close when the dangling ends still determine it. Confirming a closed room
+  close when the dangling ends still determine it.   Confirming a closed room
   automatically enters the same reset-cursor / wall-drop state as tapping
   重置光标. In guide mode that state immediately shows the Xiao K
   place-next-start tip even when closed-room dimension labels would otherwise
-  leave no hard-avoiding layout. Resetting the cursor onto
+  leave no hard-avoiding layout. During that wall-drop wait
+  (`wallSnapPending`), the canvas still pans and pinch-zooms; only a short tap
+  on a wall or vertex places the cursor, so a drag does not lock the viewport.
+  Resetting the cursor onto
   either dangling vertex resumes that same open chain instead of starting a
   new room from the existing wall. Dragging back along that
   restored last wall shortens it instead of reporting overlap with the

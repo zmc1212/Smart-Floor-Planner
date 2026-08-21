@@ -75,7 +75,7 @@ TabBar 由服务端 bootstrap 的 `current.capabilities` 生成；客户端隐�
 | 客户 | `服务 / 我的` | `customer.service`、`account` | 服务端本人待预约/待改期/待重约计数；失败显示“暂时无法读取”。服务首屏直达档案；`customer.projects` 仍守卫档案/列表 API，`customer-projects` 仅为重定向壳 |
 | 推荐人 | `推广 / 进度 / 收益 / 我的` | `referrer.promotion`、`referrer.progress`、`referrer.earnings`、`account` | 当前成员关系的脱敏里程碑和收益状态；不显示客户数量猜测 |
 | 设计师 | `工作台 / 客户 / 设计 / 收益 / 我的` | `staff.leads`、`staff.appointments`、`staff.design`、`staff.earnings`、`account` | 本人待跟进/预约/发布状态及本人待支付提成；无数据不显示假数字 |
-| 测量员 | `工作台 / 客户 / 收益 / 我的` | `staff.schedule`、`staff.tasks`、`staff.earnings`、`account` | 工作台 Tab 聚合今日预约；“客户”Tab 用于查看已量房完成客户与相关跟进/交接状态；“收益”Tab 展示本人待支付/已支付提成；量房相关深层编辑器仍由任务上下文触发 |
+| 测量员 | `工作台 / 客户 / 收益 / 我的` | `staff.schedule`、`staff.tasks`、`staff.earnings`、`account` | 工作台 Tab 聚合今日预约；“客户”Tab 复用共享的 `leads-management` 线索列表（按角色收窄、不可新增）查看已派/推广相关客户与跟进交接状态；“收益”Tab 展示本人待支付/已支付提成；量房相关深层编辑器仍由任务上下文触发 |
 | 企业负责人 | `经营 / 客户 / 预约 / 提成 / 我的` | `enterprise.operations`、`enterprise.customers`、`enterprise.appointments`、`enterprise.commissions`、`account` | 当前租户异常/审批/预约异常及待支付提成笔数；不混入员工个人待办 |
 
 当前项使用品牌绿和浅薄荷底，其他项使用中性灰；图标使用现有本地授权图标集。已确认的

@@ -15,8 +15,24 @@
         "value": ".impeccable"
       },
       {
+        "type": "folder",
+        "value": "scripts"
+      },
+      {
+        "type": "folder",
+        "value": "node_modules"
+      },
+      {
         "type": "file",
         "value": "packages/business/assets/customer-project-v1/formal-floor-plan-archive.png"
+      },
+      {
+        "type": "file",
+        "value": "packages/business/assets/referral-service-v1/designer-matching.png"
+      },
+      {
+        "type": "file",
+        "value": "packages/business/assets/referral-service-v1/privacy-lock.png"
       },
       {
         "type": "file",
@@ -33,6 +49,38 @@
       {
         "type": "file",
         "value": "images/ai-design-stage-active-glow-v1.png"
+      },
+      {
+        "type": "file",
+        "value": "images/generated-hero-bleed-v2.png"
+      },
+      {
+        "type": "file",
+        "value": "images/login-hero.png"
+      },
+      {
+        "type": "file",
+        "value": "images/airy-v1/xiao-k-mascot-3d.png"
+      },
+      {
+        "type": "file",
+        "value": "images/home-ip-v1/measure-k.png"
+      },
+      {
+        "type": "file",
+        "value": "tmp-lshape-preview.js"
+      },
+      {
+        "type": "file",
+        "value": "tmp-preview-check.js"
+      },
+      {
+        "type": "file",
+        "value": "DESIGN.md"
+      },
+      {
+        "type": "file",
+        "value": "design-tokens.json"
       }
     ],
     "include": []

@@ -564,6 +564,8 @@ export function workflowNotificationToDto(
       ? {
           _id: record.recipientStaff.id.toString(),
           displayName: record.recipientStaff.displayName,
+          username: record.recipientStaff.username,
+          phone: record.recipientStaff.phone ?? null,
           role: record.recipientStaff.role,
         }
       : record.recipientStaffId?.toString() ?? null,

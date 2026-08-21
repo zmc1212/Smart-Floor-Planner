@@ -12,7 +12,6 @@ import {
   updatePromotionRecord,
   type PromotionRouteActor,
 } from '@/lib/postgres-promotion-workflow';
-import { dispatchWorkflowNotifications } from '@/lib/postgres-workflow-automation';
 import type { PostgresTransaction } from '@/db/transaction';
 
 export const dynamic = 'force-dynamic';
@@ -101,15 +100,6 @@ export async function PUT(
     );
     if (!result) {
       return NextResponse.json({ success: false, error: 'Record not found' }, { status: 404 });
-    }
-    for (const job of result.notificationJobs) {
-      await dispatchWorkflowNotifications({
-        record: result.record,
-        notificationType: job.notificationType,
-        recipientRoles: job.recipientRoles,
-        message: job.message,
-        dedupeSuffix: job.dedupeSuffix,
-      });
     }
     return NextResponse.json({ success: true, data: promotionRecordToDto(result.record) });
   } catch (error) {

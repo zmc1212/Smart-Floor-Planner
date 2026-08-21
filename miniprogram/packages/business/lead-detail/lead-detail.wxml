@@ -55,10 +55,11 @@
       </view>
     </view>
   </view>
-  <view class="published-schemes-card" wx:if="{{publishedSchemes.length > 0}}">
+  <view class="published-schemes-card" wx:if="{{publishedSchemes.length > 0 || canOpenAIDesign}}">
     <view class="published-schemes-heading">
-      <text class="published-schemes-title">已发布方案</text>
-      <text class="published-schemes-meta">{{publishedSchemes.length}} 轮</text>
+      <text class="published-schemes-title">{{publishedSchemes.length > 0 ? '已发布方案' : '方案设计'}}</text>
+      <text class="published-schemes-meta" wx:if="{{publishedSchemes.length > 0}}">{{publishedSchemes.length}} 轮</text>
+      <text class="published-schemes-meta" wx:else>量房完成，可开始出图</text>
     </view>
     <view
       class="published-scheme-item"
@@ -79,8 +80,18 @@
       </view>
       <text class="published-scheme-action">查看 ›</text>
     </view>
-    <button class="published-schemes-secondary" bindtap="onOpenAllPublishedSchemes" aria-label="查看全部方案">查看全部方案</button>
-    <button class="published-schemes-primary" bindtap="onOpenAIDesignWorkbench" aria-label="进入 AI 设计工作台">进入 AI 设计</button>
+    <button
+      wx:if="{{publishedSchemes.length > 0}}"
+      class="published-schemes-secondary"
+      bindtap="onOpenAllPublishedSchemes"
+      aria-label="查看全部方案"
+    >查看全部方案</button>
+    <button
+      wx:if="{{canOpenAIDesign}}"
+      class="published-schemes-primary"
+      bindtap="onOpenAIDesignWorkbench"
+      aria-label="进入 AI 设计工作台"
+    >进入 AI 设计</button>
   </view>
   <view class="measurement-history" wx:if="{{previousFloorPlans.length > 0}}">
     <view class="measurement-history-heading">

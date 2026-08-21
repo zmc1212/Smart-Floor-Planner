@@ -12,6 +12,8 @@ const notificationTemplates = [
   ['measurement_appointment', 'CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl'],
   ['design_published', 'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'],
   ['enterprise_join_result', 'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk'],
+  ['signing_commission', 'aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU'],
+  ['lead_converted', 'WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo'],
 ];
 
 function notificationConfig() {

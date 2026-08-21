@@ -97,6 +97,21 @@ test('unscheduled survey tasks without a floor plan can start measuring or book 
   assert.equal(item.statusBadge, '待量房');
 });
 
+test('survey cards with a locked measurer but pending designer do not show 待派单 beside 待量房', () => {
+  const item = buildWorkbenchLeadItem(surveyLead({
+    status: 'new',
+    assignmentStatus: 'assignment_pending',
+    assignmentErrorCode: 'designer_unavailable',
+    measurerId: 7n,
+  }), 'survey');
+  assert.equal(item.serviceStage, 'assignment_pending');
+  assert.equal(item.statusBadge, '待量房');
+  assert.equal(item.metaLabel, '未预约上门');
+  assert.equal(item.canSurveyNow, true);
+  assert.equal(item.canBookAppointment, false);
+  assert.equal(item.actionLabel, '立即量房');
+});
+
 test('a linked floor plan hides booking and reopens the existing plan instead of a blank canvas', () => {
   const item = buildWorkbenchLeadItem(surveyLead({
     primaryFloorPlanRecord: { id: 88n, status: 'completed', updatedAt: new Date('2026-08-19T16:00:00.000Z') },

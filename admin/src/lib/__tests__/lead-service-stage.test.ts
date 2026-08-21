@@ -175,10 +175,23 @@ test('customer home exposes one next action from the shared service stage', () =
     canRebook: true,
   });
 
-  assert.equal(resolveCustomerHomeAction({
+  assert.deepEqual(resolveCustomerHomeAction({
     leadStatus: 'new',
     assignmentStatus: 'assignment_pending',
-  }).kind, 'wait_designer');
+  }), {
+    kind: 'wait_designer',
+    label: '等待派单',
+    stageKey: 'assignment_pending',
+    stageLabel: '待派单',
+    nextAction: '服务匹配完成后即可预约上门',
+    appointmentSummary: '正在为您匹配设计师和测量员',
+    canReschedule: false,
+    canRebook: false,
+  });
+
+  assert.equal(resolveCustomerHomeAction({
+    leadStatus: 'new',
+  }).appointmentSummary, '正在为您匹配设计师和测量员');
 
   assert.equal(resolveCustomerHomeAction({
     leadStatus: 'designing',

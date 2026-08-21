@@ -1,6 +1,7 @@
 import { parsePostgresId } from '@/db/postgres-dto';
 import {
   AdminUserRepository,
+  LeadCommissionRepository,
   LeadRepository,
   MiniProgramIdentityRepository,
   StaffNotificationRepository,
@@ -15,8 +16,10 @@ import {
   buildDesignPublishedPayload,
   buildEnterpriseJoinResultPayload,
   buildLeadAssignmentPayload,
+  buildLeadConvertedPayload,
   buildMeasurementAppointmentPayload,
   buildNewLeadPayload,
+  buildSigningCommissionPayload,
   buildWorkflowTodoPayload,
   type SubscriptionMessagePayload,
 } from '@/lib/miniprogram-subscription-messages';
@@ -623,4 +626,117 @@ export async function notifyEnterpriseContactOfJoinResult(input: {
     console.error('Enterprise join result notification failed:', error);
     return { success: false, error: deliveryError(error) };
   }
+}
+
+export async function notifyReferrerOfSigningCommission(input: {
+  enterpriseId: bigint;
+  leadId: bigint;
+}) {
+  try {
+    const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
+      new LeadRepository(transaction).findById(input.leadId)
+    );
+    if (!lead) return { success: false, skipped: true, error: 'lead unavailable' };
+
+    const commissions = await withTenantTransaction(input.enterpriseId, (transaction) =>
+      new LeadCommissionRepository(transaction).list(input.enterpriseId, {
+        leadId: input.leadId,
+        role: 'referrer',
+      })
+    );
+    const referrerRow = commissions.find((row) => row.role === 'referrer');
+    if (!referrerRow) {
+      return { success: false, skipped: true, error: 'referrer commission unavailable' };
+    }
+
+    const beneficiaryUserId = referrerRow.beneficiaryUserId;
+    const identity = await withPlatformTransaction((transaction) =>
+      new MiniProgramIdentityRepository(transaction).findWechatIdentityByUserId(beneficiaryUserId)
+    );
+    if (!identity?.openid) {
+      return { success: false, skipped: true, error: 'referrer openid unavailable' };
+    }
+
+    const template = await getMiniProgramSubscriptionTemplate('signing_commission');
+    if (!template?.templateId) {
+      return { success: false, skipped: true, error: 'subscription template unavailable' };
+    }
+
+    const customerLabel = lead.name || '客户';
+    return await sendSubscriptionMessage({
+      touser: identity.openid,
+      template_id: template.templateId,
+      page: '/packages/business/referrer-earnings/referrer-earnings',
+      data: buildSigningCommissionPayload(template, {
+        rewardType: '签单提成',
+        note: `${customerLabel}已签约`,
+        amount: referrerRow.payableAmount,
+      }),
+    });
+  } catch (error) {
+    console.error('Referrer signing commission notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
+}
+
+export async function notifyEnterpriseAdminOfLeadConverted(input: {
+  enterpriseId: bigint;
+  leadId: bigint;
+}) {
+  try {
+    const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
+      new LeadRepository(transaction).findById(input.leadId)
+    );
+    if (!lead) return { success: false, error: 'lead unavailable' };
+
+    const admins = await withTenantTransaction(input.enterpriseId, async (transaction) =>
+      (
+        await new AdminUserRepository(transaction).list({
+          roles: ['enterprise_admin'],
+          status: 'active',
+          page: 1,
+          limit: 1000,
+        })
+      ).rows
+    );
+
+    const tip = lead.communityName
+      ? `${lead.name}已签约·${lead.communityName}`
+      : `${lead.name}已签约`;
+    const notifiedAt = lead.convertedAt || new Date();
+    const results = await Promise.all(
+      admins.map(async (admin) => {
+        const recipient = await enrichRecipientOpenid(admin);
+        return deliverLeadNotification({
+          lead: { ...lead, id: lead.id, enterpriseId: lead.enterpriseId?.toString() },
+          recipient,
+          templateKind: 'lead_converted',
+          notificationType: 'lead_converted',
+          message: `客户${lead.name}已签约`,
+          dedupeKey: `lead_converted:${input.leadId.toString()}:${admin.id.toString()}`,
+          page: '/packages/business/enterprise-commissions/enterprise-commissions',
+          buildData: (template) =>
+            buildLeadConvertedPayload(template, {
+              notifiedAt,
+              tip,
+            }),
+        });
+      })
+    );
+    return { success: results.every((item) => item.success), results };
+  } catch (error) {
+    console.error('Enterprise lead converted notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
+}
+
+export async function notifyConvertedLeadParties(input: {
+  enterpriseId: bigint;
+  leadId: bigint;
+}) {
+  const results = await Promise.allSettled([
+    notifyReferrerOfSigningCommission(input),
+    notifyEnterpriseAdminOfLeadConverted(input),
+  ]);
+  return results;
 }

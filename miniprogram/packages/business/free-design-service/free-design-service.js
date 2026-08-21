@@ -1,4 +1,5 @@
 const api = require('../../../utils/api.js');
+const { offerNotificationAuthorization } = require('../../../utils/notification.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -302,6 +303,14 @@ Page({
       );
       await this.persistCustomerSession(response);
       applyClaimResult(this, response);
+      // New claim only: same post-sign-in subscribe offer as login (customer templates).
+      if (!(response.existingAttribution || (response.data && response.data.existingAttribution))) {
+        offerNotificationAuthorization({
+          role: 'customer',
+          title: '服务已建立',
+          cancelText: '稍后再说'
+        });
+      }
     } catch (error) {
       this.setData({
         submitting: false,

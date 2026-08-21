@@ -16,6 +16,20 @@ function navigationMetrics() {
   };
 }
 
+function resolveActivityError(error) {
+  const code = error && error.code;
+  if (code === 'designer_profile_incomplete') {
+    return {
+      errorAction: 'profile',
+      errorMessage: '请先补齐微信号和个人二维码，再生成活动码。'
+    };
+  }
+  return {
+    errorAction: 'retry',
+    errorMessage: '服务码暂时无法生成，请检查网络后重试。'
+  };
+}
+
 Page({
   data: {
     navigationTop: 24,
@@ -25,12 +39,20 @@ Page({
     enterpriseName: '',
     qrImagePath: '',
     loading: true,
-    errorMessage: ''
+    errorMessage: '',
+    errorAction: 'retry'
   },
 
   onLoad() {
     this.setData(navigationMetrics());
     this.loadServiceCode();
+  },
+
+  onShow() {
+    if (this._shouldReloadOnShow) {
+      this._shouldReloadOnShow = false;
+      this.loadServiceCode();
+    }
   },
 
   onUnload() {
@@ -40,24 +62,28 @@ Page({
   async loadServiceCode() {
     const requestId = (this.qrRequestId || 0) + 1;
     this.qrRequestId = requestId;
-    this.setData({ loading: true, errorMessage: '', qrImagePath: '' });
+    this.setData({
+      loading: true,
+      errorMessage: '',
+      errorAction: 'retry',
+      qrImagePath: ''
+    });
     try {
-      const [activity] = await Promise.all([
-        api.request('/miniprogram/staff-activity-code', 'GET'),
-        this.fetchServiceCodeImage(requestId)
-      ]);
+      const activity = await api.request('/miniprogram/staff-activity-code', 'GET');
       if (requestId !== this.qrRequestId) return;
       this.setData({
-        loading: false,
         activityToken: activity.data && activity.data.token || '',
         enterpriseName: activity.data && activity.data.enterpriseName || ''
       });
+      await this.fetchServiceCodeImage(requestId);
+      if (requestId !== this.qrRequestId) return;
+      this.setData({ loading: false });
     } catch (error) {
       if (requestId !== this.qrRequestId) return;
       this.setData({
         loading: false,
         qrImagePath: '',
-        errorMessage: '服务码暂时无法生成，请检查网络或确认微信号资料后重试。'
+        ...resolveActivityError(error)
       });
     }
   },
@@ -73,7 +99,7 @@ Page({
         header: { Authorization: token ? `Bearer ${token}` : '' },
         success: (response) => {
           if (response.statusCode < 200 || response.statusCode >= 300 || !(response.data instanceof ArrayBuffer)) {
-            reject(new Error('服务码图片响应无效'));
+            reject(parseImageError(response) || new Error('服务码图片响应无效'));
             return;
           }
           const filePath = `${wx.env.USER_DATA_PATH}/staff-activity-code.png`;
@@ -96,6 +122,11 @@ Page({
     this.loadServiceCode();
   },
 
+  onFixProfile() {
+    this._shouldReloadOnShow = true;
+    wx.navigateTo({ url: '/packages/business/profile-edit/profile-edit' });
+  },
+
   onShareAppMessage() {
     const token = this.data.activityToken;
     return {
@@ -106,3 +137,16 @@ Page({
     };
   }
 });
+
+function parseImageError(response) {
+  try {
+    const bytes = response && response.data;
+    if (!(bytes instanceof ArrayBuffer)) return null;
+    const text = String.fromCharCode.apply(null, new Uint8Array(bytes));
+    const payload = JSON.parse(text);
+    if (payload && payload.code) return payload;
+  } catch (error) {
+    return null;
+  }
+  return null;
+}

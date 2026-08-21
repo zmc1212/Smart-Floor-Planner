@@ -4568,8 +4568,12 @@ Page({
     const moved = Math.sqrt(dx * dx + dy * dy);
     const currentMm = this.canvasPointToMm(point);
 
+    // wallSnapPending: short tap still places the cursor; drag pans the canvas
+    // so the operator can bring the target wall into view before dropping.
     if (this.touchState.mode === 'wallSnapPending') {
-      return;
+      if (moved < TOUCH_SLOP_PX) return;
+      this.touchState.mode = 'pan';
+      this.beginViewportInteraction(this.touchState.startViewport);
     }
 
     if (this.touchState.mode === 'openingPending') {

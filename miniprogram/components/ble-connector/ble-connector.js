@@ -15,7 +15,10 @@ Component({
 
   methods: {
     onClose() {
-      if (this.data.connecting) return;
+      if (this.data.connecting) {
+        bluetooth.cancelBLEDiscovery();
+        this.setData({ connecting: false, statusText: '待连接' });
+      }
       this.triggerEvent('close');
     },
 
@@ -24,6 +27,7 @@ Component({
     },
 
     onAutoConnect() {
+      if (this.data.connecting) return;
       this.setData({ connecting: true, statusText: '正在自动连接...' });
       bluetooth.autoConnectBLE(
         () => {}, // Measure callback (handled by page)
@@ -33,7 +37,7 @@ Component({
             this.setData({ statusText: '连接成功' });
             wx.showToast({ title: '连接成功', icon: 'success' });
             this.triggerEvent('success');
-            setTimeout(() => this.onClose(), 1000);
+            setTimeout(() => this.triggerEvent('close'), 1000);
           } else {
             this.setData({ statusText: '连接失败' });
           }
@@ -46,6 +50,7 @@ Component({
     },
 
     onSearchNew() {
+      if (this.data.connecting) return;
       this.setData({ connecting: true, statusText: '正在搜索设备...' });
       bluetooth.initBLE(
         () => {}, // Measure callback
@@ -55,7 +60,7 @@ Component({
             this.setData({ statusText: '连接成功' });
             wx.showToast({ title: '连接成功', icon: 'success' });
             this.triggerEvent('success');
-            setTimeout(() => this.onClose(), 1000);
+            setTimeout(() => this.triggerEvent('close'), 1000);
           } else {
             this.setData({ statusText: '未发现设备' });
           }

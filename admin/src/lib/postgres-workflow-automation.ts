@@ -1,12 +1,8 @@
 import {
-  and,
-  desc,
   eq,
   inArray,
-  isNull,
   lte,
   notInArray,
-  or,
 } from 'drizzle-orm';
 import {
   AdminUserRepository,
@@ -19,7 +15,6 @@ import {
 import {
   enterprises,
   promotionEnterpriseRecords,
-  workflowNotificationLogs,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 import {
@@ -560,143 +555,15 @@ export async function dispatchWorkflowNotifications(input: {
   }
 }
 
-async function getReminderState(
-  record: PromotionRecord,
-  notificationType: WorkflowNotificationType,
-  recipientRole: string,
-  recipientStaffId?: bigint | null
-) {
-  return withRecordScope(record, async (transaction) => {
-    const rows = await transaction
-      .select({ sentAt: workflowNotificationLogs.sentAt })
-      .from(workflowNotificationLogs)
-      .where(
-        and(
-          eq(workflowNotificationLogs.recordId, record.id),
-          eq(workflowNotificationLogs.notificationType, notificationType),
-          eq(workflowNotificationLogs.recipientRole, recipientRole),
-          eq(workflowNotificationLogs.channel, 'station'),
-          eq(workflowNotificationLogs.status, 'sent'),
-          recipientStaffId
-            ? eq(workflowNotificationLogs.recipientStaffId, recipientStaffId)
-            : undefined
-        )
-      )
-      .orderBy(desc(workflowNotificationLogs.sentAt), desc(workflowNotificationLogs.id));
-    return {
-      count: rows.length,
-      lastSentAt: rows[0]?.sentAt || undefined,
-    };
-  });
-}
-
-async function markReminderSentAt(
-  record: PromotionRecord,
-  field: 'measureLastReminderAt' | 'designLastReminderAt',
-  now: Date,
-  intervalHours: number
-) {
-  return withRecordScope(record, async (transaction) => {
-    const repository = new PromotionRecordRepository(transaction);
-    const column = promotionEnterpriseRecords[field];
-    const conditions = [
-      lte(field === 'measureLastReminderAt' ? promotionEnterpriseRecords.measureDueAt : promotionEnterpriseRecords.designDueAt, now),
-      field === 'measureLastReminderAt'
-        ? inArray(promotionEnterpriseRecords.measureTaskStatus, ['assigned', 'accepted'])
-        : inArray(promotionEnterpriseRecords.designTaskStatus, ['assigned', 'in_progress']),
-      or(isNull(column), lte(column, new Date(now.getTime() - intervalHours * 60 * 60 * 1000)))!,
-    ];
-    const updated = await repository.updateWhere(
-      record.id,
-      conditions,
-      { [field]: now },
-    );
-    return !!updated;
-  });
-}
-
 export async function runWorkflowReminderScan() {
   const now = new Date();
-  const { rows: records } = await withPlatformTransaction((transaction) =>
-    new PromotionRecordRepository(transaction).list({ limit: 200 })
-  );
-  let processed = 0;
-  for (const record of records) {
-    if (isRecordClosed(record)) continue;
-    const automation = await recordAutomationConfig(record);
-    const followUpDueAt = toDate(record.nextFollowUpAt);
-    if (
-      record.pendingActionRole === 'salesperson' &&
-      record.ownershipStatus !== 'conflict_pending' &&
-      followUpDueAt &&
-      followUpDueAt.getTime() <= now.getTime()
-    ) {
-      const state = await getReminderState(record, 'follow_up_overdue', 'salesperson', record.promoterId);
-      if (
-        state.count < Number(automation.maxReminderTimes) &&
-        (!state.lastSentAt || addHours(state.lastSentAt, Number(automation.reminderIntervalHours)).getTime() <= now.getTime())
-      ) {
-        await dispatchWorkflowNotifications({
-          record,
-          notificationType: 'follow_up_overdue',
-          recipientRoles: ['salesperson'],
-          message: `Follow-up overdue: ${record.enterpriseName}`,
-          dedupeSuffix: `followup-${state.count + 1}`,
-        });
-        processed += 1;
-      }
-    }
-    const measureDueAt = toDate(record.measureDueAt);
-    if (
-      ['assigned', 'accepted'].includes(record.measureTaskStatus) &&
-      measureDueAt &&
-      measureDueAt.getTime() <= now.getTime()
-    ) {
-      const state = await getReminderState(record, 'measure_overdue', 'measurer', record.measureAssignedTo);
-      if (
-        state.count < Number(automation.maxReminderTimes) &&
-        (!state.lastSentAt || addHours(state.lastSentAt, Number(automation.reminderIntervalHours)).getTime() <= now.getTime()) &&
-        (await markReminderSentAt(record, 'measureLastReminderAt', now, Number(automation.reminderIntervalHours)))
-      ) {
-        await dispatchWorkflowNotifications({
-          record,
-          notificationType: 'measure_overdue',
-          recipientRoles: ['measurer'],
-          message: `Measurement overdue: ${record.enterpriseName}`,
-          dedupeSuffix: `measure-${state.count + 1}`,
-        });
-        processed += 1;
-      }
-    }
-    const designDueAt = toDate(record.designDueAt);
-    if (
-      ['assigned', 'in_progress'].includes(record.designTaskStatus) &&
-      designDueAt &&
-      designDueAt.getTime() <= now.getTime()
-    ) {
-      const state = await getReminderState(record, 'design_overdue', 'designer', record.designAssignedTo);
-      if (
-        state.count < Number(automation.maxReminderTimes) &&
-        (!state.lastSentAt || addHours(state.lastSentAt, Number(automation.reminderIntervalHours)).getTime() <= now.getTime()) &&
-        (await markReminderSentAt(record, 'designLastReminderAt', now, Number(automation.reminderIntervalHours)))
-      ) {
-        await dispatchWorkflowNotifications({
-          record,
-          notificationType: 'design_overdue',
-          recipientRoles: ['designer'],
-          message: `Design overdue: ${record.enterpriseName}`,
-          dedupeSuffix: `design-${state.count + 1}`,
-        });
-        processed += 1;
-      }
-    }
-  }
-  const protection = await runProtectionExpiryScan();
+  // Current referrer-network matrix: only appointment expiry belongs in this cron.
+  // Legacy promotion follow-up / measureDueAt / designDueAt / protection-pool nudges are retired.
   const appointments = await expireOverdueAppointmentsAndNotify({ now });
   return {
-    scanned: records.length,
-    processed,
-    protectionReleased: protection.released,
+    scanned: 0,
+    processed: 0,
+    protectionReleased: 0,
     expiredAppointments: appointments.expired,
   };
 }
@@ -754,13 +621,6 @@ export async function runProtectionExpiryScan() {
       )
     );
     if (!updated) continue;
-    await dispatchWorkflowNotifications({
-      record,
-      notificationType: 'follow_up_overdue',
-      recipientRoles: ['salesperson'],
-      message: `Protection expired; record released to pool: ${record.enterpriseName}`,
-      dedupeSuffix: `protection-expired-${record.id.toString()}`,
-    });
     released += 1;
   }
   return { scanned: rows.length, released };

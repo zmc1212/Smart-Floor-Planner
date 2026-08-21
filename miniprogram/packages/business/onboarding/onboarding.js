@@ -1,5 +1,6 @@
 const api = require('../../../utils/api.js');
 const { getRoleLanding } = require('../../../utils/identity-navigation.js');
+const { offerNotificationAuthorization } = require('../../../utils/notification.js');
 
 const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
 
@@ -260,8 +261,51 @@ Page({
     throw new Error('入驻身份资料缺失');
   },
 
+  resolveOnboardingSubscribeRole() {
+    if (this.data.codeType === 'referrer') return 'referrer';
+    if (this.data.codeType === 'staff') {
+      return this.data.selectedStaffRole === 'measurer' ? 'measurer' : 'designer';
+    }
+    return undefined;
+  },
+
+  enterWorkbench() {
+    const app = typeof getApp === 'function' ? getApp() : null;
+    const globalData = (app && app.globalData) || {};
+    const identity = {
+      ...(globalData.userInfo || {}),
+      ...((globalData.bootstrap && globalData.bootstrap.current) || {})
+    };
+    if (!identity.mode) {
+      identity.mode = this.data.codeType === 'staff' ? 'staff' : 'referrer';
+    }
+    if (this.data.codeType === 'staff' && !identity.staffRole) {
+      identity.staffRole = this.data.selectedStaffRole;
+    }
+    const url = getRoleLanding(identity);
+    if (!url) {
+      wx.showToast({ title: '暂时无法进入工作台，请稍后重试', icon: 'none' });
+      return;
+    }
+    wx.reLaunch({
+      url,
+      fail: () => wx.showToast({ title: '暂时无法进入工作台，请稍后重试', icon: 'none' })
+    });
+  },
+
   onContinue() {
-    wx.reLaunch({ url: getRoleLanding({ mode: this.data.codeType === 'staff' ? 'staff' : 'referrer' }) });
+    if (this._enteringWorkbench) return;
+    this._enteringWorkbench = true;
+    // Same post-sign-in offer as password/phone login (referrer now requests signing_commission).
+    offerNotificationAuthorization({
+      role: this.resolveOnboardingSubscribeRole(),
+      title: '入驻成功',
+      cancelText: '直接进入',
+      onDone: () => {
+        this._enteringWorkbench = false;
+        this.enterWorkbench();
+      }
+    });
   },
 
   onRetry() {

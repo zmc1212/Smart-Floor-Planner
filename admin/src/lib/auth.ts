@@ -28,6 +28,11 @@ export async function getTenantContext(request: Request | NextRequest): Promise<
 
     const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
     const { payload } = await jose.jwtVerify(token, secret);
+    // Mini Program JWTs share JWT_SECRET but use aud=miniprogram and put the
+    // base users.id in `id`. Never treat them as Admin tenant sessions.
+    const audience = payload.aud;
+    const audiences = Array.isArray(audience) ? audience : audience ? [audience] : [];
+    if (audiences.includes('miniprogram')) return null;
 
     let enterpriseId = payload.enterpriseId as string | null;
 

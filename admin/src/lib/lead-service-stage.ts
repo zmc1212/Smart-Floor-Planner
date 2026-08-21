@@ -104,7 +104,7 @@ export function isAppointmentInProgress(appointment: AppointmentStageInput, now 
 export function resolveLeadServiceStage(input: {
   leadStatus?: string | null;
   assignmentStatus?: string | null;
-  measurerId?: string | bigint | null;
+  measurerId?: string | number | bigint | null;
   appointment?: AppointmentStageInput;
   hasFormalFloorPlan?: boolean;
   publishedDesignCount?: number;
@@ -209,13 +209,21 @@ export function describeCustomerAppointment(input: {
     return formatCustomerAppointmentTime(input.appointment?.timeRange) || '已预约上门量房';
   }
   if (input.serviceStage === 'measurer_assigned') return '已匹配设计师和测量员，请预约上门量房时间';
-  return LEAD_SERVICE_STAGE_NEXT_ACTIONS[input.serviceStage];
+  // Customer-facing status only — never reuse staff operational nextAction copy.
+  if (input.serviceStage === 'claimed' || input.serviceStage === 'assignment_pending') {
+    return '正在为您匹配设计师和测量员';
+  }
+  if (input.serviceStage === 'survey_completed') return '量房已完成，可在服务档案查看户型';
+  if (input.serviceStage === 'design_published') return '方案已发布，可在服务档案查看';
+  if (input.serviceStage === 'converted') return '服务已签约完成';
+  if (input.serviceStage === 'closed') return '服务已结束';
+  return '';
 }
 
 export function resolveCustomerHomeAction(input: {
   leadStatus?: string | null;
   assignmentStatus?: string | null;
-  measurerId?: string | bigint | null;
+  measurerId?: string | number | bigint | null;
   appointment?: AppointmentStageInput;
   hasFormalFloorPlan?: boolean;
   publishedDesignCount?: number;
@@ -239,13 +247,21 @@ export function resolveCustomerHomeAction(input: {
   else if (stage.key === 'appointment_confirmed') kind = canReschedule ? 'reschedule' : 'view_project';
   else if (stage.key === 'measurer_assigned' && canRebook) kind = 'book';
   else if (['assignment_pending', 'claimed'].includes(stage.key)) kind = 'wait_designer';
+  const appointmentSummary = describeCustomerAppointment({
+    serviceStage: stage.key,
+    appointment: input.appointment,
+  });
+  // Keep staff LEAD_SERVICE_STAGE_NEXT_ACTIONS off the customer DTO for pending match.
+  const nextAction = stage.key === 'claimed' || stage.key === 'assignment_pending'
+    ? '服务匹配完成后即可预约上门'
+    : stage.nextAction;
   return {
     kind,
     label: CUSTOMER_HOME_ACTION_LABELS[kind],
     stageKey: stage.key,
     stageLabel: stage.label,
-    nextAction: stage.nextAction,
-    appointmentSummary: describeCustomerAppointment({ serviceStage: stage.key, appointment: input.appointment }),
+    nextAction,
+    appointmentSummary,
     canReschedule,
     canRebook,
   };

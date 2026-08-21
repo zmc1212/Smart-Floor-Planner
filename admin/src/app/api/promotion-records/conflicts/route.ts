@@ -5,7 +5,6 @@ import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getPlatformB2BTenantContext } from '@/lib/auth';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { promotionActorFromContext, updatePromotionRecord } from '@/lib/postgres-promotion-workflow';
-import { dispatchWorkflowNotifications } from '@/lib/postgres-workflow-automation';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,15 +66,6 @@ export async function POST(request: Request) {
         );
         if (!result) {
           return NextResponse.json({ success: false, error: 'Record not found' }, { status: 404 });
-        }
-        for (const job of result.notificationJobs) {
-          await dispatchWorkflowNotifications({
-            record: result.record,
-            notificationType: job.notificationType,
-            recipientRoles: job.recipientRoles,
-            message: job.message,
-            dedupeSuffix: job.dedupeSuffix,
-          });
         }
         return NextResponse.json({ success: true, data: promotionRecordToDto(result.record) });
       }

@@ -1926,6 +1926,8 @@ test('promotion state transition and notification dedupe are atomic', async () =
     assert.equal(listed.statusCounts.sent, 2);
     assert.equal(listed.rows[0].record?.id, poolRecord.id);
     assert.equal(listed.rows[0].recipientStaff?.id, promotionPromoterAId);
+    assert.ok(listed.rows[0].recipientStaff?.username);
+    assert.notEqual(listed.rows[0].recipientStaff?.phone, undefined);
 
     const marked = await notifications.markAlerted(
       [station.id, miniProgram.id],

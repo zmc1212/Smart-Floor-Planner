@@ -346,16 +346,7 @@ export async function createPromotionRecord(
   return {
     record: created,
     created: true,
-    notificationJobs: [
-      {
-        notificationType: isConflict ? 'conflict_pending' : 'follow_up_created',
-        recipientRoles: isConflict ? ['enterprise_admin'] : ['salesperson', 'admin', 'super_admin'],
-        message: isConflict
-          ? `Duplicate promotion report requires ownership review: ${created.enterpriseName}`
-          : `New promotion report requires follow-up: ${created.enterpriseName}`,
-        dedupeSuffix: `create-${created.id.toString()}`,
-      } satisfies PromotionNotificationJob,
-    ],
+    notificationJobs: [],
   };
 }
 
@@ -375,7 +366,6 @@ export async function updatePromotionRecord(
   const now = new Date();
   const values: Record<string, unknown> = { lastActivityAt: now };
   const timeline: PromotionTimelineEntry[] = [];
-  const notificationJobs: PromotionNotificationJob[] = [];
 
   const businessStage = asString(body.businessStage);
   if (businessStage) {
@@ -444,12 +434,6 @@ export async function updatePromotionRecord(
     values.businessStage = 'measuring';
     values.pendingActionRole = 'measurer';
     values.nextFollowUpAt = null;
-    notificationJobs.push({
-      notificationType: 'measure_assigned',
-      recipientRoles: ['measurer'],
-      message: `Measurement task assigned: ${record.enterpriseName}`,
-      dedupeSuffix: `measure-assign-${now.getTime()}`,
-    });
   }
 
   if (body.assignDesigner !== undefined) {
@@ -466,12 +450,6 @@ export async function updatePromotionRecord(
     values.designLastReminderAt = null;
     values.businessStage = 'designing';
     values.pendingActionRole = 'designer';
-    notificationJobs.push({
-      notificationType: 'design_assigned',
-      recipientRoles: ['designer'],
-      message: `Design task assigned: ${record.enterpriseName}`,
-      dedupeSuffix: `design-assign-${now.getTime()}`,
-    });
   }
 
   const measureTaskStatus = asString(body.measureTaskStatus);
@@ -491,12 +469,6 @@ export async function updatePromotionRecord(
       values.measureResultSummary = asString(body.measureResultSummary) || null;
       values.businessStage = 'measuring';
       values.pendingActionRole = 'enterprise_admin';
-      notificationJobs.push({
-        notificationType: 'measure_submitted',
-        recipientRoles: ['enterprise_admin'],
-        message: `Measurement result submitted: ${record.enterpriseName}`,
-        dedupeSuffix: `measure-submitted-${now.getTime()}`,
-      });
     }
   }
 
@@ -518,12 +490,6 @@ export async function updatePromotionRecord(
       values.businessStage = 'quoted';
       values.pendingActionRole = 'salesperson';
       values.nextFollowUpAt = buildNextFollowUpAt(now, enterpriseAutomation);
-      notificationJobs.push({
-        notificationType: 'design_completed',
-        recipientRoles: ['salesperson', 'enterprise_admin'],
-        message: `Design completed and ready for quotation: ${record.enterpriseName}`,
-        dedupeSuffix: `design-completed-${now.getTime()}`,
-      });
     }
   }
 
@@ -567,12 +533,6 @@ export async function updatePromotionRecord(
         createdAt: now,
       })
     );
-    notificationJobs.push({
-      notificationType: 'follow_up_created',
-      recipientRoles: ['salesperson'],
-      message: `Ownership confirmed; continue follow-up: ${record.enterpriseName}`,
-      dedupeSuffix: `ownership-assigned-${now.getTime()}`,
-    });
   }
 
   const conditions = [];
@@ -584,7 +544,7 @@ export async function updatePromotionRecord(
     promotionUpdateValues(values),
     timeline
   );
-  return updated ? { record: updated, notificationJobs } : null;
+  return updated ? { record: updated, notificationJobs: [] } : null;
 }
 
 export async function listPoolRecords(

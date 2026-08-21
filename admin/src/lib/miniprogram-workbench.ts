@@ -260,6 +260,11 @@ export function buildWorkbenchLeadItem(lead: WorkbenchLeadInput, action = 'lead'
           : surveyAction
             ? '待量房'
             : '';
+  // Activity-code leads can keep measurerId while designer assignment is still
+  // pending. On survey cards, do not pair enterprise「待派单」with「待量房」.
+  const metaLabel = surveyAction && !closed && stage.key === 'assignment_pending' && lead.measurerId
+    ? '未预约上门'
+    : stage.label;
 
   return {
     id: String(lead.id),
@@ -269,8 +274,8 @@ export function buildWorkbenchLeadItem(lead: WorkbenchLeadInput, action = 'lead'
     title: lead.name || '客户',
     subtitle: lead.communityName || '待补充服务地址',
     communityName: lead.communityName || '',
-    meta: stage.label,
-    metaLabel: stage.label,
+    meta: metaLabel,
+    metaLabel,
     status: leadStatus,
     serviceStage: stage.key,
     nextAction: stage.nextAction,

@@ -7,16 +7,7 @@ Page({
     navBarHeightTotal: 0,
     capsuleRightInset: 190,
     pendingLeadId: '',
-    roleWorkbenchRole: '',
     canCreateLead: false
-  },
-
-  getRoleWorkbenchRole() {
-    const globalData = getApp().globalData;
-    const bootstrap = globalData.bootstrap;
-    const role = (bootstrap && bootstrap.current && bootstrap.current.role)
-      || roleForIdentity(globalData.userInfo);
-    return role === 'measurer' ? role : '';
   },
 
   onLoad(options) {
@@ -40,17 +31,9 @@ Page({
     this.syncTabBar();
     const role = (app.globalData.bootstrap && app.globalData.bootstrap.current && app.globalData.bootstrap.current.role)
       || roleForIdentity(app.globalData.userInfo);
-    const roleWorkbenchRole = this.getRoleWorkbenchRole();
-    if (roleWorkbenchRole) {
-      if (this.data.roleWorkbenchRole !== roleWorkbenchRole) {
-        this.setData({ roleWorkbenchRole });
-      }
-      return;
-    }
     const nextOpenid = app.globalData.openid || '';
     const canCreateLead = role === 'enterprise_admin';
     const patch = {};
-    if (this.data.roleWorkbenchRole) patch.roleWorkbenchRole = '';
     if (this.data.canCreateLead !== canCreateLead) patch.canCreateLead = canCreateLead;
     if (this.data.openid !== nextOpenid) patch.openid = nextOpenid;
     if (Object.keys(patch).length) this.setData(patch);

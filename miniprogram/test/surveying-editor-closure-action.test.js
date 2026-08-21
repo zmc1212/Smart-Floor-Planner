@@ -165,6 +165,10 @@ test('closing a room automatically enters the reset-cursor wall-drop state', () 
     editorScript,
     /resolveCursorPlacementState\(floor, session\) \{[\s\S]*?session\.state === 'wallSnapPending'/
   );
+  assert.match(
+    editorScript,
+    /if \(this\.touchState\.mode === 'wallSnapPending'\) \{[\s\S]*?this\.touchState\.mode = 'pan';[\s\S]*?this\.beginViewportInteraction\(this\.touchState\.startViewport\);/
+  );
   assert.match(editorScript, /wx\.showToast\(\{ title: '请拖动光标到墙体', icon: 'none' \}\)/);
   assert.match(editorWxml, /wx:if="\{\{cursorPlacementState === 'placed'\}\}"[\s\S]*?cursor-action-reset[\s\S]*?重置光标/);
   assert.match(editorWxml, /cursor-action-drag[\s\S]*?dock-cursor-icon-ghost[\s\S]*?dock-cursor-origin[\s\S]*?cursor-dock-helper-label[\s\S]*?光标拖动到墙体/);

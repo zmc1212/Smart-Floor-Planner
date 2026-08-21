@@ -712,9 +712,9 @@ export class LeadCommissionRepository {
     ]);
 
     const staffMap = new Map(
-      staffRows
-        .filter((row): row is { userId: bigint; displayName: string } => row.userId !== null)
-        .map((row) => [row.userId.toString(), row.displayName])
+      staffRows.flatMap((row) => (
+        row.userId == null ? [] : [[row.userId.toString(), row.displayName] as const]
+      ))
     );
     const referrerMap = new Map(
       membershipRows.map((row) => [row.userId.toString(), row.displayName])

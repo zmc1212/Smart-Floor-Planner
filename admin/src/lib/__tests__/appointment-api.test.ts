@@ -16,6 +16,18 @@ test('appointment address updates resolve Mini Program staff identity before Adm
   assert.match(source, /appointment\.measurerId === staffId/);
 });
 
+test('internal reschedule resolves Mini Program staff identity before Admin JWT', () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, '../../app/api/appointments/[id]/internal-reschedule/route.ts'),
+    'utf8'
+  );
+  const miniIndex = source.indexOf('resolveMiniProgramContext(request)');
+  const adminIndex = source.indexOf('getTenantContext(request)');
+  assert.ok(miniIndex >= 0 && adminIndex >= 0 && miniIndex < adminIndex);
+  assert.match(source, /miniContext\.staff\._id/);
+  assert.match(source, /canInternalReschedule/);
+});
+
 test('measurer calendar appointment DTO includes the assigned customer contact only when supplied', () => {
   const record = {
     id: BigInt(1),

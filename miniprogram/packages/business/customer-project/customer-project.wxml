@@ -80,9 +80,11 @@
       </view>
       <view wx:if="{{formalFloorPlan}}" class="floor-preview-container" bindtap="previewFloorPlan" aria-role="button" aria-label="查看高清户型图">
         <image wx:if="{{floorPlanImagePath}}" class="floor-preview-image" src="{{floorPlanImagePath}}" mode="aspectFit" />
-        <image wx:elif="{{floorPlanImageState === 'loading'}}" class="floor-preview-image placeholder" src="/packages/business/assets/customer-project-v1/formal-floor-plan-archive.png" mode="aspectFit" />
+        <view wx:elif="{{floorPlanImageState === 'loading'}}" class="floor-preview-fallback">
+          <view class="image-state">读取中…</view>
+        </view>
         <view wx:else class="floor-preview-fallback">
-          <image class="floor-preview-image placeholder" src="/packages/business/assets/customer-project-v1/formal-floor-plan-archive.png" mode="aspectFit" />
+          <view class="image-state">暂不可读</view>
         </view>
         <view class="preview-action-chip"><text>查看高清户型图</text><view class="chip-arrow"></view></view>
       </view>

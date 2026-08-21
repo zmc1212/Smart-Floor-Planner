@@ -5,14 +5,16 @@ const TEMPLATE_ORDER = [
   'new_lead',
   'measurement_appointment',
   'design_published',
-  'enterprise_join_result'
+  'enterprise_join_result',
+  'signing_commission',
+  'lead_converted'
 ];
 const ROLE_SUBSCRIBE_KINDS = Object.freeze({
   customer: ['measurement_appointment', 'design_published'],
   designer: ['lead_assignment', 'measurement_appointment', 'workflow_todo'],
   measurer: ['lead_assignment', 'measurement_appointment', 'workflow_todo'],
-  enterprise_admin: ['new_lead', 'workflow_todo'],
-  referrer: []
+  enterprise_admin: ['new_lead', 'workflow_todo', 'lead_converted'],
+  referrer: ['signing_commission']
 });
 const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9_-]{10,128}$/;
 const api = require('./api.js');
@@ -194,7 +196,9 @@ async function requestNotification(options = {}) {
   const role = resolveSubscribeRole(options && options.role);
   const kinds = getSubscribeKindsForRole(role);
   if (!kinds.length) {
-    wx.showToast({ title: '当前身份无需订阅通知', icon: 'none' });
+    if (!(options && options.quiet)) {
+      wx.showToast({ title: '当前身份无需订阅通知', icon: 'none' });
+    }
     return emptySubscriptionResult([]);
   }
 
@@ -215,12 +219,63 @@ async function requestSubscribeKinds(kinds, options = {}) {
   return requestSubscribeMessageForTemplateIds(templateIds, options);
 }
 
+/**
+ * After login / join-code / scan claim, offer role-scoped subscribe via a modal
+ * so WeChat has a fresh user gesture for requestSubscribeMessage.
+ * Roles with no templates skip the modal and invoke onDone.
+ */
+function offerNotificationAuthorization(options = {}) {
+  const role = resolveSubscribeRole(options && options.role);
+  const kinds = getSubscribeKindsForRole(role);
+  const onDone = typeof options.onDone === 'function' ? options.onDone : () => {};
+
+  if (!kinds.length) {
+    onDone({ offered: false, accepted: false });
+    return Promise.resolve({ offered: false, accepted: false });
+  }
+
+  return new Promise((resolve) => {
+    const finish = (result) => {
+      onDone(result);
+      resolve(result);
+    };
+    wx.showModal({
+      title: options.title || '建议开启通知',
+      content: options.content
+        || '建议开启消息通知，以便及时接收任务提醒与业务进度。',
+      confirmText: options.confirmText || '开启通知',
+      cancelText: options.cancelText || '稍后再说',
+      success: async (modalRes) => {
+        if (!modalRes.confirm) {
+          finish({ offered: true, accepted: false });
+          return;
+        }
+        try {
+          const result = await requestNotification({
+            role,
+            quiet: Boolean(options.quiet)
+          });
+          finish({
+            offered: true,
+            accepted: Boolean(result && result.accepted && result.accepted.length)
+          });
+        } catch (error) {
+          console.error('Notification request failed', error);
+          finish({ offered: true, accepted: false, error });
+        }
+      },
+      fail: () => finish({ offered: true, accepted: false })
+    });
+  });
+}
+
 module.exports = {
   TEMPLATE_CONFIG_STORAGE_KEY,
   TEMPLATE_ORDER,
   ROLE_SUBSCRIBE_KINDS,
   requestNotification,
   requestSubscribeKinds,
+  offerNotificationAuthorization,
   getTemplateConfig,
   getTemplateIds,
   getSubscribeKindsForRole,

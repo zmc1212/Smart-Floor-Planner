@@ -426,7 +426,7 @@ export default function LeadCommissionsPage() {
       render: (_, record) => {
         const config = STATUS_CONFIG[record.status];
         return (
-          <Flex vertical gap={4}>
+          <Flex vertical gap={4} align="flex-start">
             <Tag color={config.color}>{config.label}</Tag>
             {record.adjustedAt ? <Tag color="processing">已调整</Tag> : null}
           </Flex>

@@ -604,7 +604,7 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
 
       <div className="relative flex-1 overflow-hidden p-4 sm:p-6">
         <div className="h-full overflow-hidden rounded-lg border bg-card shadow-sm">
-          <SurveyCanvasHost floor={floor} className="h-full w-full cursor-grab touch-none active:cursor-grabbing" />
+          <SurveyCanvasHost floor={floor as (typeof floor & Record<string, unknown>) | null} className="h-full w-full cursor-grab touch-none active:cursor-grabbing" />
         </div>
       </div>
     </div>

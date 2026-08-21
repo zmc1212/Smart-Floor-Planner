@@ -84,7 +84,7 @@
 
 | Stage keys | Xiao K action | Primary CTA | Inset title (current step) | Inset media |
 | --- | --- | --- | --- | --- |
-| `claimed`, `assignment_pending` | 等待派单 | 等待派单 (weak/disabled) | 服务匹配中 | Xiao K only |
+| `claimed`, `assignment_pending` | 陪你等待匹配（inset helper「匹配完成后可预约上门」; never repeat CTA「等待派单」） | 等待派单 (weak/disabled) | 服务匹配中 | Xiao K only |
 | `measurer_assigned` | 引导预约 | 预约上门 | 待预约上门量房 | Xiao K only |
 | `appointment_confirmed` | 日程提醒 | 改期 or 我的服务档案 | 已预约上门量房 | Xiao K only |
 | `appointment_expired`, `awaiting_rebooking` | 协助重约 | 重新预约 | 需重新预约量房 | Xiao K only |
@@ -95,11 +95,11 @@
 
 ### Copy layering rules (hard)
 
-1. Hero subtitle = `appointmentSummary` only  
+1. Hero subtitle = `appointmentSummary` only (customer-readable status). For `claimed` / `assignment_pending` use「正在为您匹配设计师和测量员」— never staff operational copy such as「补齐可用设计师或测量员后重试派单」
 2. Inset title = current progress-step status (aligned with 匹配/预约/量房/方案); must not be「下一步：{CTA}」and must not repeat the subtitle  
 3. Do not surface `serviceStageLabel` alone as a list-card title on home  
 4. Micro-progress reflects derived stage, not marketing copy  
-5. Primary CTA keeps the action label (`改期` / `预约上门` / …) on the button only
+5. Primary CTA keeps the action label (`改期` / `预约上门` / `等待派单` / …) on the button only; inset helper must not repeat that CTA label. Dual hero CTAs share one `28rpx` label size.
 
 ## Routing and API
 

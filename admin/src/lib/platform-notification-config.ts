@@ -8,6 +8,8 @@ export const SUBSCRIPTION_TEMPLATE_KINDS = [
   'measurement_appointment',
   'design_published',
   'enterprise_join_result',
+  'signing_commission',
+  'lead_converted',
 ] as const;
 
 export type SubscriptionTemplateKind = (typeof SUBSCRIPTION_TEMPLATE_KINDS)[number];
@@ -103,6 +105,23 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
       contactPerson: 'thing3',
       appliedAt: 'time4',
       storeName: 'thing5',
+    },
+  },
+  signing_commission: {
+    title: '推广奖励到账提醒',
+    templateId: 'aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU',
+    keywordKeys: {
+      rewardType: 'thing1',
+      note: 'thing2',
+      amount: 'amount4',
+    },
+  },
+  lead_converted: {
+    title: '客户已成交提醒',
+    templateId: 'WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo',
+    keywordKeys: {
+      notifiedAt: 'time1',
+      tip: 'thing2',
     },
   },
 };
