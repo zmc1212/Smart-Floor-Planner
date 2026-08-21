@@ -6,14 +6,14 @@ const { refreshAccountSettingsState } = require('../utils/account-settings-state
 
 const projectRoot = path.resolve(__dirname, '..');
 const notificationTemplates = [
-  ['workflow_todo', '48Jvq7OjOKwRhshn8fyvtsjxAamLOakaNtiKcO11rOc'],
-  ['lead_assignment', 'wltuS0LdggzpMWdSOlr6FBSKeRbOKUzqXVCqJDmLpmA'],
-  ['new_lead', 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjq4xest9GRc'],
-  ['measurement_appointment', 'CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl'],
-  ['design_published', 'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'],
-  ['enterprise_join_result', 'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk'],
+  ['workflow_todo', '48Jvq7OjOKwRhsnh8fyvtsjxAamLOakaNtiKcO11rOc'],
+  ['lead_assignment', 'wItuS0LdggzpMWdSOIr6FBSKeRbOKUzqXVCqJDmLpmA'],
+  ['new_lead', 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjg4xest9GRc'],
+  ['measurement_appointment', 'CtcuQ_NWF4GOpHvstgviDPmYRISjyqTjnFAoeQR9-vI'],
+  ['design_published', 'XEQFWwyaIQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'],
+  ['enterprise_join_result', 'wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk'],
   ['signing_commission', 'aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU'],
-  ['lead_converted', 'WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo'],
+  ['lead_converted', 'WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo'],
 ];
 
 function notificationConfig() {

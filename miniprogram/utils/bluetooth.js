@@ -7,8 +7,12 @@ var _isConnecting = false;
 var _onConnectCallback = null;
 var _onDisconnectCallback = null;
 var _scanTimer = null; // 搜索总时间计时器
-var _foundDevices = []; // 发现的设备列表，用于超时判断
+var _scanPollTimer = null; // 搜索期间轮询已发现列表
+var _foundDevices = []; // 发现的目标设备列表，用于超时判断
+var _nearbySeenById = {}; // 本次扫描见过的全部 BLE 设备（诊断用）
+var _unauthorizedMessages = []; // 搜到但未授权的原因
 var _verifyingDevices = {}; // 记录正在验证或验证失败的设备，避免重复请求
+var _deviceFoundHandler = null; // 保持同一引用以便 off/on，避免监听堆叠
 var _isStateChangeRegistered = false;
 var _isValueChangeRegistered = false;
 var _deviceName = ''; // 存储当前连接的设备名称
@@ -20,6 +24,7 @@ var _enrollCollectMode = false;
 var _onEnrollDeviceFound = null;
 var _onEnrollScanComplete = null;
 var _enrollFoundById = {};
+var _activeScanSilent = false;
 
 var _heartbeatTimer = null;
 var _lastResponseTime = 0;
@@ -27,6 +32,7 @@ const HEARTBEAT_INTERVAL = 5000; // 5秒发一次心跳
 const HEARTBEAT_TIMEOUT = 12000;  // 12秒没收到任何回复认为断开
 
 const TARGET_DEVICE_NAME = 'LDMStudio 4D';
+const TARGET_DEVICE_NAME_TOKEN = 'LDMSTUDIO';
 
 function bytesToHex(bytes) {
   var hex = [];
@@ -67,6 +73,77 @@ function logDiscoveredDevice(device, name) {
   );
 }
 
+function resolveDeviceName(device) {
+  return String((device && (device.name || device.localName)) || '').trim();
+}
+
+/** 匹配 LDMStudio 系列广播名（大小写不敏感，兼容仅含 LDMStudio 前缀）。 */
+function isTargetRangefinderName(name) {
+  var normalized = String(name || '').trim().toUpperCase();
+  if (!normalized) return false;
+  if (normalized.indexOf(TARGET_DEVICE_NAME.toUpperCase()) !== -1) return true;
+  return normalized.indexOf(TARGET_DEVICE_NAME_TOKEN) !== -1;
+}
+
+function rememberNearbyDevice(device) {
+  var id = String((device && device.deviceId) || '').trim();
+  if (!id || _nearbySeenById[id]) return;
+  var name = resolveDeviceName(device);
+  _nearbySeenById[id] = {
+    deviceId: id,
+    name: name || '(no name)',
+    rssi: device && device.RSSI
+  };
+  console.log(
+    '[BLE discovery] nearby deviceId=' + id +
+    ' name=' + (name || '(no name)') +
+    ' RSSI=' + String(device && device.RSSI == null ? '' : device.RSSI)
+  );
+}
+
+function clearScanTimers() {
+  if (_scanTimer) {
+    clearTimeout(_scanTimer);
+    _scanTimer = null;
+  }
+  if (_scanPollTimer) {
+    clearInterval(_scanPollTimer);
+    _scanPollTimer = null;
+  }
+}
+
+function detachDeviceFoundListener() {
+  if (!_deviceFoundHandler) return;
+  try {
+    if (typeof wx.offBluetoothDeviceFound === 'function') {
+      wx.offBluetoothDeviceFound(_deviceFoundHandler);
+    }
+  } catch (error) {
+    console.warn('[BLE discovery] offBluetoothDeviceFound failed:', error);
+  }
+  _deviceFoundHandler = null;
+}
+
+function buildNotFoundContent() {
+  var nearbyCount = Object.keys(_nearbySeenById).length;
+  var targetCount = _foundDevices.length;
+  if (_enrollMode) {
+    return nearbyCount > 0
+      ? ('附近发现 ' + nearbyCount + ' 台蓝牙设备，但没有 LDMStudio 测距仪。请确认仪器已开机并靠近手机。')
+      : '未搜索到 LDMStudio 4D，请确保测距仪已开机并靠近手机。';
+  }
+  if (targetCount > 0 && _unauthorizedMessages.length > 0) {
+    return _unauthorizedMessages[0] + '（附近已发现测距仪，但未通过企业授权）';
+  }
+  if (targetCount > 0) {
+    return '附近已发现测距仪，但未通过企业授权。请确认已在后台录入编码并分配给本公司。';
+  }
+  if (nearbyCount > 0) {
+    return '附近发现 ' + nearbyCount + ' 台蓝牙设备，但没有授权的 LDMStudio 测距仪。请确认仪器已开机、已录入并靠近手机。';
+  }
+  return '未搜索到授权的测距仪，请确保设备已开启、已在后台录入编码并靠近手机。';
+}
+
 function requestDeviceIdCode() {
   if (_hasRequestedDeviceIdCode || !_deviceId || _writeCharacteristics.length === 0) return;
   _hasRequestedDeviceIdCode = true;
@@ -79,11 +156,16 @@ function initBLE(callback, connectCallback, disconnectCallback, silent = false, 
   _onConnectCallback = connectCallback;
   _onDisconnectCallback = disconnectCallback;
   _verifyingDevices = {}; // 重置验证状态
+  _unauthorizedMessages = [];
+  _nearbySeenById = {};
+  // 未真正连上时清掉连接中锁，避免上次失败残留导致本次搜索直接跳过目标设备
+  if (!_deviceId) _isConnecting = false;
   _enrollMode = Boolean(options && options.enrollMode);
   _enrollCollectMode = Boolean(options && options.enrollCollectMode);
   _onEnrollDeviceFound = (_enrollCollectMode && options && options.onDeviceFound) || null;
   _onEnrollScanComplete = (_enrollCollectMode && options && options.onComplete) || null;
   _enrollFoundById = {};
+  _activeScanSilent = Boolean(silent);
   wx.openBluetoothAdapter({
     success: function (res) {
       // 注册全局断开监听 (仅注册一次)
@@ -106,6 +188,7 @@ function initBLE(callback, connectCallback, disconnectCallback, silent = false, 
       startScan(silent, options && options.scanMs);
     },
     fail: function (err) {
+      console.error('[BLE] openBluetoothAdapter failed:', err);
       if (!silent) wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
       if (_enrollCollectMode && _onEnrollScanComplete) {
         _onEnrollScanComplete({ success: false, devices: [], error: 'bluetooth_unavailable' });
@@ -149,11 +232,9 @@ function initBLEForEnrollment(connectCallback, disconnectCallback, silent = fals
 }
 
 function finishEnrollCollectScan(silent, reason) {
-  if (_scanTimer) {
-    clearTimeout(_scanTimer);
-    _scanTimer = null;
-  }
+  clearScanTimers();
   try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
+  detachDeviceFoundListener();
   if (!silent) wx.hideLoading();
   var devices = Object.keys(_enrollFoundById).map(function (id) {
     return _enrollFoundById[id];
@@ -171,9 +252,108 @@ function finishEnrollCollectScan(silent, reason) {
   _onEnrollScanComplete = null;
 }
 
+function processDiscoveredDevice(device, silent) {
+  if (!device) return;
+  rememberNearbyDevice(device);
+  var name = resolveDeviceName(device);
+  if (!isTargetRangefinderName(name) || _isConnecting) return;
+
+  _foundDevices.push(device);
+  logDiscoveredDevice(device, name || TARGET_DEVICE_NAME);
+
+  if (_enrollCollectMode) {
+    var mac = String(device.deviceId || '').trim().toUpperCase();
+    if (!mac || _enrollFoundById[mac]) return;
+    var found = {
+      deviceId: mac,
+      name: name || TARGET_DEVICE_NAME,
+      rssi: device.RSSI
+    };
+    _enrollFoundById[mac] = found;
+    console.log('录入扫描收集设备:', found.name, found.deviceId);
+    if (_onEnrollDeviceFound) _onEnrollDeviceFound(found);
+    return;
+  }
+
+  if (_verifyingDevices[device.deviceId]) return;
+  _verifyingDevices[device.deviceId] = true;
+
+  if (_enrollMode) {
+    if (_isConnecting) return;
+    _isConnecting = true;
+    clearScanTimers();
+    try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
+    detachDeviceFoundListener();
+    if (!silent) wx.hideLoading();
+    console.log('录入模式：跳过授权校验，直接连接:', name, device.deviceId);
+    connectDevice(device.deviceId, name || TARGET_DEVICE_NAME, silent);
+    return;
+  }
+
+  console.log('搜索到设备，请求后台验证...', name, 'ID:', device.deviceId);
+
+  var api = require('./api.js');
+  const app = getApp();
+  api.request('/devices/verify-binding', 'POST', {
+    deviceId: device.deviceId,
+    name: name || TARGET_DEVICE_NAME,
+    openid: app.globalData.openid
+  }).then(function (verifyRes) {
+    if (verifyRes.success && verifyRes.authorized) {
+      if (_isConnecting) return;
+      _isConnecting = true;
+      clearScanTimers();
+      try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
+      detachDeviceFoundListener();
+      if (!silent) wx.hideLoading();
+
+      console.log('✅ 设备授权成功，发起连接:', name);
+      connectDevice(device.deviceId, name || TARGET_DEVICE_NAME, silent);
+    } else {
+      var denyMessage = (verifyRes && verifyRes.message) || '设备未授权';
+      console.log('🚫 设备未授权:', denyMessage);
+      if (_unauthorizedMessages.indexOf(denyMessage) === -1) {
+        _unauthorizedMessages.push(denyMessage);
+      }
+    }
+  }).catch(function (err) {
+    console.error('设备验证请求失败:', err);
+    _verifyingDevices[device.deviceId] = false;
+  });
+}
+
+function handleBluetoothDeviceFound(res) {
+  var deviceList = (res && res.devices) || [];
+  for (var i = 0; i < deviceList.length; i++) {
+    processDiscoveredDevice(deviceList[i], _activeScanSilent);
+  }
+}
+
+function pollAlreadyDiscoveredDevices(silent) {
+  if (typeof wx.getBluetoothDevices !== 'function') return;
+  wx.getBluetoothDevices({
+    success: function (res) {
+      var list = (res && res.devices) || [];
+      console.log('[BLE discovery] getBluetoothDevices count=' + list.length);
+      for (var i = 0; i < list.length; i++) {
+        processDiscoveredDevice(list[i], silent);
+      }
+    },
+    fail: function (err) {
+      console.warn('[BLE discovery] getBluetoothDevices failed:', err);
+    }
+  });
+}
+
 function startScan(silent = false, scanMs) {
-  if (_isConnecting) return;
-  _foundDevices = []; // 重置搜索列表
+  if (_isConnecting) {
+    console.warn('[BLE discovery] skip startScan because _isConnecting=true deviceId=' + _deviceId);
+    return;
+  }
+  _foundDevices = [];
+  _nearbySeenById = {};
+  _unauthorizedMessages = [];
+  _activeScanSilent = Boolean(silent);
   if (_enrollCollectMode) _enrollFoundById = {};
 
   // 前置检查安卓系统定位权限与开关
@@ -182,13 +362,14 @@ function startScan(silent = false, scanMs) {
     if (sysInfo.platform === 'android') {
       var sysSetting = typeof wx.getSystemSetting === 'function' ? wx.getSystemSetting() : {};
       var appAuth = typeof wx.getAppAuthorizeSetting === 'function' ? wx.getAppAuthorizeSetting() : {};
-      
+
       var msgs = [];
       if (sysSetting.locationEnabled === false) msgs.push('【系统定位开关】');
       if (appAuth.locationAuthorized === 'denied') msgs.push('【微信定位权限】');
       if (appAuth.bluetoothAuthorized === 'denied') msgs.push('【微信蓝牙权限】');
-      
+
       if (msgs.length > 0) {
+        console.warn('[BLE discovery] android permission blocked:', msgs.join(','));
         if (!silent) {
           wx.hideLoading();
           wx.showModal({
@@ -210,30 +391,33 @@ function startScan(silent = false, scanMs) {
   }
 
   var timeoutMs = Number(scanMs) > 0 ? Number(scanMs) : 10000;
-  // 设置搜索超时 (验证需要额外时间)
-  if (_scanTimer) clearTimeout(_scanTimer);
+  clearScanTimers();
   _scanTimer = setTimeout(function () {
+    var nearbyCount = Object.keys(_nearbySeenById).length;
+    console.log(
+      '[BLE discovery] timeout nearby=' + nearbyCount +
+      ' targets=' + _foundDevices.length +
+      ' unauthorized=' + _unauthorizedMessages.length
+    );
     if (_enrollCollectMode) {
       finishEnrollCollectScan(silent, 'timeout');
       if (!silent && Object.keys(_enrollFoundById).length === 0) {
         wx.showModal({
           title: '未发现设备',
-          content: '未搜索到 LDMStudio 4D，请确保测距仪已开机并靠近手机。',
+          content: buildNotFoundContent(),
           showCancel: false
         });
       }
       return;
     }
     if (!_isConnecting) {
-      wx.stopBluetoothDevicesDiscovery();
+      try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
+      detachDeviceFoundListener();
       if (!silent) {
         wx.hideLoading();
-
         wx.showModal({
           title: '未发现设备',
-          content: _enrollMode
-            ? '未搜索到 LDMStudio 4D，请确保测距仪已开机并靠近手机。'
-            : '未搜索到授权的测距仪，请确保设备已开启、已在后台录入编码并靠近手机。',
+          content: buildNotFoundContent(),
           showCancel: false
         });
       }
@@ -242,83 +426,31 @@ function startScan(silent = false, scanMs) {
     }
   }, timeoutMs);
 
+  // 先挂监听再开扫，避免 success 回调晚于首批广播而漏设备
+  detachDeviceFoundListener();
+  _deviceFoundHandler = handleBluetoothDeviceFound;
+  wx.onBluetoothDeviceFound(_deviceFoundHandler);
+
+  console.log('[BLE discovery] start scan timeoutMs=' + timeoutMs + ' enroll=' + _enrollMode + ' collect=' + _enrollCollectMode);
+
   wx.startBluetoothDevicesDiscovery({
     allowDuplicatesKey: false,
-    success: function (res) {
-      wx.onBluetoothDeviceFound(function (devices) {
-        var deviceList = devices.devices;
-        for (var i = 0; i < deviceList.length; i++) {
-          var device = deviceList[i];
-          const name = device.name || device.localName || '';
-
-          // 发现目标类设备
-          if (name.trim().includes(TARGET_DEVICE_NAME) && !_isConnecting) {
-            _foundDevices.push(device);
-            logDiscoveredDevice(device, name.trim());
-
-            if (_enrollCollectMode) {
-              var mac = String(device.deviceId || '').trim().toUpperCase();
-              if (!mac || _enrollFoundById[mac]) continue;
-              var found = {
-                deviceId: mac,
-                name: name.trim() || TARGET_DEVICE_NAME,
-                rssi: device.RSSI
-              };
-              _enrollFoundById[mac] = found;
-              console.log('录入扫描收集设备:', found.name, found.deviceId);
-              if (_onEnrollDeviceFound) _onEnrollDeviceFound(found);
-              continue;
-            }
-            
-            if (_verifyingDevices[device.deviceId]) return; // 已验证或验证中
-            _verifyingDevices[device.deviceId] = true;
-
-            if (_enrollMode) {
-              if (_isConnecting) return;
-              _isConnecting = true;
-              if (_scanTimer) clearTimeout(_scanTimer);
-              wx.stopBluetoothDevicesDiscovery();
-              if (!silent) wx.hideLoading();
-              console.log('录入模式：跳过授权校验，直接连接:', name, device.deviceId);
-              connectDevice(device.deviceId, name.trim(), silent);
-              return;
-            }
-
-            console.log('搜索到设备，请求后台验证...', name, 'ID:', device.deviceId);
-
-            var api = require('./api.js');
-            const app = getApp();
-            api.request('/devices/verify-binding', 'POST', { 
-              deviceId: device.deviceId, 
-              name: name.trim(),
-              openid: app.globalData.openid
-            }).then(function(verifyRes) {
-              if (verifyRes.success && verifyRes.authorized) {
-                if (_isConnecting) return; // 可能已连接上其他设备
-                _isConnecting = true;
-                if (_scanTimer) clearTimeout(_scanTimer);
-                wx.stopBluetoothDevicesDiscovery();
-                if (!silent) wx.hideLoading();
-
-                console.log('✅ 设备授权成功，发起连接:', name);
-                connectDevice(device.deviceId, name.trim(), silent);
-              } else {
-                console.log('🚫 设备未授权:', verifyRes.message);
-                // Optionally show feedback if the user specifically tried this device
-              }
-            }).catch(function(err) {
-              console.error('设备验证请求失败:', err);
-              // 验证失败允许重试
-              _verifyingDevices[device.deviceId] = false; 
-            });
-          }
+    powerLevel: 'high',
+    success: function () {
+      console.log('[BLE discovery] startBluetoothDevicesDiscovery success');
+      pollAlreadyDiscoveredDevices(silent);
+      _scanPollTimer = setInterval(function () {
+        if (_isConnecting) {
+          clearScanTimers();
+          return;
         }
-      });
+        pollAlreadyDiscoveredDevices(silent);
+      }, 2000);
     },
     fail: function (err) {
       console.log('搜索设备失败', err);
-      if (_scanTimer) clearTimeout(_scanTimer);
-      _scanTimer = null;
+      clearScanTimers();
+      detachDeviceFoundListener();
       if (_enrollCollectMode) {
         finishEnrollCollectScan(silent, 'scan_failed');
       } else if (_onConnectCallback) {
@@ -326,10 +458,10 @@ function startScan(silent = false, scanMs) {
       }
       if (!silent) {
         wx.hideLoading();
-        
+
         var errMsg = '搜索失败，请确保蓝牙正常。';
         if (err.errCode === 10001 || /location/i.test(err.errMsg) || /system/i.test(err.errMsg)) {
-           errMsg = '蓝牙未准备就绪或权限不足，请检查手机蓝牙、系统定位开关及微信定位权限。';
+          errMsg = '蓝牙未准备就绪或权限不足，请检查手机蓝牙、系统定位开关及微信定位权限。';
         }
         wx.showModal({
           title: '搜索异常',
@@ -346,11 +478,9 @@ function startScan(silent = false, scanMs) {
  * 供连接弹窗关闭时解除 loading 锁。
  */
 function cancelBLEDiscovery() {
-  if (_scanTimer) {
-    clearTimeout(_scanTimer);
-    _scanTimer = null;
-  }
+  clearScanTimers();
   try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
+  detachDeviceFoundListener();
   if (!_deviceId) {
     _isConnecting = false;
   }
@@ -360,29 +490,25 @@ function connectDevice(deviceId, name, silent = false) {
   _isConnecting = true;
   _writeCharacteristics = []; // 连接前重置写入通道
   _dataBuffersByChannel = {};
-  wx.stopBluetoothDevicesDiscovery();
+  try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
+  detachDeviceFoundListener();
   if (!silent) wx.showLoading({ title: '连接 ' + name + '...' });
 
   wx.createBLEConnection({
     deviceId: deviceId,
     success: function () {
-      _deviceId = deviceId;
-      // 保存到本地缓存以便后续一键直连
-      wx.setStorageSync('last_ble_device_id', deviceId);
-      wx.setStorageSync('last_ble_device_name', name);
-
-      if (!silent) wx.showToast({ title: '连接成功', icon: 'success' });
-      _deviceName = name;
-      _hasTriggeredReady = false;
-      _hasRequestedDeviceIdCode = false;
-      getServices(deviceId);
-      
-      startHeartbeat();
+      resumeConnectedSession(deviceId, name, silent, false);
     },
     fail: function (err) {
+      if (isAlreadyConnectedError(err)) {
+        // 退出小程序后系统层连接常仍在；JS 状态已丢失。按已连接恢复，勿清记忆设备。
+        console.log('[BLE] createBLEConnection already connected, resume session:', deviceId, err);
+        resumeConnectedSession(deviceId, name, silent, true);
+        return;
+      }
       if (!silent) wx.hideLoading();
       console.log('连接失败', err);
-      // 如果直连失败，清除缓存
+      // 真正连不上时清掉记忆，避免下次直连死循环
       wx.removeStorageSync('last_ble_device_id');
       wx.removeStorageSync('last_ble_device_name');
       if (!silent) wx.showToast({ title: '连接失败', icon: 'none' });
@@ -390,6 +516,32 @@ function connectDevice(deviceId, name, silent = false) {
       if (_onConnectCallback) _onConnectCallback(false);
     }
   });
+}
+
+function isAlreadyConnectedError(err) {
+  if (!err) return false;
+  if (err.errno === 1509007) return true;
+  var msg = String(err.errMsg || err.message || '');
+  return /already\s*connect/i.test(msg);
+}
+
+function resumeConnectedSession(deviceId, name, silent, fromAlreadyConnected) {
+  _deviceId = deviceId;
+  wx.setStorageSync('last_ble_device_id', deviceId);
+  wx.setStorageSync('last_ble_device_name', name);
+
+  if (!silent) {
+    wx.hideLoading();
+    wx.showToast({
+      title: fromAlreadyConnected ? '已恢复连接' : '连接成功',
+      icon: 'success'
+    });
+  }
+  _deviceName = name;
+  _hasTriggeredReady = false;
+  _hasRequestedDeviceIdCode = false;
+  getServices(deviceId);
+  startHeartbeat();
 }
 
 function getServices(deviceId) {
@@ -635,8 +787,11 @@ function handleDisconnect(reason) {
   _hasRequestedDeviceIdCode = false;
   _enrollMode = false;
   stopHeartbeat();
-  
-  wx.closeBLEConnection({ deviceId: tempId }).catch(function(){});
+
+  wx.closeBLEConnection({
+    deviceId: tempId,
+    complete: function () {}
+  });
   
   if (_onDisconnectCallback) {
     _onDisconnectCallback();
@@ -726,10 +881,28 @@ function closeBLE() {
   wx.closeBluetoothAdapter();
 }
 
+var _autoConnectInFlight = false;
+
+function finishAutoConnectInFlight() {
+  _autoConnectInFlight = false;
+}
+
 function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = false) {
   _onMeasureCallback = callback;
   _onConnectCallback = connectCallback;
   _onDisconnectCallback = disconnectCallback;
+
+  // 本进程内已恢复过连接：直接回报已连接，供工作台冷启动 UI 同步
+  if (_deviceId) {
+    console.log('[BLE] session already connected, notify UI:', _deviceId);
+    if (connectCallback) connectCallback(true, _deviceName, _deviceId);
+    return;
+  }
+
+  if (_autoConnectInFlight) {
+    console.log('[BLE] autoConnect already in flight; updated callbacks only');
+    return;
+  }
 
   var lastId = wx.getStorageSync('last_ble_device_id');
   var lastName = wx.getStorageSync('last_ble_device_name');
@@ -737,6 +910,13 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = 
   console.log('尝试一键直连，记忆设备名称:', lastName, 'ID:', lastId);
 
   if (lastId) {
+    _autoConnectInFlight = true;
+    var userConnectCallback = connectCallback;
+    _onConnectCallback = function (success, name, id) {
+      finishAutoConnectInFlight();
+      if (userConnectCallback) userConnectCallback(success, name, id);
+    };
+
     wx.openBluetoothAdapter({
       success: function (res) {
         // 注册全局断开监听 (仅注册一次)
@@ -753,12 +933,12 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = 
         if (!silent) wx.showLoading({ title: '验证授权中...', mask: true });
         var api = require('./api.js');
         const app = getApp();
-        api.request('/devices/verify-binding', 'POST', { 
-          deviceId: lastId, 
+        api.request('/devices/verify-binding', 'POST', {
+          deviceId: lastId,
           name: lastName,
-          openid: app.globalData.openid 
+          openid: app.globalData.openid
         })
-          .then(function(verifyRes) {
+          .then(function (verifyRes) {
             if (verifyRes.success && verifyRes.authorized) {
               connectDevice(lastId, lastName || '记忆设备', silent);
             } else {
@@ -768,18 +948,19 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = 
               }
               wx.removeStorageSync('last_ble_device_id');
               wx.removeStorageSync('last_ble_device_name');
-              // 未授权时可以重置去搜索界面
               if (_onConnectCallback) _onConnectCallback(false);
             }
-          }).catch(function(err) {
-             if (!silent) {
-               wx.hideLoading();
-               wx.showToast({ title: '设备验证失败', icon: 'none' });
-             }
-             if (_onConnectCallback) _onConnectCallback(false);
+          }).catch(function (err) {
+            console.error('[BLE] silent verify failed:', err);
+            if (!silent) {
+              wx.hideLoading();
+              wx.showToast({ title: '设备验证失败', icon: 'none' });
+            }
+            if (_onConnectCallback) _onConnectCallback(false);
           });
       },
       fail: function (err) {
+        console.error('[BLE] openBluetoothAdapter failed during autoConnect:', err);
         if (!silent) wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
         if (_onConnectCallback) _onConnectCallback(false);
       }
@@ -797,6 +978,10 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = 
 
 function hasRememberedDevice() {
   return !!wx.getStorageSync('last_ble_device_id');
+}
+
+function isSessionConnected() {
+  return !!_deviceId;
 }
 
 function setCallbacks(callback, connectCallback, disconnectCallback) {
@@ -848,5 +1033,6 @@ module.exports = {
   restoreMeasureCallback: restoreMeasureCallback,
   getCurrentDeviceInfo: getCurrentDeviceInfo,
   hasRememberedDevice: hasRememberedDevice,
+  isSessionConnected: isSessionConnected,
   TARGET_DEVICE_NAME: TARGET_DEVICE_NAME
 };

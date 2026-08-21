@@ -48,9 +48,9 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.doesNotMatch(editorScript, /query\.select\('\.cursor-fab-drop'\)/);
   assert.match(editorScript, /hasUsablePagePoint = pageX !== null && pageY !== null/);
   assert.match(editorScript, /const movedWithoutTouchMove = !wasDragging && dragWasPending/);
-  assert.match(editorScript, /const shouldUpdateLens = !wasDragging \|\| !this\.data\.cursorLensVisible \|\|/);
+  assert.match(editorScript, /Canvas owns the lens chrome\. Only publish the dragging state once/);
   assert.match(editorScript, /isCursorLensActive\(\) \{[\s\S]*this\.cursorPlacementState === 'dragging' \|\| this\.canvasCursorLensActive/);
-  assert.match(editorScript, /this\.draft = surveyGraph\.startPreview\(this\.draft, snappedMm\);[\s\S]*surveyGraph\.getCursorDisplayPoint\(previewFloor, previewFloor\.session\)[\s\S]*this\.updateCanvasCursorLens\(point, previewPointMm, this\.resolvePreviewLensTarget\(previewFloor\.session, previewPointMm\)\);/);
+  assert.match(editorScript, /this\.draft = surveyGraph\.startPreview\(this\.draft, snappedMm\);[\s\S]*surveyGraph\.getCursorDisplayPoint\(previewFloor, previewFloor\.session\)[\s\S]*this\.queueWallDragRedraw\(/);
   assert.match(editorScript, /if \(movedWall\) \{[\s\S]*this\.clearCanvasCursorLens\(\);/);
   assert.match(editorScript, /lensMeta: this\.cursorLensMeta/);
   assert.doesNotMatch(editorScript, /SURVEYING_ONBOARDING_STEPS|onOnboardingNext|onOnboardingSkip/);
@@ -97,6 +97,7 @@ test('surveying toolbar uses the approved rail cuts and stateful BLE icons', () 
     'icons/save-draft.png',
     'icons/ble-green.png',
     'icons/ble-muted.png',
+    'icons/cursor-reticle.png',
     'icons/editor-rail/align.png',
     'icons/editor-rail/align-active.png',
     'icons/editor-rail/annotation.png',
@@ -107,8 +108,13 @@ test('surveying toolbar uses the approved rail cuts and stateful BLE icons', () 
   iconPaths.forEach((relativePath) => {
     const asset = fs.readFileSync(path.join(miniRoot, 'packages', 'surveying', 'assets', relativePath));
     assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
-    assert.equal(asset.readUInt32BE(16), 48);
-    assert.equal(asset.readUInt32BE(20), 48);
+    if (relativePath === 'icons/cursor-reticle.png') {
+      assert.equal(asset.readUInt32BE(16), 128);
+      assert.equal(asset.readUInt32BE(20), 128);
+    } else {
+      assert.equal(asset.readUInt32BE(16), 48);
+      assert.equal(asset.readUInt32BE(20), 48);
+    }
     assert.ok([3, 6].includes(asset[25]));
   });
   assert.match(editorScript, /key: 'straight'[\s\S]*\? 'align-active' : 'align'/);
@@ -118,7 +124,8 @@ test('surveying toolbar uses the approved rail cuts and stateful BLE icons', () 
   assert.match(editorWxml, /guide-help\.png/);
   assert.match(editorWxml, /save-draft\.png/);
   assert.match(editorWxml, /ble-\{\{bleConnected \? 'green' : 'muted'\}\}\.png/);
-  assert.match(editorWxml, /editor-rail\/align\.png/);
+  assert.match(editorWxml, /editor-rail\/\{\{item\.icon\}\}\.png/);
+  assert.match(editorWxml, /cursor-reticle\.png/);
 });
 
 test('selected walls do not replace the right rail with a contextual action panel', () => {
@@ -141,6 +148,8 @@ test('formal surveying fixed chrome follows the compact high-fidelity reference 
   assert.match(editorWxss, /\.right-rail\s*\{[\s\S]*right:\s*34rpx;[\s\S]*width:\s*88rpx;/);
   assert.match(editorWxss, /\.history-action-bar\.bottom-control-dock\s*\{[\s\S]*width:\s*575rpx;[\s\S]*height:\s*108rpx;/);
   assert.match(editorWxml, /测距\{\{bleConnected \? ' · 已连接' : ''\}\}/);
+  assert.match(editorWxml, /wx:if="\{\{bleConnected\}\}" class="dock-status-dot"/);
+  assert.match(editorWxss, /\.dock-status-dot\s*\{[\s\S]*?margin-left:\s*12rpx;/);
   assert.match(editorScript, /rect\.width \/ 390/);
   assert.match(editorWxml, /class="page-subtitle-text"/);
   assert.match(editorWxss, /\.topbar-right \.topbar-chip \+ \.topbar-chip\s*\{[\s\S]*margin-left:\s*20rpx;/);

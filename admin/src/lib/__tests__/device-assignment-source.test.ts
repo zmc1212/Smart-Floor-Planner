@@ -64,6 +64,8 @@ test('verify-binding authorizes by enterprise ownership only', () => {
   assert.doesNotMatch(verifyBindingRoute, /assignedUsers/);
   assert.match(verifyBindingRoute, /matchedDevice\.enterpriseId !== staff\.enterpriseId/);
   assert.match(verifyBindingRoute, /未分配企业/);
+  assert.match(verifyBindingRoute, /normalizeBleIdentity/);
+  assert.match(verifyBindingRoute, /identitiesMatch/);
 });
 
 test('miniprogram device enroll is platform-admin only and upserts by MAC code', () => {

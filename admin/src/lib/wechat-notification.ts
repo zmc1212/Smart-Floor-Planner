@@ -105,6 +105,16 @@ function deliveryError(error: unknown) {
   return error instanceof Error ? error.message : String(error || 'Unknown notification error');
 }
 
+/** Staff deep link into the lead detail page (designer / measurer / enterprise admin). */
+function staffLeadDetailPage(leadId: bigint | string) {
+  return `/packages/business/lead-detail/lead-detail?id=${encodeURIComponent(String(leadId))}`;
+}
+
+/** Customer deep link into the owned project archive. */
+function customerProjectPage(leadId: bigint | string) {
+  return `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(String(leadId))}`;
+}
+
 async function deliverLeadNotification(input: LeadDeliveryInput) {
   try {
     if (!input.lead.enterpriseId || !input.lead.id) {
@@ -248,7 +258,7 @@ export async function notifyEnterpriseAdminOfNewLead(lead: LeadNotificationRecor
           notificationType: 'lead_created',
           message: `新增客户：${lead.name}，负责人：${leadOwnerName(lead)}`,
           dedupeKey: `lead_created:${String(lead.id)}:${admin.id.toString()}`,
-          page: '/pages/leads-management/leads-management',
+          page: staffLeadDetailPage(lead.id!),
           buildData: (template) =>
             buildNewLeadPayload(template, {
               customerName: lead.name,
@@ -297,7 +307,7 @@ export async function notifyEnterpriseAdminOfAssignmentPending(
           notificationType: 'lead_assignment_pending',
           message: `客户${lead.name}自动派单待处理，请补充可用人员`,
           dedupeKey: `lead_assignment_pending:${String(lead.id)}:${admin.id.toString()}:${input.eventKey}`,
-          page: '/pages/leads-management/leads-management',
+          page: staffLeadDetailPage(lead.id!),
           metadata: { reasonCode: input.reasonCode },
           buildData: (template) =>
             buildWorkflowTodoPayload(template, {
@@ -381,7 +391,7 @@ export async function notifyDesignerOfAssignedLead(lead: LeadNotificationRecord,
     notificationType: 'lead_assigned',
     message: `客户${lead.name}已指派，请尽快跟进`,
     dedupeKey: `lead_assigned:${String(lead.id)}:${designer.id.toString()}`,
-    page: '/pages/leads-management/leads-management',
+    page: staffLeadDetailPage(lead.id!),
     buildData: (template) => buildLeadAssignmentPayload(template, {
       customerName: lead.name,
       customerStatus: copy.status,
@@ -430,7 +440,7 @@ export async function notifyAppointmentStaff(input: {
         recipient, templateKind: 'measurement_appointment', notificationType: `measurement_appointment_${input.eventType}`,
         message: `客户${lead.name}${action}`,
         dedupeKey: `measurement_appointment:${input.eventKey}:${recipient.id.toString()}`,
-        page: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(input.leadId.toString())}`,
+        page: staffLeadDetailPage(input.leadId),
         metadata: { appointmentEvent: input.eventType },
         buildData: (template) => buildMeasurementAppointmentPayload(template, {
           customerName: lead.name, phone: lead.phone, community: input.address,
@@ -476,7 +486,7 @@ export async function notifyCustomerOfAppointment(input: {
     return await sendSubscriptionMessage({
       touser: identity.openid,
       template_id: template.templateId,
-      page: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(input.leadId.toString())}`,
+      page: customerProjectPage(input.leadId),
       data: buildMeasurementAppointmentPayload(template, {
         customerName: lead.name,
         phone: lead.phone,
@@ -525,7 +535,7 @@ export async function notifyCustomerOfDesignPublished(input: {
       return { success: false, skipped: true, error: 'subscription template unavailable' };
     }
 
-    const page = `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(input.leadId.toString())}`;
+    const page = customerProjectPage(input.leadId);
     return await sendSubscriptionMessage({
       touser: identity.openid,
       template_id: template.templateId,
@@ -562,7 +572,7 @@ export async function notifyDesignerOfSurveyCompleted(input: {
       notificationType: 'survey_completed',
       message: `客户${lead.name}量房已完成，请生成并发布方案`,
       dedupeKey: `survey_completed:${input.leadId.toString()}:${String(input.floorPlanId)}`,
-      page: '/pages/leads-management/leads-management',
+      page: staffLeadDetailPage(input.leadId),
       metadata: { floorPlanId: String(input.floorPlanId) },
       buildData: (template) =>
         buildWorkflowTodoPayload(template, {

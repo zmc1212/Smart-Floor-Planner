@@ -46,7 +46,19 @@ function firstHeaderValue(value: string | null) {
 function publicRequestUrl(request: Request) {
   const requestUrl = new URL(request.url);
   const configuredOrigin = process.env.MINIPROGRAM_API_PUBLIC_ORIGIN?.trim();
-  if (configuredOrigin) return new URL(configuredOrigin);
+  // Match Mini AI asset URLs: ignore .example.com placeholders from .env.example
+  // so local/dev avatar links keep the real request host instead of a dead origin.
+  if (configuredOrigin) {
+    try {
+      const origin = new URL(configuredOrigin);
+      const isExampleOrigin =
+        origin.hostname === 'example.com' ||
+        origin.hostname.endsWith('.example.com');
+      if (!isExampleOrigin) return origin;
+    } catch {
+      // Invalid configuration falls back to the actual request host.
+    }
+  }
 
   const forwardedHost = firstHeaderValue(request.headers.get('x-forwarded-host'));
   const host = forwardedHost || request.headers.get('host')?.trim();

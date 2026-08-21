@@ -45,3 +45,29 @@ test('BLE scan failure paths notify the connect callback so the connector can un
   );
   assert.match(connectorSource, /onClose\(\) \{[\s\S]*?this\.triggerEvent\('close'\);/);
 });
+
+test('BLE discovery registers the listener before scanning and logs nearby devices', () => {
+  assert.match(bluetoothSource, /function isTargetRangefinderName\(name\)/);
+  assert.match(bluetoothSource, /TARGET_DEVICE_NAME_TOKEN = 'LDMSTUDIO'/);
+  assert.match(bluetoothSource, /powerLevel: 'high'/);
+  assert.match(bluetoothSource, /wx\.onBluetoothDeviceFound\(_deviceFoundHandler\)/);
+  assert.match(bluetoothSource, /startBluetoothDevicesDiscovery\(/);
+  assert.match(bluetoothSource, /\[BLE discovery\] start scan/);
+  assert.match(bluetoothSource, /\[BLE discovery\] nearby deviceId=/);
+  assert.match(bluetoothSource, /getBluetoothDevices/);
+  assert.match(bluetoothSource, /buildNotFoundContent/);
+  const listenAt = bluetoothSource.indexOf('wx.onBluetoothDeviceFound(_deviceFoundHandler)');
+  const startAt = bluetoothSource.indexOf('wx.startBluetoothDevicesDiscovery({');
+  assert.ok(listenAt > -1 && startAt > -1 && listenAt < startAt);
+});
+
+test('BLE already-connect resumes the existing system session instead of failing', () => {
+  assert.match(bluetoothSource, /function isAlreadyConnectedError\(err\)/);
+  assert.match(bluetoothSource, /function resumeConnectedSession\(/);
+  assert.match(bluetoothSource, /errno === 1509007/);
+  assert.match(bluetoothSource, /already\\s\*connect/);
+  assert.match(bluetoothSource, /createBLEConnection already connected, resume session/);
+  assert.match(bluetoothSource, /已恢复连接/);
+  assert.match(bluetoothSource, /isSessionConnected/);
+  assert.match(bluetoothSource, /_autoConnectInFlight/);
+});

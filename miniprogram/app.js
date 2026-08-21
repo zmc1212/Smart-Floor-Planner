@@ -58,35 +58,8 @@ App({
     }
 
     // 3. Silent Bluetooth Reconnection (静默自动重连)
-    const bluetooth = require('./utils/bluetooth.js');
-    if (this.globalData.openid && bluetooth.hasRememberedDevice && bluetooth.hasRememberedDevice()) {
-      bluetooth.autoConnectBLE(
-        () => {}, // 测量回调由具体页面在 onShow 中重绑定
-        (success) => {
-          this.globalData.bleConnected = success;
-          console.log('App: 静默蓝牙重连结果:', success);
-          // 通知当前活跃页面更新状态（主要用于更新首页呼吸灯等 UI）
-          const pages = getCurrentPages();
-          if (pages.length > 0) {
-            const currentPage = pages[pages.length - 1];
-            if (success && currentPage.onBLESuccess) {
-              currentPage.onBLESuccess();
-            } else if (!success && currentPage.onBluetoothDisconnect) {
-              currentPage.onBluetoothDisconnect();
-            }
-          }
-        },
-        () => {
-          this.globalData.bleConnected = false;
-          const pages = getCurrentPages();
-          if (pages.length > 0) {
-            const currentPage = pages[pages.length - 1];
-            if (currentPage.onBluetoothDisconnect) currentPage.onBluetoothDisconnect();
-          }
-        },
-        true // silent: true 开启静默模式，无弹窗和提示
-      );
-    }
+    // JWT 会话可能尚无 openid；有 token 或 openid + 记忆设备即可尝试。
+    this.trySilentBluetoothReconnect();
   },
   onShow(options) {
     this.handleReferral(options);
@@ -94,6 +67,48 @@ App({
       this.hydrateStoredSession();
     } else if (this.globalData.sessionHydrated) {
       this.guardCurrentRoute();
+    }
+    this.trySilentBluetoothReconnect();
+  },
+
+  trySilentBluetoothReconnect() {
+    if (this.globalData.bleConnected) return;
+    if (!(this.globalData.token || this.globalData.openid)) return;
+
+    const bluetooth = require('./utils/bluetooth.js');
+    if (!bluetooth.hasRememberedDevice || !bluetooth.hasRememberedDevice()) return;
+    if (bluetooth.isSessionConnected && bluetooth.isSessionConnected()) {
+      this.globalData.bleConnected = true;
+      this.notifyBleConnectionResult(true);
+      return;
+    }
+
+    bluetooth.autoConnectBLE(
+      () => {},
+      (success) => {
+        this.globalData.bleConnected = !!success;
+        console.log('App: 静默蓝牙重连结果:', success);
+        this.notifyBleConnectionResult(!!success);
+      },
+      () => {
+        this.globalData.bleConnected = false;
+        this.notifyBleConnectionResult(false);
+      },
+      true
+    );
+  },
+
+  notifyBleConnectionResult(success) {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    if (!pages.length) return;
+    const currentPage = pages[pages.length - 1];
+    if (success) {
+      if (typeof currentPage.onBLESuccess === 'function') currentPage.onBLESuccess();
+      if (typeof currentPage.syncBleConnectionState === 'function') {
+        currentPage.syncBleConnectionState();
+      }
+    } else if (typeof currentPage.onBluetoothDisconnect === 'function') {
+      currentPage.onBluetoothDisconnect();
     }
   },
 
@@ -142,6 +157,7 @@ App({
         this.restoreRoleLanding();
         this.guardCurrentRoute();
         this.refreshCustomTabBar();
+        this.trySilentBluetoothReconnect();
       } catch (error) {
         if (this.globalData.token !== activeToken) return;
         if (error && (error.statusCode === 401 || error.error === 'Unauthorized')) {

@@ -5,6 +5,30 @@ import { join } from 'node:path';
 
 const adminSrc = join(process.cwd(), 'src');
 
+test('staff lead notifications deep-link to lead detail; customer notifications use project archive', () => {
+  const source = readFileSync(join(adminSrc, 'lib/wechat-notification.ts'), 'utf8');
+  assert.match(source, /function staffLeadDetailPage/);
+  assert.match(source, /function customerProjectPage/);
+  assert.match(
+    source,
+    /staffLeadDetailPage\(lead\.id!\)[\s\S]*buildNewLeadPayload/
+  );
+  assert.match(
+    source,
+    /staffLeadDetailPage\(lead\.id!\)[\s\S]*buildLeadAssignmentPayload/
+  );
+  assert.match(source, /page: staffLeadDetailPage\(input\.leadId\)/);
+  assert.match(source, /page: customerProjectPage\(input\.leadId\)/);
+  assert.doesNotMatch(
+    source,
+    /page: '\/pages\/leads-management\/leads-management'/
+  );
+  assert.doesNotMatch(
+    source,
+    /notifyAppointmentStaff[\s\S]*customer-project\/customer-project/
+  );
+});
+
 test('staff notification delivery resolves openid from wechat_identities when staff column is empty', () => {
   const source = readFileSync(join(adminSrc, 'lib/wechat-notification.ts'), 'utf8');
   assert.match(source, /enrichRecipientOpenid/);

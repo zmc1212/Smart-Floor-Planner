@@ -53,29 +53,30 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+    // JPEG only: WeChat Mini Program <image> can fail to render remote WebP.
     const avatarBuffer = await sharp(sourceBuffer)
       .rotate()
       .resize(512, 512, { fit: 'cover', position: 'centre' })
-      .webp({ quality: 85 })
+      .jpeg({ quality: 85, mozjpeg: true })
       .toBuffer();
     const user = await withPlatformTransaction((transaction) =>
       ensureMiniProgramProfileUser(transaction, context)
     );
     const previousReference = decodeManagedAvatarReference(user.avatar);
     const provider = await getDefaultMediaStorageProvider();
-    const logicalKey = `profile-avatars/${user.id.toString()}/${crypto.randomUUID()}.webp`;
+    const logicalKey = `profile-avatars/${user.id.toString()}/${crypto.randomUUID()}.jpg`;
     const objectKey = provider.buildObjectKey?.(logicalKey) || logicalKey;
     const persisted = await persistMediaObject({
       provider,
       objectKey,
       buffer: avatarBuffer,
-      contentType: 'image/webp',
+      contentType: 'image/jpeg',
       commit: async (stored) => {
         const avatar = encodeManagedAvatarReference({
           provider: provider.key,
           objectKey,
           bucket: stored.bucket,
-          mimeType: 'image/webp',
+          mimeType: 'image/jpeg',
         });
         const updated = await withPlatformTransaction((transaction) =>
           new UserRepository(transaction).update(user.id, { avatar })

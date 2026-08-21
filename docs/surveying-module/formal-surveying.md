@@ -77,7 +77,8 @@ copy back to `layoutData`.
   wider exterior standoff (first lane ≈ 14% of plan span), DIMEXO clearance so extension lines do not cover walls, and axis angles 0 or 90. The DXF writer places each
   dimension on the planned `dimensionStart`/`dimensionEnd` line rather than on
   the wall face. Recessed L-notch spans stay on their local face. Aligned dimensions are
-  not written.
+  not written. The Mini Program / Admin canvas passes `includeRoomClear: false`
+  so on-canvas closed plans keep building-overall (and door/thickness) bands only.
 - The Mini Program keeps its CAD control disabled until the cloud plan is
   completed. A download is saved to the Mini Program file domain and offered to
   the system document handler; devices without a DXF handler are told to send
@@ -92,6 +93,10 @@ copy back to `layoutData`.
 - Temporary BLE callback owners restore the normal callback when they close.
 - Failed cloud saves restore the last readable graph and undo/redo state; failed
   intermediate drafts are not persisted as a new layout contract.
+- Successful top-bar Save (`onSaveDraft`) persists the formal draft locally and
+  to the cloud, then navigates back to the previous page (same fallback as Back:
+  `navigateBack`, else `switchTab` home). Cloud failure keeps the operator on the
+  editor so they can retry.
 - The editor's right-rail canvas-clear/restart action requires confirmation,
   replaces the in-memory and local draft with a fresh v4 graph, and clears
   undo/redo plus queued, unsaved measurement audits.
@@ -105,9 +110,13 @@ copy back to `layoutData`.
   completes a face with the start edge; axis-aligning to a distant corner
   without hitting an existing wall still does not infer extra closing walls.
   Loading a saved draft also folds remaining collinear degree-2
-  splices into one wall. Deleting a wall that opens a single closed room
+  splices into one wall.   Deleting a wall that opens a single closed room
   restores the remaining loop as the active chain and offers the missing-edge
-  close when the dangling ends still determine it.   Confirming a closed room
+  close when the dangling ends still determine it. `deleteWall` also clears
+  remasure `session.fixedNodeId` (and the same field is cleared when remasure
+  completes or pending selection is cancelled) so an orphaned free-tip pin
+  cannot fail the post-transaction session validator as `MISSING_SESSION_NODE`.
+  Confirming a closed room
   automatically enters the same reset-cursor / wall-drop state as tapping
   重置光标. In guide mode that state immediately shows the Xiao K
   place-next-start tip even when closed-room dimension labels would otherwise

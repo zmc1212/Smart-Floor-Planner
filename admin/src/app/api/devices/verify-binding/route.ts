@@ -10,6 +10,19 @@ import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
 
+function normalizeBleIdentity(value: string): string {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/[^0-9A-Z]/g, '');
+}
+
+function identitiesMatch(reported: string, code: string): boolean {
+  const left = normalizeBleIdentity(reported);
+  const right = normalizeBleIdentity(code);
+  if (!left || !right) return false;
+  return left.includes(right) || right.includes(left);
+}
+
 export async function POST(request: Request) {
   try {
     const { deviceId, name, openid } = await request.json();
@@ -21,15 +34,17 @@ export async function POST(request: Request) {
     }
 
     const context = await resolveMiniProgramContext(request);
-    const reportedId = String(deviceId).toUpperCase();
-    const reportedName = String(name || '').toUpperCase();
+    const reportedId = String(deviceId);
+    const reportedName = String(name || '');
     const result = await withPlatformTransaction(async (transaction) => {
       const devices = await new DeviceRepository(transaction).list({
         status: 'assigned',
       });
       const matchedDevice = devices.find((device) => {
-        const code = device.code.toUpperCase();
-        return reportedId.includes(code) || reportedName.includes(code);
+        const code = device.code;
+        return (
+          identitiesMatch(reportedId, code) || identitiesMatch(reportedName, code)
+        );
       });
       if (!matchedDevice) {
         return {

@@ -86,6 +86,7 @@ Component({
         ...navigationMetrics(),
         bleConnected: !!(getApp().globalData && getApp().globalData.bleConnected),
       });
+      this.trySilentBleReconnect();
       this.load();
     },
   },
@@ -93,6 +94,7 @@ Component({
   pageLifetimes: {
     show() {
       this.syncBleConnectionState();
+      this.trySilentBleReconnect();
       if (this._pageVisible) return;
       this._pageVisible = true;
       this.load();
@@ -545,6 +547,43 @@ Component({
       const connected = !!(getApp().globalData && getApp().globalData.bleConnected);
       if (connected === this.data.bleConnected) return;
       this.setData({ bleConnected: connected });
+    },
+
+    trySilentBleReconnect() {
+      const role = this.properties.role;
+      if (!['measurer', 'designer', 'enterprise_admin'].includes(role)) return;
+      if (this.data.bleConnected || this._bleSilentReconnecting) return;
+
+      const app = getApp();
+      if (app.globalData && app.globalData.bleConnected) {
+        this.setData({ bleConnected: true });
+        return;
+      }
+
+      const bluetooth = require('../../utils/bluetooth.js');
+      if (bluetooth.isSessionConnected && bluetooth.isSessionConnected()) {
+        if (app.globalData) app.globalData.bleConnected = true;
+        this.setData({ bleConnected: true });
+        return;
+      }
+      if (!bluetooth.hasRememberedDevice || !bluetooth.hasRememberedDevice()) return;
+
+      this._bleSilentReconnecting = true;
+      bluetooth.autoConnectBLE(
+        function () {},
+        (success) => {
+          this._bleSilentReconnecting = false;
+          if (app.globalData) app.globalData.bleConnected = !!success;
+          if (success) {
+            this.setData({ bleConnected: true, showBLEConnector: false });
+          }
+        },
+        () => {
+          this._bleSilentReconnecting = false;
+          this.onBleDisconnect();
+        },
+        true
+      );
     },
 
     openBleConnector() {

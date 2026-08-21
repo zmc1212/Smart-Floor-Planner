@@ -563,6 +563,7 @@ function createRecordingContext() {
   let fillStyle;
   let font;
 
+  const drawImages = [];
   const context = {
     save() {},
     restore() {},
@@ -574,6 +575,7 @@ function createRecordingContext() {
     scale() {},
     rotate() {},
     clip() {},
+    drawImage(...args) { drawImages.push(args); },
     arc(x, y, radius, startAngle, endAngle, anticlockwise) {
       path.push(['arc', x, y, radius, startAngle, endAngle, anticlockwise]);
     },
@@ -617,7 +619,7 @@ function createRecordingContext() {
   ['lineCap', 'lineJoin', 'textAlign', 'textBaseline', 'shadowColor', 'shadowBlur', 'shadowOffsetY', 'miterLimit']
     .forEach((property) => Object.defineProperty(context, property, { set() {}, get() { return undefined; } }));
 
-  return { context, strokes, fills, dashes, widths, strokeDetails, fillDetails, fillRectDetails, texts };
+  return { context, strokes, fills, dashes, widths, strokeDetails, fillDetails, fillRectDetails, texts, drawImages };
 }
 
 test('default surveying canvas uses the fine low-contrast reference grid', () => {
@@ -785,13 +787,12 @@ test('inside/outside measurement edge can change only while a wall chain first w
   assert.equal(floor.walls[2].measurementSide, 'left');
 });
 
-test('closed space creates clear-room and building-overall bands while a new wall chain remains inner-only', () => {
+test('closed space creates building-overall bands while a new wall chain remains inner-only', () => {
   const closedDraft = createClosedRectangleDraft();
   const closedFloor = surveyGraph.getActiveFloor(closedDraft);
   const closedScene = createScene(closedDraft);
 
-  assert.equal(closedScene.dimensions.length, closedFloor.walls.length * 2);
-  assert.equal(closedScene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 4);
+  assert.equal(closedScene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 0);
   assert.equal(closedScene.dimensions.filter((dimension) => dimension.kind === 'building-overall').length, 4);
   assert.equal(closedScene.dimensions.every((dimension) => dimension.placement === 'outside'), true);
   assert.equal(closedScene.dimensions.every((dimension) => dimension.startPoint && dimension.endPoint), true);
@@ -813,7 +814,10 @@ test('closed space creates clear-room and building-overall bands while a new wal
     wall.measurementSide = wall.measurementSide === 'left' ? 'right' : 'left';
   });
   const reversedSideScene = createScene(reversedSideDraft);
-  assert.equal(reversedSideScene.dimensions.length, closedFloor.walls.length * 2);
+  assert.equal(
+    reversedSideScene.dimensions.filter((dimension) => dimension.kind === 'building-overall').length,
+    4
+  );
 
   const nextDraft = surveyGraph.cloneDraft(closedDraft);
   const nextFloor = surveyGraph.getActiveFloor(nextDraft);
@@ -841,17 +845,15 @@ test('closed space creates clear-room and building-overall bands while a new wal
   assert.deepEqual(mixedScene.activeMeasurementWallIds, ['next-wall']);
 });
 
-test('closed-space dimensions originate at the matching inner or exterior wall face', () => {
+test('closed-space dimensions originate at the exterior wall face', () => {
   ['left', 'right'].forEach((measurementSide) => {
     const draft = surveyGraph.cloneDraft(createClosedRectangleDraft());
     surveyGraph.getActiveFloor(draft).walls.forEach((wall) => { wall.measurementSide = measurementSide; });
     const scene = createScene(draft);
     const exteriorCorners = scene.walls.flatMap((wall) => [wall.outerStart, wall.outerEnd]);
-    const innerCorners = scene.closedSpaceFills.flatMap((fill) => fill.points);
 
     scene.dimensions.forEach((dimension) => {
-      const sourceCorners = dimension.kind === 'room-clear' ? innerCorners : exteriorCorners;
-      const matchesCorner = (point) => sourceCorners.some((corner) => (
+      const matchesCorner = (point) => exteriorCorners.some((corner) => (
         Math.hypot(point.x - corner.x, point.y - corner.y) < 0.01
       ));
       const matchesStart = matchesCorner(dimension.extensionStart);
@@ -976,20 +978,19 @@ test('closed room shell stays outside the boundary for either initial measuremen
   });
 });
 
-test('shared walls never receive exterior dimensions and adjacent rooms keep independent clear chains', () => {
+test('shared walls never receive exterior dimensions and adjacent rooms keep building-overall bands', () => {
   const scene = createScene(createTwoClosedRoomsWithSharedDoorDraft());
   const sharedWall = scene.walls.find((wall) => wall.id === 'wall-2');
 
   assert.equal(sharedWall.closed, true);
   assert.equal(sharedWall.isExteriorBoundary, false);
   assert.equal(scene.dimensions.some((dimension) => dimension.wall && dimension.wall.id === 'wall-2'), false);
-  assert.equal(scene.dimensions.length, 10);
   assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'building-overall').length, 4);
-  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 6);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 0);
   assert.equal(scene.dimensions.every((dimension) => !dimension.wall || dimension.wall.isExteriorBoundary), true);
 });
 
-test('closed door wall renders opening, clear-room, and building-overall lanes', () => {
+test('closed door wall renders opening and building-overall lanes without room-clear', () => {
   let draft = createClosedRectangleDraft();
   const firstWallId = surveyGraph.getActiveFloor(draft).walls[0].id;
   draft = surveyGraph.addOpeningToWall(draft, firstWallId, 'door');
@@ -1001,15 +1002,13 @@ test('closed door wall renders opening, clear-room, and building-overall lanes',
     dimension.wall && dimension.wall.id === firstWallId && dimension.kind === 'opening-segment'
   ));
   const buildingDimension = scene.dimensions.find((dimension) => (
-    dimension.kind === 'building-overall' && dimension.label === '3400' && dimension.lane === 2
+    dimension.kind === 'building-overall' && dimension.label === '3400' && dimension.lane >= 1
   ));
 
-  assert.equal(roomDimension.label, '3000');
-  assert.equal(roomDimension.placement, 'outside');
+  assert.equal(roomDimension, undefined);
   assert.ok(buildingDimension.startPoint && buildingDimension.endPoint);
   assert.deepEqual(positioningDimensions.map((dimension) => dimension.label), ['1050', '900', '1050']);
-  assert.equal(positioningDimensions.every((dimension) => dimension.lane < roomDimension.lane), true);
-  assert.ok(roomDimension.lane < buildingDimension.lane);
+  assert.equal(positioningDimensions.every((dimension) => dimension.lane < buildingDimension.lane), true);
   assert.equal(scene.closedSpaceLabels[0].ceilingHeightMm, 2800);
 });
 
@@ -1083,6 +1082,25 @@ test('aligned adjacent rooms share one wall body and derive independent net-face
   assert.equal(scene.walls.filter((wall) => wall.id === sharedWallIds[0]).length, 1);
   assert.equal(scene.closedSpaceFills.length, 2);
   assert.equal(scene.closedSpaceFills.every((fill) => fill.points.length === 4), true);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 0);
+
+  // After the second room raises shared corners to degree 3, closed wall solids
+  // must still reach topology nodes so the outer T does not lose a thickness gap.
+  const leftWalls = scene.walls.filter((wall) => (
+    Math.abs(wall.startPoint.x - wall.endPoint.x) < 0.01 &&
+    Math.min(wall.solidOuterStart.x, wall.solidOuterEnd.x) <
+      Math.min(wall.startPoint.x, wall.endPoint.x) - 1
+  ));
+  assert.ok(leftWalls.length >= 2);
+  const leftOuterSpans = leftWalls.map((wall) => ({
+    minY: Math.min(wall.solidOuterStart.y, wall.solidOuterEnd.y),
+    maxY: Math.max(wall.solidOuterStart.y, wall.solidOuterEnd.y),
+    x: Math.min(wall.solidOuterStart.x, wall.solidOuterEnd.x)
+  })).sort((first, second) => first.minY - second.minY);
+  assert.ok(
+    leftOuterSpans[0].maxY + 0.05 >= leftOuterSpans[1].minY,
+    JSON.stringify(leftOuterSpans)
+  );
 
   const plans = closedSpaces.map((space) => surveyGraph.buildSpaceDimensionPlan(floor, space));
   plans.forEach((plan, index) => {
@@ -1601,7 +1619,7 @@ test('deleting a protruding closed wall still clears remaining stubs from closed
     wall.outerEnd
   ].filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y)));
   const topDimensions = closedDimensionPose(scene).filter((item) => item.normal && item.normal.y < -0.5);
-  assert.ok(topDimensions.length >= 2);
+  assert.ok(topDimensions.length >= 1);
   topDimensions.forEach((item) => {
     const leftoverSupport = Math.max(...leftoverPoints.map((point) => projection(point, item.normal)));
     assert.ok(
@@ -1788,13 +1806,13 @@ test('inner shared-wall preview keeps one cursor on the inset measurement endpoi
   });
 });
 
-test('window walls retain clear-room and building totals without a positioning chain', () => {
+test('window walls retain building totals without a positioning chain', () => {
   let draft = createClosedRectangleDraft();
   const firstWallId = surveyGraph.getActiveFloor(draft).walls[0].id;
   draft = surveyGraph.addOpeningToWall(draft, firstWallId, 'window');
   const scene = createScene(draft);
 
-  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 4);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 0);
   assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'building-overall').length, 4);
   assert.equal(scene.dimensions.some((dimension) => dimension.kind === 'opening-segment'), false);
 });
@@ -2006,6 +2024,7 @@ test('free drag renders only the moving green cursor without a following blue gu
   assert.deepEqual(recorder.dashes.filter((dash) => dash.length), []);
   assert.equal(recorder.widths.includes(3), false);
   assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'));
+  assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#c8ccd0'));
   assert.ok(recorder.fillRectDetails.some((detail) => detail.fillStyle === 'rgba(34, 197, 94, 0.16)'));
   assert.equal(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#f07a21'), false);
   assert.equal(recorder.strokes.some((path) => (
@@ -2184,7 +2203,7 @@ test('cursor lens stacks snap and coordinate labels so four-digit values do not 
   assert.ok(coords.y - snap.y >= 14);
 });
 
-test('cursor drag overlay can paint the close action without a second green cursor', () => {
+test('cursor drag overlay leaves the close action on the formal canvas', () => {
   const recorder = createRecordingContext();
   surveyCanvasRenderer.drawDraggingCursor(
     recorder.context,
@@ -2196,11 +2215,50 @@ test('cursor drag overlay can paint the close action without a second green curs
       closeAction: { cx: 80, cy: 140, radius: 14 }
     }
   );
-  assert.ok(recorder.texts.some((detail) => detail.text === '合' && detail.x === 80 && detail.y === 141));
-  assert.ok(recorder.fills.some((recordedPath) => (
+  assert.equal(recorder.texts.some((detail) => detail.text === '合'), false);
+  assert.equal(recorder.fills.some((recordedPath) => (
     recordedPath.some((command) => command[0] === 'arc' && command[1] === 80 && command[2] === 140 && command[3] === 14)
-  )));
+  )), false);
   assert.equal(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'), false);
+});
+
+test('cursor lens can blit a magnified formal-canvas crop instead of redrawing walls', () => {
+  const sample = surveyCanvasRenderer.resolveCursorLensSample(
+    { x: 200, y: 300 },
+    0.05,
+    0.12,
+    120
+  );
+  assert.equal(Math.round(sample.size), 50);
+  assert.equal(Math.round(sample.x), 175);
+  assert.equal(Math.round(sample.y), 275);
+
+  const recorder = createRecordingContext();
+  const sourceCanvas = { id: 'formal' };
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 390, height: 650 },
+    { x: 220, y: 420 },
+    {
+      dpr: 1,
+      showCursor: false,
+      lensRect: { left: 20, top: 98, size: 120 },
+      lensMeta: { snapLabel: '自由放置', coordinateLabel: 'X 2000 / Y 1000' },
+      lensSource: { canvas: sourceCanvas, dpr: 2 },
+      lensSample: sample
+    }
+  );
+  assert.equal(recorder.drawImages.length, 1);
+  assert.equal(recorder.drawImages[0][0], sourceCanvas);
+  assert.equal(recorder.drawImages[0][1], sample.x * 2);
+  assert.equal(recorder.drawImages[0][2], sample.y * 2);
+  assert.equal(recorder.drawImages[0][3], sample.size * 2);
+  assert.equal(recorder.drawImages[0][4], sample.size * 2);
+  assert.equal(recorder.drawImages[0][5], 20);
+  assert.equal(recorder.drawImages[0][6], 98);
+  assert.equal(recorder.drawImages[0][7], 120);
+  assert.equal(recorder.drawImages[0][8], 120);
+  assert.ok(recorder.texts.some((detail) => detail.text === '自由放置'));
 });
 
 test('closed dimensions use quiet permanent labels instead of the live blue treatment', () => {

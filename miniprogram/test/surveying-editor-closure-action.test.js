@@ -21,14 +21,25 @@ test('the close action follows the graph minimum-wall rule for standalone and sh
     editorScript,
     /const minimumActiveWallCount = surveyGraph\.getMinimumActiveCloseWallCount\(floor, session\)/
   );
-  assert.match(editorScript, /const actionVisible = session\.state === 'closing' \|\| session\.state === 'mergeClosing'/);
+  assert.match(
+    editorScript,
+    /const directCloseReady = !!\([\s\S]*?surveyGraph\.isDirectClosureHit\(floor, session, session\.previewPoint\)/
+  );
+  assert.match(
+    editorScript,
+    /const actionVisible = !directCloseReady && \([\s\S]*?session\.state === 'closing' \|\|[\s\S]*?session\.state === 'mergeClosing'/
+  );
+  assert.match(editorScript, /const action = actionVisible \? \{ cx: actionX, cy: actionY \} : null/);
   assert.match(editorScript, /left:\$\{roundPx\(actionX - actionRadius\)\}px; top:\$\{roundPx\(actionY - actionRadius\)\}px;/);
   assert.match(editorWxml, /wx:if="\{\{!componentEditorVisible && closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
   assert.match(editorWxml, /aria-label="闭合当前空间"[\s\S]*<cover-view class="closure-action-label">合<\/cover-view>/);
   assert.match(editorWxss, /\.closure-action\s*\{[\s\S]*?width: 56rpx;[\s\S]*?height: 56rpx;[\s\S]*?border: 0;[\s\S]*?border-radius: 50%;[\s\S]*?background: transparent;[\s\S]*?opacity: 0;/);
-  assert.match(editorScript, /if \(controls\.closeAction && !this\.isCursorLensActive\(\)\) \{/);
+  assert.match(editorScript, /if \(controls\.closeAction\) \{/);
   assert.match(editorScript, /closeActionVisible: renderData\.closeActionVisible && !this\.isCursorLensActive\(\)/);
-  assert.match(editorScript, /closeAction: this\.canvasControls && this\.canvasControls\.closeAction/);
+  assert.doesNotMatch(
+    editorScript,
+    /snapGuide: this\.cursorDragSnapGuide,\s*closeAction: this\.canvasControls && this\.canvasControls\.closeAction/
+  );
   assert.match(editorScript, /surveyCanvasRenderer\.drawCloseAction\(ctx, controls\.closeAction\)/);
   assert.match(editorScript, /drawViewportInteractionControls\(viewport\)/);
   assert.match(
@@ -115,6 +126,9 @@ test('canvas cursor drags reuse the lens layer without painting a second drag cu
     editorScript,
     /showCursor: this\.cursorDragCanvasShowCursor/
   );
+  assert.match(editorScript, /queueWallDragRedraw\(/);
+  assert.match(editorScript, /resolveCursorLensSample\(/);
+  assert.match(editorScript, /Canvas owns the lens chrome\. Only publish the dragging state once/);
 });
 
 test('cursor release commits the last visible snap candidate instead of reclassifying the raw touchend point', () => {
@@ -170,9 +184,12 @@ test('closing a room automatically enters the reset-cursor wall-drop state', () 
     /if \(this\.touchState\.mode === 'wallSnapPending'\) \{[\s\S]*?this\.touchState\.mode = 'pan';[\s\S]*?this\.beginViewportInteraction\(this\.touchState\.startViewport\);/
   );
   assert.match(editorScript, /wx\.showToast\(\{ title: '请拖动光标到墙体', icon: 'none' \}\)/);
-  assert.match(editorWxml, /wx:if="\{\{cursorPlacementState === 'placed'\}\}"[\s\S]*?cursor-action-reset[\s\S]*?重置光标/);
+  assert.match(editorWxml, /wx:if="\{\{cursorPlacementState === 'placed'\}\}"[\s\S]*?cursor-action-reset[\s\S]*?cursor-reticle\.png/);
   assert.match(editorWxml, /cursor-action-drag[\s\S]*?dock-cursor-icon-ghost[\s\S]*?dock-cursor-origin[\s\S]*?cursor-dock-helper-label[\s\S]*?光标拖动到墙体/);
+  assert.match(editorWxml, /cursorPlacementState === 'placed' \? '重置光标' : '光标拖动到墙体'/);
+  assert.match(editorWxml, /cursor-reticle\.png/);
   assert.match(editorWxss, /\.cursor-action-drag\s*\{[\s\S]*?background:\s*#f3fbf5;/);
+  assert.match(editorWxss, /\.dock-action cover-image\.dock-cursor-icon\s*\{[\s\S]*?width:\s*108rpx;/);
   assert.match(editorWxss, /\.cursor-dock-helper\s*\{[\s\S]*?width:\s*232rpx;[\s\S]*?pointer-events:\s*none;/);
   assert.match(editorWxss, /\.cursor-dock-helper-label\s*\{[\s\S]*?text-align:\s*center;/);
 });

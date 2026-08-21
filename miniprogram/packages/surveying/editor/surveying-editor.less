@@ -2168,6 +2168,7 @@ page,
   box-shadow: 0 12rpx 30rpx rgba(15, 35, 23, 0.12);
   transform: translateX(-50%);
   box-sizing: border-box;
+  overflow: visible;
 }
 
 .dock-action,
@@ -2208,11 +2209,17 @@ page,
   width: 128rpx;
   position: relative;
   border-right: 0;
+  overflow: visible;
+  justify-content: center;
 }
 
-.dock-cursor-icon {
-  width: 52rpx;
-  height: 52rpx;
+/* Beat `.dock-action cover-image` (32rpx) so the dock reticle matches canvas size. */
+.dock-action cover-image.dock-cursor-icon {
+  /* Canvas drawCursorGlyph armHalf 28px → 56px ≈ 108rpx @390. */
+  width: 108rpx;
+  height: 108rpx;
+  margin-top: -13rpx;
+  margin-bottom: -13rpx;
 }
 
 .dock-action-label {
@@ -2226,7 +2233,7 @@ page,
 }
 
 .cursor-action-reset {
-  gap: 2rpx;
+  gap: 0;
 }
 
 .cursor-action-drag {
@@ -2248,8 +2255,8 @@ page,
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 38rpx;
-  height: 38rpx;
+  width: 44rpx;
+  height: 44rpx;
   border: 2rpx solid rgba(16, 189, 75, 0.34);
   border-radius: 8rpx;
   transform: translate(-50%, -50%);
@@ -2288,6 +2295,7 @@ page,
 .dock-measure {
   min-width: 192rpx;
   margin-left: 8rpx;
+  padding: 0 18rpx 0 14rpx;
   gap: 10rpx;
   border-radius: 20rpx;
   color: #10b94a;
@@ -2299,11 +2307,15 @@ page,
 .dock-measure.disconnected {
   color: #8b958e;
   background: #f5f7f5;
+  min-width: 148rpx;
+  padding: 0 20rpx;
 }
 
 .dock-bluetooth {
   width: 28rpx;
   height: 36rpx;
+  flex-shrink: 0;
+  margin-right: 2rpx;
 }
 
 .dock-measure:not(.disconnected) .dock-bluetooth {
@@ -2314,11 +2326,19 @@ page,
   filter: none;
 }
 
+.dock-measure-label {
+  flex-shrink: 1;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
 .dock-status-dot {
   width: 12rpx;
   height: 12rpx;
+  margin-left: 12rpx;
   border-radius: 50%;
   background: currentColor;
+  flex-shrink: 0;
 }
 
 /* The legacy floating controls are replaced by the single reference dock. */
@@ -3165,6 +3185,7 @@ page,
   box-shadow: 0 12rpx 30rpx rgba(15, 35, 23, 0.12);
   transform: translateX(-50%);
   box-sizing: border-box;
+  overflow: visible;
 }
 
 .history-action {

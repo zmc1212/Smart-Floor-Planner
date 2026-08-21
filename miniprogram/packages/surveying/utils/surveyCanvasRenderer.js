@@ -225,6 +225,9 @@ function createClosedDimensions(walls, openings, spaces, spacePlans, outerRings,
     baseGap: DIMENSION_OUTER_GAP_PX,
     laneGap: DIMENSION_LABEL_HEIGHT_PX + 12,
     groupTolerance: 2,
+    // Canvas keeps exterior overall (and door/thickness) bands only. Per-room
+    // clear spans duplicate the outer read and clutter the closed-room fill.
+    includeRoomClear: false,
     measurementUnitsPerCoordinate: 1 / Math.max(0.000001, Number(viewportScale || surveyGraph.DEFAULT_SCALE)),
     walls: (walls || []).filter((wall) => !wall.lineOnly && wall.closed).map((wall) => ({
       id: wall.id,
@@ -522,6 +525,11 @@ function buildWallScene(floor, wall, options) {
     y: endPoint.y + localY.y * outerOffsetPx
   };
   function retainsTopologyAt(nodeId) {
+    // Closed wall solids must keep topology endpoints. After an adjacent room
+    // raises a corner to degree 3+, truncating those solids to the measured
+    // far-face leaves a wall-thickness notch at the outer T that only the join
+    // fill can cover — and that notch reads as a broken wall on device.
+    if (opts.closedWall) return true;
     if (wall.topologySourceWallId) return true;
     if (!nodeId) return false;
     const degree = (floor.walls || []).filter((candidate) => (
@@ -957,7 +965,8 @@ function createSurveyRenderScene(input) {
       viewport,
       renderThicknessMmMap,
       relativePreviousWall: index > 0 ? floor.walls[index - 1] : null,
-      selectedWallId: session.selectedWallId
+      selectedWallId: session.selectedWallId,
+      closedWall: !!closedWallIds[wall.id]
     })
   })).filter((entry) => entry.wall);
   let previewWall = buildPreviewWall(floor, session, {
@@ -1856,33 +1865,82 @@ function drawAlignmentSnapGuide(ctx, scene) {
   ctx.restore();
 }
 
-function drawCursor(ctx, scene) {
-  if (!scene.cursor || !scene.cursor.point) return;
-  const point = scene.cursor.point;
-  const half = 16;
-  const core = 14;
+// Fig.1 reticle (green): gray outer arms, green inner arms, hollow core,
+// four L-corners, and a light green fill inside the bracket box. Dock PNG
+// mirrors this geometry so wall-drop drag feels lifted from the bottom bar.
+const CURSOR_RETICLE_GREEN = '#22c55e';
+const CURSOR_RETICLE_FILL = 'rgba(34, 197, 94, 0.16)';
+const CURSOR_RETICLE_ARM_GRAY = '#c8ccd0';
+
+function drawCursorGlyph(ctx, point, options) {
+  if (!point) return;
+  const scale = options && options.scale > 0 ? options.scale : 1;
+  const armHalf = 28 * scale;
+  const innerHalf = 13 * scale;
+  const bracketHalf = 11 * scale;
+  const cornerLen = 6 * scale;
+  const core = 5.5 * scale;
+  // Keep the green reticle hairline-thin so dock + canvas read as one glyph.
+  const lineWidth = Math.max(0.9, 1 * scale);
+  const cornerWidth = Math.max(1, 1.15 * scale);
 
   ctx.save();
-  // Keep the small cursor mark visually distinct from the blue workspace
-  // guides. The measurement surface uses the product green for its active
-  // placement target, matching the magnifier preview.
-  ctx.strokeStyle = '#22c55e';
-  ctx.fillStyle = 'rgba(34, 197, 94, 0.16)';
-  ctx.lineWidth = 1.5;
   ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
 
+  ctx.fillStyle = CURSOR_RETICLE_FILL;
+  ctx.fillRect(
+    point.x - bracketHalf,
+    point.y - bracketHalf,
+    bracketHalf * 2,
+    bracketHalf * 2
+  );
+
+  ctx.strokeStyle = CURSOR_RETICLE_ARM_GRAY;
+  ctx.lineWidth = lineWidth;
   ctx.beginPath();
-  ctx.moveTo(point.x - half, point.y);
-  ctx.lineTo(point.x + half, point.y);
-  ctx.moveTo(point.x, point.y - half);
-  ctx.lineTo(point.x, point.y + half);
+  ctx.moveTo(point.x - armHalf, point.y);
+  ctx.lineTo(point.x + armHalf, point.y);
+  ctx.moveTo(point.x, point.y - armHalf);
+  ctx.lineTo(point.x, point.y + armHalf);
   ctx.stroke();
 
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = '#22c55e';
-  ctx.fillRect(point.x - core / 2, point.y - core / 2, core, core);
+  ctx.strokeStyle = CURSOR_RETICLE_GREEN;
+  ctx.beginPath();
+  ctx.moveTo(point.x - innerHalf, point.y);
+  ctx.lineTo(point.x + innerHalf, point.y);
+  ctx.moveTo(point.x, point.y - innerHalf);
+  ctx.lineTo(point.x, point.y + innerHalf);
+  ctx.stroke();
+
+  ctx.lineWidth = cornerWidth;
+  const left = point.x - bracketHalf;
+  const right = point.x + bracketHalf;
+  const top = point.y - bracketHalf;
+  const bottom = point.y + bracketHalf;
+  ctx.beginPath();
+  ctx.moveTo(left, top + cornerLen);
+  ctx.lineTo(left, top);
+  ctx.lineTo(left + cornerLen, top);
+  ctx.moveTo(right - cornerLen, top);
+  ctx.lineTo(right, top);
+  ctx.lineTo(right, top + cornerLen);
+  ctx.moveTo(left, bottom - cornerLen);
+  ctx.lineTo(left, bottom);
+  ctx.lineTo(left + cornerLen, bottom);
+  ctx.moveTo(right - cornerLen, bottom);
+  ctx.lineTo(right, bottom);
+  ctx.lineTo(right, bottom - cornerLen);
+  ctx.stroke();
+
+  ctx.lineWidth = lineWidth;
   ctx.strokeRect(point.x - core / 2, point.y - core / 2, core, core);
   ctx.restore();
+}
+
+function drawCursor(ctx, scene) {
+  if (!scene.cursor || !scene.cursor.point) return;
+  drawCursorGlyph(ctx, scene.cursor.point);
 }
 
 function resolveViewportInteractionTransform(baseViewport, viewport, rect) {
@@ -2063,18 +2121,57 @@ function clearDraggingCursor(ctx, rect, options) {
   ctx.restore();
 }
 
-function drawCloseAction(ctx, close) {
-  if (!ctx || !close) return;
-  const radius = close.radius || 14;
+// WeChat type-2d fillText is expensive on the drag hot path. Cache one green
+// “合” disc per radius and blit it with drawImage whenever possible.
+const closeActionSpriteCache = new Map();
+
+function paintCloseActionDisc(ctx, cx, cy, radius) {
   ctx.beginPath();
   ctx.fillStyle = '#16a34a';
-  ctx.arc(close.cx, close.cy, radius, 0, Math.PI * 2);
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 14px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('合', close.cx, close.cy + 1);
+  ctx.fillText('合', cx, cy + 1);
+}
+
+function getCloseActionSprite(radius) {
+  const key = String(radius);
+  if (closeActionSpriteCache.has(key)) {
+    return closeActionSpriteCache.get(key);
+  }
+  if (typeof wx === 'undefined' || typeof wx.createOffscreenCanvas !== 'function') {
+    closeActionSpriteCache.set(key, null);
+    return null;
+  }
+  try {
+    const size = Math.ceil(radius * 2);
+    const canvas = wx.createOffscreenCanvas({ type: '2d', width: size, height: size });
+    const spriteCtx = canvas.getContext('2d');
+    if (!spriteCtx) {
+      closeActionSpriteCache.set(key, null);
+      return null;
+    }
+    paintCloseActionDisc(spriteCtx, radius, radius, radius);
+    closeActionSpriteCache.set(key, canvas);
+    return canvas;
+  } catch (error) {
+    closeActionSpriteCache.set(key, null);
+    return null;
+  }
+}
+
+function drawCloseAction(ctx, close) {
+  if (!ctx || !close) return;
+  const radius = close.radius || 14;
+  const sprite = getCloseActionSprite(radius);
+  if (sprite && typeof ctx.drawImage === 'function') {
+    ctx.drawImage(sprite, close.cx - radius, close.cy - radius, radius * 2, radius * 2);
+    return;
+  }
+  paintCloseActionDisc(ctx, close.cx, close.cy, radius);
 }
 
 function drawRoundedRectPath(ctx, left, top, width, height, radius) {
@@ -2092,25 +2189,42 @@ function drawRoundedRectPath(ctx, left, top, width, height, radius) {
   ctx.closePath();
 }
 
-function drawCursorLensScene(ctx, scene, lensRect, meta) {
-  if (!scene || !lensRect) return;
+function resolveCursorLensSample(centerCanvasPoint, formalScale, lensScale, lensSize) {
+  if (!centerCanvasPoint) return null;
+  const mag = (lensScale || 0.12) / Math.max(0.000001, formalScale || 0.05);
+  const size = lensSize || 120;
+  const srcSize = size / mag;
+  return {
+    x: centerCanvasPoint.x - srcSize / 2,
+    y: centerCanvasPoint.y - srcSize / 2,
+    size: srcSize
+  };
+}
+
+function drawCursorLensScene(ctx, scene, lensRect, meta, options) {
+  if (!lensRect) return;
   const left = lensRect.left || 0;
   const top = lensRect.top || 0;
-  const size = lensRect.size || scene.rect.width || 120;
+  const size = lensRect.size || (scene && scene.rect && scene.rect.width) || 120;
   const panelPadding = 8;
   const panelMetaHeight = 44;
   const panelLeft = left - panelPadding;
   const panelTop = top - panelPadding;
   const panelWidth = size + panelPadding * 2;
   const panelHeight = size + panelPadding * 2 + panelMetaHeight;
+  const opts = options || {};
+  const source = opts.source;
+  const sample = opts.sample;
 
+  // Avoid shadowBlur on the drag hot path: WeChat type-2d shadows are far
+  // more expensive than a light border and were dominating cursor-drag frames.
   ctx.save();
-  ctx.shadowColor = 'rgba(15, 23, 42, 0.24)';
-  ctx.shadowBlur = 17;
-  ctx.shadowOffsetY = 6;
   drawRoundedRectPath(ctx, panelLeft, panelTop, panelWidth, panelHeight, 11);
   ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
   ctx.fill();
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.12)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
   ctx.restore();
 
   // Keep the active target locked to the lens centre. It represents the formal
@@ -2131,14 +2245,47 @@ function drawCursorLensScene(ctx, scene, lensRect, meta) {
   ctx.save();
   drawRoundedRectPath(ctx, left, top, size, size, 8);
   ctx.clip();
-  ctx.translate(left, top);
-  drawGrid(ctx, scene);
-  drawClosedSpaceFills(ctx, scene);
-  drawWallBodies(ctx, scene);
-  drawWallOutlines(ctx, scene);
-  drawRedlines(ctx, scene);
-  drawSelectedWallHighlight(ctx, scene);
-  drawOpenings(ctx, scene);
+  let paintedFromSource = false;
+  if (
+    source &&
+    source.canvas &&
+    sample &&
+    Number.isFinite(sample.x) &&
+    Number.isFinite(sample.y) &&
+    sample.size > 0 &&
+    typeof ctx.drawImage === 'function'
+  ) {
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(left, top, size, size);
+    const sourceDpr = source.dpr || 1;
+    try {
+      ctx.drawImage(
+        source.canvas,
+        sample.x * sourceDpr,
+        sample.y * sourceDpr,
+        sample.size * sourceDpr,
+        sample.size * sourceDpr,
+        left,
+        top,
+        size,
+        size
+      );
+      paintedFromSource = true;
+    } catch (error) {
+      paintedFromSource = false;
+    }
+  }
+  if (!paintedFromSource && scene) {
+    ctx.translate(left, top);
+    // Lens content is already a magnified structural crop; skip the drafting
+    // grid so drag frames do not stroke hundreds of idle lines.
+    drawClosedSpaceFills(ctx, scene);
+    drawWallBodies(ctx, scene);
+    drawWallOutlines(ctx, scene);
+    drawRedlines(ctx, scene);
+    drawSelectedWallHighlight(ctx, scene);
+    drawOpenings(ctx, scene);
+  }
   // The lens is centered on the active placement point, so its canvas-space
   // midpoint is also the correct origin for the blue snap guides. Drawing them
   // here avoids the inconsistent dashed-border support of native cover-view.
@@ -2146,10 +2293,17 @@ function drawCursorLensScene(ctx, scene, lensRect, meta) {
   ctx.lineWidth = GUIDE_STROKE_PX;
   if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
   ctx.beginPath();
-  ctx.moveTo(0, size / 2);
-  ctx.lineTo(size, size / 2);
-  ctx.moveTo(size / 2, 0);
-  ctx.lineTo(size / 2, size);
+  if (paintedFromSource || !scene) {
+    ctx.moveTo(left, top + size / 2);
+    ctx.lineTo(left + size, top + size / 2);
+    ctx.moveTo(left + size / 2, top);
+    ctx.lineTo(left + size / 2, top + size);
+  } else {
+    ctx.moveTo(0, size / 2);
+    ctx.lineTo(size, size / 2);
+    ctx.moveTo(size / 2, 0);
+    ctx.lineTo(size / 2, size);
+  }
   ctx.stroke();
   if (ctx.setLineDash) ctx.setLineDash([]);
   ctx.restore();
@@ -2236,38 +2390,22 @@ function drawDraggingCursor(ctx, rect, point, options) {
   }
 
   if (showCursor) {
-    const outerSize = 52;
-    const crossHalf = 36;
-    const coreSize = 14;
-    ctx.fillStyle = 'rgba(34, 197, 94, 0.16)';
-    ctx.strokeStyle = 'rgba(34, 197, 94, 0.56)';
-    ctx.lineWidth = 1.5;
-    ctx.fillRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
-    ctx.strokeRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
-
-    ctx.strokeStyle = '#22c55e';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(point.x - crossHalf, point.y);
-    ctx.lineTo(point.x + crossHalf, point.y);
-    ctx.moveTo(point.x, point.y - crossHalf);
-    ctx.lineTo(point.x, point.y + crossHalf);
-    ctx.stroke();
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
-    ctx.strokeStyle = '#22c55e';
-    ctx.lineWidth = 1.5;
-    ctx.fillRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
-    ctx.strokeRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
+    // Match the formal canvas reticle; slightly larger while the finger owns it.
+    drawCursorGlyph(ctx, point, { scale: 1.35 });
   }
 
   drawCursorLensScene(
     ctx,
     options && options.lensScene,
     options && options.lensRect,
-    options && options.lensMeta
+    options && options.lensMeta,
+    {
+      source: options && options.lensSource,
+      sample: options && options.lensSample
+    }
   );
-  drawCloseAction(ctx, options && options.closeAction);
+  // Close stays on the formal canvas (and pan/pinch control pass). Redrawing it
+  // here forced fillText/drawImage on every drag rAF and made the overlay lag.
   ctx.restore();
 }
 
@@ -2482,6 +2620,7 @@ module.exports = {
   RENDER_REVISION,
   createSurveyRenderScene,
   createSurveyLensScene,
+  resolveCursorLensSample,
   drawSurveyScene,
   drawSurveyInteractionScene,
   drawDraggingCursor,

@@ -961,6 +961,7 @@ function createClosedDimensionPlan(input) {
 
   const mergedRooms = mergeRoomClearRuns(roomCandidates, tolerance);
   const sidesWithRoomDimensions = new Set();
+  const includeRoomClear = options.includeRoomClear !== false;
   mergedRooms.forEach((run, index) => {
     if (run.maxProjection - run.minProjection <= tolerance * 0.25) return;
     const sideKey = normalKey(run.normal);
@@ -982,24 +983,26 @@ function createClosedDimensionPlan(input) {
     );
     const gap = baseGap + laneGap * lane;
     const dimensionPoint = (value) => dimensionPointAtSupport(value, run.normal, support, gap);
-    items.push(createDimensionItem({
-      id: `dimension-room:${run.sourceSpaceId}:${sideKey}:${index}`,
-      kind: 'room-clear',
-      groupId: `dimension-room:${run.sourceSpaceId}:${sideKey}`,
-      sourceSpaceId: run.sourceSpaceId,
-      sourceWallId: run.sourceWallIds[0] || '',
-      label: run.labelLength * measurementScale,
-      lane,
-      start: extensionStart,
-      end: extensionEnd,
-      dimensionStart: dimensionPoint(extensionStart),
-      dimensionEnd: dimensionPoint(extensionEnd),
-      extensionStart,
-      extensionEnd,
-      normal: run.normal,
-      distance: gap
-    }));
-    sidesWithRoomDimensions.add(sideKey);
+    if (includeRoomClear) {
+      items.push(createDimensionItem({
+        id: `dimension-room:${run.sourceSpaceId}:${sideKey}:${index}`,
+        kind: 'room-clear',
+        groupId: `dimension-room:${run.sourceSpaceId}:${sideKey}`,
+        sourceSpaceId: run.sourceSpaceId,
+        sourceWallId: run.sourceWallIds[0] || '',
+        label: run.labelLength * measurementScale,
+        lane,
+        start: extensionStart,
+        end: extensionEnd,
+        dimensionStart: dimensionPoint(extensionStart),
+        dimensionEnd: dimensionPoint(extensionEnd),
+        extensionStart,
+        extensionEnd,
+        normal: run.normal,
+        distance: gap
+      }));
+      sidesWithRoomDimensions.add(sideKey);
+    }
   });
 
   const maxThickness = Math.max(80, maxWallThickness);

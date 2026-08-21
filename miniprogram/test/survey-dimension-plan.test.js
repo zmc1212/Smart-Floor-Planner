@@ -330,6 +330,20 @@ test('closed single room emits clear dimensions and physical building totals on 
     assert.ok(projection(item.start, item.normal) >= outlineSupport + 99.999);
     assert.ok(projection(item.end, item.normal) >= outlineSupport + 99.999);
   });
+
+  const canvasPlan = createClosedDimensionPlan(Object.assign(
+    createClosedPlanInput(room, outerRing),
+    { includeRoomClear: false }
+  ));
+  assert.equal(canvasPlan.items.filter((item) => item.kind === 'room-clear').length, 0);
+  assert.deepEqual(
+    canvasPlan.items.filter((item) => item.kind === 'building-overall').map((item) => item.label).sort(),
+    ['2500', '2500', '3560', '3560']
+  );
+  assert.equal(
+    canvasPlan.items.filter((item) => item.kind === 'building-overall').every((item) => item.lane === 0),
+    true
+  );
 });
 
 test('room-clear dimensions use signed measurement-start adjustment', () => {

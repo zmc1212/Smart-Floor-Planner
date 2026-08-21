@@ -230,8 +230,7 @@
       <cover-view>重做</cover-view>
     </cover-view>
     <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="dock-action cursor-action cursor-action-reset {{surveyGuideTarget === 'dock-cursor' ? 'guide-target-control' : ''}}" bindtap="onResetCursorTap" aria-role="button" aria-label="重置光标">
-      <cover-image class="dock-cursor-icon" src="/packages/surveying/assets/icons/editor-rail/align.png" mode="aspectFit"></cover-image>
-      <cover-view class="dock-action-label">重置光标</cover-view>
+      <cover-image class="dock-cursor-icon" src="/packages/surveying/assets/icons/cursor-reticle.png" mode="aspectFit"></cover-image>
       <cover-view wx:if="{{surveyGuideTarget === 'dock-cursor'}}" class="dock-guide-native-marker">
         <cover-view class="dock-guide-native-pointer"></cover-view>
       </cover-view>
@@ -248,7 +247,7 @@
       aria-role="button"
       aria-label="拖动光标到墙体"
     >
-      <cover-image class="dock-cursor-icon {{cursorPlacementState === 'dragging' ? 'dock-cursor-icon-ghost' : ''}}" src="/packages/surveying/assets/icons/editor-rail/align.png" mode="aspectFit"></cover-image>
+      <cover-image class="dock-cursor-icon {{cursorPlacementState === 'dragging' ? 'dock-cursor-icon-ghost' : ''}}" src="/packages/surveying/assets/icons/cursor-reticle.png" mode="aspectFit"></cover-image>
       <cover-view wx:if="{{cursorPlacementState === 'dragging'}}" class="dock-cursor-origin"></cover-view>
       <cover-view wx:if="{{surveyGuideTarget === 'dock-cursor'}}" class="dock-guide-native-marker">
         <cover-view class="dock-guide-native-pointer"></cover-view>
@@ -256,8 +255,8 @@
     </cover-view>
     <cover-view class="dock-measure {{bleConnected ? '' : 'disconnected'}} {{surveyGuideTarget === 'measure' ? 'guide-target-control' : ''}}" bindtap="onBottomMeasure">
       <cover-image class="dock-bluetooth" src="/packages/surveying/assets/icons/ble-{{bleConnected ? 'green' : 'muted'}}.png" mode="aspectFit"></cover-image>
-      <cover-view>测距{{bleConnected ? ' · 已连接' : ''}}</cover-view>
-      <cover-view class="dock-status-dot"></cover-view>
+      <cover-view class="dock-measure-label">测距{{bleConnected ? ' · 已连接' : ''}}</cover-view>
+      <cover-view wx:if="{{bleConnected}}" class="dock-status-dot"></cover-view>
       <cover-view wx:if="{{surveyGuideTarget === 'measure'}}" class="dock-guide-native-marker">
         <cover-view class="dock-guide-native-pointer"></cover-view>
       </cover-view>
@@ -265,11 +264,11 @@
   </cover-view>
 
   <cover-view
-    wx:if="{{!numberPadVisible && cursorPlacementState !== 'placed'}}"
+    wx:if="{{!numberPadVisible}}"
     class="cursor-dock-helper {{cursorPlacementState === 'dragging' ? 'is-dragging' : ''}}"
     style="bottom: calc(12rpx + {{bottomSafeArea}}px);"
   >
-    <cover-view class="cursor-dock-helper-label">光标拖动到墙体</cover-view>
+    <cover-view class="cursor-dock-helper-label">{{cursorPlacementState === 'placed' ? '重置光标' : '光标拖动到墙体'}}</cover-view>
   </cover-view>
 
   <!-- ══════════════════════════════════════════════ -->

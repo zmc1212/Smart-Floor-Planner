@@ -32,6 +32,7 @@ import {
 } from '@/lib/lead-lifecycle';
 import { httpErrorStatus } from '@/lib/http-error';
 import { redactLeadConversionDetailsForConsumer } from '@/lib/lead-conversion';
+import { resolveStaffLeadListOptions } from '@/lib/lead-staff-visibility';
 
 export function leadDtoForMini(request: Request, lead: Parameters<typeof leadToDto>[0], role?: string) {
   const include = role === 'measurer';
@@ -86,13 +87,10 @@ export async function GET(request: Request) {
         );
       }
       const staffId = parsePostgresId(miniContext.staff._id, 'staff id');
-      const baseOptions: LeadListOptions =
-        miniContext.staff.role === 'enterprise_admin'
-          ? {}
-          : {
-              staffId,
-              staffVisibility: 'promoted-or-assigned',
-            };
+      const baseOptions: LeadListOptions = resolveStaffLeadListOptions(
+        miniContext.staff.role,
+        staffId
+      );
       const result = await withMiniProgramPostgresTransaction(
         miniContext,
         async (transaction) => {
@@ -176,7 +174,7 @@ export async function GET(request: Request) {
             context.role === 'designer' || context.role === 'measurer'
               ? parsePostgresId(context.userId, 'userId')
               : undefined,
-          staffVisibility: context.role === 'measurer' ? 'promoted-or-assigned' : 'assigned',
+          staffVisibility: context.role === 'measurer' ? 'measurer' : 'assigned',
           archiveState,
           page,
           limit,

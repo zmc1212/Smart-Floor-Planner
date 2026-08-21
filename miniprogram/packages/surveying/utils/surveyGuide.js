@@ -55,7 +55,7 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'close-space',
       '闭合当前空间',
-      '确认闭合线正确后，点击「合」即可闭合当前空间，完成绘制。',
+      '预览已吸附到闭合点时可直接松手闭合；否则确认闭合线后点击「合」即可闭合当前空间。',
       'close'
     );
   }

@@ -476,7 +476,12 @@ Page({
     this.cursorLensLastUpdateAt = 0;
     this.cursorLensScene = null;
     this.cursorLensMeta = null;
+    this.cursorLensSource = null;
+    this.cursorLensSample = null;
     this.canvasCursorLensActive = false;
+    this.canvasCursorLensPublished = false;
+    this.wallDragAnimationFrame = null;
+    this.pendingWallDragFrame = null;
     this.rpxScale = rpxScale;
     this.cursorLensRect = {
       left: 24 * rpxScale + 8,
@@ -1548,8 +1553,9 @@ Page({
           lensScene: this.cursorLensScene,
           lensRect: this.cursorLensRect,
           lensMeta: this.cursorLensMeta,
-          snapGuide: this.cursorDragSnapGuide,
-          closeAction: this.canvasControls && this.canvasControls.closeAction
+          lensSource: this.cursorLensSource,
+          lensSample: this.cursorLensSample,
+          snapGuide: this.cursorDragSnapGuide
         }
       );
     };
@@ -1575,6 +1581,8 @@ Page({
     this.cursorDragSnapGuide = null;
     this.cursorLensScene = null;
     this.cursorLensMeta = null;
+    this.cursorLensSource = null;
+    this.cursorLensSample = null;
     if (this.transientCanvasMode === 'cursor' || force) {
       this.transientCanvasMode = null;
     }
@@ -1758,7 +1766,9 @@ Page({
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    if (controls.closeAction && !this.isCursorLensActive()) {
+    // Keep “合” on the formal canvas even while the lens overlay is active so
+    // drag frames do not need a second close-button paint on the rAF layer.
+    if (controls.closeAction) {
       surveyCanvasRenderer.drawCloseAction(ctx, controls.closeAction);
     }
 
@@ -3182,14 +3192,25 @@ Page({
     const actionX = clamp(preferredActionX, safePadding, Math.max(safePadding, rect.width - safePadding));
     const actionY = clamp(preferredActionY, safePadding, Math.max(safePadding, rect.height - safePadding - bottomReserved));
 
-    const actionVisible = session.state === 'closing' || session.state === 'mergeClosing' ||
-      ((session.state === 'wallPreview' || session.state === 'awaitingLength') && !!session.previewPoint);
-    const action = { cx: actionX, cy: actionY };
+    // When the preview is already on a direct-closure snap target, release
+    // closes immediately — do not paint the 「合」 disc on top of the cursor.
+    const directCloseReady = !!(
+      session.previewPoint &&
+      surveyGraph.isDirectClosureHit(floor, session, session.previewPoint)
+    );
+    const actionVisible = !directCloseReady && (
+      session.state === 'closing' ||
+      session.state === 'mergeClosing' ||
+      ((session.state === 'wallPreview' || session.state === 'awaitingLength') && !!session.previewPoint)
+    );
+    const action = actionVisible ? { cx: actionX, cy: actionY } : null;
     return {
       guideVisible: width > 1,
       guideStyle: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y)}px; width:${roundPx(width)}px; transform:rotate(${roundPx(angleDeg)}deg);`,
       actionVisible,
-      actionStyle: `left:${roundPx(actionX - actionRadius)}px; top:${roundPx(actionY - actionRadius)}px;`,
+      actionStyle: actionVisible
+        ? `left:${roundPx(actionX - actionRadius)}px; top:${roundPx(actionY - actionRadius)}px;`
+        : '',
       action
     };
   },
@@ -3545,16 +3566,39 @@ Page({
 
   buildCursorLens(pointMm, targetType, snapLine) {
     const point = pointMm || { xMm: 0, yMm: 0 };
-    const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
-    this.cursorLensScene = floor
-      ? surveyCanvasRenderer.createSurveyLensScene({
-        floor,
-        session: floor.session,
-        centerPoint: point,
-        size: CURSOR_LENS_SIZE_PX,
-        scale: CURSOR_LENS_SCALE
-      })
-      : null;
+    const viewport = this.getViewport();
+    const centerCanvas = this.mmToCanvasPoint(point);
+    const canBlit = !!(this.surveyCanvas && this.canvasRect && this.canvasRect.width);
+
+    if (canBlit) {
+      // Prefer a magnified crop of the already-drawn formal canvas. Rebuilding
+      // createSurveyRenderScene for a 120px lens on every drag tick was a major
+      // source of cursor/wall-drag jank.
+      this.cursorLensScene = null;
+      this.cursorLensSource = {
+        canvas: this.surveyCanvas,
+        dpr: this.surveyCanvasDpr || 1
+      };
+      this.cursorLensSample = surveyCanvasRenderer.resolveCursorLensSample(
+        centerCanvas,
+        viewport.scale,
+        CURSOR_LENS_SCALE,
+        CURSOR_LENS_SIZE_PX
+      );
+    } else {
+      const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+      this.cursorLensSource = null;
+      this.cursorLensSample = null;
+      this.cursorLensScene = floor
+        ? surveyCanvasRenderer.createSurveyLensScene({
+          floor,
+          session: floor.session,
+          centerPoint: point,
+          size: CURSOR_LENS_SIZE_PX,
+          scale: CURSOR_LENS_SCALE
+        })
+        : null;
+    }
 
     const snapLabel = targetType === 'vertex'
       ? (snapLine === 'outer' ? '外边顶点吸附' : '顶点吸附')
@@ -3625,33 +3669,73 @@ Page({
 
   updateCanvasCursorLens(clientPoint, pointMm, target) {
     this.canvasCursorLensActive = true;
-    const now = Date.now();
-    const shouldUpdateLens = !this.data.cursorLensVisible ||
-      now - this.cursorLensLastUpdateAt >= 80;
-    const lensData = shouldUpdateLens
-      ? this.buildCursorLens(
-        pointMm,
-        (target && target.type) || 'free',
-        (target && target.snapLine) || ''
-      )
-      : null;
+    this.buildCursorLens(
+      pointMm,
+      (target && target.type) || 'free',
+      (target && target.snapLine) || ''
+    );
     this.cursorDragSnapGuide = null;
     this.queueCursorDragCanvas(clientPoint, { showCursor: false });
-    if (!lensData) return;
-
-    this.cursorLensLastUpdateAt = now;
-    this.setData(Object.assign({ cursorLensActive: true }, lensData));
+    if (!this.canvasCursorLensPublished) {
+      this.canvasCursorLensPublished = true;
+      this.setData({ cursorLensActive: true, cursorLensVisible: true });
+    }
   },
 
   clearCanvasCursorLens() {
-    if (!this.canvasCursorLensActive) return;
+    if (!this.canvasCursorLensActive && !this.wallDragAnimationFrame && !this.canvasCursorLensPublished) {
+      return;
+    }
     this.canvasCursorLensActive = false;
+    this.canvasCursorLensPublished = false;
     this.cursorLensLastUpdateAt = 0;
+    this.pendingWallDragFrame = null;
+    if (this.wallDragAnimationFrame !== null) {
+      const canvas = this.cursorDragCanvas;
+      if (canvas && typeof canvas.cancelAnimationFrame === 'function') {
+        canvas.cancelAnimationFrame(this.wallDragAnimationFrame);
+      }
+      this.wallDragAnimationFrame = null;
+    }
     this.clearCursorDragCanvas();
-    this.setData({
-      cursorLensActive: false,
-      cursorLensVisible: false
-    });
+    if (this.data.cursorLensActive || this.data.cursorLensVisible) {
+      this.setData({
+        cursorLensActive: false,
+        cursorLensVisible: false
+      });
+    }
+  },
+
+  queueWallDragRedraw(clientPoint, pointMm, target) {
+    this.canvasCursorLensActive = true;
+    this.pendingWallDragFrame = {
+      clientPoint: { x: clientPoint.x, y: clientPoint.y },
+      pointMm: pointMm ? { xMm: pointMm.xMm, yMm: pointMm.yMm } : null,
+      target: target || { type: 'free', snapLine: '' }
+    };
+    if (this.wallDragAnimationFrame !== null) return;
+
+    const render = () => {
+      this.wallDragAnimationFrame = null;
+      if (!this.canvasCursorLensActive || !this.draft) return;
+      if (!this.touchState || this.touchState.mode !== 'wall') return;
+      const pending = this.pendingWallDragFrame;
+      if (!pending) return;
+
+      // Wall-drag frames only need a fresh formal canvas + lens blit. Skipping
+      // syncFromDraft avoids a full cover-view setData on every touchmove.
+      const floor = surveyGraph.getActiveFloor(this.draft);
+      this.buildCanvasRenderData(floor, floor.session);
+      this.drawSurveyCanvas();
+      this.updateCanvasCursorLens(pending.clientPoint, pending.pointMm, pending.target);
+    };
+
+    const canvas = this.cursorDragCanvas;
+    if (canvas && typeof canvas.requestAnimationFrame === 'function') {
+      this.wallDragAnimationFrame = canvas.requestAnimationFrame(render);
+    } else {
+      render();
+    }
   },
 
   buildCursorDragSnapGuide(candidate) {
@@ -3721,19 +3805,29 @@ Page({
       : null;
     this.cursorDragClientPoint = { x: displayPoint.x, y: displayPoint.y };
     this.cursorDragSnapGuide = this.buildCursorDragSnapGuide(candidate);
+    // Lens chrome is canvas-only; refresh its blit/meta every move without
+    // waiting for a throttled setData pass.
+    this.buildCursorLens(
+      candidate && candidate.pointMm ? candidate.pointMm : this.canvasPointToMm(clientPoint),
+      candidate && candidate.type,
+      candidate && candidate.snapLine
+    );
+    this.queueCursorDragCanvas(displayPoint);
     const dragData = {
       dragCursorX: displayPoint.x,
       dragCursorY: displayPoint.y
     };
-    const lensData = includeLens
-      ? this.buildCursorLens(
-        candidate && candidate.pointMm ? candidate.pointMm : this.canvasPointToMm(clientPoint),
-        candidate && candidate.type,
-        candidate && candidate.snapLine
-      )
-      : null;
-    this.queueCursorDragCanvas(displayPoint);
-    return lensData ? Object.assign(dragData, lensData) : dragData;
+    if (!includeLens) return dragData;
+    const lensPoint = (candidate && candidate.pointMm)
+      ? candidate.pointMm
+      : this.canvasPointToMm(clientPoint);
+    return Object.assign(dragData, {
+      cursorLensVisible: true,
+      cursorLensXLabel: `X ${Math.round(lensPoint.xMm)}`,
+      cursorLensYLabel: `Y ${Math.round(lensPoint.yMm)}`,
+      cursorLensSnapLabel: (this.cursorLensMeta && this.cursorLensMeta.snapLabel) || '自由放置',
+      cursorLensSnapType: (candidate && candidate.type) || 'none'
+    });
   },
 
   projectOpeningOffsetMm(point, wallId) {
@@ -4172,6 +4266,13 @@ Page({
         floorPlanStatus: 'draft'
       });
       wx.showToast({ title: '已保存草稿', icon: 'success' });
+      setTimeout(() => {
+        wx.navigateBack({
+          fail: () => {
+            wx.switchTab({ url: '/pages/index/index' });
+          }
+        });
+      }, 500);
     } catch (err) {
       wx.hideLoading();
       console.error('Save surveying draft to cloud failed:', err);
@@ -4635,8 +4736,8 @@ Page({
       const previewPointMm = surveyGraph.getCursorDisplayPoint(previewFloor, previewFloor.session)
         || previewFloor.session.previewPoint
         || snappedMm;
-      this.updateCanvasCursorLens(point, previewPointMm, this.resolvePreviewLensTarget(previewFloor.session, previewPointMm));
-      this.syncFromDraft();
+      const previewTarget = this.resolvePreviewLensTarget(previewFloor.session, previewPointMm);
+      this.queueWallDragRedraw(point, previewPointMm, previewTarget);
       return;
     }
 
@@ -5061,15 +5162,11 @@ Page({
     this.cursorDragPending = false;
     const wasDragging = this.cursorPlacementState === 'dragging';
     this.cursorPlacementState = 'dragging';
-    const now = Date.now();
-    // A native cover-view can take a frame to apply the first setData update.
-    // Keep rebuilding until that visible flag has arrived, otherwise a rapid
-    // drag can remain in the dragging state without ever mounting its lens.
-    const shouldUpdateLens = !wasDragging || !this.data.cursorLensVisible ||
-      now - this.cursorLensLastUpdateAt >= 80;
-    const dragData = this.resolveCursorDragPoint(point, shouldUpdateLens);
-    if (shouldUpdateLens) {
-      this.cursorLensLastUpdateAt = now;
+    // Canvas owns the lens chrome. Only publish the dragging state once so
+    // touchmove does not pay for cover-view setData on every frame.
+    const dragData = this.resolveCursorDragPoint(point, !wasDragging);
+    if (!wasDragging) {
+      this.canvasCursorLensPublished = true;
       this.setData(Object.assign({
         cursorPlacementState: 'dragging',
         cursorLensActive: true,
@@ -5100,6 +5197,7 @@ Page({
     const candidate = this.cursorDragCandidate || this.getCursorPlacementCandidate(releasePoint, { useHysteresis: true });
     this.cursorDragCandidate = null;
     this.cursorSnapLock = null;
+    this.canvasCursorLensPublished = false;
 
     if (!candidate || candidate.type === 'none' || !candidate.pointMm) {
       this.cursorPlacementState = 'awaitingWallDrop';
@@ -5141,6 +5239,7 @@ Page({
     this.cursorDragTouchId = null;
     this.cursorDragStartPoint = null;
     this.cursorSnapLock = null;
+    this.canvasCursorLensPublished = false;
     if (!wasDragging) return;
     this.clearCursorDragCanvas();
     this.cursorPlacementState = 'awaitingWallDrop';

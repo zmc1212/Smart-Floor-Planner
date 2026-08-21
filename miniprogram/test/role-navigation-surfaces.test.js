@@ -104,6 +104,8 @@ test('measurer overview hero links the rangefinder instead of opening the editor
   assert.match(component, /onBleSuccess/);
   assert.match(component, /onBleDisconnect/);
   assert.match(component, /syncBleConnectionState/);
+  assert.match(component, /trySilentBleReconnect/);
+  assert.match(component, /autoConnectBLE/);
   assert.doesNotMatch(componentTemplate, /openSurveyDirect/);
   assert.doesNotMatch(component, /openSurveyingEditor\(\{\s*\}\)/);
 });

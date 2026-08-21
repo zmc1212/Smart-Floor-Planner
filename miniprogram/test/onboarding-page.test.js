@@ -148,14 +148,14 @@ test('referrer success CTA offers signing-commission notification then enters th
     data: {
       version: 2,
       templates: [
-        { type: 'workflow_todo', title: '装修待办提醒', templateId: '48Jvq7OjOKwRhshn8fyvtsjxAamLOakaNtiKcO11rOc' },
-        { type: 'lead_assignment', title: '客户指派成功通知', templateId: 'wltuS0LdggzpMWdSOlr6FBSKeRbOKUzqXVCqJDmLpmA' },
-        { type: 'new_lead', title: '新增客户成功通知', templateId: 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjq4xest9GRc' },
-        { type: 'measurement_appointment', title: '上门量房提醒', templateId: 'CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl' },
-        { type: 'design_published', title: '设计案例发布提醒', templateId: 'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag' },
-        { type: 'enterprise_join_result', title: '入驻申请结果通知', templateId: 'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk' },
+        { type: 'workflow_todo', title: '装修待办提醒', templateId: '48Jvq7OjOKwRhsnh8fyvtsjxAamLOakaNtiKcO11rOc' },
+        { type: 'lead_assignment', title: '客户指派成功通知', templateId: 'wItuS0LdggzpMWdSOIr6FBSKeRbOKUzqXVCqJDmLpmA' },
+        { type: 'new_lead', title: '新增客户成功通知', templateId: 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjg4xest9GRc' },
+        { type: 'measurement_appointment', title: '上门量房提醒', templateId: 'CtcuQ_NWF4GOpHvstgviDPmYRISjyqTjnFAoeQR9-vI' },
+        { type: 'design_published', title: '设计案例发布提醒', templateId: 'XEQFWwyaIQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag' },
+        { type: 'enterprise_join_result', title: '入驻申请结果通知', templateId: 'wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk' },
         { type: 'signing_commission', title: '推广奖励到账提醒', templateId: 'aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU' },
-        { type: 'lead_converted', title: '客户已成交提醒', templateId: 'WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo' }
+        { type: 'lead_converted', title: '客户已成交提醒', templateId: 'WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo' }
       ]
     }
   });

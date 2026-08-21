@@ -31,23 +31,47 @@ test('referrer profile keeps the current display name and role from the signed c
 test('managed profile avatar references round-trip without exposing storage details in URLs', () => {
   const encoded = encodeManagedAvatarReference({
     provider: 'local',
-    objectKey: 'profile-avatars/12/avatar.webp',
-    mimeType: 'image/webp',
+    objectKey: 'profile-avatars/12/avatar.jpg',
+    mimeType: 'image/jpeg',
   });
   assert.match(encoded, /^sfp-avatar:v1:/);
   assert.deepEqual(decodeManagedAvatarReference(encoded), {
     provider: 'local',
-    objectKey: 'profile-avatars/12/avatar.webp',
+    objectKey: 'profile-avatars/12/avatar.jpg',
     bucket: undefined,
-    mimeType: 'image/webp',
+    mimeType: 'image/jpeg',
   });
   const url = resolveProfileAvatarUrl({
-    request: new Request('https://api.example.com/api/miniprogram/profile'),
+    request: new Request('https://smartfloor.zlyun168.com/api/miniprogram/profile'),
     userId: '12',
     avatar: encoded,
   });
-  assert.match(url, /^https:\/\/api\.example\.com\/api\/miniprogram\/profile\/avatar\/12\?/);
+  assert.match(url, /^https:\/\/smartfloor\.zlyun168\.com\/api\/miniprogram\/profile\/avatar\/12\?/);
   assert.doesNotMatch(url, /profile-avatars/);
+});
+
+test('placeholder public origins fall back when resolving profile avatar URLs', () => {
+  const previous = process.env.MINIPROGRAM_API_PUBLIC_ORIGIN;
+  const encoded = encodeManagedAvatarReference({
+    provider: 'local',
+    objectKey: 'profile-avatars/12/avatar.jpg',
+    mimeType: 'image/jpeg',
+  });
+  try {
+    process.env.MINIPROGRAM_API_PUBLIC_ORIGIN = 'https://api.example.com';
+    const url = resolveProfileAvatarUrl({
+      request: new Request('http://192.168.10.111:3006/api/miniprogram/profile'),
+      userId: '12',
+      avatar: encoded,
+    });
+    assert.match(
+      url,
+      /^http:\/\/192\.168\.10\.111:3006\/api\/miniprogram\/profile\/avatar\/12\?/
+    );
+  } finally {
+    if (previous === undefined) delete process.env.MINIPROGRAM_API_PUBLIC_ORIGIN;
+    else process.env.MINIPROGRAM_API_PUBLIC_ORIGIN = previous;
+  }
 });
 
 test('profile avatar signatures reject expiry and tampering', () => {

@@ -4,20 +4,20 @@
 
 日期：2026-08-21
 
-本文档是微信小程序“房屋装修”公共模板的当前实施契约。模板 ID 和关键词键均已从“订阅消息 -> 我的模板”详情页回读，服务端必须按语义模板生成严格白名单 payload，不能继续复用旧的通用字段。
+本文档是微信小程序“房屋装修”公共模板的当前实施契约。模板 ID 和关键词键均已从“订阅消息 -> 我的模板”详情页回读，并在 2026-08-21 针对 AppID `wxa7728432f59779d1` 用 `wxaapi/newtmpl/gettemplate` 复核（此前 `l`/`I` 与大小写抄错会导致微信 `40037 invalid template_id`，已废弃）。服务端必须按语义模板生成严格白名单 payload，不能继续复用旧的通用字段。
 
 ## 已确认模板
 
 | 优先级 | 模板类型 | 模板 | 业务场景 | 模板 ID | 关键词契约 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `workflow_todo` | `装修待办提醒` | 跟进、量房、设计、关闭和获客提成待结算等通用任务 | `48Jvq7OjOKwRhshn8fyvtsjxAamLOakaNtiKcO11rOc` | `thing4` 项目名称；`thing11` 负责人；`phrase12` 当前状态；`thing2` 待办事项；`thing5` 备注 |
-| 2 | `lead_assignment` | `客户指派成功通知` | 线索分配给量房师或设计师 | `wltuS0LdggzpMWdSOlr6FBSKeRbOKUzqXVCqJDmLpmA` | `thing1` 客户姓名；`phrase2` 客户状态；`thing3` 备注；`time4` 时间 |
-| 3 | `new_lead` | `新增客户成功通知` | 创建新线索并通知企业负责人 | `EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjq4xest9GRc` | `name1` 客户名称；`date2` 添加时间；`name3` 负责人；`phone_number4` 客户号码；`time5` 选定时间 |
-| 4 | `measurement_appointment` | `上门量房提醒` | 已确认的独立上门量房预约 | `CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl` | `thing1` 姓名；`phone_number2` 手机；`thing3` 小区；`time6` 量房时间；`thing7` 温馨提醒 |
-| 5 | `design_published` | `设计案例发布提醒` | 方案对客户可见 | `XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag` | `thing1` 内容；`time2` 发布时间；`thing3` 备注 |
-| 6 | `enterprise_join_result` | `入驻申请结果通知` | 平台对企业自助入驻申请审核通过或驳回 | `wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk` | `time1` 通知时间；`phrase2` 结果；`thing3` 店铺联系人；`time4` 申请时间；`thing5` 店铺名称 |
+| 1 | `workflow_todo` | `装修待办提醒` | 跟进、量房、设计、关闭和获客提成待结算等通用任务 | `48Jvq7OjOKwRhsnh8fyvtsjxAamLOakaNtiKcO11rOc` | `thing4` 项目名称；`thing11` 负责人；`phrase12` 当前状态；`thing2` 待办事项；`thing5` 备注 |
+| 2 | `lead_assignment` | `客户指派成功通知` | 线索分配给量房师或设计师 | `wItuS0LdggzpMWdSOIr6FBSKeRbOKUzqXVCqJDmLpmA` | `thing1` 客户姓名；`phrase2` 客户状态；`thing3` 备注；`time4` 时间 |
+| 3 | `new_lead` | `新增客户成功通知` | 创建新线索并通知企业负责人 | `EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjg4xest9GRc` | `name1` 客户名称；`date2` 添加时间；`name3` 负责人；`phone_number4` 客户号码；`time5` 选定时间 |
+| 4 | `measurement_appointment` | `上门量房提醒` | 已确认的独立上门量房预约 | `CtcuQ_NWF4GOpHvstgviDPmYRISjyqTjnFAoeQR9-vI` | `thing1` 姓名；`phone_number2` 手机；`thing3` 小区；`time6` 量房时间；`thing7` 温馨提醒 |
+| 5 | `design_published` | `设计案例发布提醒` | 方案对客户可见 | `XEQFWwyaIQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag` | `thing1` 内容；`time2` 发布时间；`thing3` 备注 |
+| 6 | `enterprise_join_result` | `入驻申请结果通知` | 平台对企业自助入驻申请审核通过或驳回 | `wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk` | `time1` 通知时间；`phrase2` 结果；`thing3` 店铺联系人；`time4` 申请时间；`thing5` 店铺名称 |
 | 7 | `signing_commission` | `推广奖励到账提醒` | 推荐人签单成功 / 应付提成入账 | `aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU` | `thing1` 奖励类型；`thing2` 备注；`amount4` 奖励金额 |
-| 8 | `lead_converted` | `客户已成交提醒` | 企业负责人签单成功提醒 | `WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo` | `time1` 通知时间；`thing2` 温馨提示 |
+| 8 | `lead_converted` | `客户已成交提醒` | 企业负责人签单成功提醒 | `WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo` | `time1` 通知时间；`thing2` 温馨提示 |
 
 ## 运行时通知映射
 
@@ -35,6 +35,24 @@
 | 旧企业报备 `follow_up_*` / `measure_*` / `design_*` / `conflict_pending` / `record_closed` | — | `Retired`：创建/更新报备与定时扫描均不再发送；历史 `workflow_notification_logs` 仅供查阅。 |
 
 `new_lead.time5` 在独立预约功能落地前采用明确的过渡口径：优先使用 `assignedAt`，没有负责人指派时间时使用 `createdAt`。该字段不得伪造未来预约时间。
+
+## 点击跳转深链
+
+订阅消息点击后的 `page` 目标：
+
+| 模板 / 投递路径 | 收件人 | 深链 |
+| --- | --- | --- |
+| `lead_assignment` | 设计师 / 测量员 | `/packages/business/lead-detail/lead-detail?id={leadId}` |
+| `new_lead` | 企业负责人 | 同上客户详情 |
+| `workflow_todo`（待派单 / 量房完成） | 企业负责人 / 设计师 | 同上客户详情 |
+| `measurement_appointment`（员工） | 设计师 / 测量员 | 同上客户详情 |
+| `measurement_appointment`（客户） | 客户 | `/packages/business/customer-project/customer-project?leadId={leadId}` |
+| `design_published` | 客户 | 同上客户项目册 |
+| `signing_commission` | 推荐人 | `/packages/business/referrer-earnings/referrer-earnings` |
+| `lead_converted` | 企业负责人 | `/packages/business/enterprise-commissions/enterprise-commissions` |
+| `enterprise_join_result` | 入驻联系人 | `/pages/mine/mine` |
+
+员工侧线索类通知不得只打开无 `leadId` 的 `leads-management` 列表。
 
 ## 已实现合同
 

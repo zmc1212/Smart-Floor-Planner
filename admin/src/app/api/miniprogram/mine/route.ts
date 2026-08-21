@@ -7,6 +7,7 @@ import {
   MeasurementRepository,
   StaffNotificationRepository,
 } from '@/db/repositories';
+import { resolveStaffLeadListOptions } from '@/lib/lead-staff-visibility';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { resolveProfileAvatarUrl } from '@/lib/miniprogram-profile';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
@@ -160,13 +161,7 @@ export async function GET(request: Request) {
         const leads = new LeadRepository(transaction);
         const floorPlans = new FloorPlanRepository(transaction);
         const measurements = new MeasurementRepository(transaction);
-        const staffLeadOptions =
-          role === 'enterprise_admin'
-            ? {}
-            : {
-                staffId,
-                staffVisibility: 'promoted-or-assigned' as const,
-              };
+        const staffLeadOptions = resolveStaffLeadListOptions(role, staffId);
         const staffPlanOptions =
           role === 'enterprise_admin' ? {} : { staffId };
         const [customerCount, activePlans, monthlyCompleted, auditCount] =

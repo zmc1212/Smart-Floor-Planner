@@ -46,11 +46,11 @@ test('eight subscription template IDs must remain distinct', () => {
   ]);
   assert.equal(
     normalized.templates.design_published.templateId,
-    'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'
+    'XEQFWwyaIQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'
   );
   assert.equal(
     normalized.templates.enterprise_join_result.templateId,
-    'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk'
+    'wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk'
   );
   assert.equal(
     normalized.templates.signing_commission.templateId,
@@ -58,7 +58,7 @@ test('eight subscription template IDs must remain distinct', () => {
   );
   assert.equal(
     normalized.templates.lead_converted.templateId,
-    'WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo'
+    'WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo'
   );
   assert.doesNotThrow(() => validateDistinctTemplateIds(normalized.templates));
   normalized.templates.new_lead.templateId = normalized.templates.workflow_todo.templateId;

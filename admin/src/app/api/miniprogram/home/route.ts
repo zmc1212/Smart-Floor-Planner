@@ -7,6 +7,7 @@ import {
   MeasurementRepository,
 } from '@/db/repositories';
 import { getFloorPlanDisplay } from '@/lib/floor-plan-display';
+import { resolveStaffLeadListOptions } from '@/lib/lead-staff-visibility';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import {
@@ -91,14 +92,10 @@ export async function GET(request: Request) {
             ? parsePostgresId(context.user._id, 'user id')
             : undefined,
         };
-        const leadOptions = context.staff
-          ? context.staff.role === 'enterprise_admin'
-            ? {}
-            : {
-                staffId: staffId ?? undefined,
-                staffVisibility: 'promoted-or-assigned' as const,
-              }
-          : null;
+        const leadOptions =
+          context.staff && staffId
+            ? resolveStaffLeadListOptions(context.staff.role, staffId)
+            : null;
         const measurementOptions = context.staff
           ? context.staff.role === 'enterprise_admin'
             ? {}

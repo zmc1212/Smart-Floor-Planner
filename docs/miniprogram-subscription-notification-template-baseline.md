@@ -4,20 +4,20 @@ Status: `Limited` (eight-template configuration and runtime mappings are impleme
 
 Date: 2026-08-21
 
-This document is the current implementation contract for WeChat Mini Program public templates selected from the `房屋装修` category. Every ID and keyword key has been read back from `订阅消息 -> 我的模板`. Server payloads must use the selected template's strict field allowlist and must not reuse the retired generic field set.
+This document is the current implementation contract for WeChat Mini Program public templates selected from the `房屋装修` category. Every ID and keyword key has been read back from `订阅消息 -> 我的模板` (and re-verified via `wxaapi/newtmpl/gettemplate` for AppID `wxa7728432f59779d1` on 2026-08-21; prior `l`/`I` and case typos that caused WeChat `40037 invalid template_id` are retired). Server payloads must use the selected template's strict field allowlist and must not reuse the retired generic field set.
 
 ## Confirmed Templates
 
 | Priority | Type | Template | Business scenario | Template ID | Keyword contract |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `workflow_todo` | `装修待办提醒` | Follow-up, measurement, design, closure, and acquisition-commission tasks | `48Jvq7OjOKwRhshn8fyvtsjxAamLOakaNtiKcO11rOc` | `thing4` project name; `thing11` owner; `phrase12` current status; `thing2` todo; `thing5` note |
-| 2 | `lead_assignment` | `客户指派成功通知` | A lead is assigned to a measurer or designer | `wltuS0LdggzpMWdSOlr6FBSKeRbOKUzqXVCqJDmLpmA` | `thing1` customer name; `phrase2` customer status; `thing3` note; `time4` time |
-| 3 | `new_lead` | `新增客户成功通知` | A new lead is created and reported to enterprise administrators | `EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjq4xest9GRc` | `name1` customer name; `date2` added time; `name3` owner; `phone_number4` phone; `time5` selected time |
-| 4 | `measurement_appointment` | `上门量房提醒` | A confirmed, explicit on-site measurement appointment | `CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl` | `thing1` name; `phone_number2` phone; `thing3` community; `time6` measurement time; `thing7` reminder |
-| 5 | `design_published` | `设计案例发布提醒` | A design scheme becomes visible to the customer | `XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag` | `thing1` content; `time2` published time; `thing3` note |
-| 6 | `enterprise_join_result` | `入驻申请结果通知` | Platform approve or reject of an enterprise self-service application | `wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk` | `time1` notification time; `phrase2` result; `thing3` store contact; `time4` application time; `thing5` store name |
+| 1 | `workflow_todo` | `装修待办提醒` | Follow-up, measurement, design, closure, and acquisition-commission tasks | `48Jvq7OjOKwRhsnh8fyvtsjxAamLOakaNtiKcO11rOc` | `thing4` project name; `thing11` owner; `phrase12` current status; `thing2` todo; `thing5` note |
+| 2 | `lead_assignment` | `客户指派成功通知` | A lead is assigned to a measurer or designer | `wItuS0LdggzpMWdSOIr6FBSKeRbOKUzqXVCqJDmLpmA` | `thing1` customer name; `phrase2` customer status; `thing3` note; `time4` time |
+| 3 | `new_lead` | `新增客户成功通知` | A new lead is created and reported to enterprise administrators | `EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjg4xest9GRc` | `name1` customer name; `date2` added time; `name3` owner; `phone_number4` phone; `time5` selected time |
+| 4 | `measurement_appointment` | `上门量房提醒` | A confirmed, explicit on-site measurement appointment | `CtcuQ_NWF4GOpHvstgviDPmYRISjyqTjnFAoeQR9-vI` | `thing1` name; `phone_number2` phone; `thing3` community; `time6` measurement time; `thing7` reminder |
+| 5 | `design_published` | `设计案例发布提醒` | A design scheme becomes visible to the customer | `XEQFWwyaIQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag` | `thing1` content; `time2` published time; `thing3` note |
+| 6 | `enterprise_join_result` | `入驻申请结果通知` | Platform approve or reject of an enterprise self-service application | `wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk` | `time1` notification time; `phrase2` result; `thing3` store contact; `time4` application time; `thing5` store name |
 | 7 | `signing_commission` | `推广奖励到账提醒` | Referrer signing success / payable commission credit | `aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU` | `thing1` reward type; `thing2` note; `amount4` reward amount |
-| 8 | `lead_converted` | `客户已成交提醒` | Enterprise owner signing-success reminder | `WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo` | `time1` notification time; `thing2` warm tip |
+| 8 | `lead_converted` | `客户已成交提醒` | Enterprise owner signing-success reminder | `WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo` | `time1` notification time; `thing2` warm tip |
 
 ## Runtime Mapping
 
@@ -35,6 +35,24 @@ This document is the current implementation contract for WeChat Mini Program pub
 | Legacy promotion `follow_up_*` / `measure_*` / `design_*` / `conflict_pending` / `record_closed` | — | `Retired`: create/update promotion routes and the reminder cron no longer send these; historical `workflow_notification_logs` remain readable only. |
 
 Until a real appointment feature exists, `new_lead.time5` uses the approved transitional rule: `assignedAt` first, then `createdAt`. It must not pretend to be a future appointment.
+
+## Click Deep Links
+
+Subscription `page` targets after WeChat tap:
+
+| Template / notify path | Recipient | Deep link |
+| --- | --- | --- |
+| `lead_assignment` | Designer / measurer | `/packages/business/lead-detail/lead-detail?id={leadId}` |
+| `new_lead` | Enterprise admin | same lead detail |
+| `workflow_todo` (assignment pending / survey completed) | Enterprise admin / designer | same lead detail |
+| `measurement_appointment` (staff) | Designer / measurer | same lead detail |
+| `measurement_appointment` (customer) | Customer | `/packages/business/customer-project/customer-project?leadId={leadId}` |
+| `design_published` | Customer | same customer project archive |
+| `signing_commission` | Referrer | `/packages/business/referrer-earnings/referrer-earnings` |
+| `lead_converted` | Enterprise admin | `/packages/business/enterprise-commissions/enterprise-commissions` |
+| `enterprise_join_result` | Applicant contact | `/pages/mine/mine` |
+
+Staff lead notifications must not open the bare `leads-management` list without a lead id.
 
 ## Implemented Contract
 

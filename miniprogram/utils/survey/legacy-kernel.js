@@ -3969,6 +3969,7 @@ function cancelPending(draft) {
   session.alignmentSnapGuide = null;
   session.selectedWallId = '';
   session.selectedOpeningId = '';
+  session.fixedNodeId = '';
 
   if (floor.spaces.some((space) => space.closed)) {
     session.state = 'spaceClosed';
@@ -5114,6 +5115,9 @@ function deleteWall(draft, wallId) {
   session.closedFromNodeId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
+  // Remeasure may pin either endpoint. After the wall (and its free tip) are
+  // gone, a leftover fixedNodeId fails session validation as MISSING_SESSION_NODE.
+  session.fixedNodeId = '';
   // A deleted wall invalidates the previous cursor/wall snap. Keeping it lets
   // resetCursor restore a node that no longer belongs to the edited chain.
   session.lastWallSnapNodeId = '';
@@ -5359,6 +5363,7 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
   }
 
   session.selectedOpeningId = '';
+  session.fixedNodeId = '';
   return touchDraft(next);
 }
 

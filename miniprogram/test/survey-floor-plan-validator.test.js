@@ -178,3 +178,36 @@ test('a bridge attached to a closed boundary stays a dangle instead of entering 
   assert.ok(result.warnings.some((warning) => warning.code === 'DANGLE_WALL'));
   assert.equal(extractFaces(floor).faces.length, 1);
 });
+
+test('deleteWall clears a stale remasure fixedNodeId on the removed free tip', () => {
+  const draft = makeDraft(
+    [
+      { id: 'n1', xMm: 0, yMm: 0 },
+      { id: 'n2', xMm: 3000, yMm: 0 },
+      { id: 'n3', xMm: 3000, yMm: 2000 },
+      { id: 'n4', xMm: 0, yMm: 2000 },
+      { id: 'n5', xMm: 5760, yMm: 2000 }
+    ],
+    [
+      { id: 'w1', startNodeId: 'n1', endNodeId: 'n2', lengthMm: 3000 },
+      { id: 'w2', startNodeId: 'n2', endNodeId: 'n3' },
+      { id: 'w3', startNodeId: 'n3', endNodeId: 'n4', lengthMm: 3000 },
+      { id: 'w4', startNodeId: 'n4', endNodeId: 'n1' },
+      { id: 'spur', startNodeId: 'n3', endNodeId: 'n5', lengthMm: 2760 }
+    ],
+    [{ id: 's1', wallIds: ['w1', 'w2', 'w3', 'w4'], closed: true }],
+    [],
+    {
+      selectedWallId: 'spur',
+      state: 'remeasureAwaitingInput',
+      fixedNodeId: 'n5'
+    }
+  );
+
+  const next = surveyGraph.deleteWall(draft, 'spur');
+  const floor = surveyGraph.getActiveFloor(next);
+  assert.equal(floor.session.fixedNodeId, '');
+  assert.equal(!!surveyGraph.getWall(floor, 'spur'), false);
+  assert.equal(!!surveyGraph.getNode(floor, 'n5'), false);
+  assert.equal(surveyGraph.validateSurveyDraft(next, { mode: 'full' }).valid, true);
+});

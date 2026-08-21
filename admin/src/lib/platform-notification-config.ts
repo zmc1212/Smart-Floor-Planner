@@ -46,7 +46,7 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
 > = {
   workflow_todo: {
     title: '装修待办提醒',
-    templateId: '48Jvq7OjOKwRhshn8fyvtsjxAamLOakaNtiKcO11rOc',
+    templateId: '48Jvq7OjOKwRhsnh8fyvtsjxAamLOakaNtiKcO11rOc',
     keywordKeys: {
       projectName: 'thing4',
       owner: 'thing11',
@@ -57,7 +57,7 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
   },
   lead_assignment: {
     title: '客户指派成功通知',
-    templateId: 'wltuS0LdggzpMWdSOlr6FBSKeRbOKUzqXVCqJDmLpmA',
+    templateId: 'wItuS0LdggzpMWdSOIr6FBSKeRbOKUzqXVCqJDmLpmA',
     keywordKeys: {
       customerName: 'thing1',
       customerStatus: 'phrase2',
@@ -67,7 +67,7 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
   },
   new_lead: {
     title: '新增客户成功通知',
-    templateId: 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjq4xest9GRc',
+    templateId: 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjg4xest9GRc',
     keywordKeys: {
       customerName: 'name1',
       addedAt: 'date2',
@@ -78,7 +78,7 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
   },
   measurement_appointment: {
     title: '上门量房提醒',
-    templateId: 'CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl',
+    templateId: 'CtcuQ_NWF4GOpHvstgviDPmYRISjyqTjnFAoeQR9-vI',
     keywordKeys: {
       customerName: 'thing1',
       phone: 'phone_number2',
@@ -89,7 +89,7 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
   },
   design_published: {
     title: '设计案例发布提醒',
-    templateId: 'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag',
+    templateId: 'XEQFWwyaIQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag',
     keywordKeys: {
       content: 'thing1',
       publishedAt: 'time2',
@@ -98,7 +98,7 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
   },
   enterprise_join_result: {
     title: '入驻申请结果通知',
-    templateId: 'wJ5K4XXpOOPnsHFcEOI5MJq7J0iG8bpxsyVLzd_G3Kk',
+    templateId: 'wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk',
     keywordKeys: {
       notifiedAt: 'time1',
       result: 'phrase2',
@@ -118,7 +118,7 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
   },
   lead_converted: {
     title: '客户已成交提醒',
-    templateId: 'WFQg70AyoRkLpHaNNK4oywe2gMS60nHuKelkLjkk3zo',
+    templateId: 'WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo',
     keywordKeys: {
       notifiedAt: 'time1',
       tip: 'thing2',
