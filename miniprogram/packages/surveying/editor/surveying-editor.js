@@ -1078,7 +1078,7 @@ Page({
         surveyGraph.commitPreviewLength(this.draft, valueMm, 'ble')
       );
       const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
-      this.applyDraft(nextDraft, { recordHistory: true });
+      this.applyDraft(this.enterResetCursorAfterClose(nextDraft), { recordHistory: true });
       wx.showToast({
         title: nextSession.state === 'spaceClosed' ? '已吸附闭合点并闭合' : '已更新当前墙体',
         icon: 'success'
@@ -3377,6 +3377,14 @@ Page({
     return this.cursorPlacementState === 'awaitingWallDrop' ? 'awaitingWallDrop' : 'placed';
   },
 
+  enterResetCursorAfterClose(draft) {
+    const floor = draft && surveyGraph.getActiveFloor(draft);
+    const session = floor && floor.session;
+    if (!session || session.state !== 'spaceClosed') return draft;
+    this.cursorPlacementState = 'awaitingWallDrop';
+    return surveyGraph.startWallSnap(draft);
+  },
+
   resetCursorPlacement() {
     this.clearCursorDragCanvas({ force: true });
     const floor = surveyGraph.getActiveFloor(this.draft);
@@ -4769,7 +4777,7 @@ Page({
         const directClosureHit = surveyGraph.isDirectClosureHit(floor, session, releasePointMm);
         if (directClosureHit) {
           try {
-            const nextDraft = surveyGraph.confirmClosure(this.draft);
+            const nextDraft = this.enterResetCursorAfterClose(surveyGraph.confirmClosure(this.draft));
             this.applyDraft(nextDraft, {
               recordHistory: true,
               historyDraft
@@ -4791,7 +4799,7 @@ Page({
             surveyGraph.commitPreviewLength(this.draft, session.previewLengthMm, 'preview')
           );
           const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
-          this.applyDraft(nextDraft, {
+          this.applyDraft(this.enterResetCursorAfterClose(nextDraft), {
             recordHistory: true,
             historyDraft
           });
@@ -4897,7 +4905,7 @@ Page({
     if (!canCloseCommittedWall && !canClosePreviewWall) return;
 
     try {
-      const nextDraft = surveyGraph.confirmClosure(this.draft);
+      const nextDraft = this.enterResetCursorAfterClose(surveyGraph.confirmClosure(this.draft));
       this.applyDraft(nextDraft, { recordHistory: true });
       wx.showToast({ title: '单空间已闭合', icon: 'success' });
     } catch (err) {
@@ -5465,7 +5473,7 @@ Page({
           surveyGraph.commitPreviewLength(this.draft, value, 'manual')
         );
         const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
-        this.applyDraft(nextDraft, {
+        this.applyDraft(this.enterResetCursorAfterClose(nextDraft), {
           recordHistory: true,
           historyDraft: this.angleRemeasureHistoryDraft || undefined,
           extraData: { numberPadVisible: false, numberInput: '' }

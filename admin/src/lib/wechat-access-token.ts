@@ -1,4 +1,4 @@
-const ACCESS_TOKEN_SKEW_MS = 200_000;
+const ACCESS_TOKEN_SKEW_MS = 360_000;
 
 let cachedAccessToken: string | null = null;
 let accessTokenExpiresAt = 0;
@@ -12,20 +12,33 @@ function wechatCredentials() {
   return { appId, appSecret };
 }
 
+export function invalidateWechatAccessTokenCache() {
+  cachedAccessToken = null;
+  accessTokenExpiresAt = 0;
+}
+
 export async function getWechatAccessToken(options: {
   fetchImpl?: typeof fetch;
   now?: number;
+  forceRefresh?: boolean;
 } = {}) {
   const now = options.now ?? Date.now();
-  if (cachedAccessToken && accessTokenExpiresAt > now) {
+  if (!options.forceRefresh && cachedAccessToken && accessTokenExpiresAt > now) {
     return cachedAccessToken;
   }
 
   const { appId, appSecret } = wechatCredentials();
   const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(
-    `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${encodeURIComponent(appId)}&secret=${encodeURIComponent(appSecret)}`
-  );
+  const response = await fetchImpl('https://api.weixin.qq.com/cgi-bin/stable_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      grant_type: 'client_credential',
+      appid: appId,
+      secret: appSecret,
+      force_refresh: Boolean(options.forceRefresh),
+    }),
+  });
   const data = await response.json();
   if (!response.ok || data.errcode || !data.access_token) {
     throw new Error(data.errmsg || 'Unable to obtain WeChat access token');
@@ -38,6 +51,5 @@ export async function getWechatAccessToken(options: {
 }
 
 export function resetWechatAccessTokenCacheForTests() {
-  cachedAccessToken = null;
-  accessTokenExpiresAt = 0;
+  invalidateWechatAccessTokenCache();
 }

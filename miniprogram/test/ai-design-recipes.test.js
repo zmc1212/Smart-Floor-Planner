@@ -29,20 +29,34 @@ test('AI Design discovery renders real recipe browsing instead of the four-stage
   assert.match(service, /\/miniprogram\/ai\/recipes/);
 });
 
-test('recipe flow contains detail, project, scope, photo, confirmation, and workflow-conflict states', () => {
+test('recipe flow picks customer then scheme then space before confirmation', () => {
   const detail = read('packages/ai-workflow/recipe-detail/recipe-detail.wxml');
   const project = read('packages/ai-workflow/recipe-project/recipe-project.wxml');
+  const projectScript = read('packages/ai-workflow/recipe-project/recipe-project.js');
   const confirm = read('packages/ai-workflow/recipe-confirm/recipe-confirm.wxml');
   const confirmScript = read('packages/ai-workflow/recipe-confirm/recipe-confirm.js');
+  const service = read('utils/aiDesignService.js');
   assert.match(detail, /支持完整户型和单个房间/);
   assert.match(detail, /需要一张现场照片/);
-  assert.match(project, /选择客户项目/);
+  assert.match(project, /选择客户/);
+  assert.match(project, /选择方案/);
   assert.match(project, /选择设计空间/);
-  assert.match(project, /继续量房/);
+  assert.match(project, /item\.actionLabel/);
+  assert.match(project, /方案对话/);
+  assert.match(project, /bindtap="createScheme"/);
+  assert.doesNotMatch(project, /只展示当前账号可使用的正式量房/);
+  assert.match(projectScript, /loadStudioLeads/);
+  assert.match(projectScript, /listStudioWorkflows/);
+  assert.match(projectScript, /createStudioWorkflow/);
+  assert.match(projectScript, /schemeId=/);
+  assert.match(read('packages/ai-workflow/recipe-project/recipe-project-model.js'), /去量房/);
+  assert.match(service, /\/miniprogram\/ai\/studio\/leads/);
   assert.match(confirm, /补充现场照片/);
   assert.match(confirm, /该客户已有成果/);
   assert.match(confirm, /失败自动释放/);
+  assert.match(confirm, /续接当前方案对话/);
   assert.match(confirm, /选择要继续的客户方案/);
+  assert.match(confirmScript, /getStudioWorkflow/);
   assert.match(confirmScript, /WORKFLOW_CONFLICT/);
   assert.match(confirmScript, /recipeId: this\.data\.recipeId/);
   assert.match(confirmScript, /redirectAfterRecipeTask/);

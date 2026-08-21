@@ -1,5 +1,10 @@
 const api = require('./api.js');
-const { getTemplateIds, refreshTemplateConfig } = require('./notification.js');
+const {
+  getTemplateIds,
+  getSubscribeKindsForRole,
+  resolveSubscribeRole,
+  refreshTemplateConfig
+} = require('./notification.js');
 
 const IDENTITY_LABELS = {
   customer: '客户身份',
@@ -29,7 +34,13 @@ async function readNotificationState(page, refresh = true) {
     return;
   }
   if (refresh) await refreshTemplateConfig();
-  const templateIds = getTemplateIds();
+  const role = resolveSubscribeRole(page && page.data && page.data.activeRole);
+  const kinds = getSubscribeKindsForRole(role);
+  if (!kinds.length) {
+    page.setData({ notificationStatus: '当前身份无需订阅', notificationAccepted: false });
+    return;
+  }
+  const templateIds = getTemplateIds(role);
   if (!templateIds.length) {
     page.setData({ notificationStatus: '配置不可用', notificationAccepted: false });
     return;

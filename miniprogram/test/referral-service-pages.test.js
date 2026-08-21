@@ -32,6 +32,9 @@ test('staff activity code reuses the promotion visual language and may show the 
   assert.match(wxml, /让客户扫码领取/);
   assert.match(wxml, /enterpriseName/);
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
+  assert.match(wxml, /mine-icons\/scan\.png/);
+  assert.doesNotMatch(less, /\.scan-glyph\s*\{[^}]*border:\s*3rpx solid/);
+  assert.doesNotMatch(less, /\.share-scan\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /\/miniprogram\/staff-activity-code/);
   assert.match(js, /staff-activity-code\/image/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
@@ -50,6 +53,8 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
   assert.match(wxml, /换新/);
   assert.match(wxml, /停用/);
   assert.match(wxml, /enterpriseName/);
+  assert.match(wxml, /mine-icons\/scan\.png/);
+  assert.doesNotMatch(less, /\.scan-glyph\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /员工入驻码/);
   assert.match(js, /推荐人入驻码/);
   assert.doesNotMatch(wxml, /出示员工活动码|免费设计服务|让客户扫码领取|推荐网络 → 企业双码/);
@@ -79,6 +84,9 @@ test('promotion service screen keeps the public presentation anonymous and scana
   assert.match(wxml, /open-type="share"/);
   assert.match(wxml, /referral-service-v1\/thumbs-up-xiao-k\.png/);
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
+  assert.match(wxml, /mine-icons\/scan\.png/);
+  assert.doesNotMatch(less, /\.scan-glyph\s*\{[^}]*border:\s*3rpx solid/);
+  assert.doesNotMatch(less, /\.share-scan\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /promotion-code\/image/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
   assert.match(js, /responseType:\s*'arraybuffer'/);
@@ -122,6 +130,7 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(js, /response\.existingAttribution/);
   assert.match(js, /pageState:\s*'existing'/);
   assert.match(js, /pageState:\s*'phoneAuth'/);
+  assert.doesNotMatch(js, /enterpriseName/);
   assert.match(js, /pageState:\s*designerProfile\s*\?\s*'success'\s*:\s*'pending'/);
   assert.match(js, /wechat_user_mismatch/);
   assert.match(js, /staff_phone_linked_to_other_user/);
@@ -146,8 +155,7 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(less, /\.claim-action\s*\{[^}]*min-width:\s*100%/);
   assert.match(less, /\.success-title\s*\{[^}]*color:\s*#00c365/);
   assert.match(less, /\.existing-note\s*\{[^}]*background:\s*#f1f5f2/);
-  assert.doesNotMatch(wxml, /装修公司/);
-  assert.match(wxml, /enterpriseName/);
+  assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);
 });
 
 test('Antigravity referral assets are transparent PNG files within the package limit', () => {

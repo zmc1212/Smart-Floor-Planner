@@ -12,6 +12,7 @@ import {
   serializeCreationTaskForMini,
   serializePromptTemplatesForMini,
   serializeWorkflowContextForMini,
+  serializeWorkflowListForMini,
 } from '@/lib/ai/mini-ai-studio';
 
 test('canManageLead allows enterprise_admin and assigned designer only', () => {
@@ -75,6 +76,10 @@ test('serializeWorkflowContextForMini preserves published flags and signs previe
   assert.equal(serialized.workflow.publishedCount, 1);
   assert.equal(serialized.generations[0].published, true);
   assert.equal(serialized.generations[1].published, false);
+  assert.match(String(serialized.workflow.coverUrl), /\/api\/miniprogram\/ai\/assets\/91\/image/);
+  assert.match(String(serialized.workflow.latestGeneration?.imageUrl), /\/api\/miniprogram\/ai\/assets\/91\/image/);
+  assert.match(String(serialized.generations[0].imageUrl), /\/api\/miniprogram\/ai\/assets\/91\/image/);
+  assert.match(String(serialized.generations[1].imageUrl), /\/api\/miniprogram\/ai\/studio\/generations\/902\/image/);
   assert.match(String(serialized.workflow.floorPlanPreviewUrl), /\/api\/miniprogram\/ai\/studio\/workflows\/42\/floor-plan-preview/);
   assert.equal(verifyMiniAiStudioFloorPlanPreviewSignature({
     workflowId: '42',
@@ -132,6 +137,42 @@ test('serializeCreationTaskForMini signs batch generation image URLs', () => {
     expires: Number(parsed.searchParams.get('expires')),
     signature: parsed.searchParams.get('signature') || '',
   }), true);
+});
+
+test('serializeWorkflowListForMini signs scheme covers from confirmed or succeeded images', () => {
+  const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/workflows?leadId=12');
+  const serialized = serializeWorkflowListForMini(request, '23', {
+    data: [{
+      id: '88',
+      title: '灯光设计',
+      publishedCount: 2,
+      coverImageUrl: '/api/ai/assets/91/image',
+      latestGeneration: {
+        id: '903',
+        status: 'processing',
+        output: {},
+      },
+    }, {
+      id: '89',
+      title: 'AI 设计方案',
+      publishedCount: 0,
+      latestGeneration: {
+        id: '904',
+        status: 'succeeded',
+        output: { imageUrl: '/api/ai/generations/904/image' },
+      },
+    }, {
+      id: '90',
+      title: '空方案',
+      publishedCount: 0,
+      generationCount: 0,
+    }],
+    pagination: { page: 1, limit: 50, total: 3, totalPages: 1 },
+  });
+  assert.match(String(serialized.data[0].coverUrl), /\/api\/miniprogram\/ai\/assets\/91\/image/);
+  assert.match(String(serialized.data[1].coverUrl), /\/api\/miniprogram\/ai\/studio\/generations\/904\/image/);
+  assert.match(String(serialized.data[1].latestGeneration?.imageUrl), /\/api\/miniprogram\/ai\/studio\/generations\/904\/image/);
+  assert.equal(serialized.data[2].coverUrl, undefined);
 });
 
 test('serializePromptTemplatesForMini signs recipe preview covers for WeChat', () => {

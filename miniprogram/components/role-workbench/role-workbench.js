@@ -349,7 +349,7 @@ Component({
         return;
       }
       if (item.action === 'staffing') {
-        this.openStaffingGap(item);
+        this.openStaffRoster(item);
         return;
       }
       if (item.action === 'reschedule' && item.leadId && item.appointmentId) {
@@ -378,21 +378,19 @@ Component({
         return;
       }
       if (target === 'staffing') {
-        const staffingItem = (this.data.items || []).find((item) => item.action === 'staffing');
-        if (staffingItem) {
-          this.openItem({ currentTarget: { dataset: { item: staffingItem } } });
-          return;
-        }
-        wx.showToast({ title: '当前人员配置正常', icon: 'none' });
+        this.openStaffRoster();
       }
     },
 
-    openStaffingGap(item) {
-      wx.showModal({
-        title: item.title || '人员缺口',
-        content: item.subtitle || item.nextAction || '请在管理后台补齐可用设计师或测量员后重试派单。',
-        showCancel: false,
-        confirmText: '知道了',
+    openStaffRoster(item) {
+      const focus = item && item.id === 'staffing-designer'
+        ? 'designer'
+        : item && item.id === 'staffing-measurer'
+          ? 'measurer'
+          : '';
+      const query = focus ? `?focus=${encodeURIComponent(focus)}` : '';
+      wx.navigateTo({
+        url: `/packages/business/enterprise-staff/enterprise-staff${query}`,
       });
     },
 
@@ -400,7 +398,7 @@ Component({
       const item = event.currentTarget.dataset.item;
       if (!item) return;
       if (item.action === 'staffing') {
-        this.openStaffingGap(item);
+        this.openStaffRoster(item);
         return;
       }
       if (item.action === 'appointment' && item.appointmentId && item.leadId) {

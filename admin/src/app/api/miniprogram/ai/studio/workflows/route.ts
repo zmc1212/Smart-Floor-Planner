@@ -6,6 +6,7 @@ import {
   assertMiniStudioLeadAccess,
   isMiniStudioContext,
   requireMiniStudioContext,
+  serializeWorkflowListForMini,
 } from '@/lib/ai/mini-ai-studio';
 import {
   createPostgresAiWorkflow,
@@ -49,7 +50,10 @@ export async function GET(request: Request) {
       page,
       limit,
     });
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({
+      success: true,
+      ...serializeWorkflowListForMini(request, context.enterpriseId, result),
+    });
   } catch (error) {
     console.error('[Mini AI Studio Workflows GET]', error);
     const status = (error as Error & { status?: number }).status;

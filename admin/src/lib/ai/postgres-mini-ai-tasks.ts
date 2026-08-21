@@ -177,7 +177,11 @@ export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, con
   let workflowId: bigint | undefined;
   if (input.workflowId && /^[1-9]\d*$/.test(input.workflowId)) {
     const workflow = await withTenantTransaction(enterpriseId, (transaction) => new AiWorkflowRepository(transaction).findById(BigInt(String(input.workflowId))));
-    if (!workflow || workflow.operatorId !== operatorId || workflow.status !== 'active') {
+    if (!workflow || workflow.status !== 'active') {
+      throw Object.assign(new Error('当前角色无权续接该客户方案'), { status: 403 });
+    }
+    const workflowLead = await accessibleLead(enterpriseId, context, String(workflow.leadId));
+    if (!workflowLead) {
       throw Object.assign(new Error('当前角色无权续接该客户方案'), { status: 403 });
     }
     if ((leadId && workflow.leadId !== leadId) || (plan && workflow.sourceFloorPlanId !== plan.id)) {
@@ -188,7 +192,7 @@ export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, con
   else if (sourceTask?.workflowId) workflowId = sourceTask.workflowId;
   else if (leadId) {
     const matchingWorkflows = await withTenantTransaction(enterpriseId, (transaction) => (
-      new AiWorkflowRepository(transaction).list({ leadId, operatorId, status: 'active', limit: 20 })
+      new AiWorkflowRepository(transaction).list({ leadId, status: 'active', limit: 20 })
     ));
     const exactMatches = matchingWorkflows.rows.filter((workflow) => (
       !plan || workflow.sourceFloorPlanId === plan.id

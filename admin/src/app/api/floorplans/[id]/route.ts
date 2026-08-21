@@ -12,6 +12,7 @@ import { canDeleteLeadFloorPlan } from '@/lib/lead-status';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
+import { notifyDesignerOfSurveyCompleted } from '@/lib/wechat-notification';
 
 interface FloorPlanUpdateBody {
   name?: string;
@@ -116,12 +117,14 @@ export async function PUT(
         const current = await repository.findById(planId);
         if (!current || !canAccessMiniProgramFloorPlan(current, context)) return null;
         const nextStatus = body.status || current.status;
+        const becameCompleted =
+          current.status !== 'completed' && nextStatus === 'completed';
         const plan = await repository.update(planId, {
           name: body.name?.trim() || current.name,
           layoutData: body.layoutData as Record<string, unknown>,
           status: nextStatus,
           completedAt:
-            current.status !== 'completed' && nextStatus === 'completed'
+            becameCompleted
               ? new Date()
               : current.completedAt,
           staffId: context.staff
@@ -134,7 +137,9 @@ export async function PUT(
               )
             : current.enterpriseId,
         });
-        if (!plan || !body.leadId) return plan;
+        if (!plan || !body.leadId) {
+          return plan ? { plan, becameCompleted, lead: null as Awaited<ReturnType<LeadRepository['findById']>> } : null;
+        }
 
         const lead = await new LeadRepository(transaction).findById(
           parsePostgresId(body.leadId, 'leadId')
@@ -159,7 +164,8 @@ export async function PUT(
           throw new Error('Lead access denied');
         }
         await linkFloorPlanToLead(transaction, lead.id, plan.id);
-        return plan;
+        const linkedLead = await new LeadRepository(transaction).findById(lead.id);
+        return { plan, becameCompleted, lead: linkedLead };
       }
     );
     if (!updated) {
@@ -168,7 +174,21 @@ export async function PUT(
         { status: 404 }
       );
     }
-    const plan = await persistAndAttachFloorPlanPreview(updated);
+    const plan = await persistAndAttachFloorPlanPreview(updated.plan);
+    if (
+      updated.becameCompleted &&
+      updated.lead?.enterpriseId &&
+      updated.lead.assignedTo
+    ) {
+      await Promise.allSettled([
+        notifyDesignerOfSurveyCompleted({
+          enterpriseId: updated.lead.enterpriseId,
+          leadId: updated.lead.id,
+          designerId: updated.lead.assignedTo,
+          floorPlanId: plan.id,
+        }),
+      ]);
+    }
     return NextResponse.json({ success: true, data: floorPlanToDto(plan) });
   } catch (error: unknown) {
     const message = getErrorMessage(error);

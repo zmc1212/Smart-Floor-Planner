@@ -9,7 +9,7 @@
       <text wx:if="{{view}}" class="nav-subtitle">已确认 {{view.workflow.publishedCount}} 张</text>
     </view>
     <view wx:if="{{view}}" class="nav-switch" bindtap="openWorkflowSwitcher">
-      <text>切换</text>
+      <text>切换方案</text>
       <view class="nav-switch-chevron"></view>
     </view>
     <view wx:if="{{view}}" class="nav-more" bindtap="openMenu">⋯</view>
@@ -242,13 +242,8 @@
           ? ('已确认且未选中的图保持不变，将加入/更新本次勾选的 ' + selectedGenerationIds.length + ' 张效果图。')
           : ('客户将在小程序项目里看到这一套方案，共 ' + selectedGenerationIds.length + ' 张效果图。')}}
       </text>
-      <view wx:if="{{view.publishedScheme}}" class="dialog-note">
-        方案名称与顶部标题一致：{{view.workflow.title}}
-      </view>
-      <block wx:else>
-        <text class="dialog-label">方案名称</text>
-        <input class="dialog-input" value="{{sendTitle}}" bindinput="onSendTitleInput" placeholder="例如 灯光设计" />
-      </block>
+      <text class="dialog-label">方案名称</text>
+      <input class="dialog-input" value="{{sendTitle}}" bindinput="onSendTitleInput" placeholder="例如 灯光设计" />
       <view class="dialog-actions">
         <button class="dialog-btn" bindtap="closeSendModal">取消</button>
         <button class="dialog-btn primary" bindtap="confirmSendScheme" loading="{{sendingScheme}}">

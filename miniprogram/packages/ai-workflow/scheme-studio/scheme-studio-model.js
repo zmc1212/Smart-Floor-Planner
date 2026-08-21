@@ -350,6 +350,24 @@ function buildWorkflowSwitcherOptions(workflows, currentWorkflowId) {
     .filter(Boolean);
 }
 
+function resolveSendTitlePrefill(view) {
+  const published = String(view?.publishedScheme?.title || '').trim();
+  if (published) return published;
+  return String(view?.workflow?.title || '设计方案').trim() || '设计方案';
+}
+
+function resolveSendTitle(view, sendTitle) {
+  const typed = String(sendTitle || '').trim();
+  if (typed) return typed;
+  return resolveSendTitlePrefill(view);
+}
+
+function shouldRenameWorkflowOnSend(view, title) {
+  const nextTitle = String(title || '').trim();
+  if (!nextTitle) return false;
+  return nextTitle !== String(view?.workflow?.title || '').trim();
+}
+
 module.exports = {
   applySelectionToView,
   batchStatusLabel,
@@ -368,7 +386,10 @@ module.exports = {
   generationStatusLabel,
   mergeSendSelection,
   pickPreferredStudioWorkflow,
+  resolveSendTitle,
+  resolveSendTitlePrefill,
   shouldPollStudioView,
+  shouldRenameWorkflowOnSend,
   summarizePrompt,
   toggleGenerationSelection,
   workflowFloorPlanId,

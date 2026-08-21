@@ -30,6 +30,14 @@ async function deliverRetryNotifications(result: RetryResult) {
           result.lead.assignedTo.toString()
         )
       : Promise.resolve(),
+    result.kind === 'assigned' &&
+    result.lead.measurerId &&
+    result.lead.measurerId.toString() !== result.lead.assignedTo?.toString()
+      ? notifyDesignerOfAssignedLead(
+          notificationLead,
+          result.lead.measurerId.toString()
+        )
+      : Promise.resolve(),
     result.kind === 'pending'
       ? notifyEnterpriseAdminOfAssignmentPending(notificationLead, {
           reasonCode:

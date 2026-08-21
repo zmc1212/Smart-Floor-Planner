@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildDesignPublishedPayload,
   buildLeadAssignmentPayload,
   buildMeasurementAppointmentPayload,
   buildNewLeadPayload,
@@ -11,6 +12,7 @@ import {
 import {
   DEFAULT_SUBSCRIPTION_TEMPLATES,
   normalizePlatformNotificationConfig,
+  SUBSCRIPTION_TEMPLATE_KINDS,
   validateDistinctTemplateIds,
 } from '@/lib/platform-notification-config';
 
@@ -27,8 +29,19 @@ test('legacy single-template config normalizes to V2 while preserving the old ID
   assert.equal(normalized.miniprogramTemplateId, normalized.templates.workflow_todo.templateId);
 });
 
-test('four subscription template IDs must remain distinct', () => {
+test('five subscription template IDs must remain distinct', () => {
   const normalized = normalizePlatformNotificationConfig();
+  assert.deepEqual(SUBSCRIPTION_TEMPLATE_KINDS, [
+    'workflow_todo',
+    'lead_assignment',
+    'new_lead',
+    'measurement_appointment',
+    'design_published',
+  ]);
+  assert.equal(
+    normalized.templates.design_published.templateId,
+    'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'
+  );
   assert.doesNotThrow(() => validateDistinctTemplateIds(normalized.templates));
   normalized.templates.new_lead.templateId = normalized.templates.workflow_todo.templateId;
   assert.throws(
@@ -81,6 +94,14 @@ test('payload builders emit only the approved keyword keys', () => {
   });
   assert.deepEqual(Object.keys(appointment), ['thing1', 'phone_number2', 'thing3', 'time6', 'thing7']);
   assert.equal(appointment.time6.value, '2026-08-13 15:00:00');
+
+  const published = buildDesignPublishedPayload(DEFAULT_SUBSCRIPTION_TEMPLATES.design_published, {
+    content: '现代简约客厅方案',
+    publishedAt: '2026-08-13T07:00:00.000Z',
+    note: '请到项目页查看效果图',
+  });
+  assert.deepEqual(Object.keys(published), ['thing1', 'time2', 'thing3']);
+  assert.equal(published.time2.value, '2026-08-13 15:00:00');
 });
 
 test('new-lead selected time falls back from assignment to creation time', () => {

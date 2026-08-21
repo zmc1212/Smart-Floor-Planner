@@ -40,6 +40,12 @@ import {
 import { Button, ConfigProvider, Dropdown, Input, Modal, Select } from 'antd';
 import { notify } from '@/components/admin/operation-feedback';
 import { studioDarkAntdTheme } from '@/components/admin/studio-antd-theme';
+import {
+  mergeTemplateReferenceAsset,
+  planPromptTemplateReferenceAttach,
+  promptTemplateCoverClonePath,
+  promptTemplatePreviewSrc,
+} from '@/lib/ai/prompt-template-reference';
 import { cn } from '@/lib/utils';
 import { ImageEditorDialog } from './image-editor-dialog';
 import { TemplateLibraryDialog } from './template-library-dialog';
@@ -309,6 +315,7 @@ export function CreationWorkspace() {
   const [count, setCount] = useState(1);
   const [assets, setAssets] = useState<CreationAsset[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDetail | null>(null);
+  const [templateAssetId, setTemplateAssetId] = useState('');
   const [templateOpen, setTemplateOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -459,6 +466,7 @@ export function CreationWorkspace() {
     setCount(draft.count);
     setSelectedTemplate(draft.templateId ? { id: draft.templateId } as TemplateDetail : null);
     setAssets(draft.referenceAssetIds.map((id) => ({ id, previewUrl: `/api/ai/assets/${id}/image` })));
+    setTemplateAssetId('');
   };
 
   const chooseTask = (task: CreationTask) => {
@@ -474,6 +482,7 @@ export function CreationWorkspace() {
     setPrompt('');
     setNegativePrompt('');
     setSelectedTemplate(null);
+    setTemplateAssetId('');
     setAssets([]);
     setCount(1);
     setHistoryOpen(false);
@@ -517,6 +526,7 @@ export function CreationWorkspace() {
   };
 
   const removeReferenceAsset = (assetId: string) => {
+    if (assetId === templateAssetId) setTemplateAssetId('');
     setAssets((current) => current.filter((asset) => asset.id !== assetId));
   };
 
@@ -584,17 +594,51 @@ export function CreationWorkspace() {
     setSplitPosition(Math.min(96, Math.max(4, ratio * 100)));
   };
 
-  const applyTemplate = (template: TemplateDetail) => {
+  const applyTemplate = async (template: TemplateDetail) => {
     setSelectedTemplate(template);
     setPrompt(template.promptContent);
+    let nextModel = model;
     if (template.recommendedModelProfileId) {
       const recommended = bootstrap?.models.find((item) => item.id === template.recommendedModelProfileId);
       if (recommended) {
         setModelProfileId(recommended.id);
         applyModelDefaults(recommended);
+        nextModel = recommended;
       }
     }
-    notify.success(`已应用模板：${template.name}`);
+    const nextMaxUserRefs = nextModel?.supportsReferenceImages ? (nextModel.maxReferenceImages || 0) : 0;
+    const plan = planPromptTemplateReferenceAttach({
+      previewSrc: promptTemplatePreviewSrc(template),
+      maxUserRefs: nextMaxUserRefs,
+      currentAssetIds: assets.map((asset) => asset.id),
+      previousTemplateAssetId: templateAssetId,
+    });
+    if (!plan.canAttach) {
+      if (plan.reason === 'no_slots' || plan.reason === 'no_capacity') {
+        notify.success(`已应用模板：${template.name}`);
+        notify.warning(plan.reason === 'no_slots'
+          ? '当前模型无法带入模板参考图'
+          : '参考图已满，已应用模板文案但未带入封面');
+        return;
+      }
+      notify.success(`已应用模板：${template.name}`);
+      return;
+    }
+    setUploading(true);
+    try {
+      const payload = await readJson(await fetch(promptTemplateCoverClonePath(template.id), { method: 'POST' }));
+      const uploaded = payload.data as CreationAsset;
+      const kept = assets.filter((asset) => plan.keptAssetIds.includes(asset.id));
+      setAssets(mergeTemplateReferenceAsset(kept, uploaded));
+      setTemplateAssetId(uploaded.id);
+      notify.success(`已应用模板：${template.name}`);
+    } catch (error) {
+      notify.error(error instanceof Error
+        ? `已应用「${template.name}」的提示词，但未能带入参考图：${error.message}`
+        : `已应用「${template.name}」的提示词，但未能带入参考图`);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const assistPrompt = async () => {
@@ -1064,7 +1108,13 @@ export function CreationWorkspace() {
                 <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" multiple className="hidden" onChange={(event) => uploadFiles(event.target.files)} />
               </div>
               <div className="relative min-h-0 pt-0.5">
-                {selectedTemplate ? <div className="mb-1 flex items-center gap-2 text-[11px] text-[#9f8cff]"><PanelsTopLeft className="size-3" /><span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span><button type="button" onClick={() => setSelectedTemplate(null)} title="取消模板"><X className="size-3" /></button></div> : null}
+                {selectedTemplate ? <div className="mb-1 flex items-center gap-2 text-[11px] text-[#9f8cff]"><PanelsTopLeft className="size-3" /><span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span><button type="button" onClick={() => {
+                  setSelectedTemplate(null);
+                  if (templateAssetId) {
+                    setAssets((current) => current.filter((item) => item.id !== templateAssetId));
+                    setTemplateAssetId('');
+                  }
+                }} title="取消模板"><X className="size-3" /></button></div> : null}
                 <TextArea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={model?.description || '描述空间、风格、材质、光线与构图，或从提示词模板中选择'} className="scrollbar-hide h-full min-h-0 resize-none !border-0 !bg-transparent p-0 text-base leading-6 !text-[#b3b3b3] !shadow-none placeholder:!text-[#77777e] focus:!shadow-none" />
               </div>
             </div>

@@ -86,20 +86,23 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(component, /payload\.dashboard/);
 });
 
-test('enterprise staffing exceptions open an explanation instead of a silent no-op', () => {
+test('enterprise staffing exceptions open the staff roster instead of a silent no-op', () => {
   const component = fs.readFileSync(path.join(miniProgramRoot, 'components', 'role-workbench', 'role-workbench.js'), 'utf8');
   const componentTemplate = fs.readFileSync(path.join(miniProgramRoot, 'components', 'role-workbench', 'role-workbench.wxml'), 'utf8');
   const exceptionHandler = component.match(/openEnterpriseException\(event\) \{[\s\S]*?\n    \},/);
-  const staffingHandler = component.match(/openStaffingGap\(item\) \{[\s\S]*?\n    \},/);
+  const rosterHandler = component.match(/openStaffRoster\(item\) \{[\s\S]*?\n    \},/);
 
   assert.match(componentTemplate, /bindtap="openEnterpriseException"/);
   assert.match(componentTemplate, /catchtap="openEnterpriseException"/);
   assert.ok(exceptionHandler, 'openEnterpriseException handler should exist');
-  assert.ok(staffingHandler, 'openStaffingGap handler should exist');
+  assert.ok(rosterHandler, 'openStaffRoster handler should exist');
   assert.match(exceptionHandler[0], /item\.action === 'staffing'/);
-  assert.match(exceptionHandler[0], /this\.openStaffingGap\(item\)/);
+  assert.match(exceptionHandler[0], /this\.openStaffRoster\(item\)/);
   assert.match(exceptionHandler[0], /wx\.showToast/);
-  assert.match(staffingHandler[0], /wx\.showModal/);
+  assert.match(rosterHandler[0], /enterprise-staff\/enterprise-staff/);
+  assert.match(rosterHandler[0], /focus=designer|staffing-designer/);
+  assert.match(component, /target === 'staffing'/);
+  assert.match(component, /this\.openStaffRoster\(\)/);
 });
 
 test('customer projects route is a deep-link redirect shell, not a TabBar list', () => {

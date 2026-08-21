@@ -107,7 +107,9 @@ copy back to `layoutData`.
   Loading a saved draft also folds remaining collinear degree-2
   splices into one wall. Deleting a wall that opens a single closed room
   restores the remaining loop as the active chain and offers the missing-edge
-  close when the dangling ends still determine it. Resetting the cursor onto
+  close when the dangling ends still determine it. Confirming a closed room
+  automatically enters the same reset-cursor / wall-drop state as tapping
+  重置光标. Resetting the cursor onto
   either dangling vertex resumes that same open chain instead of starting a
   new room from the existing wall. Dragging back along that
   restored last wall shortens it instead of reporting overlap with the

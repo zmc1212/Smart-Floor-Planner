@@ -10,6 +10,7 @@ const notificationTemplates = [
   ['lead_assignment', 'wltuS0LdggzpMWdSOlr6FBSKeRbOKUzqXVCqJDmLpmA'],
   ['new_lead', 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjq4xest9GRc'],
   ['measurement_appointment', 'CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl'],
+  ['design_published', 'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'],
 ];
 
 function notificationConfig() {

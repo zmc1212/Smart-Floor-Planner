@@ -132,12 +132,35 @@ test('canvas wall snapping forwards the resolved vertex or wall candidate to the
   );
 });
 
-test('a placed cursor stays resettable after a room closes, then explicitly enters wall-drop mode', () => {
+test('closing a room automatically enters the reset-cursor wall-drop state', () => {
+  assert.match(
+    editorScript,
+    /enterResetCursorAfterClose\(draft\) \{[\s\S]*?session\.state !== 'spaceClosed'[\s\S]*?this\.cursorPlacementState = 'awaitingWallDrop'[\s\S]*?surveyGraph\.startWallSnap\(draft\)/
+  );
+  assert.match(
+    editorScript,
+    /surveyGraph\.isDirectClosureHit\(floor, session, releasePointMm\)[\s\S]*?this\.enterResetCursorAfterClose\(\s*surveyGraph\.confirmClosure\(this\.draft\)\)/
+  );
+  assert.match(
+    editorScript,
+    /onConfirmClose\(\) \{[\s\S]*?this\.enterResetCursorAfterClose\(\s*surveyGraph\.confirmClosure\(this\.draft\)\)/
+  );
+  assert.match(
+    editorScript,
+    /applyBleReadingToPendingWall\(distanceInMeters\) \{[\s\S]*?maybeAutoConfirmSharedBoundaryClose\([\s\S]*?this\.enterResetCursorAfterClose\(nextDraft\)/
+  );
+  assert.match(
+    editorScript,
+    /maybeAutoConfirmSharedBoundaryClose\(\s*surveyGraph\.commitPreviewLength\(this\.draft, session\.previewLengthMm, 'preview'\)[\s\S]*?this\.enterResetCursorAfterClose\(nextDraft\)/
+  );
+  assert.match(
+    editorScript,
+    /maybeAutoConfirmSharedBoundaryClose\(\s*surveyGraph\.commitPreviewLength\(this\.draft, value, 'manual'\)[\s\S]*?this\.enterResetCursorAfterClose\(nextDraft\)/
+  );
   assert.match(
     editorScript,
     /resolveCursorPlacementState\(floor, session\) \{[\s\S]*?session\.state === 'wallSnapPending'/
   );
-  assert.doesNotMatch(editorScript, /session\.state === 'spaceClosed' \|\| session\.state === 'wallSnapPending'/);
   assert.match(editorScript, /wx\.showToast\(\{ title: '请拖动光标到墙体', icon: 'none' \}\)/);
   assert.match(editorWxml, /wx:if="\{\{cursorPlacementState === 'placed'\}\}"[\s\S]*?cursor-action-reset[\s\S]*?重置光标/);
   assert.match(editorWxml, /cursor-action-drag[\s\S]*?dock-cursor-icon-ghost[\s\S]*?dock-cursor-origin[\s\S]*?cursor-dock-helper-label[\s\S]*?光标拖动到墙体/);

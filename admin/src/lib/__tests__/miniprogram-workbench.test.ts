@@ -3,8 +3,10 @@ import test from 'node:test';
 import {
   buildEnterpriseExpiredExceptionItem,
   buildEnterprisePendingExceptionItem,
+  buildEnterpriseStaffRosterItem,
   buildEnterpriseStaffingExceptionItem,
   buildOpsDashboardCards,
+  parseEnterpriseStaffRosterRoles,
   buildOpsDashboardSubtitle,
   buildStaffingGapItems,
   buildStaffLoadQuickNav,
@@ -293,6 +295,83 @@ test('enterprise operations format growth and exception cards from real workbenc
   })[0]);
   assert.equal(staffing.actionLabel, '查看详情');
   assert.equal(buildStaffLoadQuickNav({ eligibleDesignerCount: 1, eligibleMeasurerCount: 0 }).desc, '测量员紧缺 →');
+});
+
+test('enterprise staff roster items expose assignment eligibility without Admin DTO fields', () => {
+  const eligibleDesigner = buildEnterpriseStaffRosterItem({
+    id: 21n,
+    displayName: '林设计师',
+    phone: '13800001111',
+    role: 'designer',
+    status: 'active',
+    assignmentPaused: false,
+    wechatId: 'wx-lin',
+    wechatQrAssetId: 9n,
+  });
+  assert.deepEqual(eligibleDesigner, {
+    id: '21',
+    displayName: '林设计师',
+    phone: '13800001111',
+    role: 'designer',
+    roleLabel: '设计师',
+    assignmentPaused: false,
+    assignmentEligible: true,
+    ineligibleReason: null,
+    statusLabel: '可派单',
+    statusTone: 'green',
+    action: 'pause',
+    actionLabel: '暂停派单',
+    helperText: '',
+  });
+  assert.equal('username' in eligibleDesigner, false);
+
+  const pausedMeasurer = buildEnterpriseStaffRosterItem({
+    id: 22,
+    displayName: '周测量',
+    phone: null,
+    role: 'measurer',
+    status: 'active',
+    assignmentPaused: true,
+  });
+  assert.equal(pausedMeasurer.assignmentEligible, false);
+  assert.equal(pausedMeasurer.ineligibleReason, 'paused');
+  assert.equal(pausedMeasurer.statusLabel, '已暂停');
+  assert.equal(pausedMeasurer.statusTone, 'orange');
+  assert.equal(pausedMeasurer.action, 'resume');
+  assert.equal(pausedMeasurer.actionLabel, '恢复派单');
+
+  const incompleteDesigner = buildEnterpriseStaffRosterItem({
+    id: '23',
+    displayName: '待补设计师',
+    role: 'designer',
+    status: 'active',
+    assignmentPaused: false,
+    wechatId: '  ',
+    wechatQrAssetId: null,
+  });
+  assert.equal(incompleteDesigner.ineligibleReason, 'designer_wechat_incomplete');
+  assert.equal(incompleteDesigner.statusLabel, '待补微信资料');
+  assert.equal(incompleteDesigner.action, null);
+  assert.equal(incompleteDesigner.actionLabel, '');
+  assert.match(incompleteDesigner.helperText, /我的/);
+
+  const pausedIncompleteDesigner = buildEnterpriseStaffRosterItem({
+    id: 24n,
+    displayName: '双缺设计师',
+    role: 'designer',
+    status: 'active',
+    assignmentPaused: true,
+    wechatId: '',
+  });
+  assert.equal(pausedIncompleteDesigner.ineligibleReason, 'paused');
+  assert.equal(pausedIncompleteDesigner.action, 'resume');
+});
+
+test('enterprise staff roster role query defaults to designer and measurer', () => {
+  assert.deepEqual(parseEnterpriseStaffRosterRoles(null), ['designer', 'measurer']);
+  assert.deepEqual(parseEnterpriseStaffRosterRoles('designer'), ['designer']);
+  assert.deepEqual(parseEnterpriseStaffRosterRoles('measurer'), ['measurer']);
+  assert.throws(() => parseEnterpriseStaffRosterRoles('salesperson'), /role/);
 });
 
 test('workbench period helpers resolve Shanghai week/month/year and custom inclusive ranges', () => {

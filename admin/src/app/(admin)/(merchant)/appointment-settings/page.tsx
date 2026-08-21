@@ -9,7 +9,6 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { PageContainer } from '@ant-design/pro-components';
 import { Alert, Button, Card, Col, Flex, Form, Input, InputNumber, Row, Select, Space, Switch, Typography } from 'antd';
 import { ArrowLeft, CalendarClock, Plus, Save, Trash2 } from 'lucide-react';
@@ -145,7 +144,7 @@ export default function AppointmentSettingsPage() {
         className="admin-page-container"
         title="预约设置"
         content="配置当前企业的可预约时段、量房时长和客户改期边界；保存后验收工作台才会将本项标记为已就绪。"
-        extra={<Link href="/referrer-network-operations"><Button icon={<ArrowLeft size={16} />}>返回验收工作台</Button></Link>}
+        extra={<Button icon={<ArrowLeft size={16} />} href="/referrer-network-operations">返回验收工作台</Button>}
       >
         <Flex vertical gap={20}>
           <Alert

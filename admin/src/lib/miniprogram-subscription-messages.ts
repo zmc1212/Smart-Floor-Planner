@@ -144,6 +144,22 @@ export function buildMeasurementAppointmentPayload(
   return payload;
 }
 
+export function buildDesignPublishedPayload(
+  template: SubscriptionTemplateConfig,
+  input: {
+    content?: unknown;
+    publishedAt?: Date | string | null;
+    note?: unknown;
+  }
+) {
+  const keys = template.keywordKeys;
+  const payload: SubscriptionMessagePayload = {};
+  payloadEntry(payload, keys.content, truncateWeChatText(input.content, 20, '设计方案'));
+  payloadEntry(payload, keys.publishedAt, formatWeChatDateTime(input.publishedAt));
+  payloadEntry(payload, keys.note, truncateWeChatText(input.note, 20, '请到项目页查看效果图'));
+  return payload;
+}
+
 export function resolveWorkflowTemplateKind(notificationType: string): SubscriptionTemplateKind {
   return notificationType === 'measure_assigned' || notificationType === 'design_assigned'
     ? 'lead_assignment'

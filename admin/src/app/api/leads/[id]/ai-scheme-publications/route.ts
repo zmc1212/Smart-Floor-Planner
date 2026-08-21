@@ -6,6 +6,7 @@ import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getTenantContext } from '@/lib/auth';
 import { groupPublishedSchemes } from '@/lib/customer-project';
 import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
+import { notifyCustomerOfDesignPublished } from '@/lib/wechat-notification';
 
 function canPublish(role: string, assignedTo: bigint | null, staffId: bigint) {
   return role === 'enterprise_admin' || (role === 'designer' && assignedTo === staffId);
@@ -105,6 +106,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (result.kind === 'empty_selection') return NextResponse.json({ success: false, error: '请至少选择一张效果图' }, { status: 400 });
     if (result.kind === 'generation_not_publishable') return NextResponse.json({ success: false, error: '所选效果图未完成、不属于该对话或不属于该客户项目' }, { status: 409 });
     if (result.kind === 'forbidden') return NextResponse.json({ success: false, error: '无权发布该客户项目的方案' }, { status: 403 });
+    if (result.kind === 'published' && result.newGenerationIds.length) {
+      await Promise.allSettled([
+        notifyCustomerOfDesignPublished({
+          enterpriseId: actor.enterpriseId,
+          leadId,
+          generationIds: result.newGenerationIds,
+          title: result.title,
+          publishedAt: new Date(),
+        }),
+      ]);
+    }
     return NextResponse.json({
       success: true,
       data: {

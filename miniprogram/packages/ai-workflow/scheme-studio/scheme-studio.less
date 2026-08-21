@@ -44,6 +44,9 @@
   font-weight: 800;
   line-height: 1.2;
   color: #183426;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nav-subtitle {
@@ -62,6 +65,7 @@
   font-size: 24rpx;
   font-weight: 750;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .nav-switch-chevron {
@@ -97,6 +101,11 @@
 
 .studio-shell.dock-expanded {
   padding-bottom: calc(400rpx + env(safe-area-inset-bottom));
+}
+
+button {
+  margin: 0;
+  box-sizing: border-box;
 }
 
 button::after {
@@ -153,6 +162,7 @@ button::after {
   width: 100%;
   min-height: 80rpx;
   margin-top: 20rpx;
+  padding: 0 16rpx;
   border-radius: 22rpx;
   background: #00c365;
   color: #fff;
@@ -723,7 +733,9 @@ button::after {
 }
 
 .dialog-actions .dialog-btn {
-  margin-top: 0;
+  margin: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .dialog-actions .dialog-btn:first-child {

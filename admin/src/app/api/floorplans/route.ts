@@ -20,6 +20,7 @@ import {
 import { persistAndAttachFloorPlanPreview } from '@/lib/floor-plan-preview';
 import { canStaffMutateLeadSurvey } from '@/lib/lead-staff-access';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
+import { notifyDesignerOfSurveyCompleted } from '@/lib/wechat-notification';
 
 interface FloorPlanRequestBody {
   name?: string;
@@ -162,6 +163,20 @@ export async function POST(request: Request) {
       }
     );
     const plan = await persistAndAttachFloorPlanPreview(createdResult.plan);
+    if (
+      planStatus === 'completed' &&
+      createdResult.lead?.enterpriseId &&
+      createdResult.lead.assignedTo
+    ) {
+      await Promise.allSettled([
+        notifyDesignerOfSurveyCompleted({
+          enterpriseId: createdResult.lead.enterpriseId,
+          leadId: createdResult.lead.id,
+          designerId: createdResult.lead.assignedTo,
+          floorPlanId: plan.id,
+        }),
+      ]);
+    }
     return NextResponse.json(
       {
         success: true,

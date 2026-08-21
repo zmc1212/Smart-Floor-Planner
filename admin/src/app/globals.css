@@ -24,7 +24,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.58 0.16 146);
@@ -144,9 +144,42 @@
     @apply max-w-3xl text-sm leading-6 text-muted-foreground;
   }
 
+  .admin-page-frame .ant-page-header-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    row-gap: 12px;
+    column-gap: 16px;
+  }
+
+  .admin-page-frame .ant-page-header-heading-left {
+    flex: 1 1 16rem;
+    min-width: 0;
+  }
+
+  .admin-page-frame .ant-page-header-heading-title {
+    white-space: normal;
+    overflow: visible;
+    line-height: 1.35;
+  }
+
+  .admin-page-frame .ant-page-header-heading-extra {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-inline-start: 0;
+  }
+
   .admin-page-frame .admin-page-container .ant-pro-page-container-children-container {
     @apply px-0 pb-0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
     padding-top: 24px !important;
+  }
+
+  .admin-page-frame .admin-page-container .ant-pro-page-container-children-container > * {
+    min-width: 0;
   }
 
   .admin-panel-card {
@@ -253,8 +286,9 @@
     @apply flex flex-wrap items-center gap-2;
   }
 
+  .admin-page-frame .ant-pro-table-list-toolbar-container,
   .admin-data-table .ant-pro-table-list-toolbar-container {
-    @apply gap-3;
+    @apply flex-wrap gap-3;
   }
 
   .admin-data-table .ant-table-wrapper .ant-table-tbody > tr > td {
@@ -270,6 +304,33 @@
   .admin-page-frame .ant-input-number-group-wrapper .ant-input-number-group-addon {
     white-space: nowrap;
     flex-shrink: 0;
+  }
+
+  .admin-page-frame .ant-btn,
+  .admin-page-frame .ant-tag {
+    white-space: nowrap;
+    word-break: keep-all;
+  }
+
+  .admin-page-frame .ant-pro-query-filter .ant-form-item-label > label,
+  .admin-page-frame .ant-descriptions-item-label,
+  .admin-page-frame .ant-table-thead > tr > th {
+    white-space: nowrap;
+    word-break: keep-all;
+  }
+
+  .admin-page-frame .ant-card-head {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+
+  .admin-page-frame .ant-card-extra {
+    margin-inline-start: 0;
+  }
+
+  .admin-page-frame h4.ant-typography,
+  .admin-page-frame .ant-typography.ant-typography-h4 {
+    margin-bottom: 16px;
   }
 
   /* Keep modal content and footer actions visually separate, including countable text areas. */
@@ -291,7 +352,7 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1px;
     width: 100%;
-    margin-bottom: 1.25rem;
+    margin-bottom: 0;
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 0.5rem;
@@ -339,9 +400,13 @@
 
   .admin-module-overview-label {
     margin: 0;
+    overflow: hidden;
     color: var(--muted-foreground);
     font-size: 0.75rem;
     font-weight: 500;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .admin-module-overview-value {
@@ -354,6 +419,13 @@
 
   .admin-staff-layout {
     @apply grid min-w-0 gap-5 xl:grid-cols-[18rem_minmax(0,1fr)];
+  }
+
+  .admin-staff-layout > div:last-child {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 1.25rem;
   }
 
   .admin-department-panel {
@@ -446,4 +518,58 @@
     content-visibility: auto;
     contain-intrinsic-size: 0 280px;
   }
+}
+
+/* Unlayered so these beat residual a { color: colorLink } that otherwise
+   paints green text onto primary/default/danger buttons rendered as <a>,
+   or nested inside Next.js <Link>. Tokens follow the nearest ConfigProvider. */
+a.ant-btn:not(.ant-btn-primary):not(.ant-btn-color-primary):not(.ant-btn-link):not(.ant-btn-text):not(.ant-btn-dangerous),
+a .ant-btn:not(.ant-btn-primary):not(.ant-btn-color-primary):not(.ant-btn-link):not(.ant-btn-text):not(.ant-btn-dangerous) {
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+a.ant-btn-primary,
+a.ant-btn-color-primary,
+a.ant-btn-variant-solid.ant-btn-color-primary,
+a .ant-btn-primary,
+a .ant-btn-color-primary,
+a .ant-btn-variant-solid.ant-btn-color-primary {
+  color: var(--ant-color-text-light-solid, #fff);
+}
+
+a.ant-btn-primary:not(:disabled):not(.ant-btn-disabled):hover,
+a.ant-btn-primary:not(:disabled):not(.ant-btn-disabled):focus,
+a.ant-btn-color-primary:not(:disabled):not(.ant-btn-disabled):hover,
+a .ant-btn-primary:not(:disabled):not(.ant-btn-disabled):hover,
+a .ant-btn-primary:not(:disabled):not(.ant-btn-disabled):focus {
+  color: var(--ant-color-text-light-solid, #fff);
+}
+
+a.ant-btn-link,
+a .ant-btn-link {
+  color: var(--ant-color-link, #16a34a);
+}
+
+a.ant-btn-text,
+a .ant-btn-text {
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+a.ant-btn-dangerous:not(.ant-btn-primary):not(.ant-btn-color-primary),
+a .ant-btn-dangerous:not(.ant-btn-primary):not(.ant-btn-color-primary) {
+  color: var(--ant-color-error, #ff4d4f);
+}
+
+a.ant-btn-primary.ant-btn-dangerous,
+a.ant-btn-dangerous.ant-btn-primary,
+a .ant-btn-primary.ant-btn-dangerous,
+a .ant-btn-dangerous.ant-btn-primary {
+  color: var(--ant-color-text-light-solid, #fff);
+}
+
+a.ant-btn.ant-btn-disabled,
+a.ant-btn[disabled],
+a .ant-btn.ant-btn-disabled,
+a .ant-btn[disabled] {
+  color: var(--ant-color-text-disabled, rgba(0, 0, 0, 0.25));
 }

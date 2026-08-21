@@ -51,7 +51,8 @@ type NotificationTemplateKind =
   | 'workflow_todo'
   | 'lead_assignment'
   | 'new_lead'
-  | 'measurement_appointment';
+  | 'measurement_appointment'
+  | 'design_published';
 
 type NotificationConfigForm = {
   version: 2;
@@ -68,10 +69,11 @@ const TEMPLATE_FIELDS: Array<{
   label: string;
   help: string;
 }> = [
-  { kind: 'workflow_todo', label: '装修待办提醒', help: '跟进、逾期、量房提交、设计完成及提成待结算等通用任务。' },
-  { kind: 'lead_assignment', label: '客户指派成功通知', help: '量房师、设计师派单，以及客户交接待确认。' },
+  { kind: 'workflow_todo', label: '装修待办提醒', help: '待派单、量房完成后请发布方案，以及通用待办任务。' },
+  { kind: 'lead_assignment', label: '客户指派成功通知', help: '新线索派单后通知设计师和测量员。' },
   { kind: 'new_lead', label: '新增客户成功通知', help: '新线索创建后通知企业负责人。' },
-  { kind: 'measurement_appointment', label: '上门量房提醒', help: '仅配置和授权；独立预约功能上线前不会触发发送。' },
+  { kind: 'measurement_appointment', label: '上门量房提醒', help: '预约创建、改期、取消或过期时通知设计师、测量员和客户。' },
+  { kind: 'design_published', label: '设计案例发布提醒', help: '方案对客户可见后通知客户本人。' },
 ];
 
 const STATUS_OPTIONS: Array<{ label: string; value: LogStatus }> = [
@@ -268,13 +270,13 @@ export default function WorkflowLogsPage() {
             <Card title="小程序订阅消息模板" className="admin-panel-card">
               <Flex vertical gap={16}>
                 <Typography.Paragraph type="secondary" className="!mb-0">
-                  四个模板用于小程序聚合授权，服务端会按通知类型选择模板并只发送其允许的关键词字段。
+                  五个模板用于小程序按身份聚合授权（单次最多三项）；服务端按通知类型选择模板并只发送其允许的关键词字段。
                 </Typography.Paragraph>
                 <Alert
                   type="info"
                   showIcon
                   message="保存后立即生效"
-                  description="已登录小程序会在下一次授权时获取四个模板；此前已授权的用户需要按微信规则重新授权。上门量房提醒当前只参与授权，尚未启用业务触发。"
+                  description="已登录小程序会在下一次授权时按当前身份拉取模板；此前已授权的用户需要按微信规则重新授权。客户授权上门量房与方案发布；设计师/测量员授权指派、预约与待办；企业负责人授权新线索与待办。"
                 />
                 {notificationConfig ? (
                   <ProForm<NotificationConfigForm>

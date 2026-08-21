@@ -41,7 +41,7 @@ export function requireMiniProgramEnterpriseAdmin(context: MiniProgramContext) {
     || !context.staff?._id
     || context.staff.role !== 'enterprise_admin'
   ) {
-    throw Object.assign(new Error('仅企业负责人可查看提成发放台账'), {
+    throw Object.assign(new Error('仅企业负责人可查看人员名册或提成发放台账'), {
       status: 403,
       code: 'miniprogram_portal_forbidden',
     });

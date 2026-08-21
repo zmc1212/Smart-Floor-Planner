@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import { Alert, Button, Card, Flex, Space, Statistic, Tag, Typography } from 'antd';
 import { CheckCircle2, RefreshCw, UsersRound, Wrench } from 'lucide-react';
@@ -177,11 +176,11 @@ export default function ReferrerNetworkOperationsPage() {
               <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
                 <Typography.Title level={4} className="!mb-0">全流程验收准备清单</Typography.Title>
                 <Space wrap>
-                  <Link href="/join-codes"><Button>管理入驻码</Button></Link>
-                  <Link href="/referrers"><Button>查看推荐人</Button></Link>
-                  <Link href="/appointment-settings"><Button>预约设置</Button></Link>
-                  <Link href="/lead-commissions"><Button>前往三方提成</Button></Link>
-                  <Link href="/leads"><Button>前往线索转化</Button></Link>
+                  <Button href="/join-codes">管理入驻码</Button>
+                  <Button href="/referrers">查看推荐人</Button>
+                  <Button href="/appointment-settings">预约设置</Button>
+                  <Button href="/lead-commissions">前往三方提成</Button>
+                  <Button href="/leads">前往线索转化</Button>
                 </Space>
               </Flex>
               <div className="grid gap-3 py-4 lg:grid-cols-2">
@@ -194,7 +193,7 @@ export default function ReferrerNetworkOperationsPage() {
                         <Typography.Text type="secondary">{item.detail}</Typography.Text>
                       </Flex>
                       <Tag color={item.ready ? 'green' : 'orange'}>{item.ready ? '已就绪' : '待处理'}</Tag>
-                      <Link href={item.href}><Button size="small" type={item.ready ? 'default' : 'primary'}>{item.actionLabel}</Button></Link>
+                      <Button size="small" type={item.ready ? 'default' : 'primary'} href={item.href}>{item.actionLabel}</Button>
                     </Flex>
                   </Card>
                 ))}
@@ -204,7 +203,7 @@ export default function ReferrerNetworkOperationsPage() {
             <section aria-label="最近双码审计">
               <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
                 <Typography.Title level={4} className="!mb-0">最近双码审计</Typography.Title>
-                <Link href="/join-codes"><Button>查看全部审计</Button></Link>
+                <Button href="/join-codes">查看全部审计</Button>
               </Flex>
               <ProTable<JoinCodeEvent>
                 rowKey="id"

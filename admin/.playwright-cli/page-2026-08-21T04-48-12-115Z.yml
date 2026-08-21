@@ -1,0 +1,29 @@
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - img "家客来" [ref=e7]
+        - generic [ref=e8]:
+          - heading "家客来" [level=1] [ref=e9]
+          - text: 企业管理后台
+      - heading "全权管理您的数字化资产" [level=2] [ref=e10]
+      - paragraph [ref=e11]: 欢迎回来。请在下方输入受信任的管理员凭据。
+    - generic [ref=e12]:
+      - generic [ref=e14]:
+        - generic [ref=e15]:
+          - generic [ref=e16]:
+            - text: 受信任的用户名
+            - textbox "请输入管理员 ID 或 手机号" [active] [ref=e22]
+          - generic [ref=e23]:
+            - generic [ref=e24]:
+              - generic [ref=e25]: 访问密码
+              - button "忘记凭据?" [ref=e26]
+            - generic [ref=e27]:
+              - textbox "••••••••" [ref=e32]
+              - img "eye-invisible" [ref=e34]
+        - button [ref=e38]
+      - generic [ref=e42]:
+        - generic [ref=e43]: AES-256 加密端到端身份认证
+        - paragraph [ref=e48]: 只有被授权的管理员账号才能访问。 如有疑问，请通过钉钉或微信联系技术部。
+    - generic [ref=e49]: 家客来
+  - region "Notifications alt+T"

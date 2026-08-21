@@ -6,6 +6,7 @@ export const SUBSCRIPTION_TEMPLATE_KINDS = [
   'lead_assignment',
   'new_lead',
   'measurement_appointment',
+  'design_published',
 ] as const;
 
 export type SubscriptionTemplateKind = (typeof SUBSCRIPTION_TEMPLATE_KINDS)[number];
@@ -81,6 +82,15 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
       community: 'thing3',
       measurementAt: 'time6',
       reminder: 'thing7',
+    },
+  },
+  design_published: {
+    title: '设计案例发布提醒',
+    templateId: 'XEQFWwyalQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag',
+    keywordKeys: {
+      content: 'thing1',
+      publishedAt: 'time2',
+      note: 'thing3',
     },
   },
 };

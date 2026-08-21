@@ -106,7 +106,7 @@ test('promotion service codes use the anonymous claim route and real WeChat imag
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
-    if (url.includes('/cgi-bin/token')) {
+    if (url.includes('/cgi-bin/stable_token')) {
       return new Response(
         JSON.stringify({ access_token: 'wechat_access_token', expires_in: 7200 }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -157,7 +157,7 @@ test('staff activity service codes reuse the claim route and real WeChat image b
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
-    if (url.includes('/cgi-bin/token')) {
+    if (url.includes('/cgi-bin/stable_token')) {
       return new Response(
         JSON.stringify({ access_token: 'wechat_access_token', expires_in: 7200 }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -201,7 +201,7 @@ test('enterprise onboarding codes use the dedicated Mini Program route and real 
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
-    if (url.includes('/cgi-bin/token')) {
+    if (url.includes('/cgi-bin/stable_token')) {
       return new Response(
         JSON.stringify({ access_token: 'wechat_access_token', expires_in: 7200 }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -247,7 +247,7 @@ test('WeChat JPEG Mini Program code bytes are accepted and preserve their media 
   const token = `ej_${'C'.repeat(32)}`;
   const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
   const fetchImpl = (async (input: string | URL | Request) => {
-    if (String(input).includes('/cgi-bin/token')) {
+    if (String(input).includes('/cgi-bin/stable_token')) {
       return new Response(
         JSON.stringify({ access_token: 'wechat_access_token', expires_in: 7200 }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -287,7 +287,7 @@ test('Mini Program codes use getwxacode with full path when env is release', asy
   const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
-    if (url.includes('/cgi-bin/token')) {
+    if (url.includes('/cgi-bin/stable_token')) {
       return new Response(
         JSON.stringify({ access_token: 'wechat_access_token', expires_in: 7200 }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }

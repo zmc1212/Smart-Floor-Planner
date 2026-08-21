@@ -1,4 +1,7 @@
-import { getWechatAccessToken } from '@/lib/wechat-access-token';
+import {
+  getWechatAccessToken,
+  invalidateWechatAccessTokenCache,
+} from '@/lib/wechat-access-token';
 
 export interface WechatSessionIdentity {
   openid: string;
@@ -30,19 +33,43 @@ export async function getWechatSessionIdentity(
   return { openid: data.openid, unionid: data.unionid };
 }
 
-export async function getWechatPhoneNumber(phoneCode: string) {
-  if (!phoneCode) throw new Error('WeChat phone code is required');
-  const accessToken = await getWechatAccessToken();
-
-  const phoneRes = await fetch(
-    `https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${accessToken}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: phoneCode }),
-    }
+function isInvalidAccessTokenError(phoneData: {
+  errcode?: number;
+  errmsg?: string;
+}) {
+  return (
+    phoneData.errcode === 40001 ||
+    phoneData.errcode === 40014 ||
+    phoneData.errcode === 42001
   );
-  const phoneData = await phoneRes.json();
+}
+
+export async function getWechatPhoneNumber(
+  phoneCode: string,
+  options: { fetchImpl?: typeof fetch } = {}
+) {
+  if (!phoneCode) throw new Error('WeChat phone code is required');
+  const fetchImpl = options.fetchImpl ?? fetch;
+
+  const requestPhone = async (accessToken: string) => {
+    const phoneRes = await fetchImpl(
+      `https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${accessToken}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: phoneCode }),
+      }
+    );
+    return phoneRes.json();
+  };
+
+  let accessToken = await getWechatAccessToken({ fetchImpl });
+  let phoneData = await requestPhone(accessToken);
+  if (isInvalidAccessTokenError(phoneData)) {
+    invalidateWechatAccessTokenCache();
+    accessToken = await getWechatAccessToken({ fetchImpl });
+    phoneData = await requestPhone(accessToken);
+  }
   if (phoneData.errcode !== 0 || !phoneData.phone_info?.phoneNumber) {
     throw new Error(phoneData.errmsg || 'Unable to obtain WeChat phone number');
   }

@@ -44,6 +44,30 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+export function getGenerationImageUrl(
+  generation: {
+    status?: unknown;
+    imageUrl?: unknown;
+    resultImageUrl?: unknown;
+    output?: unknown;
+  } | null | undefined,
+  options?: { requireSucceeded?: boolean },
+): string | undefined {
+  if (!generation) return undefined;
+  if (options?.requireSucceeded && generation.status && generation.status !== 'succeeded') {
+    return undefined;
+  }
+  const candidates = [
+    generation.imageUrl,
+    generation.resultImageUrl,
+    isRecord(generation.output) ? generation.output.imageUrl : undefined,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+  return undefined;
+}
+
 function sanitizeGenerationOutput(generationId: string, output: unknown) {
   if (!isRecord(output)) {
     return output;

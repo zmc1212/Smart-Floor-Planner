@@ -743,6 +743,61 @@ export function buildEnterpriseStaffingExceptionItem(
   };
 }
 
+const ROSTER_ROLES = ['designer', 'measurer'] as const;
+
+export function parseEnterpriseStaffRosterRoles(value?: string | null) {
+  const role = String(value || '').trim();
+  if (!role) return [...ROSTER_ROLES];
+  if (role === 'designer' || role === 'measurer') return [role];
+  throw Object.assign(new Error('role 仅支持 designer 或 measurer'), { status: 400 });
+}
+
+type RosterStaffInput = {
+  id: bigint | number | string;
+  displayName?: string | null;
+  phone?: string | null;
+  role?: string | null;
+  status?: string | null;
+  assignmentPaused?: boolean | null;
+  wechatId?: string | null;
+  wechatQrAssetId?: string | bigint | null;
+};
+
+export function buildEnterpriseStaffRosterItem(member: RosterStaffInput) {
+  const role = member.role === 'measurer' ? 'measurer' : 'designer';
+  const assignmentPaused = Boolean(member.assignmentPaused);
+  const assignmentEligible = isAssignmentEligibleStaff(member);
+  const wechatIncomplete = role === 'designer'
+    && !Boolean(String(member.wechatId || '').trim() && member.wechatQrAssetId);
+  const ineligibleReason = assignmentPaused
+    ? 'paused'
+    : wechatIncomplete
+      ? 'designer_wechat_incomplete'
+      : null;
+  const statusLabel = ineligibleReason === 'paused'
+    ? '已暂停'
+    : ineligibleReason === 'designer_wechat_incomplete'
+      ? '待补微信资料'
+      : '可派单';
+  return {
+    id: String(member.id),
+    displayName: String(member.displayName || '').trim() || (role === 'measurer' ? '测量员' : '设计师'),
+    phone: String(member.phone || '').trim() || null,
+    role,
+    roleLabel: role === 'measurer' ? '测量员' : '设计师',
+    assignmentPaused,
+    assignmentEligible,
+    ineligibleReason,
+    statusLabel,
+    statusTone: assignmentEligible ? 'green' : 'orange',
+    action: assignmentPaused ? 'resume' : ineligibleReason ? null : 'pause',
+    actionLabel: assignmentPaused ? '恢复派单' : ineligibleReason ? '' : '暂停派单',
+    helperText: ineligibleReason === 'designer_wechat_incomplete'
+      ? '请本人在「我的」补齐微信号和个人二维码后再派单'
+      : '',
+  };
+}
+
 export function buildStaffLoadQuickNav(input: {
   eligibleDesignerCount: number;
   eligibleMeasurerCount: number;

@@ -132,9 +132,9 @@ Page({
       const list = await aiService.listStudioWorkflows({ leadId: lead.id, limit: 50 });
       this.setData({ schemes: (list || []).map(decorateScheme), schemesLoading: false });
     } catch (error) {
+      wx.showToast({ title: error.error || error.message || '方案列表加载失败', icon: 'none' });
       this.setData({
         schemesLoading: false,
-        error: error.error || error.message || '方案列表加载失败',
         step: 'leads',
         selectedLead: null,
       });
@@ -163,7 +163,9 @@ Page({
       });
       const workflowId = String(created.id || created._id || '');
       if (!workflowId) throw new Error('创建方案失败');
+      const createdScheme = decorateScheme(created);
       this.setData({
+        schemes: [createdScheme, ...this.data.schemes.filter((item) => item.id !== workflowId)],
         leads: this.data.leads.map((item) => (
           item.id === lead.id ? { ...item, workflowCount: Number(item.workflowCount || 0) + 1 } : item
         )),

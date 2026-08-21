@@ -54,6 +54,12 @@ import {
   workbenchMaxUserReferenceImages,
   type WorkbenchTheme,
 } from '@/lib/ai/workbench-studio';
+import {
+  mergeTemplateReferenceAsset,
+  planPromptTemplateReferenceAttach,
+  promptTemplateCoverClonePath,
+  promptTemplatePreviewSrc,
+} from '@/lib/ai/prompt-template-reference';
 import { cn } from '@/lib/utils';
 
 type BootstrapData = {
@@ -265,6 +271,7 @@ export function WorkbenchWorkspace() {
   const [scopeSelection, setScopeSelection] = useState(WORKBENCH_WHOLE_FLOOR_SCOPE_KEY);
   const [assets, setAssets] = useState<CreationAsset[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDetail | null>(null);
+  const [templateAssetId, setTemplateAssetId] = useState('');
   const [templateOpen, setTemplateOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -408,6 +415,7 @@ export function WorkbenchWorkspace() {
     setAssets([]);
     setPrompt('');
     setSelectedTemplate(null);
+    setTemplateAssetId('');
     setScopeSelection(WORKBENCH_WHOLE_FLOOR_SCOPE_KEY);
     setFloorPlanOpen(false);
     setPreviewGeneration(null);
@@ -594,6 +602,7 @@ export function WorkbenchWorkspace() {
     setSelectedTemplate(batch.parameterSnapshot.templateId ? { id: batch.parameterSnapshot.templateId } as TemplateDetail : null);
     setScopeSelection(batchScopeSelection(batch));
     setAssets(userReferenceIds(batch).map((id) => ({ id, previewUrl: `/api/ai/assets/${id}/image` })));
+    setTemplateAssetId('');
   };
 
   const uploadReferenceFiles = async (files: File[], successMessage = '已添加参考图') => {
@@ -634,17 +643,53 @@ export function WorkbenchWorkspace() {
     }
   };
 
-  const applyTemplate = (template: TemplateDetail) => {
+  const applyTemplate = async (template: TemplateDetail) => {
     setSelectedTemplate(template);
     setPrompt(template.promptContent);
+    let nextModel = model;
     if (template.recommendedModelProfileId) {
       const recommended = bootstrap?.models.find((item) => item.id === template.recommendedModelProfileId);
       if (recommended) {
         setModelProfileId(recommended.id);
         applyModelDefaults(recommended);
+        nextModel = recommended;
       }
     }
-    notify.success(`已应用模板：${template.name}`);
+    const nextMaxUserRefs = nextModel?.supportsReferenceImages
+      ? workbenchMaxUserReferenceImages(nextModel.maxReferenceImages || 0)
+      : 0;
+    const plan = planPromptTemplateReferenceAttach({
+      previewSrc: promptTemplatePreviewSrc(template),
+      maxUserRefs: nextMaxUserRefs,
+      currentAssetIds: assets.map((asset) => asset.id),
+      previousTemplateAssetId: templateAssetId,
+    });
+    if (!plan.canAttach) {
+      if (plan.reason === 'no_slots' || plan.reason === 'no_capacity') {
+        notify.success(`已应用模板：${template.name}`);
+        notify.warning(plan.reason === 'no_slots'
+          ? '当前模型无法再带入模板参考图（户型控制图会自动占用 1 张）'
+          : '参考图已满，已应用模板文案但未带入封面');
+        return;
+      }
+      notify.success(`已应用模板：${template.name}`);
+      return;
+    }
+    setUploading(true);
+    try {
+      const payload = await readJson(await fetch(promptTemplateCoverClonePath(template.id), { method: 'POST' }));
+      const uploaded = payload.data as CreationAsset;
+      const kept = assets.filter((asset) => plan.keptAssetIds.includes(asset.id));
+      setAssets(mergeTemplateReferenceAsset(kept, uploaded));
+      setTemplateAssetId(uploaded.id);
+      notify.success(`已应用模板：${template.name}`);
+    } catch (error) {
+      notify.error(error instanceof Error
+        ? `已应用「${template.name}」的提示词，但未能带入参考图：${error.message}`
+        : `已应用「${template.name}」的提示词，但未能带入参考图`);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const assistPrompt = async () => {
@@ -1191,7 +1236,10 @@ export function WorkbenchWorkspace() {
                               style={{ transform: `translate3d(${offsetX}px, 0, 0)`, zIndex: stackIndex + 1 }}
                             >
                               <img src={asset.previewUrl} alt={`参考图 ${index + 1}`} className="h-full w-full object-cover" />
-                              <button type="button" aria-label={`删除第 ${index + 1} 张参考图`} className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#414148] text-white" onClick={() => setAssets((current) => current.filter((item) => item.id !== asset.id))}><X className="size-3" /></button>
+                              <button type="button" aria-label={`删除第 ${index + 1} 张参考图`} className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#414148] text-white" onClick={() => {
+                                if (asset.id === templateAssetId) setTemplateAssetId('');
+                                setAssets((current) => current.filter((item) => item.id !== asset.id));
+                              }}><X className="size-3" /></button>
                             </div>
                           );
                         })}
@@ -1213,7 +1261,13 @@ export function WorkbenchWorkspace() {
                     <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" multiple className="hidden" onChange={(event) => { if (event.target.files) void uploadReferenceFiles(Array.from(event.target.files)); event.target.value = ''; }} />
                   </div>
                   <div className="relative flex h-full min-h-0 flex-col pt-0.5 [&_.ant-input]:!h-full [&_.ant-input]:!min-h-0 [&_textarea]:!h-full [&_textarea]:!min-h-0">
-                    {selectedTemplate ? <div className={cn('mb-1 flex shrink-0 items-center gap-2 text-[11px]', dark ? 'text-[#9f8cff]' : 'text-[#166534]')}><PanelsTopLeft className="size-3" /><span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span><button type="button" onClick={() => setSelectedTemplate(null)} title="取消模板"><X className="size-3" /></button></div> : null}
+                    {selectedTemplate ? <div className={cn('mb-1 flex shrink-0 items-center gap-2 text-[11px]', dark ? 'text-[#9f8cff]' : 'text-[#166534]')}><PanelsTopLeft className="size-3" /><span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span><button type="button" onClick={() => {
+                      setSelectedTemplate(null);
+                      if (templateAssetId) {
+                        setAssets((current) => current.filter((item) => item.id !== templateAssetId));
+                        setTemplateAssetId('');
+                      }
+                    }} title="取消模板"><X className="size-3" /></button></div> : null}
                     <Input.TextArea
                       value={prompt}
                       onChange={(event) => setPrompt(event.target.value)}

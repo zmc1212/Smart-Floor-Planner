@@ -80,7 +80,6 @@ function applyClaimResult(page, response) {
       pageState: 'existing',
       navTitle: navTitleFor('existing'),
       pendingSource: '',
-      enterpriseName: '',
       designerProfile: null,
       lead: response.data && response.data.lead || null,
       errorMessage: ''
@@ -199,7 +198,6 @@ Page({
     submitting: false,
     errorMessage: '',
     claimKind: '',
-    enterpriseName: '',
     designerProfile: null,
     designerQrPath: '',
     designerQrLoading: false,
@@ -247,7 +245,6 @@ Page({
           navTitle: navTitleFor('existing'),
           pendingSource: '',
           claimKind: response.data.kind,
-          enterpriseName: '',
           lead: response.data.lead || null,
           errorMessage: ''
         });
@@ -262,7 +259,6 @@ Page({
         navTitle: navTitleFor('phoneAuth'),
         pendingSource: response.data.pendingSource,
         claimKind: response.data.kind,
-        enterpriseName: response.data.enterpriseName || '',
         errorMessage: ''
       });
     } catch (error) {

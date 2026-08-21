@@ -16,6 +16,16 @@ function signedOrHttpCover(imageUrl) {
   return '';
 }
 
+function schemeCoverSource(workflow) {
+  if (workflow && workflow.coverUrl) return workflow.coverUrl;
+  const latest = workflow && workflow.latestGeneration;
+  if (!latest) return '';
+  return latest.imageUrl
+    || latest.resultImageUrl
+    || (latest.output && latest.output.imageUrl)
+    || '';
+}
+
 function decorateLead(lead) {
   const floorPlans = Array.isArray(lead && lead.floorPlans) ? lead.floorPlans : [];
   const designable = floorPlans.length > 0;
@@ -66,8 +76,7 @@ function chooseDefaultLeadGroup(leads) {
 function decorateScheme(workflow) {
   const publishedCount = Number((workflow && workflow.publishedCount) || 0);
   const generationCount = Number((workflow && workflow.generationCount) || 0);
-  const latest = workflow && workflow.latestGeneration;
-  const coverUrl = signedOrHttpCover(latest && (latest.imageUrl || latest.resultImageUrl)) || FOLIO_COVER;
+  const coverUrl = signedOrHttpCover(schemeCoverSource(workflow)) || FOLIO_COVER;
   return {
     ...(workflow || {}),
     id: workflowIdentity(workflow),

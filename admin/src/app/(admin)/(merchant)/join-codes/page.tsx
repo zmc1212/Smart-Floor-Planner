@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import { Alert, Button, Card, Descriptions, Flex, Space, Tag, Typography } from 'antd';
 import { ArrowLeft, RefreshCw, RotateCw, ShieldOff } from 'lucide-react';
@@ -263,7 +262,7 @@ export default function JoinCodesPage() {
         content="管理当前企业的员工入驻码和推荐人入驻码。生效中的码可直接查看和下载；换新才会让旧码失效。后台不展示令牌明文；已入驻关系不会因换码或停用而被改写。"
         extra={(
           <Space>
-            <Link href="/referrer-network-operations"><Button icon={<ArrowLeft size={16} />}>返回运营工作台</Button></Link>
+            <Button icon={<ArrowLeft size={16} />} href="/referrer-network-operations">返回运营工作台</Button>
             <Button icon={<RefreshCw size={16} />} loading={loading} onClick={() => void loadCodes()}>刷新</Button>
           </Space>
         )}

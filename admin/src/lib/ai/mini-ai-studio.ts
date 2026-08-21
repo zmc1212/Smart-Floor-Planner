@@ -11,6 +11,7 @@ import {
 } from '@/lib/ai/mini-ai-assets';
 import { getPostgresAssetIdFromImageUrl } from '@/lib/ai/postgres-media-assets';
 import { serializePostgresCreationTask } from '@/lib/ai/postgres-creation-runtime';
+import { getGenerationImageUrl } from '@/lib/ai/workflow-utils';
 
 const STUDIO_ROLES = new Set(['designer', 'enterprise_admin']);
 const POSTGRES_GENERATION_IMAGE_RE = /^\/api\/ai\/generations\/([1-9]\d*)\/image/i;
@@ -73,6 +74,50 @@ export function rewriteStudioImageUrl(
   return undefined;
 }
 
+function signGenerationForMini<T extends Record<string, unknown>>(
+  request: Request,
+  enterpriseId: string,
+  generation: T | null | undefined,
+): T | undefined {
+  if (!generation) return undefined;
+  return {
+    ...generation,
+    imageUrl: rewriteStudioImageUrl(request, enterpriseId, getGenerationImageUrl(generation)),
+  };
+}
+
+type WorkflowListItem = {
+  coverImageUrl?: string;
+  latestGeneration?: Record<string, unknown>;
+  selectedGeneration?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+export function serializeWorkflowListForMini<T extends { data: readonly unknown[] }>(
+  request: Request,
+  enterpriseId: string,
+  result: T,
+) {
+  return {
+    ...result,
+    data: result.data.map((item) => {
+      const workflow = item as WorkflowListItem;
+      const coverSource = typeof workflow.coverImageUrl === 'string'
+        ? workflow.coverImageUrl
+        : getGenerationImageUrl(workflow.latestGeneration, { requireSucceeded: true })
+          || getGenerationImageUrl(workflow.selectedGeneration, { requireSucceeded: true });
+      const coverUrl = rewriteStudioImageUrl(request, enterpriseId, coverSource);
+      return {
+        ...workflow,
+        coverUrl,
+        coverImageUrl: coverUrl,
+        latestGeneration: signGenerationForMini(request, enterpriseId, workflow.latestGeneration),
+        selectedGeneration: signGenerationForMini(request, enterpriseId, workflow.selectedGeneration),
+      };
+    }),
+  };
+}
+
 type WorkflowContext = Awaited<ReturnType<typeof import('@/lib/ai/postgres-workflow-service').getPostgresAiWorkflowContext>>;
 
 export function serializeWorkflowContextForMini(
@@ -81,10 +126,21 @@ export function serializeWorkflowContextForMini(
   context: WorkflowContext,
 ) {
   const publishedCount = context.publishedScheme?.generationIds.length ?? 0;
+  const publishedIds = new Set(context.publishedScheme?.generationIds.map((id) => String(id)) ?? []);
+  const coverSource = context.generations.find((generation) => (
+    publishedIds.has(String(generation.id)) && getGenerationImageUrl(generation, { requireSucceeded: true })
+  )) || context.generations.find((generation) => getGenerationImageUrl(generation, { requireSucceeded: true }));
+  const coverUrl = rewriteStudioImageUrl(
+    request,
+    enterpriseId,
+    getGenerationImageUrl(coverSource, { requireSucceeded: true })
+      || getGenerationImageUrl(context.workflow.latestGeneration, { requireSucceeded: true }),
+  );
   return {
     workflow: {
       ...context.workflow,
       publishedCount,
+      coverUrl,
       floorPlanPreviewUrl: context.workflow.floorPlanPreviewUrl
         ? getSignedMiniAiStudioFloorPlanPreviewUrl({
             request,
@@ -92,18 +148,11 @@ export function serializeWorkflowContextForMini(
             enterpriseId,
           })
         : undefined,
-      latestGeneration: context.workflow.latestGeneration
-        ? {
-            ...context.workflow.latestGeneration,
-            imageUrl: rewriteStudioImageUrl(
-              request,
-              enterpriseId,
-              typeof context.workflow.latestGeneration.imageUrl === 'string'
-                ? context.workflow.latestGeneration.imageUrl
-                : undefined,
-            ),
-          }
-        : undefined,
+      latestGeneration: signGenerationForMini(
+        request,
+        enterpriseId,
+        context.workflow.latestGeneration as Record<string, unknown> | undefined,
+      ),
     },
     lead: context.lead,
     generations: context.generations.map((generation) => ({
@@ -111,7 +160,7 @@ export function serializeWorkflowContextForMini(
       imageUrl: rewriteStudioImageUrl(
         request,
         enterpriseId,
-        typeof generation.imageUrl === 'string' ? generation.imageUrl : undefined,
+        getGenerationImageUrl(generation),
       ),
     })),
     publishedScheme: context.publishedScheme,

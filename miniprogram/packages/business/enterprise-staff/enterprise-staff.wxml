@@ -1,0 +1,78 @@
+<!--
+THESIS: 企业负责人查看设计师/测量员可派状态，并暂停或恢复派单。
+OWN-WORLD: 复用预约调度中心左色条卡片与领取页胶囊安全返回，不新造人员管理壳。
+STORY: 从经营台人员缺口进入，按角色筛选，恢复派单后由服务端重试待派队列。
+FIRST VIEWPORT: 胶囊左侧返回与标题；芯片、名册卡和空态入驻码在 390x844 同屏可达。
+FORM: design-references/miniprogram-airy-minimalist-v1/20-enterprise-appointments.jpg; join-codes/claim back chrome
+-->
+<view class="page">
+  <view
+    class="nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
+      <view class="back-chevron"></view>
+    </view>
+    <view class="nav-copy">
+      <text class="nav-title">人员派单</text>
+      <text class="nav-subtitle">{{summaryLine}}</text>
+    </view>
+  </view>
+
+  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}">
+    <view class="guide-row">
+      <view class="guide-copy">
+        <text class="guide-title">谁能接派单</text>
+        <text class="guide-desc">暂停或恢复派单；缺人请出示入驻码。微信号和二维码由设计师本人在「我的」补齐。</text>
+      </view>
+      <image class="guide-mascot" src="/images/airy-v1/xiao-k-measurer-3d.png" mode="aspectFit" aria-label="小K 派单名册向导" />
+    </view>
+
+    <view class="chip-row">
+      <view
+        wx:for="{{roleChips}}"
+        wx:key="key"
+        class="chip {{focus === item.key ? 'active' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="selectChip"
+      >
+        <text>{{item.label}}</text>
+      </view>
+    </view>
+
+    <view wx:if="{{loading}}" class="state-card">正在读取可派人员…</view>
+    <view wx:elif="{{error}}" class="state-card">
+      <text class="state-error">{{error}}</text>
+      <view class="retry" bindtap="load">重新加载</view>
+    </view>
+    <view wx:elif="{{!items.length}}" class="state-card empty">
+      <text class="empty-title">当前没有{{emptyRoleLabel}}</text>
+      <text class="empty-desc">出示入驻码邀请设计师或测量员加入本企业</text>
+      <view class="retry" bindtap="openJoinCodes">出示入驻码</view>
+    </view>
+    <view wx:else class="staff-list">
+      <view wx:for="{{items}}" wx:key="id" class="staff-card tone-{{item.statusTone}}">
+        <view class="card-accent"></view>
+        <view class="card-body">
+          <view class="card-header">
+            <text class="header-line">{{item.displayName}}</text>
+            <view class="status-tag tag-{{item.statusTone}}">
+              <text>{{item.statusLabel}}</text>
+            </view>
+          </view>
+          <text class="meta-line">{{item.roleLabel}}{{item.phone ? ' · ' + item.phone : ''}}</text>
+          <text wx:if="{{item.helperText}}" class="helper-line">{{item.helperText}}</text>
+          <view class="card-footer">
+            <view wx:if="{{item.phone}}" class="ghost-btn" data-item="{{item}}" catchtap="callStaff">电话联系</view>
+            <view
+              wx:if="{{item.actionLabel}}"
+              class="cta-btn"
+              data-item="{{item}}"
+              catchtap="toggleAssignment"
+            >{{item.actionLabel}}</view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

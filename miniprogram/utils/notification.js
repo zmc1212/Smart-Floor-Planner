@@ -3,8 +3,16 @@ const TEMPLATE_ORDER = [
   'workflow_todo',
   'lead_assignment',
   'new_lead',
-  'measurement_appointment'
+  'measurement_appointment',
+  'design_published'
 ];
+const ROLE_SUBSCRIBE_KINDS = Object.freeze({
+  customer: ['measurement_appointment', 'design_published'],
+  designer: ['lead_assignment', 'measurement_appointment', 'workflow_todo'],
+  measurer: ['lead_assignment', 'measurement_appointment', 'workflow_todo'],
+  enterprise_admin: ['new_lead', 'workflow_todo'],
+  referrer: []
+});
 const TEMPLATE_ID_PATTERN = /^[A-Za-z0-9_-]{10,128}$/;
 const api = require('./api.js');
 
@@ -40,9 +48,43 @@ function getTemplateConfig() {
   return normalizeTemplateConfig(wx.getStorageSync(TEMPLATE_CONFIG_STORAGE_KEY));
 }
 
-function getTemplateIds() {
+function resolveSubscribeRole(explicitRole) {
+  if (explicitRole && (ROLE_SUBSCRIBE_KINDS[explicitRole] || explicitRole === 'referrer')) {
+    return explicitRole;
+  }
+  try {
+    const app = typeof getApp === 'function' ? getApp() : null;
+    const bootstrap = app && app.globalData && app.globalData.bootstrap;
+    const current = bootstrap && bootstrap.current;
+    if (current && current.role && ROLE_SUBSCRIBE_KINDS[current.role]) {
+      return current.role;
+    }
+    if (current && current.mode === 'referrer') return 'referrer';
+    if (current && current.mode === 'customer') return 'customer';
+    if (current && current.mode === 'staff' && current.context && current.context.staffRole) {
+      return current.context.staffRole;
+    }
+  } catch (error) {
+    console.warn('Unable to resolve notification subscribe role', error);
+  }
+  return 'customer';
+}
+
+function getSubscribeKindsForRole(role) {
+  const resolved = resolveSubscribeRole(role);
+  return ROLE_SUBSCRIBE_KINDS[resolved] || [];
+}
+
+function getTemplateIds(role) {
   const config = getTemplateConfig();
-  return config ? config.templates.map((template) => template.templateId) : [];
+  if (!config) return [];
+  const kinds = getSubscribeKindsForRole(role);
+  if (!kinds.length) return [];
+  const byType = {};
+  config.templates.forEach((template) => {
+    byType[template.type] = template.templateId;
+  });
+  return kinds.map((kind) => byType[kind]).filter(Boolean);
 }
 
 async function refreshTemplateConfig() {
@@ -85,9 +127,24 @@ function categorizeSubscriptionResult(templateIds, response) {
   return result;
 }
 
-async function requestNotification() {
+async function requestNotification(options = {}) {
+  const role = resolveSubscribeRole(options && options.role);
+  const kinds = getSubscribeKindsForRole(role);
+  if (!kinds.length) {
+    wx.showToast({ title: '当前身份无需订阅通知', icon: 'none' });
+    return emptySubscriptionResult([]);
+  }
+
   const config = await refreshTemplateConfig();
-  const templateIds = config ? config.templates.map((template) => template.templateId) : [];
+  const templateIds = config
+    ? kinds
+      .map((kind) => {
+        const match = config.templates.find((template) => template.type === kind);
+        return match && match.templateId;
+      })
+      .filter(Boolean)
+    : [];
+
   if (!wx.requestSubscribeMessage) {
     wx.showToast({ title: '当前微信版本不支持订阅消息', icon: 'none' });
     return emptySubscriptionResult(templateIds, false);
@@ -96,16 +153,20 @@ async function requestNotification() {
     wx.showToast({ title: '通知配置暂不可用，请稍后重试', icon: 'none' });
     return emptySubscriptionResult([]);
   }
+  if (templateIds.length > 3) {
+    console.warn('Subscribe template request exceeds WeChat limit', templateIds.length);
+  }
 
   return new Promise((resolve, reject) => {
     wx.requestSubscribeMessage({
-      tmplIds: templateIds,
+      tmplIds: templateIds.slice(0, 3),
       success(response) {
-        const result = categorizeSubscriptionResult(templateIds, response);
-        if (result.accepted.length === templateIds.length) {
+        const requested = templateIds.slice(0, 3);
+        const result = categorizeSubscriptionResult(requested, response);
+        if (result.accepted.length === requested.length) {
           wx.showToast({ title: '通知已开启', icon: 'success' });
         } else if (result.accepted.length > 0) {
-          wx.showToast({ title: `已开启 ${result.accepted.length}/${templateIds.length} 项`, icon: 'none' });
+          wx.showToast({ title: `已开启 ${result.accepted.length}/${requested.length} 项`, icon: 'none' });
         } else {
           wx.showToast({ title: '未开启通知', icon: 'none' });
         }
@@ -131,9 +192,12 @@ async function requestNotification() {
 module.exports = {
   TEMPLATE_CONFIG_STORAGE_KEY,
   TEMPLATE_ORDER,
+  ROLE_SUBSCRIBE_KINDS,
   requestNotification,
   getTemplateConfig,
   getTemplateIds,
+  getSubscribeKindsForRole,
+  resolveSubscribeRole,
   refreshTemplateConfig,
   normalizeTemplateConfig,
   categorizeSubscriptionResult

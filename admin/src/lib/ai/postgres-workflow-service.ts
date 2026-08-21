@@ -20,7 +20,7 @@ import {
   canRunStageFromState,
   getAiWorkflowStageAvailabilityFromDocs,
 } from '@/lib/ai/workflow-stage-availability';
-import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
+import { getGenerationImageUrl, serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
 import {
   buildPromptFromPreset,
   ensureDefaultAiStylePresets,
@@ -159,6 +159,19 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function pickWorkflowCoverImageUrl(
+  generations: Array<{ status: string; output: unknown }>,
+  publishedGeneration?: { status: string; output: unknown },
+) {
+  const publishedUrl = getGenerationImageUrl(publishedGeneration, { requireSucceeded: true });
+  if (publishedUrl) return publishedUrl;
+  for (const generation of generations) {
+    const imageUrl = getGenerationImageUrl(generation, { requireSucceeded: true });
+    if (imageUrl) return imageUrl;
+  }
+  return undefined;
 }
 
 function parseLightingPrompt(value: string, fallbackNegativePrompt?: string) {
@@ -415,12 +428,16 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
     ]);
 
     const publishedCountsByWorkflowId = new Map<bigint, number>();
+    const publishedGenerationByWorkflowId = new Map<bigint, (typeof generations)[number]>();
     if (requestedLeadId) {
       const activePublications = await new CustomerProjectRepository(transaction).listActivePublications(enterpriseId, requestedLeadId);
       for (const item of activePublications) {
         const workflowId = item.publication.workflowId;
         if (!workflowId) continue;
         publishedCountsByWorkflowId.set(workflowId, (publishedCountsByWorkflowId.get(workflowId) ?? 0) + 1);
+        if (!publishedGenerationByWorkflowId.has(workflowId)) {
+          publishedGenerationByWorkflowId.set(workflowId, item.generation);
+        }
       }
     }
 
@@ -445,6 +462,10 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
           ...serializePostgresWorkflow(workflow),
           generationCount: workflowGenerations.length,
           publishedCount: publishedCountsByWorkflowId.get(workflow.id) ?? 0,
+          coverImageUrl: pickWorkflowCoverImageUrl(
+            workflowGenerations,
+            publishedGenerationByWorkflowId.get(workflow.id),
+          ),
           latestGeneration: workflowGenerations[0]
             ? serializeAiGeneration({ ...workflowGenerations[0], _id: workflowGenerations[0].id })
             : undefined,

@@ -13,7 +13,10 @@ const {
   decorateBatchView,
   mergeSendSelection,
   pickPreferredStudioWorkflow,
+  resolveSendTitle,
+  resolveSendTitlePrefill,
   shouldPollStudioView,
+  shouldRenameWorkflowOnSend,
 } = require('../packages/ai-workflow/scheme-studio/scheme-studio-model.js');
 const {
   buildComposerViewState,
@@ -245,6 +248,27 @@ test('pickPreferredStudioWorkflow reuses same-floor-plan schemes with generation
   assert.equal(preferred && preferred.id, 'rich-old');
 });
 
+test('resolveSendTitlePrefill prefers the customer-visible published title', () => {
+  assert.equal(resolveSendTitlePrefill({
+    workflow: { title: '方案 3' },
+    publishedScheme: { title: '办公区设计' },
+  }), '办公区设计');
+  assert.equal(resolveSendTitlePrefill({
+    workflow: { title: '方案 3' },
+  }), '方案 3');
+});
+
+test('resolveSendTitle uses the typed send name and flags a workflow rename', () => {
+  const view = {
+    workflow: { title: '方案 3' },
+    publishedScheme: { title: '办公区设计' },
+  };
+  assert.equal(resolveSendTitle(view, '  灯光设计  '), '灯光设计');
+  assert.equal(shouldRenameWorkflowOnSend(view, '灯光设计'), true);
+  assert.equal(shouldRenameWorkflowOnSend(view, '方案 3'), false);
+  assert.equal(resolveSendTitle(view, '   '), '办公区设计');
+});
+
 test('buildWorkflowSwitcherOptions marks the current scheme', () => {
   const options = buildWorkflowSwitcherOptions([
     { id: '1', title: '方案 A', generationCount: 2, publishedCount: 1 },
@@ -332,8 +356,14 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(script, /listStudioWorkflows/);
   assert.match(script, /forceCreate/);
   assert.match(script, /openWorkflowSwitcher/);
-  assert.match(wxml, /切换/);
+  assert.match(wxml, /切换方案/);
   assert.match(wxml, /新建/);
+  assert.match(wxml, /value=\"\{\{sendTitle\}\}\"/);
+  assert.doesNotMatch(wxml, /方案名称与顶部标题一致/);
+  assert.match(script, /confirmSendScheme[\s\S]*renameStudioWorkflow/);
+  assert.match(script, /resolveSendTitlePrefill/);
+  assert.match(composerWxml, /prompt-field/);
+  assert.match(composerLess, /\.prompt-field\s*\{[^}]*width:\s*0/);
   assert.match(script, /submitStudioBatch/);
   assert.match(script, /publishScheme/);
   assert.match(script, /retryStudioBatch/);

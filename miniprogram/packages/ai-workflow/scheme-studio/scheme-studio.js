@@ -16,7 +16,10 @@ const {
   findGenerationTarget,
   mergeSendSelection,
   pickPreferredStudioWorkflow,
+  resolveSendTitle,
+  resolveSendTitlePrefill,
   shouldPollStudioView,
+  shouldRenameWorkflowOnSend,
   toggleGenerationSelection,
   workflowIdentity,
 } = require('./scheme-studio-model.js');
@@ -260,7 +263,9 @@ Page({
         selectedGenerationIds,
         loading: false,
         error: '',
-        sendTitle: view.publishedScheme ? (view.workflow.title || '') : (this.data.sendTitle || view.workflow.title || ''),
+        sendTitle: this.data.sendModalVisible
+          ? this.data.sendTitle
+          : resolveSendTitlePrefill(view),
       });
       if (shouldPollStudioView(baseView)) this.startPolling();
       else this.stopPolling();
@@ -484,9 +489,7 @@ Page({
     }
     const view = this.data.view;
     this.setData({
-      sendTitle: view?.publishedScheme
-        ? (view.workflow.title || '')
-        : (this.data.sendTitle || view?.workflow.title || '设计方案'),
+      sendTitle: resolveSendTitlePrefill(view),
     });
     openSheet(this, SEND_SHEET);
   },
@@ -502,9 +505,7 @@ Page({
   async confirmSendScheme() {
     if (this.data.sendingScheme || !this.data.selectedGenerationIds.length) return;
     const view = this.data.view;
-    const title = view?.publishedScheme
-      ? (view.workflow.title || '设计方案')
-      : String(this.data.sendTitle || view?.workflow.title || '设计方案').trim();
+    const title = resolveSendTitle(view, this.data.sendTitle);
     if (!title) {
       wx.showToast({ title: '请输入方案名称', icon: 'none' });
       return;
@@ -512,6 +513,9 @@ Page({
     this.setData({ sendingScheme: true });
     wx.showLoading({ title: '发送中', mask: true });
     try {
+      if (shouldRenameWorkflowOnSend(view, title)) {
+        await aiService.renameStudioWorkflow(this.data.workflowId, title);
+      }
       await aiService.publishScheme(this.data.leadId, {
         workflowId: this.data.workflowId,
         title,

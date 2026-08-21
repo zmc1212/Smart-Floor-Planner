@@ -50,7 +50,6 @@ FORM: design-references/miniprogram-airy-minimalist-v1/11-free-design-phone-auth
       <view class="hero-blob" aria-hidden="true"></view>
       <view class="hero-copy">
         <text class="ready-title">授权手机号，开始服务</text>
-        <text wx:if="{{enterpriseName}}" class="ready-enterprise">{{enterpriseName}}</text>
         <text class="ready-subtitle">仅用于本次免费量房与设计服务联系</text>
       </view>
       <image

@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Alert, Button, Flex, Tag, Typography } from 'antd';
 import { ArrowLeft } from 'lucide-react';
@@ -129,7 +128,7 @@ export default function ReferrersPage() {
         className="admin-page-container"
         title="推荐人"
         content="查看当前企业已入驻推荐人的姓名和手机号。推荐人只能扫入驻码加入，后台不手工建档；停用只关闭后续扫码，不改历史线索和提成。"
-        extra={<Link href="/referrer-network-operations"><Button icon={<ArrowLeft size={16} />}>返回运营工作台</Button></Link>}
+        extra={<Button icon={<ArrowLeft size={16} />} href="/referrer-network-operations">返回运营工作台</Button>}
       >
         {requiresTenantSelection ? (
           <Alert showIcon type="info" message="请先选择企业" description="平台管理员需要先在左侧导航切换到具体企业，才能查看该企业的推荐人。" />

@@ -36,7 +36,7 @@ The board-level note about automatic lead insertion and assignment is an impleme
 
 ### 1.3 Immutable UI and privacy rules
 
-1. The promotion code, scan landing page, phone authorization page, and authorization success page must not show a renovation-company name, company logo, enterprise selector, joined-enterprise count, or copy that identifies the receiving enterprise. That anonymity boundary applies only to the **public referrer promotion path**. A staff-activity landing page may and should show the serving enterprise name/brand because the company is acquiring leads itself; the success page still delivers only the designer’s personal WeChat contact.
+1. The promotion code, scan landing page, phone authorization page, and authorization success page must not show a renovation-company name, company logo, enterprise selector, joined-enterprise count, or copy that identifies the receiving enterprise. That anonymity boundary applies to the **customer claim path** for both public referrer promotion codes and staff-activity scans. A staff-activity **presenter** page may still show the serving enterprise name/brand so the staff member knows which company the code belongs to; the success page still delivers only the designer’s personal WeChat contact.
 2. A referrer selects the target enterprise inside the authenticated workbench. The enterprise relationship is resolved server-side from the short token and is neither plaintext QR data nor customer-visible content.
 3. A scan records only a pending referral source. It does not create a business identity or lead before phone authorization.
 4. Successful authorization atomically links or creates the customer, locks first valid attribution, creates the lead, and assigns a designer and provisional measurer.
@@ -401,8 +401,16 @@ Cross-role handoffs are driven by real events: assignment, appointment create/re
 
 - In-app notification/task logs are reliable facts; WeChat subscriptions are best effort.
 - Send after transaction commit through an outbox or the existing retryable notification log.
-- Appointment creation, reschedule, replacement, cancellation, and retry use distinct event keys.
-- Enable `measurement_appointment` only after the real appointment table and confirmation event exist. Never reuse `measureDueAt`.
+- Staff subscription delivery resolves OpenID from `wechat_identities` via `admin_users.userId` when `admin_users.openid` is empty; it does not write the legacy column.
+- Event matrix (derived service stages; do not write these into `leads.status`):
+  - Lead assignment success: designer/measurer get `lead_assignment`; enterprise owner gets `new_lead`. Assignment-pending failures notify only the owner with `workflow_todo`.
+  - Appointment create/reschedule/cancel/expire/rebook: designer, measurer, and customer get `measurement_appointment`. Expiry follow-ups skip the customer; owners see operations exceptions without subscription spam.
+  - Formal v4 survey completion: designer gets `workflow_todo` (generate and publish).
+  - Design visible to the customer: customer gets `design_published`; withdraw and the publisher themselves are not subscribed again.
+  - Conversion/close/referrer: no WeChat subscription in this slice.
+- Platform config holds five subscription templates; the Mini Program authorizes at most three per identity (customer 2, designer/measurer 3, owner 2, referrer 0).
+- Appointment create/reschedule/replace/cancel/retry and design publication use distinct event keys or generation dedupe.
+- Enable `measurement_appointment` only on real appointment-table events. Never reuse `measureDueAt`.
 - WeChat `sent/failed/skipped` never rolls back users, leads, appointments, or commissions.
 
 ## 15. Production data and object-storage cleanup
@@ -448,7 +456,7 @@ Update this status table incrementally and update both module inventories and af
 
 ## 17. Test and acceptance matrix
 
-Internal-tester walkthrough (accounts, readiness checklist, referrer/staff-activity tracks, expiry rebooking, negative permissions, and a defect template): [referrer-network-internal-test-handbook.zh-CN.md](./referrer-network-internal-test-handbook.zh-CN.md).
+Internal-test pack (preferred split): everyone first reads [internal-test/00-所有人先看.md](./internal-test/00-所有人先看.md) (with workflow diagrams), then the matching `internal-test/角色-*.md`. Send non-technical testers the Word files `internal-test/装修服务内测-所有人先看.docx` and `internal-test/装修服务内测-角色-*.docx`. Legacy combined entry: [referrer-network-internal-test-handbook.zh-CN.md](./referrer-network-internal-test-handbook.zh-CN.md).
 
 - Identity: ordinary customer account creation; no forged enterprise context; stale tokens expire after relationship change.
 - Dual codes: type isolation, immediate rotation invalidation, one staff enterprise, default three referrer memberships, historical ownership retained after leave.

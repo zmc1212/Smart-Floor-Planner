@@ -45,6 +45,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/promotion-service-code/promotion-service-code': 'referrer.promotion',
   '/packages/business/staff-activity-code/staff-activity-code': ['staff.leads', 'staff.tasks', 'staff.schedule'],
   '/packages/business/enterprise-join-codes/enterprise-join-codes': 'enterprise.operations',
+  '/packages/business/enterprise-staff/enterprise-staff': 'enterprise.operations',
   '/packages/business/customer-projects/customer-projects': 'customer.projects',
   '/packages/business/customer-project/customer-project': 'customer.projects',
   '/packages/business/customer-ai-schemes/customer-ai-schemes': ['customer.projects', 'staff.leads', 'staff.tasks', 'enterprise.customers'],

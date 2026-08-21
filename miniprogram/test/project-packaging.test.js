@@ -96,6 +96,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'promotion-service-code/promotion-service-code',
         'staff-activity-code/staff-activity-code',
         'enterprise-join-codes/enterprise-join-codes',
+        'enterprise-staff/enterprise-staff',
         'free-design-service/free-design-service',
         'onboarding/onboarding',
         'enterprise-register/enterprise-register',

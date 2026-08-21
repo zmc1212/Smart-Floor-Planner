@@ -307,7 +307,7 @@ export class CustomerProjectRepository {
       return { kind: 'generation_not_publishable' as const, lead };
     }
 
-    await this.transaction
+    const inserted = await this.transaction
       .insert(aiGenerationPublications)
       .values({
         enterpriseId: input.enterpriseId,
@@ -315,10 +315,11 @@ export class CustomerProjectRepository {
         generationId: input.generationId,
         publishedBy: input.publishedBy,
       })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning();
     const publication = (await this.listActivePublications(input.enterpriseId, input.leadId))
       .find((item) => item.generation.id === input.generationId) ?? null;
-    return { kind: 'published' as const, lead, publication };
+    return { kind: 'published' as const, lead, publication, created: inserted.length > 0 };
   }
 
   async withdraw(input: {
@@ -580,7 +581,7 @@ export class CustomerProjectRepository {
 
     const publications = (await this.listActivePublications(input.enterpriseId, input.leadId))
       .filter((item) => item.publication.workflowId === input.workflowId);
-    return { kind: 'published' as const, lead, publications, title };
+    return { kind: 'published' as const, lead, publications, title, newGenerationIds: missingIds };
   }
 
   async withdrawScheme(input: {

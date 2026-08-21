@@ -46,7 +46,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
             mode="aspectFit"
           />
           <view class="scan-plaque">
-            <view class="scan-glyph"></view>
+            <image class="scan-glyph" src="/images/mine-icons/scan.png" mode="aspectFit" />
             <text class="scan-plaque-text">请扫码</text>
           </view>
         </view>
@@ -83,7 +83,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
 
     <button class="share-action" open-type="share" hover-class="share-action-pressed">
       <view class="share-inner">
-        <view class="share-scan" aria-hidden="true"></view>
+        <image class="share-scan" src="/images/mine-icons/scan.png" mode="aspectFit" aria-hidden="true" />
         <text>让客户扫码领取</text>
       </view>
     </button>

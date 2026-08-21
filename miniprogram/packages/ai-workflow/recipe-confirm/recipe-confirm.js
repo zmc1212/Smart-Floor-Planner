@@ -3,6 +3,7 @@ const {
   openSchemeStudio,
   shouldOpenSchemeStudio,
 } = require('../../../utils/aiDesignNavigation.js');
+const { roomsFromWorkflowDetail } = require('../recipe-project/recipe-project-model.js');
 
 function redirectAfterRecipeTask(task, { run = false } = {}) {
   if (!task || !task.id) {
@@ -31,8 +32,9 @@ function redirectAfterRecipeTask(task, { run = false } = {}) {
 
 Page({
   data: {
-    loading: true, error: '', submitting: false, recipe: null, project: null, scope: null,
+    loading: true, error: '', submitting: false, recipe: null, scope: null,
     recipeId: '', inputMode: 'floor_plan', leadId: '', floorPlanId: '', roomId: '', targetScope: 'whole_floor_plan',
+    leadName: '', communityName: '', schemeTitle: '',
     account: { availableBalance: 0 }, price: 10, spaceImagePath: '', spaceAssetId: '', uploadError: '', uploading: false,
     customerResults: [], sourceResultTaskId: '',
     workflows: [], workflowConflictOpen: false, selectedWorkflowId: '', createNewWorkflow: false,
@@ -45,6 +47,7 @@ Page({
       recipeId: options.recipeId || '', inputMode: options.inputMode === 'photo' ? 'photo' : 'floor_plan',
       leadId: options.leadId || '', floorPlanId: options.floorPlanId || '', roomId: options.roomId || '',
       targetScope: options.targetScope === 'single_room' ? 'single_room' : 'whole_floor_plan',
+      selectedWorkflowId: options.schemeId || options.workflowId || '',
     });
     this.loadData();
   },
@@ -62,29 +65,48 @@ Page({
   async loadData() {
     this.setData({ loading: true, error: '' });
     try {
-      const [recipe, capabilities, sources, workflows, history] = await Promise.all([
-        aiService.getRecipe(this.data.recipeId), aiService.loadCapabilities(), aiService.loadSources(),
-        aiService.loadWorkflows({ leadId: this.data.leadId, floorPlanId: this.data.floorPlanId }).catch(() => []),
+      if (!this.data.selectedWorkflowId) throw new Error('请先选择要续接的方案');
+      const [recipe, capabilities, detail, history] = await Promise.all([
+        aiService.getRecipe(this.data.recipeId),
+        aiService.loadCapabilities(),
+        aiService.getStudioWorkflow(this.data.selectedWorkflowId),
         this.data.inputMode === 'photo' ? aiService.loadHistory(1, 30).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
       ]);
-      const project = (sources || []).find((item) => item.floorPlanId === this.data.floorPlanId);
-      if (!project) throw new Error('所选客户项目已不可用，请重新选择');
+      const bound = roomsFromWorkflowDetail(detail);
+      if (!bound.floorPlanId) throw new Error('该方案尚未关联正式户型，请重新选择');
+      if (this.data.floorPlanId && bound.floorPlanId !== this.data.floorPlanId) {
+        throw new Error('所选方案与户型不匹配，请重新选择');
+      }
+      if (this.data.leadId && bound.lead.id && String(bound.lead.id) !== String(this.data.leadId)) {
+        throw new Error('所选方案与客户不匹配，请重新选择');
+      }
       const room = this.data.targetScope === 'single_room'
-        ? (project.rooms || []).find((item) => item.roomId === this.data.roomId) : null;
+        ? (bound.rooms || []).find((item) => item.roomId === this.data.roomId) : null;
       if (this.data.targetScope === 'single_room' && !room) throw new Error('所选房间已不可用，请重新选择');
       const modeKey = this.data.inputMode === 'photo' ? 'style_transform' : 'floor_plan_render';
       const mode = (capabilities.modes || []).find((item) => item.key === modeKey);
       const customerResults = (history.data || []).filter((item) => (
         item.status === 'succeeded'
         && item.resultImageUrl
-        && item.floorPlanId === this.data.floorPlanId
+        && item.floorPlanId === bound.floorPlanId
         && (item.targetScope || 'whole_floor_plan') === this.data.targetScope
         && (this.data.targetScope !== 'single_room' || item.roomId === this.data.roomId)
       )).slice(0, 6);
       this.setData({
-        recipe, project, scope: { name: room ? room.roomName : '完整户型', meta: room ? room.roomSize : `${project.closedRoomCount} 个闭合空间` },
-        account: capabilities.account || { availableBalance: 0 }, price: Number(mode && mode.credits || 10), workflows,
-        selectedWorkflowId: workflows.length === 1 ? workflows[0].id : '', customerResults, loading: false,
+        recipe,
+        leadId: this.data.leadId || String(bound.lead.id || ''),
+        floorPlanId: bound.floorPlanId,
+        leadName: bound.lead.name || '客户',
+        communityName: bound.lead.communityName || '未登记小区',
+        schemeTitle: bound.workflow.title || 'AI 设计方案',
+        scope: {
+          name: room ? room.roomName : '完整户型',
+          meta: room ? room.roomSize : `${bound.closedRoomCount} 个闭合空间`,
+        },
+        account: capabilities.account || { availableBalance: 0 },
+        price: Number(mode && mode.credits || 10),
+        customerResults,
+        loading: false,
       });
     } catch (error) {
       this.setData({ loading: false, error: error.error || error.message || '生成确认信息加载失败' });
@@ -152,7 +174,7 @@ Page({
         styleKey: this.data.inputMode === 'photo' ? 'recipe' : undefined,
         leadId: this.data.leadId, floorPlanId: this.data.floorPlanId, targetScope: this.data.targetScope,
         roomId: this.data.roomId || undefined, workflowId: this.data.selectedWorkflowId || undefined,
-        createNewWorkflow: this.data.createNewWorkflow,
+        createNewWorkflow: this.data.selectedWorkflowId ? undefined : this.data.createNewWorkflow,
       });
       redirectAfterRecipeTask(task, { run: true });
     } catch (error) {

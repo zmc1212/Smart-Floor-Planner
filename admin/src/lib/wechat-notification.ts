@@ -11,6 +11,7 @@ import {
 } from '@/db/transaction';
 import {
   assignmentCopy,
+  buildDesignPublishedPayload,
   buildLeadAssignmentPayload,
   buildMeasurementAppointmentPayload,
   buildNewLeadPayload,
@@ -233,10 +234,11 @@ export async function notifyEnterpriseAdminOfNewLead(lead: LeadNotificationRecor
         ).rows
     );
     const results = await Promise.all(
-      admins.map((admin) =>
-        deliverLeadNotification({
+      admins.map(async (admin) => {
+        const recipient = await enrichRecipientOpenid(admin);
+        return deliverLeadNotification({
           lead,
-          recipient: admin,
+          recipient,
           templateKind: 'new_lead',
           notificationType: 'lead_created',
           message: `新增客户：${lead.name}，负责人：${leadOwnerName(lead)}`,
@@ -250,8 +252,8 @@ export async function notifyEnterpriseAdminOfNewLead(lead: LeadNotificationRecor
               phone: lead.phone,
               selectedAt: lead.assignedAt || lead.createdAt,
             }),
-        })
-      )
+        });
+      })
     );
     return { success: results.every((item) => item.success), results };
   } catch (error) {
@@ -281,10 +283,11 @@ export async function notifyEnterpriseAdminOfAssignmentPending(
         ).rows
     );
     const results = await Promise.all(
-      admins.map((admin) =>
-        deliverLeadNotification({
+      admins.map(async (admin) => {
+        const recipient = await enrichRecipientOpenid(admin);
+        return deliverLeadNotification({
           lead,
-          recipient: admin,
+          recipient,
           templateKind: 'workflow_todo',
           notificationType: 'lead_assignment_pending',
           message: `客户${lead.name}自动派单待处理，请补充可用人员`,
@@ -299,8 +302,8 @@ export async function notifyEnterpriseAdminOfAssignmentPending(
               todo: '补充设计师或测量员',
               note: input.reasonCode,
             }),
-        })
-      )
+        });
+      })
     );
     return { success: results.every((item) => item.success), results };
   } catch (error) {
@@ -309,11 +312,53 @@ export async function notifyEnterpriseAdminOfAssignmentPending(
   }
 }
 
+async function enrichRecipientOpenid(
+  recipient: LeadNotificationRecipient & { userId?: bigint | null; openid?: string | null }
+): Promise<LeadNotificationRecipient> {
+  if (recipient.openid) {
+    return {
+      id: recipient.id,
+      openid: recipient.openid,
+      displayName: recipient.displayName,
+      username: recipient.username,
+    };
+  }
+  if (!recipient.userId) {
+    return {
+      id: recipient.id,
+      openid: recipient.openid ?? null,
+      displayName: recipient.displayName,
+      username: recipient.username,
+    };
+  }
+  try {
+    const identity = await withPlatformTransaction((transaction) =>
+      new MiniProgramIdentityRepository(transaction).findWechatIdentityByUserId(recipient.userId!)
+    );
+    return {
+      id: recipient.id,
+      openid: identity?.openid ?? null,
+      displayName: recipient.displayName,
+      username: recipient.username,
+    };
+  } catch (error) {
+    console.error('Unable to resolve wechat identity for notification recipient:', error);
+    return {
+      id: recipient.id,
+      openid: null,
+      displayName: recipient.displayName,
+      username: recipient.username,
+    };
+  }
+}
+
 async function findNotificationRecipient(id: string, label: string) {
   try {
-    return await withPlatformTransaction((transaction) =>
+    const staff = await withPlatformTransaction((transaction) =>
       new AdminUserRepository(transaction).findById(parsePostgresId(id, label))
     );
+    if (!staff) return null;
+    return enrichRecipientOpenid(staff);
   } catch (error) {
     console.error(`Unable to resolve ${label} for notification:`, error);
     return null;
@@ -365,12 +410,21 @@ export async function notifyAppointmentStaff(input: {
       : input.eventType === 'expired'
         ? '预约已过期，请重新预约'
         : input.eventType === 'created' ? '已创建上门预约' : '预约时间已更新';
-    const results = await Promise.all(recipients.filter(Boolean).map((recipient) =>
+    const recipientIds = new Set<string>();
+    const uniqueRecipients: LeadNotificationRecipient[] = [];
+    for (const recipient of recipients) {
+      if (!recipient) continue;
+      const key = recipient.id.toString();
+      if (recipientIds.has(key)) continue;
+      recipientIds.add(key);
+      uniqueRecipients.push(recipient);
+    }
+    const results = await Promise.all(uniqueRecipients.map((recipient) =>
       deliverLeadNotification({
         lead: { ...lead, id: lead.id, enterpriseId: lead.enterpriseId?.toString() },
-        recipient: recipient!, templateKind: 'measurement_appointment', notificationType: `measurement_appointment_${input.eventType}`,
+        recipient, templateKind: 'measurement_appointment', notificationType: `measurement_appointment_${input.eventType}`,
         message: `客户${lead.name}${action}`,
-        dedupeKey: `measurement_appointment:${input.eventKey}:${recipient!.id.toString()}`,
+        dedupeKey: `measurement_appointment:${input.eventKey}:${recipient.id.toString()}`,
         page: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(input.leadId.toString())}`,
         metadata: { appointmentEvent: input.eventType },
         buildData: (template) => buildMeasurementAppointmentPayload(template, {
@@ -428,6 +482,94 @@ export async function notifyCustomerOfAppointment(input: {
     });
   } catch (error) {
     console.error('Customer appointment notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
+}
+
+export async function notifyCustomerOfDesignPublished(input: {
+  enterpriseId: bigint;
+  leadId: bigint;
+  generationIds: Array<bigint | string>;
+  title?: string | null;
+  publishedAt?: Date | string | null;
+}) {
+  try {
+    const generationIds = input.generationIds
+      .map((id) => String(id))
+      .filter(Boolean);
+    if (!generationIds.length) {
+      return { success: false, skipped: true, error: 'generation unavailable' };
+    }
+
+    const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
+      new LeadRepository(transaction).findById(input.leadId)
+    );
+    if (!lead?.customerUserId) {
+      return { success: false, skipped: true, error: 'customer unavailable' };
+    }
+
+    const identity = await withPlatformTransaction((transaction) =>
+      new MiniProgramIdentityRepository(transaction).findWechatIdentityByUserId(lead.customerUserId!)
+    );
+    if (!identity?.openid) {
+      return { success: false, skipped: true, error: 'customer openid unavailable' };
+    }
+
+    const template = await getMiniProgramSubscriptionTemplate('design_published');
+    if (!template?.templateId) {
+      return { success: false, skipped: true, error: 'subscription template unavailable' };
+    }
+
+    const page = `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(input.leadId.toString())}`;
+    return await sendSubscriptionMessage({
+      touser: identity.openid,
+      template_id: template.templateId,
+      page,
+      data: buildDesignPublishedPayload(template, {
+        content: input.title || '设计方案',
+        publishedAt: input.publishedAt || new Date(),
+        note: '请到项目页查看效果图',
+      }),
+    });
+  } catch (error) {
+    console.error('Customer design publication notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
+}
+
+export async function notifyDesignerOfSurveyCompleted(input: {
+  enterpriseId: bigint;
+  leadId: bigint;
+  designerId: bigint | string;
+  floorPlanId: bigint | string;
+}) {
+  try {
+    const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
+      new LeadRepository(transaction).findById(input.leadId)
+    );
+    if (!lead) return { success: false, error: 'lead unavailable' };
+    const designer = await findNotificationRecipient(String(input.designerId), 'designer id');
+    if (!designer) return { success: false, error: 'designer unavailable' };
+    return deliverLeadNotification({
+      lead: { ...lead, id: lead.id, enterpriseId: lead.enterpriseId?.toString() },
+      recipient: designer,
+      templateKind: 'workflow_todo',
+      notificationType: 'survey_completed',
+      message: `客户${lead.name}量房已完成，请生成并发布方案`,
+      dedupeKey: `survey_completed:${input.leadId.toString()}:${String(input.floorPlanId)}`,
+      page: '/pages/leads-management/leads-management',
+      metadata: { floorPlanId: String(input.floorPlanId) },
+      buildData: (template) =>
+        buildWorkflowTodoPayload(template, {
+          projectName: lead.communityName || lead.name,
+          owner: designer.displayName || designer.username,
+          currentStatus: '量房完成',
+          todo: '生成并发布方案',
+          note: '正式户型已提交',
+        }),
+    });
+  } catch (error) {
+    console.error('Survey completed notification failed:', error);
     return { success: false, error: deliveryError(error) };
   }
 }

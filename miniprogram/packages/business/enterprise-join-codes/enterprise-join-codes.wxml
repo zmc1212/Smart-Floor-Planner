@@ -64,7 +64,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
             mode="aspectFit"
           />
           <view class="scan-plaque">
-            <view class="scan-glyph"></view>
+            <image class="scan-glyph" src="/images/mine-icons/scan.png" mode="aspectFit" />
             <text class="scan-plaque-text">请扫码</text>
           </view>
         </view>

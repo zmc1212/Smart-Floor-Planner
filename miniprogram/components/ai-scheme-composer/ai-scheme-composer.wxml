@@ -53,20 +53,22 @@
     </view>
 
     <view class="prompt-row">
-      <textarea
-        class="prompt-input"
-        value="{{draft.prompt}}"
-        maxlength="2000"
-        placeholder="描述空间、光线与风格，一键出图"
-        bindinput="onPromptInput"
-        bindfocus="onPromptFocus"
-        bindblur="onPromptBlur"
-        auto-height="{{dockExpanded && keyboardHeight <= 0}}"
-        show-confirm-bar="{{false}}"
-        disabled="{{!view}}"
-        adjust-position="{{false}}"
-        hold-keyboard="{{true}}"
-      ></textarea>
+      <view class="prompt-field">
+        <textarea
+          class="prompt-input"
+          value="{{draft.prompt}}"
+          maxlength="2000"
+          placeholder="描述空间、光线与风格，一键出图"
+          bindinput="onPromptInput"
+          bindfocus="onPromptFocus"
+          bindblur="onPromptBlur"
+          auto-height="{{dockExpanded && keyboardHeight <= 0}}"
+          show-confirm-bar="{{false}}"
+          disabled="{{!view}}"
+          adjust-position="{{false}}"
+          hold-keyboard="{{true}}"
+        ></textarea>
+      </view>
       <view
         wx:if="{{!dockExpanded}}"
         class="generate-fab compact {{!view || !view.canSubmit ? 'blocked' : ''}}"
