@@ -130,6 +130,10 @@ test('canvas wall snapping forwards the resolved vertex or wall candidate to the
     editorScript,
     /const candidate = this\.getCursorPlacementCandidate\(touchState\.startPoint\);[\s\S]*?candidate\.type !== 'vertex' && candidate\.type !== 'wall'[\s\S]*?surveyGraph\.snapCursorToWall\(this\.draft, candidate\.pointMm, candidate\)/
   );
+  assert.match(
+    editorScript,
+    /surveyGraph\.snapCursorToWall\(this\.draft, candidate\.pointMm, candidate\);[\s\S]*?this\.cursorPlacementState = 'placed';[\s\S]*?cursorPlacementState: 'placed'/
+  );
 });
 
 test('closing a room automatically enters the reset-cursor wall-drop state', () => {

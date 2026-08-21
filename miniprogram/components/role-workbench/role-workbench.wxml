@@ -183,10 +183,9 @@
             <image style="display:none;" src="/images/page-ip-v3/mine.png" />
           </view>
 
-          <view wx:if="{{role === 'measurer'}}" class="ble-status-pill" bindtap="openSurveyDirect">
-            <view class="ble-dot"></view>
-            <text>蓝牙测距仪直连 · 快速量房</text>
-            <view class="edit-icon">✏️</view>
+          <view wx:if="{{role === 'measurer'}}" class="ble-status-pill" bindtap="openBleConnector" hover-class="btn-pressed">
+            <view class="ble-dot {{bleConnected ? 'connected' : 'disconnected'}}"></view>
+            <text>{{bleConnected ? '测距仪已连接' : '测距仪未连接'}}</text>
           </view>
 
           <view wx:if="{{focus === 'overview'}}" class="stats-pills-row">
@@ -199,8 +198,8 @@
           <view wx:if="{{role === 'designer'}}" class="hero-action-pill outline" bindtap="openActivityCode" hover-class="btn-pressed">
             <text>出示获客活动码 📳</text>
           </view>
-          <view wx:elif="{{role === 'measurer'}}" class="hero-action-pill solid" bindtap="openSurveyDirect" hover-class="btn-pressed">
-            <text>🚀 进入量房编辑器</text>
+          <view wx:elif="{{role === 'measurer'}}" class="hero-action-pill solid" bindtap="openBleConnector" hover-class="btn-pressed">
+            <text>链接测距仪 · {{bleConnected ? '已连接' : '未连接'}}</text>
           </view>
         </view>
 
@@ -347,4 +346,11 @@
       </view>
     </view>
   </view>
+
+  <ble-connector
+    show="{{showBLEConnector}}"
+    bindclose="onCloseBleConnector"
+    bindsuccess="onBleSuccess"
+    binddisconnect="onBleDisconnect"
+  />
 </view>

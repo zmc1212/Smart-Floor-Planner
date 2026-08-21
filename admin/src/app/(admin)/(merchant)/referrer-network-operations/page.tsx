@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
-import { Alert, Button, Card, Flex, Space, Statistic, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Flex, Input, Space, Statistic, Table, Tag, Typography } from 'antd';
 import { CheckCircle2, RefreshCw, UsersRound, Wrench } from 'lucide-react';
+import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
@@ -51,6 +52,17 @@ type Readiness = {
   wechatMiniProgramCodeProviderConfigured: boolean;
 };
 
+type ResetCount = { table: string; label: string; count: number };
+
+type ResetPreview = {
+  enterpriseId: string;
+  enterpriseName: string;
+  retainedOperatorAdminUserId: string | null;
+  retainedOperatorDisplayName: string | null;
+  counts: ResetCount[];
+  totalRows: number;
+};
+
 const CODE_LABELS: Record<JoinCodeType, string> = {
   staff: '员工入驻码',
   referrer: '推荐人入驻码',
@@ -72,9 +84,14 @@ function isActiveCode(code: JoinCode | undefined) {
 
 export default function ReferrerNetworkOperationsPage() {
   const { user } = useCurrentUser();
+  const confirm = useConfirmDialog();
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [globalTenantId, setGlobalTenantId] = useState('all');
+  const [resetPreview, setResetPreview] = useState<ResetPreview | null>(null);
+  const [resetPreviewLoading, setResetPreviewLoading] = useState(false);
+  const [resetConfirmName, setResetConfirmName] = useState('');
+  const [resetExecuting, setResetExecuting] = useState(false);
 
   const requiresTenantSelection = Boolean(
     user && ['super_admin', 'admin'].includes(user.role) && globalTenantId === 'all'
@@ -95,6 +112,74 @@ export default function ReferrerNetworkOperationsPage() {
     }
   }, [requiresTenantSelection]);
 
+  const loadResetPreview = useCallback(async () => {
+    if (requiresTenantSelection) return;
+    setResetPreviewLoading(true);
+    try {
+      const response = await fetch('/api/enterprise/enterprise-reset/preview');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '预览清空范围失败');
+      setResetPreview(result.data);
+      setResetConfirmName('');
+    } catch (error) {
+      setResetPreview(null);
+      notify.error(error instanceof Error ? error.message : '预览清空范围失败');
+    } finally {
+      setResetPreviewLoading(false);
+    }
+  }, [requiresTenantSelection]);
+
+  const executeEnterpriseReset = useCallback(async () => {
+    if (!resetPreview) return;
+    if (resetConfirmName.trim() !== resetPreview.enterpriseName) {
+      notify.error('请输入与企业全名完全一致的确认文字');
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: '确认清空当前企业测试数据？',
+      destructive: true,
+      confirmText: '确认清空并重跑入驻',
+      cancelText: '取消',
+      description: (
+        <Flex vertical gap={8}>
+          <Typography.Text>
+            将删除本企业员工、入驻码、推荐人、预约/提成规则、线索与全部闭环数据。企业壳与你的登录账号会保留，之后需重新发码并从入驻开始。
+          </Typography.Text>
+          <Typography.Text type="danger">此操作不可恢复（仅删库表行，不删对象存储文件）。</Typography.Text>
+        </Flex>
+      ),
+    });
+    if (!confirmed) return;
+
+    setResetExecuting(true);
+    try {
+      const response = await fetch('/api/enterprise/enterprise-reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmEnterpriseName: resetConfirmName.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '清空失败');
+      notify.success(result.data?.retainedNote || '当前企业测试数据已清空');
+      setResetConfirmName('');
+      await Promise.all([loadReadiness(), loadResetPreview()]);
+      const goJoinCodes = await confirm({
+        title: '清空完成',
+        confirmText: '去入驻码',
+        cancelText: '留在本页',
+        description: '可前往「入驻码」重新发放员工/推荐人入驻码，开始下一轮内测。',
+      });
+      if (goJoinCodes) {
+        window.location.href = '/join-codes';
+      }
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '清空失败');
+    } finally {
+      setResetExecuting(false);
+    }
+  }, [confirm, loadReadiness, loadResetPreview, resetConfirmName, resetPreview]);
+
   useEffect(() => {
     const tenant = document.cookie.split('; ').find((item) => item.startsWith('global_tenant_id='));
     setGlobalTenantId(tenant?.split('=')[1] || 'all');
@@ -104,10 +189,13 @@ export default function ReferrerNetworkOperationsPage() {
     if (requiresTenantSelection) {
       setLoading(false);
       setReadiness(null);
+      setResetPreview(null);
+      setResetPreviewLoading(false);
       return;
     }
     void loadReadiness();
-  }, [loadReadiness, requiresTenantSelection]);
+    void loadResetPreview();
+  }, [loadReadiness, loadResetPreview, requiresTenantSelection]);
 
   const codeByType = useMemo(() => {
     const result: Partial<Record<JoinCodeType, JoinCode>> = {};
@@ -215,6 +303,75 @@ export default function ReferrerNetworkOperationsPage() {
                 pagination={false}
                 scroll={{ x: 760 }}
               />
+            </section>
+
+            <section aria-label="测试企业清空">
+              <Card
+                loading={resetPreviewLoading}
+                title="清空当前企业测试数据"
+                extra={
+                  <Button size="small" icon={<RefreshCw size={14} />} onClick={() => void loadResetPreview()}>
+                    刷新预览
+                  </Button>
+                }
+              >
+                <Flex vertical gap={16}>
+                  <Alert
+                    showIcon
+                    type="warning"
+                    message="内测专用：从入驻重跑"
+                    description="将删除本企业员工、入驻码、推荐人、预约/提成规则、线索与全部闭环数据。你仍可登录后台，但需重新发码并从入驻开始。不删企业壳与对象存储文件，也不影响其他企业。"
+                  />
+                  {resetPreview ? (
+                    <>
+                      <Typography.Paragraph className="!mb-0">
+                        企业：<Typography.Text strong>{resetPreview.enterpriseName}</Typography.Text>
+                        {' · '}
+                        预览合计约 {resetPreview.totalRows} 行
+                        {resetPreview.retainedOperatorDisplayName
+                          ? ` · 将保留操作者：${resetPreview.retainedOperatorDisplayName}`
+                          : ' · 当前企业未匹配到可保留的操作者员工账号'}
+                      </Typography.Paragraph>
+                      <Table
+                        size="small"
+                        rowKey="table"
+                        pagination={false}
+                        dataSource={resetPreview.counts.filter((item) => item.count > 0)}
+                        columns={[
+                          { title: '类别', dataIndex: 'label' },
+                          { title: '行数', dataIndex: 'count', width: 96 },
+                        ]}
+                        locale={{ emptyText: '当前企业几乎没有可清业务数据' }}
+                      />
+                      <Flex vertical gap={8}>
+                        <Typography.Text>
+                          请输入企业全名 <Typography.Text code>{resetPreview.enterpriseName}</Typography.Text> 以确认
+                        </Typography.Text>
+                        <Input
+                          value={resetConfirmName}
+                          placeholder="输入企业全名"
+                          onChange={(event) => setResetConfirmName(event.target.value)}
+                          disabled={resetExecuting}
+                        />
+                        <Space wrap>
+                          <Button
+                            danger
+                            type="primary"
+                            loading={resetExecuting}
+                            disabled={resetConfirmName.trim() !== resetPreview.enterpriseName}
+                            onClick={() => void executeEnterpriseReset()}
+                          >
+                            清空并重跑入驻
+                          </Button>
+                          <Button href="/join-codes">清空后去入驻码</Button>
+                        </Space>
+                      </Flex>
+                    </>
+                  ) : (
+                    <Typography.Text type="secondary">暂无预览；若环境闸门拒绝，请检查非生产环境或 ALLOW_TENANT_ENTERPRISE_RESET。</Typography.Text>
+                  )}
+                </Flex>
+              </Card>
             </section>
           </Flex>
         )}

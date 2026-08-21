@@ -4691,9 +4691,13 @@ Page({
       // Canvas tapping must preserve the same inner/outer vertex target as
       // the bottom cursor drag path rather than reclassifying raw coordinates.
       const nextDraft = surveyGraph.snapCursorToWall(this.draft, candidate.pointMm, candidate);
+      this.cursorPlacementState = 'placed';
       this.applyDraft(nextDraft, {
         recordHistory: false,
-        extraData: { numberPadVisible: false }
+        extraData: {
+          cursorPlacementState: 'placed',
+          numberPadVisible: false
+        }
       });
       wx.showToast({ title: '光标已吸附到墙体', icon: 'none' });
       return;

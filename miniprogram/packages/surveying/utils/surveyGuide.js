@@ -601,6 +601,73 @@ function findGridConnector(start, target, safeArea, obstacles) {
   }, result);
 }
 
+function softenGuideObstacles(obstacles) {
+  return (obstacles || []).map((obstacle) => {
+    if (!obstacle || (!obstacle.hard && !obstacle.pathHard)) return obstacle;
+    return Object.assign({}, obstacle, {
+      hard: false,
+      pathHard: false,
+      weight: Math.max(Number(obstacle.weight) || 100, Number(obstacle.pathWeight) || 0, 420),
+      pathWeight: Math.max(Number(obstacle.pathWeight) || 0, 180)
+    });
+  });
+}
+
+function buildForcedDockGuideLayout(input) {
+  const opts = input || {};
+  const target = opts.target;
+  const safeArea = opts.safeArea;
+  const cardWidth = Number(opts.cardWidth) || 0;
+  const cardHeight = Number(opts.cardHeight) || 0;
+  const characterSize = Number(opts.characterSize) || 0;
+  if (!target || !safeArea || !cardWidth || !cardHeight || !characterSize) return null;
+
+  const clampValue = (value, min, max) => Math.max(min, Math.min(max, value));
+  const gap = Math.max(7, characterSize * 0.11);
+  const maxLeft = Math.max(safeArea.left, safeArea.right - cardWidth);
+  const maxCharacterTop = Math.max(
+    safeArea.top,
+    Math.min(safeArea.bottom - characterSize, target.y - characterSize - 8)
+  );
+  const characterTop = clampValue(maxCharacterTop, safeArea.top, safeArea.bottom - characterSize);
+  const preferredCardTop = characterTop - gap - cardHeight;
+  const cardTop = clampValue(preferredCardTop, safeArea.top, Math.max(safeArea.top, preferredCardTop));
+  const cardLeft = clampValue(safeArea.left, safeArea.left, maxLeft);
+  const characterLeft = clampValue(cardLeft, safeArea.left, safeArea.right - characterSize);
+  const card = createRect(cardLeft, cardTop, cardWidth, cardHeight);
+  const characterBox = createRect(
+    characterLeft,
+    Math.max(card.bottom + gap, Math.min(characterTop, safeArea.bottom - characterSize)),
+    characterSize,
+    characterSize
+  );
+  if (!rectInside(card, safeArea) || !rectInside(characterBox, safeArea)) return null;
+
+  const character = createGuideCharacter(characterBox, target);
+  return {
+    card: {
+      left: card.left,
+      top: card.top,
+      width: cardWidth,
+      height: cardHeight
+    },
+    placement: {
+      left: card.left,
+      top: card.top,
+      pointerDirection: card.bottom <= target.y ? 'down' : 'up',
+      pointerLeft: clampValue(target.x - card.left, 24, cardWidth - 24)
+    },
+    character,
+    connector: buildDirectGuideConnector(
+      { x: character.handX, y: character.handY },
+      {
+        x: target.x,
+        y: target.y - Math.max(8, (target.height || 0) / 2)
+      }
+    )
+  };
+}
+
 function solveGuideLayout(input) {
   const opts = input || {};
   const target = opts.target;
@@ -661,7 +728,19 @@ function solveGuideLayout(input) {
 
   candidates.sort((first, second) => first.score - second.score);
   const selected = candidates[0];
-  if (!selected) return null;
+  if (!selected) {
+    // Closed-room dimension labels can fill the canvas so no hard-avoiding
+    // placement remains. Reset-cursor / dock tips must still appear.
+    if (opts.preferCharacterBelowCard && !opts.dockGuideFallback) {
+      const softened = solveGuideLayout(Object.assign({}, opts, {
+        obstacles: softenGuideObstacles(opts.obstacles),
+        dockGuideFallback: 'soft'
+      }));
+      if (softened) return softened;
+      return buildForcedDockGuideLayout(opts);
+    }
+    return null;
+  }
   if (selected.connector.hardHits > 0) {
     const routed = findGridConnector(
       { x: selected.character.handX, y: selected.character.handY },

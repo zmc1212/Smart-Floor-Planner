@@ -268,6 +268,43 @@ test('bottom-control guide keeps Xiao K below the card and uses a straight conne
   assert.ok(Math.abs(controlTwoCross) < 1e-9);
 });
 
+test('reset-cursor dock guide stays visible after a closed room fills the canvas with hard labels', () => {
+  assert.equal(resolve('wallSnapPending', {
+    cursorPlacementState: 'awaitingWallDrop',
+    floor: {
+      walls: [{ id: 'w1' }, { id: 'w2' }, { id: 'w3' }, { id: 'w4' }],
+      spaces: [{ closed: true }],
+      session: { state: 'wallSnapPending', mode: 'straight' }
+    }
+  }).key, 'place-next-start');
+
+  const safeArea = { left: 12, top: 130, right: 273, bottom: 716 };
+  const closedRoomObstacles = [
+    { left: 90, right: 250, top: 280, bottom: 520, hard: true, padding: 6, pathHard: true, pathWeight: 2200, kind: 'room-label' },
+    { left: 80, right: 260, top: 250, bottom: 270, hard: true, padding: 5, pathHard: true, pathWeight: 2400, kind: 'dimension-label' },
+    { left: 80, right: 260, top: 530, bottom: 550, hard: true, padding: 5, pathHard: true, pathWeight: 2400, kind: 'dimension-label' },
+    { left: 55, right: 80, top: 280, bottom: 520, hard: true, padding: 5, pathHard: true, pathWeight: 2400, kind: 'dimension-label' },
+    { left: 255, right: 280, top: 280, bottom: 520, hard: true, padding: 5, pathHard: true, pathWeight: 2400, kind: 'dimension-label' },
+    { left: 70, right: 270, top: 220, bottom: 245, hard: true, padding: 5, pathHard: true, pathWeight: 2400, kind: 'dimension-label' },
+    { left: 70, right: 270, top: 555, bottom: 580, hard: true, padding: 5, pathHard: true, pathWeight: 2400, kind: 'dimension-label' }
+  ];
+  const layout = solveGuideLayout({
+    target: { x: 195, y: 700, width: 66, height: 42, nativeOverlay: true },
+    safeArea,
+    cardWidth: 180,
+    cardHeight: 142,
+    characterSize: 70,
+    gap: 124,
+    obstacles: closedRoomObstacles,
+    preferCharacterBelowCard: true
+  });
+
+  assert.ok(layout, 'reset-cursor tip must not disappear behind closed-room dimension labels');
+  assert.ok(layout.card);
+  assert.ok(layout.character);
+  assert.ok(layout.character.top >= layout.card.top + layout.card.height - 1);
+});
+
 test('connector routing detours around hard measurement labels', () => {
   const label = {
     left: 70,

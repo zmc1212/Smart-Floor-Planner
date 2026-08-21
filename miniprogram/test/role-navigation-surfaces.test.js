@@ -84,6 +84,27 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(component, /openQuickNav/);
   assert.match(component, /openEnterpriseException/);
   assert.match(component, /payload\.dashboard/);
+  assert.match(component, /openBleConnector/);
+  assert.match(component, /showBLEConnector/);
+  assert.match(componentTemplate, /链接测距仪/);
+  assert.match(componentTemplate, /bleConnected \? '已连接' : '未连接'/);
+  assert.match(componentTemplate, /<ble-connector/);
+  assert.doesNotMatch(componentTemplate, /进入量房编辑器/);
+  assert.doesNotMatch(component, /openSurveyDirect/);
+});
+
+test('measurer overview hero links the rangefinder instead of opening the editor', () => {
+  const component = fs.readFileSync(path.join(miniProgramRoot, 'components', 'role-workbench', 'role-workbench.js'), 'utf8');
+  const componentTemplate = fs.readFileSync(path.join(miniProgramRoot, 'components', 'role-workbench', 'role-workbench.wxml'), 'utf8');
+  const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'components', 'role-workbench', 'role-workbench.json'), 'utf8'));
+
+  assert.equal(config.usingComponents['ble-connector'], '/components/ble-connector/ble-connector');
+  assert.match(componentTemplate, /bindtap="openBleConnector"/);
+  assert.match(component, /onBleSuccess/);
+  assert.match(component, /onBleDisconnect/);
+  assert.match(component, /syncBleConnectionState/);
+  assert.doesNotMatch(componentTemplate, /openSurveyDirect/);
+  assert.doesNotMatch(component, /openSurveyingEditor\(\{\s*\}\)/);
 });
 
 test('enterprise staffing exceptions open the staff roster instead of a silent no-op', () => {

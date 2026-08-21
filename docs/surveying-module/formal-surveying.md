@@ -109,7 +109,9 @@ copy back to `layoutData`.
   restores the remaining loop as the active chain and offers the missing-edge
   close when the dangling ends still determine it. Confirming a closed room
   automatically enters the same reset-cursor / wall-drop state as tapping
-  重置光标. Resetting the cursor onto
+  重置光标. In guide mode that state immediately shows the Xiao K
+  place-next-start tip even when closed-room dimension labels would otherwise
+  leave no hard-avoiding layout. Resetting the cursor onto
   either dangling vertex resumes that same open chain instead of starting a
   new room from the existing wall. Dragging back along that
   restored last wall shortens it instead of reporting overlap with the

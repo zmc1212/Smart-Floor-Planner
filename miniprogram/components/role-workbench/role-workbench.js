@@ -75,18 +75,24 @@ Component({
     showPeriodSheet: false,
     customFrom: '',
     customTo: '',
+    bleConnected: false,
+    showBLEConnector: false,
   },
 
   lifetimes: {
     attached() {
       this._pageVisible = true;
-      this.setData(navigationMetrics());
+      this.setData({
+        ...navigationMetrics(),
+        bleConnected: !!(getApp().globalData && getApp().globalData.bleConnected),
+      });
       this.load();
     },
   },
 
   pageLifetimes: {
     show() {
+      this.syncBleConnectionState();
       if (this._pageVisible) return;
       this._pageVisible = true;
       this.load();
@@ -535,8 +541,32 @@ Component({
       });
     },
 
-    openSurveyDirect() {
-      openSurveyingEditor({});
+    syncBleConnectionState() {
+      const connected = !!(getApp().globalData && getApp().globalData.bleConnected);
+      if (connected === this.data.bleConnected) return;
+      this.setData({ bleConnected: connected });
+    },
+
+    openBleConnector() {
+      this.setData({ showBLEConnector: true });
+    },
+
+    onCloseBleConnector() {
+      this.setData({ showBLEConnector: false });
+    },
+
+    onBleSuccess() {
+      if (getApp().globalData) {
+        getApp().globalData.bleConnected = true;
+      }
+      this.setData({ bleConnected: true, showBLEConnector: false });
+    },
+
+    onBleDisconnect() {
+      if (getApp().globalData) {
+        getApp().globalData.bleConnected = false;
+      }
+      this.setData({ bleConnected: false });
     },
 
     noop() {},
