@@ -48,6 +48,31 @@ export function buildStaffingGapItems(input: {
   return items;
 }
 
+/** Designer workbench todo when self WeChat contact profile is incomplete. */
+export function buildDesignerWechatProfileTodo(member: {
+  wechatId?: string | null;
+  wechatQrAssetId?: string | bigint | null;
+}) {
+  const hasWechatId = Boolean(String(member.wechatId || '').trim());
+  const hasQr = Boolean(member.wechatQrAssetId);
+  if (hasWechatId && hasQr) return null;
+  const missing: string[] = [];
+  if (!hasWechatId) missing.push('微信号');
+  if (!hasQr) missing.push('个人二维码');
+  return {
+    id: 'designer-wechat-profile',
+    title: '补齐微信联系方式',
+    subtitle: `还差${missing.join('和')}，补齐后才能接客户与出示活动码`,
+    metaLabel: '服务资料',
+    meta: '服务资料',
+    statusBadge: '待完善',
+    action: 'profile',
+    actionLabel: '去完善',
+    serviceStage: 'assignment_pending',
+    nextAction: '在「我的」补齐微信号和个人二维码',
+  };
+}
+
 type WorkbenchFloorPlan = {
   id: bigint | number | string;
   status?: string | null;

@@ -1288,7 +1288,9 @@ test('payable commission adjust updates amount or beneficiary, rejects paid/void
 
       const earningsBeforeSwap = await portal.listEarnings(referrerA.id, membershipA.id, enterpriseAId);
       assert.ok(earningsBeforeSwap);
-      assert.equal(earningsBeforeSwap.items.some((item) => item.id === referrerRow.id.toString() && item.amount === '170.00'), true);
+      assert.equal(earningsBeforeSwap.items.some((item) => item.id === referrerRow.id.toString() && item.status === 'payable'), true);
+      assert.equal(earningsBeforeSwap.payableCount >= 1, true);
+      assert.equal('amount' in (earningsBeforeSwap.items.find((item) => item.id === referrerRow.id.toString()) || {}), false);
 
       const beneficiaryAdjusted = await commissionRepository.adjustPayable(enterpriseAId, referrerRow.id, designer.id, {
         beneficiaryUserId: referrerB.id,
@@ -1304,7 +1306,8 @@ test('payable commission adjust updates amount or beneficiary, rejects paid/void
       const newEarnings = await portal.listEarnings(referrerB.id, membershipB.id, enterpriseAId);
       assert.ok(oldEarnings && newEarnings);
       assert.equal(oldEarnings.items.some((item) => item.id === referrerRow.id.toString()), false);
-      assert.equal(newEarnings.items.some((item) => item.id === referrerRow.id.toString() && item.amount === '170.00'), true);
+      assert.equal(newEarnings.items.some((item) => item.id === referrerRow.id.toString() && item.status === 'payable'), true);
+      assert.equal('amount' in (newEarnings.items.find((item) => item.id === referrerRow.id.toString()) || {}), false);
 
       await assert.rejects(
         () => commissionRepository.adjustPayable(enterpriseAId, designerRow.id, designer.id, {

@@ -168,7 +168,9 @@ Component({
                   ? '查看预约'
                   : item.action === 'staffing'
                     ? '需补人'
-                    : item.action === 'rebook'
+                    : item.action === 'profile'
+                      ? '去完善'
+                      : item.action === 'rebook'
                       ? '重新预约'
                       : item.action === 'reschedule'
                         ? '改期'
@@ -358,6 +360,10 @@ Component({
       }
       if (item.action === 'staffing') {
         this.openStaffRoster(item);
+        return;
+      }
+      if (item.action === 'profile') {
+        wx.navigateTo({ url: '/packages/business/profile-edit/profile-edit' });
         return;
       }
       if (item.action === 'reschedule' && item.leadId && item.appointmentId) {

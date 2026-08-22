@@ -36,3 +36,15 @@ test('designer-contact-sheet shows QR with long-press hint and copy wechat fallb
   assert.match(less, /\.dcs-sheet/);
   assert.match(less, /\.dcs-qr/);
 });
+
+test('free-design claim success reuses designer-contact-sheet and inline QR', () => {
+  const claimRoot = path.join(root, 'packages', 'business', 'free-design-service');
+  const js = fs.readFileSync(path.join(claimRoot, 'free-design-service.js'), 'utf8');
+  const wxml = fs.readFileSync(path.join(claimRoot, 'free-design-service.wxml'), 'utf8');
+  const json = JSON.parse(fs.readFileSync(path.join(claimRoot, 'free-design-service.json'), 'utf8'));
+  assert.match(json.usingComponents['designer-contact-sheet'], /designer-contact-sheet/);
+  assert.match(js, /onOpenContactSheet/);
+  assert.match(js, /hasDesignerContact/);
+  assert.match(wxml, /designer-qr-block/);
+  assert.match(wxml, /designer-contact-sheet/);
+});

@@ -1,4 +1,7 @@
 {
   "navigationBarTitleText": "确认领取",
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "designer-contact-sheet": "/components/designer-contact-sheet/designer-contact-sheet"
+  }
 }

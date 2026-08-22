@@ -165,16 +165,19 @@ export class ReferrerPortalRepository {
         isNull(leads.archivedAt)
       ))
       .orderBy(desc(leadCommissions.createdAt), desc(leadCommissions.id));
+    const items = rows.map(({ commission, leadId }) => ({
+      id: commission.id.toString(),
+      customerLabel: maskedCustomerLabel(leadId),
+      status: commission.status,
+      createdAt: commission.createdAt,
+      paidAt: commission.paidAt,
+    }));
+
     return {
       enterpriseName: scope.enterpriseName,
-      items: rows.map(({ commission, leadId }) => ({
-        id: commission.id.toString(),
-        customerLabel: maskedCustomerLabel(leadId),
-        amount: commission.payableAmount,
-        status: commission.status,
-        createdAt: commission.createdAt,
-        paidAt: commission.paidAt,
-      })),
+      payableCount: items.filter((item) => item.status === 'payable').length,
+      paidCount: items.filter((item) => item.status === 'paid').length,
+      items,
     };
   }
 }

@@ -45,7 +45,9 @@ test('staff notification delivery resolves openid from wechat_identities when st
   assert.match(source, /staff_signing_commission/);
   assert.match(source, /lead_converted/);
   assert.match(source, /templateKind: 'workflow_todo'/);
-  assert.match(source, /commission-records\/commission-records/);
+  assert.match(source, /staff-earnings\/staff-earnings/);
+  assert.doesNotMatch(source, /commission-records\/commission-records/);
+  assert.doesNotMatch(source, /formatWeChatAmount/);
 });
 
 test('sendSubscriptionMessage gates WeChat delivery on subscriptionMessagesEnabled', () => {

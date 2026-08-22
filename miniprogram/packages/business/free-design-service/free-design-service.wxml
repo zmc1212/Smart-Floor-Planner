@@ -136,10 +136,27 @@ FORM: design-references/miniprogram-airy-minimalist-v1/11-free-design-phone-auth
         </view>
       </view>
       <view class="designer-hairline"></view>
+      <view wx:if="{{designerProfile.wechatQrUrl}}" class="designer-qr-block" bindtap="onOpenContactSheet">
+        <image
+          wx:if="{{designerQrPath}}"
+          class="designer-qr"
+          src="{{designerQrPath}}"
+          mode="aspectFit"
+          show-menu-by-longpress="{{true}}"
+          aria-label="设计师微信二维码，长按可识别添加"
+        />
+        <view wx:elif="{{designerQrLoading}}" class="designer-qr-state">正在加载二维码…</view>
+        <view wx:else class="designer-qr-state error">
+          <text>二维码暂时无法读取</text>
+          <text class="designer-qr-retry" catchtap="onRetryDesignerQr">重试</text>
+        </view>
+        <text class="designer-qr-hint">长按识别二维码，添加设计师为好友</text>
+      </view>
       <view class="designer-wechat-row">
         <image class="wechat-mark" src="/packages/business/assets/login-v1/wechat.png" mode="aspectFit" />
         <text class="designer-wechat">微信号：{{designerProfile.wechatId || '暂未提供'}}</text>
         <text wx:if="{{designerProfile.wechatId}}" class="copy-link" bindtap="onCopyWechat">复制微信号</text>
+        <text wx:elif="{{designerProfile.wechatQrUrl}}" class="copy-link" bindtap="onOpenContactSheet">查看大图</text>
       </view>
     </view>
 
@@ -203,9 +220,9 @@ FORM: design-references/miniprogram-airy-minimalist-v1/11-free-design-phone-auth
       </view>
       <button class="claim-action existing-primary" bindtap="onOpenProject">查看服务档案</button>
       <button
-        class="claim-action-outline {{designerProfile && designerProfile.wechatId ? '' : 'is-disabled'}}"
+        class="claim-action-outline {{canContactDesigner ? '' : 'is-disabled'}}"
         bindtap="onContactDesigner"
-        disabled="{{!(designerProfile && designerProfile.wechatId)}}"
+        disabled="{{!canContactDesigner}}"
       >联系当前设计师</button>
     </view>
 
@@ -283,4 +300,10 @@ FORM: design-references/miniprogram-airy-minimalist-v1/11-free-design-phone-auth
     <text class="state-copy">{{errorMessage}}</text>
     <button class="state-action" bindtap="onRetry">重新确认</button>
   </view>
+
+  <designer-contact-sheet
+    visible="{{showContactSheet}}"
+    designer="{{designerProfile}}"
+    bind:close="closeContactSheet"
+  />
 </view>

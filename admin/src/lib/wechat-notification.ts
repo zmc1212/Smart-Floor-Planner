@@ -21,7 +21,6 @@ import {
   buildNewLeadPayload,
   buildSigningCommissionPayload,
   buildWorkflowTodoPayload,
-  formatWeChatAmount,
   type SubscriptionMessagePayload,
 } from '@/lib/miniprogram-subscription-messages';
 import {
@@ -778,21 +777,18 @@ export async function notifyStaffOfSigningCommission(input: {
 
     const byBeneficiary = new Map<
       string,
-      { beneficiaryUserId: bigint; payableAmount: number; roles: string[] }
+      { beneficiaryUserId: bigint; roles: string[] }
     >();
     for (const row of staffRows) {
       const key = row.beneficiaryUserId.toString();
-      const amount = Number(row.payableAmount);
       const current = byBeneficiary.get(key);
       if (!current) {
         byBeneficiary.set(key, {
           beneficiaryUserId: row.beneficiaryUserId,
-          payableAmount: Number.isFinite(amount) ? amount : 0,
           roles: [row.role],
         });
         continue;
       }
-      if (Number.isFinite(amount)) current.payableAmount += amount;
       if (!current.roles.includes(row.role)) current.roles.push(row.role);
     }
 
@@ -809,7 +805,6 @@ export async function notifyStaffOfSigningCommission(input: {
           return { success: false, skipped: true, error: 'staff beneficiary unavailable' };
         }
         const recipient = await enrichRecipientOpenid(staff);
-        const amountText = formatWeChatAmount(entry.payableAmount);
         const roleLabel =
           entry.roles.includes('designer') && entry.roles.includes('measurer')
             ? '设计测量提成'
@@ -821,12 +816,11 @@ export async function notifyStaffOfSigningCommission(input: {
           recipient,
           templateKind: 'workflow_todo',
           notificationType: 'staff_signing_commission',
-          message: `客户${lead.name}已签约，${roleLabel} ${amountText}`,
+          message: `客户${lead.name}已签约，${roleLabel}待发放`,
           dedupeKey: `staff_signing_commission:${input.leadId.toString()}:${staff.id.toString()}`,
-          page: '/packages/business/commission-records/commission-records',
+          page: '/packages/business/staff-earnings/staff-earnings',
           metadata: {
             roles: entry.roles,
-            payableAmount: entry.payableAmount.toFixed(2),
           },
           buildData: (template) =>
             buildWorkflowTodoPayload(template, {
@@ -834,7 +828,7 @@ export async function notifyStaffOfSigningCommission(input: {
               owner: recipient.displayName || recipient.username || '员工',
               currentStatus: '已签约',
               todo: '查看签单提成',
-              note: `${roleLabel}${amountText}`,
+              note: `${roleLabel}待发放`,
             }),
         });
       })

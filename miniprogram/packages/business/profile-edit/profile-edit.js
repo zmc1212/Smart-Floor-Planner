@@ -1,5 +1,6 @@
 const app = getApp();
 const api = require('../../../utils/api.js');
+const { loadDesignerQrToTempFile } = require('../../../utils/designerContact.js');
 
 const DEFAULT_AVATAR = '/images/mine-v6/profile-avatar.jpg';
 
@@ -15,6 +16,25 @@ function syncStoredProfile(profile) {
   wx.setStorageSync('userInfo', userInfo);
 }
 
+function buildEligibilityStatus(wechatId, hasQr) {
+  const id = String(wechatId || '').trim();
+  const missing = [];
+  if (!id) missing.push('微信号');
+  if (!hasQr) missing.push('个人二维码');
+  if (!missing.length) {
+    return {
+      assignmentEligible: true,
+      eligibilityLabel: '资料已齐，可接客户',
+      eligibilityTone: 'ready',
+    };
+  }
+  return {
+    assignmentEligible: false,
+    eligibilityLabel: `还差${missing.join('和')}，补齐后才能接客户`,
+    eligibilityTone: 'pending',
+  };
+}
+
 Page({
   data: {
     loading: true,
@@ -28,6 +48,11 @@ Page({
     isDesigner: false,
     wechatId: '',
     wechatQrUrl: '',
+    wechatQrPath: '',
+    hasWechatQr: false,
+    assignmentEligible: false,
+    eligibilityLabel: '',
+    eligibilityTone: 'pending',
   },
 
   onLoad() {
@@ -55,21 +80,53 @@ Page({
     if (avatarUrl) this.setData({ pendingAvatarPath: avatarUrl });
   },
 
+  applyWechatEligibility(wechatId, hasQr) {
+    const status = buildEligibilityStatus(wechatId, hasQr);
+    this.setData({
+      assignmentEligible: status.assignmentEligible,
+      eligibilityLabel: status.eligibilityLabel,
+      eligibilityTone: status.eligibilityTone,
+    });
+  },
+
   async loadWechatProfile() {
     try {
       const result = await api.request('/miniprogram/staff/wechat-profile', 'GET');
       const data = result.data || {};
+      const wechatId = data.wechatId || '';
+      const wechatQrUrl = data.wechatQrUrl || '';
+      const hasWechatQr = Boolean(wechatQrUrl || data.wechatQrAssetId);
       this.setData({
-        wechatId: data.wechatId || '',
-        wechatQrUrl: data.wechatQrUrl || '',
+        wechatId,
+        wechatQrUrl,
+        hasWechatQr,
+        wechatQrPath: '',
       });
+      this.applyWechatEligibility(wechatId, hasWechatQr);
+      if (wechatQrUrl) await this.loadQrPreview(wechatQrUrl);
     } catch (error) {
       wx.showToast({ title: (error && error.error) || '微信资料读取失败', icon: 'none' });
     }
   },
 
+  async loadQrPreview(url) {
+    const requestId = (this._qrRequestId || 0) + 1;
+    this._qrRequestId = requestId;
+    try {
+      const wechatQrPath = await loadDesignerQrToTempFile(url, 'profile-self');
+      if (requestId !== this._qrRequestId) return;
+      this.setData({ wechatQrPath, hasWechatQr: true });
+    } catch (error) {
+      if (requestId !== this._qrRequestId) return;
+      console.warn('Failed to load self WeChat QR preview', error);
+      this.setData({ wechatQrPath: '' });
+    }
+  },
+
   onWechatIdInput(event) {
-    this.setData({ wechatId: event.detail.value });
+    const wechatId = event.detail.value;
+    this.setData({ wechatId });
+    this.applyWechatEligibility(wechatId, this.data.hasWechatQr);
   },
 
   onChooseWechatQr() {
@@ -84,14 +141,27 @@ Page({
         this.setData({ uploadingQr: true });
         try {
           const upload = await api.uploadStaffWechatQr(filePath);
+          const wechatQrUrl = upload.data && upload.data.wechatQrUrl
+            ? upload.data.wechatQrUrl
+            : this.data.wechatQrUrl;
           this.setData({
             uploadingQr: false,
-            wechatQrUrl: upload.data && upload.data.wechatQrUrl ? upload.data.wechatQrUrl : this.data.wechatQrUrl,
+            wechatQrUrl,
+            hasWechatQr: true,
+            wechatQrPath: filePath,
           });
+          this.applyWechatEligibility(this.data.wechatId, true);
           wx.showToast({ title: '二维码已更新', icon: 'success' });
+          if (wechatQrUrl && wechatQrUrl !== filePath) {
+            this.loadQrPreview(wechatQrUrl);
+          }
         } catch (error) {
           this.setData({ uploadingQr: false });
-          wx.showToast({ title: (error && error.error) || '二维码上传失败', icon: 'none' });
+          wx.showToast({
+            title: (error && error.error) || '二维码上传失败',
+            icon: 'none',
+            duration: 3200,
+          });
         }
       },
     });
@@ -109,9 +179,19 @@ Page({
       return;
     }
     const wechatId = String(this.data.wechatId || '').trim();
-    if (this.data.isDesigner && (!wechatId || wechatId.length > 64)) {
-      wx.showToast({ title: '请填写 1–64 个字符的微信号', icon: 'none' });
-      return;
+    if (this.data.isDesigner) {
+      if (!wechatId || wechatId.length > 64) {
+        wx.showToast({ title: '请填写微信「我」页的微信号（不要填昵称）', icon: 'none' });
+        return;
+      }
+      if (/[\u4e00-\u9fff]/.test(wechatId) || /\s/.test(wechatId)) {
+        wx.showToast({ title: '请填写微信号，不要填微信昵称或空格', icon: 'none' });
+        return;
+      }
+      if (!this.data.hasWechatQr) {
+        wx.showToast({ title: '请先上传个人微信二维码，补齐后才能接客户', icon: 'none' });
+        return;
+      }
     }
     this.setData({ saving: true });
     try {
@@ -122,16 +202,18 @@ Page({
       }
       const result = await api.request('/miniprogram/profile', 'PATCH', { nickname });
       if (this.data.isDesigner) {
-        await api.request('/miniprogram/staff/wechat-profile', 'PATCH', { wechatId });
+        const wechat = await api.request('/miniprogram/staff/wechat-profile', 'PATCH', { wechatId });
+        const data = (wechat && wechat.data) || {};
+        this.applyWechatEligibility(data.wechatId || wechatId, Boolean(data.wechatQrAssetId || this.data.hasWechatQr));
       }
       const profile = { ...(result.data || {}), avatar: (result.data && result.data.avatar) || avatar };
       syncStoredProfile(profile);
-      this.setData({ saving: false, profile, nickname: profile.name, pendingAvatarPath: '' });
+      this.setData({ saving: false, profile, nickname: profile.name, pendingAvatarPath: '', wechatId });
       wx.showToast({ title: '资料已保存', icon: 'success' });
       setTimeout(() => wx.navigateBack(), 500);
     } catch (error) {
       this.setData({ saving: false });
-      wx.showToast({ title: (error && error.error) || '资料保存失败', icon: 'none' });
+      wx.showToast({ title: (error && error.error) || '资料保存失败', icon: 'none', duration: 3200 });
     }
   }
 });

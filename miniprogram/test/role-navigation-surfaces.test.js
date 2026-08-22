@@ -180,7 +180,13 @@ test('designer and measurer earnings are direct role-tab destinations', () => {
   assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   assert.match(template, /<custom-tab-bar\s*\/>/);
   assert.match(template, /我的收益/);
+  assert.match(template, /待发放/);
+  assert.match(template, /已发放/);
+  assert.doesNotMatch(template, /amountLabel|payableTotal|¥\{\{/);
   assert.match(page, /['"`]\/miniprogram\/staff-earnings['"`]/);
+  assert.match(page, /payableCount/);
+  assert.match(page, /paidCount/);
+  assert.doesNotMatch(page, /amountLabel|payableTotal/);
   assert.match(navigation, /staff-earnings\/staff-earnings': 'staff\.earnings'/);
   assert.match(tabBar, /capability: 'staff\.earnings'[\s\S]*pagePath: '\/packages\/business\/staff-earnings\/staff-earnings'/);
   assert.match(tabBar, /designer: \[[\s\S]*key: 'earnings', capability: 'staff\.earnings'/);

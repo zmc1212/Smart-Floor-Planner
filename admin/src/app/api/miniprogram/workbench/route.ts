@@ -4,6 +4,7 @@ import { AdminUserRepository, AppointmentRepository, CustomerProjectRepository, 
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import {
+  buildDesignerWechatProfileTodo,
   buildEnterpriseExpiredExceptionItem,
   buildEnterprisePendingExceptionItem,
   buildEnterpriseStaffingExceptionItem,
@@ -88,7 +89,8 @@ export async function GET(request: Request) {
       if (role === 'designer') {
         const scope = { staffId, staffVisibility: 'assigned' as const };
         const measurerScope = { staffId, staffVisibility: 'measurer' as const };
-        const [leadList, statusCounts, surveyList, expiredUnbooked, opsDashboard] = await Promise.all([
+        const adminUsers = new AdminUserRepository(transaction);
+        const [leadList, statusCounts, surveyList, expiredUnbooked, opsDashboard, selfStaff] = await Promise.all([
           leads.list({ ...scope, page: 1, limit: 6, orderBy: 'updatedAt' }),
           leads.countStatuses(scope, ['new', 'contacted', 'measuring', 'measured', 'assigned', 'designing', 'quoting']),
           leads.list({ ...measurerScope, page: 1, limit: 20, orderBy: 'updatedAt' }),
@@ -99,6 +101,7 @@ export async function GET(request: Request) {
             scope,
             includeContractAmount: false,
           }),
+          adminUsers.findById(staffId),
         ]);
         const publicationLeadIds = [
           ...leadList.rows.map((row) => row.id),
@@ -135,6 +138,15 @@ export async function GET(request: Request) {
             .map((lead) => leadItem(lead, surveyIds.has(lead.id.toString()) ? 'survey' : 'lead', publishedCountFor(lead.id))),
         ].sort(compareDesignerWorkbenchItems);
         const activeCount = Object.values(statusCounts).reduce((sum, value) => sum + value, 0);
+        const profileTodo = selfStaff
+          ? buildDesignerWechatProfileTodo({
+              wechatId: selfStaff.wechatId,
+              wechatQrAssetId: selfStaff.wechatQrAssetId,
+            })
+          : null;
+        const primaryItems = profileTodo
+          ? [profileTodo, ...followUps.slice(0, 7)]
+          : followUps.slice(0, 8);
         return {
           role,
           title: '设计师工作台',
@@ -144,7 +156,7 @@ export async function GET(request: Request) {
             { key: 'active', label: '待推进客户', value: activeCount, detail: '仅本人负责', tone: 'green' },
             { key: 'measuring', label: '待量房交接', value: Number(statusCounts.measuring || 0) + surveyTasks.length, detail: '可立即量房或等待正式量房', tone: 'blue' },
           ],
-          primaryItems: followUps.slice(0, 8),
+          primaryItems,
           tasks: [...ownExpired, ...surveyTasks],
           activityCode: { label: '出示活动码', target: 'activity-code' },
           secondary: { label: '查看全部客户', target: 'customers' },

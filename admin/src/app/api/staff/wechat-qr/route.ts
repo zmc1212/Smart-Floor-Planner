@@ -3,6 +3,7 @@ import { parsePostgresId } from '@/db/postgres-dto';
 import { AiCreationRepository } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
 import { storePostgresMediaBuffer, getPostgresMediaAssetImageUrl } from '@/lib/ai/postgres-media-assets';
+import { prepareStaffWechatQrUpload, StaffWechatQrError } from '@/lib/staff-wechat-qr';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 export async function POST(request: Request) {
@@ -16,16 +17,33 @@ export async function POST(request: Request) {
       if (file.size > 5 * 1024 * 1024) {
         return NextResponse.json({ success: false, error: '二维码图片不能超过 5MB' }, { status: 400 });
       }
-      const buffer = Buffer.from(await file.arrayBuffer());
+      const prepared = await prepareStaffWechatQrUpload({
+        buffer: Buffer.from(await file.arrayBuffer()),
+        mimeType: file.type,
+      });
       const stored = await storePostgresMediaBuffer({
         enterpriseId: parsePostgresId(context.enterpriseId!, 'enterpriseId'),
         ownerType: 'staff_wechat_qr',
-        mimeType: file.type,
-        buffer,
+        mimeType: prepared.mimeType,
+        buffer: prepared.buffer,
+        width: prepared.width,
+        height: prepared.height,
       });
-      return NextResponse.json({ success: true, data: { assetId: stored.asset.id.toString(), imageUrl: getPostgresMediaAssetImageUrl(stored.asset.id) } }, { status: 201 });
+      return NextResponse.json({
+        success: true,
+        data: {
+          assetId: stored.asset.id.toString(),
+          imageUrl: getPostgresMediaAssetImageUrl(stored.asset.id),
+        },
+      }, { status: 201 });
     });
   } catch (error: unknown) {
+    if (error instanceof StaffWechatQrError) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : '二维码上传失败' }, { status: 500 });
   }
 }

@@ -1,5 +1,10 @@
 const api = require('../../../utils/api.js');
 const { leaveScanLanding } = require('../../../utils/identity-navigation.js');
+const {
+  hasDesignerContact,
+  loadDesignerQrToTempFile,
+  copyDesignerWechatId,
+} = require('../../../utils/designerContact.js');
 
 function currentSignedIdentity() {
   const app = typeof getApp === 'function' ? getApp() : null;
@@ -103,11 +108,16 @@ function applyClaimResult(page, response) {
     pageState: designerProfile ? 'success' : 'pending',
     navTitle: navTitleFor(designerProfile ? 'success' : 'pending'),
     designerProfile,
+    canContactDesigner: canContactDesigner(designerProfile),
     lead: response.data && response.data.lead || null
   });
   if (designerProfile && designerProfile.wechatQrUrl) {
     page.loadDesignerQr(designerProfile.wechatQrUrl);
   }
+}
+
+function canContactDesigner(designer) {
+  return hasDesignerContact(designer);
 }
 
 function resolveErrorMessage(error) {
@@ -186,7 +196,12 @@ async function hydrateExistingAttribution(page) {
       serviceStageLabel: project.serviceStageLabel || fallbackStage,
       lastUpdateLabel: formatRelativeUpdate(updatedAt),
       designerProfile: project.designer || page.data.designerProfile || null,
+      canContactDesigner: canContactDesigner(project.designer || page.data.designerProfile),
     });
+    const designer = project.designer || page.data.designerProfile;
+    if (designer && designer.wechatQrUrl) {
+      page.loadDesignerQr(designer.wechatQrUrl);
+    }
   } catch (error) {
     page.setData({
       existingServiceLabel: fallbackName,
@@ -212,6 +227,8 @@ Page({
     designerQrPath: '',
     designerQrLoading: false,
     designerQrError: false,
+    canContactDesigner: false,
+    showContactSheet: false,
     lead: null,
     existingServiceLabel: '',
     serviceStageLabel: '',
@@ -348,39 +365,21 @@ Page({
     throw new Error('客户身份资料缺失');
   },
 
-  loadDesignerQr(url) {
+  async loadDesignerQr(url) {
     const requestId = (this.qrRequestId || 0) + 1;
     this.qrRequestId = requestId;
-    const token = getApp().globalData.token || wx.getStorageSync('token');
-    const separator = url.includes('?') ? '&' : '?';
     this.setData({ designerQrLoading: true, designerQrError: false, designerQrPath: '' });
-    wx.request({
-      url: `${url}${separator}clientCacheKey=${Date.now()}`,
-      method: 'GET',
-      responseType: 'arraybuffer',
-      header: { Authorization: token ? `Bearer ${token}` : '' },
-      success: (response) => {
-        if (requestId !== this.qrRequestId) return;
-        if (response.statusCode < 200 || response.statusCode >= 300 || !(response.data instanceof ArrayBuffer)) {
-          this.setData({ designerQrLoading: false, designerQrError: true });
-          return;
-        }
-        const filePath = `${wx.env.USER_DATA_PATH}/assigned-designer-qr.png`;
-        wx.getFileSystemManager().writeFile({
-          filePath,
-          data: response.data,
-          success: () => {
-            if (requestId === this.qrRequestId) {
-              this.setData({ designerQrLoading: false, designerQrError: false, designerQrPath: filePath });
-            }
-          },
-          fail: () => this.setData({ designerQrLoading: false, designerQrError: true })
-        });
-      },
-      fail: () => {
-        if (requestId === this.qrRequestId) this.setData({ designerQrLoading: false, designerQrError: true });
-      }
-    });
+    try {
+      const designer = this.data.designerProfile;
+      const cacheKey = String((designer && designer.id) || 'claim');
+      const designerQrPath = await loadDesignerQrToTempFile(url, cacheKey);
+      if (requestId !== this.qrRequestId) return;
+      this.setData({ designerQrLoading: false, designerQrError: false, designerQrPath });
+    } catch (error) {
+      if (requestId !== this.qrRequestId) return;
+      console.warn('Failed to load claim designer QR', error);
+      this.setData({ designerQrLoading: false, designerQrError: true, designerQrPath: '' });
+    }
   },
 
   onRetryDesignerQr() {
@@ -391,29 +390,28 @@ Page({
   onCopyWechat() {
     const wechatId = this.data.designerProfile && this.data.designerProfile.wechatId;
     if (!wechatId) return;
-    wx.setClipboardData({ data: wechatId, success: () => wx.showToast({ title: '微信号已复制', icon: 'success' }) });
+    copyDesignerWechatId(wechatId, { withSearchHint: false }).catch(() => {
+      wx.showToast({ title: '复制失败，请稍后重试', icon: 'none' });
+    });
   },
 
-  async onSaveQr() {
-    const filePath = this.data.designerQrPath;
-    if (!filePath) {
-      wx.showToast({ title: '二维码尚未准备好', icon: 'none' });
+  onOpenContactSheet() {
+    const designer = this.data.designerProfile;
+    if (!hasDesignerContact(designer)) {
+      wx.showToast({ title: '设计师联系方式暂未提供', icon: 'none' });
       return;
     }
-    try {
-      await wx.saveImageToPhotosAlbum({ filePath });
-      wx.showToast({ title: '二维码已保存', icon: 'success' });
-    } catch (error) {
-      const message = error && error.errMsg || '';
-      if (message.includes('auth deny') || message.includes('auth denied')) {
-        wx.showModal({
-          title: '需要相册权限',
-          content: '请在设置中允许保存图片到相册。',
-          confirmText: '去设置',
-          success: (result) => result.confirm && wx.openSetting()
-        });
-      }
+    if (designer.wechatQrUrl) {
+      this.setData({ showContactSheet: true });
+      return;
     }
+    copyDesignerWechatId(designer.wechatId, { withSearchHint: true }).catch(() => {
+      wx.showToast({ title: '复制失败，请稍后重试', icon: 'none' });
+    });
+  },
+
+  closeContactSheet() {
+    this.setData({ showContactSheet: false });
   },
 
   onOpenProject() {
@@ -426,15 +424,7 @@ Page({
   },
 
   onContactDesigner() {
-    const wechatId = this.data.designerProfile && this.data.designerProfile.wechatId;
-    if (!wechatId) {
-      wx.showToast({ title: '设计师联系方式暂未提供', icon: 'none' });
-      return;
-    }
-    wx.setClipboardData({
-      data: wechatId,
-      success: () => wx.showToast({ title: '微信号已复制', icon: 'success' }),
-    });
+    this.onOpenContactSheet();
   },
 
   onRetry() {

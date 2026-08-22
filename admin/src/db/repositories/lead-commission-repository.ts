@@ -627,23 +627,26 @@ export class LeadCommissionRepository {
       ))
       .orderBy(desc(leadCommissions.createdAt), desc(leadCommissions.id));
 
+    const items = rows.map(({ commission, leadId, leadName, assignedTo, measurerId }) => {
+      const assigned = input.role === 'designer'
+        ? assignedTo === input.staffId
+        : measurerId === input.staffId;
+      return {
+        id: commission.id.toString(),
+        customerLabel: assigned && leadName
+          ? leadName
+          : `服务客户 #${leadId.toString().slice(-4).padStart(4, '0')}`,
+        status: commission.status,
+        createdAt: commission.createdAt,
+        paidAt: commission.paidAt,
+      };
+    });
+
     return {
       enterpriseName: input.enterpriseName,
-      items: rows.map(({ commission, leadId, leadName, assignedTo, measurerId }) => {
-        const assigned = input.role === 'designer'
-          ? assignedTo === input.staffId
-          : measurerId === input.staffId;
-        return {
-          id: commission.id.toString(),
-          customerLabel: assigned && leadName
-            ? leadName
-            : `服务客户 #${leadId.toString().slice(-4).padStart(4, '0')}`,
-          amount: commission.payableAmount,
-          status: commission.status,
-          createdAt: commission.createdAt,
-          paidAt: commission.paidAt,
-        };
-      }),
+      payableCount: items.filter((item) => item.status === 'payable').length,
+      paidCount: items.filter((item) => item.status === 'paid').length,
+      items,
     };
   }
 

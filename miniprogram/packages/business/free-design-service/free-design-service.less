@@ -93,6 +93,12 @@ page {
   box-sizing: border-box;
 }
 
+.claim-success {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .ready-hero,
 .auth-hero,
 .success-hero,
@@ -556,6 +562,59 @@ button.claim-action[disabled] {
   margin: 22rpx 0;
   background: #e4ebe4;
   transform: scaleY(0.5);
+}
+
+.designer-qr-block {
+  display: flex;
+  margin-bottom: 18rpx;
+  padding: 20rpx;
+  flex-direction: column;
+  align-items: center;
+  border-radius: 22rpx;
+  background: #f8faf9;
+  box-shadow: inset 0 0 0 1rpx rgba(207, 220, 207, 0.65);
+  box-sizing: border-box;
+}
+
+.designer-qr {
+  width: 280rpx;
+  height: 280rpx;
+  background: #f5f8f5;
+}
+
+.designer-qr-state {
+  display: flex;
+  width: 280rpx;
+  height: 280rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  color: #69806f;
+  background: #f5f8f5;
+  font-size: 24rpx;
+  line-height: 1.4;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.designer-qr-state.error {
+  color: #8b6b3f;
+  background: #fcf7ed;
+}
+
+.designer-qr-retry {
+  color: #1f9d55;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.designer-qr-hint {
+  margin-top: 14rpx;
+  color: #728078;
+  font-size: 22rpx;
+  line-height: 1.45;
+  text-align: center;
 }
 
 .designer-wechat-row {

@@ -75,10 +75,21 @@ test('designer profile edit loads and saves wechat id plus qr without requiring 
   const api = source('utils/api.js');
   assert.match(page, /\/miniprogram\/staff\/wechat-profile/);
   assert.match(page, /uploadStaffWechatQr/);
+  assert.match(page, /loadDesignerQrToTempFile/);
+  assert.match(page, /assignmentEligible/);
+  assert.match(page, /补齐后才能接客户/);
   assert.match(template, /wx:if="\{\{isDesigner\}\}"/);
   assert.match(template, /wechatId/);
-  assert.match(template, /wechatQrUrl/);
+  assert.match(template, /wechatQrPath|hasWechatQr/);
+  assert.match(template, /eligibilityLabel/);
+  assert.match(template, /领取成功页和服务档案/);
   assert.doesNotMatch(template, /测量员.*二维码/);
   assert.match(api, /function uploadStaffWechatQr/);
   assert.match(api, /\/miniprogram\/staff\/wechat-qr/);
+});
+
+test('designer workbench opens profile edit from WeChat profile todo', () => {
+  const workbench = source('components/role-workbench/role-workbench.js');
+  assert.match(workbench, /action === 'profile'/);
+  assert.match(workbench, /profile-edit\/profile-edit/);
 });

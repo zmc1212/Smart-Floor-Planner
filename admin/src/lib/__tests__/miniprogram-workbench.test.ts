@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildDesignerWechatProfileTodo,
   buildEnterpriseExpiredExceptionItem,
   buildEnterprisePendingExceptionItem,
   buildEnterpriseStaffRosterItem,
@@ -66,6 +67,29 @@ test('designers need an active wechat profile and measurers only need to stay as
     status: 'active',
     assignmentPaused: true,
   }), false);
+});
+
+test('designer workbench surfaces a profile todo when WeChat contact is incomplete', () => {
+  assert.equal(buildDesignerWechatProfileTodo({
+    wechatId: 'wx-lin',
+    wechatQrAssetId: 9n,
+  }), null);
+  const missingBoth = buildDesignerWechatProfileTodo({
+    wechatId: '  ',
+    wechatQrAssetId: null,
+  });
+  assert.ok(missingBoth);
+  assert.equal(missingBoth!.action, 'profile');
+  assert.equal(missingBoth!.id, 'designer-wechat-profile');
+  assert.match(missingBoth!.subtitle, /微信号/);
+  assert.match(missingBoth!.subtitle, /个人二维码/);
+  const missingQr = buildDesignerWechatProfileTodo({
+    wechatId: 'wx-lin',
+    wechatQrAssetId: null,
+  });
+  assert.ok(missingQr);
+  assert.match(missingQr!.subtitle, /个人二维码/);
+  assert.doesNotMatch(missingQr!.subtitle, /微信号和/);
 });
 
 test('enterprise operations expose missing designer and measurer staffing as exceptions', () => {

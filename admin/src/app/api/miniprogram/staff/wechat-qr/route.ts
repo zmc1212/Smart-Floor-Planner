@@ -5,6 +5,7 @@ import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
+import { prepareStaffWechatQrUpload, StaffWechatQrError } from '@/lib/staff-wechat-qr';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,12 +24,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: '二维码图片不能超过 5MB' }, { status: 400 });
     }
     const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
-    const buffer = Buffer.from(await file.arrayBuffer());
+    const prepared = await prepareStaffWechatQrUpload({
+      buffer: Buffer.from(await file.arrayBuffer()),
+      mimeType: file.type,
+    });
     const stored = await storePostgresMediaBuffer({
       enterpriseId,
       ownerType: 'staff_wechat_qr',
-      mimeType: file.type,
-      buffer,
+      mimeType: prepared.mimeType,
+      buffer: prepared.buffer,
+      width: prepared.width,
+      height: prepared.height,
     });
     const staff = await withMiniProgramPostgresTransaction(context, (transaction) =>
       new AdminUserRepository(transaction).update(
@@ -37,6 +43,8 @@ export async function POST(request: Request) {
       )
     );
     if (!staff) return NextResponse.json({ success: false, error: '员工账号不存在' }, { status: 404 });
+    const wechatId = String(staff.wechatId || '').trim();
+    const assignmentEligible = Boolean(wechatId && staff.wechatQrAssetId);
     return NextResponse.json({
       success: true,
       data: {
@@ -46,9 +54,21 @@ export async function POST(request: Request) {
           assetId: stored.asset.id.toString(),
           enterpriseId: context.enterpriseId,
         }),
+        assignmentEligible,
+        missing: assignmentEligible
+          ? []
+          : [
+              ...(!wechatId ? ['wechatId'] as const : []),
+            ],
       },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof StaffWechatQrError) {
+      return NextResponse.json(
+        { success: false, error: error.message, code: error.code },
+        { status: error.status }
+      );
+    }
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : '二维码上传失败' },
       { status: 500 }

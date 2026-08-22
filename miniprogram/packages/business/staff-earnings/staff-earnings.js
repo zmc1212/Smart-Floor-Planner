@@ -13,20 +13,20 @@ function navigationMetrics() {
   };
 }
 
-function money(value) {
-  return `¥${Number(value || 0).toFixed(2)}`;
-}
-
 function statusMeta(status) {
   return status === 'paid'
-    ? { label: '已支付', tone: 'paid' }
+    ? { label: '已发放', tone: 'paid' }
     : status === 'voided'
       ? { label: '已作废', tone: 'voided' }
-      : { label: '待支付', tone: 'payable' };
+      : { label: '待发放', tone: 'payable' };
 }
 
 function introTitleForRole(role) {
   return role === 'measurer' ? '当前企业的测量收益' : '当前企业的设计收益';
+}
+
+function countLabel(value) {
+  return `${Number(value || 0)}笔`;
 }
 
 Page({
@@ -39,8 +39,8 @@ Page({
     error: '',
     enterpriseName: '',
     items: [],
-    payableTotal: '¥0.00',
-    paidTotal: '¥0.00'
+    payableCountLabel: '0笔',
+    paidCountLabel: '0笔'
   },
 
   onLoad() {
@@ -62,19 +62,16 @@ Page({
     this.setData({ loading: true, error: '' });
     try {
       const result = await api.request('/miniprogram/staff-earnings', 'GET');
-      const items = (result.data && result.data.items || []).map((item) => ({
+      const payload = result.data || {};
+      const items = (payload.items || []).map((item) => ({
         ...item,
-        amountLabel: money(item.amount),
         statusMeta: statusMeta(item.status)
       }));
-      const total = (status) => items
-        .filter((item) => item.status === status)
-        .reduce((sum, item) => sum + Number(item.amount || 0), 0);
       this.setData({
-        enterpriseName: result.data && result.data.enterpriseName || '',
+        enterpriseName: payload.enterpriseName || '',
         items,
-        payableTotal: money(total('payable')),
-        paidTotal: money(total('paid'))
+        payableCountLabel: countLabel(payload.payableCount),
+        paidCountLabel: countLabel(payload.paidCount)
       });
     } catch (error) {
       this.setData({ error: error.message || error.error || '暂时无法读取收益' });

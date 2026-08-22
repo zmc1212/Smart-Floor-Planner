@@ -31,7 +31,7 @@ This document is the current implementation contract for WeChat Mini Program pub
 | Design scheme visible to the customer | `design_published` | `Implemented` |
 | Enterprise status `approve` / `reject` after `POST /api/admin/enterprises/[id]/status` | `enterprise_join_result` | `Implemented`: recipient is the enterprise `contactPerson.phone` resolved through `users` → `wechat_identities.openid`. Missing openid/template or WeChat rejection never rolls back the status transition. Web `/register` applicants without Mini Program subscribe authorization may be skipped. |
 | Referrer payable commission after `POST /api/leads/[id]/convert` when a `role=referrer` snapshot row exists | `signing_commission` | `Implemented`: WeChat-only best-effort to the commission beneficiary openid; designers/measurers are not recipients of this template. |
-| Designer/measurer payable commission after the same convert when `role=designer` / `measurer` payable rows exist | `workflow_todo` | `Implemented`: `staff_notifications` plus WeChat; deduped by `beneficiaryUserId` (one send if the same person holds both roles); amount goes in the note field; does not consume a fourth subscribe slot. |
+| Designer/measurer payable commission after the same convert when `role=designer` / `measurer` payable rows exist | `workflow_todo` | `Implemented`: `staff_notifications` plus WeChat; deduped by `beneficiaryUserId` (one send if the same person holds both roles); note/message carry role + 待发放 only (no amount); deep-links to `staff-earnings`; does not consume a fourth subscribe slot. |
 | Enterprise-administrator signing success after the same convert commit | `lead_converted` | `Implemented`: uses `staff_notifications` plus WeChat; designers/measurers/customers are not recipients. |
 | Legacy promotion `follow_up_*` / `measure_*` / `design_*` / `conflict_pending` / `record_closed` | — | `Retired`: create/update promotion routes and the reminder cron no longer send these; historical `workflow_notification_logs` remain readable only. |
 
@@ -46,7 +46,7 @@ Subscription `page` targets after WeChat tap:
 | `lead_assignment` | Designer / measurer | `/packages/business/lead-detail/lead-detail?id={leadId}` |
 | `new_lead` | Enterprise admin | same lead detail |
 | `workflow_todo` (assignment pending / survey completed) | Enterprise admin / designer | same lead detail |
-| `workflow_todo` (staff signing commission) | Designer / measurer | `/packages/business/commission-records/commission-records` |
+| `workflow_todo` (staff signing commission) | Designer / measurer | `/packages/business/staff-earnings/staff-earnings` |
 | `measurement_appointment` (staff) | Designer / measurer | same lead detail |
 | `measurement_appointment` (customer) | Customer | `/packages/business/customer-project/customer-project?leadId={leadId}` |
 | `design_published` | Customer | same customer project archive |
@@ -63,7 +63,7 @@ Staff lead notifications must not open the bare `leads-management` list without 
 - `sendSubscriptionMessage` is the single WeChat choke point: when `subscriptionMessagesEnabled` is false it returns `{ success: false, skipped: true }` and never calls WeChat. In-app `staff_notifications` and workbench badges continue to write.
 - `GET /api/miniprogram/notification-template` still returns the ordered eight-template list to authenticated Mini Program users for compatibility, but the client no longer requests subscribe authorization.
 - Mini Program hard-remove: no `wx.requestSubscribeMessage`, no login/onboarding/claim “开启通知” modals, and no Mine「订阅任务通知」row. Mine keeps「微信权限管理」(`wx.openSetting`). Re-enabling later requires restoring that authorize UX.
-- Server builders emit only approved keys and normalize empty values, character limits, and China-time `YYYY-MM-DD HH:mm:ss` values. `phrase2` for join results is `审核通过` or `审核不通过`. Signing commission `amount4` uses `¥xx.xx`.
+- Server builders emit only approved keys and normalize empty values, character limits, and China-time `YYYY-MM-DD HH:mm:ss` values. `phrase2` for join results is `审核通过` or `审核不通过`. Referrer signing commission `amount4` remains a WeChat amount-type field and is therefore `Limited` (platform still requires a numeric amount; Mini Program personal-earnings UI no longer surfaces amounts). Staff signing notes omit amounts.
 - Workflow dispatch for **legacy promotion reports is retired**. Lead/appointment/signing notifications write `staff_notifications` `in_app` first (where applicable), then attempt WeChat only when the platform switch is on, recording `sent`, `failed`, or `skipped`. Enterprise join-result and referrer signing-commission delivery remain WeChat-only best-effort after commit when enabled. Missing openids/templates and WeChat failures never roll back business data.
 - `/api/automation/reminders/run` only runs appointment expiry for the current matrix; it no longer scans promotion follow-up / `measureDueAt` / `designDueAt` / protection-pool nudges.
 - Duplicate-phone lead intake reuses the existing lead and emits no new enterprise-administrator or designer notification.

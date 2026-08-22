@@ -52,7 +52,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
             <text class="stat-pill-text">已签约 {{signedCount}}</text>
           </view>
           <view class="stat-pill">
-            <text class="stat-pill-text">待结收益 ¥{{pendingEarnings}}</text>
+            <text class="stat-pill-text">待发放 {{pendingCount}}</text>
           </view>
         </view>
         <button class="hero-cta-btn" bindtap="showServiceCode" hover-class="cta-btn-pressed">

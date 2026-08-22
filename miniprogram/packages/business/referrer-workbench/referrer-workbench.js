@@ -48,12 +48,6 @@ function isToday(value) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
-function formatMoney(amount) {
-  const num = Number(amount || 0);
-  if (Number.isNaN(num) || num === 0) return '0.00';
-  return num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 function stageTagClass(stageKey) {
   if (['design_published', 'converted'].includes(stageKey)) return 'design-ready';
   if (['survey_completed', 'appointment_confirmed'].includes(stageKey)) return 'settled';
@@ -77,7 +71,7 @@ Page({
     todayScans: 0,
     totalClients: 0,
     signedCount: 0,
-    pendingEarnings: '0.00',
+    pendingCount: 0,
     progressCount: 0,
     milestones: [],
   },
@@ -128,7 +122,7 @@ Page({
       let todayScans = 0;
       let totalClients = 0;
       let signedCount = 0;
-      let pendingEarnings = '0.00';
+      let pendingCount = 0;
       let progressCount = 0;
       let milestones = [];
 
@@ -141,16 +135,17 @@ Page({
 
           const progressItems = (progressRes && progressRes.data && Array.isArray(progressRes.data.items)) ? progressRes.data.items : [];
           const earningsItems = (earningsRes && earningsRes.data && Array.isArray(earningsRes.data.items)) ? earningsRes.data.items : [];
+          const earningsPayload = (earningsRes && earningsRes.data) || {};
 
           totalClients = progressItems.length;
           progressCount = progressItems.length;
           todayScans = progressItems.filter((item) => isToday(item.updatedAt) || isToday(item.convertedAt)).length;
           signedCount = progressItems.filter((item) => item.stage && item.stage.key === 'converted').length;
 
-          const payableSum = earningsItems
-            .filter((item) => item.status === 'payable')
-            .reduce((sum, item) => sum + Number(item.amount || 0), 0);
-          pendingEarnings = formatMoney(payableSum);
+          pendingCount = Number(earningsPayload.payableCount);
+          if (!Number.isFinite(pendingCount)) {
+            pendingCount = earningsItems.filter((item) => item.status === 'payable').length;
+          }
 
           const earningsByCustomer = new Map();
           for (const earn of earningsItems) {
@@ -165,10 +160,10 @@ Page({
             let rewardClass = '';
             if (earn) {
               if (earn.status === 'paid') {
-                rewardLabel = `已到账 ¥${Number(earn.amount || 0).toFixed(0)}`;
+                rewardLabel = '已发放';
                 rewardClass = 'paid';
               } else if (earn.status === 'payable') {
-                rewardLabel = `预估 +¥${Number(earn.amount || 0).toFixed(0)}`;
+                rewardLabel = '待发放';
                 rewardClass = 'payable';
               }
             }
@@ -203,7 +198,7 @@ Page({
         todayScans,
         totalClients,
         signedCount,
-        pendingEarnings,
+        pendingCount,
         progressCount,
         milestones,
       });

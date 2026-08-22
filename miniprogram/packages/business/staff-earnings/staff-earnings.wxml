@@ -4,16 +4,16 @@
   </view>
   <view class="portal-intro sfp-hero-card">
     <text class="intro-title">{{introTitle}}</text>
-    <text class="intro-copy">收益由企业确认签约后形成，仅供本人查看。</text>
+    <text class="intro-copy">本页只展示发放笔数与状态，不展示金额。</text>
     <text wx:if="{{enterpriseName}}" class="enterprise-name">{{enterpriseName}}</text>
     <view class="summary-row">
       <view>
-        <text class="summary-label">待支付</text>
-        <text class="summary-value">{{payableTotal}}</text>
+        <text class="summary-label">待发放</text>
+        <text class="summary-value">{{payableCountLabel}}</text>
       </view>
       <view>
-        <text class="summary-label">已支付</text>
-        <text class="summary-value">{{paidTotal}}</text>
+        <text class="summary-label">已发放</text>
+        <text class="summary-value">{{paidCountLabel}}</text>
       </view>
     </view>
   </view>
@@ -31,12 +31,10 @@
     <view wx:for="{{items}}" wx:key="id" class="fact-card sfp-card">
       <view class="fact-top">
         <text class="customer-label">{{item.customerLabel}}</text>
-        <text class="amount">{{item.amountLabel}}</text>
       </view>
       <view class="earning-meta">
         <text class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</text>
         <text wx:if="{{item.status === 'paid' && item.paidAt}}">企业已完成支付</text>
-        <text wx:else>等待企业完成支付</text>
       </view>
     </view>
   </view>

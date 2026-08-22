@@ -54,7 +54,6 @@ test('referrer workbench lists active memberships and opens the selected service
             {
               id: 'earn-1',
               customerLabel: '服务客户 #0001',
-              amount: '200.00',
               status: 'payable',
               createdAt: new Date().toISOString(),
             },
@@ -83,10 +82,10 @@ test('referrer workbench lists active memberships and opens the selected service
     assert.equal(context.data.selectedMembershipId, 'active-1');
     assert.equal(context.data.totalClients, 1);
     assert.equal(context.data.todayScans, 1);
-    assert.equal(context.data.pendingEarnings, '200.00');
+    assert.equal(context.data.pendingCount, 1);
     assert.equal(context.data.milestones.length, 1);
     assert.equal(context.data.milestones[0].customerLabel, '服务客户 #0001');
-    assert.equal(context.data.milestones[0].rewardLabel, '预估 +¥200');
+    assert.equal(context.data.milestones[0].rewardLabel, '待发放');
     definition.showServiceCode.call(context);
     assert.equal(global.wx.lastNavigation.url, '/packages/business/promotion-service-code/promotion-service-code?membershipId=active-1');
   } finally {

@@ -57,21 +57,25 @@
 
     <block wx:if="{{isDesigner}}">
       <view class="account-section-title">设计师服务资料</view>
+      <view class="wechat-eligibility tone-{{eligibilityTone}}">
+        <text class="wechat-eligibility-label">{{eligibilityLabel}}</text>
+      </view>
       <view class="account-surface profile-name-surface">
         <view class="field-group">
           <text class="field-label">微信号</text>
-          <input class="field-input" value="{{wechatId}}" maxlength="64" placeholder="客户加你时使用的微信号" placeholder-class="field-placeholder" bindinput="onWechatIdInput" />
+          <input class="field-input" value="{{wechatId}}" maxlength="64" placeholder="微信「我」页的微信号，不是昵称" placeholder-class="field-placeholder" bindinput="onWechatIdInput" />
           <view class="field-counter">{{wechatId.length}} / 64</view>
         </view>
       </view>
       <view class="account-surface wechat-qr-surface">
         <view class="wechat-qr-copy">
           <text class="field-label">个人微信二维码</text>
-          <text class="wechat-qr-hint">客户领取成功后会看到这张码</text>
+          <text class="wechat-qr-hint">请从微信「我」页保存图片上传；客户会在领取成功页和服务档案看到这张码</text>
         </view>
-        <image wx:if="{{wechatQrUrl}}" class="wechat-qr-preview" src="{{wechatQrUrl}}" mode="aspectFit" />
+        <image wx:if="{{wechatQrPath}}" class="wechat-qr-preview" src="{{wechatQrPath}}" mode="aspectFit" show-menu-by-longpress="{{true}}" />
+        <view wx:elif="{{hasWechatQr}}" class="wechat-qr-empty">二维码已上传，正在加载预览…</view>
         <view wx:else class="wechat-qr-empty">尚未上传</view>
-        <button class="wechat-qr-upload" loading="{{uploadingQr}}" disabled="{{uploadingQr}}" bindtap="onChooseWechatQr">{{wechatQrUrl ? '更换二维码' : '上传二维码'}}</button>
+        <button class="wechat-qr-upload" loading="{{uploadingQr}}" disabled="{{uploadingQr}}" bindtap="onChooseWechatQr">{{hasWechatQr ? '更换二维码' : '上传二维码'}}</button>
       </view>
     </block>
 

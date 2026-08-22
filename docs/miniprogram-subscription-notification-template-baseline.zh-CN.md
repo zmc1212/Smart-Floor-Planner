@@ -31,7 +31,7 @@
 | 方案对客户可见 | `design_published` | `Implemented` |
 | 企业管理 `POST /api/admin/enterprises/[id]/status` 的 `approve` / `reject` | `enterprise_join_result` | `Implemented`：收件人为企业 `contactPerson.phone`，经 `users` → `wechat_identities.openid` 解析。缺少 openid/模板或微信拒发不得回滚状态流转。Web `/register` 未在小程序授权订阅时可能被跳过。 |
 | `POST /api/leads/[id]/convert` 成功且存在 `role=referrer` 提成快照行 | `signing_commission` | `Implemented`：仅微信尽力发给推荐人受益人 openid；设计师/测量员不是该模板收件人。 |
-| 同一签单提交成功且存在 `role=designer` / `measurer` 的应付提成行 | `workflow_todo` | `Implemented`：写 `staff_notifications` 并尽力发微信；按 `beneficiaryUserId` 去重（同一人兼两角只发一次）；金额写入备注；不占第四个授权位。 |
+| 同一签单提交成功且存在 `role=designer` / `measurer` 的应付提成行 | `workflow_todo` | `Implemented`：写 `staff_notifications` 并尽力发微信；按 `beneficiaryUserId` 去重（同一人兼两角只发一次）；备注/文案仅含岗位与「待发放」（不含金额）；点击进入 `staff-earnings`；不占第四个授权位。 |
 | 同一签单提交成功后通知企业负责人 | `lead_converted` | `Implemented`：写 `staff_notifications` 并尽力发微信；设计师/测量员/客户不收。 |
 | 旧企业报备 `follow_up_*` / `measure_*` / `design_*` / `conflict_pending` / `record_closed` | — | `Retired`：创建/更新报备与定时扫描均不再发送；历史 `workflow_notification_logs` 仅供查阅。 |
 
@@ -46,7 +46,7 @@
 | `lead_assignment` | 设计师 / 测量员 | `/packages/business/lead-detail/lead-detail?id={leadId}` |
 | `new_lead` | 企业负责人 | 同上客户详情 |
 | `workflow_todo`（待派单 / 量房完成） | 企业负责人 / 设计师 | 同上客户详情 |
-| `workflow_todo`（员工签单提成） | 设计师 / 测量员 | `/packages/business/commission-records/commission-records` |
+| `workflow_todo`（员工签单提成） | 设计师 / 测量员 | `/packages/business/staff-earnings/staff-earnings` |
 | `measurement_appointment`（员工） | 设计师 / 测量员 | 同上客户详情 |
 | `measurement_appointment`（客户） | 客户 | `/packages/business/customer-project/customer-project?leadId={leadId}` |
 | `design_published` | 客户 | 同上客户项目册 |
@@ -63,7 +63,7 @@
 - `sendSubscriptionMessage` 是唯一微信下发闸口：`subscriptionMessagesEnabled` 为 false 时直接返回 `{ success: false, skipped: true }`，不调用微信。站内 `staff_notifications` 与工作台徽标仍照常写入。
 - `GET /api/miniprogram/notification-template` 仍向已认证小程序用户返回有序八模板列表以保持兼容，但客户端不再发起订阅授权。
 - 小程序硬移除：无 `wx.requestSubscribeMessage`，无登录/入驻/领取「开启通知」弹窗，无「我的」Tab「订阅任务通知」行；保留「微信权限管理」（`wx.openSetting`）。日后重新启用需恢复授权引导 UI。
-- 服务端 builder 只输出所选模板允许的字段键，并统一处理空值、字符长度和中国时区 `YYYY-MM-DD HH:mm:ss`。入驻结果 `phrase2` 为「审核通过」或「审核不通过」。签单提成 `amount4` 使用 `¥xx.xx`。
+- 服务端 builder 只输出所选模板允许的字段键，并统一处理空值、字符长度和中国时区 `YYYY-MM-DD HH:mm:ss`。入驻结果 `phrase2` 为「审核通过」或「审核不通过」。推荐人签单模板 `amount4` 仍为微信金额类型，因此标记为 `Limited`（平台仍要求填数字；小程序个人收益页不再展示金额）。员工签单备注不含金额。
 - 旧企业报备工作流通知已停发。线索/预约/签单通知先写 `staff_notifications` 的 `in_app`（适用时），仅在平台开关开启时再尝试微信并记录 `sent`、`failed` 或 `skipped`。入驻结果与推荐人签单提成为仅微信尽力发送（开关开启时），且在提交成功后异步触发。微信失败、缺少 openid 或模板不得回滚业务。
 - `/api/automation/reminders/run` 仅跑现行矩阵的预约过期；不再扫描报备跟进 / `measureDueAt` / `designDueAt` / 保护期公海催办。
 - 手机号命中既有线索时继续复用原数据，不重复生成企业负责人或设计师通知。
