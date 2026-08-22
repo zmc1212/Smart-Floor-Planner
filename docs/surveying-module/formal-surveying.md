@@ -78,7 +78,9 @@ copy back to `layoutData`.
   dimension on the planned `dimensionStart`/`dimensionEnd` line rather than on
   the wall face. Recessed L-notch spans stay on their local face. Aligned dimensions are
   not written. The Mini Program / Admin canvas passes `includeRoomClear: false`
-  so on-canvas closed plans keep building-overall (and door/thickness) bands only.
+  for the shared closed plan so on-canvas closed plans keep building-overall
+  (and door/thickness) bands by default; when `session.selectedSpaceId` is set,
+  the editor overlays that room's internal clear dimensions only.
 - The Mini Program keeps its CAD control disabled until the cloud plan is
   completed. A download is saved to the Mini Program file domain and offered to
   the system document handler; devices without a DXF handler are told to send
@@ -100,6 +102,19 @@ copy back to `layoutData`.
 - The editor's right-rail canvas-clear/restart action requires confirmation,
   replaces the in-memory and local draft with a fresh v4 graph, and clears
   undo/redo plus queued, unsaved measurement audits.
+- Tap hit order is opening → wall → closed-space interior. Selecting a closed
+  space sets `session.selectedSpaceId` (clears wall/opening selection), paints
+  a blue fill + inner stroke, and shows that room's internal clear dimensions
+  only while selected. Selected-state `room-clear` spans merge collinear,
+  end-to-end `innerSegments` into one continuous clear label per side so a
+  neighboring T-junction that splits one physical edge into multiple graph
+  walls does not fragment the selected room's clear dims; `building-overall`
+  and `space.wallIds` topology stay unchanged. The right rail switches to a
+  room context with **命名** (`renameClosedSpace`, preset chips + custom input)
+  and **删除** (`deleteClosedSpace`). Delete removes walls referenced by only
+  that closed space; shared walls with adjacent closed rooms stay, then spaces
+  re-sync from faces. Ceiling height remains floor-level (`ceilingHeightMm`),
+  not per room.
 
 ## Geometry invariants
 
@@ -123,6 +138,8 @@ copy back to `layoutData`.
   leave no hard-avoiding layout. During that wall-drop wait
   (`wallSnapPending`), the canvas still pans and pinch-zooms; only a short tap
   on a wall or vertex places the cursor, so a drag does not lock the viewport.
+  A short tap on a closed-room fill selects that space (`selectSpace`) instead;
+  the wall/vertex toast appears only when neither snap nor fill hits.
   Resetting the cursor onto
   either dangling vertex resumes that same open chain instead of starting a
   new room from the existing wall. Dragging back along that
@@ -185,7 +202,8 @@ copy back to `layoutData`.
   live-dimension endpoints, and green cursor remain coincident on one continuous
   path. Straight-mode vertex or closure snaps may change at most one axis; they
   must not copy an off-axis vertex onto the orange preview. The wall-drag lens
-  reports the actual snap type. Adjacent working faces meet at their line intersection, so the previous
+  reports the actual snap type and shows a small green crosshair rather than the
+  canvas Fig.1 reticle. Adjacent working faces meet at their line intersection, so the previous
   red endpoint equals the following red start and a turn cannot shift either by
   one wall thickness. This display projection does not alter graph centreline
   or closure topology.

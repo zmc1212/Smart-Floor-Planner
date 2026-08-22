@@ -159,6 +159,27 @@ export class AdminUserRepository {
     return record as AdminUserWithRelations;
   }
 
+  /** Resolve an active designer/measurer staff row by linked Mini Program user id. */
+  async findActiveStaffByUserId(
+    enterpriseId: bigint,
+    userId: bigint,
+    roles: string[] = ['designer', 'measurer']
+  ) {
+    const filters = [
+      eq(adminUsers.enterpriseId, enterpriseId),
+      eq(adminUsers.userId, userId),
+      eq(adminUsers.status, 'active'),
+    ];
+    if (roles.length) filters.push(inArray(adminUsers.role, roles));
+    const rows = await this.transaction
+      .select()
+      .from(adminUsers)
+      .where(and(...filters))
+      .orderBy(desc(adminUsers.updatedAt), desc(adminUsers.id))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async findLinkedUserId(id: bigint) {
     const rows = await this.transaction
       .select({ userId: adminUsers.userId })

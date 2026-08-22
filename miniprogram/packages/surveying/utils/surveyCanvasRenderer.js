@@ -10,7 +10,7 @@ const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
 const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
-const RENDER_REVISION = 'shared-boundary-toggle-redline-face-v18';
+const RENDER_REVISION = 'cursor-lens-small-cross-v19';
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
 // Blue cursor coordinates use a denser cadence than the closure cue so the
@@ -23,6 +23,13 @@ const LIVE_DIMENSION_LABEL_BACKGROUND = 'rgba(210, 210, 210, 0.96)';
 const LIVE_DIMENSION_LABEL_COLOR = '#0077d7';
 const PERMANENT_DIMENSION_LABEL_BACKGROUND = 'rgba(255, 255, 255, 0.92)';
 const PERMANENT_DIMENSION_LABEL_COLOR = '#374151';
+const SELECTED_SPACE_FILL = 'rgba(64, 140, 255, 0.22)';
+const SELECTED_SPACE_STROKE = 'rgba(45, 120, 255, 0.95)';
+const SELECTED_ROOM_CLEAR_LINE = 'rgba(45, 120, 255, 0.88)';
+const SELECTED_ROOM_CLEAR_LABEL_BG = 'rgba(45, 120, 255, 0.94)';
+const SELECTED_ROOM_CLEAR_LABEL_COLOR = '#ffffff';
+const SELECTED_ROOM_CLEAR_INSET_PX = 26;
+const CLOSED_SPACE_FILL = 'rgba(209, 209, 207, 0.86)';
 const DIMENSION_LABEL_PADDING_X = 4;
 const DIMENSION_LABEL_HEIGHT_PX = 18;
 const PERMANENT_DIMENSION_LABEL_PADDING_X = 3;
@@ -226,7 +233,7 @@ function createClosedDimensions(walls, openings, spaces, spacePlans, outerRings,
     laneGap: DIMENSION_LABEL_HEIGHT_PX + 12,
     groupTolerance: 2,
     // Canvas keeps exterior overall (and door/thickness) bands only. Per-room
-    // clear spans duplicate the outer read and clutter the closed-room fill.
+    // clear spans are drawn only for the selected closed space.
     includeRoomClear: false,
     measurementUnitsPerCoordinate: 1 / Math.max(0.000001, Number(viewportScale || surveyGraph.DEFAULT_SCALE)),
     walls: (walls || []).filter((wall) => !wall.lineOnly && wall.closed).map((wall) => ({
@@ -274,6 +281,159 @@ function createClosedDimensions(walls, openings, spaces, spacePlans, outerRings,
     extensionStart: item.extensionStart,
     extensionEnd: item.extensionEnd
   }));
+}
+
+function averagePoints(points) {
+  if (!points || !points.length) return null;
+  let x = 0;
+  let y = 0;
+  points.forEach((point) => {
+    x += point.x;
+    y += point.y;
+  });
+  return { x: x / points.length, y: y / points.length };
+}
+
+const ROOM_CLEAR_JOIN_EPS_PX = 2.5;
+const ROOM_CLEAR_COLLINEAR_CROSS = 0.02;
+
+function roomClearPointsNear(a, b, eps) {
+  if (!a || !b) return false;
+  return Math.hypot(Number(a.x) - Number(b.x), Number(a.y) - Number(b.y)) <= eps;
+}
+
+function roomClearSegmentsCollinearAbutting(prev, next, eps) {
+  if (!prev || !next || !prev.start || !prev.end || !next.start || !next.end) return false;
+  if (!roomClearPointsNear(prev.end, next.start, eps)) return false;
+  const ax = Number(prev.end.x) - Number(prev.start.x);
+  const ay = Number(prev.end.y) - Number(prev.start.y);
+  const bx = Number(next.end.x) - Number(next.start.x);
+  const by = Number(next.end.y) - Number(next.start.y);
+  const al = Math.hypot(ax, ay) || 1;
+  const bl = Math.hypot(bx, by) || 1;
+  if ((ax * bx + ay * by) <= 0) return false;
+  return Math.abs(ax * by - ay * bx) / (al * bl) <= ROOM_CLEAR_COLLINEAR_CROSS;
+}
+
+function resolveRoomClearSegmentLabelMm(sceneWall, mmSegment) {
+  let labelMm = sceneWall && Number(sceneWall.lengthMm) > 0
+    ? Math.round(Number(sceneWall.lengthMm))
+    : 0;
+  if (!(labelMm > 0) && mmSegment && mmSegment.start && mmSegment.end) {
+    const dx = Number(mmSegment.end.xMm) - Number(mmSegment.start.xMm);
+    const dy = Number(mmSegment.end.yMm) - Number(mmSegment.start.yMm);
+    labelMm = Math.round(Math.hypot(dx, dy));
+  }
+  return labelMm > 0 ? labelMm : 0;
+}
+
+function mergeCollinearRoomClearSegments(projectedSegments, mmSegments, wallById) {
+  const entries = (projectedSegments || []).map((segment, index) => {
+    if (!segment || !segment.start || !segment.end) return null;
+    const sceneWall = wallById[segment.wallId];
+    const mmSegment = mmSegments && mmSegments[index] ? mmSegments[index] : null;
+    const labelMm = resolveRoomClearSegmentLabelMm(sceneWall, mmSegment);
+    if (!(labelMm > 0)) return null;
+    return {
+      start: segment.start,
+      end: segment.end,
+      wallId: segment.wallId || '',
+      wallIds: [segment.wallId || String(index)],
+      labelMm,
+      sceneWall
+    };
+  }).filter(Boolean);
+
+  if (!entries.length) return [];
+
+  const merged = [];
+  entries.forEach((entry) => {
+    const prev = merged[merged.length - 1];
+    if (prev && roomClearSegmentsCollinearAbutting(prev, entry, ROOM_CLEAR_JOIN_EPS_PX)) {
+      prev.end = entry.end;
+      prev.labelMm += entry.labelMm;
+      prev.wallIds.push(...entry.wallIds);
+      prev.sceneWall = prev.sceneWall || entry.sceneWall;
+      return;
+    }
+    merged.push({
+      start: entry.start,
+      end: entry.end,
+      wallId: entry.wallId,
+      wallIds: entry.wallIds.slice(),
+      labelMm: entry.labelMm,
+      sceneWall: entry.sceneWall
+    });
+  });
+
+  if (merged.length >= 2) {
+    const first = merged[0];
+    const last = merged[merged.length - 1];
+    if (roomClearSegmentsCollinearAbutting(last, first, ROOM_CLEAR_JOIN_EPS_PX)) {
+      first.start = last.start;
+      first.labelMm += last.labelMm;
+      first.wallIds = last.wallIds.concat(first.wallIds);
+      first.wallId = last.wallId || first.wallId;
+      first.sceneWall = last.sceneWall || first.sceneWall;
+      merged.pop();
+    }
+  }
+
+  return merged;
+}
+
+function createSelectedSpaceClearDimensions(selectedSpaceId, projectedSpacePlans, spaceDimensionPlans, walls) {
+  if (!selectedSpaceId) return [];
+  const projected = (projectedSpacePlans || []).find((entry) => entry.spaceId === selectedSpaceId);
+  const planEntry = (spaceDimensionPlans || []).find((entry) => entry.spaceId === selectedSpaceId);
+  if (!projected || !projected.innerSegments || projected.innerSegments.length < 3) return [];
+  const wallById = {};
+  (walls || []).forEach((wall) => { wallById[wall.id] = wall; });
+  const centroid = averagePoints(projected.innerBoundaryPoints || []) ||
+    averagePoints(projected.innerSegments.map((segment) => ({
+      x: (segment.start.x + segment.end.x) / 2,
+      y: (segment.start.y + segment.end.y) / 2
+    })));
+  if (!centroid) return [];
+
+  const mmSegments = planEntry && planEntry.plan && planEntry.plan.innerSegments
+    ? planEntry.plan.innerSegments
+    : [];
+  const mergedSegments = mergeCollinearRoomClearSegments(
+    projected.innerSegments,
+    mmSegments,
+    wallById
+  );
+
+  return mergedSegments.map((segment, index) => {
+    const mid = {
+      x: (segment.start.x + segment.end.x) / 2,
+      y: (segment.start.y + segment.end.y) / 2
+    };
+    const inward = {
+      x: centroid.x - mid.x,
+      y: centroid.y - mid.y
+    };
+    const inwardLen = Math.hypot(inward.x, inward.y) || 1;
+    const offset = {
+      x: (inward.x / inwardLen) * SELECTED_ROOM_CLEAR_INSET_PX,
+      y: (inward.y / inwardLen) * SELECTED_ROOM_CLEAR_INSET_PX
+    };
+    return {
+      id: `selected-room-clear:${selectedSpaceId}:${segment.wallIds.join('+') || index}`,
+      wall: segment.sceneWall || null,
+      kind: 'room-clear',
+      visualRole: 'selected-room-clear',
+      placement: 'inside',
+      label: String(segment.labelMm),
+      sourceSpaceId: selectedSpaceId,
+      sourceWallId: segment.wallId || '',
+      startPoint: { x: segment.start.x + offset.x, y: segment.start.y + offset.y },
+      endPoint: { x: segment.end.x + offset.x, y: segment.end.y + offset.y },
+      extensionStart: segment.start,
+      extensionEnd: segment.end
+    };
+  });
 }
 
 function applyMeasurementFace(wall, measurementFace) {
@@ -460,6 +620,15 @@ function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, view
     viewportScale,
     collectClosedDimensionClearanceWalls(walls, previewWall, session)
   ));
+  const selectedSpaceId = session && session.selectedSpaceId;
+  if (selectedSpaceId) {
+    dimensions.push(...createSelectedSpaceClearDimensions(
+      selectedSpaceId,
+      spacePlans,
+      null,
+      walls
+    ));
+  }
 
   return dimensions;
 }
@@ -917,13 +1086,14 @@ function buildClosedSpaceLabels(floor, project, viewport) {
   }).filter(Boolean);
 }
 
-function buildClosedSpaceFills(floor, project) {
+function buildClosedSpaceFills(floor, project, selectedSpaceId) {
   return (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds))
     .map((space) => {
       const boundaryPoints = surveyGraph.buildSpaceRenderBoundaryPoints(floor, space);
       if (!boundaryPoints || boundaryPoints.length < 3) return null;
       return {
         id: space.id,
+        selected: !!(selectedSpaceId && space.id === selectedSpaceId),
         points: boundaryPoints.map(project)
       };
     })
@@ -1115,10 +1285,11 @@ function createSurveyRenderScene(input) {
     closureGuide: buildClosureGuide(floor, session, project),
     alignmentSnapGuide: buildAlignmentSnapGuide(session, project),
     cursor: buildCursor(floor, session, project, activeSegment),
-    closedSpaceFills: buildClosedSpaceFills(floor, project),
+    closedSpaceFills: buildClosedSpaceFills(floor, project, session.selectedSpaceId),
     closedSpaceLabels: buildClosedSpaceLabels(floor, project, viewport),
     wallFaceOverrideBoundaries,
     spaceDimensionPlans,
+    selectedSpaceId: session.selectedSpaceId || '',
     activeSegment,
     closed: shouldCloseWholeWallPath(floor, previewWall),
     session
@@ -1193,8 +1364,24 @@ function drawCursorGuide(ctx, scene) {
 }
 
 function drawClosedSpaceFills(ctx, scene) {
-  (scene.closedSpaceFills || []).forEach((space) => {
-    drawPolygon(ctx, space.points, 'rgba(209, 209, 207, 0.86)');
+  const fills = scene.closedSpaceFills || [];
+  fills.filter((space) => !space.selected).forEach((space) => {
+    drawPolygon(ctx, space.points, CLOSED_SPACE_FILL);
+  });
+  fills.filter((space) => space.selected).forEach((space) => {
+    drawPolygon(ctx, space.points, SELECTED_SPACE_FILL);
+    if (!space.points || space.points.length < 3) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(space.points[0].x, space.points[0].y);
+    for (let index = 1; index < space.points.length; index += 1) {
+      ctx.lineTo(space.points[index].x, space.points[index].y);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = SELECTED_SPACE_STROKE;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.restore();
   });
 }
 
@@ -1695,9 +1882,10 @@ function drawPlannedDimension(ctx, dimension) {
   ctx.save();
   ctx.translate(start.x, start.y);
   ctx.rotate(Math.atan2(dy, dx));
-  ctx.strokeStyle = 'rgba(75, 85, 99, 0.76)';
-  ctx.fillStyle = PERMANENT_DIMENSION_LABEL_COLOR;
-  ctx.lineWidth = 0.75;
+  const isSelectedRoomClear = dimension.visualRole === 'selected-room-clear';
+  ctx.strokeStyle = isSelectedRoomClear ? SELECTED_ROOM_CLEAR_LINE : 'rgba(75, 85, 99, 0.76)';
+  ctx.fillStyle = isSelectedRoomClear ? SELECTED_ROOM_CLEAR_LABEL_COLOR : PERMANENT_DIMENSION_LABEL_COLOR;
+  ctx.lineWidth = isSelectedRoomClear ? 1.25 : 0.75;
   const extensionStart = toLocal(dimension.extensionStart || start);
   const extensionEnd = toLocal(dimension.extensionEnd || end);
   const slashRun = PERMANENT_SLASH_HALF_RUN_PX;
@@ -1728,16 +1916,20 @@ function drawPlannedDimension(ctx, dimension) {
   ctx.translate(length / 2, 0);
   if (flipLabel) ctx.rotate(Math.PI);
   const fontWeight = dimension.kind === 'building-overall' ? '600' : '500';
-  ctx.font = `${fontWeight} 12px sans-serif`;
+  ctx.font = `${fontWeight} ${isSelectedRoomClear ? 13 : 12}px sans-serif`;
   const labelWidth = ctx.measureText(dimension.label).width;
-  ctx.fillStyle = PERMANENT_DIMENSION_LABEL_BACKGROUND;
+  ctx.fillStyle = isSelectedRoomClear
+    ? SELECTED_ROOM_CLEAR_LABEL_BG
+    : PERMANENT_DIMENSION_LABEL_BACKGROUND;
   ctx.fillRect(
     -labelWidth / 2 - PERMANENT_DIMENSION_LABEL_PADDING_X,
     -PERMANENT_DIMENSION_LABEL_HEIGHT_PX / 2,
     labelWidth + PERMANENT_DIMENSION_LABEL_PADDING_X * 2,
     PERMANENT_DIMENSION_LABEL_HEIGHT_PX
   );
-  ctx.fillStyle = PERMANENT_DIMENSION_LABEL_COLOR;
+  ctx.fillStyle = isSelectedRoomClear
+    ? SELECTED_ROOM_CLEAR_LABEL_COLOR
+    : PERMANENT_DIMENSION_LABEL_COLOR;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(dimension.label, 0, 0);
@@ -1938,9 +2130,30 @@ function drawCursorGlyph(ctx, point, options) {
   ctx.restore();
 }
 
-function drawCursor(ctx, scene) {
-  if (!scene.cursor || !scene.cursor.point) return;
+function drawCursor(ctx, scene, options) {
+  if (!ctx || !scene || !scene.cursor || !scene.cursor.point) return;
+  const dpr = options && options.dpr;
+  if (dpr) {
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawCursorGlyph(ctx, scene.cursor.point);
+    ctx.restore();
+    return;
+  }
   drawCursorGlyph(ctx, scene.cursor.point);
+}
+
+function drawLensCenterCrosshair(ctx, centerX, centerY) {
+  ctx.save();
+  ctx.strokeStyle = '#22c55e';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(centerX - 12, centerY);
+  ctx.lineTo(centerX + 12, centerY);
+  ctx.moveTo(centerX, centerY - 12);
+  ctx.lineTo(centerX, centerY + 12);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function resolveViewportInteractionTransform(baseViewport, viewport, rect) {
@@ -2231,16 +2444,6 @@ function drawCursorLensScene(ctx, scene, lensRect, meta, options) {
   // preview/display point, not the raw finger coordinate that initiated drag.
   const centerX = left + size / 2;
   const centerY = top + size / 2;
-  ctx.save();
-  ctx.strokeStyle = '#22c55e';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(centerX - 12, centerY);
-  ctx.lineTo(centerX + 12, centerY);
-  ctx.moveTo(centerX, centerY - 12);
-  ctx.lineTo(centerX, centerY + 12);
-  ctx.stroke();
-  ctx.restore();
 
   ctx.save();
   drawRoundedRectPath(ctx, left, top, size, size, 8);
@@ -2307,6 +2510,10 @@ function drawCursorLensScene(ctx, scene, lensRect, meta, options) {
   ctx.stroke();
   if (ctx.setLineDash) ctx.setLineDash([]);
   ctx.restore();
+
+  // Overlay a small + after the crop. The Fig.1 canvas reticle must not be
+  // magnified into this window; the formal scene omits it before blit.
+  drawLensCenterCrosshair(ctx, centerX, centerY);
 
   ctx.save();
   drawRoundedRectPath(ctx, left, top, size, size, 8);
@@ -2552,7 +2759,9 @@ function drawSurveyScene(ctx, scene, options) {
   drawCursorGuide(ctx, scene);
   drawAlignmentSnapGuide(ctx, scene);
   drawClosureGuide(ctx, scene);
-  drawCursor(ctx, scene);
+  if (!options || options.omitCursor !== true) {
+    drawCursor(ctx, scene);
+  }
   // The active measuring edge must remain visible above every dashed guide.
   drawRedlines(ctx, scene);
 }
@@ -2616,11 +2825,23 @@ function hitTestSurveyOpening(scene, canvasPoint) {
   return nearest;
 }
 
+function hitTestSurveyClosedSpace(scene, canvasPoint) {
+  if (!scene || !canvasPoint) return null;
+  let hit = null;
+  (scene.closedSpaceFills || []).forEach((space) => {
+    if (!space || !space.points || space.points.length < 3) return;
+    if (!pointInPolygon(canvasPoint, space.points)) return;
+    hit = { spaceId: space.id, distance: 0 };
+  });
+  return hit;
+}
+
 module.exports = {
   RENDER_REVISION,
   createSurveyRenderScene,
   createSurveyLensScene,
   resolveCursorLensSample,
+  drawCursor,
   drawSurveyScene,
   drawSurveyInteractionScene,
   drawDraggingCursor,
@@ -2629,5 +2850,6 @@ module.exports = {
   resolveViewportInteractionTransform,
   createViewportInteractionScene,
   hitTestSurveyWall,
-  hitTestSurveyOpening
+  hitTestSurveyOpening,
+  hitTestSurveyClosedSpace
 };

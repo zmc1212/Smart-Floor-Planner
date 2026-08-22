@@ -743,6 +743,7 @@ page {
 .right-rail > .tool-group:not(.reserved-tools),
 .right-rail > .side-switch,
 .right-rail > .opening-context,
+.right-rail > .space-context,
 .right-rail > .rail-reset-canvas {
   pointer-events: auto;
 }
@@ -3160,6 +3161,109 @@ page,
   flex: 0 0 auto;
 }
 
+.right-rail.with-space {
+  right: 24rpx;
+  width: 194rpx;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  gap: 0;
+  transform: translateY(-28rpx);
+}
+
+.right-rail.with-space .space-context {
+  width: 194rpx;
+  padding: 22rpx 20rpx 18rpx;
+  border: 1rpx solid rgba(142, 166, 153, 0.28);
+  border-radius: 24rpx;
+  background: rgba(247, 251, 248, 0.98);
+  box-shadow: 0 8rpx 24rpx rgba(22, 34, 28, 0.1);
+  color: #17345e;
+  box-sizing: border-box;
+}
+
+.right-rail.with-space .space-title {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.right-rail.with-space .space-title-text {
+  color: #17345e;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 34rpx;
+}
+
+.right-rail.with-space .space-title-meta {
+  color: #5f6e65;
+  font-size: 22rpx;
+  line-height: 28rpx;
+}
+
+.right-rail.with-space .space-primary-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 58rpx;
+  margin-top: 24rpx;
+  border-radius: 14rpx;
+  background: #08ba48;
+  color: #ffffff;
+  box-shadow: 0 7rpx 16rpx rgba(8, 186, 72, 0.16);
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.right-rail.with-space .space-action-icon {
+  width: 28rpx;
+  height: 28rpx;
+  margin-right: 10rpx;
+}
+
+.right-rail.with-space .space-action-label {
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 32rpx;
+}
+
+.right-rail.with-space .space-delete-divider {
+  width: calc(100% - 20rpx);
+  height: 1px;
+  margin: 20rpx 10rpx 4rpx;
+  background: #dbe5df;
+  transform: scaleY(0.5);
+  transform-origin: center;
+}
+
+.right-rail.with-space .space-delete-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 60rpx;
+  color: #df2c24;
+  pointer-events: auto;
+}
+
+.right-rail.with-space .space-delete-icon {
+  width: 28rpx;
+  height: 28rpx;
+  margin-right: 10rpx;
+}
+
+.right-rail.with-space .space-delete-label {
+  color: #df2c24;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 32rpx;
+}
+
 .opening-delete-label {
   color: #df2c24;
   font-size: 24rpx;
@@ -3317,4 +3421,144 @@ page,
   box-sizing: border-box;
 }
 
+.space-name-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1200;
+  pointer-events: auto;
+}
+
+.space-name-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 35, 23, 0.42);
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+}
+
+.space-name-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 18rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  border-radius: 28rpx 28rpx 0 0;
+  background: #f7fbf8;
+  box-shadow: 0 -12rpx 36rpx rgba(22, 34, 28, 0.14);
+  transform: translateY(100%);
+  transition: transform 240ms ease-out, bottom 180ms ease-out, padding-bottom 180ms ease-out;
+  box-sizing: border-box;
+}
+
+.space-name-sheet.open .space-name-mask {
+  opacity: 1;
+}
+
+.space-name-sheet.open .space-name-panel {
+  transform: translateY(0);
+}
+
+.space-name-sheet.keyboard-open .space-name-panel {
+  /* Keyboard already clears the home indicator; drop safe-area padding so
+     confirm/cancel sit flush above the IME instead of floating with a gap. */
+  padding-bottom: 28rpx;
+}
+
+.space-name-handle {
+  width: 72rpx;
+  height: 8rpx;
+  margin: 0 auto 18rpx;
+  border-radius: 999rpx;
+  background: rgba(95, 110, 101, 0.28);
+}
+
+.space-name-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+}
+
+.space-name-title {
+  color: #17345e;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 40rpx;
+}
+
+.space-name-close {
+  color: #5f6e65;
+  font-size: 24rpx;
+  line-height: 32rpx;
+  padding: 8rpx 4rpx;
+}
+
+.space-name-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.space-name-chip {
+  min-height: 56rpx;
+  padding: 0 24rpx;
+  border-radius: 999rpx;
+  background: #eef4ef;
+  color: #17345e;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 56rpx;
+  box-sizing: border-box;
+}
+
+.space-name-chip.active {
+  background: #08ba48;
+  color: #ffffff;
+}
+
+.space-name-input-row {
+  margin-bottom: 24rpx;
+}
+
+.space-name-input {
+  width: 100%;
+  height: 80rpx;
+  padding: 0 24rpx;
+  border-radius: 18rpx;
+  background: #ffffff;
+  border: 1rpx solid rgba(142, 166, 153, 0.34);
+  color: #17345e;
+  font-size: 28rpx;
+  box-sizing: border-box;
+}
+
+.space-name-actions {
+  display: flex;
+  gap: 16rpx;
+}
+
+.space-name-cancel,
+.space-name-confirm {
+  flex: 1;
+  height: 80rpx;
+  border-radius: 18rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 80rpx;
+  text-align: center;
+}
+
+.space-name-cancel {
+  background: #eef4ef;
+  color: #5f6e65;
+}
+
+.space-name-confirm {
+  background: #08ba48;
+  color: #ffffff;
+}
 

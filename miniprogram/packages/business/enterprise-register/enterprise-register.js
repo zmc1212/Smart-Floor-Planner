@@ -1,5 +1,4 @@
 const api = require('../../../utils/api.js');
-const notification = require('../../../utils/notification.js');
 const session = require('../../../utils/session.js');
 const {
   getRoleLanding,
@@ -271,11 +270,6 @@ Page({
     }
     this.setData({ submitting: true, pageState: 'submitting', errorMessage: '' });
     try {
-      try {
-        await notification.requestSubscribeKinds(['enterprise_join_result'], { quiet: true });
-      } catch (subscribeError) {
-        console.warn('Enterprise join result subscribe skipped', subscribeError);
-      }
       await api.request('/miniprogram/enterprise-registration', 'POST', {
         token: this.data.registrationToken,
         name: String(this.data.enterpriseName).trim(),

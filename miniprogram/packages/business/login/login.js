@@ -123,13 +123,7 @@ Page({
         await app.hydrateStoredSession();
         if (app.globalData.sessionRecovery) throw new Error('身份资料已失效，请重新登录');
 
-        // Modal creates a fresh user gesture for requestSubscribeMessage
-        const { offerNotificationAuthorization } = require('../../../utils/notification.js');
-        offerNotificationAuthorization({
-          title: '登录成功',
-          cancelText: '直接进入',
-          onDone: () => this.finishLogin()
-        });
+        this.finishLogin();
       } else {
         throw new Error(res.error || '登录失败');
       }

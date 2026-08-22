@@ -29,8 +29,6 @@ const DEFAULT_RECENT_LEADS = [
 
 Page({
   data: {
-    statusBarHeight: 0,
-    navBarHeightTotal: 0,
     isStaff: false,
     loading: false,
     pageLoading: false,
@@ -53,22 +51,20 @@ Page({
 
   onLoad(options) {
     const app = getApp();
-    const systemInfo = wx.getSystemInfoSync();
-    const menuButton = wx.getMenuButtonBoundingClientRect();
-    const navBarHeightTotal = menuButton.bottom + (menuButton.top - systemInfo.statusBarHeight);
     const leadId = options.leadId || options.id || '';
     const isEditMode = options.mode === 'edit' && Boolean(leadId);
+    const pageTitle = isEditMode ? '补充客户资料' : '客户资料';
 
     const userInfo = app.globalData.userInfo || {};
     const isStaff = userInfo.role === 'staff';
 
+    wx.setNavigationBarTitle({ title: pageTitle });
+
     this.setData({
-      statusBarHeight: systemInfo.statusBarHeight,
-      navBarHeightTotal,
       isStaff,
       leadId,
       isEditMode,
-      pageTitle: isEditMode ? '补充客户资料' : '客户资料',
+      pageTitle,
       submitLabel: isEditMode ? '保存资料' : '立即提交',
       floorPlanId: options.floorPlanId || ''
     });
@@ -151,7 +147,22 @@ Page({
     const field = e.currentTarget.dataset.field;
     const value = e.detail.value;
     this.setData({
-      [`formData.${field}`]: value
+      [`formData.${field}`]: field === 'communityName' ? String(value || '').slice(0, 160) : value
+    });
+  },
+
+  chooseCommunityLocation() {
+    wx.chooseLocation({
+      success: (result) => {
+        const name = String(result.name || result.address || '').trim();
+        if (!name) {
+          wx.showToast({ title: '未获取到小区名称', icon: 'none' });
+          return;
+        }
+        this.setData({
+          'formData.communityName': name.slice(0, 160)
+        });
+      }
     });
   },
 
@@ -200,7 +211,7 @@ Page({
       const payload = {
         name: formData.name.trim(),
         phone: formData.phone.trim(),
-        communityName: formData.communityName.trim(),
+        communityName: formData.communityName.trim().slice(0, 160),
         area: formData.area ? parseFloat(formData.area) : null,
         stylePreference: formData.stylePreference || null,
       };

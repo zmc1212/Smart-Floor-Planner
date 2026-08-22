@@ -2,52 +2,6 @@
   min-height: 100vh;
   background: #ffffff;
   color: #010101;
-  overflow: hidden;
-}
-
-.custom-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  background: #ffffff;
-  z-index: 100;
-}
-
-.header-content {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 48rpx;
-  box-sizing: border-box;
-}
-
-.back-btn {
-  position: absolute;
-  left: 46rpx;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 44rpx;
-  height: 44rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #010101;
-  font-size: 46rpx;
-  line-height: 1;
-  font-weight: 300;
-}
-
-.page-title {
-  font-size: 31rpx;
-  line-height: 1.2;
-  color: #010101;
-  font-weight: 400;
-}
-
-.main-content {
-  background: #ffffff;
 }
 
 .content-shell {
@@ -208,6 +162,29 @@
 
 .input-with-unit {
   padding-right: 110rpx;
+}
+
+.input-with-location {
+  padding-right: 152rpx;
+}
+
+.location-action {
+  position: absolute;
+  right: 8rpx;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  height: 80rpx;
+  padding: 0 20rpx;
+  align-items: center;
+  color: #087c36;
+  font-size: 24rpx;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.location-action-pressed {
+  opacity: 0.68;
 }
 
 .placeholder,

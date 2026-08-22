@@ -1,13 +1,5 @@
 <view class="lead-page">
-  <view class="custom-header" style="height: {{navBarHeightTotal}}px;">
-    <view class="header-content" style="margin-top: {{statusBarHeight}}px; height: {{navBarHeightTotal - statusBarHeight}}px;">
-      <view class="back-btn" bindtap="onBack">‹</view>
-      <view class="page-title">{{pageTitle}}</view>
-    </view>
-  </view>
-
-  <scroll-view class="main-content" scroll-y style="padding-top: {{navBarHeightTotal}}px; height: 100vh; box-sizing: border-box;">
-    <view class="content-shell">
+  <view class="content-shell">
       <view class="lead-intake-hero">
         <view class="lead-intake-copy">
           <view class="lead-intake-title" wx:if="{{!isEditMode}}">让<text>家</text>更懂你</view>
@@ -66,7 +58,8 @@
           <text class="label">小区名称 <text class="required">*</text></text>
           <view class="input-shell">
             <view class="field-icon building-icon"></view>
-            <input class="input" placeholder="请输入小区名称" placeholder-class="placeholder" value="{{formData.communityName}}" data-field="communityName" bindinput="onInput" />
+            <input class="input input-with-location" maxlength="160" placeholder="请输入小区名称" placeholder-class="placeholder" value="{{formData.communityName}}" data-field="communityName" bindinput="onInput" />
+            <view class="location-action" catchtap="chooseCommunityLocation" hover-class="location-action-pressed" aria-role="button" aria-label="在地图上选择小区">选择地点</view>
           </view>
         </view>
 
@@ -101,5 +94,4 @@
         </view>
       </view>
     </view>
-  </scroll-view>
 </view>

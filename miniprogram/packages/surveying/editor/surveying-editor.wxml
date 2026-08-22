@@ -51,7 +51,7 @@
     </cover-view>
 
     <!-- 选中墙体时的浮动工具栏（图标行） -->
-    <cover-view wx:if="{{!componentEditorVisible && selectedWall && !selectedOpening}}" class="wall-object-toolbar {{surveyGuideTarget === 'object' ? 'guide-target-control' : ''}}" style="{{selectedWall.actionStyle}}">
+    <cover-view wx:if="{{!componentEditorVisible && selectedWall && !selectedOpening && !selectedSpace}}" class="wall-object-toolbar {{surveyGuideTarget === 'object' ? 'guide-target-control' : ''}}" style="{{selectedWall.actionStyle}}">
       <cover-view class="wall-object-action primary" data-action="door" aria-label="添加门" bindtap="onWallContextAction">
         <cover-image class="wall-action-image" src="/packages/surveying/assets/icons/wall-toolbar/door.png" mode="aspectFit"></cover-image>
         <cover-view class="wall-action-label">添门</cover-view>
@@ -122,7 +122,7 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  右侧工具栏（浮层）                              -->
   <!-- ══════════════════════════════════════════════ -->
-  <cover-view wx:if="{{!componentEditorVisible}}" class="right-rail native-canvas-overlay {{selectedOpening ? 'with-opening' : ''}}" style="top: {{rightRailTop}}px; bottom: {{rightRailBottom}}px;">
+  <cover-view wx:if="{{!componentEditorVisible}}" class="right-rail native-canvas-overlay {{selectedOpening ? 'with-opening' : ''}} {{selectedSpace ? 'with-space' : ''}}" style="top: {{rightRailTop}}px; bottom: {{rightRailBottom}}px;">
     <cover-view wx:if="{{selectedOpening}}" class="opening-context {{selectedOpening.type}}">
       <cover-view class="opening-title">
         <cover-image class="opening-title-icon" src="/packages/surveying/assets/icons/object-rail/opening.png" mode="aspectFit"></cover-image>
@@ -166,6 +166,22 @@
       </cover-view>
     </cover-view>
 
+    <cover-view wx:if="{{selectedSpace && !selectedOpening}}" class="space-context">
+      <cover-view class="space-title">
+        <cover-view class="space-title-text">{{selectedSpace.name}}</cover-view>
+        <cover-view class="space-title-meta">{{selectedSpace.areaLabel}}</cover-view>
+      </cover-view>
+      <cover-view class="space-primary-action" data-tool="space-rename" catchtap="onToolTap" aria-role="button" aria-label="命名房间">
+        <cover-image class="space-action-icon" src="/packages/surveying/assets/icons/object-rail/edit.png" mode="aspectFit"></cover-image>
+        <cover-view class="space-action-label">命名</cover-view>
+      </cover-view>
+      <cover-view class="space-delete-divider"></cover-view>
+      <cover-view class="space-delete-action" data-tool="space-delete" catchtap="onToolTap" aria-role="button" aria-label="删除房间">
+        <cover-image class="space-delete-icon" src="/packages/surveying/assets/icons/object-rail/delete-danger.png" mode="aspectFit"></cover-image>
+        <cover-view class="space-delete-label">删除</cover-view>
+      </cover-view>
+    </cover-view>
+
     <cover-view wx:if="{{selectedOpening && canResumeWallDrawing}}" class="opening-resume-action" bindtap="onResumeWallDrawing" aria-role="button" aria-label="继续测墙">
       <cover-view class="opening-resume-content">
         <cover-image class="opening-resume-icon" src="/packages/surveying/assets/icons/object-rail/continue-wall.png" mode="aspectFit"></cover-image>
@@ -173,7 +189,7 @@
       </cover-view>
     </cover-view>
 
-    <cover-view wx:if="{{!selectedOpening}}" class="tool-group primary-tools">
+    <cover-view wx:if="{{!selectedOpening && !selectedSpace}}" class="tool-group primary-tools">
       <cover-view
         class="tool-button {{item.active ? 'active' : ''}}"
         wx:for="{{coreTools}}"
@@ -188,7 +204,7 @@
     </cover-view>
 
     <cover-view
-      wx:if="{{!selectedOpening}}"
+      wx:if="{{!selectedOpening && !selectedSpace}}"
       class="rail-reset-canvas"
       bindtap="onRequestResetCanvas"
       hover-class="rail-reset-canvas-pressed"
@@ -219,8 +235,8 @@
   <!--  底部光标控件：已放置 / 等待拖放 / 拖拽中为空      -->
   <!-- ══════════════════════════════════════════════ -->
   <!-- The existing angle-sheet visibility contract remains independent of the restored dock. -->
-  <cover-view wx:if="{{!numberPadVisible}}" class="bottom-fab-bar legacy-angle-sheet-anchor"></cover-view>
-  <cover-view wx:if="{{!numberPadVisible}}" class="history-action-bar bottom-control-dock native-canvas-overlay" style="bottom: calc(64rpx + {{bottomSafeArea}}px);">
+  <cover-view wx:if="{{!numberPadVisible && !spaceNameSheetVisible}}" class="bottom-fab-bar legacy-angle-sheet-anchor"></cover-view>
+  <cover-view wx:if="{{!numberPadVisible && !spaceNameSheetVisible}}" class="history-action-bar bottom-control-dock native-canvas-overlay" style="bottom: calc(64rpx + {{bottomSafeArea}}px);">
     <cover-view class="dock-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">
       <cover-image src="/packages/surveying/assets/icons/history-undo.png" mode="aspectFit"></cover-image>
       <cover-view>撤销</cover-view>
@@ -264,7 +280,7 @@
   </cover-view>
 
   <cover-view
-    wx:if="{{!numberPadVisible}}"
+    wx:if="{{!numberPadVisible && !spaceNameSheetVisible}}"
     class="cursor-dock-helper {{cursorPlacementState === 'dragging' ? 'is-dragging' : ''}}"
     style="bottom: calc(12rpx + {{bottomSafeArea}}px);"
   >
@@ -531,6 +547,44 @@
       <cover-view class="number-confirm" bindtap="onNumberConfirm">确认</cover-view>
     </cover-view>
   </cover-view>
+
+  <view wx:if="{{spaceNameSheetVisible}}" class="space-name-sheet {{spaceNameSheetOpen ? 'open' : ''}} {{spaceNameKeyboardHeight > 0 ? 'keyboard-open' : ''}}">
+    <view class="space-name-mask" bindtap="closeSpaceNameSheet"></view>
+    <view class="space-name-panel" style="bottom: {{spaceNameKeyboardHeight}}px;">
+      <view class="space-name-handle"></view>
+      <view class="space-name-header">
+        <view class="space-name-title">房间名称</view>
+        <view class="space-name-close" bindtap="closeSpaceNameSheet">关闭</view>
+      </view>
+      <view class="space-name-presets">
+        <view
+          class="space-name-chip {{spaceNameDraft === item ? 'active' : ''}}"
+          wx:for="{{spaceNamePresets}}"
+          wx:key="*this"
+          data-name="{{item}}"
+          bindtap="onSpaceNamePresetTap"
+        >{{item}}</view>
+      </view>
+      <view class="space-name-input-row">
+        <input
+          class="space-name-input"
+          type="text"
+          maxlength="20"
+          placeholder="自定义名称"
+          value="{{spaceNameDraft}}"
+          adjust-position="{{false}}"
+          hold-keyboard="{{true}}"
+          bindinput="onSpaceNameInput"
+          confirm-type="done"
+          bindconfirm="onConfirmSpaceName"
+        />
+      </view>
+      <view class="space-name-actions">
+        <view class="space-name-cancel" bindtap="closeSpaceNameSheet">取消</view>
+        <view class="space-name-confirm" bindtap="onConfirmSpaceName">确认</view>
+      </view>
+    </view>
+  </view>
 
   </view>
 </view>

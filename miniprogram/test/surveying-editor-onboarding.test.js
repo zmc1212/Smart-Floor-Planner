@@ -142,6 +142,15 @@ test('cursor magnifier uses one Canvas panel instead of a second native cover la
   assert.match(editorScript, /const CURSOR_LENS_SIZE_PX = 120/);
 });
 
+test('cursor magnifier blits a formal crop without the canvas reticle and overlays a small crosshair', () => {
+  assert.match(editorScript, /omitCursor:\s*this\.isCursorLensActive\(\)/);
+  assert.match(editorScript, /surveyCanvasRenderer\.drawCursor\(\s*this\.surveyCtx,\s*this\.surveyRenderScene/);
+  assert.match(
+    editorScript,
+    /this\.cursorPlacementState = 'dragging';\s*if \(!wasDragging\) \{\s*this\.drawSurveyCanvas\(\);/
+  );
+});
+
 test('formal surveying fixed chrome follows the compact high-fidelity reference geometry', () => {
   assert.match(editorWxss, /\.survey-topbar\s*\{[\s\S]*height:\s*160rpx;/);
   assert.match(editorWxss, /\.topbar-right\s*\{[\s\S]*top:\s*94rpx;[\s\S]*right:\s*28rpx;/);

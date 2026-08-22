@@ -37,11 +37,28 @@ test('staff notification delivery resolves openid from wechat_identities when st
   assert.match(source, /notifyDesignerOfSurveyCompleted/);
   assert.match(source, /notifyEnterpriseContactOfJoinResult/);
   assert.match(source, /notifyReferrerOfSigningCommission/);
+  assert.match(source, /notifyStaffOfSigningCommission/);
   assert.match(source, /notifyEnterpriseAdminOfLeadConverted/);
   assert.match(source, /design_published/);
   assert.match(source, /enterprise_join_result/);
   assert.match(source, /signing_commission/);
+  assert.match(source, /staff_signing_commission/);
   assert.match(source, /lead_converted/);
+  assert.match(source, /templateKind: 'workflow_todo'/);
+  assert.match(source, /commission-records\/commission-records/);
+});
+
+test('sendSubscriptionMessage gates WeChat delivery on subscriptionMessagesEnabled', () => {
+  const source = readFileSync(join(adminSrc, 'lib/wechat-notification.ts'), 'utf8');
+  assert.match(source, /getPlatformNotificationConfig/);
+  assert.match(
+    source,
+    /if\s*\(\s*!config\.subscriptionMessagesEnabled\s*\)[\s\S]*skipped:\s*true[\s\S]*subscription messages disabled/
+  );
+  assert.match(
+    source,
+    /export async function sendSubscriptionMessage[\s\S]*getPlatformNotificationConfig[\s\S]*cgi-bin\/message\/subscribe\/send/
+  );
 });
 
 test('enterprise status approve and reject dispatch join-result notifications after commit', () => {
@@ -53,9 +70,14 @@ test('enterprise status approve and reject dispatch join-result notifications af
   assert.match(source, /action === 'approve' \|\| action === 'reject'/);
 });
 
-test('lead convert notifies referrer commission and enterprise owner after commit', () => {
+test('lead convert notifies referrer, staff earnings via workflow_todo, and enterprise owner after commit', () => {
   const source = readFileSync(join(adminSrc, 'app/api/leads/[id]/convert/route.ts'), 'utf8');
   assert.match(source, /notifyConvertedLeadParties/);
+  const notifier = readFileSync(join(adminSrc, 'lib/wechat-notification.ts'), 'utf8');
+  assert.match(
+    notifier,
+    /notifyConvertedLeadParties[\s\S]*notifyReferrerOfSigningCommission[\s\S]*notifyStaffOfSigningCommission[\s\S]*notifyEnterpriseAdminOfLeadConverted/
+  );
 });
 
 test('assignment retry notifies measurer when distinct from designer', () => {

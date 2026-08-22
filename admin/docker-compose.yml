@@ -9,6 +9,8 @@ services:
     env_file:
       - .env.production
     environment:
+      # Production Node also blocks tenant reset/purge unless
+      # ALLOW_TENANT_ENTERPRISE_RESET=true is present in .env.production.
       - NODE_ENV=production
       # Defaults to false for trusted-intranet HTTP. deploy.sh reads the value
       # from .env.production, so set it to true before serving HTTPS/public traffic.

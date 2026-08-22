@@ -144,8 +144,8 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/referrals\/authorize-and-create-lead/);
-  assert.match(js, /offerNotificationAuthorization/);
-  assert.match(js, /role:\s*'customer'/);
+  assert.doesNotMatch(js, /offerNotificationAuthorization/);
+  assert.doesNotMatch(js, /requestSubscribeMessage/);
   assert.match(js, /kind !== 'referral' && response.data.kind !== 'staff_activity'/);
   assert.match(js, /'Idempotency-Key'/);
   assert.match(js, /response\.existingAttribution/);

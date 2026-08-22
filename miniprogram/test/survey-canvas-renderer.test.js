@@ -564,18 +564,25 @@ function createRecordingContext() {
   let font;
 
   const drawImages = [];
+  const ops = [];
   const context = {
     save() {},
     restore() {},
     setTransform() {},
     clearRect() {},
-    fillRect(x, y, width, height) { fillRectDetails.push({ x, y, width, height, fillStyle }); },
+    fillRect(x, y, width, height) {
+      fillRectDetails.push({ x, y, width, height, fillStyle });
+      ops.push({ type: 'fillRect', fillStyle });
+    },
     strokeRect() {},
     translate() {},
     scale() {},
     rotate() {},
     clip() {},
-    drawImage(...args) { drawImages.push(args); },
+    drawImage(...args) {
+      drawImages.push(args);
+      ops.push({ type: 'drawImage' });
+    },
     arc(x, y, radius, startAngle, endAngle, anticlockwise) {
       path.push(['arc', x, y, radius, startAngle, endAngle, anticlockwise]);
     },
@@ -589,6 +596,7 @@ function createRecordingContext() {
       const recordedPath = path.slice();
       strokes.push(recordedPath);
       strokeDetails.push({ path: recordedPath, strokeStyle, lineWidth });
+      ops.push({ type: 'stroke', strokeStyle, path: recordedPath, lineWidth });
     },
     fill() {
       const recordedPath = path.slice();
@@ -619,7 +627,7 @@ function createRecordingContext() {
   ['lineCap', 'lineJoin', 'textAlign', 'textBaseline', 'shadowColor', 'shadowBlur', 'shadowOffsetY', 'miterLimit']
     .forEach((property) => Object.defineProperty(context, property, { set() {}, get() { return undefined; } }));
 
-  return { context, strokes, fills, dashes, widths, strokeDetails, fillDetails, fillRectDetails, texts, drawImages };
+  return { context, strokes, fills, dashes, widths, strokeDetails, fillDetails, fillRectDetails, texts, drawImages, ops };
 }
 
 test('default surveying canvas uses the fine low-contrast reference grid', () => {
@@ -2222,6 +2230,23 @@ test('cursor drag overlay leaves the close action on the formal canvas', () => {
   assert.equal(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'), false);
 });
 
+test('formal scene can omit the Fig.1 cursor so a lens blit does not magnify it', () => {
+  const scene = createScene(createOpenDraft());
+  const withCursor = createRecordingContext();
+  surveyCanvasRenderer.drawSurveyScene(withCursor.context, scene, { dpr: 1 });
+  assert.ok(withCursor.fillRectDetails.some((detail) => (
+    detail.fillStyle === 'rgba(34, 197, 94, 0.16)'
+  )));
+  assert.ok(withCursor.strokeDetails.some((detail) => detail.strokeStyle === '#c8ccd0'));
+
+  const withoutCursor = createRecordingContext();
+  surveyCanvasRenderer.drawSurveyScene(withoutCursor.context, scene, { dpr: 1, omitCursor: true });
+  assert.equal(withoutCursor.fillRectDetails.some((detail) => (
+    detail.fillStyle === 'rgba(34, 197, 94, 0.16)'
+  )), false);
+  assert.equal(withoutCursor.strokeDetails.some((detail) => detail.strokeStyle === '#c8ccd0'), false);
+});
+
 test('cursor lens can blit a magnified formal-canvas crop instead of redrawing walls', () => {
   const sample = surveyCanvasRenderer.resolveCursorLensSample(
     { x: 200, y: 300 },
@@ -2259,6 +2284,43 @@ test('cursor lens can blit a magnified formal-canvas crop instead of redrawing w
   assert.equal(recorder.drawImages[0][7], 120);
   assert.equal(recorder.drawImages[0][8], 120);
   assert.ok(recorder.texts.some((detail) => detail.text === '自由放置'));
+});
+
+test('cursor lens paints a small green crosshair on top of the crop instead of the canvas reticle', () => {
+  const sample = surveyCanvasRenderer.resolveCursorLensSample(
+    { x: 200, y: 300 },
+    0.05,
+    0.12,
+    120
+  );
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 390, height: 650 },
+    { x: 220, y: 420 },
+    {
+      dpr: 1,
+      showCursor: false,
+      lensRect: { left: 20, top: 98, size: 120 },
+      lensMeta: { snapLabel: '自由放置', coordinateLabel: 'X 2000 / Y 1000' },
+      lensSource: { canvas: { id: 'formal' }, dpr: 2 },
+      lensSample: sample
+    }
+  );
+
+  const blitAt = recorder.ops.findIndex((op) => op.type === 'drawImage');
+  const crosshairAt = recorder.ops.findIndex((op) => (
+    op.type === 'stroke' &&
+    op.strokeStyle === '#22c55e' &&
+    op.path.some((command) => command[0] === 'moveTo' && command[1] === 68 && command[2] === 158) &&
+    op.path.some((command) => command[0] === 'lineTo' && command[1] === 92 && command[2] === 158)
+  ));
+  assert.ok(blitAt >= 0);
+  assert.ok(crosshairAt > blitAt);
+  assert.equal(recorder.fillRectDetails.some((detail) => (
+    detail.fillStyle === 'rgba(34, 197, 94, 0.16)'
+  )), false);
+  assert.equal(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#c8ccd0'), false);
 });
 
 test('closed dimensions use quiet permanent labels instead of the live blue treatment', () => {

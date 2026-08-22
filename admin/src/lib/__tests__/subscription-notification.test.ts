@@ -24,12 +24,27 @@ test('legacy single-template config normalizes to V2 while preserving the old ID
     miniprogramTemplateId: 'legacy_template_12345',
   });
   assert.equal(normalized.version, 2);
+  assert.equal(normalized.subscriptionMessagesEnabled, false);
   assert.equal(normalized.legacyTemplateId, 'legacy_template_12345');
   assert.equal(
     normalized.templates.workflow_todo.templateId,
     DEFAULT_SUBSCRIPTION_TEMPLATES.workflow_todo.templateId
   );
   assert.equal(normalized.miniprogramTemplateId, normalized.templates.workflow_todo.templateId);
+});
+
+test('subscriptionMessagesEnabled defaults to false and round-trips when present', () => {
+  assert.equal(normalizePlatformNotificationConfig().subscriptionMessagesEnabled, false);
+  assert.equal(
+    normalizePlatformNotificationConfig({ subscriptionMessagesEnabled: true })
+      .subscriptionMessagesEnabled,
+    true
+  );
+  assert.equal(
+    normalizePlatformNotificationConfig({ subscriptionMessagesEnabled: 'yes' })
+      .subscriptionMessagesEnabled,
+    false
+  );
 });
 
 test('eight subscription template IDs must remain distinct', () => {

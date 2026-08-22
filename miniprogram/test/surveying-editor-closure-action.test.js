@@ -120,7 +120,7 @@ test('canvas cursor drags reuse the lens layer without painting a second drag cu
   );
   assert.match(
     editorScript,
-    /updateCanvasCursorLens\(clientPoint, pointMm, target\)[\s\S]*?queueCursorDragCanvas\(clientPoint, \{ showCursor: false \}\)/
+    /updateCanvasCursorLens\(clientPoint, pointMm, target\)[\s\S]*?queueCursorDragCanvas\(clientPoint, \{ showCursor: false, sync: true \}\)/
   );
   assert.match(
     editorScript,
@@ -142,12 +142,39 @@ test('cursor release commits the last visible snap candidate instead of reclassi
 test('canvas wall snapping forwards the resolved vertex or wall candidate to the graph', () => {
   assert.match(
     editorScript,
-    /const candidate = this\.getCursorPlacementCandidate\(touchState\.startPoint\);[\s\S]*?candidate\.type !== 'vertex' && candidate\.type !== 'wall'[\s\S]*?surveyGraph\.snapCursorToWall\(this\.draft, candidate\.pointMm, candidate\)/
+    /const candidate = this\.getCursorPlacementCandidate\(touchState\.startPoint\);[\s\S]*?candidate\.type === 'vertex' \|\| candidate\.type === 'wall'[\s\S]*?surveyGraph\.snapCursorToWall\(this\.draft, candidate\.pointMm, candidate\)/
   );
   assert.match(
     editorScript,
     /surveyGraph\.snapCursorToWall\(this\.draft, candidate\.pointMm, candidate\);[\s\S]*?this\.cursorPlacementState = 'placed';[\s\S]*?cursorPlacementState: 'placed'/
   );
+});
+
+test('wallSnapPending tap selects a closed space fill when wall/vertex snap misses', () => {
+  assert.match(
+    editorScript,
+    /if \(touchState\.mode === 'wallSnapPending'\) \{[\s\S]*?getCursorPlacementCandidate\(touchState\.startPoint\)[\s\S]*?hitTestClosedSpaceAtClientPoint\(touchState\.startPoint\)[\s\S]*?surveyGraph\.selectSpace\(this\.draft, spaceHit\.spaceId\)[\s\S]*?请选择已有墙体或顶点/
+  );
+  assert.match(
+    editorWxml,
+    /data-tool="space-rename"[\s\S]*?catchtap="onToolTap"[\s\S]*?data-tool="space-delete"[\s\S]*?catchtap="onToolTap"/
+  );
+  assert.match(
+    editorScript,
+    /if \(tool && \(tool\.indexOf\('object-'\) === 0 \|\| tool\.indexOf\('space-'\) === 0\)\)/
+  );
+});
+
+test('space name sheet hides native canvas dock cover-views so they cannot stack above the view sheet', () => {
+  assert.match(
+    editorWxml,
+    /wx:if="\{\{!numberPadVisible && !spaceNameSheetVisible\}\}" class="history-action-bar bottom-control-dock/
+  );
+  assert.match(
+    editorWxml,
+    /wx:if="\{\{!numberPadVisible && !spaceNameSheetVisible\}\}"[\s\S]*?class="cursor-dock-helper/
+  );
+  assert.match(editorWxml, /wx:if="\{\{spaceNameSheetVisible\}\}" class="space-name-sheet/);
 });
 
 test('closing a room automatically enters the reset-cursor wall-drop state', () => {

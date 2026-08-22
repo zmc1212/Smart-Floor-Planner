@@ -21,10 +21,12 @@ import {
   buildNewLeadPayload,
   buildSigningCommissionPayload,
   buildWorkflowTodoPayload,
+  formatWeChatAmount,
   type SubscriptionMessagePayload,
 } from '@/lib/miniprogram-subscription-messages';
 import {
   getMiniProgramSubscriptionTemplate,
+  getPlatformNotificationConfig,
   type SubscriptionTemplateConfig,
   type SubscriptionTemplateKind,
 } from '@/lib/platform-notification-config';
@@ -40,6 +42,10 @@ export interface SubscriptionMessageData {
 
 export async function sendSubscriptionMessage(params: SubscriptionMessageData) {
   try {
+    const config = await getPlatformNotificationConfig();
+    if (!config.subscriptionMessagesEnabled) {
+      return { success: false, skipped: true, error: 'subscription messages disabled' };
+    }
     const token = await getWechatAccessToken();
     const response = await fetch(
       `https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${token}`,
@@ -740,12 +746,113 @@ export async function notifyEnterpriseAdminOfLeadConverted(input: {
   }
 }
 
+/**
+ * Staff designer/measurer signing earnings reuse `workflow_todo` so the role
+ * still only authorizes three templates. Referrer money stays on
+ * `signing_commission`.
+ */
+export async function notifyStaffOfSigningCommission(input: {
+  enterpriseId: bigint;
+  leadId: bigint;
+}) {
+  try {
+    const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
+      new LeadRepository(transaction).findById(input.leadId)
+    );
+    if (!lead) return { success: false, skipped: true, error: 'lead unavailable' };
+
+    const commissions = await withTenantTransaction(input.enterpriseId, (transaction) =>
+      new LeadCommissionRepository(transaction).list(input.enterpriseId, {
+        leadId: input.leadId,
+      })
+    );
+    const staffRows = commissions.filter(
+      (row) =>
+        (row.role === 'designer' || row.role === 'measurer') &&
+        row.status === 'payable' &&
+        row.beneficiaryUserId
+    );
+    if (!staffRows.length) {
+      return { success: false, skipped: true, error: 'staff commission unavailable' };
+    }
+
+    const byBeneficiary = new Map<
+      string,
+      { beneficiaryUserId: bigint; payableAmount: number; roles: string[] }
+    >();
+    for (const row of staffRows) {
+      const key = row.beneficiaryUserId.toString();
+      const amount = Number(row.payableAmount);
+      const current = byBeneficiary.get(key);
+      if (!current) {
+        byBeneficiary.set(key, {
+          beneficiaryUserId: row.beneficiaryUserId,
+          payableAmount: Number.isFinite(amount) ? amount : 0,
+          roles: [row.role],
+        });
+        continue;
+      }
+      if (Number.isFinite(amount)) current.payableAmount += amount;
+      if (!current.roles.includes(row.role)) current.roles.push(row.role);
+    }
+
+    const results = await Promise.all(
+      [...byBeneficiary.values()].map(async (entry) => {
+        const staff = await withTenantTransaction(input.enterpriseId, (transaction) =>
+          new AdminUserRepository(transaction).findActiveStaffByUserId(
+            input.enterpriseId,
+            entry.beneficiaryUserId,
+            ['designer', 'measurer']
+          )
+        );
+        if (!staff) {
+          return { success: false, skipped: true, error: 'staff beneficiary unavailable' };
+        }
+        const recipient = await enrichRecipientOpenid(staff);
+        const amountText = formatWeChatAmount(entry.payableAmount);
+        const roleLabel =
+          entry.roles.includes('designer') && entry.roles.includes('measurer')
+            ? '设计测量提成'
+            : entry.roles.includes('designer')
+              ? '设计提成'
+              : '测量提成';
+        return deliverLeadNotification({
+          lead: { ...lead, id: lead.id, enterpriseId: lead.enterpriseId?.toString() },
+          recipient,
+          templateKind: 'workflow_todo',
+          notificationType: 'staff_signing_commission',
+          message: `客户${lead.name}已签约，${roleLabel} ${amountText}`,
+          dedupeKey: `staff_signing_commission:${input.leadId.toString()}:${staff.id.toString()}`,
+          page: '/packages/business/commission-records/commission-records',
+          metadata: {
+            roles: entry.roles,
+            payableAmount: entry.payableAmount.toFixed(2),
+          },
+          buildData: (template) =>
+            buildWorkflowTodoPayload(template, {
+              projectName: lead.communityName || lead.name,
+              owner: recipient.displayName || recipient.username || '员工',
+              currentStatus: '已签约',
+              todo: '查看签单提成',
+              note: `${roleLabel}${amountText}`,
+            }),
+        });
+      })
+    );
+    return { success: results.every((item) => item.success), results };
+  } catch (error) {
+    console.error('Staff signing commission notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
+}
+
 export async function notifyConvertedLeadParties(input: {
   enterpriseId: bigint;
   leadId: bigint;
 }) {
   const results = await Promise.allSettled([
     notifyReferrerOfSigningCommission(input),
+    notifyStaffOfSigningCommission(input),
     notifyEnterpriseAdminOfLeadConverted(input),
   ]);
   return results;

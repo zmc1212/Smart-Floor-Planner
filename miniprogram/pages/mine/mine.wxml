@@ -1,5 +1,5 @@
 <!--
-THESIS: “我的”是身份管家与账号中心，顶部保留资料卡，下方集中通知、权限与账号入口。
+THESIS: “我的”是身份管家与账号中心，顶部保留资料卡，下方集中权限与账号入口。
 OWN-WORLD: 柔白底、清透薄荷场景、绿/蓝/橙/紫四组工具色，以及来自 v6 参考稿的真实室内切图。
 STORY: 用户确认身份，扫描进度，进入角色化工具，处理待办，并在同一页完成账号与系统权限管理。
 FIRST VIEWPORT: 标题操作区与室内场景融合；半透明资料卡压住场景；账号菜单紧随其后或接在工作台内容之后。
@@ -7,17 +7,8 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
 -->
 <template name="mineAccountPanel">
   <view class="mine-account-panel">
-    <view class="account-section-title">通知与权限</view>
+    <view class="account-section-title">权限</view>
     <view class="account-surface">
-      <view class="account-row" hover-class="account-row-pressed" bindtap="onEnableNotification" aria-role="button">
-        <image class="account-row-icon" src="/images/mine-icons/bell.png" mode="aspectFit" />
-        <view class="account-row-copy">
-          <view class="account-row-label">订阅任务通知</view>
-          <view class="account-row-helper">接收客户交接与工作任务提醒</view>
-        </view>
-        <view class="account-row-status {{notificationAccepted ? 'account-row-status-active' : ''}}">{{notificationStatus}}</view>
-        <view class="account-chevron"></view>
-      </view>
       <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenSystemSettings" aria-role="button">
         <image class="account-row-icon" src="/images/mine-v6/settings.png" mode="aspectFit" />
         <view class="account-row-copy">

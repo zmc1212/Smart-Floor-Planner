@@ -1,7 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const api = require('../utils/api.js');
 const notification = require('../utils/notification.js');
 
 const templates = [
@@ -42,206 +41,32 @@ test('role-scoped subscribe kinds stay within the WeChat three-template limit', 
   assert.ok(notification.TEMPLATE_ORDER.includes('lead_converted'));
 });
 
-test('enterprise join result can be requested outside role-scoped Mine authorization', async () => {
+test('subscribe request helpers are no-ops and never call WeChat authorize APIs', async () => {
   const originalWx = global.wx;
-  const originalRequest = api.request;
-  let requestedIds = [];
-  api.request = async () => ({ data: { version: 2, templates } });
+  let subscribeCalled = false;
+  let modalCalled = false;
   global.wx = {
-    getStorageSync() { return ''; },
-    setStorageSync() {},
-    showToast() {
-      throw new Error('quiet subscribe must not toast');
-    },
-    requestSubscribeMessage(options) {
-      requestedIds = options.tmplIds;
-      options.success({ [templates[5].templateId]: 'accept' });
-    }
+    showModal() { modalCalled = true; },
+    requestSubscribeMessage() { subscribeCalled = true; },
+    showToast() { throw new Error('no-op helpers must not toast'); }
   };
 
   try {
-    const result = await notification.requestSubscribeKinds(['enterprise_join_result'], { quiet: true });
-    assert.deepEqual(requestedIds, [templates[5].templateId]);
-    assert.deepEqual(result.accepted, [templates[5].templateId]);
-  } finally {
-    api.request = originalRequest;
-    global.wx = originalWx;
-  }
-});
-
-test('notification authorization requests role-scoped templates and returns every result state', async () => {
-  const originalWx = global.wx;
-  const originalRequest = api.request;
-  const originalGetApp = global.getApp;
-  const stored = [];
-  const toasts = [];
-  let requestedIds = [];
-  api.request = async () => ({ data: { version: 2, templates } });
-  global.getApp = () => ({
-    globalData: {
-      bootstrap: { current: { role: 'customer', mode: 'customer' } }
-    }
-  });
-  global.wx = {
-    getStorageSync() { return ''; },
-    setStorageSync(key, value) { stored.push([key, value]); },
-    showToast(options) { toasts.push(options.title); },
-    requestSubscribeMessage(options) {
-      requestedIds = options.tmplIds;
-      options.success({
-        [templates[3].templateId]: 'accept',
-        [templates[4].templateId]: 'reject'
-      });
-    }
-  };
-
-  try {
-    const result = await notification.requestNotification();
-    assert.deepEqual(requestedIds, [templates[3].templateId, templates[4].templateId]);
-    assert.deepEqual(result.accepted, [templates[3].templateId]);
-    assert.deepEqual(result.rejected, [templates[4].templateId]);
-    assert.equal(stored[0][0], notification.TEMPLATE_CONFIG_STORAGE_KEY);
-    assert.deepEqual(toasts, ['已开启 1/2 项']);
-  } finally {
-    api.request = originalRequest;
-    global.wx = originalWx;
-    global.getApp = originalGetApp;
-  }
-});
-
-test('designer authorization requests at most three templates', async () => {
-  const originalWx = global.wx;
-  const originalRequest = api.request;
-  const originalGetApp = global.getApp;
-  let requestedIds = [];
-  api.request = async () => ({ data: { version: 2, templates } });
-  global.getApp = () => ({
-    globalData: {
-      bootstrap: { current: { role: 'designer', mode: 'staff' } }
-    }
-  });
-  global.wx = {
-    getStorageSync() { return ''; },
-    setStorageSync() {},
-    showToast() {},
-    requestSubscribeMessage(options) {
-      requestedIds = options.tmplIds;
-      options.success(Object.fromEntries(options.tmplIds.map((id) => [id, 'accept'])));
-    }
-  };
-
-  try {
-    await notification.requestNotification({ role: 'designer' });
-    assert.equal(requestedIds.length, 3);
-    assert.ok(requestedIds.length <= 3);
-  } finally {
-    api.request = originalRequest;
-    global.wx = originalWx;
-    global.getApp = originalGetApp;
-  }
-});
-
-test('enterprise admin authorization includes lead converted template', async () => {
-  const originalWx = global.wx;
-  const originalRequest = api.request;
-  let requestedIds = [];
-  api.request = async () => ({ data: { version: 2, templates } });
-  global.wx = {
-    getStorageSync() { return ''; },
-    setStorageSync() {},
-    showToast() {},
-    requestSubscribeMessage(options) {
-      requestedIds = options.tmplIds;
-      options.success(Object.fromEntries(options.tmplIds.map((id) => [id, 'accept'])));
-    }
-  };
-
-  try {
-    await notification.requestNotification({ role: 'enterprise_admin' });
-    assert.deepEqual(requestedIds, [
-      templates[2].templateId,
-      templates[0].templateId,
-      templates[7].templateId
-    ]);
-  } finally {
-    api.request = originalRequest;
-    global.wx = originalWx;
-  }
-});
-
-test('notification authorization does not fall back to a hard-coded ID without server or V2 cache', async () => {
-  const originalWx = global.wx;
-  const originalRequest = api.request;
-  const originalGetApp = global.getApp;
-  const toasts = [];
-  let requestCalled = false;
-  api.request = async () => { throw new Error('offline'); };
-  global.getApp = () => ({ globalData: { bootstrap: { current: { role: 'customer' } } } });
-  global.wx = {
-    getStorageSync() { return 'legacy-template-id'; },
-    showToast(options) { toasts.push(options.title); },
-    requestSubscribeMessage() { requestCalled = true; }
-  };
-
-  try {
-    const result = await notification.requestNotification();
-    assert.equal(requestCalled, false);
-    assert.deepEqual(result.templateIds, []);
-    assert.deepEqual(toasts, ['通知配置暂不可用，请稍后重试']);
-  } finally {
-    api.request = originalRequest;
-    global.wx = originalWx;
-    global.getApp = originalGetApp;
-  }
-});
-
-test('post-sign-in offer requests referrer signing commission and designer templates on confirm', async () => {
-  const originalWx = global.wx;
-  const originalRequest = api.request;
-  const originalGetApp = global.getApp;
-  let requestedIds = [];
-  let modalCount = 0;
-  api.request = async () => ({ data: { version: 2, templates } });
-  global.getApp = () => ({ globalData: { bootstrap: { current: { role: 'designer' } } } });
-  global.wx = {
-    getStorageSync() { return ''; },
-    setStorageSync() {},
-    showToast() {},
-    showModal(options) {
-      modalCount += 1;
-      options.success({ confirm: true });
-    },
-    requestSubscribeMessage(options) {
-      requestedIds = options.tmplIds;
-      options.success(Object.fromEntries(options.tmplIds.map((id) => [id, 'accept'])));
-    }
-  };
-
-  try {
-    const referrerDone = [];
-    await notification.offerNotificationAuthorization({
+    const kindsResult = await notification.requestSubscribeKinds(['enterprise_join_result'], { quiet: true });
+    const notifyResult = await notification.requestNotification({ role: 'designer' });
+    const done = [];
+    const offerResult = await notification.offerNotificationAuthorization({
       role: 'referrer',
-      onDone: (result) => referrerDone.push(result)
+      onDone: (result) => done.push(result)
     });
-    assert.equal(modalCount, 1);
-    assert.deepEqual(requestedIds, [templates[6].templateId]);
-    assert.equal(referrerDone[0].offered, true);
-    assert.equal(referrerDone[0].accepted, true);
 
-    const designerDone = [];
-    await notification.offerNotificationAuthorization({
-      role: 'designer',
-      title: '入驻成功',
-      cancelText: '直接进入',
-      onDone: (result) => designerDone.push(result)
-    });
-    assert.equal(modalCount, 2);
-    assert.equal(requestedIds.length, 3);
-    assert.equal(designerDone[0].offered, true);
-    assert.equal(designerDone[0].accepted, true);
+    assert.equal(subscribeCalled, false);
+    assert.equal(modalCalled, false);
+    assert.deepEqual(kindsResult.templateIds, []);
+    assert.deepEqual(notifyResult.templateIds, []);
+    assert.deepEqual(offerResult, { offered: false, accepted: false });
+    assert.deepEqual(done[0], { offered: false, accepted: false });
   } finally {
-    api.request = originalRequest;
     global.wx = originalWx;
-    global.getApp = originalGetApp;
   }
 });

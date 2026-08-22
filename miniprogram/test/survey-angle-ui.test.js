@@ -18,8 +18,9 @@ test('angle measurement uses one sheet for phone, manual, and Pythagorean states
   assert.match(wxml, /bindtap="onAngleManualInputBack"/);
   assert.match(wxml, /angleTriangleMeasuringSide === 'a'/);
   assert.match(wxml, /angleTriangleResult \|\| '--'/);
-  assert.match(wxml, /wx:if="\{\{!numberPadVisible\}\}" class="history-action-bar/);
-  assert.match(wxml, /wx:if="\{\{!numberPadVisible\}\}" class="bottom-fab-bar/);
+  assert.match(wxml, /wx:if="\{\{!numberPadVisible && !spaceNameSheetVisible\}\}" class="history-action-bar/);
+  assert.match(wxml, /wx:if="\{\{!numberPadVisible && !spaceNameSheetVisible\}\}" class="bottom-fab-bar/);
+  assert.match(wxml, /wx:if="\{\{!numberPadVisible && !spaceNameSheetVisible\}\}"[\s\S]*?class="cursor-dock-helper/);
   assert.doesNotMatch(wxml, /cursor-lens/);
   assert.match(pageScript, /lensMeta: this\.cursorLensMeta/);
 });

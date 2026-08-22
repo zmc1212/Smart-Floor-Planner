@@ -9,7 +9,7 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Alert, Button, Card, Flex, Statistic, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Flex, Statistic, Switch, Tag, Typography } from 'antd';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -61,6 +61,7 @@ type NotificationTemplateKind =
 
 type NotificationConfigForm = {
   version: 2;
+  subscriptionMessagesEnabled: boolean;
   templates: Record<NotificationTemplateKind, {
     title?: string;
     templateId: string;
@@ -235,6 +236,7 @@ export default function WorkflowLogsPage() {
   const [scanRunning, setScanRunning] = useState(false);
   const [notificationConfig, setNotificationConfig] = useState<NotificationConfigForm | null>(null);
   const [notificationConfigSaving, setNotificationConfigSaving] = useState(false);
+  const [subscriptionToggleSaving, setSubscriptionToggleSaving] = useState(false);
 
   const canRunScan = Boolean(
     currentUser && ['super_admin', 'admin'].includes(currentUser.role),
@@ -257,6 +259,28 @@ export default function WorkflowLogsPage() {
   useEffect(() => {
     void fetchNotificationConfig();
   }, [fetchNotificationConfig]);
+
+  const toggleSubscriptionMessages = async (enabled: boolean) => {
+    if (!notificationConfig) return;
+    setSubscriptionToggleSaving(true);
+    try {
+      const response = await fetch('/api/platform/notification-config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subscriptionMessagesEnabled: enabled }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '更新微信订阅消息开关失败');
+      }
+      setNotificationConfig(result.data);
+      notify.success(enabled ? '已启用微信订阅消息下发' : '已关闭微信订阅消息下发');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '更新微信订阅消息开关失败');
+    } finally {
+      setSubscriptionToggleSaving(false);
+    }
+  };
 
   const runReminderScan = async () => {
     setScanRunning(true);
@@ -390,14 +414,30 @@ export default function WorkflowLogsPage() {
           {canRunScan ? (
             <Card title="小程序订阅消息模板" className="admin-panel-card">
               <Flex vertical gap={16}>
+                <Flex align="flex-start" justify="space-between" gap={16} wrap="wrap">
+                  <div>
+                    <Typography.Text strong>启用微信订阅消息下发</Typography.Text>
+                    <Typography.Paragraph type="secondary" className="!mb-0 !mt-1">
+                      关闭后业务仍成功，仅跳过微信推送；小程序端已去掉授权引导。站内
+                      <Typography.Text code>staff_notifications</Typography.Text>
+                      与工作台徽标不受影响。
+                    </Typography.Paragraph>
+                  </div>
+                  <Switch
+                    checked={Boolean(notificationConfig?.subscriptionMessagesEnabled)}
+                    loading={subscriptionToggleSaving || !notificationConfig}
+                    disabled={!notificationConfig}
+                    onChange={(checked) => void toggleSubscriptionMessages(checked)}
+                  />
+                </Flex>
                 <Typography.Paragraph type="secondary" className="!mb-0">
-                  六个模板用于小程序按身份聚合授权（单次最多三项）；服务端按通知类型选择模板并只发送其允许的关键词字段。入驻结果模板在开户页单独请求授权。
+                  八个模板用于服务端按通知类型选择并只发送其允许的关键词字段；模板 ID 可在此维护，是否实际下发由上方开关控制。
                 </Typography.Paragraph>
                 <Alert
                   type="info"
                   showIcon
                   message="保存后立即生效"
-                  description="已登录小程序会在下一次授权时按当前身份拉取模板；此前已授权的用户需要按微信规则重新授权。客户授权上门量房与方案发布；设计师/测量员授权指派、预约与待办；企业负责人授权新线索与待办；开户申请人在提交前授权入驻结果通知。"
+                  description="开关关闭时 sendSubscriptionMessage 直接跳过微信接口；模板 ID 变更会在下次启用下发时生效。此前已授权的用户仍受微信规则约束。"
                 />
                 {notificationConfig ? (
                   <ProForm<NotificationConfigForm>
@@ -410,7 +450,11 @@ export default function WorkflowLogsPage() {
                         const response = await fetch('/api/platform/notification-config', {
                           method: 'PATCH',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(values),
+                          body: JSON.stringify({
+                            ...values,
+                            subscriptionMessagesEnabled:
+                              notificationConfig.subscriptionMessagesEnabled,
+                          }),
                         });
                         const result = await response.json();
                         if (!response.ok || !result.success) throw new Error(result.error || '保存小程序通知配置失败');

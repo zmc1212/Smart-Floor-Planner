@@ -1,6 +1,6 @@
 # Mini Program Subscription Notification Template Baseline
 
-Status: `Limited` (eight-template configuration and runtime mappings are implemented for workflow, assignment, new-lead, design-published, enterprise-join-result, referrer signing commission, and enterprise lead-converted; a real on-site measurement appointment trigger remains limited).
+Status: `Limited` (eight-template IDs and runtime mappings remain; Mini Program client authorize UX is removed; WeChat subscribe send is gated by platform `subscriptionMessagesEnabled`, default `false`).
 
 Date: 2026-08-21
 
@@ -10,7 +10,7 @@ This document is the current implementation contract for WeChat Mini Program pub
 
 | Priority | Type | Template | Business scenario | Template ID | Keyword contract |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `workflow_todo` | `装修待办提醒` | Follow-up, measurement, design, closure, and acquisition-commission tasks | `48Jvq7OjOKwRhsnh8fyvtsjxAamLOakaNtiKcO11rOc` | `thing4` project name; `thing11` owner; `phrase12` current status; `thing2` todo; `thing5` note |
+| 1 | `workflow_todo` | `装修待办提醒` | Follow-up, measurement, design, closure, and designer/measurer signing-commission credit | `48Jvq7OjOKwRhsnh8fyvtsjxAamLOakaNtiKcO11rOc` | `thing4` project name; `thing11` owner; `phrase12` current status; `thing2` todo; `thing5` note |
 | 2 | `lead_assignment` | `客户指派成功通知` | A lead is assigned to a measurer or designer | `wItuS0LdggzpMWdSOIr6FBSKeRbOKUzqXVCqJDmLpmA` | `thing1` customer name; `phrase2` customer status; `thing3` note; `time4` time |
 | 3 | `new_lead` | `新增客户成功通知` | A new lead is created and reported to enterprise administrators | `EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjg4xest9GRc` | `name1` customer name; `date2` added time; `name3` owner; `phone_number4` phone; `time5` selected time |
 | 4 | `measurement_appointment` | `上门量房提醒` | A confirmed, explicit on-site measurement appointment | `CtcuQ_NWF4GOpHvstgviDPmYRISjyqTjnFAoeQR9-vI` | `thing1` name; `phone_number2` phone; `thing3` community; `time6` measurement time; `thing7` reminder |
@@ -31,6 +31,7 @@ This document is the current implementation contract for WeChat Mini Program pub
 | Design scheme visible to the customer | `design_published` | `Implemented` |
 | Enterprise status `approve` / `reject` after `POST /api/admin/enterprises/[id]/status` | `enterprise_join_result` | `Implemented`: recipient is the enterprise `contactPerson.phone` resolved through `users` → `wechat_identities.openid`. Missing openid/template or WeChat rejection never rolls back the status transition. Web `/register` applicants without Mini Program subscribe authorization may be skipped. |
 | Referrer payable commission after `POST /api/leads/[id]/convert` when a `role=referrer` snapshot row exists | `signing_commission` | `Implemented`: WeChat-only best-effort to the commission beneficiary openid; designers/measurers are not recipients of this template. |
+| Designer/measurer payable commission after the same convert when `role=designer` / `measurer` payable rows exist | `workflow_todo` | `Implemented`: `staff_notifications` plus WeChat; deduped by `beneficiaryUserId` (one send if the same person holds both roles); amount goes in the note field; does not consume a fourth subscribe slot. |
 | Enterprise-administrator signing success after the same convert commit | `lead_converted` | `Implemented`: uses `staff_notifications` plus WeChat; designers/measurers/customers are not recipients. |
 | Legacy promotion `follow_up_*` / `measure_*` / `design_*` / `conflict_pending` / `record_closed` | — | `Retired`: create/update promotion routes and the reminder cron no longer send these; historical `workflow_notification_logs` remain readable only. |
 
@@ -45,6 +46,7 @@ Subscription `page` targets after WeChat tap:
 | `lead_assignment` | Designer / measurer | `/packages/business/lead-detail/lead-detail?id={leadId}` |
 | `new_lead` | Enterprise admin | same lead detail |
 | `workflow_todo` (assignment pending / survey completed) | Enterprise admin / designer | same lead detail |
+| `workflow_todo` (staff signing commission) | Designer / measurer | `/packages/business/commission-records/commission-records` |
 | `measurement_appointment` (staff) | Designer / measurer | same lead detail |
 | `measurement_appointment` (customer) | Customer | `/packages/business/customer-project/customer-project?leadId={leadId}` |
 | `design_published` | Customer | same customer project archive |
@@ -56,12 +58,13 @@ Staff lead notifications must not open the bare `leads-management` list without 
 
 ## Implemented Contract
 
-- `platform_configs.notification_config` stores a `version: 2` eight-template map with IDs, keyword contracts, and optional `legacyTemplateId`. Reading and PATCHing the former single `miniprogramTemplateId` remains compatible for one release.
-- `GET/PATCH /api/platform/notification-config` lets platform `admin`/`super_admin` users maintain eight non-empty, valid, distinct IDs. `/workflow-logs` uses its existing configuration card and shared operation feedback.
-- `GET /api/miniprogram/notification-template` returns an ordered eight-template list plus the deprecated single-value alias to authenticated Mini Program users. The client caches only a complete V2 configuration and has no bundled template-ID fallback.
-- Login, Mine, and Settings request role-scoped templates in one `wx.requestSubscribeMessage` call (at most three): customer 2, designer/measurer 3, enterprise owner 3 (`new_lead` + `workflow_todo` + `lead_converted`), referrer 1 (`signing_commission`). Enterprise open-account (`enterprise-register`) requests only `enterprise_join_result` quietly before submit; refusal does not block the application.
+- `platform_configs.notification_config` stores a `version: 2` eight-template map with IDs, keyword contracts, optional `legacyTemplateId`, and `subscriptionMessagesEnabled` (default `false` when absent). Reading and PATCHing the former single `miniprogramTemplateId` remains compatible for one release.
+- `GET/PATCH /api/platform/notification-config` lets platform `admin`/`super_admin` users maintain eight non-empty, valid, distinct IDs and the WeChat send switch. `/workflow-logs` exposes the switch plus the template card with shared operation feedback.
+- `sendSubscriptionMessage` is the single WeChat choke point: when `subscriptionMessagesEnabled` is false it returns `{ success: false, skipped: true }` and never calls WeChat. In-app `staff_notifications` and workbench badges continue to write.
+- `GET /api/miniprogram/notification-template` still returns the ordered eight-template list to authenticated Mini Program users for compatibility, but the client no longer requests subscribe authorization.
+- Mini Program hard-remove: no `wx.requestSubscribeMessage`, no login/onboarding/claim “开启通知” modals, and no Mine「订阅任务通知」row. Mine keeps「微信权限管理」(`wx.openSetting`). Re-enabling later requires restoring that authorize UX.
 - Server builders emit only approved keys and normalize empty values, character limits, and China-time `YYYY-MM-DD HH:mm:ss` values. `phrase2` for join results is `审核通过` or `审核不通过`. Signing commission `amount4` uses `¥xx.xx`.
-- Workflow dispatch for **legacy promotion reports is retired**. Lead/appointment/signing notifications write `staff_notifications` `in_app` first (where applicable), then attempt WeChat and record `sent`, `failed`, or `skipped`. Enterprise join-result and referrer signing-commission delivery remain WeChat-only best-effort after commit. Missing openids/templates and WeChat failures never roll back business data.
+- Workflow dispatch for **legacy promotion reports is retired**. Lead/appointment/signing notifications write `staff_notifications` `in_app` first (where applicable), then attempt WeChat only when the platform switch is on, recording `sent`, `failed`, or `skipped`. Enterprise join-result and referrer signing-commission delivery remain WeChat-only best-effort after commit when enabled. Missing openids/templates and WeChat failures never roll back business data.
 - `/api/automation/reminders/run` only runs appointment expiry for the current matrix; it no longer scans promotion follow-up / `measureDueAt` / `designDueAt` / protection-pool nudges.
 - Duplicate-phone lead intake reuses the existing lead and emits no new enterprise-administrator or designer notification.
 
@@ -69,9 +72,9 @@ Staff lead notifications must not open the bare `leads-management` list without 
 
 - [x] All eight templates appear in `我的模板`.
 - [x] All eight IDs and exact keyword keys are recorded.
-- [x] Admin configuration stores eight typed IDs.
-- [x] The Mini Program authorizes role-scoped templates and separately authorizes join-result on open-account submit.
+- [x] Admin configuration stores eight typed IDs plus `subscriptionMessagesEnabled` (default off).
+- [x] Mini Program client authorize UX is removed; server WeChat send is switch-gated.
 - [x] Server payloads contain only keys accepted by the selected template.
-- [x] In-app delivery, channel-scoped deduplication, and WeChat failure logs are preserved where applicable.
+- [x] In-app delivery, channel-scoped deduplication, and WeChat failure/skip logs are preserved where applicable.
 - [x] Bilingual Admin/Mini Program inventories and this baseline pair are synchronized.
-- [ ] Keep validating `measurement_appointment` delivery against every appointment event path in production.
+- [ ] Keep validating `measurement_appointment` delivery against every appointment event path when the platform switch is re-enabled.

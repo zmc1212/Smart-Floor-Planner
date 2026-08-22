@@ -13,6 +13,7 @@ Replace the surveying editor’s default canvas cursor and bottom-dock cursor ic
 - No interaction / state-machine changes (`placed` / `awaitingWallDrop` / `dragging` stay as today).
 - No change to right-rail「直线」`align.png` / `align-active.png` tool icons.
 - No bubble/tip copy changes on the canvas cursor.
+- The drag magnifier is not the Fig.1 reticle: it keeps the prior small green `+` at the lens centre.
 
 ## Visual contract
 
@@ -24,6 +25,7 @@ Replace the surveying editor’s default canvas cursor and bottom-dock cursor ic
 | Corners | Four L brackets in `#22c55e` |
 | Fill | `rgba(34, 197, 94, 0.16)` inside the bracket box |
 | Dock | Same glyph as canvas; used for both reset and wall-drop states |
+| Magnifier | Small green `+` (12px arms) at the lens centre only; never the Fig.1 reticle |
 
 ## Approach
 

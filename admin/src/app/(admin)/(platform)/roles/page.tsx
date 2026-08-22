@@ -3,8 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PageContainer } from '@ant-design/pro-components';
 import { Alert, Button, Card, Checkbox, Empty, Flex, Result, Skeleton, Tag, Typography } from 'antd';
-import { RefreshCw, Save, ShieldCheck } from 'lucide-react';
-import { ALL_MENUS } from '@/lib/admin-user-roles';
+import { RefreshCw, RotateCcw, Save, ShieldCheck } from 'lucide-react';
+import {
+  ALL_MENUS,
+  getDefaultMenuKeys,
+  getMenuLabel,
+  MENU_PERMISSION_GROUPS,
+} from '@/lib/admin-user-roles';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
@@ -41,6 +46,11 @@ export default function RolesPage() {
   const hasUnsavedChanges = Boolean(selectedRole && !sameMenuKeys(menuKeys, selectedRole.menuKeys));
   const legacyMenuKeys = useMemo(() => menuKeys.filter((key) => !KNOWN_MENU_KEYS.has(key)), [menuKeys]);
   const selectableMenuKeys = useMemo(() => menuKeys.filter((key) => KNOWN_MENU_KEYS.has(key)), [menuKeys]);
+  const defaultMenuKeys = useMemo(
+    () => (selectedRole ? getDefaultMenuKeys(selectedRole.roleKey) : []),
+    [selectedRole],
+  );
+  const matchesCodeDefaults = Boolean(selectedRole && sameMenuKeys(menuKeys, defaultMenuKeys));
 
   const loadRoles = useCallback(async () => {
     setLoading(true);
@@ -76,6 +86,17 @@ export default function RolesPage() {
     selectedRoleIdRef.current = role._id;
     setSelectedRoleId(role._id);
     setMenuKeys(role.menuKeys);
+  };
+
+  const restoreDefaults = () => {
+    if (!selectedRole) return;
+    const nextKeys = getDefaultMenuKeys(selectedRole.roleKey);
+    if (!nextKeys.length) {
+      notify.error('该角色没有代码默认菜单');
+      return;
+    }
+    setMenuKeys(nextKeys);
+    notify.success(`已填入${selectedRole.label}的代码默认菜单，请保存后写入数据库`);
   };
 
   const saveRole = async () => {
@@ -136,9 +157,17 @@ export default function RolesPage() {
         breadcrumbRender={false}
         className="admin-page-container"
         title="角色权限管理"
-        content="维护新建账号的默认菜单权限。保存不会修改已有账号的单独授权。"
+        content="按侧栏业务分组维护各系统角色的默认菜单。保存更新 system_roles；已有账号的有效权限跟随角色菜单，恢复默认并保存可校准库中旧行。"
         extra={[
           <Button key="refresh" icon={<RefreshCw size={16} />} loading={loading} onClick={() => void loadRoles()}>刷新</Button>,
+          <Button
+            key="restore"
+            icon={<RotateCcw size={16} />}
+            disabled={!selectedRole || matchesCodeDefaults}
+            onClick={restoreDefaults}
+          >
+            恢复该角色默认
+          </Button>,
           <Button key="save" type="primary" icon={<Save size={16} />} loading={saving} disabled={!selectedRole || !hasUnsavedChanges} onClick={() => void saveRole()}>保存权限</Button>,
         ]}
       >
@@ -180,39 +209,61 @@ export default function RolesPage() {
                 <Flex justify="space-between" align="start" wrap="wrap" gap={16}>
                   <Flex vertical gap={4}>
                     <Typography.Title level={4} className="!mb-0"><ShieldCheck size={19} className="mr-2 inline text-primary" />{selectedRole.label}默认菜单</Typography.Title>
-                    <Typography.Text type="secondary">选择该角色在账号初始化时默认可见的管理菜单。</Typography.Text>
+                    <Typography.Text type="secondary">选择该角色在账号初始化时默认可见的管理菜单；分组与侧栏业务分类一致。</Typography.Text>
                   </Flex>
                   <Tag color={hasUnsavedChanges ? 'warning' : 'success'}>{hasUnsavedChanges ? '存在未保存变更' : '已同步'}</Tag>
                 </Flex>
 
-                <Alert type="info" showIcon message="权限生效范围" description="此处只更新角色默认值；已有账号的有效权限仍由其角色、单独菜单授权及路由守卫共同决定。" />
+                <Alert
+                  type="info"
+                  showIcon
+                  message="权限生效范围"
+                  description="此处更新角色默认菜单（system_roles.menuKeys）。账号有效权限由其角色菜单与路由守卫决定；代码默认变更不会自动覆盖库中旧行，可点「恢复该角色默认」后再保存校准。"
+                />
 
-                {legacyMenuKeys.length ? <Alert type="warning" showIcon message={`保留 ${legacyMenuKeys.length} 个历史菜单权限`} description="这些权限不在当前菜单目录中展示；保存可见配置时会原样保留。" /> : null}
+                {legacyMenuKeys.length ? <Alert type="warning" showIcon message={`保留 ${legacyMenuKeys.length} 个历史菜单权限`} description="这些权限不在当前菜单目录中展示；保存可见配置时会原样保留。恢复默认会清除历史键。" /> : null}
 
                 <Checkbox.Group
                   value={selectableMenuKeys}
                   onChange={(values) => setMenuKeys([...new Set([...legacyMenuKeys, ...(values as string[])])])}
                   className="w-full"
                 >
-                  <div className="admin-permission-grid">
-                    {ALL_MENUS.map((menu) => (
-                      <Checkbox
-                        key={menu.key}
-                        value={menu.key}
-                        className="admin-permission-option"
-                      >
-                        <span className="flex min-w-0 flex-col gap-0.5">
-                          <span className="font-medium">{menu.label}</span>
-                          <span className="truncate text-xs text-muted-foreground">{menu.key}</span>
-                        </span>
-                      </Checkbox>
+                  <Flex vertical gap={20} className="w-full">
+                    {MENU_PERMISSION_GROUPS.map((group) => (
+                      <div key={group.title} className="admin-permission-group">
+                        <Flex vertical gap={4} className="mb-3">
+                          <Typography.Text strong>{group.title}</Typography.Text>
+                          {group.description ? (
+                            <Typography.Text type="secondary" className="text-xs">{group.description}</Typography.Text>
+                          ) : null}
+                        </Flex>
+                        <div className="admin-permission-grid">
+                          {group.keys.map((key) => (
+                            <Checkbox
+                              key={key}
+                              value={key}
+                              className="admin-permission-option"
+                            >
+                              <span className="flex min-w-0 flex-col gap-0.5">
+                                <span className="font-medium">{getMenuLabel(key)}</span>
+                                <span className="truncate text-xs text-muted-foreground">{key}</span>
+                              </span>
+                            </Checkbox>
+                          ))}
+                        </div>
+                      </div>
                     ))}
-                  </div>
+                  </Flex>
                 </Checkbox.Group>
 
                 <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
                   <Typography.Text type="secondary">已选择 {menuKeys.length} / {ALL_MENUS.length} 个菜单</Typography.Text>
-                  <Button type="primary" icon={<Save size={16} />} loading={saving} disabled={!hasUnsavedChanges} onClick={() => void saveRole()}>保存权限</Button>
+                  <Flex gap={8} wrap="wrap">
+                    <Button icon={<RotateCcw size={16} />} disabled={matchesCodeDefaults} onClick={restoreDefaults}>
+                      恢复该角色默认
+                    </Button>
+                    <Button type="primary" icon={<Save size={16} />} loading={saving} disabled={!hasUnsavedChanges} onClick={() => void saveRole()}>保存权限</Button>
+                  </Flex>
                 </Flex>
               </Flex>
             ) : <Empty description="请选择一个系统角色" />}

@@ -378,6 +378,14 @@ Page({
     cursorLensSnapType: 'none',
     selectedWall: null,
     selectedOpening: null,
+    selectedSpace: null,
+    spaceNameSheetVisible: false,
+    spaceNameSheetOpen: false,
+    spaceNameDraft: '',
+    spaceNameKeyboardHeight: 0,
+    spaceNamePresets: [
+      '客厅', '卧室', '主卧', '次卧', '主卫', '次卫', '书房', '厨房', '餐厅', '阳台'
+    ],
     canResumeWallDrawing: false,
     spaceSummary: null,
     numberPadVisible: false,
@@ -560,6 +568,7 @@ Page({
   onHide() {
     this.finishViewportInteraction({ sync: true, persist: false });
     this.stopPhoneAngleMeasurement();
+    this.unbindSpaceNameKeyboardListener();
   },
 
   onUnload() {
@@ -572,8 +581,32 @@ Page({
     this.clearCursorDragCanvas({ force: true });
     this.clearBleMeasureTimers();
     this.stopPhoneAngleMeasurement();
+    this.unbindSpaceNameKeyboardListener();
     this.persistFormalDraft();
     this.destroyComponentScene();
+  },
+
+  bindSpaceNameKeyboardListener() {
+    if (this._onSpaceNameKeyboardHeightChange) return;
+    this._onSpaceNameKeyboardHeightChange = (res) => {
+      if (!this.data.spaceNameSheetVisible) return;
+      const height = Math.max(0, Math.floor(Number(res && res.height) || 0));
+      if (height === this.data.spaceNameKeyboardHeight) return;
+      this.setData({ spaceNameKeyboardHeight: height });
+    };
+    if (typeof wx.onKeyboardHeightChange === 'function') {
+      wx.onKeyboardHeightChange(this._onSpaceNameKeyboardHeightChange);
+    }
+  },
+
+  unbindSpaceNameKeyboardListener() {
+    if (typeof wx.offKeyboardHeightChange === 'function' && this._onSpaceNameKeyboardHeightChange) {
+      wx.offKeyboardHeightChange(this._onSpaceNameKeyboardHeightChange);
+    }
+    this._onSpaceNameKeyboardHeightChange = null;
+    if (this.data.spaceNameKeyboardHeight) {
+      this.setData({ spaceNameKeyboardHeight: 0 });
+    }
   },
 
   getFormalDraftKey(leadId, scope) {
@@ -1538,7 +1571,9 @@ Page({
       y: point.y - this.canvasRect.top
     };
     this.cursorDragCanvasShowCursor = !options || options.showCursor !== false;
-    if (!this.cursorDragCanvas || !this.cursorDragCtx || this.cursorDragAnimationFrame !== null) return;
+    const sync = !!(options && options.sync);
+    if (!this.cursorDragCanvas || !this.cursorDragCtx) return;
+    if (!sync && this.cursorDragAnimationFrame !== null) return;
 
     const render = () => {
       this.cursorDragAnimationFrame = null;
@@ -1558,8 +1593,19 @@ Page({
           snapGuide: this.cursorDragSnapGuide
         }
       );
+      // Stamp the Fig.1 reticle after the lens blit so the magnified crop never
+      // includes it. Overlay-owned drags already paint the moving cursor.
+      if (!this.cursorDragCanvasShowCursor && this.surveyCtx && this.surveyRenderScene) {
+        surveyCanvasRenderer.drawCursor(this.surveyCtx, this.surveyRenderScene, {
+          dpr: this.surveyCanvasDpr || 1
+        });
+      }
     };
 
+    if (sync) {
+      render();
+      return;
+    }
     if (typeof this.cursorDragCanvas.requestAnimationFrame === 'function') {
       this.cursorDragAnimationFrame = this.cursorDragCanvas.requestAnimationFrame(render);
     } else {
@@ -1730,7 +1776,8 @@ Page({
     }
     this.formalCanvasDrawPending = false;
     surveyCanvasRenderer.drawSurveyScene(this.surveyCtx, this.surveyRenderScene, {
-      dpr: this.surveyCanvasDpr || 1
+      dpr: this.surveyCanvasDpr || 1,
+      omitCursor: this.isCursorLensActive()
     });
     this.drawCanvasControls();
     this.drawSurveyGuideCanvas();
@@ -2465,6 +2512,7 @@ Page({
     // regular live-measurement bubble out of that lane for the whole drag.
     const topMetricSuppressed = cursorPlacementState !== 'placed' || this.canvasCursorLensActive;
     const selectedOpening = this.buildSelectedOpening(floor, session.selectedOpeningId);
+    const selectedSpace = this.buildSelectedSpace(floor, session.selectedSpaceId);
     const requestedComponentSpecMode = (extraData && extraData.componentSpecMode) || this.data.componentSpecMode;
     const componentState = this.buildComponentEditorState(floor, selectedOpening, requestedComponentSpecMode);
     const presentationState = Object.assign({}, this.data, extraData || {});
@@ -2501,6 +2549,7 @@ Page({
       closeActionStyle: renderData.closeActionStyle,
       selectedWall,
       selectedOpening,
+      selectedSpace,
       canResumeWallDrawing: !!selectedOpening && floor.walls.length > 0 && !floor.spaces.some((space) => space.closed),
       componentEditorTitle: componentState.title,
       componentTypeLabel: componentState.typeLabel,
@@ -3314,6 +3363,24 @@ Page({
     };
   },
 
+  buildSelectedSpace(floor, spaceId) {
+    if (!spaceId) return null;
+    const space = (floor.spaces || []).find((item) => (
+      item && item.id === spaceId && item.closed && Array.isArray(item.wallIds)
+    ));
+    if (!space) return null;
+    const plan = surveyGraph.buildSpaceDimensionPlan(floor, space);
+    const areaM2 = plan && plan.inner
+      ? (plan.inner.areaMm2 / 1000000).toFixed(1)
+      : '0.0';
+    return {
+      id: space.id,
+      name: space.name || '房间',
+      areaLabel: `S≈${areaM2}m²`,
+      wallCount: space.wallIds.length
+    };
+  },
+
   getComponentModelLabel(opening) {
     const type = opening && opening.type === 'window' ? 'window' : 'door';
     const item = (COMPONENT_LIBRARY[type] || []).find((option) => option.id === opening.modelId);
@@ -3675,7 +3742,7 @@ Page({
       (target && target.snapLine) || ''
     );
     this.cursorDragSnapGuide = null;
-    this.queueCursorDragCanvas(clientPoint, { showCursor: false });
+    this.queueCursorDragCanvas(clientPoint, { showCursor: false, sync: true });
     if (!this.canvasCursorLensPublished) {
       this.canvasCursorLensPublished = true;
       this.setData({ cursorLensActive: true, cursorLensVisible: true });
@@ -3921,7 +3988,7 @@ Page({
   onToolTap(e) {
     const tool = e.currentTarget.dataset.tool;
 
-    if (tool && tool.indexOf('object-') === 0) {
+    if (tool && (tool.indexOf('object-') === 0 || tool.indexOf('space-') === 0)) {
       this.onObjectToolTap(tool);
       return;
     }
@@ -4014,6 +4081,16 @@ Page({
 
     if (tool === 'object-delete') {
       this.deleteSelectedObject();
+      return;
+    }
+
+    if (tool === 'space-rename') {
+      this.openSpaceNameSheet();
+      return;
+    }
+
+    if (tool === 'space-delete') {
+      this.deleteSelectedSpace();
       return;
     }
 
@@ -4124,11 +4201,125 @@ Page({
       this.deleteSelectedOpening();
       return;
     }
+    if (floor.session.selectedSpaceId) {
+      this.deleteSelectedSpace();
+      return;
+    }
     if (floor.session.selectedWallId) {
       this.deleteSelectedWall();
       return;
     }
-    wx.showToast({ title: '请先选择墙体或门窗', icon: 'none' });
+    wx.showToast({ title: '请先选择墙体、门窗或房间', icon: 'none' });
+  },
+
+  deleteSelectedSpace() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const spaceId = floor.session.selectedSpaceId;
+    const space = (floor.spaces || []).find((item) => item && item.id === spaceId && item.closed);
+    if (!spaceId || !space) {
+      wx.showToast({ title: '请先选择闭合房间', icon: 'none' });
+      return;
+    }
+
+    wx.showModal({
+      title: '删除房间',
+      content: `将删除「${space.name || '房间'}」的独有墙体及其上门窗；与相邻房间的共用墙会保留。`,
+      confirmText: '删除',
+      confirmColor: '#d71920',
+      success: (res) => {
+        if (!res.confirm) return;
+        try {
+          const nextDraft = surveyGraph.deleteClosedSpace(this.draft, spaceId);
+          this.applyDraft(nextDraft, {
+            recordHistory: true,
+            extraData: {
+              selectedSpace: null,
+              spaceNameSheetVisible: false,
+              spaceNameSheetOpen: false
+            }
+          });
+          wx.showToast({ title: '房间已删除', icon: 'none' });
+        } catch (err) {
+          wx.showToast({ title: err.message || '删除失败，请重试', icon: 'none' });
+        }
+      }
+    });
+  },
+
+  openSpaceNameSheet() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const spaceId = floor.session && floor.session.selectedSpaceId;
+    const space = (floor.spaces || []).find((item) => item && item.id === spaceId && item.closed);
+    if (!space) {
+      wx.showToast({ title: '请先选择闭合房间', icon: 'none' });
+      return;
+    }
+    this.bindSpaceNameKeyboardListener();
+    this.setData({
+      spaceNameSheetVisible: true,
+      spaceNameSheetOpen: false,
+      spaceNameDraft: space.name || '',
+      spaceNameKeyboardHeight: 0
+    });
+    setTimeout(() => {
+      this.setData({ spaceNameSheetOpen: true });
+    }, 16);
+  },
+
+  closeSpaceNameSheet() {
+    if (!this.data.spaceNameSheetVisible) return;
+    if (typeof wx.hideKeyboard === 'function') {
+      wx.hideKeyboard();
+    }
+    this.setData({
+      spaceNameSheetOpen: false,
+      spaceNameKeyboardHeight: 0
+    });
+    setTimeout(() => {
+      this.unbindSpaceNameKeyboardListener();
+      this.setData({
+        spaceNameSheetVisible: false,
+        spaceNameDraft: ''
+      });
+    }, 260);
+  },
+
+  onSpaceNamePresetTap(e) {
+    const name = e.currentTarget.dataset.name;
+    if (!name) return;
+    this.setData({ spaceNameDraft: name });
+  },
+
+  onSpaceNameInput(e) {
+    this.setData({ spaceNameDraft: (e.detail && e.detail.value) || '' });
+  },
+
+  onConfirmSpaceName() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const spaceId = floor.session && floor.session.selectedSpaceId;
+    if (!spaceId) {
+      wx.showToast({ title: '请先选择闭合房间', icon: 'none' });
+      return;
+    }
+    try {
+      if (typeof wx.hideKeyboard === 'function') {
+        wx.hideKeyboard();
+      }
+      const nextDraft = surveyGraph.renameClosedSpace(this.draft, spaceId, this.data.spaceNameDraft);
+      this.unbindSpaceNameKeyboardListener();
+      this.applyDraft(nextDraft, {
+        recordHistory: true,
+        extraData: {
+          spaceNameSheetVisible: false,
+          spaceNameSheetOpen: false,
+          spaceNameKeyboardHeight: 0,
+          spaceNameDraft: ''
+        }
+      });
+      wx.showToast({ title: '房间名称已更新', icon: 'none' });
+    } catch (err) {
+      wx.showToast({ title: err.message || '命名失败', icon: 'none' });
+    }
   },
 
   deleteSelectedWall() {
@@ -4786,25 +4977,36 @@ Page({
     }
 
     if (touchState.mode === 'wallSnapPending') {
+      // Prefer wall/vertex snap for cursor placement; otherwise allow selecting
+      // a closed-room fill so waiting-to-drop does not block room edit.
       const candidate = this.getCursorPlacementCandidate(touchState.startPoint);
-      if (!candidate || !candidate.pointMm || (
-        candidate.type !== 'vertex' && candidate.type !== 'wall'
+      if (candidate && candidate.pointMm && (
+        candidate.type === 'vertex' || candidate.type === 'wall'
       )) {
-        wx.showToast({ title: '请选择已有墙体或顶点', icon: 'none' });
+        // Canvas tapping must preserve the same inner/outer vertex target as
+        // the bottom cursor drag path rather than reclassifying raw coordinates.
+        const nextDraft = surveyGraph.snapCursorToWall(this.draft, candidate.pointMm, candidate);
+        this.cursorPlacementState = 'placed';
+        this.applyDraft(nextDraft, {
+          recordHistory: false,
+          extraData: {
+            cursorPlacementState: 'placed',
+            numberPadVisible: false
+          }
+        });
+        wx.showToast({ title: '光标已吸附到墙体', icon: 'none' });
         return;
       }
-      // Canvas tapping must preserve the same inner/outer vertex target as
-      // the bottom cursor drag path rather than reclassifying raw coordinates.
-      const nextDraft = surveyGraph.snapCursorToWall(this.draft, candidate.pointMm, candidate);
-      this.cursorPlacementState = 'placed';
-      this.applyDraft(nextDraft, {
-        recordHistory: false,
-        extraData: {
-          cursorPlacementState: 'placed',
-          numberPadVisible: false
-        }
-      });
-      wx.showToast({ title: '光标已吸附到墙体', icon: 'none' });
+      const spaceHit = this.hitTestClosedSpaceAtClientPoint(touchState.startPoint);
+      if (spaceHit && spaceHit.spaceId) {
+        this.canvasTapSelectedObject = true;
+        this.applyDraft(surveyGraph.selectSpace(this.draft, spaceHit.spaceId), {
+          extraData: { numberPadVisible: false },
+          persist: false
+        });
+        return;
+      }
+      wx.showToast({ title: '请选择已有墙体或顶点', icon: 'none' });
       return;
     }
 
@@ -4862,7 +5064,17 @@ Page({
         return;
       }
 
-      // 选中墙体（含其上的门窗）后，点击画布空白处应退出对象编辑状态。
+      const spaceHit = this.hitTestClosedSpaceAtClientPoint(touchState.startPoint);
+      if (spaceHit && spaceHit.spaceId) {
+        this.canvasTapSelectedObject = true;
+        this.applyDraft(surveyGraph.selectSpace(this.draft, spaceHit.spaceId), {
+          extraData: { numberPadVisible: false },
+          persist: false
+        });
+        return;
+      }
+
+      // 选中墙体（含其上的门窗）或闭合房间后，点击画布空白处应退出对象编辑状态。
       if (session.state === 'wallSelected') {
         this.onExitWallSelection();
         return;
@@ -4973,15 +5185,28 @@ Page({
     });
   },
 
+  hitTestClosedSpaceAtClientPoint(point) {
+    if (!this.canvasRect || !this.surveyRenderScene || !point) return null;
+    return surveyCanvasRenderer.hitTestSurveyClosedSpace(this.surveyRenderScene, {
+      x: point.x - this.canvasRect.left,
+      y: point.y - this.canvasRect.top
+    });
+  },
+
   onExitWallSelection() {
     if (!this.draft) return;
     const floor = surveyGraph.getActiveFloor(this.draft);
-    if (!floor.session.selectedWallId && !floor.session.selectedOpeningId) return;
+    if (!floor.session.selectedWallId && !floor.session.selectedOpeningId && !floor.session.selectedSpaceId) {
+      return;
+    }
     this.touchState = null;
     this.applyDraft(surveyGraph.cancelPending(this.draft), {
       extraData: {
         selectedWall: null,
-        selectedOpening: null
+        selectedOpening: null,
+        selectedSpace: null,
+        spaceNameSheetVisible: false,
+        spaceNameSheetOpen: false
       },
       persist: false
     });
@@ -5162,6 +5387,9 @@ Page({
     this.cursorDragPending = false;
     const wasDragging = this.cursorPlacementState === 'dragging';
     this.cursorPlacementState = 'dragging';
+    if (!wasDragging) {
+      this.drawSurveyCanvas();
+    }
     // Canvas owns the lens chrome. Only publish the dragging state once so
     // touchmove does not pay for cover-view setData on every frame.
     const dragData = this.resolveCursorDragPoint(point, !wasDragging);

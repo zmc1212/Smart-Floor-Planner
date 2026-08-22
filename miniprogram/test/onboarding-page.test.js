@@ -44,8 +44,8 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/onboarding\/staff/);
   assert.match(js, /\/miniprogram\/onboarding\/referrer/);
-  assert.match(js, /offerNotificationAuthorization/);
-  assert.match(js, /resolveOnboardingSubscribeRole/);
+  assert.doesNotMatch(js, /offerNotificationAuthorization/);
+  assert.doesNotMatch(js, /resolveOnboardingSubscribeRole/);
   assert.match(js, /`ej_\$\{decoded\}`/);
   assert.match(js, /enterpriseName/);
   assert.match(wxml, /将加入：/);
@@ -96,7 +96,7 @@ test('onboarding role selection is limited to supported staff roles', () => {
   assert.equal(context.data.selectedStaffRole, 'measurer');
 });
 
-test('staff success CTA offers notifications then relaunches the designer workbench', () => {
+test('staff success CTA relaunches the designer workbench without subscribe prompts', () => {
   const definition = loadPage();
   const originalGetApp = global.getApp;
   const originalWx = global.wx;
@@ -113,18 +113,15 @@ test('staff success CTA offers notifications then relaunches the designer workbe
   try {
     const context = {
       data: { codeType: 'staff', selectedStaffRole: 'designer' },
-      resolveOnboardingSubscribeRole: definition.resolveOnboardingSubscribeRole,
       enterWorkbench: definition.enterWorkbench
     };
     definition.onContinue.call(context);
-    assert.equal(modals.length, 1);
-    assert.equal(modals[0].title, '入驻成功');
+    assert.equal(modals.length, 0);
     assert.equal(launches[0].url, '/pages/index/index');
     assert.equal(toasts.length, 0);
 
     const invalid = {
       data: { codeType: 'staff', selectedStaffRole: 'salesperson' },
-      resolveOnboardingSubscribeRole: definition.resolveOnboardingSubscribeRole,
       enterWorkbench: definition.enterWorkbench
     };
     definition.onContinue.call(invalid);
@@ -136,29 +133,12 @@ test('staff success CTA offers notifications then relaunches the designer workbe
   }
 });
 
-test('referrer success CTA offers signing-commission notification then enters the workbench', async () => {
+test('referrer success CTA enters the workbench without subscribe prompts', async () => {
   const definition = loadPage();
   const originalGetApp = global.getApp;
   const originalWx = global.wx;
-  const api = require('../utils/api.js');
-  const originalRequest = api.request;
   const launches = [];
   let modalCalled = false;
-  api.request = async () => ({
-    data: {
-      version: 2,
-      templates: [
-        { type: 'workflow_todo', title: '装修待办提醒', templateId: '48Jvq7OjOKwRhsnh8fyvtsjxAamLOakaNtiKcO11rOc' },
-        { type: 'lead_assignment', title: '客户指派成功通知', templateId: 'wItuS0LdggzpMWdSOIr6FBSKeRbOKUzqXVCqJDmLpmA' },
-        { type: 'new_lead', title: '新增客户成功通知', templateId: 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjg4xest9GRc' },
-        { type: 'measurement_appointment', title: '上门量房提醒', templateId: 'CtcuQ_NWF4GOpHvstgviDPmYRISjyqTjnFAoeQR9-vI' },
-        { type: 'design_published', title: '设计案例发布提醒', templateId: 'XEQFWwyaIQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag' },
-        { type: 'enterprise_join_result', title: '入驻申请结果通知', templateId: 'wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk' },
-        { type: 'signing_commission', title: '推广奖励到账提醒', templateId: 'aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU' },
-        { type: 'lead_converted', title: '客户已成交提醒', templateId: 'WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo' }
-      ]
-    }
-  });
   global.getApp = () => ({
     globalData: {
       userInfo: { mode: 'referrer' },
@@ -167,8 +147,6 @@ test('referrer success CTA offers signing-commission notification then enters th
   });
   global.wx = {
     ...(originalWx || {}),
-    getStorageSync() { return ''; },
-    setStorageSync() {},
     showToast() {},
     showModal(options) {
       modalCalled = true;
@@ -182,14 +160,12 @@ test('referrer success CTA offers signing-commission notification then enters th
   try {
     const context = {
       data: { codeType: 'referrer' },
-      resolveOnboardingSubscribeRole: definition.resolveOnboardingSubscribeRole,
       enterWorkbench: definition.enterWorkbench
     };
     await definition.onContinue.call(context);
-    assert.equal(modalCalled, true);
+    assert.equal(modalCalled, false);
     assert.match(launches[0].url, /referrer-workbench/);
   } finally {
-    api.request = originalRequest;
     global.getApp = originalGetApp;
     global.wx = originalWx;
   }
@@ -215,7 +191,6 @@ test('staff success CTA prefers hydrated bootstrap landingPath', () => {
   try {
     const context = {
       data: { codeType: 'staff', selectedStaffRole: 'measurer' },
-      resolveOnboardingSubscribeRole: definition.resolveOnboardingSubscribeRole,
       enterWorkbench: definition.enterWorkbench
     };
     definition.onContinue.call(context);

@@ -22,6 +22,8 @@ export interface SubscriptionTemplateConfig {
 
 export interface PlatformNotificationConfigV2 {
   version: 2;
+  /** When false, WeChat subscribe sends are skipped; in-app staff notifications still write. */
+  subscriptionMessagesEnabled: boolean;
   legacyTemplateId?: string;
   templates: Record<SubscriptionTemplateKind, SubscriptionTemplateConfig>;
 }
@@ -37,8 +39,13 @@ export type PlatformNotificationConfigInput = {
   version?: unknown;
   legacyTemplateId?: unknown;
   miniprogramTemplateId?: unknown;
+  subscriptionMessagesEnabled?: unknown;
   templates?: Partial<Record<SubscriptionTemplateKind, TemplatePatch | unknown>>;
 };
+
+function coerceSubscriptionMessagesEnabled(value: unknown, fallback = false): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
 
 export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
   SubscriptionTemplateKind,
@@ -164,6 +171,10 @@ export function normalizePlatformNotificationConfig(
 
   return {
     version: 2,
+    subscriptionMessagesEnabled: coerceSubscriptionMessagesEnabled(
+      input?.subscriptionMessagesEnabled,
+      false
+    ),
     ...(legacyTemplateId ? { legacyTemplateId } : {}),
     templates,
     miniprogramTemplateId: templates.workflow_todo.templateId,
@@ -173,6 +184,7 @@ export function normalizePlatformNotificationConfig(
 function storedConfig(config: PlatformNotificationConfigDto): Record<string, unknown> {
   return {
     version: 2,
+    subscriptionMessagesEnabled: config.subscriptionMessagesEnabled,
     ...(config.legacyTemplateId ? { legacyTemplateId: config.legacyTemplateId } : {}),
     templates: config.templates,
   };
@@ -203,6 +215,10 @@ export async function savePlatformNotificationConfig(input: PlatformNotification
     );
     const next = normalizePlatformNotificationConfig(current);
 
+    if (typeof input.subscriptionMessagesEnabled === 'boolean') {
+      next.subscriptionMessagesEnabled = input.subscriptionMessagesEnabled;
+    }
+
     if (input.templates && typeof input.templates === 'object') {
       for (const kind of SUBSCRIPTION_TEMPLATE_KINDS) {
         const candidate = input.templates[kind];
@@ -213,9 +229,11 @@ export async function savePlatformNotificationConfig(input: PlatformNotification
           (candidate as TemplatePatch).templateId
         );
       }
-    } else {
+    } else if (input.miniprogramTemplateId !== undefined) {
       const legacyTemplateId = validateMiniProgramTemplateId(input.miniprogramTemplateId);
       next.templates.workflow_todo.templateId = legacyTemplateId;
+    } else if (typeof input.subscriptionMessagesEnabled !== 'boolean') {
+      throw new Error('Missing Mini Program subscription template update');
     }
 
     validateDistinctTemplateIds(next.templates);

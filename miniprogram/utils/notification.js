@@ -193,80 +193,26 @@ async function requestSubscribeMessageForTemplateIds(templateIds, options = {}) 
 }
 
 async function requestNotification(options = {}) {
-  const role = resolveSubscribeRole(options && options.role);
-  const kinds = getSubscribeKindsForRole(role);
-  if (!kinds.length) {
-    if (!(options && options.quiet)) {
-      wx.showToast({ title: '当前身份无需订阅通知', icon: 'none' });
-    }
-    return emptySubscriptionResult([]);
-  }
-
-  const config = await refreshTemplateConfig();
-  const templateIds = resolveTemplateIdsForKinds(config, kinds);
-  return requestSubscribeMessageForTemplateIds(templateIds, options);
+  // Subscribe authorization UX removed; keep a no-op for any missed callers.
+  void options;
+  return emptySubscriptionResult([]);
 }
 
 async function requestSubscribeKinds(kinds, options = {}) {
-  const requestedKinds = Array.isArray(kinds)
-    ? kinds.filter((kind) => TEMPLATE_ORDER.includes(kind))
-    : [];
-  if (!requestedKinds.length) {
-    return emptySubscriptionResult([]);
-  }
-  const config = await refreshTemplateConfig();
-  const templateIds = resolveTemplateIdsForKinds(config, requestedKinds);
-  return requestSubscribeMessageForTemplateIds(templateIds, options);
+  void kinds;
+  void options;
+  return emptySubscriptionResult([]);
 }
 
 /**
- * After login / join-code / scan claim, offer role-scoped subscribe via a modal
- * so WeChat has a fresh user gesture for requestSubscribeMessage.
- * Roles with no templates skip the modal and invoke onDone.
+ * Post-sign-in subscribe prompts are disabled. Invokes onDone immediately so
+ * login / onboarding / claim flows still complete.
  */
 function offerNotificationAuthorization(options = {}) {
-  const role = resolveSubscribeRole(options && options.role);
-  const kinds = getSubscribeKindsForRole(role);
   const onDone = typeof options.onDone === 'function' ? options.onDone : () => {};
-
-  if (!kinds.length) {
-    onDone({ offered: false, accepted: false });
-    return Promise.resolve({ offered: false, accepted: false });
-  }
-
-  return new Promise((resolve) => {
-    const finish = (result) => {
-      onDone(result);
-      resolve(result);
-    };
-    wx.showModal({
-      title: options.title || '建议开启通知',
-      content: options.content
-        || '建议开启消息通知，以便及时接收任务提醒与业务进度。',
-      confirmText: options.confirmText || '开启通知',
-      cancelText: options.cancelText || '稍后再说',
-      success: async (modalRes) => {
-        if (!modalRes.confirm) {
-          finish({ offered: true, accepted: false });
-          return;
-        }
-        try {
-          const result = await requestNotification({
-            role,
-            quiet: Boolean(options.quiet)
-          });
-          finish({
-            offered: true,
-            accepted: Boolean(result && result.accepted && result.accepted.length)
-          });
-        } catch (error) {
-          console.error('Notification request failed', error);
-          finish({ offered: true, accepted: false, error });
-        }
-      },
-      fail: () => finish({ offered: true, accepted: false })
-    });
-  });
+  const result = { offered: false, accepted: false };
+  onDone(result);
+  return Promise.resolve(result);
 }
 
 module.exports = {

@@ -5,23 +5,6 @@ const path = require('node:path');
 const { refreshAccountSettingsState } = require('../utils/account-settings-state.js');
 
 const projectRoot = path.resolve(__dirname, '..');
-const notificationTemplates = [
-  ['workflow_todo', '48Jvq7OjOKwRhsnh8fyvtsjxAamLOakaNtiKcO11rOc'],
-  ['lead_assignment', 'wItuS0LdggzpMWdSOIr6FBSKeRbOKUzqXVCqJDmLpmA'],
-  ['new_lead', 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjg4xest9GRc'],
-  ['measurement_appointment', 'CtcuQ_NWF4GOpHvstgviDPmYRISjyqTjnFAoeQR9-vI'],
-  ['design_published', 'XEQFWwyaIQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'],
-  ['enterprise_join_result', 'wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk'],
-  ['signing_commission', 'aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU'],
-  ['lead_converted', 'WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo'],
-];
-
-function notificationConfig() {
-  return {
-    version: 2,
-    templates: notificationTemplates.map(([type, templateId]) => ({ type, templateId, title: type }))
-  };
-}
 
 function read(relativePath) {
   return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
@@ -64,7 +47,11 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.match(mineWxml, /编辑资料[\s\S]*bindtap="onEditProfile"|bindtap="onEditProfile"[\s\S]*编辑资料/);
   assert.doesNotMatch(mineWxml, /bindtap="onOpenSettings"/);
   assert.match(mineWxml, /mineAccountPanel/);
-  assert.match(mineWxml, /bindtap="onEnableNotification"/);
+  assert.doesNotMatch(mineWxml, /bindtap="onEnableNotification"/);
+  assert.doesNotMatch(mineWxml, /订阅任务通知/);
+  assert.match(mineWxml, /account-section-title">权限</);
+  assert.match(mineWxml, /bindtap="onOpenSystemSettings"/);
+  assert.match(mineWxml, /微信权限管理/);
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(mineWxml, /账号与安全[\s\S]*onOpenAccountSecurity|onOpenAccountSecurity[\s\S]*账号与安全/);
   assert.match(mineJs, /onEditProfile\(\)[\s\S]*profile-edit\/profile-edit/);
@@ -111,7 +98,8 @@ test('Account pages use the approved account-v1 scenes while keeping live contro
   assert.match(heroPages[0].source, /class="account-avatar-shell"/);
   assert.match(heroPages[0].source, /class="account-profile-avatar"[^>]*mode="aspectFill"/);
   assert.doesNotMatch(heroPages[0].source, /class="profile-card"/);
-  assert.match(mineWxml, /bindtap="onEnableNotification"/);
+  assert.doesNotMatch(mineWxml, /bindtap="onEnableNotification"/);
+  assert.match(mineWxml, /bindtap="onOpenSystemSettings"/);
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.doesNotMatch(mineWxml, /settings-guardian-scene-v3\.png/);
   assert.match(heroPages[2].source, /bindtap="onChangePassword"/);
@@ -251,23 +239,10 @@ test('Successful password change clears the session and returns to login', async
   }
 });
 
-test('Mine reflects accepted subscription state and opens WeChat settings', async () => {
+test('Mine opens WeChat settings without reading subscription status', async () => {
   const originalWx = global.wx;
-  const api = require('../utils/api.js');
-  const originalRequest = api.request;
   const calls = [];
-  const config = notificationConfig();
-  api.request = async () => ({ data: config });
   global.wx = {
-    getStorageSync() { return config; },
-    setStorageSync() {},
-    getSetting(options) {
-      options.success({
-        subscriptionsSetting: {
-          itemSettings: Object.fromEntries(notificationTemplates.map(([, id]) => [id, 'accept']))
-        }
-      });
-    },
     openSetting(options) {
       calls.push('openSetting');
       options.complete();
@@ -277,12 +252,11 @@ test('Mine reflects accepted subscription state and opens WeChat settings', asyn
   try {
     const page = createPage(loadPage('pages/mine/mine.js'));
     await refreshAccountSettingsState(page);
-    assert.equal(page.data.notificationStatus, '已允许');
-    assert.equal(page.data.notificationAccepted, true);
+    assert.equal(Object.prototype.hasOwnProperty.call(page.data, 'notificationStatus'), false);
+    assert.match(page.data.identityLabel || '读取中', /当前身份|客户身份|推荐人身份|员工身份|读取/);
     await page.onOpenSystemSettings();
     assert.deepEqual(calls, ['openSetting']);
   } finally {
-    api.request = originalRequest;
     global.wx = originalWx;
   }
 });
@@ -290,94 +264,6 @@ test('Mine reflects accepted subscription state and opens WeChat settings', asyn
 test('Settings route redirects to the Mine tab for backward-compatible deep links', () => {
   const settingsJs = read('packages/business/settings/settings.js');
   assert.match(settingsJs, /switchTab\([\s\S]*\/pages\/mine\/mine/);
-});
-
-test('Mine keeps rejected subscription state explicit', async () => {
-  const originalWx = global.wx;
-  const api = require('../utils/api.js');
-  const originalRequest = api.request;
-  const config = notificationConfig();
-  api.request = async () => ({ data: config });
-  global.wx = {
-    getStorageSync() { return config; },
-    setStorageSync() {},
-    getSetting(options) {
-      options.success({
-        subscriptionsSetting: {
-          itemSettings: Object.fromEntries(notificationTemplates.map(([, id]) => [id, 'reject']))
-        }
-      });
-    }
-  };
-  try {
-    const page = createPage(loadPage('pages/mine/mine.js'));
-    await refreshAccountSettingsState(page);
-    assert.equal(page.data.notificationStatus, '已拒绝');
-    assert.equal(page.data.notificationAccepted, false);
-  } finally {
-    api.request = originalRequest;
-    global.wx = originalWx;
-  }
-});
-
-test('Mine shows a truthful partial subscription count', async () => {
-  const originalWx = global.wx;
-  const api = require('../utils/api.js');
-  const originalRequest = api.request;
-  const config = notificationConfig();
-  api.request = async () => ({ data: config });
-  global.wx = {
-    getStorageSync() { return config; },
-    setStorageSync() {},
-    getSetting(options) {
-      options.success({
-        subscriptionsSetting: {
-          itemSettings: {
-            [notificationTemplates[3][1]]: 'accept',
-            [notificationTemplates[4][1]]: 'reject'
-          }
-        }
-      });
-    }
-  };
-  try {
-    const page = createPage(loadPage('pages/mine/mine.js'));
-    await refreshAccountSettingsState(page);
-    assert.equal(page.data.notificationStatus, '已允许 1/2');
-    assert.equal(page.data.notificationAccepted, true);
-  } finally {
-    api.request = originalRequest;
-    global.wx = originalWx;
-  }
-});
-
-test('Mine gives the subscription main switch precedence over cached item grants', async () => {
-  const originalWx = global.wx;
-  const api = require('../utils/api.js');
-  const originalRequest = api.request;
-  const config = notificationConfig();
-  api.request = async () => ({ data: config });
-  global.wx = {
-    getStorageSync() { return config; },
-    setStorageSync() {},
-    getSetting(options) {
-      options.success({
-        subscriptionsSetting: {
-          mainSwitch: false,
-          itemSettings: Object.fromEntries(notificationTemplates.map(([, id]) => [id, 'accept']))
-        }
-      });
-    }
-  };
-  try {
-    const page = createPage(loadPage('pages/mine/mine.js'));
-    await refreshAccountSettingsState(page);
-    assert.equal(page.data.notificationStatus, '已关闭');
-    assert.equal(page.data.notificationAccepted, false);
-  } finally {
-    api.request = originalRequest;
-    global.wx = originalWx;
-  }
 });
 
 test('Shared session clear removes every persisted identity value', () => {

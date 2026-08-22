@@ -1,6 +1,5 @@
 const api = require('../../../utils/api.js');
 const { getRoleLanding } = require('../../../utils/identity-navigation.js');
-const { offerNotificationAuthorization } = require('../../../utils/notification.js');
 
 const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
 
@@ -261,14 +260,6 @@ Page({
     throw new Error('入驻身份资料缺失');
   },
 
-  resolveOnboardingSubscribeRole() {
-    if (this.data.codeType === 'referrer') return 'referrer';
-    if (this.data.codeType === 'staff') {
-      return this.data.selectedStaffRole === 'measurer' ? 'measurer' : 'designer';
-    }
-    return undefined;
-  },
-
   enterWorkbench() {
     const app = typeof getApp === 'function' ? getApp() : null;
     const globalData = (app && app.globalData) || {};
@@ -296,16 +287,11 @@ Page({
   onContinue() {
     if (this._enteringWorkbench) return;
     this._enteringWorkbench = true;
-    // Same post-sign-in offer as password/phone login (referrer now requests signing_commission).
-    offerNotificationAuthorization({
-      role: this.resolveOnboardingSubscribeRole(),
-      title: '入驻成功',
-      cancelText: '直接进入',
-      onDone: () => {
-        this._enteringWorkbench = false;
-        this.enterWorkbench();
-      }
-    });
+    try {
+      this.enterWorkbench();
+    } finally {
+      this._enteringWorkbench = false;
+    }
   },
 
   onRetry() {

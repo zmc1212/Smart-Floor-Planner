@@ -12,10 +12,8 @@ const {
   getFloorPlanRoomCount
 } = require('./mine-model.js');
 const {
-  readNotificationState,
   refreshAccountSettingsState
 } = require('../../utils/account-settings-state.js');
-const { requestNotification } = require('../../utils/notification.js');
 
 const DEFAULT_AVATAR = '/images/mine-v6/profile-avatar.jpg';
 const ROLE_SHELL_MINE_ROLES = ['designer', 'measurer', 'enterprise_admin', 'platform_admin'];
@@ -86,9 +84,6 @@ Page({
     navigationHeight: 32,
     navigationRight: 14,
     defaultAvatarUrl: DEFAULT_AVATAR,
-    notificationStatus: '读取中',
-    notificationAccepted: false,
-    notificationRequesting: false,
     identityLabel: '读取中',
     identityCount: 0
   },
@@ -437,19 +432,6 @@ Page({
     wx.switchTab({ url: '/pages/index/index' });
   },
 
-  async onEnableNotification() {
-    if (this.data.notificationRequesting) return;
-    this.setData({ notificationRequesting: true });
-    try {
-      await requestNotification();
-    } catch (error) {
-      console.error('Notification subscription failed', error);
-    } finally {
-      this.setData({ notificationRequesting: false });
-      await readNotificationState(this, false);
-    }
-  },
-
   onOpenSystemSettings() {
     if (!wx.openSetting) {
       wx.showToast({ title: '当前微信版本不支持权限设置', icon: 'none' });
@@ -457,10 +439,7 @@ Page({
     }
     return new Promise((resolve) => {
       wx.openSetting({
-        complete: async () => {
-          await readNotificationState(this);
-          resolve();
-        }
+        complete: () => resolve()
       });
     });
   },
@@ -503,9 +482,6 @@ Page({
       summaryCards: [],
       displayTodos: [],
       overviewCards: [],
-      notificationStatus: '读取中',
-      notificationAccepted: false,
-      notificationRequesting: false,
       identityLabel: '读取中',
       identityCount: 0
     });

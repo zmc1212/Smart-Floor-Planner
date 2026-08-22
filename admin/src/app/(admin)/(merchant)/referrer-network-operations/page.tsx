@@ -98,6 +98,7 @@ export default function ReferrerNetworkOperationsPage() {
   const [resetPreview, setResetPreview] = useState<ResetPreview | null>(null);
   const [purgePreview, setPurgePreview] = useState<ResetPreview | null>(null);
   const [resetPreviewLoading, setResetPreviewLoading] = useState(false);
+  const [resetPreviewError, setResetPreviewError] = useState<string | null>(null);
   const [resetConfirmName, setResetConfirmName] = useState('');
   const [resetExecuting, setResetExecuting] = useState(false);
   const [purgeExecuting, setPurgeExecuting] = useState(false);
@@ -124,6 +125,7 @@ export default function ReferrerNetworkOperationsPage() {
   const loadResetPreview = useCallback(async () => {
     if (requiresTenantSelection) return;
     setResetPreviewLoading(true);
+    setResetPreviewError(null);
     try {
       const [resetResponse, purgeResponse] = await Promise.all([
         fetch('/api/enterprise/enterprise-reset/preview'),
@@ -144,7 +146,9 @@ export default function ReferrerNetworkOperationsPage() {
     } catch (error) {
       setResetPreview(null);
       setPurgePreview(null);
-      notify.error(error instanceof Error ? error.message : '预览清空范围失败');
+      const message = error instanceof Error ? error.message : '预览清空范围失败';
+      setResetPreviewError(message);
+      notify.error(message);
     } finally {
       setResetPreviewLoading(false);
     }
@@ -266,6 +270,7 @@ export default function ReferrerNetworkOperationsPage() {
       setReadiness(null);
       setResetPreview(null);
       setPurgePreview(null);
+      setResetPreviewError(null);
       setResetPreviewLoading(false);
       return;
     }
@@ -470,8 +475,10 @@ export default function ReferrerNetworkOperationsPage() {
                         </Space>
                       </Flex>
                     </>
+                  ) : resetPreviewError ? (
+                    <Alert showIcon type="error" message="无法预览清空范围" description={resetPreviewError} />
                   ) : (
-                    <Typography.Text type="secondary">暂无预览；若环境闸门拒绝，请检查非生产环境或 ALLOW_TENANT_ENTERPRISE_RESET。</Typography.Text>
+                    <Typography.Text type="secondary">暂无预览，请点击右上角刷新。</Typography.Text>
                   )}
                 </Flex>
               </Card>

@@ -45,6 +45,68 @@ export const ALL_MENUS = [
   { key: 'devices', label: '设备管理' },
 ];
 
+/**
+ * `/roles` checkbox groups aligned with Sidebar `MENU_CONFIG` categories.
+ * Child sidebar routes (join-codes, referrers, appointment-settings, etc.) reuse
+ * the parent key listed here and are not separate permission codes.
+ */
+export const MENU_PERMISSION_GROUPS: Array<{
+  title: string;
+  description?: string;
+  keys: string[];
+}> = [
+  {
+    title: '平台管理中心',
+    keys: [
+      'enterprises',
+      'ai-providers',
+      'media-storage',
+      'mini-program-code-settings',
+      'ai-credit-prices',
+      'roles',
+      'admins',
+      'users',
+    ],
+  },
+  {
+    title: 'B2B 运营转化',
+    keys: [
+      'promotion-records',
+      'packages',
+      'workflow-logs',
+      'enterprise-orders',
+      'commissions',
+    ],
+  },
+  {
+    title: '运营工作台',
+    keys: ['dashboard', 'leads'],
+  },
+  {
+    title: '推荐网络',
+    description: '入驻码、推荐人、预约设置随父权限 referrer-network-operations，无需单独勾选。',
+    keys: ['referrer-network-operations'],
+  },
+  {
+    title: '户型图库',
+    keys: ['floorplans', 'measurements'],
+  },
+  {
+    title: 'AI 辅助设计',
+    keys: ['ai-scenarios', 'inspirations', 'ai-presets'],
+  },
+  {
+    title: '团队资产管理',
+    keys: ['staff', 'lead-commissions', 'devices'],
+  },
+];
+
+const MENU_LABEL_BY_KEY = Object.fromEntries(ALL_MENUS.map((menu) => [menu.key, menu.label]));
+
+export function getMenuLabel(key: string) {
+  return MENU_LABEL_BY_KEY[key] || key;
+}
+
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   super_admin: ALL_MENUS.map((menu) => menu.key),
   admin: [
@@ -94,16 +156,12 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'measurements',
     'ai-scenarios',
     'inspirations',
-    'promotion-records',
   ],
   salesperson: ['dashboard', 'promotion-records'],
   measurer: ['dashboard', 'leads', 'measurements', 'floorplans'],
-  viewer: [
-    'dashboard',
-    'floorplans',
-    'ai-floorplan',
-    'ai-furnishing',
-    'ai-soft-furnishing',
-    'inspirations',
-  ],
+  viewer: ['dashboard', 'floorplans', 'inspirations', 'ai-scenarios'],
 };
+
+export function getDefaultMenuKeys(roleKey: string): string[] {
+  return [...(DEFAULT_PERMISSIONS[roleKey] || [])];
+}

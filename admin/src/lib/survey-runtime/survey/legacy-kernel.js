@@ -63,6 +63,7 @@ function createSession() {
     pendingWallId: '',
     selectedWallId: '',
     selectedOpeningId: '',
+    selectedSpaceId: '',
     closeCandidateNodeId: '',
     closeCandidatePoint: null,
     closeCandidateType: '',
@@ -212,6 +213,9 @@ function ensureSessionSpaceTracking(floor) {
   }
   if (typeof session.previewOuterFaceWallId !== 'string') {
     session.previewOuterFaceWallId = '';
+  }
+  if (typeof session.selectedSpaceId !== 'string') {
+    session.selectedSpaceId = '';
   }
   if (typeof session.previewAngleSource !== 'string') {
     session.previewAngleSource = '';
@@ -3969,6 +3973,7 @@ function cancelPending(draft) {
   session.alignmentSnapGuide = null;
   session.selectedWallId = '';
   session.selectedOpeningId = '';
+  session.selectedSpaceId = '';
   session.fixedNodeId = '';
 
   if (floor.spaces.some((space) => space.closed)) {
@@ -4671,6 +4676,33 @@ function confirmClosure(draft) {
   return touchDraft(next);
 }
 
+function getClosedSpace(floor, spaceId) {
+  if (!spaceId) return null;
+  return (floor.spaces || []).find((space) => (
+    space && space.id === spaceId && space.closed && Array.isArray(space.wallIds)
+  )) || null;
+}
+
+function clearObjectSelection(session) {
+  if (!session) return;
+  session.selectedWallId = '';
+  session.selectedOpeningId = '';
+  session.selectedSpaceId = '';
+}
+
+function collectExclusiveClosedSpaceWallIds(floor, space) {
+  const closedSpaces = (floor.spaces || []).filter((item) => (
+    item && item.closed && Array.isArray(item.wallIds)
+  ));
+  const wallRefCounts = {};
+  closedSpaces.forEach((item) => {
+    item.wallIds.forEach((wallId) => {
+      wallRefCounts[wallId] = (wallRefCounts[wallId] || 0) + 1;
+    });
+  });
+  return (space.wallIds || []).filter((wallId) => wallRefCounts[wallId] === 1);
+}
+
 function selectWall(draft, wallId) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
@@ -4680,6 +4712,7 @@ function selectWall(draft, wallId) {
   floor.session.state = 'wallSelected';
   floor.session.selectedWallId = wallId;
   floor.session.selectedOpeningId = '';
+  floor.session.selectedSpaceId = '';
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
@@ -4703,6 +4736,7 @@ function selectOpening(draft, openingId) {
   floor.session.state = 'wallSelected';
   floor.session.selectedWallId = opening.wallId;
   floor.session.selectedOpeningId = opening.id;
+  floor.session.selectedSpaceId = '';
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
@@ -4714,6 +4748,138 @@ function selectOpening(draft, openingId) {
   floor.session.closeCandidateType = '';
   floor.session.closeCandidateSharedWallId = '';
   floor.session.alignmentSnapGuide = null;
+  return touchDraft(next);
+}
+
+function selectSpace(draft, spaceId) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const space = getClosedSpace(floor, spaceId);
+  if (!space) return next;
+
+  floor.session.state = 'wallSelected';
+  floor.session.selectedWallId = '';
+  floor.session.selectedOpeningId = '';
+  floor.session.selectedSpaceId = space.id;
+  floor.session.previewPoint = null;
+  floor.session.previewLengthMm = 0;
+  floor.session.previewAngleDeg = 0;
+  floor.session.previewMeasurementStartInsetMm = 0;
+  floor.session.previewMeasurementStartExtensionMm = 0;
+  floor.session.previewMeasurementEndInsetMm = 0;
+  floor.session.closeCandidateNodeId = '';
+  floor.session.closeCandidatePoint = null;
+  floor.session.closeCandidateType = '';
+  floor.session.closeCandidateSharedWallId = '';
+  floor.session.alignmentSnapGuide = null;
+  return touchDraft(next);
+}
+
+const MAX_SPACE_NAME_LENGTH = 20;
+
+function renameClosedSpace(draft, spaceId, name) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const space = getClosedSpace(floor, spaceId || (floor.session && floor.session.selectedSpaceId));
+  if (!space) {
+    throw new Error('Please select a closed room first');
+  }
+  const nextName = String(name == null ? '' : name).trim();
+  if (!nextName) {
+    throw new Error('Room name cannot be empty');
+  }
+  if (nextName.length > MAX_SPACE_NAME_LENGTH) {
+    throw new Error(`Room name cannot exceed ${MAX_SPACE_NAME_LENGTH} characters`);
+  }
+  space.name = nextName;
+  return touchDraft(next);
+}
+
+function deleteClosedSpace(draft, spaceId) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+  const space = getClosedSpace(floor, spaceId || session.selectedSpaceId);
+  if (!space) return next;
+
+  const exclusiveWallIds = collectExclusiveClosedSpaceWallIds(floor, space);
+  if (!exclusiveWallIds.length) {
+    // Shared-only loop: removing the space identity is not supported; keep geometry.
+    clearObjectSelection(session);
+    session.state = 'spaceClosed';
+    session.anchorNodeId = '';
+    return touchDraft(next);
+  }
+
+  const removedWallIds = new Set(exclusiveWallIds);
+  const deletedWalls = [...removedWallIds].map((id) => getWall(floor, id)).filter(Boolean);
+  const deletedNodeIds = [...new Set(deletedWalls.flatMap((item) => [item.startNodeId, item.endNodeId]))];
+  const seedNode = deletedWalls[0]
+    ? getNode(floor, deletedWalls[0].startNodeId)
+    : null;
+
+  floor.walls = floor.walls.filter((item) => !removedWallIds.has(item.id));
+  floor.openings = ensureOpenings(floor).filter((opening) => !removedWallIds.has(opening.wallId));
+  const repairedBoundaryWallIds = deletedNodeIds.flatMap((nodeId) => recomputeSplitNodeBodyInsets(floor, nodeId));
+  syncFloorSpaces(floor);
+  refreshWallMetrics(floor);
+  if (repairedBoundaryWallIds.length) {
+    const repairedWallIdSet = new Set(repairedBoundaryWallIds);
+    ensureOpenings(floor).forEach((opening) => {
+      if (repairedWallIdSet.has(opening.wallId)) normalizeOpeningToWall(floor, opening);
+    });
+  }
+
+  session.previewPoint = null;
+  session.previewLengthMm = 0;
+  session.previewAngleDeg = 0;
+  session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
+  session.pendingWallId = '';
+  session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.closeCandidateType = '';
+  session.closeCandidateSharedWallId = '';
+  session.alignmentSnapGuide = null;
+  session.closedFromNodeId = '';
+  session.fixedNodeId = '';
+  session.lastWallSnapNodeId = '';
+  session.lastWallSnapWallId = '';
+  session.lastWallSnapT = null;
+  session.lastWallSnapLine = '';
+  session.activeSpaceStartNodeId = '';
+  session.activeSpaceStartWallIndex = floor.walls.length;
+  session.activeSpaceSharedWallId = '';
+  session.activeSpaceSharedStartT = null;
+  session.activeSpaceSharedSnapLine = '';
+  clearObjectSelection(session);
+
+  const closedAfter = (floor.spaces || []).filter((item) => item && item.closed).length;
+  const restoreEndpoints = deletedWalls[0]
+    ? [deletedWalls[0].startNodeId, deletedWalls[0].endNodeId]
+    : ['', ''];
+  const restoredOpenedChain = !closedAfter &&
+    restoreOpenedSpaceChain(floor, session, restoreEndpoints[0], restoreEndpoints[1]);
+  if (!restoredOpenedChain) {
+    if (closedAfter) {
+      session.anchorNodeId = '';
+      session.state = 'spaceClosed';
+    } else if (floor.walls.length) {
+      const lastEnd = getLastEndNode(floor);
+      session.anchorNodeId = lastEnd ? lastEnd.id : '';
+      session.state = 'wallCommitted';
+    } else if (seedNode) {
+      session.anchorNodeId = seedNode.id;
+      session.state = 'cursorPlaced';
+    } else {
+      session.anchorNodeId = '';
+      session.state = 'idle';
+    }
+  }
+
+  removeUnreferencedNodes(floor);
   return touchDraft(next);
 }
 
@@ -4752,6 +4918,7 @@ function addOpeningToWall(draft, wallId, type) {
   floor.session.state = 'wallSelected';
   floor.session.selectedWallId = wall.id;
   floor.session.selectedOpeningId = opening.id;
+  floor.session.selectedSpaceId = '';
   return touchDraft(next);
 }
 
@@ -5115,6 +5282,7 @@ function deleteWall(draft, wallId) {
   session.closedFromNodeId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
+  session.selectedSpaceId = '';
   // Remeasure may pin either endpoint. After the wall (and its free tip) are
   // gone, a leftover fixedNodeId fails session validation as MISSING_SESSION_NODE.
   session.fixedNodeId = '';
@@ -5171,6 +5339,7 @@ function startWallSnap(draft) {
   session.pendingWallId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
+  session.selectedSpaceId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
@@ -5824,6 +5993,9 @@ module.exports = {
   repairCollinearDegree2Walls,
   selectWall,
   selectOpening,
+  selectSpace,
+  renameClosedSpace,
+  deleteClosedSpace,
   addOpeningToWall,
   updateOpening,
   deleteOpening,

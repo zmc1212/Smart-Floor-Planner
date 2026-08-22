@@ -11,6 +11,7 @@ function createWallOperations(kernel) {
     }),
     confirmClosure: wrapOperation('confirmClosure', kernel.confirmClosure, { mode: 'full' }),
     deleteWall: wrapOperation('deleteWall', kernel.deleteWall, { mode: 'full' }),
+    deleteClosedSpace: wrapOperation('deleteClosedSpace', kernel.deleteClosedSpace, { mode: 'full' }),
     snapCursorToWall: wrapOperation('snapCursorToWall', kernel.snapCursorToWall),
     remeasureSelectedWall: wrapOperation('remeasureSelectedWall', kernel.remeasureSelectedWall)
   };
