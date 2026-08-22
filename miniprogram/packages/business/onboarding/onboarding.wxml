@@ -36,7 +36,7 @@
         </view>
         <image
           class="guide-k"
-          src="/packages/business/assets/referral-service-v1/xiao-k-onboarding-welcome.png"
+          src="/packages/business/assets/referral-service-v1/xiao-k-onboarding-welcome-complete.png"
           mode="aspectFit"
           aria-label="小K入驻引导"
         />

@@ -1,4 +1,5 @@
 const api = require('../../../utils/api.js');
+const { navigateToRoleLanding, roleForIdentity } = require('../../../utils/identity-navigation.js');
 
 const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
 
@@ -304,11 +305,33 @@ Page({
             'DELETE'
           );
           if (result.token) {
-            const app = getApp();
-            app.globalData.token = result.token;
+            const app = typeof getApp === 'function' ? getApp() : null;
+            if (app && app.globalData) {
+              app.globalData.token = result.token;
+              app.globalData.sessionHydrated = false;
+              app.globalData.bootstrap = null;
+            }
             wx.setStorageSync('token', result.token);
+            if (app && typeof app.hydrateStoredSession === 'function') {
+              await app.hydrateStoredSession();
+            }
+            if (app && app.globalData && app.globalData.sessionRecovery) {
+              throw new Error('身份已失效，请重新选择');
+            }
+            wx.showToast({ title: '已退出推广企业', icon: 'success' });
+            const identity = {
+              ...((app && app.globalData && app.globalData.userInfo) || {}),
+              ...((app && app.globalData && app.globalData.bootstrap && app.globalData.bootstrap.current)
+                || result.context
+                || {})
+            };
+            if (roleForIdentity(identity) !== 'referrer') {
+              navigateToRoleLanding(identity);
+              return;
+            }
+          } else {
+            wx.showToast({ title: '已退出推广企业', icon: 'success' });
           }
-          wx.showToast({ title: '已退出推广企业', icon: 'success' });
           await this.load();
         } catch (error) {
           wx.showToast({ title: error.message || error.error || '退出失败，请重试', icon: 'none' });

@@ -47,7 +47,11 @@ export async function DELETE(
         return { authenticated: true as const, exited: null };
       }
       const contexts = await identities.listContexts(exited.user.id);
-      const selected = selectContextAfterMutation({ contexts, payload });
+      const selected = selectContextAfterMutation({
+        contexts,
+        payload,
+        preferred: (context) => context.mode === 'referrer',
+      });
       return {
         authenticated: true as const,
         exited,

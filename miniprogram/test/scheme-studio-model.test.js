@@ -415,3 +415,32 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(navigation, /shouldOpenSchemeStudio/);
   assert.match(navigation, /buildSchemeStudioUrl/);
 });
+
+test('scheme-studio confirm dialogs keep native action buttons inside the sheet', () => {
+  const wxml = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.wxml'), 'utf8');
+  const less = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.less'), 'utf8');
+
+  assert.equal((wxml.match(/class="dialog-action"/g) || []).length, 6);
+  assert.match(wxml, /class="dialog-actions"[\s\S]*?class="dialog-action"[\s\S]*?class="dialog-btn"/);
+
+  const actionsRule = less.match(/\.dialog-actions\s*\{[^}]+\}/)?.[0] || '';
+  assert.match(actionsRule, /display:\s*flex/);
+  assert.doesNotMatch(actionsRule, /grid-template-columns/);
+
+  const actionRule = less.match(/\.dialog-action\s*\{[^}]+\}/)?.[0] || '';
+  assert.match(actionRule, /flex:\s*1/);
+  assert.match(actionRule, /min-width:\s*0/);
+
+  const dialogBtnRule = less.match(/\.dialog-btn\s*\{[^}]+\}/)?.[0] || '';
+  assert.match(dialogBtnRule, /height:\s*88rpx/);
+  assert.match(dialogBtnRule, /padding:\s*0/);
+  assert.match(dialogBtnRule, /line-height:\s*1(?:\.2)?/);
+  assert.match(dialogBtnRule, /overflow:\s*hidden/);
+  assert.doesNotMatch(dialogBtnRule, /width:\s*100%/);
+
+  assert.match(less, /\.dialog-action:first-child \.dialog-btn/);
+  assert.doesNotMatch(less, /\.dialog-actions \.dialog-btn:first-child/);
+  assert.match(less, /padding-bottom:\s*calc\(24rpx \+ constant\(safe-area-inset-bottom\)\)/);
+  assert.match(less, /padding-bottom:\s*calc\(24rpx \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(less, /\.dialog-btn::after\s*\{[^}]*display:\s*none/);
+});

@@ -237,8 +237,12 @@
       <text class="dialog-title">重命名方案</text>
       <input class="dialog-input" value="{{renameTitle}}" bindinput="onRenameInput" placeholder="方案名称" />
       <view class="dialog-actions">
-        <button class="dialog-btn" bindtap="closeRenameModal">取消</button>
-        <button class="dialog-btn primary" bindtap="confirmRename" loading="{{renaming}}">保存</button>
+        <view class="dialog-action">
+          <button class="dialog-btn" bindtap="closeRenameModal">取消</button>
+        </view>
+        <view class="dialog-action">
+          <button class="dialog-btn primary" bindtap="confirmRename" loading="{{renaming}}">保存</button>
+        </view>
       </view>
     </view>
   </view>
@@ -255,10 +259,14 @@
       <text class="dialog-label">方案名称</text>
       <input class="dialog-input" value="{{sendTitle}}" bindinput="onSendTitleInput" placeholder="例如 灯光设计" />
       <view class="dialog-actions">
-        <button class="dialog-btn" bindtap="closeSendModal">取消</button>
-        <button class="dialog-btn primary" bindtap="confirmSendScheme" loading="{{sendingScheme}}">
-          {{view.publishedScheme ? '确认更新' : '确认发送'}}
-        </button>
+        <view class="dialog-action">
+          <button class="dialog-btn" bindtap="closeSendModal">取消</button>
+        </view>
+        <view class="dialog-action">
+          <button class="dialog-btn primary" bindtap="confirmSendScheme" loading="{{sendingScheme}}">
+            {{view.publishedScheme ? '确认更新' : '确认发送'}}
+          </button>
+        </view>
       </view>
     </view>
   </view>
@@ -271,8 +279,12 @@
         客户档案与方案册将优先展示「{{view.publishedScheme.title}}」。定稿后仍可继续出图和更新方案，直到您改指定稿或撤回该套方案。
       </text>
       <view class="dialog-actions">
-        <button class="dialog-btn" bindtap="closeFinalizeModal">取消</button>
-        <button class="dialog-btn primary" bindtap="confirmFinalizeScheme" loading="{{finalizingScheme}}">确认定稿</button>
+        <view class="dialog-action">
+          <button class="dialog-btn" bindtap="closeFinalizeModal">取消</button>
+        </view>
+        <view class="dialog-action">
+          <button class="dialog-btn primary" bindtap="confirmFinalizeScheme" loading="{{finalizingScheme}}">确认定稿</button>
+        </view>
       </view>
     </view>
   </view>

@@ -33,7 +33,15 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.match(wxml, /open-type="getPhoneNumber"/);
   assert.match(wxml, /欢迎加入服务团队/);
   assert.match(wxml, /选择你的服务身份/);
-  assert.match(wxml, /xiao-k-onboarding-welcome\.png/);
+  assert.match(wxml, /xiao-k-onboarding-welcome-complete\.png/);
+  const welcomeAssetPath = path.join(
+    miniRoot,
+    'packages/business/assets/referral-service-v1/xiao-k-onboarding-welcome-complete.png'
+  );
+  assert.ok(fs.existsSync(welcomeAssetPath));
+  const welcomeAsset = fs.readFileSync(welcomeAssetPath);
+  assert.deepEqual([...welcomeAsset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(welcomeAsset.byteLength <= 300 * 1024);
   assert.match(wxml, /xiao-k-onboarding-recovery\.png/);
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
   assert.match(wxml, /当前邀请暂不可用/);

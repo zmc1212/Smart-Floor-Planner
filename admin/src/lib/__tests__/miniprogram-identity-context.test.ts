@@ -9,7 +9,9 @@ import {
 import {
   signMiniProgramToken,
   verifyMiniProgramToken,
+  type MiniProgramJWTPayload,
 } from '@/lib/miniprogram-jwt';
+import { selectContextAfterMutation } from '@/lib/referrer-network-api';
 
 test('identity context tokens carry the base user and selected staff context', async () => {
   const token = await signMiniProgramIdentityContextToken({
@@ -137,4 +139,63 @@ test('platform channel salesperson staff context is supported without an enterpr
     defaultMiniProgramIdentityContext([customer, salesperson]),
     salesperson
   );
+});
+
+const customerContext = {
+  mode: 'customer' as const,
+  enterpriseId: null,
+  enterpriseName: null,
+  staffId: null,
+  staffRole: null,
+  staffDisplayName: null,
+  referrerMembershipId: null,
+};
+
+test('leaving a referrer membership prefers a remaining referrer context over staff', () => {
+  const staff = {
+    ...customerContext,
+    mode: 'staff' as const,
+    enterpriseId: BigInt(9),
+    enterpriseName: 'Weiyun',
+    staffId: BigInt(17),
+    staffRole: 'designer',
+    staffDisplayName: 'Designer',
+  };
+  const remaining = {
+    ...customerContext,
+    mode: 'referrer' as const,
+    enterpriseId: BigInt(12),
+    enterpriseName: 'Yijia',
+    referrerMembershipId: BigInt(2),
+  };
+  const selected = selectContextAfterMutation({
+    contexts: [customerContext, staff, remaining],
+    payload: {
+      mode: 'referrer',
+      referrerMembershipId: '1',
+    } as MiniProgramJWTPayload,
+    preferred: (context) => context.mode === 'referrer',
+  });
+  assert.equal(selected, remaining);
+});
+
+test('leaving the last referrer membership falls back to staff', () => {
+  const staff = {
+    ...customerContext,
+    mode: 'staff' as const,
+    enterpriseId: BigInt(9),
+    enterpriseName: 'Weiyun',
+    staffId: BigInt(17),
+    staffRole: 'designer',
+    staffDisplayName: 'Designer',
+  };
+  const selected = selectContextAfterMutation({
+    contexts: [customerContext, staff],
+    payload: {
+      mode: 'referrer',
+      referrerMembershipId: '1',
+    } as MiniProgramJWTPayload,
+    preferred: (context) => context.mode === 'referrer',
+  });
+  assert.equal(selected, staff);
 });

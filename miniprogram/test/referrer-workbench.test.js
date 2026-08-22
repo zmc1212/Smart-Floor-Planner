@@ -190,6 +190,154 @@ test('referrer workbench exchanges the signed membership context before changing
   }
 });
 
+test('leaving the last promotion enterprise hydrates the remaining identity and opens its workbench', async () => {
+  const definition = loadPage();
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const originalPages = global.getCurrentPages;
+  const navigations = [];
+  let modalOptions;
+  const app = {
+    globalData: {
+      token: 'old-token',
+      userInfo: { mode: 'referrer' },
+      bootstrap: { current: { role: 'referrer', mode: 'referrer' } },
+      sessionHydrated: true,
+      sessionRecovery: null
+    },
+    async hydrateStoredSession() {
+      this.globalData.token = 'designer-token';
+      this.globalData.userInfo = { mode: 'staff', staffRole: 'designer' };
+      this.globalData.bootstrap = {
+        current: {
+          role: 'designer',
+          mode: 'staff',
+          staffRole: 'designer',
+          landingPath: '/pages/index/index'
+        }
+      };
+      this.globalData.sessionHydrated = true;
+      this.hydrated = true;
+    }
+  };
+  api.request = async (...args) => {
+    if (String(args[0]).includes('/miniprogram/referrer-memberships/membership-1')) {
+      return {
+        token: 'designer-token',
+        context: { mode: 'staff', staffRole: 'designer', staffId: '17' }
+      };
+    }
+    return { data: [] };
+  };
+  global.getApp = () => app;
+  global.getCurrentPages = () => [{ route: 'packages/business/referrer-workbench/referrer-workbench' }];
+  global.wx = {
+    setStorageSync() {},
+    showToast() {},
+    showModal(options) { modalOptions = options; },
+    reLaunch(options) { navigations.push(['reLaunch', options.url]); },
+    switchTab(options) { navigations.push(['switchTab', options.url]); }
+  };
+  const context = {
+    data: {
+      ...definition.data,
+      selectedMembershipId: 'membership-1',
+      memberships: [{ id: 'membership-1', enterpriseId: 'enterprise-1', enterpriseName: '微云' }]
+    },
+    setData(next) { Object.assign(this.data, next); },
+    loadCalls: 0,
+    async load() { this.loadCalls += 1; }
+  };
+
+  try {
+    definition.leaveSelectedEnterprise.call(context);
+    await modalOptions.success({ confirm: true });
+    assert.equal(app.hydrated, true);
+    assert.equal(app.globalData.token, 'designer-token');
+    assert.deepEqual(navigations, [['reLaunch', '/pages/index/index']]);
+    assert.equal(context.loadCalls, 0);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+    global.getCurrentPages = originalPages;
+  }
+});
+
+test('leaving one of several promotion enterprises stays on the referrer workbench', async () => {
+  const definition = loadPage();
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const originalPages = global.getCurrentPages;
+  const navigations = [];
+  let modalOptions;
+  const app = {
+    globalData: {
+      token: 'old-token',
+      userInfo: { mode: 'referrer' },
+      bootstrap: { current: { role: 'referrer', mode: 'referrer' } },
+      sessionHydrated: true,
+      sessionRecovery: null
+    },
+    async hydrateStoredSession() {
+      this.globalData.token = 'referrer-token';
+      this.globalData.userInfo = { mode: 'referrer' };
+      this.globalData.bootstrap = {
+        current: {
+          role: 'referrer',
+          mode: 'referrer',
+          landingPath: '/packages/business/referrer-workbench/referrer-workbench'
+        }
+      };
+      this.globalData.sessionHydrated = true;
+      this.hydrated = true;
+    }
+  };
+  api.request = async () => ({
+    token: 'referrer-token',
+    context: { mode: 'referrer', referrerMembershipId: 'membership-2' }
+  });
+  global.getApp = () => app;
+  global.getCurrentPages = () => [{ route: 'packages/business/referrer-workbench/referrer-workbench' }];
+  global.wx = {
+    setStorageSync() {},
+    showToast() {},
+    showModal(options) { modalOptions = options; },
+    reLaunch(options) { navigations.push(['reLaunch', options.url]); },
+    switchTab(options) { navigations.push(['switchTab', options.url]); }
+  };
+  const context = {
+    data: {
+      ...definition.data,
+      selectedMembershipId: 'membership-1',
+      memberships: [
+        { id: 'membership-1', enterpriseId: 'enterprise-1' },
+        { id: 'membership-2', enterpriseId: 'enterprise-2' }
+      ]
+    },
+    setData(next) { Object.assign(this.data, next); },
+    loadCalls: 0,
+    async load() { this.loadCalls += 1; }
+  };
+
+  try {
+    definition.leaveSelectedEnterprise.call(context);
+    await modalOptions.success({ confirm: true });
+    assert.equal(app.hydrated, true);
+    assert.deepEqual(navigations, []);
+    assert.equal(context.loadCalls, 1);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+    global.getCurrentPages = originalPages;
+  }
+});
+
 test('referrer workbench ships the Antigravity standalone asset and preserves the Airy Minimalist 06 design contract', () => {
   const wxml = source('packages/business/referrer-workbench/referrer-workbench.wxml');
   const less = source('packages/business/referrer-workbench/referrer-workbench.less');
