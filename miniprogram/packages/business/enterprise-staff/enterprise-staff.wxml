@@ -63,7 +63,10 @@ FORM: design-references/miniprogram-airy-minimalist-v1/20-enterprise-appointment
           <text class="meta-line">{{item.roleLabel}}{{item.phone ? ' · ' + item.phone : ''}}</text>
           <text wx:if="{{item.helperText}}" class="helper-line">{{item.helperText}}</text>
           <view class="card-footer">
-            <view wx:if="{{item.phone}}" class="ghost-btn" data-item="{{item}}" catchtap="callStaff">电话联系</view>
+            <view wx:if="{{item.phone}}" class="ghost-btn sfp-icon-action" data-item="{{item}}" catchtap="callStaff">
+              <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+              <text>电话联系</text>
+            </view>
             <view
               wx:if="{{item.actionLabel}}"
               class="cta-btn"

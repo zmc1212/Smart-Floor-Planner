@@ -24,7 +24,10 @@ FORM: Antigravity design source `phase-5-designer-appointment-booking-v1.png`; t
         <text class="line-label">量房地点</text>
         <view class="location-picker" bindtap="chooseLocation" hover-class="location-picker-pressed" aria-role="button" aria-label="在地图上选择量房地点">
           <text class="location-picker-text">{{location ? (location.locationName || '已选择地图位置') : '地图选择'}}</text>
-          <text class="location-picker-action">{{location ? '重新选择' : '选择地点'}}</text>
+          <view class="location-picker-action sfp-icon-action">
+            <image class="sfp-icon-action__icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
+            <text>{{location ? '重新选择' : '选择地点'}}</text>
+          </view>
         </view>
       </view>
       <view wx:if="{{location}}" class="location-hint">已记录地图坐标，测量员可一键导航</view>

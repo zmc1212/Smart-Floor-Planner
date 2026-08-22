@@ -28,9 +28,6 @@ test('referrer workbench lists active memberships and opens the selected service
   const requests = [];
   api.request = async (...args) => {
     requests.push(args);
-    if (args[0] === '/miniprogram/identity-contexts') {
-      return { contexts: [{ mode: 'referrer' }, { mode: 'customer' }] };
-    }
     if (args[0] === '/miniprogram/referrer-progress') {
       return {
         data: {
@@ -73,11 +70,9 @@ test('referrer workbench lists active memberships and opens the selected service
     await definition.load.call(context);
     assert.deepEqual(requests, [
       ['/miniprogram/referrer-memberships', 'GET'],
-      ['/miniprogram/identity-contexts', 'GET'],
       ['/miniprogram/referrer-progress', 'GET'],
       ['/miniprogram/referrer-earnings', 'GET'],
     ]);
-    assert.equal(context.data.identityCount, 2);
     assert.deepEqual(context.data.memberships.map((item) => item.id), ['active-1']);
     assert.equal(context.data.selectedMembershipId, 'active-1');
     assert.equal(context.data.totalClients, 1);
@@ -94,27 +89,22 @@ test('referrer workbench lists active memberships and opens the selected service
   }
 });
 
-test('referrer workbench keeps identity switching and logout reachable from the role landing', () => {
-  const definition = loadPage();
-  const session = require('../utils/session.js');
-  const originalConfirmLogout = session.confirmLogout;
-  const originalWx = global.wx;
-  const calls = [];
-  global.wx = {
-    navigateTo(options) { calls.push(['navigateTo', options.url]); }
-  };
-  session.confirmLogout = () => { calls.push(['logout']); };
-  try {
-    definition.onOpenIdentitySwitch();
-    definition.onLogout();
-    assert.deepEqual(calls, [
-      ['navigateTo', '/packages/business/identity-switch/identity-switch'],
-      ['logout']
-    ]);
-  } finally {
-    session.confirmLogout = originalConfirmLogout;
-    global.wx = originalWx;
-  }
+test('referrer workbench leaves identity switching and logout on the Mine tab', () => {
+  const wxml = source('packages/business/referrer-workbench/referrer-workbench.wxml');
+  const js = source('packages/business/referrer-workbench/referrer-workbench.js');
+  const mineWxml = source('pages/mine/mine.wxml');
+  assert.match(wxml, /退出该企业/);
+  assert.doesNotMatch(wxml, /账号操作/);
+  assert.doesNotMatch(wxml, /切换身份/);
+  assert.doesNotMatch(wxml, /退出当前账号/);
+  assert.doesNotMatch(wxml, /onOpenIdentitySwitch/);
+  assert.doesNotMatch(wxml, /onLogout/);
+  assert.doesNotMatch(js, /onOpenIdentitySwitch/);
+  assert.doesNotMatch(js, /confirmLogout/);
+  assert.match(mineWxml, /当前身份/);
+  assert.match(mineWxml, /在客户、员工和推荐人身份之间切换/);
+  assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
+  assert.match(mineWxml, /退出当前账号/);
 });
 
 test('referrer workbench scans an onboarding code before opening the add-enterprise flow', () => {
@@ -207,24 +197,25 @@ test('referrer workbench ships the Antigravity standalone asset and preserves th
   const asset = fs.readFileSync(path.join(miniRoot, 'packages/business/assets/referrer-workbench-v1/service-code-guide.png'));
 
   assert.match(wxml, /推广专属服务 · 获客与收益/);
+  assert.match(wxml, /家客来 · 推广端/);
+  assert.doesNotMatch(wxml, /nav-actions/);
+  assert.doesNotMatch(wxml, /nav-scan-icon/);
+  assert.doesNotMatch(wxml, /nav-bell-icon/);
   assert.match(wxml, /出示推广服务码/);
   assert.match(wxml, /服务进度/);
   assert.match(wxml, /我的收益/);
   assert.match(wxml, /当前推广企业/);
   assert.match(wxml, /最新推广记录/);
   assert.match(wxml, /退出该企业/);
-  assert.match(wxml, /账号操作/);
-  assert.match(wxml, /切换身份/);
-  assert.match(wxml, /wx:if="\{\{identityCount > 1\}\}"/);
-  assert.match(wxml, /退出当前账号/);
-  assert.match(wxml, /bindtap="onOpenIdentitySwitch"/);
-  assert.match(wxml, /bindtap="onLogout"/);
+  assert.doesNotMatch(wxml, /账号操作/);
+  assert.doesNotMatch(wxml, /切换身份/);
+  assert.doesNotMatch(wxml, /退出当前账号/);
   assert.match(wxml, /bindtap="openProgress"/);
   assert.match(wxml, /bindtap="openEarnings"/);
   assert.match(wxml, /cta-inner/);
   assert.match(less, /\.hero-cta-btn\s*\{[\s\S]*white-space:\s*nowrap/);
   assert.match(less, /\.cta-btn-text\s*\{[\s\S]*white-space:\s*nowrap/);
-  assert.match(less, /account-common\.less/);
+  assert.doesNotMatch(less, /account-common\.less/);
   assert.match(less, /overflow-y:\s*auto/);
   assert.match(less, /\.quick-nav-grid/);
   assert.match(less, /\.hero-promotion-card/);
@@ -233,7 +224,7 @@ test('referrer workbench ships the Antigravity standalone asset and preserves th
   assert.match(less, /\.enterprise-pill\s*\{[^}]*flex-shrink:\s*0/s);
   assert.match(less, /\.enterprise-pill\s*\{[^}]*font-size:\s*24rpx/s);
   assert.match(less, /\.quick-card-title\s*\{[^}]*font-size:\s*28rpx/s);
-  assert.match(less, /\.benefit-desc\s*\{[^}]*font-size:\s*20rpx/s);
+  assert.match(less, /\.benefit-desc\s*\{[^}]*font-size:\s*22rpx/s);
   assert.match(js, /wx\.scanCode\(/);
   assert.match(js, /企业提供的入驻码/);
   assert.match(wxml, /referrer-workbench-v1\/service-code-guide\.png/);

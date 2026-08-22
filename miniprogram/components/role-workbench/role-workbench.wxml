@@ -11,16 +11,8 @@
               <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
             </view>
             <text class="identity-role-name">家客来 · 经营端</text>
-            <view class="identity-tag">
-              <text>{{staffName ? (enterpriseName ? staffName + ' · ' + enterpriseName : staffName) : '企业负责人'}}</text>
-            </view>
-          </view>
-          <view class="identity-actions">
-            <view class="qr-btn" bindtap="openActivityCode" aria-role="button" aria-label="出示入驻码">
-              <image class="action-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
-            </view>
-            <view class="bell-btn" bindtap="openSecondary" aria-role="button" aria-label="预约安排">
-              <image class="action-icon" src="/images/mine-icons/bell.png" mode="aspectFit" />
+            <view wx:if="{{enterpriseName}}" class="identity-tag">
+              <text>{{enterpriseName}}</text>
             </view>
           </view>
         </view>
@@ -154,16 +146,8 @@
               <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
             </view>
             <text class="identity-role-name">家客来 · {{role === 'designer' ? '设计师端' : role === 'measurer' ? '测量员端' : role === 'enterprise_admin' ? '经营端' : '服务向导'}}</text>
-            <view class="identity-tag">
-              <text>{{staffName ? (enterpriseName ? staffName + ' · ' + enterpriseName : staffName) : (role === 'designer' ? '设计师' : role === 'measurer' ? '测量员' : '专业服务')}}</text>
-            </view>
-          </view>
-          <view class="identity-actions">
-            <view class="qr-btn" bindtap="openActivityCode" aria-role="button" aria-label="扫码/活动码">
-              <image class="action-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
-            </view>
-            <view class="bell-btn" bindtap="openSecondary" aria-role="button" aria-label="消息通知">
-              <image class="action-icon" src="/images/mine-icons/bell.png" mode="aspectFit" />
+            <view wx:if="{{enterpriseName}}" class="identity-tag">
+              <text>{{enterpriseName}}</text>
             </view>
           </view>
         </view>
@@ -301,13 +285,34 @@
               <text class="item-subtitle">{{item.subtitle}}</text>
               <text class="item-meta">{{item.metaLabel}}</text>
               <view class="item-cta-row">
-                <view wx:if="{{item.customerPhone}}" class="item-cta item-cta-secondary" catchtap="callCustomer" data-item="{{item}}">电话联系</view>
-                <view wx:if="{{item.latitude && item.longitude}}" class="item-cta item-cta-secondary" catchtap="openNavigation" data-item="{{item}}">导航</view>
-                <view wx:if="{{item.canSurveyNow || item.canContinueSurvey}}" class="item-cta" catchtap="openSurvey" data-item="{{item}}">{{item.canContinueSurvey ? '继续量房' : '立即量房'}}</view>
-                <view wx:if="{{item.canStartNewSurvey}}" class="item-cta item-cta-secondary" catchtap="openNewSurvey" data-item="{{item}}">新增量房</view>
-                <view wx:if="{{item.canReschedule}}" class="item-cta" catchtap="openReschedule" data-item="{{item}}">{{item.actionLabel || '改期'}}</view>
-                <view wx:elif="{{item.canBookAppointment}}" class="item-cta item-cta-secondary" catchtap="openBooking" data-item="{{item}}">{{item.canRebook ? (item.actionLabel || '重新预约') : '预约上门'}}</view>
-                <view wx:elif="{{item.action === 'appointment' && item.appointmentId}}" class="item-cta item-cta-secondary" catchtap="openAppointment" data-item="{{item}}">查看预约</view>
+                <view wx:if="{{item.customerPhone}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="callCustomer" data-item="{{item}}">
+                  <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+                  <text>电话联系</text>
+                </view>
+                <view wx:if="{{item.latitude && item.longitude}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openNavigation" data-item="{{item}}">
+                  <image class="sfp-icon-action__icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
+                  <text>导航</text>
+                </view>
+                <view wx:if="{{item.canSurveyNow || item.canContinueSurvey}}" class="item-cta sfp-icon-action" catchtap="openSurvey" data-item="{{item}}">
+                  <image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" />
+                  <text>{{item.canContinueSurvey ? '继续量房' : '立即量房'}}</text>
+                </view>
+                <view wx:if="{{item.canStartNewSurvey}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openNewSurvey" data-item="{{item}}">
+                  <image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" />
+                  <text>新增量房</text>
+                </view>
+                <view wx:if="{{item.canReschedule}}" class="item-cta sfp-icon-action" catchtap="openReschedule" data-item="{{item}}">
+                  <image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" />
+                  <text>{{item.actionLabel || '改期'}}</text>
+                </view>
+                <view wx:elif="{{item.canBookAppointment}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openBooking" data-item="{{item}}">
+                  <image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" />
+                  <text>{{item.canRebook ? (item.actionLabel || '重新预约') : '预约上门'}}</text>
+                </view>
+                <view wx:elif="{{item.action === 'appointment' && item.appointmentId}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openAppointment" data-item="{{item}}">
+                  <image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" />
+                  <text>查看预约</text>
+                </view>
               </view>
             </view>
             <view wx:if="{{!(item.canSurveyNow || item.canContinueSurvey || item.canStartNewSurvey || item.canBookAppointment || item.canReschedule || (item.action === 'appointment' && item.appointmentId))}}" class="item-action">

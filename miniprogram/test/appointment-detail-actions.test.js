@@ -59,7 +59,10 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(script, /同步到客户小区/);
   assert.match(wxml, /secondary-row[\s\S]*action-secondary[\s\S]*修改服务地址/);
   assert.match(wxml, /secondary-row[\s\S]*action-secondary[\s\S]*一键导航至量房地点/);
-  assert.match(wxml, /canStartSurvey[\s\S]*📐/);
+  assert.match(wxml, /canStartSurvey[\s\S]*\/images\/leads-v4\/ruler-green\.png/);
+  assert.match(wxml, /\/images\/mine-icons\/edit\.png[\s\S]*修改服务地址|补充服务地址/);
+  assert.match(wxml, /\/images\/leads-v4\/map-pin\.png[\s\S]*一键导航至量房地点/);
+  assert.doesNotMatch(wxml, /btn-icon">[📐✏️📍]/);
   assert.match(styles, /\.action-secondary\s*\{[^}]*background:\s*#f8faf9;/s);
   assert.match(styles, /\.secondary-row\s*\{[^}]*display:\s*flex;/s);
   assert.match(styles, /\.secondary-row\s*\{[^}]*gap:\s*16rpx;/s);

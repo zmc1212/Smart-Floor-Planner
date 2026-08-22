@@ -52,7 +52,7 @@
   font-size: 32rpx;
   font-weight: 700;
   color: #183426;
-  flex-shrink: 1;
+  flex-shrink: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -65,18 +65,24 @@
   color: #2c4235;
   font-size: 22rpx;
   font-weight: 600;
-  flex-shrink: 0;
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+}
+
+.identity-tag text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .identity-actions {
   display: flex;
   align-items: center;
-  gap: 16rpx;
   flex-shrink: 0;
 }
 
-.qr-btn,
-.bell-btn {
+.qr-btn {
   width: 56rpx;
   height: 56rpx;
   display: flex;

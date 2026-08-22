@@ -155,6 +155,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
       root: 'packages/business',
       pages: [
         'login/login',
+        'legal-webview/legal-webview',
         'lead-form/lead-form',
         'lead-detail/lead-detail',
         'promotion-records/promotion-records',

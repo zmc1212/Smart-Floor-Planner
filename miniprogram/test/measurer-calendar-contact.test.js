@@ -94,6 +94,10 @@ test('measurer calendar retains the assigned customer name and phone from the ap
     assert.equal(appointment.customerPhone, '15997671595');
     const template = fs.readFileSync(path.join(__dirname, '..', 'packages', 'business', 'measurer-calendar', 'measurer-calendar.wxml'), 'utf8');
     assert.match(template, /客户: \{\{item\.customerName\}\}[\s\S]*item\.customerPhone/);
+    assert.match(template, /action-phone sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png[\s\S]*电话联系/);
+    assert.match(template, /action-nav sfp-icon-action[\s\S]*\/images\/leads-v4\/map-pin\.png[\s\S]*导航/);
+    assert.match(template, /action-start[\s\S]*\/images\/leads-v4\/ruler-green\.png[\s\S]*开始量房/);
+    assert.doesNotMatch(template, /btn-icon">[📞📍📐✏️]/);
     definition.callCustomer.call(context, { currentTarget: { dataset: { item: appointment } } });
     assert.deepEqual(phoneCalls, ['15997671595']);
   } finally {

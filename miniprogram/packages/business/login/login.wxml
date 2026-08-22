@@ -27,19 +27,29 @@
       <view class="login-title">微信授权登录</view>
       <view class="login-desc">授权后即可使用完整功能</view>
 
-      <button class="primary-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{loading}}" disabled="{{loading}}">
+      <button wx:if="{{agreed}}" class="primary-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{loading}}" disabled="{{loading}}">
+        <view class="primary-inner">
+          <image class="button-icon" src="/packages/business/assets/login-v1/smartphone.png" mode="aspectFit" />
+          <text>手机号快捷登录</text>
+        </view>
+      </button>
+      <button wx:else class="primary-btn" bindtap="onNeedAgreement" disabled="{{loading}}">
         <view class="primary-inner">
           <image class="button-icon" src="/packages/business/assets/login-v1/smartphone.png" mode="aspectFit" />
           <text>手机号快捷登录</text>
         </view>
       </button>
 
-      <view class="agreement">
-        <view class="agreement-check"></view>
+      <view class="agreement" bindtap="onToggleAgreement" hover-class="none" role="checkbox" aria-checked="{{agreed}}">
+        <view class="agreement-check {{agreed ? 'is-checked' : ''}}"></view>
         <text>我已阅读并同意</text>
-        <text class="link">《用户协议》</text>
+        <view class="legal-link" catchtap="onOpenLegalDoc" data-kind="user" hover-class="none">
+          <text class="link">《用户协议》</text>
+        </view>
         <text>和</text>
-        <text class="link">《隐私政策》</text>
+        <view class="legal-link" catchtap="onOpenLegalDoc" data-kind="privacy" hover-class="none">
+          <text class="link">《隐私政策》</text>
+        </view>
       </view>
     </view>
 

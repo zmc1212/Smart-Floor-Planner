@@ -19,10 +19,6 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
         <text class="identity-badge-text">{{userName || '推广人'}} · {{selectedEnterpriseName || '未加入企业'}}</text>
       </view>
     </view>
-    <view class="nav-actions" aria-hidden="true">
-      <image class="nav-action-icon nav-scan-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
-      <image class="nav-action-icon nav-bell-icon" src="/images/mine-icons/bell.png" mode="aspectFit" />
-    </view>
   </view>
 
   <view wx:if="{{loading}}" class="state-card sfp-card">正在加载推广企业…</view>
@@ -178,7 +174,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
       <text>仅展示当前企业的脱敏事实</text>
     </view>
 
-    <!-- Account Actions & Exit Enterprise -->
+    <!-- Exit Enterprise -->
     <view class="enterprise-leave-box">
       <button
         class="leave-action-btn"
@@ -188,19 +184,6 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
       >退出该企业</button>
       <text class="leave-note-text">退出不影响历史已产生的推荐记录与服务归属</text>
     </view>
-
-    <view wx:if="{{identityCount > 1}}" class="account-section-title account-section-title-compact">账号操作</view>
-    <view wx:if="{{identityCount > 1}}" class="account-surface workbench-account-surface">
-      <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenIdentitySwitch" aria-role="button">
-        <image class="account-row-icon" src="/images/mine-icons/users.png" mode="aspectFit" />
-        <view class="account-row-copy">
-          <view class="account-row-label">切换身份</view>
-          <view class="account-row-helper">在客户、员工和推荐人身份之间切换</view>
-        </view>
-        <view class="account-chevron"></view>
-      </view>
-    </view>
-    <button class="danger-action workbench-logout" bindtap="onLogout">退出当前账号</button>
   </view>
 </view>
 <custom-tab-bar />

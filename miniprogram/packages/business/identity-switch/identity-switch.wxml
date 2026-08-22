@@ -1,29 +1,66 @@
 <!--
-THESIS: 把同一账号拥有的业务身份整理成清晰档案列，切换前明确企业和岗位边界。
-OWN-WORLD: 复用已批准的账户权限管家小 K 场景与账户行语言。
-FORM: Identity dossier list; all controls remain native and stateful.
+THESIS: 把身份选择变为聚焦的角色预览，而不是缩小小 K 的设置列表；中央角色舞台承担当前选择，轨道承担浏览。
+OWN-WORLD: 暖白与家客来绿的哑光空间展台，房屋框架、门洞与小 K 的白绿黑体块保持同一品牌语言。
+STORY: 用户先在舞台预览一个真实可用身份，再明确确认切换；单身份不制造无意义的切换动作。
+FIRST VIEWPORT: 顶部仅给出选择任务，中心是完整小 K 的房屋舞台，底部为可滑动角色轨道和真实确认按钮。
+FORM: 图二基础版本：原生场景层和岗位独立 PNG；不使用新增的 3D 舞台切图。
 -->
-<view class="account-page identity-page">
-  <view class="account-hero">
-    <view class="account-hero-green"></view>
-    <view class="account-hero-copy"><view class="account-hero-title">身份管家 · 小K</view><view class="account-hero-copy-text">每次只进入一个身份，数据与权限不会混用</view></view>
-    <image class="account-hero-art" src="../assets/account-v1/settings-guardian-scene-v3.png" mode="aspectFit" aria-hidden="true"></image>
-  </view>
-  <view class="account-section-title">选择当前身份</view>
+<view class="account-page identity-page identity-lobby">
   <view wx:if="{{loading}}" class="state-message">正在读取可用身份…</view>
   <view wx:elif="{{error}}" class="state-message">
     {{error}}
     <view wx:if="{{sessionExpired}}" class="state-retry" bindtap="goToLogin" aria-role="button">重新登录</view>
     <view wx:else class="state-retry" bindtap="load" aria-role="button">重新加载</view>
   </view>
-  <view wx:else class="identity-list">
-    <view wx:for="{{contexts}}" wx:key="index" class="identity-item {{item.current ? 'identity-current' : ''}}" data-context="{{item}}" bindtap="selectIdentity" hover-class="identity-pressed" aria-role="button" aria-label="{{item.current ? '当前身份' : '切换身份'}} {{item.title}}">
-      <view class="identity-mark">{{item.modeLabel.slice(0,1)}}</view>
-      <view class="identity-copy"><text class="identity-title">{{item.title}}</text><text class="identity-detail">{{item.detail}}</text></view>
-      <text wx:if="{{item.current}}" class="identity-status">当前</text>
-      <text wx:elif="{{switchingKey}}" class="identity-status pending">处理中</text>
-      <view wx:else class="account-chevron"></view>
+
+  <view wx:elif="{{selectedContext}}" class="identity-selector">
+    <view class="identity-stage">
+      <view class="stage-scene">
+        <view class="stage-roof" aria-hidden="true"></view>
+        <view class="stage-room" aria-hidden="true"></view>
+
+        <view class="stage-pedestal" aria-hidden="true"></view>
+        <image class="stage-character" src="{{selectedContext.icon}}" mode="aspectFit" aria-hidden="true"></image>
+      </view>
+
+      <view class="stage-copy">
+        <text class="stage-role">{{selectedContext.roleLabel}}</text>
+        <text class="stage-name">{{selectedContext.title}}</text>
+        <text class="stage-detail">{{selectedContext.detail}}</text>
+        <text class="stage-status {{selectedContext.current ? 'is-current' : 'is-ready'}}">{{selectedContext.current ? '当前身份' : '待切换'}}</text>
+      </view>
     </view>
-    <view wx:if="{{contexts.length === 1}}" class="single-note">当前账号只有一个可用身份。完成企业员工或推荐人入驻后，其他身份会出现在这里。</view>
+
+    <view wx:if="{{contexts.length > 1}}" class="role-rail-wrap">
+      <text class="role-rail-title">可用身份</text>
+      <scroll-view class="role-rail" scroll-x="true" enable-flex="true" show-scrollbar="false">
+        <view
+          wx:for="{{contexts}}"
+          wx:key="contextKey"
+          class="role-token {{item.selected ? 'role-token-selected' : ''}}"
+          data-context="{{item}}"
+          bindtap="selectIdentity"
+          hover-class="role-token-pressed"
+          aria-role="button"
+          aria-label="选择{{item.roleLabel}}身份"
+        >
+          <view class="role-token-art-wrap">
+            <image class="role-token-art" src="{{item.icon}}" mode="aspectFit" aria-hidden="true"></image>
+          </view>
+          <text class="role-token-label">{{item.roleLabel}}</text>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view wx:else class="single-identity-note">当前账号只有一个有效身份，暂时无需切换。</view>
+
+    <button
+      wx:if="{{contexts.length > 1}}"
+      class="identity-confirm"
+      disabled="{{selectedContext.current || switchingKey}}"
+      bindtap="confirmSelectedIdentity"
+      aria-label="{{selectedContext.current ? '当前身份' : '确认切换身份'}}"
+    >{{switchingKey ? '切换中…' : (selectedContext.current ? '当前身份' : '确认切换')}}</button>
+    <text class="identity-helper">{{contexts.length > 1 ? '点击或左右滑动选择身份' : '返回“我的”可继续管理账号'}}</text>
   </view>
 </view>

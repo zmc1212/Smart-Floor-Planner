@@ -1,6 +1,7 @@
 const app = getApp();
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
+const { resolveLegalDoc, buildLegalWebviewUrl } = require('../../../utils/legal-docs.js');
 
 function shouldStayOnLoginPage(pages, previousRoute, options) {
   if (options && options.mode === 'password') return true;
@@ -36,7 +37,8 @@ Page({
     loginType: 'phone',
     username: '',
     password: '',
-    loading: false
+    loading: false,
+    agreed: false
   },
 
   onLoad(options) {
@@ -72,7 +74,33 @@ Page({
     this.setData({ password: e.detail.value });
   },
 
+  onToggleAgreement() {
+    this.setData({ agreed: !this.data.agreed });
+  },
+
+  onNeedAgreement() {
+    wx.showToast({ title: '请先勾选同意协议', icon: 'none' });
+  },
+
+  onOpenLegalDoc(e) {
+    const dataset = (e && e.currentTarget && e.currentTarget.dataset)
+      || (e && e.target && e.target.dataset)
+      || {};
+    const kind = dataset.kind;
+    const path = buildLegalWebviewUrl(resolveLegalDoc(kind));
+    if (!path) {
+      wx.showToast({ title: '文档即将开放', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({ url: path });
+  },
+
   async onGetPhoneNumber(e) {
+    if (!this.data.agreed) {
+      this.onNeedAgreement();
+      return;
+    }
+
     if (e.detail.errMsg !== 'getPhoneNumber:ok') {
       wx.showToast({ title: '已取消授权', icon: 'none' });
       return;

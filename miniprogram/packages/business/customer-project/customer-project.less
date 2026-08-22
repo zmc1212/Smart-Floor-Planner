@@ -3,7 +3,7 @@
 .back { display: flex; width: 62rpx; height: 62rpx; flex: none; align-items: center; justify-content: center; margin-top: 2rpx; }
 .back-chevron { width: 16rpx; height: 16rpx; border-top: 3rpx solid #26312a; border-right: 3rpx solid #26312a; transform: rotate(-135deg); box-sizing: border-box; }
 .nav-copy, .hero-text-wrap, .person-info { min-width: 0; flex: 1; }
-.nav-title, .nav-subtitle, .hero-title, .hero-subtitle, .person-role, .person-name, .person-phone, .section-title, .section-meta, .empty-note, .empty-title, .published-title, .more-schemes-label { display: block; }
+.nav-title, .nav-subtitle, .hero-title, .hero-subtitle, .person-role, .person-name, .section-title, .section-meta, .empty-note, .empty-title, .published-title, .more-schemes-label { display: block; }
 .nav-title { color: #183426; font-size: 36rpx; font-weight: 700; line-height: 1.2; }
 .nav-subtitle { margin-top: 8rpx; color: #8e9e94; font-size: 24rpx; line-height: 1.35; }
 .content { display: flex; flex-direction: column; gap: 20rpx; }
@@ -18,18 +18,18 @@
 .step-dot { width: 20rpx; height: 20rpx; border: 5rpx solid rgba(255,255,255,.65); border-radius: 50%; background: transparent; box-sizing: border-box; }
 .timeline-step.done .step-dot { border-color: #fff; background: #fff; }
 .timeline-step.current .step-dot { border-color: #fff; background: rgba(255,255,255,.35); box-shadow: 0 0 0 6rpx rgba(255,255,255,.16); }
-.step-label { overflow: hidden; width: 100%; color: rgba(255,255,255,.74); font-size: 20rpx; line-height: 1.3; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.step-label { overflow: hidden; width: 100%; color: rgba(255,255,255,.74); font-size: 22rpx; line-height: 1.3; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 .timeline-step.done .step-label, .timeline-step.current .step-label { color: #fff; font-weight: 600; }
 .step-line { height: 4rpx; margin-top: 8rpx; flex: 1; background: rgba(255,255,255,.3); transform: scaleY(.5); }
 .step-line.active { background: #fff; }
 .personnel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16rpx; }
 .person-card { min-height: 132rpx; padding: 22rpx 20rpx; }
-.person-role { color: #8e9e94; font-size: 20rpx; line-height: 1.3; }
+.person-role { color: #8e9e94; font-size: 22rpx; line-height: 1.3; }
 .person-name-row { display: flex; margin-top: 10rpx; align-items: center; gap: 8rpx; }
 .person-info > .person-name { margin-top: 10rpx; }
 .person-name { overflow: hidden; color: #183426; font-size: 26rpx; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .person-chevron { width: 10rpx; height: 10rpx; flex: none; border-top: 2rpx solid #8e9e94; border-right: 2rpx solid #8e9e94; transform: rotate(45deg); }
-.person-phone { margin-top: 8rpx; color: #147b3a; font-size: 24rpx; font-weight: 600; line-height: 1.35; }
+.person-phone { margin-top: 8rpx; justify-content: flex-start; color: #147b3a; font-size: 24rpx; font-weight: 600; line-height: 1.35; }
 .section-card { padding: 26rpx; }
 .section-header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 16rpx; }
 .section-title-wrap { display: flex; min-width: 0; align-items: center; gap: 10rpx; flex: 1; }
@@ -67,7 +67,7 @@
 .delivery-image { width: 100%; height: 360rpx; }
 .delivery-state { display: flex; height: 360rpx; padding: 24rpx; align-items: center; justify-content: center; color: #69806f; font-size: 24rpx; line-height: 1.4; text-align: center; box-sizing: border-box; }
 .delivery-state.error { color: #8b6b3f; background: #fcf7ed; }
-.delivery-style-tag { position: absolute; left: 18rpx; bottom: 18rpx; display: inline-flex; align-items: center; max-width: calc(100% - 220rpx); min-height: 40rpx; padding: 0 14rpx; border-radius: 999rpx; background: rgba(24, 52, 38, .78); color: #fff; font-size: 20rpx; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.delivery-style-tag { position: absolute; left: 18rpx; bottom: 18rpx; display: inline-flex; align-items: center; max-width: calc(100% - 220rpx); min-height: 40rpx; padding: 0 14rpx; border-radius: 999rpx; background: rgba(24, 52, 38, .78); color: #fff; font-size: 22rpx; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .appointment-facts { display: flex; margin-top: 20rpx; padding: 24rpx; flex-direction: column; gap: 10rpx; border-radius: 18rpx; background: #f5f8f5; }
 .appointment-time { color: #26312a; font-size: 28rpx; font-weight: 700; line-height: 1.35; }
 .appointment-address { color: #728078; font-size: 22rpx; line-height: 1.45; }

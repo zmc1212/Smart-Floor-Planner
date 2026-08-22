@@ -52,8 +52,7 @@
   font-size: 32rpx;
   font-weight: 700;
   color: #183426;
-  min-width: 0;
-  flex-shrink: 1;
+  flex-shrink: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -66,29 +65,15 @@
   color: #2c4235;
   font-size: 22rpx;
   font-weight: 600;
-  flex-shrink: 0;
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
 }
 
-.identity-actions {
-  display: flex;
-  align-items: center;
-  gap: 16rpx;
-  flex-shrink: 0;
-}
-
-.qr-btn,
-.bell-btn {
-  width: 56rpx;
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.action-icon {
-  width: 38rpx;
-  height: 38rpx;
-  opacity: 0.8;
+.identity-tag text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Role Hero Card */
@@ -251,7 +236,7 @@
 .quick-desc {
   margin-top: 8rpx;
   color: #8e9e94;
-  font-size: 20rpx;
+  font-size: 22rpx;
 }
 
 .quick-nav-mascot {
@@ -368,7 +353,7 @@
   border-radius: 16rpx;
   background: #eef8f2;
   color: #00c365;
-  font-size: 20rpx;
+  font-size: 22rpx;
   font-weight: 600;
 }
 
@@ -400,7 +385,7 @@
   border-radius: 26rpx;
   background: #00c365;
   color: #ffffff;
-  font-size: 22rpx;
+  font-size: 24rpx;
   font-weight: 600;
   display: flex;
   align-items: center;

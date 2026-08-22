@@ -19,6 +19,11 @@ test('customer service home shows one featured stage and a single next action', 
   assert.match(workbench, /还没有进行中的服务/);
   assert.match(template, /item\.canReschedule/);
   assert.match(template, /item\.actionLabel/);
+  assert.match(template, /item-cta-secondary sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png[\s\S]*电话联系/);
+  assert.match(template, /openNavigation[\s\S]*\/images\/leads-v4\/map-pin\.png[\s\S]*导航/);
+  assert.match(template, /openSurvey[\s\S]*\/images\/leads-v4\/ruler-green\.png/);
+  assert.match(template, /openReschedule[\s\S]*\/packages\/business\/assets\/promotion-detail\/calendar\.png/);
+  assert.match(source('app.less'), /\.sfp-icon-action\s*\{[\s\S]*gap:\s*8rpx;/);
   assert.doesNotMatch(workbench, /title: '免费设计与量房'/);
 });
 
@@ -110,4 +115,35 @@ test('designer workbench prompts incomplete WeChat profile on every entry', () =
   assert.match(workbench, /cancelText:\s*'稍后'/);
   assert.match(workbench, /wx\.showModal/);
   assert.match(workbench, /_wechatProfilePromptShownThisVisit/);
+});
+
+test('role workbench identity nav omits scan and bell so the lockup can sit beside the capsule', () => {
+  const template = source('components/role-workbench/role-workbench.wxml');
+  const styles = source('components/role-workbench/role-workbench.less');
+  const workbench = source('components/role-workbench/role-workbench.js');
+  assert.match(template, /家客来 · \{\{role === 'designer' \? '设计师端'/);
+  assert.match(template, /padding-right: \{\{navigationRight\}\}px/);
+  assert.doesNotMatch(template, /identity-actions/);
+  assert.doesNotMatch(template, /class="qr-btn"/);
+  assert.doesNotMatch(template, /class="bell-btn"/);
+  assert.doesNotMatch(template, /mine-icons\/scan\.png/);
+  assert.doesNotMatch(template, /mine-icons\/bell\.png/);
+  assert.match(template, /bindtap="openActivityCode"/);
+  assert.match(template, /出示获客活动码/);
+  assert.match(workbench, /openActivityCode\(\)/);
+  assert.match(workbench, /openSecondary\(\)/);
+  assert.doesNotMatch(styles, /\.identity-actions/);
+  assert.doesNotMatch(styles, /\.bell-btn/);
+  assert.match(styles, /\.identity-role-name\s*\{[\s\S]*flex-shrink:\s*0;/);
+  assert.match(styles, /\.identity-tag\s*\{[\s\S]*flex-shrink:\s*1;/);
+});
+
+test('role workbench identity tag shows the current enterprise name only', () => {
+  const template = source('components/role-workbench/role-workbench.wxml');
+  assert.match(template, /家客来 · \{\{role === 'designer' \? '设计师端'/);
+  assert.match(template, /wx:if="\{\{enterpriseName\}\}"[\s\S]*\{\{enterpriseName\}\}/);
+  assert.doesNotMatch(template, /staffName \+ ' · ' \+ enterpriseName/);
+  assert.doesNotMatch(template, /role === 'designer' \? '设计师'/);
+  assert.doesNotMatch(template, /企业负责人/);
+  assert.doesNotMatch(template, /专业服务/);
 });

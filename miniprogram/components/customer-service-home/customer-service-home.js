@@ -352,10 +352,6 @@ Component({
       });
     },
 
-    openBell() {
-      wx.switchTab({ url: '/pages/mine/mine' });
-    },
-
     openScan() {
       this.scanServiceOrInviteCode();
     },

@@ -105,8 +105,8 @@
     </view>
 
     <view class="staff-secondary" wx:if="{{!customerMode && (canStartSurvey || canComplete || canUpdateAddress || canNavigate || canSyncCommunity)}}">
-      <button wx:if="{{canStartSurvey && canReschedule}}" class="primary sfp-primary-action" disabled="{{acting}}" bindtap="startSurvey">
-        <text class="btn-icon">📐</text>
+      <button wx:if="{{canStartSurvey && canReschedule}}" class="primary sfp-primary-action sfp-icon-action" disabled="{{acting}}" bindtap="startSurvey">
+        <image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" />
         <text>{{startSurveyLabel}}</text>
       </button>
       <button wx:if="{{canComplete && canReschedule}}" class="primary sfp-primary-action" loading="{{acting}}" bindtap="complete">
@@ -115,24 +115,24 @@
       <view class="secondary-row" wx:if="{{canUpdateAddress || canNavigate}}">
         <view
           wx:if="{{canUpdateAddress}}"
-          class="action-btn action-secondary {{canNavigate ? '' : 'action-full'}} {{acting ? 'is-disabled' : ''}}"
+          class="action-btn action-secondary sfp-icon-action {{canNavigate ? '' : 'action-full'}} {{acting ? 'is-disabled' : ''}}"
           hover-class="{{acting ? 'none' : 'btn-pressed'}}"
           aria-role="button"
           aria-label="{{appointment.address ? '修改服务地址' : '补充服务地址'}}"
           bindtap="updateAddress"
         >
-          <text class="btn-icon">✏️</text>
+          <image class="sfp-icon-action__icon" src="/images/mine-icons/edit.png" mode="aspectFit" />
           <text class="btn-label">{{appointment.address ? '修改服务地址' : '补充服务地址'}}</text>
         </view>
         <view
           wx:if="{{canNavigate}}"
-          class="action-btn action-secondary {{canUpdateAddress ? '' : 'action-full'}} {{acting ? 'is-disabled' : ''}}"
+          class="action-btn action-secondary sfp-icon-action {{canUpdateAddress ? '' : 'action-full'}} {{acting ? 'is-disabled' : ''}}"
           hover-class="{{acting ? 'none' : 'btn-pressed'}}"
           aria-role="button"
           aria-label="一键导航至量房地点"
           bindtap="openNavigation"
         >
-          <text class="btn-icon">📍</text>
+          <image class="sfp-icon-action__icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
           <text class="btn-label">一键导航至量房地点</text>
         </view>
       </view>
@@ -154,8 +154,8 @@
       <button class="primary sfp-primary-action sticky-confirm" disabled="{{acting}}" bindtap="rebook">重新预约上门</button>
     </view>
     <view wx:elif="{{!customerMode && (canStartSurvey || canComplete)}}">
-      <button wx:if="{{canStartSurvey}}" class="primary sfp-primary-action sticky-confirm" disabled="{{acting}}" bindtap="startSurvey">
-        <text class="btn-icon">📐</text>
+      <button wx:if="{{canStartSurvey}}" class="primary sfp-primary-action sticky-confirm sfp-icon-action" disabled="{{acting}}" bindtap="startSurvey">
+        <image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" />
         <text>{{startSurveyLabel}}</text>
       </button>
       <button wx:elif="{{canComplete}}" class="primary sfp-primary-action sticky-confirm" loading="{{acting}}" bindtap="complete">确认完成量房</button>

@@ -44,7 +44,8 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.ok(business.pages.includes('settings/settings'));
   assert.ok(business.pages.includes('account-security/account-security'));
   assert.ok(business.pages.includes('identity-switch/identity-switch'));
-  assert.match(mineWxml, /编辑资料[\s\S]*bindtap="onEditProfile"|bindtap="onEditProfile"[\s\S]*编辑资料/);
+  assert.match(mineWxml, /account-section-title">账号[\s\S]*bindtap="onEditProfile"[\s\S]*编辑资料/);
+  assert.doesNotMatch(mineWxml, /edit-profile-button|header-actions/);
   assert.doesNotMatch(mineWxml, /bindtap="onOpenSettings"/);
   assert.match(mineWxml, /mineAccountPanel/);
   assert.doesNotMatch(mineWxml, /bindtap="onEnableNotification"/);
@@ -53,6 +54,8 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.match(mineWxml, /bindtap="onOpenSystemSettings"/);
   assert.match(mineWxml, /微信权限管理/);
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
+  assert.match(mineWxml, /当前身份/);
+  assert.match(mineWxml, /在客户、员工和推荐人身份之间切换/);
   assert.match(mineWxml, /账号与安全[\s\S]*onOpenAccountSecurity|onOpenAccountSecurity[\s\S]*账号与安全/);
   assert.match(mineJs, /onEditProfile\(\)[\s\S]*profile-edit\/profile-edit/);
   assert.match(mineJs, /onOpenAccountSecurity\(\)[\s\S]*account-security\/account-security/);
@@ -65,10 +68,6 @@ test('Account pages use the approved account-v1 scenes while keeping live contro
     {
       source: read('packages/business/profile-edit/profile-edit.wxml'),
       scene: 'profile-dossier-scene-v3.png'
-    },
-    {
-      source: read('packages/business/identity-switch/identity-switch.wxml'),
-      scene: 'settings-guardian-scene-v3.png'
     },
     {
       source: read('packages/business/account-security/account-security.wxml'),
@@ -108,14 +107,38 @@ test('Account pages use the approved account-v1 scenes while keeping live contro
 test('Identity switch uses server contexts and refreshes the signed session', () => {
   const script = read('packages/business/identity-switch/identity-switch.js');
   const wxml = read('packages/business/identity-switch/identity-switch.wxml');
+  const less = read('packages/business/identity-switch/identity-switch.less');
   assert.match(script, /\/miniprogram\/identity-contexts/);
   assert.match(script, /\/miniprogram\/identity-contexts\/switch/);
   assert.match(script, /type: 'refresh', token: switched\.token/);
   assert.match(script, /wx\.setStorageSync\('userInfo', refreshed\.user\)/);
   assert.match(script, /referrer-workbench\/referrer-workbench/);
-  assert.match(wxml, /settings-guardian-scene-v3\.png/);
-  assert.match(wxml, /item\.current/);
-  assert.match(wxml, /contexts\.length === 1/);
+  assert.doesNotMatch(wxml, /settings-guardian-scene-v3\.png/);
+  assert.match(wxml, /selectedContext\.current/);
+  assert.match(wxml, /contexts\.length > 1/);
+  assert.match(wxml, /当前账号只有一个有效身份/);
+  assert.match(wxml, /<button[\s\S]*wx:if="\{\{contexts\.length > 1\}\}"/);
+  assert.match(script, /IDENTITY_ICONS/);
+  assert.match(script, /selectedContext/);
+  assert.match(script, /confirmSelectedIdentity/);
+  assert.match(script, /platform_admin: '\u5e73\u53f0\u7ba1\u7406\u5458'/);
+  assert.match(wxml, /class="identity-stage"/);
+  assert.doesNotMatch(wxml, /role-gallery-stage-v1\.png/);
+  assert.doesNotMatch(wxml, /side-role/);
+  assert.doesNotMatch(wxml, /选择你的角色/);
+  assert.doesNotMatch(script, /resolveSideContexts/);
+  assert.match(wxml, /class="role-rail"/);
+  assert.match(wxml, /class="role-token-art"/);
+  assert.match(wxml, /confirmSelectedIdentity/);
+  assert.match(less, /\.identity-confirm\[disabled\][\s\S]*background: #c8efd8 !important/);
+  for (const icon of ['customer', 'referrer', 'enterprise-admin', 'designer', 'measurer', 'salesperson', 'platform-admin']) {
+    const iconPath = path.join(projectRoot, 'images', 'identity-switch', `${icon}.png`);
+    assert.ok(fs.existsSync(iconPath), `${icon} identity icon must be packaged`);
+    assert.ok(fs.statSync(iconPath).size <= 300 * 1024, `${icon} identity icon must remain package-sized`);
+    const bytes = fs.readFileSync(iconPath);
+    assert.equal(bytes.toString('ascii', 1, 4), 'PNG');
+    assert.equal(bytes[25], 6, `${icon} identity icon must retain an RGBA alpha channel`);
+  }
 });
 
 test('Profile save uploads a pending avatar, updates the nickname, and refreshes session data', async () => {

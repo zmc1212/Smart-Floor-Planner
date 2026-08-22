@@ -86,6 +86,7 @@ Component({
     customTo: '',
     bleConnected: false,
     showBLEConnector: false,
+    enterpriseName: '',
   },
 
   observers: {
@@ -298,7 +299,6 @@ Component({
         const app = getApp();
         const userInfo = (app && app.globalData && app.globalData.userInfo) || {};
         const bootstrap = (app && app.globalData && app.globalData.bootstrap) || {};
-        const staffName = userInfo.displayName || userInfo.name || (bootstrap.current && bootstrap.current.staffName) || '';
         const enterpriseName = (bootstrap.enterprise && bootstrap.enterprise.name) || userInfo.enterpriseName || '';
         const periodPayload = payload.period || {};
         const dashboardPeriod = {
@@ -320,7 +320,6 @@ Component({
           dashboard: payload.dashboard || [],
           quickNav: payload.quickNav || [],
           dashboardPeriod,
-          staffName,
           enterpriseName,
           loading: false,
         });

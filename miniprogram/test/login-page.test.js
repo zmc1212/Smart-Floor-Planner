@@ -2,8 +2,46 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const api = require('../utils/api.js');
 
 const projectRoot = path.resolve(__dirname, '..');
+
+function source(relativePath) {
+  return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
+}
+
+function loadPage() {
+  const pagePath = require.resolve('../packages/business/login/login.js');
+  const originalPage = global.Page;
+  const originalGetApp = global.getApp;
+  let definition;
+  global.Page = (next) => {
+    definition = next;
+  };
+  global.getApp = () => ({
+    globalData: {},
+    hydrateStoredSession: async () => {}
+  });
+  delete require.cache[pagePath];
+  require(pagePath);
+  global.Page = originalPage;
+  global.getApp = originalGetApp;
+  return definition;
+}
+
+function createContext(definition, extraData = {}) {
+  const context = {
+    data: { ...definition.data, ...extraData },
+    setData(next) {
+      Object.assign(this.data, next);
+    }
+  };
+  context.onToggleAgreement = definition.onToggleAgreement;
+  context.onNeedAgreement = definition.onNeedAgreement;
+  context.onGetPhoneNumber = definition.onGetPhoneNumber;
+  context.performLogin = definition.performLogin;
+  return context;
+}
 
 test('Login page ships the approved Xiao K entry composition with live controls', () => {
   const wxml = fs.readFileSync(path.join(projectRoot, 'packages/business/login/login.wxml'), 'utf8');
@@ -44,4 +82,108 @@ test('Login visual assets are local, valid, and stay within the Mini Program bud
   assert.equal(heroBytes[0], 0xff);
   assert.equal(heroBytes[1], 0xd8);
   assert.ok(heroBytes.length < 120 * 1024, 'hero-scene.jpg exceeds the 120 KB page budget');
+});
+
+test('Login agreement row is tappable and gates WeChat phone login until checked', () => {
+  const wxml = source('packages/business/login/login.wxml');
+  const js = source('packages/business/login/login.js');
+  const less = source('packages/business/login/login.less');
+
+  assert.match(wxml, /class="agreement"[^>]*bindtap="onToggleAgreement"/);
+  assert.match(wxml, /agreement-check \{\{agreed \? 'is-checked' : ''\}\}/);
+  assert.match(
+    wxml,
+    /wx:if="\{\{agreed\}\}"[\s\S]*open-type="getPhoneNumber"[\s\S]*bindgetphonenumber="onGetPhoneNumber"/
+  );
+  assert.match(wxml, /wx:else[\s\S]*bindtap="onNeedAgreement"/);
+  assert.doesNotMatch(
+    wxml,
+    /<button class="primary-btn" open-type="getPhoneNumber"/
+  );
+
+  assert.match(js, /agreed:\s*false/);
+  assert.match(js, /onToggleAgreement\(/);
+  assert.match(js, /onNeedAgreement\(/);
+  assert.match(js, /请先勾选同意协议/);
+
+  assert.match(less, /\.agreement\s*\{[\s\S]*padding:\s*20rpx 32rpx 24rpx/);
+  assert.match(less, /\.agreement\s*\{[\s\S]*min-height:\s*72rpx/);
+  assert.match(less, /\.agreement-check\.is-checked/);
+  assert.match(wxml, /catchtap="onOpenLegalDoc"[\s\S]*data-kind="user"/);
+  assert.match(wxml, /catchtap="onOpenLegalDoc"[\s\S]*data-kind="privacy"/);
+  assert.match(js, /onOpenLegalDoc\(/);
+});
+
+test('Login agreement toggle and phone CTA refuse login until the row is checked', async () => {
+  const definition = loadPage();
+  const toasts = [];
+  const originalWx = global.wx;
+  const originalPhoneLogin = api.phoneLogin;
+  let phoneLoginCalls = 0;
+  global.wx = {
+    ...(originalWx || {}),
+    showToast(options) {
+      toasts.push(options);
+    }
+  };
+  api.phoneLogin = async () => {
+    phoneLoginCalls += 1;
+    return { success: false, error: 'should-not-run' };
+  };
+
+  try {
+    const context = createContext(definition);
+    assert.equal(context.data.agreed, false);
+
+    definition.onToggleAgreement.call(context);
+    assert.equal(context.data.agreed, true);
+    definition.onToggleAgreement.call(context);
+    assert.equal(context.data.agreed, false);
+
+    definition.onNeedAgreement.call(context);
+    assert.equal(toasts[0].title, '请先勾选同意协议');
+
+    await definition.onGetPhoneNumber.call(context, {
+      detail: { errMsg: 'getPhoneNumber:ok', code: 'phone-code' }
+    });
+    assert.equal(phoneLoginCalls, 0);
+    assert.equal(toasts.at(-1).title, '请先勾选同意协议');
+  } finally {
+    global.wx = originalWx;
+    api.phoneLogin = originalPhoneLogin;
+  }
+});
+
+test('Login legal links open the webview without toggling the agreement checkbox', () => {
+  const definition = loadPage();
+  const toasts = [];
+  const navigations = [];
+  const originalWx = global.wx;
+  global.wx = {
+    ...(originalWx || {}),
+    showToast(options) {
+      toasts.push(options);
+    },
+    navigateTo(options) {
+      navigations.push(options.url);
+    }
+  };
+
+  try {
+    const context = createContext(definition);
+    assert.equal(context.data.agreed, false);
+    definition.onOpenLegalDoc.call(context, {
+      currentTarget: { dataset: { kind: 'user' } }
+    });
+    assert.equal(context.data.agreed, false);
+    if (navigations.length) {
+      assert.match(navigations[0], /legal-webview\/legal-webview/);
+      assert.match(navigations[0], /url=/);
+      assert.doesNotMatch(navigations[0], /\?url=https:\/\//);
+    } else {
+      assert.equal(toasts[0].title, '文档即将开放');
+    }
+  } finally {
+    global.wx = originalWx;
+  }
 });

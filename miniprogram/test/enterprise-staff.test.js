@@ -46,4 +46,6 @@ test('enterprise staff roster is an owner-only deep page with pause and join-cod
   assert.match(styles, /\.status-tag\s*\{[\s\S]*align-items:\s*center/);
   assert.match(styles, /\.status-tag text\s*\{[\s\S]*line-height:\s*1;/);
   assert.match(styles, /\.retry\s*\{[\s\S]*align-items:\s*center/);
+  assert.match(template, /ghost-btn sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png[\s\S]*电话联系/);
+  assert.match(page, /wx\.makePhoneCall/);
 });

@@ -18,9 +18,6 @@
           <view class="qr-btn" bindtap="openScan" aria-role="button" aria-label="扫码">
             <image class="action-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
           </view>
-          <view class="bell-btn" bindtap="openBell" aria-role="button" aria-label="通知">
-            <image class="action-icon" src="/images/mine-icons/bell.png" mode="aspectFit" />
-          </view>
         </view>
       </view>
 

@@ -128,4 +128,7 @@ test('customer project template and stylesheet stay aligned for the restored arc
   assert.match(less, /\.footer-outline, \.footer-primary \{[^}]*display: flex;[^}]*align-items: center;[^}]*justify-content: center;/);
   assert.match(less, /\.section-badge \{[\s\S]*display: inline-flex;[\s\S]*align-items: center;/);
   assert.match(less, /\.person-phone \{[\s\S]*?font-size: 24rpx;/);
+  assert.match(wxml, /person-phone sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png/);
+  assert.match(wxml, /booking-secondary sfp-icon-action[\s\S]*\/packages\/business\/assets\/promotion-detail\/calendar\.png[\s\S]*查看预约/);
+  assert.match(wxml, /bindtap="reschedule"[\s\S]*calendar\.png[\s\S]*改期/);
 });

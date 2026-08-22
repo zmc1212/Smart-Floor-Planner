@@ -59,7 +59,10 @@
           <view class="input-shell">
             <view class="field-icon building-icon"></view>
             <input class="input input-with-location" maxlength="160" placeholder="请输入小区名称" placeholder-class="placeholder" value="{{formData.communityName}}" data-field="communityName" bindinput="onInput" />
-            <view class="location-action" catchtap="chooseCommunityLocation" hover-class="location-action-pressed" aria-role="button" aria-label="在地图上选择小区">选择地点</view>
+            <view class="location-action sfp-icon-action" catchtap="chooseCommunityLocation" hover-class="location-action-pressed" aria-role="button" aria-label="在地图上选择小区">
+              <image class="sfp-icon-action__icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
+              <text>选择地点</text>
+            </view>
           </view>
         </view>
 

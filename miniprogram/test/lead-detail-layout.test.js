@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const zlib = require('node:zlib');
 
 const styles = fs.readFileSync(
   path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.less'),
@@ -11,6 +12,53 @@ const template = fs.readFileSync(
   path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.wxml'),
   'utf8'
 );
+
+function readPngRgba(filePath) {
+  const bytes = fs.readFileSync(filePath);
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  const colorType = bytes[25];
+  let offset = 8;
+  const idat = [];
+  while (offset < bytes.length) {
+    const len = bytes.readUInt32BE(offset);
+    const type = bytes.toString('ascii', offset + 4, offset + 8);
+    const data = bytes.subarray(offset + 8, offset + 8 + len);
+    if (type === 'IDAT') idat.push(data);
+    if (type === 'IEND') break;
+    offset += 12 + len;
+  }
+  const inflated = zlib.inflateSync(Buffer.concat(idat));
+  const bpp = 4;
+  const stride = width * bpp;
+  const out = Buffer.alloc(height * stride);
+  let src = 0;
+  for (let y = 0; y < height; y++) {
+    const filter = inflated[src++];
+    const row = inflated.subarray(src, src + stride);
+    src += stride;
+    const dst = y * stride;
+    for (let i = 0; i < stride; i++) {
+      const left = i >= bpp ? out[dst + i - bpp] : 0;
+      const up = y > 0 ? out[dst - stride + i] : 0;
+      const upLeft = y > 0 && i >= bpp ? out[dst - stride + i - bpp] : 0;
+      let val = row[i];
+      if (filter === 1) val = (val + left) & 255;
+      else if (filter === 2) val = (val + up) & 255;
+      else if (filter === 3) val = (val + Math.floor((left + up) / 2)) & 255;
+      else if (filter === 4) {
+        const p = left + up - upLeft;
+        const pa = Math.abs(p - left);
+        const pb = Math.abs(p - up);
+        const pc = Math.abs(p - upLeft);
+        const pr = pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft;
+        val = (val + pr) & 255;
+      }
+      out[dst + i] = val;
+    }
+  }
+  return { width, height, colorType, pixels: out };
+}
 
 test('formal-surveying tab has a defined surface and does not cover the lead-detail heading', () => {
   assert.match(
@@ -151,5 +199,40 @@ test('lead detail shows assigned designer and measurer name and phone between th
   assert.match(script, /name: name \|\| '待分配'/);
   assert.match(styles, /\.staff-assignment-role\s*\{[^}]*font-size:\s*22rpx;/s);
   assert.match(styles, /\.staff-assignment-name\s*\{[^}]*font-size:\s*26rpx;/s);
-  assert.match(styles, /\.staff-assignment-phone\s*\{[^}]*font-size:\s*22rpx;/s);
+  assert.match(styles, /\.staff-assignment-phone\s*\{[^}]*font-size:\s*24rpx;/s);
+  assert.match(template, /staff-assignment-phone sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png/);
+});
+
+test('lead-detail hero pins profile edit and dials customer phone with packaged icons', () => {
+  assert.match(
+    template,
+    /class="profile-edit-action sfp-icon-action"[\s\S]*\/images\/mine-icons\/edit\.png[\s\S]*补充资料/
+  );
+  assert.match(
+    styles,
+    /\.profile-edit-action\s*\{[^}]*position:\s*absolute;[^}]*top:\s*20rpx;[^}]*right:\s*20rpx;[^}]*z-index:\s*3;/s
+  );
+  assert.match(styles, /\.profile-edit-action\s*\{[^}]*font-size:\s*24rpx;/s);
+  assert.doesNotMatch(template, /lead-status-summary[\s\S]*profile-edit-action/);
+  assert.match(
+    template,
+    /class="hero-phone sfp-icon-action"[\s\S]*catchtap="onCallStaff"[\s\S]*\/images\/leads-v4\/phone\.png/
+  );
+  assert.match(
+    styles,
+    /\.detail-hero \.hero-phone\s*\{[^}]*justify-content:\s*flex-start;/s
+  );
+  assert.match(template, /data-phone="\{\{lead\.phone\}\}"/);
+  assert.match(template, /class="info hero-phone-number">手机：\{\{lead\.phone\}\}/);
+
+  const phonePng = readPngRgba(
+    path.join(__dirname, '..', 'images', 'leads-v4', 'phone.png')
+  );
+  assert.equal(phonePng.colorType, 6);
+  assert.equal(phonePng.pixels[3], 0, 'hero phone icon corner must be transparent');
+  let opaqueGlyph = 0;
+  for (let i = 0; i < phonePng.pixels.length; i += 4) {
+    if (phonePng.pixels[i + 3] > 200 && phonePng.pixels[i] < 180) opaqueGlyph += 1;
+  }
+  assert.ok(opaqueGlyph > 20, 'hero phone icon must keep an opaque handset glyph');
 });

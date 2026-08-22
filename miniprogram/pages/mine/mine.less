@@ -67,8 +67,8 @@
 
 .mine-header {
   position: relative;
-  // Keep capsule-safe title and account actions above the role artwork while
-  // the profile card follows this header in normal flow.
+  // Keep the capsule-safe title above the role artwork while the profile
+  // card follows this header in normal flow.
   z-index: 5;
   display: flex;
   align-items: center;
@@ -85,15 +85,6 @@
   white-space: nowrap;
 }
 
-.header-actions {
-  display: flex;
-  width: auto;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 14rpx;
-}
-
-.edit-profile-button,
 .primary-button {
   display: flex;
   height: 64rpx;
@@ -111,40 +102,12 @@
   flex: none;
 }
 
-.edit-profile-button::after,
 .primary-button::after,
 .retry-button::after,
 .inline-retry-button::after,
 .summary-action::after,
 .mine-logout-action::after {
   border: 0;
-}
-
-.edit-profile-button {
-  width: 168rpx;
-  min-width: 168rpx;
-  max-width: 168rpx;
-  padding: 0 12rpx;
-  border-radius: 33rpx;
-  font-size: 24rpx;
-  white-space: nowrap;
-}
-
-.edit-profile-inner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  white-space: nowrap;
-}
-
-.edit-profile-button text {
-  white-space: nowrap;
-}
-
-.edit-profile-button image {
-  width: 26rpx;
-  height: 26rpx;
 }
 
 .profile-card {

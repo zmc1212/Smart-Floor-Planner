@@ -93,16 +93,16 @@
       </view>
 
       <view class="card-actions">
-        <view class="action-btn action-phone" data-item="{{item}}" catchtap="callCustomer" hover-class="btn-pressed">
-          <text class="btn-icon">📞</text>
+        <view class="action-btn action-phone sfp-icon-action" data-item="{{item}}" catchtap="callCustomer" hover-class="btn-pressed">
+          <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
           <text class="btn-label">电话联系</text>
         </view>
-        <view class="action-btn action-nav" data-item="{{item}}" catchtap="openNavigation" hover-class="btn-pressed">
-          <text class="btn-icon">📍</text>
+        <view class="action-btn action-nav sfp-icon-action" data-item="{{item}}" catchtap="openNavigation" hover-class="btn-pressed">
+          <image class="sfp-icon-action__icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
           <text class="btn-label">导航</text>
         </view>
-        <view class="action-btn action-start sfp-primary-action" data-item="{{item}}" catchtap="startSurvey" hover-class="btn-pressed">
-          <text class="btn-icon">📐</text>
+        <view class="action-btn action-start sfp-primary-action sfp-icon-action" data-item="{{item}}" catchtap="startSurvey" hover-class="btn-pressed">
+          <image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" />
           <text class="btn-label">开始量房</text>
         </view>
       </view>

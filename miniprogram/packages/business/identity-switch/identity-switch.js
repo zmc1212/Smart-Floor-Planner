@@ -2,7 +2,33 @@ const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 
 const MODE_LABELS = { customer: '客户', referrer: '推荐人', staff: '员工' };
-const ROLE_LABELS = { enterprise_admin: '企业负责人', designer: '设计师', measurer: '测量员', salesperson: '地推人员' };
+const ROLE_LABELS = {
+  enterprise_admin: '企业负责人',
+  designer: '设计师',
+  measurer: '测量员',
+  salesperson: '地推人员',
+  platform_admin: '平台管理员'
+};
+const IDENTITY_ICONS = {
+  customer: '/images/identity-switch/customer.png',
+  referrer: '/images/identity-switch/referrer.png',
+  enterprise_admin: '/images/identity-switch/enterprise-admin.png',
+  designer: '/images/identity-switch/designer.png',
+  measurer: '/images/identity-switch/measurer.png',
+  salesperson: '/images/identity-switch/salesperson.png',
+  platform_admin: '/images/identity-switch/platform-admin.png'
+};
+
+function resolveIdentityIcon(context) {
+  const key = context.mode === 'staff' ? context.staffRole : context.mode;
+  return IDENTITY_ICONS[key] || IDENTITY_ICONS.customer;
+}
+
+function contextKey(context) {
+  return [context && context.mode, context && context.enterpriseId, context && context.staffId, context && context.referrerMembershipId]
+    .filter(Boolean)
+    .join(':');
+}
 
 function sameContext(left, right) {
   return Boolean(left && right
@@ -12,18 +38,22 @@ function sameContext(left, right) {
     && String(left.referrerMembershipId || '') === String(right.referrerMembershipId || ''));
 }
 
-function decorateContext(context, current) {
+function decorateContext(context, current, selected) {
   const role = context.mode === 'staff' ? (ROLE_LABELS[context.staffRole] || context.staffRole || '员工') : MODE_LABELS[context.mode];
   return {
     ...context,
     modeLabel: MODE_LABELS[context.mode] || '身份',
+    roleLabel: role,
+    icon: resolveIdentityIcon(context),
     title: context.mode === 'staff' ? (context.staffDisplayName || role) : (context.enterpriseName || role),
     detail: context.mode === 'staff'
       ? [role, context.enterpriseName].filter(Boolean).join(' · ')
       : context.mode === 'referrer'
         ? [role, context.enterpriseName].filter(Boolean).join(' · ')
         : '查看个人客户项目与服务进度',
-    current: sameContext(context, current)
+    current: sameContext(context, current),
+    selected: sameContext(context, selected),
+    contextKey: contextKey(context)
   };
 }
 
@@ -34,13 +64,33 @@ function errorMessage(error, fallback) {
 }
 
 Page({
-  data: { loading: true, switchingKey: '', error: '', sessionExpired: false, contexts: [] },
+  data: {
+    loading: true,
+    switchingKey: '',
+    error: '',
+    sessionExpired: false,
+    contexts: [],
+    selectedContext: null
+  },
   onLoad() { this.load(); },
+  presentSelection(selection) {
+    const rawContexts = this._rawContexts || [];
+    const current = this._currentContext;
+    const activeSelection = rawContexts.find((context) => sameContext(context, selection)) || current || rawContexts[0];
+    const contexts = rawContexts.map((context) => decorateContext(context, current, activeSelection));
+    const selectedContext = contexts.find((context) => context.selected) || null;
+    this.setData({
+      contexts,
+      selectedContext
+    });
+  },
   async load() {
     this.setData({ loading: true, error: '', sessionExpired: false });
     try {
       const result = await api.request('/miniprogram/identity-contexts', 'GET');
-      this.setData({ contexts: (result.contexts || []).map((context) => decorateContext(context, result.current)) });
+      this._rawContexts = result.contexts || [];
+      this._currentContext = result.current;
+      this.presentSelection(result.current);
     } catch (error) {
       const rawMessage = error && (error.error || error.message);
       this.setData({
@@ -56,6 +106,11 @@ Page({
   },
   selectIdentity(event) {
     const context = event.currentTarget.dataset.context;
+    if (!context || this.data.switchingKey) return;
+    this.presentSelection(context);
+  },
+  confirmSelectedIdentity() {
+    const context = this.data.selectedContext;
     if (!context || context.current || this.data.switchingKey) return;
     wx.showModal({
       title: `切换为${context.modeLabel}身份`,
@@ -65,7 +120,7 @@ Page({
     });
   },
   async switchIdentity(context) {
-    const key = [context.mode, context.enterpriseId, context.staffId, context.referrerMembershipId].filter(Boolean).join(':');
+    const key = contextKey(context);
     const app = getApp();
     const oldToken = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
     const oldSession = app && app.globalData ? {

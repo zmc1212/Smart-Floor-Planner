@@ -14,7 +14,7 @@ test('lead detail exposes profile edit entry for authorized staff', () => {
     path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
-  assert.match(template, /canEditProfile.*补充资料/s);
+  assert.match(template, /canEditProfile[\s\S]*\/images\/mine-icons\/edit\.png[\s\S]*补充资料/);
   assert.match(script, /canEditLeadProfile/);
   assert.match(script, /lead-form\/lead-form\?mode=edit&leadId=/);
 });
@@ -43,6 +43,7 @@ test('lead form uses default WeChat navigation and map-plus-input community', ()
   assert.match(template, /bindinput="onInput"/);
   assert.match(template, /catchtap="chooseCommunityLocation"/);
   assert.match(template, /选择地点/);
+  assert.match(template, /\/images\/leads-v4\/map-pin\.png/);
   assert.match(script, /wx\.setNavigationBarTitle/);
   assert.match(script, /wx\.chooseLocation/);
   assert.match(script, /formData\.communityName.*slice\(0, 160\)/);

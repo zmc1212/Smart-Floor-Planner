@@ -276,6 +276,21 @@ button.sfp-primary-action[disabled] {
   font-weight: var(--font-weight-medium);
 }
 
+/* Icon + label for tappable outline/light chips and dialable phone rows (not read-only status tags). */
+.sfp-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  box-sizing: border-box;
+}
+
+.sfp-icon-action__icon {
+  width: 28rpx;
+  height: 28rpx;
+  flex-shrink: 0;
+}
+
 .sfp-empty-card {
   background: rgba(255, 255, 255, 0.94);
   border: 1rpx solid rgba(207, 220, 207, 0.55);

@@ -48,6 +48,7 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageWxml, /确认预约/);
   assert.match(pageWxml, /量房地点/);
   assert.match(pageWxml, /地图选择/);
+  assert.match(pageWxml, /location-picker-action sfp-icon-action[\s\S]*\/images\/leads-v4\/map-pin\.png[\s\S]*选择地点/);
   assert.match(pageWxml, /系统将安排合适的量房伙伴上门/);
   assert.match(pageWxss, /env\(safe-area-inset-bottom\)/);
   assert.match(pageWxss, /\.back-chevron/);
@@ -112,10 +113,10 @@ test('lead detail exposes first booking to scheduling roles only without a confi
   assert.match(detailJs, /staffRole === 'measurer' && lead\.source === 'staff_activity'/);
   assert.match(detailJs, /item\.status === 'confirmed'/);
   assert.match(detailJs, /appointment-booking\/appointment-booking\?leadId=/);
-  assert.match(detailWxml, /wx:if="\{\{canScheduleAppointment\}\}"/);
+  assert.match(detailWxml, /wx:(?:if|elif)="\{\{canScheduleAppointment(?:\s*&&\s*canRebookAppointment)?\}\}"/);
   assert.match(detailWxml, />安排上门量房<\/button>/);
   assert.match(detailWxml, />查看预约<\/button>/);
   assert.match(detailJs, /customer-ai-schemes\/customer-ai-schemes\?leadId=/);
   assert.doesNotMatch(detailJs, /ai-design-result\?id=/);
-  assert.match(detailWxss, /\.appointment-entry-action/);
+  assert.match(detailWxss, /\.whole-home-appointment-action/);
 });

@@ -38,14 +38,17 @@
             <text class="person-name">{{designerLine}}</text>
             <view wx:if="{{canContactDesigner}}" class="person-chevron"></view>
           </view>
-          <text
+          <view
             wx:if="{{designerPhone}}"
-            class="person-phone"
+            class="person-phone sfp-icon-action"
             catchtap="callStaff"
             data-phone="{{designerPhone}}"
             aria-role="button"
             aria-label="拨打设计师电话"
-          >{{designerPhone}}</text>
+          >
+            <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+            <text>{{designerPhone}}</text>
+          </view>
         </view>
       </view>
       <view
@@ -58,14 +61,17 @@
         <view class="person-info">
           <text class="person-role">测量师师傅</text>
           <text class="person-name">{{measurerLine}}</text>
-          <text
+          <view
             wx:if="{{measurerPhone}}"
-            class="person-phone"
+            class="person-phone sfp-icon-action"
             catchtap="callStaff"
             data-phone="{{measurerPhone}}"
             aria-role="button"
             aria-label="拨打测量师电话"
-          >{{measurerPhone}}</text>
+          >
+            <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+            <text>{{measurerPhone}}</text>
+          </view>
         </view>
       </view>
     </view>
@@ -86,8 +92,14 @@
       </view>
       <view class="booking-actions">
         <button wx:if="{{canRebook}}" class="booking-action sfp-primary-action" bindtap="bookAppointment">{{appointment ? '重新预约上门' : '预约上门量房'}}</button>
-        <button wx:elif="{{canReschedule}}" class="booking-action sfp-primary-action" bindtap="reschedule">改期</button>
-        <button wx:if="{{appointment}}" class="booking-secondary" bindtap="openAppointment">查看预约</button>
+        <button wx:elif="{{canReschedule}}" class="booking-action sfp-primary-action sfp-icon-action" bindtap="reschedule">
+          <image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" />
+          <text>改期</text>
+        </button>
+        <button wx:if="{{appointment}}" class="booking-secondary sfp-icon-action" bindtap="openAppointment">
+          <image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" />
+          <text>查看预约</text>
+        </button>
       </view>
     </view>
 

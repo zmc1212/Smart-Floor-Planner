@@ -1,5 +1,4 @@
 const api = require('../../../utils/api.js');
-const session = require('../../../utils/session.js');
 
 const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
 
@@ -66,7 +65,6 @@ Page({
     selectedMembershipId: '',
     selectedEnterpriseName: '',
     switchingMembershipId: '',
-    identityCount: 0,
     userName: '',
     todayScans: 0,
     totalClients: 0,
@@ -89,15 +87,6 @@ Page({
     this.setData({ loading: true, error: '' });
     try {
       const result = await api.request('/miniprogram/referrer-memberships', 'GET');
-      let identityCount = 0;
-      try {
-        const identityResult = await api.request('/miniprogram/identity-contexts', 'GET');
-        identityCount = Array.isArray(identityResult.contexts)
-          ? new Set(identityResult.contexts.map((context) => context && context.mode).filter(Boolean)).size
-          : 0;
-      } catch (identityError) {
-        console.warn('Failed to read identity contexts for referrer workbench', identityError);
-      }
       const memberships = (result.data || []).filter((item) => item.status === 'active');
       const app = typeof getApp === 'function' ? getApp() : null;
       const signedMembershipId = String(
@@ -193,7 +182,6 @@ Page({
         memberships,
         selectedMembershipId,
         selectedEnterpriseName,
-        identityCount,
         userName,
         todayScans,
         totalClients,
@@ -296,14 +284,6 @@ Page({
         wx.showToast({ title: '扫码失败，请确认二维码有效', icon: 'none' });
       }
     });
-  },
-
-  onOpenIdentitySwitch() {
-    wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' });
-  },
-
-  onLogout() {
-    session.confirmLogout();
   },
 
   leaveSelectedEnterprise() {

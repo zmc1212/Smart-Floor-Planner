@@ -7,7 +7,9 @@ v4 reference. Labels, customer data, status text, and navigation remain native
 WXML/Less.
 
 All control and status icon crops remain below the Mini Program 10KB micro-icon
-budget. The source sheet is project-owned artwork supplied by the user; no
+budget. The phone crop (`phone.png`) punches the white sheet to an alpha channel
+so the same handset can sit on the green lead-detail hero without an opaque
+square. The source sheet is project-owned artwork supplied by the user; no
 third-party icon package is shipped for this page.
 
 The four sample floor-plan crops are retained under
