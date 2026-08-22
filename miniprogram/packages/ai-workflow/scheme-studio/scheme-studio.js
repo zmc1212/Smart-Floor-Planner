@@ -2,10 +2,13 @@ const aiService = require('../../../utils/aiDesignService.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
 const {
   applyModelDefaults,
+  applyScopeToDraft,
   buildDraftFromBatch,
+  buildScopeSubmitPayload,
   buildTemplateListParams,
   createDefaultDraft,
   parseTemplateListPayload,
+  resolveDraftScope,
   resolvePreferredTemplateCategoryId,
   TEMPLATE_PAGE_SIZE,
 } = require('../../../components/ai-scheme-composer/ai-scheme-composer-model.js');
@@ -23,12 +26,17 @@ const {
   toggleGenerationSelection,
   workflowIdentity,
 } = require('./scheme-studio-model.js');
+const {
+  buildScopes,
+  roomsFromWorkflowDetail,
+} = require('../recipe-project/recipe-project-model.js');
 const { openSheet, closeSheet, dismissSheet, clearSheetTimer } = require('../../../utils/sheetMotion.js');
 
 const POLL_INTERVAL_MS = 4000;
 const MENU_SHEET = { mountedKey: 'menuMounted', openKey: 'menuVisible' };
 const RENAME_SHEET = { mountedKey: 'renameMounted', openKey: 'renameModalVisible' };
 const SEND_SHEET = { mountedKey: 'sendMounted', openKey: 'sendModalVisible' };
+const FINALIZE_SHEET = { mountedKey: 'finalizeMounted', openKey: 'finalizeModalVisible' };
 
 function downloadImage(url) {
   return new Promise((resolve, reject) => {
@@ -78,6 +86,7 @@ Page({
     composerDraft: null,
     composerDockExpanded: false,
     composerKeyboardHeight: 0,
+    scopes: [],
     generating: false,
     assisting: false,
     uploadingReference: false,
@@ -87,6 +96,9 @@ Page({
     sendModalVisible: false,
     sendTitle: '',
     sendingScheme: false,
+    finalizeMounted: false,
+    finalizeModalVisible: false,
+    finalizingScheme: false,
     menuMounted: false,
     menuVisible: false,
     renameMounted: false,
@@ -255,18 +267,31 @@ Page({
       const view = applySelectionToView(baseView, selectedGenerationIds);
       this.previousView = baseView;
       const schemeChips = buildWorkflowSwitcherOptions(siblingWorkflows, this.data.workflowId);
-      this.setData({
+      const bound = roomsFromWorkflowDetail(detail);
+      const scopes = buildScopes(bound.rooms, bound.closedRoomCount);
+      const currentDraft = this.data.composerDraft || createDefaultDraft(this.data.bootstrap);
+      const selectedScope = resolveDraftScope(scopes, currentDraft);
+      const nextDraft = applyScopeToDraft(currentDraft, selectedScope);
+      const scopeDrifted = nextDraft.targetScope !== currentDraft.targetScope
+        || String(nextDraft.roomId || '') !== String(currentDraft.roomId || '');
+      const nextData = {
         view,
         task,
         siblingWorkflows,
         schemeChips,
+        scopes,
         selectedGenerationIds,
         loading: false,
         error: '',
+        floorPlanId: bound.floorPlanId || this.data.floorPlanId,
         sendTitle: this.data.sendModalVisible
           ? this.data.sendTitle
           : resolveSendTitlePrefill(view),
-      });
+      };
+      if (!silent || !this.data.composerDraft || scopeDrifted) {
+        nextData.composerDraft = nextDraft;
+      }
+      this.setData(nextData);
       if (shouldPollStudioView(baseView)) this.startPolling();
       else this.stopPolling();
       if (!silent) this.maybeOfferPreferredWorkflow(siblingWorkflows, baseView, detail);
@@ -536,9 +561,49 @@ Page({
     }
   },
 
+  openFinalizeModal() {
+    if (!this.data.view?.publishedScheme || this.data.view.publishedScheme.finalized) return;
+    openSheet(this, FINALIZE_SHEET);
+  },
+
+  closeFinalizeModal() {
+    closeSheet(this, FINALIZE_SHEET);
+  },
+
+  async confirmFinalizeScheme() {
+    if (this.data.finalizingScheme || !this.data.view?.publishedScheme) return;
+    this.setData({ finalizingScheme: true });
+    wx.showLoading({ title: '定稿中', mask: true });
+    try {
+      await aiService.finalizeScheme(this.data.leadId, this.data.workflowId);
+      wx.hideLoading();
+      wx.showToast({ title: '已设为定稿', icon: 'success' });
+      this.setData({ finalizingScheme: false });
+      closeSheet(this, FINALIZE_SHEET);
+      await this.loadStudio({ silent: true });
+    } catch (error) {
+      wx.hideLoading();
+      this.setData({ finalizingScheme: false });
+      wx.showToast({ title: error.error || error.message || '定稿失败', icon: 'none' });
+    }
+  },
+
   onComposerDraftChange(event) {
     const { field, value } = event.detail;
     this.setData({ composerDraft: { ...this.data.composerDraft, [field]: value } });
+  },
+
+  onComposerScopeChange(event) {
+    const targetScope = event.detail && event.detail.targetScope === 'single_room'
+      ? 'single_room'
+      : 'whole_floor_plan';
+    const roomId = targetScope === 'single_room' ? String(event.detail && event.detail.roomId || '') : '';
+    this.setData({
+      composerDraft: applyScopeToDraft(this.data.composerDraft, resolveDraftScope(this.data.scopes, {
+        targetScope,
+        roomId,
+      }) || { targetScope, roomId }),
+    });
   },
 
   onComposerDockExpandChange(event) {
@@ -795,6 +860,11 @@ Page({
       wx.showToast({ title: '请输入提示词', icon: 'none' });
       return;
     }
+    const scopePayload = buildScopeSubmitPayload(draft);
+    if (scopePayload.targetScope === 'single_room' && !scopePayload.roomId) {
+      wx.showToast({ title: '请先选择具体房间', icon: 'none' });
+      return;
+    }
     this.setData({ generating: true });
     wx.showLoading({ title: '提交中', mask: true });
     try {
@@ -817,6 +887,8 @@ Page({
         templateId: draft.templateId || undefined,
         count: draft.count || 1,
         workflowId: this.data.workflowId,
+        targetScope: scopePayload.targetScope,
+        roomId: scopePayload.roomId,
       });
       if (payload?.account && this.data.bootstrap) {
         this.setData({
@@ -871,7 +943,8 @@ Page({
     const { batchId } = event.currentTarget.dataset;
     const batch = (this.data.view?.batches || []).find((item) => item.id === batchId);
     if (!batch) return;
-    const draft = buildDraftFromBatch(batch, this.data.bootstrap);
+    const restored = buildDraftFromBatch(batch, this.data.bootstrap);
+    const draft = applyScopeToDraft(restored, resolveDraftScope(this.data.scopes, restored));
     this.setData({ composerDraft: draft }, () => {
       void this.submitGeneration();
     });
@@ -881,8 +954,9 @@ Page({
     const { batchId } = event.currentTarget.dataset;
     const batch = (this.data.view?.batches || []).find((item) => item.id === batchId);
     if (!batch) return;
+    const draft = buildDraftFromBatch(batch, this.data.bootstrap);
     this.setData({
-      composerDraft: buildDraftFromBatch(batch, this.data.bootstrap),
+      composerDraft: applyScopeToDraft(draft, resolveDraftScope(this.data.scopes, draft)),
     });
   },
 

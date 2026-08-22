@@ -98,7 +98,7 @@ Page({
     const userInfo = app.globalData.userInfo || wx.getStorageSync('userInfo');
     const activeRole = (app.globalData.bootstrap && app.globalData.bootstrap.current && app.globalData.bootstrap.current.role)
       || roleForIdentity(userInfo);
-    const isStaffRole = ['designer', 'measurer', 'enterprise_admin'].includes(activeRole);
+    const isStaffRole = ['designer', 'measurer', 'enterprise_admin', 'salesperson'].includes(activeRole);
     const isRoleRestrictedUser = ['customer', 'referrer'].includes(activeRole);
     const token = wx.getStorageSync('token');
     const openid = app.globalData.openid || wx.getStorageSync('openid') || (userInfo && userInfo.openid);

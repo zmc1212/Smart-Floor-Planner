@@ -29,6 +29,7 @@ export function isMiniProgramIdentityContextSupported(
   return context.mode === 'staff' && [
     'designer',
     'measurer',
+    'salesperson',
     'enterprise_admin',
     'admin',
     'super_admin',

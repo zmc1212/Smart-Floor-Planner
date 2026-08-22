@@ -2,7 +2,7 @@
 THESIS: 一张可出示的现场服务凭证，让客户先看懂价值再扫码，并标明本次服务企业。
 OWN-WORLD: 极简透气版暖白纸面、家客绿服务码卡、三项免费承诺与扫码向导小 K。
 STORY: 员工出示活动码，客户扫描后进入手机号授权并自动建立服务。
-FIRST VIEWPORT: 胶囊左侧品牌锁；服务码主卡、三项承诺、说明条和底部出示按钮在 390x844 同屏。
+FIRST VIEWPORT: 胶囊左侧返回与品牌锁；服务码主卡、三项承诺、说明条和底部出示按钮在 390x844 同屏。
 FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code.jpg
 -->
 <view class="service-code-page">
@@ -10,6 +10,9 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
     class="service-nav"
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回首页">
+      <view class="back-chevron"></view>
+    </view>
     <view class="brand-lockup">
       <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
       <text class="brand-name">家客来</text>
@@ -40,8 +43,8 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
               wx:if="{{errorAction === 'profile'}}"
               class="qr-retry"
               bindtap="onFixProfile"
-            >去完善资料</button>
-            <button wx:else class="qr-retry" bindtap="onRetry">重新生成</button>
+            ><text>去完善资料</text></button>
+            <button wx:else class="qr-retry" bindtap="onRetry"><text>重新生成</text></button>
           </view>
           <image wx:else class="service-qr" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
         </view>

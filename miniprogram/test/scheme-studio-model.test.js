@@ -6,6 +6,7 @@ const path = require('node:path');
 const miniRoot = path.resolve(__dirname, '..');
 const {
   applySelectionToView,
+  batchTargetLabel,
   buildConversationBatches,
   buildDefaultSendSelection,
   buildStudioView,
@@ -130,6 +131,23 @@ test('decorateBatchView marks pending slots and processing poll state', () => {
   assert.equal(shouldPollStudioView(buildStudioView({ workflow: {}, lead: {}, generations: [] }, {
     batches: [{ id: 'batch-2', sequence: 1, prompt: 'x', requestedCount: 1, status: 'processing', createdAt: '2026-08-20T10:00:00.000Z', generations: [] }],
   })), true);
+});
+
+test('decorateBatchView surfaces the persisted apply-to label', () => {
+  assert.equal(batchTargetLabel({
+    parameterSnapshot: { targetScope: 'single_room', targetLabel: '客厅', roomId: 'living' },
+  }), '客厅');
+  const batch = decorateBatchView({
+    id: 'batch-3',
+    sequence: 3,
+    prompt: '客厅灯光',
+    requestedCount: 1,
+    status: 'succeeded',
+    createdAt: '2026-08-20T10:00:00.000Z',
+    parameterSnapshot: { targetScope: 'single_room', targetLabel: '客厅', roomId: 'living' },
+    generations: [{ id: '401', status: 'succeeded', imageUrl: 'https://example.com/a.jpg', published: false }],
+  });
+  assert.equal(batch.targetLabel, '客厅');
 });
 
 test('mergeSendSelection auto-selects new unpublished generations without restoring manual unchecks', () => {
@@ -293,6 +311,10 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   const composerLess = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
   const service = fs.readFileSync(path.join(miniRoot, 'utils/aiDesignService.js'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniRoot, 'utils/aiDesignNavigation.js'), 'utf8');
+  const previewRoute = fs.readFileSync(path.join(
+    miniRoot,
+    '../admin/src/app/api/miniprogram/ai/studio/workflows/[id]/floor-plan-preview/route.ts',
+  ), 'utf8');
 
   assert.match(wxml, /nav-switch/);
   assert.match(wxml, /scheme-chip/);
@@ -365,7 +387,23 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(composerWxml, /prompt-field/);
   assert.match(composerLess, /\.prompt-field\s*\{[^}]*width:\s*0/);
   assert.match(script, /submitStudioBatch/);
+  assert.match(script, /targetScope: scopePayload.targetScope/);
+  assert.match(script, /onComposerScopeChange/);
+  assert.match(script, /roomsFromWorkflowDetail/);
+  assert.match(wxml, /scopes=\"\{\{scopes\}\}\"/);
+  assert.match(wxml, /bind:scopechange=\"onComposerScopeChange\"/);
+  assert.match(wxml, /item\.targetLabel/);
+  assert.match(composerWxml, /应用到哪里/);
+  assert.match(composerWxml, /data-type=\"scope\"/);
+  assert.match(composerWxml, /控制图/);
+  assert.match(composerWxml, /previewControl/);
+  assert.match(wxml, /floor-plan-preview-url/);
+  assert.match(previewRoute, /searchParams.get\('roomId'\)/);
   assert.match(script, /publishScheme/);
+  assert.match(script, /finalizeScheme/);
+  assert.match(script, /openFinalizeModal/);
+  assert.match(wxml, /设为定稿/);
+  assert.match(wxml, /客户可见定稿/);
   assert.match(script, /retryStudioBatch/);
   assert.match(script, /withdrawSchemeGeneration/);
   assert.match(script, /deleteStudioGeneration/);

@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { parsePostgresId } from '@/db/postgres-dto';
 import { FloorPlanRepository, LeadRepository } from '@/db/repositories';
 import FloorPlanViewerWrapper from '@/components/FloorPlanViewerWrapper';
-import { getFloorPlanDisplay } from '@/lib/floor-plan-display';
+import { getFloorPlanDisplay, pickFloorPlanDisplayLead } from '@/lib/floor-plan-display';
 import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getSessionUser } from '@/lib/session';
 
@@ -39,7 +39,7 @@ export default async function FloorPlanDetailPage({ params }: { params: Promise<
   if (!result) return notFound();
   const { plan, lead } = result;
   const display = getFloorPlanDisplay(plan, {
-    lead,
+    lead: pickFloorPlanDisplayLead(lead),
     measurementSequence: lead?.floorPlanRecords.find(
       (record) => record.id === plan.id
     )?.measurementSequence,

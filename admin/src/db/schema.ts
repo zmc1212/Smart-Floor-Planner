@@ -78,6 +78,7 @@ export const enterprises = appSchema.table(
     statusChangedByAdminId: bigint('status_changed_by_admin_id', {
       mode: 'bigint',
     }),
+    sensitiveOperationPasswordHash: text('sensitive_operation_password_hash'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -1387,6 +1388,12 @@ export const leads = appSchema.table(
     assignmentStatus: text('assignment_status').notNull().default('not_requested'),
     assignmentErrorCode: text('assignment_error_code'),
     primaryFloorPlanId: bigint('primary_floor_plan_id', { mode: 'bigint' }),
+    finalizedWorkflowId: bigint('finalized_workflow_id', { mode: 'bigint' }),
+    finalizedAt: timestamp('finalized_at', { withTimezone: true, mode: 'date' }),
+    finalizedBy: bigint('finalized_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
     followUpRecords: jsonb('follow_up_records')
       .$type<Record<string, unknown>[]>()
       .notNull()

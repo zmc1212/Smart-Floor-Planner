@@ -13,8 +13,10 @@ test('aiDesignService exports scheme publication CRUD helpers', () => {
   assert.equal(typeof aiService.listSchemePublications, 'function');
   assert.equal(typeof aiService.publishScheme, 'function');
   assert.equal(typeof aiService.withdrawScheme, 'function');
+  assert.equal(typeof aiService.finalizeScheme, 'function');
   assert.equal(typeof aiService.withdrawSchemeGeneration, 'function');
   assert.match(serviceSource, /\/leads\/\$\{encodeURIComponent\(leadId\)\}\/ai-scheme-publications/);
+  assert.match(serviceSource, /ai-scheme-publications\/\$\{encodeURIComponent\(workflowId\)\}\/finalize/);
   assert.match(serviceSource, /ai-scheme-publications\/\$\{encodeURIComponent\(workflowId\)\}\/generations/);
 });
 
@@ -66,6 +68,7 @@ test('scheme publication helpers call the expected lead endpoints', async () => 
   try {
     await aiService.listSchemePublications('lead-1');
     await aiService.publishScheme('lead-1', { workflowId: 'wf-1', title: '客厅方案', generationIds: ['g-1'] });
+    await aiService.finalizeScheme('lead-1', 'wf-1');
     await aiService.withdrawScheme('lead-1', 'wf-1');
     await aiService.withdrawSchemeGeneration('lead-1', 'wf-1', 'g-1');
 
@@ -80,11 +83,16 @@ test('scheme publication helpers call the expected lead endpoints', async () => 
       data: { workflowId: 'wf-1', title: '客厅方案', generationIds: ['g-1'] },
     });
     assert.deepEqual(calls[2], {
+      url: '/leads/lead-1/ai-scheme-publications/wf-1/finalize',
+      method: 'POST',
+      data: undefined,
+    });
+    assert.deepEqual(calls[3], {
       url: '/leads/lead-1/ai-scheme-publications/wf-1',
       method: 'DELETE',
       data: undefined,
     });
-    assert.deepEqual(calls[3], {
+    assert.deepEqual(calls[4], {
       url: '/leads/lead-1/ai-scheme-publications/wf-1/generations/g-1',
       method: 'DELETE',
       data: undefined,

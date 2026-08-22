@@ -1,10 +1,12 @@
 const api = require('../../../utils/api.js');
+const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 
 const COPY_BY_TYPE = {
   staff: {
     title: '员工入驻码',
     subtitle: '扫码加入本企业 · 成为设计师或测量员',
     scanCopy: '请员工扫描此码',
+    shareLabel: '一键分享',
     info: '扫码后授权手机号，完成员工入驻',
     promises: [
       { mark: '职', title: '员工入驻', copy: '加入本企业' },
@@ -16,6 +18,7 @@ const COPY_BY_TYPE = {
     title: '推荐人入驻码',
     subtitle: '扫码成为推荐人 · 开始推广获客',
     scanCopy: '请推荐人扫描此码',
+    shareLabel: '一键分享',
     info: '扫码后授权手机号，完成推荐人入驻',
     promises: [
       { mark: '推', title: '推荐入驻', copy: '加入本企业' },
@@ -43,6 +46,16 @@ function navigationMetrics() {
     navigationTop: Number(menuRect && menuRect.top || windowInfo.statusBarHeight || 24),
     navigationHeight: Number(menuRect && menuRect.height || 32),
     navigationRight: Math.max(94, Number(windowInfo.windowWidth || 390) - menuLeft + 10)
+  };
+}
+
+function shareState(data, extra) {
+  const merged = extra ? Object.assign({}, data, extra) : data;
+  const meta = (merged.codesByType && merged.codesByType[merged.activeType]) || {};
+  const shareToken = String(meta.token || '').trim();
+  return {
+    shareToken,
+    canShare: Boolean(merged.hasActive && shareToken && !merged.loading && !merged.acting)
   };
 }
 
@@ -81,6 +94,8 @@ Page({
     hasActive: true,
     codesByType: {},
     qrImagePath: '',
+    shareToken: '',
+    canShare: false,
     loading: true,
     acting: false,
     errorMessage: ''
@@ -95,10 +110,20 @@ Page({
     this.qrRequestId = (this.qrRequestId || 0) + 1;
   },
 
+  commit(extra) {
+    const next = Object.assign({}, extra, shareState(this.data, extra));
+    this.setData(next);
+    if (next.canShare) {
+      wx.showShareMenu({ menus: ['shareAppMessage'] });
+    } else if (wx.hideShareMenu) {
+      wx.hideShareMenu({ menus: ['shareAppMessage'] });
+    }
+  },
+
   selectTab(event) {
     const codeType = event.currentTarget.dataset.type;
     if (!codeType || codeType === this.data.activeType || this.data.acting) return;
-    this.setData({
+    this.commit({
       activeType: codeType,
       activeCopy: COPY_BY_TYPE[codeType] || COPY_BY_TYPE.staff
     });
@@ -106,7 +131,7 @@ Page({
   },
 
   async loadJoinCodes() {
-    this.setData({ loading: true, errorMessage: '' });
+    this.commit({ loading: true, errorMessage: '' });
     try {
       const result = await api.request('/miniprogram/enterprise-join-codes', 'GET');
       const rows = (result.data && result.data.codes) || [];
@@ -114,13 +139,13 @@ Page({
       rows.forEach((row) => {
         codesByType[row.codeType] = row;
       });
-      this.setData({
+      this.commit({
         enterpriseName: (result.data && result.data.enterpriseName) || '',
         codesByType
       });
       await this.loadActiveImage();
     } catch (error) {
-      this.setData({
+      this.commit({
         loading: false,
         hasActive: false,
         qrImagePath: '',
@@ -135,7 +160,7 @@ Page({
     const codeType = this.data.activeType;
     const meta = this.data.codesByType[codeType];
     const hasActive = Boolean(meta && meta.hasActive);
-    this.setData({
+    this.commit({
       loading: hasActive,
       hasActive,
       errorMessage: '',
@@ -143,16 +168,16 @@ Page({
       activeCopy: COPY_BY_TYPE[codeType] || COPY_BY_TYPE.staff
     });
     if (!hasActive) {
-      this.setData({ loading: false });
+      this.commit({ loading: false });
       return;
     }
     try {
       await this.fetchJoinCodeImage(codeType, requestId);
       if (requestId !== this.qrRequestId) return;
-      this.setData({ loading: false });
+      this.commit({ loading: false });
     } catch (error) {
       if (requestId !== this.qrRequestId) return;
-      this.setData({
+      this.commit({
         loading: false,
         qrImagePath: '',
         errorMessage: '入驻码暂时无法生成，请稍后重试。微信失败时当前码仍有效，不必换新。'
@@ -217,7 +242,7 @@ Page({
     });
     if (!accepted) return;
 
-    this.setData({ acting: true });
+    this.commit({ acting: true });
     try {
       await api.request(`/miniprogram/enterprise-join-codes/${encodeURIComponent(codeType)}/rotate`, 'POST', {});
       wx.showToast({
@@ -231,7 +256,7 @@ Page({
         icon: 'none'
       });
     } finally {
-      this.setData({ acting: false });
+      this.commit({ acting: false });
     }
   },
 
@@ -247,7 +272,7 @@ Page({
     });
     if (!accepted) return;
 
-    this.setData({ acting: true });
+    this.commit({ acting: true });
     try {
       await api.request(`/miniprogram/enterprise-join-codes/${encodeURIComponent(codeType)}/disable`, 'POST', {});
       wx.showToast({ title: `${label}已停用`, icon: 'success' });
@@ -258,7 +283,41 @@ Page({
         icon: 'none'
       });
     } finally {
-      this.setData({ acting: false });
+      this.commit({ acting: false });
+    }
+  },
+
+  onShareAppMessage() {
+    const token = this.data.shareToken;
+    const enterpriseName = String(this.data.enterpriseName || '').trim();
+    const title = this.data.activeType === 'staff'
+      ? (enterpriseName ? `邀请加入${enterpriseName}` : '邀请加入本企业 · 成为设计师或测量员')
+      : (enterpriseName ? `邀请成为${enterpriseName}推荐人` : '邀请成为本企业推荐人');
+    return {
+      title,
+      path: token
+        ? `/packages/business/onboarding/onboarding?token=${encodeURIComponent(token)}`
+        : '/pages/index/index',
+      imageUrl: this.data.qrImagePath || ''
+    };
+  },
+
+  onBack() {
+    const pages = getCurrentPages();
+    if (pages && pages.length > 1) {
+      wx.navigateBack({
+        fail: () => this.leaveToRoleHome()
+      });
+      return;
+    }
+    this.leaveToRoleHome();
+  },
+
+  leaveToRoleHome() {
+    const app = getApp();
+    const identity = app && app.globalData && app.globalData.userInfo;
+    if (!navigateToRoleLanding(identity)) {
+      wx.switchTab({ url: '/pages/index/index' });
     }
   }
 });

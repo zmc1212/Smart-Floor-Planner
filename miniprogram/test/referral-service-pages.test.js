@@ -42,9 +42,18 @@ test('staff activity code reuses the promotion visual language and may show the 
   assert.match(js, /onFixProfile/);
   assert.match(wxml, /去完善资料/);
   assert.match(wxml, /errorAction === 'profile'/);
+  assert.match(wxml, /bindtap="onBack"/);
+  assert.match(wxml, /aria-label="返回首页"/);
+  assert.match(js, /navigateToRoleLanding/);
+  assert.match(js, /leaveToRoleHome/);
+  assert.match(less, /\.nav-back/);
+  assert.match(less, /\.back-chevron/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
   assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
   assert.match(less, /\.qr-stage\s*\{[\s\S]*min-height:\s*292rpx/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*overflow:\s*hidden/);
+  assert.match(less, /\.qr-retry\s*\{[\s\S]*width:\s*auto/);
+  assert.match(less, /\.qr-retry\s*\{[\s\S]*max-width:\s*100%/);
   assert.match(less, /\.qr-state-copy\s*\{[\s\S]*font-size:\s*22rpx/);
 });
 
@@ -59,11 +68,18 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
   assert.match(wxml, /生成入驻码/);
   assert.match(wxml, /换新/);
   assert.match(wxml, /停用/);
+  assert.match(wxml, /一键分享/);
+  assert.match(wxml, /open-type="share"/);
   assert.match(wxml, /enterpriseName/);
   assert.match(wxml, /mine-icons\/scan\.png/);
   assert.doesNotMatch(less, /\.scan-glyph\s*\{[^}]*border:\s*3rpx solid/);
+  assert.doesNotMatch(less, /\.share-scan\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /员工入驻码/);
   assert.match(js, /推荐人入驻码/);
+  assert.match(js, /onShareAppMessage\(\)/);
+  assert.match(js, /onboarding\/onboarding\?token=/);
+  assert.match(js, /hideShareMenu/);
+  assert.equal(json.enableShareAppMessage, true);
   assert.doesNotMatch(wxml, /出示员工活动码|免费设计服务|让客户扫码领取|推荐网络 → 企业双码/);
   assert.match(js, /\/miniprogram\/enterprise-join-codes/);
   assert.match(js, /enterprise-join-codes\/\$\{encodeURIComponent\(codeType\)\}\/image/);
@@ -83,10 +99,18 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
     assert.ok(String(text).length <= 4, `wx.showModal confirmText must be ≤4 chars: ${text}`);
   });
   assert.match(js, /确认弹窗打开失败/);
+  assert.match(wxml, /bindtap="onBack"/);
+  assert.match(wxml, /aria-label="返回首页"/);
+  assert.match(js, /navigateToRoleLanding/);
+  assert.match(js, /leaveToRoleHome/);
+  assert.match(less, /\.nav-back/);
+  assert.match(less, /\.back-chevron/);
   assert.doesNotMatch(js, /staff-activity-code/);
   assert.match(less, /\.code-tab\.active/);
   assert.match(less, /\.manage-primary/);
   assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
+  assert.match(less, /\.qr-retry\s*\{[\s\S]*width:\s*auto/);
+  assert.match(less, /\.qr-retry\s*\{[\s\S]*max-width:\s*100%/);
 });
 
 test('promotion service screen keeps the public presentation anonymous and scanable', () => {
@@ -110,7 +134,15 @@ test('promotion service screen keeps the public presentation anonymous and scana
   assert.match(js, /free-design-service\/free-design-service\?token=/);
   assert.match(js, /responseType:\s*'arraybuffer'/);
   assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
+  assert.match(less, /\.qr-retry\s*\{[\s\S]*width:\s*auto/);
+  assert.match(less, /\.qr-retry\s*\{[\s\S]*max-width:\s*100%/);
   assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);
+  assert.match(wxml, /bindtap="onBack"/);
+  assert.match(wxml, /aria-label="返回首页"/);
+  assert.match(js, /navigateToRoleLanding/);
+  assert.match(js, /leaveToRoleHome/);
+  assert.match(less, /\.nav-back/);
+  assert.match(less, /\.back-chevron/);
 });
 
 test('free design service resolves into phone authorization and renders truthful outcomes', () => {
@@ -159,6 +191,8 @@ test('free design service resolves into phone authorization and renders truthful
   assert.doesNotMatch(js, /onStartPhoneAuth/);
   assert.doesNotMatch(js, /agreed/);
   assert.match(js, /pageState !== 'phoneAuth'/);
+  assert.match(js, /leaveScanLanding/);
+  assert.match(wxml, /bindtap="onBack"/);
   assert.match(wxml, /pageState === 'existing'/);
   assert.match(wxml, /你已有进行中的服务/);
   assert.match(wxml, /联系当前设计师/);
@@ -174,6 +208,7 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(less, /@media \(max-width:\s*360px\)/);
   assert.match(less, /\.claim-action\s*\{[^}]*align-self:\s*stretch/);
   assert.match(less, /\.claim-action\s*\{[^}]*min-width:\s*100%/);
+  assert.match(less, /\.claim-action\s*\{[^}]*white-space:\s*nowrap/);
   assert.match(less, /\.success-title\s*\{[^}]*color:\s*#00c365/);
   assert.match(less, /\.existing-note\s*\{[^}]*background:\s*#f1f5f2/);
   assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);

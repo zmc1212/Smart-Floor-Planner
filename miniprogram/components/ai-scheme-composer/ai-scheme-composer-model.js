@@ -11,6 +11,9 @@ function getUnitPrice(model, resolutionTier) {
   return Number(price?.credits || 0);
 }
 
+const WHOLE_FLOOR_SCOPE_KEY = 'whole_floor_plan';
+const SCOPE_APPLY_NOTE = '只应用到当前选择，不会自动为其他房间生成，也不会产生额外扣点。';
+
 function createDefaultDraft(bootstrap) {
   const model = bootstrap?.models?.[0] || null;
   return {
@@ -23,6 +26,46 @@ function createDefaultDraft(bootstrap) {
     templateId: '',
     templateName: '',
     referenceAssets: [],
+    targetScope: WHOLE_FLOOR_SCOPE_KEY,
+    roomId: '',
+  };
+}
+
+function applyScopeToDraft(draft, scope) {
+  const targetScope = scope && scope.targetScope === 'single_room' ? 'single_room' : WHOLE_FLOOR_SCOPE_KEY;
+  return {
+    ...(draft || {}),
+    targetScope,
+    roomId: targetScope === 'single_room' ? String(scope.roomId || '').trim() : '',
+  };
+}
+
+function resolveDraftScope(scopes, draft) {
+  const list = Array.isArray(scopes) ? scopes : [];
+  if (draft && draft.targetScope === 'single_room' && draft.roomId) {
+    const found = list.find((item) => item && item.roomId === draft.roomId);
+    if (found) return found;
+  }
+  return list.find((item) => item && item.targetScope === WHOLE_FLOOR_SCOPE_KEY) || list[0] || null;
+}
+
+function buildScopePickerOptions(scopes, draft) {
+  const selected = resolveDraftScope(scopes, draft);
+  return (Array.isArray(scopes) ? scopes : []).map((item) => ({
+    value: item.key,
+    label: item.meta ? `${item.name} · ${item.meta}` : item.name,
+    active: Boolean(selected && item.key === selected.key),
+    targetScope: item.targetScope,
+    roomId: item.roomId || '',
+  }));
+}
+
+function buildScopeSubmitPayload(draft) {
+  const targetScope = draft && draft.targetScope === 'single_room' ? 'single_room' : WHOLE_FLOOR_SCOPE_KEY;
+  const roomId = targetScope === 'single_room' ? String(draft && draft.roomId || '').trim() : '';
+  return {
+    targetScope,
+    ...(roomId ? { roomId } : {}),
   };
 }
 
@@ -50,6 +93,7 @@ function buildDraftFromBatch(batch, bootstrap) {
   const referenceAssets = (batch.referenceAssetIds || [])
     .map((id) => ({ id, previewUrl: '' }))
     .filter((item) => item.id);
+  const targetScope = parameterSnapshot.targetScope === 'single_room' ? 'single_room' : WHOLE_FLOOR_SCOPE_KEY;
   return {
     prompt: batch.prompt || '',
     negativePrompt: batch.negativePrompt || '',
@@ -60,12 +104,23 @@ function buildDraftFromBatch(batch, bootstrap) {
     templateId: parameterSnapshot.templateId || '',
     templateName: '',
     referenceAssets,
+    targetScope,
+    roomId: targetScope === 'single_room' ? String(parameterSnapshot.roomId || '') : '',
   };
 }
 
 function estimateCredits(draft, bootstrap) {
   const model = findModel(bootstrap, draft.modelProfileId);
   return getUnitPrice(model, draft.resolutionTier) * Math.max(1, Number(draft.count || 1));
+}
+
+function withFloorPlanPreviewRoom(url, targetScope, roomId) {
+  const trimmed = String(url || '').trim();
+  if (!trimmed) return '';
+  const room = targetScope === 'single_room' ? String(roomId || '').trim() : '';
+  if (!room) return trimmed;
+  const separator = trimmed.includes('?') ? '&' : '?';
+  return `${trimmed}${separator}roomId=${encodeURIComponent(room)}`;
 }
 
 function buildComposerViewState(draft, bootstrap, options = {}) {
@@ -82,9 +137,18 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
   const providerReady = Boolean(provider.actionEnabled);
   const referenceCount = (draft.referenceAssets || []).length;
   const editReady = !referenceCount || Boolean(provider.supportsEdit);
+  const scopes = Array.isArray(options.scopes) ? options.scopes : [];
+  const selectedScope = resolveDraftScope(scopes, draft);
+  const scopeReady = !(draft.targetScope === 'single_room' && !String(draft.roomId || '').trim());
+  const controlPreviewUrl = withFloorPlanPreviewRoom(
+    options.floorPlanPreviewUrl,
+    draft.targetScope,
+    draft.roomId,
+  );
   let blockedReason = '';
   if (!promptReady) blockedReason = '请输入提示词';
   else if (!modelReady) blockedReason = '请选择模型';
+  else if (!scopeReady) blockedReason = '请先选择具体房间';
   else if (!priceReady) blockedReason = '当前分辨率不可用';
   else if (!providerReady) blockedReason = '当前企业未开放 AI 创作';
   else if (!editReady) blockedReason = '尚未配置图片编辑模型';
@@ -123,11 +187,16 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
       && !options.uploading
       && promptReady
       && modelReady
+      && scopeReady
       && priceReady
       && providerReady
       && editReady
       && creditsReady,
     blockedReason,
+    hasScopePicker: scopes.length > 0,
+    scopeLabel: selectedScope ? selectedScope.name : '完整户型',
+    scopeNote: SCOPE_APPLY_NOTE,
+    scopePickerOptions: buildScopePickerOptions(scopes, draft),
     aspectOptions,
     resolutionOptions,
     countOptions,
@@ -139,6 +208,11 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
     referenceAssets: draft.referenceAssets || [],
     hasReferences: referenceCount > 0,
     canAddReference: referenceCount < maxRefs,
+    hasControlPreview: Boolean(controlPreviewUrl),
+    controlPreviewUrl,
+    controlPreviewLabel: selectedScope && selectedScope.targetScope === 'single_room'
+      ? `${selectedScope.name || '房间'}控制图`
+      : '完整户型控制图',
     creditSummary: creditsReady
       ? `预计消耗 ${estimatedCredits} 点 · 可用 ${balance} 点`
       : `需要 ${estimatedCredits} 点 · 可用 ${balance} 点`,
@@ -222,10 +296,15 @@ function parseTemplateListPayload(payload) {
 
 module.exports = {
   PREFERRED_TEMPLATE_CATEGORY_NAME,
+  SCOPE_APPLY_NOTE,
   TEMPLATE_PAGE_SIZE,
+  WHOLE_FLOOR_SCOPE_KEY,
   applyModelDefaults,
+  applyScopeToDraft,
   buildComposerViewState,
   buildDraftFromBatch,
+  buildScopePickerOptions,
+  buildScopeSubmitPayload,
   buildTemplateCategoryChips,
   buildTemplateListParams,
   createDefaultDraft,
@@ -235,5 +314,7 @@ module.exports = {
   getUnitPrice,
   maxUserReferenceImages,
   parseTemplateListPayload,
+  resolveDraftScope,
   resolvePreferredTemplateCategoryId,
+  withFloorPlanPreviewRoom,
 };

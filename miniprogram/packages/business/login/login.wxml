@@ -28,8 +28,10 @@
       <view class="login-desc">授权后即可使用完整功能</view>
 
       <button class="primary-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{loading}}" disabled="{{loading}}">
-        <image class="button-icon" src="/packages/business/assets/login-v1/smartphone.png" mode="aspectFit" />
-        <text>手机号快捷登录</text>
+        <view class="primary-inner">
+          <image class="button-icon" src="/packages/business/assets/login-v1/smartphone.png" mode="aspectFit" />
+          <text>手机号快捷登录</text>
+        </view>
       </button>
 
       <view class="agreement">

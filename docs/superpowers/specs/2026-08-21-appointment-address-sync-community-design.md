@@ -1,9 +1,9 @@
 # Appointment Address → Customer Community Sync
 
 **Date:** 2026-08-21  
-**Status:** Implemented under recommended defaults from the original feature request (explicit sync, empty-only write, designer/enterprise owner)  
+**Status:** Implemented. Appointment create and address update auto-fill an empty lead `communityName` (map `locationName` preferred, otherwise typed address; never overwrite). Staff explicit sync remains on Mini Program appointment detail for historical empty communities.  
 **Surfaces:** Mini Program `appointment-booking`, `appointment-detail`; Admin leads drawer address flow  
-**Related API:** existing `PUT /api/leads/[id]` (`communityName`); appointment address remains on `POST /api/appointments` and `POST /api/appointments/[id]/address`
+**Related API:** `POST /api/appointments` and `POST /api/appointments/[id]/address` fill empty `communityName`; staff fallback remains `PUT /api/leads/[id]`
 
 ## Problem
 
@@ -13,15 +13,13 @@ Booking already pre-fills the appointment address from `communityName` when pres
 
 ## Goals
 
-- Let authorized staff copy a saved appointment service address into the lead’s `communityName` in one explicit action.
+- Copy a saved appointment service location into an empty lead `communityName` when the customer or staff books or updates the visit address.
 - Avoid silent overwrite of an existing community value.
-- Reuse the current lead profile permission and `PUT /api/leads/[id]` contract; do not invent a parallel write path.
-- Keep map coordinates (`locationName` / lat / lng) on the appointment only.
+- Keep map coordinates (`locationName` / lat / lng) on the appointment only; `communityName` stores the POI or typed address text.
 
 ## Non-goals
 
-- Auto-writing community on every appointment create/update.
-- Letting the owning customer mutate `communityName` from booking.
+- Overwriting an existing lead `communityName`.
 - Syncing GCJ-02 map points into lead storage (no lead location columns today).
 - Changing referrer privacy (referrers still never see precise addresses).
 

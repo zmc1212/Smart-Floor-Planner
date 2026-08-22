@@ -1,4 +1,7 @@
 {
   "navigationBarTitleText": "企业报备",
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "custom-tab-bar": "/custom-tab-bar/index"
+  }
 }

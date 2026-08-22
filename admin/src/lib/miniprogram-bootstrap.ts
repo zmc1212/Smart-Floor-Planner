@@ -13,6 +13,7 @@ export type MiniProgramRole =
   | 'referrer'
   | 'designer'
   | 'measurer'
+  | 'salesperson'
   | 'enterprise_admin'
   | 'platform_admin';
 
@@ -21,6 +22,7 @@ export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
   designer: '/pages/index/index',
   measurer: '/pages/index/index',
+  salesperson: '/packages/business/promotion-records/promotion-records',
   enterprise_admin: '/pages/index/index',
   platform_admin: '/pages/index/index',
 };
@@ -30,6 +32,7 @@ const ROLE_LABELS: Record<MiniProgramRole, string> = {
   referrer: '推荐人',
   designer: '设计师',
   measurer: '测量员',
+  salesperson: '渠道地推',
   enterprise_admin: '企业负责人',
   platform_admin: '平台管理员',
 };
@@ -39,6 +42,7 @@ const ROLE_CAPABILITIES: Record<MiniProgramRole, string[]> = {
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
   designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'],
   measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
+  salesperson: ['promotion.records', 'promotion.commissions', 'account'],
   enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
   platform_admin: ['platform.devices', 'account'],
 };
@@ -51,6 +55,7 @@ export function getMiniProgramRole(
   if (context.mode === 'staff') {
     if (context.staffRole === 'designer') return 'designer';
     if (context.staffRole === 'measurer') return 'measurer';
+    if (context.staffRole === 'salesperson') return 'salesperson';
     if (context.staffRole === 'enterprise_admin') return 'enterprise_admin';
     if (context.staffRole === 'admin' || context.staffRole === 'super_admin') {
       return 'platform_admin';

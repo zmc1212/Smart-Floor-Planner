@@ -1,6 +1,7 @@
 {
   "navigationStyle": "custom",
   "usingComponents": {
-    "designer-contact-sheet": "/components/designer-contact-sheet/designer-contact-sheet"
+    "designer-contact-sheet": "/components/designer-contact-sheet/designer-contact-sheet",
+    "scheme-share-poster": "/components/scheme-share-poster/scheme-share-poster"
   }
 }

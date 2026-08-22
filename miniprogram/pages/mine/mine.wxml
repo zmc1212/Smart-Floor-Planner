@@ -93,8 +93,10 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <view class="mine-title">我的</view>
             <view class="header-actions">
               <button class="edit-profile-button" bindtap="onEditProfile">
-                <image src="/images/mine-icons/edit.png" mode="aspectFit" />
-                <text>编辑资料</text>
+                <view class="edit-profile-inner">
+                  <image src="/images/mine-icons/edit.png" mode="aspectFit" />
+                  <text>编辑资料</text>
+                </view>
               </button>
             </view>
           </view>

@@ -7,6 +7,8 @@ Git 历史保留。
 
 - 唯一编辑入口：`miniprogram/packages/surveying/editor/surveying-editor.*`。
 - 编辑器使用 version-4 `surveyGraph`，坐标、长度、墙厚、开口和层高均为毫米。
+  门宽/窗宽上限为当前宿主墙长度（不少于 100 mm），由 `normalizeOpeningToWall`
+  按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。
 - 支持直墙、斜墙、连续墙链、共享墙、闭合空间、门窗、尺寸规划、撤销/重做、
   右侧工具栏经确认的清空重做、BLE 读数和正式保存；顶部「保存」云端成功后自动
   返回上一页（失败则留在编辑器以便重试）。

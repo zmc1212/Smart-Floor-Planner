@@ -19,7 +19,7 @@ import {
   localDateInTimeZone,
   normalizeWeeklyAppointmentSchedule,
 } from '@/lib/appointment-scheduling';
-import type { AppointmentLocationInput } from '@/lib/appointment-api';
+import { communityNameFromAppointment, type AppointmentLocationInput } from '@/lib/appointment-api';
 import { parseFormalSurveyLayout } from '@/lib/survey-graph';
 
 export type AppointmentSettingsInput = {
@@ -129,6 +129,19 @@ export class AppointmentRepository {
       .limit(1);
     const rows = lock ? await query.for('update') : await query;
     return rows[0] ?? null;
+  }
+
+  private async fillEmptyLeadCommunity(
+    lead: typeof leads.$inferSelect,
+    input: { locationName?: string | null; address?: string | null }
+  ) {
+    if (String(lead.communityName || '').trim()) return;
+    const communityName = communityNameFromAppointment(input);
+    if (!communityName) return;
+    await this.transaction
+      .update(leads)
+      .set({ communityName, updatedAt: new Date() })
+      .where(eq(leads.id, lead.id));
   }
 
   async findLeadForAccess(enterpriseId: bigint, leadId: bigint) {
@@ -421,6 +434,10 @@ export class AppointmentRepository {
       eventKey: input.eventKey,
       metadata: {},
     });
+    await this.fillEmptyLeadCommunity(lead, {
+      locationName: input.location?.locationName,
+      address: input.address,
+    });
     return appointment;
   }
 
@@ -698,6 +715,10 @@ export class AppointmentRepository {
         },
         location: nextLocation,
       },
+    });
+    await this.fillEmptyLeadCommunity(current.lead, {
+      locationName: nextLocation.locationName,
+      address,
     });
     return appointment;
   }

@@ -1,5 +1,5 @@
 const API_BASE_URLS = Object.freeze({
-  // local: 'http://192.168.10.111:3006/api',
+  // local: 'http://192.168.10.111:3005/api',
   local: 'http://124.70.90.30:9966/api',
   production: 'https://smartfloor.zlyun168.com/api',
 });
@@ -83,7 +83,12 @@ function request(url, method = 'GET', data = {}, options = {}) {
         success: (res) => {
           if (res.statusCode === 401) {
             if (!options.suppressUnauthorized) handleUnauthorized(url, token);
-            reject({ error: 'Unauthorized', statusCode: 401 });
+            const payload = res.data && typeof res.data === 'object' ? res.data : {};
+            reject({
+              ...payload,
+              error: payload.error || 'Unauthorized',
+              statusCode: 401,
+            });
             return;
           }
 
@@ -265,7 +270,7 @@ async function passwordLogin(username, password) {
       username,
       password,
       referral: app ? app.globalData.referral : {}
-    });
+    }, { suppressUnauthorized: true });
 
     if (result.success && result.token) {
       if (app && app.globalData) {

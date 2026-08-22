@@ -19,6 +19,9 @@ test('Login page ships the approved Xiao K entry composition with live controls'
   assert.match(wxml, /灵感图库/);
   assert.match(wxml, /返回首页/);
 
+  assert.match(wxml, /primary-inner/);
+  assert.match(less, /\.primary-btn\s*\{[\s\S]*width:\s*auto/);
+  assert.match(less, /\.primary-btn\s*\{[\s\S]*white-space:\s*nowrap/);
   assert.match(less, /\.hero-wrap\s*\{[\s\S]*height:\s*790rpx/);
   assert.match(less, /\.login-card\s*\{[\s\S]*margin:\s*-66rpx 26rpx 0/);
   assert.match(less, /\.feature-row\s*\{[\s\S]*height:\s*150rpx/);

@@ -91,9 +91,59 @@ export type PublishedSchemeDto = {
   id: string;
   workflowId: string | null;
   title: string;
+  firstPublishedAt: Date;
   publishedAt: Date;
+  finalized?: boolean;
   images: PublishedDesignDto[];
 };
+
+function publicationFirstVisibleAt(publication: CustomerProjectPublication['publication']) {
+  const publishedAt = publication.publishedAt;
+  const createdAt = publication.createdAt;
+  if (createdAt && createdAt < publishedAt) return createdAt;
+  return publishedAt;
+}
+
+function publicationActivityAt(publication: CustomerProjectPublication['publication']) {
+  const publishedAt = publication.publishedAt;
+  const updatedAt = publication.updatedAt;
+  if (updatedAt && updatedAt > publishedAt) return updatedAt;
+  return publishedAt;
+}
+
+export function pickFeaturedPublishedScheme(
+  schemes: PublishedSchemeDto[],
+  finalizedWorkflowId?: string | bigint | null,
+) {
+  const finalizedId = finalizedWorkflowId?.toString() || null;
+  if (finalizedId) {
+    const finalized = schemes.find((scheme) => scheme.workflowId === finalizedId);
+    if (finalized) return finalized;
+  }
+  return schemes.reduce<PublishedSchemeDto | null>((latest, scheme) => {
+    if (!latest) return scheme;
+    if (scheme.publishedAt > latest.publishedAt) return scheme;
+    return latest;
+  }, null);
+}
+
+export function buildPublishedSchemeViews(
+  publications: CustomerProjectPublication[],
+  leadId: string,
+  finalizedWorkflowId?: string | bigint | null,
+): PublishedSchemeDto[] {
+  const finalizedId = finalizedWorkflowId?.toString() || null;
+  const schemes = groupPublishedSchemes(publications, leadId).map((scheme) => ({
+    ...scheme,
+    finalized: finalizedId !== null && scheme.workflowId === finalizedId,
+  }));
+  if (!finalizedId) return schemes;
+  const finalizedIndex = schemes.findIndex((scheme) => scheme.finalized);
+  if (finalizedIndex <= 0) return schemes;
+  const reordered = [...schemes];
+  const [finalized] = reordered.splice(finalizedIndex, 1);
+  return [finalized, ...reordered];
+}
 
 export function groupPublishedSchemes(
   publications: CustomerProjectPublication[],
@@ -106,6 +156,8 @@ export function groupPublishedSchemes(
     const groupId = workflowId || LEGACY_PUBLISHED_SCHEME_ID;
     const title = publication.schemeTitle?.trim()
       || (workflowId ? '设计方案' : LEGACY_PUBLISHED_SCHEME_TITLE);
+    const firstVisibleAt = publicationFirstVisibleAt(publication);
+    const activityAt = publicationActivityAt(publication);
     const image: PublishedDesignDto = {
       id: publication.id.toString(),
       generationId: generation.id.toString(),
@@ -122,14 +174,16 @@ export function groupPublishedSchemes(
         id: groupId,
         workflowId,
         title,
-        publishedAt: publication.publishedAt,
+        firstPublishedAt: firstVisibleAt,
+        publishedAt: activityAt,
         images: [image],
       });
       order.push(groupId);
       continue;
     }
     existing.images.push(image);
-    if (publication.publishedAt > existing.publishedAt) existing.publishedAt = publication.publishedAt;
+    if (firstVisibleAt < existing.firstPublishedAt) existing.firstPublishedAt = firstVisibleAt;
+    if (activityAt > existing.publishedAt) existing.publishedAt = activityAt;
     if (publication.schemeTitle?.trim()) existing.title = publication.schemeTitle.trim();
   }
   for (const scheme of groups.values()) {
@@ -144,7 +198,11 @@ export function groupPublishedSchemes(
   }
   return order
     .map((id) => groups.get(id)!)
-    .sort((left, right) => right.publishedAt.getTime() - left.publishedAt.getTime());
+    .sort((left, right) => {
+      const firstDiff = left.firstPublishedAt.getTime() - right.firstPublishedAt.getTime();
+      if (firstDiff !== 0) return firstDiff;
+      return String(left.id).localeCompare(String(right.id));
+    });
 }
 
 export function customerProjectToDto(
@@ -155,7 +213,11 @@ export function customerProjectToDto(
   const leadId = project.lead.id.toString();
   const enterpriseId = project.lead.enterpriseId!.toString();
   const hasFormalFloorPlan = Boolean(project.formalFloorPlan);
-  const publishedSchemes = groupPublishedSchemes(project.publications, leadId);
+  const publishedSchemes = buildPublishedSchemeViews(
+    project.publications,
+    leadId,
+    project.lead.finalizedWorkflowId,
+  );
   const publishedDesigns = publishedSchemes.flatMap((scheme) => scheme.images);
   const home = resolveCustomerHomeAction({
     leadStatus: project.lead.status,
@@ -167,16 +229,18 @@ export function customerProjectToDto(
     customerRescheduleCutoffHours: options.customerRescheduleCutoffHours,
   });
   const identity = buildCustomerProjectIdentity(project);
-  const featuredScheme = publishedSchemes[0]
+  const featuredSource = pickFeaturedPublishedScheme(publishedSchemes, project.lead.finalizedWorkflowId);
+  const featuredScheme = featuredSource
     ? {
-        id: publishedSchemes[0].id,
-        title: publishedSchemes[0].title,
-        styleTag: publishedSchemes[0].title.startsWith('#')
-          ? publishedSchemes[0].title
-          : `#${publishedSchemes[0].title}`,
-        imageEndpoint: publishedSchemes[0].images[0]?.imageEndpoint || null,
-        generationId: publishedSchemes[0].images[0]?.generationId || null,
-        imageCount: publishedSchemes[0].images.length,
+        id: featuredSource.id,
+        title: featuredSource.title,
+        styleTag: featuredSource.title.startsWith('#')
+          ? featuredSource.title
+          : `#${featuredSource.title}`,
+        imageEndpoint: featuredSource.images[0]?.imageEndpoint || null,
+        generationId: featuredSource.images[0]?.generationId || null,
+        imageCount: featuredSource.images.length,
+        finalized: Boolean(featuredSource.finalized),
       }
     : null;
   return {

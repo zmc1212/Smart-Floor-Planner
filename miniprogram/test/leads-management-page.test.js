@@ -234,6 +234,17 @@ test('External preview images win and missing floor plans stay explicit', () => 
   assert.equal(external.type, 'image');
   assert.equal(external.layoutLabel, '三室两厅');
 
+  const protectedPreview = buildFloorPlanPreview({
+    _id: 'lead-1',
+    primaryFloorPlanId: {
+      _id: 'plan-3',
+      previewUrl: '/api/floorplans/plan-3/preview?v=2',
+      layoutData: createFormalLayout(),
+    }
+  });
+  assert.equal(protectedPreview.type, 'protected');
+  assert.equal(protectedPreview.previewEndpoint, '/floorplans/plan-3/preview?v=2');
+
   const empty = buildFloorPlanPreview({ floorPlanIds: [] });
   assert.equal(empty.type, 'empty');
   assert.equal(empty.segments.length, 0);

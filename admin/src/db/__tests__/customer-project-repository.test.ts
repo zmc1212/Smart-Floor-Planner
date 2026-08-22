@@ -284,6 +284,24 @@ test('scheme publication merges incremental selections within one conversation',
   assert.equal(ordered[0]?.generation.id, schemeGenerationA);
   assert.equal(ordered[1]?.generation.id, schemeGenerationC);
   assert.equal(ordered[1]?.publication.schemeTitle, '灯光设计终稿');
+
+  const originalPublishedAt = ordered[0]?.publication.publishedAt;
+  const republished = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).publishScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      title: '灯光设计终稿',
+      generationIds: [schemeGenerationA, schemeGenerationC],
+      publishedBy: designerId,
+    })
+  );
+  assert.equal(republished.kind, 'published');
+  const republishedProject = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).findCustomerProject(customerUserId, leadId)
+  );
+  const republishedA = republishedProject?.publications.find((item) => item.generation.id === schemeGenerationA);
+  assert.equal(republishedA?.publication.publishedAt.getTime(), originalPublishedAt?.getTime());
 });
 
 test('scheme publication replacement withdraws the parent generation inside one conversation', async () => {
@@ -317,4 +335,87 @@ test('scheme publication replacement withdraws the parent generation inside one 
   const activeGenerationIds = new Set(schemeRows.map((item) => item.generation.id));
   assert.equal(activeGenerationIds.has(schemeGenerationA), false);
   assert.equal(activeGenerationIds.has(schemeGenerationB), true);
+});
+
+test('finalizeScheme requires active publications and overwrites the lead pointer', async () => {
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).withdrawScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      withdrawnBy: designerId,
+    })
+  );
+
+  const unpublished = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).finalizeScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      finalizedBy: designerId,
+    })
+  );
+  assert.equal(unpublished.kind, 'publication_not_found');
+
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).publishScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      title: '灯光设计',
+      generationIds: [schemeGenerationA],
+      publishedBy: designerId,
+    })
+  );
+
+  const finalized = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).finalizeScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      finalizedBy: designerId,
+    })
+  );
+  assert.equal(finalized.kind, 'finalized');
+
+  const lead = await withTenantTransaction(enterpriseId, (transaction) =>
+    transaction.select().from(leads).where(eq(leads.id, leadId)).limit(1)
+  );
+  assert.equal(lead[0]?.finalizedWorkflowId, workflowId);
+});
+
+test('withdrawing the finalized workflow clears the lead pointer', async () => {
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).publishScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      title: '灯光设计',
+      generationIds: [schemeGenerationA],
+      publishedBy: designerId,
+    })
+  );
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).finalizeScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      finalizedBy: designerId,
+    })
+  );
+
+  const withdrawn = await withTenantTransaction(enterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).withdrawScheme({
+      enterpriseId,
+      leadId,
+      workflowId,
+      withdrawnBy: designerId,
+    })
+  );
+  assert.equal(withdrawn.kind, 'withdrawn');
+
+  const lead = await withTenantTransaction(enterpriseId, (transaction) =>
+    transaction.select().from(leads).where(eq(leads.id, leadId)).limit(1)
+  );
+  assert.equal(lead[0]?.finalizedWorkflowId, null);
 });

@@ -1,9 +1,4 @@
 const api = require('../../../utils/api.js');
-const {
-  canEditLeadProfile,
-  shouldOfferCommunitySync,
-  syncAddressToLeadCommunity,
-} = require('../../../utils/appointmentCommunitySync.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -57,23 +52,7 @@ function formatLead(lead) {
     phone: String(lead && lead.phone || ''),
     address: String(lead && (lead.communityName || lead.address) || '').trim(),
     communityName: String(lead && lead.communityName || '').trim(),
-    assignedTo: lead && lead.assignedTo,
-    measurerId: lead && lead.measurerId,
-    archivedAt: lead && lead.archivedAt,
   };
-}
-
-function getStaffRole() {
-  const app = getApp();
-  const user = app && app.globalData && app.globalData.userInfo;
-  return user && (user.staffRole || (user.role === 'staff' ? '' : user.role)) || '';
-}
-
-function getStaffId() {
-  const app = getApp();
-  const user = app && app.globalData && app.globalData.userInfo;
-  if (!user) return '';
-  return String(user.staffId || '');
 }
 
 Page({
@@ -84,7 +63,6 @@ Page({
     actionWidth: 362,
     leadId: '', customerMode: false,
     customer: null,
-    canEditProfile: false,
     address: '',
     location: null,
     dates: [],
@@ -118,9 +96,7 @@ Page({
       const result = await api.request(`/leads/${encodeURIComponent(this.data.leadId)}`, 'GET');
       if (!result.data) throw new Error('客户线索暂时无法读取');
       const customer = formatLead(result.data);
-      const canEditProfile = !this.data.customerMode
-        && canEditLeadProfile(customer, getStaffRole(), getStaffId());
-      this.setData({ customer, address: customer.address, canEditProfile });
+      this.setData({ customer, address: customer.address });
       await this.loadSlots();
     } catch (error) {
       const rawMessage = error && (error.message || error.error) || '';
@@ -213,40 +189,6 @@ Page({
         location,
       });
       wx.showToast({ title: '预约已确认', icon: 'success' });
-      const offerSync = shouldOfferCommunitySync({
-        canEditProfile: this.data.canEditProfile,
-        communityName: this.data.customer && this.data.customer.communityName,
-        address: addressText,
-        customerMode: this.data.customerMode,
-      });
-      if (offerSync) {
-        wx.showModal({
-          title: '同步到客户小区',
-          content: '是否将上门地址写入客户资料中的小区？',
-          confirmText: '同步写入',
-          cancelText: '暂不',
-          success: async (result) => {
-            if (result.confirm) {
-              try {
-                const syncResult = await syncAddressToLeadCommunity(api, leadId, addressText);
-                wx.showToast({
-                  title: syncResult.synced
-                    ? '已写入客户小区'
-                    : (syncResult.reason === 'already_set' ? '客户已有小区，未覆盖' : '无法同步'),
-                  icon: syncResult.synced ? 'success' : 'none',
-                });
-              } catch (error) {
-                wx.showToast({
-                  title: error.message || error.error || '同步客户小区失败',
-                  icon: 'none',
-                });
-              }
-            }
-            setTimeout(() => wx.navigateBack(), syncResultDelay(result.confirm));
-          },
-        });
-        return;
-      }
       setTimeout(() => wx.navigateBack(), 700);
     } catch (error) {
       const alreadyBooked = error && error.code === 'appointment_already_exists';
@@ -260,7 +202,3 @@ Page({
     }
   },
 });
-
-function syncResultDelay(didSyncAttempt) {
-  return didSyncAttempt ? 700 : 400;
-}

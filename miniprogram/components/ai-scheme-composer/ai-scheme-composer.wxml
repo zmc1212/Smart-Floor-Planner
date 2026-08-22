@@ -7,6 +7,14 @@
       <view class="dock-tools">
         <view class="dock-tools-scroll">
           <view
+            wx:if="{{view.hasScopePicker}}"
+            class="dock-chip"
+            data-type="scope"
+            bindtap="openPicker"
+          >
+            <text>{{view.scopeLabel || '完整户型'}}</text>
+          </view>
+          <view
             class="dock-chip {{uploading || !view || !view.canAddReference ? 'disabled' : ''}}"
             bindtap="uploadReference"
           >
@@ -31,7 +39,21 @@
         </view>
       </view>
 
-      <view wx:if="{{view && (view.hasReferences || view.canAddReference)}}" class="reference-row">
+      <view wx:if="{{view && (view.hasControlPreview || view.hasReferences || view.canAddReference)}}" class="reference-row">
+        <view
+          wx:if="{{view.hasControlPreview}}"
+          class="reference-item compact locked"
+          bindtap="previewControl"
+        >
+          <image
+            wx:if="{{view.controlPreviewUrl}}"
+            class="reference-image"
+            src="{{view.controlPreviewUrl}}"
+            mode="aspectFill"
+          ></image>
+          <view wx:else class="reference-image placeholder"></view>
+          <text class="control-badge">控制图</text>
+        </view>
         <view
           wx:if="{{view.canAddReference}}"
           class="reference-add compact {{uploading ? 'disabled' : ''}}"
@@ -48,7 +70,7 @@
             </view>
           </view>
         </scroll-view>
-        <text wx:if="{{!view.hasReferences && !view.canAddReference}}" class="reference-hint">当前模型不支持参考图</text>
+        <text wx:if="{{!view.hasControlPreview && !view.hasReferences && !view.canAddReference}}" class="reference-hint">当前模型不支持参考图</text>
       </view>
     </view>
 
@@ -87,6 +109,14 @@
         <view class="sheet-close" bindtap="closeSettings">×</view>
       </view>
       <scroll-view wx:if="{{view}}" scroll-y class="settings-scroll">
+        <view wx:if="{{view.hasScopePicker}}" class="settings-list">
+          <view class="settings-row" data-type="scope" bindtap="openPicker">
+            <text class="settings-row-title">应用到哪里</text>
+            <text class="settings-row-value">{{view.scopeLabel || '完整户型'}}</text>
+            <view class="settings-row-chevron"></view>
+          </view>
+        </view>
+        <text wx:if="{{view.hasScopePicker}}" class="settings-note">{{view.scopeNote}}</text>
         <view class="settings-section">
           <text class="settings-label">比例</text>
           <view class="settings-chips">

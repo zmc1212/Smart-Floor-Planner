@@ -2,7 +2,8 @@ const app = getApp();
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 
-function shouldStayOnLoginPage(pages, previousRoute) {
+function shouldStayOnLoginPage(pages, previousRoute, options) {
+  if (options && options.mode === 'password') return true;
   const stack = Array.isArray(pages) ? pages : [];
   if (stack.length <= 1) return true;
   return String(previousRoute || '').includes('enterprise-register');
@@ -50,7 +51,7 @@ Page({
     if (
       app.globalData.openid &&
       app.globalData.userInfo &&
-      !shouldStayOnLoginPage(pages, previousRoute)
+      !shouldStayOnLoginPage(pages, previousRoute, options)
     ) {
       wx.navigateBack();
     }
@@ -154,11 +155,12 @@ Page({
 
   onBack() {
     const pages = getCurrentPages();
-    if (pages.length > 1) {
+    const previousRoute = pages.length >= 2 ? (pages[pages.length - 2].route || '') : '';
+    if (pages.length > 1 && !String(previousRoute).includes('enterprise-register')) {
       wx.navigateBack();
       return;
     }
 
-    wx.switchTab({ url: '/pages/index/index' });
+    wx.switchTab({ url: '/pages/mine/mine' });
   }
 });

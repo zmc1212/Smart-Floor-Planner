@@ -1,4 +1,8 @@
 const api = require('../../utils/api.js');
+const {
+  fetchProtectedImage,
+  floorPlanCacheKey,
+} = require('../../utils/protectedImageCache.js');
 const { buildFloorPlanPreview, pickLeadFloorPlan } = require('./lead-list-model.js');
 
 const STATUS_LABELS = {
@@ -126,6 +130,7 @@ Component({
             hasMore: formatted.length === this.data.pageSize,
             loading: false
           });
+          this.loadProtectedPlanPreviews(allLeads);
 
           if (reset) {
             this.updateHeroStats(allLeads, res.stats);
@@ -181,6 +186,56 @@ Component({
         statusIcon: STATUS_ICONS[statusTone],
         followLabel: `最新跟进：${this.getLastFollowDate(lead)}`
       };
+    },
+
+    async loadProtectedPlanPreviews(leads) {
+      const targets = (Array.isArray(leads) ? leads : []).filter((lead) => (
+        lead
+        && lead.planPreview
+        && lead.planPreview.type === 'protected'
+        && lead.planPreview.previewEndpoint
+        && !lead.planPreview.previewPath
+      ));
+      if (!targets.length) return;
+
+      await Promise.all(targets.map(async (lead) => {
+        try {
+          const previewPath = await fetchProtectedImage(
+            lead.planPreview.previewEndpoint,
+            floorPlanCacheKey(lead._id, pickLeadFloorPlan(lead))
+          );
+          const applyPreviewPath = (item) => {
+            if (String(item._id || '') !== String(lead._id || '')) return item;
+            return {
+              ...item,
+              planPreview: {
+                ...item.planPreview,
+                previewPath,
+              },
+            };
+          };
+          this.setData({
+            allLeads: this.data.allLeads.map(applyPreviewPath),
+            leads: this.data.leads.map(applyPreviewPath),
+          });
+        } catch (error) {
+          const fallback = (item) => {
+            if (String(item._id || '') !== String(lead._id || '')) return item;
+            if (item.planPreview.type !== 'protected') return item;
+            return {
+              ...item,
+              planPreview: {
+                ...item.planPreview,
+                type: item.planPreview.segments.length ? 'graph' : 'empty',
+              },
+            };
+          };
+          this.setData({
+            allLeads: this.data.allLeads.map(fallback),
+            leads: this.data.leads.map(fallback),
+          });
+        }
+      }));
     },
 
     getLastFollowDate(lead) {
@@ -257,12 +312,15 @@ Component({
     onPlanPreviewError(e) {
       const id = String(e.currentTarget.dataset.id || '');
       const useGraphFallback = (lead) => {
-        if (String(lead._id || '') !== id || lead.planPreview.type !== 'image') return lead;
+        if (String(lead._id || '') !== id) return lead;
+        if (!['image', 'protected'].includes(lead.planPreview.type)) return lead;
         return {
           ...lead,
           planPreview: {
             ...lead.planPreview,
-            type: lead.planPreview.segments.length ? 'graph' : 'empty'
+            type: lead.planPreview.segments.length ? 'graph' : 'empty',
+            previewUrl: '',
+            previewPath: '',
           }
         };
       };

@@ -107,3 +107,30 @@ test('formal-survey address row stays full-width below the next-action head', ()
   assert.match(styles, /\.whole-home-address\s*\{[^}]*display:\s*block;/s);
   assert.doesNotMatch(styles, /\.appointment-entry\s*\{/);
 });
+
+test('lead detail shows assigned designer and measurer name and phone between the hero and stage rail', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    'utf8'
+  );
+  const heroIndex = template.indexOf('class="detail-hero"');
+  const staffIndex = template.indexOf('class="staff-assignment-grid"');
+  const railIndex = template.indexOf('class="lead-stage-rail"');
+  assert.ok(heroIndex > -1);
+  assert.ok(staffIndex > heroIndex);
+  assert.ok(railIndex > staffIndex);
+  assert.match(template, /class="staff-assignment-role">设计师/);
+  assert.match(template, /class="staff-assignment-role">测量员/);
+  assert.match(template, /\{\{designerContact\.name\}\}/);
+  assert.match(template, /\{\{measurerContact\.name\}\}/);
+  assert.match(template, /\{\{designerContact\.phone\}\}/);
+  assert.match(template, /\{\{measurerContact\.phone\}\}/);
+  assert.match(script, /function getStaffContact\(/);
+  assert.match(script, /measurerContact: getStaffContact\(lead\.measurerId, \{ canAssign: canAssignStaff && !lead\.measurerId \}\)/);
+  assert.match(script, /designerContact: getStaffContact\(lead\.assignedTo, \{ canAssign: canAssignStaff && !lead\.assignedTo \}\)/);
+  assert.match(script, /wx\.makePhoneCall\(\{ phoneNumber: phone \}\)/);
+  assert.match(script, /name: name \|\| '待分配'/);
+  assert.match(styles, /\.staff-assignment-role\s*\{[^}]*font-size:\s*22rpx;/s);
+  assert.match(styles, /\.staff-assignment-name\s*\{[^}]*font-size:\s*26rpx;/s);
+  assert.match(styles, /\.staff-assignment-phone\s*\{[^}]*font-size:\s*22rpx;/s);
+});

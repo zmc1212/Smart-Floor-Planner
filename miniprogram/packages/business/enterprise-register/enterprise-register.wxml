@@ -1,12 +1,15 @@
 <!--
   企业开户页：复用入驻页品牌锁与极简透气体，无独立设计稿 / 无新 IP 插画。
-  流程：解析 er_ → 授权手机号 → 填表 → 待审成功态。
+  流程：解析 er_ → 填表 → 一次点击授权并提交 → 待审成功态。
 -->
 <view class="register-page state-{{pageState}}">
   <view
     class="register-nav"
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
+      <view class="back-chevron"></view>
+    </view>
     <view class="brand-lockup">
       <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
       <text class="brand-name">家客来</text>
@@ -83,30 +86,34 @@
 
       <button
         wx:if="{{!authorizedPhone}}"
-        class="join-action {{submitting ? 'is-disabled' : ''}}"
+        class="join-action {{!canSubmit || submitting ? 'is-disabled' : ''}}"
         open-type="getPhoneNumber"
         bindgetphonenumber="onGetPhoneNumber"
         loading="{{submitting}}"
-        disabled="{{submitting}}"
+        disabled="{{!canSubmit || submitting}}"
       >
-        <image class="join-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-        <text>授权手机号</text>
+        <view class="join-inner">
+          <image class="join-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+          <text>提交开户申请</text>
+        </view>
       </button>
 
       <button
         wx:else
-        class="join-action {{submitting ? 'is-disabled' : ''}}"
+        class="join-action {{!canSubmit || submitting ? 'is-disabled' : ''}}"
         bindtap="onSubmit"
         loading="{{submitting}}"
-        disabled="{{submitting}}"
+        disabled="{{!canSubmit || submitting}}"
       >
-        <text>提交开户申请</text>
+        <view class="join-inner">
+          <text>提交开户申请</text>
+        </view>
       </button>
 
-      <view class="identity-link" bindtap="onGoToLogin" aria-role="button">
+      <button class="identity-link" bindtap="onGoToLogin" hover-class="none">
         <text>已有账号，去登录</text>
         <view class="link-chevron"></view>
-      </view>
+      </button>
     </view>
   </scroll-view>
 

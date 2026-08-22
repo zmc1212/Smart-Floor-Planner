@@ -25,7 +25,7 @@ function identitiesMatch(reported: string, code: string): boolean {
 
 export async function POST(request: Request) {
   try {
-    const { deviceId, name, openid } = await request.json();
+    const { deviceId, name, openid, advertisDataHex } = await request.json();
     if (!deviceId) {
       return NextResponse.json(
         { success: false, error: '未提供设备 ID' },
@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     const context = await resolveMiniProgramContext(request);
     const reportedId = String(deviceId);
     const reportedName = String(name || '');
+    const reportedAdvertis = String(advertisDataHex || '');
     const result = await withPlatformTransaction(async (transaction) => {
       const devices = await new DeviceRepository(transaction).list({
         status: 'assigned',
@@ -43,7 +44,9 @@ export async function POST(request: Request) {
       const matchedDevice = devices.find((device) => {
         const code = device.code;
         return (
-          identitiesMatch(reportedId, code) || identitiesMatch(reportedName, code)
+          identitiesMatch(reportedId, code) ||
+          identitiesMatch(reportedName, code) ||
+          identitiesMatch(reportedAdvertis, code)
         );
       });
       if (!matchedDevice) {

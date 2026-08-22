@@ -123,7 +123,15 @@
               data-id="{{item._id}}"
               binderror="onPlanPreviewError"
             />
-            <view wx:elif="{{item.planPreview.type === 'graph'}}" class="lead-plan-graph">
+            <image
+              wx:elif="{{item.planPreview.type === 'protected' && item.planPreview.previewPath}}"
+              class="lead-plan-image"
+              src="{{item.planPreview.previewPath}}"
+              mode="aspectFit"
+              data-id="{{item._id}}"
+              binderror="onPlanPreviewError"
+            />
+            <view wx:elif="{{item.planPreview.type === 'graph' || (item.planPreview.type === 'protected' && item.planPreview.segments.length && !item.planPreview.previewPath)}}" class="lead-plan-graph">
               <view
                 wx:for="{{item.planPreview.segments}}"
                 wx:for-item="segment"

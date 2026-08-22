@@ -2,7 +2,7 @@
 THESIS: 一张可出示的免费服务凭证，让客户先看懂价值再扫码，不暴露企业关系。
 OWN-WORLD: 极简透气版暖白纸面、家客绿服务码卡、三项免费承诺与扫码向导小 K。
 STORY: 推荐人出示服务码，客户扫描后进入手机号授权并自动建立服务。
-FIRST VIEWPORT: 胶囊左侧品牌锁；服务码主卡、三项承诺、说明条和底部出示按钮在 390x844 同屏。
+FIRST VIEWPORT: 胶囊左侧返回与品牌锁；服务码主卡、三项承诺、说明条和底部出示按钮在 390x844 同屏。
 FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code.jpg
 -->
 <view class="service-code-page">
@@ -10,6 +10,9 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
     class="service-nav"
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回首页">
+      <view class="back-chevron"></view>
+    </view>
     <view class="brand-lockup">
       <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
       <text class="brand-name">家客来</text>
@@ -35,7 +38,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
             <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
             <text class="qr-state-title">服务码暂不可用</text>
             <text class="qr-state-copy">{{errorMessage}}</text>
-            <button class="qr-retry" bindtap="onRetry">重新生成</button>
+            <button class="qr-retry" bindtap="onRetry"><text>重新生成</text></button>
           </view>
           <image wx:else class="service-qr" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
         </view>

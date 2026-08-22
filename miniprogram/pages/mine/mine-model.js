@@ -25,6 +25,7 @@ const ROLE_LABELS = {
   referrer: '推广人',
   designer: '设计师',
   measurer: '测量员',
+  salesperson: '渠道地推',
   enterprise_admin: '企业负责人',
   platform_admin: '平台管理员',
   admin: '平台管理员',

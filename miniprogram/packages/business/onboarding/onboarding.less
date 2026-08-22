@@ -16,10 +16,29 @@ page {
   position: relative;
   z-index: 12;
   display: flex;
-  padding-left: 20rpx;
+  padding-left: 12rpx;
   padding-bottom: 12rpx;
   align-items: center;
+  gap: 4rpx;
   box-sizing: content-box;
+}
+
+.nav-back {
+  display: flex;
+  width: 64rpx;
+  height: 64rpx;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.back-chevron {
+  width: 16rpx;
+  height: 16rpx;
+  border-top: 3.5rpx solid #183426;
+  border-right: 3.5rpx solid #183426;
+  transform: rotate(-135deg);
+  box-sizing: border-box;
 }
 
 .brand-lockup {
@@ -316,19 +335,39 @@ page {
 .join-action,
 .state-action {
   display: flex;
+  width: auto;
+  min-width: 100%;
   min-height: 92rpx;
   margin-top: auto;
+  margin-right: 0;
+  margin-bottom: 0;
+  margin-left: 0;
+  padding: 0 28rpx;
   align-items: center;
   justify-content: center;
-  gap: 10rpx;
   border: 0;
   border-radius: 999rpx;
   color: #ffffff;
   background: #00c365;
   box-shadow: 0 12rpx 24rpx rgba(0, 195, 101, 0.2);
+  box-sizing: border-box;
   font-size: 28rpx;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 92rpx;
+  white-space: nowrap;
+}
+
+.join-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  white-space: nowrap;
+}
+
+.join-action text,
+.join-inner text {
+  white-space: nowrap;
 }
 
 .join-action::after,
@@ -337,10 +376,12 @@ page {
   border: 0;
 }
 
-.join-action.is-disabled {
-  color: var(--action-disabled-text);
-  background: var(--action-disabled-bg);
+.join-action.is-disabled,
+button.join-action[disabled] {
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
   box-shadow: none;
+  opacity: 1;
 }
 
 .join-shield {
@@ -483,18 +524,24 @@ page {
 
 .join-action-outline {
   display: flex;
+  width: auto;
+  min-width: 100%;
   min-height: 92rpx;
   margin-top: 16rpx;
+  margin-right: 0;
+  margin-left: 0;
+  padding: 0 28rpx;
   align-items: center;
   justify-content: center;
-  gap: 10rpx;
   border: 2rpx solid #00c365;
   border-radius: 999rpx;
   color: #00c365;
   background: #ffffff;
+  box-sizing: border-box;
   font-size: 28rpx;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 92rpx;
+  white-space: nowrap;
 }
 
 .recovery-help {

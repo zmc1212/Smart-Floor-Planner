@@ -63,7 +63,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       );
       if (access.kind !== 'ok') return access.response;
     }
-    const buffer = await getPostgresAiWorkflowFloorPlanPreview({ enterpriseId, workflowId: id });
+    const buffer = await getPostgresAiWorkflowFloorPlanPreview({
+      enterpriseId,
+      workflowId: id,
+      roomId: url.searchParams.get('roomId') || undefined,
+    });
     return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type': 'image/png',

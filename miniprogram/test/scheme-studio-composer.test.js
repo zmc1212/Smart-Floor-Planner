@@ -2,15 +2,22 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   applyModelDefaults,
+  applyScopeToDraft,
   buildComposerViewState,
+  buildDraftFromBatch,
+  buildScopePickerOptions,
+  buildScopeSubmitPayload,
   buildTemplateCategoryChips,
   buildTemplateListParams,
   createDefaultDraft,
   flattenPromptCategories,
   maxUserReferenceImages,
   parseTemplateListPayload,
+  resolveDraftScope,
   resolvePreferredTemplateCategoryId,
+  withFloorPlanPreviewRoom,
 } = require('../components/ai-scheme-composer/ai-scheme-composer-model.js');
+const { buildScopes } = require('../packages/ai-workflow/recipe-project/recipe-project-model.js');
 
 const bootstrap = {
   account: { availableBalance: 100 },
@@ -102,4 +109,76 @@ test('parseTemplateListPayload normalizes items and pagination', () => {
   assert.equal(parsed.items.length, 1);
   assert.equal(parsed.total, 12);
   assert.equal(parsed.page, 1);
+});
+
+test('composer apply-to scope defaults to the whole floor plan and can select a closed room', () => {
+  const scopes = buildScopes(
+    [{ roomId: 'living', roomName: '客厅', roomSize: '4.20 m x 3.60 m' }],
+    2,
+  );
+  const draft = createDefaultDraft(bootstrap);
+  assert.equal(draft.targetScope, 'whole_floor_plan');
+  assert.equal(draft.roomId, '');
+  assert.equal(resolveDraftScope(scopes, draft).name, '完整户型');
+
+  const roomDraft = applyScopeToDraft(draft, scopes[1]);
+  assert.equal(roomDraft.targetScope, 'single_room');
+  assert.equal(roomDraft.roomId, 'living');
+  assert.deepEqual(buildScopeSubmitPayload(roomDraft), {
+    targetScope: 'single_room',
+    roomId: 'living',
+  });
+  assert.equal(buildScopeSubmitPayload(draft).roomId, undefined);
+
+  const view = buildComposerViewState({ ...roomDraft, prompt: '奶油风客厅' }, bootstrap, { scopes });
+  assert.equal(view.hasScopePicker, true);
+  assert.equal(view.scopeLabel, '客厅');
+  assert.equal(view.canSubmit, true);
+  assert.equal(buildScopePickerOptions(scopes, roomDraft)[1].active, true);
+});
+
+test('buildDraftFromBatch restores the persisted room scope', () => {
+  const draft = buildDraftFromBatch({
+    id: 'batch-1',
+    prompt: '客厅灯光',
+    modelProfileId: 'model-a',
+    requestedCount: 2,
+    parameterSnapshot: {
+      aspectRatio: '4:3',
+      resolutionTier: '2K',
+      targetScope: 'single_room',
+      targetLabel: '客厅',
+      roomId: 'living',
+    },
+  }, bootstrap);
+  assert.equal(draft.targetScope, 'single_room');
+  assert.equal(draft.roomId, 'living');
+  assert.equal(resolveDraftScope(buildScopes([], 0), draft).targetScope, 'whole_floor_plan');
+});
+
+test('composer locks the bound floor-plan preview in the first reference slot', () => {
+  const signed = 'https://example.com/api/miniprogram/ai/studio/workflows/9/floor-plan-preview?signature=abc';
+  assert.equal(withFloorPlanPreviewRoom(signed, 'whole_floor_plan', 'living'), signed);
+  assert.equal(
+    withFloorPlanPreviewRoom(signed, 'single_room', 'living'),
+    `${signed}&roomId=living`,
+  );
+
+  const scopes = buildScopes(
+    [{ roomId: 'living', roomName: '客厅', roomSize: '4.20 m x 3.60 m' }],
+    2,
+  );
+  const draft = applyScopeToDraft({
+    ...createDefaultDraft(bootstrap),
+    prompt: '奶油风客厅',
+    targetScope: 'single_room',
+    roomId: 'living',
+  }, scopes[1]);
+  const view = buildComposerViewState(draft, bootstrap, {
+    scopes,
+    floorPlanPreviewUrl: signed,
+  });
+  assert.equal(view.hasControlPreview, true);
+  assert.equal(view.controlPreviewUrl, `${signed}&roomId=living`);
+  assert.equal(view.controlPreviewLabel, '客厅控制图');
 });

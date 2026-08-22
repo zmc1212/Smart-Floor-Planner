@@ -432,6 +432,59 @@ test('no candidates preserve the lead and a later retry fills both roles', async
   assert.equal(pendingRows.some((lead) => lead.id === pending.lead.id), true);
 });
 
+test('manual assign fills missing roles without overwriting existing staff', async () => {
+  const enterpriseId = enterpriseIds[1];
+  const source = await createSource(enterpriseId, 'manual-assign');
+  const customer = await createCustomer('manual-assign-customer');
+  const pending = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source,
+      customerUserId: customer.id,
+      idempotencyKeyHash: `${runKey}-manual-assign`,
+    })
+  );
+  assert.equal(pending.kind, 'created');
+  assert.equal(pending.lead.assignmentStatus, 'assignment_pending');
+
+  const designer = await createAssignmentStaff(enterpriseId, 'designer', 'manual-designer');
+  const measurer = await createAssignmentStaff(enterpriseId, 'measurer', 'manual-measurer');
+
+  const partial = await withTenantTransaction(enterpriseId, (transaction) =>
+    new ReferralLeadRepository(transaction).assignStaff({
+      leadId: pending.lead.id,
+      designerId: designer.id,
+    })
+  );
+  assert.ok(partial);
+  assert.equal(partial?.kind, 'pending');
+  assert.equal(partial?.lead.assignedTo, designer.id);
+  assert.equal(partial?.lead.measurerId, null);
+  assert.equal(partial?.lead.assignmentErrorCode, 'measurer_unavailable');
+
+  const assigned = await withTenantTransaction(enterpriseId, (transaction) =>
+    new ReferralLeadRepository(transaction).assignStaff({
+      leadId: pending.lead.id,
+      measurerId: measurer.id,
+    })
+  );
+  assert.ok(assigned);
+  assert.equal(assigned?.kind, 'assigned');
+  assert.equal(assigned?.lead.assignedTo, designer.id);
+  assert.equal(assigned?.lead.measurerId, measurer.id);
+  assert.equal(assigned?.lead.assignmentErrorCode, null);
+
+  await assert.rejects(
+    () =>
+      withTenantTransaction(enterpriseId, (transaction) =>
+        new ReferralLeadRepository(transaction).assignStaff({
+          leadId: pending.lead.id,
+          designerId: designer.id,
+        })
+      ),
+    /设计师已分配/
+  );
+});
+
 test('staff activity claims lock the presenter as measurer and skip referrer commission source', async () => {
   const enterprise = await withPlatformTransaction(async (transaction) =>
     new EnterpriseRepository(transaction).create({

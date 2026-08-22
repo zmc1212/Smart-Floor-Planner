@@ -78,8 +78,15 @@
         </view>
 
         <view wx:if="{{view.publishedScheme}}" class="scheme-banner">
-          <text class="scheme-banner-title">客户可见方案：{{view.publishedScheme.title}}</text>
-          <text class="scheme-banner-meta">当前已发送 {{view.publishedScheme.generationIds.length}} 张给客户</text>
+          <view class="scheme-banner-copy">
+            <text class="scheme-banner-title">{{view.publishedScheme.finalized ? '客户可见定稿' : '客户可见方案'}}：{{view.publishedScheme.title}}</text>
+            <text class="scheme-banner-meta">当前已发送 {{view.publishedScheme.generationIds.length}} 张给客户</text>
+          </view>
+          <button
+            wx:if="{{!view.publishedScheme.finalized}}"
+            class="scheme-banner-action"
+            bindtap="openFinalizeModal"
+          >设为定稿</button>
         </view>
 
         <view wx:if="{{view.hasBatches}}" class="round-list">
@@ -87,7 +94,7 @@
             <view class="round-head">
               <view class="round-head-left">
                 <view class="round-status-dot {{item.hasProcessing ? 'processing' : item.status === 'failed' ? 'failed' : 'done'}}"></view>
-                <text class="round-badge">第 {{item.sequence}} 轮 · {{item.statusLabel}}</text>
+                <text class="round-badge">第 {{item.sequence}} 轮 · {{item.statusLabel}}{{item.targetLabel ? ' · ' + item.targetLabel : ''}}</text>
               </view>
               <view class="round-head-right">
                 <text class="round-time">{{item.timeLabel}}</text>
@@ -185,6 +192,8 @@
       generating="{{generating}}"
       assisting="{{assisting}}"
       uploading="{{uploadingReference}}"
+      scopes="{{scopes}}"
+      floor-plan-preview-url="{{view.workflow.floorPlanPreviewUrl}}"
       templates="{{templates}}"
       template-categories="{{templateCategories}}"
       template-category-id="{{templateCategoryId}}"
@@ -194,6 +203,7 @@
       template-has-more="{{templateHasMore}}"
       template-sheet-visible="{{templateSheetVisible}}"
       bind:draftchange="onComposerDraftChange"
+      bind:scopechange="onComposerScopeChange"
       bind:modelchange="onComposerModelChange"
       bind:uploadreference="uploadReferenceImage"
       bind:removereference="removeReferenceImage"
@@ -249,6 +259,20 @@
         <button class="dialog-btn primary" bindtap="confirmSendScheme" loading="{{sendingScheme}}">
           {{view.publishedScheme ? '确认更新' : '确认发送'}}
         </button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{finalizeMounted}}" class="sheet-root">
+    <view class="modal-mask {{finalizeModalVisible ? 'open' : ''}}" catchtap="closeFinalizeModal"></view>
+    <view class="dialog-panel {{finalizeModalVisible ? 'open' : ''}}" catchtap="noop">
+      <text class="dialog-title">设为定稿</text>
+      <text class="dialog-desc">
+        客户档案与方案册将优先展示「{{view.publishedScheme.title}}」。定稿后仍可继续出图和更新方案，直到您改指定稿或撤回该套方案。
+      </text>
+      <view class="dialog-actions">
+        <button class="dialog-btn" bindtap="closeFinalizeModal">取消</button>
+        <button class="dialog-btn primary" bindtap="confirmFinalizeScheme" loading="{{finalizingScheme}}">确认定稿</button>
       </view>
     </view>
   </view>

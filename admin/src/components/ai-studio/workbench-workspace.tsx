@@ -105,7 +105,7 @@ type WorkflowDetail = {
     errorMessage?: string | null;
     createdAt: string;
   }>;
-  publishedScheme?: { title: string; publishedAt?: string; generationIds: string[] } | null;
+  publishedScheme?: { title: string; publishedAt?: string; generationIds: string[]; finalized?: boolean } | null;
 };
 type TemplateDetail = PromptTemplate & { parameterTemplate?: { parameters?: Record<string, unknown> } };
 
@@ -292,6 +292,8 @@ export function WorkbenchWorkspace() {
   const [sendOpen, setSendOpen] = useState(false);
   const [sendTitle, setSendTitle] = useState('');
   const [sendingScheme, setSendingScheme] = useState(false);
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [finalizingScheme, setFinalizingScheme] = useState(false);
   const [deletingGeneration, setDeletingGeneration] = useState(false);
   const [deletingWorkflowId, setDeletingWorkflowId] = useState<string | null>(null);
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
@@ -887,6 +889,24 @@ export function WorkbenchWorkspace() {
     }
   };
 
+  const finalizeScheme = async () => {
+    if (!selectedLeadId || !selectedWorkflowId) return;
+    setFinalizingScheme(true);
+    try {
+      await readJson(await fetch(
+        `/api/leads/${selectedLeadId}/ai-scheme-publications/${selectedWorkflowId}/finalize`,
+        { method: 'POST' },
+      ));
+      notify.success('已设为定稿');
+      setFinalizeOpen(false);
+      await loadConversation(selectedWorkflowId, true);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '定稿失败');
+    } finally {
+      setFinalizingScheme(false);
+    }
+  };
+
   const deleteGeneration = async (generation: CreationGeneration) => {
     if (!selectedWorkflowId || !selectedLeadId) return;
     if (deletingGeneration) return;
@@ -977,7 +997,18 @@ export function WorkbenchWorkspace() {
         </div>
         <div className="flex items-center gap-2">
           {detail?.publishedScheme ? (
-            <span className={cn('hidden rounded-full px-3 py-1 text-xs sm:inline', t.badge)}>已发给客户 · {detail.publishedScheme.generationIds.length} 张</span>
+            <span className={cn('hidden rounded-full px-3 py-1 text-xs sm:inline', t.badge)}>
+              {detail.publishedScheme.finalized ? '已定稿' : '已发给客户'} · {detail.publishedScheme.generationIds.length} 张
+            </span>
+          ) : null}
+          {detail?.publishedScheme && !detail.publishedScheme.finalized ? (
+            <Button
+              size="small"
+              onClick={() => setFinalizeOpen(true)}
+              className={cn('hidden sm:inline-flex', t.iconBtn)}
+            >
+              设为定稿
+            </Button>
           ) : null}
           <Button
             size="small"
@@ -1497,6 +1528,30 @@ export function WorkbenchWorkspace() {
           popupClassName={t.selectPopup}
           options={eligibleFloorPlans.map((plan) => ({ value: plan.id, label: plan.name || '正式户型' }))}
         />
+      </Modal>
+
+      <Modal
+        open={finalizeOpen}
+        onCancel={() => setFinalizeOpen(false)}
+        title="设为定稿"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button className={t.iconBtn} onClick={() => setFinalizeOpen(false)}>取消</Button>
+            <Button
+              type="primary"
+              disabled={finalizingScheme}
+              className={cn(dark ? '!bg-[#7047ff] hover:!bg-[#6034ee]' : '!bg-[#16a34a] hover:!bg-[#15803d]')}
+              onClick={() => void finalizeScheme()}
+            >
+              {finalizingScheme ? '定稿中…' : '确认定稿'}
+            </Button>
+          </div>
+        }
+        className={dark ? '[&_.ant-modal-content]:bg-[#1b1c20] [&_.ant-modal-content]:text-white [&_.ant-modal-header]:bg-[#1b1c20] [&_.ant-modal-title]:text-white [&_.ant-modal-close]:text-white' : undefined}
+      >
+        <p className={cn('text-sm', t.muted)}>
+          客户档案与方案册将优先展示「{detail?.publishedScheme?.title || detail?.workflow.title || '当前方案'}」。定稿后仍可继续出图和更新方案，直到您改指定稿或撤回该套方案。
+        </p>
       </Modal>
 
       <Modal

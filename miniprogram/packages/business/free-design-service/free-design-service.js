@@ -1,4 +1,14 @@
 const api = require('../../../utils/api.js');
+const { leaveScanLanding } = require('../../../utils/identity-navigation.js');
+
+function currentSignedIdentity() {
+  const app = typeof getApp === 'function' ? getApp() : null;
+  const globalData = (app && app.globalData) || {};
+  return {
+    ...(globalData.userInfo || {}),
+    ...((globalData.bootstrap && globalData.bootstrap.current) || {})
+  };
+}
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -433,6 +443,13 @@ Page({
 
   onBack() {
     if (this.data.submitting) return;
-    wx.navigateBack({ delta: 1, fail: () => wx.switchTab({ url: '/pages/index/index' }) });
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    if (pages && pages.length > 1) {
+      wx.navigateBack({
+        fail: () => leaveScanLanding(currentSignedIdentity())
+      });
+      return;
+    }
+    leaveScanLanding(currentSignedIdentity());
   }
 });

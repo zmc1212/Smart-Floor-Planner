@@ -237,6 +237,7 @@
   font-size: 32rpx;
   font-weight: 600;
   line-height: 92rpx;
+  white-space: nowrap;
 }
 
 .primary-action::after,
@@ -251,10 +252,12 @@
   color: #fff;
 }
 
-.primary-action[disabled] {
-  color: var(--action-disabled-text);
-  background: var(--action-disabled-bg);
+.primary-action[disabled],
+button.primary-action[disabled] {
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
   box-shadow: none;
+  opacity: 1;
 }
 
 .danger-action {

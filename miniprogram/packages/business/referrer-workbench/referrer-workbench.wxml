@@ -56,10 +56,12 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
           </view>
         </view>
         <button class="hero-cta-btn" bindtap="showServiceCode" hover-class="cta-btn-pressed">
-          <view class="cta-qr-icon">
-            <image src="/images/mine-icons/scan.png" mode="aspectFit" class="cta-icon-img" />
+          <view class="cta-inner">
+            <view class="cta-qr-icon">
+              <image src="/images/mine-icons/scan.png" mode="aspectFit" class="cta-icon-img" />
+            </view>
+            <text class="cta-btn-text">出示推广服务码</text>
           </view>
-          <text class="cta-btn-text">出示推广服务码</text>
         </button>
       </view>
       <view class="hero-mascot-wrap">

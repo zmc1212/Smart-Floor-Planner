@@ -1,4 +1,5 @@
 {
   "navigationBarTitleText": "出示入驻码",
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "enableShareAppMessage": true
 }

@@ -204,8 +204,18 @@
 }
 
 .primary-btn[disabled],
-.secondary-btn[disabled] {
-  opacity: 0.55;
+button.primary-btn[disabled] {
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.secondary-btn[disabled],
+button.secondary-btn[disabled] {
+  color: #5d8a6c !important;
+  background: #d7eadc !important;
+  opacity: 1;
 }
 
 .secondary-btn.solid {

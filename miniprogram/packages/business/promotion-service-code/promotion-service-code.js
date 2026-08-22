@@ -1,4 +1,5 @@
 const api = require('../../../utils/api.js');
+const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -102,6 +103,25 @@ Page({
 
   onRetry() {
     this.loadServiceCode();
+  },
+
+  onBack() {
+    const pages = getCurrentPages();
+    if (pages && pages.length > 1) {
+      wx.navigateBack({
+        fail: () => this.leaveToRoleHome()
+      });
+      return;
+    }
+    this.leaveToRoleHome();
+  },
+
+  leaveToRoleHome() {
+    const app = getApp();
+    const identity = app && app.globalData && app.globalData.userInfo;
+    if (!navigateToRoleLanding(identity)) {
+      wx.switchTab({ url: '/pages/index/index' });
+    }
   },
 
   onShareAppMessage() {

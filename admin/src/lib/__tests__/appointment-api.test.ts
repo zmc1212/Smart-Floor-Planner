@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { appointmentToDto, parseAppointmentLocation } from '@/lib/appointment-api';
+import {
+  communityNameFromAppointment,
+  appointmentToDto,
+  parseAppointmentLocation,
+} from '@/lib/appointment-api';
 
 test('appointment address updates resolve Mini Program staff identity before Admin JWT', () => {
   const source = fs.readFileSync(
@@ -59,4 +63,20 @@ test('appointment locations accept only bounded GCJ-02 coordinates', () => {
   });
   assert.throws(() => parseAppointmentLocation({ latitude: 91, longitude: 113, coordinateSystem: 'gcj02' }));
   assert.throws(() => parseAppointmentLocation({ latitude: 23, longitude: 113, coordinateSystem: 'wgs84' }));
+});
+
+test('communityNameFromAppointment prefers the map POI and falls back to the typed address', () => {
+  assert.equal(communityNameFromAppointment({
+    locationName: ' 阳光花园 ',
+    address: '阳光花园 3栋2单元501',
+  }), '阳光花园');
+  assert.equal(communityNameFromAppointment({
+    locationName: '',
+    address: ' 万科金色家园3栋 ',
+  }), '万科金色家园3栋');
+  assert.equal(communityNameFromAppointment({
+    locationName: 'x'.repeat(200),
+    address: 'ignored',
+  }).length, 160);
+  assert.equal(communityNameFromAppointment({ locationName: '  ', address: '  ' }), '');
 });

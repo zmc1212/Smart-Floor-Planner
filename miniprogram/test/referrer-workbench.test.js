@@ -222,6 +222,9 @@ test('referrer workbench ships the Antigravity standalone asset and preserves th
   assert.match(wxml, /bindtap="onLogout"/);
   assert.match(wxml, /bindtap="openProgress"/);
   assert.match(wxml, /bindtap="openEarnings"/);
+  assert.match(wxml, /cta-inner/);
+  assert.match(less, /\.hero-cta-btn\s*\{[\s\S]*white-space:\s*nowrap/);
+  assert.match(less, /\.cta-btn-text\s*\{[\s\S]*white-space:\s*nowrap/);
   assert.match(less, /account-common\.less/);
   assert.match(less, /overflow-y:\s*auto/);
   assert.match(less, /\.quick-nav-grid/);

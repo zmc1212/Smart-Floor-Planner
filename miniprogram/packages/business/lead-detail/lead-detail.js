@@ -2,6 +2,13 @@ const api = require('../../../utils/api.js');
 const surveyLayout = require('../../../utils/surveyLayout.js');
 const { openSurveyingEditor, clearSurveyingEditorDraft } = require('../../../utils/surveyNavigation.js');
 const { openAIDesignEntry } = require('../../../utils/aiDesignNavigation.js');
+const {
+  fetchProtectedImage,
+  readCachedProtectedImage,
+  floorPlanCacheKey,
+  publishedImageCacheKey,
+} = require('../../../utils/protectedImageCache.js');
+const { createWallSegments, resolveProtectedPreviewEndpoint } = require('../../../components/lead-list/lead-list-model.js');
 
 const STATUS_LABELS = {
   new: '新线索',
@@ -83,57 +90,19 @@ function formatSchemeDate(value) {
   return `${date.getMonth() + 1}月${date.getDate()}日`;
 }
 
-function getAuthToken() {
-  const app = getApp();
-  return (app && app.globalData && app.globalData.token) || wx.getStorageSync('token') || '';
-}
-
-function fetchProtectedImage(endpoint, cacheKey) {
-  const baseUrl = api.getBaseUrls()[0];
-  const token = getAuthToken();
-  return new Promise((resolve, reject) => {
-    wx.request({
-      url: `${String(baseUrl).replace(/\/+$/, '')}${endpoint}`,
-      method: 'GET',
-      responseType: 'arraybuffer',
-      header: { Authorization: token ? `Bearer ${token}` : '' },
-      success(response) {
-        if (response.statusCode !== 200 || !response.data) {
-          reject(new Error(`HTTP ${response.statusCode}`));
-          return;
-        }
-        const contentType = String(
-          response.header && (response.header['content-type'] || response.header['Content-Type']) || ''
-        ).toLowerCase();
-        const extension = contentType.includes('png')
-          ? 'png'
-          : contentType.includes('jpeg') || contentType.includes('jpg')
-            ? 'jpg'
-            : '';
-        if (!extension) {
-          reject(new Error('图片格式不受支持'));
-          return;
-        }
-        const safeKey = String(cacheKey || 'asset').replace(/[^a-zA-Z0-9_-]/g, '');
-        const filePath = `${wx.env.USER_DATA_PATH}/lead-detail-${safeKey || 'asset'}.${extension}`;
-        wx.getFileSystemManager().writeFile({
-          filePath,
-          data: response.data,
-          success: () => resolve(filePath),
-          fail: (error) => reject(error instanceof Error ? error : new Error(error && error.errMsg || '图片临时文件写入失败')),
-        });
-      },
-      fail: (error) => reject(error instanceof Error ? error : new Error(error && error.errMsg || '图片读取失败')),
-    });
-  });
+function resolveSchemeCoverGenerationId(scheme) {
+  const images = Array.isArray(scheme && scheme.images) ? scheme.images : [];
+  const cover = images.length ? images[images.length - 1] : null;
+  return (cover && cover.generationId)
+    || (Array.isArray(scheme && scheme.generationIds) ? scheme.generationIds[scheme.generationIds.length - 1] : '')
+    || '';
 }
 
 function resolveSchemeCoverEndpoint(scheme, leadId) {
   const images = Array.isArray(scheme && scheme.images) ? scheme.images : [];
   const cover = images.length ? images[images.length - 1] : null;
   if (cover && cover.imageEndpoint) return cover.imageEndpoint;
-  const generationId = cover && cover.generationId
-    || (Array.isArray(scheme && scheme.generationIds) ? scheme.generationIds[scheme.generationIds.length - 1] : '');
+  const generationId = resolveSchemeCoverGenerationId(scheme);
   if (!generationId || !leadId) return '';
   return `/leads/${leadId}/published-generations/${generationId}/image`;
 }
@@ -143,13 +112,16 @@ function decoratePublishedScheme(scheme, leadId) {
     || (Array.isArray(scheme && scheme.images) ? scheme.images.length : 0)
     || (Array.isArray(scheme && scheme.generationIds) ? scheme.generationIds.length : 0);
   const coverEndpoint = resolveSchemeCoverEndpoint(scheme, leadId);
+  const generationId = resolveSchemeCoverGenerationId(scheme);
+  const cacheKey = publishedImageCacheKey(leadId, generationId || `${scheme && scheme.id}-cover`);
   return {
     ...scheme,
     imageCount,
     coverEndpoint,
-    coverPath: '',
+    coverCacheKey: cacheKey,
+    coverPath: coverEndpoint ? readCachedProtectedImage(cacheKey) : '',
     displayMeta: [
-      '已发布',
+      scheme && scheme.finalized ? '定稿' : '已发布',
       formatSchemeDate(scheme && scheme.publishedAt),
     ].filter(Boolean).join(' · '),
   };
@@ -188,6 +160,78 @@ function getStaffName(value) {
   if (!value) return '';
   if (typeof value === 'object') return value.displayName || value.username || '';
   return String(value);
+}
+
+function getStaffContact(value, options = {}) {
+  const canAssign = Boolean(options.canAssign);
+  if (!value || typeof value !== 'object') {
+    return { name: '待分配', phone: '', canCall: false, canAssign };
+  }
+  const name = String(value.displayName || value.username || '').trim();
+  const phone = String(value.phone || '').trim();
+  const isUnassigned = !name;
+  return {
+    name: name || '待分配',
+    phone,
+    canCall: Boolean(phone),
+    canAssign: canAssign && isUnassigned,
+  };
+}
+
+function getClosedSpaceNames(plan) {
+  const floor = surveyLayout.getActiveFloor(plan && plan.layoutData);
+  return (Array.isArray(floor && floor.spaces) ? floor.spaces : [])
+    .filter((space) => space && space.closed)
+    .map((space) => String(space.name || '').trim())
+    .filter(Boolean);
+}
+
+function buildHouseFacts(lead, activeFloorPlan, appointment) {
+  if (!lead || !activeFloorPlan || !POST_SURVEY_SERVICE_STAGES.has(lead.serviceStage)) {
+    return null;
+  }
+  const facts = [];
+  const communityName = String(lead.communityName || '').trim();
+  if (communityName) facts.push({ label: '小区', value: communityName });
+  const area = String(lead.area || '').trim();
+  if (area) facts.push({ label: '面积', value: `${area}m²` });
+  const address = String((appointment && appointment.address) || '').trim();
+  if (address) facts.push({ label: '地址', value: address });
+  const roomNames = getClosedSpaceNames(activeFloorPlan);
+  if (roomNames.length) facts.push({ label: '房间', value: roomNames.join('、') });
+  if (!facts.length) return null;
+  return { facts, roomNames };
+}
+
+function canViewFloorPlanPreview(lead, staffRole, staffId, activeFloorPlan) {
+  if (!lead || !activeFloorPlan || activeFloorPlan.status !== 'completed') return false;
+  if (staffRole === 'enterprise_admin') return true;
+  if (!staffId) return false;
+  if (staffRole === 'designer' && staffIdOf(lead.assignedTo) === staffId) return true;
+  if (staffRole === 'measurer' && staffIdOf(lead.measurerId) === staffId) return true;
+  return false;
+}
+
+function buildFloorPlanPreviewState(leadId, plan) {
+  if (!plan) {
+    return {
+      previewPath: '',
+      previewState: '',
+      previewEndpoint: '',
+      previewSegments: [],
+    };
+  }
+  const previewEndpoint = resolveProtectedPreviewEndpoint(plan);
+  const previewSegments = previewEndpoint ? [] : createWallSegments(plan.layoutData);
+  const cacheKey = floorPlanCacheKey(leadId, plan);
+  const previewPath = previewEndpoint ? readCachedProtectedImage(cacheKey) : '';
+  return {
+    previewPath,
+    previewState: previewEndpoint ? (previewPath ? 'loaded' : 'loading') : '',
+    previewEndpoint,
+    previewSegments,
+    previewCacheKey: cacheKey,
+  };
 }
 
 function getPlanSpaceCount(plan) {
@@ -300,6 +344,19 @@ Page({
     conversionSkipsStages: false,
     publishedSchemes: [],
     canOpenAIDesign: false,
+    measurerContact: getStaffContact(null),
+    designerContact: getStaffContact(null),
+    canViewFloorPlanPreview: false,
+    floorPlanPreviewPath: '',
+    floorPlanPreviewState: '',
+    floorPlanPreviewSegments: [],
+    houseFacts: null,
+    showStaffAssignSheet: false,
+    staffAssignRole: '',
+    staffAssignLoading: false,
+    staffAssignSubmitting: false,
+    staffAssignCandidates: [],
+    staffAssignError: '',
     loading: true,
     errorMessage: '',
     deleting: false
@@ -332,6 +389,9 @@ Page({
     const staffId = getStaffId();
     const isAssignedMeasurer = Boolean(staffId) && staffIdOf(lead.measurerId) === staffId;
     const conversionActions = lead.conversionActions || {};
+    const activeFloorPlan = formalPlans[0] || null;
+    const canAssignStaff = staffRole === 'enterprise_admin' && !lead.archivedAt;
+    const previewState = buildFloorPlanPreviewState(this.data.leadId, activeFloorPlan);
     this.setData({
       lead,
       staffRole,
@@ -347,14 +407,49 @@ Page({
       canEditProfile: canEditLeadProfile(lead, staffRole, staffId),
       canEditMeasurements: staffRole === 'measurer' || isAssignedMeasurer,
       conversionSkipsStages: !['designing', 'measured', 'assigned', 'quoting'].includes(lead.status),
-      activeFloorPlan: formalPlans[0] || null,
+      activeFloorPlan,
       previousFloorPlans: formalPlans.slice(1),
       publishedSchemes,
       canOpenAIDesign: canOpenAIDesignWorkbench(lead, staffRole, formalPlans),
+      measurerContact: getStaffContact(lead.measurerId, { canAssign: canAssignStaff && !lead.measurerId }),
+      designerContact: getStaffContact(lead.assignedTo, { canAssign: canAssignStaff && !lead.assignedTo }),
+      canViewFloorPlanPreview: canViewFloorPlanPreview(lead, staffRole, staffId, activeFloorPlan),
+      floorPlanPreviewPath: previewState.previewPath,
+      floorPlanPreviewState: previewState.previewState,
+      floorPlanPreviewSegments: previewState.previewSegments,
       loading: false
     });
     this.refreshAppointmentEntry(staffRole, lead, isAssignedMeasurer);
     this.loadPublishedSchemeCovers(publishedSchemes);
+    this.loadFloorPlanPreview(activeFloorPlan, previewState);
+  },
+
+  async loadFloorPlanPreview(plan, previewState) {
+    const state = previewState || buildFloorPlanPreviewState(this.data.leadId, plan);
+    if (!this.data.canViewFloorPlanPreview || !plan || !state.previewEndpoint) return;
+    if (state.previewPath) {
+      this.setData({
+        floorPlanPreviewPath: state.previewPath,
+        floorPlanPreviewState: 'loaded',
+      });
+      return;
+    }
+    try {
+      const previewPath = await fetchProtectedImage(
+        state.previewEndpoint,
+        state.previewCacheKey || floorPlanCacheKey(this.data.leadId, plan)
+      );
+      this.setData({
+        floorPlanPreviewPath: previewPath,
+        floorPlanPreviewState: 'loaded',
+      });
+    } catch (error) {
+      const segments = createWallSegments(plan.layoutData);
+      this.setData({
+        floorPlanPreviewState: segments.length ? 'graph' : 'error',
+        floorPlanPreviewSegments: segments,
+      });
+    }
   },
 
   async loadPublishedSchemeCovers(schemes) {
@@ -366,7 +461,7 @@ Page({
       try {
         const coverPath = await fetchProtectedImage(
           scheme.coverEndpoint,
-          `${this.data.leadId}-${scheme.id || index}-cover`
+          scheme.coverCacheKey || publishedImageCacheKey(this.data.leadId, scheme.id || index)
         );
         updates[`publishedSchemes[${index}].coverPath`] = coverPath;
       } catch (error) {
@@ -377,15 +472,33 @@ Page({
   },
 
   async refreshAppointmentEntry(staffRole, lead, isAssignedMeasurer) {
-    if (shouldHideOperationalAppointment(lead)) {
-      this.setData({ appointment: null, canScheduleAppointment: false, canRebookAppointment: false });
-      return;
-    }
+    const hideOperational = shouldHideOperationalAppointment(lead);
+    const activeFloorPlan = this.data.activeFloorPlan;
+    const needsHouseFacts = Boolean(
+      lead
+      && activeFloorPlan
+      && POST_SURVEY_SERVICE_STAGES.has(lead.serviceStage)
+    );
     const canOpen = ['designer', 'measurer', 'enterprise_admin'].includes(staffRole)
       && lead
       && this.data.leadId;
+
+    if (!needsHouseFacts && hideOperational) {
+      this.setData({
+        appointment: null,
+        canScheduleAppointment: false,
+        canRebookAppointment: false,
+        houseFacts: null,
+      });
+      return;
+    }
     if (!canOpen) {
-      this.setData({ appointment: null, canScheduleAppointment: false, canRebookAppointment: false });
+      this.setData({
+        appointment: null,
+        canScheduleAppointment: false,
+        canRebookAppointment: false,
+        houseFacts: buildHouseFacts(lead, activeFloorPlan, null),
+      });
       return;
     }
     try {
@@ -395,19 +508,29 @@ Page({
         || items.find((item) => item.status === 'expired' || item.status === 'cancelled')
         || items[0]
         || null;
-      const canBook = Boolean(lead.canRebook)
+      const normalizedAppointment = appointment
+        ? { ...appointment, summary: appointmentSummary(appointment.timeRange) }
+        : null;
+      const canBook = !hideOperational
+        && Boolean(lead.canRebook)
         && (
           staffRole === 'enterprise_admin'
           || staffRole === 'designer'
           || (staffRole === 'measurer' && lead.source === 'staff_activity' && isAssignedMeasurer)
         );
       this.setData({
-        appointment: appointment ? { ...appointment, summary: appointmentSummary(appointment.timeRange) } : null,
+        appointment: hideOperational ? null : normalizedAppointment,
         canScheduleAppointment: canBook,
-        canRebookAppointment: canBook && Boolean(appointment)
+        canRebookAppointment: canBook && Boolean(appointment),
+        houseFacts: buildHouseFacts(lead, activeFloorPlan, normalizedAppointment),
       });
     } catch (error) {
-      this.setData({ appointment: null, canScheduleAppointment: false, canRebookAppointment: false });
+      this.setData({
+        appointment: null,
+        canScheduleAppointment: false,
+        canRebookAppointment: false,
+        houseFacts: buildHouseFacts(lead, activeFloorPlan, null),
+      });
     }
   },
 
@@ -501,6 +624,103 @@ Page({
     this.fetchLeadDetail();
   },
 
+  onCallStaff(event) {
+    const phone = String((event.currentTarget.dataset && event.currentTarget.dataset.phone) || '').trim();
+    if (!phone) return;
+    wx.makePhoneCall({ phoneNumber: phone });
+  },
+
+  onStaffCardTap(event) {
+    const role = String((event.currentTarget.dataset && event.currentTarget.dataset.role) || '');
+    const contact = role === 'designer' ? this.data.designerContact : this.data.measurerContact;
+    if (contact && contact.canAssign) {
+      this.openStaffAssignSheet(role);
+      return;
+    }
+    this.onCallStaff(event);
+  },
+
+  openStaffAssignSheet(role) {
+    if (this.data.staffRole !== 'enterprise_admin' || this.data.staffAssignSubmitting) return;
+    const normalizedRole = role === 'measurer' ? 'measurer' : 'designer';
+    this.setData({
+      showStaffAssignSheet: true,
+      staffAssignRole: normalizedRole,
+      staffAssignLoading: true,
+      staffAssignError: '',
+      staffAssignCandidates: [],
+    });
+    this.loadStaffAssignCandidates(normalizedRole);
+  },
+
+  onCloseStaffAssignSheet() {
+    if (this.data.staffAssignSubmitting) return;
+    this.setData({
+      showStaffAssignSheet: false,
+      staffAssignRole: '',
+      staffAssignCandidates: [],
+      staffAssignError: '',
+    });
+  },
+
+  async loadStaffAssignCandidates(role) {
+    try {
+      const result = await api.request(
+        `/miniprogram/enterprise-staff?role=${encodeURIComponent(role)}`,
+        'GET'
+      );
+      const items = (result.data && result.data.items) || [];
+      const staffAssignCandidates = items
+        .filter((item) => item && item.assignmentEligible)
+        .map((item) => ({
+          id: item.id,
+          displayName: item.displayName,
+          phone: item.phone || '',
+          roleLabel: item.roleLabel,
+          statusLabel: item.statusLabel,
+          statusTone: item.statusTone,
+        }));
+      this.setData({
+        staffAssignLoading: false,
+        staffAssignCandidates,
+        staffAssignError: staffAssignCandidates.length ? '' : '当前没有可派人员',
+      });
+    } catch (error) {
+      this.setData({
+        staffAssignLoading: false,
+        staffAssignError: (error && (error.error || error.message)) || '人员名册加载失败',
+        staffAssignCandidates: [],
+      });
+    }
+  },
+
+  async onConfirmStaffAssign(event) {
+    const staffId = String((event.currentTarget.dataset && event.currentTarget.dataset.id) || '');
+    const role = this.data.staffAssignRole;
+    if (!staffId || !role || !this.data.leadId || this.data.staffAssignSubmitting) return;
+    this.setData({ staffAssignSubmitting: true });
+    try {
+      const payload = role === 'designer'
+        ? { designerId: staffId }
+        : { measurerId: staffId };
+      const res = await api.request(`/leads/${this.data.leadId}/assign-staff`, 'POST', payload);
+      if (!res.success || !res.data) throw new Error((res && res.error) || '派单失败');
+      this.setData({ showStaffAssignSheet: false, staffAssignRole: '' });
+      this.applyLeadDetail(res.data);
+      wx.showToast({ title: '派单成功', icon: 'success' });
+    } catch (err) {
+      wx.showToast({ title: (err && err.error) || (err && err.message) || '派单失败，请重试', icon: 'none' });
+    } finally {
+      this.setData({ staffAssignSubmitting: false });
+    }
+  },
+
+  onPreviewFloorPlan() {
+    const { floorPlanPreviewPath } = this.data;
+    if (!floorPlanPreviewPath) return;
+    wx.previewImage({ current: floorPlanPreviewPath, urls: [floorPlanPreviewPath] });
+  },
+
   onScheduleAppointment() {
     if (!this.data.canScheduleAppointment || !this.data.leadId) return;
     wx.navigateTo({
@@ -528,8 +748,10 @@ Page({
 
   onOpenAllPublishedSchemes() {
     if (!this.data.leadId || !this.data.publishedSchemes.length) return;
+    const finalized = this.data.publishedSchemes.find((scheme) => scheme && scheme.finalized);
+    const schemeId = finalized ? `&schemeId=${encodeURIComponent(finalized.id)}` : '';
     wx.navigateTo({
-      url: `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(this.data.leadId)}&mode=staff`,
+      url: `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(this.data.leadId)}${schemeId}&mode=staff`,
     });
   },
 

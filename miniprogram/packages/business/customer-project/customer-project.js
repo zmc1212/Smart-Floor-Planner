@@ -3,6 +3,12 @@ const {
   hasDesignerContact,
   copyDesignerWechatId,
 } = require('../../../utils/designerContact');
+const {
+  fetchProtectedImage,
+  readCachedProtectedImage,
+  floorPlanCacheKey,
+  publishedImageCacheKey,
+} = require('../../../utils/protectedImageCache');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -43,66 +49,76 @@ function buildProjectStages(project) {
   }));
 }
 
-function getAuthToken() {
-  const app = getApp();
-  return (app && app.globalData && app.globalData.token) || wx.getStorageSync('token') || '';
+function previousImageMap(schemes) {
+  const map = {};
+  (Array.isArray(schemes) ? schemes : []).forEach((scheme) => {
+    (scheme && scheme.images ? scheme.images : []).forEach((image) => {
+      const key = String((image && (image.generationId || image.id)) || '');
+      if (key && image.imagePath) map[key] = { imagePath: image.imagePath, imageState: image.imageState };
+    });
+  });
+  return map;
 }
 
-function fetchProtectedImage(endpoint, cacheKey) {
-  const baseUrl = api.getBaseUrls()[0];
-  const token = getAuthToken();
-  return new Promise((resolve, reject) => {
-    wx.request({
-      url: `${String(baseUrl).replace(/\/+$/, '')}${endpoint}`,
-      method: 'GET',
-      responseType: 'arraybuffer',
-      header: { Authorization: token ? `Bearer ${token}` : '' },
-      success(response) {
-        if (response.statusCode !== 200 || !response.data) {
-          reject(new Error(`HTTP ${response.statusCode}`));
-          return;
-        }
-        const contentType = String(response.header && (response.header['content-type'] || response.header['Content-Type']) || '').toLowerCase();
-        const extension = contentType.includes('png') ? 'png' : contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' : '';
-        if (!extension) {
-          reject(new Error('图片格式不受支持'));
-          return;
-        }
-        const safeKey = String(cacheKey || 'asset').replace(/[^a-zA-Z0-9_-]/g, '');
-        const filePath = `${wx.env.USER_DATA_PATH}/customer-project-${safeKey || 'asset'}.${extension}`;
-        wx.getFileSystemManager().writeFile({
-          filePath,
-          data: response.data,
-          success: () => resolve(filePath),
-          fail: (error) => reject(error instanceof Error ? error : new Error(error && error.errMsg || '图片临时文件写入失败')),
-        });
-      },
-      fail: (error) => reject(error instanceof Error ? error : new Error(error && error.errMsg || '图片读取失败')),
-    });
+function decoratePublishedDesigns(items, leadId, previousById) {
+  return (Array.isArray(items) ? items : []).map((item) => {
+    const key = String((item && (item.generationId || item.id)) || '');
+    const diskPath = key ? readCachedProtectedImage(publishedImageCacheKey(leadId, key)) : '';
+    const previous = previousById && previousById[key];
+    const imagePath = diskPath || (previous && previous.imagePath) || '';
+    return {
+      ...item,
+      imagePath,
+      imageState: imagePath ? 'loaded' : (item && item.imageEndpoint ? 'loading' : 'error'),
+    };
   });
 }
 
-function decoratePublishedDesigns(items) {
-  return (Array.isArray(items) ? items : []).map((item) => ({
-    ...item,
-    imagePath: '',
-    imageState: item && item.imageEndpoint ? 'loading' : 'error',
-  }));
-}
-
-function decoratePublishedSchemes(schemes, designs) {
+function decoratePublishedSchemes(schemes, designs, leadId, previousById) {
   if (Array.isArray(schemes) && schemes.length) {
     return schemes.map((scheme) => ({
       ...scheme,
-      images: decoratePublishedDesigns(scheme && scheme.images),
+      images: decoratePublishedDesigns(scheme && scheme.images, leadId, previousById),
     }));
   }
-  const images = decoratePublishedDesigns(designs);
+  const images = decoratePublishedDesigns(designs, leadId, previousById);
   if (!images.length) return [];
   return [{ id: 'legacy', title: '其他效果图', images }];
 }
 
+function buildFeaturedDelivery(schemes, fallbackScheme) {
+  const featuredFromSchemes = (Array.isArray(schemes) ? schemes : []).find((scheme) => scheme && scheme.finalized)
+    || (schemes && schemes[0]);
+  if (featuredFromSchemes && featuredFromSchemes.images && featuredFromSchemes.images[0]) {
+    const first = featuredFromSchemes.images[0];
+    return {
+      id: featuredFromSchemes.id,
+      title: featuredFromSchemes.title,
+      publishedLabel: buildPublishedSchemeLabel(featuredFromSchemes),
+      styleTag: String(featuredFromSchemes.title || '').startsWith('#')
+        ? featuredFromSchemes.title
+        : `#${featuredFromSchemes.title || '设计方案'}`,
+      images: featuredFromSchemes.images,
+      imagePath: first.imagePath || '',
+      imageState: first.imageState,
+      generationId: first.generationId || first.id,
+    };
+  }
+  if (!fallbackScheme) return null;
+  return {
+    ...fallbackScheme,
+    publishedLabel: buildPublishedSchemeLabel(fallbackScheme),
+    imagePath: '',
+    imageState: fallbackScheme.imageEndpoint ? 'loading' : 'error',
+    images: [],
+  };
+}
+
 function buildPublishedSchemeLabel(scheme) {
+  if (scheme && scheme.finalized) {
+    const title = String(scheme.title || '').trim().replace(/^#+/, '');
+    return title ? `已定稿 · ${title}` : '已定稿';
+  }
   const title = String(scheme && (scheme.title || scheme.schemeTitle) || '').trim().replace(/^#+/, '');
   if (!title) return '已发布方案';
   return `已发布${title.endsWith('方案') ? title : `${title}方案`}`;
@@ -160,42 +176,62 @@ Page({
     error: '',
     canContactDesigner: false,
     showContactSheet: false,
+    showSchemePoster: false,
+    posterImagePath: '',
+    posterSchemeTitle: '',
   },
 
   onLoad(query) {
     this._assetRequestId = 0;
+    this._archiveReady = false;
     this.setData({ ...navigationMetrics(), leadId: query.leadId || query.id || '' });
     this.load();
   },
 
   async onShow() {
-    if (this.data.leadId) await this.load();
+    if (typeof wx.hideShareMenu === 'function') {
+      wx.hideShareMenu({ menus: ['shareAppMessage', 'shareTimeline'] });
+    }
+    if (!this.data.leadId || !this._archiveReady) return;
+    await this.load({ silent: true });
   },
 
   onUnload() {
     this._assetRequestId = (this._assetRequestId || 0) + 1;
+    this._archiveReady = false;
   },
 
-  async load() {
+  async load(options) {
+    const silent = Boolean(options && options.silent);
     if (!this.data.leadId) return this.setData({ loading: false, error: '缺少客户项目' });
     this._assetRequestId = (this._assetRequestId || 0) + 1;
-    this.setData({ loading: true, error: '' });
+    if (!silent) this.setData({ loading: true, error: '' });
     try {
       const result = await api.request(`/miniprogram/customer-projects/${encodeURIComponent(this.data.leadId)}`, 'GET');
       const project = result.data || {};
       const appointment = project.appointment || null;
-      const publishedSchemes = decoratePublishedSchemes(project.publishedSchemes, project.publishedDesigns);
+      const publishedSchemes = decoratePublishedSchemes(
+        project.publishedSchemes,
+        project.publishedDesigns,
+        this.data.leadId,
+        previousImageMap(this.data.publishedSchemes)
+      );
       const publishedDesigns = publishedSchemes.flatMap((scheme) => scheme.images);
       const formalFloorPlan = project.formalFloorPlan || null;
-      const featuredDelivery = project.featuredScheme
-        ? {
-            ...project.featuredScheme,
-            publishedLabel: buildPublishedSchemeLabel(project.featuredScheme),
-            imagePath: '',
-            imageState: project.featuredScheme.imageEndpoint ? 'loading' : 'error',
-            images: [],
-          }
-        : null;
+      const sameFloorPlan = Boolean(
+        silent
+        && this.data.formalFloorPlan
+        && formalFloorPlan
+        && String(this.data.formalFloorPlan.id) === String(formalFloorPlan.id)
+        && String(this.data.formalFloorPlan.updatedAt || '') === String(formalFloorPlan.updatedAt || '')
+      );
+      const cachedFloorPlanPath = formalFloorPlan
+        ? readCachedProtectedImage(floorPlanCacheKey(this.data.leadId, formalFloorPlan))
+        : '';
+      const floorPlanImagePath = cachedFloorPlanPath
+        || (sameFloorPlan ? this.data.floorPlanImagePath : '')
+        || '';
+      const featuredDelivery = buildFeaturedDelivery(publishedSchemes, project.featuredScheme);
       const canRebook = Boolean(project.canRebook);
       const canReschedule = Boolean(project.canReschedule);
       this.setData({
@@ -211,8 +247,10 @@ Page({
         ),
         range: appointment ? formatRange(appointment.timeRange) : null,
         formalFloorPlan,
-        floorPlanImagePath: '',
-        floorPlanImageState: formalFloorPlan && formalFloorPlan.previewEndpoint ? 'loading' : '',
+        floorPlanImagePath,
+        floorPlanImageState: floorPlanImagePath
+          ? 'loaded'
+          : (formalFloorPlan && formalFloorPlan.previewEndpoint ? 'loading' : ''),
         featuredDelivery,
         publishedSchemes,
         publishedDesigns,
@@ -229,12 +267,16 @@ Page({
         bookingHint: canRebook && !appointment
           ? '请选择上门量房时间，也可微信联系设计师代为预约'
           : (project.nextAction || ''),
+        error: '',
       });
+      this._archiveReady = true;
       this.loadProtectedAssets(formalFloorPlan, featuredDelivery, publishedSchemes);
     } catch (error) {
+      this._archiveReady = true;
+      if (silent && this.data.heroTitle) return;
       this.setData({ error: error.message || error.error || '暂时无法加载服务档案' });
     } finally {
-      this.setData({ loading: false });
+      if (!silent) this.setData({ loading: false });
     }
   },
 
@@ -244,7 +286,10 @@ Page({
 
     if (formalFloorPlan && formalFloorPlan.previewEndpoint) {
       tasks.push(
-        fetchProtectedImage(formalFloorPlan.previewEndpoint, `${this.data.leadId}-floor-plan`)
+        fetchProtectedImage(
+          formalFloorPlan.previewEndpoint,
+          floorPlanCacheKey(this.data.leadId, formalFloorPlan)
+        )
           .then((imagePath) => ({ type: 'floorPlan', imagePath }))
           .catch((error) => {
             console.warn('Failed to load customer floor plan preview', error);
@@ -258,7 +303,10 @@ Page({
       images: await Promise.all((scheme.images || []).map(async (design) => {
         if (!design.imageEndpoint) return { ...design, imageState: 'error' };
         try {
-          const imagePath = await fetchProtectedImage(design.imageEndpoint, `${this.data.leadId}-${design.generationId || design.id}`);
+          const imagePath = await fetchProtectedImage(
+            design.imageEndpoint,
+            publishedImageCacheKey(this.data.leadId, design.generationId || design.id)
+          );
           return { ...design, imagePath, imageState: 'loaded' };
         } catch (error) {
           console.warn('Failed to load customer published design image', error);
@@ -352,22 +400,7 @@ Page({
   previewFeaturedDelivery() {
     const delivery = this.data.featuredDelivery;
     if (!delivery) return;
-    wx.showActionSheet({
-      itemList: ['详情', '保存到相册'],
-      success: (result) => {
-        if (result.tapIndex === 0) {
-          this.openAiSchemes(delivery.id);
-          return;
-        }
-        if (result.tapIndex === 1) {
-          if (!delivery.imagePath) {
-            wx.showToast({ title: '方案图片加载中，请稍后重试', icon: 'none' });
-            return;
-          }
-          this.saveImageToAlbum(delivery.imagePath);
-        }
-      },
-    });
+    this.openAiSchemes(delivery.id);
   },
 
   previewPublishedDesign(event) {
@@ -390,7 +423,8 @@ Page({
   },
 
   openAllAiSchemes() {
-    this.openAiSchemes('');
+    const finalized = this.data.publishedSchemes.find((scheme) => scheme && scheme.finalized);
+    this.openAiSchemes(finalized ? finalized.id : '');
   },
 
   collectPublishedImageUrls() {
@@ -399,48 +433,34 @@ Page({
       .filter(Boolean);
   },
 
-  async saveOrShareScheme() {
+  saveOrShareScheme() {
     const delivery = this.data.featuredDelivery;
     if (!delivery || !delivery.imagePath) {
       wx.showToast({ title: '方案尚未发布', icon: 'none' });
       return;
     }
-    await this.saveImageToAlbum(delivery.imagePath);
+    this.setData({
+      showSchemePoster: true,
+      posterImagePath: delivery.imagePath,
+      posterSchemeTitle: String(delivery.title || '').trim() || '设计方案',
+    });
   },
 
-  async saveImageToAlbum(filePath) {
-    try {
-      await wx.saveImageToPhotosAlbum({ filePath });
-      wx.showToast({ title: '方案已保存到相册', icon: 'success' });
-    } catch (error) {
-      const message = error && error.errMsg || '';
-      if (message.includes('auth deny') || message.includes('auth denied')) {
-        wx.showModal({
-          title: '需要相册权限',
-          content: '请在设置中允许保存图片到相册，或使用底部分享按钮转发方案。',
-          confirmText: '去设置',
-          success: (result) => result.confirm && wx.openSetting(),
-        });
-        return;
-      }
-      wx.showToast({ title: '保存失败，请稍后重试', icon: 'none' });
+  closeSchemePoster() {
+    this.setData({
+      showSchemePoster: false,
+      posterImagePath: '',
+      posterSchemeTitle: '',
+    });
+  },
+
+  onBack() {
+    if (getCurrentPages().length > 1) {
+      wx.navigateBack({
+        fail: () => wx.switchTab({ url: '/pages/index/index' }),
+      });
+      return;
     }
+    wx.switchTab({ url: '/pages/index/index' });
   },
-
-  onShareAppMessage() {
-    const { leadId, featuredDelivery, heroTitle } = this.data;
-    if (featuredDelivery && featuredDelivery.imagePath) {
-      return {
-        title: heroTitle ? `${heroTitle} · 我的设计方案` : '我的设计方案',
-        path: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(leadId)}`,
-        imageUrl: featuredDelivery.imagePath,
-      };
-    }
-    return {
-      title: heroTitle ? `${heroTitle} · 我的服务档案` : '我的服务档案',
-      path: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(leadId)}`,
-    };
-  },
-
-  onBack() { wx.navigateBack(); },
 });

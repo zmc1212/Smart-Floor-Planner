@@ -102,15 +102,17 @@
     <view class="footer-bar">
       <button class="footer-outline" bindtap="onBack">{{backLabel}}</button>
       <button
-        wx:if="{{showShareAction && selectedScheme && selectedScheme.cover && selectedScheme.cover.imagePath}}"
-        class="footer-primary sfp-primary-action"
-        open-type="share"
-      >保存/分享当前方案</button>
-      <button
-        wx:elif="{{showShareAction && selectedScheme}}"
+        wx:if="{{showShareAction && selectedScheme}}"
         class="footer-primary sfp-primary-action"
         bindtap="saveOrShareScheme"
       >保存/分享当前方案</button>
     </view>
   </block>
+
+  <scheme-share-poster
+    visible="{{showSchemePoster}}"
+    imagePath="{{posterImagePath}}"
+    schemeTitle="{{posterSchemeTitle}}"
+    bind:close="closeSchemePoster"
+  />
 </view>

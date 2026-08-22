@@ -8,6 +8,12 @@ const {
   designerShortcutDescription,
   copyDesignerWechatId,
 } = require('../../utils/designerContact.js');
+const {
+  fetchProtectedImage,
+  readCachedProtectedImage,
+  floorPlanCacheKey,
+  publishedImageCacheKey,
+} = require('../../utils/protectedImageCache.js');
 
 const FREE_DESIGN_ROUTE = 'packages/business/free-design-service/free-design-service';
 const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
@@ -27,51 +33,6 @@ function navigationMetrics() {
     navigationHeight: Number((menuRect && menuRect.height) || 32),
     navigationRight: Math.max(94, Number(windowInfo.windowWidth || 390) - menuLeft + 10),
   };
-}
-
-function getAuthToken() {
-  const app = getApp();
-  return (app && app.globalData && app.globalData.token) || wx.getStorageSync('token') || '';
-}
-
-function fetchProtectedImage(endpoint, cacheKey) {
-  const baseUrl = api.getBaseUrls()[0];
-  const token = getAuthToken();
-  return new Promise((resolve, reject) => {
-    wx.request({
-      url: `${String(baseUrl).replace(/\/+$/, '')}${endpoint}`,
-      method: 'GET',
-      responseType: 'arraybuffer',
-      header: { Authorization: token ? `Bearer ${token}` : '' },
-      success(response) {
-        if (response.statusCode !== 200 || !response.data) {
-          reject(new Error(`HTTP ${response.statusCode}`));
-          return;
-        }
-        const contentType = String(
-          (response.header && (response.header['content-type'] || response.header['Content-Type'])) || ''
-        ).toLowerCase();
-        const extension = contentType.includes('png')
-          ? 'png'
-          : contentType.includes('jpeg') || contentType.includes('jpg')
-            ? 'jpg'
-            : '';
-        if (!extension) {
-          reject(new Error('图片格式不受支持'));
-          return;
-        }
-        const safeKey = String(cacheKey || 'asset').replace(/[^a-zA-Z0-9_-]/g, '');
-        const filePath = `${wx.env.USER_DATA_PATH}/customer-service-home-${safeKey || 'asset'}.${extension}`;
-        wx.getFileSystemManager().writeFile({
-          filePath,
-          data: response.data,
-          success: () => resolve(filePath),
-          fail: (error) => reject(error instanceof Error ? error : new Error((error && error.errMsg) || '图片临时文件写入失败')),
-        });
-      },
-      fail: (error) => reject(error instanceof Error ? error : new Error((error && error.errMsg) || '图片读取失败')),
-    });
-  });
 }
 
 function resolveServiceEntryUrl(scanResult) {
@@ -279,6 +240,18 @@ Component({
           updatedLabel: formatUpdatedAt(project.updatedAt),
         }));
 
+        const needsFloorPlan = !detailFailed && (mediaMode === 'floor_plan' || mediaMode === 'dual');
+        const needsScheme = !detailFailed && (mediaMode === 'scheme' || mediaMode === 'dual');
+        const cachedFloorPlanPath = needsFloorPlan && detail && detail.formalFloorPlan
+          ? readCachedProtectedImage(floorPlanCacheKey(featuredLeadId, detail.formalFloorPlan))
+          : '';
+        const cachedSchemePath = needsScheme && detail && detail.featuredScheme
+          ? readCachedProtectedImage(publishedImageCacheKey(
+            featuredLeadId,
+            detail.featuredScheme.generationId
+          ))
+          : '';
+
         this._hasLoaded = true;
         this.setData({
           ...companion,
@@ -291,11 +264,11 @@ Component({
           designerShortcutDesc,
           appointmentId,
           appointmentVersion,
-          floorPlanImagePath: '',
-          schemeImagePath: '',
-          showFloorPlanThumb: false,
-          showSchemeThumb: false,
-          showXiaoK: true,
+          floorPlanImagePath: cachedFloorPlanPath,
+          schemeImagePath: cachedSchemePath,
+          showFloorPlanThumb: Boolean(cachedFloorPlanPath),
+          showSchemeThumb: Boolean(cachedSchemePath),
+          showXiaoK: !(cachedFloorPlanPath || cachedSchemePath),
           loading: false,
           showSwitcherSheet: false,
           showContactSheet: false,
@@ -322,7 +295,7 @@ Component({
       const tasks = [];
       if (needsFloorPlan && floorPlanEndpoint) {
         tasks.push(
-          fetchProtectedImage(floorPlanEndpoint, `${leadId}-floor-plan`)
+          fetchProtectedImage(floorPlanEndpoint, floorPlanCacheKey(leadId, detail.formalFloorPlan))
             .then((imagePath) => ({ type: 'floorPlan', imagePath }))
             .catch((error) => {
               console.warn('Failed to load home floor plan preview', error);
@@ -332,7 +305,10 @@ Component({
       }
       if (needsScheme && schemeEndpoint) {
         tasks.push(
-          fetchProtectedImage(schemeEndpoint, `${leadId}-scheme`)
+          fetchProtectedImage(
+            schemeEndpoint,
+            publishedImageCacheKey(leadId, detail.featuredScheme && detail.featuredScheme.generationId)
+          )
             .then((imagePath) => ({ type: 'scheme', imagePath }))
             .catch((error) => {
               console.warn('Failed to load home scheme preview', error);

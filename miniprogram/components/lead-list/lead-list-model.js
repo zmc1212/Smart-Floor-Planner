@@ -81,6 +81,12 @@ function getClosedSpaceCount(layoutData) {
   return spaces.filter((space) => space && space.closed).length;
 }
 
+function resolveProtectedPreviewEndpoint(plan) {
+  const previewUrl = String((plan && plan.previewUrl) || '').trim();
+  if (!previewUrl) return '';
+  return previewUrl.replace(/^\/api/, '');
+}
+
 function buildFloorPlanPreview(lead) {
   const plan = pickLeadFloorPlan(lead);
   if (!plan) {
@@ -89,28 +95,57 @@ function buildFloorPlanPreview(lead) {
       label: '暂无户型',
       planId: '',
       segments: [],
-      layoutLabel: ''
+      layoutLabel: '',
+      previewUrl: '',
+      previewPath: '',
+      previewEndpoint: '',
+      previewCacheKey: '',
     };
   }
 
   const segments = createWallSegments(plan.layoutData);
-  const previewUrl = String((plan.externalSource && plan.externalSource.previewUrl) || '').trim();
+  const protectedEndpoint = resolveProtectedPreviewEndpoint(plan);
+  const externalPreviewUrl = String((plan.externalSource && plan.externalSource.previewUrl) || '').trim();
   const spaceCount = getClosedSpaceCount(plan.layoutData);
   const layoutLabel = String((plan.externalSource && plan.externalSource.layoutLabel) || '').trim()
     || (spaceCount ? `${spaceCount}个空间` : '');
+  const planId = getPlanId(plan);
+  const previewCacheKey = planId
+    ? [String((lead && lead._id) || ''), 'fp', planId, String(plan.updatedAt || plan.completedAt || '')]
+      .filter(Boolean)
+      .join('-')
+    : '';
+
+  if (protectedEndpoint) {
+    return {
+      type: 'protected',
+      label: '户型预览',
+      planId,
+      previewUrl: '',
+      previewPath: '',
+      previewEndpoint: protectedEndpoint,
+      previewCacheKey,
+      segments,
+      layoutLabel,
+    };
+  }
 
   return {
-    type: previewUrl ? 'image' : (segments.length ? 'graph' : 'empty'),
+    type: externalPreviewUrl ? 'image' : (segments.length ? 'graph' : 'empty'),
     label: segments.length ? '户型预览' : '暂无预览',
-    planId: getPlanId(plan),
-    previewUrl,
+    planId,
+    previewUrl: externalPreviewUrl,
+    previewPath: '',
+    previewEndpoint: '',
+    previewCacheKey: '',
     segments,
-    layoutLabel
+    layoutLabel,
   };
 }
 
 module.exports = {
   pickLeadFloorPlan,
   createWallSegments,
-  buildFloorPlanPreview
+  buildFloorPlanPreview,
+  resolveProtectedPreviewEndpoint,
 };

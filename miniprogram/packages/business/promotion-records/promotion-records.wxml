@@ -120,4 +120,5 @@
     </scroll-view>
   </view>
 
+  <custom-tab-bar />
 </view>

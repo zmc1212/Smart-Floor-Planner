@@ -17,6 +17,11 @@ export const ROLE_LABELS: Record<string, string> = {
   viewer: '只读审计员',
 };
 
+export function getAdminRoleLabel(role: string | undefined) {
+  if (!role) return '职员';
+  return ROLE_LABELS[role] || '职员';
+}
+
 /** Menu keys shown on `/roles`. Labels must match `Sidebar` MENU_CONFIG. */
 export const ALL_MENUS = [
   { key: 'dashboard', label: '业务概览' },

@@ -61,6 +61,10 @@ real state matrix, role visibility, and safe-area assumptions.
   mixed Unicode symbols are not product icons.
 - Hairline separators use a short `1px` line with half-axis scaling rather than
   a visually heavy full border.
+- Native primary `button[disabled]` keeps `--action-disabled-bg` (`#A9D9B8`) and
+  `--action-disabled-text` so the pill stays distinct from `--bg-page` / `#f8faf9`.
+  Do not use opacity-only disabled styles: WeChat's default disabled fill is
+  `#f7f7f7` and blends into the page. Override with `[disabled]` plus `!important`.
 
 ## Panel and sheet motion
 

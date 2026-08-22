@@ -112,3 +112,29 @@ test('platform-only staff contexts are supported Mini Program workbench roles', 
     platformAdmin
   );
 });
+
+test('platform channel salesperson staff context is supported without an enterprise', () => {
+  const customer = {
+    mode: 'customer' as const,
+    enterpriseId: null,
+    enterpriseName: null,
+    staffId: null,
+    staffRole: null,
+    staffDisplayName: null,
+    referrerMembershipId: null,
+  };
+  const salesperson = {
+    ...customer,
+    mode: 'staff' as const,
+    enterpriseId: null,
+    staffId: BigInt(21),
+    staffRole: 'salesperson',
+    staffDisplayName: 'Gong Jie',
+  };
+
+  assert.equal(isMiniProgramIdentityContextSupported(salesperson), true);
+  assert.equal(
+    defaultMiniProgramIdentityContext([customer, salesperson]),
+    salesperson
+  );
+});

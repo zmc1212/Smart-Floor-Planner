@@ -401,7 +401,8 @@ test('miniprogram enterprise join-code image route is enterprise_admin only and 
 
   assert.match(list, /enterprise_admin_required/);
   assert.match(list, /listEnterpriseJoinCodes/);
-  assert.doesNotMatch(list, /token:/);
+  assert.match(list, /createEnterpriseJoinToken/);
+  assert.match(list, /token:\s*active\s*\?\s*createEnterpriseJoinToken/);
   assert.match(route, /enterprise_admin_required/);
   assert.match(route, /revealActiveEnterpriseJoinCode/);
   assert.match(route, /createEnterpriseOnboardingCode/);

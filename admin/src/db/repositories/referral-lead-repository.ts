@@ -57,6 +57,12 @@ export type ReferralAssignmentRetryResult =
     }
   | { kind: 'pending'; lead: LeadWithRelations; eventId?: bigint };
 
+export type ReferralManualAssignResult = {
+  kind: 'assigned' | 'pending';
+  lead: LeadWithRelations;
+  eventId?: bigint;
+};
+
 function referralError(code: string, message: string, status = 409) {
   return Object.assign(new Error(message), { code, status });
 }
@@ -688,6 +694,118 @@ export class ReferralLeadRepository {
         metadata: {},
       })
       .returning({ id: leadAssignmentEvents.id });
+    return {
+      kind: errorCode ? 'pending' : 'assigned',
+      lead: await this.loadLead(current.id),
+      eventId: eventRows[0]?.id,
+    };
+  }
+
+  async assignStaff(input: {
+    leadId: bigint;
+    actorStaffId?: bigint | null;
+    designerId?: bigint | null;
+    measurerId?: bigint | null;
+  }): Promise<ReferralManualAssignResult | null> {
+    if (!input.designerId && !input.measurerId) {
+      throw referralError('assign_staff_required', '请至少选择一名设计师或测量员', 400);
+    }
+
+    const lockedRows = await this.transaction
+      .select()
+      .from(leads)
+      .where(eq(leads.id, input.leadId))
+      .limit(1)
+      .for('update');
+    const current = lockedRows[0];
+    if (!current) return null;
+    if (!current.enterpriseId || current.archivedAt || current.status === 'closed') {
+      throw referralError('lead_not_assignable', '线索不存在或不可派单', 404);
+    }
+    if (input.designerId && current.assignedTo) {
+      throw referralError('designer_already_assigned', '设计师已分配，不可覆盖', 400);
+    }
+    if (input.measurerId && current.measurerId) {
+      throw referralError('measurer_already_assigned', '测量员已分配，不可覆盖', 400);
+    }
+
+    await this.lockKey(`enterprise-assignment:${current.enterpriseId.toString()}`);
+    const staffActivity = current.source === 'staff_activity';
+    const nextDesigner = current.assignedTo
+      ? await this.findEligibleStaff(current.assignedTo, 'designer', current.enterpriseId)
+      : input.designerId
+        ? await this.findEligibleStaff(input.designerId, 'designer', current.enterpriseId)
+        : null;
+    if (!current.assignedTo && input.designerId && !nextDesigner) {
+      throw referralError('designer_unavailable', '所选设计师不可派单', 400);
+    }
+
+    let nextMeasurer = current.measurerId
+      ? staffActivity
+        ? await this.findAssignedStaff(current.measurerId, current.enterpriseId)
+        : await this.findEligibleStaff(current.measurerId, 'measurer', current.enterpriseId)
+      : null;
+    if (!current.measurerId && input.measurerId) {
+      nextMeasurer = await this.findEligibleStaff(
+        input.measurerId,
+        'measurer',
+        current.enterpriseId
+      );
+      if (!nextMeasurer) {
+        throw referralError('measurer_unavailable', '所选测量员不可派单', 400);
+      }
+    }
+
+    const now = new Date();
+    const errorCode = this.assignmentErrorCode(nextDesigner, nextMeasurer);
+    const assignmentStatus = errorCode ? 'assignment_pending' : 'assigned';
+    const updatedRows = await this.transaction
+      .update(leads)
+      .set({
+        assignedTo: nextDesigner?.id ?? null,
+        measurerId: nextMeasurer?.id ?? (staffActivity ? current.measurerId : null),
+        assignedAt: nextDesigner ? current.assignedAt ?? now : null,
+        assignmentStatus,
+        assignmentErrorCode: errorCode,
+        updatedAt: now,
+      })
+      .where(eq(leads.id, current.id))
+      .returning();
+    if (!updatedRows[0]) return null;
+
+    for (const staff of [
+      !current.assignedTo && nextDesigner?.id ? nextDesigner.id : null,
+      !current.measurerId && nextMeasurer?.id ? nextMeasurer.id : null,
+    ]) {
+      if (staff) {
+        await this.transaction
+          .update(adminUsers)
+          .set({ lastAssignedAt: now, updatedAt: now })
+          .where(eq(adminUsers.id, staff));
+      }
+    }
+
+    const eventRows = await this.transaction
+      .insert(leadAssignmentEvents)
+      .values({
+        enterpriseId: current.enterpriseId,
+        leadId: current.id,
+        eventType: errorCode ? 'assignment_manual_pending' : 'assignment_manual',
+        previousDesignerId: current.assignedTo,
+        designerId: nextDesigner?.id ?? null,
+        previousMeasurerId: current.measurerId,
+        measurerId: nextMeasurer?.id ?? null,
+        actorUserId: null,
+        errorCode,
+        reason: 'miniprogram_manual_assign',
+        metadata: {
+          actorStaffId: input.actorStaffId?.toString() ?? null,
+          requestedDesignerId: input.designerId?.toString() ?? null,
+          requestedMeasurerId: input.measurerId?.toString() ?? null,
+        },
+      })
+      .returning({ id: leadAssignmentEvents.id });
+
     return {
       kind: errorCode ? 'pending' : 'assigned',
       lead: await this.loadLead(current.id),

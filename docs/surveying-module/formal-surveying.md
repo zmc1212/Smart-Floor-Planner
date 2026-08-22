@@ -16,6 +16,9 @@ experiments and rollback narratives belong in Git history, not the live contract
 ```
 
 Coordinates, lengths, wall thickness, openings, and heights use millimetres.
+Door and window `widthMm` may occupy the full host wall; `normalizeOpeningToWall`
+clamps width to that wall's current `lengthMm` (minimum 100 mm) and does not
+apply a fixed 60% wall-ratio cap.
 The graph is the only persisted editable geometry. Do not write `rooms`,
 `homeOutline`, `partitions`, `surveyDraft`, `prototypeOnly`, or a legacy layout
 copy back to `layoutData`.

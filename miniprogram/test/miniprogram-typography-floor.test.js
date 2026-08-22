@@ -33,6 +33,7 @@ const BADGE_20RPX_WHITELIST = [
   'project-cover text',
   'customer-result-card text',
   'template-zoom-hint',
+  'control-badge',
 ];
 
 function stripComments(source) {

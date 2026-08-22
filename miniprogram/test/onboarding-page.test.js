@@ -58,7 +58,18 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.match(js, /pageState:\s*'recovery'/);
   assert.match(js, /onScanNewInvite/);
   assert.match(js, /onOpenIdentitySwitch/);
+  assert.match(js, /leaveScanLanding/);
+  assert.match(wxml, /bindtap="onBack"/);
+  assert.match(wxml, /class="nav-back"/);
+  assert.match(wxml, /class="back-chevron"/);
+  assert.match(less, /\.nav-back/);
+  assert.match(less, /\.back-chevron/);
   assert.match(wxml, /navigationRight/);
+  assert.match(wxml, /join-inner/);
+  assert.match(less, /\.join-inner\s*\{[\s\S]*white-space:\s*nowrap/);
+  assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*width:\s*auto/);
+  assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*min-width:\s*100%/);
+  assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*white-space:\s*nowrap/);
   assert.match(less, /safe-area-inset-bottom/);
   assert.doesNotMatch(less, /font-size:\s*(?:1[0-9]|[0-9])rpx/);
   assert.doesNotMatch(less, /transform:\s*scale\(/);

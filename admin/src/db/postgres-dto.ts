@@ -18,7 +18,7 @@ import type {
   WorkflowNotificationWithRelations,
   StaffNotificationWithLead,
 } from '@/db/repositories';
-import { getFloorPlanDisplay, type FloorPlanDisplayLead } from '@/lib/floor-plan-display';
+import { getFloorPlanDisplay, pickFloorPlanDisplayLead } from '@/lib/floor-plan-display';
 import { canRebookAppointment, resolveLeadServiceStage } from '@/lib/lead-service-stage';
 import { isFormalSurveyLayout, parseFormalSurveyLayout } from '@/lib/survey-graph';
 
@@ -205,12 +205,13 @@ export function userToDto(record: UserRecord) {
 export function floorPlanToDto(
   record: FloorPlanRecord | FloorPlanWithCreator,
   options: {
-    lead?: FloorPlanDisplayLead | null;
+    lead?: unknown;
     measurementSequence?: number | null;
   } | number = {}
 ) {
   const withCreator = record as Partial<FloorPlanWithCreator>;
   const displayOptions = typeof options === 'number' ? {} : options;
+  const displayLead = pickFloorPlanDisplayLead(displayOptions.lead);
   return {
     _id: record.id.toString(),
     enterpriseId: record.enterpriseId?.toString() ?? null,
@@ -226,9 +227,12 @@ export function floorPlanToDto(
       : record.creatorId.toString(),
     staffId: record.staffId?.toString() ?? null,
     name: record.name,
-    display: getFloorPlanDisplay(record, displayOptions),
-    leadArchivedAt: displayOptions.lead?.archivedAt ?? null,
-    leadIsArchived: Boolean(displayOptions.lead?.archivedAt),
+    display: getFloorPlanDisplay(record, {
+      lead: displayLead,
+      measurementSequence: displayOptions.measurementSequence,
+    }),
+    leadArchivedAt: displayLead?.archivedAt ?? null,
+    leadIsArchived: Boolean(displayLead?.archivedAt),
     layoutData: record.layoutData,
     source: record.source,
     externalSource: record.externalSource,

@@ -3,7 +3,8 @@ const session = require('../../../utils/session.js');
 const {
   getRoleLanding,
   navigateToRoleLanding,
-  roleForIdentity
+  roleForIdentity,
+  leaveScanLanding: exitScanLanding
 } = require('../../../utils/identity-navigation.js');
 
 const REGISTER_ROUTE = 'packages/business/enterprise-register/enterprise-register';
@@ -100,6 +101,34 @@ function leaveRegistrationTarget(identity) {
   };
 }
 
+function applyAuthorizedIdentity(page, user) {
+  const phone = String((user && user.phone) || page.data.authorizedPhone || '').trim();
+  if (!isWorkbenchIdentity(user)) {
+    return { leave: false, phone };
+  }
+  page.setData({
+    submitting: false,
+    authorizedPhone: phone,
+    pageState: 'account',
+    navTitle: '去登录',
+    errorMessage: '该手机号已开通企业账号，请直接登录。'
+  });
+  return { leave: true, phone };
+}
+
+function goToPasswordLogin() {
+  session.clearSession();
+  const app = typeof getApp === 'function' ? getApp() : null;
+  if (app && app.globalData) {
+    app.globalData.sessionHydrated = false;
+    app.globalData.roleLandingRedirected = false;
+  }
+  wx.reLaunch({
+    url: LOGIN_FROM_REGISTER_URL,
+    fail: () => wx.switchTab({ url: '/pages/mine/mine' })
+  });
+}
+
 function applyFailure(page, error) {
   const code = error && error.code;
   if (code === 'ACCOUNT_CONFLICT') {
@@ -128,13 +157,16 @@ function applyFailure(page, error) {
   });
 }
 
-function formReady(data) {
+function formFieldsReady(data) {
   return Boolean(
     String(data.enterpriseName || '').trim() &&
       String(data.creditCode || '').trim() &&
-      String(data.contactName || '').trim() &&
-      String(data.authorizedPhone || '').trim()
+      String(data.contactName || '').trim()
   );
+}
+
+function formReady(data) {
+  return formFieldsReady(data) && Boolean(String(data.authorizedPhone || '').trim());
 }
 
 Page({
@@ -151,6 +183,7 @@ Page({
     contactName: '',
     contactEmail: '',
     authorizedPhone: '',
+    canSubmit: false,
     submitting: false,
     errorMessage: ''
   },
@@ -174,23 +207,26 @@ Page({
   },
 
   onGoToLogin() {
-    const target = leaveRegistrationTarget(currentSignedIdentity());
-    if (target.action === 'role_landing') {
-      navigateToRoleLanding(currentSignedIdentity());
+    const identity = currentSignedIdentity();
+    if (isWorkbenchIdentity(identity) && navigateToRoleLanding(identity)) {
       return;
     }
-    if (target.clearSession) {
-      session.clearSession();
-      const app = typeof getApp === 'function' ? getApp() : null;
-      if (app && app.globalData) {
-        app.globalData.sessionHydrated = false;
-        app.globalData.roleLandingRedirected = false;
-      }
+    goToPasswordLogin();
+  },
+
+  leaveScanLanding() {
+    return exitScanLanding(currentSignedIdentity());
+  },
+
+  onBack() {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    if (pages && pages.length > 1) {
+      wx.navigateBack({
+        fail: () => this.leaveScanLanding()
+      });
+      return;
     }
-    wx.reLaunch({
-      url: target.url,
-      fail: () => wx.switchTab({ url: '/pages/mine/mine' })
-    });
+    this.leaveScanLanding();
   },
 
   async resolveRegistrationCode() {
@@ -219,16 +255,30 @@ Page({
     }
   },
 
+  syncFormPatch(patch) {
+    const next = { ...this.data, ...patch };
+    this.setData({
+      ...patch,
+      canSubmit: formFieldsReady(next)
+    });
+  },
+
   onEnterpriseNameInput(event) {
-    this.setData({ enterpriseName: String((event.detail && event.detail.value) || '').slice(0, 80) });
+    this.syncFormPatch({
+      enterpriseName: String((event.detail && event.detail.value) || '').slice(0, 80)
+    });
   },
 
   onCreditCodeInput(event) {
-    this.setData({ creditCode: String((event.detail && event.detail.value) || '').slice(0, 32) });
+    this.syncFormPatch({
+      creditCode: String((event.detail && event.detail.value) || '').slice(0, 32)
+    });
   },
 
   onContactNameInput(event) {
-    this.setData({ contactName: String((event.detail && event.detail.value) || '').slice(0, 30) });
+    this.syncFormPatch({
+      contactName: String((event.detail && event.detail.value) || '').slice(0, 30)
+    });
   },
 
   onContactEmailInput(event) {
@@ -236,7 +286,7 @@ Page({
   },
 
   async onGetPhoneNumber(event) {
-    if (this.data.pageState !== 'ready' || this.data.submitting) return;
+    if (this.data.pageState !== 'ready' || this.data.submitting || !this.data.canSubmit) return;
     if (!event.detail || event.detail.errMsg !== 'getPhoneNumber:ok' || !event.detail.code) {
       wx.showToast({ title: '需要授权手机号才能提交开户', icon: 'none' });
       return;
@@ -248,23 +298,41 @@ Page({
       if (!/^1[3-9]\d{9}$/.test(phone)) {
         throw Object.assign(new Error('未获取到有效手机号，请重试授权'), { code: 'VALIDATION' });
       }
+      const authorized = applyAuthorizedIdentity(this, login && login.user);
+      if (authorized.leave) {
+        setTimeout(() => {
+          if (!this.leaveIfWorkbenchSignedIn()) this.onGoToLogin();
+        }, 50);
+        return;
+      }
+      const contactName =
+        this.data.contactName ||
+        String((login && login.user && login.user.nickname) || '')
+          .trim()
+          .slice(0, 30);
       this.setData({
-        submitting: false,
         authorizedPhone: phone,
-        contactName: this.data.contactName || String((login && login.user && login.user.nickname) || '').trim().slice(0, 30)
+        contactName,
+        canSubmit: formFieldsReady({ ...this.data, contactName })
       });
+      await this.submitRegistration();
     } catch (error) {
       applyFailure(this, error);
     }
   },
 
   async onSubmit() {
-    if (this.data.pageState !== 'ready' || this.data.submitting) return;
+    if (this.data.pageState !== 'ready' || this.data.submitting || !this.data.canSubmit) return;
     if (!this.data.authorizedPhone) {
       wx.showToast({ title: '请先授权手机号', icon: 'none' });
       return;
     }
+    await this.submitRegistration();
+  },
+
+  async submitRegistration() {
     if (!formReady(this.data)) {
+      this.setData({ submitting: false });
       wx.showToast({ title: '请填写完整企业资料', icon: 'none' });
       return;
     }
@@ -310,9 +378,12 @@ Page({
 module.exports = {
   safeToken,
   isRecoveryCode,
+  formFieldsReady,
   formReady,
   applyFailure,
+  applyAuthorizedIdentity,
   isWorkbenchIdentity,
   leaveRegistrationTarget,
+  goToPasswordLogin,
   REGISTER_ROUTE
 };

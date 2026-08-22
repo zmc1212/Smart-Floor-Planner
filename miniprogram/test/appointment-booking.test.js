@@ -34,9 +34,8 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageJs, /startAt: selectedSlot\.startAt/);
   assert.match(pageJs, /endAt: selectedSlot\.endAt/);
   assert.match(pageJs, /address: addressText/);
-  assert.match(pageJs, /appointmentCommunitySync/);
-  assert.match(pageJs, /shouldOfferCommunitySync/);
-  assert.match(pageJs, /同步到客户小区/);
+  assert.doesNotMatch(pageJs, /shouldOfferCommunitySync/);
+  assert.doesNotMatch(pageJs, /同步到客户小区/);
   assert.match(pageJs, /wx\.chooseLocation/);
   assert.match(pageJs, /coordinateSystem: 'gcj02'/);
   assert.match(pageJs, /location,/);
@@ -53,7 +52,7 @@ test('designer appointment booking uses server availability and submits the sele
   assert.match(pageWxss, /env\(safe-area-inset-bottom\)/);
   assert.match(pageWxss, /\.back-chevron/);
   assert.match(pageWxss, /\.confirm-bar/);
-  assert.match(pageWxss, /\.confirm\[disabled\].*color: #ffffff/);
+  assert.match(pageWxss, /\.confirm\[disabled\].*--action-disabled-bg/);
   assert.match(pageWxss, /\.confirm \{ display: block;/);
   assert.match(pageWxss, /font-size: 24rpx/);
 });

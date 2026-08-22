@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import {
   AdminUserRepository,
   AppointmentRepository,
+  EnterpriseRepository,
   LeadCommissionRepository,
   ReferrerNetworkRepository,
 } from '@/db/repositories';
 import { adminUserToDto, parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
+import { isSensitivePasswordConfigured } from '@/lib/enterprise-sensitive-password';
 import {
   enterpriseJoinCodeEventToDto,
   enterpriseJoinCodeToDto,
@@ -25,6 +27,10 @@ export async function GET(request: Request) {
         const actorId = parsePostgresId(context.userId, 'actorId');
         const data = await withTenantTransaction(context.enterpriseId!, async (transaction) => {
           const network = new ReferrerNetworkRepository(transaction);
+          const enterprise =
+            context.role === 'enterprise_admin'
+              ? await new EnterpriseRepository(transaction).findById(enterpriseId)
+              : null;
           const [codes, events, activeReferrerMemberships, activeReferrerPromotionCodes, activeStaffActivityCodes, staff, appointmentSettings, commissionRules, referrerMemberships] = await Promise.all([
             network.listEnterpriseJoinCodes(enterpriseId),
             network.listEnterpriseJoinCodeEvents(enterpriseId),
@@ -72,6 +78,12 @@ export async function GET(request: Request) {
               calculationType: rule.calculationType,
               value: rule.value,
             })),
+            sensitivePasswordConfigured:
+              context.role === 'enterprise_admin'
+                ? isSensitivePasswordConfigured(
+                    enterprise?.sensitiveOperationPasswordHash
+                  )
+                : null,
           };
         });
         return NextResponse.json({

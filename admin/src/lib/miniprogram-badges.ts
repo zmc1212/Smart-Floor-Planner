@@ -27,6 +27,7 @@ type BadgeRole =
   | 'referrer'
   | 'designer'
   | 'measurer'
+  | 'salesperson'
   | 'enterprise_admin'
   | 'platform_admin';
 
@@ -153,7 +154,7 @@ export async function loadMiniProgramBadgeCounts(input: {
     };
   }
 
-  if (role === 'platform_admin') return {};
+  if (role === 'platform_admin' || role === 'salesperson') return {};
 
   if (!current.enterpriseId || !current.staffId) return {};
   const enterpriseId = current.enterpriseId;

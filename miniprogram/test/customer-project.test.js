@@ -13,8 +13,10 @@ test('customer project consumes only the owner-only aggregate and renders archiv
   const wxml = fs.readFileSync(wxmlPath, 'utf8');
   assert.match(page, /\/miniprogram\/customer-projects\/\$\{encodeURIComponent\(this\.data\.leadId\)\}/);
   assert.match(page, /const formalFloorPlan = project\.formalFloorPlan/);
-  assert.match(page, /decoratePublishedSchemes\(project\.publishedSchemes, project\.publishedDesigns\)/);
+  assert.match(page, /decoratePublishedSchemes\(\s*project\.publishedSchemes,\s*project\.publishedDesigns/);
   assert.match(page, /project\.featuredScheme/);
+  assert.match(page, /scheme\.finalized/);
+  assert.match(page, /已定稿/);
   assert.match(page, /formalFloorPlan\.previewEndpoint/);
   assert.match(wxml, /我的服务档案/);
   assert.match(wxml, /专属设计师/);
@@ -27,23 +29,38 @@ test('customer project consumes only the owner-only aggregate and renders archiv
   assert.match(wxml, /bindtap="bookAppointment"/);
   assert.match(wxml, /预约上门量房/);
   assert.match(page, /appointment-booking\/appointment-booking\?leadId=.*mode=customer/);
-  assert.match(page, /onShareAppMessage\(\)/);
+  assert.doesNotMatch(page, /onShareAppMessage\(\)/);
+  assert.match(page, /hideShareMenu/);
+  assert.match(page, /showSchemePoster: true/);
   assert.match(page, /contactDesigner\(\)/);
   assert.match(page, /showContactSheet/);
   assert.match(page, /hasDesignerContact/);
   assert.match(page, /copyDesignerWechatId/);
   assert.match(page, /buildPublishedSchemeLabel/);
   assert.match(wxml, /designer-contact-sheet/);
+  assert.match(wxml, /scheme-share-poster/);
+  assert.match(wxml, /bindtap="saveOrShareScheme"/);
+  assert.doesNotMatch(wxml, /open-type="share"/);
   assert.match(wxml, /canContactDesigner/);
 });
 
 test('customer published designs and floor plan preview use protected endpoints as authenticated bytes', () => {
   const page = fs.readFileSync(pagePath, 'utf8');
   const wxml = fs.readFileSync(wxmlPath, 'utf8');
-  assert.match(page, /responseType: 'arraybuffer'/);
-  assert.match(page, /wx\.getFileSystemManager\(\)\.writeFile/);
-  assert.match(page, /customer-project-\$\{safeKey/);
-  assert.match(page, /itemList: \['详情', '保存到相册'\]/);
+  const cacheUtil = fs.readFileSync(path.join(root, 'utils', 'protectedImageCache.js'), 'utf8');
+  assert.match(page, /require\('\.\.\/\.\.\/\.\.\/utils\/protectedImageCache'\)/);
+  assert.match(page, /load\(\{ silent: true \}\)/);
+  assert.match(page, /_archiveReady/);
+  assert.match(page, /readCachedProtectedImage/);
+  assert.match(page, /floorPlanCacheKey/);
+  assert.match(page, /sameFloorPlan/);
+  assert.doesNotMatch(page, /floorPlanImagePath: '',\s*\n\s*floorPlanImageState: formalFloorPlan/);
+  assert.match(cacheUtil, /responseType: 'arraybuffer'/);
+  assert.match(cacheUtil, /wx\.getFileSystemManager\(\)\.writeFile/);
+  assert.match(cacheUtil, /FILE_PREFIX = 'protected-img'/);
+  assert.doesNotMatch(page, /showActionSheet|itemList: \['详情', '保存到相册'\]/);
+  assert.match(page, /previewFeaturedDelivery\(\) \{[\s\S]*this\.openAiSchemes\(delivery\.id\)/);
+  assert.match(wxml, /class="delivery-entry"/);
   assert.match(page, /openAiSchemes\(/);
   assert.match(page, /customer-ai-schemes\/customer-ai-schemes/);
   assert.match(wxml, /data-scheme-index/);
@@ -73,6 +90,15 @@ test('customer-facing project surfaces hide enterprise branding', () => {
   assert.match(companion, /家客来 · 服务向导|我的装修服务/);
   assert.doesNotMatch(companion, /enterprise\.name|enterpriseName/);
   assert.doesNotMatch(companionJs, /project\.enterprise\s*&&\s*project\.enterprise\.name|enterpriseName/);
+});
+
+test('customer project custom back leaves the archive when it is the stack root', () => {
+  const page = fs.readFileSync(pagePath, 'utf8');
+  const wxml = fs.readFileSync(wxmlPath, 'utf8');
+  assert.match(wxml, /bindtap="onBack"/);
+  assert.match(page, /getCurrentPages\(\)\.length > 1/);
+  assert.match(page, /wx\.navigateBack\(\{\s*fail:\s*\(\)\s*=>\s*wx\.switchTab\(\{\s*url:\s*'\/pages\/index\/index'\s*\}\)/);
+  assert.match(page, /wx\.switchTab\(\{\s*url:\s*'\/pages\/index\/index'\s*\}\)/);
 });
 
 test('customer project template and stylesheet stay aligned for the restored archive layout', () => {

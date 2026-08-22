@@ -4,6 +4,20 @@ export type FloorPlanDisplayLead = {
   archivedAt?: Date | string | null;
 };
 
+export function pickFloorPlanDisplayLead(lead: unknown): FloorPlanDisplayLead | null {
+  if (!lead || typeof lead !== 'object') return null;
+  const record = lead as {
+    name?: string | null;
+    communityName?: string | null;
+    archivedAt?: Date | string | null;
+  };
+  return {
+    name: record.name ?? null,
+    communityName: record.communityName ?? null,
+    archivedAt: record.archivedAt ?? null,
+  };
+}
+
 export type FloorPlanDisplay = {
   projectTitle: string;
   projectSubtitle: string;

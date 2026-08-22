@@ -18,7 +18,7 @@ Enterprise-owner Ops workbench CTA shows **出示入驻码** and opens a dual-co
   - `GET /api/miniprogram/enterprise-join-codes/[type]/image`
   - `POST /api/miniprogram/enterprise-join-codes/[type]/rotate`
   - `POST /api/miniprogram/enterprise-join-codes/[type]/disable`
-- Mutate paths reuse `rotateEnterpriseJoinCode` / `disableEnterpriseJoinCode` (same audit as Admin). List DTO has no token. Image is private no-store.
+- Mutate paths reuse `rotateEnterpriseJoinCode` / `disableEnterpriseJoinCode` (same audit as Admin). Admin list DTO has no token. Mini Program GET includes the active HMAC token for WeChat share into onboarding and does not write a reveal audit (image fetch still does). Image is private no-store.
 
 ## Out of scope
 

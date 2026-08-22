@@ -32,8 +32,10 @@ import {
   SlidersHorizontal,
   UsersRound,
 } from 'lucide-react';
-import { Button, Drawer, Select } from 'antd';
+import { Button, Divider, Drawer, Dropdown, Select } from 'antd';
 import { cn } from '@/lib/utils';
+import { getAdminRoleLabel } from '@/lib/admin-user-roles';
+import { useAccountSettings } from '@/components/admin/account-settings-provider';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { isAdminRouteActive } from '@/config/admin-routes';
 
@@ -185,6 +187,7 @@ const NavItem = memo(function NavItem({
   );
 });
 
+
 interface SidebarContentProps {
   collapsed: boolean;
   admin: SidebarAdmin | null;
@@ -192,6 +195,8 @@ interface SidebarContentProps {
   globalTenantId: string;
   handleTenantChange: (val: string) => void;
   handleLogout: () => void;
+  openLoginPassword: () => void;
+  openSensitivePassword: () => void;
   pathname: string;
   hasMenuPermission: (key: string) => boolean;
 }
@@ -202,10 +207,61 @@ const SidebarContent = memo(function SidebarContent({
   enterprises, 
   globalTenantId, 
   handleTenantChange, 
-  handleLogout, 
+  handleLogout,
+  openLoginPassword,
+  openSensitivePassword,
   pathname,
   hasMenuPermission 
 }: SidebarContentProps) {
+  const accountMenu = (
+    <div className="w-56 rounded-lg border border-border bg-card p-1 shadow-lg">
+      <div className="flex items-center gap-3 px-3 py-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+          {admin?.displayName ? admin.displayName[0] : (admin?.username ? admin.username[0].toUpperCase() : '?')}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-bold leading-none">
+            {admin?.displayName || admin?.username || 'Loading...'}
+          </p>
+          <p className="mt-1 text-[11px] font-medium text-muted-foreground">
+            {getAdminRoleLabel(admin?.role)}
+          </p>
+          {admin?.enterpriseId?.name ? (
+            <p className="truncate text-[10px] font-bold text-primary opacity-80">
+              @{admin.enterpriseId.name}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <Divider className="!my-1" />
+      <button
+        type="button"
+        className="flex w-full items-center rounded-md px-3 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-muted"
+        onClick={openLoginPassword}
+      >
+        修改登录密码
+      </button>
+      {admin?.role === 'enterprise_admin' ? (
+        <button
+          type="button"
+          className="flex w-full items-center rounded-md px-3 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-muted"
+          onClick={openSensitivePassword}
+        >
+          修改安全密码
+        </button>
+      ) : null}
+      <Divider className="!my-1" />
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[13px] text-destructive transition-colors hover:bg-destructive/10"
+        onClick={handleLogout}
+      >
+        <LogOut size={14} className="shrink-0" />
+        退出系统
+      </button>
+    </div>
+  );
+
   return (
     <div className="flex h-full flex-col border-r border-border bg-card text-foreground">
       {/* Header */}
@@ -317,47 +373,44 @@ const SidebarContent = memo(function SidebarContent({
       </nav>
 
       {/* Footer Profile */}
-      <div className="mt-auto space-y-2 border-t border-border bg-card p-3">
-        <div className={cn(
-          "flex items-center gap-3 rounded-lg border border-border bg-muted p-2",
-          collapsed && "justify-center border-none bg-transparent p-1.5"
-        )}>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-            {admin?.displayName ? admin.displayName[0] : (admin?.username ? admin.username[0].toUpperCase() : '?')}
-          </div>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-bold truncate leading-none mb-1">
-                {admin?.displayName || admin?.username || 'Loading...'}
-              </p>
-              <div className="flex flex-col gap-0.5">
-                <p className="text-[10px] font-bold text-muted-foreground">
-                  {admin?.role === 'super_admin' ? '系统管理员' : 
-                   admin?.role === 'enterprise_admin' ? '企业负责人' : 
-                   admin?.role === 'salesperson' ? '渠道地推' :
-                   admin?.role === 'measurer' ? '测量员' :
-                   admin?.role === 'designer' ? '设计师' : '职员'}
-                </p>
-                {admin?.enterpriseId?.name && (
-                  <p className="text-[9px] text-primary font-bold truncate opacity-80">
-                    @{admin.enterpriseId.name}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        
-        <button 
-          onClick={handleLogout}
-          className={cn(
-            "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive",
-            collapsed && "justify-center px-0"
-          )}
+      <div className="mt-auto border-t border-border bg-card p-3">
+        <Dropdown
+          trigger={['hover', 'click']}
+          mouseEnterDelay={0.15}
+          mouseLeaveDelay={0.2}
+          placement={collapsed ? 'rightBottom' : 'topLeft'}
+          popupRender={() => accountMenu}
         >
-          <LogOut size={16} className="shrink-0" />
-          {!collapsed && <span className="text-[13px] font-medium">退出系统</span>}
-        </button>
+          <button
+            type="button"
+            aria-label="账户菜单"
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg border border-border bg-muted p-2 text-left transition-colors hover:bg-muted/80',
+              collapsed && 'justify-center border-none bg-transparent p-1.5'
+            )}
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+              {admin?.displayName ? admin.displayName[0] : (admin?.username ? admin.username[0].toUpperCase() : '?')}
+            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="mb-1 truncate text-[13px] font-bold leading-none">
+                  {admin?.displayName || admin?.username || 'Loading...'}
+                </p>
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-[10px] font-bold text-muted-foreground">
+                    {getAdminRoleLabel(admin?.role)}
+                  </p>
+                  {admin?.enterpriseId?.name ? (
+                    <p className="truncate text-[9px] font-bold text-primary opacity-80">
+                      @{admin.enterpriseId.name}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </button>
+        </Dropdown>
       </div>
     </div>
   );
@@ -371,6 +424,7 @@ export default function Sidebar() {
   const [globalTenantId, setGlobalTenantId] = useState<string>('all');
 
   const { user: admin } = useCurrentUser();
+  const { openLoginPassword, openSensitivePassword } = useAccountSettings();
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed');
@@ -450,6 +504,8 @@ export default function Sidebar() {
           globalTenantId={globalTenantId}
           handleTenantChange={handleTenantChange}
           handleLogout={handleLogout}
+          openLoginPassword={openLoginPassword}
+          openSensitivePassword={openSensitivePassword}
           pathname={pathname}
           hasMenuPermission={hasMenuPermission}
         />
@@ -494,6 +550,8 @@ export default function Sidebar() {
             globalTenantId={globalTenantId}
             handleTenantChange={handleTenantChange}
             handleLogout={handleLogout}
+            openLoginPassword={openLoginPassword}
+            openSensitivePassword={openSensitivePassword}
             pathname={pathname}
             hasMenuPermission={hasMenuPermission}
           />

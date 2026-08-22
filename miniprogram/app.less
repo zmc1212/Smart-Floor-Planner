@@ -249,6 +249,15 @@ role-workbench {
   box-shadow: 0 10rpx 20rpx rgba(17, 164, 66, 0.2);
 }
 
+/* Native WeChat `button[disabled]` defaults to #f7f7f7, which blends into --bg-page. */
+.sfp-primary-action[disabled],
+button.sfp-primary-action[disabled] {
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
+  box-shadow: none;
+  opacity: 1;
+}
+
 .sfp-secondary-action {
   background: var(--bg-surface);
   color: var(--text-brand);
@@ -292,8 +301,8 @@ role-workbench {
 
 /* Appointment action buttons must remain readable while disabled. */
 .confirm[disabled] {
-  color: var(--action-disabled-text);
-  background: var(--action-disabled-bg);
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
   box-shadow: none;
   opacity: 1;
 }

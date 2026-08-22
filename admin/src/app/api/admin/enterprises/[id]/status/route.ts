@@ -7,6 +7,7 @@ import {
 import {
   AdminUserRepository,
   EnterpriseRepository,
+  MiniProgramIdentityRepository,
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { ensureEnterpriseAdminForActiveEnterprise } from '@/lib/enterprise-admin-provision';
@@ -100,6 +101,7 @@ export async function POST(
         const result = await withPlatformTransaction(async (transaction) => {
           const enterprises = new EnterpriseRepository(transaction);
           const adminUsers = new AdminUserRepository(transaction);
+          const identities = new MiniProgramIdentityRepository(transaction);
           const applied = await enterprises.applyStatusAction({
             enterpriseId,
             action: body.action as string,
@@ -111,7 +113,8 @@ export async function POST(
           if (applied.transition.toStatus === 'active') {
             await ensureEnterpriseAdminForActiveEnterprise(
               adminUsers,
-              applied.enterprise
+              applied.enterprise,
+              identities
             );
           }
 

@@ -94,37 +94,47 @@
     </view>
 
     <view class="section-card sfp-card">
-      <view class="section-header">
-        <view class="section-title-wrap">
-          <image class="section-icon sparkle-icon" src="/images/airy-v1/palette-recipe-3d.png" mode="aspectFit" />
-          <text class="section-title">交付方案</text>
-        </view>
-        <text wx:if="{{featuredDelivery}}" class="section-meta">{{featuredDelivery.publishedLabel}}</text>
-        <text wx:else class="section-meta">方案准备中</text>
-      </view>
-      <view wx:if="{{featuredDelivery}}" class="delivery-preview" bindtap="previewFeaturedDelivery" aria-role="button" aria-label="查看方案详情">
-        <view class="delivery-image-frame">
-          <view class="published-grid">
-            <view wx:for="{{featuredDelivery.images || []}}" wx:for-item="design" wx:key="generationId" class="published-item">
-              <view class="published-image-frame">
-                <image wx:if="{{design.imageState === 'loaded'}}" class="published-image" src="{{design.imagePath}}" mode="aspectFill" />
-                <view wx:elif="{{design.imageState === 'loading'}}" class="image-state">读取中…</view>
-                <view wx:else class="image-state error">暂不可读</view>
-              </view>
-              <text class="published-title">已发布 · {{design.title || '设计方案'}}</text>
-            </view>
+      <view wx:if="{{featuredDelivery}}" class="delivery-entry" bindtap="previewFeaturedDelivery" aria-role="button" aria-label="查看方案详情">
+        <view class="section-header">
+          <view class="section-title-wrap">
+            <image class="section-icon sparkle-icon" src="/images/airy-v1/palette-recipe-3d.png" mode="aspectFit" />
+            <text class="section-title">交付方案</text>
           </view>
-          <view wx:if="{{featuredDelivery.styleTag}}" class="delivery-style-tag">{{featuredDelivery.styleTag}}</view>
-          <view class="delivery-action-chip"><text>详情</text><view class="chip-arrow dark"></view></view>
+          <text class="section-meta">{{featuredDelivery.publishedLabel}}</text>
+        </view>
+        <view class="delivery-preview">
+          <view class="delivery-image-frame">
+            <view class="published-grid">
+              <view wx:for="{{featuredDelivery.images || []}}" wx:for-item="design" wx:key="generationId" class="published-item">
+                <view class="published-image-frame">
+                  <image wx:if="{{design.imageState === 'loaded'}}" class="published-image" src="{{design.imagePath}}" mode="aspectFill" />
+                  <view wx:elif="{{design.imageState === 'loading'}}" class="image-state">读取中…</view>
+                  <view wx:else class="image-state error">暂不可读</view>
+                </view>
+                <text class="published-title">已发布 · {{design.title || '设计方案'}}</text>
+              </view>
+            </view>
+            <view wx:if="{{featuredDelivery.styleTag}}" class="delivery-style-tag">{{featuredDelivery.styleTag}}</view>
+            <view class="delivery-action-chip"><text>详情</text><view class="chip-arrow dark"></view></view>
+          </view>
         </view>
       </view>
-      <view wx:else class="empty-folio">
-        <image src="/packages/business/assets/customer-project-v1/published-design-folio.png" mode="aspectFit" class="empty-art" />
-        <view>
-          <text class="empty-title">设计师正在准备方案</text>
-          <text class="empty-note">方案发布后，您可以在这里查看成果</text>
+      <block wx:else>
+        <view class="section-header">
+          <view class="section-title-wrap">
+            <image class="section-icon sparkle-icon" src="/images/airy-v1/palette-recipe-3d.png" mode="aspectFit" />
+            <text class="section-title">交付方案</text>
+          </view>
+          <text class="section-meta">方案准备中</text>
         </view>
-      </view>
+        <view class="empty-folio">
+          <image src="/packages/business/assets/customer-project-v1/published-design-folio.png" mode="aspectFit" class="empty-art" />
+          <view>
+            <text class="empty-title">设计师正在准备方案</text>
+            <text class="empty-note">方案发布后，您可以在这里查看成果</text>
+          </view>
+        </view>
+      </block>
       <view wx:if="{{publishedSchemes.length > 1}}" class="more-schemes">
         <view class="more-schemes-heading">
           <text class="more-schemes-label">更多已发布方案</text>
@@ -155,13 +165,19 @@
 
   <view wx:if="{{!loading && !error}}" class="footer-bar">
     <button class="footer-outline" bindtap="contactDesigner">微信联系设计师</button>
-    <button wx:if="{{featuredDelivery && featuredDelivery.imagePath}}" class="footer-primary sfp-primary-action" open-type="share">保存/分享我的方案</button>
-    <button wx:else class="footer-primary sfp-primary-action" bindtap="saveOrShareScheme">保存/分享我的方案</button>
+    <button class="footer-primary sfp-primary-action" bindtap="saveOrShareScheme">保存/分享我的方案</button>
   </view>
 
   <designer-contact-sheet
     visible="{{showContactSheet}}"
     designer="{{designer}}"
     bind:close="closeContactSheet"
+  />
+
+  <scheme-share-poster
+    visible="{{showSchemePoster}}"
+    imagePath="{{posterImagePath}}"
+    schemeTitle="{{posterSchemeTitle}}"
+    bind:close="closeSchemePoster"
   />
 </view>

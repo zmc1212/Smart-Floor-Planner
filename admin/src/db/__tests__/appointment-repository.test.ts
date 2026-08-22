@@ -355,3 +355,71 @@ test('rebooking succeeds after a past-end confirmed appointment remains on the l
   assert.equal(listed?.appointment?.id, rebooked.id);
   assert.equal(leadToDto(listed!).serviceStage, 'appointment_confirmed');
 });
+
+test('booking copies an empty lead community from the map POI or typed address and never overwrites', async () => {
+  const spareMeasurerId = await withTenantTransaction(enterpriseId, async (transaction) => {
+    return (await new AdminUserRepository(transaction).create({
+      enterpriseId, username: `${runKey}-community-measurer`, passwordHash: 'test-only', displayName: '小区回填测量员', role: 'measurer', status: 'active', assignmentPaused: false,
+    })).id;
+  });
+  const emptyLeadId = await withTenantTransaction(enterpriseId, async (transaction) => {
+    return (await new LeadRepository(transaction).create({
+      enterpriseId, assignedTo: designerId, measurerId: spareMeasurerId, customerUserId: actorUserId,
+      name: '小区回填客户', phone: `22${String(Date.now()).slice(-9)}`, source: 'appointment-test', assignmentStatus: 'assigned',
+    })).id;
+  });
+  const filledLeadId = await withTenantTransaction(enterpriseId, async (transaction) => {
+    return (await new LeadRepository(transaction).create({
+      enterpriseId, assignedTo: designerId, measurerId: spareMeasurerId, customerUserId: actorUserId,
+      name: '已有小区客户', phone: `23${String(Date.now()).slice(-9)}`, source: 'appointment-test', assignmentStatus: 'assigned',
+      communityName: '已登记小区',
+    })).id;
+  });
+
+  const addressOnly = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).create({
+      enterpriseId, leadId: emptyLeadId, startAt: nextBookableSlot('11:00').startAt, endAt: nextBookableSlot('11:00').endAt,
+      address: ' 万科金色家园3栋2单元501 ', actorUserId, eventKey: `${runKey}-community-address`,
+    })
+  );
+  const addressFilled = await withTenantTransaction(enterpriseId, (transaction) =>
+    new LeadRepository(transaction).findById(emptyLeadId)
+  );
+  assert.equal(addressFilled?.communityName, '万科金色家园3栋2单元501');
+
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).create({
+      enterpriseId,
+      leadId: filledLeadId,
+      startAt: nextBookableSlot('13:00').startAt,
+      endAt: nextBookableSlot('13:00').endAt,
+      address: '新上门地址',
+      location: { locationName: '新地图小区', latitude: '23.1291000', longitude: '113.2644000', coordinateSystem: 'gcj02' },
+      actorUserId,
+      eventKey: `${runKey}-community-keep`,
+    })
+  );
+  const kept = await withTenantTransaction(enterpriseId, (transaction) =>
+    new LeadRepository(transaction).findById(filledLeadId)
+  );
+  assert.equal(kept?.communityName, '已登记小区');
+
+  await withPlatformTransaction(async (transaction) => {
+    await transaction.update(leads).set({ communityName: null }).where(eq(leads.id, emptyLeadId));
+  });
+  await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).updateAddress({
+      enterpriseId,
+      appointmentId: addressOnly.id,
+      address: '详细门牌 8-802',
+      location: { locationName: '阳光花园', latitude: '23.1291000', longitude: '113.2644000', coordinateSystem: 'gcj02' },
+      expectedVersion: addressOnly.version,
+      actorUserId,
+      eventKey: `${runKey}-community-address-update`,
+    })
+  );
+  const locationFilled = await withTenantTransaction(enterpriseId, (transaction) =>
+    new LeadRepository(transaction).findById(emptyLeadId)
+  );
+  assert.equal(locationFilled?.communityName, '阳光花园');
+});

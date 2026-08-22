@@ -18,6 +18,18 @@ test('global app style imports the shared Less utility layer', () => {
   assert.match(utilitiesLess, /\.gap-8\s*\{/);
 });
 
+test('disabled primary actions keep a mint fill distinct from the page', () => {
+  assert.match(appLess, /--action-disabled-bg:\s*#A9D9B8/);
+  assert.match(
+    appLess,
+    /\.sfp-primary-action\[disabled\][\s\S]*--action-disabled-bg/
+  );
+  assert.match(
+    utilitiesLess,
+    /\.btn-primary\[disabled\][\s\S]*--action-disabled-bg/
+  );
+});
+
 test('all Mini Program style sources use Less', () => {
   const legacyStyleFiles = [];
   const visit = (directory) => {

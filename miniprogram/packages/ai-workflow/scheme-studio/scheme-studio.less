@@ -345,8 +345,31 @@ button::after {
   border-radius: 24rpx;
   background: linear-gradient(135deg, rgba(0, 195, 101, 0.12), rgba(0, 195, 101, 0.04));
   display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.scheme-banner-copy {
+  flex: 1;
+  display: flex;
   flex-direction: column;
   gap: 6rpx;
+  min-width: 0;
+}
+
+.scheme-banner-action {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0 22rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  border-radius: 999rpx;
+  background: #00c365;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 700;
 }
 
 .scheme-banner-title {

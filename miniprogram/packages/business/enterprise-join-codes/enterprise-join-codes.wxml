@@ -1,8 +1,8 @@
 <!--
-THESIS: 企业负责人当场出示并管理员工/推荐人入驻码，对齐后台企业双码。
-OWN-WORLD: 复用极简透气版服务码出示模板（09），双码 Tab + 出示主卡 + 底部管理动作。
-STORY: 负责人切换双码、出示扫码，必要时生成/换新/停用；查看不会换新。
-FIRST VIEWPORT: 胶囊左侧品牌锁；双码 Tab、出示主卡与管理 CTA 在 390x844 同屏可达。
+THESIS: 企业负责人当场出示、分享并管理员工/推荐人入驻码，对齐后台企业双码。
+OWN-WORLD: 复用极简透气版服务码出示模板（09），双码 Tab + 出示主卡 + 分享与管理动作。
+STORY: 负责人切换双码、出示或一键分享扫码，必要时生成/换新/停用；查看不会换新。
+FIRST VIEWPORT: 胶囊左侧返回与品牌锁；双码 Tab、出示主卡、一键分享与管理 CTA 在 390x844 同屏可达。
 FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code.jpg
 -->
 <view class="service-code-page">
@@ -10,6 +10,9 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
     class="service-nav"
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回首页">
+      <view class="back-chevron"></view>
+    </view>
     <view class="brand-lockup">
       <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
       <text class="brand-name">家客来</text>
@@ -53,7 +56,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
             <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
             <text class="qr-state-title">入驻码暂不可用</text>
             <text class="qr-state-copy">{{errorMessage}}</text>
-            <button class="qr-retry" bindtap="onRetry" disabled="{{acting}}">重新查看</button>
+            <button class="qr-retry" bindtap="onRetry" disabled="{{acting}}"><text>重新查看</text></button>
           </view>
           <image wx:else class="service-qr" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
         </view>
@@ -87,30 +90,43 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
       <text class="info-copy">{{hasActive ? activeCopy.info : '查看不会换新；换新后旧码立即失效'}}</text>
     </view>
 
-    <view wx:if="{{!hasActive}}" class="manage-actions">
+    <view class="footer-actions">
       <button
-        class="manage-primary"
-        loading="{{acting}}"
-        disabled="{{acting || loading}}"
-        bindtap="onGenerate"
-        hover-class="manage-pressed"
-      >生成入驻码</button>
-    </view>
-    <view wx:else class="manage-actions split">
-      <button
-        class="manage-secondary"
-        loading="{{acting}}"
-        disabled="{{acting || loading}}"
-        bindtap="onRotate"
-        hover-class="manage-pressed"
-      >换新</button>
-      <button
-        class="manage-danger"
-        loading="{{acting}}"
-        disabled="{{acting || loading}}"
-        bindtap="onDisable"
-        hover-class="manage-pressed"
-      >停用</button>
+        wx:if="{{canShare}}"
+        class="share-action"
+        open-type="share"
+        hover-class="share-action-pressed"
+      >
+        <view class="share-inner">
+          <image class="share-scan" src="/images/mine-icons/scan.png" mode="aspectFit" aria-hidden="true" />
+          <text>{{activeCopy.shareLabel}}</text>
+        </view>
+      </button>
+      <view wx:if="{{!hasActive}}" class="manage-actions">
+        <button
+          class="manage-primary"
+          loading="{{acting}}"
+          disabled="{{acting || loading}}"
+          bindtap="onGenerate"
+          hover-class="manage-pressed"
+        >生成入驻码</button>
+      </view>
+      <view wx:else class="manage-actions split">
+        <button
+          class="manage-secondary"
+          loading="{{acting}}"
+          disabled="{{acting || loading}}"
+          bindtap="onRotate"
+          hover-class="manage-pressed"
+        >换新</button>
+        <button
+          class="manage-danger"
+          loading="{{acting}}"
+          disabled="{{acting || loading}}"
+          bindtap="onDisable"
+          hover-class="manage-pressed"
+        >停用</button>
+      </view>
     </view>
   </view>
 </view>

@@ -59,7 +59,7 @@ export interface LeadReferrerSummary {
   role: 'referrer';
 }
 
-export interface LeadWithRelations extends LeadRecord {
+export type LeadWithRelations = LeadRecord & {
   floorPlanRecords: LeadFloorPlanRecord[];
   primaryFloorPlanRecord: LeadFloorPlanRecord | null;
   assignedUser: LeadStaffSummary | null;
@@ -69,7 +69,7 @@ export interface LeadWithRelations extends LeadRecord {
   archivedUser: LeadStaffSummary | null;
   convertedUser: LeadStaffSummary | null;
   appointment?: typeof measurementAppointments.$inferSelect | null;
-}
+};
 
 export interface LeadListOptions {
   status?: string;

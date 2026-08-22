@@ -31,10 +31,12 @@ App({
     lastValidIdentityContext: null,
     roleLandingRedirected: false,
     roleLandingRestoreRetries: 0,
-    deepLinkRedirecting: false
+    deepLinkRedirecting: false,
+    launchOptions: null
   },
   onLaunch(options) {
     console.log('智能量房大师小程序启动', options);
+    this.globalData.launchOptions = options || {};
     this.handleReferral(options);
     
     // 1. Restore session from storage (Priority: Token)
@@ -207,24 +209,18 @@ App({
     this.globalData.roleLandingRestoreRetries = 0;
     const current = pages[pages.length - 1].route || '';
     const rootRoutes = new Set(['pages/index/index', 'pages/mine/mine']);
-    const scanLandingRoutes = new Set([
-      'packages/business/enterprise-register/enterprise-register'
-    ]);
     const navigation = require('./utils/identity-navigation.js');
-    if (scanLandingRoutes.has(current)) {
-      const identity = {
-        ...this.globalData.userInfo,
-        ...((this.globalData.bootstrap && this.globalData.bootstrap.current) || {})
-      };
-      const role = navigation.roleForIdentity(identity);
-      if (!['designer', 'measurer', 'enterprise_admin', 'referrer'].includes(role)) return;
+    const identity = {
+      ...this.globalData.userInfo,
+      ...((this.globalData.bootstrap && this.globalData.bootstrap.current) || {})
+    };
+    if (navigation.isScanLandingRoute(current)) {
+      const scene = this.globalData.launchOptions && this.globalData.launchOptions.scene;
+      if (!navigation.shouldLeaveScanLanding(current, identity, scene)) return;
     } else if (!rootRoutes.has(current)) {
       return;
     }
-    if (!navigation.navigateToRoleLanding({
-      ...this.globalData.userInfo,
-      ...(this.globalData.bootstrap && this.globalData.bootstrap.current || {})
-    })) return;
+    if (!navigation.navigateToRoleLanding(identity)) return;
     this.globalData.roleLandingRedirected = true;
   },
   guardCurrentRoute() {

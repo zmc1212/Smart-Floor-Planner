@@ -174,6 +174,13 @@ function withdrawScheme(leadId, workflowId) {
   ).then((res) => res.data);
 }
 
+function finalizeScheme(leadId, workflowId) {
+  return api.request(
+    `/leads/${encodeURIComponent(leadId)}/ai-scheme-publications/${encodeURIComponent(workflowId)}/finalize`,
+    'POST',
+  ).then((res) => res.data);
+}
+
 function withdrawSchemeGeneration(leadId, workflowId, generationId) {
   return api.request(
     `/leads/${encodeURIComponent(leadId)}/ai-scheme-publications/${encodeURIComponent(workflowId)}/generations/${encodeURIComponent(generationId)}`,
@@ -284,6 +291,7 @@ module.exports = {
   listSchemePublications,
   publishScheme,
   withdrawScheme,
+  finalizeScheme,
   withdrawSchemeGeneration,
   loadStudioBootstrap,
   loadStudioLeads,

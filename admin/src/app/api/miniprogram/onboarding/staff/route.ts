@@ -1,5 +1,3 @@
-import crypto from 'node:crypto';
-import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import {
   MiniProgramIdentityRepository,
@@ -7,6 +5,7 @@ import {
 } from '@/db/repositories';
 import { adminUserToDto } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
+import { hashEnterpriseAdminInitialPassword } from '@/lib/enterprise-admin-provision';
 import {
   miniProgramIdentityContextToDto,
   signMiniProgramIdentityContextToken,
@@ -44,7 +43,7 @@ export async function POST(request: Request) {
         : '';
     const [menuPermissions, passwordHash] = await Promise.all([
       getEffectivePermissions(role),
-      bcrypt.hash(crypto.randomBytes(32).toString('base64url'), 10),
+      hashEnterpriseAdminInitialPassword(),
     ]);
 
     const result = await withPlatformTransaction(async (transaction) => {

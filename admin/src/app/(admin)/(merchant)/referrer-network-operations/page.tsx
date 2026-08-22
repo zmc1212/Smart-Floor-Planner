@@ -5,6 +5,7 @@ import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-compon
 import { Alert, Button, Card, Flex, Input, Space, Statistic, Table, Tag, Typography } from 'antd';
 import { CheckCircle2, RefreshCw, UsersRound, Wrench } from 'lucide-react';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
+import { useAccountSettings } from '@/components/admin/account-settings-provider';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
@@ -47,6 +48,7 @@ type Readiness = {
   activeReferrerPromotionCodes: number;
   activeStaffActivityCodes: number;
   staff: StaffMember[];
+  sensitivePasswordConfigured: boolean | null;
   appointmentSettings: {
     configured: boolean;
     timezone: string;
@@ -90,7 +92,8 @@ function isActiveCode(code: JoinCode | undefined) {
 }
 
 export default function ReferrerNetworkOperationsPage() {
-  const { user } = useCurrentUser();
+  const { user, isLoading: userLoading } = useCurrentUser();
+  const { openSensitivePassword } = useAccountSettings();
   const confirm = useConfirmDialog();
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [loading, setLoading] = useState(true);
@@ -278,6 +281,10 @@ export default function ReferrerNetworkOperationsPage() {
     void loadResetPreview();
   }, [loadReadiness, loadResetPreview, requiresTenantSelection]);
 
+  const handleOpenSensitivePasswordSettings = useCallback(() => {
+    openSensitivePassword({ onSaved: () => void loadReadiness() });
+  }, [loadReadiness, openSensitivePassword]);
+
   const codeByType = useMemo(() => {
     const result: Partial<Record<JoinCodeType, JoinCode>> = {};
     for (const code of readiness?.codes || []) {
@@ -320,7 +327,25 @@ export default function ReferrerNetworkOperationsPage() {
     { title: '操作者', key: 'actor', render: (_, item) => item.actorStaffId ? `员工 #${item.actorStaffId}` : item.actorUserId ? `用户 #${item.actorUserId}` : '系统/匿名扫码' },
   ];
 
+  const isEnterpriseAdmin = user?.role === 'enterprise_admin';
+  const isPlatformOperator = Boolean(
+    user && ['super_admin', 'admin'].includes(user.role)
+  );
+
   const checklist = [
+    ...(isEnterpriseAdmin
+      ? [
+          {
+            label: '企业安全密码',
+            ready: Boolean(readiness?.sensitivePasswordConfigured),
+            detail: readiness?.sensitivePasswordConfigured
+              ? '已设置，导出客资等敏感操作前须输入该密码'
+              : '尚未设置，导出客资前须先设置企业安全密码',
+            onAction: handleOpenSensitivePasswordSettings,
+            actionLabel: readiness?.sensitivePasswordConfigured ? '查看设置' : '去设置',
+          },
+        ]
+      : []),
     { label: '推荐人入驻准备', ready: isActiveCode(codeByType.referrer) && (readiness?.activeReferrerMemberships || 0) > 0, detail: `${readiness?.activeReferrerMemberships || 0} 个活动推荐人成员关系`, href: '/join-codes', actionLabel: '管理入驻码' },
     { label: '推广服务码前置条件', ready: (readiness?.activeReferrerPromotionCodes || 0) > 0, detail: `${readiness?.activeReferrerPromotionCodes || 0}/${readiness?.activeReferrerMemberships || 0} 个活动推荐人成员关系已有服务码`, href: '/referrers', actionLabel: '查看推荐人' },
     { label: '可派活动码的设计师/测量员', ready: eligibility.eligibleDesigners.length + eligibility.eligibleMeasurers.length > 0, detail: `${readiness?.activeStaffActivityCodes || 0} 份活动码 · ${eligibility.eligibleDesigners.length + eligibility.eligibleMeasurers.length} 人可出示（设计师须微信号和二维码完整）`, href: '/staff', actionLabel: '管理员工' },
@@ -345,6 +370,15 @@ export default function ReferrerNetworkOperationsPage() {
         ) : (
           <Flex vertical gap={20}>
             <Alert showIcon type="info" message="工作台只显示已发生的业务事实" description="不会创建测试客户、线索、预约、量房、AI 方案或签单；人工验收仍须使用真实小程序账号完成手机号授权和客户所有权校验。" />
+
+            {!userLoading && isPlatformOperator ? (
+              <Alert
+                showIcon
+                type="info"
+                message="企业安全密码须由企业负责人设置"
+                description="当前为平台管理员身份。请使用企业负责人账号登录本企业，或请企业负责人在头像账户菜单中设置企业安全密码后再导出客资。"
+              />
+            ) : null}
 
             <section aria-label="运营摘要">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -376,7 +410,14 @@ export default function ReferrerNetworkOperationsPage() {
                         <Typography.Text type="secondary">{item.detail}</Typography.Text>
                       </Flex>
                       <Tag color={item.ready ? 'green' : 'orange'}>{item.ready ? '已就绪' : '待处理'}</Tag>
-                      <Button size="small" type={item.ready ? 'default' : 'primary'} href={item.href}>{item.actionLabel}</Button>
+                      <Button
+                        size="small"
+                        type={item.ready ? 'default' : 'primary'}
+                        href={'onAction' in item && item.onAction ? undefined : item.href}
+                        onClick={'onAction' in item && item.onAction ? () => item.onAction?.() : undefined}
+                      >
+                        {item.actionLabel}
+                      </Button>
                     </Flex>
                   </Card>
                 ))}

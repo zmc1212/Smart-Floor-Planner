@@ -8,6 +8,9 @@
     class="onboarding-nav"
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
+      <view class="back-chevron"></view>
+    </view>
     <view class="brand-lockup">
       <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
       <text class="brand-name">家客来</text>
@@ -102,8 +105,10 @@
         loading="{{pageState === 'submitting' && !nameSheetVisible}}"
         disabled="{{pageState === 'submitting' || nameSheetVisible}}"
       >
-        <image class="join-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-        <text>授权手机号并加入</text>
+        <view class="join-inner">
+          <image class="join-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+          <text>授权手机号并加入</text>
+        </view>
       </button>
 
       <view class="identity-link" bindtap="onOpenIdentitySwitch" aria-role="button">
@@ -158,12 +163,16 @@
     </view>
 
     <button class="join-action recovery-scan" bindtap="onScanNewInvite">
-      <image class="join-action-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
-      <text>扫描新邀请</text>
+      <view class="join-inner">
+        <image class="join-action-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
+        <text>扫描新邀请</text>
+      </view>
     </button>
     <button class="join-action-outline" bindtap="onOpenIdentitySwitch">
-      <image class="join-action-icon outline" src="/images/mine-icons/users.png" mode="aspectFit" />
-      <text>切换可用身份</text>
+      <view class="join-inner">
+        <image class="join-action-icon outline" src="/images/mine-icons/users.png" mode="aspectFit" />
+        <text>切换可用身份</text>
+      </view>
     </button>
     <view class="recovery-help">
       <image src="/images/mine-icons/bell.png" mode="aspectFit" />

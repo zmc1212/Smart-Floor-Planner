@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
-import { ReferrerNetworkRepository } from '@/db/repositories';
+import {
+  createEnterpriseJoinToken,
+  ReferrerNetworkRepository,
+} from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import {
@@ -50,6 +53,9 @@ export async function GET(request: Request) {
           label: codeType === 'staff' ? '员工入驻码' : '推荐人入驻码',
           hasActive: Boolean(active),
           code: active ? enterpriseJoinCodeToDto(active) : null,
+          token: active
+            ? createEnterpriseJoinToken(active.enterpriseId, codeType, active.version)
+            : null,
         };
       });
       return {

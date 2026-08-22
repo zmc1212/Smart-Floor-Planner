@@ -12,6 +12,34 @@
     </view>
     <image class="lead-detail-scene" src="/packages/business/assets/leads/lead-detail.png" mode="aspectFit"></image>
   </view>
+  <view class="staff-assignment-grid" wx:if="{{lead}}">
+    <view
+      class="staff-assignment-card {{designerContact.canAssign ? 'is-assignable' : ''}}"
+      data-role="designer"
+      data-phone="{{designerContact.phone}}"
+      bindtap="onStaffCardTap"
+      aria-role="{{designerContact.canAssign || designerContact.canCall ? 'button' : 'text'}}"
+      aria-label="设计师 {{designerContact.name}}"
+    >
+      <text class="staff-assignment-role">设计师</text>
+      <text class="staff-assignment-name">{{designerContact.name}}</text>
+      <text wx:if="{{designerContact.phone}}" class="staff-assignment-phone">{{designerContact.phone}}</text>
+      <text wx:elif="{{designerContact.canAssign}}" class="staff-assignment-action">点击分配 ›</text>
+    </view>
+    <view
+      class="staff-assignment-card {{measurerContact.canAssign ? 'is-assignable' : ''}}"
+      data-role="measurer"
+      data-phone="{{measurerContact.phone}}"
+      bindtap="onStaffCardTap"
+      aria-role="{{measurerContact.canAssign || measurerContact.canCall ? 'button' : 'text'}}"
+      aria-label="测量员 {{measurerContact.name}}"
+    >
+      <text class="staff-assignment-role">测量员</text>
+      <text class="staff-assignment-name">{{measurerContact.name}}</text>
+      <text wx:if="{{measurerContact.phone}}" class="staff-assignment-phone">{{measurerContact.phone}}</text>
+      <text wx:elif="{{measurerContact.canAssign}}" class="staff-assignment-action">点击分配 ›</text>
+    </view>
+  </view>
   <view class="lead-stage-rail" wx:if="{{lead}}">
     <view class="lead-stage-item state-{{item.state}}" wx:for="{{stageRail}}" wx:key="label">
       <view class="lead-stage-dot"></view>
@@ -26,9 +54,40 @@
         <text class="whole-home-next-copy">{{nextAction}}</text>
       </view>
     </view>
-    <view class="whole-home-address" wx:if="{{appointment}}">{{appointment.address || appointment.summary}}</view>
+    <view class="whole-home-house-facts" wx:if="{{houseFacts}}">
+      <view class="house-fact-row" wx:for="{{houseFacts.facts}}" wx:key="label">
+        <text class="house-fact-label">{{item.label}}</text>
+        <text class="house-fact-value">{{item.value}}</text>
+      </view>
+    </view>
+    <view class="whole-home-address" wx:elif="{{appointment}}">{{appointment.address || appointment.summary}}</view>
     <view class="whole-home-address" wx:elif="{{canScheduleAppointment}}">{{canRebookAppointment ? (lead.nextAction || '预约已过期或已取消，请选择新的上门时段') : '先从真实可用时段安排首次上门服务'}}</view>
     <view class="whole-home-address" wx:else>{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始建立客户户型'}}</view>
+    <view
+      wx:if="{{canViewFloorPlanPreview && activeFloorPlan}}"
+      class="floor-preview-container"
+      bindtap="onPreviewFloorPlan"
+      aria-role="{{floorPlanPreviewPath ? 'button' : 'text'}}"
+      aria-label="查看测绘图"
+    >
+      <image wx:if="{{floorPlanPreviewPath}}" class="floor-preview-image" src="{{floorPlanPreviewPath}}" mode="aspectFit" />
+      <view wx:elif="{{floorPlanPreviewState === 'loading'}}" class="floor-preview-fallback">
+        <text class="floor-preview-fallback-copy">测绘图加载中…</text>
+      </view>
+      <view wx:elif="{{floorPlanPreviewSegments.length}}" class="floor-preview-graph">
+        <view
+          wx:for="{{floorPlanPreviewSegments}}"
+          wx:for-item="segment"
+          wx:key="id"
+          class="floor-preview-wall"
+          style="{{segment.style}}"
+        ></view>
+      </view>
+      <view wx:else class="floor-preview-fallback">
+        <text class="floor-preview-fallback-copy">暂无测绘预览</text>
+      </view>
+      <view wx:if="{{floorPlanPreviewPath}}" class="preview-action-chip"><text>查看大图</text><view class="chip-arrow"></view></view>
+    </view>
     <button
       wx:if="{{canScheduleAppointment && canRebookAppointment}}"
       class="whole-home-appointment-action"
@@ -241,5 +300,37 @@
       <button class="conversion-sheet-secondary" catchtap="onCloseRevertConversionSheet" disabled="{{conversionSubmitting}}">取消</button>
       <button class="conversion-sheet-danger" catchtap="onConfirmRevertConversion" loading="{{conversionSubmitting}}" disabled="{{conversionSubmitting || !revertConversionReason}}">确认撤销</button>
     </view>
+  </view>
+</view>
+
+<view class="conversion-sheet-mask staff-assign-mask {{showStaffAssignSheet ? 'open' : ''}}" wx:if="{{showStaffAssignSheet}}" catchtap="onCloseStaffAssignSheet">
+  <view class="conversion-sheet staff-assign-sheet {{showStaffAssignSheet ? 'open' : ''}}" catchtap="onSheetTap">
+    <view class="conversion-sheet-handle"></view>
+    <view class="conversion-sheet-header">
+      <view>
+        <text class="conversion-sheet-title">选择{{staffAssignRole === 'measurer' ? '测量员' : '设计师'}}</text>
+        <text class="conversion-sheet-customer">仅补齐当前待分配角色，不会替换已绑定人员</text>
+      </view>
+      <text class="conversion-sheet-close" catchtap="onCloseStaffAssignSheet">关闭</text>
+    </view>
+    <view wx:if="{{staffAssignLoading}}" class="staff-assign-state">正在读取可派人员…</view>
+    <view wx:elif="{{staffAssignError}}" class="staff-assign-state">{{staffAssignError}}</view>
+    <scroll-view wx:else scroll-y class="staff-assign-list" enhanced show-scrollbar="{{false}}">
+      <view
+        wx:for="{{staffAssignCandidates}}"
+        wx:key="id"
+        class="staff-assign-card tone-{{item.statusTone}}"
+        data-id="{{item.id}}"
+        catchtap="onConfirmStaffAssign"
+        aria-role="button"
+        aria-label="指派 {{item.displayName}}"
+      >
+        <view class="staff-assign-card-copy">
+          <text class="staff-assign-name">{{item.displayName}}</text>
+          <text class="staff-assign-meta">{{item.roleLabel}}{{item.phone ? ' · ' + item.phone : ''}}</text>
+        </view>
+        <text class="staff-assign-cta">{{staffAssignSubmitting ? '提交中' : '确认指派'}}</text>
+      </view>
+    </scroll-view>
   </view>
 </view>

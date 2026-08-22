@@ -133,6 +133,14 @@ button::after {
   line-height: 88rpx;
 }
 
+.retry-button[disabled],
+button.retry-button[disabled] {
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
+  box-shadow: none;
+  opacity: 1;
+}
+
 .background-browse {
   min-width: 276rpx;
   height: 88rpx;
@@ -362,6 +370,7 @@ button::after {
   font-weight: var(--font-weight-medium);
   line-height: 1;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .action-share {
@@ -413,6 +422,20 @@ button::after {
 .publication-note { display: block; margin-top: 9rpx; color: #657269; font-size: 22rpx; line-height: 1.45; }
 .publication-action { min-width: 164rpx; min-height: 68rpx; margin: 0; padding: 0 18rpx; border: 0; border-radius: 16rpx; color: #fff; background: #0aa447; font-size: 24rpx; font-weight: 600; line-height: 68rpx; }
 .publication-action.withdraw { color: #b43e35; background: #fff; box-shadow: inset 0 0 0 1rpx #edc9c5; }
+.publication-action[disabled],
+button.publication-action[disabled] {
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
+  box-shadow: none;
+  opacity: 1;
+}
+.publication-action.withdraw[disabled],
+button.publication-action.withdraw[disabled] {
+  color: #c48a86 !important;
+  background: #f7eceb !important;
+  box-shadow: inset 0 0 0 1rpx #edc9c5;
+  opacity: 1;
+}
 
 .task-summary {
   margin-top: 24rpx;

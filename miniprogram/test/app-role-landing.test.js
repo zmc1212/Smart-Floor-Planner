@@ -71,6 +71,7 @@ test('role landing leaves the enterprise open-account scan page for workbench id
       globalData: {
         userInfo: { mode: 'staff', staffRole: 'enterprise_admin' },
         bootstrap: { current: { mode: 'staff', staffRole: 'enterprise_admin', role: 'enterprise_admin' } },
+        launchOptions: { scene: 1047 },
         roleLandingRedirected: false,
         roleLandingRestoreRetries: 0,
       },
@@ -81,18 +82,110 @@ test('role landing leaves the enterprise open-account scan page for workbench id
     assert.equal(adminApp.globalData.roleLandingRedirected, true);
 
     relaunched.length = 0;
-    const customerApp = {
+    const customerQrApp = {
       globalData: {
         userInfo: { mode: 'customer' },
         bootstrap: { current: { mode: 'customer', role: 'customer' } },
+        launchOptions: { scene: 1047 },
         roleLandingRedirected: false,
         roleLandingRestoreRetries: 0,
       },
       restoreRoleLanding: definition.restoreRoleLanding,
     };
-    definition.restoreRoleLanding.call(customerApp);
+    definition.restoreRoleLanding.call(customerQrApp);
     assert.deepEqual(relaunched, []);
-    assert.equal(customerApp.globalData.roleLandingRedirected, false);
+    assert.equal(customerQrApp.globalData.roleLandingRedirected, false);
+  } finally {
+    global.wx = previousWx;
+    global.getCurrentPages = previousPages;
+  }
+});
+
+test('a later recents reopen does not keep a signed customer on the enterprise open-account scan page', () => {
+  const definition = loadAppDefinition();
+  const previousWx = global.wx;
+  const previousPages = global.getCurrentPages;
+  const relaunched = [];
+  global.wx = {
+    reLaunch(options) { relaunched.push(options.url); },
+    switchTab() {},
+  };
+
+  try {
+    global.getCurrentPages = () => [{
+      route: 'packages/business/enterprise-register/enterprise-register'
+    }];
+    const customerRecentsApp = {
+      globalData: {
+        userInfo: { mode: 'customer' },
+        bootstrap: { current: { mode: 'customer', role: 'customer' } },
+        launchOptions: { scene: 1089 },
+        roleLandingRedirected: false,
+        roleLandingRestoreRetries: 0,
+      },
+      restoreRoleLanding: definition.restoreRoleLanding,
+    };
+    definition.restoreRoleLanding.call(customerRecentsApp);
+    assert.deepEqual(relaunched, ['/pages/index/index']);
+    assert.equal(customerRecentsApp.globalData.roleLandingRedirected, true);
+  } finally {
+    global.wx = previousWx;
+    global.getCurrentPages = previousPages;
+  }
+});
+
+test('join-code and service-code scan landings leave on recents but stay on a fresh scan or share', () => {
+  const definition = loadAppDefinition();
+  const previousWx = global.wx;
+  const previousPages = global.getCurrentPages;
+  const relaunched = [];
+  global.wx = {
+    reLaunch(options) { relaunched.push(options.url); },
+    switchTab() {},
+  };
+
+  function restore(route, identity, scene) {
+    relaunched.length = 0;
+    global.getCurrentPages = () => [{ route }];
+    const app = {
+      globalData: {
+        userInfo: identity,
+        bootstrap: { current: identity },
+        launchOptions: { scene },
+        roleLandingRedirected: false,
+        roleLandingRestoreRetries: 0,
+      },
+      restoreRoleLanding: definition.restoreRoleLanding,
+    };
+    definition.restoreRoleLanding.call(app);
+    return { urls: [...relaunched], redirected: app.globalData.roleLandingRedirected };
+  }
+
+  try {
+    const designer = { mode: 'staff', staffRole: 'designer', role: 'designer' };
+    const customer = { mode: 'customer', role: 'customer' };
+
+    assert.deepEqual(
+      restore('packages/business/onboarding/onboarding', designer, 1047),
+      { urls: [], redirected: false }
+    );
+    assert.deepEqual(
+      restore('packages/business/onboarding/onboarding', designer, 1007),
+      { urls: [], redirected: false }
+    );
+    assert.deepEqual(
+      restore('packages/business/onboarding/onboarding', designer, 1089),
+      { urls: ['/pages/index/index'], redirected: true }
+    );
+
+    assert.deepEqual(
+      restore('packages/business/free-design-service/free-design-service', customer, 1047),
+      { urls: [], redirected: false }
+    );
+    assert.deepEqual(
+      restore('packages/business/free-design-service/free-design-service', customer, 1089),
+      { urls: ['/pages/index/index'], redirected: true }
+    );
   } finally {
     global.wx = previousWx;
     global.getCurrentPages = previousPages;

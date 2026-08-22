@@ -103,6 +103,22 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
     globalData.bootstrap = { current: { role: 'enterprise_admin', capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'] } };
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['operations', 'customers', 'appointments', 'commissions', 'mine']);
+
+    globalData.bootstrap = {
+      current: {
+        role: 'salesperson',
+        capabilities: ['promotion.records', 'promotion.commissions', 'account'],
+      },
+    };
+    definition.methods.syncSelected.call(component);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['promotion', 'mine']);
+    assert.equal(
+      component.data.list[0].pagePath,
+      '/packages/business/promotion-records/promotion-records'
+    );
+    assert.equal(component.data.list[0].text, '报备');
+    assert.equal(component.data.list[0].iconPath, '/images/mine-icons/tab-home.png');
+    assert.equal(component.data.list[1].pagePath, '/pages/mine/mine');
   } finally {
     restore();
   }

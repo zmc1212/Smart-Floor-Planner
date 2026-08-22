@@ -4,7 +4,7 @@ const templateUtils = require('../../utils/templates.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { openAIDesignEntry } = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign } = require('../../utils/aiDesignAccess.js');
-const { roleForIdentity } = require('../../utils/identity-navigation.js');
+const { roleForIdentity, getRoleLanding } = require('../../utils/identity-navigation.js');
 
 const QUICK_TOOLS = [
   {
@@ -135,6 +135,7 @@ Page({
     bleAutoConnecting: false,
     roleWorkbenchRole: '',
     redirectingToVisitorGateway: false,
+    redirectingSalesperson: false,
   },
 
   redirectToVisitorGateway() {
@@ -154,11 +155,31 @@ Page({
     return ['customer', 'designer', 'measurer', 'enterprise_admin', 'platform_admin'].includes(role) ? role : '';
   },
 
+  redirectSalespersonAwayFromHome() {
+    const globalData = getApp().globalData;
+    const identity = {
+      ...(globalData.userInfo || {}),
+      ...((globalData.bootstrap && globalData.bootstrap.current) || {}),
+    };
+    if (roleForIdentity(identity) !== 'salesperson') return false;
+    if (this.data.redirectingSalesperson) return true;
+    const url = getRoleLanding(identity)
+      || '/packages/business/promotion-records/promotion-records';
+    this.setData({ redirectingSalesperson: true });
+    wx.reLaunch({
+      url,
+      fail: () => this.setData({ redirectingSalesperson: false }),
+    });
+    return true;
+  },
+
   onLoad: function () {
     if (!this.isLoggedIn()) {
       this.redirectToVisitorGateway();
       return;
     }
+
+    if (this.redirectSalespersonAwayFromHome()) return;
 
     var sysInfo = wx.getSystemInfoSync();
     var menuButtonInfo = wx.getMenuButtonBoundingClientRect();
@@ -194,6 +215,8 @@ Page({
       this.redirectToVisitorGateway();
       return;
     }
+
+    if (this.redirectSalespersonAwayFromHome()) return;
 
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
     if (tabBar) {

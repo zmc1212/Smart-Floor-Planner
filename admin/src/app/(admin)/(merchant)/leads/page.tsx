@@ -29,8 +29,9 @@ import {
   Timeline,
   Typography,
 } from 'antd';
-import { Archive, BadgeCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Send, Trash2, Undo2, Users, XCircle } from 'lucide-react';
+import { Archive, BadgeCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Download, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Send, Trash2, Undo2, Users, XCircle } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
+import { SensitivePasswordModal } from '@/components/admin/sensitive-password-modal';
 import { notify } from '@/components/admin/operation-feedback';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -42,6 +43,7 @@ import {
   getAssignmentStatusLabel,
   needsStaffWechatForAssignment,
 } from '@/lib/lead-assignment-feedback';
+import { getLeadSourceLabel } from '@/lib/lead-source-labels';
 
 type StaffReference = {
   _id: string;
@@ -156,6 +158,7 @@ type AiSchemePublication = {
   workflowId?: string | null;
   title: string;
   publishedAt?: string;
+  finalized?: boolean;
   imageCount: number;
   generationIds: string[];
 };
@@ -204,22 +207,11 @@ const STATUS_LABELS = Object.fromEntries(
   STATUS_OPTIONS.map((item) => [item.value, item.label])
 );
 
-const LEAD_SOURCE_LABELS: Record<string, string> = {
-  referrer_network: '推荐人网络',
-  staff_activity: '员工活动码',
-  manual_entry: '企业录入',
-};
-
 function openAiWorkbench(leadId: string, workflowId?: string) {
   const params = new URLSearchParams();
   params.set('leadId', leadId);
   if (workflowId) params.set('workflowId', workflowId);
   window.open(`/ai-studio/scenarios?${params.toString()}`, '_blank', 'noopener,noreferrer');
-}
-
-function getLeadSourceLabel(source?: string | null) {
-  if (!source) return '未知';
-  return LEAD_SOURCE_LABELS[source] || source;
 }
 
 function getFloorPlanSourceLabel(source?: string | null) {
@@ -280,19 +272,6 @@ function canEditLeadProfile(lead: Lead, role?: string | null, userId?: string | 
   if (role === 'designer') return getStaffId(lead.assignedTo) === userId;
   if (role === 'measurer') return getStaffId(lead.measurerId) === userId;
   return false;
-}
-
-const LEAD_COMMUNITY_MAX = 160;
-
-function shouldOfferCommunitySync(
-  lead: Lead,
-  address: string,
-  role?: string | null,
-  userId?: string | null
-) {
-  if (!canEditLeadProfile(lead, role, userId)) return false;
-  if (String(lead.communityName || '').trim()) return false;
-  return Boolean(address.trim());
 }
 
 const LEAD_STYLE_OPTIONS = [
@@ -454,12 +433,14 @@ function LeadsPage() {
   const [selectedSlot, setSelectedSlot] = useState<AppointmentSlot | null>(null);
   const [slotLoading, setSlotLoading] = useState(false);
   const [slotError, setSlotError] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const [completeSubmitting, setCompleteSubmitting] = useState(false);
   const [publicationLoading, setPublicationLoading] = useState(false);
   const [publicationUpdatingId, setPublicationUpdatingId] = useState<string | null>(null);
+  const [publicationFinalizingId, setPublicationFinalizingId] = useState<string | null>(null);
   const [publications, setPublications] = useState<AiSchemePublication[]>([]);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileSubmitting, setProfileSubmitting] = useState(false);
@@ -704,6 +685,32 @@ function LeadsPage() {
     }
   };
 
+  const finalizeScheme = async (scheme: AiSchemePublication) => {
+    if (!selectedLead || !scheme.workflowId || scheme.finalized) return;
+    const confirmed = await confirmAction({
+      title: '设为定稿',
+      description: `客户档案与方案册将优先展示「${scheme.title}」。定稿后仍可继续出图和更新方案，直到您改指定稿或撤回该套方案。`,
+      confirmText: '确认定稿',
+    });
+    if (!confirmed) return;
+    setPublicationFinalizingId(scheme.id);
+    try {
+      const response = await fetch(
+        `/api/leads/${selectedLead._id}/ai-scheme-publications/${scheme.workflowId}/finalize`,
+        { method: 'POST' },
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '定稿方案失败');
+      notify.success('已设为定稿');
+      await loadPublications(selectedLead._id);
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '定稿方案失败');
+    } finally {
+      setPublicationFinalizingId(null);
+    }
+  };
+
   const retryAssignment = async (lead: Lead) => {
     setRetryingAssignmentId(lead._id);
     try {
@@ -769,7 +776,6 @@ function LeadsPage() {
       setAppointmentOpen(false);
       notify.success('预约上门量房时间已设置');
       await refreshLeads();
-      void offerSyncCommunityFromAddress(selectedLead, appointmentAddress.trim());
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '创建预约失败');
     } finally {
@@ -865,54 +871,15 @@ function LeadsPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '更新服务地址失败');
-      const savedAddress = appointmentAddress.trim();
-      const leadForSync = addressLead;
       setSelectedLead((current) => current ? { ...current, appointment: result.data } : current);
       setAddressOpen(false);
       setAddressLead(null);
       notify.success('服务地址已更新');
       await refreshLeads();
-      if (leadForSync) {
-        void offerSyncCommunityFromAddress(leadForSync, savedAddress);
-      }
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '更新服务地址失败');
     } finally {
       setAppointmentSubmitting(false);
-    }
-  };
-
-  const offerSyncCommunityFromAddress = async (lead: Lead, address: string) => {
-    if (!shouldOfferCommunitySync(lead, address, currentUser?.role, currentUser?._id)) return;
-    const communityName = address.trim().slice(0, LEAD_COMMUNITY_MAX);
-    const confirmed = await confirmAction({
-      title: '同步到客户小区',
-      description: '是否将上门地址写入客户资料中的小区？',
-      confirmText: '同步写入',
-      cancelText: '暂不',
-      zIndex: 1400,
-    });
-    if (!confirmed) return;
-    try {
-      const response = await fetch(`/api/leads/${lead._id}`);
-      const current = await response.json();
-      if (!response.ok || !current.success) throw new Error(current.error || '读取客户资料失败');
-      if (String(current.data?.communityName || '').trim()) {
-        notify.info('客户已有小区，未覆盖');
-        return;
-      }
-      const save = await fetch(`/api/leads/${lead._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ communityName }),
-      });
-      const saved = await save.json();
-      if (!save.ok || !saved.success) throw new Error(saved.error || '写入客户小区失败');
-      setSelectedLead(saved.data);
-      notify.success('已写入客户小区');
-      await refreshLeads();
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '写入客户小区失败');
     }
   };
 
@@ -1449,6 +1416,15 @@ function LeadsPage() {
           search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
           options={{ reload: true, density: true, setting: true }}
           toolBarRender={() => [
+            currentUser?.role === 'enterprise_admin' ? (
+              <Button
+                key="export-leads"
+                icon={<Download size={16} />}
+                onClick={() => setExportModalOpen(true)}
+              >
+                导出客资
+              </Button>
+            ) : null,
             capabilities.canManageArchive ? (
               <Segmented
                 key="archive-state"
@@ -2116,20 +2092,34 @@ function LeadsPage() {
                     {publications.map((item) => (
                       <Flex key={item.id} align="center" justify="space-between" gap={12} className="rounded-lg border border-border bg-card p-3">
                         <Flex vertical gap={2} className="min-w-0">
-                          <Typography.Text strong>{item.title}</Typography.Text>
+                          <Flex align="center" gap={8} wrap>
+                            <Typography.Text strong>{item.title}</Typography.Text>
+                            {item.finalized ? <Tag color="gold">已定稿</Tag> : null}
+                          </Flex>
                           <Typography.Text type="secondary" className="text-xs">
                             {item.imageCount} 张效果图 · 发布于 {formatDate(item.publishedAt)}
                           </Typography.Text>
                         </Flex>
                         {item.workflowId ? (
-                          <Button
-                            size="small"
-                            danger
-                            loading={publicationUpdatingId === item.id}
-                            onClick={() => void withdrawScheme(item)}
-                          >
-                            撤回
-                          </Button>
+                          <Flex gap={8}>
+                            {!item.finalized ? (
+                              <Button
+                                size="small"
+                                loading={publicationFinalizingId === item.id}
+                                onClick={() => void finalizeScheme(item)}
+                              >
+                                设为定稿
+                              </Button>
+                            ) : null}
+                            <Button
+                              size="small"
+                              danger
+                              loading={publicationUpdatingId === item.id}
+                              onClick={() => void withdrawScheme(item)}
+                            >
+                              撤回
+                            </Button>
+                          </Flex>
                         ) : null}
                       </Flex>
                     ))}
@@ -2251,6 +2241,10 @@ function LeadsPage() {
           </Flex>
         ) : null}
       </Drawer>
+      <SensitivePasswordModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+      />
     </div>
   );
 }

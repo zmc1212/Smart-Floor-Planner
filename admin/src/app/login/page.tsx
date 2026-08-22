@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import { Alert, Button, Input, Tag } from 'antd';
 import { AlertCircle, ArrowRight, Lock, ShieldCheck, User as UserIcon } from 'lucide-react';
 import { AdminAntdProvider } from '@/components/admin/antd-provider';
@@ -12,7 +11,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,8 +27,8 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (data.success) {
-        router.push('/');
-        router.refresh();
+        window.location.assign('/');
+        return;
       } else {
         setError(data.error || '登录失败，请检查用户名和密码');
       }
@@ -42,7 +40,7 @@ export default function LoginPage() {
   };
 
   return (
-    <AdminAntdProvider>
+    <AdminAntdProvider includeAccountSettings={false}>
       <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 font-sans selection:bg-primary selection:text-primary-foreground">
         <div className="max-w-[440px] w-full transform transition-all duration-700 animate-in fade-in slide-in-from-bottom-8">
           <div className="text-center mb-12">

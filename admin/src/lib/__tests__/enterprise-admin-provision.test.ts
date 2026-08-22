@@ -18,6 +18,7 @@ test('enterprise admin initial password is 123456 and is hashed from one constan
     'src/lib/enterprise-admin-provision.ts',
     'src/app/api/admin/enterprises/route.ts',
     'src/app/api/admin/enterprises/activate/route.ts',
+    'src/app/api/miniprogram/onboarding/staff/route.ts',
   ].map((relativePath) =>
     readFileSync(path.join(process.cwd(), relativePath), 'utf8')
   );
@@ -26,4 +27,14 @@ test('enterprise admin initial password is 123456 and is hashed from one constan
     assert.doesNotMatch(source, /Admin123456/);
   }
   assert.match(sources[0], /export const ENTERPRISE_ADMIN_INITIAL_PASSWORD = '123456'/);
+  assert.doesNotMatch(sources[3], /crypto\.randomBytes\(32\)/);
+});
+
+test('approval links the existing Mini Program user on the contact phone to the new enterprise admin', () => {
+  const source = readFileSync(
+    path.join(process.cwd(), 'src/lib/enterprise-admin-provision.ts'),
+    'utf8'
+  );
+  assert.match(source, /ensureStaffUser/);
+  assert.match(source, /MiniProgramIdentityRepository/);
 });

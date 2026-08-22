@@ -1,0 +1,149 @@
+.ssp-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.ssp-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(16, 28, 22, 0.42);
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+}
+
+.ssp-mask.open {
+  opacity: 1;
+}
+
+.ssp-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-height: 86vh;
+  padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  border-radius: 28rpx 28rpx 0 0;
+  background: #f8faf9;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  transform: translateY(100%);
+  transition: transform 240ms ease-out;
+}
+
+.ssp-sheet.open {
+  transform: translateY(0);
+}
+
+.ssp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20rpx;
+  flex-shrink: 0;
+}
+
+.ssp-title {
+  color: #183426;
+  font-size: 30rpx;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.ssp-close {
+  color: #1f9d55;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ssp-body {
+  min-height: 0;
+  flex: 1;
+  max-height: 58vh;
+  box-sizing: border-box;
+}
+
+.ssp-preview {
+  display: block;
+  width: 100%;
+  border-radius: 20rpx;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.ssp-state {
+  min-height: 420rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16rpx;
+  border-radius: 20rpx;
+  background: #ffffff;
+}
+
+.ssp-state-text {
+  color: #6b7280;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
+.ssp-retry {
+  color: #1f9d55;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.ssp-footer {
+  margin-top: 20rpx;
+  flex-shrink: 0;
+}
+
+.ssp-save {
+  width: 100%;
+  min-height: 88rpx;
+  margin: 0;
+  border: none;
+  border-radius: 999rpx;
+  background: #00c365;
+  color: #ffffff;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ssp-save[disabled],
+button.ssp-save[disabled] {
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
+  box-shadow: none;
+  opacity: 1;
+}
+
+.ssp-save::after {
+  border: none;
+}
+
+.ssp-tip {
+  display: block;
+  margin-top: 14rpx;
+  color: #6b7280;
+  font-size: 22rpx;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.ssp-canvas {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  pointer-events: none;
+  opacity: 0;
+}

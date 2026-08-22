@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getActivePromptTemplateAsset } from '@/lib/ai/prompt-library-query';
 import { verifyMiniAiRecipePreviewSignature } from '@/lib/ai/mini-ai-assets';
-import { resolveMediaObjectDelivery } from '@/lib/media-storage/operations';
-import { getMediaStorageProvider } from '@/lib/media-storage/registry';
+import { readLibraryCoverBuffer } from '@/lib/ai/prompt-template-cover';
 import sharp from 'sharp';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -17,31 +16,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
     const asset = await getActivePromptTemplateAsset(id);
     if (!asset) return NextResponse.json({ success: false, error: '配方预览图不存在' }, { status: 404 });
-    let sourceBuffer: Buffer | null = null;
-    let remoteSourceUrl = '';
-    try {
-      const provider = await getMediaStorageProvider(asset.storageProvider);
-      const delivery = await resolveMediaObjectDelivery({
-        provider,
-        location: { objectKey: asset.storageKey, bucket: asset.storageBucket ?? undefined },
-        expiresInSeconds: 1800,
-      });
-      sourceBuffer = delivery.kind === 'buffer' ? delivery.buffer : null;
-      remoteSourceUrl = delivery.kind === 'redirect' ? delivery.url : '';
-    } catch (error) {
-      if (!asset.sourceUrl) throw error;
-      console.warn('[Mini AI Recipe Preview] Stored preview unavailable; using imported source URL', {
-        recipeId: id,
-        storageProvider: asset.storageProvider,
-      });
-      remoteSourceUrl = asset.sourceUrl;
-    }
-    if (!sourceBuffer && remoteSourceUrl) {
-      const upstream = await fetch(remoteSourceUrl, { cache: 'no-store' });
-      if (!upstream.ok) throw new Error(`配方预览源读取失败：${upstream.status}`);
-      sourceBuffer = Buffer.from(await upstream.arrayBuffer());
-    }
-    if (!sourceBuffer) throw new Error('配方预览源为空');
+    const sourceBuffer = await readLibraryCoverBuffer(asset);
     const responseBuffer = await sharp(sourceBuffer)
       .rotate()
       .resize({ width: 960, height: 1280, fit: 'inside', withoutEnlargement: true })

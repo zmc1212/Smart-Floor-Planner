@@ -40,6 +40,10 @@
       "surfaceSoft": "#EAF8EC",
       "brandSoft": "#C7F1CC"
     },
+    "action": {
+      "disabledBg": "#A9D9B8",
+      "disabledText": "#FFFFFF"
+    },
     "border": {
       "soft": "#D1D5DB",
       "brand": "#22C55E",

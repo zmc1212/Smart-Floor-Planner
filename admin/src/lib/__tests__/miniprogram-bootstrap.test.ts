@@ -92,7 +92,7 @@ test('staff role mapping does not collapse designer and measurer capabilities', 
   assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'designer' }), 'designer');
   assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'measurer' }), 'measurer');
   assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'enterprise_admin' }), 'enterprise_admin');
-  assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'salesperson' }), null);
+  assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'salesperson' }), 'salesperson');
   assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'admin' }), 'platform_admin');
   assert.equal(getMiniProgramRole({ mode: 'staff', staffRole: 'super_admin' }), 'platform_admin');
   const designer = { ...customer, mode: 'staff' as const, staffRole: 'designer' as const };
@@ -104,4 +104,24 @@ test('staff role mapping does not collapse designer and measurer capabilities', 
   assert.equal(buildMiniProgramBootstrap({ current: owner, contexts: [owner] }).current.capabilities.includes('staff.earnings'), false);
   const platformAdmin = { ...customer, mode: 'staff' as const, staffRole: 'admin' as const };
   assert.ok(buildMiniProgramBootstrap({ current: platformAdmin, contexts: [platformAdmin] }).current.capabilities.includes('platform.devices'));
+  const salesperson = { ...customer, mode: 'staff' as const, staffRole: 'salesperson' as const };
+  const salesBootstrap = buildMiniProgramBootstrap({ current: salesperson, contexts: [salesperson] });
+  assert.equal(salesBootstrap.current.role, 'salesperson');
+  assert.equal(salesBootstrap.current.landingPath, '/packages/business/promotion-records/promotion-records');
+  assert.deepEqual(salesBootstrap.current.capabilities, [
+    'promotion.records',
+    'promotion.commissions',
+    'account',
+  ]);
+});
+
+test('salesperson badges stay empty without inventing local counts', () => {
+  assert.deepEqual(buildMiniProgramBadges({
+    role: 'salesperson',
+    facts: {},
+  }), {
+    status: 'ok',
+    message: null,
+    counts: {},
+  });
 });

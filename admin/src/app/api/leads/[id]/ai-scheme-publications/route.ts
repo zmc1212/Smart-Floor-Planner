@@ -4,7 +4,7 @@ import { parsePostgresId } from '@/db/postgres-dto';
 import { CustomerProjectRepository, LeadRepository } from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getTenantContext } from '@/lib/auth';
-import { groupPublishedSchemes } from '@/lib/customer-project';
+import { buildPublishedSchemeViews, groupPublishedSchemes } from '@/lib/customer-project';
 import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { notifyCustomerOfDesignPublished } from '@/lib/wechat-notification';
 
@@ -49,12 +49,14 @@ function isResponse(value: Actor | NextResponse): value is NextResponse {
   return value instanceof NextResponse;
 }
 
-function schemeSummary(scheme: ReturnType<typeof groupPublishedSchemes>[number]) {
+function schemeSummary(scheme: ReturnType<typeof buildPublishedSchemeViews>[number]) {
   return {
     id: scheme.id,
     workflowId: scheme.workflowId,
     title: scheme.title,
+    firstPublishedAt: scheme.firstPublishedAt,
     publishedAt: scheme.publishedAt,
+    finalized: Boolean(scheme.finalized),
     imageCount: scheme.images.length,
     generationIds: scheme.images.map((image) => image.generationId),
   };
@@ -69,7 +71,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       const lead = await new LeadRepository(transaction).findById(leadId);
       if (!lead || !canPublish(actor.role, lead.assignedTo, actor.staffId)) return null;
       const publications = await new CustomerProjectRepository(transaction).listActivePublications(actor.enterpriseId, leadId);
-      return groupPublishedSchemes(publications, leadId.toString()).map(schemeSummary);
+      return buildPublishedSchemeViews(publications, leadId.toString(), lead.finalizedWorkflowId).map(schemeSummary);
     });
     if (!result) return NextResponse.json({ success: false, error: '无权查看该客户项目的方案' }, { status: 403 });
     return NextResponse.json({ success: true, data: result });

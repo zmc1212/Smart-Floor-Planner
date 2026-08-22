@@ -130,6 +130,15 @@ function decorateGenerationView(generation, batchStatus, index, batchId) {
   };
 }
 
+function batchTargetLabel(batch) {
+  const snapshot = (batch && batch.parameterSnapshot) || {};
+  const label = String(snapshot.targetLabel || '').trim();
+  if (label) return label;
+  if (snapshot.targetScope === 'single_room') return '单房间';
+  if (snapshot.targetScope === 'whole_floor_plan') return '完整户型';
+  return '';
+}
+
 function decorateBatchView(batch) {
   const generationCount = batch.generations ? batch.generations.length : 0;
   const slotCount = Math.max(generationCount, Number(batch.requestedCount || 1), 1);
@@ -148,6 +157,7 @@ function decorateBatchView(batch) {
     timeLabel: formatBatchTime(batch.createdAt),
     statusLabel: batchStatusLabel(batch.status),
     isLegacy: String(batch.id).startsWith('legacy-'),
+    targetLabel: batchTargetLabel(batch),
     generations,
     hasProcessing,
   };
@@ -371,6 +381,7 @@ function shouldRenameWorkflowOnSend(view, title) {
 module.exports = {
   applySelectionToView,
   batchStatusLabel,
+  batchTargetLabel,
   buildConversationBatches,
   buildDefaultSendSelection,
   buildLeadSummary,

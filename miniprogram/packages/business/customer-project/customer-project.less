@@ -73,6 +73,7 @@
   line-height: 1;
   text-align: center;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 /* Native button ignores flex gap; keep explicit stack spacing. */
 .booking-actions > .booking-action + .booking-secondary,
@@ -98,7 +99,7 @@
 .image-state.error { color: #8b6b3f; background: #fcf7ed; }
 .published-title { overflow: hidden; margin-top: 12rpx; color: #26312a; font-size: 24rpx; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .footer-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; gap: 16rpx; padding: 16rpx 24rpx calc(16rpx + env(safe-area-inset-bottom)); background: rgba(248, 250, 249, .96); box-shadow: 0 -8rpx 24rpx rgba(24, 52, 38, .06); box-sizing: border-box; }
-.footer-outline, .footer-primary { display: flex; flex: 1; height: 88rpx; margin: 0; padding: 0; align-items: center; justify-content: center; border-radius: 999rpx; font-size: 26rpx; font-weight: 600; line-height: 1; box-sizing: border-box; }
+.footer-outline, .footer-primary { display: flex; flex: 1; height: 88rpx; margin: 0; padding: 0 16rpx; align-items: center; justify-content: center; border-radius: 999rpx; font-size: 26rpx; font-weight: 600; line-height: 1; box-sizing: border-box; white-space: nowrap; }
 .footer-outline { color: #183426; background: #fff; box-shadow: inset 0 0 0 1rpx rgba(142, 158, 148, .45); }
 .footer-outline::after, .footer-primary::after, .retry::after { border: 0; }
 .state { padding: 160rpx 32rpx; color: #6b7280; font-size: 26rpx; text-align: center; }

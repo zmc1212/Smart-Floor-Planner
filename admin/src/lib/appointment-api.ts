@@ -26,6 +26,17 @@ export function parseAppointmentAddress(value: unknown) {
   return address;
 }
 
+export const LEAD_COMMUNITY_NAME_MAX = 160;
+
+export function communityNameFromAppointment(input: {
+  locationName?: string | null;
+  address?: string | null;
+}) {
+  const fromLocation = String(input.locationName || '').trim().slice(0, LEAD_COMMUNITY_NAME_MAX);
+  if (fromLocation) return fromLocation;
+  return String(input.address || '').trim().slice(0, LEAD_COMMUNITY_NAME_MAX);
+}
+
 export type AppointmentLocationInput = {
   locationName: string;
   latitude: string;

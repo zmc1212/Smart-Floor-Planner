@@ -8,7 +8,7 @@ function normalizeOpeningToWall(opening, wall, options) {
   if (!opening || !wall) return opening;
   const opts = options || {};
   const minimumSizeMm = Number(opts.minimumSizeMm) || 100;
-  const maximumWallRatio = Number(opts.maximumWallRatio) || 0.6;
+  const maximumWallRatio = Number(opts.maximumWallRatio) || 1;
   const maxWidth = Math.max(minimumSizeMm, Math.floor((Number(wall.lengthMm) || 0) * maximumWallRatio));
   opening.widthMm = Math.max(minimumSizeMm, Math.min(maxWidth, Number(opening.widthMm) || minimumSizeMm));
   const halfWidth = opening.widthMm / 2;

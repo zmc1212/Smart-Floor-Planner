@@ -372,6 +372,7 @@ export async function getPostgresAiWorkflowContext(input: {
             title: publishedImages[0]?.publication.schemeTitle || workflow.title,
             publishedAt: publishedImages[0]?.publication.publishedAt,
             generationIds: publishedImages.map((item) => item.generation.id.toString()),
+            finalized: lead.finalizedWorkflowId === workflow.id,
           }
         : null,
     };

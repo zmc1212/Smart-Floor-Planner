@@ -1,9 +1,16 @@
 'use client';
 
 import { App, ConfigProvider } from 'antd';
+import { AccountSettingsProvider } from '@/components/admin/account-settings-provider';
 import { ConfirmDialogProvider } from '@/components/admin/confirm-dialog';
 
-export function AdminAntdProvider({ children }: { children: React.ReactNode }) {
+export function AdminAntdProvider({
+  children,
+  includeAccountSettings = true,
+}: {
+  children: React.ReactNode;
+  includeAccountSettings?: boolean;
+}) {
   return (
     <ConfigProvider
       theme={{
@@ -24,7 +31,13 @@ export function AdminAntdProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       <App>
-        <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
+        <ConfirmDialogProvider>
+          {includeAccountSettings ? (
+            <AccountSettingsProvider>{children}</AccountSettingsProvider>
+          ) : (
+            children
+          )}
+        </ConfirmDialogProvider>
       </App>
     </ConfigProvider>
   );

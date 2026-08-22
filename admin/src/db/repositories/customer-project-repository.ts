@@ -540,7 +540,6 @@ export class CustomerProjectRepository {
           schemeTitle: title,
           sortOrder: targetSortOrder,
           publishedBy: input.publishedBy,
-          publishedAt: now,
           updatedAt: now,
         })
         .where(and(
@@ -591,7 +590,12 @@ export class CustomerProjectRepository {
     withdrawnBy: bigint;
   }) {
     const leadRows = await this.transaction
-      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt })
+      .select({
+        id: leads.id,
+        assignedTo: leads.assignedTo,
+        archivedAt: leads.archivedAt,
+        finalizedWorkflowId: leads.finalizedWorkflowId,
+      })
       .from(leads)
       .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
       .for('update')
@@ -600,9 +604,10 @@ export class CustomerProjectRepository {
     if (!lead) return { kind: 'lead_not_found' as const };
     if (lead.archivedAt) return { kind: 'lead_archived' as const };
 
+    const now = new Date();
     const rows = await this.transaction
       .update(aiGenerationPublications)
-      .set({ withdrawnAt: new Date(), withdrawnBy: input.withdrawnBy, updatedAt: new Date() })
+      .set({ withdrawnAt: now, withdrawnBy: input.withdrawnBy, updatedAt: now })
       .where(and(
         eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
         eq(aiGenerationPublications.leadId, input.leadId),
@@ -610,6 +615,77 @@ export class CustomerProjectRepository {
         isNull(aiGenerationPublications.withdrawnAt)
       ))
       .returning();
-    return { kind: rows[0] ? 'withdrawn' as const : 'publication_not_found' as const, lead, publications: rows };
+    if (!rows[0]) return { kind: 'publication_not_found' as const, lead, publications: rows };
+
+    if (lead.finalizedWorkflowId === input.workflowId) {
+      await this.transaction
+        .update(leads)
+        .set({
+          finalizedWorkflowId: null,
+          finalizedAt: null,
+          finalizedBy: null,
+          updatedAt: now,
+        })
+        .where(eq(leads.id, input.leadId));
+    }
+
+    return { kind: 'withdrawn' as const, lead, publications: rows };
+  }
+
+  async finalizeScheme(input: {
+    enterpriseId: bigint;
+    leadId: bigint;
+    workflowId: bigint;
+    finalizedBy: bigint;
+  }) {
+    const leadRows = await this.transaction
+      .select({
+        id: leads.id,
+        assignedTo: leads.assignedTo,
+        archivedAt: leads.archivedAt,
+      })
+      .from(leads)
+      .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
+      .for('update')
+      .limit(1);
+    const lead = leadRows[0];
+    if (!lead) return { kind: 'lead_not_found' as const };
+    if (lead.archivedAt) return { kind: 'lead_archived' as const };
+
+    const workflowRows = await this.transaction
+      .select({ id: aiWorkflows.id })
+      .from(aiWorkflows)
+      .where(and(
+        eq(aiWorkflows.id, input.workflowId),
+        eq(aiWorkflows.enterpriseId, input.enterpriseId),
+        eq(aiWorkflows.leadId, input.leadId)
+      ))
+      .limit(1);
+    if (!workflowRows[0]) return { kind: 'workflow_not_found' as const, lead };
+
+    const activePublications = await this.transaction
+      .select({ id: aiGenerationPublications.id })
+      .from(aiGenerationPublications)
+      .where(and(
+        eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+        eq(aiGenerationPublications.leadId, input.leadId),
+        eq(aiGenerationPublications.workflowId, input.workflowId),
+        isNull(aiGenerationPublications.withdrawnAt)
+      ))
+      .limit(1);
+    if (!activePublications[0]) return { kind: 'publication_not_found' as const, lead };
+
+    const now = new Date();
+    await this.transaction
+      .update(leads)
+      .set({
+        finalizedWorkflowId: input.workflowId,
+        finalizedAt: now,
+        finalizedBy: input.finalizedBy,
+        updatedAt: now,
+      })
+      .where(eq(leads.id, input.leadId));
+
+    return { kind: 'finalized' as const, lead };
   }
 }

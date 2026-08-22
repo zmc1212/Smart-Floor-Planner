@@ -1,0 +1,43 @@
+<view wx:if="{{sheetMounted}}" class="ssp-root" aria-role="dialog" aria-label="保存后分享图片">
+  <view class="ssp-mask {{sheetOpen ? 'open' : ''}}" bindtap="onClose"></view>
+  <view class="ssp-sheet {{sheetOpen ? 'open' : ''}}" catchtap="noop">
+    <view class="ssp-head">
+      <text class="ssp-title">保存后分享图片</text>
+      <text class="ssp-close" bindtap="onClose">关闭</text>
+    </view>
+
+    <scroll-view scroll-y class="ssp-body" enhanced show-scrollbar="{{false}}">
+      <image
+        wx:if="{{posterPath}}"
+        class="ssp-preview"
+        src="{{posterPath}}"
+        mode="widthFix"
+        aria-label="方案海报预览"
+      />
+      <view wx:elif="{{drawError}}" class="ssp-state">
+        <text class="ssp-state-text">海报生成失败</text>
+        <text class="ssp-retry" bindtap="onRetry">重试</text>
+      </view>
+      <view wx:else class="ssp-state">
+        <text class="ssp-state-text">正在生成海报…</text>
+      </view>
+    </scroll-view>
+
+    <view class="ssp-footer">
+      <button
+        class="ssp-save"
+        bindtap="saveToPhotos"
+        disabled="{{!posterPath || saving}}"
+        loading="{{saving}}"
+      >保存到相册</button>
+      <text class="ssp-tip">保存后可发给家人或发朋友圈</text>
+    </view>
+  </view>
+</view>
+
+<canvas
+  type="2d"
+  id="schemePosterCanvas"
+  class="ssp-canvas"
+  style="width: {{canvasWidth}}px; height: {{canvasHeight}}px;"
+></canvas>

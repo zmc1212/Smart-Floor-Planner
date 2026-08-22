@@ -16,10 +16,29 @@ page {
   position: relative;
   z-index: 5;
   display: flex;
-  padding-left: 28rpx;
+  padding-left: 12rpx;
   padding-bottom: 12rpx;
   align-items: center;
+  gap: 4rpx;
   box-sizing: content-box;
+}
+
+.nav-back {
+  display: flex;
+  width: 64rpx;
+  height: 64rpx;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.back-chevron {
+  width: 16rpx;
+  height: 16rpx;
+  border-top: 3.5rpx solid #183426;
+  border-right: 3.5rpx solid #183426;
+  transform: rotate(-135deg);
+  box-sizing: border-box;
 }
 
 .brand-lockup {
@@ -130,8 +149,10 @@ page {
   min-height: 292rpx;
   height: auto;
   padding: 12rpx;
+  overflow: hidden;
   align-items: center;
   justify-content: center;
+  flex: none;
   border-radius: 24rpx;
   background: #ffffff;
   box-shadow: 0 0 0 4rpx #00c365, 0 12rpx 28rpx rgba(24, 52, 38, 0.08);
@@ -187,26 +208,35 @@ page {
 }
 
 .qr-retry {
-  min-width: 160rpx;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
   min-height: 64rpx;
   margin: 12rpx 0 4rpx;
-  padding: 0 20rpx;
+  padding: 0 16rpx;
   border: 0;
   border-radius: 32rpx;
   color: #ffffff;
   background: #00c365;
+  box-sizing: border-box;
   font-size: 24rpx;
   line-height: 64rpx;
+  white-space: nowrap;
 }
 
 .qr-retry::after {
   border: 0;
 }
 
+.qr-retry text {
+  white-space: nowrap;
+}
+
 .scan-guide {
   display: flex;
   width: 168rpx;
   align-items: center;
+  flex: none;
   flex-direction: column;
 }
 

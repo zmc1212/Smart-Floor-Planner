@@ -5,9 +5,49 @@ const navigation = require('../utils/identity-navigation.js');
 
 test('unknown identity never silently resolves to the customer landing', () => {
   assert.equal(navigation.getRoleLanding({ mode: 'unknown' }), null);
-  assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'salesperson' }), null);
+  assert.equal(
+    navigation.getRoleLanding({ mode: 'staff', staffRole: 'salesperson' }),
+    '/packages/business/promotion-records/promotion-records'
+  );
   assert.equal(navigation.navigateToRoleLanding({ mode: 'unknown' }), false);
   assert.equal(navigation.roleForIdentity({ role: 'user' }), 'customer');
+});
+
+test('salesperson lands on promotion records with promotion capabilities', () => {
+  assert.equal(navigation.roleForIdentity({ mode: 'staff', staffRole: 'salesperson' }), 'salesperson');
+  assert.deepEqual(navigation.ROLE_CAPABILITIES.salesperson, [
+    'promotion.records',
+    'promotion.commissions',
+    'account',
+  ]);
+  assert.equal(
+    navigation.canAccessRoute('/packages/business/promotion-records/promotion-records', {
+      mode: 'staff',
+      staffRole: 'salesperson',
+    }),
+    true
+  );
+  assert.equal(
+    navigation.canAccessRoute('/packages/business/promotion-record-detail/promotion-record-detail', {
+      mode: 'staff',
+      staffRole: 'salesperson',
+    }),
+    true
+  );
+  assert.equal(
+    navigation.canAccessRoute('/packages/business/commission-records/commission-records', {
+      mode: 'staff',
+      staffRole: 'salesperson',
+    }),
+    true
+  );
+  assert.equal(
+    navigation.canAccessRoute('/packages/business/staff-earnings/staff-earnings', {
+      mode: 'staff',
+      staffRole: 'salesperson',
+    }),
+    false
+  );
 });
 
 test('deep links are checked against server bootstrap capabilities', () => {

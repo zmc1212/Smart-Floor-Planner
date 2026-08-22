@@ -70,6 +70,7 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.doesNotMatch(styles, /flex:\s*0 0 240rpx/);
   assert.match(styles, /\.confirm-bar\s*\{[^}]*background:\s*rgba\(248,\s*250,\s*249/s);
   assert.match(styles, /\.confirm-bar\s*\{[^}]*padding:\s*20rpx 28rpx calc\(20rpx \+ env\(safe-area-inset-bottom\)\)/s);
+  assert.match(styles, /\.confirm-bar \.primary\[disabled\][\s\S]*--action-disabled-bg/);
   assert.match(styles, /\.detail-page\s*\{[^}]*padding-bottom:\s*calc\(200rpx \+ env\(safe-area-inset-bottom\)\)/s);
   assert.match(styles, /\.confirm-bar/);
 });

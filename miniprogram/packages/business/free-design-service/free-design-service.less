@@ -350,7 +350,9 @@ page {
   margin-bottom: 0;
   margin-left: 0;
   padding-top: 0;
+  padding-right: 28rpx;
   padding-bottom: 0;
+  padding-left: 28rpx;
   align-self: stretch;
   border: 0;
   border-radius: 999rpx;
@@ -361,16 +363,19 @@ page {
   font-size: 28rpx;
   font-weight: 700;
   line-height: 96rpx;
+  white-space: nowrap;
 }
 
 .claim-action::after {
   border: 0;
 }
 
-.claim-action.is-disabled {
-  color: var(--action-disabled-text);
-  background: var(--action-disabled-bg);
+.claim-action.is-disabled,
+button.claim-action[disabled] {
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
   box-shadow: none;
+  opacity: 1;
 }
 
 .claim-stepper {
@@ -798,6 +803,7 @@ page {
   margin-right: 0;
   margin-bottom: 0;
   margin-left: 0;
+  padding: 0 28rpx;
   align-self: stretch;
   border: 2rpx solid #00c365;
   border-radius: 999rpx;
@@ -807,6 +813,7 @@ page {
   font-size: 28rpx;
   font-weight: 700;
   line-height: 88rpx;
+  white-space: nowrap;
 }
 
 .claim-action-outline::after {

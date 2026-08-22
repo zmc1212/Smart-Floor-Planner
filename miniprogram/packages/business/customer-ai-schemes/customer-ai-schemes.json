@@ -1,4 +1,6 @@
 {
   "navigationStyle": "custom",
-  "usingComponents": {}
+  "usingComponents": {
+    "scheme-share-poster": "/components/scheme-share-poster/scheme-share-poster"
+  }
 }

@@ -27,6 +27,8 @@ Component({
     templateLoadingMore: { type: Boolean, value: false },
     templateHasMore: { type: Boolean, value: false },
     templateSheetVisible: { type: Boolean, value: false },
+    scopes: { type: Array, value: [] },
+    floorPlanPreviewUrl: { type: String, value: '' },
   },
 
   data: {
@@ -48,7 +50,7 @@ Component({
   },
 
   observers: {
-    'bootstrap, draft, generating, assisting, uploading': function updateView() {
+    'bootstrap, draft, generating, assisting, uploading, scopes, floorPlanPreviewUrl': function updateView() {
       if (!this.properties.draft || !this.properties.bootstrap) {
         this.setData({ view: null });
         return;
@@ -58,6 +60,8 @@ Component({
           generating: this.properties.generating,
           assisting: this.properties.assisting,
           uploading: this.properties.uploading,
+          scopes: this.properties.scopes,
+          floorPlanPreviewUrl: this.properties.floorPlanPreviewUrl,
         }),
       });
     },
@@ -208,7 +212,11 @@ Component({
       } else if (type === 'count') {
         title = '出图张数';
         options = view.countOptions;
+      } else if (type === 'scope') {
+        title = '应用到哪里';
+        options = view.scopePickerOptions;
       }
+      if (!options.length) return;
       this.setData({
         pickerType: type,
         pickerTitle: title,
@@ -237,6 +245,12 @@ Component({
         this.triggerEvent('draftchange', { field: 'resolutionTier', value });
       } else if (type === 'count') {
         this.triggerEvent('draftchange', { field: 'count', value: Number(value) });
+      } else if (type === 'scope') {
+        const option = (this.data.pickerOptions || []).find((item) => String(item.value) === String(value));
+        this.triggerEvent('scopechange', {
+          targetScope: option && option.targetScope === 'single_room' ? 'single_room' : 'whole_floor_plan',
+          roomId: option && option.targetScope === 'single_room' ? String(option.roomId || '') : '',
+        });
       }
       this.closePicker();
     },
@@ -245,6 +259,13 @@ Component({
       if (!this.data.view || !this.data.view.canAddReference || this.properties.uploading) return;
       this.holdDockExpanded();
       this.triggerEvent('uploadreference');
+    },
+
+    previewControl() {
+      const url = this.data.view && this.data.view.controlPreviewUrl;
+      if (!url) return;
+      this.holdDockExpanded();
+      wx.previewImage({ urls: [url], current: url });
     },
 
     removeReference(event) {

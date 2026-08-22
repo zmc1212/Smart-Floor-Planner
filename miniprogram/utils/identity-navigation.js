@@ -4,6 +4,7 @@ const ROLE_LANDING_PATHS = Object.freeze({
   staff: '/pages/index/index',
   designer: '/pages/index/index',
   measurer: '/pages/index/index',
+  salesperson: '/packages/business/promotion-records/promotion-records',
   enterprise_admin: '/pages/index/index',
   platform_admin: '/pages/index/index'
 });
@@ -13,6 +14,7 @@ const ROLE_CAPABILITIES = Object.freeze({
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
   designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'],
   measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
+  salesperson: ['promotion.records', 'promotion.commissions', 'account'],
   enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
   platform_admin: ['platform.devices', 'account'],
   staff: ['staff.leads', 'staff.appointments', 'account']
@@ -39,9 +41,9 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/referrer-progress/referrer-progress': 'referrer.progress',
   '/packages/business/referrer-earnings/referrer-earnings': 'referrer.earnings',
   '/packages/business/staff-earnings/staff-earnings': 'staff.earnings',
-  '/packages/business/promotion-records/promotion-records': 'enterprise.customers',
-  '/packages/business/promotion-record-detail/promotion-record-detail': 'enterprise.customers',
-  '/packages/business/commission-records/commission-records': 'enterprise.operations',
+  '/packages/business/promotion-records/promotion-records': ['enterprise.customers', 'promotion.records'],
+  '/packages/business/promotion-record-detail/promotion-record-detail': ['enterprise.customers', 'promotion.records'],
+  '/packages/business/commission-records/commission-records': ['enterprise.operations', 'promotion.commissions'],
   '/packages/business/inspiration/inspiration': 'staff.design',
   '/packages/business/recommendations/index': 'staff.design',
   '/packages/business/promotion-service-code/promotion-service-code': 'referrer.promotion',
@@ -56,6 +58,27 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/identity-switch/identity-switch': 'account',
   '/packages/business/account-security/account-security': 'account'
 });
+
+const SCAN_LANDING_ROUTES = Object.freeze([
+  '/packages/business/enterprise-register/enterprise-register',
+  '/packages/business/onboarding/onboarding',
+  '/packages/business/free-design-service/free-design-service'
+]);
+const ENTERPRISE_REGISTER_ROUTE = SCAN_LANDING_ROUTES[0];
+const WORKBENCH_SCAN_ROLES = Object.freeze([
+  'designer',
+  'measurer',
+  'enterprise_admin',
+  'referrer'
+]);
+const STICKY_SCAN_REOPEN_SCENES = Object.freeze([
+  1001,
+  1023,
+  1089,
+  1090,
+  1103,
+  1104
+]);
 
 function roleForIdentity(value) {
   if (!value) return null;
@@ -139,15 +162,48 @@ function guardDeepLink(route, bootstrapOrIdentity) {
   };
 }
 
+function isScanLandingRoute(route) {
+  return SCAN_LANDING_ROUTES.includes(routePath(route));
+}
+
+function isStickyScanReopenScene(scene) {
+  return STICKY_SCAN_REOPEN_SCENES.includes(Number(scene));
+}
+
+function shouldLeaveScanLanding(route, identity, scene) {
+  if (!isScanLandingRoute(route)) return false;
+  const role = roleForIdentity(identity);
+  if (isStickyScanReopenScene(scene)) return Boolean(role);
+  if (routePath(route) === ENTERPRISE_REGISTER_ROUTE) {
+    return WORKBENCH_SCAN_ROLES.includes(role);
+  }
+  return false;
+}
+
+function leaveScanLanding(identity) {
+  if (navigateToRoleLanding(identity)) return true;
+  if (typeof wx !== 'undefined' && typeof wx.switchTab === 'function') {
+    wx.switchTab({ url: '/pages/mine/mine' });
+    return true;
+  }
+  return false;
+}
+
 module.exports = {
   ROLE_LANDING_PATHS,
   ROLE_CAPABILITIES,
   ROUTE_CAPABILITIES,
+  SCAN_LANDING_ROUTES,
+  STICKY_SCAN_REOPEN_SCENES,
   roleForIdentity,
   normalizeIdentity,
   getRoleLanding,
   isRoleLanding,
   navigateToRoleLanding,
   canAccessRoute,
-  guardDeepLink
+  guardDeepLink,
+  isScanLandingRoute,
+  isStickyScanReopenScene,
+  shouldLeaveScanLanding,
+  leaveScanLanding
 };

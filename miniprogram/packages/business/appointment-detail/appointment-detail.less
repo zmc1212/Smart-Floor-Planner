@@ -400,6 +400,15 @@ page {
   border: none;
 }
 
+.staff-secondary .primary[disabled],
+.confirm-bar .primary[disabled],
+button.sticky-confirm[disabled] {
+  color: var(--action-disabled-text) !important;
+  background: var(--action-disabled-bg) !important;
+  box-shadow: none;
+  opacity: 1;
+}
+
 .staff-secondary .outline-btn,
 .staff-secondary > .primary {
   width: 100%;

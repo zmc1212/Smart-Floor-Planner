@@ -223,6 +223,42 @@ test('role shell staff Mine hides legacy workbench sections', () => {
   assert.match(mineJs, /ROLE_SHELL_MINE_ROLES = \['designer', 'measurer', 'enterprise_admin', 'platform_admin'\]/);
 });
 
+test('salesperson uses promotion TabBar and staff Mine dashboard without role-workbench shell', () => {
+  const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
+  const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'identity-navigation.js'), 'utf8');
+  const indexJs = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'index', 'index.js'), 'utf8');
+  const mineJs = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'mine', 'mine.js'), 'utf8');
+  const promotionJson = JSON.parse(
+    fs.readFileSync(
+      path.join(miniProgramRoot, 'packages', 'business', 'promotion-records', 'promotion-records.json'),
+      'utf8'
+    )
+  );
+  const promotionWxml = fs.readFileSync(
+    path.join(miniProgramRoot, 'packages', 'business', 'promotion-records', 'promotion-records.wxml'),
+    'utf8'
+  );
+
+  assert.match(tabBar, /salesperson:\s*\[[\s\S]*key: 'promotion', capability: 'promotion\.records'/);
+  assert.match(tabBar, /salesperson:\s*\[[\s\S]*text: '报备'[\s\S]*pagePath: '\/pages\/mine\/mine'/);
+  assert.match(navigation, /salesperson: '\/packages\/business\/promotion-records\/promotion-records'/);
+  assert.match(
+    navigation,
+    /promotion-records\/promotion-records': \['enterprise\.customers', 'promotion\.records'\]/
+  );
+  assert.match(
+    navigation,
+    /commission-records\/commission-records': \['enterprise\.operations', 'promotion\.commissions'\]/
+  );
+  assert.match(indexJs, /salesperson/);
+  assert.match(indexJs, /reLaunch/);
+  assert.match(indexJs, /promotion-records\/promotion-records/);
+  assert.match(mineJs, /\['designer', 'measurer', 'enterprise_admin', 'salesperson'\]/);
+  assert.doesNotMatch(mineJs, /ROLE_SHELL_MINE_ROLES = \[[^\]]*salesperson/);
+  assert.equal(promotionJson.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
+  assert.match(promotionWxml, /<custom-tab-bar\s*\/>/);
+});
+
 test('role-specific workbenches hide customer and non-measurer survey creation controls', () => {
   const mine = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'mine', 'mine.wxml'), 'utf8');
   const leadDetail = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'lead-detail', 'lead-detail.wxml'), 'utf8');

@@ -53,14 +53,80 @@ function bytesToSafeAscii(bytes) {
   return text;
 }
 
-function getAdvertisDataHex(advertisData) {
-  if (!advertisData) return '';
+function toUint8Array(advertisData) {
+  if (!advertisData) return null;
   try {
-    return bytesToHex(new Uint8Array(advertisData));
+    if (advertisData instanceof Uint8Array) return advertisData;
+    if (Array.isArray(advertisData)) return new Uint8Array(advertisData);
+    return new Uint8Array(advertisData);
+  } catch (error) {
+    return null;
+  }
+}
+
+function getAdvertisDataHex(advertisData) {
+  var bytes = toUint8Array(advertisData);
+  if (!bytes) return '';
+  try {
+    return bytesToHex(bytes);
   } catch (error) {
     console.warn('[BLE discovery] 无法读取广播数据:', error);
     return '';
   }
+}
+
+function getAdvertisDataHexCompact(advertisData) {
+  return getAdvertisDataHex(advertisData).replace(/\s+/g, '');
+}
+
+function bytesToPackedAscii(bytes) {
+  var text = '';
+  if (!bytes) return text;
+  for (var i = 0; i < bytes.length; i++) {
+    if (bytes[i] >= 0x20 && bytes[i] <= 0x7E) {
+      text += String.fromCharCode(bytes[i]);
+    }
+  }
+  return text.trim();
+}
+
+function parseAdvertisLocalName(advertisData) {
+  var bytes = toUint8Array(advertisData);
+  if (!bytes || bytes.length < 3) return '';
+  var offset = 0;
+  while (offset < bytes.length) {
+    var length = bytes[offset];
+    if (!length) break;
+    if (offset + 1 >= bytes.length) break;
+    var type = bytes[offset + 1];
+    var start = offset + 2;
+    var end = Math.min(offset + 1 + length, bytes.length);
+    if ((type === 0x08 || type === 0x09) && end > start) {
+      var parsed = bytesToPackedAscii(bytes.subarray(start, end));
+      if (parsed) return parsed;
+    }
+    offset += length + 1;
+  }
+  return '';
+}
+
+function collectDiscoveryNameParts(device) {
+  var parts = [];
+  if (!device) return parts;
+  if (device.name) parts.push(String(device.name));
+  if (device.localName) parts.push(String(device.localName));
+  var parsedName = parseAdvertisLocalName(device.advertisData);
+  if (parsedName) parts.push(parsedName);
+  var packedAscii = bytesToPackedAscii(toUint8Array(device.advertisData));
+  if (packedAscii) parts.push(packedAscii);
+  if (device.serviceData && typeof device.serviceData === 'object') {
+    Object.keys(device.serviceData).forEach(function (key) {
+      if (key) parts.push(String(key));
+      var serviceAscii = bytesToPackedAscii(toUint8Array(device.serviceData[key]));
+      if (serviceAscii) parts.push(serviceAscii);
+    });
+  }
+  return parts;
 }
 
 function logDiscoveredDevice(device, name) {
@@ -74,7 +140,17 @@ function logDiscoveredDevice(device, name) {
 }
 
 function resolveDeviceName(device) {
-  return String((device && (device.name || device.localName)) || '').trim();
+  var parts = collectDiscoveryNameParts(device);
+  var i;
+  for (i = 0; i < parts.length; i++) {
+    var candidate = String(parts[i] || '').trim();
+    if (isTargetRangefinderName(candidate)) return candidate;
+  }
+  for (i = 0; i < parts.length; i++) {
+    var fallback = String(parts[i] || '').trim();
+    if (fallback) return fallback;
+  }
+  return '';
 }
 
 /** 匹配 LDMStudio 系列广播名（大小写不敏感，兼容仅含 LDMStudio 前缀）。 */
@@ -87,18 +163,23 @@ function isTargetRangefinderName(name) {
 
 function rememberNearbyDevice(device) {
   var id = String((device && device.deviceId) || '').trim();
-  if (!id || _nearbySeenById[id]) return;
+  if (!id) return;
   var name = resolveDeviceName(device);
+  var previous = _nearbySeenById[id];
+  var nextName = name || (previous && previous.name) || '(no name)';
   _nearbySeenById[id] = {
     deviceId: id,
-    name: name || '(no name)',
+    name: nextName,
     rssi: device && device.RSSI
   };
-  console.log(
-    '[BLE discovery] nearby deviceId=' + id +
-    ' name=' + (name || '(no name)') +
-    ' RSSI=' + String(device && device.RSSI == null ? '' : device.RSSI)
-  );
+  if (!previous || (name && previous.name === '(no name)')) {
+    console.log(
+      '[BLE discovery] nearby deviceId=' + id +
+      ' name=' + (name || '(no name)') +
+      ' RSSI=' + String(device && device.RSSI == null ? '' : device.RSSI) +
+      ' advertisData=[' + getAdvertisDataHex(device && device.advertisData) + ']'
+    );
+  }
 }
 
 function clearScanTimers() {
@@ -151,6 +232,240 @@ function requestDeviceIdCode() {
   sendBLECommand('ATC001#');
 }
 
+function getBluetoothErrorText(err) {
+  if (!err) return '';
+  return String(err.errMsg || err.message || err.error || '');
+}
+
+function isBluetoothAdapterAlreadyOpenError(err) {
+  return /already\s*(open|opened)/i.test(getBluetoothErrorText(err));
+}
+
+function classifyBluetoothAdapterOpenFailure(err, context) {
+  context = context || {};
+  if (isBluetoothAdapterAlreadyOpenError(err)) {
+    return { kind: 'already_open' };
+  }
+
+  var text = getBluetoothErrorText(err).toLowerCase();
+  var errCode = err && (err.errCode != null ? err.errCode : err.errno);
+  var bluetoothEnabled = context.bluetoothEnabled;
+  var bluetoothAuthorized = context.bluetoothAuthorized;
+  var locationEnabled = context.locationEnabled;
+  var locationAuthorized = context.locationAuthorized;
+
+  if (
+    bluetoothAuthorized === 'denied' ||
+    /permission denied|system permission|auth deny|authorize fail|not authorized|unauthorized/.test(text)
+  ) {
+    return { kind: 'permission_denied' };
+  }
+
+  if (locationEnabled === false || locationAuthorized === 'denied') {
+    return { kind: 'location_required' };
+  }
+
+  var adapterUnavailable = errCode === 10001 || errCode === 1500102 || /not available/.test(text);
+  if (adapterUnavailable) {
+    if (bluetoothEnabled === true) return { kind: 'permission_denied' };
+    return { kind: 'bluetooth_off' };
+  }
+
+  if (bluetoothEnabled === false) return { kind: 'bluetooth_off' };
+  return { kind: 'unavailable' };
+}
+
+function readBluetoothEnvironment() {
+  var sysInfo = {};
+  try {
+    sysInfo = typeof wx.getSystemInfoSync === 'function' ? (wx.getSystemInfoSync() || {}) : {};
+  } catch (error) {
+    sysInfo = {};
+  }
+  var sysSetting = {};
+  try {
+    sysSetting = typeof wx.getSystemSetting === 'function' ? (wx.getSystemSetting() || {}) : {};
+  } catch (error) {
+    sysSetting = {};
+  }
+  var appAuth = {};
+  try {
+    appAuth = typeof wx.getAppAuthorizeSetting === 'function' ? (wx.getAppAuthorizeSetting() || {}) : {};
+  } catch (error) {
+    appAuth = {};
+  }
+  return {
+    platform: sysInfo.platform,
+    bluetoothEnabled: sysSetting.bluetoothEnabled,
+    locationEnabled: sysSetting.locationEnabled,
+    bluetoothAuthorized: appAuth.bluetoothAuthorized,
+    locationAuthorized: appAuth.locationAuthorized
+  };
+}
+
+function registerBleConnectionStateListener() {
+  if (_isStateChangeRegistered) return;
+  wx.onBLEConnectionStateChange(function (res) {
+    console.log('蓝牙连接状态变化:', res.connected, '设备ID:', res.deviceId);
+    if (!res.connected && res.deviceId === _deviceId) {
+      handleDisconnect('系统蓝牙断开信号');
+    }
+  });
+  _isStateChangeRegistered = true;
+}
+
+var _isAdapterStateChangeRegistered = false;
+function registerAdapterStateListener(silent, scanMs) {
+  if (_isAdapterStateChangeRegistered) return;
+  if (typeof wx.onBluetoothAdapterStateChange !== 'function') return;
+  _isAdapterStateChangeRegistered = true;
+  wx.onBluetoothAdapterStateChange(function (res) {
+    if (res && res.available) {
+      if (!silent) wx.showLoading({ title: '搜索测距仪...', mask: true });
+      startScan(silent, scanMs);
+    }
+  });
+}
+
+function notifyBluetoothAdapterOpenFailed(kind, err, silent) {
+  console.error('[BLE] openBluetoothAdapter failed:', kind, err);
+  if (_enrollCollectMode && _onEnrollScanComplete) {
+    _onEnrollScanComplete({ success: false, devices: [], error: kind || 'bluetooth_unavailable' });
+  } else if (_onConnectCallback) {
+    _onConnectCallback(false);
+  }
+  if (silent) return;
+
+  if (kind === 'bluetooth_off') {
+    wx.showModal({
+      title: '请打开手机蓝牙',
+      content: '连接测距仪需要开启系统蓝牙开关，打开后请返回小程序再试。',
+      confirmText: '去开启',
+      success: function (res) {
+        if (res.confirm && typeof wx.openSystemBluetoothSetting === 'function') {
+          wx.openSystemBluetoothSetting();
+        }
+      }
+    });
+    return;
+  }
+
+  if (kind === 'location_required') {
+    wx.showModal({
+      title: '权限提醒',
+      content: '安卓搜索测距仪需要开启系统定位开关，并允许微信使用位置信息。',
+      confirmText: '去设置',
+      success: function (res) {
+        if (!res.confirm) return;
+        if (typeof wx.openAppAuthorizeSetting === 'function') {
+          wx.openAppAuthorizeSetting();
+        } else if (typeof wx.openSetting === 'function') {
+          wx.openSetting();
+        }
+      }
+    });
+    return;
+  }
+
+  wx.showModal({
+    title: '需要蓝牙权限',
+    content: '请在系统设置中允许微信使用蓝牙和「附近的设备」。华为/鸿蒙手机授权蓝牙后仍可能拦截扫描，请一并打开附近设备权限后返回重试。',
+    confirmText: '去设置',
+    success: function (res) {
+      if (!res.confirm) return;
+      if (typeof wx.openAppAuthorizeSetting === 'function') {
+        wx.openAppAuthorizeSetting();
+      } else if (typeof wx.openSetting === 'function') {
+        wx.openSetting();
+      }
+    }
+  });
+}
+
+function openBluetoothAdapterOnce(callback) {
+  wx.openBluetoothAdapter({
+    success: function () {
+      callback(null);
+    },
+    fail: function (err) {
+      if (isBluetoothAdapterAlreadyOpenError(err)) {
+        callback(null);
+        return;
+      }
+      callback(err || { errMsg: 'openBluetoothAdapter:fail' });
+    }
+  });
+}
+
+function requestBluetoothScope(done) {
+  if (typeof wx.authorize !== 'function') {
+    done();
+    return;
+  }
+  wx.authorize({
+    scope: 'scope.bluetooth',
+    success: function () { done(); },
+    fail: function () { done(); }
+  });
+}
+
+function ensureBluetoothAdapterOpen(options) {
+  var silent = Boolean(options && options.silent);
+  var scanMs = options && options.scanMs;
+  var onOpen = options && options.onOpen;
+  var env = readBluetoothEnvironment();
+
+  function fail(kind, err) {
+    notifyBluetoothAdapterOpenFailed(kind, err, silent);
+    if (kind === 'bluetooth_off') {
+      registerAdapterStateListener(silent, scanMs);
+    }
+  }
+
+  function attemptOpen(isRetry) {
+    openBluetoothAdapterOnce(function (err) {
+      if (!err) {
+        registerBleConnectionStateListener();
+        if (onOpen) onOpen();
+        return;
+      }
+      env = readBluetoothEnvironment();
+      var classified = classifyBluetoothAdapterOpenFailure(err, env);
+      var shouldRetry = !isRetry
+        && classified.kind !== 'bluetooth_off'
+        && classified.kind !== 'location_required'
+        && classified.kind !== 'permission_denied'
+        && env.bluetoothEnabled !== false;
+      if (shouldRetry) {
+        setTimeout(function () { attemptOpen(true); }, 400);
+        return;
+      }
+      fail(classified.kind, err);
+    });
+  }
+
+  if (env.bluetoothEnabled === false) {
+    fail('bluetooth_off');
+    return;
+  }
+  if (env.platform === 'android' && (env.locationEnabled === false || env.locationAuthorized === 'denied')) {
+    fail('location_required');
+    return;
+  }
+  if (env.bluetoothAuthorized === 'denied') {
+    fail('permission_denied');
+    return;
+  }
+
+  if (env.bluetoothAuthorized === 'authorized') {
+    attemptOpen(false);
+    return;
+  }
+  requestBluetoothScope(function () {
+    attemptOpen(false);
+  });
+}
+
 function initBLE(callback, connectCallback, disconnectCallback, silent = false, options = {}) {
   _onMeasureCallback = callback;
   _onConnectCallback = connectCallback;
@@ -166,19 +481,10 @@ function initBLE(callback, connectCallback, disconnectCallback, silent = false, 
   _onEnrollScanComplete = (_enrollCollectMode && options && options.onComplete) || null;
   _enrollFoundById = {};
   _activeScanSilent = Boolean(silent);
-  wx.openBluetoothAdapter({
-    success: function (res) {
-      // 注册全局断开监听 (仅注册一次)
-      if (!_isStateChangeRegistered) {
-        wx.onBLEConnectionStateChange(function (res) {
-          console.log('蓝牙连接状态变化:', res.connected, '设备ID:', res.deviceId);
-          if (!res.connected && res.deviceId === _deviceId) {
-            handleDisconnect('系统蓝牙断开信号');
-          }
-        });
-        _isStateChangeRegistered = true;
-      }
-
+  ensureBluetoothAdapterOpen({
+    silent: silent,
+    scanMs: options && options.scanMs,
+    onOpen: function () {
       if (!silent) {
         wx.showLoading({
           title: '搜索测距仪...',
@@ -186,19 +492,6 @@ function initBLE(callback, connectCallback, disconnectCallback, silent = false, 
         });
       }
       startScan(silent, options && options.scanMs);
-    },
-    fail: function (err) {
-      console.error('[BLE] openBluetoothAdapter failed:', err);
-      if (!silent) wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
-      if (_enrollCollectMode && _onEnrollScanComplete) {
-        _onEnrollScanComplete({ success: false, devices: [], error: 'bluetooth_unavailable' });
-      }
-      wx.onBluetoothAdapterStateChange(function (res) {
-        if (res.available) {
-          if (!silent) wx.showLoading({ title: '搜索测距仪...', mask: true });
-          startScan(silent, options && options.scanMs);
-        }
-      });
     }
   });
 }
@@ -297,6 +590,7 @@ function processDiscoveredDevice(device, silent) {
   api.request('/devices/verify-binding', 'POST', {
     deviceId: device.deviceId,
     name: name || TARGET_DEVICE_NAME,
+    advertisDataHex: getAdvertisDataHexCompact(device.advertisData),
     openid: app.globalData.openid
   }).then(function (verifyRes) {
     if (verifyRes.success && verifyRes.authorized) {
@@ -399,6 +693,7 @@ function startScan(silent = false, scanMs) {
       ' targets=' + _foundDevices.length +
       ' unauthorized=' + _unauthorizedMessages.length
     );
+    clearScanTimers();
     if (_enrollCollectMode) {
       finishEnrollCollectScan(silent, 'timeout');
       if (!silent && Object.keys(_enrollFoundById).length === 0) {
@@ -434,7 +729,7 @@ function startScan(silent = false, scanMs) {
   console.log('[BLE discovery] start scan timeoutMs=' + timeoutMs + ' enroll=' + _enrollMode + ' collect=' + _enrollCollectMode);
 
   wx.startBluetoothDevicesDiscovery({
-    allowDuplicatesKey: false,
+    allowDuplicatesKey: true,
     powerLevel: 'high',
     success: function () {
       console.log('[BLE discovery] startBluetoothDevicesDiscovery success');
@@ -917,19 +1212,9 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = 
       if (userConnectCallback) userConnectCallback(success, name, id);
     };
 
-    wx.openBluetoothAdapter({
-      success: function (res) {
-        // 注册全局断开监听 (仅注册一次)
-        if (!_isStateChangeRegistered) {
-          wx.onBLEConnectionStateChange(function (res) {
-            console.log('蓝牙连接状态变化:', res.connected, '设备ID:', res.deviceId);
-            if (!res.connected && res.deviceId === _deviceId) {
-              handleDisconnect('系统蓝牙断开信号');
-            }
-          });
-          _isStateChangeRegistered = true;
-        }
-
+    ensureBluetoothAdapterOpen({
+      silent: silent,
+      onOpen: function () {
         if (!silent) wx.showLoading({ title: '验证授权中...', mask: true });
         var api = require('./api.js');
         const app = getApp();
@@ -958,11 +1243,6 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = 
             }
             if (_onConnectCallback) _onConnectCallback(false);
           });
-      },
-      fail: function (err) {
-        console.error('[BLE] openBluetoothAdapter failed during autoConnect:', err);
-        if (!silent) wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
-        if (_onConnectCallback) _onConnectCallback(false);
       }
     });
   } else {
@@ -1034,5 +1314,8 @@ module.exports = {
   getCurrentDeviceInfo: getCurrentDeviceInfo,
   hasRememberedDevice: hasRememberedDevice,
   isSessionConnected: isSessionConnected,
+  classifyBluetoothAdapterOpenFailure: classifyBluetoothAdapterOpenFailure,
+  resolveDeviceName: resolveDeviceName,
+  isTargetRangefinderName: isTargetRangefinderName,
   TARGET_DEVICE_NAME: TARGET_DEVICE_NAME
 };

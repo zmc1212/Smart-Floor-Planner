@@ -32,7 +32,7 @@ import {
   getPurgeBlockers,
   leadArchivedError,
 } from '@/lib/lead-lifecycle';
-import { groupPublishedSchemes } from '@/lib/customer-project';
+import { buildPublishedSchemeViews } from '@/lib/customer-project';
 import { httpErrorStatus } from '@/lib/http-error';
 
 function errorMessage(error: unknown) {
@@ -90,12 +90,14 @@ function canAccess(
   return true;
 }
 
-function schemeSummary(scheme: ReturnType<typeof groupPublishedSchemes>[number], leadId: string) {
+function schemeSummary(scheme: ReturnType<typeof buildPublishedSchemeViews>[number], leadId: string) {
   return {
     id: scheme.id,
     workflowId: scheme.workflowId,
     title: scheme.title,
+    firstPublishedAt: scheme.firstPublishedAt,
     publishedAt: scheme.publishedAt,
+    finalized: Boolean(scheme.finalized),
     imageCount: scheme.images.length,
     generationIds: scheme.images.map((image) => image.generationId),
     images: scheme.images.map((image) => ({
@@ -120,9 +122,11 @@ async function loadLeadPublicationFacts(
   const leadId = lead.id;
   return withLeadTransaction(context, async (transaction) => {
     const publications = await new CustomerProjectRepository(transaction).listActivePublications(enterpriseId, leadId);
-    const publishedSchemes = groupPublishedSchemes(publications, leadId.toString()).map((scheme) =>
-      schemeSummary(scheme, leadId.toString())
-    );
+    const publishedSchemes = buildPublishedSchemeViews(
+      publications,
+      leadId.toString(),
+      lead.finalizedWorkflowId,
+    ).map((scheme) => schemeSummary(scheme, leadId.toString()));
     return {
       publishedDesignCount: publications.length,
       publishedSchemes,
