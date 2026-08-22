@@ -93,8 +93,8 @@ export default function EnterpriseOrdersPage() {
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [activatingOrderId, setActivatingOrderId] = useState<string | null>(null);
 
-  const canManageOrders = Boolean(currentUser && ['enterprise_admin', 'admin', 'super_admin'].includes(currentUser.role));
-  const canActivateEnterprise = Boolean(currentUser && ['admin', 'super_admin'].includes(currentUser.role));
+  const canManageOrders = ['enterprise_admin', 'admin', 'super_admin'].includes(currentUser?.role || '');
+  const canActivateEnterprise = ['admin', 'super_admin'].includes(currentUser?.role || '');
 
   const loadCreateOptions = useCallback(async () => {
     setLoadingOptions(true);

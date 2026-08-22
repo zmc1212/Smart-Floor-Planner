@@ -129,7 +129,11 @@ export async function POST(request: Request) {
           field: 'username',
         });
       }
-      if (await repository.existsWithPhone(trimmedPhone)) {
+      if (
+        await repository.existsWithPhone(trimmedPhone, {
+          enterpriseId: targetEnterpriseId,
+        })
+      ) {
         throw Object.assign(new Error('Phone already exists'), {
           field: 'phone',
         });

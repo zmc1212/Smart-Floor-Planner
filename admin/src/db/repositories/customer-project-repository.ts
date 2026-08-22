@@ -9,6 +9,7 @@ import {
   floorPlans,
   leads,
   measurementAppointments,
+  users,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 
@@ -20,10 +21,12 @@ export type CustomerProjectPublication = {
 export type CustomerProject = {
   lead: typeof leads.$inferSelect;
   enterpriseName: string;
-  designer: Pick<typeof adminUsers.$inferSelect, 'id' | 'displayName' | 'wechatId' | 'wechatQrAssetId'> | null;
+  designer: Pick<typeof adminUsers.$inferSelect, 'id' | 'displayName' | 'wechatId' | 'wechatQrAssetId' | 'phone'> | null;
   measurerName: string | null;
+  measurerPhone: string | null;
   appointment: (typeof measurementAppointments.$inferSelect & {
     measurerName: string | null;
+    measurerPhone: string | null;
   }) | null;
   formalFloorPlan: typeof floorPlans.$inferSelect | null;
   publications: CustomerProjectPublication[];
@@ -47,6 +50,10 @@ export type CustomerProjectIndexItem = {
 
 function operationalAppointmentOrderSql() {
   return sql`case when ${measurementAppointments.status} = 'confirmed' and upper(${measurementAppointments.timeRange}) > now() then 0 else 1 end`;
+}
+
+function staffContactPhoneSql() {
+  return sql<string | null>`coalesce(nullif(btrim(${adminUsers.phone}), ''), nullif(btrim(${users.phone}), ''))`;
 }
 
 function hasResultImage(output: unknown) {
@@ -80,22 +87,30 @@ export class CustomerProjectRepository {
               displayName: adminUsers.displayName,
               wechatId: adminUsers.wechatId,
               wechatQrAssetId: adminUsers.wechatQrAssetId,
+              phone: staffContactPhoneSql(),
             })
             .from(adminUsers)
+            .leftJoin(users, eq(adminUsers.userId, users.id))
             .where(eq(adminUsers.id, row.lead.assignedTo))
             .limit(1)
         : [],
       row.lead.measurerId
         ? this.transaction
-            .select({ displayName: adminUsers.displayName })
+            .select({ displayName: adminUsers.displayName, phone: staffContactPhoneSql() })
             .from(adminUsers)
+            .leftJoin(users, eq(adminUsers.userId, users.id))
             .where(eq(adminUsers.id, row.lead.measurerId))
             .limit(1)
         : [],
       this.transaction
-        .select({ appointment: measurementAppointments, measurerName: adminUsers.displayName })
+        .select({
+          appointment: measurementAppointments,
+          measurerName: adminUsers.displayName,
+          measurerPhone: staffContactPhoneSql(),
+        })
         .from(measurementAppointments)
         .leftJoin(adminUsers, eq(measurementAppointments.measurerId, adminUsers.id))
+        .leftJoin(users, eq(adminUsers.userId, users.id))
         .where(eq(measurementAppointments.leadId, leadId))
         .orderBy(
           operationalAppointmentOrderSql(),
@@ -124,8 +139,13 @@ export class CustomerProjectRepository {
       enterpriseName: row.enterpriseName,
       designer: designerRows[0] ?? null,
       measurerName: measurerRows[0]?.displayName ?? null,
+      measurerPhone: measurerRows[0]?.phone ?? null,
       appointment: appointmentRows[0]
-        ? { ...appointmentRows[0].appointment, measurerName: appointmentRows[0].measurerName }
+        ? {
+            ...appointmentRows[0].appointment,
+            measurerName: appointmentRows[0].measurerName,
+            measurerPhone: appointmentRows[0].measurerPhone,
+          }
         : null,
       formalFloorPlan: formalFloorPlanRows[0] ?? null,
       publications,

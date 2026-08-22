@@ -24,6 +24,11 @@ export type AdminUserUpdate = Partial<
   Omit<NewAdminUser, 'id' | 'createdAt' | 'updatedAt'>
 >;
 
+export interface AdminUserIdentityLookupOptions {
+  enterpriseId?: bigint | null;
+  staffId?: bigint;
+}
+
 export interface AdminUserWithRelations extends AdminUserRecord {
   enterpriseName: string | null;
   departmentName: string | null;
@@ -189,12 +194,42 @@ export class AdminUserRepository {
     return rows[0]?.userId ?? null;
   }
 
-  async findByUsernameOrPhone(identifier: string, activeOnly = false) {
+  private filterIdentityMatches(
+    rows: AdminUserRecord[],
+    options?: AdminUserIdentityLookupOptions
+  ) {
+    let matched = rows;
+    if (options?.staffId !== undefined) {
+      matched = matched.filter((row) => row.id === options.staffId);
+    }
+    if (options && Object.prototype.hasOwnProperty.call(options, 'enterpriseId')) {
+      matched = matched.filter((row) =>
+        options.enterpriseId === null || options.enterpriseId === undefined
+          ? row.enterpriseId === null
+          : row.enterpriseId === options.enterpriseId
+      );
+    }
+    return matched;
+  }
+
+  private resolveSingleIdentityMatch(
+    rows: AdminUserRecord[],
+    options?: AdminUserIdentityLookupOptions
+  ) {
+    const matched = this.filterIdentityMatches(rows, options);
+    if (matched.length === 0) return null;
+    if (matched.length === 1) return matched[0];
+    throw Object.assign(new Error('Multiple admin users match this identity'), {
+      code: 'AMBIGUOUS_ADMIN_USER',
+    });
+  }
+
+  async listByUsernameOrPhone(identifier: string, activeOnly = false) {
     const identityFilter = or(
       eq(adminUsers.username, identifier),
       eq(adminUsers.phone, identifier)
     )!;
-    const rows = await this.transaction
+    return this.transaction
       .select()
       .from(adminUsers)
       .where(
@@ -202,22 +237,36 @@ export class AdminUserRepository {
           ? and(identityFilter, eq(adminUsers.status, 'active'))
           : identityFilter
       )
-      .orderBy(asc(adminUsers.id))
-      .limit(1);
-    return rows[0] ?? null;
+      .orderBy(asc(adminUsers.id));
   }
 
-  async findByOpenidOrPhone(openid: string, phone?: string | null) {
+  async findByUsernameOrPhone(
+    identifier: string,
+    activeOnly = false,
+    options?: AdminUserIdentityLookupOptions
+  ) {
+    const rows = await this.listByUsernameOrPhone(identifier, activeOnly);
+    return this.resolveSingleIdentityMatch(rows, options);
+  }
+
+  async listByOpenidOrPhone(openid: string, phone?: string | null) {
     const identityFilter = phone
       ? or(eq(adminUsers.openid, openid), eq(adminUsers.phone, phone))
       : eq(adminUsers.openid, openid);
-    const rows = await this.transaction
+    return this.transaction
       .select()
       .from(adminUsers)
       .where(and(eq(adminUsers.status, 'active'), identityFilter))
-      .orderBy(asc(adminUsers.id))
-      .limit(1);
-    return rows[0] ?? null;
+      .orderBy(asc(adminUsers.id));
+  }
+
+  async findByOpenidOrPhone(
+    openid: string,
+    phone?: string | null,
+    options?: AdminUserIdentityLookupOptions
+  ) {
+    const rows = await this.listByOpenidOrPhone(openid, phone);
+    return this.resolveSingleIdentityMatch(rows, options);
   }
 
   async findDesignerForPromoter(promoterId: bigint) {
@@ -240,15 +289,25 @@ export class AdminUserRepository {
     return rows[0]?.adminUser ?? null;
   }
 
-  async existsWithPhone(phone: string, excludeId?: bigint) {
+  async existsWithPhone(
+    phone: string,
+    options: { excludeId?: bigint; enterpriseId?: bigint | null } = {}
+  ) {
+    const filters = [eq(adminUsers.phone, phone)];
+    if (options.excludeId !== undefined) {
+      filters.push(ne(adminUsers.id, options.excludeId));
+    }
+    if (Object.prototype.hasOwnProperty.call(options, 'enterpriseId')) {
+      if (options.enterpriseId === null || options.enterpriseId === undefined) {
+        filters.push(isNull(adminUsers.enterpriseId));
+      } else {
+        filters.push(eq(adminUsers.enterpriseId, options.enterpriseId));
+      }
+    }
     const rows = await this.transaction
       .select({ id: adminUsers.id })
       .from(adminUsers)
-      .where(
-        excludeId
-          ? and(eq(adminUsers.phone, phone), ne(adminUsers.id, excludeId))
-          : eq(adminUsers.phone, phone)
-      )
+      .where(and(...filters))
       .limit(1);
     return rows.length > 0;
   }

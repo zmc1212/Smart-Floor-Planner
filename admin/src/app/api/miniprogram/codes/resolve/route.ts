@@ -83,6 +83,7 @@ export async function POST(request: Request) {
           lead: {
             id: existing.lead.id.toString(),
             status: existing.lead.status,
+            createdAt: existing.lead.createdAt,
           },
         };
       };

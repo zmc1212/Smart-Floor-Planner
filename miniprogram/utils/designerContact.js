@@ -3,6 +3,15 @@ function getAuthToken() {
   return (app && app.globalData && app.globalData.token) || wx.getStorageSync('token') || '';
 }
 
+function customerProjectFromApiResponse(response) {
+  if (!response || typeof response !== 'object') return {};
+  const payload = response.data;
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    return payload;
+  }
+  return response;
+}
+
 function hasDesignerContact(designer) {
   if (!designer) return false;
   return Boolean(String(designer.wechatId || '').trim() || designer.wechatQrUrl);
@@ -77,6 +86,7 @@ function copyDesignerWechatId(wechatId, options) {
 }
 
 module.exports = {
+  customerProjectFromApiResponse,
   hasDesignerContact,
   designerShortcutDescription,
   loadDesignerQrToTempFile,

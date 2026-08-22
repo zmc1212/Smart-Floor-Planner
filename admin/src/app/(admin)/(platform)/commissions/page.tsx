@@ -69,7 +69,7 @@ export default function CommissionsPage() {
   const [summary, setSummary] = useState<CommissionSummary>({});
   const [settlingId, setSettlingId] = useState<string | null>(null);
 
-  const canSettle = Boolean(currentUser && ['admin', 'super_admin'].includes(currentUser.role));
+  const canSettle = ['admin', 'super_admin'].includes(currentUser?.role || '');
   const pendingSummary = summary.pending_settlement || {};
   const paidSummary = summary.paid || {};
 

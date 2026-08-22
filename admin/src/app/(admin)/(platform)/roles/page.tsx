@@ -38,7 +38,7 @@ export default function RolesPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const canManageRoles = Boolean(currentUser && ['admin', 'super_admin'].includes(currentUser.role));
+  const canManageRoles = ['admin', 'super_admin'].includes(currentUser?.role || '');
   const selectedRole = useMemo(
     () => roles.find((role) => role._id === selectedRoleId) || null,
     [roles, selectedRoleId],

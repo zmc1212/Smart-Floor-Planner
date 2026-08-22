@@ -1,5 +1,6 @@
 const api = require('../../../utils/api');
 const { openSurveyingEditor } = require('../../../utils/surveyNavigation.js');
+const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -22,19 +23,12 @@ function formatDateKey(d) {
 }
 
 function parseSlot(range) {
-  const m = String(range || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
-  if (!m) {
-    return { time: '待确认', dateKey: '', dateLabel: '', startHour: 0 };
-  }
-  const s = new Date(m[1].replaceAll('"', ''));
-  const e = new Date(m[2].replaceAll('"', ''));
-  const dateKey = formatDateKey(s);
-  const dateLabel = `${s.getMonth() + 1}/${s.getDate()}`;
+  const display = formatAppointmentDisplay(range);
   return {
-    time: `${padZero(s.getHours())}:${padZero(s.getMinutes())} - ${padZero(e.getHours())}:${padZero(e.getMinutes())}`,
-    dateKey,
-    dateLabel,
-    startHour: s.getHours(),
+    time: display.time,
+    dateKey: display.dateKey,
+    dateLabel: display.dateLabel,
+    startHour: display.startHour,
   };
 }
 

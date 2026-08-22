@@ -7,7 +7,7 @@ import {
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
-import { hashEnterpriseAdminInitialPassword } from '@/lib/enterprise-admin-provision';
+import { hashEnterpriseAdminInitialPassword, buildEnterpriseAdminUsername } from '@/lib/enterprise-admin-provision';
 import { isEnterpriseStatus } from '@/lib/enterprise-status';
 
 export const dynamic = 'force-dynamic';
@@ -164,7 +164,7 @@ export async function POST(request: Request) {
               );
             }
             await adminUsers.create({
-              username: phone,
+              username: buildEnterpriseAdminUsername(phone, enterprise.id),
               passwordHash: await hashEnterpriseAdminInitialPassword(),
               displayName: contactPerson.name
                 ? String(contactPerson.name)

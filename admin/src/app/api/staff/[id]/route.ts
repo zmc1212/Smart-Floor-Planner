@@ -106,11 +106,14 @@ export async function PUT(
               if (
                 phone &&
                 phone !== current.phone &&
-                (await repository.existsWithPhone(phone, staffId))
+                (await repository.existsWithPhone(phone, {
+                  excludeId: staffId,
+                  enterpriseId: current.enterpriseId,
+                }))
               ) {
                 throw Object.assign(new Error('Phone already exists'), {
                   code: '23505',
-                  constraint: 'admin_users_phone_uidx',
+                  constraint: 'admin_users_enterprise_phone_uidx',
                 });
               }
               updateData.phone = phone || null;

@@ -171,8 +171,8 @@ export default function PromotionRecordsPage() {
   const [configSaving, setConfigSaving] = useState(false);
   const [workingAction, setWorkingAction] = useState('');
 
-  const canManage = Boolean(user && ['enterprise_admin', 'admin', 'super_admin'].includes(user.role));
-  const canAssignPromoter = Boolean(user && ['admin', 'super_admin'].includes(user.role));
+  const canManage = ['enterprise_admin', 'admin', 'super_admin'].includes(user?.role || '');
+  const canAssignPromoter = ['admin', 'super_admin'].includes(user?.role || '');
   const canClaimPool = user?.role === 'salesperson';
   const salespeople = useMemo(() => staff.filter((item) => item.role === 'salesperson'), [staff]);
   const salespersonOptions = useMemo(() => salespeople.map((item) => ({ label: item.displayName || item.username || item._id, value: item._id })), [salespeople]);

@@ -190,7 +190,12 @@ test('Leads IP v1 uses the dossier composition and data-backed floor-plan previe
   assert.match(componentWxss, /\.lead-hero-card\s*\{[^}]*width:\s*310rpx;[^}]*height:\s*256rpx;/s);
   assert.match(componentWxss, /\.lead-workspace\s*\{[^}]*border-radius:\s*0 76rpx 0 0;/s);
   assert.match(componentWxss, /\.lead-card-layer\s*\{[^}]*width:\s*132rpx;[^}]*height:\s*51rpx;/s);
-  assert.match(componentWxss, /\.lead-card\s*\{[^}]*height:\s*204rpx;/s);
+  assert.match(componentWxss, /\.lead-card\s*\{[^}]*min-height:\s*244rpx;/s);
+  assert.match(componentWxml, /class="phone-row"/);
+  assert.match(componentWxml, /class="location-row"/);
+  assert.match(componentWxml, /class="location-text">\{\{item\.communityLabel\}\}/);
+  assert.match(componentWxss, /\.location-text\s*\{[^}]*-webkit-line-clamp:\s*2;/s);
+  assert.doesNotMatch(componentWxml, /class="contact-row"/);
   assert.match(componentWxss, /\.status-ribbon\s*\{[^}]*min-width:\s*104rpx;[^}]*height:\s*48rpx;/s);
   assert.match(componentWxss, /\.lead-plan-frame\s*\{[^}]*width:\s*220rpx;[^}]*height:\s*154rpx;/s);
 });

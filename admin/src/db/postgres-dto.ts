@@ -19,7 +19,7 @@ import type {
   StaffNotificationWithLead,
 } from '@/db/repositories';
 import { getFloorPlanDisplay, pickFloorPlanDisplayLead } from '@/lib/floor-plan-display';
-import { canRebookAppointment, resolveLeadServiceStage } from '@/lib/lead-service-stage';
+import { canRebookAppointment, formatAppointmentTimeRangeIso, resolveLeadServiceStage } from '@/lib/lead-service-stage';
 import { isFormalSurveyLayout, parseFormalSurveyLayout } from '@/lib/survey-graph';
 
 export function aiChatSessionSummaryToDto(record: AiChatSessionRecord) {
@@ -316,7 +316,7 @@ export function leadToDto(record: LeadWithRelations, options: {
           latitude: record.appointment.latitude == null ? null : Number(record.appointment.latitude),
           longitude: record.appointment.longitude == null ? null : Number(record.appointment.longitude),
           coordinateSystem: record.appointment.coordinateSystem,
-          timeRange: record.appointment.timeRange,
+          timeRange: formatAppointmentTimeRangeIso(record.appointment.timeRange) || record.appointment.timeRange,
           status: record.appointment.status,
           version: record.appointment.version,
           createdAt: record.appointment.createdAt,

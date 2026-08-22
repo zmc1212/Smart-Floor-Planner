@@ -128,9 +128,8 @@ export default function AdminsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const canManageAccounts = Boolean(
-    currentUser &&
-      (['super_admin', 'admin'].includes(currentUser.role) ||
-        currentUser.effectivePermissions?.includes('admins')),
+    ['super_admin', 'admin'].includes(currentUser?.role || '') ||
+      currentUser?.effectivePermissions?.includes('admins'),
   );
   const enterpriseOptions = useMemo(
     () => enterprises.map((enterprise) => ({ label: enterprise.name, value: enterprise._id })),

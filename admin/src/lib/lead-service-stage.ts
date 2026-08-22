@@ -44,14 +44,32 @@ export type AppointmentStageInput = {
   timeRange?: string | null;
 } | null | undefined;
 
+export function toIsoTimestamp(value: string) {
+  const text = String(value || '').trim().replaceAll('"', '');
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)(Z|[+-]\d{2}(?::?\d{2})?)?$/i);
+  if (!match) return text;
+  const [, date, time, rawZone] = match;
+  let zone = rawZone || 'Z';
+  if (zone.toUpperCase() === 'Z') zone = 'Z';
+  else if (/^[+-]\d{2}$/.test(zone)) zone = `${zone}:00`;
+  else if (/^[+-]\d{4}$/.test(zone)) zone = `${zone.slice(0, 3)}:${zone.slice(3)}`;
+  return `${date}T${time}${zone}`;
+}
+
 export function parseAppointmentBounds(timeRange?: string | null) {
   if (!timeRange) return null;
   const match = String(timeRange).match(/[[(]([^,]+),([^\])]+)[\])]/);
   if (!match) return null;
-  const startAt = new Date(match[1].replaceAll('"', '').trim());
-  const endAt = new Date(match[2].replaceAll('"', '').trim());
+  const startAt = new Date(toIsoTimestamp(match[1]));
+  const endAt = new Date(toIsoTimestamp(match[2]));
   if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) return null;
   return { startAt, endAt };
+}
+
+export function formatAppointmentTimeRangeIso(timeRange?: string | null) {
+  const bounds = parseAppointmentBounds(timeRange);
+  if (!bounds) return typeof timeRange === 'string' ? timeRange : '';
+  return `[${bounds.startAt.toISOString()},${bounds.endAt.toISOString()})`;
 }
 
 export function isAppointmentPastEnd(appointment: AppointmentStageInput, now = new Date()) {

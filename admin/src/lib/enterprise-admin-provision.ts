@@ -6,6 +6,23 @@ import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
 
 export const ENTERPRISE_ADMIN_INITIAL_PASSWORD = '123456';
 
+/**
+ * Login still matches by phone across owner rows. Username stays globally unique:
+ * the first store may use the bare phone; each additional store must suffix the
+ * enterprise id so a second `enterprise_admin` row does not collide.
+ */
+export function buildEnterpriseAdminUsername(
+  phone: string,
+  enterpriseId: bigint,
+  options?: { additionalStore?: boolean }
+) {
+  const trimmed = phone.trim();
+  if (options?.additionalStore) {
+    return `${trimmed}_e${enterpriseId.toString()}`;
+  }
+  return trimmed;
+}
+
 export function hashEnterpriseAdminInitialPassword() {
   return bcrypt.hash(ENTERPRISE_ADMIN_INITIAL_PASSWORD, 10);
 }
@@ -29,7 +46,7 @@ export async function ensureEnterpriseAdminForActiveEnterprise(
   const staff =
     existingUser ||
     (await adminUsers.create({
-      username: phone,
+      username: buildEnterpriseAdminUsername(phone, enterprise.id),
       passwordHash: await hashEnterpriseAdminInitialPassword(),
       displayName: typeof contact.name === 'string' ? contact.name : '',
       role: 'enterprise_admin',

@@ -11,11 +11,18 @@ import {
 } from '@/lib/lead-service-stage';
 
 const range = '[2026-08-19T01:00:00.000Z,2026-08-19T03:00:00.000Z)';
+const postgresRange = '["2026-08-23 01:00:00+00","2026-08-23 03:00:00+00")';
 
 test('parses appointment tstzrange bounds', () => {
   const bounds = parseAppointmentBounds(range);
   assert.equal(bounds?.startAt.toISOString(), '2026-08-19T01:00:00.000Z');
   assert.equal(bounds?.endAt.toISOString(), '2026-08-19T03:00:00.000Z');
+});
+
+test('parses postgres tstzrange literals that omit T and use +00 offsets', () => {
+  const bounds = parseAppointmentBounds(postgresRange);
+  assert.equal(bounds?.startAt.toISOString(), '2026-08-23T01:00:00.000Z');
+  assert.equal(bounds?.endAt.toISOString(), '2026-08-23T03:00:00.000Z');
 });
 
 test('keeps canonical lead status and derives matching / booking / expiry stages', () => {

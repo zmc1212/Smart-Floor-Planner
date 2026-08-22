@@ -10,6 +10,7 @@ import { withPlatformTransaction } from '@/db/transaction';
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
 import {
   ENTERPRISE_ADMIN_INITIAL_PASSWORD,
+  buildEnterpriseAdminUsername,
   hashEnterpriseAdminInitialPassword,
 } from '@/lib/enterprise-admin-provision';
 import { withTenantRoute } from '@/lib/tenant-route';
@@ -105,7 +106,7 @@ export async function POST(request: Request) {
             industry: record.industry,
           });
           await adminUsers.create({
-            username: phone,
+            username: buildEnterpriseAdminUsername(phone, enterprise.id),
             passwordHash: await hashEnterpriseAdminInitialPassword(),
             displayName: record.contactPerson,
             role: 'enterprise_admin',
@@ -119,7 +120,10 @@ export async function POST(request: Request) {
               code: 'ENTERPRISE_ALREADY_ACTIVATED',
             });
           }
-          return { enterprise, username: phone };
+          return {
+            enterprise,
+            username: buildEnterpriseAdminUsername(phone, enterprise.id),
+          };
         });
 
         return NextResponse.json({

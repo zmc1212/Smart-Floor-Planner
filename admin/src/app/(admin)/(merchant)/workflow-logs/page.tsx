@@ -238,9 +238,7 @@ export default function WorkflowLogsPage() {
   const [notificationConfigSaving, setNotificationConfigSaving] = useState(false);
   const [subscriptionToggleSaving, setSubscriptionToggleSaving] = useState(false);
 
-  const canRunScan = Boolean(
-    currentUser && ['super_admin', 'admin'].includes(currentUser.role),
-  );
+  const canRunScan = ['super_admin', 'admin'].includes(currentUser?.role || '');
 
   const fetchNotificationConfig = useCallback(async () => {
     if (!canRunScan) return;

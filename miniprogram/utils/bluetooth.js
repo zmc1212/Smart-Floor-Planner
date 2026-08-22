@@ -384,6 +384,7 @@ function notifyBluetoothAdapterOpenFailed(kind, err, silent) {
 
 function openBluetoothAdapterOnce(callback) {
   wx.openBluetoothAdapter({
+    mode: 'central',
     success: function () {
       callback(null);
     },
@@ -397,23 +398,12 @@ function openBluetoothAdapterOnce(callback) {
   });
 }
 
-function requestBluetoothScope(done) {
-  if (typeof wx.authorize !== 'function') {
-    done();
-    return;
-  }
-  wx.authorize({
-    scope: 'scope.bluetooth',
-    success: function () { done(); },
-    fail: function () { done(); }
-  });
-}
-
 function ensureBluetoothAdapterOpen(options) {
   var silent = Boolean(options && options.silent);
   var scanMs = options && options.scanMs;
   var onOpen = options && options.onOpen;
   var env = readBluetoothEnvironment();
+  var isIOS = env.platform === 'ios';
 
   function fail(kind, err) {
     notifyBluetoothAdapterOpenFailed(kind, err, silent);
@@ -444,7 +434,9 @@ function ensureBluetoothAdapterOpen(options) {
     });
   }
 
-  if (env.bluetoothEnabled === false) {
+  // iOS cannot report the system Bluetooth switch. Skipping open here would
+  // never pull the iOS Bluetooth permission prompt.
+  if (!isIOS && env.bluetoothEnabled === false) {
     fail('bluetooth_off');
     return;
   }
@@ -452,18 +444,20 @@ function ensureBluetoothAdapterOpen(options) {
     fail('location_required');
     return;
   }
-  if (env.bluetoothAuthorized === 'denied') {
-    fail('permission_denied');
-    return;
-  }
 
-  if (env.bluetoothAuthorized === 'authorized') {
-    attemptOpen(false);
-    return;
+  // wx.authorize(scope.bluetooth) does not grant iOS system Bluetooth and can
+  // hang without a callback on iOS 13.x. Always open the adapter; that is the
+  // API that actually requests the system permission.
+  if (typeof wx.authorize === 'function' && env.bluetoothAuthorized !== 'authorized') {
+    try {
+      wx.authorize({
+        scope: 'scope.bluetooth',
+        success: function () {},
+        fail: function () {}
+      });
+    } catch (error) {}
   }
-  requestBluetoothScope(function () {
-    attemptOpen(false);
-  });
+  attemptOpen(false);
 }
 
 function initBLE(callback, connectCallback, disconnectCallback, silent = false, options = {}) {

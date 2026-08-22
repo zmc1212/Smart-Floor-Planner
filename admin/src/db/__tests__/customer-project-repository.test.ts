@@ -28,6 +28,7 @@ let otherEnterpriseId: bigint;
 let customerUserId: bigint;
 let otherCustomerUserId: bigint;
 let designerId: bigint;
+let designerPhone: string;
 let leadId: bigint;
 let floorPlanId: bigint;
 let generationId: bigint;
@@ -53,6 +54,7 @@ before(async () => {
   });
 
   await withTenantTransaction(enterpriseId, async (transaction) => {
+    designerPhone = `191${String(Date.now()).slice(-8)}`;
     designerId = (await new AdminUserRepository(transaction).create({
       enterpriseId,
       username: `${runKey}-designer`,
@@ -62,6 +64,7 @@ before(async () => {
       status: 'active',
       assignmentPaused: false,
       wechatId: 'project-designer-wechat',
+      phone: designerPhone,
     })).id;
     const leadRepository = new LeadRepository(transaction);
     leadId = (await leadRepository.create({
@@ -188,6 +191,7 @@ test('only the owning customer can aggregate a project, and only active publishe
   assert.equal(beforePublish?.formalFloorPlan?.id, floorPlanId);
   assert.equal(beforePublish?.publications.length, 0);
   assert.equal(beforePublish?.designer?.id, designerId);
+  assert.equal(beforePublish?.designer?.phone, designerPhone);
 
   const published = await withTenantTransaction(enterpriseId, (transaction) =>
     new CustomerProjectRepository(transaction).publish({ enterpriseId, leadId, generationId, publishedBy: designerId })

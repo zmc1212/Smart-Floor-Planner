@@ -604,6 +604,7 @@ test('claim resolve and authorize preserve an existing customer project instead 
   assert.match(repository, /releaseInactiveAttributionLocks/);
   assert.match(resolve, /findActiveCustomerAttribution/);
   assert.match(resolve, /existingAttribution:\s*true/);
+  assert.match(resolve, /createdAt:\s*existing\.lead\.createdAt/);
   assert.match(resolve, /pendingSource:\s*null/);
   assert.match(authorize, /claim\.kind !== 'existing_attribution'/);
 });

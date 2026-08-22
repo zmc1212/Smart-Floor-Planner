@@ -70,6 +70,11 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*width:\s*auto/);
   assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*min-width:\s*100%/);
   assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*white-space:\s*nowrap/);
+  assert.match(less, /\.onboarding-content \.join-action\s*\{[^}]*margin-top:\s*32rpx/);
+  assert.match(less, /\.welcome-title,\s*\.recovery-title\s*\{[\s\S]*font-size:\s*44rpx/);
+  assert.match(less, /\.section-title\s*\{[^}]*font-size:\s*34rpx/);
+  assert.match(less, /\.section-copy\s*\{[^}]*font-size:\s*26rpx/);
+  assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*font-size:\s*32rpx/);
   assert.match(less, /safe-area-inset-bottom/);
   assert.doesNotMatch(less, /font-size:\s*(?:1[0-9]|[0-9])rpx/);
   assert.doesNotMatch(less, /transform:\s*scale\(/);

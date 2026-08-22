@@ -80,7 +80,7 @@ export default function JoinCodesPage() {
   qrByTypeRef.current = qrByType;
 
   const requiresTenantSelection = Boolean(
-    user && ['super_admin', 'admin'].includes(user.role) && globalTenantId === 'all'
+    ['super_admin', 'admin'].includes(user?.role || '') && globalTenantId === 'all'
   );
 
   const loadCodes = useCallback(async () => {

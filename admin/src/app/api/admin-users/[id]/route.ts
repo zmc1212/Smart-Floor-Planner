@@ -95,7 +95,10 @@ export async function PATCH(
       if (
         phone?.trim() &&
         phone.trim() !== existing.phone &&
-        (await repository.existsWithPhone(phone.trim(), adminId))
+        (await repository.existsWithPhone(phone.trim(), {
+          excludeId: adminId,
+          enterpriseId: existing.enterpriseId,
+        }))
       ) {
         throw Object.assign(new Error('Phone already exists'), {
           field: 'phone',

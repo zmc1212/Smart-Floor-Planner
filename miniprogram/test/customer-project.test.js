@@ -21,6 +21,9 @@ test('customer project consumes only the owner-only aggregate and renders archiv
   assert.match(wxml, /我的服务档案/);
   assert.match(wxml, /专属设计师/);
   assert.match(wxml, /测量师师傅/);
+  assert.match(wxml, /designerPhone/);
+  assert.match(wxml, /measurerPhone/);
+  assert.match(wxml, /catchtap="callStaff"/);
   assert.match(wxml, /户型档案/);
   assert.match(wxml, /交付方案/);
   assert.match(wxml, /查看高清户型图/);
@@ -33,6 +36,10 @@ test('customer project consumes only the owner-only aggregate and renders archiv
   assert.match(page, /hideShareMenu/);
   assert.match(page, /showSchemePoster: true/);
   assert.match(page, /contactDesigner\(\)/);
+  assert.match(page, /callStaff\(/);
+  assert.match(page, /wx\.makePhoneCall/);
+  assert.match(page, /label: '量房'/);
+  assert.doesNotMatch(page, /label: '免费量房'/);
   assert.match(page, /showContactSheet/);
   assert.match(page, /hasDesignerContact/);
   assert.match(page, /copyDesignerWechatId/);
@@ -115,7 +122,10 @@ test('customer project template and stylesheet stay aligned for the restored arc
   assert.match(wxml, /floorPlanImageState === 'loading'/);
   assert.match(less, /\.booking-action,\s*\n?\.booking-secondary \{[\s\S]*?border-radius: 999rpx;[\s\S]*?\}/);
   assert.match(less, /\.booking-action,\s*\n?\.booking-secondary \{[\s\S]*?align-items: center;[\s\S]*?justify-content: center;[\s\S]*?\}/);
-  assert.match(less, /\.booking-actions > \.booking-action \+ \.booking-secondary[\s\S]*?margin-top: 16rpx;/);
+  assert.match(less, /\.booking-actions \{[\s\S]*?flex-direction: row;[\s\S]*?gap: 16rpx;/);
+  assert.match(less, /\.booking-action,\s*\n?\.booking-secondary \{[\s\S]*?flex: 1;[\s\S]*?width: auto;/);
+  assert.match(less, /\.booking-actions > \.booking-action \+ \.booking-secondary[\s\S]*?margin-left: 16rpx;/);
   assert.match(less, /\.footer-outline, \.footer-primary \{[^}]*display: flex;[^}]*align-items: center;[^}]*justify-content: center;/);
-  assert.doesNotMatch(wxml, /🎨|📏|📐|🔍/);
+  assert.match(less, /\.section-badge \{[\s\S]*display: inline-flex;[\s\S]*align-items: center;/);
+  assert.match(less, /\.person-phone \{[\s\S]*?font-size: 24rpx;/);
 });

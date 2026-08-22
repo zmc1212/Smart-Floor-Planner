@@ -105,13 +105,18 @@
 }
 
 .stat-pill {
-  font-size: 22rpx;
-  color: #FFFFFF;
-  background: rgba(255, 255, 255, 0.22);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40rpx;
+  padding: 0 16rpx;
   border: 1rpx solid rgba(255, 255, 255, 0.35);
-  padding: 6rpx 16rpx;
   border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.22);
+  color: #FFFFFF;
+  font-size: 22rpx;
   font-weight: 600;
+  line-height: 1;
 }
 
 .hero-mascot {
@@ -252,12 +257,21 @@
 }
 
 .status-tag {
-  font-size: 22rpx;
-  font-weight: 600;
-  padding: 6rpx 16rpx;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40rpx;
+  padding: 0 16rpx;
   border-radius: 8rpx;
   background: #EAF8EC;
   color: #168A3D;
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.status-tag text {
+  line-height: 1;
 }
 
 .tag-expired {

@@ -41,4 +41,9 @@ test('enterprise staff roster is an owner-only deep page with pause and join-cod
   assert.match(styles, /font-size:\s*32rpx|font-size:\s*34rpx/);
   assert.match(styles, /font-size:\s*24rpx/);
   assert.doesNotMatch(styles, /font-size:\s*1[89]rpx/);
+  assert.doesNotMatch(styles, /font-size:\s*20rpx/);
+  assert.match(styles, /\.status-tag\s*\{[\s\S]*display:\s*inline-flex/);
+  assert.match(styles, /\.status-tag\s*\{[\s\S]*align-items:\s*center/);
+  assert.match(styles, /\.status-tag text\s*\{[\s\S]*line-height:\s*1;/);
+  assert.match(styles, /\.retry\s*\{[\s\S]*align-items:\s*center/);
 });

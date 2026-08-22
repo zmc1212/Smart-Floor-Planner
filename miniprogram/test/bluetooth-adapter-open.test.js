@@ -144,3 +144,45 @@ test('adapter unavailable while system Bluetooth is off is classified as bluetoo
   );
   assert.equal(classified.kind, 'bluetooth_off');
 });
+
+test('does not wait for scope.bluetooth authorize before opening the adapter', () => {
+  var opened = false;
+  withWx({
+    getAppAuthorizeSetting() {
+      return { bluetoothAuthorized: 'not determined', locationAuthorized: 'authorized' };
+    },
+    authorize() {},
+    openBluetoothAdapter(options) {
+      opened = true;
+      if (options && options.success) options.success({});
+    }
+  }, function (wx, bluetooth) {
+    bluetooth.initBLE(function () {}, function () {}, function () {}, false);
+    assert.equal(opened, true);
+    bluetooth.cancelBLEDiscovery();
+  });
+});
+
+test('iOS still opens the adapter when the system Bluetooth flag is unavailable', () => {
+  var opened = false;
+  withWx({
+    getSystemInfoSync() {
+      return { platform: 'ios', brand: 'iPhone' };
+    },
+    getSystemSetting() {
+      return { bluetoothEnabled: false, locationEnabled: true };
+    },
+    getAppAuthorizeSetting() {
+      return { bluetoothAuthorized: 'denied', locationAuthorized: 'authorized' };
+    },
+    authorize() {},
+    openBluetoothAdapter(options) {
+      opened = true;
+      if (options && options.success) options.success({});
+    }
+  }, function (wx, bluetooth) {
+    bluetooth.initBLE(function () {}, function () {}, function () {}, false);
+    assert.equal(opened, true);
+    bluetooth.cancelBLEDiscovery();
+  });
+});

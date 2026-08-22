@@ -60,7 +60,7 @@
           <text class="amount">{{item.amountLabel}}</text>
         </view>
         <view class="earning-meta">
-          <text class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</text>
+          <view class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</view>
           <view
             wx:if="{{item.canMarkPaid}}"
             class="mark-paid"

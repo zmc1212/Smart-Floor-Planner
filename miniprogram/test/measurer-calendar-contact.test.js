@@ -16,6 +16,47 @@ function loadPage() {
   return definition;
 }
 
+test('measurer calendar buckets a postgres tstzrange onto the selected Shanghai visit day', async () => {
+  const definition = loadPage();
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  api.request = async () => ({
+    data: [{
+      id: '118',
+      leadId: '1191',
+      timeRange: '["2026-08-23 01:00:00+00","2026-08-23 03:00:00+00")',
+      status: 'confirmed',
+      address: '湖北省宜昌市西陵区西湖路32号',
+      customerName: '高容海推荐人',
+      customerPhone: '15997671595',
+    }],
+  });
+  global.wx = {
+    getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 24 }),
+    getMenuButtonBoundingClientRect: () => ({ left: 280, top: 24, height: 32 }),
+  };
+  const context = {
+    data: {
+      ...definition.data,
+      todayDateKey: '2026-08-22',
+      selectedDateKey: '2026-08-23',
+    },
+    setData(next) { Object.assign(this.data, next); },
+    buildWeekDays: definition.buildWeekDays,
+  };
+
+  try {
+    await definition.load.call(context);
+    assert.equal(context.data.selectedAppointments.length, 1);
+    assert.equal(context.data.selectedAppointments[0].dateKey, '2026-08-23');
+    assert.equal(context.data.weekCount, 1);
+    assert.equal(context.data.todayCount, 0);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+  }
+});
+
 test('measurer calendar retains the assigned customer name and phone from the appointment API', async () => {
   const definition = loadPage();
   const originalRequest = api.request;

@@ -90,6 +90,13 @@ test('designer workbench surfaces a profile todo when WeChat contact is incomple
   assert.ok(missingQr);
   assert.match(missingQr!.subtitle, /个人二维码/);
   assert.doesNotMatch(missingQr!.subtitle, /微信号和/);
+  const missingId = buildDesignerWechatProfileTodo({
+    wechatId: '',
+    wechatQrAssetId: 9n,
+  });
+  assert.ok(missingId);
+  assert.match(missingId!.subtitle, /微信号/);
+  assert.doesNotMatch(missingId!.subtitle, /个人二维码/);
 });
 
 test('enterprise operations expose missing designer and measurer staffing as exceptions', () => {

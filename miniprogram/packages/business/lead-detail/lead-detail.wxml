@@ -4,9 +4,12 @@
       <text class="eyebrow">客户详情</text>
       <text class="title">{{lead.name}}</text>
       <text class="info">手机：{{lead.phone}}</text>
-      <text class="info">小区：{{lead.communityName || '未填写'}}</text>
+      <view class="community-block">
+        <text class="info community-label">小区</text>
+        <text class="community-name">{{lead.communityName || '未填写'}}</text>
+      </view>
       <view class="lead-status-summary">
-        <text class="status-pill">{{statusLabel}}</text>
+        <view class="status-pill">{{statusLabel}}</view>
         <view wx:if="{{canEditProfile}}" class="profile-edit-action" bindtap="onEditProfile" aria-role="button" aria-label="补充客户资料">补充资料</view>
       </view>
     </view>

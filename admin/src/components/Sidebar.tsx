@@ -59,7 +59,7 @@ interface SidebarAdmin {
   role?: string;
   displayName?: string;
   username?: string;
-  enterpriseId?: { name?: string };
+  enterpriseId?: { _id?: string; name?: string } | null;
   effectivePermissions?: string[];
 }
 
@@ -378,7 +378,7 @@ const SidebarContent = memo(function SidebarContent({
           trigger={['hover', 'click']}
           mouseEnterDelay={0.15}
           mouseLeaveDelay={0.2}
-          placement={collapsed ? 'rightBottom' : 'topLeft'}
+          placement={(collapsed ? 'rightBottom' : 'topLeft') as 'topLeft'}
           popupRender={() => accountMenu}
         >
           <button

@@ -99,6 +99,23 @@ page {
   -webkit-overflow-scrolling: touch;
 }
 
+/*
+ * Designs 11 and 13 keep their content and next action in one reading group.
+ * The shared action uses an auto top margin for longer claim states; here it
+ * would turn the remaining viewport into a misleading spacer.
+ */
+.claim-auth,
+.claim-pending {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.claim-auth .claim-action,
+.claim-pending .claim-action {
+  margin-top: 36rpx;
+}
+
 .ready-hero,
 .auth-hero,
 .success-hero,

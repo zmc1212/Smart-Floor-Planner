@@ -262,6 +262,7 @@ export function customerProjectToDto(
           id: project.designer.id.toString(),
           displayName: project.designer.displayName,
           wechatId: project.designer.wechatId,
+          phone: text(project.designer.phone) || null,
           wechatQrUrl: project.designer.wechatQrAssetId
             ? getSignedMiniAiAssetUrl({
                 request,
@@ -272,6 +273,7 @@ export function customerProjectToDto(
         }
       : null,
     measurerName: project.measurerName,
+    measurerPhone: text(project.measurerPhone) || text(project.appointment?.measurerPhone) || null,
     appointment: project.appointment
       ? {
           id: project.appointment.id.toString(),
@@ -284,6 +286,7 @@ export function customerProjectToDto(
           status: project.appointment.status,
           version: project.appointment.version,
           measurerName: project.appointment.measurerName,
+          measurerPhone: text(project.appointment.measurerPhone) || null,
           updatedAt: project.appointment.updatedAt,
         }
       : null,

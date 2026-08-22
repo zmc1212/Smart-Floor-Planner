@@ -69,7 +69,9 @@ export async function POST(request: Request) {
         : null;
       if (!staff && typeof openid === 'string' && openid.trim()) {
         staff = await new AdminUserRepository(transaction).findByOpenidOrPhone(
-          openid.trim()
+          openid.trim(),
+          null,
+          { enterpriseId: matchedDevice.enterpriseId }
         );
       }
       if (!staff) {

@@ -38,12 +38,34 @@
             <text class="person-name">{{designerLine}}</text>
             <view wx:if="{{canContactDesigner}}" class="person-chevron"></view>
           </view>
+          <text
+            wx:if="{{designerPhone}}"
+            class="person-phone"
+            catchtap="callStaff"
+            data-phone="{{designerPhone}}"
+            aria-role="button"
+            aria-label="拨打设计师电话"
+          >{{designerPhone}}</text>
         </view>
       </view>
-      <view class="person-card">
+      <view
+        class="person-card"
+        bindtap="callStaff"
+        data-phone="{{measurerPhone}}"
+        aria-role="{{measurerPhone ? 'button' : 'text'}}"
+        aria-label="{{measurerPhone ? '拨打测量师电话' : '测量师师傅'}}"
+      >
         <view class="person-info">
           <text class="person-role">测量师师傅</text>
           <text class="person-name">{{measurerLine}}</text>
+          <text
+            wx:if="{{measurerPhone}}"
+            class="person-phone"
+            catchtap="callStaff"
+            data-phone="{{measurerPhone}}"
+            aria-role="button"
+            aria-label="拨打测量师电话"
+          >{{measurerPhone}}</text>
         </view>
       </view>
     </view>
@@ -53,7 +75,7 @@
         <view class="section-title-wrap">
           <text class="section-title">上门量房预约</text>
         </view>
-        <text class="section-badge">{{appointmentBadge || '服务准备中'}}</text>
+        <view class="section-badge">{{appointmentBadge || '服务准备中'}}</view>
       </view>
       <view wx:if="{{appointment && range}}" class="appointment-facts">
         <text class="appointment-time">{{range.date}} {{range.time}}</text>
@@ -75,8 +97,8 @@
           <image class="section-icon" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit" />
           <text class="section-title">户型档案</text>
         </view>
-        <text wx:if="{{formalFloorPlan}}" class="section-badge">已归档{{formalFloorPlan.areaLabel ? ' · ' + formalFloorPlan.areaLabel : ''}}</text>
-        <text wx:else class="section-badge muted">等待量房</text>
+        <view wx:if="{{formalFloorPlan}}" class="section-badge">已归档{{formalFloorPlan.areaLabel ? ' · ' + formalFloorPlan.areaLabel : ''}}</view>
+        <view wx:else class="section-badge muted">等待量房</view>
       </view>
       <view wx:if="{{formalFloorPlan}}" class="floor-preview-container" bindtap="previewFloorPlan" aria-role="button" aria-label="查看高清户型图">
         <image wx:if="{{floorPlanImagePath}}" class="floor-preview-image" src="{{floorPlanImagePath}}" mode="aspectFit" />

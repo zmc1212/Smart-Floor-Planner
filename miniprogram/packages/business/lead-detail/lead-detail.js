@@ -9,6 +9,7 @@ const {
   publishedImageCacheKey,
 } = require('../../../utils/protectedImageCache.js');
 const { createWallSegments, resolveProtectedPreviewEndpoint } = require('../../../components/lead-list/lead-list-model.js');
+const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
 
 const STATUS_LABELS = {
   new: '新线索',
@@ -303,13 +304,9 @@ function staffIdOf(value) {
 }
 
 function appointmentSummary(value) {
-  const match = String(value || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
-  if (!match) return '上门时间待确认';
-  const start = new Date(match[1].replaceAll('"', ''));
-  const end = new Date(match[2].replaceAll('"', ''));
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '上门时间待确认';
-  const pad = (number) => String(number).padStart(2, '0');
-  return `${start.getMonth() + 1}月${start.getDate()}日 ${pad(start.getHours())}:${pad(start.getMinutes())}-${pad(end.getHours())}:${pad(end.getMinutes())}`;
+  const display = formatAppointmentDisplay(value);
+  if (!display.dateKey) return '上门时间待确认';
+  return `${display.dateLabel.replace('/', '月')}日 ${display.time.replace(' - ', '-')}`;
 }
 
 Page({

@@ -209,6 +209,8 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(js, /loadDesignerQrToTempFile/);
   assert.match(js, /hasDesignerContact/);
   assert.match(js, /hydrateExistingAttribution/);
+  assert.match(js, /customerProjectFromApiResponse/);
+  assert.match(js, /const project = customerProjectFromApiResponse\(result\)/);
   assert.match(js, /服务已存在/);
   assert.doesNotMatch(wxml, /本次扫码不会重复领取/);
   assert.doesNotMatch(js, /saveImageToPhotosAlbum/);
@@ -216,6 +218,8 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(less, /\.claim-action\s*\{[^}]*align-self:\s*stretch/);
   assert.match(less, /\.claim-action\s*\{[^}]*min-width:\s*100%/);
   assert.match(less, /\.claim-action\s*\{[^}]*white-space:\s*nowrap/);
+  assert.match(less, /\.claim-auth,\s*\.claim-pending\s*\{[\s\S]*overflow-y:\s*auto/);
+  assert.match(less, /\.claim-auth \.claim-action,\s*\.claim-pending \.claim-action\s*\{[^}]*margin-top:\s*36rpx/);
   assert.match(less, /\.success-title\s*\{[^}]*color:\s*#00c365/);
   assert.match(less, /\.existing-note\s*\{[^}]*background:\s*#f1f5f2/);
   assert.match(less, /\.designer-qr\s*\{[\s\S]*width:\s*280rpx/);

@@ -253,6 +253,13 @@
       "when": 1787257200000,
       "tag": "0035_enterprise_sensitive_password",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787260800000,
+      "tag": "0036_admin_users_tenant_unique",
+      "breakpoints": true
     }
   ]
 }

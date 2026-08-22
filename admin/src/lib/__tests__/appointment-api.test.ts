@@ -55,6 +55,28 @@ test('measurer calendar appointment DTO includes the assigned customer contact o
   assert.equal(appointmentToDto(record).latitude, null);
 });
 
+test('appointment DTO rewrites postgres tstzrange literals to ISO-8601 so Mini Program Date parsing works', () => {
+  const record = {
+    id: BigInt(118),
+    enterpriseId: BigInt(2),
+    leadId: BigInt(1191),
+    designerId: BigInt(4),
+    measurerId: BigInt(2271),
+    address: '湖北省宜昌市西陵区西湖路32号',
+    timeRange: '["2026-08-23 01:00:00+00","2026-08-23 03:00:00+00")',
+    status: 'confirmed',
+    version: 1,
+    updatedByUserId: null,
+    createdAt: new Date('2026-08-22T11:00:00.000Z'),
+    updatedAt: new Date('2026-08-22T11:00:00.000Z'),
+  } as never;
+
+  assert.equal(
+    appointmentToDto(record).timeRange,
+    '[2026-08-23T01:00:00.000Z,2026-08-23T03:00:00.000Z)'
+  );
+});
+
 test('appointment locations accept only bounded GCJ-02 coordinates', () => {
   assert.deepEqual(parseAppointmentLocation({
     locationName: '阳光花园', latitude: 23.1291, longitude: 113.2644, coordinateSystem: 'gcj02',

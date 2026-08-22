@@ -107,7 +107,7 @@ export default function ReferrerNetworkOperationsPage() {
   const [purgeExecuting, setPurgeExecuting] = useState(false);
 
   const requiresTenantSelection = Boolean(
-    user && ['super_admin', 'admin'].includes(user.role) && globalTenantId === 'all'
+    ['super_admin', 'admin'].includes(user?.role || '') && globalTenantId === 'all'
   );
 
   const loadReadiness = useCallback(async () => {
@@ -328,9 +328,7 @@ export default function ReferrerNetworkOperationsPage() {
   ];
 
   const isEnterpriseAdmin = user?.role === 'enterprise_admin';
-  const isPlatformOperator = Boolean(
-    user && ['super_admin', 'admin'].includes(user.role)
-  );
+  const isPlatformOperator = ['super_admin', 'admin'].includes(user?.role || '');
 
   const checklist = [
     ...(isEnterpriseAdmin

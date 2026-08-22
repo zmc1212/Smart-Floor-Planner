@@ -57,7 +57,7 @@ function isActiveCode(code: RegistrationCode | null) {
 export default function EnterpriseRegistrationCodesPage() {
   const confirm = useConfirmDialog();
   const { user } = useCurrentUser();
-  const canManage = Boolean(user && ['super_admin', 'admin'].includes(user.role));
+  const canManage = ['super_admin', 'admin'].includes(user?.role || '');
   const [code, setCode] = useState<RegistrationCode | null>(null);
   const [events, setEvents] = useState<RegistrationCodeEvent[]>([]);
   const [loading, setLoading] = useState(true);

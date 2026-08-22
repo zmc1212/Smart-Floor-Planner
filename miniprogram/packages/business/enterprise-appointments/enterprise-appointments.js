@@ -1,4 +1,5 @@
 const api = require('../../../utils/api');
+const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -25,22 +26,11 @@ function formatDateKey(d) {
 }
 
 function parseSlot(range) {
-  const match = String(range || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
-  if (!match) {
-    return { time: '时间待确认', dateKey: '', startMs: 0 };
-  }
-  const start = new Date(match[1].replaceAll('"', ''));
-  const end = new Date(match[2].replaceAll('"', ''));
-  if (Number.isNaN(start.getTime())) {
-    return { time: '时间待确认', dateKey: '', startMs: 0 };
-  }
-  const endLabel = Number.isNaN(end.getTime())
-    ? ''
-    : ` - ${padZero(end.getHours())}:${padZero(end.getMinutes())}`;
+  const display = formatAppointmentDisplay(range);
   return {
-    time: `${padZero(start.getHours())}:${padZero(start.getMinutes())}${endLabel}`,
-    dateKey: formatDateKey(start),
-    startMs: start.getTime(),
+    time: display.time,
+    dateKey: display.dateKey,
+    startMs: display.startMs,
   };
 }
 

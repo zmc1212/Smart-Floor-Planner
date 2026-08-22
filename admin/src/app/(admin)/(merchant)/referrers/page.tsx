@@ -32,7 +32,7 @@ export default function ReferrersPage() {
   const [globalTenantId, setGlobalTenantId] = useState('all');
 
   const requiresTenantSelection = Boolean(
-    user && ['super_admin', 'admin'].includes(user.role) && globalTenantId === 'all'
+    ['super_admin', 'admin'].includes(user?.role || '') && globalTenantId === 'all'
   );
 
   useEffect(() => {

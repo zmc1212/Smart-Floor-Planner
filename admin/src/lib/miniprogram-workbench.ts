@@ -3,7 +3,7 @@ import { aiGenerationPublications, aiGenerations, floorPlans } from '@/db/schema
 import { FloorPlanRepository } from '@/db/repositories/floor-plan-repository';
 import { LeadRepository } from '@/db/repositories/lead-repository';
 import type { PostgresTransaction } from '@/db/transaction';
-import { resolveLeadServiceStage, type LeadServiceStage } from '@/lib/lead-service-stage';
+import { formatAppointmentTimeRangeIso, resolveLeadServiceStage, type LeadServiceStage } from '@/lib/lead-service-stage';
 
 export function isAssignmentEligibleStaff(member: {
   role?: string | null;
@@ -225,8 +225,8 @@ export function buildWorkbenchAppointmentItem(
     title: lead?.name || '客户量房',
     subtitle: appointment.address || lead?.communityName || '地址待确认',
     communityName: lead?.communityName || '',
-    meta: appointment.timeRange,
-    timeRange: appointment.timeRange,
+    meta: formatAppointmentTimeRangeIso(appointment.timeRange) || appointment.timeRange,
+    timeRange: formatAppointmentTimeRangeIso(appointment.timeRange) || appointment.timeRange,
     status: appointment.status,
     serviceStage: stage.key,
     nextAction: stage.nextAction,

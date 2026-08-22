@@ -1,4 +1,5 @@
 const api = require('../../../utils/api');
+const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -19,15 +20,9 @@ function localDate(value = new Date()) {
 }
 
 function parseRange(range) {
-  const match = String(range || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
-  if (!match) return { date: '待确认', time: '待确认' };
-  const start = new Date(match[1].replaceAll('"', ''));
-  const end = new Date(match[2].replaceAll('"', ''));
-  const two = (number) => String(number).padStart(2, '0');
-  return {
-    date: `${start.getFullYear()}-${two(start.getMonth() + 1)}-${two(start.getDate())}`,
-    time: `${two(start.getHours())}:${two(start.getMinutes())} - ${two(end.getHours())}:${two(end.getMinutes())}`,
-  };
+  const display = formatAppointmentDisplay(range);
+  if (!display.dateKey) return { date: '待确认', time: '待确认' };
+  return { date: display.dateKey, time: display.timeText };
 }
 
 function combineDateTime(date, time) {

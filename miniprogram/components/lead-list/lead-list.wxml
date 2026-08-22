@@ -94,15 +94,13 @@
           <view class="lead-main">
             <text class="lead-name">{{item.displayName}}</text>
 
-            <view class="contact-row">
-              <view class="contact-item phone-item">
-                <image class="line-icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
-                <text>{{item.phoneMasked}}</text>
-              </view>
-              <view class="contact-item location-item">
-                <image class="line-icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
-                <text class="line-text">{{item.communityLabel}}</text>
-              </view>
+            <view class="phone-row">
+              <image class="line-icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+              <text>{{item.phoneMasked}}</text>
+            </view>
+            <view class="location-row">
+              <image class="line-icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
+              <view class="location-text">{{item.communityLabel}}</view>
             </view>
 
             <view class="card-bottom-row">

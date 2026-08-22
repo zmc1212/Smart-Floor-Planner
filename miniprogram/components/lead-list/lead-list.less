@@ -289,16 +289,18 @@
 
 .lead-card-stack {
   position: relative;
-  height: 230rpx;
+  min-height: 270rpx;
   margin-bottom: 16rpx;
+  padding-bottom: 14rpx;
+  box-sizing: border-box;
 }
 
 .lead-card-back {
   position: absolute;
   top: 0;
   right: 0;
+  bottom: 6rpx;
   left: 17rpx;
-  height: 216rpx;
   border-radius: 18rpx;
   background: #f7f7f2;
   box-shadow: 8rpx 7rpx 17rpx rgba(70, 78, 67, 0.08);
@@ -318,14 +320,13 @@
 }
 
 .lead-card {
-  position: absolute;
-  top: 8rpx;
-  right: 0;
-  left: 7rpx;
+  position: relative;
   z-index: 1;
   display: flex;
-  height: 204rpx;
-  padding: 48rpx 72rpx 15rpx 29rpx;
+  min-height: 244rpx;
+  margin-top: 8rpx;
+  margin-left: 7rpx;
+  padding: 48rpx 72rpx 18rpx 29rpx;
   align-items: stretch;
   border-radius: 16rpx;
   background: #ffffff;
@@ -414,44 +415,49 @@
   white-space: nowrap;
 }
 
-.contact-row {
+.phone-row,
+.location-row {
   display: flex;
   min-width: 0;
-  margin-top: 11rpx;
-  align-items: center;
-  gap: 18rpx;
+  align-items: flex-start;
+  gap: 7rpx;
   color: #657187;
+  font-size: 24rpx;
+  line-height: 1.25;
 }
 
-.contact-item {
-  display: flex;
-  min-width: 0;
+.phone-row {
+  margin-top: 10rpx;
   align-items: center;
-  gap: 7rpx;
-  font-size: 24rpx;
-  line-height: 1.15;
   white-space: nowrap;
 }
 
-.phone-item {
-  flex-shrink: 0;
-}
-
-.location-item {
-  flex: 1;
+.location-row {
+  width: 100%;
+  margin-top: 8rpx;
 }
 
 .line-icon {
   width: 22rpx;
   height: 22rpx;
+  margin-top: 4rpx;
   flex-shrink: 0;
 }
 
-.line-text {
+.phone-row .line-icon {
+  margin-top: 0;
+}
+
+.location-text {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-all;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .card-bottom-row {
@@ -515,7 +521,7 @@
   margin-top: auto;
   overflow: hidden;
   color: #657187;
-  font-size: 20rpx;
+  font-size: 22rpx;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;

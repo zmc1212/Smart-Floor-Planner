@@ -149,8 +149,10 @@ export default function StaffPage() {
   const [permissionRoleDefaults, setPermissionRoleDefaults] = useState({ designer: false, measurer: false });
   const [permissionStaff, setPermissionStaff] = useState<PermissionStaff[]>([]);
 
-  const canManage = Boolean(currentUser && ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser.role));
-  const requiresTenantSelection = Boolean(currentUser && ['super_admin', 'admin'].includes(currentUser.role) && globalTenantId === 'all');
+  const canManage = ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser?.role || '');
+  const requiresTenantSelection = Boolean(
+    ['super_admin', 'admin'].includes(currentUser?.role || '') && globalTenantId === 'all'
+  );
 
   const loadActionPermissions = useCallback(async () => {
     setPermissionLoading(true);

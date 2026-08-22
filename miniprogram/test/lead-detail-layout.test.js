@@ -28,6 +28,25 @@ test('formal-surveying tab has a defined surface and does not cover the lead-det
   assert.doesNotMatch(template, /class="lead-next-action"/);
 });
 
+test('lead-detail hero keeps community copy in the green lane and off the white scene', () => {
+  assert.match(template, /class="community-block"/);
+  assert.match(template, /class="info community-label">小区/);
+  assert.match(template, /class="community-name">\{\{lead\.communityName \|\| '未填写'\}\}/);
+  assert.doesNotMatch(template, /小区：\{\{lead\.communityName/);
+  assert.match(
+    styles,
+    /\.detail-hero \.hero-copy\s*\{[^}]*width:\s*40%;[^}]*max-width:\s*300rpx;/s
+  );
+  assert.match(
+    styles,
+    /\.detail-hero \.community-name\s*\{[^}]*word-break:\s*break-all;[^}]*overflow-wrap:\s*anywhere;/s
+  );
+  assert.match(
+    styles,
+    /\.detail-hero \.eyebrow,\s*\.detail-hero \.title,\s*\.detail-hero \.info,\s*\.detail-hero \.community-name\s*\{[^}]*text-shadow:/s
+  );
+});
+
 test('lead-detail scene is anchored to its hero instead of covering measurement history', () => {
   assert.match(
     styles,

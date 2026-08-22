@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterprises,
@@ -26,6 +26,11 @@ export interface SelectMiniProgramIdentityContextInput {
   enterpriseId?: bigint | null;
   staffId?: bigint | null;
   referrerMembershipId?: bigint | null;
+}
+
+export interface ActiveStaffLookupOptions {
+  enterpriseId?: bigint | null;
+  staffId?: bigint;
 }
 
 export type MiniProgramIdentityUser = typeof users.$inferSelect;
@@ -62,24 +67,68 @@ export class MiniProgramIdentityRepository {
     return rows[0] ?? null;
   }
 
-  async findActiveStaffByUserId(userId: bigint) {
-    const rows = await this.transaction
+  private filterActiveStaffMatches(
+    rows: Array<typeof adminUsers.$inferSelect>,
+    options?: ActiveStaffLookupOptions
+  ) {
+    let matched = rows;
+    if (options?.staffId !== undefined) {
+      matched = matched.filter((row) => row.id === options.staffId);
+    }
+    if (options && Object.prototype.hasOwnProperty.call(options, 'enterpriseId')) {
+      matched = matched.filter((row) =>
+        options.enterpriseId === null || options.enterpriseId === undefined
+          ? row.enterpriseId === null
+          : row.enterpriseId === options.enterpriseId
+      );
+    }
+    return matched;
+  }
+
+  private resolveSingleActiveStaff(
+    rows: Array<typeof adminUsers.$inferSelect>,
+    options?: ActiveStaffLookupOptions
+  ) {
+    const matched = this.filterActiveStaffMatches(rows, options);
+    if (matched.length === 0) return null;
+    if (matched.length === 1) return matched[0];
+    throw Object.assign(new Error('Multiple admin users match this identity'), {
+      code: 'AMBIGUOUS_ADMIN_USER',
+    });
+  }
+
+  async listActiveStaffByUserId(userId: bigint) {
+    return this.transaction
       .select()
       .from(adminUsers)
       .where(
         and(eq(adminUsers.userId, userId), eq(adminUsers.status, 'active'))
       )
-      .limit(1);
-    return rows[0] ?? null;
+      .orderBy(asc(adminUsers.id));
   }
 
-  async findActiveStaffByPhone(phone: string) {
-    const rows = await this.transaction
+  async findActiveStaffByUserId(
+    userId: bigint,
+    options?: ActiveStaffLookupOptions
+  ) {
+    const rows = await this.listActiveStaffByUserId(userId);
+    return this.resolveSingleActiveStaff(rows, options);
+  }
+
+  async listActiveStaffByPhone(phone: string) {
+    return this.transaction
       .select()
       .from(adminUsers)
       .where(and(eq(adminUsers.phone, phone), eq(adminUsers.status, 'active')))
-      .limit(1);
-    return rows[0] ?? null;
+      .orderBy(asc(adminUsers.id));
+  }
+
+  async findActiveStaffByPhone(
+    phone: string,
+    options?: ActiveStaffLookupOptions
+  ) {
+    const rows = await this.listActiveStaffByPhone(phone);
+    return this.resolveSingleActiveStaff(rows, options);
   }
 
   async ensureStaffUser(staff: typeof adminUsers.$inferSelect) {
@@ -149,6 +198,24 @@ export class MiniProgramIdentityRepository {
     return (await this.findByOpenid(input.openid))!.identity;
   }
 
+  private async linkActiveStaffPhoneToUser(phone: string, userId: bigint) {
+    const staffRows = await this.listActiveStaffByPhone(phone);
+    for (const staff of staffRows) {
+      if (staff.userId && staff.userId !== userId) {
+        throw new Error('STAFF_PHONE_LINKED_TO_OTHER_USER');
+      }
+    }
+    const unlinkedIds = staffRows
+      .filter((staff) => !staff.userId)
+      .map((staff) => staff.id);
+    if (unlinkedIds.length === 0) return staffRows[0] ?? null;
+    await this.transaction
+      .update(adminUsers)
+      .set({ userId, updatedAt: new Date() })
+      .where(inArray(adminUsers.id, unlinkedIds));
+    return staffRows[0] ?? null;
+  }
+
   async resolveWechatPhoneUser(input: {
     openid: string;
     unionid?: string | null;
@@ -167,21 +234,13 @@ export class MiniProgramIdentityRepository {
           .set({ unionid: input.unionid, updatedAt: new Date() })
           .where(eq(wechatIdentities.id, byOpenid.identity.id));
       }
-      const staff = await this.findActiveStaffByPhone(input.phone);
-      if (staff?.userId && staff.userId !== byOpenid.user.id) {
-        throw new Error('STAFF_PHONE_LINKED_TO_OTHER_USER');
-      }
-      if (staff && !staff.userId) {
-        await this.transaction
-          .update(adminUsers)
-          .set({ userId: byOpenid.user.id, updatedAt: new Date() })
-          .where(eq(adminUsers.id, staff.id));
-      }
+      await this.linkActiveStaffPhoneToUser(input.phone, byOpenid.user.id);
       return rows[0];
     }
 
-    const staff = await this.findActiveStaffByPhone(input.phone);
-    let user = staff ? await this.ensureStaffUser(staff) : null;
+    const staffRows = await this.listActiveStaffByPhone(input.phone);
+    let user =
+      staffRows[0] != null ? await this.ensureStaffUser(staffRows[0]) : null;
     if (!user) {
       const existingUsers = await this.transaction
         .select()
@@ -199,6 +258,7 @@ export class MiniProgramIdentityRepository {
       user = created[0];
     }
 
+    await this.linkActiveStaffPhoneToUser(input.phone, user.id);
     await this.attachWechatIdentity({
       userId: user.id,
       openid: input.openid,
@@ -227,19 +287,18 @@ export class MiniProgramIdentityRepository {
       .where(
         and(eq(adminUsers.userId, userId), eq(adminUsers.status, 'active'))
       )
-      .limit(1);
-    if (staffRows[0]) {
-      contexts.push({
-        mode: 'staff',
-        enterpriseId: staffRows[0].staff.enterpriseId,
-        enterpriseName: staffRows[0].enterpriseName,
-        staffId: staffRows[0].staff.id,
-        staffRole: staffRows[0].staff.role,
-        staffDisplayName:
-          staffRows[0].staff.displayName || staffRows[0].staff.username,
+      .orderBy(asc(adminUsers.id));
+    contexts.push(
+      ...staffRows.map(({ staff, enterpriseName }) => ({
+        mode: 'staff' as const,
+        enterpriseId: staff.enterpriseId,
+        enterpriseName,
+        staffId: staff.id,
+        staffRole: staff.role,
+        staffDisplayName: staff.displayName || staff.username,
         referrerMembershipId: null,
-      });
-    }
+      }))
+    );
 
     const membershipRows = await this.transaction
       .select({

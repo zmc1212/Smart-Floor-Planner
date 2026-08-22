@@ -1,6 +1,7 @@
 const api = require('../../../utils/api.js');
 const { leaveScanLanding } = require('../../../utils/identity-navigation.js');
 const {
+  customerProjectFromApiResponse,
   hasDesignerContact,
   loadDesignerQrToTempFile,
   copyDesignerWechatId,
@@ -187,7 +188,8 @@ async function hydrateExistingAttribution(page) {
     return;
   }
   try {
-    const project = await api.request(`/miniprogram/customer-projects/${encodeURIComponent(leadId)}`, 'GET');
+    const result = await api.request(`/miniprogram/customer-projects/${encodeURIComponent(leadId)}`, 'GET');
+    const project = customerProjectFromApiResponse(result);
     const updatedAt = (project.appointment && project.appointment.updatedAt)
       || (project.formalFloorPlan && project.formalFloorPlan.updatedAt)
       || (lead && lead.createdAt);

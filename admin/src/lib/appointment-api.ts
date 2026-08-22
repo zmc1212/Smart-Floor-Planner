@@ -1,5 +1,6 @@
 import type { AppointmentRecord } from '@/db/repositories';
 import { httpError } from '@/lib/http-error';
+import { formatAppointmentTimeRangeIso } from '@/lib/lead-service-stage';
 
 export function parseAppointmentId(value: unknown, label: string) {
   const text = String(value || '').trim();
@@ -85,7 +86,7 @@ export function appointmentToDto(
     latitude: record.latitude == null ? null : Number(record.latitude),
     longitude: record.longitude == null ? null : Number(record.longitude),
     coordinateSystem: record.coordinateSystem,
-    timeRange: record.timeRange,
+    timeRange: formatAppointmentTimeRangeIso(record.timeRange) || record.timeRange,
     status: record.status,
     version: record.version,
     updatedByUserId: record.updatedByUserId?.toString() ?? null,

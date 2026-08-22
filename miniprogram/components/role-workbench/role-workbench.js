@@ -1,13 +1,11 @@
 const api = require('../../utils/api.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
+const { formatAppointmentDisplay } = require('../../utils/appointmentTimeRange.js');
 
 function rangeLabel(range) {
-  const match = String(range || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
-  if (!match) return '时间待确认';
-  const start = new Date(match[1].replaceAll('"', ''));
-  if (Number.isNaN(start.getTime())) return '时间待确认';
-  const pad = (value) => String(value).padStart(2, '0');
-  return `${start.getMonth() + 1}月${start.getDate()}日 ${pad(start.getHours())}:${pad(start.getMinutes())}`;
+  const display = formatAppointmentDisplay(range);
+  if (!display.dateKey) return '时间待确认';
+  return `${display.dateLabel.replace('/', '月')}日 ${display.timeText.slice(0, 5)}`;
 }
 
 function statusLabel(status) {
@@ -21,6 +19,17 @@ function statusLabel(status) {
     quoting: '待报价',
     converted: '已签约',
   })[status] || '服务跟进';
+}
+
+function findDesignerWechatProfileTodo(items) {
+  return (items || []).find((item) => item && (item.action === 'profile' || item.id === 'designer-wechat-profile')) || null;
+}
+
+function wechatProfileMissingLabels(missing) {
+  const labels = [];
+  if ((missing || []).includes('wechatId')) labels.push('微信号');
+  if ((missing || []).includes('wechatQr')) labels.push('个人二维码');
+  return labels;
 }
 
 function navigationMetrics() {
@@ -79,15 +88,23 @@ Component({
     showBLEConnector: false,
   },
 
+  observers: {
+    role(role) {
+      if (role === 'designer') this.scheduleWechatProfilePrompt();
+    },
+  },
+
   lifetimes: {
     attached() {
       this._pageVisible = true;
+      this._wechatProfilePromptShownThisVisit = false;
       this.setData({
         ...navigationMetrics(),
         bleConnected: !!(getApp().globalData && getApp().globalData.bleConnected),
       });
       this.trySilentBleReconnect();
       this.load();
+      this.scheduleWechatProfilePrompt();
     },
   },
 
@@ -95,16 +112,101 @@ Component({
     show() {
       this.syncBleConnectionState();
       this.trySilentBleReconnect();
-      if (this._pageVisible) return;
+      if (this._pageVisible) {
+        this.scheduleWechatProfilePrompt();
+        return;
+      }
       this._pageVisible = true;
+      this._wechatProfilePromptShownThisVisit = false;
       this.load();
+      this.scheduleWechatProfilePrompt();
     },
     hide() {
       this._pageVisible = false;
+      this._wechatProfilePromptShownThisVisit = false;
+      this._wechatProfilePromptOpen = false;
     },
   },
 
   methods: {
+    isDesignerContext() {
+      return (this.properties.role || this.data.role) === 'designer';
+    },
+
+    scheduleWechatProfilePrompt() {
+      if (!this.isDesignerContext()) return;
+      if (this._wechatProfilePromptShownThisVisit) return;
+      this.maybePromptDesignerWechatProfile();
+    },
+
+    async maybePromptDesignerWechatProfile() {
+      if (!this.isDesignerContext()) return;
+      if (this._wechatProfilePromptShownThisVisit) return;
+      if (this._wechatProfilePromptOpen || this._wechatProfileChecking) return;
+      this._wechatProfileChecking = true;
+      try {
+        const status = await this.loadDesignerWechatProfileStatus();
+        if (!status || status.complete) return;
+        this.openWechatProfilePrompt(status.subtitle);
+      } finally {
+        this._wechatProfileChecking = false;
+      }
+    },
+
+    async loadDesignerWechatProfileStatus() {
+      try {
+        const result = await api.request('/miniprogram/staff/wechat-profile', 'GET');
+        const data = (result && result.data) || {};
+        const missing = [];
+        if (Array.isArray(data.missing)) {
+          data.missing.forEach((key) => missing.push(key));
+        }
+        if (!missing.length) {
+          if (!String(data.wechatId || '').trim()) missing.push('wechatId');
+          if (!data.wechatQrAssetId && !data.wechatQrUrl) missing.push('wechatQr');
+        }
+        if (data.assignmentEligible || !missing.length) {
+          return { complete: true };
+        }
+        const labels = wechatProfileMissingLabels(missing);
+        return {
+          complete: false,
+          subtitle: labels.length
+            ? `还差${labels.join('和')}，补齐后才能接客户与出示活动码`
+            : '请先补齐微信号和个人二维码，客户才能加你微信',
+        };
+      } catch (error) {
+        const todo = findDesignerWechatProfileTodo(this.data.items);
+        if (!todo) return { complete: true };
+        return { complete: false, subtitle: todo.subtitle };
+      }
+    },
+
+    openWechatProfilePrompt(subtitle) {
+      if (this._wechatProfilePromptOpen || this._wechatProfilePromptShownThisVisit) return;
+      this._wechatProfilePromptOpen = true;
+      const present = () => {
+        wx.showModal({
+          title: '请先完善微信资料',
+          content: subtitle
+            || '请先补齐微信号和个人二维码，客户才能加你微信，也才能接客户与出示活动码',
+          confirmText: '去完善',
+          cancelText: '稍后',
+          success: (res) => {
+            this._wechatProfilePromptShownThisVisit = true;
+            this._wechatProfilePromptOpen = false;
+            if (res.confirm) {
+              wx.navigateTo({ url: '/packages/business/profile-edit/profile-edit' });
+            }
+          },
+          fail: () => {
+            this._wechatProfilePromptOpen = false;
+          },
+        });
+      };
+      setTimeout(present, 400);
+    },
+
     padDatePart(value) {
       return String(value).padStart(2, '0');
     },
@@ -222,6 +324,7 @@ Component({
           enterpriseName,
           loading: false,
         });
+        this.scheduleWechatProfilePrompt();
       } catch (error) {
         this.setData({
           loading: false,

@@ -63,7 +63,7 @@ export default function PackagesPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const canManagePackages = Boolean(currentUser && ['admin', 'super_admin'].includes(currentUser.role));
+  const canManagePackages = ['admin', 'super_admin'].includes(currentUser?.role || '');
 
   const savePackage = async (values: PackageForm) => {
     const isEdit = Boolean(editingItem);

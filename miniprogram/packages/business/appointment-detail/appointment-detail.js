@@ -11,6 +11,7 @@ const {
   appointmentDates,
   formatConfirmRescheduleLabel,
 } = require('../../../utils/appointmentSlotPicker.js');
+const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
 
 const STATUS_LABELS = {
   confirmed: '已确认',
@@ -45,16 +46,8 @@ function getStaffId() {
 }
 
 function parseRange(value) {
-  const match = String(value || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
-  if (!match) return { dateText: '时间待确认', timeText: '—' };
-  const start = new Date(match[1].replaceAll('"', ''));
-  const end = new Date(match[2].replaceAll('"', ''));
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return { dateText: '时间待确认', timeText: '—' };
-  const pad = (number) => String(number).padStart(2, '0');
-  return {
-    dateText: `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日 周${'日一二三四五六'[start.getDay()]}`,
-    timeText: `${pad(start.getHours())}:${pad(start.getMinutes())} - ${pad(end.getHours())}:${pad(end.getMinutes())}`
-  };
+  const display = formatAppointmentDisplay(value);
+  return { dateText: display.dateText, timeText: display.timeText };
 }
 
 function hasCoordinates(appointment) {

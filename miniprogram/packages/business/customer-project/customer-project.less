@@ -3,7 +3,7 @@
 .back { display: flex; width: 62rpx; height: 62rpx; flex: none; align-items: center; justify-content: center; margin-top: 2rpx; }
 .back-chevron { width: 16rpx; height: 16rpx; border-top: 3rpx solid #26312a; border-right: 3rpx solid #26312a; transform: rotate(-135deg); box-sizing: border-box; }
 .nav-copy, .hero-text-wrap, .person-info { min-width: 0; flex: 1; }
-.nav-title, .nav-subtitle, .hero-title, .hero-subtitle, .person-role, .person-name, .section-title, .section-badge, .section-meta, .empty-note, .empty-title, .published-title, .more-schemes-label { display: block; }
+.nav-title, .nav-subtitle, .hero-title, .hero-subtitle, .person-role, .person-name, .person-phone, .section-title, .section-meta, .empty-note, .empty-title, .published-title, .more-schemes-label { display: block; }
 .nav-title { color: #183426; font-size: 36rpx; font-weight: 700; line-height: 1.2; }
 .nav-subtitle { margin-top: 8rpx; color: #8e9e94; font-size: 24rpx; line-height: 1.35; }
 .content { display: flex; flex-direction: column; gap: 20rpx; }
@@ -26,18 +26,32 @@
 .person-card { min-height: 132rpx; padding: 22rpx 20rpx; }
 .person-role { color: #8e9e94; font-size: 20rpx; line-height: 1.3; }
 .person-name-row { display: flex; margin-top: 10rpx; align-items: center; gap: 8rpx; }
+.person-info > .person-name { margin-top: 10rpx; }
 .person-name { overflow: hidden; color: #183426; font-size: 26rpx; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .person-chevron { width: 10rpx; height: 10rpx; flex: none; border-top: 2rpx solid #8e9e94; border-right: 2rpx solid #8e9e94; transform: rotate(45deg); }
+.person-phone { margin-top: 8rpx; color: #147b3a; font-size: 24rpx; font-weight: 600; line-height: 1.35; }
 .section-card { padding: 26rpx; }
 .section-header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: 16rpx; }
 .section-title-wrap { display: flex; min-width: 0; align-items: center; gap: 10rpx; flex: 1; }
 .section-icon { width: 34rpx; height: 34rpx; flex: none; }
 .sparkle-icon { width: 32rpx; height: 32rpx; }
 .section-title { min-width: 0; color: #183426; font-size: 30rpx; font-weight: 700; line-height: 1.35; }
-.section-badge, .section-meta { flex: none; font-size: 20rpx; line-height: 1.3; }
-.section-badge { padding: 7rpx 12rpx; border-radius: 999rpx; background: #eaf8ec; color: #27844b; font-weight: 600; }
+.section-meta { flex: none; color: #8e9e94; font-size: 22rpx; font-weight: 500; line-height: 1.3; text-align: right; }
+.section-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40rpx;
+  padding: 0 12rpx;
+  border-radius: 999rpx;
+  background: #eaf8ec;
+  color: #27844b;
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 1;
+}
 .section-badge.muted { background: #f3f5f4; color: #8e9e94; font-weight: 500; }
-.section-meta { color: #8e9e94; font-weight: 500; text-align: right; }
 .floor-preview-container, .delivery-image-frame, .empty-folio-box, .empty-folio { margin-top: 20rpx; border-radius: 20rpx; background: #f5f8f5; }
 .floor-preview-container, .delivery-image-frame { position: relative; overflow: hidden; }
 .floor-preview-container { min-height: 280rpx; padding: 18rpx; box-sizing: border-box; }
@@ -45,7 +59,7 @@
 .floor-preview-image.placeholder { opacity: .92; }
 .floor-preview-fallback { display: flex; width: 100%; min-height: 244rpx; align-items: center; justify-content: center; }
 .floor-preview-fallback .image-state { width: 100%; min-height: 244rpx; }
-.preview-action-chip, .delivery-action-chip { position: absolute; right: 18rpx; bottom: 18rpx; display: inline-flex; min-height: 52rpx; padding: 0 18rpx; align-items: center; gap: 8rpx; border-radius: 999rpx; background: rgba(24, 52, 38, .88); color: #fff; font-size: 22rpx; font-weight: 600; line-height: 1.3; }
+.preview-action-chip, .delivery-action-chip { position: absolute; right: 18rpx; bottom: 18rpx; display: inline-flex; min-height: 52rpx; padding: 0 18rpx; align-items: center; gap: 8rpx; border-radius: 999rpx; background: rgba(24, 52, 38, .88); color: #fff; font-size: 22rpx; font-weight: 600; line-height: 1; }
 .delivery-action-chip { background: rgba(255,255,255,.94); color: #183426; box-shadow: 0 8rpx 18rpx rgba(24, 52, 38, .12); }
 .chip-arrow { width: 10rpx; height: 10rpx; border-top: 2rpx solid currentColor; border-right: 2rpx solid currentColor; transform: rotate(45deg); }
 .delivery-preview { margin-top: 20rpx; }
@@ -53,15 +67,17 @@
 .delivery-image { width: 100%; height: 360rpx; }
 .delivery-state { display: flex; height: 360rpx; padding: 24rpx; align-items: center; justify-content: center; color: #69806f; font-size: 24rpx; line-height: 1.4; text-align: center; box-sizing: border-box; }
 .delivery-state.error { color: #8b6b3f; background: #fcf7ed; }
-.delivery-style-tag { position: absolute; left: 18rpx; bottom: 18rpx; max-width: calc(100% - 220rpx); padding: 8rpx 14rpx; border-radius: 999rpx; background: rgba(24, 52, 38, .78); color: #fff; font-size: 20rpx; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.delivery-style-tag { position: absolute; left: 18rpx; bottom: 18rpx; display: inline-flex; align-items: center; max-width: calc(100% - 220rpx); min-height: 40rpx; padding: 0 14rpx; border-radius: 999rpx; background: rgba(24, 52, 38, .78); color: #fff; font-size: 20rpx; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .appointment-facts { display: flex; margin-top: 20rpx; padding: 24rpx; flex-direction: column; gap: 10rpx; border-radius: 18rpx; background: #f5f8f5; }
 .appointment-time { color: #26312a; font-size: 28rpx; font-weight: 700; line-height: 1.35; }
 .appointment-address { color: #728078; font-size: 22rpx; line-height: 1.45; }
-.booking-actions { display: flex; margin-top: 20rpx; flex-direction: column; }
+.booking-actions { display: flex; margin-top: 20rpx; flex-direction: row; align-items: stretch; gap: 16rpx; }
 .booking-action,
 .booking-secondary {
   display: flex;
-  width: 100%;
+  flex: 1;
+  width: auto;
+  min-width: 0;
   height: 88rpx;
   margin: 0;
   padding: 0;
@@ -75,10 +91,10 @@
   box-sizing: border-box;
   white-space: nowrap;
 }
-/* Native button ignores flex gap; keep explicit stack spacing. */
+/* Native button ignores flex gap; keep explicit row spacing. */
 .booking-actions > .booking-action + .booking-secondary,
 .booking-actions > .booking-action + .booking-action {
-  margin-top: 16rpx;
+  margin-left: 16rpx;
 }
 .booking-secondary { color: #169447; background: #eaf8ec; }
 .booking-secondary::after { border: 0; }

@@ -10,6 +10,7 @@ const sheetRoot = path.join(root, 'components', 'designer-contact-sheet');
 test('designerContact helpers prioritize QR contact and document copy fallback', () => {
   const source = fs.readFileSync(utilPath, 'utf8');
   assert.match(source, /function hasDesignerContact/);
+  assert.match(source, /function customerProjectFromApiResponse/);
   assert.match(source, /function designerShortcutDescription/);
   assert.match(source, /扫码添加微信好友/);
   assert.match(source, /微信号可复制联系/);
@@ -35,6 +36,30 @@ test('designer-contact-sheet shows QR with long-press hint and copy wechat fallb
   assert.match(wxml, /bindtap="onPreviewQr"/);
   assert.match(less, /\.dcs-sheet/);
   assert.match(less, /\.dcs-qr/);
+});
+
+test('customer project API wrapper still exposes designer contact for existing-service hydration', () => {
+  const {
+    hasDesignerContact,
+    customerProjectFromApiResponse,
+  } = require('../utils/designerContact.js');
+  const wrapped = {
+    success: true,
+    data: {
+      designer: { id: '7', displayName: '林设计', wechatId: 'wx-lin' },
+      serviceStageLabel: '新线索',
+    },
+  };
+
+  assert.equal(hasDesignerContact(wrapped.designer), false);
+  const project = customerProjectFromApiResponse(wrapped);
+  assert.equal(project.designer.wechatId, 'wx-lin');
+  assert.equal(hasDesignerContact(project.designer), true);
+  assert.deepEqual(customerProjectFromApiResponse(null), {});
+  assert.equal(
+    customerProjectFromApiResponse({ designer: { wechatId: 'wx-direct' } }).designer.wechatId,
+    'wx-direct'
+  );
 });
 
 test('free-design claim success reuses designer-contact-sheet and inline QR', () => {

@@ -156,7 +156,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
           <view class="milestone-top-row">
             <view class="milestone-title-wrap">
               <text class="milestone-project-name">{{item.customerLabel}}</text>
-              <text class="milestone-status-tag {{item.stageClass}}">{{item.stageLabel}}</text>
+              <view class="milestone-status-tag {{item.stageClass}}">{{item.stageLabel}}</view>
             </view>
             <text wx:if="{{item.rewardLabel}}" class="milestone-reward-text {{item.rewardClass}}">{{item.rewardLabel}}</text>
           </view>

@@ -55,6 +55,10 @@ test('enterprise appointments tab leaves the AI design shell', () => {
   assert.doesNotMatch(pageTemplate, /重新调度/);
   assert.match(navigation, /enterprise-appointments\/enterprise-appointments': 'enterprise\.appointments'/);
   assert.match(navigation, /'\/pages\/ai-design\/ai-design': \['staff\.design', 'staff\.surveying'\]/);
+  const pageStyles = source('packages/business/enterprise-appointments/enterprise-appointments.less');
+  assert.match(pageStyles, /\.status-tag\s*\{[\s\S]*display:\s*inline-flex/);
+  assert.match(pageStyles, /\.status-tag\s*\{[\s\S]*align-items:\s*center/);
+  assert.match(pageStyles, /\.status-tag text\s*\{[\s\S]*line-height:\s*1;/);
 });
 
 test('measurer workbench keeps the calendar itinerary separate from confirmed appointments', () => {
@@ -92,4 +96,18 @@ test('designer workbench opens profile edit from WeChat profile todo', () => {
   const workbench = source('components/role-workbench/role-workbench.js');
   assert.match(workbench, /action === 'profile'/);
   assert.match(workbench, /profile-edit\/profile-edit/);
+});
+
+test('designer workbench prompts incomplete WeChat profile on every entry', () => {
+  const workbench = source('components/role-workbench/role-workbench.js');
+  assert.match(workbench, /scheduleWechatProfilePrompt/);
+  assert.match(workbench, /loadDesignerWechatProfileStatus/);
+  assert.match(workbench, /\/miniprogram\/staff\/wechat-profile/);
+  assert.match(workbench, /assignmentEligible/);
+  assert.match(workbench, /includes\('wechatId'\)/);
+  assert.match(workbench, /请先完善微信资料/);
+  assert.match(workbench, /confirmText:\s*'去完善'/);
+  assert.match(workbench, /cancelText:\s*'稍后'/);
+  assert.match(workbench, /wx\.showModal/);
+  assert.match(workbench, /_wechatProfilePromptShownThisVisit/);
 });

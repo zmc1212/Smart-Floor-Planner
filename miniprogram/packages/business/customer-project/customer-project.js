@@ -9,6 +9,7 @@ const {
   floorPlanCacheKey,
   publishedImageCacheKey,
 } = require('../../../utils/protectedImageCache');
+const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -23,12 +24,9 @@ function navigationMetrics() {
 }
 
 function formatRange(range) {
-  const match = String(range || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
-  if (!match) return { date: '待确认', time: '' };
-  const start = new Date(match[1].replaceAll('"', ''));
-  const end = new Date(match[2].replaceAll('"', ''));
-  const two = (value) => String(value).padStart(2, '0');
-  return { date: `${start.getFullYear()}-${two(start.getMonth() + 1)}-${two(start.getDate())}`, time: `${two(start.getHours())}:${two(start.getMinutes())} - ${two(end.getHours())}:${two(end.getMinutes())}` };
+  const display = formatAppointmentDisplay(range);
+  if (!display.dateKey) return { date: '待确认', time: '' };
+  return { date: display.dateKey, time: display.timeText };
 }
 
 function buildProjectStages(project) {
@@ -38,7 +36,7 @@ function buildProjectStages(project) {
     || (Array.isArray(project && project.publishedDesigns) && project.publishedDesigns.length > 0);
   const stages = [
     { label: '预约确认', complete: hasAppointment },
-    { label: '免费量房', complete: hasFormalFloorPlan },
+    { label: '量房', complete: hasFormalFloorPlan },
     { label: '设计出图', complete: hasPublishedDesign },
     { label: '方案交付', complete: hasPublishedDesign },
   ];
@@ -129,6 +127,10 @@ function buildDesignerLine(designer) {
   return designer.wechatId ? `${designer.displayName} · 在线沟通` : `${designer.displayName} · 专属服务`;
 }
 
+function staffPhone(value) {
+  return String(value || '').trim();
+}
+
 function buildMeasurerLine(measurerName, formalFloorPlan) {
   if (!measurerName) return '待分配量房员';
   if (formalFloorPlan && formalFloorPlan.surveyStatusLabel) {
@@ -154,7 +156,9 @@ Page({
     measurerName: '',
     designer: null,
     designerLine: '待分配设计师',
+    designerPhone: '',
     measurerLine: '待分配量房员',
+    measurerPhone: '',
     range: null,
     formalFloorPlan: null,
     floorPlanImagePath: '',
@@ -241,10 +245,12 @@ Page({
         canContactDesigner: hasDesignerContact(project.designer),
         showContactSheet: false,
         designerLine: buildDesignerLine(project.designer),
+        designerPhone: staffPhone(project.designer && project.designer.phone),
         measurerLine: buildMeasurerLine(
           project.measurerName || (appointment && appointment.measurerName) || '',
           formalFloorPlan
         ),
+        measurerPhone: staffPhone(project.measurerPhone || (appointment && appointment.measurerPhone)),
         range: appointment ? formatRange(appointment.timeRange) : null,
         formalFloorPlan,
         floorPlanImagePath,
@@ -386,6 +392,12 @@ Page({
 
   closeContactSheet() {
     this.setData({ showContactSheet: false });
+  },
+
+  callStaff(event) {
+    const phone = String((event.currentTarget.dataset && event.currentTarget.dataset.phone) || '').trim();
+    if (!phone) return;
+    wx.makePhoneCall({ phoneNumber: phone });
   },
 
   previewFloorPlan() {

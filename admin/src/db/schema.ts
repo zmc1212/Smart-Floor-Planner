@@ -171,12 +171,16 @@ export const adminUsers = appSchema.table(
   },
   (table) => [
     uniqueIndex('admin_users_username_uidx').on(table.username),
-    uniqueIndex('admin_users_user_uidx')
-      .on(table.userId)
-      .where(sql`${table.userId} is not null`),
-    uniqueIndex('admin_users_phone_uidx')
-      .on(table.phone)
-      .where(sql`${table.phone} is not null`),
+    uniqueIndex('admin_users_enterprise_user_uidx')
+      .on(table.enterpriseId, table.userId)
+      .where(
+        sql`${table.enterpriseId} is not null and ${table.userId} is not null`
+      ),
+    uniqueIndex('admin_users_enterprise_phone_uidx')
+      .on(table.enterpriseId, table.phone)
+      .where(
+        sql`${table.enterpriseId} is not null and ${table.phone} is not null`
+      ),
     index('admin_users_enterprise_role_idx').on(table.enterpriseId, table.role),
     index('admin_users_enterprise_department_idx').on(
       table.enterpriseId,

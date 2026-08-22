@@ -33,7 +33,7 @@
         <text class="customer-label">{{item.customerLabel}}</text>
       </view>
       <view class="earning-meta">
-        <text class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</text>
+        <view class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</view>
         <text wx:if="{{item.status === 'paid' && item.paidAt}}">企业已完成支付</text>
       </view>
     </view>
