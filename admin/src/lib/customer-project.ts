@@ -398,3 +398,28 @@ export function customerProjectIndexToDto(project: CustomerProjectIndexItem) {
     canReschedule: home.canReschedule,
   };
 }
+
+export function buildPublishedSchemeFolioDto(input: {
+  leadId: string;
+  communityName?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  publishedSchemes: PublishedSchemeDto[];
+}) {
+  void input.customerName;
+  void input.customerPhone;
+  const communityName = text(input.communityName);
+  const featured = pickFeaturedPublishedScheme(input.publishedSchemes, null);
+  const featuredTitle = text(featured?.title) || text(input.publishedSchemes[0]?.title) || '设计方案';
+  return {
+    leadId: input.leadId,
+    heroTitle: communityName || featuredTitle,
+    publishedSchemes: input.publishedSchemes.map((scheme) => ({
+      ...scheme,
+      images: scheme.images.map((image) => ({
+        ...image,
+        imageEndpoint: '',
+      })),
+    })),
+  };
+}

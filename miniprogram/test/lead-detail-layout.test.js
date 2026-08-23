@@ -156,22 +156,25 @@ test('formal-survey keeps next-action right of the tab, address on its own row, 
   assert.ok(conversionIndex > historyIndex);
 });
 
-test('designer AI design CTA appears after formal survey without requiring published schemes', () => {
+test('designer AI design CTA appears on open leads without requiring survey or published schemes', () => {
   const script = fs.readFileSync(
     path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(script, /function canOpenAIDesignWorkbench\(/);
   assert.match(script, /staffRole !== 'designer'/);
-  assert.match(script, /if \(lead\.serviceStage === 'design_published'\) return true;/);
-  assert.match(script, /return lead\.serviceStage === 'survey_completed';/);
+  assert.match(script, /function eligibleAIDesignFloorPlanId\(/);
+  assert.match(script, /plan\.status !== 'completed'/);
+  assert.match(script, /可用现场图开始出图/);
+  assert.doesNotMatch(script, /return lead\.serviceStage === 'survey_completed';/);
   assert.match(script, /POST_SURVEY_SERVICE_STAGES = new Set\(\[\s*'survey_completed',\s*'converted',\s*'closed',\s*\]\)/);
   assert.doesNotMatch(script, /POST_SURVEY_SERVICE_STAGES[\s\S]{0,80}design_published/);
-  assert.match(script, /canOpenAIDesign: canOpenAIDesignWorkbench\(/);
+  assert.match(script, /canOpenAIDesign: canOpenAIDesignWorkbench\(lead, staffRole\)/);
   assert.match(script, /if \(!this\.data\.canOpenAIDesign\) return;/);
+  assert.match(script, /floorPlanId: eligibleAIDesignFloorPlanId\(/);
   assert.match(template, /wx:if="\{\{publishedSchemes\.length > 0 \|\| canOpenAIDesign\}\}"/);
   assert.match(template, /wx:if="\{\{canOpenAIDesign\}\}"[\s\S]*?进入 AI 设计/);
-  assert.match(template, /量房完成，可开始出图/);
+  assert.match(template, /\{\{aiDesignEmptyHint\}\}/);
 });
 
 test('published-scheme CTAs share one equal-width row when both are visible', () => {

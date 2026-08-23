@@ -95,16 +95,25 @@ function decorateImages(images, schemeTitle, leadId) {
   });
 }
 
+function isOwnerAccessDenied(error) {
+  const status = Number(error && error.statusCode);
+  if (status === 403 || status === 404) return true;
+  const message = String((error && (error.message || error.error)) || '');
+  return /仅客户本人|无权访问|项目不存在/.test(message);
+}
+
 function decorateSchemes(schemes, leadId, audience) {
   const list = sortSchemesByFirstPublished(schemes);
   return list.map((scheme, index) => {
     const title = String(scheme && scheme.title || '设计方案').trim();
     const images = decorateImages(scheme && scheme.images, title, leadId).map((image) => {
       if (image.imageState === 'loaded' && image.imagePath) return image;
-      const imageEndpoint = image.imageEndpoint
-        || (audience === 'customer'
-          ? `/miniprogram/customer-projects/${leadId}/published-generations/${image.generationId}/image`
-          : `/leads/${leadId}/published-generations/${image.generationId}/image`);
+      const imageEndpoint = audience === 'share'
+        ? ''
+        : (image.imageEndpoint
+          || (audience === 'customer'
+            ? `/miniprogram/customer-projects/${leadId}/published-generations/${image.generationId}/image`
+            : `/leads/${leadId}/published-generations/${image.generationId}/image`));
       const imagePath = image.imagePath
         || readCachedProtectedImage(publishedImageCacheKey(leadId, image.generationId || image.id));
       return {
@@ -113,7 +122,7 @@ function decorateSchemes(schemes, leadId, audience) {
         imagePath,
         imageState: imagePath
           ? 'loaded'
-          : ((imageEndpoint || image.generationId) ? 'loading' : 'error'),
+          : (imageEndpoint ? 'loading' : 'error'),
       };
     });
     const imageCount = Number(scheme && scheme.imageCount) || images.length;
@@ -194,6 +203,38 @@ Page({
     this._assetRequestId = (this._assetRequestId || 0) + 1;
   },
 
+  applyLoadedPayload(payload, audience) {
+    const schemes = decorateSchemes(payload.publishedSchemes, this.data.leadId, audience);
+    const totalImages = schemes.reduce((sum, scheme) => sum + scheme.imageCount, 0);
+    const preferredId = String(this.data.schemeId || '');
+    const selected = schemes.find((scheme) => scheme.id === preferredId)
+      || schemes.find((scheme) => scheme.finalized)
+      || schemes[schemes.length - 1]
+      || null;
+    this.setData({
+      audience,
+      showShareAction: audience === 'customer',
+      backLabel: audience === 'staff'
+        ? '返回客户详情'
+        : audience === 'share' ? '返回首页' : '返回服务档案',
+      heroTitle: audience === 'share'
+        ? (String(payload && payload.heroTitle || '').trim() || '设计方案')
+        : buildHeroTitle(payload, audience),
+      heroSubtitle: schemes.length
+        ? `已发布 ${schemes.length} 轮方案 · 共 ${totalImages} 张效果图`
+        : '设计师尚未发布方案',
+      schemes,
+      showSchemeChips: schemes.length > 1,
+      selectedSchemeId: selected ? selected.id : '',
+      selectedScheme: selected,
+      timelineImages: selected
+        ? selected.images.slice().reverse()
+        : [],
+      loading: false,
+    });
+    this.loadProtectedImages(schemes);
+  },
+
   async load() {
     if (!this.data.leadId) {
       this.setData({ loading: false, error: '缺少客户项目' });
@@ -207,30 +248,24 @@ Page({
         ? `/miniprogram/customer-projects/${encodeURIComponent(this.data.leadId)}`
         : `/leads/${encodeURIComponent(this.data.leadId)}`;
       const result = await api.request(path, 'GET');
-      const payload = result.data || {};
-      const schemes = decorateSchemes(payload.publishedSchemes, this.data.leadId, audience);
-      const totalImages = schemes.reduce((sum, scheme) => sum + scheme.imageCount, 0);
-      const preferredId = String(this.data.schemeId || '');
-      const selected = schemes.find((scheme) => scheme.id === preferredId)
-        || schemes.find((scheme) => scheme.finalized)
-        || schemes[schemes.length - 1]
-        || null;
-      this.setData({
-        heroTitle: buildHeroTitle(payload, audience),
-        heroSubtitle: schemes.length
-          ? `已发布 ${schemes.length} 轮方案 · 共 ${totalImages} 张效果图`
-          : '设计师尚未发布方案',
-        schemes,
-        showSchemeChips: schemes.length > 1,
-        selectedSchemeId: selected ? selected.id : '',
-        selectedScheme: selected,
-        timelineImages: selected
-          ? selected.images.slice().reverse()
-          : [],
-        loading: false,
-      });
-      this.loadProtectedImages(schemes);
+      this.applyLoadedPayload(result.data || {}, audience);
     } catch (error) {
+      if (this.data.audience !== 'staff' && isOwnerAccessDenied(error)) {
+        try {
+          const shared = await api.request(
+            `/miniprogram/published-scheme-folios/${encodeURIComponent(this.data.leadId)}`,
+            'GET'
+          );
+          this.applyLoadedPayload(shared.data || {}, 'share');
+          return;
+        } catch (shareError) {
+          this.setData({
+            loading: false,
+            error: (shareError && (shareError.message || shareError.error)) || '暂时无法加载方案册',
+          });
+          return;
+        }
+      }
       this.setData({
         loading: false,
         error: (error && (error.message || error.error)) || '暂时无法加载方案册',
@@ -333,6 +368,17 @@ Page({
   onBack() {
     if (getCurrentPages().length > 1) {
       wx.navigateBack();
+      return;
+    }
+    if (this.data.audience === 'share') {
+      const navigation = require('../../../utils/identity-navigation');
+      const app = getApp();
+      const identity = {
+        ...((app && app.globalData && app.globalData.userInfo) || {}),
+        ...((app && app.globalData && app.globalData.bootstrap && app.globalData.bootstrap.current) || {}),
+      };
+      if (navigation.navigateToRoleLanding(identity)) return;
+      wx.switchTab({ url: '/pages/index/index' });
       return;
     }
     const { leadId, audience } = this.data;

@@ -209,6 +209,17 @@ test('only the owning customer can aggregate a project, and only active publishe
   );
   assert.equal(forbidden, null);
 
+  const sharedFolio = await withPlatformTransaction((transaction) =>
+    new CustomerProjectRepository(transaction).findPublishedSchemeFolio(leadId)
+  );
+  assert.equal(sharedFolio?.lead.id, leadId);
+  assert.deepEqual(sharedFolio?.publications.map((item) => item.generation.id), [generationId]);
+
+  const otherTenantFolio = await withTenantTransaction(otherEnterpriseId, (transaction) =>
+    new CustomerProjectRepository(transaction).findPublishedSchemeFolio(leadId)
+  );
+  assert.equal(otherTenantFolio, null);
+
   const crossTenant = await withTenantTransaction(otherEnterpriseId, (transaction) =>
     new CustomerProjectRepository(transaction).findCustomerProject(customerUserId, leadId)
   );

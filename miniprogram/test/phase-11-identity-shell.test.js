@@ -96,4 +96,15 @@ test('staff roles retain distinct landing and capability contracts', () => {
   assert.equal(navigation.canAccessRoute('/packages/business/appointment-booking/appointment-booking', { mode: 'staff', staffRole: 'measurer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/measurer-unavailability/measurer-unavailability', { mode: 'staff', staffRole: 'designer' }), true);
   assert.equal(navigation.canAccessRoute('/pages/ai-design/ai-design', { mode: 'staff', staffRole: 'measurer' }), true);
+  assert.equal(
+    navigation.canAccessRoute('/packages/business/customer-ai-schemes/customer-ai-schemes', { mode: 'referrer' }),
+    true
+  );
+  assert.equal(
+    navigation.canAccessRoute('/packages/business/customer-ai-schemes/customer-ai-schemes', {
+      mode: 'staff',
+      staffRole: 'salesperson',
+    }),
+    true
+  );
 });

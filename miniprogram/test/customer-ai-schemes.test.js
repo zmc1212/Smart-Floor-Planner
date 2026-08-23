@@ -19,6 +19,7 @@ test('customer AI schemes page is registered and capsule-safe', () => {
   });
   const navigation = fs.readFileSync(path.join(root, 'utils', 'identity-navigation.js'), 'utf8');
   assert.match(navigation, /customer-ai-schemes\/customer-ai-schemes': \['customer\.projects'/);
+  assert.match(navigation, /customer-ai-schemes\/customer-ai-schemes': \[[^\]]*'account'/);
 });
 
 test('customer AI schemes folio is read-only and consumes publishedSchemes', () => {
@@ -51,6 +52,10 @@ test('customer AI schemes folio is read-only and consumes publishedSchemes', () 
   assert.match(page, /hideShareMenu/);
   assert.match(page, /showSchemePoster: true/);
   assert.match(page, /posterImagePath/);
+  assert.match(page, /\/miniprogram\/published-scheme-folios\/\$\{encodeURIComponent\(this\.data\.leadId\)\}/);
+  assert.match(page, /applyLoadedPayload\(shared\.data \|\| \{\}, 'share'\)/);
+  assert.match(page, /showShareAction: audience === 'customer'/);
+  assert.match(page, /navigateToRoleLanding/);
   assert.doesNotMatch(wxml, /🎨|✓|✅/);
 });
 

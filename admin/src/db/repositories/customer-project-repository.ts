@@ -153,6 +153,23 @@ export class CustomerProjectRepository {
     };
   }
 
+  async findPublishedSchemeFolio(leadId: bigint): Promise<{
+    lead: typeof leads.$inferSelect;
+    publications: CustomerProjectPublication[];
+  } | null> {
+    const leadRows = await this.transaction
+      .select({ lead: leads })
+      .from(leads)
+      .where(and(eq(leads.id, leadId), isNull(leads.archivedAt)))
+      .limit(1);
+    const lead = leadRows[0]?.lead;
+    if (!lead || !lead.enterpriseId) return null;
+    return {
+      lead,
+      publications: await this.listActivePublications(lead.enterpriseId, leadId),
+    };
+  }
+
   async listCustomerProjects(customerUserId: bigint): Promise<CustomerProjectIndexItem[]> {
     const rows = await this.transaction
       .select({

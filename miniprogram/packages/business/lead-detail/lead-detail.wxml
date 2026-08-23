@@ -180,7 +180,7 @@
     <view class="published-schemes-heading">
       <text class="published-schemes-title">{{publishedSchemes.length > 0 ? '已发布方案' : '方案设计'}}</text>
       <text class="published-schemes-meta" wx:if="{{publishedSchemes.length > 0}}">{{publishedSchemes.length}} 轮</text>
-      <text class="published-schemes-meta" wx:else>量房完成，可开始出图</text>
+      <text class="published-schemes-meta" wx:else>{{aiDesignEmptyHint}}</text>
     </view>
     <view
       class="published-scheme-item"

@@ -309,14 +309,24 @@ function canEditLeadProfile(lead, staffRole, staffId) {
   return false;
 }
 
-/** Designer AI entry after the visit is confirmed complete, or after the first send. */
-function canOpenAIDesignWorkbench(lead, staffRole, formalPlans) {
+/** Designer AI entry on any open unarchived lead; photo path does not wait for survey. */
+function canOpenAIDesignWorkbench(lead, staffRole) {
   if (!lead || lead.archivedAt) return false;
   if (staffRole !== 'designer') return false;
   if (['converted', 'closed'].includes(lead.status)) return false;
-  if (lead.serviceStage === 'design_published') return true;
-  if (!Array.isArray(formalPlans) || formalPlans.length === 0) return false;
-  return lead.serviceStage === 'survey_completed';
+  return true;
+}
+
+function eligibleAIDesignFloorPlanId(plan) {
+  if (!plan || plan.status !== 'completed') return '';
+  return String(plan._id || plan.id || '');
+}
+
+function resolveAIDesignEmptyHint(lead, floorPlanId) {
+  if (floorPlanId || (lead && lead.serviceStage === 'survey_completed')) {
+    return '量房完成，可开始出图';
+  }
+  return '可用现场图开始出图';
 }
 
 function staffIdOf(value) {
@@ -363,6 +373,7 @@ Page({
     conversionSkipsStages: false,
     publishedSchemes: [],
     canOpenAIDesign: false,
+    aiDesignEmptyHint: '可用现场图开始出图',
     measurerContact: getStaffContact(null),
     designerContact: getStaffContact(null),
     canViewFloorPlanPreview: false,
@@ -443,7 +454,8 @@ Page({
       activeFloorPlan,
       previousFloorPlans: formalPlans.slice(1),
       publishedSchemes,
-      canOpenAIDesign: canOpenAIDesignWorkbench(lead, staffRole, formalPlans),
+      canOpenAIDesign: canOpenAIDesignWorkbench(lead, staffRole),
+      aiDesignEmptyHint: resolveAIDesignEmptyHint(lead, eligibleAIDesignFloorPlanId(activeFloorPlan)),
       measurerContact: getStaffContact(lead.measurerId, { canAssign: canAssignMeasurer }),
       designerContact: getStaffContact(lead.assignedTo, { canAssign: canAssignDesigner }),
       canViewFloorPlanPreview: canViewFloorPlanPreview(lead, staffRole, staffId, activeFloorPlan),
@@ -822,10 +834,9 @@ Page({
 
   onOpenAIDesignWorkbench() {
     if (!this.data.canOpenAIDesign) return;
-    const plan = this.data.activeFloorPlan;
     openAIDesignEntry({
       leadId: this.data.leadId,
-      floorPlanId: plan && plan._id,
+      floorPlanId: eligibleAIDesignFloorPlanId(this.data.activeFloorPlan),
     });
   },
 

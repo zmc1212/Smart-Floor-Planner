@@ -95,7 +95,12 @@ function request(url, method = 'GET', data = {}, options = {}) {
           if (res.statusCode >= 200 && res.statusCode < 300 && res.data.success) {
             resolve(res.data);
           } else {
-            reject(res.data || { error: 'Request failed', statusCode: res.statusCode });
+            const payload = res.data && typeof res.data === 'object' ? res.data : {};
+            reject({
+              ...payload,
+              error: payload.error || 'Request failed',
+              statusCode: res.statusCode,
+            });
           }
         },
         fail: (err) => {
