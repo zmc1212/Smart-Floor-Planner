@@ -312,7 +312,9 @@ route's own `.less` file. The compiled runtime still receives standard WXSS.
   formal v4 plans expose `plan.previewUrl` (`GET /api/floorplans/[id]/preview`);
   enterprise admins, the assigned designer, and the assigned measurer load bytes
   through `fetchProtectedImage` and open full size with `wx.previewImage` (never
-  `surveying-editor`). List thumbnails prefer that protected endpoint, then
+  `surveying-editor`). That preview GET authorizes the linked lead's assigned
+  designer or measurer (or enterprise admin), not only `floor_plans.staff_id`.
+  List thumbnails prefer that protected endpoint, then
   Kujiale `externalSource.previewUrl`, then CSS wall segments. Focused contract
   tests cover preview endpoint resolution and protected-image loading.
 - Leads, floor plans, measurements, devices, AI, commissions, promotions, and

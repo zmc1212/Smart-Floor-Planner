@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
-import { FloorPlanRepository, type FloorPlanWithCreator } from '@/db/repositories';
+import {
+  FloorPlanRepository,
+  LeadRepository,
+  type FloorPlanWithCreator,
+} from '@/db/repositories';
 import { getTenantContext } from '@/lib/auth';
 import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
-import { canAccessMiniProgramFloorPlan } from '@/lib/floor-plan-access';
+import { canReadMiniProgramFloorPlan } from '@/lib/floor-plan-access';
 import { renderFloorPlanPreviewPng } from '@/lib/floor-plan-preview';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import {
@@ -15,11 +19,16 @@ async function loadPreviewFloorPlan(request: Request, id: string) {
   const planId = parsePostgresId(id, 'floor plan id');
   const mini = await resolveMiniProgramContext(request);
   if (mini) {
-    const plan = await withMiniProgramPostgresTransaction(mini, (transaction) =>
-      new FloorPlanRepository(transaction).findById(planId)
-    );
-    if (!plan || !canAccessMiniProgramFloorPlan(plan, mini)) return { status: 404 as const };
-    return { plan };
+    const loaded = await withMiniProgramPostgresTransaction(mini, async (transaction) => {
+      const plan = await new FloorPlanRepository(transaction).findById(planId);
+      if (!plan) return { plan: null, lead: null };
+      const lead = await new LeadRepository(transaction).findByFloorPlanId(plan.id);
+      return { plan, lead };
+    });
+    if (!loaded.plan || !canReadMiniProgramFloorPlan(loaded.plan, mini, loaded.lead)) {
+      return { status: 404 as const };
+    }
+    return { plan: loaded.plan };
   }
 
   const admin = await getTenantContext(request);

@@ -6,7 +6,10 @@ import {
   AppointmentRepository,
 } from '@/db/repositories';
 import { persistAndAttachFloorPlanPreview } from '@/lib/floor-plan-preview';
-import { canAccessMiniProgramFloorPlan } from '@/lib/floor-plan-access';
+import {
+  canAccessMiniProgramFloorPlan,
+  canReadMiniProgramFloorPlan,
+} from '@/lib/floor-plan-access';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
 import { canStaffMutateLeadSurvey } from '@/lib/lead-staff-access';
 import { canDeleteLeadFloorPlan } from '@/lib/lead-status';
@@ -38,24 +41,25 @@ export async function GET(
       );
     }
     const { id } = await params;
-    const plan = await withMiniProgramPostgresTransaction(
+    const loaded = await withMiniProgramPostgresTransaction(
       context,
-      (transaction) =>
-        new FloorPlanRepository(transaction).findById(
+      async (transaction) => {
+        const plan = await new FloorPlanRepository(transaction).findById(
           parsePostgresId(id, 'floor plan id')
-        )
+        );
+        if (!plan) return { plan: null, lead: null };
+        const lead = await new LeadRepository(transaction).findByFloorPlanId(plan.id);
+        return { plan, lead };
+      }
     );
-    if (!plan || !canAccessMiniProgramFloorPlan(plan, context)) {
+    if (!loaded.plan || !canReadMiniProgramFloorPlan(loaded.plan, context, loaded.lead)) {
       return NextResponse.json(
         { success: false, error: 'Floor plan not found' },
         { status: 404 }
       );
     }
-    const lead = await withMiniProgramPostgresTransaction(
-      context,
-      (transaction) =>
-        new LeadRepository(transaction).findByFloorPlanId(plan.id)
-    );
+    const plan = loaded.plan;
+    const lead = loaded.lead;
     return NextResponse.json({
       success: true,
       data: {
