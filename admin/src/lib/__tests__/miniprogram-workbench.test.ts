@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   buildDesignerWechatProfileTodo,
   buildEnterpriseExpiredExceptionItem,
+  buildEnterpriseOverviewSummary,
   buildEnterprisePendingExceptionItem,
   buildEnterpriseStaffRosterItem,
   buildEnterpriseStaffingExceptionItem,
@@ -155,7 +156,8 @@ test('a linked floor plan hides booking and reopens the existing plan instead of
   assert.equal(item.canSurveyNow, true);
   assert.equal(item.floorPlanId, '88');
   assert.equal(item.actionLabel, '继续量房');
-  assert.equal(item.statusBadge, '户型已就绪');
+  assert.equal(item.serviceStage, 'survey_ready');
+  assert.equal(item.statusBadge, '待确认完成');
 });
 
 test('published designs show a published badge on designer workbench items', () => {
@@ -187,32 +189,50 @@ test('a draft floor plan still lets the measurer continue or start another surve
   assert.equal(item.canBookAppointment, false);
   assert.equal(item.canContinueSurvey, true);
   assert.equal(item.canStartNewSurvey, true);
+  assert.equal(item.canCompleteSurvey, false);
   assert.equal(item.actionLabel, '继续量房');
   assert.equal(item.statusBadge, '量房中');
 });
 
-test('measurer workbench pending survey excludes completed floor plans after the visit is done', () => {
+test('measurer workbench pending survey keeps survey_ready tasks until the visit is confirmed', () => {
   assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({ status: 'new' }), new Set()), true);
   assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
     primaryFloorPlanRecord: { id: 91n, status: 'draft' },
     floorPlanRecords: [{ id: 91n, status: 'draft' }],
   }), new Set()), true, 'draft plans remain continue-survey work');
   assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
-    status: 'designing',
-    primaryFloorPlanRecord: { id: 88n, status: 'completed' },
-    floorPlanRecords: [{ id: 88n, status: 'completed' }],
-  }), new Set()), false, 'completed v4 surveys leave the pending queue');
-  assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
     status: 'measuring',
     primaryFloorPlanRecord: { id: 88n, status: 'completed' },
     floorPlanRecords: [{ id: 88n, status: 'completed' }],
-  }), new Set()), false, 'formal completion outranks a leftover measuring status');
+    appointment: { status: 'confirmed', timeRange: '["2026-08-19T01:00:00.000Z","2026-08-19T03:00:00.000Z")' },
+  }), new Set()), true, 'submitted floor plans stay until the visit is confirmed');
+  assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
+    status: 'designing',
+    primaryFloorPlanRecord: { id: 88n, status: 'completed' },
+    floorPlanRecords: [{ id: 88n, status: 'completed' }],
+    appointment: { status: 'completed', timeRange: '["2026-08-19T01:00:00.000Z","2026-08-19T03:00:00.000Z")' },
+  }), new Set()), false, 'confirmed visits leave the pending queue');
   assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
     status: 'designing',
     primaryFloorPlanRecord: { id: 88n, status: 'completed' },
     floorPlanRecords: [{ id: 88n, status: 'completed' }],
   }), new Set(['11'])), false);
   assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({ status: 'converted' }), new Set()), false);
+});
+
+test('measurer unscheduled survey tasks drop after a scheme is published without a visit', () => {
+  assert.equal(isMeasurerWorkbenchSurveyLead(surveyLead({
+    status: 'designing',
+    publishedDesignCount: 1,
+  }), new Set()), false);
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(surveyLead({
+    status: 'designing',
+    publishedDesignCount: 1,
+  }), { status: 'confirmed' }), true, 'makeup visits stay on the calendar until complete or expired');
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(surveyLead({
+    status: 'designing',
+    publishedDesignCount: 1,
+  }), { status: 'expired' }), false);
 });
 
 test('measurer workbench keeps only the current appointment task for each lead', () => {
@@ -229,15 +249,23 @@ test('measurer workbench keeps only the current appointment task for each lead',
   ]);
 });
 
-test('expired appointments drop from the measurer workbench once the formal v4 survey is completed', () => {
+test('expired appointments stay on the measurer workbench while survey confirmation is pending', () => {
+  const pendingLead = surveyLead({
+    id: 923n,
+    status: 'measuring',
+    primaryFloorPlanRecord: { id: 237n, status: 'completed' },
+    floorPlanRecords: [{ id: 237n, status: 'completed' }],
+  });
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(pendingLead, { status: 'expired' }), true);
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(pendingLead, { status: 'confirmed' }), true);
   const completedLead = surveyLead({
     id: 923n,
     status: 'designing',
+    appointment: { status: 'completed', timeRange: '["2026-08-19T01:00:00.000Z","2026-08-19T03:00:00.000Z")' },
     primaryFloorPlanRecord: { id: 237n, status: 'completed' },
     floorPlanRecords: [{ id: 237n, status: 'completed' }],
   });
   assert.equal(shouldIncludeMeasurerWorkbenchAppointment(completedLead, { status: 'expired' }), false);
-  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(completedLead, { status: 'confirmed' }), true);
   assert.equal(shouldIncludeMeasurerWorkbenchAppointment(surveyLead({
     primaryFloorPlanRecord: { id: 91n, status: 'draft' },
     floorPlanRecords: [{ id: 91n, status: 'draft' }],
@@ -283,7 +311,10 @@ test('confirmed appointments with a completed floor plan reopen that plan instea
   assert.equal(item.canContinueSurvey, true);
   assert.equal(item.canStartNewSurvey, true);
   assert.equal(item.canSurveyNow, false);
-  assert.equal(item.statusBadge, '户型已就绪');
+  assert.equal(item.canCompleteSurvey, true);
+  assert.equal(item.actionLabel, '确认完成量房');
+  assert.equal(item.serviceStage, 'survey_ready');
+  assert.equal(item.statusBadge, '待确认完成');
 });
 
 test('expired appointments on converted leads stay terminal and never reopen booking', () => {
@@ -499,4 +530,17 @@ test('signing rate uses same-window new leads and is null when the denominator i
     buildOpsDashboardSubtitle('enterprise', '2026-08-01 ~ 2026-08-20'),
     '全店 · 2026-08-01 ~ 2026-08-20'
   );
+});
+
+test('enterprise hero pending-delivery pill counts unpublished designing leads', () => {
+  const summary = buildEnterpriseOverviewSummary({
+    pendingAssignmentCount: 1,
+    pendingSurveyCount: 2,
+    pendingDeliveryCount: 7,
+  });
+  const pendingDelivery = summary.find((item) => item.key === 'pendingDelivery');
+  assert.equal(pendingDelivery?.label, '待交付');
+  assert.equal(pendingDelivery?.value, 7);
+  assert.equal(pendingDelivery?.detail, '量房已完成，待发布方案');
+  assert.equal(summary.find((item) => item.key === 'delivered'), undefined);
 });

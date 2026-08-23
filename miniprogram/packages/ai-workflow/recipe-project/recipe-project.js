@@ -4,6 +4,7 @@ const {
   decorateLead,
   buildLeadPickerView,
   chooseDefaultLeadGroup,
+  resolveLeadGroupAfterRefresh,
   decorateScheme,
   nextSchemeTitle,
   roomsFromWorkflowDetail,
@@ -47,6 +48,15 @@ Page({
     this.loadData();
   },
 
+  onShow() {
+    if (!this._leadsReady) {
+      this._leadsReady = true;
+      return;
+    }
+    if (this.data.step !== 'leads') return;
+    this.reloadLeads();
+  },
+
   syncNavigationMetrics() {
     const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
     let menuRect = null;
@@ -68,7 +78,7 @@ Page({
         aiService.getRecipe(this.data.recipeId),
         aiService.loadStudioLeads({ limit: 50 }),
       ]);
-      const leads = (leadData || []).map(decorateLead);
+      const leads = (leadData || []).map((item) => decorateLead(item, { inputMode: this.data.inputMode }));
       const leadGroup = chooseDefaultLeadGroup(leads);
       this.setData({
         recipe,
@@ -79,6 +89,29 @@ Page({
       });
     } catch (error) {
       this.setData({ loading: false, error: error.error || error.message || '客户列表加载失败' });
+    }
+  },
+
+  async reloadLeads() {
+    if (this._reloadingLeads) return;
+    this._reloadingLeads = true;
+    try {
+      const leadData = await aiService.loadStudioLeads({ limit: 50 });
+      const leads = (leadData || []).map((item) => decorateLead(item, { inputMode: this.data.inputMode }));
+      const surveyingLeadId = this._surveyingLeadId || '';
+      const leadGroup = resolveLeadGroupAfterRefresh(leads, this.data.leadGroup, surveyingLeadId);
+      this._surveyingLeadId = '';
+      this.setData({
+        leads,
+        leadGroup,
+        error: '',
+        ...buildLeadPickerView(leads, leadGroup, this.data.leadSearch),
+      });
+    } catch (error) {
+      // Keep the existing list; toast so the return from surveying is not silent.
+      wx.showToast({ title: error.error || error.message || '客户列表刷新失败', icon: 'none' });
+    } finally {
+      this._reloadingLeads = false;
     }
   },
 
@@ -113,7 +146,8 @@ Page({
   async selectLead(event) {
     const lead = this.data.leads.find((item) => item.id === event.currentTarget.dataset.id);
     if (!lead) return;
-    if (lead.group === 'needs_survey') {
+    if (this.data.inputMode !== 'photo' && lead.group === 'needs_survey') {
+      this._surveyingLeadId = lead.id;
       openSurveyingEditor({
         leadId: lead.id,
         leadName: lead.name,
@@ -150,7 +184,8 @@ Page({
   async createScheme() {
     const lead = this.data.selectedLead;
     if (!lead || this.data.creating) return;
-    if (!lead.eligibleFloorPlanId) {
+    const photoMode = this.data.inputMode === 'photo';
+    if (!photoMode && !lead.eligibleFloorPlanId) {
       wx.showToast({ title: '该线索还没有合格的正式户型，请先完成量房', icon: 'none' });
       return;
     }
@@ -158,7 +193,9 @@ Page({
     try {
       const created = await aiService.createStudioWorkflow({
         leadId: lead.id,
-        sourceFloorPlanId: lead.eligibleFloorPlanId,
+        ...(photoMode
+          ? { sourceAssetRole: 'rough_sketch' }
+          : { sourceFloorPlanId: lead.eligibleFloorPlanId }),
         title: nextSchemeTitle(lead),
       });
       const workflowId = String(created.id || created._id || '');
@@ -182,12 +219,26 @@ Page({
     try {
       const detail = await aiService.getStudioWorkflow(workflowId);
       const bound = roomsFromWorkflowDetail(detail);
-      if (!bound.floorPlanId) {
+      const photoMode = this.data.inputMode === 'photo';
+      if (!photoMode && !bound.floorPlanId) {
         wx.showToast({ title: '该方案尚未关联正式户型', icon: 'none' });
         this.setData({ creating: false });
         return;
       }
       const scheme = decorateScheme(bound.workflow);
+      if (photoMode) {
+        this.setData({
+          selectedScheme: scheme,
+          floorPlanId: bound.floorPlanId || '',
+          closedRoomCount: bound.closedRoomCount,
+          scopes: [],
+          selectedScope: null,
+          creating: false,
+          schemesLoading: false,
+        });
+        this.continueToConfirm({ skipScope: true, scheme, floorPlanId: bound.floorPlanId || '' });
+        return;
+      }
       const scopes = buildScopes(bound.rooms, bound.closedRoomCount);
       this.setData({
         selectedScheme: scheme,
@@ -210,19 +261,22 @@ Page({
     if (scope) this.setData({ selectedScope: scope });
   },
 
-  continueToConfirm() {
+  continueToConfirm(options = {}) {
     const lead = this.data.selectedLead;
-    const scheme = this.data.selectedScheme;
-    const scope = this.data.selectedScope;
-    if (!lead || !scheme || !scope || !this.data.floorPlanId) return;
+    const scheme = options.scheme || this.data.selectedScheme;
+    const photoMode = this.data.inputMode === 'photo';
+    const floorPlanId = options.floorPlanId != null ? options.floorPlanId : this.data.floorPlanId;
+    const scope = photoMode ? null : this.data.selectedScope;
+    if (!lead || !scheme) return;
+    if (!photoMode && (!scope || !floorPlanId)) return;
     const query = [
       `recipeId=${encodeURIComponent(this.data.recipeId)}`,
       `inputMode=${encodeURIComponent(this.data.inputMode)}`,
       `leadId=${encodeURIComponent(lead.id)}`,
-      `floorPlanId=${encodeURIComponent(this.data.floorPlanId)}`,
+      floorPlanId ? `floorPlanId=${encodeURIComponent(floorPlanId)}` : '',
       `schemeId=${encodeURIComponent(scheme.id)}`,
-      `targetScope=${encodeURIComponent(scope.targetScope)}`,
-      scope.roomId ? `roomId=${encodeURIComponent(scope.roomId)}` : '',
+      !photoMode && scope ? `targetScope=${encodeURIComponent(scope.targetScope)}` : '',
+      !photoMode && scope && scope.roomId ? `roomId=${encodeURIComponent(scope.roomId)}` : '',
     ].filter(Boolean).join('&');
     wx.navigateTo({ url: `/packages/ai-workflow/recipe-confirm/recipe-confirm?${query}` });
   },

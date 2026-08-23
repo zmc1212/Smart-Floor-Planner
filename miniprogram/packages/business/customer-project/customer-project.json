@@ -2,6 +2,7 @@
   "navigationStyle": "custom",
   "usingComponents": {
     "designer-contact-sheet": "/components/designer-contact-sheet/designer-contact-sheet",
-    "scheme-share-poster": "/components/scheme-share-poster/scheme-share-poster"
+    "scheme-share-poster": "/components/scheme-share-poster/scheme-share-poster",
+    "site-photo-grid": "/components/site-photo-grid/site-photo-grid"
   }
 }

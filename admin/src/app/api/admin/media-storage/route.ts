@@ -9,6 +9,7 @@ import {
   safeMediaStorageError,
   serializeMediaStorageConfig,
   updateGrsAiOutputPersistence,
+  updateDirectQiniuDisplayUrls,
 } from '@/lib/media-storage/config-service';
 import { normalizeMediaStorageProviderKey } from '@/lib/media-storage/registry';
 
@@ -32,6 +33,9 @@ export async function GET(request: Request) {
           activatedAt: platformConfig.activatedAt || null,
           grsOutputPersistence: {
             enabled: platformConfig.persistGrsAiOutputs === true,
+          },
+          directQiniuDisplayUrls: {
+            enabled: platformConfig.directQiniuDisplayUrls !== false,
           },
           encryption: mediaStorageEncryptionState(),
           local: {
@@ -61,13 +65,26 @@ export async function PATCH(request: Request) {
   try {
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const body = await request.json();
-      if (typeof body.persistGrsAiOutputs !== 'boolean') {
+      const hasGrs = typeof body.persistGrsAiOutputs === 'boolean';
+      const hasDirectQiniu = typeof body.directQiniuDisplayUrls === 'boolean';
+      if (!hasGrs && !hasDirectQiniu) {
         return NextResponse.json(
-          { success: false, error: 'persistGrsAiOutputs 必须是布尔值' },
+          { success: false, error: 'persistGrsAiOutputs 或 directQiniuDisplayUrls 必须是布尔值' },
           { status: 400 }
         );
       }
-      const result = await updateGrsAiOutputPersistence(body.persistGrsAiOutputs, context.userId);
+      if (hasGrs && !hasDirectQiniu) {
+        const result = await updateGrsAiOutputPersistence(body.persistGrsAiOutputs, context.userId);
+        return NextResponse.json({ success: true, data: result });
+      }
+      if (hasDirectQiniu && !hasGrs) {
+        const result = await updateDirectQiniuDisplayUrls(body.directQiniuDisplayUrls, context.userId);
+        return NextResponse.json({ success: true, data: result });
+      }
+      const result = {
+        persistGrsAiOutputs: await updateGrsAiOutputPersistence(body.persistGrsAiOutputs, context.userId),
+        directQiniuDisplayUrls: await updateDirectQiniuDisplayUrls(body.directQiniuDisplayUrls, context.userId),
+      };
       return NextResponse.json({ success: true, data: result });
     });
   } catch (error) {

@@ -9,7 +9,12 @@ import {
   getSignedMiniAiStudioFloorPlanPreviewUrl,
   getSignedMiniAiStudioGenerationUrl,
 } from '@/lib/ai/mini-ai-assets';
-import { getPostgresAssetIdFromImageUrl } from '@/lib/ai/postgres-media-assets';
+import {
+  collectPostgresAssetIdsFromImageUrls,
+  getPostgresAssetIdFromImageUrl,
+  mediaAssetDisplayUrlTtlSeconds,
+  resolveMediaAssetDisplayUrls,
+} from '@/lib/ai/postgres-media-assets';
 import { serializePostgresCreationTask } from '@/lib/ai/postgres-creation-runtime';
 import { getGenerationImageUrl } from '@/lib/ai/workflow-utils';
 
@@ -60,29 +65,62 @@ export function rewriteStudioImageUrl(
   request: Request,
   enterpriseId: string,
   imageUrl?: string | null,
+  displayByAssetId?: Map<string, string>,
 ): string | undefined {
   if (!imageUrl || typeof imageUrl !== 'string') return undefined;
   const assetId = getPostgresAssetIdFromImageUrl(imageUrl);
   if (assetId) {
-    return getSignedMiniAiAssetUrl({ request, assetId: assetId.toString(), enterpriseId });
+    const displayUrl = displayByAssetId?.get(assetId.toString());
+    if (displayUrl) return displayUrl;
+    return getSignedMiniAiAssetUrl({
+      request,
+      assetId: assetId.toString(),
+      enterpriseId,
+      ttlSeconds: mediaAssetDisplayUrlTtlSeconds(),
+      alignDeadline: true,
+    });
   }
   const generationMatch = imageUrl.match(POSTGRES_GENERATION_IMAGE_RE);
   if (generationMatch?.[1]) {
-    return getSignedMiniAiStudioGenerationUrl({ request, generationId: generationMatch[1], enterpriseId });
+    return getSignedMiniAiStudioGenerationUrl({
+      request,
+      generationId: generationMatch[1],
+      enterpriseId,
+      ttlSeconds: mediaAssetDisplayUrlTtlSeconds(),
+      alignDeadline: true,
+    });
   }
   if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
   return undefined;
+}
+
+async function resolveStudioDisplayByAssetId(
+  request: Request,
+  enterpriseId: string,
+  imageUrls: Array<string | null | undefined>,
+) {
+  return resolveMediaAssetDisplayUrls({
+    request,
+    enterpriseId,
+    assetIds: collectPostgresAssetIdsFromImageUrls(imageUrls),
+  });
 }
 
 function signGenerationForMini<T extends Record<string, unknown>>(
   request: Request,
   enterpriseId: string,
   generation: T | null | undefined,
+  displayByAssetId?: Map<string, string>,
 ): T | undefined {
   if (!generation) return undefined;
   return {
     ...generation,
-    imageUrl: rewriteStudioImageUrl(request, enterpriseId, getGenerationImageUrl(generation)),
+    imageUrl: rewriteStudioImageUrl(
+      request,
+      enterpriseId,
+      getGenerationImageUrl(generation),
+      displayByAssetId,
+    ),
   };
 }
 
@@ -93,11 +131,24 @@ type WorkflowListItem = {
   [key: string]: unknown;
 };
 
-export function serializeWorkflowListForMini<T extends { data: readonly unknown[] }>(
+export async function serializeWorkflowListForMini<T extends { data: readonly unknown[] }>(
   request: Request,
   enterpriseId: string,
   result: T,
 ) {
+  const imageUrls: Array<string | null | undefined> = [];
+  for (const item of result.data) {
+    const workflow = item as WorkflowListItem;
+    imageUrls.push(
+      typeof workflow.coverImageUrl === 'string' ? workflow.coverImageUrl : undefined,
+      getGenerationImageUrl(workflow.latestGeneration, { requireSucceeded: true }),
+      getGenerationImageUrl(workflow.selectedGeneration, { requireSucceeded: true }),
+      getGenerationImageUrl(workflow.latestGeneration),
+      getGenerationImageUrl(workflow.selectedGeneration),
+    );
+  }
+  const displayByAssetId = await resolveStudioDisplayByAssetId(request, enterpriseId, imageUrls);
+
   return {
     ...result,
     data: result.data.map((item) => {
@@ -106,13 +157,13 @@ export function serializeWorkflowListForMini<T extends { data: readonly unknown[
         ? workflow.coverImageUrl
         : getGenerationImageUrl(workflow.latestGeneration, { requireSucceeded: true })
           || getGenerationImageUrl(workflow.selectedGeneration, { requireSucceeded: true });
-      const coverUrl = rewriteStudioImageUrl(request, enterpriseId, coverSource);
+      const coverUrl = rewriteStudioImageUrl(request, enterpriseId, coverSource, displayByAssetId);
       return {
         ...workflow,
         coverUrl,
         coverImageUrl: coverUrl,
-        latestGeneration: signGenerationForMini(request, enterpriseId, workflow.latestGeneration),
-        selectedGeneration: signGenerationForMini(request, enterpriseId, workflow.selectedGeneration),
+        latestGeneration: signGenerationForMini(request, enterpriseId, workflow.latestGeneration, displayByAssetId),
+        selectedGeneration: signGenerationForMini(request, enterpriseId, workflow.selectedGeneration, displayByAssetId),
       };
     }),
   };
@@ -120,7 +171,7 @@ export function serializeWorkflowListForMini<T extends { data: readonly unknown[
 
 type WorkflowContext = Awaited<ReturnType<typeof import('@/lib/ai/postgres-workflow-service').getPostgresAiWorkflowContext>>;
 
-export function serializeWorkflowContextForMini(
+export async function serializeWorkflowContextForMini(
   request: Request,
   enterpriseId: string,
   context: WorkflowContext,
@@ -130,11 +181,19 @@ export function serializeWorkflowContextForMini(
   const coverSource = context.generations.find((generation) => (
     publishedIds.has(String(generation.id)) && getGenerationImageUrl(generation, { requireSucceeded: true })
   )) || context.generations.find((generation) => getGenerationImageUrl(generation, { requireSucceeded: true }));
+  const imageUrls = [
+    getGenerationImageUrl(coverSource, { requireSucceeded: true }),
+    getGenerationImageUrl(context.workflow.latestGeneration, { requireSucceeded: true }),
+    getGenerationImageUrl(context.workflow.latestGeneration as Record<string, unknown> | undefined),
+    ...context.generations.map((generation) => getGenerationImageUrl(generation)),
+  ];
+  const displayByAssetId = await resolveStudioDisplayByAssetId(request, enterpriseId, imageUrls);
   const coverUrl = rewriteStudioImageUrl(
     request,
     enterpriseId,
     getGenerationImageUrl(coverSource, { requireSucceeded: true })
       || getGenerationImageUrl(context.workflow.latestGeneration, { requireSucceeded: true }),
+    displayByAssetId,
   );
   return {
     workflow: {
@@ -152,6 +211,7 @@ export function serializeWorkflowContextForMini(
         request,
         enterpriseId,
         context.workflow.latestGeneration as Record<string, unknown> | undefined,
+        displayByAssetId,
       ),
     },
     lead: context.lead,
@@ -161,6 +221,7 @@ export function serializeWorkflowContextForMini(
         request,
         enterpriseId,
         getGenerationImageUrl(generation),
+        displayByAssetId,
       ),
     })),
     publishedScheme: context.publishedScheme,
@@ -169,39 +230,51 @@ export function serializeWorkflowContextForMini(
 
 type CreationTaskView = Parameters<typeof serializePostgresCreationTask>[0];
 
-export function serializeCreationTaskForMini(
+export async function serializeCreationTaskForMini(
   request: Request,
   enterpriseId: string,
   task: CreationTaskView,
 ) {
   const serialized = serializePostgresCreationTask(task);
+  const imageUrls = serialized.batches.flatMap((batch) =>
+    batch.generations.map((generation) => generation.imageUrl)
+  );
+  const displayByAssetId = await resolveStudioDisplayByAssetId(request, enterpriseId, imageUrls);
   return {
     ...serialized,
     batches: serialized.batches.map((batch) => ({
       ...batch,
       generations: batch.generations.map((generation) => ({
         ...generation,
-        imageUrl: rewriteStudioImageUrl(request, enterpriseId, generation.imageUrl),
+        imageUrl: rewriteStudioImageUrl(request, enterpriseId, generation.imageUrl, displayByAssetId),
       })),
     })),
   };
 }
 
-export function serializeAssetPreviewForMini(
+export async function serializeAssetPreviewForMini(
   request: Request,
   enterpriseId: string,
   asset: { id: bigint | string; mimeType?: string; size?: number; width?: number; height?: number },
 ) {
+  const assetId = asset.id.toString();
+  const displayByAssetId = await resolveMediaAssetDisplayUrls({
+    request,
+    enterpriseId,
+    assetIds: [assetId],
+  });
   return {
-    id: asset.id.toString(),
+    id: assetId,
     mimeType: asset.mimeType,
     size: asset.size,
     width: asset.width,
     height: asset.height,
-    previewUrl: getSignedMiniAiAssetUrl({
+    previewUrl: displayByAssetId.get(assetId) || getSignedMiniAiAssetUrl({
       request,
-      assetId: asset.id.toString(),
+      assetId,
       enterpriseId,
+      ttlSeconds: mediaAssetDisplayUrlTtlSeconds(),
+      alignDeadline: true,
     }),
   };
 }

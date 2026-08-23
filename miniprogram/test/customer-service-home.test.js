@@ -6,6 +6,7 @@ const {
   rankCustomerProjects,
   buildCompanionState,
   buildProgressPills,
+  resolveBookShortcut,
 } = require('../utils/customerServiceHome');
 
 const root = path.join(__dirname, '..');
@@ -53,6 +54,42 @@ test('confirmed appointment inset title shows current survey step not reschedule
   assert.equal(state.showSecondaryCta, true);
   const pills = buildProgressPills('appointment_confirmed');
   assert.equal(pills.find((p) => p.key === 'survey').tone, 'current');
+});
+
+test('published unsurveyed home keeps one hero archive CTA and routes makeup through the book shortcut', () => {
+  const state = buildCompanionState({
+    projects: [{
+      leadId: '1',
+      serviceStage: 'design_published',
+      appointmentSummary: '方案已发布，可在服务档案查看',
+      nextActionKind: 'view_project',
+      nextActionLabel: '我的服务档案',
+      canRebook: true,
+      appointmentStatus: '',
+      publishedDesignCount: 1,
+    }],
+  });
+  assert.equal(state.primaryCta.label, '我的服务档案');
+  assert.equal(state.showSecondaryCta, false);
+  assert.equal(state.bookShortcutKind, 'book');
+  assert.equal(state.bookShortcutDesc, '预约上门');
+  assert.deepEqual(resolveBookShortcut({
+    nextActionKind: 'view_project',
+    canRebook: true,
+    appointmentStatus: 'expired',
+  }), { kind: 'rebook', desc: '重新预约' });
+  assert.deepEqual(resolveBookShortcut({
+    nextActionKind: 'view_project',
+    canReschedule: true,
+  }), { kind: 'reschedule', desc: '改期' });
+
+  const wxml = fs.readFileSync(path.join(componentRoot, 'customer-service-home.wxml'), 'utf8');
+  const js = fs.readFileSync(path.join(componentRoot, 'customer-service-home.js'), 'utf8');
+  assert.match(wxml, /class="hero-cta primary/);
+  assert.match(wxml, /wx:if="\{\{showSecondaryCta\}\}"/);
+  assert.match(wxml, /shortcut-desc">\{\{bookShortcutDesc/);
+  assert.match(js, /const kind = this\.data\.bookShortcutKind \|\| this\.data\.nextActionKind;/);
+  assert.match(js, /kind === 'book' \|\| kind === 'rebook'/);
 });
 
 test('hides secondary archive CTA when primary already opens archive', () => {

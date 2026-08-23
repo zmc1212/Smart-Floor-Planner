@@ -25,6 +25,10 @@ test('customer project consumes only the owner-only aggregate and renders archiv
   assert.match(wxml, /measurerPhone/);
   assert.match(wxml, /catchtap="callStaff"/);
   assert.match(wxml, /户型档案/);
+  assert.match(wxml, /房屋现场图/);
+  assert.match(wxml, /site-photo-grid/);
+  assert.match(page, /sitePhotoService/);
+  assert.match(page, /loadSitePhotos/);
   assert.match(wxml, /交付方案/);
   assert.match(wxml, /查看高清户型图/);
   assert.match(wxml, /featuredDelivery\.publishedLabel/);
@@ -61,6 +65,9 @@ test('customer published designs and floor plan preview use protected endpoints 
   assert.match(page, /readCachedProtectedImage/);
   assert.match(page, /floorPlanCacheKey/);
   assert.match(page, /sameFloorPlan/);
+  assert.match(page, /item\.imageUrl && \/\^https\?:/);
+  assert.match(page, /imagePath: item\.imageUrl/);
+  assert.match(page, /imageState: 'loaded'/);
   assert.doesNotMatch(page, /floorPlanImagePath: '',\s*\n\s*floorPlanImageState: formalFloorPlan/);
   assert.match(cacheUtil, /responseType: 'arraybuffer'/);
   assert.match(cacheUtil, /wx\.getFileSystemManager\(\)\.writeFile/);
@@ -131,4 +138,24 @@ test('customer project template and stylesheet stay aligned for the restored arc
   assert.match(wxml, /person-phone sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png/);
   assert.match(wxml, /booking-secondary sfp-icon-action[\s\S]*\/packages\/business\/assets\/promotion-detail\/calendar\.png[\s\S]*查看预约/);
   assert.match(wxml, /bindtap="reschedule"[\s\S]*calendar\.png[\s\S]*改期/);
+});
+
+test('featured delivery keeps the style tag and details chip on the image frame', () => {
+  const wxml = fs.readFileSync(wxmlPath, 'utf8');
+  const less = fs.readFileSync(lessPath, 'utf8');
+  const captionsStart = wxml.indexOf('delivery-captions');
+  const frameStart = wxml.indexOf('class="delivery-image-frame');
+  assert.ok(frameStart >= 0, 'featured delivery image frame is missing');
+  assert.ok(captionsStart > frameStart, 'published captions must sit below the image frame');
+  const frameChunk = wxml.slice(frameStart, captionsStart);
+  assert.match(frameChunk, /delivery-style-tag/);
+  assert.match(frameChunk, /delivery-action-chip/);
+  assert.doesNotMatch(frameChunk, /published-title/);
+  assert.match(wxml, /delivery-image-frame[^\n]*is-single/);
+  assert.match(wxml, /delivery-captions[^\n]*is-single/);
+  assert.match(less, /\.delivery-style-tag \{[\s\S]*?justify-content:\s*center;/);
+  assert.match(less, /\.delivery-action-chip \{[\s\S]*?justify-content:\s*center;/);
+  assert.match(less, /\.delivery-image-frame\.is-single[\s\S]*grid-template-columns:\s*1fr/);
+  assert.match(less, /\.delivery-image-frame\.is-single \{[\s\S]*min-height:\s*360rpx/);
+  assert.match(less, /\.delivery-image-frame\.is-single[\s\S]*\.published-image-frame \{[\s\S]*height:\s*360rpx/);
 });

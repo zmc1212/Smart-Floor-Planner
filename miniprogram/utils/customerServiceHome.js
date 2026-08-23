@@ -2,6 +2,7 @@ const URGENCY = {
   appointment_expired: 0,
   awaiting_rebooking: 1,
   appointment_in_progress: 2,
+  survey_ready: 2,
   appointment_confirmed: 3,
   survey_completed: 4,
   design_published: 5,
@@ -28,6 +29,7 @@ const STAGE_INSET_HELPER = {
   appointment_expired: '协助重约',
   awaiting_rebooking: '协助重约',
   appointment_in_progress: '测量进行中',
+  survey_ready: '测量进行中',
   survey_completed: '展示户型',
   design_published: '成果交付',
   converted: '成果交付',
@@ -40,6 +42,7 @@ const STAGE_INSET_TITLES = {
   measurer_assigned: '待预约上门量房',
   appointment_confirmed: '已预约上门量房',
   appointment_in_progress: '上门量房进行中',
+  survey_ready: '上门量房进行中',
   appointment_expired: '需重新预约量房',
   awaiting_rebooking: '需重新预约量房',
   survey_completed: '量房完成 · 可进服务档案',
@@ -121,7 +124,30 @@ function buildEmptyCompanionState() {
     mediaMode: 'xiao_k',
     xiaoKAction: '',
     isEmpty: true,
+    bookShortcutKind: '',
+    bookShortcutDesc: '免费上门精准量尺',
   };
+}
+
+function resolveBookShortcut(project) {
+  const kind = project && project.nextActionKind;
+  if (kind === 'reschedule' || (project && project.canReschedule)) {
+    return { kind: 'reschedule', desc: '改期' };
+  }
+  if (kind === 'rebook') {
+    return { kind: 'rebook', desc: '重新预约' };
+  }
+  if (kind === 'book') {
+    return { kind: 'book', desc: '预约上门' };
+  }
+  if (project && project.canRebook) {
+    const status = String(project.appointmentStatus || '');
+    if (status === 'expired' || status === 'cancelled') {
+      return { kind: 'rebook', desc: '重新预约' };
+    }
+    return { kind: 'book', desc: '预约上门' };
+  }
+  return { kind: '', desc: '免费上门精准量尺' };
 }
 
 function buildCompanionState({ projects = [], selectedLeadId } = {}) {
@@ -140,6 +166,7 @@ function buildCompanionState({ projects = [], selectedLeadId } = {}) {
   const insetHelper = resolveInsetHelper(featured.serviceStage, subtitle, primaryLabel);
   const insetTitle = buildInsetTitle(featured);
   const showSecondaryCta = SECONDARY_CTA_KINDS.has(primaryKind);
+  const bookShortcut = resolveBookShortcut(featured);
 
   return {
     subtitle,
@@ -150,6 +177,8 @@ function buildCompanionState({ projects = [], selectedLeadId } = {}) {
     primaryCta: { label: primaryLabel, kind: primaryKind },
     secondaryCta: { label: '我的服务档案', kind: 'view_project' },
     showSecondaryCta,
+    bookShortcutKind: bookShortcut.kind,
+    bookShortcutDesc: bookShortcut.desc,
     showSwitcher: ranked.length > 1,
     switcherCount: Math.max(0, ranked.length - 1),
     switcherProjects: ranked,
@@ -168,6 +197,7 @@ function resolveProgressTones(serviceStage) {
       return { match: 'done', book: 'current', survey: 'upcoming', scheme: 'upcoming' };
     case 'appointment_confirmed':
     case 'appointment_in_progress':
+    case 'survey_ready':
     case 'appointment_expired':
     case 'awaiting_rebooking':
       return { match: 'done', book: 'done', survey: 'current', scheme: 'upcoming' };
@@ -196,5 +226,6 @@ module.exports = {
   rankCustomerProjects,
   buildCompanionState,
   buildProgressPills,
+  resolveBookShortcut,
   PROGRESS_PILL_LABELS,
 };

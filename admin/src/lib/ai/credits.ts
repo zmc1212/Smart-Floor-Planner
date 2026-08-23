@@ -5,7 +5,17 @@ import {
 } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
-import type { AiActionKey } from '@/lib/ai/provider-types';
+import { isPlatformAiActionKey, type AiActionKey } from '@/lib/ai/provider-types';
+
+export function selectPlatformCreditPriceUpdates<T extends { actionKey: string }>(items: T[]) {
+  return items.filter((item): item is T & { actionKey: AiActionKey } => isPlatformAiActionKey(item.actionKey));
+}
+
+export function normalizePlatformCreditAmount(value: unknown) {
+  const credits = Math.trunc(Number(value));
+  if (!Number.isFinite(credits)) return 1;
+  return Math.min(100000, Math.max(1, credits));
+}
 
 type MiniAiTaskType =
   | 'reference_recreate'
@@ -69,24 +79,29 @@ export async function ensureDefaultAiCreditPrices() {
   });
 }
 
-function normalizeAiCreditPrice(price: {
+export function serializeAiCreditPrice(price: {
   id: bigint;
   actionKey: string;
-  mode: string | null;
+  mode?: string | null;
   label: string;
-  credits: bigint;
+  credits: bigint | number;
   enabled: boolean;
-  createdAt: Date;
-  updatedAt: Date;
 }) {
-  const { id, ...rest } = price;
-  return { ...rest, _id: id.toString(), credits: Number(price.credits) };
+  return {
+    _id: price.id.toString(),
+    actionKey: price.actionKey,
+    mode: price.mode ?? null,
+    label: price.label,
+    credits: Number(price.credits),
+    enabled: Boolean(price.enabled),
+  };
 }
 
 export async function listAiCreditPrices() {
   await ensureDefaultAiCreditPrices();
   return withPlatformTransaction(async (transaction) =>
-    (await new AiCreditPriceRepository(transaction).list()).map(normalizeAiCreditPrice)
+    selectPlatformCreditPriceUpdates(await new AiCreditPriceRepository(transaction).list())
+      .map(serializeAiCreditPrice)
   );
 }
 
@@ -99,7 +114,7 @@ export async function getAiCreditPrice(actionKeyOrMode: AiActionKey | MiniAiTask
     new AiCreditPriceRepository(transaction).findEnabledByActionKey(actionKey)
   );
   if (!price) throw new Error('当前 AI 功能未开放');
-  return normalizeAiCreditPrice(price);
+  return serializeAiCreditPrice(price);
 }
 
 export async function ensureAiCreditAccount(enterpriseId: string | bigint) {

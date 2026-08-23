@@ -21,6 +21,10 @@ export const AI_ACTION_KEYS = [
 ] as const;
 export type AiActionKey = (typeof AI_ACTION_KEYS)[number];
 
+export function isPlatformAiActionKey(value: string): value is AiActionKey {
+  return (AI_ACTION_KEYS as readonly string[]).includes(value);
+}
+
 export type AiProviderAdapterType = 'grs' | 'apinebula' | 'pollinations' | 'openai_compatible';
 export type AiProviderAttemptStatus =
   | 'created'

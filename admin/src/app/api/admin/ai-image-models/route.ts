@@ -7,9 +7,11 @@ import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import {
+  enableDefaultResolutionPriceForProfile,
   ensurePostgresGrsImageModelCatalog,
   serializePostgresCatalogProfile,
 } from '@/lib/ai/image-model-catalog';
+import { getAiCreditPrice } from '@/lib/ai/credits';
 import { listGrsImageModelIds } from '@/lib/ai/grs-image-models';
 
 type CatalogSettings = {
@@ -78,7 +80,7 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
+    return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       await ensurePostgresGrsImageModelCatalog();
       const body = await request.json() as { items?: CatalogSettings[] };
       if (!Array.isArray(body.items) || !body.items.length) {
@@ -99,6 +101,8 @@ export async function PATCH(request: Request) {
       ) {
         return NextResponse.json({ success: false, error: 'Invalid model catalog settings' }, { status: 400 });
       }
+      const defaultCredits = Math.max(1, Number((await getAiCreditPrice('image.free_create')).credits || 10));
+      const updatedBy = parsePostgresId(context.userId, 'userId');
       await withPlatformTransaction(async (transaction) => {
         const repository = new AiCreationModelProfileRepository(transaction);
         const stored = await repository.findCatalogProfilesByIds(items.map((item) => item.id));
@@ -107,6 +111,12 @@ export async function PATCH(request: Request) {
         for (const item of items) {
           const updated = await repository.updateCatalogSettings(item);
           if (!updated) throw new Error('Invalid model catalog settings');
+          if (item.enabled) {
+            await enableDefaultResolutionPriceForProfile(transaction, updated, {
+              defaultCredits,
+              updatedBy,
+            });
+          }
         }
       });
       return NextResponse.json({ success: true, data: await listModels() });

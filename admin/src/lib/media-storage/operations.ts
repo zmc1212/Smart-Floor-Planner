@@ -5,17 +5,35 @@ export function sha256Hex(buffer: Buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
+/** Snap an absolute unix deadline to a TTL window so signed URLs stay byte-identical. */
+export function alignedSignedUrlDeadline(ttlSeconds: number, nowSeconds = Math.floor(Date.now() / 1000)) {
+  const ttl = Math.max(3600, Math.floor(ttlSeconds));
+  return Math.ceil(nowSeconds / ttl) * ttl;
+}
+
+/** Remaining seconds until the aligned deadline (always ≥ 1 within the window). */
+export function alignedSignedUrlExpiresInSeconds(
+  ttlSeconds: number,
+  nowSeconds = Math.floor(Date.now() / 1000)
+) {
+  return Math.max(1, alignedSignedUrlDeadline(ttlSeconds, nowSeconds) - nowSeconds);
+}
+
 export async function resolveMediaObjectDelivery(input: {
   provider: MediaStorageProvider;
   location: MediaStorageLocation;
   expiresInSeconds: number;
+  alignDeadline?: boolean;
 }) {
   if (input.provider.createSignedReadUrl) {
+    const expiresInSeconds = input.alignDeadline
+      ? alignedSignedUrlExpiresInSeconds(input.expiresInSeconds)
+      : input.expiresInSeconds;
     return {
       kind: 'redirect' as const,
       url: await input.provider.createSignedReadUrl({
         ...input.location,
-        expiresInSeconds: input.expiresInSeconds,
+        expiresInSeconds,
       }),
     };
   }

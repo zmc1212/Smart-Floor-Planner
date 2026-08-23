@@ -111,6 +111,21 @@ export class AiCreationModelProfileRepository {
     }
   }
 
+  async enableCatalogProfilesByKeys(keys: string[]) {
+    const uniqueKeys = [...new Set(keys.filter((key) => key.trim()))];
+    if (!uniqueKeys.length) return;
+    await this.transaction
+      .update(aiCreationModelProfiles)
+      .set({ enabled: true, updatedAt: new Date() })
+      .where(
+        and(
+          eq(aiCreationModelProfiles.sourceType, 'grs_catalog'),
+          inArray(aiCreationModelProfiles.key, uniqueKeys),
+          eq(aiCreationModelProfiles.enabled, false)
+        )
+      );
+  }
+
   async ensureDefaultCatalogProfile(key: string) {
     const current = await this.transaction
       .select({ id: aiCreationModelProfiles.id })

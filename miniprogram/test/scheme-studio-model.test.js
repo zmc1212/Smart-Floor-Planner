@@ -266,6 +266,38 @@ test('pickPreferredStudioWorkflow reuses same-floor-plan schemes with generation
   assert.equal(preferred && preferred.id, 'rich-old');
 });
 
+test('pickPreferredStudioWorkflow prefers unbound photo schemes when no floor plan is bound', () => {
+  const preferred = pickPreferredStudioWorkflow([
+    {
+      id: 'plan-bound',
+      sourceFloorPlanId: 'fp-1',
+      generationCount: 8,
+      updatedAt: '2026-08-21T10:00:00.000Z',
+    },
+    {
+      id: 'photo-empty',
+      generationCount: 0,
+      updatedAt: '2026-08-20T10:00:00.000Z',
+    },
+    {
+      id: 'photo-rich',
+      generationCount: 2,
+      updatedAt: '2026-08-19T10:00:00.000Z',
+    },
+  ], {});
+  assert.equal(preferred && preferred.id, 'photo-rich');
+});
+
+test('studio lead summary labels photo schemes without a floor plan', () => {
+  const { buildStudioView } = require('../packages/ai-workflow/scheme-studio/scheme-studio-model.js');
+  const view = buildStudioView({
+    workflow: { id: 'w1', title: '现场改造', generationCount: 1 },
+    lead: { name: '高容海', communityName: '东辰心语' },
+    generations: [],
+  });
+  assert.equal(view.leadSummary.floorPlanName, '拍照方案');
+});
+
 test('resolveSendTitlePrefill prefers the customer-visible published title', () => {
   assert.equal(resolveSendTitlePrefill({
     workflow: { title: '方案 3' },
@@ -350,6 +382,9 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(wxml, /dock-expanded/);
   assert.match(wxml, /onComposerDockExpandChange/);
   assert.match(composerWxml, /adjust-position=\"\{\{false\}\}\"/);
+  assert.match(composerWxml, /hold-keyboard=\"\{\{false\}\}\"/);
+  assert.match(composerWxml, /dock-toolbar/);
+  assert.doesNotMatch(composerWxml, /dock-tools-scroll/);
   assert.match(composerWxml, /keyboard-open/);
   assert.match(wxml, /composerKeyboardHeight/);
   assert.match(wxml, /onComposerKeyboardHeightChange/);
@@ -357,7 +392,7 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(less, /\.studio-shell\.dock-expanded/);
   assert.doesNotMatch(less, /\.composer-dock\s*>\s*\*/);
   assert.match(composerWxml, /sheet-mask \{\{pickerVisible \? 'open' : ''\}\}/);
-  assert.match(composerWxml, /sheet-panel \{\{pickerVisible \? 'open' : ''\}\}/);
+  assert.match(composerWxml, /sheet-panel picker-panel \{\{pickerVisible \? 'open' : ''\}\}/);
   assert.match(wxml, /openGenerationActions/);
   assert.match(wxml, /toggleGenerationSelect/);
   assert.match(wxml, /retryBatch/);
@@ -400,6 +435,10 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(wxml, /floor-plan-preview-url/);
   assert.match(previewRoute, /searchParams.get\('roomId'\)/);
   assert.match(script, /publishScheme/);
+  assert.match(script, /sourceAssetRole: 'rough_sketch'/);
+  assert.match(script, /bound\.floorPlanId \? buildScopes/);
+  assert.match(script, /this\.data\.floorPlanId \? buildScopeSubmitPayload/);
+  assert.match(script, /if \(this\.data\.leadId\) \{/);
   assert.match(script, /finalizeScheme/);
   assert.match(script, /openFinalizeModal/);
   assert.match(wxml, /设为定稿/);

@@ -94,6 +94,8 @@ function emptyCompanionUi() {
     xiaoKAction: '等待领取',
     isEmpty: true,
     progressPills: buildProgressPills(''),
+    bookShortcutKind: '',
+    bookShortcutDesc: '免费上门精准量尺',
   };
 }
 
@@ -121,6 +123,8 @@ Component({
     xiaoKAction: '',
     isEmpty: true,
     progressPills: [],
+    bookShortcutKind: '',
+    bookShortcutDesc: '免费上门精准量尺',
     designer: null,
     designerSoftCopy: '设计师匹配后可联系',
     designerShortcutDesc: '设计师匹配后可联系',
@@ -245,12 +249,17 @@ Component({
         const cachedFloorPlanPath = needsFloorPlan && detail && detail.formalFloorPlan
           ? readCachedProtectedImage(floorPlanCacheKey(featuredLeadId, detail.formalFloorPlan))
           : '';
-        const cachedSchemePath = needsScheme && detail && detail.featuredScheme
+        const featuredSchemeUrl = needsScheme && detail && detail.featuredScheme
+          && detail.featuredScheme.imageUrl
+          && /^https?:\/\//i.test(String(detail.featuredScheme.imageUrl))
+          ? detail.featuredScheme.imageUrl
+          : '';
+        const cachedSchemePath = featuredSchemeUrl || (needsScheme && detail && detail.featuredScheme
           ? readCachedProtectedImage(publishedImageCacheKey(
             featuredLeadId,
             detail.featuredScheme.generationId
           ))
-          : '';
+          : '');
 
         this._hasLoaded = true;
         this.setData({
@@ -290,7 +299,14 @@ Component({
       const needsFloorPlan = mediaMode === 'floor_plan' || mediaMode === 'dual';
       const needsScheme = mediaMode === 'scheme' || mediaMode === 'dual';
       const floorPlanEndpoint = detail.formalFloorPlan && detail.formalFloorPlan.previewEndpoint;
-      const schemeEndpoint = detail.featuredScheme && detail.featuredScheme.imageEndpoint;
+      const schemeDirectUrl = detail.featuredScheme
+        && detail.featuredScheme.imageUrl
+        && /^https?:\/\//i.test(String(detail.featuredScheme.imageUrl))
+        ? detail.featuredScheme.imageUrl
+        : '';
+      const schemeEndpoint = !schemeDirectUrl && detail.featuredScheme
+        ? detail.featuredScheme.imageEndpoint
+        : '';
 
       const tasks = [];
       if (needsFloorPlan && floorPlanEndpoint) {
@@ -303,7 +319,9 @@ Component({
             })
         );
       }
-      if (needsScheme && schemeEndpoint) {
+      if (needsScheme && schemeDirectUrl) {
+        tasks.push(Promise.resolve({ type: 'scheme', imagePath: schemeDirectUrl }));
+      } else if (needsScheme && schemeEndpoint) {
         tasks.push(
           fetchProtectedImage(
             schemeEndpoint,
@@ -426,7 +444,7 @@ Component({
     },
 
     openBookShortcut() {
-      const kind = this.data.nextActionKind;
+      const kind = this.data.bookShortcutKind || this.data.nextActionKind;
       if (kind === 'book' || kind === 'rebook') {
         this.openBooking();
         return;

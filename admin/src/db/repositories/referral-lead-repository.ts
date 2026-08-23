@@ -21,6 +21,17 @@ import {
   users,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import {
+  assertCanAssignLeadStaff,
+  canAccessLeadForStaffAssign,
+} from '@/lib/lead-assignment-actions';
+import { archivedLeadExistsError } from '@/lib/lead-lifecycle';
+import {
+  customerPhoneLookupValues,
+  isPlaceholderCustomerName,
+  normalizeCustomerPhone,
+} from '@/lib/customer-phone';
+import { AppointmentRepository } from './appointment-repository';
 import { LeadRepository, type LeadWithRelations } from './lead-repository';
 
 export interface ReferralPendingSourceRecord {
@@ -61,6 +72,9 @@ export type ReferralManualAssignResult = {
   kind: 'assigned' | 'pending';
   lead: LeadWithRelations;
   eventId?: bigint;
+  rewrittenAppointment?: Awaited<
+    ReturnType<AppointmentRepository['reassignActiveStaffForLead']>
+  >;
 };
 
 function referralError(code: string, message: string, status = 409) {
@@ -418,6 +432,11 @@ export class ReferralLeadRepository {
       throw referralError('pending_source_invalid', '推广来源无效或已失效', 410);
     }
 
+    const enterpriseId = referralSource
+      ? referralSource.membership.enterpriseId
+      : activitySource!.code.enterpriseId;
+    const phone = normalizeCustomerPhone(user.phone);
+    await this.lockKey(`enterprise-phone:${enterpriseId.toString()}:${phone}`);
     await this.lockKey(`customer-attribution:${input.customerUserId.toString()}`);
     const existing = await this.findActiveAttribution(input.customerUserId);
     if (existing) {
@@ -440,9 +459,26 @@ export class ReferralLeadRepository {
     }
     await this.releaseInactiveAttributionLocks(input.customerUserId);
 
-    const enterpriseId = referralSource
-      ? referralSource.membership.enterpriseId
-      : activitySource!.code.enterpriseId;
+    const matchedLead = await new LeadRepository(this.transaction).findOpenByPhone(
+      phone,
+      enterpriseId
+    );
+    if (
+      matchedLead &&
+      (!matchedLead.customerUserId || matchedLead.customerUserId === input.customerUserId)
+    ) {
+      return {
+        kind: 'existing_attribution',
+        lead: await this.attachCustomerToOpenLead({
+          lead: matchedLead,
+          customerUserId: input.customerUserId,
+          phone,
+          name: input.name?.trim().slice(0, 120) || user.nickname?.trim() || null,
+          idempotencyKeyHash: input.idempotencyKeyHash,
+        }),
+      };
+    }
+
     await this.lockKey(`enterprise-assignment:${enterpriseId.toString()}`);
 
     let designer: typeof adminUsers.$inferSelect | null = null;
@@ -484,7 +520,7 @@ export class ReferralLeadRepository {
         assignmentErrorCode,
         name:
           input.name?.trim().slice(0, 120) || user.nickname?.trim() || '微信客户',
-        phone: user.phone,
+        phone,
         communityName: input.communityName?.trim().slice(0, 160) || null,
         city: input.city?.trim().slice(0, 80) || null,
         stylePreference: input.stylePreference?.trim().slice(0, 120) || null,
@@ -547,7 +583,30 @@ export class ReferralLeadRepository {
     stylePreference?: string | null;
     city?: string | null;
     notes?: string | null;
-  }): Promise<{ lead: LeadWithRelations }> {
+  }): Promise<{ lead: LeadWithRelations; created: boolean }> {
+    const phone = normalizeCustomerPhone(input.phone);
+    const leadsRepo = new LeadRepository(this.transaction);
+    await this.lockKey(`enterprise-phone:${input.enterpriseId.toString()}:${phone}`);
+    const existingOpen = await leadsRepo.findOpenByPhone(phone, input.enterpriseId);
+    if (existingOpen) {
+      return {
+        created: false,
+        lead: await this.mergeManualProfileIntoLead(existingOpen, {
+          ...input,
+          phone,
+        }),
+      };
+    }
+    const archived = await leadsRepo.findArchivedByPhone(phone, input.enterpriseId);
+    if (archived) throw archivedLeadExistsError();
+
+    const matchedUser = await this.findCustomerUserByPhone(phone);
+    let customerUserId: bigint | null = null;
+    if (matchedUser) {
+      await this.lockKey(`customer-attribution:${matchedUser.id.toString()}`);
+      const active = await this.findActiveAttribution(matchedUser.id);
+      if (!active) customerUserId = matchedUser.id;
+    }
     await this.lockKey(`enterprise-assignment:${input.enterpriseId.toString()}`);
     const designer = await this.findDesignerCandidate(input.enterpriseId);
     const measurer = await this.findMeasurerCandidate(input.enterpriseId);
@@ -557,16 +616,17 @@ export class ReferralLeadRepository {
       .insert(leads)
       .values({
         enterpriseId: input.enterpriseId,
-        customerUserId: null,
+        customerUserId,
         referrerMembershipId: null,
         promoterId: input.actorStaffId,
         measurerId: measurer?.id ?? null,
         assignedTo: designer?.id ?? null,
         assignedAt: designer ? now : null,
+        attributionLockedAt: customerUserId ? now : null,
         assignmentStatus: assignmentErrorCode ? 'assignment_pending' : 'assigned',
         assignmentErrorCode,
         name: input.name.trim().slice(0, 120),
-        phone: input.phone.trim(),
+        phone,
         communityName: input.communityName?.trim().slice(0, 160) || null,
         area: input.area || null,
         city: input.city?.trim().slice(0, 80) || null,
@@ -579,6 +639,15 @@ export class ReferralLeadRepository {
       .returning();
     const lead = createdRows[0];
     if (!lead) throw referralError('lead_create_failed', '线索创建失败', 500);
+
+    if (customerUserId) {
+      await this.ensureCustomerAttributionLock({
+        enterpriseId: input.enterpriseId,
+        customerUserId,
+        leadId: lead.id,
+        lockedAt: now,
+      });
+    }
 
     if (designer) {
       await this.transaction
@@ -604,7 +673,153 @@ export class ReferralLeadRepository {
       metadata: {},
     });
 
-    return { lead: await this.loadLead(lead.id) };
+    return { created: true, lead: await this.loadLead(lead.id) };
+  }
+
+  private async findCustomerUserByPhone(phone: string) {
+    const values = customerPhoneLookupValues(phone);
+    if (!values.length) return null;
+    const rows = await this.transaction
+      .select()
+      .from(users)
+      .where(inArray(users.phone, values))
+      .orderBy(asc(users.id))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  private async ensureCustomerAttributionLock(input: {
+    enterpriseId: bigint;
+    customerUserId: bigint;
+    leadId: bigint;
+    lockedAt: Date;
+  }) {
+    const existing = await this.findActiveAttribution(input.customerUserId);
+    if (existing) return existing.lock;
+    const inserted = await this.transaction
+      .insert(customerAttributionLocks)
+      .values({
+        enterpriseId: input.enterpriseId,
+        customerUserId: input.customerUserId,
+        leadId: input.leadId,
+        lockedAt: input.lockedAt,
+      })
+      .returning();
+    return inserted[0] ?? null;
+  }
+
+  private async attachCustomerToOpenLead(input: {
+    lead: LeadWithRelations;
+    customerUserId: bigint;
+    phone: string;
+    name: string | null;
+    idempotencyKeyHash: string;
+  }) {
+    const now = new Date();
+    const nextName = isPlaceholderCustomerName(input.lead.name)
+      ? input.name || input.lead.name
+      : input.lead.name;
+    await this.transaction
+      .update(leads)
+      .set({
+        customerUserId: input.lead.customerUserId ?? input.customerUserId,
+        phone: input.phone,
+        name: nextName,
+        attributionLockedAt: input.lead.attributionLockedAt ?? now,
+        updatedAt: now,
+      })
+      .where(eq(leads.id, input.lead.id));
+    if (input.lead.enterpriseId) {
+      await this.ensureCustomerAttributionLock({
+        enterpriseId: input.lead.enterpriseId,
+        customerUserId: input.customerUserId,
+        leadId: input.lead.id,
+        lockedAt: now,
+      });
+    }
+    await this.transaction.insert(leadAssignmentEvents).values({
+      enterpriseId: input.lead.enterpriseId,
+      leadId: input.lead.id,
+      eventType: 'attribution_reused',
+      designerId: input.lead.assignedTo,
+      measurerId: input.lead.measurerId,
+      actorUserId: input.customerUserId,
+      reason: 'phone_match_attached',
+      metadata: {
+        authorizationIdempotencyKeyHash: input.idempotencyKeyHash,
+      },
+    });
+    return this.loadLead(input.lead.id);
+  }
+
+  private async mergeManualProfileIntoLead(
+    existing: LeadWithRelations,
+    input: {
+      name: string;
+      phone: string;
+      communityName?: string | null;
+      area?: string | null;
+      stylePreference?: string | null;
+      city?: string | null;
+      notes?: string | null;
+      actorUserId: bigint | null;
+    }
+  ) {
+    const now = new Date();
+    const matchedUser =
+      existing.customerUserId != null
+        ? null
+        : await this.findCustomerUserByPhone(input.phone);
+    if (matchedUser) {
+      await this.lockKey(`customer-attribution:${matchedUser.id.toString()}`);
+    }
+    const active = matchedUser
+      ? await this.findActiveAttribution(matchedUser.id)
+      : null;
+    const customerUserId =
+      existing.customerUserId ??
+      (matchedUser && (!active || active.lead.id === existing.id)
+        ? matchedUser.id
+        : null);
+    await this.transaction
+      .update(leads)
+      .set({
+        name: input.name.trim().slice(0, 120) || existing.name,
+        phone: input.phone,
+        communityName:
+          input.communityName?.trim().slice(0, 160) || existing.communityName,
+        area: input.area || existing.area,
+        stylePreference:
+          input.stylePreference?.trim().slice(0, 120) || existing.stylePreference,
+        city: input.city?.trim().slice(0, 80) || existing.city,
+        notes: input.notes?.trim() || existing.notes,
+        customerUserId,
+        attributionLockedAt:
+          customerUserId && !existing.attributionLockedAt
+            ? now
+            : existing.attributionLockedAt,
+        updatedAt: now,
+      })
+      .where(eq(leads.id, existing.id));
+    if (customerUserId && existing.enterpriseId) {
+      await this.ensureCustomerAttributionLock({
+        enterpriseId: existing.enterpriseId,
+        customerUserId,
+        leadId: existing.id,
+        lockedAt: now,
+      });
+    }
+    await this.transaction.insert(leadAssignmentEvents).values({
+      enterpriseId: existing.enterpriseId,
+      leadId: existing.id,
+      eventType: 'attribution_reused',
+      designerId: existing.assignedTo,
+      measurerId: existing.measurerId,
+      actorUserId: input.actorUserId,
+      reason: 'manual_entry_phone_merged',
+      metadata: {},
+    });
+    return this.loadLead(existing.id);
   }
 
   async retryLeadAssignment(input: {
@@ -701,9 +916,46 @@ export class ReferralLeadRepository {
     };
   }
 
+  async listAssignableStaff(input: {
+    enterpriseId: bigint;
+    role: 'designer' | 'measurer';
+    excludeStaffId?: bigint | null;
+  }) {
+    const rows = await this.transaction
+      .select()
+      .from(adminUsers)
+      .where(
+        and(
+          eq(adminUsers.enterpriseId, input.enterpriseId),
+          eq(adminUsers.role, input.role),
+          eq(adminUsers.status, 'active'),
+          eq(adminUsers.assignmentPaused, false),
+          ...(input.excludeStaffId ? [ne(adminUsers.id, input.excludeStaffId)] : []),
+          ...(input.role === 'designer'
+            ? [
+                isNotNull(adminUsers.wechatId),
+                sql`btrim(${adminUsers.wechatId}) <> ''`,
+                isNotNull(adminUsers.wechatQrAssetId),
+                sql`exists (
+                  select 1
+                  from app.media_assets assignment_qr
+                  where assignment_qr.id = ${adminUsers.wechatQrAssetId}
+                    and assignment_qr.enterprise_id = ${input.enterpriseId}
+                    and assignment_qr.deleted_at is null
+                )`,
+              ]
+            : [])
+        )
+      )
+      .orderBy(asc(adminUsers.displayName), asc(adminUsers.id));
+    return rows;
+  }
+
   async assignStaff(input: {
     leadId: bigint;
     actorStaffId?: bigint | null;
+    actorRole?: string | null;
+    actorUserId?: bigint | null;
     designerId?: bigint | null;
     measurerId?: bigint | null;
   }): Promise<ReferralManualAssignResult | null> {
@@ -722,31 +974,44 @@ export class ReferralLeadRepository {
     if (!current.enterpriseId || current.archivedAt || current.status === 'closed') {
       throw referralError('lead_not_assignable', '线索不存在或不可派单', 404);
     }
-    if (input.designerId && current.assignedTo) {
-      throw referralError('designer_already_assigned', '设计师已分配，不可覆盖', 400);
+    if (!canAccessLeadForStaffAssign(current, input.actorRole || '', input.actorStaffId ?? null)) {
+      return null;
     }
-    if (input.measurerId && current.measurerId) {
-      throw referralError('measurer_already_assigned', '测量员已分配，不可覆盖', 400);
+    assertCanAssignLeadStaff({
+      lead: current,
+      role: input.actorRole || '',
+      actorId: input.actorStaffId ?? null,
+      designerId: input.designerId ?? null,
+      measurerId: input.measurerId ?? null,
+    });
+    if (input.designerId && current.assignedTo && input.designerId === current.assignedTo) {
+      throw referralError('designer_already_bound', '所选设计师已是当前绑定人员', 400);
+    }
+    if (input.measurerId && current.measurerId && input.measurerId === current.measurerId) {
+      throw referralError('measurer_already_bound', '所选测量员已是当前绑定人员', 400);
     }
 
     await this.lockKey(`enterprise-assignment:${current.enterpriseId.toString()}`);
-    const staffActivity = current.source === 'staff_activity';
-    const nextDesigner = current.assignedTo
-      ? await this.findEligibleStaff(current.assignedTo, 'designer', current.enterpriseId)
-      : input.designerId
-        ? await this.findEligibleStaff(input.designerId, 'designer', current.enterpriseId)
-        : null;
-    if (!current.assignedTo && input.designerId && !nextDesigner) {
-      throw referralError('designer_unavailable', '所选设计师不可派单', 400);
+
+    let nextDesignerId = current.assignedTo;
+    let newlyAssignedDesignerId: bigint | null = null;
+    if (input.designerId) {
+      const nextDesigner = await this.findEligibleStaff(
+        input.designerId,
+        'designer',
+        current.enterpriseId
+      );
+      if (!nextDesigner) {
+        throw referralError('designer_unavailable', '所选设计师不可派单', 400);
+      }
+      nextDesignerId = nextDesigner.id;
+      newlyAssignedDesignerId = nextDesigner.id;
     }
 
-    let nextMeasurer = current.measurerId
-      ? staffActivity
-        ? await this.findAssignedStaff(current.measurerId, current.enterpriseId)
-        : await this.findEligibleStaff(current.measurerId, 'measurer', current.enterpriseId)
-      : null;
-    if (!current.measurerId && input.measurerId) {
-      nextMeasurer = await this.findEligibleStaff(
+    let nextMeasurerId = current.measurerId;
+    let newlyAssignedMeasurerId: bigint | null = null;
+    if (input.measurerId) {
+      const nextMeasurer = await this.findEligibleStaff(
         input.measurerId,
         'measurer',
         current.enterpriseId
@@ -754,17 +1019,31 @@ export class ReferralLeadRepository {
       if (!nextMeasurer) {
         throw referralError('measurer_unavailable', '所选测量员不可派单', 400);
       }
+      nextMeasurerId = nextMeasurer.id;
+      newlyAssignedMeasurerId = nextMeasurer.id;
     }
 
     const now = new Date();
-    const errorCode = this.assignmentErrorCode(nextDesigner, nextMeasurer);
+    const hasDesigner = Boolean(nextDesignerId);
+    const hasMeasurer = Boolean(nextMeasurerId);
+    const errorCode = !hasDesigner && !hasMeasurer
+      ? 'designer_and_measurer_unavailable'
+      : !hasDesigner
+        ? 'designer_unavailable'
+        : !hasMeasurer
+          ? 'measurer_unavailable'
+          : null;
     const assignmentStatus = errorCode ? 'assignment_pending' : 'assigned';
+    const overwritten = Boolean(
+      (input.designerId && current.assignedTo && input.designerId !== current.assignedTo)
+      || (input.measurerId && current.measurerId && input.measurerId !== current.measurerId)
+    );
     const updatedRows = await this.transaction
       .update(leads)
       .set({
-        assignedTo: nextDesigner?.id ?? null,
-        measurerId: nextMeasurer?.id ?? (staffActivity ? current.measurerId : null),
-        assignedAt: nextDesigner ? current.assignedAt ?? now : null,
+        assignedTo: nextDesignerId,
+        measurerId: nextMeasurerId,
+        assignedAt: nextDesignerId ? current.assignedAt ?? now : null,
         assignmentStatus,
         assignmentErrorCode: errorCode,
         updatedAt: now,
@@ -773,10 +1052,7 @@ export class ReferralLeadRepository {
       .returning();
     if (!updatedRows[0]) return null;
 
-    for (const staff of [
-      !current.assignedTo && nextDesigner?.id ? nextDesigner.id : null,
-      !current.measurerId && nextMeasurer?.id ? nextMeasurer.id : null,
-    ]) {
+    for (const staff of [newlyAssignedDesignerId, newlyAssignedMeasurerId]) {
       if (staff) {
         await this.transaction
           .update(adminUsers)
@@ -785,31 +1061,49 @@ export class ReferralLeadRepository {
       }
     }
 
+    const eventType = errorCode
+      ? overwritten
+        ? 'assignment_manual_reassign_pending'
+        : 'assignment_manual_pending'
+      : overwritten
+        ? 'assignment_manual_reassign'
+        : 'assignment_manual';
     const eventRows = await this.transaction
       .insert(leadAssignmentEvents)
       .values({
         enterpriseId: current.enterpriseId,
         leadId: current.id,
-        eventType: errorCode ? 'assignment_manual_pending' : 'assignment_manual',
+        eventType,
         previousDesignerId: current.assignedTo,
-        designerId: nextDesigner?.id ?? null,
+        designerId: nextDesignerId,
         previousMeasurerId: current.measurerId,
-        measurerId: nextMeasurer?.id ?? null,
-        actorUserId: null,
+        measurerId: nextMeasurerId,
+        actorUserId: input.actorUserId ?? null,
         errorCode,
-        reason: 'miniprogram_manual_assign',
+        reason: overwritten ? 'miniprogram_manual_reassign' : 'miniprogram_manual_assign',
         metadata: {
           actorStaffId: input.actorStaffId?.toString() ?? null,
+          actorRole: input.actorRole ?? null,
           requestedDesignerId: input.designerId?.toString() ?? null,
           requestedMeasurerId: input.measurerId?.toString() ?? null,
         },
       })
       .returning({ id: leadAssignmentEvents.id });
 
+    const rewrittenAppointment = await new AppointmentRepository(this.transaction)
+      .reassignActiveStaffForLead({
+        leadId: current.id,
+        designerId: nextDesignerId,
+        measurerId: nextMeasurerId,
+        actorUserId: input.actorUserId ?? null,
+        eventKey: `staff_reassigned:${current.id.toString()}:${eventRows[0]?.id.toString() ?? '0'}`,
+      });
+
     return {
       kind: errorCode ? 'pending' : 'assigned',
       lead: await this.loadLead(current.id),
       eventId: eventRows[0]?.id,
+      rewrittenAppointment,
     };
   }
 

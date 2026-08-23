@@ -128,6 +128,13 @@ test('referrer workbench scans an onboarding code before opening the add-enterpr
     assert.equal(navigation.url, '/packages/business/onboarding/onboarding?scene=ABC');
 
     navigation = null;
+    scanOptions.success({
+      path: 'packages/business/onboarding/onboarding.html?scene=ABC',
+      scanType: 'WX_CODE'
+    });
+    assert.equal(navigation.url, '/packages/business/onboarding/onboarding?scene=ABC');
+
+    navigation = null;
     scanOptions.success({ path: 'pages/index/index' });
     assert.equal(navigation, null);
     assert.match(toasts.at(-1).title, /企业提供的入驻码/);

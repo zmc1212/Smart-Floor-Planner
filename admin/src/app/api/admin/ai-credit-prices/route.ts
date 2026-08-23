@@ -3,8 +3,8 @@ import { AiCreditPriceRepository } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AI_ACTION_KEYS, type AiActionKey } from '@/lib/ai/provider-types';
-import { ensureDefaultAiCreditPrices, listAiCreditPrices } from '@/lib/ai/credits';
+import { type AiActionKey } from '@/lib/ai/provider-types';
+import { ensureDefaultAiCreditPrices, listAiCreditPrices, normalizePlatformCreditAmount, selectPlatformCreditPriceUpdates } from '@/lib/ai/credits';
 
 export async function GET(request: Request) {
   try {
@@ -22,18 +22,13 @@ export async function PATCH(request: Request) {
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const body = (await request.json()) as { items?: Array<{ actionKey: AiActionKey; credits: number; enabled: boolean }> };
       if (!Array.isArray(body.items) || !body.items.length) return NextResponse.json({ success: false, error: '缺少价格配置' }, { status: 400 });
-      const items = body.items;
-      for (const item of items) {
-        const credits = Math.trunc(Number(item.credits));
-        if (!AI_ACTION_KEYS.includes(item.actionKey) || credits < 1 || credits > 100000) {
-          return NextResponse.json({ success: false, error: '价格配置无效' }, { status: 400 });
-        }
-      }
+      const items = selectPlatformCreditPriceUpdates(body.items);
+      if (!items.length) return NextResponse.json({ success: false, error: '缺少价格配置' }, { status: 400 });
       await ensureDefaultAiCreditPrices();
       await withPlatformTransaction(async (transaction) => {
         const prices = new AiCreditPriceRepository(transaction);
         for (const item of items) {
-          const credits = Math.trunc(Number(item.credits));
+          const credits = normalizePlatformCreditAmount(item.credits);
           await prices.updateByActionKey(item.actionKey, {
             credits: BigInt(credits),
             enabled: Boolean(item.enabled),

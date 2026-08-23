@@ -26,9 +26,20 @@ function schemeCoverSource(workflow) {
     || '';
 }
 
-function decorateLead(lead) {
+function isAssignedUnclosedLead(lead) {
+  const status = String((lead && lead.status) || '');
+  if (status === 'closed' || (lead && lead.archivedAt)) return false;
+  return Boolean(lead && (lead.assignedTo || lead.assignmentStatus === 'assigned'));
+}
+
+function decorateLead(lead, options = {}) {
+  const inputMode = options.inputMode === 'photo' ? 'photo' : 'floor_plan';
   const floorPlans = Array.isArray(lead && lead.floorPlans) ? lead.floorPlans : [];
-  const designable = floorPlans.length > 0;
+  const surveyedDesignable = ['survey_completed', 'design_published', 'converted'].includes(
+    String((lead && lead.serviceStage) || '')
+  );
+  const photoSelectable = inputMode === 'photo' && isAssignedUnclosedLead(lead);
+  const selectable = photoSelectable || surveyedDesignable;
   const name = String((lead && lead.name) || '未命名客户');
   const communityName = String((lead && lead.communityName) || '');
   const workflowCount = Number((lead && lead.workflowCount) || 0);
@@ -38,11 +49,15 @@ function decorateLead(lead) {
     name,
     communityName,
     workflowCount,
+    inputMode,
     displayTitle: communityName ? `${name} · ${communityName}` : name,
     meta: `${communityName || '未登记小区'} · ${workflowCount} 个方案`,
-    group: designable ? 'designable' : 'needs_survey',
-    statusLabel: designable ? '可设计' : '待量房',
-    actionLabel: designable ? '选择' : '去量房',
+    group: selectable ? 'designable' : 'needs_survey',
+    statusLabel: selectable ? '可设计' : '待量房',
+    actionLabel: selectable ? '选择' : '去量房',
+    helper: inputMode === 'photo'
+      ? '可用户型图或现场照出图并发送'
+      : (selectable ? '选择后进入方案对话' : '需先完成正式量房'),
     eligibleFloorPlanId: floorPlans[0] && floorPlans[0].id ? String(floorPlans[0].id) : '',
   };
 }
@@ -71,6 +86,17 @@ function buildLeadPickerView(leads, activeGroup = 'designable', search = '') {
 function chooseDefaultLeadGroup(leads) {
   if ((leads || []).some((item) => item.group === 'designable')) return 'designable';
   return 'needs_survey';
+}
+
+function resolveLeadGroupAfterRefresh(leads, currentGroup = 'designable', surveyingLeadId = '') {
+  const list = leads || [];
+  const surveyedId = String(surveyingLeadId || '');
+  if (surveyedId) {
+    const surveyed = list.find((item) => item.id === surveyedId);
+    if (surveyed && surveyed.group === 'designable') return 'designable';
+  }
+  if (list.some((item) => item.group === currentGroup)) return currentGroup;
+  return chooseDefaultLeadGroup(list);
 }
 
 function decorateScheme(workflow) {
@@ -139,6 +165,7 @@ module.exports = {
   decorateLead,
   buildLeadPickerView,
   chooseDefaultLeadGroup,
+  resolveLeadGroupAfterRefresh,
   decorateScheme,
   nextSchemeTitle,
   roomsFromWorkflowDetail,

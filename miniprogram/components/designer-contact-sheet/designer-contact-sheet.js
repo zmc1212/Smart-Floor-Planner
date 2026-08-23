@@ -2,6 +2,12 @@ const {
   loadDesignerQrToTempFile,
   copyDesignerWechatId,
 } = require('../../utils/designerContact.js');
+const { openSheet, closeSheet, clearSheetTimer } = require('../../utils/sheetMotion.js');
+
+const DIALOG_KEYS = Object.freeze({
+  mountedKey: 'dialogMounted',
+  openKey: 'dialogOpen',
+});
 
 Component({
   properties: {
@@ -16,6 +22,8 @@ Component({
   },
 
   data: {
+    dialogMounted: false,
+    dialogOpen: false,
     displayName: '专属设计师',
     wechatId: '',
     hasQr: false,
@@ -26,14 +34,19 @@ Component({
 
   observers: {
     'visible, designer'(visible, designer) {
-      if (!visible) return;
-      this.syncDesigner(designer);
+      if (visible) {
+        this.syncDesigner(designer);
+        openSheet(this, DIALOG_KEYS);
+        return;
+      }
+      closeSheet(this, DIALOG_KEYS);
     },
   },
 
   lifetimes: {
     detached() {
       this._qrRequestId = (this._qrRequestId || 0) + 1;
+      clearSheetTimer(this, DIALOG_KEYS.openKey);
     },
   },
 

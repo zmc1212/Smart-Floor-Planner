@@ -70,15 +70,27 @@
       <view class="account-surface wechat-qr-surface">
         <view class="wechat-qr-copy">
           <text class="field-label">个人微信二维码</text>
-          <text class="wechat-qr-hint">请从微信「我」页保存图片上传；客户会在领取成功页和服务档案看到这张码</text>
+          <text class="wechat-qr-hint">请从微信「我」页打开二维码名片后点保存图片再上传；客户会在领取成功页和服务档案看到这张码</text>
         </view>
         <image wx:if="{{wechatQrPath}}" class="wechat-qr-preview" src="{{wechatQrPath}}" mode="aspectFit" show-menu-by-longpress="{{true}}" />
         <view wx:elif="{{hasWechatQr}}" class="wechat-qr-empty">二维码已上传，正在加载预览…</view>
         <view wx:else class="wechat-qr-empty">尚未上传</view>
-        <button class="wechat-qr-upload" loading="{{uploadingQr}}" disabled="{{uploadingQr}}" bindtap="onChooseWechatQr">{{hasWechatQr ? '更换二维码' : '上传二维码'}}</button>
+        <view
+          class="wechat-qr-upload {{uploadingQr ? 'is-disabled' : ''}}"
+          hover-class="btn-pressed"
+          hover-stay-time="80"
+          catchtap="onChooseWechatQr"
+          aria-role="button"
+        >{{uploadingQr ? '上传中…' : (hasWechatQr ? '更换二维码' : '上传二维码')}}</view>
       </view>
     </block>
 
-    <button class="primary-action" loading="{{saving}}" disabled="{{saving || !nickname}}" bindtap="onSave">保存资料</button>
+    <view
+      class="primary-action {{saving || !nickname ? 'is-disabled' : ''}}"
+      hover-class="btn-pressed"
+      hover-stay-time="80"
+      catchtap="onSave"
+      aria-role="button"
+    >{{saving ? '保存中…' : '保存资料'}}</view>
   </block>
 </view>

@@ -12,6 +12,7 @@ const {
   formatConfirmRescheduleLabel,
 } = require('../../../utils/appointmentSlotPicker.js');
 const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
+const sitePhotos = require('../../../utils/sitePhotoService.js');
 
 const STATUS_LABELS = {
   confirmed: '已确认',
@@ -134,7 +135,7 @@ async function resolveLeadLifecycle(appointment, role) {
       };
     }
     const activePlan = selectLeadFloorPlan(lead);
-    const surveyReady = hasCompletedFormalSurvey(lead);
+    const surveyReady = lead.serviceStage === 'survey_ready' || hasCompletedFormalSurvey(lead);
     return {
       leadTerminal: false,
       canComplete: surveyReady,
@@ -192,6 +193,12 @@ Page({
     slotsError: '',
     rescheduleSubmitting: false,
     confirmRescheduleLabel: '确认改期至可用时段',
+    canCaptureSitePhotos: false,
+    sitePhotos: [],
+    sitePhotoTags: sitePhotos.SPACE_TAGS,
+    sitePhotoUploading: false,
+    sitePhotoLimitReached: false,
+    sitePhotoCaptureNonce: 0,
   },
 
   onLoad(options) {
@@ -237,7 +244,7 @@ Page({
         address: appointment.address,
         customerMode: this.data.customerMode,
       });
-      const canReschedule = lifecycleOpen && confirmed
+      const canReschedule = lifecycleOpen && confirmed && !lifecycle.canComplete
         && (this.data.customerMode || ['designer', 'enterprise_admin'].includes(role));
       const dates = canReschedule ? appointmentDates(0, this.data.maxAdvanceDays) : [];
       this.setData({
@@ -261,6 +268,8 @@ Page({
         canRebook: lifecycleOpen && (expired || appointment.status === 'cancelled')
           && (this.data.customerMode || ['designer', 'measurer', 'enterprise_admin'].includes(role)),
         canNavigate: confirmed && hasCoordinates(appointment),
+        canCaptureSitePhotos: !this.data.customerMode && Boolean(leadId)
+          && ['designer', 'measurer', 'enterprise_admin'].includes(role),
         dateOffset: 0,
         dates,
         selectedDate: dates[0] && dates[0].key || '',
@@ -275,6 +284,7 @@ Page({
       } else {
         this.setData({ slots: [], slotsLoading: false, slotsError: '' });
       }
+      if (!this.data.customerMode && leadId) await this.loadSitePhotos();
     } catch (error) {
       this.setData({ error: error.error || error.message || '预约详情加载失败' });
     } finally {
@@ -283,6 +293,37 @@ Page({
   },
 
   onBack() { wx.navigateBack(); },
+
+  async loadSitePhotos() {
+    if (!this.data.leadId) return;
+    try {
+      const result = await sitePhotos.list(this.data.leadId);
+      this.setData({
+        sitePhotos: result.items || [],
+        sitePhotoTags: result.spaceTags || sitePhotos.SPACE_TAGS,
+        sitePhotoLimitReached: Number(result.remaining || 0) <= 0,
+      });
+    } catch (error) {
+      console.warn('Failed to load site photos', error);
+    }
+  },
+
+  captureSitePhoto() {
+    if (this.data.acting || this.data.sitePhotoUploading) return;
+    this.setData({ sitePhotoCaptureNonce: Date.now() });
+  },
+
+  onSitePhotoUploading(event) {
+    this.setData({ sitePhotoUploading: Boolean(event.detail && event.detail.uploading) });
+  },
+
+  onSitePhotosChange(event) {
+    const photos = sitePhotos.mergePhotos(this.data.sitePhotos, event.detail || {});
+    this.setData({
+      sitePhotos: photos,
+      sitePhotoLimitReached: photos.length >= 30,
+    });
+  },
 
   onShareAppMessage() {
     const { leadId, appointment } = this.data;

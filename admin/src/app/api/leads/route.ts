@@ -32,9 +32,15 @@ import {
 } from '@/lib/lead-lifecycle';
 import { httpErrorStatus } from '@/lib/http-error';
 import { redactLeadConversionDetailsForConsumer } from '@/lib/lead-conversion';
+import { attachLeadAssignmentActions } from '@/lib/lead-assignment-actions';
 import { resolveStaffLeadListOptions } from '@/lib/lead-staff-visibility';
 
-export function leadDtoForMini(request: Request, lead: Parameters<typeof leadToDto>[0], role?: string) {
+export function leadDtoForMini(
+  request: Request,
+  lead: Parameters<typeof leadToDto>[0],
+  role?: string,
+  actorId?: bigint | null
+) {
   const include = role === 'measurer';
   const hasStaffContext = Boolean(role && role !== 'user');
   const assetId = lead.assignedUser?.wechatQrAssetId;
@@ -44,7 +50,8 @@ export function leadDtoForMini(request: Request, lead: Parameters<typeof leadToD
       ? getSignedMiniAiAssetUrl({ request, assetId: assetId.toString(), enterpriseId: lead.enterpriseId.toString() })
       : null,
   });
-  return hasStaffContext ? dto : redactLeadConversionDetailsForConsumer(dto);
+  const scoped = hasStaffContext ? dto : redactLeadConversionDetailsForConsumer(dto);
+  return attachLeadAssignmentActions(scoped, lead, role || '', actorId ?? null);
 }
 
 function errorMessage(error: unknown) {
@@ -129,7 +136,9 @@ export async function GET(request: Request) {
       ].reduce((total, key) => total + (result.stats[key] ?? 0), 0);
       return NextResponse.json({
         success: true,
-        data: result.list.rows.map((lead) => leadDtoForMini(request, lead, miniContext.staff?.role)),
+        data: result.list.rows.map((lead) =>
+          leadDtoForMini(request, lead, miniContext.staff?.role, staffId)
+        ),
         stats: {
           all: result.all,
           ...result.stats,
@@ -182,7 +191,14 @@ export async function GET(request: Request) {
     );
     return NextResponse.json({
       success: true,
-      data: result.rows.map((lead) => leadToDto(lead)),
+      data: result.rows.map((lead) =>
+        attachLeadAssignmentActions(
+          leadToDto(lead),
+          lead,
+          context.role,
+          parsePostgresId(context.userId, 'userId')
+        )
+      ),
       pagination: {
         total: result.total,
         page,
@@ -281,37 +297,33 @@ export async function POST(request: Request) {
       const areaValue = Number.isFinite(area) && area > 0 ? String(area) : null;
 
       const existing = await leads.findByPhone(phone);
-      if (existing?.archivedAt) throw archivedLeadExistsError();
+      if (!usesManualEntryAssignment && existing?.archivedAt) {
+        throw archivedLeadExistsError();
+      }
 
       if (usesManualEntryAssignment) {
         if (!enterpriseId) {
           throw Object.assign(new Error('请先选择企业'), { status: 400 });
         }
-        let lead = existing
-          ? await leads.update(existing.id, {
-              name: existing.name || name,
-              communityName: communityName ?? existing.communityName,
-              area: areaValue ?? existing.area,
-              stylePreference: stylePreference ?? existing.stylePreference,
-              city: city ?? existing.city,
-              notes: notes ?? existing.notes,
-            })
-          : (await new ReferralLeadRepository(transaction).createManualEntryLead({
-              enterpriseId,
-              actorStaffId,
-              actorUserId: miniContext?.user?._id
-                ? parsePostgresId(miniContext.user._id, 'user id')
-                : actorStaffId
-                  ? await admins.findLinkedUserId(actorStaffId)
-                  : null,
-              name,
-              phone,
-              communityName,
-              area: areaValue,
-              stylePreference,
-              city,
-              notes,
-            })).lead;
+        const manual = await new ReferralLeadRepository(
+          transaction
+        ).createManualEntryLead({
+          enterpriseId,
+          actorStaffId,
+          actorUserId: miniContext?.user?._id
+            ? parsePostgresId(miniContext.user._id, 'user id')
+            : actorStaffId
+              ? await admins.findLinkedUserId(actorStaffId)
+              : null,
+          name,
+          phone,
+          communityName,
+          area: areaValue,
+          stylePreference,
+          city,
+          notes,
+        });
+        let lead = manual.lead;
         if (!lead) throw new Error('Failed to persist lead');
         if (floorPlanId) {
           lead = await leads.linkFloorPlan(lead.id, floorPlanId);
@@ -319,7 +331,7 @@ export async function POST(request: Request) {
         }
         return {
           lead,
-          created: !existing,
+          created: manual.created,
           designerId: lead.assignedTo,
           measurerId: lead.measurerId,
           assignmentPending: lead.assignmentStatus === 'assignment_pending',
@@ -447,7 +459,26 @@ export async function POST(request: Request) {
     ]);
 
     return NextResponse.json(
-      { success: true, data: miniContext ? leadDtoForMini(request, lead, miniContext.staff?.role) : leadToDto(lead) },
+      {
+        success: true,
+        data: miniContext
+          ? leadDtoForMini(
+              request,
+              lead,
+              miniContext.staff?.role,
+              miniContext.staff?._id
+                ? parsePostgresId(miniContext.staff._id, 'staff id')
+                : null
+            )
+          : attachLeadAssignmentActions(
+              leadToDto(lead),
+              lead,
+              adminContext?.role || '',
+              adminContext?.userId
+                ? parsePostgresId(adminContext.userId, 'userId')
+                : null
+            ),
+      },
       { status: 201 }
     );
   } catch (error: unknown) {

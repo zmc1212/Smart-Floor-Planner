@@ -1,5 +1,6 @@
-<view wx:if="{{visible}}" class="dcs-mask" bindtap="onClose" aria-role="dialog" aria-label="联系设计师">
-  <view class="dcs-sheet" catchtap="noop">
+<view wx:if="{{dialogMounted}}" class="dcs-root" catchtouchmove="noop" aria-role="dialog" aria-label="联系设计师">
+  <view class="dcs-mask {{dialogOpen ? 'open' : ''}}" bindtap="onClose"></view>
+  <view class="dcs-dialog {{dialogOpen ? 'open' : ''}}" catchtap="noop">
     <view class="dcs-head">
       <text class="dcs-title">微信联系设计师</text>
       <text class="dcs-close" bindtap="onClose">关闭</text>

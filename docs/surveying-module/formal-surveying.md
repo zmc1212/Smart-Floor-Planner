@@ -102,6 +102,10 @@ copy back to `layoutData`.
   to the cloud, then navigates back to the previous page (same fallback as Back:
   `navigateBack`, else `switchTab` home). Cloud failure keeps the operator on the
   editor so they can retry.
+- Accidental backgrounding or leaving the editor (`onHide` / `onUnload`) immediately
+  flushes the local formal draft and best-effort silent-saves the same v4 graph to
+  the cloud without navigating or toasting. Reopening keeps a newer local draft
+  instead of a stale cloud copy, then writes that local graph back to the cloud.
 - The editor's right-rail canvas-clear/restart action requires confirmation,
   replaces the in-memory and local draft with a fresh v4 graph, and clears
   undo/redo plus queued, unsaved measurement audits.
@@ -230,10 +234,11 @@ copy back to `layoutData`.
   When the final cursor hits a source wall's visible outer face, the close must
   retain that physical outer coordinate and bridge to the topology corner rather
   than silently projecting it to the centre line. A one-thickness overshoot in
-  straight mode likewise keeps the last wall axis-aligned; `confirmClosure`
-  adds a short orthogonal `closure-bridge` instead of yanking that wall onto an
-  off-axis topology corner (which would leave a diagonal seam in the shared
-  wall body).
+  straight mode likewise keeps the last wall axis-aligned; the orange 「合」
+  guide and `confirmClosure` use a strict 1 mm axis check (not the 350 mm
+  rectangle-snap tolerance) and add a short orthogonal `closure-bridge`
+  instead of yanking that wall onto an off-axis inner topology corner (which
+  would leave a diagonal seam in the shared wall body).
   Vertex continuations and shared internal-wall partitions retain their
   boundary closure rules.
 

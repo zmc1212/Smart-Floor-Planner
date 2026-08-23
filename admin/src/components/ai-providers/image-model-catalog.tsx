@@ -17,9 +17,9 @@ export default function ImageModelCatalog() {
     const response = await fetch('/api/admin/ai-image-models');
     const result = await response.json();
     if (!response.ok || !result.success) throw new Error(result.error || '读取生图模型目录失败');
-    const nextModels = result.data || [];
+    const nextModels = JSON.parse(JSON.stringify(result.data || []));
     setModels(nextModels);
-    setSavedModels(nextModels);
+    setSavedModels(JSON.parse(JSON.stringify(nextModels)));
     setModelsLoaded(true);
   }, []);
 
@@ -158,7 +158,7 @@ export default function ImageModelCatalog() {
         <section className="space-y-4" aria-label="生图模型目录">
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <Typography.Text type="secondary">
-              仅已启用且配置完整的模型会进入自由创作台；平台默认模型用于未显式选型的业务场景。
+              已启用且至少一档积分价启用的模型会进入工作台可选列表；供应商默认远程模型只用于预选，平台默认模型用于没有选型的业务场景。
             </Typography.Text>
             <Tag color="green">{models.filter((model) => model.enabled && model.executable).length} 个可用模型</Tag>
           </div>

@@ -26,3 +26,18 @@ test('current, closable, pending, selected, and cursor-snapped walls receive BLE
 test('selected-wall BLE remeasure restores the pre-measurement draft when applying or redrawing fails', () => {
   assert.match(editorScript, /applyBleReadingToSelectedWall\(distanceInMeters\)\s*\{[\s\S]*const historyDraft = this\.bleMeasureHistoryDraft;[\s\S]*const restoreMeasurementDraft = \(\) =>[\s\S]*this\.history\.undo\.splice\(historyUndoLength\);[\s\S]*this\.history\.redo = historyRedo;[\s\S]*this\.draft = surveyGraph\.cloneDraft\(historyDraft\);[\s\S]*distanceInMeters === null[\s\S]*restoreMeasurementDraft\(\);[\s\S]*catch \(err\) \{[\s\S]*restoreMeasurementDraft\(\);/);
 });
+
+test('connected BLE dock measure without a pending or selected wall asks to drag a wall first', () => {
+  assert.match(
+    editorScript,
+    /onBottomMeasure\(\)\s*\{[\s\S]*if \(this\.data\.numberPadVisible\) \{\s*this\.triggerBluetoothNumberMeasure\(\);\s*return;\s*\}\s*wx\.showToast\(\{\s*title:\s*'请先拉出一条墙'/
+  );
+  assert.doesNotMatch(
+    editorScript,
+    /openLengthPad\(\);\s*setTimeout\(\(\) => this\.triggerBluetoothNumberMeasure\(\)/
+  );
+  assert.doesNotMatch(
+    editorScript,
+    /onBottomMeasure\(\)\s*\{[\s\S]*请先打开数字修改/
+  );
+});

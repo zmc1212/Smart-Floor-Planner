@@ -76,7 +76,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({
       success: true,
       data: {
-        task: serializeCreationTaskForMini(request, context.enterpriseId, view),
+        task: await serializeCreationTaskForMini(request, context.enterpriseId, view),
         account: serializeAiCreditAccount(await ensureAiCreditAccount(enterpriseId.toString())),
       },
     });

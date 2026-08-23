@@ -72,6 +72,16 @@ function stripStyleSuffix(title) {
 function decorateImages(images, schemeTitle, leadId) {
   const list = Array.isArray(images) ? images : [];
   return list.map((image, index) => {
+    if (image && image.imageUrl && /^https?:\/\//i.test(String(image.imageUrl))) {
+      return {
+        ...image,
+        stageLabel: stageLabel(image && image.stageKey),
+        ...displayImageCopy(image, schemeTitle, index, list.length),
+        timeLabel: formatTimelineTime(image && image.publishedAt),
+        imagePath: image.imageUrl,
+        imageState: 'loaded',
+      };
+    }
     const cacheKey = publishedImageCacheKey(leadId, image && (image.generationId || image.id));
     const imagePath = readCachedProtectedImage(cacheKey);
     return {
@@ -90,6 +100,7 @@ function decorateSchemes(schemes, leadId, audience) {
   return list.map((scheme, index) => {
     const title = String(scheme && scheme.title || '设计方案').trim();
     const images = decorateImages(scheme && scheme.images, title, leadId).map((image) => {
+      if (image.imageState === 'loaded' && image.imagePath) return image;
       const imageEndpoint = image.imageEndpoint
         || (audience === 'customer'
           ? `/miniprogram/customer-projects/${leadId}/published-generations/${image.generationId}/image`
@@ -232,6 +243,10 @@ Page({
     const schemeResults = await Promise.all((schemes || []).map(async (scheme) => ({
       ...scheme,
       images: await Promise.all((scheme.images || []).map(async (design) => {
+        if (design.imageState === 'loaded' && design.imagePath) return design;
+        if (design.imageUrl && /^https?:\/\//i.test(String(design.imageUrl))) {
+          return { ...design, imagePath: design.imageUrl, imageState: 'loaded' };
+        }
         if (!design.imageEndpoint) return { ...design, imageState: 'error' };
         try {
           const imagePath = await fetchProtectedImage(

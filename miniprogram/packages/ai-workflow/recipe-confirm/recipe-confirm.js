@@ -4,6 +4,10 @@ const {
   shouldOpenSchemeStudio,
 } = require('../../../utils/aiDesignNavigation.js');
 const { roomsFromWorkflowDetail } = require('../recipe-project/recipe-project-model.js');
+const sitePhotos = require('../../../utils/sitePhotoService.js');
+const { openSheet, closeSheet, clearSheetTimer } = require('../../../utils/sheetMotion.js');
+
+const GALLERY_SHEET = { mountedKey: 'galleryMounted', openKey: 'galleryOpen' };
 
 function redirectAfterRecipeTask(task, { run = false } = {}) {
   if (!task || !task.id) {
@@ -38,6 +42,9 @@ Page({
     account: { availableBalance: 0 }, price: 10, spaceImagePath: '', spaceAssetId: '', uploadError: '', uploading: false,
     customerResults: [], sourceResultTaskId: '',
     workflows: [], workflowConflictOpen: false, selectedWorkflowId: '', createNewWorkflow: false,
+    sitePhotos: [], sitePhotoTags: sitePhotos.SPACE_TAGS, sitePhotoLimitReached: false,
+    sitePhotoCaptureNonce: 0, sitePhotoCaptureSource: '',
+    galleryMounted: false, galleryOpen: false,
     navigationTop: 24, navigationHeight: 32, navigationRight: 96,
   },
 
@@ -73,8 +80,9 @@ Page({
         this.data.inputMode === 'photo' ? aiService.loadHistory(1, 30).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
       ]);
       const bound = roomsFromWorkflowDetail(detail);
-      if (!bound.floorPlanId) throw new Error('该方案尚未关联正式户型，请重新选择');
-      if (this.data.floorPlanId && bound.floorPlanId !== this.data.floorPlanId) {
+      const photoMode = this.data.inputMode === 'photo';
+      if (!photoMode && !bound.floorPlanId) throw new Error('该方案尚未关联正式户型，请重新选择');
+      if (this.data.floorPlanId && bound.floorPlanId && bound.floorPlanId !== this.data.floorPlanId) {
         throw new Error('所选方案与户型不匹配，请重新选择');
       }
       if (this.data.leadId && bound.lead.id && String(bound.lead.id) !== String(this.data.leadId)) {
@@ -82,27 +90,31 @@ Page({
       }
       const room = this.data.targetScope === 'single_room'
         ? (bound.rooms || []).find((item) => item.roomId === this.data.roomId) : null;
-      if (this.data.targetScope === 'single_room' && !room) throw new Error('所选房间已不可用，请重新选择');
+      if (!photoMode && this.data.targetScope === 'single_room' && !room) throw new Error('所选房间已不可用，请重新选择');
       const modeKey = this.data.inputMode === 'photo' ? 'style_transform' : 'floor_plan_render';
       const mode = (capabilities.modes || []).find((item) => item.key === modeKey);
       const customerResults = (history.data || []).filter((item) => (
         item.status === 'succeeded'
         && item.resultImageUrl
-        && item.floorPlanId === bound.floorPlanId
-        && (item.targetScope || 'whole_floor_plan') === this.data.targetScope
-        && (this.data.targetScope !== 'single_room' || item.roomId === this.data.roomId)
+        && (!bound.floorPlanId || item.floorPlanId === bound.floorPlanId)
+        && (photoMode || (
+          (item.targetScope || 'whole_floor_plan') === this.data.targetScope
+          && (this.data.targetScope !== 'single_room' || item.roomId === this.data.roomId)
+        ))
       )).slice(0, 6);
       this.setData({
         recipe,
         leadId: this.data.leadId || String(bound.lead.id || ''),
-        floorPlanId: bound.floorPlanId,
+        floorPlanId: bound.floorPlanId || this.data.floorPlanId || '',
         leadName: bound.lead.name || '客户',
         communityName: bound.lead.communityName || '未登记小区',
         schemeTitle: bound.workflow.title || 'AI 设计方案',
-        scope: {
-          name: room ? room.roomName : '完整户型',
-          meta: room ? room.roomSize : `${bound.closedRoomCount} 个闭合空间`,
-        },
+        scope: photoMode
+          ? { name: '现场照片', meta: '可用户型图或现场照出图并发送' }
+          : {
+            name: room ? room.roomName : '完整户型',
+            meta: room ? room.roomSize : `${bound.closedRoomCount} 个闭合空间`,
+          },
         account: capabilities.account || { availableBalance: 0 },
         price: Number(mode && mode.credits || 10),
         customerResults,
@@ -116,29 +128,101 @@ Page({
   goBack() { wx.navigateBack(); }, retry() { this.loadData(); },
   noop() {},
 
+  onUnload() {
+    clearSheetTimer(this, GALLERY_SHEET.openKey);
+  },
+
   choosePhoto() {
     if (this.data.uploading || this.data.submitting) return;
-    wx.chooseMedia({
-      count: 1, mediaType: ['image'], sourceType: ['album', 'camera'], sizeType: ['compressed'],
-      success: (result) => {
-        const file = result.tempFiles && result.tempFiles[0];
-        if (file && file.tempFilePath) this.uploadPhoto(file.tempFilePath);
-      },
+    sitePhotos.chooseAiSource().then((choice) => {
+      if (choice.kind === 'gallery') {
+        void this.openGalleryPicker();
+        return;
+      }
+      this.startSitePhotoCapture(choice.source);
+    }).catch((error) => {
+      if (error && error.cancelled) return;
+      wx.showToast({ title: (error && error.error) || '无法选择照片来源', icon: 'none' });
     });
   },
 
-  async uploadPhoto(path) {
-    this.setData({ uploading: true, uploadError: '', spaceImagePath: path, spaceAssetId: '', sourceResultTaskId: '' });
+  startSitePhotoCapture(source) {
+    if (!this.data.leadId) {
+      wx.showToast({ title: '缺少客户线索', icon: 'none' });
+      return;
+    }
+    this.setData({
+      sitePhotoCaptureSource: source || '',
+      sitePhotoCaptureNonce: Date.now(),
+    });
+  },
+
+  async openGalleryPicker() {
+    if (!this.data.leadId) {
+      wx.showToast({ title: '缺少客户线索', icon: 'none' });
+      return;
+    }
     try {
-      const asset = await aiService.uploadAsset(path);
-      this.setData({ spaceAssetId: asset.id, uploading: false });
+      const result = await sitePhotos.list(this.data.leadId);
+      const items = result.items || [];
+      this.setData({
+        sitePhotos: items,
+        sitePhotoTags: result.spaceTags || sitePhotos.SPACE_TAGS,
+        sitePhotoLimitReached: Number(result.remaining || 0) <= 0,
+      });
+      if (!items.length) {
+        wx.showToast({ title: '本户还没有现场图，请先拍照', icon: 'none' });
+        this.startSitePhotoCapture('');
+        return;
+      }
+      openSheet(this, GALLERY_SHEET);
     } catch (error) {
-      this.setData({ uploading: false, uploadError: error.error || '图片上传失败' });
+      wx.showToast({ title: (error && error.error) || '现场图加载失败', icon: 'none' });
     }
   },
 
+  closeGalleryPicker() {
+    closeSheet(this, GALLERY_SHEET);
+  },
+
+  applySitePhoto(photo) {
+    if (!photo || !photo.assetId) {
+      wx.showToast({ title: '这张现场图还不能用于出图', icon: 'none' });
+      return;
+    }
+    this.setData({
+      uploading: false,
+      uploadError: '',
+      spaceImagePath: photo.imagePath || photo.previewUrl || '',
+      spaceAssetId: photo.assetId,
+      sourceResultTaskId: '',
+    });
+  },
+
+  onSitePhotoCaptured(event) {
+    const photo = event.detail && event.detail.photo;
+    if (!photo) return;
+    this.applySitePhoto(photo);
+    closeSheet(this, GALLERY_SHEET);
+  },
+
+  onSitePhotoSelect(event) {
+    const photo = event.detail && event.detail.photo;
+    if (!photo) return;
+    this.applySitePhoto(photo);
+    closeSheet(this, GALLERY_SHEET);
+  },
+
+  onSitePhotosChange(event) {
+    this.setData({ sitePhotos: sitePhotos.mergePhotos(this.data.sitePhotos, event.detail || {}) });
+  },
+
+  onSitePhotoUploading(event) {
+    this.setData({ uploading: Boolean(event.detail && event.detail.uploading) });
+  },
+
   removePhoto() { if (!this.data.submitting) this.setData({ spaceImagePath: '', spaceAssetId: '', sourceResultTaskId: '', uploadError: '' }); },
-  retryPhoto() { if (this.data.spaceImagePath) this.uploadPhoto(this.data.spaceImagePath); },
+  retryPhoto() { if (!this.data.submitting) this.choosePhoto(); },
 
   selectCustomerResult(event) {
     const result = this.data.customerResults.find((item) => item.id === event.currentTarget.dataset.id);
@@ -172,8 +256,13 @@ Page({
         recipeId: this.data.recipeId, spaceAssetId: this.data.inputMode === 'photo' ? this.data.spaceAssetId || undefined : undefined,
         sourceResultTaskId: this.data.inputMode === 'photo' ? this.data.sourceResultTaskId || undefined : undefined,
         styleKey: this.data.inputMode === 'photo' ? 'recipe' : undefined,
-        leadId: this.data.leadId, floorPlanId: this.data.floorPlanId, targetScope: this.data.targetScope,
-        roomId: this.data.roomId || undefined, workflowId: this.data.selectedWorkflowId || undefined,
+        leadId: this.data.leadId,
+        ...(this.data.floorPlanId ? {
+          floorPlanId: this.data.floorPlanId,
+          targetScope: this.data.targetScope,
+          roomId: this.data.roomId || undefined,
+        } : {}),
+        workflowId: this.data.selectedWorkflowId || undefined,
         createNewWorkflow: this.data.selectedWorkflowId ? undefined : this.data.createNewWorkflow,
       });
       redirectAfterRecipeTask(task, { run: true });

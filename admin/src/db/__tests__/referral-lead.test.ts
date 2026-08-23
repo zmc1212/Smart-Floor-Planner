@@ -8,17 +8,21 @@ import {
   enterprises,
   leadAssignmentEvents,
   leads,
+  measurementAppointmentEvents,
+  measurementAppointments,
   mediaAssets,
   promotionScanAudits,
   referrerEnterpriseMemberships,
   referrerProfiles,
   referrerPromotionCodes,
   staffActivityCodes,
+  staffUnavailabilityPeriods,
   users,
 } from '@/db/schema';
 import {
   AdminUserRepository,
   AiCreationRepository,
+  AppointmentRepository,
   EnterpriseRepository,
   LeadRepository,
   ReferralLeadRepository,
@@ -32,6 +36,7 @@ import {
   closePostgresPool,
   resolvePostgresRuntimeConfig,
 } from '@/lib/postgresql';
+import { localDateInTimeZone, zonedDateTimeToUtc } from '@/lib/appointment-scheduling';
 
 const runKey = `referral-lead-${process.pid}-${Date.now()}`;
 const enterpriseIds: bigint[] = [];
@@ -164,6 +169,15 @@ after(async () => {
       await transaction
         .delete(leadAssignmentEvents)
         .where(inArray(leadAssignmentEvents.enterpriseId, enterpriseIds));
+      await transaction
+        .delete(measurementAppointmentEvents)
+        .where(inArray(measurementAppointmentEvents.enterpriseId, enterpriseIds));
+      await transaction
+        .delete(measurementAppointments)
+        .where(inArray(measurementAppointments.enterpriseId, enterpriseIds));
+      await transaction
+        .delete(staffUnavailabilityPeriods)
+        .where(inArray(staffUnavailabilityPeriods.enterpriseId, enterpriseIds));
       await transaction
         .delete(leads)
         .where(inArray(leads.enterpriseId, enterpriseIds));
@@ -432,8 +446,16 @@ test('no candidates preserve the lead and a later retry fills both roles', async
   assert.equal(pendingRows.some((lead) => lead.id === pending.lead.id), true);
 });
 
-test('manual assign fills missing roles without overwriting existing staff', async () => {
-  const enterpriseId = enterpriseIds[1];
+test('manual assign fills missing roles and can overwrite bound staff', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-manual-assign`,
+      code: `${runKey}-manual-assign`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  const enterpriseId = enterprise.id;
   const source = await createSource(enterpriseId, 'manual-assign');
   const customer = await createCustomer('manual-assign-customer');
   const pending = await withPlatformTransaction((transaction) =>
@@ -446,12 +468,16 @@ test('manual assign fills missing roles without overwriting existing staff', asy
   assert.equal(pending.kind, 'created');
   assert.equal(pending.lead.assignmentStatus, 'assignment_pending');
 
-  const designer = await createAssignmentStaff(enterpriseId, 'designer', 'manual-designer');
-  const measurer = await createAssignmentStaff(enterpriseId, 'measurer', 'manual-measurer');
+  const designer = await createAssignmentStaff(enterpriseId, 'designer', 'overwrite-designer');
+  const replacementDesigner = await createAssignmentStaff(enterpriseId, 'designer', 'overwrite-designer-b');
+  const measurer = await createAssignmentStaff(enterpriseId, 'measurer', 'overwrite-measurer');
+  const replacementMeasurer = await createAssignmentStaff(enterpriseId, 'measurer', 'overwrite-measurer-b');
 
   const partial = await withTenantTransaction(enterpriseId, (transaction) =>
     new ReferralLeadRepository(transaction).assignStaff({
       leadId: pending.lead.id,
+      actorStaffId: designer.id,
+      actorRole: 'enterprise_admin',
       designerId: designer.id,
     })
   );
@@ -464,6 +490,8 @@ test('manual assign fills missing roles without overwriting existing staff', asy
   const assigned = await withTenantTransaction(enterpriseId, (transaction) =>
     new ReferralLeadRepository(transaction).assignStaff({
       leadId: pending.lead.id,
+      actorStaffId: designer.id,
+      actorRole: 'enterprise_admin',
       measurerId: measurer.id,
     })
   );
@@ -478,10 +506,63 @@ test('manual assign fills missing roles without overwriting existing staff', asy
       withTenantTransaction(enterpriseId, (transaction) =>
         new ReferralLeadRepository(transaction).assignStaff({
           leadId: pending.lead.id,
+          actorStaffId: designer.id,
+          actorRole: 'enterprise_admin',
           designerId: designer.id,
         })
       ),
-    /设计师已分配/
+    /已是当前绑定人员/
+  );
+
+  const overwritten = await withTenantTransaction(enterpriseId, (transaction) =>
+    new ReferralLeadRepository(transaction).assignStaff({
+      leadId: pending.lead.id,
+      actorStaffId: designer.id,
+      actorRole: 'enterprise_admin',
+      designerId: replacementDesigner.id,
+      measurerId: replacementMeasurer.id,
+    })
+  );
+  assert.ok(overwritten);
+  assert.equal(overwritten?.kind, 'assigned');
+  assert.equal(overwritten?.lead.assignedTo, replacementDesigner.id);
+  assert.equal(overwritten?.lead.measurerId, replacementMeasurer.id);
+
+  await assert.rejects(
+    () =>
+      withTenantTransaction(enterpriseId, (transaction) =>
+        new ReferralLeadRepository(transaction).assignStaff({
+          leadId: overwritten!.lead.id,
+          actorStaffId: replacementDesigner.id,
+          actorRole: 'designer',
+          designerId: designer.id,
+        })
+      ),
+    /无权更换设计师/
+  );
+
+  const designerChangesMeasurer = await withTenantTransaction(enterpriseId, (transaction) =>
+    new ReferralLeadRepository(transaction).assignStaff({
+      leadId: overwritten!.lead.id,
+      actorStaffId: replacementDesigner.id,
+      actorRole: 'designer',
+      measurerId: measurer.id,
+    })
+  );
+  assert.equal(designerChangesMeasurer?.lead.assignedTo, replacementDesigner.id);
+  assert.equal(designerChangesMeasurer?.lead.measurerId, measurer.id);
+
+  await assert.rejects(
+    () =>
+      withTenantTransaction(enterpriseId, (transaction) =>
+        new ReferralLeadRepository(transaction).assignStaff({
+          leadId: overwritten!.lead.id,
+          actorStaffId: measurer.id,
+          actorRole: 'measurer',
+          measurerId: replacementMeasurer.id,
+        })
+      ),
+    /无权分配或更换测量员/
   );
 });
 
@@ -698,6 +779,165 @@ test('manual entry assigns the staff pool and never binds a customer WeChat user
   assert.notEqual(created.lead.assignedTo, owner.id);
 });
 
+test('claiming a code attaches to the same-enterprise manual lead with the same phone', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-phone-claim`,
+      code: `${runKey}-phone-claim`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  await createAssignmentStaff(enterprise.id, 'designer', 'phone-claim-designer');
+  await createAssignmentStaff(enterprise.id, 'measurer', 'phone-claim-measurer');
+  const phone = `181${String(Date.now()).slice(-8)}`;
+  const customer = await withPlatformTransaction(async (transaction) => {
+    const [user] = await transaction
+      .insert(users)
+      .values({ phone, nickname: '微信客户' })
+      .returning();
+    userIds.push(user.id);
+    return user;
+  });
+  const source = await createSource(enterprise.id, 'phone-claim');
+  const manual = await withTenantTransaction(enterprise.id, (transaction) =>
+    new ReferralLeadRepository(transaction).createManualEntryLead({
+      enterpriseId: enterprise.id,
+      actorStaffId: null,
+      actorUserId: null,
+      name: '1111',
+      phone,
+      communityName: '西陵小区',
+    })
+  );
+  const claimed = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source,
+      customerUserId: customer.id,
+      idempotencyKeyHash: `${runKey}-phone-claim`,
+    })
+  );
+  assert.equal(claimed.kind, 'existing_attribution');
+  assert.equal(claimed.lead.id, manual.lead.id);
+  assert.equal(claimed.lead.customerUserId, customer.id);
+  assert.equal(claimed.lead.name, '1111');
+  assert.equal(claimed.lead.source, 'manual_entry');
+  const rows = await withTenantTransaction(enterprise.id, (transaction) =>
+    transaction.select().from(leads).where(eq(leads.enterpriseId, enterprise.id))
+  );
+  assert.equal(rows.length, 1);
+});
+
+test('manual entry reuses the scanned lead with the same phone and fills staff profile', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-phone-manual`,
+      code: `${runKey}-phone-manual`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  await createAssignmentStaff(enterprise.id, 'designer', 'phone-manual-designer');
+  await createAssignmentStaff(enterprise.id, 'measurer', 'phone-manual-measurer');
+  const phone = `182${String(Date.now()).slice(-8)}`;
+  const customer = await withPlatformTransaction(async (transaction) => {
+    const [user] = await transaction
+      .insert(users)
+      .values({ phone, nickname: '微信客户' })
+      .returning();
+    userIds.push(user.id);
+    return user;
+  });
+  const source = await createSource(enterprise.id, 'phone-manual');
+  const claimed = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source,
+      customerUserId: customer.id,
+      idempotencyKeyHash: `${runKey}-phone-manual`,
+    })
+  );
+  assert.equal(claimed.kind, 'created');
+  assert.equal(claimed.lead.name, '微信客户');
+  const merged = await withTenantTransaction(enterprise.id, (transaction) =>
+    new ReferralLeadRepository(transaction).createManualEntryLead({
+      enterpriseId: enterprise.id,
+      actorStaffId: null,
+      actorUserId: null,
+      name: '1111',
+      phone,
+      communityName: '西陵小区',
+      area: '120',
+      stylePreference: '工业风',
+    })
+  );
+  assert.equal(merged.created, false);
+  assert.equal(merged.lead.id, claimed.lead.id);
+  assert.equal(merged.lead.name, '1111');
+  assert.equal(merged.lead.communityName, '西陵小区');
+  assert.equal(Number(merged.lead.area), 120);
+  assert.equal(merged.lead.stylePreference, '工业风');
+  assert.equal(merged.lead.customerUserId, customer.id);
+  const rows = await withTenantTransaction(enterprise.id, (transaction) =>
+    transaction.select().from(leads).where(eq(leads.enterpriseId, enterprise.id))
+  );
+  assert.equal(rows.length, 1);
+});
+
+test('manual entry matches a WeChat 86-prefixed phone already stored on the scanned lead', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-phone-86`,
+      code: `${runKey}-phone-86`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  const designer = await createAssignmentStaff(enterprise.id, 'designer', 'phone-86-designer');
+  const measurer = await createAssignmentStaff(enterprise.id, 'measurer', 'phone-86-measurer');
+  const localPhone = `183${String(Date.now()).slice(-8)}`;
+  const wechatPhone = `86${localPhone}`;
+  const customer = await withPlatformTransaction(async (transaction) => {
+    const [user] = await transaction
+      .insert(users)
+      .values({ phone: wechatPhone, nickname: '微信客户' })
+      .returning();
+    userIds.push(user.id);
+    return user;
+  });
+  const scanned = await withTenantTransaction(enterprise.id, async (transaction) => {
+    const [lead] = await transaction
+      .insert(leads)
+      .values({
+        enterpriseId: enterprise.id,
+        customerUserId: customer.id,
+        assignedTo: designer.id,
+        measurerId: measurer.id,
+        assignedAt: new Date(),
+        assignmentStatus: 'assigned',
+        name: '微信客户',
+        phone: wechatPhone,
+        source: 'referrer_network',
+        status: 'new',
+        followUpRecords: [],
+      })
+      .returning();
+    return lead;
+  });
+  const merged = await withTenantTransaction(enterprise.id, (transaction) =>
+    new ReferralLeadRepository(transaction).createManualEntryLead({
+      enterpriseId: enterprise.id,
+      actorStaffId: null,
+      actorUserId: null,
+      name: '李女士',
+      phone: localPhone,
+    })
+  );
+  assert.equal(merged.created, false);
+  assert.equal(merged.lead.id, scanned.id);
+  assert.equal(merged.lead.name, '李女士');
+  assert.equal(merged.lead.phone, localPhone);
+});
+
 test('manual entry stays pending without a pool and retry fills both roles', async () => {
   const enterprise = await withPlatformTransaction(async (transaction) =>
     new EnterpriseRepository(transaction).create({
@@ -734,4 +974,125 @@ test('manual entry stays pending without a pool and retry fills both roles', asy
   assert.equal(retried?.lead.assignedTo, designer.id);
   assert.equal(retried?.lead.measurerId, measurer.id);
   assert.equal(retried?.lead.source, 'manual_entry');
+});
+
+function nextBookableSlot(hour: string) {
+  const localToday = localDateInTimeZone(new Date(), 'Asia/Shanghai');
+  const date = new Date(`${localToday}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  const localDate = date.toISOString().slice(0, 10);
+  const startAt = zonedDateTimeToUtc(localDate, hour, 'Asia/Shanghai');
+  return { startAt, endAt: new Date(startAt.getTime() + 120 * 60_000) };
+}
+
+test('manual reassign rewrites the active appointment and rejects a busy measurer', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-reassign-appt`,
+      code: `${runKey}-reassign-appt`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  const actor = await createCustomer('reassign-appt-actor');
+  const designer = await createAssignmentStaff(enterprise.id, 'designer', 'reassign-designer-a');
+  const designerB = await createAssignmentStaff(enterprise.id, 'designer', 'reassign-designer-b');
+  const measurerA = await createAssignmentStaff(enterprise.id, 'measurer', 'reassign-measurer-a');
+  const measurerB = await createAssignmentStaff(enterprise.id, 'measurer', 'reassign-measurer-b');
+  const measurerC = await createAssignmentStaff(enterprise.id, 'measurer', 'reassign-measurer-c');
+
+  const [leadA, leadB] = await withTenantTransaction(enterprise.id, async (transaction) => {
+    const leadsRepo = new LeadRepository(transaction);
+    const first = await leadsRepo.create({
+      enterpriseId: enterprise.id,
+      assignedTo: designer.id,
+      measurerId: measurerA.id,
+      customerUserId: actor.id,
+      name: '改派预约客户甲',
+      phone: `17${String(Date.now()).slice(-9)}`,
+      source: 'reassign-test',
+      assignmentStatus: 'assigned',
+    });
+    const second = await leadsRepo.create({
+      enterpriseId: enterprise.id,
+      assignedTo: designer.id,
+      measurerId: measurerB.id,
+      customerUserId: actor.id,
+      name: '改派预约客户乙',
+      phone: `18${String(Date.now()).slice(-9)}`,
+      source: 'reassign-test',
+      assignmentStatus: 'assigned',
+    });
+    return [first, second];
+  });
+
+  const slot = nextBookableSlot('10:00');
+  const original = await withTenantTransaction(enterprise.id, (transaction) =>
+    new AppointmentRepository(transaction).create({
+      enterpriseId: enterprise.id,
+      leadId: leadA.id,
+      startAt: slot.startAt,
+      endAt: slot.endAt,
+      address: '改派测试小区 1 号',
+      actorUserId: actor.id,
+      eventKey: `${runKey}-reassign-create-a`,
+    })
+  );
+  await withTenantTransaction(enterprise.id, (transaction) =>
+    new AppointmentRepository(transaction).create({
+      enterpriseId: enterprise.id,
+      leadId: leadB.id,
+      startAt: slot.startAt,
+      endAt: slot.endAt,
+      address: '改派测试小区 2 号',
+      actorUserId: actor.id,
+      eventKey: `${runKey}-reassign-create-b`,
+    })
+  );
+
+  const designerRewrite = await withTenantTransaction(enterprise.id, (transaction) =>
+    new ReferralLeadRepository(transaction).assignStaff({
+      leadId: leadA.id,
+      actorStaffId: designer.id,
+      actorRole: 'enterprise_admin',
+      designerId: designerB.id,
+    })
+  );
+  assert.equal(designerRewrite?.lead.assignedTo, designerB.id);
+  assert.equal(designerRewrite?.rewrittenAppointment?.designerId, designerB.id);
+  assert.equal(designerRewrite?.rewrittenAppointment?.measurerId, original.measurerId);
+  assert.equal(designerRewrite?.rewrittenAppointment?.version, original.version + 1);
+
+  await assert.rejects(
+    () =>
+      withTenantTransaction(enterprise.id, (transaction) =>
+        new ReferralLeadRepository(transaction).assignStaff({
+          leadId: leadA.id,
+          actorStaffId: designerB.id,
+          actorRole: 'enterprise_admin',
+          measurerId: measurerB.id,
+        })
+      ),
+    /新测量员该时段不可用/
+  );
+
+  const measurerRewrite = await withTenantTransaction(enterprise.id, (transaction) =>
+    new ReferralLeadRepository(transaction).assignStaff({
+      leadId: leadA.id,
+      actorStaffId: designerB.id,
+      actorRole: 'enterprise_admin',
+      measurerId: measurerC.id,
+    })
+  );
+  assert.equal(measurerRewrite?.lead.measurerId, measurerC.id);
+  assert.equal(measurerRewrite?.rewrittenAppointment?.measurerId, measurerC.id);
+  assert.equal(measurerRewrite?.rewrittenAppointment?.designerId, designerB.id);
+
+  const events = await withTenantTransaction(enterprise.id, (transaction) =>
+    transaction
+      .select()
+      .from(measurementAppointmentEvents)
+      .where(eq(measurementAppointmentEvents.appointmentId, original.id))
+  );
+  assert.ok(events.some((event) => event.eventType === 'staff_reassigned'));
 });

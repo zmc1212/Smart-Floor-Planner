@@ -13,6 +13,13 @@ const {
   wrapGuideBody,
   buildDirectGuideConnector
 } = require('../utils/surveyGuide.js');
+const {
+  wrapFormalDraftStorage,
+  unwrapFormalDraftStorage,
+  getDraftGeometryFingerprint,
+  shouldAutosaveSurveyDraft,
+  shouldKeepLocalSurveyDraft
+} = require('../utils/surveyDraftAutosave.js');
 
 const RESERVED_TOOLS = [
   { key: 'settings', label: '设置' },
@@ -456,7 +463,12 @@ Page({
     const restoredDraft = startNewSurvey
       ? null
       : this.loadFormalDraft(leadId, context.surveyGraph, this.formalDraftKey);
+    this.pendingRestoredLocalDraft = restoredDraft || null;
     this.draft = restoredDraft || surveyGraph.resetCursor(surveyGraph.createSurveyDraft());
+    this.lastCloudFingerprint = '';
+    this.formalCloudLoadInFlight = false;
+    this.cloudSaveInFlight = false;
+    if (!this.localDraftSavedAt) this.localDraftSavedAt = 0;
     const initialFloor = surveyGraph.getActiveFloor(this.draft);
     this.cursorPlacementState = initialFloor && initialFloor.session && initialFloor.session.state === 'wallSnapPending'
       ? 'awaitingWallDrop'
@@ -569,6 +581,8 @@ Page({
     this.finishViewportInteraction({ sync: true, persist: false });
     this.stopPhoneAngleMeasurement();
     this.unbindSpaceNameKeyboardListener();
+    this.flushFormalPersist();
+    this.autosaveFormalFloorPlan();
   },
 
   onUnload() {
@@ -582,7 +596,8 @@ Page({
     this.clearBleMeasureTimers();
     this.stopPhoneAngleMeasurement();
     this.unbindSpaceNameKeyboardListener();
-    this.persistFormalDraft();
+    this.flushFormalPersist();
+    this.autosaveFormalFloorPlan();
     this.destroyComponentScene();
   },
 
@@ -653,8 +668,9 @@ Page({
 
   loadFormalDraft(leadId, serverDraft, draftKey) {
     try {
-      const draft = wx.getStorageSync(draftKey || this.getFormalDraftKey(leadId));
-      const localDraft = this.normalizeRestoredFormalDraft(draft);
+      const stored = unwrapFormalDraftStorage(wx.getStorageSync(draftKey || this.getFormalDraftKey(leadId)));
+      if (stored.savedAt) this.localDraftSavedAt = stored.savedAt;
+      const localDraft = this.normalizeRestoredFormalDraft(stored.draft);
       if (localDraft) return localDraft;
       return this.normalizeRestoredFormalDraft(serverDraft);
     } catch (err) {
@@ -665,7 +681,12 @@ Page({
   persistFormalDraft() {
     if (!this.draft) return false;
     try {
-      wx.setStorageSync(this.formalDraftKey || this.getFormalDraftKey(this.data.leadId || ''), surveyGraph.cloneDraft(this.draft));
+      const savedAt = Date.now();
+      this.localDraftSavedAt = savedAt;
+      wx.setStorageSync(
+        this.formalDraftKey || this.getFormalDraftKey(this.data.leadId || ''),
+        wrapFormalDraftStorage(surveyGraph.cloneDraft(this.draft), savedAt)
+      );
       return true;
     } catch (err) {
       // 本地草稿持久化失败不应阻塞量房。
@@ -768,6 +789,8 @@ Page({
   },
 
   async loadFormalFloorPlan(floorPlanId) {
+    this.formalCloudLoadInFlight = true;
+    let keepLocal = false;
     try {
       const res = await api.request(`/floorplans/${floorPlanId}`, 'GET');
       const layout = res && res.data ? surveyLayout.parseFormalSurveyLayout(res.data.layoutData) : null;
@@ -775,7 +798,6 @@ Page({
       const restored = this.normalizeRestoredFormalDraft(layout.surveyGraph);
       if (!restored) throw new Error('正式量房墙图无效');
       this.serverDraftId = res.data._id;
-      this.draft = restored;
       this.persistServerDraftId(this.data.leadId || '', res.data._id);
       const communityName = (res.data.lead && res.data.lead.communityName)
         || res.data.communityName
@@ -783,16 +805,41 @@ Page({
         || (res.data.creator && res.data.creator.communityName)
         || this.data.communityName
         || '';
-      this.setData({
-        communityName,
-        title: communityName || '未填写小区',
-        floorPlanStatus: res.data.status || 'draft',
-        formalNotice: res.data.status === 'completed' ? '已完成量房' : '已恢复正式草稿'
-      });
-      this.syncFromDraft();
+      const serverUpdatedAt = Date.parse(res.data.updatedAt) || 0;
+      keepLocal = shouldKeepLocalSurveyDraft(
+        this.pendingRestoredLocalDraft,
+        this.localDraftSavedAt || 0,
+        restored,
+        serverUpdatedAt
+      );
+      if (keepLocal) {
+        this.draft = this.pendingRestoredLocalDraft;
+        this.lastCloudFingerprint = getDraftGeometryFingerprint(restored);
+        this.setData({
+          communityName,
+          title: communityName || '未填写小区',
+          floorPlanStatus: res.data.status || 'draft',
+          formalNotice: '已恢复本地草稿'
+        });
+        this.syncFromDraft();
+      } else {
+        this.draft = restored;
+        this.pendingRestoredLocalDraft = null;
+        this.lastCloudFingerprint = getDraftGeometryFingerprint(restored);
+        this.setData({
+          communityName,
+          title: communityName || '未填写小区',
+          floorPlanStatus: res.data.status || 'draft',
+          formalNotice: res.data.status === 'completed' ? '已完成量房' : '已恢复正式草稿'
+        });
+        this.syncFromDraft();
+      }
     } catch (err) {
       wx.showToast({ title: (err && err.error) || err.message || '户型加载失败', icon: 'none' });
+    } finally {
+      this.formalCloudLoadInFlight = false;
     }
+    if (keepLocal) this.autosaveFormalFloorPlan();
   },
 
   async saveFormalFloorPlan(status) {
@@ -843,6 +890,7 @@ Page({
     if (res && res.success && res.data && res.data._id) {
       this.persistServerDraftId(leadId, res.data._id);
       this.isNewSurveySession = false;
+      this.lastCloudFingerprint = getDraftGeometryFingerprint(layoutData.surveyGraph);
       if (leadId) {
         await api.request(`/leads/${leadId}`, 'PUT', {
           openid,
@@ -869,6 +917,39 @@ Page({
       this.persistTimer = null;
       this.persistFormalDraft();
     }, 300);
+  },
+
+  flushFormalPersist() {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
+    return this.persistFormalDraft();
+  },
+
+  async autosaveFormalFloorPlan() {
+    if (this.cloudSaveInFlight || this.formalCloudLoadInFlight) return false;
+    const serverDraftId = this.serverDraftId || this.data.serverDraftId || this.getStoredServerDraftId(this.data.leadId || '');
+    if (!shouldAutosaveSurveyDraft(this.draft, {
+      serverDraftId,
+      lastCloudFingerprint: this.lastCloudFingerprint,
+      cloudLoadInFlight: this.formalCloudLoadInFlight,
+      cloudSaveInFlight: this.cloudSaveInFlight
+    })) {
+      return false;
+    }
+
+    this.cloudSaveInFlight = true;
+    try {
+      const status = this.data.floorPlanStatus === 'completed' ? 'completed' : 'draft';
+      await this.saveFormalFloorPlan(status);
+      return true;
+    } catch (err) {
+      console.warn('[surveying-editor] Silent autosave failed', err);
+      return false;
+    } finally {
+      this.cloudSaveInFlight = false;
+    }
   },
 
   _bindBluetoothCallbacks() {
@@ -4060,12 +4141,12 @@ Page({
       return;
     }
 
-    if (!this.data.numberPadVisible) {
-      this.openLengthPad();
-      setTimeout(() => this.triggerBluetoothNumberMeasure(), 0);
+    if (this.data.numberPadVisible) {
+      this.triggerBluetoothNumberMeasure();
       return;
     }
-    this.triggerBluetoothNumberMeasure();
+
+    wx.showToast({ title: '请先拉出一条墙', icon: 'none' });
   },
 
   onObjectToolTap(tool) {
@@ -5522,11 +5603,7 @@ Page({
     this.history = { undo: [], redo: [] };
     this.pendingMeasurementRecords = [];
     this.draft = freshDraft;
-    try {
-      wx.setStorageSync(this.formalDraftKey || this.getFormalDraftKey(this.data.leadId || ''), surveyGraph.cloneDraft(this.draft));
-    } catch (err) {
-      // 清除本地草稿失败不阻塞操作
-    }
+    this.persistFormalDraft();
     this.syncFromDraft({ numberPadVisible: false });
     wx.showToast({ title: '画布已清空', icon: 'success' });
   },

@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     });
     return NextResponse.json({
       success: true,
-      ...serializeWorkflowListForMini(request, context.enterpriseId, result),
+      ...(await serializeWorkflowListForMini(request, context.enterpriseId, result)),
     });
   } catch (error) {
     console.error('[Mini AI Studio Workflows GET]', error);

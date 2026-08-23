@@ -13,7 +13,7 @@
     "lint": "eslint",
     "test:survey-canvas": "npx tsx --test src/lib/__tests__/survey-canvas-viewport.test.ts src/lib/__tests__/survey-canvas-runtime.test.ts src/lib/__tests__/survey-floor-plan-snapshot.test.ts",
     "test:ai": "npx tsx --test src/lib/ai/__tests__/*.test.ts",
-    "test:postgresql": "npx tsx --test src/lib/__tests__/postgresql.test.ts src/lib/__tests__/lead-lifecycle.test.ts src/lib/__tests__/lead-conversion.test.ts src/lib/__tests__/lead-source.test.ts src/lib/__tests__/lead-staff-visibility.test.ts src/lib/__tests__/subscription-notification.test.ts src/lib/__tests__/referral-attribution.test.ts src/lib/__tests__/wechat-access-token.test.ts src/db/__tests__/*.test.ts",
+    "test:postgresql": "npx tsx --test src/lib/__tests__/postgresql.test.ts src/lib/__tests__/lead-lifecycle.test.ts src/lib/__tests__/lead-conversion.test.ts src/lib/__tests__/lead-source.test.ts src/lib/__tests__/lead-staff-visibility.test.ts src/lib/__tests__/subscription-notification.test.ts src/lib/__tests__/referral-attribution.test.ts src/lib/__tests__/wechat-access-token.test.ts src/lib/__tests__/customer-phone.test.ts src/db/__tests__/*.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/postgres-migrate.mjs",
     "db:check": "node scripts/postgres-check.mjs",

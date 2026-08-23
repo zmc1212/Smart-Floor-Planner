@@ -3,6 +3,7 @@
   "backgroundColor": "#F6F7F4",
   "backgroundTextStyle": "dark",
   "usingComponents": {
-    "ai-scheme-composer": "/components/ai-scheme-composer/ai-scheme-composer"
+    "ai-scheme-composer": "/components/ai-scheme-composer/ai-scheme-composer",
+    "site-photo-grid": "/components/site-photo-grid/site-photo-grid"
   }
 }

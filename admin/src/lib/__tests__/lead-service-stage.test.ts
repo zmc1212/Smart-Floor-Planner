@@ -69,7 +69,7 @@ test('survey completion outranks an expired appointment', () => {
     leadStatus: 'designing',
     assignmentStatus: 'assigned',
     measurerId: '1',
-    appointment: { status: 'expired', timeRange: range },
+    appointment: { status: 'completed', timeRange: range },
     hasFormalFloorPlan: true,
   });
   assert.equal(stage.key, 'survey_completed');
@@ -78,6 +78,29 @@ test('survey completion outranks an expired appointment', () => {
     appointment: { status: 'expired', timeRange: range },
     hasFormalFloorPlan: true,
   }), false);
+});
+
+test('completed floor plan with a still-confirmed appointment is survey_ready', () => {
+  const inProgress = resolveLeadServiceStage({
+    leadStatus: 'measuring',
+    assignmentStatus: 'assigned',
+    measurerId: '1',
+    appointment: { status: 'confirmed', timeRange: range },
+    hasFormalFloorPlan: true,
+    now: new Date('2026-08-19T02:00:00.000Z'),
+  });
+  assert.equal(inProgress.key, 'survey_ready');
+  assert.equal(inProgress.label, '待确认完成');
+
+  const leftoverDesigning = resolveLeadServiceStage({
+    leadStatus: 'designing',
+    assignmentStatus: 'assigned',
+    measurerId: '1',
+    appointment: { status: 'confirmed', timeRange: range },
+    hasFormalFloorPlan: true,
+    now: new Date('2026-08-19T02:00:00.000Z'),
+  });
+  assert.equal(leftoverDesigning.key, 'survey_ready');
 });
 
 test('published customer designs advance the service stage ahead of survey completion', () => {
@@ -90,6 +113,47 @@ test('published customer designs advance the service stage ahead of survey compl
   });
   assert.equal(stage.key, 'design_published');
   assert.equal(stage.nextAction, '沟通确认或标记签约');
+});
+
+test('first send without survey is design_published and still allows makeup booking', () => {
+  const stage = resolveLeadServiceStage({
+    leadStatus: 'designing',
+    assignmentStatus: 'assigned',
+    measurerId: '1',
+    publishedDesignCount: 1,
+  });
+  assert.equal(stage.key, 'design_published');
+  assert.equal(canRebookAppointment({
+    leadStatus: 'designing',
+    assignmentStatus: 'assigned',
+  }), true);
+  const home = resolveCustomerHomeAction({
+    leadStatus: 'designing',
+    assignmentStatus: 'assigned',
+    measurerId: '1',
+    publishedDesignCount: 1,
+  });
+  assert.equal(home.kind, 'view_project');
+  assert.equal(home.label, '我的服务档案');
+  assert.equal(home.canRebook, true);
+  assert.equal(home.appointmentSummary, '方案已发布，可在服务档案查看');
+});
+
+test('published unsurveyed leads keep visit time when a makeup appointment is confirmed', () => {
+  const home = resolveCustomerHomeAction({
+    leadStatus: 'designing',
+    assignmentStatus: 'assigned',
+    measurerId: '1',
+    publishedDesignCount: 1,
+    appointment: { status: 'confirmed', timeRange: range },
+    now: new Date('2026-08-18T12:00:00.000Z'),
+    customerRescheduleCutoffHours: 2,
+  });
+  assert.equal(home.stageKey, 'design_published');
+  assert.equal(home.kind, 'view_project');
+  assert.equal(home.canRebook, false);
+  assert.equal(home.canReschedule, true);
+  assert.equal(home.appointmentSummary, '8月19日 09:00 上门量房');
 });
 
 test('rebooking is allowed after expiry or cancel when survey is not done', () => {
@@ -133,6 +197,12 @@ test('customer reschedule stays inside the cutoff window and stops after the vis
     appointment,
     customerRescheduleCutoffHours: 2,
     now: new Date('2026-08-19T02:00:00.000Z'),
+  }), false);
+  assert.equal(canCustomerReschedule({
+    appointment,
+    customerRescheduleCutoffHours: 2,
+    hasFormalFloorPlan: true,
+    now: new Date('2026-08-18T22:00:00.000Z'),
   }), false);
 });
 
@@ -203,6 +273,7 @@ test('customer home exposes one next action from the shared service stage', () =
   assert.equal(resolveCustomerHomeAction({
     leadStatus: 'designing',
     hasFormalFloorPlan: true,
+    appointment: { status: 'completed', timeRange: range },
   }).kind, 'view_project');
 
   assert.equal(CUSTOMER_HOME_ACTION_LABELS.view_project, '我的服务档案');
@@ -211,7 +282,21 @@ test('customer home exposes one next action from the shared service stage', () =
   assert.equal(resolveCustomerHomeAction({
     leadStatus: 'designing',
     hasFormalFloorPlan: true,
+    appointment: { status: 'completed', timeRange: range },
   }).label, '我的服务档案');
+
+  const pendingConfirm = resolveCustomerHomeAction({
+    leadStatus: 'measuring',
+    appointment: { status: 'confirmed', timeRange: range },
+    hasFormalFloorPlan: true,
+    now: new Date('2026-08-19T02:00:00.000Z'),
+    customerRescheduleCutoffHours: 2,
+  });
+  assert.equal(pendingConfirm.stageKey, 'survey_ready');
+  assert.equal(pendingConfirm.kind, 'view_project');
+  assert.equal(pendingConfirm.canReschedule, false);
+  assert.equal(pendingConfirm.canRebook, false);
+  assert.equal(pendingConfirm.appointmentSummary, '测量员正在上门量房');
 });
 
 test('operational appointment prefers an active confirmed rebooking over an older expired row', () => {

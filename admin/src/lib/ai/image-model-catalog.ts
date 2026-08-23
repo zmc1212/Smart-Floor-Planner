@@ -2,21 +2,61 @@ import {
   AiCreationModelProfileRepository,
   AiModelCreditPriceRepository,
   type AiCreationModelProfileRecord,
+  type AiModelCreditPriceRecord,
 } from '@/db/repositories';
-import { withPlatformTransaction } from '@/db/transaction';
+import { withPlatformTransaction, type PostgresTransaction } from '@/db/transaction';
 import { getAiCreditPrice } from '@/lib/ai/credits';
 import {
   GRS_IMAGE_CATALOG_VERSION,
   GRS_IMAGE_MODEL_CATALOG,
   getGrsAspectRatiosForTier,
+  getGrsImageModelDefinition,
   type GrsResolutionTier,
 } from '@/lib/ai/grs-image-models';
 
 const DEFAULT_MODEL = 'gpt-image-2';
 
-export async function ensurePostgresGrsImageModelCatalog() {
+async function defaultFreeCreateCredits() {
   const basePrice = await getAiCreditPrice('image.free_create');
-  const defaultCredits = Math.max(1, Number(basePrice.credits || 10));
+  return Math.max(1, Number(basePrice.credits || 10));
+}
+
+async function reconcilePricedCatalogProfiles(
+  profiles: AiCreationModelProfileRepository,
+  prices: AiModelCreditPriceRepository
+) {
+  const enabledPrices = await prices.list({
+    actionKey: 'image.free_create',
+    enabledOnly: true,
+  });
+  await profiles.enableCatalogProfilesByKeys([
+    ...new Set(enabledPrices.map((price) => price.modelProfileKey)),
+  ]);
+}
+
+export async function enableDefaultResolutionPriceForProfile(
+  transaction: PostgresTransaction,
+  profile: AiCreationModelProfileRecord,
+  input: { defaultCredits: number; updatedBy?: bigint }
+) {
+  const prices = new AiModelCreditPriceRepository(transaction);
+  const profilePrices = (await prices.list({ actionKey: 'image.free_create' }))
+    .filter((price) => price.modelProfileKey === profile.key);
+  if (profilePrices.some((price) => price.enabled)) return;
+  const defaults = profile.defaults || {};
+  const defaultTier = String(defaults.resolutionTier || defaults.size || '1K');
+  const target = profilePrices.find((price) => price.resolutionTier === defaultTier) || profilePrices[0];
+  if (!target) return;
+  const existingCredits = Number(target.credits);
+  await prices.update(profile.key, target.resolutionTier, {
+    credits: existingCredits > 0 ? target.credits : BigInt(input.defaultCredits),
+    enabled: true,
+    updatedBy: input.updatedBy,
+  });
+}
+
+export async function ensurePostgresGrsImageModelCatalog() {
+  const defaultCredits = await defaultFreeCreateCredits();
   await withPlatformTransaction(async (transaction) => {
     const profiles = new AiCreationModelProfileRepository(transaction);
     const prices = new AiModelCreditPriceRepository(transaction);
@@ -62,14 +102,42 @@ export async function ensurePostgresGrsImageModelCatalog() {
       }
     }
     await profiles.ensureDefaultCatalogProfile(`grs-${DEFAULT_MODEL}`);
+    await reconcilePricedCatalogProfiles(profiles, prices);
   });
+}
+
+export function selectCatalogImageModelPrices<T extends { modelProfileKey: string }>(
+  items: T[],
+  catalogKeys: Iterable<string>
+) {
+  const keys = catalogKeys instanceof Set ? catalogKeys : new Set(catalogKeys);
+  return items.filter((item) => keys.has(item.modelProfileKey));
+}
+
+export function catalogResolutionTiersForPrice(profile: {
+  remoteModel?: string | null;
+  capabilities?: { resolutionTiers?: unknown } | Record<string, unknown> | null;
+}) {
+  const stored = profile.capabilities && typeof profile.capabilities === 'object'
+    ? (profile.capabilities as { resolutionTiers?: unknown }).resolutionTiers
+    : undefined;
+  if (Array.isArray(stored) && stored.every((tier) => typeof tier === 'string')) {
+    return stored;
+  }
+  return getGrsImageModelDefinition(String(profile.remoteModel || ''))?.resolutionTiers ?? [];
 }
 
 export async function listPostgresImageModelPrices() {
   await ensurePostgresGrsImageModelCatalog();
-  return withPlatformTransaction((transaction) =>
-    new AiModelCreditPriceRepository(transaction).list({ actionKey: 'image.free_create' })
-  );
+  return withPlatformTransaction(async (transaction) => {
+    const profiles = await new AiCreationModelProfileRepository(transaction).list({
+      sourceType: 'grs_catalog',
+    });
+    const prices = await new AiModelCreditPriceRepository(transaction).list({
+      actionKey: 'image.free_create',
+    });
+    return selectCatalogImageModelPrices(prices, profiles.map((profile) => profile.key));
+  });
 }
 
 export async function getPostgresImageModelPrice(
@@ -102,6 +170,44 @@ export async function listPostgresExecutableImageModelProfiles() {
   ]);
   const pricedKeys = new Set(prices.map((price) => price.modelProfileKey));
   return profiles.filter((profile) => pricedKeys.has(profile.key));
+}
+
+export function sortWorkbenchImageModels<T extends { isDefault?: boolean; weight?: number; name?: string }>(
+  models: T[]
+) {
+  return [...models].sort((left, right) =>
+    Number(Boolean(right.isDefault)) - Number(Boolean(left.isDefault))
+    || Number(right.weight || 0) - Number(left.weight || 0)
+    || String(left.name || '').localeCompare(String(right.name || ''))
+  );
+}
+
+export function serializeWorkbenchImageModels(
+  profiles: AiCreationModelProfileRecord[],
+  modelPrices: AiModelCreditPriceRecord[]
+) {
+  return sortWorkbenchImageModels(profiles.filter((profile) => profile.enabled)).map((profile) => {
+    const enabledPrices = modelPrices.filter((item) => item.enabled && item.modelProfileKey === profile.key);
+    const serialized = serializePostgresCatalogProfile(profile);
+    const defaultResolutionTier = enabledPrices.some(
+      (item) => item.resolutionTier === serialized.defaults.resolutionTier
+    )
+      ? serialized.defaults.resolutionTier
+      : enabledPrices[0]?.resolutionTier || serialized.defaults.resolutionTier;
+    return {
+      ...serialized,
+      resolutionTiers: enabledPrices.map((item) => item.resolutionTier),
+      defaults: { ...serialized.defaults, resolutionTier: defaultResolutionTier },
+      prices: enabledPrices.map(serializeImageModelPrice),
+    };
+  });
+}
+
+export async function listPostgresWorkbenchImageModels() {
+  const profilesPromise = listPostgresExecutableImageModelProfiles();
+  const modelPricesPromise = profilesPromise.then(() => listPostgresImageModelPrices());
+  const [profiles, modelPrices] = await Promise.all([profilesPromise, modelPricesPromise]);
+  return serializeWorkbenchImageModels(profiles, modelPrices);
 }
 
 export function serializeImageModelPrice(price: {

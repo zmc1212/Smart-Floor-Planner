@@ -11,6 +11,7 @@ import {
   enterprises,
   floorPlans,
   leads,
+  leadSitePhotos,
   measurementAppointments,
   mediaAssets,
   referrerEnterpriseMemberships,
@@ -155,6 +156,7 @@ export class TenantEnterpriseResetRepository {
         count: asCount(staffRows[0]?.value),
       },
       { table: 'departments', label: '部门', count: await this.countEq(departments, enterpriseId) },
+      { table: 'lead_site_photos', label: '房屋现场图', count: await this.countEq(leadSitePhotos, enterpriseId) },
       { table: 'media_assets', label: '企业媒体记录', count: await this.countEq(mediaAssets, enterpriseId) },
       {
         table: 'workflow_notification_logs',
@@ -307,6 +309,7 @@ export class TenantEnterpriseResetRepository {
       ['lead_lifecycle_events', '线索生命周期'],
       ['measurements', '量房记录'],
       ['floor_plans', '户型'],
+      ['lead_site_photos', '房屋现场图'],
       ['leads', '线索'],
       ['commission_records', '旧提成记录'],
       ['enterprise_orders', '企业订单'],

@@ -22,8 +22,14 @@ test('customer service home shows one featured stage and a single next action', 
   assert.match(template, /item-cta-secondary sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png[\s\S]*电话联系/);
   assert.match(template, /openNavigation[\s\S]*\/images\/leads-v4\/map-pin\.png[\s\S]*导航/);
   assert.match(template, /openSurvey[\s\S]*\/images\/leads-v4\/ruler-green\.png/);
+  assert.match(template, /item\.canCompleteSurvey/);
+  assert.match(template, /确认完成量房/);
   assert.match(template, /openReschedule[\s\S]*\/packages\/business\/assets\/promotion-detail\/calendar\.png/);
   assert.match(source('app.less'), /\.sfp-icon-action\s*\{[\s\S]*gap:\s*8rpx;/);
+  assert.match(source('app.less'), /\.sfp-icon-action__icon\s*\{[\s\S]*width:\s*28rpx;[\s\S]*height:\s*28rpx;/);
+  const workbenchStyles = source('components/role-workbench/role-workbench.less');
+  assert.match(workbenchStyles, /\.item-cta\s*\{[\s\S]*gap:\s*8rpx;/);
+  assert.match(workbenchStyles, /\.item-cta image\s*\{[\s\S]*width:\s*28rpx;[\s\S]*height:\s*28rpx;/);
   assert.doesNotMatch(workbench, /title: '免费设计与量房'/);
 });
 
@@ -84,12 +90,14 @@ test('designer profile edit loads and saves wechat id plus qr without requiring 
   const api = source('utils/api.js');
   assert.match(page, /\/miniprogram\/staff\/wechat-profile/);
   assert.match(page, /uploadStaffWechatQr/);
+  assert.match(page, /hideKeyboard/);
   assert.match(page, /loadDesignerQrToTempFile/);
   assert.match(page, /assignmentEligible/);
   assert.match(page, /补齐后才能接客户/);
   assert.match(template, /wx:if="\{\{isDesigner\}\}"/);
   assert.match(template, /wechatId/);
   assert.match(template, /wechatQrPath|hasWechatQr/);
+  assert.match(template, /catchtap="onChooseWechatQr"/);
   assert.match(template, /eligibilityLabel/);
   assert.match(template, /领取成功页和服务档案/);
   assert.doesNotMatch(template, /测量员.*二维码/);
@@ -146,4 +154,18 @@ test('role workbench identity tag shows the current enterprise name only', () =>
   assert.doesNotMatch(template, /role === 'designer' \? '设计师'/);
   assert.doesNotMatch(template, /企业负责人/);
   assert.doesNotMatch(template, /专业服务/);
+});
+
+test('custom period sheet keeps cancel and confirm above the custom TabBar', () => {
+  const template = source('components/role-workbench/role-workbench.wxml');
+  const styles = source('components/role-workbench/role-workbench.less');
+  assert.match(template, /period-sheet-title[\s\S]*自定义周期/);
+  assert.match(template, /bindtap="closePeriodSheet"[\s\S]*取消/);
+  assert.match(template, /bindtap="confirmCustomPeriod"[\s\S]*确定/);
+  assert.match(
+    styles,
+    /\.period-sheet-mask\s*\{[\s\S]*bottom:\s*var\(--sfp-custom-tabbar-safe-height/
+  );
+  assert.match(styles, /\.period-sheet-actions\s*\{[\s\S]*display:\s*flex/);
+  assert.match(styles, /\.period-sheet-btn\.solid\s*\{[\s\S]*background:\s*#00c365/);
 });

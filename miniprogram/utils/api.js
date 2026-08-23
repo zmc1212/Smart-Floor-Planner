@@ -178,7 +178,9 @@ function uploadStaffWechatQr(filePath) {
         }
         reject(payload || { error: '二维码上传失败' });
       },
-      fail: reject
+      fail(err) {
+        reject({ error: '二维码上传失败', errMsg: err && err.errMsg });
+      }
     });
   });
 }

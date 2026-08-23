@@ -30,3 +30,16 @@ export function canStaffCreateLeadAppointment(input: {
     input.measurerId === input.staffId
   );
 }
+
+export function canStaffCreateOnSiteVisit(input: {
+  staffRole?: string | null;
+  staffId?: bigint | null;
+  assignedTo?: bigint | null;
+  measurerId?: bigint | null;
+  source?: string | null;
+  status?: string | null;
+}) {
+  if (canStaffCreateLeadAppointment(input)) return true;
+  if (!input.staffId || input.status === 'closed' || input.status === 'converted') return false;
+  return input.staffRole === 'measurer' && input.measurerId === input.staffId;
+}

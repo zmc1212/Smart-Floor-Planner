@@ -1,7 +1,9 @@
 const api = require('../../../utils/api.js');
 const { getRoleLanding, leaveScanLanding } = require('../../../utils/identity-navigation.js');
-
-const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
+const {
+  restoreOnboardingToken,
+  onboardingTokenFromScanResult
+} = require('../../../utils/onboardingScan.js');
 
 function currentSignedIdentity() {
   const app = typeof getApp === 'function' ? getApp() : null;
@@ -29,14 +31,7 @@ function navigationMetrics() {
 }
 
 function safeToken(value) {
-  const raw = String(value || '').trim();
-  let decoded = raw;
-  try {
-    decoded = decodeURIComponent(raw);
-  } catch (error) {
-    // Keep the original value when the QR scene is not URI encoded.
-  }
-  return /^[A-Za-z0-9_-]{32}$/.test(decoded) ? `ej_${decoded}` : decoded;
+  return restoreOnboardingToken(value);
 }
 
 function usableDisplayName(value) {
@@ -53,16 +48,6 @@ function isRecoveryCode(code) {
 function navTitleFor(state) {
   if (state === 'recovery') return '入驻恢复';
   return '欢迎加入';
-}
-
-function onboardingUrlFromScanResult(scanResult) {
-  const rawPath = String(scanResult && scanResult.path || '').trim();
-  const queryIndex = rawPath.indexOf('?');
-  const route = (queryIndex === -1 ? rawPath : rawPath.slice(0, queryIndex))
-    .replace(/^\/+/, '');
-  const query = queryIndex === -1 ? '' : rawPath.slice(queryIndex + 1);
-  if (route !== ONBOARDING_ROUTE || !/(^|&)(token|scene)=[^&]+/.test(query)) return '';
-  return `/${ONBOARDING_ROUTE}${rawPath.slice(queryIndex)}`;
 }
 
 function onboardingErrorMessage(error) {
@@ -123,8 +108,31 @@ Page({
 
   onLoad(options) {
     const onboardingToken = safeToken(options.token || options.scene);
+    this._optionsToken = onboardingToken;
     this.setData({ ...navigationMetrics(), onboardingToken });
     this.resolveOnboardingCode();
+  },
+
+  onShow() {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    const current = pages && pages.length ? pages[pages.length - 1] : null;
+    const options = (current && current.options) || {};
+    const optionsToken = safeToken(options.token || options.scene);
+    if (!optionsToken || optionsToken === this._optionsToken) return;
+    this._optionsToken = optionsToken;
+    this.applyOnboardingToken(optionsToken);
+  },
+
+  applyOnboardingToken(token) {
+    const nextToken = safeToken(token);
+    if (!nextToken || nextToken === this.data.onboardingToken) return false;
+    this.setData({
+      onboardingToken: nextToken,
+      nameSheetVisible: false,
+      displayName: ''
+    });
+    this.resolveOnboardingCode();
+    return true;
   },
 
   async resolveOnboardingCode() {
@@ -318,15 +326,12 @@ Page({
       onlyFromCamera: false,
       scanType: ['qrCode'],
       success: (result) => {
-        const url = onboardingUrlFromScanResult(result);
-        if (!url) {
+        const token = onboardingTokenFromScanResult(result);
+        if (!token) {
           wx.showToast({ title: '请扫描企业提供的入驻码', icon: 'none' });
           return;
         }
-        wx.redirectTo({
-          url,
-          fail: () => wx.showToast({ title: '无法打开入驻页，请重新扫码', icon: 'none' })
-        });
+        if (!this.applyOnboardingToken(token)) this.resolveOnboardingCode();
       },
       fail: (error) => {
         if (String(error && error.errMsg || '').includes('cancel')) return;

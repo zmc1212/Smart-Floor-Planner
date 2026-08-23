@@ -26,6 +26,7 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   const businessPackage = appConfig.subPackages.find((item) => item.root === 'packages/business');
   const wxml = source('packages/business/onboarding/onboarding.wxml');
   const js = source('packages/business/onboarding/onboarding.js');
+  const scanUtil = source('utils/onboardingScan.js');
   const less = source('packages/business/onboarding/onboarding.less');
 
   assert.ok(businessPackage.pages.includes('onboarding/onboarding'));
@@ -54,7 +55,9 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.match(js, /\/miniprogram\/onboarding\/referrer/);
   assert.doesNotMatch(js, /offerNotificationAuthorization/);
   assert.doesNotMatch(js, /resolveOnboardingSubscribeRole/);
-  assert.match(js, /`ej_\$\{decoded\}`/);
+  assert.match(scanUtil, /`ej_\$\{decoded\}`/);
+  assert.match(js, /onboardingTokenFromScanResult/);
+  assert.match(js, /applyOnboardingToken/);
   assert.match(js, /enterpriseName/);
   assert.match(wxml, /将加入：/);
   assert.match(wxml, /\{\{enterpriseName\}\}/);
@@ -145,7 +148,7 @@ test('staff success CTA relaunches the designer workbench without subscribe prom
     assert.equal(toasts.length, 0);
 
     const invalid = {
-      data: { codeType: 'staff', selectedStaffRole: 'salesperson' },
+      data: { codeType: 'staff', selectedStaffRole: 'unknown' },
       enterWorkbench: definition.enterWorkbench
     };
     definition.onContinue.call(invalid);
@@ -287,5 +290,134 @@ test('referrer onboarding opens a name sheet after phone authorization and submi
     api.phoneLogin = originalPhoneLogin;
     global.getApp = originalGetApp;
     global.wx = originalWx;
+  }
+});
+
+test('recovery scan reapplies a WeChat mini-program code on the current onboarding page', () => {
+  const definition = loadPage();
+  const originalWx = global.wx;
+  let scanOptions;
+  const redirects = [];
+  const toasts = [];
+  const resolved = [];
+  global.wx = {
+    ...(originalWx || {}),
+    scanCode(options) { scanOptions = options; },
+    redirectTo(options) { redirects.push(options); },
+    showToast(options) { toasts.push(options); }
+  };
+
+  try {
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'recovery',
+        onboardingToken: 'ej_oldtokenoldtokenoldtokenoldtok'
+      },
+      setData(next) { Object.assign(this.data, next); },
+      resolveOnboardingCode() { resolved.push(this.data.onboardingToken); }
+    };
+    context.applyOnboardingToken = definition.applyOnboardingToken.bind(context);
+
+    definition.onScanNewInvite.call(context);
+
+    const scene = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
+    scanOptions.success({
+      path: `packages/business/onboarding/onboarding.html?scene=${scene}`,
+      scanType: 'WX_CODE'
+    });
+    assert.equal(redirects.length, 0);
+    assert.equal(context.data.onboardingToken, `ej_${scene}`);
+    assert.equal(resolved[0], `ej_${scene}`);
+    assert.equal(toasts.length, 0);
+
+    scanOptions.success({
+      result: 'https://example.com/packages/business/onboarding/onboarding.html?token=ej_NEWTOKENNEWTOKENNEWTOKENNEWTK12'
+    });
+    assert.equal(redirects.length, 0);
+    assert.equal(context.data.onboardingToken, 'ej_NEWTOKENNEWTOKENNEWTOKENNEWTK12');
+    assert.equal(resolved[1], 'ej_NEWTOKENNEWTOKENNEWTOKENNEWTK12');
+
+    scanOptions.success({ path: 'pages/index/index.html?scene=ABC' });
+    assert.match(toasts.at(-1).title, /企业提供的入驻码/);
+    assert.equal(resolved.length, 2);
+  } finally {
+    global.wx = originalWx;
+  }
+});
+
+test('onboarding reapplies a newer scene when WeChat reopens the current recovery page', () => {
+  const definition = loadPage();
+  const originalGetCurrentPages = global.getCurrentPages;
+  const resolved = [];
+  const scene = 'ZYXWVUTSRQPONMLKJIHGFEDCBA654321';
+  const context = {
+    data: {
+      ...definition.data,
+      pageState: 'recovery',
+      onboardingToken: 'ej_oldtokenoldtokenoldtokenoldtok'
+    },
+    setData(next) { Object.assign(this.data, next); },
+    resolveOnboardingCode() { resolved.push(this.data.onboardingToken); }
+  };
+  context._optionsToken = 'ej_oldtokenoldtokenoldtokenoldtok';
+  context.applyOnboardingToken = definition.applyOnboardingToken.bind(context);
+  global.getCurrentPages = () => [{ options: { scene } }];
+  try {
+    definition.onShow.call(context);
+    assert.equal(context.data.onboardingToken, `ej_${scene}`);
+    assert.equal(resolved[0], `ej_${scene}`);
+
+    resolved.length = 0;
+    definition.onShow.call(context);
+    assert.equal(resolved.length, 0);
+  } finally {
+    global.getCurrentPages = originalGetCurrentPages;
+  }
+});
+
+test('recovery camera scan is not overwritten by the original page scene on show', () => {
+  const definition = loadPage();
+  const originalWx = global.wx;
+  const originalGetCurrentPages = global.getCurrentPages;
+  let scanOptions;
+  const resolved = [];
+  const originalScene = 'OLDTOKENOLDTOKENOLDTOKENOLDTOKEN';
+  const scene = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456';
+  global.wx = {
+    ...(originalWx || {}),
+    scanCode(options) { scanOptions = options; },
+    redirectTo() {},
+    showToast() {}
+  };
+  global.getCurrentPages = () => [{ options: { scene: originalScene } }];
+
+  try {
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'recovery',
+        onboardingToken: `ej_${originalScene}`
+      },
+      setData(next) { Object.assign(this.data, next); },
+      resolveOnboardingCode() { resolved.push(this.data.onboardingToken); }
+    };
+    context._optionsToken = `ej_${originalScene}`;
+    context.applyOnboardingToken = definition.applyOnboardingToken.bind(context);
+
+    definition.onScanNewInvite.call(context);
+    scanOptions.success({
+      path: `packages/business/onboarding/onboarding.html?scene=${scene}`,
+      scanType: 'WX_CODE'
+    });
+    assert.equal(context.data.onboardingToken, `ej_${scene}`);
+
+    resolved.length = 0;
+    definition.onShow.call(context);
+    assert.equal(context.data.onboardingToken, `ej_${scene}`);
+    assert.equal(resolved.length, 0);
+  } finally {
+    global.wx = originalWx;
+    global.getCurrentPages = originalGetCurrentPages;
   }
 });

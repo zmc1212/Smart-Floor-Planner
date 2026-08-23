@@ -31,12 +31,14 @@ const {
   roomsFromWorkflowDetail,
 } = require('../recipe-project/recipe-project-model.js');
 const { openSheet, closeSheet, dismissSheet, clearSheetTimer } = require('../../../utils/sheetMotion.js');
+const sitePhotos = require('../../../utils/sitePhotoService.js');
 
 const POLL_INTERVAL_MS = 4000;
 const MENU_SHEET = { mountedKey: 'menuMounted', openKey: 'menuVisible' };
 const RENAME_SHEET = { mountedKey: 'renameMounted', openKey: 'renameModalVisible' };
 const SEND_SHEET = { mountedKey: 'sendMounted', openKey: 'sendModalVisible' };
 const FINALIZE_SHEET = { mountedKey: 'finalizeMounted', openKey: 'finalizeModalVisible' };
+const GALLERY_SHEET = { mountedKey: 'galleryMounted', openKey: 'galleryOpen' };
 
 function downloadImage(url) {
   return new Promise((resolve, reject) => {
@@ -120,6 +122,13 @@ Page({
     templatePage: 1,
     templateTotal: 0,
     templateSheetVisible: false,
+    sitePhotos: [],
+    sitePhotoTags: sitePhotos.SPACE_TAGS,
+    sitePhotoLimitReached: false,
+    sitePhotoCaptureNonce: 0,
+    sitePhotoCaptureSource: '',
+    galleryMounted: false,
+    galleryOpen: false,
     navigationTop: 24,
     navigationHeight: 32,
     navigationRight: 96,
@@ -169,12 +178,12 @@ Page({
       return;
     }
 
-    if (this.data.floorPlanId) {
+    if (this.data.leadId) {
       await this.bootstrapWorkflow();
       return;
     }
 
-    this.setData({ loading: false, error: '缺少方案会话，请从设计 Tab 选择客户后再进入' });
+    this.setData({ loading: false, error: '缺少客户线索，无法打开方案工作台' });
   },
 
   onShow() {
@@ -190,6 +199,7 @@ Page({
     clearSheetTimer(this, MENU_SHEET.openKey);
     clearSheetTimer(this, RENAME_SHEET.openKey);
     clearSheetTimer(this, SEND_SHEET.openKey);
+    clearSheetTimer(this, GALLERY_SHEET.openKey);
   },
 
   syncNavigationMetrics() {
@@ -231,7 +241,9 @@ Page({
 
       const created = await aiService.createStudioWorkflow({
         leadId: this.data.leadId,
-        sourceFloorPlanId: this.data.floorPlanId,
+        ...(this.data.floorPlanId
+          ? { sourceFloorPlanId: this.data.floorPlanId }
+          : { sourceAssetRole: 'rough_sketch' }),
         title: 'AI 设计方案',
       });
       const workflowId = String(created.id || created._id || '');
@@ -268,7 +280,7 @@ Page({
       this.previousView = baseView;
       const schemeChips = buildWorkflowSwitcherOptions(siblingWorkflows, this.data.workflowId);
       const bound = roomsFromWorkflowDetail(detail);
-      const scopes = buildScopes(bound.rooms, bound.closedRoomCount);
+      const scopes = bound.floorPlanId ? buildScopes(bound.rooms, bound.closedRoomCount) : [];
       const currentDraft = this.data.composerDraft || createDefaultDraft(this.data.bootstrap);
       const selectedScope = resolveDraftScope(scopes, currentDraft);
       const nextDraft = applyScopeToDraft(currentDraft, selectedScope);
@@ -408,14 +420,12 @@ Page({
         this.setData({ floorPlanId: String(fromWorkflow) });
       }
     }
-    if (!this.data.floorPlanId) {
-      wx.showToast({ title: '缺少正式户型，无法新建方案', icon: 'none' });
-      return;
-    }
     dismissSheet(this, MENU_SHEET);
     wx.showModal({
       title: '新建方案',
-      content: '将在同一客户户型下新建一套空白方案，不会覆盖已有出图。',
+      content: this.data.floorPlanId
+        ? '将在同一客户户型下新建一套空白方案，不会覆盖已有出图。'
+        : '将在同一客户下新建一套空白方案，不会覆盖已有出图。',
       success: (result) => {
         if (result.confirm) {
           this.previousView = null;
@@ -816,15 +826,99 @@ Page({
 
   uploadReferenceImage() {
     if (this.data.uploadingReference) return;
-    wx.chooseMedia({
-      count: 1,
-      mediaType: ['image'],
-      sourceType: ['album', 'camera'],
-      success: (result) => {
-        const filePath = result.tempFiles?.[0]?.tempFilePath;
-        if (filePath) void this.uploadReferencePath(filePath);
-      },
+    sitePhotos.chooseAiSource().then((choice) => {
+      if (choice.kind === 'gallery') {
+        void this.openGalleryPicker();
+        return;
+      }
+      this.startSitePhotoCapture(choice.source);
+    }).catch((error) => {
+      if (error && error.cancelled) return;
+      wx.showToast({ title: (error && error.error) || '无法选择照片来源', icon: 'none' });
     });
+  },
+
+  startSitePhotoCapture(source) {
+    if (!this.data.leadId) {
+      wx.showToast({ title: '缺少客户线索', icon: 'none' });
+      return;
+    }
+    this.setData({
+      sitePhotoCaptureSource: source || '',
+      sitePhotoCaptureNonce: Date.now(),
+    });
+  },
+
+  async openGalleryPicker() {
+    if (!this.data.leadId) {
+      wx.showToast({ title: '缺少客户线索', icon: 'none' });
+      return;
+    }
+    try {
+      const result = await sitePhotos.list(this.data.leadId);
+      const items = result.items || [];
+      this.setData({
+        sitePhotos: items,
+        sitePhotoTags: result.spaceTags || sitePhotos.SPACE_TAGS,
+        sitePhotoLimitReached: Number(result.remaining || 0) <= 0,
+      });
+      if (!items.length) {
+        wx.showToast({ title: '本户还没有现场图，请先拍照', icon: 'none' });
+        this.startSitePhotoCapture('');
+        return;
+      }
+      openSheet(this, GALLERY_SHEET);
+    } catch (error) {
+      wx.showToast({ title: (error && error.error) || '现场图加载失败', icon: 'none' });
+    }
+  },
+
+  closeGalleryPicker() {
+    closeSheet(this, GALLERY_SHEET);
+  },
+
+  applySitePhotoAsReference(photo) {
+    const assetId = photo && photo.assetId;
+    if (!assetId) {
+      wx.showToast({ title: '这张现场图还不能用作参考', icon: 'none' });
+      return;
+    }
+    const existing = this.data.composerDraft && this.data.composerDraft.referenceAssets || [];
+    if (existing.some((item) => String(item.id) === String(assetId))) {
+      wx.showToast({ title: '这张参考图已添加', icon: 'none' });
+      return;
+    }
+    const referenceAssets = [
+      ...existing,
+      { id: assetId, previewUrl: photo.imagePath || photo.previewUrl || '' },
+    ];
+    this.setData({
+      uploadingReference: false,
+      composerDraft: { ...this.data.composerDraft, referenceAssets },
+    });
+    wx.showToast({ title: '参考图已添加', icon: 'success' });
+  },
+
+  onSitePhotoCaptured(event) {
+    const photo = event.detail && event.detail.photo;
+    if (!photo) return;
+    this.applySitePhotoAsReference(photo);
+    closeSheet(this, GALLERY_SHEET);
+  },
+
+  onSitePhotoSelect(event) {
+    const photo = event.detail && event.detail.photo;
+    if (!photo) return;
+    this.applySitePhotoAsReference(photo);
+    closeSheet(this, GALLERY_SHEET);
+  },
+
+  onSitePhotosChange(event) {
+    this.setData({ sitePhotos: sitePhotos.mergePhotos(this.data.sitePhotos, event.detail || {}) });
+  },
+
+  onSitePhotoUploading(event) {
+    this.setData({ uploadingReference: Boolean(event.detail && event.detail.uploading) });
   },
 
   async uploadReferencePath(filePath) {
@@ -860,8 +954,8 @@ Page({
       wx.showToast({ title: '请输入提示词', icon: 'none' });
       return;
     }
-    const scopePayload = buildScopeSubmitPayload(draft);
-    if (scopePayload.targetScope === 'single_room' && !scopePayload.roomId) {
+    const scopePayload = this.data.floorPlanId ? buildScopeSubmitPayload(draft) : null;
+    if (scopePayload && scopePayload.targetScope === 'single_room' && !scopePayload.roomId) {
       wx.showToast({ title: '请先选择具体房间', icon: 'none' });
       return;
     }
@@ -887,8 +981,10 @@ Page({
         templateId: draft.templateId || undefined,
         count: draft.count || 1,
         workflowId: this.data.workflowId,
-        targetScope: scopePayload.targetScope,
-        roomId: scopePayload.roomId,
+        ...(scopePayload ? {
+          targetScope: scopePayload.targetScope,
+          roomId: scopePayload.roomId,
+        } : {}),
       });
       if (payload?.account && this.data.bootstrap) {
         this.setData({

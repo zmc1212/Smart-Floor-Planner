@@ -30,3 +30,36 @@ export function workbenchComposerControlPreviewUrl(workflowId: string, scopeSele
   const roomId = selection && selection !== WORKBENCH_WHOLE_FLOOR_SCOPE_KEY ? selection : '';
   return workbenchFloorPlanPreviewPath(workflowId, roomId);
 }
+
+export function resolveWorkbenchDefaultRemoteModel(
+  generateProviders: Array<{ modelMappings?: Record<string, string | undefined> }> | undefined
+) {
+  return String(generateProviders?.[0]?.modelMappings?.['image.generate.standard'] || '').trim();
+}
+
+export function serializeWorkbenchProviderState(input: {
+  actionEnabled: boolean;
+  generateProviders: Array<{ modelMappings?: Record<string, string | undefined> }>;
+  editProviders: unknown[];
+}) {
+  return {
+    actionEnabled: input.actionEnabled,
+    supportsGenerate: input.generateProviders.length > 0,
+    supportsEdit: input.editProviders.length > 0,
+    defaultRemoteModel: resolveWorkbenchDefaultRemoteModel(input.generateProviders),
+  };
+}
+
+/** Provider mapping is the default display/preselect only; it never filters the list. */
+export function pickDefaultCreationModel<T extends { id: string; isDefault?: boolean; remoteModel?: string }>(
+  models: T[] | undefined,
+  defaultRemoteModel?: string
+): T | undefined {
+  if (!models?.length) return undefined;
+  const mapped = String(defaultRemoteModel || '').trim();
+  if (mapped) {
+    const match = models.find((item) => item.id && item.remoteModel === mapped);
+    if (match) return match;
+  }
+  return models.find((item) => item.id && item.isDefault) || models.find((item) => Boolean(item.id)) || models[0];
+}

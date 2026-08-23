@@ -4,6 +4,7 @@ import { AiWorkflowRepository, LeadRepository } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
 import { isEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
 import { isMiniStudioContext, requireMiniStudioContext } from '@/lib/ai/mini-ai-studio';
+import { resolveLeadServiceStage } from '@/lib/lead-service-stage';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,21 +29,32 @@ export async function GET(request: Request) {
       const workflowMap = new Map(summaries.map((summary) => [summary.leadId, summary]));
       return visibleLeads.map((lead) => {
         const workflowMeta = workflowMap.get(lead.id);
+        const floorPlans = lead.floorPlanRecords
+          .filter(isEligibleWorkflowFloorPlan)
+          .map((plan) => ({
+            id: plan.id.toString(),
+            name: plan.name,
+            createdAt: plan.createdAt,
+            status: plan.status,
+          }));
+        const serviceStage = resolveLeadServiceStage({
+          leadStatus: lead.status,
+          assignmentStatus: lead.assignmentStatus,
+          measurerId: lead.measurerId,
+          appointment: lead.appointment,
+          hasFormalFloorPlan: floorPlans.length > 0,
+        });
         return {
           id: lead.id.toString(),
           name: lead.name,
           phone: lead.phone,
           status: lead.status,
+          assignmentStatus: lead.assignmentStatus,
+          assignedTo: lead.assignedTo ? lead.assignedTo.toString() : '',
+          serviceStage: serviceStage.key,
           stylePreference: lead.stylePreference,
           communityName: lead.communityName,
-          floorPlans: lead.floorPlanRecords
-            .filter(isEligibleWorkflowFloorPlan)
-            .map((plan) => ({
-              id: plan.id.toString(),
-              name: plan.name,
-              createdAt: plan.createdAt,
-              status: plan.status,
-            })),
+          floorPlans,
           workflowCount: workflowMeta?.count || 0,
           latestWorkflowId: workflowMeta?.latestWorkflowId.toString(),
           latestWorkflowTitle: workflowMeta?.latestWorkflowTitle,

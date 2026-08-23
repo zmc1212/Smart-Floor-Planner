@@ -32,16 +32,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       (transaction) => new AiCreationRepository(transaction).findMediaAsset(parsePostgresId(id, 'assetId'))
     );
     if (!asset) return NextResponse.json({ success: false, error: '图片不存在' }, { status: 404 });
-    // Signed Mini Program URLs must remain on the configured API origin. A
-    // Qiniu signed-download redirect would make the client enter a separate
-    // download-domain path that is not part of the Mini Program API contract.
+    // Local / non-redirect storage: serve bytes with a cacheable TTL matching the
+    // aligned signature window. Qiniu-backed display URLs are returned directly in
+    // list/detail JSON; this proxy remains for Admin and local-storage fallbacks.
     if (signedAccess) {
       const buffer = await readPostgresMediaAssetBuffer(asset);
+      const remainingTtl = Math.max(0, expires - Math.floor(Date.now() / 1000));
       return new NextResponse(new Uint8Array(buffer), {
         headers: {
           'Content-Type': asset.mimeType,
           'Content-Length': String(buffer.length),
-          'Cache-Control': 'private, no-store',
+          'Cache-Control': remainingTtl > 0
+            ? `private, max-age=${remainingTtl}`
+            : 'private, no-store',
         },
       });
     }

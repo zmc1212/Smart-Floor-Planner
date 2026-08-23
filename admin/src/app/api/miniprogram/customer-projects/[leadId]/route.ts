@@ -30,7 +30,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ lead
       )
     );
     if (!project) return NextResponse.json({ success: false, error: '项目不存在或无权访问' }, { status: 404 });
-    return NextResponse.json({ success: true, data: customerProjectToDto(request, project) });
+    return NextResponse.json({ success: true, data: await customerProjectToDto(request, project) });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: publicMiniProgramError(error, '读取客户项目失败') },

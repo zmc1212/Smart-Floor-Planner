@@ -423,3 +423,95 @@ test('booking copies an empty lead community from the map POI or typed address a
   );
   assert.equal(locationFilled?.communityName, '阳光花园');
 });
+
+test('on-site visits mint a now window, stay idempotent, and complete bumps the lead', async () => {
+  const spareMeasurerId = await withTenantTransaction(enterpriseId, async (transaction) => {
+    return (await new AdminUserRepository(transaction).create({
+      enterpriseId, username: `${runKey}-onsite-measurer`, passwordHash: 'test-only', displayName: '现场测量员', role: 'measurer', status: 'active', assignmentPaused: false,
+    })).id;
+  });
+  const onSiteLeadId = await withTenantTransaction(enterpriseId, async (transaction) => {
+    return (await new LeadRepository(transaction).create({
+      enterpriseId, assignedTo: designerId, measurerId: spareMeasurerId, customerUserId: actorUserId,
+      name: '现场量房客户', phone: `24${String(Date.now()).slice(-9)}`, source: 'staff_activity', assignmentStatus: 'assigned',
+      communityName: '现场小区',
+      status: 'measuring',
+    })).id;
+  });
+
+  const first = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).createOnSiteVisit({
+      enterpriseId, leadId: onSiteLeadId, actorUserId, eventKey: `${runKey}-onsite-first`,
+    })
+  );
+  assert.equal(first.status, 'confirmed');
+  assert.equal(first.address, '现场小区');
+  const firstBounds = first.timeRange.match(/[[(]([^,]+),([^\])]+)[\])]/);
+  assert.ok(firstBounds);
+  const startAt = new Date(firstBounds![1].replaceAll('"', ''));
+  const endAt = new Date(firstBounds![2].replaceAll('"', ''));
+  assert.ok(Math.abs(Date.now() - startAt.getTime()) < 15_000);
+  assert.equal(endAt.getTime() - startAt.getTime(), 120 * 60_000);
+
+  const second = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).createOnSiteVisit({
+      enterpriseId, leadId: onSiteLeadId, actorUserId, eventKey: `${runKey}-onsite-second`,
+    })
+  );
+  assert.equal(second.id, first.id);
+
+  await withTenantTransaction(enterpriseId, async (transaction) => {
+    const [floorPlan] = await transaction.insert(floorPlans).values({
+      enterpriseId,
+      creatorId: actorUserId,
+      staffId: spareMeasurerId,
+      name: `${runKey}-onsite-survey`,
+      source: 'surveying',
+      status: 'completed',
+      completedAt: new Date(),
+      layoutData: {
+        version: 4,
+        measurementMode: 'surveying',
+        surveyGraph: {
+          kind: 'survey-wall-graph',
+          floors: [{ id: 'floor-1', spaces: [{ id: 'room-1', closed: true }] }],
+        },
+      },
+    }).returning();
+    await transaction.insert(leadFloorPlans).values({ leadId: onSiteLeadId, floorPlanId: floorPlan!.id, measurementSequence: 1 });
+  });
+
+  await withPlatformTransaction(async (transaction) => {
+    await transaction.execute(sql`
+      update app.measurement_appointments
+      set time_range = tstzrange(now() - interval '4 hours', now() - interval '2 hours', '[)')
+      where id = ${first.id}
+    `);
+  });
+
+  const expired = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).expireOverdue({ now: new Date(), limit: 50 })
+  );
+  assert.equal(expired.some((row) => row.id === first.id), false);
+  const stillConfirmed = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).findById(enterpriseId, first.id)
+  );
+  assert.equal(stillConfirmed?.appointment.status, 'confirmed');
+
+  const completed = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AppointmentRepository(transaction).updateStatus({
+      enterpriseId,
+      appointmentId: first.id,
+      expectedVersion: stillConfirmed!.appointment.version,
+      actorUserId,
+      status: 'completed',
+      eventKey: `${runKey}-onsite-complete`,
+    })
+  );
+  assert.equal(completed.status, 'completed');
+  const leadAfter = await withTenantTransaction(enterpriseId, (transaction) =>
+    new LeadRepository(transaction).findById(onSiteLeadId)
+  );
+  assert.equal(leadAfter?.status, 'designing');
+  assert.equal(leadToDto(leadAfter!).serviceStage, 'survey_completed');
+});

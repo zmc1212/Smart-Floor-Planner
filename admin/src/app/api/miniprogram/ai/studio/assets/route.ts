@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({
       success: true,
-      data: serializeAssetPreviewForMini(request, context.enterpriseId, {
+      data: await serializeAssetPreviewForMini(request, context.enterpriseId, {
         id: stored.asset.id,
         mimeType: image.mimeType,
         size: buffer.length,

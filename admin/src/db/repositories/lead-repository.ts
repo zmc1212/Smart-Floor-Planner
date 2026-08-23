@@ -9,6 +9,7 @@ import {
   isNotNull,
   isNull,
   max,
+  ne,
   or,
   sql,
   type SQL,
@@ -24,6 +25,7 @@ import {
   referrerProfiles,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { customerPhoneLookupValues } from '@/lib/customer-phone';
 import { selectOperationalAppointment } from '@/lib/lead-service-stage';
 import {
   getLeadStatusVariants,
@@ -127,6 +129,15 @@ export class LeadRepository {
         where ma.lead_id = ${leads.id}
           and (ma.status = 'expired' or (ma.status = 'confirmed' and upper(ma.time_range) <= now()))
       )`;
+      const hasCompletedAppointment = sql`exists (
+        select 1 from app.measurement_appointments ma
+        where ma.lead_id = ${leads.id} and ma.status = 'completed'
+      )`;
+      const hasFormalCompletedPlan = sql`exists (
+        select 1 from app.lead_floor_plans lfp
+        inner join app.floor_plans fp on fp.id = lfp.floor_plan_id
+        where lfp.lead_id = ${leads.id} and fp.status = 'completed'
+      )`;
       const hasCancelledNoConfirmed = sql`(
         exists (
           select 1 from app.measurement_appointments ma
@@ -134,19 +145,30 @@ export class LeadRepository {
         ) and not ${hasConfirmedFuture}
       )`;
       switch (options.serviceStage) {
+        case 'survey_completed':
+          filters.push(hasCompletedAppointment);
+          break;
+        case 'survey_ready':
+          filters.push(hasFormalCompletedPlan);
+          filters.push(sql`not ${hasCompletedAppointment}`);
+          break;
         case 'appointment_confirmed':
           filters.push(hasConfirmedFuture);
+          filters.push(sql`not ${hasFormalCompletedPlan}`);
           break;
         case 'appointment_in_progress':
           filters.push(hasConfirmedInProgress);
+          filters.push(sql`not ${hasFormalCompletedPlan}`);
           break;
         case 'appointment_expired':
           filters.push(hasExpiredOrPastConfirmed);
           filters.push(sql`not ${hasConfirmedFuture}`);
+          filters.push(sql`not ${hasFormalCompletedPlan}`);
           break;
         case 'awaiting_rebooking':
           filters.push(hasCancelledNoConfirmed);
           filters.push(sql`not ${hasExpiredOrPastConfirmed}`);
+          filters.push(sql`not ${hasFormalCompletedPlan}`);
           break;
         case 'measurer_assigned':
           filters.push(isNotNull(leads.measurerId));
@@ -154,6 +176,7 @@ export class LeadRepository {
           filters.push(sql`not ${hasConfirmedFuture}`);
           filters.push(sql`not ${hasExpiredOrPastConfirmed}`);
           filters.push(sql`not ${hasCancelledNoConfirmed}`);
+          filters.push(sql`not ${hasFormalCompletedPlan}`);
           break;
       }
     }
@@ -419,7 +442,47 @@ export class LeadRepository {
     const rows = await this.transaction
       .select()
       .from(leads)
-      .where(eq(leads.phone, phone))
+      .where(inArray(leads.phone, customerPhoneLookupValues(phone)))
+      .orderBy(desc(leads.createdAt), desc(leads.id))
+      .limit(1);
+    if (!rows[0]) return null;
+    return (await this.attachRelations(rows))[0] ?? null;
+  }
+
+  async findOpenByPhone(phone: string, enterpriseId: bigint) {
+    const values = customerPhoneLookupValues(phone);
+    if (!values.length) return null;
+    const rows = await this.transaction
+      .select()
+      .from(leads)
+      .where(
+        and(
+          eq(leads.enterpriseId, enterpriseId),
+          inArray(leads.phone, values),
+          isNull(leads.archivedAt),
+          ne(leads.status, 'closed'),
+          ne(leads.status, 'converted')
+        )
+      )
+      .orderBy(desc(leads.createdAt), desc(leads.id))
+      .limit(1);
+    if (!rows[0]) return null;
+    return (await this.attachRelations(rows))[0] ?? null;
+  }
+
+  async findArchivedByPhone(phone: string, enterpriseId: bigint) {
+    const values = customerPhoneLookupValues(phone);
+    if (!values.length) return null;
+    const rows = await this.transaction
+      .select()
+      .from(leads)
+      .where(
+        and(
+          eq(leads.enterpriseId, enterpriseId),
+          inArray(leads.phone, values),
+          isNotNull(leads.archivedAt)
+        )
+      )
       .orderBy(desc(leads.createdAt), desc(leads.id))
       .limit(1);
     if (!rows[0]) return null;

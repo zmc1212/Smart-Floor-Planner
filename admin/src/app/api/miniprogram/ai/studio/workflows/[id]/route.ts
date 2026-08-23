@@ -46,7 +46,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (access.kind !== 'ok') return access.response;
     return NextResponse.json({
       success: true,
-      data: serializeWorkflowContextForMini(request, context.enterpriseId, workflowContext),
+      data: await serializeWorkflowContextForMini(request, context.enterpriseId, workflowContext),
     });
   } catch (error) {
     console.error('[Mini AI Studio Workflow GET]', error);
@@ -91,7 +91,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     });
     return NextResponse.json({
       success: true,
-      data: serializeWorkflowContextForMini(request, context.enterpriseId, updated),
+      data: await serializeWorkflowContextForMini(request, context.enterpriseId, updated),
     });
   } catch (error) {
     console.error('[Mini AI Studio Workflow PATCH]', error);

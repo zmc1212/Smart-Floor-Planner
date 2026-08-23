@@ -11,6 +11,8 @@ import {
 import {
   canDeleteLeadFloorPlan,
   resolveLeadStatusAfterFloorPlan,
+  resolveLeadStatusAfterAppointmentComplete,
+  resolveLeadStatusAfterDesignPublished,
 } from '@/lib/lead-status';
 
 test('accepts only the fixed archive reasons', () => {
@@ -70,4 +72,14 @@ test('formal floor plans cannot be deleted once the lead has entered design or a
   assert.equal(canDeleteLeadFloorPlan('converted'), false);
   assert.equal(canDeleteLeadFloorPlan('closed'), false);
   assert.equal(resolveLeadStatusAfterFloorPlan('converted', 'completed', 'measured'), 'converted');
+  assert.equal(resolveLeadStatusAfterFloorPlan('new', 'completed'), 'measuring');
+  assert.equal(resolveLeadStatusAfterFloorPlan('measuring', 'completed'), 'measuring');
+  assert.equal(resolveLeadStatusAfterAppointmentComplete('measuring'), 'designing');
+  assert.equal(resolveLeadStatusAfterAppointmentComplete('new'), 'designing');
+  assert.equal(resolveLeadStatusAfterAppointmentComplete('converted'), 'converted');
+  assert.equal(resolveLeadStatusAfterDesignPublished('new'), 'designing');
+  assert.equal(resolveLeadStatusAfterDesignPublished('measuring'), 'designing');
+  assert.equal(resolveLeadStatusAfterDesignPublished('designing'), 'designing');
+  assert.equal(resolveLeadStatusAfterDesignPublished('converted'), 'converted');
+  assert.equal(resolveLeadStatusAfterDesignPublished('closed'), 'closed');
 });

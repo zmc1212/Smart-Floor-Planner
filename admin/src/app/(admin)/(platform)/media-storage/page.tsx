@@ -70,6 +70,7 @@ type MediaStorageData = {
   activeProviderKey: string;
   activatedAt: string | null;
   grsOutputPersistence: { enabled: boolean };
+  directQiniuDisplayUrls: { enabled: boolean };
   encryption: { ready: boolean; dedicated: boolean };
   local: LocalConfig;
   configs: QiniuConfig[];
@@ -177,6 +178,7 @@ export default function MediaStoragePage() {
     : data?.configs.find((config) => config.key === data?.activeProviderKey);
   const activeQiniuConfig = data?.configs.find((config) => config.key === data?.activeProviderKey);
   const canEnableGrsOutputPersistence = activeQiniuConfig?.lastTestOk === true;
+  const directQiniuDisplayEnabled = data?.directQiniuDisplayUrls?.enabled !== false;
   const isCreateModalOpen = editingConfig === null;
   const isEditModalOpen = Boolean(editingConfig);
   const isFormOpen = isCreateModalOpen || isEditModalOpen;
@@ -235,6 +237,23 @@ export default function MediaStoragePage() {
       notify.success(enabled ? '后续 GRS 结果图将转存到当前七牛云配置' : '后续 GRS 结果图将保留上游 URL');
     } catch (policyError) {
       notify.error(policyError instanceof Error ? policyError.message : '更新 GRS 结果图存储策略失败');
+    } finally {
+      setWorkingKey('');
+    }
+  };
+
+  const setDirectQiniuDisplayUrls = async (enabled: boolean) => {
+    setWorkingKey('direct-qiniu-display-urls');
+    try {
+      await requestAction('/api/admin/media-storage', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ directQiniuDisplayUrls: enabled }),
+      });
+      await mutate();
+      notify.success(enabled ? '小程序效果图将直连七牛阅读地址' : '小程序效果图将走鉴权代理');
+    } catch (policyError) {
+      notify.error(policyError instanceof Error ? policyError.message : '更新效果图展示策略失败');
     } finally {
       setWorkingKey('');
     }
@@ -459,6 +478,29 @@ export default function MediaStoragePage() {
                 onClick={() => setGrsOutputPersistence(!data.grsOutputPersistence.enabled)}
               >
                 {data.grsOutputPersistence.enabled ? '关闭转存' : '启用七牛转存'}
+              </Button>
+            </Flex>
+          </Card>
+
+          <Card title="小程序效果图直连七牛" className="admin-panel-card">
+            <Flex justify="space-between" gap={24} wrap="wrap" align="center">
+              <Flex vertical gap={4}>
+                <Typography.Text strong>
+                  {directQiniuDisplayEnabled
+                    ? '已启用：方案工作室与已发布效果图直连七牛阅读地址'
+                    : '已关闭：效果图走鉴权图片代理'}
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  默认开启以便微信缓存；关闭后下次进页改走对齐过期的 API 签名地址。字节接口始终保留。须把当前七牛域名加入小程序 downloadFile 合法域名，否则真机直连会失败。
+                </Typography.Text>
+              </Flex>
+              <Button
+                type={directQiniuDisplayEnabled ? 'default' : 'primary'}
+                loading={workingKey === 'direct-qiniu-display-urls'}
+                disabled={Boolean(workingKey)}
+                onClick={() => setDirectQiniuDisplayUrls(!directQiniuDisplayEnabled)}
+              >
+                {directQiniuDisplayEnabled ? '关闭直连' : '开启直连'}
               </Button>
             </Flex>
           </Card>

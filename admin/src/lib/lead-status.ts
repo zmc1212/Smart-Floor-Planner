@@ -68,10 +68,22 @@ export function resolveLeadStatusAfterFloorPlan(
   const current = normalizeLeadStatus(currentStatus);
   if (current === 'converted') return current;
   if (requestedStatus) return normalizeLeadStatus(requestedStatus);
+  void planStatus;
 
-  if (planStatus === 'completed' && ['new', 'measuring'].includes(current)) {
-    return 'designing';
-  }
   if (current === 'new') return 'measuring';
+  return current;
+}
+
+export function resolveLeadStatusAfterAppointmentComplete(currentStatus: string) {
+  const current = normalizeLeadStatus(currentStatus);
+  if (current === 'converted' || current === 'closed') return current;
+  return 'designing';
+}
+
+/** First customer-visible scheme send. Draft generation must not call this. */
+export function resolveLeadStatusAfterDesignPublished(currentStatus: string) {
+  const current = normalizeLeadStatus(currentStatus);
+  if (current === 'converted' || current === 'closed') return current;
+  if (current === 'new' || current === 'measuring') return 'designing';
   return current;
 }

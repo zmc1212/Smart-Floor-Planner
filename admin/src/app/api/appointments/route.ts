@@ -7,7 +7,7 @@ import { httpErrorStatus } from '@/lib/http-error';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getTenantContext } from '@/lib/auth';
 import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
-import { canStaffCreateLeadAppointment } from '@/lib/lead-staff-access';
+import { canStaffCreateLeadAppointment, canStaffCreateOnSiteVisit } from '@/lib/lead-staff-access';
 import { notifyAppointmentStaff, notifyCustomerOfAppointment } from '@/lib/wechat-notification';
 
 export const dynamic = 'force-dynamic';
@@ -116,19 +116,31 @@ export async function POST(request: Request) {
       }
       const body = await request.json();
       const leadId = parseAppointmentId(body.leadId, '线索');
+      const onSite = body.source === 'on_site';
       const appointment = await withAdminPostgresTransaction(admin, async (transaction) => {
         const repository = new AppointmentRepository(transaction);
         const enterpriseId = parsePostgresId(admin.enterpriseId!, 'enterprise id');
         const actorUserId = await new AdminUserRepository(transaction).findLinkedUserId(parsePostgresId(admin.userId, 'user id'));
         const access = await repository.findLeadForAccess(enterpriseId, leadId);
-        if (!access || !canStaffCreateLeadAppointment({
+        const accessInput = {
           staffRole: admin.role,
           staffId: parsePostgresId(admin.userId, 'user id'),
-          assignedTo: access.assignedTo,
-          measurerId: access.measurerId,
-          source: access.source,
-          status: access.status,
-        })) return null;
+          assignedTo: access?.assignedTo,
+          measurerId: access?.measurerId,
+          source: access?.source,
+          status: access?.status,
+        };
+        if (!access || !(onSite ? canStaffCreateOnSiteVisit(accessInput) : canStaffCreateLeadAppointment(accessInput))) {
+          return null;
+        }
+        if (onSite) {
+          return repository.createOnSiteVisit({
+            enterpriseId,
+            leadId,
+            actorUserId,
+            eventKey: `admin-on-site:${randomUUID()}`,
+          });
+        }
         return repository.create({
           enterpriseId,
           leadId,
@@ -141,12 +153,14 @@ export async function POST(request: Request) {
         });
       });
       if (!appointment) return NextResponse.json({ success: false, error: '无权操作该线索' }, { status: 403 });
-      const startAt = new Date(appointment.timeRange.match(/[[(]([^,]+),/)?.[1].replaceAll('"', '') || '');
-      if (!Number.isNaN(startAt.getTime())) {
-        await Promise.allSettled([
-          notifyAppointmentStaff({ enterpriseId: appointment.enterpriseId, leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, startsAt: startAt, eventKey: appointment.id.toString(), eventType: 'created' }),
-          notifyCustomerOfAppointment({ enterpriseId: appointment.enterpriseId, leadId, address: appointment.address, startsAt: startAt, eventType: 'created' }),
-        ]);
+      if (!onSite) {
+        const startAt = new Date(appointment.timeRange.match(/[[(]([^,]+),/)?.[1].replaceAll('"', '') || '');
+        if (!Number.isNaN(startAt.getTime())) {
+          await Promise.allSettled([
+            notifyAppointmentStaff({ enterpriseId: appointment.enterpriseId, leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, startsAt: startAt, eventKey: appointment.id.toString(), eventType: 'created' }),
+            notifyCustomerOfAppointment({ enterpriseId: appointment.enterpriseId, leadId, address: appointment.address, startsAt: startAt, eventType: 'created' }),
+          ]);
+        }
       }
       return NextResponse.json({ success: true, data: appointmentToDto(appointment) }, { status: 201 });
     }
@@ -157,21 +171,36 @@ export async function POST(request: Request) {
     }
     const body = await request.json();
     const leadId = parseAppointmentId(body.leadId, '线索');
+    const onSite = body.source === 'on_site';
+    if (onSite && isCustomer) {
+      return NextResponse.json({ success: false, error: '仅员工可登记现场量房' }, { status: 403 });
+    }
     const appointment = await withMiniProgramPostgresTransaction(context, async (transaction) => {
       const repository = new AppointmentRepository(transaction);
       const access = isCustomer
         ? await repository.findCustomerLeadForAccess(BigInt(context.user._id), leadId)
         : await repository.findLeadForAccess(parsePostgresId(context.enterpriseId!, 'enterprise id'), leadId);
       if (!access?.enterpriseId) return null;
-      if (!isCustomer && !canStaffCreateLeadAppointment({
-        staffRole: context.staff!.role,
-        staffId: BigInt(context.staff!._id),
-        assignedTo: access.assignedTo,
-        measurerId: access.measurerId,
-        source: access.source,
-        status: access.status,
-      })) {
-        return null;
+      if (!isCustomer) {
+        const accessInput = {
+          staffRole: context.staff!.role,
+          staffId: BigInt(context.staff!._id),
+          assignedTo: access.assignedTo,
+          measurerId: access.measurerId,
+          source: access.source,
+          status: access.status,
+        };
+        if (!(onSite ? canStaffCreateOnSiteVisit(accessInput) : canStaffCreateLeadAppointment(accessInput))) {
+          return null;
+        }
+      }
+      if (onSite) {
+        return repository.createOnSiteVisit({
+          enterpriseId: access.enterpriseId,
+          leadId,
+          actorUserId: BigInt(context.user._id),
+          eventKey: `on-site:${randomUUID()}`,
+        });
       }
       return repository.create({
         enterpriseId: access.enterpriseId, leadId,
@@ -184,13 +213,15 @@ export async function POST(request: Request) {
       });
     });
     if (!appointment) return NextResponse.json({ success: false, error: '无权操作该线索' }, { status: 403 });
-    const enterpriseId = appointment.enterpriseId;
-    const startAt = new Date(appointment.timeRange.match(/[[(]([^,]+),/)?.[1].replaceAll('"', '') || '');
-    if (!Number.isNaN(startAt.getTime())) {
-      await Promise.allSettled([
-        notifyAppointmentStaff({ enterpriseId, leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, startsAt: startAt, eventKey: appointment.id.toString(), eventType: 'created' }),
-        notifyCustomerOfAppointment({ enterpriseId, leadId, address: appointment.address, startsAt: startAt, eventType: 'created' }),
-      ]);
+    if (!onSite) {
+      const enterpriseId = appointment.enterpriseId;
+      const startAt = new Date(appointment.timeRange.match(/[[(]([^,]+),/)?.[1].replaceAll('"', '') || '');
+      if (!Number.isNaN(startAt.getTime())) {
+        await Promise.allSettled([
+          notifyAppointmentStaff({ enterpriseId, leadId, designerId: appointment.designerId, measurerId: appointment.measurerId, address: appointment.address, startsAt: startAt, eventKey: appointment.id.toString(), eventType: 'created' }),
+          notifyCustomerOfAppointment({ enterpriseId, leadId, address: appointment.address, startsAt: startAt, eventType: 'created' }),
+        ]);
+      }
     }
     return NextResponse.json({ success: true, data: appointmentToDto(appointment) }, { status: 201 });
   } catch (error) {

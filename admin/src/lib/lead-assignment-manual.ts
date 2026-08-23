@@ -5,7 +5,9 @@ import {
   withPlatformTransaction,
   withTenantTransaction,
 } from '@/db/transaction';
+import { parseAppointmentBounds } from '@/lib/lead-service-stage';
 import {
+  notifyAppointmentStaff,
   notifyDesignerOfAssignedLead,
   notifyEnterpriseAdminOfAssignmentPending,
 } from '@/lib/wechat-notification';
@@ -29,6 +31,23 @@ async function deliverManualAssignNotifications(
   if (input.designerId) notifyIds.add(input.designerId.toString());
   if (input.measurerId) notifyIds.add(input.measurerId.toString());
 
+  const appointment = result.rewrittenAppointment;
+  const appointmentBounds = appointment
+    ? parseAppointmentBounds(appointment.timeRange)
+    : null;
+  const appointmentNotify = appointment && appointmentBounds && result.lead.enterpriseId
+    ? notifyAppointmentStaff({
+        enterpriseId: result.lead.enterpriseId,
+        leadId: result.lead.id,
+        designerId: appointment.designerId,
+        measurerId: appointment.measurerId,
+        address: appointment.address,
+        startsAt: appointmentBounds.startAt,
+        eventKey: `${appointment.id.toString()}:${appointment.version}`,
+        eventType: 'staff_reassigned',
+      })
+    : Promise.resolve();
+
   await Promise.allSettled([
     ...Array.from(notifyIds).map((staffId) =>
       notifyDesignerOfAssignedLead(notificationLead, staffId)
@@ -40,12 +59,15 @@ async function deliverManualAssignNotifications(
           eventKey,
         })
       : Promise.resolve(),
+    appointmentNotify,
   ]);
 }
 
 export async function assignLeadStaff(input: {
   leadId: bigint;
   actorStaffId?: bigint | null;
+  actorRole?: string | null;
+  actorUserId?: bigint | null;
   designerId?: bigint | null;
   measurerId?: bigint | null;
 }) {

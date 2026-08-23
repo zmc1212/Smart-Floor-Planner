@@ -261,6 +261,8 @@ Component({
           actionLabel: item.actionLabel
             || (item.serviceStage === 'design_published'
               ? '查看方案'
+              : item.canCompleteSurvey
+              ? '确认完成量房'
               : item.canContinueSurvey
               ? '继续量房'
               : item.action === 'survey' || item.canSurveyNow
@@ -398,6 +400,7 @@ Component({
         appointment_expired: 0,
         awaiting_rebooking: 1,
         appointment_in_progress: 2,
+        survey_ready: 2,
         appointment_confirmed: 3,
         survey_completed: 4,
         design_published: 5,

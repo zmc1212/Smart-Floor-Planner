@@ -10,10 +10,12 @@ import {
   assertMediaStorageConfigCanArchive,
   assertGrsAiOutputPersistenceCanUseProvider,
   hasCriticalMediaStorageConfigChange,
+  isDirectQiniuDisplayUrlsEnabled,
   normalizeMediaStorageObjectPrefix,
   safeMediaStorageError,
   serializeMediaStorageConfig,
   shouldKeepGrsAiOutputUrl,
+  shouldUseDirectQiniuDisplayUrl,
   validateNewMediaStorageConfigPayload,
 } from '@/lib/media-storage/config-service';
 import {
@@ -336,6 +338,21 @@ test('storage prefixes normalize separators and reject unsafe path segments', ()
   assert.equal(normalizeMediaStorageObjectPrefix('/smart-floor\\ai-assets/'), 'smart-floor/ai-assets/');
   assert.throws(() => normalizeMediaStorageObjectPrefix('smart-floor//ai-assets'), /相对路径/);
   assert.throws(() => normalizeMediaStorageObjectPrefix('smart-floor/../ai-assets'), /相对路径/);
+});
+
+test('Mini Program effect images default to direct Qiniu display URLs', () => {
+  assert.equal(isDirectQiniuDisplayUrlsEnabled(), true);
+  assert.equal(isDirectQiniuDisplayUrlsEnabled({}), true);
+  assert.equal(isDirectQiniuDisplayUrlsEnabled({ persistGrsAiOutputs: true }), true);
+  assert.equal(isDirectQiniuDisplayUrlsEnabled({ directQiniuDisplayUrls: true }), true);
+  assert.equal(isDirectQiniuDisplayUrlsEnabled({ directQiniuDisplayUrls: false }), false);
+});
+
+test('direct Qiniu display requires both the platform switch and a signed-read provider', () => {
+  assert.equal(shouldUseDirectQiniuDisplayUrl({ hasSignedReadUrl: true }), true);
+  assert.equal(shouldUseDirectQiniuDisplayUrl({ directQiniuDisplayUrls: true, hasSignedReadUrl: true }), true);
+  assert.equal(shouldUseDirectQiniuDisplayUrl({ directQiniuDisplayUrls: false, hasSignedReadUrl: true }), false);
+  assert.equal(shouldUseDirectQiniuDisplayUrl({ directQiniuDisplayUrls: true, hasSignedReadUrl: false }), false);
 });
 
 test('GRS output storage policy keeps only remote GRS result URLs when transfer is disabled', () => {

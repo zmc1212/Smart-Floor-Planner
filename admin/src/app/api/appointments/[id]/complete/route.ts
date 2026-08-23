@@ -7,9 +7,27 @@ import { httpErrorStatus } from '@/lib/http-error';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getTenantContext } from '@/lib/auth';
 import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
+import { notifyDesignerOfSurveyCompleted } from '@/lib/wechat-notification';
 
 function canComplete(role: string, measurerId: bigint, staffId: bigint) {
   return role === 'enterprise_admin' || (['designer', 'measurer'].includes(role) && measurerId === staffId);
+}
+
+async function notifySurveyCompleted(appointment: {
+  enterpriseId: bigint;
+  leadId: bigint;
+  designerId: bigint;
+  floorPlanId?: bigint | null;
+}) {
+  if (!appointment.floorPlanId) return;
+  await Promise.allSettled([
+    notifyDesignerOfSurveyCompleted({
+      enterpriseId: appointment.enterpriseId,
+      leadId: appointment.leadId,
+      designerId: appointment.designerId,
+      floorPlanId: appointment.floorPlanId,
+    }),
+  ]);
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -34,13 +52,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         if (!(await repository.hasCompletedFormalSurveyForLead(enterpriseId, access.appointment.leadId))) {
           throw Object.assign(new Error('请先完成并保存正式量房数据'), { code: 'appointment_survey_required', status: 409 });
         }
-        return repository.updateStatus({
+        const updated = await repository.updateStatus({
           enterpriseId, appointmentId, expectedVersion, actorUserId: BigInt(miniContext.user._id),
           status: 'completed', eventKey: `completed:${randomUUID()}`,
         });
+        return { appointment: updated, floorPlanId: access.lead.primaryFloorPlanId };
       });
       if (!appointment) return NextResponse.json({ success: false, error: '无权操作该预约' }, { status: 403 });
-      return NextResponse.json({ success: true, data: appointmentToDto(appointment) });
+      await notifySurveyCompleted({
+        enterpriseId: appointment.appointment.enterpriseId,
+        leadId: appointment.appointment.leadId,
+        designerId: appointment.appointment.designerId,
+        floorPlanId: appointment.floorPlanId,
+      });
+      return NextResponse.json({ success: true, data: appointmentToDto(appointment.appointment) });
     }
 
     const admin = await getTenantContext(request);
@@ -58,13 +83,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!(await repository.hasCompletedFormalSurveyForLead(enterpriseId, access.appointment.leadId))) {
         throw Object.assign(new Error('请先完成并保存正式量房数据'), { code: 'appointment_survey_required', status: 409 });
       }
-      return repository.updateStatus({
+      const updated = await repository.updateStatus({
         enterpriseId, appointmentId, expectedVersion, actorUserId,
         status: 'completed', eventKey: `admin-completed:${randomUUID()}`,
       });
+      return { appointment: updated, floorPlanId: access.lead.primaryFloorPlanId };
     });
     if (!appointment) return NextResponse.json({ success: false, error: '无权操作该预约' }, { status: 403 });
-    return NextResponse.json({ success: true, data: appointmentToDto(appointment) });
+    await notifySurveyCompleted({
+      enterpriseId: appointment.appointment.enterpriseId,
+      leadId: appointment.appointment.leadId,
+      designerId: appointment.appointment.designerId,
+      floorPlanId: appointment.floorPlanId,
+    });
+    return NextResponse.json({ success: true, data: appointmentToDto(appointment.appointment) });
   } catch (error) {
     return NextResponse.json({ success: false, code: (error as { code?: string }).code, error: error instanceof Error ? error.message : '完成预约失败' }, { status: httpErrorStatus(error, 400) });
   }

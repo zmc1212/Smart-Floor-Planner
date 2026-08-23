@@ -131,40 +131,59 @@ Page({
 
   onChooseWechatQr() {
     if (this.data.uploadingQr) return;
-    wx.chooseMedia({
-      count: 1,
-      mediaType: ['image'],
-      sourceType: ['album', 'camera'],
-      success: async (result) => {
-        const filePath = result.tempFiles && result.tempFiles[0] && result.tempFiles[0].tempFilePath;
-        if (!filePath) return;
-        this.setData({ uploadingQr: true });
-        try {
-          const upload = await api.uploadStaffWechatQr(filePath);
-          const wechatQrUrl = upload.data && upload.data.wechatQrUrl
-            ? upload.data.wechatQrUrl
-            : this.data.wechatQrUrl;
-          this.setData({
-            uploadingQr: false,
-            wechatQrUrl,
-            hasWechatQr: true,
-            wechatQrPath: filePath,
-          });
-          this.applyWechatEligibility(this.data.wechatId, true);
-          wx.showToast({ title: '二维码已更新', icon: 'success' });
-          if (wechatQrUrl && wechatQrUrl !== filePath) {
-            this.loadQrPreview(wechatQrUrl);
-          }
-        } catch (error) {
-          this.setData({ uploadingQr: false });
-          wx.showToast({
-            title: (error && error.error) || '二维码上传失败',
-            icon: 'none',
-            duration: 3200,
-          });
-        }
-      },
-    });
+    const startPicker = () => {
+      wx.chooseMedia({
+        count: 1,
+        mediaType: ['image'],
+        sourceType: ['album', 'camera'],
+        success: (result) => {
+          const filePath = result.tempFiles && result.tempFiles[0] && result.tempFiles[0].tempFilePath;
+          if (!filePath) return;
+          this.uploadWechatQr(filePath);
+        },
+        fail: (error) => {
+          const msg = String((error && error.errMsg) || '');
+          if (/cancel/i.test(msg)) return;
+          wx.showToast({ title: '无法选择图片，请重试', icon: 'none' });
+        },
+      });
+    };
+    if (typeof wx.hideKeyboard === 'function') {
+      wx.hideKeyboard({
+        complete: () => setTimeout(startPicker, 80),
+      });
+      return;
+    }
+    startPicker();
+  },
+
+  async uploadWechatQr(filePath) {
+    if (this.data.uploadingQr) return;
+    this.setData({ uploadingQr: true });
+    try {
+      const upload = await api.uploadStaffWechatQr(filePath);
+      const wechatQrUrl = upload.data && upload.data.wechatQrUrl
+        ? upload.data.wechatQrUrl
+        : this.data.wechatQrUrl;
+      this.setData({
+        uploadingQr: false,
+        wechatQrUrl,
+        hasWechatQr: true,
+        wechatQrPath: filePath,
+      });
+      this.applyWechatEligibility(this.data.wechatId, true);
+      wx.showToast({ title: '二维码已更新', icon: 'success' });
+      if (wechatQrUrl && wechatQrUrl !== filePath) {
+        this.loadQrPreview(wechatQrUrl);
+      }
+    } catch (error) {
+      this.setData({ uploadingQr: false });
+      wx.showToast({
+        title: (error && error.error) || '二维码上传失败',
+        icon: 'none',
+        duration: 3200,
+      });
+    }
   },
 
   onNicknameInput(event) {

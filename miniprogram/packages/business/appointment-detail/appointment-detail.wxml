@@ -104,7 +104,7 @@
       <view class="point-item"><view class="point-dot"></view><text>提交后自动同步服务人员</text></view>
     </view>
 
-    <view class="staff-secondary" wx:if="{{!customerMode && (canStartSurvey || canComplete || canUpdateAddress || canNavigate || canSyncCommunity)}}">
+    <view class="staff-secondary" wx:if="{{!customerMode && (canStartSurvey || canComplete || canUpdateAddress || canNavigate || canSyncCommunity || canCaptureSitePhotos)}}">
       <button wx:if="{{canStartSurvey && canReschedule}}" class="primary sfp-primary-action sfp-icon-action" disabled="{{acting}}" bindtap="startSurvey">
         <image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" />
         <text>{{startSurveyLabel}}</text>
@@ -136,7 +136,31 @@
           <text class="btn-label">一键导航至量房地点</text>
         </view>
       </view>
+      <view
+        wx:if="{{canCaptureSitePhotos}}"
+        class="action-btn action-secondary sfp-icon-action action-full {{acting || sitePhotoUploading ? 'is-disabled' : ''}}"
+        hover-class="{{acting || sitePhotoUploading ? 'none' : 'btn-pressed'}}"
+        aria-role="button"
+        aria-label="拍现场图"
+        bindtap="captureSitePhoto"
+      >
+        <image class="sfp-icon-action__icon" src="/images/ai-design-icons/reference.png" mode="aspectFit" />
+        <text class="btn-label">拍现场图</text>
+      </view>
       <button wx:if="{{canSyncCommunity}}" class="cancel-btn outline-btn" loading="{{acting}}" disabled="{{acting}}" bindtap="syncCommunity">同步到客户小区</button>
+      <view wx:if="{{canCaptureSitePhotos}}" class="site-photo-block">
+        <site-photo-grid
+          lead-id="{{leadId}}"
+          photos="{{sitePhotos}}"
+          space-tags="{{sitePhotoTags}}"
+          show-add="{{false}}"
+          uploading="{{sitePhotoUploading}}"
+          limit-reached="{{sitePhotoLimitReached}}"
+          capture-nonce="{{sitePhotoCaptureNonce}}"
+          bind:change="onSitePhotosChange"
+          bind:uploading="onSitePhotoUploading"
+        />
+      </view>
     </view>
   </view>
 

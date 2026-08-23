@@ -1,9 +1,10 @@
-import { and, count, eq, gte, isNull, lt, sql } from 'drizzle-orm';
-import { aiGenerationPublications, aiGenerations, floorPlans } from '@/db/schema';
+import { and, count, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { aiGenerationPublications, aiGenerations, floorPlans, leads } from '@/db/schema';
 import { FloorPlanRepository } from '@/db/repositories/floor-plan-repository';
 import { LeadRepository } from '@/db/repositories/lead-repository';
 import type { PostgresTransaction } from '@/db/transaction';
 import { formatAppointmentTimeRangeIso, resolveLeadServiceStage, type LeadServiceStage } from '@/lib/lead-service-stage';
+import { getLeadStatusVariants } from '@/lib/lead-status';
 
 export function isAssignmentEligibleStaff(member: {
   role?: string | null;
@@ -137,9 +138,10 @@ export function isMeasurerWorkbenchSurveyLead(
     measurerId: lead.measurerId,
     appointment: lead.appointment,
     hasFormalFloorPlan: plan?.status === 'completed',
+    publishedDesignCount: lead.publishedDesignCount,
   });
   if (COMPLETED_MEASURER_SURVEY_STAGES.has(stage.key)) return false;
-  return ['new', 'measuring'].includes(status) || Boolean(plan && plan.status !== 'completed');
+  return true;
 }
 
 /**
@@ -216,6 +218,7 @@ export function buildWorkbenchAppointmentItem(
   const terminalLead = stage.key === 'converted' || stage.key === 'closed';
   const allowRebook = Boolean(options.allowRebook && expired && !terminalLead);
   const canContinueSurvey = Boolean(planId) && !allowRebook && !terminalLead;
+  const canCompleteSurvey = stage.key === 'survey_ready' && !allowRebook && !terminalLead;
   return {
     id: String(appointment.id),
     appointmentId: String(appointment.id),
@@ -232,19 +235,22 @@ export function buildWorkbenchAppointmentItem(
     nextAction: stage.nextAction,
     metaLabel: terminalLead ? stage.label : expired ? '已过期' : stage.label,
     action: allowRebook ? 'rebook' : 'appointment',
-    actionLabel: canContinueSurvey ? '继续量房' : undefined,
+    actionLabel: canCompleteSurvey ? '确认完成量房' : canContinueSurvey ? '继续量房' : undefined,
     statusBadge: terminalLead
       ? stage.label
       : expired
         ? ''
         : stage.key === 'design_published'
           ? '方案已发布'
+          : stage.key === 'survey_ready'
+            ? '待确认完成'
           : hasFormalFloorPlan
             ? '户型已就绪'
             : '待上门',
     publishedDesignCount: Number(lead?.publishedDesignCount || 0),
     canSurveyNow: false,
     canContinueSurvey,
+    canCompleteSurvey,
     canStartNewSurvey: canContinueSurvey,
     canBookAppointment: allowRebook,
     canRebook: allowRebook,
@@ -278,6 +284,8 @@ export function buildWorkbenchLeadItem(lead: WorkbenchLeadInput, action = 'lead'
     ? stage.label
     : stage.key === 'design_published'
       ? '方案已发布'
+      : stage.key === 'survey_ready'
+        ? '待确认完成'
       : hasFormalFloorPlan
         ? '户型已就绪'
         : planId
@@ -310,6 +318,7 @@ export function buildWorkbenchLeadItem(lead: WorkbenchLeadInput, action = 'lead'
     statusBadge,
     canSurveyNow,
     canContinueSurvey,
+    canCompleteSurvey: false,
     canStartNewSurvey,
     canBookAppointment,
     canRebook: !closed && !planId && (stage.key === 'appointment_expired' || stage.key === 'awaiting_rebooking'),
@@ -320,10 +329,11 @@ export function buildWorkbenchLeadItem(lead: WorkbenchLeadInput, action = 'lead'
 const DESIGNER_WORKBENCH_STAGE_PRIORITY: Partial<Record<LeadServiceStage, number>> = {
   appointment_expired: 0,
   awaiting_rebooking: 1,
-  survey_completed: 2,
-  design_published: 3,
-  converted: 4,
-  closed: 5,
+  survey_ready: 2,
+  survey_completed: 3,
+  design_published: 4,
+  converted: 5,
+  closed: 6,
 };
 
 export function compareDesignerWorkbenchItems(
@@ -693,6 +703,36 @@ export async function loadOpsDashboard(
   };
 }
 
+export function buildEnterpriseOverviewSummary(input: {
+  pendingAssignmentCount: number;
+  pendingSurveyCount: number;
+  pendingDeliveryCount: number;
+}) {
+  return [
+    {
+      key: 'pending',
+      label: '待派单',
+      value: input.pendingAssignmentCount,
+      detail: '待分派或派单失败',
+      tone: 'orange' as const,
+    },
+    {
+      key: 'survey',
+      label: '待量房',
+      value: input.pendingSurveyCount,
+      detail: '尚未完成正式量房',
+      tone: 'blue' as const,
+    },
+    {
+      key: 'pendingDelivery',
+      label: '待交付',
+      value: input.pendingDeliveryCount,
+      detail: '量房已完成，待发布方案',
+      tone: 'green' as const,
+    },
+  ];
+}
+
 export function buildEnterpriseLeadLabel(lead: {
   communityName?: string | null;
   name?: string | null;
@@ -956,16 +996,24 @@ export async function countScopedFormalFloorPlans(
   return Number(rows[0]?.value ?? 0);
 }
 
-export async function countActiveEnterprisePublications(
-  transaction: PostgresTransaction,
-  enterpriseId: bigint
-) {
+export async function countPendingSchemeDeliveries(transaction: PostgresTransaction) {
+  const designingStatuses = getLeadStatusVariants('designing');
   const rows = await transaction
     .select({ value: count() })
-    .from(aiGenerationPublications)
+    .from(leads)
     .where(and(
-      eq(aiGenerationPublications.enterpriseId, enterpriseId),
-      isNull(aiGenerationPublications.withdrawnAt)
+      isNull(leads.archivedAt),
+      inArray(leads.status, designingStatuses),
+      sql`not exists (
+        select 1
+        from app.ai_generation_publications publication
+        inner join app.ai_generations generation on generation.id = publication.generation_id
+        where publication.lead_id = ${leads.id}
+          and publication.withdrawn_at is null
+          and generation.status = 'succeeded'
+          and generation.deleted_at is null
+          and coalesce(generation.output ->> 'imageUrl', '') <> ''
+      )`
     ));
   return Number(rows[0]?.value ?? 0);
 }

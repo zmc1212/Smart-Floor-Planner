@@ -158,6 +158,13 @@
   box-sizing: border-box;
 }
 
+.staff-assignment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
 .staff-assignment-role,
 .staff-assignment-name {
   display: block;
@@ -751,6 +758,33 @@
   box-shadow: var(--shadow-home-card);
 }
 
+.site-photos-card {
+  margin-top: 16rpx;
+  padding: 24rpx 20rpx;
+  border: 1rpx solid rgba(207, 220, 207, 0.55);
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-home-card);
+}
+
+.site-photos-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14rpx;
+}
+
+.site-photos-title {
+  color: #20262d;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.site-photos-meta {
+  color: #8a939e;
+  font-size: 22rpx;
+}
+
 .published-schemes-heading {
   display: flex;
   align-items: center;
@@ -830,19 +864,43 @@
   font-weight: 600;
 }
 
-.published-schemes-secondary {
-  width: 100%;
+.published-schemes-actions {
+  display: flex;
   margin-top: 4rpx;
-  padding: 0 24rpx;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 16rpx;
+}
+
+.published-schemes-secondary,
+.published-schemes-primary {
+  display: flex;
+  flex: 1;
+  width: auto;
+  min-width: 0;
   height: 84rpx;
-  line-height: 84rpx;
+  margin: 0;
+  padding: 0 16rpx;
+  align-items: center;
+  justify-content: center;
   border-radius: 999rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+/* Native button ignores flex gap; keep explicit row spacing. */
+.published-schemes-actions > .published-schemes-secondary + .published-schemes-primary {
+  margin-left: 16rpx;
+}
+
+.published-schemes-secondary {
   background: #ffffff;
   color: #147b3a;
   border: 2rpx solid rgba(20, 123, 58, 0.35);
-  font-size: 28rpx;
-  font-weight: 600;
-  box-sizing: border-box;
 }
 
 .published-schemes-secondary::after,
@@ -851,16 +909,9 @@
 }
 
 .published-schemes-primary {
-  width: 100%;
-  margin-top: 12rpx;
-  padding: 0 24rpx;
-  height: 84rpx;
-  line-height: 84rpx;
-  border-radius: 999rpx;
   background: linear-gradient(135deg, #1fba61 0%, #0f9f4e 100%);
   color: #fff;
-  font-size: 28rpx;
-  font-weight: 600;
+  border: none;
 }
 
 .measurement-history {
@@ -1488,10 +1539,10 @@ button.conversion-sheet-primary[disabled] {
 }
 
 .staff-assignment-action {
-  display: block;
-  margin-top: 8rpx;
+  flex-shrink: 0;
   color: #147b3a;
-  font-size: 22rpx;
+  font-size: 24rpx;
+  font-weight: 600;
   line-height: 1.35;
 }
 

@@ -20,22 +20,21 @@ function parseAppointmentBounds(timeRange) {
   return { startAt, endAt };
 }
 
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const SHANGHAI_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 function shanghaiParts(date) {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
-  const values = {};
-  formatter.formatToParts(date).forEach((part) => {
-    if (part.type !== 'literal') values[part.type] = part.value;
-  });
-  return values;
+  // Asia/Shanghai is UTC+8 with no DST. WeChat JS engines (especially Android)
+  // often omit `Intl`, so do not call Intl.DateTimeFormat here.
+  const shifted = new Date(date.getTime() + SHANGHAI_OFFSET_MS);
+  return {
+    year: String(shifted.getUTCFullYear()),
+    month: String(shifted.getUTCMonth() + 1),
+    day: String(shifted.getUTCDate()),
+    weekday: SHANGHAI_WEEKDAYS[shifted.getUTCDay()],
+    hour: String(shifted.getUTCHours()),
+    minute: String(shifted.getUTCMinutes()),
+  };
 }
 
 function padTwo(value) {

@@ -219,6 +219,20 @@
       bind:dockexpandchange="onComposerDockExpandChange"
       bind:keyboardheightchange="onComposerKeyboardHeightChange"
     ></ai-scheme-composer>
+    <site-photo-grid
+      embed="{{false}}"
+      lead-id="{{leadId}}"
+      photos="{{sitePhotos}}"
+      space-tags="{{sitePhotoTags}}"
+      show-add="{{false}}"
+      uploading="{{uploadingReference}}"
+      limit-reached="{{sitePhotoLimitReached}}"
+      capture-nonce="{{sitePhotoCaptureNonce}}"
+      capture-source="{{sitePhotoCaptureSource}}"
+      bind:captured="onSitePhotoCaptured"
+      bind:change="onSitePhotosChange"
+      bind:uploading="onSitePhotoUploading"
+    />
     </view>
   </view>
 
@@ -268,6 +282,22 @@
           </button>
         </view>
       </view>
+    </view>
+  </view>
+
+  <view wx:if="{{galleryMounted}}" class="sheet-root">
+    <view class="modal-mask {{galleryOpen ? 'open' : ''}}" catchtap="closeGalleryPicker"></view>
+    <view class="gallery-panel {{galleryOpen ? 'open' : ''}}" catchtap="noop">
+      <text class="dialog-title">本户现场图</text>
+      <text class="dialog-desc">点选一张已拍好的房间照片，直接作为参考图，不再复制一份</text>
+      <site-photo-grid
+        lead-id="{{leadId}}"
+        photos="{{sitePhotos}}"
+        space-tags="{{sitePhotoTags}}"
+        mode="picker"
+        show-add="{{false}}"
+        bind:select="onSitePhotoSelect"
+      />
     </view>
   </view>
 

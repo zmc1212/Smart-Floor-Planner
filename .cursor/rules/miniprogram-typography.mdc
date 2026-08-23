@@ -33,15 +33,21 @@ Authoritative floors live in `AGENTS.md` (Mini Program Design And Navigation) an
 3. Keep `20rpx` only on explicit tertiary badge selectors (e.g. published /
    confirmed corner badges).
 4. If adding or changing a bottom sheet / menu / dialog panel, add mask fade +
-   panel `translateY` (~`240ms`, `ease-out`); on close, wait ~`260ms` before
-   clearing `visible`.
+   the matching panel motion (~`240ms`, `ease-out`); on close, wait ~`260ms`
+   before clearing `visible`. Bottom sheets use `translateY(100%)→0`. Centered
+   contact/confirm cards use opacity plus a short `translateY(24rpx)→0` and
+   must not slide up from the bottom.
 5. Do not introduce Vant, TDesign, or other component libraries for motion.
 
 ## Sheet motion pattern
 
 ```text
-mask: opacity 0→1 (~240ms)
-panel: translateY(100%)→0 (~240ms) ease-out
+bottom sheet:
+  mask: opacity 0→1 (~240ms)
+  panel: translateY(100%)→0 (~240ms) ease-out
+centered dialog:
+  mask: opacity 0→1 (~240ms)
+  panel: opacity + translateY(24rpx)→0 (~240ms) ease-out
 close: reverse; finish animation before setData hide
 ```
 

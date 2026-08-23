@@ -84,7 +84,11 @@ test('phone-number lookup retries once after a stale access_token', async () => 
       }
       return jsonResponse({
         errcode: 0,
-        phone_info: { phoneNumber: '13800138000' },
+        phone_info: {
+          phoneNumber: '8613800138000',
+          purePhoneNumber: '13800138000',
+          countryCode: '86',
+        },
       });
     }
     throw new Error(`unexpected url ${url}`);

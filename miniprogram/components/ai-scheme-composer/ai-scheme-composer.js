@@ -1,4 +1,6 @@
 const {
+  buildComposerPickerOptions,
+  buildComposerPickerTitle,
   buildComposerViewState,
   buildTemplateCategoryChips,
 } = require('./ai-scheme-composer-model.js');
@@ -11,6 +13,7 @@ const {
 const PICKER_SHEET = { mountedKey: 'pickerMounted', openKey: 'pickerVisible' };
 const SETTINGS_SHEET = { mountedKey: 'settingsMounted', openKey: 'settingsOpen' };
 const TEMPLATE_SHEET = { mountedKey: 'templateSheetMounted', openKey: 'templateSheetOpen' };
+const KEYBOARD_HIDE_TIMEOUT_MS = 300;
 
 Component({
   properties: {
@@ -35,6 +38,7 @@ Component({
     view: null,
     dockExpanded: false,
     keyboardHeight: 0,
+    promptFocused: false,
     pickerType: '',
     pickerMounted: false,
     pickerVisible: false,
@@ -79,7 +83,12 @@ Component({
         return;
       }
       this.setData({ templatePreviewVisible: false, templatePreview: null });
-      closeSheet(this, TEMPLATE_SHEET);
+      closeSheet(this, TEMPLATE_SHEET, () => {
+        if (this._refocusAfterTemplate) {
+          this._refocusAfterTemplate = false;
+          this.restorePromptFocus();
+        }
+      });
     },
   },
 
@@ -87,13 +96,18 @@ Component({
     attached() {
       this._onKeyboardHeightChange = (res) => {
         const height = Math.max(0, Math.floor(Number(res && res.height) || 0));
-        if (height === this.data.keyboardHeight) return;
+        if (height === this.data.keyboardHeight) {
+          if (height === 0) this.flushKeyboardWait();
+          return;
+        }
         this.setData({ keyboardHeight: height });
         this.triggerEvent('keyboardheightchange', { height });
         if (height > 0) {
           this.clearCollapseTimer();
           this.setDockExpanded(true);
+          return;
         }
+        this.flushKeyboardWait();
       };
       if (typeof wx.onKeyboardHeightChange === 'function') {
         wx.onKeyboardHeightChange(this._onKeyboardHeightChange);
@@ -102,6 +116,7 @@ Component({
 
     detached() {
       this.clearCollapseTimer();
+      this.clearKeyboardWait();
       if (typeof wx.offKeyboardHeightChange === 'function' && this._onKeyboardHeightChange) {
         wx.offKeyboardHeightChange(this._onKeyboardHeightChange);
       }
@@ -120,6 +135,57 @@ Component({
       }
     },
 
+    clearKeyboardWait() {
+      if (this._keyboardWaitTimer) {
+        clearTimeout(this._keyboardWaitTimer);
+        this._keyboardWaitTimer = null;
+      }
+      this._afterKeyboardHidden = null;
+    },
+
+    flushKeyboardWait() {
+      const next = this._afterKeyboardHidden;
+      if (!next) return;
+      this.clearKeyboardWait();
+      this._openingSheet = false;
+      next();
+    },
+
+    runAfterKeyboardHidden(callback) {
+      this.clearKeyboardWait();
+      this._openingSheet = true;
+      this.clearCollapseTimer();
+      this.setDockExpanded(true);
+      this.setData({ promptFocused: false });
+
+      const finish = () => {
+        this.clearKeyboardWait();
+        this._openingSheet = false;
+        callback();
+      };
+
+      if (this.data.keyboardHeight <= 0) {
+        this._keyboardWaitTimer = setTimeout(finish, 20);
+        return;
+      }
+
+      this._afterKeyboardHidden = finish;
+      this._keyboardWaitTimer = setTimeout(finish, KEYBOARD_HIDE_TIMEOUT_MS);
+    },
+
+    restorePromptFocus() {
+      this.clearCollapseTimer();
+      this.setDockExpanded(true);
+      this.setData({ promptFocused: false }, () => {
+        this.setData({ promptFocused: true });
+      });
+    },
+
+    finishSheetWithoutRefocus() {
+      this.clearCollapseTimer();
+      this._collapseTimer = setTimeout(() => this.collapseDock(), 220);
+    },
+
     setDockExpanded(expanded) {
       const next = Boolean(expanded);
       if (this.data.dockExpanded === next) return;
@@ -134,7 +200,8 @@ Component({
 
     collapseDock() {
       if (
-        this.data.keyboardHeight > 0
+        this._openingSheet
+        || this.data.keyboardHeight > 0
         || this.data.settingsOpen
         || this.data.pickerVisible
         || this.data.templateSheetOpen
@@ -147,10 +214,13 @@ Component({
 
     onPromptFocus() {
       this.clearCollapseTimer();
+      this.setData({ promptFocused: true });
       this.setDockExpanded(true);
     },
 
     onPromptBlur() {
+      if (this._openingSheet) return;
+      this.setData({ promptFocused: false });
       this.clearCollapseTimer();
       this._collapseTimer = setTimeout(() => {
         this.collapseDock();
@@ -166,16 +236,37 @@ Component({
       this.triggerEvent('draftchange', { field: 'prompt', value: event.detail.value });
     },
 
+    onToolbarTap(event) {
+      const key = event.currentTarget.dataset.key;
+      if (key === 'settings') {
+        this.openSettings();
+        return;
+      }
+      if (key === 'template') {
+        this.openTemplates();
+        return;
+      }
+      if (key === 'scope' || key === 'model') {
+        this.openPicker({ currentTarget: { dataset: { type: key } } });
+      }
+    },
+
     openSettings() {
       if (!this.data.view) return;
-      this.holdDockExpanded();
-      openSheet(this, SETTINGS_SHEET);
+      this.runAfterKeyboardHidden(() => {
+        openSheet(this, SETTINGS_SHEET);
+      });
     },
 
     closeSettings() {
       closeSheet(this, SETTINGS_SHEET, () => {
-        this.clearCollapseTimer();
-        this._collapseTimer = setTimeout(() => this.collapseDock(), 220);
+        this.restorePromptFocus();
+      });
+    },
+
+    applySettings() {
+      closeSheet(this, SETTINGS_SHEET, () => {
+        this.restorePromptFocus();
       });
     },
 
@@ -193,43 +284,38 @@ Component({
       const { type } = event.currentTarget.dataset;
       const view = this.data.view;
       if (!view || !type) return;
-      this.holdDockExpanded();
-      let title = '';
-      let options = [];
-      if (type === 'model') {
-        title = '选择模型';
-        options = view.modelOptions.map((item) => ({
-          value: item.id,
-          label: item.name,
-          active: item.active,
-        }));
-      } else if (type === 'aspect') {
-        title = '选择比例';
-        options = view.aspectOptions;
-      } else if (type === 'resolution') {
-        title = '选择分辨率';
-        options = view.resolutionOptions;
-      } else if (type === 'count') {
-        title = '出图张数';
-        options = view.countOptions;
-      } else if (type === 'scope') {
-        title = '应用到哪里';
-        options = view.scopePickerOptions;
-      }
+      const title = buildComposerPickerTitle(type);
+      const options = buildComposerPickerOptions(type, view);
       if (!options.length) return;
-      this.setData({
-        pickerType: type,
-        pickerTitle: title,
-        pickerOptions: options,
-      });
-      openSheet(this, PICKER_SHEET);
+      const nested = this.data.settingsOpen;
+      const proceed = () => {
+        this.holdDockExpanded();
+        this.setData({
+          pickerType: type,
+          pickerTitle: title,
+          pickerOptions: options,
+        });
+        openSheet(this, PICKER_SHEET);
+      };
+      if (nested) {
+        proceed();
+        return;
+      }
+      this.runAfterKeyboardHidden(proceed);
     },
 
     closePicker() {
+      this.finishPicker({ refocus: !this.data.settingsOpen });
+    },
+
+    finishPicker({ refocus }) {
       closeSheet(this, PICKER_SHEET, () => {
         this.setData({ pickerType: '', pickerOptions: [] });
-        this.clearCollapseTimer();
-        this._collapseTimer = setTimeout(() => this.collapseDock(), 220);
+        if (refocus) {
+          this.restorePromptFocus();
+          return;
+        }
+        this.finishSheetWithoutRefocus();
       });
     },
 
@@ -252,7 +338,7 @@ Component({
           roomId: option && option.targetScope === 'single_room' ? String(option.roomId || '') : '',
         });
       }
-      this.closePicker();
+      this.finishPicker({ refocus: !this.data.settingsOpen });
     },
 
     uploadReference() {
@@ -275,12 +361,21 @@ Component({
     },
 
     openTemplates() {
-      this.holdDockExpanded();
-      this.triggerEvent('opentemplates');
+      const nested = this.data.settingsOpen;
+      const proceed = () => {
+        this.holdDockExpanded();
+        this.triggerEvent('opentemplates');
+      };
+      if (nested) {
+        proceed();
+        return;
+      }
+      this.runAfterKeyboardHidden(proceed);
     },
 
     closeTemplates() {
       this.setData({ templatePreviewVisible: false, templatePreview: null });
+      this._refocusAfterTemplate = !this.data.settingsOpen;
       this.triggerEvent('closetemplates');
     },
 
@@ -349,6 +444,7 @@ Component({
       const template = (this.properties.templates || []).find((item) => String(item.id) === String(id));
       if (!template) return;
       this.setData({ templatePreviewVisible: false, templatePreview: null });
+      this._refocusAfterTemplate = !this.data.settingsOpen;
       this.triggerEvent('selecttemplate', { template });
       this.closeTemplates();
     },

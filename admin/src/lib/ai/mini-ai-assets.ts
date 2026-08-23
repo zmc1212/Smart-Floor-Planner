@@ -1,7 +1,14 @@
 import crypto from 'crypto';
+import { alignedSignedUrlDeadline } from '@/lib/media-storage/operations';
 
 function secret() {
   return process.env.JWT_SECRET || 'fallback_secret_random_123';
+}
+
+function resolveSignedExpires(ttlSeconds: number | undefined, alignDeadline?: boolean) {
+  const ttl = ttlSeconds || 3600;
+  if (alignDeadline) return alignedSignedUrlDeadline(ttl);
+  return Math.floor(Date.now() / 1000) + ttl;
 }
 
 function signaturePayload(assetId: string, enterpriseId: string, expires: number) {
@@ -117,8 +124,10 @@ export function getSignedMiniAiAssetUrl(input: {
   assetId: string;
   enterpriseId: string;
   ttlSeconds?: number;
+  /** When true, expires snaps to a TTL window so repeated responses share one cacheable URL. */
+  alignDeadline?: boolean;
 }) {
-  const expires = Math.floor(Date.now() / 1000) + (input.ttlSeconds || 3600);
+  const expires = resolveSignedExpires(input.ttlSeconds, input.alignDeadline);
   const signature = createMiniAiAssetSignature(input.assetId, input.enterpriseId, expires);
   const url = new URL(
     `/api/miniprogram/ai/assets/${input.assetId}/image`,
@@ -187,8 +196,9 @@ export function getSignedMiniAiStudioGenerationUrl(input: {
   generationId: string;
   enterpriseId: string;
   ttlSeconds?: number;
+  alignDeadline?: boolean;
 }) {
-  const expires = Math.floor(Date.now() / 1000) + (input.ttlSeconds || 3600);
+  const expires = resolveSignedExpires(input.ttlSeconds, input.alignDeadline);
   const signature = createMiniAiStudioGenerationSignature(input.generationId, input.enterpriseId, expires);
   const url = new URL(
     `/api/miniprogram/ai/studio/generations/${input.generationId}/image`,

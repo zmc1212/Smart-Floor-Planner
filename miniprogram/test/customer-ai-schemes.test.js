@@ -32,6 +32,9 @@ test('customer AI schemes folio is read-only and consumes publishedSchemes', () 
   assert.match(page, /wx\.previewImage/);
   assert.match(page, /require\('\.\.\/\.\.\/\.\.\/utils\/protectedImageCache'\)/);
   assert.match(page, /readCachedProtectedImage/);
+  assert.match(page, /image\.imageUrl && \/\^https\?:/);
+  assert.match(page, /imagePath: image\.imageUrl/);
+  assert.match(page, /imageState: 'loaded'/);
   assert.doesNotMatch(wxml, /进入 AI 设计|继续出图|材质微调|导出方案包/);
   assert.doesNotMatch(page, /onOpenAIDesign|publishScheme|withdrawPublication|exportSchemePack/);
   assert.match(wxml, /\/images\/airy-v1\/project-delivery-xiao-k\.png/);

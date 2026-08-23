@@ -293,9 +293,17 @@
                   <image class="sfp-icon-action__icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
                   <text>导航</text>
                 </view>
-                <view wx:if="{{item.canSurveyNow || item.canContinueSurvey}}" class="item-cta sfp-icon-action" catchtap="openSurvey" data-item="{{item}}">
+                <view wx:if="{{item.canCompleteSurvey}}" class="item-cta sfp-icon-action" catchtap="openAppointment" data-item="{{item}}">
+                  <image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" />
+                  <text>确认完成量房</text>
+                </view>
+                <view wx:if="{{(item.canSurveyNow || item.canContinueSurvey) && !item.canCompleteSurvey}}" class="item-cta sfp-icon-action" catchtap="openSurvey" data-item="{{item}}">
                   <image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" />
                   <text>{{item.canContinueSurvey ? '继续量房' : '立即量房'}}</text>
+                </view>
+                <view wx:elif="{{item.canContinueSurvey && item.canCompleteSurvey}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openSurvey" data-item="{{item}}">
+                  <image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" />
+                  <text>继续量房</text>
                 </view>
                 <view wx:if="{{item.canStartNewSurvey}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openNewSurvey" data-item="{{item}}">
                   <image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" />
@@ -309,13 +317,13 @@
                   <image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" />
                   <text>{{item.canRebook ? (item.actionLabel || '重新预约') : '预约上门'}}</text>
                 </view>
-                <view wx:elif="{{item.action === 'appointment' && item.appointmentId}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openAppointment" data-item="{{item}}">
+                <view wx:elif="{{item.action === 'appointment' && item.appointmentId && !item.canCompleteSurvey}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openAppointment" data-item="{{item}}">
                   <image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" />
                   <text>查看预约</text>
                 </view>
               </view>
             </view>
-            <view wx:if="{{!(item.canSurveyNow || item.canContinueSurvey || item.canStartNewSurvey || item.canBookAppointment || item.canReschedule || (item.action === 'appointment' && item.appointmentId))}}" class="item-action">
+            <view wx:if="{{!(item.canSurveyNow || item.canContinueSurvey || item.canStartNewSurvey || item.canCompleteSurvey || item.canBookAppointment || item.canReschedule || (item.action === 'appointment' && item.appointmentId))}}" class="item-action">
               <text>{{item.actionLabel}}</text>
               <view class="chevron"></view>
             </view>

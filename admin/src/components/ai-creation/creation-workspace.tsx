@@ -46,6 +46,7 @@ import {
   promptTemplateCoverClonePath,
   promptTemplatePreviewSrc,
 } from '@/lib/ai/prompt-template-reference';
+import { pickDefaultCreationModel } from '@/lib/ai/workbench-studio';
 import { cn } from '@/lib/utils';
 import { ImageEditorDialog } from './image-editor-dialog';
 import { TemplateLibraryDialog } from './template-library-dialog';
@@ -64,7 +65,7 @@ const { TextArea } = Input;
 type BootstrapData = {
   account: { balance: number; frozenBalance: number; availableBalance: number };
   price: { credits: number; label: string };
-  provider: { actionEnabled: boolean; supportsGenerate: boolean; supportsEdit: boolean };
+  provider: { actionEnabled: boolean; supportsGenerate: boolean; supportsEdit: boolean; defaultRemoteModel?: string };
   models: CreationModelProfile[];
   workflows: CreationWorkflow[];
 };
@@ -349,7 +350,10 @@ export function CreationWorkspace() {
       if (!payload.data) throw new Error('AI 创作台初始化数据为空');
       setBootstrap(payload.data);
       setBootstrapError(null);
-      setModelProfileId((current) => current || payload.data.models?.[0]?.id || '');
+      setModelProfileId((current) => current || pickDefaultCreationModel(
+        payload.data.models as CreationModelProfile[] | undefined,
+        payload.data.provider?.defaultRemoteModel,
+      )?.id || '');
     } catch (error) {
       const message = error instanceof Error ? error.message : '加载 AI 创作台失败';
       setBootstrapError(message);
@@ -477,7 +481,7 @@ export function CreationWorkspace() {
   };
 
   const newCreation = () => {
-    const first = bootstrap?.models[0];
+    const first = pickDefaultCreationModel(bootstrap?.models, bootstrap?.provider.defaultRemoteModel);
     setSelectedTaskId('');
     setPrompt('');
     setNegativePrompt('');

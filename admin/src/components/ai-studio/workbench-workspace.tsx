@@ -47,6 +47,7 @@ import type {
   PromptTemplate,
 } from '@/components/ai-creation/types';
 import {
+  pickDefaultCreationModel,
   readStoredWorkbenchTheme,
   WORKBENCH_THEME_STORAGE_KEY,
   WORKBENCH_WHOLE_FLOOR_SCOPE_KEY,
@@ -65,7 +66,7 @@ import { cn } from '@/lib/utils';
 type BootstrapData = {
   account: { balance: number; frozenBalance: number; availableBalance: number };
   price: { credits: number; label: string };
-  provider: { actionEnabled: boolean; supportsGenerate: boolean; supportsEdit: boolean };
+  provider: { actionEnabled: boolean; supportsGenerate: boolean; supportsEdit: boolean; defaultRemoteModel?: string };
   models: CreationModelProfile[];
 };
 
@@ -343,7 +344,10 @@ export function WorkbenchWorkspace() {
     if (!payload.data) throw new Error('AI 工作台初始化数据为空');
     setBootstrap(payload.data);
     setBootstrapError(null);
-    setModelProfileId((current) => current || payload.data.models?.[0]?.id || '');
+    setModelProfileId((current) => current || pickDefaultCreationModel(
+      payload.data.models as CreationModelProfile[] | undefined,
+      payload.data.provider?.defaultRemoteModel,
+    )?.id || '');
   }, []);
 
   const loadLeads = useCallback(async () => {

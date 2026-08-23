@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
+import { AdminUserRepository } from '@/db/repositories';
 import { leadToDto, parsePostgresId } from '@/db/postgres-dto';
+import { attachLeadAssignmentActions } from '@/lib/lead-assignment-actions';
 import { assignLeadStaff } from '@/lib/lead-assignment-manual';
-import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
-import { requireMiniProgramEnterpriseAdmin } from '@/lib/miniprogram-portal-authority';
+import {
+  resolveLeadAssignmentRequest,
+  withLeadAssignmentTransaction,
+} from '@/lib/lead-assignment-request';
+import { httpErrorStatus } from '@/lib/http-error';
 
 function parseOptionalStaffId(value: unknown, label: string) {
   if (value === undefined || value === null || value === '') return null;
@@ -14,11 +19,13 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const mini = await resolveMiniProgramContext(request);
-    if (!mini) {
+    const actor = await resolveLeadAssignmentRequest(request);
+    if (!actor) {
       return NextResponse.json({ success: false, error: '需要有效登录身份' }, { status: 401 });
     }
-    requireMiniProgramEnterpriseAdmin(mini);
+    if (!actor.actorStaffId) {
+      return NextResponse.json({ success: false, error: '无权改派线索人员' }, { status: 403 });
+    }
 
     const leadId = parsePostgresId((await params).id, 'lead id');
     const body = await request.json().catch(() => ({}));
@@ -31,9 +38,18 @@ export async function POST(
       );
     }
 
+    let actorUserId = actor.actorUserId;
+    if (actor.kind === 'admin') {
+      actorUserId = await withLeadAssignmentTransaction(actor, (transaction) =>
+        new AdminUserRepository(transaction).findLinkedUserId(actor.actorStaffId!)
+      );
+    }
+
     const result = await assignLeadStaff({
       leadId,
-      actorStaffId: mini.staff?._id ? parsePostgresId(mini.staff._id, 'actor staff id') : null,
+      actorStaffId: actor.actorStaffId,
+      actorRole: actor.role,
+      actorUserId,
       designerId,
       measurerId,
     });
@@ -46,17 +62,18 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      data: {
-        ...leadToDto(result.lead),
-        result: result.kind,
-        assignmentStatus: result.lead.assignmentStatus,
-        assignmentErrorCode: result.lead.assignmentErrorCode,
-        designerId: result.lead.assignedTo?.toString() || null,
-        measurerId: result.lead.measurerId?.toString() || null,
-      },
+      data: attachLeadAssignmentActions(
+        {
+          ...leadToDto(result.lead),
+          result: result.kind,
+        },
+        result.lead,
+        actor.role,
+        actor.actorStaffId
+      ),
     });
   } catch (error) {
-    const status = (error as { status?: number }).status || 400;
+    const status = httpErrorStatus(error, 400);
     return NextResponse.json(
       {
         success: false,

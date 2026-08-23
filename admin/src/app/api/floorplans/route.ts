@@ -8,6 +8,7 @@ import {
   type FloorPlanListOptions,
   LeadRepository,
   UserRepository,
+  AppointmentRepository,
 } from '@/db/repositories';
 import type { PostgresTransaction } from '@/db/transaction';
 import { getTenantContext } from '@/lib/auth';
@@ -20,7 +21,6 @@ import {
 import { persistAndAttachFloorPlanPreview } from '@/lib/floor-plan-preview';
 import { canStaffMutateLeadSurvey } from '@/lib/lead-staff-access';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
-import { notifyDesignerOfSurveyCompleted } from '@/lib/wechat-notification';
 
 interface FloorPlanRequestBody {
   name?: string;
@@ -158,25 +158,19 @@ export async function POST(request: Request) {
             created.id
           );
           linkedLead = await leadRepository.findById(lead.id);
+          if (planStatus === 'completed' && linkedLead?.enterpriseId && linkedLead.assignedTo) {
+            await new AppointmentRepository(transaction).tryCreateOnSiteVisit({
+              enterpriseId: linkedLead.enterpriseId,
+              leadId: linkedLead.id,
+              actorUserId: creatorId,
+              eventKey: `on-site-floorplan:${linkedLead.id.toString()}:${created.id.toString()}`,
+            });
+          }
         }
         return { plan: created, lead: linkedLead };
       }
     );
     const plan = await persistAndAttachFloorPlanPreview(createdResult.plan);
-    if (
-      planStatus === 'completed' &&
-      createdResult.lead?.enterpriseId &&
-      createdResult.lead.assignedTo
-    ) {
-      await Promise.allSettled([
-        notifyDesignerOfSurveyCompleted({
-          enterpriseId: createdResult.lead.enterpriseId,
-          leadId: createdResult.lead.id,
-          designerId: createdResult.lead.assignedTo,
-          floorPlanId: plan.id,
-        }),
-      ]);
-    }
     return NextResponse.json(
       {
         success: true,

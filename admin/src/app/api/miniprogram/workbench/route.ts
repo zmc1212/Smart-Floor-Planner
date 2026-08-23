@@ -6,6 +6,7 @@ import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope
 import {
   buildDesignerWechatProfileTodo,
   buildEnterpriseExpiredExceptionItem,
+  buildEnterpriseOverviewSummary,
   buildEnterprisePendingExceptionItem,
   buildEnterpriseStaffingExceptionItem,
   buildStaffingGapItems,
@@ -13,7 +14,7 @@ import {
   buildWorkbenchAppointmentItem,
   buildWorkbenchLeadItem,
   compareDesignerWorkbenchItems,
-  countActiveEnterprisePublications,
+  countPendingSchemeDeliveries,
   isAssignmentEligibleStaff,
   isMeasurerWorkbenchSurveyLead,
   loadOpsDashboard,
@@ -179,21 +180,47 @@ export async function GET(request: Request) {
         const currentAppointmentRows = selectMeasurerWorkbenchAppointments(appointmentRows);
         const leadRows = await leads.findByIds(currentAppointmentRows.map((item) => item.leadId));
         const leadMap = new Map(leadRows.map((item) => [item.id, item]));
+        const publicationLeadIds = [
+          ...surveyList.rows.map((row) => row.id),
+          ...currentAppointmentRows.map((item) => item.leadId),
+        ];
+        const publishedCounts = await new CustomerProjectRepository(transaction).countPublishedDesignsByLeadIds(
+          enterpriseId,
+          [...new Set(publicationLeadIds.map((id) => id.toString()))].map((id) => BigInt(id))
+        );
+        const publishedCountFor = (leadId: bigint | number | string) => publishedCounts.get(String(leadId)) || 0;
+        const withPublishedCount = (
+          lead: (typeof leadRows)[number] | (typeof surveyList.rows)[number] | undefined
+        ) => (lead ? { ...lead, publishedDesignCount: publishedCountFor(lead.id) } : lead);
         const confirmedRows = currentAppointmentRows
           .filter((item) => item.status === 'confirmed')
-          .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(item.leadId), item));
+          .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(
+            withPublishedCount(leadMap.get(item.leadId)),
+            item
+          ));
         const expiredRows = currentAppointmentRows
           .filter((item) => item.status === 'expired')
-          .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(item.leadId), item));
-        const appointmentItems = confirmedRows.map((item) => appointmentItem(item, leadMap.get(item.leadId)));
-        const expiredItems = expiredRows.map((item) => appointmentItem(item, leadMap.get(item.leadId)));
+          .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(
+            withPublishedCount(leadMap.get(item.leadId)),
+            item
+          ));
+        const appointmentItems = confirmedRows.map((item) => appointmentItem(
+          item,
+          leadMap.get(item.leadId),
+          { publishedDesignCount: publishedCountFor(item.leadId) }
+        ));
+        const expiredItems = expiredRows.map((item) => appointmentItem(
+          item,
+          leadMap.get(item.leadId),
+          { publishedDesignCount: publishedCountFor(item.leadId) }
+        ));
         const occupiedIds = new Set([
           ...confirmedRows.map((item) => item.leadId.toString()),
           ...expiredRows.map((item) => item.leadId.toString()),
         ]);
         const unscheduled = surveyList.rows
-          .filter((lead) => isMeasurerWorkbenchSurveyLead(lead, occupiedIds))
-          .map((lead) => leadItem(lead, 'survey'));
+          .filter((lead) => isMeasurerWorkbenchSurveyLead(withPublishedCount(lead)!, occupiedIds))
+          .map((lead) => leadItem(lead, 'survey', publishedCountFor(lead.id)));
         const items = [...expiredItems, ...unscheduled, ...appointmentItems];
         return {
           role,
@@ -229,12 +256,12 @@ export async function GET(request: Request) {
         appointmentLeads,
         measuringCount,
         assignedNewCount,
-        deliveredCount,
+        pendingDeliveryCount,
       ] = await Promise.all([
         leads.findByIds(appointmentRows.map((item) => item.leadId)),
         leads.count({ status: 'measuring' }),
         leads.count({ status: 'new', assignmentStatus: 'assigned' }),
-        countActiveEnterprisePublications(transaction, enterpriseId),
+        countPendingSchemeDeliveries(transaction),
       ]);
       const appointmentLeadMap = new Map(appointmentLeads.map((item) => [item.id, item]));
       const pendingItems = pendingAssignments.rows.map((lead) => buildEnterprisePendingExceptionItem(lead));
@@ -254,11 +281,11 @@ export async function GET(request: Request) {
         role,
         title: '门店经营与全盘调度',
         subtitle: '派单跟踪 · 测量调度 · 方案交付',
-        summary: [
-          { key: 'pending', label: '待派单', value: pendingAssignments.total, detail: '待分派或派单失败', tone: 'orange' },
-          { key: 'survey', label: '待量房', value: pendingSurveyCount, detail: '尚未完成正式量房', tone: 'blue' },
-          { key: 'delivered', label: '已交付', value: deliveredCount, detail: '客户可见方案', tone: 'green' },
-        ],
+        summary: buildEnterpriseOverviewSummary({
+          pendingAssignmentCount: pendingAssignments.total,
+          pendingSurveyCount,
+          pendingDeliveryCount,
+        }),
         quickNav: [
           {
             key: 'pendingLeads',

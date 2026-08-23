@@ -19,6 +19,7 @@ export * from './enterprise-ai-usage-snapshot-repository';
 export * from './floor-plan-repository';
 export * from './inspiration-repository';
 export * from './lead-repository';
+export * from './lead-site-photo-repository';
 export * from './lead-lifecycle-repository';
 export * from './lead-commission-repository';
 export * from './media-storage-config-repository';

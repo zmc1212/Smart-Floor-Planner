@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { loadEnvConfig } from '@next/env';
-import { count, eq, inArray } from 'drizzle-orm';
+import { count, eq, inArray, like } from 'drizzle-orm';
 import {
   aiPromptCategories,
   aiPromptLibraryRevisions,
@@ -102,7 +102,9 @@ import {
 import { preparePostgresMiniAiTaskRetry } from '@/lib/ai/postgres-mini-ai-tasks';
 import { chinaDateString } from '@/lib/lead-conversion';
 import { getPurgeBlockers } from '@/lib/lead-lifecycle';
-import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
+import { enableDefaultResolutionPriceForProfile, listPostgresExecutableImageModelProfiles, listPostgresImageModelPrices, listPostgresWorkbenchImageModels } from '@/lib/ai/image-model-catalog';
+import { listAiCreditPrices } from '@/lib/ai/credits';
+import { AI_ACTION_KEYS } from '@/lib/ai/provider-types';
 import {
   createPostgresCreationTask,
   claimPostgresCreationProviderPolls,
@@ -152,8 +154,6 @@ let promotionDesignerAId: bigint;
 let promotionPromoterBId: bigint;
 let aiStylePresetId: bigint;
 let aiProviderConfigId: bigint;
-let aiCreditPriceId: bigint;
-let aiModelCreditPriceId: bigint;
 let aiCreditAccountId: bigint;
 const aiCreditLedgerIds: bigint[] = [];
 const aiCreationModelProfileIds: bigint[] = [];
@@ -449,7 +449,6 @@ test('AI credit prices use idempotent PostgreSQL defaults and bigint-safe update
     const listed = await prices.list();
     const created = listed.find((price) => price.actionKey === `${testRunKey}.price`);
     assert.ok(created);
-    aiCreditPriceId = created.id;
     assert.equal(created.credits, BigInt(12));
     assert.equal((await prices.findEnabledByActionKey(created.actionKey))?.id, created.id);
     const updated = await prices.updateByActionKey(created.actionKey, {
@@ -473,7 +472,6 @@ test('AI credit prices use idempotent PostgreSQL defaults and bigint-safe update
     });
     const created = await prices.findEnabled(`${testRunKey}.model`, '1K');
     assert.ok(created);
-    aiModelCreditPriceId = created.id;
     assert.equal(created.credits, BigInt(20));
     const updated = await prices.update(`${testRunKey}.model`, '1K', {
       credits: BigInt(25),
@@ -483,6 +481,16 @@ test('AI credit prices use idempotent PostgreSQL defaults and bigint-safe update
     assert.equal(updated?.credits, BigInt(25));
     assert.equal((await prices.findEnabled(`${testRunKey}.model`, '1K')), null);
   });
+});
+
+test('platform credit and model price listings ignore leftover non-catalog keys', async () => {
+  const listed = await listAiCreditPrices();
+  assert.equal(listed.some((price) => price.actionKey === `${testRunKey}.price`), false);
+  assert.ok(listed.every((price) => (AI_ACTION_KEYS as readonly string[]).includes(price.actionKey)));
+
+  const modelPrices = await listPostgresImageModelPrices();
+  assert.equal(modelPrices.some((price) => price.modelProfileKey === `${testRunKey}.model`), false);
+  assert.ok(modelPrices.every((price) => price.modelProfileKey.startsWith('grs-')));
 });
 
 test('AI credit accounts and ledgers apply idempotent balance operations in PostgreSQL', async () => {
@@ -1447,16 +1455,12 @@ after(async () => {
           .delete(aiProviderConfigs)
           .where(eq(aiProviderConfigs.id, aiProviderConfigId));
       }
-      if (aiCreditPriceId) {
-        await transaction
-          .delete(aiCreditPrices)
-          .where(eq(aiCreditPrices.id, aiCreditPriceId));
-      }
-      if (aiModelCreditPriceId) {
-        await transaction
-          .delete(aiModelCreditPrices)
-          .where(eq(aiModelCreditPrices.id, aiModelCreditPriceId));
-      }
+      await transaction
+        .delete(aiCreditPrices)
+        .where(like(aiCreditPrices.actionKey, `${testRunKey}%`));
+      await transaction
+        .delete(aiModelCreditPrices)
+        .where(like(aiModelCreditPrices.modelProfileKey, `${testRunKey}%`));
       if (aiCreditLedgerIds.length) {
         await transaction
           .delete(aiCreditLedgers)
@@ -2409,6 +2413,137 @@ test('PostgreSQL GRS catalog initialization exposes an executable default model'
   assert.equal(defaultProfile?.enabled, true);
   assert.equal(defaultProfile?.isDefault, true);
   assert.equal(defaultProfile?.remoteModel, 'gpt-image-2');
+});
+
+test('enabling a model credit price reconciles a disabled GRS catalog profile into workbench models', async () => {
+  const extraKey = 'grs-nano-banana-2';
+  const originalProfiles = await withPlatformTransaction((transaction) =>
+    new AiCreationModelProfileRepository(transaction).list({ sourceType: 'grs_catalog' })
+  );
+  const originalPrices = await withPlatformTransaction((transaction) =>
+    new AiModelCreditPriceRepository(transaction).list({ actionKey: 'image.free_create' })
+  );
+  const extra = originalProfiles.find((profile) => profile.key === extraKey);
+  assert.ok(extra, 'GRS catalog should include nano-banana-2');
+
+  try {
+    await withPlatformTransaction(async (transaction) => {
+      const profiles = new AiCreationModelProfileRepository(transaction);
+      const prices = new AiModelCreditPriceRepository(transaction);
+      await profiles.updateCatalogSettings({
+        id: extra!.id,
+        enabled: false,
+        isDefault: false,
+        maxReferenceImages: Number(extra!.capabilities?.maxReferenceImages || 0),
+      });
+      for (const price of originalPrices.filter((item) => item.modelProfileKey === extraKey)) {
+        await prices.update(extraKey, price.resolutionTier, {
+          credits: price.credits,
+          enabled: price.resolutionTier === '1K',
+          updatedBy: price.updatedBy,
+        });
+      }
+    });
+
+    const executable = await listPostgresExecutableImageModelProfiles();
+    const reconciled = executable.find((profile) => profile.key === extraKey);
+    assert.ok(reconciled);
+    assert.equal(reconciled?.enabled, true);
+    assert.equal(reconciled?.remoteModel, 'nano-banana-2');
+
+    const models = await listPostgresWorkbenchImageModels();
+    assert.ok(models.length >= 2);
+    assert.ok(models.some((model) => model.remoteModel === 'nano-banana-2' && model.prices.some((price) => price.enabled)));
+    const defaultModel = models.find((model) => model.isDefault);
+    assert.ok(defaultModel);
+    assert.equal(models[0]?.id, defaultModel.id);
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      const profiles = new AiCreationModelProfileRepository(transaction);
+      const prices = new AiModelCreditPriceRepository(transaction);
+      await profiles.clearCatalogDefaults();
+      for (const profile of originalProfiles) {
+        await profiles.updateCatalogSettings({
+          id: profile.id,
+          enabled: profile.enabled,
+          isDefault: profile.isDefault,
+          maxReferenceImages: Number(profile.capabilities?.maxReferenceImages || 0),
+        });
+      }
+      for (const price of originalPrices) {
+        await prices.update(price.modelProfileKey, price.resolutionTier, {
+          credits: price.credits,
+          enabled: price.enabled,
+          updatedBy: price.updatedBy,
+        });
+      }
+    });
+  }
+});
+
+test('enabling a GRS catalog model without prices turns on its default resolution price', async () => {
+  const extraKey = 'grs-nano-banana-2';
+  const originalProfiles = await withPlatformTransaction((transaction) =>
+    new AiCreationModelProfileRepository(transaction).list({ sourceType: 'grs_catalog' })
+  );
+  const originalPrices = await withPlatformTransaction((transaction) =>
+    new AiModelCreditPriceRepository(transaction).list({ actionKey: 'image.free_create' })
+  );
+  const extra = originalProfiles.find((profile) => profile.key === extraKey);
+  assert.ok(extra, 'GRS catalog should include nano-banana-2');
+
+  try {
+    await withPlatformTransaction(async (transaction) => {
+      const profiles = new AiCreationModelProfileRepository(transaction);
+      const prices = new AiModelCreditPriceRepository(transaction);
+      for (const price of originalPrices.filter((item) => item.modelProfileKey === extraKey)) {
+        await prices.update(extraKey, price.resolutionTier, {
+          credits: price.credits,
+          enabled: false,
+          updatedBy: price.updatedBy,
+        });
+      }
+      const enabled = await profiles.updateCatalogSettings({
+        id: extra!.id,
+        enabled: true,
+        isDefault: false,
+        maxReferenceImages: Number(extra!.capabilities?.maxReferenceImages || 0),
+      });
+      assert.ok(enabled);
+      await enableDefaultResolutionPriceForProfile(transaction, enabled, { defaultCredits: 10 });
+    });
+
+    const executable = await listPostgresExecutableImageModelProfiles();
+    assert.ok(executable.some((profile) => profile.key === extraKey));
+    const enabledPrices = await withPlatformTransaction((transaction) =>
+      new AiModelCreditPriceRepository(transaction).list({
+        actionKey: 'image.free_create',
+        enabledOnly: true,
+      })
+    );
+    assert.ok(enabledPrices.some((price) => price.modelProfileKey === extraKey && price.resolutionTier === '1K'));
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      const profiles = new AiCreationModelProfileRepository(transaction);
+      const prices = new AiModelCreditPriceRepository(transaction);
+      await profiles.clearCatalogDefaults();
+      for (const profile of originalProfiles) {
+        await profiles.updateCatalogSettings({
+          id: profile.id,
+          enabled: profile.enabled,
+          isDefault: profile.isDefault,
+          maxReferenceImages: Number(profile.capabilities?.maxReferenceImages || 0),
+        });
+      }
+      for (const price of originalPrices) {
+        await prices.update(price.modelProfileKey, price.resolutionTier, {
+          credits: price.credits,
+          enabled: price.enabled,
+          updatedBy: price.updatedBy,
+        });
+      }
+    });
+  }
 });
 
 test('PostgreSQL GRS catalog settings preserve one default and reference-image limits', async () => {

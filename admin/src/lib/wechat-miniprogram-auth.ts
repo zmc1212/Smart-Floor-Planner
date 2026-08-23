@@ -2,6 +2,7 @@ import {
   getWechatAccessToken,
   invalidateWechatAccessTokenCache,
 } from '@/lib/wechat-access-token';
+import { normalizeCustomerPhone } from '@/lib/customer-phone';
 
 export interface WechatSessionIdentity {
   openid: string;
@@ -70,8 +71,13 @@ export async function getWechatPhoneNumber(
     accessToken = await getWechatAccessToken({ fetchImpl });
     phoneData = await requestPhone(accessToken);
   }
-  if (phoneData.errcode !== 0 || !phoneData.phone_info?.phoneNumber) {
+  const phoneInfo = phoneData.phone_info as {
+    phoneNumber?: string;
+    purePhoneNumber?: string;
+  } | undefined;
+  const rawPhone = phoneInfo?.purePhoneNumber || phoneInfo?.phoneNumber;
+  if (phoneData.errcode !== 0 || !rawPhone) {
     throw new Error(phoneData.errmsg || 'Unable to obtain WeChat phone number');
   }
-  return phoneData.phone_info.phoneNumber as string;
+  return normalizeCustomerPhone(rawPhone);
 }

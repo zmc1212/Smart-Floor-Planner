@@ -24,6 +24,7 @@ import {
   isProtectedConversionStatusChange,
   redactLeadConversionDetailsForConsumer,
 } from '@/lib/lead-conversion';
+import { getLeadAssignmentActions } from '@/lib/lead-assignment-actions';
 import { normalizeLeadStatus } from '@/lib/lead-status';
 import {
   canAccessLeadForActor,
@@ -32,7 +33,10 @@ import {
   getPurgeBlockers,
   leadArchivedError,
 } from '@/lib/lead-lifecycle';
-import { buildPublishedSchemeViews } from '@/lib/customer-project';
+import {
+  attachPublishedSchemeDisplayUrls,
+  buildPublishedSchemeViews,
+} from '@/lib/customer-project';
 import { httpErrorStatus } from '@/lib/http-error';
 
 function errorMessage(error: unknown) {
@@ -106,12 +110,14 @@ function schemeSummary(scheme: ReturnType<typeof buildPublishedSchemeViews>[numb
       title: image.title,
       stageKey: image.stageKey,
       publishedAt: image.publishedAt,
+      imageUrl: image.imageUrl || null,
       imageEndpoint: `/leads/${leadId}/published-generations/${image.generationId}/image`,
     })),
   };
 }
 
 async function loadLeadPublicationFacts(
+  request: Request,
   context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>,
   lead: LeadWithRelations
 ) {
@@ -122,11 +128,16 @@ async function loadLeadPublicationFacts(
   const leadId = lead.id;
   return withLeadTransaction(context, async (transaction) => {
     const publications = await new CustomerProjectRepository(transaction).listActivePublications(enterpriseId, leadId);
-    const publishedSchemes = buildPublishedSchemeViews(
+    const publishedSchemes = (await attachPublishedSchemeDisplayUrls(
+      request,
+      enterpriseId.toString(),
       publications,
-      leadId.toString(),
-      lead.finalizedWorkflowId,
-    ).map((scheme) => schemeSummary(scheme, leadId.toString()));
+      buildPublishedSchemeViews(
+        publications,
+        leadId.toString(),
+        lead.finalizedWorkflowId,
+      ),
+    )).map((scheme) => schemeSummary(scheme, leadId.toString()));
     return {
       publishedDesignCount: publications.length,
       publishedSchemes,
@@ -162,6 +173,7 @@ function dtoForContext(
     ...dto,
     publishedSchemes: publicationFacts?.publishedSchemes || [],
     conversionActions: getLeadConversionActions(lead, role, actorId),
+    assignmentActions: getLeadAssignmentActions(lead, role, actorId),
   };
 }
 
@@ -211,7 +223,7 @@ export async function GET(
         );
       }
     }
-    const publicationFacts = await loadLeadPublicationFacts(context, lead);
+    const publicationFacts = await loadLeadPublicationFacts(request, context, lead);
     return NextResponse.json({ success: true, data: dtoForContext(request, lead, context, publicationFacts) });
   } catch (error: unknown) {
     return NextResponse.json(
@@ -319,7 +331,7 @@ export async function PUT(
         { status: 404 }
       );
     }
-    const publicationFacts = await loadLeadPublicationFacts(context, updated);
+    const publicationFacts = await loadLeadPublicationFacts(request, context, updated);
     return NextResponse.json({ success: true, data: dtoForContext(request, updated, context, publicationFacts) });
   } catch (error: unknown) {
     return NextResponse.json(

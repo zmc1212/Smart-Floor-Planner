@@ -104,11 +104,41 @@ test('design publication routes notify the customer after commit', () => {
   assert.match(scheme, /newGenerationIds/);
 });
 
-test('formal floor-plan completion notifies the assigned designer', () => {
+test('customer and internal reschedule notify staff and customer after the write commits', () => {
+  const customerRoute = readFileSync(
+    join(adminSrc, 'app/api/appointments/[id]/customer-reschedule/route.ts'),
+    'utf8'
+  );
+  const internalRoute = readFileSync(
+    join(adminSrc, 'app/api/appointments/[id]/internal-reschedule/route.ts'),
+    'utf8'
+  );
+  const createRoute = readFileSync(join(adminSrc, 'app/api/appointments/route.ts'), 'utf8');
+  for (const source of [customerRoute, internalRoute, createRoute]) {
+    assert.match(source, /notifyAppointmentStaff/);
+    assert.match(source, /notifyCustomerOfAppointment/);
+  }
+  assert.match(customerRoute, /eventType: 'customer_rescheduled'/);
+  assert.match(internalRoute, /eventType: 'internal_rescheduled'/);
+});
+
+test('appointment POST mints on-site visits and floor-plan submit retries that mint', () => {
+  const appointments = readFileSync(join(adminSrc, 'app/api/appointments/route.ts'), 'utf8');
   const updateRoute = readFileSync(join(adminSrc, 'app/api/floorplans/[id]/route.ts'), 'utf8');
   const createRoute = readFileSync(join(adminSrc, 'app/api/floorplans/route.ts'), 'utf8');
-  assert.match(updateRoute, /notifyDesignerOfSurveyCompleted/);
-  assert.match(createRoute, /notifyDesignerOfSurveyCompleted/);
+  assert.match(appointments, /source === 'on_site'/);
+  assert.match(appointments, /createOnSiteVisit/);
+  assert.match(updateRoute, /tryCreateOnSiteVisit/);
+  assert.match(createRoute, /tryCreateOnSiteVisit/);
+});
+
+test('formal visit confirmation notifies the assigned designer', () => {
+  const completeRoute = readFileSync(join(adminSrc, 'app/api/appointments/[id]/complete/route.ts'), 'utf8');
+  const updateRoute = readFileSync(join(adminSrc, 'app/api/floorplans/[id]/route.ts'), 'utf8');
+  const createRoute = readFileSync(join(adminSrc, 'app/api/floorplans/route.ts'), 'utf8');
+  assert.match(completeRoute, /notifyDesignerOfSurveyCompleted/);
+  assert.doesNotMatch(updateRoute, /notifyDesignerOfSurveyCompleted/);
+  assert.doesNotMatch(createRoute, /notifyDesignerOfSurveyCompleted/);
 });
 
 test('reminder cron only runs appointment expiry and promotion routes no longer dispatch workflow notifications', () => {

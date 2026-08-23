@@ -5,6 +5,7 @@ import {
   verifyMiniAiRecipePreviewSignature,
   verifyMiniAiStudioFloorPlanPreviewSignature,
   verifyMiniAiStudioGenerationSignature,
+  getSignedMiniAiAssetUrl,
 } from '@/lib/ai/mini-ai-assets';
 import {
   canManageLead,
@@ -14,6 +15,14 @@ import {
   serializeWorkflowContextForMini,
   serializeWorkflowListForMini,
 } from '@/lib/ai/mini-ai-studio';
+import {
+  alignedSignedUrlDeadline,
+  alignedSignedUrlExpiresInSeconds,
+} from '@/lib/media-storage/operations';
+import {
+  mediaAssetDisplayUrlTtlSeconds,
+  resolveMediaAssetDisplayUrls,
+} from '@/lib/ai/postgres-media-assets';
 
 test('canManageLead allows enterprise_admin and assigned designer only', () => {
   const staffId = BigInt(45);
@@ -23,9 +32,59 @@ test('canManageLead allows enterprise_admin and assigned designer only', () => {
   assert.equal(canManageLead('measurer', staffId, staffId), false);
 });
 
-test('rewriteStudioImageUrl signs asset and generation API paths', () => {
+test('aligned signed URL deadline stays stable within a TTL window', () => {
+  const ttl = 7 * 24 * 3600;
+  const now = 1_700_000_000;
+  const deadline = alignedSignedUrlDeadline(ttl, now);
+  assert.equal(alignedSignedUrlDeadline(ttl, now + 60), deadline);
+  assert.equal(alignedSignedUrlExpiresInSeconds(ttl, now), deadline - now);
+  const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/bootstrap');
+  const first = getSignedMiniAiAssetUrl({
+    request,
+    assetId: '81',
+    enterpriseId: '23',
+    ttlSeconds: ttl,
+    alignDeadline: true,
+  });
+  const second = getSignedMiniAiAssetUrl({
+    request,
+    assetId: '81',
+    enterpriseId: '23',
+    ttlSeconds: ttl,
+    alignDeadline: true,
+  });
+  assert.equal(first, second);
+  assert.equal(new URL(first).searchParams.get('expires'), String(alignedSignedUrlDeadline(ttl)));
+});
+
+test('resolveMediaAssetDisplayUrls stays on aligned Mini API URLs when direct Qiniu display is off', async () => {
+  const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/workflows/1');
+  const first = await resolveMediaAssetDisplayUrls({
+    request,
+    enterpriseId: '23',
+    assetIds: ['81', '81', 'bad'],
+    directQiniuDisplayUrls: false,
+  });
+  const second = await resolveMediaAssetDisplayUrls({
+    request,
+    enterpriseId: '23',
+    assetIds: ['81'],
+    directQiniuDisplayUrls: false,
+  });
+  assert.equal(first.get('81'), second.get('81'));
+  assert.match(String(first.get('81')), /\/api\/miniprogram\/ai\/assets\/81\/image/);
+  assert.equal(first.has('bad'), false);
+  assert.equal(new URL(String(first.get('81'))).searchParams.get('expires'), String(alignedSignedUrlDeadline(mediaAssetDisplayUrlTtlSeconds())));
+});
+
+test('rewriteStudioImageUrl prefers a Qiniu display map and signs API paths with aligned expires', () => {
   const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/bootstrap');
   const enterpriseId = '23';
+  const qiniuUrl = 'https://media.example.com/23/2026/asset.jpg?e=1700000000&token=signed';
+  assert.equal(
+    rewriteStudioImageUrl(request, enterpriseId, '/api/ai/assets/81/image', new Map([['81', qiniuUrl]])),
+    qiniuUrl,
+  );
   const assetUrl = rewriteStudioImageUrl(request, enterpriseId, '/api/ai/assets/81/image');
   const generationUrl = rewriteStudioImageUrl(request, enterpriseId, '/api/ai/generations/901/image');
   assert.ok(assetUrl);
@@ -34,6 +93,10 @@ test('rewriteStudioImageUrl signs asset and generation API paths', () => {
   const generationParsed = new URL(String(generationUrl));
   assert.equal(assetParsed.pathname, '/api/miniprogram/ai/assets/81/image');
   assert.equal(generationParsed.pathname, '/api/miniprogram/ai/studio/generations/901/image');
+  assert.equal(
+    Number(assetParsed.searchParams.get('expires')),
+    alignedSignedUrlDeadline(mediaAssetDisplayUrlTtlSeconds()),
+  );
   assert.equal(verifyMiniAiAssetSignature({
     assetId: '81',
     enterpriseId,
@@ -48,9 +111,9 @@ test('rewriteStudioImageUrl signs asset and generation API paths', () => {
   }), true);
 });
 
-test('serializeWorkflowContextForMini preserves published flags and signs preview', () => {
+test('serializeWorkflowContextForMini preserves published flags and signs floor-plan preview', async () => {
   const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/workflows/42');
-  const serialized = serializeWorkflowContextForMini(request, '23', {
+  const serialized = await serializeWorkflowContextForMini(request, '23', {
     workflow: {
       id: '42',
       title: '灯光设计',
@@ -76,10 +139,15 @@ test('serializeWorkflowContextForMini preserves published flags and signs previe
   assert.equal(serialized.workflow.publishedCount, 1);
   assert.equal(serialized.generations[0].published, true);
   assert.equal(serialized.generations[1].published, false);
+  // Without a live media provider, asset display falls back to aligned Mini API URLs.
   assert.match(String(serialized.workflow.coverUrl), /\/api\/miniprogram\/ai\/assets\/91\/image/);
   assert.match(String(serialized.workflow.latestGeneration?.imageUrl), /\/api\/miniprogram\/ai\/assets\/91\/image/);
   assert.match(String(serialized.generations[0].imageUrl), /\/api\/miniprogram\/ai\/assets\/91\/image/);
   assert.match(String(serialized.generations[1].imageUrl), /\/api\/miniprogram\/ai\/studio\/generations\/902\/image/);
+  assert.equal(
+    String(serialized.generations[0].imageUrl),
+    rewriteStudioImageUrl(request, '23', '/api/ai/assets/91/image'),
+  );
   assert.match(String(serialized.workflow.floorPlanPreviewUrl), /\/api\/miniprogram\/ai\/studio\/workflows\/42\/floor-plan-preview/);
   assert.equal(verifyMiniAiStudioFloorPlanPreviewSignature({
     workflowId: '42',
@@ -89,9 +157,9 @@ test('serializeWorkflowContextForMini preserves published flags and signs previe
   }), true);
 });
 
-test('serializeCreationTaskForMini signs batch generation image URLs', () => {
+test('serializeCreationTaskForMini rewrites batch generation image URLs stably', async () => {
   const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/tasks');
-  const serialized = serializeCreationTaskForMini(request, '23', {
+  const serialized = await serializeCreationTaskForMini(request, '23', {
     id: BigInt(11),
     title: '自由出图',
     prompt: '奶油风客厅',
@@ -130,6 +198,43 @@ test('serializeCreationTaskForMini signs batch generation image URLs', () => {
   assert.equal(serialized.batches.length, 1);
   const imageUrl = String(serialized.batches[0].generations[0].imageUrl || '');
   assert.match(imageUrl, /\/api\/miniprogram\/ai\/assets\/91\/image/);
+  const again = await serializeCreationTaskForMini(request, '23', {
+    id: BigInt(11),
+    title: '自由出图',
+    prompt: '奶油风客厅',
+    status: 'ready',
+    modelProfileId: BigInt(3),
+    referenceAssetIds: [],
+    createdAt: new Date('2026-08-20T08:00:00.000Z'),
+    updatedAt: new Date('2026-08-20T08:00:00.000Z'),
+    batches: [{
+      id: BigInt(21),
+      sequence: 1,
+      prompt: '奶油风客厅',
+      negativePrompt: null,
+      referenceAssetIds: [],
+      modelProfileId: BigInt(3),
+      modelProfileSnapshot: {},
+      parameterSnapshot: {},
+      requestedCount: 1,
+      status: 'succeeded',
+      creditsEstimate: 4,
+      createdAt: new Date('2026-08-20T08:01:00.000Z'),
+      generations: [{
+        id: BigInt(901),
+        status: 'succeeded',
+        output: { imageUrl: '/api/ai/assets/91/image' },
+        input: {},
+        errorMessage: null,
+        provider: 'test',
+        retryCount: 0,
+        workflowId: null,
+        createdAt: new Date('2026-08-20T08:02:00.000Z'),
+        updatedAt: new Date('2026-08-20T08:02:00.000Z'),
+      }],
+    }],
+  } as never);
+  assert.equal(imageUrl, String(again.batches[0].generations[0].imageUrl || ''));
   const parsed = new URL(imageUrl);
   assert.equal(verifyMiniAiAssetSignature({
     assetId: '91',
@@ -139,9 +244,9 @@ test('serializeCreationTaskForMini signs batch generation image URLs', () => {
   }), true);
 });
 
-test('serializeWorkflowListForMini signs scheme covers from confirmed or succeeded images', () => {
+test('serializeWorkflowListForMini signs scheme covers from confirmed or succeeded images', async () => {
   const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/workflows?leadId=12');
-  const serialized = serializeWorkflowListForMini(request, '23', {
+  const serialized = await serializeWorkflowListForMini(request, '23', {
     data: [{
       id: '88',
       title: '灯光设计',

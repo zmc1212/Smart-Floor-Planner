@@ -52,6 +52,7 @@ const SERVICE_WORKFLOW_LESS = [
   'packages/business/staff-activity-code/staff-activity-code.less',
   'packages/business/lead-form/lead-form.less',
   'packages/business/lead-detail/lead-detail.less',
+  'components/site-photo-grid/site-photo-grid.less',
   'packages/business/commission-records/commission-records.less',
   'packages/business/identity-recovery/identity-recovery.less',
   'packages/business/identity-switch/identity-switch.less',

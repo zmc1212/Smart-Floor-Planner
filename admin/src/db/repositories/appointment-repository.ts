@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseAppointmentSettings,
@@ -20,6 +20,7 @@ import {
   normalizeWeeklyAppointmentSchedule,
 } from '@/lib/appointment-scheduling';
 import { communityNameFromAppointment, type AppointmentLocationInput } from '@/lib/appointment-api';
+import { resolveLeadStatusAfterAppointmentComplete } from '@/lib/lead-status';
 import { parseFormalSurveyLayout } from '@/lib/survey-graph';
 
 export type AppointmentSettingsInput = {
@@ -163,8 +164,7 @@ export class AppointmentRepository {
       .from(measurementAppointments)
       .where(and(
         eq(measurementAppointments.leadId, leadId),
-        eq(measurementAppointments.status, 'confirmed'),
-        sql`upper(${measurementAppointments.timeRange}) > now()`
+        eq(measurementAppointments.status, 'confirmed')
       ))
       .limit(1)
       .for('update');
@@ -182,6 +182,7 @@ export class AppointmentRepository {
       ))
       .for('update');
     for (const row of stale) {
+      if (await this.hasCompletedFormalSurveyForLead(row.enterpriseId, row.leadId)) continue;
       await this.transaction.execute(sql.raw('SAVEPOINT expire_stale_appointment'));
       try {
         const expired = await this.expireAppointmentRow(row);
@@ -230,16 +231,24 @@ export class AppointmentRepository {
     return appointment;
   }
 
-  private async isMeasurerAvailable(measurerId: bigint, timeRange: string) {
+  private async isMeasurerAvailable(
+    measurerId: bigint,
+    timeRange: string,
+    options: { excludeAppointmentId?: bigint } = {}
+  ) {
+    const appointmentFilters = [
+      eq(measurementAppointments.measurerId, measurerId),
+      eq(measurementAppointments.status, 'confirmed'),
+      sql`${measurementAppointments.timeRange} && ${timeRange}::tstzrange`,
+    ];
+    if (options.excludeAppointmentId) {
+      appointmentFilters.push(ne(measurementAppointments.id, options.excludeAppointmentId));
+    }
     const [appointments, unavailable] = await Promise.all([
       this.transaction
         .select({ id: measurementAppointments.id })
         .from(measurementAppointments)
-        .where(and(
-          eq(measurementAppointments.measurerId, measurerId),
-          eq(measurementAppointments.status, 'confirmed'),
-          sql`${measurementAppointments.timeRange} && ${timeRange}::tstzrange`
-        ))
+        .where(and(...appointmentFilters))
         .limit(1),
       this.transaction
         .select({ id: staffUnavailabilityPeriods.id })
@@ -294,14 +303,28 @@ export class AppointmentRepository {
     return rows.map((row) => row.staff);
   }
 
+  private async confirmedAppointmentIdForLead(leadId: bigint) {
+    const rows = await this.transaction
+      .select({ id: measurementAppointments.id })
+      .from(measurementAppointments)
+      .where(and(
+        eq(measurementAppointments.leadId, leadId),
+        eq(measurementAppointments.status, 'confirmed')
+      ))
+      .limit(1);
+    return rows[0]?.id ?? null;
+  }
+
   private async resolveMeasurer(
     enterpriseId: bigint,
     preferredId: bigint | null,
     timeRange: string,
-    options: { lockPreferred?: boolean } = {}
+    options: { lockPreferred?: boolean; excludeAppointmentId?: bigint } = {}
   ) {
     for (const candidate of await this.measurerCandidates(enterpriseId, preferredId, options)) {
-      if (await this.isMeasurerAvailable(candidate.id, timeRange)) return candidate;
+      if (await this.isMeasurerAvailable(candidate.id, timeRange, {
+        excludeAppointmentId: options.excludeAppointmentId,
+      })) return candidate;
     }
     return null;
   }
@@ -337,12 +360,13 @@ export class AppointmentRepository {
       lead.measurerId,
       { lockPreferred: lead.source === 'staff_activity' }
     );
+    const excludeAppointmentId = await this.confirmedAppointmentIdForLead(input.leadId);
     const available = [] as Array<{ startAt: Date; endAt: Date; measurerId: bigint }>;
     for (const slot of slots) {
       if (slot.startAt <= new Date()) continue;
       const target = appointmentRange(slot.startAt, settings.defaultDurationMinutes);
       for (const candidate of candidates) {
-        if (await this.isMeasurerAvailable(candidate.id, target)) {
+        if (await this.isMeasurerAvailable(candidate.id, target, { excludeAppointmentId })) {
           available.push({ ...slot, measurerId: candidate.id });
           break;
         }
@@ -391,8 +415,14 @@ export class AppointmentRepository {
     eventKey: string;
   }) {
     const lead = await this.findLead(input.enterpriseId, input.leadId, true);
-    if (!lead || lead.archivedAt || lead.status === 'closed' || !lead.assignedTo) {
+    if (!lead || lead.archivedAt || lead.status === 'closed' || lead.status === 'converted' || !lead.assignedTo) {
       throw appointmentError('appointment_lead_not_ready', '线索尚未完成设计师派单', 409);
+    }
+    if (lead.assignmentStatus === 'assignment_pending') {
+      throw appointmentError('appointment_lead_not_ready', '线索尚未完成设计师派单', 409);
+    }
+    if (await this.hasCompletedFormalSurveyForLead(input.enterpriseId, input.leadId)) {
+      throw appointmentError('appointment_survey_complete', '该线索已完成正式量房，无需再约上门', 409);
     }
     await this.expireStaleConfirmedAppointmentsForLead(input.leadId);
     if (await this.activeAppointmentForLead(input.leadId)) {
@@ -439,6 +469,87 @@ export class AppointmentRepository {
       address: input.address,
     });
     return appointment;
+  }
+
+  async createOnSiteVisit(input: {
+    enterpriseId: bigint;
+    leadId: bigint;
+    actorUserId: bigint | null;
+    eventKey: string;
+  }) {
+    const lead = await this.findLead(input.enterpriseId, input.leadId, true);
+    if (!lead || lead.archivedAt || lead.status === 'closed' || !lead.assignedTo) {
+      throw appointmentError('appointment_lead_not_ready', '线索尚未完成设计师派单', 409);
+    }
+    await this.expireStaleConfirmedAppointmentsForLead(input.leadId);
+    const existing = await this.activeAppointmentForLead(input.leadId);
+    if (existing) return existing;
+
+    const settings = await this.getSettings(input.enterpriseId);
+    const startAt = new Date();
+    const endAt = new Date(startAt.getTime() + settings.defaultDurationMinutes * 60_000);
+    const timeRange = range(startAt, endAt);
+    const measurer = await this.resolveMeasurer(
+      input.enterpriseId,
+      lead.measurerId,
+      timeRange,
+      { lockPreferred: lead.source === 'staff_activity' }
+    );
+    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用测量员', 409);
+
+    const previous = await this.transaction
+      .select({ address: measurementAppointments.address })
+      .from(measurementAppointments)
+      .where(eq(measurementAppointments.leadId, input.leadId))
+      .orderBy(sql`${measurementAppointments.createdAt} desc`)
+      .limit(1);
+    const address = String(previous[0]?.address || lead.communityName || '现场量房').trim().slice(0, 300) || '现场量房';
+
+    const [appointment] = await this.transaction
+      .insert(measurementAppointments)
+      .values({
+        enterpriseId: input.enterpriseId,
+        leadId: input.leadId,
+        designerId: lead.assignedTo,
+        measurerId: measurer.id,
+        address,
+        timeRange,
+        updatedByUserId: input.actorUserId,
+      })
+      .returning();
+    if (!appointment) throw appointmentError('appointment_create_failed', '预约创建失败', 500);
+    await this.transaction.insert(measurementAppointmentEvents).values({
+      enterpriseId: input.enterpriseId,
+      appointmentId: appointment.id,
+      eventType: measurer.id === lead.measurerId ? 'created' : 'created_with_measurer_replacement',
+      timeRange,
+      measurerId: measurer.id,
+      actorUserId: input.actorUserId,
+      eventKey: input.eventKey,
+      metadata: { source: 'on_site' },
+    });
+    await this.fillEmptyLeadCommunity(lead, { address });
+    return appointment;
+  }
+
+  async tryCreateOnSiteVisit(input: {
+    enterpriseId: bigint;
+    leadId: bigint;
+    actorUserId: bigint | null;
+    eventKey: string;
+  }) {
+    try {
+      return await this.createOnSiteVisit(input);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (
+        code === 'appointment_lead_not_ready'
+        || code === 'appointment_no_measurer_available'
+      ) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async findById(enterpriseId: bigint, appointmentId: bigint, lock = false) {
@@ -607,7 +718,10 @@ export class AppointmentRepository {
       input.enterpriseId,
       current.appointment.measurerId,
       timeRange,
-      { lockPreferred: current.lead.source === 'staff_activity' }
+      {
+        lockPreferred: current.lead.source === 'staff_activity',
+        excludeAppointmentId: current.appointment.id,
+      }
     );
     if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用测量员', 409);
     const rows = await this.transaction
@@ -723,6 +837,74 @@ export class AppointmentRepository {
     return appointment;
   }
 
+  async reassignActiveStaffForLead(input: {
+    leadId: bigint;
+    designerId: bigint | null;
+    measurerId: bigint | null;
+    actorUserId: bigint | null;
+    eventKey: string;
+  }) {
+    const appointment = await this.activeAppointmentForLead(input.leadId);
+    if (!appointment) return null;
+    const nextDesignerId = input.designerId ?? appointment.designerId;
+    const nextMeasurerId = input.measurerId ?? appointment.measurerId;
+    if (
+      nextDesignerId === appointment.designerId
+      && nextMeasurerId === appointment.measurerId
+    ) {
+      return null;
+    }
+    if (nextMeasurerId !== appointment.measurerId) {
+      const available = await this.isMeasurerAvailable(nextMeasurerId, appointment.timeRange, {
+        excludeAppointmentId: appointment.id,
+      });
+      if (!available) {
+        throw appointmentError(
+          'appointment_measurer_unavailable',
+          '新测量员该时段不可用，请先改期或取消预约',
+          409
+        );
+      }
+    }
+    const now = new Date();
+    const rows = await this.transaction
+      .update(measurementAppointments)
+      .set({
+        designerId: nextDesignerId,
+        measurerId: nextMeasurerId,
+        version: appointment.version + 1,
+        updatedByUserId: input.actorUserId,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(measurementAppointments.id, appointment.id),
+        eq(measurementAppointments.version, appointment.version),
+        eq(measurementAppointments.status, 'confirmed')
+      ))
+      .returning();
+    const updated = rows[0];
+    if (!updated) {
+      throw appointmentError('appointment_version_conflict', '预约已被其他操作更新，请刷新后重试', 409);
+    }
+    await this.transaction.insert(measurementAppointmentEvents).values({
+      enterpriseId: updated.enterpriseId,
+      appointmentId: updated.id,
+      eventType: 'staff_reassigned',
+      previousTimeRange: appointment.timeRange,
+      timeRange: appointment.timeRange,
+      previousMeasurerId: appointment.measurerId,
+      measurerId: updated.measurerId,
+      actorUserId: input.actorUserId,
+      reason: '线索改派同步预约人员',
+      eventKey: input.eventKey,
+      metadata: {
+        previousDesignerId: appointment.designerId.toString(),
+        designerId: updated.designerId.toString(),
+      },
+    });
+    return updated;
+  }
+
   async updateStatus(input: {
     enterpriseId: bigint;
     appointmentId: bigint;
@@ -775,6 +957,15 @@ export class AppointmentRepository {
       eventKey: input.eventKey,
       metadata: {},
     });
+    if (input.status === 'completed') {
+      const nextStatus = resolveLeadStatusAfterAppointmentComplete(current.lead.status);
+      if (nextStatus !== current.lead.status) {
+        await this.transaction
+          .update(leads)
+          .set({ status: nextStatus, updatedAt: new Date() })
+          .where(eq(leads.id, current.lead.id));
+      }
+    }
     return appointment;
   }
 
@@ -793,6 +984,7 @@ export class AppointmentRepository {
       .for('update');
     const expired: AppointmentRecord[] = [];
     for (const current of due) {
+      if (await this.hasCompletedFormalSurveyForLead(current.enterpriseId, current.leadId)) continue;
       await this.transaction.execute(sql.raw('SAVEPOINT expire_overdue_appointment'));
       try {
         const appointment = await this.expireAppointmentRow(current, now);
@@ -823,7 +1015,7 @@ export class AppointmentRepository {
             and confirmed.status = 'confirmed'
             and upper(confirmed.time_range) > now()
         )`,
-        sql`${leads.status} in ('new', 'measuring')`
+        sql`${leads.status} in ('new', 'measuring', 'designing')`
       ))
       .orderBy(asc(sql`upper(${measurementAppointments.timeRange})`))
       .limit(Math.min(Math.max(limit, 1), 50));
@@ -847,7 +1039,7 @@ export class AppointmentRepository {
             and confirmed.status = 'confirmed'
             and upper(confirmed.time_range) > now()
         )`,
-        sql`${leads.status} in ('new', 'measuring')`,
+        sql`${leads.status} in ('new', 'measuring', 'designing')`,
         sql`${measurementAppointments.updatedAt} + make_interval(hours => coalesce((${enterprises.automationConfig} ->> 'reminderIntervalHours')::int, 24)) <= ${now.toISOString()}::timestamptz`
       ))
       .orderBy(asc(measurementAppointments.updatedAt), asc(measurementAppointments.id))

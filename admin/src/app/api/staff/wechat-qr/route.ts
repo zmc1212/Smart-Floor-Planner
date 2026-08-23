@@ -11,7 +11,7 @@ export async function POST(request: Request) {
     return await withTenantRoute(request, { roles: ['enterprise_admin', 'admin', 'super_admin'], requireEnterprise: true }, async (context) => {
       const formData = await request.formData();
       const file = formData.get('file');
-      if (!(file instanceof File) || !file.type.startsWith('image/')) {
+      if (!(file instanceof File)) {
         return NextResponse.json({ success: false, error: '请上传二维码图片' }, { status: 400 });
       }
       if (file.size > 5 * 1024 * 1024) {

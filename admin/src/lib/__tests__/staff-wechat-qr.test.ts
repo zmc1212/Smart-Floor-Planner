@@ -3,7 +3,6 @@ import test from 'node:test';
 import QRCode from 'qrcode';
 import sharp from 'sharp';
 import {
-  isPersonalWechatFriendPayload,
   prepareStaffWechatQrUpload,
   StaffWechatQrError,
   validateStaffWechatId,
@@ -28,16 +27,6 @@ test('validateStaffWechatId rejects nicknames and blanks', () => {
   assert.throws(() => validateStaffWechatId('wx id'), (error: unknown) => error instanceof StaffWechatQrError);
 });
 
-test('isPersonalWechatFriendPayload accepts personal friend links and rejects pay/group', () => {
-  assert.equal(isPersonalWechatFriendPayload('https://u.weixin.qq.com/s/abcdef'), true);
-  assert.equal(isPersonalWechatFriendPayload('https://weixin.qq.com/r/xxx'), true);
-  assert.equal(isPersonalWechatFriendPayload('weixin://contacts/profile/wxid_abc'), true);
-  assert.equal(isPersonalWechatFriendPayload('wxp://f2f0xxxx'), false);
-  assert.equal(isPersonalWechatFriendPayload('https://c.weixin.qq.com/g/xxxx'), false);
-  assert.equal(isPersonalWechatFriendPayload('https://mp.weixin.qq.com/s/xxx'), false);
-  assert.equal(isPersonalWechatFriendPayload(''), false);
-});
-
 test('prepareStaffWechatQrUpload rejects WebP and empty images', async () => {
   await assert.rejects(
     () => prepareStaffWechatQrUpload({ buffer: Buffer.from([1, 2, 3]), mimeType: 'image/webp' }),
@@ -49,36 +38,40 @@ test('prepareStaffWechatQrUpload rejects WebP and empty images', async () => {
   );
 });
 
-test('prepareStaffWechatQrUpload accepts a personal WeChat QR and stores PNG', async () => {
+test('prepareStaffWechatQrUpload stores PNG without decoding the QR payload', async () => {
   const png = await pngWithPayload('https://u.weixin.qq.com/s/test-designer-friend');
   const prepared = await prepareStaffWechatQrUpload({ buffer: png, mimeType: 'image/jpeg' });
   assert.equal(prepared.mimeType, 'image/png');
   assert.ok(prepared.buffer.length > 0);
-  assert.equal(prepared.payload.startsWith('https://u.weixin.qq.com/'), true);
+  assert.ok(prepared.width >= 80);
+  assert.ok(prepared.height >= 80);
   assert.deepEqual([...prepared.buffer.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
-test('prepareStaffWechatQrUpload rejects a payment QR payload', async () => {
-  const png = await pngWithPayload('wxp://f2f0payment-test');
-  await assert.rejects(
-    () => prepareStaffWechatQrUpload({ buffer: png, mimeType: 'image/png' }),
-    (error: unknown) => error instanceof StaffWechatQrError && error.code === 'qr_not_personal'
-  );
+test('prepareStaffWechatQrUpload sniffs JPEG when Mini Program MIME is empty', async () => {
+  const png = await pngWithPayload('https://u.weixin.qq.com/s/test-designer-friend');
+  const jpeg = await sharp(png).jpeg({ quality: 90 }).toBuffer();
+  const prepared = await prepareStaffWechatQrUpload({ buffer: jpeg, mimeType: '' });
+  assert.equal(prepared.mimeType, 'image/png');
+  assert.ok(prepared.width >= 80);
 });
 
-test('prepareStaffWechatQrUpload rejects blank white PNG without a code', async () => {
-  const blank = await sharp({
+test('prepareStaffWechatQrUpload accepts a 二维码名片 screenshot that jsQR cannot decode', async () => {
+  const card = await sharp({
     create: {
-      width: 200,
-      height: 200,
+      width: 720,
+      height: 960,
       channels: 3,
-      background: { r: 255, g: 255, b: 255 },
+      background: { r: 248, g: 250, b: 249 },
     },
   })
     .png()
     .toBuffer();
-  await assert.rejects(
-    () => prepareStaffWechatQrUpload({ buffer: blank, mimeType: 'image/png' }),
-    (error: unknown) => error instanceof StaffWechatQrError && error.code === 'qr_not_found'
-  );
+  const prepared = await prepareStaffWechatQrUpload({
+    buffer: card,
+    mimeType: 'application/octet-stream',
+  });
+  assert.equal(prepared.mimeType, 'image/png');
+  assert.equal(prepared.width, 720);
+  assert.equal(prepared.height, 960);
 });

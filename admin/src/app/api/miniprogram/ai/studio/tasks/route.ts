@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     });
     return NextResponse.json({
       success: true,
-      data: view ? serializeCreationTaskForMini(request, context.enterpriseId, view) : null,
+      data: view ? await serializeCreationTaskForMini(request, context.enterpriseId, view) : null,
     });
   } catch (error) {
     console.error('[Mini AI Studio Tasks GET]', error);
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     if (!view) throw new Error('创作任务创建后无法读取');
     return NextResponse.json({
       success: true,
-      data: serializeCreationTaskForMini(request, context.enterpriseId, view),
+      data: await serializeCreationTaskForMini(request, context.enterpriseId, view),
     });
   } catch (error) {
     console.error('[Mini AI Studio Tasks POST]', error);

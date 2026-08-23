@@ -46,7 +46,7 @@
             <view class="project-card-copy">
               <text>{{item.displayTitle}}</text>
               <text>{{item.meta}}</text>
-              <text>{{item.group === 'needs_survey' ? '需先完成正式量房' : '选择后进入方案对话'}}</text>
+              <text>{{item.helper}}</text>
             </view>
             <view class="project-action">{{item.actionLabel}}</view>
           </view>

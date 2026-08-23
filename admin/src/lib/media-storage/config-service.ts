@@ -55,6 +55,7 @@ type PlatformMediaStorageState = {
   activatedAt?: string | Date;
   activatedBy?: string;
   persistGrsAiOutputs?: boolean;
+  directQiniuDisplayUrls?: boolean;
 };
 
 function parseConfigId(value: string) {
@@ -313,6 +314,18 @@ export function shouldKeepGrsAiOutputUrl(input: {
     && /^https?:\/\//i.test(String(input.image || '').trim());
 }
 
+/** Missing/undefined defaults to on so Mini Program effect images stay cacheable. */
+export function isDirectQiniuDisplayUrlsEnabled(mediaStorage?: unknown) {
+  return platformMediaStorageState(mediaStorage).directQiniuDisplayUrls !== false;
+}
+
+export function shouldUseDirectQiniuDisplayUrl(input: {
+  directQiniuDisplayUrls?: boolean | null;
+  hasSignedReadUrl: boolean;
+}) {
+  return input.directQiniuDisplayUrls !== false && input.hasSignedReadUrl;
+}
+
 export function assertGrsAiOutputPersistenceCanUseProvider(activeProviderKey: string) {
   if (normalizeMediaStorageProviderKey(activeProviderKey) === 'local') {
     throw new Error('请先将已测试通过的七牛云配置设为默认存储，再开启 GRS 结果转存');
@@ -388,6 +401,32 @@ export async function updateGrsAiOutputPersistence(enabled: boolean, actorId?: s
       },
     });
     return { enabled, activeProviderKey };
+  });
+}
+
+export async function getDirectQiniuDisplayUrlsEnabled() {
+  return withPlatformTransaction(async (transaction) => {
+    const config = await new PlatformConfigRepository(transaction).findByKey(
+      'default'
+    );
+    return isDirectQiniuDisplayUrlsEnabled(config?.mediaStorage);
+  });
+}
+
+export async function updateDirectQiniuDisplayUrls(enabled: boolean, actorId?: string) {
+  return withPlatformTransaction(async (transaction) => {
+    const platformRepository = new PlatformConfigRepository(transaction);
+    const current = await platformRepository.ensureForUpdate('default');
+    const mediaStorage = platformMediaStorageState(current.mediaStorage);
+    const actor = parseActorId(actorId);
+    await platformRepository.update('default', {
+      mediaStorage: {
+        ...mediaStorage,
+        directQiniuDisplayUrls: enabled,
+        ...(actor ? { activatedBy: String(actor) } : {}),
+      },
+    });
+    return { enabled };
   });
 }
 

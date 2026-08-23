@@ -3,6 +3,7 @@ export type LeadServiceStage =
   | 'converted'
   | 'design_published'
   | 'survey_completed'
+  | 'survey_ready'
   | 'appointment_in_progress'
   | 'appointment_expired'
   | 'awaiting_rebooking'
@@ -16,6 +17,7 @@ export const LEAD_SERVICE_STAGE_LABELS: Record<LeadServiceStage, string> = {
   converted: '已签约',
   design_published: '方案已发布',
   survey_completed: '量房完成',
+  survey_ready: '待确认完成',
   appointment_in_progress: '上门量房中',
   appointment_expired: '预约已过期',
   awaiting_rebooking: '待重新预约',
@@ -30,6 +32,7 @@ export const LEAD_SERVICE_STAGE_NEXT_ACTIONS: Record<LeadServiceStage, string> =
   converted: '已签约，无需继续推进',
   design_published: '沟通确认或标记签约',
   survey_completed: '生成并发布方案',
+  survey_ready: '在预约详情确认完成量房',
   appointment_in_progress: '进入正式量房并提交',
   appointment_expired: '重新预约上门',
   awaiting_rebooking: '选择新的上门时段',
@@ -140,9 +143,9 @@ export function resolveLeadServiceStage(input: {
   if (leadStatus === 'closed') key = 'closed';
   else if (leadStatus === 'converted' || Boolean(input.leadStatus === 'converted')) key = 'converted';
   else if (Number(input.publishedDesignCount || 0) > 0) key = 'design_published';
-  else if (input.hasFormalFloorPlan || leadStatus === 'designing' || leadStatus === 'quoting' || leadStatus === 'measured' || leadStatus === 'assigned') {
-    key = 'survey_completed';
-  } else if (isAppointmentInProgress(appointment, now)) key = 'appointment_in_progress';
+  else if (appointment?.status === 'completed') key = 'survey_completed';
+  else if (input.hasFormalFloorPlan) key = 'survey_ready';
+  else if (isAppointmentInProgress(appointment, now)) key = 'appointment_in_progress';
   else if (operationalAppointmentStatus === 'expired') key = 'appointment_expired';
   else if (appointment?.status === 'cancelled') key = 'awaiting_rebooking';
   else if (appointment?.status === 'confirmed') key = 'appointment_confirmed';
@@ -164,6 +167,8 @@ export function canRebookAppointment(input: {
   hasFormalFloorPlan?: boolean;
   now?: Date;
 }) {
+  // Display stage (design_published) and lead.status designing do not close
+  // makeup booking. Only a completed formal plan or a terminal lead does.
   if (['converted', 'closed'].includes(String(input.leadStatus || ''))) return false;
   if (input.hasFormalFloorPlan) return false;
   if (input.assignmentStatus === 'assignment_pending') return false;
@@ -187,10 +192,12 @@ export const CUSTOMER_HOME_ACTION_LABELS: Record<CustomerHomeActionKind, string>
 export function canCustomerReschedule(input: {
   appointment?: AppointmentStageInput;
   customerRescheduleCutoffHours?: number | null;
+  hasFormalFloorPlan?: boolean;
   now?: Date;
 }) {
   const appointment = input.appointment || null;
   if (!appointment || appointment.status !== 'confirmed') return false;
+  if (input.hasFormalFloorPlan) return false;
   if (isAppointmentInProgress(appointment, input.now) || isAppointmentPastEnd(appointment, input.now)) return false;
   const bounds = parseAppointmentBounds(appointment.timeRange);
   if (!bounds) return false;
@@ -219,12 +226,25 @@ function formatCustomerAppointmentTime(timeRange?: string | null) {
 export function describeCustomerAppointment(input: {
   serviceStage: LeadServiceStage;
   appointment?: AppointmentStageInput;
+  now?: Date;
 }) {
-  if (input.serviceStage === 'appointment_expired') return '预约已过期，请重新预约上门';
-  if (input.serviceStage === 'awaiting_rebooking') return '预约已取消，请选择新的上门时段';
-  if (input.serviceStage === 'appointment_in_progress') return '测量员正在上门量房';
-  if (input.serviceStage === 'appointment_confirmed') {
-    return formatCustomerAppointmentTime(input.appointment?.timeRange) || '已预约上门量房';
+  const appointment = input.appointment;
+  const published = input.serviceStage === 'design_published';
+  const confirmedVisit = appointment?.status === 'confirmed'
+    && !isAppointmentPastEnd(appointment, input.now);
+  if (input.serviceStage === 'appointment_expired'
+    || (published && (appointment?.status === 'expired' || isAppointmentPastEnd(appointment, input.now)))) {
+    return '预约已过期，请重新预约上门';
+  }
+  if (input.serviceStage === 'awaiting_rebooking'
+    || (published && appointment?.status === 'cancelled')) {
+    return '预约已取消，请选择新的上门时段';
+  }
+  if (input.serviceStage === 'appointment_in_progress' || input.serviceStage === 'survey_ready') {
+    return '测量员正在上门量房';
+  }
+  if (input.serviceStage === 'appointment_confirmed' || (published && confirmedVisit)) {
+    return formatCustomerAppointmentTime(appointment?.timeRange) || '已预约上门量房';
   }
   if (input.serviceStage === 'measurer_assigned') return '已匹配设计师和测量员，请预约上门量房时间';
   // Customer-facing status only — never reuse staff operational nextAction copy.
@@ -232,7 +252,7 @@ export function describeCustomerAppointment(input: {
     return '正在为您匹配设计师和测量员';
   }
   if (input.serviceStage === 'survey_completed') return '量房已完成，可在服务档案查看户型';
-  if (input.serviceStage === 'design_published') return '方案已发布，可在服务档案查看';
+  if (published) return '方案已发布，可在服务档案查看';
   if (input.serviceStage === 'converted') return '服务已签约完成';
   if (input.serviceStage === 'closed') return '服务已结束';
   return '';
@@ -259,15 +279,16 @@ export function resolveCustomerHomeAction(input: {
   });
   let kind: CustomerHomeActionKind = 'wait_designer';
   if (stage.key === 'closed') kind = 'none';
-  else if (['converted', 'design_published', 'survey_completed', 'appointment_in_progress'].includes(stage.key)) {
+  else if (['converted', 'design_published', 'survey_completed', 'survey_ready', 'appointment_in_progress'].includes(stage.key)) {
     kind = 'view_project';
-  }   else if (stage.key === 'appointment_expired' || stage.key === 'awaiting_rebooking') kind = 'rebook';
+  } else if (stage.key === 'appointment_expired' || stage.key === 'awaiting_rebooking') kind = 'rebook';
   else if (stage.key === 'appointment_confirmed') kind = canReschedule ? 'reschedule' : 'view_project';
   else if (stage.key === 'measurer_assigned' && canRebook) kind = 'book';
   else if (['assignment_pending', 'claimed'].includes(stage.key)) kind = 'wait_designer';
   const appointmentSummary = describeCustomerAppointment({
     serviceStage: stage.key,
     appointment: input.appointment,
+    now: input.now,
   });
   // Keep staff LEAD_SERVICE_STAGE_NEXT_ACTIONS off the customer DTO for pending match.
   const nextAction = stage.key === 'claimed' || stage.key === 'assignment_pending'

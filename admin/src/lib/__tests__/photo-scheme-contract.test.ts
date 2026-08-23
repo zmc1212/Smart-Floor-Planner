@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { canCreateLeadBoundRoughSketchWorkflow } from '@/lib/ai/postgres-workflow-service';
+
+const srcRoot = path.resolve(__dirname, '../..');
+
+function read(relative: string) {
+  return fs.readFileSync(path.join(srcRoot, relative), 'utf8');
+}
+
+test('lead-bound rough-sketch workflows can omit a source floor plan', () => {
+  assert.equal(canCreateLeadBoundRoughSketchWorkflow({
+    sourceAssetRole: 'rough_sketch',
+  }), true);
+  assert.equal(canCreateLeadBoundRoughSketchWorkflow({}), true);
+  assert.equal(canCreateLeadBoundRoughSketchWorkflow({
+    sourceFloorPlanId: '88',
+    sourceAssetRole: 'floor_plan',
+  }), true);
+  assert.equal(canCreateLeadBoundRoughSketchWorkflow({
+    sourceImage: 'data:image/png;base64,abc',
+    sourceAssetRole: 'space_photo',
+  }), true);
+  assert.equal(canCreateLeadBoundRoughSketchWorkflow({
+    sourceAssetRole: 'floor_plan',
+  }), false);
+});
+
+test('appointment create accepts designing leads until formal survey is complete', () => {
+  const source = read('db/repositories/appointment-repository.ts');
+  const create = source.slice(source.indexOf('async create(input:'), source.indexOf('async reschedule('));
+  assert.match(create, /lead\.status === 'converted'/);
+  assert.match(create, /hasCompletedFormalSurveyForLead/);
+  assert.doesNotMatch(create, /lead\.status === 'designing'/);
+  assert.match(source, /sql`\$\{leads\.status\} in \('new', 'measuring', 'designing'\)`/);
+});
+
+test('first publish, not generation, advances lead status; photo batches bind lead only', () => {
+  const publish = read('db/repositories/customer-project-repository.ts');
+  const creation = read('lib/ai/postgres-creation-service.ts');
+  const workflow = read('lib/ai/postgres-workflow-service.ts');
+  assert.match(publish, /resolveLeadStatusAfterDesignPublished\(lead\.status\)/);
+  assert.doesNotMatch(creation, /resolveLeadStatusAfterDesignPublished/);
+  assert.doesNotMatch(workflow, /resolveLeadStatusAfterDesignPublished/);
+  assert.match(creation, /floorPlanId: floorPlan\?\.id \?\? null/);
+  assert.match(creation, /\.\.\.\(workflowBinding\.floorPlanId \? \{ floorPlanId: workflowBinding\.floorPlanId \} : \{\}\)/);
+  assert.match(workflow, /canCreateLeadBoundRoughSketchWorkflow/);
+});

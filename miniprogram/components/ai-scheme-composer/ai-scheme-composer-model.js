@@ -13,9 +13,25 @@ function getUnitPrice(model, resolutionTier) {
 
 const WHOLE_FLOOR_SCOPE_KEY = 'whole_floor_plan';
 const SCOPE_APPLY_NOTE = '只应用到当前选择，不会自动为其他房间生成，也不会产生额外扣点。';
+const COMPOSER_TOOL_ICONS = {
+  scope: '/images/ai-design-icons/floor-plan.png',
+  model: '/images/mine-icons/tab-ai.png',
+  template: '/images/ai-design-icons/palette.png',
+  settings: '/images/mine-v6/settings.png',
+};
+
+function pickDefaultModel(bootstrap) {
+  const models = bootstrap?.models || [];
+  const mapped = String(bootstrap?.provider?.defaultRemoteModel || '').trim();
+  if (mapped) {
+    const match = models.find((item) => item.remoteModel === mapped);
+    if (match) return match;
+  }
+  return models.find((item) => item.isDefault) || models[0] || null;
+}
 
 function createDefaultDraft(bootstrap) {
-  const model = bootstrap?.models?.[0] || null;
+  const model = pickDefaultModel(bootstrap);
   return {
     prompt: '',
     negativePrompt: '',
@@ -53,11 +69,75 @@ function buildScopePickerOptions(scopes, draft) {
   const selected = resolveDraftScope(scopes, draft);
   return (Array.isArray(scopes) ? scopes : []).map((item) => ({
     value: item.key,
-    label: item.meta ? `${item.name} · ${item.meta}` : item.name,
+    label: item.name,
+    subtitle: item.targetScope === 'single_room'
+      ? (item.meta || '只应用到当前房间')
+      : SCOPE_APPLY_NOTE,
+    icon: COMPOSER_TOOL_ICONS.scope,
     active: Boolean(selected && item.key === selected.key),
     targetScope: item.targetScope,
     roomId: item.roomId || '',
   }));
+}
+
+function buildComposerToolbarItems(view) {
+  const items = [];
+  if (view && view.hasScopePicker) {
+    items.push({
+      key: 'scope',
+      type: 'scope',
+      label: '户型',
+      icon: COMPOSER_TOOL_ICONS.scope,
+    });
+  }
+  items.push(
+    {
+      key: 'model',
+      type: 'model',
+      label: '模型',
+      icon: COMPOSER_TOOL_ICONS.model,
+    },
+    {
+      key: 'template',
+      type: 'template',
+      label: '模板',
+      icon: COMPOSER_TOOL_ICONS.template,
+    },
+    {
+      key: 'settings',
+      type: 'settings',
+      label: '设置',
+      icon: COMPOSER_TOOL_ICONS.settings,
+    },
+  );
+  return items;
+}
+
+function buildComposerPickerTitle(type) {
+  if (type === 'model') return '选择模型';
+  if (type === 'aspect') return '选择比例';
+  if (type === 'resolution') return '选择分辨率';
+  if (type === 'count') return '出图张数';
+  if (type === 'scope') return '应用到哪里';
+  return '';
+}
+
+function buildComposerPickerOptions(type, view) {
+  if (!view || !type) return [];
+  if (type === 'model') {
+    return (view.modelOptions || []).map((item) => ({
+      value: item.id,
+      label: item.name,
+      subtitle: item.subtitle || '',
+      icon: COMPOSER_TOOL_ICONS.model,
+      active: Boolean(item.active),
+    }));
+  }
+  if (type === 'scope') return view.scopePickerOptions || [];
+  if (type === 'aspect') return view.aspectOptions || [];
+  if (type === 'resolution') return view.resolutionOptions || [];
+  if (type === 'count') return view.countOptions || [];
+  return [];
 }
 
 function buildScopeSubmitPayload(draft) {
@@ -97,7 +177,7 @@ function buildDraftFromBatch(batch, bootstrap) {
   return {
     prompt: batch.prompt || '',
     negativePrompt: batch.negativePrompt || '',
-    modelProfileId: batch.modelProfileId || bootstrap?.models?.[0]?.id || '',
+    modelProfileId: batch.modelProfileId || pickDefaultModel(bootstrap)?.id || '',
     aspectRatio: parameterSnapshot.aspectRatio || '1:1',
     resolutionTier: parameterSnapshot.resolutionTier || '1K',
     count: Number(batch.requestedCount || 1),
@@ -169,11 +249,16 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
     label: `${value} 张`,
     active: Number(draft.count) === value,
   }));
-  const modelOptions = (bootstrap?.models || []).map((item) => ({
-    id: item.id,
-    name: item.name,
-    active: item.id === draft.modelProfileId,
-  }));
+  const modelOptions = (bootstrap?.models || []).map((item) => {
+    const price = getUnitPrice(item, draft.resolutionTier);
+    const tier = draft.resolutionTier || item.defaults?.resolutionTier || '1K';
+    return {
+      id: item.id,
+      name: item.name,
+      active: item.id === draft.modelProfileId,
+      subtitle: price > 0 ? `${tier} · ${price} 点/张` : `${tier} 出图`,
+    };
+  });
 
   return {
     draft,
@@ -194,6 +279,7 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
       && creditsReady,
     blockedReason,
     hasScopePicker: scopes.length > 0,
+    toolbarItems: buildComposerToolbarItems({ hasScopePicker: scopes.length > 0 }),
     scopeLabel: selectedScope ? selectedScope.name : '完整户型',
     scopeNote: SCOPE_APPLY_NOTE,
     scopePickerOptions: buildScopePickerOptions(scopes, draft),
@@ -295,12 +381,16 @@ function parseTemplateListPayload(payload) {
 }
 
 module.exports = {
+  COMPOSER_TOOL_ICONS,
   PREFERRED_TEMPLATE_CATEGORY_NAME,
   SCOPE_APPLY_NOTE,
   TEMPLATE_PAGE_SIZE,
   WHOLE_FLOOR_SCOPE_KEY,
   applyModelDefaults,
   applyScopeToDraft,
+  buildComposerPickerOptions,
+  buildComposerPickerTitle,
+  buildComposerToolbarItems,
   buildComposerViewState,
   buildDraftFromBatch,
   buildScopePickerOptions,
@@ -314,6 +404,7 @@ module.exports = {
   getUnitPrice,
   maxUserReferenceImages,
   parseTemplateListPayload,
+  pickDefaultModel,
   resolveDraftScope,
   resolvePreferredTemplateCategoryId,
   withFloorPlanPreviewRoom,

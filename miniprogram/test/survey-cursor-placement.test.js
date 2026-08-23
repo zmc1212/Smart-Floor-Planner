@@ -313,6 +313,36 @@ function wallIsDiagonal(floor, wall) {
   return Math.abs(end.xMm - start.xMm) > 1 && Math.abs(end.yMm - start.yMm) > 1;
 }
 
+function closurePathIsDiagonal(path) {
+  if (!Array.isArray(path) || path.length < 2) return false;
+  for (let index = 1; index < path.length; index += 1) {
+    const start = path[index - 1];
+    const end = path[index];
+    const dx = Math.abs(end.xMm - start.xMm);
+    const dy = Math.abs(end.yMm - start.yMm);
+    if (dx > 1 && dy > 1) return true;
+  }
+  return false;
+}
+
+function createOffsetLeftInnerCornerCloseDraft() {
+  let draft = createClosedDraft(3000);
+  let floor = surveyGraph.getActiveFloor(draft);
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = commitWall(draft, { xMm: 3000, yMm: 6355 }, 4355);
+  draft = commitWall(draft, { xMm: -400, yMm: 6355 }, 3400);
+  return commitWall(draft, { xMm: -400, yMm: 2200 }, 4155);
+}
+
 function createThicknessOvershootAdjacentRoomDraft() {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
@@ -393,6 +423,101 @@ test('closing a third room against the overshoot does not put a diagonal in the 
   assert.equal(floor.spaces.filter((space) => space.closed).length, 3);
   assert.deepEqual(diagonalWalls, []);
   assert.deepEqual(sharedDiagonal, []);
+});
+
+test('an offset left-wall adjacent close stays orthogonal instead of snapping diagonally to the inner corner', () => {
+  const pendingDraft = createOffsetLeftInnerCornerCloseDraft();
+  const pendingFloor = surveyGraph.getActiveFloor(pendingDraft);
+  const lastWall = pendingFloor.walls.at(-1);
+  const lastEnd = surveyGraph.getNode(pendingFloor, lastWall.endNodeId);
+  const closurePath = surveyGraph.getClosurePath(pendingFloor, pendingFloor.session).map(
+    ({ xMm, yMm }) => ({ xMm, yMm })
+  );
+
+  assert.ok(lastEnd.xMm < 0);
+  assert.equal(closurePathIsDiagonal(closurePath), false, `closure path is diagonal: ${JSON.stringify(closurePath)}`);
+  closurePath.forEach((point, index) => {
+    if (index === 0) return;
+    const previous = closurePath[index - 1];
+    assert.ok(
+      Math.abs(point.xMm - previous.xMm) <= 1 || Math.abs(point.yMm - previous.yMm) <= 1,
+      `segment ${index} is not axis-aligned: ${JSON.stringify(closurePath)}`
+    );
+  });
+
+  const closed = surveyGraph.confirmClosure(pendingDraft);
+  const closedFloor = surveyGraph.getActiveFloor(closed);
+  const diagonalWalls = closedFloor.walls.filter((wall) => wallIsDiagonal(closedFloor, wall));
+  const room2 = closedFloor.spaces.find((space) => space.name === '房间2');
+  const validation = surveyGraph.validateSurveyDraft(closed, { mode: 'full' });
+
+  assert.equal(closedFloor.session.state, 'spaceClosed');
+  assert.equal(closedFloor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(room2 && room2.closed, true);
+  assert.deepEqual(diagonalWalls, []);
+  assert.equal(validation.valid, true, validation.errors.map((error) => error.message).join('; '));
+});
+
+test('straight shared-wall close guide stays orthogonal instead of connecting to an off-axis inner corner', () => {
+  const floor = {
+    nodes: [{ id: 'anchor', xMm: -400, yMm: 2200 }],
+    walls: [{
+      id: 'active-wall',
+      startNodeId: 'anchor',
+      endNodeId: 'anchor',
+      status: 'confirmed'
+    }],
+    session: {
+      mode: 'straight',
+      state: 'closing',
+      previewPoint: null,
+      anchorNodeId: 'anchor',
+      closeCandidateType: 'shared-wall',
+      closeCandidatePoint: { xMm: 0, yMm: 2000 },
+      closeCandidateNodeId: '',
+      activeSpaceStartWallIndex: 0,
+      activeSpaceSharedWallId: 'shared'
+    }
+  };
+  const path = surveyGraph.getClosurePath(floor, floor.session).map(({ xMm, yMm }) => ({ xMm, yMm }));
+
+  assert.deepEqual(path, [
+    { xMm: -400, yMm: 2200 },
+    { xMm: 0, yMm: 2200 },
+    { xMm: 0, yMm: 2000 }
+  ]);
+  assert.equal(closurePathIsDiagonal(path), false);
+});
+
+test('straight preview toward a closed-room inner corner keeps the orange close guide on-axis', () => {
+  let draft = createClosedDraft(3000);
+  let floor = surveyGraph.getActiveFloor(draft);
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = commitWall(draft, { xMm: 3000, yMm: 6355 }, 4355);
+  draft = commitWall(draft, { xMm: -400, yMm: 6355 }, 3400);
+  draft = surveyGraph.startPreview(draft, { xMm: 80, yMm: 1980 });
+  floor = surveyGraph.getActiveFloor(draft);
+  const anchor = surveyGraph.getNode(floor, floor.session.anchorNodeId);
+  const preview = floor.session.previewPoint;
+  const closurePath = surveyGraph.getClosurePath(floor, floor.session);
+
+  assert.equal(floor.session.state, 'wallPreview');
+  assert.ok(preview);
+  assert.ok(
+    Math.abs(preview.xMm - anchor.xMm) <= 1 || Math.abs(preview.yMm - anchor.yMm) <= 1,
+    `preview left both axes: ${JSON.stringify(preview)}`
+  );
+  assert.notDeepEqual(preview, { xMm: 0, yMm: 2000 });
+  assert.equal(closurePathIsDiagonal(closurePath), false, `closure path is diagonal: ${JSON.stringify(closurePath)}`);
 });
 
 test('cursor placement prefers an existing vertex over a nearby wall segment', () => {

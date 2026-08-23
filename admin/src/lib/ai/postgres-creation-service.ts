@@ -218,13 +218,13 @@ async function resolveWorkflowCreationBinding(input: {
     const floorPlan = workflow.sourceFloorPlanId
       ? lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId) || null
       : null;
-    if (!floorPlan) {
+    if (workflow.sourceFloorPlanId && !floorPlan) {
       throw Object.assign(new Error('请先关联合格的正式户型再出图'), {
         status: 400,
         code: 'WORKFLOW_FLOOR_PLAN_REQUIRED',
       });
     }
-    assertEligibleWorkflowFloorPlan(floorPlan);
+    if (floorPlan) assertEligibleWorkflowFloorPlan(floorPlan);
     const generations = await new AiCreationRepository(transaction).listGenerationsByWorkflowId(workflow.id);
     const activeGeneration = generations.find((generation) =>
       ['created', 'pending', 'processing'].includes(generation.status)
@@ -239,12 +239,12 @@ async function resolveWorkflowCreationBinding(input: {
     return {
       workflowId: workflow.id,
       leadId: workflow.leadId,
-      floorPlanId: floorPlan.id,
-      layoutData: floorPlan.layoutData,
-      status: floorPlan.status,
-      previewAssetId: floorPlan.previewAssetId,
-      previewRenderRevision: floorPlan.previewRenderRevision,
-      enterpriseId: floorPlan.enterpriseId,
+      floorPlanId: floorPlan?.id ?? null,
+      layoutData: floorPlan?.layoutData ?? null,
+      status: floorPlan?.status ?? null,
+      previewAssetId: floorPlan?.previewAssetId ?? null,
+      previewRenderRevision: floorPlan?.previewRenderRevision ?? null,
+      enterpriseId: floorPlan?.enterpriseId ?? null,
     };
   });
 }
@@ -289,7 +289,7 @@ export async function preparePostgresCreationBatch(input: {
       workflowId: parsePostgresId(input.workflowId, 'workflowId'),
     })
     : null;
-  const floorPlanScope = workflowBinding
+  const floorPlanScope = workflowBinding?.floorPlanId && workflowBinding.layoutData
     ? resolveCreationBatchFloorPlanScope({
       layoutData: workflowBinding.layoutData,
       prompt,
@@ -299,7 +299,7 @@ export async function preparePostgresCreationBatch(input: {
     : null;
   let roomData = floorPlanScope?.roomData;
   const providerPrompt = floorPlanScope?.providerPrompt || prompt;
-  if (workflowBinding && floorPlanScope) {
+  if (workflowBinding && floorPlanScope && workflowBinding.floorPlanId) {
     if (!capabilities.supportsReferenceImages || maxReferenceImages < 1) {
       throw Object.assign(new Error('当前模型不支持参考图，无法带入正式户型控制图，请更换模型'), { status: 400 });
     }
@@ -357,7 +357,7 @@ export async function preparePostgresCreationBatch(input: {
       modelProfileSnapshot: profileSnapshot,
       parameterSnapshot: {
         ...parameters,
-        ...(workflowBinding ? {
+        ...(floorPlanScope ? {
           floorPlanControlAssetId: referenceAssetIds[0]?.toString(),
           targetScope: roomData?.targetScope || 'whole_floor_plan',
           targetLabel: roomData?.targetLabel || '完整户型',
@@ -398,7 +398,7 @@ export async function preparePostgresCreationBatch(input: {
       ...(workflowBinding ? {
         workflowId: workflowBinding.workflowId,
         leadId: workflowBinding.leadId,
-        floorPlanId: workflowBinding.floorPlanId,
+        ...(workflowBinding.floorPlanId ? { floorPlanId: workflowBinding.floorPlanId } : {}),
         channel: 'admin',
         stageKey: 'conversation',
       } : {}),

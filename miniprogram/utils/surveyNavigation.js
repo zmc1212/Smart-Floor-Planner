@@ -1,7 +1,19 @@
 const FORMAL_DRAFT_KEY = 'surveying_draft_v1';
 const FORMAL_SERVER_DRAFT_ID_KEY = 'surveying_floorplan_id';
 
-function openSurveyingEditor(options) {
+async function ensureOnSiteVisit(leadId) {
+  const id = String(leadId || '').trim();
+  if (!id) return null;
+  try {
+    const api = require('./api.js');
+    const result = await api.request('/appointments', 'POST', { leadId: id, source: 'on_site' });
+    return result && result.data ? result.data : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function openSurveyingEditor(options) {
   const opts = options || {};
   const app = getApp();
   const signedContext = app && app.globalData && (app.globalData.bootstrap || app.globalData.userInfo);
@@ -13,6 +25,9 @@ function openSurveyingEditor(options) {
       }
       return false;
     }
+  }
+  if (opts.leadId) {
+    await ensureOnSiteVisit(opts.leadId);
   }
   const startNewSurvey = !!opts.startNewSurvey;
   const newSurveyKey = startNewSurvey

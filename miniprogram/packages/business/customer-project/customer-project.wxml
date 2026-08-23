@@ -128,6 +128,28 @@
     </view>
 
     <view class="section-card sfp-card">
+      <view class="section-header">
+        <view class="section-title-wrap">
+          <image class="section-icon" src="/images/ai-design-icons/reference.png" mode="aspectFit" />
+          <text class="section-title">房屋现场图</text>
+        </view>
+        <view class="section-badge {{sitePhotos.length ? '' : 'muted'}}">{{sitePhotos.length ? sitePhotos.length + ' 张' : '待采集'}}</view>
+      </view>
+      <view class="site-photo-block">
+        <site-photo-grid
+          lead-id="{{leadId}}"
+          photos="{{sitePhotos}}"
+          space-tags="{{sitePhotoTags}}"
+          show-add="{{true}}"
+          uploading="{{sitePhotoUploading}}"
+          limit-reached="{{sitePhotoLimitReached}}"
+          bind:change="onSitePhotosChange"
+          bind:uploading="onSitePhotoUploading"
+        />
+      </view>
+    </view>
+
+    <view class="section-card sfp-card">
       <view wx:if="{{featuredDelivery}}" class="delivery-entry" bindtap="previewFeaturedDelivery" aria-role="button" aria-label="查看方案详情">
         <view class="section-header">
           <view class="section-title-wrap">
@@ -137,19 +159,26 @@
           <text class="section-meta">{{featuredDelivery.publishedLabel}}</text>
         </view>
         <view class="delivery-preview">
-          <view class="delivery-image-frame">
-            <view class="published-grid">
-              <view wx:for="{{featuredDelivery.images || []}}" wx:for-item="design" wx:key="generationId" class="published-item">
+          <view class="delivery-image-frame {{featuredDelivery.images.length < 2 ? 'is-single' : ''}}">
+            <view wx:if="{{featuredDelivery.images.length}}" class="published-grid">
+              <view wx:for="{{featuredDelivery.images}}" wx:for-item="design" wx:key="generationId" class="published-item">
                 <view class="published-image-frame">
                   <image wx:if="{{design.imageState === 'loaded'}}" class="published-image" src="{{design.imagePath}}" mode="aspectFill" />
                   <view wx:elif="{{design.imageState === 'loading'}}" class="image-state">读取中…</view>
                   <view wx:else class="image-state error">暂不可读</view>
                 </view>
-                <text class="published-title">已发布 · {{design.title || '设计方案'}}</text>
               </view>
             </view>
+            <block wx:else>
+              <image wx:if="{{featuredDelivery.imageState === 'loaded'}}" class="delivery-image" src="{{featuredDelivery.imagePath}}" mode="aspectFill" />
+              <view wx:elif="{{featuredDelivery.imageState === 'loading'}}" class="delivery-state">读取中…</view>
+              <view wx:else class="delivery-state error">暂不可读</view>
+            </block>
             <view wx:if="{{featuredDelivery.styleTag}}" class="delivery-style-tag">{{featuredDelivery.styleTag}}</view>
             <view class="delivery-action-chip"><text>详情</text><view class="chip-arrow dark"></view></view>
+          </view>
+          <view wx:if="{{featuredDelivery.images.length}}" class="published-grid delivery-captions {{featuredDelivery.images.length < 2 ? 'is-single' : ''}}">
+            <text wx:for="{{featuredDelivery.images}}" wx:for-item="design" wx:key="generationId" class="published-title">已发布 · {{design.title || '设计方案'}}</text>
           </view>
         </view>
       </view>

@@ -13,10 +13,18 @@ import {
 import {
   adminUserPromoters,
   adminUsers,
+  aiCreationBatches,
+  aiCreationTasks,
+  aiGenerations,
+  aiWorkflows,
+  commissionRecords,
   departments,
   enterprises,
+  measurementAppointments,
+  staffActivityCodes,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { httpError } from '@/lib/http-error';
 
 export type NewAdminUser = typeof adminUsers.$inferInsert;
 export type AdminUserRecord = typeof adminUsers.$inferSelect;
@@ -387,7 +395,60 @@ export class AdminUserRepository {
     return Number(rows[0]?.value ?? 0);
   }
 
+  private async assertDeletable(id: bigint) {
+    const [appointment] = await this.transaction
+      .select({ id: measurementAppointments.id })
+      .from(measurementAppointments)
+      .where(
+        or(
+          eq(measurementAppointments.designerId, id),
+          eq(measurementAppointments.measurerId, id)
+        )
+      )
+      .limit(1);
+    if (appointment) {
+      throw httpError('该员工仍有量房预约，无法删除。请先改派或取消相关预约。', 409);
+    }
+
+    const [commission] = await this.transaction
+      .select({ id: commissionRecords.id })
+      .from(commissionRecords)
+      .where(eq(commissionRecords.promoterId, id))
+      .limit(1);
+    if (commission) {
+      throw httpError('该员工仍有历史提成记录，无法删除。', 409);
+    }
+
+    const [workflow] = await this.transaction
+      .select({ id: aiWorkflows.id })
+      .from(aiWorkflows)
+      .where(eq(aiWorkflows.operatorId, id))
+      .limit(1);
+    const [task] = await this.transaction
+      .select({ id: aiCreationTasks.id })
+      .from(aiCreationTasks)
+      .where(eq(aiCreationTasks.operatorId, id))
+      .limit(1);
+    const [batch] = await this.transaction
+      .select({ id: aiCreationBatches.id })
+      .from(aiCreationBatches)
+      .where(eq(aiCreationBatches.operatorId, id))
+      .limit(1);
+    const [generation] = await this.transaction
+      .select({ id: aiGenerations.id })
+      .from(aiGenerations)
+      .where(eq(aiGenerations.operatorId, id))
+      .limit(1);
+    if (workflow || task || batch || generation) {
+      throw httpError('该员工仍有 AI 方案或创作记录，无法删除。', 409);
+    }
+  }
+
   async delete(id: bigint) {
+    await this.assertDeletable(id);
+    await this.transaction
+      .delete(staffActivityCodes)
+      .where(eq(staffActivityCodes.staffId, id));
     const rows = await this.transaction
       .delete(adminUsers)
       .where(eq(adminUsers.id, id))

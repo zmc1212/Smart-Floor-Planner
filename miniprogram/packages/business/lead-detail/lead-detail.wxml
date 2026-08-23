@@ -35,37 +35,55 @@
     <image class="lead-detail-scene" src="/packages/business/assets/leads/lead-detail.png" mode="aspectFit"></image>
   </view>
   <view class="staff-assignment-grid" wx:if="{{lead}}">
-    <view
-      class="staff-assignment-card {{designerContact.canAssign ? 'is-assignable' : ''}}"
-      data-role="designer"
-      data-phone="{{designerContact.phone}}"
-      bindtap="onStaffCardTap"
-      aria-role="{{designerContact.canAssign || designerContact.canCall ? 'button' : 'text'}}"
-      aria-label="设计师 {{designerContact.name}}"
-    >
-      <text class="staff-assignment-role">设计师</text>
+    <view class="staff-assignment-card">
+      <view class="staff-assignment-head">
+        <text class="staff-assignment-role">设计师</text>
+        <text
+          wx:if="{{designerContact.canAssign}}"
+          class="staff-assignment-action"
+          catchtap="onOpenStaffAssign"
+          data-role="designer"
+          aria-role="button"
+          aria-label="{{designerContact.assignLabel}}设计师"
+        >{{designerContact.assignLabel}}</text>
+      </view>
       <text class="staff-assignment-name">{{designerContact.name}}</text>
-      <view wx:if="{{designerContact.phone}}" class="staff-assignment-phone sfp-icon-action">
+      <view
+        wx:if="{{designerContact.phone}}"
+        class="staff-assignment-phone sfp-icon-action"
+        catchtap="onCallStaff"
+        data-phone="{{designerContact.phone}}"
+        aria-role="button"
+        aria-label="拨打设计师电话"
+      >
         <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
         <text>{{designerContact.phone}}</text>
       </view>
-      <text wx:elif="{{designerContact.canAssign}}" class="staff-assignment-action">点击分配 ›</text>
     </view>
-    <view
-      class="staff-assignment-card {{measurerContact.canAssign ? 'is-assignable' : ''}}"
-      data-role="measurer"
-      data-phone="{{measurerContact.phone}}"
-      bindtap="onStaffCardTap"
-      aria-role="{{measurerContact.canAssign || measurerContact.canCall ? 'button' : 'text'}}"
-      aria-label="测量员 {{measurerContact.name}}"
-    >
-      <text class="staff-assignment-role">测量员</text>
+    <view class="staff-assignment-card">
+      <view class="staff-assignment-head">
+        <text class="staff-assignment-role">测量员</text>
+        <text
+          wx:if="{{measurerContact.canAssign}}"
+          class="staff-assignment-action"
+          catchtap="onOpenStaffAssign"
+          data-role="measurer"
+          aria-role="button"
+          aria-label="{{measurerContact.assignLabel}}测量员"
+        >{{measurerContact.assignLabel}}</text>
+      </view>
       <text class="staff-assignment-name">{{measurerContact.name}}</text>
-      <view wx:if="{{measurerContact.phone}}" class="staff-assignment-phone sfp-icon-action">
+      <view
+        wx:if="{{measurerContact.phone}}"
+        class="staff-assignment-phone sfp-icon-action"
+        catchtap="onCallStaff"
+        data-phone="{{measurerContact.phone}}"
+        aria-role="button"
+        aria-label="拨打测量员电话"
+      >
         <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
         <text>{{measurerContact.phone}}</text>
       </view>
-      <text wx:elif="{{measurerContact.canAssign}}" class="staff-assignment-action">点击分配 ›</text>
     </view>
   </view>
   <view class="lead-stage-rail" wx:if="{{lead}}">
@@ -132,8 +150,8 @@
       wx:elif="{{appointment}}"
       class="whole-home-appointment-action is-secondary"
       bindtap="onOpenAppointment"
-      aria-label="查看预约"
-    >查看预约</button>
+      aria-label="{{lead.serviceStage === 'survey_ready' ? '确认完成量房' : '查看预约'}}"
+    >{{lead.serviceStage === 'survey_ready' ? '确认完成量房' : '查看预约'}}</button>
     <view wx:if="{{canEditMeasurements}}" class="whole-home-actions">
       <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}} <text>›</text></view>
       <view class="whole-home-secondary-actions" wx:if="{{activeFloorPlan}}">
@@ -141,6 +159,22 @@
         <view class="whole-home-action danger" bindtap="onDeleteMeasure">{{deleting ? '删除中' : '删除'}}</view>
       </view>
     </view>
+  </view>
+  <view class="site-photos-card">
+    <view class="site-photos-heading">
+      <text class="site-photos-title">房屋现场图</text>
+      <text class="site-photos-meta">{{sitePhotos.length ? sitePhotos.length + ' 张' : '先选房间再拍'}}</text>
+    </view>
+    <site-photo-grid
+      lead-id="{{leadId}}"
+      photos="{{sitePhotos}}"
+      space-tags="{{sitePhotoTags}}"
+      show-add="{{true}}"
+      uploading="{{sitePhotoUploading}}"
+      limit-reached="{{sitePhotoLimitReached}}"
+      bind:change="onSitePhotosChange"
+      bind:uploading="onSitePhotoUploading"
+    />
   </view>
   <view class="published-schemes-card" wx:if="{{publishedSchemes.length > 0 || canOpenAIDesign}}">
     <view class="published-schemes-heading">
@@ -167,18 +201,20 @@
       </view>
       <text class="published-scheme-action">查看 ›</text>
     </view>
-    <button
-      wx:if="{{publishedSchemes.length > 0}}"
-      class="published-schemes-secondary"
-      bindtap="onOpenAllPublishedSchemes"
-      aria-label="查看全部方案"
-    >查看全部方案</button>
-    <button
-      wx:if="{{canOpenAIDesign}}"
-      class="published-schemes-primary"
-      bindtap="onOpenAIDesignWorkbench"
-      aria-label="进入 AI 设计工作台"
-    >进入 AI 设计</button>
+    <view class="published-schemes-actions">
+      <button
+        wx:if="{{publishedSchemes.length > 0}}"
+        class="published-schemes-secondary"
+        bindtap="onOpenAllPublishedSchemes"
+        aria-label="查看全部方案"
+      >查看全部方案</button>
+      <button
+        wx:if="{{canOpenAIDesign}}"
+        class="published-schemes-primary"
+        bindtap="onOpenAIDesignWorkbench"
+        aria-label="进入 AI 设计工作台"
+      >进入 AI 设计</button>
+    </view>
   </view>
   <view class="measurement-history" wx:if="{{previousFloorPlans.length > 0}}">
     <view class="measurement-history-heading">
@@ -337,7 +373,7 @@
     <view class="conversion-sheet-header">
       <view>
         <text class="conversion-sheet-title">选择{{staffAssignRole === 'measurer' ? '测量员' : '设计师'}}</text>
-        <text class="conversion-sheet-customer">仅补齐当前待分配角色，不会替换已绑定人员</text>
+        <text class="conversion-sheet-customer">{{staffAssignHint || '选择可派人员'}}</text>
       </view>
       <text class="conversion-sheet-close" catchtap="onCloseStaffAssignSheet">关闭</text>
     </view>

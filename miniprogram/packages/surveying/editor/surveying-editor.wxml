@@ -81,9 +81,6 @@
   <!--  顶部导航浮层                                   -->
   <!-- ══════════════════════════════════════════════ -->
   <cover-view wx:if="{{!componentEditorVisible}}" class="survey-topbar native-canvas-overlay" style="top: {{statusBarHeight}}px;">
-    <cover-view class="back-button" bindtap="onBack" aria-label="返回">
-      <cover-image class="topbar-icon topbar-back-icon" src="/packages/surveying/assets/icons/topbar-back.png"></cover-image>
-    </cover-view>
     <cover-view class="title-group">
       <cover-view class="page-title">{{title}}</cover-view>
       <cover-view class="page-subtitle">
@@ -116,6 +113,9 @@
         <cover-image class="topbar-chip-icon finish-icon" src="/packages/surveying/assets/icons/angle/circle-check.png" mode="aspectFit"></cover-image>
         <cover-view>完成</cover-view>
       </cover-view>
+    </cover-view>
+    <cover-view class="back-button" catchtap="onBack" aria-label="返回">
+      <cover-image class="topbar-icon topbar-back-icon" src="/packages/surveying/assets/icons/topbar-back.png" catchtap="onBack"></cover-image>
     </cover-view>
   </cover-view>
 

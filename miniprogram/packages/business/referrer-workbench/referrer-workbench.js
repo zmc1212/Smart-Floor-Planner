@@ -1,17 +1,6 @@
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding, roleForIdentity } = require('../../../utils/identity-navigation.js');
-
-const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
-
-function onboardingUrlFromScanResult(scanResult) {
-  const rawPath = String(scanResult && scanResult.path || '').trim();
-  const queryIndex = rawPath.indexOf('?');
-  const route = (queryIndex === -1 ? rawPath : rawPath.slice(0, queryIndex))
-    .replace(/^\/+/, '');
-  const query = queryIndex === -1 ? '' : rawPath.slice(queryIndex + 1);
-  if (route !== ONBOARDING_ROUTE || !/(^|&)(token|scene)=[^&]+/.test(query)) return '';
-  return `/${ONBOARDING_ROUTE}${rawPath.slice(queryIndex)}`;
-}
+const { onboardingUrlFromScanResult } = require('../../../utils/onboardingScan.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();

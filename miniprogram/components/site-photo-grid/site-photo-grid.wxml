@@ -1,0 +1,61 @@
+<view wx:if="{{embed}}" class="spg">
+  <view wx:if="{{photos.length}}" class="spg-grid">
+    <view
+      wx:for="{{photos}}"
+      wx:key="id"
+      class="spg-item {{mode === 'picker' && selectedAssetId === item.assetId ? 'is-selected' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="onTapPhoto"
+      bindlongpress="onManagePhoto"
+    >
+      <view class="spg-frame">
+        <image wx:if="{{item.imageState === 'loaded' && item.imagePath}}" class="spg-image" src="{{item.imagePath}}" mode="aspectFill" />
+        <view wx:elif="{{item.imageState === 'loading'}}" class="spg-state">读取中…</view>
+        <view wx:else class="spg-state error">暂不可读</view>
+        <view wx:if="{{item.spaceTagLabel}}" class="spg-tag">{{item.spaceTagLabel}}</view>
+      </view>
+    </view>
+    <view wx:if="{{showAdd && !limitReached}}" class="spg-item spg-add" bindtap="onAdd">
+      <view class="spg-frame spg-add-frame">
+        <image class="spg-add-icon" src="/images/ai-design-icons/reference.png" mode="aspectFit" />
+        <text class="spg-add-label">{{uploading ? '上传中…' : '拍照 / 相册'}}</text>
+      </view>
+    </view>
+  </view>
+  <view wx:elif="{{showAdd}}" class="spg-empty" bindtap="onAdd">
+    <image class="spg-add-icon" src="/images/ai-design-icons/reference.png" mode="aspectFit" />
+    <text class="spg-empty-title">还没有现场照片</text>
+    <text class="spg-empty-note">先选客厅、主卧或主卫，再拍照或从相册上传</text>
+  </view>
+  <view wx:else class="spg-empty is-static">
+    <text class="spg-empty-title">本户还没有现场图</text>
+    <text class="spg-empty-note">业主或上门同事拍过的房间照片会显示在这里</text>
+  </view>
+</view>
+
+<view wx:if="{{tagMounted}}" class="spg-sheet-root" catchtouchmove="noop">
+  <view class="spg-mask {{tagOpen ? 'open' : ''}}" bindtap="onCloseTagSheet"></view>
+  <view class="spg-sheet {{tagOpen ? 'open' : ''}}" catchtap="noop">
+    <view class="spg-sheet-handle"></view>
+    <text class="spg-sheet-title">这张是哪个空间？</text>
+    <text class="spg-sheet-copy">选好后再拍照或从相册上传，方便设计时按房间选用</text>
+    <view class="spg-chip-row">
+      <view
+        wx:for="{{quickTags}}"
+        wx:key="key"
+        class="spg-chip is-quick"
+        data-key="{{item.key}}"
+        bindtap="onPickTag"
+      >{{item.label}}</view>
+    </view>
+    <view class="spg-chip-row">
+      <view
+        wx:for="{{moreTags}}"
+        wx:key="key"
+        class="spg-chip"
+        data-key="{{item.key}}"
+        bindtap="onPickTag"
+      >{{item.label}}</view>
+    </view>
+  </view>
+</view>

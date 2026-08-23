@@ -4,41 +4,6 @@
     <view wx:else class="credit-bar muted">加载模型与点数配置中</view>
 
     <view wx:if="{{dockExpanded}}" class="dock-expanded" catchtap="noop">
-      <view class="dock-tools">
-        <view class="dock-tools-scroll">
-          <view
-            wx:if="{{view.hasScopePicker}}"
-            class="dock-chip"
-            data-type="scope"
-            bindtap="openPicker"
-          >
-            <text>{{view.scopeLabel || '完整户型'}}</text>
-          </view>
-          <view
-            class="dock-chip {{uploading || !view || !view.canAddReference ? 'disabled' : ''}}"
-            bindtap="uploadReference"
-          >
-            <text class="dock-chip-mark">+</text>
-            <text>参考</text>
-          </view>
-          <view class="dock-chip" data-type="model" bindtap="openPicker">
-            <text>{{view.modelLabel || '模型'}}</text>
-          </view>
-          <view class="dock-chip" data-type="aspect" bindtap="openPicker">
-            <text>{{view.aspectLabel || '比例'}}</text>
-          </view>
-          <view class="dock-chip action" bindtap="openTemplates">模板</view>
-          <view class="dock-chip" bindtap="openSettings">设置</view>
-        </view>
-        <view
-          class="generate-fab {{!view || !view.canSubmit ? 'blocked' : ''}}"
-          bindtap="submitGeneration"
-        >
-          <view class="generate-fab-spark"></view>
-          <text class="generate-fab-label">{{generating ? '提交' : '生成'}}</text>
-        </view>
-      </view>
-
       <view wx:if="{{view && (view.hasControlPreview || view.hasReferences || view.canAddReference)}}" class="reference-row">
         <view
           wx:if="{{view.hasControlPreview}}"
@@ -81,6 +46,7 @@
           value="{{draft.prompt}}"
           maxlength="2000"
           placeholder="描述空间、光线与风格，一键出图"
+          focus="{{promptFocused}}"
           bindinput="onPromptInput"
           bindfocus="onPromptFocus"
           bindblur="onPromptBlur"
@@ -88,7 +54,7 @@
           show-confirm-bar="{{false}}"
           disabled="{{!view}}"
           adjust-position="{{false}}"
-          hold-keyboard="{{true}}"
+          hold-keyboard="{{false}}"
         ></textarea>
       </view>
       <view
@@ -97,6 +63,28 @@
         catchtap="submitGeneration"
       >
         <view class="generate-fab-spark"></view>
+      </view>
+    </view>
+
+    <view wx:if="{{dockExpanded && view}}" class="dock-toolbar" catchtap="noop">
+      <view class="dock-toolbar-actions">
+        <view
+          wx:for="{{view.toolbarItems}}"
+          wx:key="key"
+          class="dock-tool"
+          data-key="{{item.key}}"
+          catchtap="onToolbarTap"
+        >
+          <image class="dock-tool-icon" src="{{item.icon}}" mode="aspectFit"></image>
+          <text class="dock-tool-label">{{item.label}}</text>
+        </view>
+      </view>
+      <view
+        class="generate-fab {{!view || !view.canSubmit ? 'blocked' : ''}}"
+        catchtap="submitGeneration"
+      >
+        <view class="generate-fab-spark"></view>
+        <text class="generate-fab-label">{{generating ? '提交' : '生成'}}</text>
       </view>
     </view>
   </view>
@@ -178,14 +166,15 @@
         <view class="settings-credit">{{view.creditSummary}}</view>
       </scroll-view>
       <view class="settings-footer">
-        <view class="settings-apply" bindtap="closeSettings">应用并继续编辑</view>
+        <view class="settings-apply" bindtap="applySettings">应用并继续编辑</view>
       </view>
     </view>
   </view>
 
   <view wx:if="{{pickerMounted}}" class="sheet-root picker-layer">
     <view class="sheet-mask {{pickerVisible ? 'open' : ''}}" catchtap="closePicker"></view>
-    <view class="sheet-panel {{pickerVisible ? 'open' : ''}}" catchtap="noop">
+    <view class="sheet-panel picker-panel {{pickerVisible ? 'open' : ''}}" catchtap="noop">
+      <view class="sheet-handle"></view>
       <view class="sheet-head">
         <text class="sheet-title">{{pickerTitle}}</text>
         <view class="sheet-close" bindtap="closePicker">×</view>
@@ -198,7 +187,11 @@
           data-value="{{item.value}}"
           bindtap="selectPickerOption"
         >
-          <text>{{item.label}}</text>
+          <image wx:if="{{item.icon}}" class="sheet-option-icon" src="{{item.icon}}" mode="aspectFit"></image>
+          <view class="sheet-option-copy">
+            <text class="sheet-option-title">{{item.label}}</text>
+            <text wx:if="{{item.subtitle}}" class="sheet-option-subtitle">{{item.subtitle}}</text>
+          </view>
           <text wx:if="{{item.active}}" class="sheet-check">✓</text>
         </view>
       </scroll-view>

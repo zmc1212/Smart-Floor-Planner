@@ -55,6 +55,21 @@ type ProviderRequest = Omit<AiImageSubmitInput, 'model'> & {
   remoteModel: string;
 };
 
+export function usesCatalogImageRemoteModel(generationType: string) {
+  return generationType === 'free_create';
+}
+
+export function resolveCreationSubmitRemoteModel(input: {
+  generationType: string;
+  catalogRemoteModel?: string;
+  mappedRemoteModel?: string;
+}) {
+  if (usesCatalogImageRemoteModel(input.generationType)) {
+    return String(input.catalogRemoteModel || '').trim();
+  }
+  return String(input.mappedRemoteModel || '').trim();
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -444,20 +459,20 @@ export async function submitPostgresCreationGeneration(input: { enterpriseId: st
       ? await loadScenarioProviderImages(enterpriseId, loaded)
       : await toProviderDataUris(loaded.assets);
     const request = providerRequest(loaded.generation, images);
-    const useDefaultImageRuntime = ['scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(loaded.generation.type);
     const runtimes = await listProviderRuntimes(
       capabilityForLogicalModel(request.logicalModelKey as AiLogicalModelKey),
       request.logicalModelKey
     );
-    const candidates = useDefaultImageRuntime
-      ? runtimes
-      : runtimes.filter((item) => item.modelMappings[request.logicalModelKey] === request.remoteModel);
-    if (!candidates.length) throw new Error('没有与创作模型快照匹配的可用 AI 供应商');
+    if (!runtimes.length) throw new Error('没有与创作模型快照匹配的可用 AI 供应商');
 
     let submitted = false;
     let lastError: unknown;
-    for (const [index, runtime] of candidates.entries()) {
-      const remoteModel = runtime.modelMappings[request.logicalModelKey];
+    for (const [index, runtime] of runtimes.entries()) {
+      const remoteModel = resolveCreationSubmitRemoteModel({
+        generationType: loaded.generation.type,
+        catalogRemoteModel: request.remoteModel,
+        mappedRemoteModel: runtime.modelMappings[request.logicalModelKey],
+      });
       if (!remoteModel) continue;
       request.remoteModel = remoteModel;
       const begun = await beginPostgresCreationProviderAttempt({
@@ -491,7 +506,7 @@ export async function submitPostgresCreationGeneration(input: { enterpriseId: st
           errorCode: error instanceof AiProviderError ? error.code : 'PROVIDER_UNAVAILABLE',
           errorMessage: error instanceof Error ? error.message : String(error),
         });
-        if (index >= candidates.length - 1) throw error;
+        if (index >= runtimes.length - 1) throw error;
       }
     }
     if (!submitted) throw lastError || new Error('供应商未配置所需的图片模型能力');

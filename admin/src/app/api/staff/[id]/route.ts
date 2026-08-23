@@ -13,6 +13,7 @@ import {
   DepartmentRepository,
 } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
+import { httpErrorStatus } from '@/lib/http-error';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-retry';
 
@@ -251,7 +252,7 @@ export async function DELETE(
         const { id } = await params;
         if (id === context.userId) {
           return NextResponse.json(
-            { success: false, error: 'Cannot delete yourself' },
+            { success: false, error: '不能删除当前登录账号' },
             { status: 400 }
           );
         }
@@ -264,21 +265,33 @@ export async function DELETE(
         );
         if (!deleted) {
           return NextResponse.json(
-            { success: false, error: 'Staff not found' },
+            { success: false, error: '未找到该员工' },
             { status: 404 }
           );
         }
         return NextResponse.json({
           success: true,
-          message: 'Deleted successfully',
+          message: '员工账号已删除',
         });
       }
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const details = error as { code?: string; cause?: { code?: string } };
+    if ((details.code ?? details.cause?.code) === '23503') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: '该员工仍有关联业务记录，无法删除。请先处理相关预约、方案或提成后再试。',
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
+      {
+        success: false,
+        error: error instanceof Error ? error.message : '删除员工失败',
+      },
+      { status: httpErrorStatus(error, 500) }
     );
   }
 }

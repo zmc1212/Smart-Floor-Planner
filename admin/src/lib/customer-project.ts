@@ -1,6 +1,12 @@
 import type { CustomerProject, CustomerProjectIndexItem, CustomerProjectPublication } from '@/db/repositories';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
+import {
+  collectPostgresAssetIdsFromImageUrls,
+  getPostgresAssetIdFromImageUrl,
+  resolveMediaAssetDisplayUrls,
+} from '@/lib/ai/postgres-media-assets';
 import { getWorkflowStageDefinition } from '@/lib/ai/workflow-stages';
+import { getGenerationImageUrl } from '@/lib/ai/workflow-utils';
 import { getFloorPlanDisplay } from '@/lib/floor-plan-display';
 import { resolveCustomerHomeAction } from '@/lib/lead-service-stage';
 
@@ -15,7 +21,7 @@ const INTERNAL_GENERATION_TITLE_KEYS = new Set([
   'soft_furnishing',
   'proposal_pack',
   'lighting',
-  'tour_board',
+  'mood_board',
   'premium_board',
   'perspective_upgrade',
   'cad_detail',
@@ -84,6 +90,9 @@ export type PublishedDesignDto = {
   stageKey: string | null;
   title: string;
   publishedAt: Date;
+  /** https display URL from `directQiniuDisplayUrls` (default Qiniu) or aligned API fallback. Prefer for Mini Program `<image>`. */
+  imageUrl?: string | null;
+  /** Authenticated byte endpoint kept as save-to-album / Admin fallback. */
   imageEndpoint: string;
 };
 
@@ -205,7 +214,47 @@ export function groupPublishedSchemes(
     });
 }
 
-export function customerProjectToDto(
+/**
+ * Attach stable https `imageUrl` values to published scheme images from generation outputs.
+ */
+export async function attachPublishedSchemeDisplayUrls(
+  request: Request,
+  enterpriseId: string,
+  publications: CustomerProjectPublication[],
+  schemes: PublishedSchemeDto[],
+): Promise<PublishedSchemeDto[]> {
+  const sourceByGenerationId = new Map<string, string>();
+  for (const { generation } of publications) {
+    const source = getGenerationImageUrl(generation);
+    if (source) sourceByGenerationId.set(generation.id.toString(), source);
+  }
+  const displayByAssetId = await resolveMediaAssetDisplayUrls({
+    request,
+    enterpriseId,
+    assetIds: collectPostgresAssetIdsFromImageUrls([...sourceByGenerationId.values()]),
+  });
+
+  return schemes.map((scheme) => ({
+    ...scheme,
+    images: scheme.images.map((image) => {
+      const source = sourceByGenerationId.get(image.generationId);
+      if (!source) return { ...image, imageUrl: image.imageUrl ?? null };
+      if (/^https?:\/\//i.test(source) && !getPostgresAssetIdFromImageUrl(source)) {
+        return { ...image, imageUrl: source };
+      }
+      const assetId = getPostgresAssetIdFromImageUrl(source);
+      if (assetId) {
+        return {
+          ...image,
+          imageUrl: displayByAssetId.get(assetId.toString()) || null,
+        };
+      }
+      return { ...image, imageUrl: null };
+    }),
+  }));
+}
+
+export async function customerProjectToDto(
   request: Request,
   project: CustomerProject,
   options: { customerRescheduleCutoffHours?: number | null } = {}
@@ -213,10 +262,15 @@ export function customerProjectToDto(
   const leadId = project.lead.id.toString();
   const enterpriseId = project.lead.enterpriseId!.toString();
   const hasFormalFloorPlan = Boolean(project.formalFloorPlan);
-  const publishedSchemes = buildPublishedSchemeViews(
+  const publishedSchemes = await attachPublishedSchemeDisplayUrls(
+    request,
+    enterpriseId,
     project.publications,
-    leadId,
-    project.lead.finalizedWorkflowId,
+    buildPublishedSchemeViews(
+      project.publications,
+      leadId,
+      project.lead.finalizedWorkflowId,
+    ),
   );
   const publishedDesigns = publishedSchemes.flatMap((scheme) => scheme.images);
   const home = resolveCustomerHomeAction({
@@ -237,6 +291,7 @@ export function customerProjectToDto(
         styleTag: featuredSource.title.startsWith('#')
           ? featuredSource.title
           : `#${featuredSource.title}`,
+        imageUrl: featuredSource.images[0]?.imageUrl || null,
         imageEndpoint: featuredSource.images[0]?.imageEndpoint || null,
         generationId: featuredSource.images[0]?.generationId || null,
         imageCount: featuredSource.images.length,

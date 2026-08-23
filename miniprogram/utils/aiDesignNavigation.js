@@ -21,7 +21,7 @@ function normalizeAIDesignContext(options = {}) {
 
 function shouldOpenSchemeStudio(options = {}) {
   const context = normalizeAIDesignContext(options);
-  return !!(context.leadId && (context.workflowId || context.floorPlanId));
+  return !!context.leadId;
 }
 
 function buildSchemeStudioUrl(options = {}) {
@@ -89,7 +89,7 @@ function openSchemeStudio(options = {}) {
   return true;
 }
 
-/** Prefer scheme-studio when lead + floor plan/workflow are known; otherwise open the Design tab. */
+/** Prefer scheme-studio when a lead is known; otherwise open the Design tab. */
 function openAIDesignEntry(options = {}) {
   if (shouldOpenSchemeStudio(options)) {
     return openSchemeStudio(options);

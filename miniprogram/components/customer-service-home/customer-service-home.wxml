@@ -101,7 +101,7 @@
           <view class="shortcut-card" bindtap="openBookShortcut" hover-class="card-pressed">
             <view class="shortcut-text">
               <text class="shortcut-title">预约量房</text>
-              <text class="shortcut-desc">免费上门精准量尺</text>
+              <text class="shortcut-desc">{{bookShortcutDesc || '免费上门精准量尺'}}</text>
             </view>
             <image class="shortcut-art" src="/images/airy-v1/laser-meter-3d.png" mode="aspectFit" />
           </view>

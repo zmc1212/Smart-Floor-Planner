@@ -354,6 +354,46 @@
   display: flex;
   align-items: flex-end;
 }
+.gallery-root {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+}
+.gallery-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(7, 18, 11, 0.46);
+  opacity: 0;
+  transition: opacity 240ms ease-out;
+}
+.gallery-mask.open { opacity: 1; }
+.gallery-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 72vh;
+  overflow: auto;
+  padding: 14rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));
+  border-radius: 40rpx 40rpx 0 0;
+  background: #f8f9f6;
+  box-sizing: border-box;
+  transform: translateY(100%);
+  transition: transform 240ms ease-out;
+}
+.gallery-sheet.open { transform: translateY(0); }
+.gallery-title {
+  display: block;
+  font-size: 34rpx;
+  font-weight: 800;
+}
+.gallery-copy {
+  display: block;
+  margin: 10rpx 0 22rpx;
+  font-size: 22rpx;
+  line-height: 1.5;
+  color: #6b746e;
+}
 .conflict-sheet {
   width: 100%;
   padding: 14rpx 32rpx calc(28rpx + env(safe-area-inset-bottom));

@@ -6,6 +6,11 @@ import { Alert, Button, Flex, InputNumber, Switch, Tag, Typography } from 'antd'
 import { Save } from 'lucide-react';
 import { notify } from '@/components/admin/operation-feedback';
 import { useFetch } from '@/hooks/useFetch';
+import {
+  clonePriceRows,
+  creditPriceFormHasChanges,
+  creditPriceSaveDisabled,
+} from '@/lib/ai/credit-price-form';
 
 type PriceItem = {
   _id: string;
@@ -37,23 +42,43 @@ export default function AiCreditPricesPage() {
     mutate: mutateModelPrices,
   } = useFetch<ModelPriceItem[]>('/api/admin/ai-image-model-prices');
   const [items, setItems] = useState<PriceItem[]>([]);
+  const [savedItems, setSavedItems] = useState<PriceItem[]>([]);
   const [modelPrices, setModelPrices] = useState<ModelPriceItem[]>([]);
+  const [savedModelPrices, setSavedModelPrices] = useState<ModelPriceItem[]>([]);
   const [saving, setSaving] = useState(false);
+  const [actionDirty, setActionDirty] = useState(false);
+  const [modelDirty, setModelDirty] = useState(false);
 
-  useEffect(() => setItems(data || []), [data]);
-  useEffect(() => setModelPrices(modelPriceData || []), [modelPriceData]);
+  useEffect(() => {
+    if (actionDirty) return;
+    const next = clonePriceRows(data);
+    setItems(next);
+    setSavedItems(clonePriceRows(next));
+  }, [data, actionDirty]);
+  useEffect(() => {
+    if (modelDirty) return;
+    const next = clonePriceRows(modelPriceData);
+    setModelPrices(next);
+    setSavedModelPrices(clonePriceRows(next));
+  }, [modelPriceData, modelDirty]);
 
-  const hasChanges = useMemo(() => {
-    if (!data || !modelPriceData) return false;
-    return JSON.stringify(items) !== JSON.stringify(data)
-      || JSON.stringify(modelPrices) !== JSON.stringify(modelPriceData);
-  }, [data, items, modelPriceData, modelPrices]);
+  const hasChanges = useMemo(
+    () => actionDirty || modelDirty || creditPriceFormHasChanges(items, savedItems, modelPrices, savedModelPrices),
+    [actionDirty, modelDirty, items, savedItems, modelPrices, savedModelPrices],
+  );
+  const saveDisabled = creditPriceSaveDisabled({
+    saving,
+    hasRows: items.length > 0 || modelPrices.length > 0,
+    hasChanges,
+  });
 
   const updateItem = (actionKey: string, patch: Partial<PriceItem>) => {
+    setActionDirty(true);
     setItems((current) => current.map((item) => item.actionKey === actionKey ? { ...item, ...patch } : item));
   };
 
   const updateModelPrice = (modelProfileKey: string, resolutionTier: ModelPriceItem['resolutionTier'], patch: Partial<ModelPriceItem>) => {
+    setModelDirty(true);
     setModelPrices((current) => current.map((item) => (
       item.modelProfileKey === modelProfileKey && item.resolutionTier === resolutionTier
         ? { ...item, ...patch }
@@ -63,41 +88,52 @@ export default function AiCreditPricesPage() {
 
   const save = async () => {
     setSaving(true);
-    let actionPricesSaved = false;
+    const errors: string[] = [];
     try {
-      const response = await fetch('/api/admin/ai-credit-prices', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: items.map(({ actionKey, credits, enabled }) => ({ actionKey, credits, enabled })),
-        }),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '场景动作价格保存失败');
-      actionPricesSaved = true;
+      if (modelPrices.length) {
+        const modelResponse = await fetch('/api/admin/ai-image-model-prices', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: modelPrices.map(({ modelProfileKey, resolutionTier, credits, enabled }) => ({
+              modelProfileKey,
+              resolutionTier,
+              credits: normalizeCredits(credits),
+              enabled,
+            })),
+          }),
+        });
+        const modelResult = await modelResponse.json();
+        if (!modelResponse.ok || !modelResult.success) {
+          errors.push(modelResult.error || '自由创作模型价格保存失败');
+        }
+      }
 
-      const modelResponse = await fetch('/api/admin/ai-image-model-prices', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          items: modelPrices.map(({ modelProfileKey, resolutionTier, credits, enabled }) => ({
-            modelProfileKey,
-            resolutionTier,
-            credits,
-            enabled,
-          })),
-        }),
-      });
-      const modelResult = await modelResponse.json();
-      if (!modelResponse.ok || !modelResult.success) {
-        throw new Error(modelResult.error || '自由创作模型价格保存失败');
+      if (items.length) {
+        const response = await fetch('/api/admin/ai-credit-prices', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: items.map(({ actionKey, credits, enabled }) => ({
+              actionKey,
+              credits: normalizeCredits(credits),
+              enabled,
+            })),
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          errors.push(result.error || '场景动作价格保存失败');
+        }
       }
 
       await Promise.all([mutate(), mutateModelPrices()]);
+      if (errors.length) throw new Error(errors.join('；'));
+      setActionDirty(false);
+      setModelDirty(false);
       notify.success('AI 点数价格已保存');
     } catch (error) {
-      const message = error instanceof Error ? error.message : '保存 AI 点数价格失败';
-      notify.error(actionPricesSaved ? `场景动作价格已保存；${message}` : message);
+      notify.error(error instanceof Error ? error.message : '保存 AI 点数价格失败');
     } finally {
       setSaving(false);
     }
@@ -201,11 +237,10 @@ export default function AiCreditPricesPage() {
     },
   ];
 
-  const loading = isLoading || modelPricesLoading;
-
   return (
     <div className="admin-page-frame">
       <PageContainer
+        key={hasChanges ? 'credit-prices-dirty' : 'credit-prices-clean'}
         breadcrumbRender={false}
         className="admin-page-container"
         title="AI 点数价格"
@@ -213,12 +248,13 @@ export default function AiCreditPricesPage() {
         extra={[
           hasChanges ? <Tag key="dirty" color="warning">有未保存更改</Tag> : null,
           <Button
-            key="save"
+            key="save-prices"
             type="primary"
+            htmlType="button"
             icon={<Save size={16} />}
             loading={saving}
-            disabled={loading || !items.length || !modelPrices.length || !hasChanges}
-            onClick={save}
+            disabled={saveDisabled}
+            onClick={() => void save()}
           >
             保存价格
           </Button>,
@@ -262,7 +298,7 @@ export default function AiCreditPricesPage() {
               <div className="space-y-1">
                 <Typography.Title id="model-price-title" level={4} className="!mb-0">自由创作模型价格</Typography.Title>
                 <Typography.Text type="secondary">
-                  只有启用模型且至少一个分辨率价格已启用时，才会在自由创作台中显示。
+                  开积分价即对工作台开放对应模型；供应商「默认远程模型」只影响下拉预选，不是唯一可选项。
                 </Typography.Text>
               </div>
               <Tag color="green">{modelPrices.filter((item) => item.enabled).length} 档可用</Tag>

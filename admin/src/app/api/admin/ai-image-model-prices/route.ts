@@ -6,9 +6,12 @@ import {
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
+import { normalizePlatformCreditAmount } from '@/lib/ai/credits';
 import {
+  catalogResolutionTiersForPrice,
   ensurePostgresGrsImageModelCatalog,
   listPostgresImageModelPrices,
+  selectCatalogImageModelPrices,
   serializeImageModelPrice,
 } from '@/lib/ai/image-model-catalog';
 import type { GrsResolutionTier } from '@/lib/ai/grs-image-models';
@@ -38,38 +41,45 @@ export async function PATCH(request: Request) {
         }>;
       };
       if (!Array.isArray(body.items) || !body.items.length) {
-        return NextResponse.json({ success: false, error: 'Missing image model price settings' }, { status: 400 });
+        return NextResponse.json({ success: false, error: '缺少价格配置' }, { status: 400 });
       }
-      const items = body.items;
       const profiles = await withPlatformTransaction((transaction) =>
         new AiCreationModelProfileRepository(transaction).list({ sourceType: 'grs_catalog' })
       );
       const profileByKey = new Map(profiles.map((profile) => [profile.key, profile]));
+      const items = selectCatalogImageModelPrices(body.items, [...profileByKey.keys()]);
+      if (!items.length) {
+        return NextResponse.json({ success: false, error: '缺少价格配置' }, { status: 400 });
+      }
       for (const item of items) {
         const profile = profileByKey.get(item.modelProfileKey);
-        const credits = Math.trunc(Number(item.credits));
-        const resolutionTiers = Array.isArray(profile?.capabilities?.resolutionTiers)
-          ? profile.capabilities.resolutionTiers
-          : [];
-        if (!profile || !resolutionTiers.includes(item.resolutionTier) || credits < 1 || credits > 100000) {
-          return NextResponse.json({ success: false, error: 'Invalid image model price settings' }, { status: 400 });
+        const resolutionTiers = catalogResolutionTiersForPrice(profile || {});
+        if (!profile || !resolutionTiers.includes(item.resolutionTier)) {
+          return NextResponse.json({
+            success: false,
+            error: `价格配置无效：${item.modelProfileKey} ${item.resolutionTier}`,
+          }, { status: 400 });
         }
       }
       await withPlatformTransaction(async (transaction) => {
         const prices = new AiModelCreditPriceRepository(transaction);
+        const profiles = new AiCreationModelProfileRepository(transaction);
         for (const item of items) {
           await prices.update(item.modelProfileKey, item.resolutionTier, {
-            credits: BigInt(Math.trunc(Number(item.credits))),
+            credits: BigInt(normalizePlatformCreditAmount(item.credits)),
             enabled: Boolean(item.enabled),
             updatedBy: parsePostgresId(context.userId, 'userId'),
           });
         }
+        await profiles.enableCatalogProfilesByKeys(
+          items.filter((item) => item.enabled).map((item) => item.modelProfileKey)
+        );
       });
       const prices = await listPostgresImageModelPrices();
       return NextResponse.json({ success: true, data: prices.map(serializeImageModelPrice) });
     });
   } catch (error) {
     console.error('[AI Image Model Prices PATCH]', error);
-    return NextResponse.json({ success: false, error: 'Failed to save image model prices' }, { status: 400 });
+    return NextResponse.json({ success: false, error: '保存价格失败' }, { status: 400 });
   }
 }

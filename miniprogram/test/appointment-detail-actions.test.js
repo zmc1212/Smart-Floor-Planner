@@ -43,6 +43,7 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(script, /startSurvey/);
   assert.match(script, /function resolveLeadLifecycle/);
   assert.match(script, /hasCompletedFormalSurvey/);
+  assert.match(script, /serviceStage === 'survey_ready'/);
   assert.match(script, /\['converted', 'closed'\]/);
   assert.match(wxml, /wx:if="\{\{canStartSurvey\}\}"|wx:if="\{\{canStartSurvey && canReschedule\}\}"/);
   assert.match(wxml, /wx:if="\{\{canComplete\}\}"|wx:if="\{\{canComplete && canReschedule\}\}"|wx:elif="\{\{canComplete\}\}"/);
@@ -53,6 +54,11 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(wxml, /补充服务地址/);
   assert.match(wxml, /同步到客户小区/);
   assert.match(wxml, /一键导航至量房地点/);
+  assert.match(wxml, /拍现场图/);
+  assert.match(wxml, /site-photo-grid/);
+  assert.match(script, /sitePhotoService/);
+  assert.match(script, /captureSitePhoto/);
+  assert.match(script, /SPACE_TAGS/);
   assert.match(script, /appointmentCommunitySync/);
   assert.match(script, /shouldOfferCommunitySync/);
   assert.match(script, /syncAddressToLeadCommunity/);
@@ -207,6 +213,134 @@ test('appointment detail hides mutate actions when the linked lead is already co
     assert.equal(context.data.canUpdateAddress, false);
     assert.equal(context.data.canComplete, false);
     assert.equal(context.data.canStartSurvey, false);
+  } finally {
+    api.request = originalRequest;
+    global.Page = originalPage;
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+  }
+});
+
+test('appointment detail parks reschedule and uses confirm-complete as the sticky CTA once the floor plan is ready', async () => {
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalPage = global.Page;
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  let definition;
+  global.Page = (next) => { definition = next; };
+  global.wx = {
+    getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 24 }),
+    getMenuButtonBoundingClientRect: () => ({ left: 280, top: 24, height: 32 }),
+    navigateTo() {}
+  };
+  api.request = async (url) => {
+    if (String(url).startsWith('/leads/')) {
+      return {
+        data: {
+          status: 'measuring',
+          serviceStage: 'survey_ready',
+          floorPlanIds: [{
+            _id: 'plan-1',
+            status: 'completed',
+            updatedAt: '2026-08-19T02:00:00.000Z',
+            layoutData: {
+              version: 4,
+              measurementMode: 'surveying',
+              surveyGraph: { kind: 'survey-wall-graph', floors: [{ spaces: [{ closed: true }] }] },
+            },
+          }],
+          primaryFloorPlanId: {
+            _id: 'plan-1',
+            status: 'completed',
+            updatedAt: '2026-08-19T02:00:00.000Z',
+            layoutData: {
+              version: 4,
+              measurementMode: 'surveying',
+              surveyGraph: { kind: 'survey-wall-graph', floors: [{ spaces: [{ closed: true }] }] },
+            },
+          },
+        },
+      };
+    }
+    return { data: [{
+      id: 'appointment-1',
+      leadId: 'lead-1',
+      status: 'confirmed',
+      version: 2,
+      address: '测试小区',
+      timeRange: '["2026-08-20T01:00:00.000Z","2026-08-20T03:00:00.000Z"]'
+    }] };
+  };
+
+  try {
+    global.getApp = () => ({ globalData: { userInfo: { role: 'staff', staffRole: 'enterprise_admin' } } });
+    delete require.cache[require.resolve('../packages/business/appointment-detail/appointment-detail.js')];
+    require('../packages/business/appointment-detail/appointment-detail.js');
+    const context = {
+      data: { ...definition.data },
+      setData(next) { Object.assign(this.data, next); }
+    };
+    definition.onLoad.call(context, { appointmentId: 'appointment-1', leadId: 'lead-1' });
+    await definition.load.call(context);
+    assert.equal(context.data.canComplete, true);
+    assert.equal(context.data.canReschedule, false);
+    assert.equal(context.data.canStartSurvey, false);
+  } finally {
+    api.request = originalRequest;
+    global.Page = originalPage;
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+  }
+});
+
+test('measurer appointment detail uses survey_ready even when lead DTO omits layout graph', async () => {
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalPage = global.Page;
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  let definition;
+  global.Page = (next) => { definition = next; };
+  global.wx = {
+    getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 24 }),
+    getMenuButtonBoundingClientRect: () => ({ left: 280, top: 24, height: 32 }),
+    navigateTo() {}
+  };
+  api.request = async (url) => {
+    if (String(url).startsWith('/leads/')) {
+      return {
+        data: {
+          status: 'measuring',
+          serviceStage: 'survey_ready',
+          floorPlanIds: [{ _id: 'plan-1', status: 'completed' }],
+          primaryFloorPlanId: { _id: 'plan-1', status: 'completed' },
+        },
+      };
+    }
+    return { data: [{
+      id: 'appointment-1',
+      leadId: 'lead-1',
+      status: 'confirmed',
+      version: 2,
+      address: '测试小区',
+      timeRange: '["2026-08-20T01:00:00.000Z","2026-08-20T03:00:00.000Z"]'
+    }] };
+  };
+
+  try {
+    global.getApp = () => ({ globalData: { userInfo: { role: 'staff', staffRole: 'measurer' } } });
+    delete require.cache[require.resolve('../packages/business/appointment-detail/appointment-detail.js')];
+    require('../packages/business/appointment-detail/appointment-detail.js');
+    const context = {
+      data: { ...definition.data },
+      setData(next) { Object.assign(this.data, next); }
+    };
+    definition.onLoad.call(context, { appointmentId: 'appointment-1', leadId: 'lead-1' });
+    await definition.load.call(context);
+    assert.equal(context.data.canComplete, true);
+    assert.equal(context.data.canStartSurvey, false);
+    assert.equal(context.data.canReschedule, false);
   } finally {
     api.request = originalRequest;
     global.Page = originalPage;

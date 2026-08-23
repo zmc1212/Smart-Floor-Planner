@@ -42,7 +42,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       data: {
-        task: serializeCreationTaskForMini(request, context.enterpriseId, view),
+        task: await serializeCreationTaskForMini(request, context.enterpriseId, view),
         account: serializeAiCreditAccount(await ensureAiCreditAccount(enterpriseId.toString())),
         retriedCount: result.generations.length,
       },

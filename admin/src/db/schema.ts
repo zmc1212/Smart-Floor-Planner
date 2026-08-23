@@ -2215,6 +2215,46 @@ export const mediaAssets = appSchema.table(
   ]
 );
 
+export const leadSitePhotos = appSchema.table(
+  'lead_site_photos',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'restrict' }),
+    assetId: bigint('asset_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => mediaAssets.id, { onDelete: 'restrict' }),
+    spaceTag: text('space_tag'),
+    source: text('source').notNull().default('album'),
+    createdByUserId: bigint('created_by_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    createdByStaffId: bigint('created_by_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('lead_site_photos_asset_uidx').on(table.assetId),
+    index('lead_site_photos_lead_created_idx').on(
+      table.enterpriseId,
+      table.leadId,
+      table.createdAt
+    ),
+    index('lead_site_photos_lead_active_idx')
+      .on(table.leadId, table.createdAt)
+      .where(sql`${table.deletedAt} is null`),
+  ]
+);
+
 export const aiWorkflows = appSchema.table(
   'ai_workflows',
   {

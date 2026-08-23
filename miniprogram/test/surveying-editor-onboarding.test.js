@@ -283,3 +283,16 @@ test('canvas cursor lens survives formal redraws and owns the upper-left measure
     /topMetricSuppressed = cursorPlacementState !== 'placed' \|\| this\.canvasCursorLensActive/
   );
 });
+
+test('surveying topbar back control sits above the title overlay with a 44px-class hit target', () => {
+  const topbarMarkup = editorWxml.split('class="survey-topbar')[1].split('<!--  右侧工具栏')[0];
+  const titleIdx = topbarMarkup.indexOf('class="title-group"');
+  const backIdx = topbarMarkup.indexOf('class="back-button"');
+  assert.ok(titleIdx > -1 && backIdx > titleIdx, 'cover-view back control must paint after the centered title overlay');
+  assert.match(topbarMarkup, /class="back-button"[^>]*catchtap="onBack"/);
+  assert.match(topbarMarkup, /class="topbar-icon topbar-back-icon"[^>]*catchtap="onBack"/);
+  assert.match(
+    editorWxss,
+    /\.back-button\s*\{[^{}]*position:\s*absolute;[^{}]*width:\s*88rpx;[^{}]*height:\s*88rpx;/
+  );
+});

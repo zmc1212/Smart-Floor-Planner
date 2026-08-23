@@ -12,6 +12,7 @@ import {
   users,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { resolveLeadStatusAfterDesignPublished } from '@/lib/lead-status';
 
 export type CustomerProjectPublication = {
   publication: typeof aiGenerationPublications.$inferSelect;
@@ -380,7 +381,12 @@ export class CustomerProjectRepository {
     publishedBy: bigint;
   }) {
     const leadRows = await this.transaction
-      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt })
+      .select({
+        id: leads.id,
+        assignedTo: leads.assignedTo,
+        archivedAt: leads.archivedAt,
+        status: leads.status,
+      })
       .from(leads)
       .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
       .for('update')
@@ -600,6 +606,13 @@ export class CustomerProjectRepository {
 
     const publications = (await this.listActivePublications(input.enterpriseId, input.leadId))
       .filter((item) => item.publication.workflowId === input.workflowId);
+    const nextStatus = resolveLeadStatusAfterDesignPublished(lead.status);
+    if (nextStatus !== lead.status) {
+      await this.transaction
+        .update(leads)
+        .set({ status: nextStatus, updatedAt: now })
+        .where(eq(leads.id, input.leadId));
+    }
     return { kind: 'published' as const, lead, publications, title, newGenerationIds: missingIds };
   }
 

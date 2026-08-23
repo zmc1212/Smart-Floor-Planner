@@ -10,6 +10,7 @@ const {
   publishedImageCacheKey,
 } = require('../../../utils/protectedImageCache');
 const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
+const sitePhotos = require('../../../utils/sitePhotoService.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -30,13 +31,13 @@ function formatRange(range) {
 }
 
 function buildProjectStages(project) {
-  const hasAppointment = Boolean(project && project.appointment && project.appointment.status === 'confirmed');
-  const hasFormalFloorPlan = Boolean(project && project.formalFloorPlan);
+  const hasAppointment = Boolean(project && project.appointment && ['confirmed', 'completed'].includes(project.appointment.status));
+  const surveyDone = ['survey_completed', 'design_published', 'converted'].includes(String(project && project.serviceStage || ''));
   const hasPublishedDesign = (Array.isArray(project && project.publishedSchemes) && project.publishedSchemes.length > 0)
     || (Array.isArray(project && project.publishedDesigns) && project.publishedDesigns.length > 0);
   const stages = [
     { label: '预约确认', complete: hasAppointment },
-    { label: '量房', complete: hasFormalFloorPlan },
+    { label: '量房', complete: surveyDone },
     { label: '设计出图', complete: hasPublishedDesign },
     { label: '方案交付', complete: hasPublishedDesign },
   ];
@@ -61,6 +62,13 @@ function previousImageMap(schemes) {
 function decoratePublishedDesigns(items, leadId, previousById) {
   return (Array.isArray(items) ? items : []).map((item) => {
     const key = String((item && (item.generationId || item.id)) || '');
+    if (item && item.imageUrl && /^https?:\/\//i.test(String(item.imageUrl))) {
+      return {
+        ...item,
+        imagePath: item.imageUrl,
+        imageState: 'loaded',
+      };
+    }
     const diskPath = key ? readCachedProtectedImage(publishedImageCacheKey(leadId, key)) : '';
     const previous = previousById && previousById[key];
     const imagePath = diskPath || (previous && previous.imagePath) || '';
@@ -103,11 +111,14 @@ function buildFeaturedDelivery(schemes, fallbackScheme) {
     };
   }
   if (!fallbackScheme) return null;
+  const directUrl = fallbackScheme.imageUrl && /^https?:\/\//i.test(String(fallbackScheme.imageUrl))
+    ? fallbackScheme.imageUrl
+    : '';
   return {
     ...fallbackScheme,
     publishedLabel: buildPublishedSchemeLabel(fallbackScheme),
-    imagePath: '',
-    imageState: fallbackScheme.imageEndpoint ? 'loading' : 'error',
+    imagePath: directUrl,
+    imageState: directUrl ? 'loaded' : (fallbackScheme.imageEndpoint ? 'loading' : 'error'),
     images: [],
   };
 }
@@ -183,6 +194,10 @@ Page({
     showSchemePoster: false,
     posterImagePath: '',
     posterSchemeTitle: '',
+    sitePhotos: [],
+    sitePhotoTags: sitePhotos.SPACE_TAGS,
+    sitePhotoUploading: false,
+    sitePhotoLimitReached: false,
   },
 
   onLoad(query) {
@@ -277,6 +292,7 @@ Page({
       });
       this._archiveReady = true;
       this.loadProtectedAssets(formalFloorPlan, featuredDelivery, publishedSchemes);
+      this.loadSitePhotos();
     } catch (error) {
       this._archiveReady = true;
       if (silent && this.data.heroTitle) return;
@@ -307,6 +323,10 @@ Page({
     const schemeResults = await Promise.all((schemes || []).map(async (scheme) => ({
       ...scheme,
       images: await Promise.all((scheme.images || []).map(async (design) => {
+        if (design.imageState === 'loaded' && design.imagePath) return design;
+        if (design.imageUrl && /^https?:\/\//i.test(String(design.imageUrl))) {
+          return { ...design, imagePath: design.imageUrl, imageState: 'loaded' };
+        }
         if (!design.imageEndpoint) return { ...design, imageState: 'error' };
         try {
           const imagePath = await fetchProtectedImage(
@@ -373,6 +393,32 @@ Page({
     if (!this.data.leadId) return;
     if (this.data.appointment && !this.data.canRebook) return;
     wx.navigateTo({ url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}&mode=customer` });
+  },
+
+  async loadSitePhotos() {
+    if (!this.data.leadId) return;
+    try {
+      const result = await sitePhotos.list(this.data.leadId);
+      this.setData({
+        sitePhotos: result.items || [],
+        sitePhotoTags: result.spaceTags || sitePhotos.SPACE_TAGS,
+        sitePhotoLimitReached: Number(result.remaining || 0) <= 0,
+      });
+    } catch (error) {
+      console.warn('Failed to load site photos', error);
+    }
+  },
+
+  onSitePhotoUploading(event) {
+    this.setData({ sitePhotoUploading: Boolean(event.detail && event.detail.uploading) });
+  },
+
+  onSitePhotosChange(event) {
+    const photos = sitePhotos.mergePhotos(this.data.sitePhotos, event.detail || {});
+    this.setData({
+      sitePhotos: photos,
+      sitePhotoLimitReached: photos.length >= 30,
+    });
   },
 
   contactDesigner() {

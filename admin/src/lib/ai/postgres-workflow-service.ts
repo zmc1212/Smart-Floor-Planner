@@ -66,6 +66,16 @@ export type CreatePostgresWorkflowInput = {
   currentStageKey?: AiWorkflowStageKey;
 };
 
+export function canCreateLeadBoundRoughSketchWorkflow(input: {
+  sourceFloorPlanId?: string | bigint | null;
+  sourceImage?: string | null;
+  sourceAssetRole?: AiWorkflowSourceAssetRole | null;
+}) {
+  if (input.sourceFloorPlanId) return true;
+  if (String(input.sourceImage || '').trim().startsWith('data:image')) return true;
+  return (input.sourceAssetRole || 'rough_sketch') === 'rough_sketch';
+}
+
 export type UpdatePostgresWorkflowStateInput = {
   enterpriseId: string | bigint;
   workflowId: string | bigint;
@@ -247,7 +257,11 @@ export async function createPostgresAiWorkflow(input: CreatePostgresWorkflowInpu
   const sourceImage = input.sourceImage?.trim();
   const workflowLabel = input.workflowLabel?.trim();
 
-  if (!sourceFloorPlanId && (!sourceImage || !sourceImage.startsWith('data:image'))) {
+  if (!canCreateLeadBoundRoughSketchWorkflow({
+    sourceFloorPlanId,
+    sourceImage,
+    sourceAssetRole: input.sourceAssetRole,
+  })) {
     throw Object.assign(new Error('请先选择客户素材或上传参考图'), { status: 400 });
   }
 

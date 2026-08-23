@@ -126,7 +126,7 @@ test('contextual AI entries preserve plan and room scope across switchTab', () =
   });
   assert.equal(shouldOpenSchemeStudio({ leadId: '1', floorPlanId: '2' }), true);
   assert.equal(shouldOpenSchemeStudio({ leadId: '1', workflowId: '3' }), true);
-  assert.equal(shouldOpenSchemeStudio({ leadId: '1' }), false);
+  assert.equal(shouldOpenSchemeStudio({ leadId: '1' }), true);
   assert.equal(shouldOpenSchemeStudio({ floorPlanId: '2' }), false);
   assert.equal(
     buildSchemeStudioUrl({ leadId: '1', workflowId: '2', floorPlanId: '3' }),

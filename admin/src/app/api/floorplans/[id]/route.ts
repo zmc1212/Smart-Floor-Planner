@@ -3,6 +3,7 @@ import { floorPlanToDto, parsePostgresId } from '@/db/postgres-dto';
 import {
   FloorPlanRepository,
   LeadRepository,
+  AppointmentRepository,
 } from '@/db/repositories';
 import { persistAndAttachFloorPlanPreview } from '@/lib/floor-plan-preview';
 import { canAccessMiniProgramFloorPlan } from '@/lib/floor-plan-access';
@@ -12,7 +13,6 @@ import { canDeleteLeadFloorPlan } from '@/lib/lead-status';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
-import { notifyDesignerOfSurveyCompleted } from '@/lib/wechat-notification';
 
 interface FloorPlanUpdateBody {
   name?: string;
@@ -137,8 +137,22 @@ export async function PUT(
               )
             : current.enterpriseId,
         });
-        if (!plan || !body.leadId) {
-          return plan ? { plan, becameCompleted, lead: null as Awaited<ReturnType<LeadRepository['findById']>> } : null;
+        if (!plan) return null;
+        if (!body.leadId) {
+          const linkedLead = nextStatus === 'completed'
+            ? await new LeadRepository(transaction).findByFloorPlanId(plan.id)
+            : null;
+          if (linkedLead?.enterpriseId && linkedLead.assignedTo && nextStatus === 'completed') {
+            await new AppointmentRepository(transaction).tryCreateOnSiteVisit({
+              enterpriseId: linkedLead.enterpriseId,
+              leadId: linkedLead.id,
+              actorUserId: /^[1-9]\d*$/.test(context.user._id)
+                ? BigInt(context.user._id)
+                : null,
+              eventKey: `on-site-floorplan:${linkedLead.id.toString()}:${plan.id.toString()}`,
+            });
+          }
+          return { plan, becameCompleted, lead: linkedLead };
         }
 
         const lead = await new LeadRepository(transaction).findById(
@@ -165,6 +179,16 @@ export async function PUT(
         }
         await linkFloorPlanToLead(transaction, lead.id, plan.id);
         const linkedLead = await new LeadRepository(transaction).findById(lead.id);
+        if (nextStatus === 'completed' && linkedLead?.enterpriseId && linkedLead.assignedTo) {
+          await new AppointmentRepository(transaction).tryCreateOnSiteVisit({
+            enterpriseId: linkedLead.enterpriseId,
+            leadId: linkedLead.id,
+            actorUserId: /^[1-9]\d*$/.test(context.user._id)
+              ? BigInt(context.user._id)
+              : null,
+            eventKey: `on-site-floorplan:${linkedLead.id.toString()}:${plan.id.toString()}`,
+          });
+        }
         return { plan, becameCompleted, lead: linkedLead };
       }
     );
@@ -175,20 +199,6 @@ export async function PUT(
       );
     }
     const plan = await persistAndAttachFloorPlanPreview(updated.plan);
-    if (
-      updated.becameCompleted &&
-      updated.lead?.enterpriseId &&
-      updated.lead.assignedTo
-    ) {
-      await Promise.allSettled([
-        notifyDesignerOfSurveyCompleted({
-          enterpriseId: updated.lead.enterpriseId,
-          leadId: updated.lead.id,
-          designerId: updated.lead.assignedTo,
-          floorPlanId: plan.id,
-        }),
-      ]);
-    }
     return NextResponse.json({ success: true, data: floorPlanToDto(plan) });
   } catch (error: unknown) {
     const message = getErrorMessage(error);

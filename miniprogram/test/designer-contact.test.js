@@ -30,11 +30,19 @@ test('designer-contact-sheet shows QR with long-press hint and copy wechat fallb
   assert.match(js, /loadDesignerQrToTempFile/);
   assert.match(js, /copyDesignerWechatId/);
   assert.match(js, /wx\.previewImage/);
+  assert.match(js, /openSheet/);
+  assert.match(js, /sheetMotion/);
   assert.match(wxml, /长按识别二维码，添加设计师为好友/);
   assert.match(wxml, /show-menu-by-longpress/);
+  assert.match(wxml, /微信号：\{\{wechatId\}\}/);
   assert.match(wxml, /复制微信号/);
   assert.match(wxml, /bindtap="onPreviewQr"/);
-  assert.match(less, /\.dcs-sheet/);
+  assert.match(wxml, /dcs-dialog \{\{dialogOpen \? 'open' : ''\}\}/);
+  assert.match(less, /\.dcs-dialog/);
+  assert.match(less, /align-items:\s*center/);
+  assert.match(less, /justify-content:\s*center/);
+  assert.doesNotMatch(less, /align-items:\s*flex-end/);
+  assert.doesNotMatch(less, /translateY\(100%\)/);
   assert.match(less, /\.dcs-qr/);
 });
 

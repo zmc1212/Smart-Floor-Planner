@@ -163,11 +163,39 @@ test('designer AI design CTA appears after formal survey without requiring publi
   );
   assert.match(script, /function canOpenAIDesignWorkbench\(/);
   assert.match(script, /staffRole !== 'designer'/);
+  assert.match(script, /if \(lead\.serviceStage === 'design_published'\) return true;/);
+  assert.match(script, /return lead\.serviceStage === 'survey_completed';/);
+  assert.match(script, /POST_SURVEY_SERVICE_STAGES = new Set\(\[\s*'survey_completed',\s*'converted',\s*'closed',\s*\]\)/);
+  assert.doesNotMatch(script, /POST_SURVEY_SERVICE_STAGES[\s\S]{0,80}design_published/);
   assert.match(script, /canOpenAIDesign: canOpenAIDesignWorkbench\(/);
   assert.match(script, /if \(!this\.data\.canOpenAIDesign\) return;/);
   assert.match(template, /wx:if="\{\{publishedSchemes\.length > 0 \|\| canOpenAIDesign\}\}"/);
   assert.match(template, /wx:if="\{\{canOpenAIDesign\}\}"[\s\S]*?进入 AI 设计/);
   assert.match(template, /量房完成，可开始出图/);
+});
+
+test('published-scheme CTAs share one equal-width row when both are visible', () => {
+  assert.match(template, /class="published-schemes-actions"/);
+  assert.match(
+    template,
+    /class="published-schemes-actions"[\s\S]*?查看全部方案[\s\S]*?进入 AI 设计/
+  );
+  assert.match(
+    styles,
+    /\.published-schemes-actions\s*\{[^}]*flex-direction:\s*row;[^}]*gap:\s*16rpx;/s
+  );
+  assert.match(
+    styles,
+    /\.published-schemes-secondary,\s*\.published-schemes-primary\s*\{[^}]*flex:\s*1;[^}]*width:\s*auto;/s
+  );
+  assert.match(
+    styles,
+    /\.published-schemes-actions > \.published-schemes-secondary \+ \.published-schemes-primary\s*\{[^}]*margin-left:\s*16rpx;/s
+  );
+  assert.match(
+    styles,
+    /\.published-schemes-secondary,\s*\.published-schemes-primary\s*\{[^}]*font-size:\s*26rpx;[^}]*white-space:\s*nowrap;/s
+  );
 });
 
 test('formal-survey address row stays full-width below the next-action head', () => {
@@ -188,13 +216,18 @@ test('lead detail shows assigned designer and measurer name and phone between th
   assert.ok(railIndex > staffIndex);
   assert.match(template, /class="staff-assignment-role">设计师/);
   assert.match(template, /class="staff-assignment-role">测量员/);
+  assert.match(template, /\{\{designerContact\.assignLabel\}\}/);
+  assert.match(template, /\{\{measurerContact\.assignLabel\}\}/);
+  assert.match(styles, /\.staff-assignment-head\s*\{[^}]*justify-content:\s*space-between;/s);
+  assert.match(styles, /\.staff-assignment-action\s*\{[^}]*font-size:\s*24rpx;/s);
   assert.match(template, /\{\{designerContact\.name\}\}/);
   assert.match(template, /\{\{measurerContact\.name\}\}/);
   assert.match(template, /\{\{designerContact\.phone\}\}/);
   assert.match(template, /\{\{measurerContact\.phone\}\}/);
   assert.match(script, /function getStaffContact\(/);
-  assert.match(script, /measurerContact: getStaffContact\(lead\.measurerId, \{ canAssign: canAssignStaff && !lead\.measurerId \}\)/);
-  assert.match(script, /designerContact: getStaffContact\(lead\.assignedTo, \{ canAssign: canAssignStaff && !lead\.assignedTo \}\)/);
+  assert.match(script, /assignmentActions/);
+  assert.match(script, /canAssignDesigner/);
+  assert.match(script, /canAssignMeasurer/);
   assert.match(script, /wx\.makePhoneCall\(\{ phoneNumber: phone \}\)/);
   assert.match(script, /name: name \|\| '待分配'/);
   assert.match(styles, /\.staff-assignment-role\s*\{[^}]*font-size:\s*22rpx;/s);
@@ -235,4 +268,16 @@ test('lead-detail hero pins profile edit and dials customer phone with packaged 
     if (phonePng.pixels[i + 3] > 200 && phonePng.pixels[i] < 180) opaqueGlyph += 1;
   }
   assert.ok(opaqueGlyph > 20, 'hero phone icon must keep an opaque handset glyph');
+});
+
+test('lead detail embeds the site photo gallery below the formal survey card', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    'utf8'
+  );
+  assert.match(template, /房屋现场图/);
+  assert.match(template, /site-photo-grid/);
+  assert.match(template, /先选房间再拍/);
+  assert.match(script, /sitePhotoService/);
+  assert.match(script, /loadSitePhotos/);
 });

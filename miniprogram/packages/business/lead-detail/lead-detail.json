@@ -2,5 +2,7 @@
   "navigationBarTitleText": "客户线索管理",
   "navigationBarBackgroundColor": "#22C55E",
   "navigationBarTextStyle": "white",
-  "usingComponents": {}
+  "usingComponents": {
+    "site-photo-grid": "/components/site-photo-grid/site-photo-grid"
+  }
 }

@@ -167,7 +167,10 @@ function buildLeadSummary(lead, workflow) {
   const sourceFloorPlan = workflow?.sourceFloorPlan || {};
   const communityName = lead?.communityName || '';
   const leadName = lead?.name || '客户';
-  const floorPlanName = sourceFloorPlan.name || workflow?.sourceFloorPlanName || '正式户型';
+  const hasFloorPlan = Boolean(sourceFloorPlan.id || workflow?.sourceFloorPlanId);
+  const floorPlanName = hasFloorPlan
+    ? (sourceFloorPlan.name || workflow?.sourceFloorPlanName || '正式户型')
+    : '拍照方案';
   return {
     leadName,
     communityName,
@@ -192,6 +195,8 @@ function buildStudioView(detail, task) {
       generationCount: Number(workflow.generationCount || detail?.generations?.length || 0),
       publishedCount,
       floorPlanPreviewUrl: workflow.floorPlanPreviewUrl || '',
+      sourceFloorPlanId: String(workflow.sourceFloorPlanId || (workflow.sourceFloorPlan && workflow.sourceFloorPlan.id) || ''),
+      sourceFloorPlan: workflow.sourceFloorPlan || null,
     },
     leadSummary,
     publishedScheme: detail?.publishedScheme || null,
@@ -321,6 +326,9 @@ function pickPreferredStudioWorkflow(workflows, options = {}) {
   if (floorPlanId) {
     const matched = list.filter((item) => workflowFloorPlanId(item) === floorPlanId);
     if (matched.length) candidates = matched;
+  } else {
+    const unbound = list.filter((item) => !workflowFloorPlanId(item));
+    if (unbound.length) candidates = unbound;
   }
 
   if (preferredId) {

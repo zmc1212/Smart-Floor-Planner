@@ -75,6 +75,10 @@ real state matrix, role visibility, and safe-area assumptions.
   - Panel: `translateY(100%) → 0` (~`240ms`, `ease-out`).
   - Close: reverse the same transitions; finish the animation (~`260ms`) before
     clearing the `visible` flag so the panel does not snap shut.
+- Centered contact/confirm dialogs (for example the shared designer WeChat
+  contact card) must not use the bottom-sheet slide. Keep the same mask fade,
+  but center a rounded card with opacity plus a short `translateY(24rpx) → 0`
+  (~`240ms`, `ease-out`) so TabBar pages do not clip the last row.
 - Drive open state with an `open` class bound to the existing `*Visible` flags;
   put `transition` on the same mask/panel nodes WeChat animates.
 

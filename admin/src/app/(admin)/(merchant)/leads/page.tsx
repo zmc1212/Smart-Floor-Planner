@@ -96,6 +96,10 @@ type Lead = {
     canMarkConverted: boolean;
     canRevertConversion: boolean;
   };
+  assignmentActions?: {
+    canAssignDesigner: boolean;
+    canAssignMeasurer: boolean;
+  };
   promoterId?: StaffReference | string | null;
   referrer?: StaffReference | string | null;
   assignedTo?: StaffReference | string | null;
@@ -161,6 +165,13 @@ type AiSchemePublication = {
   finalized?: boolean;
   imageCount: number;
   generationIds: string[];
+};
+
+type AssignableStaffOption = {
+  id: string;
+  displayName?: string;
+  phone?: string | null;
+  roleLabel?: string;
 };
 
 const APPOINTMENT_STATUS_LABELS: Record<string, string> = {
@@ -414,6 +425,14 @@ function LeadsPage() {
   const [conversionNote, setConversionNote] = useState('');
   const [conversionSubmitting, setConversionSubmitting] = useState(false);
   const [retryingAssignmentId, setRetryingAssignmentId] = useState<string | null>(null);
+  const [staffAssign, setStaffAssign] = useState<{
+    lead: Lead;
+    role: 'designer' | 'measurer';
+  } | null>(null);
+  const [staffAssignOptions, setStaffAssignOptions] = useState<AssignableStaffOption[]>([]);
+  const [staffAssignSelectedId, setStaffAssignSelectedId] = useState<string>();
+  const [staffAssignLoading, setStaffAssignLoading] = useState(false);
+  const [staffAssignSubmitting, setStaffAssignSubmitting] = useState(false);
   const [revertConversionOpen, setRevertConversionOpen] = useState(false);
   const [revertReason, setRevertReason] = useState('');
   const [appointmentOpen, setAppointmentOpen] = useState(false);
@@ -708,6 +727,52 @@ function LeadsPage() {
       notify.error(error instanceof Error ? error.message : '定稿方案失败');
     } finally {
       setPublicationFinalizingId(null);
+    }
+  };
+
+  const openStaffAssign = async (lead: Lead, role: 'designer' | 'measurer') => {
+    setStaffAssign({ lead, role });
+    setStaffAssignSelectedId(undefined);
+    setStaffAssignOptions([]);
+    setStaffAssignLoading(true);
+    try {
+      const response = await fetch(`/api/leads/${lead._id}/assignable-staff?role=${encodeURIComponent(role)}`);
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '读取可派人员失败');
+      setStaffAssignOptions(Array.isArray(result.data?.items) ? result.data.items : []);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '读取可派人员失败');
+      setStaffAssign(null);
+    } finally {
+      setStaffAssignLoading(false);
+    }
+  };
+
+  const submitStaffAssign = async () => {
+    if (!staffAssign || !staffAssignSelectedId) return;
+    setStaffAssignSubmitting(true);
+    try {
+      const payload = staffAssign.role === 'designer'
+        ? { designerId: staffAssignSelectedId }
+        : { measurerId: staffAssignSelectedId };
+      const response = await fetch(`/api/leads/${staffAssign.lead._id}/assign-staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '派单失败');
+      notify.success(staffAssign.role === 'designer' ? '设计师已更新' : '测量员已更新');
+      if (selectedLead?._id === staffAssign.lead._id && result.data) {
+        setSelectedLead((current) => current ? { ...current, ...result.data } : current);
+      }
+      setStaffAssign(null);
+      setStaffAssignSelectedId(undefined);
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '派单失败');
+    } finally {
+      setStaffAssignSubmitting(false);
     }
   };
 
@@ -1206,6 +1271,7 @@ function LeadsPage() {
         appointment_in_progress: '上门中',
         appointment_expired: '已过期',
         awaiting_rebooking: '待重约',
+        survey_ready: '待确认完成',
         survey_completed: '量房完成',
         design_published: '方案已发布',
         converted: '已签约',
@@ -1557,8 +1623,20 @@ function LeadsPage() {
                             staff={lead.source === 'referrer_network' ? lead.referrer : lead.promoterId}
                             fallback={lead.source === 'referrer_network' ? '未识别推广人' : '系统录入'}
                           />
-                          <LeadStaffCardField label="绑定设计师" staff={lead.assignedTo} fallback="未绑定设计师" />
-                          <LeadStaffCardField label="测量员" staff={lead.measurerId} fallback="未绑定测量员" />
+                          <LeadStaffCardField
+                            label="绑定设计师"
+                            staff={lead.assignedTo}
+                            fallback="未绑定设计师"
+                            canAssign={Boolean(lead.assignmentActions?.canAssignDesigner)}
+                            onAssign={() => void openStaffAssign(lead, 'designer')}
+                          />
+                          <LeadStaffCardField
+                            label="测量员"
+                            staff={lead.measurerId}
+                            fallback="未绑定测量员"
+                            canAssign={Boolean(lead.assignmentActions?.canAssignMeasurer)}
+                            onAssign={() => void openStaffAssign(lead, 'measurer')}
+                          />
                           <LeadCardField
                             label="派单状态"
                             value={getAssignmentStatusLabel(lead.assignmentStatus, lead.assignmentErrorCode)}
@@ -1840,6 +1918,61 @@ function LeadsPage() {
               onChange={(value) => setProfileForm((current) => ({ ...current, stylePreference: value || '' }))}
             />
           </Flex>
+        </Flex>
+      </Modal>
+
+      <Modal
+        open={Boolean(staffAssign)}
+        title={staffAssign?.role === 'measurer' ? '分配测量员' : '分配设计师'}
+        destroyOnHidden
+        footer={(
+          <Flex justify="end" gap={8}>
+            <Button
+              disabled={staffAssignSubmitting}
+              onClick={() => {
+                if (!staffAssignSubmitting) {
+                  setStaffAssign(null);
+                  setStaffAssignSelectedId(undefined);
+                }
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              type="primary"
+              loading={staffAssignSubmitting}
+              disabled={!staffAssignSelectedId || staffAssignLoading}
+              onClick={() => void submitStaffAssign()}
+            >
+              确认
+            </Button>
+          </Flex>
+        )}
+        onCancel={() => {
+          if (!staffAssignSubmitting) {
+            setStaffAssign(null);
+            setStaffAssignSelectedId(undefined);
+          }
+        }}
+      >
+        <Flex vertical gap={12}>
+          <Typography.Text type="secondary">
+            {getStaffId(staffAssign?.role === 'measurer' ? staffAssign.lead.measurerId : staffAssign?.lead.assignedTo)
+              ? '选择后将替换当前人员'
+              : '选择可派人员'}
+          </Typography.Text>
+          <Select
+            showSearch
+            optionFilterProp="label"
+            placeholder={staffAssignLoading ? '正在读取可派人员…' : '请选择人员'}
+            loading={staffAssignLoading}
+            value={staffAssignSelectedId}
+            options={staffAssignOptions.map((item) => ({
+              value: item.id,
+              label: `${item.displayName || '未命名'}${item.phone ? ` · ${item.phone}` : ''}`,
+            }))}
+            onChange={(value) => setStaffAssignSelectedId(value)}
+          />
         </Flex>
       </Modal>
 
@@ -2313,16 +2446,26 @@ function LeadStaffCardField({
   label,
   staff,
   fallback,
+  canAssign,
+  onAssign,
 }: {
   label: string;
   staff: StaffReference | string | null | undefined;
   fallback: string;
+  canAssign?: boolean;
+  onAssign?: () => void;
 }) {
   const name = getStaffName(staff) || fallback;
   const phone = typeof staff === 'object' && staff ? staff.phone : null;
+  const actionLabel = getStaffId(staff) ? '更换' : '分配';
   return (
     <Flex vertical gap={3} className="min-w-0">
-      <Typography.Text type="secondary" className="text-xs">{label}</Typography.Text>
+      <Flex align="center" justify="space-between" gap={8}>
+        <Typography.Text type="secondary" className="text-xs">{label}</Typography.Text>
+        {canAssign ? (
+          <Button type="link" size="small" className="h-auto px-0" onClick={onAssign}>{actionLabel}</Button>
+        ) : null}
+      </Flex>
       <Typography.Text strong ellipsis={{ tooltip: name }}>姓名：{name}</Typography.Text>
       <Typography.Text style={{ color: '#1677ff' }} ellipsis={{ tooltip: phone || '未记录' }}>手机号：{phone || '未记录'}</Typography.Text>
     </Flex>

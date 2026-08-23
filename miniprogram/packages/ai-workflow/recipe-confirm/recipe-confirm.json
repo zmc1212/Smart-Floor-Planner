@@ -1,1 +1,8 @@
-{"navigationStyle":"custom","backgroundColor":"#F6F7F4","backgroundTextStyle":"dark"}
+{
+  "navigationStyle": "custom",
+  "backgroundColor": "#F6F7F4",
+  "backgroundTextStyle": "dark",
+  "usingComponents": {
+    "site-photo-grid": "/components/site-photo-grid/site-photo-grid"
+  }
+}

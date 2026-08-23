@@ -414,7 +414,7 @@ export async function notifyAppointmentStaff(input: {
   address: string;
   startsAt: Date;
   eventKey: string;
-  eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled' | 'expired';
+  eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled' | 'expired' | 'staff_reassigned';
 }) {
   try {
     const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
@@ -429,7 +429,11 @@ export async function notifyAppointmentStaff(input: {
       ? '预约已取消'
       : input.eventType === 'expired'
         ? '预约已过期，请重新预约'
-        : input.eventType === 'created' ? '已创建上门预约' : '预约时间已更新';
+        : input.eventType === 'created'
+          ? '已创建上门预约'
+          : input.eventType === 'staff_reassigned'
+            ? '预约人员已更新'
+            : '预约时间已更新';
     const recipientIds = new Set<string>();
     const uniqueRecipients: LeadNotificationRecipient[] = [];
     for (const recipient of recipients) {

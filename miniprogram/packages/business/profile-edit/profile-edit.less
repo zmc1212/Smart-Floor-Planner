@@ -184,11 +184,14 @@
 }
 
 .wechat-qr-upload {
+  display: flex;
   width: auto;
   max-width: 100%;
   min-height: 72rpx;
   margin: 0;
   padding: 0 24rpx;
+  align-items: center;
+  justify-content: center;
   border: 0;
   border-radius: 36rpx;
   background: #eaf8ec;
@@ -201,4 +204,14 @@
 
 .wechat-qr-upload::after {
   border: 0;
+}
+
+.wechat-qr-upload.is-disabled,
+.primary-action.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.btn-pressed {
+  opacity: 0.88;
 }

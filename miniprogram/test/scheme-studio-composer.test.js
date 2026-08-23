@@ -1,20 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   applyModelDefaults,
   applyScopeToDraft,
+  buildComposerPickerOptions,
+  buildComposerPickerTitle,
+  buildComposerToolbarItems,
   buildComposerViewState,
   buildDraftFromBatch,
   buildScopePickerOptions,
   buildScopeSubmitPayload,
   buildTemplateCategoryChips,
   buildTemplateListParams,
+  COMPOSER_TOOL_ICONS,
   createDefaultDraft,
   flattenPromptCategories,
   maxUserReferenceImages,
   parseTemplateListPayload,
+  pickDefaultModel,
   resolveDraftScope,
   resolvePreferredTemplateCategoryId,
+  SCOPE_APPLY_NOTE,
   withFloorPlanPreviewRoom,
 } = require('../components/ai-scheme-composer/ai-scheme-composer-model.js');
 const { buildScopes } = require('../packages/ai-workflow/recipe-project/recipe-project-model.js');
@@ -35,6 +43,37 @@ const bootstrap = {
     ],
   }],
 };
+
+test('createDefaultDraft prefers the provider defaultRemoteModel over isDefault', () => {
+  const mixed = {
+    ...bootstrap,
+    provider: { ...bootstrap.provider, defaultRemoteModel: 'nano-banana-2' },
+    models: [
+      { ...bootstrap.models[0], id: 'model-default', isDefault: true, remoteModel: 'gpt-image-2', defaults: { aspectRatio: '1:1', resolutionTier: '1K' } },
+      { ...bootstrap.models[0], id: 'model-mapped', isDefault: false, remoteModel: 'nano-banana-2', defaults: { aspectRatio: '16:9', resolutionTier: '2K' } },
+    ],
+  };
+  assert.equal(pickDefaultModel(mixed).id, 'model-mapped');
+  const draft = createDefaultDraft(mixed);
+  assert.equal(draft.modelProfileId, 'model-mapped');
+  assert.equal(draft.aspectRatio, '16:9');
+  assert.equal(draft.resolutionTier, '2K');
+});
+
+test('createDefaultDraft prefers the isDefault catalog model', () => {
+  const mixed = {
+    ...bootstrap,
+    models: [
+      { ...bootstrap.models[0], id: 'model-heavy', isDefault: false, defaults: { aspectRatio: '1:1', resolutionTier: '1K' } },
+      { ...bootstrap.models[0], id: 'model-default', isDefault: true, defaults: { aspectRatio: '16:9', resolutionTier: '2K' } },
+    ],
+  };
+  assert.equal(pickDefaultModel(mixed).id, 'model-default');
+  const draft = createDefaultDraft(mixed);
+  assert.equal(draft.modelProfileId, 'model-default');
+  assert.equal(draft.aspectRatio, '16:9');
+  assert.equal(draft.resolutionTier, '2K');
+});
 
 test('maxUserReferenceImages reserves one slot for floor-plan control image', () => {
   assert.equal(maxUserReferenceImages(4), 3);
@@ -181,4 +220,175 @@ test('composer locks the bound floor-plan preview in the first reference slot', 
   assert.equal(view.hasControlPreview, true);
   assert.equal(view.controlPreviewUrl, `${signed}&roomId=living`);
   assert.equal(view.controlPreviewLabel, '客厅控制图');
+});
+
+test('composer toolbar keeps four tools without a reference chip', () => {
+  const scopes = buildScopes(
+    [{ roomId: 'living', roomName: '客厅', roomSize: '4.20 m x 3.60 m' }],
+    2,
+  );
+  const view = buildComposerViewState({
+    ...createDefaultDraft(bootstrap),
+    prompt: '奶油风客厅',
+  }, bootstrap, { scopes });
+  assert.deepEqual(view.toolbarItems.map((item) => item.label), ['户型', '模型', '模板', '设置']);
+  assert.equal(view.toolbarItems[0].icon, COMPOSER_TOOL_ICONS.scope);
+  assert.deepEqual(buildComposerToolbarItems({ hasScopePicker: false }).map((item) => item.key), [
+    'model',
+    'template',
+    'settings',
+  ]);
+  const photoView = buildComposerViewState({
+    ...createDefaultDraft(bootstrap),
+    prompt: '奶油风客厅',
+  }, bootstrap, { scopes: [] });
+  assert.equal(photoView.hasScopePicker, false);
+  assert.deepEqual(photoView.toolbarItems.map((item) => item.key), ['model', 'template', 'settings']);
+});
+
+test('composer picker options carry icon, title, and subtitle', () => {
+  const scopes = buildScopes(
+    [{ roomId: 'living', roomName: '客厅', roomSize: '4.20 m x 3.60 m' }],
+    2,
+  );
+  const draft = createDefaultDraft(bootstrap);
+  const view = buildComposerViewState({ ...draft, prompt: '奶油风客厅' }, bootstrap, { scopes });
+  const scopeOptions = buildComposerPickerOptions('scope', view);
+  assert.equal(buildComposerPickerTitle('scope'), '应用到哪里');
+  assert.equal(scopeOptions[0].label, '完整户型');
+  assert.equal(scopeOptions[0].subtitle, SCOPE_APPLY_NOTE);
+  assert.equal(scopeOptions[0].icon, COMPOSER_TOOL_ICONS.scope);
+  assert.equal(scopeOptions[1].label, '客厅');
+  assert.equal(scopeOptions[1].subtitle, '4.20 m x 3.60 m');
+
+  const modelOptions = buildComposerPickerOptions('model', view);
+  assert.equal(buildComposerPickerTitle('model'), '选择模型');
+  assert.equal(modelOptions[0].label, '模型 A');
+  assert.equal(modelOptions[0].subtitle, '2K · 4 点/张');
+  assert.equal(modelOptions[0].icon, COMPOSER_TOOL_ICONS.model);
+  assert.equal(buildScopePickerOptions(scopes, draft)[1].active, false);
+});
+
+const composerPath = path.resolve(__dirname, '..', 'components/ai-scheme-composer/ai-scheme-composer.js');
+
+function loadComposerComponent() {
+  const originals = { Component: global.Component, wx: global.wx };
+  let definition;
+  global.Component = (componentDefinition) => {
+    definition = componentDefinition;
+  };
+  global.wx = {
+    onKeyboardHeightChange() {},
+    offKeyboardHeightChange() {},
+    showToast() {},
+    previewImage() {},
+  };
+  delete require.cache[composerPath];
+  require(composerPath);
+  return {
+    definition,
+    restore() {
+      for (const [key, value] of Object.entries(originals)) {
+        if (value === undefined) delete global[key];
+        else global[key] = value;
+      }
+    },
+  };
+}
+
+function createComposerHost(definition, extraData = {}) {
+  const host = {
+    data: { ...JSON.parse(JSON.stringify(definition.data)), ...extraData },
+    properties: {},
+    triggerEvent() {},
+    setData(update, callback) {
+      this.data = { ...this.data, ...update };
+      if (typeof callback === 'function') callback.call(this);
+    },
+  };
+  Object.assign(host, definition.methods);
+  return host;
+}
+
+function waitForSheetClose() {
+  return new Promise((resolve) => setTimeout(resolve, 280));
+}
+
+test('composer wxml keeps a bottom toolbar and keyboard-safe sheets', () => {
+  const miniRoot = path.resolve(__dirname, '..');
+  const wxml = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.wxml'), 'utf8');
+  const less = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
+  const script = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.js'), 'utf8');
+
+  assert.match(wxml, /dock-toolbar/);
+  assert.match(wxml, /dock-tool-label/);
+  assert.match(wxml, /onToolbarTap/);
+  assert.match(wxml, /sheet-handle/);
+  assert.match(wxml, /sheet-option-subtitle/);
+  assert.match(wxml, /hold-keyboard=\"\{\{false\}\}\"/);
+  assert.match(wxml, /focus=\"\{\{promptFocused\}\}\"/);
+  assert.doesNotMatch(wxml, /dock-tools-scroll/);
+  assert.doesNotMatch(wxml, />参考</);
+  assert.doesNotMatch(less, /overflow-x:\s*auto/);
+  assert.match(less, /\.dock-tool-label\s*\{[^}]*font-size:\s*24rpx/);
+  assert.match(script, /runAfterKeyboardHidden/);
+  assert.match(script, /restorePromptFocus/);
+  assert.match(script, /KEYBOARD_HIDE_TIMEOUT_MS/);
+});
+
+test('mask dismiss on a tool sheet restores prompt focus', async () => {
+  const { definition, restore } = loadComposerComponent();
+  try {
+    const pickerHost = createComposerHost(definition, {
+      pickerMounted: true,
+      pickerVisible: true,
+      pickerType: 'scope',
+      settingsOpen: false,
+      dockExpanded: true,
+      promptFocused: false,
+    });
+    pickerHost.closePicker();
+    await waitForSheetClose();
+    assert.equal(pickerHost.data.promptFocused, true);
+
+    const settingsHost = createComposerHost(definition, {
+      settingsMounted: true,
+      settingsOpen: true,
+      dockExpanded: true,
+      promptFocused: false,
+    });
+    settingsHost.closeSettings();
+    await waitForSheetClose();
+    assert.equal(settingsHost.data.promptFocused, true);
+
+    const templateHost = createComposerHost(definition, {
+      settingsOpen: false,
+      templateSheetOpen: true,
+      promptFocused: false,
+    });
+    templateHost.closeTemplates();
+    assert.equal(templateHost._refocusAfterTemplate, true);
+  } finally {
+    restore();
+  }
+});
+
+test('nested picker mask under settings does not restore prompt focus', async () => {
+  const { definition, restore } = loadComposerComponent();
+  try {
+    const host = createComposerHost(definition, {
+      pickerMounted: true,
+      pickerVisible: true,
+      pickerType: 'model',
+      settingsOpen: true,
+      settingsMounted: true,
+      dockExpanded: true,
+      promptFocused: false,
+    });
+    host.closePicker();
+    await waitForSheetClose();
+    assert.equal(host.data.promptFocused, false);
+  } finally {
+    restore();
+  }
 });

@@ -390,6 +390,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 8rpx;
+}
+
+.item-cta image {
+  width: 28rpx;
+  height: 28rpx;
+  flex-shrink: 0;
 }
 
 .item-cta-secondary {
@@ -574,7 +581,8 @@
   left: 0;
   right: 0;
   top: 0;
-  bottom: 0;
+  /* Tab pages clip overflow at the custom TabBar. Dock above that lane so 取消/确定 stay visible. */
+  bottom: var(--sfp-custom-tabbar-safe-height, calc(128rpx + env(safe-area-inset-bottom)));
   background: rgba(24, 52, 38, 0.42);
   z-index: 1000;
   display: flex;
@@ -583,7 +591,7 @@
 
 .period-sheet {
   width: 100%;
-  padding: 36rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+  padding: 36rpx 32rpx 32rpx;
   border-radius: 32rpx 32rpx 0 0;
   background: #ffffff;
   box-sizing: border-box;
