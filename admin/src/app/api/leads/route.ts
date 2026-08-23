@@ -324,10 +324,10 @@ export async function POST(request: Request) {
           notes,
         });
         let lead = manual.lead;
-        if (!lead) throw new Error('Failed to persist lead');
         if (floorPlanId) {
-          lead = await leads.linkFloorPlan(lead.id, floorPlanId);
-          if (!lead) throw new Error('Floor plan not found in this scope');
+          const linked = await leads.linkFloorPlan(lead.id, floorPlanId);
+          if (!linked) throw new Error('Floor plan not found in this scope');
+          lead = linked;
         }
         return {
           lead,

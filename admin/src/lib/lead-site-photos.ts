@@ -93,7 +93,18 @@ export function parseLeadSitePhotoSource(value: unknown): LeadSitePhotoSource {
   throw httpError('不支持的现场图来源', 400);
 }
 
-export function parseLeadSitePhotoSpaceTag(value: unknown, { required = false } = {}): LeadSitePhotoSpaceTag | null {
+export function parseLeadSitePhotoSpaceTag(
+  value: unknown,
+  options: { required: true }
+): LeadSitePhotoSpaceTag;
+export function parseLeadSitePhotoSpaceTag(
+  value: unknown,
+  options?: { required?: boolean }
+): LeadSitePhotoSpaceTag | null;
+export function parseLeadSitePhotoSpaceTag(
+  value: unknown,
+  { required = false } = {},
+): LeadSitePhotoSpaceTag | null {
   if (value === undefined || value === null || value === '') {
     if (required) throw httpError('请选择房间标签', 400);
     return null;
@@ -278,7 +289,7 @@ export async function updateLeadSitePhotoTag(
 ) {
   assertWritable(access.lead);
   const photoId = parsePostgresId(photoIdText, 'photo id');
-  const spaceTag = parseLeadSitePhotoSpaceTag(spaceTagValue);
+  const spaceTag = parseLeadSitePhotoSpaceTag(spaceTagValue, { required: true });
   const updated = await withMiniProgramPostgresTransaction(access.context, async (transaction) => {
     const repository = new LeadSitePhotoRepository(transaction);
     const current = await repository.findActiveById(access.lead.id, photoId);

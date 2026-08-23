@@ -48,3 +48,12 @@ test('first publish, not generation, advances lead status; photo batches bind le
   assert.match(creation, /\.\.\.\(workflowBinding\.floorPlanId \? \{ floorPlanId: workflowBinding\.floorPlanId \} : \{\}\)/);
   assert.match(workflow, /canCreateLeadBoundRoughSketchWorkflow/);
 });
+
+test('admin workbench can start a photo scheme without a formal floor plan', () => {
+  const source = read('components/ai-studio/workbench-workspace.tsx');
+  assert.doesNotMatch(source, /该线索还没有合格的正式户型，请先完成量房/);
+  assert.match(source, /sourceAssetRole: 'rough_sketch'/);
+  assert.match(source, /eligibleFloorPlans\.length && !createFloorPlanId/);
+  assert.doesNotMatch(source, /disabled=\{creating \|\| !createFloorPlanId\}/);
+  assert.match(source, /hasBoundFloorPlan \?[\s\S]*targetScope: draft\.targetScope/);
+});

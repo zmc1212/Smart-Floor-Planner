@@ -6,9 +6,10 @@ export function readStoredWorkbenchTheme(value: string | null | undefined): Work
   return value === 'light' ? 'light' : 'dark';
 }
 
-/** Floor-plan control PNG always occupies the first reference slot on the workbench. */
-export function workbenchMaxUserReferenceImages(maxReferenceImages: number) {
-  return Math.max(0, Math.trunc(Number(maxReferenceImages) || 0) - 1);
+/** Floor-plan control PNG occupies the first reference slot when a formal plan is bound. */
+export function workbenchMaxUserReferenceImages(maxReferenceImages: number, reserveControlSlot = true) {
+  const cap = Math.max(0, Math.trunc(Number(maxReferenceImages) || 0));
+  return reserveControlSlot ? Math.max(0, cap - 1) : cap;
 }
 
 /** Designer-only survey-canvas snapshot preview for a bound workbench conversation. */

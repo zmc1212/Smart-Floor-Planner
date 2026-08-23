@@ -2228,7 +2228,7 @@ export const leadSitePhotos = appSchema.table(
     assetId: bigint('asset_id', { mode: 'bigint' })
       .notNull()
       .references(() => mediaAssets.id, { onDelete: 'restrict' }),
-    spaceTag: text('space_tag'),
+    spaceTag: text('space_tag').notNull(),
     source: text('source').notNull().default('album'),
     createdByUserId: bigint('created_by_user_id', { mode: 'bigint' }).references(
       () => users.id,

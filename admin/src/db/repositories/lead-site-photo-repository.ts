@@ -86,7 +86,7 @@ export class LeadSitePhotoRepository {
     return rows[0];
   }
 
-  async updateSpaceTag(leadId: bigint, photoId: bigint, spaceTag: string | null) {
+  async updateSpaceTag(leadId: bigint, photoId: bigint, spaceTag: string) {
     const rows = await this.transaction
       .update(leadSitePhotos)
       .set({ spaceTag, updatedAt: new Date() })

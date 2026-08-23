@@ -470,6 +470,7 @@ export function WorkbenchWorkspace() {
   const eligibleFloorPlans = selectedLead?.floorPlans || detail?.lead.floorPlans || [];
   const floorPlanPreviewUrl = detail?.workflow.floorPlanPreviewUrl || '';
   const sourceFloorPlanId = detail?.workflow.sourceFloorPlan?.id || detail?.workflow.sourceFloorPlanId || '';
+  const hasBoundFloorPlan = Boolean(sourceFloorPlanId);
   const sourceFloorPlanName = detail?.workflow.sourceFloorPlan?.name || '正式户型';
   const closedRooms = useMemo(
     () => detail?.workflow.sourceFloorPlan?.rooms || [],
@@ -513,7 +514,7 @@ export function WorkbenchWorkspace() {
 
   const selectedBatch = latestBatch(task);
   const model = bootstrap?.models.find((item) => item.id === modelProfileId);
-  const maxUserRefs = workbenchMaxUserReferenceImages(model?.maxReferenceImages || 0);
+  const maxUserRefs = workbenchMaxUserReferenceImages(model?.maxReferenceImages || 0, hasBoundFloorPlan);
   const availableAspectRatios = model?.aspectRatiosByResolutionTier?.[resolutionTier] || model?.aspectRatios || [];
   const unitPrice = model?.prices.find((price) => price.resolutionTier === resolutionTier)?.credits || 0;
   const estimatedCredits = unitPrice * count;
@@ -589,7 +590,7 @@ export function WorkbenchWorkspace() {
     setResolutionTier(profile.defaults.resolutionTier);
     setCustomWidth(1024);
     setCustomHeight(1024);
-    setAssets((current) => current.slice(0, workbenchMaxUserReferenceImages(profile.maxReferenceImages)));
+    setAssets((current) => current.slice(0, workbenchMaxUserReferenceImages(profile.maxReferenceImages, hasBoundFloorPlan)));
   };
 
   const applyBatchToComposer = (batch: CreationBatch) => {
@@ -615,7 +616,9 @@ export function WorkbenchWorkspace() {
     if (!files.length || !model) return false;
     const slots = Math.max(0, maxUserRefs - assets.length);
     if (!model.supportsReferenceImages || !slots) {
-      notify.warning(`当前模型最多支持 ${maxUserRefs} 张参考图（户型控制图会自动占用 1 张）`);
+      notify.warning(hasBoundFloorPlan
+        ? `当前模型最多支持 ${maxUserRefs} 张参考图（户型控制图会自动占用 1 张）`
+        : `当前模型最多支持 ${maxUserRefs} 张参考图`);
       return false;
     }
     setUploading(true);
@@ -662,7 +665,7 @@ export function WorkbenchWorkspace() {
       }
     }
     const nextMaxUserRefs = nextModel?.supportsReferenceImages
-      ? workbenchMaxUserReferenceImages(nextModel.maxReferenceImages || 0)
+      ? workbenchMaxUserReferenceImages(nextModel.maxReferenceImages || 0, hasBoundFloorPlan)
       : 0;
     const plan = planPromptTemplateReferenceAttach({
       previewSrc: promptTemplatePreviewSrc(template),
@@ -674,7 +677,9 @@ export function WorkbenchWorkspace() {
       if (plan.reason === 'no_slots' || plan.reason === 'no_capacity') {
         notify.success(`已应用模板：${template.name}`);
         notify.warning(plan.reason === 'no_slots'
-          ? '当前模型无法再带入模板参考图（户型控制图会自动占用 1 张）'
+          ? (hasBoundFloorPlan
+            ? '当前模型无法再带入模板参考图（户型控制图会自动占用 1 张）'
+            : '当前模型无法再带入模板参考图')
           : '参考图已满，已应用模板文案但未带入封面');
         return;
       }
@@ -788,8 +793,10 @@ export function WorkbenchWorkspace() {
           templateId: draft.templateId,
           count: draft.count,
           workflowId: selectedWorkflowId,
-          targetScope: draft.targetScope,
-          roomId: draft.roomId || undefined,
+          ...(hasBoundFloorPlan ? {
+            targetScope: draft.targetScope,
+            roomId: draft.roomId || undefined,
+          } : {}),
         }),
       }));
       setTask(generated.data.task);
@@ -822,20 +829,26 @@ export function WorkbenchWorkspace() {
 
   const openCreate = () => {
     if (!selectedLead) return notify.error('请先选择客户线索');
-    if (!eligibleFloorPlans.length) return notify.error('该线索还没有合格的正式户型，请先完成量房');
     setCreateTitle(selectedLead.workflowCount ? `方案 ${(selectedLead.workflowCount || 0) + 1}` : '方案 1');
     setCreateFloorPlanId(eligibleFloorPlans[0]?.id || '');
     setCreateOpen(true);
   };
 
   const createConversation = async () => {
-    if (!selectedLeadId || !createFloorPlanId) return;
+    if (!selectedLeadId) return;
+    if (eligibleFloorPlans.length && !createFloorPlanId) return;
     setCreating(true);
     try {
       const result = await readJson(await fetch('/api/ai/workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leadId: selectedLeadId, title: createTitle.trim() || '方案 1', sourceFloorPlanId: createFloorPlanId }),
+        body: JSON.stringify({
+          leadId: selectedLeadId,
+          title: createTitle.trim() || '方案 1',
+          ...(createFloorPlanId
+            ? { sourceFloorPlanId: createFloorPlanId }
+            : { sourceAssetRole: 'rough_sketch' }),
+        }),
       }));
       const workflowId = result.data?.id || result.data?.workflow?.id;
       setCreateOpen(false);
@@ -1165,7 +1178,7 @@ export function WorkbenchWorkspace() {
                             <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium', t.badge)}>第 {batch.sequence} 轮</span>
                             <div className="min-w-0 flex-1">
                               <p className="whitespace-pre-wrap text-sm leading-5">{batch.prompt}</p>
-                              {!String(batch.id).startsWith('legacy-') ? (
+                              {!String(batch.id).startsWith('legacy-') && batch.parameterSnapshot.targetScope ? (
                                 <p className={cn('mt-1 text-[11px]', t.muted)}>
                                   应用到：{batchScopeLabel(batch)}
                                   {batch.parameterSnapshot.targetScope === 'single_room' ? ' · 单房间' : ' · 整屋方案'}
@@ -1225,7 +1238,9 @@ export function WorkbenchWorkspace() {
                   {!dark ? (
                     <div className="flex h-full flex-col items-center justify-center text-center">
                       <h2 className="text-2xl font-semibold">今天想为这位客户出什么方案？</h2>
-                      <p className={cn('mt-3 text-sm', t.muted)}>左上角可对照客户户型。出图前先选择完整户型或单房间；控制图会按作用域自动带入。选择模型、模板或直接描述空间、光线与材质。</p>
+                      <p className={cn('mt-3 text-sm', t.muted)}>{hasBoundFloorPlan
+                        ? '左上角可对照客户户型。出图前先选择完整户型或单房间；控制图会按作用域自动带入。选择模型、模板或直接描述空间、光线与材质。'
+                        : '当前方案未绑定正式户型。上传现场照或户型图照片作为参考，选择模型、模板或直接描述空间、光线与材质即可出图。'}</p>
                     </div>
                   ) : <h2 className="sr-only">今天想为这位客户出什么方案？</h2>}
                 </div>
@@ -1321,6 +1336,7 @@ export function WorkbenchWorkspace() {
                   <button type="button" onClick={() => setPromptExpanded(true)} title="全屏编辑提示词" className={cn('flex size-[30px] items-center justify-center rounded-full', t.muted)}><Maximize2 className="size-4" /></button>
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap">
+                  {hasBoundFloorPlan ? (
                   <Select
                     value={scopeSelection}
                     onChange={setScopeSelection}
@@ -1340,6 +1356,7 @@ export function WorkbenchWorkspace() {
                       </div>
                     )}
                   />
+                  ) : null}
                   <Select
                     value={modelProfileId || undefined}
                     onChange={(value) => { setModelProfileId(value); applyModelDefaults(bootstrap.models.find((item) => item.id === value)); }}
@@ -1515,23 +1532,29 @@ export function WorkbenchWorkspace() {
         footer={
           <div className="flex justify-end gap-2">
             <Button className={t.iconBtn} onClick={() => setCreateOpen(false)}>取消</Button>
-            <Button type="primary" disabled={creating || !createFloorPlanId} className={cn(dark ? '!bg-[#7047ff] hover:!bg-[#6034ee]' : '!bg-[#16a34a] hover:!bg-[#15803d]')} onClick={() => void createConversation()}>{creating ? '创建中…' : '创建'}</Button>
+            <Button type="primary" disabled={creating || Boolean(eligibleFloorPlans.length && !createFloorPlanId)} className={cn(dark ? '!bg-[#7047ff] hover:!bg-[#6034ee]' : '!bg-[#16a34a] hover:!bg-[#15803d]')} onClick={() => void createConversation()}>{creating ? '创建中…' : '创建'}</Button>
           </div>
         }
         className={dark ? '[&_.ant-modal-content]:bg-[#1b1c20] [&_.ant-modal-content]:text-white [&_.ant-modal-header]:bg-[#1b1c20] [&_.ant-modal-title]:text-white [&_.ant-modal-close]:text-white' : undefined}
       >
-        <span className="sr-only">为当前客户新建一个命名方案对话并关联合格正式户型。</span>
+        <span className="sr-only">为当前客户新建一个命名方案对话。未量房时以拍照参考图出图，已量房时关联合格正式户型。</span>
         <label className={cn('mb-1 block text-xs', t.muted)}>方案名称</label>
         <Input value={createTitle} onChange={(event) => setCreateTitle(event.target.value)} placeholder="例如 灯光设计" className={t.input} />
-        <label className={cn('mb-1 mt-4 block text-xs', t.muted)}>关联正式户型</label>
-        <Select
-          value={createFloorPlanId || undefined}
-          onChange={setCreateFloorPlanId}
-          placeholder="选择户型"
-          className={cn('w-full', t.selectTrigger)}
-          popupClassName={t.selectPopup}
-          options={eligibleFloorPlans.map((plan) => ({ value: plan.id, label: plan.name || '正式户型' }))}
-        />
+        {eligibleFloorPlans.length ? (
+          <>
+            <label className={cn('mb-1 mt-4 block text-xs', t.muted)}>关联正式户型</label>
+            <Select
+              value={createFloorPlanId || undefined}
+              onChange={setCreateFloorPlanId}
+              placeholder="选择户型"
+              className={cn('w-full', t.selectTrigger)}
+              popupClassName={t.selectPopup}
+              options={eligibleFloorPlans.map((plan) => ({ value: plan.id, label: plan.name || '正式户型' }))}
+            />
+          </>
+        ) : (
+          <p className={cn('mt-4 text-sm', t.muted)}>当前线索尚未完成量房。将按拍照方案出图，可上传现场照或户型图照片作为参考。</p>
+        )}
       </Modal>
 
       <Modal

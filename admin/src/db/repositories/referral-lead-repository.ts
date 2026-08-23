@@ -729,26 +729,27 @@ export class ReferralLeadRepository {
         updatedAt: now,
       })
       .where(eq(leads.id, input.lead.id));
-    if (input.lead.enterpriseId) {
+    const enterpriseId = input.lead.enterpriseId;
+    if (enterpriseId) {
       await this.ensureCustomerAttributionLock({
-        enterpriseId: input.lead.enterpriseId,
+        enterpriseId,
         customerUserId: input.customerUserId,
         leadId: input.lead.id,
         lockedAt: now,
       });
+      await this.transaction.insert(leadAssignmentEvents).values({
+        enterpriseId,
+        leadId: input.lead.id,
+        eventType: 'attribution_reused',
+        designerId: input.lead.assignedTo,
+        measurerId: input.lead.measurerId,
+        actorUserId: input.customerUserId,
+        reason: 'phone_match_attached',
+        metadata: {
+          authorizationIdempotencyKeyHash: input.idempotencyKeyHash,
+        },
+      });
     }
-    await this.transaction.insert(leadAssignmentEvents).values({
-      enterpriseId: input.lead.enterpriseId,
-      leadId: input.lead.id,
-      eventType: 'attribution_reused',
-      designerId: input.lead.assignedTo,
-      measurerId: input.lead.measurerId,
-      actorUserId: input.customerUserId,
-      reason: 'phone_match_attached',
-      metadata: {
-        authorizationIdempotencyKeyHash: input.idempotencyKeyHash,
-      },
-    });
     return this.loadLead(input.lead.id);
   }
 
@@ -801,24 +802,27 @@ export class ReferralLeadRepository {
         updatedAt: now,
       })
       .where(eq(leads.id, existing.id));
-    if (customerUserId && existing.enterpriseId) {
-      await this.ensureCustomerAttributionLock({
-        enterpriseId: existing.enterpriseId,
-        customerUserId,
+    const enterpriseId = existing.enterpriseId;
+    if (enterpriseId) {
+      if (customerUserId) {
+        await this.ensureCustomerAttributionLock({
+          enterpriseId,
+          customerUserId,
+          leadId: existing.id,
+          lockedAt: now,
+        });
+      }
+      await this.transaction.insert(leadAssignmentEvents).values({
+        enterpriseId,
         leadId: existing.id,
-        lockedAt: now,
+        eventType: 'attribution_reused',
+        designerId: existing.assignedTo,
+        measurerId: existing.measurerId,
+        actorUserId: input.actorUserId,
+        reason: 'manual_entry_phone_merged',
+        metadata: {},
       });
     }
-    await this.transaction.insert(leadAssignmentEvents).values({
-      enterpriseId: existing.enterpriseId,
-      leadId: existing.id,
-      eventType: 'attribution_reused',
-      designerId: existing.assignedTo,
-      measurerId: existing.measurerId,
-      actorUserId: input.actorUserId,
-      reason: 'manual_entry_phone_merged',
-      metadata: {},
-    });
     return this.loadLead(existing.id);
   }
 

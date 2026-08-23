@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS "app"."lead_site_photos" (
     REFERENCES "app"."leads"("id") ON DELETE restrict,
   "asset_id" bigint NOT NULL
     REFERENCES "app"."media_assets"("id") ON DELETE restrict,
-  "space_tag" text,
+  "space_tag" text NOT NULL,
   "source" text NOT NULL DEFAULT 'album',
   "created_by_user_id" bigint
     REFERENCES "app"."users"("id") ON DELETE set null,
@@ -19,8 +19,7 @@ CREATE TABLE IF NOT EXISTS "app"."lead_site_photos" (
     CHECK ("source" IN ('camera', 'album', 'ai_picker')),
   CONSTRAINT "lead_site_photos_space_tag_check"
     CHECK (
-      "space_tag" IS NULL
-      OR "space_tag" IN (
+      "space_tag" IN (
         'living_room',
         'master_bedroom',
         'secondary_bedroom',

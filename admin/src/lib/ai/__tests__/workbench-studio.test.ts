@@ -53,6 +53,8 @@ test('workbench reserves one reference slot for the floor-plan control image', (
   assert.equal(workbenchMaxUserReferenceImages(4), 3);
   assert.equal(workbenchMaxUserReferenceImages(1), 0);
   assert.equal(workbenchMaxUserReferenceImages(0), 0);
+  assert.equal(workbenchMaxUserReferenceImages(4, false), 4);
+  assert.equal(workbenchMaxUserReferenceImages(1, false), 1);
 });
 
 test('workbench floor-plan preview path is scoped to the conversation', () => {
