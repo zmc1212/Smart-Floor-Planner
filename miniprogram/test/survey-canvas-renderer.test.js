@@ -1825,6 +1825,56 @@ test('window walls retain building totals without a positioning chain', () => {
   assert.equal(scene.dimensions.some((dimension) => dimension.kind === 'opening-segment'), false);
 });
 
+function pointInPolygon(point, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const current = polygon[i];
+    const previous = polygon[j];
+    const intersects = ((current.y > point.y) !== (previous.y > point.y)) &&
+      (point.x < (previous.x - current.x) * (point.y - current.y) / ((previous.y - current.y) || 1) + previous.x);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+test('a door parked against a T-junction does not punch the adjacent closed wall solid', () => {
+  let draft = createAlignedAdjacentRoomDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const sharedWall = floor.walls.find((wall) => (
+    floor.spaces.filter((space) => space.closed && space.wallIds.includes(wall.id)).length === 2
+  ));
+  draft = surveyGraph.addOpeningToWall(draft, sharedWall.id, 'door');
+  const openingId = surveyGraph.getActiveFloor(draft).openings[0].id;
+  draft = surveyGraph.updateOpening(draft, openingId, { centerOffsetMm: 450 });
+
+  const scene = createScene(draft);
+  const opening = scene.openings[0];
+  const host = opening.wall;
+  const sampleLocal = { x: 0, y: host.outerOffsetPx / 2 };
+  const sample = {
+    x: host.startPoint.x + sampleLocal.x * Math.cos(host.angleRad) - sampleLocal.y * Math.sin(host.angleRad),
+    y: host.startPoint.y + sampleLocal.x * Math.sin(host.angleRad) + sampleLocal.y * Math.cos(host.angleRad)
+  };
+  const neighbor = scene.walls.find((wall) => (
+    wall.id !== host.id && wall.closed && pointInPolygon(sample, wall.bodyPolygon)
+  ));
+
+  assert.ok(neighbor, 'the T-stem should occupy the shared-wall start square');
+  assert.equal(pointInPolygon(sample, host.bodyPolygon), false);
+  assert.equal(opening.startPx <= 0.5, true, 'the door should start on the T');
+
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  const restored = recorder.fillDetails.filter((detail) => detail.fillStyle === '#8e8e8c').some((detail) => {
+    const commands = detail.path.filter((command) => command[0] === 'moveTo' || command[0] === 'lineTo');
+    if (commands.length < 3) return false;
+    const polygon = commands.map((command) => ({ x: command[1], y: command[2] }));
+    return pointInPolygon(sampleLocal, polygon);
+  });
+  assert.equal(restored, true, 'opening mask must refill the adjacent closed wall at the T');
+});
+
 test('door leaf and opposite-side frame strip remain closed rectangles on horizontal and vertical walls', () => {
   [0, 1].forEach((wallIndex) => {
     ['inside', 'outside'].forEach((openDirection) => {

@@ -21,8 +21,8 @@
         aria-role="button"
         aria-label="拨打客户电话"
       >
-        <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
         <text class="info hero-phone-number">手机：{{lead.phone}}</text>
+        <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
       </view>
       <view class="community-block">
         <text class="info community-label">小区</text>
@@ -56,8 +56,8 @@
         aria-role="button"
         aria-label="拨打设计师电话"
       >
-        <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
         <text>{{designerContact.phone}}</text>
+        <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
       </view>
     </view>
     <view class="staff-assignment-card">
@@ -81,8 +81,8 @@
         aria-role="button"
         aria-label="拨打测量员电话"
       >
-        <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
         <text>{{measurerContact.phone}}</text>
+        <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
       </view>
     </view>
   </view>

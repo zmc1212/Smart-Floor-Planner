@@ -19,6 +19,7 @@ const referralAssets = [
   'xiao-k-existing-service.png',
   'xiao-k-onboarding-welcome.png',
   'xiao-k-onboarding-recovery.png',
+  'xiao-k-spatial-service-guide.png',
 ];
 
 test('staff activity code reuses the promotion visual language and may show the enterprise name', () => {
@@ -29,7 +30,8 @@ test('staff activity code reuses the promotion visual language and may show the 
   assert.match(wxml, /免费设计服务/);
   assert.match(wxml, /免费上门量房 · 专业设计师服务/);
   assert.match(wxml, /请客户扫描此码/);
-  assert.match(wxml, /让客户扫码领取/);
+  assert.match(wxml, /分享给客户/);
+  assert.doesNotMatch(wxml, /让客户扫码领取/);
   assert.match(wxml, /enterpriseName/);
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
   assert.match(wxml, /mine-icons\/scan\.png/);
@@ -49,8 +51,12 @@ test('staff activity code reuses the promotion visual language and may show the 
   assert.match(less, /\.nav-back/);
   assert.match(less, /\.back-chevron/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
-  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
-  assert.match(less, /\.qr-stage\s*\{[\s\S]*min-height:\s*292rpx/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*520rpx/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*min-height:\s*520rpx/);
+  assert.match(less, /@media \(max-width:\s*360px\)[\s\S]*\.qr-stage\s*\{[\s\S]*width:\s*508rpx/);
+  assert.match(less, /\.qr-display\s*\{[\s\S]*flex:\s*none/);
+  assert.match(less, /\.code-hero\s*\{[\s\S]*flex:\s*1/);
+  assert.match(less, /\.service-promises\s*\{[\s\S]*background:\s*#ffffff/);
   assert.match(less, /\.qr-stage\s*\{[\s\S]*overflow:\s*hidden/);
   assert.match(less, /\.qr-retry\s*\{[\s\S]*width:\s*auto/);
   assert.match(less, /\.qr-retry\s*\{[\s\S]*max-width:\s*100%/);
@@ -123,7 +129,8 @@ test('promotion service screen keeps the public presentation anonymous and scana
   assert.match(wxml, /请客户扫描此码/);
   assert.match(wxml, /0元服务/);
   assert.match(wxml, /设计师匹配/);
-  assert.match(wxml, /让客户扫码领取/);
+  assert.match(wxml, /分享给客户/);
+  assert.doesNotMatch(wxml, /让客户扫码领取/);
   assert.match(wxml, /open-type="share"/);
   assert.match(wxml, /referral-service-v1\/thumbs-up-xiao-k\.png/);
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
@@ -133,7 +140,11 @@ test('promotion service screen keeps the public presentation anonymous and scana
   assert.match(js, /promotion-code\/image/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
   assert.match(js, /responseType:\s*'arraybuffer'/);
-  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*520rpx/);
+  assert.match(less, /@media \(max-width:\s*360px\)[\s\S]*\.qr-stage\s*\{[\s\S]*width:\s*508rpx/);
+  assert.match(less, /\.qr-display\s*\{[\s\S]*flex:\s*none/);
+  assert.match(less, /\.code-hero\s*\{[\s\S]*flex:\s*1/);
+  assert.match(less, /\.service-promises\s*\{[\s\S]*background:\s*#ffffff/);
   assert.match(less, /\.qr-retry\s*\{[\s\S]*width:\s*auto/);
   assert.match(less, /\.qr-retry\s*\{[\s\S]*max-width:\s*100%/);
   assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);
@@ -156,8 +167,15 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /专属设计师已为你匹配/);
   assert.match(wxml, /服务已建立/);
   assert.match(wxml, /success-title/);
-  assert.match(wxml, /服务已领取/);
-  assert.match(wxml, /我们正在为你匹配合适的设计师/);
+  assert.match(wxml, /免费量房 · 免费设计/);
+  assert.match(wxml, /权益已生效，正在为你匹配合适的设计师/);
+  assert.match(wxml, /专业人员上门测量/);
+  assert.match(wxml, /设计师沟通方案/);
+  assert.match(wxml, /接下来这样进行/);
+  assert.match(wxml, /安排上门量房/);
+  assert.match(wxml, /围绕户型与需求沟通方案/);
+  assert.match(wxml, /查看免费服务档案/);
+  assert.match(wxml, /xiao-k-spatial-service-guide\.png/);
   assert.doesNotMatch(wxml, /pageState === 'ready'/);
   assert.doesNotMatch(wxml, /一键授权手机号/);
   assert.doesNotMatch(wxml, /我已阅读并同意/);
@@ -219,7 +237,10 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(less, /\.claim-action\s*\{[^}]*min-width:\s*100%/);
   assert.match(less, /\.claim-action\s*\{[^}]*white-space:\s*nowrap/);
   assert.match(less, /\.claim-auth,\s*\.claim-pending\s*\{[\s\S]*overflow-y:\s*auto/);
-  assert.match(less, /\.claim-auth \.claim-action,\s*\.claim-pending \.claim-action\s*\{[^}]*margin-top:\s*36rpx/);
+  assert.match(less, /\.claim-auth \.claim-action\s*\{[^}]*margin-top:\s*36rpx/);
+  assert.match(less, /\.claim-pending \.claim-action\s*\{[^}]*margin-top:\s*20rpx/);
+  assert.match(less, /\.pending-benefit-title\s*\{[^}]*font-size:\s*44rpx/);
+  assert.match(less, /\.pending-journey-card\s*\{[^}]*background:\s*#ffffff/);
   assert.match(less, /\.success-title\s*\{[^}]*color:\s*#00c365/);
   assert.match(less, /\.existing-note\s*\{[^}]*background:\s*#f1f5f2/);
   assert.match(less, /\.designer-qr\s*\{[\s\S]*width:\s*280rpx/);

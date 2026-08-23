@@ -1,9 +1,9 @@
 <!--
-THESIS: 扫码即进入手机号授权，授权后交付真实设计师资料或待匹配结果。
+THESIS: 扫码授权后先确认“免费量房 · 免费设计”权益，再用连续服务路径承接待匹配结果。
 OWN-WORLD: 极简透气版暖白纸面、家客绿步骤条、克制线框图标和单一绿色主动作。
 STORY: 客户扫码后直接授权手机号，完成两步流程并获得已匹配设计师或等待派单。
 FIRST VIEWPORT: 胶囊左侧品牌锁；phoneAuth、success、pending、existing 各自在 390x844 同屏展示主内容与 CTA。
-FORM: design-references/miniprogram-airy-minimalist-v1/11-free-design-phone-auth.jpg, 12-free-design-success.jpg, 13-free-design-assignment-pending.jpg, 14-free-design-existing-attribution.jpg
+FORM: design-references/free-design-service-pending-redesign-v1/free-design-service-pending-v1.png
 -->
 <view class="claim-page state-{{pageState}}">
   <view
@@ -250,37 +250,92 @@ FORM: design-references/miniprogram-airy-minimalist-v1/11-free-design-phone-auth
       </view>
     </view>
 
-    <view class="pending-hero">
-      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
-      <view class="hero-copy">
-        <text class="ready-title">服务已领取</text>
-        <text class="ready-subtitle">我们正在为你匹配合适的设计师</text>
+    <view class="pending-benefit-hero">
+      <view class="pending-success-pill">
+        <view class="pending-success-mark"><view class="step-check"></view></view>
+        <text>领取成功</text>
       </view>
-      <image
-        class="hero-xiaok"
-        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
-        mode="aspectFit"
-      />
+
+      <view class="pending-benefit-main">
+        <view class="pending-benefit-copy">
+          <text class="pending-benefit-title">免费量房 · 免费设计</text>
+          <text class="pending-benefit-subtitle">权益已生效，正在为你匹配合适的设计师</text>
+        </view>
+        <image
+          class="pending-spatial-xiaok"
+          src="/packages/business/assets/referral-service-v1/xiao-k-spatial-service-guide.png"
+          mode="aspectFit"
+        />
+      </view>
+
+      <view class="pending-benefit-grid">
+        <view class="pending-benefit-item">
+          <image
+            class="pending-benefit-icon"
+            src="/packages/business/assets/referral-service-v1/onsite-measurement.png"
+            mode="aspectFit"
+          />
+          <view class="pending-benefit-meta">
+            <text class="pending-benefit-label">免费量房</text>
+            <text class="pending-benefit-helper">专业人员上门测量</text>
+          </view>
+        </view>
+        <view class="pending-benefit-item">
+          <image
+            class="pending-benefit-icon"
+            src="/packages/business/assets/referral-service-v1/designer-service.png"
+            mode="aspectFit"
+          />
+          <view class="pending-benefit-meta">
+            <text class="pending-benefit-label">免费设计</text>
+            <text class="pending-benefit-helper">设计师沟通方案</text>
+          </view>
+        </view>
+      </view>
     </view>
 
-    <view class="status-card">
-      <view class="status-row">
-        <view class="status-item done">
-          <view class="status-dot"><view class="step-check"></view></view>
-          <text class="status-title">服务已建立</text>
-          <text class="status-copy">我们已收到你的需求</text>
+    <view class="pending-journey-card">
+      <text class="pending-journey-title">接下来这样进行</text>
+      <view class="pending-journey-list">
+        <view class="pending-journey-rail" aria-hidden="true"></view>
+
+        <view class="pending-journey-item is-done">
+          <view class="pending-journey-index">1</view>
+          <view class="pending-journey-copy">
+            <text class="pending-journey-label">需求已确认</text>
+            <text class="pending-journey-helper">我们已收到你的需求</text>
+          </view>
+          <image
+            class="pending-journey-icon"
+            src="/packages/business/assets/referral-service-v1/designer-matching.png"
+            mode="aspectFit"
+          />
         </view>
-        <view class="status-wave"></view>
-        <view class="status-item">
-          <view class="status-dot"></view>
-          <text class="status-title">量房安排</text>
-          <text class="status-copy">我们将为你安排量房</text>
+
+        <view class="pending-journey-item">
+          <view class="pending-journey-index">2</view>
+          <view class="pending-journey-copy">
+            <text class="pending-journey-label">安排上门量房</text>
+            <text class="pending-journey-helper">匹配完成后为你预约</text>
+          </view>
+          <image
+            class="pending-journey-icon"
+            src="/packages/business/assets/referral-service-v1/onsite-measurement.png"
+            mode="aspectFit"
+          />
         </view>
-        <view class="status-wave"></view>
-        <view class="status-item">
-          <view class="status-dot"></view>
-          <text class="status-title">设计师沟通</text>
-          <text class="status-copy">匹配后将为你安排沟通</text>
+
+        <view class="pending-journey-item">
+          <view class="pending-journey-index">3</view>
+          <view class="pending-journey-copy">
+            <text class="pending-journey-label">设计师沟通</text>
+            <text class="pending-journey-helper">围绕户型与需求沟通方案</text>
+          </view>
+          <image
+            class="pending-journey-icon"
+            src="/packages/business/assets/referral-service-v1/designer-service.png"
+            mode="aspectFit"
+          />
         </view>
       </view>
     </view>
@@ -290,7 +345,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/11-free-design-phone-auth
       <text>匹配完成后，我们会通过微信通知你</text>
     </view>
 
-    <button class="claim-action" bindtap="onOpenProject">查看服务档案</button>
+    <button class="claim-action" bindtap="onOpenProject">查看免费服务档案</button>
     <view class="later-link" bindtap="onLater" aria-role="button">稍后再看</view>
   </view>
 

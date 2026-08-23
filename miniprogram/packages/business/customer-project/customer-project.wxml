@@ -46,8 +46,8 @@
             aria-role="button"
             aria-label="拨打设计师电话"
           >
-            <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
             <text>{{designerPhone}}</text>
+            <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
           </view>
         </view>
       </view>
@@ -69,8 +69,8 @@
             aria-role="button"
             aria-label="拨打测量师电话"
           >
-            <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
             <text>{{measurerPhone}}</text>
+            <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
           </view>
         </view>
       </view>

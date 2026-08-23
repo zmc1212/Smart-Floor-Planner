@@ -60,9 +60,10 @@ test('https url check does not use URL constructor so WeChat can open legal docs
   assert.equal(legal.isHttpsUrl('https://smartfloor.zlyun168.com/user-agreement.html'), true);
 });
 
-test('login legal kinds resolve to the configured user agreement and privacy policy', () => {
+test('login legal kinds resolve to the configured user agreement, privacy policy, and disclaimer', () => {
   assert.equal(legal.resolveLegalDoc('user').title, '用户协议');
   assert.equal(legal.resolveLegalDoc('privacy').title, '隐私政策');
+  assert.equal(legal.resolveLegalDoc('disclaimer').title, '免责协议');
   assert.equal(
     legal.resolveLegalDoc('user').url,
     'https://smartfloor.zlyun168.com/user-agreement.html'
@@ -71,23 +72,38 @@ test('login legal kinds resolve to the configured user agreement and privacy pol
     legal.resolveLegalDoc('privacy').url,
     'https://smartfloor.zlyun168.com/privacy-policy.html'
   );
+  assert.equal(
+    legal.resolveLegalDoc('disclaimer').url,
+    'https://smartfloor.zlyun168.com/disclaimer.html'
+  );
   assert.equal(legal.resolveLegalDoc('unknown'), null);
   assert.match(legal.buildLegalWebviewUrl(legal.resolveLegalDoc('user')), /legal-webview/);
+  assert.match(legal.buildLegalWebviewUrl(legal.resolveLegalDoc('disclaimer')), /disclaimer\.html/);
 });
 
 test('uploadable legal H5 files describe the current 家客来 Mini Program', () => {
   const agreement = fs.readFileSync(path.join(docsRoot, 'user-agreement.html'), 'utf8');
   const privacy = fs.readFileSync(path.join(docsRoot, 'privacy-policy.html'), 'utf8');
+  const disclaimer = fs.readFileSync(path.join(docsRoot, 'disclaimer.html'), 'utf8');
 
   assert.match(agreement, /家客来用户协议/);
   assert.match(agreement, /微信小程序/);
   assert.match(agreement, /手机号/);
   assert.match(agreement, /量房/);
   assert.match(agreement, /AI/);
+  assert.match(agreement, /家客来免责协议/);
 
   assert.match(privacy, /家客来隐私政策/);
   assert.match(privacy, /openid|OpenID/);
   assert.match(privacy, /蓝牙|测距/);
   assert.match(privacy, /位置|定位/);
   assert.match(privacy, /微信公众平台/);
+
+  assert.match(disclaimer, /家客来免责协议/);
+  assert.match(disclaimer, /装修施工合同/);
+  assert.match(disclaimer, /量房/);
+  assert.match(disclaimer, /AI/);
+  assert.match(disclaimer, /蓝牙|测距/);
+  assert.match(disclaimer, /提成|收益/);
+  assert.match(disclaimer, /微信公众平台/);
 });

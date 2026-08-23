@@ -8,6 +8,10 @@ const LEGAL_DOCS = Object.freeze({
   privacy: {
     title: '隐私政策',
     url: 'https://smartfloor.zlyun168.com/privacy-policy.html'
+  },
+  disclaimer: {
+    title: '免责协议',
+    url: 'https://smartfloor.zlyun168.com/disclaimer.html'
   }
 });
 

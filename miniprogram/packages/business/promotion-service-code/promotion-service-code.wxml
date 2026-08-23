@@ -2,8 +2,8 @@
 THESIS: 一张可出示的免费服务凭证，让客户先看懂价值再扫码，不暴露企业关系。
 OWN-WORLD: 极简透气版暖白纸面、家客绿服务码卡、三项免费承诺与扫码向导小 K。
 STORY: 推荐人出示服务码，客户扫描后进入手机号授权并自动建立服务。
-FIRST VIEWPORT: 胶囊左侧返回与品牌锁；服务码主卡、三项承诺、说明条和底部出示按钮在 390x844 同屏。
-FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code.jpg
+FIRST VIEWPORT: 胶囊左侧返回与品牌锁；服务码主卡、三项承诺、说明条和底部分享按钮在 390x844 同屏。
+FORM: design-references/service-code-redesign/free-design-service-qr-focus-v3.jpg
 -->
 <view class="service-code-page">
   <view
@@ -28,7 +28,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
       <text class="hero-title">免费设计服务</text>
       <text class="hero-subtitle">免费上门量房 · 专业设计师服务</text>
 
-      <view class="qr-row">
+      <view class="qr-display">
         <view class="qr-stage">
           <view wx:if="{{loading}}" class="qr-loading">
             <view class="qr-loading-grid"></view>
@@ -42,40 +42,41 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
           </view>
           <image wx:else class="service-qr" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
         </view>
-        <view class="scan-guide" aria-hidden="true">
-          <image
-            class="guide-xiaok"
-            src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
-            mode="aspectFit"
-          />
-          <view class="scan-plaque">
-            <image class="scan-glyph" src="/images/mine-icons/scan.png" mode="aspectFit" />
-            <text class="scan-plaque-text">请扫码</text>
+        <view class="qr-footer">
+          <text class="scan-copy">请客户扫描此码</text>
+          <view class="scan-guide" aria-hidden="true">
+            <image
+              class="guide-xiaok"
+              src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
+              mode="aspectFit"
+            />
+            <view class="scan-plaque">
+              <image class="scan-glyph" src="/images/mine-icons/scan.png" mode="aspectFit" />
+              <text class="scan-plaque-text">请扫码</text>
+            </view>
           </view>
         </view>
       </view>
-      <text class="scan-copy">请客户扫描此码</text>
-    </view>
-
-    <view class="service-promises">
-      <view class="promise-item">
-        <view class="promise-icon promise-price">¥0</view>
-        <text class="promise-title">0元服务</text>
-        <text class="promise-copy">全程免费</text>
-      </view>
-      <view class="promise-item">
-        <view class="promise-icon">
-          <image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" />
+      <view class="service-promises">
+        <view class="promise-item">
+          <view class="promise-icon promise-price">¥0</view>
+          <text class="promise-title">0元服务</text>
+          <text class="promise-copy">全程免费</text>
         </view>
-        <text class="promise-title">上门量房</text>
-        <text class="promise-copy">专业测量</text>
-      </view>
-      <view class="promise-item">
-        <view class="promise-icon">
-          <image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" />
+        <view class="promise-item">
+          <view class="promise-icon">
+            <image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" />
+          </view>
+          <text class="promise-title">上门量房</text>
+          <text class="promise-copy">专业测量</text>
         </view>
-        <text class="promise-title">设计师匹配</text>
-        <text class="promise-copy">精准对接</text>
+        <view class="promise-item">
+          <view class="promise-icon">
+            <image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" />
+          </view>
+          <text class="promise-title">设计师匹配</text>
+          <text class="promise-copy">精准对接</text>
+        </view>
       </view>
     </view>
 
@@ -87,7 +88,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/09-promotion-service-code
     <button class="share-action" open-type="share" hover-class="share-action-pressed">
       <view class="share-inner">
         <image class="share-scan" src="/images/mine-icons/scan.png" mode="aspectFit" aria-hidden="true" />
-        <text>让客户扫码领取</text>
+        <text>分享给客户</text>
       </view>
     </button>
   </view>

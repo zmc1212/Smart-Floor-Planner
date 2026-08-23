@@ -236,7 +236,18 @@ test('lead detail shows assigned designer and measurer name and phone between th
   assert.match(styles, /\.staff-assignment-role\s*\{[^}]*font-size:\s*22rpx;/s);
   assert.match(styles, /\.staff-assignment-name\s*\{[^}]*font-size:\s*26rpx;/s);
   assert.match(styles, /\.staff-assignment-phone\s*\{[^}]*font-size:\s*24rpx;/s);
-  assert.match(template, /staff-assignment-phone sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png/);
+  assert.match(
+    template,
+    /staff-assignment-phone sfp-icon-action[\s\S]*\{\{designerContact\.phone\}\}[\s\S]*\/images\/leads-v4\/phone\.png/
+  );
+  assert.match(
+    template,
+    /staff-assignment-phone sfp-icon-action[\s\S]*\{\{measurerContact\.phone\}\}[\s\S]*\/images\/leads-v4\/phone\.png/
+  );
+  assert.doesNotMatch(
+    template,
+    /staff-assignment-phone sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png[\s\S]*\{\{designerContact\.phone\}\}/
+  );
 });
 
 test('lead-detail hero pins profile edit and dials customer phone with packaged icons', () => {
@@ -252,11 +263,19 @@ test('lead-detail hero pins profile edit and dials customer phone with packaged 
   assert.doesNotMatch(template, /lead-status-summary[\s\S]*profile-edit-action/);
   assert.match(
     template,
-    /class="hero-phone sfp-icon-action"[\s\S]*catchtap="onCallStaff"[\s\S]*\/images\/leads-v4\/phone\.png/
+    /class="hero-phone sfp-icon-action"[\s\S]*catchtap="onCallStaff"[\s\S]*class="info hero-phone-number">手机：\{\{lead\.phone\}\}[\s\S]*\/images\/leads-v4\/phone\.png/
+  );
+  assert.doesNotMatch(
+    template,
+    /class="hero-phone sfp-icon-action"[\s\S]*\/images\/leads-v4\/phone\.png[\s\S]*hero-phone-number/
   );
   assert.match(
     styles,
     /\.detail-hero \.hero-phone\s*\{[^}]*justify-content:\s*flex-start;/s
+  );
+  assert.match(
+    styles,
+    /\.detail-hero \.hero-phone-number\s*\{[^}]*flex:\s*none;/s
   );
   assert.match(template, /data-phone="\{\{lead\.phone\}\}"/);
   assert.match(template, /class="info hero-phone-number">手机：\{\{lead\.phone\}\}/);

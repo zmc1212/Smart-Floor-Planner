@@ -111,7 +111,11 @@ test('Login agreement row is tappable and gates WeChat phone login until checked
   assert.match(less, /\.agreement-check\.is-checked/);
   assert.match(wxml, /catchtap="onOpenLegalDoc"[\s\S]*data-kind="user"/);
   assert.match(wxml, /catchtap="onOpenLegalDoc"[\s\S]*data-kind="privacy"/);
+  assert.match(wxml, /catchtap="onOpenLegalDoc"[\s\S]*data-kind="disclaimer"/);
+  assert.match(wxml, /《免责协议》/);
   assert.match(js, /onOpenLegalDoc\(/);
+  assert.match(less, /\.agreement\s*\{[\s\S]*flex-wrap:\s*wrap/);
+  assert.doesNotMatch(less, /\.agreement\s*\{[^}]*white-space:\s*nowrap/);
 });
 
 test('Login agreement toggle and phone CTA refuse login until the row is checked', async () => {
@@ -176,10 +180,15 @@ test('Login legal links open the webview without toggling the agreement checkbox
       currentTarget: { dataset: { kind: 'user' } }
     });
     assert.equal(context.data.agreed, false);
+    definition.onOpenLegalDoc.call(context, {
+      currentTarget: { dataset: { kind: 'disclaimer' } }
+    });
+    assert.equal(context.data.agreed, false);
     if (navigations.length) {
       assert.match(navigations[0], /legal-webview\/legal-webview/);
       assert.match(navigations[0], /url=/);
       assert.doesNotMatch(navigations[0], /\?url=https:\/\//);
+      assert.match(navigations.at(-1), /disclaimer\.html/);
     } else {
       assert.equal(toasts[0].title, '文档即将开放');
     }

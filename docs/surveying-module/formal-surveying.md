@@ -213,7 +213,9 @@ copy back to `layoutData`.
   canvas Fig.1 reticle. Adjacent working faces meet at their line intersection, so the previous
   red endpoint equals the following red start and a turn cannot shift either by
   one wall thickness. This display projection does not alter graph centreline
-  or closure topology.
+  or closure topology. Canvas opening masks cut only the host wall and refill
+  overlapping adjacent wall bodies, so a door against a T or L junction does
+  not punch through the neighbouring closed solid.
 - `measurementStartInsetMm`, `measurementStartExtensionMm`, and
   `measurementEndInsetMm` record real boundary or closure adjustments only. An
   ordinary T turn starts at the current graph working-face endpoint and must not
