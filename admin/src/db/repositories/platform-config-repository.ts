@@ -5,7 +5,7 @@ import type { PostgresTransaction } from '@/db/transaction';
 export type PlatformConfigRecord = typeof platformConfigs.$inferSelect;
 export type PlatformConfigValues = Pick<
   typeof platformConfigs.$inferInsert,
-  'mediaStorage' | 'promotionConfig' | 'notificationConfig' | 'miniProgramCodeConfig'
+  'mediaStorage' | 'promotionConfig' | 'notificationConfig' | 'smsConfig' | 'miniProgramCodeConfig'
 >;
 
 export class PlatformConfigRepository {

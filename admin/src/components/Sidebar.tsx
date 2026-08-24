@@ -32,6 +32,7 @@ import {
   SlidersHorizontal,
   Trophy,
   UsersRound,
+  MessageSquareText,
 } from 'lucide-react';
 import { Button, Divider, Drawer, Dropdown, Select } from 'antd';
 import { cn } from '@/lib/utils';
@@ -81,6 +82,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'ai-models', permissionKey: 'ai-providers', label: '生图模型', icon: Image, href: '/ai-models' },
         { key: 'media-storage', label: '媒体存储', icon: HardDrive, href: '/media-storage' },
         { key: 'mini-program-code-settings', label: '小程序码环境', icon: SlidersHorizontal, href: '/mini-program-code-settings' },
+        { key: 'sms-settings', label: '短信设置', icon: MessageSquareText, href: '/sms-settings' },
         { key: 'ai-credit-prices', label: 'AI 点数价格', icon: Coins, href: '/ai-credit-prices' },
         { key: 'roles', label: '角色权限管理', icon: Shield, href: '/roles' },
         { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
@@ -480,6 +482,7 @@ export default function Sidebar() {
     if (!admin) return true;
     if (admin.role === 'super_admin') return true;
     if (key === 'media-storage') return admin.role === 'super_admin' || admin.role === 'admin';
+    if (key === 'sms-settings') return admin.role === 'super_admin' || admin.role === 'admin';
     if (['ai-credit-prices', 'ai-presets', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;
     if (admin.effectivePermissions?.includes(key)) return true;
     if (key === 'kujiale-floorplans' && admin.effectivePermissions?.includes('floorplans')) return true;

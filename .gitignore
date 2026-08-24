@@ -17,3 +17,4 @@ tmp/
 output/
 customer-materials/
 .superpowers/
+.playwright-cli/

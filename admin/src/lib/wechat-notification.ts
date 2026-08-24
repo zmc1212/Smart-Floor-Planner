@@ -32,6 +32,7 @@ import {
   type SubscriptionTemplateKind,
 } from '@/lib/platform-notification-config';
 import { getWechatAccessToken } from '@/lib/wechat-access-token';
+import { sendAssignedDesignerSms } from '@/lib/sms/service';
 
 export interface SubscriptionMessageData {
   touser: string;
@@ -94,6 +95,8 @@ interface LeadNotificationRecipient {
   openid?: string | null;
   displayName?: string | null;
   username?: string | null;
+  role?: string | null;
+  phone?: string | null;
 }
 
 type LeadDeliveryInput = {
@@ -343,6 +346,8 @@ async function enrichRecipientOpenid(
       openid: recipient.openid,
       displayName: recipient.displayName,
       username: recipient.username,
+      role: recipient.role,
+      phone: recipient.phone,
     };
   }
   if (!recipient.userId) {
@@ -351,6 +356,8 @@ async function enrichRecipientOpenid(
       openid: recipient.openid ?? null,
       displayName: recipient.displayName,
       username: recipient.username,
+      role: recipient.role,
+      phone: recipient.phone,
     };
   }
   try {
@@ -362,6 +369,8 @@ async function enrichRecipientOpenid(
       openid: identity?.openid ?? null,
       displayName: recipient.displayName,
       username: recipient.username,
+      role: recipient.role,
+      phone: recipient.phone,
     };
   } catch (error) {
     console.error('Unable to resolve wechat identity for notification recipient:', error);
@@ -370,6 +379,8 @@ async function enrichRecipientOpenid(
       openid: null,
       displayName: recipient.displayName,
       username: recipient.username,
+      role: recipient.role,
+      phone: recipient.phone,
     };
   }
 }
@@ -391,7 +402,7 @@ export async function notifyDesignerOfAssignedLead(lead: LeadNotificationRecord,
   const designer = await findNotificationRecipient(designerId, 'designer id');
   if (!designer) return { success: false, error: 'designer unavailable' };
   const copy = assignmentCopy('lead_assigned');
-  return deliverLeadNotification({
+  const wechatResult = await deliverLeadNotification({
     lead,
     recipient: designer,
     templateKind: 'lead_assignment',
@@ -406,6 +417,22 @@ export async function notifyDesignerOfAssignedLead(lead: LeadNotificationRecord,
       assignedAt: lead.assignedAt || lead.createdAt,
     }),
   });
+  let smsResult: { success: boolean; skipped?: boolean; error?: string };
+  if (designer.role !== 'designer' || !lead.enterpriseId || !lead.id) {
+    smsResult = { success: false, skipped: true, error: 'recipient is not a designer' };
+  } else {
+    try {
+      smsResult = await sendAssignedDesignerSms({
+        enterpriseId: lead.enterpriseId,
+        leadId: lead.id,
+        designerId: designer.id,
+      });
+    } catch (error) {
+      console.error('Designer assignment SMS failed without blocking lead notification:', error);
+      smsResult = { success: false, error: deliveryError(error) };
+    }
+  }
+  return { ...wechatResult, sms: smsResult };
 }
 
 export async function notifyEligibleDesignersOfClaimWindow(input: {

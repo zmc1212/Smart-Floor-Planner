@@ -38,5 +38,6 @@ export * from './referrer-portal-repository';
 export * from './appointment-repository';
 export * from './system-role-repository';
 export * from './staff-notification-repository';
+export * from './sms-delivery-log-repository';
 export * from './tenant-enterprise-reset-repository';
 export * from './user-repository';

@@ -649,6 +649,7 @@ export const platformConfigs = appSchema.table(
     mediaStorage: jsonObject<Record<string, unknown>>('media_storage'),
     promotionConfig: jsonObject<Record<string, unknown>>('promotion_config'),
     notificationConfig: jsonObject<Record<string, unknown>>('notification_config'),
+    smsConfig: jsonObject<Record<string, unknown>>('sms_config'),
     miniProgramCodeConfig: jsonObject<Record<string, unknown>>('mini_program_code_config'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1983,6 +1984,58 @@ export const staffNotifications = appSchema.table(
     index('staff_notifications_recipient_created_idx').on(table.recipientStaffId, table.createdAt),
     index('staff_notifications_lead_idx').on(table.leadId),
     index('staff_notifications_enterprise_idx').on(table.enterpriseId),
+  ]
+);
+
+export const smsDeliveryLogs = appSchema.table(
+  'sms_delivery_logs',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' }).references(
+      () => enterprises.id,
+      { onDelete: 'cascade' }
+    ),
+    leadId: bigint('lead_id', { mode: 'bigint' }).references(
+      () => leads.id,
+      { onDelete: 'cascade' }
+    ),
+    recipientStaffId: bigint('recipient_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    phoneEncrypted: text('phone_encrypted'),
+    phoneMasked: text('phone_masked').notNull(),
+    provider: text('provider').notNull(),
+    templateCode: text('template_code').notNull(),
+    signName: text('sign_name').notNull(),
+    message: text('message').notNull(),
+    kind: text('kind').notNull().default('lead_assignment'),
+    status: text('status').notNull().default('pending'),
+    providerMessageId: text('provider_message_id'),
+    providerRequestId: text('provider_request_id'),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    metadata: jsonObject<Record<string, unknown>>('metadata'),
+    dedupeKey: text('dedupe_key'),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    sentAt: timestamp('sent_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('sms_delivery_logs_dedupe_uidx')
+      .on(table.dedupeKey)
+      .where(sql`${table.dedupeKey} is not null`),
+    index('sms_delivery_logs_enterprise_status_created_idx').on(
+      table.enterpriseId,
+      table.status,
+      table.createdAt
+    ),
+    index('sms_delivery_logs_recipient_created_idx').on(
+      table.recipientStaffId,
+      table.createdAt
+    ),
+    index('sms_delivery_logs_lead_idx').on(table.leadId),
   ]
 );
 
