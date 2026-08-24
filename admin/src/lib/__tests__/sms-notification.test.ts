@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { maskSmsPhone, normalizeSmsPhone } from '@/lib/sms/service';
+import { maskSmsPhone, normalizeSmsPhone, shouldDedupeSmsLog } from '@/lib/sms/service';
 import { mapAliyunSmsResponse, mapTencentSmsResponse } from '@/lib/sms/providers';
 
 const adminSrc = join(process.cwd(), 'src');
@@ -14,12 +14,21 @@ test('SMS phone normalization accepts mainland numbers and masks stored values',
   assert.equal(maskSmsPhone('+8613800138000'), '+86****8000');
 });
 
+test('assignment SMS dedupes only in-flight or already sent logs', () => {
+  assert.equal(shouldDedupeSmsLog('sent'), true);
+  assert.equal(shouldDedupeSmsLog('pending'), true);
+  assert.equal(shouldDedupeSmsLog('failed'), false);
+  assert.equal(shouldDedupeSmsLog('skipped'), false);
+});
+
 test('designer assignment notification wires SMS only for designer recipients', () => {
   const source = readFileSync(join(adminSrc, 'lib/wechat-notification.ts'), 'utf8');
   const service = readFileSync(join(adminSrc, 'lib/sms/service.ts'), 'utf8');
   assert.match(source, /sendAssignedDesignerSms/);
   assert.match(source, /designer\.role !== 'designer'/);
   assert.match(service, /lead_assignment_sms:/);
+  assert.match(service, /findByDedupeKey/);
+  assert.match(service, /shouldDedupeSmsLog/);
   assert.match(source, /sms: smsResult/);
 });
 

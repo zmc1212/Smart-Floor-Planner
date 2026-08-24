@@ -18,6 +18,10 @@ export function maskSmsPhone(phone: string | null | undefined) {
   return value.length >= 7 ? `${value.slice(0, 3)}****${value.slice(-4)}` : '未登记电话';
 }
 
+export function shouldDedupeSmsLog(status: string) {
+  return status === 'sent' || status === 'pending';
+}
+
 function runtimeProviderConfig(runtime: Awaited<ReturnType<typeof getSmsRuntimeConfig>>) {
   if (!runtime.config) return null;
   if (runtime.provider === 'aliyun') return { provider: 'aliyun' as const, ...runtime.config };
@@ -64,7 +68,7 @@ export async function sendAssignedDesignerSms(input: {
   const providerConfig = runtimeProviderConfig(runtime);
   const provider = runtime.provider;
   const dedupeKey = `lead_assignment_sms:${leadId.toString()}:${designerId.toString()}`;
-  const log = await withTenantTransaction(enterpriseId, (transaction) =>
+  let log = await withTenantTransaction(enterpriseId, (transaction) =>
     new SmsDeliveryLogRepository(transaction).create({
       enterpriseId,
       leadId,
@@ -80,7 +84,13 @@ export async function sendAssignedDesignerSms(input: {
       dedupeKey,
     })
   );
-  if (!log) return { success: true, deduped: true };
+  if (!log) {
+    log = await withTenantTransaction(enterpriseId, (transaction) =>
+      new SmsDeliveryLogRepository(transaction).findByDedupeKey(dedupeKey)
+    );
+    if (!log) return { success: false, error: 'sms log unavailable' };
+    if (shouldDedupeSmsLog(log.status)) return { success: true, deduped: true };
+  }
   if (!phone) {
     await withTenantTransaction(enterpriseId, (transaction) =>
       new SmsDeliveryLogRepository(transaction).markResult(log.id, {

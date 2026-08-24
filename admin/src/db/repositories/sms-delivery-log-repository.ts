@@ -20,6 +20,15 @@ export class SmsDeliveryLogRepository {
     return rows[0] ?? null;
   }
 
+  async findByDedupeKey(dedupeKey: string) {
+    const rows = await this.transaction
+      .select()
+      .from(smsDeliveryLogs)
+      .where(eq(smsDeliveryLogs.dedupeKey, dedupeKey))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async findById(id: bigint) {
     const rows = await this.transaction
       .select({
