@@ -47,7 +47,7 @@ function linkedLeadMatchesStaffEnterprise(
   context: MiniProgramFloorPlanAccessContext
 ) {
   const staffEnterprise = staffEnterpriseId(context);
-  if (!lead.enterpriseId || !staffEnterprise) return true;
+  if (!lead.enterpriseId || !staffEnterprise) return false;
   return lead.enterpriseId.toString() === staffEnterprise;
 }
 

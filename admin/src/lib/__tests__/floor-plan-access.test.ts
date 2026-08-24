@@ -132,3 +132,43 @@ test('assigned designer cannot read a plan linked to another enterprise lead', (
     false
   );
 });
+
+test('linked-lead reads fail closed when either tenant id is missing', () => {
+  assert.equal(
+    canReadMiniProgramFloorPlan(
+      plan,
+      {
+        user: { _id: '11' },
+        enterpriseId: '7',
+        staff: { _id: '99', enterpriseId: '7', role: 'designer' },
+      },
+      { ...linkedLead, enterpriseId: null }
+    ),
+    false
+  );
+  assert.equal(
+    canReadMiniProgramFloorPlan(
+      plan,
+      {
+        user: { _id: '11' },
+        staff: { _id: '99', role: 'designer' },
+      },
+      linkedLead
+    ),
+    false
+  );
+});
+
+test('enterprise administrators cannot use a linked lead to bypass a missing tenant id', () => {
+  assert.equal(
+    canReadMiniProgramFloorPlan(
+      plan,
+      {
+        user: { _id: '11' },
+        staff: { _id: '24', role: 'enterprise_admin' },
+      },
+      linkedLead
+    ),
+    false
+  );
+});

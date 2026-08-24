@@ -468,6 +468,7 @@ Page({
     this.lastCloudFingerprint = '';
     this.formalCloudLoadInFlight = false;
     this.cloudSaveInFlight = false;
+    this._savePromise = null;
     if (!this.localDraftSavedAt) this.localDraftSavedAt = 0;
     const initialFloor = surveyGraph.getActiveFloor(this.draft);
     this.cursorPlacementState = initialFloor && initialFloor.session && initialFloor.session.state === 'wallSnapPending'
@@ -475,7 +476,9 @@ Page({
       : 'placed';
     this.history = { undo: [], redo: [] };
     this.pendingMeasurementRecords = [];
+    this._flushingMeasurements = false;
     this.reportedMeasurementKeys = Object.create(null);
+    this._syncRAFPending = false;
     this.touchState = null;
     this.canvasRect = null;
     this.surveyCanvas = null;
@@ -927,14 +930,46 @@ Page({
     return this.persistFormalDraft();
   },
 
+  /**
+   * Promise mutex for cloud saves.  Ensures only one saveFormalFloorPlan call
+   * is in-flight at a time.  If a save is already running, subsequent callers
+   * wait for it to finish (so serverDraftId is resolved) before issuing their
+   * own request.
+   */
+  async _enqueueCloudSave(status) {
+    // If a save is already in flight, wait for it to finish first so that
+    // serverDraftId is populated before we attempt our own save.
+    if (this._savePromise) {
+      try {
+        await this._savePromise;
+      } catch (_) {
+        // Previous save failure should not prevent this save attempt.
+      }
+    }
+
+    const promise = this.saveFormalFloorPlan(status);
+    this._savePromise = promise;
+
+    try {
+      const result = await promise;
+      return result;
+    } finally {
+      // Only clear if we are still the active promise (a later caller may
+      // have already replaced it).
+      if (this._savePromise === promise) {
+        this._savePromise = null;
+      }
+    }
+  },
+
   async autosaveFormalFloorPlan() {
-    if (this.cloudSaveInFlight || this.formalCloudLoadInFlight) return false;
+    if (this._savePromise || this.formalCloudLoadInFlight) return false;
     const serverDraftId = this.serverDraftId || this.data.serverDraftId || this.getStoredServerDraftId(this.data.leadId || '');
     if (!shouldAutosaveSurveyDraft(this.draft, {
       serverDraftId,
       lastCloudFingerprint: this.lastCloudFingerprint,
       cloudLoadInFlight: this.formalCloudLoadInFlight,
-      cloudSaveInFlight: this.cloudSaveInFlight
+      cloudSaveInFlight: !!this._savePromise
     })) {
       return false;
     }
@@ -942,7 +977,7 @@ Page({
     this.cloudSaveInFlight = true;
     try {
       const status = this.data.floorPlanStatus === 'completed' ? 'completed' : 'draft';
-      await this.saveFormalFloorPlan(status);
+      await this._enqueueCloudSave(status);
       return true;
     } catch (err) {
       console.warn('[surveying-editor] Silent autosave failed', err);
