@@ -187,6 +187,22 @@
           </view>
         </view>
 
+        <view
+          wx:if="{{focus === 'overview' && role === 'designer' && claimPoolSummary && claimPoolSummary.count > 0}}"
+          class="claim-pool-alert"
+          bindtap="openClaimPool"
+          hover-class="card-pressed"
+          aria-role="button"
+          aria-label="进入抢单池，共{{claimPoolSummary.count}}条待抢线索"
+        >
+          <view class="claim-alert-clock"><view class="claim-alert-hand"></view></view>
+          <view class="claim-alert-copy">
+            <text class="claim-alert-title">有 {{claimPoolSummary.count}} 条新线索正在等你</text>
+            <text class="claim-alert-subtitle">最近一单还剩 {{claimPoolSummary.remainingSeconds}} 秒{{claimPoolSummary.capacityAvailable ? '' : ' · 当前容量已满'}}</text>
+          </view>
+          <view class="claim-alert-action"><text>去抢单</text><view class="claim-alert-chevron"></view></view>
+        </view>
+
         <view wx:if="{{focus === 'overview'}}" class="quick-nav-grid">
           <block wx:if="{{role === 'designer'}}">
             <view class="quick-nav-card" bindtap="openCustomers" hover-class="card-pressed">

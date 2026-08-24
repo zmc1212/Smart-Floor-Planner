@@ -29,7 +29,7 @@ import {
   Timeline,
   Typography,
 } from 'antd';
-import { Archive, BadgeCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Download, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Send, Trash2, Undo2, Users, XCircle } from 'lucide-react';
+import { Archive, BadgeCheck, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, ClipboardCheck, Download, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Send, Trash2, Trophy, Undo2, Users, XCircle } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { SensitivePasswordModal } from '@/components/admin/sensitive-password-modal';
 import { notify } from '@/components/admin/operation-feedback';
@@ -121,6 +121,15 @@ type Lead = {
   primaryFloorPlanId?: FloorPlan | string | null;
   followUpRecords?: FollowUpRecord[];
   createdAt?: string;
+  assignmentAudit?: {
+    claimWindow?: {
+      id: string; status: string; opensAt: string; expiresAt: string;
+      claimedByStaffId?: string | null; claimedAt?: string | null; resolvedAt?: string | null;
+      resolutionReason?: string | null; assignmentGroup?: string | null;
+    } | null;
+    events?: Array<{ id: string; eventType: string; designerId?: string | null; measurerId?: string | null; errorCode?: string | null; reason?: string | null; metadata?: Record<string, unknown> | null; createdAt: string }>;
+    outcomes?: Array<{ id: string; outcome: string; performanceEligible: boolean; lostReason?: string | null; note?: string | null; designerId?: string | null; outcomeAt: string; invalidatedAt?: string | null }>;
+  };
 };
 
 type LifecycleImpact = {
@@ -193,6 +202,28 @@ const ARCHIVE_REASON_OPTIONS = [
 const ARCHIVE_REASON_LABELS = Object.fromEntries(
   ARCHIVE_REASON_OPTIONS.map((item) => [item.value, item.label])
 );
+
+const CLOSE_LOST_REASON_OPTIONS = [
+  { label: '选择其他公司', value: 'chose_other_company' },
+  { label: '预算不符', value: 'budget_mismatch' },
+  { label: '装修取消或延期', value: 'renovation_cancelled_or_delayed' },
+  { label: '无意向', value: 'no_intent' },
+  { label: '长期失联', value: 'long_term_unreachable' },
+  { label: '其他（须备注）', value: 'other' },
+  { label: '无效联系方式（负责人）', value: 'invalid_contact' },
+  { label: '重复线索（负责人）', value: 'duplicate' },
+  { label: '误录（负责人）', value: 'mistaken_entry' },
+];
+const CLOSE_LOST_REASON_LABELS = Object.fromEntries(CLOSE_LOST_REASON_OPTIONS.map((item) => [item.value, item.label.replace(/（.*）/, '')]));
+const ASSIGNMENT_EVENT_LABELS: Record<string, string> = {
+  claim_opened: '进入抢单池', claim_succeeded: '设计师抢单成功', assignment_auto: '赛马自动派单',
+  assignment_auto_pending: '自动派单待补全', assignment_pending: '派单待重试',
+  assignment_created: '自动派单完成', assignment_manual: '负责人手动指派', assignment_reassigned: '负责人改派',
+};
+const CLAIM_WINDOW_STATUS_LABELS: Record<string, string> = {
+  open: '开放中', claimed: '已抢单', auto_assigned: '已自动派单', manually_assigned: '已人工指派',
+  assignment_pending: '待重试', cancelled: '已取消',
+};
 
 type LeadListResponse = {
   success: boolean;
@@ -424,6 +455,11 @@ function LeadsPage() {
   const [conversionAmount, setConversionAmount] = useState<number | null>(null);
   const [conversionNote, setConversionNote] = useState('');
   const [conversionSubmitting, setConversionSubmitting] = useState(false);
+  const [closeLostOpen, setCloseLostOpen] = useState(false);
+  const [closeLostReason, setCloseLostReason] = useState<string>();
+  const [closeLostNote, setCloseLostNote] = useState('');
+  const [closeLostSubmitting, setCloseLostSubmitting] = useState(false);
+  const [reopenSubmitting, setReopenSubmitting] = useState(false);
   const [retryingAssignmentId, setRetryingAssignmentId] = useState<string | null>(null);
   const [staffAssign, setStaffAssign] = useState<{
     lead: Lead;
@@ -606,6 +642,9 @@ function LeadsPage() {
     setConversionOpen(false);
     setRevertConversionOpen(false);
     setRevertReason('');
+    setCloseLostOpen(false);
+    setCloseLostReason(undefined);
+    setCloseLostNote('');
     setAppointmentOpen(false);
     setAddressOpen(false);
     setAddressLead(null);
@@ -1256,6 +1295,49 @@ function LeadsPage() {
     } finally {
       setConversionSubmitting(false);
     }
+  };
+
+  const closeLost = async () => {
+    if (!selectedLead || !closeLostReason || closeLostSubmitting) return;
+    if (closeLostReason === 'other' && !closeLostNote.trim()) {
+      notify.error('选择“其他”时必须填写备注');
+      return;
+    }
+    setCloseLostSubmitting(true);
+    try {
+      const response = await fetch(`/api/leads/${selectedLead._id}/close-lost`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: closeLostReason, note: closeLostNote.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '未签单结案失败');
+      setCloseLostOpen(false);
+      setCloseLostReason(undefined);
+      setCloseLostNote('');
+      notify.success('线索已按经营结果结案');
+      await refreshLeads();
+      await openLeadDetail({ ...selectedLead, status: 'closed' });
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '未签单结案失败');
+    } finally { setCloseLostSubmitting(false); }
+  };
+
+  const reopenLost = async () => {
+    if (!selectedLead || reopenSubmitting) return;
+    setReopenSubmitting(true);
+    try {
+      const response = await fetch(`/api/leads/${selectedLead._id}/reopen`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: '企业负责人重新激活' }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '重新激活失败');
+      notify.success('线索已恢复到结案前阶段');
+      await refreshLeads();
+      await openLeadDetail({ ...selectedLead, status: result.data.status });
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '重新激活失败');
+    } finally { setReopenSubmitting(false); }
   };
 
   const columns: ProColumns<Lead>[] = [
@@ -2115,6 +2197,28 @@ function LeadsPage() {
         </Flex>
       </Modal>
 
+      <Modal
+        open={closeLostOpen}
+        title="未签单结案"
+        okText="确认结案"
+        cancelText="取消"
+        confirmLoading={closeLostSubmitting}
+        okButtonProps={{ disabled: !closeLostReason || (closeLostReason === 'other' && !closeLostNote.trim()) }}
+        onCancel={() => { if (!closeLostSubmitting) setCloseLostOpen(false); }}
+        onOk={() => void closeLost()}
+      >
+        <Flex vertical gap={14}>
+          <Alert showIcon type="info" message="经营结案与归档互不替代" description="正常未签单原因进入设计师签单率分母；无效、重复和误录不计绩效，且仅企业负责人可选。" />
+          <Select
+            value={closeLostReason}
+            placeholder="选择结案原因"
+            options={CLOSE_LOST_REASON_OPTIONS.filter((item) => ['enterprise_admin', 'admin', 'super_admin'].includes(currentUser?.role || '') || !['invalid_contact', 'duplicate', 'mistaken_entry'].includes(item.value))}
+            onChange={setCloseLostReason}
+          />
+          <Input.TextArea value={closeLostNote} maxLength={500} autoSize={{ minRows: 2, maxRows: 5 }} placeholder={closeLostReason === 'other' ? '请填写具体原因（必填）' : '补充备注（可选）'} onChange={(event) => setCloseLostNote(event.target.value)} />
+        </Flex>
+      </Modal>
+
       <Drawer
         open={Boolean(selectedLead)}
         width={640}
@@ -2308,6 +2412,46 @@ function LeadsPage() {
                   ...(selectedLead.conversionNote ? [{ key: 'conversionNote', label: '签约备注', children: selectedLead.conversionNote }] : []),
                 ]}
               />
+            ) : null}
+
+            {!selectedLead.archivedAt && !['closed', 'converted'].includes(selectedLead.status) && (
+              ['enterprise_admin', 'admin', 'super_admin'].includes(currentUser?.role || '')
+              || (currentUser?.role === 'designer' && getStaffId(selectedLead.assignedTo) === currentUser?._id)
+            ) ? (
+              <Flex align="center" justify="space-between" gap={16} wrap className="rounded-xl bg-amber-50 p-4">
+                <Flex vertical gap={2}><Typography.Text strong>客户确定不再继续？</Typography.Text><Typography.Text type="secondary">按真实原因结案，用于签单率统计；不会自动归档客户资料。</Typography.Text></Flex>
+                <Button danger icon={<XCircle size={16} />} onClick={() => setCloseLostOpen(true)}>未签单结案</Button>
+              </Flex>
+            ) : null}
+
+            {selectedLead.status === 'closed' && ['enterprise_admin', 'admin', 'super_admin'].includes(currentUser?.role || '') ? (
+              <Flex align="center" justify="space-between" gap={16} wrap className="rounded-xl bg-emerald-50 p-4">
+                <Flex vertical gap={2}><Typography.Text strong>客户重新启动装修？</Typography.Text><Typography.Text type="secondary">恢复结案前阶段；已取消的预约不会自动恢复。</Typography.Text></Flex>
+                <Button loading={reopenSubmitting} icon={<RotateCcw size={16} />} onClick={() => void reopenLost()}>重新激活</Button>
+              </Flex>
+            ) : null}
+
+            {selectedLead.assignmentAudit ? (
+              <Flex vertical gap={12}>
+                <Flex align="center" gap={8}><Trophy size={16} /><Typography.Text strong>派单与经营结果审计</Typography.Text></Flex>
+                {selectedLead.assignmentAudit.claimWindow ? (
+                  <Descriptions bordered size="small" column={1} items={[
+                    { key: 'window', label: '抢单窗口', children: `${CLAIM_WINDOW_STATUS_LABELS[selectedLead.assignmentAudit.claimWindow.status] || selectedLead.assignmentAudit.claimWindow.status} · ${formatDate(selectedLead.assignmentAudit.claimWindow.opensAt)} 至 ${formatDate(selectedLead.assignmentAudit.claimWindow.expiresAt)}` },
+                    { key: 'route', label: '派单路径', children: selectedLead.assignmentAudit.claimWindow.assignmentGroup ? (selectedLead.assignmentAudit.claimWindow.assignmentGroup === 'high' ? '自动派至高绩效组' : '自动派至普通组') : selectedLead.assignmentAudit.claimWindow.resolutionReason || '等待结果' },
+                  ]} />
+                ) : null}
+                {(selectedLead.assignmentAudit.outcomes || []).length ? (
+                  <Timeline items={(selectedLead.assignmentAudit.outcomes || []).map((outcome) => ({
+                    color: outcome.invalidatedAt ? 'gray' : outcome.outcome === 'signed' ? 'green' : 'orange',
+                    children: <Flex vertical gap={2}><Typography.Text>{outcome.outcome === 'signed' ? '已签单' : `未签单：${CLOSE_LOST_REASON_LABELS[outcome.lostReason || ''] || outcome.lostReason || '未记录原因'}`}{outcome.performanceEligible ? '（计入绩效）' : '（不计绩效）'}</Typography.Text><Typography.Text type="secondary" className="text-xs">{formatDate(outcome.outcomeAt)}{outcome.invalidatedAt ? ` · 已撤销 ${formatDate(outcome.invalidatedAt)}` : ''}</Typography.Text></Flex>,
+                  }))} />
+                ) : null}
+                {(selectedLead.assignmentAudit.events || []).length ? (
+                  <Timeline items={(selectedLead.assignmentAudit.events || []).map((event) => ({
+                    children: <Flex vertical gap={2}><Typography.Text>{ASSIGNMENT_EVENT_LABELS[event.eventType] || event.eventType}</Typography.Text><Typography.Text type="secondary" className="text-xs">{formatDate(event.createdAt)}{event.errorCode ? ` · ${event.errorCode}` : ''}</Typography.Text></Flex>,
+                  }))} />
+                ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无派单审计记录" />}
+              </Flex>
             ) : null}
 
             <Descriptions

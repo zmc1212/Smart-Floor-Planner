@@ -38,6 +38,8 @@ import {
   buildPublishedSchemeViews,
 } from '@/lib/customer-project';
 import { httpErrorStatus } from '@/lib/http-error';
+import { desc, eq } from 'drizzle-orm';
+import { leadAssignmentEvents, leadClaimWindows, leadOutcomeSnapshots } from '@/db/schema';
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -149,7 +151,8 @@ function dtoForContext(
   request: Request,
   lead: LeadWithRelations,
   context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>,
-  publicationFacts?: { publishedDesignCount: number; publishedSchemes: ReturnType<typeof schemeSummary>[] }
+  publicationFacts?: { publishedDesignCount: number; publishedSchemes: ReturnType<typeof schemeSummary>[] },
+  operations?: Awaited<ReturnType<typeof loadLeadOperations>>
 ) {
   const role = context.kind === 'mini' ? context.mini.staff?.role || '' : context.admin.role;
   const actorId = context.kind === 'mini'
@@ -174,7 +177,47 @@ function dtoForContext(
     publishedSchemes: publicationFacts?.publishedSchemes || [],
     conversionActions: getLeadConversionActions(lead, role, actorId),
     assignmentActions: getLeadAssignmentActions(lead, role, actorId),
+    assignmentAudit: operations || undefined,
   };
+}
+
+async function loadLeadOperations(
+  context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>,
+  leadId: bigint
+) {
+  const role = context.kind === 'mini' ? context.mini.staff?.role : context.admin.role;
+  if (!role) return undefined;
+  return withLeadTransaction(context, async (transaction) => {
+    const [windows, events, outcomes] = await Promise.all([
+      transaction.select().from(leadClaimWindows).where(eq(leadClaimWindows.leadId, leadId)).orderBy(desc(leadClaimWindows.id)).limit(1),
+      transaction.select().from(leadAssignmentEvents).where(eq(leadAssignmentEvents.leadId, leadId)).orderBy(desc(leadAssignmentEvents.id)).limit(30),
+      transaction.select().from(leadOutcomeSnapshots).where(eq(leadOutcomeSnapshots.leadId, leadId)).orderBy(desc(leadOutcomeSnapshots.id)).limit(10),
+    ]);
+    return {
+      claimWindow: windows[0] ? {
+        id: windows[0].id.toString(), status: windows[0].status,
+        opensAt: windows[0].opensAt.toISOString(), expiresAt: windows[0].expiresAt.toISOString(),
+        claimedByStaffId: windows[0].claimedByStaffId?.toString() || null,
+        claimedAt: windows[0].claimedAt?.toISOString() || null,
+        resolvedAt: windows[0].resolvedAt?.toISOString() || null,
+        resolutionReason: windows[0].resolutionReason,
+        assignmentGroup: windows[0].assignmentGroup,
+        ruleSnapshot: windows[0].ruleSnapshot,
+      } : null,
+      events: events.map((event) => ({
+        id: event.id.toString(), eventType: event.eventType,
+        designerId: event.designerId?.toString() || null, measurerId: event.measurerId?.toString() || null,
+        errorCode: event.errorCode, reason: event.reason, metadata: event.metadata,
+        createdAt: event.createdAt.toISOString(),
+      })),
+      outcomes: outcomes.map((outcome) => ({
+        id: outcome.id.toString(), outcome: outcome.outcome,
+        performanceEligible: outcome.performanceEligible, lostReason: outcome.lostReason, note: outcome.note,
+        designerId: outcome.designerId?.toString() || null, outcomeAt: outcome.outcomeAt.toISOString(),
+        invalidatedAt: outcome.invalidatedAt?.toISOString() || null,
+      })),
+    };
+  });
 }
 
 export async function GET(
@@ -224,7 +267,8 @@ export async function GET(
       }
     }
     const publicationFacts = await loadLeadPublicationFacts(request, context, lead);
-    return NextResponse.json({ success: true, data: dtoForContext(request, lead, context, publicationFacts) });
+    const operations = await loadLeadOperations(context, lead.id);
+    return NextResponse.json({ success: true, data: dtoForContext(request, lead, context, publicationFacts, operations) });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: errorMessage(error) },

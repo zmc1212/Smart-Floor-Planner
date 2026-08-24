@@ -10,6 +10,7 @@ export const SUBSCRIPTION_TEMPLATE_KINDS = [
   'enterprise_join_result',
   'signing_commission',
   'lead_converted',
+  'lead_claim_available',
 ] as const;
 
 export type SubscriptionTemplateKind = (typeof SUBSCRIPTION_TEMPLATE_KINDS)[number];
@@ -131,6 +132,17 @@ export const DEFAULT_SUBSCRIPTION_TEMPLATES: Record<
       tip: 'thing2',
     },
   },
+  lead_claim_available: {
+    title: '新线索待抢提醒',
+    templateId: '',
+    keywordKeys: {
+      projectName: 'thing4',
+      owner: 'thing11',
+      currentStatus: 'phrase12',
+      todo: 'thing2',
+      note: 'thing5',
+    },
+  },
 };
 
 function cloneDefaultTemplate(kind: SubscriptionTemplateKind): SubscriptionTemplateConfig {
@@ -191,7 +203,7 @@ function storedConfig(config: PlatformNotificationConfigDto): Record<string, unk
 }
 
 export function validateDistinctTemplateIds(templates: PlatformNotificationConfigDto['templates']) {
-  const ids = SUBSCRIPTION_TEMPLATE_KINDS.map((kind) => templates[kind].templateId);
+  const ids = SUBSCRIPTION_TEMPLATE_KINDS.map((kind) => templates[kind].templateId).filter(Boolean);
   if (new Set(ids).size !== ids.length) {
     throw new Error('Mini Program subscription template IDs must be unique');
   }
@@ -225,9 +237,10 @@ export async function savePlatformNotificationConfig(input: PlatformNotification
         if (!candidate || typeof candidate !== 'object') {
           throw new Error(`Missing Mini Program subscription template: ${kind}`);
         }
-        next.templates[kind].templateId = validateMiniProgramTemplateId(
-          (candidate as TemplatePatch).templateId
-        );
+        const raw = optionalTemplateId((candidate as TemplatePatch).templateId);
+        next.templates[kind].templateId = kind === 'lead_claim_available' && !raw
+          ? ''
+          : validateMiniProgramTemplateId(raw);
       }
     } else if (input.miniprogramTemplateId !== undefined) {
       const legacyTemplateId = validateMiniProgramTemplateId(input.miniprogramTemplateId);

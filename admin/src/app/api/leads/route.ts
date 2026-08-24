@@ -23,6 +23,7 @@ import {
   notifyDesignerOfAssignedLead,
   notifyEnterpriseAdminOfAssignmentPending,
   notifyEnterpriseAdminOfNewLead,
+  notifyEligibleDesignersOfClaimWindow,
 } from '@/lib/wechat-notification';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
 import { normalizeLeadStatus } from '@/lib/lead-status';
@@ -455,6 +456,9 @@ export async function POST(request: Request) {
             reasonCode: result.assignmentErrorCode || 'assignment_pending',
             eventKey: `manual-entry:${lead.id.toString()}`,
           })
+        : Promise.resolve(),
+      result.created && lead.assignmentStatus === 'claim_open' && lead.enterpriseId
+        ? notifyEligibleDesignersOfClaimWindow({ enterpriseId: lead.enterpriseId, leadId: lead.id })
         : Promise.resolve(),
     ]);
 

@@ -47,7 +47,7 @@ test('subscriptionMessagesEnabled defaults to false and round-trips when present
   );
 });
 
-test('eight subscription template IDs must remain distinct', () => {
+test('subscription template IDs stay distinct while the claim template remains operator-configurable', () => {
   const normalized = normalizePlatformNotificationConfig();
   assert.deepEqual(SUBSCRIPTION_TEMPLATE_KINDS, [
     'workflow_todo',
@@ -58,7 +58,9 @@ test('eight subscription template IDs must remain distinct', () => {
     'enterprise_join_result',
     'signing_commission',
     'lead_converted',
+    'lead_claim_available',
   ]);
+  assert.equal(normalized.templates.lead_claim_available.templateId, '');
   assert.equal(
     normalized.templates.design_published.templateId,
     'XEQFWwyaIQVotG3R6FKZxWLFExf9pS7_g85r-j3Vjag'

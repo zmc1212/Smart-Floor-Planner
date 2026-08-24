@@ -14,6 +14,7 @@ import {
   adminUsers,
   customerAttributionLocks,
   leadAssignmentEvents,
+  leadClaimWindows,
   leads,
   referrerEnterpriseMemberships,
   referrerPromotionCodes,
@@ -32,6 +33,7 @@ import {
   normalizeCustomerPhone,
 } from '@/lib/customer-phone';
 import { AppointmentRepository } from './appointment-repository';
+import { AssignmentRacingRepository } from './assignment-racing-repository';
 import { LeadRepository, type LeadWithRelations } from './lead-repository';
 
 export interface ReferralPendingSourceRecord {
@@ -481,30 +483,30 @@ export class ReferralLeadRepository {
 
     await this.lockKey(`enterprise-assignment:${enterpriseId.toString()}`);
 
+    const racing = new AssignmentRacingRepository(this.transaction);
+    const setting = await racing.getCurrentSettings(enterpriseId);
     let designer: typeof adminUsers.$inferSelect | null = null;
     let measurer: typeof adminUsers.$inferSelect | null = null;
+    let directDesignerActivity = false;
     if (activitySource) {
       const sourceStaff = activitySource.staff;
-      if (sourceStaff.assignmentPaused) {
-        measurer = null;
-        designer =
-          sourceStaff.role === 'designer'
-            ? null
-            : await this.findDesignerCandidate(enterpriseId);
-      } else if (sourceStaff.role === 'designer') {
+      if (sourceStaff.role === 'designer') {
         designer = sourceStaff;
         measurer = sourceStaff;
+        directDesignerActivity = true;
+      } else if (sourceStaff.assignmentPaused) {
+        measurer = null;
       } else {
         measurer = sourceStaff;
-        designer = await this.findDesignerCandidate(enterpriseId);
       }
     } else {
-      designer = await this.findDesignerCandidate(enterpriseId);
       measurer = await this.findMeasurerCandidate(enterpriseId);
     }
 
     const now = new Date();
-    const assignmentErrorCode = this.assignmentErrorCode(designer, measurer);
+    const assignmentErrorCode = directDesignerActivity
+      ? this.assignmentErrorCode(designer, measurer)
+      : null;
     const createdRows = await this.transaction
       .insert(leads)
       .values({
@@ -516,7 +518,9 @@ export class ReferralLeadRepository {
         assignedTo: designer?.id ?? null,
         assignedAt: designer ? now : null,
         attributionLockedAt: now,
-        assignmentStatus: assignmentErrorCode ? 'assignment_pending' : 'assigned',
+        assignmentStatus: directDesignerActivity
+          ? assignmentErrorCode ? 'assignment_pending' : 'assigned'
+          : setting?.claimEnabled ? 'claim_open' : 'assignment_pending',
         assignmentErrorCode,
         name:
           input.name?.trim().slice(0, 120) || user.nickname?.trim() || '微信客户',
@@ -540,7 +544,7 @@ export class ReferralLeadRepository {
       lockedAt: now,
     });
 
-    if (designer) {
+    if (directDesignerActivity && designer) {
       await this.transaction
         .update(adminUsers)
         .set({ lastAssignedAt: now, updatedAt: now })
@@ -552,22 +556,40 @@ export class ReferralLeadRepository {
         .set({ lastAssignedAt: now, updatedAt: now })
         .where(eq(adminUsers.id, measurer.id));
     }
-    await this.transaction.insert(leadAssignmentEvents).values({
-      enterpriseId,
-      leadId: lead.id,
-      eventType: assignmentErrorCode ? 'assignment_pending' : 'assignment_created',
-      designerId: designer?.id ?? null,
-      measurerId: measurer?.id ?? null,
-      actorUserId: input.customerUserId,
-      errorCode: assignmentErrorCode,
-      reason: activitySource ? 'staff_activity_attribution' : 'referrer_attribution',
-      metadata: {
-        authorizationIdempotencyKeyHash: input.idempotencyKeyHash,
-        ...(referralSource
-          ? { promotionCodeId: referralSource.code.id.toString() }
-          : { activityCodeId: activitySource!.code.id.toString() }),
-      },
-    });
+    if (directDesignerActivity) {
+      await this.transaction.insert(leadAssignmentEvents).values({
+        enterpriseId,
+        leadId: lead.id,
+        eventType: assignmentErrorCode ? 'assignment_pending' : 'assignment_created',
+        designerId: designer?.id ?? null,
+        measurerId: measurer?.id ?? null,
+        actorUserId: input.customerUserId,
+        errorCode: assignmentErrorCode,
+        reason: 'designer_activity_direct_attribution',
+        metadata: {
+          authorizationIdempotencyKeyHash: input.idempotencyKeyHash,
+          activityCodeId: activitySource!.code.id.toString(),
+        },
+      });
+    } else {
+      await this.transaction.insert(leadAssignmentEvents).values({
+        enterpriseId,
+        leadId: lead.id,
+        eventType: 'attribution_created',
+        measurerId: measurer?.id ?? null,
+        actorUserId: input.customerUserId,
+        reason: activitySource ? 'measurer_activity_attribution' : 'referrer_attribution',
+        metadata: {
+          authorizationIdempotencyKeyHash: input.idempotencyKeyHash,
+          ...(activitySource ? { activityCodeId: activitySource.code.id.toString() } : {}),
+        },
+      });
+      if (setting?.claimEnabled) {
+        await racing.openClaimWindow({ leadId: lead.id, enterpriseId, setting, now });
+      } else {
+        await racing.autoAssignLead({ leadId: lead.id, reason: 'new_lead_immediate_racing', now });
+      }
+    }
 
     return { kind: 'created', lead: await this.loadLead(lead.id) };
   }
@@ -608,10 +630,11 @@ export class ReferralLeadRepository {
       if (!active) customerUserId = matchedUser.id;
     }
     await this.lockKey(`enterprise-assignment:${input.enterpriseId.toString()}`);
-    const designer = await this.findDesignerCandidate(input.enterpriseId);
+    const racing = new AssignmentRacingRepository(this.transaction);
+    const setting = await racing.getCurrentSettings(input.enterpriseId);
     const measurer = await this.findMeasurerCandidate(input.enterpriseId);
     const now = new Date();
-    const assignmentErrorCode = this.assignmentErrorCode(designer, measurer);
+    const assignmentErrorCode = null;
     const createdRows = await this.transaction
       .insert(leads)
       .values({
@@ -620,10 +643,10 @@ export class ReferralLeadRepository {
         referrerMembershipId: null,
         promoterId: input.actorStaffId,
         measurerId: measurer?.id ?? null,
-        assignedTo: designer?.id ?? null,
-        assignedAt: designer ? now : null,
+        assignedTo: null,
+        assignedAt: null,
         attributionLockedAt: customerUserId ? now : null,
-        assignmentStatus: assignmentErrorCode ? 'assignment_pending' : 'assigned',
+        assignmentStatus: setting?.claimEnabled ? 'claim_open' : 'assignment_pending',
         assignmentErrorCode,
         name: input.name.trim().slice(0, 120),
         phone,
@@ -649,29 +672,17 @@ export class ReferralLeadRepository {
       });
     }
 
-    if (designer) {
-      await this.transaction
-        .update(adminUsers)
-        .set({ lastAssignedAt: now, updatedAt: now })
-        .where(eq(adminUsers.id, designer.id));
-    }
-    if (measurer && measurer.id !== designer?.id) {
+    if (measurer) {
       await this.transaction
         .update(adminUsers)
         .set({ lastAssignedAt: now, updatedAt: now })
         .where(eq(adminUsers.id, measurer.id));
     }
-    await this.transaction.insert(leadAssignmentEvents).values({
-      enterpriseId: input.enterpriseId,
-      leadId: lead.id,
-      eventType: assignmentErrorCode ? 'assignment_pending' : 'assignment_created',
-      designerId: designer?.id ?? null,
-      measurerId: measurer?.id ?? null,
-      actorUserId: input.actorUserId,
-      errorCode: assignmentErrorCode,
-      reason: 'manual_entry',
-      metadata: {},
-    });
+    if (setting?.claimEnabled) {
+      await racing.openClaimWindow({ leadId: lead.id, enterpriseId: input.enterpriseId, setting, now });
+    } else {
+      await racing.autoAssignLead({ leadId: lead.id, reason: 'manual_entry_immediate_racing', now });
+    }
 
     return { created: true, lead: await this.loadLead(lead.id) };
   }
@@ -1055,6 +1066,19 @@ export class ReferralLeadRepository {
       .where(eq(leads.id, current.id))
       .returning();
     if (!updatedRows[0]) return null;
+
+    await this.transaction
+      .update(leadClaimWindows)
+      .set({
+        status: 'manually_assigned',
+        resolvedAt: now,
+        resolutionReason: 'manager_assignment',
+        updatedAt: now,
+      })
+      .where(and(
+        eq(leadClaimWindows.leadId, current.id),
+        eq(leadClaimWindows.status, 'open')
+      ));
 
     for (const staff of [newlyAssignedDesignerId, newlyAssignedMeasurerId]) {
       if (staff) {

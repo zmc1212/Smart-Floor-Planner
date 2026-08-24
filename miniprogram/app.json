@@ -30,6 +30,7 @@
         "legal-webview/legal-webview",
         "lead-form/lead-form",
         "lead-detail/lead-detail",
+        "lead-claim-pool/lead-claim-pool",
         "promotion-records/promotion-records",
         "promotion-record-detail/promotion-record-detail",
         "commission-records/commission-records",

@@ -1,4 +1,5 @@
 export * from './admin-user-repository';
+export * from './assignment-racing-repository';
 export * from './action-permission-repository';
 export * from './ai-creation-model-profile-repository';
 export * from './ai-creation-repository';

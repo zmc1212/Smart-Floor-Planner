@@ -39,6 +39,26 @@ services:
         condition: service_healthy
     command: ["node", "scripts/postgres-migrate.mjs"]
 
+  lead-claim-worker:
+    image: zmc1212/sfp-admin:latest
+    build: .
+    container_name: smart-floor-planner-lead-claim-worker
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      - NODE_ENV=production
+      - LEAD_CLAIM_WORKER_ENDPOINT=http://admin:3005/api/internal/lead-claim-windows/run
+    depends_on:
+      - admin
+    command: ["node", "scripts/lead-claim-worker.mjs"]
+    healthcheck:
+      test: ["CMD", "node", "scripts/lead-claim-worker-healthcheck.mjs"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
   postgres:
     image: postgres:17
     container_name: smart-floor-planner-postgres

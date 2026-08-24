@@ -201,6 +201,89 @@
   box-shadow: 0 8rpx 20rpx rgba(0, 0, 0, 0.08);
 }
 
+.claim-pool-alert {
+  margin-top: 24rpx;
+  min-height: 116rpx;
+  padding: 22rpx 24rpx;
+  border-radius: 24rpx;
+  background: #eafff3;
+  box-shadow: 0 10rpx 28rpx rgba(0, 166, 82, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  box-sizing: border-box;
+}
+
+.claim-alert-clock {
+  width: 52rpx;
+  height: 52rpx;
+  border: 4rpx solid #00a957;
+  border-radius: 50%;
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+}
+
+.claim-alert-clock::before,
+.claim-alert-hand {
+  content: '';
+  position: absolute;
+  left: 22rpx;
+  top: 9rpx;
+  width: 3rpx;
+  height: 15rpx;
+  border-radius: 2rpx;
+  background: #00a957;
+  transform-origin: 50% 15rpx;
+}
+
+.claim-alert-hand {
+  transform: rotate(125deg);
+}
+
+.claim-alert-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.claim-alert-title {
+  color: #153d28;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.claim-alert-subtitle {
+  color: #47725b;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
+.claim-alert-action {
+  height: 58rpx;
+  padding: 0 18rpx;
+  border-radius: 29rpx;
+  background: #00bd62;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  flex: none;
+}
+
+.claim-alert-chevron {
+  width: 10rpx;
+  height: 10rpx;
+  border-top: 2rpx solid #ffffff;
+  border-right: 2rpx solid #ffffff;
+  transform: rotate(45deg);
+}
+
 /* 2-Column Quick Nav */
 .quick-nav-grid {
   margin-top: 24rpx;

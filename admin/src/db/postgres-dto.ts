@@ -175,6 +175,7 @@ export function adminUserToDto(
     menuPermissions: record.menuPermissions,
     status: record.status,
     assignmentPaused: record.assignmentPaused,
+    leadCapacityOverride: record.leadCapacityOverride,
     lastLoginAt: record.lastLoginAt,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

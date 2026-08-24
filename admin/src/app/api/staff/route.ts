@@ -31,6 +31,7 @@ interface StaffCreateBody {
   promoterIds?: string[];
   wechatId?: string;
   wechatQrAssetId?: string;
+  leadCapacityOverride?: number | null;
 }
 
 const BUSINESS_ROLES = [
@@ -215,6 +216,7 @@ export async function POST(request: Request) {
           departmentId,
           wechatId,
           wechatQrAssetId,
+          leadCapacityOverride,
         } = body;
 
         if (!username || !password || !role) {
@@ -292,6 +294,12 @@ export async function POST(request: Request) {
             }
 
             const qrAssetId = parseOptionalPostgresId(wechatQrAssetId, 'wechatQrAssetId');
+            const capacityOverride = leadCapacityOverride === null || leadCapacityOverride === undefined || Number(leadCapacityOverride) === 0
+              ? null
+              : Number(leadCapacityOverride);
+            if (capacityOverride !== null && (!Number.isInteger(capacityOverride) || capacityOverride < 1 || capacityOverride > 100000)) {
+              throw new Error('个人容量覆盖范围应为 1–100000');
+            }
             if (role === 'designer' && (!wechatId?.trim() || !qrAssetId)) {
               throw new Error('设计师必须填写微信号并上传个人二维码');
             }
@@ -314,6 +322,7 @@ export async function POST(request: Request) {
                 departmentId: targetDepartmentId,
                 wechatId: role === 'designer' ? wechatId?.trim() || null : null,
                 wechatQrAssetId: role === 'designer' ? qrAssetId : null,
+                leadCapacityOverride: role === 'designer' ? capacityOverride : null,
                 status: 'active',
               },
               targetPromoterIds

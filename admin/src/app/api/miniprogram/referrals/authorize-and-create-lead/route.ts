@@ -23,6 +23,7 @@ import {
 } from '@/lib/referral-attribution';
 import {
   notifyDesignerOfAssignedLead,
+  notifyEligibleDesignersOfClaimWindow,
   notifyEnterpriseAdminOfAssignmentPending,
   notifyEnterpriseAdminOfNewLead,
 } from '@/lib/wechat-notification';
@@ -168,6 +169,12 @@ export async function POST(request: Request) {
           ? notifyEnterpriseAdminOfAssignmentPending(notificationLead, {
               reasonCode: claim.lead.assignmentErrorCode || 'assignment_pending',
               eventKey: `initial:${claim.lead.id.toString()}`,
+            })
+          : Promise.resolve(),
+        claim.kind === 'created' && claim.lead.assignmentStatus === 'claim_open' && claim.lead.enterpriseId
+          ? notifyEligibleDesignersOfClaimWindow({
+              enterpriseId: claim.lead.enterpriseId,
+              leadId: claim.lead.id,
             })
           : Promise.resolve(),
       ]);

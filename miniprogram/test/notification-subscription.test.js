@@ -12,6 +12,7 @@ const templates = [
   { type: 'enterprise_join_result', title: '入驻申请结果通知', templateId: 'wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk' },
   { type: 'signing_commission', title: '推广奖励到账提醒', templateId: 'aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU' },
   { type: 'lead_converted', title: '客户已成交提醒', templateId: 'WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo' },
+  { type: 'lead_claim_available', title: '新线索待抢提醒', templateId: 'claim_template_1234567890' },
 ];
 
 test('versioned notification config requires every semantic template and ignores legacy scalar cache', () => {
@@ -39,16 +40,18 @@ test('role-scoped subscribe kinds stay within the WeChat three-template limit', 
   assert.ok(notification.getSubscribeKindsForRole('enterprise_admin').includes('lead_converted'));
   assert.ok(notification.TEMPLATE_ORDER.includes('signing_commission'));
   assert.ok(notification.TEMPLATE_ORDER.includes('lead_converted'));
+  assert.ok(notification.TEMPLATE_ORDER.includes('lead_claim_available'));
 });
 
-test('subscribe request helpers are no-ops and never call WeChat authorize APIs', async () => {
+test('only explicit subscribe kinds invoke WeChat while legacy automatic helpers stay no-op', async () => {
   const originalWx = global.wx;
   let subscribeCalled = false;
   let modalCalled = false;
   global.wx = {
+    getStorageSync() { return { version: 2, templates }; },
     showModal() { modalCalled = true; },
-    requestSubscribeMessage() { subscribeCalled = true; },
-    showToast() { throw new Error('no-op helpers must not toast'); }
+    requestSubscribeMessage(options) { subscribeCalled = true; options.success({ [templates[5].templateId]: 'accept' }); },
+    showToast() {}
   };
 
   try {
@@ -60,9 +63,9 @@ test('subscribe request helpers are no-ops and never call WeChat authorize APIs'
       onDone: (result) => done.push(result)
     });
 
-    assert.equal(subscribeCalled, false);
+    assert.equal(subscribeCalled, true);
     assert.equal(modalCalled, false);
-    assert.deepEqual(kindsResult.templateIds, []);
+    assert.deepEqual(kindsResult.accepted, [templates[5].templateId]);
     assert.deepEqual(notifyResult.templateIds, []);
     assert.deepEqual(offerResult, { offered: false, accepted: false });
     assert.deepEqual(done[0], { offered: false, accepted: false });

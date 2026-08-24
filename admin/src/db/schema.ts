@@ -158,6 +158,7 @@ export const adminUsers = appSchema.table(
     menuPermissions: textArray('menu_permissions'),
     status: text('status').notNull().default('active'),
     assignmentPaused: boolean('assignment_paused').notNull().default(false),
+    leadCapacityOverride: integer('lead_capacity_override'),
     lastAssignedAt: timestamp('last_assigned_at', {
       withTimezone: true,
       mode: 'date',
@@ -187,6 +188,7 @@ export const adminUsers = appSchema.table(
       table.departmentId
     ),
     index('admin_users_wechat_qr_asset_idx').on(table.wechatQrAssetId),
+    check('admin_users_lead_capacity_override_check', sql`${table.leadCapacityOverride} is null or ${table.leadCapacityOverride} between 1 and 100000`),
   ]
 );
 
@@ -1541,6 +1543,147 @@ export const leadAssignmentEvents = appSchema.table(
     index('lead_assignment_events_previous_measurer_idx').on(table.previousMeasurerId),
     index('lead_assignment_events_measurer_idx').on(table.measurerId),
     index('lead_assignment_events_actor_user_idx').on(table.actorUserId),
+  ]
+);
+
+export const enterpriseAssignmentSettingVersions = appSchema.table(
+  'enterprise_assignment_setting_versions',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull(),
+    claimEnabled: boolean('claim_enabled').notNull().default(false),
+    claimDurationSeconds: integer('claim_duration_seconds').notNull().default(60),
+    highPerformanceTrafficPercent: integer('high_performance_traffic_percent').notNull().default(70),
+    performanceRateThresholdPercent: integer('performance_rate_threshold_percent').notNull().default(30),
+    performanceWindowDays: integer('performance_window_days').notNull().default(180),
+    minimumEffectiveSamples: integer('minimum_effective_samples').notNull().default(10),
+    defaultDesignerCapacity: integer('default_designer_capacity').notNull().default(20),
+    createdByStaffId: bigint('created_by_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('enterprise_assignment_settings_version_uidx').on(table.enterpriseId, table.version),
+    index('enterprise_assignment_settings_current_idx').on(table.enterpriseId, table.createdAt, table.id),
+    index('enterprise_assignment_settings_created_by_staff_idx').on(table.createdByStaffId),
+    check('enterprise_assignment_settings_claim_duration_check', sql`${table.claimDurationSeconds} between 5 and 3600`),
+    check('enterprise_assignment_settings_high_traffic_check', sql`${table.highPerformanceTrafficPercent} between 0 and 100`),
+    check('enterprise_assignment_settings_rate_check', sql`${table.performanceRateThresholdPercent} between 0 and 100`),
+    check('enterprise_assignment_settings_window_check', sql`${table.performanceWindowDays} between 1 and 3650`),
+    check('enterprise_assignment_settings_samples_check', sql`${table.minimumEffectiveSamples} between 1 and 100000`),
+    check('enterprise_assignment_settings_capacity_check', sql`${table.defaultDesignerCapacity} between 1 and 100000`),
+  ]
+);
+
+export const leadClaimWindows = appSchema.table(
+  'lead_claim_windows',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    settingVersionId: bigint('setting_version_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterpriseAssignmentSettingVersions.id, { onDelete: 'restrict' }),
+    status: text('status').notNull().default('open'),
+    opensAt: timestamp('opens_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+    claimedByStaffId: bigint('claimed_by_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    claimedAt: timestamp('claimed_at', { withTimezone: true, mode: 'date' }),
+    claimIdempotencyKeyHash: text('claim_idempotency_key_hash'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
+    resolutionReason: text('resolution_reason'),
+    assignmentGroup: text('assignment_group'),
+    ruleSnapshot: jsonObject<Record<string, unknown>>('rule_snapshot'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('lead_claim_windows_lead_uidx').on(table.leadId),
+    uniqueIndex('lead_claim_windows_idempotency_uidx')
+      .on(table.enterpriseId, table.claimIdempotencyKeyHash)
+      .where(sql`${table.claimIdempotencyKeyHash} is not null`),
+    index('lead_claim_windows_due_idx').on(table.status, table.expiresAt, table.id),
+    index('lead_claim_windows_enterprise_status_idx').on(table.enterpriseId, table.status, table.expiresAt),
+    index('lead_claim_windows_setting_version_idx').on(table.settingVersionId),
+    index('lead_claim_windows_claimed_by_staff_idx').on(table.claimedByStaffId),
+    check('lead_claim_windows_status_check', sql`${table.status} in ('open', 'claimed', 'auto_assigned', 'manually_assigned', 'cancelled', 'assignment_pending')`),
+    check('lead_claim_windows_group_check', sql`${table.assignmentGroup} is null or ${table.assignmentGroup} in ('high', 'standard')`),
+  ]
+);
+
+export const leadOutcomeSnapshots = appSchema.table(
+  'lead_outcome_snapshots',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    designerId: bigint('designer_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    outcome: text('outcome').notNull(),
+    performanceEligible: boolean('performance_eligible').notNull().default(true),
+    lostReason: text('lost_reason'),
+    note: text('note'),
+    previousLeadStatus: text('previous_lead_status').notNull(),
+    outcomeAt: timestamp('outcome_at', { withTimezone: true, mode: 'date' }).notNull(),
+    recordedByStaffId: bigint('recorded_by_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    invalidatedAt: timestamp('invalidated_at', { withTimezone: true, mode: 'date' }),
+    invalidatedByStaffId: bigint('invalidated_by_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    invalidationReason: text('invalidation_reason'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('lead_outcome_snapshots_active_lead_uidx')
+      .on(table.leadId)
+      .where(sql`${table.invalidatedAt} is null`),
+    index('lead_outcome_snapshots_performance_idx').on(table.enterpriseId, table.designerId, table.outcomeAt),
+    index('lead_outcome_snapshots_lead_idx').on(table.leadId, table.createdAt),
+    index('lead_outcome_snapshots_recorded_by_staff_idx').on(table.recordedByStaffId),
+    index('lead_outcome_snapshots_invalidated_by_staff_idx').on(table.invalidatedByStaffId),
+    check('lead_outcome_snapshots_outcome_check', sql`${table.outcome} in ('signed', 'lost')`),
+  ]
+);
+
+export const assignmentDistributionCounters = appSchema.table(
+  'assignment_distribution_counters',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    settingVersionId: bigint('setting_version_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterpriseAssignmentSettingVersions.id, { onDelete: 'cascade' }),
+    highCount: integer('high_count').notNull().default(0),
+    standardCount: integer('standard_count').notNull().default(0),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('assignment_distribution_counters_scope_uidx').on(table.enterpriseId, table.settingVersionId),
+    check('assignment_distribution_counters_nonnegative_check', sql`${table.highCount} >= 0 and ${table.standardCount} >= 0`),
   ]
 );
 

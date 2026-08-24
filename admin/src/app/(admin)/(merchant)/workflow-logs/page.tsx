@@ -57,7 +57,8 @@ type NotificationTemplateKind =
   | 'design_published'
   | 'enterprise_join_result'
   | 'signing_commission'
-  | 'lead_converted';
+  | 'lead_converted'
+  | 'lead_claim_available';
 
 type NotificationConfigForm = {
   version: 2;
@@ -83,6 +84,7 @@ const TEMPLATE_FIELDS: Array<{
   { kind: 'enterprise_join_result', label: '入驻申请结果通知', help: '平台审核通过或驳回企业入驻申请后通知企业联系人。' },
   { kind: 'signing_commission', label: '推广奖励到账提醒', help: '推荐网络线索签单且提成快照成功后通知推荐人。' },
   { kind: 'lead_converted', label: '客户已成交提醒', help: '客户签单成功后通知企业负责人。' },
+  { kind: 'lead_claim_available', label: '新线索待抢提醒', help: '抢单窗口打开后尽力通知当时符合资格且已授权的设计师；未配置可留空。' },
 ];
 
 const STATUS_OPTIONS: Array<{ label: string; value: LogStatus }> = [
@@ -109,6 +111,7 @@ const TYPE_LABELS: Record<string, string> = {
   design_published: '方案发布',
   signing_commission: '推广奖励到账',
   lead_converted: '客户已成交',
+  lead_claim_available: '新线索待抢',
   enterprise_join_result: '入驻审核结果',
   // Historical promotion-report rows may still appear in the ledger.
   follow_up_created: '（旧）新跟进提醒',
@@ -135,6 +138,7 @@ const TYPE_REASONS: Record<string, string> = {
   design_published: '方案已对客户可见',
   signing_commission: '签单成功，通知推荐人提成入账',
   lead_converted: '签单成功，通知企业负责人',
+  lead_claim_available: '抢单窗口开启，通知符合资格的设计师',
   enterprise_join_result: '平台审核企业入驻申请结果',
   follow_up_created: '旧报备流程通知，已停发',
   follow_up_overdue: '旧报备流程通知，已停发',
@@ -416,7 +420,7 @@ export default function WorkflowLogsPage() {
                   <div>
                     <Typography.Text strong>启用微信订阅消息下发</Typography.Text>
                     <Typography.Paragraph type="secondary" className="!mb-0 !mt-1">
-                      关闭后业务仍成功，仅跳过微信推送；小程序端已去掉授权引导。站内
+                      关闭后业务仍成功，仅跳过微信推送；小程序仅在设计师主动点击“开启抢单提醒”时申请该模板授权。站内
                       <Typography.Text code>staff_notifications</Typography.Text>
                       与工作台徽标不受影响。
                     </Typography.Paragraph>
@@ -429,7 +433,7 @@ export default function WorkflowLogsPage() {
                   />
                 </Flex>
                 <Typography.Paragraph type="secondary" className="!mb-0">
-                  八个模板用于服务端按通知类型选择并只发送其允许的关键词字段；模板 ID 可在此维护，是否实际下发由上方开关控制。
+                  九类语义模板用于服务端按通知类型选择并只发送其允许的关键词字段；抢单提醒模板可暂留空，其余模板必须配置。是否实际下发由上方开关控制。
                 </Typography.Paragraph>
                 <Alert
                   type="info"
@@ -481,8 +485,8 @@ export default function WorkflowLogsPage() {
                           tooltip={field.help}
                           extra={field.help}
                           rules={[
-                            { required: true, message: `请填写${field.label}模板 ID` },
-                            { pattern: /^[A-Za-z0-9_-]{10,128}$/, message: '模板 ID 格式不正确' },
+                            { required: field.kind !== 'lead_claim_available', message: `请填写${field.label}模板 ID` },
+                            { pattern: field.kind === 'lead_claim_available' ? /^$|^[A-Za-z0-9_-]{10,128}$/ : /^[A-Za-z0-9_-]{10,128}$/, message: '模板 ID 格式不正确' },
                           ]}
                           fieldProps={{ autoComplete: 'off', className: 'w-full' }}
                         />

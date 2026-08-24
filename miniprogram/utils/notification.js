@@ -7,11 +7,12 @@ const TEMPLATE_ORDER = [
   'design_published',
   'enterprise_join_result',
   'signing_commission',
-  'lead_converted'
+  'lead_converted',
+  'lead_claim_available'
 ];
 const ROLE_SUBSCRIBE_KINDS = Object.freeze({
   customer: ['measurement_appointment', 'design_published'],
-  designer: ['lead_assignment', 'measurement_appointment', 'workflow_todo'],
+  designer: ['lead_claim_available', 'lead_assignment', 'measurement_appointment'],
   measurer: ['lead_assignment', 'measurement_appointment', 'workflow_todo'],
   enterprise_admin: ['new_lead', 'workflow_todo', 'lead_converted'],
   referrer: ['signing_commission']
@@ -36,13 +37,15 @@ function normalizeTemplateConfig(value) {
       };
     }
   });
-  if (!TEMPLATE_ORDER.every((type) => byType[type])) return null;
-  if (new Set(TEMPLATE_ORDER.map((type) => byType[type].templateId)).size !== TEMPLATE_ORDER.length) {
+  const requiredTypes = TEMPLATE_ORDER.filter((type) => type !== 'lead_claim_available');
+  if (!requiredTypes.every((type) => byType[type])) return null;
+  const configuredIds = TEMPLATE_ORDER.map((type) => byType[type] && byType[type].templateId).filter(Boolean);
+  if (new Set(configuredIds).size !== configuredIds.length) {
     return null;
   }
   return {
     version: 2,
-    templates: TEMPLATE_ORDER.map((type) => byType[type])
+    templates: TEMPLATE_ORDER.map((type) => byType[type]).filter(Boolean)
   };
 }
 
@@ -199,9 +202,9 @@ async function requestNotification(options = {}) {
 }
 
 async function requestSubscribeKinds(kinds, options = {}) {
-  void kinds;
-  void options;
-  return emptySubscriptionResult([]);
+  let config = getTemplateConfig();
+  if (!config) config = await refreshTemplateConfig();
+  return requestSubscribeMessageForTemplateIds(resolveTemplateIdsForKinds(config, kinds), options);
 }
 
 /**

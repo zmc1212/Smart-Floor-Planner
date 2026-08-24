@@ -87,6 +87,7 @@ Component({
     bleConnected: false,
     showBLEConnector: false,
     enterpriseName: '',
+    claimPoolSummary: null,
   },
 
   observers: {
@@ -325,6 +326,7 @@ Component({
           enterpriseName,
           loading: false,
         });
+        if (payload.role === 'designer') this.loadClaimPoolSummary();
         this.scheduleWechatProfilePrompt();
       } catch (error) {
         this.setData({
@@ -334,6 +336,28 @@ Component({
       } finally {
         this._fetching = false;
       }
+    },
+
+    async loadClaimPoolSummary() {
+      try {
+        const result = await api.request('/lead-claim-pool', 'GET');
+        const rows = (result && result.data) || [];
+        const openRows = rows.filter((item) => item && item.canClaim);
+        const nearest = openRows.slice().sort((left, right) => Number(left.remainingSeconds || 0) - Number(right.remainingSeconds || 0))[0];
+        this.setData({
+          claimPoolSummary: {
+            count: openRows.length,
+            remainingSeconds: nearest ? Number(nearest.remainingSeconds || 0) : 0,
+            capacityAvailable: !result.capacity || result.capacity.available !== false,
+          },
+        });
+      } catch (error) {
+        this.setData({ claimPoolSummary: null });
+      }
+    },
+
+    openClaimPool() {
+      wx.navigateTo({ url: '/packages/business/lead-claim-pool/lead-claim-pool' });
     },
 
     selectPeriodChip(event) {

@@ -7,6 +7,9 @@ import {
   customerAttributionLocks,
   enterprises,
   leadAssignmentEvents,
+  leadClaimWindows,
+  leadOutcomeSnapshots,
+  leadLifecycleEvents,
   leads,
   measurementAppointmentEvents,
   measurementAppointments,
@@ -27,6 +30,9 @@ import {
   LeadRepository,
   ReferralLeadRepository,
   ReferrerNetworkRepository,
+  AssignmentRacingRepository,
+  hashClaimIdempotencyKey,
+  LeadLifecycleRepository,
 } from '@/db/repositories';
 import {
   withPlatformTransaction,
@@ -169,6 +175,9 @@ after(async () => {
       await transaction
         .delete(leadAssignmentEvents)
         .where(inArray(leadAssignmentEvents.enterpriseId, enterpriseIds));
+      await transaction
+        .delete(leadLifecycleEvents)
+        .where(inArray(leadLifecycleEvents.enterpriseId, enterpriseIds));
       await transaction
         .delete(measurementAppointmentEvents)
         .where(inArray(measurementAppointmentEvents.enterpriseId, enterpriseIds));
@@ -400,7 +409,7 @@ test('no candidates preserve the lead and a later retry fills both roles', async
   assert.equal(pending.lead.assignmentStatus, 'assignment_pending');
   assert.equal(
     pending.lead.assignmentErrorCode,
-    'designer_and_measurer_unavailable'
+    'designer_unavailable'
   );
 
   const designer = await createAssignmentStaff(enterpriseId, 'designer', 'retry-designer');
@@ -958,7 +967,7 @@ test('manual entry stays pending without a pool and retry fills both roles', asy
   );
   assert.equal(pending.lead.source, 'manual_entry');
   assert.equal(pending.lead.assignmentStatus, 'assignment_pending');
-  assert.equal(pending.lead.assignmentErrorCode, 'designer_and_measurer_unavailable');
+  assert.equal(pending.lead.assignmentErrorCode, 'designer_unavailable');
   assert.equal(pending.lead.assignedTo, null);
   assert.equal(pending.lead.measurerId, null);
 
@@ -1095,4 +1104,147 @@ test('manual reassign rewrites the active appointment and rejects a busy measure
       .where(eq(measurementAppointmentEvents.appointmentId, original.id))
   );
   assert.ok(events.some((event) => event.eventType === 'staff_reassigned'));
+});
+
+test('claim window concurrency, deadline fallback, capacity and outcome snapshots stay transactional', async () => {
+  const enterprise = await withPlatformTransaction((transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-claim-racing`, code: `${runKey}-claim-racing`, status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  const designerA = await createAssignmentStaff(enterprise.id, 'designer', 'claim-racing-a');
+  const designerB = await createAssignmentStaff(enterprise.id, 'designer', 'claim-racing-b');
+  await createAssignmentStaff(enterprise.id, 'measurer', 'claim-racing-measurer');
+  await withTenantTransaction(enterprise.id, (transaction) =>
+    new AssignmentRacingRepository(transaction).createSettingsVersion({
+      enterpriseId: enterprise.id,
+      actorStaffId: null,
+      claimEnabled: true,
+      claimDurationSeconds: 5,
+      highPerformanceTrafficPercent: 70,
+      performanceRateThresholdPercent: 30,
+      performanceWindowDays: 180,
+      minimumEffectiveSamples: 10,
+      defaultDesignerCapacity: 1,
+    })
+  );
+
+  const source = await createSource(enterprise.id, 'claim-racing');
+  const firstCustomer = await createCustomer('claim-racing-first');
+  const created = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source, customerUserId: firstCustomer.id, idempotencyKeyHash: `${runKey}-claim-racing-create`,
+    })
+  );
+  assert.equal(created.lead.assignmentStatus, 'claim_open');
+  assert.equal(created.lead.assignedTo, null);
+
+  const [left, right] = await Promise.all([
+    withTenantTransaction(enterprise.id, (transaction) =>
+      new AssignmentRacingRepository(transaction).claimLead({
+        leadId: created.lead.id, designerId: designerA.id, actorUserId: null,
+        idempotencyKeyHash: hashClaimIdempotencyKey('race-a'),
+      })
+    ),
+    withTenantTransaction(enterprise.id, (transaction) =>
+      new AssignmentRacingRepository(transaction).claimLead({
+        leadId: created.lead.id, designerId: designerB.id, actorUserId: null,
+        idempotencyKeyHash: hashClaimIdempotencyKey('race-b'),
+      })
+    ),
+  ]);
+  assert.equal([left.kind, right.kind].filter((kind) => kind === 'claimed').length, 1);
+  assert.equal([left.kind, right.kind].filter((kind) => kind === 'already_claimed').length, 1);
+  const winnerId = left.kind === 'claimed' ? designerA.id : designerB.id;
+  const capacityState = await withTenantTransaction(enterprise.id, async (transaction) => {
+    const repository = new AssignmentRacingRepository(transaction);
+    const settings = await repository.getCurrentSettings(enterprise.id);
+    return repository.listDesignerPerformance(enterprise.id, settings || undefined);
+  });
+  const winnerCapacity = capacityState.find((item) => item.staff.id === winnerId);
+  assert.equal(winnerCapacity?.openLeadCount, 1);
+  assert.equal(winnerCapacity?.capacity, 1);
+  assert.equal(winnerCapacity?.eligibleForAssignment, false);
+  const crossTenantWindows = await withTenantTransaction(enterpriseIds[0], (transaction) =>
+    transaction.select().from(leadClaimWindows).where(eq(leadClaimWindows.enterpriseId, enterprise.id))
+  );
+  assert.deepEqual(crossTenantWindows, []);
+
+  const closed = await withTenantTransaction(enterprise.id, (transaction) =>
+    new LeadLifecycleRepository(transaction).closeLost({
+      leadId: created.lead.id,
+      actorId: winnerId,
+      reason: 'budget_mismatch',
+      performanceEligible: true,
+    })
+  );
+  assert.equal(closed?.status, 'closed');
+  const snapshot = await withTenantTransaction(enterprise.id, async (transaction) =>
+    (await transaction.select().from(leadOutcomeSnapshots).where(eq(leadOutcomeSnapshots.leadId, created.lead.id)))[0]
+  );
+  assert.equal(snapshot.designerId, winnerId);
+  assert.equal(snapshot.performanceEligible, true);
+
+  const secondCustomer = await createCustomer('claim-racing-expired');
+  const second = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source, customerUserId: secondCustomer.id, idempotencyKeyHash: `${runKey}-claim-racing-expired`,
+    })
+  );
+  const window = await withTenantTransaction(enterprise.id, async (transaction) =>
+    (await transaction.select().from(leadClaimWindows).where(eq(leadClaimWindows.leadId, second.lead.id)))[0]
+  );
+  assert.equal((window.ruleSnapshot as { claimDurationSeconds?: number }).claimDurationSeconds, 5);
+  const expired = await withTenantTransaction(enterprise.id, (transaction) =>
+    new AssignmentRacingRepository(transaction).claimLead({
+      leadId: second.lead.id,
+      designerId: designerA.id,
+      actorUserId: null,
+      idempotencyKeyHash: hashClaimIdempotencyKey('expired'),
+      now: window.expiresAt,
+    })
+  );
+  assert.equal(expired.kind, 'expired');
+  const resolvedWindow = await withTenantTransaction(enterprise.id, async (transaction) =>
+    (await transaction.select().from(leadClaimWindows).where(eq(leadClaimWindows.id, window.id)))[0]
+  );
+  assert.notEqual(resolvedWindow.status, 'open');
+
+  const thirdCustomer = await createCustomer('claim-racing-closed-window');
+  const third = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source, customerUserId: thirdCustomer.id, idempotencyKeyHash: `${runKey}-claim-racing-closed-window`,
+    })
+  );
+  await withTenantTransaction(enterprise.id, (transaction) =>
+    new LeadLifecycleRepository(transaction).closeLost({
+      leadId: third.lead.id,
+      actorId: designerA.id,
+      reason: 'invalid_contact',
+      performanceEligible: false,
+    })
+  );
+  const closedWindow = await withTenantTransaction(enterprise.id, async (transaction) =>
+    (await transaction.select().from(leadClaimWindows).where(eq(leadClaimWindows.leadId, third.lead.id)))[0]
+  );
+  assert.equal(closedWindow.status, 'cancelled');
+  assert.equal(closedWindow.resolutionReason, 'lead_closed_lost');
+  const claimAfterClose = await withTenantTransaction(enterprise.id, (transaction) =>
+    new AssignmentRacingRepository(transaction).claimLead({
+      leadId: third.lead.id,
+      designerId: designerB.id,
+      actorUserId: null,
+      idempotencyKeyHash: hashClaimIdempotencyKey('closed-window'),
+    })
+  );
+  assert.equal(claimAfterClose.kind, 'not_assignable');
+  const reopened = await withTenantTransaction(enterprise.id, (transaction) =>
+    new LeadLifecycleRepository(transaction).reopenLost({
+      leadId: third.lead.id,
+      actorId: designerA.id,
+    })
+  );
+  assert.equal(reopened?.status, 'new');
+  assert.equal(reopened?.assignmentStatus, 'assignment_pending');
 });

@@ -1,6 +1,7 @@
 import { parsePostgresId } from '@/db/postgres-dto';
 import {
   AdminUserRepository,
+  AssignmentRacingRepository,
   LeadCommissionRepository,
   LeadRepository,
   MiniProgramIdentityRepository,
@@ -21,6 +22,7 @@ import {
   buildNewLeadPayload,
   buildSigningCommissionPayload,
   buildWorkflowTodoPayload,
+  formatWeChatDateTime,
   type SubscriptionMessagePayload,
 } from '@/lib/miniprogram-subscription-messages';
 import {
@@ -404,6 +406,51 @@ export async function notifyDesignerOfAssignedLead(lead: LeadNotificationRecord,
       assignedAt: lead.assignedAt || lead.createdAt,
     }),
   });
+}
+
+export async function notifyEligibleDesignersOfClaimWindow(input: {
+  enterpriseId: bigint;
+  leadId: bigint;
+  expiresAt?: Date | string | null;
+}) {
+  try {
+    const result = await withTenantTransaction(input.enterpriseId, async (transaction) => {
+      const repository = new AssignmentRacingRepository(transaction);
+      const setting = await repository.getCurrentSettings(input.enterpriseId);
+      const [lead, designers] = await Promise.all([
+        new LeadRepository(transaction).findById(input.leadId),
+        repository.listDesignerPerformance(input.enterpriseId, setting || undefined),
+      ]);
+      return { lead, designers: designers.filter((item) => item.eligibleForAssignment) };
+    });
+    if (!result.lead) return { success: false, skipped: true, error: 'lead unavailable' };
+    const leadRecord = result.lead;
+    const lead = { ...leadRecord, enterpriseId: leadRecord.enterpriseId?.toString() };
+    const results = await Promise.all(result.designers.map(async (item) => {
+      const recipient = await enrichRecipientOpenid(item.staff);
+      return deliverLeadNotification({
+        lead,
+        recipient,
+        templateKind: 'lead_claim_available',
+        notificationType: 'lead_claim_available',
+        message: `${leadRecord.city || ''}${leadRecord.communityName || '新线索'}已进入抢单池`,
+        dedupeKey: `lead_claim_available:${input.leadId.toString()}:${item.staff.id.toString()}`,
+        page: '/packages/business/lead-claim-pool/lead-claim-pool',
+        metadata: { expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null },
+        buildData: (template) => buildWorkflowTodoPayload(template, {
+          projectName: leadRecord.communityName || leadRecord.city || '新客户线索',
+          owner: recipient.displayName || recipient.username || '设计师',
+          currentStatus: '待抢单',
+          todo: '进入抢单池查看',
+          note: input.expiresAt ? `截止 ${formatWeChatDateTime(input.expiresAt)}` : '请及时查看',
+        }),
+      });
+    }));
+    return { success: results.every((item) => item.success), results };
+  } catch (error) {
+    console.error('Claim-window notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
 }
 
 export async function notifyAppointmentStaff(input: {

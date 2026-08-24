@@ -18,6 +18,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/devices': 'devices',
   '/measurements': 'measurements',
   '/leads': 'leads',
+  '/lead-pool': 'leads',
   '/promotion-records': 'promotion-records',
   '/packages': 'packages',
   '/lead-commissions': 'lead-commissions',
@@ -25,9 +26,11 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/join-codes': 'referrer-network-operations',
   '/referrers': 'referrer-network-operations',
   '/appointment-settings': 'referrer-network-operations',
+  '/assignment-settings': 'referrer-network-operations',
   '/staff': 'staff',
   '/admins': 'admins',
   '/api/leads': 'leads',
+  '/api/lead-claim-pool': 'leads',
   '/api/floorplans': 'floorplans',
   '/api/kujiale': 'floorplans',
   '/api/staff': 'staff',
@@ -40,6 +43,8 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/enterprise/enterprise-purge': 'referrer-network-operations',
   '/api/enterprise/sensitive-password': 'referrer-network-operations',
   '/api/appointment-settings': 'referrer-network-operations',
+  '/api/assignment-settings': 'referrer-network-operations',
+  '/api/assignment-performance': 'referrer-network-operations',
   '/api/enterprises': 'enterprises',
   '/api/admin/enterprise-registration-codes': 'enterprises',
   '/ai-studio': 'ai-scenarios',
@@ -68,6 +73,7 @@ export async function proxy(request: NextRequest) {
     pathname === '/login' || 
     pathname === '/api/health' ||
     pathname === '/api/internal/seed' ||
+    pathname === '/api/internal/lead-claim-windows/run' ||
     pathname.startsWith('/api/auth/') || 
     pathname.startsWith('/api/miniprogram/') ||
     request.headers.get('Authorization')?.startsWith('Bearer ')

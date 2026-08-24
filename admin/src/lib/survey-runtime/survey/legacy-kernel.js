@@ -1158,12 +1158,6 @@ function isSafeOrthogonalClosurePath(points, occupiedSegments) {
   return true;
 }
 
-function isAxisAlignedSegment(start, end) {
-  if (!start || !end) return false;
-  return Math.abs(end.xMm - start.xMm) <= RECTANGLE_ALIGNMENT_TOLERANCE_MM ||
-    Math.abs(end.yMm - start.yMm) <= RECTANGLE_ALIGNMENT_TOLERANCE_MM;
-}
-
 function isAxisAlignedWithAnchor(anchor, point, toleranceMm) {
   const limit = typeof toleranceMm === 'number' ? toleranceMm : 1;
   if (!anchor || !point) return false;
@@ -1315,21 +1309,27 @@ function findMergeClosurePlan(floor, session, endPoint) {
       // opposite corner through an L-shaped orthogonal route. The old logic
       // only accepted a direct axis-aligned segment, so two valid walls never
       // exposed the merge candidate until the cursor happened to be diagonal.
-      const allowOrthogonalSharedPath = session.mode === 'straight' &&
-        isClosedBoundaryCorner(floor, session);
       const lastActiveWall = activeWalls[activeWalls.length - 1] || null;
       const incomingStart = includesPreview
         ? anchor
         : (lastActiveWall ? getNode(floor, lastActiveWall.startNodeId) : anchor);
-      const pathCandidates = allowOrthogonalSharedPath
-        ? buildOrthogonalClosurePoints(candidate, closureStart, incomingStart)
+      // Straight mode must never accept a 350 mm-slop “axis-aligned” diagonal
+      // to an inner topology corner. Prefer the L-shaped orthogonal route and
+      // only keep a direct connector when it is strictly on one axis.
+      const useOrthogonalSharedPath = session.mode === 'straight';
+      const pathCandidates = useOrthogonalSharedPath
+        ? buildOrthogonalClosurePoints(candidate, closureStart, incomingStart).concat(
+          isAxisAlignedWithAnchor(closureStart, candidate, 1)
+            ? [[closureStart, candidate]]
+            : []
+        )
         : [[closureStart, candidate]];
       for (let pathIndex = 0; pathIndex < pathCandidates.length; pathIndex += 1) {
         const points = normalizeClosurePoints(pathCandidates[pathIndex]);
         if (session.mode === 'straight' && points.some((point, pointIndex) => (
-          pointIndex > 0 && !isAxisAlignedSegment(points[pointIndex - 1], point)
+          pointIndex > 0 && !isAxisAlignedWithAnchor(points[pointIndex - 1], point, 1)
         ))) continue;
-        const safePath = allowOrthogonalSharedPath
+        const safePath = useOrthogonalSharedPath
           ? isSafeOrthogonalClosurePath(points, segments)
           : isSafeClosurePath(points, segments);
         if (!safePath) continue;
@@ -1397,12 +1397,35 @@ function findMergeClosureCandidate(floor, session, endPoint) {
   return plan ? plan.targetNode : null;
 }
 
+function getOrthogonalClosureGuidePoints(floor, session, currentNode, targetNode) {
+  if (!currentNode || !targetNode) return [];
+  if (!session || session.mode !== 'straight' || isAxisAlignedWithAnchor(currentNode, targetNode, 1)) {
+    return [currentNode, targetNode];
+  }
+  const lastWall = getLastWall(floor);
+  const incomingStart = session.previewPoint
+    ? getNode(floor, session.anchorNodeId)
+    : (lastWall ? getNode(floor, lastWall.startNodeId) : getNode(floor, session.anchorNodeId));
+  const pathCandidates = buildOrthogonalClosurePoints(targetNode, currentNode, incomingStart);
+  for (let index = 0; index < pathCandidates.length; index += 1) {
+    const points = normalizeClosurePoints(pathCandidates[index]);
+    if (points.length < 2) continue;
+    if (points.some((point, pointIndex) => (
+      pointIndex > 0 && !isAxisAlignedWithAnchor(points[pointIndex - 1], point, 1)
+    ))) continue;
+    return points.map((point) => ({ xMm: point.xMm, yMm: point.yMm }));
+  }
+  return [currentNode, targetNode];
+}
+
 function getClosurePath(floor, session) {
   if (!floor || !session) return [];
   const currentNode = session.previewPoint || getNode(floor, session.anchorNodeId);
   const targetNode = session.closeCandidatePoint || getNode(floor, session.closeCandidateNodeId);
   if (!currentNode || !targetNode) return [];
-  if (session.closeCandidateType !== 'merge') return [currentNode, targetNode];
+  if (session.closeCandidateType !== 'merge') {
+    return getOrthogonalClosureGuidePoints(floor, session, currentNode, targetNode);
+  }
 
   const plan = findMergeClosurePlan(floor, session, currentNode);
   if (!plan || !plan.targetNode || plan.targetNode.id !== session.closeCandidateNodeId) return [];

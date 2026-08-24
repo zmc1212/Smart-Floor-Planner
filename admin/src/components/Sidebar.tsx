@@ -30,6 +30,7 @@ import {
   CalendarClock,
   QrCode,
   SlidersHorizontal,
+  Trophy,
   UsersRound,
 } from 'lucide-react';
 import { Button, Divider, Drawer, Dropdown, Select } from 'antd';
@@ -104,6 +105,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'dashboard', label: '业务概览', icon: LayoutDashboard, href: '/' },
         { key: 'leads', label: '线索转化', icon: ClipboardList, href: '/leads' },
+        { key: 'lead-pool', permissionKey: 'leads', label: '线索抢单池', icon: Trophy, href: '/lead-pool' },
       ]
     },
     {
@@ -113,6 +115,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'join-codes', permissionKey: 'referrer-network-operations', label: '入驻码', icon: QrCode, href: '/join-codes' },
         { key: 'referrers', permissionKey: 'referrer-network-operations', label: '推荐人', icon: UsersRound, href: '/referrers' },
         { key: 'appointment-settings', permissionKey: 'referrer-network-operations', label: '预约设置', icon: CalendarClock, href: '/appointment-settings' },
+        { key: 'assignment-settings', permissionKey: 'referrer-network-operations', label: '派单设置', icon: SlidersHorizontal, href: '/assignment-settings' },
       ]
     },
     {
@@ -169,7 +172,7 @@ const NavItem = memo(function NavItem({
         // `!` keeps Tailwind ahead of Ant Design's unlayered `a { color: colorLink }`
         // until `@layer antd` is active via AntdRegistry.
         isActive
-          ? "bg-primary/10 !text-primary"
+          ? "bg-[#eaf7ee] !text-[#15803d]"
           : "!text-muted-foreground hover:!text-foreground hover:bg-muted"
       )}
       title={collapsed ? item.label : undefined}
@@ -181,7 +184,7 @@ const NavItem = memo(function NavItem({
         </span>
       )}
       {isActive && !collapsed && (
-        <div className="absolute right-2 h-1.5 w-1.5 rounded-full bg-primary" />
+        <div className="absolute right-2 h-1.5 w-1.5 rounded-full bg-[#16a34a]" />
       )}
     </Link>
   );

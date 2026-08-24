@@ -1,0 +1,48 @@
+<view class="page sfp-page">
+  <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
+    <view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view>
+    <text class="nav-title">抢单池</text>
+  </view>
+
+  <scroll-view scroll-y refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="onRefresh" class="content-scroll">
+    <view class="content">
+      <view class="pool-hero">
+        <view class="hero-copy">
+          <text class="hero-title">好线索，先到先得</text>
+          <text class="hero-subtitle">只展示脱敏需求，抢单成功后解锁客户资料</text>
+          <view wx:if="{{capacity}}" class="capacity-pill">在手 {{capacity.current}} / {{capacity.limit}}</view>
+        </view>
+        <image class="hero-mascot" src="/images/airy-v1/xiao-k-designer-3d.png" mode="aspectFit" aria-label="小K设计师助手" />
+      </view>
+
+      <view class="pool-toolbar">
+        <view>
+          <text class="section-title">待抢线索</text>
+          <text class="section-caption">每 3 秒自动刷新</text>
+        </view>
+        <button class="reminder-button" loading="{{reminderLoading}}" bindtap="enableReminder">开启抢单提醒</button>
+      </view>
+
+      <view wx:if="{{loading}}" class="state-card"><view class="state-clock"></view><text class="state-title">正在刷新线索池</text><text class="state-copy">请稍候，机会马上出现</text></view>
+      <view wx:elif="{{error}}" class="state-card"><text class="state-title">暂时无法加载</text><text class="state-copy">{{error}}</text><button class="state-action" bindtap="load">重新加载</button></view>
+      <view wx:elif="{{!settings || !settings.claimEnabled}}" class="state-card"><image class="state-mascot" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" /><text class="state-title">当前未开启抢单</text><text class="state-copy">新线索会由系统按赛马规则自动派发</text></view>
+      <view wx:elif="{{!rows.length}}" class="state-card"><image class="state-mascot" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" /><text class="state-title">线索池暂时空空的</text><text class="state-copy">开启提醒，新线索到来时第一时间知道</text></view>
+
+      <view wx:else class="lead-list">
+        <view wx:for="{{rows}}" wx:key="id" class="lead-card {{!item.canClaim ? 'is-expired' : ''}}">
+          <view class="lead-card-head">
+            <view class="source-tag">{{item.sourceLabel || '新线索'}}</view>
+            <view class="countdown {{item.displaySeconds <= 10 ? 'urgent' : ''}}"><view class="mini-clock"></view><text>{{item.displaySeconds}} 秒</text></view>
+          </view>
+          <text class="community">{{item.communityArea || '片区待补充'}}</text>
+          <text class="city">{{item.city || '城市待补充'}}</text>
+          <view class="need-row">
+            <text class="need-chip">{{item.area ? item.area + '㎡' : '面积待补充'}}</text>
+            <text class="need-chip">{{item.stylePreference || '风格待沟通'}}</text>
+          </view>
+          <button class="claim-button" loading="{{claimingId === item.id}}" disabled="{{!item.canClaim || (capacity && !capacity.available)}}" data-id="{{item.id}}" bindtap="claim">{{item.canClaim ? ((capacity && !capacity.available) ? '容量已满' : '立即抢单') : '已失效'}}</button>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

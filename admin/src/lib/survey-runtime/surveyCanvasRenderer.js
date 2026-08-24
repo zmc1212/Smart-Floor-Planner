@@ -1587,6 +1587,38 @@ function drawOpeningJamb(ctx, x, faces) {
   drawOpeningSegment(ctx, x, faces.outerY, x, faces.innerY);
 }
 
+function canvasPointToWallLocal(wall, point) {
+  const dx = point.x - wall.startPoint.x;
+  const dy = point.y - wall.startPoint.y;
+  const cos = Math.cos(wall.angleRad);
+  const sin = Math.sin(wall.angleRad);
+  return {
+    x: dx * cos + dy * sin,
+    y: -dx * sin + dy * cos
+  };
+}
+
+function localPolygonOverlapsRect(polygon, rect) {
+  if (!polygon || polygon.length < 3) return false;
+  const hitsRect = polygon.some((point) => (
+    point.x >= rect.x && point.x <= rect.x + rect.width &&
+    point.y >= rect.y && point.y <= rect.y + rect.height
+  ));
+  if (hitsRect) return true;
+  const corners = [
+    { x: rect.x, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y },
+    { x: rect.x + rect.width, y: rect.y + rect.height },
+    { x: rect.x, y: rect.y + rect.height }
+  ];
+  return corners.some((corner) => pointInPolygon(corner, polygon));
+}
+
+function neighborWallFillStyle(wall) {
+  if (wall.selected) return 'rgba(226, 73, 79, 0.92)';
+  return wall.closed ? '#8e8e8c' : '#e2e2e0';
+}
+
 // A hinged-door casing is a small rectangular sleeve at each end of the
 // opening. Drawing only its two cross-wall stop lines leaves the faces open,
 // so it reads as a broken wall rather than the paired door-frame rectangles
@@ -1785,15 +1817,36 @@ function drawOpenings(ctx, scene) {
     // wall segments exactly, otherwise the narrow white seams seen at either
     // side of a window make it read as a floating overlay.
     const maskInsetX = 0.5;
-    ctx.fillStyle = '#f8f8f8';
+    const maskRect = {
+      x: opening.startPx - maskInsetX,
+      y: faces.minY - maskInsetY,
+      width: opening.widthPx + maskInsetX * 2,
+      height: faces.maxY - faces.minY + maskInsetY * 2
+    };
+    // The mask is a full-thickness rectangle in the host wall's local space.
+    // Adjacent closed walls occupy that same square at T/L junctions, so a
+    // raw white fill punches a visible hole through the neighbouring solid.
+    // Clip to the opening, then paint those other bodies back on top.
+    ctx.save();
     ctx.beginPath();
-    ctx.rect(
-      opening.startPx - maskInsetX,
-      faces.minY - maskInsetY,
-      opening.widthPx + maskInsetX * 2,
-      faces.maxY - faces.minY + maskInsetY * 2
-    );
-    ctx.fill();
+    ctx.rect(maskRect.x, maskRect.y, maskRect.width, maskRect.height);
+    ctx.clip();
+    ctx.fillStyle = '#f8f8f8';
+    ctx.fillRect(maskRect.x, maskRect.y, maskRect.width, maskRect.height);
+    (scene.walls || []).forEach((other) => {
+      if (!other || other.id === wall.id || other.lineOnly || !other.bodyPolygon) return;
+      const localPolygon = other.bodyPolygon.map((point) => canvasPointToWallLocal(wall, point));
+      if (!localPolygonOverlapsRect(localPolygon, maskRect)) return;
+      ctx.fillStyle = neighborWallFillStyle(other);
+      ctx.beginPath();
+      ctx.moveTo(localPolygon[0].x, localPolygon[0].y);
+      for (let index = 1; index < localPolygon.length; index += 1) {
+        ctx.lineTo(localPolygon[index].x, localPolygon[index].y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.restore();
 
     if (opening.selected) {
       ctx.strokeStyle = 'rgba(240, 122, 33, 0.18)';

@@ -1,8 +1,8 @@
 # 小程序订阅通知模板实施基线
 
-状态：`Limited`（八模板 ID 与运行时映射仍保留；小程序端授权引导已移除；微信订阅下发由平台 `subscriptionMessagesEnabled` 门控，缺省为 `false`）。
+状态：`Limited`（八个已确认模板 ID 保留；已实现可选第九语义槽 `lead_claim_available` 与明确的抢单提醒授权入口，但其真实微信模板 ID/关键词契约仍须运营配置；微信订阅下发继续由平台 `subscriptionMessagesEnabled` 门控，缺省为 `false`）。
 
-日期：2026-08-21
+日期：2026-08-24
 
 本文档是微信小程序“房屋装修”公共模板的当前实施契约。模板 ID 和关键词键均已从“订阅消息 -> 我的模板”详情页回读，并在 2026-08-21 针对 AppID `wxa7728432f59779d1` 用 `wxaapi/newtmpl/gettemplate` 复核（此前 `l`/`I` 与大小写抄错会导致微信 `40037 invalid template_id`，已废弃）。服务端必须按语义模板生成严格白名单 payload，不能继续复用旧的通用字段。
 
@@ -18,6 +18,7 @@
 | 6 | `enterprise_join_result` | `入驻申请结果通知` | 平台对企业自助入驻申请审核通过或驳回 | `wJ5K4XXpOOPnsHFcEOl5MJq7J0iG8bpxsyVLzd_G3Kk` | `time1` 通知时间；`phrase2` 结果；`thing3` 店铺联系人；`time4` 申请时间；`thing5` 店铺名称 |
 | 7 | `signing_commission` | `推广奖励到账提醒` | 推荐人签单成功 / 应付提成入账 | `aY-4Rk78otCQuM-PQ6yKUt46XFWP60zP8m7QqrrX8xU` | `thing1` 奖励类型；`thing2` 备注；`amount4` 奖励金额 |
 | 8 | `lead_converted` | `客户已成交提醒` | 企业负责人签单成功提醒 | `WFQg70AyoRkLpHaNNK4oywE2gMS60nHuKelkLjkK3zo` | `time1` 通知时间；`thing2` 温馨提示 |
+| 9 | `lead_claim_available` | 由运营选择的可抢线索模板 | 新抢单窗口向当时符合条件的设计师开放 | 未配置 | 可选语义槽。启用微信投递前须配置真实模板 ID 与准确字段白名单；代码不得杜撰 ID 或字段。 |
 
 ## 运行时通知映射
 
@@ -25,6 +26,7 @@
 | --- | --- | --- |
 | 新线索创建后通知企业负责人 | `new_lead` | `Implemented` |
 | 派单成功通知设计师/测量员 | `lead_assignment` | `Implemented` |
+| 抢单窗口向符合条件且明确授权的设计师开放 | `lead_claim_available` | `Limited`：站内通知已实现；微信仅在可选模板已配置、全局开关开启且设计师明确授权时尽力发送。 |
 | 待派单催促企业负责人 | `workflow_todo` | `Implemented` |
 | 已确认的独立量房预约（创建/改期/取消/过期） | `measurement_appointment` | `Limited`：事件路径已接入，字段契约仍须严格遵守。 |
 | 正式量房完成后通知设计师 | `workflow_todo` | `Implemented` |
@@ -44,6 +46,7 @@
 | 模板 / 投递路径 | 收件人 | 深链 |
 | --- | --- | --- |
 | `lead_assignment` | 设计师 / 测量员 | `/packages/business/lead-detail/lead-detail?id={leadId}` |
+| `lead_claim_available` | 设计师 | `/packages/business/lead-claim-pool/lead-claim-pool` |
 | `new_lead` | 企业负责人 | 同上客户详情 |
 | `workflow_todo`（待派单 / 量房完成） | 企业负责人 / 设计师 | 同上客户详情 |
 | `workflow_todo`（员工签单提成） | 设计师 / 测量员 | `/packages/business/staff-earnings/staff-earnings` |
@@ -58,11 +61,11 @@
 
 ## 已实现合同
 
-- `platform_configs.notification_config` 使用 `version: 2` 的八模板映射，保存模板 ID、关键词契约、可选 `legacyTemplateId`，以及 `subscriptionMessagesEnabled`（缺省为 `false`）；旧单 `miniprogramTemplateId` 读取和 PATCH 仍保留一个发布周期兼容。
-- `GET/PATCH /api/platform/notification-config` 仅允许平台 `admin`/`super_admin` 读写八个非空、格式合法且互不重复的模板 ID 与微信下发开关；`/workflow-logs` 在模板卡顶部提供开关，并用共享操作反馈保存。
+- `platform_configs.notification_config` 使用 `version: 2` 语义映射，保存八个必填已确认模板、可选 `lead_claim_available`、可选 `legacyTemplateId` 与 `subscriptionMessagesEnabled`（缺省为 `false`）；旧单 `miniprogramTemplateId` 读取和 PATCH 仍保留一个发布周期兼容。
+- `GET/PATCH /api/platform/notification-config` 仅允许平台 `admin`/`super_admin` 维护八个必填且互不重复的模板、可选抢单模板和微信下发开关；`/workflow-logs` 展示九个语义槽并用共享操作反馈保存。
 - `sendSubscriptionMessage` 是唯一微信下发闸口：`subscriptionMessagesEnabled` 为 false 时直接返回 `{ success: false, skipped: true }`，不调用微信。站内 `staff_notifications` 与工作台徽标仍照常写入。
-- `GET /api/miniprogram/notification-template` 仍向已认证小程序用户返回有序八模板列表以保持兼容，但客户端不再发起订阅授权。
-- 小程序硬移除：无 `wx.requestSubscribeMessage`，无登录/入驻/领取「开启通知」弹窗，无「我的」Tab「订阅任务通知」行；保留「微信权限管理」（`wx.openSetting`）。日后重新启用需恢复授权引导 UI。
+- `GET /api/miniprogram/notification-template` 只返回已配置的语义模板。通用通知授权仍移除；抢单池仅在用户点击「开启抢单提醒」时，针对已配置 `lead_claim_available` 调用一次 `wx.requestSubscribeMessage`。
+- 登录、入驻和普通领取成功不自动弹授权；「我的」Tab 仍无通用「订阅任务通知」行，并保留「微信权限管理」（`wx.openSetting`）。
 - 服务端 builder 只输出所选模板允许的字段键，并统一处理空值、字符长度和中国时区 `YYYY-MM-DD HH:mm:ss`。入驻结果 `phrase2` 为「审核通过」或「审核不通过」。推荐人签单模板 `amount4` 仍为微信金额类型，因此标记为 `Limited`（平台仍要求填数字；小程序个人收益页不再展示金额）。员工签单备注不含金额。
 - 旧企业报备工作流通知已停发。线索/预约/签单通知先写 `staff_notifications` 的 `in_app`（适用时），仅在平台开关开启时再尝试微信并记录 `sent`、`failed` 或 `skipped`。入驻结果与推荐人签单提成为仅微信尽力发送（开关开启时），且在提交成功后异步触发。微信失败、缺少 openid 或模板不得回滚业务。
 - `/api/automation/reminders/run` 仅跑现行矩阵的预约过期；不再扫描报备跟进 / `measureDueAt` / `designDueAt` / 保护期公海催办。
@@ -70,10 +73,11 @@
 
 ## 交接检查清单
 
-- [x] 八个模板均出现在“我的模板”。
+- [x] 八个必填模板均出现在“我的模板”。
 - [x] 八个模板 ID 和准确关键词键已补录。
-- [x] 后台配置支持八个按类型保存的模板 ID，以及默认关闭的 `subscriptionMessagesEnabled`。
-- [x] 小程序端授权引导已移除；服务端微信下发由开关门控。
+- [x] 后台配置支持八个必填模板 ID、一个可选抢单模板槽，以及默认关闭的 `subscriptionMessagesEnabled`。
+- [x] 通用授权引导保持移除；抢单池提供可选模板的明确授权入口；服务端微信下发由开关门控。
+- [ ] 生产微信投递前选择并核验真实 `lead_claim_available` 模板 ID 与准确关键词键。
 - [x] 服务端 payload 只包含所选模板接受的字段键。
 - [x] 适用场景下站内通知、按通道幂等和微信失败/跳过日志行为已保留。
 - [x] 中英文后台/小程序清单与本基线双语对已同步。

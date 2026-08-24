@@ -267,6 +267,20 @@
       "when": 1787486400000,
       "tag": "0037_lead_site_photos",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1787558400000,
+      "tag": "0038_lead_claim_racing",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1787562000000,
+      "tag": "0039_lead_claim_fk_indexes",
+      "breakpoints": true
     }
   ]
 }

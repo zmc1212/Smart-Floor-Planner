@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ModalForm,
   PageContainer,
+  ProFormDigit,
   ProFormSelect,
   ProFormSwitch,
   ProFormText,
@@ -37,6 +38,7 @@ type StaffMember = {
   wechatId?: string | null;
   wechatQrAssetId?: string | null;
   assignmentPaused?: boolean;
+  leadCapacityOverride?: number | null;
 };
 
 type StaffRole = 'enterprise_admin' | 'designer' | 'measurer' | 'salesperson';
@@ -51,6 +53,7 @@ type StaffForm = {
   wechatId?: string;
   wechatQrAssetId?: string;
   assignmentPaused?: boolean;
+  leadCapacityOverride?: number | null;
 };
 
 type DepartmentForm = { name: string; parentId?: string };
@@ -563,6 +566,7 @@ export default function StaffPage() {
           departmentId: departmentIdOf(editingStaff) || undefined,
           wechatId: editingStaff.wechatId || undefined,
           assignmentPaused: Boolean(editingStaff.assignmentPaused),
+          leadCapacityOverride: editingStaff.leadCapacityOverride || undefined,
         } : { role: 'designer', departmentId: selectedDepartmentId || undefined, assignmentPaused: false }}
         modalProps={{ destroyOnHidden: true, maskClosable: false }}
         onOpenChange={(open) => { setStaffFormOpen(open); if (!open) setEditingStaff(null); }}
@@ -590,6 +594,14 @@ export default function StaffPage() {
         ) : null}
         {staffRole === 'designer' ? (
           <>
+            <ProFormDigit
+              name="leadCapacityOverride"
+              label="个人在手容量覆盖"
+              min={1}
+              max={100000}
+              fieldProps={{ precision: 0, placeholder: '留空则使用企业默认容量' }}
+              extra="达到容量后不能抢单，也不参与自动派单。"
+            />
             <ProFormText name="wechatId" label="微信号" rules={[{ required: true, message: '请输入设计师微信号' }]} />
             <Form.Item
               label="个人微信二维码"

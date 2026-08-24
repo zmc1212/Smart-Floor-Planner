@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import {
   aiGenerations,
   aiWorkflows,
@@ -6,6 +6,8 @@ import {
   leadCommissions,
   leadFloorPlans,
   leadLifecycleEvents,
+  leadClaimWindows,
+  leadOutcomeSnapshots,
   leads,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
@@ -160,6 +162,18 @@ export class LeadLifecycleRepository {
           isNull(customerAttributionLocks.releasedAt)
         )
       );
+    await this.transaction
+      .update(leadClaimWindows)
+      .set({
+        status: 'cancelled',
+        resolvedAt: now,
+        resolutionReason: 'lead_archived',
+        updatedAt: now,
+      })
+      .where(and(
+        eq(leadClaimWindows.leadId, input.leadId),
+        eq(leadClaimWindows.status, 'open')
+      ));
     await this.recordEvent(input.leadId, rows[0].enterpriseId, input.actorId, 'archived', input.reason, impactMetadata(input.impact));
     return rows[0];
   }
@@ -285,6 +299,28 @@ export class LeadLifecycleRepository {
         contractAmount: input.contractAmount,
       }
     );
+    await this.transaction.insert(leadOutcomeSnapshots).values({
+      enterpriseId: rows[0].enterpriseId!,
+      leadId: input.leadId,
+      designerId: lead.assignedTo,
+      outcome: 'signed',
+      performanceEligible: true,
+      previousLeadStatus: lead.status,
+      outcomeAt: now,
+      recordedByStaffId: input.actorId,
+    });
+    await this.transaction
+      .update(leadClaimWindows)
+      .set({
+        status: 'cancelled',
+        resolvedAt: now,
+        resolutionReason: 'lead_closed',
+        updatedAt: now,
+      })
+      .where(and(
+        eq(leadClaimWindows.leadId, lead.id),
+        eq(leadClaimWindows.status, 'open')
+      ));
     if (shouldSnapshotLeadCommissions(rows[0])) {
       await new LeadCommissionRepository(this.transaction).snapshotForConvertedLead(input.leadId);
     }
@@ -320,6 +356,17 @@ export class LeadLifecycleRepository {
     const voidedCommissionCount = await new LeadCommissionRepository(this.transaction)
       .voidUnpaidForRevertedLead(input.leadId, input.actorId, input.reason);
     const now = new Date();
+    await this.transaction
+      .update(leadOutcomeSnapshots)
+      .set({
+        invalidatedAt: now,
+        invalidatedByStaffId: input.actorId,
+        invalidationReason: input.reason,
+      })
+      .where(and(
+        eq(leadOutcomeSnapshots.leadId, input.leadId),
+        isNull(leadOutcomeSnapshots.invalidatedAt)
+      ));
     const rows = await this.transaction
       .update(leads)
       .set({
@@ -353,6 +400,168 @@ export class LeadLifecycleRepository {
         voidedCommissionCount,
       }
     );
+    return rows[0];
+  }
+
+  async closeLost(input: {
+    leadId: bigint;
+    actorId: bigint;
+    reason: string;
+    note?: string | null;
+    performanceEligible: boolean;
+  }) {
+    const current = await this.transaction
+      .select()
+      .from(leads)
+      .where(eq(leads.id, input.leadId))
+      .limit(1)
+      .for('update');
+    const lead = current[0];
+    if (!lead?.enterpriseId) return null;
+    if (lead.archivedAt) throw httpError('该客户线索已归档，请先恢复后再操作', 409);
+    const normalized = normalizeLeadStatus(lead.status);
+    if (normalized === 'closed') throw httpError('该客户线索已经结案', 409);
+    if (normalized === 'converted') throw httpError('已签约线索不能标记为未签单结案', 409);
+    if (!['new', 'measuring', 'designing'].includes(normalized)) {
+      throw httpError('当前线索状态不能结案', 409);
+    }
+    const now = new Date();
+    const rows = await this.transaction
+      .update(leads)
+      .set({ status: 'closed', updatedAt: now })
+      .where(and(eq(leads.id, input.leadId), eq(leads.status, lead.status), isNull(leads.archivedAt)))
+      .returning();
+    if (!rows[0]) throw httpError('线索状态已变化，请刷新后重试', 409);
+    await this.transaction.insert(leadOutcomeSnapshots).values({
+      enterpriseId: lead.enterpriseId,
+      leadId: lead.id,
+      designerId: lead.assignedTo,
+      outcome: 'lost',
+      performanceEligible: input.performanceEligible,
+      lostReason: input.reason,
+      note: input.note?.trim() || null,
+      previousLeadStatus: lead.status,
+      outcomeAt: now,
+      recordedByStaffId: input.actorId,
+    });
+    await this.transaction
+      .update(customerAttributionLocks)
+      .set({ releasedAt: now, releaseReason: 'lead_closed_lost', updatedAt: now })
+      .where(and(
+        eq(customerAttributionLocks.leadId, lead.id),
+        isNull(customerAttributionLocks.releasedAt)
+      ));
+    await this.transaction
+      .update(leadClaimWindows)
+      .set({
+        status: 'cancelled',
+        resolvedAt: now,
+        resolutionReason: 'lead_closed_lost',
+        updatedAt: now,
+      })
+      .where(and(
+        eq(leadClaimWindows.leadId, lead.id),
+        eq(leadClaimWindows.status, 'open')
+      ));
+    await this.recordEvent(lead.id, lead.enterpriseId, input.actorId, 'closed_lost', input.reason, {
+      previousStatus: lead.status,
+      performanceEligible: input.performanceEligible,
+      note: input.note?.trim() || null,
+      designerId: lead.assignedTo?.toString() || null,
+    });
+    return rows[0];
+  }
+
+  async reopenLost(input: { leadId: bigint; actorId: bigint; reason?: string | null }) {
+    const current = await this.transaction
+      .select()
+      .from(leads)
+      .where(eq(leads.id, input.leadId))
+      .limit(1)
+      .for('update');
+    const lead = current[0];
+    if (!lead?.enterpriseId) return null;
+    if (lead.archivedAt) throw httpError('该客户线索已归档，请先恢复后再操作', 409);
+    if (normalizeLeadStatus(lead.status) !== 'closed') throw httpError('只有已结案线索可以重新激活', 409);
+    const snapshots = await this.transaction
+      .select()
+      .from(leadOutcomeSnapshots)
+      .where(and(
+        eq(leadOutcomeSnapshots.leadId, lead.id),
+        eq(leadOutcomeSnapshots.outcome, 'lost'),
+        isNull(leadOutcomeSnapshots.invalidatedAt)
+      ))
+      .orderBy(desc(leadOutcomeSnapshots.id))
+      .limit(1)
+      .for('update');
+    const snapshot = snapshots[0];
+    if (!snapshot) throw httpError('找不到可恢复的结案记录', 409);
+    if (lead.customerUserId) {
+      const active = await this.transaction
+        .select()
+        .from(customerAttributionLocks)
+        .where(and(
+          eq(customerAttributionLocks.customerUserId, lead.customerUserId),
+          isNull(customerAttributionLocks.releasedAt)
+        ))
+        .limit(1)
+        .for('update');
+      if (active[0] && active[0].leadId !== lead.id) {
+        throw Object.assign(httpError('客户已建立其他活动归属，无法重新激活', 409), {
+          code: 'customer_attribution_conflict',
+        });
+      }
+    }
+    const restoredStatus = ['new', 'measuring', 'designing'].includes(normalizeLeadStatus(snapshot.previousLeadStatus))
+      ? snapshot.previousLeadStatus
+      : 'new';
+    const now = new Date();
+    const rows = await this.transaction
+      .update(leads)
+      .set({
+        status: restoredStatus,
+        assignmentStatus: lead.assignedTo ? lead.assignmentStatus : 'assignment_pending',
+        assignmentErrorCode: lead.assignedTo ? lead.assignmentErrorCode : 'designer_unavailable',
+        updatedAt: now,
+      })
+      .where(and(eq(leads.id, lead.id), eq(leads.status, lead.status)))
+      .returning();
+    if (!rows[0]) throw httpError('线索状态已变化，请刷新后重试', 409);
+    await this.transaction
+      .update(leadOutcomeSnapshots)
+      .set({
+        invalidatedAt: now,
+        invalidatedByStaffId: input.actorId,
+        invalidationReason: input.reason?.trim() || 'lead_reopened',
+      })
+      .where(eq(leadOutcomeSnapshots.id, snapshot.id));
+    if (lead.customerUserId) {
+      const releasedLocks = await this.transaction
+        .select({ id: customerAttributionLocks.id })
+        .from(customerAttributionLocks)
+        .where(eq(customerAttributionLocks.leadId, lead.id))
+        .orderBy(desc(customerAttributionLocks.id))
+        .limit(1)
+        .for('update');
+      if (releasedLocks[0]) {
+        await this.transaction
+          .update(customerAttributionLocks)
+          .set({ releasedAt: null, releaseReason: null, updatedAt: now })
+          .where(eq(customerAttributionLocks.id, releasedLocks[0].id));
+      } else {
+        await this.transaction.insert(customerAttributionLocks).values({
+          enterpriseId: lead.enterpriseId,
+          customerUserId: lead.customerUserId,
+          leadId: lead.id,
+          referrerMembershipId: lead.referrerMembershipId,
+          lockedAt: now,
+        });
+      }
+    }
+    await this.recordEvent(lead.id, lead.enterpriseId, input.actorId, 'reopened', input.reason?.trim() || null, {
+      restoredStatus,
+      invalidatedOutcomeSnapshotId: snapshot.id.toString(),
+    });
     return rows[0];
   }
 

@@ -29,6 +29,7 @@ interface StaffUpdateBody {
   wechatId?: string;
   wechatQrAssetId?: string | null;
   assignmentPaused?: boolean;
+  leadCapacityOverride?: number | null;
 }
 
 const BUSINESS_ROLES = [
@@ -123,6 +124,15 @@ export async function PUT(
             if (typeof body.assignmentPaused === 'boolean') {
               updateData.assignmentPaused = body.assignmentPaused;
             }
+            if (body.leadCapacityOverride !== undefined) {
+              const capacity = body.leadCapacityOverride === null || Number(body.leadCapacityOverride) === 0
+                ? null
+                : Number(body.leadCapacityOverride);
+              if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1 || capacity > 100000)) {
+                throw new Error('个人容量覆盖范围应为 1–100000');
+              }
+              updateData.leadCapacityOverride = (body.role || current.role) === 'designer' ? capacity : null;
+            }
             if (body.departmentId !== undefined) {
               const departmentId = parseOptionalPostgresId(
                 body.departmentId,
@@ -193,6 +203,7 @@ export async function PUT(
           body.role !== undefined ||
           body.status === 'active' ||
           body.assignmentPaused === false ||
+          body.leadCapacityOverride !== undefined ||
           (updated.role === 'designer' &&
             (body.wechatId !== undefined ||
               body.wechatQrAssetId !== undefined));
