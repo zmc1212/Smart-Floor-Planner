@@ -20,6 +20,12 @@ const referralAssets = [
   'xiao-k-onboarding-welcome.png',
   'xiao-k-onboarding-recovery.png',
   'xiao-k-spatial-service-guide.png',
+  'xiao-k-phone-privacy.png',
+  'phone-auth-measure.png',
+  'phone-auth-design.png',
+  'phone-auth-calendar.png',
+  'phone-auth-wechat.png',
+  'phone-auth-privacy.png',
 ];
 
 test('staff activity code reuses the promotion visual language and may show the enterprise name', () => {
@@ -168,6 +174,18 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /服务已建立/);
   assert.match(wxml, /success-title/);
   assert.match(wxml, /免费量房 · 免费设计/);
+  assert.match(wxml, /双重免费权益/);
+  assert.match(wxml, /仅用于本次服务联系/);
+  assert.match(wxml, /授权后我们会/);
+  assert.match(wxml, /确认上门时间与地址/);
+  assert.match(wxml, /发送设计师微信/);
+  assert.match(wxml, /手机号仅用于本次服务，不公开、不出售/);
+  assert.match(wxml, /xiao-k-phone-privacy\.png/);
+  assert.match(wxml, /phone-auth-measure\.png/);
+  assert.match(wxml, /phone-auth-design\.png/);
+  assert.match(wxml, /phone-auth-calendar\.png/);
+  assert.match(wxml, /phone-auth-wechat\.png/);
+  assert.match(wxml, /phone-auth-privacy\.png/);
   assert.match(wxml, /权益已生效，正在为你匹配合适的设计师/);
   assert.match(wxml, /专业人员上门测量/);
   assert.match(wxml, /设计师沟通方案/);
@@ -183,6 +201,7 @@ test('free design service resolves into phone authorization and renders truthful
     if (
       asset === 'designer-matching.png'
       || asset === 'privacy-lock.png'
+      || asset === 'phone-authorization.png'
       || asset === 'designer-service.png'
       || asset === 'xiao-k-onboarding-welcome.png'
       || asset === 'xiao-k-onboarding-recovery.png'
@@ -236,11 +255,22 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(less, /\.claim-action\s*\{[^}]*align-self:\s*stretch/);
   assert.match(less, /\.claim-action\s*\{[^}]*min-width:\s*100%/);
   assert.match(less, /\.claim-action\s*\{[^}]*white-space:\s*nowrap/);
-  assert.match(less, /\.claim-auth,\s*\.claim-pending\s*\{[\s\S]*overflow-y:\s*auto/);
-  assert.match(less, /\.claim-auth \.claim-action\s*\{[^}]*margin-top:\s*36rpx/);
+  assert.match(less, /\.claim-auth\s*\{[^}]*overflow:\s*hidden/);
+  assert.match(less, /\.claim-pending\s*\{[^}]*overflow:\s*hidden/);
+  assert.match(less, /\.claim-auth \.claim-action\s*\{[^}]*margin-top:\s*20rpx/);
+  assert.match(less, /\.auth-benefit-pass\s*\{[^}]*min-height:\s*442rpx[^}]*flex:\s*1\.08 1 auto/);
+  assert.match(less, /\.auth-benefit-title\s*\{[^}]*font-size:\s*46rpx/);
+  assert.match(less, /\.auth-benefit-item\s*\{[^}]*min-height:\s*132rpx/);
+  assert.match(less, /\.auth-privacy-xiaok\s*\{[^}]*width:\s*320rpx[^}]*height:\s*304rpx/);
+  assert.match(less, /\.auth-benefit-icon\s*\{[^}]*width:\s*72rpx[^}]*height:\s*72rpx/);
+  assert.match(less, /\.auth-purpose-card\s*\{[^}]*min-height:\s*360rpx[^}]*flex:\s*0\.82 1 auto/);
   assert.match(less, /\.claim-pending \.claim-action\s*\{[^}]*margin-top:\s*20rpx/);
-  assert.match(less, /\.pending-benefit-title\s*\{[^}]*font-size:\s*44rpx/);
-  assert.match(less, /\.pending-journey-card\s*\{[^}]*background:\s*#ffffff/);
+  assert.match(less, /\.pending-benefit-hero\s*\{[^}]*min-height:\s*418rpx[^}]*flex:\s*1\.08 1 auto/);
+  assert.match(less, /\.pending-benefit-title\s*\{[^}]*font-size:\s*48rpx/);
+  assert.match(less, /\.pending-benefit-item\s*\{[^}]*min-height:\s*150rpx/);
+  assert.match(less, /\.pending-journey-card\s*\{[^}]*min-height:\s*373rpx[^}]*flex:\s*0\.92 1 auto[^}]*background:\s*#ffffff/);
+  assert.match(less, /@media \(max-height:\s*760px\)\s*\{[\s\S]*\.claim-pending\s*\{[^}]*overflow-y:\s*auto/);
+  assert.match(less, /@media \(max-height:\s*760px\)\s*\{[\s\S]*\.claim-auth,[\s\S]*overflow-y:\s*auto/);
   assert.match(less, /\.success-title\s*\{[^}]*color:\s*#00c365/);
   assert.match(less, /\.existing-note\s*\{[^}]*background:\s*#f1f5f2/);
   assert.match(less, /\.designer-qr\s*\{[\s\S]*width:\s*280rpx/);

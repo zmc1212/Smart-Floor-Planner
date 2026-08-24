@@ -104,15 +104,29 @@ page {
  * The shared action uses an auto top margin for longer claim states; here it
  * would turn the remaining viewport into a misleading spacer.
  */
-.claim-auth,
+.claim-auth {
+  overflow: hidden;
+}
+
+.claim-auth .claim-stepper,
+.claim-auth .claim-action,
+.claim-auth .later-link {
+  flex: none;
+}
+
 .claim-pending {
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
+}
+
+.claim-pending .claim-stepper,
+.claim-pending .pending-note,
+.claim-pending .claim-action,
+.claim-pending .later-link {
+  flex: none;
 }
 
 .claim-auth .claim-action {
-  margin-top: 36rpx;
+  margin-top: 20rpx;
 }
 
 .claim-pending .claim-action {
@@ -527,11 +541,239 @@ button.claim-action[disabled] {
   text-align: center;
 }
 
-.pending-benefit-hero {
+.auth-benefit-pass {
   position: relative;
+  display: flex;
   overflow: hidden;
+  min-height: 442rpx;
   margin-top: 4rpx;
   padding: 22rpx 22rpx 24rpx;
+  flex: 1.08 1 auto;
+  flex-direction: column;
+  border-radius: 28rpx;
+  background: linear-gradient(135deg, #f5fcf7 0%, #e4f7e9 100%);
+  box-shadow: 0 12rpx 32rpx rgba(24, 52, 38, 0.07);
+  box-sizing: border-box;
+}
+
+.auth-benefit-pill {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  min-height: 48rpx;
+  padding: 0 18rpx;
+  align-items: center;
+  align-self: flex-start;
+  border-radius: 999rpx;
+  color: #ffffff;
+  background: #00c365;
+  box-shadow: 0 6rpx 14rpx rgba(0, 195, 101, 0.18);
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 48rpx;
+}
+
+.auth-benefit-main {
+  position: relative;
+  display: flex;
+  min-height: 190rpx;
+  margin-top: 8rpx;
+  align-items: flex-start;
+  flex: 1;
+}
+
+.auth-benefit-copy {
+  position: relative;
+  z-index: 2;
+  width: 470rpx;
+  padding-top: 12rpx;
+}
+
+.auth-benefit-title {
+  display: block;
+  color: #123a28;
+  font-size: 46rpx;
+  font-weight: 700;
+  line-height: 1.18;
+  white-space: nowrap;
+}
+
+.auth-benefit-subtitle {
+  display: block;
+  margin-top: 12rpx;
+  color: #4f6b5c;
+  font-size: 24rpx;
+  line-height: 1.45;
+}
+
+.auth-privacy-xiaok {
+  position: absolute;
+  top: 38rpx;
+  right: -8rpx;
+  z-index: 1;
+  width: 320rpx;
+  height: 304rpx;
+}
+
+.auth-benefit-grid {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: none;
+  gap: 12rpx;
+}
+
+.auth-benefit-item {
+  display: flex;
+  min-width: 0;
+  min-height: 132rpx;
+  padding: 16rpx 18rpx;
+  align-items: center;
+  flex: 1;
+  gap: 14rpx;
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.9);
+  box-sizing: border-box;
+}
+
+.auth-benefit-icon {
+  width: 72rpx;
+  height: 72rpx;
+  flex: none;
+}
+
+.auth-benefit-meta,
+.auth-purpose-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.auth-benefit-label {
+  color: #183426;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.auth-benefit-helper {
+  margin-top: 6rpx;
+  color: #65796d;
+  font-size: 22rpx;
+  line-height: 1.35;
+}
+
+.auth-purpose-card {
+  display: flex;
+  min-height: 360rpx;
+  margin-top: 18rpx;
+  padding: 24rpx 28rpx 20rpx;
+  flex: 0.82 1 auto;
+  flex-direction: column;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow: 0 12rpx 32rpx rgba(24, 52, 38, 0.06);
+  box-sizing: border-box;
+}
+
+.auth-purpose-title {
+  color: #183426;
+  font-size: 28rpx;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.auth-purpose-list {
+  display: flex;
+  min-height: 0;
+  margin-top: 10rpx;
+  flex: 1;
+  flex-direction: column;
+}
+
+.auth-purpose-row {
+  position: relative;
+  display: flex;
+  min-height: 104rpx;
+  align-items: center;
+  flex: 1;
+  gap: 18rpx;
+}
+
+.auth-purpose-row + .auth-purpose-row::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: #dfe8e2;
+  content: '';
+  transform: scaleY(0.5);
+  transform-origin: center top;
+}
+
+.auth-purpose-icon {
+  display: flex;
+  width: 72rpx;
+  height: 72rpx;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  background: #f0f9f3;
+}
+
+.auth-purpose-icon image {
+  width: 56rpx;
+  height: 56rpx;
+}
+
+.auth-purpose-label {
+  color: #183426;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.auth-purpose-helper {
+  margin-top: 4rpx;
+  color: #7b8d82;
+  font-size: 22rpx;
+  line-height: 1.35;
+}
+
+.auth-privacy-strip {
+  display: flex;
+  min-height: 64rpx;
+  padding: 8rpx 14rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  border-radius: 16rpx;
+  color: #3f8060;
+  background: #f0f9f3;
+  box-sizing: border-box;
+  font-size: 22rpx;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.auth-privacy-strip image {
+  width: 28rpx;
+  height: 28rpx;
+  flex: none;
+}
+
+.pending-benefit-hero {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  min-height: 418rpx;
+  margin-top: 4rpx;
+  padding: 22rpx 22rpx 24rpx;
+  flex: 1.08 1 auto;
+  flex-direction: column;
   border-radius: 28rpx;
   background: linear-gradient(135deg, #f5fcf7 0%, #e4f7e9 100%);
   box-shadow: 0 12rpx 32rpx rgba(24, 52, 38, 0.07);
@@ -545,6 +787,7 @@ button.claim-action[disabled] {
   min-height: 48rpx;
   padding: 0 18rpx 0 10rpx;
   align-items: center;
+  align-self: flex-start;
   gap: 8rpx;
   border-radius: 999rpx;
   color: #00a95a;
@@ -570,6 +813,7 @@ button.claim-action[disabled] {
   min-height: 190rpx;
   margin-top: 8rpx;
   align-items: flex-start;
+  flex: 1;
 }
 
 .pending-benefit-copy {
@@ -582,7 +826,7 @@ button.claim-action[disabled] {
 .pending-benefit-title {
   display: block;
   color: #123a28;
-  font-size: 44rpx;
+  font-size: 48rpx;
   font-weight: 800;
   line-height: 1.22;
   white-space: nowrap;
@@ -602,21 +846,22 @@ button.claim-action[disabled] {
   top: -28rpx;
   right: -26rpx;
   z-index: 1;
-  width: 300rpx;
-  height: 200rpx;
+  width: 342rpx;
+  height: 228rpx;
 }
 
 .pending-benefit-grid {
   position: relative;
   z-index: 2;
   display: flex;
+  flex: none;
   gap: 12rpx;
 }
 
 .pending-benefit-item {
   display: flex;
   min-width: 0;
-  min-height: 126rpx;
+  min-height: 150rpx;
   padding: 20rpx 18rpx;
   align-items: center;
   flex: 1;
@@ -654,8 +899,12 @@ button.claim-action[disabled] {
 }
 
 .pending-journey-card {
+  display: flex;
+  min-height: 373rpx;
   margin-top: 18rpx;
   padding: 24rpx 28rpx 20rpx;
+  flex: 0.92 1 auto;
+  flex-direction: column;
   border-radius: 28rpx;
   background: #ffffff;
   box-shadow: 0 12rpx 32rpx rgba(24, 52, 38, 0.06);
@@ -671,7 +920,10 @@ button.claim-action[disabled] {
 
 .pending-journey-list {
   position: relative;
+  display: flex;
   margin-top: 14rpx;
+  flex: 1;
+  flex-direction: column;
 }
 
 .pending-journey-rail {
@@ -690,6 +942,7 @@ button.claim-action[disabled] {
   display: flex;
   min-height: 92rpx;
   align-items: center;
+  flex: 1;
   gap: 18rpx;
 }
 
@@ -1183,12 +1436,48 @@ button.claim-action[disabled] {
     padding-left: 18rpx;
   }
 
+  .auth-benefit-pass {
+    padding-right: 18rpx;
+    padding-left: 18rpx;
+  }
+
+  .auth-benefit-copy {
+    width: 430rpx;
+  }
+
+  .auth-benefit-title {
+    font-size: 44rpx;
+  }
+
+  .auth-privacy-xiaok {
+    top: 42rpx;
+    right: -10rpx;
+    width: 304rpx;
+    height: 289rpx;
+  }
+
+  .auth-benefit-item {
+    padding-right: 14rpx;
+    padding-left: 14rpx;
+    gap: 10rpx;
+  }
+
+  .auth-benefit-icon {
+    width: 68rpx;
+    height: 68rpx;
+  }
+
+  .auth-purpose-card {
+    padding-right: 24rpx;
+    padding-left: 24rpx;
+  }
+
   .pending-benefit-copy {
     width: 390rpx;
   }
 
   .pending-benefit-title {
-    font-size: 40rpx;
+    font-size: 44rpx;
   }
 
   .pending-benefit-subtitle {
@@ -1197,8 +1486,8 @@ button.claim-action[disabled] {
 
   .pending-spatial-xiaok {
     right: -42rpx;
-    width: 272rpx;
-    height: 182rpx;
+    width: 320rpx;
+    height: 214rpx;
   }
 
   .pending-benefit-item {
@@ -1215,5 +1504,35 @@ button.claim-action[disabled] {
   .claim-action {
     min-height: 88rpx;
     line-height: 88rpx;
+  }
+
+  .claim-pending .claim-action {
+    min-height: 96rpx;
+    line-height: 96rpx;
+  }
+}
+
+@media (max-height: 760px) {
+  .claim-auth,
+  .claim-pending {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pending-benefit-hero,
+  .pending-journey-card,
+  .auth-benefit-pass,
+  .auth-purpose-card {
+    flex: none;
+  }
+
+  .pending-benefit-main,
+  .pending-journey-list,
+  .pending-journey-item,
+  .auth-benefit-main,
+  .auth-purpose-list,
+  .auth-purpose-row {
+    flex: none;
   }
 }

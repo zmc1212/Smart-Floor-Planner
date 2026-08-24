@@ -1,3 +1,10 @@
+<!--
+  THESIS: 用“双免权益票”把免费量房、免费设计与当前真实服务阶段放进同一首屏，不再留下无意义空白。
+  OWN-WORLD: 品牌绿主场景、暖白票据、浅灰绿服务板、哑光 3D 小K与工具资产。
+  STORY: 用户先确认两项免费权益，再看当前阶段与真实成果，最后进入唯一下一步或服务档案。
+  FIRST VIEWPORT: 胶囊安全身份栏；绿色权益 Hero；跨层项目票据；两张错位服务卡；保障条。
+  FORM: 已批准 B 版“双免权益票”，沿用既有 Operate 模式、真实媒体与动态阶段合同。
+-->
 <view class="customer-service-home sfp-tab-page">
   <scroll-view scroll-y class="csh-scroll" enhanced show-scrollbar="{{false}}">
     <view class="csh-content">
@@ -30,65 +37,86 @@
       </view>
 
       <block wx:else>
-        <view class="csh-hero-card">
-          <view class="hero-top-row">
-            <view class="hero-text-wrap">
-              <text class="hero-title">我的装修服务</text>
-              <text class="hero-subtitle">{{subtitle}}</text>
+        <view class="benefit-hero">
+          <view class="benefit-hero-copy">
+            <text class="benefit-headline">两项服务，全程免费</text>
+            <view class="benefit-chip-row">
+              <view
+                class="benefit-chip"
+                bindtap="openBookShortcut"
+                hover-class="chip-pressed"
+                aria-role="button"
+                aria-label="免费量房"
+              >
+                <view class="benefit-check" aria-hidden="true"></view>
+                <text>免费量房</text>
+              </view>
+              <view
+                class="benefit-chip"
+                bindtap="openDesignerShortcut"
+                hover-class="chip-pressed"
+                aria-role="button"
+                aria-label="免费设计"
+              >
+                <view class="benefit-check" aria-hidden="true"></view>
+                <text>免费设计</text>
+              </view>
             </view>
+            <text class="benefit-subline">上门精准量尺 · 1对1全屋方案</text>
           </view>
+          <image class="benefit-guide" src="{{xiaoKImage}}" mode="aspectFit" />
 
-          <view class="hero-inset">
-            <view class="inset-media {{mediaMode}}">
-              <image
-                wx:if="{{showFloorPlanThumb}}"
-                class="media-thumb floor-plan"
-                src="{{floorPlanImagePath}}"
-                mode="aspectFill"
-              />
-              <image
-                wx:if="{{showSchemeThumb}}"
-                class="media-thumb scheme"
-                src="{{schemeImagePath}}"
-                mode="aspectFill"
-              />
-              <image
-                wx:if="{{showXiaoK}}"
-                class="media-xiaok"
-                src="{{xiaoKImage}}"
-                mode="aspectFit"
-              />
-            </view>
-            <view class="inset-copy">
-              <text class="inset-title">{{insetTitle}}</text>
-              <text wx:if="{{insetHelper}}" class="inset-helper">{{insetHelper}}</text>
-              <view class="progress-pills">
-                <view
-                  wx:for="{{progressPills}}"
-                  wx:key="key"
-                  class="progress-pill tone-{{item.tone}}"
-                >
-                  <text>{{item.label}}</text>
+          <view class="service-ticket">
+            <view class="ticket-main-row {{showFloorPlanThumb || showSchemeThumb ? 'has-media' : 'no-media'}}">
+              <view wx:if="{{showFloorPlanThumb || showSchemeThumb}}" class="ticket-media {{mediaMode}}">
+                <image
+                  wx:if="{{showFloorPlanThumb}}"
+                  class="ticket-thumb floor-plan"
+                  src="{{floorPlanImagePath}}"
+                  mode="aspectFill"
+                />
+                <image
+                  wx:if="{{showSchemeThumb}}"
+                  class="ticket-thumb scheme"
+                  src="{{schemeImagePath}}"
+                  mode="aspectFill"
+                />
+              </view>
+              <view class="ticket-status">
+                <text class="ticket-title">{{insetTitle}}</text>
+                <text wx:if="{{subtitle}}" class="ticket-summary">{{subtitle}}</text>
+                <text wx:if="{{insetHelper}}" class="ticket-helper">{{insetHelper}}</text>
+                <view class="progress-track">
+                  <view
+                    wx:for="{{progressPills}}"
+                    wx:key="key"
+                    class="progress-step tone-{{item.tone}}"
+                  >
+                    <view class="progress-node" aria-hidden="true">
+                      <view class="progress-node-mark"></view>
+                    </view>
+                    <text class="progress-label">{{item.label}}</text>
+                  </view>
                 </view>
               </view>
             </view>
-          </view>
 
-          <view
-            class="hero-cta primary {{nextActionKind === 'wait_designer' ? 'weak' : ''}}"
-            bindtap="onPrimaryCta"
-            hover-class="btn-pressed"
-          >
-            <text class="hero-cta-label">{{primaryCta.label}}</text>
-          </view>
-          <view
-            wx:if="{{showSecondaryCta}}"
-            class="hero-cta secondary"
-            bindtap="onSecondaryCta"
-            hover-class="btn-pressed"
-            aria-label="我的服务档案"
-          >
-            <text class="hero-cta-label">我的服务档案</text>
+            <view
+              class="ticket-cta primary {{nextActionKind === 'wait_designer' ? 'weak' : ''}}"
+              bindtap="onPrimaryCta"
+              hover-class="btn-pressed"
+            >
+              <text>{{primaryCta.label}}</text>
+            </view>
+            <view
+              wx:if="{{showSecondaryCta}}"
+              class="ticket-cta secondary"
+              bindtap="onSecondaryCta"
+              hover-class="btn-pressed"
+              aria-label="我的服务档案"
+            >
+              <text>我的服务档案</text>
+            </view>
           </view>
         </view>
 
@@ -97,21 +125,43 @@
           <text class="switcher-action">切换</text>
         </view>
 
-        <view wx:if="{{!isEmpty}}" class="shortcut-grid">
-          <view class="shortcut-card" bindtap="openBookShortcut" hover-class="card-pressed">
-            <view class="shortcut-text">
-              <text class="shortcut-title">预约量房</text>
-              <text class="shortcut-desc">{{bookShortcutDesc || '免费上门精准量尺'}}</text>
+        <view class="benefit-stack">
+          <view
+            class="benefit-service-card measurement-card"
+            bindtap="openBookShortcut"
+            hover-class="card-pressed"
+            aria-role="button"
+            aria-label="免费量房"
+          >
+            <view class="benefit-service-copy">
+              <text class="benefit-service-title">免费量房</text>
+              <text class="benefit-service-desc">专业人员上门 · 精准记录空间</text>
+              <view class="benefit-arrow" aria-hidden="true"><view class="benefit-arrow-mark"></view></view>
             </view>
-            <image class="shortcut-art" src="/images/airy-v1/laser-meter-3d.png" mode="aspectFit" />
+            <image class="benefit-service-art meter-art" src="/images/airy-v1/laser-meter-3d.png" mode="aspectFit" />
           </view>
-          <view class="shortcut-card" bindtap="openDesignerShortcut" hover-class="card-pressed">
-            <view class="shortcut-text">
-              <text class="shortcut-title">专属设计师</text>
-              <text class="shortcut-desc">{{designerShortcutDesc}}</text>
+
+          <view
+            class="benefit-service-card design-card"
+            bindtap="openDesignerShortcut"
+            hover-class="card-pressed"
+            aria-role="button"
+            aria-label="免费设计"
+          >
+            <image class="benefit-service-art easel-art" src="/images/airy-v1/designer-easel-3d.png" mode="aspectFit" />
+            <view class="benefit-service-copy">
+              <text class="benefit-service-title">免费设计</text>
+              <text class="benefit-service-desc">专属设计师 · 1对1全屋方案</text>
+              <view class="benefit-arrow" aria-hidden="true"><view class="benefit-arrow-mark"></view></view>
             </view>
-            <image class="shortcut-art" src="/images/airy-v1/designer-easel-3d.png" mode="aspectFit" />
           </view>
+        </view>
+
+        <view class="benefit-assurance">
+          <view class="assurance-check" aria-hidden="true"></view>
+          <text class="assurance-benefit">量房、设计不收费</text>
+          <view class="assurance-divider"></view>
+          <text class="assurance-status">{{benefitStatusLabel}}</text>
         </view>
       </block>
     </view>

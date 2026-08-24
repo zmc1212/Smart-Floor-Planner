@@ -2,8 +2,8 @@
 THESIS: 扫码授权后先确认“免费量房 · 免费设计”权益，再用连续服务路径承接待匹配结果。
 OWN-WORLD: 极简透气版暖白纸面、家客绿步骤条、克制线框图标和单一绿色主动作。
 STORY: 客户扫码后直接授权手机号，完成两步流程并获得已匹配设计师或等待派单。
-FIRST VIEWPORT: 胶囊左侧品牌锁；phoneAuth、success、pending、existing 各自在 390x844 同屏展示主内容与 CTA。
-FORM: design-references/free-design-service-pending-redesign-v1/free-design-service-pending-v1.png
+FIRST VIEWPORT: 胶囊左侧使用正式家客来品牌锁；phoneAuth、success、pending、existing 各自在 390x844 同屏展示主内容与 CTA。
+FORM: design-references/free-design-service-phone-auth-redesign-v1/free-design-service-phone-auth-v1.png
 -->
 <view class="claim-page state-{{pageState}}">
   <view
@@ -45,41 +45,72 @@ FORM: design-references/free-design-service-pending-redesign-v1/free-design-serv
       </view>
     </view>
 
-    <view class="auth-hero">
-      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
-      <view class="hero-blob" aria-hidden="true"></view>
-      <view class="hero-copy">
-        <text class="ready-title">授权手机号，开始服务</text>
-        <text class="ready-subtitle">仅用于本次免费量房与设计服务联系</text>
+    <view class="auth-benefit-pass">
+      <view class="auth-benefit-pill">双重免费权益</view>
+      <view class="auth-benefit-main">
+        <view class="auth-benefit-copy">
+          <text class="auth-benefit-title">授权手机号，</text>
+          <text class="auth-benefit-title">领取免费量房·免费设计</text>
+          <text class="auth-benefit-subtitle">仅用于本次服务联系</text>
+        </view>
+        <image
+          class="auth-privacy-xiaok"
+          src="/packages/business/assets/referral-service-v1/xiao-k-phone-privacy.png"
+          mode="aspectFit"
+        />
       </view>
-      <image
-        class="hero-xiaok"
-        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
-        mode="aspectFit"
-      />
+
+      <view class="auth-benefit-grid">
+        <view class="auth-benefit-item">
+          <image
+            class="auth-benefit-icon"
+            src="/packages/business/assets/referral-service-v1/phone-auth-measure.png"
+            mode="aspectFit"
+          />
+          <view class="auth-benefit-meta">
+            <text class="auth-benefit-label">免费量房</text>
+            <text class="auth-benefit-helper">专业人员上门测量</text>
+          </view>
+        </view>
+        <view class="auth-benefit-item">
+          <image
+            class="auth-benefit-icon"
+            src="/packages/business/assets/referral-service-v1/phone-auth-design.png"
+            mode="aspectFit"
+          />
+          <view class="auth-benefit-meta">
+            <text class="auth-benefit-label">免费设计</text>
+            <text class="auth-benefit-helper">设计师沟通方案</text>
+          </view>
+        </view>
+      </view>
     </view>
 
-    <view class="auth-card">
-      <view class="block-title-row">
-        <view class="title-leaf"></view>
-        <text class="block-title">手机号授权</text>
-        <view class="title-leaf title-leaf-flip"></view>
-      </view>
-      <view class="auth-reason">
-        <view class="reason-icon">
-          <image src="/packages/business/assets/referral-service-v1/phone-authorization.png" mode="aspectFit" />
+    <view class="auth-purpose-card">
+      <text class="auth-purpose-title">授权后我们会</text>
+      <view class="auth-purpose-list">
+        <view class="auth-purpose-row">
+          <view class="auth-purpose-icon">
+            <image src="/packages/business/assets/referral-service-v1/phone-auth-calendar.png" mode="aspectFit" />
+          </view>
+          <view class="auth-purpose-copy">
+            <text class="auth-purpose-label">预约量房联系</text>
+            <text class="auth-purpose-helper">确认上门时间与地址</text>
+          </view>
         </view>
-        <text class="reason-copy">用于预约量房联系</text>
-      </view>
-      <view class="auth-reason">
-        <view class="reason-icon">
-          <image src="/packages/business/assets/login-v1/wechat.png" mode="aspectFit" />
+        <view class="auth-purpose-row">
+          <view class="auth-purpose-icon">
+            <image src="/packages/business/assets/referral-service-v1/phone-auth-wechat.png" mode="aspectFit" />
+          </view>
+          <view class="auth-purpose-copy">
+            <text class="auth-purpose-label">发送设计师微信</text>
+            <text class="auth-purpose-helper">方便后续沟通方案</text>
+          </view>
         </view>
-        <text class="reason-copy">用于接收设计师微信</text>
       </view>
-      <view class="auth-privacy">
-        <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-        <text>我们不会公开或出售您的手机号</text>
+      <view class="auth-privacy-strip">
+        <image src="/packages/business/assets/referral-service-v1/phone-auth-privacy.png" mode="aspectFit" />
+        <text>手机号仅用于本次服务，不公开、不出售</text>
       </view>
     </view>
 

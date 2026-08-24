@@ -45,9 +45,9 @@ const STAGE_INSET_TITLES = {
   survey_ready: '上门量房进行中',
   appointment_expired: '需重新预约量房',
   awaiting_rebooking: '需重新预约量房',
-  survey_completed: '量房完成 · 可进服务档案',
-  design_published: '方案已发布 · 我的服务档案',
-  converted: '方案已发布 · 我的服务档案',
+  survey_completed: '量房已完成',
+  design_published: '方案已发布',
+  converted: '方案已发布',
   closed: '服务已结束',
 };
 
@@ -126,7 +126,27 @@ function buildEmptyCompanionState() {
     isEmpty: true,
     bookShortcutKind: '',
     bookShortcutDesc: '免费上门精准量尺',
+    benefitStatusLabel: '扫码领取服务',
   };
+}
+
+function resolveBenefitStatusLabel(serviceStage) {
+  switch (serviceStage) {
+    case 'design_published':
+    case 'converted':
+      return '方案已交付';
+    case 'survey_completed':
+      return '量房已完成';
+    case 'appointment_confirmed':
+      return '已预约上门';
+    case 'appointment_expired':
+    case 'awaiting_rebooking':
+      return '等待重新预约';
+    case 'closed':
+      return '服务已结束';
+    default:
+      return '服务进行中';
+  }
 }
 
 function resolveBookShortcut(project) {
@@ -185,6 +205,7 @@ function buildCompanionState({ projects = [], selectedLeadId } = {}) {
     mediaMode: resolveMediaMode(featured),
     xiaoKAction: insetHelper,
     isEmpty: false,
+    benefitStatusLabel: resolveBenefitStatusLabel(featured.serviceStage),
   };
 }
 
@@ -227,5 +248,6 @@ module.exports = {
   buildCompanionState,
   buildProgressPills,
   resolveBookShortcut,
+  resolveBenefitStatusLabel,
   PROGRESS_PILL_LABELS,
 };

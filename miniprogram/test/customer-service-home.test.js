@@ -7,6 +7,7 @@ const {
   buildCompanionState,
   buildProgressPills,
   resolveBookShortcut,
+  resolveBenefitStatusLabel,
 } = require('../utils/customerServiceHome');
 
 const root = path.join(__dirname, '..');
@@ -85,9 +86,10 @@ test('published unsurveyed home keeps one hero archive CTA and routes makeup thr
 
   const wxml = fs.readFileSync(path.join(componentRoot, 'customer-service-home.wxml'), 'utf8');
   const js = fs.readFileSync(path.join(componentRoot, 'customer-service-home.js'), 'utf8');
-  assert.match(wxml, /class="hero-cta primary/);
+  assert.match(wxml, /class="ticket-cta primary/);
   assert.match(wxml, /wx:if="\{\{showSecondaryCta\}\}"/);
-  assert.match(wxml, /shortcut-desc">\{\{bookShortcutDesc/);
+  assert.match(wxml, /benefit-service-card measurement-card/);
+  assert.match(wxml, /bindtap="openBookShortcut"/);
   assert.match(js, /const kind = this\.data\.bookShortcutKind \|\| this\.data\.nextActionKind;/);
   assert.match(js, /kind === 'book' \|\| kind === 'rebook'/);
 });
@@ -105,6 +107,26 @@ test('hides secondary archive CTA when primary already opens archive', () => {
   });
   assert.equal(state.showSecondaryCta, false);
   assert.equal(state.primaryCta.label, '我的服务档案');
+});
+
+test('dual-benefit status copy follows the real service stage', () => {
+  assert.equal(resolveBenefitStatusLabel('design_published'), '方案已交付');
+  assert.equal(resolveBenefitStatusLabel('survey_completed'), '量房已完成');
+  assert.equal(resolveBenefitStatusLabel('appointment_confirmed'), '已预约上门');
+  assert.equal(resolveBenefitStatusLabel('appointment_expired'), '等待重新预约');
+  assert.equal(resolveBenefitStatusLabel('claimed'), '服务进行中');
+  assert.equal(resolveBenefitStatusLabel('closed'), '服务已结束');
+
+  const state = buildCompanionState({
+    projects: [{
+      leadId: '1',
+      serviceStage: 'design_published',
+      appointmentSummary: '方案已发布，可在服务档案查看',
+      nextActionKind: 'view_project',
+    }],
+  });
+  assert.equal(state.insetTitle, '方案已发布');
+  assert.equal(state.benefitStatusLabel, '方案已交付');
 });
 
 test('switcherCount is length - 1 and hidden for single project', () => {
@@ -181,11 +203,16 @@ test('customer-service-home component follows stage-companion contract', () => {
   assert.equal(json.component, true);
   assert.match(wxml, /家客来 · 服务向导/);
   assert.match(wxml, /专业服务/);
-  assert.match(wxml, /我的装修服务/);
+  assert.match(wxml, /两项服务，全程免费/);
+  assert.match(wxml, /免费量房/);
+  assert.match(wxml, /免费设计/);
+  assert.match(wxml, /上门精准量尺 · 1对1全屋方案/);
+  assert.match(wxml, /量房、设计不收费/);
+  assert.match(wxml, /ticket-main-row/);
+  assert.match(wxml, /benefit-service-card measurement-card/);
+  assert.match(wxml, /benefit-service-card design-card/);
   assert.match(wxml, /我的服务档案/);
   assert.match(wxml, /还有/);
-  assert.match(wxml, /预约量房/);
-  assert.match(wxml, /专属设计师/);
   assert.doesNotMatch(wxml, /查看全部项目/);
   assert.doesNotMatch(wxml, />我的服务</);
 

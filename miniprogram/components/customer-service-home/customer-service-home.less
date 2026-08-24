@@ -10,7 +10,7 @@
 }
 
 .csh-content {
-  padding: 0 28rpx calc(140rpx + env(safe-area-inset-bottom));
+  padding: 0 28rpx 28rpx;
   box-sizing: border-box;
 }
 
@@ -112,256 +112,473 @@
   font-weight: 600;
 }
 
-.csh-hero-card {
-  padding: 32rpx 28rpx 28rpx;
-  border-radius: 32rpx;
-  background: linear-gradient(145deg, #00c365 0%, #1f9d55 100%);
-  box-shadow: 0 16rpx 36rpx rgba(0, 195, 101, 0.2);
-  color: #ffffff;
+.benefit-hero {
+  position: relative;
+  margin: 0 -28rpx;
+  padding: 62rpx 28rpx 0;
   box-sizing: border-box;
 }
 
-.hero-top-row {
+.benefit-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 540rpx;
+  border-radius: 36rpx 36rpx 48rpx 48rpx;
+  background:
+    radial-gradient(circle at 88% 20%, rgba(93, 225, 139, 0.32) 0%, rgba(93, 225, 139, 0) 32%),
+    linear-gradient(145deg, #08bf62 0%, #04a951 100%);
+  box-shadow: 0 18rpx 40rpx rgba(0, 169, 78, 0.2);
+  z-index: 0;
+}
+
+.benefit-hero-copy {
+  position: relative;
+  z-index: 2;
+  width: 470rpx;
+  min-height: 278rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.benefit-headline {
+  max-width: 460rpx;
+  color: #ffffff;
+  font-size: 48rpx;
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -1rpx;
+}
+
+.benefit-chip-row {
+  margin-top: 32rpx;
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.benefit-chip {
+  min-height: 72rpx;
+  padding: 0 24rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  color: #183426;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  box-shadow: 0 10rpx 26rpx rgba(0, 86, 40, 0.14);
+  box-sizing: border-box;
+}
+
+.benefit-check,
+.assurance-check {
+  position: relative;
+  border-radius: 50%;
+  background: #0ab65a;
+  flex-shrink: 0;
+}
+
+.benefit-check {
+  width: 38rpx;
+  height: 38rpx;
+}
+
+.benefit-check::after,
+.assurance-check::after,
+.progress-step.tone-done .progress-node-mark::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 14rpx;
+  height: 8rpx;
+  border-left: 4rpx solid #ffffff;
+  border-bottom: 4rpx solid #ffffff;
+  transform: translate(-50%, -50%) rotate(-45deg);
+  box-sizing: border-box;
+}
+
+.benefit-subline {
+  margin-top: 28rpx;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 27rpx;
+  line-height: 1.35;
+  font-weight: 500;
+}
+
+.benefit-guide {
+  position: absolute;
+  right: 10rpx;
+  top: 22rpx;
+  width: 300rpx;
+  height: 310rpx;
+  z-index: 1;
+}
+
+.service-ticket {
+  position: relative;
+  z-index: 3;
+  margin-top: 20rpx;
+  padding: 24rpx;
+  border-radius: 30rpx;
+  background: #ffffff;
+  box-shadow: 0 18rpx 44rpx rgba(24, 52, 38, 0.13);
+  box-sizing: border-box;
+}
+
+.ticket-main-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 212rpx;
+  gap: 24rpx;
+}
+
+.ticket-main-row.no-media {
+  min-height: 186rpx;
+}
+
+.ticket-media {
+  width: 310rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 10rpx;
+  padding: 4rpx;
+  border-radius: 20rpx;
+  background: #f0f5f1;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.ticket-media.floor_plan,
+.ticket-media.scheme {
+  width: 230rpx;
+}
+
+.ticket-thumb {
+  width: 100%;
+  min-width: 0;
+  height: 204rpx;
+  border-radius: 16rpx;
+  background: #e5ece7;
+}
+
+.ticket-media.dual .ticket-thumb {
+  flex: 1;
+  width: calc(50% - 5rpx);
+}
+
+.ticket-status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding-top: 2rpx;
+}
+
+.ticket-main-row.no-media .ticket-status {
+  padding: 4rpx 8rpx 0;
+}
+
+.ticket-title {
+  color: #183426;
+  font-size: 32rpx;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.ticket-summary,
+.ticket-helper {
+  margin-top: 8rpx;
+  color: #617468;
+  font-size: 22rpx;
+  line-height: 1.35;
+}
+
+.ticket-helper {
+  color: #7c8e83;
+}
+
+.progress-track {
+  position: relative;
+  margin-top: auto;
+  padding-top: 18rpx;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
 }
 
-.hero-text-wrap {
+.progress-track::before {
+  content: '';
+  position: absolute;
+  left: 28rpx;
+  right: 28rpx;
+  top: 39rpx;
+  height: 2rpx;
+  background: #d8e8dd;
+}
+
+.progress-step {
+  position: relative;
+  z-index: 1;
+  width: 25%;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  align-items: center;
 }
 
-.hero-title {
-  font-size: 36rpx;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.hero-subtitle {
-  margin-top: 8rpx;
-  font-size: 24rpx;
-  line-height: 1.45;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.hero-inset {
-  margin-top: 24rpx;
-  padding: 22rpx;
-  border-radius: 24rpx;
-  background: rgba(255, 255, 255, 0.96);
-  color: #183426;
-  display: flex;
-  gap: 20rpx;
-  align-items: stretch;
-}
-
-.inset-media {
-  width: 168rpx;
-  min-height: 168rpx;
-  border-radius: 20rpx;
-  background: #eef8f1;
-  overflow: hidden;
-  flex-shrink: 0;
+.progress-node {
+  position: relative;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  background: #edf2ef;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8rpx;
-  padding: 8rpx;
-  box-sizing: border-box;
+  box-shadow: 0 0 0 6rpx #ffffff;
 }
 
-.inset-media.dual {
-  width: 220rpx;
+.progress-step.tone-done .progress-node {
+  background: #16bd63;
 }
 
-.media-thumb {
-  border-radius: 14rpx;
-  background: #dfe8e2;
+.progress-step.tone-current .progress-node {
+  background: #fff0df;
+  box-shadow: 0 0 0 6rpx #ffffff, inset 0 0 0 2rpx #f2a049;
 }
 
-.media-thumb.floor-plan {
-  width: 100%;
-  height: 100%;
+.progress-step.tone-current .progress-node-mark {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: #e88c2f;
 }
 
-.inset-media.dual .media-thumb.floor-plan,
-.inset-media.dual .media-thumb.scheme {
-  width: 96rpx;
-  height: 144rpx;
+.progress-label {
+  margin-top: 10rpx;
+  color: #596d60;
+  font-size: 22rpx;
+  font-weight: 600;
+  line-height: 1;
 }
 
-.media-thumb.scheme {
-  width: 100%;
-  height: 100%;
-}
-
-.media-xiaok {
-  width: 140rpx;
-  height: 140rpx;
-}
-
-.inset-copy {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.inset-title {
-  font-size: 28rpx;
-  font-weight: 700;
-  line-height: 1.35;
+.progress-step.tone-done .progress-label {
   color: #183426;
 }
 
-.inset-helper {
-  margin-top: 8rpx;
-  font-size: 22rpx;
-  line-height: 1.4;
-  color: #5b6f63;
+.progress-step.tone-current .progress-label {
+  color: #bd6818;
 }
 
-.progress-pills {
-  margin-top: 16rpx;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8rpx;
-}
-
-.progress-pill {
-  padding: 6rpx 14rpx;
-  border-radius: 999rpx;
-  font-size: 22rpx;
-  font-weight: 600;
-}
-
-.progress-pill.tone-done {
-  background: #e7f8ee;
-  color: #1f9d55;
-}
-
-.progress-pill.tone-current {
-  background: #fff1e6;
-  color: #d97706;
-}
-
-.progress-pill.tone-upcoming {
-  background: #eef1ef;
-  color: #8a9a91;
-}
-
-.hero-cta {
-  margin-top: 20rpx;
+.ticket-cta {
   width: 100%;
-  min-height: 80rpx;
-  border-radius: 40rpx;
+  min-height: 82rpx;
+  margin-top: 22rpx;
+  border-radius: 42rpx;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-}
-
-.hero-cta-label {
   font-size: 28rpx;
-  font-weight: 600;
-  line-height: 1.2;
+  font-weight: 700;
 }
 
-.hero-cta.primary {
-  background: #183426;
+.ticket-cta.primary {
   color: #ffffff;
-  margin-bottom: 0;
+  background: linear-gradient(135deg, #123d2d 0%, #0a2f23 100%);
+  box-shadow: 0 12rpx 24rpx rgba(10, 47, 35, 0.18);
 }
 
-.hero-cta.primary.weak {
-  background: rgba(24, 52, 38, 0.45);
+.ticket-cta.primary.weak {
   color: rgba(255, 255, 255, 0.92);
+  background: #729181;
+  box-shadow: none;
 }
 
-.hero-cta.secondary {
-  margin-top: 20rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
-  border-radius: 40rpx;
-  text-align: center;
-}
-
-.btn-pressed {
-  opacity: 0.88;
+.ticket-cta.secondary {
+  margin-top: 14rpx;
+  color: #167b45;
+  background: #f1f8f3;
+  box-shadow: inset 0 0 0 1rpx #c9e4d2;
 }
 
 .switcher-strip {
   margin-top: 20rpx;
-  padding: 22rpx 24rpx;
+  padding: 20rpx 24rpx;
   border-radius: 24rpx;
   background: #ffffff;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 8rpx 24rpx rgba(24, 52, 38, 0.04);
+  box-shadow: 0 8rpx 24rpx rgba(24, 52, 38, 0.05);
+}
+
+.switcher-copy,
+.switcher-action {
+  font-size: 24rpx;
+  font-weight: 700;
 }
 
 .switcher-copy {
-  font-size: 24rpx;
   color: #2c4235;
-  font-weight: 600;
 }
 
 .switcher-action {
-  font-size: 24rpx;
   color: #1f9d55;
-  font-weight: 700;
 }
 
-.shortcut-grid {
-  margin-top: 20rpx;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16rpx;
+.benefit-stack {
+  margin-top: 28rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
 }
 
-.shortcut-card {
+.benefit-service-card {
   position: relative;
-  min-height: 168rpx;
-  padding: 24rpx 22rpx;
-  border-radius: 28rpx;
-  background: #ffffff;
-  box-shadow: 0 8rpx 24rpx rgba(24, 52, 38, 0.04);
+  min-height: 246rpx;
+  padding: 34rpx;
+  border-radius: 30rpx;
+  background:
+    radial-gradient(circle at 88% 20%, rgba(190, 234, 205, 0.45) 0%, rgba(190, 234, 205, 0) 36%),
+    linear-gradient(135deg, #f4faf6 0%, #eef7f1 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   overflow: hidden;
+  box-shadow: 0 10rpx 28rpx rgba(24, 52, 38, 0.05);
   box-sizing: border-box;
 }
 
-.shortcut-text {
+.benefit-service-copy {
+  position: relative;
+  z-index: 2;
+  width: 58%;
   display: flex;
   flex-direction: column;
-  gap: 8rpx;
-  max-width: 68%;
+  align-items: flex-start;
+}
+
+.design-card .benefit-service-copy {
+  width: 54%;
+  padding-left: 16rpx;
+}
+
+.benefit-service-title {
+  color: #183426;
+  font-size: 38rpx;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.benefit-service-desc {
+  margin-top: 12rpx;
+  color: #65786c;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.benefit-arrow {
+  position: relative;
+  width: 62rpx;
+  height: 62rpx;
+  margin-top: 24rpx;
+  border-radius: 50%;
+  background: #0bb55a;
+  box-shadow: 0 8rpx 18rpx rgba(11, 181, 90, 0.18);
+}
+
+.benefit-arrow-mark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18rpx;
+  height: 18rpx;
+  border-top: 4rpx solid #ffffff;
+  border-right: 4rpx solid #ffffff;
+  transform: translate(-62%, -50%) rotate(45deg);
+  box-sizing: border-box;
+}
+
+.benefit-arrow::after {
+  content: '';
+  position: absolute;
+  left: 19rpx;
+  top: 29rpx;
+  width: 24rpx;
+  height: 4rpx;
+  border-radius: 4rpx;
+  background: #ffffff;
+}
+
+.benefit-service-art {
   position: relative;
   z-index: 1;
+  flex-shrink: 0;
 }
 
-.shortcut-title {
-  font-size: 28rpx;
-  font-weight: 700;
-  color: #183426;
+.meter-art {
+  width: 248rpx;
+  height: 222rpx;
+  margin-right: -6rpx;
 }
 
-.shortcut-desc {
+.easel-art {
+  width: 278rpx;
+  height: 228rpx;
+  margin-left: -18rpx;
+}
+
+.benefit-assurance {
+  min-height: 76rpx;
+  margin-top: 20rpx;
+  padding: 0 24rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14rpx;
+  color: #55695d;
+  box-shadow: inset 0 0 0 1rpx #e4ebe6;
+  box-sizing: border-box;
+}
+
+.assurance-check {
+  width: 42rpx;
+  height: 42rpx;
+}
+
+.assurance-benefit,
+.assurance-status {
   font-size: 22rpx;
-  line-height: 1.4;
-  color: #6b7d72;
+  line-height: 1.2;
 }
 
-.shortcut-art {
-  position: absolute;
-  right: -4rpx;
-  bottom: -8rpx;
-  width: 108rpx;
-  height: 108rpx;
+.assurance-benefit {
+  color: #2c4235;
+  font-weight: 700;
+}
+
+.assurance-divider {
+  width: 1rpx;
+  height: 28rpx;
+  background: #cbd7cf;
+  transform: scaleX(0.5);
+}
+
+.assurance-status {
+  color: #6d7e73;
+}
+
+.chip-pressed,
+.btn-pressed {
+  opacity: 0.88;
 }
 
 .card-pressed {
@@ -370,10 +587,7 @@
 
 .switcher-mask {
   position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
+  inset: 0;
   background: rgba(16, 28, 22, 0.42);
   z-index: 40;
   display: flex;
@@ -444,4 +658,46 @@
 .switcher-row-meta {
   font-size: 22rpx;
   color: #8a9a91;
+}
+
+@media (max-width: 360px) {
+  .benefit-hero-copy {
+    width: 438rpx;
+  }
+
+  .benefit-headline {
+    font-size: 44rpx;
+  }
+
+  .benefit-chip {
+    padding: 0 20rpx;
+    font-size: 26rpx;
+  }
+
+  .benefit-guide {
+    right: -8rpx;
+    width: 280rpx;
+  }
+
+  .ticket-media {
+    width: 286rpx;
+  }
+
+  .ticket-media.floor_plan,
+  .ticket-media.scheme {
+    width: 214rpx;
+  }
+
+  .benefit-service-card {
+    padding-left: 28rpx;
+    padding-right: 28rpx;
+  }
+
+  .meter-art {
+    width: 228rpx;
+  }
+
+  .easel-art {
+    width: 254rpx;
+  }
 }

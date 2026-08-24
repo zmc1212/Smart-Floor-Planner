@@ -96,6 +96,7 @@ function emptyCompanionUi() {
     progressPills: buildProgressPills(''),
     bookShortcutKind: '',
     bookShortcutDesc: '免费上门精准量尺',
+    benefitStatusLabel: '扫码领取服务',
   };
 }
 
@@ -125,6 +126,7 @@ Component({
     progressPills: [],
     bookShortcutKind: '',
     bookShortcutDesc: '免费上门精准量尺',
+    benefitStatusLabel: '扫码领取服务',
     designer: null,
     designerSoftCopy: '设计师匹配后可联系',
     designerShortcutDesc: '设计师匹配后可联系',
@@ -444,6 +446,10 @@ Component({
     },
 
     openBookShortcut() {
+      if (this.data.isEmpty) {
+        this.scanServiceOrInviteCode();
+        return;
+      }
       const kind = this.data.bookShortcutKind || this.data.nextActionKind;
       if (kind === 'book' || kind === 'rebook') {
         this.openBooking();
@@ -459,6 +465,10 @@ Component({
     },
 
     openDesignerShortcut() {
+      if (this.data.isEmpty) {
+        this.scanServiceOrInviteCode();
+        return;
+      }
       const designer = this.data.designer;
       if (hasDesignerContact(designer)) {
         if (designer.wechatQrUrl) {

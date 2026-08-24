@@ -641,14 +641,32 @@ export function WorkbenchWorkspace() {
   };
 
   const reuseGeneration = async (generation: CreationGeneration) => {
-    if (!generation.imageUrl) return;
+    if (!generation.imageUrl || !model) return;
+    const slots = Math.max(0, maxUserRefs - assets.length);
+    if (!model.supportsReferenceImages || !slots) {
+      notify.warning(hasBoundFloorPlan
+        ? `当前模型最多支持 ${maxUserRefs} 张参考图（户型控制图会自动占用 1 张）`
+        : `当前模型最多支持 ${maxUserRefs} 张参考图`);
+      return;
+    }
     try {
-      const response = await fetch(generation.imageUrl);
-      if (!response.ok) throw new Error('无法读取生成结果');
-      const blob = await response.blob();
-      await uploadReferenceFiles([new File([blob], `ai-workbench-${generation.id}.png`, { type: blob.type || 'image/png' })], '已基于此图继续');
+      setUploading(true);
+      const payload = await readJson(await fetch('/api/ai/creation/assets/from-generation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ generationId: generation.id }),
+      }));
+      const asset = payload.data as CreationAsset;
+      if (assets.some((item) => item.id === asset.id)) {
+        notify.info('该图片已在参考图中');
+        return;
+      }
+      setAssets((current) => current.some((item) => item.id === asset.id) ? current : [...current, asset]);
+      notify.success('已基于此图继续（1 张）');
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '引用生成结果失败');
+    } finally {
+      setUploading(false);
     }
   };
 

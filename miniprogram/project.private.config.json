@@ -5,18 +5,25 @@
     "miniprogram": {
       "list": [
         {
-          "name": "packages/business/onboarding/onboarding",
-          "pathName": "packages/business/onboarding/onboarding",
+          "name": "packages/business/free-design-service/free-design-service",
+          "pathName": "packages/business/free-design-service/free-design-service",
           "query": "",
           "scene": null,
           "launchMode": "default"
         },
         {
+          "name": "packages/business/onboarding/onboarding",
+          "pathName": "packages/business/onboarding/onboarding",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
+        },
+        {
           "name": "packages/business/onboarding-debug/onboarding-debug",
           "pathName": "packages/business/onboarding-debug/onboarding-debug",
           "query": "",
-          "scene": null,
-          "launchMode": "default"
+          "launchMode": "default",
+          "scene": null
         },
         {
           "name": "packages/surveying/editor/surveying-editor",

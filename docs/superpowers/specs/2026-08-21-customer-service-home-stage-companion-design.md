@@ -1,7 +1,7 @@
-# Customer Service Home — Stage Companion Redesign
+# Customer Service Home — Dual-Benefit Stage Companion
 
 **Date:** 2026-08-21  
-**Status:** Implemented / ready for QA  
+**Status:** Implemented / native visual QA pending
 **Surface:** Mini Program customer role · `pages/index/index` (Service tab)  
 **Related routes:** `packages/business/customer-project/customer-project`, legacy `packages/business/customer-projects/customer-projects` (deep-link redirect shell only)
 
@@ -15,9 +15,29 @@
 
 - Redesign the customer Service home around a **stage companion** hero with Xiao K as **空间服务向导**.
 - Keep the hero visually full before survey/scheme media exist.
+- Keep the `390x844` first viewport visually full and make **免费量房 / 免费设计** the strongest customer-readable service benefits.
 - Primary navigation: home → service archive (`customer-project?leadId=`), no list middle page.
 - Fix duplicate copy via strict text layering.
 - Support multiple in-progress services without restoring the list page.
+
+## Current approved visual composition
+
+The customer state follows `design-references/customer-service-home-dual-free-v1/option-b-dual-benefit-ticket.png`.
+This source replaces the earlier customer composition in `01-customer-workbench.jpg`; the older image remains historical
+evidence only for the real dual-preview behavior.
+
+1. Capsule-safe identity row: `家客来 · 服务向导`, `专业服务`, and the existing scan action.
+2. One committed green field: `两项服务，全程免费`, two white benefit chips (`免费量房`, `免费设计`), the
+   supporting line `上门精准量尺 · 1对1全屋方案`, and one complete Xiao K spatial-guide asset.
+3. A white service ticket crosses the green field. It contains only real floor-plan/scheme previews when available,
+   the current stage title, `appointmentSummary` once, the four-stage rail, and the server-derived primary action.
+4. Two staggered service boards fill the lower viewport: `免费量房` opens the existing booking/archive path;
+   `免费设计` opens the existing designer-contact/archive path. They reuse the packaged laser meter and easel assets.
+5. A compact assurance strip reads `量房、设计不收费` plus a stage-derived truthful status (`服务进行中`,
+   `已预约上门`, `量房已完成`, `方案已交付`, etc.).
+
+The mockup is a north star, not a raster implementation: all text, controls, status, progress, thumbnails, and navigation
+remain native WXML/Less and live data. No design-reference image is packaged into the Mini Program.
 
 ## Non-goals
 
