@@ -224,8 +224,8 @@ test('selected room-clear merges collinear T-split inner segments into one clear
 
 test('wallSnapPending hit order prefers wall/vertex snap then closed-space selectSpace', () => {
   // Editor contract (surveying-editor onCanvasTouchEnd wallSnapPending):
-  // wall/vertex candidate → snapCursorToWall; else closed-space fill → selectSpace;
-  // else toast 请选择已有墙体或顶点. Kernel selectSpace + fill hit are covered above.
+  // wall tap → selectWall for opening placement; closed-space fill → selectSpace;
+  // otherwise the editor keeps the cursor in drag-only placement and prompts the operator.
   let draft = createClosedDraft();
   const space = surveyGraph.getActiveFloor(draft).spaces.find((item) => item.closed);
   const floor = surveyGraph.getActiveFloor(draft);

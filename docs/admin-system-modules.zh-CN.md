@@ -6,6 +6,8 @@
 ## 共用架构
 
 - Next.js 16 App Router、React 19、Tailwind CSS 4、Ant Design 5 和 Ant Design Pro。
+  根布局挂载客户端 `AntdReact19Patch`，引入 `@ant-design/v5-patch-for-react-19`，
+  使 Ant Design 5 的波纹效果与静态方法可在 React 19 下工作。
 - 部署运行时使用 PostgreSQL 17、`drizzle-orm`/`pg`；租户读写通过 Repository、
   事务和 RLS 执行。
 - 后台会话使用 cookie/JWT；平台和企业角色由路由守卫与菜单权限共同约束。

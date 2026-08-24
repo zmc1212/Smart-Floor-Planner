@@ -32,6 +32,7 @@ const SERVICE_WORKFLOW_LESS = [
   'components/role-workbench/role-workbench.less',
   'packages/business/onboarding/onboarding.less',
   'packages/business/free-design-service/free-design-service.less',
+  'packages/business/service-needs/service-needs.less',
   'packages/business/enterprise-register/enterprise-register.less',
   'packages/business/enterprise-staff/enterprise-staff.less',
   'packages/business/enterprise-join-codes/enterprise-join-codes.less',

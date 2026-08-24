@@ -7,6 +7,9 @@ Git commits; do not append dated change logs here.
 ## Shared architecture
 
 - Next.js 16 App Router, React 19, Tailwind CSS 4, Ant Design 5, and Ant Design Pro.
+  Root layout mounts a client `AntdReact19Patch` that imports
+  `@ant-design/v5-patch-for-react-19` so Ant Design 5 wave effects and static
+  methods work on React 19.
 - PostgreSQL 17 with `drizzle-orm`/`pg` is the deployed runtime. Tenant-aware
   reads and writes use repositories, transactions, and RLS.
 - Admin sessions use cookie/JWT authentication. Platform and enterprise roles

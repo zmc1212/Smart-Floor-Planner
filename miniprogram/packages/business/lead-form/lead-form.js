@@ -38,6 +38,7 @@ Page({
     pageTitle: '客户资料',
     submitLabel: '立即提交',
     styleOptions: ['现代简约', '北欧风格', '奶油风', '新中式', '工业风', '法式轻奢'],
+    serviceNeedOptions: [],
     formData: {
       name: '',
       phone: '',
@@ -82,9 +83,17 @@ Page({
   async loadLeadForEdit(leadId) {
     this.setData({ pageLoading: true });
     try {
-      const res = await api.request(`/leads/${encodeURIComponent(leadId)}`, 'GET');
+      const [res, needsRes] = await Promise.all([
+        api.request(`/leads/${encodeURIComponent(leadId)}`, 'GET'),
+        api.request(`/leads/${encodeURIComponent(leadId)}/service-needs`, 'GET').catch(() => null),
+      ]);
       if (!res.success || !res.data) throw new Error(res.error || '客户资料加载失败');
       const lead = res.data;
+      const selectedNeeds = new Set((needsRes && needsRes.data && needsRes.data.needKeys) || []);
+      const serviceNeedOptions = (needsRes && needsRes.data && needsRes.data.options || []).map((item) => ({
+        ...item,
+        selected: selectedNeeds.has(item.key),
+      }));
       this.setData({
         formData: {
           name: lead.name || '',
@@ -92,7 +101,8 @@ Page({
           communityName: lead.communityName || '',
           area: lead.area ? String(lead.area) : '',
           stylePreference: lead.stylePreference || ''
-        }
+        },
+        serviceNeedOptions,
       });
     } catch (err) {
       wx.showToast({ title: (err && err.error) || '客户资料加载失败', icon: 'none' });
@@ -173,6 +183,16 @@ Page({
     });
   },
 
+  onToggleServiceNeed(e) {
+    const key = String(e.currentTarget.dataset.key || '');
+    if (!key) return;
+    this.setData({
+      serviceNeedOptions: this.data.serviceNeedOptions.map((item) => (
+        item.key === key ? { ...item, selected: !item.selected } : item
+      )),
+    });
+  },
+
   onSelectRecentLead(e) {
     const index = e.currentTarget.dataset.index;
     const lead = this.data.recentLeadChips[index];
@@ -220,6 +240,14 @@ Page({
         const res = await api.request(`/leads/${encodeURIComponent(leadId)}`, 'PUT', payload);
         if (!res.success) {
           wx.showToast({ title: res.error || '保存失败', icon: 'none' });
+          return;
+        }
+        const needKeys = this.data.serviceNeedOptions.filter((item) => item.selected).map((item) => item.key);
+        try {
+          await api.request(`/leads/${encodeURIComponent(leadId)}/service-needs`, 'PATCH', { needKeys });
+        } catch (needsError) {
+          wx.showToast({ title: '资料已保存，服务需求稍后重试', icon: 'none' });
+          setTimeout(() => this.onBack(), 1000);
           return;
         }
         wx.showToast({ title: '资料已保存', icon: 'success' });

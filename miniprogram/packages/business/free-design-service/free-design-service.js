@@ -3,8 +3,6 @@ const { leaveScanLanding } = require('../../../utils/identity-navigation.js');
 const {
   customerProjectFromApiResponse,
   hasDesignerContact,
-  loadDesignerQrToTempFile,
-  copyDesignerWechatId,
 } = require('../../../utils/designerContact.js');
 
 function currentSignedIdentity() {
@@ -104,17 +102,16 @@ function applyClaimResult(page, response) {
     return;
   }
   const designerProfile = response.data && response.data.designerProfile || null;
+  const contactAvailable = canContactDesigner(designerProfile);
   page.setData({
     submitting: false,
     pageState: designerProfile ? 'success' : 'pending',
     navTitle: navTitleFor(designerProfile ? 'success' : 'pending'),
     designerProfile,
-    canContactDesigner: canContactDesigner(designerProfile),
-    lead: response.data && response.data.lead || null
+    canContactDesigner: contactAvailable,
+    showContactSheet: Boolean(designerProfile && contactAvailable),
+    lead: response.data && response.data.lead || null,
   });
-  if (designerProfile && designerProfile.wechatQrUrl) {
-    page.loadDesignerQr(designerProfile.wechatQrUrl);
-  }
 }
 
 function canContactDesigner(designer) {
@@ -162,6 +159,16 @@ function existingStageLabel(lead) {
   return EXISTING_STAGE_LABELS[lead.status] || '服务进行中';
 }
 
+function existingStageIndex(lead, serviceStageLabel) {
+  const status = lead && String(lead.status || '').toLowerCase();
+  if (status === 'measuring' || status === 'measured') return 1;
+  if (status === 'assigned' || status === 'designing' || status === 'quoting') return 2;
+  const label = String(serviceStageLabel || '');
+  if (label.includes('量房') || label.includes('测量')) return 1;
+  if (label.includes('设计') || label.includes('方案')) return 2;
+  return 0;
+}
+
 function navTitleFor(state) {
   if (state === 'phoneAuth') return '手机号授权';
   if (state === 'success') return '服务已建立';
@@ -183,6 +190,7 @@ async function hydrateExistingAttribution(page) {
     page.setData({
       existingServiceLabel: fallbackName,
       serviceStageLabel: fallbackStage,
+      existingStageIndex: existingStageIndex(lead, fallbackStage),
       lastUpdateLabel: fallbackUpdate,
     });
     return;
@@ -196,18 +204,16 @@ async function hydrateExistingAttribution(page) {
     page.setData({
       existingServiceLabel: fallbackName,
       serviceStageLabel: project.serviceStageLabel || fallbackStage,
+      existingStageIndex: existingStageIndex(lead, project.serviceStageLabel || fallbackStage),
       lastUpdateLabel: formatRelativeUpdate(updatedAt),
       designerProfile: project.designer || page.data.designerProfile || null,
       canContactDesigner: canContactDesigner(project.designer || page.data.designerProfile),
     });
-    const designer = project.designer || page.data.designerProfile;
-    if (designer && designer.wechatQrUrl) {
-      page.loadDesignerQr(designer.wechatQrUrl);
-    }
   } catch (error) {
     page.setData({
       existingServiceLabel: fallbackName,
       serviceStageLabel: fallbackStage,
+      existingStageIndex: existingStageIndex(lead, fallbackStage),
       lastUpdateLabel: fallbackUpdate,
     });
   }
@@ -226,14 +232,12 @@ Page({
     errorMessage: '',
     claimKind: '',
     designerProfile: null,
-    designerQrPath: '',
-    designerQrLoading: false,
-    designerQrError: false,
     canContactDesigner: false,
     showContactSheet: false,
     lead: null,
     existingServiceLabel: '',
     serviceStageLabel: '',
+    existingStageIndex: 0,
     lastUpdateLabel: ''
   },
 
@@ -242,10 +246,6 @@ Page({
     this.setData({ ...navigationMetrics(), promotionToken });
     this.idempotencyKey = `claim-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
     this.resolvePromotionCode();
-  },
-
-  onUnload() {
-    this.qrRequestId = (this.qrRequestId || 0) + 1;
   },
 
   async resolvePromotionCode() {
@@ -367,49 +367,13 @@ Page({
     throw new Error('客户身份资料缺失');
   },
 
-  async loadDesignerQr(url) {
-    const requestId = (this.qrRequestId || 0) + 1;
-    this.qrRequestId = requestId;
-    this.setData({ designerQrLoading: true, designerQrError: false, designerQrPath: '' });
-    try {
-      const designer = this.data.designerProfile;
-      const cacheKey = String((designer && designer.id) || 'claim');
-      const designerQrPath = await loadDesignerQrToTempFile(url, cacheKey);
-      if (requestId !== this.qrRequestId) return;
-      this.setData({ designerQrLoading: false, designerQrError: false, designerQrPath });
-    } catch (error) {
-      if (requestId !== this.qrRequestId) return;
-      console.warn('Failed to load claim designer QR', error);
-      this.setData({ designerQrLoading: false, designerQrError: true, designerQrPath: '' });
-    }
-  },
-
-  onRetryDesignerQr() {
-    const profile = this.data.designerProfile;
-    if (profile && profile.wechatQrUrl) this.loadDesignerQr(profile.wechatQrUrl);
-  },
-
-  onCopyWechat() {
-    const wechatId = this.data.designerProfile && this.data.designerProfile.wechatId;
-    if (!wechatId) return;
-    copyDesignerWechatId(wechatId, { withSearchHint: false }).catch(() => {
-      wx.showToast({ title: '复制失败，请稍后重试', icon: 'none' });
-    });
-  },
-
   onOpenContactSheet() {
     const designer = this.data.designerProfile;
     if (!hasDesignerContact(designer)) {
       wx.showToast({ title: '设计师联系方式暂未提供', icon: 'none' });
       return;
     }
-    if (designer.wechatQrUrl) {
-      this.setData({ showContactSheet: true });
-      return;
-    }
-    copyDesignerWechatId(designer.wechatId, { withSearchHint: true }).catch(() => {
-      wx.showToast({ title: '复制失败，请稍后重试', icon: 'none' });
-    });
+    this.setData({ showContactSheet: true });
   },
 
   closeContactSheet() {
@@ -423,6 +387,17 @@ Page({
       return;
     }
     wx.switchTab({ url: '/pages/mine/mine' });
+  },
+
+  onOpenServiceNeeds() {
+    const leadId = this.data.lead && this.data.lead.id;
+    if (!leadId) {
+      wx.showToast({ title: '服务档案正在同步，请稍后再试', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: `/packages/business/service-needs/service-needs?leadId=${encodeURIComponent(leadId)}`,
+    });
   },
 
   onContactDesigner() {

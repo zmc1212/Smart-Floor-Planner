@@ -1462,6 +1462,43 @@ export const leads = appSchema.table(
   ]
 );
 
+export const leadServiceNeeds = appSchema.table(
+  'lead_service_needs',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    needKey: text('need_key').notNull(),
+    source: text('source').notNull().default('customer'),
+    updatedByUserId: bigint('updated_by_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    updatedByStaffId: bigint('updated_by_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('lead_service_needs_lead_key_uidx').on(table.leadId, table.needKey),
+    index('lead_service_needs_enterprise_lead_idx').on(table.enterpriseId, table.leadId),
+    check(
+      'lead_service_needs_key_check',
+      sql`${table.needKey} in ('old_house_consultation', 'materials_consultation', 'partial_space_advice')`
+    ),
+    check(
+      'lead_service_needs_source_check',
+      sql`${table.source} in ('customer', 'designer')`
+    ),
+  ]
+);
+
 export const customerAttributionLocks = appSchema.table(
   'customer_attribution_locks',
   {
@@ -2058,6 +2095,7 @@ export const floorPlans = appSchema.table(
     layoutData: jsonb('layout_data')
       .$type<Record<string, unknown>>()
       .notNull(),
+    createIdempotencyKey: text('create_idempotency_key'),
     source: text('source').notNull(),
     externalSource: jsonObject<Record<string, unknown>>('external_source'),
     status: text('status').notNull().default('draft'),
@@ -2109,6 +2147,9 @@ export const floorPlans = appSchema.table(
       sql`(${table.externalSource} ->> 'externalId')`
     ),
     index('floor_plans_preview_asset_idx').on(table.previewAssetId),
+    uniqueIndex('floor_plans_create_idempotency_key_uidx').on(
+      table.createIdempotencyKey
+    ),
   ]
 );
 

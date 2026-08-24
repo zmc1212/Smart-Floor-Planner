@@ -39,6 +39,7 @@
         "enterprise-join-codes/enterprise-join-codes",
         "enterprise-staff/enterprise-staff",
         "free-design-service/free-design-service",
+        "service-needs/service-needs",
         "onboarding/onboarding",
         "enterprise-register/enterprise-register",
         "onboarding-debug/onboarding-debug",

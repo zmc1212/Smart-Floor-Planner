@@ -3,6 +3,7 @@ const surveyGraph = require('../../../utils/surveyWallGraph.js');
 const surveySnapEngine = require('../../../utils/survey/snap/snap-engine.js');
 const surveyCanvasRenderer = require('../utils/surveyCanvasRenderer.js');
 const surveyViewportInteraction = require('../utils/surveyViewportInteraction.js');
+const { createPriorityCloudSaveQueue } = require('../utils/cloudSaveQueue.js');
 const bluetooth = require('../../../utils/bluetooth.js');
 const api = require('../../../utils/api.js');
 const util = require('../../../utils/util.js');
@@ -33,6 +34,7 @@ const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0',
 const FORMAL_DRAFT_KEY = 'surveying_draft_v1';
 const FORMAL_DRAFT_BACKUP_KEY = 'surveying_last_draft_backup';
 const FORMAL_SERVER_DRAFT_ID_KEY = 'surveying_floorplan_id';
+const FORMAL_CLOUD_SAVE_KEY = 'surveying_floorplan_cloud_save_key';
 const SURVEYING_GUIDE_ENABLED_KEY = 'surveying_editor_guide_enabled_v1';
 const COMPONENT_SPEC_OPTIONS = {
   door: [
@@ -136,6 +138,11 @@ function formatMm(value) {
 
 function formatCompactMm(value) {
   return `${Math.round(value || 0)}mm`;
+}
+
+function createCloudSaveId() {
+  const randomPart = Math.random().toString(36).slice(2, 12);
+  return `survey-${Date.now().toString(36)}-${randomPart}`;
 }
 
 function normalizeAngleDiff(currentAngle, previousAngle) {
@@ -460,6 +467,7 @@ Page({
     this.isNewSurveySession = startNewSurvey;
     this.formalDraftKey = this.getFormalDraftKey(leadId, newSurveyDraftScope);
     this.serverDraftId = startNewSurvey ? '' : (contextFloorPlanId || this.getStoredServerDraftId(leadId));
+    this.cloudSaveIdempotencyKey = this.getStoredCloudSaveIdempotencyKey(this.formalDraftKey);
     const restoredDraft = startNewSurvey
       ? null
       : this.loadFormalDraft(leadId, context.surveyGraph, this.formalDraftKey);
@@ -468,7 +476,16 @@ Page({
     this.lastCloudFingerprint = '';
     this.formalCloudLoadInFlight = false;
     this.cloudSaveInFlight = false;
-    this._savePromise = null;
+    this._cloudSaveActive = false;
+    this._cloudSavePending = null;
+    this.cloudSaveQueue = createPriorityCloudSaveQueue(
+      (status) => this.saveFormalFloorPlan(status),
+      (state) => {
+        this._cloudSaveActive = state.active;
+        this._cloudSavePending = state.pending;
+        this.cloudSaveInFlight = state.active || state.pending;
+      }
+    );
     if (!this.localDraftSavedAt) this.localDraftSavedAt = 0;
     const initialFloor = surveyGraph.getActiveFloor(this.draft);
     this.cursorPlacementState = initialFloor && initialFloor.session && initialFloor.session.state === 'wallSnapPending'
@@ -479,6 +496,9 @@ Page({
     this._flushingMeasurements = false;
     this.reportedMeasurementKeys = Object.create(null);
     this._syncRAFPending = false;
+    this._syncRAFId = null;
+    this._syncRAFCanvas = null;
+    this._syncRAFToken = null;
     this.touchState = null;
     this.canvasRect = null;
     this.surveyCanvas = null;
@@ -582,6 +602,7 @@ Page({
 
   onHide() {
     this.finishViewportInteraction({ sync: true, persist: false });
+    this.flushViewportDraftSync({ sync: true });
     this.stopPhoneAngleMeasurement();
     this.unbindSpaceNameKeyboardListener();
     this.flushFormalPersist();
@@ -595,6 +616,7 @@ Page({
     this.cursorCanvasInitRevision += 1;
     app.globalData.surveyingEditorContext = null;
     this.finishViewportInteraction({ sync: false, persist: false });
+    this.cancelViewportDraftSync();
     this.clearCursorDragCanvas({ force: true });
     this.clearBleMeasureTimers();
     this.stopPhoneAngleMeasurement();
@@ -887,11 +909,16 @@ Page({
     }
 
     if (!res) {
-      res = await api.request('/floorplans', 'POST', payload);
+      res = await api.request('/floorplans', 'POST', payload, {
+        headers: this.cloudSaveIdempotencyKey
+          ? { 'Idempotency-Key': this.cloudSaveIdempotencyKey }
+          : {}
+      });
     }
 
     if (res && res.success && res.data && res.data._id) {
       this.persistServerDraftId(leadId, res.data._id);
+      this.clearStoredCloudSaveIdempotencyKey(this.formalDraftKey);
       this.isNewSurveySession = false;
       this.lastCloudFingerprint = getDraftGeometryFingerprint(layoutData.surveyGraph);
       if (leadId) {
@@ -930,51 +957,41 @@ Page({
     return this.persistFormalDraft();
   },
 
+  _syncCloudSaveQueueState() {
+    const state = this.cloudSaveQueue && this.cloudSaveQueue.getState();
+    this.cloudSaveInFlight = !!(state && (state.active || state.pending));
+  },
+
   /**
-   * Promise mutex for cloud saves.  Ensures only one saveFormalFloorPlan call
-   * is in-flight at a time.  If a save is already running, subsequent callers
-   * wait for it to finish (so serverDraftId is resolved) before issuing their
-   * own request.
+   * All cloud saves use one queue. A completed save upgrades a queued draft,
+   * while a draft already in flight is allowed to finish before completed runs.
    */
-  async _enqueueCloudSave(status) {
-    // If a save is already in flight, wait for it to finish first so that
-    // serverDraftId is populated before we attempt our own save.
-    if (this._savePromise) {
-      try {
-        await this._savePromise;
-      } catch (_) {
-        // Previous save failure should not prevent this save attempt.
-      }
+  _enqueueCloudSave(status) {
+    if (!this.cloudSaveQueue) {
+      this.cloudSaveQueue = createPriorityCloudSaveQueue(
+        (requestedStatus) => this.saveFormalFloorPlan(requestedStatus),
+        (state) => {
+          this._cloudSaveActive = state.active;
+          this._cloudSavePending = state.pending;
+          this.cloudSaveInFlight = state.active || state.pending;
+        }
+      );
     }
-
-    const promise = this.saveFormalFloorPlan(status);
-    this._savePromise = promise;
-
-    try {
-      const result = await promise;
-      return result;
-    } finally {
-      // Only clear if we are still the active promise (a later caller may
-      // have already replaced it).
-      if (this._savePromise === promise) {
-        this._savePromise = null;
-      }
-    }
+    return this.cloudSaveQueue.enqueue(status);
   },
 
   async autosaveFormalFloorPlan() {
-    if (this._savePromise || this.formalCloudLoadInFlight) return false;
+    if (this.formalCloudLoadInFlight) return false;
     const serverDraftId = this.serverDraftId || this.data.serverDraftId || this.getStoredServerDraftId(this.data.leadId || '');
     if (!shouldAutosaveSurveyDraft(this.draft, {
       serverDraftId,
       lastCloudFingerprint: this.lastCloudFingerprint,
       cloudLoadInFlight: this.formalCloudLoadInFlight,
-      cloudSaveInFlight: !!this._savePromise
+      cloudSaveInFlight: false
     })) {
       return false;
     }
 
-    this.cloudSaveInFlight = true;
     try {
       const status = this.data.floorPlanStatus === 'completed' ? 'completed' : 'draft';
       await this._enqueueCloudSave(status);
@@ -982,8 +999,6 @@ Page({
     } catch (err) {
       console.warn('[surveying-editor] Silent autosave failed', err);
       return false;
-    } finally {
-      this.cloudSaveInFlight = false;
     }
   },
 
@@ -1605,6 +1620,7 @@ Page({
         this.surveyCanvas = canvas;
         this.surveyCtx = canvas.getContext('2d');
         this.surveyCanvasDpr = dpr || 1;
+        this.initViewportInteractionFrameQueue(canvas);
         console.info(
           `[surveying-editor] Canvas renderer ready ${surveyCanvasRenderer.RENDER_REVISION} scene=${this.surveySceneRevision || 0}`
         );
@@ -1647,22 +1663,6 @@ Page({
         this.cursorDragCanvas = canvas;
         this.cursorDragCtx = canvas.getContext('2d');
         this.cursorDragCanvasDpr = dpr || 1;
-        this.resetViewportInteractionFrameQueue();
-        this.viewportInteractionFrameQueue = surveyViewportInteraction.createLatestFrameQueue({
-          requestFrame: (callback) => (
-            typeof canvas.requestAnimationFrame === 'function'
-              ? canvas.requestAnimationFrame(callback)
-              : setTimeout(callback, 16)
-          ),
-          cancelFrame: (frameId) => {
-            if (typeof canvas.cancelAnimationFrame === 'function') {
-              canvas.cancelAnimationFrame(frameId);
-            } else {
-              clearTimeout(frameId);
-            }
-          },
-          onFrame: (viewport) => this.drawViewportInteractionFrame(viewport)
-        });
         surveyCanvasRenderer.clearDraggingCursor(
           this.cursorDragCtx,
           { width, height },
@@ -1671,10 +1671,59 @@ Page({
       });
   },
 
+  getStoredCloudSaveIdempotencyKey(draftKey) {
+    const suffix = draftKey || this.getFormalDraftKey(this.data && this.data.leadId);
+    if (!suffix) return createCloudSaveId();
+    try {
+      const stored = wx.getStorageSync(`${FORMAL_CLOUD_SAVE_KEY}_${suffix}`);
+      if (stored) return String(stored);
+    } catch (err) {
+      // Idempotency storage is best effort; the active editor still keeps its key.
+    }
+    const generated = createCloudSaveId();
+    try {
+      wx.setStorageSync(`${FORMAL_CLOUD_SAVE_KEY}_${suffix}`, generated);
+    } catch (err) {
+      // A storage failure must not block cloud saving.
+    }
+    return generated;
+  },
+
+  clearStoredCloudSaveIdempotencyKey(draftKey) {
+    const suffix = draftKey || this.formalDraftKey;
+    if (!suffix) return;
+    try {
+      wx.removeStorageSync(`${FORMAL_CLOUD_SAVE_KEY}_${suffix}`);
+    } catch (err) {
+      // Cleanup is best effort after a server floor plan has been established.
+    }
+  },
+
+  initViewportInteractionFrameQueue(canvas) {
+    if (!canvas) return;
+    this.resetViewportInteractionFrameQueue();
+    this.viewportInteractionFrameQueue = surveyViewportInteraction.createLatestFrameQueue({
+      requestFrame: (callback) => (
+        typeof canvas.requestAnimationFrame === 'function'
+          ? canvas.requestAnimationFrame(callback)
+          : setTimeout(callback, 16)
+      ),
+      cancelFrame: (frameId) => {
+        if (typeof canvas.cancelAnimationFrame === 'function') {
+          canvas.cancelAnimationFrame(frameId);
+        } else {
+          clearTimeout(frameId);
+        }
+      },
+      onFrame: (viewport) => this.drawViewportInteractionFrame(viewport)
+    });
+  },
+
   resetViewportInteractionFrameQueue() {
     if (this.viewportInteractionFrameQueue) {
       this.viewportInteractionFrameQueue.cancel();
     }
+    this.cancelViewportDraftSync();
     this.viewportInteractionFrameQueue = null;
   },
 
@@ -1758,7 +1807,7 @@ Page({
 
   beginViewportInteraction(baseViewport) {
     if (this.viewportInteraction) return true;
-    if (!this.cursorDragCtx || !this.canvasRect || !this.surveyRenderScene || !this.viewportInteractionFrameQueue) {
+    if (!this.surveyCtx || !this.canvasRect || !this.surveyRenderScene || !this.viewportInteractionFrameQueue) {
       return false;
     }
 
@@ -1868,6 +1917,59 @@ Page({
       this.scheduleFormalPersist();
     }
     return dirty;
+  },
+
+  scheduleViewportDraftSync() {
+    if (this._syncRAFPending || this.surveyCanvasDisposed) return;
+    this._syncRAFPending = true;
+
+    const canvas = this.surveyCanvas;
+    const token = { cancelled: false };
+    this._syncRAFToken = token;
+    const onFrame = () => {
+      if (token.cancelled || this._syncRAFToken !== token) return;
+      this._syncRAFPending = false;
+      this._syncRAFId = null;
+      this._syncRAFCanvas = null;
+      this._syncRAFToken = null;
+      if (this.surveyCanvasDisposed) return;
+      this.syncFromDraft();
+    };
+
+    if (canvas && typeof canvas.requestAnimationFrame === 'function') {
+      this._syncRAFCanvas = canvas;
+      this._syncRAFId = canvas.requestAnimationFrame(onFrame);
+      return;
+    }
+
+    this._syncRAFId = setTimeout(onFrame, 16);
+  },
+
+  flushViewportDraftSync(options) {
+    if (!this._syncRAFPending) return false;
+    const canvas = this._syncRAFCanvas;
+    const frameId = this._syncRAFId;
+    const token = this._syncRAFToken;
+    if (token) token.cancelled = true;
+    if (frameId !== null && frameId !== undefined) {
+      if (canvas && typeof canvas.cancelAnimationFrame === 'function') {
+        canvas.cancelAnimationFrame(frameId);
+      } else if (!canvas || typeof canvas.requestAnimationFrame !== 'function') {
+        clearTimeout(frameId);
+      }
+    }
+    this._syncRAFPending = false;
+    this._syncRAFId = null;
+    this._syncRAFCanvas = null;
+    this._syncRAFToken = null;
+    if (!(options && options.sync === false) && !this.surveyCanvasDisposed) {
+      this.syncFromDraft();
+    }
+    return true;
+  },
+
+  cancelViewportDraftSync() {
+    this.flushViewportDraftSync({ sync: false });
   },
 
   drawSurveyCanvas(options) {
@@ -4566,13 +4668,18 @@ Page({
     }
 
     try {
-      await this.saveFormalFloorPlan('draft');
+      const outcome = await this._enqueueCloudSave('draft');
       wx.hideLoading();
-      this.setData({
-        formalNotice: '草稿已保存到服务端',
-        floorPlanStatus: 'draft'
-      });
-      wx.showToast({ title: '已保存草稿', icon: 'success' });
+      if (outcome.status === 'completed') {
+        this.syncFromDraft({ formalNotice: '量房已完成', floorPlanStatus: 'completed' });
+        wx.showToast({ title: '量房已完成', icon: 'success' });
+      } else {
+        this.setData({
+          formalNotice: '草稿已保存到服务端',
+          floorPlanStatus: 'draft'
+        });
+        wx.showToast({ title: '已保存草稿', icon: 'success' });
+      }
       setTimeout(() => {
         wx.navigateBack({
           fail: () => {
@@ -4598,7 +4705,7 @@ Page({
     }
     wx.showLoading({ title: '提交量房...' });
     try {
-      await this.saveFormalFloorPlan('completed');
+      await this._enqueueCloudSave('completed');
       wx.hideLoading();
       this.guideSessionCompleted = true;
       this.syncFromDraft({ formalNotice: '量房已完成', floorPlanStatus: 'completed' });
@@ -4962,7 +5069,7 @@ Page({
       };
       if (!this.updateViewportInteraction(nextViewport)) {
         this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
-        this.syncFromDraft();
+        this.scheduleViewportDraftSync();
       }
       return;
     }
@@ -4976,8 +5083,9 @@ Page({
     const moved = Math.sqrt(dx * dx + dy * dy);
     const currentMm = this.canvasPointToMm(point);
 
-    // wallSnapPending: short tap still places the cursor; drag pans the canvas
-    // so the operator can bring the target wall into view before dropping.
+    // wallSnapPending: short tap leaves placement unchanged; drag pans the
+    // canvas so the operator can bring the target wall into view before using
+    // the dock cursor drop.
     if (this.touchState.mode === 'wallSnapPending') {
       if (moved < TOUCH_SLOP_PX) return;
       this.touchState.mode = 'pan';
@@ -5057,7 +5165,7 @@ Page({
       };
       if (!this.updateViewportInteraction(nextViewport)) {
         this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
-        this.syncFromDraft();
+        this.scheduleViewportDraftSync();
       }
     }
   },
@@ -5093,24 +5201,19 @@ Page({
     }
 
     if (touchState.mode === 'wallSnapPending') {
-      // Prefer wall/vertex snap for cursor placement; otherwise allow selecting
-      // a closed-room fill so waiting-to-drop does not block room edit.
-      const candidate = this.getCursorPlacementCandidate(touchState.startPoint);
-      if (candidate && candidate.pointMm && (
-        candidate.type === 'vertex' || candidate.type === 'wall'
-      )) {
-        // Canvas tapping must preserve the same inner/outer vertex target as
-        // the bottom cursor drag path rather than reclassifying raw coordinates.
-        const nextDraft = surveyGraph.snapCursorToWall(this.draft, candidate.pointMm, candidate);
-        this.cursorPlacementState = 'placed';
-        this.applyDraft(nextDraft, {
-          recordHistory: false,
-          extraData: {
-            cursorPlacementState: 'placed',
-            numberPadVisible: false
-          }
+      // Waiting-to-drop is intentionally drag-only. Do not let a short tap on
+      // a wall/vertex place the cursor; a wall tap may select the wall for
+      // opening placement, while the dock cursor must be dragged onto the
+      // canvas for a new start point.
+      const wallHit = this.hitTestWallAtClientPoint(touchState.startPoint);
+      if (wallHit && wallHit.wallId) {
+        this.canvasTapSelectedObject = true;
+        this.draft = surveyGraph.selectWall(this.draft, wallHit.wallId);
+        this.centerSelectedWall(false);
+        this.applyDraft(this.draft, {
+          extraData: { numberPadVisible: false },
+          persist: false
         });
-        wx.showToast({ title: '光标已吸附到墙体', icon: 'none' });
         return;
       }
       const spaceHit = this.hitTestClosedSpaceAtClientPoint(touchState.startPoint);
@@ -5122,7 +5225,7 @@ Page({
         });
         return;
       }
-      wx.showToast({ title: '请选择已有墙体或顶点', icon: 'none' });
+      wx.showToast({ title: '请拖动光标到画布放置', icon: 'none' });
       return;
     }
 
@@ -5258,18 +5361,19 @@ Page({
 
     if (touchState.mode === 'pan' || touchState.mode === 'pinch') {
       if (!this.finishViewportInteraction()) {
+        this.flushViewportDraftSync({ sync: true });
         this.scheduleFormalPersist();
       }
     }
   },
 
   onCanvasTap() {
-    // 部分原生 canvas 叠层只派发 tap；作为 touchend 的兜底，空白处仍应收起工具栏。
+    // 空白处仍应收起工具栏。
+    const floor = this.draft && surveyGraph.getActiveFloor(this.draft);
     if (this.canvasTapSelectedObject) {
       this.canvasTapSelectedObject = false;
       return;
     }
-    const floor = this.draft && surveyGraph.getActiveFloor(this.draft);
     if (floor && floor.session && floor.session.state === 'wallSelected') {
       this.onExitWallSelection();
     }

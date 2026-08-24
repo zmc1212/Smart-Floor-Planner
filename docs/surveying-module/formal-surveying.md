@@ -40,6 +40,17 @@ copy back to `layoutData`.
 - Graph and renderer sources are `miniprogram/utils/surveyWallGraph.js`,
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js`,
   `surveyDimensionPlan.js`, and `surveyWallSolidPlan.js`.
+- Surveying pan and pinch gestures use the primary Canvas `requestAnimationFrame`
+  frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
+  coalesced to one callback per animation frame and flushed once at gesture end;
+  this is a rendering-performance path only and does not change graph data or
+  viewport persistence.
+- Autosave, manual draft save, and completed submission share one serialized
+  cloud-save queue. Only one save is in flight; a queued `completed` request
+  upgrades and takes priority over queued `draft` work. New floor-plan POSTs
+  carry a persisted `Idempotency-Key`, backed by the unique
+  `floor_plans.create_idempotency_key` column, so a lost response can be safely
+  retried without creating a second floor plan.
 
 ## CAD/DXF export
 
@@ -143,8 +154,10 @@ copy back to `layoutData`.
   重置光标. In guide mode that state immediately shows the Xiao K
   place-next-start tip even when closed-room dimension labels would otherwise
   leave no hard-avoiding layout. During that wall-drop wait
-  (`wallSnapPending`), the canvas still pans and pinch-zooms; only a short tap
-  on a wall or vertex places the cursor, so a drag does not lock the viewport.
+  (`wallSnapPending`), the canvas still pans and pinch-zooms; direct taps on a
+  wall or vertex do not place the cursor; a wall tap may select the wall for
+  opening placement. The cursor is placed only by dragging the dock control
+  onto the canvas, so a drag does not lock the viewport.
   A short tap on a closed-room fill selects that space (`selectSpace`) instead;
   the wall/vertex toast appears only when neither snap nor fill hits.
   Resetting the cursor onto

@@ -16,8 +16,13 @@ Git 历史保留。
   `onUnload` 会立即写入本地草稿并尽力静默保存到云端；再次进入时若本地草稿比云端更新，
   则保留本地测量图并回写云端。顶栏返回为
   88rpx 点击区，叠在居中标题层之上。
+- 自动保存、顶栏手动保存和提交完成统一进入单一云保存队列；同一时间只允许一个请求在途，
+  排队中的 `completed` 会升级并优先于 `draft`。首次 POST 使用持久化的
+  `Idempotency-Key`，服务端以 `floor_plans.create_idempotency_key` 唯一约束安全重放，
+  响应丢失重试只返回原户型，不重复创建 floor plan。
 - 空间填充、净面积、墙体实体和尺寸均从 graph 派生；不保存 legacy layout 副本。
 - 后台 `/floorplans/[id]` 2D 查看器同步运行小程序 `surveyCanvasRenderer`（只读平移/缩放，不写 graph）；已完成的正式 v4 户型在保存时把同一套 canvas 导出为 PNG 快照（`floor_plans.preview_asset_id`，不写入 `layoutData`）。DXF、3D 和 AI 仍使用同一 graph 的只读适配器。
+- 量房画布的平移与双指缩放由主 Canvas 的 `requestAnimationFrame` 合帧绘制；主 Canvas 暂不可用时，回退的 draft 同步也按动画帧合并，手势结束时再执行一次最终 `setData` 同步，不改变 graph 或 viewport 持久化契约。
 - 已完成且至少有一个闭合空间的正式 v4 户型可导出施工 DXF；后台 Cookie 端点为
   `GET /api/floorplans/[id]/export/dxf`，小程序 Bearer-JWT 端点为
   `GET /api/miniprogram/floorplans/[id]/export/dxf`。适配器只读取 graph，使用
@@ -64,7 +69,7 @@ Git 历史保留。
   编辑器立即进入与点「重置光标」相同的等待拖放状态，无需再点一次；引导模式下
   此时立即显示小K「放置下一空间起点」提示，不会因闭合房间尺寸标注占满画布而
   隐藏。等待拖放（`wallSnapPending` /「光标拖动到墙体」）时画布仍可平移与双指缩放，
-  短按墙体或顶点才吸附放置；拖动手势不会锁死视口。短按闭合房间内域则可直接
+  不接受直接点击墙体或顶点吸附，点击墙体仅用于选中墙体后放置门窗；光标只能通过底部控件拖动到画布后放置；拖动手势不会锁死视口。短按闭合房间内域则可直接
   `selectSpace` 进入房间选中（未命中墙/顶点/房间时才提示选墙或顶点）。
   把重置光标放到任一悬空顶点会接回这条开口链，
   而不是从该墙开始一个新房间；沿恢复后的最后一面墙往回拉会缩短该墙，而不是

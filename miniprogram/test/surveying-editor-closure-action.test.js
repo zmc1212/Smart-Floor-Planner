@@ -139,21 +139,25 @@ test('cursor release commits the last visible snap candidate instead of reclassi
   assert.match(editorScript, /this\.cursorDragCandidate = null;[\s\S]*?this\.cursorDragPending = true;/);
 });
 
-test('canvas wall snapping forwards the resolved vertex or wall candidate to the graph', () => {
+test('wall-drop state does not place the cursor from a canvas tap', () => {
   assert.match(
     editorScript,
-    /const candidate = this\.getCursorPlacementCandidate\(touchState\.startPoint\);[\s\S]*?candidate\.type === 'vertex' \|\| candidate\.type === 'wall'[\s\S]*?surveyGraph\.snapCursorToWall\(this\.draft, candidate\.pointMm, candidate\)/
+    /if \(touchState\.mode === 'wallSnapPending'\) \{[\s\S]*?Waiting-to-drop is intentionally drag-only[\s\S]*?hitTestClosedSpaceAtClientPoint\(touchState\.startPoint\)/
   );
   assert.match(
     editorScript,
-    /surveyGraph\.snapCursorToWall\(this\.draft, candidate\.pointMm, candidate\);[\s\S]*?this\.cursorPlacementState = 'placed';[\s\S]*?cursorPlacementState: 'placed'/
+    /if \(touchState\.mode === 'wallSnapPending'\) \{[\s\S]*?请拖动光标到画布放置/
+  );
+  assert.doesNotMatch(
+    editorScript,
+    /if \(touchState\.mode === 'wallSnapPending'\) \{[\s\S]*?getCursorPlacementCandidate\(touchState\.startPoint\)/
   );
 });
 
 test('wallSnapPending tap selects a closed space fill when wall/vertex snap misses', () => {
   assert.match(
     editorScript,
-    /if \(touchState\.mode === 'wallSnapPending'\) \{[\s\S]*?getCursorPlacementCandidate\(touchState\.startPoint\)[\s\S]*?hitTestClosedSpaceAtClientPoint\(touchState\.startPoint\)[\s\S]*?surveyGraph\.selectSpace\(this\.draft, spaceHit\.spaceId\)[\s\S]*?请选择已有墙体或顶点/
+    /if \(touchState\.mode === 'wallSnapPending'\) \{[\s\S]*?hitTestWallAtClientPoint\(touchState\.startPoint\)[\s\S]*?surveyGraph\.selectWall\(this\.draft, wallHit\.wallId\)[\s\S]*?hitTestClosedSpaceAtClientPoint\(touchState\.startPoint\)[\s\S]*?surveyGraph\.selectSpace\(this\.draft, spaceHit\.spaceId\)[\s\S]*?请拖动光标到画布放置/
   );
   assert.match(
     editorWxml,

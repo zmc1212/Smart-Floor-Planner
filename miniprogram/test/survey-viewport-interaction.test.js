@@ -108,3 +108,21 @@ test('editor rejects stale formal and canvas-init callbacks during viewport inte
   assert.match(editorSource, /initRevision !== this\.cursorCanvasInitRevision/);
   assert.match(editorSource, /rectRevision !== this\.canvasRectRevision/);
 });
+
+test('editor owns viewport frames from the primary Canvas and coalesces fallback sync', () => {
+  const editorSource = fs.readFileSync(
+    path.join(__dirname, '../packages/surveying/editor/surveying-editor.js'),
+    'utf8'
+  );
+
+  assert.match(editorSource, /this\.initViewportInteractionFrameQueue\(canvas\);/);
+  assert.match(editorSource, /canvas\.requestAnimationFrame\(onFrame\)/);
+  assert.match(editorSource, /this\.scheduleViewportDraftSync\(\);/);
+  assert.match(editorSource, /this\.flushViewportDraftSync\(\{ sync: true \}\);/);
+  assert.match(editorSource, /this\.cancelViewportDraftSync\(\);/);
+  assert.match(editorSource, /if \(!this\.surveyCtx \|\| !this\.canvasRect \|\| !this\.surveyRenderScene \|\| !this\.viewportInteractionFrameQueue\)/);
+
+  const cursorInit = editorSource.match(/initCursorDragCanvas\(\) \{[\s\S]*?\n  \},\n\n  initViewportInteractionFrameQueue/);
+  assert.ok(cursorInit, 'cursor Canvas initializer should remain separate from viewport frame ownership');
+  assert.doesNotMatch(cursorInit[0], /viewportInteractionFrameQueue/);
+});

@@ -146,6 +146,19 @@ Featured ranking continues to use the existing customer urgency order (expired /
 - Bilingual Mini Program module inventories: Service home entry goes straight to archive; list API described as home/switcher source
 - Do not treat `01-customer-workbench.jpg` dual-thumb hero as the empty-state authority; this spec supersedes that gap for early stages
 
+## Secondary service-needs entry
+
+The existing service-established success surface keeps its primary archive CTA
+and adds one subdued secondary link, `有其他服务需求？补充一下 ›`. The old
+`稍后再看` link is removed from that success state so the first viewport has
+one primary action and one optional follow-up. The link opens
+`packages/business/service-needs/service-needs`; the page records optional
+service needs only and never mutates `serviceStage`. Customer writes use
+`GET/PUT /api/miniprogram/customer-projects/[leadId]/service-needs`, while a
+designer, measurer, or enterprise administrator can record the result of WeChat
+communication through `GET/PATCH /api/leads/[id]/service-needs` from the existing
+lead edit form.
+
 ## Success criteria
 
 - Measurer-assigned home shows one status sentence, not duplicated body lines

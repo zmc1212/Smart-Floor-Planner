@@ -30,6 +30,8 @@ interface FloorPlanRequestBody {
   leadId?: string;
 }
 
+const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
 }
@@ -108,6 +110,13 @@ export async function POST(request: Request) {
       );
     }
     const planStatus = body.status || 'completed';
+    const idempotencyKey = request.headers.get('Idempotency-Key')?.trim() || '';
+    if (idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+      return NextResponse.json(
+        { success: false, error: 'Idempotency-Key is too long' },
+        { status: 400 }
+      );
+    }
     const createdResult = await withMiniProgramPostgresTransaction(
       context,
       async (transaction) => {
@@ -118,7 +127,27 @@ export async function POST(request: Request) {
         const enterpriseId = context.enterpriseId
           ? parsePostgresId(context.enterpriseId, 'enterprise id')
           : null;
-        const created = await new FloorPlanRepository(transaction).create({
+        const floorPlanRepository = new FloorPlanRepository(transaction);
+        if (idempotencyKey) {
+          const existing = await floorPlanRepository.findByCreateIdempotencyKey(
+            idempotencyKey
+          );
+          if (existing) {
+            const sameEnterprise = existing.enterpriseId === enterpriseId;
+            if (existing.creatorId !== creatorId || !sameEnterprise) {
+              throw Object.assign(
+                new Error('Idempotency-Key has already been used'),
+                { status: 409, code: 'IDEMPOTENCY_KEY_REUSED' }
+              );
+            }
+            return {
+              plan: existing,
+              lead: await new LeadRepository(transaction).findByFloorPlanId(existing.id),
+              created: false,
+            };
+          }
+        }
+        const createdResult = await floorPlanRepository.createIdempotent({
           name: body.name?.trim() || '未命名户型',
           creatorId,
           staffId,
@@ -127,8 +156,24 @@ export async function POST(request: Request) {
           source: 'manual',
           status: planStatus,
           completedAt: planStatus === 'completed' ? new Date() : null,
+          ...(idempotencyKey ? { createIdempotencyKey: idempotencyKey } : {}),
         });
+        const created = createdResult.plan;
         if (!created) throw new Error('Failed to create floor plan');
+        if (!createdResult.created) {
+          const sameEnterprise = created.enterpriseId === enterpriseId;
+          if (created.creatorId !== creatorId || !sameEnterprise) {
+            throw Object.assign(
+              new Error('Idempotency-Key has already been used'),
+              { status: 409, code: 'IDEMPOTENCY_KEY_REUSED' }
+            );
+          }
+          return {
+            plan: created,
+            lead: await new LeadRepository(transaction).findByFloorPlanId(created.id),
+            created: false,
+          };
+        }
 
         let linkedLead = null;
         if (body.leadId) {
@@ -167,7 +212,7 @@ export async function POST(request: Request) {
             });
           }
         }
-        return { plan: created, lead: linkedLead };
+        return { plan: created, lead: linkedLead, created: true };
       }
     );
     const plan = await persistAndAttachFloorPlanPreview(createdResult.plan);
@@ -181,7 +226,7 @@ export async function POST(request: Request) {
           )?.measurementSequence,
         }),
       },
-      { status: 201 }
+      { status: createdResult.created ? 201 : 200 }
     );
   } catch (error: unknown) {
     const message = getErrorMessage(error);

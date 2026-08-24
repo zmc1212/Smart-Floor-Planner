@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AntdRegistry } from "@ant-design/nextjs-registry";
+import { AntdReact19Patch } from "@/components/admin/antd-react19-patch";
 import { OperationFeedbackToaster } from "@/components/admin/operation-feedback";
 import "./globals.css";
 
@@ -19,6 +20,7 @@ export default function RootLayout({
       className="h-full antialiased"
     >
       <body className="min-h-full flex flex-col">
+        <AntdReact19Patch />
         <AntdRegistry layer>{children}</AntdRegistry>
         <OperationFeedbackToaster />
       </body>

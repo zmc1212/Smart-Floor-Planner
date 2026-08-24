@@ -185,12 +185,38 @@ export class FloorPlanRepository {
     return rows[0] ? this.normalizeRows(rows)[0] : null;
   }
 
+  async findByCreateIdempotencyKey(key: string) {
+    const rows = await this.selectWithCreator()
+      .where(eq(floorPlans.createIdempotencyKey, key))
+      .limit(1);
+    return rows[0] ? this.normalizeRows(rows)[0] : null;
+  }
+
   async create(input: NewFloorPlan) {
     const rows = await this.transaction
       .insert(floorPlans)
       .values(input)
       .returning();
     return this.findById(rows[0].id);
+  }
+
+  async createIdempotent(input: NewFloorPlan) {
+    if (!input.createIdempotencyKey) {
+      const plan = await this.create(input);
+      return { plan, created: true };
+    }
+    const rows = await this.transaction
+      .insert(floorPlans)
+      .values(input)
+      .onConflictDoNothing({ target: floorPlans.createIdempotencyKey })
+      .returning({ id: floorPlans.id });
+    if (rows[0]) {
+      return { plan: await this.findById(rows[0].id), created: true };
+    }
+    return {
+      plan: await this.findByCreateIdempotencyKey(input.createIdempotencyKey),
+      created: false,
+    };
   }
 
   async update(id: bigint, input: FloorPlanUpdate) {

@@ -85,6 +85,28 @@
             </view>
           </picker>
         </view>
+
+        <view wx:if="{{isEditMode}}" class="service-needs-form-group">
+          <text class="label">服务需求记录</text>
+          <text class="service-needs-helper">设计师可根据微信沟通结果补充，客户首页仅展示已记录状态</text>
+          <view class="service-needs-form-options">
+            <view
+              wx:for="{{serviceNeedOptions}}"
+              wx:key="key"
+              class="service-needs-form-option {{item.selected ? 'is-selected' : ''}}"
+              data-key="{{item.key}}"
+              bindtap="onToggleServiceNeed"
+              hover-class="service-needs-form-option-pressed"
+              aria-role="checkbox"
+              aria-checked="{{item.selected}}"
+            >
+              <view class="service-needs-form-check" aria-hidden="true">
+                <view wx:if="{{item.selected}}" class="service-needs-form-checkmark"></view>
+              </view>
+              <text>{{item.label}}</text>
+            </view>
+          </view>
+        </view>
       </view>
 
       <view class="submit-wrap">

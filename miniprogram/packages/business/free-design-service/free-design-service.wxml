@@ -50,7 +50,8 @@ FORM: design-references/free-design-service-phone-auth-redesign-v1/free-design-s
       <view class="auth-benefit-main">
         <view class="auth-benefit-copy">
           <text class="auth-benefit-title">授权手机号，</text>
-          <text class="auth-benefit-title">领取免费量房·免费设计</text>
+          <text class="auth-benefit-title">领取免费量房</text>
+          <text class="auth-benefit-title">免费设计</text>
           <text class="auth-benefit-subtitle">仅用于本次服务联系</text>
         </view>
         <image
@@ -136,8 +137,8 @@ FORM: design-references/free-design-service-phone-auth-redesign-v1/free-design-s
         <text class="step-label">手机号授权</text>
       </view>
       <view class="step-rail is-solid"></view>
-      <view class="step current">
-        <view class="step-dot">3</view>
+      <view class="step done">
+        <view class="step-dot"><view class="step-check"></view></view>
         <text class="step-label">设计师匹配</text>
       </view>
     </view>
@@ -146,8 +147,8 @@ FORM: design-references/free-design-service-phone-auth-redesign-v1/free-design-s
       <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
       <view class="hero-blob" aria-hidden="true"></view>
       <view class="hero-copy">
-        <text class="ready-title success-title">服务已建立</text>
-        <text class="ready-subtitle">专属设计师已为你匹配</text>
+        <text class="ready-title success-title">设计师已为你匹配</text>
+        <text class="ready-subtitle">服务档案已建立，后续进度可随时查看</text>
       </view>
       <image
         class="hero-xiaok"
@@ -156,78 +157,49 @@ FORM: design-references/free-design-service-phone-auth-redesign-v1/free-design-s
       />
     </view>
 
-    <view class="designer-sheet">
-      <view class="designer-head">
-        <view class="designer-avatar">
+    <view class="success-contact-card">
+      <view class="success-designer-head">
+        <view class="success-designer-avatar">
           <image src="/images/mine-icons/user.png" mode="aspectFit" />
         </view>
-        <view class="designer-meta">
-          <text class="designer-name">{{designerProfile.displayName || '专属设计师'}}</text>
-          <text class="designer-role">专属设计师</text>
+        <view class="success-designer-meta">
+          <text class="success-designer-name">{{designerProfile.displayName || '专属设计师'}}</text>
+          <text class="success-designer-role">专属设计师</text>
+        </view>
+        <view class="success-match-status">
+          <view class="success-match-dot" aria-hidden="true"></view>
+          <text>已匹配</text>
         </view>
       </view>
-      <view class="designer-hairline"></view>
-      <view wx:if="{{designerProfile.wechatQrUrl}}" class="designer-qr-block" bindtap="onOpenContactSheet">
-        <image
-          wx:if="{{designerQrPath}}"
-          class="designer-qr"
-          src="{{designerQrPath}}"
-          mode="aspectFit"
-          show-menu-by-longpress="{{true}}"
-          aria-label="设计师微信二维码，长按可识别添加"
-        />
-        <view wx:elif="{{designerQrLoading}}" class="designer-qr-state">正在加载二维码…</view>
-        <view wx:else class="designer-qr-state error">
-          <text>二维码暂时无法读取</text>
-          <text class="designer-qr-retry" catchtap="onRetryDesignerQr">重试</text>
-        </view>
-        <text class="designer-qr-hint">长按识别二维码，添加设计师为好友</text>
-      </view>
-      <view class="designer-wechat-row">
-        <image class="wechat-mark" src="/packages/business/assets/login-v1/wechat.png" mode="aspectFit" />
-        <text class="designer-wechat">微信号：{{designerProfile.wechatId || '暂未提供'}}</text>
-        <text wx:if="{{designerProfile.wechatId}}" class="copy-link" bindtap="onCopyWechat">复制微信号</text>
-        <text wx:elif="{{designerProfile.wechatQrUrl}}" class="copy-link" bindtap="onOpenContactSheet">查看大图</text>
-      </view>
-    </view>
-
-    <view class="next-card">
-      <view class="next-row">
-        <view class="next-item">
-          <view class="next-icon">
-            <image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" />
-          </view>
-          <text class="next-label">免费量房</text>
-        </view>
-        <view class="next-arrow"></view>
-        <view class="next-item">
-          <view class="next-icon chat-icon">
-            <view class="chat-bubble"></view>
-          </view>
-          <text class="next-label">设计师沟通</text>
-        </view>
-      </view>
-      <view class="next-note">
+      <view class="success-contact-purpose">
         <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-        <text>后续预约与方案沟通将通过微信联系</text>
+        <text>后续量房预约、户型确认与方案沟通由设计师微信跟进</text>
       </view>
     </view>
 
-    <button class="claim-action" bindtap="onOpenProject">查看我的服务档案</button>
-    <view class="later-link" bindtap="onLater" aria-role="button">稍后再看</view>
+    <button class="claim-action success-project-action" bindtap="onOpenProject">查看服务档案</button>
+    <button
+      class="claim-action-outline success-contact-action {{canContactDesigner ? '' : 'is-disabled'}}"
+      bindtap="onOpenContactSheet"
+      disabled="{{!canContactDesigner}}"
+    >{{canContactDesigner ? '查看设计师微信' : '设计师联系方式同步中'}}</button>
+    <text class="success-contact-helper">{{canContactDesigner ? '需要时可再次查看二维码或复制微信号' : '联系方式同步完成后即可查看'}}</text>
+    <view class="service-needs-link" bindtap="onOpenServiceNeeds" aria-role="button">
+      <text>有其他服务需求？补充一下</text>
+      <text class="service-needs-chevron" aria-hidden="true">›</text>
+    </view>
   </view>
 
   <view wx:elif="{{pageState === 'existing'}}" class="claim-existing">
     <view class="existing-hero">
-      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
-      <view class="hero-blob" aria-hidden="true"></view>
+      <view class="existing-status-kicker">服务归属已保留</view>
       <view class="hero-copy">
         <text class="ready-title">你已有进行中的服务</text>
         <text class="ready-subtitle">无需重复领取，我们将继续为你保留当前服务安排</text>
       </view>
       <image
         class="hero-xiaok existing-xiaok"
-        src="/packages/business/assets/referral-service-v1/xiao-k-existing-service.png"
+        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
         mode="aspectFit"
       />
     </view>
@@ -237,17 +209,37 @@ FORM: design-references/free-design-service-phone-auth-redesign-v1/free-design-s
         <view class="existing-icon">
           <image src="/images/mine-icons/clipboard-pen.png" mode="aspectFit" />
         </view>
-        <text class="existing-service-name">免费设计服务 · {{existingServiceLabel || '客户'}}</text>
-      </view>
-      <view class="existing-timeline">
-        <view class="timeline-rail"></view>
-        <view class="timeline-node">
-          <view class="timeline-dot is-active"></view>
-          <view class="timeline-copy">
-            <text class="timeline-title">{{serviceStageLabel || '服务进行中'}}</text>
-            <text class="timeline-meta">{{lastUpdateLabel || '最近更新：今天'}}</text>
-          </view>
+        <view class="existing-service-title">
+          <text class="existing-service-name">免费设计服务 · {{existingServiceLabel || '客户'}}</text>
+          <text class="existing-service-status">进行中</text>
         </view>
+      </view>
+      <view class="existing-stage-path">
+        <view class="existing-stage {{existingStageIndex >= 0 ? 'is-done' : ''}} {{existingStageIndex === 0 ? 'is-current' : ''}}">
+          <view class="existing-stage-dot">
+            <view wx:if="{{existingStageIndex > 0}}" class="existing-stage-check"></view>
+            <text wx:else>1</text>
+          </view>
+          <text class="existing-stage-label">需求确认</text>
+        </view>
+        <view class="existing-stage-line {{existingStageIndex > 0 ? 'is-done' : ''}}"></view>
+        <view class="existing-stage {{existingStageIndex >= 1 ? 'is-done' : ''}} {{existingStageIndex === 1 ? 'is-current' : ''}}">
+          <view class="existing-stage-dot">
+            <view wx:if="{{existingStageIndex > 1}}" class="existing-stage-check"></view>
+            <text wx:else>2</text>
+          </view>
+          <text class="existing-stage-label">量房安排</text>
+        </view>
+        <view class="existing-stage-line {{existingStageIndex > 1 ? 'is-done' : ''}}"></view>
+        <view class="existing-stage {{existingStageIndex >= 2 ? 'is-done' : ''}} {{existingStageIndex === 2 ? 'is-current' : ''}}">
+          <view class="existing-stage-dot">3</view>
+          <text class="existing-stage-label">设计沟通</text>
+        </view>
+      </view>
+      <view class="existing-update-row">
+        <text class="existing-update-label">当前阶段</text>
+        <text class="existing-update-value">{{serviceStageLabel || '服务进行中'}}</text>
+        <text class="existing-update-time">{{lastUpdateLabel || '最近更新：今天'}}</text>
       </view>
       <button class="claim-action existing-primary" bindtap="onOpenProject">查看服务档案</button>
       <button

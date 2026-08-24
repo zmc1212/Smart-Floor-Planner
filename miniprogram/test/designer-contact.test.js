@@ -20,11 +20,13 @@ test('designerContact helpers prioritize QR contact and document copy fallback',
   assert.match(source, /请打开微信，通过搜索添加设计师为好友/);
 });
 
-test('designer-contact-sheet shows QR with long-press hint and copy wechat fallback', () => {
+test('designer-contact-sheet restores the approved Xiao K QR-first contact design', () => {
   const js = fs.readFileSync(path.join(sheetRoot, 'designer-contact-sheet.js'), 'utf8');
   const wxml = fs.readFileSync(path.join(sheetRoot, 'designer-contact-sheet.wxml'), 'utf8');
   const less = fs.readFileSync(path.join(sheetRoot, 'designer-contact-sheet.less'), 'utf8');
   const json = JSON.parse(fs.readFileSync(path.join(sheetRoot, 'designer-contact-sheet.json'), 'utf8'));
+  const xiaoKPath = path.join(root, 'images', 'designer-contact', 'xiao-k-peeking.png');
+  const closeIconPath = path.join(root, 'images', 'designer-contact', 'close.png');
 
   assert.equal(json.component, true);
   assert.match(js, /loadDesignerQrToTempFile/);
@@ -32,18 +34,29 @@ test('designer-contact-sheet shows QR with long-press hint and copy wechat fallb
   assert.match(js, /wx\.previewImage/);
   assert.match(js, /openSheet/);
   assert.match(js, /sheetMotion/);
-  assert.match(wxml, /长按识别二维码，添加设计师为好友/);
+  assert.match(wxml, /长按二维码，加设计师微信/);
+  assert.match(wxml, /按住二维码 2 秒/);
+  assert.match(wxml, /你的专属设计师/);
+  assert.match(wxml, /xiao-k-peeking\.png/);
+  assert.match(wxml, /dcs-hero/);
+  assert.match(wxml, /dcs-hold-pill/);
   assert.match(wxml, /show-menu-by-longpress/);
-  assert.match(wxml, /微信号：\{\{wechatId\}\}/);
-  assert.match(wxml, /复制微信号/);
+  assert.match(wxml, /微信号　\{\{wechatId\}\}/);
+  assert.match(wxml, />复制</);
   assert.match(wxml, /bindtap="onPreviewQr"/);
   assert.match(wxml, /dcs-dialog \{\{dialogOpen \? 'open' : ''\}\}/);
   assert.match(less, /\.dcs-dialog/);
+  assert.match(less, /\.dcs-xiao-k/);
+  assert.match(less, /position:\s*absolute/);
+  assert.match(less, /\.dcs-spatial-mark/);
   assert.match(less, /align-items:\s*center/);
   assert.match(less, /justify-content:\s*center/);
   assert.doesNotMatch(less, /align-items:\s*flex-end/);
   assert.doesNotMatch(less, /translateY\(100%\)/);
   assert.match(less, /\.dcs-qr/);
+  assert.ok(fs.statSync(xiaoKPath).size <= 300 * 1024);
+  assert.deepEqual([...fs.readFileSync(xiaoKPath).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.deepEqual([...fs.readFileSync(closeIconPath).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 });
 
 test('customer project API wrapper still exposes designer contact for existing-service hydration', () => {
@@ -70,7 +83,7 @@ test('customer project API wrapper still exposes designer contact for existing-s
   );
 });
 
-test('free-design claim success reuses designer-contact-sheet and inline QR', () => {
+test('free-design claim success auto-opens the shared sheet and keeps QR out of the result page', () => {
   const claimRoot = path.join(root, 'packages', 'business', 'free-design-service');
   const js = fs.readFileSync(path.join(claimRoot, 'free-design-service.js'), 'utf8');
   const wxml = fs.readFileSync(path.join(claimRoot, 'free-design-service.wxml'), 'utf8');
@@ -78,6 +91,10 @@ test('free-design claim success reuses designer-contact-sheet and inline QR', ()
   assert.match(json.usingComponents['designer-contact-sheet'], /designer-contact-sheet/);
   assert.match(js, /onOpenContactSheet/);
   assert.match(js, /hasDesignerContact/);
-  assert.match(wxml, /designer-qr-block/);
+  assert.match(js, /showContactSheet:\s*Boolean\(designerProfile && contactAvailable\)/);
+  assert.match(wxml, /查看设计师微信/);
+  assert.match(wxml, /查看服务档案/);
+  assert.match(wxml, /claim-action success-project-action[\s\S]*查看服务档案<\/button>\s*<button[\s\S]*claim-action-outline success-contact-action/);
+  assert.doesNotMatch(wxml, /designer-qr-block|show-menu-by-longpress/);
   assert.match(wxml, /designer-contact-sheet/);
 });

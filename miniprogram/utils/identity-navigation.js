@@ -52,6 +52,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/enterprise-staff/enterprise-staff': 'enterprise.operations',
   '/packages/business/customer-projects/customer-projects': 'customer.projects',
   '/packages/business/customer-project/customer-project': 'customer.projects',
+  '/packages/business/service-needs/service-needs': 'customer.projects',
   '/packages/business/customer-ai-schemes/customer-ai-schemes': ['customer.projects', 'staff.leads', 'staff.tasks', 'enterprise.customers', 'account'],
   '/pages/mine/mine': 'account',
   '/packages/business/settings/settings': 'account',

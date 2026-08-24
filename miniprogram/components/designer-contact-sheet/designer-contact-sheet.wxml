@@ -1,38 +1,74 @@
 <view wx:if="{{dialogMounted}}" class="dcs-root" catchtouchmove="noop" aria-role="dialog" aria-label="联系设计师">
   <view class="dcs-mask {{dialogOpen ? 'open' : ''}}" bindtap="onClose"></view>
   <view class="dcs-dialog {{dialogOpen ? 'open' : ''}}" catchtap="noop">
-    <view class="dcs-head">
-      <text class="dcs-title">微信联系设计师</text>
-      <text class="dcs-close" bindtap="onClose">关闭</text>
-    </view>
-
-    <view class="dcs-meta">
-      <text class="dcs-name">{{displayName}}</text>
-      <text class="dcs-role">专属设计师</text>
-    </view>
-
-    <view wx:if="{{hasQr}}" class="dcs-qr-block">
+    <view class="dcs-card">
       <image
-        wx:if="{{qrPath}}"
-        class="dcs-qr"
-        src="{{qrPath}}"
+        class="dcs-xiao-k"
+        src="/images/designer-contact/xiao-k-peeking.png"
         mode="aspectFit"
-        show-menu-by-longpress="{{true}}"
-        bindtap="onPreviewQr"
-        aria-label="设计师微信二维码，长按可识别添加"
+        aria-label="小K引导添加设计师微信"
       />
-      <view wx:elif="{{qrLoading}}" class="dcs-qr-state">正在加载二维码…</view>
-      <view wx:else class="dcs-qr-state error">
-        <text>二维码暂时无法读取</text>
-        <text class="dcs-retry" bindtap="onRetryQr">重试</text>
+
+      <view class="dcs-surface">
+        <view class="dcs-hero">
+          <view class="dcs-spatial-mark" aria-hidden="true">
+            <view class="dcs-spatial-room room-a"></view>
+            <view class="dcs-spatial-room room-b"></view>
+            <view class="dcs-spatial-room room-c"></view>
+          </view>
+          <block wx:if="{{hasQr}}">
+            <text class="dcs-title">长按二维码，加设计师微信</text>
+            <text class="dcs-subtitle">方案细节、户型想法，随时沟通</text>
+          </block>
+          <block wx:else>
+            <text class="dcs-title">复制微信号，加设计师微信</text>
+            <text class="dcs-subtitle">方案细节、户型想法，随时沟通</text>
+          </block>
+        </view>
+
+        <view class="dcs-body">
+          <view class="dcs-designer-pill">
+            <text class="dcs-designer-label">你的专属设计师</text>
+            <text class="dcs-designer-separator">·</text>
+            <text class="dcs-designer-name">{{displayName}}</text>
+          </view>
+
+          <view wx:if="{{hasQr}}" class="dcs-qr-block">
+            <view class="dcs-qr-shell">
+              <image
+                wx:if="{{qrPath}}"
+                class="dcs-qr"
+                src="{{qrPath}}"
+                mode="aspectFit"
+                show-menu-by-longpress="{{true}}"
+                bindtap="onPreviewQr"
+                aria-label="设计师微信二维码，长按可识别添加"
+              />
+              <view wx:elif="{{qrLoading}}" class="dcs-qr-state">正在加载二维码…</view>
+              <view wx:else class="dcs-qr-state error">
+                <text>二维码暂时无法读取</text>
+                <text class="dcs-retry" bindtap="onRetryQr">重新加载</text>
+              </view>
+              <view class="dcs-hold-pill" aria-hidden="true">按住二维码 2 秒</view>
+            </view>
+          </view>
+
+          <view wx:if="{{wechatId}}" class="dcs-wechat-row">
+            <text class="dcs-wechat">微信号　{{wechatId}}</text>
+            <text class="dcs-copy" bindtap="onCopyWechat">复制</text>
+          </view>
+          <text wx:if="{{wechatId && hasQr}}" class="dcs-hint">识别不了？复制微信号后去微信搜索添加</text>
+          <text wx:elif="{{wechatId}}" class="dcs-hint">复制微信号后，前往微信搜索添加</text>
+          <text wx:elif="{{!hasQr}}" class="dcs-empty">设计师联系方式暂未提供</text>
+        </view>
       </view>
-      <text class="dcs-hint">长按识别二维码，添加设计师为好友</text>
     </view>
 
-    <view wx:if="{{wechatId}}" class="dcs-wechat-row">
-      <text class="dcs-wechat">微信号：{{wechatId}}</text>
-      <text class="dcs-copy" bindtap="onCopyWechat">复制微信号</text>
+    <view class="dcs-close-action" bindtap="onClose" aria-role="button" aria-label="关闭联系设计师弹窗">
+      <view class="dcs-close-circle">
+        <image class="dcs-close-icon" src="/images/designer-contact/close.png" mode="aspectFit" />
+      </view>
+      <text class="dcs-close-label">关闭</text>
     </view>
-    <text wx:elif="{{!hasQr}}" class="dcs-empty">设计师联系方式暂未提供</text>
   </view>
 </view>
