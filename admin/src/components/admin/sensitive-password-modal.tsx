@@ -91,7 +91,7 @@ export function SensitivePasswordModal({
       title="导出客资"
       open={open}
       onCancel={onClose}
-      destroyOnClose
+      destroyOnHidden
       footer={
         configured === false
           ? [

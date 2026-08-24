@@ -56,7 +56,7 @@ export function LoginPasswordSettingsModal({
       title="修改登录密码"
       open={open}
       onCancel={onClose}
-      destroyOnClose
+      destroyOnHidden
       footer={[
         <Button key="cancel" onClick={onClose} disabled={saving}>
           取消

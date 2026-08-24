@@ -85,7 +85,7 @@ export function SensitivePasswordSettingsModal({
       title="修改安全密码"
       open={open}
       onCancel={onClose}
-      destroyOnClose
+      destroyOnHidden
       footer={[
         <Button key="cancel" onClick={onClose} disabled={saving}>
           取消
