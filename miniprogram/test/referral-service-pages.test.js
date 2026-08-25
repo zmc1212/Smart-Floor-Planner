@@ -19,11 +19,7 @@ const referralAssets = [
   'xiao-k-onboarding-welcome.png',
   'xiao-k-onboarding-recovery.png',
   'xiao-k-spatial-service-guide.png',
-  'xiao-k-phone-privacy.png',
-  'phone-auth-measure.png',
-  'phone-auth-design.png',
-  'phone-auth-calendar.png',
-  'phone-auth-wechat.png',
+  'xiao-k-three-benefits.png',
   'phone-auth-privacy.png',
 ];
 
@@ -165,6 +161,9 @@ test('free design service resolves into phone authorization and renders truthful
   const wxml = source('packages/business/free-design-service/free-design-service.wxml');
   const js = source('packages/business/free-design-service/free-design-service.js');
   const less = source('packages/business/free-design-service/free-design-service.less');
+  const phoneAuthMarkup = wxml.match(
+    /<view wx:elif="\{\{pageState === 'phoneAuth'\}\}"[\s\S]*?(?=<view wx:elif="\{\{pageState === 'success'\}\}")/,
+  )?.[0] || '';
 
   assert.match(wxml, /open-type="getPhoneNumber"/);
   assert.match(wxml, /允许微信授权手机号/);
@@ -173,18 +172,35 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /服务档案已建立，后续进度可随时查看/);
   assert.match(wxml, /success-title/);
   assert.match(wxml, /免费量房 · 免费设计/);
-  assert.match(wxml, /双重免费权益/);
-  assert.match(wxml, /仅用于本次服务联系/);
-  assert.match(wxml, /授权后我们会/);
-  assert.match(wxml, /确认上门时间与地址/);
-  assert.match(wxml, /发送设计师微信/);
-  assert.match(wxml, /手机号仅用于本次服务，不公开、不出售/);
-  assert.match(wxml, /xiao-k-phone-privacy\.png/);
-  assert.match(wxml, /phone-auth-measure\.png/);
-  assert.match(wxml, /phone-auth-design\.png/);
-  assert.match(wxml, /phone-auth-calendar\.png/);
-  assert.match(wxml, /phone-auth-wechat\.png/);
+  assert.match(phoneAuthMarkup, /三项免费权益/);
+  assert.match(phoneAuthMarkup, /装修问题找/);
+  assert.match(phoneAuthMarkup, /微信家装顾问，/);
+  assert.match(phoneAuthMarkup, /免费问清楚/);
+  assert.match(phoneAuthMarkup, /授权手机号，即可领取以下权益/);
+  assert.match(phoneAuthMarkup, /免费效果图/);
+  assert.match(phoneAuthMarkup, /出到客户满意为止/);
+  assert.match(phoneAuthMarkup, /免费设计顾问/);
+  assert.match(phoneAuthMarkup, /解答你的装修问题/);
+  assert.match(phoneAuthMarkup, /免费现场顾问/);
+  assert.match(phoneAuthMarkup, /解答现场问题/);
+  assert.match(phoneAuthMarkup, /手机号仅用于服务联系，不公开、不出售/);
+  assert.match(phoneAuthMarkup, /xiao-k-three-benefits\.png/);
+  assert.match(phoneAuthMarkup, /ai-design-icons\/reference\.png/);
+  assert.match(phoneAuthMarkup, /mine-icons\/bulb\.png/);
+  assert.match(phoneAuthMarkup, /promotion-create\/location-pin\.png/);
+  assert.doesNotMatch(phoneAuthMarkup, /phone-auth-design\.png|phone-auth-wechat\.png|mine-icons\/home\.png/);
+  for (const iconPath of [
+    'images/ai-design-icons/reference.png',
+    'images/mine-icons/bulb.png',
+    'packages/business/assets/promotion-create/location-pin.png',
+  ]) {
+    assert.equal(fs.existsSync(path.join(miniRoot, iconPath)), true, `${iconPath} must be packaged`);
+  }
   assert.match(wxml, /phone-auth-privacy\.png/);
+  assert.doesNotMatch(
+    phoneAuthMarkup,
+    /上门|量房|预约|地址|设计师匹配|双重免费权益|授权后我们会|发送设计师微信/,
+  );
   assert.match(wxml, /权益已生效，正在为你匹配合适的设计师/);
   assert.match(wxml, /专业人员上门测量/);
   assert.match(wxml, /设计师沟通方案/);
@@ -270,12 +286,19 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(less, /\.claim-auth\s*\{[^}]*overflow:\s*hidden/);
   assert.match(less, /\.claim-pending\s*\{[^}]*overflow:\s*hidden/);
   assert.match(less, /\.claim-auth \.claim-action\s*\{[^}]*margin-top:\s*20rpx/);
-  assert.match(less, /\.auth-benefit-pass\s*\{[^}]*min-height:\s*442rpx[^}]*flex:\s*1\.08 1 auto/);
-  assert.match(less, /\.auth-benefit-title\s*\{[^}]*font-size:\s*46rpx/);
-  assert.match(less, /\.auth-benefit-item\s*\{[^}]*min-height:\s*132rpx/);
-  assert.match(less, /\.auth-privacy-xiaok\s*\{[^}]*width:\s*320rpx[^}]*height:\s*304rpx/);
-  assert.match(less, /\.auth-benefit-icon\s*\{[^}]*width:\s*72rpx[^}]*height:\s*72rpx/);
-  assert.match(less, /\.auth-purpose-card\s*\{[^}]*min-height:\s*360rpx[^}]*flex:\s*0\.82 1 auto/);
+  assert.match(less, /\.auth-benefit-pass\s*\{[^}]*flex:\s*none/);
+  assert.doesNotMatch(less, /\.auth-benefit-pass\s*\{[^}]*flex:\s*1/);
+  assert.match(less, /\.auth-benefit-title\s*\{[^}]*font-size:\s*48rpx/);
+  assert.match(less, /\.auth-benefit-main\s*\{[^}]*min-height:\s*500rpx[^}]*flex:\s*none/);
+  assert.match(less, /\.auth-benefit-item\s*\{[^}]*min-height:\s*168rpx/);
+  assert.match(less, /\.auth-benefit-xiaok\s*\{[^}]*width:\s*426rpx[^}]*height:\s*360rpx/);
+  assert.match(less, /\.auth-benefit-icon-wrap\s*\{[^}]*width:\s*124rpx[^}]*height:\s*124rpx/);
+  assert.match(less, /\.auth-benefit-label\s*\{[^}]*font-size:\s*36rpx/);
+  assert.match(less, /\.auth-benefit-helper\s*\{[^}]*font-size:\s*28rpx/);
+  assert.match(less, /\.auth-privacy-strip\s*\{[^}]*font-size:\s*28rpx/);
+  assert.match(less, /\.claim-auth \.claim-action\s*\{[^}]*min-height:\s*104rpx[^}]*font-size:\s*32rpx/);
+  assert.doesNotMatch(less, /@media \(max-height:\s*760px\)\s*\{[\s\S]*\.auth-benefit-pass\s*\{[^}]*min-height/);
+  assert.doesNotMatch(less, /\.auth-purpose-card\s*\{/);
   assert.match(less, /\.claim-pending \.claim-action\s*\{[^}]*margin-top:\s*20rpx/);
   assert.match(less, /\.pending-benefit-hero\s*\{[^}]*min-height:\s*418rpx[^}]*flex:\s*1\.08 1 auto/);
   assert.match(less, /\.pending-benefit-title\s*\{[^}]*font-size:\s*48rpx/);

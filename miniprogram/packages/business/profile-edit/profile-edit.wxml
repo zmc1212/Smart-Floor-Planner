@@ -70,9 +70,11 @@
           <view class="field-counter">{{professionalTitle.length}} / 20</view>
         </view>
         <view class="professional-divider"></view>
-        <view class="field-group">
-          <text class="field-label">从业起始年份</text>
-          <input class="field-input" disabled="{{professionalProfileLocked}}" type="number" value="{{professionalCareerStartYear}}" maxlength="4" placeholder="例如：2016" placeholder-class="field-placeholder" bindinput="onProfessionalCareerYearInput" />
+        <view class="field-group professional-year-group">
+          <view class="professional-field-main">
+            <text class="field-label">从业起始年份</text>
+            <input class="field-input" disabled="{{professionalProfileLocked}}" type="number" value="{{professionalCareerStartYear}}" maxlength="4" placeholder="例如：2016" placeholder-class="field-placeholder" bindinput="onProfessionalCareerYearInput" />
+          </view>
           <text class="field-helper">系统会自动计算从业年限；企业统一配置生效时按企业经验年限展示</text>
         </view>
         <view class="professional-divider"></view>

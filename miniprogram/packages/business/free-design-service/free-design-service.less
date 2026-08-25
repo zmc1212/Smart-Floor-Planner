@@ -49,14 +49,14 @@ page {
 }
 
 .brand-logo {
-  width: 44rpx;
-  height: 44rpx;
+  width: 50rpx;
+  height: 50rpx;
   flex: none;
 }
 
 .brand-name {
   color: #183426;
-  font-size: 28rpx;
+  font-size: 32rpx;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -72,7 +72,7 @@ page {
   overflow: hidden;
   min-width: 0;
   color: #5b6b62;
-  font-size: 32rpx;
+  font-size: 34rpx;
   font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -108,7 +108,6 @@ page {
   overflow: hidden;
 }
 
-.claim-auth .claim-stepper,
 .claim-auth .claim-action,
 .claim-auth .later-link {
   flex: none;
@@ -126,7 +125,14 @@ page {
 }
 
 .claim-auth .claim-action {
+  min-height: 104rpx;
   margin-top: 20rpx;
+  font-size: 32rpx;
+  line-height: 104rpx;
+}
+
+.claim-auth .later-link {
+  font-size: 30rpx;
 }
 
 .claim-pending .claim-action {
@@ -557,10 +563,9 @@ button.claim-action[disabled] {
   position: relative;
   display: flex;
   overflow: hidden;
-  min-height: 442rpx;
   margin-top: 4rpx;
-  padding: 22rpx 22rpx 24rpx;
-  flex: 1.08 1 auto;
+  padding: 22rpx 26rpx 24rpx;
+  flex: none;
   flex-direction: column;
   border-radius: 28rpx;
   background: linear-gradient(135deg, #f5fcf7 0%, #e4f7e9 100%);
@@ -568,45 +573,68 @@ button.claim-action[disabled] {
   box-sizing: border-box;
 }
 
+.auth-benefit-pass::before,
+.auth-benefit-pass::after {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.32);
+  content: '';
+  pointer-events: none;
+}
+
+.auth-benefit-pass::before {
+  top: -74rpx;
+  right: -26rpx;
+  width: 210rpx;
+  height: 210rpx;
+}
+
+.auth-benefit-pass::after {
+  top: 172rpx;
+  right: -86rpx;
+  width: 174rpx;
+  height: 174rpx;
+}
+
 .auth-benefit-pill {
   position: relative;
   z-index: 2;
   display: inline-flex;
-  min-height: 48rpx;
-  padding: 0 18rpx;
+  min-height: 56rpx;
+  padding: 0 22rpx;
   align-items: center;
   align-self: flex-start;
   border-radius: 999rpx;
   color: #ffffff;
   background: #00c365;
   box-shadow: 0 6rpx 14rpx rgba(0, 195, 101, 0.18);
-  font-size: 22rpx;
+  font-size: 26rpx;
   font-weight: 700;
-  line-height: 48rpx;
+  line-height: 56rpx;
 }
 
 .auth-benefit-main {
   position: relative;
   display: flex;
-  min-height: 212rpx;
-  margin-top: 8rpx;
+  min-height: 500rpx;
+  margin-top: 6rpx;
   align-items: flex-start;
-  flex: 1;
+  flex: none;
 }
 
 .auth-benefit-copy {
   position: relative;
   z-index: 2;
-  width: 330rpx;
-  padding-top: 12rpx;
+  width: 410rpx;
+  padding-top: 18rpx;
 }
 
 .auth-benefit-title {
   display: block;
   color: #123a28;
-  font-size: 46rpx;
-  font-weight: 700;
-  line-height: 1.18;
+  font-size: 48rpx;
+  font-weight: 800;
+  line-height: 1.2;
   letter-spacing: -1rpx;
   white-space: nowrap;
 }
@@ -615,48 +643,69 @@ button.claim-action[disabled] {
   display: block;
   margin-top: 12rpx;
   color: #4f6b5c;
-  font-size: 26rpx;
+  font-size: 28rpx;
   line-height: 1.45;
+  white-space: nowrap;
 }
 
-.auth-privacy-xiaok {
+.auth-benefit-xiaok {
   position: absolute;
-  top: 38rpx;
-  right: -28rpx;
+  top: 112rpx;
+  right: -18rpx;
   z-index: 1;
-  width: 320rpx;
-  height: 304rpx;
+  width: 426rpx;
+  height: 360rpx;
 }
 
-.auth-benefit-grid {
+.auth-benefit-list {
   position: relative;
   z-index: 2;
   display: flex;
   flex: none;
-  gap: 12rpx;
+  flex-direction: column;
+  gap: 10rpx;
 }
 
 .auth-benefit-item {
   display: flex;
   min-width: 0;
-  min-height: 132rpx;
-  padding: 16rpx 18rpx;
+  min-height: 168rpx;
+  padding: 20rpx 28rpx;
   align-items: center;
-  flex: 1;
-  gap: 14rpx;
+  gap: 28rpx;
   border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8rpx 22rpx rgba(24, 52, 38, 0.045);
   box-sizing: border-box;
 }
 
-.auth-benefit-icon {
-  width: 72rpx;
-  height: 72rpx;
+.auth-benefit-icon-wrap {
+  display: flex;
+  width: 124rpx;
+  height: 124rpx;
+  align-items: center;
+  justify-content: center;
   flex: none;
+  border-radius: 50%;
+  background: #edf8f1;
 }
 
-.auth-benefit-meta,
-.auth-purpose-copy {
+.auth-benefit-icon {
+  width: 78rpx;
+  height: 78rpx;
+}
+
+.auth-benefit-location-icon {
+  width: 82rpx;
+  height: 82rpx;
+}
+
+.auth-benefit-advisor-icon {
+  width: 88rpx;
+  height: 88rpx;
+}
+
+.auth-benefit-meta {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -664,102 +713,25 @@ button.claim-action[disabled] {
 
 .auth-benefit-label {
   color: #183426;
-  font-size: 30rpx;
+  font-size: 36rpx;
   font-weight: 800;
   line-height: 1.3;
   white-space: nowrap;
 }
 
 .auth-benefit-helper {
-  margin-top: 6rpx;
+  margin-top: 8rpx;
   color: #65796d;
-  font-size: 24rpx;
-  line-height: 1.35;
-}
-
-.auth-purpose-card {
-  display: flex;
-  min-height: 360rpx;
-  margin-top: 18rpx;
-  padding: 24rpx 28rpx 20rpx;
-  flex: 0.82 1 auto;
-  flex-direction: column;
-  border-radius: 28rpx;
-  background: #ffffff;
-  box-shadow: 0 12rpx 32rpx rgba(24, 52, 38, 0.06);
-  box-sizing: border-box;
-}
-
-.auth-purpose-title {
-  color: #183426;
-  font-size: 30rpx;
-  font-weight: 800;
-  line-height: 1.3;
-}
-
-.auth-purpose-list {
-  display: flex;
-  min-height: 0;
-  margin-top: 10rpx;
-  flex: 1;
-  flex-direction: column;
-}
-
-.auth-purpose-row {
-  position: relative;
-  display: flex;
-  min-height: 112rpx;
-  align-items: center;
-  flex: 1;
-  gap: 18rpx;
-}
-
-.auth-purpose-row + .auth-purpose-row::before {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 1px;
-  background: #dfe8e2;
-  content: '';
-  transform: scaleY(0.5);
-  transform-origin: center top;
-}
-
-.auth-purpose-icon {
-  display: flex;
-  width: 72rpx;
-  height: 72rpx;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  border-radius: 50%;
-  background: #f0f9f3;
-}
-
-.auth-purpose-icon image {
-  width: 56rpx;
-  height: 56rpx;
-}
-
-.auth-purpose-label {
-  color: #183426;
   font-size: 28rpx;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.auth-purpose-helper {
-  margin-top: 4rpx;
-  color: #7b8d82;
-  font-size: 24rpx;
   line-height: 1.35;
 }
 
 .auth-privacy-strip {
   display: flex;
-  min-height: 64rpx;
-  padding: 8rpx 14rpx;
+  flex: none;
+  min-height: 72rpx;
+  margin-top: 18rpx;
+  padding: 8rpx 16rpx;
   align-items: center;
   justify-content: center;
   gap: 8rpx;
@@ -767,14 +739,14 @@ button.claim-action[disabled] {
   color: #3f8060;
   background: #f0f9f3;
   box-sizing: border-box;
-  font-size: 24rpx;
+  font-size: 28rpx;
   line-height: 1.4;
   text-align: center;
 }
 
 .auth-privacy-strip image {
-  width: 28rpx;
-  height: 28rpx;
+  width: 34rpx;
+  height: 34rpx;
   flex: none;
 }
 
@@ -1543,34 +1515,34 @@ button.claim-action[disabled] {
   }
 
   .auth-benefit-copy {
-    width: 300rpx;
+    width: 386rpx;
   }
 
   .auth-benefit-title {
     font-size: 44rpx;
   }
 
-  .auth-privacy-xiaok {
-    top: 42rpx;
-    right: -24rpx;
-    width: 304rpx;
-    height: 289rpx;
+  .auth-benefit-xiaok {
+    top: 126rpx;
+    right: -36rpx;
+    width: 384rpx;
+    height: 325rpx;
   }
 
   .auth-benefit-item {
-    padding-right: 14rpx;
-    padding-left: 14rpx;
-    gap: 10rpx;
+    padding-right: 18rpx;
+    padding-left: 18rpx;
+    gap: 20rpx;
+  }
+
+  .auth-benefit-icon-wrap {
+    width: 112rpx;
+    height: 112rpx;
   }
 
   .auth-benefit-icon {
-    width: 68rpx;
-    height: 68rpx;
-  }
-
-  .auth-purpose-card {
-    padding-right: 24rpx;
-    padding-left: 24rpx;
+    width: 72rpx;
+    height: 72rpx;
   }
 
   .pending-benefit-copy {
@@ -1623,17 +1595,15 @@ button.claim-action[disabled] {
 
   .pending-benefit-hero,
   .pending-journey-card,
-  .auth-benefit-pass,
-  .auth-purpose-card {
+  .auth-benefit-pass {
     flex: none;
   }
 
   .pending-benefit-main,
   .pending-journey-list,
   .pending-journey-item,
-  .auth-benefit-main,
-  .auth-purpose-list,
-  .auth-purpose-row {
+  .auth-benefit-main {
     flex: none;
   }
+
 }

@@ -27,6 +27,11 @@ test('designer-contact-sheet restores the approved Xiao K QR-first contact desig
   const json = JSON.parse(fs.readFileSync(path.join(sheetRoot, 'designer-contact-sheet.json'), 'utf8'));
   const xiaoKPath = path.join(root, 'images', 'designer-contact', 'xiao-k-peeking.png');
   const closeIconPath = path.join(root, 'images', 'designer-contact', 'close.png');
+  const professionalIconPaths = [
+    'professional-badge.png',
+    'professional-experience.png',
+    'professional-service.png',
+  ].map((fileName) => path.join(root, 'images', 'designer-contact', fileName));
 
   assert.equal(json.component, true);
   assert.match(js, /loadDesignerQrToTempFile/);
@@ -37,12 +42,19 @@ test('designer-contact-sheet restores the approved Xiao K QR-first contact desig
   assert.match(wxml, /长按二维码，加设计师微信/);
   assert.match(wxml, /按住二维码 2 秒/);
   assert.match(wxml, /你的专属设计师/);
+  assert.match(wxml, /wx:if="\{\{!professionalTitleVisible\}\}"[\s\S]*\{\{displayName\}\}/);
+  assert.match(wxml, /\{\{professionalTitle\}\} · \{\{displayName\}\}/);
+  assert.doesNotMatch(wxml, /属于您的顾问/);
   assert.match(js, /professionalTitleVisible/);
   assert.match(js, /professionalExperienceLabel/);
   assert.match(js, /professionalServiceLabel/);
   assert.match(wxml, /dcs-professional-proof/);
   assert.match(wxml, /professionalExperienceLabel/);
   assert.match(wxml, /professionalServiceLabel/);
+  assert.match(wxml, /professional-badge\.png/);
+  assert.match(wxml, /professional-experience\.png/);
+  assert.match(wxml, /professional-service\.png/);
+  assert.doesNotMatch(wxml, /dcs-professional-dot/);
   assert.match(wxml, /xiao-k-peeking\.png/);
   assert.match(wxml, /dcs-hero/);
   assert.match(wxml, /dcs-hold-pill/);
@@ -61,9 +73,14 @@ test('designer-contact-sheet restores the approved Xiao K QR-first contact desig
   assert.doesNotMatch(less, /translateY\(100%\)/);
   assert.match(less, /\.dcs-qr/);
   assert.match(less, /\.dcs-professional-proof/);
+  assert.match(less, /\.dcs-professional-badge/);
   assert.ok(fs.statSync(xiaoKPath).size <= 300 * 1024);
   assert.deepEqual([...fs.readFileSync(xiaoKPath).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.deepEqual([...fs.readFileSync(closeIconPath).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  professionalIconPaths.forEach((iconPath) => {
+    assert.ok(fs.statSync(iconPath).size <= 10 * 1024);
+    assert.deepEqual([...fs.readFileSync(iconPath).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  });
 });
 
 test('customer project API wrapper still exposes designer contact for existing-service hydration', () => {

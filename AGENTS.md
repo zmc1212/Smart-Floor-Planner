@@ -280,6 +280,13 @@ staged change; split unrelated work.
   the navigation bar and safe area. Lists, dynamic content, accessibility text,
   and smaller viewports may scroll, but critical actions must not be hidden by
   avoidable spacing.
+- Fixed-content Mini Program restorations must be content-intrinsic. Do not use
+  nested `flex: 1`/`flex-grow`, `height: 100%`, or viewport-derived
+  `min-height` to distribute a Hero, illustration, repeated rows, or CTA across
+  leftover height. Validate the vertical element ledger from
+  `miniprogram/DESIGN.md` at both `390x844` and a user-supplied tall-device
+  screenshot; a viewport-growing gap inside one semantic reading group is a
+  restoration failure, even when all elements remain visible.
 - At the `390x844` baseline, Mini Program typography floors are:
   - Page / nav titles: at least `32rpx` (`nav-title`, page H1).
   - Section titles: at least `28rpx` (card titles, round titles).
@@ -294,6 +301,19 @@ staged change; split unrelated work.
   - Forbidden: any text below `20rpx` that carries an action, status, business
     value, or required explanation. Do not use `transform: scale(...)` or
     image-embedded text to bypass these floors.
+- Typography floors are not high-fidelity restoration targets. Normalize the
+  approved design and runtime screenshot to the same viewport, then compare
+  visible glyph height, hierarchy ratios, wrapping, icon alpha/stroke bounds,
+  icon-container size, and optical weight. Do not approve a restoration merely
+  because text clears the floor or an `<image>` box has the expected dimensions
+  while its visible glyph remains undersized.
+- **Known recurring restoration risk — undersized typography and icons.** Before
+  implementing any visual restoration, record source-calibrated target sizes for
+  the page title, section or benefit labels, helper copy, CTA, icon container,
+  and visible icon glyph in the route's element ledger. Bias to the measured
+  source scale rather than a smaller "safe" size. Static tests, lack of overlap,
+  and compliance with minimum floors cannot close visual QA; the route remains
+  pending until the user's manual runtime screenshot confirms the optical scale.
 - Use one coherent, locally stored, license-documented icon set for primary
   actions. Do not ship emoji, mixed Unicode symbols, or multi-stroke CSS-drawn
   icons as product icons; CSS is reserved for simple geometry such as status
@@ -328,6 +348,15 @@ staged change; split unrelated work.
 
 ### WeChat DevTools Window Discipline
 
+- **Manual screenshot QA is the project default.** Do not control, open, reopen,
+  replace, compile, navigate, or capture the WeChat DevTools project for Mini
+  Program visual QA unless the user explicitly requests DevTools automation in
+  that specific task. The user will manually capture runtime screenshots and
+  send them to Codex for review. For implementation handoff, complete code,
+  asset, documentation, and automated-test checks, then record runtime visual
+  QA as pending the user's screenshot. This rule overrides the automatic
+  no-automator replacement workflow below unless the user explicitly re-enables
+  DevTools automation for the current task.
 - Reuse the user's currently open WeChat DevTools project window when that
   exact window already exposes a working `miniprogram-automator` WebSocket
   endpoint. The IDE HTTP service port recorded in `.ide`/`.cli` is not the

@@ -147,7 +147,7 @@ function buildMeasurerLine(measurerName, formalFloorPlan) {
   if (formalFloorPlan && formalFloorPlan.surveyStatusLabel) {
     return `${measurerName} · ${formalFloorPlan.surveyStatusLabel}`;
   }
-  return `${measurerName} · 待上门量房`;
+  return `${measurerName} · 待预约`;
 }
 
 function shouldShowBookingPanel(project) {
@@ -166,12 +166,12 @@ Page({
     appointment: null,
     measurerName: '',
     designer: null,
+    designerName: '待分配',
+    designerAssigned: false,
     designerLine: '待分配设计师',
     designerPhone: '',
-    designerProfessionalProfile: null,
     measurerLine: '待分配量房员',
     measurerPhone: '',
-    measurerProfessionalProfile: null,
     range: null,
     formalFloorPlan: null,
     floorPlanImagePath: '',
@@ -200,6 +200,7 @@ Page({
     sitePhotoTags: sitePhotos.SPACE_TAGS,
     sitePhotoUploading: false,
     sitePhotoLimitReached: false,
+    sitePhotoManagerOpen: false,
   },
 
   onLoad(query) {
@@ -255,23 +256,22 @@ Page({
       const featuredDelivery = buildFeaturedDelivery(publishedSchemes, project.featuredScheme);
       const canRebook = Boolean(project.canRebook);
       const canReschedule = Boolean(project.canReschedule);
+      const measurerName = project.measurerName || (appointment && appointment.measurerName) || '';
       this.setData({
         appointment,
-        measurerName: project.measurerName || (appointment && appointment.measurerName) || '',
+        measurerName,
         designer: project.designer || null,
+        designerName: project.designer && project.designer.displayName || '待分配',
+        designerAssigned: Boolean(project.designer && project.designer.displayName),
         canContactDesigner: hasDesignerContact(project.designer),
         showContactSheet: false,
         designerLine: buildDesignerLine(project.designer),
         designerPhone: staffPhone(project.designer && project.designer.phone),
-        designerProfessionalProfile: project.designer && project.designer.professionalProfile || null,
         measurerLine: buildMeasurerLine(
-          project.measurerName || (appointment && appointment.measurerName) || '',
+          measurerName,
           formalFloorPlan
         ),
         measurerPhone: staffPhone(project.measurerPhone || (appointment && appointment.measurerPhone)),
-        measurerProfessionalProfile: project.measurer && project.measurer.professionalProfile
-          || (appointment && appointment.measurerProfessionalProfile)
-          || null,
         range: appointment ? formatRange(appointment.timeRange) : null,
         formalFloorPlan,
         floorPlanImagePath,
@@ -290,9 +290,9 @@ Page({
         canRebook,
         canReschedule,
         showBookingPanel: shouldShowBookingPanel({ ...project, formalFloorPlan, appointment, canRebook, canReschedule }),
-        appointmentBadge: project.serviceStageLabel || '服务准备中',
+        appointmentBadge: measurerName ? '已匹配测量员' : (project.serviceStageLabel || '服务准备中'),
         bookingHint: canRebook && !appointment
-          ? '请选择上门量房时间，也可微信联系设计师代为预约'
+          ? '选择方便的时间，测量师会提前与你确认'
           : (project.nextAction || ''),
         error: '',
       });
@@ -426,6 +426,23 @@ Page({
       sitePhotoLimitReached: photos.length >= 30,
     });
   },
+
+  handleDossierRow(event) {
+    const kind = String(event.currentTarget.dataset && event.currentTarget.dataset.kind || '');
+    if (kind === 'floor') {
+      if (this.data.formalFloorPlan) this.previewFloorPlan();
+      return;
+    }
+    if (kind === 'site') {
+      this.setData({ sitePhotoManagerOpen: !this.data.sitePhotoManagerOpen });
+      return;
+    }
+    if (kind === 'delivery' && this.data.featuredDelivery) {
+      this.previewFeaturedDelivery();
+    }
+  },
+
+  noop() {},
 
   contactDesigner() {
     const designer = this.data.designer;

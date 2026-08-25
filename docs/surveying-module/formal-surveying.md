@@ -158,7 +158,7 @@ copy back to `layoutData`.
   wall or vertex do not place the cursor; a wall tap may select the wall for
   opening placement.   The cursor is placed only by dragging the dock control
   onto the canvas, so a drag does not lock the viewport.
-  That dock drag aims 48×80 CSS px upper-left of the finger
+  That dock drag aims 12×20 CSS px upper-left of the finger
   and clamps the aim point to the canvas. Canvas wall-endpoint
   drags keep the grab delta from touchstart with a south-east-biased
   hit and must not apply the dock offset, so the first preview frame

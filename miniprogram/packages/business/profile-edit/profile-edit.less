@@ -149,6 +149,26 @@
 
 .professional-profile-surface .field-group {
   margin: 0;
+  padding: 0;
+}
+
+.professional-year-group {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.professional-field-main {
+  display: flex;
+  width: 100%;
+  min-height: 88rpx;
+  align-items: center;
+}
+
+.professional-profile-surface .field-label {
+  flex: none;
+  white-space: nowrap;
 }
 
 .professional-divider {
@@ -162,10 +182,12 @@
 
 .field-helper {
   display: block;
+  width: 100%;
   margin-top: 8rpx;
   color: #66766c;
   font-size: 22rpx;
   line-height: 1.45;
+  text-align: left;
 }
 
 .professional-switch-row {

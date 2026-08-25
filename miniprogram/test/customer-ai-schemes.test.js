@@ -93,5 +93,6 @@ test('lead detail and customer project deep-link into the schemes folio', () => 
   assert.match(customerProject, /customer-ai-schemes\/customer-ai-schemes\?/);
   assert.match(customerProject, /mode=customer/);
   assert.match(customerProject, /openAiSchemes/);
-  assert.match(customerWxml, /查看全部方案/);
+  assert.match(customerWxml, /data-kind="delivery"/);
+  assert.match(customerWxml, /bindtap="handleDossierRow"/);
 });

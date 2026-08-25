@@ -1,4 +1,6 @@
-const CURSOR_TOUCH_OFFSET = Object.freeze({ x: -48, y: -80 });
+// Slight upper-left peek so the reticle centre sits at the fingertip edge,
+// not a full finger-width away.
+const CURSOR_TOUCH_OFFSET = Object.freeze({ x: -12, y: -20 });
 const CURSOR_WALL_HIT_OFFSET = Object.freeze({ x: 20, y: 28 });
 const CURSOR_WALL_HIT_RADIUS = 52;
 

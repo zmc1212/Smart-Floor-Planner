@@ -518,6 +518,8 @@ Page({
     this.cursorDragCandidate = null;
     this.cursorDragStartPoint = null;
     this.cursorDragAnimationFrame = null;
+    this.dockAimAnimationFrame = null;
+    this.pendingDockAimPoint = null;
     this.transientCanvasMode = null;
     this.viewportInteraction = null;
     this.viewportInteractionFrameQueue = null;
@@ -1792,6 +1794,7 @@ Page({
       this.cursorDragCanvas.cancelAnimationFrame(this.cursorDragAnimationFrame);
     }
     this.cursorDragAnimationFrame = null;
+    this.cancelDockCursorAim({ keepPending: true });
     this.cursorDragCanvasPoint = null;
     this.cursorDragCanvasShowCursor = true;
     this.cursorDragClientPoint = null;
@@ -4077,7 +4080,7 @@ Page({
     };
   },
 
-  resolveCursorDragPoint(clientPoint, includeLens) {
+  resolveCursorDragPoint(clientPoint, includeLens, options) {
     const candidate = this.getCursorPlacementCandidate(clientPoint, { useHysteresis: true });
     // 自由放置跟随瞄准点（指尖左上），不再跟指腹中心。只有真正命中
     // 顶点或墙体时，才把十字光标移动到吸附后的坐标，避免一次 mm 往返换算造成初始跳位。
@@ -4103,7 +4106,9 @@ Page({
       candidate && candidate.type,
       candidate && candidate.snapLine
     );
-    this.queueCursorDragCanvas(displayPoint);
+    this.queueCursorDragCanvas(displayPoint, {
+      sync: !!(options && options.sync)
+    });
     const dragData = {
       dragCursorX: displayPoint.x,
       dragCursorY: displayPoint.y
@@ -4167,6 +4172,37 @@ Page({
 
   toDockAimPoint(touchPoint) {
     return toAimClientPoint(touchPoint, this.canvasRect) || touchPoint;
+  },
+
+  cancelDockCursorAim(options) {
+    const keepPending = !!(options && options.keepPending);
+    if (this.cursorDragCanvas && this.dockAimAnimationFrame !== null
+      && typeof this.cursorDragCanvas.cancelAnimationFrame === 'function') {
+      this.cursorDragCanvas.cancelAnimationFrame(this.dockAimAnimationFrame);
+    }
+    this.dockAimAnimationFrame = null;
+    if (!keepPending) this.pendingDockAimPoint = null;
+  },
+
+  flushDockCursorAim(includeLens) {
+    const aimPoint = this.pendingDockAimPoint;
+    if (!aimPoint) return null;
+    return this.resolveCursorDragPoint(aimPoint, includeLens, { sync: true });
+  },
+
+  queueDockCursorAim() {
+    if (this.dockAimAnimationFrame !== null) return;
+    const render = () => {
+      this.dockAimAnimationFrame = null;
+      if (this.cursorPlacementState !== 'dragging') return;
+      this.flushDockCursorAim(false);
+    };
+    const canvas = this.cursorDragCanvas;
+    if (canvas && typeof canvas.requestAnimationFrame === 'function') {
+      this.dockAimAnimationFrame = canvas.requestAnimationFrame(render);
+      return;
+    }
+    render();
   },
 
   applyDraft(nextDraft, options) {
@@ -5615,6 +5651,7 @@ Page({
     this.cursorDragCandidate = null;
     this.cursorSnapLock = null;
     this.cursorLensLastUpdateAt = 0;
+    this.cancelDockCursorAim();
     this.clearCursorDragCanvas();
     this.refreshCursorControlRect();
     // Do not replace the touch target on touchstart.  On WeChat, changing the
@@ -5629,13 +5666,12 @@ Page({
     this.cursorDragPending = false;
     const wasDragging = this.cursorPlacementState === 'dragging';
     this.cursorPlacementState = 'dragging';
+    this.pendingDockAimPoint = this.toDockAimPoint(point);
     if (!wasDragging) {
       this.drawSurveyCanvas();
-    }
-    // Canvas owns the lens chrome. Only publish the dragging state once so
-    // touchmove does not pay for cover-view setData on every frame.
-    const dragData = this.resolveCursorDragPoint(this.toDockAimPoint(point), !wasDragging);
-    if (!wasDragging) {
+      // Canvas owns the lens chrome. Only publish the dragging state once so
+      // touchmove does not pay for cover-view setData on every frame.
+      const dragData = this.flushDockCursorAim(true) || {};
       this.canvasCursorLensPublished = true;
       this.setData(Object.assign({
         cursorPlacementState: 'dragging',
@@ -5644,7 +5680,11 @@ Page({
         topMetricLength: '',
         topMetricAngle: ''
       }, dragData));
+      return;
     }
+    // Cover-view touchmove is denser than paint frames. Snap, wall geometry,
+    // and the lens blit belong on one rAF, not on every event.
+    this.queueDockCursorAim();
   },
 
   onCursorDragEnd(e) {
@@ -5662,10 +5702,18 @@ Page({
     const movedWithoutTouchMove = !wasDragging && dragWasPending && startPoint
       && rawReleasePoint
       && Math.hypot(rawReleasePoint.x - startPoint.x, rawReleasePoint.y - startPoint.y) >= 8;
+    this.cancelDockCursorAim({ keepPending: true });
     this.cursorDragPending = false;
     this.cursorDragTouchId = null;
     this.cursorDragStartPoint = null;
-    if (!wasDragging && !movedWithoutTouchMove) return;
+    if (!wasDragging && !movedWithoutTouchMove) {
+      this.pendingDockAimPoint = null;
+      return;
+    }
+    if (this.pendingDockAimPoint) {
+      this.flushDockCursorAim(false);
+    }
+    this.pendingDockAimPoint = null;
     this.clearCursorDragCanvas();
     const candidate = this.cursorDragCandidate || this.getCursorPlacementCandidate(releasePoint, { useHysteresis: true });
     this.cursorDragCandidate = null;
@@ -5713,6 +5761,7 @@ Page({
     this.cursorDragStartPoint = null;
     this.cursorSnapLock = null;
     this.canvasCursorLensPublished = false;
+    this.cancelDockCursorAim();
     if (!wasDragging) return;
     this.clearCursorDragCanvas();
     this.cursorPlacementState = 'awaitingWallDrop';

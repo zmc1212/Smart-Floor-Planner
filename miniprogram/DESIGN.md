@@ -38,6 +38,22 @@ real state matrix, role visibility, and safe-area assumptions.
 - Use normal flow, flex/grid, and scroll containers for variable content.
   Absolute positioning is reserved for documented overlays, Canvas labels, or
   artwork anchored to a stable parent.
+- Fixed-content restoration groups must size from their content. Do not use
+  nested `flex: 1`, `flex-grow`, `height: 100%`, or viewport-derived
+  `min-height` merely to fill the screen or push later content downward. Only a
+  region whose meaning genuinely expands (for example a scrollable list,
+  Canvas, or documented flexible artwork stage) may absorb remaining height.
+  On tall devices, extra height belongs outside a tightly related reading group;
+  it must never open a viewport-dependent hole between a Hero/artwork and the
+  rows, facts, or actions it introduces.
+- For every fixed-content restoration, compare the approved source with both
+  the `390x844` baseline and a tall-device runtime screenshot. Record an
+  element-by-element vertical ledger for the panel top, headline block,
+  artwork bottom, first following row, repeated-row heights, privacy/helper
+  strip, primary CTA, and bottom safe area. A gap that grows only because the
+  viewport is taller is a failed restoration even when nothing overlaps and
+  the CTA remains visible. Keep runtime QA pending until the user's manual
+  screenshot confirms this reading rhythm.
 - Reserve the native capsule lane before placing titles or actions. Never center
   text through the capsule or let controls overlap it.
 - Required text is native text, not image-embedded copy. Authoritative type
@@ -54,6 +70,22 @@ real state matrix, role visibility, and safe-area assumptions.
 
   Prefer raising helpers to `22rpx+` rather than landing on exactly `20rpx`.
   Primary actions and primary copy must not use `20rpx`.
+- These typography values are accessibility floors, not restoration targets.
+  High-fidelity work must measure the approved source's visible glyph height,
+  hierarchy ratio, and line wrapping at the normalized viewport, then map that
+  optical size to `rpx`; merely clearing the minimum is not evidence of a match.
+  Do the same for icons using the visible alpha/stroke bounds rather than the
+  `<image>` canvas: transparent padding, thin source strokes, or an oversized
+  circle container must not make the actual glyph look one step smaller than
+  the approved design. Record title, label, helper, CTA, icon-container, and
+  visible-glyph sizes in the route's element ledger before handoff.
+- **Known recurring failure: under-scaling typography and icons.** Treat this as
+  a mandatory restoration preflight, not a page-specific exception. Before the
+  first style edit, normalize the approved source to the `390x844` baseline and
+  record the source-calibrated `rpx` targets for every primary text role and icon
+  bound listed above. A page that merely fits, passes tests, or clears the
+  accessibility floors is still unverified. Close runtime visual QA only after
+  the user's manual screenshot confirms that the optical scale matches.
 - Keep touch targets reachable, visibly pressed, and at least `44px` logical
   height where the platform permits. Do not use `transform: scale(...)` to hide
   a responsive or readability defect.

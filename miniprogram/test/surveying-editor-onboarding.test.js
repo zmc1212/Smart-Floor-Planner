@@ -147,14 +147,17 @@ test('cursor magnifier blits a formal crop without the canvas reticle and overla
   assert.match(editorScript, /surveyCanvasRenderer\.drawCursor\(\s*this\.surveyCtx,\s*this\.surveyRenderScene/);
   assert.match(
     editorScript,
-    /this\.cursorPlacementState = 'dragging';\s*if \(!wasDragging\) \{\s*this\.drawSurveyCanvas\(\);/
+    /this\.cursorPlacementState = 'dragging';\s*this\.pendingDockAimPoint = this\.toDockAimPoint\(point\);\s*if \(!wasDragging\) \{\s*this\.drawSurveyCanvas\(\);/
   );
 });
 
 test('dock cursor drag aims upper-left of the finger; wall drag uses sticky grab', () => {
   assert.match(editorScript, /require\('\.\.\/utils\/surveyCursorAim\.js'\)/);
   assert.match(editorScript, /toDockAimPoint\(touchPoint\) \{\s*return toAimClientPoint\(touchPoint, this\.canvasRect\) \|\| touchPoint;/);
-  assert.match(editorScript, /this\.resolveCursorDragPoint\(this\.toDockAimPoint\(point\)/);
+  assert.match(editorScript, /this\.pendingDockAimPoint = this\.toDockAimPoint\(point\)/);
+  assert.match(editorScript, /this\.queueDockCursorAim\(\)/);
+  assert.match(editorScript, /flushDockCursorAim\(true\)/);
+  assert.match(editorScript, /Cover-view touchmove is denser than paint frames/);
   assert.match(editorScript, /rawReleasePoint\s*\? this\.toDockAimPoint\(rawReleasePoint\)/);
   assert.match(editorScript, /Math\.hypot\(rawReleasePoint\.x - startPoint\.x, rawReleasePoint\.y - startPoint\.y\)/);
   assert.match(editorScript, /自由放置跟随瞄准点/);

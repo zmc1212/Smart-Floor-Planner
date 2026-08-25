@@ -29,16 +29,47 @@
         <view class="dcs-body">
           <view class="dcs-designer-pill">
             <text class="dcs-designer-label">你的专属设计师</text>
-            <text class="dcs-designer-separator">·</text>
-            <text class="dcs-designer-name">{{displayName}}</text>
+            <block wx:if="{{!professionalTitleVisible}}">
+              <text class="dcs-designer-separator">·</text>
+              <text class="dcs-designer-name">{{displayName}}</text>
+            </block>
           </view>
 
           <view wx:if="{{professionalTitleVisible || professionalExperienceLabel || professionalServiceLabel}}" class="dcs-professional-profile">
-            <text wx:if="{{professionalTitleVisible}}" class="dcs-professional-title">{{professionalTitle}}</text>
-            <view wx:if="{{professionalExperienceLabel || professionalServiceLabel}}" class="dcs-professional-proof">
-              <text wx:if="{{professionalExperienceLabel}}">{{professionalExperienceLabel}}</text>
-              <view wx:if="{{professionalExperienceLabel && professionalServiceLabel}}" class="dcs-professional-dot"></view>
-              <text wx:if="{{professionalServiceLabel}}">{{professionalServiceLabel}}</text>
+            <view wx:if="{{professionalTitleVisible}}" class="dcs-professional-heading">
+              <view class="dcs-professional-badge" aria-hidden="true">
+                <image
+                  class="dcs-professional-badge-icon"
+                  src="/images/designer-contact/professional-badge.png"
+                  mode="aspectFit"
+                />
+              </view>
+              <text class="dcs-professional-title">{{professionalTitle}} · {{displayName}}</text>
+            </view>
+            <view wx:if="{{professionalTitleVisible && (professionalExperienceLabel || professionalServiceLabel)}}" class="dcs-professional-divider"></view>
+            <view
+              wx:if="{{professionalExperienceLabel || professionalServiceLabel}}"
+              class="dcs-professional-proof {{professionalExperienceLabel && professionalServiceLabel ? '' : 'single'}}"
+            >
+              <view wx:if="{{professionalExperienceLabel}}" class="dcs-professional-proof-item experience">
+                <image
+                  class="dcs-professional-proof-icon"
+                  src="/images/designer-contact/professional-experience.png"
+                  mode="aspectFit"
+                  aria-hidden="true"
+                />
+                <text class="dcs-professional-proof-text">{{professionalExperienceLabel}}</text>
+              </view>
+              <view wx:if="{{professionalExperienceLabel && professionalServiceLabel}}" class="dcs-professional-proof-separator"></view>
+              <view wx:if="{{professionalServiceLabel}}" class="dcs-professional-proof-item service">
+                <image
+                  class="dcs-professional-proof-icon"
+                  src="/images/designer-contact/professional-service.png"
+                  mode="aspectFit"
+                  aria-hidden="true"
+                />
+                <text class="dcs-professional-proof-text">{{professionalServiceLabel}}</text>
+              </view>
             </view>
           </view>
 
