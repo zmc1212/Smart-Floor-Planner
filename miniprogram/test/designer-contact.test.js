@@ -37,6 +37,12 @@ test('designer-contact-sheet restores the approved Xiao K QR-first contact desig
   assert.match(wxml, /长按二维码，加设计师微信/);
   assert.match(wxml, /按住二维码 2 秒/);
   assert.match(wxml, /你的专属设计师/);
+  assert.match(js, /professionalTitleVisible/);
+  assert.match(js, /professionalExperienceLabel/);
+  assert.match(js, /professionalServiceLabel/);
+  assert.match(wxml, /dcs-professional-proof/);
+  assert.match(wxml, /professionalExperienceLabel/);
+  assert.match(wxml, /professionalServiceLabel/);
   assert.match(wxml, /xiao-k-peeking\.png/);
   assert.match(wxml, /dcs-hero/);
   assert.match(wxml, /dcs-hold-pill/);
@@ -54,6 +60,7 @@ test('designer-contact-sheet restores the approved Xiao K QR-first contact desig
   assert.doesNotMatch(less, /align-items:\s*flex-end/);
   assert.doesNotMatch(less, /translateY\(100%\)/);
   assert.match(less, /\.dcs-qr/);
+  assert.match(less, /\.dcs-professional-proof/);
   assert.ok(fs.statSync(xiaoKPath).size <= 300 * 1024);
   assert.deepEqual([...fs.readFileSync(xiaoKPath).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.deepEqual([...fs.readFileSync(closeIconPath).subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);

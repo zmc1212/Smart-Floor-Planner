@@ -168,8 +168,10 @@ Page({
     designer: null,
     designerLine: '待分配设计师',
     designerPhone: '',
+    designerProfessionalProfile: null,
     measurerLine: '待分配量房员',
     measurerPhone: '',
+    measurerProfessionalProfile: null,
     range: null,
     formalFloorPlan: null,
     floorPlanImagePath: '',
@@ -261,11 +263,15 @@ Page({
         showContactSheet: false,
         designerLine: buildDesignerLine(project.designer),
         designerPhone: staffPhone(project.designer && project.designer.phone),
+        designerProfessionalProfile: project.designer && project.designer.professionalProfile || null,
         measurerLine: buildMeasurerLine(
           project.measurerName || (appointment && appointment.measurerName) || '',
           formalFloorPlan
         ),
         measurerPhone: staffPhone(project.measurerPhone || (appointment && appointment.measurerPhone)),
+        measurerProfessionalProfile: project.measurer && project.measurer.professionalProfile
+          || (appointment && appointment.measurerProfessionalProfile)
+          || null,
         range: appointment ? formatRange(appointment.timeRange) : null,
         formalFloorPlan,
         floorPlanImagePath,

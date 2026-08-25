@@ -32,6 +32,7 @@ export * from './package-repository';
 export * from './platform-config-repository';
 export * from './promotion-record-repository';
 export * from './prompt-library-repository';
+export * from './professional-profile-repository';
 export * from './referrer-network-repository';
 export * from './enterprise-registration-code-repository';
 export * from './referral-lead-repository';

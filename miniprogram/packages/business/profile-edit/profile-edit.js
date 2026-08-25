@@ -46,6 +46,14 @@ Page({
     pendingAvatarPath: '',
     defaultAvatar: DEFAULT_AVATAR,
     isDesigner: false,
+    isProfessionalStaff: false,
+    professionalProfile: null,
+    professionalTitle: '',
+    professionalCareerStartYear: '',
+    professionalTitleVisible: true,
+    professionalShowActualServiceCount: false,
+    professionalProfileLocked: false,
+    professionalVisibilityControlled: false,
     wechatId: '',
     wechatQrUrl: '',
     wechatQrPath: '',
@@ -65,14 +73,55 @@ Page({
       const result = await api.request('/miniprogram/profile', 'GET');
       const profile = result.data || {};
       const isDesigner = profile.role === 'designer';
-      this.setData({ loading: false, profile, nickname: profile.name || '', isDesigner });
-      if (isDesigner) await this.loadWechatProfile();
+      const isProfessionalStaff = ['designer', 'measurer'].includes(profile.role);
+      this.setData({ loading: false, profile, nickname: profile.name || '', isDesigner, isProfessionalStaff });
+      const tasks = [];
+      if (isDesigner) tasks.push(this.loadWechatProfile());
+      if (isProfessionalStaff) tasks.push(this.loadProfessionalProfile());
+      await Promise.all(tasks);
     } catch (error) {
       this.setData({
         loading: false,
         loadError: (error && error.error) || '个人资料加载失败，请检查网络后重试'
       });
     }
+  },
+
+  async loadProfessionalProfile() {
+    try {
+      const result = await api.request('/miniprogram/staff/professional-profile', 'GET');
+      const data = result.data || {};
+      this.setData({
+        professionalProfile: data,
+        professionalTitle: data.staffTitle || '',
+        professionalCareerStartYear: data.careerStartYear ? String(data.careerStartYear) : '',
+        professionalTitleVisible: data.staffTitleVisible !== false,
+        professionalShowActualServiceCount: Boolean(data.showActualServiceCount),
+        professionalProfileLocked: Boolean(data.profileLocked),
+        professionalVisibilityControlled: data.enterpriseTitleVisibilityPolicy !== 'follow_staff',
+      });
+    } catch (error) {
+      wx.showToast({ title: (error && error.error) || '职业资料读取失败', icon: 'none' });
+    }
+  },
+
+  onProfessionalTitleInput(event) {
+    this.setData({ professionalTitle: event.detail.value });
+  },
+
+  onProfessionalCareerYearInput(event) {
+    this.setData({ professionalCareerStartYear: event.detail.value });
+  },
+
+  onProfessionalTitleVisibleChange(event) {
+    if (this.data.professionalProfileLocked || this.data.professionalVisibilityControlled) return;
+    this.setData({ professionalTitleVisible: Boolean(event.detail.value) });
+  },
+
+  onProfessionalActualCountChange(event) {
+    const profile = this.data.professionalProfile || {};
+    if (this.data.professionalProfileLocked || !profile.canShowActualServiceCount) return;
+    this.setData({ professionalShowActualServiceCount: Boolean(event.detail.value) });
   },
 
   onChooseAvatar(event) {
@@ -198,6 +247,20 @@ Page({
       return;
     }
     const wechatId = String(this.data.wechatId || '').trim();
+    const professionalTitle = String(this.data.professionalTitle || '').trim();
+    const careerStartYearText = String(this.data.professionalCareerStartYear || '').trim();
+    const careerStartYear = careerStartYearText ? Number(careerStartYearText) : null;
+    const currentYear = new Date().getFullYear();
+    if (this.data.isProfessionalStaff && !this.data.professionalProfileLocked) {
+      if (professionalTitle.length > 20) {
+        wx.showToast({ title: '专业头衔不能超过20个字符', icon: 'none' });
+        return;
+      }
+      if (careerStartYear !== null && (!Number.isInteger(careerStartYear) || careerStartYear < 1950 || careerStartYear > currentYear)) {
+        wx.showToast({ title: `从业年份应为1950–${currentYear}`, icon: 'none' });
+        return;
+      }
+    }
     if (this.data.isDesigner) {
       if (!wechatId || wechatId.length > 64) {
         wx.showToast({ title: '请填写微信「我」页的微信号（不要填昵称）', icon: 'none' });
@@ -224,6 +287,15 @@ Page({
         const wechat = await api.request('/miniprogram/staff/wechat-profile', 'PATCH', { wechatId });
         const data = (wechat && wechat.data) || {};
         this.applyWechatEligibility(data.wechatId || wechatId, Boolean(data.wechatQrAssetId || this.data.hasWechatQr));
+      }
+      if (this.data.isProfessionalStaff && !this.data.professionalProfileLocked) {
+        const professional = await api.request('/miniprogram/staff/professional-profile', 'PATCH', {
+          title: professionalTitle,
+          careerStartYear,
+          titleVisible: this.data.professionalTitleVisible,
+          showActualServiceCount: this.data.professionalShowActualServiceCount,
+        });
+        this.setData({ professionalProfile: (professional && professional.data) || this.data.professionalProfile });
       }
       const profile = { ...(result.data || {}), avatar: (result.data && result.data.avatar) || avatar };
       syncStoredProfile(profile);

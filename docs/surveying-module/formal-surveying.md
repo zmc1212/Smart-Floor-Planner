@@ -156,8 +156,13 @@ copy back to `layoutData`.
   leave no hard-avoiding layout. During that wall-drop wait
   (`wallSnapPending`), the canvas still pans and pinch-zooms; direct taps on a
   wall or vertex do not place the cursor; a wall tap may select the wall for
-  opening placement. The cursor is placed only by dragging the dock control
+  opening placement.   The cursor is placed only by dragging the dock control
   onto the canvas, so a drag does not lock the viewport.
+  That dock drag aims 48×80 CSS px upper-left of the finger
+  and clamps the aim point to the canvas. Canvas wall-endpoint
+  drags keep the grab delta from touchstart with a south-east-biased
+  hit and must not apply the dock offset, so the first preview frame
+  cannot invent a wall segment.
   A short tap on a closed-room fill selects that space (`selectSpace`) instead;
   the wall/vertex toast appears only when neither snap nor fill hits.
   Resetting the cursor onto
@@ -223,7 +228,8 @@ copy back to `layoutData`.
   path. Straight-mode vertex or closure snaps may change at most one axis; they
   must not copy an off-axis vertex onto the orange preview. The wall-drag lens
   reports the actual snap type and shows a small green crosshair rather than the
-  canvas Fig.1 reticle. Adjacent working faces meet at their line intersection, so the previous
+  canvas Fig.1 reticle. Wall-endpoint dragging follows the sticky grab aim point,
+  not a dock-style upper-left finger offset. Adjacent working faces meet at their line intersection, so the previous
   red endpoint equals the following red start and a turn cannot shift either by
   one wall thickness. This display projection does not alter graph centreline
   or closure topology. Canvas opening masks cut only the host wall and refill

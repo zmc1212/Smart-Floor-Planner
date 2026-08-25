@@ -13,7 +13,7 @@ import {
   type ProColumns,
 } from '@ant-design/pro-components';
 import { Alert, Avatar, Button, Card, Drawer, Flex, Form, Select, Space, Switch, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
-import { FolderPlus, Pencil, Plus, ShieldCheck, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
+import { Award, FolderPlus, Pencil, Plus, ShieldCheck, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { ImageUploadField } from '@/components/admin/image-upload-field';
 import { notify } from '@/components/admin/operation-feedback';
@@ -57,6 +57,40 @@ type StaffForm = {
 };
 
 type DepartmentForm = { name: string; parentId?: string };
+
+type EnterpriseProfileSettings = {
+  designerTitle: string;
+  measurerTitle: string;
+  defaultExperienceYears: number;
+  serviceThreshold: number;
+  forceEnterpriseProfile: boolean;
+  titleVisibilityPolicy: 'follow_staff' | 'force_show' | 'force_hide';
+};
+
+type StaffProfessionalProfile = {
+  role: 'designer' | 'measurer';
+  adminTitleOverride: string;
+  careerStartYear: number | null;
+  staffTitleVisible: boolean;
+  profileLocked: boolean;
+  showActualServiceCount: boolean;
+  actualServiceCount: number;
+  canShowActualServiceCount: boolean;
+  titleVisible: boolean;
+  title: string | null;
+  experienceLabel: string;
+  serviceLabel: string;
+  enterpriseForceProfile: boolean;
+  enterpriseTitleVisibilityPolicy: EnterpriseProfileSettings['titleVisibilityPolicy'];
+};
+
+type StaffProfessionalForm = {
+  adminTitleOverride?: string;
+  careerStartYear?: number | null;
+  titleVisible: boolean;
+  profileLocked: boolean;
+  showActualServiceCount: boolean;
+};
 
 type PermissionEffect = 'inherit' | 'allow' | 'deny';
 type PermissionStaff = {
@@ -151,6 +185,13 @@ export default function StaffPage() {
   const [permissionSaving, setPermissionSaving] = useState(false);
   const [permissionRoleDefaults, setPermissionRoleDefaults] = useState({ designer: false, measurer: false });
   const [permissionStaff, setPermissionStaff] = useState<PermissionStaff[]>([]);
+  const [profileSettingsOpen, setProfileSettingsOpen] = useState(false);
+  const [profileSettings, setProfileSettings] = useState<EnterpriseProfileSettings | null>(null);
+  const [profileSettingsLoading, setProfileSettingsLoading] = useState(false);
+  const [professionalStaff, setProfessionalStaff] = useState<StaffMember | null>(null);
+  const [professionalProfile, setProfessionalProfile] = useState<StaffProfessionalProfile | null>(null);
+  const [professionalProfileOpen, setProfessionalProfileOpen] = useState(false);
+  const [professionalProfileLoading, setProfessionalProfileLoading] = useState(false);
 
   const canManage = ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser?.role || '');
   const requiresTenantSelection = Boolean(
@@ -196,6 +237,82 @@ export default function StaffPage() {
       notify.error(error instanceof Error ? error.message : '保存线索归档权限失败');
     } finally {
       setPermissionSaving(false);
+    }
+  };
+
+  const loadProfileSettings = async () => {
+    setProfileSettingsLoading(true);
+    try {
+      const response = await fetch('/api/professional-profile-settings');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '读取企业专业背书失败');
+      setProfileSettings(result.data);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '读取企业专业背书失败');
+    } finally {
+      setProfileSettingsLoading(false);
+    }
+  };
+
+  const openProfileSettings = () => {
+    setProfileSettingsOpen(true);
+    void loadProfileSettings();
+  };
+
+  const saveProfileSettings = async (values: EnterpriseProfileSettings) => {
+    try {
+      const response = await fetch('/api/professional-profile-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '保存企业专业背书失败');
+      setProfileSettings(result.data);
+      setProfileSettingsOpen(false);
+      notify.success('企业专业背书已全局生效');
+      return true;
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '保存企业专业背书失败');
+      return false;
+    }
+  };
+
+  const openStaffProfessionalProfile = async (member: StaffMember) => {
+    setProfessionalStaff(member);
+    setProfessionalProfile(null);
+    setProfessionalProfileOpen(true);
+    setProfessionalProfileLoading(true);
+    try {
+      const response = await fetch(`/api/staff/${member._id}/professional-profile`);
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '读取员工专业背书失败');
+      setProfessionalProfile(result.data);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '读取员工专业背书失败');
+      setProfessionalProfileOpen(false);
+    } finally {
+      setProfessionalProfileLoading(false);
+    }
+  };
+
+  const saveStaffProfessionalProfile = async (values: StaffProfessionalForm) => {
+    if (!professionalStaff) return false;
+    try {
+      const response = await fetch(`/api/staff/${professionalStaff._id}/professional-profile`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(values),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '保存员工专业背书失败');
+      setProfessionalProfile(result.data);
+      setProfessionalProfileOpen(false);
+      notify.success('员工专业背书已更新');
+      return true;
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '保存员工专业背书失败');
+      return false;
     }
   };
   const staffRoleOptions = useMemo(
@@ -338,10 +455,11 @@ export default function StaffPage() {
     },
     { title: '创建时间', dataIndex: 'createdAt', valueType: 'dateTime', width: 180, hideInSearch: true, render: (_, member) => member.createdAt ? new Date(member.createdAt).toLocaleString() : '-' },
     {
-      title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 180, hideInSearch: true,
+      title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 260, hideInSearch: true,
       render: (_, member) => {
         if (!canManage) return [];
         return <Space size={8}>
+          {['designer', 'measurer'].includes(member.role) ? <Button size="small" icon={<Award size={14} />} onClick={() => { void openStaffProfessionalProfile(member); }}>背书</Button> : null}
           <Button size="small" icon={<Pencil size={14} />} onClick={() => { setStaffRole(member.role); setEditingStaff(member); setStaffFormOpen(true); }}>编辑</Button>
           <Button size="small" danger icon={<Trash2 size={14} />} onClick={() => { void deleteStaff(member); }}>删除</Button>
         </Space>;
@@ -357,6 +475,7 @@ export default function StaffPage() {
         title="员工管理"
         content="管理企业内的地推、测量、设计与负责人账号，并按部门快速筛选。"
         extra={canManage && !requiresTenantSelection ? [
+          <Button key="professional-profile" icon={<Award size={16} />} onClick={openProfileSettings}>专业背书设置</Button>,
           <Button key="permissions" icon={<ShieldCheck size={16} />} onClick={openPermissionDrawer}>线索归档权限</Button>,
           <Button key="create" type="primary" icon={<Plus size={16} />} onClick={() => { setStaffRole('designer'); setEditingStaff(null); setStaffFormOpen(true); }}>新增员工</Button>,
         ] : undefined}
@@ -553,6 +672,107 @@ export default function StaffPage() {
           </Flex>
         </Flex>
       </Drawer>
+
+      <ModalForm<EnterpriseProfileSettings>
+        key={profileSettings ? JSON.stringify(profileSettings) : 'profile-settings-loading'}
+        title="企业专业背书设置"
+        open={profileSettingsOpen}
+        loading={profileSettingsLoading}
+        initialValues={profileSettings || {
+          designerTitle: '金牌设计师',
+          measurerTitle: '资深测量师',
+          defaultExperienceYears: 7,
+          serviceThreshold: 100,
+          forceEnterpriseProfile: false,
+          titleVisibilityPolicy: 'follow_staff',
+        }}
+        modalProps={{ destroyOnHidden: true, maskClosable: false, width: 680 }}
+        onOpenChange={(open) => setProfileSettingsOpen(open)}
+        onFinish={saveProfileSettings}
+        submitter={{ searchConfig: { submitText: '保存并全局生效' } }}
+      >
+        <Alert
+          showIcon
+          type="info"
+          className="mb-5"
+          message="企业规则可统一覆盖员工配置"
+          description="客户侧不会公开 100 以下的真实服务人数；超过门槛后，员工可选择展示系统准确统计。"
+        />
+        <Flex gap={16} wrap="wrap">
+          <ProFormText width="md" name="designerTitle" label="设计师默认头衔" rules={[{ required: true }, { max: 20 }]} />
+          <ProFormText width="md" name="measurerTitle" label="测量员默认头衔" rules={[{ required: true }, { max: 20 }]} />
+        </Flex>
+        <Flex gap={16} wrap="wrap">
+          <ProFormDigit width="md" name="defaultExperienceYears" label="默认经验年限" min={1} max={100} rules={[{ required: true }]} fieldProps={{ precision: 0 }} />
+          <ProFormDigit width="md" name="serviceThreshold" label="免费服务客户背书门槛" min={100} max={1000000} rules={[{ required: true }]} fieldProps={{ precision: 0 }} extra="最低为 100；客户侧默认显示为“100+”。" />
+        </Flex>
+        <ProFormSwitch name="forceEnterpriseProfile" label="强制使用企业统一背书" extra="开启后，企业头衔与经验年限覆盖员工自填内容；单员工管理员头衔仍优先。" />
+        <ProFormSelect
+          name="titleVisibilityPolicy"
+          label="头衔显示规则"
+          options={[
+            { label: '跟随员工设置', value: 'follow_staff' },
+            { label: '企业强制显示', value: 'force_show' },
+            { label: '企业强制隐藏', value: 'force_hide' },
+          ]}
+          rules={[{ required: true }]}
+        />
+        <Form.Item noStyle shouldUpdate>
+          {({ getFieldsValue }) => {
+            const values = getFieldsValue() as Partial<EnterpriseProfileSettings>;
+            const titleHidden = values.titleVisibilityPolicy === 'force_hide';
+            return (
+              <Card size="small" title="客户侧预览" className="mt-2">
+                {titleHidden
+                  ? <Tag>头衔已隐藏</Tag>
+                  : <Typography.Text strong>{values.designerTitle || '金牌设计师'}</Typography.Text>}
+                <Typography.Text type="secondary">{titleHidden ? '' : ' · '}{values.defaultExperienceYears || 7}年设计经验 · 已免费服务客户{values.serviceThreshold || 100}+</Typography.Text>
+              </Card>
+            );
+          }}
+        </Form.Item>
+      </ModalForm>
+
+      <ModalForm<StaffProfessionalForm>
+        key={professionalProfile ? `${professionalStaff?._id}-${professionalProfile.actualServiceCount}-${professionalProfile.profileLocked}` : 'professional-profile-loading'}
+        title={`${professionalStaff?.displayName || professionalStaff?.username || '员工'} · 专业背书`}
+        open={professionalProfileOpen}
+        loading={professionalProfileLoading}
+        initialValues={professionalProfile ? {
+          adminTitleOverride: professionalProfile.adminTitleOverride,
+          careerStartYear: professionalProfile.careerStartYear,
+          titleVisible: professionalProfile.staffTitleVisible,
+          profileLocked: professionalProfile.profileLocked,
+          showActualServiceCount: professionalProfile.showActualServiceCount,
+        } : undefined}
+        modalProps={{ destroyOnHidden: true, maskClosable: false, width: 620 }}
+        onOpenChange={(open) => { setProfessionalProfileOpen(open); if (!open) setProfessionalStaff(null); }}
+        onFinish={saveStaffProfessionalProfile}
+        submitter={{ searchConfig: { submitText: '保存员工背书' } }}
+      >
+        {professionalProfile ? (
+          <>
+            <Alert
+              showIcon
+              type={professionalProfile.canShowActualServiceCount ? 'success' : 'info'}
+              className="mb-5"
+              message={`系统真实服务客户：${professionalProfile.actualServiceCount} 位（仅后台可见）`}
+              description={professionalProfile.canShowActualServiceCount
+                ? '已超过企业门槛，可以选择在客户侧展示准确数字。'
+                : '未超过企业门槛，客户侧只展示企业配置的 100+ 背书。'}
+            />
+            <ProFormText name="adminTitleOverride" label="单员工专属头衔" rules={[{ max: 20 }]} fieldProps={{ placeholder: '留空则按企业或员工配置计算' }} />
+            <ProFormDigit name="careerStartYear" label="从业起始年份" min={1950} max={new Date().getFullYear()} fieldProps={{ precision: 0 }} />
+            <ProFormSwitch name="titleVisible" label="员工选择显示头衔" extra={professionalProfile.enterpriseTitleVisibilityPolicy === 'follow_staff' ? '当前企业规则会跟随此开关。' : '当前企业采用强制显示/隐藏规则，此开关会保存但不改变最终展示。'} />
+            <ProFormSwitch name="profileLocked" label="锁定员工职业资料" extra="锁定后员工不能自行修改头衔、年份和显示状态。" />
+            <ProFormSwitch name="showActualServiceCount" label="展示真实服务人数" disabled={!professionalProfile.canShowActualServiceCount} extra={professionalProfile.canShowActualServiceCount ? '开启后客户侧展示系统准确人数。' : '真实服务人数必须超过企业门槛后才能开启。'} />
+            <Card size="small" title="当前客户侧效果">
+              {professionalProfile.titleVisible && professionalProfile.title ? <Tag color="green">{professionalProfile.title}</Tag> : <Tag>头衔已隐藏</Tag>}
+              <Typography.Text>{professionalProfile.experienceLabel} · {professionalProfile.serviceLabel}</Typography.Text>
+            </Card>
+          </>
+        ) : null}
+      </ModalForm>
 
       <ModalForm<StaffForm>
         key={editingStaff?._id || 'create-staff'}

@@ -61,6 +61,30 @@ export const enterprises = appSchema.table(
     description: text('description'),
     logo: text('logo'),
     branding: jsonObject<Record<string, unknown>>('branding'),
+    professionalDesignerTitle: text('professional_designer_title')
+      .notNull()
+      .default('金牌设计师'),
+    professionalMeasurerTitle: text('professional_measurer_title')
+      .notNull()
+      .default('资深测量师'),
+    professionalDefaultExperienceYears: integer(
+      'professional_default_experience_years'
+    )
+      .notNull()
+      .default(7),
+    professionalServiceThreshold: integer('professional_service_threshold')
+      .notNull()
+      .default(100),
+    professionalForceEnterpriseProfile: boolean(
+      'professional_force_enterprise_profile'
+    )
+      .notNull()
+      .default(false),
+    professionalTitleVisibilityPolicy: text(
+      'professional_title_visibility_policy'
+    )
+      .notNull()
+      .default('follow_staff'),
     groundPromotionFixedCommission: numeric(
       'ground_promotion_fixed_commission',
       { precision: 14, scale: 2 }
@@ -89,6 +113,18 @@ export const enterprises = appSchema.table(
     check(
       'enterprises_status_check',
       sql`${table.status} in ('pending_approval', 'active', 'disabled', 'rejected')`
+    ),
+    check(
+      'enterprises_professional_experience_years_check',
+      sql`${table.professionalDefaultExperienceYears} between 1 and 100`
+    ),
+    check(
+      'enterprises_professional_service_threshold_check',
+      sql`${table.professionalServiceThreshold} between 100 and 1000000`
+    ),
+    check(
+      'enterprises_professional_title_visibility_policy_check',
+      sql`${table.professionalTitleVisibilityPolicy} in ('follow_staff', 'force_show', 'force_hide')`
     ),
   ]
 );
@@ -159,6 +195,20 @@ export const adminUsers = appSchema.table(
     status: text('status').notNull().default('active'),
     assignmentPaused: boolean('assignment_paused').notNull().default(false),
     leadCapacityOverride: integer('lead_capacity_override'),
+    professionalTitle: text('professional_title'),
+    professionalCareerStartYear: integer('professional_career_start_year'),
+    professionalTitleVisible: boolean('professional_title_visible')
+      .notNull()
+      .default(true),
+    professionalTitleAdminOverride: text('professional_title_admin_override'),
+    professionalProfileLocked: boolean('professional_profile_locked')
+      .notNull()
+      .default(false),
+    professionalShowActualServiceCount: boolean(
+      'professional_show_actual_service_count'
+    )
+      .notNull()
+      .default(false),
     lastAssignedAt: timestamp('last_assigned_at', {
       withTimezone: true,
       mode: 'date',
@@ -189,6 +239,10 @@ export const adminUsers = appSchema.table(
     ),
     index('admin_users_wechat_qr_asset_idx').on(table.wechatQrAssetId),
     check('admin_users_lead_capacity_override_check', sql`${table.leadCapacityOverride} is null or ${table.leadCapacityOverride} between 1 and 100000`),
+    check(
+      'admin_users_professional_career_start_year_check',
+      sql`${table.professionalCareerStartYear} is null or ${table.professionalCareerStartYear} between 1950 and 2200`
+    ),
   ]
 );
 
@@ -2790,6 +2844,9 @@ export const aiGenerationPublications = appSchema.table(
       () => adminUsers.id,
       { onDelete: 'set null' }
     ),
+    creditedDesignerId: bigint('credited_designer_id', {
+      mode: 'bigint',
+    }).references(() => adminUsers.id, { onDelete: 'set null' }),
     publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .defaultNow(),
@@ -2809,6 +2866,10 @@ export const aiGenerationPublications = appSchema.table(
     index('ai_generation_publications_lead_published_idx').on(table.leadId, table.publishedAt),
     index('ai_generation_publications_workflow_published_idx').on(table.workflowId, table.publishedAt),
     index('ai_generation_publications_published_by_idx').on(table.publishedBy),
+    index('ai_generation_publications_credited_designer_idx').on(
+      table.creditedDesignerId,
+      table.leadId
+    ),
     index('ai_generation_publications_withdrawn_by_idx').on(table.withdrawnBy),
   ]
 );

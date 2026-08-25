@@ -23,6 +23,7 @@ export type CustomerProject = {
   lead: typeof leads.$inferSelect;
   enterpriseName: string;
   designer: Pick<typeof adminUsers.$inferSelect, 'id' | 'displayName' | 'wechatId' | 'wechatQrAssetId' | 'phone'> | null;
+  measurer: Pick<typeof adminUsers.$inferSelect, 'id' | 'displayName' | 'phone'> | null;
   measurerName: string | null;
   measurerPhone: string | null;
   appointment: (typeof measurementAppointments.$inferSelect & {
@@ -97,7 +98,7 @@ export class CustomerProjectRepository {
         : [],
       row.lead.measurerId
         ? this.transaction
-            .select({ displayName: adminUsers.displayName, phone: staffContactPhoneSql() })
+            .select({ id: adminUsers.id, displayName: adminUsers.displayName, phone: staffContactPhoneSql() })
             .from(adminUsers)
             .leftJoin(users, eq(adminUsers.userId, users.id))
             .where(eq(adminUsers.id, row.lead.measurerId))
@@ -139,6 +140,7 @@ export class CustomerProjectRepository {
       lead: row.lead,
       enterpriseName: row.enterpriseName,
       designer: designerRows[0] ?? null,
+      measurer: measurerRows[0] ?? null,
       measurerName: measurerRows[0]?.displayName ?? null,
       measurerPhone: measurerRows[0]?.phone ?? null,
       appointment: appointmentRows[0]
@@ -352,6 +354,7 @@ export class CustomerProjectRepository {
         leadId: input.leadId,
         generationId: input.generationId,
         publishedBy: input.publishedBy,
+        creditedDesignerId: lead.assignedTo,
       })
       .onConflictDoNothing()
       .returning();
@@ -583,6 +586,7 @@ export class CustomerProjectRepository {
           schemeTitle: title,
           sortOrder: targetSortOrder,
           publishedBy: input.publishedBy,
+          creditedDesignerId: sql`coalesce(${aiGenerationPublications.creditedDesignerId}, ${lead.assignedTo})`,
           updatedAt: now,
         })
         .where(and(
@@ -617,6 +621,7 @@ export class CustomerProjectRepository {
         schemeTitle: title,
         sortOrder: targetSortOrder,
         publishedBy: input.publishedBy,
+        creditedDesignerId: lead.assignedTo,
         publishedAt: now,
       });
     }

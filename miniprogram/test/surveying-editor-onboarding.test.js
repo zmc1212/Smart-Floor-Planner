@@ -151,6 +151,28 @@ test('cursor magnifier blits a formal crop without the canvas reticle and overla
   );
 });
 
+test('dock cursor drag aims upper-left of the finger; wall drag uses sticky grab', () => {
+  assert.match(editorScript, /require\('\.\.\/utils\/surveyCursorAim\.js'\)/);
+  assert.match(editorScript, /toDockAimPoint\(touchPoint\) \{\s*return toAimClientPoint\(touchPoint, this\.canvasRect\) \|\| touchPoint;/);
+  assert.match(editorScript, /this\.resolveCursorDragPoint\(this\.toDockAimPoint\(point\)/);
+  assert.match(editorScript, /rawReleasePoint\s*\? this\.toDockAimPoint\(rawReleasePoint\)/);
+  assert.match(editorScript, /Math\.hypot\(rawReleasePoint\.x - startPoint\.x, rawReleasePoint\.y - startPoint\.y\)/);
+  assert.match(editorScript, /自由放置跟随瞄准点/);
+  assert.match(
+    editorScript,
+    /wallGrabDelta: cursorSource[\s\S]*wallGrabDelta\(this\.mmToClientPoint\(cursorSource\), point\)/
+  );
+  assert.match(editorScript, /toWallGrabAimPoint\(point, this\.touchState\.wallGrabDelta\)/);
+  assert.match(
+    editorScript,
+    /const currentMm = this\.canvasPointToMm\(\s*this\.touchState\.wallGrabDelta \? wallAimPoint : point/
+  );
+  assert.match(editorScript, /this\.queueWallDragRedraw\(wallAimPoint, previewPointMm, previewTarget\)/);
+  assert.match(editorScript, /return isNearCursorHit\(localPoint, cursorPoint\)/);
+  assert.doesNotMatch(editorScript, /distancePx\(cursorPoint, localPoint\) <= 44/);
+  assert.doesNotMatch(editorScript, /startPreview\(this\.draft, toAimClientPoint/);
+});
+
 test('formal surveying fixed chrome follows the compact high-fidelity reference geometry', () => {
   assert.match(editorWxss, /\.survey-topbar\s*\{[\s\S]*height:\s*160rpx;/);
   assert.match(editorWxss, /\.topbar-right\s*\{[\s\S]*top:\s*94rpx;[\s\S]*right:\s*28rpx;/);

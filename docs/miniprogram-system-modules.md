@@ -149,7 +149,12 @@ Confirming a closed room automatically enters the same reset-cursor / wall-drop
 state as tapping 重置光标, so the operator can drag the dock cursor to the next
 start without a second tap. The formal canvas cursor and both dock states
 (重置光标 / 光标拖动到墙体) use the same Fig.1 green reticle glyph
-(`drawCursorGlyph` + `icons/cursor-reticle.png`). The drag magnifier overlays a small green
+(`drawCursorGlyph` + `icons/cursor-reticle.png`). Dock wall-drop drags aim that
+reticle 48×80 CSS px upper-left of the finger and clamp the aim point to the
+canvas; snap, the corner magnifier, and release all use the aim point, not the
+finger pad. Canvas wall-endpoint drags keep a sticky grab delta from
+touchstart and a south-east-biased hit (`surveyCursorAim`); they must not apply
+the dock offset, so the first preview frame cannot invent a wall. The drag magnifier overlays a small green
 crosshair at its centre and does not magnify that glyph. During that wall-drop wait (`wallSnapPending`), the
 canvas still pans and pinch-zooms; a wall tap only selects the wall for opening
 placement, while the cursor is placed only by dragging the dock control onto the
@@ -171,7 +176,8 @@ on the internal graph, while the preview outline, orange/red path,
 live-dimension endpoints, and green cursor remain coincident. Straight-mode
 vertex or closure snaps may change at most one axis and must not copy an
 off-axis vertex onto the orange preview; the wall-drag lens reports the actual
-snap type and shows a small green crosshair rather than the canvas Fig.1 reticle. Adjacent red edges
+snap type and shows a small green crosshair rather than the canvas Fig.1 reticle,
+following the sticky grab aim point rather than a dock-style finger offset. Adjacent red edges
 meet with equal endpoints, so beginning a second segment cannot shift the cursor
 or red line by one wall thickness. Measurement inset/extension fields record
 real boundary or closure adjustments only; an ordinary outer-start T turn does
@@ -417,6 +423,8 @@ route's own `.less` file. The compiled runtime still receives standard WXSS.
   and stays dismissible.
 
 ### Shared designer contact presentation
+
+Designers and measurers can maintain their unlocked professional title, career start year, and title preference from `profile-edit` through `GET/PATCH /api/miniprogram/staff/professional-profile`; enterprise-forced visibility disables the employee switch with an explanation, and a locked profile disables all professional edits. The page previews the final customer-visible title/experience/service labels and shows the raw count only to the staff member. Customer project and claim DTOs expose only the resolved `professionalProfile`. The designer contact sheet inserts that proof between identity and the unchanged QR stage; hiding the title removes its slot while experience/service move up. Customer project designer and measurer cards use the same resolved labels, and no measurer QR capability is introduced.
 
 - `components/designer-contact-sheet` now follows the user-approved `design-references/designer-contact-sheet/designer-contact-sheet-longpress-market-v5.png` across `pages/index/index`, `packages/business/free-design-service/free-design-service`, and `packages/business/customer-project/customer-project`.
 - The production overlay keeps the existing designer-contact data and actions, but restores a QR-first hierarchy with Xiao K gripping the green architectural header, a warm-white unobstructed QR stage, the prominent `Hold the QR code for 2 seconds` instruction, WeChat ID copy, retry, preview, mask-close, and outside close controls.

@@ -30,6 +30,10 @@ Component({
     qrPath: '',
     qrLoading: false,
     qrError: false,
+    professionalTitleVisible: false,
+    professionalTitle: '',
+    professionalExperienceLabel: '',
+    professionalServiceLabel: '',
   },
 
   observers: {
@@ -57,6 +61,9 @@ Component({
       const wechatId = String((designer && designer.wechatId) || '').trim();
       const wechatQrUrl = designer && designer.wechatQrUrl ? String(designer.wechatQrUrl) : '';
       const displayName = String((designer && designer.displayName) || '').trim() || '专属设计师';
+      const professionalProfile = designer && designer.professionalProfile && typeof designer.professionalProfile === 'object'
+        ? designer.professionalProfile
+        : null;
       const hasQr = Boolean(wechatQrUrl);
       this.setData({
         displayName,
@@ -65,6 +72,10 @@ Component({
         qrPath: '',
         qrLoading: hasQr,
         qrError: false,
+        professionalTitleVisible: Boolean(professionalProfile && professionalProfile.titleVisible && professionalProfile.title),
+        professionalTitle: String((professionalProfile && professionalProfile.title) || '').trim(),
+        professionalExperienceLabel: String((professionalProfile && professionalProfile.experienceLabel) || '').trim(),
+        professionalServiceLabel: String((professionalProfile && professionalProfile.serviceLabel) || '').trim(),
       });
       if (hasQr) {
         this.loadQr(wechatQrUrl);

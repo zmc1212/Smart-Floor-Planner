@@ -176,6 +176,13 @@ export function adminUserToDto(
     status: record.status,
     assignmentPaused: record.assignmentPaused,
     leadCapacityOverride: record.leadCapacityOverride,
+    professionalTitle: record.professionalTitle,
+    professionalCareerStartYear: record.professionalCareerStartYear,
+    professionalTitleVisible: record.professionalTitleVisible,
+    professionalTitleAdminOverride: record.professionalTitleAdminOverride,
+    professionalProfileLocked: record.professionalProfileLocked,
+    professionalShowActualServiceCount:
+      record.professionalShowActualServiceCount,
     lastLoginAt: record.lastLoginAt,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

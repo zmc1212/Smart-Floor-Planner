@@ -55,6 +55,55 @@
       </view>
     </view>
 
+    <block wx:if="{{isProfessionalStaff}}">
+      <view class="account-section-title">客户可见专业背书</view>
+      <view wx:if="{{professionalProfileLocked}}" class="professional-rule-note is-locked">
+        职业资料已由企业管理员锁定，如需修改请联系管理员
+      </view>
+      <view wx:elif="{{professionalProfile && professionalProfile.enterpriseForceProfile}}" class="professional-rule-note">
+        当前企业统一背书正在生效；你填写的个人资料会保存，企业关闭统一覆盖后自动使用
+      </view>
+      <view class="account-surface professional-profile-surface">
+        <view class="field-group">
+          <text class="field-label">我的专业头衔</text>
+          <input class="field-input" disabled="{{professionalProfileLocked}}" value="{{professionalTitle}}" maxlength="20" placeholder="例如：全案设计师" placeholder-class="field-placeholder" bindinput="onProfessionalTitleInput" />
+          <view class="field-counter">{{professionalTitle.length}} / 20</view>
+        </view>
+        <view class="professional-divider"></view>
+        <view class="field-group">
+          <text class="field-label">从业起始年份</text>
+          <input class="field-input" disabled="{{professionalProfileLocked}}" type="number" value="{{professionalCareerStartYear}}" maxlength="4" placeholder="例如：2016" placeholder-class="field-placeholder" bindinput="onProfessionalCareerYearInput" />
+          <text class="field-helper">系统会自动计算从业年限；企业统一配置生效时按企业经验年限展示</text>
+        </view>
+        <view class="professional-divider"></view>
+        <view class="professional-switch-row">
+          <view class="professional-switch-copy">
+            <text class="field-label">显示专业头衔</text>
+            <text class="field-helper">{{professionalVisibilityControlled ? '当前由企业统一控制显示或隐藏' : '关闭后仍保留经验与服务客户背书'}}</text>
+          </view>
+          <switch color="#12b85a" checked="{{professionalTitleVisible}}" disabled="{{professionalProfileLocked || professionalVisibilityControlled}}" bindchange="onProfessionalTitleVisibleChange" />
+        </view>
+        <view class="professional-divider"></view>
+        <view class="professional-switch-row">
+          <view class="professional-switch-copy">
+            <text class="field-label">展示真实服务人数</text>
+            <text class="field-helper">{{professionalProfile && professionalProfile.canShowActualServiceCount ? '已超过企业门槛，可展示系统准确数字' : '超过企业门槛后才能开启；当前客户侧显示100+'}}</text>
+          </view>
+          <switch color="#12b85a" checked="{{professionalShowActualServiceCount}}" disabled="{{professionalProfileLocked || !professionalProfile || !professionalProfile.canShowActualServiceCount}}" bindchange="onProfessionalActualCountChange" />
+        </view>
+      </view>
+      <view wx:if="{{professionalProfile}}" class="professional-preview">
+        <text class="professional-preview-label">客户侧预览</text>
+        <text wx:if="{{professionalProfile.titleVisible && professionalProfile.title}}" class="professional-preview-title">{{professionalProfile.title}}</text>
+        <view class="professional-preview-proof">
+          <text>{{professionalProfile.experienceLabel}}</text>
+          <view class="professional-proof-dot"></view>
+          <text>{{professionalProfile.serviceLabel}}</text>
+        </view>
+        <text class="professional-preview-note">真实服务客户 {{professionalProfile.actualServiceCount}} 位，仅你和企业管理员可见</text>
+      </view>
+    </block>
+
     <block wx:if="{{isDesigner}}">
       <view class="account-section-title">设计师服务资料</view>
       <view class="wechat-eligibility tone-{{eligibilityTone}}">

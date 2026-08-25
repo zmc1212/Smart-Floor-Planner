@@ -9,6 +9,7 @@ import { getWorkflowStageDefinition } from '@/lib/ai/workflow-stages';
 import { getGenerationImageUrl } from '@/lib/ai/workflow-utils';
 import { getFloorPlanDisplay } from '@/lib/floor-plan-display';
 import { resolveCustomerHomeAction } from '@/lib/lead-service-stage';
+import type { PublicProfessionalProfile } from '@/lib/professional-profile';
 
 export const LEGACY_PUBLISHED_SCHEME_ID = 'legacy';
 export const LEGACY_PUBLISHED_SCHEME_TITLE = '其他效果图';
@@ -257,7 +258,11 @@ export async function attachPublishedSchemeDisplayUrls(
 export async function customerProjectToDto(
   request: Request,
   project: CustomerProject,
-  options: { customerRescheduleCutoffHours?: number | null } = {}
+  options: {
+    customerRescheduleCutoffHours?: number | null;
+    designerProfessionalProfile?: PublicProfessionalProfile | null;
+    measurerProfessionalProfile?: PublicProfessionalProfile | null;
+  } = {}
 ) {
   const leadId = project.lead.id.toString();
   const enterpriseId = project.lead.enterpriseId!.toString();
@@ -318,6 +323,7 @@ export async function customerProjectToDto(
           displayName: project.designer.displayName,
           wechatId: project.designer.wechatId,
           phone: text(project.designer.phone) || null,
+          professionalProfile: options.designerProfessionalProfile || null,
           wechatQrUrl: project.designer.wechatQrAssetId
             ? getSignedMiniAiAssetUrl({
                 request,
@@ -325,6 +331,14 @@ export async function customerProjectToDto(
                 enterpriseId,
               })
             : null,
+        }
+      : null,
+    measurer: project.measurer
+      ? {
+          id: project.measurer.id.toString(),
+          displayName: project.measurer.displayName,
+          phone: text(project.measurer.phone) || null,
+          professionalProfile: options.measurerProfessionalProfile || null,
         }
       : null,
     measurerName: project.measurerName,
@@ -342,6 +356,7 @@ export async function customerProjectToDto(
           version: project.appointment.version,
           measurerName: project.appointment.measurerName,
           measurerPhone: text(project.appointment.measurerPhone) || null,
+          measurerProfessionalProfile: options.measurerProfessionalProfile || null,
           updatedAt: project.appointment.updatedAt,
         }
       : null,

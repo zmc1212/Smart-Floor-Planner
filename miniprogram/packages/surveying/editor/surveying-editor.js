@@ -3,6 +3,12 @@ const surveyGraph = require('../../../utils/surveyWallGraph.js');
 const surveySnapEngine = require('../../../utils/survey/snap/snap-engine.js');
 const surveyCanvasRenderer = require('../utils/surveyCanvasRenderer.js');
 const surveyViewportInteraction = require('../utils/surveyViewportInteraction.js');
+const {
+  toAimClientPoint,
+  wallGrabDelta,
+  toWallGrabAimPoint,
+  isNearCursorHit
+} = require('../utils/surveyCursorAim.js');
 const { createPriorityCloudSaveQueue } = require('../utils/cloudSaveQueue.js');
 const bluetooth = require('../../../utils/bluetooth.js');
 const api = require('../../../utils/api.js');
@@ -4073,8 +4079,8 @@ Page({
 
   resolveCursorDragPoint(clientPoint, includeLens) {
     const candidate = this.getCursorPlacementCandidate(clientPoint, { useHysteresis: true });
-    // 自由放置必须严格跟随手指。只有真正命中顶点或墙体时，才把
-    // 十字光标移动到吸附后的坐标，避免一次 mm 往返换算造成初始跳位。
+    // 自由放置跟随瞄准点（指尖左上），不再跟指腹中心。只有真正命中
+    // 顶点或墙体时，才把十字光标移动到吸附后的坐标，避免一次 mm 往返换算造成初始跳位。
     const isSnapped = candidate && (
       candidate.type === 'vertex' || candidate.type === 'wall' || candidate.type === 'alignment'
     );
@@ -4156,7 +4162,11 @@ Page({
       x: clientPoint.x - this.canvasRect.left,
       y: clientPoint.y - this.canvasRect.top
     };
-    return distancePx(cursorPoint, localPoint) <= 44;
+    return isNearCursorHit(localPoint, cursorPoint);
+  },
+
+  toDockAimPoint(touchPoint) {
+    return toAimClientPoint(touchPoint, this.canvasRect) || touchPoint;
   },
 
   applyDraft(nextDraft, options) {
@@ -5031,12 +5041,19 @@ Page({
     const nearCursor = this.isCursorTouchTarget(e) || this.isNearCursorPoint(point);
     const viewport = this.getViewport();
     const snapPending = session.state === 'wallSnapPending';
+    const cursorSource = nearCursor
+      ? (surveyGraph.getCursorDisplayPoint(floor, session)
+        || (session.anchorNodeId ? surveyGraph.getNode(floor, session.anchorNodeId) : null))
+      : null;
 
     this.touchState = {
       mode: snapPending ? 'wallSnapPending' : (openingHit && openingHit.openingId ? 'openingPending' : 'pending'),
       startPoint: point,
       lastPoint: point,
       nearCursor,
+      wallGrabDelta: cursorSource
+        ? wallGrabDelta(this.mmToClientPoint(cursorSource), point)
+        : null,
       openingHit: snapPending ? null : openingHit,
       sessionState: session.state,
       startViewport: {
@@ -5081,7 +5098,12 @@ Page({
     const dx = point.x - this.touchState.startPoint.x;
     const dy = point.y - this.touchState.startPoint.y;
     const moved = Math.sqrt(dx * dx + dy * dy);
-    const currentMm = this.canvasPointToMm(point);
+    const wallAimPoint = this.touchState.wallGrabDelta
+      ? (toWallGrabAimPoint(point, this.touchState.wallGrabDelta) || point)
+      : point;
+    const currentMm = this.canvasPointToMm(
+      this.touchState.wallGrabDelta ? wallAimPoint : point
+    );
 
     // wallSnapPending: short tap leaves placement unchanged; drag pans the
     // canvas so the operator can bring the target wall into view before using
@@ -5152,7 +5174,7 @@ Page({
         || previewFloor.session.previewPoint
         || snappedMm;
       const previewTarget = this.resolvePreviewLensTarget(previewFloor.session, previewPointMm);
-      this.queueWallDragRedraw(point, previewPointMm, previewTarget);
+      this.queueWallDragRedraw(wallAimPoint, previewPointMm, previewTarget);
       return;
     }
 
@@ -5612,7 +5634,7 @@ Page({
     }
     // Canvas owns the lens chrome. Only publish the dragging state once so
     // touchmove does not pay for cover-view setData on every frame.
-    const dragData = this.resolveCursorDragPoint(point, !wasDragging);
+    const dragData = this.resolveCursorDragPoint(this.toDockAimPoint(point), !wasDragging);
     if (!wasDragging) {
       this.canvasCursorLensPublished = true;
       this.setData(Object.assign({
@@ -5628,15 +5650,18 @@ Page({
   onCursorDragEnd(e) {
     const wasDragging = this.cursorPlacementState === 'dragging';
     const dragWasPending = this.cursorDragPending;
-    const reportedReleasePoint = this.getCursorDragTouch(e, true) || this.cursorDragClientPoint;
+    const rawReleasePoint = this.getCursorDragTouch(e, true);
+    const reportedReleasePoint = rawReleasePoint
+      ? this.toDockAimPoint(rawReleasePoint)
+      : this.cursorDragClientPoint;
     const releasePoint = reportedReleasePoint || {
       x: this.data.dragCursorX,
       y: this.data.dragCursorY
     };
     const startPoint = this.cursorDragStartPoint;
     const movedWithoutTouchMove = !wasDragging && dragWasPending && startPoint
-      && reportedReleasePoint
-      && Math.hypot(releasePoint.x - startPoint.x, releasePoint.y - startPoint.y) >= 8;
+      && rawReleasePoint
+      && Math.hypot(rawReleasePoint.x - startPoint.x, rawReleasePoint.y - startPoint.y) >= 8;
     this.cursorDragPending = false;
     this.cursorDragTouchId = null;
     this.cursorDragStartPoint = null;

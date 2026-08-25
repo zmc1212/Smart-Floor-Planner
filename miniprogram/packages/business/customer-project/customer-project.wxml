@@ -38,6 +38,11 @@
             <text class="person-name">{{designerLine}}</text>
             <view wx:if="{{canContactDesigner}}" class="person-chevron"></view>
           </view>
+          <view wx:if="{{designerProfessionalProfile}}" class="person-professional">
+            <text wx:if="{{designerProfessionalProfile.titleVisible && designerProfessionalProfile.title}}" class="person-professional-title">{{designerProfessionalProfile.title}}</text>
+            <text class="person-professional-proof">{{designerProfessionalProfile.experienceLabel}}</text>
+            <text class="person-professional-proof">{{designerProfessionalProfile.serviceLabel}}</text>
+          </view>
           <view
             wx:if="{{designerPhone}}"
             class="person-phone sfp-icon-action"
@@ -61,6 +66,11 @@
         <view class="person-info">
           <text class="person-role">测量师师傅</text>
           <text class="person-name">{{measurerLine}}</text>
+          <view wx:if="{{measurerProfessionalProfile}}" class="person-professional">
+            <text wx:if="{{measurerProfessionalProfile.titleVisible && measurerProfessionalProfile.title}}" class="person-professional-title">{{measurerProfessionalProfile.title}}</text>
+            <text class="person-professional-proof">{{measurerProfessionalProfile.experienceLabel}}</text>
+            <text class="person-professional-proof">{{measurerProfessionalProfile.serviceLabel}}</text>
+          </view>
           <view
             wx:if="{{measurerPhone}}"
             class="person-phone sfp-icon-action"

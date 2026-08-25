@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import {
   MiniProgramIdentityRepository,
+  ProfessionalProfileRepository,
   ReferralLeadRepository,
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
@@ -21,6 +22,7 @@ import {
   normalizeReferralIdempotencyKey,
   openPendingClaimSource,
 } from '@/lib/referral-attribution';
+import { publicProfessionalProfile } from '@/lib/professional-profile';
 import {
   notifyDesignerOfAssignedLead,
   notifyEligibleDesignersOfClaimWindow,
@@ -125,11 +127,17 @@ export async function POST(request: Request) {
       });
       const contexts = wechat ? await identities.listContexts(customer.id) : null;
       const customerContext = contexts?.find((context) => context.mode === 'customer') ?? null;
+      const designerProfessionalProfile = claim.lead.assignedUser
+        ? await new ProfessionalProfileRepository(transaction).findForStaff(
+            claim.lead.assignedUser.id
+          )
+        : null;
       return {
         authenticated: true as const,
         claim,
         customer,
         customerContext,
+        designerProfessionalProfile,
       };
     });
     if (!result.authenticated) {
@@ -206,6 +214,9 @@ export async function POST(request: Request) {
             designer && claim.lead.enterpriseId && claim.kind !== 'existing_attribution'
               ? {
                   displayName: designer.displayName || designer.username,
+                  professionalProfile: publicProfessionalProfile(
+                    result.designerProfessionalProfile
+                  ),
                   wechatId: designer.wechatId,
                   wechatQrUrl:
                     designer.wechatQrAssetId && designer.wechatId

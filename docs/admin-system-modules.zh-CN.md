@@ -22,6 +22,8 @@
 
 ## 模块清单
 
+专业背书已作为租户隔离的员工能力落地。企业负责人和平台管理员在 `/staff` 通过 `GET/PUT /api/professional-profile-settings` 配置设计师/测量员默认头衔、默认经验年限、不得低于 100 的服务门槛、企业统一内容覆盖，以及 `follow_staff` / `force_show` / `force_hide` 头衔显示策略；再通过 `GET/PATCH /api/staff/[id]/professional-profile` 管理单员工专属头衔、从业年份、显示偏好、资料锁定和真实人数展示开关。设计师与测量员通过 `GET/PATCH /api/miniprogram/staff/professional-profile` 自助维护未锁定字段。客户 DTO 只返回最终计算后的 `professionalProfile`，真实人数仅内部/后台可见。设计师按发布时归属且曾有客户可见方案的去重线索计数，测量员按本人完成的正式 v4 户型去重线索计数；真实人数不高于企业门槛时绝不下发客户侧，只有超过门槛后才允许开启准确数字。新增字段不参与派单资格判断。
+
 预约服务地址补录属于预约服务事实：`measurement_appointments` 在手输服务详细地址外，可选保存 `location_name`、范围校验后的 GCJ-02 纬经度和坐标系。预约与线索 DTO 会把 PostgreSQL `tstzrange` 文本（`2026-08-23 01:00:00+00`）改写成 ISO-8601（`2026-08-23T01:00:00.000Z`），以便小程序 `Date` 解析后按上海日历日归入量房日程。`GET /api/appointments/availability` 会去掉已经开始的档；若该线索已有确认预约，则排除这一条自身占用，因此当天改期可以选与当前上门重叠的邻近档，其他线索仍会看到该测量员已被占用。`POST /api/appointments` 与 `POST /api/appointments/[id]/address` 接收可选地图位置；地址更新继续受预约版本保护，并把修改前后的位置快照写入 `measurement_appointment_events` 的 `address_updated` 审计。小程序请求先按员工 `staff._id` 与已派设计师/测量员比对，Admin Cookie JWT 作为回退。后台线索详情与小程序预约详情共用该入口。创建或更新服务地址时，若线索 `communityName` 为空，同一事务会优先用地图 `locationName`、否则用手输地址回填（截断至 160 字；已有小区不覆盖）。小程序预约详情仍保留员工对历史空小区的显式同步。`POST /api/appointments/[id]/complete` 还要求线索关联已完成的正式 v4 量房户型且至少存在一个闭合空间，否则返回 `appointment_survey_required`（409）。编辑器「完成」只提交户型；线索 `designing`、设计师量房完成通知与释放时段只在预约详情确认完成量房之后发生。
 
 | 模块 | 当前入口 | API/数据边界 | 权限/状态 | 当前限制 |

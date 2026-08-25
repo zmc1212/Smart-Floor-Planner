@@ -33,6 +33,15 @@
             <text class="dcs-designer-name">{{displayName}}</text>
           </view>
 
+          <view wx:if="{{professionalTitleVisible || professionalExperienceLabel || professionalServiceLabel}}" class="dcs-professional-profile">
+            <text wx:if="{{professionalTitleVisible}}" class="dcs-professional-title">{{professionalTitle}}</text>
+            <view wx:if="{{professionalExperienceLabel || professionalServiceLabel}}" class="dcs-professional-proof">
+              <text wx:if="{{professionalExperienceLabel}}">{{professionalExperienceLabel}}</text>
+              <view wx:if="{{professionalExperienceLabel && professionalServiceLabel}}" class="dcs-professional-dot"></view>
+              <text wx:if="{{professionalServiceLabel}}">{{professionalServiceLabel}}</text>
+            </view>
+          </view>
+
           <view wx:if="{{hasQr}}" class="dcs-qr-block">
             <view class="dcs-qr-shell">
               <image
