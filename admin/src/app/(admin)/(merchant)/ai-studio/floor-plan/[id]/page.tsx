@@ -1,6 +1,8 @@
 'use client';
 
 import { notify } from '@/components/admin/operation-feedback';
+import { usePagePolling } from '@/hooks/usePagePolling';
+import { AI_PAGE_IDLE_MS, AI_STATUS_POLL_INTERVAL_MS } from '@/lib/page-activity';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -111,17 +113,14 @@ export default function GenerationDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    fetchStatus();
+    void fetchStatus();
+  }, [fetchStatus]);
 
-    let interval: ReturnType<typeof setInterval> | undefined;
-    if (data?.status === 'processing' || data?.status === 'pending') {
-      interval = setInterval(fetchStatus, 3000);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [fetchStatus, data?.status]);
+  usePagePolling(fetchStatus, {
+    enabled: data?.status === 'processing' || data?.status === 'pending',
+    intervalMs: AI_STATUS_POLL_INTERVAL_MS,
+    idleMs: AI_PAGE_IDLE_MS,
+  });
 
   const presetSnapshot = data?.input?.presetSnapshot;
   const styleKey = data?.input?.style || '';

@@ -36,6 +36,11 @@ import {
 import { Button, ConfigProvider, Input, Modal, Select } from 'antd';
 import { notify } from '@/components/admin/operation-feedback';
 import { studioDarkAntdTheme, studioLightAntdTheme } from '@/components/admin/studio-antd-theme';
+import { usePagePolling } from '@/hooks/usePagePolling';
+import {
+  AI_PAGE_IDLE_MS,
+  AI_WORKBENCH_POLL_INTERVAL_MS,
+} from '@/lib/page-activity';
 import { ImageEditorDialog } from '@/components/ai-creation/image-editor-dialog';
 import { TemplateLibraryDialog } from '@/components/ai-creation/template-library-dialog';
 import type {
@@ -431,20 +436,14 @@ export function WorkbenchWorkspace() {
     task?.batches.some((batch) => batch.status === 'processing' || batch.status === 'pending')
     || detail?.generations.some((generation) => ['created', 'pending', 'processing'].includes(generation.status))
   );
-  useEffect(() => {
-    if (!hasProcessing || !selectedWorkflowId) return;
-    let cancelled = false;
-    let timer: number | undefined;
-    const poll = async () => {
-      await loadConversation(selectedWorkflowId, true);
-      if (!cancelled) timer = window.setTimeout(poll, 4000);
-    };
-    timer = window.setTimeout(poll, 4000);
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [hasProcessing, loadConversation, selectedWorkflowId]);
+  usePagePolling(() => {
+    if (!selectedWorkflowId) return;
+    return loadConversation(selectedWorkflowId, true);
+  }, {
+    enabled: hasProcessing && Boolean(selectedWorkflowId),
+    intervalMs: AI_WORKBENCH_POLL_INTERVAL_MS,
+    idleMs: AI_PAGE_IDLE_MS,
+  });
 
   useEffect(() => {
     if (selectedLeadId || !initialLeadId) return;

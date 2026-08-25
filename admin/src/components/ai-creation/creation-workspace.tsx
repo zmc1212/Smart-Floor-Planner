@@ -40,6 +40,11 @@ import {
 import { Button, ConfigProvider, Dropdown, Input, Modal, Select } from 'antd';
 import { notify } from '@/components/admin/operation-feedback';
 import { studioDarkAntdTheme } from '@/components/admin/studio-antd-theme';
+import { usePagePolling } from '@/hooks/usePagePolling';
+import {
+  AI_CREATION_POLL_INTERVAL_MS,
+  AI_PAGE_IDLE_MS,
+} from '@/lib/page-activity';
 import {
   mergeTemplateReferenceAsset,
   planPromptTemplateReferenceAttach,
@@ -386,20 +391,11 @@ export function CreationWorkspace() {
   }, [loadBootstrap, loadTasks]);
 
   const hasProcessing = tasks.some((task) => task.batches.some((batch) => batch.status === 'processing' || batch.status === 'pending'));
-  useEffect(() => {
-    if (!hasProcessing) return;
-    let cancelled = false;
-    let timer: number | undefined;
-    const poll = async () => {
-      await loadTasks(true);
-      if (!cancelled) timer = window.setTimeout(poll, 4500);
-    };
-    timer = window.setTimeout(poll, 4500);
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [hasProcessing, loadTasks]);
+  usePagePolling(() => loadTasks(true), {
+    enabled: hasProcessing,
+    intervalMs: AI_CREATION_POLL_INTERVAL_MS,
+    idleMs: AI_PAGE_IDLE_MS,
+  });
 
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
   const selectedBatch = latestBatch(selectedTask);

@@ -14,6 +14,12 @@ import { Alert, Button, Flex, Modal, Select, Space, Statistic, Tag, Typography }
 import { Clock3, RefreshCw, Settings2, Trophy } from 'lucide-react';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { usePagePolling } from '@/hooks/usePagePolling';
+import {
+  LEAD_POOL_CLOCK_INTERVAL_MS,
+  LEAD_POOL_IDLE_MS,
+  LEAD_POOL_POLL_INTERVAL_MS,
+} from '@/lib/page-activity';
 
 type PoolLead = {
   id: string;
@@ -86,10 +92,15 @@ export default function LeadPoolPage() {
 
   useEffect(() => {
     void loadPool();
-    const poller = window.setInterval(() => void loadPool(true), 3000);
-    const ticker = window.setInterval(() => setClock(Date.now()), 1000);
-    return () => { window.clearInterval(poller); window.clearInterval(ticker); };
   }, [loadPool]);
+  usePagePolling(() => loadPool(true), {
+    intervalMs: LEAD_POOL_POLL_INTERVAL_MS,
+    idleMs: LEAD_POOL_IDLE_MS,
+  });
+  usePagePolling(() => { setClock(Date.now()); }, {
+    intervalMs: LEAD_POOL_CLOCK_INTERVAL_MS,
+    idleMs: LEAD_POOL_IDLE_MS,
+  });
 
   const claim = async (lead: PoolLead) => {
     setClaimingId(lead.id);
