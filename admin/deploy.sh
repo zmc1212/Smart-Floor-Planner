@@ -79,7 +79,7 @@ echo "Applying PostgreSQL migrations..."
 "${compose[@]}" --profile migration run --rm migrate
 
 echo "Starting the admin service..."
-"${compose[@]}" up -d admin
+"${compose[@]}" up -d --force-recreate admin
 
 echo "Waiting for the admin health endpoint..."
 until "${compose[@]}" exec -T admin node -e '

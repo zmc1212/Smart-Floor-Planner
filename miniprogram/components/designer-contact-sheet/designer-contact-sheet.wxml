@@ -1,6 +1,6 @@
 <view
   wx:if="{{dialogMounted}}"
-  class="dcs-root"
+  class="dcs-root {{aboveTabBar ? 'above-tabbar' : ''}}"
   style="--dcs-capsule-bottom: {{capsuleBottom}}px;"
   catchtouchmove="noop"
   aria-role="dialog"

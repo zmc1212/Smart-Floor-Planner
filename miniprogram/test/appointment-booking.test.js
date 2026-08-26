@@ -115,7 +115,7 @@ test('lead detail exposes first booking to scheduling roles only without a confi
   assert.match(detailJs, /appointment-booking\/appointment-booking\?leadId=/);
   assert.match(detailWxml, /wx:(?:if|elif)="\{\{canScheduleAppointment(?:\s*&&\s*canRebookAppointment)?\}\}"/);
   assert.match(detailWxml, />安排上门量房<\/button>/);
-  assert.match(detailWxml, />查看预约<\/button>/);
+  assert.match(detailWxml, /\{\{lead\.serviceStage === 'survey_ready' \? '确认完成量房' : '查看预约'\}\}/);
   assert.match(detailJs, /customer-ai-schemes\/customer-ai-schemes\?leadId=/);
   assert.doesNotMatch(detailJs, /ai-design-result\?id=/);
   assert.match(detailWxss, /\.whole-home-appointment-action/);

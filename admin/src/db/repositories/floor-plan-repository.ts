@@ -90,10 +90,11 @@ export class FloorPlanRepository {
           id: users.id,
           nickname: users.nickname,
           avatar: users.avatar,
-          openid: sql<string | null>`coalesce(${wechatIdentities.openid}, ${users.openid})`,
+          openid: users.openid,
           communityName: users.communityName,
           phone: users.phone,
         },
+        identityOpenid: wechatIdentities.openid,
       })
       .from(floorPlans)
       .leftJoin(users, eq(floorPlans.creatorId, users.id))
@@ -104,27 +105,39 @@ export class FloorPlanRepository {
     rows: Array<{
       floorPlan: FloorPlanRecord;
       creator: FloorPlanCreatorSummary | null;
+      identityOpenid?: string | null;
     }>
   ): FloorPlanWithCreator[] {
-    return rows.map((row) => ({ ...row.floorPlan, creator: row.creator }));
+    return rows.map((row) => {
+      const creatorId = row.creator?.id ?? null;
+      return {
+        ...row.floorPlan,
+        creator:
+          creatorId != null
+            ? {
+                ...row.creator!,
+                id: creatorId,
+                openid: row.identityOpenid || row.creator?.openid || null,
+              }
+            : null,
+      };
+    });
   }
 
   async list(options: FloorPlanListOptions = {}) {
     const where = this.buildFilters(options);
     const page = Math.max(1, options.page ?? 1);
     const limit = Math.min(Math.max(1, options.limit ?? 20), 100);
-    const [rows, totals] = await Promise.all([
-      this.selectWithCreator()
-        .where(where)
-        .orderBy(desc(floorPlans.updatedAt), desc(floorPlans.id))
-        .offset((page - 1) * limit)
-        .limit(limit),
-      this.transaction
-        .select({ value: count() })
-        .from(floorPlans)
-        .leftJoin(users, eq(floorPlans.creatorId, users.id))
-        .where(where),
-    ]);
+    const rows = await this.selectWithCreator()
+      .where(where)
+      .orderBy(desc(floorPlans.updatedAt), desc(floorPlans.id))
+      .offset((page - 1) * limit)
+      .limit(limit);
+    const totals = await this.transaction
+      .select({ value: count() })
+      .from(floorPlans)
+      .leftJoin(users, eq(floorPlans.creatorId, users.id))
+      .where(where);
     return {
       rows: this.normalizeRows(rows),
       total: Number(totals[0]?.value ?? 0),

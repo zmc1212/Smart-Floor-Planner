@@ -274,7 +274,8 @@ test('role-specific workbenches hide customer and non-measurer survey creation c
   assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser\}\}" class="user-summary"/);
   assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser\}\}" class="surface-section floorplan-section"/);
   assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser\}\}" class="user-actions"/);
-  assert.match(leadDetail, /wx:if="\{\{canEditMeasurements\}\}" class="whole-home-actions"/);
+  assert.match(leadDetail, /wx:if="\{\{canEditMeasurements\}\}"[\s\S]*class="whole-home-measure-action"/);
+  assert.match(leadDetail, /class="whole-home-secondary-actions" wx:if="\{\{canEditMeasurements && activeFloorPlan\}\}"/);
   assert.match(leadDetail, /wx:if="\{\{canEditMeasurements\}\}" class="measurement-record-actions"/);
   assert.match(leadList, /wx:if="\{\{canAdd\}\}" class="add-lead-button"/);
   assert.match(navigation, /canAccessRoute\('\/packages\/surveying\/editor\/surveying-editor', signedContext\)/);

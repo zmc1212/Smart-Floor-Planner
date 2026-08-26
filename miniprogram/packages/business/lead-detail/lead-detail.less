@@ -492,11 +492,6 @@
   font-weight: 700;
 }
 
-.whole-home-action text {
-  float: right;
-  font-size: 34rpx;
-  line-height: 1;
-}
 
 .hero-copy {
   min-width: 0;
@@ -685,24 +680,49 @@
   word-break: break-all;
 }
 
-.whole-home-appointment-action {
-  width: 100%;
+.whole-home-primary-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 16rpx;
+}
+
+.whole-home-appointment-action,
+.whole-home-measure-action {
+  display: flex;
+  flex: 1;
+  width: auto;
+  min-width: 0;
   height: 84rpx;
   margin: 0;
-  padding: 0 24rpx;
+  padding: 0 16rpx;
+  align-items: center;
+  justify-content: center;
   border: 0;
   border-radius: 999rpx;
   color: #ffffff;
   background: linear-gradient(135deg, #1fba61 0%, #0f9f4e 100%);
-  font-size: 28rpx;
+  font-size: 26rpx;
   font-weight: 600;
-  line-height: 84rpx;
+  line-height: 1;
   text-align: center;
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
-.whole-home-appointment-action::after {
+.whole-home-appointment-action::after,
+.whole-home-measure-action::after {
   border: 0;
+}
+
+.whole-home-primary-actions > .whole-home-appointment-action:only-child,
+.whole-home-primary-actions > .whole-home-measure-action:only-child {
+  width: 100%;
+}
+
+/* Native button ignores flex gap; keep explicit row spacing. */
+.whole-home-primary-actions > .whole-home-appointment-action + .whole-home-measure-action {
+  margin-left: 16rpx;
 }
 
 .whole-home-appointment-action.is-secondary {
@@ -710,11 +730,11 @@
   background: #e9f8ed;
 }
 
-.whole-home-actions {
-  margin-top: 20rpx;
-  display: flex;
-  flex-direction: column;
+.whole-home-secondary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 12rpx;
+  margin-top: 16rpx;
 }
 
 .whole-home-action {
@@ -731,12 +751,6 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
-}
-
-.whole-home-secondary-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12rpx;
 }
 
 .whole-home-action.secondary {

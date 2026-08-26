@@ -54,6 +54,15 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
 COPY --from=builder /app/node_modules/@napi-rs/canvas ./node_modules/@napi-rs/canvas
 COPY --from=builder /app/node_modules/@napi-rs/canvas-linux-x64-musl ./node_modules/@napi-rs/canvas-linux-x64-musl
+# qiniu → urllib → os-name always require()s osx-release/win-release at load
+# time. Next standalone tracing on Alpine omits those helpers, so any route
+# that shares the Qiniu server chunk (including /api/admin-users) crashes.
+COPY --from=builder /app/node_modules/qiniu ./node_modules/qiniu
+COPY --from=builder /app/node_modules/os-name ./node_modules/os-name
+COPY --from=builder /app/node_modules/osx-release ./node_modules/osx-release
+COPY --from=builder /app/node_modules/win-release ./node_modules/win-release
+COPY --from=builder /app/node_modules/urllib ./node_modules/urllib
+COPY --from=builder /app/node_modules/default-user-agent ./node_modules/default-user-agent
 
 USER nextjs
 

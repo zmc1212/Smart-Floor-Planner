@@ -1,11 +1,90 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   aiChatSessionSummaryToDto,
   aiChatSessionToDto,
+  floorPlanToDto,
 } from '@/db/postgres-dto';
+import type { FloorPlanWithCreator } from '@/db/repositories';
 import { resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { httpError, httpErrorStatus } from '@/lib/http-error';
+
+test('floor plan DTO falls back to creator id when the users join is hidden', () => {
+  const now = new Date('2026-08-26T00:00:00.000Z');
+  const record = {
+    id: 11n,
+    enterpriseId: 7n,
+    creatorId: 42n,
+    staffId: null,
+    name: '测试户型',
+    layoutData: {
+      version: 4,
+      measurementMode: 'surveying',
+      surveyGraph: { kind: 'survey-wall-graph' },
+    },
+    createIdempotencyKey: null,
+    source: 'manual',
+    externalSource: null,
+    status: 'completed',
+    completedAt: now,
+    previewAssetId: null,
+    previewRenderRevision: null,
+    createdAt: now,
+    updatedAt: now,
+    creator: {
+      id: null,
+      nickname: null,
+      avatar: null,
+      openid: null,
+      communityName: null,
+      phone: null,
+    },
+  } as unknown as FloorPlanWithCreator;
+
+  const dto = floorPlanToDto(record);
+  assert.equal(dto.creator, '42');
+  assert.doesNotThrow(() => JSON.stringify({ success: true, data: [dto] }));
+});
+
+test('floor plan DTO keeps a joined creator object with string ids', () => {
+  const now = new Date('2026-08-26T00:00:00.000Z');
+  const dto = floorPlanToDto({
+    id: 11n,
+    enterpriseId: 7n,
+    creatorId: 42n,
+    staffId: 23n,
+    name: '测试户型',
+    layoutData: {},
+    createIdempotencyKey: null,
+    source: 'manual',
+    externalSource: null,
+    status: 'completed',
+    completedAt: now,
+    previewAssetId: null,
+    previewRenderRevision: null,
+    createdAt: now,
+    updatedAt: now,
+    creator: {
+      id: 42n,
+      nickname: '量房顾问',
+      avatar: null,
+      openid: 'oid-42',
+      communityName: null,
+      phone: '13800138000',
+    },
+  });
+  assert.deepEqual(dto.creator, {
+    _id: '42',
+    nickname: '量房顾问',
+    avatar: null,
+    openid: 'oid-42',
+    communityName: null,
+    phone: '13800138000',
+  });
+  assert.doesNotThrow(() => JSON.stringify({ success: true, data: dto }));
+});
 
 test('AI conversation DTOs serialize PostgreSQL bigint identifiers as strings', () => {
   const now = new Date('2026-08-06T00:00:00.000Z');
@@ -109,5 +188,18 @@ test('PostgreSQL runtime configuration rejects unsafe pool sizes', () => {
         /POSTGRES_POOL_MAX must be an integer between 1 and 50/
       );
     }
+  );
+});
+
+test('floor plan creator select keeps wechat openid outside the nested users object', () => {
+  const source = readFileSync(
+    join(process.cwd(), 'src/db/repositories/floor-plan-repository.ts'),
+    'utf8'
+  );
+  assert.match(source, /identityOpenid: wechatIdentities.openid/);
+  assert.match(source, /openid: row.identityOpenid \|\| row.creator\?\.openid \|\| null/);
+  assert.doesNotMatch(
+    source,
+    /coalesce\(\$\{wechatIdentities.openid\}, \$\{users.openid\}\)/
   );
 });

@@ -1,8 +1,8 @@
 <!--
-THESIS: 手机号授权态只展示三项免费顾问权益与隐私边界；成功态以查看服务档案为唯一主任务，顾问微信降为辅助联系。
-OWN-WORLD: 极简透气版暖白纸面、家客绿权益组、克制线框图标和单一绿色主动作。
-STORY: 客户扫码后先看清三项免费权益，再自主决定是否授权手机号领取服务。
-FIRST VIEWPORT: 胶囊左侧使用正式家客来品牌锁；phoneAuth、success、pending、existing 各自在 390x844 同屏展示主内容与 CTA。
+THESIS: 各领取结果都把服务档案作为唯一主任务；成功态是新建档案，existing 态是从档案柜接续原有服务，顾问微信仅作辅助联系。
+OWN-WORLD: 极简透气暖白纸面、家客绿档案实体、克制原生信息层与单一绿色主动作。
+STORY: 客户先看清权益与授权边界；服务已存在时确认人员、进度和原档案均被保留，再继续进入同一服务档案。
+FIRST VIEWPORT: 胶囊左侧使用正式家客来品牌锁；existing 以批准的 C 版续办档案柜承接真实阶段、目录、CTA 和设计师辅助条。
 FORM: docs/superpowers/specs/2026-08-25-free-design-service-contact-conversion-design.zh-CN.md
 -->
 <view class="claim-page state-{{pageState}}">
@@ -121,6 +121,12 @@ FORM: docs/superpowers/specs/2026-08-25-free-design-service-contact-conversion-d
     </view>
 
     <view class="success-archive-card">
+      <image
+        class="success-archive-scene"
+        src="/packages/business/assets/referral-service-v1/service-archive-scene-v2.png"
+        mode="aspectFit"
+        aria-hidden="true"
+      />
       <view class="success-archive-glow" aria-hidden="true"></view>
       <view class="success-archive-copy">
         <text class="success-archive-title">你的服务档案已建立</text>
@@ -217,28 +223,29 @@ FORM: docs/superpowers/specs/2026-08-25-free-design-service-contact-conversion-d
 
   <view wx:elif="{{pageState === 'existing'}}" class="claim-existing">
     <view class="existing-hero">
-      <view class="existing-status-kicker">服务归属已保留</view>
       <view class="hero-copy">
-        <text class="ready-title">你已有进行中的服务</text>
-        <text class="ready-subtitle">无需重复领取，我们将继续为你保留当前服务安排</text>
+        <text class="ready-title">已为你接续原有服务</text>
+        <text class="ready-subtitle">人员、进度与服务档案都已保留</text>
       </view>
-      <image
-        class="hero-xiaok existing-xiaok"
-        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
-        mode="aspectFit"
-      />
     </view>
 
-    <view class="existing-card">
-      <view class="existing-head">
-        <view class="existing-icon">
-          <image src="/images/mine-icons/clipboard-pen.png" mode="aspectFit" />
+    <view class="existing-continuity-card">
+      <view class="existing-preserve-row">
+        <view class="existing-preserve-badge">
+          <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+          <text>服务归属已保留</text>
         </view>
-        <view class="existing-service-title">
-          <text class="existing-service-name">免费设计服务 · {{existingServiceLabel || '客户'}}</text>
-          <text class="existing-service-status">进行中</text>
-        </view>
+        <text class="existing-service-reference">免费设计服务 · {{existingServiceLabel || '客户'}}</text>
       </view>
+
+      <view class="existing-current-stage">
+        <view class="existing-current-copy">
+          <text class="existing-current-label">当前阶段</text>
+          <text class="existing-current-value">{{serviceStageLabel || '服务进行中'}}</text>
+        </view>
+        <text class="existing-update-time">{{lastUpdateLabel || '最近更新：今天'}}</text>
+      </view>
+
       <view class="existing-stage-path">
         <view class="existing-stage {{existingStageIndex >= 0 ? 'is-done' : ''}} {{existingStageIndex === 0 ? 'is-current' : ''}}">
           <view class="existing-stage-dot">
@@ -261,17 +268,61 @@ FORM: docs/superpowers/specs/2026-08-25-free-design-service-contact-conversion-d
           <text class="existing-stage-label">设计沟通</text>
         </view>
       </view>
-      <view class="existing-update-row">
-        <text class="existing-update-label">当前阶段</text>
-        <text class="existing-update-value">{{serviceStageLabel || '服务进行中'}}</text>
-        <text class="existing-update-time">{{lastUpdateLabel || '最近更新：今天'}}</text>
+
+      <view class="existing-drawer-scene">
+        <image
+          class="existing-drawer-art"
+          src="/packages/business/assets/referral-service-v1/xiao-k-continuity-archive-drawer.png"
+          mode="aspectFit"
+          aria-hidden="true"
+        />
+        <view class="existing-folder-tab progress" bindtap="onOpenProject" aria-role="button">服务进度</view>
+        <view class="existing-folder-tab floorplan" bindtap="onOpenProject" aria-role="button">户型档案</view>
+        <view class="existing-folder-tab scheme" bindtap="onOpenProject" aria-role="button">设计方案</view>
       </view>
-      <button class="claim-action existing-primary" bindtap="onOpenProject">查看服务档案</button>
-      <button
-        class="claim-action-outline {{canContactDesigner ? '' : 'is-disabled'}}"
-        bindtap="onContactDesigner"
-        disabled="{{!canContactDesigner}}"
-      >联系当前家装设计顾问</button>
+
+      <button class="claim-action existing-primary" bindtap="onOpenProject">继续查看服务档案</button>
+    </view>
+
+    <view class="existing-designer-card">
+      <view class="existing-designer-head">
+        <view class="existing-designer-avatar">
+          <image src="/images/mine-icons/user.png" mode="aspectFit" />
+        </view>
+        <view class="existing-designer-meta">
+          <text class="existing-designer-name">{{(designerProfile && designerProfile.displayName) || '家装设计顾问'}}</text>
+          <view class="existing-designer-role-row">
+            <text class="existing-designer-role">家装设计顾问</text>
+            <text class="existing-designer-status">{{designerProfile ? '已匹配' : '同步中'}}</text>
+          </view>
+        </view>
+        <button
+          class="existing-contact-compact {{canContactDesigner ? '' : 'is-disabled'}}"
+          bindtap="onContactDesigner"
+          disabled="{{!canContactDesigner}}"
+        >{{canContactDesigner ? '查看微信' : '同步中'}}</button>
+      </view>
+
+      <view
+        wx:if="{{designerProfile && designerProfile.professionalProfile}}"
+        class="existing-designer-proof"
+      >
+        <view
+          wx:if="{{designerProfile.professionalProfile.titleVisible && designerProfile.professionalProfile.title}}"
+          class="existing-proof-item"
+        >
+          <image src="/images/designer-contact/professional-badge.png" mode="aspectFit" />
+          <text>{{designerProfile.professionalProfile.title}}</text>
+        </view>
+        <view wx:if="{{designerProfile.professionalProfile.experienceLabel}}" class="existing-proof-item">
+          <image src="/images/designer-contact/professional-experience.png" mode="aspectFit" />
+          <text>{{designerProfile.professionalProfile.experienceLabel}}</text>
+        </view>
+        <view wx:if="{{designerProfile.professionalProfile.serviceLabel}}" class="existing-proof-item">
+          <image src="/images/designer-contact/professional-service.png" mode="aspectFit" />
+          <text>{{designerProfile.professionalProfile.serviceLabel}}</text>
+        </view>
+      </view>
     </view>
 
     <view class="existing-note">

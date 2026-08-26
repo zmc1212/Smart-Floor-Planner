@@ -221,10 +221,8 @@ export function floorPlanToDto(
   const withCreator = record as Partial<FloorPlanWithCreator>;
   const displayOptions = typeof options === 'number' ? {} : options;
   const displayLead = pickFloorPlanDisplayLead(displayOptions.lead);
-  return {
-    _id: record.id.toString(),
-    enterpriseId: record.enterpriseId?.toString() ?? null,
-    creator: withCreator.creator
+  const creatorSummary =
+    withCreator.creator && withCreator.creator.id != null
       ? {
           _id: withCreator.creator.id.toString(),
           nickname: withCreator.creator.nickname,
@@ -233,7 +231,11 @@ export function floorPlanToDto(
           communityName: withCreator.creator.communityName,
           phone: withCreator.creator.phone,
         }
-      : record.creatorId.toString(),
+      : record.creatorId.toString();
+  return {
+    _id: record.id.toString(),
+    enterpriseId: record.enterpriseId?.toString() ?? null,
+    creator: creatorSummary,
     staffId: record.staffId?.toString() ?? null,
     name: record.name,
     display: getFloorPlanDisplay(record, {

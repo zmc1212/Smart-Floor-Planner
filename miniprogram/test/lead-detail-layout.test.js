@@ -134,17 +134,39 @@ test('lead detail removes the legacy acquisition collaboration surface', () => {
   assert.match(script, /const WORKFLOW_STAGES = \['新线索', '量房中', '方案设计', '已签约'\]/);
 });
 
-test('formal-survey keeps next-action right of the tab, address on its own row, and full-width appointment CTA', () => {
+test('formal-survey keeps next-action right of the tab, address on its own row, and paired 84rpx pill CTAs', () => {
   assert.doesNotMatch(template, /class="appointment-entry"/);
   assert.doesNotMatch(template, /class="whole-home-main"/);
   assert.match(template, /class="whole-home-head"/);
   assert.match(template, /class="whole-home-address"/);
+  assert.match(template, /class="whole-home-primary-actions"/);
   assert.match(template, /class="whole-home-appointment-action"/);
+  assert.match(template, /class="whole-home-measure-action"/);
   assert.match(template, /安排上门量房/);
   assert.match(template, /查看预约/);
+  assert.match(template, /\{\{activeFloorPlan \? '继续量房' : '开始量房'\}\}/);
+  assert.doesNotMatch(template, /开始量房.*›/);
   assert.match(styles, /\.whole-home-head\s*\{[^}]*justify-content:\s*flex-end;/s);
-  assert.match(styles, /\.whole-home-appointment-action\s*\{[^}]*width:\s*100%;/s);
-  assert.match(styles, /\.whole-home-appointment-action\s*\{[^}]*height:\s*84rpx;/s);
+  assert.match(
+    styles,
+    /\.whole-home-primary-actions\s*\{[^}]*flex-direction:\s*row;[^}]*gap:\s*16rpx;/s
+  );
+  assert.match(
+    styles,
+    /\.whole-home-appointment-action,\s*\.whole-home-measure-action\s*\{[^}]*flex:\s*1;[^}]*width:\s*auto;/s
+  );
+  assert.match(
+    styles,
+    /\.whole-home-appointment-action,\s*\.whole-home-measure-action\s*\{[^}]*height:\s*84rpx;[^}]*border-radius:\s*999rpx;/s
+  );
+  assert.match(
+    styles,
+    /\.whole-home-primary-actions > \.whole-home-appointment-action \+ \.whole-home-measure-action\s*\{[^}]*margin-left:\s*16rpx;/s
+  );
+  assert.match(
+    styles,
+    /\.whole-home-primary-actions > \.whole-home-appointment-action:only-child,\s*\.whole-home-primary-actions > \.whole-home-measure-action:only-child\s*\{[^}]*width:\s*100%;/s
+  );
   assert.match(styles, /\.conversion-primary-action\s*\{[^}]*height:\s*84rpx;/s);
   const surveyIndex = template.indexOf('class="whole-home-card"');
   const schemesIndex = template.indexOf('class="published-schemes-card"');

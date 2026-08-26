@@ -47,7 +47,7 @@ async function listFloorPlansWithDisplay(
   return {
     data: result.rows.map((plan) => {
       const lead = leadsByPlan.get(plan.id);
-      const measurementSequence = lead?.floorPlanRecords.find(
+      const measurementSequence = lead?.floorPlanRecords?.find(
         (record) => record.id === plan.id
       )?.measurementSequence;
       return floorPlanToDto(plan, { lead, measurementSequence });
@@ -221,7 +221,7 @@ export async function POST(request: Request) {
         success: true,
         data: floorPlanToDto(plan, {
           lead: createdResult.lead,
-          measurementSequence: createdResult.lead?.floorPlanRecords.find(
+          measurementSequence: createdResult.lead?.floorPlanRecords?.find(
             (record) => record.id === plan.id
           )?.measurementSequence,
         }),
@@ -306,6 +306,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error: unknown) {
+    console.error('[GET /api/floorplans] failed', error);
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },
       { status: 500 }

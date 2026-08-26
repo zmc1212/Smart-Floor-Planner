@@ -134,30 +134,38 @@
       </view>
       <view wx:if="{{floorPlanPreviewPath}}" class="preview-action-chip"><text>查看大图</text><view class="chip-arrow"></view></view>
     </view>
-    <button
-      wx:if="{{canScheduleAppointment && canRebookAppointment}}"
-      class="whole-home-appointment-action"
-      bindtap="onScheduleAppointment"
-      aria-label="重新预约上门"
-    >重新预约上门</button>
-    <button
-      wx:elif="{{canScheduleAppointment}}"
-      class="whole-home-appointment-action"
-      bindtap="onScheduleAppointment"
-      aria-label="安排上门量房"
-    >安排上门量房</button>
-    <button
-      wx:elif="{{appointment}}"
-      class="whole-home-appointment-action is-secondary"
-      bindtap="onOpenAppointment"
-      aria-label="{{lead.serviceStage === 'survey_ready' ? '确认完成量房' : '查看预约'}}"
-    >{{lead.serviceStage === 'survey_ready' ? '确认完成量房' : '查看预约'}}</button>
-    <view wx:if="{{canEditMeasurements}}" class="whole-home-actions">
-      <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}} <text>›</text></view>
-      <view class="whole-home-secondary-actions" wx:if="{{activeFloorPlan}}">
-        <view class="whole-home-action secondary" bindtap="onStartNewMeasure">新增量房</view>
-        <view class="whole-home-action danger" bindtap="onDeleteMeasure">{{deleting ? '删除中' : '删除'}}</view>
-      </view>
+    <view
+      wx:if="{{canScheduleAppointment || appointment || canEditMeasurements}}"
+      class="whole-home-primary-actions"
+    >
+      <button
+        wx:if="{{canScheduleAppointment && canRebookAppointment}}"
+        class="whole-home-appointment-action"
+        bindtap="onScheduleAppointment"
+        aria-label="重新预约上门"
+      >重新预约上门</button>
+      <button
+        wx:elif="{{canScheduleAppointment}}"
+        class="whole-home-appointment-action"
+        bindtap="onScheduleAppointment"
+        aria-label="安排上门量房"
+      >安排上门量房</button>
+      <button
+        wx:elif="{{appointment}}"
+        class="whole-home-appointment-action is-secondary"
+        bindtap="onOpenAppointment"
+        aria-label="{{lead.serviceStage === 'survey_ready' ? '确认完成量房' : '查看预约'}}"
+      >{{lead.serviceStage === 'survey_ready' ? '确认完成量房' : '查看预约'}}</button>
+      <button
+        wx:if="{{canEditMeasurements}}"
+        class="whole-home-measure-action"
+        bindtap="onStartMeasure"
+        aria-label="{{activeFloorPlan ? '继续量房' : '开始量房'}}"
+      >{{activeFloorPlan ? '继续量房' : '开始量房'}}</button>
+    </view>
+    <view class="whole-home-secondary-actions" wx:if="{{canEditMeasurements && activeFloorPlan}}">
+      <view class="whole-home-action secondary" bindtap="onStartNewMeasure">新增量房</view>
+      <view class="whole-home-action danger" bindtap="onDeleteMeasure">{{deleting ? '删除中' : '删除'}}</view>
     </view>
   </view>
   <view class="site-photos-card">

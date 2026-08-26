@@ -423,6 +423,18 @@ test('activation and archive guards reject untested, failed, archived, and curre
   assert.throws(() => assertMediaStorageConfigCanArchive('qiniu-primary', 'qiniu-primary'), /当前默认配置不能归档/);
 });
 
+test('Linux standalone packaging keeps qiniu os-name helpers that Next tracing omits', async () => {
+  const adminRoot = path.resolve(import.meta.dirname, '../../../..');
+  const [dockerfile, nextConfig] = await Promise.all([
+    fs.readFile(path.join(adminRoot, 'Dockerfile'), 'utf8'),
+    fs.readFile(path.join(adminRoot, 'next.config.ts'), 'utf8'),
+  ]);
+  for (const pkg of ['qiniu', 'os-name', 'osx-release', 'win-release']) {
+    assert.match(dockerfile, new RegExp(`node_modules/${pkg}`));
+    assert.match(nextConfig, new RegExp(`node_modules/${pkg}`));
+  }
+});
+
 test('an upload failure never commits metadata or attempts a local fallback', async () => {
   let committed = false;
   const failingProvider: MediaStorageProvider = {

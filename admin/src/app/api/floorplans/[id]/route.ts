@@ -65,7 +65,7 @@ export async function GET(
       data: {
         ...floorPlanToDto(plan, {
           lead,
-          measurementSequence: lead?.floorPlanRecords.find(
+          measurementSequence: lead?.floorPlanRecords?.find(
             (record) => record.id === plan.id
           )?.measurementSequence,
         }),

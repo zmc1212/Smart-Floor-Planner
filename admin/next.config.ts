@@ -53,6 +53,14 @@ const nextConfig: NextConfig = {
       './node_modules/drizzle-orm/**/*',
       './node_modules/@napi-rs/canvas/**/*',
       './node_modules/@napi-rs/canvas-linux-x64-musl/**/*',
+      // qiniu is serverExternalPackages. os-name always requires osx-release
+      // and win-release at load time; Linux NFT tracing omits those helpers.
+      './node_modules/qiniu/**/*',
+      './node_modules/os-name/**/*',
+      './node_modules/osx-release/**/*',
+      './node_modules/win-release/**/*',
+      './node_modules/urllib/**/*',
+      './node_modules/default-user-agent/**/*',
     ],
   },
   // Next.js 15+ blocks cross-origin requests to /_next/* in development unless listed.

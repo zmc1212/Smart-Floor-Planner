@@ -11,6 +11,48 @@ $packageDir = Join-Path $releaseRoot 'sfp-admin-release'
 $packageZip = Join-Path $releaseRoot 'sfp-admin-release.zip'
 $pushSucceeded = $false
 
+function New-ForwardSlashZip {
+  param(
+    [Parameter(Mandatory = $true)][string]$SourceDir,
+    [Parameter(Mandatory = $true)][string]$ZipPath
+  )
+
+  Add-Type -AssemblyName System.IO.Compression
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+  $sourceRoot = (Resolve-Path -LiteralPath $SourceDir).Path
+  $baseName = Split-Path -Leaf $sourceRoot
+
+  if (Test-Path -LiteralPath $ZipPath) {
+    Remove-Item -LiteralPath $ZipPath -Force
+  }
+
+  $archive = [System.IO.Compression.ZipFile]::Open(
+    $ZipPath,
+    [System.IO.Compression.ZipArchiveMode]::Create
+  )
+  try {
+    Get-ChildItem -LiteralPath $sourceRoot -Recurse -File | ForEach-Object {
+      $relative = $_.FullName.Substring($sourceRoot.Length).TrimStart([char[]]@('\', '/')).Replace('\', '/')
+      $entryName = "$baseName/$relative"
+      $entry = $archive.CreateEntry($entryName, [System.IO.Compression.CompressionLevel]::Optimal)
+      $entryStream = $entry.Open()
+      try {
+        $fileStream = [System.IO.File]::OpenRead($_.FullName)
+        try {
+          $fileStream.CopyTo($entryStream)
+        } finally {
+          $fileStream.Dispose()
+        }
+      } finally {
+        $entryStream.Dispose()
+      }
+    }
+  } finally {
+    $archive.Dispose()
+  }
+}
+
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
   throw 'Docker Desktop is not available. Start Docker Desktop and try again.'
 }
@@ -44,12 +86,25 @@ try {
   Copy-Item -LiteralPath 'docker\postgres\init\001-roles.sql' -Destination (Join-Path $packageDir 'docker\postgres\init')
   Copy-Item -LiteralPath 'drizzle' -Destination $packageDir -Recurse
 
+  Copy-Item -LiteralPath (Join-Path $scriptDir 'auto_deploy.sh') -Destination (Join-Path $releaseRoot 'auto_deploy.sh') -Force
+
   @'
 Smart Floor Planner Admin offline deployment package
 
-1. Upload this ZIP to the server and unzip it.
-2. Enter the extracted sfp-admin-release directory.
-3. Run: chmod +x deploy.sh && ./deploy.sh
+One-click (recommended):
+1. Upload sfp-admin-release.zip to the server directory (for example /datas/smartfloor).
+2. First time only: also upload auto_deploy.sh to that same directory, then:
+   chmod +x auto_deploy.sh
+3. Every release after the ZIP is uploaded:
+   ./auto_deploy.sh
+
+auto_deploy.sh unzips with overwrite (no "replace? [A]" prompt), chmod +x
+deploy.sh, and runs it.
+
+Manual fallback:
+1. unzip -o sfp-admin-release.zip
+2. cd sfp-admin-release
+3. chmod +x deploy.sh && ./deploy.sh
 
 This package already includes the build machine's .env.production.
 The Docker image is stored in sfp-admin.tar. deploy.sh loads it before starting
@@ -75,7 +130,7 @@ unless deleting the PostgreSQL data volume is intentional.
   ) | Set-Content -LiteralPath (Join-Path $packageDir 'SHA256SUMS') -Encoding ascii
 
   Write-Host '[5/5] Creating the ZIP release package...'
-  Compress-Archive -LiteralPath $packageDir -DestinationPath $packageZip -CompressionLevel Optimal
+  New-ForwardSlashZip -SourceDir $packageDir -ZipPath $packageZip
 
   Write-Host ''
   Write-Host '================================================================'
@@ -90,8 +145,8 @@ unless deleting the PostgreSQL data volume is intentional.
     Write-Host '[WARNING] Docker Hub image was not updated; use the included sfp-admin.tar on the server.'
   }
   Write-Host ''
-  Write-Host 'Upload this ZIP to the server, unzip it,'
-  Write-Host 'then run: chmod +x deploy.sh && ./deploy.sh'
+  Write-Host 'First time: upload auto_deploy.sh next to the ZIP, then chmod +x auto_deploy.sh'
+  Write-Host 'Every release: upload the ZIP and run ./auto_deploy.sh'
   Write-Host '================================================================'
 } finally {
   Pop-Location

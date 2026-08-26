@@ -9,6 +9,11 @@
   box-sizing: border-box;
 }
 
+/* Custom TabBar sits above page overlays. Dock the sheet above that lane. */
+.dcs-root.above-tabbar {
+  bottom: var(--sfp-custom-tabbar-safe-height, calc(128rpx + env(safe-area-inset-bottom)));
+}
+
 .dcs-mask {
   position: absolute;
   inset: 0;
@@ -24,13 +29,25 @@
 .dcs-dialog {
   position: relative;
   z-index: 1;
+  display: flex;
   width: 700rpx;
   max-width: 100%;
   max-height: calc(100vh - 144rpx);
+  min-height: 0;
+  flex-direction: column;
   box-sizing: border-box;
   opacity: 0;
   transform: translateY(24rpx);
   transition: opacity 240ms ease-out, transform 240ms ease-out;
+}
+
+.dcs-root.above-tabbar .dcs-dialog {
+  max-height: calc(
+    100vh
+    - var(--dcs-capsule-bottom, 84px)
+    - 148rpx
+    - var(--sfp-custom-tabbar-safe-height, calc(128rpx + env(safe-area-inset-bottom)))
+  );
 }
 
 .dcs-dialog.open {
@@ -40,7 +57,11 @@
 
 .dcs-card {
   position: relative;
+  display: flex;
   width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
 }
 
 .dcs-xiao-k {
@@ -117,7 +138,10 @@
 
 .dcs-surface {
   position: relative;
-  overflow: hidden;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-radius: 32rpx;
   background: #f9fcf9;
   box-shadow: 0 30rpx 68rpx rgba(10, 27, 17, 0.28);
@@ -505,6 +529,7 @@
   width: 112rpx;
   min-height: 112rpx;
   margin: 18rpx auto 0;
+  flex: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;

@@ -23,6 +23,19 @@ function readCapsuleBottom() {
   return Math.ceil(Number((menuRect && menuRect.bottom) || menuTop + menuHeight));
 }
 
+function isCustomTabBarVisible() {
+  try {
+    const pages = getCurrentPages();
+    const page = pages && pages.length ? pages[pages.length - 1] : null;
+    if (!page || typeof page.getTabBar !== 'function') return false;
+    const tabBar = page.getTabBar();
+    if (!tabBar || !tabBar.data || tabBar.data.suppressed) return false;
+    return Array.isArray(tabBar.data.list) && tabBar.data.list.length > 0;
+  } catch (error) {
+    return false;
+  }
+}
+
 Component({
   properties: {
     visible: {
@@ -39,6 +52,7 @@ Component({
     dialogMounted: false,
     dialogOpen: false,
     capsuleBottom: 84,
+    aboveTabBar: false,
     displayName: '专属家装设计顾问',
     wechatId: '',
     hasQr: false,
@@ -54,7 +68,7 @@ Component({
   observers: {
     'visible, designer'(visible, designer) {
       if (visible) {
-        this.syncCapsuleSafeArea();
+        this.syncHostSafeArea();
         this.syncDesigner(designer);
         openSheet(this, DIALOG_KEYS);
         return;
@@ -65,7 +79,7 @@ Component({
 
   lifetimes: {
     attached() {
-      this.syncCapsuleSafeArea();
+      this.syncHostSafeArea();
     },
 
     detached() {
@@ -77,8 +91,11 @@ Component({
   methods: {
     noop() {},
 
-    syncCapsuleSafeArea() {
-      this.setData({ capsuleBottom: readCapsuleBottom() });
+    syncHostSafeArea() {
+      this.setData({
+        capsuleBottom: readCapsuleBottom(),
+        aboveTabBar: isCustomTabBarVisible(),
+      });
     },
 
     syncDesigner(designer) {

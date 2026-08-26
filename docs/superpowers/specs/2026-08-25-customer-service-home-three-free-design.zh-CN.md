@@ -31,7 +31,7 @@
 
 | 设计元素 | 生产素材 |
 | --- | --- |
-| 手持三张权益牌的小 K | `miniprogram/images/customer-service-three-free/xiao-k-three-benefits.png`（`560x473`、RGBA PNG、`201267` 字节；与批准源逐字节一致的主包副本） |
+| 手持三张权益牌的小 K | `miniprogram/images/customer-service-three-free/xiao-k-three-benefits.png`（`560x473`、索引色透明 PNG、`26715` 字节；与优化后的业务分包源逐字节一致的主包副本） |
 | 效果图权益 | `miniprogram/images/customer-service-three-free/effect-room.jpg`（`520x390`、RGB JPEG、`25193` 字节；生成的暖调客厅效果图） |
 | 家装设计顾问权益 | `miniprogram/images/customer-service-three-free/design-advisor-3d.png`（`520x390`、RGBA PNG、`118662` 字节；生成的灯泡与对话气泡透明切图） |
 | 家装现场顾问权益 | `miniprogram/images/customer-service-three-free/onsite-advisor-3d.png`（`520x390`、RGBA PNG、`134840` 字节；生成的定位标、底座和卷轴透明切图） |

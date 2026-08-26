@@ -164,7 +164,7 @@ function existingStageIndex(lead, serviceStageLabel) {
   if (status === 'measuring' || status === 'measured') return 1;
   if (status === 'assigned' || status === 'designing' || status === 'quoting') return 2;
   const label = String(serviceStageLabel || '');
-  if (label.includes('量房') || label.includes('测量')) return 1;
+  if (label.includes('量房') || label.includes('测量') || label.includes('现场顾问') || label.includes('上门')) return 1;
   if (label.includes('设计') || label.includes('方案')) return 2;
   return 0;
 }

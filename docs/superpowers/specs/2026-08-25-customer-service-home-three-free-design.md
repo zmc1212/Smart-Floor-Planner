@@ -31,7 +31,7 @@ The approved whole-page mockup is not sliced or packaged. Route-specific standal
 
 | Approved element | Production asset |
 | --- | --- |
-| Xiao K holding three benefit cards | `miniprogram/images/customer-service-three-free/xiao-k-three-benefits.png` (`560x473`, RGBA PNG, `201267` bytes; byte-identical main-package copy of the approved source) |
+| Xiao K holding three benefit cards | `miniprogram/images/customer-service-three-free/xiao-k-three-benefits.png` (`560x473`, indexed-colour transparent PNG, `26715` bytes; byte-identical main-package copy of the optimized business-subpackage source) |
 | Effect-image benefit | `miniprogram/images/customer-service-three-free/effect-room.jpg` (`520x390`, RGB JPEG, `25193` bytes; generated warm living-room visualization) |
 | Design-advisor benefit | `miniprogram/images/customer-service-three-free/design-advisor-3d.png` (`520x390`, RGBA PNG, `118662` bytes; generated bulb-and-conversation cutout) |
 | On-site-advisor benefit | `miniprogram/images/customer-service-three-free/onsite-advisor-3d.png` (`520x390`, RGBA PNG, `134840` bytes; generated location-pin, pedestal, and rolled-plan cutout) |
