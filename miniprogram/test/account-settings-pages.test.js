@@ -55,7 +55,7 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.match(mineWxml, /微信权限管理/);
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(mineWxml, /当前身份/);
-  assert.match(mineWxml, /在客户、员工和推荐人身份之间切换/);
+  assert.match(mineWxml, /在个人用户、员工和推荐人身份之间切换/);
   assert.match(mineWxml, /账号与安全[\s\S]*onOpenAccountSecurity|onOpenAccountSecurity[\s\S]*账号与安全/);
   assert.match(mineJs, /onEditProfile\(\)[\s\S]*profile-edit\/profile-edit/);
   assert.match(mineJs, /onOpenAccountSecurity\(\)[\s\S]*account-security\/account-security/);
@@ -119,6 +119,7 @@ test('Identity switch uses server contexts and refreshes the signed session', ()
   assert.match(wxml, /当前账号只有一个有效身份/);
   assert.match(wxml, /<button[\s\S]*wx:if="\{\{contexts\.length > 1\}\}"/);
   assert.match(script, /IDENTITY_ICONS/);
+  assert.match(script, /customer: '个人用户'/);
   assert.match(script, /selectedContext/);
   assert.match(script, /confirmSelectedIdentity/);
   assert.match(script, /platform_admin: '\u5e73\u53f0\u7ba1\u7406\u5458'/);
@@ -132,7 +133,7 @@ test('Identity switch uses server contexts and refreshes the signed session', ()
   assert.match(wxml, /confirmSelectedIdentity/);
   assert.match(less, /\.identity-confirm\[disabled\][\s\S]*background: #c8efd8 !important/);
   for (const icon of ['customer', 'referrer', 'enterprise-admin', 'designer', 'measurer', 'salesperson', 'platform-admin']) {
-    const iconPath = path.join(projectRoot, 'images', 'identity-switch', `${icon}.png`);
+    const iconPath = path.join(projectRoot, 'packages', 'business', 'assets', 'identity-switch', `${icon}.png`);
     assert.ok(fs.existsSync(iconPath), `${icon} identity icon must be packaged`);
     assert.ok(fs.statSync(iconPath).size <= 300 * 1024, `${icon} identity icon must remain package-sized`);
     const bytes = fs.readFileSync(iconPath);
@@ -276,7 +277,7 @@ test('Mine opens WeChat settings without reading subscription status', async () 
     const page = createPage(loadPage('pages/mine/mine.js'));
     await refreshAccountSettingsState(page);
     assert.equal(Object.prototype.hasOwnProperty.call(page.data, 'notificationStatus'), false);
-    assert.match(page.data.identityLabel || '读取中', /当前身份|客户身份|推荐人身份|员工身份|读取/);
+    assert.match(page.data.identityLabel || '读取中', /当前身份|个人用户身份|推荐人身份|员工身份|读取/);
     await page.onOpenSystemSettings();
     assert.deepEqual(calls, ['openSetting']);
   } finally {

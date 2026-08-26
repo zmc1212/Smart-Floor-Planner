@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const admin = context ? null : await getTenantContext(request);
     if (!context && !admin) return NextResponse.json({ success: false, error: '需要有效登录身份' }, { status: 401 });
     if (admin && (!admin.enterpriseId || !['designer', 'enterprise_admin'].includes(admin.role))) {
-      return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可查看可用时段' }, { status: 403 });
+      return NextResponse.json({ success: false, error: '仅负责家装设计顾问或企业负责人可查看可用时段' }, { status: 403 });
     }
     if (admin) {
       const data = await withAdminPostgresTransaction(admin, async (transaction) => {

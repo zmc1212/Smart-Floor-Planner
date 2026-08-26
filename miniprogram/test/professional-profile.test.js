@@ -32,16 +32,21 @@ test('员工个人资料页支持职业背书维护、企业控制提示和客�
   assert.match(less, /\.field-helper\s*\{[^}]*text-align:\s*left;/s);
 });
 
-test('客户服务档案同时展示设计师和测量员最终背书', () => {
+test('客户服务档案同时展示家装设计顾问和家装现场顾问最终背书', () => {
   const pageRoot = path.join(root, 'packages', 'business', 'customer-project');
   const js = fs.readFileSync(path.join(pageRoot, 'customer-project.js'), 'utf8');
   const wxml = fs.readFileSync(path.join(pageRoot, 'customer-project.wxml'), 'utf8');
 
-  assert.doesNotMatch(js, /designerProfessionalProfile|measurerProfessionalProfile/);
-  assert.match(wxml, /金牌设计师/);
-  assert.match(wxml, /7年设计经验/);
-  assert.match(wxml, /资深测量师/);
-  assert.match(wxml, /7年量房经验/);
-  assert.equal((wxml.match(/已免费服务客户100\+/g) || []).length, 2);
+  assert.match(js, /resolvePublicProfessionalCopy/);
+  assert.match(js, /designer\.professionalProfile/);
+  assert.match(js, /measurer\.professionalProfile/);
+  assert.match(js, /appointment\.measurerProfessionalProfile/);
+  assert.match(wxml, />家装设计顾问</);
+  assert.doesNotMatch(wxml, /专属家装设计顾问/);
+  assert.match(wxml, /designerProfessionalTitle/);
+  assert.match(wxml, /measurerProfessionalTitle/);
+  assert.match(wxml, /designerExperienceLabel/);
+  assert.match(wxml, /measurerExperienceLabel/);
+  assert.doesNotMatch(wxml, /金牌家装设计顾问|资深家装现场顾问|7年设计经验|7年量房经验|已免费服务客户100\+/);
   assert.doesNotMatch(wxml, /measurer[\s\S]{0,80}二维码/);
 });

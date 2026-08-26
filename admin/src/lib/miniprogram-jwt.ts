@@ -14,6 +14,7 @@ export interface MiniProgramJWTPayload extends jose.JWTPayload {
   referrerMembershipId?: string;
   contextVersion: number;
   source: 'wechat' | 'password' | 'phone';
+  mustChangePassword?: boolean;
 }
 
 /**

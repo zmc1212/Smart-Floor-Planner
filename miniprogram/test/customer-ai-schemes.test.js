@@ -77,11 +77,12 @@ test('scheme round chips stay ordered by first publication after later updates',
   assert.deepEqual(ordered.map((scheme) => scheme.id), ['ai', 'lighting']);
 });
 
-test('lead detail and customer project deep-link into the schemes folio', () => {
+test('lead detail, customer project, and Service home deep-link into the schemes folio', () => {
   const leadDetail = fs.readFileSync(path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.js'), 'utf8');
   const leadWxml = fs.readFileSync(path.join(root, 'packages', 'business', 'lead-detail', 'lead-detail.wxml'), 'utf8');
   const customerProject = fs.readFileSync(path.join(root, 'packages', 'business', 'customer-project', 'customer-project.js'), 'utf8');
   const customerWxml = fs.readFileSync(path.join(root, 'packages', 'business', 'customer-project', 'customer-project.wxml'), 'utf8');
+  const serviceHome = fs.readFileSync(path.join(root, 'components', 'customer-service-home', 'customer-service-home.js'), 'utf8');
   assert.match(leadDetail, /customer-ai-schemes\/customer-ai-schemes\?leadId=/);
   assert.match(leadDetail, /scheme\.finalized/);
   assert.match(leadDetail, /mode=staff/);
@@ -95,4 +96,8 @@ test('lead detail and customer project deep-link into the schemes folio', () => 
   assert.match(customerProject, /openAiSchemes/);
   assert.match(customerWxml, /data-kind="delivery"/);
   assert.match(customerWxml, /bindtap="handleDossierRow"/);
+  assert.match(serviceHome, /openEffectShortcut\(\)/);
+  assert.match(serviceHome, /openAiSchemes\(\)/);
+  assert.match(serviceHome, /customer-ai-schemes\/customer-ai-schemes\?leadId=/);
+  assert.match(serviceHome, /mode=customer/);
 });

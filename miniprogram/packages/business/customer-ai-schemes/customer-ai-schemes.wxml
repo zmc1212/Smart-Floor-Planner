@@ -94,7 +94,7 @@
       </view>
 
       <view wx:else class="empty-card">
-        <text class="empty-title">设计师尚未发布方案</text>
+        <text class="empty-title">家装设计顾问尚未发布方案</text>
         <text class="empty-note">方案发布后，可在这里按轮次浏览全部交付图</text>
       </view>
     </view>

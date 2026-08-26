@@ -324,7 +324,7 @@ export async function notifyEnterpriseAdminOfAssignmentPending(
               projectName: lead.communityName || lead.name,
               owner: admin.displayName || admin.username,
               currentStatus: '派单待处理',
-              todo: '补充设计师或测量员',
+              todo: '补充家装设计顾问或家装现场顾问',
               note: input.reasonCode,
             }),
         });
@@ -466,7 +466,7 @@ export async function notifyEligibleDesignersOfClaimWindow(input: {
         metadata: { expiresAt: input.expiresAt ? new Date(input.expiresAt).toISOString() : null },
         buildData: (template) => buildWorkflowTodoPayload(template, {
           projectName: leadRecord.communityName || leadRecord.city || '新客户线索',
-          owner: recipient.displayName || recipient.username || '设计师',
+          owner: recipient.displayName || recipient.username || '家装设计顾问',
           currentStatus: '待抢单',
           todo: '进入抢单池查看',
           note: input.expiresAt ? `截止 ${formatWeChatDateTime(input.expiresAt)}` : '请及时查看',

@@ -33,7 +33,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         <image class="account-row-icon" src="/images/mine-icons/users.png" mode="aspectFit" />
         <view class="account-row-copy">
           <view class="account-row-label">当前身份</view>
-          <view class="account-row-helper">在客户、员工和推荐人身份之间切换</view>
+          <view class="account-row-helper">在个人用户、员工和推荐人身份之间切换</view>
         </view>
         <view class="account-chevron"></view>
       </view>
@@ -63,14 +63,43 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         <view class="guest-brand-name"><text>JoveKore</text><text class="guest-brand-divider">｜</text><text>家客来</text></view>
       </view>
       <view class="login-visual" aria-hidden="true">
-        <image class="login-visual-image" src="/images/home-ip-v1/hero-scene-wechat-safe-overscan.png" mode="aspectFill" />
+        <image class="login-visual-image" src="/images/home-ip-v1/login-identity-portal-v2.jpg" mode="aspectFill" />
       </view>
-      <view class="login-copy">
-        <view class="login-kicker">JoveKore</view>
+      <view class="login-panel">
         <view class="login-title">登录后，打开你的专属工作台</view>
         <view class="login-subtitle">客户、量房与方案进度，都会跟着你的身份进入</view>
+
+        <view class="identity-rail" aria-label="登录后可匹配个人用户、员工或推荐人身份">
+          <view class="identity-track" aria-hidden="true"></view>
+          <view class="identity-options">
+            <view class="identity-option">
+              <view class="identity-icon-shell">
+                <image src="/images/mine-icons/identity-personal-user.png" mode="aspectFit" />
+              </view>
+              <text>个人用户</text>
+            </view>
+            <view class="identity-option">
+              <view class="identity-icon-shell">
+                <image src="/images/mine-icons/identity-staff.png" mode="aspectFit" />
+              </view>
+              <text>员工</text>
+            </view>
+            <view class="identity-option">
+              <view class="identity-icon-shell">
+                <image src="/images/mine-icons/identity-referrer.png" mode="aspectFit" />
+              </view>
+              <text>推荐人</text>
+            </view>
+          </view>
+          <view class="identity-match-note">
+            <view class="identity-note-line"></view>
+            <text>登录后自动匹配身份</text>
+            <view class="identity-note-line"></view>
+          </view>
+        </view>
+
         <button class="primary-button login-button" bindtap="goToLogin">立即登录</button>
-        <view class="login-trust-note"><view class="login-trust-mark"></view><text>登录后将自动进入匹配的工作台</text></view>
+        <view class="login-trust-note"><view class="login-trust-mark"></view><text>一个账号 · 多重身份 · 随时切换</text></view>
       </view>
     </view>
 
@@ -238,7 +267,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <view class="profile-copy">
               <view class="profile-name-row">
                 <text class="profile-name">{{mineData.profile.name || '微信用户'}}</text>
-                <text class="role-badge">{{mineData.profile.roleLabel || (activeRole === 'referrer' ? '推广人' : '普通用户')}}</text>
+                <text class="role-badge">{{mineData.profile.roleLabel || (activeRole === 'referrer' ? '推荐人' : '个人用户')}}</text>
               </view>
               <view class="profile-detail-row verified">
                 <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />

@@ -5,6 +5,7 @@ import type { EnterpriseRecord } from '@/db/repositories';
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
 
 export const ENTERPRISE_ADMIN_INITIAL_PASSWORD = '123456';
+export const STAFF_INITIAL_PASSWORD = ENTERPRISE_ADMIN_INITIAL_PASSWORD;
 
 /**
  * Login still matches by phone across owner rows. Username stays globally unique:
@@ -25,6 +26,14 @@ export function buildEnterpriseAdminUsername(
 
 export function hashEnterpriseAdminInitialPassword() {
   return bcrypt.hash(ENTERPRISE_ADMIN_INITIAL_PASSWORD, 10);
+}
+
+export function hashStaffInitialPassword() {
+  return bcrypt.hash(STAFF_INITIAL_PASSWORD, 10);
+}
+
+export function buildStaffUsername(phone: string, enterpriseId: bigint) {
+  return `staff_e${enterpriseId.toString()}_${phone.trim()}`;
 }
 
 export async function ensureEnterpriseAdminForActiveEnterprise(
@@ -48,6 +57,7 @@ export async function ensureEnterpriseAdminForActiveEnterprise(
     (await adminUsers.create({
       username: buildEnterpriseAdminUsername(phone, enterprise.id),
       passwordHash: await hashEnterpriseAdminInitialPassword(),
+      mustChangePassword: true,
       displayName: typeof contact.name === 'string' ? contact.name : '',
       role: 'enterprise_admin',
       enterpriseId: enterprise.id,

@@ -122,7 +122,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
           </view>
           <view class="benefit-info">
             <text class="benefit-name">免费上门量房</text>
-            <text class="benefit-desc">专业测量员持激光测距仪实地毫米级复核</text>
+            <text class="benefit-desc">专业家装现场顾问持激光测距仪实地毫米级复核</text>
             </view>
           </view>
         <view class="benefit-divider" aria-hidden="true"></view>
@@ -132,7 +132,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
           </view>
           <view class="benefit-info">
             <text class="benefit-name">免费全屋设计</text>
-            <text class="benefit-desc">资深设计师 1对1 快速出全景效果图方案</text>
+            <text class="benefit-desc">资深家装设计顾问 1对1 快速出全景效果图方案</text>
           </view>
         </view>
       </view>

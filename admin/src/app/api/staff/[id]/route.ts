@@ -105,6 +105,11 @@ export async function PUT(
             if (body.role !== undefined) updateData.role = body.role;
             if (body.phone !== undefined) {
               const phone = body.phone.trim();
+              if (!/^1[3-9]\d{9}$/.test(phone)) {
+                throw Object.assign(new Error('请输入 11 位有效手机号'), {
+                  code: 'INVALID_PHONE',
+                });
+              }
               if (
                 phone &&
                 phone !== current.phone &&
@@ -150,6 +155,7 @@ export async function PUT(
             }
             if (body.password) {
               updateData.passwordHash = await bcrypt.hash(body.password, 10);
+              updateData.mustChangePassword = true;
             }
 
             const nextRole = body.role || current.role;
@@ -234,9 +240,15 @@ export async function PUT(
         {
           success: false,
           error: details.constraint?.includes('phone')
-            ? 'Phone already exists'
-            : 'Username already exists',
+            ? '该手机号已被本企业其他员工使用'
+            : '内部登录账号已存在',
         },
+        { status: 400 }
+      );
+    }
+    if (details.code === 'INVALID_PHONE') {
+      return NextResponse.json(
+        { success: false, error: '请输入 11 位有效手机号' },
         { status: 400 }
       );
     }

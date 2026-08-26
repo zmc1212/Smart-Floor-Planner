@@ -49,13 +49,13 @@ export function assertCanAssignLeadStaff(input: {
 }) {
   const actions = getLeadAssignmentActions(input.lead, input.role, input.actorId);
   if (input.designerId && !actions.canAssignDesigner) {
-    throw Object.assign(new Error('无权更换设计师'), {
+    throw Object.assign(new Error('无权更换家装设计顾问'), {
       status: 403,
       code: 'assign_designer_forbidden',
     });
   }
   if (input.measurerId && !actions.canAssignMeasurer) {
-    throw Object.assign(new Error('无权分配或更换测量员'), {
+    throw Object.assign(new Error('无权分配或更换家装现场顾问'), {
       status: 403,
       code: 'assign_measurer_forbidden',
     });

@@ -88,7 +88,7 @@
 
         <view wx:if="{{isEditMode}}" class="service-needs-form-group">
           <text class="label">服务需求记录</text>
-          <text class="service-needs-helper">设计师可根据微信沟通结果补充，客户首页仅展示已记录状态</text>
+          <text class="service-needs-helper">家装设计顾问可根据微信沟通结果补充，客户首页仅展示已记录状态</text>
           <view class="service-needs-form-options">
             <view
               wx:for="{{serviceNeedOptions}}"

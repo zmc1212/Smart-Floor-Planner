@@ -27,7 +27,7 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (data.success) {
-        window.location.assign('/');
+        window.location.assign(data.data?.nextPath || '/');
         return;
       } else {
         setError(data.error || '登录失败，请检查用户名和密码');
@@ -63,7 +63,7 @@ export default function LoginPage() {
               全权管理您的数字化资产
             </h2>
             <p className="text-muted-foreground font-medium text-[15px]">
-              欢迎回来。请在下方输入受信任的管理员凭据。
+              欢迎回来。员工和管理员均可使用手机号或登录账号进入系统。
             </p>
           </div>
 
@@ -84,7 +84,7 @@ export default function LoginPage() {
               <div className="space-y-6">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-[2px] text-muted-foreground ml-1">
-                    受信任的用户名
+                    手机号 / 登录账号
                   </label>
                   <Input
                     required
@@ -92,7 +92,7 @@ export default function LoginPage() {
                     value={username}
                     onChange={(event) => setUsername(event.target.value)}
                     prefix={<UserIcon size={18} className="text-muted-foreground/40" />}
-                    placeholder="请输入管理员 ID 或 手机号"
+                    placeholder="请输入手机号或登录账号"
                     autoFocus
                     className="!h-14 !rounded-[18px] !border-none !bg-muted/30 !font-bold placeholder:!font-normal focus:!bg-white"
                     suppressHydrationWarning
@@ -104,9 +104,9 @@ export default function LoginPage() {
                     <label className="text-[10px] font-black uppercase tracking-[2px] text-muted-foreground">
                       访问密码
                     </label>
-                    <button type="button" className="text-[10px] font-bold text-muted-foreground hover:text-primary transition-colors">
-                      忘记凭据?
-                    </button>
+                    <span className="text-[10px] font-bold text-muted-foreground">
+                      忘记密码请联系企业负责人重置
+                    </span>
                   </div>
                   <Input.Password
                     required
@@ -141,7 +141,7 @@ export default function LoginPage() {
                 <span>AES-256 加密端到端身份认证</span>
               </div>
               <p className="text-[11px] text-muted-foreground/40 leading-relaxed px-4 max-w-[280px] mx-auto">
-                只有被授权的管理员账号才能访问。
+                只有被授权的员工或管理员账号才能访问。
                 如有疑问，请通过钉钉或微信联系技术部。
               </p>
             </div>

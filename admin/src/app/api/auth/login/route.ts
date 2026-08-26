@@ -1,8 +1,8 @@
-import bcrypt from 'bcryptjs';
-import * as jose from 'jose';
 import { NextResponse } from 'next/server';
 import { AdminUserRepository, EnterpriseRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
+import { authenticateAdminCredential } from '@/lib/admin-credential-auth';
+import { setAdminSessionCookie, signAdminSession } from '@/lib/admin-session';
 import {
   enterpriseAccessDeniedMessage,
   isEnterpriseOperationallyActive,
@@ -19,18 +19,20 @@ export async function POST(request: Request) {
     const { username, password } = body;
     if (!username || !password) {
       return NextResponse.json(
-        { success: false, error: '请输入用户名和密码' },
+        { success: false, error: '请输入手机号/账号和密码' },
         { status: 400 }
       );
     }
 
     const authResult = await withPlatformTransaction(async (transaction) => {
-      const admin = await new AdminUserRepository(
-        transaction
-      ).findByUsernameOrPhone(username.trim(), true);
-      if (!admin || !(await bcrypt.compare(password, admin.passwordHash))) {
-        return { kind: 'invalid_credentials' as const };
-      }
+      const repository = new AdminUserRepository(transaction);
+      const credential = await authenticateAdminCredential(
+        repository,
+        username,
+        password
+      );
+      if (credential.kind !== 'ok') return credential;
+      const admin = credential.admin;
 
       if (admin.enterpriseId && !PLATFORM_ROLES.has(admin.role)) {
         const enterprise = await new EnterpriseRepository(
@@ -52,8 +54,18 @@ export async function POST(request: Request) {
 
     if (authResult.kind === 'invalid_credentials') {
       return NextResponse.json(
-        { success: false, error: '用户名或密码错误' },
+        { success: false, error: '手机号/账号或密码错误' },
         { status: 401 }
+      );
+    }
+    if (authResult.kind === 'ambiguous_identifier') {
+      return NextResponse.json(
+        {
+          success: false,
+          code: 'ambiguous_identifier',
+          error: '该手机号关联多个账号，请改用员工管理页显示的内部登录账号',
+        },
+        { status: 409 }
       );
     }
     if (authResult.kind === 'enterprise_blocked') {
@@ -68,21 +80,10 @@ export async function POST(request: Request) {
       admin.role,
       admin.menuPermissions
     );
-    const secret = new TextEncoder().encode(
-      process.env.JWT_SECRET || 'fallback_secret_random_123'
-    );
-    const token = await new jose.SignJWT({
-      id: admin.id.toString(),
-      username: admin.username,
-      displayName: admin.displayName,
-      role: admin.role,
-      enterpriseId: admin.enterpriseId?.toString() || null,
+    const token = await signAdminSession({
+      admin,
       permissions: effectivePermissions,
-    })
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setExpirationTime('24h')
-      .sign(secret);
+    });
 
     const response = NextResponse.json({
       success: true,
@@ -90,21 +91,11 @@ export async function POST(request: Request) {
         username: admin.username,
         displayName: admin.displayName,
         role: admin.role,
+        requiresPasswordChange: admin.mustChangePassword,
+        nextPath: admin.mustChangePassword ? '/change-password' : '/',
       },
     });
-    const secureAuthCookie =
-      process.env.NODE_ENV === 'production' &&
-      process.env.AUTH_COOKIE_SECURE !== 'false';
-    response.cookies.set({
-      name: 'auth_token',
-      value: token,
-      httpOnly: true,
-      secure: secureAuthCookie,
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24,
-      path: '/',
-    });
-    return response;
+    return setAdminSessionCookie(response, token);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(

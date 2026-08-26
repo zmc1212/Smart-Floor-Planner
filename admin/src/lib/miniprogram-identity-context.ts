@@ -55,6 +55,7 @@ export async function signMiniProgramIdentityContextToken(input: {
   contextVersion: number;
   context: MiniProgramIdentityContextRecord;
   source: MiniProgramJWTPayload['source'];
+  mustChangePassword?: boolean;
 }) {
   const { context } = input;
   return signMiniProgramToken({
@@ -70,6 +71,7 @@ export async function signMiniProgramIdentityContextToken(input: {
     referrerMembershipId: context.referrerMembershipId?.toString(),
     contextVersion: input.contextVersion,
     source: input.source,
+    mustChangePassword: input.mustChangePassword === true,
   });
 }
 

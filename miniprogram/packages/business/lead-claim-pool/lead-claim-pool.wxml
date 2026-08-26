@@ -12,7 +12,7 @@
           <text class="hero-subtitle">只展示脱敏需求，抢单成功后解锁客户资料</text>
           <view wx:if="{{capacity}}" class="capacity-pill">在手 {{capacity.current}} / {{capacity.limit}}</view>
         </view>
-        <image class="hero-mascot" src="/images/airy-v1/xiao-k-designer-3d.png" mode="aspectFit" aria-label="小K设计师助手" />
+        <image class="hero-mascot" src="/images/airy-v1/xiao-k-designer-3d.png" mode="aspectFit" aria-label="小K家装设计顾问助手" />
       </view>
 
       <view class="pool-toolbar">

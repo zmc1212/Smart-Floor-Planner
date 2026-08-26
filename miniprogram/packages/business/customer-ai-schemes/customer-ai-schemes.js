@@ -222,7 +222,7 @@ Page({
         : buildHeroTitle(payload, audience),
       heroSubtitle: schemes.length
         ? `已发布 ${schemes.length} 轮方案 · 共 ${totalImages} 张效果图`
-        : '设计师尚未发布方案',
+        : '家装设计顾问尚未发布方案',
       schemes,
       showSchemeChips: schemes.length > 1,
       selectedSchemeId: selected ? selected.id : '',

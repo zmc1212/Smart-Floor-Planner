@@ -37,6 +37,12 @@ are the editable sources and retain their supplied asset rights.
 - `search.png`: `search`
 - `user.png`: `user`
 - `users.png`: `users`
+- `identity-personal-user.png`: `user-round`, used for the logged-out gateway's
+  `个人用户` identity rail.
+- `identity-staff.png`: `badge`, used for the logged-out gateway's `员工`
+  identity rail.
+- `identity-referrer.png`: `share-2`, used for the logged-out gateway's `推荐人`
+  identity rail.
 - `earn-g.png`, `earn-a.png`: `tab-earnings.svg`, rendered
   at `96x96`; the inactive and active variants use the same wallet-and-income
   geometry for the earnings and commission TabBar items.

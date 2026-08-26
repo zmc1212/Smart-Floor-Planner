@@ -1,7 +1,7 @@
 const api = require('./api.js');
 
 const IDENTITY_LABELS = {
-  customer: '客户身份',
+  customer: '个人用户身份',
   referrer: '推荐人身份',
   staff: '员工身份'
 };

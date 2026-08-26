@@ -10,7 +10,10 @@ function source(relativePath) {
   return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
 }
 
-function loadPage() {
+function loadPage(app = {
+  globalData: {},
+  hydrateStoredSession: async () => {}
+}) {
   const pagePath = require.resolve('../packages/business/login/login.js');
   const originalPage = global.Page;
   const originalGetApp = global.getApp;
@@ -18,10 +21,7 @@ function loadPage() {
   global.Page = (next) => {
     definition = next;
   };
-  global.getApp = () => ({
-    globalData: {},
-    hydrateStoredSession: async () => {}
-  });
+  global.getApp = () => app;
   delete require.cache[pagePath];
   require(pagePath);
   global.Page = originalPage;
@@ -111,8 +111,9 @@ test('Login agreement row is tappable and gates WeChat phone login until checked
   assert.match(less, /\.agreement-check\.is-checked/);
   assert.match(wxml, /catchtap="onOpenLegalDoc"[\s\S]*data-kind="user"/);
   assert.match(wxml, /catchtap="onOpenLegalDoc"[\s\S]*data-kind="privacy"/);
-  assert.match(wxml, /catchtap="onOpenLegalDoc"[\s\S]*data-kind="disclaimer"/);
-  assert.match(wxml, /《免责协议》/);
+  assert.match(wxml, /wx:if="\{\{!showDisclaimer\}\}"[\s\S]*和/);
+  assert.match(wxml, /wx:if="\{\{showDisclaimer\}\}"[\s\S]*data-kind="disclaimer"[\s\S]*《免责协议》/);
+  assert.match(js, /showDisclaimer:\s*false/);
   assert.match(js, /onOpenLegalDoc\(/);
   assert.match(less, /\.agreement\s*\{[\s\S]*flex-wrap:\s*wrap/);
   assert.doesNotMatch(less, /\.agreement\s*\{[^}]*white-space:\s*nowrap/);
@@ -176,6 +177,7 @@ test('Login legal links open the webview without toggling the agreement checkbox
   try {
     const context = createContext(definition);
     assert.equal(context.data.agreed, false);
+    assert.equal(context.data.showDisclaimer, false);
     definition.onOpenLegalDoc.call(context, {
       currentTarget: { dataset: { kind: 'user' } }
     });
@@ -192,6 +194,46 @@ test('Login legal links open the webview without toggling the agreement checkbox
     } else {
       assert.equal(toasts[0].title, '文档即将开放');
     }
+  } finally {
+    global.wx = originalWx;
+  }
+});
+
+test('Password login requiring a password change opens account security without bootstrapping', async () => {
+  let hydrateCalls = 0;
+  const launches = [];
+  const app = {
+    globalData: {},
+    hydrateStoredSession: async () => {
+      hydrateCalls += 1;
+    },
+    syncProfessionalContext() {}
+  };
+  const definition = loadPage(app);
+  const originalWx = global.wx;
+  global.wx = {
+    showLoading() {},
+    hideLoading() {},
+    setStorageSync() {},
+    reLaunch(options) {
+      launches.push(options.url);
+    }
+  };
+
+  try {
+    const context = createContext(definition);
+    await definition.performLogin.call(context, async () => ({
+      success: true,
+      token: 'restricted-token',
+      user: { id: '8' },
+      requiresPasswordChange: true
+    }));
+
+    assert.equal(hydrateCalls, 0);
+    assert.equal(app.globalData.sessionHydrated, true);
+    assert.deepEqual(launches, [
+      '/packages/business/account-security/account-security?required=1'
+    ]);
   } finally {
     global.wx = originalWx;
   }

@@ -46,13 +46,16 @@
         <view class="legal-link" catchtap="onOpenLegalDoc" data-kind="user" hover-class="none">
           <text class="link">《用户协议》</text>
         </view>
+        <text wx:if="{{!showDisclaimer}}">和</text>
         <view class="legal-link" catchtap="onOpenLegalDoc" data-kind="privacy" hover-class="none">
           <text class="link">《隐私政策》</text>
         </view>
-        <text>和</text>
-        <view class="legal-link" catchtap="onOpenLegalDoc" data-kind="disclaimer" hover-class="none">
-          <text class="link">《免责协议》</text>
-        </view>
+        <block wx:if="{{showDisclaimer}}">
+          <text>和</text>
+          <view class="legal-link" catchtap="onOpenLegalDoc" data-kind="disclaimer" hover-class="none">
+            <text class="link">《免责协议》</text>
+          </view>
+        </block>
       </view>
     </view>
 
@@ -73,7 +76,7 @@
 
       <view class="staff-tip">
         <text class="tip-badge">i</text>
-        <text class="tip-text">账号登录面向设计师、地推员等企业内部员工。</text>
+        <text class="tip-text">账号登录面向家装设计顾问、地推员等企业内部员工。</text>
       </view>
     </view>
   </view>

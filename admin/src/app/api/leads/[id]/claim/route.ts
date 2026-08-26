@@ -9,7 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const actor = await resolveLeadAssignmentRequest(request);
     if (!actor || actor.role !== 'designer' || !actor.actorStaffId) {
-      return NextResponse.json({ success: false, error: '仅当前企业设计师可抢单' }, { status: 403 });
+      return NextResponse.json({ success: false, error: '仅当前企业家装设计顾问可抢单' }, { status: 403 });
     }
     const idempotencyKey = request.headers.get('idempotency-key')?.trim();
     if (!idempotencyKey || idempotencyKey.length > 160) {

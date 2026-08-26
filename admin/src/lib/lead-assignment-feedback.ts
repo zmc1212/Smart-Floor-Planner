@@ -5,18 +5,18 @@ export const ASSIGNMENT_STATUS_LABELS: Record<string, string> = {
 };
 
 export const ASSIGNMENT_ERROR_LABELS: Record<string, string> = {
-  designer_unavailable: '暂无可用设计师',
-  measurer_unavailable: '暂无可用测量员',
-  designer_and_measurer_unavailable: '设计师和测量员都不可用',
+  designer_unavailable: '暂无可用家装设计顾问',
+  measurer_unavailable: '暂无可用家装现场顾问',
+  designer_and_measurer_unavailable: '家装设计顾问和家装现场顾问都不可用',
 };
 
 export const ASSIGNMENT_PENDING_HINTS: Record<string, string> = {
   designer_unavailable:
-    '请到员工管理为设计师补齐微信号和个人微信二维码后再重试',
+    '请到员工管理为家装设计顾问补齐微信号和个人微信二维码后再重试',
   measurer_unavailable:
-    '请到员工管理确认测量员已入驻且未暂停派单后再重试',
+    '请到员工管理确认家装现场顾问已入驻且未暂停派单后再重试',
   designer_and_measurer_unavailable:
-    '请到员工管理补齐可用设计师（含微信号与二维码）和测量员后再重试',
+    '请到员工管理补齐可用家装设计顾问（含微信号与二维码）和家装现场顾问后再重试',
 };
 
 export function getAssignmentStatusLabel(

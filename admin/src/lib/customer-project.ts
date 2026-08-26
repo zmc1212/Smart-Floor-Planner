@@ -67,7 +67,7 @@ function buildCustomerProjectIdentity(project: CustomerProject) {
   const navSubtitle = [communityName || display.projectTitle, areaLabel].filter(Boolean).join(' · ');
   return {
     heroTitle,
-    heroSubtitle: '免费量房与设计方案全纪录',
+    heroSubtitle: '现场顾问与设计方案全记录',
     navSubtitle,
     areaLabel,
   };

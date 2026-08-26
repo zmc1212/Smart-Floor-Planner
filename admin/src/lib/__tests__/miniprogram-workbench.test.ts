@@ -348,7 +348,7 @@ test('enterprise operations format growth and exception cards from real workbenc
     name: '802',
     communityName: '万科 · 未来之光',
     status: 'new',
-    assignmentErrorCode: '目标区域暂无可用测量员',
+    assignmentErrorCode: '目标区域暂无可用家装现场顾问',
     updatedAt: new Date('2026-08-20T09:30:00.000Z'),
   });
   assert.match(pending.title, /自动派单失败 · 万科 · 未来之光 · 802/);
@@ -371,13 +371,13 @@ test('enterprise operations format growth and exception cards from real workbenc
     eligibleMeasurerCount: 0,
   })[0]);
   assert.equal(staffing.actionLabel, '查看详情');
-  assert.equal(buildStaffLoadQuickNav({ eligibleDesignerCount: 1, eligibleMeasurerCount: 0 }).desc, '测量员紧缺 →');
+  assert.equal(buildStaffLoadQuickNav({ eligibleDesignerCount: 1, eligibleMeasurerCount: 0 }).desc, '家装现场顾问紧缺 →');
 });
 
 test('enterprise staff roster items expose assignment eligibility without Admin DTO fields', () => {
   const eligibleDesigner = buildEnterpriseStaffRosterItem({
     id: 21n,
-    displayName: '林设计师',
+    displayName: '林家装设计顾问',
     phone: '13800001111',
     role: 'designer',
     status: 'active',
@@ -387,10 +387,10 @@ test('enterprise staff roster items expose assignment eligibility without Admin 
   });
   assert.deepEqual(eligibleDesigner, {
     id: '21',
-    displayName: '林设计师',
+    displayName: '林家装设计顾问',
     phone: '13800001111',
     role: 'designer',
-    roleLabel: '设计师',
+    roleLabel: '家装设计顾问',
     assignmentPaused: false,
     assignmentEligible: true,
     ineligibleReason: null,
@@ -419,7 +419,7 @@ test('enterprise staff roster items expose assignment eligibility without Admin 
 
   const incompleteDesigner = buildEnterpriseStaffRosterItem({
     id: '23',
-    displayName: '待补设计师',
+    displayName: '待补家装设计顾问',
     role: 'designer',
     status: 'active',
     assignmentPaused: false,
@@ -434,7 +434,7 @@ test('enterprise staff roster items expose assignment eligibility without Admin 
 
   const pausedIncompleteDesigner = buildEnterpriseStaffRosterItem({
     id: 24n,
-    displayName: '双缺设计师',
+    displayName: '双缺家装设计顾问',
     role: 'designer',
     status: 'active',
     assignmentPaused: true,

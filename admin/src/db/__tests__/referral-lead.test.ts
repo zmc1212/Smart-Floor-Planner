@@ -547,7 +547,7 @@ test('manual assign fills missing roles and can overwrite bound staff', async ()
           designerId: designer.id,
         })
       ),
-    /无权更换设计师/
+    /无权更换家装设计顾问/
   );
 
   const designerChangesMeasurer = await withTenantTransaction(enterpriseId, (transaction) =>
@@ -571,7 +571,7 @@ test('manual assign fills missing roles and can overwrite bound staff', async ()
           measurerId: replacementMeasurer.id,
         })
       ),
-    /无权分配或更换测量员/
+    /无权分配或更换家装现场顾问/
   );
 });
 
@@ -1082,7 +1082,7 @@ test('manual reassign rewrites the active appointment and rejects a busy measure
           measurerId: measurerB.id,
         })
       ),
-    /新测量员该时段不可用/
+    /新家装现场顾问该时段不可用/
   );
 
   const measurerRewrite = await withTenantTransaction(enterprise.id, (transaction) =>

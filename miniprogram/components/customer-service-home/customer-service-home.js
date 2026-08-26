@@ -17,7 +17,7 @@ const {
 
 const FREE_DESIGN_ROUTE = 'packages/business/free-design-service/free-design-service';
 const ONBOARDING_ROUTE = 'packages/business/onboarding/onboarding';
-const XIAO_K_IMAGE = '/images/airy-v1/project-delivery-xiao-k.png';
+const XIAO_K_IMAGE = '/images/customer-service-three-free/xiao-k-three-benefits.png';
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -128,8 +128,8 @@ Component({
     bookShortcutDesc: '免费上门精准量尺',
     benefitStatusLabel: '扫码领取服务',
     designer: null,
-    designerSoftCopy: '设计师匹配后可联系',
-    designerShortcutDesc: '设计师匹配后可联系',
+    designerSoftCopy: '家装设计顾问匹配后可联系',
+    designerShortcutDesc: '家装设计顾问匹配后可联系',
     appointmentId: '',
     appointmentVersion: '',
     floorPlanImagePath: '',
@@ -189,7 +189,7 @@ Component({
             projects,
             loading: false,
             designer: null,
-            designerShortcutDesc: '设计师匹配后可联系',
+            designerShortcutDesc: '家装设计顾问匹配后可联系',
             appointmentId: '',
             appointmentVersion: '',
             floorPlanImagePath: '',
@@ -271,7 +271,7 @@ Component({
           switcherProjects,
           mediaMode,
           designer,
-          designerSoftCopy: '设计师匹配后可联系',
+          designerSoftCopy: '家装设计顾问匹配后可联系',
           designerShortcutDesc,
           appointmentId,
           appointmentVersion,
@@ -401,6 +401,14 @@ Component({
       });
     },
 
+    openAiSchemes() {
+      const id = this.data.leadId;
+      if (!id) return;
+      wx.navigateTo({
+        url: `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(id)}&mode=customer`,
+      });
+    },
+
     openBooking(leadId) {
       const id = leadId || this.data.leadId;
       if (!id) return;
@@ -445,6 +453,14 @@ Component({
       this.openArchive();
     },
 
+    openEffectShortcut() {
+      if (this.data.isEmpty) {
+        this.scanServiceOrInviteCode();
+        return;
+      }
+      this.openAiSchemes();
+    },
+
     openBookShortcut() {
       if (this.data.isEmpty) {
         this.scanServiceOrInviteCode();
@@ -481,7 +497,7 @@ Component({
         return;
       }
       if (this.data.leadId) {
-        wx.showToast({ title: this.data.designerSoftCopy || '设计师匹配后可联系', icon: 'none' });
+        wx.showToast({ title: this.data.designerSoftCopy || '家装设计顾问匹配后可联系', icon: 'none' });
         this.openArchive();
       }
     },

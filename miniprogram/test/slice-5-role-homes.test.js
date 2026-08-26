@@ -100,7 +100,7 @@ test('designer profile edit loads and saves wechat id plus qr without requiring 
   assert.match(template, /catchtap="onChooseWechatQr"/);
   assert.match(template, /eligibilityLabel/);
   assert.match(template, /领取成功页和服务档案/);
-  assert.doesNotMatch(template, /测量员.*二维码/);
+  assert.doesNotMatch(template, /家装现场顾问.*二维码/);
   assert.match(api, /function uploadStaffWechatQr/);
   assert.match(api, /\/miniprogram\/staff\/wechat-qr/);
 });
@@ -129,7 +129,7 @@ test('role workbench identity nav omits scan and bell so the lockup can sit besi
   const template = source('components/role-workbench/role-workbench.wxml');
   const styles = source('components/role-workbench/role-workbench.less');
   const workbench = source('components/role-workbench/role-workbench.js');
-  assert.match(template, /家客来 · \{\{role === 'designer' \? '设计师端'/);
+  assert.match(template, /家客来 · \{\{role === 'designer' \? '家装设计顾问端'/);
   assert.match(template, /padding-right: \{\{navigationRight\}\}px/);
   assert.doesNotMatch(template, /identity-actions/);
   assert.doesNotMatch(template, /class="qr-btn"/);
@@ -148,10 +148,10 @@ test('role workbench identity nav omits scan and bell so the lockup can sit besi
 
 test('role workbench identity tag shows the current enterprise name only', () => {
   const template = source('components/role-workbench/role-workbench.wxml');
-  assert.match(template, /家客来 · \{\{role === 'designer' \? '设计师端'/);
+  assert.match(template, /家客来 · \{\{role === 'designer' \? '家装设计顾问端'/);
   assert.match(template, /wx:if="\{\{enterpriseName\}\}"[\s\S]*\{\{enterpriseName\}\}/);
   assert.doesNotMatch(template, /staffName \+ ' · ' \+ enterpriseName/);
-  assert.doesNotMatch(template, /role === 'designer' \? '设计师'/);
+  assert.doesNotMatch(template, /role === 'designer' \? '家装设计顾问'/);
   assert.doesNotMatch(template, /企业负责人/);
   assert.doesNotMatch(template, /专业服务/);
 });

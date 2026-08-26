@@ -53,7 +53,10 @@ export async function PUT(request: Request) {
     }
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await withPlatformTransaction((transaction) =>
-      new AdminUserRepository(transaction).update(staffId, { passwordHash })
+      new AdminUserRepository(transaction).update(staffId, {
+        passwordHash,
+        mustChangePassword: false,
+      })
     );
     return NextResponse.json({ success: true, data: {} });
   } catch (error) {

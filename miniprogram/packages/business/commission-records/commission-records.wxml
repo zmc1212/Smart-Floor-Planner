@@ -116,7 +116,7 @@
 
           <view class="record-main">
             <text class="record-name">{{item.typeLabel}}</text>
-            <text wx:if="{{item.leadName}}" class="record-package">{{item.leadName}} · 设计师：{{item.designerName}}</text>
+            <text wx:if="{{item.leadName}}" class="record-package">{{item.leadName}} · 家装设计顾问：{{item.designerName}}</text>
             <text wx:if="{{!item.leadName}}" class="record-package">订单包：{{item.packageName}}</text>
           </view>
 

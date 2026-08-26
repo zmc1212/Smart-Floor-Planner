@@ -245,7 +245,7 @@ Page({
       nameSheetVisible: false,
       pageState: 'success',
       joinedLabel: this.data.codeType === 'staff'
-        ? (this.data.selectedStaffRole === 'designer' ? '设计师' : '测量员')
+        ? (this.data.selectedStaffRole === 'designer' ? '家装设计顾问' : '家装现场顾问')
         : '推荐人'
     });
   },

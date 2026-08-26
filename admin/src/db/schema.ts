@@ -63,10 +63,10 @@ export const enterprises = appSchema.table(
     branding: jsonObject<Record<string, unknown>>('branding'),
     professionalDesignerTitle: text('professional_designer_title')
       .notNull()
-      .default('金牌设计师'),
+      .default('金牌家装设计顾问'),
     professionalMeasurerTitle: text('professional_measurer_title')
       .notNull()
-      .default('资深测量师'),
+      .default('资深家装现场顾问'),
     professionalDefaultExperienceYears: integer(
       'professional_default_experience_years'
     )
@@ -181,6 +181,9 @@ export const adminUsers = appSchema.table(
     ),
     username: text('username').notNull(),
     passwordHash: text('password_hash').notNull(),
+    mustChangePassword: boolean('must_change_password')
+      .notNull()
+      .default(false),
     displayName: text('display_name').notNull().default(''),
     role: text('role').notNull().default('admin'),
     wecomUserId: text('wecom_user_id'),

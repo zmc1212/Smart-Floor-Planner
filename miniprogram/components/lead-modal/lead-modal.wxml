@@ -6,7 +6,7 @@
     </view>
     
     <scroll-view scroll-y class="modal-body">
-      <text class="desc" wx:if="{{!isStaff}}">留下您的联系方式，我们的专业设计师将免费为您提供1对1的量房及设计咨询服务。</text>
+      <text class="desc" wx:if="{{!isStaff}}">留下您的联系方式，我们的专业家装设计顾问将免费为您提供1对1的量房及设计咨询服务。</text>
 
       <!-- Quick select for staff -->
       <view class="quick-select-section" wx:if="{{isStaff && recentLeads.length > 0}}">

@@ -307,7 +307,7 @@ export function addModelSpaceSheet(
     { zh: '公司名称：', en: 'Company', value: options.meta?.enterpriseName?.trim() || '' },
     { zh: '项目名称：', en: 'Project', value: options.meta?.planName?.trim() || '户型' },
     { zh: '图纸名称：', en: 'Drawing Name', value: DXF_DRAWING_TITLE },
-    { zh: '设计师：', en: 'Designer', value: options.meta?.designerName?.trim() || '' },
+    { zh: '家装设计顾问：', en: 'Designer', value: options.meta?.designerName?.trim() || '' },
     { zh: '图纸比例：', en: 'Drawing Scale', value: `1:${scale}` },
     { zh: '制图日期：', en: 'Date', value: formatDxfSheetDate(options.meta?.date) },
   ];

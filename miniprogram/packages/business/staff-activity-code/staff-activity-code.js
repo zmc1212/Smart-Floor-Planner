@@ -150,7 +150,7 @@ Page({
   onShareAppMessage() {
     const token = this.data.activityToken;
     return {
-      title: '免费上门测量与设计师服务',
+      title: '免费上门测量与家装设计顾问服务',
       path: token
         ? `/packages/business/free-design-service/free-design-service?token=${encodeURIComponent(token)}`
         : '/pages/index/index'

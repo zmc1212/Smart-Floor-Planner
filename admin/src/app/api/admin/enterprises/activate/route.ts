@@ -108,6 +108,7 @@ export async function POST(request: Request) {
           await adminUsers.create({
             username: buildEnterpriseAdminUsername(phone, enterprise.id),
             passwordHash: await hashEnterpriseAdminInitialPassword(),
+            mustChangePassword: true,
             displayName: record.contactPerson,
             role: 'enterprise_admin',
             enterpriseId: enterprise.id,

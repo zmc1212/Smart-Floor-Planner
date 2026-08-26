@@ -19,9 +19,13 @@ import {
   withTenantRoute,
 } from '@/lib/tenant-route';
 import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-retry';
+import {
+  buildStaffUsername,
+  hashStaffInitialPassword,
+} from '@/lib/enterprise-admin-provision';
 
 interface StaffCreateBody {
-  username: string;
+  username?: string;
   password?: string;
   displayName?: string;
   role: string;
@@ -48,8 +52,8 @@ function duplicateResponse(error: unknown) {
     {
       success: false,
       error: details.constraint?.includes('phone')
-        ? 'Phone already exists'
-        : 'Username already exists',
+        ? '该手机号已被本企业其他员工使用'
+        : '内部登录账号已存在',
     },
     { status: 400 }
   );
@@ -219,13 +223,20 @@ export async function POST(request: Request) {
           leadCapacityOverride,
         } = body;
 
-        if (!username || !password || !role) {
+        if (!role) {
           return NextResponse.json(
             { success: false, error: 'Missing required fields' },
             { status: 400 }
           );
         }
-        if (password.length < 6) {
+        const normalizedPhone = phone?.trim() || '';
+        if (!/^1[3-9]\d{9}$/.test(normalizedPhone)) {
+          return NextResponse.json(
+            { success: false, error: '请输入 11 位有效手机号' },
+            { status: 400 }
+          );
+        }
+        if (password && password.length < 6) {
           return NextResponse.json(
             { success: false, error: 'Password must be at least 6 characters' },
             { status: 400 }
@@ -258,16 +269,31 @@ export async function POST(request: Request) {
           );
         }
 
-        const passwordHash = await bcrypt.hash(password, 10);
         const menuPermissions = await getEffectivePermissions(role);
+        const resolvedUsername =
+          username?.trim() ||
+          buildStaffUsername(normalizedPhone, BigInt(targetEnterpriseId));
+        const passwordHash = password
+          ? await bcrypt.hash(password, 10)
+          : await hashStaffInitialPassword();
         const staff = await withTenantTransaction(
           targetEnterpriseId,
           async (transaction) => {
             const repository = new AdminUserRepository(transaction);
-            if (await repository.existsWithUsername(username.trim())) {
+            if (await repository.existsWithUsername(resolvedUsername)) {
               throw Object.assign(new Error('Username already exists'), {
                 code: '23505',
                 constraint: 'admin_users_username_uidx',
+              });
+            }
+            if (
+              await repository.existsWithPhone(normalizedPhone, {
+                enterpriseId: BigInt(targetEnterpriseId),
+              })
+            ) {
+              throw Object.assign(new Error('Phone already exists'), {
+                code: '23505',
+                constraint: 'admin_users_enterprise_phone_uidx',
               });
             }
 
@@ -312,10 +338,11 @@ export async function POST(request: Request) {
 
             const created = await repository.create(
               {
-                username: username.trim(),
+                username: resolvedUsername,
                 passwordHash,
+                mustChangePassword: true,
                 displayName: displayName?.trim() || '',
-                phone: phone?.trim() || null,
+                phone: normalizedPhone,
                 role,
                 menuPermissions,
                 enterpriseId: BigInt(targetEnterpriseId),

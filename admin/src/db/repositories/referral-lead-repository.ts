@@ -975,7 +975,7 @@ export class ReferralLeadRepository {
     measurerId?: bigint | null;
   }): Promise<ReferralManualAssignResult | null> {
     if (!input.designerId && !input.measurerId) {
-      throw referralError('assign_staff_required', '请至少选择一名设计师或测量员', 400);
+      throw referralError('assign_staff_required', '请至少选择一名家装设计顾问或家装现场顾问', 400);
     }
 
     const lockedRows = await this.transaction
@@ -1000,10 +1000,10 @@ export class ReferralLeadRepository {
       measurerId: input.measurerId ?? null,
     });
     if (input.designerId && current.assignedTo && input.designerId === current.assignedTo) {
-      throw referralError('designer_already_bound', '所选设计师已是当前绑定人员', 400);
+      throw referralError('designer_already_bound', '所选家装设计顾问已是当前绑定人员', 400);
     }
     if (input.measurerId && current.measurerId && input.measurerId === current.measurerId) {
-      throw referralError('measurer_already_bound', '所选测量员已是当前绑定人员', 400);
+      throw referralError('measurer_already_bound', '所选家装现场顾问已是当前绑定人员', 400);
     }
 
     await this.lockKey(`enterprise-assignment:${current.enterpriseId.toString()}`);
@@ -1017,7 +1017,7 @@ export class ReferralLeadRepository {
         current.enterpriseId
       );
       if (!nextDesigner) {
-        throw referralError('designer_unavailable', '所选设计师不可派单', 400);
+        throw referralError('designer_unavailable', '所选家装设计顾问不可派单', 400);
       }
       nextDesignerId = nextDesigner.id;
       newlyAssignedDesignerId = nextDesigner.id;
@@ -1032,7 +1032,7 @@ export class ReferralLeadRepository {
         current.enterpriseId
       );
       if (!nextMeasurer) {
-        throw referralError('measurer_unavailable', '所选测量员不可派单', 400);
+        throw referralError('measurer_unavailable', '所选家装现场顾问不可派单', 400);
       }
       nextMeasurerId = nextMeasurer.id;
       newlyAssignedMeasurerId = nextMeasurer.id;

@@ -158,8 +158,10 @@ copy back to `layoutData`.
   wall or vertex do not place the cursor; a wall tap may select the wall for
   opening placement.   The cursor is placed only by dragging the dock control
   onto the canvas, so a drag does not lock the viewport.
-  That dock drag aims 12×20 CSS px upper-left of the finger
-  and clamps the aim point to the canvas. Canvas wall-endpoint
+  That dock drag aims 24×40 CSS px upper-left of the finger
+  and clamps the aim point to the canvas. Cover-view touchmove is throttled
+  and free-follow frames dirty-clear the reticle without a snap search so the
+  overlay can keep up with the finger. Canvas wall-endpoint
   drags keep the grab delta from touchstart with a south-east-biased
   hit and must not apply the dock offset, so the first preview frame
   cannot invent a wall segment.

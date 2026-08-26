@@ -68,36 +68,109 @@ function passThrough(request: NextRequest) {
   });
 }
 
+const MINI_PROGRAM_PASSWORD_CHANGE_PATHS = new Set([
+  '/api/miniprogram/profile',
+  '/api/miniprogram/account/password',
+]);
+
+const ADMIN_PASSWORD_CHANGE_API_PATHS = new Set([
+  '/api/auth/me',
+  '/api/auth/password',
+  '/api/auth/logout',
+]);
+
+function passwordChangeRequiredResponse() {
+  return NextResponse.json(
+    {
+      success: false,
+      code: 'password_change_required',
+      error: '请先修改初始密码',
+    },
+    { status: 403 }
+  );
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const token = request.cookies.get('auth_token')?.value;
+  const authHeader = request.headers.get('Authorization');
+  const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
+
+  if (pathname === '/login') {
+    if (!token) return passThrough(request);
+    try {
+      const { payload } = await jose.jwtVerify(token, secret);
+      return NextResponse.redirect(
+        new URL(payload.mustChangePassword === true ? '/change-password' : '/', request.url)
+      );
+    } catch {
+      return passThrough(request);
+    }
+  }
+
+  if (pathname === '/change-password') {
+    if (!token) return NextResponse.redirect(new URL('/login', request.url));
+    try {
+      const { payload } = await jose.jwtVerify(token, secret);
+      return payload.mustChangePassword === true
+        ? passThrough(request)
+        : NextResponse.redirect(new URL('/', request.url));
+    } catch {
+      return NextResponse.redirect(new URL('/login', request.url));
+    }
+  }
+
+  if (
+    pathname.startsWith('/api/miniprogram/') &&
+    authHeader?.startsWith('Bearer ')
+  ) {
+    try {
+      const { payload } = await jose.jwtVerify(authHeader.slice(7), secret, {
+        audience: 'miniprogram',
+      });
+      if (
+        payload.source === 'password' &&
+        payload.mustChangePassword === true &&
+        !(
+          MINI_PROGRAM_PASSWORD_CHANGE_PATHS.has(pathname) &&
+          (pathname !== '/api/miniprogram/profile' || request.method === 'GET')
+        )
+      ) {
+        return passwordChangeRequiredResponse();
+      }
+    } catch {
+      // Route handlers retain ownership of normal invalid-token responses.
+    }
+    return passThrough(request);
+  }
+
+  if (pathname.startsWith('/api/auth/') && token) {
+    try {
+      const { payload } = await jose.jwtVerify(token, secret);
+      if (
+        payload.mustChangePassword === true &&
+        !ADMIN_PASSWORD_CHANGE_API_PATHS.has(pathname)
+      ) {
+        return passwordChangeRequiredResponse();
+      }
+    } catch {
+      // Public authentication endpoints retain ownership of invalid cookies.
+    }
+  }
 
   // 1. Allow unauthenticated entry points and routes with their own verification.
   if (
-    pathname === '/login' || 
     pathname === '/api/health' ||
     pathname === '/api/internal/seed' ||
     pathname === '/api/internal/lead-claim-windows/run' ||
     pathname.startsWith('/api/auth/') || 
     pathname.startsWith('/api/miniprogram/') ||
-    request.headers.get('Authorization')?.startsWith('Bearer ')
+    authHeader?.startsWith('Bearer ')
   ) {
-    const token = request.cookies.get('auth_token')?.value;
-    if (pathname === '/login' && token) {
-      try {
-        const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
-        await jose.jwtVerify(token, secret);
-        return NextResponse.redirect(new URL('/', request.url));
-      } catch {
-        // Invalid token, allow access to login
-        return passThrough(request);
-      }
-    }
     return passThrough(request);
   }
 
   // 2. Check for auth token
-  const token = request.cookies.get('auth_token')?.value;
-
   if (!token) {
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -106,8 +179,12 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
     const { payload } = await jose.jwtVerify(token, secret);
+
+    if (payload.mustChangePassword === true) {
+      if (pathname.startsWith('/api/')) return passwordChangeRequiredResponse();
+      return NextResponse.redirect(new URL('/change-password', request.url));
+    }
 
     const role = payload.role as string;
     const userPermissions = (payload.permissions as string[]) || [];

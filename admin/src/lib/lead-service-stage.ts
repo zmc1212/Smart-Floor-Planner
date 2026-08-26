@@ -22,7 +22,7 @@ export const LEAD_SERVICE_STAGE_LABELS: Record<LeadServiceStage, string> = {
   appointment_expired: '预约已过期',
   awaiting_rebooking: '待重新预约',
   appointment_confirmed: '已预约上门量房',
-  measurer_assigned: '已匹配测量员',
+  measurer_assigned: '已匹配家装现场顾问',
   assignment_pending: '待派单',
   claimed: '新线索',
 };
@@ -38,7 +38,7 @@ export const LEAD_SERVICE_STAGE_NEXT_ACTIONS: Record<LeadServiceStage, string> =
   awaiting_rebooking: '选择新的上门时段',
   appointment_confirmed: '按预约上门，窗口内可改期',
   measurer_assigned: '预约上门量房时间',
-  assignment_pending: '补齐可用设计师或测量员后重试派单',
+  assignment_pending: '补齐可用家装设计顾问或家装现场顾问后重试派单',
   claimed: '等待自动派单或联系客户',
 };
 
@@ -241,15 +241,15 @@ export function describeCustomerAppointment(input: {
     return '预约已取消，请选择新的上门时段';
   }
   if (input.serviceStage === 'appointment_in_progress' || input.serviceStage === 'survey_ready') {
-    return '测量员正在上门量房';
+    return '家装现场顾问正在上门量房';
   }
   if (input.serviceStage === 'appointment_confirmed' || (published && confirmedVisit)) {
     return formatCustomerAppointmentTime(appointment?.timeRange) || '已预约上门量房';
   }
-  if (input.serviceStage === 'measurer_assigned') return '已匹配设计师和测量员，请预约上门量房时间';
+  if (input.serviceStage === 'measurer_assigned') return '已匹配家装设计顾问和家装现场顾问，请预约上门量房时间';
   // Customer-facing status only — never reuse staff operational nextAction copy.
   if (input.serviceStage === 'claimed' || input.serviceStage === 'assignment_pending') {
-    return '正在为您匹配设计师和测量员';
+    return '正在为您匹配家装设计顾问和家装现场顾问';
   }
   if (input.serviceStage === 'survey_completed') return '量房已完成，可在服务档案查看户型';
   if (published) return '方案已发布，可在服务档案查看';

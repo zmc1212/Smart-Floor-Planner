@@ -37,14 +37,14 @@
   <view class="staff-assignment-grid" wx:if="{{lead}}">
     <view class="staff-assignment-card">
       <view class="staff-assignment-head">
-        <text class="staff-assignment-role">设计师</text>
+        <text class="staff-assignment-role">家装设计顾问</text>
         <text
           wx:if="{{designerContact.canAssign}}"
           class="staff-assignment-action"
           catchtap="onOpenStaffAssign"
           data-role="designer"
           aria-role="button"
-          aria-label="{{designerContact.assignLabel}}设计师"
+          aria-label="{{designerContact.assignLabel}}家装设计顾问"
         >{{designerContact.assignLabel}}</text>
       </view>
       <text class="staff-assignment-name">{{designerContact.name}}</text>
@@ -54,7 +54,7 @@
         catchtap="onCallStaff"
         data-phone="{{designerContact.phone}}"
         aria-role="button"
-        aria-label="拨打设计师电话"
+        aria-label="拨打家装设计顾问电话"
       >
         <text>{{designerContact.phone}}</text>
         <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
@@ -62,14 +62,14 @@
     </view>
     <view class="staff-assignment-card">
       <view class="staff-assignment-head">
-        <text class="staff-assignment-role">测量员</text>
+        <text class="staff-assignment-role">家装现场顾问</text>
         <text
           wx:if="{{measurerContact.canAssign}}"
           class="staff-assignment-action"
           catchtap="onOpenStaffAssign"
           data-role="measurer"
           aria-role="button"
-          aria-label="{{measurerContact.assignLabel}}测量员"
+          aria-label="{{measurerContact.assignLabel}}家装现场顾问"
         >{{measurerContact.assignLabel}}</text>
       </view>
       <text class="staff-assignment-name">{{measurerContact.name}}</text>
@@ -79,7 +79,7 @@
         catchtap="onCallStaff"
         data-phone="{{measurerContact.phone}}"
         aria-role="button"
-        aria-label="拨打测量员电话"
+        aria-label="拨打家装现场顾问电话"
       >
         <text>{{measurerContact.phone}}</text>
         <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
@@ -372,7 +372,7 @@
     <view class="conversion-sheet-handle"></view>
     <view class="conversion-sheet-header">
       <view>
-        <text class="conversion-sheet-title">选择{{staffAssignRole === 'measurer' ? '测量员' : '设计师'}}</text>
+        <text class="conversion-sheet-title">选择{{staffAssignRole === 'measurer' ? '家装现场顾问' : '家装设计顾问'}}</text>
         <text class="conversion-sheet-customer">{{staffAssignHint || '选择可派人员'}}</text>
       </view>
       <text class="conversion-sheet-close" catchtap="onCloseStaffAssignSheet">关闭</text>

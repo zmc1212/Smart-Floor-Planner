@@ -40,6 +40,10 @@
       },
       {
         "type": "file",
+        "value": "images/ai-recipe/recipe-atelier-hero.jpg"
+      },
+      {
+        "type": "file",
         "value": "images/home-v5/plan-preview.jpg"
       },
       {

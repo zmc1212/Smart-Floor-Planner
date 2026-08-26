@@ -22,7 +22,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const miniContext = await resolveMiniProgramContext(request);
     if (miniContext) {
       if (!miniContext.enterpriseId || miniContext.mode !== 'staff' || !miniContext.staff || !['designer', 'enterprise_admin'].includes(miniContext.staff.role)) {
-        return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可改期' }, { status: 403 });
+        return NextResponse.json({ success: false, error: '仅负责家装设计顾问或企业负责人可改期' }, { status: 403 });
       }
       const body = await request.json();
       const enterpriseId = parsePostgresId(miniContext.enterpriseId, 'enterprise id');
@@ -56,7 +56,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const admin = await getTenantContext(request);
     if (!admin?.enterpriseId || !['designer', 'enterprise_admin'].includes(admin.role)) {
-      return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可改期' }, { status: admin ? 403 : 401 });
+      return NextResponse.json({ success: false, error: '仅负责家装设计顾问或企业负责人可改期' }, { status: admin ? 403 : 401 });
     }
     const body = await request.json();
     const enterpriseId = parsePostgresId(admin.enterpriseId, 'enterprise id');

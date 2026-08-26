@@ -9,6 +9,20 @@ const DIALOG_KEYS = Object.freeze({
   openKey: 'dialogOpen',
 });
 
+function readCapsuleBottom() {
+  const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+  let menuRect = null;
+  try {
+    menuRect = wx.getMenuButtonBoundingClientRect();
+  } catch (error) {
+    menuRect = null;
+  }
+  const statusBarHeight = Number(windowInfo.statusBarHeight || 0);
+  const menuTop = Number((menuRect && menuRect.top) || statusBarHeight + 6);
+  const menuHeight = Number((menuRect && menuRect.height) || 32);
+  return Math.ceil(Number((menuRect && menuRect.bottom) || menuTop + menuHeight));
+}
+
 Component({
   properties: {
     visible: {
@@ -24,7 +38,8 @@ Component({
   data: {
     dialogMounted: false,
     dialogOpen: false,
-    displayName: '专属设计师',
+    capsuleBottom: 84,
+    displayName: '专属家装设计顾问',
     wechatId: '',
     hasQr: false,
     qrPath: '',
@@ -39,6 +54,7 @@ Component({
   observers: {
     'visible, designer'(visible, designer) {
       if (visible) {
+        this.syncCapsuleSafeArea();
         this.syncDesigner(designer);
         openSheet(this, DIALOG_KEYS);
         return;
@@ -48,6 +64,10 @@ Component({
   },
 
   lifetimes: {
+    attached() {
+      this.syncCapsuleSafeArea();
+    },
+
     detached() {
       this._qrRequestId = (this._qrRequestId || 0) + 1;
       clearSheetTimer(this, DIALOG_KEYS.openKey);
@@ -57,10 +77,14 @@ Component({
   methods: {
     noop() {},
 
+    syncCapsuleSafeArea() {
+      this.setData({ capsuleBottom: readCapsuleBottom() });
+    },
+
     syncDesigner(designer) {
       const wechatId = String((designer && designer.wechatId) || '').trim();
       const wechatQrUrl = designer && designer.wechatQrUrl ? String(designer.wechatQrUrl) : '';
-      const displayName = String((designer && designer.displayName) || '').trim() || '专属设计师';
+      const displayName = String((designer && designer.displayName) || '').trim() || '专属家装设计顾问';
       const professionalProfile = designer && designer.professionalProfile && typeof designer.professionalProfile === 'object'
         ? designer.professionalProfile
         : null;

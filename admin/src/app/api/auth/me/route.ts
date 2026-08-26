@@ -6,6 +6,7 @@ import {
   EnterpriseRepository,
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
+import { setAdminSessionCookie, signAdminSession } from '@/lib/admin-session';
 import {
   enterpriseAccessDeniedMessage,
   isEnterpriseOperationallyActive,
@@ -130,6 +131,7 @@ export async function GET(request: Request) {
       success: true,
       data: {
         ...data,
+        mustChangePassword: result.admin.mustChangePassword,
         effectivePermissions,
         workbenchType: getWorkbenchType(result.admin.role),
       },
@@ -143,31 +145,14 @@ export async function GET(request: Request) {
       effectivePermissions.some(
         (permission) => !tokenPermissions.includes(permission)
       );
-    if (permissionsChanged) {
-      const refreshedToken = await new jose.SignJWT({
-        id: result.admin.id.toString(),
-        username: result.admin.username,
-        displayName: result.admin.displayName,
-        role: result.admin.role,
-        enterpriseId: result.admin.enterpriseId?.toString() || null,
+    const passwordRequirementChanged =
+      (payload.mustChangePassword === true) !== result.admin.mustChangePassword;
+    if (permissionsChanged || passwordRequirementChanged) {
+      const refreshedToken = await signAdminSession({
+        admin: result.admin,
         permissions: effectivePermissions,
-      })
-        .setProtectedHeader({ alg: 'HS256' })
-        .setIssuedAt()
-        .setExpirationTime('24h')
-        .sign(secret);
-      const secureAuthCookie =
-        process.env.NODE_ENV === 'production' &&
-        process.env.AUTH_COOKIE_SECURE !== 'false';
-      response.cookies.set({
-        name: 'auth_token',
-        value: refreshedToken,
-        httpOnly: true,
-        secure: secureAuthCookie,
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24,
-        path: '/',
       });
+      setAdminSessionCookie(response, refreshedToken);
     }
 
     return response;

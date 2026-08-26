@@ -104,7 +104,8 @@ export class AdminUserRepository {
       filters.push(
         or(
           ilike(adminUsers.username, pattern),
-          ilike(adminUsers.displayName, pattern)
+          ilike(adminUsers.displayName, pattern),
+          ilike(adminUsers.phone, pattern)
         )!
       );
     }

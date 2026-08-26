@@ -68,7 +68,7 @@ the survey primary entry.
 
 | Role | Items | Capabilities | Badge source |
 | --- | --- | --- | --- |
-| Customer | `Service / Mine` | `customer.service`, `account` | Server-owned reschedule/rebook counts; failures say unavailable. Service home opens the archive directly; `customer.projects` still guards archive/list API access while `customer-projects` is only a redirect shell |
+| Customer | `Service / Mine` | `customer.service`, `account` | Server-owned reschedule/rebook counts; failures say unavailable. Service home opens the archive directly; `免费效果图` opens the delivered-scheme folio; `customer.projects` still guards archive/list API access while `customer-projects` is only a redirect shell |
 | Referrer | `Promotion / Progress / Earnings / Mine` | `referrer.promotion`, `referrer.progress`, `referrer.earnings`, `account` | Masked milestones and own payout state for the active membership |
 | Designer | `Workbench / Customers / Design / Earnings / Mine` | `staff.leads`, `staff.appointments`, `staff.design`, `staff.earnings`, `account` | Own follow-up/appointment/publication state plus payable own commissions; no fake numbers |
 | Measurer | `Workbench / Customers / Earnings / Mine` | `staff.schedule`, `staff.tasks`, `staff.earnings`, `account` | Workbench tab aggregates today's appointments; “Customers” tab reuses the shared `leads-management` lead list (role-scoped, no create) for assigned/promoted customers and handoff status. Earnings shows own payable/paid commissions. Formal-survey editor remains reachable only from task context deep links |
@@ -129,6 +129,29 @@ The shell owns context and entry only. These deep pages retain their approved so
 
 The shell source pack is `design-references/role-shell-v1/`. This document and its Chinese mirror are
 the structural, state, and safe-area text source; no full-page screenshot is packaged in the Mini Program.
+
+### 7.1 Logged-out Mine gateway element ledger
+
+The current approved source is
+`design-references/auth/miniprogram-guest-login-jovekore-v2-full.png`. At the
+`390x844` baseline, production uses the following intrinsic stack; tall screens
+may leave extra page background only after the final trust row and must not open
+a viewport-growing gap inside the scene-to-panel reading group.
+
+| Element | Baseline production target | Source / implementation mapping |
+| --- | --- | --- |
+| Capsule-safe brand lockup | Runtime `navigationTop` + `navigationHeight`; `58rpx` logo and `30rpx` lockup text | Native `brand-logo.png` plus native text, left of the capsule lane |
+| Identity-reception scene | `700rpx` high at `390px`; `660rpx` under `360px` | Standalone generated `images/home-ip-v1/login-identity-portal-v2.jpg`; no composite slicing |
+| Overlapping native panel | `32rpx` side margins; `-34rpx` overlap; `34rpx` radius | Native WXML/Less; warm-white surface and downward soft shadow |
+| Heading / helper | `40rpx` / `24rpx` (`38rpx` heading under `360px`) | Native text; one-line heading target at the baseline |
+| Identity rail | `104rpx` icon containers, `58rpx` visible icon bounds, `24rpx` labels | Native `个人用户 / 员工 / 推荐人`; three Lucide-derived PNGs recorded under `docs/icon-sources/mine/` |
+| Match note | `22rpx` native copy with half-pixel short separators | `登录后自动匹配身份`; informational, not interactive |
+| Primary CTA | `92rpx` high, `28rpx` label | Sole executable `立即登录` action; keeps existing `goToLogin` route |
+| Trust row / bottom | `22rpx` copy above `env(safe-area-inset-bottom)` | `一个账号 · 多重身份 · 随时切换`; no second action |
+
+Static layout, asset signatures, encoded sizes, and the `<=360px` rules are
+verified in focused tests. Native `390x844` capsule-host optical verification
+remains pending the user's manual runtime screenshot.
 
 ## 8. Approval acceptance checklist
 

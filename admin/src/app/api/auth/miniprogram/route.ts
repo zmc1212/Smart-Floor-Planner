@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import {
   AdminUserRepository,
@@ -28,6 +27,7 @@ import {
   getWechatPhoneNumber,
   getWechatSessionIdentity,
 } from '@/lib/wechat-miniprogram-auth';
+import { authenticateAdminCredential } from '@/lib/admin-credential-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,26 +55,38 @@ export async function POST(request: Request) {
         return badRequest('请输入用户名和密码');
       }
       const result = await withPlatformTransaction(async (transaction) => {
-        const staff = await new AdminUserRepository(
-          transaction
-        ).findByUsernameOrPhone(identifier, true);
-        if (!staff) return null;
-        if (!(await bcrypt.compare(body.password, staff.passwordHash))) {
-          return null;
-        }
+        const repository = new AdminUserRepository(transaction);
+        const credential = await authenticateAdminCredential(
+          repository,
+          identifier,
+          body.password
+        );
+        if (credential.kind !== 'ok') return credential;
+        const staff = credential.admin;
         const user = await new MiniProgramIdentityRepository(
           transaction
         ).ensureStaffUser(staff);
-        return { staff, user };
+        return { kind: 'ok' as const, staff, user };
       });
-      if (!result) {
+      if (result.kind === 'invalid_credentials') {
         return NextResponse.json(
-          { success: false, error: '用户名或密码错误' },
+          { success: false, error: '手机号/账号或密码错误' },
           { status: 401 }
         );
       }
+      if (result.kind === 'ambiguous_identifier') {
+        return NextResponse.json(
+          {
+            success: false,
+            code: 'ambiguous_identifier',
+            error: '该手机号关联多个账号，请改用企业负责人提供的内部登录账号',
+          },
+          { status: 409 }
+        );
+      }
       identity = {
-        ...result,
+        staff: result.staff,
+        user: result.user,
         openid: result.staff.openid,
         source: 'password',
       };
@@ -221,10 +233,16 @@ export async function POST(request: Request) {
       contextVersion: user.contextVersion,
       context: responseContext.selected,
       source,
+      mustChangePassword:
+        source === 'password' && selectedStaff?.mustChangePassword === true,
     });
+
+    const requiresPasswordChange =
+      source === 'password' && selectedStaff?.mustChangePassword === true;
 
     return NextResponse.json({
       success: true,
+      requiresPasswordChange,
       token,
       openid,
       mode: responseContext.selected.mode,
@@ -255,6 +273,7 @@ export async function POST(request: Request) {
         workbenchType: getWorkbenchType(
           responseContext.selected.staffRole || undefined
         ),
+        requiresPasswordChange,
         openid,
       },
     });

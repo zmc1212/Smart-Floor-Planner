@@ -33,7 +33,7 @@ export async function requireMiniStudioContext(request: Request): Promise<MiniSt
     return NextResponse.json({ success: false, error: '仅企业员工可以使用 AI 方案工作台' }, { status: 403 });
   }
   if (!STUDIO_ROLES.has(context.role)) {
-    return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可以使用 AI 方案工作台' }, { status: 403 });
+    return NextResponse.json({ success: false, error: '仅负责家装设计顾问或企业负责人可以使用 AI 方案工作台' }, { status: 403 });
   }
   return context;
 }

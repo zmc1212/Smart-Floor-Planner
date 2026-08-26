@@ -13,7 +13,7 @@ import {
   type ProColumns,
 } from '@ant-design/pro-components';
 import { Alert, Avatar, Button, Card, Drawer, Flex, Form, Select, Space, Switch, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
-import { Award, FolderPlus, Pencil, Plus, ShieldCheck, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
+import { Award, FolderPlus, KeyRound, Pencil, Plus, ShieldCheck, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { ImageUploadField } from '@/components/admin/image-upload-field';
 import { notify } from '@/components/admin/operation-feedback';
@@ -39,13 +39,13 @@ type StaffMember = {
   wechatQrAssetId?: string | null;
   assignmentPaused?: boolean;
   leadCapacityOverride?: number | null;
+  mustChangePassword?: boolean;
 };
 
 type StaffRole = 'enterprise_admin' | 'designer' | 'measurer' | 'salesperson';
 
 type StaffForm = {
-  username: string;
-  password?: string;
+  username?: string;
   displayName: string;
   phone?: string;
   role: StaffRole;
@@ -365,7 +365,7 @@ export default function StaffPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '保存员工失败');
-      notify.success(isEdit ? '员工信息已更新' : '员工账号已创建');
+      notify.success(isEdit ? '员工信息已更新' : '员工账号已创建，初始密码为 123456');
       setStaffFormOpen(false);
       setEditingStaff(null);
       setWechatQrAssetId(null);
@@ -389,6 +389,29 @@ export default function StaffPage() {
       await actionRef.current?.reload();
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '删除员工失败');
+    }
+  };
+
+  const resetStaffPassword = async (member: StaffMember) => {
+    const confirmed = await confirmAction({
+      title: '重置员工登录密码',
+      description: `将“${member.displayName || member.username}”的登录密码重置为 123456。该员工下次使用密码登录时必须先设置新密码。`,
+      confirmText: '确认重置',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    try {
+      const response = await fetch(`/api/staff/${member._id}/reset-password`, {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '重置员工密码失败');
+      }
+      notify.success('密码已重置为 123456，员工下次登录须先修改密码');
+      await actionRef.current?.reload();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '重置员工密码失败');
     }
   };
 
@@ -442,7 +465,16 @@ export default function StaffPage() {
       title: '员工', dataIndex: 'displayName', width: 240, hideInSearch: true,
       render: (_, member) => <Space size={12}><Avatar icon={<Users size={16} />} className="!bg-primary !text-primary-foreground">{member.displayName?.[0] || member.username[0]?.toUpperCase()}</Avatar><Flex vertical gap={0}><Typography.Text strong>{member.displayName || member.username}</Typography.Text><Typography.Text type="secondary" className="text-xs">@{member.username}</Typography.Text></Flex></Space>,
     },
-    { title: '联系电话', dataIndex: 'phone', width: 160, hideInSearch: true, render: (value) => value || <Typography.Text type="secondary">未填写</Typography.Text> },
+    { title: '登录手机号', dataIndex: 'phone', width: 160, hideInSearch: true, render: (value) => value || <Typography.Text type="secondary">未填写</Typography.Text> },
+    {
+      title: '登录状态',
+      key: 'loginStatus',
+      width: 140,
+      hideInSearch: true,
+      render: (_, member) => member.mustChangePassword
+        ? <Tag color="orange">首次登录待改密</Tag>
+        : <Tag color="green">密码已设置</Tag>,
+    },
     { title: '所属部门', key: 'department', width: 180, hideInSearch: true, render: (_, member) => <Typography.Text>{departmentNameOf(member, departments)}</Typography.Text> },
     {
       title: '自动派单',
@@ -455,11 +487,15 @@ export default function StaffPage() {
     },
     { title: '创建时间', dataIndex: 'createdAt', valueType: 'dateTime', width: 180, hideInSearch: true, render: (_, member) => member.createdAt ? new Date(member.createdAt).toLocaleString() : '-' },
     {
-      title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 260, hideInSearch: true,
+      title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 360, hideInSearch: true,
       render: (_, member) => {
         if (!canManage) return [];
+        const canResetPassword =
+          currentUser?._id !== member._id &&
+          !(currentUser?.role === 'enterprise_admin' && member.role === 'enterprise_admin');
         return <Space size={8}>
           {['designer', 'measurer'].includes(member.role) ? <Button size="small" icon={<Award size={14} />} onClick={() => { void openStaffProfessionalProfile(member); }}>背书</Button> : null}
+          {canResetPassword ? <Button size="small" icon={<KeyRound size={14} />} onClick={() => { void resetStaffPassword(member); }}>重置密码</Button> : null}
           <Button size="small" icon={<Pencil size={14} />} onClick={() => { setStaffRole(member.role); setEditingStaff(member); setStaffFormOpen(true); }}>编辑</Button>
           <Button size="small" danger icon={<Trash2 size={14} />} onClick={() => { void deleteStaff(member); }}>删除</Button>
         </Space>;
@@ -526,7 +562,7 @@ export default function StaffPage() {
                   search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
                   options={{ reload: true, density: true, setting: true }}
                   pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-                  scroll={{ x: 900 }}
+                  scroll={{ x: 1180 }}
                   request={async (params) => {
                     const query = new URLSearchParams({ page: String(params.current || 1), limit: String(params.pageSize || 20) });
                     if (selectedDepartmentId) query.set('departmentId', selectedDepartmentId);
@@ -793,10 +829,28 @@ export default function StaffPage() {
         onFinish={saveStaff}
         submitter={{ searchConfig: { submitText: editingStaff ? '保存员工' : '创建员工' }, render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex> }}
       >
-        <ProFormText name="username" label="登录账号" rules={[{ required: true, message: '请输入登录账号' }]} fieldProps={{ autoComplete: 'username', placeholder: '例如：designer_zhang' }} />
-        <ProFormText.Password name="password" label={editingStaff ? '重置密码（留空则不修改）' : '登录密码'} rules={editingStaff ? [] : [{ required: true, message: '请输入登录密码' }, { min: 6, message: '密码不少于 6 位' }]} fieldProps={{ autoComplete: 'new-password' }} />
+        <Alert
+          showIcon
+          type="info"
+          className="mb-5"
+          message={editingStaff ? '手机号是员工的主要登录账号' : '新员工初始密码为 123456'}
+          description={editingStaff
+            ? '内部账号用于手机号关联多个企业账号时的备用登录；修改密码请使用员工列表中的“重置密码”。'
+            : '系统会自动生成内部备用账号。员工首次使用手机号和初始密码登录后，必须立即设置新密码。'}
+        />
+        {editingStaff ? (
+          <ProFormText name="username" label="内部备用账号" disabled fieldProps={{ autoComplete: 'username' }} />
+        ) : null}
         <ProFormText name="displayName" label="姓名或昵称" rules={[{ required: true, message: '请输入显示名称' }]} />
-        <ProFormText name="phone" label="联系电话" fieldProps={{ inputMode: 'tel', placeholder: '11 位手机号' }} />
+        <ProFormText
+          name="phone"
+          label="登录手机号"
+          rules={[
+            { required: true, message: '请输入登录手机号' },
+            { pattern: /^1[3-9]\d{9}$/, message: '请输入 11 位有效手机号' },
+          ]}
+          fieldProps={{ inputMode: 'tel', maxLength: 11, placeholder: '11 位手机号' }}
+        />
         <ProFormSelect name="departmentId" label="所属部门" options={[{ label: '不指定部门', value: '' }, ...departments.map((department) => ({ label: department.name, value: department._id }))]} />
         <ProFormSelect
           name="role"

@@ -26,13 +26,13 @@ test('companion subtitle uses appointmentSummary once and inset title does not r
     projects: [{
       leadId: '1',
       serviceStage: 'measurer_assigned',
-      serviceStageLabel: '已匹配测量员',
-      appointmentSummary: '已匹配设计师和测量员，请预约上门量房时间',
+      serviceStageLabel: '已匹配家装现场顾问',
+      appointmentSummary: '已匹配家装设计顾问和家装现场顾问，请预约上门量房时间',
       nextActionKind: 'book',
       nextActionLabel: '预约上门',
     }],
   });
-  assert.equal(state.subtitle, '已匹配设计师和测量员，请预约上门量房时间');
+  assert.equal(state.subtitle, '已匹配家装设计顾问和家装现场顾问，请预约上门量房时间');
   assert.equal(state.insetTitle, '待预约上门量房');
   assert.notEqual(state.insetHelper, state.subtitle);
   assert.equal(state.primaryCta.label, '预约上门');
@@ -88,7 +88,7 @@ test('published unsurveyed home keeps one hero archive CTA and routes makeup thr
   const js = fs.readFileSync(path.join(componentRoot, 'customer-service-home.js'), 'utf8');
   assert.match(wxml, /class="ticket-cta primary/);
   assert.match(wxml, /wx:if="\{\{showSecondaryCta\}\}"/);
-  assert.match(wxml, /benefit-service-card measurement-card/);
+  assert.match(wxml, /benefit-service-card onsite-advisor-card/);
   assert.match(wxml, /bindtap="openBookShortcut"/);
   assert.match(js, /const kind = this\.data\.bookShortcutKind \|\| this\.data\.nextActionKind;/);
   assert.match(js, /kind === 'book' \|\| kind === 'rebook'/);
@@ -109,7 +109,7 @@ test('hides secondary archive CTA when primary already opens archive', () => {
   assert.equal(state.primaryCta.label, '我的服务档案');
 });
 
-test('dual-benefit status copy follows the real service stage', () => {
+test('three-benefit status copy follows the real service stage', () => {
   assert.equal(resolveBenefitStatusLabel('design_published'), '方案已交付');
   assert.equal(resolveBenefitStatusLabel('survey_completed'), '量房已完成');
   assert.equal(resolveBenefitStatusLabel('appointment_confirmed'), '已预约上门');
@@ -184,7 +184,7 @@ test('pending match keeps 等待派单 only on the primary CTA', () => {
     projects: [{
       leadId: '1',
       serviceStage: 'assignment_pending',
-      appointmentSummary: '正在为您匹配设计师和测量员',
+      appointmentSummary: '正在为您匹配家装设计顾问和家装现场顾问',
       nextActionKind: 'wait_designer',
       nextActionLabel: '等待派单',
     }],
@@ -198,27 +198,52 @@ test('pending match keeps 等待派单 only on the primary CTA', () => {
 test('customer-service-home component follows stage-companion contract', () => {
   const wxml = fs.readFileSync(path.join(componentRoot, 'customer-service-home.wxml'), 'utf8');
   const js = fs.readFileSync(path.join(componentRoot, 'customer-service-home.js'), 'utf8');
+  const less = fs.readFileSync(path.join(componentRoot, 'customer-service-home.less'), 'utf8');
   const json = JSON.parse(fs.readFileSync(path.join(componentRoot, 'customer-service-home.json'), 'utf8'));
 
   assert.equal(json.component, true);
   assert.match(wxml, /家客来 · 服务向导/);
   assert.match(wxml, /专业服务/);
-  assert.match(wxml, /两项服务，全程免费/);
-  assert.match(wxml, /免费量房/);
-  assert.match(wxml, /免费设计/);
-  assert.match(wxml, /上门精准量尺 · 1对1全屋方案/);
-  assert.match(wxml, /量房、设计不收费/);
+  assert.match(wxml, /三项免费权益/);
+  assert.match(wxml, /三个免费，装修更省心/);
+  assert.match(wxml, /免费效果图/);
+  assert.match(wxml, /免费家装设计顾问/);
+  assert.match(wxml, /免费家装现场顾问/);
+  assert.match(wxml, /出到客户满意为止/);
+  assert.match(wxml, /解答你的装修问题/);
+  assert.match(wxml, /解答现场问题/);
+  assert.match(wxml, /三项服务不收费/);
   assert.match(wxml, /ticket-main-row/);
-  assert.match(wxml, /benefit-service-card measurement-card/);
-  assert.match(wxml, /benefit-service-card design-card/);
+  assert.match(wxml, /class="ticket-copy"/);
+  assert.match(wxml, /ticket-actions \{\{showSecondaryCta \? 'dual' : 'single'\}\}/);
+  assert.match(less, /\.ticket-main-row\.no-media \.ticket-status\s*\{[\s\S]*display: grid;[\s\S]*grid-template-columns:/);
+  assert.match(wxml, /benefit-service-card effect-card/);
+  assert.match(wxml, /benefit-service-card design-advisor-card/);
+  assert.match(wxml, /benefit-service-card onsite-advisor-card/);
+  assert.match(wxml, /class="benefit-arrow"/);
+  assert.match(wxml, /class="benefit-arrow-icon" src="\/images\/customer-service-three-free\/chevron-right\.png"/);
+  assert.match(less, /\.benefit-arrow\s*\{[\s\S]*?display:\s*flex;[\s\S]*?align-items:\s*center;[\s\S]*?justify-content:\s*center;/);
+  assert.match(less, /\.benefit-arrow-icon\s*\{[\s\S]*?width:\s*44rpx;[\s\S]*?height:\s*44rpx;/);
+  assert.doesNotMatch(wxml, /benefit-arrow-mark/);
+  assert.doesNotMatch(less, /\.benefit-arrow-mark|\.benefit-arrow::after|translate\(-62%/);
+  assert.match(wxml, /bindtap="openEffectShortcut"/);
   assert.match(wxml, /我的服务档案/);
   assert.match(wxml, /还有/);
   assert.doesNotMatch(wxml, /查看全部项目/);
   assert.doesNotMatch(wxml, />我的服务</);
 
-  assert.match(js, /\/images\/airy-v1\/project-delivery-xiao-k\.png/);
+  assert.match(js, /\/images\/customer-service-three-free\/xiao-k-three-benefits\.png/);
+  assert.match(wxml, /\/images\/customer-service-three-free\/effect-room\.jpg/);
+  assert.match(wxml, /\/images\/customer-service-three-free\/design-advisor-3d\.png/);
+  assert.match(wxml, /\/images\/customer-service-three-free\/onsite-advisor-3d\.png/);
+  assert.doesNotMatch(wxml, /ai-design-icons\/reference\.png|mine-icons\/bulb\.png|location-pin\.png/);
+  assert.doesNotMatch(`${js}\n${wxml}`, /\/packages\/business\/assets\//);
+  assert.match(js, /openEffectShortcut\(\)/);
+  assert.match(js, /openAiSchemes\(\)/);
+  assert.match(js, /customer-ai-schemes\/customer-ai-schemes\?leadId=/);
+  assert.match(js, /mode=customer/);
   assert.doesNotMatch(js, /xiao-k-mascot-3d\.png/);
-  assert.doesNotMatch(js, /packages\/business\/assets\/customer-project-v1\/project-delivery-xiao-k\.png/);
+  assert.doesNotMatch(wxml, /两项服务，全程免费|免费量房|benefit-service-card measurement-card/);
   assert.match(js, /['"`]\/miniprogram\/customer-projects['"`]/);
   assert.match(js, /\/miniprogram\/customer-projects\/\$\{(?:encodeURIComponent\()?featuredLeadId/);
   assert.match(js, /customer-project\?leadId=/);
@@ -250,6 +275,31 @@ test('customer-service-home component follows stage-companion contract', () => {
   assert.match(js, /designer-contact-sheet|closeContactSheet/);
   assert.match(wxml, /designer-contact-sheet/);
   assert.match(json.usingComponents['designer-contact-sheet'], /designer-contact-sheet/);
+});
+
+test('customer-service-home three-free artwork is packaged in the main package', () => {
+  const assetRoot = path.join(root, 'images', 'customer-service-three-free');
+  const pngAssetNames = [
+    'xiao-k-three-benefits.png',
+    'design-advisor-3d.png',
+    'onsite-advisor-3d.png',
+    'chevron-right.png',
+  ];
+
+  for (const assetName of pngAssetNames) {
+    const assetPath = path.join(assetRoot, assetName);
+    const bytes = fs.readFileSync(assetPath);
+    assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(bytes.length <= 300 * 1024, `${assetName} must stay within the 300KB Mini Program budget`);
+  }
+
+  const chevronBytes = fs.readFileSync(path.join(assetRoot, 'chevron-right.png'));
+  assert.equal(chevronBytes[25], 6, 'chevron-right.png must be RGBA so it can sit on the green circle');
+
+  const jpegName = 'effect-room.jpg';
+  const jpegBytes = fs.readFileSync(path.join(assetRoot, jpegName));
+  assert.deepEqual([...jpegBytes.subarray(0, 3)], [255, 216, 255]);
+  assert.ok(jpegBytes.length <= 300 * 1024, `${jpegName} must stay within the 300KB Mini Program budget`);
 });
 
 test('customer-projects list route is a redirect shell for deep links only', () => {

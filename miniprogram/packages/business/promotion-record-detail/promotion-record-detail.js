@@ -156,8 +156,8 @@ Page({
     measurerIndex: -1,
     designerIndex: -1,
     promoterIndex: -1,
-    selectedMeasurerName: '选择测量员',
-    selectedDesignerName: '选择设计师',
+    selectedMeasurerName: '选择家装现场顾问',
+    selectedDesignerName: '选择家装设计顾问',
     selectedPromoterName: '选择地推员',
     measurerAssignmentLabel: '未分配',
     designerAssignmentLabel: '未分配',
@@ -261,8 +261,8 @@ Page({
         measurerIndex: measurers.findIndex(item => item._id === (record.measureTask && record.measureTask.assignedTo?._id)),
         designerIndex: designers.findIndex(item => item._id === (record.designTask && record.designTask.assignedTo?._id)),
         promoterIndex: salespeople.findIndex(item => item._id === ((record.promoterId && record.promoterId._id) || record.promoterId)),
-        selectedMeasurerName: getStaffName(record.measureTask && record.measureTask.assignedTo, '选择测量员'),
-        selectedDesignerName: getStaffName(record.designTask && record.designTask.assignedTo, '选择设计师'),
+        selectedMeasurerName: getStaffName(record.measureTask && record.measureTask.assignedTo, '选择家装现场顾问'),
+        selectedDesignerName: getStaffName(record.designTask && record.designTask.assignedTo, '选择家装设计顾问'),
         measurerAssignmentLabel: getStaffName(record.measureTask && record.measureTask.assignedTo, '未分配'),
         designerAssignmentLabel: getStaffName(record.designTask && record.designTask.assignedTo, '未分配'),
         selectedPromoterName: (record.promoterId && (record.promoterId.displayName || record.promoterId.username)) || '选择地推员'
@@ -458,7 +458,7 @@ Page({
     const item = this.data.measurers[measurerIndex];
     this.setData({
       measurerIndex,
-      selectedMeasurerName: item ? (item.displayName || item.username) : '选择测量员',
+      selectedMeasurerName: item ? (item.displayName || item.username) : '选择家装现场顾问',
       measurerAssignmentLabel: item ? (item.displayName || item.username) : '未分配'
     });
   },
@@ -468,7 +468,7 @@ Page({
     const item = this.data.designers[designerIndex];
     this.setData({
       designerIndex,
-      selectedDesignerName: item ? (item.displayName || item.username) : '选择设计师',
+      selectedDesignerName: item ? (item.displayName || item.username) : '选择家装设计顾问',
       designerAssignmentLabel: item ? (item.displayName || item.username) : '未分配'
     });
   },

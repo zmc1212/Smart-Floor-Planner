@@ -66,7 +66,7 @@ export async function GET(
   try {
     const actor = await resolveStaffActor(request);
     if (!actor) {
-      return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可查看已发布方案' }, { status: 403 });
+      return NextResponse.json({ success: false, error: '仅负责家装设计顾问或企业负责人可查看已发布方案' }, { status: 403 });
     }
 
     const { id: leadIdText, generationId: generationIdText } = await params;

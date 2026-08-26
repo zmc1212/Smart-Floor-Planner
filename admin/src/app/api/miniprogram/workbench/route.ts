@@ -150,7 +150,7 @@ export async function GET(request: Request) {
           : followUps.slice(0, 8);
         return {
           role,
-          title: '设计师工作台',
+          title: '家装设计顾问工作台',
           subtitle: '优先处理过期未重约与本人待跟进客户',
           summary: [
             { key: 'expired', label: '过期未重约', value: ownExpired.length, detail: '需要重新预约上门', tone: 'orange' },

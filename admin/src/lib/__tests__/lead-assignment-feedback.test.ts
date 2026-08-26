@@ -9,11 +9,11 @@ import {
 test('pending assignment shows the concrete staffing error, not a generic 待派单', () => {
   assert.equal(
     getAssignmentStatusLabel('assignment_pending', 'designer_unavailable'),
-    '暂无可用设计师'
+    '暂无可用家装设计顾问'
   );
   assert.equal(
     getAssignmentStatusLabel('assignment_pending', 'measurer_unavailable'),
-    '暂无可用测量员'
+    '暂无可用家装现场顾问'
   );
   assert.equal(getAssignmentStatusLabel('assigned', null), '已派单');
 });

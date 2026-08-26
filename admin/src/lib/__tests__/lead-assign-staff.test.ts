@@ -34,7 +34,7 @@ test('assign-staff accepts Mini Program JWT or Admin Cookie and enforces the rol
   assert.match(assignRoute, /actorRole: actor\.role/);
   assert.match(assignRoute, /designerId/);
   assert.match(assignRoute, /measurerId/);
-  assert.match(assignRoute, /请至少选择一名设计师或测量员/);
+  assert.match(assignRoute, /请至少选择一名家装设计顾问或家装现场顾问/);
   assert.match(assignRoute, /attachLeadAssignmentActions/);
   assert.doesNotMatch(assignRoute, /requireMiniProgramEnterpriseAdmin/);
 });

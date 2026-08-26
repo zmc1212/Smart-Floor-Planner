@@ -1,5 +1,5 @@
 <!--
-THESIS: 设计师先确认客户与地址，再从服务端返回的真实可用时段中完成首次预约。
+THESIS: 家装设计顾问先确认客户与地址，再从服务端返回的真实可用时段中完成首次预约。
 OWN-WORLD: 预约协调小 K 只出现一次，陪同选择时间而不替代真实排期。
 FORM: Antigravity design source `phase-5-designer-appointment-booking-v1.png`; the composite reference is never rendered or sliced.
 -->
@@ -30,7 +30,7 @@ FORM: Antigravity design source `phase-5-designer-appointment-booking-v1.png`; t
           </view>
         </view>
       </view>
-      <view wx:if="{{location}}" class="location-hint">已记录地图坐标，测量员可一键导航</view>
+      <view wx:if="{{location}}" class="location-hint">已记录地图坐标，家装现场顾问可一键导航</view>
       <view class="hairline"></view>
       <view class="address-field"><text class="line-label">详细地址</text><input value="{{address}}" maxlength="300" placeholder="填写小区、楼栋、单元和门牌号" bindinput="onAddressInput" /></view>
     </view>
@@ -43,7 +43,7 @@ FORM: Antigravity design source `phase-5-designer-appointment-booking-v1.png`; t
     <view wx:if="{{loadingSlots}}" class="slots-state">正在计算可用时段…</view>
     <view wx:elif="{{error}}" class="slots-state"><text>{{error}}</text><button class="retry" bindtap="loadSlots">重试</button></view>
     <view wx:else class="slot-grid"><view wx:for="{{slots}}" wx:key="startAt" class="slot {{selectedSlot.startAt === item.startAt ? 'slot-selected' : ''}}" data-slot="{{item}}" bindtap="chooseSlot">{{item.label}}</view><text wx:if="{{!slots.length}}" class="slots-state">当天暂无可用时段，请选择其他日期。</text></view>
-    <text class="scheduling-note">地图选点可帮助测量员一键导航；请补全楼栋、单元和门牌号。系统将安排合适的量房伙伴上门；如遇排期冲突，将自动协同调整人员。</text>
+    <text class="scheduling-note">地图选点可帮助家装现场顾问一键导航；请补全楼栋、单元和门牌号。系统将安排合适的量房伙伴上门；如遇排期冲突，将自动协同调整人员。</text>
   </view>
 
   <view class="confirm-bar"><button class="confirm sfp-primary-action" style="width: {{actionWidth}}px;" loading="{{submitting}}" disabled="{{!selectedSlot || submitting}}" bindtap="submit">确认预约{{selectedSlot ? ' ' + selectedSlot.label : ''}}</button></view>

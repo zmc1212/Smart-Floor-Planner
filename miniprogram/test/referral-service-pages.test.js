@@ -11,6 +11,7 @@ function source(relativePath) {
 
 const referralAssets = [
   'thumbs-up-xiao-k.png',
+  'xiao-k-service-archive-guide.png',
   'onsite-measurement.png',
   'designer-service.png',
   'phone-authorization.png',
@@ -29,7 +30,7 @@ test('staff activity code reuses the promotion visual language and may show the 
   const less = source('packages/business/staff-activity-code/staff-activity-code.less');
 
   assert.match(wxml, /免费设计服务/);
-  assert.match(wxml, /免费上门量房 · 专业设计师服务/);
+  assert.match(wxml, /免费上门量房 · 专业家装设计顾问服务/);
   assert.match(wxml, /请客户扫描此码/);
   assert.match(wxml, /分享给客户/);
   assert.doesNotMatch(wxml, /让客户扫码领取/);
@@ -126,10 +127,10 @@ test('promotion service screen keeps the public presentation anonymous and scana
   const less = source('packages/business/promotion-service-code/promotion-service-code.less');
 
   assert.match(wxml, /免费设计服务/);
-  assert.match(wxml, /免费上门量房 · 专业设计师服务/);
+  assert.match(wxml, /免费上门量房 · 专业家装设计顾问服务/);
   assert.match(wxml, /请客户扫描此码/);
   assert.match(wxml, /0元服务/);
-  assert.match(wxml, /设计师匹配/);
+  assert.match(wxml, /家装设计顾问匹配/);
   assert.match(wxml, /分享给客户/);
   assert.doesNotMatch(wxml, /让客户扫码领取/);
   assert.match(wxml, /open-type="share"/);
@@ -157,6 +158,32 @@ test('promotion service screen keeps the public presentation anonymous and scana
   assert.match(less, /\.back-chevron/);
 });
 
+test('free design service success state is archive first and uses real designer proof', () => {
+  const wxml = source('packages/business/free-design-service/free-design-service.wxml');
+  const less = source('packages/business/free-design-service/free-design-service.less');
+  const successMarkup = wxml.match(
+    /<view wx:elif="\{\{pageState === 'success'\}\}"[\s\S]*?(?=<view wx:elif="\{\{pageState === 'existing'\}\}")/,
+  )?.[0] || '';
+
+  assert.match(successMarkup, /领取完成[\s\S]*授权完成[\s\S]*顾问已匹配/);
+  assert.match(successMarkup, /你的服务档案已建立/);
+  assert.match(successMarkup, /量房、户型、方案与服务进度，都在这里持续更新/);
+  assert.match(successMarkup, /服务进度[\s\S]*户型档案[\s\S]*设计方案/);
+  assert.match(successMarkup, /xiao-k-service-archive-guide\.png/);
+  assert.match(successMarkup, /查看服务档案<\/button>[\s\S]*success-contact-card[\s\S]*查看微信/);
+  assert.match(successMarkup, /professionalProfile\.titleVisible/);
+  assert.match(successMarkup, /professionalProfile\.experienceLabel/);
+  assert.match(successMarkup, /professionalProfile\.serviceLabel/);
+  assert.doesNotMatch(successMarkup, /量房预约与方案沟通可通过微信联系/);
+  assert.doesNotMatch(successMarkup, /后续量房预约、户型确认与方案沟通由家装设计顾问微信跟进/);
+  assert.doesNotMatch(successMarkup, /claim-action-outline success-contact-action/);
+  assert.match(less, /\.success-archive-title\s*\{[^}]*font-size:\s*44rpx/);
+  assert.match(less, /\.success-project-action\s*\{[^}]*min-height:\s*100rpx/);
+  assert.match(less, /\.success-contact-compact\s*\{[^}]*min-height:\s*72rpx/);
+  assert.match(less, /\.success-contact-compact\s*\{[^}]*width:\s*148rpx[^}]*flex:\s*0 0 148rpx/);
+  assert.match(less, /\.success-designer-proof\s*\{[^}]*flex-wrap:\s*wrap/);
+});
+
 test('free design service resolves into phone authorization and renders truthful outcomes', () => {
   const wxml = source('packages/business/free-design-service/free-design-service.wxml');
   const js = source('packages/business/free-design-service/free-design-service.js');
@@ -168,9 +195,12 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /open-type="getPhoneNumber"/);
   assert.match(wxml, /允许微信授权手机号/);
   assert.match(wxml, /pageState === 'phoneAuth'/);
-  assert.match(wxml, /设计师已为你匹配/);
-  assert.match(wxml, /服务档案已建立，后续进度可随时查看/);
-  assert.match(wxml, /success-title/);
+  assert.match(wxml, /你的服务档案已建立/);
+  assert.match(wxml, /量房、户型、方案与服务进度，都在这里持续更新/);
+  assert.match(wxml, /领取完成/);
+  assert.match(wxml, /授权完成/);
+  assert.match(wxml, /顾问已匹配/);
+  assert.match(wxml, /xiao-k-service-archive-guide\.png/);
   assert.match(wxml, /免费量房 · 免费设计/);
   assert.match(phoneAuthMarkup, /三项免费权益/);
   assert.match(phoneAuthMarkup, /装修问题找/);
@@ -179,9 +209,11 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(phoneAuthMarkup, /授权手机号，即可领取以下权益/);
   assert.match(phoneAuthMarkup, /免费效果图/);
   assert.match(phoneAuthMarkup, /出到客户满意为止/);
-  assert.match(phoneAuthMarkup, /免费设计顾问/);
+  assert.match(phoneAuthMarkup, /免费家装设计顾问/);
   assert.match(phoneAuthMarkup, /解答你的装修问题/);
-  assert.match(phoneAuthMarkup, /免费现场顾问/);
+  assert.match(phoneAuthMarkup, /免费家装现场顾问/);
+  assert.doesNotMatch(phoneAuthMarkup, /免费设计顾问/);
+  assert.doesNotMatch(phoneAuthMarkup, /免费现场顾问/);
   assert.match(phoneAuthMarkup, /解答现场问题/);
   assert.match(phoneAuthMarkup, /手机号仅用于服务联系，不公开、不出售/);
   assert.match(phoneAuthMarkup, /xiao-k-three-benefits\.png/);
@@ -199,17 +231,17 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /phone-auth-privacy\.png/);
   assert.doesNotMatch(
     phoneAuthMarkup,
-    /上门|量房|预约|地址|设计师匹配|双重免费权益|授权后我们会|发送设计师微信/,
+    /上门|量房|预约|地址|家装设计顾问匹配|双重免费权益|授权后我们会|发送家装设计顾问微信/,
   );
-  assert.match(wxml, /权益已生效，正在为你匹配合适的设计师/);
+  assert.match(wxml, /权益已生效，正在为你匹配合适的家装设计顾问/);
   assert.match(wxml, /专业人员上门测量/);
-  assert.match(wxml, /设计师沟通方案/);
+  assert.match(wxml, /家装设计顾问沟通方案/);
   assert.match(wxml, /接下来这样进行/);
   assert.match(wxml, /安排上门量房/);
   assert.match(wxml, /围绕户型与需求沟通方案/);
   assert.match(wxml, /查看免费服务档案/);
   assert.match(wxml, /有其他服务需求？补充一下/);
-  assert.match(wxml, /查看服务档案<\/button>[\s\S]*查看设计师微信[\s\S]*<view class="service-needs-link"/);
+  assert.match(wxml, /查看服务档案<\/button>[\s\S]*success-contact-card[\s\S]*查看微信[\s\S]*<view class="service-needs-link"/);
   assert.match(wxml, /xiao-k-spatial-service-guide\.png/);
   assert.doesNotMatch(wxml, /pageState === 'ready'/);
   assert.doesNotMatch(wxml, /一键授权手机号/);
@@ -249,7 +281,7 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /bindtap="onBack"/);
   assert.match(wxml, /pageState === 'existing'/);
   assert.match(wxml, /你已有进行中的服务/);
-  assert.match(wxml, /联系当前设计师/);
+  assert.match(wxml, /联系当前家装设计顾问/);
   assert.match(wxml, /当前服务归属已保留/);
   assert.match(wxml, /thumbs-up-xiao-k\.png/);
   assert.doesNotMatch(wxml, /xiao-k-existing-service\.png/);
@@ -258,11 +290,19 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /设计沟通/);
   assert.match(wxml, /clipboard-pen\.png/);
   assert.match(wxml, /success-contact-card/);
-  assert.match(wxml, /后续量房预约、户型确认与方案沟通由设计师微信跟进/);
-  assert.match(wxml, /查看设计师微信/);
-  assert.match(wxml, /设计师联系方式同步中/);
+  assert.match(wxml, /professionalProfile\.titleVisible/);
+  assert.match(wxml, /professionalProfile\.experienceLabel/);
+  assert.match(wxml, /professionalProfile\.serviceLabel/);
+  assert.match(wxml, /professional-badge\.png/);
+  assert.match(wxml, /professional-experience\.png/);
+  assert.match(wxml, /professional-service\.png/);
+  assert.doesNotMatch(wxml, /后续量房预约、户型确认与方案沟通由家装设计顾问微信跟进/);
+  assert.doesNotMatch(wxml, /量房预约与方案沟通可通过微信联系/);
+  assert.match(wxml, /查看微信/);
+  assert.match(wxml, /同步中/);
   assert.match(wxml, /查看服务档案/);
-  assert.match(wxml, /class="claim-action success-project-action"[\s\S]*查看服务档案<\/button>\s*<button[\s\S]*class="claim-action-outline success-contact-action/);
+  assert.match(wxml, /success-archive-index[\s\S]*服务进度[\s\S]*户型档案[\s\S]*设计方案/);
+  assert.match(wxml, /class="claim-action success-project-action"[\s\S]*查看服务档案<\/button>[\s\S]*class="success-contact-compact/);
   assert.doesNotMatch(wxml, /designer-qr-block|show-menu-by-longpress/);
   assert.match(wxml, /designer-contact-sheet/);
   assert.match(wxml, /canContactDesigner/);
@@ -306,11 +346,14 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(less, /\.pending-journey-card\s*\{[^}]*min-height:\s*373rpx[^}]*flex:\s*0\.92 1 auto[^}]*background:\s*#ffffff/);
   assert.match(less, /@media \(max-height:\s*760px\)\s*\{[\s\S]*\.claim-pending\s*\{[^}]*overflow-y:\s*auto/);
   assert.match(less, /@media \(max-height:\s*760px\)\s*\{[\s\S]*\.claim-auth,[\s\S]*overflow-y:\s*auto/);
-  assert.match(less, /\.success-title\s*\{[^}]*color:\s*#00c365/);
   assert.match(less, /\.existing-note\s*\{[^}]*background:\s*#f1f5f2/);
+  assert.match(less, /\.success-archive-title\s*\{[^}]*font-size:\s*44rpx/);
+  assert.match(less, /\.success-archive-index\s*\{[^}]*width:\s*438rpx/);
   assert.match(less, /\.success-contact-card\s*\{[^}]*background:\s*#ffffff/);
-  assert.match(less, /\.success-contact-action\s*\{[^}]*min-height:\s*88rpx/);
-  assert.match(less, /\.success-project-action\s*\{[^}]*min-height:\s*88rpx/);
+  assert.match(less, /\.success-contact-compact\s*\{[^}]*min-height:\s*72rpx/);
+  assert.match(less, /\.success-contact-compact\s*\{[^}]*width:\s*148rpx[^}]*flex:\s*0 0 148rpx/);
+  assert.match(less, /\.success-designer-proof\s*\{[^}]*flex-wrap:\s*wrap/);
+  assert.match(less, /\.success-project-action\s*\{[^}]*min-height:\s*100rpx/);
   assert.match(less, /\.claim-success\s*\{[\s\S]*overflow-y:\s*auto/);
   assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);
 });

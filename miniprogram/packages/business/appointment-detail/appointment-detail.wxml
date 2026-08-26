@@ -39,12 +39,12 @@
       </view>
       <view class="info-row" wx:if="{{appointment.measurerName || appointment.designerName}}">
         <view class="info-icon user-icon">👤</view>
-        <text class="info-value">{{appointment.measurerName ? appointment.measurerName + ' (认证测量员)' : (appointment.designerName ? appointment.designerName + ' (专属设计师)' : '服务人员')}} {{appointment.measurerPhone ? '· ' + appointment.measurerPhone : ''}}</text>
+        <text class="info-value">{{appointment.measurerName ? appointment.measurerName + ' (认证家装现场顾问)' : (appointment.designerName ? appointment.designerName + ' (专属家装设计顾问)' : '服务人员')}} {{appointment.measurerPhone ? '· ' + appointment.measurerPhone : ''}}</text>
       </view>
     </view>
 
     <view class="role-note" wx:if="{{appointment.status === 'confirmed'}}">
-      {{customerMode ? '如需调整时间，请在截止时间前选择可用时段。' : '设计师负责协调时间与取消，测量员完成上门后确认完成；企业负责人可处理全部动作。'}}
+      {{customerMode ? '如需调整时间，请在截止时间前选择可用时段。' : '家装设计顾问负责协调时间与取消，家装现场顾问完成上门后确认完成；企业负责人可处理全部动作。'}}
     </view>
     <view class="role-note" wx:elif="{{appointment.status === 'expired'}}">
       预约时段已结束。若尚未完成正式量房，请重新预约上门；已完成量房时可补记完成。

@@ -141,7 +141,6 @@ page {
 
 .ready-hero,
 .auth-hero,
-.success-hero,
 .existing-hero {
   position: relative;
   display: flex;
@@ -189,10 +188,6 @@ page {
   font-size: 40rpx;
   font-weight: 800;
   line-height: 1.28;
-}
-
-.success-title {
-  color: #00c365;
 }
 
 .ready-subtitle {
@@ -986,19 +981,142 @@ button.claim-action[disabled] {
   opacity: 0.42;
 }
 
-.success-hero {
+.claim-success {
+  padding-bottom: 0;
+}
+
+.claim-success .claim-stepper {
+  margin-bottom: 12rpx;
+  padding-top: 4rpx;
+}
+
+.claim-success .step-label {
+  white-space: nowrap;
+}
+
+.success-archive-card {
+  position: relative;
   overflow: hidden;
-  min-height: 190rpx;
-  margin-top: 12rpx;
-  padding: 22rpx 18rpx 22rpx 28rpx;
-  border-radius: 32rpx;
-  background: #eaf8ee;
+  padding: 38rpx 28rpx 28rpx;
+  border-radius: 34rpx;
+  background: linear-gradient(145deg, #f2fbf5 0%, #e5f7eb 100%);
+  box-shadow: 0 16rpx 38rpx rgba(24, 52, 38, 0.075);
   box-sizing: border-box;
+}
+
+.success-archive-glow {
+  position: absolute;
+  top: -70rpx;
+  right: -48rpx;
+  width: 330rpx;
+  height: 330rpx;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 70%);
+  pointer-events: none;
+}
+
+.success-archive-copy {
+  position: relative;
+  z-index: 3;
+  width: 454rpx;
+}
+
+.success-archive-title {
+  display: block;
+  color: #123a28;
+  font-size: 44rpx;
+  font-weight: 800;
+  line-height: 1.24;
+  letter-spacing: -1rpx;
+  white-space: nowrap;
+}
+
+.success-archive-subtitle {
+  display: block;
+  width: 410rpx;
+  margin-top: 14rpx;
+  color: #4f6758;
+  font-size: 26rpx;
+  line-height: 1.55;
+}
+
+.success-archive-xiaok {
+  position: absolute;
+  top: 118rpx;
+  right: -4rpx;
+  z-index: 1;
+  width: 258rpx;
+  height: 282rpx;
+}
+
+.success-archive-index {
+  position: relative;
+  z-index: 2;
+  width: 438rpx;
+  margin-top: 34rpx;
+  padding: 4rpx 22rpx;
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 12rpx 28rpx rgba(24, 52, 38, 0.055);
+  box-sizing: border-box;
+}
+
+.success-archive-row {
+  display: flex;
+  min-height: 94rpx;
+  align-items: center;
+  gap: 16rpx;
+  color: #183426;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.success-archive-icon {
+  display: flex;
+  width: 62rpx;
+  height: 62rpx;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 50%;
+  background: #e8f7ed;
+}
+
+.success-archive-icon image {
+  width: 38rpx;
+  height: 38rpx;
+}
+
+.success-archive-chevron {
+  width: 14rpx;
+  height: 14rpx;
+  margin-left: auto;
+  border-top: 3rpx solid #a1aea6;
+  border-right: 3rpx solid #a1aea6;
+  transform: rotate(45deg);
+  box-sizing: border-box;
+}
+
+.success-archive-divider {
+  height: 1px;
+  margin-left: 78rpx;
+  background: #e2ebe5;
+  transform: scaleY(0.5);
+}
+
+.success-project-action {
+  position: relative;
+  z-index: 3;
+  min-height: 100rpx;
+  margin-top: 28rpx;
+  font-size: 30rpx;
+  line-height: 100rpx;
 }
 
 .success-contact-card {
   margin-top: 20rpx;
-  padding: 28rpx 30rpx 24rpx;
+  padding: 24rpx 26rpx;
   border-radius: 28rpx;
   background: #ffffff;
   box-shadow: 0 12rpx 32rpx rgba(24, 52, 38, 0.07);
@@ -1008,13 +1126,13 @@ button.claim-action[disabled] {
 .success-designer-head {
   display: flex;
   align-items: center;
-  gap: 18rpx;
+  gap: 16rpx;
 }
 
 .success-designer-avatar {
   display: flex;
-  width: 96rpx;
-  height: 96rpx;
+  width: 88rpx;
+  height: 88rpx;
   align-items: center;
   justify-content: center;
   flex: none;
@@ -1023,8 +1141,8 @@ button.claim-action[disabled] {
 }
 
 .success-designer-avatar image {
-  width: 48rpx;
-  height: 48rpx;
+  width: 46rpx;
+  height: 46rpx;
 }
 
 .success-designer-meta {
@@ -1035,81 +1153,157 @@ button.claim-action[disabled] {
 .success-designer-name {
   display: block;
   overflow: hidden;
+  color: #183426;
   font-size: 32rpx;
   font-weight: 800;
-  line-height: 1.3;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.success-designer-role {
-  display: block;
+.success-designer-role-row {
+  display: flex;
+  min-width: 0;
   margin-top: 6rpx;
-  color: #8e9e94;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.success-designer-role {
+  flex: none;
+  color: #718078;
   font-size: 24rpx;
   line-height: 1.3;
+  white-space: nowrap;
 }
 
 .success-match-status {
   display: flex;
+  min-height: 38rpx;
+  padding: 0 12rpx;
   align-items: center;
-  gap: 8rpx;
-  padding: 10rpx 16rpx;
+  gap: 6rpx;
+  flex: none;
   border-radius: 999rpx;
   color: #007f44;
   background: #eaf8ee;
-  font-size: 24rpx;
+  font-size: 22rpx;
   font-weight: 700;
-  line-height: 1.2;
-  flex: none;
+  line-height: 38rpx;
+  box-sizing: border-box;
 }
 
 .success-match-dot {
-  width: 12rpx;
-  height: 12rpx;
+  width: 10rpx;
+  height: 10rpx;
   border-radius: 50%;
   background: #00c365;
 }
 
-.success-contact-purpose {
-  display: flex;
-  margin-top: 24rpx;
-  padding: 18rpx 20rpx;
-  align-items: flex-start;
-  gap: 10rpx;
+.success-contact-compact {
+  width: 148rpx;
+  min-width: 148rpx;
+  min-height: 72rpx;
+  margin: 0;
+  padding: 0 20rpx;
+  flex: 0 0 148rpx;
+  border: 2rpx solid #72dba3;
   border-radius: 18rpx;
-  color: #4f6758;
-  background: #f2f7f3;
+  color: #00a956;
+  background: #ffffff;
+  box-sizing: border-box;
   font-size: 24rpx;
-  line-height: 1.5;
+  font-weight: 700;
+  line-height: 68rpx;
+  white-space: nowrap;
 }
 
-.success-contact-purpose image {
-  width: 32rpx;
-  height: 32rpx;
-  margin-top: 2rpx;
+.success-contact-compact::after {
+  border: 0;
+}
+
+.success-contact-compact.is-disabled,
+button.success-contact-compact[disabled] {
+  border-color: #c8ded0 !important;
+  color: #779583 !important;
+  background: #f2f7f3 !important;
+  opacity: 1;
+}
+
+.success-designer-proof {
+  display: flex;
+  margin-top: 20rpx;
+  padding: 18rpx 18rpx 6rpx;
+  flex-wrap: wrap;
+  gap: 12rpx 18rpx;
+  border-radius: 18rpx;
+  background: #f5f9f6;
+  box-sizing: border-box;
+}
+
+.success-proof-item {
+  display: flex;
+  min-width: 248rpx;
+  min-height: 44rpx;
+  padding-bottom: 12rpx;
+  align-items: center;
+  gap: 8rpx;
+  color: #526b5c;
+  font-size: 22rpx;
+  line-height: 1.35;
+  flex: 1;
+}
+
+.success-proof-item:last-child {
+  flex-basis: 100%;
+}
+
+.success-proof-item image {
+  width: 34rpx;
+  height: 34rpx;
   flex: none;
 }
 
-.success-contact-action {
-  min-height: 88rpx;
-  margin-top: 16rpx;
-  line-height: 84rpx;
+.success-tertiary-zone {
+  position: relative;
+  display: flex;
+  overflow: hidden;
+  min-height: 148rpx;
+  margin: 20rpx -36rpx 0;
+  padding: 18rpx 36rpx calc(34rpx + env(safe-area-inset-bottom));
+  align-items: flex-start;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
-.success-contact-helper {
-  display: block;
-  margin-top: 12rpx;
-  color: #7b8d82;
-  font-size: 22rpx;
-  line-height: 1.4;
-  text-align: center;
+.success-tertiary-wave {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
 }
 
-.success-project-action {
-  min-height: 88rpx;
-  margin-top: 20rpx;
-  line-height: 88rpx;
+.success-tertiary-wave-back {
+  bottom: -116rpx;
+  left: -140rpx;
+  width: 580rpx;
+  height: 190rpx;
+  background: rgba(0, 195, 101, 0.08);
+  transform: rotate(7deg);
+}
+
+.success-tertiary-wave-front {
+  right: -180rpx;
+  bottom: -128rpx;
+  width: 650rpx;
+  height: 210rpx;
+  background: rgba(0, 195, 101, 0.055);
+  transform: rotate(-6deg);
+}
+
+.success-tertiary-zone .service-needs-link {
+  position: relative;
+  z-index: 1;
+  margin-top: 0;
 }
 
 .check-mark,
@@ -1582,6 +1776,58 @@ button.claim-action[disabled] {
   .claim-pending .claim-action {
     min-height: 96rpx;
     line-height: 96rpx;
+  }
+
+  .success-archive-card {
+    padding-right: 22rpx;
+    padding-left: 22rpx;
+  }
+
+  .success-archive-copy {
+    width: 430rpx;
+  }
+
+  .success-archive-title {
+    font-size: 40rpx;
+  }
+
+  .success-archive-subtitle {
+    width: 380rpx;
+    font-size: 24rpx;
+  }
+
+  .success-archive-xiaok {
+    right: -18rpx;
+    width: 232rpx;
+    height: 254rpx;
+  }
+
+  .success-archive-index {
+    width: 420rpx;
+  }
+
+  .success-contact-card {
+    padding-right: 20rpx;
+    padding-left: 20rpx;
+  }
+
+  .success-contact-compact {
+    width: 132rpx;
+    min-width: 126rpx;
+    padding-right: 14rpx;
+    padding-left: 14rpx;
+    flex-basis: 132rpx;
+  }
+
+  .success-proof-item {
+    min-width: 220rpx;
+  }
+
+  .success-tertiary-zone {
+    margin-right: -28rpx;
+    margin-left: -28rpx;
+    padding-right: 28rpx;
+    padding-left: 28rpx;
   }
 }
 

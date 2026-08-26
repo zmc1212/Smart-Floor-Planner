@@ -59,7 +59,7 @@ function buildStageRail(status) {
 function getNextAction(status, staffRole, isAssignedMeasurer) {
   const normalized = normalizeStatus(status);
   if (staffRole === 'designer' && !isAssignedMeasurer) {
-    if (normalized === 'new') return '等待测量员完成正式量房';
+    if (normalized === 'new') return '等待家装现场顾问完成正式量房';
     if (normalized === 'measuring') return '等待正式量房完成后进入方案设计';
   }
   if (staffRole === 'enterprise_admin' && ['new', 'measuring'].includes(normalized)) {

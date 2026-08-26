@@ -7,6 +7,7 @@ export interface TenantContext {
   role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'measurer' | 'viewer';
   enterpriseId: string | null;
   username: string;
+  mustChangePassword?: boolean;
 }
 
 export async function getTenantContext(request: Request | NextRequest): Promise<TenantContext | null> {
@@ -47,11 +48,12 @@ export async function getTenantContext(request: Request | NextRequest): Promise<
 
     return {
       userId: payload.id as string,
-      role: payload.role as any,
+      role: payload.role as TenantContext['role'],
       enterpriseId,
       username: payload.username as string,
+      mustChangePassword: payload.mustChangePassword === true,
     };
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -146,4 +148,3 @@ export function getTenantFilter(context: TenantContext, options: {
   // Fallback: No access
   return { _id: null };
 }
-

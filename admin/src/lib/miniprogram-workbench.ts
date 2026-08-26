@@ -27,23 +27,23 @@ export function buildStaffingGapItems(input: {
   if (input.eligibleDesignerCount <= 0) {
     items.push({
       id: 'staffing-designer',
-      title: '暂无可用设计师',
+      title: '暂无可用家装设计顾问',
       subtitle: '补齐微信号、二维码或恢复派单后，再重试待派队列',
       metaLabel: '人员缺口',
       action: 'staffing',
       serviceStage: 'assignment_pending',
-      nextAction: '补齐可用设计师或测量员后重试派单',
+      nextAction: '补齐可用家装设计顾问或家装现场顾问后重试派单',
     });
   }
   if (input.eligibleMeasurerCount <= 0) {
     items.push({
       id: 'staffing-measurer',
-      title: '暂无可用测量员',
-      subtitle: '启用测量员或取消暂停派单后，再重试待派队列',
+      title: '暂无可用家装现场顾问',
+      subtitle: '启用家装现场顾问或取消暂停派单后，再重试待派队列',
       metaLabel: '人员缺口',
       action: 'staffing',
       serviceStage: 'assignment_pending',
-      nextAction: '补齐可用设计师或测量员后重试派单',
+      nextAction: '补齐可用家装设计顾问或家装现场顾问后重试派单',
     });
   }
   return items;
@@ -771,7 +771,7 @@ export function buildEnterprisePendingExceptionItem(
   return {
     ...buildWorkbenchLeadItem(lead, 'lead'),
     title: `自动派单失败 · ${buildEnterpriseLeadLabel(lead)}`,
-    subtitle: lead.assignmentErrorCode || '目标区域暂无可用测量员',
+    subtitle: lead.assignmentErrorCode || '目标区域暂无可用家装现场顾问',
     metaLabel: formatExceptionTimestamp(lead.updatedAt),
     action: 'lead',
     actionLabel: '去指派',
@@ -851,10 +851,10 @@ export function buildEnterpriseStaffRosterItem(member: RosterStaffInput) {
       : '可派单';
   return {
     id: String(member.id),
-    displayName: String(member.displayName || '').trim() || (role === 'measurer' ? '测量员' : '设计师'),
+    displayName: String(member.displayName || '').trim() || (role === 'measurer' ? '家装现场顾问' : '家装设计顾问'),
     phone: String(member.phone || '').trim() || null,
     role,
-    roleLabel: role === 'measurer' ? '测量员' : '设计师',
+    roleLabel: role === 'measurer' ? '家装现场顾问' : '家装设计顾问',
     assignmentPaused,
     assignmentEligible,
     ineligibleReason,
@@ -876,7 +876,7 @@ export function buildStaffLoadQuickNav(input: {
     return {
       key: 'staffLoad',
       title: '人员负荷',
-      desc: '测量员紧缺 →',
+      desc: '家装现场顾问紧缺 →',
       tone: 'orange',
       target: 'staffing',
     };
@@ -885,7 +885,7 @@ export function buildStaffLoadQuickNav(input: {
     return {
       key: 'staffLoad',
       title: '人员负荷',
-      desc: '设计师紧缺 →',
+      desc: '家装设计顾问紧缺 →',
       tone: 'orange',
       target: 'staffing',
     };

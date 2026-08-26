@@ -63,6 +63,7 @@ interface SidebarAdmin {
   username?: string;
   enterpriseId?: { _id?: string; name?: string } | null;
   effectivePermissions?: string[];
+  mustChangePassword?: boolean;
 }
 
 interface SidebarEnterprise {
@@ -430,6 +431,12 @@ export default function Sidebar() {
 
   const { user: admin } = useCurrentUser();
   const { openLoginPassword, openSensitivePassword } = useAccountSettings();
+
+  useEffect(() => {
+    if (admin?.mustChangePassword) {
+      window.location.assign('/change-password');
+    }
+  }, [admin?.mustChangePassword]);
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed');

@@ -45,6 +45,7 @@ test('source package excludes historical artwork that is not used at runtime', (
     'packages/business/assets/referral-service-v1/designer-matching.png',
     'packages/business/assets/referral-service-v1/privacy-lock.png',
     'images/ai-design-empty-v2/stage-art.jpg',
+    'images/ai-recipe/recipe-atelier-hero.jpg',
     'images/home-v5/plan-preview.jpg',
     'images/home-v5/ai-preview.jpg',
     'images/ai-design-stage-active-glow-v1.png',
@@ -113,6 +114,11 @@ test('main package source stays under the WeChat 2MB main-package limit', () => 
   assert.ok(
     total <= 2048 * 1024,
     `main package source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB main-package limit`
+  );
+  assert.equal(
+    fs.existsSync(path.join(miniRoot, 'images', 'identity-switch')),
+    false,
+    'subpackage-only identity artwork must not return to the main package'
   );
 });
 

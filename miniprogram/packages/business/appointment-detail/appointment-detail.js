@@ -607,7 +607,7 @@ Page({
     if (!appointment || !this.data.canComplete || this.data.acting) return;
     wx.showModal({
       title: '确认完成量房',
-      content: '确认测量员已完成本次上门服务。此操作会结束当前预约。',
+      content: '确认家装现场顾问已完成本次上门服务。此操作会结束当前预约。',
       confirmText: '确认完成',
       success: async (result) => {
         if (result.confirm) await this.updateStatus('complete', { version: appointment.version }, '预约已完成');

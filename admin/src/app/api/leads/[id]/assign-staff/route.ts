@@ -33,7 +33,7 @@ export async function POST(
     const measurerId = parseOptionalStaffId(body.measurerId, 'measurerId');
     if (!designerId && !measurerId) {
       return NextResponse.json(
-        { success: false, error: '请至少选择一名设计师或测量员' },
+        { success: false, error: '请至少选择一名家装设计顾问或家装现场顾问' },
         { status: 400 }
       );
     }

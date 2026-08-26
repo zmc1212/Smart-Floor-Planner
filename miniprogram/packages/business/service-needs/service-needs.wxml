@@ -19,7 +19,7 @@
       <view class="needs-hero">
         <view class="needs-kicker">补充服务记录</view>
         <text class="needs-title">还有哪些问题，想先聊聊？</text>
-        <text class="needs-subtitle">可多选，提交后由设计师通过微信和你确认</text>
+        <text class="needs-subtitle">可多选，提交后由家装设计顾问通过微信和你确认</text>
       </view>
 
       <view wx:if="{{error}}" class="needs-error">
@@ -67,7 +67,7 @@
           </view>
           <view class="needs-option-copy">
             <text class="needs-option-label">暂时没有其他需求</text>
-            <text class="needs-option-helper">之后也可以让设计师帮你补充</text>
+            <text class="needs-option-helper">之后也可以让家装设计顾问帮你补充</text>
           </view>
         </view>
 

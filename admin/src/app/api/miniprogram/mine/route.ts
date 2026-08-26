@@ -39,8 +39,8 @@ const ROLE_LABELS: Record<string, string> = {
   enterprise_admin: '企业负责人',
   admin: '平台负责人',
   super_admin: '平台负责人',
-  designer: '设计师',
-  measurer: '测量员',
+  designer: '家装设计顾问',
+  measurer: '家装现场顾问',
 };
 
 const ACTIONS_BY_ROLE: Record<string, ActionItem[]> = {

@@ -1322,7 +1322,7 @@ test('payable commission adjust updates amount or beneficiary, rejects paid/void
           beneficiaryUserId: measurerUser.id,
           reason: 'wrong role',
         }),
-        /不是本企业已绑定的设计师/
+        /不是本企业已绑定的家装设计顾问/
       );
       await assert.rejects(
         () => commissionRepository.adjustPayable(enterpriseAId, referrerRow.id, designer.id, {

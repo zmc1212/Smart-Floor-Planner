@@ -21,7 +21,7 @@ export async function POST(
     const miniContext = await resolveMiniProgramContext(request);
     if (miniContext) {
       if (!miniContext.enterpriseId || miniContext.mode !== 'staff' || !miniContext.staff || !['designer', 'enterprise_admin'].includes(miniContext.staff.role)) {
-        return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可定稿方案' }, { status: 403 });
+        return NextResponse.json({ success: false, error: '仅负责家装设计顾问或企业负责人可定稿方案' }, { status: 403 });
       }
       const enterpriseId = parsePostgresId(miniContext.enterpriseId, 'enterprise id');
       const staffId = parsePostgresId(miniContext.staff._id, 'staff id');
@@ -45,7 +45,7 @@ export async function POST(
 
     const admin = await getTenantContext(request);
     if (!admin?.enterpriseId || !['designer', 'enterprise_admin'].includes(admin.role)) {
-      return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可定稿方案' }, { status: admin ? 403 : 401 });
+      return NextResponse.json({ success: false, error: '仅负责家装设计顾问或企业负责人可定稿方案' }, { status: admin ? 403 : 401 });
     }
     const enterpriseId = parsePostgresId(admin.enterpriseId, 'enterprise id');
     const staffId = parsePostgresId(admin.userId, 'user id');

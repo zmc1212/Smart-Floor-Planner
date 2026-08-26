@@ -26,7 +26,7 @@ FORM: design-references/service-code-redesign/free-design-service-qr-focus-v3.jp
       <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
       <view class="hero-leaf hero-leaf-br" aria-hidden="true"></view>
       <text class="hero-title">免费设计服务</text>
-      <text class="hero-subtitle">免费上门量房 · 专业设计师服务</text>
+      <text class="hero-subtitle">免费上门量房 · 专业家装设计顾问服务</text>
 
       <view class="qr-display">
         <view class="qr-stage">
@@ -74,7 +74,7 @@ FORM: design-references/service-code-redesign/free-design-service-qr-focus-v3.jp
           <view class="promise-icon">
             <image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" />
           </view>
-          <text class="promise-title">设计师匹配</text>
+          <text class="promise-title">家装设计顾问匹配</text>
           <text class="promise-copy">精准对接</text>
         </view>
       </view>

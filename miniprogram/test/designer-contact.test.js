@@ -17,7 +17,7 @@ test('designerContact helpers prioritize QR contact and document copy fallback',
   assert.match(source, /function loadDesignerQrToTempFile/);
   assert.match(source, /function copyDesignerWechatId/);
   assert.match(source, /withSearchHint/);
-  assert.match(source, /请打开微信，通过搜索添加设计师为好友/);
+  assert.match(source, /请打开微信，通过搜索添加家装设计顾问为好友/);
 });
 
 test('designer-contact-sheet restores the approved Xiao K QR-first contact design', () => {
@@ -39,9 +39,16 @@ test('designer-contact-sheet restores the approved Xiao K QR-first contact desig
   assert.match(js, /wx\.previewImage/);
   assert.match(js, /openSheet/);
   assert.match(js, /sheetMotion/);
-  assert.match(wxml, /长按二维码，加设计师微信/);
+  assert.match(js, /getMenuButtonBoundingClientRect/);
+  assert.match(js, /capsuleBottom/);
+  assert.match(wxml, /长按二维码，加家装设计顾问微信/);
   assert.match(wxml, /按住二维码 2 秒/);
-  assert.match(wxml, /你的专属设计师/);
+  assert.match(wxml, /你的专属家装设计顾问/);
+  assert.match(wxml, /比小红书更方便贴心的/);
+  assert.match(wxml, />家装顾问</);
+  assert.doesNotMatch(wxml, />微信家装顾问</);
+  assert.match(wxml, /dcs-xiao-k-bubble/);
+  assert.match(wxml, /--dcs-capsule-bottom: \{\{capsuleBottom\}\}px/);
   assert.match(wxml, /wx:if="\{\{!professionalTitleVisible\}\}"[\s\S]*\{\{displayName\}\}/);
   assert.match(wxml, /\{\{professionalTitle\}\} · \{\{displayName\}\}/);
   assert.doesNotMatch(wxml, /属于您的顾问/);
@@ -65,6 +72,10 @@ test('designer-contact-sheet restores the approved Xiao K QR-first contact desig
   assert.match(wxml, /dcs-dialog \{\{dialogOpen \? 'open' : ''\}\}/);
   assert.match(less, /\.dcs-dialog/);
   assert.match(less, /\.dcs-xiao-k/);
+  assert.match(less, /\.dcs-xiao-k-bubble/);
+  assert.match(less, /\.dcs-xiao-k-bubble::before/);
+  assert.match(less, /\.dcs-xiao-k-bubble-title/);
+  assert.match(less, /var\(--dcs-capsule-bottom/);
   assert.match(less, /position:\s*absolute/);
   assert.match(less, /\.dcs-spatial-mark/);
   assert.match(less, /align-items:\s*center/);
@@ -111,14 +122,18 @@ test('free-design claim success auto-opens the shared sheet and keeps QR out of 
   const claimRoot = path.join(root, 'packages', 'business', 'free-design-service');
   const js = fs.readFileSync(path.join(claimRoot, 'free-design-service.js'), 'utf8');
   const wxml = fs.readFileSync(path.join(claimRoot, 'free-design-service.wxml'), 'utf8');
+  const less = fs.readFileSync(path.join(claimRoot, 'free-design-service.less'), 'utf8');
   const json = JSON.parse(fs.readFileSync(path.join(claimRoot, 'free-design-service.json'), 'utf8'));
   assert.match(json.usingComponents['designer-contact-sheet'], /designer-contact-sheet/);
   assert.match(js, /onOpenContactSheet/);
   assert.match(js, /hasDesignerContact/);
   assert.match(js, /showContactSheet:\s*Boolean\(designerProfile && contactAvailable\)/);
-  assert.match(wxml, /查看设计师微信/);
+  assert.match(wxml, /查看微信/);
   assert.match(wxml, /查看服务档案/);
-  assert.match(wxml, /claim-action success-project-action[\s\S]*查看服务档案<\/button>\s*<button[\s\S]*claim-action-outline success-contact-action/);
+  assert.match(wxml, /claim-action success-project-action[\s\S]*查看服务档案<\/button>[\s\S]*success-contact-compact/);
+  assert.match(less, /\.success-contact-compact\s*\{[^}]*width:\s*148rpx[^}]*flex:\s*0 0 148rpx/);
+  assert.match(wxml, /professionalProfile\.experienceLabel/);
+  assert.match(wxml, /professionalProfile\.serviceLabel/);
   assert.doesNotMatch(wxml, /designer-qr-block|show-menu-by-longpress/);
   assert.match(wxml, /designer-contact-sheet/);
 });

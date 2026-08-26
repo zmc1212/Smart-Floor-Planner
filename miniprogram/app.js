@@ -146,6 +146,18 @@ App({
         wx.setStorageSync('userInfo', refreshed.user);
         if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
         this.globalData.sessionHydrated = true;
+        if (refreshed.requiresPasswordChange) {
+          this.globalData.bootstrap = null;
+          this.globalData.sessionRecovery = null;
+          const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+          const currentRoute = pages.length ? pages[pages.length - 1].route : '';
+          if (currentRoute !== 'packages/business/account-security/account-security') {
+            wx.reLaunch({
+              url: '/packages/business/account-security/account-security?required=1'
+            });
+          }
+          return;
+        }
         const bootstrap = await api.request('/miniprogram/bootstrap', 'GET', {}, { suppressUnauthorized: true });
         if (this.globalData.token !== activeToken) return;
         if (!bootstrap || !bootstrap.current || !bootstrap.current.context) {

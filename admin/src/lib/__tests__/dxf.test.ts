@@ -397,8 +397,8 @@ test('formal DXF room labels use inner-face metrics and a model-space sheet', as
   assert.match(dxf, /\n1\nDesigner\n/);
   assert.match(dxf, /\n1\nDrawing Scale\n/);
   assert.match(dxf, /\n1\nDate\n/);
-  const sheetLabels = [...dxf.matchAll(/\n1\n(公司名称：|项目名称：|图纸名称：|设计师：|图纸比例：|制图日期：)\n/g)].map((match) => match[1]);
-  assert.deepEqual(sheetLabels.slice(0, 6), ['公司名称：', '项目名称：', '图纸名称：', '设计师：', '图纸比例：', '制图日期：']);
+  const sheetLabels = [...dxf.matchAll(/\n1\n(公司名称：|项目名称：|图纸名称：|家装设计顾问：|图纸比例：|制图日期：)\n/g)].map((match) => match[1]);
+  assert.deepEqual(sheetLabels.slice(0, 6), ['公司名称：', '项目名称：', '图纸名称：', '家装设计顾问：', '图纸比例：', '制图日期：']);
   // Old layout drew a mid-cell vertical at titleLeft + 38% title width (~27882); stacked labels must not.
   assert.doesNotMatch(dxf, /\n10\n27882(?:\.0+)?\n20\n520(?:\.0+)?\n30\n0\n11\n27882(?:\.0+)?\n/);
   assert.ok(

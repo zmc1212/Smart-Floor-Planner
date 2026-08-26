@@ -38,7 +38,8 @@ Page({
     username: '',
     password: '',
     loading: false,
-    agreed: false
+    agreed: false,
+    showDisclaimer: false
   },
 
   onLoad(options) {
@@ -148,6 +149,14 @@ Page({
 
         if (typeof app.syncProfessionalContext === 'function') {
           app.syncProfessionalContext();
+        }
+        if (res.requiresPasswordChange) {
+          app.globalData.sessionHydrated = true;
+          this.setData({ loading: false });
+          wx.reLaunch({
+            url: '/packages/business/account-security/account-security?required=1'
+          });
+          return;
         }
         await app.hydrateStoredSession();
         if (app.globalData.sessionRecovery) throw new Error('身份资料已失效，请重新登录');

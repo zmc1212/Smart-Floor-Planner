@@ -129,7 +129,7 @@ export class LeadCommissionRepository {
 
   async updateRules(enterpriseId: bigint, actorId: bigint, inputs: CommissionRuleInput[]) {
     if (inputs.length !== COMMISSION_ROLES.length || new Set(inputs.map((item) => item.role)).size !== COMMISSION_ROLES.length) {
-      throw commissionError('commission_rules_incomplete', '必须同时提交推荐人、设计师和测量员三条提成规则', 400);
+      throw commissionError('commission_rules_incomplete', '必须同时提交推荐人、家装设计顾问和家装现场顾问三条提成规则', 400);
     }
     for (const input of inputs) {
       assertCommissionRole(input.role);
@@ -187,10 +187,10 @@ export class LeadCommissionRepository {
 
     if (isTwoRoleCommissionSource(lead.source)) {
       if (!lead.assignedTo || !lead.measurerId) {
-        throw commissionError('commission_beneficiary_missing', '线索尚未具备设计师和测量员提成受益人');
+        throw commissionError('commission_beneficiary_missing', '线索尚未具备家装设计顾问和家装现场顾问提成受益人');
       }
     } else if (!lead.referrerMembershipId || !lead.assignedTo || !lead.measurerId) {
-      throw commissionError('commission_beneficiary_missing', '线索尚未具备推荐人、设计师和测量员三方提成受益人');
+      throw commissionError('commission_beneficiary_missing', '线索尚未具备推荐人、家装设计顾问和家装现场顾问三方提成受益人');
     }
     const [referrerRows, staffRows] = await Promise.all([
       isTwoRoleCommissionSource(lead.source) || !lead.referrerMembershipId
@@ -216,7 +216,7 @@ export class LeadCommissionRepository {
     const measurer = staffRows.find((staff) => staff.id === lead.measurerId);
     if (isTwoRoleCommissionSource(lead.source)) {
       if (!designer?.userId || !measurer?.userId) {
-        throw commissionError('commission_beneficiary_missing', '设计师或测量员提成受益人身份不完整');
+        throw commissionError('commission_beneficiary_missing', '家装设计顾问或家装现场顾问提成受益人身份不完整');
       }
       return {
         lead,
@@ -534,7 +534,7 @@ export class LeadCommissionRepository {
     if (!rows[0]) {
       throw commissionError(
         'commission_beneficiary_ineligible',
-        role === 'designer' ? '目标受益人不是本企业已绑定的设计师' : '目标受益人不是本企业已绑定的测量员',
+        role === 'designer' ? '目标受益人不是本企业已绑定的家装设计顾问' : '目标受益人不是本企业已绑定的家装现场顾问',
         400
       );
     }
@@ -727,8 +727,8 @@ export class LeadCommissionRepository {
     );
     const roleLabels: Record<CommissionRole, string> = {
       referrer: '推荐人',
-      designer: '设计师',
-      measurer: '测量员',
+      designer: '家装设计顾问',
+      measurer: '家装现场顾问',
     };
 
     const items = rows.map(({ commission, leadId, leadName, leadSource }) => {

@@ -73,9 +73,9 @@
           <image class="quick-asset laser-asset" src="/images/airy-v1/laser-meter-3d.png" mode="aspectFit" />
         </view>
 
-        <view class="quick-card" bindtap="onOpenAIDesign" hover-class="card-pressed" aria-role="button" aria-label="专属设计师">
+        <view class="quick-card" bindtap="onOpenAIDesign" hover-class="card-pressed" aria-role="button" aria-label="专属家装设计顾问">
           <view class="quick-text">
-            <text class="quick-title">专属设计师</text>
+            <text class="quick-title">专属家装设计顾问</text>
             <text class="quick-desc">1对1出全屋方案</text>
             <view class="quick-action-circle">
               <view class="arrow-right"></view>
@@ -90,9 +90,9 @@
         <view class="section-header-row">
           <view class="section-title-wrap">
             <text class="sparkle-icon">✨</text>
-            <text class="section-title">设计师交付方案</text>
+            <text class="section-title">家装设计顾问交付方案</text>
           </view>
-          <text class="section-subtitle">{{recentPlans.length > 0 && recentPlans[0].measureSubtitle ? recentPlans[0].measureSubtitle : (homeDashboard && homeDashboard.stats && homeDashboard.stats.savedPlans ? '已归档 ' + homeDashboard.stats.savedPlans + ' 套户型方案' : '专业设计师1对1出图交付')}}</text>
+          <text class="section-subtitle">{{recentPlans.length > 0 && recentPlans[0].measureSubtitle ? recentPlans[0].measureSubtitle : (homeDashboard && homeDashboard.stats && homeDashboard.stats.savedPlans ? '已归档 ' + homeDashboard.stats.savedPlans + ' 套户型方案' : '专业家装设计顾问1对1出图交付')}}</text>
         </view>
 
         <view class="scheme-showcase-card" bindtap="onOpenDesignScheme" hover-class="card-pressed" aria-role="button" aria-label="查看全景方案">

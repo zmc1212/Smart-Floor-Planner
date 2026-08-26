@@ -102,7 +102,7 @@ test('referrer workbench leaves identity switching and logout on the Mine tab', 
   assert.doesNotMatch(js, /onOpenIdentitySwitch/);
   assert.doesNotMatch(js, /confirmLogout/);
   assert.match(mineWxml, /当前身份/);
-  assert.match(mineWxml, /在客户、员工和推荐人身份之间切换/);
+  assert.match(mineWxml, /在个人用户、员工和推荐人身份之间切换/);
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(mineWxml, /退出当前账号/);
 });

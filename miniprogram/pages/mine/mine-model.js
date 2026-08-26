@@ -21,10 +21,10 @@ const ACTION_PRESENTATION = {
 };
 
 const ROLE_LABELS = {
-  customer: '普通用户',
+  customer: '个人用户',
   referrer: '推广人',
-  designer: '设计师',
-  measurer: '测量员',
+  designer: '家装设计顾问',
+  measurer: '家装现场顾问',
   salesperson: '渠道地推',
   enterprise_admin: '企业负责人',
   platform_admin: '平台管理员',
@@ -41,7 +41,7 @@ function profileForIdentity(userInfo, role) {
     enterpriseName: info.enterpriseName || info.communityName || '',
     phoneMasked: info.phoneMasked || '',
     role: activeRole,
-    roleLabel: ROLE_LABELS[activeRole] || '普通用户'
+    roleLabel: ROLE_LABELS[activeRole] || '个人用户'
   };
 }
 

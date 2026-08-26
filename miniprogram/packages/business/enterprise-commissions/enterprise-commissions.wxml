@@ -37,7 +37,7 @@
   </view>
   <view wx:elif="{{!groups.length}}" class="state-card sfp-card">
     <text class="empty-title">暂时还没有提成记录</text>
-    <text class="empty-copy">客户签约后，应付给推荐人、设计师和测量员的提成会显示在这里。</text>
+    <text class="empty-copy">客户签约后，应付给推荐人、家装设计顾问和家装现场顾问的提成会显示在这里。</text>
     <button class="return-action sfp-primary-action" bindtap="backToOperations">返回经营</button>
   </view>
   <view wx:else class="fact-list">

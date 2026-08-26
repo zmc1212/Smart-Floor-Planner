@@ -129,7 +129,7 @@ test('lead detail removes the legacy acquisition collaboration surface', () => {
     path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
-  assert.doesNotMatch(template, /acquisition-info|联系设计师|查看协作记录|designer-contact-sheet|确认已获客/);
+  assert.doesNotMatch(template, /acquisition-info|联系家装设计顾问|查看协作记录|designer-contact-sheet|确认已获客/);
   assert.doesNotMatch(script, /onAcquireLead|canAcquireLead|onOpenAcquisition|onOpenDesignerContact/);
   assert.match(script, /const WORKFLOW_STAGES = \['新线索', '量房中', '方案设计', '已签约'\]/);
 });
@@ -217,8 +217,8 @@ test('lead detail shows assigned designer and measurer name and phone between th
   assert.ok(heroIndex > -1);
   assert.ok(staffIndex > heroIndex);
   assert.ok(railIndex > staffIndex);
-  assert.match(template, /class="staff-assignment-role">设计师/);
-  assert.match(template, /class="staff-assignment-role">测量员/);
+  assert.match(template, /class="staff-assignment-role">家装设计顾问/);
+  assert.match(template, /class="staff-assignment-role">家装现场顾问/);
   assert.match(template, /\{\{designerContact\.assignLabel\}\}/);
   assert.match(template, /\{\{measurerContact\.assignLabel\}\}/);
   assert.match(styles, /\.staff-assignment-head\s*\{[^}]*justify-content:\s*space-between;/s);

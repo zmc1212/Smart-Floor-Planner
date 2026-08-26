@@ -134,8 +134,20 @@ function buildPublishedSchemeLabel(scheme) {
 }
 
 function buildDesignerLine(designer) {
-  if (!designer || !designer.displayName) return '待分配设计师';
+  if (!designer || !designer.displayName) return '待分配家装设计顾问';
   return designer.wechatId ? `${designer.displayName} · 在线沟通` : `${designer.displayName} · 专属服务`;
+}
+
+function resolvePublicProfessionalCopy(profile) {
+  const source = profile && typeof profile === 'object' ? profile : null;
+  const title = source && source.titleVisible
+    ? String(source.title || '').trim()
+    : '';
+  return {
+    title,
+    experienceLabel: String((source && source.experienceLabel) || '').trim(),
+    serviceLabel: String((source && source.serviceLabel) || '').trim(),
+  };
 }
 
 function staffPhone(value) {
@@ -168,10 +180,16 @@ Page({
     designer: null,
     designerName: '待分配',
     designerAssigned: false,
-    designerLine: '待分配设计师',
+    designerLine: '待分配家装设计顾问',
     designerPhone: '',
+    designerProfessionalTitle: '',
+    designerExperienceLabel: '',
+    designerServiceLabel: '',
     measurerLine: '待分配量房员',
     measurerPhone: '',
+    measurerProfessionalTitle: '',
+    measurerExperienceLabel: '',
+    measurerServiceLabel: '',
     range: null,
     formalFloorPlan: null,
     floorPlanImagePath: '',
@@ -181,7 +199,7 @@ Page({
     publishedDesigns: [],
     stages: buildProjectStages(null),
     heroTitle: '',
-    heroSubtitle: '',
+    heroSubtitle: '现场顾问与设计方案全记录',
     navSubtitle: '',
     serviceStageLabel: '',
     nextAction: '',
@@ -257,6 +275,11 @@ Page({
       const canRebook = Boolean(project.canRebook);
       const canReschedule = Boolean(project.canReschedule);
       const measurerName = project.measurerName || (appointment && appointment.measurerName) || '';
+      const designerProof = resolvePublicProfessionalCopy(project.designer && project.designer.professionalProfile);
+      const measurerProof = resolvePublicProfessionalCopy(
+        (project.measurer && project.measurer.professionalProfile)
+        || (appointment && appointment.measurerProfessionalProfile)
+      );
       this.setData({
         appointment,
         measurerName,
@@ -267,11 +290,17 @@ Page({
         showContactSheet: false,
         designerLine: buildDesignerLine(project.designer),
         designerPhone: staffPhone(project.designer && project.designer.phone),
+        designerProfessionalTitle: designerProof.title,
+        designerExperienceLabel: designerProof.experienceLabel,
+        designerServiceLabel: designerProof.serviceLabel,
         measurerLine: buildMeasurerLine(
           measurerName,
           formalFloorPlan
         ),
         measurerPhone: staffPhone(project.measurerPhone || (appointment && appointment.measurerPhone)),
+        measurerProfessionalTitle: measurerProof.title,
+        measurerExperienceLabel: measurerProof.experienceLabel,
+        measurerServiceLabel: measurerProof.serviceLabel,
         range: appointment ? formatRange(appointment.timeRange) : null,
         formalFloorPlan,
         floorPlanImagePath,
@@ -283,16 +312,16 @@ Page({
         publishedDesigns,
         stages: buildProjectStages(project),
         heroTitle: project.heroTitle || '',
-        heroSubtitle: project.heroSubtitle || '免费量房与设计方案全纪录',
+        heroSubtitle: '现场顾问与设计方案全记录',
         navSubtitle: project.navSubtitle || '',
         serviceStageLabel: project.serviceStageLabel || '',
         nextAction: project.nextAction || '',
         canRebook,
         canReschedule,
         showBookingPanel: shouldShowBookingPanel({ ...project, formalFloorPlan, appointment, canRebook, canReschedule }),
-        appointmentBadge: measurerName ? '已匹配测量员' : (project.serviceStageLabel || '服务准备中'),
+        appointmentBadge: measurerName ? '已匹配家装现场顾问' : (project.serviceStageLabel || '服务准备中'),
         bookingHint: canRebook && !appointment
-          ? '选择方便的时间，测量师会提前与你确认'
+          ? '选择方便的时间，家装现场顾问会提前与你确认'
           : (project.nextAction || ''),
         error: '',
       });
@@ -447,7 +476,7 @@ Page({
   contactDesigner() {
     const designer = this.data.designer;
     if (!hasDesignerContact(designer)) {
-      wx.showToast({ title: '设计师联系方式暂未提供', icon: 'none' });
+      wx.showToast({ title: '家装设计顾问联系方式暂未提供', icon: 'none' });
       return;
     }
     if (designer.wechatQrUrl) {

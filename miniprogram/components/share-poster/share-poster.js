@@ -100,7 +100,7 @@ Component({
 
             ctx.fillStyle = '#94a3b8';
             ctx.font = '24px sans-serif';
-            const subText = designerName ? `首席设计师 ${designerName} 推荐` : '专业量房 · 智能设计 · 精准报价';
+            const subText = designerName ? `首席家装设计顾问 ${designerName} 推荐` : '专业量房 · 智能设计 · 精准报价';
             ctx.fillText(subText, 40, 930);
 
             // 二维码占位 (通常使用公司 Logo 或 小程序码)

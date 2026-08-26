@@ -18,6 +18,7 @@ test('identity context tokens carry the base user and selected staff context', a
     userId: BigInt(41),
     contextVersion: 7,
     source: 'phone',
+    mustChangePassword: true,
     context: {
       mode: 'staff',
       enterpriseId: BigInt(9),
@@ -35,6 +36,7 @@ test('identity context tokens carry the base user and selected staff context', a
   assert.equal(payload?.enterpriseId, '9');
   assert.equal(payload?.staffId, '17');
   assert.equal(payload?.contextVersion, 7);
+  assert.equal(payload?.mustChangePassword, true);
 });
 
 test('JWT verification rejects legacy tokens without identity context claims', async () => {

@@ -657,6 +657,7 @@ export class ReferrerNetworkRepository {
         enterpriseId: joinCode.enterpriseId,
         username: `wx_${user.id.toString()}_${crypto.randomBytes(6).toString('hex')}`,
         passwordHash: input.passwordHash,
+        mustChangePassword: true,
         displayName: input.displayName,
         role: input.role,
         phone: user.phone,

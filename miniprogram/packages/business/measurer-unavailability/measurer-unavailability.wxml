@@ -10,7 +10,7 @@
   <!-- Friendly Notice Hero Card -->
   <view class="guide-notice-card">
     <view class="guide-badge">💡 智能排班防护说明</view>
-    <text class="guide-desc">设置不可用时段后，系统与设计师端在派工或客户预约时将自动规避此时段，确保您的个人休息与行程无冲突。</text>
+    <text class="guide-desc">设置不可用时段后，系统与家装设计顾问端在派工或客户预约时将自动规避此时段，确保您的个人休息与行程无冲突。</text>
   </view>
 
   <!-- Add Unavailability Form Card -->

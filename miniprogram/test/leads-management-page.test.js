@@ -76,7 +76,7 @@ test('Leads preserves the approved first-screen rhythm without legacy acquisitio
     'utf8'
   );
   assert.doesNotMatch(componentWxml, /designer-contact-card|designer-qr/);
-  assert.doesNotMatch(pageWxml, /my-designer-entry|我的设计师|designer-contact-sheet/);
+  assert.doesNotMatch(pageWxml, /my-designer-entry|我的家装设计顾问|designer-contact-sheet/);
   assert.doesNotMatch(pageJson, /designer-contact-sheet/);
   const headerIndex = pageWxml.indexOf('class="page-header"');
   const summaryIndex = componentWxml.indexOf('class="lead-hero-card"');

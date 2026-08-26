@@ -1,4 +1,11 @@
-<view wx:if="{{dialogMounted}}" class="dcs-root" catchtouchmove="noop" aria-role="dialog" aria-label="联系设计师">
+<view
+  wx:if="{{dialogMounted}}"
+  class="dcs-root"
+  style="--dcs-capsule-bottom: {{capsuleBottom}}px;"
+  catchtouchmove="noop"
+  aria-role="dialog"
+  aria-label="联系家装设计顾问"
+>
   <view class="dcs-mask {{dialogOpen ? 'open' : ''}}" bindtap="onClose"></view>
   <view class="dcs-dialog {{dialogOpen ? 'open' : ''}}" catchtap="noop">
     <view class="dcs-card">
@@ -6,8 +13,12 @@
         class="dcs-xiao-k"
         src="/images/designer-contact/xiao-k-peeking.png"
         mode="aspectFit"
-        aria-label="小K引导添加设计师微信"
+        aria-label="小K引导添加家装设计顾问微信"
       />
+      <view class="dcs-xiao-k-bubble" aria-label="小K说，比小红书更方便贴心的家装顾问">
+        <text class="dcs-xiao-k-bubble-kicker">比小红书更方便贴心的</text>
+        <text class="dcs-xiao-k-bubble-title">家装顾问</text>
+      </view>
 
       <view class="dcs-surface">
         <view class="dcs-hero">
@@ -17,18 +28,18 @@
             <view class="dcs-spatial-room room-c"></view>
           </view>
           <block wx:if="{{hasQr}}">
-            <text class="dcs-title">长按二维码，加设计师微信</text>
+            <text class="dcs-title">长按二维码，加家装设计顾问微信</text>
             <text class="dcs-subtitle">方案细节、户型想法，随时沟通</text>
           </block>
           <block wx:else>
-            <text class="dcs-title">复制微信号，加设计师微信</text>
+            <text class="dcs-title">复制微信号，加家装设计顾问微信</text>
             <text class="dcs-subtitle">方案细节、户型想法，随时沟通</text>
           </block>
         </view>
 
         <view class="dcs-body">
           <view class="dcs-designer-pill">
-            <text class="dcs-designer-label">你的专属设计师</text>
+            <text class="dcs-designer-label">你的专属家装设计顾问</text>
             <block wx:if="{{!professionalTitleVisible}}">
               <text class="dcs-designer-separator">·</text>
               <text class="dcs-designer-name">{{displayName}}</text>
@@ -82,14 +93,14 @@
                 mode="aspectFit"
                 show-menu-by-longpress="{{true}}"
                 bindtap="onPreviewQr"
-                aria-label="设计师微信二维码，长按可识别添加"
+                aria-label="家装设计顾问微信二维码，长按可识别添加"
               />
               <view wx:elif="{{qrLoading}}" class="dcs-qr-state">正在加载二维码…</view>
               <view wx:else class="dcs-qr-state error">
                 <text>二维码暂时无法读取</text>
                 <text class="dcs-retry" bindtap="onRetryQr">重新加载</text>
               </view>
-              <view class="dcs-hold-pill" aria-hidden="true">按住二维码 2 秒</view>
+              <view class="dcs-hold-pill" aria-hidden="true">长按二维码 识别后添加</view>
             </view>
           </view>
 
@@ -99,12 +110,12 @@
           </view>
           <text wx:if="{{wechatId && hasQr}}" class="dcs-hint">识别不了？复制微信号后去微信搜索添加</text>
           <text wx:elif="{{wechatId}}" class="dcs-hint">复制微信号后，前往微信搜索添加</text>
-          <text wx:elif="{{!hasQr}}" class="dcs-empty">设计师联系方式暂未提供</text>
+          <text wx:elif="{{!hasQr}}" class="dcs-empty">家装设计顾问联系方式暂未提供</text>
         </view>
       </view>
     </view>
 
-    <view class="dcs-close-action" bindtap="onClose" aria-role="button" aria-label="关闭联系设计师弹窗">
+    <view class="dcs-close-action" bindtap="onClose" aria-role="button" aria-label="关闭联系家装设计顾问弹窗">
       <view class="dcs-close-circle">
         <image class="dcs-close-icon" src="/images/designer-contact/close.png" mode="aspectFit" />
       </view>

@@ -129,7 +129,8 @@ export async function POST(request: Request) {
       const customerContext = contexts?.find((context) => context.mode === 'customer') ?? null;
       const designerProfessionalProfile = claim.lead.assignedUser
         ? await new ProfessionalProfileRepository(transaction).findForStaff(
-            claim.lead.assignedUser.id
+            claim.lead.assignedUser.id,
+            'designer'
           )
         : null;
       return {

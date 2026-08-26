@@ -21,7 +21,7 @@ function registerSnapshotFonts() {
   if (fontsRegistered) return;
   fontsRegistered = true;
   for (const fontPath of CJK_FONT_CANDIDATES) {
-    if (!existsSync(fontPath)) continue;
+    if (!existsSync(/* turbopackIgnore: true */ fontPath)) continue;
     try {
       GlobalFonts.registerFromPath(fontPath, 'sans-serif');
       GlobalFonts.registerFromPath(fontPath, 'Microsoft YaHei');

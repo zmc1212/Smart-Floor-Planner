@@ -6,6 +6,7 @@ export type CurrentUser = {
   enterpriseId?: { _id?: string; name?: string } | null;
   effectivePermissions?: string[];
   workbenchType?: string;
+  mustChangePassword?: boolean;
 };
 
 type CurrentUserPayload = {

@@ -41,7 +41,7 @@ export async function GET(request: Request) {
   const context = await resolveMiniProgramContext(request);
   if (!context) return NextResponse.json({ success: false, error: '需要有效登录身份' }, { status: 401 });
   if (!designerSelf(context)) {
-    return NextResponse.json({ success: false, error: '仅设计师可维护微信号和二维码' }, { status: 403 });
+    return NextResponse.json({ success: false, error: '仅家装设计顾问可维护微信号和二维码' }, { status: 403 });
   }
   const staff = await withMiniProgramPostgresTransaction(context, (transaction) =>
     new AdminUserRepository(transaction).findById(parsePostgresId(context.staff!._id, 'staff id'))
@@ -58,7 +58,7 @@ export async function PATCH(request: Request) {
     const context = await resolveMiniProgramContext(request);
     if (!context) return NextResponse.json({ success: false, error: '需要有效登录身份' }, { status: 401 });
     if (!designerSelf(context)) {
-      return NextResponse.json({ success: false, error: '仅设计师可维护微信号和二维码' }, { status: 403 });
+      return NextResponse.json({ success: false, error: '仅家装设计顾问可维护微信号和二维码' }, { status: 403 });
     }
     const body = await request.json();
     const wechatId = validateStaffWechatId(body.wechatId);

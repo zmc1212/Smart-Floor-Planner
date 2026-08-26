@@ -89,7 +89,7 @@
       </view>
 
       <view class="meta-row collab-row">
-        <text class="meta-text">客户: {{item.customerName}}<text wx:if="{{item.customerPhone}}"> · {{item.customerPhone}}</text> · 派单设计师: {{item.designerName}}</text>
+        <text class="meta-text">客户: {{item.customerName}}<text wx:if="{{item.customerPhone}}"> · {{item.customerPhone}}</text> · 派单家装设计顾问: {{item.designerName}}</text>
       </view>
 
       <view class="card-actions">

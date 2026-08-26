@@ -23,7 +23,7 @@ async function resolvePublisher(request: Request): Promise<Actor | NextResponse>
   const miniContext = await resolveMiniProgramContext(request);
   if (miniContext) {
     if (!miniContext.enterpriseId || miniContext.mode !== 'staff' || !miniContext.staff || !['designer', 'enterprise_admin'].includes(miniContext.staff.role)) {
-      return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可管理方案发布' }, { status: 403 });
+      return NextResponse.json({ success: false, error: '仅负责家装设计顾问或企业负责人可管理方案发布' }, { status: 403 });
     }
     return {
       role: miniContext.staff.role,
@@ -35,7 +35,7 @@ async function resolvePublisher(request: Request): Promise<Actor | NextResponse>
   const admin = await getTenantContext(request);
   if (!admin) return NextResponse.json({ success: false, error: '需要有效登录身份' }, { status: 401 });
   if (!admin.enterpriseId || !['designer', 'enterprise_admin'].includes(admin.role)) {
-    return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可管理方案发布' }, { status: 403 });
+    return NextResponse.json({ success: false, error: '仅负责家装设计顾问或企业负责人可管理方案发布' }, { status: 403 });
   }
   return {
     role: admin.role,

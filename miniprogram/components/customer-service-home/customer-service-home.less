@@ -115,7 +115,7 @@
 .benefit-hero {
   position: relative;
   margin: 0 -28rpx;
-  padding: 62rpx 28rpx 0;
+  padding: 34rpx 28rpx 0;
   box-sizing: border-box;
 }
 
@@ -123,11 +123,11 @@
   content: '';
   position: absolute;
   inset: 0 0 auto;
-  height: 540rpx;
+  height: 548rpx;
   border-radius: 36rpx 36rpx 48rpx 48rpx;
   background:
-    radial-gradient(circle at 88% 20%, rgba(93, 225, 139, 0.32) 0%, rgba(93, 225, 139, 0) 32%),
-    linear-gradient(145deg, #08bf62 0%, #04a951 100%);
+    radial-gradient(circle at 92% 6%, rgba(91, 225, 145, 0.38) 0%, rgba(91, 225, 145, 0) 34%),
+    linear-gradient(145deg, #08bc61 0%, #00a94f 100%);
   box-shadow: 0 18rpx 40rpx rgba(0, 169, 78, 0.2);
   z-index: 0;
 }
@@ -135,45 +135,42 @@
 .benefit-hero-copy {
   position: relative;
   z-index: 2;
-  width: 470rpx;
-  min-height: 278rpx;
+  width: 394rpx;
+  min-height: 328rpx;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 
-.benefit-headline {
-  max-width: 460rpx;
-  color: #ffffff;
-  font-size: 48rpx;
+.benefit-kicker {
+  min-height: 52rpx;
+  padding: 0 22rpx;
+  border-radius: 28rpx;
+  background: #fff0b8;
+  color: #0b9d4f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
   font-weight: 800;
-  line-height: 1.12;
-  letter-spacing: -1rpx;
-}
-
-.benefit-chip-row {
-  margin-top: 32rpx;
-  display: flex;
-  align-items: center;
-  gap: 14rpx;
-}
-
-.benefit-chip {
-  min-height: 72rpx;
-  padding: 0 24rpx;
-  border-radius: 24rpx;
-  background: #ffffff;
-  color: #183426;
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  font-size: 28rpx;
-  font-weight: 700;
-  box-shadow: 0 10rpx 26rpx rgba(0, 86, 40, 0.14);
+  line-height: 1;
   box-sizing: border-box;
 }
 
-.benefit-check,
+.benefit-headline {
+  max-width: 394rpx;
+  margin-top: 28rpx;
+  color: #ffffff;
+  font-size: 56rpx;
+  font-weight: 800;
+  line-height: 1.08;
+  letter-spacing: -1rpx;
+}
+
+.benefit-headline text {
+  display: block;
+}
+
 .assurance-check {
   position: relative;
   border-radius: 50%;
@@ -181,12 +178,6 @@
   flex-shrink: 0;
 }
 
-.benefit-check {
-  width: 38rpx;
-  height: 38rpx;
-}
-
-.benefit-check::after,
 .assurance-check::after,
 .progress-step.tone-done .progress-node-mark::after {
   content: '';
@@ -202,26 +193,27 @@
 }
 
 .benefit-subline {
-  margin-top: 28rpx;
+  margin-top: 22rpx;
+  max-width: 400rpx;
   color: rgba(255, 255, 255, 0.94);
-  font-size: 27rpx;
+  font-size: 26rpx;
   line-height: 1.35;
   font-weight: 500;
 }
 
 .benefit-guide {
   position: absolute;
-  right: 10rpx;
-  top: 22rpx;
-  width: 300rpx;
-  height: 310rpx;
+  right: 4rpx;
+  top: 68rpx;
+  width: 340rpx;
+  height: 292rpx;
   z-index: 1;
 }
 
 .service-ticket {
   position: relative;
   z-index: 3;
-  margin-top: 20rpx;
+  margin-top: 10rpx;
   padding: 24rpx;
   border-radius: 30rpx;
   background: #ffffff;
@@ -232,12 +224,12 @@
 .ticket-main-row {
   display: flex;
   align-items: stretch;
-  min-height: 212rpx;
+  min-height: 190rpx;
   gap: 24rpx;
 }
 
 .ticket-main-row.no-media {
-  min-height: 186rpx;
+  min-height: 132rpx;
 }
 
 .ticket-media {
@@ -281,7 +273,18 @@
 }
 
 .ticket-main-row.no-media .ticket-status {
-  padding: 4rpx 8rpx 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(292rpx, 0.92fr);
+  align-items: center;
+  gap: 20rpx;
+  padding: 2rpx 8rpx 0;
+}
+
+.ticket-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 
 .ticket-title {
@@ -305,11 +308,17 @@
 
 .progress-track {
   position: relative;
-  margin-top: auto;
-  padding-top: 18rpx;
+  margin-top: 16rpx;
+  padding-top: 8rpx;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+}
+
+.ticket-main-row.no-media .progress-track {
+  width: 100%;
+  margin-top: 0;
+  align-self: center;
 }
 
 .progress-track::before {
@@ -317,7 +326,7 @@
   position: absolute;
   left: 28rpx;
   right: 28rpx;
-  top: 39rpx;
+  top: 29rpx;
   height: 2rpx;
   background: #d8e8dd;
 }
@@ -333,8 +342,8 @@
 
 .progress-node {
   position: relative;
-  width: 44rpx;
-  height: 44rpx;
+  width: 42rpx;
+  height: 42rpx;
   border-radius: 50%;
   background: #edf2ef;
   display: flex;
@@ -375,10 +384,17 @@
   color: #bd6818;
 }
 
+.ticket-actions {
+  margin-top: 20rpx;
+  display: flex;
+  align-items: stretch;
+  gap: 16rpx;
+}
+
 .ticket-cta {
-  width: 100%;
-  min-height: 82rpx;
-  margin-top: 22rpx;
+  min-width: 0;
+  min-height: 76rpx;
+  flex: 1;
   border-radius: 42rpx;
   display: flex;
   align-items: center;
@@ -401,10 +417,9 @@
 }
 
 .ticket-cta.secondary {
-  margin-top: 14rpx;
   color: #167b45;
-  background: #f1f8f3;
-  box-shadow: inset 0 0 0 1rpx #c9e4d2;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 1rpx #c4d4ca;
 }
 
 .switcher-strip {
@@ -436,102 +451,100 @@
   margin-top: 28rpx;
   display: flex;
   flex-direction: column;
-  gap: 20rpx;
+  gap: 14rpx;
 }
 
 .benefit-service-card {
   position: relative;
-  min-height: 246rpx;
-  padding: 34rpx;
+  min-height: 184rpx;
+  padding: 16rpx 22rpx 16rpx 16rpx;
   border-radius: 30rpx;
   background:
-    radial-gradient(circle at 88% 20%, rgba(190, 234, 205, 0.45) 0%, rgba(190, 234, 205, 0) 36%),
-    linear-gradient(135deg, #f4faf6 0%, #eef7f1 100%);
+    radial-gradient(circle at 18% 30%, rgba(173, 232, 195, 0.48) 0%, rgba(173, 232, 195, 0) 34%),
+    linear-gradient(135deg, #f7fbf8 0%, #ffffff 100%);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 20rpx;
   overflow: hidden;
-  box-shadow: 0 10rpx 28rpx rgba(24, 52, 38, 0.05);
+  box-shadow: 0 10rpx 28rpx rgba(24, 52, 38, 0.07);
+  box-sizing: border-box;
+}
+
+.benefit-art-stage {
+  width: 214rpx;
+  height: 150rpx;
+  border-radius: 24rpx;
+  background:
+    radial-gradient(circle at 34% 20%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0) 42%),
+    linear-gradient(145deg, #e9f8ed 0%, #dff3e5 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   box-sizing: border-box;
 }
 
 .benefit-service-copy {
   position: relative;
   z-index: 2;
-  width: 58%;
+  min-width: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
 }
 
-.design-card .benefit-service-copy {
-  width: 54%;
-  padding-left: 16rpx;
-}
-
 .benefit-service-title {
   color: #183426;
-  font-size: 38rpx;
+  font-size: 34rpx;
   font-weight: 800;
-  line-height: 1.2;
+  line-height: 1.22;
 }
 
 .benefit-service-desc {
-  margin-top: 12rpx;
+  margin-top: 10rpx;
   color: #65786c;
   font-size: 24rpx;
   line-height: 1.4;
 }
 
 .benefit-arrow {
-  position: relative;
-  width: 62rpx;
-  height: 62rpx;
-  margin-top: 24rpx;
+  display: flex;
+  width: 58rpx;
+  height: 58rpx;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
   border-radius: 50%;
   background: #0bb55a;
   box-shadow: 0 8rpx 18rpx rgba(11, 181, 90, 0.18);
 }
 
-.benefit-arrow-mark {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 18rpx;
-  height: 18rpx;
-  border-top: 4rpx solid #ffffff;
-  border-right: 4rpx solid #ffffff;
-  transform: translate(-62%, -50%) rotate(45deg);
-  box-sizing: border-box;
-}
-
-.benefit-arrow::after {
-  content: '';
-  position: absolute;
-  left: 19rpx;
-  top: 29rpx;
-  width: 24rpx;
-  height: 4rpx;
-  border-radius: 4rpx;
-  background: #ffffff;
-}
-
-.benefit-service-art {
-  position: relative;
-  z-index: 1;
+.benefit-arrow-icon {
+  display: block;
+  width: 44rpx;
+  height: 44rpx;
   flex-shrink: 0;
 }
 
-.meter-art {
-  width: 248rpx;
-  height: 222rpx;
-  margin-right: -6rpx;
+.benefit-service-art {
+  display: block;
 }
 
-.easel-art {
-  width: 278rpx;
-  height: 228rpx;
-  margin-left: -18rpx;
+.effect-art {
+  width: 100%;
+  height: 100%;
+  border-radius: 22rpx;
+}
+
+.advisor-art {
+  width: 202rpx;
+  height: 146rpx;
+}
+
+.onsite-art {
+  width: 204rpx;
+  height: 148rpx;
 }
 
 .benefit-assurance {
@@ -576,7 +589,6 @@
   color: #6d7e73;
 }
 
-.chip-pressed,
 .btn-pressed {
   opacity: 0.88;
 }
@@ -662,21 +674,17 @@
 
 @media (max-width: 360px) {
   .benefit-hero-copy {
-    width: 438rpx;
+    width: 374rpx;
   }
 
   .benefit-headline {
-    font-size: 44rpx;
-  }
-
-  .benefit-chip {
-    padding: 0 20rpx;
-    font-size: 26rpx;
+    max-width: 374rpx;
+    font-size: 52rpx;
   }
 
   .benefit-guide {
-    right: -8rpx;
-    width: 280rpx;
+    right: -12rpx;
+    width: 314rpx;
   }
 
   .ticket-media {
@@ -688,16 +696,22 @@
     width: 214rpx;
   }
 
+  .ticket-main-row.no-media .ticket-status {
+    grid-template-columns: minmax(0, 1fr) 276rpx;
+    gap: 14rpx;
+  }
+
   .benefit-service-card {
-    padding-left: 28rpx;
-    padding-right: 28rpx;
+    padding-left: 14rpx;
+    padding-right: 18rpx;
+    gap: 14rpx;
   }
 
-  .meter-art {
-    width: 228rpx;
+  .benefit-art-stage {
+    width: 184rpx;
   }
 
-  .easel-art {
-    width: 254rpx;
+  .benefit-service-title {
+    font-size: 32rpx;
   }
 }

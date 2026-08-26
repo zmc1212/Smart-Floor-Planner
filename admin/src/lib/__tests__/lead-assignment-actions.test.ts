@@ -51,7 +51,7 @@ test('assigned designers can change the measurer only', () => {
       actorId: 8n,
       designerId: 12n,
     }),
-    /无权更换设计师/
+    /无权更换家装设计顾问/
   );
 });
 
@@ -68,7 +68,7 @@ test('measurers and closed leads cannot reassign staff', () => {
       actorId: 9n,
       measurerId: 21n,
     }),
-    /无权分配或更换测量员/
+    /无权分配或更换家装现场顾问/
   );
   assert.deepEqual(
     getLeadAssignmentActions(lead({ archivedAt: new Date() }), 'enterprise_admin', 1n),

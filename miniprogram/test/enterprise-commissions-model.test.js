@@ -13,9 +13,9 @@ test('enterprise payout ledger groups by lead and keeps tenant totals unfiltered
     totals: { payable: '300.00', paid: '80.00', voided: '20.00' },
     items: [
       { id: '1', leadId: '11', customerLabel: '李女士', role: 'referrer', roleLabel: '推荐人', beneficiaryLabel: '老周', amount: '100', status: 'payable', source: 'referral' },
-      { id: '2', leadId: '11', customerLabel: '李女士', role: 'designer', roleLabel: '设计师', beneficiaryLabel: '小美', amount: '120', status: 'payable', source: 'referral' },
-      { id: '3', leadId: '11', customerLabel: '李女士', role: 'measurer', roleLabel: '测量员', beneficiaryLabel: '阿强', amount: '80', status: 'paid', source: 'referral' },
-      { id: '4', leadId: '22', customerLabel: '王先生', role: 'designer', roleLabel: '设计师', beneficiaryLabel: '小美', amount: '80', status: 'payable', source: 'staff_activity' }
+      { id: '2', leadId: '11', customerLabel: '李女士', role: 'designer', roleLabel: '家装设计顾问', beneficiaryLabel: '小美', amount: '120', status: 'payable', source: 'referral' },
+      { id: '3', leadId: '11', customerLabel: '李女士', role: 'measurer', roleLabel: '家装现场顾问', beneficiaryLabel: '阿强', amount: '80', status: 'paid', source: 'referral' },
+      { id: '4', leadId: '22', customerLabel: '王先生', role: 'designer', roleLabel: '家装设计顾问', beneficiaryLabel: '小美', amount: '80', status: 'payable', source: 'staff_activity' }
     ]
   };
 

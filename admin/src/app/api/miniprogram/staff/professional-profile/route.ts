@@ -15,7 +15,7 @@ async function professionalStaffContext(request: Request) {
   const context = await resolveMiniProgramContext(request);
   if (!context) return { error: NextResponse.json({ success: false, error: '需要有效登录身份' }, { status: 401 }) };
   if (!context.enterpriseId || context.mode !== 'staff' || !context.staff || !isProfessionalProfileRole(context.staff.role)) {
-    return { error: NextResponse.json({ success: false, error: '仅设计师和测量员可维护职业资料' }, { status: 403 }) };
+    return { error: NextResponse.json({ success: false, error: '仅家装设计顾问和家装现场顾问可维护职业资料' }, { status: 403 }) };
   }
   return { context, staffId: parsePostgresId(context.staff._id, 'staff id') };
 }

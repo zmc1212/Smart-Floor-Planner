@@ -25,6 +25,7 @@ test('getTenantContext accepts Admin JWTs without a miniprogram audience', async
     role: 'designer',
     enterpriseId: '7',
     username: 'designer',
+    mustChangePassword: false,
   });
 });
 

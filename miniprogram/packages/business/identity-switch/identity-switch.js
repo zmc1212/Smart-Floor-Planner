@@ -1,22 +1,22 @@
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 
-const MODE_LABELS = { customer: '客户', referrer: '推荐人', staff: '员工' };
+const MODE_LABELS = { customer: '个人用户', referrer: '推荐人', staff: '员工' };
 const ROLE_LABELS = {
   enterprise_admin: '企业负责人',
-  designer: '设计师',
-  measurer: '测量员',
+  designer: '家装设计顾问',
+  measurer: '家装现场顾问',
   salesperson: '地推人员',
   platform_admin: '平台管理员'
 };
 const IDENTITY_ICONS = {
-  customer: '/images/identity-switch/customer.png',
-  referrer: '/images/identity-switch/referrer.png',
-  enterprise_admin: '/images/identity-switch/enterprise-admin.png',
-  designer: '/images/identity-switch/designer.png',
-  measurer: '/images/identity-switch/measurer.png',
-  salesperson: '/images/identity-switch/salesperson.png',
-  platform_admin: '/images/identity-switch/platform-admin.png'
+  customer: '/packages/business/assets/identity-switch/customer.png',
+  referrer: '/packages/business/assets/identity-switch/referrer.png',
+  enterprise_admin: '/packages/business/assets/identity-switch/enterprise-admin.png',
+  designer: '/packages/business/assets/identity-switch/designer.png',
+  measurer: '/packages/business/assets/identity-switch/measurer.png',
+  salesperson: '/packages/business/assets/identity-switch/salesperson.png',
+  platform_admin: '/packages/business/assets/identity-switch/platform-admin.png'
 };
 
 function resolveIdentityIcon(context) {

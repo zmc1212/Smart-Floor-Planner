@@ -4,13 +4,13 @@ const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js
 const COPY_BY_TYPE = {
   staff: {
     title: '员工入驻码',
-    subtitle: '扫码加入本企业 · 成为设计师或测量员',
+    subtitle: '扫码加入本企业 · 成为家装设计顾问或家装现场顾问',
     scanCopy: '请员工扫描此码',
     shareLabel: '一键分享',
     info: '扫码后授权手机号，完成员工入驻',
     promises: [
       { mark: '职', title: '员工入驻', copy: '加入本企业' },
-      { mark: '岗', title: '岗位确认', copy: '设计师/测量员' },
+      { mark: '岗', title: '岗位确认', copy: '家装设计顾问/家装现场顾问' },
       { mark: '开', title: '开始服务', copy: '进入工作台' }
     ]
   },
@@ -291,7 +291,7 @@ Page({
     const token = this.data.shareToken;
     const enterpriseName = String(this.data.enterpriseName || '').trim();
     const title = this.data.activeType === 'staff'
-      ? (enterpriseName ? `邀请加入${enterpriseName}` : '邀请加入本企业 · 成为设计师或测量员')
+      ? (enterpriseName ? `邀请加入${enterpriseName}` : '邀请加入本企业 · 成为家装设计顾问或家装现场顾问')
       : (enterpriseName ? `邀请成为${enterpriseName}推荐人` : '邀请成为本企业推荐人');
     return {
       title,

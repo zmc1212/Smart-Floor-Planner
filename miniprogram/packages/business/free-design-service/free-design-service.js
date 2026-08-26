@@ -127,11 +127,11 @@ function resolveErrorMessage(error) {
 
 const EXISTING_STAGE_LABELS = {
   new: '服务准备中',
-  contacted: '设计师沟通中',
+  contacted: '家装设计顾问沟通中',
   measuring: '量房安排中',
   measured: '量房已完成',
-  assigned: '设计师沟通中',
-  designing: '设计师沟通中',
+  assigned: '家装设计顾问沟通中',
+  designing: '家装设计顾问沟通中',
   quoting: '方案沟通中',
 };
 
@@ -370,7 +370,7 @@ Page({
   onOpenContactSheet() {
     const designer = this.data.designerProfile;
     if (!hasDesignerContact(designer)) {
-      wx.showToast({ title: '设计师联系方式暂未提供', icon: 'none' });
+      wx.showToast({ title: '家装设计顾问联系方式暂未提供', icon: 'none' });
       return;
     }
     this.setData({ showContactSheet: true });

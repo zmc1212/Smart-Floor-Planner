@@ -29,8 +29,8 @@ var taskStatusLabels = {
 var roleLabels = {
   none: '无',
   salesperson: '渠道地推',
-  measurer: '测量员',
-  designer: '设计师',
+  measurer: '家装现场顾问',
+  designer: '家装设计顾问',
   enterprise_admin: '企业负责人',
   admin: '平台负责人',
   super_admin: '平台负责人'

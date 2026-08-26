@@ -9,7 +9,9 @@ import {
 import type { PostgresTransaction } from '@/db/transaction';
 import {
   buildProfessionalProfile,
+  isProfessionalProfileRole,
   type ProfessionalProfileDetails,
+  type ProfessionalProfileRole,
 } from '@/lib/professional-profile';
 
 export class ProfessionalProfileRepository {
@@ -48,7 +50,10 @@ export class ProfessionalProfileRepository {
     return 0;
   }
 
-  async findForStaff(staffId: bigint): Promise<ProfessionalProfileDetails | null> {
+  async findForStaff(
+    staffId: bigint,
+    displayRole?: ProfessionalProfileRole
+  ): Promise<ProfessionalProfileDetails | null> {
     const rows = await this.transaction
       .select({ staff: adminUsers, enterprise: enterprises })
       .from(adminUsers)
@@ -57,15 +62,19 @@ export class ProfessionalProfileRepository {
       .limit(1);
     const row = rows[0];
     if (!row || !row.staff.enterpriseId) return null;
+    const role = displayRole
+      || (isProfessionalProfileRole(row.staff.role) ? row.staff.role : null);
+    if (!role) return null;
     const actualServiceCount = await this.countServedCustomers({
       enterpriseId: row.staff.enterpriseId,
       staffId: row.staff.id,
-      role: row.staff.role,
+      role,
     });
     return buildProfessionalProfile({
       enterprise: row.enterprise,
       staff: row.staff,
       actualServiceCount,
+      displayRole: role,
     });
   }
 }

@@ -72,7 +72,7 @@ TabBar 由服务端 bootstrap 的 `current.capabilities` 生成；客户端隐�
 
 | 角色 | 顺序与文案 | 入口能力 | 徽标来源 |
 | --- | --- | --- | --- |
-| 客户 | `服务 / 我的` | `customer.service`、`account` | 服务端本人待预约/待改期/待重约计数；失败显示“暂时无法读取”。服务首屏直达档案；`customer.projects` 仍守卫档案/列表 API，`customer-projects` 仅为重定向壳 |
+| 客户 | `服务 / 我的` | `customer.service`、`account` | 服务端本人待预约/待改期/待重约计数；失败显示“暂时无法读取”。服务首屏直达档案，「免费效果图」进入交付方案册；`customer.projects` 仍守卫档案/列表 API，`customer-projects` 仅为重定向壳 |
 | 推荐人 | `推广 / 进度 / 收益 / 我的` | `referrer.promotion`、`referrer.progress`、`referrer.earnings`、`account` | 当前成员关系的脱敏里程碑和收益状态；不显示客户数量猜测 |
 | 设计师 | `工作台 / 客户 / 设计 / 收益 / 我的` | `staff.leads`、`staff.appointments`、`staff.design`、`staff.earnings`、`account` | 本人待跟进/预约/发布状态及本人待支付提成；无数据不显示假数字 |
 | 测量员 | `工作台 / 客户 / 收益 / 我的` | `staff.schedule`、`staff.tasks`、`staff.earnings`、`account` | 工作台 Tab 聚合今日预约；“客户”Tab 复用共享的 `leads-management` 线索列表（按角色收窄、不可新增）查看已派/推广相关客户与跟进交接状态；“收益”Tab 展示本人待支付/已支付提成；量房相关深层编辑器仍由任务上下文触发 |
@@ -131,6 +131,26 @@ TabBar 由服务端 bootstrap 的 `current.capabilities` 生成；客户端隐�
 
 角色外壳的静态设计源目录为 `design-references/role-shell-v1/`；本阶段以本文件和同名英文
 文件作为结构、状态和安全区的唯一文字源，不把整页截图打包进小程序。
+
+### 7.1 未登录「我的」入口元素台账
+
+当前批准源为 `design-references/auth/miniprogram-guest-login-jovekore-v2-full.png`。
+在 `390x844` 基准视口内，生产界面使用下列内容固有堆叠；高屏设备仅可在最终信任说明之后
+承接额外页面背景，不得在门厅场景与跨层面板这一连续阅读组内制造随视口增长的空洞。
+
+| 元素 | 基准生产目标 | 设计源 / 生产映射 |
+| --- | --- | --- |
+| 胶囊安全品牌锁 | 运行时 `navigationTop` + `navigationHeight`；Logo `58rpx`、锁定文字 `30rpx` | 原生 `brand-logo.png` 加原生文字，位于胶囊保护区左侧 |
+| 身份接待门厅 | `390px` 下高 `700rpx`；`<=360px` 下为 `660rpx` | 独立生成的 `images/home-ip-v1/login-identity-portal-v2.jpg`，不切整页设计稿 |
+| 跨层原生面板 | 两侧 `32rpx`、上叠 `-34rpx`、圆角 `34rpx` | 原生 WXML/Less；暖白表面与向下柔和投影 |
+| 标题 / 辅助文案 | `40rpx` / `24rpx`（`<=360px` 标题 `38rpx`） | 原生文字；基准视口标题以单行为目标 |
+| 身份轨道 | 图标容器 `104rpx`、可见图形 `58rpx`、标签 `24rpx` | 原生「个人用户 / 员工 / 推荐人」；三枚 Lucide 衍生 PNG 记录于 `docs/icon-sources/mine/` |
+| 匹配说明 | `22rpx` 原生文字及半像素短分隔线 | 「登录后自动匹配身份」，仅说明、不承载交互 |
+| 主 CTA | 高 `92rpx`、标签 `28rpx` | 唯一可执行「立即登录」，继续使用现有 `goToLogin` 路由 |
+| 信任说明 / 底部 | `22rpx`，位于 `env(safe-area-inset-bottom)` 之上 | 「一个账号 · 多重身份 · 随时切换」，不增加第二动作 |
+
+聚焦测试已核验静态布局、素材签名、编码体积和 `<=360px` 规则；`390x844` 原生胶囊宿主
+光学核验仍等待用户手动提供运行态截图。
 
 ## 8. 批准后的验收清单
 

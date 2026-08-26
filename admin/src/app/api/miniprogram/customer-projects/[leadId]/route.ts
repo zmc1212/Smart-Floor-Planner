@@ -32,8 +32,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ lead
       if (!project) return null;
       const profiles = new ProfessionalProfileRepository(transaction);
       const [designerProfile, measurerProfile] = await Promise.all([
-        project.designer ? profiles.findForStaff(project.designer.id) : null,
-        project.measurer ? profiles.findForStaff(project.measurer.id) : null,
+        project.designer ? profiles.findForStaff(project.designer.id, 'designer') : null,
+        project.measurer ? profiles.findForStaff(project.measurer.id, 'measurer') : null,
       ]);
       return { project, designerProfile, measurerProfile };
     });

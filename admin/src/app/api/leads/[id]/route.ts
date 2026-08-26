@@ -308,7 +308,7 @@ export async function PUT(
       return NextResponse.json(
         {
           success: false,
-          error: '线索创建时绑定的设计师不可在线索详情中修改；请在员工管理中调整测量员绑定，换绑仅影响后续新线索',
+          error: '线索创建时绑定的家装设计顾问不可在线索详情中修改；请在员工管理中调整家装现场顾问绑定，换绑仅影响后续新线索',
         },
         { status: 400 }
       );

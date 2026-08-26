@@ -66,7 +66,7 @@
       <view class="account-surface professional-profile-surface">
         <view class="field-group">
           <text class="field-label">我的专业头衔</text>
-          <input class="field-input" disabled="{{professionalProfileLocked}}" value="{{professionalTitle}}" maxlength="20" placeholder="例如：全案设计师" placeholder-class="field-placeholder" bindinput="onProfessionalTitleInput" />
+          <input class="field-input" disabled="{{professionalProfileLocked}}" value="{{professionalTitle}}" maxlength="20" placeholder="例如：全案家装设计顾问" placeholder-class="field-placeholder" bindinput="onProfessionalTitleInput" />
           <view class="field-counter">{{professionalTitle.length}} / 20</view>
         </view>
         <view class="professional-divider"></view>
@@ -107,7 +107,7 @@
     </block>
 
     <block wx:if="{{isDesigner}}">
-      <view class="account-section-title">设计师服务资料</view>
+      <view class="account-section-title">家装设计顾问服务资料</view>
       <view class="wechat-eligibility tone-{{eligibilityTone}}">
         <text class="wechat-eligibility-label">{{eligibilityLabel}}</text>
       </view>

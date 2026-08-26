@@ -131,7 +131,7 @@ Page({
       }));
     } catch (error) {
       const message = error.code === 'lead_already_claimed'
-        ? '手慢一步，这条线索已被其他设计师抢走'
+        ? '手慢一步，这条线索已被其他家装设计顾问抢走'
         : error.error || error.message || '抢单失败，请重试';
       wx.showModal({ title: '未能抢到', content: message, showCancel: false, confirmText: '知道了' });
       await this.load({ silent: true });

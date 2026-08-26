@@ -4,6 +4,8 @@ import { parsePostgresId } from '@/db/postgres-dto';
 import { AdminUserRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { getTenantContext } from '@/lib/auth';
+import { getEffectivePermissions } from '@/lib/staff-access';
+import { setAdminSessionCookie, signAdminSession } from '@/lib/admin-session';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,11 +76,27 @@ export async function PUT(request: Request) {
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await withPlatformTransaction((transaction) =>
-      new AdminUserRepository(transaction).update(adminId, { passwordHash })
+    const updated = await withPlatformTransaction((transaction) =>
+      new AdminUserRepository(transaction).update(adminId, {
+        passwordHash,
+        mustChangePassword: false,
+      })
     );
+    if (!updated) {
+      return NextResponse.json(
+        { success: false, error: '用户不存在或已禁用' },
+        { status: 401 }
+      );
+    }
 
-    return NextResponse.json({ success: true, data: {} });
+    const permissions = await getEffectivePermissions(
+      updated.role,
+      updated.menuPermissions
+    );
+    const token = await signAdminSession({ admin: updated, permissions });
+    const response = NextResponse.json({ success: true, data: {} });
+
+    return setAdminSessionCookie(response, token);
   } catch (error) {
     console.error('[AuthPassword] Password update failed', error);
     return NextResponse.json(

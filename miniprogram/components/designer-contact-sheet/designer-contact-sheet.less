@@ -3,9 +3,9 @@
   inset: 0;
   z-index: 50;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: 112rpx 24rpx 32rpx;
+  padding: calc(var(--dcs-capsule-bottom, 84px) + 116rpx) 24rpx 32rpx;
   box-sizing: border-box;
 }
 
@@ -52,6 +52,67 @@
   height: 218rpx;
   filter: drop-shadow(0 14rpx 12rpx rgba(9, 66, 31, 0.18));
   pointer-events: none;
+}
+
+.dcs-xiao-k-bubble {
+  position: absolute;
+  z-index: 5;
+  top: -100rpx;
+  left: 316rpx;
+  display: flex;
+  width: 316rpx;
+  min-height: 112rpx;
+  padding: 17rpx 22rpx 15rpx;
+  flex-direction: column;
+  justify-content: center;
+  border: 2rpx solid #0b9850;
+  border-radius: 32rpx;
+  color: #0b914a;
+  background: #fbfffc;
+  box-shadow: 0 12rpx 28rpx rgba(7, 83, 39, 0.16);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.dcs-xiao-k-bubble::before,
+.dcs-xiao-k-bubble::after {
+  position: absolute;
+  top: 54rpx;
+  width: 0;
+  height: 0;
+  border-top: 17rpx solid transparent;
+  border-bottom: 17rpx solid transparent;
+  content: '';
+}
+
+.dcs-xiao-k-bubble::before {
+  left: -28rpx;
+  border-right: 28rpx solid #0b9850;
+}
+
+.dcs-xiao-k-bubble::after {
+  left: -24rpx;
+  border-right: 26rpx solid #fbfffc;
+}
+
+.dcs-xiao-k-bubble-kicker,
+.dcs-xiao-k-bubble-title {
+  display: block;
+  white-space: nowrap;
+}
+
+.dcs-xiao-k-bubble-kicker {
+  font-size: 22rpx;
+  line-height: 1.35;
+  font-weight: 500;
+}
+
+.dcs-xiao-k-bubble-title {
+  margin-top: 2rpx;
+  font-size: 32rpx;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.4rpx;
 }
 
 .dcs-surface {
@@ -475,13 +536,31 @@
 
 @media (max-height: 720px) {
   .dcs-root {
-    padding-top: 92rpx;
+    padding-top: calc(var(--dcs-capsule-bottom, 84px) + 104rpx);
   }
 
   .dcs-xiao-k {
     top: -120rpx;
     width: 286rpx;
     height: 190rpx;
+  }
+
+  .dcs-xiao-k-bubble {
+    top: -88rpx;
+    left: 286rpx;
+    width: 304rpx;
+    min-height: 102rpx;
+    padding-top: 14rpx;
+    padding-bottom: 13rpx;
+  }
+
+  .dcs-xiao-k-bubble::before,
+  .dcs-xiao-k-bubble::after {
+    top: 48rpx;
+  }
+
+  .dcs-xiao-k-bubble-title {
+    font-size: 30rpx;
   }
 
   .dcs-hero {

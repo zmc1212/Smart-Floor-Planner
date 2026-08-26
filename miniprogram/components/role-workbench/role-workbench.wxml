@@ -145,7 +145,7 @@
             <view class="brand-mark">
               <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
             </view>
-            <text class="identity-role-name">家客来 · {{role === 'designer' ? '设计师端' : role === 'measurer' ? '测量员端' : role === 'enterprise_admin' ? '经营端' : '服务向导'}}</text>
+            <text class="identity-role-name">家客来 · {{role === 'designer' ? '家装设计顾问端' : role === 'measurer' ? '家装现场顾问端' : role === 'enterprise_admin' ? '经营端' : '服务向导'}}</text>
             <view wx:if="{{enterpriseName}}" class="identity-tag">
               <text>{{enterpriseName}}</text>
             </view>

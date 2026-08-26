@@ -112,7 +112,7 @@ export async function POST(request: Request) {
     const admin = miniContext ? null : await getTenantContext(request);
     if (admin) {
       if (!admin.enterpriseId || !['designer', 'measurer', 'enterprise_admin'].includes(admin.role)) {
-        return NextResponse.json({ success: false, error: '仅负责设计师、已派测量员或企业负责人可创建预约' }, { status: 403 });
+        return NextResponse.json({ success: false, error: '仅负责家装设计顾问、已派家装现场顾问或企业负责人可创建预约' }, { status: 403 });
       }
       const body = await request.json();
       const leadId = parseAppointmentId(body.leadId, '线索');
@@ -167,7 +167,7 @@ export async function POST(request: Request) {
     const context = miniContext;
     const isCustomer = context?.mode === 'customer';
     if (!context || (!isCustomer && (!context.enterpriseId || context.mode !== 'staff' || !context.staff || !['designer', 'measurer', 'enterprise_admin'].includes(context.staff.role)))) {
-      return NextResponse.json({ success: false, error: '仅客户本人、负责设计师、已派测量员或企业负责人可创建预约' }, { status: 403 });
+      return NextResponse.json({ success: false, error: '仅客户本人、负责家装设计顾问、已派家装现场顾问或企业负责人可创建预约' }, { status: 403 });
     }
     const body = await request.json();
     const leadId = parseAppointmentId(body.leadId, '线索');

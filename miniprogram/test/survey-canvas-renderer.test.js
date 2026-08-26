@@ -565,11 +565,14 @@ function createRecordingContext() {
 
   const drawImages = [];
   const ops = [];
+  const clearRects = [];
   const context = {
     save() {},
     restore() {},
     setTransform() {},
-    clearRect() {},
+    clearRect(x, y, width, height) {
+      clearRects.push({ x, y, width, height });
+    },
     fillRect(x, y, width, height) {
       fillRectDetails.push({ x, y, width, height, fillStyle });
       ops.push({ type: 'fillRect', fillStyle });
@@ -627,7 +630,7 @@ function createRecordingContext() {
   ['lineCap', 'lineJoin', 'textAlign', 'textBaseline', 'shadowColor', 'shadowBlur', 'shadowOffsetY', 'miterLimit']
     .forEach((property) => Object.defineProperty(context, property, { set() {}, get() { return undefined; } }));
 
-  return { context, strokes, fills, dashes, widths, strokeDetails, fillDetails, fillRectDetails, texts, drawImages, ops };
+  return { context, strokes, fills, dashes, widths, strokeDetails, fillDetails, fillRectDetails, texts, drawImages, ops, clearRects };
 }
 
 test('default surveying canvas uses the fine low-contrast reference grid', () => {
@@ -2092,6 +2095,30 @@ test('free drag renders only the moving green cursor without a following blue gu
   assert.equal(recorder.strokes.some((path) => (
     path.some((command) => command[0] === 'arc')
   )), false);
+});
+
+test('free dock drag dirty-clears only the reticle instead of the full overlay', () => {
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 400, height: 500 },
+    { x: 180, y: 220 },
+    {
+      dpr: 1,
+      previousPoint: { x: 100, y: 100 },
+      paintLens: false
+    }
+  );
+
+  assert.equal(recorder.clearRects.some((rect) => rect.width === 400 && rect.height === 500), false);
+  assert.ok(recorder.clearRects.some((rect) => (
+    rect.x === 56 && rect.y === 56 && rect.width === 88 && rect.height === 88
+  )));
+  assert.ok(recorder.clearRects.some((rect) => (
+    rect.x === 136 && rect.y === 176 && rect.width === 88 && rect.height === 88
+  )));
+  assert.equal(recorder.drawImages.length, 0);
+  assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'));
 });
 
 test('canvas cursor drag suppresses the transient green cursor and guides', () => {

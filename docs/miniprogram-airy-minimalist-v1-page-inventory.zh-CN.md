@@ -65,7 +65,7 @@ Logo：预留位置，导出时合成 brand-logo.png
 
 | 身份/页面族 | 允许的 TabBar | 深层页面规则 |
 | --- | --- | --- |
-| 客户 | `服务 / 我的` | `customer-project`、`customer-ai-schemes`、预约详情、首次预约和改期均无 TabBar；`customer-projects` 仅为旧深链重定向壳（不再作产品列表）；服务首屏直达档案，列表 API 供给排序/切换；已发布方案册经线索详情/项目档案深链进入 |
+| 客户 | `服务 / 我的` | `customer-project`、`customer-ai-schemes`、预约详情、首次预约和改期均无 TabBar；`customer-projects` 仅为旧深链重定向壳（不再作产品列表）；服务首屏直达档案，「免费效果图」进入交付方案册 `customer-ai-schemes`，列表 API 供给排序/切换；已发布方案册经服务首屏权益卡、线索详情与项目档案深链进入 |
 | 推荐人 | `推广 / 进度 / 收益 / 我的` | `referrer-progress` 与 `referrer-earnings` 挂载当前推荐人 TabBar；不得显示客户/员工导航 |
 | 设计师 | `工作台 / 客户 / 设计 / 收益 / 我的` | 资料、设置、账号安全、AI 工作流子页均为深层页，无 TabBar；`staff-earnings` 挂载当前设计师 TabBar |
 | 测量员 | `工作台 / 客户 / 收益 / 我的` | 不可用时间、预约详情和正式量房编辑器均为深层页；“客户”Tab 用于查看已量房完成客户与统计入口；`staff-earnings` 挂载当前测量员 TabBar |

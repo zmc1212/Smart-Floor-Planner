@@ -519,7 +519,7 @@ export class AssignmentRacingRepository {
         'designer_unavailable',
         designer && designer.openLeadCount >= designer.capacity
           ? '当前在手线索已达容量上限'
-          : '当前设计师不可抢单',
+          : '当前家装设计顾问不可抢单',
         409
       );
     }

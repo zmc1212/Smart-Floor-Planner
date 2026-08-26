@@ -10,3 +10,16 @@ uploads
 npm-debug.log*
 .DS_Store
 .vscode
+
+# Previous offline packages must never re-enter the image.
+# docker save includes every layer, so COPY-then-rm would still keep the bytes.
+release
+release.bat
+release.ps1
+tmp
+coverage
+**/*.test.ts
+**/__tests__
+*.log
+*.tsbuildinfo
+Pollinations API.json

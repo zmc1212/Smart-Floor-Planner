@@ -119,9 +119,18 @@ or a roadmap do not replace the current module inventory.
   a full host-window capture that includes the native layer.
 - When the approved design already contains the required raster artwork, icon,
   or cut region, reuse or extract that exact design asset for the production UI.
-  Do not substitute an approximate generated image, a stock asset, or an
-  unrelated existing project icon for convenience. If an exact asset cannot be
-  extracted or reused, pause and ask the user instead of inventing a substitute.
+  Do not substitute a stock asset or an unrelated existing project icon for
+  convenience. If the artwork exists only inside a composite design and cannot
+  be extracted as a clean standalone layer, use the available image-generation
+  capability to create a route-specific standalone cutout that matches the
+  approved subject, visual language, materials, palette, framing, and apparent
+  scale before implementing the UI. Generate each distinct business metaphor as
+  its own transparent PNG; do not use a generic line icon as a placeholder or
+  final substitute. If image generation is unavailable or the generated cutout
+  cannot be brought close enough to the approved source, pause and ask the user
+  instead of inventing or silently downgrading the asset. Generated cutouts are
+  standalone artwork only: they never authorize slicing or repainting a
+  composite screenshot, page layout, UI text, or control surface.
   Record the mapping from approved design source/cut to packaged production path
   in the relevant module documentation and include it in visual QA.
 

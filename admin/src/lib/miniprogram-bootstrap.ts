@@ -30,8 +30,8 @@ export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
 const ROLE_LABELS: Record<MiniProgramRole, string> = {
   customer: '客户',
   referrer: '推荐人',
-  designer: '设计师',
-  measurer: '测量员',
+  designer: '家装设计顾问',
+  measurer: '家装现场顾问',
   salesperson: '渠道地推',
   enterprise_admin: '企业负责人',
   platform_admin: '平台管理员',

@@ -123,7 +123,7 @@ Page({
           statusLabel: x.status === 'expired' ? '已过期' : x.status === 'confirmed' ? '待上门' : x.status === 'completed' ? '已完成' : x.status || '待上门',
           customerName: x.customerName || x.leadName || '客户',
           customerPhone: x.customerPhone || x.phone || x.leadPhone || '',
-          designerName: x.designerName || '专属设计师',
+          designerName: x.designerName || '专属家装设计顾问',
           community: x.community || x.address || '量房预约',
         };
       });

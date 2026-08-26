@@ -18,10 +18,10 @@ function hasDesignerContact(designer) {
 }
 
 function designerShortcutDescription(designer) {
-  if (!designer) return '设计师匹配后可联系';
+  if (!designer) return '家装设计顾问匹配后可联系';
   if (designer.wechatQrUrl) return '扫码添加微信好友';
   if (String(designer.wechatId || '').trim()) return '微信号可复制联系';
-  return '设计师匹配后可联系';
+  return '家装设计顾问匹配后可联系';
 }
 
 function loadDesignerQrToTempFile(url, cacheKey) {
@@ -71,7 +71,7 @@ function copyDesignerWechatId(wechatId, options) {
         if (withSearchHint) {
           wx.showModal({
             title: '微信号已复制',
-            content: '请打开微信，通过搜索添加设计师为好友。',
+            content: '请打开微信，通过搜索添加家装设计顾问为好友。',
             showCancel: false,
             confirmText: '知道了',
           });

@@ -13,7 +13,7 @@ export async function POST(request: Request) {
   try {
     const context = await resolveMiniProgramContext(request);
     if (!context?.enterpriseId || context.mode !== 'staff' || context.staff?.role !== 'designer') {
-      return NextResponse.json({ success: false, error: '仅设计师可上传个人微信二维码' }, { status: 403 });
+      return NextResponse.json({ success: false, error: '仅家装设计顾问可上传个人微信二维码' }, { status: 403 });
     }
     const formData = await request.formData();
     const file = formData.get('file');

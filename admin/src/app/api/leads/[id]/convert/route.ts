@@ -29,7 +29,7 @@ export async function POST(
     const role = mini?.staff?.role || admin?.role || '';
     if (!['enterprise_admin', 'designer'].includes(role)) {
       return NextResponse.json(
-        { success: false, error: '仅企业管理员或负责该客户的设计师可以标记已签约' },
+        { success: false, error: '仅企业管理员或负责该客户的家装设计顾问可以标记已签约' },
         { status: 403 }
       );
     }

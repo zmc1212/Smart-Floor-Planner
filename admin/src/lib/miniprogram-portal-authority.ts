@@ -26,7 +26,7 @@ export function requireMiniProgramStaffEarnings(context: MiniProgramContext) {
     || !context.staff?._id
     || (role !== 'designer' && role !== 'measurer')
   ) {
-    throw Object.assign(new Error('仅设计师或测量员可查看岗位收益'), {
+    throw Object.assign(new Error('仅家装设计顾问或家装现场顾问可查看岗位收益'), {
       status: 403,
       code: 'miniprogram_portal_forbidden',
     });

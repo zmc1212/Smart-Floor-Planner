@@ -1,11 +1,18 @@
 import type { NextConfig } from "next";
-import os from "os";
+import type { NetworkInterfaceInfo } from "node:os";
 
 const getLocalExternalIps = () => {
-  const interfaces = os.networkInterfaces();
+  // Production/Docker builds do not need LAN origins, and importing `os` into
+  // the standalone file trace pulled the whole project (including release/).
+  if (process.env.NODE_ENV === 'production') {
+    return [];
+  }
+
+  const { networkInterfaces } = require('node:os') as typeof import('node:os');
+  const interfaces = networkInterfaces();
   const ips: string[] = [];
   for (const name of Object.keys(interfaces)) {
-    for (const iface of interfaces[name]!) {
+    for (const iface of interfaces[name] as NetworkInterfaceInfo[]) {
       if (iface.family === 'IPv4' && !iface.internal) {
         ips.push(iface.address);
         ips.push(`http://${iface.address}:3002`);
@@ -30,6 +37,24 @@ const nextConfig: NextConfig = {
   // into the graph also loads urllib → proxy-agent → vm2 and adds avoidable
   // compile/RSS cost in long `next dev` sessions.
   serverExternalPackages: ['@napi-rs/canvas', 'qiniu', 'proxy-agent'],
+  outputFileTracingExcludes: {
+    '*': [
+      './release/**/*',
+      './tmp/**/*',
+      './src/**/__tests__/**/*',
+      './**/*.test.ts',
+      './node_modules/typescript/**/*',
+      './node_modules/@napi-rs/canvas-linux-x64-gnu/**/*',
+      './node_modules/@napi-rs/wasm-runtime/**/*',
+    ],
+  },
+  outputFileTracingIncludes: {
+    '*': [
+      './node_modules/drizzle-orm/**/*',
+      './node_modules/@napi-rs/canvas/**/*',
+      './node_modules/@napi-rs/canvas-linux-x64-musl/**/*',
+    ],
+  },
   // Next.js 15+ blocks cross-origin requests to /_next/* in development unless listed.
   // Without this, FRP/public Host+Origin causes CSS/JS 403 and a broken login layout.
   allowedDevOrigins: [

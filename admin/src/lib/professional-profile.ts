@@ -75,9 +75,11 @@ export function validateProfessionalTitleVisibilityPolicy(
 }
 
 function roleDefaultTitle(enterprise: EnterpriseRecord, role: ProfessionalProfileRole) {
-  return role === 'designer'
-    ? enterprise.professionalDesignerTitle
-    : enterprise.professionalMeasurerTitle;
+  return String(
+    role === 'designer'
+      ? enterprise.professionalDesignerTitle
+      : enterprise.professionalMeasurerTitle
+  );
 }
 
 function experienceLabel(role: ProfessionalProfileRole, years: number) {
@@ -88,12 +90,14 @@ export function buildProfessionalProfile(input: {
   enterprise: EnterpriseRecord;
   staff: AdminUserRecord;
   actualServiceCount: number;
+  displayRole?: ProfessionalProfileRole;
 }): ProfessionalProfileDetails | null {
   const { enterprise, staff } = input;
-  if (!isProfessionalProfileRole(staff.role)) return null;
-  const role = staff.role;
+  const role = input.displayRole
+    || (isProfessionalProfileRole(staff.role) ? staff.role : null);
+  if (!role) return null;
   const enterpriseTitle = roleDefaultTitle(enterprise, role).trim()
-    || (role === 'designer' ? '金牌设计师' : '资深测量师');
+    || (role === 'designer' ? '金牌家装设计顾问' : '资深家装现场顾问');
   const adminTitleOverride = String(staff.professionalTitleAdminOverride || '').trim();
   const staffTitle = String(staff.professionalTitle || '').trim();
   const enterpriseForceProfile = Boolean(enterprise.professionalForceEnterpriseProfile);

@@ -11,8 +11,8 @@ const currentYear = new Date().getFullYear();
 
 function enterprise(overrides: Partial<EnterpriseRecord> = {}) {
   return {
-    professionalDesignerTitle: '金牌设计师',
-    professionalMeasurerTitle: '资深测量师',
+    professionalDesignerTitle: '金牌家装设计顾问',
+    professionalMeasurerTitle: '资深家装现场顾问',
     professionalDefaultExperienceYears: 7,
     professionalServiceThreshold: 100,
     professionalForceEnterpriseProfile: true,
@@ -74,13 +74,13 @@ test('企业强制显示和强制隐藏覆盖员工显示开关', () => {
     actualServiceCount: 0,
   });
   assert.equal(shown?.titleVisible, true);
-  assert.equal(shown?.title, '金牌设计师');
+  assert.equal(shown?.title, '金牌家装设计顾问');
 
   const hidden = buildProfessionalProfile({
     enterprise: enterprise({ professionalTitleVisibilityPolicy: 'force_hide' }),
     staff: staff({
       professionalTitleVisible: true,
-      professionalTitleAdminOverride: '首席空间设计师',
+      professionalTitleAdminOverride: '首席空间家装设计顾问',
     }),
     actualServiceCount: 137,
   });
@@ -94,7 +94,7 @@ test('单员工管理员头衔最高优先，员工资料仅在企业未统一�
   const adminOverride = buildProfessionalProfile({
     enterprise: enterprise(),
     staff: staff({
-      professionalTitle: '全案设计师',
+      professionalTitle: '全案家装设计顾问',
       professionalTitleAdminOverride: '首席设计顾问',
     }),
     actualServiceCount: 0,
@@ -105,24 +105,63 @@ test('单员工管理员头衔最高优先，员工资料仅在企业未统一�
   const selfConfigured = buildProfessionalProfile({
     enterprise: enterprise({ professionalForceEnterpriseProfile: false }),
     staff: staff({
-      professionalTitle: '全案设计师',
+      professionalTitle: '全案家装设计顾问',
       professionalCareerStartYear: currentYear - 9,
     }),
     actualServiceCount: 0,
   });
-  assert.equal(selfConfigured?.title, '全案设计师');
+  assert.equal(selfConfigured?.title, '全案家装设计顾问');
   assert.equal(selfConfigured?.titleSource, 'staff');
   assert.equal(selfConfigured?.experienceLabel, '9年设计经验');
   assert.equal(selfConfigured?.experienceSource, 'staff');
 });
 
-test('测量员使用量房经验文案，公开对象不泄露真实服务人数', () => {
+test('企业录入的默认头衔按原文展示，不改写岗位词', () => {
+  const designerProfile = buildProfessionalProfile({
+    enterprise: enterprise({
+      professionalDesignerTitle: '金牌设计师',
+      professionalForceEnterpriseProfile: true,
+    }),
+    staff: staff(),
+    actualServiceCount: 0,
+  });
+  assert.equal(designerProfile?.title, '金牌设计师');
+
+  const measurerProfile = buildProfessionalProfile({
+    enterprise: enterprise({
+      professionalMeasurerTitle: '资深施工监理',
+      professionalForceEnterpriseProfile: true,
+    }),
+    staff: staff({ role: 'measurer' }),
+    actualServiceCount: 0,
+  });
+  assert.equal(measurerProfile?.title, '资深施工监理');
+});
+
+test('同一员工出现在测量员卡时使用测量员默认头衔和量房经验', () => {
+  const profile = buildProfessionalProfile({
+    enterprise: enterprise({
+      professionalDesignerTitle: '金牌设计师',
+      professionalMeasurerTitle: '资深施工监理',
+      professionalForceEnterpriseProfile: true,
+    }),
+    staff: staff({ role: 'designer' }),
+    actualServiceCount: 0,
+    displayRole: 'measurer',
+  });
+  assert.equal(profile?.role, 'measurer');
+  assert.equal(profile?.title, '资深施工监理');
+  assert.equal(profile?.experienceLabel, '7年量房经验');
+  assert.equal(profile?.titleSource, 'enterprise');
+});
+
+test('家装现场顾问使用量房经验文案，公开对象不泄露真实服务人数', () => {
   const profile = buildProfessionalProfile({
     enterprise: enterprise(),
     staff: staff({ role: 'measurer' }),
     actualServiceCount: 50,
   });
-  assert.equal(profile?.title, '资深测量师');
+  assert.equal(profile?.title, '资深家装现场顾问');
   assert.equal(profile?.experienceLabel, '7年量房经验');
 
   const publicProfile = publicProfessionalProfile(profile);

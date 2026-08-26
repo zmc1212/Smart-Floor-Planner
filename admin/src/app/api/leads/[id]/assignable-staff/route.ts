@@ -63,7 +63,7 @@ export async function GET(
     }
     if (data.kind === 'forbidden') {
       return NextResponse.json(
-        { success: false, error: roleParam === 'designer' ? '无权更换设计师' : '无权分配或更换测量员' },
+        { success: false, error: roleParam === 'designer' ? '无权更换家装设计顾问' : '无权分配或更换家装现场顾问' },
         { status: 403 }
       );
     }

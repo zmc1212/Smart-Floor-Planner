@@ -245,9 +245,9 @@ test('customer home exposes one next action from the shared service stage', () =
     kind: 'book',
     label: '预约上门',
     stageKey: 'measurer_assigned',
-    stageLabel: '已匹配测量员',
+    stageLabel: '已匹配家装现场顾问',
     nextAction: '预约上门量房时间',
-    appointmentSummary: '已匹配设计师和测量员，请预约上门量房时间',
+    appointmentSummary: '已匹配家装设计顾问和家装现场顾问，请预约上门量房时间',
     canReschedule: false,
     canRebook: true,
   });
@@ -261,14 +261,14 @@ test('customer home exposes one next action from the shared service stage', () =
     stageKey: 'assignment_pending',
     stageLabel: '待派单',
     nextAction: '服务匹配完成后即可预约上门',
-    appointmentSummary: '正在为您匹配设计师和测量员',
+    appointmentSummary: '正在为您匹配家装设计顾问和家装现场顾问',
     canReschedule: false,
     canRebook: false,
   });
 
   assert.equal(resolveCustomerHomeAction({
     leadStatus: 'new',
-  }).appointmentSummary, '正在为您匹配设计师和测量员');
+  }).appointmentSummary, '正在为您匹配家装设计顾问和家装现场顾问');
 
   assert.equal(resolveCustomerHomeAction({
     leadStatus: 'designing',
@@ -296,7 +296,7 @@ test('customer home exposes one next action from the shared service stage', () =
   assert.equal(pendingConfirm.kind, 'view_project');
   assert.equal(pendingConfirm.canReschedule, false);
   assert.equal(pendingConfirm.canRebook, false);
-  assert.equal(pendingConfirm.appointmentSummary, '测量员正在上门量房');
+  assert.equal(pendingConfirm.appointmentSummary, '家装现场顾问正在上门量房');
 });
 
 test('operational appointment prefers an active confirmed rebooking over an older expired row', () => {

@@ -36,7 +36,7 @@ export async function PATCH(
       const current = await repository.findById(staffId);
       if (!current) return null;
       if (current.role !== 'designer' && current.role !== 'measurer') {
-        throw Object.assign(new Error('只能调整设计师或测量员派单状态'), { status: 403 });
+        throw Object.assign(new Error('只能调整家装设计顾问或家装现场顾问派单状态'), { status: 403 });
       }
       return repository.update(staffId, { assignmentPaused });
     });

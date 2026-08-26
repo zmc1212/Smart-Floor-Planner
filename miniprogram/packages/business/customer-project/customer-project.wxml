@@ -14,8 +14,8 @@
     <view class="project-hero-card">
       <view class="hero-top-row">
         <view class="hero-text-wrap">
-          <text class="hero-title">{{heroTitle || '我的装修服务'}}</text>
-          <text class="hero-subtitle">{{heroSubtitle || '免费量房与设计方案全纪录'}}</text>
+          <text class="hero-title">您的家装顾问</text>
+          <text class="hero-subtitle">现场顾问与设计方案全记录</text>
         </view>
         <image class="hero-mascot" src="/images/airy-v1/project-delivery-xiao-k.png" mode="aspectFit" aria-label="正在整理服务档案的小K" />
       </view>
@@ -38,7 +38,7 @@
         <view class="booking-copy">
           <text class="booking-title">预约量房</text>
           <text wx:if="{{appointment && range}}" class="booking-helper">{{range.date}} {{range.time}}{{appointment.address ? ' · ' + appointment.address : ''}}</text>
-          <text wx:else class="booking-helper">{{bookingHint || '选择方便的时间，测量师会提前与你确认'}}</text>
+          <text wx:else class="booking-helper">{{bookingHint || '选择方便的时间，家装现场顾问会提前与你确认'}}</text>
         </view>
         <view class="booking-badge">{{appointmentBadge || '服务准备中'}}</view>
       </view>
@@ -58,20 +58,20 @@
     <view class="service-team">
       <text class="group-title">服务小组</text>
       <view class="personnel-grid">
-        <view class="person-card is-designer" bindtap="contactDesigner" aria-role="button" aria-label="联系专属设计师">
+        <view class="person-card is-designer" bindtap="contactDesigner" aria-role="button" aria-label="联系家装设计顾问">
           <view class="person-heading">
             <view class="person-icon-well">
               <image class="person-role-icon" src="/packages/business/assets/customer-project-v4/designer-user.png" mode="aspectFit" />
             </view>
             <view class="person-identity">
-              <text class="person-role">专属设计师</text>
+              <text class="person-role">家装设计顾问</text>
               <text class="person-name">{{designerName}}</text>
             </view>
           </view>
-          <view wx:if="{{designerAssigned}}" class="person-professional">
-            <text class="person-professional-title">金牌设计师</text>
-            <text class="person-professional-proof">7年设计经验</text>
-            <text class="person-professional-proof">已免费服务客户100+</text>
+          <view wx:if="{{designerAssigned && (designerProfessionalTitle || designerExperienceLabel || designerServiceLabel)}}" class="person-professional">
+            <text wx:if="{{designerProfessionalTitle}}" class="person-professional-title">{{designerProfessionalTitle}}</text>
+            <text wx:if="{{designerExperienceLabel}}" class="person-professional-proof">{{designerExperienceLabel}}</text>
+            <text wx:if="{{designerServiceLabel}}" class="person-professional-proof">{{designerServiceLabel}}</text>
           </view>
           <view class="person-card-footer">
             <text class="person-status">{{designerAssigned ? (canContactDesigner ? '在线沟通' : '专属服务') : '待分配'}}</text>
@@ -81,7 +81,7 @@
               catchtap="callStaff"
               data-phone="{{designerPhone}}"
               aria-role="button"
-              aria-label="拨打设计师电话 {{designerPhone}}"
+              aria-label="拨打家装设计顾问电话 {{designerPhone}}"
             >
               <image class="person-phone-icon" src="/packages/business/assets/customer-project-v4/phone.png" mode="aspectFit" />
             </view>
@@ -93,21 +93,21 @@
           bindtap="callStaff"
           data-phone="{{measurerPhone}}"
           aria-role="{{measurerPhone ? 'button' : 'text'}}"
-          aria-label="{{measurerPhone ? '拨打测量师电话 ' + measurerPhone : '测量师'}}"
+          aria-label="{{measurerPhone ? '拨打家装现场顾问电话 ' + measurerPhone : '家装现场顾问'}}"
         >
           <view class="person-heading">
             <view class="person-icon-well">
               <image class="person-role-icon is-ruler" src="/packages/business/assets/customer-project-v4/measurer-ruler.png" mode="aspectFit" />
             </view>
             <view class="person-identity">
-              <text class="person-role">测量师</text>
+              <text class="person-role">家装现场顾问</text>
               <text class="person-name">{{measurerName || '待分配'}}</text>
             </view>
           </view>
-          <view wx:if="{{measurerName}}" class="person-professional">
-            <text class="person-professional-title">资深测量师</text>
-            <text class="person-professional-proof">7年量房经验</text>
-            <text class="person-professional-proof">已免费服务客户100+</text>
+          <view wx:if="{{measurerName && (measurerProfessionalTitle || measurerExperienceLabel || measurerServiceLabel)}}" class="person-professional">
+            <text wx:if="{{measurerProfessionalTitle}}" class="person-professional-title">{{measurerProfessionalTitle}}</text>
+            <text wx:if="{{measurerExperienceLabel}}" class="person-professional-proof">{{measurerExperienceLabel}}</text>
+            <text wx:if="{{measurerServiceLabel}}" class="person-professional-proof">{{measurerServiceLabel}}</text>
           </view>
           <view class="person-card-footer">
             <text class="person-status">{{measurerName ? (formalFloorPlan ? '已量房' : '待预约') : '待分配'}}</text>
@@ -171,7 +171,7 @@
         </view>
         <view class="dossier-copy">
           <text class="dossier-title">交付方案</text>
-          <text class="dossier-helper">{{featuredDelivery ? featuredDelivery.publishedLabel : '设计师发布后可查看与分享'}}</text>
+          <text class="dossier-helper">{{featuredDelivery ? featuredDelivery.publishedLabel : '家装设计顾问发布后可查看与分享'}}</text>
         </view>
         <view class="dossier-status is-delivery">{{featuredDelivery ? '可查看' : '待设计'}}</view>
         <view class="dossier-chevron {{featuredDelivery ? '' : 'is-muted'}}"></view>
@@ -182,7 +182,7 @@
   <view wx:if="{{!loading && !error}}" class="footer-bar">
     <button class="footer-outline" bindtap="contactDesigner">
       <image class="footer-contact-icon" src="/packages/business/assets/customer-project-v4/message-circle-more.png" mode="aspectFit" />
-      <text>微信联系设计师</text>
+      <text>微信联系家装设计顾问</text>
     </button>
     <button wx:if="{{canRebook}}" class="footer-primary sfp-primary-action" bindtap="bookAppointment">预约量房</button>
     <button wx:elif="{{showBookingPanel && appointment}}" class="footer-primary sfp-primary-action" bindtap="openAppointment">查看预约</button>

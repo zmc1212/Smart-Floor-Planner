@@ -1,9 +1,9 @@
 <!--
-  THESIS: 用“双免权益票”把免费量房、免费设计与当前真实服务阶段放进同一首屏，不再留下无意义空白。
-  OWN-WORLD: 品牌绿主场景、暖白票据、浅灰绿服务板、哑光 3D 小K与工具资产。
-  STORY: 用户先确认两项免费权益，再看当前阶段与真实成果，最后进入唯一下一步或服务档案。
-  FIRST VIEWPORT: 胶囊安全身份栏；绿色权益 Hero；跨层项目票据；两张错位服务卡；保障条。
-  FORM: 已批准 B 版“双免权益票”，沿用既有 Operate 模式、真实媒体与动态阶段合同。
+  THESIS: 用“三项免费服务通行证”统一效果图、家装设计顾问和家装现场顾问，不再保留双免旧心智。
+  OWN-WORLD: 单一品牌绿主场景、暖白阶段票据、浅薄荷权益卡和一次完整小K引导。
+  STORY: 用户先认清三项免费权益，再确认当前真实服务阶段，最后进入预约、顾问联系、交付方案或服务档案。
+  FIRST VIEWPORT: 胶囊安全身份栏；小K手持三权益牌的绿色 Hero；跨层真实阶段票据；三张紧凑权益卡；保障条。
+  FORM: design-references/customer-service-home-three-free-v1/customer-service-home-three-free-v1.png；Operate 模式，真实媒体与动态阶段合同不变。
 -->
 <view class="customer-service-home sfp-tab-page">
   <scroll-view scroll-y class="csh-scroll" enhanced show-scrollbar="{{false}}">
@@ -39,30 +39,12 @@
       <block wx:else>
         <view class="benefit-hero">
           <view class="benefit-hero-copy">
-            <text class="benefit-headline">两项服务，全程免费</text>
-            <view class="benefit-chip-row">
-              <view
-                class="benefit-chip"
-                bindtap="openBookShortcut"
-                hover-class="chip-pressed"
-                aria-role="button"
-                aria-label="免费量房"
-              >
-                <view class="benefit-check" aria-hidden="true"></view>
-                <text>免费量房</text>
-              </view>
-              <view
-                class="benefit-chip"
-                bindtap="openDesignerShortcut"
-                hover-class="chip-pressed"
-                aria-role="button"
-                aria-label="免费设计"
-              >
-                <view class="benefit-check" aria-hidden="true"></view>
-                <text>免费设计</text>
-              </view>
+            <text class="benefit-kicker">三项免费权益</text>
+            <view class="benefit-headline" aria-label="三个免费，装修更省心">
+              <text>三个免费，</text>
+              <text>装修更省心</text>
             </view>
-            <text class="benefit-subline">上门精准量尺 · 1对1全屋方案</text>
+            <text class="benefit-subline">专业团队陪伴，全程为你服务</text>
           </view>
           <image class="benefit-guide" src="{{xiaoKImage}}" mode="aspectFit" />
 
@@ -83,9 +65,11 @@
                 />
               </view>
               <view class="ticket-status">
-                <text class="ticket-title">{{insetTitle}}</text>
-                <text wx:if="{{subtitle}}" class="ticket-summary">{{subtitle}}</text>
-                <text wx:if="{{insetHelper}}" class="ticket-helper">{{insetHelper}}</text>
+                <view class="ticket-copy">
+                  <text class="ticket-title">{{insetTitle}}</text>
+                  <text wx:if="{{subtitle}}" class="ticket-summary">{{subtitle}}</text>
+                  <text wx:if="{{insetHelper && !subtitle}}" class="ticket-helper">{{insetHelper}}</text>
+                </view>
                 <view class="progress-track">
                   <view
                     wx:for="{{progressPills}}"
@@ -101,21 +85,23 @@
               </view>
             </view>
 
-            <view
-              class="ticket-cta primary {{nextActionKind === 'wait_designer' ? 'weak' : ''}}"
-              bindtap="onPrimaryCta"
-              hover-class="btn-pressed"
-            >
-              <text>{{primaryCta.label}}</text>
-            </view>
-            <view
-              wx:if="{{showSecondaryCta}}"
-              class="ticket-cta secondary"
-              bindtap="onSecondaryCta"
-              hover-class="btn-pressed"
-              aria-label="我的服务档案"
-            >
-              <text>我的服务档案</text>
+            <view class="ticket-actions {{showSecondaryCta ? 'dual' : 'single'}}">
+              <view
+                class="ticket-cta primary {{nextActionKind === 'wait_designer' ? 'weak' : ''}}"
+                bindtap="onPrimaryCta"
+                hover-class="btn-pressed"
+              >
+                <text>{{primaryCta.label}}</text>
+              </view>
+              <view
+                wx:if="{{showSecondaryCta}}"
+                class="ticket-cta secondary"
+                bindtap="onSecondaryCta"
+                hover-class="btn-pressed"
+                aria-label="我的服务档案"
+              >
+                <text>我的服务档案</text>
+              </view>
             </view>
           </view>
         </view>
@@ -127,39 +113,66 @@
 
         <view class="benefit-stack">
           <view
-            class="benefit-service-card measurement-card"
-            bindtap="openBookShortcut"
+            class="benefit-service-card effect-card"
+            bindtap="openEffectShortcut"
             hover-class="card-pressed"
             aria-role="button"
-            aria-label="免费量房"
+            aria-label="免费效果图"
           >
-            <view class="benefit-service-copy">
-              <text class="benefit-service-title">免费量房</text>
-              <text class="benefit-service-desc">专业人员上门 · 精准记录空间</text>
-              <view class="benefit-arrow" aria-hidden="true"><view class="benefit-arrow-mark"></view></view>
+            <view class="benefit-art-stage">
+              <image class="benefit-service-art effect-art" src="/images/customer-service-three-free/effect-room.jpg" mode="aspectFill" />
             </view>
-            <image class="benefit-service-art meter-art" src="/images/airy-v1/laser-meter-3d.png" mode="aspectFit" />
+            <view class="benefit-service-copy">
+              <text class="benefit-service-title">免费效果图</text>
+              <text class="benefit-service-desc">出到客户满意为止</text>
+            </view>
+            <view class="benefit-arrow" aria-hidden="true">
+              <image class="benefit-arrow-icon" src="/images/customer-service-three-free/chevron-right.png" mode="aspectFit" />
+            </view>
           </view>
 
           <view
-            class="benefit-service-card design-card"
+            class="benefit-service-card design-advisor-card"
             bindtap="openDesignerShortcut"
             hover-class="card-pressed"
             aria-role="button"
-            aria-label="免费设计"
+            aria-label="免费家装设计顾问"
           >
-            <image class="benefit-service-art easel-art" src="/images/airy-v1/designer-easel-3d.png" mode="aspectFit" />
+            <view class="benefit-art-stage">
+              <image class="benefit-service-art advisor-art" src="/images/customer-service-three-free/design-advisor-3d.png" mode="aspectFit" />
+            </view>
             <view class="benefit-service-copy">
-              <text class="benefit-service-title">免费设计</text>
-              <text class="benefit-service-desc">专属设计师 · 1对1全屋方案</text>
-              <view class="benefit-arrow" aria-hidden="true"><view class="benefit-arrow-mark"></view></view>
+              <text class="benefit-service-title">免费家装设计顾问</text>
+              <text class="benefit-service-desc">解答你的装修问题</text>
+            </view>
+            <view class="benefit-arrow" aria-hidden="true">
+              <image class="benefit-arrow-icon" src="/images/customer-service-three-free/chevron-right.png" mode="aspectFit" />
+            </view>
+          </view>
+
+          <view
+            class="benefit-service-card onsite-advisor-card"
+            bindtap="openBookShortcut"
+            hover-class="card-pressed"
+            aria-role="button"
+            aria-label="免费家装现场顾问"
+          >
+            <view class="benefit-art-stage">
+              <image class="benefit-service-art onsite-art" src="/images/customer-service-three-free/onsite-advisor-3d.png" mode="aspectFit" />
+            </view>
+            <view class="benefit-service-copy">
+              <text class="benefit-service-title">免费家装现场顾问</text>
+              <text class="benefit-service-desc">解答现场问题</text>
+            </view>
+            <view class="benefit-arrow" aria-hidden="true">
+              <image class="benefit-arrow-icon" src="/images/customer-service-three-free/chevron-right.png" mode="aspectFit" />
             </view>
           </view>
         </view>
 
         <view class="benefit-assurance">
           <view class="assurance-check" aria-hidden="true"></view>
-          <text class="assurance-benefit">量房、设计不收费</text>
+          <text class="assurance-benefit">三项服务不收费</text>
           <view class="assurance-divider"></view>
           <text class="assurance-status">{{benefitStatusLabel}}</text>
         </view>

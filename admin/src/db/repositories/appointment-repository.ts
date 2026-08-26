@@ -416,10 +416,10 @@ export class AppointmentRepository {
   }) {
     const lead = await this.findLead(input.enterpriseId, input.leadId, true);
     if (!lead || lead.archivedAt || lead.status === 'closed' || lead.status === 'converted' || !lead.assignedTo) {
-      throw appointmentError('appointment_lead_not_ready', '线索尚未完成设计师派单', 409);
+      throw appointmentError('appointment_lead_not_ready', '线索尚未完成家装设计顾问派单', 409);
     }
     if (lead.assignmentStatus === 'assignment_pending') {
-      throw appointmentError('appointment_lead_not_ready', '线索尚未完成设计师派单', 409);
+      throw appointmentError('appointment_lead_not_ready', '线索尚未完成家装设计顾问派单', 409);
     }
     if (await this.hasCompletedFormalSurveyForLead(input.enterpriseId, input.leadId)) {
       throw appointmentError('appointment_survey_complete', '该线索已完成正式量房，无需再约上门', 409);
@@ -436,7 +436,7 @@ export class AppointmentRepository {
       timeRange,
       { lockPreferred: lead.source === 'staff_activity' }
     );
-    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用测量员', 409);
+    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用家装现场顾问', 409);
     const [appointment] = await this.transaction
       .insert(measurementAppointments)
       .values({
@@ -479,7 +479,7 @@ export class AppointmentRepository {
   }) {
     const lead = await this.findLead(input.enterpriseId, input.leadId, true);
     if (!lead || lead.archivedAt || lead.status === 'closed' || !lead.assignedTo) {
-      throw appointmentError('appointment_lead_not_ready', '线索尚未完成设计师派单', 409);
+      throw appointmentError('appointment_lead_not_ready', '线索尚未完成家装设计顾问派单', 409);
     }
     await this.expireStaleConfirmedAppointmentsForLead(input.leadId);
     const existing = await this.activeAppointmentForLead(input.leadId);
@@ -495,7 +495,7 @@ export class AppointmentRepository {
       timeRange,
       { lockPreferred: lead.source === 'staff_activity' }
     );
-    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用测量员', 409);
+    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用家装现场顾问', 409);
 
     const previous = await this.transaction
       .select({ address: measurementAppointments.address })
@@ -723,7 +723,7 @@ export class AppointmentRepository {
         excludeAppointmentId: current.appointment.id,
       }
     );
-    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用测量员', 409);
+    if (!measurer) throw appointmentError('appointment_no_measurer_available', '暂无可用家装现场顾问', 409);
     const rows = await this.transaction
       .update(measurementAppointments)
       .set({
@@ -861,7 +861,7 @@ export class AppointmentRepository {
       if (!available) {
         throw appointmentError(
           'appointment_measurer_unavailable',
-          '新测量员该时段不可用，请先改期或取消预约',
+          '新家装现场顾问该时段不可用，请先改期或取消预约',
           409
         );
       }
@@ -1068,7 +1068,7 @@ export class AppointmentRepository {
       eq(adminUsers.id, input.staffId), eq(adminUsers.enterpriseId, input.enterpriseId),
       eq(adminUsers.role, 'measurer'), eq(adminUsers.status, 'active')
     )).limit(1).for('update');
-    if (!staff[0]) throw appointmentError('appointment_measurer_not_found', '测量员不存在或不可用', 404);
+    if (!staff[0]) throw appointmentError('appointment_measurer_not_found', '家装现场顾问不存在或不可用', 404);
     const timeRange = range(input.startAt, input.endAt);
     const rows = await this.transaction.insert(staffUnavailabilityPeriods).values({
       enterpriseId: input.enterpriseId, staffId: input.staffId, timeRange,

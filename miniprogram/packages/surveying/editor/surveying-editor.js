@@ -113,6 +113,10 @@ const DIMENSION_COLLISION_GAP_PX = 8;
 const DIMENSION_PRIMARY_GAP_PX = 22;
 const CURSOR_LENS_SIZE_PX = 120;
 const CURSOR_LENS_SCALE = 0.12;
+const DOCK_AIM_MIN_FRAME_MS = 24;
+const DOCK_SNAP_INTERVAL_MS = 48;
+const DOCK_LENS_PAINT_INTERVAL_MS = 120;
+const CURSOR_DRAG_CANVAS_MAX_DPR = 2;
 const BLE_DUPLICATE_WINDOW_MS = 800;
 const PHONE_LEVEL_TOLERANCE_DEG = 8;
 const PHONE_HEADING_SAMPLE_COUNT = 9;
@@ -520,6 +524,11 @@ Page({
     this.cursorDragAnimationFrame = null;
     this.dockAimAnimationFrame = null;
     this.pendingDockAimPoint = null;
+    this.lastDockAimAt = 0;
+    this.lastDockSnapAt = 0;
+    this.dockLensPaintedAt = 0;
+    this.cursorDragPreviousCanvasPoint = null;
+    this.cursorDragHadSnapGuide = false;
     this.transientCanvasMode = null;
     this.viewportInteraction = null;
     this.viewportInteractionFrameQueue = null;
@@ -1661,6 +1670,7 @@ Page({
         } catch (err) {
           dpr = this.cursorDragCanvasDpr || 1;
         }
+        dpr = Math.min(dpr || 1, CURSOR_DRAG_CANVAS_MAX_DPR);
 
         const width = this.canvasRect.width || target.width || 0;
         const height = this.canvasRect.height || target.height || 0;
@@ -1745,6 +1755,7 @@ Page({
     };
     this.cursorDragCanvasShowCursor = !options || options.showCursor !== false;
     const sync = !!(options && options.sync);
+    const previousPoint = this.cursorDragPreviousCanvasPoint;
     if (!this.cursorDragCanvas || !this.cursorDragCtx) return;
     if (!sync && this.cursorDragAnimationFrame !== null) return;
 
@@ -1763,9 +1774,16 @@ Page({
           lensMeta: this.cursorLensMeta,
           lensSource: this.cursorLensSource,
           lensSample: this.cursorLensSample,
-          snapGuide: this.cursorDragSnapGuide
+          snapGuide: this.cursorDragSnapGuide,
+          previousPoint,
+          paintLens: !options || options.paintLens !== false,
+          forceFullPaint: !!(options && options.forceFullPaint)
         }
       );
+      this.cursorDragPreviousCanvasPoint = {
+        x: this.cursorDragCanvasPoint.x,
+        y: this.cursorDragCanvasPoint.y
+      };
       // Stamp the Fig.1 reticle after the lens blit so the magnified crop never
       // includes it. Overlay-owned drags already paint the moving cursor.
       if (!this.cursorDragCanvasShowCursor && this.surveyCtx && this.surveyRenderScene) {
@@ -1796,6 +1814,8 @@ Page({
     this.cursorDragAnimationFrame = null;
     this.cancelDockCursorAim({ keepPending: true });
     this.cursorDragCanvasPoint = null;
+    this.cursorDragPreviousCanvasPoint = null;
+    this.cursorDragHadSnapGuide = false;
     this.cursorDragCanvasShowCursor = true;
     this.cursorDragClientPoint = null;
     this.cursorDragSnapGuide = null;
@@ -4099,15 +4119,24 @@ Page({
       : null;
     this.cursorDragClientPoint = { x: displayPoint.x, y: displayPoint.y };
     this.cursorDragSnapGuide = this.buildCursorDragSnapGuide(candidate);
-    // Lens chrome is canvas-only; refresh its blit/meta every move without
-    // waiting for a throttled setData pass.
-    this.buildCursorLens(
-      candidate && candidate.pointMm ? candidate.pointMm : this.canvasPointToMm(clientPoint),
-      candidate && candidate.type,
-      candidate && candidate.snapLine
-    );
+    const hasSnap = !!this.cursorDragSnapGuide;
+    const paintLens = includeLens
+      || !!(options && options.paintLens)
+      || hasSnap
+      || this.cursorDragHadSnapGuide;
+    const forceFullPaint = paintLens || hasSnap || this.cursorDragHadSnapGuide;
+    this.cursorDragHadSnapGuide = hasSnap;
+    if (paintLens) {
+      this.buildCursorLens(
+        candidate && candidate.pointMm ? candidate.pointMm : this.canvasPointToMm(clientPoint),
+        candidate && candidate.type,
+        candidate && candidate.snapLine
+      );
+    }
     this.queueCursorDragCanvas(displayPoint, {
-      sync: !!(options && options.sync)
+      sync: !!(options && options.sync),
+      paintLens,
+      forceFullPaint
     });
     const dragData = {
       dragCursorX: displayPoint.x,
@@ -4176,33 +4205,34 @@ Page({
 
   cancelDockCursorAim(options) {
     const keepPending = !!(options && options.keepPending);
-    if (this.cursorDragCanvas && this.dockAimAnimationFrame !== null
-      && typeof this.cursorDragCanvas.cancelAnimationFrame === 'function') {
-      this.cursorDragCanvas.cancelAnimationFrame(this.dockAimAnimationFrame);
-    }
     this.dockAimAnimationFrame = null;
     if (!keepPending) this.pendingDockAimPoint = null;
   },
 
-  flushDockCursorAim(includeLens) {
+  flushDockCursorAim(includeLens, options) {
     const aimPoint = this.pendingDockAimPoint;
     if (!aimPoint) return null;
-    return this.resolveCursorDragPoint(aimPoint, includeLens, { sync: true });
-  },
-
-  queueDockCursorAim() {
-    if (this.dockAimAnimationFrame !== null) return;
-    const render = () => {
-      this.dockAimAnimationFrame = null;
-      if (this.cursorPlacementState !== 'dragging') return;
-      this.flushDockCursorAim(false);
-    };
-    const canvas = this.cursorDragCanvas;
-    if (canvas && typeof canvas.requestAnimationFrame === 'function') {
-      this.dockAimAnimationFrame = canvas.requestAnimationFrame(render);
-      return;
+    const now = Date.now();
+    const skipSnap = !!(options && options.skipSnap)
+      && !includeLens
+      && !this.cursorDragSnapGuide
+      && !this.cursorDragHadSnapGuide;
+    if (skipSnap) {
+      this.cursorDragClientPoint = { x: aimPoint.x, y: aimPoint.y };
+      this.queueCursorDragCanvas(aimPoint, {
+        sync: true,
+        paintLens: false,
+        forceFullPaint: false
+      });
+      return {
+        dragCursorX: aimPoint.x,
+        dragCursorY: aimPoint.y
+      };
     }
-    render();
+    const paintLens = includeLens || (now - (this.dockLensPaintedAt || 0) >= DOCK_LENS_PAINT_INTERVAL_MS);
+    if (paintLens) this.dockLensPaintedAt = now;
+    this.lastDockSnapAt = now;
+    return this.resolveCursorDragPoint(aimPoint, includeLens, { sync: true, paintLens });
   },
 
   applyDraft(nextDraft, options) {
@@ -5651,6 +5681,9 @@ Page({
     this.cursorDragCandidate = null;
     this.cursorSnapLock = null;
     this.cursorLensLastUpdateAt = 0;
+    this.lastDockAimAt = 0;
+    this.lastDockSnapAt = 0;
+    this.dockLensPaintedAt = 0;
     this.cancelDockCursorAim();
     this.clearCursorDragCanvas();
     this.refreshCursorControlRect();
@@ -5668,9 +5701,12 @@ Page({
     this.cursorPlacementState = 'dragging';
     this.pendingDockAimPoint = this.toDockAimPoint(point);
     if (!wasDragging) {
-      this.drawSurveyCanvas();
+      // Formal canvas is already current in awaitingWallDrop. Redrawing it on
+      // the first move hitches the overlay before the reticle can follow.
       // Canvas owns the lens chrome. Only publish the dragging state once so
       // touchmove does not pay for cover-view setData on every frame.
+      this.lastDockAimAt = Date.now();
+      this.lastDockSnapAt = this.lastDockAimAt;
       const dragData = this.flushDockCursorAim(true) || {};
       this.canvasCursorLensPublished = true;
       this.setData(Object.assign({
@@ -5682,9 +5718,13 @@ Page({
       }, dragData));
       return;
     }
-    // Cover-view touchmove is denser than paint frames. Snap, wall geometry,
-    // and the lens blit belong on one rAF, not on every event.
-    this.queueDockCursorAim();
+    // Cover-view touchmove is denser than paint frames. WeChat type-2d canvas
+    // rAF lags the finger, so throttle and paint synchronously instead.
+    const now = Date.now();
+    if (now - this.lastDockAimAt < DOCK_AIM_MIN_FRAME_MS) return;
+    this.lastDockAimAt = now;
+    const runSnap = now - (this.lastDockSnapAt || 0) >= DOCK_SNAP_INTERVAL_MS;
+    this.flushDockCursorAim(false, { skipSnap: !runSnap });
   },
 
   onCursorDragEnd(e) {

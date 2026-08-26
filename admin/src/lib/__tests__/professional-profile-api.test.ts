@@ -48,10 +48,16 @@ test('历史业绩统计按客户去重，设计师归属在发布时固化', ()
 test('客户接口仅组装公开背书对象', () => {
   const route = source('../../app/api/miniprogram/customer-projects/[leadId]/route.ts');
   const serializer = source('../professional-profile.ts');
+  const repository = source('../../db/repositories/professional-profile-repository.ts');
 
   assert.match(route, /publicProfessionalProfile\(result\.designerProfile\)/);
   assert.match(route, /publicProfessionalProfile\(result\.measurerProfile\)/);
+  assert.match(route, /findForStaff\(project\.designer\.id,\s*'designer'\)/);
+  assert.match(route, /findForStaff\(project\.measurer\.id,\s*'measurer'\)/);
+  assert.match(repository, /displayRole\?: ProfessionalProfileRole/);
+  assert.match(repository, /displayRole:\s*role/);
   assert.match(serializer, /serviceCountMode:\s*profile\.serviceCountMode/);
+  assert.doesNotMatch(serializer, /replaceAll\('设计师'/);
   const publicBlock = serializer.slice(serializer.indexOf('export function publicProfessionalProfile'));
   assert.doesNotMatch(publicBlock, /actualServiceCount:\s*profile/);
 });

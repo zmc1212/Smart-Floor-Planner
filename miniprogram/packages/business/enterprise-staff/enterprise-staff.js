@@ -23,9 +23,9 @@ function normalizeFocus(value) {
 }
 
 function emptyRoleLabel(focus) {
-  if (focus === 'designer') return '可派设计师';
-  if (focus === 'measurer') return '可派测量员';
-  return '设计师或测量员';
+  if (focus === 'designer') return '可派家装设计顾问';
+  if (focus === 'measurer') return '可派家装现场顾问';
+  return '家装设计顾问或家装现场顾问';
 }
 
 function confirmModal(options) {
@@ -53,12 +53,12 @@ Page({
     focus: 'all',
     roleChips: [
       { key: 'all', label: '全部' },
-      { key: 'designer', label: '设计师' },
-      { key: 'measurer', label: '测量员' },
+      { key: 'designer', label: '家装设计顾问' },
+      { key: 'measurer', label: '家装现场顾问' },
     ],
     items: [],
     summaryLine: '可派 0 人',
-    emptyRoleLabel: '设计师或测量员',
+    emptyRoleLabel: '家装设计顾问或家装现场顾问',
   },
 
   onLoad(options) {

@@ -240,7 +240,7 @@
           <picker class="assignment-picker" mode="selector" range="{{measurers}}" range-key="displayName" bindchange="onMeasurerChange">
             <view class="assignment-person">
               <image class="assignment-icon" src="/packages/business/assets/promotion-detail/measurer.png" mode="aspectFit" />
-              <text class="assignment-role">测量员</text>
+              <text class="assignment-role">家装现场顾问</text>
             </view>
           </picker>
           <text class="assignment-value">{{measurerAssignmentLabel}}</text>
@@ -251,7 +251,7 @@
           <picker class="assignment-picker" mode="selector" range="{{designers}}" range-key="displayName" bindchange="onDesignerChange">
             <view class="assignment-person">
               <image class="assignment-icon" src="/packages/business/assets/promotion-detail/designer.png" mode="aspectFit" />
-              <text class="assignment-role">设计师</text>
+              <text class="assignment-role">家装设计顾问</text>
             </view>
           </picker>
           <text class="assignment-value">{{designerAssignmentLabel}}</text>

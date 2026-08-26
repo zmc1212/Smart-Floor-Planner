@@ -20,11 +20,11 @@ const CANVAS_RECT = Object.freeze({
 });
 
 test('dock aim offset sits upper-left of the finger and keeps the published constants', () => {
-  assert.deepEqual(CURSOR_TOUCH_OFFSET, { x: -12, y: -20 });
+  assert.deepEqual(CURSOR_TOUCH_OFFSET, { x: -24, y: -40 });
   const touch = { x: 200, y: 400 };
   assert.deepEqual(toAimClientPoint(touch, CANVAS_RECT), {
-    x: 188,
-    y: 380
+    x: 176,
+    y: 360
   });
 });
 
@@ -35,7 +35,7 @@ test('dock aim point clamps inside the canvas instead of leaving the viewport', 
   );
   assert.deepEqual(
     toAimClientPoint({ x: 400, y: 800 }, CANVAS_RECT),
-    { x: 388, y: 728 }
+    { x: 376, y: 728 }
   );
 });
 

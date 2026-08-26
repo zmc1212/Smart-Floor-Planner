@@ -166,6 +166,7 @@ export function adminUserToDto(
         : record.departmentId?.toString() ?? null,
     promoterIds: (record.promoterIds ?? []).map((id) => id.toString()),
     username: record.username,
+    mustChangePassword: record.mustChangePassword,
     displayName: record.displayName,
     role: record.role,
     wechatId: record.wechatId,

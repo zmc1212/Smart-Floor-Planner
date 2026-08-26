@@ -52,7 +52,8 @@ COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
-COPY --from=builder /app/node_modules/@napi-rs ./node_modules/@napi-rs
+COPY --from=builder /app/node_modules/@napi-rs/canvas ./node_modules/@napi-rs/canvas
+COPY --from=builder /app/node_modules/@napi-rs/canvas-linux-x64-musl ./node_modules/@napi-rs/canvas-linux-x64-musl
 
 USER nextjs
 
