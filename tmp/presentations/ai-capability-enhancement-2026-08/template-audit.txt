@@ -1,4 +1,0 @@
-Template source: user-provided PPTX, 17 slides, 1280x720.
-Visual language: warm paper-white background, dark green headline typography, bright green section labels, rounded image cards, Microsoft YaHei family.
-Reuse decision: preserve source slides 1-8, duplicate source slide 10 for three new AI evidence slides, preserve and renumber later source slides.
-Modified surfaces: slides 9-15 only; navigation, route/API/permission claims remain grounded in the source deck and current repository inventories.

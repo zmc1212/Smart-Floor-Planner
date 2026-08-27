@@ -1,6 +1,0 @@
-Output is 19 slides instead of 17 to reduce information density.
-Source slide 10 was duplicated three times for same-space comparison, local material refinement, and database template-library evidence.
-Source slide 12 was reused for Mini Program comparison states using the approved result-page design and AI-generated result imagery.
-Source slide 13 was reused for the expanded enterprise AI workbench.
-No source slide was omitted.
-Slides 9-12: inherited portrait/mobile media frames were shortened and widened; images now use proportional contain fitting with no stretch or aggressive vertical crop. Card and caption positions were adjusted only within the inherited media zones.

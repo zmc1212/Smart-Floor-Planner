@@ -1,7 +1,0 @@
-Communication job: by the end, a home-renovation enterprise decision-maker should understand that Jiakelai connects customer dossiers, formal surveying, AI design and role-based follow-up around one customer journey.
-
-Visual source: output/pdf/家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf
-Content source: output/pdf/家客来-客户演示稿-内容改进计划-2026-08.md
-Product truth: current repository code and module inventories for admin, Mini Program, formal surveying, AI design and measurer-designer acquisition.
-
-No external web claims or assets are used. All raster visuals are extracted from the local source deck.

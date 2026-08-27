@@ -1,5 +1,0 @@
-Source deck: 15-slide 家客来装修公司老板销售版。
-Visual source: existing deck is authoritative; all slides retain inherited masters, layouts, typography, screenshots, images, footers, and page numbers.
-Requested scope: rewrite visible copy only on slides 8 and 10. No visual restyle, new imagery, screenshots, or product claims.
-Reusable pattern: slides 8 and 10 each use a one-line takeaway title, one-line subtitle, inherited screenshot frames, and an inherited dark-green value callout.
-Placeholder audit: final deck must contain no empty structural placeholders.

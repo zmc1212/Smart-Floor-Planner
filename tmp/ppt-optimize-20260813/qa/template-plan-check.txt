@@ -1,7 +1,0 @@
-Template plan check: fail
-FAIL missing-template-inspect: Missing template inspection file: G:\workspace\向总\Smart-Floor-Planner\tmp\ppt-optimize-20260813\template-inspect\template-inspect.ndjson. Run inspect_template_deck.mjs before preparing the starter deck.
-FAIL preserve-only-content-role: editTargets: [] means preserve-only, but narrativeRole "formal surveying evidence" appears content-bearing. outputSlide=5 sourceSlide=5
-FAIL preserve-only-content-role: editTargets: [] means preserve-only, but narrativeRole "floor plan evidence" appears content-bearing. outputSlide=6 sourceSlide=6
-FAIL preserve-only-content-role: editTargets: [] means preserve-only, but narrativeRole "AI design evidence" appears content-bearing. outputSlide=7 sourceSlide=7
-FAIL preserve-only-content-role: editTargets: [] means preserve-only, but narrativeRole "AI output evidence" appears content-bearing. outputSlide=8 sourceSlide=8
-FAIL preserve-only-content-role: editTargets: [] means preserve-only, but narrativeRole "value summary" appears content-bearing. outputSlide=10 sourceSlide=10

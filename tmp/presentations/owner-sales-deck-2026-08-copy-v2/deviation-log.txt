@@ -1,4 +1,0 @@
-Slide 8: rewrite technical task-chain language into owner-facing production and credit-control value. Preserve all layout and screenshots.
-Slide 10: rewrite two-end feature inventory into field-efficiency and owner-visibility value. Preserve all layout and screenshot.
-Slides 1-7, 9, 11-15: preserve exactly.
-Slide 14: restore the first inherited cream-style example image after the template duplication path produced a blank media occurrence; use the exact existing deck asset and preserve its frame.

@@ -1,5 +1,0 @@
-Internal data source: PostgreSQL AI prompt library active revision 17, published 2026-08-01, 960 enabled templates.
-Selected template examples: 906 modern cream rough-home renovation; 893 French rough-home renovation; 420 interior reference transfer; 930 interior material replacement; 618 living-room soft-furnishing analysis; 642 floor-plan renovation analysis.
-Approved Mini Program design source: design-references/all-pages-ip-v3/15-ai-design-result-v3.png.
-Generated imagery: OpenAI built-in image generation, same-space empty room / modern cream / modern French / modern Chinese / local material replacement.
-No external web research was used.
