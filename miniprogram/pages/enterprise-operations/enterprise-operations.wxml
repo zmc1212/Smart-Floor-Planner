@@ -1,0 +1,4 @@
+<!-- Dedicated enterprise operations Tab: business facts stay separate from today's dispatch queue. -->
+<view class="enterprise-operations-page sfp-tab-page">
+  <role-workbench role="enterprise_admin" focus="operations" />
+</view>

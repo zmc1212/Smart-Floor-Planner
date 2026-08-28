@@ -93,7 +93,7 @@ test('recipe identity stays visible in result and history without exposing promp
 });
 
 test('generated recipe artwork shipped to the Mini Program stays within the image budget', () => {
-  const hero = fs.readFileSync(path.join(root, 'images', 'ai-recipe', 'recipe-atelier-hero.jpg'));
-  assert.equal(hero.subarray(0, 2).toString('hex'), 'ffd8');
-  assert.ok(hero.length <= 300 * 1024);
+  const cover = fs.readFileSync(path.join(root, 'images', 'airy-v1', 'scheme-wood-cream-showcase.png'));
+  assert.equal(cover.subarray(1, 4).toString(), 'PNG');
+  assert.ok(cover.length <= 300 * 1024);
 });

@@ -95,16 +95,11 @@ test('customer published designs and floor plan preview use protected endpoints 
   assert.match(page, /handleDossierRow\(event\)/);
 });
 
-test('customer project keeps the packaged Phase 6 folio PNG and uses main-package Xiao K', () => {
+test('customer project uses main-package Xiao K and does not keep unused v1 artwork', () => {
   const assetRoot = path.join(root, 'packages', 'business', 'assets', 'customer-project-v1');
-  const folio = fs.readFileSync(path.join(assetRoot, 'published-design-folio.png'));
-  assert.equal(folio.subarray(1, 4).toString(), 'PNG');
-  assert.ok(folio.length <= 300 * 1024, 'published-design-folio.png exceeds the generated-artwork budget');
-
   const airyMascot = fs.readFileSync(path.join(root, 'images', 'airy-v1', 'project-delivery-xiao-k.png'));
   assert.equal(airyMascot.subarray(1, 4).toString(), 'PNG');
-  assert.equal(fs.existsSync(path.join(assetRoot, 'project-delivery-xiao-k.png')), false);
-  assert.equal(fs.existsSync(path.join(assetRoot, 'formal-floor-plan-archive.png')), true);
+  assert.equal(fs.existsSync(assetRoot), false);
 });
 
 test('customer project V4 packages one coherent licensed icon family', () => {

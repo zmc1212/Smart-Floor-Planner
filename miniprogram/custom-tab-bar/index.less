@@ -114,6 +114,12 @@
   font-weight: 600;
 }
 
+/* The dashboard artwork is green in the approved source; neutralize it until this Tab is selected. */
+.tab-item.tab-key-operations:not(.active) .tab-image {
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+
 .tab-badge {
   position: absolute;
   top: -8rpx;

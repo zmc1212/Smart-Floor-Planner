@@ -104,7 +104,7 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
 
     globalData.bootstrap = { current: { role: 'enterprise_admin', capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'] } };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['operations', 'customers', 'appointments', 'commissions', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'operations', 'customers', 'commissions', 'mine']);
 
     globalData.bootstrap = {
       current: {
@@ -126,14 +126,12 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
   }
 });
 
-test('earnings and appointments use paired TabBar icon states', () => {
+test('earnings keeps its paired TabBar icon states and owner appointments stay contextual', () => {
   const { ROLE_ITEMS } = require(tabBarPath);
   const assetRoot = path.resolve(__dirname, '..', 'images', 'mine-icons');
   const expectedAssets = [
     'earn-g.png',
     'earn-a.png',
-    'book-g.png',
-    'book-a-active.png',
   ];
 
   for (const filename of expectedAssets) {
@@ -151,9 +149,50 @@ test('earnings and appointments use paired TabBar icon states', () => {
     assert.equal(earnings.selectedIconPath, '/images/mine-icons/earn-a.png');
   }
 
-  const appointments = ROLE_ITEMS.enterprise_admin.find((item) => item.key === 'appointments');
-  assert.equal(appointments.iconPath, '/images/mine-icons/book-g.png');
-  assert.equal(appointments.selectedIconPath, '/images/mine-icons/book-a-active.png');
+  assert.equal(ROLE_ITEMS.enterprise_admin.some((item) => item.key === 'appointments'), false);
+  const operations = ROLE_ITEMS.enterprise_admin.find((item) => item.key === 'operations');
+  assert.equal(operations.pagePath, '/pages/enterprise-operations/enterprise-operations');
+  assert.equal(operations.tab, true);
+  const appConfig = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'app.json'), 'utf8'));
+  assert.ok(
+    appConfig.tabBar.list.some((item) => item.pagePath === 'pages/enterprise-operations/enterprise-operations'),
+    'wx.switchTab requires the operations page in native tabBar.list'
+  );
+});
+
+test('owner operations tab uses native switchTab instead of a silent no-op', async () => {
+  const globalData = {
+    userInfo: { role: 'staff', mode: 'staff', staffRole: 'enterprise_admin' },
+    bootstrap: {
+      current: {
+        role: 'enterprise_admin',
+        capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.commissions', 'account']
+      }
+    }
+  };
+  const { definition, restore } = loadTabBarComponent(globalData);
+  const navigations = [];
+  global.wx.switchTab = (options) => {
+    navigations.push(['switchTab', options.url]);
+  };
+  global.wx.reLaunch = (options) => {
+    navigations.push(['reLaunch', options.url]);
+  };
+
+  try {
+    const component = {
+      data: JSON.parse(JSON.stringify(definition.data)),
+      setData(update) { this.data = { ...this.data, ...update }; },
+      syncSelected() { definition.methods.syncSelected.call(this); }
+    };
+    definition.methods.syncSelected.call(component);
+    const index = component.data.list.findIndex((item) => item.key === 'operations');
+    assert.ok(index >= 0);
+    await definition.methods.switchTab.call(component, { currentTarget: { dataset: { index } } });
+    assert.deepEqual(navigations, [['switchTab', '/pages/enterprise-operations/enterprise-operations']]);
+  } finally {
+    restore();
+  }
 });
 
 test('custom TabBar uses the stored signed role before bootstrap refresh completes', () => {

@@ -83,7 +83,43 @@ function normalizeEnterpriseCodeActions(payload) {
   };
 }
 
-function normalizeEnterpriseDashboard(rows) {
+function formatContractAmountKpi(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return '¥0';
+  return `¥${Math.round(amount).toLocaleString('zh-CN')}`;
+}
+
+function normalizeContractAmountTrend(input, periodKind) {
+  const raw = input || {};
+  const labels = Array.isArray(raw.labels) ? raw.labels.map((item) => String(item || '')) : [];
+  const toWan = (values) => (Array.isArray(values) ? values : []).map((value) => {
+    const amount = Number(value || 0);
+    return Number.isFinite(amount) && amount > 0 ? amount / 10000 : 0;
+  });
+  const current = toWan(raw.current);
+  const previous = toWan(raw.previous);
+  const hasData = Boolean(raw.hasData) && current.length === labels.length;
+  const axisLabels = [];
+  if (labels.length) {
+    const labelCount = Math.min(6, labels.length);
+    for (let index = 0; index < labelCount; index += 1) {
+      const sourceIndex = labelCount === 1
+        ? 0
+        : Math.round((index * (labels.length - 1)) / (labelCount - 1));
+      if (axisLabels[axisLabels.length - 1] !== labels[sourceIndex]) axisLabels.push(labels[sourceIndex]);
+    }
+  }
+  const periodLabels = periodKind === 'week'
+    ? { currentLabel: '本周', previousLabel: '上周' }
+    : periodKind === 'year'
+      ? { currentLabel: '本年', previousLabel: '上年' }
+      : periodKind === 'custom'
+        ? { currentLabel: '本期', previousLabel: '上期' }
+        : { currentLabel: '本月', previousLabel: '上月' };
+  return { hasData, current, previous, axisLabels, ...periodLabels };
+}
+
+function normalizeEnterpriseDashboard(rows, contractAmountSum) {
   const dashboardByKey = new Map((rows || []).map((item) => [item.key, item]));
   const stageKeys = ['newLeads', 'completedSurveys', 'signedCount'];
   const efficiencyKeys = ['schemeDelivery', 'signingRate'];
@@ -107,10 +143,45 @@ function normalizeEnterpriseDashboard(rows) {
     };
   };
 
+  const dashboardStages = stageKeys.map((key, index) => ({
+    ...normalizedItem(key, index),
+    flowLabel: ['线索获取', '方案交付', '签约成交'][index],
+    flowDetail: ['获取客户线索', '完成方案交付', '签约并收款'][index],
+  }));
   return {
-    dashboardStages: stageKeys.map(normalizedItem),
+    dashboardStages,
     dashboardEfficiencies: efficiencyKeys.map(normalizedItem),
+    enterpriseHeroKpis: [
+      dashboardStages[0],
+      dashboardStages[1],
+      dashboardStages[2],
+      {
+        key: 'contractAmount',
+        label: '签约金额',
+        value: formatContractAmountKpi(contractAmountSum),
+        unit: '',
+        detail: '',
+        tone: 'green',
+      },
+    ],
   };
+}
+
+function buildEnterpriseReminder(rows) {
+  const dashboardByKey = new Map((rows || []).map((item) => [item.key, item]));
+  return [
+    { key: 'newLeads', label: '本期新增线索' },
+    { key: 'signedCount', label: '本期已签约' },
+  ].map(({ key, label }) => {
+    const item = dashboardByKey.get(key);
+    if (!item) return null;
+    return {
+      key,
+      label,
+      value: item.value === undefined || item.value === null ? '--' : item.value,
+      unit: item.unit || '',
+    };
+  }).filter(Boolean);
 }
 
 Component({
@@ -134,8 +205,11 @@ Component({
     activityCode: null,
     joinCode: null,
     dashboard: [],
+    enterpriseReminder: [],
     dashboardStages: [],
     dashboardEfficiencies: [],
+    enterpriseHeroKpis: [],
+    contractAmountTrend: { hasData: false, current: [], previous: [], axisLabels: [], currentLabel: '本月', previousLabel: '上月' },
     quickNav: [],
     dashboardPeriod: {
       kind: 'month',
@@ -431,8 +505,14 @@ Component({
           ? normalizeEnterpriseCodeActions(payload)
           : { activityCode: payload.activityCode || null, joinCode: null };
         const enterpriseDashboard = payload.role === 'enterprise_admin'
-          ? normalizeEnterpriseDashboard(payload.dashboard)
-          : { dashboardStages: [], dashboardEfficiencies: [] };
+          ? normalizeEnterpriseDashboard(payload.dashboard, payload.contractAmountSum)
+          : { dashboardStages: [], dashboardEfficiencies: [], enterpriseHeroKpis: [] };
+        const enterpriseReminder = payload.role === 'enterprise_admin'
+          ? buildEnterpriseReminder(payload.dashboard)
+          : [];
+        const contractAmountTrend = payload.role === 'enterprise_admin'
+          ? normalizeContractAmountTrend(payload.contractAmountTrend, dashboardPeriod.kind)
+          : { hasData: false, current: [], previous: [], axisLabels: [], currentLabel: '本月', previousLabel: '上月' };
 
         this.setData({
           title: payload.title || '工作台',
@@ -444,15 +524,18 @@ Component({
           activityCode: codeActions.activityCode,
           joinCode: codeActions.joinCode,
           dashboard: payload.dashboard || [],
+          enterpriseReminder,
           dashboardStages: enterpriseDashboard.dashboardStages,
           dashboardEfficiencies: enterpriseDashboard.dashboardEfficiencies,
+          enterpriseHeroKpis: enterpriseDashboard.enterpriseHeroKpis,
+          contractAmountTrend,
           quickNav: payload.quickNav || [],
           dashboardPeriod,
           enterpriseName,
           staffName,
           withdrawalNotices: payload.withdrawalNotices || [],
           loading: false,
-        });
+        }, () => this.renderContractAmountTrend());
         if (payload.role === 'designer') this.loadClaimPoolSummary();
         this.scheduleWechatProfilePrompt();
       } catch (error) {
@@ -463,6 +546,68 @@ Component({
       } finally {
         this._fetching = false;
       }
+    },
+
+    renderContractAmountTrend() {
+      const trend = this.data.contractAmountTrend || {};
+      const focus = this.properties.focus || this.data.focus;
+      if (this.properties.role !== 'enterprise_admin' || focus !== 'operations' || !trend.hasData) return;
+      wx.nextTick(() => {
+        this.createSelectorQuery()
+          .select('#operations-trend-canvas')
+          .fields({ node: true, size: true })
+          .exec((result) => {
+            const canvasInfo = result && result[0];
+            if (!canvasInfo || !canvasInfo.node || !canvasInfo.width || !canvasInfo.height) return;
+            const canvas = canvasInfo.node;
+            const context = canvas.getContext('2d');
+            const pixelRatio = wx.getWindowInfo ? wx.getWindowInfo().pixelRatio : wx.getSystemInfoSync().pixelRatio || 1;
+            const width = canvasInfo.width;
+            const height = canvasInfo.height;
+            canvas.width = width * pixelRatio;
+            canvas.height = height * pixelRatio;
+            context.scale(pixelRatio, pixelRatio);
+            context.clearRect(0, 0, width, height);
+            const current = trend.current || [];
+            const previous = trend.previous || [];
+            const values = current.concat(previous).map((value) => Number(value || 0));
+            const maxValue = Math.max(...values, 1);
+            const padding = { top: 12, right: 8, bottom: 12, left: 8 };
+            const chartWidth = Math.max(1, width - padding.left - padding.right);
+            const chartHeight = Math.max(1, height - padding.top - padding.bottom);
+            const pointFor = (value, index, length) => ({
+              x: padding.left + (length <= 1 ? chartWidth / 2 : (chartWidth * index) / (length - 1)),
+              y: padding.top + chartHeight - (Math.max(0, Number(value || 0)) / maxValue) * chartHeight,
+            });
+            const drawLine = (valuesToDraw, color, dashed) => {
+              if (!valuesToDraw.length) return;
+              context.save();
+              context.beginPath();
+              if (dashed && context.setLineDash) context.setLineDash([4, 4]);
+              valuesToDraw.forEach((value, index) => {
+                const point = pointFor(value, index, valuesToDraw.length);
+                if (index === 0) context.moveTo(point.x, point.y);
+                else context.lineTo(point.x, point.y);
+              });
+              context.strokeStyle = color;
+              context.lineWidth = dashed ? 1.5 : 2;
+              context.stroke();
+              context.restore();
+            };
+            drawLine(previous, '#aab7b0', true);
+            drawLine(current, '#04b960', false);
+            current.forEach((value, index) => {
+              const point = pointFor(value, index, current.length);
+              context.beginPath();
+              context.arc(point.x, point.y, 2.8, 0, Math.PI * 2);
+              context.fillStyle = '#ffffff';
+              context.fill();
+              context.lineWidth = 1.8;
+              context.strokeStyle = '#04b960';
+              context.stroke();
+            });
+          });
+      });
     },
 
     async acknowledgeWithdrawal(event) {
@@ -721,6 +866,10 @@ Component({
       }
     },
 
+    openOperations() {
+      wx.switchTab({ url: '/pages/enterprise-operations/enterprise-operations' });
+    },
+
     openActivityCode() {
       const target = this.data.activityCode && this.data.activityCode.target;
       if (target === 'join-codes') {
@@ -732,6 +881,10 @@ Component({
 
     openJoinCodes() {
       wx.navigateTo({ url: '/packages/business/enterprise-join-codes/enterprise-join-codes' });
+    },
+
+    openReferrerRoster() {
+      wx.navigateTo({ url: '/packages/business/enterprise-referrers/enterprise-referrers' });
     },
 
     openReschedule(event) {

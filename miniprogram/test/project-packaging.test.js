@@ -32,7 +32,7 @@ test('source package keeps the Mini Program runtime directories', () => {
   }
 });
 
-test('source package excludes historical artwork that is not used at runtime', () => {
+test('source package ignores only development files after unused artwork was deleted', () => {
   const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
   const ignoredFiles = new Set(
     projectConfig.packOptions.ignore
@@ -41,19 +41,6 @@ test('source package excludes historical artwork that is not used at runtime', (
   );
 
   assert.deepEqual(ignoredFiles, new Set([
-    'packages/business/assets/customer-project-v1/formal-floor-plan-archive.png',
-    'packages/business/assets/referral-service-v1/designer-matching.png',
-    'packages/business/assets/referral-service-v1/privacy-lock.png',
-    'images/ai-design-empty-v2/stage-art.jpg',
-    'images/ai-recipe/recipe-atelier-hero.jpg',
-    'images/home-v5/plan-preview.jpg',
-    'images/home-v5/ai-preview.jpg',
-    'images/ai-design-stage-active-glow-v1.png',
-    'images/generated-hero-bleed-v2.png',
-    'images/login-hero.png',
-    'images/airy-v1/xiao-k-mascot-3d.png',
-    'images/operations-dashboard/floor-route-board.png',
-    'images/home-ip-v1/measure-k.png',
     'tmp-lshape-preview.js',
     'tmp-preview-check.js',
     'DESIGN.md',
@@ -179,6 +166,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
 
   assert.deepEqual(appConfig.pages, [
     'pages/index/index',
+    'pages/enterprise-operations/enterprise-operations',
     'pages/ai-design/ai-design',
     'pages/mine/mine',
     'pages/leads-management/leads-management',
@@ -226,6 +214,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'staff-activity-code/staff-activity-code',
         'enterprise-join-codes/enterprise-join-codes',
         'enterprise-staff/enterprise-staff',
+        'enterprise-referrers/enterprise-referrers',
         'free-design-service/free-design-service',
         'service-needs/service-needs',
         'onboarding/onboarding',
@@ -327,6 +316,56 @@ test('removed legacy artwork cannot silently return to the source package', () =
     'packages/surveying/assets/icons/wall-toolbar/reset.png',
     'packages/surveying/assets/icons/wall-toolbar/side.png',
     'packages/surveying/assets/icons/wall-toolbar/thickness.png',
+    'images/ai-design-empty-v2/step-ai.png',
+    'images/ai-design-empty-v2/step-customer.png',
+    'images/ai-design-empty-v2/step-survey.png',
+    'images/ai-design-empty-v2/stage-art.jpg',
+    'images/ai-design-preparation-art-v1.jpg',
+    'images/ai-design-switch-arrows-v1.png',
+    'images/airy-v1/recipe-minimal-living.png',
+    'images/airy-v1/recipe-wood-cream.png',
+    'images/airy-v1/xiao-k-mascot-3d.png',
+    'images/home-v5/ai-wand.jpg',
+    'images/home-v5/bluetooth-mark.jpg',
+    'images/home-v5/laser-device.jpg',
+    'images/home-v5/lead-avatars.jpg',
+    'images/home-v5/leads-icon.jpg',
+    'images/home-v5/location.png',
+    'images/home-v5/plan-preview.jpg',
+    'images/home-v5/ai-preview.jpg',
+    'images/leads-v4/plus-white.png',
+    'images/mine-icons/book-a-active.png',
+    'images/mine-icons/camera.png',
+    'images/mine-icons/message-square.png',
+    'images/mine-icons/receipt-text.png',
+    'images/operations-dashboard/activity-code-share.png',
+    'images/operations-dashboard/referrer-roster.png',
+    'images/operations-dashboard/lead-inbox.png',
+    'images/operations-dashboard/staff-onboarding.png',
+    'images/operations-dashboard/scheme-delivery-rate.png',
+    'images/operations-dashboard/signing-rate.png',
+    'images/operations-dashboard/floor-route-board.png',
+    'images/ai-recipe/recipe-atelier-hero.jpg',
+    'images/ai-design-stage-active-glow-v1.png',
+    'images/generated-hero-bleed-v2.png',
+    'images/login-hero.png',
+    'images/home-ip-v1/measure-k.png',
+    'packages/business/assets/code-presenter-v2/onsite-measurement.png',
+    'packages/business/assets/code-presenter-v2/advisor-match.png',
+    'packages/business/assets/code-presenter-v2/free-service.png',
+    'packages/business/assets/code-presenter-v2/join-identity.png',
+    'packages/business/assets/code-presenter-v2/service-start.png',
+    'packages/business/assets/code-presenter-v2/xiao-k-scan-guide.png',
+    'packages/business/assets/referral-service-v1/phone-auth-calendar.png',
+    'packages/business/assets/referral-service-v1/phone-auth-design.png',
+    'packages/business/assets/referral-service-v1/phone-auth-measure.png',
+    'packages/business/assets/referral-service-v1/phone-auth-wechat.png',
+    'packages/business/assets/referral-service-v1/xiao-k-existing-service.png',
+    'packages/business/assets/referral-service-v1/privacy-lock.png',
+    'packages/business/assets/referral-service-v1/xiao-k-phone-privacy.png',
+    'packages/business/assets/referral-service-v1/xiao-k-onboarding-welcome.png',
+    'packages/business/assets/customer-project-v1/published-design-folio.png',
+    'packages/business/assets/customer-project-v1/formal-floor-plan-archive.png',
   ];
 
   for (const asset of removedAssets) {

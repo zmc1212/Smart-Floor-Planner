@@ -39,6 +39,7 @@ const SERVICE_WORKFLOW_LESS = [
   'packages/guides/designer-guide/designer-guide.less',
   'packages/guides/measurer-guide/measurer-guide.less',
   'packages/business/enterprise-staff/enterprise-staff.less',
+  'packages/business/enterprise-referrers/enterprise-referrers.less',
   'packages/business/enterprise-join-codes/enterprise-join-codes.less',
   'packages/business/referrer-workbench/referrer-workbench.less',
   'packages/business/referrer-progress/referrer-progress.less',

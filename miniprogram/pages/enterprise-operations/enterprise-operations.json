@@ -1,0 +1,6 @@
+{
+  "navigationStyle": "custom",
+  "usingComponents": {
+    "role-workbench": "/components/role-workbench/role-workbench"
+  }
+}

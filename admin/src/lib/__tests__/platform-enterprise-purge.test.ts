@@ -116,6 +116,12 @@ test('enterprises list exposes single and batch delete dialogs gated by admin se
   assert.match(listPage, /PLATFORM_ENTERPRISE_BATCH_PURGE_MAX/);
   assert.match(listPage, /isPlatformAdminRole\(user\?\.role\)/);
   assert.match(listPage, /canPurge/);
+  assert.match(listPage, /reload\(true\)/);
+  assert.match(listPage, /params=\{\{\s*listVersion\s*\}\}/);
+  assert.match(listPage, /refreshEnterpriseList/);
+  assert.match(listPage, /clearSelected/);
+  assert.match(listPage, /current: page/);
+  assert.match(listPage, /setPage\(1\)/);
 });
 
 test('enterprise detail extra exposes single delete and returns to the list', () => {

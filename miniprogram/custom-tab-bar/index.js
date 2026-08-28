@@ -29,9 +29,9 @@ const ROLE_ITEMS = {
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   enterprise_admin: [
-    { key: 'operations', capability: 'enterprise.operations', pagePath: '/pages/index/index', text: '经营', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'workbench', capability: 'enterprise.operations', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'operations', capability: 'enterprise.operations', pagePath: '/pages/enterprise-operations/enterprise-operations', text: '经营', tab: true, iconPath: '/images/operations-dashboard/chart.png', selectedIconPath: '/images/operations-dashboard/chart.png' },
     { key: 'customers', capability: 'enterprise.customers', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
-    { key: 'appointments', capability: 'enterprise.appointments', pagePath: '/packages/business/enterprise-appointments/enterprise-appointments', text: '预约', iconPath: '/images/mine-icons/book-g.png', selectedIconPath: '/images/mine-icons/book-a-active.png' },
     { key: 'commissions', capability: 'enterprise.commissions', pagePath: '/packages/business/enterprise-commissions/enterprise-commissions', text: '提成', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],

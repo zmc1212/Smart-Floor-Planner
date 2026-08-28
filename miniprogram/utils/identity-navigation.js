@@ -22,6 +22,7 @@ const ROLE_CAPABILITIES = Object.freeze({
 
 const ROUTE_CAPABILITIES = Object.freeze({
   '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations'],
+  '/pages/enterprise-operations/enterprise-operations': 'enterprise.operations',
   '/pages/leads-management/leads-management': ['staff.leads', 'staff.tasks', 'enterprise.customers'],
   '/pages/ai-design/ai-design': ['staff.design', 'staff.surveying'],
   '/packages/platform/devices/devices': 'platform.devices',
@@ -58,6 +59,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/staff-activity-code/staff-activity-code': ['staff.leads', 'staff.tasks', 'staff.schedule', 'enterprise.operations'],
   '/packages/business/enterprise-join-codes/enterprise-join-codes': 'enterprise.operations',
   '/packages/business/enterprise-staff/enterprise-staff': 'enterprise.operations',
+  '/packages/business/enterprise-referrers/enterprise-referrers': 'enterprise.operations',
   '/packages/business/customer-projects/customer-projects': 'customer.projects',
   '/packages/business/customer-project/customer-project': 'customer.projects',
   '/packages/business/service-needs/service-needs': 'customer.projects',

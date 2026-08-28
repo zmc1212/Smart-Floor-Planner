@@ -144,7 +144,6 @@ test('Leads visual assets exist and micro-icons stay within budget', () => {
   const icons = [
     'search.png',
     'filter.png',
-    'plus-white.png',
     'phone.png',
     'map-pin.png',
     'chevron-right.png',

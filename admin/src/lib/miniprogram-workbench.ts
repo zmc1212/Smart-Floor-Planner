@@ -1,7 +1,11 @@
 import { and, count, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { aiGenerationPublications, aiGenerations, floorPlans, leads } from '@/db/schema';
 import { FloorPlanRepository } from '@/db/repositories/floor-plan-repository';
-import { LeadRepository } from '@/db/repositories/lead-repository';
+import {
+  LeadRepository,
+  type ContractAmountTrendGranularity,
+  type ContractAmountTrendRow,
+} from '@/db/repositories/lead-repository';
 import type { PostgresTransaction } from '@/db/transaction';
 import { formatAppointmentTimeRangeIso, resolveLeadServiceStage, type LeadServiceStage } from '@/lib/lead-service-stage';
 import { getLeadStatusVariants } from '@/lib/lead-status';
@@ -502,6 +506,94 @@ export function previousComparablePeriodRange(range: Pick<WorkbenchPeriodRange, 
   };
 }
 
+function contractAmountTrendGranularity(period: Pick<WorkbenchPeriodRange, 'kind' | 'start' | 'end'>): ContractAmountTrendGranularity {
+  const durationDays = Math.ceil((period.end.getTime() - period.start.getTime()) / (24 * 60 * 60 * 1000));
+  return period.kind === 'year' || durationDays > 62 ? 'month' : 'day';
+}
+
+function formatTrendBucket(year: number, month: number, day: number | null, granularity: ContractAmountTrendGranularity) {
+  if (granularity === 'month') return `${year}-${String(month).padStart(2, '0')}`;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day || 1).padStart(2, '0')}`;
+}
+
+function enumerateContractAmountTrendBuckets(
+  range: Pick<WorkbenchPeriodRange, 'start' | 'end'>,
+  granularity: ContractAmountTrendGranularity
+) {
+  const buckets: Array<{ key: string; label: string }> = [];
+  let cursor = range.start;
+  while (cursor < range.end) {
+    const parts = shanghaiDateParts(cursor);
+    const year = Number(parts.year);
+    const month = Number(parts.month);
+    const day = Number(parts.day);
+    buckets.push({
+      key: formatTrendBucket(year, month, granularity === 'month' ? null : day, granularity),
+      label: granularity === 'month' ? `${month}月` : `${month}/${day}`,
+    });
+    cursor = granularity === 'month'
+      ? shanghaiStartOfDay(month === 12 ? year + 1 : year, month === 12 ? 1 : month + 1, 1)
+      : addShanghaiCalendarDays(cursor, 1);
+  }
+  return buckets;
+}
+
+function trendValuesByBucket(rows: ContractAmountTrendRow[]) {
+  return new Map(rows.map((row) => [row.bucket, Math.round(Number(row.value || 0) * 100) / 100]));
+}
+
+export function buildContractAmountTrend(input: {
+  period: WorkbenchPeriodRange;
+  previous: Pick<WorkbenchPeriodRange, 'start' | 'end'>;
+  granularity: ContractAmountTrendGranularity;
+  currentRows: ContractAmountTrendRow[];
+  previousRows: ContractAmountTrendRow[];
+}) {
+  const currentBuckets = enumerateContractAmountTrendBuckets(input.period, input.granularity);
+  const previousBuckets = enumerateContractAmountTrendBuckets(input.previous, input.granularity);
+  const currentByBucket = trendValuesByBucket(input.currentRows);
+  const previousByBucket = trendValuesByBucket(input.previousRows);
+  const current = currentBuckets.map((bucket) => currentByBucket.get(bucket.key) || 0);
+  const previousValues = previousBuckets.map((bucket) => previousByBucket.get(bucket.key) || 0);
+  return {
+    granularity: input.granularity,
+    unit: '万元',
+    labels: currentBuckets.map((bucket) => bucket.label),
+    current,
+    previous: current.map((_, index) => previousValues[index] || 0),
+    hasData: current.some((value) => value > 0) || previousValues.some((value) => value > 0),
+  };
+}
+
+export async function loadContractAmountTrend(
+  transaction: PostgresTransaction,
+  options: Pick<LoadOpsDashboardOptions, 'period' | 'scope'>
+) {
+  const leadRepository = new LeadRepository(transaction);
+  const previous = previousComparablePeriodRange(options.period);
+  const granularity = contractAmountTrendGranularity(options.period);
+  const staffFilter = options.scope
+    ? { staffId: options.scope.staffId, staffVisibility: options.scope.staffVisibility }
+    : {};
+  const [currentRows, previousRows] = await Promise.all([
+    leadRepository.sumContractAmountByConvertedBucket({
+      ...staffFilter,
+      status: 'converted',
+      convertedSince: options.period.start,
+      convertedBefore: options.period.end,
+      granularity,
+    }),
+    leadRepository.sumContractAmountByConvertedBucket({
+      ...staffFilter,
+      status: 'converted',
+      convertedSince: previous.start,
+      convertedBefore: previous.end,
+      granularity,
+    }),
+  ]);
+  return buildContractAmountTrend({ period: options.period, previous, granularity, currentRows, previousRows });
+}
+
 export function computeSigningRate(signedCount: number, newLeadCount: number) {
   if (newLeadCount <= 0) return null;
   return Math.round((signedCount / newLeadCount) * 1000) / 10;
@@ -622,6 +714,7 @@ export async function loadOpsDashboard(
     completedSurveys,
     draftFormalPlans,
     schemeFacts,
+    contractAmountTrend,
   ] = await Promise.all([
     leads.count({
       ...staffFilter,
@@ -674,6 +767,9 @@ export async function loadOpsDashboard(
       options.period,
       options.scope
     ),
+    options.includeContractAmount
+      ? loadContractAmountTrend(transaction, options)
+      : Promise.resolve(null),
   ]);
 
   const schemeDeliveryRate = completedSurveys > 0
@@ -711,6 +807,8 @@ export async function loadOpsDashboard(
     dashboard: cards,
     signedCount,
     signingRate,
+    contractAmountSum: options.includeContractAmount ? contractAmountSum : null,
+    contractAmountTrend,
   };
 }
 
@@ -876,6 +974,63 @@ export function buildEnterpriseStaffRosterItem(member: RosterStaffInput) {
     helperText: ineligibleReason === 'designer_wechat_incomplete'
       ? '请本人在「我的」补齐微信号和个人二维码后再派单'
       : '',
+  };
+}
+
+const REFERRER_MEMBERSHIP_STATUSES = ['active', 'disabled', 'exited'] as const;
+
+export type EnterpriseReferrerRosterStatus = (typeof REFERRER_MEMBERSHIP_STATUSES)[number];
+
+export function parseEnterpriseReferrerRosterStatus(value?: string | null) {
+  const status = String(value || '').trim();
+  if (!status) return undefined;
+  if (status === 'active' || status === 'disabled' || status === 'exited') return status;
+  throw Object.assign(new Error('成员状态无效'), { status: 400 });
+}
+
+type RosterReferrerInput = {
+  id: bigint | number | string;
+  displayName?: string | null;
+  phone?: string | null;
+  status?: string | null;
+  joinedAt?: Date | string | null;
+  exitedAt?: Date | string | null;
+  hasActivePromotionCode?: boolean | null;
+};
+
+function formatReferrerJoinedAt(value: Date | string | null | undefined) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' });
+}
+
+export function buildEnterpriseReferrerRosterItem(member: RosterReferrerInput) {
+  const status: EnterpriseReferrerRosterStatus =
+    member.status === 'disabled' || member.status === 'exited' ? member.status : 'active';
+  const hasActivePromotionCode = Boolean(member.hasActivePromotionCode);
+  const displayName =
+    String(member.displayName || '').trim() || String(member.phone || '').trim() || '未命名推荐人';
+  const phone = String(member.phone || '').trim() || null;
+  const helperText = status === 'active'
+    ? (hasActivePromotionCode ? '可出示活动推广码' : '暂无活动推广码')
+    : status === 'disabled'
+      ? '已停用后续扫码'
+      : '已退出本店';
+  return {
+    id: String(member.id),
+    displayName,
+    phone,
+    status,
+    joinedAt: member.joinedAt ?? null,
+    exitedAt: member.exitedAt ?? null,
+    joinedAtLabel: formatReferrerJoinedAt(member.joinedAt),
+    hasActivePromotionCode,
+    statusLabel: status === 'active' ? '活动' : status === 'disabled' ? '已停用' : '已退出',
+    statusTone: status === 'active' ? 'green' : 'orange',
+    helperText,
+    action: status === 'active' ? 'disable' : null,
+    actionLabel: status === 'active' ? '停用后续扫码' : '',
   };
 }
 

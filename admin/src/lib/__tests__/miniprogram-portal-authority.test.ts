@@ -29,9 +29,11 @@ test('staff earnings reject non-designer and non-measurer contexts', () => {
 
 test('enterprise payout ledger rejects non-owner staff contexts', () => {
   const designer = { mode: 'staff', enterpriseId: '7', staff: { _id: '11', role: 'designer' } } as unknown as MiniProgramContext;
+  const measurer = { mode: 'staff', enterpriseId: '7', staff: { _id: '12', role: 'measurer' } } as unknown as MiniProgramContext;
   const owner = { mode: 'staff', enterpriseId: '7', staff: { _id: '13', role: 'enterprise_admin' } } as unknown as MiniProgramContext;
   assert.equal(requireMiniProgramEnterpriseAdmin(owner), undefined);
   assert.throws(() => requireMiniProgramEnterpriseAdmin(designer), { status: 403, code: 'miniprogram_portal_forbidden' });
+  assert.throws(() => requireMiniProgramEnterpriseAdmin(measurer), { status: 403, code: 'miniprogram_portal_forbidden' });
   assert.throws(() => requireMiniProgramEnterpriseAdmin(customer), { status: 403, code: 'miniprogram_portal_forbidden' });
   assert.throws(() => requireMiniProgramEnterpriseAdmin(referrer), { status: 403, code: 'miniprogram_portal_forbidden' });
   assert.throws(() => requireMiniProgramEnterpriseAdmin({ ...owner, enterpriseId: undefined }), { status: 403, code: 'miniprogram_portal_forbidden' });

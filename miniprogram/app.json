@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/enterprise-operations/enterprise-operations",
     "pages/ai-design/ai-design",
     "pages/mine/mine",
     "pages/leads-management/leads-management"
@@ -57,6 +58,7 @@
         "staff-activity-code/staff-activity-code",
         "enterprise-join-codes/enterprise-join-codes",
         "enterprise-staff/enterprise-staff",
+        "enterprise-referrers/enterprise-referrers",
         "free-design-service/free-design-service",
         "service-needs/service-needs",
         "onboarding/onboarding",
@@ -105,6 +107,12 @@
         "text": "\u9996\u9875",
         "iconPath": "images/meaure0.png",
         "selectedIconPath": "images/meaure1.png"
+      },
+      {
+        "pagePath": "pages/enterprise-operations/enterprise-operations",
+        "text": "\u7ecf\u8425",
+        "iconPath": "images/operations-dashboard/chart.png",
+        "selectedIconPath": "images/operations-dashboard/chart.png"
       },
       {
         "pagePath": "pages/leads-management/leads-management",

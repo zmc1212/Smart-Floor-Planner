@@ -302,6 +302,10 @@ Page({
     };
   },
 
+  openReferrerRoster() {
+    wx.navigateTo({ url: '/packages/business/enterprise-referrers/enterprise-referrers' });
+  },
+
   onBack() {
     const pages = getCurrentPages();
     if (pages && pages.length > 1) {

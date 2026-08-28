@@ -33,7 +33,7 @@ test('customer service home shows one featured stage and a single next action', 
   assert.doesNotMatch(workbench, /title: '免费设计与量房'/);
 });
 
-test('enterprise appointments tab leaves the AI design shell', () => {
+test('enterprise appointments remain a contextual route outside the AI design shell', () => {
   const tabBar = source('custom-tab-bar/index.js');
   const design = source('pages/ai-design/ai-design.js');
   assert.doesNotMatch(source('pages/ai-design/ai-design.wxml'), /enterprise_admin/);
@@ -44,7 +44,8 @@ test('enterprise appointments tab leaves the AI design shell', () => {
   const pageScript = source('packages/business/enterprise-appointments/enterprise-appointments.js');
   const navigation = source('utils/identity-navigation.js');
 
-  assert.match(tabBar, /key: 'appointments'[\s\S]*pagePath: '\/packages\/business\/enterprise-appointments\/enterprise-appointments'/);
+  assert.doesNotMatch(tabBar, /key: 'appointments'[\s\S]*pagePath: '\/packages\/business\/enterprise-appointments\/enterprise-appointments'/);
+  assert.match(source('components/role-workbench/role-workbench.js'), /target === 'appointments'/);
   assert.match(design, /role === 'measurer'/);
   assert.doesNotMatch(design, /enterprise_admin/);
   assert.ok(business.pages.includes('enterprise-appointments/enterprise-appointments'));
@@ -183,20 +184,23 @@ test('role workbench shows enterprise name under the brand and staff name in the
   assert.doesNotMatch(styles, /-webkit-line-clamp:\s*2;/);
 });
 
-test('enterprise owner hero prioritizes customer acquisition and separates onboarding', () => {
+test('enterprise owner workbench prioritizes acquisition and team actions without a sparse action area', () => {
   const template = source('components/role-workbench/role-workbench.wxml');
   const workbench = source('components/role-workbench/role-workbench.js');
   const styles = source('components/role-workbench/role-workbench.less');
 
-  assert.match(template, /enterprise-code-action-primary[\s\S]*activityCode\.label[\s\S]*activityCode\.detail/);
-  assert.match(template, /enterprise-code-action-secondary[\s\S]*joinCode\.label[\s\S]*joinCode\.detail/);
-  assert.match(template, /mine-icons\/scan\.png/);
-  assert.match(template, /operations-dashboard\/staff-onboarding\.png/);
+  assert.match(template, /enterprise-action-share-card[\s\S]*activityCode\.label[\s\S]*activityCode\.detail/);
+  assert.match(template, /enterprise-action-mini-card invite[\s\S]*joinCode\.label[\s\S]*joinCode\.detail/);
+  assert.match(template, /operations-dashboard\/activity-code-share-v3\.png/);
+  assert.match(template, /operations-dashboard\/team-onboarding-v3\.png/);
+  assert.match(template, /operations-dashboard\/referrer-roster-v2\.png/);
   assert.doesNotMatch(template, /enterprise-code-plus|leads-v4\/plus-white\.png/);
-  const joinIcon = fs.readFileSync(path.join(root, 'images/operations-dashboard/staff-onboarding.png'));
-  assert.ok(joinIcon.length < 50 * 1024);
-  assert.deepEqual([...joinIcon.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
-  assert.ok(joinIcon.includes(Buffer.from('tRNS')) || [4, 6].includes(joinIcon[25]));
+  for (const asset of ['activity-code-share-v3.png', 'team-onboarding-v3.png', 'referrer-roster-v2.png', 'lead-inbox-v2.png', 'priority-alert-v2.png']) {
+    const bytes = fs.readFileSync(path.join(root, 'images/operations-dashboard', asset));
+    assert.ok(bytes.length <= 300 * 1024, `${asset} must remain package-sized`);
+    assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(bytes.includes(Buffer.from('tRNS')) || [4, 6].includes(bytes[25]), `${asset} must retain transparent PNG pixels`);
+  }
   assert.match(template, /aria-label="分享活动码，发给客户扫码留资"/);
   assert.match(template, /aria-label="邀请员工或推荐人入驻"/);
   assert.match(workbench, /normalizeEnterpriseCodeActions/);
@@ -206,22 +210,36 @@ test('enterprise owner hero prioritizes customer acquisition and separates onboa
   assert.match(workbench, /detail:\s*activity\.detail \|\| '发给客户 · 扫码留资'/);
   assert.match(workbench, /label:\s*'邀请入驻'/);
   assert.match(workbench, /detail:\s*rawJoin\.detail \|\| '员工 · 推荐人'/);
-  assert.match(styles, /\.enterprise-code-actions\s*\{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(styles, /\.enterprise-hero-card \.hero-top-row\s*\{[\s\S]*min-height:\s*114rpx/);
+  assert.match(template, /bindtap="openReferrerRoster"/);
+  assert.match(template, /查看推广人/);
+  assert.match(workbench, /enterprise-referrers\/enterprise-referrers/);
+  assert.match(template, /enterprise-appointment-row[\s\S]*secondary\.label/);
+  assert.match(template, /enterprise-reminder-row[\s\S]*enterpriseReminder/);
+  assert.match(template, /enterprise-action-hub[\s\S]*enterprise-appointment-row[\s\S]*enterprise-reminder-row[\s\S]*quick-nav-grid[\s\S]*enterprise-priority-section/);
+  assert.match(template, /enterprise-reminder-divider/);
+  assert.match(template, /quick-nav-arrow/);
+  assert.match(template, /priority-alert-v2\.png/);
+  assert.match(workbench, /buildEnterpriseReminder/);
+  assert.match(workbench, /openOperations\(\)[\s\S]*enterprise-operations/);
+  assert.match(styles, /\.enterprise-action-layout\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1\.045fr\) minmax\(0, 0\.955fr\)/);
+  assert.match(styles, /\.enterprise-action-stack\s*\{[\s\S]*grid-template-rows:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /\.enterprise-action-share-card\s*\{[\s\S]*min-height:\s*430rpx/);
+  assert.match(styles, /\.enterprise-action-mini-card\s*\{[\s\S]*min-height:\s*208rpx/);
+  assert.match(styles, /\.enterprise-action-copy\.mini \.enterprise-action-title\s*\{[\s\S]*font-size:\s*32rpx/);
+  assert.match(styles, /\.enterprise-mini-art\.invite\s*\{[\s\S]*right:\s*10rpx[\s\S]*bottom:\s*8rpx[\s\S]*width:\s*150rpx/);
+  assert.match(styles, /\.enterprise-mini-art\.referrer\s*\{[\s\S]*right:\s*12rpx[\s\S]*bottom:\s*8rpx[\s\S]*width:\s*148rpx/);
+  assert.match(styles, /\.enterprise-reminder-row\s*\{[\s\S]*min-height:\s*72rpx[\s\S]*margin-top:\s*14rpx/);
+  assert.match(styles, /\.enterprise-hero-card \.hero-top-row\s*\{[\s\S]*min-height:\s*116rpx/);
   assert.match(styles, /\.enterprise-hero-card \.stats-pills-row\s*\{[\s\S]*margin-top:\s*12rpx/);
-  assert.match(styles, /\.enterprise-hero-mascot\s*\{[\s\S]*position:\s*absolute[\s\S]*width:\s*190rpx/);
-  assert.match(styles, /\.enterprise-code-action\s*\{[\s\S]*min-height:\s*136rpx/);
-  assert.match(styles, /\.enterprise-code-action-secondary\s*\{[\s\S]*background:\s*#ffffff/);
-  assert.match(styles, /\.enterprise-code-title\s*\{[\s\S]*font-size:\s*30rpx/);
-  assert.match(styles, /\.enterprise-code-detail\s*\{[\s\S]*font-size:\s*24rpx/);
-  assert.match(styles, /\.enterprise-code-icon\.join\s*\{[\s\S]*width:\s*72rpx/);
-  assert.match(styles, /@media \(max-width:\s*360px\)[\s\S]*\.enterprise-code-icon[\s\S]*width:\s*60rpx/);
+  assert.match(styles, /\.enterprise-hero-mascot\s*\{[\s\S]*position:\s*absolute[\s\S]*width:\s*220rpx/);
+  assert.match(styles, /@media \(max-width:\s*360px\)[\s\S]*\.enterprise-action-share-card[\s\S]*min-height:\s*370rpx/);
 });
 
 test('enterprise owner operations dashboard restores the approved regular business loop', () => {
   const template = source('components/role-workbench/role-workbench.wxml');
   const workbench = source('components/role-workbench/role-workbench.js');
   const styles = source('components/role-workbench/role-workbench.less');
+  const operationsStyles = styles.slice(styles.indexOf('/* Operations Tab — direct restoration'));
 
   assert.match(workbench, /normalizeEnterpriseDashboard/);
   assert.match(workbench, /stageKeys = \['newLeads', 'completedSurveys', 'signedCount'\]/);
@@ -230,45 +248,70 @@ test('enterprise owner operations dashboard restores the approved regular busine
   assert.match(template, /wx:for="\{\{dashboardStages\}\}"/);
   assert.doesNotMatch(template, /operations-stage-progress|operations-stage-progress-line/);
   assert.match(template, /wx:for="\{\{dashboardEfficiencies\}\}"/);
-  assert.match(template, /operations-dashboard\/chart\.png/);
+  assert.match(template, /focus === 'operations'/);
+  assert.match(template, /enterprise-operations-hero/);
+  assert.match(template, /operations-hero-kpi-grid/);
+  assert.match(template, /enterpriseHeroKpis/);
+  assert.match(template, /operations-dashboard\/enterprise-hero-k-v2\.png/);
+  assert.match(template, /operations-dashboard\/new-leads-kpi-v2\.png/);
+  assert.match(template, /operations-dashboard\/completed-survey-kpi-v2\.png/);
+  assert.match(template, /operations-dashboard\/signed-contract-kpi-v2\.png/);
+  assert.match(template, /operations-dashboard\/contract-amount-kpi-v2\.png/);
+  assert.match(template, /operations-dashboard\/operations-growth-chart-v2\.png/);
   assert.match(template, /operations-dashboard\/zap\.png/);
   assert.match(template, /operations-dashboard\/enterprise-guide\.png/);
-  assert.match(template, /operations-dashboard\/lead-inbox\.png/);
+  assert.match(template, /operations-dashboard\/lead-inbox-v2\.png/);
   assert.match(template, /operations-dashboard\/staff-load\.png/);
   assert.match(template, /quick-nav-mascot \{\{item\.key === 'staffLoad' \? 'staff-load-mascot'/);
-  assert.match(template, /operations-dashboard\/scheme-delivery-rate\.png/);
-  assert.match(template, /operations-dashboard\/signing-rate\.png/);
+  assert.match(template, /operations-trend-card/);
+  assert.match(template, /contractAmountTrend\.hasData/);
+  assert.match(template, /operations-trend-canvas/);
+  assert.match(template, /暂无签约金额趋势数据/);
+  assert.match(workbench, /contractAmountSum/);
+  assert.match(workbench, /normalizeContractAmountTrend/);
+  assert.match(workbench, /renderContractAmountTrend/);
   assert.match(workbench, /已发布方案/);
   assert.match(template, /enterprise-priority-tray/);
   assert.match(template, /priority-empty-pin[\s\S]*leads-v4\/map-pin\.png[\s\S]*\{\{emptyCopy\}\}/);
   assert.equal((template.match(/<text class="section-icon">📊<\/text>/g) || []).length, 1);
   assert.doesNotMatch(template, /<text class="section-icon">⚡<\/text>/);
-  assert.match(styles, /\.quick-nav-mascot\.staff-load-mascot\s*\{[\s\S]*width:\s*120rpx/);
-  assert.match(styles, /\.enterprise-operations-board\s*\{[\s\S]*min-height:\s*404rpx/);
-  assert.match(styles, /\.operations-stage-grid\s*\{[\s\S]*min-height:\s*174rpx[\s\S]*gap:\s*44rpx/);
-  assert.match(styles, /\.operations-stage:not\(:last-child\)::after\s*\{[\s\S]*width:\s*44rpx/);
-  assert.match(styles, /\.operations-stage\s*\{[\s\S]*min-height:\s*168rpx[\s\S]*padding:\s*18rpx 18rpx 14rpx/);
-  assert.match(styles, /\.operations-stage-number\s*\{[\s\S]*width:\s*34rpx/);
-  assert.match(styles, /\.operations-stage-label\s*\{[\s\S]*font-size:\s*26rpx/);
-  assert.match(styles, /\.operations-board-kicker text\s*\{[\s\S]*font-size:\s*26rpx/);
-  assert.match(styles, /\.operations-stage\s*\{[\s\S]*border:\s*1rpx solid #e4eee8/);
+  assert.match(styles, /\.quick-nav-mascot\.staff-load-mascot\s*\{[\s\S]*width:\s*132rpx/);
+  assert.match(styles, /\.enterprise-dashboard-section,[\s\S]*\.enterprise-priority-section\s*\{[\s\S]*margin-top:\s*24rpx/);
+  assert.match(operationsStyles, /\.operations-hero-kpi-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(4/);
+  assert.match(operationsStyles, /\.operations-trend-card\s*\{[\s\S]*min-height:\s*306rpx/);
+  assert.match(operationsStyles, /\.enterprise-operations-hero\s*\{[\s\S]*min-height:\s*414rpx/);
+  assert.match(operationsStyles, /\.operations-period-chip-row\s*\{[\s\S]*margin-top:\s*22rpx/);
+  assert.match(operationsStyles, /\.operations-period-chip-row \.period-chip text\s*\{[\s\S]*font-size:\s*28rpx/);
+  assert.match(operationsStyles, /\.enterprise-operations-board\s*\{[\s\S]*min-height:\s*288rpx/);
+  assert.match(operationsStyles, /\.operations-stage-grid\s*\{[\s\S]*gap:\s*0/);
+  assert.match(operationsStyles, /\.operations-stage:not\(:last-child\)::after\s*\{[\s\S]*height:\s*3rpx/);
+  assert.match(operationsStyles, /\.operations-stage\s*\{[\s\S]*border:\s*0/);
+  assert.match(operationsStyles, /\.operations-stage-icon\s*\{[\s\S]*width:\s*88rpx/);
+  assert.match(operationsStyles, /\.operations-stage-label\s*\{[\s\S]*font-size:\s*28rpx/);
+  assert.match(operationsStyles, /\.operations-board-kicker text\s*\{[\s\S]*font-size:\s*34rpx/);
   assert.doesNotMatch(styles, /operations-board-art|operations-route-node|operations-stage-progress|operations-stage-completedSurveys::before/);
   assert.match(styles, /\.operations-efficiency-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2/);
-  assert.match(styles, /\.operations-efficiency-grid\s*\{[\s\S]*gap:\s*20rpx/);
-  assert.match(styles, /\.operations-efficiency-card\s*\{[\s\S]*padding:\s*18rpx 20rpx/);
-  assert.match(styles, /\.operations-efficiency-icon\s*\{[\s\S]*width:\s*72rpx/);
+  assert.match(operationsStyles, /\.operations-efficiency-grid\s*\{[\s\S]*gap:\s*18rpx/);
+  assert.match(operationsStyles, /\.operations-efficiency-card\s*\{[\s\S]*min-height:\s*192rpx/);
   assert.match(workbench, /legacyClosureDetail[\s\S]*方案同步中/);
   assert.match(styles, /\.enterprise-priority-tray\s*\{[\s\S]*background:\s*rgba\(242, 251, 246, 0\.92\)/);
 });
 
-test('enterprise owner V3 cutouts are standalone optimized transparent PNGs', () => {
+test('enterprise owner dashboard cutouts are standalone optimized transparent PNGs', () => {
   const assets = [
     'images/operations-dashboard/enterprise-guide.png',
-    'images/operations-dashboard/lead-inbox.png',
+    'images/operations-dashboard/lead-inbox-v2.png',
     'images/operations-dashboard/staff-load.png',
-    'images/operations-dashboard/staff-onboarding.png',
-    'images/operations-dashboard/scheme-delivery-rate.png',
-    'images/operations-dashboard/signing-rate.png',
+    'images/operations-dashboard/activity-code-share-v3.png',
+    'images/operations-dashboard/team-onboarding-v3.png',
+    'images/operations-dashboard/referrer-roster-v2.png',
+    'images/operations-dashboard/priority-alert-v2.png',
+    'images/operations-dashboard/enterprise-hero-k-v2.png',
+    'images/operations-dashboard/new-leads-kpi-v2.png',
+    'images/operations-dashboard/completed-survey-kpi-v2.png',
+    'images/operations-dashboard/signed-contract-kpi-v2.png',
+    'images/operations-dashboard/contract-amount-kpi-v2.png',
+    'images/operations-dashboard/operations-growth-chart-v2.png',
   ];
   for (const asset of assets) {
     const file = path.join(root, asset);

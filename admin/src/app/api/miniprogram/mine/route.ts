@@ -51,6 +51,7 @@ const ACTIONS_BY_ROLE: Record<string, ActionItem[]> = {
   ],
   enterprise_admin: [
     { key: 'claimable-customers', label: '线索池管理', sublabel: '查看可认领客户', icon: 'buildingCog', target: 'promotion:pool' },
+    { key: 'referrers', label: '已入驻推荐人', sublabel: '查看名单并停用扫码', icon: 'user-round-plus', target: 'referrers' },
     { key: 'customers', label: '服务客户', sublabel: '跟进客户线索', icon: 'users', target: 'leads' },
     { key: 'revenue', label: '收益概览', sublabel: '查看成交提成', icon: 'wallet', target: 'commissions' },
   ],

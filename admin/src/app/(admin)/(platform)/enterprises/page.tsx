@@ -58,6 +58,18 @@ export default function EnterprisesPage() {
   const [deleteTarget, setDeleteTarget] = useState<EnterpriseListItem | null>(null);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [selectedEnterprises, setSelectedEnterprises] = useState<EnterpriseListItem[]>([]);
+  const [listVersion, setListVersion] = useState(0);
+  const [page, setPage] = useState(1);
+
+  const refreshEnterpriseList = () => {
+    setSelectedEnterprises([]);
+    setPage(1);
+    setListVersion((version) => version + 1);
+    window.setTimeout(() => {
+      void actionRef.current?.reload(true);
+      actionRef.current?.clearSelected?.();
+    }, 0);
+  };
   const [reasonModal, setReasonModal] = useState<{
     enterprise: EnterpriseListItem;
     action: Extract<StatusAction, 'reject' | 'disable'>;
@@ -367,9 +379,15 @@ export default function EnterprisesPage() {
           actionRef={actionRef}
           rowKey="_id"
           columns={columns}
+          params={{ listVersion }}
           search={{ labelWidth: 'auto', defaultCollapsed: false }}
           options={{ reload: true, density: true, setting: true }}
-          pagination={{ defaultPageSize: 10, showSizeChanger: true }}
+          pagination={{
+            current: page,
+            defaultPageSize: 10,
+            showSizeChanger: true,
+            onChange: (current) => setPage(current),
+          }}
           scroll={{ x: 1200 }}
           rowSelection={
             canPurge
@@ -414,7 +432,7 @@ export default function EnterprisesPage() {
               : undefined
           }
           request={async (params) => {
-            const response = await fetch('/api/admin/enterprises');
+            const response = await fetch('/api/admin/enterprises', { cache: 'no-store' });
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.error || '读取企业数据失败');
             const name = String(params.name || '').trim().toLocaleLowerCase();
@@ -425,12 +443,14 @@ export default function EnterprisesPage() {
               && (!code || enterprise.code.toLocaleLowerCase().includes(code))
               && (!status || enterprise.status === status)
             ));
-            const current = Number(params.current || 1);
             const pageSize = Number(params.pageSize || 10);
+            const total = filtered.length;
+            const maxPage = Math.max(1, Math.ceil(total / pageSize) || 1);
+            const current = Math.min(Math.max(1, Number(params.current || 1)), maxPage);
             const start = (current - 1) * pageSize;
             return {
               data: filtered.slice(start, start + pageSize),
-              total: filtered.length,
+              total,
               success: true,
             };
           }}
@@ -452,12 +472,9 @@ export default function EnterprisesPage() {
         open={Boolean(deleteTarget)}
         enterprise={deleteTarget}
         onClose={() => setDeleteTarget(null)}
-        onDeleted={async () => {
+        onDeleted={() => {
           setDeleteTarget(null);
-          setSelectedEnterprises((prev) =>
-            prev.filter((item) => item._id !== deleteTarget?._id)
-          );
-          await actionRef.current?.reload();
+          refreshEnterpriseList();
         }}
       />
 
@@ -466,10 +483,9 @@ export default function EnterprisesPage() {
         open={batchDeleteOpen}
         enterprises={selectedEnterprises}
         onClose={() => setBatchDeleteOpen(false)}
-        onDeleted={async () => {
+        onDeleted={() => {
           setBatchDeleteOpen(false);
-          setSelectedEnterprises([]);
-          await actionRef.current?.reload();
+          refreshEnterpriseList();
         }}
       />
 

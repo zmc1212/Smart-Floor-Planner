@@ -89,6 +89,15 @@
         <text class="info-copy">{{hasActive ? activeCopy.info : '查看不会换新；换新后旧码立即失效'}}</text>
       </view>
 
+      <view
+        class="roster-link"
+        bindtap="openReferrerRoster"
+        aria-role="button"
+        aria-label="查看已入驻推荐人"
+      >
+        <text>查看已入驻推荐人</text>
+      </view>
+
       <view class="action-dock">
         <button wx:if="{{canShare}}" class="share-action" open-type="share" hover-class="share-action-pressed" aria-label="一键分享当前入驻码">
           <view class="share-inner">

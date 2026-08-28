@@ -18,8 +18,6 @@ const referralAssets = [
   'designer-service.png',
   'phone-authorization.png',
   'designer-matching.png',
-  'privacy-lock.png',
-  'xiao-k-onboarding-welcome.png',
   'xiao-k-onboarding-recovery.png',
   'xiao-k-spatial-service-guide.png',
   'xiao-k-three-benefits.png',
@@ -27,13 +25,7 @@ const referralAssets = [
 ];
 
 const codePresenterAssets = [
-  'xiao-k-scan-guide.png',
   'scan-frame.png',
-  'join-identity.png',
-  'service-start.png',
-  'free-service.png',
-  'onsite-measurement.png',
-  'advisor-match.png',
 ];
 
 const codePresenterV3Assets = [
@@ -145,6 +137,12 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
   assert.match(wxml, /code-invitation-card/);
   assert.match(wxml, /journey-rail/);
   assert.match(wxml, /action-dock/);
+  assert.match(wxml, /class="info-bar"[\s\S]*class="roster-link"[\s\S]*class="action-dock"/);
+  assert.match(wxml, /查看已入驻推荐人/);
+  assert.doesNotMatch(wxml, /activeType === 'referrer'[\s\S]*查看已入驻推荐人/);
+  assert.match(js, /openReferrerRoster/);
+  assert.match(js, /enterprise-referrers\/enterprise-referrers/);
+  assert.match(less, /\.roster-link text\s*\{[\s\S]*font-size:\s*26rpx/);
   assert.match(less, /\.service-code-scroll\s*\{[\s\S]*flex:\s*1/);
   assert.match(less, /\.service-code-content\s*\{[\s\S]*min-height:\s*100%[\s\S]*flex-direction:\s*column/);
   assert.match(less, /\.code-invitation-card\s*\{[\s\S]*flex:\s*none/);
@@ -310,11 +308,7 @@ test('free design service resolves into phone authorization and renders truthful
   assert.doesNotMatch(wxml, /我已阅读并同意/);
   for (const asset of referralAssets.slice(1)) {
     if (
-      asset === 'designer-matching.png'
-      || asset === 'privacy-lock.png'
-      || asset === 'phone-authorization.png'
-      || asset === 'designer-service.png'
-      || asset === 'xiao-k-onboarding-welcome.png'
+      asset === 'phone-authorization.png'
       || asset === 'xiao-k-onboarding-recovery.png'
     ) {
       continue;
@@ -442,7 +436,7 @@ test('referral assets are transparent PNG files within the package limit', () =>
   }
 });
 
-test('code presenter v2 artwork is independently packaged, transparent, and within the package limit', () => {
+test('code presenter v2 scan frame is independently packaged, transparent, and within the package limit', () => {
   for (const asset of codePresenterAssets) {
     const assetPath = path.join(miniRoot, 'packages/business/assets/code-presenter-v2', asset);
     const bytes = fs.readFileSync(assetPath);

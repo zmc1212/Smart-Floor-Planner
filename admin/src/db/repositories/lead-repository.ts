@@ -92,6 +92,13 @@ export interface LeadListOptions {
   archiveState?: 'active' | 'archived' | 'all';
 }
 
+export type ContractAmountTrendGranularity = 'day' | 'month';
+
+export type ContractAmountTrendRow = {
+  bucket: string;
+  value: number;
+};
+
 export class LeadRepository {
   constructor(private readonly transaction: PostgresTransaction) {}
 
@@ -398,6 +405,24 @@ export class LeadRepository {
       .from(leads)
       .where(this.buildFilters(options));
     return Number(rows[0]?.value ?? 0);
+  }
+
+  async sumContractAmountByConvertedBucket(
+    options: LeadListOptions & { granularity: ContractAmountTrendGranularity }
+  ): Promise<ContractAmountTrendRow[]> {
+    const bucket = options.granularity === 'month'
+      ? sql<string>`to_char(timezone('Asia/Shanghai', ${leads.convertedAt}), 'YYYY-MM')`
+      : sql<string>`to_char(timezone('Asia/Shanghai', ${leads.convertedAt}), 'YYYY-MM-DD')`;
+    const rows = await this.transaction
+      .select({
+        bucket,
+        value: sql<string>`coalesce(sum(${leads.contractAmount}), 0)`,
+      })
+      .from(leads)
+      .where(this.buildFilters(options))
+      .groupBy(bucket)
+      .orderBy(bucket);
+    return rows.map((row) => ({ bucket: row.bucket, value: Number(row.value ?? 0) }));
   }
 
   async countStatuses(

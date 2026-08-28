@@ -39,7 +39,8 @@ const ACTION_TARGETS = {
   leads: () => wx.switchTab({ url: '/pages/leads-management/leads-management' }),
   inspiration: () => wx.navigateTo({ url: '/packages/business/inspiration/inspiration' }),
   measure: () => wx.switchTab({ url: '/pages/index/index' }),
-  aiDesign: () => openAIDesignTab()
+  aiDesign: () => openAIDesignTab(),
+  referrers: () => wx.navigateTo({ url: '/packages/business/enterprise-referrers/enterprise-referrers' })
 };
 
 function formatFloorPlanDate(value) {

@@ -153,6 +153,11 @@ test('staff roles retain distinct landing and capability contracts', () => {
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-join-codes/enterprise-join-codes', { mode: 'staff', staffRole: 'designer' }), false);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-staff/enterprise-staff', { mode: 'staff', staffRole: 'enterprise_admin' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-staff/enterprise-staff', { mode: 'staff', staffRole: 'designer' }), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'enterprise_admin' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'designer' }), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'measurer' }), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'referrer' }), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'customer' }), false);
   assert.equal(navigation.canAccessRoute('/packages/business/appointment-booking/appointment-booking', { mode: 'staff', staffRole: 'measurer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/measurer-unavailability/measurer-unavailability', { mode: 'staff', staffRole: 'designer' }), true);
   assert.equal(navigation.canAccessRoute('/pages/ai-design/ai-design', { mode: 'staff', staffRole: 'measurer' }), true);

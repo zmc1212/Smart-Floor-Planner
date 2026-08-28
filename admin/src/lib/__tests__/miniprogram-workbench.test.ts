@@ -7,9 +7,12 @@ import {
   buildEnterpriseExpiredExceptionItem,
   buildEnterpriseOverviewSummary,
   buildEnterprisePendingExceptionItem,
+  buildEnterpriseReferrerRosterItem,
   buildEnterpriseStaffRosterItem,
   buildEnterpriseStaffingExceptionItem,
+  buildContractAmountTrend,
   buildOpsDashboardCards,
+  parseEnterpriseReferrerRosterStatus,
   parseEnterpriseStaffRosterRoles,
   buildOpsDashboardSubtitle,
   buildStaffingGapItems,
@@ -495,6 +498,73 @@ test('enterprise staff roster role query defaults to designer and measurer', () 
   assert.throws(() => parseEnterpriseStaffRosterRoles('salesperson'), /role/);
 });
 
+test('enterprise referrer roster items expose disable action only while active', () => {
+  const joinedAt = new Date('2026-08-01T02:00:00.000Z');
+  const active = buildEnterpriseReferrerRosterItem({
+    id: 31n,
+    displayName: '王推荐',
+    phone: '13900002222',
+    status: 'active',
+    joinedAt,
+    hasActivePromotionCode: true,
+  });
+  assert.deepEqual({
+    id: active.id,
+    displayName: active.displayName,
+    phone: active.phone,
+    status: active.status,
+    hasActivePromotionCode: active.hasActivePromotionCode,
+    statusLabel: active.statusLabel,
+    statusTone: active.statusTone,
+    helperText: active.helperText,
+    action: active.action,
+    actionLabel: active.actionLabel,
+  }, {
+    id: '31',
+    displayName: '王推荐',
+    phone: '13900002222',
+    status: 'active',
+    hasActivePromotionCode: true,
+    statusLabel: '活动',
+    statusTone: 'green',
+    helperText: '可出示活动推广码',
+    action: 'disable',
+    actionLabel: '停用后续扫码',
+  });
+  assert.equal(active.joinedAt, joinedAt);
+  assert.match(active.joinedAtLabel, /2026/);
+
+  const disabled = buildEnterpriseReferrerRosterItem({
+    id: 32,
+    displayName: '',
+    phone: '13800003333',
+    status: 'disabled',
+    hasActivePromotionCode: false,
+  });
+  assert.equal(disabled.displayName, '13800003333');
+  assert.equal(disabled.statusLabel, '已停用');
+  assert.equal(disabled.statusTone, 'orange');
+  assert.equal(disabled.action, null);
+  assert.equal(disabled.actionLabel, '');
+  assert.equal(disabled.helperText, '已停用后续扫码');
+
+  const exited = buildEnterpriseReferrerRosterItem({
+    id: '33',
+    displayName: '  ',
+    status: 'exited',
+  });
+  assert.equal(exited.displayName, '未命名推荐人');
+  assert.equal(exited.statusLabel, '已退出');
+  assert.equal(exited.helperText, '已退出本店');
+  assert.equal(exited.hasActivePromotionCode, false);
+
+  assert.equal(parseEnterpriseReferrerRosterStatus(null), undefined);
+  assert.equal(parseEnterpriseReferrerRosterStatus('active'), 'active');
+  assert.equal(parseEnterpriseReferrerRosterStatus('disabled'), 'disabled');
+  assert.equal(parseEnterpriseReferrerRosterStatus('exited'), 'exited');
+  assert.throws(() => parseEnterpriseReferrerRosterStatus('paused'), /成员状态无效/);
+});
+
 test('workbench period helpers resolve Shanghai week/month/year and custom inclusive ranges', () => {
   const now = new Date('2026-08-20T04:00:00.000Z'); // Shanghai 2026-08-20 12:00
   const month = resolveWorkbenchPeriod({ period: 'month', now });
@@ -577,6 +647,33 @@ test('signing rate uses same-window new leads and is null when the denominator i
     buildOpsDashboardSubtitle('enterprise', '2026-08-01 ~ 2026-08-20'),
     '全店 · 2026-08-01 ~ 2026-08-20'
   );
+});
+
+test('contract amount trend fills Shanghai daily buckets and aligns the previous period', () => {
+  const period = resolveWorkbenchPeriod({
+    period: 'custom',
+    from: '2026-08-01',
+    to: '2026-08-03',
+    now: new Date('2026-08-20T04:00:00.000Z'),
+  });
+  const previous = previousComparablePeriodRange(period);
+  const trend = buildContractAmountTrend({
+    period,
+    previous,
+    granularity: 'day',
+    currentRows: [
+      { bucket: '2026-08-01', value: 128000 },
+      { bucket: '2026-08-03', value: 50000 },
+    ],
+    previousRows: [
+      { bucket: '2026-07-29', value: 88000 },
+    ],
+  });
+  assert.deepEqual(trend.labels, ['8/1', '8/2', '8/3']);
+  assert.deepEqual(trend.current, [128000, 0, 50000]);
+  assert.deepEqual(trend.previous, [88000, 0, 0]);
+  assert.equal(trend.hasData, true);
+  assert.equal(trend.unit, '万元');
 });
 
 test('enterprise hero pending-delivery pill counts unpublished designing leads', () => {
