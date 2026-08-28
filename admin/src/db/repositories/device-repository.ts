@@ -212,4 +212,12 @@ export class DeviceRepository {
       .returning({ id: devices.id });
     return rows[0] ?? null;
   }
+
+  async deleteMany(ids: bigint[]) {
+    if (ids.length === 0) return [];
+    return this.transaction
+      .delete(devices)
+      .where(inArray(devices.id, ids))
+      .returning({ id: devices.id });
+  }
 }

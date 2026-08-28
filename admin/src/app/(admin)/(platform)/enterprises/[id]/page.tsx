@@ -2,9 +2,9 @@
 
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { PageContainer, ProDescriptions } from '@ant-design/pro-components';
-import { Button, Card, Col, Flex, Input, Modal, Row, Skeleton, Space, Tag, Timeline, Typography } from 'antd';
+import { Button, Card, Col, Flex, Input, InputNumber, Modal, Row, Skeleton, Space, Switch, Tag, Timeline, Typography } from 'antd';
 import { Settings2, Sparkles } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import EnterpriseEditorDialog from '@/components/enterprise/EnterpriseEditorDialog';
@@ -14,6 +14,8 @@ import {
   EnterpriseStatusEventItem,
 } from '@/components/enterprise/types';
 import { notify } from '@/components/admin/operation-feedback';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { isPlatformAdminRole } from '@/lib/referrer-join-limits';
 
 const ENTERPRISE_TABS = [
   { suffix: '', label: '企业概览' },
@@ -51,16 +53,26 @@ export default function EnterpriseDetailPage() {
   const { data: enterprise, isLoading, mutate } = useFetch<EnterpriseListItem>(
     enterpriseId ? `/api/admin/enterprises/${enterpriseId}` : null,
   );
+  const { user } = useCurrentUser();
+  const canEditProtection = isPlatformAdminRole(user?.role);
   const confirmAction = useConfirmDialog();
   const [showEditor, setShowEditor] = useState(false);
   const [workingAction, setWorkingAction] = useState('');
   const [reasonModalAction, setReasonModalAction] = useState<'reject' | 'disable' | null>(null);
   const [reasonDraft, setReasonDraft] = useState('');
+  const [protectionEnabled, setProtectionEnabled] = useState(false);
+  const [protectionLimit, setProtectionLimit] = useState(0);
+  const [savingProtection, setSavingProtection] = useState(false);
 
   const statusEvents = useMemo(
     () => enterprise?.statusEvents || [],
     [enterprise?.statusEvents]
   );
+
+  useEffect(() => {
+    setProtectionEnabled(enterprise?.referrerAdditionalEnterpriseLimit != null);
+    setProtectionLimit(enterprise?.referrerAdditionalEnterpriseLimit ?? 0);
+  }, [enterprise?.referrerAdditionalEnterpriseLimit]);
 
   const runStatusAction = async (
     action: EnterpriseStatusEventItem['action'],
@@ -100,6 +112,28 @@ export default function EnterpriseDetailPage() {
     });
     if (!confirmed) return;
     await runStatusAction(action);
+  };
+
+  const saveReferrerProtection = async () => {
+    if (!enterprise) return;
+    setSavingProtection(true);
+    try {
+      const response = await fetch(`/api/admin/enterprises/${enterprise._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          referrerAdditionalEnterpriseLimit: protectionEnabled ? protectionLimit : null,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '保存推广人企业保护失败');
+      await mutate();
+      notify.success('推广人企业保护已保存');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '保存推广人企业保护失败');
+    } finally {
+      setSavingProtection(false);
+    }
   };
 
   if (isLoading || !enterprise) {
@@ -169,6 +203,44 @@ export default function EnterpriseDetailPage() {
       >
         <Flex vertical gap={24}>
           <EnterpriseOverviewCards enterprise={enterprise} />
+
+          {canEditProtection ? (
+            <Card title="推广人企业保护" className="admin-panel-card">
+              <Flex vertical gap={16}>
+                <Typography.Paragraph type="secondary" className="!mb-0">
+                  开启后，加入该企业的推广人最多再加入 M 家其他企业。0 表示只能服务本企业。收紧后已超限成员不会被退出。
+                </Typography.Paragraph>
+                <Flex align="center" gap={12} wrap>
+                  <Switch
+                    checked={protectionEnabled}
+                    onChange={(checked) => {
+                      setProtectionEnabled(checked);
+                      if (checked && protectionLimit < 0) setProtectionLimit(0);
+                    }}
+                  />
+                  <Typography.Text>{protectionEnabled ? '已开启保护' : '未开启，仅受全局上限约束'}</Typography.Text>
+                </Flex>
+                {protectionEnabled ? (
+                  <Flex align="center" gap={12} wrap>
+                    <Typography.Text>最多再加入其他企业</Typography.Text>
+                    <InputNumber
+                      min={0}
+                      max={99}
+                      precision={0}
+                      value={protectionLimit}
+                      onChange={(value) => setProtectionLimit(Number(value ?? 0))}
+                    />
+                    <Typography.Text type="secondary">0 表示只能服务本企业</Typography.Text>
+                  </Flex>
+                ) : null}
+                <div>
+                  <Button type="primary" loading={savingProtection} onClick={() => void saveReferrerProtection()}>
+                    保存
+                  </Button>
+                </div>
+              </Flex>
+            </Card>
+          ) : null}
 
           <Row gutter={[24, 24]}>
             <Col xs={24} lg={14}>

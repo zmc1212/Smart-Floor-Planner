@@ -9,10 +9,8 @@ import {
   type DeviceUpdate,
 } from '@/db/repositories';
 import { normalizeDeviceBindingStatus } from '@/lib/device-binding-status';
-import {
-  withAdminPostgresTransaction,
-  withDevicePostgresTransaction,
-} from '@/lib/postgres-request-scope';
+import { duplicateDeviceMessage, normalizeDeviceSerialNumber } from '@/lib/device-serial-number';
+import { withDevicePostgresTransaction } from '@/lib/postgres-request-scope';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 export const dynamic = 'force-dynamic';
@@ -66,6 +64,9 @@ export async function PATCH(
               if (!code) throw new Error('设备编码不能为空');
               input.code = code;
             }
+            if (body.serialNumber !== undefined) {
+              input.serialNumber = normalizeDeviceSerialNumber(body.serialNumber);
+            }
             if (body.description !== undefined) {
               input.description = String(body.description).trim() || null;
             }
@@ -102,7 +103,7 @@ export async function PATCH(
     return NextResponse.json(
       {
         success: false,
-        error: code === '23505' ? '设备编码已存在' : errorMessage(error),
+        error: code === '23505' ? duplicateDeviceMessage(error) : errorMessage(error),
       },
       { status: code === '23505' ? 409 : 500 }
     );
@@ -119,7 +120,7 @@ export async function DELETE(
       { roles: [...WRITE_ROLES] },
       async (context) => {
         const { id } = await params;
-        const deleted = await withAdminPostgresTransaction(
+        const deleted = await withDevicePostgresTransaction(
           context,
           (transaction) =>
             new DeviceRepository(transaction).delete(

@@ -205,6 +205,12 @@ test('customer-service-home component follows stage-companion contract', () => {
   assert.match(wxml, /家客来 · 服务向导/);
   assert.match(wxml, /专业服务/);
   assert.match(wxml, /三项免费权益/);
+  assert.match(wxml, /我是小K/);
+  assert.match(wxml, /点击我带你看看/);
+  assert.match(wxml, /bindtap="openCustomerGuide"/);
+  assert.match(wxml, /class="guide-inline-entry"/);
+  assert.match(less, /@media \(max-width: 400px\)[\s\S]*?\.guide-entry-bubble\s*\{[\s\S]*?display:\s*none;/);
+  assert.match(less, /@media \(max-width: 400px\)[\s\S]*?\.guide-inline-entry\s*\{[\s\S]*?display:\s*inline-flex;/);
   assert.match(wxml, /三个免费，装修更省心/);
   assert.match(wxml, /免费效果图/);
   assert.match(wxml, /免费家装设计顾问/);
@@ -261,9 +267,11 @@ test('customer-service-home component follows stage-companion contract', () => {
   assert.doesNotMatch(js, /switchTab\(\{\s*url:\s*'\/pages\/mine\/mine'/);
   assert.match(js, /free-design-service\/free-design-service/);
   assert.match(js, /onboarding\/onboarding/);
+  assert.match(js, /customer-guide\/customer-guide/);
   assert.doesNotMatch(js, /staff-activity-code\/staff-activity-code/);
   assert.match(js, /pageLifetimes:\s*\{[\s\S]*show\(\)\s*\{[\s\S]*this\.load\(/);
-  assert.match(js, /attached\(\)\s*\{[\s\S]*?setData\(navigationMetrics\(\)\)/);
+  assert.match(js, /attached\(\)\s*\{[\s\S]*?hasSignedSession\(\)/);
+  assert.match(js, /guestCompanionUi\(\)/);
   const attachedBody = js.match(/attached\(\)\s*\{([\s\S]*?)\n\s*\},/);
   assert.ok(attachedBody, 'expected attached lifetime body');
   assert.doesNotMatch(attachedBody[1], /this\.load\(/);
@@ -275,6 +283,90 @@ test('customer-service-home component follows stage-companion contract', () => {
   assert.match(js, /designer-contact-sheet|closeContactSheet/);
   assert.match(wxml, /designer-contact-sheet/);
   assert.match(json.usingComponents['designer-contact-sheet'], /designer-contact-sheet/);
+});
+
+test('customer guide is a manual four-step customer-service tour with packaged transparent artwork', () => {
+  const guideRoot = path.join(root, 'packages', 'guides', 'customer-guide');
+  const wxml = fs.readFileSync(path.join(guideRoot, 'customer-guide.wxml'), 'utf8');
+  const js = fs.readFileSync(path.join(guideRoot, 'customer-guide.js'), 'utf8');
+  const less = fs.readFileSync(path.join(guideRoot, 'customer-guide.less'), 'utf8');
+  const config = JSON.parse(fs.readFileSync(path.join(guideRoot, 'customer-guide.json'), 'utf8'));
+  const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8'));
+  const guides = app.subPackages.find((entry) => entry.root === 'packages/guides');
+
+  assert.equal(config.navigationStyle, 'custom');
+  assert.ok(guides.pages.includes('customer-guide/customer-guide'));
+  assert.match(wxml, /装修服务向导/);
+  assert.match(js, /三个免费，装修更省心/);
+  assert.match(wxml, /开始我的装修服务/);
+  assert.match(wxml, /autoplay="\{\{false\}\}"/);
+  assert.match(wxml, /circular="\{\{false\}\}"/);
+  assert.match(js, /totalSteps: CUSTOMER_GUIDE_SLIDES\.length/);
+  assert.match(js, /\[0, 1, 2, 3\]/);
+  assert.match(js, /navigateBack/);
+  assert.match(js, /switchTab\(\{ url: '\/pages\/index\/index' \}\)/);
+  assert.doesNotMatch(js, /markRoleGuideSeen|hasSeenRoleGuide|automatic/);
+  assert.doesNotMatch(less, /height:\s*100%|min-height:\s*100vh|flex-grow:\s*1|flex:\s*1/);
+
+  for (const name of ['three-free-benefits.png', 'home-archive.png', 'service-route.png', 'service-archive.png']) {
+    const bytes = fs.readFileSync(path.join(root, 'packages', 'guides', 'assets', 'customer-v1', name));
+    assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(bytes.length <= 300 * 1024, `${name} must stay within the 300KB Mini Program budget`);
+    assert.ok(bytes.includes(Buffer.from('tRNS')) || [4, 6].includes(bytes[25]), `${name} must retain transparency`);
+  }
+});
+
+test('unsigned Service home renders the empty companion without calling customer-projects', async () => {
+  const originals = {
+    Component: global.Component,
+    getApp: global.getApp,
+    wx: global.wx,
+  };
+  let definition;
+  global.Component = (config) => { definition = config; };
+  global.getApp = () => ({ globalData: {} });
+  global.wx = {
+    getStorageSync: () => '',
+    getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 44 }),
+    getSystemInfoSync: () => ({ windowWidth: 390, statusBarHeight: 44 }),
+    getMenuButtonBoundingClientRect: () => ({ left: 281, top: 48, height: 32 }),
+  };
+
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  let requestCalls = 0;
+  api.request = async () => {
+    requestCalls += 1;
+    throw new Error('guest home must not call customer-projects');
+  };
+
+  const componentPath = require.resolve('../components/customer-service-home/customer-service-home.js');
+  delete require.cache[componentPath];
+  require(componentPath);
+
+  try {
+    const page = {
+      data: { ...definition.data },
+      setData(update) {
+        Object.assign(this.data, update);
+      },
+    };
+    definition.lifetimes.attached.call(page);
+    await definition.methods.load.call(page);
+    assert.equal(requestCalls, 0);
+    assert.equal(page.data.loading, false);
+    assert.equal(page.data.isEmpty, true);
+    assert.equal(page.data.error, '');
+    assert.equal(page.data.primaryCta.kind, 'scan_claim');
+    assert.equal(page.data.insetTitle, '扫码领取免费设计服务');
+  } finally {
+    api.request = originalRequest;
+    delete require.cache[componentPath];
+    for (const [key, value] of Object.entries(originals)) {
+      if (value === undefined) delete global[key];
+      else global[key] = value;
+    }
+  }
 });
 
 test('customer-service-home three-free artwork is packaged in the main package', () => {

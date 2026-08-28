@@ -150,17 +150,14 @@ Page({
         if (typeof app.syncProfessionalContext === 'function') {
           app.syncProfessionalContext();
         }
-        if (res.requiresPasswordChange) {
-          app.globalData.sessionHydrated = true;
-          this.setData({ loading: false });
-          wx.reLaunch({
-            url: '/packages/business/account-security/account-security?required=1'
-          });
-          return;
-        }
         await app.hydrateStoredSession();
         if (app.globalData.sessionRecovery) throw new Error('身份资料已失效，请重新登录');
 
+        this.setData({ loading: false });
+        if (res.requiresPasswordChange) {
+          this.promptInitialPasswordChange();
+          return;
+        }
         this.finishLogin();
       } else {
         throw new Error(res.error || '登录失败');
@@ -184,6 +181,28 @@ Page({
         duration: 2500
       });
     }
+  },
+
+  promptInitialPasswordChange() {
+    wx.showModal({
+      title: '建议修改初始密码',
+      content: '当前账号仍使用初始密码。可先使用工作台，稍后也可在「我的 - 账号与安全」中修改。',
+      confirmText: '去修改',
+      cancelText: '稍后',
+      success: (result) => {
+        this.finishLogin();
+        if (result && result.confirm) {
+          setTimeout(() => {
+            wx.navigateTo({
+              url: '/packages/business/account-security/account-security'
+            });
+          }, 400);
+        }
+      },
+      fail: () => {
+        this.finishLogin();
+      }
+    });
   },
 
   finishLogin() {

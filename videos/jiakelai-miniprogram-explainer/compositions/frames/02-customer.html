@@ -1,0 +1,467 @@
+<template>
+  <style>
+    @font-face{font-family:"Source Han Sans";font-weight:400;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Regular.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:500;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Medium.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Bold.otf") format("opentype");}
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      color: #1f2937;
+      font-family: "Source Han Sans", sans-serif;
+      overflow: hidden;
+    }
+    .clip {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+    }
+    .f02-ground {
+      background: #ffffff;
+    }
+    .f02-stack {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 1920px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 16px 32px 28px;
+      box-sizing: border-box;
+      gap: 16px;
+    }
+    .f02-chrome {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+      width: 100%;
+      position: relative;
+      z-index: 2;
+    }
+    .f02-eyebrow {
+      position: relative;
+      padding: 12px 28px;
+      border-radius: 100px;
+      background: rgba(0, 195, 101, 0.08);
+      color: #00c365;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+    .f02-headline {
+      position: relative;
+      margin: 0;
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: #1f2937;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity;
+    }
+    .f02-label-slot {
+      position: relative;
+      width: 100%;
+      height: 44px;
+    }
+    .f02-label {
+      position: absolute;
+      left: 0;
+      top: 0;
+      padding: 8px 22px;
+      border-radius: 100px;
+      background: rgba(0, 195, 101, 0.08);
+      color: #00c365;
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      line-height: 1.2;
+      white-space: nowrap;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity, filter;
+    }
+    .f02-is-wait {
+      opacity: 0;
+    }
+    .f02-plate-slot {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      overflow: hidden;
+      container-type: size;
+    }
+    .f02-plate {
+      position: relative;
+      height: min(100cqh, calc(100cqw * 1844 / 853));
+      width: min(100cqw, calc(100cqh * 853 / 1844));
+      max-width: 100%;
+      max-height: 100%;
+      border: 1.5px solid rgba(0, 195, 101, 0.2);
+      background: rgba(0, 195, 101, 0.04);
+      border-radius: 14px;
+      box-sizing: border-box;
+      overflow: hidden;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+      z-index: 1;
+    }
+    .f02-zoom-outer {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+    .f02-zoom-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      will-change: transform;
+    }
+    .f02-world {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .f02-shot {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: 50% 0%;
+    }
+    .f02-hot {
+      position: absolute;
+      pointer-events: none;
+    }
+    .f02-hero-hot {
+      left: 4%;
+      top: 7%;
+      width: 92%;
+      height: 22%;
+    }
+    .f02-row1-hot {
+      left: 5%;
+      top: 54%;
+      width: 90%;
+      height: 9.5%;
+    }
+    .f02-row2-hot {
+      left: 5%;
+      top: 63.8%;
+      width: 90%;
+      height: 9.5%;
+    }
+    .f02-row3-hot {
+      left: 5%;
+      top: 73.6%;
+      width: 90%;
+      height: 9.5%;
+    }
+    .f02-ticket-hot {
+      left: 5%;
+      top: 28%;
+      width: 90%;
+      height: 18%;
+    }
+    .f02-cta-hot {
+      left: 10%;
+      top: 44.5%;
+      width: 80%;
+      height: 7%;
+    }
+    .f02-glow {
+      position: absolute;
+      inset: -8%;
+      border-radius: 18px;
+      box-shadow: 0 0 0 0 rgba(0, 195, 101, 0);
+      opacity: 0;
+      will-change: opacity, box-shadow;
+    }
+    .f02-burst {
+      position: absolute;
+      inset: -28%;
+      border-radius: 100px;
+      background: radial-gradient(circle, rgba(0, 195, 101, 0.55) 0%, rgba(0, 195, 101, 0) 72%);
+      filter: blur(28px);
+      opacity: 0;
+      z-index: 1;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+    .f02-press-face {
+      position: absolute;
+      inset: 0;
+      border-radius: 100px;
+      background: rgba(255, 255, 255, 0);
+      z-index: 2;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+  </style>
+  <div data-hf-id="hf-0jty" id="root" data-composition-id="02-customer" data-width="1080" data-height="1920" data-duration="14.588">
+    <div data-hf-id="hf-yflp" class="clip f02-ground" id="02-customer-ground" data-start="0" data-duration="14.588" data-track-index="0"></div>
+    <div data-hf-id="hf-hdd7" class="clip" id="02-customer-scene" data-start="0" data-duration="14.588" data-track-index="1">
+      <div data-hf-id="hf-st02" class="f02-stack">
+      <div data-hf-id="hf-ch02" class="f02-chrome">
+      <div data-hf-id="hf-2n1e" class="f02-eyebrow" id="02-customer-eyebrow">客户 · 服务向导</div>
+      <h1 data-hf-id="hf-t58l" class="f02-headline" id="02-customer-headline">三项免费</h1>
+      <div data-hf-id="hf-8fq5" class="f02-label-slot" id="02-customer-labels">
+        <div data-hf-id="hf-8gfo" class="f02-label" id="02-customer-label-1">三项免费权益</div>
+        <div data-hf-id="hf-sett" class="f02-label f02-is-wait" id="02-customer-label-2">效果图</div>
+        <div data-hf-id="hf-x9cx" class="f02-label f02-is-wait" id="02-customer-label-3">设计顾问</div>
+        <div data-hf-id="hf-kjit" class="f02-label f02-is-wait" id="02-customer-label-4">现场顾问</div>
+        <div data-hf-id="hf-s962" class="f02-label f02-is-wait" id="02-customer-label-5">一张票</div>
+        <div data-hf-id="hf-yt6d" class="f02-label f02-is-wait" id="02-customer-label-6">预约上门</div>
+      </div>
+      </div>
+      <div data-hf-id="hf-ps02" class="f02-plate-slot">
+      <div data-hf-id="hf-n1n3" class="f02-plate" id="02-customer-plate">
+        <div data-hf-id="hf-dhnu" class="f02-zoom-outer" id="02-customer-zoom-outer" data-layout-allow-overflow="true">
+          <div data-hf-id="hf-v8g6" class="f02-zoom-inner" id="02-customer-zoom-inner" data-layout-allow-overflow="true">
+            <div data-hf-id="hf-jbjk" class="f02-world" id="02-customer-world" data-layout-allow-overflow="true">
+              <img data-hf-id="hf-idzs" class="f02-shot" id="02-customer-shot" src="assets/customer-service-home.png" width="1024" height="2218" alt="">
+              <div data-hf-id="hf-di7n" class="f02-hot f02-hero-hot" id="02-customer-hero"></div>
+              <div data-hf-id="hf-vgnr" class="f02-hot f02-row1-hot" id="02-customer-row1">
+                <div data-hf-id="hf-ls91" class="f02-glow" id="02-customer-glow-1"></div>
+              </div>
+              <div data-hf-id="hf-diin" class="f02-hot f02-row2-hot" id="02-customer-row2">
+                <div data-hf-id="hf-pqd2" class="f02-glow" id="02-customer-glow-2"></div>
+              </div>
+              <div data-hf-id="hf-wv4j" class="f02-hot f02-row3-hot" id="02-customer-row3">
+                <div data-hf-id="hf-toh3" class="f02-glow" id="02-customer-glow-3"></div>
+              </div>
+              <div data-hf-id="hf-mh5v" class="f02-hot f02-ticket-hot" id="02-customer-ticket"></div>
+              <div data-hf-id="hf-0m4j" class="f02-hot f02-cta-hot" id="02-customer-cta">
+                <div data-hf-id="hf-8lq7" class="f02-burst" id="02-customer-burst"></div>
+                <div data-hf-id="hf-idr7" class="f02-press-face" id="02-customer-press"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    void (async function () {
+      const shot = document.getElementById("02-customer-shot");
+      await document.fonts.ready;
+      if (shot && shot.decode) {
+        try {
+          await shot.decode();
+        } catch (err) {}
+      }
+
+      const eyebrow = document.getElementById("02-customer-eyebrow");
+      const headline = document.getElementById("02-customer-headline");
+      const plate = document.getElementById("02-customer-plate");
+      const outer = document.getElementById("02-customer-zoom-outer");
+      const inner = document.getElementById("02-customer-zoom-inner");
+      const hero = document.getElementById("02-customer-hero");
+      const row1 = document.getElementById("02-customer-row1");
+      const row2 = document.getElementById("02-customer-row2");
+      const row3 = document.getElementById("02-customer-row3");
+      const ticket = document.getElementById("02-customer-ticket");
+      const cta = document.getElementById("02-customer-cta");
+      const press = document.getElementById("02-customer-press");
+      const burst = document.getElementById("02-customer-burst");
+      const glow1 = document.getElementById("02-customer-glow-1");
+      const glow2 = document.getElementById("02-customer-glow-2");
+      const glow3 = document.getElementById("02-customer-glow-3");
+      const labels = [1, 2, 3, 4, 5, 6].map(function (n) {
+        return document.getElementById("02-customer-label-" + n);
+      });
+
+      function measure(el) {
+        const view = plate.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        return {
+          x: r.left + r.width / 2 - (view.left + view.width / 2),
+          y: r.top + r.height / 2 - (view.top + view.height / 2),
+          w: r.width,
+          h: r.height,
+          vw: view.width,
+          vh: view.height,
+        };
+      }
+
+      function capScale(desired, m) {
+        return Math.min(desired, (0.88 * m.vw) / m.w, (0.88 * m.vh) / m.h);
+      }
+
+      const heroM = measure(hero);
+      const row1M = measure(row1);
+      const row2M = measure(row2);
+      const row3M = measure(row3);
+      const ticketM = measure(ticket);
+      const ctaM = measure(cta);
+
+      const sHero = capScale(1.28, heroM);
+      const sRow = capScale(1.72, row1M);
+      const sRow2 = capScale(1.72, row2M);
+      const sRow3 = capScale(1.72, row3M);
+      const sTicket = capScale(1.58, ticketM);
+      const sCta = capScale(2.05, ctaM);
+
+      const heroX = -heroM.x;
+      const heroY = -heroM.y;
+      const row1X = -row1M.x;
+      const row1Y = -row1M.y;
+      const row2X = -row2M.x;
+      const row2Y = -row2M.y;
+      const row3X = -row3M.x;
+      const row3Y = -row3M.y;
+      const ticketX = -ticketM.x;
+      const ticketY = -ticketM.y;
+      const ctaX = -ctaM.x;
+      const ctaY = -ctaM.y;
+
+      const tl = gsap.timeline({ paused: true });
+
+      function swapLabel(fromIdx, toIdx, at) {
+        const from = labels[fromIdx];
+        const to = labels[toIdx];
+        tl.fromTo(
+          from,
+          { scale: 1, opacity: 1, filter: "blur(0px)" },
+          { scale: 1.2, opacity: 0.15, filter: "blur(10px)", duration: 0.2, ease: "power3.in", immediateRender: false },
+          at - 0.2,
+        );
+        tl.set(from, { opacity: 0 }, at);
+        tl.set(to, { opacity: 0.15, scale: 0.75, filter: "blur(10px)" }, at);
+        tl.fromTo(
+          to,
+          { scale: 0.75, opacity: 0.15, filter: "blur(10px)" },
+          { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.5, ease: "power3.out", immediateRender: false },
+          at,
+        );
+      }
+
+      function panTo(fromS, toS, fromX, fromY, toX, toY, at, dur) {
+        tl.fromTo(
+          outer,
+          { scale: fromS },
+          { scale: toS, duration: dur, ease: "power3.inOut", immediateRender: false },
+          at,
+        );
+        tl.fromTo(
+          inner,
+          { x: fromX, y: fromY },
+          { x: toX, y: toY, duration: dur, ease: "power3.inOut", immediateRender: false },
+          at,
+        );
+      }
+
+      function keywordGlow(el, at) {
+        tl.fromTo(
+          el,
+          { opacity: 0, boxShadow: "0 0 0 0 rgba(0,195,101,0)" },
+          { opacity: 1, boxShadow: "0 0 28px 8px rgba(0,195,101,0.55)", duration: 0.28, ease: "power3.out" },
+          at,
+        );
+        tl.fromTo(
+          el,
+          { opacity: 1, boxShadow: "0 0 28px 8px rgba(0,195,101,0.55)" },
+          { opacity: 0.35, boxShadow: "0 0 12px 2px rgba(0,195,101,0.28)", duration: 0.7, ease: "power3.out", immediateRender: false },
+          at + 0.28,
+        );
+      }
+
+      tl.fromTo(outer, { scale: 1 }, { scale: sHero, duration: 1.2, ease: "power3.inOut" }, 0.8);
+      tl.fromTo(inner, { x: 0, y: 0 }, { x: heroX, y: heroY, duration: 1.2, ease: "power3.inOut" }, 0.8);
+
+      tl.fromTo(eyebrow, { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" }, 0);
+      tl.fromTo(
+        headline,
+        { scale: 0, opacity: 0, y: 16 },
+        { scale: 1, opacity: 1, y: 0, duration: 0.55, ease: "power3.out" },
+        0.08,
+      );
+      tl.fromTo(
+        plate,
+        { scale: 0.92, opacity: 0, y: 28, x: 36 },
+        { scale: 1, opacity: 1, y: 0, x: 0, duration: 0.7, ease: "power3.out" },
+        0.1,
+      );
+      tl.fromTo(labels[0], { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" }, 0.28);
+
+      swapLabel(0, 1, 2.4);
+      panTo(sHero, sRow, heroX, heroY, row1X, row1Y, 2.4, 1.15);
+      keywordGlow(glow1, 2.7);
+
+      swapLabel(1, 2, 4.3);
+      panTo(sRow, sRow2, row1X, row1Y, row2X, row2Y, 4.3, 1.05);
+      keywordGlow(glow2, 4.55);
+
+      swapLabel(2, 3, 6.2);
+      panTo(sRow2, sRow3, row2X, row2Y, row3X, row3Y, 6.2, 1.05);
+      keywordGlow(glow3, 6.45);
+
+      swapLabel(3, 4, 8.2);
+      panTo(sRow3, sTicket, row3X, row3Y, ticketX, ticketY, 8.2, 1.2);
+
+      swapLabel(4, 5, 11.0);
+      panTo(sTicket, sCta, ticketX, ticketY, ctaX, ctaY, 11.0, 1.1);
+
+      tl.fromTo(
+        press,
+        { scale: 1, backgroundColor: "rgba(255,255,255,0)" },
+        { scale: 0.92, backgroundColor: "rgba(255,255,255,0.28)", duration: 0.16, ease: "power3.in" },
+        12.2,
+      );
+      tl.fromTo(
+        press,
+        { scale: 0.92, backgroundColor: "rgba(255,255,255,0.28)" },
+        { scale: 1, backgroundColor: "rgba(255,255,255,0)", duration: 0.52, ease: "power3.out", immediateRender: false },
+        12.36,
+      );
+      tl.fromTo(
+        burst,
+        { scale: 1, opacity: 0 },
+        { scale: 2.2, opacity: 0.5, duration: 0.42, ease: "power3.out" },
+        12.36,
+      );
+      tl.fromTo(
+        burst,
+        { opacity: 0.5 },
+        { opacity: 0, duration: 0.42, ease: "power3.in", immediateRender: false },
+        12.78,
+      );
+
+      const idleStart = 13.05;
+      const idleDur = 14.088 - idleStart;
+      const cycles = idleDur / 2.2;
+      const phase = { p: 0 };
+      tl.fromTo(
+        phase,
+        { p: 0 },
+        {
+          p: Math.PI * 2 * cycles,
+          duration: idleDur,
+          ease: "none",
+          immediateRender: false,
+          onUpdate: function () {
+            gsap.set(labels[5], { y: Math.sin(phase.p) * 2.5 });
+          },
+        },
+        idleStart,
+      );
+
+      window.__timelines["02-customer"] = tl;
+    })();
+  </script>
+</template>

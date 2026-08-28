@@ -29,9 +29,17 @@
         <text class="panel-status">{{statusText}}</text>
 
         <button
+          wx:if="{{scanning}}"
           class="primary-btn"
-          loading="{{scanning}}"
-          disabled="{{scanning || assigning}}"
+          disabled="{{assigning}}"
+          bindtap="onCancelScan"
+        >
+          取消搜索
+        </button>
+        <button
+          wx:else
+          class="primary-btn"
+          disabled="{{assigning}}"
           bindtap="onScanNearby"
         >
           一键打开蓝牙并扫描附近设备
@@ -62,6 +70,17 @@
           />
         </view>
 
+        <view class="field">
+          <text class="field-label">SN 码（可选，单台共用）</text>
+          <input
+            class="field-input"
+            placeholder="机身标签上的序列号"
+            value="{{serialNumber}}"
+            maxlength="64"
+            bindinput="onSerialNumberInput"
+          />
+        </view>
+
         <view wx:if="{{scannedDevices.length}}" class="scan-toolbar">
           <view class="select-all" bindtap="onToggleSelectAll">
             <view class="check {{allSelected ? 'on' : ''}}"></view>
@@ -74,14 +93,27 @@
             wx:for="{{scannedDevices}}"
             wx:key="deviceId"
             class="scan-item"
-            data-id="{{item.deviceId}}"
-            bindtap="onToggleDevice"
           >
-            <view class="check {{item.checked ? 'on' : ''}}"></view>
-            <view class="scan-main">
-              <text class="scan-code">{{item.deviceId}}</text>
-              <text class="scan-name">{{item.name}}</text>
+            <view
+              class="scan-row"
+              data-id="{{item.deviceId}}"
+              bindtap="onToggleDevice"
+            >
+              <view class="check {{item.checked ? 'on' : ''}}"></view>
+              <view class="scan-main">
+                <text class="scan-code">{{item.deviceId}}</text>
+                <text class="scan-name">{{item.name}}</text>
+              </view>
             </view>
+            <input
+              class="field-input scan-sn"
+              placeholder="本台 SN 码（可选）"
+              value="{{item.serialNumber}}"
+              data-id="{{item.deviceId}}"
+              maxlength="64"
+              catchtap="onStopTap"
+              bindinput="onDeviceSerialInput"
+            />
           </view>
         </view>
 
@@ -110,13 +142,29 @@
           <text class="panel-title">已登记设备</text>
           <text class="panel-action" bindtap="load">刷新</text>
         </view>
+        <view class="field">
+          <text class="field-label">查看范围</text>
+          <picker
+            mode="selector"
+            range="{{listEnterpriseNames}}"
+            value="{{listEnterpriseIndex}}"
+            bindchange="onListEnterpriseChange"
+          >
+            <view class="picker-value">
+              {{listEnterpriseNames[listEnterpriseIndex] || '全部企业'}}
+            </view>
+          </picker>
+        </view>
         <view wx:if="{{loading}}" class="empty-copy">加载中...</view>
         <view wx:elif="{{error}}" class="empty-copy error">{{error}}</view>
-        <view wx:elif="{{!devices.length}}" class="empty-copy">暂无设备，请先蓝牙扫描录入</view>
+        <view wx:elif="{{!devices.length}}" class="empty-copy">
+          {{listEnterpriseId ? '该企业暂无登记设备' : '暂无设备，请先蓝牙扫描录入'}}
+        </view>
         <view wx:else class="device-list">
           <view wx:for="{{devices}}" wx:key="_id" class="device-item">
             <view class="device-main">
               <text class="device-code">{{item.code}}</text>
+              <text wx:if="{{item.serialNumber}}" class="device-sn">SN {{item.serialNumber}}</text>
               <text class="device-enterprise">
                 {{item.enterpriseId && item.enterpriseId.name ? item.enterpriseId.name : '未分配企业'}}
               </text>

@@ -1,0 +1,462 @@
+<template>
+  <style>
+    @font-face{font-family:"Source Han Sans";font-weight:400;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Regular.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:500;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Medium.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Bold.otf") format("opentype");}
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      color: #1f2937;
+      font-family: "Source Han Sans", sans-serif;
+      overflow: hidden;
+    }
+    .clip {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+    }
+    .ground {
+      background: #ffffff;
+    }
+    .stack {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 1920px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 16px 32px 28px;
+      box-sizing: border-box;
+      gap: 16px;
+    }
+    .chrome {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+      width: 100%;
+      position: relative;
+      z-index: 2;
+    }
+    .eyebrow {
+      position: relative;
+      padding: 12px 28px;
+      border-radius: 100px;
+      background: rgba(0, 195, 101, 0.08);
+      color: #00c365;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+    .headline {
+      position: relative;
+      margin: 0;
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: #1f2937;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity;
+    }
+    .label-slot {
+      position: relative;
+      width: 100%;
+      height: 44px;
+    }
+    .label {
+      position: absolute;
+      left: 0;
+      top: 0;
+      padding: 8px 22px;
+      border-radius: 100px;
+      background: rgba(0, 195, 101, 0.08);
+      color: #00c365;
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      line-height: 1.2;
+      white-space: nowrap;
+      transform-origin: 0% 50%;
+      will-change: transform, opacity, filter;
+    }
+    .is-wait {
+      opacity: 0;
+    }
+    .plate-slot {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      overflow: hidden;
+      container-type: size;
+    }
+    .plate {
+      position: relative;
+      height: min(100cqh, calc(100cqw * 1536 / 1024));
+      width: min(100cqw, calc(100cqh * 1024 / 1536));
+      max-width: 100%;
+      max-height: 100%;
+      border: 1.5px solid rgba(0, 195, 101, 0.2);
+      background: rgba(0, 195, 101, 0.04);
+      border-radius: 14px;
+      box-sizing: border-box;
+      overflow: hidden;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+      z-index: 1;
+    }
+    .zoom-outer {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+    .zoom-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      will-change: transform;
+    }
+    .world {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .shot {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: 50% 0%;
+    }
+    .hot {
+      position: absolute;
+      pointer-events: none;
+    }
+    .hero-hot {
+      left: 6%;
+      top: 11%;
+      width: 56%;
+      height: 26%;
+    }
+    .cta-hot {
+      left: 7.5%;
+      top: 30.8%;
+      width: 48%;
+      height: 7.2%;
+    }
+    .progress-hot {
+      left: 5.5%;
+      top: 39.2%;
+      width: 43.5%;
+      height: 11.4%;
+    }
+    .earnings-hot {
+      left: 51%;
+      top: 39.2%;
+      width: 43.5%;
+      height: 11.4%;
+    }
+    .burst {
+      position: absolute;
+      inset: -28%;
+      border-radius: 100px;
+      background: radial-gradient(circle, rgba(0, 195, 101, 0.55) 0%, rgba(0, 195, 101, 0) 72%);
+      filter: blur(28px);
+      opacity: 0;
+      z-index: 1;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+    .press-face {
+      position: absolute;
+      inset: 0;
+      border-radius: 100px;
+      background: rgba(255, 255, 255, 0);
+      z-index: 2;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+  </style>
+  <div data-hf-id="hf-hwke" id="root" data-composition-id="03-referrer" data-width="1080" data-height="1920" data-duration="12.548">
+    <div data-hf-id="hf-n7ye" class="clip ground" id="03-referrer-ground" data-start="0" data-duration="12.548" data-track-index="0"></div>
+    <div data-hf-id="hf-ktd7" class="clip" id="03-referrer-scene" data-start="0" data-duration="12.548" data-track-index="1">
+      <div data-hf-id="hf-st03" class="stack">
+      <div data-hf-id="hf-ch03" class="chrome">
+      <div data-hf-id="hf-5gqh" class="eyebrow" id="03-referrer-eyebrow">推荐人 · 推广管家</div>
+      <h1 data-hf-id="hf-s3gf" class="headline" id="03-referrer-headline">出示服务码</h1>
+      <div data-hf-id="hf-3wgu" class="label-slot" id="03-referrer-labels">
+        <div data-hf-id="hf-2l4t" class="label" id="03-referrer-label-1">扫码建档</div>
+        <div data-hf-id="hf-lm56" class="label is-wait" id="03-referrer-label-2">一扫</div>
+        <div data-hf-id="hf-ppbr" class="label is-wait" id="03-referrer-label-3">进度脱敏可见</div>
+        <div data-hf-id="hf-jwmn" class="label is-wait" id="03-referrer-label-4">只记在本人名下</div>
+      </div>
+      </div>
+      <div data-hf-id="hf-ps03" class="plate-slot">
+      <div data-hf-id="hf-a2z4" class="plate" id="03-referrer-plate">
+        <div data-hf-id="hf-tyml" class="zoom-outer" id="03-referrer-zoom-outer" data-layout-allow-overflow="true">
+          <div data-hf-id="hf-9xjd" class="zoom-inner" id="03-referrer-zoom-inner" data-layout-allow-overflow="true">
+            <div data-hf-id="hf-730b" class="world" id="03-referrer-world" data-layout-allow-overflow="true">
+              <img data-hf-id="hf-3t2k" class="shot" id="03-referrer-shot" src="assets/referrer-workbench.jpg" width="1024" height="1536" alt="">
+              <div data-hf-id="hf-p4ut" class="hot hero-hot" id="03-referrer-hero"></div>
+              <div data-hf-id="hf-dgrh" class="hot progress-hot" id="03-referrer-progress"></div>
+              <div data-hf-id="hf-j8rl" class="hot earnings-hot" id="03-referrer-earnings"></div>
+              <div data-hf-id="hf-dg25" class="hot cta-hot" id="03-referrer-cta">
+                <div data-hf-id="hf-15fw" class="burst" id="03-referrer-burst"></div>
+                <div data-hf-id="hf-pliq" class="press-face" id="03-referrer-press"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    void (async function () {
+      const shot = document.getElementById("03-referrer-shot");
+      await document.fonts.ready;
+      if (shot && shot.decode) {
+        try {
+          await shot.decode();
+        } catch (err) {}
+      }
+
+      const eyebrow = document.getElementById("03-referrer-eyebrow");
+      const headline = document.getElementById("03-referrer-headline");
+      const plate = document.getElementById("03-referrer-plate");
+      const outer = document.getElementById("03-referrer-zoom-outer");
+      const inner = document.getElementById("03-referrer-zoom-inner");
+      const hero = document.getElementById("03-referrer-hero");
+      const cta = document.getElementById("03-referrer-cta");
+      const progress = document.getElementById("03-referrer-progress");
+      const earnings = document.getElementById("03-referrer-earnings");
+      const press = document.getElementById("03-referrer-press");
+      const burst = document.getElementById("03-referrer-burst");
+      const label1 = document.getElementById("03-referrer-label-1");
+      const label2 = document.getElementById("03-referrer-label-2");
+      const label3 = document.getElementById("03-referrer-label-3");
+      const label4 = document.getElementById("03-referrer-label-4");
+
+      function measure(el) {
+        const view = plate.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        return {
+          x: r.left + r.width / 2 - (view.left + view.width / 2),
+          y: r.top + r.height / 2 - (view.top + view.height / 2),
+          w: r.width,
+          h: r.height,
+          vw: view.width,
+          vh: view.height,
+        };
+      }
+
+      function capScale(desired, m) {
+        return Math.min(desired, (0.88 * m.vw) / m.w, (0.88 * m.vh) / m.h);
+      }
+
+      const heroM = measure(hero);
+      const ctaM = measure(cta);
+      const progressM = measure(progress);
+      const earningsM = measure(earnings);
+
+      const sHero = capScale(1.34, heroM);
+      const sCta = capScale(2.08, ctaM);
+      const sProgress = capScale(1.76, progressM);
+      const sEarnings = capScale(1.76, earningsM);
+
+      const heroX = -heroM.x;
+      const heroY = -heroM.y;
+      const ctaX = -ctaM.x;
+      const ctaY = -ctaM.y;
+      const progressX = -progressM.x;
+      const progressY = -progressM.y;
+      const earningsX = -earningsM.x;
+      const earningsY = -earningsM.y;
+
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo(
+        outer,
+        { scale: 1 },
+        { scale: sHero, duration: 1.3, ease: "power3.inOut" },
+        0.9,
+      );
+      tl.fromTo(
+        inner,
+        { x: 0, y: 0 },
+        { x: heroX, y: heroY, duration: 1.3, ease: "power3.inOut" },
+        0.9,
+      );
+
+      tl.fromTo(
+        eyebrow,
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" },
+        0,
+      );
+      tl.fromTo(
+        headline,
+        { scale: 0, opacity: 0, y: 16 },
+        { scale: 1, opacity: 1, y: 0, duration: 0.55, ease: "power3.out" },
+        0.08,
+      );
+      tl.fromTo(
+        plate,
+        { scale: 0, opacity: 0, y: 24 },
+        { scale: 1, opacity: 1, y: 0, duration: 0.62, ease: "power3.out" },
+        0.1,
+      );
+      tl.fromTo(
+        label1,
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" },
+        0.28,
+      );
+
+      tl.fromTo(
+        label1,
+        { scale: 1, opacity: 1, filter: "blur(0px)" },
+        { scale: 1.2, opacity: 0.15, filter: "blur(10px)", duration: 0.2, ease: "power3.in", immediateRender: false },
+        2.5,
+      );
+      tl.fromTo(
+        outer,
+        { scale: sHero },
+        { scale: sCta, duration: 1.25, ease: "power3.inOut", immediateRender: false },
+        2.7,
+      );
+      tl.fromTo(
+        inner,
+        { x: heroX, y: heroY },
+        { x: ctaX, y: ctaY, duration: 1.25, ease: "power3.inOut", immediateRender: false },
+        2.7,
+      );
+      tl.set(label1, { opacity: 0 }, 2.7);
+      tl.set(label2, { opacity: 0.15, scale: 0.75, filter: "blur(10px)" }, 2.7);
+      tl.fromTo(
+        label2,
+        { scale: 0.75, opacity: 0.15, filter: "blur(10px)" },
+        { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.5, ease: "power3.out", immediateRender: false },
+        2.7,
+      );
+
+      tl.fromTo(
+        press,
+        { scale: 1, backgroundColor: "rgba(255,255,255,0)" },
+        { scale: 0.92, backgroundColor: "rgba(255,255,255,0.28)", duration: 0.16, ease: "power3.in" },
+        4.08,
+      );
+      tl.fromTo(
+        press,
+        { scale: 0.92, backgroundColor: "rgba(255,255,255,0.28)" },
+        { scale: 1, backgroundColor: "rgba(255,255,255,0)", duration: 0.52, ease: "power3.out", immediateRender: false },
+        4.24,
+      );
+      tl.fromTo(
+        burst,
+        { scale: 1, opacity: 0 },
+        { scale: 2.2, opacity: 0.5, duration: 0.42, ease: "power3.out" },
+        4.24,
+      );
+      tl.fromTo(
+        burst,
+        { opacity: 0.5 },
+        { opacity: 0, duration: 0.42, ease: "power3.in", immediateRender: false },
+        4.66,
+      );
+
+      tl.fromTo(
+        label2,
+        { scale: 1, opacity: 1, filter: "blur(0px)" },
+        { scale: 1.2, opacity: 0.15, filter: "blur(10px)", duration: 0.2, ease: "power3.in", immediateRender: false },
+        5.8,
+      );
+      tl.fromTo(
+        outer,
+        { scale: sCta },
+        { scale: sProgress, duration: 1.2, ease: "power3.inOut", immediateRender: false },
+        6.0,
+      );
+      tl.fromTo(
+        inner,
+        { x: ctaX, y: ctaY },
+        { x: progressX, y: progressY, duration: 1.2, ease: "power3.inOut", immediateRender: false },
+        6.0,
+      );
+      tl.set(label2, { opacity: 0 }, 6.0);
+      tl.set(label3, { opacity: 0.15, scale: 0.75, filter: "blur(10px)" }, 6.0);
+      tl.fromTo(
+        label3,
+        { scale: 0.75, opacity: 0.15, filter: "blur(10px)" },
+        { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.5, ease: "power3.out", immediateRender: false },
+        6.0,
+      );
+
+      tl.fromTo(
+        label3,
+        { scale: 1, opacity: 1, filter: "blur(0px)" },
+        { scale: 1.2, opacity: 0.15, filter: "blur(10px)", duration: 0.2, ease: "power3.in", immediateRender: false },
+        8.3,
+      );
+      tl.fromTo(
+        outer,
+        { scale: sProgress },
+        { scale: sEarnings, duration: 1.2, ease: "power3.inOut", immediateRender: false },
+        8.5,
+      );
+      tl.fromTo(
+        inner,
+        { x: progressX, y: progressY },
+        { x: earningsX, y: earningsY, duration: 1.2, ease: "power3.inOut", immediateRender: false },
+        8.5,
+      );
+      tl.set(label3, { opacity: 0 }, 8.5);
+      tl.set(label4, { opacity: 0.15, scale: 0.75, filter: "blur(10px)" }, 8.5);
+      tl.fromTo(
+        label4,
+        { scale: 0.75, opacity: 0.15, filter: "blur(10px)", y: 0 },
+        { scale: 1, opacity: 1, filter: "blur(0px)", y: 0, duration: 0.5, ease: "power3.out", immediateRender: false },
+        8.5,
+      );
+
+      const idleStart = 9.82;
+      const idleDur = 12.048 - idleStart;
+      const cycles = idleDur / 2.2;
+      const phase = { p: 0 };
+      tl.fromTo(
+        phase,
+        { p: 0 },
+        {
+          p: Math.PI * 2 * cycles,
+          duration: idleDur,
+          ease: "none",
+          immediateRender: false,
+          onUpdate: function () {
+            gsap.set(label4, { y: Math.sin(phase.p) * 2.5 });
+          },
+        },
+        idleStart,
+      );
+
+      window.__timelines["03-referrer"] = tl;
+      if (typeof window.__hfForceTimelineRebind === "function") {
+        window.__hfForceTimelineRebind();
+      }
+    })();
+  </script>
+</template>

@@ -24,6 +24,16 @@
       ]
     },
     {
+      "root": "packages/guides",
+      "pages": [
+        "referrer-guide/referrer-guide",
+        "enterprise-owner-guide/enterprise-owner-guide",
+        "designer-guide/designer-guide",
+        "measurer-guide/measurer-guide",
+        "customer-guide/customer-guide"
+      ]
+    },
+    {
       "root": "packages/business",
       "pages": [
         "login/login",

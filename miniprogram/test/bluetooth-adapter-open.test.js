@@ -49,9 +49,10 @@ function createWxStub(overrides) {
       if (options && options.success) options.success();
     },
     getBluetoothDevices(options) {
+      calls.push('getBluetoothDevices');
       if (options && options.success) options.success({ devices: [] });
     },
-    stopBluetoothDevicesDiscovery() {},
+    stopBluetoothDevicesDiscovery() { calls.push('stopScan'); },
     openSystemBluetoothSetting() { calls.push('openSystemBluetoothSetting'); },
     openAppAuthorizeSetting() { calls.push('openAppAuthorizeSetting'); },
     openSetting() { calls.push('openSetting'); }
@@ -184,5 +185,22 @@ test('iOS still opens the adapter when the system Bluetooth flag is unavailable'
     bluetooth.initBLE(function () {}, function () {}, function () {}, false);
     assert.equal(opened, true);
     bluetooth.cancelBLEDiscovery();
+  });
+});
+
+test('platform enrollment can cancel and does not reuse cached discovery results', () => {
+  withWx({}, function (wx, bluetooth) {
+    let completed;
+    bluetooth.scanBLEForEnrollment(
+      function () {},
+      function (result) { completed = result; },
+      { silent: true, scanMs: 10000 }
+    );
+
+    assert.equal(wx.calls.includes('getBluetoothDevices'), false);
+    assert.equal(bluetooth.cancelBLEEnrollmentScan(), true);
+    assert.equal(wx.calls.includes('stopScan'), true);
+    assert.equal(completed.reason, 'cancelled');
+    assert.deepEqual(completed.devices, []);
   });
 });

@@ -29,6 +29,7 @@ export const CODE_AUDIT_RESULT_LABELS: Record<string, string> = {
   joined: '入驻成功',
   referrer_disabled: '推荐人已停用',
   membership_limit_reached: '推荐人企业数已达上限',
+  referrer_protection_limit: '企业已限制推广人同时服务其他企业',
   submitted: '开户申请已提交',
   phone_mismatch: '手机号不匹配',
   submit_failed: '提交失败',
@@ -49,6 +50,7 @@ const SUCCESS_RESULTS = new Set([
 const ERROR_RESULTS = new Set([
   'staff_enterprise_conflict',
   'membership_limit_reached',
+  'referrer_protection_limit',
   'code_not_found',
   'phone_mismatch',
   'submit_failed',

@@ -141,17 +141,19 @@ a viewport-growing gap inside the scene-to-panel reading group.
 | Element | Baseline production target | Source / implementation mapping |
 | --- | --- | --- |
 | Capsule-safe brand lockup | Runtime `navigationTop` + `navigationHeight`; `58rpx` logo and `30rpx` lockup text | Native `brand-logo.png` plus native text, left of the capsule lane |
-| Identity-reception scene | `700rpx` high at `390px`; `660rpx` under `360px` | Standalone generated `images/home-ip-v1/login-identity-portal-v2.jpg`; no composite slicing |
+| Identity-reception scene | `700rpx` high; `<=360px` keeps the same width-normalized proportion instead of shrinking to `660rpx` | Standalone generated `images/home-ip-v1/login-identity-portal-v2.jpg`; no composite slicing |
 | Overlapping native panel | `32rpx` side margins; `-34rpx` overlap; `34rpx` radius | Native WXML/Less; warm-white surface and downward soft shadow |
-| Heading / helper | `40rpx` / `24rpx` (`38rpx` heading under `360px`) | Native text; one-line heading target at the baseline |
-| Identity rail | `104rpx` icon containers, `58rpx` visible icon bounds, `24rpx` labels | Native `个人用户 / 员工 / 推荐人`; three Lucide-derived PNGs recorded under `docs/icon-sources/mine/` |
+| Heading / helper | `40rpx` / `24rpx`; the heading is not downscaled on narrow screens | Native text; one-line heading target at the baseline and at `<=360px` |
+| Identity rail | `104rpx` icon containers, `70rpx` PNG boxes, about `58rpx` visible alpha bounds, `24rpx` labels | Native `个人用户 / 员工 / 推荐人`; the three transparent-padded Lucide-derived PNGs recorded under `docs/icon-sources/mine/` are calibrated by visible alpha bounds |
 | Match note | `22rpx` native copy with half-pixel short separators | `登录后自动匹配身份`; informational, not interactive |
-| Primary CTA | `92rpx` high, `28rpx` label | Sole executable `立即登录` action; keeps existing `goToLogin` route |
-| Trust row / bottom | `22rpx` copy above `env(safe-area-inset-bottom)` | `一个账号 · 多重身份 · 随时切换`; no second action |
+| Primary CTA | Full panel-content width, `92rpx` high, `28rpx` label | Sole executable `立即登录` action; keeps existing `goToLogin` route and explicitly clears native button max-width and horizontal margins |
+| Trust row / bottom | `22rpx` copy with a `30rpx` shield-check PNG above `env(safe-area-inset-bottom)` | `一个账号 · 多重身份 · 随时切换`; reuses `images/mine-icons/shield-check.png` instead of a CSS pill approximation; no second action |
 
-Static layout, asset signatures, encoded sizes, and the `<=360px` rules are
-verified in focused tests. Native `390x844` capsule-host optical verification
-remains pending the user's manual runtime screenshot.
+Focused tests verify static layout, asset signatures, encoded sizes, the
+full-width CTA, the shield-check asset, and the `<=360px` guard against
+compressing this continuous reading group. Native capsule-host optical QA at
+`390x844` and on the user's supplied tall device remains pending a revised
+manual runtime screenshot.
 
 ## 8. Approval acceptance checklist
 

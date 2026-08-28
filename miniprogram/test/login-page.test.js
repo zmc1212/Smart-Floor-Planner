@@ -40,6 +40,8 @@ function createContext(definition, extraData = {}) {
   context.onNeedAgreement = definition.onNeedAgreement;
   context.onGetPhoneNumber = definition.onGetPhoneNumber;
   context.performLogin = definition.performLogin;
+  context.promptInitialPasswordChange = definition.promptInitialPasswordChange;
+  context.finishLogin = definition.finishLogin;
   return context;
 }
 
@@ -51,6 +53,10 @@ test('Login page ships the approved Xiao K entry composition with live controls'
   assert.match(wxml, /家客来/);
   assert.match(wxml, /企业客户工作台/);
   assert.match(wxml, /open-type="getPhoneNumber"/);
+  assert.match(wxml, /手机号授权登录/);
+  assert.match(wxml, /手机号快捷登录/);
+  assert.doesNotMatch(wxml, /微信授权登录/);
+  assert.doesNotMatch(wxml, /login-v1\/wechat\.png/);
   assert.match(wxml, /data-type="password"/);
   assert.match(wxml, /精准量房/);
   assert.match(wxml, /AI设计/);
@@ -199,9 +205,11 @@ test('Login legal links open the webview without toggling the agreement checkbox
   }
 });
 
-test('Password login requiring a password change opens account security without bootstrapping', async () => {
+test('Password login requiring a password change bootstraps and reminds once without trapping the session', async () => {
   let hydrateCalls = 0;
   const launches = [];
+  const navigations = [];
+  const modals = [];
   const app = {
     globalData: {},
     hydrateStoredSession: async () => {
@@ -211,12 +219,26 @@ test('Password login requiring a password change opens account security without 
   };
   const definition = loadPage(app);
   const originalWx = global.wx;
+  const originalPages = global.getCurrentPages;
+  const originalSetTimeout = global.setTimeout;
+  global.getCurrentPages = () => [{ route: 'packages/business/login/login' }];
+  global.setTimeout = (callback) => {
+    callback();
+    return 1;
+  };
   global.wx = {
     showLoading() {},
     hideLoading() {},
     setStorageSync() {},
     reLaunch(options) {
       launches.push(options.url);
+    },
+    navigateTo(options) {
+      navigations.push(options.url);
+    },
+    showModal(options) {
+      modals.push(options);
+      if (options.success) options.success({ confirm: false });
     }
   };
 
@@ -225,16 +247,73 @@ test('Password login requiring a password change opens account security without 
     await definition.performLogin.call(context, async () => ({
       success: true,
       token: 'restricted-token',
-      user: { id: '8' },
+      user: { id: '8', mode: 'staff', staffRole: 'designer' },
       requiresPasswordChange: true
     }));
 
-    assert.equal(hydrateCalls, 0);
-    assert.equal(app.globalData.sessionHydrated, true);
-    assert.deepEqual(launches, [
-      '/packages/business/account-security/account-security?required=1'
+    assert.equal(hydrateCalls, 1);
+    assert.equal(modals.length, 1);
+    assert.equal(modals[0].title, '建议修改初始密码');
+    assert.equal(modals[0].confirmText, '去修改');
+    assert.equal(modals[0].cancelText, '稍后');
+    assert.deepEqual(launches, ['/pages/index/index']);
+    assert.deepEqual(navigations, []);
+    assert.doesNotMatch(source('packages/business/login/login.js'), /required=1/);
+  } finally {
+    global.wx = originalWx;
+    global.getCurrentPages = originalPages;
+    global.setTimeout = originalSetTimeout;
+  }
+});
+
+test('Password-change reminder can open account security after entering the role landing', async () => {
+  const launches = [];
+  const navigations = [];
+  const app = {
+    globalData: {},
+    hydrateStoredSession: async () => {},
+    syncProfessionalContext() {}
+  };
+  const definition = loadPage(app);
+  const originalWx = global.wx;
+  const originalPages = global.getCurrentPages;
+  const originalSetTimeout = global.setTimeout;
+  global.getCurrentPages = () => [{ route: 'packages/business/login/login' }];
+  global.setTimeout = (callback) => {
+    callback();
+    return 1;
+  };
+  global.wx = {
+    showLoading() {},
+    hideLoading() {},
+    setStorageSync() {},
+    reLaunch(options) {
+      launches.push(options.url);
+    },
+    navigateTo(options) {
+      navigations.push(options.url);
+    },
+    showModal(options) {
+      if (options.success) options.success({ confirm: true });
+    }
+  };
+
+  try {
+    const context = createContext(definition);
+    await definition.performLogin.call(context, async () => ({
+      success: true,
+      token: 'restricted-token',
+      user: { id: '8', mode: 'staff', staffRole: 'designer' },
+      requiresPasswordChange: true
+    }));
+
+    assert.deepEqual(launches, ['/pages/index/index']);
+    assert.deepEqual(navigations, [
+      '/packages/business/account-security/account-security'
     ]);
   } finally {
     global.wx = originalWx;
+    global.getCurrentPages = originalPages;
+    global.setTimeout = originalSetTimeout;
   }
 });

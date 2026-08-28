@@ -300,15 +300,17 @@ export default function InspirationsPage() {
         </Flex>
       </PageContainer>
 
-      <Image
-        alt={previewing?.title || '灵感方案预览'}
-        preview={{
-          visible: Boolean(previewing),
-          onVisibleChange: (visible) => !visible && setPreviewing(null),
-        }}
-        src={previewing?.renderingImage || previewing?.coverImage}
-        style={{ display: 'none' }}
-      />
+      {previewing && (previewing.renderingImage || previewing.coverImage) ? (
+        <Image
+          alt={previewing.title || '灵感方案预览'}
+          preview={{
+            visible: true,
+            onVisibleChange: (visible) => !visible && setPreviewing(null),
+          }}
+          src={previewing.renderingImage || previewing.coverImage}
+          style={{ display: 'none' }}
+        />
+      ) : null}
     </div>
   );
 }

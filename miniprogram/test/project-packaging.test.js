@@ -52,6 +52,7 @@ test('source package excludes historical artwork that is not used at runtime', (
     'images/generated-hero-bleed-v2.png',
     'images/login-hero.png',
     'images/airy-v1/xiao-k-mascot-3d.png',
+    'images/operations-dashboard/floor-route-board.png',
     'images/home-ip-v1/measure-k.png',
     'tmp-lshape-preview.js',
     'tmp-preview-check.js',
@@ -81,6 +82,21 @@ test('business subpackage source stays under the WeChat 2MB subpackage limit', (
     total <= 2048 * 1024,
     `packages/business source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB subpackage limit`
   );
+});
+
+test('role guides stay in their own subpackage and under the WeChat 2MB limit', () => {
+  const miniRoot = path.join(__dirname, '..');
+  const guidesRoot = path.join(miniRoot, 'packages', 'guides');
+  let total = 0;
+  for (const file of fs.readdirSync(guidesRoot, { recursive: true })) {
+    const absolute = path.join(guidesRoot, file);
+    if (fs.statSync(absolute).isFile()) total += fs.statSync(absolute).size;
+  }
+  assert.ok(
+    total <= 2048 * 1024,
+    `packages/guides source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB subpackage limit`
+  );
+  assert.equal(fs.existsSync(path.join(miniRoot, 'images', 'role-guides')), false);
 });
 
 test('main package source stays under the WeChat 2MB main-package limit', () => {
@@ -156,6 +172,10 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'recipe-confirm/recipe-confirm',
         'scheme-studio/scheme-studio',
       ],
+    },
+    {
+      root: 'packages/guides',
+      pages: ['referrer-guide/referrer-guide', 'enterprise-owner-guide/enterprise-owner-guide', 'designer-guide/designer-guide', 'measurer-guide/measurer-guide', 'customer-guide/customer-guide'],
     },
     {
       root: 'packages/business',

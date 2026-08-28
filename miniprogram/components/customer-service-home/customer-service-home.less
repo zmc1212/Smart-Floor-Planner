@@ -201,13 +201,95 @@
   font-weight: 500;
 }
 
+.guide-inline-entry {
+  display: none;
+}
+
+.guide-entry {
+  position: absolute;
+  z-index: 3;
+  top: 68rpx;
+  right: 4rpx;
+  width: 430rpx;
+  height: 292rpx;
+}
+
 .benefit-guide {
   position: absolute;
-  right: 4rpx;
-  top: 68rpx;
+  z-index: 3;
+  top: 0;
+  right: 0;
   width: 340rpx;
   height: 292rpx;
+}
+
+.guide-entry-bubble {
+  position: absolute;
+  z-index: 2;
+  top: -8rpx;
+  left: -52rpx;
+  width: 190rpx;
+  min-height: 112rpx;
+  padding: 14rpx 18rpx 12rpx;
+  border-radius: 22rpx;
+  background: #ffffff;
+  box-shadow: 0 12rpx 26rpx rgba(13, 87, 45, 0.16);
+  box-sizing: border-box;
+}
+
+.guide-entry-bubble::after {
+  position: absolute;
+  top: 72rpx;
+  right: -16rpx;
+  width: 30rpx;
+  height: 30rpx;
+  border-radius: 4rpx 16rpx 4rpx 4rpx;
+  background: #ffffff;
+  content: '';
+  transform: rotate(45deg);
+}
+
+.guide-entry-name,
+.guide-entry-copy,
+.guide-entry-action {
+  position: relative;
   z-index: 1;
+  display: block;
+}
+
+.guide-entry-name {
+  color: #173a28;
+  font-size: 26rpx;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.guide-entry-copy {
+  margin-top: 4rpx;
+  color: #476657;
+  font-size: 22rpx;
+  line-height: 1.35;
+}
+
+.guide-entry-action {
+  display: flex;
+  min-height: 34rpx;
+  margin-top: 8rpx;
+  align-items: center;
+  gap: 6rpx;
+  color: #009a4d;
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.guide-entry-chevron {
+  width: 10rpx;
+  height: 10rpx;
+  border-top: 2rpx solid #009a4d;
+  border-right: 2rpx solid #009a4d;
+  transform: rotate(45deg);
+  box-sizing: border-box;
 }
 
 .service-ticket {
@@ -672,7 +754,7 @@
   color: #8a9a91;
 }
 
-@media (max-width: 360px) {
+@media (max-width: 400px) {
   .benefit-hero-copy {
     width: 374rpx;
   }
@@ -682,8 +764,39 @@
     font-size: 52rpx;
   }
 
-  .benefit-guide {
+  .guide-entry {
     right: -12rpx;
+    width: 314rpx;
+  }
+
+  .guide-entry-bubble {
+    display: none;
+  }
+
+  .guide-inline-entry {
+    display: inline-flex;
+    width: 230rpx;
+    min-height: 56rpx;
+    margin-top: 14rpx;
+    padding: 0 16rpx;
+    align-items: center;
+    justify-content: center;
+    gap: 8rpx;
+    border-radius: 28rpx;
+    color: #087f42;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 8rpx 18rpx rgba(6, 108, 55, 0.16);
+    font-size: 22rpx;
+    font-weight: 700;
+    line-height: 1.35;
+    box-sizing: border-box;
+  }
+
+  .guide-inline-chevron {
+    flex: none;
+  }
+
+  .benefit-guide {
     width: 314rpx;
   }
 
@@ -715,3 +828,4 @@
     font-size: 32rpx;
   }
 }
+.termination-home-note { margin-top: 18rpx; padding: 18rpx 20rpx; border-radius: 14rpx; color: #6e7d73; background: #eef2ef; font-size: 24rpx; line-height: 1.5; }

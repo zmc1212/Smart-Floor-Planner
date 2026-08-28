@@ -63,9 +63,9 @@ function visibleItems(globalData) {
       .filter((item) => !capabilities.length || capabilities.includes(item.capability))
       .map((item) => ({ ...item, visible: true }));
   }
-  // A visitor has no signed identity and therefore no business navigation.
+  // Visitors browse the customer Service tab first. Login stays on Mine.
   // Do not fall back to legacy staff tabs while a session is absent or invalid.
-  return [];
+  return ROLE_ITEMS.customer.map((item) => ({ ...item, visible: true }));
 }
 
 function applyServerBadges(list, badges) {

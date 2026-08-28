@@ -124,7 +124,7 @@
       <view class="hero-leaf hero-leaf-tr" aria-hidden="true"></view>
       <view class="hero-copy">
         <text class="recovery-title">当前邀请暂不可用</text>
-        <text class="recovery-subtitle">可能已失效、停用或与当前身份不匹配</text>
+        <text class="recovery-subtitle">{{errorMessage || '可能已失效、停用或与当前身份不匹配'}}</text>
       </view>
       <image
         class="guide-k"

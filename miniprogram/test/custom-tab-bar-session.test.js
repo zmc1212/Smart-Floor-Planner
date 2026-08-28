@@ -40,7 +40,7 @@ function loadTabBarComponent(globalData) {
   };
 }
 
-test('custom TabBar is hidden when no signed identity is available', () => {
+test('unsigned visitors reuse the customer Service/Mine TabBar', () => {
   const globalData = {
     userInfo: null,
     bootstrap: null
@@ -56,8 +56,10 @@ test('custom TabBar is hidden when no signed identity is available', () => {
     };
 
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list, []);
-    assert.equal(component.data.suppressed, true);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['service', 'mine']);
+    assert.equal(component.data.list[0].pagePath, '/pages/index/index');
+    assert.equal(component.data.list[1].pagePath, '/pages/mine/mine');
+    assert.equal(component.data.suppressed, false);
     assert.equal(component.data.badgeUnavailable, false);
   } finally {
     restore();

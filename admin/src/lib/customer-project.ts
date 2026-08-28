@@ -280,6 +280,7 @@ export async function customerProjectToDto(
   const publishedDesigns = publishedSchemes.flatMap((scheme) => scheme.images);
   const home = resolveCustomerHomeAction({
     leadStatus: project.lead.status,
+    terminationType: project.lead.terminationType,
     assignmentStatus: project.lead.assignmentStatus,
     measurerId: project.lead.measurerId,
     appointment: project.appointment,
@@ -309,6 +310,9 @@ export async function customerProjectToDto(
     featuredScheme,
     enterprise: { name: project.enterpriseName },
     status: project.lead.status,
+    terminationType: project.lead.terminationType || null,
+    terminatedAt: project.lead.terminatedAt || null,
+    terminationNote: project.lead.terminationNote || null,
     serviceStage: home.stageKey,
     serviceStageLabel: home.stageLabel,
     nextAction: home.nextAction,
@@ -385,6 +389,7 @@ export function customerProjectIndexToDto(project: CustomerProjectIndexItem) {
     : null;
   const home = resolveCustomerHomeAction({
     leadStatus: project.status,
+    terminationType: project.terminationType,
     assignmentStatus: project.assignmentStatus,
     measurerId: project.measurerId,
     appointment,
@@ -396,6 +401,7 @@ export function customerProjectIndexToDto(project: CustomerProjectIndexItem) {
     leadId: project.leadId.toString(),
     enterprise: { name: project.enterpriseName },
     status: project.status,
+    terminationType: project.terminationType || null,
     updatedAt: project.updatedAt,
     appointmentId: project.appointmentId?.toString() || null,
     appointmentVersion: project.appointmentVersion ?? null,

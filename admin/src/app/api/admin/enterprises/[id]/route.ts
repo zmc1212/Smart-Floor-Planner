@@ -9,6 +9,10 @@ import {
   type EnterpriseUpdate,
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
+import {
+  isPlatformAdminRole,
+  parseReferrerAdditionalEnterpriseLimit,
+} from '@/lib/referrer-join-limits';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +25,7 @@ interface EnterprisePatchBody {
   branding?: Record<string, unknown>;
   groundPromotionFixedCommission?: number;
   automationConfig?: Record<string, unknown>;
+  referrerAdditionalEnterpriseLimit?: number | null;
 }
 
 const DEFAULT_ENTERPRISE_AUTOMATION_CONFIG = {
@@ -167,6 +172,26 @@ export async function PATCH(
             { status: 400 }
           );
         }
+        if (body.referrerAdditionalEnterpriseLimit !== undefined) {
+          if (!isPlatformAdminRole(context.role)) {
+            return NextResponse.json(
+              { success: false, error: 'Forbidden' },
+              { status: 403 }
+            );
+          }
+          const parsed = parseReferrerAdditionalEnterpriseLimit(
+            body.referrerAdditionalEnterpriseLimit
+          );
+          if (!parsed.ok) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: '推广人企业保护须为 0–99 的整数，或留空关闭',
+              },
+              { status: 400 }
+            );
+          }
+        }
         const enterprise = await withPlatformTransaction(async (transaction) => {
           const enterprises = new EnterpriseRepository(transaction);
           const current = await enterprises.findById(enterpriseId);
@@ -191,6 +216,14 @@ export async function PATCH(
             updateData.automationConfig = normalizeAutomationConfig(
               body.automationConfig
             );
+          }
+          if (body.referrerAdditionalEnterpriseLimit !== undefined) {
+            const parsed = parseReferrerAdditionalEnterpriseLimit(
+              body.referrerAdditionalEnterpriseLimit
+            );
+            if (parsed.ok) {
+              updateData.referrerAdditionalEnterpriseLimit = parsed.value;
+            }
           }
           return enterprises.update(enterpriseId, updateData);
         });

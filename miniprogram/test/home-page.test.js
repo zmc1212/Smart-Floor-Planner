@@ -24,11 +24,12 @@ function createPage(definition, data = {}) {
   };
 }
 
-test('未登录访问首页会进入家客来登录入口，而非停留在旧访客首页', () => {
+test('未登录访问首页会停留在三项免费权益服务页，而不是立刻切到登录入口', () => {
   const definition = loadHomePageDefinition();
   const originalWx = global.wx;
   const originalGetApp = global.getApp;
   const switchedTabs = [];
+  let tabBarSynced = false;
 
   global.getApp = () => ({ globalData: {} });
   global.wx = {
@@ -38,10 +39,16 @@ test('未登录访问首页会进入家客来登录入口，而非停留在旧�
 
   try {
     const page = createPage(definition);
+    page.getTabBar = () => ({
+      syncSelected() {
+        tabBarSynced = true;
+      },
+    });
     definition.onLoad.call(page);
 
-    assert.deepEqual(switchedTabs, ['/pages/mine/mine']);
-    assert.equal(page.data.redirectingToVisitorGateway, true);
+    assert.deepEqual(switchedTabs, []);
+    assert.equal(page.data.roleWorkbenchRole, 'customer');
+    assert.equal(tabBarSynced, true);
   } finally {
     global.wx = originalWx;
     global.getApp = originalGetApp;

@@ -42,6 +42,8 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(script, /canStartSurvey/);
   assert.match(script, /startSurvey/);
   assert.match(script, /function resolveLeadLifecycle/);
+  assert.match(script, /function isLeadUnavailableError/);
+  assert.match(script, /LEAD_ARCHIVED/);
   assert.match(script, /hasCompletedFormalSurvey/);
   assert.match(script, /serviceStage === 'survey_ready'/);
   assert.match(script, /\['converted', 'closed'\]/);
@@ -56,8 +58,12 @@ test('appointment detail is registered and exposes only server-backed lifecycle 
   assert.match(wxml, /一键导航至量房地点/);
   assert.match(wxml, /拍现场图/);
   assert.match(wxml, /site-photo-grid/);
+  assert.match(wxml, /bind:sheetchange="onSitePhotoSheetChange"/);
+  assert.match(wxml, /confirm-bar" wx:if="\{\{appointment && !loading && !error && !sitePhotoSheetOpen\}\}"/);
   assert.match(script, /sitePhotoService/);
   assert.match(script, /captureSitePhoto/);
+  assert.match(script, /onSitePhotoSheetChange/);
+  assert.match(script, /sitePhotoSheetOpen/);
   assert.match(script, /SPACE_TAGS/);
   assert.match(script, /appointmentCommunitySync/);
   assert.match(script, /shouldOfferCommunitySync/);
@@ -213,6 +219,59 @@ test('appointment detail hides mutate actions when the linked lead is already co
     assert.equal(context.data.canUpdateAddress, false);
     assert.equal(context.data.canComplete, false);
     assert.equal(context.data.canStartSurvey, false);
+  } finally {
+    api.request = originalRequest;
+    global.Page = originalPage;
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+  }
+});
+
+test('appointment detail hides mutate actions when the linked lead is archived', async () => {
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalPage = global.Page;
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  let definition;
+  global.Page = (next) => { definition = next; };
+  global.wx = {
+    getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 24 }),
+    getMenuButtonBoundingClientRect: () => ({ left: 280, top: 24, height: 32 }),
+    navigateTo() {}
+  };
+  const requestUrls = [];
+  api.request = async (url) => {
+    requestUrls.push(url);
+    if (String(url).startsWith('/leads/')) {
+      throw { code: 'LEAD_ARCHIVED', error: '该客户线索已归档', statusCode: 410 };
+    }
+    return { data: [{
+      id: 'appointment-1',
+      leadId: 'lead-1',
+      status: 'confirmed',
+      version: 2,
+      address: '西湖路32号',
+      timeRange: '["2026-08-27T01:00:00.000Z","2026-08-27T03:00:00.000Z"]'
+    }] };
+  };
+
+  try {
+    global.getApp = () => ({ globalData: { userInfo: { role: 'staff', staffRole: 'enterprise_admin' } } });
+    delete require.cache[require.resolve('../packages/business/appointment-detail/appointment-detail.js')];
+    require('../packages/business/appointment-detail/appointment-detail.js');
+    const context = {
+      data: { ...definition.data },
+      setData(next) { Object.assign(this.data, next); }
+    };
+    definition.onLoad.call(context, { appointmentId: 'appointment-1', leadId: 'lead-1' });
+    await definition.load.call(context);
+    assert.equal(context.data.canReschedule, false);
+    assert.equal(context.data.canCancel, false);
+    assert.equal(context.data.canRebook, false);
+    assert.equal(context.data.canStartSurvey, false);
+    assert.equal(context.data.slotsError, '');
+    assert.ok(!requestUrls.some((url) => String(url).includes('/appointments/availability')));
   } finally {
     api.request = originalRequest;
     global.Page = originalPage;

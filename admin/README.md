@@ -17,7 +17,10 @@ business flows.
 ## Production release
 
 On Windows, `release.bat` builds `release/sfp-admin-release.zip` and copies
-`auto_deploy.sh` beside it.
+`auto_deploy.sh` beside it. The image is packed as `sfp-admin.tar` inside the
+ZIP; Docker Hub push is skipped because production deploy loads that tar.
+Alpine `apk` uses `mirrors.aliyun.com` because `dl-cdn.alpinelinux.org` often
+fails TLS from China during `libc6-compat` / CJK font install.
 
 Upload the ZIP to the server directory that already holds the previous extract
 (for example `/datas/smartfloor`). First time only, also upload `auto_deploy.sh`

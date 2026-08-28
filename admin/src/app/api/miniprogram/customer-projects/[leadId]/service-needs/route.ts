@@ -75,6 +75,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ lead
         resolved.leadId,
       );
       if (!project) return null;
+      if (project.lead.status === 'closed') {
+        throw Object.assign(new Error('该服务记录已终止，无法继续修改需求'), {
+          status: 409,
+          code: 'LEAD_TERMINATED',
+        });
+      }
       return new LeadServiceNeedsRepository(transaction).replaceForLead({
         enterpriseId: project.lead.enterpriseId!,
         leadId: resolved.leadId,

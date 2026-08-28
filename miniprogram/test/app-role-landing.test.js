@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 
 function loadAppDefinition() {
@@ -53,7 +54,7 @@ test('role landing retries until the root page is available after session hydrat
   }
 });
 
-test('role landing leaves the enterprise open-account scan page for workbench identities only', () => {
+test('role landing keeps signed identities on a fresh enterprise open-account scan', () => {
   const definition = loadAppDefinition();
   const previousWx = global.wx;
   const previousPages = global.getCurrentPages;
@@ -78,10 +79,9 @@ test('role landing leaves the enterprise open-account scan page for workbench id
       restoreRoleLanding: definition.restoreRoleLanding,
     };
     definition.restoreRoleLanding.call(adminApp);
-    assert.deepEqual(relaunched, ['/pages/index/index']);
-    assert.equal(adminApp.globalData.roleLandingRedirected, true);
+    assert.deepEqual(relaunched, []);
+    assert.equal(adminApp.globalData.roleLandingRedirected, false);
 
-    relaunched.length = 0;
     const customerQrApp = {
       globalData: {
         userInfo: { mode: 'customer' },
@@ -272,6 +272,7 @@ test('a stale cold-start refresh cannot invalidate a newer phone-login session',
     restoreRoleLanding() {},
     guardCurrentRoute() {},
     refreshCustomTabBar() {},
+    trySilentBluetoothReconnect() {},
     hydrateStoredSession: definition.hydrateStoredSession
   };
 
@@ -292,6 +293,12 @@ test('a stale cold-start refresh cannot invalidate a newer phone-login session',
     api.request = originalRequest;
     global.wx = originalWx;
   }
+});
+
+test('session hydration does not trap password-change sessions away from bootstrap', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  assert.doesNotMatch(source, /requiresPasswordChange[\s\S]{0,400}account-security/);
+  assert.match(source, /const bootstrap = await api\.request\('\/miniprogram\/bootstrap'/);
 });
 
 test('branding sync tolerates a wrapped API request export', async () => {

@@ -330,3 +330,13 @@ test('operational appointment prefers an active confirmed rebooking over an olde
     now,
   }).key, 'appointment_confirmed');
 });
+
+test('referrer withdrawal is a terminal customer stage with no CTA', () => {
+  const stage = resolveLeadServiceStage({ leadStatus: 'closed', terminationType: 'referrer_withdrawn' });
+  assert.equal(stage.key, 'referrer_withdrawn');
+  assert.equal(stage.label, '推广人已撤销');
+  const home = resolveCustomerHomeAction({ leadStatus: 'closed', terminationType: 'referrer_withdrawn' });
+  assert.equal(home.kind, 'none');
+  assert.equal(home.appointmentSummary, '本次推广服务记录已撤销，如需继续服务，请重新扫描有效服务码');
+  assert.equal(home.canRebook, false);
+});

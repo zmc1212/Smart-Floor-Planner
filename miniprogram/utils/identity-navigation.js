@@ -38,6 +38,10 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/enterprise-commissions/enterprise-commissions': 'enterprise.commissions',
   '/packages/business/measurer-unavailability/measurer-unavailability': ['staff.schedule', 'staff.appointments'],
   '/packages/business/referrer-workbench/referrer-workbench': 'referrer.promotion',
+  '/packages/guides/referrer-guide/referrer-guide': 'referrer.promotion',
+  '/packages/guides/enterprise-owner-guide/enterprise-owner-guide': 'enterprise.operations',
+  '/packages/guides/designer-guide/designer-guide': 'staff.leads',
+  '/packages/guides/measurer-guide/measurer-guide': 'staff.schedule',
   '/packages/business/referrer-progress/referrer-progress': 'referrer.progress',
   '/packages/business/referrer-earnings/referrer-earnings': 'referrer.earnings',
   '/packages/business/staff-earnings/staff-earnings': 'staff.earnings',
@@ -47,7 +51,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/inspiration/inspiration': 'staff.design',
   '/packages/business/recommendations/index': 'staff.design',
   '/packages/business/promotion-service-code/promotion-service-code': 'referrer.promotion',
-  '/packages/business/staff-activity-code/staff-activity-code': ['staff.leads', 'staff.tasks', 'staff.schedule'],
+  '/packages/business/staff-activity-code/staff-activity-code': ['staff.leads', 'staff.tasks', 'staff.schedule', 'enterprise.operations'],
   '/packages/business/enterprise-join-codes/enterprise-join-codes': 'enterprise.operations',
   '/packages/business/enterprise-staff/enterprise-staff': 'enterprise.operations',
   '/packages/business/customer-projects/customer-projects': 'customer.projects',
@@ -64,13 +68,6 @@ const SCAN_LANDING_ROUTES = Object.freeze([
   '/packages/business/enterprise-register/enterprise-register',
   '/packages/business/onboarding/onboarding',
   '/packages/business/free-design-service/free-design-service'
-]);
-const ENTERPRISE_REGISTER_ROUTE = SCAN_LANDING_ROUTES[0];
-const WORKBENCH_SCAN_ROLES = Object.freeze([
-  'designer',
-  'measurer',
-  'enterprise_admin',
-  'referrer'
 ]);
 const STICKY_SCAN_REOPEN_SCENES = Object.freeze([
   1001,
@@ -134,6 +131,17 @@ function navigateToRoleLanding(identity, options = {}) {
   return true;
 }
 
+function capabilitiesMatch(required, capabilities) {
+  return Array.isArray(required)
+    ? required.some((capability) => capabilities.includes(capability))
+    : capabilities.includes(required);
+}
+
+function availableRoleCapabilities(bootstrap) {
+  const roles = bootstrap && Array.isArray(bootstrap.roles) ? bootstrap.roles : [];
+  return roles.flatMap((item) => item.capabilities || ROLE_CAPABILITIES[item.role] || []);
+}
+
 function canAccessRoute(route, bootstrapOrIdentity) {
   const path = routePath(route);
   const required = ROUTE_CAPABILITIES[path];
@@ -144,9 +152,13 @@ function canAccessRoute(route, bootstrapOrIdentity) {
   const capabilities = bootstrap
     ? (bootstrap.current.capabilities || (bootstrap.navigation && bootstrap.navigation.capabilities) || [])
     : (ROLE_CAPABILITIES[roleForIdentity(bootstrapOrIdentity)] || []);
-  return Array.isArray(required)
-    ? required.some((capability) => capabilities.includes(capability))
-    : capabilities.includes(required);
+  if (capabilitiesMatch(required, capabilities)) return true;
+  // Replay-only: a signed customer may reopen a guide they already hold as
+  // another identity. Other workbench routes still require the current JWT.
+  if (path.startsWith('/packages/guides/') && bootstrap) {
+    return capabilitiesMatch(required, availableRoleCapabilities(bootstrap));
+  }
+  return false;
 }
 
 function guardDeepLink(route, bootstrapOrIdentity) {
@@ -171,13 +183,24 @@ function isStickyScanReopenScene(scene) {
   return STICKY_SCAN_REOPEN_SCENES.includes(Number(scene));
 }
 
+function currentEnterScene(fallback) {
+  if (typeof wx !== 'undefined' && typeof wx.getEnterOptionsSync === 'function') {
+    try {
+      const enter = wx.getEnterOptionsSync();
+      if (enter && enter.scene != null && enter.scene !== '') {
+        return enter.scene;
+      }
+    } catch (error) {
+      // Some test/runtime hosts throw when enter options are missing.
+    }
+  }
+  return fallback;
+}
+
 function shouldLeaveScanLanding(route, identity, scene) {
   if (!isScanLandingRoute(route)) return false;
   const role = roleForIdentity(identity);
   if (isStickyScanReopenScene(scene)) return Boolean(role);
-  if (routePath(route) === ENTERPRISE_REGISTER_ROUTE) {
-    return WORKBENCH_SCAN_ROLES.includes(role);
-  }
   return false;
 }
 
@@ -205,6 +228,7 @@ module.exports = {
   guardDeepLink,
   isScanLandingRoute,
   isStickyScanReopenScene,
+  currentEnterScene,
   shouldLeaveScanLanding,
   leaveScanLanding
 };

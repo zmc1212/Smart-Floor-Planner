@@ -36,6 +36,7 @@ function createPage(definition) {
 test('Mine hosts account settings inline and routes deep pages separately', () => {
   const appConfig = JSON.parse(read('app.json'));
   const business = appConfig.subPackages.find((item) => item.root === 'packages/business');
+  const guides = appConfig.subPackages.find((item) => item.root === 'packages/guides');
   const mineWxml = read('pages/mine/mine.wxml');
   const mineJs = read('pages/mine/mine.js');
   const settingsJs = read('packages/business/settings/settings.js');
@@ -44,6 +45,7 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.ok(business.pages.includes('settings/settings'));
   assert.ok(business.pages.includes('account-security/account-security'));
   assert.ok(business.pages.includes('identity-switch/identity-switch'));
+  assert.deepEqual(guides.pages, ['referrer-guide/referrer-guide', 'enterprise-owner-guide/enterprise-owner-guide', 'designer-guide/designer-guide', 'measurer-guide/measurer-guide']);
   assert.match(mineWxml, /account-section-title">账号[\s\S]*bindtap="onEditProfile"[\s\S]*编辑资料/);
   assert.doesNotMatch(mineWxml, /edit-profile-button|header-actions/);
   assert.doesNotMatch(mineWxml, /bindtap="onOpenSettings"/);
@@ -56,6 +58,12 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(mineWxml, /当前身份/);
   assert.match(mineWxml, /在个人用户、员工和推荐人身份之间切换/);
+  assert.match(mineWxml, /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, roleGuideHelper\}\}"/);
+  assert.match(mineWxml, /wx:if="\{\{showRoleGuideEntry\}\}"[\s\S]*bindtap="onOpenRoleGuide"/);
+  assert.match(mineWxml, /角色使用引导/);
+  assert.match(mineWxml, /roleGuideHelper/);
+  assert.match(mineJs, /mineRoleGuideEntry\(/);
+  assert.match(mineJs, /onOpenRoleGuide\(\)[\s\S]*openMineRoleGuide\(/);
   assert.match(mineWxml, /账号与安全[\s\S]*onOpenAccountSecurity|onOpenAccountSecurity[\s\S]*账号与安全/);
   assert.match(mineJs, /onEditProfile\(\)[\s\S]*profile-edit\/profile-edit/);
   assert.match(mineJs, /onOpenAccountSecurity\(\)[\s\S]*account-security\/account-security/);

@@ -100,6 +100,38 @@ function emptyCompanionUi() {
   };
 }
 
+function hasSignedSession() {
+  try {
+    const app = typeof getApp === 'function' ? getApp() : null;
+    const globalData = (app && app.globalData) || {};
+    if (globalData.token || (globalData.openid && globalData.userInfo)) return true;
+  } catch (error) {
+    // ignore missing App context in static tests
+  }
+  return !!(typeof wx !== 'undefined' && wx.getStorageSync && wx.getStorageSync('token'));
+}
+
+function guestCompanionUi() {
+  return {
+    ...emptyCompanionUi(),
+    projects: [],
+    loading: false,
+    error: '',
+    designer: null,
+    designerShortcutDesc: '家装设计顾问匹配后可联系',
+    appointmentId: '',
+    appointmentVersion: '',
+    floorPlanImagePath: '',
+    schemeImagePath: '',
+    showFloorPlanThumb: false,
+    showSchemeThumb: false,
+    showXiaoK: true,
+    showSwitcherSheet: false,
+    showContactSheet: false,
+    isTerminated: false,
+  };
+}
+
 Component({
   data: {
     navigationTop: 24,
@@ -146,7 +178,16 @@ Component({
     attached() {
       this._assetRequestId = 0;
       this._hasLoaded = false;
-      this.setData(navigationMetrics());
+      const metrics = navigationMetrics();
+      if (!hasSignedSession()) {
+        this._hasLoaded = true;
+        this.setData({
+          ...metrics,
+          ...guestCompanionUi(),
+        });
+        return;
+      }
+      this.setData(metrics);
     },
   },
 
@@ -163,6 +204,12 @@ Component({
 
   methods: {
     async load(options = {}) {
+      if (!hasSignedSession()) {
+        this._hasLoaded = true;
+        this.setData(guestCompanionUi());
+        return;
+      }
+
       this._assetRequestId = (this._assetRequestId || 0) + 1;
       const requestId = this._assetRequestId;
       const forceLoading = !!(options && options.forceLoading);
@@ -374,6 +421,13 @@ Component({
 
     openScan() {
       this.scanServiceOrInviteCode();
+    },
+
+    openCustomerGuide() {
+      wx.navigateTo({
+        url: '/packages/guides/customer-guide/customer-guide',
+        fail: () => wx.showToast({ title: '暂时无法打开服务向导', icon: 'none' }),
+      });
     },
 
     scanServiceOrInviteCode() {

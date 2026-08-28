@@ -114,5 +114,7 @@ test('staff APIs preserve the initial-password and forced-change contracts', () 
   assert.match(resetRoute, /staffId === actorId/);
   assert.match(resetRoute, /withTenantTransaction\(\s*context\.enterpriseId!/);
   assert.match(proxy, /password_change_required/);
-  assert.match(proxy, /\/api\/miniprogram\/account\/password/);
+  assert.match(proxy, /ADMIN_PASSWORD_CHANGE_API_PATHS/);
+  assert.doesNotMatch(proxy, /MINI_PROGRAM_PASSWORD_CHANGE_PATHS/);
+  assert.doesNotMatch(proxy, /audience:\s*'miniprogram'/);
 });

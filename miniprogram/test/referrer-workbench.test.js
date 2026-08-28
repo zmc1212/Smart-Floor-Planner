@@ -353,6 +353,9 @@ test('referrer workbench ships the Antigravity standalone asset and preserves th
 
   assert.match(wxml, /推广专属服务 · 获客与收益/);
   assert.match(wxml, /家客来 · 推广端/);
+  assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
+  assert.doesNotMatch(wxml, /brand-logo-pill/);
+  assert.doesNotMatch(wxml, />JK</);
   assert.doesNotMatch(wxml, /nav-actions/);
   assert.doesNotMatch(wxml, /nav-scan-icon/);
   assert.doesNotMatch(wxml, /nav-bell-icon/);

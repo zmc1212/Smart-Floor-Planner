@@ -16,6 +16,7 @@ import { customerProjectIndexToDto } from '@/lib/customer-project';
 import { parseAppointmentBounds } from '@/lib/lead-service-stage';
 import {
   buildStaffingGapItems,
+  indexWorkbenchRowsById,
   isAssignmentEligibleStaff,
   isMeasurerWorkbenchSurveyLead,
   selectMeasurerWorkbenchAppointments,
@@ -195,14 +196,14 @@ export async function loadMiniProgramBadgeCounts(input: {
     ]);
     const currentAppointmentRows = selectMeasurerWorkbenchAppointments(appointmentRows);
     const leadIds = currentAppointmentRows.map((item) => item.leadId);
-    const leadRows = leadIds.length ? await leads.findByIds(leadIds) : [];
-    const leadMap = new Map(leadRows.map((item) => [item.id, item]));
+    const leadRows = leadIds.length ? await leads.findByIds(leadIds, { includeArchived: true }) : [];
+    const leadMap = indexWorkbenchRowsById(leadRows);
     const confirmedRows = currentAppointmentRows
       .filter((item) => item.status === 'confirmed')
-      .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(item.leadId), item));
+      .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(String(item.leadId)), item));
     const expiredRows = currentAppointmentRows
       .filter((item) => item.status === 'expired')
-      .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(item.leadId), item));
+      .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(leadMap.get(String(item.leadId)), item));
     const measurerTodayCount = confirmedRows.filter((item) => isAppointmentOnLocalDate(item.timeRange, today)).length;
     const expiredCount = expiredRows.length;
     const occupiedIds = new Set([

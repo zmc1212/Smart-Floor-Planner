@@ -164,6 +164,7 @@ function buildMeasurerLine(measurerName, formalFloorPlan) {
 
 function shouldShowBookingPanel(project) {
   if (!project) return false;
+  if (project.terminationType === 'referrer_withdrawn') return false;
   if (project.canRebook || project.canReschedule) return true;
   return Boolean(project.appointment && !project.formalFloorPlan);
 }
@@ -202,6 +203,9 @@ Page({
     heroSubtitle: '现场顾问与设计方案全记录',
     navSubtitle: '',
     serviceStageLabel: '',
+    terminationType: null,
+    terminationNote: '',
+    isTerminated: false,
     nextAction: '',
     canRebook: false,
     canReschedule: false,
@@ -219,6 +223,7 @@ Page({
     sitePhotoUploading: false,
     sitePhotoLimitReached: false,
     sitePhotoManagerOpen: false,
+    sitePhotoSheetOpen: false,
   },
 
   onLoad(query) {
@@ -274,6 +279,7 @@ Page({
       const featuredDelivery = buildFeaturedDelivery(publishedSchemes, project.featuredScheme);
       const canRebook = Boolean(project.canRebook);
       const canReschedule = Boolean(project.canReschedule);
+      const isTerminated = project.terminationType === 'referrer_withdrawn';
       const measurerName = project.measurerName || (appointment && appointment.measurerName) || '';
       const designerProof = resolvePublicProfessionalCopy(project.designer && project.designer.professionalProfile);
       const measurerProof = resolvePublicProfessionalCopy(
@@ -315,9 +321,12 @@ Page({
         heroSubtitle: '现场顾问与设计方案全记录',
         navSubtitle: project.navSubtitle || '',
         serviceStageLabel: project.serviceStageLabel || '',
+        terminationType: project.terminationType || null,
+        terminationNote: project.terminationNote || '',
+        isTerminated,
         nextAction: project.nextAction || '',
-        canRebook,
-        canReschedule,
+        canRebook: isTerminated ? false : canRebook,
+        canReschedule: isTerminated ? false : canReschedule,
         showBookingPanel: shouldShowBookingPanel({ ...project, formalFloorPlan, appointment, canRebook, canReschedule }),
         appointmentBadge: measurerName ? '已匹配家装现场顾问' : (project.serviceStageLabel || '服务准备中'),
         bookingHint: canRebook && !appointment
@@ -409,6 +418,7 @@ Page({
   },
 
   reschedule() {
+    if (this.data.isTerminated) return;
     const { appointment, leadId, canReschedule } = this.data;
     if (!appointment || !canReschedule) return;
     wx.navigateTo({
@@ -417,6 +427,7 @@ Page({
   },
 
   openAppointment() {
+    if (this.data.isTerminated) return;
     const { appointment, leadId } = this.data;
     if (!appointment || !leadId) return;
     wx.navigateTo({
@@ -425,6 +436,7 @@ Page({
   },
 
   bookAppointment() {
+    if (this.data.isTerminated) return;
     if (!this.data.leadId) return;
     if (this.data.appointment && !this.data.canRebook) return;
     wx.navigateTo({ url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}&mode=customer` });
@@ -448,7 +460,12 @@ Page({
     this.setData({ sitePhotoUploading: Boolean(event.detail && event.detail.uploading) });
   },
 
+  onSitePhotoSheetChange(event) {
+    this.setData({ sitePhotoSheetOpen: Boolean(event.detail && event.detail.open) });
+  },
+
   onSitePhotosChange(event) {
+    if (this.data.isTerminated) return;
     const photos = sitePhotos.mergePhotos(this.data.sitePhotos, event.detail || {});
     this.setData({
       sitePhotos: photos,
@@ -463,6 +480,7 @@ Page({
       return;
     }
     if (kind === 'site') {
+      if (this.data.isTerminated) return;
       this.setData({ sitePhotoManagerOpen: !this.data.sitePhotoManagerOpen });
       return;
     }
@@ -474,6 +492,7 @@ Page({
   noop() {},
 
   contactDesigner() {
+    if (this.data.isTerminated) return;
     const designer = this.data.designer;
     if (!hasDesignerContact(designer)) {
       wx.showToast({ title: '家装设计顾问联系方式暂未提供', icon: 'none' });
@@ -544,6 +563,7 @@ Page({
   },
 
   saveOrShareScheme() {
+    if (this.data.isTerminated) return;
     const delivery = this.data.featuredDelivery;
     if (!delivery || !delivery.imagePath) {
       wx.showToast({ title: '方案尚未发布', icon: 'none' });

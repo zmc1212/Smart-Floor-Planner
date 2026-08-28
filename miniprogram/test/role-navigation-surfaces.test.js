@@ -73,6 +73,7 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.doesNotMatch(design, /enterprise_admin/);
   assert.match(component, /getMenuButtonBoundingClientRect/);
   assert.match(component, /navigationRight/);
+  assert.match(componentTemplate, /min-height: \{\{navigationHeight\}\}px/);
   assert.match(componentTemplate, /padding-right: \{\{navigationRight\}\}px/);
   assert.match(styles, /margin:\s*0 -28rpx 20rpx/);
   assert.match(styles, /env\(safe-area-inset-bottom\)/);
@@ -81,7 +82,9 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(componentTemplate, /经营大盘/);
   assert.match(componentTemplate, /dashboardPeriod\.subtitle/);
   assert.match(componentTemplate, /需优先处理事项（异常监控）/);
-  assert.match(componentTemplate, /出示入驻码|activityCode\.label/);
+  assert.match(componentTemplate, /activityCode\.label/);
+  assert.match(componentTemplate, /joinCode\.label/);
+  assert.match(component, /openJoinCodes\(\)/);
   assert.match(component, /openQuickNav/);
   assert.match(component, /openEnterpriseException/);
   assert.match(component, /payload\.dashboard/);

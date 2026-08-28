@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getMiniAiPublicRequestUrl,
+  resolveMiniRecipePreviewUrl,
   verifyMiniAiAssetSignature,
   verifyMiniAiTaskResultSignature,
 } from '@/lib/ai/mini-ai-assets';
@@ -112,4 +113,26 @@ test('task-result signatures cannot be reused as asset signatures', () => {
     expires: Number(url.searchParams.get('expires')),
     signature: String(url.searchParams.get('signature')),
   }), false);
+});
+
+test('Mini recipe covers keep HTTPS source URLs and sign same-origin fallbacks', () => {
+  const request = new Request('http://192.168.10.111:3006/api/miniprogram/ai/recipes');
+  assert.equal(
+    resolveMiniRecipePreviewUrl({
+      request,
+      recipeId: '245',
+      enterpriseId: '1169',
+      previewUrl: 'https://roomi-1308701317.cos.ap-beijing.myqcloud.com/roomi-ai/cover.png',
+      localPreviewUrl: '/api/ai/creation/prompt-templates/245/preview',
+    }),
+    'https://roomi-1308701317.cos.ap-beijing.myqcloud.com/roomi-ai/cover.png',
+  );
+  const signed = resolveMiniRecipePreviewUrl({
+    request,
+    recipeId: '245',
+    enterpriseId: '1169',
+    previewUrl: '/api/ai/creation/prompt-templates/245/preview',
+    localPreviewUrl: '/api/ai/creation/prompt-templates/245/preview',
+  });
+  assert.match(String(signed), /\/api\/miniprogram\/ai\/recipes\/245\/preview/);
 });

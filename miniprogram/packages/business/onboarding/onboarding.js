@@ -42,7 +42,7 @@ function usableDisplayName(value) {
 }
 
 function isRecoveryCode(code) {
-  return ['code_rotated', 'code_disabled', 'code_expired', 'staff_enterprise_conflict', 'membership_limit_reached'].includes(code);
+  return ['code_rotated', 'code_disabled', 'code_expired', 'staff_enterprise_conflict', 'membership_limit_reached', 'referrer_protection_limit'].includes(code);
 }
 
 function navTitleFor(state) {
@@ -60,6 +60,9 @@ function onboardingErrorMessage(error) {
   }
   if (code === 'membership_limit_reached') {
     return '当前微信的推荐人企业数量已达上限，请先退出不再服务的企业。';
+  }
+  if (code === 'referrer_protection_limit') {
+    return '该企业已限制推广人同时服务其他企业的数量，暂时无法加入。';
   }
   if (code === 'display_name_required') {
     return '请填写真实姓名后再加入。';

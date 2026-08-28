@@ -59,9 +59,15 @@ test('enterprise appointments tab leaves the AI design shell', () => {
   assert.match(pageScript, /serviceStage === 'converted' \|\| serviceStage === 'closed'/);
   assert.match(pageScript, /statusLabel: serviceStage === 'converted' \? '已签约' : '已关闭'/);
   assert.match(pageScript, /openable: false/);
-  assert.match(pageScript, /!item\.openable/);
+  assert.match(pageScript, /!openable/);
   assert.match(pageTemplate, /item\.openable \? 'card-pressed' : ''/);
   assert.match(pageTemplate, /item\.showRescheduleCta/);
+  assert.match(pageScript, /isOverdueCoordination/);
+  assert.match(pageScript, /selectedKey === todayKey && isOverdueCoordination/);
+  assert.match(pageTemplate, /data-lead-id="\{\{item\.leadId\}\}"/);
+  assert.match(pageTemplate, /data-appointment-id="\{\{item\.appointmentId\}\}"/);
+  assert.match(pageTemplate, /data-openable="\{\{item\.openable\}\}"/);
+  assert.doesNotMatch(pageTemplate, /data-item="\{\{item\}\}"/);
   assert.match(pageScript, /appointment-detail\/appointment-detail/);
   assert.doesNotMatch(pageTemplate, /重新调度/);
   assert.match(navigation, /enterprise-appointments\/enterprise-appointments': 'enterprise\.appointments'/);
@@ -125,35 +131,157 @@ test('designer workbench prompts incomplete WeChat profile on every entry', () =
   assert.match(workbench, /_wechatProfilePromptShownThisVisit/);
 });
 
-test('role workbench identity nav omits scan and bell so the lockup can sit beside the capsule', () => {
+test('role workbench identity nav left-aligns brand and enterprise name inside the capsule row', () => {
   const template = source('components/role-workbench/role-workbench.wxml');
   const styles = source('components/role-workbench/role-workbench.less');
   const workbench = source('components/role-workbench/role-workbench.js');
+  const enterpriseNav = template.slice(
+    template.indexOf('class="identity-nav"'),
+    template.indexOf('class="role-hero-card enterprise-hero-card"')
+  );
   assert.match(template, /家客来 · \{\{role === 'designer' \? '家装设计顾问端'/);
+  assert.match(template, /家客来 · 经营端/);
+  assert.match(template, /min-height: \{\{navigationHeight\}\}px/);
   assert.match(template, /padding-right: \{\{navigationRight\}\}px/);
+  assert.doesNotMatch(template, /identity-brand-row" style="height: \{\{navigationHeight\}\}px;"/);
   assert.doesNotMatch(template, /identity-actions/);
   assert.doesNotMatch(template, /class="qr-btn"/);
   assert.doesNotMatch(template, /class="bell-btn"/);
-  assert.doesNotMatch(template, /mine-icons\/scan\.png/);
-  assert.doesNotMatch(template, /mine-icons\/bell\.png/);
+  assert.doesNotMatch(enterpriseNav, /mine-icons\/scan\.png/);
+  assert.doesNotMatch(enterpriseNav, /mine-icons\/bell\.png/);
   assert.match(template, /bindtap="openActivityCode"/);
   assert.match(template, /出示获客活动码/);
   assert.match(workbench, /openActivityCode\(\)/);
   assert.match(workbench, /openSecondary\(\)/);
+  assert.match(workbench, /function resolveStaffName/);
+  assert.match(workbench, /nickname \|\| info\.displayName \|\| info\.name/);
   assert.doesNotMatch(styles, /\.identity-actions/);
   assert.doesNotMatch(styles, /\.bell-btn/);
-  assert.match(styles, /\.identity-role-name\s*\{[\s\S]*flex-shrink:\s*0;/);
-  assert.match(styles, /\.identity-tag\s*\{[\s\S]*flex-shrink:\s*1;/);
+  assert.match(styles, /\.identity-nav\s*\{[\s\S]*align-items:\s*center;/);
+  assert.match(styles, /\.identity-nav\s*\{[\s\S]*justify-content:\s*flex-start;/);
+  assert.match(styles, /\.identity-nav\s*\{[\s\S]*overflow:\s*hidden;/);
+  assert.match(styles, /\.identity-nav\s*\{[\s\S]*margin:\s*0 -28rpx 20rpx;/);
+  assert.match(styles, /\.identity-brand-stack\s*\{[\s\S]*align-items:\s*flex-start;/);
+  assert.match(styles, /\.identity-brand-name\s*\{[\s\S]*font-size:\s*32rpx;/);
+  assert.match(styles, /\.identity-enterprise-name\s*\{[\s\S]*font-size:\s*22rpx;/);
+  assert.match(styles, /\.identity-enterprise-name\s*\{[\s\S]*text-align:\s*left;/);
+  assert.match(styles, /\.identity-enterprise-name\s*\{[\s\S]*white-space:\s*nowrap;/);
+  assert.doesNotMatch(styles, /\.identity-tag/);
+  assert.doesNotMatch(styles, /word-break:\s*break-all/);
 });
 
-test('role workbench identity tag shows the current enterprise name only', () => {
+test('role workbench shows enterprise name under the brand and staff name in the hero', () => {
   const template = source('components/role-workbench/role-workbench.wxml');
-  assert.match(template, /家客来 · \{\{role === 'designer' \? '家装设计顾问端'/);
-  assert.match(template, /wx:if="\{\{enterpriseName\}\}"[\s\S]*\{\{enterpriseName\}\}/);
+  const styles = source('components/role-workbench/role-workbench.less');
+  assert.match(template, /wx:if="\{\{enterpriseName\}\}"[\s\S]*identity-enterprise-name[\s\S]*\{\{enterpriseName\}\}/);
+  assert.match(template, /wx:if="\{\{staffName\}\}"[\s\S]*hero-staff-name[\s\S]*\{\{staffName\}\}/);
   assert.doesNotMatch(template, /staffName \+ ' · ' \+ enterpriseName/);
-  assert.doesNotMatch(template, /role === 'designer' \? '家装设计顾问'/);
   assert.doesNotMatch(template, /企业负责人/);
   assert.doesNotMatch(template, /专业服务/);
+  assert.match(styles, /\.identity-enterprise-name\s*\{[\s\S]*max-width:\s*calc\(100% - 50rpx\);/);
+  assert.match(styles, /\.hero-staff-name\s*\{[\s\S]*font-size:\s*24rpx;/);
+  assert.doesNotMatch(styles, /-webkit-line-clamp:\s*2;/);
+});
+
+test('enterprise owner hero prioritizes customer acquisition and separates onboarding', () => {
+  const template = source('components/role-workbench/role-workbench.wxml');
+  const workbench = source('components/role-workbench/role-workbench.js');
+  const styles = source('components/role-workbench/role-workbench.less');
+
+  assert.match(template, /enterprise-code-action-primary[\s\S]*activityCode\.label[\s\S]*activityCode\.detail/);
+  assert.match(template, /enterprise-code-action-secondary[\s\S]*joinCode\.label[\s\S]*joinCode\.detail/);
+  assert.match(template, /mine-icons\/scan\.png/);
+  assert.match(template, /operations-dashboard\/staff-onboarding\.png/);
+  assert.doesNotMatch(template, /enterprise-code-plus|leads-v4\/plus-white\.png/);
+  const joinIcon = fs.readFileSync(path.join(root, 'images/operations-dashboard/staff-onboarding.png'));
+  assert.ok(joinIcon.length < 50 * 1024);
+  assert.deepEqual([...joinIcon.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(joinIcon.includes(Buffer.from('tRNS')) || [4, 6].includes(joinIcon[25]));
+  assert.match(template, /aria-label="分享活动码，发给客户扫码留资"/);
+  assert.match(template, /aria-label="邀请员工或推荐人入驻"/);
+  assert.match(workbench, /normalizeEnterpriseCodeActions/);
+  assert.match(workbench, /rawActivity\.target === 'join-codes'/);
+  assert.match(workbench, /rawJoin = rawJoin \|\| rawActivity/);
+  assert.match(workbench, /label:\s*'分享活动码'/);
+  assert.match(workbench, /detail:\s*activity\.detail \|\| '发给客户 · 扫码留资'/);
+  assert.match(workbench, /label:\s*'邀请入驻'/);
+  assert.match(workbench, /detail:\s*rawJoin\.detail \|\| '员工 · 推荐人'/);
+  assert.match(styles, /\.enterprise-code-actions\s*\{[\s\S]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /\.enterprise-hero-card \.hero-top-row\s*\{[\s\S]*min-height:\s*114rpx/);
+  assert.match(styles, /\.enterprise-hero-card \.stats-pills-row\s*\{[\s\S]*margin-top:\s*12rpx/);
+  assert.match(styles, /\.enterprise-hero-mascot\s*\{[\s\S]*position:\s*absolute[\s\S]*width:\s*190rpx/);
+  assert.match(styles, /\.enterprise-code-action\s*\{[\s\S]*min-height:\s*136rpx/);
+  assert.match(styles, /\.enterprise-code-action-secondary\s*\{[\s\S]*background:\s*#ffffff/);
+  assert.match(styles, /\.enterprise-code-title\s*\{[\s\S]*font-size:\s*30rpx/);
+  assert.match(styles, /\.enterprise-code-detail\s*\{[\s\S]*font-size:\s*24rpx/);
+  assert.match(styles, /\.enterprise-code-icon\.join\s*\{[\s\S]*width:\s*72rpx/);
+  assert.match(styles, /@media \(max-width:\s*360px\)[\s\S]*\.enterprise-code-icon[\s\S]*width:\s*60rpx/);
+});
+
+test('enterprise owner operations dashboard restores the approved regular business loop', () => {
+  const template = source('components/role-workbench/role-workbench.wxml');
+  const workbench = source('components/role-workbench/role-workbench.js');
+  const styles = source('components/role-workbench/role-workbench.less');
+
+  assert.match(workbench, /normalizeEnterpriseDashboard/);
+  assert.match(workbench, /stageKeys = \['newLeads', 'completedSurveys', 'signedCount'\]/);
+  assert.match(workbench, /efficiencyKeys = \['schemeDelivery', 'signingRate'\]/);
+  assert.match(template, /operations-board-kicker[\s\S]*经营闭环/);
+  assert.match(template, /wx:for="\{\{dashboardStages\}\}"/);
+  assert.doesNotMatch(template, /operations-stage-progress|operations-stage-progress-line/);
+  assert.match(template, /wx:for="\{\{dashboardEfficiencies\}\}"/);
+  assert.match(template, /operations-dashboard\/chart\.png/);
+  assert.match(template, /operations-dashboard\/zap\.png/);
+  assert.match(template, /operations-dashboard\/enterprise-guide\.png/);
+  assert.match(template, /operations-dashboard\/lead-inbox\.png/);
+  assert.match(template, /operations-dashboard\/staff-load\.png/);
+  assert.match(template, /quick-nav-mascot \{\{item\.key === 'staffLoad' \? 'staff-load-mascot'/);
+  assert.match(template, /operations-dashboard\/scheme-delivery-rate\.png/);
+  assert.match(template, /operations-dashboard\/signing-rate\.png/);
+  assert.match(workbench, /已发布方案/);
+  assert.match(template, /enterprise-priority-tray/);
+  assert.match(template, /priority-empty-pin[\s\S]*leads-v4\/map-pin\.png[\s\S]*\{\{emptyCopy\}\}/);
+  assert.equal((template.match(/<text class="section-icon">📊<\/text>/g) || []).length, 1);
+  assert.doesNotMatch(template, /<text class="section-icon">⚡<\/text>/);
+  assert.match(styles, /\.quick-nav-mascot\.staff-load-mascot\s*\{[\s\S]*width:\s*120rpx/);
+  assert.match(styles, /\.enterprise-operations-board\s*\{[\s\S]*min-height:\s*404rpx/);
+  assert.match(styles, /\.operations-stage-grid\s*\{[\s\S]*min-height:\s*174rpx[\s\S]*gap:\s*44rpx/);
+  assert.match(styles, /\.operations-stage:not\(:last-child\)::after\s*\{[\s\S]*width:\s*44rpx/);
+  assert.match(styles, /\.operations-stage\s*\{[\s\S]*min-height:\s*168rpx[\s\S]*padding:\s*18rpx 18rpx 14rpx/);
+  assert.match(styles, /\.operations-stage-number\s*\{[\s\S]*width:\s*34rpx/);
+  assert.match(styles, /\.operations-stage-label\s*\{[\s\S]*font-size:\s*26rpx/);
+  assert.match(styles, /\.operations-board-kicker text\s*\{[\s\S]*font-size:\s*26rpx/);
+  assert.match(styles, /\.operations-stage\s*\{[\s\S]*border:\s*1rpx solid #e4eee8/);
+  assert.doesNotMatch(styles, /operations-board-art|operations-route-node|operations-stage-progress|operations-stage-completedSurveys::before/);
+  assert.match(styles, /\.operations-efficiency-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2/);
+  assert.match(styles, /\.operations-efficiency-grid\s*\{[\s\S]*gap:\s*20rpx/);
+  assert.match(styles, /\.operations-efficiency-card\s*\{[\s\S]*padding:\s*18rpx 20rpx/);
+  assert.match(styles, /\.operations-efficiency-icon\s*\{[\s\S]*width:\s*72rpx/);
+  assert.match(workbench, /legacyClosureDetail[\s\S]*方案同步中/);
+  assert.match(styles, /\.enterprise-priority-tray\s*\{[\s\S]*background:\s*rgba\(242, 251, 246, 0\.92\)/);
+});
+
+test('enterprise owner V3 cutouts are standalone optimized transparent PNGs', () => {
+  const assets = [
+    'images/operations-dashboard/enterprise-guide.png',
+    'images/operations-dashboard/lead-inbox.png',
+    'images/operations-dashboard/staff-load.png',
+    'images/operations-dashboard/staff-onboarding.png',
+    'images/operations-dashboard/scheme-delivery-rate.png',
+    'images/operations-dashboard/signing-rate.png',
+  ];
+  for (const asset of assets) {
+    const file = path.join(root, asset);
+    assert.ok(fs.existsSync(file), `${asset} should be packaged`);
+    const bytes = fs.readFileSync(file);
+    assert.ok(bytes.length <= 300 * 1024, `${asset} exceeds the 300KB asset budget`);
+    assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(bytes.includes(Buffer.from('tRNS')) || [4, 6].includes(bytes[25]), `${asset} must preserve transparency`);
+  }
+  const repoFile = (relative) => fs.readFileSync(path.join(root, '..', relative), 'utf8');
+  assert.match(repoFile('docs/icon-sources/mine/README.md'), /enterprise-guide\.png[\s\S]*ImageGen/);
+  assert.match(repoFile('docs/miniprogram-system-modules.md'), /enterprise-owner-activity-code-entry-v3[\s\S]*300KB/);
+  assert.match(repoFile('docs/miniprogram-system-modules.zh-CN.md'), /enterprise-owner-activity-code-entry-v3[\s\S]*300KB/);
 });
 
 test('custom period sheet keeps cancel and confirm above the custom TabBar', () => {

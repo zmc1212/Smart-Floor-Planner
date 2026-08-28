@@ -1,0 +1,418 @@
+<template>
+  <style>
+    @font-face{font-family:"Source Han Sans";font-weight:400;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Regular.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:500;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Medium.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Bold.otf") format("opentype");}
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      color: #1f2937;
+      font-family: "Source Han Sans", sans-serif;
+    }
+
+    [id="06-owner-ground"] {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+    }
+
+    [id="06-owner-scene"] {
+      position: absolute;
+      inset: 0;
+    }
+
+    [id="06-owner-stack"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 1920px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 16px 32px 28px;
+      box-sizing: border-box;
+      gap: 16px;
+    }
+    [id="06-owner-chrome"] {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+      width: 100%;
+      min-height: 148px;
+      position: relative;
+      z-index: 2;
+    }
+    [id="06-owner-eyebrow"] {
+      position: relative;
+      padding: 12px 28px;
+      border-radius: 100px;
+      background: rgba(0, 195, 101, 0.08);
+      color: #00c365;
+      font-size: 28px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      line-height: 1;
+      opacity: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [id="06-owner-headline"] {
+      position: relative;
+      margin: 0;
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: #1f2937;
+      opacity: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [id="06-owner-callout-slot"] {
+      position: relative;
+      width: 100%;
+      height: 44px;
+    }
+
+    [id^="06-owner-callout-"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      padding: 8px 22px;
+      border-radius: 100px;
+      background: rgba(0, 195, 101, 0.08);
+      border: 1.5px solid rgba(0, 195, 101, 0.2);
+      color: #00c365;
+      font-size: 24px;
+      font-weight: 500;
+      line-height: 1;
+      opacity: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [id="06-owner-plate-slot"] {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      overflow: hidden;
+      container-type: size;
+      position: relative;
+    }
+
+    [id="06-owner-plate"] {
+      position: relative;
+      height: min(100cqh, calc(100cqw * 1844 / 853));
+      width: min(100cqw, calc(100cqh * 853 / 1844));
+      max-width: 100%;
+      max-height: 100%;
+      border: 1.5px solid rgba(0, 195, 101, 0.2);
+      background: rgba(0, 195, 101, 0.04);
+      border-radius: 14px;
+      overflow: hidden;
+      box-sizing: border-box;
+      opacity: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [id="06-owner-zoom-outer"] {
+      position: absolute;
+      inset: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [id="06-owner-zoom-inner"] {
+      position: absolute;
+      inset: 0;
+      will-change: transform;
+    }
+
+    [id="06-owner-world"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    [id="06-owner-shot"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+      object-position: 50% 0%;
+    }
+
+    [id^="06-owner-target-"] {
+      position: absolute;
+      box-sizing: border-box;
+      border-radius: 10px;
+      border: 2px solid #00c365;
+      background: rgba(0, 195, 101, 0.12);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    [id="06-owner-target-capsules"] {
+      left: 10%;
+      top: 20.4%;
+      width: 78%;
+      height: 5.8%;
+    }
+
+    [id="06-owner-target-share"] {
+      left: 8%;
+      top: 26.2%;
+      width: 41%;
+      height: 10%;
+    }
+
+    [id="06-owner-target-invite"] {
+      left: 51%;
+      top: 26.2%;
+      width: 41%;
+      height: 10%;
+    }
+
+    [id="06-owner-target-priority"] {
+      left: 10%;
+      top: 81%;
+      width: 72%;
+      height: 8.2%;
+    }
+
+    [id="06-owner-lockup"] {
+      position: absolute;
+      left: 64px;
+      right: 64px;
+      bottom: 24px;
+      z-index: 4;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      opacity: 0;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    [id="06-owner-logo"] {
+      width: 56px;
+      height: 56px;
+      display: block;
+    }
+
+    [id="06-owner-lockup-line"] {
+      margin: 0;
+      text-align: center;
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -0.02em;
+      color: #1f2937;
+    }
+  </style>
+
+  <div data-hf-id="hf-j1pd" id="root" data-composition-id="06-owner" data-width="1080" data-height="1920" data-duration="13.488">
+    <div data-hf-id="hf-6dqi" class="clip" id="06-owner-ground" data-start="0" data-duration="13.488" data-track-index="0"></div>
+
+    <div data-hf-id="hf-mpd0" class="clip" id="06-owner-scene" data-start="0" data-duration="13.488" data-track-index="1">
+      <div data-hf-id="hf-st06" id="06-owner-stack">
+      <div data-hf-id="hf-ch06" id="06-owner-chrome">
+      <div data-hf-id="hf-m7ec" id="06-owner-eyebrow">企业负责人 · 经营端</div>
+      <h1 data-hf-id="hf-5r34" id="06-owner-headline">看全店，先处理异常</h1>
+      <div data-hf-id="hf-cs06" id="06-owner-callout-slot">
+      <div data-hf-id="hf-jlwm" id="06-owner-callout-1">待派单</div>
+      <div data-hf-id="hf-90se" id="06-owner-callout-2">分享活动码</div>
+      <div data-hf-id="hf-9wl3" id="06-owner-callout-3">邀请入驻</div>
+      <div data-hf-id="hf-6uhf" id="06-owner-callout-4">异常优先</div>
+      </div>
+      </div>
+      <div data-hf-id="hf-ps06" id="06-owner-plate-slot">
+      <div data-hf-id="hf-5tym" id="06-owner-plate">
+        <div data-hf-id="hf-6uh9" id="06-owner-zoom-outer">
+          <div data-hf-id="hf-5wx0" id="06-owner-zoom-inner">
+            <div data-hf-id="hf-xiub" id="06-owner-world" data-layout-allow-overflow="">
+              <img data-hf-id="hf-v2qu" id="06-owner-shot" src="assets/enterprise-owner-home.png" alt="" width="694" height="1500">
+              <div data-hf-id="hf-csji" id="06-owner-target-capsules"></div>
+              <div data-hf-id="hf-1zvn" id="06-owner-target-share"></div>
+              <div data-hf-id="hf-x3ht" id="06-owner-target-invite"></div>
+              <div data-hf-id="hf-bz36" id="06-owner-target-priority"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      <div data-hf-id="hf-j1vk" id="06-owner-lockup">
+        <img data-hf-id="hf-76ur" id="06-owner-logo" src="assets/brand-logo.png" alt="" width="56" height="56">
+        <p data-hf-id="hf-nxdj" id="06-owner-lockup-line">一条链，五种身份，各做各的事</p>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__timelines = window.__timelines || {};
+
+    (async function setupOwnerFrame() {
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+
+      const plate = document.getElementById("06-owner-plate");
+      const outer = document.getElementById("06-owner-zoom-outer");
+      const inner = document.getElementById("06-owner-zoom-inner");
+      const plateRect = plate.getBoundingClientRect();
+      const PLATE_W = Math.max(plateRect.width, 1);
+      const PLATE_H = Math.max(plateRect.height, 1);
+      const WORLD_W = PLATE_W;
+      const WORLD_H = PLATE_H;
+
+      function fallbackFromPercent(leftPct, topPct, widthPct, heightPct) {
+        const w = WORLD_W * widthPct;
+        const h = WORLD_H * heightPct;
+        const cx = WORLD_W * (leftPct + widthPct / 2);
+        const cy = WORLD_H * (topPct + heightPct / 2);
+        return {
+          offsetX: cx - PLATE_W / 2,
+          offsetY: cy - PLATE_H / 2,
+          width: w,
+          height: h,
+        };
+      }
+
+      function measureTarget(el, fallback) {
+        const vr = plate.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        if (r.width > 1 && vr.width > 1) {
+          return {
+            offsetX: r.left + r.width / 2 - (vr.left + vr.width / 2),
+            offsetY: r.top + r.height / 2 - (vr.top + vr.height / 2),
+            width: r.width,
+            height: r.height,
+          };
+        }
+        return fallback;
+      }
+
+      function capScale(desired, measured) {
+        const maxScale = Math.min(
+          (0.88 * PLATE_W) / Math.max(measured.width, 1),
+          (0.88 * PLATE_H) / Math.max(measured.height, 1),
+        );
+        return Math.min(desired, Math.max(1, maxScale));
+      }
+
+      const share = measureTarget(
+        document.getElementById("06-owner-target-share"),
+        fallbackFromPercent(0.08, 0.262, 0.41, 0.1),
+      );
+      const invite = measureTarget(
+        document.getElementById("06-owner-target-invite"),
+        fallbackFromPercent(0.51, 0.262, 0.41, 0.1),
+      );
+      const priority = measureTarget(
+        document.getElementById("06-owner-target-priority"),
+        fallbackFromPercent(0.1, 0.81, 0.72, 0.082),
+      );
+
+      const shareS = capScale(2.15, share);
+      const inviteS = capScale(2.15, invite);
+      const priorityS = capScale(1.55, priority);
+
+      const shareX = -share.offsetX;
+      const shareY = -share.offsetY;
+      const inviteX = -invite.offsetX;
+      const inviteY = -invite.offsetY;
+      const priorityX = -priority.offsetX;
+      const priorityY = -priority.offsetY;
+
+      const tl = gsap.timeline({ paused: true });
+
+      function popIn(el, at, dur, yRise) {
+        tl.fromTo(
+          el,
+          { scale: 0, opacity: 0, y: yRise },
+          { scale: 1, opacity: 1, y: 0, duration: dur, ease: "power3.out" },
+          at,
+        );
+      }
+
+      function fadeTo(el, at, dur, fromOp, toOp) {
+        tl.fromTo(
+          el,
+          { opacity: fromOp },
+          { opacity: toOp, duration: dur, ease: "power3.out", immediateRender: false },
+          at,
+        );
+      }
+
+      function zoomTo(at, dur, fromScale, toScale, fromX, toX, fromY, toY) {
+        tl.fromTo(
+          outer,
+          { scale: fromScale },
+          { scale: toScale, duration: dur, ease: "power3.inOut", immediateRender: false },
+          at,
+        );
+        tl.fromTo(
+          inner,
+          { x: fromX, y: fromY },
+          { x: toX, y: toY, duration: dur, ease: "power3.inOut", immediateRender: false },
+          at,
+        );
+      }
+
+      popIn(document.getElementById("06-owner-eyebrow"), 0.0, 0.48, 12);
+      popIn(document.getElementById("06-owner-headline"), 0.08, 0.5, 16);
+      popIn(plate, 0.0, 0.5, 24);
+      popIn(document.getElementById("06-owner-callout-1"), 0.22, 0.42, 10);
+
+      fadeTo(document.getElementById("06-owner-target-capsules"), 0.4, 0.35, 0, 1);
+      fadeTo(document.getElementById("06-owner-target-capsules"), 2.35, 0.25, 1, 0);
+
+      fadeTo(document.getElementById("06-owner-callout-1"), 2.45, 0.2, 1, 0);
+      popIn(document.getElementById("06-owner-callout-2"), 2.6, 0.42, 10);
+      fadeTo(document.getElementById("06-owner-target-share"), 2.6, 0.3, 0, 1);
+      zoomTo(2.6, 1.15, 1, shareS, 0, shareX, 0, shareY);
+
+      fadeTo(document.getElementById("06-owner-callout-2"), 4.7, 0.18, 1, 0);
+      fadeTo(document.getElementById("06-owner-target-share"), 4.7, 0.18, 1, 0);
+      popIn(document.getElementById("06-owner-callout-3"), 4.85, 0.42, 10);
+      fadeTo(document.getElementById("06-owner-target-invite"), 4.85, 0.3, 0, 1);
+      zoomTo(4.85, 1.15, shareS, inviteS, shareX, inviteX, shareY, inviteY);
+
+      fadeTo(document.getElementById("06-owner-callout-3"), 6.85, 0.18, 1, 0);
+      fadeTo(document.getElementById("06-owner-target-invite"), 6.85, 0.18, 1, 0);
+      popIn(document.getElementById("06-owner-callout-4"), 7.0, 0.42, 10);
+      fadeTo(document.getElementById("06-owner-target-priority"), 7.0, 0.3, 0, 1);
+      zoomTo(7.0, 1.15, inviteS, priorityS, inviteX, priorityX, inviteY, priorityY);
+
+      fadeTo(document.getElementById("06-owner-callout-4"), 9.05, 0.22, 1, 0);
+      fadeTo(document.getElementById("06-owner-target-priority"), 9.05, 0.22, 1, 0);
+      zoomTo(9.2, 1.2, priorityS, 1, priorityX, 0, priorityY, 0);
+
+      popIn(document.getElementById("06-owner-lockup"), 9.32, 0.55, 12);
+
+      fadeTo(plate, 12.15, 0.9, 1, 0.82);
+      fadeTo(document.getElementById("06-owner-headline"), 12.15, 0.9, 1, 0.72);
+
+      window.__timelines["06-owner"] = tl;
+    })();
+  </script>
+</template>

@@ -540,6 +540,9 @@ export class LeadRepository {
         code: 'LEAD_ARCHIVED',
       });
     }
+    if (current[0] && normalizeLeadStatus(current[0].status) === 'closed') {
+      throw Object.assign(new Error('该客户线索已终止，无法继续推进'), { status: 409, code: 'LEAD_TERMINATED' });
+    }
     if (current[0] && input.status !== undefined) {
       const currentStatus = normalizeLeadStatus(current[0].status);
       const nextStatus = normalizeLeadStatus(input.status);
@@ -604,6 +607,9 @@ export class LeadRepository {
         status: 409,
         code: 'LEAD_ARCHIVED',
       });
+    }
+    if (normalizeLeadStatus(lead[0].status) === 'closed') {
+      throw Object.assign(new Error('该客户线索已终止，无法继续推进'), { status: 409, code: 'LEAD_TERMINATED' });
     }
     if (lead[0].enterpriseId !== plan[0].enterpriseId) {
       throw new Error('Lead and floor plan belong to different enterprises');

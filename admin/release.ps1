@@ -9,7 +9,6 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $releaseRoot = Join-Path $scriptDir 'release'
 $packageDir = Join-Path $releaseRoot 'sfp-admin-release'
 $packageZip = Join-Path $releaseRoot 'sfp-admin-release.zip'
-$pushSucceeded = $false
 
 function New-ForwardSlashZip {
   param(
@@ -68,17 +67,18 @@ try {
   & docker build --no-cache -t $imageName .
   if ($LASTEXITCODE -ne 0) { throw "Docker image build failed with exit code $LASTEXITCODE." }
 
-  Write-Host '[2/5] Pushing the image to Docker Hub...'
-  & docker push $imageName
-  if ($LASTEXITCODE -eq 0) {
-    $pushSucceeded = $true
-    Write-Host '[OK] Docker Hub push completed.'
-  } else {
-    Write-Warning 'Docker Hub push failed. The local offline package will still be created.'
-    Write-Warning 'Check docker login status and network access if the server should pull from Docker Hub.'
-  }
+  # Docker Hub push is skipped. Current production deploy uploads the ZIP and
+  # loads sfp-admin.tar on the server. Uncomment to restore Hub publishing.
+  # Write-Host '[SKIP] Pushing the image to Docker Hub...'
+  # & docker push $imageName
+  # if ($LASTEXITCODE -eq 0) {
+  #   Write-Host '[OK] Docker Hub push completed.'
+  # } else {
+  #   Write-Warning 'Docker Hub push failed. The local offline package will still be created.'
+  #   Write-Warning 'Check docker login status and network access if the server should pull from Docker Hub.'
+  # }
 
-  Write-Host '[3/5] Preparing the offline deployment package...'
+  Write-Host '[2/4] Preparing the offline deployment package...'
   Remove-Item -LiteralPath $packageDir -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -LiteralPath $packageZip -Force -ErrorAction SilentlyContinue
   New-Item -ItemType Directory -Path (Join-Path $packageDir 'docker\postgres\init') -Force | Out-Null
@@ -112,7 +112,7 @@ the PostgreSQL migration and admin service. Do not run docker compose down -v
 unless deleting the PostgreSQL data volume is intentional.
 '@ | Set-Content -LiteralPath (Join-Path $packageDir 'README.txt') -Encoding utf8
 
-  Write-Host '[4/5] Exporting the Docker image...'
+  Write-Host '[3/4] Exporting the Docker image...'
   & docker save --output (Join-Path $packageDir 'sfp-admin.tar') $imageName
   if ($LASTEXITCODE -ne 0) { throw "Docker image export failed with exit code $LASTEXITCODE." }
 
@@ -129,7 +129,7 @@ unless deleting the PostgreSQL data volume is intentional.
     "$tarHash  sfp-admin.tar"
   ) | Set-Content -LiteralPath (Join-Path $packageDir 'SHA256SUMS') -Encoding ascii
 
-  Write-Host '[5/5] Creating the ZIP release package...'
+  Write-Host '[4/4] Creating the ZIP release package...'
   New-ForwardSlashZip -SourceDir $packageDir -ZipPath $packageZip
 
   Write-Host ''
@@ -139,11 +139,7 @@ unless deleting the PostgreSQL data volume is intentional.
   Write-Host "[INFO] Image ID: $imageId"
   Write-Host "[INFO] sfp-admin.tar SHA-256: $tarHash"
   Write-Host '[INFO] Included local .env.production in the package.'
-  if ($pushSucceeded) {
-    Write-Host '[SUCCESS] Docker Hub image updated: zmc1212/sfp-admin:latest'
-  } else {
-    Write-Host '[WARNING] Docker Hub image was not updated; use the included sfp-admin.tar on the server.'
-  }
+  Write-Host '[INFO] Docker Hub push skipped; deploy with the included sfp-admin.tar.'
   Write-Host ''
   Write-Host 'First time: upload auto_deploy.sh next to the ZIP, then chmod +x auto_deploy.sh'
   Write-Host 'Every release: upload the ZIP and run ./auto_deploy.sh'

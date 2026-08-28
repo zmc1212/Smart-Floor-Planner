@@ -286,11 +286,23 @@ button.secondary-btn[disabled] {
 
 .scan-item {
   display: flex;
-  align-items: center;
-  gap: 16rpx;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12rpx;
   padding: 20rpx;
   border-radius: 16rpx;
   background: #f3f7f5;
+}
+
+.scan-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.scan-sn {
+  height: 72rpx;
+  background: #fff;
 }
 
 .scan-main {
@@ -377,6 +389,14 @@ button.secondary-btn[disabled] {
   font-weight: 700;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   margin-bottom: 6rpx;
+}
+
+.device-sn {
+  display: block;
+  font-size: 22rpx;
+  color: #2c4235;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin-bottom: 4rpx;
 }
 
 .device-enterprise {

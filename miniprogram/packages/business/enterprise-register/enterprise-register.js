@@ -4,6 +4,8 @@ const {
   getRoleLanding,
   navigateToRoleLanding,
   roleForIdentity,
+  shouldLeaveScanLanding,
+  currentEnterScene,
   leaveScanLanding: exitScanLanding
 } = require('../../../utils/identity-navigation.js');
 
@@ -86,6 +88,14 @@ function isWorkbenchIdentity(identity) {
   return WORKBENCH_ROLES.has(roleForIdentity(identity));
 }
 
+function currentScanScene() {
+  const app = typeof getApp === 'function' ? getApp() : null;
+  const fallback = app && app.globalData && app.globalData.launchOptions
+    ? app.globalData.launchOptions.scene
+    : undefined;
+  return currentEnterScene(fallback);
+}
+
 function leaveRegistrationTarget(identity) {
   if (isWorkbenchIdentity(identity)) {
     return {
@@ -157,12 +167,47 @@ function applyFailure(page, error) {
   });
 }
 
-function formFieldsReady(data) {
-  return Boolean(
-    String(data.enterpriseName || '').trim() &&
-      String(data.creditCode || '').trim() &&
-      String(data.contactName || '').trim()
+const REQUIRED_FORM_FIELDS = [
+  { key: 'enterpriseName', label: '企业全称' },
+  { key: 'creditCode', label: '统一社会信用代码' },
+  { key: 'contactName', label: '联系人姓名' }
+];
+
+function missingFormFields(data) {
+  return REQUIRED_FORM_FIELDS.filter(
+    (field) => !String((data && data[field.key]) || '').trim()
   );
+}
+
+function missingHintFrom(fields) {
+  if (!fields.length) return '';
+  return `还需填写：${fields.map((field) => field.label).join('、')}`;
+}
+
+function emptyFieldErrors() {
+  return { enterpriseName: '', creditCode: '', contactName: '' };
+}
+
+function fieldErrorsFrom(fields) {
+  const missingKeys = new Set(fields.map((field) => field.key));
+  return REQUIRED_FORM_FIELDS.reduce((errors, field) => {
+    errors[field.key] = missingKeys.has(field.key) ? `请填写${field.label}` : '';
+    return errors;
+  }, emptyFieldErrors());
+}
+
+function formFeedback(data, options) {
+  const missing = missingFormFields(data);
+  const showFieldErrors = Boolean(options && options.showFieldErrors);
+  return {
+    canSubmit: missing.length === 0,
+    missingHint: missingHintFrom(missing),
+    fieldErrors: showFieldErrors ? fieldErrorsFrom(missing) : emptyFieldErrors()
+  };
+}
+
+function formFieldsReady(data) {
+  return missingFormFields(data).length === 0;
 }
 
 function formReady(data) {
@@ -181,9 +226,14 @@ Page({
     enterpriseName: '',
     creditCode: '',
     contactName: '',
+    contactPhone: '',
     contactEmail: '',
     authorizedPhone: '',
+    phoneError: '',
     canSubmit: false,
+    missingHint: missingHintFrom(missingFormFields({})),
+    showFieldErrors: false,
+    fieldErrors: emptyFieldErrors(),
     submitting: false,
     errorMessage: ''
   },
@@ -191,12 +241,17 @@ Page({
   onLoad(options) {
     const registrationToken = safeToken(options.token || options.scene);
     this.setData({ ...navigationMetrics(), registrationToken });
-    if (this.leaveIfWorkbenchSignedIn()) return;
+    if (this.leaveIfStickyScanReopen()) return;
     this.resolveRegistrationCode();
   },
 
-  onShow() {
-    this.leaveIfWorkbenchSignedIn();
+  leaveIfStickyScanReopen() {
+    const identity = currentSignedIdentity();
+    if (!shouldLeaveScanLanding(REGISTER_ROUTE, identity, currentScanScene())) {
+      return false;
+    }
+    exitScanLanding(identity);
+    return true;
   },
 
   leaveIfWorkbenchSignedIn() {
@@ -248,7 +303,8 @@ Page({
       this.setData({
         pageState: 'ready',
         navTitle: navTitleFor('ready'),
-        platformLabel: String(response.data.displayName || response.data.platformLabel || '家客来企业入驻').trim()
+        platformLabel: String(response.data.displayName || response.data.platformLabel || '家客来企业入驻').trim(),
+        ...formFeedback(this.data, { showFieldErrors: this.data.showFieldErrors })
       });
     } catch (error) {
       applyFailure(this, error);
@@ -259,8 +315,27 @@ Page({
     const next = { ...this.data, ...patch };
     this.setData({
       ...patch,
-      canSubmit: formFieldsReady(next)
+      ...formFeedback(next, { showFieldErrors: next.showFieldErrors })
     });
+  },
+
+  revealMissingFields() {
+    const missing = missingFormFields(this.data);
+    const first = missing[0];
+    this.setData({
+      showFieldErrors: true,
+      ...formFeedback(this.data, { showFieldErrors: true })
+    });
+    wx.showToast({
+      title: first ? `请填写${first.label}` : '请填写完整企业资料',
+      icon: 'none'
+    });
+    return missing;
+  },
+
+  onIncompleteSubmit() {
+    if (this.data.pageState !== 'ready' || this.data.submitting) return;
+    this.revealMissingFields();
   },
 
   onEnterpriseNameInput(event) {
@@ -281,12 +356,28 @@ Page({
     });
   },
 
+  onContactPhoneInput(event) {
+    const contactPhone = String((event.detail && event.detail.value) || '')
+      .replace(/\D/g, '')
+      .slice(0, 11);
+    const authorizedPhone = String(this.data.authorizedPhone || '').trim();
+    this.setData({
+      contactPhone,
+      authorizedPhone: authorizedPhone === contactPhone ? authorizedPhone : '',
+      phoneError: ''
+    });
+  },
+
   onContactEmailInput(event) {
     this.setData({ contactEmail: String((event.detail && event.detail.value) || '').slice(0, 80) });
   },
 
   async onGetPhoneNumber(event) {
-    if (this.data.pageState !== 'ready' || this.data.submitting || !this.data.canSubmit) return;
+    if (this.data.pageState !== 'ready' || this.data.submitting) return;
+    if (!this.data.canSubmit) {
+      this.revealMissingFields();
+      return;
+    }
     if (!event.detail || event.detail.errMsg !== 'getPhoneNumber:ok' || !event.detail.code) {
       wx.showToast({ title: '需要授权手机号才能提交开户', icon: 'none' });
       return;
@@ -297,6 +388,16 @@ Page({
       const phone = String((login && login.user && login.user.phone) || '').trim();
       if (!/^1[3-9]\d{9}$/.test(phone)) {
         throw Object.assign(new Error('未获取到有效手机号，请重试授权'), { code: 'VALIDATION' });
+      }
+      const enteredPhone = String(this.data.contactPhone || '').trim();
+      if (enteredPhone && enteredPhone !== phone) {
+        this.setData({
+          submitting: false,
+          authorizedPhone: '',
+          phoneError: '手动填写的手机号需与微信授权手机号一致，请修改后重试'
+        });
+        wx.showToast({ title: '手机号与微信授权号码不一致', icon: 'none' });
+        return;
       }
       const authorized = applyAuthorizedIdentity(this, login && login.user);
       if (authorized.leave) {
@@ -312,8 +413,13 @@ Page({
           .slice(0, 30);
       this.setData({
         authorizedPhone: phone,
+        contactPhone: enteredPhone || phone,
+        phoneError: '',
         contactName,
-        canSubmit: formFieldsReady({ ...this.data, contactName })
+        ...formFeedback(
+          { ...this.data, contactName },
+          { showFieldErrors: this.data.showFieldErrors }
+        )
       });
       await this.submitRegistration();
     } catch (error) {
@@ -322,9 +428,13 @@ Page({
   },
 
   async onSubmit() {
-    if (this.data.pageState !== 'ready' || this.data.submitting || !this.data.canSubmit) return;
+    if (this.data.pageState !== 'ready' || this.data.submitting) return;
+    if (!this.data.canSubmit) {
+      this.revealMissingFields();
+      return;
+    }
     if (!this.data.authorizedPhone) {
-      wx.showToast({ title: '请先授权手机号', icon: 'none' });
+      wx.showToast({ title: '请点击“授权手机号并提交”完成验证', icon: 'none' });
       return;
     }
     await this.submitRegistration();
@@ -333,7 +443,7 @@ Page({
   async submitRegistration() {
     if (!formReady(this.data)) {
       this.setData({ submitting: false });
-      wx.showToast({ title: '请填写完整企业资料', icon: 'none' });
+      this.revealMissingFields();
       return;
     }
     this.setData({ submitting: true, pageState: 'submitting', errorMessage: '' });
@@ -344,7 +454,7 @@ Page({
         code: String(this.data.creditCode).trim(),
         contactPerson: {
           name: String(this.data.contactName).trim(),
-          phone: String(this.data.authorizedPhone).trim(),
+          phone: String(this.data.contactPhone || this.data.authorizedPhone).trim(),
           email: String(this.data.contactEmail || '').trim()
         }
       });
@@ -378,6 +488,8 @@ Page({
 module.exports = {
   safeToken,
   isRecoveryCode,
+  missingFormFields,
+  formFeedback,
   formFieldsReady,
   formReady,
   applyFailure,

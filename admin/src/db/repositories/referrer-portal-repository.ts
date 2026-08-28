@@ -12,6 +12,7 @@ import {
 } from '@/db/schema';
 import { resolveLeadServiceStage, selectOperationalAppointment } from '@/lib/lead-service-stage';
 import type { PostgresTransaction } from '@/db/transaction';
+import { LeadLifecycleRepository } from '@/db/repositories/lead-lifecycle-repository';
 
 type ReferrerMembershipScope = {
   membershipId: bigint;
@@ -21,6 +22,10 @@ type ReferrerMembershipScope = {
 
 function maskedCustomerLabel(leadId: bigint) {
   return `服务客户 #${leadId.toString().slice(-4).padStart(4, '0')}`;
+}
+
+function fallbackRecordCode(leadId: bigint) {
+  return `R-${leadId.toString().slice(-8).padStart(8, '0')}`;
 }
 
 export class ReferrerPortalRepository {
@@ -58,6 +63,12 @@ export class ReferrerPortalRepository {
         primaryFloorPlanId: leads.primaryFloorPlanId,
         convertedAt: leads.convertedAt,
         updatedAt: leads.updatedAt,
+        createdAt: leads.createdAt,
+        referrerRecordCode: leads.referrerRecordCode,
+        terminationType: leads.terminationType,
+        terminatedAt: leads.terminatedAt,
+        terminationNote: leads.terminationNote,
+        terminationPreviousStatus: leads.terminationPreviousStatus,
       })
       .from(leads)
       .where(and(
@@ -69,7 +80,7 @@ export class ReferrerPortalRepository {
     if (!progressLeads.length) return { enterpriseName: scope.enterpriseName, items: [] };
 
     const leadIds = progressLeads.map((lead) => lead.id);
-    const [appointmentRows, publicationRows] = await Promise.all([
+    const [appointmentRows, publicationRows, impacts] = await Promise.all([
       this.transaction
         .select({
           leadId: measurementAppointments.leadId,
@@ -91,6 +102,7 @@ export class ReferrerPortalRepository {
           isNull(aiGenerations.deletedAt)
         ))
         .orderBy(desc(aiGenerationPublications.publishedAt), desc(aiGenerationPublications.id)),
+      new LeadLifecycleRepository(this.transaction).impacts(leadIds),
     ]);
     const planIds = progressLeads.map((lead) => lead.primaryFloorPlanId).filter((id): id is bigint => Boolean(id));
     const plans = planIds.length
@@ -131,6 +143,7 @@ export class ReferrerPortalRepository {
         const hasFormalFloorPlan = Boolean(lead.primaryFloorPlanId && completedPlanIds.has(lead.primaryFloorPlanId));
         const stage = resolveLeadServiceStage({
           leadStatus: lead.status,
+          terminationType: lead.terminationType,
           assignmentStatus: lead.assignmentStatus,
           measurerId: lead.assignmentStatus === 'assigned' ? 'assigned' : null,
           appointment: appointment ? { status: appointment.status, timeRange: appointment.timeRange } : null,
@@ -140,11 +153,24 @@ export class ReferrerPortalRepository {
         const updatedAt = [lead.updatedAt, appointment?.updatedAt, publishedAt, lead.convertedAt]
           .filter((value): value is Date => Boolean(value))
           .reduce((latest, value) => value > latest ? value : latest, lead.updatedAt);
+        const impact = impacts.find((item) => item.leadId === lead.id);
+        const canWithdraw = lead.terminationType == null && lead.status === 'new' && !appointment
+          && !impact?.floorPlanCount && !impact?.aiWorkflowCount && !impact?.aiGenerationCount && !impact?.followUpCount && !impact?.hasConversion && !impact?.commissionCount;
+        const withdrawalDeadline = lead.terminatedAt ? new Date(lead.terminatedAt.getTime() + 10 * 60 * 1000) : null;
         return {
           id: lead.id.toString(),
           customerLabel: maskedCustomerLabel(lead.id),
+          recordCode: lead.referrerRecordCode || fallbackRecordCode(lead.id),
+          createdAt: lead.createdAt,
           stage,
           updatedAt,
+          terminationType: lead.terminationType,
+          terminatedAt: lead.terminatedAt,
+          terminationNote: lead.terminationNote,
+          canWithdraw,
+          canUndo: lead.terminationType === 'referrer_withdrawn' && Boolean(withdrawalDeadline && withdrawalDeadline.getTime() > Date.now()),
+          withdrawalDeadline,
+          withdrawalBlockedReason: canWithdraw || lead.terminationType === 'referrer_withdrawn' ? null : '该线索已开始服务，不能撤销，请联系企业管理员',
         };
       }),
     };

@@ -1,0 +1,63 @@
+<!--
+THESIS: 家装现场顾问第一次进入工作台时，用一条真实测量路径讲清连接、量墙、交付。
+OWN-WORLD: 继承家客来明亮薄荷绿和 F1 小 K 角色体系，用测量路径组织插画、步骤和行动。
+FIRST VIEWPORT: 390x844 下避开原生微信胶囊，标题、路径场景、说明、三段步骤和主按钮同屏可见。
+FORM: design-references/measurer-onboarding-v1/measurer-onboarding-directions-v1.png · B 现场路径
+-->
+<view class="guide-page sfp-page">
+  <view class="guide-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationTop + navigationHeight}}px; padding-right: {{navigationRight}}px;">
+    <view class="guide-nav-title">家装现场顾问使用引导</view>
+    <button class="skip-action" bindtap="onSkip" aria-label="跳过家装现场顾问使用引导">跳过</button>
+  </view>
+
+  <view class="guide-content">
+    <view class="step-rail" aria-label="第 {{currentStep + 1}} 步，共 {{totalSteps}} 步">
+      <block wx:for="{{steps}}" wx:key="*this">
+        <view
+          class="step-item {{index === currentStep ? 'active' : (index < currentStep ? 'complete' : '')}}"
+          data-index="{{index}}"
+          bindtap="onDotTap"
+        >
+          <view class="step-node">{{index + 1}}</view>
+          <text>{{stepLabels[index]}}</text>
+        </view>
+        <view wx:if="{{index < totalSteps - 1}}" class="step-connector {{index < currentStep ? 'complete' : ''}}"></view>
+      </block>
+    </view>
+
+    <swiper
+      class="guide-swiper"
+      current="{{currentStep}}"
+      duration="280"
+      easing-function="easeOutCubic"
+      indicator-dots="{{false}}"
+      autoplay="{{false}}"
+      circular="{{false}}"
+      bindchange="onSwiperChange"
+    >
+      <swiper-item wx:for="{{slides}}" wx:key="title">
+        <view class="guide-slide">
+          <view class="art-stage" aria-hidden="true">
+            <view class="art-backdrop art-backdrop-left"></view>
+            <view class="art-backdrop art-backdrop-right"></view>
+            <view class="route-floor route-floor-one"></view>
+            <view class="route-floor route-floor-two"></view>
+            <image class="guide-art {{item.imageClass}}" src="{{item.image}}" mode="aspectFit" />
+          </view>
+          <view class="guide-copy">
+            <view class="guide-title">{{item.title}}</view>
+            <text class="guide-description">{{item.description}}</text>
+          </view>
+          <view wx:if="{{item.assurance}}" class="assurance-pill">
+            <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+            <text>{{item.assurance}}</text>
+          </view>
+        </view>
+      </swiper-item>
+    </swiper>
+
+    <button class="primary-action" bindtap="onPrimary" hover-class="primary-action-pressed">
+      {{currentStep === totalSteps - 1 ? '去看今日任务' : '下一步'}}
+    </button>
+  </view>
+</view>

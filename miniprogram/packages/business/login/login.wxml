@@ -23,8 +23,8 @@
     </view>
 
     <view wx:if="{{loginType === 'phone'}}" class="login-body quick-body">
-      <image class="wechat-icon" src="/packages/business/assets/login-v1/wechat.png" mode="aspectFit" />
-      <view class="login-title">微信授权登录</view>
+      <image class="phone-icon" src="/packages/business/assets/referral-service-v1/phone-authorization.png" mode="aspectFit" />
+      <view class="login-title">手机号授权登录</view>
       <view class="login-desc">授权后即可使用完整功能</view>
 
       <button wx:if="{{agreed}}" class="primary-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{loading}}" disabled="{{loading}}">

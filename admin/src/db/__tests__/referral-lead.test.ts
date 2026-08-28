@@ -105,7 +105,7 @@ async function createCustomer(suffix: string) {
 
 async function createAssignmentStaff(
   enterpriseId: bigint,
-  role: 'designer' | 'measurer',
+  role: 'designer' | 'measurer' | 'enterprise_admin',
   suffix: string,
   userId?: bigint
 ) {
@@ -666,6 +666,74 @@ test('staff activity claims lock the presenter as measurer and skip referrer com
     })
   );
   assert.equal(lockedRetry?.lead.measurerId, measurer.id);
+});
+
+test('enterprise admin activity claims enter store assignment and do not bind the owner', async () => {
+  const enterprise = await withPlatformTransaction(async (transaction) =>
+    new EnterpriseRepository(transaction).create({
+      name: `${runKey}-owner-activity`,
+      code: `${runKey}-owner-activity`,
+      status: 'active',
+    })
+  );
+  enterpriseIds.push(enterprise.id);
+  const enterpriseId = enterprise.id;
+  const ownerUser = await createCustomer('activity-owner-user');
+  const designerUser = await createCustomer('activity-owner-designer-user');
+  const measurerUser = await createCustomer('activity-owner-measurer-user');
+  const owner = await createAssignmentStaff(
+    enterpriseId,
+    'enterprise_admin',
+    'activity-owner',
+    ownerUser.id
+  );
+  const designer = await createAssignmentStaff(
+    enterpriseId,
+    'designer',
+    'activity-owner-designer',
+    designerUser.id
+  );
+  const measurer = await createAssignmentStaff(
+    enterpriseId,
+    'measurer',
+    'activity-owner-measurer',
+    measurerUser.id
+  );
+  const source = await withPlatformTransaction(async (transaction) => {
+    const repository = new ReferrerNetworkRepository(transaction);
+    const activity = await repository.getStaffActivityCode(ownerUser.id, owner.id);
+    assert.equal(activity.ok, true);
+    if (!activity.ok) throw new Error('owner activity code missing');
+    const resolved = await repository.resolveStaffActivityToken({
+      token: activity.token,
+    });
+    assert.equal(resolved.result, 'ok');
+    assert.equal(resolved.staff?.id, owner.id);
+    return {
+      kind: 'staff_activity' as const,
+      activityCodeId: activity.code.id,
+      staffId: owner.id,
+      enterpriseId,
+      version: activity.code.version,
+      expired: false,
+    };
+  });
+  const customer = await createCustomer('activity-owner-customer');
+  const claimed = await withPlatformTransaction((transaction) =>
+    new ReferralLeadRepository(transaction).authorizeAndCreateLead({
+      source,
+      customerUserId: customer.id,
+      idempotencyKeyHash: `${runKey}-activity-owner`,
+    })
+  );
+  assert.equal(claimed.kind, 'created');
+  assert.equal(claimed.lead.source, 'staff_activity');
+  assert.equal(claimed.lead.referrerMembershipId, null);
+  assert.equal(claimed.lead.promoterId, owner.id);
+  assert.equal(claimed.lead.assignedTo, designer.id);
+  assert.equal(claimed.lead.measurerId, measurer.id);
+  assert.notEqual(claimed.lead.assignedTo, owner.id);
+  assert.notEqual(claimed.lead.measurerId, owner.id);
 });
 
 test('staff activity retry assigns a presenter who was paused at claim time', async () => {

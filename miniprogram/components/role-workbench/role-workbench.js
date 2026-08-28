@@ -1,6 +1,7 @@
 const api = require('../../utils/api.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { formatAppointmentDisplay } = require('../../utils/appointmentTimeRange.js');
+const { openRoleGuide, hasSeenRoleGuide } = require('../../utils/roleGuide.js');
 
 function rangeLabel(range) {
   const display = formatAppointmentDisplay(range);
@@ -19,6 +20,11 @@ function statusLabel(status) {
     quoting: '待报价',
     converted: '已签约',
   })[status] || '服务跟进';
+}
+
+function resolveStaffName(userInfo) {
+  const info = userInfo || {};
+  return String(info.nickname || info.displayName || info.name || '').trim();
 }
 
 function findDesignerWechatProfileTodo(items) {
@@ -48,6 +54,65 @@ function navigationMetrics() {
   };
 }
 
+function normalizeEnterpriseCodeActions(payload) {
+  const rawActivity = payload && payload.activityCode;
+  let rawJoin = payload && payload.joinCode;
+  let activity = rawActivity;
+
+  // Keep the owner home usable while the Mini Program and API deploy independently.
+  if (rawActivity && rawActivity.target === 'join-codes') {
+    rawJoin = rawJoin || rawActivity;
+    activity = null;
+  }
+
+  return {
+    activityCode: activity && activity.target === 'activity-code'
+      ? {
+          ...activity,
+          label: '分享活动码',
+          detail: activity.detail || '发给客户 · 扫码留资',
+        }
+      : null,
+    joinCode: rawJoin && rawJoin.target === 'join-codes'
+      ? {
+          ...rawJoin,
+          label: '邀请入驻',
+          detail: rawJoin.detail || '员工 · 推荐人',
+        }
+      : null,
+  };
+}
+
+function normalizeEnterpriseDashboard(rows) {
+  const dashboardByKey = new Map((rows || []).map((item) => [item.key, item]));
+  const stageKeys = ['newLeads', 'completedSurveys', 'signedCount'];
+  const efficiencyKeys = ['schemeDelivery', 'signingRate'];
+  const normalizedItem = (key, index) => {
+    const item = dashboardByKey.get(key) || {
+      key,
+      label: '',
+      value: '—',
+      unit: '',
+      detail: '',
+      tone: 'green',
+    };
+    const numericValue = Number(item.value);
+    const legacyClosureDetail = key === 'completedSurveys'
+      && /闭合率/.test(String(item.detail || ''));
+    return {
+      ...item,
+      detail: legacyClosureDetail ? '方案同步中' : item.detail,
+      ordinal: index + 1,
+      state: Number.isFinite(numericValue) && numericValue > 0 ? 'active' : 'idle',
+    };
+  };
+
+  return {
+    dashboardStages: stageKeys.map(normalizedItem),
+    dashboardEfficiencies: efficiencyKeys.map(normalizedItem),
+  };
+}
+
 Component({
   properties: {
     role: { type: String, value: '' },
@@ -67,7 +132,10 @@ Component({
     emptyCopy: '',
     secondary: null,
     activityCode: null,
+    joinCode: null,
     dashboard: [],
+    dashboardStages: [],
+    dashboardEfficiencies: [],
     quickNav: [],
     dashboardPeriod: {
       kind: 'month',
@@ -87,12 +155,17 @@ Component({
     bleConnected: false,
     showBLEConnector: false,
     enterpriseName: '',
+    staffName: '',
     claimPoolSummary: null,
+    withdrawalNotices: [],
   },
 
   observers: {
     role(role) {
       if (role === 'designer') this.scheduleWechatProfilePrompt();
+      this.scheduleEnterpriseRoleGuide();
+      this.scheduleDesignerRoleGuide();
+      this.scheduleMeasurerRoleGuide();
     },
   },
 
@@ -107,6 +180,9 @@ Component({
       this.trySilentBleReconnect();
       this.load();
       this.scheduleWechatProfilePrompt();
+      this.scheduleEnterpriseRoleGuide();
+      this.scheduleDesignerRoleGuide();
+      this.scheduleMeasurerRoleGuide();
     },
   },
 
@@ -116,12 +192,16 @@ Component({
       this.trySilentBleReconnect();
       if (this._pageVisible) {
         this.scheduleWechatProfilePrompt();
+        this.scheduleDesignerRoleGuide();
+        this.scheduleMeasurerRoleGuide();
         return;
       }
       this._pageVisible = true;
       this._wechatProfilePromptShownThisVisit = false;
       this.load();
       this.scheduleWechatProfilePrompt();
+      this.scheduleDesignerRoleGuide();
+      this.scheduleMeasurerRoleGuide();
     },
     hide() {
       this._pageVisible = false;
@@ -135,8 +215,43 @@ Component({
       return (this.properties.role || this.data.role) === 'designer';
     },
 
+    scheduleEnterpriseRoleGuide() {
+      const role = this.properties.role || this.data.role;
+      const focus = this.properties.focus || this.data.focus || 'overview';
+      if (role !== 'enterprise_admin' || focus !== 'overview') return;
+      if (this._enterpriseGuidePromptShown || hasSeenRoleGuide('enterprise_admin')) return;
+      this._enterpriseGuidePromptShown = true;
+      setTimeout(() => {
+        openRoleGuide('enterprise_admin', { automatic: true, source: 'first-entry' });
+      }, 0);
+    },
+
+    scheduleDesignerRoleGuide() {
+      const role = this.properties.role || this.data.role;
+      const focus = this.properties.focus || this.data.focus || 'overview';
+      if (role !== 'designer' || focus !== 'overview') return;
+      if (this._designerGuidePromptShown || hasSeenRoleGuide('designer')) return;
+      this._designerGuidePromptShown = true;
+      setTimeout(() => {
+        openRoleGuide('designer', { automatic: true, source: 'first-entry' });
+      }, 0);
+    },
+
+    scheduleMeasurerRoleGuide() {
+      const role = this.properties.role || this.data.role;
+      const focus = this.properties.focus || this.data.focus || 'overview';
+      if (role !== 'measurer' || focus !== 'overview') return;
+      if (this._measurerGuidePromptShown || hasSeenRoleGuide('measurer')) return;
+      this._measurerGuidePromptShown = true;
+      setTimeout(() => {
+        openRoleGuide('measurer', { automatic: true, source: 'first-entry' });
+      }, 0);
+    },
+
     scheduleWechatProfilePrompt() {
       if (!this.isDesignerContext()) return;
+      // The role guide gets first-run priority; profile completion can resume after it closes.
+      if (!hasSeenRoleGuide('designer')) return;
       if (this._wechatProfilePromptShownThisVisit) return;
       this.maybePromptDesignerWechatProfile();
     },
@@ -303,6 +418,7 @@ Component({
         const userInfo = (app && app.globalData && app.globalData.userInfo) || {};
         const bootstrap = (app && app.globalData && app.globalData.bootstrap) || {};
         const enterpriseName = (bootstrap.enterprise && bootstrap.enterprise.name) || userInfo.enterpriseName || '';
+        const staffName = resolveStaffName(userInfo);
         const periodPayload = payload.period || {};
         const dashboardPeriod = {
           kind: periodPayload.kind || this.data.dashboardPeriod.kind || 'month',
@@ -311,6 +427,12 @@ Component({
           from: periodPayload.from || this.data.dashboardPeriod.from || '',
           to: periodPayload.to || this.data.dashboardPeriod.to || '',
         };
+        const codeActions = payload.role === 'enterprise_admin'
+          ? normalizeEnterpriseCodeActions(payload)
+          : { activityCode: payload.activityCode || null, joinCode: null };
+        const enterpriseDashboard = payload.role === 'enterprise_admin'
+          ? normalizeEnterpriseDashboard(payload.dashboard)
+          : { dashboardStages: [], dashboardEfficiencies: [] };
 
         this.setData({
           title: payload.title || '工作台',
@@ -319,11 +441,16 @@ Component({
           items,
           emptyCopy,
           secondary: payload.secondary || null,
-          activityCode: payload.activityCode || null,
+          activityCode: codeActions.activityCode,
+          joinCode: codeActions.joinCode,
           dashboard: payload.dashboard || [],
+          dashboardStages: enterpriseDashboard.dashboardStages,
+          dashboardEfficiencies: enterpriseDashboard.dashboardEfficiencies,
           quickNav: payload.quickNav || [],
           dashboardPeriod,
           enterpriseName,
+          staffName,
+          withdrawalNotices: payload.withdrawalNotices || [],
           loading: false,
         });
         if (payload.role === 'designer') this.loadClaimPoolSummary();
@@ -335,6 +462,18 @@ Component({
         });
       } finally {
         this._fetching = false;
+      }
+    },
+
+    async acknowledgeWithdrawal(event) {
+      const id = event.currentTarget.dataset.id;
+      if (!id) return;
+      try {
+        await api.request('/miniprogram/notifications', 'POST', { ids: [id] });
+        this.setData({ withdrawalNotices: (this.data.withdrawalNotices || []).filter((item) => item.id !== id) });
+        wx.showToast({ title: '已确认', icon: 'success' });
+      } catch (error) {
+        wx.showToast({ title: error.message || '确认失败', icon: 'none' });
       }
     },
 
@@ -585,10 +724,14 @@ Component({
     openActivityCode() {
       const target = this.data.activityCode && this.data.activityCode.target;
       if (target === 'join-codes') {
-        wx.navigateTo({ url: '/packages/business/enterprise-join-codes/enterprise-join-codes' });
+        this.openJoinCodes();
         return;
       }
       wx.navigateTo({ url: '/packages/business/staff-activity-code/staff-activity-code' });
+    },
+
+    openJoinCodes() {
+      wx.navigateTo({ url: '/packages/business/enterprise-join-codes/enterprise-join-codes' });
     },
 
     openReschedule(event) {

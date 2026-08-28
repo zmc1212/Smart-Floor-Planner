@@ -122,7 +122,14 @@ export function ImageUploadField({
         ) : null}
       </Upload>
       {helpText ? <Typography.Text type="secondary" className="block text-xs">{helpText}</Typography.Text> : null}
-      <Image alt={previewAlt} preview={{ visible: previewOpen, src: previewUrl, onVisibleChange: setPreviewOpen }} src={previewUrl} style={{ display: 'none' }} />
+      {previewUrl ? (
+        <Image
+          alt={previewAlt}
+          preview={{ visible: previewOpen, src: previewUrl, onVisibleChange: setPreviewOpen }}
+          src={previewUrl}
+          style={{ display: 'none' }}
+        />
+      ) : null}
     </>
   );
 }

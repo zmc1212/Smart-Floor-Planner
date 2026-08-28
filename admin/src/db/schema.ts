@@ -103,6 +103,9 @@ export const enterprises = appSchema.table(
       mode: 'bigint',
     }),
     sensitiveOperationPasswordHash: text('sensitive_operation_password_hash'),
+    referrerAdditionalEnterpriseLimit: integer(
+      'referrer_additional_enterprise_limit'
+    ),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -125,6 +128,10 @@ export const enterprises = appSchema.table(
     check(
       'enterprises_professional_title_visibility_policy_check',
       sql`${table.professionalTitleVisibilityPolicy} in ('follow_staff', 'force_show', 'force_hide')`
+    ),
+    check(
+      'enterprises_referrer_additional_enterprise_limit_check',
+      sql`${table.referrerAdditionalEnterpriseLimit} is null or ${table.referrerAdditionalEnterpriseLimit} between 0 and 99`
     ),
   ]
 );
@@ -1412,6 +1419,7 @@ export const leads = appSchema.table(
     }).references(() => referrerEnterpriseMemberships.id, {
       onDelete: 'restrict',
     }),
+    referrerRecordCode: text('referrer_record_code'),
     measurerId: bigint('measurer_id', { mode: 'bigint' }).references(
       () => adminUsers.id,
       { onDelete: 'set null' }
@@ -1440,6 +1448,18 @@ export const leads = appSchema.table(
     ),
     archiveReason: text('archive_reason'),
     archiveNote: text('archive_note'),
+    terminationType: text('termination_type'),
+    terminatedAt: timestamp('terminated_at', { withTimezone: true, mode: 'date' }),
+    terminatedByUserId: bigint('terminated_by_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    terminatedByReferrerMembershipId: bigint('terminated_by_referrer_membership_id', { mode: 'bigint' }).references(
+      () => referrerEnterpriseMemberships.id,
+      { onDelete: 'set null' }
+    ),
+    terminationPreviousStatus: text('termination_previous_status'),
+    terminationNote: text('termination_note'),
     notes: text('notes'),
     assignedAt: timestamp('assigned_at', {
       withTimezone: true,
@@ -1492,6 +1512,7 @@ export const leads = appSchema.table(
     ),
     index('leads_customer_user_idx').on(table.customerUserId),
     index('leads_referrer_membership_idx').on(table.referrerMembershipId),
+    uniqueIndex('leads_referrer_record_code_uidx').on(table.referrerRecordCode),
     index('leads_measurer_created_idx').on(table.measurerId, table.createdAt),
     index('leads_enterprise_assignment_status_idx').on(
       table.enterpriseId,
@@ -2025,6 +2046,14 @@ export const leadLifecycleEvents = appSchema.table(
       () => adminUsers.id,
       { onDelete: 'set null' }
     ),
+    actorUserId: bigint('actor_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    actorReferrerMembershipId: bigint('actor_referrer_membership_id', { mode: 'bigint' }).references(
+      () => referrerEnterpriseMemberships.id,
+      { onDelete: 'set null' }
+    ),
     action: text('action').notNull(),
     reason: text('reason'),
     metadata: jsonObject<Record<string, unknown>>('metadata'),
@@ -2042,6 +2071,7 @@ export const leadLifecycleEvents = appSchema.table(
       table.createdAt
     ),
     index('lead_lifecycle_events_actor_idx').on(table.actorId),
+    index('lead_lifecycle_events_actor_user_idx').on(table.actorUserId),
   ]
 );
 
@@ -2298,6 +2328,7 @@ export const devices = appSchema.table(
       { onDelete: 'set null' }
     ),
     code: text('code').notNull(),
+    serialNumber: text('serial_number'),
     description: text('description'),
     status: text('status').notNull().default('unassigned'),
     createdAt: createdAt(),
@@ -2305,6 +2336,9 @@ export const devices = appSchema.table(
   },
   (table) => [
     uniqueIndex('devices_code_uidx').on(table.code),
+    uniqueIndex('devices_serial_number_uidx')
+      .on(table.serialNumber)
+      .where(sql`${table.serialNumber} is not null`),
     index('devices_enterprise_status_idx').on(table.enterpriseId, table.status),
     index('devices_assigned_user_idx').on(table.assignedUserId),
   ]

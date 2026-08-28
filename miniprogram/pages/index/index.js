@@ -134,17 +134,19 @@ Page({
     activeProjectTitle: '当前量房项目',
     bleAutoConnecting: false,
     roleWorkbenchRole: '',
-    redirectingToVisitorGateway: false,
     redirectingSalesperson: false,
   },
 
-  redirectToVisitorGateway() {
-    if (this.data.redirectingToVisitorGateway) return;
-    this.setData({ redirectingToVisitorGateway: true });
-    wx.switchTab({
-      url: '/pages/mine/mine',
-      fail: () => this.setData({ redirectingToVisitorGateway: false })
-    });
+  syncTabBar() {
+    const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
+    if (tabBar && typeof tabBar.syncSelected === 'function') {
+      tabBar.syncSelected();
+    }
+  },
+
+  showGuestServiceHome() {
+    this.setData({ roleWorkbenchRole: 'customer' });
+    this.syncTabBar();
   },
 
   getRoleWorkbenchRole() {
@@ -175,7 +177,7 @@ Page({
 
   onLoad: function () {
     if (!this.isLoggedIn()) {
-      this.redirectToVisitorGateway();
+      this.showGuestServiceHome();
       return;
     }
 
@@ -212,16 +214,13 @@ Page({
 
   onShow: async function () {
     if (!this.isLoggedIn()) {
-      this.redirectToVisitorGateway();
+      this.showGuestServiceHome();
       return;
     }
 
     if (this.redirectSalespersonAwayFromHome()) return;
 
-    const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
-    if (tabBar) {
-      tabBar.syncSelected();
-    }
+    this.syncTabBar();
 
     const app = getApp();
     const userInfo = app.globalData.userInfo || null;

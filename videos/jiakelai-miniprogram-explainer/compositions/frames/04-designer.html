@@ -1,0 +1,475 @@
+<template>
+  <style>
+    @font-face{font-family:"Source Han Sans";font-weight:400;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Regular.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:500;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Medium.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Bold.otf") format("opentype");}
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      color: #1f2937;
+      font-family: "Source Han Sans", sans-serif;
+    }
+
+    .f04-designer-ground {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+    }
+
+    .f04-designer-scene {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .f04-designer-stack {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 1920px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 16px 32px 28px;
+      box-sizing: border-box;
+      gap: 16px;
+    }
+    .f04-designer-chrome {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+      width: 100%;
+      position: relative;
+      z-index: 2;
+    }
+    .f04-designer-eyebrow {
+      position: relative;
+      padding: 12px 28px;
+      border-radius: 100px;
+      background: rgba(0, 195, 101, 0.08);
+      color: #00c365;
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    .f04-designer-headline-slot {
+      position: relative;
+      width: 100%;
+      height: 48px;
+    }
+
+    .f04-designer-headline {
+      position: absolute;
+      left: 0;
+      top: 0;
+      margin: 0;
+      display: inline-block;
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: #1f2937;
+      transform-origin: 50% 50%;
+      will-change: transform, filter, opacity;
+    }
+
+    #04-designer-hl2,
+    #04-designer-hl3,
+    #04-designer-hl4,
+    #04-designer-hl5 {
+      opacity: 0;
+    }
+
+    .f04-designer-plate-slot {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      overflow: hidden;
+      container-type: size;
+    }
+    .f04-designer-phone {
+      position: relative;
+      height: min(100cqh, calc(100cqw * 1536 / 1024));
+      width: min(100cqw, calc(100cqh * 1024 / 1536));
+      max-width: 100%;
+      max-height: 100%;
+      border: 1.5px solid rgba(0, 195, 101, 0.2);
+      background: rgba(0, 195, 101, 0.04);
+      border-radius: 14px;
+      overflow: hidden;
+      box-sizing: border-box;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    .f04-designer-zoom-outer {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    .f04-designer-zoom-inner {
+      will-change: transform;
+    }
+
+    .f04-designer-world {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+
+    .f04-designer-world img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: 50% 0%;
+    }
+
+    .f04-designer-hotspot {
+      position: absolute;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .f04-designer-press {
+      position: absolute;
+      left: 63.67%;
+      top: 90.89%;
+      width: 24.22%;
+      height: 2.6%;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+
+    .f04-designer-glow {
+      position: absolute;
+      inset: -48px;
+      z-index: 0;
+      border-radius: 100px;
+      background: radial-gradient(circle, rgba(0, 195, 101, 0.35) 0%, rgba(0, 195, 101, 0) 70%);
+      opacity: 0;
+    }
+
+    .f04-designer-burst {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      border-radius: 100px;
+      background: radial-gradient(circle, rgba(0, 195, 101, 0.85) 0%, rgba(0, 195, 101, 0) 70%);
+      opacity: 0;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity;
+    }
+
+    .f04-designer-btn {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      border-radius: 100px;
+      background: #00c365;
+      color: #ffffff;
+      font-family: "Source Han Sans", sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1;
+      text-align: center;
+      transform-origin: 50% 50%;
+      will-change: transform, opacity, box-shadow;
+      opacity: 0;
+    }
+  </style>
+
+  <div data-hf-id="hf-zo87" id="root" data-composition-id="04-designer" data-width="1080" data-height="1920" data-duration="10.412">
+    <div data-hf-id="hf-ueci" class="clip f04-designer-ground" id="04-designer-ground" data-start="0" data-duration="10.412" data-track-index="0"></div>
+
+    <div data-hf-id="hf-eujt" class="clip f04-designer-scene" id="04-designer-scene" data-start="0" data-duration="10.412" data-track-index="1">
+      <div data-hf-id="hf-st04" class="f04-designer-stack">
+      <div data-hf-id="hf-ch04" class="f04-designer-chrome">
+      <div data-hf-id="hf-uhh0" class="f04-designer-eyebrow" id="04-designer-eyebrow">家装设计顾问</div>
+
+      <div data-hf-id="hf-cxk4" class="f04-designer-headline-slot" id="04-designer-headline-slot">
+        <div data-hf-id="hf-ro7m" class="f04-designer-headline" id="04-designer-hl1">户型到了，发给客户</div>
+        <div data-hf-id="hf-9yic" class="f04-designer-headline" id="04-designer-hl2">跟进自己的客户</div>
+        <div data-hf-id="hf-bnk3" class="f04-designer-headline" id="04-designer-hl3">风格配方</div>
+        <div data-hf-id="hf-3qau" class="f04-designer-headline" id="04-designer-hl4">户型效果</div>
+        <div data-hf-id="hf-35tg" class="f04-designer-headline" id="04-designer-hl5">发给客户</div>
+      </div>
+      </div>
+      <div data-hf-id="hf-ps04" class="f04-designer-plate-slot">
+      <div data-hf-id="hf-q2nm" class="f04-designer-phone" id="04-designer-phone">
+        <div data-hf-id="hf-m4i0" class="f04-designer-zoom-outer" id="04-designer-zoom-outer">
+          <div data-hf-id="hf-tppl" class="f04-designer-zoom-inner" id="04-designer-zoom-inner" data-layout-allow-overflow="true">
+            <div data-hf-id="hf-ypwh" class="f04-designer-world" id="04-designer-world" data-layout-allow-overflow="true">
+              <img data-hf-id="hf-afbn" src="assets/designer-workbench.jpg" alt="" width="924" height="1384">
+
+              <div data-hf-id="hf-a8hm" class="f04-designer-hotspot" id="04-designer-target-hero" style="left: 5.86%; top: 9.9%; width: 87.5%; height: 21.09%"></div>
+              <div data-hf-id="hf-vzm7" class="f04-designer-hotspot" id="04-designer-target-leads" style="left: 5.86%; top: 32.55%; width: 42.97%; height: 9.11%"></div>
+              <div data-hf-id="hf-p5pw" class="f04-designer-hotspot" id="04-designer-target-recipes" style="left: 51.17%; top: 32.55%; width: 42.19%; height: 9.11%"></div>
+              <div data-hf-id="hf-2rtf" class="f04-designer-hotspot" id="04-designer-target-pair" style="left: 6.25%; top: 81.77%; width: 82.03%; height: 8.85%"></div>
+
+              <div data-hf-id="hf-wh4x" class="f04-designer-press" id="04-designer-target-cta">
+                <div data-hf-id="hf-srcw" class="f04-designer-glow" id="04-designer-glow"></div>
+                <div data-hf-id="hf-iioe" class="f04-designer-burst" id="04-designer-burst"></div>
+                <div data-hf-id="hf-akxb" class="f04-designer-btn" id="04-designer-btn">发给客户</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (async () => {
+      await document.fonts.ready;
+
+      const plate = document.getElementById("04-designer-phone");
+      const outer = document.getElementById("04-designer-zoom-outer");
+      const inner = document.getElementById("04-designer-zoom-inner");
+      const pressStage = document.getElementById("04-designer-target-cta");
+      const btn = document.getElementById("04-designer-btn");
+      const burst = document.getElementById("04-designer-burst");
+      const glow = document.getElementById("04-designer-glow");
+      const hl1 = document.getElementById("04-designer-hl1");
+      const hl2 = document.getElementById("04-designer-hl2");
+      const hl3 = document.getElementById("04-designer-hl3");
+      const hl4 = document.getElementById("04-designer-hl4");
+      const hl5 = document.getElementById("04-designer-hl5");
+      const eyebrow = document.getElementById("04-designer-eyebrow");
+
+      const plateR = plate.getBoundingClientRect();
+      const pCx = plateR.left + plateR.width / 2;
+      const pCy = plateR.top + plateR.height / 2;
+      const viewW = plateR.width;
+      const viewH = plateR.height;
+
+      const measure = (el, desired) => {
+        const r = el.getBoundingClientRect();
+        const maxScale = Math.min((0.88 * viewW) / r.width, (0.88 * viewH) / r.height);
+        return {
+          ox: r.left + r.width / 2 - pCx,
+          oy: r.top + r.height / 2 - pCy,
+          scale: Math.min(desired, maxScale),
+        };
+      };
+
+      const hero = measure(document.getElementById("04-designer-target-hero"), 1.05);
+      const leads = measure(document.getElementById("04-designer-target-leads"), 2.2);
+      const recipes = measure(document.getElementById("04-designer-target-recipes"), 2.2);
+      const pair = measure(document.getElementById("04-designer-target-pair"), 1.6);
+      const cta = measure(pressStage, 2.8);
+
+      const restShadow = "0 8px 24px rgba(0, 195, 101, 0.35)";
+      const pressedShadow = "0 2px 8px rgba(0, 195, 101, 0.2)";
+
+      const tl = gsap.timeline({ paused: true });
+
+      const later = { immediateRender: false };
+
+      const cam = (from, to, at, dur) => {
+        tl.fromTo(
+          outer,
+          { scale: from.scale },
+          { scale: to.scale, duration: dur, ease: "power3.inOut", ...later },
+          at,
+        );
+        tl.fromTo(
+          inner,
+          { x: -from.ox, y: -from.oy },
+          { x: -to.ox, y: -to.oy, duration: dur, ease: "power3.inOut", ...later },
+          at,
+        );
+      };
+
+      const zoomThrough = (outgoing, incoming, cutAt) => {
+        tl.fromTo(
+          outgoing,
+          { scale: 1, filter: "blur(0px)" },
+          { scale: 1.2, filter: "blur(10px)", duration: 0.2, ease: "power3.in", ...later },
+          cutAt - 0.2,
+        );
+        tl.fromTo(
+          outgoing,
+          { opacity: 1 },
+          { opacity: 0.15, duration: 0.2, ease: "none", ...later },
+          cutAt - 0.2,
+        );
+        tl.fromTo(
+          outgoing,
+          { opacity: 0.15 },
+          { opacity: 0, duration: 0.001, ease: "power3.out", ...later },
+          cutAt,
+        );
+        tl.fromTo(
+          incoming,
+          { scale: 0.75, filter: "blur(10px)", opacity: 0.15 },
+          { scale: 1, filter: "blur(0px)", opacity: 1, duration: 0.5, ease: "power3.out", ...later },
+          cutAt,
+        );
+      };
+
+      const inverseZoom = (outgoing, incoming, cutAt) => {
+        tl.fromTo(
+          outgoing,
+          { scale: 1, filter: "blur(0px)" },
+          { scale: 0.8, filter: "blur(10px)", duration: 0.2, ease: "power3.in", ...later },
+          cutAt - 0.2,
+        );
+        tl.fromTo(
+          outgoing,
+          { opacity: 1 },
+          { opacity: 0.15, duration: 0.2, ease: "none", ...later },
+          cutAt - 0.2,
+        );
+        tl.fromTo(
+          outgoing,
+          { opacity: 0.15 },
+          { opacity: 0, duration: 0.001, ease: "power3.out", ...later },
+          cutAt,
+        );
+        tl.fromTo(
+          incoming,
+          { scale: 1.25, filter: "blur(10px)", opacity: 0.15 },
+          { scale: 1, filter: "blur(0px)", opacity: 1, duration: 0.5, ease: "power3.out", ...later },
+          cutAt,
+        );
+      };
+
+      tl.fromTo(
+        plate,
+        { scale: 0, opacity: 0, y: 24 },
+        { scale: 1, opacity: 1, y: 0, duration: 0.55, ease: "power3.out" },
+        0,
+      );
+      tl.fromTo(
+        eyebrow,
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.45, ease: "power3.out" },
+        0,
+      );
+      tl.fromTo(
+        hl1,
+        { scale: 0, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" },
+        0.06,
+      );
+      tl.fromTo(hl2, { opacity: 0, scale: 1 }, { opacity: 0, scale: 1, duration: 0.001, ease: "power3.out" }, 0);
+      tl.fromTo(hl3, { opacity: 0, scale: 1 }, { opacity: 0, scale: 1, duration: 0.001, ease: "power3.out" }, 0);
+      tl.fromTo(hl4, { opacity: 0, scale: 1 }, { opacity: 0, scale: 1, duration: 0.001, ease: "power3.out" }, 0);
+      tl.fromTo(hl5, { opacity: 0, scale: 1 }, { opacity: 0, scale: 1, duration: 0.001, ease: "power3.out" }, 0);
+      tl.fromTo(btn, { opacity: 0, scale: 1 }, { opacity: 0, scale: 1, duration: 0.001, ease: "power3.out" }, 0);
+      tl.fromTo(burst, { opacity: 0, scale: 1 }, { opacity: 0, scale: 1, duration: 0.001, ease: "power3.out" }, 0);
+      tl.fromTo(glow, { opacity: 0 }, { opacity: 0, duration: 0.001, ease: "power3.out" }, 0);
+
+      tl.fromTo(
+        outer,
+        { scale: 1 },
+        { scale: hero.scale, duration: 1.5, ease: "power3.inOut" },
+        0.7,
+      );
+      tl.fromTo(
+        inner,
+        { x: 0, y: 0 },
+        { x: -hero.ox, y: -hero.oy, duration: 1.5, ease: "power3.inOut" },
+        0.7,
+      );
+
+      zoomThrough(hl1, hl2, 3.2);
+      cam(hero, leads, 3.2, 1.2);
+
+      zoomThrough(hl2, hl3, 5.4);
+      cam(leads, recipes, 5.4, 0.95);
+
+      zoomThrough(hl3, hl4, 6.55);
+      cam(recipes, pair, 6.55, 1.0);
+
+      inverseZoom(hl4, hl5, 7.8);
+      cam(pair, cta, 7.8, 0.9);
+
+      tl.fromTo(
+        btn,
+        { opacity: 0, scale: 0.9 },
+        { opacity: 1, scale: 1, duration: 0.2, ease: "power3.out", ...later },
+        8.55,
+      );
+
+      const PRESS_START = 8.75;
+      const PRESS_DUR = 0.16;
+      const RELEASE_START = PRESS_START + PRESS_DUR;
+      tl.fromTo(
+        btn,
+        { scale: 1, boxShadow: restShadow },
+        { scale: 0.92, boxShadow: pressedShadow, duration: PRESS_DUR, ease: "power1.in", ...later },
+        PRESS_START,
+      );
+      tl.fromTo(
+        btn,
+        { scale: 0.92, boxShadow: pressedShadow },
+        { scale: 1, boxShadow: restShadow, duration: 0.54, ease: "back.out(2)", ...later },
+        RELEASE_START,
+      );
+      tl.fromTo(
+        burst,
+        { scale: 1, opacity: 0 },
+        { scale: 6, opacity: 0.7, duration: 0.45, ease: "power3.out", ...later },
+        RELEASE_START,
+      );
+      tl.fromTo(
+        burst,
+        { opacity: 0.7 },
+        { opacity: 0, duration: 0.45, ease: "power3.in", ...later },
+        RELEASE_START + 0.45,
+      );
+      tl.fromTo(
+        glow,
+        { opacity: 0 },
+        { opacity: 0.25, duration: 0.7, ease: "power3.out", ...later },
+        RELEASE_START,
+      );
+
+      const IDLE_START = RELEASE_START;
+      const IDLE_DUR = 9.912 - IDLE_START;
+      const CYCLES = 0.5;
+      tl.fromTo(
+        pressStage,
+        { y: 0 },
+        {
+          y: 3,
+          duration: IDLE_DUR,
+          ease: (p) => Math.sin(p * Math.PI * 2 * CYCLES),
+          ...later,
+        },
+        IDLE_START,
+      );
+
+      window.__timelines["04-designer"] = tl;
+      if (typeof window.__hfForceTimelineRebind === "function") {
+        window.__hfForceTimelineRebind();
+      }
+    })();
+  </script>
+</template>

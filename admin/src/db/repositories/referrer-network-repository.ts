@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { and, asc, count, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseJoinCodeEvents,
@@ -14,6 +14,8 @@ import {
   users,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { normalizePlatformPromotionConfig } from '@/lib/platform-promotion-config';
+import { isReferrerProtectionLimitReached } from '@/lib/referrer-join-limits';
 
 export type EnterpriseJoinCodeType = 'staff' | 'referrer';
 
@@ -35,7 +37,25 @@ export type ReferrerOnboardingCode =
   | 'code_type_mismatch'
   | 'phone_authorization_required'
   | 'referrer_disabled'
-  | 'membership_limit_reached';
+  | 'membership_limit_reached'
+  | 'referrer_protection_limit';
+
+export const STAFF_ACTIVITY_PRESENTER_ROLES = [
+  'designer',
+  'measurer',
+  'enterprise_admin',
+] as const;
+
+export type StaffActivityPresenterRole =
+  (typeof STAFF_ACTIVITY_PRESENTER_ROLES)[number];
+
+function isStaffActivityPresenterRole(
+  role: string | null | undefined
+): role is StaffActivityPresenterRole {
+  return STAFF_ACTIVITY_PRESENTER_ROLES.includes(
+    role as StaffActivityPresenterRole
+  );
+}
 
 const TOKEN_BYTES = 24;
 
@@ -452,7 +472,7 @@ export class ReferrerNetworkRepository {
       ? 'code_not_found'
       : row.code.status === 'active' &&
           row.staff.status === 'active' &&
-          ['designer', 'measurer'].includes(row.staff.role)
+          isStaffActivityPresenterRole(row.staff.role)
         ? 'ok'
         : 'code_disabled';
     if (row) {
@@ -561,7 +581,7 @@ export class ReferrerNetworkRepository {
       .for('update');
     const row = rows[0];
     if (!row?.staff.enterpriseId) return { ok: false as const, code: 'staff_not_found' as const };
-    if (!['designer', 'measurer'].includes(row.staff.role)) {
+    if (!isStaffActivityPresenterRole(row.staff.role)) {
       return { ok: false as const, code: 'staff_role_unsupported' as const };
     }
     if (!(await this.designerProfileComplete(row.staff))) {
@@ -859,16 +879,19 @@ export class ReferrerNetworkRepository {
       };
     }
 
-    const activeCountRows = await this.transaction
-      .select({ value: count() })
+    const activeMemberships = await this.transaction
+      .select()
       .from(referrerEnterpriseMemberships)
       .where(
         and(
           eq(referrerEnterpriseMemberships.referrerId, profile.id),
           eq(referrerEnterpriseMemberships.status, 'active')
         )
-      );
-    if (Number(activeCountRows[0]?.value ?? 0) >= input.membershipLimit) {
+      )
+      .orderBy(asc(referrerEnterpriseMemberships.id))
+      .for('update');
+    const activeCount = activeMemberships.length;
+    if (activeCount >= input.membershipLimit) {
       await this.recordJoinCodeEvent({
         code: joinCode,
         eventType: 'referrer_onboarding',
@@ -877,6 +900,41 @@ export class ReferrerNetworkRepository {
         metadata: { membershipLimit: input.membershipLimit },
       });
       return { ok: false, code: 'membership_limit_reached' };
+    }
+
+    const protectionEnterpriseIds = [
+      ...new Set([
+        joinCode.enterpriseId,
+        ...activeMemberships.map((row) => row.enterpriseId),
+      ]),
+    ];
+    const protectionRows = await this.transaction
+      .select({
+        id: enterprises.id,
+        referrerAdditionalEnterpriseLimit:
+          enterprises.referrerAdditionalEnterpriseLimit,
+      })
+      .from(enterprises)
+      .where(inArray(enterprises.id, protectionEnterpriseIds));
+    if (
+      isReferrerProtectionLimitReached({
+        activeCount,
+        limits: protectionRows.map(
+          (row) => row.referrerAdditionalEnterpriseLimit
+        ),
+      })
+    ) {
+      await this.recordJoinCodeEvent({
+        code: joinCode,
+        eventType: 'referrer_onboarding',
+        result: 'referrer_protection_limit',
+        actorUserId: user.id,
+        metadata: {
+          membershipLimit: input.membershipLimit,
+          targetEnterpriseId: joinCode.enterpriseId.toString(),
+        },
+      });
+      return { ok: false, code: 'referrer_protection_limit' };
     }
 
     const memberships = await this.transaction
@@ -1116,10 +1174,7 @@ export class ReferrerNetworkRepository {
       .from(platformConfigs)
       .where(eq(platformConfigs.key, 'default'))
       .limit(1);
-    const configured = Number(
-      (rows[0]?.promotionConfig as { referrerMembershipLimit?: unknown } | null)
-        ?.referrerMembershipLimit ?? 3
-    );
-    return Number.isInteger(configured) && configured > 0 ? configured : 3;
+    return normalizePlatformPromotionConfig(rows[0]?.promotionConfig)
+      .referrerMembershipLimit;
   }
 }

@@ -50,8 +50,15 @@ test('enterprise-register page is registered and restores er_ scene tokens', () 
   assert.match(wxml, /申请企业开户/);
   assert.match(wxml, /统一社会信用代码/);
   assert.match(wxml, /提交开户申请/);
+  assert.match(wxml, /请输入联系人手机号/);
+  assert.match(wxml, /授权手机号并提交/);
+  assert.match(wxml, /可手动填写/);
+  assert.match(wxml, /bindtap="onIncompleteSubmit"/);
+  assert.match(wxml, /missingHint/);
+  assert.match(wxml, /fieldErrors\.creditCode/);
+  assert.match(wxml, /请填写统一社会信用代码/);
   assert.doesNotMatch(wxml, />授权手机号</);
-  assert.match(wxml, /disabled="\{\{!canSubmit \|\| submitting\}\}"/);
+  assert.doesNotMatch(wxml, /disabled="\{\{!canSubmit \|\| submitting\}\}"/);
   assert.match(wxml, /申请已提交/);
   assert.match(wxml, /初始密码为 123456/);
   assert.match(wxml, /已有账号，去登录/);
@@ -66,9 +73,14 @@ test('enterprise-register page is registered and restores er_ scene tokens', () 
   assert.match(wxml, /该手机号已有账号/);
   assert.match(js, /mode=password/);
   assert.match(js, /formFieldsReady/);
+  assert.match(js, /missingFormFields/);
+  assert.match(js, /revealMissingFields/);
   assert.match(js, /submitRegistration/);
   assert.match(js, /canSubmit/);
   assert.match(less, /identity-link/);
+  assert.match(less, /\.form-field-error/);
+  assert.match(less, /\.missing-hint/);
+  assert.match(less, /#e45b3e/);
   assert.match(wxml, /navigationRight/);
   assert.match(wxml, /join-inner/);
   assert.match(less, /\.join-action\s*\{[\s\S]*width:\s*auto/);
@@ -121,7 +133,9 @@ test('formFieldsReady gates the CTA without requiring phone; formReady still nee
   loadPage();
   const {
     formFieldsReady,
-    formReady
+    formReady,
+    missingFormFields,
+    formFeedback
   } = require('../packages/business/enterprise-register/enterprise-register.js');
   assert.equal(
     formFieldsReady({
@@ -139,6 +153,22 @@ test('formFieldsReady gates the CTA without requiring phone; formReady still nee
     }),
     false
   );
+  assert.deepEqual(
+    missingFormFields({
+      enterpriseName: '测试企业',
+      creditCode: '',
+      contactName: '张三'
+    }).map((field) => field.key),
+    ['creditCode']
+  );
+  const incomplete = formFeedback(
+    { enterpriseName: '测试企业', creditCode: '', contactName: '张三' },
+    { showFieldErrors: true }
+  );
+  assert.equal(incomplete.canSubmit, false);
+  assert.equal(incomplete.missingHint, '还需填写：统一社会信用代码');
+  assert.equal(incomplete.fieldErrors.creditCode, '请填写统一社会信用代码');
+  assert.equal(incomplete.fieldErrors.enterpriseName, '');
   assert.equal(
     formReady({
       enterpriseName: '测试企业',
@@ -157,6 +187,61 @@ test('formFieldsReady gates the CTA without requiring phone; formReady still nee
     }),
     true
   );
+});
+
+test('incomplete CTA and silent getPhoneNumber reveal the empty credit-code field', () => {
+  const definition = loadPage();
+  const originalWx = global.wx;
+  const toasts = [];
+  global.wx = {
+    ...(originalWx || {}),
+    showToast(options) {
+      toasts.push(options);
+    }
+  };
+  try {
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'ready',
+        enterpriseName: '测试企业',
+        creditCode: '',
+        contactName: '张三',
+        canSubmit: false,
+        showFieldErrors: false,
+        fieldErrors: { enterpriseName: '', creditCode: '', contactName: '' },
+        submitting: false
+      },
+      setData(next) {
+        Object.assign(this.data, next);
+      },
+      revealMissingFields() {
+        return definition.revealMissingFields.call(this);
+      }
+    };
+    definition.onIncompleteSubmit.call(context);
+    assert.equal(context.data.showFieldErrors, true);
+    assert.equal(context.data.fieldErrors.creditCode, '请填写统一社会信用代码');
+    assert.equal(context.data.missingHint, '还需填写：统一社会信用代码');
+    assert.equal(toasts[0].title, '请填写统一社会信用代码');
+
+    definition.syncFormPatch.call(context, { creditCode: '91310000MA1KTEST01' });
+    assert.equal(context.data.canSubmit, true);
+    assert.equal(context.data.missingHint, '');
+    assert.equal(context.data.fieldErrors.creditCode, '');
+
+    context.data.canSubmit = false;
+    context.data.creditCode = '';
+    context.data.showFieldErrors = false;
+    context.data.fieldErrors.creditCode = '';
+    definition.onGetPhoneNumber.call(context, {
+      detail: { errMsg: 'getPhoneNumber:ok', code: 'phone-code' }
+    });
+    assert.equal(context.data.fieldErrors.creditCode, '请填写统一社会信用代码');
+    assert.equal(toasts.length, 2);
+  } finally {
+    global.wx = originalWx;
+  }
 });
 
 test('phone authorization auto-submits when form fields are ready', async () => {
@@ -210,6 +295,46 @@ test('phone authorization auto-submits when form fields are ready', async () => 
   }
 });
 
+test('contact phone accepts manual input and blocks auto-submit on authorization mismatch', async () => {
+  const definition = loadPage();
+  const originalPhoneLogin = api.phoneLogin;
+  const originalWx = global.wx;
+  const toasts = [];
+  api.phoneLogin = async () => ({
+    user: { mode: 'customer', phone: '13800138000', nickname: '' }
+  });
+  global.wx = { ...(originalWx || {}), showToast(options) { toasts.push(options); } };
+  try {
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'ready',
+        canSubmit: true,
+        enterpriseName: '测试企业',
+        creditCode: '91310000MA1KTEST01',
+        contactName: '张三',
+        contactPhone: '13900139000',
+        authorizedPhone: '',
+        submitting: false
+      },
+      setData(next) { Object.assign(this.data, next); },
+      revealMissingFields() { return definition.revealMissingFields.call(this); }
+    };
+    definition.onContactPhoneInput.call(context, { detail: { value: '13900139000' } });
+    await definition.onGetPhoneNumber.call(context, {
+      detail: { errMsg: 'getPhoneNumber:ok', code: 'phone-code' }
+    });
+    assert.equal(context.data.contactPhone, '13900139000');
+    assert.equal(context.data.authorizedPhone, '');
+    assert.match(context.data.phoneError, /一致/);
+    assert.equal(context.data.submitting, false);
+    assert.match(toasts[0].title, /不一致/);
+  } finally {
+    api.phoneLogin = originalPhoneLogin;
+    global.wx = originalWx;
+  }
+});
+
 test('formReady requires authorized phone and enterprise fields', () => {
   loadPage();
   const { formReady } = require('../packages/business/enterprise-register/enterprise-register.js');
@@ -231,6 +356,41 @@ test('formReady requires authorized phone and enterprise fields', () => {
     }),
     true
   );
+});
+
+test('fresh QR scan keeps a signed workbench identity on the open-account form', () => {
+  const page = loadPage();
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const originalPages = global.getCurrentPages;
+  const relaunched = [];
+  global.getApp = () => ({
+    globalData: {
+      userInfo: { mode: 'staff', staffRole: 'enterprise_admin' },
+      bootstrap: { current: { mode: 'staff', staffRole: 'enterprise_admin', role: 'enterprise_admin' } },
+      launchOptions: { scene: 1089 }
+    }
+  });
+  global.getCurrentPages = () => [{
+    route: 'packages/business/enterprise-register/enterprise-register'
+  }];
+  global.wx = {
+    getEnterOptionsSync() { return { scene: 1047 }; },
+    reLaunch(options) { relaunched.push(options.url); },
+    switchTab() {}
+  };
+  try {
+    assert.equal(page.leaveIfStickyScanReopen(), false);
+    assert.deepEqual(relaunched, []);
+
+    global.wx.getEnterOptionsSync = () => ({ scene: 1089 });
+    assert.equal(page.leaveIfStickyScanReopen(), true);
+    assert.deepEqual(relaunched, ['/pages/index/index']);
+  } finally {
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+    global.getCurrentPages = originalPages;
+  }
 });
 
 test('leaveRegistrationTarget sends workbench identities to role landing and others to password login', () => {

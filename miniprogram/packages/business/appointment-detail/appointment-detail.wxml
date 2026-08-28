@@ -159,12 +159,13 @@
           capture-nonce="{{sitePhotoCaptureNonce}}"
           bind:change="onSitePhotosChange"
           bind:uploading="onSitePhotoUploading"
+          bind:sheetchange="onSitePhotoSheetChange"
         />
       </view>
     </view>
   </view>
 
-  <view class="confirm-bar" wx:if="{{appointment && !loading && !error}}">
+  <view class="confirm-bar" wx:if="{{appointment && !loading && !error && !sitePhotoSheetOpen}}">
     <view wx:if="{{canReschedule}}" class="confirm-bar-row {{canCancel ? 'has-cancel' : 'confirm-only'}}">
       <button wx:if="{{canCancel}}" class="cancel-btn sticky-cancel" disabled="{{acting || rescheduleSubmitting}}" bindtap="cancel">取消本次预约</button>
       <button

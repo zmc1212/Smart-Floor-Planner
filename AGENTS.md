@@ -133,6 +133,13 @@ or a roadmap do not replace the current module inventory.
   composite screenshot, page layout, UI text, or control surface.
   Record the mapping from approved design source/cut to packaged production path
   in the relevant module documentation and include it in visual QA.
+- For every business illustration/cutout present in an approved Mini Program
+  design, generate a route-specific standalone transparent PNG with the
+  project's image-generation capability before implementation. Do not crop,
+  slice, or mask the composite design reference into a product asset. Keep each
+  generated cutout independent, optimize it before packaging, enforce the
+  `300KB` packaged-asset limit, and record its source-to-package mapping in
+  the affected module documentation and restoration ledger.
 
 ## Repository Map
 

@@ -38,6 +38,9 @@ export type CustomerProjectIndexItem = {
   leadId: bigint;
   enterpriseName: string;
   status: string;
+  terminationType: string | null;
+  terminatedAt?: Date | null;
+  terminationNote?: string | null;
   assignmentStatus: string | null;
   measurerId: bigint | null;
   updatedAt: Date;
@@ -178,6 +181,9 @@ export class CustomerProjectRepository {
         leadId: leads.id,
         enterpriseName: enterprises.name,
         status: leads.status,
+        terminationType: leads.terminationType,
+        terminatedAt: leads.terminatedAt,
+        terminationNote: leads.terminationNote,
         assignmentStatus: leads.assignmentStatus,
         measurerId: leads.measurerId,
         updatedAt: leads.updatedAt,
@@ -323,7 +329,7 @@ export class CustomerProjectRepository {
     publishedBy: bigint;
   }) {
     const leadRows = await this.transaction
-      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt })
+      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt, status: leads.status })
       .from(leads)
       .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
       .for('update')
@@ -331,6 +337,7 @@ export class CustomerProjectRepository {
     const lead = leadRows[0];
     if (!lead) return { kind: 'lead_not_found' as const };
     if (lead.archivedAt) return { kind: 'lead_archived' as const };
+    if (lead.status === 'closed') return { kind: 'lead_archived' as const, lead };
 
     const generationRows = await this.transaction
       .select({ id: aiGenerations.id, output: aiGenerations.output })
@@ -370,7 +377,7 @@ export class CustomerProjectRepository {
     withdrawnBy: bigint;
   }) {
     const leadRows = await this.transaction
-      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt })
+      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt, status: leads.status })
       .from(leads)
       .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
       .for('update')
@@ -378,6 +385,7 @@ export class CustomerProjectRepository {
     const lead = leadRows[0];
     if (!lead) return { kind: 'lead_not_found' as const };
     if (lead.archivedAt) return { kind: 'lead_archived' as const };
+    if (lead.status === 'closed') return { kind: 'lead_archived' as const, lead };
 
     const rows = await this.transaction
       .update(aiGenerationPublications)
@@ -414,6 +422,7 @@ export class CustomerProjectRepository {
     const lead = leadRows[0];
     if (!lead) return { kind: 'lead_not_found' as const };
     if (lead.archivedAt) return { kind: 'lead_archived' as const };
+    if (lead.status === 'closed') return { kind: 'lead_archived' as const, lead };
 
     const uniqueIds = Array.from(new Map(input.generationIds.map((id) => [id.toString(), id])).values());
     if (!uniqueIds.length) return { kind: 'empty_selection' as const, lead };
@@ -649,6 +658,7 @@ export class CustomerProjectRepository {
         id: leads.id,
         assignedTo: leads.assignedTo,
         archivedAt: leads.archivedAt,
+        status: leads.status,
         finalizedWorkflowId: leads.finalizedWorkflowId,
       })
       .from(leads)
@@ -658,6 +668,7 @@ export class CustomerProjectRepository {
     const lead = leadRows[0];
     if (!lead) return { kind: 'lead_not_found' as const };
     if (lead.archivedAt) return { kind: 'lead_archived' as const };
+    if (lead.status === 'closed') return { kind: 'lead_archived' as const, lead };
 
     const now = new Date();
     const rows = await this.transaction
@@ -698,6 +709,7 @@ export class CustomerProjectRepository {
         id: leads.id,
         assignedTo: leads.assignedTo,
         archivedAt: leads.archivedAt,
+        status: leads.status,
       })
       .from(leads)
       .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
@@ -706,6 +718,7 @@ export class CustomerProjectRepository {
     const lead = leadRows[0];
     if (!lead) return { kind: 'lead_not_found' as const };
     if (lead.archivedAt) return { kind: 'lead_archived' as const };
+    if (lead.status === 'closed') return { kind: 'lead_archived' as const, lead };
 
     const workflowRows = await this.transaction
       .select({ id: aiWorkflows.id })

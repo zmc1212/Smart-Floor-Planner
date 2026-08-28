@@ -17,8 +17,10 @@ async function readIdentityState(page) {
       identityLabel: `${IDENTITY_LABELS[current.mode] || '当前身份'}${detail ? ` · ${detail}` : ''}`,
       identityCount: (result.contexts || []).length
     });
+    return result;
   } catch (error) {
     page.setData({ identityLabel: '读取失败', identityCount: 0 });
+    return null;
   }
 }
 

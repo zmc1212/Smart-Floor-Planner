@@ -4,6 +4,7 @@ const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { openAIDesignTab } = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign } = require('../../utils/aiDesignAccess.js');
 const { roleForIdentity } = require('../../utils/identity-navigation.js');
+const { mineRoleGuideEntry, openMineRoleGuide } = require('../../utils/roleGuide.js');
 const session = require('../../utils/session.js');
 const {
   profileForIdentity,
@@ -59,6 +60,8 @@ Page({
     isLoggedIn: false,
     isStaff: false,
     activeRole: '',
+    showRoleGuideEntry: false,
+    roleGuideHelper: '查看当前身份的工作方法',
     isRoleRestrictedUser: false,
     isRoleShellMine: false,
     canUseAIDesign: false,
@@ -111,6 +114,7 @@ Page({
         isLoggedIn: true,
         isStaff: isStaffRole,
         activeRole,
+        ...mineRoleGuideEntry(activeRole, app.globalData.bootstrap, this._identityContexts),
         isRoleRestrictedUser,
         isRoleShellMine,
         canUseAIDesign: canAccessAIDesign(userInfo),
@@ -126,7 +130,7 @@ Page({
       });
       if (isStaffRole) this.fetchMineData();
       else if (isRoleRestrictedUser) this.fetchProfileData();
-      refreshAccountSettingsState(this);
+      this.refreshRoleGuideEntry();
       return;
     }
 
@@ -138,6 +142,7 @@ Page({
         isLoggedIn: true,
         isStaff: isStaffRole,
         activeRole,
+        ...mineRoleGuideEntry(activeRole, app.globalData.bootstrap, this._identityContexts),
         isRoleRestrictedUser,
         isRoleShellMine,
         canUseAIDesign: canAccessAIDesign(userInfo),
@@ -156,7 +161,7 @@ Page({
         this.fetchMyFloorPlans();
       }
       if (isRoleRestrictedUser) this.fetchProfileData();
-      refreshAccountSettingsState(this);
+      this.refreshRoleGuideEntry();
       return;
     }
 
@@ -164,6 +169,8 @@ Page({
       isLoggedIn: false,
       isStaff: false,
       activeRole: '',
+      showRoleGuideEntry: false,
+      roleGuideHelper: '查看当前身份的工作方法',
       isRoleRestrictedUser: false,
       isRoleShellMine: false,
       canUseAIDesign: false,
@@ -452,6 +459,29 @@ Page({
     wx.navigateTo({ url: '/packages/business/profile-edit/profile-edit' });
   },
 
+  async refreshRoleGuideEntry() {
+    const userInfo = app.globalData.userInfo || (typeof wx !== 'undefined' && wx.getStorageSync
+      ? wx.getStorageSync('userInfo')
+      : null);
+    const activeRole = (app.globalData.bootstrap && app.globalData.bootstrap.current && app.globalData.bootstrap.current.role)
+      || roleForIdentity(userInfo)
+      || this.data.activeRole;
+    const result = await refreshAccountSettingsState(this);
+    this._identityContexts = (result && result.contexts) || [];
+    this.setData({
+      activeRole,
+      ...mineRoleGuideEntry(activeRole, app.globalData.bootstrap, this._identityContexts)
+    });
+  },
+
+  onOpenRoleGuide() {
+    openMineRoleGuide({
+      activeRole: this.data.activeRole,
+      bootstrap: app.globalData.bootstrap,
+      contexts: this._identityContexts
+    });
+  },
+
   onOpenAccountSecurity() {
     wx.navigateTo({ url: '/packages/business/account-security/account-security' });
   },
@@ -465,6 +495,9 @@ Page({
     this.setData({
       isLoggedIn: false,
       isStaff: false,
+      activeRole: '',
+      showRoleGuideEntry: false,
+      roleGuideHelper: '查看当前身份的工作方法',
       loadingMine: false,
       mineError: '',
       floorPlansLoading: false,
@@ -485,6 +518,7 @@ Page({
       identityLabel: '读取中',
       identityCount: 0
     });
+    this._identityContexts = [];
     this.syncTabBar();
   },
 

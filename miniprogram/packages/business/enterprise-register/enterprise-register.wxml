@@ -1,6 +1,6 @@
 <!--
   企业开户页：复用入驻页品牌锁与极简透气体，无独立设计稿 / 无新 IP 插画。
-  流程：解析 er_ → 填表 → 一次点击授权并提交 → 待审成功态。
+  流程：解析 er_ → 填表（手机号可手动输入）→ 点击“授权手机号并提交” → 待审成功态。
 -->
 <view class="register-page state-{{pageState}}">
   <view
@@ -33,40 +33,60 @@
 
       <view class="form-card">
         <view class="section-title">企业资料</view>
-        <input
-          class="form-input"
-          value="{{enterpriseName}}"
-          maxlength="80"
-          placeholder="企业全称"
-          placeholder-class="form-placeholder"
-          bindinput="onEnterpriseNameInput"
-          disabled="{{submitting}}"
-        />
-        <input
-          class="form-input"
-          value="{{creditCode}}"
-          maxlength="32"
-          placeholder="统一社会信用代码"
-          placeholder-class="form-placeholder"
-          bindinput="onCreditCodeInput"
-          disabled="{{submitting}}"
-        />
+        <view class="form-field">
+          <input
+            class="form-input {{fieldErrors.enterpriseName ? 'is-error' : ''}}"
+            value="{{enterpriseName}}"
+            maxlength="80"
+            placeholder="请填写企业全称"
+            placeholder-class="form-placeholder"
+            bindinput="onEnterpriseNameInput"
+            disabled="{{submitting}}"
+          />
+          <text wx:if="{{fieldErrors.enterpriseName}}" class="form-field-error">{{fieldErrors.enterpriseName}}</text>
+        </view>
+        <view class="form-field">
+          <input
+            class="form-input {{fieldErrors.creditCode ? 'is-error' : ''}}"
+            value="{{creditCode}}"
+            maxlength="32"
+            placeholder="请填写统一社会信用代码"
+            placeholder-class="form-placeholder"
+            bindinput="onCreditCodeInput"
+            disabled="{{submitting}}"
+          />
+          <text wx:if="{{fieldErrors.creditCode}}" class="form-field-error">{{fieldErrors.creditCode}}</text>
+        </view>
       </view>
 
       <view class="form-card">
         <view class="section-title">联系人信息</view>
-        <input
-          class="form-input"
-          value="{{contactName}}"
-          maxlength="30"
-          placeholder="联系人姓名"
-          placeholder-class="form-placeholder"
-          bindinput="onContactNameInput"
-          disabled="{{submitting}}"
-        />
-        <view class="phone-row">
-          <text class="phone-label">联系人手机</text>
-          <text class="phone-value">{{authorizedPhone || '授权后自动填写'}}</text>
+        <view class="form-field">
+          <input
+            class="form-input {{fieldErrors.contactName ? 'is-error' : ''}}"
+            value="{{contactName}}"
+            maxlength="30"
+            placeholder="请填写联系人姓名"
+            placeholder-class="form-placeholder"
+            bindinput="onContactNameInput"
+            disabled="{{submitting}}"
+          />
+          <text wx:if="{{fieldErrors.contactName}}" class="form-field-error">{{fieldErrors.contactName}}</text>
+        </view>
+        <view class="form-field phone-field">
+          <input
+            class="form-input {{phoneError ? 'is-error' : ''}}"
+            type="number"
+            value="{{contactPhone}}"
+            maxlength="11"
+            placeholder="请输入联系人手机号"
+            placeholder-class="form-placeholder"
+            bindinput="onContactPhoneInput"
+            disabled="{{submitting}}"
+          />
+          <text wx:if="{{phoneError}}" class="form-field-error">{{phoneError}}</text>
+          <text wx:elif="{{!authorizedPhone}}" class="phone-helper">可手动填写，点击下方按钮授权微信手机号并验证</text>
+          <text wx:else class="phone-helper is-authorized">已完成微信手机号授权，将自动提交开户申请</text>
         </view>
         <input
           class="form-input"
@@ -81,29 +101,43 @@
 
       <view class="privacy-note">
         <view class="privacy-mark"><view class="privacy-check"></view></view>
-        <text>联系人手机必须与微信授权手机号一致，审核通过后将作为管理员登录账号</text>
+        <text>联系人手机号需与微信授权手机号一致，审核通过后将作为管理员登录账号</text>
       </view>
 
+      <view wx:if="{{missingHint}}" class="missing-hint {{showFieldErrors ? 'is-alert' : ''}}">{{missingHint}}</view>
+
       <button
-        wx:if="{{!authorizedPhone}}"
-        class="join-action {{!canSubmit || submitting ? 'is-disabled' : ''}}"
-        open-type="getPhoneNumber"
-        bindgetphonenumber="onGetPhoneNumber"
-        loading="{{submitting}}"
-        disabled="{{!canSubmit || submitting}}"
+        wx:if="{{!canSubmit}}"
+        class="join-action is-disabled"
+        bindtap="onIncompleteSubmit"
+        hover-class="none"
       >
         <view class="join-inner">
           <image class="join-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-          <text>提交开户申请</text>
+          <text>授权手机号并提交</text>
+        </view>
+      </button>
+
+      <button
+        wx:elif="{{!authorizedPhone}}"
+        class="join-action {{submitting ? 'is-disabled' : ''}}"
+        open-type="getPhoneNumber"
+        bindgetphonenumber="onGetPhoneNumber"
+        loading="{{submitting}}"
+        disabled="{{submitting}}"
+      >
+        <view class="join-inner">
+          <image class="join-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+          <text>授权手机号并提交</text>
         </view>
       </button>
 
       <button
         wx:else
-        class="join-action {{!canSubmit || submitting ? 'is-disabled' : ''}}"
+        class="join-action {{submitting ? 'is-disabled' : ''}}"
         bindtap="onSubmit"
         loading="{{submitting}}"
-        disabled="{{!canSubmit || submitting}}"
+        disabled="{{submitting}}"
       >
         <view class="join-inner">
           <text>提交开户申请</text>

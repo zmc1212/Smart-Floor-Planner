@@ -1,6 +1,7 @@
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding, roleForIdentity } = require('../../../utils/identity-navigation.js');
 const { onboardingUrlFromScanResult } = require('../../../utils/onboardingScan.js');
+const { openRoleGuide } = require('../../../utils/roleGuide.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -64,9 +65,14 @@ Page({
     milestones: [],
   },
 
-  onLoad() {
+  async onLoad() {
     this.setData(navigationMetrics());
-    this.load();
+    await this.load();
+    openRoleGuide('referrer', {
+      automatic: true,
+      source: 'first-entry',
+      membershipId: this.data.selectedMembershipId
+    });
   },
 
   async onShow() {
@@ -116,10 +122,11 @@ Page({
           const earningsItems = (earningsRes && earningsRes.data && Array.isArray(earningsRes.data.items)) ? earningsRes.data.items : [];
           const earningsPayload = (earningsRes && earningsRes.data) || {};
 
-          totalClients = progressItems.length;
-          progressCount = progressItems.length;
-          todayScans = progressItems.filter((item) => isToday(item.updatedAt) || isToday(item.convertedAt)).length;
-          signedCount = progressItems.filter((item) => item.stage && item.stage.key === 'converted').length;
+          const activeProgressItems = progressItems.filter((item) => item.terminationType !== 'referrer_withdrawn');
+          totalClients = activeProgressItems.length;
+          progressCount = activeProgressItems.length;
+          todayScans = activeProgressItems.filter((item) => isToday(item.updatedAt) || isToday(item.convertedAt)).length;
+          signedCount = activeProgressItems.filter((item) => item.stage && item.stage.key === 'converted').length;
 
           pendingCount = Number(earningsPayload.payableCount);
           if (!Number.isFinite(pendingCount)) {
@@ -155,6 +162,8 @@ Page({
             return {
               id: item.id,
               customerLabel: item.customerLabel,
+              recordCode: item.recordCode,
+              terminationType: item.terminationType,
               stageKey,
               stageLabel,
               stageClass: stageTagClass(stageKey),

@@ -6,24 +6,25 @@
           class="identity-nav"
           style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
         >
-          <view class="identity-left">
-            <view class="brand-mark">
-              <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+          <view class="identity-brand-stack">
+            <view class="identity-brand-row">
+              <view class="brand-mark">
+                <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+              </view>
+              <text class="identity-brand-name">家客来 · 经营端</text>
             </view>
-            <text class="identity-role-name">家客来 · 经营端</text>
-            <view wx:if="{{enterpriseName}}" class="identity-tag">
-              <text>{{enterpriseName}}</text>
-            </view>
+            <text wx:if="{{enterpriseName}}" class="identity-enterprise-name">{{enterpriseName}}</text>
           </view>
         </view>
 
         <view class="role-hero-card enterprise-hero-card">
           <view class="hero-top-row">
             <view class="hero-text-wrap">
+              <text wx:if="{{staffName}}" class="hero-staff-name">{{staffName}}</text>
               <text class="hero-title">{{title || '门店经营与全盘调度'}}</text>
               <text class="hero-subtitle">{{subtitle || '派单跟踪 · 测量调度 · 方案交付'}}</text>
             </view>
-            <image class="hero-mascot enterprise-hero-mascot" src="/images/airy-v1/thumbs-up-xiao-k.png" mode="aspectFit" aria-label="小K" />
+            <image class="hero-mascot enterprise-hero-mascot" src="/images/operations-dashboard/enterprise-guide.png" mode="aspectFit" aria-label="小K" />
           </view>
 
           <view class="stats-pills-row">
@@ -33,8 +34,40 @@
             </view>
           </view>
 
-          <view wx:if="{{activityCode}}" class="hero-action-pill solid enterprise-activity-pill" bindtap="openActivityCode" hover-class="btn-pressed">
-            <text>{{activityCode.label}}</text>
+          <view
+            wx:if="{{activityCode || joinCode}}"
+            class="enterprise-code-actions {{activityCode && joinCode ? '' : 'single'}}"
+          >
+            <view
+              wx:if="{{activityCode}}"
+              class="enterprise-code-action enterprise-code-action-primary"
+              bindtap="openActivityCode"
+              hover-class="btn-pressed"
+              aria-role="button"
+              aria-label="分享活动码，发给客户扫码留资"
+            >
+              <image class="enterprise-code-icon activity" src="/images/mine-icons/scan.png" mode="aspectFit" aria-hidden="true" />
+              <view class="enterprise-code-copy">
+                <text class="enterprise-code-title">{{activityCode.label}}</text>
+                <text class="enterprise-code-detail">{{activityCode.detail}}</text>
+              </view>
+              <view class="enterprise-code-chevron"></view>
+            </view>
+            <view
+              wx:if="{{joinCode}}"
+              class="enterprise-code-action enterprise-code-action-secondary"
+              bindtap="openJoinCodes"
+              hover-class="btn-pressed"
+              aria-role="button"
+              aria-label="邀请员工或推荐人入驻"
+            >
+              <image class="enterprise-code-icon join" src="/images/operations-dashboard/staff-onboarding.png" mode="aspectFit" aria-hidden="true" />
+              <view class="enterprise-code-copy">
+                <text class="enterprise-code-title">{{joinCode.label}}</text>
+                <text class="enterprise-code-detail">{{joinCode.detail}}</text>
+              </view>
+              <view class="enterprise-code-chevron"></view>
+            </view>
           </view>
         </view>
 
@@ -52,8 +85,8 @@
               <text class="quick-desc tone-{{item.tone || 'green'}}">{{item.desc}}</text>
             </view>
             <image
-              class="quick-nav-mascot"
-              src="{{item.key === 'staffLoad' ? '/images/airy-v1/xiao-k-measurer-3d.png' : '/images/airy-v1/leads-phone-3d.png'}}"
+              class="quick-nav-mascot {{item.key === 'staffLoad' ? 'staff-load-mascot' : ''}}"
+              src="{{item.key === 'staffLoad' ? '/images/operations-dashboard/staff-load.png' : '/images/operations-dashboard/lead-inbox.png'}}"
               mode="aspectFit"
             />
           </view>
@@ -62,7 +95,7 @@
         <view class="enterprise-dashboard-section">
           <view class="section-head compact dashboard-head">
             <view class="section-title-wrap">
-              <text class="section-icon">📊</text>
+              <image class="section-dashboard-icon" src="/images/operations-dashboard/chart.png" mode="aspectFit" aria-hidden="true" />
               <text class="section-title-text">经营大盘</text>
             </view>
             <text wx:if="{{dashboardPeriod.subtitle}}" class="dashboard-scope">{{dashboardPeriod.subtitle}}</text>
@@ -84,54 +117,89 @@
               <text>自定义</text>
             </view>
           </view>
-          <view class="enterprise-dashboard-grid">
-            <view wx:for="{{dashboard}}" wx:key="key" class="enterprise-dashboard-card">
-              <text class="dashboard-label">{{item.label}}</text>
-              <view class="dashboard-value-row">
-                <text class="dashboard-value">{{item.value}}</text>
-                <text wx:if="{{item.unit}}" class="dashboard-unit">{{item.unit}}</text>
+          <view wx:if="{{dashboardStages.length}}" class="enterprise-operations-board">
+            <view class="operations-board-kicker"><text>经营闭环</text></view>
+            <view class="operations-stage-grid">
+              <view
+                wx:for="{{dashboardStages}}"
+                wx:key="key"
+                class="operations-stage operations-stage-{{item.key}} state-{{item.state}}"
+              >
+                <view class="operations-stage-heading">
+                  <view class="operations-stage-number"><text>{{item.ordinal}}</text></view>
+                  <text class="operations-stage-label">{{item.label}}</text>
+                </view>
+                <view class="operations-stage-value-row">
+                  <text class="operations-stage-value">{{item.value}}</text>
+                  <text wx:if="{{item.unit}}" class="operations-stage-unit">{{item.unit}}</text>
+                </view>
+                <text wx:if="{{item.detail}}" class="operations-stage-detail">{{item.detail}}</text>
               </view>
-              <text wx:if="{{item.detail}}" class="dashboard-detail tone-{{item.tone || 'green'}}">{{item.detail}}</text>
+            </view>
+            <view class="operations-efficiency-grid">
+              <view
+                wx:for="{{dashboardEfficiencies}}"
+                wx:key="key"
+                class="operations-efficiency-card operations-efficiency-{{item.key}}"
+              >
+                <image
+                  class="operations-efficiency-icon"
+                  src="{{item.key === 'schemeDelivery' ? '/images/operations-dashboard/scheme-delivery-rate.png' : '/images/operations-dashboard/signing-rate.png'}}"
+                  mode="aspectFit"
+                  aria-hidden="true"
+                />
+                <view class="operations-efficiency-copy">
+                  <text class="operations-efficiency-label">{{item.label}}</text>
+                  <view class="operations-efficiency-value-row">
+                    <text class="operations-efficiency-value">{{item.value}}</text>
+                    <text wx:if="{{item.unit}}" class="operations-efficiency-unit">{{item.unit}}</text>
+                  </view>
+                  <text wx:if="{{item.detail}}" class="operations-efficiency-detail">{{item.detail}}</text>
+                </view>
+              </view>
             </view>
           </view>
         </view>
 
         <view class="enterprise-priority-section">
-          <view class="section-head compact">
-            <view class="section-title-wrap">
-              <text class="section-icon">⚡</text>
-              <text class="section-title-text">需优先处理事项（异常监控）</text>
+          <view class="enterprise-priority-tray {{items.length ? 'has-items' : 'is-empty'}}">
+            <view class="section-head compact priority-head">
+              <view class="section-title-wrap">
+                <image class="priority-title-icon" src="/images/operations-dashboard/zap.png" mode="aspectFit" aria-hidden="true" />
+                <text class="section-title-text">需优先处理事项（异常监控）</text>
+              </view>
+              <view wx:if="{{secondary}}" class="section-link" bindtap="openSecondary">
+                <text>{{secondary.label}}</text>
+                <view class="chevron"></view>
+              </view>
             </view>
-            <view wx:if="{{secondary}}" class="section-link" bindtap="openSecondary">
-              <text>{{secondary.label}}</text>
-              <view class="chevron"></view>
-            </view>
-          </view>
 
-          <view wx:if="{{loading}}" class="state-block"><text>正在读取真实工作数据</text></view>
-          <view wx:elif="{{error}}" class="state-block"><text>{{error}}</text><view class="retry" bindtap="load">重新加载</view></view>
-          <view wx:elif="{{items.length}}" class="enterprise-exception-list">
-            <view
-              wx:for="{{items}}"
-              wx:key="id"
-              class="enterprise-exception-card"
-              data-item="{{item}}"
-              bindtap="openEnterpriseException"
-              hover-class="work-item-pressed"
-            >
-              <view class="exception-marker tone-{{item.exceptionTone || 'orange'}}"></view>
-              <view class="exception-copy">
-                <text class="exception-title">{{item.title}}</text>
-                <text class="exception-subtitle">{{item.subtitle}}</text>
-                <text class="exception-meta">{{item.metaLabel}}</text>
-              </view>
-              <view wx:if="{{item.actionLabel}}" class="exception-cta" catchtap="openEnterpriseException" data-item="{{item}}">
-                <text>{{item.actionLabel}}</text>
+            <view wx:if="{{loading}}" class="state-block priority-state"><text>正在读取真实工作数据</text></view>
+            <view wx:elif="{{error}}" class="state-block priority-state"><text>{{error}}</text><view class="retry" bindtap="load">重新加载</view></view>
+            <view wx:elif="{{items.length}}" class="enterprise-exception-list">
+              <view
+                wx:for="{{items}}"
+                wx:key="id"
+                class="enterprise-exception-card"
+                data-item="{{item}}"
+                bindtap="openEnterpriseException"
+                hover-class="work-item-pressed"
+              >
+                <view class="exception-marker tone-{{item.exceptionTone || 'orange'}}"></view>
+                <view class="exception-copy">
+                  <text class="exception-title">{{item.title}}</text>
+                  <text class="exception-subtitle">{{item.subtitle}}</text>
+                  <text class="exception-meta">{{item.metaLabel}}</text>
+                </view>
+                <view wx:if="{{item.actionLabel}}" class="exception-cta" catchtap="openEnterpriseException" data-item="{{item}}">
+                  <text>{{item.actionLabel}}</text>
+                </view>
               </view>
             </view>
-          </view>
-          <view wx:else class="state-block empty">
-            <text>{{emptyCopy}}</text>
+            <view wx:else class="priority-empty-copy">
+              <image class="priority-empty-pin" src="/images/leads-v4/map-pin.png" mode="aspectFit" aria-hidden="true" />
+              <text>{{emptyCopy}}</text>
+            </view>
           </view>
         </view>
       </block>
@@ -141,20 +209,21 @@
           class="identity-nav"
           style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
         >
-          <view class="identity-left">
-            <view class="brand-mark">
-              <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+          <view class="identity-brand-stack">
+            <view class="identity-brand-row">
+              <view class="brand-mark">
+                <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+              </view>
+              <text class="identity-brand-name">家客来 · {{role === 'designer' ? '家装设计顾问端' : role === 'measurer' ? '家装现场顾问端' : role === 'enterprise_admin' ? '经营端' : '服务向导'}}</text>
             </view>
-            <text class="identity-role-name">家客来 · {{role === 'designer' ? '家装设计顾问端' : role === 'measurer' ? '家装现场顾问端' : role === 'enterprise_admin' ? '经营端' : '服务向导'}}</text>
-            <view wx:if="{{enterpriseName}}" class="identity-tag">
-              <text>{{enterpriseName}}</text>
-            </view>
+            <text wx:if="{{enterpriseName}}" class="identity-enterprise-name">{{enterpriseName}}</text>
           </view>
         </view>
 
         <view class="role-hero-card">
           <view class="hero-top-row">
             <view class="hero-text-wrap">
+              <text wx:if="{{staffName}}" class="hero-staff-name">{{staffName}}</text>
               <text class="hero-title">{{title || (role === 'designer' ? '方案协作与客户交付' : role === 'measurer' ? '今日量房排班与调度' : '工作台')}}</text>
               <text class="hero-subtitle">{{subtitle || (role === 'designer' ? '户型自动同步 · AI出图交付' : role === 'measurer' ? '激光测距直连 · 毫米级拓扑建图' : '')}}</text>
             </view>
@@ -272,6 +341,17 @@
               </view>
               <text wx:if="{{item.detail}}" class="dashboard-detail tone-{{item.tone || 'green'}}">{{item.detail}}</text>
             </view>
+          </view>
+        </view>
+
+        <view wx:if="{{withdrawalNotices.length}}" class="withdrawal-notice-list">
+          <view wx:for="{{withdrawalNotices}}" wx:key="id" class="withdrawal-notice">
+            <view class="withdrawal-notice-copy">
+              <text class="withdrawal-notice-title">{{item.title}}</text>
+              <text class="withdrawal-notice-message">{{item.message}}</text>
+              <text wx:if="{{item.recordCode}}" class="withdrawal-notice-code">记录编号 {{item.recordCode}}</text>
+            </view>
+            <button class="withdrawal-notice-action" data-id="{{item.id}}" bindtap="acknowledgeWithdrawal">我知道了</button>
           </view>
         </view>
 

@@ -29,6 +29,14 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         </view>
         <view class="account-chevron"></view>
       </view>
+      <view wx:if="{{showRoleGuideEntry}}" class="account-row" hover-class="account-row-pressed" bindtap="onOpenRoleGuide" aria-role="button">
+        <image class="account-row-icon" src="/images/mine-icons/bulb.png" mode="aspectFit" />
+        <view class="account-row-copy">
+          <view class="account-row-label">角色使用引导</view>
+          <view class="account-row-helper">{{roleGuideHelper}}</view>
+        </view>
+        <view class="account-chevron"></view>
+      </view>
       <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenIdentitySwitch" aria-role="button">
         <image class="account-row-icon" src="/images/mine-icons/users.png" mode="aspectFit" />
         <view class="account-row-copy">
@@ -51,7 +59,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
   </view>
 </template>
 
-<view class="mine-page {{isLoggedIn ? 'sfp-tab-page' : 'guest-page'}}">
+<view class="mine-page {{isLoggedIn ? 'sfp-tab-page' : 'guest-page sfp-tab-page'}}">
   <scroll-view class="mine-scroll" scroll-y enhanced show-scrollbar="{{false}}">
     <view wx:if="{{!isLoggedIn}}" class="login-state">
       <view
@@ -99,7 +107,10 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         </view>
 
         <button class="primary-button login-button" bindtap="goToLogin">立即登录</button>
-        <view class="login-trust-note"><view class="login-trust-mark"></view><text>一个账号 · 多重身份 · 随时切换</text></view>
+        <view class="login-trust-note">
+          <image class="login-trust-mark" src="/images/mine-icons/shield-check.png" mode="aspectFit" aria-hidden="true" />
+          <text>一个账号 · 多重身份 · 随时切换</text>
+        </view>
       </view>
     </view>
 
@@ -248,7 +259,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           <view class="ai-banner-arrow"><view class="css-chevron"></view></view>
         </view>
 
-        <template is="mineAccountPanel" />
+        <template is="mineAccountPanel" data="{{showRoleGuideEntry, roleGuideHelper}}" />
       </view>
 
       <view wx:else class="user-dashboard">
@@ -329,7 +340,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <image src="/images/mine-icons/bulb.png" mode="aspectFit" /><text>AI 设计</text>
           </view>
         </view>
-        <template is="mineAccountPanel" />
+        <template is="mineAccountPanel" data="{{showRoleGuideEntry, roleGuideHelper}}" />
       </view>
     </view>
   </scroll-view>

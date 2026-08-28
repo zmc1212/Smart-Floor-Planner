@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "preferences": {
+    "destination": {
+      "value": "shorts",
+      "confirmed_in": [
+        "jiakelai-miniprogram-explainer"
+      ],
+      "updated_at": "2026-08-27T07:27:39.917Z"
+    },
+    "aspect": {
+      "value": "1080x1920",
+      "confirmed_in": [
+        "jiakelai-miniprogram-explainer"
+      ],
+      "updated_at": "2026-08-27T07:27:39.959Z"
+    },
+    "language": {
+      "value": "zh",
+      "confirmed_in": [
+        "jiakelai-miniprogram-explainer"
+      ],
+      "updated_at": "2026-08-27T07:27:40.001Z"
+    },
+    "flow": {
+      "value": "automation",
+      "confirmed_in": [
+        "jiakelai-miniprogram-explainer"
+      ],
+      "updated_at": "2026-08-27T07:27:40.044Z"
+    },
+    "storyboard": {
+      "value": "yes",
+      "confirmed_in": [
+        "jiakelai-miniprogram-explainer"
+      ],
+      "updated_at": "2026-08-27T07:27:40.087Z"
+    },
+    "style_preset.product-launch-video": {
+      "value": "blue-professional",
+      "confirmed_in": [
+        "jiakelai-miniprogram-explainer"
+      ],
+      "updated_at": "2026-08-27T07:30:42.401Z"
+    },
+    "voice": {
+      "value": "zf_xiaobei",
+      "confirmed_in": [
+        "jiakelai-miniprogram-explainer"
+      ],
+      "updated_at": "2026-08-27T07:34:34.242Z"
+    }
+  },
+  "sightings": {}
+}

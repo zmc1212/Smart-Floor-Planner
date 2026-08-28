@@ -34,6 +34,14 @@ function parseSlot(range) {
   };
 }
 
+function isOverdueCoordination(item, todayKey) {
+  if (!item || !item.dateKey || item.dateKey >= todayKey) return false;
+  if (item.serviceStage === 'converted' || item.serviceStage === 'closed') return false;
+  return item.status === 'expired'
+    || item.serviceStage === 'appointment_expired'
+    || item.serviceStage === 'awaiting_rebooking';
+}
+
 function statusPresentation(item) {
   const serviceStage = String(item.serviceStage || '');
   // Signed/closed ends the lead on this platform — no schedule coordination actions.
@@ -129,6 +137,7 @@ Page({
         taskCountMap[item.dateKey] = (taskCountMap[item.dateKey] || 0) + 1;
       }
     });
+    const overdueOnToday = (appointments || []).some((item) => isOverdueCoordination(item, todayKey));
 
     for (let i = 0; i < 7; i += 1) {
       const day = new Date(refDate);
@@ -141,7 +150,7 @@ Page({
         dayName: isToday ? '今日' : dayNames[day.getDay()],
         dateLabel: String(day.getDate()),
         isToday,
-        hasTask: (taskCountMap[key] || 0) > 0,
+        hasTask: (taskCountMap[key] || 0) > 0 || (isToday && overdueOnToday),
       });
     }
     return days;
@@ -150,7 +159,9 @@ Page({
   applySelection(selectedKey, appointments, weekDays) {
     const todayKey = this.data.todayDateKey || formatDateKey(new Date());
     const selected = appointments
-      .filter((item) => item.dateKey === selectedKey || (!item.dateKey && selectedKey === todayKey))
+      .filter((item) => item.dateKey === selectedKey
+        || (!item.dateKey && selectedKey === todayKey)
+        || (selectedKey === todayKey && isOverdueCoordination(item, todayKey)))
       .sort((left, right) => left.startMs - right.startMs);
     const selectedDay = (weekDays || []).find((day) => day.key === selectedKey);
     const selectedDateTitle = selectedKey === todayKey
@@ -189,7 +200,9 @@ Page({
       now.setHours(0, 0, 0, 0);
       const weekDays = this.buildWeekDays(now, appointments);
       const weekKeys = new Set(weekDays.map((day) => day.key));
-      const weekCount = appointments.filter((item) => weekKeys.has(item.dateKey)).length;
+      const todayKey = formatDateKey(now);
+      const weekCount = appointments.filter((item) => weekKeys.has(item.dateKey)
+        || isOverdueCoordination(item, todayKey)).length;
       const selectedKey = this.data.selectedDateKey || formatDateKey(now);
 
       this.setData({
@@ -220,10 +233,13 @@ Page({
   },
 
   openAppointment(event) {
-    const item = event.currentTarget.dataset.item;
-    if (!item || !item.openable || !item.leadId || !item.appointmentId) return;
+    const dataset = event.currentTarget.dataset || {};
+    const openable = dataset.openable === true || dataset.openable === 'true';
+    const leadId = dataset.leadId;
+    const appointmentId = dataset.appointmentId;
+    if (!openable || !leadId || !appointmentId) return;
     wx.navigateTo({
-      url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.appointmentId)}`,
+      url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(leadId)}&appointmentId=${encodeURIComponent(appointmentId)}`,
     });
   },
 });

@@ -2387,6 +2387,64 @@ function clearDraggingCursor(ctx, rect, options) {
   ctx.restore();
 }
 
+const DRAG_CURSOR_CLEAR_PAD = 44;
+
+function cursorGlyphClearRect(point) {
+  if (!point) return null;
+  return {
+    x: point.x - DRAG_CURSOR_CLEAR_PAD,
+    y: point.y - DRAG_CURSOR_CLEAR_PAD,
+    width: DRAG_CURSOR_CLEAR_PAD * 2,
+    height: DRAG_CURSOR_CLEAR_PAD * 2
+  };
+}
+
+function lensPanelRect(lensRect) {
+  if (!lensRect) return null;
+  const pad = 8;
+  const metaHeight = 44;
+  const size = lensRect.size || 120;
+  return {
+    x: (lensRect.left || 0) - pad,
+    y: (lensRect.top || 0) - pad,
+    width: size + pad * 2,
+    height: size + pad * 2 + metaHeight
+  };
+}
+
+function rectsOverlap(a, b) {
+  if (!a || !b) return false;
+  return a.x < b.x + b.width && a.x + a.width > b.x
+    && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+function shouldFullPaintDraggingCursor(options, point) {
+  const opts = options || {};
+  if (opts.showCursor === false) return true;
+  if (opts.forceFullPaint) return true;
+  if (opts.snapGuide) return true;
+  if (opts.paintLens !== false) return true;
+  if (!opts.previousPoint || !point) return true;
+  const lens = lensPanelRect(opts.lensRect);
+  if (
+    lens
+    && (
+      rectsOverlap(cursorGlyphClearRect(point), lens)
+      || rectsOverlap(cursorGlyphClearRect(opts.previousPoint), lens)
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function clearCursorGlyphRects(ctx, previousPoint, point) {
+  const previous = cursorGlyphClearRect(previousPoint);
+  const next = cursorGlyphClearRect(point);
+  if (previous) ctx.clearRect(previous.x, previous.y, previous.width, previous.height);
+  if (next) ctx.clearRect(next.x, next.y, next.width, next.height);
+}
+
 // WeChat type-2d fillText is expensive on the drag hot path. Cache one green
 // “合” disc per radius and blit it with drawImage whenever possible.
 const closeActionSpriteCache = new Map();
@@ -2595,18 +2653,25 @@ function drawCursorLensScene(ctx, scene, lensRect, meta, options) {
 function drawDraggingCursor(ctx, rect, point, options) {
   if (!ctx || !rect || !rect.width || !rect.height || !point) return;
   const dpr = (options && options.dpr) || 1;
-  clearDraggingCursor(ctx, rect, { dpr });
+  const fullPaint = shouldFullPaintDraggingCursor(options, point);
+  if (fullPaint) {
+    clearDraggingCursor(ctx, rect, { dpr });
+  }
 
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
 
+  if (!fullPaint) {
+    clearCursorGlyphRects(ctx, options && options.previousPoint, point);
+  }
+
   // The formal canvas owns its stationary/moving cursor while a wall is drawn
   // directly on the canvas. In that path this lightweight layer contributes
   // only the lens, otherwise it would paint a second green cursor.
   const showCursor = !options || options.showCursor !== false;
-  const snapGuide = showCursor && options && options.snapGuide;
+  const snapGuide = fullPaint && showCursor && options && options.snapGuide;
   if (snapGuide) {
     const drawAxis = (axis, axisPoint) => {
       if (!axisPoint) return;
@@ -2654,16 +2719,18 @@ function drawDraggingCursor(ctx, rect, point, options) {
     drawCursorGlyph(ctx, point, { scale: 1.35 });
   }
 
-  drawCursorLensScene(
-    ctx,
-    options && options.lensScene,
-    options && options.lensRect,
-    options && options.lensMeta,
-    {
-      source: options && options.lensSource,
-      sample: options && options.lensSample
-    }
-  );
+  if (fullPaint) {
+    drawCursorLensScene(
+      ctx,
+      options && options.lensScene,
+      options && options.lensRect,
+      options && options.lensMeta,
+      {
+        source: options && options.lensSource,
+        sample: options && options.lensSample
+      }
+    );
+  }
   // Close stays on the formal canvas (and pan/pinch control pass). Redrawing it
   // here forced fillText/drawImage on every drag rAF and made the overlay lag.
   ctx.restore();

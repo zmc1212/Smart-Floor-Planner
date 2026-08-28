@@ -376,6 +376,66 @@ test('onboarding reapplies a newer scene when WeChat reopens the current recover
   }
 });
 
+test('onboarding recovery copy covers membership and protection limits', async () => {
+  const js = source('packages/business/onboarding/onboarding.js');
+  const wxml = source('packages/business/onboarding/onboarding.wxml');
+  assert.match(js, /referrer_protection_limit/);
+  assert.match(js, /当前微信的推荐人企业数量已达上限，请先退出不再服务的企业。/);
+  assert.match(js, /该企业已限制推广人同时服务其他企业的数量，暂时无法加入。/);
+  assert.match(wxml, /class="recovery-subtitle">\{\{errorMessage/);
+  assert.match(wxml, /当前邀请暂不可用/);
+  assert.match(wxml, /扫描新邀请/);
+
+  const definition = loadPage();
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  global.wx = {
+    ...(originalWx || {}),
+    showToast() {}
+  };
+
+  async function submitReferrerOnboarding(code) {
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'name',
+        codeType: 'referrer',
+        displayName: '测试推荐人',
+        onboardingToken: 'ej_ABCDEFGHIJKLMNOPQRSTUVWXYZ123456'
+      },
+      setData(next) { Object.assign(this.data, next); },
+      async persistOnboardingSession() {},
+      submitOnboarding: definition.submitOnboarding,
+    };
+    api.request = async () => {
+      const error = new Error(code);
+      error.code = code;
+      throw error;
+    };
+    await definition.onConfirmReferrerName.call(context);
+    return context;
+  }
+
+  try {
+    const protection = await submitReferrerOnboarding('referrer_protection_limit');
+    assert.equal(protection.data.pageState, 'recovery');
+    assert.equal(
+      protection.data.errorMessage,
+      '该企业已限制推广人同时服务其他企业的数量，暂时无法加入。'
+    );
+
+    const membership = await submitReferrerOnboarding('membership_limit_reached');
+    assert.equal(membership.data.pageState, 'recovery');
+    assert.equal(
+      membership.data.errorMessage,
+      '当前微信的推荐人企业数量已达上限，请先退出不再服务的企业。'
+    );
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+  }
+});
+
 test('recovery camera scan is not overwritten by the original page scene on show', () => {
   const definition = loadPage();
   const originalWx = global.wx;

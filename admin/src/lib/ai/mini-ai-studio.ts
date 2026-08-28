@@ -5,7 +5,7 @@ import { LeadRepository } from '@/db/repositories';
 import { resolveMiniAiContext, type MiniAiContext } from '@/lib/ai/mini-ai-auth';
 import {
   getSignedMiniAiAssetUrl,
-  getSignedMiniAiRecipePreviewUrl,
+  resolveMiniRecipePreviewUrl,
   getSignedMiniAiStudioFloorPlanPreviewUrl,
   getSignedMiniAiStudioGenerationUrl,
 } from '@/lib/ai/mini-ai-assets';
@@ -281,7 +281,7 @@ export async function serializeAssetPreviewForMini(
 
 type PromptTemplateList = Awaited<ReturnType<typeof import('@/lib/ai/prompt-library-query').listActivePromptTemplates>>;
 
-/** Rewrite template covers onto the signed Mini recipe-preview endpoint (WeChat-loadable). */
+/** Keep HTTPS imported covers for WeChat `<image>`; sign only same-origin fallbacks. */
 export function serializePromptTemplatesForMini(
   request: Request,
   enterpriseId: string,
@@ -290,7 +290,6 @@ export function serializePromptTemplatesForMini(
   return {
     ...payload,
     items: payload.items.map((template) => {
-      const hasPreview = Boolean(template.previewUrl || template.localPreviewUrl);
       return {
         id: template.id,
         name: template.name,
@@ -301,13 +300,13 @@ export function serializePromptTemplatesForMini(
         parameterTemplateSourceId: template.parameterTemplateSourceId,
         adaptationModel: template.adaptationModel,
         weight: template.weight,
-        previewUrl: hasPreview
-          ? getSignedMiniAiRecipePreviewUrl({
-              request,
-              recipeId: template.id,
-              enterpriseId,
-            })
-          : undefined,
+        previewUrl: resolveMiniRecipePreviewUrl({
+          request,
+          recipeId: template.id,
+          enterpriseId,
+          previewUrl: template.previewUrl,
+          localPreviewUrl: template.localPreviewUrl,
+        }),
       };
     }),
   };

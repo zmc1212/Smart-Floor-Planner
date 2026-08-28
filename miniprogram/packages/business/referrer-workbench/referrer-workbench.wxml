@@ -11,8 +11,8 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
     <view class="nav-left">
-      <view class="brand-logo-pill">
-        <text class="brand-logo-text">JK</text>
+      <view class="brand-mark">
+        <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
       </view>
       <text class="nav-title">家客来 · 推广端</text>
       <view class="identity-badge-pill">
@@ -151,7 +151,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
         <view wx:for="{{milestones}}" wx:key="id" class="milestone-card sfp-card" bindtap="openProgress" hover-class="card-pressed">
           <view class="milestone-top-row">
             <view class="milestone-title-wrap">
-              <text class="milestone-project-name">{{item.customerLabel}}</text>
+              <view><text class="milestone-project-name">{{item.recordCode || item.customerLabel}}</text><text class="milestone-client-desc">{{item.customerLabel}}</text></view>
               <view class="milestone-status-tag {{item.stageClass}}">{{item.stageLabel}}</view>
             </view>
             <text wx:if="{{item.rewardLabel}}" class="milestone-reward-text {{item.rewardClass}}">{{item.rewardLabel}}</text>

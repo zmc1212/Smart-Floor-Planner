@@ -9,9 +9,9 @@ const COPY_BY_TYPE = {
     shareLabel: '一键分享',
     info: '扫码后授权手机号，完成员工入驻',
     promises: [
-      { mark: '职', title: '员工入驻', copy: '加入本企业' },
-      { mark: '岗', title: '岗位确认', copy: '家装设计顾问/家装现场顾问' },
-      { mark: '开', title: '开始服务', copy: '进入工作台' }
+      { icon: 'scan-journey.png', title: '扫码入驻', copy: '加入本企业' },
+      { icon: 'role-journey.png', title: '确认岗位', copy: '家装设计顾问/家装现场顾问' },
+      { icon: 'start-journey.png', title: '开始服务', copy: '进入工作台' }
     ]
   },
   referrer: {
@@ -21,9 +21,9 @@ const COPY_BY_TYPE = {
     shareLabel: '一键分享',
     info: '扫码后授权手机号，完成推荐人入驻',
     promises: [
-      { mark: '推', title: '推荐入驻', copy: '加入本企业' },
-      { mark: '广', title: '出示服务码', copy: '获客推广' },
-      { mark: '益', title: '跟进收益', copy: '查看进度' }
+      { icon: 'scan-journey.png', title: '推荐入驻', copy: '加入本企业' },
+      { icon: 'role-journey.png', title: '出示服务码', copy: '获客推广' },
+      { icon: 'start-journey.png', title: '跟进收益', copy: '查看进度' }
     ]
   }
 };

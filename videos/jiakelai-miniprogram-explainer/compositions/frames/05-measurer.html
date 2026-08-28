@@ -1,0 +1,504 @@
+<template>
+  <style>
+    @font-face{font-family:"Source Han Sans";font-weight:400;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Regular.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:500;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Medium.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Bold.otf") format("opentype");}
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      overflow: hidden;
+      color: #1f2937;
+      font-family: "Source Han Sans", sans-serif;
+    }
+    .f05-ground {
+      position: absolute;
+      inset: 0;
+      background: #ffffff;
+    }
+    .f05-scene {
+      position: absolute;
+      inset: 0;
+    }
+    .f05-stack {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 1920px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 16px 32px 28px;
+      box-sizing: border-box;
+      gap: 16px;
+    }
+    .f05-chrome {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+      width: 100%;
+      position: relative;
+      z-index: 2;
+    }
+    .f05-eyebrow {
+      position: relative;
+      padding: 12px 28px;
+      border-radius: 100px;
+      background: rgba(0, 195, 101, 0.08);
+      color: #00c365;
+      font-size: 28px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+    .f05-headline {
+      position: relative;
+      margin: 0;
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: #1f2937;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+    .f05-plate-slot {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      overflow: hidden;
+      container-type: size;
+    }
+    .f05-plate {
+      position: relative;
+      height: min(100cqh, calc(100cqw * 1536 / 1024));
+      width: min(100cqw, calc(100cqh * 1024 / 1536));
+      max-width: 100%;
+      max-height: 100%;
+      overflow: hidden;
+      box-sizing: border-box;
+      border: 1.5px solid rgba(0, 195, 101, 0.2);
+      background: rgba(0, 195, 101, 0.04);
+      border-radius: 14px;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+    .f05-zoom-outer {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      transform-origin: 50% 50%;
+      will-change: transform;
+    }
+    .f05-zoom-inner {
+      position: absolute;
+      left: 0;
+      top: 0;
+      will-change: transform;
+    }
+    .f05-jitter {
+      position: relative;
+      will-change: transform;
+    }
+    .f05-world {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    .f05-shot {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: 50% 0%;
+    }
+    .f05-hotspot {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .f05-hotspot-ble {
+      left: 6.4%;
+      top: 28.2%;
+      width: 54%;
+      height: 5.4%;
+    }
+    .f05-hotspot-today {
+      left: 6.2%;
+      top: 35.6%;
+      width: 26.5%;
+      height: 7.2%;
+    }
+    .f05-hotspot-tasks {
+      left: 7.5%;
+      top: 84.2%;
+      width: 52%;
+      height: 5.8%;
+    }
+    .f05-callouts {
+      position: relative;
+      width: 100%;
+      height: 44px;
+    }
+    .f05-callout {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      display: flex;
+      flex-wrap: nowrap;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      height: 44px;
+      color: #6b7280;
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: -0.02em;
+      transform-origin: 50% 50%;
+      will-change: transform, filter, opacity;
+    }
+    .f05-word {
+      display: inline-block;
+      transform-origin: 50% 50%;
+      text-shadow: 0 0 0 rgba(0, 195, 101, 0);
+    }
+    .f05-word-brand {
+      color: #00c365;
+    }
+  </style>
+  <div data-hf-id="hf-u8mx" id="root" data-composition-id="05-measurer" data-width="1080" data-height="1920" data-duration="10.584">
+    <div data-hf-id="hf-6u8l" class="clip f05-ground" data-start="0" data-duration="10.584" data-track-index="0"></div>
+    <div data-hf-id="hf-th8b" class="clip f05-scene" data-start="0" data-duration="10.584" data-track-index="1">
+      <div data-hf-id="hf-st05" class="f05-stack">
+      <div data-hf-id="hf-ch05" class="f05-chrome">
+      <div data-hf-id="hf-xgm4" class="f05-eyebrow" id="05-measurer-eyebrow">家装现场顾问</div>
+      <h1 data-hf-id="hf-0ml5" class="f05-headline" id="05-measurer-headline">连上测距仪</h1>
+      <div data-hf-id="hf-eiiz" class="f05-callouts">
+        <div data-hf-id="hf-2ptf" class="f05-callout" id="05-measurer-label-ble">
+          <span data-hf-id="hf-yqi1" class="f05-word" data-word="lian">连上</span>
+          <span data-hf-id="hf-evoh" class="f05-word" data-word="jiguang">激光</span>
+          <span data-hf-id="hf-gi0a" class="f05-word f05-word-brand" data-word="ceju">测距仪</span>
+        </div>
+        <div data-hf-id="hf-cccb" class="f05-callout" id="05-measurer-label-task">按今日任务上门量房</div>
+        <div data-hf-id="hf-r7xj" class="f05-callout" id="05-measurer-label-proof">毫米级户型</div>
+      </div>
+      </div>
+      <div data-hf-id="hf-ps05" class="f05-plate-slot">
+      <div data-hf-id="hf-abq1" class="f05-plate" id="05-measurer-plate">
+        <div data-hf-id="hf-i60f" class="f05-zoom-outer" id="05-measurer-zoom-outer">
+          <div data-hf-id="hf-v8e2" class="f05-zoom-inner" id="05-measurer-zoom-inner" data-layout-allow-overflow="true">
+            <div data-hf-id="hf-90wb" class="f05-jitter" id="05-measurer-jitter">
+              <div data-hf-id="hf-wm82" class="f05-world" id="05-measurer-world" data-layout-allow-overflow="true">
+                <img data-hf-id="hf-44th" class="f05-shot" id="05-measurer-shot" src="assets/measurer-workbench.jpg" width="780" alt="">
+                <div data-hf-id="hf-aepg" class="f05-hotspot f05-hotspot-ble" id="05-measurer-target-ble"></div>
+                <div data-hf-id="hf-bkz8" class="f05-hotspot f05-hotspot-today" id="05-measurer-target-today"></div>
+                <div data-hf-id="hf-8z2o" class="f05-hotspot f05-hotspot-tasks" id="05-measurer-target-tasks"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const DURATION = 9.984;
+      const ID = "05-measurer";
+      const plateBox = document.getElementById(ID + "-plate").getBoundingClientRect();
+      const PLATE_W = Math.max(plateBox.width, 1);
+      const PLATE_H = Math.max(plateBox.height, 1);
+
+      const el = (key) => document.getElementById(ID + "-" + key);
+
+      function imageReady(img) {
+        if (img.complete && img.naturalWidth) return Promise.resolve();
+        return new Promise((resolve) => {
+          img.addEventListener("load", resolve, { once: true });
+          img.addEventListener("error", resolve, { once: true });
+        });
+      }
+
+      function measure(target, plateRect) {
+        const r = target.getBoundingClientRect();
+        return {
+          x: r.left + r.width / 2 - (plateRect.left + plateRect.width / 2),
+          y: r.top + r.height / 2 - (plateRect.top + plateRect.height / 2),
+          w: r.width,
+          h: r.height,
+        };
+      }
+
+      function capScale(measured, desired) {
+        if (measured.w < 1 || measured.h < 1) return desired;
+        const maxScale = Math.min(
+          (0.88 * PLATE_W) / measured.w,
+          (0.88 * PLATE_H) / measured.h,
+        );
+        return Math.min(desired, maxScale);
+      }
+
+      function glowRgba(env) {
+        return "rgba(0, 195, 101, " + (0.15 + 0.85 * env).toFixed(3) + ")";
+      }
+
+      function lerpChannel(a, b, t) {
+        return Math.round(a + (b - a) * t);
+      }
+
+      function colorAt(env, isBrand) {
+        const rest = { r: 107, g: 114, b: 128 };
+        const target = isBrand
+          ? { r: 0, g: 195, b: 101 }
+          : { r: 31, g: 41, b: 55 };
+        return (
+          "rgb(" +
+          lerpChannel(rest.r, target.r, env) +
+          ", " +
+          lerpChannel(rest.g, target.g, env) +
+          ", " +
+          lerpChannel(rest.b, target.b, env) +
+          ")"
+        );
+      }
+
+      function envelope(time, start, end) {
+        const ATTACK_DUR = 0.16;
+        const RELEASE = 0.32;
+        const REST_LEVEL = 0.12;
+        if (time < start) return 0;
+        if (time < end) return Math.min((time - start) / ATTACK_DUR, 1);
+        const releaseEnd = end + RELEASE;
+        if (time < releaseEnd) {
+          return 1 - ((time - end) / RELEASE) * (1 - REST_LEVEL);
+        }
+        return REST_LEVEL;
+      }
+
+      async function build() {
+        const shot = el("shot");
+        const plate = el("plate");
+        const zoomOuter = el("zoom-outer");
+        const zoomInner = el("zoom-inner");
+        const jitter = el("jitter");
+        const eyebrow = el("eyebrow");
+        const headline = el("headline");
+        const labelBle = el("label-ble");
+        const labelTask = el("label-task");
+        const labelProof = el("label-proof");
+        const targetBle = el("target-ble");
+        const targetToday = el("target-today");
+        const targetTasks = el("target-tasks");
+
+        await imageReady(shot);
+        await document.fonts.ready;
+
+        const plateRect = plate.getBoundingClientRect();
+        const ble = measure(targetBle, plateRect);
+        const today = measure(targetToday, plateRect);
+        const tasks = measure(targetTasks, plateRect);
+
+        const bleScale = capScale(ble, 2.35);
+        const todayScale = capScale(today, 2.15);
+        const taskScale = capScale(tasks, 1.72);
+
+        const tl = gsap.timeline({ paused: true, defaults: { ease: "power3.out" } });
+
+        tl.fromTo(
+          eyebrow,
+          { scale: 0, opacity: 0 },
+          { scale: 1, opacity: 1, duration: 0.48, ease: "power3.out" },
+          0,
+        );
+        tl.fromTo(
+          headline,
+          { scale: 0, opacity: 0, y: 12 },
+          { scale: 1, opacity: 1, y: 0, duration: 0.52, ease: "power3.out" },
+          0.08,
+        );
+        tl.fromTo(
+          plate,
+          { scale: 0, opacity: 0, y: 16 },
+          { scale: 1, opacity: 1, y: 0, duration: 0.58, ease: "power3.out" },
+          0.12,
+        );
+
+        tl.set(zoomOuter, { scale: 1 }, 0);
+        tl.set(zoomInner, { x: 0, y: 0 }, 0);
+        tl.set(jitter, { y: 0, scale: 1 }, 0);
+        tl.set(labelBle, { opacity: 0, scale: 0, filter: "blur(0px)" }, 0);
+        tl.set(labelTask, { opacity: 0, scale: 0.75, filter: "blur(10px)" }, 0);
+        tl.set(labelProof, { opacity: 0, scale: 1.25, filter: "blur(10px)" }, 0);
+
+        tl.fromTo(
+          labelBle,
+          { scale: 0, opacity: 0, filter: "blur(0px)" },
+          { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.5, ease: "power3.out", immediateRender: false },
+          3.4,
+        );
+
+        tl.fromTo(
+          zoomOuter,
+          { scale: 1 },
+          { scale: bleScale, duration: 1.4, ease: "power3.inOut", immediateRender: false },
+          3.4,
+        );
+        tl.fromTo(
+          zoomInner,
+          { x: 0, y: 0 },
+          {
+            x: -ble.x,
+            y: -ble.y,
+            duration: 1.4,
+            ease: "power3.inOut",
+            immediateRender: false,
+          },
+          3.4,
+        );
+
+        const TIMINGS = {
+          lian: { start: 3.5, end: 3.95 },
+          jiguang: { start: 4.05, end: 4.55 },
+          ceju: { start: 4.6, end: 5.2 },
+        };
+        const words = labelBle.querySelectorAll(".f05-word");
+        const driver = { t: 0 };
+        const MAX_BLUR = 36;
+        const MAX_SCALE_BOOST = 0.18;
+        tl.fromTo(
+          driver,
+          { t: 0 },
+          {
+            t: DURATION,
+            duration: DURATION,
+            ease: "none",
+            onUpdate: () => {
+              words.forEach((node) => {
+                const timing = TIMINGS[node.dataset.word];
+                if (!timing) return;
+                const env = envelope(driver.t, timing.start, timing.end);
+                node.style.textShadow = "0 0 " + MAX_BLUR * env + "px " + glowRgba(env);
+                node.style.transform = "scale(" + (1 + MAX_SCALE_BOOST * env) + ")";
+                node.style.color = colorAt(env, node.classList.contains("f05-word-brand"));
+              });
+            },
+          },
+          0,
+        );
+
+        tl.fromTo(
+          labelBle,
+          { scale: 1, opacity: 1, filter: "blur(0px)" },
+          { scale: 1.2, filter: "blur(10px)", duration: 0.2, ease: "power3.in", immediateRender: false },
+          6.0,
+        );
+        tl.fromTo(
+          labelBle,
+          { opacity: 1 },
+          { opacity: 0.15, duration: 0.2, ease: "none", immediateRender: false },
+          6.0,
+        );
+        tl.set(labelBle, { opacity: 0 }, 6.2);
+        tl.set(labelTask, { opacity: 0.15, scale: 0.75, filter: "blur(10px)" }, 6.2);
+        tl.fromTo(
+          labelTask,
+          { scale: 0.75, opacity: 0.15, filter: "blur(10px)" },
+          { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.5, ease: "power3.out", immediateRender: false },
+          6.2,
+        );
+
+        tl.fromTo(
+          zoomOuter,
+          { scale: bleScale },
+          { scale: todayScale, duration: 1.0, ease: "power3.inOut", immediateRender: false },
+          6.2,
+        );
+        tl.fromTo(
+          zoomInner,
+          { x: -ble.x, y: -ble.y },
+          {
+            x: -today.x,
+            y: -today.y,
+            duration: 1.0,
+            ease: "power3.inOut",
+            immediateRender: false,
+          },
+          6.2,
+        );
+
+        tl.fromTo(
+          zoomOuter,
+          { scale: todayScale },
+          { scale: taskScale, duration: 1.15, ease: "power3.inOut", immediateRender: false },
+          7.25,
+        );
+        tl.fromTo(
+          zoomInner,
+          { x: -today.x, y: -today.y },
+          {
+            x: -tasks.x,
+            y: -tasks.y,
+            duration: 1.15,
+            ease: "power3.inOut",
+            immediateRender: false,
+          },
+          7.25,
+        );
+
+        tl.fromTo(
+          labelTask,
+          { scale: 1, opacity: 1, filter: "blur(0px)" },
+          { scale: 0.8, filter: "blur(10px)", duration: 0.2, ease: "power3.in", immediateRender: false },
+          8.2,
+        );
+        tl.fromTo(
+          labelTask,
+          { opacity: 1 },
+          { opacity: 0.15, duration: 0.2, ease: "none", immediateRender: false },
+          8.2,
+        );
+        tl.set(labelTask, { opacity: 0 }, 8.4);
+        tl.set(labelProof, { opacity: 0.15, scale: 1.25, filter: "blur(10px)" }, 8.4);
+        tl.fromTo(
+          labelProof,
+          { scale: 1.25, opacity: 0.15, filter: "blur(10px)" },
+          { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.5, ease: "power3.out", immediateRender: false },
+          8.4,
+        );
+
+        const IDLE_START = 8.4;
+        const IDLE_DUR = DURATION - IDLE_START;
+        tl.fromTo(
+          jitter,
+          { y: 0 },
+          {
+            y: -2.2,
+            duration: IDLE_DUR / 2,
+            ease: "sine.inOut",
+            yoyo: true,
+            repeat: 1,
+            immediateRender: false,
+          },
+          IDLE_START,
+        );
+
+        window.__timelines[ID] = tl;
+        if (typeof window.__hfForceTimelineRebind === "function") {
+          window.__hfForceTimelineRebind();
+        }
+      }
+
+      build();
+    })();
+  </script>
+</template>

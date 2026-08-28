@@ -367,3 +367,168 @@ test('referrer memberships cap at three and exit disables the promotion token', 
     assert.equal(history.filter((row) => row.membership.status === 'exited').length, 1);
   });
 });
+
+test('referrer onboarding enforces global N and the strictest enterprise M', async () => {
+  await withPlatformTransaction(async (transaction) => {
+    const enterpriseRepository = new EnterpriseRepository(transaction);
+    const adminRepository = new AdminUserRepository(transaction);
+    const created: Array<{ enterpriseId: bigint; actorId: bigint }> = [];
+    for (const suffix of ['p0', 'p1', 'p2', 'p3', 'p4', 'p5']) {
+      const enterprise = await enterpriseRepository.create({
+        name: `${runKey}-${suffix}`,
+        code: `${runKey}-${suffix}`,
+      });
+      enterpriseIds.push(enterprise.id);
+      const actor = await adminRepository.create({
+        enterpriseId: enterprise.id,
+        username: `${runKey}-actor-${suffix}`,
+        passwordHash: 'test-hash',
+        displayName: `Actor ${suffix}`,
+        role: 'enterprise_admin',
+        menuPermissions: ['dashboard'],
+      });
+      actorIds.push(actor.id);
+      created.push({ enterpriseId: enterprise.id, actorId: actor.id });
+    }
+
+    const [exclusive, roomForOne, secondProtected, extra, openA, openB] = created;
+    await transaction
+      .update(enterprises)
+      .set({ referrerAdditionalEnterpriseLimit: 0 })
+      .where(eq(enterprises.id, exclusive.enterpriseId));
+    await transaction
+      .update(enterprises)
+      .set({ referrerAdditionalEnterpriseLimit: 1 })
+      .where(eq(enterprises.id, roomForOne.enterpriseId));
+    await transaction
+      .update(enterprises)
+      .set({ referrerAdditionalEnterpriseLimit: 2 })
+      .where(eq(enterprises.id, secondProtected.enterpriseId));
+
+    const repository = new ReferrerNetworkRepository(transaction);
+    const codes = [];
+    for (const item of created) {
+      codes.push(
+        await repository.rotateEnterpriseJoinCode({
+          enterpriseId: item.enterpriseId,
+          codeType: 'referrer',
+          actorStaffId: item.actorId,
+        })
+      );
+    }
+
+    const exclusiveUser = await transaction
+      .insert(users)
+      .values({ phone: `136${Date.now().toString().slice(-8)}` })
+      .returning();
+    userIds.push(exclusiveUser[0].id);
+    const exclusiveJoin = await repository.onboardReferrer({
+      token: codes[0].token,
+      userId: exclusiveUser[0].id,
+      contextVersion: 1,
+      displayName: 'Exclusive referrer',
+      membershipLimit: 3,
+    });
+    assert.equal(exclusiveJoin.ok, true);
+    const exclusiveBlocked = await repository.onboardReferrer({
+      token: codes[3].token,
+      userId: exclusiveUser[0].id,
+      contextVersion: exclusiveJoin.ok ? exclusiveJoin.user.contextVersion : 1,
+      displayName: 'Exclusive referrer',
+      membershipLimit: 3,
+    });
+    assert.deepEqual(exclusiveBlocked, {
+      ok: false,
+      code: 'referrer_protection_limit',
+    });
+    const exclusiveAgain = await repository.onboardReferrer({
+      token: codes[0].token,
+      userId: exclusiveUser[0].id,
+      contextVersion: exclusiveJoin.ok ? exclusiveJoin.user.contextVersion : 1,
+      displayName: 'Exclusive referrer',
+      membershipLimit: 3,
+    });
+    assert.equal(exclusiveAgain.ok && exclusiveAgain.idempotent, true);
+
+    const limitedUser = await transaction
+      .insert(users)
+      .values({ phone: `135${Date.now().toString().slice(-8)}` })
+      .returning();
+    userIds.push(limitedUser[0].id);
+    const first = await repository.onboardReferrer({
+      token: codes[1].token,
+      userId: limitedUser[0].id,
+      contextVersion: 1,
+      displayName: 'Limited referrer',
+      membershipLimit: 3,
+    });
+    assert.equal(first.ok, true);
+    const second = await repository.onboardReferrer({
+      token: codes[2].token,
+      userId: limitedUser[0].id,
+      contextVersion: first.ok ? first.user.contextVersion : 1,
+      displayName: 'Limited referrer',
+      membershipLimit: 3,
+    });
+    assert.equal(second.ok, true);
+    const third = await repository.onboardReferrer({
+      token: codes[3].token,
+      userId: limitedUser[0].id,
+      contextVersion: second.ok ? second.user.contextVersion : 1,
+      displayName: 'Limited referrer',
+      membershipLimit: 3,
+    });
+    assert.deepEqual(third, {
+      ok: false,
+      code: 'referrer_protection_limit',
+    });
+
+    const overLimitUser = await transaction
+      .insert(users)
+      .values({ phone: `134${Date.now().toString().slice(-8)}` })
+      .returning();
+    userIds.push(overLimitUser[0].id);
+    let contextVersion = 1;
+    for (const item of [extra, openA, openB]) {
+      const joined = await repository.onboardReferrer({
+        token: codes[created.indexOf(item)].token,
+        userId: overLimitUser[0].id,
+        contextVersion,
+        displayName: 'Over-limit referrer',
+        membershipLimit: 3,
+      });
+      assert.equal(joined.ok, true);
+      if (joined.ok) contextVersion = joined.user.contextVersion;
+    }
+    const blockedByGlobal = await repository.onboardReferrer({
+      token: codes[0].token,
+      userId: overLimitUser[0].id,
+      contextVersion,
+      displayName: 'Over-limit referrer',
+      membershipLimit: 2,
+    });
+    assert.deepEqual(blockedByGlobal, {
+      ok: false,
+      code: 'membership_limit_reached',
+    });
+    await transaction
+      .update(enterprises)
+      .set({ referrerAdditionalEnterpriseLimit: 0 })
+      .where(eq(enterprises.id, extra.enterpriseId));
+    const blockedByTightenedM = await repository.onboardReferrer({
+      token: codes[0].token,
+      userId: overLimitUser[0].id,
+      contextVersion,
+      displayName: 'Over-limit referrer',
+      membershipLimit: 10,
+    });
+    assert.deepEqual(blockedByTightenedM, {
+      ok: false,
+      code: 'referrer_protection_limit',
+    });
+    const stillActive = (await repository.listReferrerMemberships(
+      overLimitUser[0].id
+    )).filter((row) => row.membership.status === 'active');
+    assert.equal(stillActive.length, 3);
+  });
+});

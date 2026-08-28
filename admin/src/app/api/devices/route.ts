@@ -5,6 +5,7 @@ import {
 } from '@/db/postgres-dto';
 import { DeviceRepository } from '@/db/repositories';
 import { normalizeDeviceBindingStatus } from '@/lib/device-binding-status';
+import { duplicateDeviceMessage, normalizeDeviceSerialNumber } from '@/lib/device-serial-number';
 import { withDevicePostgresTransaction } from '@/lib/postgres-request-scope';
 import {
   resolveWritableEnterpriseId,
@@ -76,6 +77,7 @@ export async function POST(request: Request) {
             { status: 400 }
           );
         }
+        const serialNumber = normalizeDeviceSerialNumber(body.serialNumber);
         const status = body.status || 'unassigned';
         if (!DEVICE_STATUSES.has(status)) {
           return NextResponse.json(
@@ -97,6 +99,7 @@ export async function POST(request: Request) {
             return new DeviceRepository(transaction).create(
               {
                 code,
+                serialNumber,
                 description:
                   typeof body.description === 'string'
                     ? body.description.trim() || null
@@ -123,10 +126,51 @@ export async function POST(request: Request) {
         success: false,
         error:
           code === '23505'
-            ? '设备编码已存在，请在列表中编辑该设备'
+            ? duplicateDeviceMessage(error, { createCopy: true })
             : errorMessage(error),
       },
       { status: code === '23505' ? 409 : 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    return await withTenantRoute(
+      request,
+      { roles: [...WRITE_ROLES] },
+      async (context) => {
+        const body = await request.json();
+        if (!Array.isArray(body.ids) || !body.ids.length || body.ids.length > 100) {
+          return NextResponse.json(
+            { success: false, error: '请选择 1-100 台设备进行删除' },
+            { status: 400 }
+          );
+        }
+
+        const ids = [
+          ...new Set(
+            body.ids.map((id: unknown) => parsePostgresId(String(id), 'device id'))
+          ),
+        ];
+        const deleted = await withDevicePostgresTransaction(
+          context,
+          (transaction) => new DeviceRepository(transaction).deleteMany(ids)
+        );
+        const deletedIds = deleted.map((row) => row.id.toString());
+        return NextResponse.json({
+          success: true,
+          data: {
+            deletedCount: deletedIds.length,
+            deletedIds,
+          },
+        });
+      }
+    );
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { success: false, error: errorMessage(error) },
+      { status: 500 }
     );
   }
 }

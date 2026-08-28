@@ -3,7 +3,7 @@ import {
   listActivePromptCategories,
   listActivePromptTemplates,
 } from '@/lib/ai/prompt-library-query';
-import { getSignedMiniAiRecipePreviewUrl } from '@/lib/ai/mini-ai-assets';
+import { resolveMiniRecipePreviewUrl } from '@/lib/ai/mini-ai-assets';
 
 type PromptTemplateItem = Awaited<ReturnType<typeof listActivePromptTemplates>>['items'][number];
 
@@ -59,13 +59,13 @@ function decorateRecipe(input: {
     supportsSingleRoom: inputTypes.includes('floor_plan'),
     requiresPhoto: inputTypes.length === 1 && inputTypes[0] === 'photo',
     description: recipeDescription(input.template.name, input.categoryName, inputTypes),
-    previewUrl: input.template.previewUrl
-      ? getSignedMiniAiRecipePreviewUrl({
-          request: input.request,
-          recipeId: input.template.id,
-          enterpriseId: input.enterpriseId,
-        })
-      : undefined,
+    previewUrl: resolveMiniRecipePreviewUrl({
+      request: input.request,
+      recipeId: input.template.id,
+      enterpriseId: input.enterpriseId,
+      previewUrl: input.template.previewUrl,
+      localPreviewUrl: input.template.localPreviewUrl,
+    }),
     weight: input.template.weight,
   };
 }

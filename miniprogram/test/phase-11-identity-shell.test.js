@@ -84,6 +84,8 @@ test('staff roles retain distinct landing and capability contracts', () => {
   assert.equal(navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', { mode: 'staff', staffRole: 'designer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/staff-activity-code/staff-activity-code', { mode: 'staff', staffRole: 'designer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/staff-activity-code/staff-activity-code', { mode: 'staff', staffRole: 'measurer' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/staff-activity-code/staff-activity-code', { mode: 'staff', staffRole: 'enterprise_admin' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/staff-activity-code/staff-activity-code', { mode: 'staff', staffRole: 'salesperson' }), false);
   assert.equal(navigation.canAccessRoute('/packages/business/staff-earnings/staff-earnings', { mode: 'staff', staffRole: 'designer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/staff-earnings/staff-earnings', { mode: 'staff', staffRole: 'measurer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/staff-earnings/staff-earnings', { mode: 'staff', staffRole: 'enterprise_admin' }), false);

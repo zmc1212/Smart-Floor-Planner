@@ -641,3 +641,19 @@ test('onboarding code resolution returns its enterprise display name without exp
   assert.match(route, /enterpriseName:\s*enterprise\?\.name\s*\?\?\s*null/);
   assert.doesNotMatch(route, /token:\s*joinCode/);
 });
+
+test('staff activity presenters include the enterprise owner for store-level acquisition', () => {
+  const network = readFileSync(
+    path.join(process.cwd(), 'src/db/repositories/referrer-network-repository.ts'),
+    'utf8'
+  );
+  const leads = readFileSync(
+    path.join(process.cwd(), 'src/db/repositories/referral-lead-repository.ts'),
+    'utf8'
+  );
+  assert.match(network, /STAFF_ACTIVITY_PRESENTER_ROLES/);
+  assert.match(network, /'enterprise_admin'/);
+  assert.match(leads, /STAFF_ACTIVITY_PRESENTER_ROLES/);
+  assert.match(leads, /enterprise_admin_activity_attribution/);
+  assert.match(leads, /activitySource\?\.staff\.role === 'measurer'/);
+});

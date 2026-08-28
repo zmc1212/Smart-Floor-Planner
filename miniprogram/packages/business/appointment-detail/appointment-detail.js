@@ -99,6 +99,15 @@ function buildAppointmentsQuery(leadId, appointmentId) {
   return `/appointments?${params.join('&')}`;
 }
 
+function isLeadUnavailableError(error) {
+  const code = String(error && error.code || '');
+  const status = Number(error && error.statusCode || 0);
+  const message = String(error && (error.error || error.message) || '');
+  if (code === 'LEAD_ARCHIVED' || code === 'appointment_lead_not_found') return true;
+  if (status === 404 || status === 410) return true;
+  return /不存在|已关闭|已归档/.test(message);
+}
+
 async function resolveLeadLifecycle(appointment, role) {
   const staffSurveyRole = ['measurer', 'enterprise_admin'].includes(role);
   const lifecycleOpen = appointment.status === 'confirmed' || appointment.status === 'expired';
@@ -108,7 +117,7 @@ async function resolveLeadLifecycle(appointment, role) {
   };
   if (!appointment.leadId) {
     return {
-      leadTerminal: false,
+      leadTerminal: true,
       canComplete: false,
       canStartSurvey: false,
       startSurveyLabel: '开始量房',
@@ -123,7 +132,8 @@ async function resolveLeadLifecycle(appointment, role) {
       communityName: String(lead && lead.communityName || '').trim(),
       canEditProfile: canEditLeadProfile(lead, role, getStaffId()),
     };
-    const leadTerminal = ['converted', 'closed'].includes(String(lead && lead.status || ''));
+    const leadTerminal = ['converted', 'closed'].includes(String(lead && lead.status || ''))
+      || Boolean(lead && lead.archivedAt);
     if (leadTerminal || !lifecycleOpen || !staffSurveyRole) {
       return {
         leadTerminal,
@@ -145,10 +155,11 @@ async function resolveLeadLifecycle(appointment, role) {
       ...profile,
     };
   } catch (error) {
+    const unavailable = isLeadUnavailableError(error);
     return {
-      leadTerminal: false,
+      leadTerminal: unavailable,
       canComplete: false,
-      canStartSurvey: staffSurveyRole && lifecycleOpen,
+      canStartSurvey: !unavailable && staffSurveyRole && lifecycleOpen,
       startSurveyLabel: '开始量房',
       surveyFloorPlanId: '',
       ...emptyProfile,
@@ -199,6 +210,7 @@ Page({
     sitePhotoUploading: false,
     sitePhotoLimitReached: false,
     sitePhotoCaptureNonce: 0,
+    sitePhotoSheetOpen: false,
   },
 
   onLoad(options) {
@@ -315,6 +327,10 @@ Page({
 
   onSitePhotoUploading(event) {
     this.setData({ sitePhotoUploading: Boolean(event.detail && event.detail.uploading) });
+  },
+
+  onSitePhotoSheetChange(event) {
+    this.setData({ sitePhotoSheetOpen: Boolean(event.detail && event.detail.open) });
   },
 
   onSitePhotosChange(event) {

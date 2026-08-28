@@ -10,6 +10,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm';
+import { randomBytes } from 'node:crypto';
 import {
   adminUsers,
   customerAttributionLocks,
@@ -35,6 +36,7 @@ import {
 import { AppointmentRepository } from './appointment-repository';
 import { AssignmentRacingRepository } from './assignment-racing-repository';
 import { LeadRepository, type LeadWithRelations } from './lead-repository';
+import { STAFF_ACTIVITY_PRESENTER_ROLES } from './referrer-network-repository';
 
 export interface ReferralPendingSourceRecord {
   kind?: 'referrer';
@@ -51,6 +53,10 @@ export interface StaffActivityPendingSourceRecord {
   enterpriseId: bigint;
   version: number;
   expired?: boolean;
+}
+
+function createReferrerRecordCode() {
+  return `R-${randomBytes(5).toString('base64url').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8).padEnd(8, '0')}`;
 }
 
 export type ClaimPendingSourceRecord =
@@ -233,7 +239,12 @@ export class ReferralLeadRepository {
       .limit(1)
       .for('share');
     const row = rows[0];
-    if (!row || !['designer', 'measurer'].includes(row.staff.role)) return null;
+    if (
+      !row ||
+      !(STAFF_ACTIVITY_PRESENTER_ROLES as readonly string[]).includes(row.staff.role)
+    ) {
+      return null;
+    }
     return row;
   }
 
@@ -488,17 +499,14 @@ export class ReferralLeadRepository {
     let designer: typeof adminUsers.$inferSelect | null = null;
     let measurer: typeof adminUsers.$inferSelect | null = null;
     let directDesignerActivity = false;
-    if (activitySource) {
-      const sourceStaff = activitySource.staff;
-      if (sourceStaff.role === 'designer') {
-        designer = sourceStaff;
-        measurer = sourceStaff;
-        directDesignerActivity = true;
-      } else if (sourceStaff.assignmentPaused) {
-        measurer = null;
-      } else {
-        measurer = sourceStaff;
-      }
+    if (activitySource?.staff.role === 'designer') {
+      designer = activitySource.staff;
+      measurer = activitySource.staff;
+      directDesignerActivity = true;
+    } else if (activitySource?.staff.role === 'measurer') {
+      measurer = activitySource.staff.assignmentPaused
+        ? null
+        : activitySource.staff;
     } else {
       measurer = await this.findMeasurerCandidate(enterpriseId);
     }
@@ -513,6 +521,7 @@ export class ReferralLeadRepository {
         enterpriseId,
         customerUserId: input.customerUserId,
         referrerMembershipId: referralSource?.membership.id ?? null,
+        referrerRecordCode: referralSource ? createReferrerRecordCode() : null,
         promoterId: activitySource?.staff.id ?? null,
         measurerId: measurer?.id ?? null,
         assignedTo: designer?.id ?? null,
@@ -578,7 +587,11 @@ export class ReferralLeadRepository {
         eventType: 'attribution_created',
         measurerId: measurer?.id ?? null,
         actorUserId: input.customerUserId,
-        reason: activitySource ? 'measurer_activity_attribution' : 'referrer_attribution',
+        reason: activitySource
+          ? activitySource.staff.role === 'measurer'
+            ? 'measurer_activity_attribution'
+            : 'enterprise_admin_activity_attribution'
+          : 'referrer_attribution',
         metadata: {
           authorizationIdempotencyKeyHash: input.idempotencyKeyHash,
           ...(activitySource ? { activityCodeId: activitySource.code.id.toString() } : {}),

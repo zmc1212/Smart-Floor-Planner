@@ -34,8 +34,12 @@ test('customer project consumes only the owner-only aggregate and renders archiv
   assert.match(wxml, /户型档案/);
   assert.match(wxml, /房屋现场图/);
   assert.match(wxml, /site-photo-grid/);
+  assert.match(wxml, /bind:sheetchange="onSitePhotoSheetChange"/);
+  assert.match(wxml, /footer-bar">/);
+  assert.match(wxml, /!loading && !error && !sitePhotoSheetOpen/);
   assert.match(page, /sitePhotoService/);
   assert.match(page, /loadSitePhotos/);
+  assert.match(page, /onSitePhotoSheetChange/);
   assert.match(wxml, /交付方案/);
   assert.match(wxml, /查看高清户型图/);
   assert.match(wxml, /featuredDelivery\.publishedLabel/);

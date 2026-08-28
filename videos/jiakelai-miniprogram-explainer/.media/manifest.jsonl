@@ -1,0 +1,8 @@
+{"id":"image_001","type":"image","path":"assets/brand-logo.png","source":"existing","description":"brand logo","width":256,"height":256,"provenance":{"provider":"local","adopted":true}}
+{"id":"image_002","type":"image","path":"assets/customer-service-home.png","source":"existing","description":"customer service home","width":853,"height":1844,"provenance":{"provider":"local","adopted":true}}
+{"id":"image_003","type":"image","path":"assets/designer-workbench.jpg","source":"existing","description":"designer workbench","width":1024,"height":1536,"provenance":{"provider":"local","adopted":true}}
+{"id":"image_004","type":"image","path":"assets/enterprise-owner-home.png","source":"existing","description":"enterprise owner home","width":853,"height":1844,"provenance":{"provider":"local","adopted":true}}
+{"id":"image_005","type":"image","path":"assets/guest-login.png","source":"existing","description":"guest login","width":390,"height":844,"provenance":{"provider":"local","adopted":true}}
+{"id":"image_006","type":"image","path":"assets/identity-switch-roles.png","source":"existing","description":"identity switch roles","width":361,"height":213,"provenance":{"provider":"local","adopted":true}}
+{"id":"image_007","type":"image","path":"assets/measurer-workbench.jpg","source":"existing","description":"measurer workbench","width":1024,"height":1536,"provenance":{"provider":"local","adopted":true}}
+{"id":"image_008","type":"image","path":"assets/referrer-workbench.jpg","source":"existing","description":"referrer workbench","width":1024,"height":1536,"provenance":{"provider":"local","adopted":true}}

@@ -169,7 +169,7 @@ Logo：预留位置，导出时合成 brand-logo.png
 
 | 编号 | 锁定合同 |
 | --- | --- |
-| R01 | 企业负责人 `pages/index/index` 的**有数据异常台 + 可筛选经营大盘**。标题、副标题、三项摘要和异常条目直接使用 `GET /api/miniprogram/workbench` 的 `title`、`subtitle`、`summary`、`primaryItems`；只表达待派失败、过期未重约和人员缺口（人员缺口「查看详情」与「人员负荷」进入 `enterprise-staff` 只读名册+暂停/恢复派单；不做建账或改微信/二维码）。Hero CTA 为「出示入驻码」，进入 `enterprise-join-codes` 出示并管理后台员工/推荐人双码（生成/换新/停用；非员工活动码）。经营大盘为只读五卡 KPI（新增线索/已完成量房/方案交付率/已签约/签单率），支持周期 chips 与自定义 sheet；允许展示签约金额 detail。允许企业负责人 TabBar，不得绘制签约改状态等未接通动作（签约事实只作 KPI，首页不做改状态）。 |
+| R01 | 企业负责人 `pages/index/index` 的**有数据异常台 + 可筛选经营大盘**。标题、副标题、三项摘要和异常条目直接使用 `GET /api/miniprogram/workbench` 的 `title`、`subtitle`、`summary`、`primaryItems`；只表达待派失败、过期未重约和人员缺口（人员缺口「查看详情」与「人员负荷」进入 `enterprise-staff` 只读名册+暂停/恢复派单；不做建账或改微信/二维码）。Hero 保留实心「出示入驻码」进入 `enterprise-join-codes` 出示并管理后台员工/推荐人双码（生成/换新/停用），并增加描边「出示活动码」进入 `staff-activity-code` 分享拉客。经营大盘为只读五卡 KPI（新增线索/已完成量房/方案交付率/已签约/签单率），支持周期 chips 与自定义 sheet；允许展示签约金额 detail。允许企业负责人 TabBar，不得绘制签约改状态等未接通动作（签约事实只作 KPI，首页不做改状态）。 |
 | R02 | 企业负责人客户 Tab 的**有数据列表**。只使用当前线索列表真实字段和现有搜索/进入详情动作；“新增客户”仅企业负责人可见且只能出现一次。不得加入户型风格、项目面积、收费、分派或列表接口未返回的客户资料。 |
 | R03 | 企业负责人“预约”Tab 的**有数据列表**。页面壳复用工作台真实 `title/subtitle`，列表区只显示接口返回的 `confirmed` 与 `expired` 预约项及现有进入预约详情动作；TabBar 为 `经营/客户/预约/我的`，选中“预约”。 |
 | R04 | 客户项目索引**产品列表已退役**。运行时 `customer-projects` 仅为深链重定向壳（排序后进 `customer-project` 或回落「服务」Tab）。多项目切换与排序由服务首屏阶段陪伴承接；历史稿 `21-customer-project-index.jpg` 不再作为生产列表 UI 源。 |

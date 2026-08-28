@@ -33,29 +33,31 @@
   </view>
 </view>
 
-<view wx:if="{{tagMounted}}" class="spg-sheet-root" catchtouchmove="noop">
-  <view class="spg-mask {{tagOpen ? 'open' : ''}}" bindtap="onCloseTagSheet"></view>
-  <view class="spg-sheet {{tagOpen ? 'open' : ''}}" catchtap="noop">
-    <view class="spg-sheet-handle"></view>
-    <text class="spg-sheet-title">这张是哪个空间？</text>
-    <text class="spg-sheet-copy">选好后再拍照或从相册上传，方便设计时按房间选用</text>
-    <view class="spg-chip-row">
-      <view
-        wx:for="{{quickTags}}"
-        wx:key="key"
-        class="spg-chip is-quick"
-        data-key="{{item.key}}"
-        bindtap="onPickTag"
-      >{{item.label}}</view>
-    </view>
-    <view class="spg-chip-row">
-      <view
-        wx:for="{{moreTags}}"
-        wx:key="key"
-        class="spg-chip"
-        data-key="{{item.key}}"
-        bindtap="onPickTag"
-      >{{item.label}}</view>
+<root-portal wx:if="{{tagMounted}}">
+  <view class="spg-sheet-root" catchtouchmove="noop">
+    <view class="spg-mask {{tagOpen ? 'open' : ''}}" bindtap="onCloseTagSheet"></view>
+    <view class="spg-sheet {{tagOpen ? 'open' : ''}}" catchtap="noop">
+      <view class="spg-sheet-handle"></view>
+      <text class="spg-sheet-title">这张是哪个空间？</text>
+      <text class="spg-sheet-copy">选好后再拍照或从相册上传，方便设计时按房间选用</text>
+      <view class="spg-chip-row">
+        <view
+          wx:for="{{quickTags}}"
+          wx:key="key"
+          class="spg-chip is-quick"
+          data-key="{{item.key}}"
+          bindtap="onPickTag"
+        >{{item.label}}</view>
+      </view>
+      <view class="spg-chip-row">
+        <view
+          wx:for="{{moreTags}}"
+          wx:key="key"
+          class="spg-chip"
+          data-key="{{item.key}}"
+          bindtap="onPickTag"
+        >{{item.label}}</view>
+      </view>
     </view>
   </view>
-</view>
+</root-portal>

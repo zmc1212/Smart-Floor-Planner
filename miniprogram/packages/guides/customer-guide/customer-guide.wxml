@@ -1,0 +1,63 @@
+<!--
+  THESIS: Personal homeowners can manually review three free benefits, their demand-to-service path, and the archive they can revisit.
+  OWN-WORLD: Bright green, warm-white paper layers, F1 Xiao K, and standalone customer-service artwork.
+  FIRST VIEWPORT: At 390x844, the WeChat capsule lane, artwork, native copy, step dots, and CTA remain visible.
+  FORM: design-references/customer-onboarding-v1/customer-onboarding-four-slides-v2.png
+-->
+<view class="guide-page sfp-page">
+  <view
+    class="guide-nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationTop + navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="guide-nav-title">装修服务向导</view>
+    <button class="skip-action" bindtap="onSkip" aria-label="跳过装修服务向导">跳过</button>
+  </view>
+
+  <view class="guide-content">
+    <swiper
+      class="guide-swiper"
+      current="{{currentStep}}"
+      duration="280"
+      easing-function="easeOutCubic"
+      indicator-dots="{{false}}"
+      autoplay="{{false}}"
+      circular="{{false}}"
+      bindchange="onSwiperChange"
+    >
+      <swiper-item wx:for="{{slides}}" wx:key="title">
+        <view class="guide-slide">
+          <view class="art-stage" aria-hidden="true">
+            <view class="art-backdrop art-backdrop-left"></view>
+            <view class="art-backdrop art-backdrop-right"></view>
+            <image class="guide-art {{item.imageClass}}" src="{{item.image}}" mode="aspectFit" />
+          </view>
+          <view class="guide-copy">
+            <view class="guide-title">{{item.title}}</view>
+            <text class="guide-description">{{item.description}}</text>
+          </view>
+          <view class="assurance-pill">
+            <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+            <text>{{item.assurance}}</text>
+          </view>
+        </view>
+      </swiper-item>
+    </swiper>
+
+    <view class="step-dots" aria-label="第 {{currentStep + 1}} 步，共 {{totalSteps}} 步">
+      <view
+        wx:for="{{steps}}"
+        wx:key="*this"
+        class="step-dot-hit"
+        data-index="{{index}}"
+        bindtap="onDotTap"
+        aria-label="查看第 {{index + 1}} 步"
+      >
+        <view class="step-dot {{index === currentStep ? 'active' : ''}}"></view>
+      </view>
+    </view>
+
+    <button class="primary-action" bindtap="onPrimary" hover-class="primary-action-pressed">
+      {{currentStep === totalSteps - 1 ? '开始我的装修服务' : '下一步'}}
+    </button>
+  </view>
+</view>

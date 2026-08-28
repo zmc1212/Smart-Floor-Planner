@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Key } from 'react';
 import {
   ModalForm,
   PageContainer,
@@ -20,6 +20,10 @@ import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/admin/operation-feedback';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import {
+  compactDeviceIdentity,
+  matchesDeviceSerialNumber,
+} from '@/lib/device-serial-number';
 
 type Reference = {
   _id: string;
@@ -35,6 +39,7 @@ type DeviceStatus = 'unassigned' | 'assigned' | 'maintenance' | 'lost';
 type Device = {
   _id: string;
   code: string;
+  serialNumber?: string | null;
   description?: string | null;
   status: DeviceStatus;
   enterpriseId?: string | Reference | null;
@@ -43,6 +48,7 @@ type Device = {
 
 type DeviceForm = {
   code: string;
+  serialNumber?: string;
   description?: string;
   enterpriseId?: string;
   status?: DeviceStatus;
@@ -97,6 +103,8 @@ export default function DevicesPage() {
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const [deletingSelected, setDeletingSelected] = useState(false);
   const [overview, setOverview] = useState({
     total: 0,
     assigned: 0,
@@ -141,12 +149,14 @@ export default function DevicesPage() {
     const payload = isEdit
       ? {
           code: values.code.trim(),
+          serialNumber: values.serialNumber?.trim() || '',
           description: values.description?.trim() || '',
           enterpriseId: canChangeEnterprise ? enterpriseId : undefined,
           status: values.status,
         }
       : {
           code: values.code.trim(),
+          serialNumber: values.serialNumber?.trim() || '',
           description: values.description?.trim() || '',
           enterpriseId,
           status: enterpriseId ? 'assigned' : 'unassigned',
@@ -194,6 +204,7 @@ export default function DevicesPage() {
         throw new Error(result.error || '删除设备失败');
       }
       notify.success('设备已删除');
+      setSelectedRowKeys((keys) => keys.filter((key) => key !== device._id));
       await actionRef.current?.reload();
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '删除设备失败');
@@ -202,12 +213,43 @@ export default function DevicesPage() {
     }
   };
 
+  const deleteSelectedDevices = async () => {
+    if (!selectedRowKeys.length || deletingSelected) return;
+    const confirmed = await confirmAction({
+      title: '批量删除设备',
+      description: `确定删除已选的 ${selectedRowKeys.length} 台设备吗？删除后无法恢复。`,
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    setDeletingSelected(true);
+    try {
+      const response = await fetch('/api/devices', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedRowKeys }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '批量删除设备失败');
+      }
+      const deletedCount = Number(result.data?.deletedCount || 0);
+      notify.success(`已删除 ${deletedCount} 台设备`);
+      setSelectedRowKeys([]);
+      await actionRef.current?.reload();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '批量删除设备失败');
+    } finally {
+      setDeletingSelected(false);
+    }
+  };
+
   const columns: ProColumns<Device>[] = [
     {
       title: '关键词',
       dataIndex: 'keyword',
       hideInTable: true,
-      fieldProps: { placeholder: '设备编码或备注', allowClear: true },
+      fieldProps: { placeholder: '设备编码、SN 码或备注', allowClear: true },
     },
     {
       title: '状态',
@@ -223,6 +265,21 @@ export default function DevicesPage() {
         </Tag>
       ),
     },
+    ...(canManage
+      ? [
+          {
+            title: '归属企业',
+            dataIndex: 'enterpriseId',
+            valueType: 'select' as const,
+            hideInTable: true,
+            fieldProps: {
+              options: enterpriseOptions,
+              placeholder: '全部企业',
+              allowClear: true,
+            },
+          } satisfies ProColumns<Device>,
+        ]
+      : []),
     {
       title: '设备编码 / MAC',
       dataIndex: 'code',
@@ -242,6 +299,23 @@ export default function DevicesPage() {
           </Typography.Text>
         </Flex>
       ),
+    },
+    {
+      title: 'SN 码',
+      dataIndex: 'serialNumber',
+      width: 180,
+      fieldProps: {
+        placeholder: '支持部分匹配，可省略横线空格',
+        allowClear: true,
+      },
+      render: (_, item) =>
+        item.serialNumber ? (
+          <Typography.Text code className="font-mono">
+            {item.serialNumber}
+          </Typography.Text>
+        ) : (
+          <Typography.Text type="secondary">未录入</Typography.Text>
+        ),
     },
     {
       title: '归属企业',
@@ -304,7 +378,7 @@ export default function DevicesPage() {
         title={canManage ? '测距仪设备池' : '企业设备列表'}
         content={
           canManage
-            ? '平台录入测距仪 MAC、分配企业与维护运行状态。企业侧仅可查看本企业设备。'
+            ? '平台录入测距仪 MAC、SN 码、分配企业与维护运行状态。企业侧仅可查看本企业设备。'
             : '查看本企业已分配的测距仪设备。设备录入与分配由平台管理员完成。'
         }
         extra={
@@ -360,7 +434,35 @@ export default function DevicesPage() {
           search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
           options={{ reload: true, density: true, setting: true }}
           pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-          scroll={{ x: 900 }}
+          scroll={{ x: 1080 }}
+          rowSelection={
+            canManage
+              ? {
+                  selectedRowKeys,
+                  onChange: (keys) => setSelectedRowKeys(keys),
+                  preserveSelectedRowKeys: true,
+                }
+              : undefined
+          }
+          tableAlertRender={
+            canManage
+              ? ({ selectedRowKeys: keys }) => `已选择 ${keys.length} 台设备`
+              : false
+          }
+          tableAlertOptionRender={
+            canManage
+              ? () => (
+                  <Button
+                    danger
+                    icon={<Trash2 size={16} />}
+                    loading={deletingSelected}
+                    onClick={() => void deleteSelectedDevices()}
+                  >
+                    批量删除
+                  </Button>
+                )
+              : undefined
+          }
           request={async (params) => {
             const response = await fetch('/api/devices');
             const result = await response.json();
@@ -370,17 +472,28 @@ export default function DevicesPage() {
             const keyword = String(params.keyword || '')
               .trim()
               .toLocaleLowerCase();
+            const compactKeyword = compactDeviceIdentity(keyword);
+            const serialQuery = String(params.serialNumber || '').trim();
+            const enterpriseId = String(params.enterpriseId || '');
             const rows = (result.data || []).filter((item: Device) => {
               const matchesKeyword =
                 !keyword ||
-                [item.code, item.description]
+                [item.code, item.serialNumber, item.description]
                   .filter(Boolean)
-                  .some((value) =>
-                    value?.toLocaleLowerCase().includes(keyword)
+                  .some(
+                    (value) =>
+                      value?.toLocaleLowerCase().includes(keyword) ||
+                      (compactKeyword.length > 0 &&
+                        compactDeviceIdentity(value).includes(compactKeyword))
                   );
               return (
                 matchesKeyword &&
-                (!params.status || item.status === params.status)
+                matchesDeviceSerialNumber(item.serialNumber, serialQuery) &&
+                (!params.status || item.status === params.status) &&
+                (!enterpriseId ||
+                  (enterpriseId === UNASSIGNED_VALUE
+                    ? !getReferenceId(item.enterpriseId)
+                    : getReferenceId(item.enterpriseId) === enterpriseId))
               );
             });
             const nextOverview = {
@@ -429,6 +542,7 @@ export default function DevicesPage() {
             editingDevice
               ? {
                   code: editingDevice.code,
+                  serialNumber: editingDevice.serialNumber || '',
                   description: editingDevice.description || '',
                   enterpriseId:
                     getReferenceId(editingDevice.enterpriseId) ||
@@ -485,6 +599,15 @@ export default function DevicesPage() {
             fieldProps={{
               placeholder: '例如：5C:FF:30:27:A4:00',
               className: 'font-mono',
+            }}
+          />
+          <ProFormText
+            name="serialNumber"
+            label="SN 码"
+            fieldProps={{
+              placeholder: '机身标签上的序列号，可选',
+              className: 'font-mono',
+              maxLength: 64,
             }}
           />
           <ProFormTextArea

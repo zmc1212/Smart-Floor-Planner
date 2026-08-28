@@ -24,6 +24,7 @@ export async function PATCH(request: Request) {
         protectionExtendDays?: number;
         maxProtectionExtends?: number;
         poolClaimRequiresApproval?: boolean;
+        referrerMembershipLimit?: number;
       };
       const data = await savePlatformPromotionConfig(body);
       return NextResponse.json({ success: true, data });

@@ -63,7 +63,7 @@ test('login does not bounce back to the enterprise open-account scan landing', (
   );
 });
 
-test('scan landings leave only on sticky recents reopens or an already-open enterprise account', () => {
+test('scan landings leave only on sticky recents reopens', () => {
   const register = 'packages/business/enterprise-register/enterprise-register';
   const onboarding = 'packages/business/onboarding/onboarding';
   const claim = 'packages/business/free-design-service/free-design-service';
@@ -79,7 +79,8 @@ test('scan landings leave only on sticky recents reopens or an already-open ente
   assert.equal(navigation.shouldLeaveScanLanding(register, customer, 1047), false);
   assert.equal(navigation.shouldLeaveScanLanding(register, customer, 1007), false);
   assert.equal(navigation.shouldLeaveScanLanding(register, customer, 1089), true);
-  assert.equal(navigation.shouldLeaveScanLanding(register, admin, 1047), true);
+  assert.equal(navigation.shouldLeaveScanLanding(register, admin, 1047), false);
+  assert.equal(navigation.shouldLeaveScanLanding(register, admin, 1089), true);
 
   assert.equal(navigation.shouldLeaveScanLanding(onboarding, designer, 1047), false);
   assert.equal(navigation.shouldLeaveScanLanding(onboarding, designer, 1007), false);
@@ -89,6 +90,19 @@ test('scan landings leave only on sticky recents reopens or an already-open ente
   assert.equal(navigation.shouldLeaveScanLanding(claim, customer, 1047), false);
   assert.equal(navigation.shouldLeaveScanLanding(claim, customer, 1089), true);
   assert.equal(navigation.shouldLeaveScanLanding(claim, designer, 1104), true);
+});
+
+test('currentEnterScene prefers live WeChat enter options over a stale launch scene', () => {
+  const originalWx = global.wx;
+  global.wx = {
+    getEnterOptionsSync() { return { scene: 1047 }; }
+  };
+  try {
+    assert.equal(navigation.currentEnterScene(1089), 1047);
+  } finally {
+    global.wx = originalWx;
+  }
+  assert.equal(navigation.currentEnterScene(1089), 1089);
 });
 
 test('leaveScanLanding uses role landing and falls back to Mine without clearing storage', () => {
@@ -119,4 +133,66 @@ test('leaveScanLanding uses role landing and falls back to Mine without clearing
     global.wx = originalWx;
     global.getCurrentPages = originalPages;
   }
+});
+
+test('referrer guide deep links require the signed promotion capability', () => {
+  const route = '/packages/guides/referrer-guide/referrer-guide';
+  assert.equal(navigation.canAccessRoute(route, { mode: 'referrer' }), true);
+  assert.equal(navigation.canAccessRoute(route, { mode: 'customer' }), false);
+  assert.equal(navigation.canAccessRoute(route, {
+    current: { role: 'referrer', capabilities: ['account'] }
+  }), false);
+  assert.equal(navigation.canAccessRoute(route, {
+    current: { role: 'referrer', capabilities: ['referrer.promotion', 'account'] }
+  }), true);
+});
+
+test('enterprise owner guide deep links require enterprise operations capability', () => {
+  const route = '/packages/guides/enterprise-owner-guide/enterprise-owner-guide';
+  assert.equal(navigation.canAccessRoute(route, { role: 'enterprise_admin' }), true);
+  assert.equal(navigation.canAccessRoute(route, { mode: 'customer' }), false);
+  assert.equal(navigation.canAccessRoute(route, {
+    current: { role: 'enterprise_admin', capabilities: ['account'] }
+  }), false);
+});
+
+test('designer and measurer guide deep links require the signed workbench capability', () => {
+  assert.equal(navigation.canAccessRoute('/packages/guides/designer-guide/designer-guide', {
+    mode: 'staff',
+    staffRole: 'designer'
+  }), true);
+  assert.equal(navigation.canAccessRoute('/packages/guides/designer-guide/designer-guide', {
+    mode: 'customer'
+  }), false);
+  assert.equal(navigation.canAccessRoute('/packages/guides/designer-guide/designer-guide', {
+    current: { role: 'designer', capabilities: ['account'] }
+  }), false);
+  assert.equal(navigation.canAccessRoute('/packages/guides/designer-guide/designer-guide', {
+    current: {
+      role: 'customer',
+      capabilities: ['customer.service', 'customer.projects', 'account']
+    },
+    roles: [{ role: 'designer', capabilities: ['staff.leads', 'account'] }]
+  }), true);
+  assert.equal(navigation.canAccessRoute('/packages/guides/designer-guide/designer-guide', {
+    current: {
+      role: 'customer',
+      capabilities: ['customer.service', 'customer.projects', 'account']
+    },
+    roles: [{ role: 'customer', capabilities: ['customer.service', 'account'] }]
+  }), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/staff-earnings/staff-earnings', {
+    current: {
+      role: 'customer',
+      capabilities: ['customer.service', 'customer.projects', 'account']
+    },
+    roles: [{ role: 'designer', capabilities: ['staff.leads', 'staff.earnings', 'account'] }]
+  }), false);
+  assert.equal(navigation.canAccessRoute('/packages/guides/measurer-guide/measurer-guide', {
+    mode: 'staff',
+    staffRole: 'measurer'
+  }), true);
+  assert.equal(navigation.canAccessRoute('/packages/guides/measurer-guide/measurer-guide', {
+    current: { role: 'measurer', capabilities: ['account'] }
+  }), false);
 });

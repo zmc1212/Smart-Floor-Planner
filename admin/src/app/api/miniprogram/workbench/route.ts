@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
-import { AdminUserRepository, AppointmentRepository, CustomerProjectRepository, LeadRepository } from '@/db/repositories';
+import { AdminUserRepository, AppointmentRepository, CustomerProjectRepository, LeadRepository, StaffNotificationRepository } from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import {
@@ -15,6 +15,7 @@ import {
   buildWorkbenchLeadItem,
   compareDesignerWorkbenchItems,
   countPendingSchemeDeliveries,
+  indexWorkbenchRowsById,
   isAssignmentEligibleStaff,
   isMeasurerWorkbenchSurveyLead,
   loadOpsDashboard,
@@ -86,6 +87,16 @@ export async function GET(request: Request) {
       const appointments = new AppointmentRepository(transaction);
       const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterprise id');
       const staffId = parsePostgresId(context.staff!._id, 'staff id');
+      const withdrawalNotices = (await new StaffNotificationRepository(transaction).list(staffId, true))
+        .filter((notice) => ['lead_referrer_withdrawn', 'lead_referrer_withdrawal_reverted'].includes(notice.notificationType))
+        .map((notice) => ({
+          id: notice.id.toString(),
+          leadId: notice.leadId?.toString() || null,
+          title: notice.notificationType === 'lead_referrer_withdrawal_reverted' ? '撤销已撤回' : '推广人已撤销',
+          message: notice.message || (notice.notificationType === 'lead_referrer_withdrawal_reverted' ? '该线索可继续跟进' : '该线索已撤销，无法继续推进'),
+          recordCode: (notice.metadata as Record<string, unknown> | null)?.recordCode || null,
+          createdAt: notice.createdAt,
+        }));
 
       if (role === 'designer') {
         const scope = { staffId, staffVisibility: 'assigned' as const };
@@ -162,6 +173,7 @@ export async function GET(request: Request) {
           activityCode: { label: '出示活动码', target: 'activity-code' },
           secondary: { label: '查看全部客户', target: 'customers' },
           ...opsDashboard,
+          withdrawalNotices,
         };
       }
 
@@ -178,8 +190,10 @@ export async function GET(request: Request) {
           }),
         ]);
         const currentAppointmentRows = selectMeasurerWorkbenchAppointments(appointmentRows);
-        const leadRows = await leads.findByIds(currentAppointmentRows.map((item) => item.leadId));
-        const leadMap = new Map(leadRows.map((item) => [item.id, item]));
+        const leadRows = await leads.findByIds(currentAppointmentRows.map((item) => item.leadId), {
+          includeArchived: true,
+        });
+        const leadMap = indexWorkbenchRowsById(leadRows);
         const publicationLeadIds = [
           ...surveyList.rows.map((row) => row.id),
           ...currentAppointmentRows.map((item) => item.leadId),
@@ -195,23 +209,23 @@ export async function GET(request: Request) {
         const confirmedRows = currentAppointmentRows
           .filter((item) => item.status === 'confirmed')
           .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(
-            withPublishedCount(leadMap.get(item.leadId)),
+            withPublishedCount(leadMap.get(String(item.leadId))),
             item
           ));
         const expiredRows = currentAppointmentRows
           .filter((item) => item.status === 'expired')
           .filter((item) => shouldIncludeMeasurerWorkbenchAppointment(
-            withPublishedCount(leadMap.get(item.leadId)),
+            withPublishedCount(leadMap.get(String(item.leadId))),
             item
           ));
         const appointmentItems = confirmedRows.map((item) => appointmentItem(
           item,
-          leadMap.get(item.leadId),
+          leadMap.get(String(item.leadId)),
           { publishedDesignCount: publishedCountFor(item.leadId) }
         ));
         const expiredItems = expiredRows.map((item) => appointmentItem(
           item,
-          leadMap.get(item.leadId),
+          leadMap.get(String(item.leadId)),
           { publishedDesignCount: publishedCountFor(item.leadId) }
         ));
         const occupiedIds = new Set([
@@ -236,6 +250,7 @@ export async function GET(request: Request) {
           activityCode: { label: '出示活动码', target: 'activity-code' },
           secondary: { label: '查看量房日程', target: 'calendar' },
           ...opsDashboard,
+          withdrawalNotices,
         };
       }
 
@@ -258,12 +273,12 @@ export async function GET(request: Request) {
         assignedNewCount,
         pendingDeliveryCount,
       ] = await Promise.all([
-        leads.findByIds(appointmentRows.map((item) => item.leadId)),
+        leads.findByIds(appointmentRows.map((item) => item.leadId), { includeArchived: true }),
         leads.count({ status: 'measuring' }),
         leads.count({ status: 'new', assignmentStatus: 'assigned' }),
         countPendingSchemeDeliveries(transaction),
       ]);
-      const appointmentLeadMap = new Map(appointmentLeads.map((item) => [item.id, item]));
+      const appointmentLeadMap = indexWorkbenchRowsById(appointmentLeads);
       const pendingItems = pendingAssignments.rows.map((lead) => buildEnterprisePendingExceptionItem(lead));
       const expiredItems = expiredUnbooked.map((row) => buildEnterpriseExpiredExceptionItem({
         ...row.lead,
@@ -297,10 +312,12 @@ export async function GET(request: Request) {
           buildStaffLoadQuickNav({ eligibleDesignerCount, eligibleMeasurerCount }),
         ],
         primaryItems: exceptionItems.slice(0, 8),
-        appointments: appointmentRows.map((item) => appointmentItem(item, appointmentLeadMap.get(item.leadId))),
-        activityCode: { label: '出示入驻码', target: 'join-codes' },
+        appointments: appointmentRows.map((item) => appointmentItem(item, appointmentLeadMap.get(String(item.leadId)))),
+        activityCode: { label: '分享活动码', detail: '发给客户 · 扫码留资', target: 'activity-code' },
+        joinCode: { label: '邀请入驻', detail: '员工 · 推荐人', target: 'join-codes' },
         secondary: { label: '查看预约安排', target: 'appointments' },
         ...opsDashboard,
+        withdrawalNotices,
       };
     });
 

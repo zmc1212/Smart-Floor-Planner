@@ -19,6 +19,10 @@
         </view>
         <image class="hero-mascot" src="/images/airy-v1/project-delivery-xiao-k.png" mode="aspectFit" aria-label="正在整理服务档案的小K" />
       </view>
+      <view wx:if="{{isTerminated}}" class="termination-banner">
+        <text class="termination-title">服务已终止</text>
+        <text class="termination-copy">本次推广服务记录已撤销，如需继续服务，请重新扫描有效服务码</text>
+      </view>
       <view class="timeline-row">
         <block wx:for="{{stages}}" wx:key="label">
           <view class="timeline-step {{item.state}} {{item.complete ? 'done' : ''}}">
@@ -55,7 +59,7 @@
       </view>
     </view>
 
-    <view class="service-team">
+    <view class="service-team {{isTerminated ? 'is-readonly' : ''}}">
       <text class="group-title">服务小组</text>
       <view class="personnel-grid">
         <view class="person-card is-designer" bindtap="contactDesigner" aria-role="button" aria-label="联系家装设计顾问">
@@ -154,11 +158,12 @@
           lead-id="{{leadId}}"
           photos="{{sitePhotos}}"
           space-tags="{{sitePhotoTags}}"
-          show-add="{{true}}"
+      show-add="{{!isTerminated}}"
           uploading="{{sitePhotoUploading}}"
           limit-reached="{{sitePhotoLimitReached}}"
           bind:change="onSitePhotosChange"
           bind:uploading="onSitePhotoUploading"
+          bind:sheetchange="onSitePhotoSheetChange"
         />
       </view>
 
@@ -179,7 +184,7 @@
     </view>
   </view>
 
-  <view wx:if="{{!loading && !error}}" class="footer-bar">
+  <view wx:if="{{!loading && !error && !sitePhotoSheetOpen && !isTerminated}}" class="footer-bar">
     <button class="footer-outline" bindtap="contactDesigner">
       <image class="footer-contact-icon" src="/packages/business/assets/customer-project-v4/message-circle-more.png" mode="aspectFit" />
       <text>微信联系家装设计顾问</text>

@@ -92,7 +92,13 @@ type WorkbenchLeadInput = {
   floorPlanRecords?: WorkbenchFloorPlan[] | null;
   updatedAt?: Date | string | null;
   publishedDesignCount?: number;
+  archivedAt?: Date | string | null;
+  terminationType?: string | null;
 };
+
+export function indexWorkbenchRowsById<T extends { id: bigint | number | string }>(rows: T[]) {
+  return new Map(rows.map((row) => [String(row.id), row]));
+}
 
 function floorPlanId(plan: WorkbenchFloorPlan | null | undefined) {
   return plan?.id == null ? '' : String(plan.id);
@@ -134,6 +140,7 @@ export function isMeasurerWorkbenchSurveyLead(
   const plan = selectWorkbenchFloorPlan(lead);
   const stage = resolveLeadServiceStage({
     leadStatus: status,
+    terminationType: lead.terminationType,
     assignmentStatus: lead.assignmentStatus,
     measurerId: lead.measurerId,
     appointment: lead.appointment,
@@ -144,20 +151,24 @@ export function isMeasurerWorkbenchSurveyLead(
   return true;
 }
 
+export function isTerminalWorkbenchLead(lead?: WorkbenchLeadInput | null) {
+  if (!lead || lead.archivedAt) return true;
+  return ['converted', 'closed'].includes(String(lead.status || ''));
+}
+
 /**
  * Confirmed visits stay visible even after a completed v4 plan.
  * Expired visits drop once survey is done.
- * Converted/closed leads are finished on the platform and leave the workbench queue.
+ * Converted/closed/archived leads are finished on the platform and leave the workbench queue.
  */
 export function shouldIncludeMeasurerWorkbenchAppointment(
   lead: WorkbenchLeadInput | null | undefined,
   appointment: { status: string }
 ) {
-  if (lead && ['converted', 'closed'].includes(lead.status || 'new')) return false;
+  if (isTerminalWorkbenchLead(lead)) return false;
   if (appointment.status === 'confirmed') return true;
   if (appointment.status !== 'expired') return false;
-  if (!lead) return true;
-  return isMeasurerWorkbenchSurveyLead(lead, new Set());
+  return isMeasurerWorkbenchSurveyLead(lead!, new Set());
 }
 
 type MeasurerWorkbenchAppointment = {
@@ -208,14 +219,15 @@ export function buildWorkbenchAppointmentItem(
   const expired = appointment.status === 'expired';
   const hasFormalFloorPlan = plan?.status === 'completed';
   const stage = resolveLeadServiceStage({
-    leadStatus: lead?.status,
+    leadStatus: isTerminalWorkbenchLead(lead) && lead?.status !== 'converted' ? 'closed' : lead?.status,
+    terminationType: lead?.terminationType,
     assignmentStatus: lead?.assignmentStatus,
     measurerId: lead?.measurerId,
     appointment,
     hasFormalFloorPlan,
     publishedDesignCount: lead?.publishedDesignCount,
   });
-  const terminalLead = stage.key === 'converted' || stage.key === 'closed';
+  const terminalLead = stage.key === 'converted' || stage.key === 'closed' || stage.key === 'referrer_withdrawn';
   const allowRebook = Boolean(options.allowRebook && expired && !terminalLead);
   const canContinueSurvey = Boolean(planId) && !allowRebook && !terminalLead;
   const canCompleteSurvey = stage.key === 'survey_ready' && !allowRebook && !terminalLead;
@@ -266,6 +278,7 @@ export function buildWorkbenchLeadItem(lead: WorkbenchLeadInput, action = 'lead'
   const hasFormalFloorPlan = plan?.status === 'completed';
   const stage = resolveLeadServiceStage({
     leadStatus,
+    terminationType: lead.terminationType,
     assignmentStatus: lead.assignmentStatus,
     measurerId: lead.measurerId,
     appointment: lead.appointment,
@@ -522,16 +535,13 @@ export function buildOpsDashboardCards(input: {
   previousLeadCount: number;
   completedSurveys: number;
   draftFormalPlans: number;
+  publishedSchemeCount: number;
   schemeDeliveryRate: number;
   schemeDeliveryDetail: string;
   signedCount: number;
   contractAmountSum?: number | null;
   includeContractAmount?: boolean;
 }): { cards: OpsDashboardCard[]; signingRate: number | null } {
-  const closureDenominator = input.completedSurveys + input.draftFormalPlans;
-  const closureRate = closureDenominator > 0
-    ? Math.round((input.completedSurveys / closureDenominator) * 1000) / 10
-    : 0;
   const signingRate = computeSigningRate(input.signedCount, input.newLeadCount);
   const cards: OpsDashboardCard[] = [
     {
@@ -547,7 +557,7 @@ export function buildOpsDashboardCards(input: {
       label: '已完成量房',
       value: input.completedSurveys,
       unit: '户',
-      detail: closureDenominator > 0 ? `闭合率 ${closureRate}%` : '暂无闭合率',
+      detail: `已发布方案 ${input.publishedSchemeCount} 份`,
       tone: 'green',
     },
     {
@@ -677,6 +687,7 @@ export async function loadOpsDashboard(
     previousLeadCount,
     completedSurveys,
     draftFormalPlans,
+    publishedSchemeCount: schemeFacts.publishedLeadCount,
     schemeDeliveryRate,
     schemeDeliveryDetail,
     signedCount,

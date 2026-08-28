@@ -49,21 +49,31 @@ Component({
   lifetimes: {
     detached() {
       clearSheetTimer(this, TAG_SHEET.openKey);
+      if (this.data.tagMounted) this.emitSheetChange(false);
     },
   },
 
   methods: {
+    emitSheetChange(open) {
+      this.triggerEvent('sheetchange', { open: Boolean(open) });
+    },
+
     openTagSheet() {
       if (this.properties.uploading) return;
       if (this.properties.limitReached) {
         wx.showToast({ title: '本户现场图已满 30 张', icon: 'none' });
         return;
       }
+      this.emitSheetChange(true);
       openSheet(this, TAG_SHEET);
     },
 
+    closeTagSheet() {
+      closeSheet(this, TAG_SHEET, () => this.emitSheetChange(false));
+    },
+
     onCloseTagSheet() {
-      closeSheet(this, TAG_SHEET);
+      this.closeTagSheet();
     },
 
     onAdd() {
@@ -75,7 +85,7 @@ Component({
       const spaceTag = event.currentTarget.dataset.key;
       if (!spaceTag || this.properties.uploading) return;
       const retagId = this.data.pendingRetagId;
-      closeSheet(this, TAG_SHEET);
+      this.closeTagSheet();
       if (retagId) {
         this.setData({ pendingRetagId: '' });
         try {

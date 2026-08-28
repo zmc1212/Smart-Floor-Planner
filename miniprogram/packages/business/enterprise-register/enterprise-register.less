@@ -130,7 +130,7 @@ page {
 
 .form-input {
   height: 88rpx;
-  margin-bottom: 16rpx;
+  margin-bottom: 0;
   padding: 0 24rpx;
   border-radius: 20rpx;
   background: #f3f6f4;
@@ -140,38 +140,51 @@ page {
   box-sizing: border-box;
 }
 
+.form-field {
+  margin-bottom: 16rpx;
+}
+
+.form-field:last-child {
+  margin-bottom: 0;
+}
+
+.form-input.is-error {
+  background: #fff6f3;
+  box-shadow: inset 0 0 0 2rpx rgba(228, 91, 62, 0.72);
+}
+
+.form-field-error {
+  display: block;
+  margin: 10rpx 8rpx 0;
+  color: #e45b3e;
+  font-size: 22rpx;
+  line-height: 1.4;
+}
+
 .form-placeholder {
   color: #a3b0a8;
   font-size: 26rpx;
 }
 
-.phone-row {
-  display: flex;
-  min-height: 88rpx;
+.phone-field {
   margin-bottom: 16rpx;
-  padding: 0 24rpx;
-  align-items: center;
-  justify-content: space-between;
-  border-radius: 20rpx;
-  background: #eef8f1;
-  box-sizing: border-box;
 }
 
-.phone-label {
-  color: #5b6b62;
-  font-size: 24rpx;
-  font-weight: 600;
+.phone-helper {
+  display: block;
+  margin: 10rpx 8rpx 0;
+  color: #8e9e94;
+  font-size: 22rpx;
+  line-height: 1.4;
 }
 
-.phone-value {
-  color: #183426;
-  font-size: 28rpx;
-  font-weight: 700;
+.phone-helper.is-authorized {
+  color: #00a957;
 }
 
 .privacy-note {
   display: flex;
-  margin: 8rpx 0 28rpx;
+  margin: 8rpx 0 16rpx;
   align-items: flex-start;
   gap: 12rpx;
   color: #8e9e94;
@@ -197,6 +210,18 @@ page {
   border-left: 3rpx solid #00c365;
   border-bottom: 3rpx solid #00c365;
   transform: rotate(-45deg) translateY(-1rpx);
+}
+
+.missing-hint {
+  margin: 0 0 20rpx;
+  color: #8e9e94;
+  font-size: 22rpx;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.missing-hint.is-alert {
+  color: #e45b3e;
 }
 
 .join-action {

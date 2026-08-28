@@ -524,3 +524,6 @@ These decisions do not require repeated confirmation unless the product owner ch
 - Customers cannot cancel appointments themselves.
 - Commissions are offline enterprise ledgers; the platform does not pay.
 - Production business-data cleanup never runs through ordinary migration and always requires separate explicit approval.
+### Withdrawal extension (Implemented)
+
+Promotion records support a traceable `closed/referrer_withdrawn` terminal state, ten-minute self-undo, staff acknowledgement notices, and customer read-only termination copy. Re-scanning an active service code creates a new lead while the old withdrawal audit remains immutable.

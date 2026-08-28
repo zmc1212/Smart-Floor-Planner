@@ -1,4 +1,5 @@
 export type LeadServiceStage =
+  | 'referrer_withdrawn'
   | 'closed'
   | 'converted'
   | 'design_published'
@@ -13,6 +14,7 @@ export type LeadServiceStage =
   | 'claimed';
 
 export const LEAD_SERVICE_STAGE_LABELS: Record<LeadServiceStage, string> = {
+  referrer_withdrawn: '推广人已撤销',
   closed: '已关闭',
   converted: '已签约',
   design_published: '方案已发布',
@@ -28,6 +30,7 @@ export const LEAD_SERVICE_STAGE_LABELS: Record<LeadServiceStage, string> = {
 };
 
 export const LEAD_SERVICE_STAGE_NEXT_ACTIONS: Record<LeadServiceStage, string> = {
+  referrer_withdrawn: '该线索已撤销，无法继续推进',
   closed: '该线索已关闭',
   converted: '已签约，无需继续推进',
   design_published: '沟通确认或标记签约',
@@ -129,6 +132,7 @@ export function resolveLeadServiceStage(input: {
   appointment?: AppointmentStageInput;
   hasFormalFloorPlan?: boolean;
   publishedDesignCount?: number;
+  terminationType?: string | null;
   now?: Date;
 }): { key: LeadServiceStage; label: string; nextAction: string } {
   const now = input.now || new Date();
@@ -140,7 +144,8 @@ export function resolveLeadServiceStage(input: {
       : appointment?.status || null;
 
   let key: LeadServiceStage = 'claimed';
-  if (leadStatus === 'closed') key = 'closed';
+  if (leadStatus === 'closed' && input.terminationType === 'referrer_withdrawn') key = 'referrer_withdrawn';
+  else if (leadStatus === 'closed') key = 'closed';
   else if (leadStatus === 'converted' || Boolean(input.leadStatus === 'converted')) key = 'converted';
   else if (Number(input.publishedDesignCount || 0) > 0) key = 'design_published';
   else if (appointment?.status === 'completed') key = 'survey_completed';
@@ -254,6 +259,7 @@ export function describeCustomerAppointment(input: {
   if (input.serviceStage === 'survey_completed') return '量房已完成，可在服务档案查看户型';
   if (published) return '方案已发布，可在服务档案查看';
   if (input.serviceStage === 'converted') return '服务已签约完成';
+  if (input.serviceStage === 'referrer_withdrawn') return '本次推广服务记录已撤销，如需继续服务，请重新扫描有效服务码';
   if (input.serviceStage === 'closed') return '服务已结束';
   return '';
 }
@@ -267,6 +273,7 @@ export function resolveCustomerHomeAction(input: {
   publishedDesignCount?: number;
   customerRescheduleCutoffHours?: number | null;
   now?: Date;
+  terminationType?: string | null;
 }) {
   const stage = resolveLeadServiceStage(input);
   const canReschedule = canCustomerReschedule(input);
@@ -278,7 +285,7 @@ export function resolveCustomerHomeAction(input: {
     now: input.now,
   });
   let kind: CustomerHomeActionKind = 'wait_designer';
-  if (stage.key === 'closed') kind = 'none';
+  if (stage.key === 'closed' || stage.key === 'referrer_withdrawn') kind = 'none';
   else if (['converted', 'design_published', 'survey_completed', 'survey_ready', 'appointment_in_progress'].includes(stage.key)) {
     kind = 'view_project';
   } else if (stage.key === 'appointment_expired' || stage.key === 'awaiting_rebooking') kind = 'rebook';

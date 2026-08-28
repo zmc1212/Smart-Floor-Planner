@@ -280,7 +280,7 @@ test('serializeWorkflowListForMini signs scheme covers from confirmed or succeed
   assert.equal(serialized.data[2].coverUrl, undefined);
 });
 
-test('serializePromptTemplatesForMini signs recipe preview covers for WeChat', () => {
+test('serializePromptTemplatesForMini keeps HTTPS imported covers for WeChat', () => {
   const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/prompt-templates');
   const serialized = serializePromptTemplatesForMini(request, '23', {
     revisionId: '1',
@@ -295,6 +295,28 @@ test('serializePromptTemplatesForMini signs recipe preview covers for WeChat', (
       adaptationModel: undefined,
       weight: 1,
       previewUrl: 'https://cdn.example.com/preview.jpg',
+      localPreviewUrl: '/api/ai/creation/prompt-templates/501/preview',
+    }],
+    pagination: { page: 1, limit: 24, total: 1, totalPages: 1 },
+  });
+  assert.equal(serialized.items[0].previewUrl, 'https://cdn.example.com/preview.jpg');
+});
+
+test('serializePromptTemplatesForMini signs same-origin recipe covers for WeChat', () => {
+  const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/prompt-templates');
+  const serialized = serializePromptTemplatesForMini(request, '23', {
+    revisionId: '1',
+    items: [{
+      id: '501',
+      name: '原木奶油客厅',
+      promptContent: 'cream living room',
+      categorySourceId: 'living',
+      bestModelSourceId: undefined,
+      recommendedModelProfileId: undefined,
+      parameterTemplateSourceId: undefined,
+      adaptationModel: undefined,
+      weight: 1,
+      previewUrl: '/api/ai/creation/prompt-templates/501/preview',
       localPreviewUrl: '/api/ai/creation/prompt-templates/501/preview',
     }],
     pagination: { page: 1, limit: 24, total: 1, totalPages: 1 },

@@ -3,13 +3,16 @@
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { Building2, Check, Copy, Ellipsis, Eye, Plus } from 'lucide-react';
-import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
-import { Avatar, Button, Dropdown, Input, Modal, Space, Tag, Typography } from 'antd';
+import { PageContainer, ProForm, ProFormDigit, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
+import { Avatar, Button, Card, Dropdown, Flex, Input, Modal, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import EnterpriseEditorDialog from '@/components/enterprise/EnterpriseEditorDialog';
 import type { EnterpriseListItem } from '@/components/enterprise/types';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { notify } from '@/components/admin/operation-feedback';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useFetch } from '@/hooks/useFetch';
+import { isPlatformAdminRole } from '@/lib/referrer-join-limits';
 
 const ENTERPRISE_STATUS = {
   pending_approval: { text: '待审核', status: 'Warning' },
@@ -43,6 +46,8 @@ function truncateReason(reason?: string | null) {
 export default function EnterprisesPage() {
   const actionRef = useRef<ActionType>(null);
   const confirmAction = useConfirmDialog();
+  const { user } = useCurrentUser();
+  const canEditJoinLimit = isPlatformAdminRole(user?.role);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [editingEnterprise, setEditingEnterprise] = useState<EnterpriseListItem | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -52,6 +57,13 @@ export default function EnterprisesPage() {
     action: Extract<StatusAction, 'reject' | 'disable'>;
   } | null>(null);
   const [reasonDraft, setReasonDraft] = useState('');
+  const {
+    data: promotionConfig,
+    isLoading: promotionConfigLoading,
+    mutate: mutatePromotionConfig,
+  } = useFetch<{ referrerMembershipLimit: number }>(
+    canEditJoinLimit ? '/api/platform/promotion-config' : null
+  );
 
   const copyInvitationLink = async () => {
     try {
@@ -110,7 +122,7 @@ export default function EnterprisesPage() {
       width: 270,
       render: (_, enterprise) => (
         <Space align="start" size={12}>
-          <Avatar shape="square" src={enterprise.logo} icon={<Building2 size={17} />} className="!bg-primary !text-primary-foreground" />
+          <Avatar shape="square" src={enterprise.logo || undefined} icon={<Building2 size={17} />} className="!bg-primary !text-primary-foreground" />
           <Space direction="vertical" size={0}>
             <Link className="font-medium text-foreground hover:text-primary" href={`/enterprises/${enterprise._id}`}>
               {enterprise.name}
@@ -286,7 +298,53 @@ export default function EnterprisesPage() {
           </Button>,
         ]}
       >
-        <ProTable<EnterpriseListItem>
+        <Flex vertical gap={24}>
+          {canEditJoinLimit ? (
+            <Card title="推广人可加入企业数" className="admin-panel-card" loading={promotionConfigLoading}>
+              <Typography.Paragraph type="secondary">
+                每个微信同时可作为推荐人加入的企业上限。收紧后已超限成员不会被退出，只阻止再加入新企业。单家企业若要限制推广人再服务其他店，请进入该企业「详情」设置「推广人企业保护」。
+              </Typography.Paragraph>
+              <ProForm
+                key={promotionConfig?.referrerMembershipLimit ?? 'loading'}
+                initialValues={{
+                  referrerMembershipLimit: promotionConfig?.referrerMembershipLimit ?? 3,
+                }}
+                submitter={{ searchConfig: { submitText: '保存' } }}
+                onFinish={async (values) => {
+                  try {
+                    const response = await fetch('/api/platform/promotion-config', {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        referrerMembershipLimit: values.referrerMembershipLimit,
+                      }),
+                    });
+                    const result = await response.json();
+                    if (!response.ok || !result.success) {
+                      throw new Error(result.error || '保存推广人可加入企业数失败');
+                    }
+                    await mutatePromotionConfig();
+                    notify.success('推广人可加入企业数已保存');
+                    return true;
+                  } catch (error) {
+                    notify.error(error instanceof Error ? error.message : '保存推广人可加入企业数失败');
+                    return false;
+                  }
+                }}
+              >
+                <ProFormDigit
+                  name="referrerMembershipLimit"
+                  label="同时可加入企业数"
+                  min={1}
+                  rules={[{ required: true }]}
+                  extra="默认 3 家。"
+                  formItemProps={{ style: { width: '100%' } }}
+                  fieldProps={{ className: 'w-full', precision: 0 }}
+                />
+              </ProForm>
+            </Card>
+          ) : null}
+          <ProTable<EnterpriseListItem>
           actionRef={actionRef}
           rowKey="_id"
           columns={columns}
@@ -316,6 +374,7 @@ export default function EnterprisesPage() {
             };
           }}
         />
+        </Flex>
       </PageContainer>
 
       <EnterpriseEditorDialog

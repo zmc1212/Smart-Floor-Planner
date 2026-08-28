@@ -6,7 +6,7 @@ Status: `Implemented`
 
 - Admin `/lead-pool` lets designers claim leads and lets enterprise owners monitor or assign manually; `/assignment-settings` maintains rules, capacity, and performance views.
 - Mini Program `packages/business/lead-claim-pool/lead-claim-pool` returns masked leads only to active designers in the signed enterprise. Full lead detail becomes available only after a successful claim. The designer workbench shows the current claim count and entry.
-- Referrer leads, Admin manual-entry leads, and measurer activity-code leads use the claim/racing path. A designer's own activity code still binds that designer directly. Measurer pre-assignment remains in the intake transaction.
+- Referrer leads, Admin manual-entry leads, measurer activity-code leads, and enterprise-owner activity-code leads use the claim/racing path. A designer's own activity code still binds that designer directly. Measurer pre-assignment remains in the intake transaction; an owner presenter is stored as promoter only and is not bound as designer or measurer.
 
 ## Versioned settings, capacity, and racing
 
@@ -31,3 +31,6 @@ Status: `Implemented`
 - Window creation always writes an in-app `lead_claim_available` record. Optional WeChat delivery is best-effort only for designers who are eligible at creation and explicitly authorized the optional template. Missing configuration, no authorization, or WeChat failure never rolls back lead intake.
 
 Chinese mirror: [lead-claim-racing.zh-CN.md](./lead-claim-racing.zh-CN.md)
+# Referrer withdrawal integration
+
+Referrer-created leads can enter the terminal `closed` state with `terminationType=referrer_withdrawn`. The transaction releases attribution and open claim windows, preserves assignment history, and the ten-minute undo never reopens an old claim window.

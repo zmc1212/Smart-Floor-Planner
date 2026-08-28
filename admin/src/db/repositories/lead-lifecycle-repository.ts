@@ -8,6 +8,10 @@ import {
   leadLifecycleEvents,
   leadClaimWindows,
   leadOutcomeSnapshots,
+  adminUsers,
+  measurementAppointments,
+  leadSitePhotos,
+  staffNotifications,
   leads,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
@@ -15,6 +19,8 @@ import { LeadCommissionRepository } from '@/db/repositories/lead-commission-repo
 import { httpError } from '@/lib/http-error';
 import { shouldSnapshotLeadCommissions } from '@/lib/lead-source';
 import { normalizeLeadStatus } from '@/lib/lead-status';
+
+export const REFERRER_WITHDRAWAL_WINDOW_MS = 10 * 60 * 1000;
 
 const IN_FLIGHT_AI_STATUSES = ['created', 'pending', 'processing'];
 
@@ -472,6 +478,94 @@ export class LeadLifecycleRepository {
     return rows[0];
   }
 
+  async withdrawByReferrer(input: {
+    leadId: bigint;
+    userId: bigint;
+    membershipId: bigint;
+    note?: string | null;
+  }) {
+    const lead = (await this.transaction.select().from(leads).where(eq(leads.id, input.leadId)).for('update').limit(1))[0];
+    if (!lead?.enterpriseId) return null;
+    if (lead.referrerMembershipId !== input.membershipId) throw Object.assign(httpError('无权操作该推广记录', 403), { code: 'REFERRER_LEAD_FORBIDDEN' });
+    if (lead.source !== 'referrer_network') throw Object.assign(httpError('仅推广线索支持撤销', 409), { code: 'REFERRER_SOURCE_REQUIRED' });
+    if (lead.terminationType === 'referrer_withdrawn') return lead;
+    if (normalizeLeadStatus(lead.status) !== 'new') throw Object.assign(httpError('该线索已开始服务，不能撤销，请联系企业管理员', 409), { code: 'REFERRER_WITHDRAWAL_BLOCKED' });
+    const impact = (await this.impacts([lead.id]))[0];
+    const [appointments, photos] = await Promise.all([
+      this.transaction.select({ id: measurementAppointments.id }).from(measurementAppointments).where(eq(measurementAppointments.leadId, lead.id)),
+      this.transaction.select({ id: leadSitePhotos.id }).from(leadSitePhotos).where(and(eq(leadSitePhotos.leadId, lead.id), isNull(leadSitePhotos.deletedAt))),
+    ]);
+    if (impact.floorPlanCount || impact.aiWorkflowCount || impact.aiGenerationCount || impact.followUpCount || impact.hasConversion || impact.commissionCount || appointments.length || photos.length) {
+      throw Object.assign(httpError('该线索已开始服务，不能撤销，请联系企业管理员', 409), { code: 'REFERRER_WITHDRAWAL_BLOCKED', impact });
+    }
+    const now = new Date();
+    const rows = await this.transaction.update(leads).set({
+      status: 'closed',
+      terminationType: 'referrer_withdrawn',
+      terminatedAt: now,
+      terminatedByUserId: input.userId,
+      terminatedByReferrerMembershipId: input.membershipId,
+      terminationPreviousStatus: lead.status,
+      terminationNote: input.note?.trim().slice(0, 300) || null,
+      updatedAt: now,
+    }).where(and(eq(leads.id, lead.id), eq(leads.status, lead.status), isNull(leads.terminationType))).returning();
+    const updated = rows[0];
+    if (!updated) throw Object.assign(httpError('线索状态已变化，请刷新后重试', 409), { code: 'REFERRER_WITHDRAWAL_CONFLICT' });
+    await this.transaction.update(customerAttributionLocks).set({ releasedAt: now, releaseReason: 'referrer_withdrawn', updatedAt: now }).where(and(eq(customerAttributionLocks.leadId, lead.id), isNull(customerAttributionLocks.releasedAt)));
+    await this.transaction.update(leadClaimWindows).set({ status: 'cancelled', resolvedAt: now, resolutionReason: 'referrer_withdrawn', updatedAt: now }).where(and(eq(leadClaimWindows.leadId, lead.id), eq(leadClaimWindows.status, 'open')));
+    const recipients = await this.transaction.select({ id: adminUsers.id, role: adminUsers.role }).from(adminUsers).where(and(eq(adminUsers.enterpriseId, lead.enterpriseId), eq(adminUsers.status, 'active'), inArray(adminUsers.role, ['designer', 'measurer', 'enterprise_admin'])));
+    const assigned = new Set([lead.assignedTo?.toString(), lead.measurerId?.toString()].filter(Boolean));
+    for (const recipient of recipients) {
+      if (!assigned.has(recipient.id.toString()) && recipient.role !== 'enterprise_admin') continue;
+      await this.transaction.insert(staffNotifications).values({ enterpriseId: lead.enterpriseId, recipientStaffId: recipient.id, leadId: lead.id, notificationType: 'lead_referrer_withdrawn', channel: 'in_app', status: 'unread', message: '推广人已撤销该线索，请停止后续跟进', metadata: { recordCode: lead.referrerRecordCode, terminationType: 'referrer_withdrawn' }, dedupeKey: `lead-referrer-withdrawn:${lead.id}:${recipient.id}` }).onConflictDoNothing();
+    }
+    await this.recordEvent(lead.id, lead.enterpriseId, null, 'referrer_withdrawn', 'referrer_withdrawn', { previousStatus: lead.status, recordCode: lead.referrerRecordCode, note: updated.terminationNote }, { actorUserId: input.userId, actorReferrerMembershipId: input.membershipId });
+    return updated;
+  }
+
+  async restoreReferrerWithdrawal(input: { leadId: bigint; userId: bigint; membershipId: bigint }) {
+    const lead = (await this.transaction.select().from(leads).where(eq(leads.id, input.leadId)).for('update').limit(1))[0];
+    if (!lead?.enterpriseId) return null;
+    if (lead.referrerMembershipId !== input.membershipId || lead.terminatedByUserId !== input.userId) throw Object.assign(httpError('无权撤回该操作', 403), { code: 'REFERRER_WITHDRAWAL_FORBIDDEN' });
+    if (lead.terminationType !== 'referrer_withdrawn' || !lead.terminatedAt) throw Object.assign(httpError('该线索当前没有可撤回的推广人撤销', 409), { code: 'REFERRER_WITHDRAWAL_NOT_FOUND' });
+    if (Date.now() - lead.terminatedAt.getTime() > REFERRER_WITHDRAWAL_WINDOW_MS) throw Object.assign(httpError('撤回窗口已结束，请联系企业管理员', 409), { code: 'REFERRER_WITHDRAWAL_EXPIRED' });
+    if (lead.customerUserId) {
+      const active = (await this.transaction.select().from(customerAttributionLocks).where(and(eq(customerAttributionLocks.customerUserId, lead.customerUserId), isNull(customerAttributionLocks.releasedAt))).for('update').limit(1))[0];
+      if (active && active.leadId !== lead.id) throw Object.assign(httpError('客户已通过其他服务码建立新归属，请联系企业管理员', 409), { code: 'REFERRER_WITHDRAWAL_ATTRIBUTION_CONFLICT' });
+    }
+    const now = new Date();
+    const restoredStatus = lead.terminationPreviousStatus || 'new';
+    const rows = await this.transaction.update(leads).set({ status: restoredStatus, terminationType: null, terminatedAt: null, terminatedByUserId: null, terminatedByReferrerMembershipId: null, terminationPreviousStatus: null, terminationNote: null, assignmentStatus: lead.assignedTo ? 'assigned' : 'assignment_pending', updatedAt: now }).where(and(eq(leads.id, lead.id), eq(leads.status, 'closed'), eq(leads.terminationType, 'referrer_withdrawn'))).returning();
+    if (!rows[0]) throw Object.assign(httpError('线索状态已变化，请刷新后重试', 409), { code: 'REFERRER_WITHDRAWAL_CONFLICT' });
+    if (lead.customerUserId) {
+      const lock = (await this.transaction.select({ id: customerAttributionLocks.id }).from(customerAttributionLocks).where(eq(customerAttributionLocks.leadId, lead.id)).orderBy(desc(customerAttributionLocks.id)).limit(1).for('update'))[0];
+      if (lock) await this.transaction.update(customerAttributionLocks).set({ releasedAt: null, releaseReason: null, updatedAt: now }).where(eq(customerAttributionLocks.id, lock.id));
+      else await this.transaction.insert(customerAttributionLocks).values({ enterpriseId: lead.enterpriseId, customerUserId: lead.customerUserId, leadId: lead.id, referrerMembershipId: lead.referrerMembershipId, lockedAt: now });
+    }
+    const recipients = await this.transaction.select({ id: adminUsers.id, role: adminUsers.role }).from(adminUsers).where(and(
+      eq(adminUsers.enterpriseId, lead.enterpriseId),
+      eq(adminUsers.status, 'active'),
+      inArray(adminUsers.role, ['designer', 'measurer', 'enterprise_admin'])
+    ));
+    const assigned = new Set([lead.assignedTo?.toString(), lead.measurerId?.toString()].filter(Boolean));
+    for (const recipient of recipients) {
+      if (!assigned.has(recipient.id.toString()) && recipient.role !== 'enterprise_admin') continue;
+      await this.transaction.insert(staffNotifications).values({
+        enterpriseId: lead.enterpriseId,
+        recipientStaffId: recipient.id,
+        leadId: lead.id,
+        notificationType: 'lead_referrer_withdrawal_reverted',
+        channel: 'in_app',
+        status: 'unread',
+        message: '推广人已撤回撤销，可继续跟进该线索',
+        metadata: { recordCode: lead.referrerRecordCode, terminationType: 'referrer_withdrawn' },
+        dedupeKey: `lead-referrer-withdrawal-reverted:${lead.id}:${recipient.id}:${lead.terminatedAt.toISOString()}`,
+      }).onConflictDoNothing();
+    }
+    await this.recordEvent(lead.id, lead.enterpriseId, null, 'referrer_withdrawal_reverted', null, { restoredStatus }, { actorUserId: input.userId, actorReferrerMembershipId: input.membershipId });
+    return rows[0];
+  }
+
   async reopenLost(input: { leadId: bigint; actorId: bigint; reason?: string | null }) {
     const current = await this.transaction
       .select()
@@ -483,6 +577,28 @@ export class LeadLifecycleRepository {
     if (!lead?.enterpriseId) return null;
     if (lead.archivedAt) throw httpError('该客户线索已归档，请先恢复后再操作', 409);
     if (normalizeLeadStatus(lead.status) !== 'closed') throw httpError('只有已结案线索可以重新激活', 409);
+    if (lead.terminationType === 'referrer_withdrawn') {
+      const now = new Date();
+      const restoredStatus = lead.terminationPreviousStatus || 'new';
+      const rows = await this.transaction.update(leads).set({
+        status: restoredStatus,
+        terminationType: null,
+        terminatedAt: null,
+        terminatedByUserId: null,
+        terminatedByReferrerMembershipId: null,
+        terminationPreviousStatus: null,
+        terminationNote: null,
+        assignmentStatus: lead.assignedTo ? 'assigned' : 'assignment_pending',
+        updatedAt: now,
+      }).where(and(eq(leads.id, lead.id), eq(leads.status, 'closed'), eq(leads.terminationType, 'referrer_withdrawn'))).returning();
+      if (!rows[0]) throw httpError('线索状态已变化，请刷新后重试', 409);
+      if (lead.customerUserId) {
+        const lock = (await this.transaction.select({ id: customerAttributionLocks.id }).from(customerAttributionLocks).where(eq(customerAttributionLocks.leadId, lead.id)).orderBy(desc(customerAttributionLocks.id)).limit(1).for('update'))[0];
+        if (lock) await this.transaction.update(customerAttributionLocks).set({ releasedAt: null, releaseReason: null, updatedAt: now }).where(eq(customerAttributionLocks.id, lock.id));
+      }
+      await this.recordEvent(lead.id, lead.enterpriseId, input.actorId, 'reopened', input.reason?.trim() || 'admin_referrer_withdrawal_restore', { restoredStatus, terminationType: 'referrer_withdrawn' });
+      return rows[0];
+    }
     const snapshots = await this.transaction
       .select()
       .from(leadOutcomeSnapshots)
@@ -568,16 +684,19 @@ export class LeadLifecycleRepository {
   private async recordEvent(
     leadId: bigint,
     enterpriseId: bigint | null,
-    actorId: bigint,
+    actorId: bigint | null,
     action: string,
     reason: string | null,
-    metadata: Record<string, unknown>
+    metadata: Record<string, unknown>,
+    actors?: { actorUserId?: bigint | null; actorReferrerMembershipId?: bigint | null }
   ) {
     if (!enterpriseId) return;
     await this.transaction.insert(leadLifecycleEvents).values({
       enterpriseId,
       leadRecordId: leadId,
       actorId,
+      actorUserId: actors?.actorUserId ?? null,
+      actorReferrerMembershipId: actors?.actorReferrerMembershipId ?? null,
       action,
       reason,
       metadata,

@@ -68,11 +68,6 @@ function passThrough(request: NextRequest) {
   });
 }
 
-const MINI_PROGRAM_PASSWORD_CHANGE_PATHS = new Set([
-  '/api/miniprogram/profile',
-  '/api/miniprogram/account/password',
-]);
-
 const ADMIN_PASSWORD_CHANGE_API_PATHS = new Set([
   '/api/auth/me',
   '/api/auth/password',
@@ -118,30 +113,6 @@ export async function proxy(request: NextRequest) {
     } catch {
       return NextResponse.redirect(new URL('/login', request.url));
     }
-  }
-
-  if (
-    pathname.startsWith('/api/miniprogram/') &&
-    authHeader?.startsWith('Bearer ')
-  ) {
-    try {
-      const { payload } = await jose.jwtVerify(authHeader.slice(7), secret, {
-        audience: 'miniprogram',
-      });
-      if (
-        payload.source === 'password' &&
-        payload.mustChangePassword === true &&
-        !(
-          MINI_PROGRAM_PASSWORD_CHANGE_PATHS.has(pathname) &&
-          (pathname !== '/api/miniprogram/profile' || request.method === 'GET')
-        )
-      ) {
-        return passwordChangeRequiredResponse();
-      }
-    } catch {
-      // Route handlers retain ownership of normal invalid-token responses.
-    }
-    return passThrough(request);
   }
 
   if (pathname.startsWith('/api/auth/') && token) {

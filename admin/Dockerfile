@@ -3,7 +3,9 @@
 # ============================================
 FROM node:20-alpine AS deps
 
-RUN apk add --no-cache libc6-compat
+# Official Alpine CDN often fails TLS from China; npm already uses npmmirror.
+RUN sed -i 's#dl-cdn.alpinelinux.org#mirrors.aliyun.com#g' /etc/apk/repositories \
+    && apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
@@ -37,7 +39,8 @@ ENV NODE_ENV=production
 ENV HOSTNAME="0.0.0.0"
 ENV PORT=3005
 
-RUN apk add --no-cache font-noto-cjk libc6-compat
+RUN sed -i 's#dl-cdn.alpinelinux.org#mirrors.aliyun.com#g' /etc/apk/repositories \
+    && apk add --no-cache font-noto-cjk libc6-compat
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 RUN mkdir -p /data/ai-assets && chown -R nextjs:nodejs /data/ai-assets

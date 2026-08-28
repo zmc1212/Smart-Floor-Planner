@@ -26,7 +26,26 @@ const referralAssets = [
   'phone-auth-privacy.png',
 ];
 
-test('staff activity code reuses the promotion visual language and may show the enterprise name', () => {
+const codePresenterAssets = [
+  'xiao-k-scan-guide.png',
+  'scan-frame.png',
+  'join-identity.png',
+  'service-start.png',
+  'free-service.png',
+  'onsite-measurement.png',
+  'advisor-match.png',
+];
+
+const codePresenterV3Assets = [
+  'xiao-k-scan-presenter.png',
+  'scan-journey.png',
+  'role-journey.png',
+  'start-journey.png',
+  'home-outline.png',
+  'advisor-outline.png',
+];
+
+test('staff activity code renders a continuous service invitation and may show the enterprise name', () => {
   const wxml = source('packages/business/staff-activity-code/staff-activity-code.wxml');
   const js = source('packages/business/staff-activity-code/staff-activity-code.js');
   const less = source('packages/business/staff-activity-code/staff-activity-code.less');
@@ -38,7 +57,11 @@ test('staff activity code reuses the promotion visual language and may show the 
   assert.doesNotMatch(wxml, /让客户扫码领取/);
   assert.match(wxml, /enterpriseName/);
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
-  assert.match(wxml, /mine-icons\/scan\.png/);
+  assert.match(wxml, /code-presenter-v3\/xiao-k-scan-presenter\.png/);
+  assert.match(wxml, /code-presenter-v2\/scan-frame\.png/);
+  assert.match(wxml, /code-presenter-v3\/home-outline\.png/);
+  assert.match(wxml, /code-presenter-v3\/advisor-outline\.png/);
+  assert.doesNotMatch(wxml, /referral-service-v1\/thumbs-up-xiao-k/);
   assert.doesNotMatch(less, /\.scan-glyph\s*\{[^}]*border:\s*3rpx solid/);
   assert.doesNotMatch(less, /\.share-scan\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /\/miniprogram\/staff-activity-code/);
@@ -55,15 +78,14 @@ test('staff activity code reuses the promotion visual language and may show the 
   assert.match(less, /\.nav-back/);
   assert.match(less, /\.back-chevron/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
-  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*520rpx/);
-  assert.match(less, /\.qr-stage\s*\{[\s\S]*min-height:\s*520rpx/);
-  assert.match(less, /@media \(max-width:\s*360px\)[\s\S]*\.qr-stage\s*\{[\s\S]*width:\s*508rpx/);
-  assert.match(less, /\.qr-display\s*\{[\s\S]*flex:\s*none/);
-  assert.match(less, /\.code-hero\s*\{[\s\S]*flex:\s*1/);
-  assert.match(less, /\.service-promises\s*\{[\s\S]*background:\s*#ffffff/);
-  assert.match(less, /\.qr-stage\s*\{[\s\S]*overflow:\s*hidden/);
-  assert.match(less, /\.qr-retry\s*\{[\s\S]*width:\s*auto/);
-  assert.match(less, /\.qr-retry\s*\{[\s\S]*max-width:\s*100%/);
+  assert.match(wxml, /service-invitation-card/);
+  assert.match(wxml, /service-code-scroll/);
+  assert.match(wxml, /action-dock/);
+  assert.match(less, /\.service-code-scroll\s*\{[\s\S]*flex:\s*1/);
+  assert.match(less, /\.service-code-content\s*\{[\s\S]*min-height:\s*100%[\s\S]*flex-direction:\s*column/);
+  assert.match(less, /\.service-invitation-card\s*\{[\s\S]*flex:\s*none/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*478rpx/);
+  assert.match(less, /\.service-promises\s*\{[\s\S]*background:\s*#fff/);
   assert.match(less, /\.qr-state-copy\s*\{[\s\S]*font-size:\s*22rpx/);
 });
 
@@ -81,7 +103,9 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
   assert.match(wxml, /一键分享/);
   assert.match(wxml, /open-type="share"/);
   assert.match(wxml, /enterpriseName/);
-  assert.match(wxml, /mine-icons\/scan\.png/);
+  assert.match(wxml, /code-presenter-v3\/xiao-k-scan-presenter\.png/);
+  assert.match(wxml, /code-presenter-v3\/\{\{item\.icon\}\}/);
+  assert.doesNotMatch(wxml, /<text>\{\{item\.mark\}\}<\/text>/);
   assert.doesNotMatch(less, /\.scan-glyph\s*\{[^}]*border:\s*3rpx solid/);
   assert.doesNotMatch(less, /\.share-scan\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /员工入驻码/);
@@ -118,9 +142,14 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
   assert.doesNotMatch(js, /staff-activity-code/);
   assert.match(less, /\.code-tab\.active/);
   assert.match(less, /\.manage-primary/);
-  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*292rpx/);
-  assert.match(less, /\.qr-retry\s*\{[\s\S]*width:\s*auto/);
-  assert.match(less, /\.qr-retry\s*\{[\s\S]*max-width:\s*100%/);
+  assert.match(wxml, /code-invitation-card/);
+  assert.match(wxml, /journey-rail/);
+  assert.match(wxml, /action-dock/);
+  assert.match(less, /\.service-code-scroll\s*\{[\s\S]*flex:\s*1/);
+  assert.match(less, /\.service-code-content\s*\{[\s\S]*min-height:\s*100%[\s\S]*flex-direction:\s*column/);
+  assert.match(less, /\.code-invitation-card\s*\{[\s\S]*flex:\s*none/);
+  assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*380rpx/);
+  assert.doesNotMatch(less, /\.action-dock\s*\{[\s\S]*margin-top:\s*auto/);
 });
 
 test('promotion service screen keeps the public presentation anonymous and scanable', () => {
@@ -406,6 +435,26 @@ test('free design service resolves into phone authorization and renders truthful
 test('referral assets are transparent PNG files within the package limit', () => {
   for (const asset of referralAssets) {
     const assetPath = path.join(miniRoot, 'packages/business/assets/referral-service-v1', asset);
+    const bytes = fs.readFileSync(assetPath);
+    assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(bytes.length <= 300 * 1024, `${asset} exceeds 300KB`);
+    assert.ok(bytes.includes(Buffer.from('tRNS')) || [4, 6].includes(bytes[25]), `${asset} must retain transparency`);
+  }
+});
+
+test('code presenter v2 artwork is independently packaged, transparent, and within the package limit', () => {
+  for (const asset of codePresenterAssets) {
+    const assetPath = path.join(miniRoot, 'packages/business/assets/code-presenter-v2', asset);
+    const bytes = fs.readFileSync(assetPath);
+    assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(bytes.length <= 300 * 1024, `${asset} exceeds 300KB`);
+    assert.ok(bytes.includes(Buffer.from('tRNS')) || [4, 6].includes(bytes[25]), `${asset} must retain transparency`);
+  }
+});
+
+test('code presenter v3 artwork is independently packaged, transparent, and within the package limit', () => {
+  for (const asset of codePresenterV3Assets) {
+    const assetPath = path.join(miniRoot, 'packages/business/assets/code-presenter-v3', asset);
     const bytes = fs.readFileSync(assetPath);
     assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.ok(bytes.length <= 300 * 1024, `${asset} exceeds 300KB`);

@@ -175,6 +175,30 @@ export function getSignedMiniAiRecipePreviewUrl(input: {
   return url.toString();
 }
 
+export function isWeChatLoadableHttpsUrl(value?: string | null) {
+  return /^https:\/\//i.test(String(value || '').trim());
+}
+
+/** Prefer a stored HTTPS cover (Roomi COS) so WeChat `<image>` hits downloadFile domains. */
+export function resolveMiniRecipePreviewUrl(input: {
+  request: Request;
+  recipeId: string;
+  enterpriseId: string;
+  previewUrl?: string;
+  localPreviewUrl?: string;
+}) {
+  const remote = String(input.previewUrl || '').trim();
+  if (isWeChatLoadableHttpsUrl(remote)) return remote;
+  if (remote || String(input.localPreviewUrl || '').trim()) {
+    return getSignedMiniAiRecipePreviewUrl({
+      request: input.request,
+      recipeId: input.recipeId,
+      enterpriseId: input.enterpriseId,
+    });
+  }
+  return undefined;
+}
+
 export function createMiniAiStudioGenerationSignature(generationId: string, enterpriseId: string, expires: number) {
   return crypto.createHmac('sha256', secret()).update(studioGenerationSignaturePayload(generationId, enterpriseId, expires)).digest('hex');
 }

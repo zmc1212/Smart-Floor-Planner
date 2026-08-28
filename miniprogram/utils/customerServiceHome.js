@@ -11,6 +11,7 @@ const URGENCY = {
   claimed: 8,
   converted: 9,
   closed: 10,
+  referrer_withdrawn: 11,
 };
 
 const PROGRESS_PILL_LABELS = {
@@ -34,6 +35,7 @@ const STAGE_INSET_HELPER = {
   design_published: '成果交付',
   converted: '成果交付',
   closed: '说明已结束',
+  referrer_withdrawn: '本次推广服务已撤销',
 };
 
 const STAGE_INSET_TITLES = {
@@ -49,6 +51,7 @@ const STAGE_INSET_TITLES = {
   design_published: '方案已发布',
   converted: '方案已发布',
   closed: '服务已结束',
+  referrer_withdrawn: '服务已终止',
 };
 
 const KIND_LABELS = {
@@ -144,6 +147,8 @@ function resolveBenefitStatusLabel(serviceStage) {
       return '等待重新预约';
     case 'closed':
       return '服务已结束';
+    case 'referrer_withdrawn':
+      return '服务已终止';
     default:
       return '服务进行中';
   }
@@ -206,6 +211,7 @@ function buildCompanionState({ projects = [], selectedLeadId } = {}) {
     xiaoKAction: insetHelper,
     isEmpty: false,
     benefitStatusLabel: resolveBenefitStatusLabel(featured.serviceStage),
+    isTerminated: featured.serviceStage === 'referrer_withdrawn',
   };
 }
 

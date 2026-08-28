@@ -1,0 +1,246 @@
+.guide-page {
+  overflow: hidden;
+  color: #102a20;
+  background: #f8fbf8;
+}
+
+.guide-nav {
+  display: flex;
+  margin-bottom: 20rpx;
+  padding-left: 40rpx;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.guide-nav-title {
+  color: #173a28;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.skip-action {
+  display: flex;
+  flex-shrink: 0;
+  width: auto;
+  min-width: 88rpx;
+  min-height: 72rpx;
+  margin: 0;
+  padding: 0 12rpx;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 18rpx;
+  color: #52615a;
+  background: transparent;
+  font-size: 24rpx;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.skip-action::after,
+.primary-action::after {
+  border: 0;
+}
+
+.guide-content {
+  padding: 0 40rpx calc(28rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.guide-swiper,
+.guide-slide {
+  height: 820rpx;
+}
+
+.guide-slide {
+  overflow: hidden;
+}
+
+.art-stage {
+  position: relative;
+  height: 500rpx;
+  overflow: hidden;
+  border-radius: 44rpx 44rpx 80rpx 80rpx;
+  background: #eef8f0;
+}
+
+.art-backdrop {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(211, 241, 221, 0.8);
+}
+
+.art-backdrop-left {
+  top: 58rpx;
+  left: -190rpx;
+  width: 560rpx;
+  height: 390rpx;
+}
+
+.art-backdrop-right {
+  top: -90rpx;
+  right: -160rpx;
+  width: 510rpx;
+  height: 360rpx;
+  background: rgba(234, 248, 239, 0.98);
+}
+
+.guide-art {
+  position: absolute;
+  z-index: 1;
+  bottom: 0;
+  left: 50%;
+  width: 670rpx;
+  height: 470rpx;
+  transform: translateX(-50%);
+}
+
+.three-free-art {
+  width: 550rpx;
+  height: 480rpx;
+}
+
+.home-archive-art {
+  width: 660rpx;
+  height: 460rpx;
+}
+
+.service-route-art {
+  width: 690rpx;
+  height: 430rpx;
+  bottom: 18rpx;
+}
+
+.service-archive-art {
+  width: 670rpx;
+  height: 446rpx;
+  bottom: 12rpx;
+}
+
+.guide-copy {
+  margin-top: 20rpx;
+  text-align: center;
+}
+
+.guide-title {
+  color: #0b3525;
+  font-size: 40rpx;
+  font-weight: 700;
+  line-height: 1.32;
+  letter-spacing: -0.025em;
+}
+
+.guide-description {
+  display: block;
+  min-height: 66rpx;
+  margin-top: 12rpx;
+  color: #52615a;
+  font-size: 24rpx;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.assurance-pill {
+  display: flex;
+  width: 440rpx;
+  min-height: 52rpx;
+  max-width: 560rpx;
+  margin: 14rpx auto 0;
+  padding: 0 20rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  border-radius: 28rpx;
+  color: #25734d;
+  background: #edf7f1;
+  font-size: 22rpx;
+  line-height: 1.35;
+  box-sizing: border-box;
+}
+
+.assurance-pill image {
+  width: 26rpx;
+  height: 26rpx;
+  flex: none;
+}
+
+.step-dots {
+  display: flex;
+  height: 56rpx;
+  margin-top: 10rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.step-dot-hit {
+  display: flex;
+  width: 56rpx;
+  height: 56rpx;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-dot {
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: 50%;
+  background: #dfece4;
+  transition: background-color 180ms ease-out, transform 180ms ease-out;
+}
+
+.step-dot.active {
+  background: #0dae53;
+  transform: scale(1.12);
+}
+
+.primary-action {
+  display: flex;
+  width: 100%;
+  height: 96rpx;
+  margin: 22rpx 0 0;
+  padding: 0 32rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 48rpx;
+  color: #ffffff;
+  background: #0dae53;
+  box-shadow: 0 14rpx 28rpx rgba(13, 174, 83, 0.2);
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.primary-action-pressed {
+  background: #099b49;
+  box-shadow: 0 8rpx 18rpx rgba(13, 174, 83, 0.16);
+}
+
+@media (max-width: 360px) {
+  .guide-nav {
+    padding-left: 32rpx;
+  }
+
+  .guide-content {
+    padding-right: 32rpx;
+    padding-left: 32rpx;
+  }
+
+  .guide-swiper,
+  .guide-slide {
+    height: 776rpx;
+  }
+
+  .art-stage {
+    height: 468rpx;
+  }
+
+  .guide-art {
+    height: 438rpx;
+  }
+}

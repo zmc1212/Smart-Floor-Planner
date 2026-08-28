@@ -1,9 +1,8 @@
 <!--
-THESIS: 一张可出示的现场服务凭证，让客户先看懂价值再扫码，并标明本次服务企业。
-OWN-WORLD: 极简透气版暖白纸面、家客绿服务码卡、三项免费承诺与扫码向导小 K。
-STORY: 员工出示活动码，客户扫描后进入手机号授权并自动建立服务。
-FIRST VIEWPORT: 胶囊左侧返回与品牌锁；服务码主卡、三项承诺、说明条和底部分享按钮在 390x844 同屏。
-FORM: design-references/service-code-redesign/free-design-service-qr-focus-v3.jpg
+  Confirmed visual source: design-references/enterprise-code-presenters-fullscreen-v1/
+  staff-activity-code-fullscreen-v1.png. The card is a complete invitation poster:
+  its information stage follows the approved fixed reading rhythm; the action dock
+  remains inside the poster so the CTA belongs to the same shareable credential.
 -->
 <view class="service-code-page">
   <view
@@ -21,81 +20,74 @@ FORM: design-references/service-code-redesign/free-design-service-qr-focus-v3.jp
     </view>
   </view>
 
-  <view class="service-code-content">
-    <view class="code-hero">
-      <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
-      <view class="hero-leaf hero-leaf-br" aria-hidden="true"></view>
-      <text wx:if="{{enterpriseName}}" class="hero-enterprise">{{enterpriseName}}</text>
-      <text class="hero-title">免费设计服务</text>
-      <text class="hero-subtitle">免费上门量房 · 专业家装设计顾问服务</text>
-
-      <view class="qr-display">
-        <view class="qr-stage">
-          <view wx:if="{{loading}}" class="qr-loading">
-            <view class="qr-loading-grid"></view>
-            <text class="qr-state-copy">服务码生成中</text>
-          </view>
-          <view wx:elif="{{errorMessage}}" class="qr-error">
-            <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-            <text class="qr-state-title">服务码暂不可用</text>
-            <text class="qr-state-copy">{{errorMessage}}</text>
-            <button
-              wx:if="{{errorAction === 'profile'}}"
-              class="qr-retry"
-              bindtap="onFixProfile"
-            ><text>去完善资料</text></button>
-            <button wx:else class="qr-retry" bindtap="onRetry"><text>重新生成</text></button>
-          </view>
-          <image wx:else class="service-qr" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
+  <scroll-view class="service-code-scroll" scroll-y>
+    <view class="service-code-content">
+      <view class="service-invitation-card">
+        <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
+        <view class="hero-leaf hero-leaf-br" aria-hidden="true"></view>
+        <view class="hero-copy-group">
+          <text wx:if="{{enterpriseName}}" class="hero-enterprise">{{enterpriseName}}</text>
+          <text class="hero-title">免费设计服务</text>
+          <text class="hero-subtitle">免费上门量房 · 专业家装设计顾问服务</text>
         </view>
-        <view class="qr-footer">
-          <text class="scan-copy">请客户扫描此码</text>
+
+        <view class="qr-presentation">
+          <view class="qr-stage">
+            <view wx:if="{{loading}}" class="qr-loading">
+              <view class="qr-loading-grid"></view>
+              <text class="qr-state-copy">服务码生成中</text>
+            </view>
+            <view wx:elif="{{errorMessage}}" class="qr-error">
+              <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+              <text class="qr-state-title">服务码暂不可用</text>
+              <text class="qr-state-copy">{{errorMessage}}</text>
+              <button wx:if="{{errorAction === 'profile'}}" class="qr-retry" bindtap="onFixProfile">去完善资料</button>
+              <button wx:else class="qr-retry" bindtap="onRetry">重新生成</button>
+            </view>
+            <image wx:else class="service-qr" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
+          </view>
           <view class="scan-guide" aria-hidden="true">
-            <image
-              class="guide-xiaok"
-              src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
-              mode="aspectFit"
-            />
+            <image class="guide-xiaok" src="/packages/business/assets/code-presenter-v3/xiao-k-scan-presenter.png" mode="aspectFit" />
             <view class="scan-plaque">
-              <image class="scan-glyph" src="/images/mine-icons/scan.png" mode="aspectFit" />
+              <image class="scan-glyph" src="/packages/business/assets/code-presenter-v2/scan-frame.png" mode="aspectFit" />
               <text class="scan-plaque-text">请扫码</text>
             </view>
           </view>
         </view>
-      </view>
-      <view class="service-promises">
-        <view class="promise-item">
-          <view class="promise-icon promise-price">¥0</view>
-          <text class="promise-title">0元服务</text>
-          <text class="promise-copy">全程免费</text>
-        </view>
-        <view class="promise-item">
-          <view class="promise-icon">
-            <image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" />
+        <text class="scan-copy">请客户扫描此码</text>
+
+        <view class="service-promises">
+          <view class="promise-grid">
+            <view class="promise-item">
+              <view class="promise-icon promise-price">¥0</view>
+              <text class="promise-title">0元服务</text>
+              <text class="promise-copy">全程免费</text>
+            </view>
+            <view class="promise-item">
+              <view class="promise-icon"><image src="/packages/business/assets/code-presenter-v3/home-outline.png" mode="aspectFit" /></view>
+              <text class="promise-title">上门量房</text>
+              <text class="promise-copy">专业测量</text>
+            </view>
+            <view class="promise-item">
+              <view class="promise-icon"><image src="/packages/business/assets/code-presenter-v3/advisor-outline.png" mode="aspectFit" /></view>
+              <text class="promise-title">设计顾问匹配</text>
+              <text class="promise-copy">精准对接</text>
+            </view>
           </view>
-          <text class="promise-title">上门量房</text>
-          <text class="promise-copy">专业测量</text>
-        </view>
-        <view class="promise-item">
-          <view class="promise-icon">
-            <image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" />
+          <view class="info-bar">
+            <image class="info-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+            <text class="info-copy">扫码后授权手机号，服务自动建立</text>
           </view>
-          <text class="promise-title">家装设计顾问匹配</text>
-          <text class="promise-copy">精准对接</text>
+        </view>
+        <view class="action-dock">
+          <button class="share-action" open-type="share" hover-class="share-action-pressed">
+            <view class="share-inner">
+              <image class="share-scan" src="/packages/business/assets/code-presenter-v2/scan-frame.png" mode="aspectFit" aria-hidden="true" />
+              <text>分享给客户</text>
+            </view>
+          </button>
         </view>
       </view>
     </view>
-
-    <view class="info-bar">
-      <image class="info-shield" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-      <text class="info-copy">扫码后授权手机号，服务自动建立</text>
-    </view>
-
-    <button class="share-action" open-type="share" hover-class="share-action-pressed">
-      <view class="share-inner">
-        <image class="share-scan" src="/images/mine-icons/scan.png" mode="aspectFit" aria-hidden="true" />
-        <text>分享给客户</text>
-      </view>
-    </button>
-  </view>
+  </scroll-view>
 </view>

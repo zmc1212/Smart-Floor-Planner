@@ -56,7 +56,7 @@ test('customer Service workspace mounts stage companion instead of staff workben
   const indexWxml = source('pages/index/index.wxml');
   const indexJson = JSON.parse(source('pages/index/index.json'));
   const companion = source('components/customer-service-home/customer-service-home.js');
-  assert.match(indexJs, /\['customer', 'designer', 'measurer', 'enterprise_admin'\]/);
+  assert.match(indexJs, /\['customer', 'designer', 'measurer', 'enterprise_admin', 'platform_admin'\]/);
   assert.equal(
     indexJson.usingComponents['customer-service-home'],
     '/components/customer-service-home/customer-service-home'

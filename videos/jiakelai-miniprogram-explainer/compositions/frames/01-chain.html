@@ -1,0 +1,312 @@
+<template>
+  <style>
+    @font-face{font-family:"Source Han Sans";font-weight:400;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Regular.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:500;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Medium.otf") format("opentype");}
+    @font-face{font-family:"Source Han Sans";font-weight:700;font-style:normal;font-display:block;src:url("assets/fonts/SourceHanSans-Bold.otf") format("opentype");}
+
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1920px;
+      color: #1F2937;
+      font-family: "Source Han Sans", sans-serif;
+      overflow: hidden;
+    }
+    .clip {
+      position: absolute;
+      inset: 0;
+      display: block;
+    }
+    [id="01-chain-ground"] {
+      background: #FFFFFF;
+    }
+    [id="01-chain-stack"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 1920px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 16px 32px 28px;
+      box-sizing: border-box;
+      gap: 20px;
+    }
+    [id="01-chain-chrome"] {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 16px;
+      width: 100%;
+      position: relative;
+      z-index: 2;
+    }
+    [id="01-chain-eyebrow"] {
+      position: relative;
+      padding: 12px 28px;
+      border-radius: 100px;
+      background: rgba(0, 195, 101, 0.08);
+      color: #00c365;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      line-height: 1;
+      transform-origin: 50% 50%;
+    }
+    [id="01-chain-headline"] {
+      position: relative;
+      margin: 0;
+      width: 100%;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: baseline;
+      gap: 20px;
+    }
+    [id="01-chain-display"] {
+      font-size: 40px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: #1F2937;
+      min-height: 46px;
+      white-space: nowrap;
+    }
+    [id="01-chain-token-wrap"] {
+      display: block;
+      min-width: 88px;
+      min-height: 46px;
+      white-space: nowrap;
+    }
+    [id="01-chain-token"] {
+      font-size: 40px;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      color: #00c365;
+    }
+    [id="01-chain-chips"] {
+      position: relative;
+      display: flex;
+      gap: 16px;
+      width: 100%;
+    }
+    .f01-chip {
+      flex: 1;
+      height: 56px;
+      display: grid;
+      place-items: center;
+      border: 1.5px solid rgba(0, 195, 101, 0.2);
+      background: rgba(0, 195, 101, 0.04);
+      border-radius: 14px;
+      font-size: 28px;
+      font-weight: 700;
+      color: #00c365;
+      transform-origin: 50% 50%;
+    }
+    [id="01-chain-plate-slot"] {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      overflow: hidden;
+      container-type: size;
+    }
+    [id="01-chain-phone"] {
+      position: relative;
+      height: min(100cqh, calc(100cqw * 844 / 390));
+      width: min(100cqw, calc(100cqh * 390 / 844));
+      max-width: 100%;
+      max-height: 100%;
+      border: 1.5px solid rgba(0, 195, 101, 0.2);
+      border-radius: 14px;
+      overflow: hidden;
+      box-sizing: border-box;
+      background: #FFFFFF;
+      transform-origin: 50% 50%;
+    }
+    [id="01-chain-phone-shot"] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center top;
+      display: block;
+    }
+    [id="01-chain-phone-dim"] {
+      position: absolute;
+      inset: 0;
+      background: rgba(31, 41, 55, 0.4);
+    }
+    [id="01-chain-lockup-wrap"] {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    [id="01-chain-lockup"] {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 40px 48px 36px;
+      background: #FFFFFF;
+      border: 1.5px solid rgba(0, 195, 101, 0.2);
+      border-radius: 14px;
+      transform-origin: 50% 50%;
+    }
+    [id="01-chain-lockup-mark"] {
+      width: 200px;
+      height: 200px;
+      display: block;
+      object-fit: contain;
+    }
+    [id="01-chain-lockup-word"] {
+      font-size: 56px;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      color: #1F2937;
+    }
+  </style>
+  <div data-hf-id="hf-c864" id="root" data-composition-id="01-chain" data-width="1080" data-height="1920" data-duration="14.656">
+    <div data-hf-id="hf-yhcd" id="01-chain-ground" class="clip" data-start="0" data-duration="14.656" data-track-index="0"></div>
+    <div data-hf-id="hf-r7ep" id="01-chain-scene" class="clip" data-start="0" data-duration="14.656" data-track-index="1">
+      <div data-hf-id="hf-st01" id="01-chain-stack">
+      <div data-hf-id="hf-ch01" id="01-chain-chrome">
+      <div data-hf-id="hf-dx96" id="01-chain-eyebrow">产品用途</div>
+      <div data-hf-id="hf-hwx1" id="01-chain-headline">
+        <div data-hf-id="hf-ww51" id="01-chain-display"></div>
+        <div data-hf-id="hf-c70x" id="01-chain-token-wrap">
+          <span data-hf-id="hf-96uj" id="01-chain-token"></span>
+        </div>
+      </div>
+      <div data-hf-id="hf-ec72" id="01-chain-chips">
+        <div data-hf-id="hf-5zsu" class="f01-chip" id="01-chain-chip-0">获客</div>
+        <div data-hf-id="hf-i1x0" class="f01-chip" id="01-chain-chip-1">量房</div>
+        <div data-hf-id="hf-t6l8" class="f01-chip" id="01-chain-chip-2">方案</div>
+        <div data-hf-id="hf-anyg" class="f01-chip" id="01-chain-chip-3">交付</div>
+      </div>
+      </div>
+      <div data-hf-id="hf-ps01" id="01-chain-plate-slot">
+      <div data-hf-id="hf-a44v" id="01-chain-phone">
+        <img data-hf-id="hf-h39a" id="01-chain-phone-shot" src="assets/guest-login.png" alt="">
+        <div data-hf-id="hf-cs76" id="01-chain-phone-dim"></div>
+        <div data-hf-id="hf-0ty1" id="01-chain-lockup-wrap" data-layout-allow-overflow="">
+          <div data-hf-id="hf-x10f" id="01-chain-lockup">
+            <img data-hf-id="hf-03ba" id="01-chain-lockup-mark" src="assets/brand-logo.png" alt="">
+            <div data-hf-id="hf-cfjb" id="01-chain-lockup-word">家客来</div>
+          </div>
+        </div>
+      </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+
+    const DURATION = 14.256;
+    const displayEl = document.getElementById("01-chain-display");
+    const tokenEl = document.getElementById("01-chain-token");
+    const lockupWrap = document.getElementById("01-chain-lockup-wrap");
+
+    const DISPLAY_SEQ = [
+      { t: 0, text: "" },
+      { t: 1.15, text: "不是又一个工具" },
+    ];
+    const TOKEN_SEQ = [
+      { t: 0, text: "" },
+      { t: 3.65, text: "获客" },
+      { t: 4.85, text: "量房" },
+      { t: 6.05, text: "方案" },
+      { t: 7.25, text: "交付" },
+    ];
+
+    function textAt(seq, time) {
+      for (let i = seq.length - 1; i >= 0; i -= 1) {
+        if (time >= seq[i].t) return seq[i].text;
+      }
+      return "";
+    }
+
+    const IDLE_START = 10.45;
+    const IDLE_DUR = DURATION - IDLE_START;
+    const CYCLES = IDLE_DUR / 2.4;
+    const Y_AMP = 2.5;
+    const SCALE_AMP = 0.01;
+
+    const driver = { t: 0 };
+    tl.fromTo(
+      driver,
+      { t: 0 },
+      {
+        t: DURATION,
+        duration: DURATION,
+        ease: "none",
+        onUpdate: function () {
+          const time = driver.t;
+          const displayText = textAt(DISPLAY_SEQ, time);
+          const tokenText = textAt(TOKEN_SEQ, time);
+          if (displayEl.textContent !== displayText) displayEl.textContent = displayText;
+          if (tokenEl.textContent !== tokenText) tokenEl.textContent = tokenText;
+          if (time >= IDLE_START) {
+            const phase = ((time - IDLE_START) / IDLE_DUR) * Math.PI * 2 * CYCLES;
+            const wave = Math.sin(phase);
+            lockupWrap.style.transform =
+              "translateY(" + wave * Y_AMP + "px) scale(" + (1 + wave * SCALE_AMP) + ")";
+          } else {
+            lockupWrap.style.transform = "translateY(0px) scale(1)";
+          }
+        },
+      },
+      0,
+    );
+
+    const phoneEl = document.getElementById("01-chain-phone");
+    const eyebrowEl = document.getElementById("01-chain-eyebrow");
+    const lockupEl = document.getElementById("01-chain-lockup");
+
+    tl.fromTo(
+      phoneEl,
+      { scale: 0.92, opacity: 0, y: 18 },
+      { scale: 1, opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+      0,
+    );
+
+    tl.fromTo(
+      eyebrowEl,
+      { scale: 0, opacity: 0, y: 8 },
+      { scale: 1, opacity: 1, y: 0, duration: 0.45, ease: "power3.out" },
+      0.12,
+    );
+
+    const CHIP_STAGGER = 0.06;
+    [0, 1, 2, 3].forEach(function (index) {
+      tl.fromTo(
+        document.getElementById("01-chain-chip-" + index),
+        { scale: 0, opacity: 0, y: 16 },
+        { scale: 1, opacity: 1, y: 0, duration: 0.5, ease: "power3.out" },
+        3.5 + index * CHIP_STAGGER,
+      );
+    });
+
+    tl.fromTo(
+      lockupEl,
+      { scale: 0, opacity: 0, y: 12 },
+      { scale: 1, opacity: 1, y: 0, duration: 0.55, ease: "power3.out" },
+      9.8,
+    );
+
+    window.__timelines["01-chain"] = tl;
+  </script>
+</template>

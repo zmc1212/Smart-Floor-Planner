@@ -25,6 +25,7 @@ var _onEnrollDeviceFound = null;
 var _onEnrollScanComplete = null;
 var _enrollFoundById = {};
 var _activeScanSilent = false;
+var _scanSessionVersion = 0;
 
 var _heartbeatTimer = null;
 var _lastResponseTime = 0;
@@ -330,7 +331,7 @@ function registerAdapterStateListener(silent, scanMs) {
 function notifyBluetoothAdapterOpenFailed(kind, err, silent) {
   console.error('[BLE] openBluetoothAdapter failed:', kind, err);
   if (_enrollCollectMode && _onEnrollScanComplete) {
-    _onEnrollScanComplete({ success: false, devices: [], error: kind || 'bluetooth_unavailable' });
+    finishEnrollCollectScan(silent, kind || 'bluetooth_unavailable');
   } else if (_onConnectCallback) {
     _onConnectCallback(false);
   }
@@ -475,17 +476,19 @@ function initBLE(callback, connectCallback, disconnectCallback, silent = false, 
   _onEnrollScanComplete = (_enrollCollectMode && options && options.onComplete) || null;
   _enrollFoundById = {};
   _activeScanSilent = Boolean(silent);
+  var scanSessionVersion = ++_scanSessionVersion;
   ensureBluetoothAdapterOpen({
     silent: silent,
     scanMs: options && options.scanMs,
     onOpen: function () {
+      if (scanSessionVersion !== _scanSessionVersion) return;
       if (!silent) {
         wx.showLoading({
           title: '搜索测距仪...',
           mask: true
         });
       }
-      startScan(silent, options && options.scanMs);
+      startScan(silent, options && options.scanMs, scanSessionVersion);
     }
   });
 }
@@ -527,16 +530,18 @@ function finishEnrollCollectScan(silent, reason) {
     return _enrollFoundById[id];
   });
   console.log('[BLE enroll collect] done reason=' + reason + ' count=' + devices.length);
-  if (_onEnrollScanComplete) {
-    _onEnrollScanComplete({
+  var onComplete = _onEnrollScanComplete;
+  _enrollCollectMode = false;
+  _enrollMode = false;
+  _onEnrollDeviceFound = null;
+  _onEnrollScanComplete = null;
+  if (onComplete) {
+    onComplete({
       success: devices.length > 0,
       devices: devices,
       reason: reason
     });
   }
-  _enrollCollectMode = false;
-  _onEnrollDeviceFound = null;
-  _onEnrollScanComplete = null;
 }
 
 function processDiscoveredDevice(device, silent) {
@@ -633,7 +638,10 @@ function pollAlreadyDiscoveredDevices(silent) {
   });
 }
 
-function startScan(silent = false, scanMs) {
+function startScan(silent = false, scanMs, scanSessionVersion) {
+  var activeScanSessionVersion =
+    scanSessionVersion == null ? _scanSessionVersion : scanSessionVersion;
+  if (activeScanSessionVersion !== _scanSessionVersion) return;
   if (_isConnecting) {
     console.warn('[BLE discovery] skip startScan because _isConnecting=true deviceId=' + _deviceId);
     return;
@@ -681,6 +689,7 @@ function startScan(silent = false, scanMs) {
   var timeoutMs = Number(scanMs) > 0 ? Number(scanMs) : 10000;
   clearScanTimers();
   _scanTimer = setTimeout(function () {
+    if (activeScanSessionVersion !== _scanSessionVersion) return;
     var nearbyCount = Object.keys(_nearbySeenById).length;
     console.log(
       '[BLE discovery] timeout nearby=' + nearbyCount +
@@ -726,17 +735,27 @@ function startScan(silent = false, scanMs) {
     allowDuplicatesKey: true,
     powerLevel: 'high',
     success: function () {
+      if (activeScanSessionVersion !== _scanSessionVersion) return;
       console.log('[BLE discovery] startBluetoothDevicesDiscovery success');
-      pollAlreadyDiscoveredDevices(silent);
-      _scanPollTimer = setInterval(function () {
-        if (_isConnecting) {
-          clearScanTimers();
-          return;
-        }
-        pollAlreadyDiscoveredDevices(silent);
-      }, 2000);
+      // getBluetoothDevices contains WeChat's historical discovery cache. Platform
+      // enrollment must only list broadcasts received during this scan session.
+      if (!_enrollCollectMode) pollAlreadyDiscoveredDevices(silent);
+      if (!_enrollCollectMode) {
+        _scanPollTimer = setInterval(function () {
+          if (activeScanSessionVersion !== _scanSessionVersion) {
+            clearScanTimers();
+            return;
+          }
+          if (_isConnecting) {
+            clearScanTimers();
+            return;
+          }
+          pollAlreadyDiscoveredDevices(silent);
+        }, 2000);
+      }
     },
     fail: function (err) {
+      if (activeScanSessionVersion !== _scanSessionVersion) return;
       console.log('搜索设备失败', err);
       clearScanTimers();
       detachDeviceFoundListener();
@@ -767,12 +786,21 @@ function startScan(silent = false, scanMs) {
  * 供连接弹窗关闭时解除 loading 锁。
  */
 function cancelBLEDiscovery() {
+  _scanSessionVersion += 1;
   clearScanTimers();
   try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
   detachDeviceFoundListener();
   if (!_deviceId) {
     _isConnecting = false;
   }
+}
+
+/** 平台录入主动停止扫描，并将当前本轮实时发现结果回传给页面。 */
+function cancelBLEEnrollmentScan() {
+  if (!_enrollCollectMode) return false;
+  _scanSessionVersion += 1;
+  finishEnrollCollectScan(_activeScanSilent, 'cancelled');
+  return true;
 }
 
 function connectDevice(deviceId, name, silent = false) {
@@ -1297,6 +1325,7 @@ module.exports = {
   initBLE: initBLE,
   initBLEForEnrollment: initBLEForEnrollment,
   scanBLEForEnrollment: scanBLEForEnrollment,
+  cancelBLEEnrollmentScan: cancelBLEEnrollmentScan,
   closeBLE: closeBLE,
   cancelBLEDiscovery: cancelBLEDiscovery,
   sendBLECommand: sendBLECommand,

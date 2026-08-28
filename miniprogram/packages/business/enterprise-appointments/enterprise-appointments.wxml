@@ -47,7 +47,9 @@
         wx:for="{{selectedAppointments}}"
         wx:key="id"
         class="appointment-card tone-{{item.tone}} {{item.openable ? '' : 'card-readonly'}}"
-        data-item="{{item}}"
+        data-lead-id="{{item.leadId}}"
+        data-appointment-id="{{item.appointmentId}}"
+        data-openable="{{item.openable}}"
         bindtap="openAppointment"
         hover-class="{{item.openable ? 'card-pressed' : ''}}"
         aria-role="{{item.openable ? 'button' : 'text'}}"
@@ -72,7 +74,9 @@
             <view
               wx:if="{{item.showRescheduleCta}}"
               class="cta-btn"
-              data-item="{{item}}"
+              data-lead-id="{{item.leadId}}"
+              data-appointment-id="{{item.appointmentId}}"
+              data-openable="{{item.openable}}"
               catchtap="openAppointment"
               hover-class="cta-pressed"
             >{{item.ctaLabel}}</view>

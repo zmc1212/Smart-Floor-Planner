@@ -111,6 +111,8 @@ export function enterpriseToDto(record: EnterpriseRecord) {
     statusReason: record.statusReason ?? null,
     statusChangedAt: record.statusChangedAt ?? null,
     statusChangedByAdminId: record.statusChangedByAdminId?.toString() ?? null,
+    referrerAdditionalEnterpriseLimit:
+      record.referrerAdditionalEnterpriseLimit ?? null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -285,6 +287,7 @@ export function leadToDto(record: LeadWithRelations, options: {
     });
   const serviceStage = resolveLeadServiceStage({
     leadStatus: record.status,
+    terminationType: record.terminationType,
     assignmentStatus: record.assignmentStatus,
     measurerId: record.measurerId,
     appointment: record.appointment,
@@ -342,6 +345,10 @@ export function leadToDto(record: LeadWithRelations, options: {
     city: record.city,
     source: record.source,
     status: record.status,
+    referrerRecordCode: record.referrerRecordCode || null,
+    terminationType: record.terminationType || null,
+    terminatedAt: record.terminatedAt || null,
+    terminationNote: record.terminationNote || null,
     assignmentStatus: record.assignmentStatus,
     assignmentErrorCode: record.assignmentErrorCode,
     serviceStage: serviceStage.key,
@@ -394,6 +401,7 @@ export function deviceToDto(record: DeviceWithRelations) {
   return {
     _id: record.id.toString(),
     code: record.code,
+    serialNumber: record.serialNumber,
     description: record.description,
     enterpriseId: record.enterprise
       ? { _id: record.enterprise.id.toString(), name: record.enterprise.name }

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import {
   buildDesignerWechatProfileTodo,
@@ -18,8 +20,10 @@ import {
   computeSigningRate,
   formatGrowthDetail,
   formatSigningRateDetail,
+  indexWorkbenchRowsById,
   isAssignmentEligibleStaff,
   isMeasurerWorkbenchSurveyLead,
+  isTerminalWorkbenchLead,
   previousComparablePeriodRange,
   resolveWorkbenchPeriod,
   selectMeasurerWorkbenchAppointments,
@@ -275,6 +279,11 @@ test('expired appointments stay on the measurer workbench while survey confirmat
 test('converted leads leave the measurer workbench even with a confirmed appointment', () => {
   assert.equal(shouldIncludeMeasurerWorkbenchAppointment(surveyLead({ status: 'converted' }), { status: 'confirmed' }), false);
   assert.equal(shouldIncludeMeasurerWorkbenchAppointment(surveyLead({ status: 'closed' }), { status: 'expired' }), false);
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(surveyLead({
+    archivedAt: new Date('2026-08-20T00:00:00.000Z'),
+  }), { status: 'confirmed' }), false);
+  assert.equal(shouldIncludeMeasurerWorkbenchAppointment(undefined, { status: 'expired' }), false);
+  assert.equal(isTerminalWorkbenchLead(null), true);
 });
 
 test('converted designer follow-up items stay terminal without rebook or survey CTAs', () => {
@@ -337,6 +346,41 @@ test('expired appointments on converted leads stay terminal and never reopen boo
   assert.equal(item.canRebook, false);
   assert.equal(item.canBookAppointment, false);
   assert.equal(item.canContinueSurvey, false);
+});
+
+test('archived or missing leads on the appointment schedule stay closed instead of looking bookable', () => {
+  const archived = buildWorkbenchAppointmentItem({
+    id: 99n,
+    leadId: 11n,
+    address: '西湖路32号',
+    timeRange: '["2026-08-27T01:00:00.000Z","2026-08-27T03:00:00.000Z")',
+    status: 'confirmed',
+  }, surveyLead({
+    name: '已归档客户',
+    status: 'new',
+    archivedAt: new Date('2026-08-20T00:00:00.000Z'),
+  }));
+  assert.equal(archived.title, '已归档客户');
+  assert.equal(archived.serviceStage, 'closed');
+  assert.equal(archived.statusBadge, '已关闭');
+  assert.equal(archived.canRebook, false);
+  assert.equal(archived.canBookAppointment, false);
+
+  const missing = buildWorkbenchAppointmentItem({
+    id: 100n,
+    leadId: 77n,
+    address: '西湖路32号',
+    timeRange: '["2026-08-27T01:00:00.000Z","2026-08-27T03:00:00.000Z")',
+    status: 'confirmed',
+  }, null);
+  assert.equal(missing.title, '客户量房');
+  assert.equal(missing.serviceStage, 'closed');
+  assert.equal(missing.nextAction, '该线索已关闭');
+  assert.equal(missing.statusBadge, '已关闭');
+
+  const byString = indexWorkbenchRowsById([{ id: 11n, name: 'joined' }]);
+  assert.equal(byString.get('11')?.name, 'joined');
+  assert.equal(byString.get(11 as unknown as string), undefined);
 });
 
 test('enterprise operations format growth and exception cards from real workbench facts', () => {
@@ -501,6 +545,7 @@ test('signing rate uses same-window new leads and is null when the denominator i
     previousLeadCount: 0,
     completedSurveys: 0,
     draftFormalPlans: 0,
+    publishedSchemeCount: 0,
     schemeDeliveryRate: 0,
     schemeDeliveryDetail: '暂无交付用时',
     signedCount: 2,
@@ -515,6 +560,7 @@ test('signing rate uses same-window new leads and is null when the denominator i
     previousLeadCount: 111,
     completedSurveys: 94,
     draftFormalPlans: 1,
+    publishedSchemeCount: 82,
     schemeDeliveryRate: 88,
     schemeDeliveryDetail: '平均用时 1.2 天',
     signedCount: 36,
@@ -523,6 +569,7 @@ test('signing rate uses same-window new leads and is null when the denominator i
   });
   assert.equal(withAmount.signingRate, 28.1);
   assert.equal(withAmount.cards.length, 5);
+  assert.equal(withAmount.cards.find((card) => card.key === 'completedSurveys')?.detail, '已发布方案 82 份');
   assert.equal(withAmount.cards.find((card) => card.key === 'signedCount')?.detail, '签约金额 ¥286万');
   assert.equal(buildOpsDashboardSubtitle('enterprise', '本月'), '全店 · 本月');
   assert.equal(buildOpsDashboardSubtitle('personal', '本月'), '我的 · 本月');
@@ -543,4 +590,16 @@ test('enterprise hero pending-delivery pill counts unpublished designing leads',
   assert.equal(pendingDelivery?.value, 7);
   assert.equal(pendingDelivery?.detail, '量房已完成，待发布方案');
   assert.equal(summary.find((item) => item.key === 'delivered'), undefined);
+});
+
+test('enterprise workbench exposes store activity code plus join-code entries', () => {
+  const route = readFileSync(
+    path.join(process.cwd(), 'src/app/api/miniprogram/workbench/route.ts'),
+    'utf8'
+  );
+  assert.match(route, /activityCode: \{ label: '分享活动码', detail: '发给客户 · 扫码留资', target: 'activity-code' \}/);
+  assert.match(route, /joinCode: \{ label: '邀请入驻', detail: '员工 · 推荐人', target: 'join-codes' \}/);
+  assert.match(route, /findByIds\(appointmentRows\.map\(\(item\) => item\.leadId\), \{ includeArchived: true \}\)/);
+  assert.match(route, /appointmentLeadMap\.get\(String\(item\.leadId\)\)/);
+  assert.match(route, /includeArchived: true/);
 });

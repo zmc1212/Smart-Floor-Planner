@@ -11,6 +11,7 @@ import {
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { normalizeDeviceBindingStatus } from '@/lib/device-binding-status';
+import { duplicateDeviceMessage, normalizeDeviceSerialNumber } from '@/lib/device-serial-number';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
@@ -28,12 +29,26 @@ function isPlatformAdmin(role?: string | null) {
   return role === 'super_admin' || role === 'admin';
 }
 
+type DeviceEnrollEntry = {
+  code: string;
+  description: string | null;
+  serialNumber: string | null;
+};
+
+class DeviceAlreadyEnrolledError extends Error {
+  constructor() {
+    super('该设备已录入');
+  }
+}
+
 function parseDeviceCodes(body: {
   code?: unknown;
+  serialNumber?: unknown;
   devices?: unknown;
-}): Array<{ code: string; description: string | null }> {
+}): DeviceEnrollEntry[] {
+  const sharedSerialNumber = normalizeDeviceSerialNumber(body.serialNumber);
   if (Array.isArray(body.devices)) {
-    const byCode = new Map<string, { code: string; description: string | null }>();
+    const byCode = new Map<string, DeviceEnrollEntry>();
     for (const item of body.devices) {
       const raw =
         typeof item === 'string'
@@ -50,45 +65,38 @@ function parseDeviceCodes(body: {
         typeof (item as { description?: unknown }).description === 'string'
           ? String((item as { description: string }).description).trim() || null
           : null;
-      byCode.set(code, { code, description });
+      const serialNumber =
+        item && typeof item === 'object' && 'serialNumber' in item
+          ? normalizeDeviceSerialNumber(
+              (item as { serialNumber?: unknown }).serialNumber
+            )
+          : null;
+      byCode.set(code, { code, description, serialNumber });
     }
-    return [...byCode.values()];
+    const entries = [...byCode.values()];
+    if (entries.length === 1 && entries[0].serialNumber == null) {
+      entries[0].serialNumber = sharedSerialNumber;
+    }
+    return entries;
   }
   const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
   if (!code) return [];
-  return [{ code, description: null }];
+  return [{ code, description: null, serialNumber: sharedSerialNumber }];
 }
 
-async function upsertDeviceForEnterprise(
+async function createDeviceForEnterprise(
   devices: DeviceRepository,
   input: {
     code: string;
     enterpriseId: bigint;
     description: string | null;
+    serialNumber: string | null;
   }
 ): Promise<DeviceWithRelations | null> {
-  const existing = await devices.findByCode(input.code);
-  if (existing) {
-    return devices.update(
-      existing.id,
-      {
-        enterpriseId: input.enterpriseId,
-        description:
-          input.description !== null ? input.description : existing.description,
-        assignedUserId: null,
-        status: normalizeDeviceBindingStatus(
-          existing.status === 'maintenance' || existing.status === 'lost'
-            ? existing.status
-            : 'assigned',
-          true
-        ),
-      },
-      []
-    );
-  }
   return devices.create(
     {
       code: input.code,
+      serialNumber: input.serialNumber,
       description: input.description,
       enterpriseId: input.enterpriseId,
       assignedUserId: null,
@@ -164,6 +172,16 @@ export async function POST(request: Request) {
       );
     }
 
+    const serialNumbers = entries
+      .map((entry) => entry.serialNumber)
+      .filter((value): value is string => Boolean(value));
+    if (new Set(serialNumbers).size !== serialNumbers.length) {
+      return NextResponse.json(
+        { success: false, error: '同一批设备的 SN 码不能重复' },
+        { status: 400 }
+      );
+    }
+
     const enterpriseId = parsePostgresId(body.enterpriseId, 'enterpriseId');
     const sharedDescription =
       typeof body.description === 'string'
@@ -180,10 +198,14 @@ export async function POST(request: Request) {
 
       const upserted: DeviceWithRelations[] = [];
       for (const entry of entries) {
-        const device = await upsertDeviceForEnterprise(devices, {
+        if (await devices.findByCode(entry.code)) {
+          throw new DeviceAlreadyEnrolledError();
+        }
+        const device = await createDeviceForEnterprise(devices, {
           code: entry.code,
           enterpriseId,
           description: entry.description ?? sharedDescription,
+          serialNumber: entry.serialNumber,
         });
         if (device) upserted.push(device);
       }
@@ -209,15 +231,18 @@ export async function POST(request: Request) {
     );
   } catch (error: unknown) {
     const code = postgresErrorCode(error);
+    const duplicateDevice = error instanceof DeviceAlreadyEnrolledError;
     return NextResponse.json(
       {
         success: false,
         error:
-          code === '23505'
-            ? '设备编码已存在'
+          duplicateDevice
+            ? error.message
+            : code === '23505'
+              ? duplicateDeviceMessage(error, { enrollment: true })
             : errorMessage(error),
       },
-      { status: code === '23505' ? 409 : 500 }
+      { status: duplicateDevice || code === '23505' ? 409 : 500 }
     );
   }
 }

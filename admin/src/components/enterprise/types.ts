@@ -26,6 +26,7 @@ export interface EnterpriseListItem {
     accentColor?: string;
   };
   groundPromotionFixedCommission?: number;
+  referrerAdditionalEnterpriseLimit?: number | null;
   contactPerson?: {
     name?: string;
     phone?: string;
