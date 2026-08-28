@@ -1,0 +1,99 @@
+/*
+ * Shared native-template formatter for business statistics. Keep financial
+ * record details outside this module: those surfaces intentionally show the
+ * exact ledger amount.
+ */
+function toNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  var number = parseFloat(value);
+  return number === number ? number : null;
+}
+
+function trimFixed(value, digits) {
+  var text = value.toFixed(digits);
+  if (text.indexOf('.') === -1) return text;
+  var end = text.length - 1;
+  while (end > 0 && text.charAt(end) === '0') end -= 1;
+  if (text.charAt(end) === '.') end -= 1;
+  return text.substring(0, end + 1);
+}
+
+function numberLength(value) {
+  return ('' + value).replace('-', '').length;
+}
+
+function countParts(value) {
+  var number = toNumber(value);
+  if (number === null) return { value: '—', unit: '' };
+  var sign = number < 0 ? '-' : '';
+  var absolute = Math.abs(number);
+  var result;
+  if (absolute < 1000) {
+    result = { value: '' + Math.round(absolute), unit: '' };
+    if (parseFloat(result.value) >= 1000) result = { value: '1', unit: '千' };
+  } else if (absolute < 10000) {
+    result = { value: trimFixed(absolute / 1000, 1), unit: '千' };
+  } else if (absolute < 10000000) {
+    result = { value: trimFixed(absolute / 10000, absolute < 100000 ? 1 : 0), unit: '万' };
+    if (numberLength(result.value) >= 4) result = { value: trimFixed(absolute / 100000000, 2), unit: '亿' };
+  } else if (absolute < 100000000000) {
+    result = { value: trimFixed(absolute / 100000000, absolute < 1000000000 ? 1 : 0), unit: '亿' };
+    if (numberLength(result.value) >= 4) result = { value: trimFixed(absolute / 1000000000000, 1), unit: '万亿' };
+  } else if (absolute < 1000000000000000) {
+    result = { value: trimFixed(absolute / 1000000000000, absolute < 10000000000000 ? 1 : 0), unit: '万亿' };
+  } else {
+    result = { value: trimFixed(absolute / 10000000000000000, absolute < 100000000000000000 ? 1 : 0), unit: '京' };
+  }
+  return { value: sign + result.value, unit: result.unit };
+}
+
+function moneyParts(value) {
+  var parts = countParts(value);
+  if (parts.value === '—') return parts;
+  if (!parts.unit) return { value: parts.value, unit: '元' };
+  return { value: parts.value, unit: parts.unit + '元' };
+}
+
+function count(value) {
+  var parts = countParts(value);
+  return parts.value + parts.unit;
+}
+
+function money(value) {
+  var parts = moneyParts(value);
+  return parts.value + parts.unit;
+}
+
+function moneyValue(value) {
+  return moneyParts(value).value;
+}
+
+function moneyUnit(value) {
+  return moneyParts(value).unit;
+}
+
+function isMoneyCompact(value) {
+  return numberLength(moneyValue(value)) >= 3;
+}
+
+function percent(value) {
+  var number = toNumber(value);
+  if (number === null) return '—';
+  return trimFixed(number, Math.abs(number) < 10 ? 1 : 0) + '%';
+}
+
+function format(value, kind) {
+  if (kind === 'money') return money(value);
+  if (kind === 'percent') return percent(value);
+  return count(value);
+}
+
+module.exports = {
+  count: count,
+  money: money,
+  moneyValue: moneyValue,
+  moneyUnit: moneyUnit,
+  isMoneyCompact: isMoneyCompact,
+  percent: percent,
+  format: format
+};

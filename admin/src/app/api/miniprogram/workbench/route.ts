@@ -61,6 +61,14 @@ function parsePeriod(request: Request) {
   });
 }
 
+function wantsScheduleRange(request: Request) {
+  return new URL(request.url).searchParams.get('schedule') === '1';
+}
+
+function periodDayCount(period: WorkbenchPeriodRange) {
+  return Math.round((period.end.getTime() - period.start.getTime()) / (24 * 60 * 60 * 1000));
+}
+
 export async function GET(request: Request) {
   try {
     const context = await resolveMiniProgramContext(request);
@@ -79,6 +87,13 @@ export async function GET(request: Request) {
       return NextResponse.json({
         success: false,
         error: error instanceof Error ? error.message : '周期参数无效',
+      }, { status: 400 });
+    }
+    const scheduleRequested = wantsScheduleRange(request);
+    if (scheduleRequested && periodDayCount(period) > 366) {
+      return NextResponse.json({
+        success: false,
+        error: '自定义周期不能超过 366 天',
       }, { status: 400 });
     }
 
@@ -258,13 +273,30 @@ export async function GET(request: Request) {
         leads.list({ assignmentStatus: 'assignment_pending', page: 1, limit: 20, orderBy: 'updatedAt' }),
         appointments.listExpiredUnbooked(enterpriseId, 20),
         new AdminUserRepository(transaction).list({ roles: ['designer', 'measurer'], status: 'active', page: 1, limit: 200 }),
-        appointments.listByEnterprise(enterpriseId, ['confirmed', 'expired'], 20),
+        appointments.listByEnterprise(
+          enterpriseId,
+          ['confirmed', 'expired'],
+          scheduleRequested ? 500 : 20,
+          scheduleRequested ? { start: period.start, end: period.end } : undefined
+        ),
         loadOpsDashboard(transaction, {
           enterpriseId,
           period,
           includeContractAmount: true,
         }),
       ]);
+      const now = new Date();
+      const scheduleRows = [...appointmentRows];
+      if (scheduleRequested && now >= period.start && now < period.end) {
+        const seen = new Set(scheduleRows.map((row) => String(row.id)));
+        for (const row of expiredUnbooked) {
+          const extra = row.appointment;
+          if (extra && !seen.has(String(extra.id))) {
+            seen.add(String(extra.id));
+            scheduleRows.push(extra);
+          }
+        }
+      }
       const eligibleDesignerCount = staffList.rows.filter((member) => member.role === 'designer' && isAssignmentEligibleStaff(member)).length;
       const eligibleMeasurerCount = staffList.rows.filter((member) => member.role === 'measurer' && isAssignmentEligibleStaff(member)).length;
       const [
@@ -273,7 +305,7 @@ export async function GET(request: Request) {
         assignedNewCount,
         pendingDeliveryCount,
       ] = await Promise.all([
-        leads.findByIds(appointmentRows.map((item) => item.leadId), { includeArchived: true }),
+        leads.findByIds(scheduleRows.map((item) => item.leadId), { includeArchived: true }),
         leads.count({ status: 'measuring' }),
         leads.count({ status: 'new', assignmentStatus: 'assigned' }),
         countPendingSchemeDeliveries(transaction),
@@ -312,7 +344,7 @@ export async function GET(request: Request) {
           buildStaffLoadQuickNav({ eligibleDesignerCount, eligibleMeasurerCount }),
         ],
         primaryItems: exceptionItems.slice(0, 8),
-        appointments: appointmentRows.map((item) => appointmentItem(item, appointmentLeadMap.get(String(item.leadId)))),
+        appointments: scheduleRows.map((item) => appointmentItem(item, appointmentLeadMap.get(String(item.leadId)))),
         activityCode: { label: '分享活动码', detail: '发给客户 · 扫码留资', target: 'activity-code' },
         joinCode: { label: '邀请入驻', detail: '员工 · 推荐人', target: 'join-codes' },
         secondary: { label: '查看预约安排', target: 'appointments' },

@@ -1,9 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const surveyGraph = require('../utils/surveyWallGraph.js');
-const { extractFaces } = require('../utils/survey/topology/face-extractor.js');
-const { inspectDraftFaceShadow } = require('../utils/survey/topology/face-shadow.js');
-const { syncClosedSpacesFromFaces } = require('../utils/survey/topology/space-sync.js');
+const surveyGraph = require('../packages/surveying/utils/surveyWallGraph.js');
+const { extractFaces } = require('../packages/surveying/utils/survey/topology/face-extractor.js');
+const { inspectDraftFaceShadow } = require('../packages/surveying/utils/survey/topology/face-shadow.js');
+const { syncClosedSpacesFromFaces } = require('../packages/surveying/utils/survey/topology/space-sync.js');
 
 function commitPreview(draft, rawPoint) {
   const preview = surveyGraph.startPreview(draft, rawPoint);

@@ -16,10 +16,6 @@ const plannerFiles = [
 function rewriteCanvasRenderer(source) {
   return source
     .replace(
-      "require('../../../utils/surveyWallGraph.js')",
-      "require('./surveyWallGraph.js')",
-    )
-    .replace(
       "require('./surveyDimensionPlan.js')",
       "require('../surveyDimensionPlan.js')",
     )
@@ -83,7 +79,7 @@ async function collectFiles(directory) {
 }
 
 async function syncSurveyKernel() {
-  const sourceRoot = resolve(miniProgramRoot, 'utils', 'survey');
+  const sourceRoot = resolve(miniProgramRoot, 'packages', 'surveying', 'utils', 'survey');
   const targetRoot = resolve(adminRoot, 'src', 'lib', 'survey-runtime', 'survey');
   try {
     await readFile(resolve(sourceRoot, 'legacy-kernel.js'), 'utf8');
@@ -116,7 +112,7 @@ for (const [label, fileName] of plannerFiles) {
 
 await syncExactFile(
   'survey-wall-graph',
-  resolve(miniProgramRoot, 'utils', 'surveyWallGraph.js'),
+  resolve(miniProgramRoot, 'packages', 'surveying', 'utils', 'surveyWallGraph.js'),
   resolve(adminRoot, 'src', 'lib', 'survey-runtime', 'surveyWallGraph.js'),
 );
 

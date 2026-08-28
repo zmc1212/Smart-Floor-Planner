@@ -86,6 +86,20 @@ test('role guides stay in their own subpackage and under the WeChat 2MB limit', 
   assert.equal(fs.existsSync(path.join(miniRoot, 'images', 'role-guides')), false);
 });
 
+test('surveying subpackage source stays under the WeChat 2MB subpackage limit', () => {
+  const miniRoot = path.join(__dirname, '..');
+  const surveyingRoot = path.join(miniRoot, 'packages', 'surveying');
+  let total = 0;
+  for (const file of fs.readdirSync(surveyingRoot, { recursive: true })) {
+    const absolute = path.join(surveyingRoot, file);
+    if (fs.statSync(absolute).isFile()) total += fs.statSync(absolute).size;
+  }
+  assert.ok(
+    total <= 2048 * 1024,
+    `packages/surveying source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB subpackage limit`
+  );
+});
+
 test('platform subpackage source stays under the WeChat 2MB subpackage limit', () => {
   const miniRoot = path.join(__dirname, '..');
   const appConfig = JSON.parse(fs.readFileSync(path.join(miniRoot, 'app.json'), 'utf8'));
@@ -142,6 +156,22 @@ test('main package source stays under the WeChat 2MB main-package limit', () => 
   assert.ok(
     total <= 2048 * 1024,
     `main package source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB main-package limit`
+  );
+  assert.equal(
+    fs.existsSync(path.join(miniRoot, 'utils', 'survey')),
+    false,
+    'survey wall-graph kernel must not return to the main package'
+  );
+  assert.equal(
+    fs.existsSync(path.join(miniRoot, 'utils', 'surveyWallGraph.js')),
+    false,
+    'survey wall-graph facade must not return to the main package'
+  );
+  assert.ok(fs.existsSync(path.join(miniRoot, 'packages', 'surveying', 'utils', 'surveyWallGraph.js')));
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(miniRoot, 'utils', 'surveyLayout.js'), 'utf8'),
+    /surveyWallGraph/,
+    'main-package layout helpers must stay kernel-free'
   );
   assert.equal(
     fs.existsSync(path.join(miniRoot, 'images', 'identity-switch')),

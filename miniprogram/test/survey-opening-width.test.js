@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const surveyGraph = require('../utils/surveyWallGraph.js');
-const { normalizeOpeningToWall } = require('../utils/survey/domain/opening');
+const surveyGraph = require('../packages/surveying/utils/surveyWallGraph.js');
+const { normalizeOpeningToWall } = require('../packages/surveying/utils/survey/domain/opening');
 
 function commitPreview(draft, rawPoint) {
   const preview = surveyGraph.startPreview(draft, rawPoint);

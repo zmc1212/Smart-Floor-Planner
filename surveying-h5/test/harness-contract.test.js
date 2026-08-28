@@ -5,7 +5,7 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '..', '..');
 const h5Source = fs.readFileSync(path.join(root, 'surveying-h5/src/main.js'), 'utf8');
-const surveyGraph = require(path.join(root, 'miniprogram/utils/surveyWallGraph.js'));
+const surveyGraph = require(path.join(root, 'miniprogram/packages/surveying/utils/surveyWallGraph.js'));
 const surveyRenderer = require(path.join(root, 'miniprogram/packages/surveying/utils/surveyCanvasRenderer.js'));
 
 function buildClosedDraft(points) {
@@ -25,7 +25,7 @@ function buildClosedDraft(points) {
 
 test('browser harness imports the production editor, graph and renderer', () => {
   assert.match(h5Source, /miniprogram\/packages\/surveying\/editor\/surveying-editor\.js/);
-  assert.match(h5Source, /miniprogram\/utils\/surveyWallGraph\.js/);
+  assert.match(h5Source, /miniprogram\/packages\/surveying\/utils\/surveyWallGraph\.js/);
   assert.match(h5Source, /miniprogram\/packages\/surveying\/utils\/surveyCanvasRenderer\.js/);
   assert.match(h5Source, /deleteSelectedObject/);
   assert.doesNotMatch(h5Source, /pages\/editor\/editor|restoreFloorPlan|surveying_prototype/);

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const surveyGraph = require('../utils/surveyWallGraph.js');
-const { extractFaces } = require('../utils/survey/topology/face-extractor.js');
+const surveyGraph = require('../packages/surveying/utils/surveyWallGraph.js');
+const { extractFaces } = require('../packages/surveying/utils/survey/topology/face-extractor.js');
 
 function makeDraft(nodes, walls, spaces, openings, sessionPatch) {
   const draft = surveyGraph.createSurveyDraft();

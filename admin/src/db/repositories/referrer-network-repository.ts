@@ -970,10 +970,10 @@ export class ReferrerNetworkRepository {
     };
   }
 
-  async listEnterpriseReferrerMemberships(
+  private buildEnterpriseReferrerMembershipFilters(
     enterpriseId: bigint,
     options: { query?: string; status?: ReferrerMembershipStatus } = {}
-  ): Promise<EnterpriseReferrerMembershipRecord[]> {
+  ) {
     const filters = [eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId)];
     if (options.status) {
       filters.push(eq(referrerEnterpriseMemberships.status, options.status));
@@ -988,7 +988,22 @@ export class ReferrerNetworkRepository {
         )!
       );
     }
-    return this.transaction
+    return filters;
+  }
+
+  async listEnterpriseReferrerMemberships(
+    enterpriseId: bigint,
+    options: {
+      query?: string;
+      status?: ReferrerMembershipStatus;
+      page?: number;
+      limit?: number;
+    } = {}
+  ): Promise<EnterpriseReferrerMembershipRecord[]> {
+    const filters = this.buildEnterpriseReferrerMembershipFilters(enterpriseId, options);
+    const page = options.page != null ? Math.max(1, options.page) : null;
+    const limit = options.limit != null ? Math.max(1, options.limit) : null;
+    const query = this.transaction
       .select({
         membership: referrerEnterpriseMemberships,
         displayName: referrerProfiles.displayName,
@@ -1013,6 +1028,36 @@ export class ReferrerNetworkRepository {
         desc(referrerEnterpriseMemberships.joinedAt),
         asc(referrerEnterpriseMemberships.id)
       );
+    if (page != null && limit != null) {
+      return query.offset((page - 1) * limit).limit(limit);
+    }
+    return query;
+  }
+
+  async countEnterpriseReferrerMemberships(
+    enterpriseId: bigint,
+    options: { query?: string; status?: ReferrerMembershipStatus } = {}
+  ) {
+    const filtered = this.buildEnterpriseReferrerMembershipFilters(enterpriseId, options);
+    const active = this.buildEnterpriseReferrerMembershipFilters(enterpriseId, {
+      query: options.query,
+      status: 'active',
+    });
+    const fromMemberships = () => this.transaction
+      .select({ value: count() })
+      .from(referrerEnterpriseMemberships)
+      .innerJoin(
+        referrerProfiles,
+        eq(referrerProfiles.id, referrerEnterpriseMemberships.referrerId)
+      );
+    const [totalRows, activeRows] = await Promise.all([
+      fromMemberships().where(and(...filtered)),
+      fromMemberships().where(and(...active)),
+    ]);
+    return {
+      total: Number(totalRows[0]?.value ?? 0),
+      activeCount: Number(activeRows[0]?.value ?? 0),
+    };
   }
 
   async disableEnterpriseReferrerMembership(enterpriseId: bigint, membershipId: bigint) {

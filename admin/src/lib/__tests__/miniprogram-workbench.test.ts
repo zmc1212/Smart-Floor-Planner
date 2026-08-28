@@ -570,16 +570,23 @@ test('workbench period helpers resolve Shanghai week/month/year and custom inclu
   const month = resolveWorkbenchPeriod({ period: 'month', now });
   assert.equal(month.kind, 'month');
   assert.equal(month.label, '本月');
+  assert.equal(month.fromDate, '2026-08-01');
+  assert.equal(month.toDate, '2026-08-31');
   assert.equal(month.start.toISOString(), '2026-07-31T16:00:00.000Z');
   assert.equal(month.end.toISOString(), '2026-08-31T16:00:00.000Z');
 
   const week = shanghaiWeekRange(now);
   assert.equal(week.start.toISOString(), '2026-08-16T16:00:00.000Z'); // Monday 00:00 Shanghai
   assert.equal(week.end.toISOString(), '2026-08-23T16:00:00.000Z');
+  const weekPeriod = resolveWorkbenchPeriod({ period: 'week', now });
+  assert.equal(weekPeriod.fromDate, '2026-08-17');
+  assert.equal(weekPeriod.toDate, '2026-08-23');
 
   const year = resolveWorkbenchPeriod({ period: 'year', now });
   assert.equal(year.start.toISOString(), '2025-12-31T16:00:00.000Z');
   assert.equal(year.end.toISOString(), '2026-12-31T16:00:00.000Z');
+  assert.equal(year.fromDate, '2026-01-01');
+  assert.equal(year.toDate, '2026-12-31');
 
   const custom = resolveWorkbenchPeriod({
     period: 'custom',
@@ -696,7 +703,21 @@ test('enterprise workbench exposes store activity code plus join-code entries', 
   );
   assert.match(route, /activityCode: \{ label: '分享活动码', detail: '发给客户 · 扫码留资', target: 'activity-code' \}/);
   assert.match(route, /joinCode: \{ label: '邀请入驻', detail: '员工 · 推荐人', target: 'join-codes' \}/);
-  assert.match(route, /findByIds\(appointmentRows\.map\(\(item\) => item\.leadId\), \{ includeArchived: true \}\)/);
+  assert.match(route, /findByIds\(scheduleRows\.map\(\(item\) => item\.leadId\), \{ includeArchived: true \}\)/);
   assert.match(route, /appointmentLeadMap\.get\(String\(item\.leadId\)\)/);
   assert.match(route, /includeArchived: true/);
+  assert.match(route, /searchParams.get\('schedule'\) === '1'/);
+  assert.match(route, /listByEnterprise\([\s\S]*scheduleRequested \? \{ start: period\.start, end: period\.end \}/);
+  assert.match(route, /自定义周期不能超过 366 天/);
+});
+
+test('enterprise appointment schedule queries overlap the selected period', () => {
+  const source = readFileSync(
+    path.join(process.cwd(), 'src/db/repositories/appointment-repository.ts'),
+    'utf8'
+  );
+  assert.match(source, /async listByEnterprise\(/);
+  assert.match(source, /overlap\?: \{ start: Date; end: Date \}/);
+  assert.match(source, /timeRange\} && \$\{range\(overlap\.start, overlap\.end\)\}::tstzrange/);
+  assert.match(source, /overlap \? 500 : 50/);
 });

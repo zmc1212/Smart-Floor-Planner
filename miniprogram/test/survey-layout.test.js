@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const surveyGraph = require('../utils/surveyWallGraph.js');
+const surveyGraph = require('../packages/surveying/utils/surveyWallGraph.js');
 const surveyLayout = require('../utils/surveyLayout.js');
 
 test('formal layout stores only the survey graph contract', () => {

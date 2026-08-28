@@ -1,3 +1,5 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
+
 <scroll-view scroll-y enhanced show-scrollbar="{{false}}" scroll-top="{{pageScrollTop}}" class="result-page {{task.recipeId ? 'recipe-result' : ''}}">
   <view class="result-shell sfp-scroll-content">
     <view wx:if="{{loading}}" class="state-panel">
@@ -20,7 +22,7 @@
           </view>
           <view class="progress-track"><view class="progress-bar" style="width: {{task.progress}}%;"></view></view>
         </block>
-        <text class="state-meta">任务已提交，离开页面不会取消 · 已冻结 {{task.credits}} 点</text>
+        <text class="state-meta">任务已提交，离开页面不会取消 · 已冻结 {{stat.count(task.credits)}} 点</text>
         <button class="background-browse" bindtap="browseRecipes">查看其他配方</button>
       </view>
 
@@ -120,7 +122,7 @@
           <view class="summary-item">
             <image class="summary-icon summary-icon-credit" src="/images/mine-icons/earn-a.png" mode="aspectFit"></image>
             <text class="summary-label">消耗点数</text>
-            <text class="summary-value summary-points">{{task.credits}} 点</text>
+            <text class="summary-value summary-points">{{stat.count(task.credits)}} 点</text>
           </view>
         </view>
 

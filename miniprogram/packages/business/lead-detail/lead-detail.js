@@ -11,6 +11,13 @@ const {
 const { createWallSegments, resolveProtectedPreviewEndpoint } = require('../../../components/lead-list/lead-list-model.js');
 const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
 const sitePhotos = require('../../../utils/sitePhotoService.js');
+const {
+  DEFAULT_PAGE_SIZE,
+  appendQuery,
+  parsePagination,
+  mergePage,
+  listFooterText,
+} = require('../../../utils/list-pagination.js');
 
 const STATUS_LABELS = {
   new: '新线索',
@@ -725,8 +732,11 @@ Page({
       staffAssignLoading: true,
       staffAssignError: '',
       staffAssignCandidates: [],
+      staffAssignPage: 1,
+      staffAssignHasMore: false,
+      staffAssignFooterText: '',
     });
-    this.loadStaffAssignCandidates(normalizedRole);
+    this.loadStaffAssignCandidates(normalizedRole, { reset: true });
   },
 
   onCloseStaffAssignSheet() {
@@ -740,14 +750,33 @@ Page({
     });
   },
 
-  async loadStaffAssignCandidates(role) {
+  onLoadMoreStaffAssign() {
+    this.loadStaffAssignCandidates(this.data.staffAssignRole, { reset: false });
+  },
+
+  async loadStaffAssignCandidates(role, options) {
+    const reset = !options || options.reset !== false;
+    if (this._staffAssignFetching) return;
+    if (!reset && (this.data.staffAssignLoadingMore || !this.data.staffAssignHasMore)) return;
+    this._staffAssignFetching = true;
+    const page = reset ? 1 : Number(this.data.staffAssignPage || 1);
+    if (!reset) {
+      this.setData({
+        staffAssignLoadingMore: true,
+        staffAssignFooterText: listFooterText(true, true, this.data.staffAssignCandidates.length),
+      });
+    }
     try {
       const result = await api.request(
-        `/leads/${this.data.leadId}/assignable-staff?role=${encodeURIComponent(role)}`,
+        appendQuery(`/leads/${this.data.leadId}/assignable-staff`, {
+          role,
+          page,
+          limit: DEFAULT_PAGE_SIZE,
+        }),
         'GET'
       );
       const items = (result.data && result.data.items) || [];
-      const staffAssignCandidates = items
+      const incoming = items
         .filter((item) => item && item.id)
         .map((item) => ({
           id: item.id,
@@ -757,17 +786,29 @@ Page({
           statusLabel: item.statusLabel,
           statusTone: item.statusTone,
         }));
+      const staffAssignCandidates = mergePage(this.data.staffAssignCandidates, incoming, reset);
+      const pagination = parsePagination(result.data);
       this.setData({
         staffAssignLoading: false,
+        staffAssignLoadingMore: false,
         staffAssignCandidates,
+        staffAssignPage: page + 1,
+        staffAssignHasMore: pagination.hasMore,
+        staffAssignFooterText: listFooterText(false, pagination.hasMore, staffAssignCandidates.length),
         staffAssignError: staffAssignCandidates.length ? '' : '当前没有可派人员',
       });
     } catch (error) {
       this.setData({
         staffAssignLoading: false,
-        staffAssignError: (error && (error.error || error.message)) || '人员名册加载失败',
-        staffAssignCandidates: [],
+        staffAssignLoadingMore: false,
+        staffAssignError: reset
+          ? ((error && (error.error || error.message)) || '人员名册加载失败')
+          : this.data.staffAssignError,
+        staffAssignCandidates: reset ? [] : this.data.staffAssignCandidates,
+        staffAssignFooterText: listFooterText(false, this.data.staffAssignHasMore, reset ? 0 : this.data.staffAssignCandidates.length),
       });
+    } finally {
+      this._staffAssignFetching = false;
     }
   },
 

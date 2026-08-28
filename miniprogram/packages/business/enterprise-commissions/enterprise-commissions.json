@@ -1,5 +1,6 @@
 {
   "navigationStyle": "custom",
+  "onReachBottomDistance": 120,
   "usingComponents": {
     "custom-tab-bar": "/custom-tab-bar/index"
   }

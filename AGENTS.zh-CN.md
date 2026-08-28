@@ -27,7 +27,7 @@
 ## 仓库结构
 
 - `admin/`：Next.js 16 App Router、React 19、Tailwind 4、Ant Design 5 + Ant Design Pro、Mongoose 和 MongoDB API；本地开发端口为 `3005`。
-- `miniprogram/`：原生微信小程序。`utils/bluetooth.js` 负责蓝牙测距，`utils/surveyWallGraph.js` 与 `utils/surveyCanvasRenderer.js` 负责墙图和画布，Three.js 用于门窗构件预览。
+- `miniprogram/`：原生微信小程序。`utils/bluetooth.js` 负责蓝牙测距，`packages/surveying/utils/surveyWallGraph.js` 与 `packages/surveying/utils/surveyCanvasRenderer.js` 负责墙图和画布，Three.js 用于门窗构件预览。
 - `docs/`：当前模块清单和专项技术合同。
 - `admin/src/models/`：支持租户隔离的业务模型。
 - `admin/src/app/api/`：服务端路由；`admin/src/lib/` 包含认证、租户、工作流、AI、企微和墙图适配器。

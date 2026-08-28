@@ -1,5 +1,3 @@
-const surveyGraph = require('./surveyWallGraph.js');
-
 const FORMAL_LAYOUT_VERSION = 4;
 const FORMAL_MEASUREMENT_MODE = 'surveying';
 const FORMAL_LAYOUT_KEYS = ['version', 'measurementMode', 'surveyGraph'];
@@ -34,7 +32,10 @@ function parseFormalSurveyLayout(layoutData) {
 }
 
 function createFormalSurveyLayout(surveyGraphData, status) {
-  const graph = clone(surveyGraphData || surveyGraph.createSurveyDraft());
+  const graph = clone(surveyGraphData);
+  if (!graph || typeof graph !== 'object' || Array.isArray(graph)) {
+    throw new Error('createFormalSurveyLayout requires a survey wall graph');
+  }
   graph.status = status === 'completed' ? 'completed' : 'draft';
   graph.updatedAt = new Date().toISOString();
   return {
@@ -44,10 +45,16 @@ function createFormalSurveyLayout(surveyGraphData, status) {
   };
 }
 
+function getActiveFloorFromGraph(graph) {
+  const floors = graph && Array.isArray(graph.floors) ? graph.floors : [];
+  if (!floors.length) return null;
+  return floors.find((floor) => floor && floor.id === graph.activeFloorId) || floors[0];
+}
+
 function getActiveFloor(layoutData) {
   const layout = parseFormalSurveyLayout(layoutData);
   if (!layout) return null;
-  return surveyGraph.getActiveFloor(layout.surveyGraph);
+  return getActiveFloorFromGraph(layout.surveyGraph);
 }
 
 module.exports = {

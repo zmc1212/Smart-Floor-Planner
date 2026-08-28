@@ -1,3 +1,4 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
 <view class="project-page">
   <view class="project-nav" style="padding-top:{{navigationTop}}px;padding-right:{{navigationRight}}px;min-height:{{navigationTop + navigationHeight}}px">
     <view class="nav-back" bindtap="goBack"><view></view></view>
@@ -13,7 +14,7 @@
   <view wx:if="{{loading}}" class="project-state"><view class="state-card shimmer"></view><text>正在整理客户方案册…</text></view>
   <view wx:elif="{{error}}" class="project-state"><text class="state-title">客户方案加载失败</text><text>{{error}}</text><view class="state-action" bindtap="retry">重新加载</view></view>
   <block wx:else>
-    <scroll-view wx:if="{{step === 'leads'}}" scroll-y enhanced show-scrollbar="{{false}}" class="project-scroll">
+    <scroll-view wx:if="{{step === 'leads'}}" scroll-y enhanced show-scrollbar="{{false}}" class="project-scroll" lower-threshold="120" bindscrolltolower="onLoadMoreLeads">
       <view class="project-content">
         <view class="selected-recipe-mini">
           <image wx:if="{{recipe.previewUrl}}" src="{{recipe.previewUrl}}" mode="aspectFill"></image>
@@ -28,7 +29,7 @@
           <view class="project-groups">
             <view wx:for="{{leadGroups}}" wx:key="key" class="project-group {{item.active ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectLeadGroup">
               <text>{{item.label}}</text>
-              <text>{{item.count}}</text>
+              <text>{{stat.count(item.count)}}</text>
             </view>
           </view>
         </scroll-view>
@@ -50,6 +51,7 @@
             </view>
             <view class="project-action">{{item.actionLabel}}</view>
           </view>
+          <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
         </view>
       </view>
     </scroll-view>
@@ -93,7 +95,7 @@
         <view class="project-identity">
           <text>当前方案</text>
           <text>{{selectedScheme.title}}</text>
-          <text>{{selectedLead.displayTitle}} · {{closedRoomCount}} 个闭合空间</text>
+          <text>{{selectedLead.displayTitle}} · {{stat.count(closedRoomCount)}} 个闭合空间</text>
         </view>
         <text class="scope-heading">应用到哪里</text>
         <view class="scope-list">

@@ -5,6 +5,8 @@
   FIRST VIEWPORT: 胶囊安全身份栏；小K手持三权益牌的绿色 Hero；跨层真实阶段票据；三张紧凑权益卡；保障条。
   FORM: design-references/customer-service-home-three-free-v1/customer-service-home-three-free-v1.png；Operate 模式，真实媒体与动态阶段合同不变。
 -->
+<wxs src="../../utils/stat-format.wxs" module="stat" />
+
 <view class="customer-service-home sfp-tab-page">
   <scroll-view scroll-y class="csh-scroll" enhanced show-scrollbar="{{false}}">
     <view class="csh-content">
@@ -127,7 +129,7 @@
         </view>
 
         <view wx:if="{{showSwitcher}}" class="switcher-strip" bindtap="openSwitcher" hover-class="card-pressed">
-          <text class="switcher-copy">还有 {{switcherCount}} 个进行中的服务</text>
+          <text class="switcher-copy">还有 {{stat.count(switcherCount)}} 个进行中的服务</text>
           <text class="switcher-action">切换</text>
         </view>
 

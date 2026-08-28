@@ -1,10 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { performance } = require('node:perf_hooks');
-const surveyGraph = require('../utils/surveyWallGraph.js');
-const { runSurveyTransaction } = require('../utils/survey/operations/transaction.js');
-const { createTopologyIndex } = require('../utils/survey/topology/topology-index.js');
-const snapEngine = require('../utils/survey/snap/snap-engine.js');
+const surveyGraph = require('../packages/surveying/utils/surveyWallGraph.js');
+const { runSurveyTransaction } = require('../packages/surveying/utils/survey/operations/transaction.js');
+const { createTopologyIndex } = require('../packages/surveying/utils/survey/topology/topology-index.js');
+const snapEngine = require('../packages/surveying/utils/survey/snap/snap-engine.js');
 
 function createOpenWallDraft(lengthMm) {
   let draft = surveyGraph.createSurveyDraft();

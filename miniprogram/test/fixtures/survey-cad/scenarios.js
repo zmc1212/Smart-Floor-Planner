@@ -1,4 +1,4 @@
-const surveyGraph = require('../../../utils/surveyWallGraph.js');
+const surveyGraph = require('../../../packages/surveying/utils/surveyWallGraph.js');
 
 function commitWall(draft, pointMm, lengthMm) {
   return surveyGraph.commitPreviewLength(

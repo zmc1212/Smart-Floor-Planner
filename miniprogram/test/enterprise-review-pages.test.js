@@ -43,8 +43,9 @@ test('platform enterprise review tab uses Mini platform APIs and operational lis
   assert.match(navigation, /devices\/devices': 'platform\.devices'/);
 
   assert.match(listJs, /['"`]\/miniprogram\/platform\/enterprises/);
-  assert.match(listJs, /status=\$\{encodeURIComponent\(status\)\}/);
-  assert.match(listJs, /q=\$\{encodeURIComponent\(q\)\}/);
+  assert.match(listJs, /appendQuery/);
+  assert.match(listJs, /onLoadMore/);
+  assert.match(listWxml, /bindscrolltolower="onLoadMore"/);
   assert.match(listJs, /wx\.showModal/);
   assert.match(listJs, /validateReason/);
   assert.match(listJs, /openRegistrationCode/);

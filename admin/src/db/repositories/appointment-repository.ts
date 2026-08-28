@@ -666,20 +666,29 @@ export class AppointmentRepository {
     return this.listByEnterprise(enterpriseId, ['confirmed'], limit);
   }
 
-  async listByEnterprise(enterpriseId: bigint, statuses: string[] = ['confirmed', 'expired'], limit = 20) {
+  async listByEnterprise(
+    enterpriseId: bigint,
+    statuses: string[] = ['confirmed', 'expired'],
+    limit = 20,
+    overlap?: { start: Date; end: Date }
+  ) {
+    const filters = [
+      eq(measurementAppointments.enterpriseId, enterpriseId),
+      inArray(measurementAppointments.status, statuses),
+    ];
+    if (overlap) {
+      filters.push(sql`${measurementAppointments.timeRange} && ${range(overlap.start, overlap.end)}::tstzrange`);
+    }
     return this.transaction
       .select()
       .from(measurementAppointments)
-      .where(and(
-        eq(measurementAppointments.enterpriseId, enterpriseId),
-        inArray(measurementAppointments.status, statuses)
-      ))
+      .where(and(...filters))
       .orderBy(
         sql`case when ${measurementAppointments.status} = 'expired' then 0 when ${measurementAppointments.status} = 'confirmed' then 1 else 2 end`,
         sql`lower(${measurementAppointments.timeRange}) asc`,
         asc(measurementAppointments.id)
       )
-      .limit(Math.min(Math.max(limit, 1), 50));
+      .limit(Math.min(Math.max(limit, 1), overlap ? 500 : 50));
   }
 
   async reschedule(input: {

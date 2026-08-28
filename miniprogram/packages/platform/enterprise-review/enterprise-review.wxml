@@ -17,7 +17,7 @@ FORM: platform-device-workbench + enterprise-appointments
     <view class="nav-action" bindtap="openRegistrationCode" aria-role="button" aria-label="出示开户码">开户码</view>
   </view>
 
-  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}">
+  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}" lower-threshold="120" bindscrolltolower="onLoadMore">
     <view class="chip-row">
       <view
         wx:for="{{statusChips}}"
@@ -105,6 +105,7 @@ FORM: platform-device-workbench + enterprise-appointments
           </view>
         </view>
       </view>
+      <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
     </view>
   </scroll-view>
 </view>

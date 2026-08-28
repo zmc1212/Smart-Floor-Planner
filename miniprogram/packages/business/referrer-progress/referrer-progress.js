@@ -1,4 +1,11 @@
 const api = require('../../../utils/api.js');
+const {
+  DEFAULT_PAGE_SIZE,
+  appendQuery,
+  parsePagination,
+  mergePage,
+  listFooterText,
+} = require('../../../utils/list-pagination.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -50,26 +57,50 @@ Page({
     loading: true,
     error: '',
     enterpriseName: '',
-    items: []
+    items: [],
+    page: 1,
+    hasMore: false,
+    loadingMore: false,
+    footerText: ''
   },
   onLoad() {
     this.setData(navigationMetrics());
-    this.load();
+    this.load({ reset: true });
   },
   onShow() {
-    this.load();
+    this.load({ reset: true });
   },
   onUnload() {
     if (this._timer) clearInterval(this._timer);
   },
-  async load() {
-    this.setData({ loading: true, error: '' });
+  onReachBottom() {
+    this.load({ reset: false });
+  },
+  async load(options) {
+    const reset = !options || options.reset !== false;
+    if (this._fetching) return;
+    if (!reset && (this.data.loadingMore || !this.data.hasMore)) return;
+    this._fetching = true;
+    const page = reset ? 1 : Number(this.data.page || 1);
+    if (reset) this.setData({ loading: true, error: '', loadingMore: false });
+    else this.setData({ loadingMore: true, footerText: listFooterText(true, true, this.data.items.length) });
     try {
-      const result = await api.request('/miniprogram/referrer-progress', 'GET');
-      const items = ((result.data && result.data.items) || []).map(decorateItem);
+      const result = await api.request(appendQuery('/miniprogram/referrer-progress', {
+        page,
+        limit: DEFAULT_PAGE_SIZE,
+      }), 'GET');
+      const payload = result.data || {};
+      const items = mergePage(this.data.items, (payload.items || []).map(decorateItem), reset);
+      const pagination = parsePagination(payload);
       this.setData({
-        enterpriseName: (result.data && result.data.enterpriseName) || '',
-        items
+        loading: false,
+        loadingMore: false,
+        error: '',
+        enterpriseName: payload.enterpriseName || '',
+        items,
+        page: page + 1,
+        hasMore: pagination.hasMore,
+        footerText: listFooterText(false, pagination.hasMore, items.length)
       });
       if (this._timer) clearInterval(this._timer);
       if (items.some((item) => item.canUndo)) {
@@ -83,9 +114,14 @@ Page({
         }, 1000);
       }
     } catch (error) {
-      this.setData({ error: error.message || error.error || '暂时无法读取客户' });
+      this.setData({
+        loading: false,
+        loadingMore: false,
+        error: reset ? (error.message || error.error || '暂时无法读取客户') : this.data.error,
+        footerText: listFooterText(false, this.data.hasMore, reset ? 0 : this.data.items.length)
+      });
     } finally {
-      this.setData({ loading: false });
+      this._fetching = false;
     }
   },
   backToPromotion() {
@@ -114,7 +150,7 @@ Page({
         { headers: { 'Idempotency-Key': `referrer-withdraw-${item.id}-${Date.now()}` } }
       );
       wx.showToast({ title: '已撤回', icon: 'success' });
-      this.load();
+      this.load({ reset: true });
     } catch (error) {
       wx.showToast({ title: error.message || '撤回失败', icon: 'none' });
     }
@@ -130,7 +166,7 @@ Page({
         { headers: { 'Idempotency-Key': `referrer-undo-${item.id}-${Date.now()}` } }
       );
       wx.showToast({ title: '已恢复', icon: 'success' });
-      this.load();
+      this.load({ reset: true });
     } catch (error) {
       wx.showToast({ title: error.message || '恢复失败', icon: 'none' });
     }

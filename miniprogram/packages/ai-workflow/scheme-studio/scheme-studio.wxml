@@ -1,3 +1,5 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
+
 <view class="studio-page">
   <view
     class="studio-nav"
@@ -6,7 +8,7 @@
     <view class="nav-back" bindtap="goBack"><view></view></view>
     <view class="nav-copy">
       <text class="nav-title">{{view.workflow.title || 'AI 方案工作台'}}</text>
-      <text wx:if="{{view}}" class="nav-subtitle">已确认 {{view.workflow.publishedCount}} 张</text>
+      <text wx:if="{{view}}" class="nav-subtitle">已确认 {{stat.count(view.workflow.publishedCount)}} 张</text>
     </view>
     <view wx:if="{{view}}" class="nav-switch" bindtap="openWorkflowSwitcher">
       <text>切换方案</text>
@@ -64,8 +66,8 @@
               <text class="context-title">{{view.leadSummary.projectTitle}}</text>
               <text class="context-meta">{{view.leadSummary.projectSubtitle}} · {{view.leadSummary.floorPlanName}}</text>
               <view class="context-stats">
-                <text class="context-chip">共 {{view.workflow.generationCount}} 张</text>
-                <text class="context-chip confirmed">已确认 {{view.workflow.publishedCount}} 张</text>
+                <text class="context-chip">共 {{stat.count(view.workflow.generationCount)}} 张</text>
+                <text class="context-chip confirmed">已确认 {{stat.count(view.workflow.publishedCount)}} 张</text>
               </view>
             </view>
           </view>
@@ -73,14 +75,14 @@
             class="send-button {{selectedGenerationIds.length ? '' : 'disabled'}}"
             bindtap="openSendModal"
           >
-            {{view.publishedScheme ? '更新客户方案' : '发送给客户'}}{{selectedGenerationIds.length ? (' · ' + selectedGenerationIds.length) : ''}}
+            {{view.publishedScheme ? '更新客户方案' : '发送给客户'}}{{selectedGenerationIds.length ? (' · ' + stat.count(selectedGenerationIds.length)) : ''}}
           </button>
         </view>
 
         <view wx:if="{{view.publishedScheme}}" class="scheme-banner">
           <view class="scheme-banner-copy">
             <text class="scheme-banner-title">{{view.publishedScheme.finalized ? '客户可见定稿' : '客户可见方案'}}：{{view.publishedScheme.title}}</text>
-            <text class="scheme-banner-meta">当前已发送 {{view.publishedScheme.generationIds.length}} 张给客户</text>
+            <text class="scheme-banner-meta">当前已发送 {{stat.count(view.publishedScheme.generationIds.length)}} 张给客户</text>
           </view>
           <button
             wx:if="{{!view.publishedScheme.finalized}}"
@@ -267,8 +269,8 @@
       <text class="dialog-title">{{view.publishedScheme ? '更新客户方案' : '发送给客户'}}</text>
       <text class="dialog-desc">
         {{view.publishedScheme
-          ? ('已确认且未选中的图保持不变，将加入/更新本次勾选的 ' + selectedGenerationIds.length + ' 张效果图。')
-          : ('客户将在小程序项目里看到这一套方案，共 ' + selectedGenerationIds.length + ' 张效果图。')}}
+          ? ('已确认且未选中的图保持不变，将加入/更新本次勾选的 ' + stat.count(selectedGenerationIds.length) + ' 张效果图。')
+          : ('客户将在小程序项目里看到这一套方案，共 ' + stat.count(selectedGenerationIds.length) + ' 张效果图。')}}
       </text>
       <text class="dialog-label">方案名称</text>
       <input class="dialog-input" value="{{sendTitle}}" bindinput="onSendTitleInput" placeholder="例如 灯光设计" />

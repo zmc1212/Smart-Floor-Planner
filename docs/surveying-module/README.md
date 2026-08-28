@@ -6,6 +6,9 @@ Git 历史保留。
 ## 当前能力
 
 - 唯一编辑入口：`miniprogram/packages/surveying/editor/surveying-editor.*`。
+- 墙图内核位于 `miniprogram/packages/surveying/utils/surveyWallGraph.js` 与
+  `miniprogram/packages/surveying/utils/survey/`；主包只保留不加载内核的
+  `utils/surveyLayout.js`。
 - 编辑器使用 version-4 `surveyGraph`，坐标、长度、墙厚、开口和层高均为毫米。
   门宽/窗宽上限为当前宿主墙长度（不少于 100 mm），由 `normalizeOpeningToWall`
   按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。

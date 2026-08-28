@@ -1,6 +1,14 @@
 const api = require('../../../utils/api');
 const { formatAppointmentDisplay } = require('../../../utils/appointmentTimeRange.js');
 
+const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const MAX_CUSTOM_DAYS = 366;
+const PERIOD_CHIPS = [
+  { key: 'week', label: '本周' },
+  { key: 'month', label: '本月' },
+  { key: 'year', label: '本年' },
+];
+
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
   let menuRect = null;
@@ -21,8 +29,35 @@ function padZero(num) {
   return String(num).padStart(2, '0');
 }
 
-function formatDateKey(d) {
-  return `${d.getFullYear()}-${padZero(d.getMonth() + 1)}-${padZero(d.getDate())}`;
+function shanghaiDateKey(date = new Date()) {
+  const shifted = new Date(date.getTime() + SHANGHAI_OFFSET_MS);
+  return `${shifted.getUTCFullYear()}-${padZero(shifted.getUTCMonth() + 1)}-${padZero(shifted.getUTCDate())}`;
+}
+
+function addCalendarDateKey(key, days) {
+  const [year, month, day] = String(key).split('-').map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day + days));
+  return `${utc.getUTCFullYear()}-${padZero(utc.getUTCMonth() + 1)}-${padZero(utc.getUTCDate())}`;
+}
+
+function inclusiveDayCount(fromKey, toKey) {
+  const [fromYear, fromMonth, fromDay] = String(fromKey).split('-').map(Number);
+  const [toYear, toMonth, toDay] = String(toKey).split('-').map(Number);
+  const fromUtc = Date.UTC(fromYear, fromMonth - 1, fromDay);
+  const toUtc = Date.UTC(toYear, toMonth - 1, toDay);
+  return Math.round((toUtc - fromUtc) / (24 * 60 * 60 * 1000)) + 1;
+}
+
+function enumerateDateKeys(fromKey, toKey) {
+  const keys = [];
+  let key = fromKey;
+  let guard = 0;
+  while (key <= toKey && guard < 370) {
+    keys.push(key);
+    key = addCalendarDateKey(key, 1);
+    guard += 1;
+  }
+  return keys;
 }
 
 function parseSlot(range) {
@@ -94,6 +129,28 @@ function mapAppointment(item) {
   };
 }
 
+function periodLabelText(period) {
+  if (period.kind === 'custom') return '自定义';
+  if (period.kind === 'week') return '本周';
+  if (period.kind === 'year') return '本年';
+  if (period.kind === 'month') return '本月';
+  return period.label || '本周';
+}
+
+function formatCustomRangeLabel(fromKey, toKey) {
+  const fromMatch = String(fromKey || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const toMatch = String(toKey || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!fromMatch || !toMatch) return '';
+  const fromMonth = Number(fromMatch[2]);
+  const fromDay = Number(fromMatch[3]);
+  const toMonth = Number(toMatch[2]);
+  const toDay = Number(toMatch[3]);
+  if (fromMatch[1] === toMatch[1]) {
+    return `${fromMonth}/${fromDay} ~ ${toMonth}/${toDay}`;
+  }
+  return `${Number(fromMatch[1])}/${fromMonth}/${fromDay} ~ ${Number(toMatch[1])}/${toMonth}/${toDay}`;
+}
+
 Page({
   data: {
     navigationTop: 24,
@@ -107,12 +164,25 @@ Page({
     todayDateKey: '',
     selectedDateKey: '',
     selectedDateTitle: '今日预约排期',
+    dayScrollIntoView: '',
     allAppointments: [],
     selectedAppointments: [],
+    schedulePeriod: {
+      kind: 'week',
+      label: '本周',
+      from: '',
+      to: '',
+    },
+    periodChips: PERIOD_CHIPS,
+    periodSheetVisible: false,
+    periodSheetOpen: false,
+    customFrom: '',
+    customTo: '',
+    customRangeLabel: '',
   },
 
   onLoad() {
-    const todayKey = formatDateKey(new Date());
+    const todayKey = shanghaiDateKey();
     this.setData({
       ...navigationMetrics(),
       todayDateKey: todayKey,
@@ -121,63 +191,95 @@ Page({
   },
 
   onShow() {
-    const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
-    if (tabBar) tabBar.syncSelected();
     this.load();
   },
 
-  buildWeekDays(refDate, appointments) {
-    const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-    const todayKey = formatDateKey(new Date());
-    const days = [];
-    const taskCountMap = {};
+  onBack() {
+    wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/index/index' }) });
+  },
 
+  noop() {},
+
+  scheduleQuery() {
+    const period = this.data.schedulePeriod || {};
+    const query = {
+      period: period.kind || 'week',
+      schedule: '1',
+    };
+    if (period.kind === 'custom' && period.from && period.to) {
+      query.from = period.from;
+      query.to = period.to;
+    }
+    return query;
+  },
+
+  defaultCustomRange() {
+    const todayKey = shanghaiDateKey();
+    const fromKey = `${todayKey.slice(0, 8)}01`;
+    return {
+      customFrom: fromKey,
+      customTo: todayKey,
+    };
+  },
+
+  buildPeriodDays(fromKey, toKey, appointments) {
+    const dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const todayKey = shanghaiDateKey();
+    const compact = inclusiveDayCount(fromKey, toKey) > 31;
+    const taskCountMap = {};
     (appointments || []).forEach((item) => {
       if (item.dateKey) {
         taskCountMap[item.dateKey] = (taskCountMap[item.dateKey] || 0) + 1;
       }
     });
     const overdueOnToday = (appointments || []).some((item) => isOverdueCoordination(item, todayKey));
-
-    for (let i = 0; i < 7; i += 1) {
-      const day = new Date(refDate);
-      day.setHours(0, 0, 0, 0);
-      day.setDate(refDate.getDate() + i);
-      const key = formatDateKey(day);
+    return enumerateDateKeys(fromKey, toKey).map((key) => {
+      const [year, month, day] = key.split('-').map(Number);
+      const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
       const isToday = key === todayKey;
-      days.push({
+      return {
         key,
-        dayName: isToday ? '今日' : dayNames[day.getDay()],
-        dateLabel: String(day.getDate()),
+        dayId: `day-${key}`,
+        dayName: isToday ? '今日' : dayNames[weekday],
+        dateLabel: compact ? `${month}/${day}` : String(day),
+        compact,
         isToday,
         hasTask: (taskCountMap[key] || 0) > 0 || (isToday && overdueOnToday),
-      });
-    }
-    return days;
+      };
+    });
   },
 
   applySelection(selectedKey, appointments, weekDays) {
-    const todayKey = this.data.todayDateKey || formatDateKey(new Date());
+    const todayKey = this.data.todayDateKey || shanghaiDateKey();
     const selected = appointments
       .filter((item) => item.dateKey === selectedKey
         || (!item.dateKey && selectedKey === todayKey)
         || (selectedKey === todayKey && isOverdueCoordination(item, todayKey)))
       .sort((left, right) => left.startMs - right.startMs);
     const selectedDay = (weekDays || []).find((day) => day.key === selectedKey);
-    const selectedDateTitle = selectedKey === todayKey
-      ? '今日预约排期'
-      : `${(selectedDay && selectedDay.dayName) || '当日'}预约排期`;
+    let selectedDateTitle = '当日预约排期';
+    if (selectedKey === todayKey) {
+      selectedDateTitle = '今日预约排期';
+    } else if (selectedDay && selectedDay.compact) {
+      const parts = String(selectedKey).split('-');
+      selectedDateTitle = `${Number(parts[1])}月${Number(parts[2])}日预约排期`;
+    } else if (selectedDay) {
+      selectedDateTitle = `${selectedDay.dayName}预约排期`;
+    }
     this.setData({
       selectedDateKey: selectedKey,
       selectedAppointments: selected,
       selectedDateTitle,
+      dayScrollIntoView: '',
+    }, () => {
+      this.setData({ dayScrollIntoView: `day-${selectedKey}` });
     });
   },
 
   async load() {
     this.setData({ loading: true, error: '' });
     try {
-      const result = await api.request('/miniprogram/workbench', 'GET');
+      const result = await api.request('/miniprogram/workbench', 'GET', this.scheduleQuery());
       const payload = result.data || {};
       if (payload.role && payload.role !== 'enterprise_admin') {
         this.setData({
@@ -188,6 +290,7 @@ Page({
           weekDays: [],
           weekCount: 0,
           weekSubtitle: '本周 0 单预约',
+          customRangeLabel: '',
         });
         return;
       }
@@ -196,21 +299,36 @@ Page({
         .filter((item) => item.status === 'confirmed' || item.status === 'expired')
         .map(mapAppointment);
 
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      const weekDays = this.buildWeekDays(now, appointments);
+      const todayKey = shanghaiDateKey();
+      const periodPayload = payload.period || {};
+      const currentPeriod = this.data.schedulePeriod || {};
+      const fromKey = periodPayload.from || currentPeriod.from || todayKey;
+      const toKey = periodPayload.to || currentPeriod.to || addCalendarDateKey(fromKey, 6);
+      const weekDays = this.buildPeriodDays(fromKey, toKey, appointments);
       const weekKeys = new Set(weekDays.map((day) => day.key));
-      const todayKey = formatDateKey(now);
       const weekCount = appointments.filter((item) => weekKeys.has(item.dateKey)
-        || isOverdueCoordination(item, todayKey)).length;
-      const selectedKey = this.data.selectedDateKey || formatDateKey(now);
+        || (weekKeys.has(todayKey) && isOverdueCoordination(item, todayKey))).length;
+      const kind = periodPayload.kind || currentPeriod.kind || 'week';
+      const label = periodLabelText({ kind, label: periodPayload.label || currentPeriod.label });
+      let selectedKey = this.data.selectedDateKey || todayKey;
+      if (!weekKeys.has(selectedKey)) {
+        selectedKey = weekKeys.has(todayKey) ? todayKey : fromKey;
+      }
 
       this.setData({
         loading: false,
+        todayDateKey: todayKey,
         allAppointments: appointments,
         weekDays,
         weekCount,
-        weekSubtitle: `本周 ${weekCount} 单预约`,
+        weekSubtitle: `${label} ${weekCount} 单预约`,
+        customRangeLabel: kind === 'custom' ? formatCustomRangeLabel(fromKey, toKey) : '',
+        schedulePeriod: {
+          kind,
+          label: periodPayload.label || currentPeriod.label || '本周',
+          from: fromKey,
+          to: toKey,
+        },
       });
       this.applySelection(selectedKey, appointments, weekDays);
     } catch (error) {
@@ -221,9 +339,80 @@ Page({
         selectedAppointments: [],
         weekDays: [],
         weekCount: 0,
-        weekSubtitle: '本周 0 单预约',
+        weekSubtitle: `${periodLabelText(this.data.schedulePeriod || {})} 0 单预约`,
+        customRangeLabel: '',
       });
     }
+  },
+
+  selectPeriodChip(event) {
+    const kind = event.currentTarget.dataset.kind;
+    if (!kind || kind === this.data.schedulePeriod.kind) return;
+    this.setData({
+      schedulePeriod: {
+        kind,
+        label: kind === 'week' ? '本周' : kind === 'year' ? '本年' : '本月',
+        from: '',
+        to: '',
+      },
+      periodSheetVisible: false,
+      periodSheetOpen: false,
+    }, () => this.load());
+  },
+
+  openPeriodSheet() {
+    const defaults = this.defaultCustomRange();
+    const period = this.data.schedulePeriod || {};
+    this.setData({
+      periodSheetVisible: true,
+      periodSheetOpen: false,
+      customFrom: period.kind === 'custom' && period.from ? period.from : defaults.customFrom,
+      customTo: period.kind === 'custom' && period.to ? period.to : defaults.customTo,
+    });
+    setTimeout(() => this.setData({ periodSheetOpen: true }), 20);
+  },
+
+  closePeriodSheet() {
+    this.setData({ periodSheetOpen: false });
+    setTimeout(() => this.setData({ periodSheetVisible: false }), 260);
+  },
+
+  onCustomFromChange(event) {
+    this.setData({ customFrom: event.detail.value });
+  },
+
+  onCustomToChange(event) {
+    this.setData({ customTo: event.detail.value });
+  },
+
+  confirmCustomPeriod() {
+    const from = String(this.data.customFrom || '').trim();
+    const to = String(this.data.customTo || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      wx.showToast({ title: '请选择起止日期', icon: 'none' });
+      return;
+    }
+    if (from > to) {
+      wx.showToast({ title: '结束日期不能早于开始日期', icon: 'none' });
+      return;
+    }
+    if (inclusiveDayCount(from, to) > MAX_CUSTOM_DAYS) {
+      wx.showToast({ title: '自定义跨度不能超过一年', icon: 'none' });
+      return;
+    }
+    this.setData({
+      periodSheetOpen: false,
+      schedulePeriod: {
+        kind: 'custom',
+        label: '自定义',
+        from,
+        to,
+      },
+    });
+    setTimeout(() => {
+      this.setData({ periodSheetVisible: false });
+      this.load();
+    }, 260);
   },
 
   selectDay(event) {

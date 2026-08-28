@@ -46,7 +46,7 @@
       </view>
     </scroll-view>
 
-    <scroll-view class="record-scroll" scroll-y="true" enhanced="true" show-scrollbar="false">
+    <scroll-view class="record-scroll" scroll-y="true" enhanced="true" show-scrollbar="false" lower-threshold="120" bindscrolltolower="onLoadMore">
       <view wx:if="{{loading}}" class="skeleton-list">
         <view class="record-card skeleton-card" wx:for="{{skeletonItems}}" wx:key="*this">
           <view class="skeleton skeleton-badge"></view>
@@ -116,6 +116,7 @@
         <view class="empty-copy">{{searchText ? '试试搜索其他企业或联系人' : '新的企业报备会显示在这里'}}</view>
         <button wx:if="{{!searchText && view === 'my'}}" class="empty-action" bindtap="onCreateRecord">新建报备</button>
       </view>
+      <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
       <view class="scroll-spacer"></view>
     </scroll-view>
   </view>

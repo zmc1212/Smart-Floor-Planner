@@ -1,3 +1,5 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
+
 <view class="container" wx:if="{{!loading && lead}}">
   <view class="detail-hero" wx:if="{{lead}}">
     <view
@@ -171,7 +173,7 @@
   <view class="site-photos-card">
     <view class="site-photos-heading">
       <text class="site-photos-title">房屋现场图</text>
-      <text class="site-photos-meta">{{sitePhotos.length ? sitePhotos.length + ' 张' : '先选房间再拍'}}</text>
+      <text class="site-photos-meta">{{sitePhotos.length ? stat.count(sitePhotos.length) + ' 张' : '先选房间再拍'}}</text>
     </view>
     <site-photo-grid
       lead-id="{{leadId}}"
@@ -187,7 +189,7 @@
   <view class="published-schemes-card" wx:if="{{publishedSchemes.length > 0 || canOpenAIDesign}}">
     <view class="published-schemes-heading">
       <text class="published-schemes-title">{{publishedSchemes.length > 0 ? '已发布方案' : '方案设计'}}</text>
-      <text class="published-schemes-meta" wx:if="{{publishedSchemes.length > 0}}">{{publishedSchemes.length}} 轮</text>
+      <text class="published-schemes-meta" wx:if="{{publishedSchemes.length > 0}}">{{stat.count(publishedSchemes.length)}} 轮</text>
       <text class="published-schemes-meta" wx:else>{{aiDesignEmptyHint}}</text>
     </view>
     <view
@@ -227,7 +229,7 @@
   <view class="measurement-history" wx:if="{{previousFloorPlans.length > 0}}">
     <view class="measurement-history-heading">
       <text class="measurement-history-title">历史量房记录</text>
-      <text class="measurement-history-meta">{{previousFloorPlans.length}} 份</text>
+      <text class="measurement-history-meta">{{stat.count(previousFloorPlans.length)}} 份</text>
     </view>
     <view
       class="measurement-record {{canEditMeasurements ? '' : 'is-readonly'}}"
@@ -387,7 +389,7 @@
     </view>
     <view wx:if="{{staffAssignLoading}}" class="staff-assign-state">正在读取可派人员…</view>
     <view wx:elif="{{staffAssignError}}" class="staff-assign-state">{{staffAssignError}}</view>
-    <scroll-view wx:else scroll-y class="staff-assign-list" enhanced show-scrollbar="{{false}}">
+    <scroll-view wx:else scroll-y class="staff-assign-list" enhanced show-scrollbar="{{false}}" lower-threshold="120" bindscrolltolower="onLoadMoreStaffAssign">
       <view
         wx:for="{{staffAssignCandidates}}"
         wx:key="id"
@@ -403,6 +405,7 @@
         </view>
         <text class="staff-assign-cta">{{staffAssignSubmitting ? '提交中' : '确认指派'}}</text>
       </view>
+      <view wx:if="{{staffAssignFooterText}}" class="sfp-list-footer">{{staffAssignFooterText}}</view>
     </scroll-view>
   </view>
 </view>

@@ -8,6 +8,7 @@ import {
   resolveMiniProgramPlatformAdmin,
   toPlatformEnterpriseReviewDto,
 } from '@/lib/miniprogram-platform-enterprises';
+import { createPaginationMetadata, getPaginationParams } from '@/lib/pagination';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,8 @@ export async function GET(request: Request) {
     const context = await resolveMiniProgramPlatformAdmin(request);
     if (!context) return platformAdminForbiddenResponse();
 
-    const searchParams = new URL(request.url).searchParams;
+    const url = new URL(request.url);
+    const searchParams = url.searchParams;
     const parsed = parsePlatformEnterpriseListStatus(searchParams.get('status'));
     if ('error' in parsed) {
       return NextResponse.json(
@@ -29,21 +31,33 @@ export async function GET(request: Request) {
       );
     }
     const { q } = parsePlatformEnterpriseListQuery(searchParams.get('q'));
+    const { page, limit } = getPaginationParams(url);
 
-    const rows = await withPlatformTransaction(async (transaction) => {
-      return new EnterpriseRepository(transaction).listForPlatformReview({
+    const data = await withPlatformTransaction(async (transaction) => {
+      const repository = new EnterpriseRepository(transaction);
+      const [rows, total] = await Promise.all([
+        repository.listForPlatformReview({
+          status: parsed.status,
+          q,
+          page,
+          limit,
+        }),
+        repository.countForPlatformReview({
+          status: parsed.status,
+          q,
+        }),
+      ]);
+      return {
         status: parsed.status,
         q,
-      });
+        enterprises: rows.map((row) => toPlatformEnterpriseReviewDto(row)),
+        pagination: createPaginationMetadata(total, page, limit),
+      };
     });
 
     return NextResponse.json({
       success: true,
-      data: {
-        status: parsed.status,
-        q,
-        enterprises: rows.map((row) => toPlatformEnterpriseReviewDto(row)),
-      },
+      data,
     });
   } catch (error: unknown) {
     return NextResponse.json(

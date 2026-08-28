@@ -1,3 +1,4 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
 <view class="portal-page sfp-page">
   <view class="portal-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
     <text class="nav-title">我的收益</text>
@@ -9,11 +10,11 @@
     <view class="summary-row">
       <view>
         <text class="summary-label">待发放</text>
-        <text class="summary-value">{{payableCountLabel}}</text>
+        <text class="summary-value">{{stat.count(payableCountLabel)}}笔</text>
       </view>
       <view>
         <text class="summary-label">已发放</text>
-        <text class="summary-value">{{paidCountLabel}}</text>
+        <text class="summary-value">{{stat.count(paidCountLabel)}}笔</text>
       </view>
     </view>
   </view>
@@ -37,6 +38,7 @@
         <text wx:if="{{item.status === 'paid' && item.paidAt}}">企业已完成支付</text>
       </view>
     </view>
+    <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
   </view>
 </view>
 <custom-tab-bar />

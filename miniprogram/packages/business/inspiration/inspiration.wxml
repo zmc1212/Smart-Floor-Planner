@@ -1,3 +1,4 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
 <view class="container sfp-tab-page">
   <view class="inspiration-hero">
     <view class="hero-copy">
@@ -52,7 +53,7 @@
           <text class="case-title">{{item.title}}</text>
           <view class="case-meta">
             <text class="case-tag">{{item.roomType}}</text>
-            <text class="case-views">{{item.viewCount}} 浏览</text>
+            <text class="case-views">{{stat.count(item.viewCount)}} 浏览</text>
           </view>
           <view class="case-actions">
             <view class="btn-share" bindtap="onOpenPoster" data-id="{{item._id}}">

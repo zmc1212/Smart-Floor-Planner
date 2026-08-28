@@ -223,7 +223,7 @@ globalThis.Page = (definition) => {
   registeredPage = definition;
 };
 
-const surveyGraph = require('../../miniprogram/utils/surveyWallGraph.js');
+const surveyGraph = require('../../miniprogram/packages/surveying/utils/surveyWallGraph.js');
 const surveyCanvasRenderer = require('../../miniprogram/packages/surveying/utils/surveyCanvasRenderer.js');
 const { CATEGORY_ORDER, createScenarioCatalog } = require('./scenarios.js');
 require('../../miniprogram/packages/surveying/editor/surveying-editor.js');

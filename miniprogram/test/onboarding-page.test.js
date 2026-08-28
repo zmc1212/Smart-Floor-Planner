@@ -33,6 +33,19 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.ok(businessPackage.pages.includes('onboarding-debug/onboarding-debug'));
   assert.match(wxml, /open-type="getPhoneNumber"/);
   assert.match(wxml, /欢迎加入服务团队/);
+  assert.match(wxml, /入驻后，可在推广端查看/);
+  assert.match(wxml, /欢迎加入/);
+  assert.match(wxml, /推广团队/);
+  assert.match(wxml, /立即加入推广团队/);
+  assert.match(wxml, /加入后即可获取专属推广码/);
+  const referrerHelper = wxml.match(/<view class="identity-link referrer-ready identity-link-v7">[\s\S]*?<\/view>/)?.[0];
+  assert.ok(referrerHelper);
+  assert.doesNotMatch(referrerHelper, /bindtap|aria-role|link-chevron/);
+  assert.match(wxml, /images\/onboarding-referrer-v7\/xiao-k-promoter-hero-v7\.png/);
+  assert.match(wxml, /images\/onboarding-referrer-v7\/enterprise-building-v7\.png/);
+  assert.match(wxml, /专属服务码/);
+  assert.match(wxml, /推广记录/);
+  assert.match(wxml, /对应提成/);
   assert.match(wxml, /选择你的服务身份/);
   assert.match(wxml, /xiao-k-onboarding-welcome-complete\.png/);
   const welcomeAssetPath = path.join(
@@ -43,6 +56,28 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   const welcomeAsset = fs.readFileSync(welcomeAssetPath);
   assert.deepEqual([...welcomeAsset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.ok(welcomeAsset.byteLength <= 300 * 1024);
+  for (const assetName of ['xiao-k-promoter-hero-v7.png', 'enterprise-building-v7.png']) {
+    const asset = fs.readFileSync(path.join(miniRoot, 'images/onboarding-referrer-v7', assetName));
+    assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(asset.byteLength <= 300 * 1024, `${assetName} exceeds the generated-artwork budget`);
+  }
+  for (const assetName of [
+    'promotion-code-v7.png',
+    'promotion-progress-v7.png',
+    'promotion-commission-v7.png',
+    'promotion-person-plus-v7.png',
+    'promotion-cta-shield-v7.png'
+  ]) {
+    const asset = fs.readFileSync(path.join(miniRoot, 'packages/business/assets/onboarding-referrer-v7', assetName));
+    assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(asset.byteLength <= 300 * 1024, `${assetName} exceeds the generated-artwork budget`);
+  }
+  assert.match(wxml, /promotion-person-plus-v7\.png/);
+  assert.match(wxml, /promotion-progress-v7\.png/);
+  assert.match(wxml, /promotion-commission-v7\.png/);
+  assert.match(wxml, /promotion-code-v7\.png/);
+  assert.match(wxml, /promotion-cta-shield-v7\.png/);
+  assert.match(wxml, /step-title-row-v7/);
   assert.match(wxml, /xiao-k-onboarding-recovery\.png/);
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
   assert.match(wxml, /当前邀请暂不可用/);
@@ -82,10 +117,10 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*min-width:\s*100%/);
   assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*white-space:\s*nowrap/);
   assert.match(less, /\.onboarding-content \.join-action\s*\{[^}]*margin-top:\s*32rpx/);
-  assert.match(less, /\.welcome-title,\s*\.recovery-title\s*\{[\s\S]*font-size:\s*44rpx/);
-  assert.match(less, /\.section-title\s*\{[^}]*font-size:\s*34rpx/);
-  assert.match(less, /\.section-copy\s*\{[^}]*font-size:\s*26rpx/);
-  assert.match(less, /\.join-action,\s*\.state-action\s*\{[\s\S]*font-size:\s*32rpx/);
+  assert.match(less, /\.referrer-welcome-hero \.welcome-title\s*\{[^}]*font-size:\s*48rpx/);
+  assert.match(less, /\.referrer-card \.section-title\s*\{[^}]*font-size:\s*36rpx/);
+  assert.match(less, /\.referrer-card \.section-copy\s*\{[^}]*font-size:\s*28rpx/);
+  assert.match(less, /\.onboarding-content \.join-action\.referrer-ready\s*\{[\s\S]*font-size:\s*34rpx/);
   assert.match(less, /safe-area-inset-bottom/);
   assert.doesNotMatch(less, /font-size:\s*(?:1[0-9]|[0-9])rpx/);
   assert.doesNotMatch(less, /transform:\s*scale\(/);

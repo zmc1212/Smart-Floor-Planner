@@ -89,15 +89,35 @@ function normalizeRecords(records) {
   return (Array.isArray(records) ? records : []).map(normalizeRecord);
 }
 
+function withRowDividers(records) {
+  return (Array.isArray(records) ? records : []).map((item, index, list) => ({
+    ...item,
+    showDivider: index < list.length - 1
+  }));
+}
+
+function formatApiSummary(summary) {
+  const pending = (summary && summary.pending) || {};
+  const paid = (summary && summary.paid) || {};
+  const pendingAmount = toAmount(pending.amount);
+  const pendingAmountText = formatMoney(pendingAmount);
+  const [pendingAmountInteger, pendingAmountDecimal] = pendingAmountText.split('.');
+  return {
+    pendingCount: Number(pending.count || 0),
+    pendingAmount,
+    pendingAmountText,
+    pendingAmountInteger,
+    pendingAmountDecimal,
+    paidCount: Number(paid.count || 0),
+    monthCount: Number((summary && summary.monthCount) || 0)
+  };
+}
+
 function filterRecords(records, activeStatus) {
   const filtered = activeStatus === 'all'
     ? records.slice()
     : records.filter((item) => item.status === activeStatus);
-
-  return filtered.map((item, index) => ({
-    ...item,
-    showDivider: index < filtered.length - 1
-  }));
+  return withRowDividers(filtered);
 }
 
 function buildSummary(records, now = new Date()) {
@@ -146,8 +166,10 @@ module.exports = {
   buildPageData,
   buildSummary,
   filterRecords,
+  formatApiSummary,
   formatDate,
   formatMoney,
   getCommissionTypeLabel,
-  normalizeRecords
+  normalizeRecords,
+  withRowDividers
 };

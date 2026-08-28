@@ -1,9 +1,11 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
+
 <scroll-view scroll-y class="history-page" lower-threshold="120" bindscrolltolower="loadMore" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="reload">
   <view class="history-shell">
     <view class="history-hero">
       <view class="history-head">
       <text class="history-title">我的设计</text>
-      <text class="history-count">{{items.length}} 条</text>
+      <text class="history-count">{{stat.count(items.length)}} 条</text>
       </view>
       <image class="history-archive-scene" src="/packages/ai-workflow/assets/page-ip-v3/ai-history.jpg" mode="aspectFit"></image>
     </view>
@@ -32,7 +34,7 @@
             </view>
             <view class="item-status-row {{item.statusClass}}">
               <view class="item-status-dot"></view>
-              <text class="item-meta">{{item.statusLabel}} · {{item.credits}} 点</text>
+              <text class="item-meta">{{item.statusLabel}} · {{stat.count(item.credits)}} 点</text>
             </view>
             <view wx:if="{{item.statusClass === 'processing' && !item.recipeId}}" class="history-progress-track"><view class="history-progress-bar" style="width: {{item.progress}}%;"></view></view>
           </view>

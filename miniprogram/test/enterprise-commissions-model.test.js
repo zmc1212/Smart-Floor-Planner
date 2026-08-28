@@ -27,6 +27,8 @@ test('enterprise payout ledger groups by lead and keeps tenant totals unfiltered
   assert.deepEqual(all.groups[0].items.map((item) => item.role), ['referrer', 'designer', 'measurer']);
   assert.equal(all.groups[0].canMarkGroup, true);
   assert.equal(all.groups[0].payableIds, '1,2');
+  assert.equal(all.groups[0].payableAmountLabel, '¥220.00');
+  assert.equal(all.groups[0].markGroupLabel, '确认本单 2 笔付款');
   assert.equal(all.groups[1].sourceLabel, '员工活动');
   assert.equal(all.groups[1].canMarkGroup, false);
   assert.equal(all.groups[1].items[0].canMarkPaid, true);
@@ -34,6 +36,8 @@ test('enterprise payout ledger groups by lead and keeps tenant totals unfiltered
   const payable = buildPageData(payload, 'payable');
   assert.equal(payable.groups.length, 2);
   assert.equal(payable.groups[0].items.length, 2);
+  assert.equal(payable.sectionTitle, '待确认付款');
+  assert.equal(payable.visibleItemCount, 3);
   assert.equal(payable.payableTotal, '¥300.00');
 });
 

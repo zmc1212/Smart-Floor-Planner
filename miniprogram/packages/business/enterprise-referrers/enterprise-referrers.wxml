@@ -19,7 +19,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/20-enterprise-appointment
     </view>
   </view>
 
-  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}">
+  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}" lower-threshold="120" bindscrolltolower="onLoadMore">
     <view class="guide-row">
       <view class="guide-copy">
         <text class="guide-title">谁已入驻本店</text>
@@ -73,16 +73,27 @@ FORM: design-references/miniprogram-airy-minimalist-v1/20-enterprise-appointment
               <text>{{item.statusLabel}}</text>
             </view>
           </view>
-          <text class="meta-line">{{item.phone || '暂未提供电话'}}</text>
+          <view
+            wx:if="{{item.phone && !item.actionLabel}}"
+            class="phone-row sfp-icon-action"
+            data-item="{{item}}"
+            catchtap="callReferrer"
+            aria-role="button"
+            aria-label="拨打推荐人电话"
+          >
+            <text class="phone-number">{{item.phone}}</text>
+            <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+          </view>
+          <text wx:elif="{{item.phone}}" class="meta-line">{{item.phone}}</text>
+          <text wx:else class="meta-line">暂未提供电话</text>
           <text wx:if="{{item.joinedAtLabel}}" class="helper-line">加入 {{item.joinedAtLabel}}</text>
           <text wx:if="{{item.helperText}}" class="helper-line">{{item.helperText}}</text>
-          <view class="card-footer">
+          <view wx:if="{{item.actionLabel}}" class="card-footer">
             <view wx:if="{{item.phone}}" class="ghost-btn sfp-icon-action" data-item="{{item}}" catchtap="callReferrer">
               <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
               <text>电话联系</text>
             </view>
             <view
-              wx:if="{{item.actionLabel}}"
               class="cta-btn"
               data-item="{{item}}"
               catchtap="disableReferrer"
@@ -90,6 +101,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/20-enterprise-appointment
           </view>
         </view>
       </view>
+      <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
     </view>
   </scroll-view>
 </view>

@@ -431,6 +431,22 @@ export function shanghaiYearRange(now = new Date()) {
   };
 }
 
+function shanghaiCalendarDateKey(date: Date) {
+  const parts = shanghaiDateParts(date);
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function withInclusiveDateKeys<T extends { start: Date; end: Date }>(range: T) {
+  return {
+    ...range,
+    fromDate: shanghaiCalendarDateKey(range.start),
+    toDate: shanghaiCalendarDateKey(addShanghaiCalendarDays(range.end, -1)),
+  };
+}
+
 export type WorkbenchPeriodKind = 'week' | 'month' | 'year' | 'custom';
 
 export type WorkbenchPeriodRange = {
@@ -464,10 +480,10 @@ export function resolveWorkbenchPeriod(input: {
   const now = input.now || new Date();
   const kind = String(input.period || 'month').trim().toLowerCase();
   if (kind === 'week') {
-    return { kind: 'week', label: '本周', ...shanghaiWeekRange(now) };
+    return { kind: 'week', label: '本周', ...withInclusiveDateKeys(shanghaiWeekRange(now)) };
   }
   if (kind === 'year') {
-    return { kind: 'year', label: '本年', ...shanghaiYearRange(now) };
+    return { kind: 'year', label: '本年', ...withInclusiveDateKeys(shanghaiYearRange(now)) };
   }
   if (kind === 'custom') {
     const from = parseShanghaiDateInput(input.from);
@@ -484,7 +500,7 @@ export function resolveWorkbenchPeriod(input: {
       toDate: `${to.year}-${String(to.month).padStart(2, '0')}-${String(to.day).padStart(2, '0')}`,
     };
   }
-  return { kind: 'month', label: '本月', ...shanghaiMonthRange(now) };
+  return { kind: 'month', label: '本月', ...withInclusiveDateKeys(shanghaiMonthRange(now)) };
 }
 
 export function previousComparablePeriodRange(range: Pick<WorkbenchPeriodRange, 'kind' | 'start' | 'end'>) {

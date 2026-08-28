@@ -23,5 +23,5 @@ test('snap lock remains editor-local and is cleared at drag boundaries', () => {
   const editor = read('packages/surveying/editor/surveying-editor.js');
   assert.match(editor, /previousLock: this\.cursorSnapLock/);
   assert.ok((editor.match(/this\.cursorSnapLock = null/g) || []).length >= 3);
-  assert.doesNotMatch(read('utils/survey/legacy-kernel.js'), /cursorSnapLock/);
+  assert.doesNotMatch(read('packages/surveying/utils/survey/legacy-kernel.js'), /cursorSnapLock/);
 });

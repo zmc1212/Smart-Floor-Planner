@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import { enterprises, enterpriseStatusEvents } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 import {
@@ -32,7 +32,7 @@ export class EnterpriseRepository {
     return this.listForPlatformReview({ status });
   }
 
-  async listForPlatformReview(input: {
+  private buildPlatformReviewWhere(input: {
     status?: string | null;
     q?: string | null;
   } = {}) {
@@ -62,18 +62,41 @@ export class EnterpriseRepository {
       }
     }
 
-    const where =
-      filters.length === 0
-        ? undefined
-        : filters.length === 1
-          ? filters[0]
-          : and(...filters);
+    return filters.length === 0
+      ? undefined
+      : filters.length === 1
+        ? filters[0]
+        : and(...filters);
+  }
 
+  async listForPlatformReview(input: {
+    status?: string | null;
+    q?: string | null;
+    page?: number;
+    limit?: number;
+  } = {}) {
+    const where = this.buildPlatformReviewWhere(input);
     const query = this.transaction.select().from(enterprises);
-    return (where ? query.where(where) : query).orderBy(
+    const ordered = (where ? query.where(where) : query).orderBy(
       desc(enterprises.createdAt),
       desc(enterprises.id)
     );
+    const page = input.page != null ? Math.max(1, input.page) : null;
+    const limit = input.limit != null ? Math.max(1, input.limit) : null;
+    if (page != null && limit != null) {
+      return ordered.offset((page - 1) * limit).limit(limit);
+    }
+    return ordered;
+  }
+
+  async countForPlatformReview(input: {
+    status?: string | null;
+    q?: string | null;
+  } = {}) {
+    const where = this.buildPlatformReviewWhere(input);
+    const query = this.transaction.select({ value: count() }).from(enterprises);
+    const rows = await (where ? query.where(where) : query);
+    return Number(rows[0]?.value ?? 0);
   }
 
   async countByStatus(status: string) {

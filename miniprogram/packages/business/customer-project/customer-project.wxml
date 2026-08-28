@@ -1,3 +1,5 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
+
 <view class="archive-page sfp-page">
   <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
     <view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view>
@@ -150,7 +152,7 @@
           <text class="dossier-title">房屋现场图</text>
           <text class="dossier-helper">量房前后都可补充</text>
         </view>
-        <view class="dossier-status is-site">{{sitePhotos.length ? sitePhotos.length + ' 张' : '待采集'}}</view>
+        <view class="dossier-status is-site">{{sitePhotos.length ? stat.count(sitePhotos.length) + ' 张' : '待采集'}}</view>
         <view class="dossier-chevron {{sitePhotoManagerOpen ? 'is-open' : ''}}"></view>
       </view>
       <view wx:if="{{sitePhotoManagerOpen}}" class="dossier-body" catchtap="noop">

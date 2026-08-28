@@ -1,5 +1,12 @@
 const app = getApp();
 const api = require('../../../utils/api.js');
+const {
+  DEFAULT_PAGE_SIZE,
+  appendQuery,
+  parsePagination,
+  mergePage,
+  listFooterText,
+} = require('../../../utils/list-pagination.js');
 
 const VIEW_TABS = [
   { key: 'my', label: '我的报备' },
@@ -33,12 +40,16 @@ function localizeTimelineCopy(value, type) {
   return LEGACY_TIMELINE_COPY[text] || text;
 }
 
-function buildListPath(view) {
-  if (view === 'overdue') return '/workbench/todos?view=overdue';
-  if (view === 'pool') return '/promotion-records?poolStatus=in_pool';
-  if (view === 'measure') return '/promotion-records?view=measure&businessStage=measuring';
-  if (view === 'design') return '/promotion-records?view=design&businessStage=designing';
-  return `/promotion-records?view=${encodeURIComponent(view || 'my')}`;
+function buildListPath(view, extras = {}) {
+  if (view === 'overdue') return appendQuery('/workbench/todos', { view: 'overdue' });
+  if (view === 'pool') return appendQuery('/promotion-records', { poolStatus: 'in_pool', ...extras });
+  if (view === 'measure') {
+    return appendQuery('/promotion-records', { view: 'measure', businessStage: 'measuring', ...extras });
+  }
+  if (view === 'design') {
+    return appendQuery('/promotion-records', { view: 'design', businessStage: 'designing', ...extras });
+  }
+  return appendQuery('/promotion-records', { view: view || 'my', ...extras });
 }
 
 function formatDateTime(value) {
@@ -145,6 +156,10 @@ Page({
     useTodoApi: false,
     userInfo: {},
     statusBarHeight: 0,
+    page: 1,
+    hasMore: false,
+    loadingMore: false,
+    footerText: '',
   },
 
   onLoad(options) {
@@ -162,10 +177,16 @@ Page({
     this.setData({
       userInfo: app.globalData.userInfo || wx.getStorageSync('userInfo') || {},
     });
-    this.fetchRecords();
+    this.fetchRecords({ reset: true });
   },
 
-  async fetchRecords() {
+  onLoadMore() {
+    if (this.data.useTodoApi) return;
+    this.fetchRecords({ reset: false });
+  },
+
+  async fetchRecords(options) {
+    const reset = !options || options.reset !== false;
     const openid = app.globalData.openid || wx.getStorageSync('openid');
     const token = wx.getStorageSync('token');
     if (!openid && !token) {
@@ -173,30 +194,64 @@ Page({
       return;
     }
 
-    this.setData({ loading: true });
+    if (this._fetching) return;
+    if (!reset && (this.data.loadingMore || !this.data.hasMore)) return;
+    this._fetching = true;
+    const { view, searchText, userInfo } = this.data;
+    const useTodoApi = view === 'overdue';
+    const page = reset ? 1 : Number(this.data.page || 1);
+    if (reset) this.setData({ loading: true, loadingMore: false });
+    else this.setData({ loadingMore: true, footerText: listFooterText(true, true, this.data.displayedRecords.length) });
     try {
-      const { view, searchText, userInfo } = this.data;
-      const useTodoApi = view === 'overdue';
-      const res = await api.request(buildListPath(view), 'GET');
-      const records = (res.data || []).map((item) => normalizeRecord(item, view, useTodoApi, userInfo));
+      const extras = useTodoApi
+        ? {}
+        : {
+            search: String(searchText || '').trim(),
+            page,
+            limit: DEFAULT_PAGE_SIZE,
+          };
+      const res = await api.request(buildListPath(view, extras), 'GET');
+      const incoming = (res.data || []).map((item) => normalizeRecord(item, view, useTodoApi, userInfo));
+      const records = useTodoApi ? incoming : mergePage(this.data.records, incoming, reset);
+      const pagination = useTodoApi
+        ? { hasMore: false, total: records.length }
+        : parsePagination(res);
+      const displayedRecords = useTodoApi ? filterRecords(records, searchText) : records;
       this.setData({
         records,
-        displayedRecords: filterRecords(records, searchText),
+        displayedRecords,
         useTodoApi,
         loading: false,
+        loadingMore: false,
+        page: useTodoApi ? 1 : page + 1,
+        hasMore: Boolean(pagination.hasMore),
+        footerText: listFooterText(false, Boolean(pagination.hasMore), displayedRecords.length),
       });
     } catch (err) {
-      this.setData({ loading: false, records: [], displayedRecords: [] });
+      this.setData({
+        loading: false,
+        loadingMore: false,
+        records: reset ? [] : this.data.records,
+        displayedRecords: reset ? [] : this.data.displayedRecords,
+        footerText: listFooterText(false, this.data.hasMore, reset ? 0 : this.data.displayedRecords.length),
+      });
       wx.showToast({ title: err.error || '加载失败', icon: 'none' });
+    } finally {
+      this._fetching = false;
     }
   },
 
   onSearchInput(e) {
     const searchText = e.detail.value || '';
-    this.setData({
-      searchText,
-      displayedRecords: filterRecords(this.data.records, searchText),
-    });
+    this.setData({ searchText });
+    if (this.data.useTodoApi) {
+      this.setData({ displayedRecords: filterRecords(this.data.records, searchText) });
+      return;
+    }
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(() => {
+      this.setData({ records: [], displayedRecords: [], page: 1 }, () => this.fetchRecords({ reset: true }));
+    }, 300);
   },
 
   onViewTap(e) {
@@ -208,8 +263,9 @@ Page({
       records: [],
       displayedRecords: [],
       useTodoApi: view === 'overdue',
+      page: 1,
     });
-    this.fetchRecords();
+    this.fetchRecords({ reset: true });
   },
 
   onOpenDetail(e) {
@@ -233,7 +289,7 @@ Page({
           res.data.claimRequest &&
           res.data.claimRequest.status === 'pending';
         wx.showToast({ title: isPendingApproval ? '已提交认领申请' : '认领成功', icon: 'success' });
-        this.fetchRecords();
+        this.fetchRecords({ reset: true });
       }
     } catch (err) {
       wx.hideLoading();

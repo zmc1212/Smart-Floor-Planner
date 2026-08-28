@@ -1,6 +1,7 @@
 import {
   and,
   asc,
+  count,
   desc,
   eq,
   inArray,
@@ -948,35 +949,47 @@ export class ReferralLeadRepository {
     enterpriseId: bigint;
     role: 'designer' | 'measurer';
     excludeStaffId?: bigint | null;
+    page?: number;
+    limit?: number;
   }) {
-    const rows = await this.transaction
+    const where = and(
+      eq(adminUsers.enterpriseId, input.enterpriseId),
+      eq(adminUsers.role, input.role),
+      eq(adminUsers.status, 'active'),
+      eq(adminUsers.assignmentPaused, false),
+      ...(input.excludeStaffId ? [ne(adminUsers.id, input.excludeStaffId)] : []),
+      ...(input.role === 'designer'
+        ? [
+            isNotNull(adminUsers.wechatId),
+            sql`btrim(${adminUsers.wechatId}) <> ''`,
+            isNotNull(adminUsers.wechatQrAssetId),
+            sql`exists (
+              select 1
+              from app.media_assets assignment_qr
+              where assignment_qr.id = ${adminUsers.wechatQrAssetId}
+                and assignment_qr.enterprise_id = ${input.enterpriseId}
+                and assignment_qr.deleted_at is null
+            )`,
+          ]
+        : [])
+    );
+    const page = input.page != null ? Math.max(1, input.page) : null;
+    const limit = input.limit != null ? Math.max(1, input.limit) : null;
+    const query = this.transaction
       .select()
       .from(adminUsers)
-      .where(
-        and(
-          eq(adminUsers.enterpriseId, input.enterpriseId),
-          eq(adminUsers.role, input.role),
-          eq(adminUsers.status, 'active'),
-          eq(adminUsers.assignmentPaused, false),
-          ...(input.excludeStaffId ? [ne(adminUsers.id, input.excludeStaffId)] : []),
-          ...(input.role === 'designer'
-            ? [
-                isNotNull(adminUsers.wechatId),
-                sql`btrim(${adminUsers.wechatId}) <> ''`,
-                isNotNull(adminUsers.wechatQrAssetId),
-                sql`exists (
-                  select 1
-                  from app.media_assets assignment_qr
-                  where assignment_qr.id = ${adminUsers.wechatQrAssetId}
-                    and assignment_qr.enterprise_id = ${input.enterpriseId}
-                    and assignment_qr.deleted_at is null
-                )`,
-              ]
-            : [])
-        )
-      )
+      .where(where)
       .orderBy(asc(adminUsers.displayName), asc(adminUsers.id));
-    return rows;
+    const [rows, totalRows] = await Promise.all([
+      page != null && limit != null
+        ? query.offset((page - 1) * limit).limit(limit)
+        : query,
+      this.transaction.select({ value: count() }).from(adminUsers).where(where),
+    ]);
+    return {
+      rows,
+      total: Number(totalRows[0]?.value ?? 0),
+    };
   }
 
   async assignStaff(input: {

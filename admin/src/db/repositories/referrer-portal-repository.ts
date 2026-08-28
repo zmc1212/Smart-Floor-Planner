@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   aiGenerationPublications,
   aiGenerations,
@@ -51,33 +51,49 @@ export class ReferrerPortalRepository {
     return rows[0] ?? null;
   }
 
-  async listProgress(userId: bigint, membershipId: bigint, enterpriseId: bigint) {
+  async listProgress(
+    userId: bigint,
+    membershipId: bigint,
+    enterpriseId: bigint,
+    options: { page?: number; limit?: number } = {}
+  ) {
     const scope = await this.resolveMembership(userId, membershipId, enterpriseId);
     if (!scope) return null;
+    const page = Math.max(1, options.page ?? 1);
+    const limit = Math.max(1, options.limit ?? 20);
 
-    const progressLeads = await this.transaction
-      .select({
-        id: leads.id,
-        status: leads.status,
-        assignmentStatus: leads.assignmentStatus,
-        primaryFloorPlanId: leads.primaryFloorPlanId,
-        convertedAt: leads.convertedAt,
-        updatedAt: leads.updatedAt,
-        createdAt: leads.createdAt,
-        referrerRecordCode: leads.referrerRecordCode,
-        terminationType: leads.terminationType,
-        terminatedAt: leads.terminatedAt,
-        terminationNote: leads.terminationNote,
-        terminationPreviousStatus: leads.terminationPreviousStatus,
-      })
-      .from(leads)
-      .where(and(
-        eq(leads.enterpriseId, enterpriseId),
-        eq(leads.referrerMembershipId, membershipId),
-        isNull(leads.archivedAt)
-      ))
-      .orderBy(desc(leads.updatedAt), desc(leads.id));
-    if (!progressLeads.length) return { enterpriseName: scope.enterpriseName, items: [] };
+    const progressWhere = and(
+      eq(leads.enterpriseId, enterpriseId),
+      eq(leads.referrerMembershipId, membershipId),
+      isNull(leads.archivedAt)
+    );
+    const [progressLeads, totalRows] = await Promise.all([
+      this.transaction
+        .select({
+          id: leads.id,
+          status: leads.status,
+          assignmentStatus: leads.assignmentStatus,
+          primaryFloorPlanId: leads.primaryFloorPlanId,
+          convertedAt: leads.convertedAt,
+          updatedAt: leads.updatedAt,
+          createdAt: leads.createdAt,
+          referrerRecordCode: leads.referrerRecordCode,
+          terminationType: leads.terminationType,
+          terminatedAt: leads.terminatedAt,
+          terminationNote: leads.terminationNote,
+          terminationPreviousStatus: leads.terminationPreviousStatus,
+        })
+        .from(leads)
+        .where(progressWhere)
+        .orderBy(desc(leads.updatedAt), desc(leads.id))
+        .offset((page - 1) * limit)
+        .limit(limit),
+      this.transaction.select({ value: count() }).from(leads).where(progressWhere),
+    ]);
+    const total = Number(totalRows[0]?.value ?? 0);
+    if (!progressLeads.length) {
+      return { enterpriseName: scope.enterpriseName, items: [], total, page, limit };
+    }
 
     const leadIds = progressLeads.map((lead) => lead.id);
     const [appointmentRows, publicationRows, impacts] = await Promise.all([
@@ -137,6 +153,9 @@ export class ReferrerPortalRepository {
 
     return {
       enterpriseName: scope.enterpriseName,
+      total,
+      page,
+      limit,
       items: progressLeads.map((lead) => {
         const appointment = appointmentByLead.get(lead.id) ?? null;
         const publishedAt = publishedAtByLead.get(lead.id) ?? null;
@@ -176,21 +195,47 @@ export class ReferrerPortalRepository {
     };
   }
 
-  async listEarnings(userId: bigint, membershipId: bigint, enterpriseId: bigint) {
+  async listEarnings(
+    userId: bigint,
+    membershipId: bigint,
+    enterpriseId: bigint,
+    options: { page?: number; limit?: number } = {}
+  ) {
     const scope = await this.resolveMembership(userId, membershipId, enterpriseId);
     if (!scope) return null;
-    const rows = await this.transaction
-      .select({ commission: leadCommissions, leadId: leads.id })
-      .from(leadCommissions)
-      .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
-      .where(and(
-        eq(leadCommissions.enterpriseId, enterpriseId),
-        eq(leadCommissions.role, 'referrer'),
-        eq(leadCommissions.beneficiaryUserId, userId),
-        eq(leads.enterpriseId, enterpriseId),
-        isNull(leads.archivedAt)
-      ))
-      .orderBy(desc(leadCommissions.createdAt), desc(leadCommissions.id));
+    const page = Math.max(1, options.page ?? 1);
+    const limit = Math.max(1, options.limit ?? 20);
+    const earningsWhere = and(
+      eq(leadCommissions.enterpriseId, enterpriseId),
+      eq(leadCommissions.role, 'referrer'),
+      eq(leadCommissions.beneficiaryUserId, userId),
+      eq(leads.enterpriseId, enterpriseId),
+      isNull(leads.archivedAt)
+    );
+    const [rows, totalRows, statusRows] = await Promise.all([
+      this.transaction
+        .select({ commission: leadCommissions, leadId: leads.id })
+        .from(leadCommissions)
+        .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
+        .where(earningsWhere)
+        .orderBy(desc(leadCommissions.createdAt), desc(leadCommissions.id))
+        .offset((page - 1) * limit)
+        .limit(limit),
+      this.transaction
+        .select({ value: count() })
+        .from(leadCommissions)
+        .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
+        .where(earningsWhere),
+      this.transaction
+        .select({
+          status: leadCommissions.status,
+          value: count(),
+        })
+        .from(leadCommissions)
+        .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
+        .where(earningsWhere)
+        .groupBy(leadCommissions.status),
+    ]);
     const items = rows.map(({ commission, leadId }) => ({
       id: commission.id.toString(),
       customerLabel: maskedCustomerLabel(leadId),
@@ -198,11 +243,15 @@ export class ReferrerPortalRepository {
       createdAt: commission.createdAt,
       paidAt: commission.paidAt,
     }));
+    const counts = Object.fromEntries(statusRows.map((row) => [row.status, Number(row.value)]));
 
     return {
       enterpriseName: scope.enterpriseName,
-      payableCount: items.filter((item) => item.status === 'payable').length,
-      paidCount: items.filter((item) => item.status === 'paid').length,
+      payableCount: counts.payable || 0,
+      paidCount: counts.paid || 0,
+      total: Number(totalRows[0]?.value ?? 0),
+      page,
+      limit,
       items,
     };
   }

@@ -5,6 +5,7 @@ import { withTenantTransaction } from '@/db/transaction';
 import { isEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
 import { isMiniStudioContext, requireMiniStudioContext } from '@/lib/ai/mini-ai-studio';
 import { resolveLeadServiceStage } from '@/lib/lead-service-stage';
+import { createPaginationMetadata, getPaginationParams } from '@/lib/pagination';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,21 +14,26 @@ export async function GET(request: Request) {
     const context = await requireMiniStudioContext(request);
     if (!isMiniStudioContext(context)) return context;
     const url = new URL(request.url);
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 100);
+    const { page, limit } = getPaginationParams(url);
     const search = url.searchParams.get('search')?.trim();
     const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
     const operatorId = parsePostgresId(context.operatorId, 'operatorId');
-    const data = await withTenantTransaction(enterpriseId, async (transaction) => {
+    const listed = await withTenantTransaction(enterpriseId, async (transaction) => {
       const leadRepository = new LeadRepository(transaction);
-      const result = await leadRepository.list({ query: search, limit, orderBy: 'updatedAt' });
-      const visibleLeads = result.rows.filter((lead) => (
-        context.role === 'enterprise_admin'
-        || (context.role === 'designer' && lead.assignedTo === operatorId)
-      )).filter((lead) => !lead.archivedAt);
+      const result = await leadRepository.list({
+        query: search,
+        page,
+        limit,
+        orderBy: 'updatedAt',
+        ...(context.role === 'designer' ? { staffId: operatorId } : {}),
+      });
+      const visibleLeads = result.rows;
       const summaries = await new AiWorkflowRepository(transaction)
         .summarizeActiveByLeadIds(visibleLeads.map((lead) => lead.id));
       const workflowMap = new Map(summaries.map((summary) => [summary.leadId, summary]));
-      return visibleLeads.map((lead) => {
+      return {
+        total: result.total,
+        items: visibleLeads.map((lead) => {
         const workflowMeta = workflowMap.get(lead.id);
         const floorPlans = lead.floorPlanRecords
           .filter(isEligibleWorkflowFloorPlan)
@@ -61,9 +67,14 @@ export async function GET(request: Request) {
           latestWorkflowUpdatedAt: workflowMeta?.latestUpdatedAt,
           followUpCount: lead.followUpRecords.length,
         };
-      });
+      }),
+      };
     });
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json({
+      success: true,
+      data: listed.items,
+      pagination: createPaginationMetadata(listed.total, page, limit),
+    });
   } catch (error) {
     console.error('[Mini AI Studio Leads GET]', error);
     return NextResponse.json({ success: false, error: '读取可设计客户失败' }, { status: 500 });

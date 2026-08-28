@@ -101,3 +101,16 @@ test('Commercial commission records expose lead and designer context', () => {
   assert.equal(record.amountText, '88.00');
   assert.equal(record.statusTone, 'pending');
 });
+
+test('API summary uses COUNT totals instead of the current page', () => {
+  const { formatApiSummary } = require('../packages/business/commission-records/commission-records-model.js');
+  const summary = formatApiSummary({
+    pending: { amount: 1250.5, count: 12 },
+    paid: { count: 8 },
+    monthCount: 4
+  });
+  assert.equal(summary.pendingCount, 12);
+  assert.equal(summary.pendingAmountText, '1,250.50');
+  assert.equal(summary.paidCount, 8);
+  assert.equal(summary.monthCount, 4);
+});

@@ -4,6 +4,7 @@ OWN-WORLD: 极简透气版 (Airy Minimalist v1) 语言，活力家客绿主卡�
 FIRST VIEWPORT: 微信胶囊安全区、端标识、推广主卡、双列快捷入口、推广企业选择与推广记录在 390x844 完整优雅呈现。
 FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
 -->
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
 <view class="workbench-page sfp-page">
   <!-- Top Identity Navigation Bar -->
   <view
@@ -39,16 +40,16 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
         <view class="hero-subtitle-text">出示服务码 · 客户扫码建档 · 自动结算提成</view>
         <view class="hero-stats-row">
           <view class="stat-pill">
-            <text class="stat-pill-text">今日扫码 {{todayScans}}</text>
+            <text class="stat-pill-text">今日扫码 {{stat.count(todayScans)}}</text>
           </view>
           <view class="stat-pill">
-            <text class="stat-pill-text">累计客户 {{totalClients}}</text>
+            <text class="stat-pill-text">累计客户 {{stat.count(totalClients)}}</text>
           </view>
           <view class="stat-pill">
-            <text class="stat-pill-text">已签约 {{signedCount}}</text>
+            <text class="stat-pill-text">已签约 {{stat.count(signedCount)}}</text>
           </view>
           <view class="stat-pill">
-            <text class="stat-pill-text">待发放 {{pendingCount}}</text>
+            <text class="stat-pill-text">待发放 {{stat.count(pendingCount)}}</text>
           </view>
         </view>
         <button class="hero-cta-btn" bindtap="showServiceCode" hover-class="cta-btn-pressed">
@@ -70,7 +71,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
       <view class="quick-nav-card" bindtap="openProgress" hover-class="card-pressed" aria-role="button">
         <view class="quick-card-text">
           <text class="quick-card-title">客户</text>
-          <text class="quick-card-link">{{progressCount > 0 ? progressCount + '位客户 →' : '查看客户 →'}}</text>
+          <text class="quick-card-link">{{progressCount > 0 ? stat.count(progressCount) + '位客户 →' : '查看客户 →'}}</text>
         </view>
         <image class="quick-card-img" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" />
       </view>
@@ -90,7 +91,7 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
           <image class="section-icon" src="/images/mine-icons/building.png" mode="aspectFit" />
           <text class="section-title-text">当前推广企业</text>
         </view>
-        <view class="section-count-badge">已加入{{memberships.length}}家</view>
+        <view class="section-count-badge">已加入{{stat.count(memberships.length)}}家</view>
       </view>
 
       <scroll-view class="enterprise-scroll" scroll-x="true" enable-flex="true" show-scrollbar="false">

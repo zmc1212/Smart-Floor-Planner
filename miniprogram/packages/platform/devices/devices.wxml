@@ -1,5 +1,5 @@
 <view class="platform-device-workbench sfp-tab-page">
-  <scroll-view scroll-y class="platform-scroll" enhanced show-scrollbar="{{false}}">
+  <scroll-view scroll-y class="platform-scroll" enhanced show-scrollbar="{{false}}" lower-threshold="120" bindscrolltolower="onLoadMore">
     <view class="platform-content">
       <view
         class="identity-nav"
@@ -171,6 +171,7 @@
             </view>
             <text class="device-status">{{item.status === 'assigned' ? '已分配' : item.status}}</text>
           </view>
+          <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
         </view>
       </view>
     </view>

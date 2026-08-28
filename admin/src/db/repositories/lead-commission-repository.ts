@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseCommissionRules,
@@ -607,25 +607,48 @@ export class LeadCommissionRepository {
     staffId: bigint;
     role: 'designer' | 'measurer';
     enterpriseName: string;
+    page?: number;
+    limit?: number;
   }) {
-    const rows = await this.transaction
-      .select({
-        commission: leadCommissions,
-        leadId: leads.id,
-        leadName: leads.name,
-        assignedTo: leads.assignedTo,
-        measurerId: leads.measurerId,
-      })
-      .from(leadCommissions)
-      .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
-      .where(and(
-        eq(leadCommissions.enterpriseId, input.enterpriseId),
-        eq(leadCommissions.role, input.role),
-        eq(leadCommissions.beneficiaryUserId, input.userId),
-        eq(leads.enterpriseId, input.enterpriseId),
-        isNull(leads.archivedAt)
-      ))
-      .orderBy(desc(leadCommissions.createdAt), desc(leadCommissions.id));
+    const page = Math.max(1, input.page ?? 1);
+    const limit = Math.max(1, input.limit ?? 20);
+    const earningsWhere = and(
+      eq(leadCommissions.enterpriseId, input.enterpriseId),
+      eq(leadCommissions.role, input.role),
+      eq(leadCommissions.beneficiaryUserId, input.userId),
+      eq(leads.enterpriseId, input.enterpriseId),
+      isNull(leads.archivedAt)
+    );
+    const [rows, totalRows, statusRows] = await Promise.all([
+      this.transaction
+        .select({
+          commission: leadCommissions,
+          leadId: leads.id,
+          leadName: leads.name,
+          assignedTo: leads.assignedTo,
+          measurerId: leads.measurerId,
+        })
+        .from(leadCommissions)
+        .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
+        .where(earningsWhere)
+        .orderBy(desc(leadCommissions.createdAt), desc(leadCommissions.id))
+        .offset((page - 1) * limit)
+        .limit(limit),
+      this.transaction
+        .select({ value: count() })
+        .from(leadCommissions)
+        .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
+        .where(earningsWhere),
+      this.transaction
+        .select({
+          status: leadCommissions.status,
+          value: count(),
+        })
+        .from(leadCommissions)
+        .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
+        .where(earningsWhere)
+        .groupBy(leadCommissions.status),
+    ]);
 
     const items = rows.map(({ commission, leadId, leadName, assignedTo, measurerId }) => {
       const assigned = input.role === 'designer'
@@ -642,10 +665,15 @@ export class LeadCommissionRepository {
       };
     });
 
+    const counts = Object.fromEntries(statusRows.map((row) => [row.status, Number(row.value)]));
+
     return {
       enterpriseName: input.enterpriseName,
-      payableCount: items.filter((item) => item.status === 'payable').length,
-      paidCount: items.filter((item) => item.status === 'paid').length,
+      payableCount: counts.payable || 0,
+      paidCount: counts.paid || 0,
+      total: Number(totalRows[0]?.value ?? 0),
+      page,
+      limit,
       items,
     };
   }
@@ -664,22 +692,51 @@ export class LeadCommissionRepository {
     return rows.length;
   }
 
-  async listEnterprisePayouts(enterpriseId: bigint, enterpriseName: string) {
-    const rows = await this.transaction
-      .select({
-        commission: leadCommissions,
-        leadId: leads.id,
-        leadName: leads.name,
-        leadSource: leads.source,
-      })
-      .from(leadCommissions)
-      .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
-      .where(and(
-        eq(leadCommissions.enterpriseId, enterpriseId),
-        eq(leads.enterpriseId, enterpriseId),
-        isNull(leads.archivedAt)
-      ))
-      .orderBy(desc(leadCommissions.createdAt), desc(leadCommissions.id));
+  async listEnterprisePayouts(
+    enterpriseId: bigint,
+    enterpriseName: string,
+    options: { status?: string; page?: number; limit?: number } = {}
+  ) {
+    const page = Math.max(1, options.page ?? 1);
+    const limit = Math.max(1, options.limit ?? 20);
+    const baseWhere = and(
+      eq(leadCommissions.enterpriseId, enterpriseId),
+      eq(leads.enterpriseId, enterpriseId),
+      isNull(leads.archivedAt)
+    );
+    const listWhere = options.status && options.status !== 'all'
+      ? and(baseWhere, eq(leadCommissions.status, options.status))
+      : baseWhere;
+    const [rows, totalRows, totalStatusRows] = await Promise.all([
+      this.transaction
+        .select({
+          commission: leadCommissions,
+          leadId: leads.id,
+          leadName: leads.name,
+          leadSource: leads.source,
+        })
+        .from(leadCommissions)
+        .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
+        .where(listWhere)
+        .orderBy(desc(leadCommissions.createdAt), desc(leadCommissions.id))
+        .offset((page - 1) * limit)
+        .limit(limit),
+      this.transaction
+        .select({ value: count() })
+        .from(leadCommissions)
+        .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
+        .where(listWhere),
+      this.transaction
+        .select({
+          status: leadCommissions.status,
+          amount: sql<string>`coalesce(sum(${leadCommissions.payableAmount}), 0)`,
+          value: count(),
+        })
+        .from(leadCommissions)
+        .innerJoin(leads, eq(leadCommissions.leadId, leads.id))
+        .where(baseWhere)
+        .groupBy(leadCommissions.status),
+    ]);
 
     const beneficiaryIds = [...new Set(rows.map((row) => row.commission.beneficiaryUserId))];
     const [staffRows, membershipRows, userRows] = await Promise.all([
@@ -750,19 +807,25 @@ export class LeadCommissionRepository {
       };
     });
 
-    const sum = (status: string) => items
-      .filter((item) => item.status === status)
-      .reduce((total, item) => total + Number(item.amount || 0), 0)
-      .toFixed(2);
+    const totalsByStatus = Object.fromEntries(
+      totalStatusRows.map((row) => [
+        row.status,
+        { amount: Number(row.amount || 0), count: Number(row.value) },
+      ])
+    );
+    const money = (status: string) => Number(totalsByStatus[status]?.amount || 0).toFixed(2);
 
     return {
       enterpriseName,
       totals: {
-        payable: sum('payable'),
-        paid: sum('paid'),
-        voided: sum('voided'),
+        payable: money('payable'),
+        paid: money('paid'),
+        voided: money('voided'),
       },
-      payableCount: items.filter((item) => item.status === 'payable').length,
+      payableCount: totalsByStatus.payable?.count || 0,
+      total: Number(totalRows[0]?.value ?? 0),
+      page,
+      limit,
       items,
     };
   }

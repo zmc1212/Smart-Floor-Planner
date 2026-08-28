@@ -312,7 +312,7 @@
 
 /* 2-Column Quick Nav */
 .quick-nav-grid {
-  margin-top: 14rpx;
+  margin-top: 20rpx;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16rpx;
@@ -320,8 +320,8 @@
 
 .quick-nav-card {
   position: relative;
-  height: 160rpx;
-  padding: 20rpx;
+  height: 176rpx;
+  padding: 22rpx;
   border-radius: 22rpx;
   box-shadow: 0 8rpx 20rpx rgba(24, 52, 38, 0.045);
   display: flex;
@@ -360,26 +360,26 @@
 
 .quick-nav-mascot {
   position: absolute;
-  right: 12rpx;
-  bottom: 10rpx;
-  width: 130rpx;
-  height: 126rpx;
+  right: 14rpx;
+  bottom: 12rpx;
+  width: 140rpx;
+  height: 138rpx;
 }
 
 .quick-nav-mascot.staff-load-mascot {
-  right: 10rpx;
-  bottom: 10rpx;
-  width: 132rpx;
-  height: 122rpx;
+  right: 12rpx;
+  bottom: 12rpx;
+  width: 144rpx;
+  height: 132rpx;
 }
 
 .quick-nav-arrow {
   position: absolute;
   z-index: 2;
-  left: 20rpx;
-  bottom: 14rpx;
-  width: 40rpx;
-  height: 40rpx;
+  left: 22rpx;
+  bottom: 18rpx;
+  width: 44rpx;
+  height: 44rpx;
   border-radius: 50%;
   background: #cfe2ff;
   display: flex;
@@ -721,10 +721,10 @@
 .enterprise-activity-art {
   position: absolute;
   right: 14rpx;
-  bottom: 72rpx;
+  bottom: 74rpx;
   left: 14rpx;
   width: auto;
-  height: 252rpx;
+  height: 220rpx;
 }
 
 .enterprise-share-cta {
@@ -845,16 +845,16 @@
 
 .enterprise-appointment-row {
   min-height: 80rpx;
-  margin-top: 16rpx;
-  padding: 0 20rpx;
-  border-radius: 20rpx;
+  margin-top: 14rpx;
+  padding: 0 24rpx;
+  border-radius: 18rpx;
   color: #183426;
   border: 1rpx solid #edf2ee;
   background: #ffffff;
   box-shadow: 0 6rpx 16rpx rgba(24, 52, 38, 0.035);
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  gap: 18rpx;
   box-sizing: border-box;
 }
 
@@ -865,11 +865,19 @@
 }
 
 .enterprise-appointment-label {
+  flex: none;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.enterprise-appointment-meta {
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  font-size: 28rpx;
-  font-weight: 700;
+  color: #8e9e94;
+  font-size: 24rpx;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -878,14 +886,14 @@
 .enterprise-reminder-row {
   min-height: 72rpx;
   margin-top: 14rpx;
-  padding: 10rpx 20rpx;
+  padding: 10rpx 18rpx;
   border-radius: 20rpx;
   color: #183426;
   background: #ffffff;
   box-shadow: 0 8rpx 22rpx rgba(24, 52, 38, 0.055);
   display: flex;
   align-items: center;
-  gap: 10rpx;
+  gap: 12rpx;
   box-sizing: border-box;
 }
 
@@ -896,11 +904,20 @@
 }
 
 .enterprise-reminder-title {
-  min-width: 108rpx;
+  min-width: 100rpx;
   color: #183426;
   font-size: 26rpx;
   font-weight: 800;
   line-height: 1.25;
+}
+
+.enterprise-reminder-title-divider {
+  width: 1rpx;
+  height: 32rpx;
+  margin-right: 4rpx;
+  background: #dce8e1;
+  flex: none;
+  transform: scaleX(0.5);
 }
 
 .enterprise-reminder-facts {
@@ -908,15 +925,17 @@
   flex: 1;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 10rpx;
+  justify-content: space-between;
+  gap: 0;
 }
 
 .enterprise-reminder-fact {
+  flex: 1;
   min-width: 0;
   display: flex;
   align-items: baseline;
-  gap: 5rpx;
+  justify-content: center;
+  gap: 4rpx;
   white-space: nowrap;
 }
 
@@ -941,6 +960,36 @@
   margin-right: 4rpx;
   background: #dce8e1;
   transform: scaleX(0.5);
+}
+
+.enterprise-action-hub .quick-nav-grid {
+  margin-top: 14rpx;
+}
+
+.enterprise-action-hub .quick-nav-card {
+  height: 176rpx;
+  padding: 20rpx;
+}
+
+.enterprise-action-hub .quick-nav-mascot {
+  right: 4rpx;
+  bottom: 0;
+  width: 124rpx;
+  height: 116rpx;
+}
+
+.enterprise-action-hub .quick-nav-mascot.staff-load-mascot {
+  right: -2rpx;
+  bottom: -4rpx;
+  width: 120rpx;
+  height: 96rpx;
+}
+
+.enterprise-action-hub .quick-nav-arrow {
+  left: 20rpx;
+  bottom: 12rpx;
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .enterprise-operations-hero {
@@ -1017,10 +1066,10 @@
 
   .enterprise-activity-art {
     right: 8rpx;
-    bottom: 70rpx;
+    bottom: 72rpx;
     left: 8rpx;
     width: auto;
-    height: 220rpx;
+    height: 184rpx;
   }
 
   .enterprise-action-stack {
@@ -1056,7 +1105,7 @@
   }
 
   .enterprise-reminder-title {
-    min-width: 94rpx;
+    min-width: 88rpx;
   }
 
   .enterprise-reminder-facts {
@@ -1517,7 +1566,12 @@
   white-space: nowrap;
 }
 
-.operations-hero-kpi-value text:last-child {
+.operations-hero-kpi-value.is-compact {
+  font-size: 36rpx;
+  letter-spacing: -0.5rpx;
+}
+
+.operations-hero-kpi-value text + text {
   margin-left: 2rpx;
   font-size: 26rpx;
   letter-spacing: 0;
@@ -1964,7 +2018,7 @@
   min-width: 112rpx;
   height: 52rpx;
   padding: 0 18rpx;
-  border-radius: 26rpx;
+  border-radius: 10rpx;
   background: #00c365;
   color: #ffffff;
   font-size: 24rpx;

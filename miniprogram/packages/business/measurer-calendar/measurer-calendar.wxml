@@ -1,3 +1,4 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
 <view class="page sfp-page">
   <!-- Custom Navigation Bar -->
   <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
@@ -17,9 +18,9 @@
       <text class="hero-title">量房排期与日程管理</text>
       <text class="hero-subtitle">准时上门 · 毫米级拓扑建图</text>
       <view class="stat-pills">
-        <view class="stat-pill">今日待量 {{todayCount}}</view>
-        <view class="stat-pill">本周已排 {{weekCount}}</view>
-        <view class="stat-pill">已完成 {{completedCount}}</view>
+        <view class="stat-pill">今日待量 {{stat.count(todayCount)}}</view>
+        <view class="stat-pill">本周已排 {{stat.count(weekCount)}}</view>
+        <view class="stat-pill">已完成 {{stat.count(completedCount)}}</view>
       </view>
     </view>
     <image class="hero-mascot" src="/images/airy-v1/xiao-k-measurer-3d.png" mode="aspectFit" />
@@ -45,7 +46,7 @@
 
   <!-- Section Header -->
   <view class="section-header">
-    <text class="section-title">{{selectedDateTitle}} (共{{selectedAppointments.length}}单)</text>
+    <text class="section-title">{{selectedDateTitle}} (共{{stat.count(selectedAppointments.length)}}单)</text>
   </view>
 
   <!-- Status / Error / Empty States -->

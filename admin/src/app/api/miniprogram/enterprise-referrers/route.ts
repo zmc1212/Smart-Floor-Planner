@@ -7,6 +7,7 @@ import {
   buildEnterpriseReferrerRosterItem,
   parseEnterpriseReferrerRosterStatus,
 } from '@/lib/miniprogram-workbench';
+import { createPaginationMetadata, getPaginationParams } from '@/lib/pagination';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 
 export const dynamic = 'force-dynamic';
@@ -22,11 +23,19 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const query = url.searchParams.get('query')?.trim() || undefined;
     const status = parseEnterpriseReferrerRosterStatus(url.searchParams.get('status'));
+    const { page, limit } = getPaginationParams(url);
     const data = await withMiniProgramPostgresTransaction(context, async (transaction) => {
-      const rows = await new ReferrerNetworkRepository(transaction).listEnterpriseReferrerMemberships(
-        parsePostgresId(context.enterpriseId!, 'enterpriseId'),
-        { query, status }
-      );
+      const repository = new ReferrerNetworkRepository(transaction);
+      const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
+      const [rows, counts] = await Promise.all([
+        repository.listEnterpriseReferrerMemberships(enterpriseId, {
+          query,
+          status,
+          page,
+          limit,
+        }),
+        repository.countEnterpriseReferrerMemberships(enterpriseId, { query, status }),
+      ]);
       const items = rows.map((item) => buildEnterpriseReferrerRosterItem({
         id: item.membership.id,
         displayName: item.displayName,
@@ -39,9 +48,10 @@ export async function GET(request: Request) {
       return {
         items,
         summary: {
-          total: items.length,
-          activeCount: items.filter((item) => item.status === 'active').length,
+          total: counts.total,
+          activeCount: counts.activeCount,
         },
+        pagination: createPaginationMetadata(counts.total, page, limit),
       };
     });
     return NextResponse.json({ success: true, data });

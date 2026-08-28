@@ -1,8 +1,13 @@
-<view class="page sfp-tab-page">
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
+
+<view class="page">
   <view
     class="nav"
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
+      <view class="back-chevron"></view>
+    </view>
     <view class="nav-copy">
       <text class="nav-title">预约调度中心</text>
       <text class="nav-subtitle">{{weekSubtitle}}</text>
@@ -10,12 +15,54 @@
   </view>
 
   <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}">
-    <scroll-view scroll-x class="day-strip" enhanced show-scrollbar="{{false}}">
+    <view class="period-chip-row">
+      <view
+        wx:for="{{periodChips}}"
+        wx:key="key"
+        class="period-chip {{schedulePeriod.kind === item.key ? 'active' : ''}}"
+        data-kind="{{item.key}}"
+        bindtap="selectPeriodChip"
+        hover-class="period-chip-pressed"
+        aria-role="button"
+        aria-label="{{item.label}}"
+      >
+        <text>{{item.label}}</text>
+      </view>
+      <view
+        class="period-chip custom {{schedulePeriod.kind === 'custom' ? 'active' : ''}}"
+        bindtap="openPeriodSheet"
+        hover-class="period-chip-pressed"
+        aria-role="button"
+        aria-label="自定义时间段"
+      >
+        <text>自定义</text>
+      </view>
+      <view
+        wx:if="{{customRangeLabel}}"
+        class="custom-range"
+        bindtap="openPeriodSheet"
+        hover-class="period-chip-pressed"
+        aria-role="button"
+        aria-label="已选 {{customRangeLabel}}"
+      >
+        <text>{{customRangeLabel}}</text>
+      </view>
+    </view>
+
+    <scroll-view
+      scroll-x
+      class="day-strip"
+      enhanced
+      show-scrollbar="{{false}}"
+      scroll-into-view="{{dayScrollIntoView}}"
+      scroll-with-animation
+    >
       <view class="day-strip-inner">
         <view
           wx:for="{{weekDays}}"
           wx:key="key"
-          class="day-card {{selectedDateKey === item.key ? 'day-active' : ''}}"
+          id="{{item.dayId}}"
+          class="day-card {{item.compact ? 'day-compact' : ''}} {{selectedDateKey === item.key ? 'day-active' : ''}}"
           data-date="{{item.key}}"
           bindtap="selectDay"
           hover-class="day-pressed"
@@ -29,7 +76,7 @@
     </scroll-view>
 
     <view class="section-header">
-      <text class="section-title">{{selectedDateTitle}} ({{selectedAppointments.length}}单)</text>
+      <text class="section-title">{{selectedDateTitle}} ({{stat.count(selectedAppointments.length)}}单)</text>
     </view>
 
     <view wx:if="{{loading}}" class="state-card">正在读取企业预约排期…</view>
@@ -39,7 +86,7 @@
     </view>
     <view wx:elif="{{!selectedAppointments.length}}" class="state-card empty">
       <text class="empty-title">当天暂无需要协调的预约</text>
-      <text class="empty-desc">可切换上方日期查看本周其他排期</text>
+      <text class="empty-desc">可切换上方日期或时间段查看其他排期</text>
     </view>
 
     <view wx:else class="appointment-list">
@@ -86,4 +133,31 @@
     </view>
   </scroll-view>
 </view>
-<custom-tab-bar />
+
+<view
+  wx:if="{{periodSheetVisible}}"
+  class="period-sheet-mask {{periodSheetOpen ? 'open' : ''}}"
+  catchtouchmove="noop"
+  bindtap="closePeriodSheet"
+>
+  <view class="period-sheet {{periodSheetOpen ? 'open' : ''}}" catchtap="noop">
+    <text class="period-sheet-title">自定义周期</text>
+    <text class="period-sheet-hint">按所选日期查看门店预约排期，最长一年</text>
+    <view class="period-sheet-field">
+      <text class="period-sheet-label">开始日期</text>
+      <picker mode="date" value="{{customFrom}}" bindchange="onCustomFromChange">
+        <view class="period-sheet-value">{{customFrom || '请选择'}}</view>
+      </picker>
+    </view>
+    <view class="period-sheet-field">
+      <text class="period-sheet-label">结束日期</text>
+      <picker mode="date" value="{{customTo}}" bindchange="onCustomToChange">
+        <view class="period-sheet-value">{{customTo || '请选择'}}</view>
+      </picker>
+    </view>
+    <view class="period-sheet-actions">
+      <view class="period-sheet-btn ghost" bindtap="closePeriodSheet"><text>取消</text></view>
+      <view class="period-sheet-btn solid" bindtap="confirmCustomPeriod"><text>确定</text></view>
+    </view>
+  </view>
+</view>

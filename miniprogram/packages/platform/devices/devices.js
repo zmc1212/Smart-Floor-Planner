@@ -16,6 +16,13 @@ function navigationMetrics() {
 
 const api = require('../../../utils/api.js');
 const bluetooth = require('../../../utils/bluetooth.js');
+const {
+  DEFAULT_PAGE_SIZE,
+  appendQuery,
+  parsePagination,
+  mergePage,
+  listFooterText,
+} = require('../../../utils/list-pagination.js');
 
 function withSelection(scannedDevices, selectedIds) {
   const selected = new Set(selectedIds || []);
@@ -58,11 +65,15 @@ Page({
     statusText: '待扫描附近 LDMStudio 4D',
     description: '',
     serialNumber: '',
+    page: 1,
+    hasMore: false,
+    loadingMore: false,
+    footerText: '',
   },
 
   onLoad() {
     this.setData(navigationMetrics());
-    this.load();
+    this.load({ reset: true });
   },
 
   onShow() {
@@ -89,22 +100,39 @@ Page({
     });
   },
 
-  async load(requestedListEnterpriseId) {
+  onLoadMore() {
+    this.load({ reset: false });
+  },
+
+  async load(options) {
+    const requestedListEnterpriseId = typeof options === 'string'
+      ? options
+      : options && typeof options.listEnterpriseId === 'string'
+        ? options.listEnterpriseId
+        : undefined;
+    const reset = typeof options === 'string' || !options || options.reset !== false;
     const listEnterpriseId =
       typeof requestedListEnterpriseId === 'string'
         ? requestedListEnterpriseId
         : String(this.data.listEnterpriseId || '');
-    this.setData({ loading: true, error: '' });
+    if (this._fetching) return;
+    if (!reset && (this.data.loadingMore || !this.data.hasMore)) return;
+    this._fetching = true;
+    const page = reset ? 1 : Number(this.data.page || 1);
+    if (reset) this.setData({ loading: true, error: '', loadingMore: false });
+    else this.setData({ loadingMore: true, footerText: listFooterText(true, true, this.data.devices.length) });
     try {
-      const query = listEnterpriseId
-        ? `?enterpriseId=${encodeURIComponent(listEnterpriseId)}`
-        : '';
-      const result = await api.request(`/miniprogram/devices${query}`, 'GET');
+      const result = await api.request(appendQuery('/miniprogram/devices', {
+        enterpriseId: listEnterpriseId,
+        page,
+        limit: DEFAULT_PAGE_SIZE,
+      }), 'GET');
       if (!result.success) {
         throw new Error(result.error || '设备列表加载失败');
       }
-      const enterprises = (result.data && result.data.enterprises) || [];
-      const devices = (result.data && result.data.devices) || [];
+      const enterprises = (result.data && result.data.enterprises) || this.data.enterprises || [];
+      const devices = mergePage(this.data.devices, (result.data && result.data.devices) || [], reset);
+      const pagination = parsePagination(result.data);
       const enterpriseNames = enterprises.map(
         (item) => item.name || item.code || item._id
       );
@@ -132,6 +160,7 @@ Page({
         : 0;
       this.setData({
         loading: false,
+        loadingMore: false,
         devices,
         enterprises,
         enterpriseNames,
@@ -140,12 +169,19 @@ Page({
         listEnterpriseNames,
         listEnterpriseIndex,
         listEnterpriseId: listEnterpriseIdNext,
+        page: page + 1,
+        hasMore: pagination.hasMore,
+        footerText: listFooterText(false, pagination.hasMore, devices.length),
       });
     } catch (error) {
       this.setData({
         loading: false,
+        loadingMore: false,
         error: error instanceof Error ? error.message : '设备列表加载失败',
+        footerText: listFooterText(false, this.data.hasMore, reset ? 0 : this.data.devices.length),
       });
+    } finally {
+      this._fetching = false;
     }
   },
 
@@ -166,6 +202,7 @@ Page({
       listEnterpriseIndex: index,
       listEnterpriseId,
       devices: [],
+      page: 1,
     });
     void this.load(listEnterpriseId);
   },

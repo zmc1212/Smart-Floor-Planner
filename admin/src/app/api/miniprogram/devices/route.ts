@@ -13,6 +13,7 @@ import { withPlatformTransaction } from '@/db/transaction';
 import { normalizeDeviceBindingStatus } from '@/lib/device-binding-status';
 import { duplicateDeviceMessage, normalizeDeviceSerialNumber } from '@/lib/device-serial-number';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { createPaginationMetadata, getPaginationParams } from '@/lib/pagination';
 
 export const dynamic = 'force-dynamic';
 
@@ -118,23 +119,24 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const enterpriseFilter = url.searchParams.get('enterpriseId');
+    const { page, limit } = getPaginationParams(url);
 
     const data = await withPlatformTransaction(async (transaction) => {
-      const [deviceRows, enterpriseRows] = await Promise.all([
-        new DeviceRepository(transaction).list(),
+      const devicesRepo = new DeviceRepository(transaction);
+      const enterpriseId = enterpriseFilter
+        ? parsePostgresId(enterpriseFilter, 'enterpriseId')
+        : undefined;
+      const [deviceRows, deviceTotal, enterpriseRows] = await Promise.all([
+        devicesRepo.list({ enterpriseId, page, limit }),
+        devicesRepo.count({ enterpriseId }),
         new EnterpriseRepository(transaction).list(),
       ]);
-      const devices = enterpriseFilter
-        ? deviceRows.filter(
-            (device) =>
-              device.enterpriseId?.toString() === enterpriseFilter
-          )
-        : deviceRows;
       return {
-        devices: devices.map(deviceToDto),
+        devices: deviceRows.map(deviceToDto),
         enterprises: enterpriseRows.map((enterprise) =>
           enterpriseToDto(enterprise)
         ),
+        pagination: createPaginationMetadata(deviceTotal, page, limit),
       };
     });
 

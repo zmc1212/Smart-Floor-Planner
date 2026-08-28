@@ -9,6 +9,7 @@ import {
 } from '@/lib/lead-assignment-request';
 import { buildEnterpriseStaffRosterItem } from '@/lib/miniprogram-workbench';
 import { httpErrorStatus } from '@/lib/http-error';
+import { createPaginationMetadata, getPaginationParams } from '@/lib/pagination';
 
 export async function GET(
   request: Request,
@@ -23,13 +24,15 @@ export async function GET(
       return NextResponse.json({ success: false, error: '无权读取可派人员' }, { status: 403 });
     }
 
-    const roleParam = new URL(request.url).searchParams.get('role');
+    const url = new URL(request.url);
+    const roleParam = url.searchParams.get('role');
     if (roleParam !== 'designer' && roleParam !== 'measurer') {
       return NextResponse.json(
         { success: false, error: 'role 仅支持 designer 或 measurer' },
         { status: 400 }
       );
     }
+    const { page, limit } = getPaginationParams(url);
 
     const leadId = parsePostgresId((await params).id, 'lead id');
     const data = await withLeadAssignmentTransaction(actor, async (transaction) => {
@@ -44,14 +47,17 @@ export async function GET(
       }
       if (!lead.enterpriseId) return { kind: 'not_found' as const };
       const excludeStaffId = roleParam === 'designer' ? lead.assignedTo : lead.measurerId;
-      const rows = await new ReferralLeadRepository(transaction).listAssignableStaff({
+      const listed = await new ReferralLeadRepository(transaction).listAssignableStaff({
         enterpriseId: lead.enterpriseId,
         role: roleParam,
         excludeStaffId,
+        page,
+        limit,
       });
       return {
         kind: 'ok' as const,
-        items: rows.map((row) => buildEnterpriseStaffRosterItem(row)),
+        items: listed.rows.map((row) => buildEnterpriseStaffRosterItem(row)),
+        pagination: createPaginationMetadata(listed.total, page, limit),
       };
     });
 
@@ -70,7 +76,7 @@ export async function GET(
 
     return NextResponse.json({
       success: true,
-      data: { items: data.items },
+      data: { items: data.items, pagination: data.pagination },
     });
   } catch (error) {
     const status = httpErrorStatus(error, 400);

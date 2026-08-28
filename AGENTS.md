@@ -146,8 +146,9 @@ or a roadmap do not replace the current module inventory.
 - `admin/`: Next.js 16 App Router, React 19, Tailwind 4, Ant Design 5 + Ant Design Pro,
   Mongoose, and MongoDB-backed APIs. Local development uses port `3006`.
 - `miniprogram/`: native WeChat Mini Program. BLE laser integration is in
-  `utils/bluetooth.js`; graph and canvas logic are in `utils/surveyWallGraph.js`
-  and `utils/surveyCanvasRenderer.js`; Three.js is used for opening previews.
+  `utils/bluetooth.js`; graph and canvas logic are in
+  `packages/surveying/utils/surveyWallGraph.js` and
+  `packages/surveying/utils/surveyCanvasRenderer.js`; Three.js is used for opening previews.
 - `docs/`: current module inventories and focused technical contracts.
 - `admin/src/models/`: tenant-aware business schemas.
 - `admin/src/app/api/`: server route handlers; `admin/src/lib/` contains auth,

@@ -83,12 +83,6 @@ function normalizeEnterpriseCodeActions(payload) {
   };
 }
 
-function formatContractAmountKpi(value) {
-  const amount = Number(value || 0);
-  if (!Number.isFinite(amount) || amount <= 0) return '¥0';
-  return `¥${Math.round(amount).toLocaleString('zh-CN')}`;
-}
-
 function normalizeContractAmountTrend(input, periodKind) {
   const raw = input || {};
   const labels = Array.isArray(raw.labels) ? raw.labels.map((item) => String(item || '')) : [];
@@ -117,6 +111,13 @@ function normalizeContractAmountTrend(input, periodKind) {
         ? { currentLabel: '本期', previousLabel: '上期' }
         : { currentLabel: '本月', previousLabel: '上月' };
   return { hasData, current, previous, axisLabels, ...periodLabels };
+}
+
+function formatContractAmountTrendLabel(value) {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return '';
+  const precision = amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
+  return String(Number(amount.toFixed(precision)));
 }
 
 function normalizeEnterpriseDashboard(rows, contractAmountSum) {
@@ -158,7 +159,7 @@ function normalizeEnterpriseDashboard(rows, contractAmountSum) {
       {
         key: 'contractAmount',
         label: '签约金额',
-        value: formatContractAmountKpi(contractAmountSum),
+        value: contractAmountSum,
         unit: '',
         detail: '',
         tone: 'green',
@@ -202,6 +203,7 @@ Component({
     items: [],
     emptyCopy: '',
     secondary: null,
+    appointmentCount: 0,
     activityCode: null,
     joinCode: null,
     dashboard: [],
@@ -521,6 +523,7 @@ Component({
           items,
           emptyCopy,
           secondary: payload.secondary || null,
+          appointmentCount: Array.isArray(payload.appointments) ? payload.appointments.length : 0,
           activityCode: codeActions.activityCode,
           joinCode: codeActions.joinCode,
           dashboard: payload.dashboard || [],
@@ -572,7 +575,8 @@ Component({
             const previous = trend.previous || [];
             const values = current.concat(previous).map((value) => Number(value || 0));
             const maxValue = Math.max(...values, 1);
-            const padding = { top: 12, right: 8, bottom: 12, left: 8 };
+            // Reserve a dedicated lane above the line so point labels never clip at a peak.
+            const padding = { top: 28, right: 8, bottom: 12, left: 8 };
             const chartWidth = Math.max(1, width - padding.left - padding.right);
             const chartHeight = Math.max(1, height - padding.top - padding.bottom);
             const pointFor = (value, index, length) => ({
@@ -594,8 +598,61 @@ Component({
               context.stroke();
               context.restore();
             };
+            const annotationIndexes = (valuesToDraw) => {
+              const positive = valuesToDraw
+                .map((value, index) => (Number(value || 0) > 0 ? index : -1))
+                .filter((index) => index >= 0);
+              const maxLabels = Math.max(1, Math.floor(chartWidth / 56));
+              if (positive.length <= maxLabels) return positive;
+              const highest = positive.reduce((selected, index) => (
+                Number(valuesToDraw[index] || 0) > Number(valuesToDraw[selected] || 0) ? index : selected
+              ), positive[0]);
+              if (maxLabels === 1) return [highest];
+              const selected = new Set([highest]);
+              [positive[0], positive[positive.length - 1]].forEach((index) => {
+                if (selected.size < maxLabels) selected.add(index);
+              });
+              for (let index = 1; selected.size < maxLabels && index < positive.length - 1; index += 1) {
+                selected.add(positive[Math.round((index * (positive.length - 1)) / (maxLabels - 1))]);
+              }
+              return Array.from(selected).sort((left, right) => left - right);
+            };
+            const drawValueLabel = (value, index, valuesToDraw, color, offset) => {
+              const label = formatContractAmountTrendLabel(value);
+              if (!label) return;
+              const point = pointFor(value, index, valuesToDraw.length);
+              context.save();
+              context.font = '600 10px sans-serif';
+              context.textAlign = 'center';
+              context.textBaseline = 'middle';
+              const horizontalPadding = 5;
+              const labelWidth = context.measureText(label).width + horizontalPadding * 2;
+              const labelHeight = 18;
+              const centerX = Math.max(labelWidth / 2, Math.min(width - labelWidth / 2, point.x));
+              const centerY = Math.max(labelHeight / 2, point.y - 11 - offset);
+              const left = centerX - labelWidth / 2;
+              const top = centerY - labelHeight / 2;
+              const radius = Math.min(9, labelWidth / 2, labelHeight / 2);
+              context.fillStyle = color;
+              context.beginPath();
+              context.moveTo(left + radius, top);
+              context.lineTo(left + labelWidth - radius, top);
+              context.quadraticCurveTo(left + labelWidth, top, left + labelWidth, top + radius);
+              context.lineTo(left + labelWidth, top + labelHeight - radius);
+              context.quadraticCurveTo(left + labelWidth, top + labelHeight, left + labelWidth - radius, top + labelHeight);
+              context.lineTo(left + radius, top + labelHeight);
+              context.quadraticCurveTo(left, top + labelHeight, left, top + labelHeight - radius);
+              context.lineTo(left, top + radius);
+              context.quadraticCurveTo(left, top, left + radius, top);
+              context.fill();
+              context.fillStyle = '#ffffff';
+              context.fillText(label, centerX, centerY + 0.5);
+              context.restore();
+            };
             drawLine(previous, '#aab7b0', true);
             drawLine(current, '#04b960', false);
+            annotationIndexes(previous).forEach((index) => drawValueLabel(previous[index], index, previous, '#8b9891', 6));
+            annotationIndexes(current).forEach((index) => drawValueLabel(current[index], index, current, '#04b960', 0));
             current.forEach((value, index) => {
               const point = pointFor(value, index, current.length);
               context.beginPath();
@@ -854,7 +911,7 @@ Component({
           wx.switchTab({ url: '/pages/index/index' });
         }
       } else if (target === 'appointments') {
-        wx.reLaunch({ url: '/packages/business/enterprise-appointments/enterprise-appointments' });
+        wx.navigateTo({ url: '/packages/business/enterprise-appointments/enterprise-appointments' });
       } else if (target === 'unavailability') {
         wx.navigateTo({ url: '/packages/business/measurer-unavailability/measurer-unavailability' });
       } else if (target === 'calendar') {

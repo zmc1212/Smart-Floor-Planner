@@ -194,7 +194,10 @@ function loadStudioBootstrap() {
 
 function loadStudioLeads(params = {}) {
   const query = buildQueryString(params);
-  return api.request(`/miniprogram/ai/studio/leads${query ? `?${query}` : ''}`, 'GET').then((res) => res.data || []);
+  return api.request(`/miniprogram/ai/studio/leads${query ? `?${query}` : ''}`, 'GET').then((res) => ({
+    items: Array.isArray(res.data) ? res.data : [],
+    pagination: (res && res.pagination) || {},
+  }));
 }
 
 function listStudioWorkflows(params = {}) {

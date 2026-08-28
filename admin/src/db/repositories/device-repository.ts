@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, count, desc, eq, inArray } from 'drizzle-orm';
 import {
   adminUsers,
   devices,
@@ -102,13 +102,25 @@ export class DeviceRepository {
     });
   }
 
-  async list(options: { status?: string; assignedUserId?: bigint } = {}) {
+  async list(options: {
+    status?: string;
+    assignedUserId?: bigint;
+    enterpriseId?: bigint;
+    page?: number;
+    limit?: number;
+  } = {}) {
     const where = and(
-      options.status ? eq(devices.status, options.status) : undefined
+      options.status ? eq(devices.status, options.status) : undefined,
+      options.enterpriseId ? eq(devices.enterpriseId, options.enterpriseId) : undefined
     );
-    const rows = await this.selectWithRelations()
+    const page = options.page != null ? Math.max(1, options.page) : null;
+    const limit = options.limit != null ? Math.max(1, options.limit) : null;
+    const query = this.selectWithRelations()
       .where(where)
       .orderBy(desc(devices.createdAt), desc(devices.id));
+    const rows = await (page != null && limit != null
+      ? query.offset((page - 1) * limit).limit(limit)
+      : query);
     const records = await this.attachAssignedUsers(this.normalize(rows));
     return options.assignedUserId
       ? records.filter((record) =>
@@ -117,6 +129,18 @@ export class DeviceRepository {
           )
         )
       : records;
+  }
+
+  async count(options: { status?: string; enterpriseId?: bigint } = {}) {
+    const where = and(
+      options.status ? eq(devices.status, options.status) : undefined,
+      options.enterpriseId ? eq(devices.enterpriseId, options.enterpriseId) : undefined
+    );
+    const rows = await this.transaction
+      .select({ value: count() })
+      .from(devices)
+      .where(where);
+    return Number(rows[0]?.value ?? 0);
   }
 
   async findById(id: bigint) {

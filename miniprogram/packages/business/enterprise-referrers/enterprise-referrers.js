@@ -1,4 +1,11 @@
 const api = require('../../../utils/api.js');
+const {
+  DEFAULT_PAGE_SIZE,
+  appendQuery,
+  parsePagination,
+  mergePage,
+  listFooterText,
+} = require('../../../utils/list-pagination.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -76,6 +83,10 @@ Page({
     summaryLine: '共 0 人',
     emptyStatusLabel: '已入驻推荐人',
     emptyDesc: '出示入驻码邀请推荐人加入本企业',
+    page: 1,
+    hasMore: false,
+    loadingMore: false,
+    footerText: '',
   },
 
   onLoad(options) {
@@ -89,7 +100,7 @@ Page({
   },
 
   onShow() {
-    this.load();
+    this.load({ reset: true });
   },
 
   onUnload() {
@@ -108,7 +119,9 @@ Page({
       focus,
       emptyStatusLabel: emptyStatusLabel(focus),
       emptyDesc: emptyDesc(focus, this.data.searchQuery),
-    }, () => this.load());
+      items: [],
+      page: 1,
+    }, () => this.load({ reset: true }));
   },
 
   onSearchInput(event) {
@@ -132,31 +145,46 @@ Page({
       searchQuery: next,
       emptyStatusLabel: emptyStatusLabel(this.data.focus),
       emptyDesc: emptyDesc(this.data.focus, next),
-    }, () => this.load({ quiet: true }));
+    }, () => this.load({ quiet: true, reset: true }));
+  },
+
+  onLoadMore() {
+    this.load({ reset: false, quiet: true });
   },
 
   async load(options) {
     const quiet = Boolean(options && options.quiet);
-    if (!quiet) this.setData({ loading: true, error: '' });
+    const reset = !options || options.reset !== false;
+    if (this._fetching) return;
+    if (!reset && (this.data.loadingMore || !this.data.hasMore)) return;
+    this._fetching = true;
+    const page = reset ? 1 : Number(this.data.page || 1);
+    if (!quiet && reset) this.setData({ loading: true, error: '', loadingMore: false });
+    else if (!reset) this.setData({ loadingMore: true, error: '', footerText: listFooterText(true, true, this.data.items.length) });
     else this.setData({ error: '' });
     try {
       const focus = this.data.focus;
       const query = String(this.data.searchQuery || '').trim();
-      const params = [];
-      if (focus === 'active' || focus === 'disabled' || focus === 'exited') {
-        params.push(`status=${encodeURIComponent(focus)}`);
-      }
-      if (query) params.push(`query=${encodeURIComponent(query)}`);
-      const suffix = params.length ? `?${params.join('&')}` : '';
-      const result = await api.request(`/miniprogram/enterprise-referrers${suffix}`, 'GET');
+      const path = appendQuery('/miniprogram/enterprise-referrers', {
+        status: focus === 'active' || focus === 'disabled' || focus === 'exited' ? focus : '',
+        query,
+        page,
+        limit: DEFAULT_PAGE_SIZE,
+      });
+      const result = await api.request(path, 'GET');
       const payload = result.data || {};
-      const items = payload.items || [];
+      const items = mergePage(this.data.items, payload.items || [], reset);
       const summary = payload.summary || {};
-      const total = Number(summary.total != null ? summary.total : items.length);
+      const pagination = parsePagination(payload);
+      const total = Number(summary.total != null ? summary.total : pagination.total);
       const activeCount = Number(summary.activeCount || 0);
       this.setData({
         loading: false,
+        loadingMore: false,
         items,
+        page: page + 1,
+        hasMore: pagination.hasMore,
+        footerText: listFooterText(false, pagination.hasMore, items.length),
         summaryLine: query
           ? `匹配 ${total} 人`
           : focus === 'all'
@@ -168,10 +196,14 @@ Page({
     } catch (error) {
       this.setData({
         loading: false,
+        loadingMore: false,
         error: (error && (error.error || error.message)) || '推荐人名册加载失败，请检查网络后重试',
-        items: quiet ? this.data.items : [],
-        summaryLine: '共 0 人',
+        items: quiet && !reset ? this.data.items : reset ? [] : this.data.items,
+        summaryLine: reset ? '共 0 人' : this.data.summaryLine,
+        footerText: listFooterText(false, this.data.hasMore, reset ? 0 : this.data.items.length),
       });
+    } finally {
+      this._fetching = false;
     }
   },
 
@@ -209,7 +241,7 @@ Page({
         {}
       );
       wx.showToast({ title: '已停用后续扫码', icon: 'success' });
-      await this.load({ quiet: true });
+      await this.load({ quiet: true, reset: true });
     } catch (error) {
       wx.showToast({
         title: (error && (error.error || error.message)) || '停用失败',

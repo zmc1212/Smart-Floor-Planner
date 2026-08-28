@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import {
   adminUsers,
   commissionRecords,
@@ -141,14 +141,48 @@ export class CommercialRepository {
     return (await this.attachCommissions(rows))[0] ?? null;
   }
 
-  async listCommissions(options: { status?: string; promoterId?: bigint } = {}) {
+  async listCommissions(options: {
+    status?: string;
+    promoterId?: bigint;
+    page?: number;
+    limit?: number;
+  } = {}) {
     const filters = [];
     if (options.status) filters.push(eq(commissionRecords.status, options.status));
     if (options.promoterId) filters.push(eq(commissionRecords.promoterId, options.promoterId));
-    const rows = await this.transaction.select().from(commissionRecords)
+    const page = options.page != null ? Math.max(1, options.page) : null;
+    const limit = options.limit != null ? Math.max(1, options.limit) : null;
+    const query = this.transaction.select().from(commissionRecords)
       .where(filters.length ? and(...filters) : undefined)
       .orderBy(desc(commissionRecords.createdAt), desc(commissionRecords.id));
+    const rows = await (page != null && limit != null
+      ? query.offset((page - 1) * limit).limit(limit)
+      : query);
     return this.attachCommissions(rows);
+  }
+
+  async countCommissions(options: { status?: string; promoterId?: bigint } = {}) {
+    const filters = [];
+    if (options.status) filters.push(eq(commissionRecords.status, options.status));
+    if (options.promoterId) filters.push(eq(commissionRecords.promoterId, options.promoterId));
+    const rows = await this.transaction
+      .select({ value: count() })
+      .from(commissionRecords)
+      .where(filters.length ? and(...filters) : undefined);
+    return Number(rows[0]?.value ?? 0);
+  }
+
+  async countCommissionsGeneratedSince(options: {
+    promoterId?: bigint;
+    since: Date;
+  }) {
+    const filters = [gte(commissionRecords.generatedAt, options.since)];
+    if (options.promoterId) filters.push(eq(commissionRecords.promoterId, options.promoterId));
+    const rows = await this.transaction
+      .select({ value: count() })
+      .from(commissionRecords)
+      .where(and(...filters));
+    return Number(rows[0]?.value ?? 0);
   }
 
   async findCommissionById(id: bigint) {

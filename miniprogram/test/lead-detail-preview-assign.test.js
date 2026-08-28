@@ -46,7 +46,9 @@ test('staff cards put 分配/更换 on the right and post assign-staff from lead
   assert.doesNotMatch(template, /点击分配/);
   assert.doesNotMatch(template, /bindtap="onStaffCardTap"/);
   assert.match(script, /openStaffAssignSheet/);
-  assert.match(script, /\/leads\/\$\{this\.data\.leadId\}\/assignable-staff\?role=/);
+  assert.match(script, /\/leads\/\$\{this\.data\.leadId\}\/assignable-staff/);
+  assert.match(script, /onLoadMoreStaffAssign/);
+  assert.match(template, /bindscrolltolower="onLoadMoreStaffAssign"/);
   assert.doesNotMatch(script, /\/miniprogram\/enterprise-staff\?role=/);
   assert.match(script, /\/leads\/\$\{this\.data\.leadId\}\/assign-staff/);
   assert.match(script, /designerId: staffId/);

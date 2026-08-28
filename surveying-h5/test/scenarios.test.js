@@ -3,7 +3,7 @@ const path = require('node:path');
 const test = require('node:test');
 
 const root = path.resolve(__dirname, '..', '..');
-const surveyGraph = require(path.join(root, 'miniprogram/utils/surveyWallGraph.js'));
+const surveyGraph = require(path.join(root, 'miniprogram/packages/surveying/utils/surveyWallGraph.js'));
 const surveyCanvasRenderer = require(path.join(root, 'miniprogram/packages/surveying/utils/surveyCanvasRenderer.js'));
 const { CATEGORY_ORDER, createScenarioCatalog } = require('../src/scenarios.js');
 

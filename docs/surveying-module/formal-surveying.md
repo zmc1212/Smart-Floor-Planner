@@ -37,9 +37,10 @@ copy back to `layoutData`.
   the URL is not written into `layoutData`. DXF, 3D, AI,
   and Mini Program read models derive from the v4 graph through adapters; they
   do not maintain a second editable geometry.
-- Graph and renderer sources are `miniprogram/utils/surveyWallGraph.js`,
+- Graph and renderer sources are `miniprogram/packages/surveying/utils/surveyWallGraph.js`,
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js`,
-  `surveyDimensionPlan.js`, and `surveyWallSolidPlan.js`.
+  `surveyDimensionPlan.js`, and `surveyWallSolidPlan.js`. The main package keeps
+  only kernel-free `utils/surveyLayout.js` for formal-layout read helpers.
 - Surveying pan and pinch gestures use the primary Canvas `requestAnimationFrame`
   frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
   coalesced to one callback per animation frame and flushed once at gesture end;

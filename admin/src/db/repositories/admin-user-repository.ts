@@ -6,9 +6,11 @@ import {
   eq,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   ne,
   or,
+  sql,
 } from 'drizzle-orm';
 import {
   adminUserPromoters,
@@ -147,6 +149,41 @@ export class AdminUserRepository {
     return {
       rows: records as AdminUserWithRelations[],
       total: Number(totalRows[0]?.value ?? 0),
+    };
+  }
+
+  async summarizeAssignmentRoster(options: ListAdminUsersOptions = {}) {
+    const where = this.buildFilters(options);
+    const eligibleWhere = and(
+      where,
+      eq(adminUsers.assignmentPaused, false),
+      or(
+        eq(adminUsers.role, 'measurer'),
+        and(
+          eq(adminUsers.role, 'designer'),
+          isNotNull(adminUsers.wechatId),
+          sql`btrim(${adminUsers.wechatId}) <> ''`,
+          isNotNull(adminUsers.wechatQrAssetId)
+        )
+      )
+    );
+    const [totalRows, eligibleRows, designerRows, measurerRows] = await Promise.all([
+      this.transaction.select({ value: count() }).from(adminUsers).where(where),
+      this.transaction.select({ value: count() }).from(adminUsers).where(eligibleWhere),
+      this.transaction
+        .select({ value: count() })
+        .from(adminUsers)
+        .where(and(eligibleWhere, eq(adminUsers.role, 'designer'))),
+      this.transaction
+        .select({ value: count() })
+        .from(adminUsers)
+        .where(and(eligibleWhere, eq(adminUsers.role, 'measurer'))),
+    ]);
+    return {
+      total: Number(totalRows[0]?.value ?? 0),
+      eligibleCount: Number(eligibleRows[0]?.value ?? 0),
+      designerEligibleCount: Number(designerRows[0]?.value ?? 0),
+      measurerEligibleCount: Number(measurerRows[0]?.value ?? 0),
     };
   }
 

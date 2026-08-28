@@ -10,6 +10,12 @@ const {
   roomsFromWorkflowDetail,
   buildScopes,
 } = require('./recipe-project-model.js');
+const {
+  DEFAULT_PAGE_SIZE,
+  parsePagination,
+  mergePage,
+  listFooterText,
+} = require('../../../utils/list-pagination.js');
 
 Page({
   data: {
@@ -27,6 +33,10 @@ Page({
     leadGroup: 'designable',
     leadSearch: '',
     leadEmptyCopy: '',
+    leadPage: 1,
+    leadHasMore: false,
+    loadingMore: false,
+    footerText: '',
     selectedLead: null,
     schemes: [],
     selectedScheme: null,
@@ -54,7 +64,7 @@ Page({
       return;
     }
     if (this.data.step !== 'leads') return;
-    this.reloadLeads();
+    this.reloadLeads({ reset: true });
   },
 
   syncNavigationMetrics() {
@@ -74,44 +84,67 @@ Page({
   async loadData() {
     this.setData({ loading: true, error: '' });
     try {
-      const [recipe, leadData] = await Promise.all([
-        aiService.getRecipe(this.data.recipeId),
-        aiService.loadStudioLeads({ limit: 50 }),
-      ]);
-      const leads = (leadData || []).map((item) => decorateLead(item, { inputMode: this.data.inputMode }));
-      const leadGroup = chooseDefaultLeadGroup(leads);
-      this.setData({
-        recipe,
-        leads,
-        leadGroup,
-        ...buildLeadPickerView(leads, leadGroup, this.data.leadSearch),
-        loading: false,
-      });
+      const recipe = await aiService.getRecipe(this.data.recipeId);
+      this.setData({ recipe });
+      await this.fetchLeads({ reset: true, chooseDefault: true });
+      this.setData({ loading: false });
     } catch (error) {
       this.setData({ loading: false, error: error.error || error.message || '客户列表加载失败' });
     }
   },
 
+  onLoadMoreLeads() {
+    if (this.data.step !== 'leads') return;
+    this.fetchLeads({ reset: false });
+  },
+
   async reloadLeads() {
-    if (this._reloadingLeads) return;
-    this._reloadingLeads = true;
+    return this.fetchLeads({ reset: true });
+  },
+
+  async fetchLeads(options) {
+    const reset = !options || options.reset !== false;
+    const chooseDefault = Boolean(options && options.chooseDefault);
+    if (this._fetchingLeads) return;
+    if (!reset && (this.data.loadingMore || !this.data.leadHasMore)) return;
+    this._fetchingLeads = true;
+    const page = reset ? 1 : Number(this.data.leadPage || 1);
+    if (!reset) this.setData({ loadingMore: true, footerText: listFooterText(true, true, this.data.leads.length) });
     try {
-      const leadData = await aiService.loadStudioLeads({ limit: 50 });
-      const leads = (leadData || []).map((item) => decorateLead(item, { inputMode: this.data.inputMode }));
+      const result = await aiService.loadStudioLeads({
+        page,
+        limit: DEFAULT_PAGE_SIZE,
+        search: String(this.data.leadSearch || '').trim(),
+      });
+      const incoming = (result.items || []).map((item) => decorateLead(item, { inputMode: this.data.inputMode }));
+      const leads = mergePage(this.data.leads, incoming, reset);
+      const pagination = parsePagination(result);
       const surveyingLeadId = this._surveyingLeadId || '';
-      const leadGroup = resolveLeadGroupAfterRefresh(leads, this.data.leadGroup, surveyingLeadId);
-      this._surveyingLeadId = '';
+      const leadGroup = reset
+        ? (chooseDefault
+          ? chooseDefaultLeadGroup(leads)
+          : resolveLeadGroupAfterRefresh(leads, this.data.leadGroup, surveyingLeadId))
+        : this.data.leadGroup;
+      if (reset) this._surveyingLeadId = '';
       this.setData({
         leads,
         leadGroup,
         error: '',
-        ...buildLeadPickerView(leads, leadGroup, this.data.leadSearch),
+        loadingMore: false,
+        leadPage: page + 1,
+        leadHasMore: pagination.hasMore,
+        footerText: listFooterText(false, pagination.hasMore, leads.length),
+        ...buildLeadPickerView(leads, leadGroup, ''),
       });
     } catch (error) {
-      // Keep the existing list; toast so the return from surveying is not silent.
+      if (reset && this.data.loading) throw error;
       wx.showToast({ title: error.error || error.message || '客户列表刷新失败', icon: 'none' });
+      this.setData({
+        loadingMore: false,
+        footerText: listFooterText(false, this.data.leadHasMore, reset ? 0 : this.data.leads.length),
+      });
     } finally {
-      this._reloadingLeads = false;
+      this._fetchingLeads = false;
     }
   },
 
@@ -135,12 +168,16 @@ Page({
 
   selectLeadGroup(event) {
     const leadGroup = event.currentTarget.dataset.key;
-    this.setData({ leadGroup, ...buildLeadPickerView(this.data.leads, leadGroup, this.data.leadSearch) });
+    this.setData({ leadGroup, ...buildLeadPickerView(this.data.leads, leadGroup, '') });
   },
 
   onLeadSearch(event) {
     const leadSearch = event.detail.value || '';
-    this.setData({ leadSearch, ...buildLeadPickerView(this.data.leads, this.data.leadGroup, leadSearch) });
+    this.setData({ leadSearch });
+    if (this._searchTimer) clearTimeout(this._searchTimer);
+    this._searchTimer = setTimeout(() => {
+      this.setData({ leads: [], leadPage: 1 }, () => this.fetchLeads({ reset: true }));
+    }, 300);
   },
 
   async selectLead(event) {

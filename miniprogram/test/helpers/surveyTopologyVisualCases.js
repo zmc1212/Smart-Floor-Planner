@@ -1,4 +1,4 @@
-const surveyGraph = require('../../utils/surveyWallGraph.js');
+const surveyGraph = require('../../packages/surveying/utils/surveyWallGraph.js');
 const surveyCanvasRenderer = require('../../packages/surveying/utils/surveyCanvasRenderer.js');
 
 const RECT = { width: 520, height: 520 };

@@ -54,6 +54,7 @@ test('assign-staff keeps lead DTO staff summaries instead of overwriting measure
 test('assignable-staff is lead-scoped and uses the same assignment actor', () => {
   assert.match(assignableRoute, /resolveLeadAssignmentRequest\(request\)/);
   assert.match(assignableRoute, /listAssignableStaff/);
+  assert.match(assignableRoute, /createPaginationMetadata/);
   assert.match(assignableRoute, /roleParam !== 'designer' && roleParam !== 'measurer'/);
   assert.match(assignableRoute, /canAssignDesigner/);
   assert.match(assignableRoute, /canAssignMeasurer/);

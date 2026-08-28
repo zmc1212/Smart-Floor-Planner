@@ -4,6 +4,7 @@ import { PromotionRecordRepository } from '@/db/repositories';
 import { withMiniProgramPostgresTransaction, withPromotionPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { createPaginationMetadata } from '@/lib/pagination';
 import {
   buildPromotionListOptions,
   createPromotionRecord,
@@ -34,15 +35,14 @@ export async function GET(request: Request) {
         name: mini.staff.displayName || mini.staff.username,
         enterpriseId: mini.staff.enterpriseId ?? mini.enterpriseId,
       });
+      const options = buildPromotionListOptions(searchParams, { id: actor.id, role: actor.role });
       const result = await withMiniProgramPostgresTransaction(mini, (transaction) =>
-        new PromotionRecordRepository(transaction).list(
-          buildPromotionListOptions(searchParams, { id: actor.id, role: actor.role })
-        )
+        new PromotionRecordRepository(transaction).list(options)
       );
       return NextResponse.json({
         success: true,
         data: result.rows.map(promotionRecordToDto),
-        pagination: { page: Number(searchParams.get('page') || 1), limit: result.rows.length, total: result.total },
+        pagination: createPaginationMetadata(result.total, options.page, options.limit),
       });
     }
 
@@ -55,15 +55,14 @@ export async function GET(request: Request) {
       name: b2bContext.username,
       enterpriseId: b2bContext.enterpriseId,
     });
+    const adminOptions = buildPromotionListOptions(searchParams, { id: actor.id, role: actor.role });
     const result = await withPromotionPostgresTransaction(b2bContext, (transaction) =>
-      new PromotionRecordRepository(transaction).list(
-        buildPromotionListOptions(searchParams, { id: actor.id, role: actor.role })
-      )
+      new PromotionRecordRepository(transaction).list(adminOptions)
     );
     return NextResponse.json({
       success: true,
       data: result.rows.map(promotionRecordToDto),
-      pagination: { page: Number(searchParams.get('page') || 1), limit: result.rows.length, total: result.total },
+      pagination: createPaginationMetadata(result.total, adminOptions.page, adminOptions.limit),
     });
   } catch (error) {
     return errorResponse(error);

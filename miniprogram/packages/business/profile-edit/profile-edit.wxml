@@ -1,3 +1,5 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
+
 <view class="account-page profile-edit-page">
   <view class="account-hero">
     <view class="account-hero-green"></view>
@@ -102,7 +104,7 @@
           <view class="professional-proof-dot"></view>
           <text>{{professionalProfile.serviceLabel}}</text>
         </view>
-        <text class="professional-preview-note">真实服务客户 {{professionalProfile.actualServiceCount}} 位，仅你和企业管理员可见</text>
+        <text class="professional-preview-note">真实服务客户 {{stat.count(professionalProfile.actualServiceCount)}} 位，仅你和企业管理员可见</text>
       </view>
     </block>
 

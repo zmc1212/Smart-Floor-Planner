@@ -1,5 +1,12 @@
 const api = require('../../../utils/api.js');
 const { buildPageData } = require('./enterprise-commissions-model.js');
+const {
+  DEFAULT_PAGE_SIZE,
+  appendQuery,
+  parsePagination,
+  mergePage,
+  listFooterText,
+} = require('../../../utils/list-pagination.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -36,43 +43,74 @@ Page({
     totals: { payable: '0.00', paid: '0.00', voided: '0.00' },
     payableTotal: '¥0.00',
     paidTotal: '¥0.00',
-    voidedTotal: '¥0.00'
+    voidedTotal: '¥0.00',
+    page: 1,
+    hasMore: false,
+    loadingMore: false,
+    footerText: ''
   },
 
   onLoad() {
     this.setData(navigationMetrics());
-    this.load();
+    this.load({ reset: true });
   },
 
   onShow() {
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
     if (tabBar && typeof tabBar.syncSelected === 'function') tabBar.syncSelected();
-    this.load();
+    this.load({ reset: true });
+  },
+
+  onReachBottom() {
+    this.load({ reset: false });
   },
 
   selectFilter(event) {
     const filter = event.currentTarget.dataset.filter || 'all';
-    this.setData(buildPageData({
-      enterpriseName: this.data.enterpriseName,
-      totals: this.data.totals,
-      items: this.data.items
-    }, filter));
+    if (filter === this.data.filter) return;
+    this.setData({
+      filter,
+      items: [],
+      groups: [],
+      page: 1,
+    }, () => this.load({ reset: true }));
   },
 
-  async load() {
-    this.setData({ loading: true, error: '' });
+  async load(options) {
+    const reset = !options || options.reset !== false;
+    if (this._fetching) return;
+    if (!reset && (this.data.loadingMore || !this.data.hasMore)) return;
+    this._fetching = true;
+    const page = reset ? 1 : Number(this.data.page || 1);
+    if (reset) this.setData({ loading: true, error: '', loadingMore: false });
+    else this.setData({ loadingMore: true, footerText: listFooterText(true, true, this.data.items.length) });
     try {
-      const result = await api.request('/miniprogram/enterprise-commissions', 'GET');
+      const result = await api.request(appendQuery('/miniprogram/enterprise-commissions', {
+        status: this.data.filter === 'all' ? '' : this.data.filter,
+        page,
+        limit: DEFAULT_PAGE_SIZE,
+      }), 'GET');
+      const payload = result.data || {};
+      const items = mergePage(this.data.items, payload.items || [], reset);
+      const pagination = parsePagination(payload);
       this.setData({
         loading: false,
+        loadingMore: false,
         error: '',
-        ...buildPageData(result.data || {}, this.data.filter)
+        page: page + 1,
+        hasMore: pagination.hasMore,
+        footerText: listFooterText(false, pagination.hasMore, items.length),
+        ...buildPageData({ ...payload, items }, this.data.filter)
       });
     } catch (error) {
       this.setData({
         loading: false,
-        error: error.message || error.error || '暂时无法读取提成台账'
+        loadingMore: false,
+        error: reset ? (error.message || error.error || '暂时无法读取提成台账') : this.data.error,
+        footerText: listFooterText(false, this.data.hasMore, reset ? 0 : this.data.items.length)
       });
+    } finally {
+      this._fetching = false;
     }
   },
 
@@ -82,7 +120,7 @@ Page({
     wx.showModal({
       title: '确认标记已支付',
       content: `确认已在线下完成这 ${ids.length} 条提成的支付吗？该操作会保留付款审计。`,
-      confirmText: '已线下打款',
+      confirmText: '确认付款',
       cancelText: '取消',
       success: (modal) => {
         if (modal.confirm) this.submitMarkPaid(ids);
@@ -96,7 +134,7 @@ Page({
     try {
       await api.request('/miniprogram/enterprise-commissions/mark-paid', 'POST', { commissionIds: ids });
       wx.showToast({ title: '已标记为已支付', icon: 'success' });
-      await this.load();
+      await this.load({ reset: true });
       await this.refreshBadges();
     } catch (error) {
       wx.showToast({

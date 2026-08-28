@@ -1,6 +1,6 @@
 const app = getApp();
-const surveyGraph = require('../../../utils/surveyWallGraph.js');
-const surveySnapEngine = require('../../../utils/survey/snap/snap-engine.js');
+const surveyGraph = require('../utils/surveyWallGraph.js');
+const surveySnapEngine = require('../utils/survey/snap/snap-engine.js');
 const surveyCanvasRenderer = require('../utils/surveyCanvasRenderer.js');
 const surveyViewportInteraction = require('../utils/surveyViewportInteraction.js');
 const {

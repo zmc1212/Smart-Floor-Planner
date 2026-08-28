@@ -72,6 +72,7 @@ FORM: design-references/referrer-customers-v1/referrer-customers-v1.png
       <text wx:if="{{item.terminationType}}" class="withdrawn-copy">{{item.withdrawnLabel}}</text>
       <text wx:if="{{item.canUndo}}" class="countdown-copy">{{item.countdownLabel}}</text>
     </view>
+    <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
   </view>
 </view>
 <custom-tab-bar />

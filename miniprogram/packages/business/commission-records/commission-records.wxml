@@ -1,3 +1,4 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
 <view class="commission-page">
   <view class="custom-nav" style="height: {{navBarHeightTotal}}px;">
     <view class="nav-content" style="margin-top: {{statusBarHeight}}px; height: {{navBarHeightTotal - statusBarHeight}}px;">
@@ -13,6 +14,8 @@
     scroll-y
     enhanced
     show-scrollbar="{{false}}"
+    lower-threshold="120"
+    bindscrolltolower="onLoadMore"
     style="padding-top: {{navBarHeightTotal}}px;"
   >
     <view class="content-shell">
@@ -31,7 +34,7 @@
         </view>
         <image class="hero-scene" src="/packages/business/assets/commission-records/hero-scene.jpg" mode="aspectFill"></image>
         <text wx:if="{{loading}}" class="record-count">提成记录加载中</text>
-        <text wx:else class="record-count">共 {{records.length}} 条提成记录</text>
+        <text wx:else class="record-count">共 {{stat.count(totalCount)}} 条提成记录</text>
       </view>
 
       <view class="summary-card">
@@ -46,9 +49,8 @@
 
         <view wx:if="{{loading}}" class="summary-amount summary-amount-loading">--</view>
         <view wx:else class="summary-amount">
-          <text class="summary-currency">¥</text>
-          <text class="summary-integer">{{summary.pendingAmountInteger}}</text>
-          <text class="summary-decimal">.{{summary.pendingAmountDecimal}}</text>
+          <text class="summary-integer">{{stat.moneyValue(summary.pendingAmount)}}</text>
+          <text class="summary-unit">{{stat.moneyUnit(summary.pendingAmount)}}</text>
         </view>
 
         <view class="summary-divider"></view>
@@ -56,17 +58,17 @@
         <view class="summary-stats">
           <view class="summary-stat">
             <text class="stat-label">待结算</text>
-            <text class="stat-value">{{summary.pendingCount}}</text>
+            <text class="stat-value">{{stat.count(summary.pendingCount)}}</text>
           </view>
           <view class="stat-divider"></view>
           <view class="summary-stat">
             <text class="stat-label">已结算</text>
-            <text class="stat-value">{{summary.paidCount}}</text>
+            <text class="stat-value">{{stat.count(summary.paidCount)}}</text>
           </view>
           <view class="stat-divider"></view>
           <view class="summary-stat">
             <text class="stat-label">本月生成</text>
-            <text class="stat-value">{{summary.monthCount}}</text>
+            <text class="stat-value">{{stat.count(summary.monthCount)}}</text>
           </view>
         </view>
       </view>
@@ -130,6 +132,7 @@
 
           <view wx:if="{{item.showDivider}}" class="record-divider"></view>
         </view>
+        <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
       </view>
 
       <view wx:else class="state-card empty-card">

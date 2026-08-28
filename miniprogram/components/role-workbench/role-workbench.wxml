@@ -5,6 +5,7 @@ STORY: 工作台用于获客、人员、预约与异常处理；经营页用于�
 FIRST VIEWPORT: 工作台依次呈现短英雄区、左主右辅的获客团队操作、经营提醒、两张洞察卡和首条异常；经营页从周期筛选进入经营闭环。
 FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人信息架构，预约保留为待办区的上下文跳转。
 -->
+<wxs src="../../utils/stat-format.wxs" module="stat" />
 <view class="role-workbench sfp-tab-page">
   <scroll-view scroll-y class="role-scroll" enhanced show-scrollbar="{{false}}">
     <view class="role-content">
@@ -98,12 +99,14 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
           <view wx:if="{{secondary}}" class="enterprise-appointment-row" bindtap="openSecondary" hover-class="card-pressed" aria-role="button" aria-label="{{secondary.label}}">
             <image class="enterprise-appointment-icon" src="/images/mine-icons/book-g.png" mode="aspectFit" aria-hidden="true" />
             <text class="enterprise-appointment-label">{{secondary.label}}</text>
+            <text class="enterprise-appointment-meta">· 共 {{stat.count(appointmentCount)}} 项</text>
             <view class="enterprise-code-chevron"></view>
           </view>
 
           <view wx:if="{{enterpriseReminder.length}}" class="enterprise-reminder-row" bindtap="openOperations" hover-class="card-pressed" aria-role="button" aria-label="查看经营提醒">
             <image class="enterprise-reminder-icon" src="/images/mine-icons/bell.png" mode="aspectFit" aria-hidden="true" />
             <text class="enterprise-reminder-title">经营提醒</text>
+            <view class="enterprise-reminder-title-divider"></view>
             <view class="enterprise-reminder-facts">
               <view wx:for="{{enterpriseReminder}}" wx:key="key" wx:for-index="reminderIndex" class="enterprise-reminder-fact">
                 <view wx:if="{{reminderIndex}}" class="enterprise-reminder-divider"></view>
@@ -204,7 +207,7 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
             <view wx:for="{{enterpriseHeroKpis}}" wx:key="key" class="operations-hero-kpi-card">
               <image class="operations-hero-kpi-icon" src="{{item.key === 'newLeads' ? '/images/operations-dashboard/new-leads-kpi-v2.png' : item.key === 'completedSurveys' ? '/images/operations-dashboard/completed-survey-kpi-v2.png' : item.key === 'signedCount' ? '/images/operations-dashboard/signed-contract-kpi-v2.png' : '/images/operations-dashboard/contract-amount-kpi-v2.png'}}" mode="aspectFit" aria-hidden="true" />
               <text class="operations-hero-kpi-label">{{item.label}}</text>
-              <view class="operations-hero-kpi-value"><text>{{item.value}}</text><text wx:if="{{item.unit}}">{{item.unit}}</text></view>
+              <view class="operations-hero-kpi-value {{item.key === 'contractAmount' && stat.isMoneyCompact(item.value) ? 'is-compact' : ''}}"><text>{{item.key === 'contractAmount' ? stat.moneyValue(item.value) : stat.count(item.value)}}</text><text wx:if="{{item.key === 'contractAmount'}}">{{stat.moneyUnit(item.value)}}</text><text wx:elif="{{item.unit}}">{{item.unit}}</text></view>
             </view>
           </view>
         </view>
@@ -224,7 +227,7 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
           </view>
           <view class="operations-efficiency-grid">
             <view wx:for="{{dashboardEfficiencies}}" wx:key="key" class="operations-efficiency-card operations-efficiency-{{item.key}}">
-              <text class="operations-efficiency-label">{{item.label}}</text><view class="operations-efficiency-value-row"><text class="operations-efficiency-value">{{item.value}}</text><text wx:if="{{item.unit}}" class="operations-efficiency-unit">{{item.unit}}</text></view><text wx:if="{{item.detail}}" class="operations-efficiency-detail">{{item.detail}}</text>
+              <text class="operations-efficiency-label">{{item.label}}</text><view class="operations-efficiency-value-row"><text class="operations-efficiency-value">{{stat.percent(item.value)}}</text></view><text wx:if="{{item.detail}}" class="operations-efficiency-detail">{{item.detail}}</text>
             </view>
           </view>
           <view class="operations-trend-card">
@@ -296,11 +299,11 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
           bindtap="openClaimPool"
           hover-class="card-pressed"
           aria-role="button"
-          aria-label="进入抢单池，共{{claimPoolSummary.count}}条待抢线索"
+          aria-label="进入抢单池，共{{stat.count(claimPoolSummary.count)}}条待抢线索"
         >
           <view class="claim-alert-clock"><view class="claim-alert-hand"></view></view>
           <view class="claim-alert-copy">
-            <text class="claim-alert-title">有 {{claimPoolSummary.count}} 条新线索正在等你</text>
+            <text class="claim-alert-title">有 {{stat.count(claimPoolSummary.count)}} 条新线索正在等你</text>
             <text class="claim-alert-subtitle">最近一单还剩 {{claimPoolSummary.remainingSeconds}} 秒{{claimPoolSummary.capacityAvailable ? '' : ' · 当前容量已满'}}</text>
           </view>
           <view class="claim-alert-action"><text>去抢单</text><view class="claim-alert-chevron"></view></view>
@@ -311,7 +314,7 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
             <view class="quick-nav-card" bindtap="openCustomers" hover-class="card-pressed">
               <view class="quick-text">
                 <text class="quick-title">客户线索</text>
-                <text class="quick-desc">{{summary.length > 0 ? summary[0].label + ' ' + summary[0].value + ' →' : '进入查看 →'}}</text>
+                <text class="quick-desc">{{summary.length > 0 ? summary[0].label + ' ' + stat.count(summary[0].value) + ' →' : '进入查看 →'}}</text>
               </view>
               <image class="quick-nav-mascot" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" />
             </view>
@@ -370,8 +373,8 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
             <view wx:for="{{dashboard}}" wx:key="key" class="enterprise-dashboard-card">
               <text class="dashboard-label">{{item.label}}</text>
               <view class="dashboard-value-row">
-                <text class="dashboard-value">{{item.value}}</text>
-                <text wx:if="{{item.unit}}" class="dashboard-unit">{{item.unit}}</text>
+                <text class="dashboard-value">{{item.key === 'schemeDelivery' || item.key === 'signingRate' ? stat.percent(item.value) : stat.count(item.value)}}</text>
+                <text wx:if="{{item.unit && item.key !== 'schemeDelivery' && item.key !== 'signingRate'}}" class="dashboard-unit">{{item.unit}}</text>
               </view>
               <text wx:if="{{item.detail}}" class="dashboard-detail tone-{{item.tone || 'green'}}">{{item.detail}}</text>
             </view>

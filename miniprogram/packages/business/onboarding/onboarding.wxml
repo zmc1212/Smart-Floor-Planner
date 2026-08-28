@@ -1,7 +1,7 @@
 <!--
-  企业入驻页：极简透气版 16/17 设计，胶囊安全品牌锁、角色选择与入驻恢复。
-  小K 使用 referral-service-v1 独立透明资产；仍走既有 resolve / 授权 / 写入合同。
-  FORM: design-references/miniprogram-airy-minimalist-v1/16-onboarding.jpg, 17-onboarding-recovery.jpg
+  员工/恢复态继续使用极简透气版 16/17；推荐人就绪态采用用户确认的 invitation v7 设计。
+  推广主视觉和企业楼宇均为独立透明资产；仍走既有 resolve / 授权 / 写入合同。
+  FORM: design-references/onboarding/referrer-enterprise-invitation-20260828-v7.png
 -->
 <view class="onboarding-page state-{{pageState}}">
   <view
@@ -26,8 +26,99 @@
   </view>
 
   <scroll-view wx:elif="{{pageState === 'ready' || pageState === 'submitting' || pageState === 'name'}}" scroll-y class="onboarding-scroll">
-    <view class="onboarding-content">
-      <view class="welcome-hero">
+    <view wx:if="{{codeType === 'referrer'}}" class="onboarding-content referrer-onboarding-v7">
+      <view class="referrer-hero-v7">
+        <view class="hero-arch hero-arch-back" aria-hidden="true"></view>
+        <view class="hero-arch hero-arch-front" aria-hidden="true"></view>
+        <view class="hero-stage" aria-hidden="true"></view>
+        <view class="hero-copy-v7">
+          <text class="hero-kicker-v7">欢迎加入</text>
+          <text class="hero-title-v7">推广团队</text>
+          <view class="hero-benefits-v7" aria-label="推广权益">
+            <view class="hero-benefit-v7">
+              <image src="/packages/business/assets/onboarding-referrer-v7/promotion-person-plus-v7.png" mode="aspectFit" />
+              <text>推荐客户</text>
+            </view>
+            <view class="hero-benefit-v7">
+              <image src="/packages/business/assets/onboarding-referrer-v7/promotion-progress-v7.png" mode="aspectFit" />
+              <text>查看进度</text>
+            </view>
+            <view class="hero-benefit-v7">
+              <image src="/packages/business/assets/onboarding-referrer-v7/promotion-commission-v7.png" mode="aspectFit" />
+              <text>签单后获得提成</text>
+            </view>
+          </view>
+          <text class="hero-description-v7">通过专属推广码推荐客户，\n客户成功签单后可获得对应推广提成</text>
+        </view>
+        <image class="hero-k-v7" src="/images/onboarding-referrer-v7/xiao-k-promoter-hero-v7.png" mode="aspectFit" aria-label="小K推广团队欢迎你" />
+        <view class="hero-plant-v7 plant-one" aria-hidden="true"></view>
+        <view class="hero-plant-v7 plant-two" aria-hidden="true"></view>
+      </view>
+
+      <view class="enterprise-invitation-v7">
+        <view class="invite-copy-v7">
+          <view class="invite-badge-v7">
+            <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+            <text>企业服务邀请</text>
+          </view>
+          <text class="enterprise-name-v7">{{enterpriseName}}</text>
+          <view class="referrer-role-v7">
+            <image src="/packages/business/assets/onboarding-referrer-v7/promotion-person-plus-v7.png" mode="aspectFit" />
+            <text>企业推广人</text>
+          </view>
+          <text class="invite-description-v7">成为企业推广人，分享专属推广码邀请客户。\n客户成功签单后，你可获得对应推广提成。</text>
+          <view class="invite-verified-v7">
+            <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+            <text>已认证企业邀请</text>
+          </view>
+        </view>
+        <image class="enterprise-building-v7" src="/images/onboarding-referrer-v7/enterprise-building-v7.png" mode="aspectFit" aria-hidden="true" />
+      </view>
+
+      <view class="promotion-steps-v7">
+        <view class="steps-heading-v7"><view></view><text>推广很简单</text><view></view></view>
+        <view class="step-rail-v7">
+          <view class="step-v7">
+            <view class="step-icon-v7"><image src="/packages/business/assets/onboarding-referrer-v7/promotion-code-v7.png" mode="aspectFit" /></view>
+            <view class="step-title-row-v7"><view class="step-number-v7">1</view><text class="step-title-v7">推荐客户</text></view>
+            <text class="step-copy-v7">分享专属推广码</text>
+          </view>
+          <view class="step-v7">
+            <view class="step-icon-v7"><image src="/packages/business/assets/onboarding-referrer-v7/promotion-progress-v7.png" mode="aspectFit" /></view>
+            <view class="step-title-row-v7"><view class="step-number-v7">2</view><text class="step-title-v7">查看进度</text></view>
+            <text class="step-copy-v7">实时查看推广记录</text>
+          </view>
+          <view class="step-v7">
+            <view class="step-icon-v7"><image src="/packages/business/assets/onboarding-referrer-v7/promotion-commission-v7.png" mode="aspectFit" /></view>
+            <view class="step-title-row-v7"><view class="step-number-v7">3</view><text class="step-title-v7">签单得提成</text></view>
+            <text class="step-copy-v7">客户签单后获得提成</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="privacy-note referrer-ready privacy-note-v7">
+        <view class="privacy-mark"><view class="privacy-check"></view></view>
+        <text>授权手机号后创建你的推广身份</text>
+      </view>
+      <button
+        class="join-action referrer-ready join-action-v7 {{pageState === 'submitting' ? 'is-disabled' : ''}}"
+        open-type="getPhoneNumber"
+        bindgetphonenumber="onGetPhoneNumber"
+        loading="{{pageState === 'submitting' && !nameSheetVisible}}"
+        disabled="{{pageState === 'submitting' || nameSheetVisible}}"
+      >
+        <view class="join-inner">
+          <image class="join-shield" src="/packages/business/assets/onboarding-referrer-v7/promotion-cta-shield-v7.png" mode="aspectFit" />
+          <text>立即加入推广团队</text>
+        </view>
+      </button>
+      <view class="identity-link referrer-ready identity-link-v7">
+        <text>加入后即可获取专属推广码</text>
+      </view>
+    </view>
+
+    <view wx:else class="onboarding-content">
+      <view class="welcome-hero {{codeType === 'referrer' ? 'referrer-welcome-hero' : ''}}">
         <view class="hero-leaf hero-leaf-tl" aria-hidden="true"></view>
         <view class="hero-leaf hero-leaf-tr" aria-hidden="true"></view>
         <view class="hero-copy">
@@ -84,22 +175,39 @@
         </view>
       </view>
 
-      <view wx:else class="role-card">
+      <view wx:else class="role-card referrer-card">
         <view class="section-title">成为企业推荐人</view>
         <view class="section-copy">入驻后可查看专属推广服务码、推广记录与对应提成信息。</view>
+        <view class="referrer-benefits" aria-label="入驻后可查看的推广权益">
+          <text class="benefits-heading">入驻后，可在推广端查看</text>
+          <view class="benefit-rail">
+            <view class="benefit-item">
+              <view class="benefit-icon"><image src="/images/mine-icons/scan.png" mode="aspectFit" /></view>
+              <text class="benefit-title">专属服务码</text>
+            </view>
+            <view class="benefit-item">
+              <view class="benefit-icon"><image src="/images/mine-icons/book-g.png" mode="aspectFit" /></view>
+              <text class="benefit-title">推广记录</text>
+            </view>
+            <view class="benefit-item">
+              <view class="benefit-icon"><image src="/images/mine-icons/earn-g.png" mode="aspectFit" /></view>
+              <text class="benefit-title">对应提成</text>
+            </view>
+          </view>
+        </view>
         <view class="enterprise-pill">
           <image class="pill-icon" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
           <text>将加入：<text class="pill-name">{{enterpriseName}}</text></text>
         </view>
       </view>
 
-      <view class="privacy-note">
+      <view class="privacy-note {{codeType === 'referrer' ? 'referrer-ready' : ''}}">
         <view class="privacy-mark"><view class="privacy-check"></view></view>
         <text>授权手机号后创建你的服务身份</text>
       </view>
 
       <button
-        class="join-action {{pageState === 'submitting' ? 'is-disabled' : ''}}"
+        class="join-action {{codeType === 'referrer' ? 'referrer-ready' : ''}} {{pageState === 'submitting' ? 'is-disabled' : ''}}"
         open-type="getPhoneNumber"
         bindgetphonenumber="onGetPhoneNumber"
         loading="{{pageState === 'submitting' && !nameSheetVisible}}"
@@ -111,7 +219,7 @@
         </view>
       </button>
 
-      <view class="identity-link" bindtap="onOpenIdentitySwitch" aria-role="button">
+      <view class="identity-link {{codeType === 'referrer' ? 'referrer-ready' : ''}}" bindtap="onOpenIdentitySwitch" aria-role="button">
         <text>切换身份后可在我的页面管理</text>
         <view class="link-chevron"></view>
       </view>

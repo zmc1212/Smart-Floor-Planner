@@ -5,6 +5,8 @@ const FILTERS = Object.freeze([
   { label: '已作废', value: 'voided' }
 ]);
 
+const SECTION_TITLES = Object.freeze({ all: '付款记录', payable: '待确认付款', paid: '已完成付款', voided: '已作废记录' });
+
 const ROLE_ORDER = Object.freeze({
   referrer: 0,
   designer: 1,
@@ -53,6 +55,7 @@ function buildGroups(items, filter) {
   }
   return groups.map((group) => {
     const payableItems = group.items.filter((item) => item.status === 'payable');
+    const payableAmount = payableItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     return {
       ...group,
       items: group.items.slice().sort((left, right) => (
@@ -60,7 +63,9 @@ function buildGroups(items, filter) {
       )),
       payableIds: payableItems.map((item) => item.id).join(','),
       canMarkGroup: payableItems.length > 1,
-      markGroupLabel: payableItems.length > 1 ? `本单 ${payableItems.length} 笔全部确认` : ''
+      payableCount: payableItems.length,
+      payableAmountLabel: money(payableAmount),
+      markGroupLabel: payableItems.length > 1 ? `确认本单 ${payableItems.length} 笔付款` : ''
     };
   });
 }
@@ -76,12 +81,16 @@ function formatTotals(totals) {
 function buildPageData(payload, filter) {
   const items = (payload && payload.items || []).map(decorateItem);
   const totals = (payload && payload.totals) || {};
+  const groups = buildGroups(items, filter);
   return {
     enterpriseName: (payload && payload.enterpriseName) || '',
     filters: FILTERS,
     filter,
     items,
-    groups: buildGroups(items, filter),
+    groups,
+    sectionTitle: SECTION_TITLES[filter] || SECTION_TITLES.all,
+    visibleItemCount: groups.reduce((count, group) => count + group.items.length, 0),
+    payableCount: Number(payload && payload.payableCount || 0),
     totals,
     ...formatTotals(totals)
   };
@@ -89,6 +98,7 @@ function buildPageData(payload, filter) {
 
 module.exports = {
   FILTERS,
+  SECTION_TITLES,
   buildGroups,
   buildPageData,
   decorateItem,

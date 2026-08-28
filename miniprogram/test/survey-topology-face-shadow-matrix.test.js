@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const surveyGraph = require('../utils/surveyWallGraph.js');
-const { inspectDraftFaceShadow } = require('../utils/survey/topology/face-shadow.js');
+const surveyGraph = require('../packages/surveying/utils/surveyWallGraph.js');
+const { inspectDraftFaceShadow } = require('../packages/surveying/utils/survey/topology/face-shadow.js');
 const { createScenarioCatalog } = require('../../surveying-h5/src/scenarios.js');
 
 const catalog = createScenarioCatalog(surveyGraph);

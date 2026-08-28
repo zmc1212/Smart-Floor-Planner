@@ -1,24 +1,23 @@
+<wxs src="../../../utils/stat-format.wxs" module="stat" />
 <view class="portal-page sfp-page">
   <view class="portal-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
     <text class="nav-title">提成发放</text>
   </view>
-  <view class="portal-intro sfp-hero-card">
-    <text class="intro-title">本企业应付提成台账</text>
-    <text class="intro-copy">线下打款后在此确认已付。平台不代发资金，也不调整金额或受益人。</text>
-    <text wx:if="{{enterpriseName}}" class="enterprise-name">{{enterpriseName}}</text>
-    <view class="summary-row summary-row-three">
-      <view>
-        <text class="summary-label">待支付</text>
-        <text class="summary-value">{{payableTotal}}</text>
+  <view class="payout-hero sfp-hero-card">
+    <view class="payout-hero-copy">
+      <text class="intro-kicker">企业负责人付款台账</text>
+      <text class="intro-title">本企业待发放提成</text>
+      <text class="intro-copy">先完成线下付款，再在这里确认；系统会记录付款人和时间。</text>
+      <text wx:if="{{enterpriseName}}" class="enterprise-name">{{enterpriseName}}</text>
+      <view class="primary-total">
+        <text class="primary-total-label">待支付金额</text>
+        <text class="primary-total-value">{{stat.money(totals.payable)}}</text>
       </view>
-      <view>
-        <text class="summary-label">已支付</text>
-        <text class="summary-value">{{paidTotal}}</text>
-      </view>
-      <view>
-        <text class="summary-label">已作废</text>
-        <text class="summary-value">{{voidedTotal}}</text>
-      </view>
+    </view>
+    <image class="payout-mascot" src="/images/enterprise-commissions/xiao-k-payout-checker-v1.png" mode="aspectFit"></image>
+    <view class="summary-row summary-row-two">
+      <view><text class="summary-label">已支付</text><text class="summary-value">{{stat.money(totals.paid)}}</text></view>
+      <view><text class="summary-label">已作废</text><text class="summary-value">{{stat.money(totals.voided)}}</text></view>
     </view>
   </view>
   <view class="filter-row">
@@ -41,37 +40,20 @@
     <button class="return-action sfp-primary-action" bindtap="backToOperations">返回经营</button>
   </view>
   <view wx:else class="fact-list">
-    <view wx:for="{{groups}}" wx:for-item="group" wx:key="leadId" class="lead-group">
-      <view class="lead-head">
-        <view class="lead-copy">
-          <text class="customer-label">{{group.customerLabel}}</text>
-          <text class="source-label">{{group.sourceLabel}}</text>
-        </view>
-        <view
-          wx:if="{{group.canMarkGroup}}"
-          class="group-mark"
-          data-ids="{{group.payableIds}}"
-          bindtap="markPaid"
-        >{{group.markGroupLabel}}</view>
+    <view class="payout-section-head"><text class="payout-section-title">{{sectionTitle}}</text><text class="payout-section-meta">{{visibleItemCount}} 笔</text></view>
+    <view wx:for="{{groups}}" wx:for-item="group" wx:key="leadId" class="payout-batch sfp-card">
+      <view class="payout-batch-head">
+        <view class="batch-customer"><view class="customer-marker"></view><view class="customer-copy"><text class="customer-label">{{group.customerLabel}}</text><text class="source-label">{{group.sourceLabel}}</text></view></view>
+        <view class="batch-total"><text class="batch-total-label">本单待支付</text><text class="batch-total-value">{{group.payableAmountLabel}}</text></view>
       </view>
-      <view wx:for="{{group.items}}" wx:for-item="item" wx:key="id" class="fact-card sfp-card">
-        <view class="fact-top">
-          <text class="role-label">{{item.roleLabel}} · {{item.beneficiaryLabel}}</text>
-          <text class="amount">{{item.amountLabel}}</text>
-        </view>
-        <view class="earning-meta">
-          <view class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</view>
-          <view
-            wx:if="{{item.canMarkPaid}}"
-            class="mark-paid"
-            data-id="{{item.id}}"
-            bindtap="markPaid"
-          >已线下打款</view>
-          <text wx:elif="{{item.status === 'paid'}}">已完成线下支付</text>
-          <text wx:else>已作废，不发放</text>
-        </view>
+      <view wx:if="{{group.canMarkGroup}}" class="batch-action" data-ids="{{group.payableIds}}" bindtap="markPaid"><text>{{group.markGroupLabel}}</text><text class="batch-action-arrow">›</text></view>
+      <view wx:for="{{group.items}}" wx:for-item="item" wx:key="id" class="payout-row">
+        <view class="payout-row-main"><view class="role-copy"><text class="role-label">{{item.roleLabel}}</text><text class="beneficiary-label">{{item.beneficiaryLabel}}</text></view><text class="amount">{{item.amountLabel}}</text></view>
+        <view class="payout-row-footer"><view class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</view><button wx:if="{{item.canMarkPaid}}" class="confirm-payment" data-id="{{item.id}}" bindtap="markPaid" hover-class="confirm-payment-pressed">确认线下付款</button><text wx:elif="{{item.status === 'paid'}}" class="payment-complete">已完成线下付款</text><text wx:else class="payment-voided">已作废，不发放</text></view>
+        <text wx:if="{{item.canMarkPaid}}" class="payment-helper">确认后将记录付款人和时间</text>
       </view>
     </view>
+    <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
   </view>
 </view>
 <custom-tab-bar />

@@ -20,7 +20,8 @@ test('Mini Program referrer roster list is owner-only and reuses the network rep
   assert.match(listRoute, /parseEnterpriseReferrerRosterStatus/);
   assert.match(listRoute, /buildEnterpriseReferrerRosterItem/);
   assert.match(listRoute, /searchParams\.get\('query'\)/);
-  assert.match(listRoute, /hasActivePromotionCode/);
+  assert.match(listRoute, /createPaginationMetadata/);
+  assert.match(listRoute, /getPaginationParams/);
   assert.doesNotMatch(listRoute, /withTenantRoute/);
   assert.doesNotMatch(listRoute, /referrer-memberships/);
 });

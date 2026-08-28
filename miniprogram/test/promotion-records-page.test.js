@@ -35,11 +35,13 @@ test('Promotion records ships the approved filing composition with live controls
     assert.match(pageJs, new RegExp(`label: '${label}'`));
   }
 
-  assert.match(pageJs, /businessStage=measuring/);
-  assert.match(pageJs, /businessStage=designing/);
-  assert.match(pageJs, /workbench\/todos\?view=overdue/);
-  assert.match(pageJs, /poolStatus=in_pool/);
-  assert.match(pageJs, /filterRecords\(this\.data\.records, searchText\)/);
+  assert.match(pageJs, /businessStage: 'measuring'/);
+  assert.match(pageJs, /businessStage: 'designing'/);
+  assert.match(pageJs, /workbench\/todos/);
+  assert.match(pageJs, /poolStatus: 'in_pool'/);
+  assert.match(pageJs, /search:/);
+  assert.match(pageJs, /onLoadMore/);
+  assert.match(pageWxml, /bindscrolltolower="onLoadMore"/);
 });
 
 test('Promotion records preserves the 390x844 list density without a local TabBar', () => {

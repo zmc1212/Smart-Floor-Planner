@@ -5,6 +5,7 @@ STORY: 用户确认身份，扫描进度，进入角色化工具，处理待办�
 FIRST VIEWPORT: 标题操作区与室内场景融合；半透明资料卡压住场景；账号菜单紧随其后或接在工作台内容之后。
 FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 的层级和构图。
 -->
+<wxs src="../../utils/stat-format.wxs" module="stat" />
 <template name="mineAccountPanel">
   <view class="mine-account-panel">
     <view class="account-section-title">权限</view>
@@ -301,7 +302,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <view class="section-meta">我的空间档案</view>
             <view wx:if="{{floorPlansLoading}}" class="user-summary-title">正在读取户型</view>
             <view wx:elif="{{floorPlansError}}" class="user-summary-title">户型信息待重试</view>
-            <view wx:else class="user-summary-title">已保存 {{floorPlans.length}} 个户型</view>
+            <view wx:else class="user-summary-title">已保存 {{stat.count(floorPlans.length)}} 个户型</view>
             <view class="user-summary-caption">{{floorPlansError ? '请重新加载户型数据' : (canUseAIDesign ? '继续量房，或使用 AI 生成设计灵感' : '继续量房，维护空间档案')}}</view>
           </view>
           <button class="summary-action" bindtap="onCreateNew">新建量房</button>
@@ -310,7 +311,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         <view wx:if="{{!isRoleRestrictedUser}}" class="surface-section floorplan-section">
           <view class="section-heading-row">
             <view class="section-title">我的户型</view>
-            <view class="section-meta">{{floorPlans.length}} 个</view>
+            <view class="section-meta">{{stat.count(floorPlans.length)}} 个</view>
           </view>
           <view wx:if="{{floorPlansLoading}}" class="floorplan-loading">
             <view class="skeleton floorplan-skeleton"></view>

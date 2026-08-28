@@ -40,8 +40,8 @@ test('enterprise referrer roster is an owner-only deep page with search, phone, 
   assert.match(template, /出示入驻码/);
   assert.match(page, /\/miniprogram\/enterprise-referrers/);
   assert.match(page, /\/miniprogram\/enterprise-referrers\/\$\{encodeURIComponent\(item\.id\)\}\/disable/);
-  assert.match(page, /query=/);
-  assert.match(page, /status=/);
+  assert.match(page, /query,/);
+  assert.match(page, /status:/);
   assert.match(page, /wx\.showModal/);
   assert.match(page, /confirmText: '确认停用'/);
   assert.match(page, /停用后该推荐人不能再出示活动推广码获客；历史线索和提成记录保持不变。/);
@@ -52,7 +52,7 @@ test('enterprise referrer roster is an owner-only deep page with search, phone, 
   const joinCodes = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-join-codes', 'enterprise-join-codes.wxml'), 'utf8');
   const mine = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'mine', 'mine.js'), 'utf8');
   assert.match(workbenchTemplate, /bindtap="openReferrerRoster"/);
-  assert.match(workbenchTemplate, /已入驻推荐人/);
+  assert.match(workbenchTemplate, /查看推广人/);
   assert.match(workbench, /enterprise-referrers\/enterprise-referrers/);
   assert.match(joinCodes, /查看已入驻推荐人/);
   assert.match(mine, /referrers: \(\) => wx\.navigateTo/);
@@ -68,6 +68,15 @@ test('enterprise referrer roster is an owner-only deep page with search, phone, 
   assert.match(staffStyles, /\.status-tag\s*\{[\s\S]*align-items:\s*center/);
   assert.match(staffStyles, /\.status-tag text\s*\{[\s\S]*line-height:\s*1;/);
   assert.match(styles, /\.search-surface\s*\{/);
+  assert.match(styles, /\.phone-row\s*\{[\s\S]*justify-content:\s*flex-start/);
+  assert.match(styles, /\.card-footer\s*\{[\s\S]*justify-content:\s*space-between/);
+  assert.match(template, /item\.phone && !item\.actionLabel/);
+  assert.match(template, /phone-row sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png/);
+  assert.match(template, /wx:if="\{\{item\.actionLabel\}\}"[\s\S]*card-footer/);
   assert.match(template, /ghost-btn sfp-icon-action[\s\S]*\/images\/leads-v4\/phone\.png[\s\S]*电话联系/);
   assert.match(page, /wx\.makePhoneCall/);
+  assert.match(page, /onLoadMore/);
+  assert.match(page, /list-pagination/);
+  assert.match(template, /bindscrolltolower="onLoadMore"/);
+  assert.match(template, /sfp-list-footer/);
 });

@@ -1,4 +1,11 @@
 const api = require('../../../utils/api.js');
+const {
+  DEFAULT_PAGE_SIZE,
+  appendQuery,
+  parsePagination,
+  mergePage,
+  listFooterText,
+} = require('../../../utils/list-pagination.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -59,6 +66,12 @@ Page({
     items: [],
     summaryLine: '可派 0 人',
     emptyRoleLabel: '家装设计顾问或家装现场顾问',
+    eligibleCount: 0,
+    totalCount: 0,
+    page: 1,
+    hasMore: false,
+    loadingMore: false,
+    footerText: '',
   },
 
   onLoad(options) {
@@ -71,7 +84,59 @@ Page({
   },
 
   onShow() {
-    this.load();
+    this.load({ reset: true });
+  },
+
+  onLoadMore() {
+    this.load({ reset: false });
+  },
+
+  async load(options) {
+    const reset = !options || options.reset !== false;
+    if (this._fetching) return;
+    if (!reset && (this.data.loadingMore || !this.data.hasMore)) return;
+    this._fetching = true;
+    const page = reset ? 1 : Number(this.data.page || 1);
+    if (reset) this.setData({ loading: true, error: '', loadingMore: false });
+    else this.setData({ loadingMore: true, error: '', footerText: listFooterText(true, true, this.data.items.length) });
+    try {
+      const focus = this.data.focus;
+      const path = appendQuery('/miniprogram/enterprise-staff', {
+        role: focus === 'designer' || focus === 'measurer' ? focus : '',
+        page,
+        limit: DEFAULT_PAGE_SIZE,
+      });
+      const result = await api.request(path, 'GET');
+      const payload = result.data || {};
+      const items = mergePage(this.data.items, payload.items || [], reset);
+      const summary = payload.summary || {};
+      const pagination = parsePagination(payload);
+      const eligibleCount = Number(summary.eligibleCount || 0);
+      const total = Number(summary.total != null ? summary.total : pagination.total);
+      this.setData({
+        loading: false,
+        loadingMore: false,
+        items,
+        page: page + 1,
+        hasMore: pagination.hasMore,
+        footerText: listFooterText(false, pagination.hasMore, items.length),
+        summaryLine: `可派 ${eligibleCount} 人 · 共 ${total} 人`,
+        eligibleCount,
+        totalCount: total,
+        emptyRoleLabel: emptyRoleLabel(focus),
+      });
+    } catch (error) {
+      this.setData({
+        loading: false,
+        loadingMore: false,
+        error: (error && (error.error || error.message)) || '人员名册加载失败，请检查网络后重试',
+        items: reset ? [] : this.data.items,
+        summaryLine: reset ? '可派 0 人' : this.data.summaryLine,
+        footerText: listFooterText(false, this.data.hasMore, reset ? 0 : this.data.items.length),
+      });
+    } finally {
+      this._fetching = false;
+    }
   },
 
   onBack() {
@@ -85,33 +150,9 @@ Page({
     this.setData({
       focus,
       emptyRoleLabel: emptyRoleLabel(focus),
-    }, () => this.load());
-  },
-
-  async load() {
-    this.setData({ loading: true, error: '' });
-    try {
-      const focus = this.data.focus;
-      const query = focus === 'designer' || focus === 'measurer' ? `?role=${encodeURIComponent(focus)}` : '';
-      const result = await api.request(`/miniprogram/enterprise-staff${query}`, 'GET');
-      const payload = result.data || {};
-      const items = payload.items || [];
-      const summary = payload.summary || {};
-      const eligibleCount = Number(summary.eligibleCount || 0);
-      this.setData({
-        loading: false,
-        items,
-        summaryLine: `可派 ${eligibleCount} 人 · 共 ${items.length} 人`,
-        emptyRoleLabel: emptyRoleLabel(focus),
-      });
-    } catch (error) {
-      this.setData({
-        loading: false,
-        error: (error && (error.error || error.message)) || '人员名册加载失败，请检查网络后重试',
-        items: [],
-        summaryLine: '可派 0 人',
-      });
-    }
+      items: [],
+      page: 1,
+    }, () => this.load({ reset: true }));
   },
 
   callStaff(event) {
@@ -152,10 +193,12 @@ Page({
       );
       const next = result.data || {};
       const items = (this.data.items || []).map((row) => (row.id === next.id ? next : row));
-      const eligibleCount = items.filter((row) => row.assignmentEligible).length;
+      const eligibleDelta = (next.assignmentEligible ? 1 : 0) - (item.assignmentEligible ? 1 : 0);
+      const eligibleCount = Math.max(0, Number(this.data.eligibleCount || 0) + eligibleDelta);
       this.setData({
         items,
-        summaryLine: `可派 ${eligibleCount} 人 · 共 ${items.length} 人`,
+        eligibleCount,
+        summaryLine: `可派 ${eligibleCount} 人 · 共 ${this.data.totalCount} 人`,
       });
       wx.showToast({
         title: pausing ? '已暂停派单' : '已恢复派单',

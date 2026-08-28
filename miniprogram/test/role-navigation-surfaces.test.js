@@ -215,7 +215,7 @@ test('enterprise owner commissions are a payout ledger tab with mark-paid', () =
   assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   assert.match(template, /<custom-tab-bar\s*\/>/);
   assert.match(template, /提成发放/);
-  assert.match(template, /已线下打款/);
+  assert.match(template, /确认线下付款/);
   assert.match(template, /待支付/);
   assert.match(template, /已作废/);
   assert.match(page, /['"`]\/miniprogram\/enterprise-commissions['"`]/);

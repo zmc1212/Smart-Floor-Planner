@@ -46,14 +46,27 @@ test('enterprise appointments remain a contextual route outside the AI design sh
 
   assert.doesNotMatch(tabBar, /key: 'appointments'[\s\S]*pagePath: '\/packages\/business\/enterprise-appointments\/enterprise-appointments'/);
   assert.match(source('components/role-workbench/role-workbench.js'), /target === 'appointments'/);
+  assert.match(
+    source('components/role-workbench/role-workbench.js'),
+    /target === 'appointments'[\s\S]*wx\.navigateTo\(\{ url: '\/packages\/business\/enterprise-appointments\/enterprise-appointments' \}\)/
+  );
+  assert.doesNotMatch(
+    source('components/role-workbench/role-workbench.js'),
+    /wx\.reLaunch\(\{ url: '\/packages\/business\/enterprise-appointments\/enterprise-appointments' \}\)/
+  );
   assert.match(design, /role === 'measurer'/);
   assert.doesNotMatch(design, /enterprise_admin/);
   assert.ok(business.pages.includes('enterprise-appointments/enterprise-appointments'));
-  assert.equal(pageConfig.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
-  assert.equal(pageConfig.usingComponents['role-workbench'], undefined);
+  assert.equal(pageConfig.navigationStyle, 'custom');
+  assert.equal(pageConfig.usingComponents, undefined);
   assert.match(pageTemplate, /预约调度中心/);
   assert.match(pageTemplate, /selectedAppointments/);
-  assert.match(pageTemplate, /<custom-tab-bar\s*\/>/);
+  assert.match(pageTemplate, /bindtap="onBack"/);
+  assert.doesNotMatch(pageTemplate, /<custom-tab-bar\s*\/>/);
+  assert.doesNotMatch(pageTemplate, /sfp-tab-page/);
+  assert.match(pageScript, /onBack\(\)/);
+  assert.match(pageScript, /wx\.navigateBack\(\{ fail: \(\) => wx\.switchTab\(\{ url: '\/pages\/index\/index' \}\) \}\)/);
+  assert.doesNotMatch(pageScript, /getTabBar/);
   assert.match(pageScript, /\/miniprogram\/workbench/);
   assert.match(pageScript, /payload\.appointments/);
   assert.match(pageScript, /status === 'confirmed' \|\| item\.status === 'expired'/);
@@ -71,9 +84,31 @@ test('enterprise appointments remain a contextual route outside the AI design sh
   assert.doesNotMatch(pageTemplate, /data-item="\{\{item\}\}"/);
   assert.match(pageScript, /appointment-detail\/appointment-detail/);
   assert.doesNotMatch(pageTemplate, /重新调度/);
+  assert.match(pageTemplate, /period-chip-row/);
+  assert.match(pageTemplate, /bindtap="selectPeriodChip"/);
+  assert.match(pageTemplate, /bindtap="openPeriodSheet"/);
+  assert.match(pageTemplate, /class="custom-range"/);
+  assert.match(pageTemplate, /\{\{customRangeLabel\}\}/);
+  assert.match(pageTemplate, /nav-subtitle">\{\{weekSubtitle\}\}/);
+  assert.match(pageScript, /if \(period\.kind === 'custom'\) return '自定义'/);
+  assert.match(pageScript, /formatCustomRangeLabel/);
+  assert.doesNotMatch(pageScript, /return `\$\{period\.from\} ~ \$\{period\.to\}`/);
+  assert.match(pageTemplate, /自定义周期/);
+  assert.match(pageTemplate, /period-sheet-mask/);
+  assert.match(pageScript, /schedule: '1'/);
+  assert.match(pageScript, /period: period\.kind \|\| 'week'/);
+  assert.match(pageScript, /MAX_CUSTOM_DAYS = 366/);
+  assert.match(pageScript, /confirmCustomPeriod/);
   assert.match(navigation, /enterprise-appointments\/enterprise-appointments': 'enterprise\.appointments'/);
   assert.match(navigation, /'\/pages\/ai-design\/ai-design': \['staff\.design', 'staff\.surveying'\]/);
   const pageStyles = source('packages/business/enterprise-appointments/enterprise-appointments.less');
+  assert.match(pageStyles, /\.nav-back/);
+  assert.doesNotMatch(pageStyles, /156rpx \+ env\(safe-area-inset-bottom\)/);
+  assert.match(pageStyles, /\.period-chip text\s*\{[\s\S]*font-size:\s*26rpx/);
+  assert.match(pageStyles, /\.custom-range text\s*\{[\s\S]*font-size:\s*22rpx/);
+  assert.match(pageStyles, /\.period-sheet-mask\s*\{[\s\S]*opacity:\s*0/);
+  assert.match(pageStyles, /\.period-sheet\s*\{[\s\S]*translateY\(100%\)/);
+  assert.match(pageStyles, /\.period-sheet\.open\s*\{[\s\S]*translateY\(0\)/);
   assert.match(pageStyles, /\.status-tag\s*\{[\s\S]*display:\s*inline-flex/);
   assert.match(pageStyles, /\.status-tag\s*\{[\s\S]*align-items:\s*center/);
   assert.match(pageStyles, /\.status-tag text\s*\{[\s\S]*line-height:\s*1;/);
@@ -214,9 +249,10 @@ test('enterprise owner workbench prioritizes acquisition and team actions withou
   assert.match(template, /查看推广人/);
   assert.match(workbench, /enterprise-referrers\/enterprise-referrers/);
   assert.match(template, /enterprise-appointment-row[\s\S]*secondary\.label/);
+  assert.match(template, /enterprise-appointment-meta[\s\S]*appointmentCount/);
   assert.match(template, /enterprise-reminder-row[\s\S]*enterpriseReminder/);
   assert.match(template, /enterprise-action-hub[\s\S]*enterprise-appointment-row[\s\S]*enterprise-reminder-row[\s\S]*quick-nav-grid[\s\S]*enterprise-priority-section/);
-  assert.match(template, /enterprise-reminder-divider/);
+  assert.match(template, /enterprise-reminder-title-divider[\s\S]*enterprise-reminder-divider/);
   assert.match(template, /quick-nav-arrow/);
   assert.match(template, /priority-alert-v2\.png/);
   assert.match(workbench, /buildEnterpriseReminder/);
@@ -224,15 +260,20 @@ test('enterprise owner workbench prioritizes acquisition and team actions withou
   assert.match(styles, /\.enterprise-action-layout\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1\.045fr\) minmax\(0, 0\.955fr\)/);
   assert.match(styles, /\.enterprise-action-stack\s*\{[\s\S]*grid-template-rows:\s*repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(styles, /\.enterprise-action-share-card\s*\{[\s\S]*min-height:\s*430rpx/);
+  assert.match(styles, /\.enterprise-activity-art\s*\{[\s\S]*bottom:\s*74rpx[\s\S]*height:\s*220rpx/);
   assert.match(styles, /\.enterprise-action-mini-card\s*\{[\s\S]*min-height:\s*208rpx/);
   assert.match(styles, /\.enterprise-action-copy\.mini \.enterprise-action-title\s*\{[\s\S]*font-size:\s*32rpx/);
   assert.match(styles, /\.enterprise-mini-art\.invite\s*\{[\s\S]*right:\s*10rpx[\s\S]*bottom:\s*8rpx[\s\S]*width:\s*150rpx/);
   assert.match(styles, /\.enterprise-mini-art\.referrer\s*\{[\s\S]*right:\s*12rpx[\s\S]*bottom:\s*8rpx[\s\S]*width:\s*148rpx/);
+  assert.match(styles, /\.enterprise-appointment-row\s*\{[\s\S]*min-height:\s*80rpx[\s\S]*border-radius:\s*18rpx/);
   assert.match(styles, /\.enterprise-reminder-row\s*\{[\s\S]*min-height:\s*72rpx[\s\S]*margin-top:\s*14rpx/);
+  assert.match(styles, /\.enterprise-reminder-title-divider\s*\{[\s\S]*height:\s*32rpx/);
+  assert.match(styles, /\.enterprise-action-hub \.quick-nav-card\s*\{[\s\S]*height:\s*176rpx/);
+  assert.match(styles, /\.exception-cta\s*\{[\s\S]*border-radius:\s*10rpx/);
   assert.match(styles, /\.enterprise-hero-card \.hero-top-row\s*\{[\s\S]*min-height:\s*116rpx/);
   assert.match(styles, /\.enterprise-hero-card \.stats-pills-row\s*\{[\s\S]*margin-top:\s*12rpx/);
   assert.match(styles, /\.enterprise-hero-mascot\s*\{[\s\S]*position:\s*absolute[\s\S]*width:\s*220rpx/);
-  assert.match(styles, /@media \(max-width:\s*360px\)[\s\S]*\.enterprise-action-share-card[\s\S]*min-height:\s*370rpx/);
+  assert.match(styles, /@media \(max-width:\s*360px\)[\s\S]*\.enterprise-action-share-card[\s\S]*min-height:\s*370rpx[\s\S]*\.enterprise-activity-art[\s\S]*height:\s*184rpx/);
 });
 
 test('enterprise owner operations dashboard restores the approved regular business loop', () => {
@@ -268,16 +309,28 @@ test('enterprise owner operations dashboard restores the approved regular busine
   assert.match(template, /operations-trend-canvas/);
   assert.match(template, /暂无签约金额趋势数据/);
   assert.match(workbench, /contractAmountSum/);
+  assert.match(template, /stat-format\.wxs/);
+  assert.match(template, /stat\.moneyValue\(item\.value\)/);
+  assert.match(template, /stat\.count\(item\.value\)/);
   assert.match(workbench, /normalizeContractAmountTrend/);
   assert.match(workbench, /renderContractAmountTrend/);
+  assert.match(workbench, /formatContractAmountTrendLabel/);
+  assert.match(workbench, /annotationIndexes/);
+  assert.match(workbench, /drawValueLabel/);
+  assert.match(workbench, /context\.quadraticCurveTo/);
   assert.match(workbench, /已发布方案/);
   assert.match(template, /enterprise-priority-tray/);
   assert.match(template, /priority-empty-pin[\s\S]*leads-v4\/map-pin\.png[\s\S]*\{\{emptyCopy\}\}/);
   assert.equal((template.match(/<text class="section-icon">📊<\/text>/g) || []).length, 1);
   assert.doesNotMatch(template, /<text class="section-icon">⚡<\/text>/);
-  assert.match(styles, /\.quick-nav-mascot\.staff-load-mascot\s*\{[\s\S]*width:\s*132rpx/);
+  assert.match(styles, /\.quick-nav-mascot\.staff-load-mascot\s*\{[\s\S]*width:\s*144rpx/);
+  assert.match(styles, /\.enterprise-action-hub \.quick-nav-mascot\.staff-load-mascot\s*\{[\s\S]*right:\s*-2rpx[\s\S]*bottom:\s*-4rpx[\s\S]*width:\s*120rpx[\s\S]*height:\s*96rpx/);
   assert.match(styles, /\.enterprise-dashboard-section,[\s\S]*\.enterprise-priority-section\s*\{[\s\S]*margin-top:\s*24rpx/);
   assert.match(operationsStyles, /\.operations-hero-kpi-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(4/);
+  assert.match(operationsStyles, /\.operations-hero-kpi-value\s*\{[\s\S]*font-size:\s*44rpx/);
+  assert.match(operationsStyles, /\.operations-hero-kpi-value\.is-compact\s*\{[\s\S]*font-size:\s*36rpx/);
+  assert.match(operationsStyles, /\.operations-hero-kpi-value text \+ text\s*\{[\s\S]*font-size:\s*26rpx/);
+  assert.doesNotMatch(operationsStyles, /\.operations-hero-kpi-value text:last-child/);
   assert.match(operationsStyles, /\.operations-trend-card\s*\{[\s\S]*min-height:\s*306rpx/);
   assert.match(operationsStyles, /\.enterprise-operations-hero\s*\{[\s\S]*min-height:\s*414rpx/);
   assert.match(operationsStyles, /\.operations-period-chip-row\s*\{[\s\S]*margin-top:\s*22rpx/);

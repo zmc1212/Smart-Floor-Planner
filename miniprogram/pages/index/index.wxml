@@ -1,3 +1,5 @@
+<wxs src="../../utils/stat-format.wxs" module="stat" />
+
 <view class="home-page sfp-tab-page">
   <customer-service-home wx:if="{{roleWorkbenchRole === 'customer'}}" />
   <role-workbench wx:elif="{{roleWorkbenchRole}}" role="{{roleWorkbenchRole}}" focus="overview" />
@@ -91,7 +93,7 @@
             <text class="sparkle-icon">✨</text>
             <text class="section-title">家装设计顾问交付方案</text>
           </view>
-          <text class="section-subtitle">{{recentPlans.length > 0 && recentPlans[0].measureSubtitle ? recentPlans[0].measureSubtitle : (homeDashboard && homeDashboard.stats && homeDashboard.stats.savedPlans ? '已归档 ' + homeDashboard.stats.savedPlans + ' 套户型方案' : '专业家装设计顾问1对1出图交付')}}</text>
+            <text class="section-subtitle">{{recentPlans.length > 0 && recentPlans[0].measureSubtitle ? recentPlans[0].measureSubtitle : (homeDashboard && homeDashboard.stats && homeDashboard.stats.savedPlans ? '已归档 ' + stat.count(homeDashboard.stats.savedPlans) + ' 套户型方案' : '专业家装设计顾问1对1出图交付')}}</text>
         </view>
 
         <view class="scheme-showcase-card" bindtap="onOpenDesignScheme" hover-class="card-pressed" aria-role="button" aria-label="查看全景方案">

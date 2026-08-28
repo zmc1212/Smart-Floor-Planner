@@ -1,4 +1,4 @@
-const surveyGraph = require('../../../utils/surveyWallGraph.js');
+const surveyGraph = require('./surveyWallGraph.js');
 const dimensionLayout = require('./surveyDimensionPlan.js');
 const wallSolidLayout = require('./surveyWallSolidPlan.js');
 

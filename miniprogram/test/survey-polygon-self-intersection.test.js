@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const polygon = require('../utils/survey/geometry/polygon.js');
+const polygon = require('../packages/surveying/utils/survey/geometry/polygon.js');
 
 test('bow-tie quads are self-intersecting', () => {
   assert.equal(polygon.hasSelfIntersection([

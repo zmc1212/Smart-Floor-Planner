@@ -4,11 +4,11 @@
 直接打包以下小程序生产源文件，因此小程序算法改动后重新构建即可同步：
 
 - `miniprogram/packages/surveying/editor/surveying-editor.js`
-- `miniprogram/utils/surveyWallGraph.js`
+- `miniprogram/packages/surveying/utils/surveyWallGraph.js`
 - `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js`
 
 `surveyWallGraph.js` 现在是兼容门面，构建器会继续解析并打包其
-`miniprogram/utils/survey/` 依赖。H5 可调用新增的
+`miniprogram/packages/surveying/utils/survey/` 依赖。H5 可调用新增的
 `validateSurveyDraft(draft, { mode: 'quick' | 'full' })` 做显式诊断；Face shadow 只在
 `full` 中运行，不会自动重建或持久化空间。生产编辑器也只在 `completed` 云端保存前运行
 `full`，页面加载和拖动帧不会执行它。H5 使用同一事务内核和 SnapEngine，不维护分叉实现。

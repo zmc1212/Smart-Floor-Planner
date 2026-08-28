@@ -5,6 +5,13 @@ const {
   validateReason,
   decorateEnterprise,
 } = require('../enterprise-review-model.js');
+const {
+  DEFAULT_PAGE_SIZE,
+  appendQuery,
+  parsePagination,
+  mergePage,
+  listFooterText,
+} = require('../../../utils/list-pagination.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -44,6 +51,10 @@ Page({
     emptyTitle: EMPTY_TITLES.pending_approval,
     emptyDesc: '可切换上方状态查看其他企业',
     enterprises: [],
+    page: 1,
+    hasMore: false,
+    loadingMore: false,
+    footerText: '',
     submitting: false,
     reasonVisible: false,
     reasonOpen: false,
@@ -71,7 +82,7 @@ Page({
   selectChip(event) {
     const key = event.currentTarget.dataset.key;
     if (!key || key === this.data.statusFilter) return;
-    this.setData({ statusFilter: key, enterprises: [] });
+    this.setData({ statusFilter: key, enterprises: [], page: 1 });
     this.load();
   },
 
@@ -92,8 +103,8 @@ Page({
   applySearch(value) {
     const next = String(value || '').trim();
     if (next === this.data.searchQuery) return;
-    this.setData({ searchQuery: next });
-    this.load({ quiet: true });
+    this.setData({ searchQuery: next, enterprises: [], page: 1 });
+    this.load({ quiet: true, reset: true });
   },
 
   openRegistrationCode() {
@@ -102,37 +113,65 @@ Page({
     });
   },
 
+  onLoadMore() {
+    this.load({ reset: false, quiet: true });
+  },
+
   async load(options = {}) {
     const quiet = Boolean(options.quiet);
-    if (!quiet) this.setData({ loading: true, error: '' });
+    const reset = options.reset !== false;
+    if (this._fetching) return;
+    if (!reset && (this.data.loadingMore || !this.data.hasMore)) return;
+    this._fetching = true;
+    const page = reset ? 1 : Number(this.data.page || 1);
+    if (!quiet && reset) this.setData({ loading: true, error: '', loadingMore: false });
+    else if (!reset) this.setData({ loadingMore: true, error: '', footerText: listFooterText(true, true, this.data.enterprises.length) });
     else this.setData({ error: '' });
     try {
       const status = this.data.statusFilter;
       const q = String(this.data.searchQuery || '').trim();
-      const params = [`status=${encodeURIComponent(status)}`];
-      if (q) params.push(`q=${encodeURIComponent(q)}`);
-      const result = await api.request(`/miniprogram/platform/enterprises?${params.join('&')}`, 'GET');
+      const result = await api.request(appendQuery('/miniprogram/platform/enterprises', {
+        status,
+        q,
+        page,
+        limit: DEFAULT_PAGE_SIZE,
+      }), 'GET');
       if (!result.success) {
         throw new Error(result.error || '审核列表加载失败');
       }
-      const enterprises = ((result.data && result.data.enterprises) || []).map(decorateEnterprise);
+      const payload = result.data || {};
+      const enterprises = mergePage(
+        this.data.enterprises,
+        (payload.enterprises || []).map(decorateEnterprise),
+        reset
+      );
+      const pagination = parsePagination(payload);
       const chip = STATUS_CHIPS.find((item) => item.key === status);
+      const total = pagination.total;
       this.setData({
         loading: false,
+        loadingMore: false,
         enterprises,
+        page: page + 1,
+        hasMore: pagination.hasMore,
+        footerText: listFooterText(false, pagination.hasMore, enterprises.length),
         subtitle: q
-          ? `匹配 ${enterprises.length} 家`
-          : `${(chip && chip.label) || '企业'} ${enterprises.length} 家`,
+          ? `匹配 ${total} 家`
+          : `${(chip && chip.label) || '企业'} ${total} 家`,
         emptyTitle: q ? '没有匹配的企业' : EMPTY_TITLES[status] || '暂无企业',
         emptyDesc: q ? '可更换关键词或切换上方状态' : '可切换上方状态查看其他企业',
       });
     } catch (error) {
       this.setData({
         loading: false,
+        loadingMore: false,
         error: (error && error.error) || error.message || '审核列表加载失败，请检查网络后重试',
-        enterprises: quiet ? this.data.enterprises : [],
-        subtitle: '暂时无法读取',
+        enterprises: quiet && !reset ? this.data.enterprises : reset ? [] : this.data.enterprises,
+        subtitle: reset ? '暂时无法读取' : this.data.subtitle,
+        footerText: listFooterText(false, this.data.hasMore, reset ? 0 : this.data.enterprises.length),
       });
+    } finally {
+      this._fetching = false;
     }
   },
 
@@ -221,7 +260,7 @@ Page({
       }
       wx.showToast({ title: '已提交', icon: 'success' });
       if (this.data.reasonVisible) this.closeReasonSheet();
-      await this.load();
+      await this.load({ reset: true });
     } catch (error) {
       wx.showToast({
         title: (error && error.error) || error.message || '操作失败',

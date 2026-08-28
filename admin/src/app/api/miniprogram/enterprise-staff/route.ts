@@ -6,6 +6,7 @@ import {
   buildEnterpriseStaffRosterItem,
   parseEnterpriseStaffRosterRoles,
 } from '@/lib/miniprogram-workbench';
+import { createPaginationMetadata, getPaginationParams } from '@/lib/pagination';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 
 export const dynamic = 'force-dynamic';
@@ -18,23 +19,24 @@ export async function GET(request: Request) {
     }
     requireMiniProgramEnterpriseAdmin(context);
 
-    const roles = parseEnterpriseStaffRosterRoles(new URL(request.url).searchParams.get('role'));
+    const url = new URL(request.url);
+    const roles = parseEnterpriseStaffRosterRoles(url.searchParams.get('role'));
+    const { page, limit } = getPaginationParams(url);
     const data = await withMiniProgramPostgresTransaction(context, async (transaction) => {
-      const list = await new AdminUserRepository(transaction).list({
+      const users = new AdminUserRepository(transaction);
+      const filters = {
         roles,
-        status: 'active',
-        page: 1,
-        limit: 200,
-      });
+        status: 'active' as const,
+      };
+      const [list, summary] = await Promise.all([
+        users.list({ ...filters, page, limit }),
+        users.summarizeAssignmentRoster(filters),
+      ]);
       const items = list.rows.map((row) => buildEnterpriseStaffRosterItem(row));
       return {
         items,
-        summary: {
-          total: items.length,
-          eligibleCount: items.filter((item) => item.assignmentEligible).length,
-          designerEligibleCount: items.filter((item) => item.role === 'designer' && item.assignmentEligible).length,
-          measurerEligibleCount: items.filter((item) => item.role === 'measurer' && item.assignmentEligible).length,
-        },
+        summary,
+        pagination: createPaginationMetadata(summary.total, page, limit),
       };
     });
     return NextResponse.json({ success: true, data });
