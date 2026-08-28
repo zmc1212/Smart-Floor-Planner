@@ -80,6 +80,15 @@ export function isEnterpriseStatusAction(
   );
 }
 
+export function listAllowedEnterpriseStatusActions(
+  status: string
+): EnterpriseStatusAction[] {
+  if (!isEnterpriseStatus(status)) return [];
+  return ENTERPRISE_STATUS_ACTIONS.filter((action) =>
+    TRANSITIONS[action].from.includes(status)
+  );
+}
+
 export function isEnterpriseOperationallyActive(status: string | null | undefined) {
   return status === 'active';
 }

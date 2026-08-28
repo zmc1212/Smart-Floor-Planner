@@ -176,3 +176,4 @@
     </view>
   </scroll-view>
 </view>
+<custom-tab-bar />

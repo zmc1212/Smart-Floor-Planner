@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Flex, Input, Modal, Typography } from 'antd';
 import { notify } from '@/components/admin/operation-feedback';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { isPlatformAdminRole } from '@/lib/referrer-join-limits';
+import { sensitivePasswordApiPath } from '@/lib/sensitive-password-access';
 
 type SensitivePasswordSettingsModalProps = {
   open: boolean;
@@ -15,17 +18,21 @@ export function SensitivePasswordSettingsModal({
   onClose,
   onSaved,
 }: SensitivePasswordSettingsModalProps) {
+  const { user } = useCurrentUser();
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
+  const endpoint = sensitivePasswordApiPath(user?.role);
+  const isPlatform = isPlatformAdminRole(user?.role);
 
   const loadStatus = useCallback(async () => {
+    if (!user?.role) return;
     setLoading(true);
     try {
-      const response = await fetch('/api/enterprise/sensitive-password');
+      const response = await fetch(sensitivePasswordApiPath(user.role));
       const payload = await response.json();
       if (!response.ok || !payload.success) {
         throw new Error(payload.error || '读取安全密码状态失败');
@@ -37,7 +44,7 @@ export function SensitivePasswordSettingsModal({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.role]);
 
   useEffect(() => {
     if (!open) {
@@ -53,7 +60,7 @@ export function SensitivePasswordSettingsModal({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await fetch('/api/enterprise/sensitive-password', {
+      const response = await fetch(endpoint, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,7 +116,11 @@ export function SensitivePasswordSettingsModal({
             showIcon
             type="info"
             message="用于敏感操作确认"
-            description="安全密码与登录密码分离。导出客资等操作前须输入该密码。仅企业负责人可设置或修改。"
+            description={
+              isPlatform
+                ? '与登录密码分离，用于删除企业等危险操作确认。'
+                : '与登录密码分离，用于导出客资、删除企业等危险操作确认。'
+            }
           />
           {configured ? (
             <Input.Password

@@ -12,7 +12,7 @@ const REFERRER_GUIDE_SLIDES = Object.freeze([
     image: '/packages/guides/assets/referrer-v1/progress.png',
     imageClass: 'progress-art',
     title: '服务进展，清楚可见',
-    description: '在「进度」中查看客户处于已预约、量房、\n方案发布或已签约等阶段。',
+    description: '在「客户」中查看客户处于已预约、量房、\n方案发布或已签约等阶段。',
     assurance: '仅展示脱敏服务进度'
   }),
   Object.freeze({

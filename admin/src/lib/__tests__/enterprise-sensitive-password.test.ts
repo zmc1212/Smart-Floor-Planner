@@ -9,6 +9,10 @@ import {
   validateSensitivePasswordInput,
 } from '@/lib/enterprise-sensitive-password';
 import {
+  canManageSensitivePassword,
+  sensitivePasswordApiPath,
+} from '@/lib/sensitive-password-access';
+import {
   buildLeadsExportCsv,
   escapeCsvCell,
   leadRecordToExportRow,
@@ -17,6 +21,14 @@ import { getLeadSourceLabel } from '@/lib/lead-source-labels';
 
 const sensitivePasswordRoute = fs.readFileSync(
   path.resolve(__dirname, '../../app/api/enterprise/sensitive-password/route.ts'),
+  'utf8'
+);
+const adminSensitivePasswordRoute = fs.readFileSync(
+  path.resolve(__dirname, '../../app/api/admin/sensitive-password/route.ts'),
+  'utf8'
+);
+const proxySource = fs.readFileSync(
+  path.resolve(__dirname, '../../proxy.ts'),
   'utf8'
 );
 const sensitivePasswordSettingsModal = fs.readFileSync(
@@ -55,6 +67,27 @@ const sensitivePasswordExportModal = fs.readFileSync(
 );
 const leadsExportRoute = fs.readFileSync(
   path.resolve(__dirname, '../../app/api/leads/export/route.ts'),
+  'utf8'
+);
+const enterprisesListPage = fs.readFileSync(
+  path.resolve(
+    __dirname,
+    '../../app/(admin)/(platform)/enterprises/page.tsx'
+  ),
+  'utf8'
+);
+const enterprisesDetailPage = fs.readFileSync(
+  path.resolve(
+    __dirname,
+    '../../app/(admin)/(platform)/enterprises/[id]/page.tsx'
+  ),
+  'utf8'
+);
+const platformEnterpriseDeleteModal = fs.readFileSync(
+  path.resolve(
+    __dirname,
+    '../../components/admin/platform-enterprise-delete-modal.tsx'
+  ),
   'utf8'
 );
 
@@ -231,6 +264,52 @@ test('sensitive password API is enterprise_admin only', () => {
   assert.match(sensitivePasswordRoute, /isSensitivePasswordConfigured/);
 });
 
+test('platform admin sensitive password API is super_admin/admin only', () => {
+  assert.match(
+    adminSensitivePasswordRoute,
+    /roles:\s*\['super_admin', 'admin'\]/
+  );
+  assert.match(adminSensitivePasswordRoute, /requireEnterprise:\s*false/);
+  assert.match(adminSensitivePasswordRoute, /setAdminSensitivePassword/);
+  assert.match(adminSensitivePasswordRoute, /isSensitivePasswordConfigured/);
+  assert.doesNotMatch(adminSensitivePasswordRoute, /setEnterpriseSensitivePassword/);
+  assert.doesNotMatch(
+    proxySource,
+    /\/api\/admin\/sensitive-password/
+  );
+});
+
+test('platform and enterprise sensitive password APIs stay on separate hashes', () => {
+  const helper = fs.readFileSync(
+    path.resolve(__dirname, '../enterprise-sensitive-password.ts'),
+    'utf8'
+  );
+  assert.match(helper, /export async function verifyAdminSensitivePassword/);
+  assert.match(helper, /export async function setAdminSensitivePassword/);
+  assert.match(helper, /new AdminUserRepository/);
+  assert.match(helper, /请先设置安全密码/);
+  assert.match(helper, /请先设置企业安全密码/);
+});
+
+test('sensitive password access helper routes by role', () => {
+  assert.equal(canManageSensitivePassword('enterprise_admin'), true);
+  assert.equal(canManageSensitivePassword('admin'), true);
+  assert.equal(canManageSensitivePassword('super_admin'), true);
+  assert.equal(canManageSensitivePassword('designer'), false);
+  assert.equal(
+    sensitivePasswordApiPath('admin'),
+    '/api/admin/sensitive-password'
+  );
+  assert.equal(
+    sensitivePasswordApiPath('super_admin'),
+    '/api/admin/sensitive-password'
+  );
+  assert.equal(
+    sensitivePasswordApiPath('enterprise_admin'),
+    '/api/enterprise/sensitive-password'
+  );
+});
+
 test('sensitive password settings modal does not notify parent during GET status load', () => {
   const loadStatusStart = sensitivePasswordSettingsModal.indexOf(
     'const loadStatus = useCallback'
@@ -241,9 +320,16 @@ test('sensitive password settings modal does not notify parent during GET status
     loadStatusEnd
   );
 
-  assert.ok(loadStatusBlock.includes("fetch('/api/enterprise/sensitive-password')"));
+  assert.ok(
+    loadStatusBlock.includes('sensitivePasswordApiPath(user.role)') ||
+      loadStatusBlock.includes("fetch('/api/enterprise/sensitive-password')")
+  );
   assert.doesNotMatch(loadStatusBlock, /onSaved/);
-  assert.match(loadStatusBlock.trimEnd(), /\}, \[\]\);/);
+  assert.match(sensitivePasswordSettingsModal, /sensitivePasswordApiPath/);
+  assert.match(
+    sensitivePasswordSettingsModal,
+    /与登录密码分离，用于删除企业等危险操作确认/
+  );
   assert.match(sensitivePasswordSettingsModal, /onSaved\?\.\(\)/);
 });
 
@@ -258,13 +344,14 @@ test('account settings provider exposes shared modal entry points', () => {
   assert.match(accountSettingsProvider, /openSensitivePassword/);
   assert.match(accountSettingsProvider, /LoginPasswordSettingsModal/);
   assert.match(accountSettingsProvider, /SensitivePasswordSettingsModal/);
-  assert.match(accountSettingsProvider, /user\?\.role !== 'enterprise_admin'/);
+  assert.match(accountSettingsProvider, /canManageSensitivePassword\(user\?\.role\)/);
 });
 
 test('sidebar avatar dropdown includes password actions and logout', () => {
   assert.match(sidebar, /trigger=\{\['hover', 'click'\]\}/);
   assert.match(sidebar, /修改登录密码/);
   assert.match(sidebar, /修改安全密码/);
+  assert.match(sidebar, /canManageSensitivePassword\(admin\?\.role\)/);
   assert.equal((sidebar.match(/退出系统/g) || []).length, 1);
 });
 
@@ -295,4 +382,18 @@ test('leads export API is enterprise_admin only and verifies security password',
   assert.match(leadsExportRoute, /buildLeadsExportCsv/);
   assert.match(leadsExportRoute, /archiveState:\s*'all'/);
   assert.match(leadsExportRoute, /text\/csv; charset=utf-8/);
+});
+
+test('enterprises list and detail delete dialogs use the platform sensitive password', () => {
+  assert.match(enterprisesListPage, /PlatformEnterpriseDeleteModal/);
+  assert.match(enterprisesListPage, /label: '删除企业'/);
+  assert.match(enterprisesListPage, /批量删除/);
+  assert.match(enterprisesDetailPage, /删除企业/);
+  assert.match(enterprisesDetailPage, /PlatformEnterpriseDeleteModal/);
+  assert.match(platformEnterpriseDeleteModal, /PLATFORM_SENSITIVE_PASSWORD_API/);
+  assert.match(platformEnterpriseDeleteModal, /openSensitivePassword/);
+  assert.doesNotMatch(
+    platformEnterpriseDeleteModal,
+    /\/api\/enterprise\/sensitive-password/
+  );
 });

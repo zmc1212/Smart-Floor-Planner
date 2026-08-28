@@ -5,17 +5,10 @@ import {
   parsePostgresId,
 } from '@/db/postgres-dto';
 import {
-  AdminUserRepository,
-  EnterpriseRepository,
-  MiniProgramIdentityRepository,
-} from '@/db/repositories';
-import { withPlatformTransaction } from '@/db/transaction';
-import { ensureEnterpriseAdminForActiveEnterprise } from '@/lib/enterprise-admin-provision';
-import {
-  EnterpriseStatusTransitionError,
-} from '@/lib/enterprise-status';
+  applyEnterpriseStatusChange,
+  enterpriseStatusChangeErrorResponse,
+} from '@/lib/enterprise-status-change';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { notifyEnterpriseContactOfJoinResult } from '@/lib/wechat-notification';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,34 +88,12 @@ export async function POST(
           action?: unknown;
           reason?: unknown;
         };
-        const enterpriseId = parsePostgresId(id);
-        const actorAdminId = parsePostgresId(context.userId, 'actor admin id');
 
-        const result = await withPlatformTransaction(async (transaction) => {
-          const enterprises = new EnterpriseRepository(transaction);
-          const adminUsers = new AdminUserRepository(transaction);
-          const identities = new MiniProgramIdentityRepository(transaction);
-          const applied = await enterprises.applyStatusAction({
-            enterpriseId,
-            action: body.action as string,
-            reason: body.reason,
-            actorAdminId,
-          });
-          if (!applied) return null;
-
-          if (applied.transition.toStatus === 'active') {
-            await ensureEnterpriseAdminForActiveEnterprise(
-              adminUsers,
-              applied.enterprise,
-              identities
-            );
-          }
-
-          const statusEvents = await enterprises.listStatusEvents(
-            enterpriseId,
-            20
-          );
-          return { applied, statusEvents };
+        const result = await applyEnterpriseStatusChange({
+          enterpriseId: parsePostgresId(id),
+          action: body.action,
+          reason: body.reason,
+          actorAdminId: parsePostgresId(context.userId, 'actor admin id'),
         });
 
         if (!result) {
@@ -130,22 +101,6 @@ export async function POST(
             { success: false, error: 'Enterprise not found' },
             { status: 404 }
           );
-        }
-
-        const action = String(body.action || '');
-        if (action === 'approve' || action === 'reject') {
-          const enterprise = result.applied.enterprise;
-          void notifyEnterpriseContactOfJoinResult({
-            enterpriseName: enterprise.name,
-            contactPerson: enterprise.contactPerson as {
-              name?: unknown;
-              phone?: unknown;
-            } | null,
-            appliedAt: enterprise.createdAt,
-            result: action === 'approve' ? 'approved' : 'rejected',
-          }).catch((error) => {
-            console.error('Enterprise join result notification dispatch failed:', error);
-          });
         }
 
         return NextResponse.json({
@@ -160,22 +115,7 @@ export async function POST(
       }
     );
   } catch (error: unknown) {
-    if (error instanceof EnterpriseStatusTransitionError) {
-      return NextResponse.json(
-        { success: false, error: error.message, code: error.code },
-        { status: 400 }
-      );
-    }
-    const details = error as { code?: string };
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json(
-      { success: false, error: message },
-      {
-        status:
-          details.code === '23505' || details.code === 'ACCOUNT_CONFLICT'
-            ? 400
-            : 500,
-      }
-    );
+    const { status, body } = enterpriseStatusChangeErrorResponse(error);
+    return NextResponse.json(body, { status });
   }
 }

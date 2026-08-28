@@ -24,7 +24,7 @@ export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
   measurer: '/pages/index/index',
   salesperson: '/packages/business/promotion-records/promotion-records',
   enterprise_admin: '/pages/index/index',
-  platform_admin: '/pages/index/index',
+  platform_admin: '/packages/platform/devices/devices',
 };
 
 const ROLE_LABELS: Record<MiniProgramRole, string> = {
@@ -44,7 +44,7 @@ const ROLE_CAPABILITIES: Record<MiniProgramRole, string[]> = {
   measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
   salesperson: ['promotion.records', 'promotion.commissions', 'account'],
   enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
-  platform_admin: ['platform.devices', 'account'],
+  platform_admin: ['platform.review', 'platform.devices', 'account'],
 };
 
 export function getMiniProgramRole(

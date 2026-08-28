@@ -64,12 +64,29 @@ test('sendSubscriptionMessage gates WeChat delivery on subscriptionMessagesEnabl
 });
 
 test('enterprise status approve and reject dispatch join-result notifications after commit', () => {
-  const source = readFileSync(
+  const helper = readFileSync(
+    join(adminSrc, 'lib/enterprise-status-change.ts'),
+    'utf8'
+  );
+  const route = readFileSync(
     join(adminSrc, 'app/api/admin/enterprises/[id]/status/route.ts'),
     'utf8'
   );
-  assert.match(source, /notifyEnterpriseContactOfJoinResult/);
-  assert.match(source, /action === 'approve' \|\| action === 'reject'/);
+  assert.match(helper, /notifyEnterpriseContactOfJoinResult/);
+  assert.match(helper, /enterpriseJoinNotifyResult/);
+  assert.match(
+    helper,
+    /await withPlatformTransaction[\s\S]*dispatchEnterpriseJoinResultNotification/
+  );
+  assert.match(route, /applyEnterpriseStatusChange/);
+  assert.doesNotMatch(route, /notifyEnterpriseContactOfJoinResult/);
+
+  const miniStatusRoute = readFileSync(
+    join(adminSrc, 'app/api/miniprogram/platform/enterprises/[id]/status/route.ts'),
+    'utf8'
+  );
+  assert.match(miniStatusRoute, /applyEnterpriseStatusChange/);
+  assert.doesNotMatch(miniStatusRoute, /notifyEnterpriseContactOfJoinResult/);
 });
 
 test('lead convert notifies referrer, staff earnings via workflow_todo, and enterprise owner after commit', () => {

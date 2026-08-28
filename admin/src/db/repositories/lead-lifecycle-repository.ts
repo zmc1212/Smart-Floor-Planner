@@ -489,14 +489,14 @@ export class LeadLifecycleRepository {
     if (lead.referrerMembershipId !== input.membershipId) throw Object.assign(httpError('无权操作该推广记录', 403), { code: 'REFERRER_LEAD_FORBIDDEN' });
     if (lead.source !== 'referrer_network') throw Object.assign(httpError('仅推广线索支持撤销', 409), { code: 'REFERRER_SOURCE_REQUIRED' });
     if (lead.terminationType === 'referrer_withdrawn') return lead;
-    if (normalizeLeadStatus(lead.status) !== 'new') throw Object.assign(httpError('该线索已开始服务，不能撤销，请联系企业管理员', 409), { code: 'REFERRER_WITHDRAWAL_BLOCKED' });
+    if (normalizeLeadStatus(lead.status) !== 'new') throw Object.assign(httpError('该线索已开始服务，不能撤回，请联系企业管理员', 409), { code: 'REFERRER_WITHDRAWAL_BLOCKED' });
     const impact = (await this.impacts([lead.id]))[0];
     const [appointments, photos] = await Promise.all([
       this.transaction.select({ id: measurementAppointments.id }).from(measurementAppointments).where(eq(measurementAppointments.leadId, lead.id)),
       this.transaction.select({ id: leadSitePhotos.id }).from(leadSitePhotos).where(and(eq(leadSitePhotos.leadId, lead.id), isNull(leadSitePhotos.deletedAt))),
     ]);
     if (impact.floorPlanCount || impact.aiWorkflowCount || impact.aiGenerationCount || impact.followUpCount || impact.hasConversion || impact.commissionCount || appointments.length || photos.length) {
-      throw Object.assign(httpError('该线索已开始服务，不能撤销，请联系企业管理员', 409), { code: 'REFERRER_WITHDRAWAL_BLOCKED', impact });
+      throw Object.assign(httpError('该线索已开始服务，不能撤回，请联系企业管理员', 409), { code: 'REFERRER_WITHDRAWAL_BLOCKED', impact });
     }
     const now = new Date();
     const rows = await this.transaction.update(leads).set({

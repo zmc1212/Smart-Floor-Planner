@@ -20,65 +20,67 @@ page {
   padding-bottom: 16rpx;
   padding-left: 40rpx;
   align-items: center;
+  justify-content: flex-start;
   box-sizing: border-box;
+  overflow: hidden;
   background: transparent;
 }
 
-.nav-left {
+.identity-brand-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.identity-brand-row {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
+  gap: 10rpx;
   min-width: 0;
-  flex: 1;
-  gap: 16rpx;
+  max-width: 100%;
 }
 
 .brand-mark {
   display: flex;
-  width: 52rpx;
-  height: 52rpx;
+  width: 40rpx;
+  height: 40rpx;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 14rpx;
+  border-radius: 10rpx;
   flex-shrink: 0;
 }
 
 .brand-mark image {
-  width: 52rpx;
-  height: 52rpx;
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .nav-title {
+  min-width: 0;
   color: #183426;
   font-size: 32rpx;
   font-weight: 800;
-  line-height: 1.2;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
-.identity-badge-pill {
-  display: inline-flex;
-  min-width: 0;
-  width: 180rpx;
-  max-width: 180rpx;
-  height: 36rpx;
-  margin-left: 8rpx;
-  padding: 0 14rpx;
-  overflow: hidden;
-  align-items: center;
-  border-radius: 30rpx;
-  background: #eaefea;
-  box-sizing: border-box;
-  flex-shrink: 1;
-}
-
-.identity-badge-text {
-  overflow: hidden;
-  color: #3a4d40;
+.identity-user-name {
+  margin-top: 2rpx;
+  margin-left: 50rpx;
+  max-width: calc(100% - 50rpx);
+  color: #2c4235;
   font-size: 22rpx;
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1;
+  text-align: left;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

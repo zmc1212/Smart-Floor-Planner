@@ -99,6 +99,31 @@ test('role guides stay in their own subpackage and under the WeChat 2MB limit', 
   assert.equal(fs.existsSync(path.join(miniRoot, 'images', 'role-guides')), false);
 });
 
+test('platform subpackage source stays under the WeChat 2MB subpackage limit', () => {
+  const miniRoot = path.join(__dirname, '..');
+  const appConfig = JSON.parse(fs.readFileSync(path.join(miniRoot, 'app.json'), 'utf8'));
+  const platform = appConfig.subPackages.find((item) => item.root === 'packages/platform');
+  assert.ok(platform);
+  assert.equal(platform.independent, undefined);
+  assert.deepEqual(platform.pages, [
+    'devices/devices',
+    'enterprise-review/enterprise-review',
+    'enterprise-review-detail/enterprise-review-detail',
+    'registration-code/registration-code',
+  ]);
+
+  const platformRoot = path.join(miniRoot, 'packages', 'platform');
+  let total = 0;
+  for (const file of fs.readdirSync(platformRoot, { recursive: true })) {
+    const absolute = path.join(platformRoot, file);
+    if (fs.statSync(absolute).isFile()) total += fs.statSync(absolute).size;
+  }
+  assert.ok(
+    total <= 2048 * 1024,
+    `packages/platform source size ${Math.ceil(total / 1024)}KB exceeds the 2048KB subpackage limit`
+  );
+});
+
 test('main package source stays under the WeChat 2MB main-package limit', () => {
   const miniRoot = path.join(__dirname, '..');
   const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
@@ -178,6 +203,15 @@ test('main package contains only primary tabs and low-frequency flows are split 
       pages: ['referrer-guide/referrer-guide', 'enterprise-owner-guide/enterprise-owner-guide', 'designer-guide/designer-guide', 'measurer-guide/measurer-guide', 'customer-guide/customer-guide'],
     },
     {
+      root: 'packages/platform',
+      pages: [
+        'devices/devices',
+        'enterprise-review/enterprise-review',
+        'enterprise-review-detail/enterprise-review-detail',
+        'registration-code/registration-code',
+      ],
+    },
+    {
       root: 'packages/business',
       pages: [
         'login/login',
@@ -225,14 +259,14 @@ test('main package contains only primary tabs and low-frequency flows are split 
   assert.equal(fs.existsSync(path.join(__dirname, '..', 'miniprogram_npm')), false);
   assert.ok(fs.existsSync(path.join(__dirname, '..', 'packages/surveying/vendor/threejs-miniprogram.js')));
 
-  for (const packageName of ['surveying', 'ai-workflow', 'business']) {
+  for (const packageName of ['surveying', 'ai-workflow', 'business', 'platform']) {
     const packageRoot = path.join(__dirname, '..', 'packages', packageName);
     const sourceFiles = fs.readdirSync(packageRoot, { recursive: true })
       .filter((file) => /\.(js|json|wxml|less)$/.test(file));
 
     for (const sourceFile of sourceFiles) {
       const source = fs.readFileSync(path.join(packageRoot, sourceFile), 'utf8');
-      for (const otherPackage of ['surveying', 'ai-workflow', 'business']) {
+      for (const otherPackage of ['surveying', 'ai-workflow', 'business', 'platform']) {
         if (otherPackage !== packageName) {
           assert.doesNotMatch(source, new RegExp(`packages/${otherPackage}`));
         }

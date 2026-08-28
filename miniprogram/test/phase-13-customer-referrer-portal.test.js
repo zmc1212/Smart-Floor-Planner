@@ -37,6 +37,9 @@ test('phase 13 portal pages use the scoped aggregate endpoints and preserve priv
   assert.match(workbenchScript, /\/miniprogram\/identity-contexts\/switch/);
   assert.match(workbenchScript, /referrerMembershipId: membership\.id/);
   assert.doesNotMatch(source('packages/business/referrer-progress/referrer-progress.wxml'), /手机号|精确地址|户型 graph|设计文件/);
+  assert.doesNotMatch(source('packages/business/referrer-progress/referrer-progress.wxml'), /撤销测试线索/);
+  assert.match(source('packages/business/referrer-progress/referrer-progress.wxml'), />撤回</);
+  assert.match(source('packages/business/referrer-progress/referrer-progress.less'), /\.withdraw-btn\s*\{[\s\S]*background:\s*#18a94b/);
 });
 
 test('phase 13 pages use custom navigation so their capsule-safe headers are the only navigation bar', () => {
@@ -56,7 +59,7 @@ test('customer Service workspace mounts stage companion instead of staff workben
   const indexWxml = source('pages/index/index.wxml');
   const indexJson = JSON.parse(source('pages/index/index.json'));
   const companion = source('components/customer-service-home/customer-service-home.js');
-  assert.match(indexJs, /\['customer', 'designer', 'measurer', 'enterprise_admin', 'platform_admin'\]/);
+  assert.match(indexJs, /\['customer', 'designer', 'measurer', 'enterprise_admin'\]/);
   assert.equal(
     indexJson.usingComponents['customer-service-home'],
     '/components/customer-service-home/customer-service-home'
@@ -65,4 +68,14 @@ test('customer Service workspace mounts stage companion instead of staff workben
   assert.match(indexWxml, /<role-workbench wx:elif="\{\{roleWorkbenchRole\}\}"[^>]*focus="overview"/);
   assert.doesNotMatch(indexJs, /customer-projects\/customer-projects/);
   assert.match(companion, /['"`]\/miniprogram\/customer-projects['"`]/);
+});
+
+test('referrer customers page packages a standalone transparent Xiao K cutout', () => {
+  const wxml = source('packages/business/referrer-progress/referrer-progress.wxml');
+  const relative = 'packages/business/assets/referrer-customers-v1/xiao-k-customer-dossier.png';
+  const bytes = fs.readFileSync(path.join(root, relative));
+  assert.match(wxml, /referrer-customers-v1\/xiao-k-customer-dossier\.png/);
+  assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(bytes.length <= 300 * 1024, 'xiao-k-customer-dossier.png exceeds 300KB');
+  assert.ok(bytes.includes(Buffer.from('tRNS')) || [4, 6].includes(bytes[25]), 'cutout must retain transparency');
 });

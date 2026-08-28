@@ -522,6 +522,12 @@ async function runCoreScenarios(credentials) {
     session: 'mini', expectedStatuses: [200], requiredPath: 'success',
   });
 
+  await check('Set platform sensitive password', 'PUT', '/api/admin/sensitive-password', {
+    session: 'platform',
+    body: { password: 'ApiTest.1', confirmPassword: 'ApiTest.1' },
+    expectedStatuses: [200],
+    requiredPath: 'data.configured',
+  });
   const disposablePhone = `132${(Number(stamp) + 7).toString().padStart(8, '0').slice(-8)}`;
   const disposableEnterprise = await check('Create enterprise deletion target', 'POST', '/api/admin/enterprises', {
     session: 'platform', body: {
@@ -530,16 +536,14 @@ async function runCoreScenarios(credentials) {
     }, expectedStatuses: [200, 201], requiredPath: 'data._id',
   });
   const disposableEnterpriseId = idFrom(disposableEnterprise, 'data._id', 'data.id');
-  const administrators = await request('GET', '/api/admin-users', { session: 'platform' });
-  const disposableAdministrator = Array.isArray(administrators.body?.data)
-    ? administrators.body.data.find((item) => String(item.enterpriseId?._id || item.enterpriseId || '') === disposableEnterpriseId)
-    : null;
-  if (!disposableAdministrator) throw new Error('Disposable enterprise administrator was not found');
-  await check('Delete disposable enterprise administrator', 'DELETE', `/api/admin-users/${disposableAdministrator._id || disposableAdministrator.id}`, {
-    session: 'platform', expectedStatuses: [200], requiredPath: 'success',
-  });
   await check('Delete enterprise', 'DELETE', `/api/admin/enterprises/${disposableEnterpriseId}`, {
-    session: 'platform', expectedStatuses: [200], requiredPath: 'success',
+    session: 'platform',
+    body: {
+      confirmEnterpriseName: `${runKey} Disposable Enterprise`,
+      securityPassword: 'ApiTest.1',
+    },
+    expectedStatuses: [200],
+    requiredPath: 'success',
   });
   await check('Logout disposable platform session', 'POST', '/api/auth/logout', {
     session: 'platform', expectedStatuses: [200], requiredPath: 'success',

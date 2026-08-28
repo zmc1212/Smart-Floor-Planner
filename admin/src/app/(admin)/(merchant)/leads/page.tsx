@@ -35,12 +35,15 @@ import { SensitivePasswordModal } from '@/components/admin/sensitive-password-mo
 import { notify } from '@/components/admin/operation-feedback';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { getLeadNextAction, getLeadStatusLabel, getLeadWorkflowStep, LEAD_WORKFLOW_STEPS } from '@/lib/lead-status';
+import { canOperateLead, getLeadNextAction, getLeadStatusLabel, getLeadWorkflowStep, LEAD_WORKFLOW_STEPS } from '@/lib/lead-status';
 import { canRebookAppointment, resolveLeadServiceStage } from '@/lib/lead-service-stage';
 import {
   ASSIGNMENT_STATUS_LABELS,
+  getAssignmentErrorLabel,
+  getAssignmentEventTypeLabel,
   getAssignmentPendingHint,
   getAssignmentStatusLabel,
+  getClaimResolutionReasonLabel,
   needsStaffWechatForAssignment,
 } from '@/lib/lead-assignment-feedback';
 import { getLeadSourceLabel } from '@/lib/lead-source-labels';
@@ -83,6 +86,7 @@ type Lead = {
   stylePreference?: string | null;
   source?: string | null;
   status: string;
+  terminationType?: string | null;
   archivedAt?: string | null;
   archivedBy?: StaffReference | string | null;
   archiveReason?: string | null;
@@ -215,11 +219,6 @@ const CLOSE_LOST_REASON_OPTIONS = [
   { label: '误录（负责人）', value: 'mistaken_entry' },
 ];
 const CLOSE_LOST_REASON_LABELS = Object.fromEntries(CLOSE_LOST_REASON_OPTIONS.map((item) => [item.value, item.label.replace(/（.*）/, '')]));
-const ASSIGNMENT_EVENT_LABELS: Record<string, string> = {
-  claim_opened: '进入抢单池', claim_succeeded: '设计师抢单成功', assignment_auto: '赛马自动派单',
-  assignment_auto_pending: '自动派单待补全', assignment_pending: '派单待重试',
-  assignment_created: '自动派单完成', assignment_manual: '负责人手动指派', assignment_reassigned: '负责人改派',
-};
 const CLAIM_WINDOW_STATUS_LABELS: Record<string, string> = {
   open: '开放中', claimed: '已抢单', auto_assigned: '已自动派单', manually_assigned: '已人工指派',
   assignment_pending: '待重试', cancelled: '已取消',
@@ -284,8 +283,12 @@ function getStaffId(value: StaffReference | string | null | undefined) {
   return value;
 }
 
+function canMutateLead(lead: Pick<Lead, 'status' | 'archivedAt'>) {
+  return canOperateLead(lead.status, lead.archivedAt);
+}
+
 function canCancelLeadAppointment(lead: Lead, role?: string | null, userId?: string | null) {
-  if (!role || !userId || !lead.appointment) return false;
+  if (!canMutateLead(lead) || !role || !userId || !lead.appointment) return false;
   if (lead.appointment.status !== 'confirmed') return false;
   if (!['designer', 'enterprise_admin'].includes(role)) return false;
   if (role === 'enterprise_admin') return true;
@@ -293,7 +296,7 @@ function canCancelLeadAppointment(lead: Lead, role?: string | null, userId?: str
 }
 
 function canCompleteLeadAppointment(lead: Lead, role?: string | null, userId?: string | null) {
-  if (!role || !userId || !lead.appointment) return false;
+  if (!canMutateLead(lead) || !role || !userId || !lead.appointment) return false;
   const status = lead.appointment.status;
   if (status !== 'confirmed' && status !== 'expired') return false;
   if (!['measurer', 'enterprise_admin', 'designer'].includes(role)) return false;
@@ -302,14 +305,14 @@ function canCompleteLeadAppointment(lead: Lead, role?: string | null, userId?: s
 }
 
 function canManageLeadPublications(lead: Lead, role?: string | null, userId?: string | null) {
-  if (!role || !userId || lead.archivedAt) return false;
+  if (!canMutateLead(lead) || !role || !userId) return false;
   if (!['designer', 'enterprise_admin'].includes(role)) return false;
   if (role === 'enterprise_admin') return true;
   return getStaffId(lead.assignedTo) === userId;
 }
 
 function canEditLeadProfile(lead: Lead, role?: string | null, userId?: string | null) {
-  if (!role || !userId || lead.archivedAt) return false;
+  if (!canMutateLead(lead) || !role || !userId) return false;
   if (['admin', 'super_admin', 'enterprise_admin'].includes(role)) return true;
   if (role === 'designer') return getStaffId(lead.assignedTo) === userId;
   if (role === 'measurer') return getStaffId(lead.measurerId) === userId;
@@ -1459,9 +1462,11 @@ function LeadsPage() {
           </Button>
           {archiveState === 'active' ? (
             <>
-              <Button size="small" icon={<FilePenLine size={14} />} onClick={() => openAiWorkbench(lead._id)}>
-                {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
-              </Button>
+              {canMutateLead(lead) ? (
+                <Button size="small" icon={<FilePenLine size={14} />} onClick={() => openAiWorkbench(lead._id)}>
+                  {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
+                </Button>
+              ) : null}
               {capabilities.canManageArchive ? (
                 <Button size="small" disabled={archiveLoading} loading={archiveLoading && archiveTargets.some((item) => item._id === lead._id)} icon={<Archive size={14} />} onClick={() => void openArchive([lead])}>
                   归档
@@ -1664,7 +1669,7 @@ function LeadsPage() {
                           </Flex>
                           <Flex align="center" wrap style={{ gap: 12 }}>
                             <Button size="small" icon={<Eye size={14} />} onClick={() => void openLeadDetail(lead)}>详情</Button>
-                            {archiveState === 'active' ? (
+                            {archiveState === 'active' && canMutateLead(lead) ? (
                               <Button type="primary" size="small" icon={<FilePenLine size={14} />} onClick={() => openAiWorkbench(lead._id)}>
                                 {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
                               </Button>
@@ -1690,10 +1695,10 @@ function LeadsPage() {
                             <Typography.Text strong ellipsis={{ tooltip: lead.appointment ? formatAppointmentRange(lead.appointment.timeRange) : '尚未预约' }}>
                               {lead.appointment ? formatAppointmentRange(lead.appointment.timeRange) : '尚未预约'}
                             </Typography.Text>
-                            <Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: lead.appointment?.address || (lead.appointment ? '地址待确认' : '可在详情中设置') }}>
-                              {lead.appointment?.address || (lead.appointment ? '地址待确认' : '可在详情中设置')}
+                            <Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: lead.appointment?.address || (lead.appointment ? '地址待确认' : (canMutateLead(lead) ? '可在详情中设置' : '已无法继续预约')) }}>
+                              {lead.appointment?.address || (lead.appointment ? '地址待确认' : (canMutateLead(lead) ? '可在详情中设置' : '已无法继续预约'))}
                             </Typography.Text>
-                            {archiveState === 'active' && lead.appointment?.status === 'confirmed' && !lead.canRebook ? (
+                            {archiveState === 'active' && canMutateLead(lead) && lead.appointment?.status === 'confirmed' && !lead.canRebook ? (
                               <Button size="small" icon={<CalendarDays size={14} />} className="mt-1 self-start" onClick={() => openReschedule(lead)}>改预约</Button>
                             ) : null}
                           </Flex>
@@ -1736,7 +1741,7 @@ function LeadsPage() {
                             <Typography.Text type="secondary" className="text-xs">提交：{formatDate(lead.createdAt)}</Typography.Text>
                           </Flex>
                           <Flex align="center" wrap style={{ gap: 12 }}>
-                            {archiveState === 'active' && lead.assignmentStatus === 'assignment_pending' ? (
+                            {archiveState === 'active' && canMutateLead(lead) && lead.assignmentStatus === 'assignment_pending' ? (
                               <>
                                 {needsStaffWechatForAssignment(lead.assignmentErrorCode) ? (
                                   <Button size="small" href="/staff">去员工管理</Button>
@@ -2225,7 +2230,7 @@ function LeadsPage() {
         destroyOnHidden
         title={selectedLead ? `${selectedLead.name}的线索详情` : '线索详情'}
         onClose={closeLeadDetail}
-        extra={selectedLead && !selectedLead.archivedAt ? (
+        extra={selectedLead && canMutateLead(selectedLead) ? (
           <Button icon={<FilePenLine size={16} />} onClick={() => openAiWorkbench(selectedLead._id)}>
             {selectedLead.floorPlanIds?.length || selectedLead.followUpRecords?.length ? '查看方案' : '开始方案'}
           </Button>
@@ -2274,7 +2279,7 @@ function LeadsPage() {
                   children: APPOINTMENT_STATUS_LABELS[selectedLead.appointment.status] || selectedLead.appointment.status,
                 }] : []),
               ]}
-              extra={!selectedLead.archivedAt ? (
+              extra={canMutateLead(selectedLead) ? (
                 selectedLead.canRebook || !selectedLead.appointment ? (
                   <Button type="primary" icon={<ClipboardCheck size={15} />} onClick={() => openAppointmentPicker(selectedLead)}>
                     {selectedLead.canRebook ? '重新预约' : '设置预约'}
@@ -2426,7 +2431,16 @@ function LeadsPage() {
 
             {selectedLead.status === 'closed' && ['enterprise_admin', 'admin', 'super_admin'].includes(currentUser?.role || '') ? (
               <Flex align="center" justify="space-between" gap={16} wrap className="rounded-xl bg-emerald-50 p-4">
-                <Flex vertical gap={2}><Typography.Text strong>客户重新启动装修？</Typography.Text><Typography.Text type="secondary">恢复结案前阶段；已取消的预约不会自动恢复。</Typography.Text></Flex>
+                <Flex vertical gap={2}>
+                  <Typography.Text strong>
+                    {selectedLead.terminationType === 'referrer_withdrawn' ? '恢复该推广线索？' : '客户重新启动装修？'}
+                  </Typography.Text>
+                  <Typography.Text type="secondary">
+                    {selectedLead.terminationType === 'referrer_withdrawn'
+                      ? '重新激活后恢复撤销前阶段；已取消的预约不会自动恢复。'
+                      : '恢复结案前阶段；已取消的预约不会自动恢复。'}
+                  </Typography.Text>
+                </Flex>
                 <Button loading={reopenSubmitting} icon={<RotateCcw size={16} />} onClick={() => void reopenLost()}>重新激活</Button>
               </Flex>
             ) : null}
@@ -2437,7 +2451,7 @@ function LeadsPage() {
                 {selectedLead.assignmentAudit.claimWindow ? (
                   <Descriptions bordered size="small" column={1} items={[
                     { key: 'window', label: '抢单窗口', children: `${CLAIM_WINDOW_STATUS_LABELS[selectedLead.assignmentAudit.claimWindow.status] || selectedLead.assignmentAudit.claimWindow.status} · ${formatDate(selectedLead.assignmentAudit.claimWindow.opensAt)} 至 ${formatDate(selectedLead.assignmentAudit.claimWindow.expiresAt)}` },
-                    { key: 'route', label: '派单路径', children: selectedLead.assignmentAudit.claimWindow.assignmentGroup ? (selectedLead.assignmentAudit.claimWindow.assignmentGroup === 'high' ? '自动派至高绩效组' : '自动派至普通组') : selectedLead.assignmentAudit.claimWindow.resolutionReason || '等待结果' },
+                    { key: 'route', label: '派单路径', children: selectedLead.assignmentAudit.claimWindow.assignmentGroup ? (selectedLead.assignmentAudit.claimWindow.assignmentGroup === 'high' ? '自动派至高绩效组' : '自动派至普通组') : getClaimResolutionReasonLabel(selectedLead.assignmentAudit.claimWindow.resolutionReason) || '等待结果' },
                   ]} />
                 ) : null}
                 {(selectedLead.assignmentAudit.outcomes || []).length ? (
@@ -2448,7 +2462,7 @@ function LeadsPage() {
                 ) : null}
                 {(selectedLead.assignmentAudit.events || []).length ? (
                   <Timeline items={(selectedLead.assignmentAudit.events || []).map((event) => ({
-                    children: <Flex vertical gap={2}><Typography.Text>{ASSIGNMENT_EVENT_LABELS[event.eventType] || event.eventType}</Typography.Text><Typography.Text type="secondary" className="text-xs">{formatDate(event.createdAt)}{event.errorCode ? ` · ${event.errorCode}` : ''}</Typography.Text></Flex>,
+                    children: <Flex vertical gap={2}><Typography.Text>{getAssignmentEventTypeLabel(event.eventType)}</Typography.Text><Typography.Text type="secondary" className="text-xs">{formatDate(event.createdAt)}{event.errorCode ? ` · ${getAssignmentErrorLabel(event.errorCode)}` : ''}</Typography.Text></Flex>,
                   }))} />
                 ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无派单审计记录" />}
               </Flex>
@@ -2459,7 +2473,7 @@ function LeadsPage() {
               bordered
               size="small"
               column={1}
-              extra={selectedLead && !selectedLead.archivedAt && canEditLeadProfile(selectedLead, currentUser?.role, currentUser?._id) ? (
+              extra={selectedLead && canEditLeadProfile(selectedLead, currentUser?.role, currentUser?._id) ? (
                 <Button
                   type="link"
                   size="small"
@@ -2489,7 +2503,7 @@ function LeadsPage() {
                 <Typography.Text strong>跟进日志</Typography.Text>
                 <Tag>{selectedLead.followUpRecords?.length || 0}</Tag>
               </Flex>
-              {!selectedLead.archivedAt ? <Flex gap={8} align="start">
+              {canMutateLead(selectedLead) ? <Flex gap={8} align="start">
                 <Input.TextArea
                   autoSize={{ minRows: 2, maxRows: 4 }}
                   placeholder="记录新的跟进动态"

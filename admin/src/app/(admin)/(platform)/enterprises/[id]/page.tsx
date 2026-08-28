@@ -14,6 +14,7 @@ import {
   EnterpriseStatusEventItem,
 } from '@/components/enterprise/types';
 import { notify } from '@/components/admin/operation-feedback';
+import { PlatformEnterpriseDeleteModal } from '@/components/admin/platform-enterprise-delete-modal';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { isPlatformAdminRole } from '@/lib/referrer-join-limits';
 
@@ -55,11 +56,13 @@ export default function EnterpriseDetailPage() {
   );
   const { user } = useCurrentUser();
   const canEditProtection = isPlatformAdminRole(user?.role);
+  const canPurge = isPlatformAdminRole(user?.role);
   const confirmAction = useConfirmDialog();
   const [showEditor, setShowEditor] = useState(false);
   const [workingAction, setWorkingAction] = useState('');
   const [reasonModalAction, setReasonModalAction] = useState<'reject' | 'disable' | null>(null);
   const [reasonDraft, setReasonDraft] = useState('');
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [protectionEnabled, setProtectionEnabled] = useState(false);
   const [protectionLimit, setProtectionLimit] = useState(0);
   const [savingProtection, setSavingProtection] = useState(false);
@@ -197,6 +200,11 @@ export default function EnterpriseDetailPage() {
               {action.label}
             </Button>
           )),
+          canPurge ? (
+            <Button key="delete" danger onClick={() => setDeleteOpen(true)}>
+              删除企业
+            </Button>
+          ) : null,
           <Button key="edit" onClick={() => setShowEditor(true)}>编辑基础信息</Button>,
           <Button key="ai" type="primary" icon={<Sparkles size={16} />} onClick={() => router.push(`/enterprises/${enterprise._id}/ai`)}>AI 管理</Button>,
         ]}
@@ -331,6 +339,17 @@ export default function EnterpriseDetailPage() {
         onOpenChange={setShowEditor}
         enterprise={enterprise}
         onSaved={async () => { await mutate(); }}
+      />
+
+      <PlatformEnterpriseDeleteModal
+        mode="single"
+        open={deleteOpen}
+        enterprise={enterprise}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => {
+          setDeleteOpen(false);
+          router.push('/enterprises');
+        }}
       />
 
       <Modal

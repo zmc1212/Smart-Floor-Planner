@@ -126,6 +126,62 @@ function applyAuthorizedIdentity(page, user) {
   return { leave: true, phone };
 }
 
+function pinRegisterAgainstRoleLanding() {
+  const app = typeof getApp === 'function' ? getApp() : null;
+  if (app && app.globalData) {
+    app.globalData.roleLandingRedirected = true;
+  }
+}
+
+function explainPhoneAuthFailure(detail) {
+  const errMsg = String((detail && (detail.errMsg || detail.errmsg)) || '');
+  if (/deny|cancel|取消|拒绝/i.test(errMsg)) {
+    return { mode: 'toast', title: '已取消授权' };
+  }
+  if (/频繁|太快|上限|limit|frequent/i.test(errMsg)) {
+    return {
+      mode: 'modal',
+      title: '授权过于频繁',
+      content: '该手机号授权次数过多或操作太快，请稍后再试。'
+    };
+  }
+  return {
+    mode: 'modal',
+    title: '未完成手机号授权',
+    content: '需要授权手机号才能提交开户。请稍后重试。'
+  };
+}
+
+function presentPhoneAuthFailure(detail) {
+  const explained = explainPhoneAuthFailure(detail);
+  if (explained.mode === 'toast') {
+    wx.showToast({ title: explained.title, icon: 'none' });
+    return explained;
+  }
+  wx.showModal({
+    title: explained.title,
+    content: explained.content,
+    showCancel: false,
+    confirmText: '知道了'
+  });
+  return explained;
+}
+
+function confirmExistingAccountLeave(page) {
+  pinRegisterAgainstRoleLanding();
+  wx.showModal({
+    title: '该手机号已有账号',
+    content: '该手机号已开通企业账号，请直接登录。是否现在前往？',
+    confirmText: '去登录',
+    cancelText: '留在此页',
+    success(result) {
+      if (result && result.confirm) {
+        if (!page.leaveIfWorkbenchSignedIn()) page.onGoToLogin();
+      }
+    }
+  });
+}
+
 function goToPasswordLogin() {
   session.clearSession();
   const app = typeof getApp === 'function' ? getApp() : null;
@@ -379,10 +435,11 @@ Page({
       return;
     }
     if (!event.detail || event.detail.errMsg !== 'getPhoneNumber:ok' || !event.detail.code) {
-      wx.showToast({ title: '需要授权手机号才能提交开户', icon: 'none' });
+      presentPhoneAuthFailure(event.detail);
       return;
     }
     this.setData({ submitting: true, errorMessage: '' });
+    pinRegisterAgainstRoleLanding();
     try {
       const login = await api.phoneLogin(event.detail.code);
       const phone = String((login && login.user && login.user.phone) || '').trim();
@@ -401,9 +458,7 @@ Page({
       }
       const authorized = applyAuthorizedIdentity(this, login && login.user);
       if (authorized.leave) {
-        setTimeout(() => {
-          if (!this.leaveIfWorkbenchSignedIn()) this.onGoToLogin();
-        }, 50);
+        confirmExistingAccountLeave(this);
         return;
       }
       const contactName =
@@ -494,6 +549,10 @@ module.exports = {
   formReady,
   applyFailure,
   applyAuthorizedIdentity,
+  explainPhoneAuthFailure,
+  presentPhoneAuthFailure,
+  confirmExistingAccountLeave,
+  pinRegisterAgainstRoleLanding,
   isWorkbenchIdentity,
   leaveRegistrationTarget,
   goToPasswordLogin,

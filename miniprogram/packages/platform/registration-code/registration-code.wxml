@@ -1,0 +1,54 @@
+<!--
+THESIS: 平台管理员现场出示当前生效企业开户码。
+OWN-WORLD: 胶囊安全出示顶栏 + 审核运营列表卡片，主包 scan/shield 图标，不新画小 K。
+STORY: 打开即展示只读 er_ 码图；无码或微信失败可重试，不换新。
+FIRST VIEWPORT: 返回、标题、码图与说明在 390x844 同屏可达。
+FORM: enterprise-join-codes 信息结构 + enterprise-review 运营列表语言
+-->
+<view class="page">
+  <view
+    class="nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
+      <view class="back-chevron"></view>
+    </view>
+    <view class="brand-lockup">
+      <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+      <text class="brand-name">家客来</text>
+      <view class="nav-divider"></view>
+      <text class="nav-title">出示开户码</text>
+    </view>
+  </view>
+
+  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}">
+    <view class="code-card">
+      <text class="hero-title">企业入驻开户</text>
+      <text class="hero-subtitle">请装修公司扫描此码申请开户</text>
+
+      <view class="qr-stage">
+        <view wx:if="{{loading}}" class="qr-state">
+          <text class="qr-state-copy">开户码加载中</text>
+        </view>
+        <view wx:elif="{{!hasActive}}" class="qr-state">
+          <image class="qr-state-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+          <text class="qr-state-title">暂无生效开户码</text>
+          <text class="qr-state-copy">请在电脑后台生成后再出示</text>
+        </view>
+        <view wx:elif="{{errorMessage}}" class="qr-state">
+          <image class="qr-state-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+          <text class="qr-state-title">开户码暂不可用</text>
+          <text class="qr-state-copy">{{errorMessage}}</text>
+          <view class="retry" bindtap="onRetry">重新查看</view>
+        </view>
+        <image wx:else class="qr-image" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
+      </view>
+
+      <view class="scan-plaque" aria-hidden="true">
+        <image class="scan-glyph" src="/images/mine-icons/scan.png" mode="aspectFit" />
+        <text>请扫码</text>
+      </view>
+      <text class="status-line">{{statusLine}}</text>
+    </view>
+  </scroll-view>
+</view>

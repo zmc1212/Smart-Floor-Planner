@@ -29,6 +29,14 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         </view>
         <view class="account-chevron"></view>
       </view>
+      <view wx:if="{{showRegistrationCodeEntry}}" class="account-row" hover-class="account-row-pressed" bindtap="onOpenRegistrationCode" aria-role="button">
+        <image class="account-row-icon" src="/images/mine-icons/scan.png" mode="aspectFit" />
+        <view class="account-row-copy">
+          <view class="account-row-label">出示开户码</view>
+          <view class="account-row-helper">给装修公司扫码申请入驻</view>
+        </view>
+        <view class="account-chevron"></view>
+      </view>
       <view wx:if="{{showRoleGuideEntry}}" class="account-row" hover-class="account-row-pressed" bindtap="onOpenRoleGuide" aria-role="button">
         <image class="account-row-icon" src="/images/mine-icons/bulb.png" mode="aspectFit" />
         <view class="account-row-copy">
@@ -259,7 +267,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           <view class="ai-banner-arrow"><view class="css-chevron"></view></view>
         </view>
 
-        <template is="mineAccountPanel" data="{{showRoleGuideEntry, roleGuideHelper}}" />
+        <template is="mineAccountPanel" data="{{showRoleGuideEntry, showRegistrationCodeEntry, roleGuideHelper}}" />
       </view>
 
       <view wx:else class="user-dashboard">
@@ -340,7 +348,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <image src="/images/mine-icons/bulb.png" mode="aspectFit" /><text>AI 设计</text>
           </view>
         </view>
-        <template is="mineAccountPanel" data="{{showRoleGuideEntry, roleGuideHelper}}" />
+        <template is="mineAccountPanel" data="{{showRoleGuideEntry, showRegistrationCodeEntry, roleGuideHelper}}" />
       </view>
     </view>
   </scroll-view>

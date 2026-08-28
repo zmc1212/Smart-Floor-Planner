@@ -6,7 +6,7 @@ const ROLE_LANDING_PATHS = Object.freeze({
   measurer: '/pages/index/index',
   salesperson: '/packages/business/promotion-records/promotion-records',
   enterprise_admin: '/pages/index/index',
-  platform_admin: '/pages/index/index'
+  platform_admin: '/packages/platform/devices/devices'
 });
 
 const ROLE_CAPABILITIES = Object.freeze({
@@ -16,14 +16,18 @@ const ROLE_CAPABILITIES = Object.freeze({
   measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
   salesperson: ['promotion.records', 'promotion.commissions', 'account'],
   enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
-  platform_admin: ['platform.devices', 'account'],
+  platform_admin: ['platform.review', 'platform.devices', 'account'],
   staff: ['staff.leads', 'staff.appointments', 'account']
 });
 
 const ROUTE_CAPABILITIES = Object.freeze({
-  '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations', 'platform.devices'],
+  '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations'],
   '/pages/leads-management/leads-management': ['staff.leads', 'staff.tasks', 'enterprise.customers'],
   '/pages/ai-design/ai-design': ['staff.design', 'staff.surveying'],
+  '/packages/platform/devices/devices': 'platform.devices',
+  '/packages/platform/enterprise-review/enterprise-review': 'platform.review',
+  '/packages/platform/enterprise-review-detail/enterprise-review-detail': 'platform.review',
+  '/packages/platform/registration-code/registration-code': 'platform.review',
   '/packages/ai-workflow/create/ai-design-create': 'staff.design',
   '/packages/ai-workflow/result/ai-design-result': 'staff.design',
   '/packages/ai-workflow/history/ai-design-history': 'staff.design',

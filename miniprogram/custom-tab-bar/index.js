@@ -11,7 +11,7 @@ const ROLE_ITEMS = {
   ],
   referrer: [
     { key: 'promotion', capability: 'referrer.promotion', pagePath: '/packages/business/referrer-workbench/referrer-workbench', text: '推广', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
-    { key: 'progress', capability: 'referrer.progress', pagePath: '/packages/business/referrer-progress/referrer-progress', text: '进度', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
+    { key: 'progress', capability: 'referrer.progress', pagePath: '/packages/business/referrer-progress/referrer-progress', text: '客户', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
     { key: 'earnings', capability: 'referrer.earnings', pagePath: '/packages/business/referrer-earnings/referrer-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
@@ -36,7 +36,8 @@ const ROLE_ITEMS = {
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   platform_admin: [
-    { key: 'devices', capability: 'platform.devices', pagePath: '/pages/index/index', text: '设备', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'devices', capability: 'platform.devices', pagePath: '/packages/platform/devices/devices', text: '设备', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'review', capability: 'platform.review', pagePath: '/packages/platform/enterprise-review/enterprise-review', text: '审核', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
   salesperson: [

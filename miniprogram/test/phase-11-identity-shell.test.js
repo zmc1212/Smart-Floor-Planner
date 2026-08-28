@@ -77,6 +77,64 @@ test('deep links are checked against server bootstrap capabilities', () => {
   );
 });
 
+test('platform admin lands on devices and can open the review subpackage', () => {
+  assert.equal(
+    navigation.getRoleLanding({ mode: 'staff', staffRole: 'admin' }),
+    '/packages/platform/devices/devices'
+  );
+  assert.equal(
+    navigation.getRoleLanding({ mode: 'staff', staffRole: 'super_admin' }),
+    '/packages/platform/devices/devices'
+  );
+  assert.deepEqual(navigation.ROLE_CAPABILITIES.platform_admin, [
+    'platform.review',
+    'platform.devices',
+    'account',
+  ]);
+  assert.equal(
+    navigation.canAccessRoute('/packages/platform/devices/devices', {
+      mode: 'staff',
+      staffRole: 'admin',
+    }),
+    true
+  );
+  assert.equal(
+    navigation.canAccessRoute('/packages/platform/enterprise-review/enterprise-review', {
+      mode: 'staff',
+      staffRole: 'admin',
+    }),
+    true
+  );
+  assert.equal(
+    navigation.canAccessRoute('/packages/platform/enterprise-review-detail/enterprise-review-detail', {
+      mode: 'staff',
+      staffRole: 'super_admin',
+    }),
+    true
+  );
+  assert.equal(
+    navigation.canAccessRoute('/packages/platform/enterprise-review/enterprise-review', {
+      mode: 'staff',
+      staffRole: 'designer',
+    }),
+    false
+  );
+  assert.equal(
+    navigation.canAccessRoute('/packages/platform/registration-code/registration-code', {
+      mode: 'staff',
+      staffRole: 'admin',
+    }),
+    true
+  );
+  assert.equal(
+    navigation.canAccessRoute('/packages/platform/registration-code/registration-code', {
+      mode: 'staff',
+      staffRole: 'designer',
+    }),
+    false
+  );
+});
+
 test('staff roles retain distinct landing and capability contracts', () => {
   assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'designer' }), '/pages/index/index');
   assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'measurer' }), '/pages/index/index');

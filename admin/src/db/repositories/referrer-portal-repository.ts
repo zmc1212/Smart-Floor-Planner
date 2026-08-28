@@ -170,7 +170,7 @@ export class ReferrerPortalRepository {
           canWithdraw,
           canUndo: lead.terminationType === 'referrer_withdrawn' && Boolean(withdrawalDeadline && withdrawalDeadline.getTime() > Date.now()),
           withdrawalDeadline,
-          withdrawalBlockedReason: canWithdraw || lead.terminationType === 'referrer_withdrawn' ? null : '该线索已开始服务，不能撤销，请联系企业管理员',
+          withdrawalBlockedReason: canWithdraw || lead.terminationType === 'referrer_withdrawn' ? null : '该线索已开始服务，不能撤回，请联系企业管理员',
         };
       }),
     };

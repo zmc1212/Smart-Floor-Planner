@@ -4,6 +4,7 @@ import {
   EnterpriseStatusTransitionError,
   enterpriseAccessDeniedMessage,
   isEnterpriseOperationallyActive,
+  listAllowedEnterpriseStatusActions,
   resolveEnterpriseStatusTransition,
 } from '@/lib/enterprise-status';
 
@@ -99,6 +100,20 @@ test('enterprise status FSM blocks illegal transitions', () => {
     }).toStatus,
     'pending_approval'
   );
+});
+
+test('enterprise status helpers list allowed actions per current status', () => {
+  assert.deepEqual(listAllowedEnterpriseStatusActions('pending_approval'), [
+    'approve',
+    'reject',
+  ]);
+  assert.deepEqual(listAllowedEnterpriseStatusActions('rejected'), [
+    'approve',
+    'resubmit_review',
+  ]);
+  assert.deepEqual(listAllowedEnterpriseStatusActions('active'), ['disable']);
+  assert.deepEqual(listAllowedEnterpriseStatusActions('disabled'), ['enable']);
+  assert.deepEqual(listAllowedEnterpriseStatusActions('unknown'), []);
 });
 
 test('enterprise access helpers describe inactive statuses', () => {

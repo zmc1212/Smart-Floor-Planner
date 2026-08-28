@@ -8,6 +8,7 @@ const { mineRoleGuideEntry, openMineRoleGuide } = require('../../utils/roleGuide
 const session = require('../../utils/session.js');
 const {
   profileForIdentity,
+  canShowPlatformRegistrationCode,
   buildWorkbenchActions,
   buildDashboardSlices,
   getFloorPlanRoomCount
@@ -61,6 +62,7 @@ Page({
     isStaff: false,
     activeRole: '',
     showRoleGuideEntry: false,
+    showRegistrationCodeEntry: false,
     roleGuideHelper: '查看当前身份的工作方法',
     isRoleRestrictedUser: false,
     isRoleShellMine: false,
@@ -115,6 +117,7 @@ Page({
         isStaff: isStaffRole,
         activeRole,
         ...mineRoleGuideEntry(activeRole, app.globalData.bootstrap, this._identityContexts),
+        showRegistrationCodeEntry: canShowPlatformRegistrationCode(activeRole, app.globalData.bootstrap),
         isRoleRestrictedUser,
         isRoleShellMine,
         canUseAIDesign: canAccessAIDesign(userInfo),
@@ -143,6 +146,7 @@ Page({
         isStaff: isStaffRole,
         activeRole,
         ...mineRoleGuideEntry(activeRole, app.globalData.bootstrap, this._identityContexts),
+        showRegistrationCodeEntry: canShowPlatformRegistrationCode(activeRole, app.globalData.bootstrap),
         isRoleRestrictedUser,
         isRoleShellMine,
         canUseAIDesign: canAccessAIDesign(userInfo),
@@ -170,6 +174,7 @@ Page({
       isStaff: false,
       activeRole: '',
       showRoleGuideEntry: false,
+      showRegistrationCodeEntry: false,
       roleGuideHelper: '查看当前身份的工作方法',
       isRoleRestrictedUser: false,
       isRoleShellMine: false,
@@ -459,6 +464,10 @@ Page({
     wx.navigateTo({ url: '/packages/business/profile-edit/profile-edit' });
   },
 
+  onOpenRegistrationCode() {
+    wx.navigateTo({ url: '/packages/platform/registration-code/registration-code' });
+  },
+
   async refreshRoleGuideEntry() {
     const userInfo = app.globalData.userInfo || (typeof wx !== 'undefined' && wx.getStorageSync
       ? wx.getStorageSync('userInfo')
@@ -470,6 +479,7 @@ Page({
     this._identityContexts = (result && result.contexts) || [];
     this.setData({
       activeRole,
+      showRegistrationCodeEntry: canShowPlatformRegistrationCode(activeRole, app.globalData.bootstrap),
       ...mineRoleGuideEntry(activeRole, app.globalData.bootstrap, this._identityContexts)
     });
   },
@@ -497,6 +507,7 @@ Page({
       isStaff: false,
       activeRole: '',
       showRoleGuideEntry: false,
+      showRegistrationCodeEntry: false,
       roleGuideHelper: '查看当前身份的工作方法',
       loadingMine: false,
       mineError: '',

@@ -10,6 +10,7 @@ import {
 } from '@/lib/lead-lifecycle';
 import {
   canDeleteLeadFloorPlan,
+  canOperateLead,
   resolveLeadStatusAfterFloorPlan,
   resolveLeadStatusAfterAppointmentComplete,
   resolveLeadStatusAfterDesignPublished,
@@ -82,4 +83,13 @@ test('formal floor plans cannot be deleted once the lead has entered design or a
   assert.equal(resolveLeadStatusAfterDesignPublished('designing'), 'designing');
   assert.equal(resolveLeadStatusAfterDesignPublished('converted'), 'converted');
   assert.equal(resolveLeadStatusAfterDesignPublished('closed'), 'closed');
+});
+
+test('closed and archived leads cannot take operational Admin actions', () => {
+  assert.equal(canOperateLead('new'), true);
+  assert.equal(canOperateLead('designing'), true);
+  assert.equal(canOperateLead('converted'), true);
+  assert.equal(canOperateLead('closed'), false);
+  assert.equal(canOperateLead('closed', null), false);
+  assert.equal(canOperateLead('new', '2026-08-28T00:00:00.000Z'), false);
 });

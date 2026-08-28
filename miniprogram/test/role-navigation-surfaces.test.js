@@ -167,6 +167,7 @@ test('referrer progress and earnings are direct role-tab destinations', () => {
     assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   }
   assert.match(tabBar, /key: 'progress', capability: 'referrer\.progress'/);
+  assert.match(tabBar, /referrer-progress\/referrer-progress', text: '客户'/);
   assert.match(tabBar, /key: 'earnings', capability: 'referrer\.earnings'/);
 });
 
@@ -266,6 +267,24 @@ test('salesperson uses promotion TabBar and staff Mine dashboard without role-wo
   assert.doesNotMatch(mineJs, /ROLE_SHELL_MINE_ROLES = \[[^\]]*salesperson/);
   assert.equal(promotionJson.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   assert.match(promotionWxml, /<custom-tab-bar\s*\/>/);
+});
+
+test('platform admin uses review and devices subpackage tabs instead of index', () => {
+  const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
+  const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'identity-navigation.js'), 'utf8');
+  const indexJs = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'index', 'index.js'), 'utf8');
+  const indexJson = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'pages', 'index', 'index.json'), 'utf8'));
+
+  assert.match(tabBar, /platform_admin:\s*\[[\s\S]*key: 'devices', capability: 'platform\.devices'/);
+  assert.match(tabBar, /platform_admin:\s*\[[\s\S]*key: 'review', capability: 'platform\.review'/);
+  assert.match(tabBar, /pagePath: '\/packages\/platform\/devices\/devices'/);
+  assert.match(tabBar, /pagePath: '\/packages\/platform\/enterprise-review\/enterprise-review'/);
+  assert.match(navigation, /platform_admin: '\/packages\/platform\/devices\/devices'/);
+  assert.match(navigation, /platform_admin: \['platform\.review', 'platform\.devices', 'account'\]/);
+  assert.match(indexJs, /platform_admin/);
+  assert.match(indexJs, /packages\/platform\/devices\/devices/);
+  assert.doesNotMatch(indexJs, /platform_admin'\]/);
+  assert.equal(indexJson.usingComponents['platform-device-workbench'], undefined);
 });
 
 test('role-specific workbenches hide customer and non-measurer survey creation controls', () => {

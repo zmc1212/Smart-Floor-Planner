@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { EnterpriseRepository } from '@/db/repositories';
+import { AdminUserRepository, EnterpriseRepository } from '@/db/repositories';
 import type { PostgresTransaction } from '@/db/transaction';
 import { httpError } from '@/lib/http-error';
 
@@ -119,6 +119,85 @@ export async function setEnterpriseSensitivePassword(
 
   const passwordHash = await hashSensitivePassword(nextPassword);
   await new EnterpriseRepository(transaction).update(enterpriseId, {
+    sensitiveOperationPasswordHash: passwordHash,
+  });
+  return { configured: true };
+}
+
+export async function verifyAdminSensitivePassword(
+  transaction: PostgresTransaction,
+  adminUserId: bigint,
+  password: string
+) {
+  const admin = await new AdminUserRepository(transaction).findById(adminUserId);
+  if (!admin) {
+    throw httpError('用户不存在', 404);
+  }
+  if (!isSensitivePasswordConfigured(admin.sensitiveOperationPasswordHash)) {
+    throw Object.assign(httpError('请先设置安全密码', 400), {
+      code: 'sensitive_password_not_configured' as const,
+    });
+  }
+  const normalized = String(password || '').trim();
+  if (!normalized) {
+    throw Object.assign(httpError('请输入安全密码', 400), {
+      code: 'sensitive_password_invalid' as const,
+    });
+  }
+  const valid = await bcrypt.compare(
+    normalized,
+    admin.sensitiveOperationPasswordHash!
+  );
+  if (!valid) {
+    throw Object.assign(httpError('安全密码不正确', 403), {
+      code: 'sensitive_password_invalid' as const,
+    });
+  }
+  return admin;
+}
+
+export async function setAdminSensitivePassword(
+  transaction: PostgresTransaction,
+  adminUserId: bigint,
+  input: {
+    password: string;
+    confirmPassword: string;
+    currentPassword?: string | null;
+  }
+) {
+  const admin = await new AdminUserRepository(transaction).findById(adminUserId);
+  if (!admin) {
+    throw httpError('用户不存在', 404);
+  }
+
+  const configured = isSensitivePasswordConfigured(
+    admin.sensitiveOperationPasswordHash
+  );
+  const nextPassword = validateSensitivePasswordInput(
+    input.password,
+    input.confirmPassword
+  );
+
+  if (configured) {
+    const currentPassword = String(input.currentPassword || '').trim();
+    if (!currentPassword) {
+      throw Object.assign(httpError('修改安全密码须输入当前安全密码', 400), {
+        code: 'sensitive_password_current_required' as const,
+      });
+    }
+    const currentValid = await bcrypt.compare(
+      currentPassword,
+      admin.sensitiveOperationPasswordHash!
+    );
+    if (!currentValid) {
+      throw Object.assign(httpError('当前安全密码不正确', 403), {
+        code: 'sensitive_password_invalid' as const,
+      });
+    }
+  }
+
+  const passwordHash = await hashSensitivePassword(nextPassword);
+  await new AdminUserRepository(transaction).update(adminUserId, {
     sensitiveOperationPasswordHash: passwordHash,
   });
   return { configured: true };

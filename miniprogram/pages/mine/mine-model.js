@@ -32,6 +32,12 @@ const ROLE_LABELS = {
   super_admin: '平台管理员'
 };
 
+function canShowPlatformRegistrationCode(role, bootstrap) {
+  if (role !== 'platform_admin') return false;
+  const capabilities = (bootstrap && bootstrap.current && bootstrap.current.capabilities) || [];
+  return !capabilities.length || capabilities.includes('platform.review');
+}
+
 function profileForIdentity(userInfo, role) {
   const info = userInfo || {};
   const activeRole = role || info.staffRole || (info.mode === 'referrer' ? 'referrer' : 'customer');
@@ -148,6 +154,7 @@ function getFloorPlanRoomCount(layoutData) {
 
 module.exports = {
   profileForIdentity,
+  canShowPlatformRegistrationCode,
   decorateActions,
   buildWorkbenchActions,
   decorateSummaryCards,

@@ -344,6 +344,13 @@
       "when": 1787925600000,
       "tag": "0048_device_serial_number",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1788012000000,
+      "tag": "0049_admin_sensitive_password",
+      "breakpoints": true
     }
   ]
 }

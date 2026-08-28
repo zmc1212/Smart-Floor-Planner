@@ -37,6 +37,7 @@ import {
 import { Button, Divider, Drawer, Dropdown, Select } from 'antd';
 import { cn } from '@/lib/utils';
 import { getAdminRoleLabel } from '@/lib/admin-user-roles';
+import { canManageSensitivePassword } from '@/lib/sensitive-password-access';
 import { useAccountSettings } from '@/components/admin/account-settings-provider';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { isAdminRouteActive } from '@/config/admin-routes';
@@ -247,7 +248,7 @@ const SidebarContent = memo(function SidebarContent({
       >
         修改登录密码
       </button>
-      {admin?.role === 'enterprise_admin' ? (
+      {canManageSensitivePassword(admin?.role) ? (
         <button
           type="button"
           className="flex w-full items-center rounded-md px-3 py-2 text-left text-[13px] text-foreground transition-colors hover:bg-muted"

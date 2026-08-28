@@ -2,6 +2,7 @@ import {
   AdminUserRepository,
   AppointmentRepository,
   CustomerProjectRepository,
+  EnterpriseRepository,
   LeadCommissionRepository,
   LeadRepository,
   ReferrerPortalRepository,
@@ -53,6 +54,7 @@ export type MiniProgramBadgeFacts = {
   referrerPayableCount?: number;
   staffPayableCount?: number;
   ownerPayableCount?: number;
+  reviewPendingCount?: number;
 };
 
 export function unavailableMiniProgramBadges(): MiniProgramBadgeSummary {
@@ -106,6 +108,8 @@ export function buildMiniProgramBadges(input: {
       ...counted('progress', Number(facts.referrerOpenProgressCount || 0)),
       ...counted('earnings', Number(facts.referrerPayableCount || 0)),
     };
+  } else if (input.role === 'platform_admin') {
+    counts = counted('review', Number(facts.reviewPendingCount || 0));
   }
   return { status: 'ok', message: null, counts };
 }
@@ -155,7 +159,14 @@ export async function loadMiniProgramBadgeCounts(input: {
     };
   }
 
-  if (role === 'platform_admin' || role === 'salesperson') return {};
+  if (role === 'salesperson') return {};
+
+  if (role === 'platform_admin') {
+    const reviewPendingCount = await new EnterpriseRepository(
+      transaction
+    ).countByStatus('pending_approval');
+    return { reviewPendingCount };
+  }
 
   if (!current.enterpriseId || !current.staffId) return {};
   const enterpriseId = current.enterpriseId;

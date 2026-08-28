@@ -58,7 +58,7 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(mineWxml, /当前身份/);
   assert.match(mineWxml, /在个人用户、员工和推荐人身份之间切换/);
-  assert.match(mineWxml, /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, roleGuideHelper\}\}"/);
+  assert.match(mineWxml, /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, roleGuideHelper\}\}"/);
   assert.match(mineWxml, /wx:if="\{\{showRoleGuideEntry\}\}"[\s\S]*bindtap="onOpenRoleGuide"/);
   assert.match(mineWxml, /角色使用引导/);
   assert.match(mineWxml, /roleGuideHelper/);
@@ -131,13 +131,17 @@ test('Identity switch uses server contexts and refreshes the signed session', ()
   assert.match(script, /selectedContext/);
   assert.match(script, /confirmSelectedIdentity/);
   assert.match(script, /platform_admin: '\u5e73\u53f0\u7ba1\u7406\u5458'/);
-  assert.match(wxml, /class="identity-stage"/);
+  assert.match(wxml, /class="identity-intro"/);
   assert.doesNotMatch(wxml, /role-gallery-stage-v1\.png/);
   assert.doesNotMatch(wxml, /side-role/);
   assert.doesNotMatch(wxml, /选择你的角色/);
   assert.doesNotMatch(script, /resolveSideContexts/);
-  assert.match(wxml, /class="role-rail"/);
-  assert.match(wxml, /class="role-token-art"/);
+  assert.doesNotMatch(wxml, /role-rail|role-token/);
+  assert.match(wxml, /class="role-grid"/);
+  assert.match(wxml, /class="role-card-art"/);
+  assert.match(wxml, /每张卡都会完整显示身份名称/);
+  assert.match(script, /ROLE_CARD_ART/);
+  assert.match(script, /ROLE_CARD_HELPERS/);
   assert.match(wxml, /confirmSelectedIdentity/);
   assert.match(less, /\.identity-confirm\[disabled\][\s\S]*background: #c8efd8 !important/);
   for (const icon of ['customer', 'referrer', 'enterprise-admin', 'designer', 'measurer', 'salesperson', 'platform-admin']) {
@@ -147,6 +151,14 @@ test('Identity switch uses server contexts and refreshes the signed session', ()
     const bytes = fs.readFileSync(iconPath);
     assert.equal(bytes.toString('ascii', 1, 4), 'PNG');
     assert.equal(bytes[25], 6, `${icon} identity icon must retain an RGBA alpha channel`);
+  }
+  for (const asset of ['customer-service', 'designer-plan', 'measurer-laser', 'referrer-contact', 'enterprise-operations', 'sales-promotion', 'platform-console']) {
+    const assetPath = path.join(projectRoot, 'packages', 'business', 'assets', 'identity-switch', 'role-cards', `${asset}.png`);
+    assert.ok(fs.existsSync(assetPath), `${asset} role-card illustration must be packaged`);
+    assert.ok(fs.statSync(assetPath).size <= 300 * 1024, `${asset} role-card illustration must remain package-sized`);
+    const bytes = fs.readFileSync(assetPath);
+    assert.equal(bytes.toString('ascii', 1, 4), 'PNG');
+    assert.equal(bytes[25], 6, `${asset} role-card illustration must retain an RGBA alpha channel`);
   }
 });
 

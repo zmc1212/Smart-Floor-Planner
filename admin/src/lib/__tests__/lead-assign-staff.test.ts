@@ -83,3 +83,15 @@ test('admin leads cards open assign/replace through shared notify', () => {
   assert.match(adminLeadsPage, /notify\.error/);
   assert.match(adminLeadsPage, /选择后将替换当前人员/);
 });
+
+test('admin leads hide scheme and appointment CTAs on closed withdrawn history', () => {
+  assert.match(adminLeadsPage, /canMutateLead\(lead\)/);
+  assert.match(adminLeadsPage, /canMutateLead\(selectedLead\)/);
+  assert.match(adminLeadsPage, /getAssignmentEventTypeLabel\(event\.eventType\)/);
+  assert.match(adminLeadsPage, /getClaimResolutionReasonLabel/);
+  assert.doesNotMatch(adminLeadsPage, /ASSIGNMENT_EVENT_LABELS\[event\.eventType\] \|\| event\.eventType/);
+  assert.doesNotMatch(
+    adminLeadsPage,
+    /extra=\{selectedLead && !selectedLead\.archivedAt \? \(/
+  );
+});

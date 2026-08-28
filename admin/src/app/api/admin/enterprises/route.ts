@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { enterpriseToDto } from '@/db/postgres-dto';
+import { enterpriseToDto, parsePostgresId } from '@/db/postgres-dto';
 import {
   AdminUserRepository,
   EnterpriseRepository,
@@ -9,6 +9,14 @@ import { withTenantRoute } from '@/lib/tenant-route';
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
 import { hashEnterpriseAdminInitialPassword, buildEnterpriseAdminUsername } from '@/lib/enterprise-admin-provision';
 import { isEnterpriseStatus } from '@/lib/enterprise-status';
+import { httpErrorStatus } from '@/lib/http-error';
+import {
+  assertPlatformEnterprisePurgeAllowed,
+  PLATFORM_ENTERPRISE_BATCH_CONFIRM_TEXT,
+  PLATFORM_ENTERPRISE_BATCH_PURGE_MAX,
+  purgePlatformEnterprise,
+  verifyPlatformAdminSensitivePassword,
+} from '@/lib/platform-enterprise-purge';
 
 export const dynamic = 'force-dynamic';
 
@@ -197,6 +205,119 @@ export async function POST(request: Request) {
             ? 400
             : 500,
       }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    assertPlatformEnterprisePurgeAllowed();
+    return await withTenantRoute(
+      request,
+      { roles: ['super_admin', 'admin'], requireEnterprise: false },
+      async (context) => {
+        const body = (await request.json().catch(() => ({}))) as {
+          ids?: unknown;
+          confirmText?: string;
+          securityPassword?: string;
+        };
+        if (!Array.isArray(body.ids) || !body.ids.length) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `请选择 1–${PLATFORM_ENTERPRISE_BATCH_PURGE_MAX} 家企业进行删除`,
+            },
+            { status: 400 }
+          );
+        }
+
+        let uniqueIds: bigint[];
+        try {
+          uniqueIds = [
+            ...new Set(
+              body.ids.map((id: unknown) =>
+                parsePostgresId(String(id), 'enterprise id')
+              )
+            ),
+          ];
+        } catch {
+          return NextResponse.json(
+            { success: false, error: '企业 ID 无效' },
+            { status: 400 }
+          );
+        }
+        if (
+          uniqueIds.length < 1 ||
+          uniqueIds.length > PLATFORM_ENTERPRISE_BATCH_PURGE_MAX
+        ) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `请选择 1–${PLATFORM_ENTERPRISE_BATCH_PURGE_MAX} 家企业进行删除`,
+            },
+            { status: 400 }
+          );
+        }
+
+        const confirmText = String(body.confirmText || '').trim();
+        if (confirmText !== PLATFORM_ENTERPRISE_BATCH_CONFIRM_TEXT) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `请输入「${PLATFORM_ENTERPRISE_BATCH_CONFIRM_TEXT}」以确认批量删除`,
+            },
+            { status: 400 }
+          );
+        }
+
+        const adminUserId = parsePostgresId(context.userId, 'user id');
+        await verifyPlatformAdminSensitivePassword(
+          adminUserId,
+          String(body.securityPassword || '')
+        );
+
+        const deleted: Array<{
+          id: string;
+          name: string;
+          totalRows: number;
+        }> = [];
+        const failed: Array<{
+          id: string;
+          error: string;
+          code?: string;
+        }> = [];
+
+        for (const enterpriseId of uniqueIds) {
+          try {
+            const result = await purgePlatformEnterprise({ enterpriseId });
+            deleted.push({
+              id: enterpriseId.toString(),
+              name: result.enterpriseName,
+              totalRows: result.totalRows,
+            });
+          } catch (error) {
+            failed.push({
+              id: enterpriseId.toString(),
+              error: error instanceof Error ? error.message : '删除企业失败',
+              code: (error as { code?: string }).code,
+            });
+          }
+        }
+
+        return NextResponse.json({
+          success: failed.length === 0,
+          data: { deleted, failed },
+        });
+      }
+    );
+  } catch (error: unknown) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: (error as { code?: string }).code,
+        error: error instanceof Error ? error.message : '批量删除企业失败',
+      },
+      { status: httpErrorStatus(error, 500) }
     );
   }
 }

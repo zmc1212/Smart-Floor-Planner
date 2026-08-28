@@ -20,7 +20,7 @@ adds only the signed, server-owned workbench read aggregate needed by these shel
 not create a new customer, appointment, survey, design, or earnings business contract.
 
 The implementation reuses the four static Mini Program Tab routes as signed role shells: customer
-`Service/Projects/Mine`, referrer `Promotion/Progress/Earnings/Mine`, designer
+`Service/Projects/Mine`, referrer `Promotion/Customers/Earnings/Mine`, designer
 `Workbench/Customers/Design/Earnings/Mine`, measurer `Workbench/Customers/Earnings/Mine`, and enterprise owner
 `Operations/Customers/Appointments/Mine`. Every workbench reads only the server aggregate for the
 signed identity; measurers enter the formal editor only from assigned tasks, and blank or simulated

@@ -3,6 +3,9 @@ import test from 'node:test';
 import {
   getAssignmentPendingHint,
   getAssignmentStatusLabel,
+  getAssignmentErrorLabel,
+  getAssignmentEventTypeLabel,
+  getClaimResolutionReasonLabel,
   needsStaffWechatForAssignment,
 } from '@/lib/lead-assignment-feedback';
 
@@ -37,4 +40,14 @@ test('designer WeChat gap exposes the staff-management shortcut', () => {
     true
   );
   assert.equal(needsStaffWechatForAssignment('measurer_unavailable'), false);
+});
+
+test('assignment audit and claim-window keys map to Chinese operator copy', () => {
+  assert.equal(getAssignmentEventTypeLabel('attribution_created'), '锁定客户归属');
+  assert.equal(getAssignmentEventTypeLabel('attribution_reused'), '复用已有归属');
+  assert.equal(getAssignmentEventTypeLabel('assignment_auto'), '赛马自动派单');
+  assert.equal(getAssignmentEventTypeLabel('assignment_manual_reassign'), '负责人改派');
+  assert.equal(getClaimResolutionReasonLabel('referrer_withdrawn'), '推广人已撤销');
+  assert.equal(getClaimResolutionReasonLabel('manager_assignment'), '负责人手动指派');
+  assert.equal(getAssignmentErrorLabel('designer_unavailable'), '暂无可用家装设计顾问');
 });

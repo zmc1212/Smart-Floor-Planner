@@ -34,6 +34,15 @@
       ]
     },
     {
+      "root": "packages/platform",
+      "pages": [
+        "devices/devices",
+        "enterprise-review/enterprise-review",
+        "enterprise-review-detail/enterprise-review-detail",
+        "registration-code/registration-code"
+      ]
+    },
+    {
       "root": "packages/business",
       "pages": [
         "login/login",

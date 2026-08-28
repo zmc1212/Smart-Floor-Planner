@@ -11,6 +11,7 @@ import {
 import { LoginPasswordSettingsModal } from '@/components/admin/login-password-settings-modal';
 import { SensitivePasswordSettingsModal } from '@/components/admin/sensitive-password-settings-modal';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canManageSensitivePassword } from '@/lib/sensitive-password-access';
 
 type OpenSensitivePasswordOptions = {
   onSaved?: () => void;
@@ -37,7 +38,7 @@ export function AccountSettingsProvider({ children }: { children: ReactNode }) {
 
   const openSensitivePassword = useCallback(
     (options?: OpenSensitivePasswordOptions) => {
-      if (user?.role !== 'enterprise_admin') return;
+      if (!canManageSensitivePassword(user?.role)) return;
       setSensitivePasswordOnSaved(() => options?.onSaved);
       setSensitivePasswordOpen(true);
     },

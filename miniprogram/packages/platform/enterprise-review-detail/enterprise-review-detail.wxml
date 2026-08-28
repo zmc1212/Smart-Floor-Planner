@@ -1,0 +1,131 @@
+<!--
+THESIS: 平台管理员查看单家企业并完成审核后续动作。
+OWN-WORLD: 沿用预约列表卡片语言与领取页胶囊返回，不展示 AI/自动化密钥。
+STORY: 看企业事实后通过、拒绝、停用或启用。
+FIRST VIEWPORT: 返回、企业名、联系人、动作按钮同屏可达。
+FORM: platform-device-workbench + enterprise-appointments
+-->
+<view class="page">
+  <view
+    class="nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
+      <view class="back-chevron"></view>
+    </view>
+    <view class="nav-copy">
+      <text class="nav-title">企业详情</text>
+      <text class="nav-subtitle">{{enterprise.statusLabel || '审核处理'}}</text>
+    </view>
+  </view>
+
+  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}">
+    <view wx:if="{{loading}}" class="state-card">正在读取企业资料…</view>
+    <view wx:elif="{{error}}" class="state-card">
+      <text class="state-error">{{error}}</text>
+      <view class="retry" bindtap="load">重新加载</view>
+    </view>
+    <block wx:elif="{{enterprise._id}}">
+      <view class="review-card tone-{{enterprise.tone}}">
+        <view class="card-accent"></view>
+        <view class="card-body">
+          <view class="card-header">
+            <text class="header-line">{{enterprise.name}}</text>
+            <view class="status-tag tag-{{enterprise.tone}}">
+              <text>{{enterprise.statusLabel}}</text>
+            </view>
+          </view>
+          <text class="meta-line">信用代码 {{enterprise.code}}</text>
+          <text class="meta-line">来源 {{enterprise.sourceLine}}</text>
+          <text class="helper-line">申请时间 {{enterprise.createdLabel}}</text>
+        </view>
+      </view>
+
+      <view class="facts-card">
+        <text class="facts-title">联系人</text>
+        <view class="fact-row">
+          <text class="fact-label">姓名</text>
+          <text class="fact-value">{{enterprise.contactName || '未填写'}}</text>
+        </view>
+        <view class="fact-row">
+          <text class="fact-label">电话</text>
+          <view
+            wx:if="{{enterprise.contactPhone}}"
+            class="ghost-btn sfp-icon-action"
+            data-phone="{{enterprise.contactPhone}}"
+            bindtap="callPhone"
+          >
+            <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+            <text>{{enterprise.contactPhone}}</text>
+          </view>
+          <text wx:else class="fact-value">未填写</text>
+        </view>
+        <text wx:if="{{enterprise.reasonLabel}}" class="helper-line">最近原因：{{enterprise.reasonLabel}}</text>
+      </view>
+
+      <view class="action-stack">
+        <view
+          wx:if="{{enterprise.canApprove}}"
+          class="cta-btn full"
+          bindtap="approveEnterprise"
+          hover-class="cta-pressed"
+        >{{approveLabel}}</view>
+        <view
+          wx:if="{{enterprise.canReject}}"
+          class="ghost-btn full"
+          data-action="reject"
+          bindtap="openReasonSheet"
+          hover-class="cta-pressed"
+        >拒绝</view>
+        <view
+          wx:if="{{enterprise.canResubmit}}"
+          class="ghost-btn full"
+          bindtap="resubmitEnterprise"
+          hover-class="cta-pressed"
+        >重新提交审核</view>
+        <view
+          wx:if="{{enterprise.canDisable}}"
+          class="ghost-btn full warn"
+          data-action="disable"
+          bindtap="openReasonSheet"
+          hover-class="cta-pressed"
+        >停用</view>
+        <view
+          wx:if="{{enterprise.canEnable}}"
+          class="cta-btn full"
+          bindtap="enableEnterprise"
+          hover-class="cta-pressed"
+        >启用</view>
+      </view>
+
+      <view class="facts-card">
+        <text class="facts-title">最近状态</text>
+        <view wx:if="{{!events.length}}" class="helper-line">暂无状态记录</view>
+        <view wx:for="{{events}}" wx:key="_id" class="event-row">
+          <text class="event-action">{{item.actionLabel}}</text>
+          <text class="helper-line">{{item.createdLabel}}{{item.reason ? ' · ' + item.reason : ''}}</text>
+        </view>
+      </view>
+    </block>
+  </scroll-view>
+</view>
+
+<view wx:if="{{reasonVisible}}" class="sheet-root" catchtouchmove="noop">
+  <view class="sheet-mask {{reasonOpen ? 'open' : ''}}" catchtap="closeReasonSheet"></view>
+  <view class="sheet-panel {{reasonOpen ? 'open' : ''}}">
+    <text class="sheet-title">{{reasonTitle}}</text>
+    <text class="sheet-hint">请填写 4–200 字原因</text>
+    <textarea
+      class="sheet-input"
+      maxlength="200"
+      value="{{reasonDraft}}"
+      placeholder="例如：信用代码与营业执照不符"
+      bindinput="onReasonInput"
+    />
+    <text class="sheet-count">{{reasonDraft.length}}/200</text>
+    <view class="sheet-actions">
+      <view class="sheet-btn ghost" bindtap="closeReasonSheet"><text>取消</text></view>
+      <view class="sheet-btn solid" bindtap="submitReason"><text>{{reasonConfirm}}</text></view>
+    </view>
+  </view>
+</view>

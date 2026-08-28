@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef, useState } from 'react';
-import { Building2, Check, Copy, Ellipsis, Eye, Plus } from 'lucide-react';
+import { useRef, useState, type Key } from 'react';
+import { Building2, Check, Copy, Ellipsis, Eye, Plus, Trash2 } from 'lucide-react';
 import { PageContainer, ProForm, ProFormDigit, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Avatar, Button, Card, Dropdown, Flex, Input, Modal, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
@@ -10,8 +10,10 @@ import EnterpriseEditorDialog from '@/components/enterprise/EnterpriseEditorDial
 import type { EnterpriseListItem } from '@/components/enterprise/types';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { notify } from '@/components/admin/operation-feedback';
+import { PlatformEnterpriseDeleteModal } from '@/components/admin/platform-enterprise-delete-modal';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useFetch } from '@/hooks/useFetch';
+import { PLATFORM_ENTERPRISE_BATCH_PURGE_MAX } from '@/lib/platform-enterprise-purge-contract';
 import { isPlatformAdminRole } from '@/lib/referrer-join-limits';
 
 const ENTERPRISE_STATUS = {
@@ -48,10 +50,14 @@ export default function EnterprisesPage() {
   const confirmAction = useConfirmDialog();
   const { user } = useCurrentUser();
   const canEditJoinLimit = isPlatformAdminRole(user?.role);
+  const canPurge = isPlatformAdminRole(user?.role);
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [editingEnterprise, setEditingEnterprise] = useState<EnterpriseListItem | null>(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [workingId, setWorkingId] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<EnterpriseListItem | null>(null);
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [selectedEnterprises, setSelectedEnterprises] = useState<EnterpriseListItem[]>([]);
   const [reasonModal, setReasonModal] = useState<{
     enterprise: EnterpriseListItem;
     action: Extract<StatusAction, 'reject' | 'disable'>;
@@ -262,6 +268,19 @@ export default function EnterprisesPage() {
           });
         }
 
+        if (canPurge) {
+          items.push({
+            type: 'divider',
+          });
+          items.push({
+            key: 'delete',
+            label: '删除企业',
+            danger: true,
+            disabled: Boolean(workingId),
+            onClick: () => setDeleteTarget(enterprise),
+          });
+        }
+
         return (
           <Space size={8}>
             <Button key="overview" size="small" icon={<Eye size={14} />} href={`/enterprises/${enterprise._id}`}>详情</Button>
@@ -352,6 +371,48 @@ export default function EnterprisesPage() {
           options={{ reload: true, density: true, setting: true }}
           pagination={{ defaultPageSize: 10, showSizeChanger: true }}
           scroll={{ x: 1200 }}
+          rowSelection={
+            canPurge
+              ? {
+                  selectedRowKeys: selectedEnterprises.map((item) => item._id),
+                  preserveSelectedRowKeys: true,
+                  onChange: (keys: Key[], rows: EnterpriseListItem[]) => {
+                    setSelectedEnterprises((prev) => {
+                      const kept = prev.filter((item) => keys.includes(item._id));
+                      const keptIds = new Set(kept.map((item) => item._id));
+                      const added = rows.filter((row) => row?._id && !keptIds.has(row._id));
+                      return [...kept, ...added];
+                    });
+                  },
+                }
+              : undefined
+          }
+          tableAlertRender={
+            canPurge
+              ? ({ selectedRowKeys: keys }) => `已选择 ${keys.length} 家企业`
+              : false
+          }
+          tableAlertOptionRender={
+            canPurge
+              ? () => (
+                  <Button
+                    danger
+                    icon={<Trash2 size={16} />}
+                    disabled={!selectedEnterprises.length}
+                    onClick={() => {
+                      if (!selectedEnterprises.length) return;
+                      if (selectedEnterprises.length > PLATFORM_ENTERPRISE_BATCH_PURGE_MAX) {
+                        notify.warning(`一次最多删除 ${PLATFORM_ENTERPRISE_BATCH_PURGE_MAX} 家企业`);
+                        return;
+                      }
+                      setBatchDeleteOpen(true);
+                    }}
+                  >
+                    批量删除
+                  </Button>
+                )
+              : undefined
+          }
           request={async (params) => {
             const response = await fetch('/api/admin/enterprises');
             const result = await response.json();
@@ -382,6 +443,32 @@ export default function EnterprisesPage() {
         onOpenChange={setIsEditorOpen}
         enterprise={editingEnterprise}
         onSaved={async () => {
+          await actionRef.current?.reload();
+        }}
+      />
+
+      <PlatformEnterpriseDeleteModal
+        mode="single"
+        open={Boolean(deleteTarget)}
+        enterprise={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={async () => {
+          setDeleteTarget(null);
+          setSelectedEnterprises((prev) =>
+            prev.filter((item) => item._id !== deleteTarget?._id)
+          );
+          await actionRef.current?.reload();
+        }}
+      />
+
+      <PlatformEnterpriseDeleteModal
+        mode="batch"
+        open={batchDeleteOpen}
+        enterprises={selectedEnterprises}
+        onClose={() => setBatchDeleteOpen(false)}
+        onDeleted={async () => {
+          setBatchDeleteOpen(false);
+          setSelectedEnterprises([]);
           await actionRef.current?.reload();
         }}
       />

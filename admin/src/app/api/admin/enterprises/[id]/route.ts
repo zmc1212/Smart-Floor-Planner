@@ -9,6 +9,12 @@ import {
   type EnterpriseUpdate,
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
+import { httpErrorStatus } from '@/lib/http-error';
+import {
+  assertPlatformEnterprisePurgeAllowed,
+  purgePlatformEnterprise,
+  verifyPlatformAdminSensitivePassword,
+} from '@/lib/platform-enterprise-purge';
 import {
   isPlatformAdminRole,
   parseReferrerAdditionalEnterpriseLimit,
@@ -260,37 +266,54 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    assertPlatformEnterprisePurgeAllowed();
     return await withTenantRoute(
       request,
-      { roles: ['super_admin', 'admin'] },
-      async () => {
+      { roles: ['super_admin', 'admin'], requireEnterprise: false },
+      async (context) => {
         const { id } = await params;
-        const deleted = await withPlatformTransaction((transaction) =>
-          new EnterpriseRepository(transaction).delete(parsePostgresId(id))
-        );
-        if (!deleted) {
+        const body = (await request.json().catch(() => ({}))) as {
+          confirmEnterpriseName?: string;
+          securityPassword?: string;
+        };
+        const confirmEnterpriseName = String(
+          body.confirmEnterpriseName || ''
+        ).trim();
+        if (!confirmEnterpriseName) {
           return NextResponse.json(
-            { success: false, error: 'Enterprise not found' },
-            { status: 404 }
+            { success: false, error: '请输入企业全名以确认删除整家企业' },
+            { status: 400 }
           );
         }
+
+        const adminUserId = parsePostgresId(context.userId, 'user id');
+        const enterpriseId = parsePostgresId(id);
+        await verifyPlatformAdminSensitivePassword(
+          adminUserId,
+          String(body.securityPassword || '')
+        );
+        const data = await purgePlatformEnterprise({
+          enterpriseId,
+          confirmEnterpriseName,
+        });
         return NextResponse.json({
           success: true,
-          message: 'Deleted successfully',
+          data: {
+            ...data,
+            enterpriseDeleted: true,
+          },
+          message: '企业已删除',
         });
       }
     );
   } catch (error: unknown) {
-    const details = error as { code?: string };
-    const message =
-      details.code === '23503'
-        ? 'Enterprise still has related records and cannot be deleted'
-        : error instanceof Error
-          ? error.message
-          : 'Unknown error';
     return NextResponse.json(
-      { success: false, error: message },
-      { status: details.code === '23503' ? 409 : 500 }
+      {
+        success: false,
+        code: (error as { code?: string }).code,
+        error: error instanceof Error ? error.message : '删除企业失败',
+      },
+      { status: httpErrorStatus(error, 500) }
     );
   }
 }

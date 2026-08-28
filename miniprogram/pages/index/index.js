@@ -154,19 +154,23 @@ Page({
     const bootstrap = globalData.bootstrap;
     const role = (bootstrap && bootstrap.current && bootstrap.current.role)
       || roleForIdentity(globalData.userInfo);
-    return ['customer', 'designer', 'measurer', 'enterprise_admin', 'platform_admin'].includes(role) ? role : '';
+    return ['customer', 'designer', 'measurer', 'enterprise_admin'].includes(role) ? role : '';
   },
 
-  redirectSalespersonAwayFromHome() {
+  redirectAwayFromHomeIfNeeded() {
     const globalData = getApp().globalData;
     const identity = {
       ...(globalData.userInfo || {}),
       ...((globalData.bootstrap && globalData.bootstrap.current) || {}),
     };
-    if (roleForIdentity(identity) !== 'salesperson') return false;
+    const role = roleForIdentity(identity);
+    const fallback = {
+      salesperson: '/packages/business/promotion-records/promotion-records',
+      platform_admin: '/packages/platform/devices/devices',
+    }[role];
+    if (!fallback) return false;
     if (this.data.redirectingSalesperson) return true;
-    const url = getRoleLanding(identity)
-      || '/packages/business/promotion-records/promotion-records';
+    const url = getRoleLanding(identity) || fallback;
     this.setData({ redirectingSalesperson: true });
     wx.reLaunch({
       url,
@@ -181,7 +185,7 @@ Page({
       return;
     }
 
-    if (this.redirectSalespersonAwayFromHome()) return;
+    if (this.redirectAwayFromHomeIfNeeded()) return;
 
     var sysInfo = wx.getSystemInfoSync();
     var menuButtonInfo = wx.getMenuButtonBoundingClientRect();
@@ -218,7 +222,7 @@ Page({
       return;
     }
 
-    if (this.redirectSalespersonAwayFromHome()) return;
+    if (this.redirectAwayFromHomeIfNeeded()) return;
 
     this.syncTabBar();
 

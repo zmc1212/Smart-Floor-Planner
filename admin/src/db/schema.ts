@@ -191,6 +191,7 @@ export const adminUsers = appSchema.table(
     mustChangePassword: boolean('must_change_password')
       .notNull()
       .default(false),
+    sensitiveOperationPasswordHash: text('sensitive_operation_password_hash'),
     displayName: text('display_name').notNull().default(''),
     role: text('role').notNull().default('admin'),
     wecomUserId: text('wecom_user_id'),

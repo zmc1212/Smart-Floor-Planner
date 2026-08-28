@@ -55,6 +55,11 @@ export function getLeadNextAction(status: string) {
   return '';
 }
 
+export function canOperateLead(status: string, archivedAt?: string | Date | null) {
+  if (archivedAt) return false;
+  return normalizeLeadStatus(status) !== 'closed';
+}
+
 export function canDeleteLeadFloorPlan(status: string) {
   const normalized = normalizeLeadStatus(status);
   return !['designing', 'converted', 'closed'].includes(normalized);

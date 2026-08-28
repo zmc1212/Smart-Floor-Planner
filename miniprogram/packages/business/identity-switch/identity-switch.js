@@ -18,10 +18,32 @@ const IDENTITY_ICONS = {
   salesperson: '/packages/business/assets/identity-switch/salesperson.png',
   platform_admin: '/packages/business/assets/identity-switch/platform-admin.png'
 };
+const ROLE_CARD_ART = {
+  customer: '/packages/business/assets/identity-switch/role-cards/customer-service.png',
+  referrer: '/packages/business/assets/identity-switch/role-cards/referrer-contact.png',
+  enterprise_admin: '/packages/business/assets/identity-switch/role-cards/enterprise-operations.png',
+  designer: '/packages/business/assets/identity-switch/role-cards/designer-plan.png',
+  measurer: '/packages/business/assets/identity-switch/role-cards/measurer-laser.png',
+  salesperson: '/packages/business/assets/identity-switch/role-cards/sales-promotion.png',
+  platform_admin: '/packages/business/assets/identity-switch/role-cards/platform-console.png'
+};
+const ROLE_CARD_HELPERS = {
+  customer: '查看装修服务',
+  referrer: '推广客户服务',
+  enterprise_admin: '经营与人员协同',
+  designer: '设计与方案服务',
+  measurer: '量房与现场服务',
+  salesperson: '客户推广服务',
+  platform_admin: '平台运营管理'
+};
 
 function resolveIdentityIcon(context) {
   const key = context.mode === 'staff' ? context.staffRole : context.mode;
   return IDENTITY_ICONS[key] || IDENTITY_ICONS.customer;
+}
+
+function resolveRoleKey(context) {
+  return context.mode === 'staff' ? context.staffRole : context.mode;
 }
 
 function contextKey(context) {
@@ -39,12 +61,15 @@ function sameContext(left, right) {
 }
 
 function decorateContext(context, current, selected) {
+  const roleKey = resolveRoleKey(context);
   const role = context.mode === 'staff' ? (ROLE_LABELS[context.staffRole] || context.staffRole || '员工') : MODE_LABELS[context.mode];
   return {
     ...context,
     modeLabel: MODE_LABELS[context.mode] || '身份',
     roleLabel: role,
     icon: resolveIdentityIcon(context),
+    cardArt: ROLE_CARD_ART[roleKey] || ROLE_CARD_ART.customer,
+    cardHelper: ROLE_CARD_HELPERS[roleKey] || '进入对应工作区域',
     title: context.mode === 'staff' ? (context.staffDisplayName || role) : (context.enterpriseName || role),
     detail: context.mode === 'staff'
       ? [role, context.enterpriseName].filter(Boolean).join(' · ')

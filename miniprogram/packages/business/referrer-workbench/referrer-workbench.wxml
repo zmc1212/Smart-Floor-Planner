@@ -10,14 +10,14 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
     class="service-nav"
     style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
-    <view class="nav-left">
-      <view class="brand-mark">
-        <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+    <view class="identity-brand-stack">
+      <view class="identity-brand-row">
+        <view class="brand-mark">
+          <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
+        </view>
+        <text class="nav-title">家客来 · 推广端</text>
       </view>
-      <text class="nav-title">家客来 · 推广端</text>
-      <view class="identity-badge-pill">
-        <text class="identity-badge-text">{{userName || '推广人'}} · {{selectedEnterpriseName || '未加入企业'}}</text>
-      </view>
+      <text wx:if="{{userName}}" class="identity-user-name">{{userName}}</text>
     </view>
   </view>
 
@@ -69,8 +69,8 @@ FORM: design-references/miniprogram-airy-minimalist-v1/06-promoter-workbench.jpg
     <view class="quick-nav-grid">
       <view class="quick-nav-card" bindtap="openProgress" hover-class="card-pressed" aria-role="button">
         <view class="quick-card-text">
-          <text class="quick-card-title">服务进度</text>
-          <text class="quick-card-link">{{progressCount > 0 ? progressCount + '条待跟进 →' : '查看进度 →'}}</text>
+          <text class="quick-card-title">客户</text>
+          <text class="quick-card-link">{{progressCount > 0 ? progressCount + '位客户 →' : '查看客户 →'}}</text>
         </view>
         <image class="quick-card-img" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" />
       </view>

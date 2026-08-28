@@ -75,7 +75,9 @@ test('enterprise-register page is registered and restores er_ scene tokens', () 
   assert.match(js, /formFieldsReady/);
   assert.match(js, /missingFormFields/);
   assert.match(js, /revealMissingFields/);
-  assert.match(js, /submitRegistration/);
+  assert.match(js, /confirmExistingAccountLeave/);
+  assert.match(js, /wx\.showModal/);
+  assert.doesNotMatch(js, /setTimeout\(\(\) => \{\s*if \(!this\.leaveIfWorkbenchSignedIn\(\)\) this\.onGoToLogin\(\);/);
   assert.match(js, /canSubmit/);
   assert.match(less, /identity-link/);
   assert.match(less, /\.form-field-error/);
@@ -466,6 +468,132 @@ test('phone authorization after approval leaves the form instead of staying on r
   assert.equal(approved.leave, true);
   assert.equal(context.data.pageState, 'account');
   assert.match(context.data.errorMessage, /已开通|已有账号|直接登录/);
+});
+
+test('workbench phone auth confirms before leaving and stays when cancelled', async () => {
+  const definition = loadPage();
+  const originalPhoneLogin = api.phoneLogin;
+  const originalWx = global.wx;
+  const originalGetApp = global.getApp;
+  const modals = [];
+  const leaves = [];
+  const appData = { roleLandingRedirected: false };
+  api.phoneLogin = async () => ({
+    user: { mode: 'staff', staffRole: 'enterprise_admin', phone: '13800138000' }
+  });
+  global.getApp = () => ({ globalData: appData });
+  global.wx = {
+    ...(originalWx || {}),
+    showModal(options) {
+      modals.push(options);
+    },
+    showToast() {},
+    reLaunch() {},
+    switchTab() {}
+  };
+  try {
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'ready',
+        canSubmit: true,
+        enterpriseName: '测试企业',
+        creditCode: '91310000MA1KTEST01',
+        contactName: '张三',
+        authorizedPhone: '',
+        submitting: false
+      },
+      setData(next) {
+        Object.assign(this.data, next);
+      },
+      leaveIfWorkbenchSignedIn() {
+        leaves.push('workbench');
+        return true;
+      },
+      onGoToLogin() {
+        leaves.push('login');
+      }
+    };
+    await definition.onGetPhoneNumber.call(context, {
+      detail: { errMsg: 'getPhoneNumber:ok', code: 'phone-code' }
+    });
+    assert.equal(context.data.pageState, 'account');
+    assert.equal(appData.roleLandingRedirected, true);
+    assert.equal(modals.length, 1);
+    assert.equal(modals[0].title, '该手机号已有账号');
+    assert.match(modals[0].content, /已开通企业账号/);
+    assert.equal(modals[0].confirmText, '去登录');
+    assert.equal(modals[0].cancelText, '留在此页');
+    assert.ok(modals[0].confirmText.length <= 4);
+    assert.ok(modals[0].cancelText.length <= 4);
+    assert.deepEqual(leaves, []);
+
+    modals[0].success({ confirm: false });
+    assert.deepEqual(leaves, []);
+    assert.equal(context.data.pageState, 'account');
+
+    modals[0].success({ confirm: true });
+    assert.deepEqual(leaves, ['workbench']);
+  } finally {
+    api.phoneLogin = originalPhoneLogin;
+    global.wx = originalWx;
+    global.getApp = originalGetApp;
+  }
+});
+
+test('rate-limited phone auth stays on the form with a readable confirm', async () => {
+  const definition = loadPage();
+  const originalWx = global.wx;
+  const modals = [];
+  const toasts = [];
+  global.wx = {
+    ...(originalWx || {}),
+    showModal(options) {
+      modals.push(options);
+    },
+    showToast(options) {
+      toasts.push(options);
+    }
+  };
+  try {
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'ready',
+        canSubmit: true,
+        submitting: false
+      },
+      setData(next) {
+        Object.assign(this.data, next);
+      }
+    };
+    await definition.onGetPhoneNumber.call(context, {
+      detail: { errMsg: 'getPhoneNumber:fail 该手机号获取次数已达上限，请稍后再试' }
+    });
+    assert.equal(context.data.pageState, 'ready');
+    assert.equal(toasts.length, 0);
+    assert.equal(modals.length, 1);
+    assert.equal(modals[0].showCancel, false);
+    assert.equal(modals[0].confirmText, '知道了');
+    assert.match(modals[0].content, /过于频繁|太快|稍后再试/);
+  } finally {
+    global.wx = originalWx;
+  }
+});
+
+test('explainPhoneAuthFailure keeps user cancel as a short toast', () => {
+  loadPage();
+  const {
+    explainPhoneAuthFailure
+  } = require('../packages/business/enterprise-register/enterprise-register.js');
+  assert.equal(
+    explainPhoneAuthFailure({ errMsg: 'getPhoneNumber:fail user deny' }).mode,
+    'toast'
+  );
+  assert.equal(
+    explainPhoneAuthFailure({ errMsg: 'getPhoneNumber:fail 操作太快了' }).mode,
+    'modal'
+  );
 });
 
 test('onBack leaves the stack-root open-account page without clearing the signed session', () => {

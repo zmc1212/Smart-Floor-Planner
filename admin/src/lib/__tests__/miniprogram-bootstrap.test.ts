@@ -103,7 +103,21 @@ test('staff role mapping does not collapse designer and measurer capabilities', 
   assert.ok(buildMiniProgramBootstrap({ current: owner, contexts: [owner] }).current.capabilities.includes('enterprise.commissions'));
   assert.equal(buildMiniProgramBootstrap({ current: owner, contexts: [owner] }).current.capabilities.includes('staff.earnings'), false);
   const platformAdmin = { ...customer, mode: 'staff' as const, staffRole: 'admin' as const };
-  assert.ok(buildMiniProgramBootstrap({ current: platformAdmin, contexts: [platformAdmin] }).current.capabilities.includes('platform.devices'));
+  const platformBootstrap = buildMiniProgramBootstrap({
+    current: platformAdmin,
+    contexts: [platformAdmin],
+  });
+  assert.ok(platformBootstrap.current.capabilities.includes('platform.devices'));
+  assert.ok(platformBootstrap.current.capabilities.includes('platform.review'));
+  assert.equal(
+    platformBootstrap.current.landingPath,
+    '/packages/platform/devices/devices'
+  );
+  assert.deepEqual(platformBootstrap.current.capabilities, [
+    'platform.review',
+    'platform.devices',
+    'account',
+  ]);
   const salesperson = { ...customer, mode: 'staff' as const, staffRole: 'salesperson' as const };
   const salesBootstrap = buildMiniProgramBootstrap({ current: salesperson, contexts: [salesperson] });
   assert.equal(salesBootstrap.current.role, 'salesperson');
@@ -119,6 +133,25 @@ test('salesperson badges stay empty without inventing local counts', () => {
   assert.deepEqual(buildMiniProgramBadges({
     role: 'salesperson',
     facts: {},
+  }), {
+    status: 'ok',
+    message: null,
+    counts: {},
+  });
+});
+
+test('platform admin badges count pending review work and omit zeros', () => {
+  assert.deepEqual(buildMiniProgramBadges({
+    role: 'platform_admin',
+    facts: { reviewPendingCount: 4 },
+  }), {
+    status: 'ok',
+    message: null,
+    counts: { review: 4 },
+  });
+  assert.deepEqual(buildMiniProgramBadges({
+    role: 'platform_admin',
+    facts: { reviewPendingCount: 0 },
   }), {
     status: 'ok',
     message: null,

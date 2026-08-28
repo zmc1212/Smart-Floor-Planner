@@ -1,0 +1,131 @@
+<!--
+THESIS: 平台管理员在手机上处理企业入驻审核队列。
+OWN-WORLD: 沿用设备工作台胶囊顶栏与预约列表左色条卡片，不新画小 K。
+STORY: 默认待审核；点卡片看详情；通过确认、拒绝填原因。
+FIRST VIEWPORT: 胶囊标题、状态 chips、列表卡与底部 Tab 在 390x844 同屏可达。
+FORM: platform-device-workbench + enterprise-appointments
+-->
+<view class="page sfp-tab-page">
+  <view
+    class="nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="nav-copy">
+      <text class="nav-title">企业审核</text>
+      <text class="nav-subtitle">{{subtitle}}</text>
+    </view>
+    <view class="nav-action" bindtap="openRegistrationCode" aria-role="button" aria-label="出示开户码">开户码</view>
+  </view>
+
+  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}">
+    <view class="chip-row">
+      <view
+        wx:for="{{statusChips}}"
+        wx:key="key"
+        class="chip {{statusFilter === item.key ? 'active' : ''}}"
+        data-key="{{item.key}}"
+        bindtap="selectChip"
+      >
+        <text>{{item.label}}</text>
+      </view>
+    </view>
+
+    <view class="search-surface">
+      <image class="search-icon" src="/images/leads-v4/search.png" mode="aspectFit" />
+      <input
+        class="search-input"
+        value="{{searchDraft}}"
+        placeholder="按名称、电话或信用代码"
+        placeholder-class="search-placeholder"
+        confirm-type="search"
+        bindinput="onSearchInput"
+        bindconfirm="onSearchConfirm"
+      />
+    </view>
+
+    <view wx:if="{{loading}}" class="state-card">正在读取企业审核队列…</view>
+    <view wx:elif="{{error}}" class="state-card">
+      <text class="state-error">{{error}}</text>
+      <view class="retry" bindtap="load">重新加载</view>
+    </view>
+    <view wx:elif="{{!enterprises.length}}" class="state-card empty">
+      <text class="empty-title">{{emptyTitle}}</text>
+      <text class="empty-desc">{{emptyDesc}}</text>
+    </view>
+
+    <view wx:else class="review-list">
+      <view
+        wx:for="{{enterprises}}"
+        wx:key="_id"
+        class="review-card tone-{{item.tone}}"
+        data-id="{{item._id}}"
+        bindtap="openDetail"
+        hover-class="card-pressed"
+        aria-role="button"
+        aria-label="查看 {{item.name}}"
+      >
+        <view class="card-accent"></view>
+        <view class="card-body">
+          <view class="card-header">
+            <text class="header-line">{{item.name}}</text>
+            <view class="status-tag tag-{{item.tone}}">
+              <text>{{item.statusLabel}}</text>
+            </view>
+          </view>
+          <text class="meta-line">信用代码 {{item.code}}</text>
+          <text class="meta-line">{{item.contactLine}}</text>
+          <text class="helper-line">{{item.sourceLine}} · {{item.createdLabel}}</text>
+          <text wx:if="{{item.reasonLabel}}" class="helper-line">最近原因：{{item.reasonLabel}}</text>
+          <view class="card-footer">
+            <view
+              wx:if="{{item.contactPhone}}"
+              class="ghost-btn sfp-icon-action"
+              data-phone="{{item.contactPhone}}"
+              catchtap="callPhone"
+            >
+              <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+              <text>电话联系</text>
+            </view>
+            <view
+              wx:if="{{item.canApprove}}"
+              class="cta-btn"
+              data-id="{{item._id}}"
+              data-name="{{item.name}}"
+              catchtap="approveEnterprise"
+              hover-class="cta-pressed"
+            >通过</view>
+            <view
+              wx:if="{{item.canReject}}"
+              class="ghost-btn"
+              data-id="{{item._id}}"
+              data-action="reject"
+              catchtap="openReasonSheet"
+              hover-class="cta-pressed"
+            >拒绝</view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+</view>
+
+<view wx:if="{{reasonVisible}}" class="sheet-root" catchtouchmove="noop">
+  <view class="sheet-mask {{reasonOpen ? 'open' : ''}}" catchtap="closeReasonSheet"></view>
+  <view class="sheet-panel {{reasonOpen ? 'open' : ''}}">
+    <text class="sheet-title">{{reasonTitle}}</text>
+    <text class="sheet-hint">请填写 4–200 字原因</text>
+    <textarea
+      class="sheet-input"
+      maxlength="200"
+      value="{{reasonDraft}}"
+      placeholder="例如：信用代码与营业执照不符"
+      bindinput="onReasonInput"
+    />
+    <text class="sheet-count">{{reasonDraft.length}}/200</text>
+    <view class="sheet-actions">
+      <view class="sheet-btn ghost" bindtap="closeReasonSheet"><text>取消</text></view>
+      <view class="sheet-btn solid" bindtap="submitReason"><text>{{reasonConfirm}}</text></view>
+    </view>
+  </view>
+</view>
+<custom-tab-bar />
