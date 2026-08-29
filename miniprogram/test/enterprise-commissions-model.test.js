@@ -32,6 +32,7 @@ test('enterprise payout ledger groups by lead and keeps tenant totals unfiltered
   assert.equal(all.groups[1].sourceLabel, '员工活动');
   assert.equal(all.groups[1].canMarkGroup, false);
   assert.equal(all.groups[1].items[0].canMarkPaid, true);
+  assert.equal(all.groups[1].items[0].requiresQuickLedger, false);
 
   const payable = buildPageData(payload, 'payable');
   assert.equal(payable.groups.length, 2);
@@ -47,4 +48,15 @@ test('enterprise payout money and status labels stay aligned with admin copy', (
   assert.deepEqual(statusMeta('paid'), { label: '已支付', tone: 'paid' });
   assert.deepEqual(statusMeta('voided'), { label: '已作废', tone: 'voided' });
   assert.deepEqual(buildGroups([], 'all'), []);
+});
+
+test('zero-amount payable rows require quick ledger input and cannot be bypassed in a batch', () => {
+  const zeroPayable = buildPageData({ items: [{
+    id: 'zero', leadId: 'lead-zero', customerLabel: '王女士', role: 'referrer', roleLabel: '推荐人', beneficiaryLabel: '小周', amount: '0.00', status: 'payable', source: 'referral'
+  }, {
+    id: 'positive', leadId: 'lead-zero', customerLabel: '王女士', role: 'designer', roleLabel: '家装设计顾问', beneficiaryLabel: '小陈', amount: '20.00', status: 'payable', source: 'referral'
+  }] }, 'all');
+  assert.equal(zeroPayable.items[0].requiresQuickLedger, true);
+  assert.equal(zeroPayable.groups[0].canMarkGroup, false);
+  assert.equal(zeroPayable.groups[0].markGroupLabel, '');
 });

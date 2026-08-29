@@ -220,6 +220,9 @@ test('enterprise owner commissions are a payout ledger tab with mark-paid', () =
   assert.match(template, /已作废/);
   assert.match(page, /['"`]\/miniprogram\/enterprise-commissions['"`]/);
   assert.match(page, /['"`]\/miniprogram\/enterprise-commissions\/mark-paid['"`]/);
+  assert.match(page, /['"`]\/miniprogram\/enterprise-commissions\/record-zero-payment['"`]/);
+  assert.match(template, /quick-ledger-dialog/);
+  assert.match(template, /录入实际付款金额/);
   assert.match(page, /确认标记已支付/);
   assert.match(navigation, /enterprise-commissions\/enterprise-commissions': 'enterprise\.commissions'/);
   assert.match(tabBar, /key: 'commissions', capability: 'enterprise\.commissions'/);

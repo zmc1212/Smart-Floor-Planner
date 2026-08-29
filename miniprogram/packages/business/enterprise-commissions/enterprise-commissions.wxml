@@ -14,7 +14,7 @@
         <text class="primary-total-value">{{stat.money(totals.payable)}}</text>
       </view>
     </view>
-    <image class="payout-mascot" src="/images/enterprise-commissions/xiao-k-payout-checker-v1.png" mode="aspectFit"></image>
+    <image class="payout-mascot" src="/packages/business/assets/enterprise-commissions/xiao-k-payout-checker-v1.png" mode="aspectFit"></image>
     <view class="summary-row summary-row-two">
       <view><text class="summary-label">已支付</text><text class="summary-value">{{stat.money(totals.paid)}}</text></view>
       <view><text class="summary-label">已作废</text><text class="summary-value">{{stat.money(totals.voided)}}</text></view>
@@ -54,6 +54,16 @@
       </view>
     </view>
     <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
+  </view>
+</view>
+<view wx:if="{{quickLedgerDialogVisible}}" class="quick-ledger-mask" catchtap="cancelQuickLedger">
+  <view class="quick-ledger-dialog" catchtap="stopDialogTap">
+    <text class="quick-ledger-kicker">快速记账</text>
+    <text class="quick-ledger-title">录入实际付款金额</text>
+    <text class="quick-ledger-copy">本笔待支付金额为 ¥0.00，请填写实际线下付款金额。</text>
+    <view class="quick-ledger-input-wrap {{quickLedgerError ? 'quick-ledger-input-error' : ''}}"><text class="quick-ledger-currency">¥</text><input class="quick-ledger-input" type="digit" value="{{quickLedgerAmount}}" placeholder="例如 200.00" placeholder-class="quick-ledger-placeholder" focus="{{quickLedgerDialogVisible}}" bindinput="changeQuickLedgerAmount" bindconfirm="confirmQuickLedger" /></view>
+    <text wx:if="{{quickLedgerError}}" class="quick-ledger-error">{{quickLedgerError}}</text>
+    <view class="quick-ledger-actions"><button class="quick-ledger-cancel" bindtap="cancelQuickLedger">取消</button><button class="quick-ledger-confirm" bindtap="confirmQuickLedger">记账并确认</button></view>
   </view>
 </view>
 <custom-tab-bar />

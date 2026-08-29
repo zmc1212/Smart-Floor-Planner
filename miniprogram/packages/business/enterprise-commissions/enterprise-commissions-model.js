@@ -26,11 +26,13 @@ function statusMeta(status) {
 }
 
 function decorateItem(item) {
+  const amount = Number(item.amount || 0);
   return {
     ...item,
-    amountLabel: money(item.amount),
+    amountLabel: money(amount),
     statusMeta: statusMeta(item.status),
     canMarkPaid: item.status === 'payable',
+    requiresQuickLedger: item.status === 'payable' && amount === 0,
     sourceLabel: item.source === 'staff_activity' ? '员工活动' : '推荐网络'
   };
 }
@@ -55,6 +57,7 @@ function buildGroups(items, filter) {
   }
   return groups.map((group) => {
     const payableItems = group.items.filter((item) => item.status === 'payable');
+    const hasZeroAmountPayment = payableItems.some((item) => item.requiresQuickLedger);
     const payableAmount = payableItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     return {
       ...group,
@@ -62,10 +65,10 @@ function buildGroups(items, filter) {
         (ROLE_ORDER[left.role] ?? 9) - (ROLE_ORDER[right.role] ?? 9)
       )),
       payableIds: payableItems.map((item) => item.id).join(','),
-      canMarkGroup: payableItems.length > 1,
+      canMarkGroup: payableItems.length > 1 && !hasZeroAmountPayment,
       payableCount: payableItems.length,
       payableAmountLabel: money(payableAmount),
-      markGroupLabel: payableItems.length > 1 ? `确认本单 ${payableItems.length} 笔付款` : ''
+      markGroupLabel: payableItems.length > 1 && !hasZeroAmountPayment ? `确认本单 ${payableItems.length} 笔付款` : ''
     };
   });
 }

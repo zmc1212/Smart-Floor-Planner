@@ -1364,12 +1364,26 @@ test('payable commission adjust updates amount or beneficiary, rejects paid/void
       const paidRows = await commissionRepository.list(enterpriseAId, { leadId: paidLead.id, role: 'measurer' });
       assert.equal(paidRows.length, 1);
       await commissionRepository.adjustPayable(enterpriseAId, paidRows[0].id, designer.id, {
-        payableAmount: '33.00',
-        reason: 'pre-pay tweak',
+        payableAmount: '0.00',
+        reason: 'prepare zero quick ledger',
       });
-      const [markedPaid] = await commissionRepository.markPaid(enterpriseAId, [paidRows[0].id], designer.id);
+      await assert.rejects(
+        () => commissionRepository.markPaid(enterpriseAId, [paidRows[0].id], designer.id, { rejectZeroAmount: true }),
+        /零金额提成需先录入实际付款金额/
+      );
+      await assert.rejects(
+        () => commissionRepository.recordZeroAmountPayment(enterpriseAId, paidRows[0].id, designer.id, '0.00'),
+        /实际付款金额必须大于 0/
+      );
+      const markedPaid = await commissionRepository.recordZeroAmountPayment(
+        enterpriseAId,
+        paidRows[0].id,
+        designer.id,
+        '33.00'
+      );
       assert.equal(markedPaid.status, 'paid');
       assert.equal(markedPaid.payableAmount, '33.00');
+      assert.equal(markedPaid.adjustReason, '小程序线下付款补录');
       await assert.rejects(
         () => commissionRepository.adjustPayable(enterpriseAId, paidRows[0].id, designer.id, {
           payableAmount: '1.00',

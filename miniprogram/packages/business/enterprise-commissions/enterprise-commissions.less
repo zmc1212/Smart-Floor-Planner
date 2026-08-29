@@ -55,3 +55,20 @@
 .confirm-payment-pressed { background: #0b913e; transform: scale(0.98); }
 .payment-helper { display: block; margin-top: 10rpx; color: #7b8980; font-size: 22rpx; line-height: 1.35; text-align: right; }
 .payment-complete, .payment-voided { color: #6f8075; }
+.quick-ledger-mask { position: fixed; z-index: 1200; inset: 0; display: flex; padding: 48rpx; align-items: center; justify-content: center; background: rgba(17, 35, 25, 0.48); }
+.quick-ledger-dialog { display: flex; width: 100%; max-width: 606rpx; padding: 36rpx 32rpx 30rpx; flex-direction: column; border-radius: 28rpx; background: #fff; box-shadow: 0 24rpx 72rpx rgba(13, 38, 23, 0.26); }
+.quick-ledger-kicker { color: #168149; font-size: 22rpx; font-weight: 700; line-height: 1.2; }
+.quick-ledger-title { margin-top: 10rpx; color: #193226; font-size: 32rpx; font-weight: 700; line-height: 1.25; }
+.quick-ledger-copy { margin-top: 12rpx; color: #65776b; font-size: 24rpx; line-height: 1.5; }
+.quick-ledger-input-wrap { display: flex; height: 88rpx; margin-top: 28rpx; padding: 0 22rpx; align-items: center; border: 2rpx solid #cfe0d4; border-radius: 16rpx; background: #f8fbf8; }
+.quick-ledger-input-wrap:focus-within { border-color: #18a34c; background: #fff; }
+.quick-ledger-input-error { border-color: #d65e50; }
+.quick-ledger-currency { color: #1d3929; font-family: var(--font-mono); font-size: 32rpx; font-weight: 700; }
+.quick-ledger-input { min-width: 0; height: 84rpx; margin-left: 12rpx; color: #1d3929; font-family: var(--font-mono); font-size: 32rpx; font-weight: 700; flex: 1; }
+.quick-ledger-placeholder { color: #a1afa5; font-family: inherit; font-size: 24rpx; font-weight: 400; }
+.quick-ledger-error { margin-top: 10rpx; color: #c34d41; font-size: 22rpx; line-height: 1.3; }
+.quick-ledger-actions { display: grid; grid-template-columns: 1fr 1.35fr; gap: 16rpx; margin-top: 30rpx; }
+.quick-ledger-cancel, .quick-ledger-confirm { height: 76rpx; margin: 0; border: 0; border-radius: 14rpx; font-size: 26rpx; font-weight: 700; line-height: 76rpx; }
+.quick-ledger-cancel { color: #506358; background: #edf3ee; }
+.quick-ledger-confirm { color: #fff; background: #14a64a; box-shadow: 0 8rpx 16rpx rgba(20, 166, 74, 0.2); }
+.quick-ledger-cancel::after, .quick-ledger-confirm::after { border: 0; }

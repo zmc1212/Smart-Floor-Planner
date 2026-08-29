@@ -431,7 +431,12 @@ export class LeadCommissionRepository {
     });
   }
 
-  async markPaid(enterpriseId: bigint, commissionIds: bigint[], actorId: bigint) {
+  async markPaid(
+    enterpriseId: bigint,
+    commissionIds: bigint[],
+    actorId: bigint,
+    options: { rejectZeroAmount?: boolean } = {}
+  ) {
     const uniqueIds = [...new Set(commissionIds)];
     if (!uniqueIds.length || uniqueIds.length > 100) {
       throw commissionError('commission_ids_invalid', '请选择 1 至 100 条待支付提成', 400);
@@ -443,6 +448,9 @@ export class LeadCommissionRepository {
       .for('update');
     if (current.length !== uniqueIds.length || current.some((item) => item.status !== 'payable')) {
       throw commissionError('commission_not_payable', '所选提成不存在或不是待支付状态');
+    }
+    if (options.rejectZeroAmount && current.some((item) => parseDecimal(item.payableAmount, 2) === BigInt(0))) {
+      throw commissionError('commission_zero_payment_requires_amount', '零金额提成需先录入实际付款金额', 409);
     }
     return this.transaction
       .update(leadCommissions)
@@ -599,6 +607,54 @@ export class LeadCommissionRepository {
       throw commissionError('commission_not_payable', '仅待支付提成可调整');
     }
     return updated[0];
+  }
+
+  async recordZeroAmountPayment(
+    enterpriseId: bigint,
+    commissionId: bigint,
+    actorId: bigint,
+    paidAmount: string
+  ) {
+    const normalizedAmount = formatDecimal(parseDecimal(paidAmount, 2), 2);
+    if (normalizedAmount === '0.00') {
+      throw commissionError('commission_paid_amount_invalid', '实际付款金额必须大于 0', 400);
+    }
+
+    const rows = await this.transaction
+      .select()
+      .from(leadCommissions)
+      .where(and(eq(leadCommissions.id, commissionId), eq(leadCommissions.enterpriseId, enterpriseId)))
+      .for('update');
+    const current = rows[0];
+    if (!current) {
+      throw commissionError('commission_not_found', '提成记录不存在或不属于本企业');
+    }
+    if (current.status !== 'payable' || parseDecimal(current.payableAmount, 2) !== BigInt(0)) {
+      throw commissionError('commission_zero_payment_not_available', '仅待支付且应付金额为 0 的提成可快速记账', 409);
+    }
+
+    const adjusted = await this.transaction
+      .update(leadCommissions)
+      .set({
+        payableAmount: normalizedAmount,
+        adjustedAt: new Date(),
+        adjustedBy: actorId,
+        adjustReason: '小程序线下付款补录',
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(leadCommissions.id, commissionId),
+        eq(leadCommissions.enterpriseId, enterpriseId),
+        eq(leadCommissions.status, 'payable'),
+        eq(leadCommissions.payableAmount, current.payableAmount)
+      ))
+      .returning();
+    if (!adjusted[0]) {
+      throw commissionError('commission_zero_payment_not_available', '提成金额已变化，请刷新后重试', 409);
+    }
+
+    const [paid] = await this.markPaid(enterpriseId, [commissionId], actorId);
+    return paid;
   }
 
   async listOwnStaffEarnings(input: {
