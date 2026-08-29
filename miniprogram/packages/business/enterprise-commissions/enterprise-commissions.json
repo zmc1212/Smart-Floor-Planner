@@ -2,6 +2,7 @@
   "navigationStyle": "custom",
   "onReachBottomDistance": 120,
   "usingComponents": {
+    "commission-payout-actions": "/components/commission-payout-actions/index",
     "custom-tab-bar": "/custom-tab-bar/index"
   }
 }

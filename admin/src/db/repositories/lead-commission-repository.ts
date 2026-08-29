@@ -33,6 +33,11 @@ export type AdjustPayableInput = {
   reason?: string;
 };
 
+export type ConfirmCommissionPaymentInput = {
+  commissionId: bigint;
+  paidAmount: string;
+};
+
 export type CommissionBeneficiaryOption = {
   userId: bigint;
   displayName: string;
@@ -284,20 +289,82 @@ export class LeadCommissionRepository {
         status: 'payable' as const,
       };
     });
+    const existing = await this.transaction
+      .select()
+      .from(leadCommissions)
+      .where(eq(leadCommissions.leadId, leadId))
+      .for('update');
+    if (existing.length) {
+      const expectedRoles = new Set(roles);
+      const hasExactRoleSet = existing.length === roles.length && existing.every(
+        (commission) => expectedRoles.has(commission.role as (typeof roles)[number])
+      );
+      if (!hasExactRoleSet || !existing.every((commission) => commission.status === 'voided')) {
+        throw commissionError('commission_snapshot_conflict', '签单提成快照状态冲突，请联系管理员处理');
+      }
+
+      const valueByRole = new Map(values.map((value) => [value.role, value]));
+      const refreshed = [];
+      const now = new Date();
+      for (const commission of existing) {
+        const value = valueByRole.get(commission.role as (typeof roles)[number]);
+        if (!value) {
+          throw commissionError('commission_snapshot_conflict', '签单提成快照角色不完整，请联系管理员处理');
+        }
+        const rows = await this.transaction
+          .update(leadCommissions)
+          .set({
+            beneficiaryUserId: value.beneficiaryUserId,
+            originalBeneficiaryUserId: value.originalBeneficiaryUserId,
+            ruleType: value.ruleType,
+            ruleValue: value.ruleValue,
+            ruleVersion: value.ruleVersion,
+            contractAmount: value.contractAmount,
+            payableAmount: value.payableAmount,
+            originalPayableAmount: value.originalPayableAmount,
+            adjustedAt: null,
+            adjustedBy: null,
+            adjustReason: null,
+            status: 'payable',
+            paidAt: null,
+            paidBy: null,
+            voidedAt: null,
+            voidedBy: null,
+            voidReason: null,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .where(and(eq(leadCommissions.id, commission.id), eq(leadCommissions.status, 'voided')))
+          .returning();
+        if (!rows[0]) {
+          throw commissionError('commission_snapshot_conflict', '签单提成快照状态已变化，请刷新后重试');
+        }
+        refreshed.push(rows[0]);
+      }
+      return refreshed;
+    }
+
     const created = await this.transaction
       .insert(leadCommissions)
       .values(values)
       .onConflictDoNothing({ target: [leadCommissions.leadId, leadCommissions.role] })
       .returning();
     if (created.length === roles.length) return created;
-    const existing = await this.transaction
+    const concurrent = await this.transaction
       .select()
       .from(leadCommissions)
       .where(eq(leadCommissions.leadId, leadId));
-    if (existing.length !== roles.length) {
-      throw commissionError('commission_snapshot_conflict', '签单提成快照不完整，请联系管理员处理');
+    if (
+      concurrent.length !== roles.length ||
+      !concurrent.every(
+        (commission) =>
+          commission.status === 'payable' &&
+          (roles as readonly string[]).includes(commission.role)
+      )
+    ) {
+      throw commissionError('commission_snapshot_conflict', '签单提成快照状态冲突，请联系管理员处理');
     }
-    return existing;
+    return concurrent;
   }
 
   async voidUnpaidForRevertedLead(leadId: bigint, actorId: bigint, reason: string) {
@@ -310,13 +377,12 @@ export class LeadCommissionRepository {
       throw commissionError('commission_paid_blocks_revert', '存在已支付提成，需先完成线下财务更正后才能撤销签单');
     }
     const payableIds = existing.filter((commission) => commission.status === 'payable').map((commission) => commission.id);
-    if (!payableIds.length) return 0;
-    const rows = await this.transaction
+    if (!payableIds.length) return [];
+    return this.transaction
       .update(leadCommissions)
       .set({ status: 'voided', voidedAt: new Date(), voidedBy: actorId, voidReason: reason, updatedAt: new Date() })
       .where(inArray(leadCommissions.id, payableIds))
-      .returning({ id: leadCommissions.id });
-    return rows.length;
+      .returning();
   }
 
   async list(enterpriseId: bigint, options: {
@@ -456,6 +522,78 @@ export class LeadCommissionRepository {
       .update(leadCommissions)
       .set({ status: 'paid', paidAt: new Date(), paidBy: actorId, updatedAt: new Date() })
       .where(and(eq(leadCommissions.enterpriseId, enterpriseId), inArray(leadCommissions.id, uniqueIds), eq(leadCommissions.status, 'payable')))
+      .returning();
+  }
+
+  async confirmPayments(
+    enterpriseId: bigint,
+    payments: ConfirmCommissionPaymentInput[],
+    actorId: bigint
+  ) {
+    if (!payments.length || payments.length > 100) {
+      throw commissionError('commission_payments_invalid', '请选择 1 至 100 条待支付提成', 400);
+    }
+
+    const normalized = payments.map((payment) => {
+      const cents = parseDecimal(payment.paidAmount, 2);
+      if (cents <= BigInt(0) || cents > BigInt('99999999999999')) {
+        throw commissionError(
+          'commission_paid_amount_invalid',
+          '实际打款金额须为 0.01 至 999999999999.99，最多两位小数',
+          400
+        );
+      }
+      return {
+        commissionId: payment.commissionId,
+        paidAmount: formatDecimal(cents, 2),
+      };
+    });
+    const uniqueIds = [...new Set(normalized.map((payment) => payment.commissionId.toString()))];
+    if (uniqueIds.length !== normalized.length) {
+      throw commissionError('commission_payment_duplicate', '同一条提成不能重复确认打款', 400);
+    }
+    const commissionIds = normalized.map((payment) => payment.commissionId);
+    const current = await this.transaction
+      .select()
+      .from(leadCommissions)
+      .where(and(eq(leadCommissions.enterpriseId, enterpriseId), inArray(leadCommissions.id, commissionIds)))
+      .for('update');
+    if (current.length !== commissionIds.length || current.some((item) => item.status !== 'payable')) {
+      throw commissionError('commission_not_payable', '所选提成不存在或不是待支付状态');
+    }
+
+    const currentById = new Map(current.map((item) => [item.id.toString(), item]));
+    for (const payment of normalized) {
+      const row = currentById.get(payment.commissionId.toString());
+      if (!row || row.payableAmount === payment.paidAmount) continue;
+      const updated = await this.transaction
+        .update(leadCommissions)
+        .set({
+          payableAmount: payment.paidAmount,
+          adjustedAt: new Date(),
+          adjustedBy: actorId,
+          adjustReason: '确认打款时录入最终金额',
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(leadCommissions.enterpriseId, enterpriseId),
+          eq(leadCommissions.id, payment.commissionId),
+          eq(leadCommissions.status, 'payable')
+        ))
+        .returning({ id: leadCommissions.id });
+      if (!updated[0]) {
+        throw commissionError('commission_not_payable', '提成记录已变化，请刷新后重试');
+      }
+    }
+
+    return this.transaction
+      .update(leadCommissions)
+      .set({ status: 'paid', paidAt: new Date(), paidBy: actorId, updatedAt: new Date() })
+      .where(and(
+        eq(leadCommissions.enterpriseId, enterpriseId),
+        inArray(leadCommissions.id, commissionIds),
+        eq(leadCommissions.status, 'payable')
+      ))
       .returning();
   }
 

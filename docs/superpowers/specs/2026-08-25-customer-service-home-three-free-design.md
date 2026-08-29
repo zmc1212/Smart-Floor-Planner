@@ -13,7 +13,7 @@ The customer Service home now carries the same acquisition promise as the approv
 - `免费家装设计顾问` / `解答你的装修问题`
 - `免费家装现场顾问` / `解答现场问题`
 
-The marketing benefits and the operational service stage remain separate layers. The white stage ticket still consumes the real `serviceStage`, `nextActionKind`, `appointmentSummary`, formal floor-plan preview, published-scheme preview, and multi-project data.
+The marketing benefits and the operational service stage remain separate layers. The white stage ticket still consumes the real `serviceStage`, `nextActionKind`, `appointmentSummary`, formal floor-plan preview, published-scheme preview, and multi-project data. Customer ticket copy on this route drops 上门: inset titles `待预约量房` / `已预约量房` / `量房进行中`, summary `可预约量房时间`, and book CTA `预约量房`; staff workbench and booking-page 上门 wording stay.
 
 ## Composition and interactions
 

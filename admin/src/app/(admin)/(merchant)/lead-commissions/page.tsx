@@ -8,12 +8,10 @@ import {
   Col,
   Flex,
   Form,
-  Input,
   InputNumber,
   Modal,
   Row,
   Segmented,
-  Select,
   Statistic,
   Switch,
   Table,
@@ -21,9 +19,8 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
-import { CheckCircle2, PencilLine, Save } from 'lucide-react';
+import { CheckCircle2, Save } from 'lucide-react';
 import { notify } from '@/components/admin/operation-feedback';
-import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 
 type CommissionRole = 'referrer' | 'designer' | 'measurer';
 type CommissionStatus = 'payable' | 'paid' | 'voided';
@@ -58,16 +55,8 @@ type Commission = {
   appointment: { address: string; timeRange: string; status: string } | null;
 };
 
-type BeneficiaryOption = {
-  userId: string;
-  displayName: string;
-  phone: string | null;
-};
-
-type AdjustFormValues = {
-  payableAmount: string;
-  beneficiaryUserId?: string;
-  reason?: string;
+type PaymentFormValues = {
+  payments: Array<{ paidAmount: string }>;
 };
 
 type LeadCommissionGroup = {
@@ -196,7 +185,6 @@ function StatusSummary({ group }: { group: LeadCommissionGroup }) {
 }
 
 export default function LeadCommissionsPage() {
-  const confirm = useConfirmDialog();
   const actionRef = useRef<ActionType>(null);
   const [rules, setRules] = useState<Rule[]>([]);
   const [records, setRecords] = useState<Commission[]>([]);
@@ -205,11 +193,8 @@ export default function LeadCommissionsPage() {
   const [paying, setPaying] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
-  const [adjusting, setAdjusting] = useState<Commission | null>(null);
-  const [beneficiaries, setBeneficiaries] = useState<BeneficiaryOption[]>([]);
-  const [loadingBeneficiaries, setLoadingBeneficiaries] = useState(false);
-  const [submittingAdjust, setSubmittingAdjust] = useState(false);
-  const [adjustForm] = Form.useForm<AdjustFormValues>();
+  const [paymentRecords, setPaymentRecords] = useState<Commission[]>([]);
+  const [paymentForm] = Form.useForm<PaymentFormValues>();
 
   const loadRules = useCallback(async () => {
     const response = await fetch('/api/commission-rules');
@@ -251,101 +236,50 @@ export default function LeadCommissionsPage() {
 
   const payableSelected = records.filter((record) => selected.includes(record.id) && record.status === 'payable');
 
-  const markPaid = async () => {
-    if (!payableSelected.length) return;
-    const accepted = await confirm({
-      title: '确认标记已支付',
-      description: `确认已在线下完成 ${payableSelected.length} 条提成的支付吗？该操作会保留付款审计。`,
-      confirmText: '标记已支付',
+  const openPayment = (recordsToPay: Commission[]) => {
+    const payable = recordsToPay.filter((record) => record.status === 'payable');
+    if (!payable.length) return;
+    setPaymentRecords(payable);
+    paymentForm.setFieldsValue({
+      payments: payable.map((record) => ({
+        paidAmount: Number(record.payableAmount) > 0 ? record.payableAmount : '',
+      })),
     });
-    if (!accepted) return;
-    setPaying(true);
+  };
+
+  const closePayment = () => {
+    if (paying) return;
+    setPaymentRecords([]);
+    paymentForm.resetFields();
+  };
+
+  const submitPayment = async () => {
+    if (!paymentRecords.length || paying) return;
     try {
+      const values = await paymentForm.validateFields();
+      setPaying(true);
       const response = await fetch('/api/lead-commissions/mark-paid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ commissionIds: payableSelected.map((record) => record.id) }),
+        body: JSON.stringify({
+          payments: paymentRecords.map((record, index) => ({
+            commissionId: record.id,
+            paidAmount: values.payments[index].paidAmount,
+          })),
+        }),
       });
       const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '标记支付失败');
-      notify.success('所选提成已标记为已支付');
+      if (!response.ok || !result.success) throw new Error(result.error || '确认打款失败');
+      notify.success(paymentRecords.length > 1 ? `${paymentRecords.length} 笔提成已确认打款` : '提成已确认打款');
+      setPaymentRecords([]);
+      paymentForm.resetFields();
       setSelected([]);
       await actionRef.current?.reload();
     } catch (error) {
-      notify.error(error instanceof Error ? error.message : '标记支付失败');
+      if (error && typeof error === 'object' && 'errorFields' in error) return;
+      notify.error(error instanceof Error ? error.message : '确认打款失败');
     } finally {
       setPaying(false);
-    }
-  };
-
-  const openAdjust = async (record: Commission) => {
-    setAdjusting(record);
-    adjustForm.setFieldsValue({
-      payableAmount: record.payableAmount,
-      beneficiaryUserId: record.beneficiary?.id,
-      reason: '',
-    });
-    setLoadingBeneficiaries(true);
-    try {
-      const response = await fetch(`/api/lead-commissions/beneficiaries?role=${record.role}`);
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '读取可选受益人失败');
-      const options = (result.data || []) as BeneficiaryOption[];
-      if (record.beneficiary && !options.some((item) => item.userId === record.beneficiary?.id)) {
-        options.unshift({
-          userId: record.beneficiary.id,
-          displayName: record.beneficiary.nickname || '当前受益人',
-          phone: record.beneficiary.phone,
-        });
-      }
-      setBeneficiaries(options);
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '读取可选受益人失败');
-      setBeneficiaries([]);
-    } finally {
-      setLoadingBeneficiaries(false);
-    }
-  };
-
-  const closeAdjust = () => {
-    setAdjusting(null);
-    setBeneficiaries([]);
-    adjustForm.resetFields();
-  };
-
-  const submitAdjust = async () => {
-    if (!adjusting) return;
-    try {
-      const values = await adjustForm.validateFields();
-      const payload: { reason?: string; payableAmount?: string; beneficiaryUserId?: string } = {};
-      const reason = values.reason?.trim();
-      if (reason) payload.reason = reason;
-      if (values.payableAmount !== adjusting.payableAmount) {
-        payload.payableAmount = values.payableAmount;
-      }
-      if (values.beneficiaryUserId && values.beneficiaryUserId !== adjusting.beneficiary?.id) {
-        payload.beneficiaryUserId = values.beneficiaryUserId;
-      }
-      if (payload.payableAmount === undefined && payload.beneficiaryUserId === undefined) {
-        notify.error('请至少调整应付金额或受益人之一');
-        return;
-      }
-      setSubmittingAdjust(true);
-      const response = await fetch(`/api/lead-commissions/${adjusting.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '调整提成失败');
-      notify.success('提成已调整');
-      closeAdjust();
-      await actionRef.current?.reload();
-    } catch (error) {
-      if (error && typeof error === 'object' && 'errorFields' in error) return;
-      notify.error(error instanceof Error ? error.message : '调整提成失败');
-    } finally {
-      setSubmittingAdjust(false);
     }
   };
 
@@ -436,15 +370,15 @@ export default function LeadCommissionsPage() {
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 120,
       render: (_, record) => record.status === 'payable' ? (
         <Button
           type="link"
           size="small"
-          icon={<PencilLine size={14} />}
-          onClick={() => void openAdjust(record)}
+          icon={<CheckCircle2 size={14} />}
+          onClick={() => openPayment([record])}
         >
-          调整
+          确认打款
         </Button>
       ) : null,
     },
@@ -555,7 +489,7 @@ export default function LeadCommissionsPage() {
         breadcrumbRender={false}
         className="admin-page-container"
         title="三方提成"
-        content="配置推荐人、设计师、测量员的提成规则；签单提成按线索聚合，展开后查看三角色明细并可支付与调整。"
+        content="配置推荐人、设计师、测量员的提成规则；签单后展开明细，核对实际金额并确认打款。"
       >
         <Flex vertical gap={24}>
           <Row gutter={[16, 16]}>
@@ -691,9 +625,9 @@ export default function LeadCommissionsPage() {
                 icon={<CheckCircle2 size={16} />}
                 disabled={!payableSelected.length}
                 loading={paying}
-                onClick={() => void markPaid()}
+                onClick={() => openPayment(payableSelected)}
               >
-                标记已支付{payableSelected.length ? ` (${payableSelected.length})` : ''}
+                批量确认打款{payableSelected.length ? ` (${payableSelected.length})` : ''}
               </Button>,
             ]}
             request={async (params) => {
@@ -746,62 +680,52 @@ export default function LeadCommissionsPage() {
       </PageContainer>
 
       <Modal
-        title={`调整${adjusting ? roleMeta(adjusting.role).label : ''}提成`}
-        open={Boolean(adjusting)}
-        onCancel={closeAdjust}
-        onOk={() => void submitAdjust()}
-        confirmLoading={submittingAdjust}
+        title={paymentRecords.length > 1 ? `批量确认打款（${paymentRecords.length} 笔）` : `确认${paymentRecords[0] ? roleMeta(paymentRecords[0].role).label : ''}打款`}
+        open={paymentRecords.length > 0}
+        onCancel={closePayment}
+        onOk={() => void submitPayment()}
+        confirmLoading={paying}
         destroyOnHidden
-        okText="确认调整"
+        okText="确认打款"
         cancelText="取消"
       >
-        <Form form={adjustForm} layout="vertical" className="mt-4">
-          <Form.Item
-            label="应付金额"
-            name="payableAmount"
-            rules={[{ required: true, message: '请输入应付金额' }]}
-            extra={
-              adjusting && adjusting.originalPayableAmount !== adjusting.payableAmount
-                ? `原始应付 ¥${formatAmount(adjusting.originalPayableAmount)}`
-                : adjusting
-                  ? `签单应付 ¥${formatAmount(adjusting.originalPayableAmount)}`
-                  : undefined
-            }
-          >
-            <InputNumber
-              stringMode
-              min="0"
-              step="0.01"
-              controls={false}
-              style={{ width: '100%' }}
-              addonBefore="¥"
-              precision={2}
-            />
-          </Form.Item>
-          <Form.Item
-            label="受益人"
-            name="beneficiaryUserId"
-            extra="选填；不改则保持当前受益人"
-          >
-            <Select
-              allowClear
-              showSearch
-              loading={loadingBeneficiaries}
-              optionFilterProp="label"
-              options={beneficiaries.map((item) => ({
-                value: item.userId,
-                label: item.phone ? `${item.displayName}（${item.phone}）` : item.displayName,
-              }))}
-              placeholder="可选，留空则不变更"
-            />
-          </Form.Item>
-          <Form.Item
-            label="调整原因"
-            name="reason"
-            extra="选填；填写后写入最近一次调整审计"
-          >
-            <Input.TextArea rows={3} maxLength={200} showCount placeholder="选填，可写入调整审计" />
-          </Form.Item>
+        <Typography.Paragraph type="secondary" className="mt-4 mb-4">
+          核对实际打款金额。确认后系统将保存最终金额、记录付款人和时间，并自动标记为已支付。
+        </Typography.Paragraph>
+        <Form form={paymentForm} layout="vertical">
+          {paymentRecords.map((record, index) => (
+            <Form.Item
+              key={record.id}
+              label={`${roleMeta(record.role).label} · ${record.beneficiary?.nickname || record.beneficiary?.phone || '未命名受益人'}`}
+              name={['payments', index, 'paidAmount']}
+              extra={record.originalPayableAmount !== record.payableAmount
+                ? `当前应付 ¥${formatAmount(record.payableAmount)}；签单原始 ¥${formatAmount(record.originalPayableAmount)}`
+                : `当前应付 ¥${formatAmount(record.payableAmount)}`}
+              rules={[
+                { required: true, message: '请输入实际打款金额' },
+                {
+                  validator: async (_, value) => {
+                    const amount = Number(value);
+                    if (!Number.isFinite(amount) || amount <= 0 || amount > 999999999999.99) {
+                      throw new Error('请输入 0.01 至 999999999999.99');
+                    }
+                  },
+                },
+              ]}
+            >
+              <InputNumber
+                stringMode
+                min="0.01"
+                max="999999999999.99"
+                step="0.01"
+                controls={false}
+                style={{ width: '100%' }}
+                addonBefore="¥"
+                precision={2}
+                placeholder="请输入实际打款金额"
+              />
+            </Form.Item>
+          ))}
         </Form>
       </Modal>
     </div>

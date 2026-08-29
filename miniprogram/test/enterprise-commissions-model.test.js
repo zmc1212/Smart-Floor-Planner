@@ -25,14 +25,10 @@ test('enterprise payout ledger groups by lead and keeps tenant totals unfiltered
   assert.equal(all.voidedTotal, '¥20.00');
   assert.equal(all.groups.length, 2);
   assert.deepEqual(all.groups[0].items.map((item) => item.role), ['referrer', 'designer', 'measurer']);
-  assert.equal(all.groups[0].canMarkGroup, true);
-  assert.equal(all.groups[0].payableIds, '1,2');
   assert.equal(all.groups[0].payableAmountLabel, '¥220.00');
-  assert.equal(all.groups[0].markGroupLabel, '确认本单 2 笔付款');
   assert.equal(all.groups[1].sourceLabel, '员工活动');
-  assert.equal(all.groups[1].canMarkGroup, false);
-  assert.equal(all.groups[1].items[0].canMarkPaid, true);
-  assert.equal(all.groups[1].items[0].requiresQuickLedger, false);
+  assert.equal(all.groups[1].items[0].canConfirmPayment, true);
+  assert.equal(all.groups[0].items[0].role, 'referrer');
 
   const payable = buildPageData(payload, 'payable');
   assert.equal(payable.groups.length, 2);
@@ -50,13 +46,12 @@ test('enterprise payout money and status labels stay aligned with admin copy', (
   assert.deepEqual(buildGroups([], 'all'), []);
 });
 
-test('zero-amount payable rows require quick ledger input and cannot be bypassed in a batch', () => {
+test('zero-amount payable rows use the same confirmation flow as positive rows', () => {
   const zeroPayable = buildPageData({ items: [{
     id: 'zero', leadId: 'lead-zero', customerLabel: '王女士', role: 'referrer', roleLabel: '推荐人', beneficiaryLabel: '小周', amount: '0.00', status: 'payable', source: 'referral'
   }, {
     id: 'positive', leadId: 'lead-zero', customerLabel: '王女士', role: 'designer', roleLabel: '家装设计顾问', beneficiaryLabel: '小陈', amount: '20.00', status: 'payable', source: 'referral'
   }] }, 'all');
-  assert.equal(zeroPayable.items[0].requiresQuickLedger, true);
-  assert.equal(zeroPayable.groups[0].canMarkGroup, false);
-  assert.equal(zeroPayable.groups[0].markGroupLabel, '');
+  assert.equal(zeroPayable.items[0].canConfirmPayment, true);
+  assert.equal(zeroPayable.items[1].canConfirmPayment, true);
 });

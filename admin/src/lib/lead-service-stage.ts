@@ -186,7 +186,7 @@ export function canRebookAppointment(input: {
 export type CustomerHomeActionKind = 'book' | 'reschedule' | 'rebook' | 'view_project' | 'wait_designer' | 'none';
 
 export const CUSTOMER_HOME_ACTION_LABELS: Record<CustomerHomeActionKind, string> = {
-  book: '预约上门',
+  book: '预约量房',
   reschedule: '改期',
   rebook: '重新预约',
   view_project: '我的服务档案',
@@ -225,7 +225,7 @@ function formatCustomerAppointmentTime(timeRange?: string | null) {
     hour12: false,
   }).formatToParts(bounds.startAt);
   const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || '';
-  return `${Number(read('month'))}月${Number(read('day'))}日 ${read('hour')}:${read('minute')} 上门量房`;
+  return `${Number(read('month'))}月${Number(read('day'))}日 ${read('hour')}:${read('minute')} 量房`;
 }
 
 export function describeCustomerAppointment(input: {
@@ -239,19 +239,19 @@ export function describeCustomerAppointment(input: {
     && !isAppointmentPastEnd(appointment, input.now);
   if (input.serviceStage === 'appointment_expired'
     || (published && (appointment?.status === 'expired' || isAppointmentPastEnd(appointment, input.now)))) {
-    return '预约已过期，请重新预约上门';
+    return '预约已过期，请重新预约量房';
   }
   if (input.serviceStage === 'awaiting_rebooking'
     || (published && appointment?.status === 'cancelled')) {
-    return '预约已取消，请选择新的上门时段';
+    return '预约已取消，请选择新的量房时段';
   }
   if (input.serviceStage === 'appointment_in_progress' || input.serviceStage === 'survey_ready') {
-    return '家装现场顾问正在上门量房';
+    return '家装现场顾问正在量房';
   }
   if (input.serviceStage === 'appointment_confirmed' || (published && confirmedVisit)) {
-    return formatCustomerAppointmentTime(appointment?.timeRange) || '已预约上门量房';
+    return formatCustomerAppointmentTime(appointment?.timeRange) || '已预约量房';
   }
-  if (input.serviceStage === 'measurer_assigned') return '已匹配家装设计顾问和家装现场顾问，请预约上门量房时间';
+  if (input.serviceStage === 'measurer_assigned') return '已匹配家装设计顾问和家装现场顾问，可预约量房时间';
   // Customer-facing status only — never reuse staff operational nextAction copy.
   if (input.serviceStage === 'claimed' || input.serviceStage === 'assignment_pending') {
     return '正在为您匹配家装设计顾问和家装现场顾问';
@@ -299,7 +299,7 @@ export function resolveCustomerHomeAction(input: {
   });
   // Keep staff LEAD_SERVICE_STAGE_NEXT_ACTIONS off the customer DTO for pending match.
   const nextAction = stage.key === 'claimed' || stage.key === 'assignment_pending'
-    ? '服务匹配完成后即可预约上门'
+    ? '服务匹配完成后即可预约量房'
     : stage.nextAction;
   return {
     kind,

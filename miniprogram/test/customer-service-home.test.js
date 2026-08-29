@@ -27,15 +27,15 @@ test('companion subtitle uses appointmentSummary once and inset title does not r
       leadId: '1',
       serviceStage: 'measurer_assigned',
       serviceStageLabel: '已匹配家装现场顾问',
-      appointmentSummary: '已匹配家装设计顾问和家装现场顾问，请预约上门量房时间',
+      appointmentSummary: '已匹配家装设计顾问和家装现场顾问，可预约量房时间',
       nextActionKind: 'book',
-      nextActionLabel: '预约上门',
+      nextActionLabel: '预约量房',
     }],
   });
-  assert.equal(state.subtitle, '已匹配家装设计顾问和家装现场顾问，请预约上门量房时间');
-  assert.equal(state.insetTitle, '待预约上门量房');
+  assert.equal(state.subtitle, '已匹配家装设计顾问和家装现场顾问，可预约量房时间');
+  assert.equal(state.insetTitle, '待预约量房');
   assert.notEqual(state.insetHelper, state.subtitle);
-  assert.equal(state.primaryCta.label, '预约上门');
+  assert.equal(state.primaryCta.label, '预约量房');
   assert.equal(state.secondaryCta.label, '我的服务档案');
   assert.equal(state.showSecondaryCta, true);
 });
@@ -45,12 +45,12 @@ test('confirmed appointment inset title shows current survey step not reschedule
     projects: [{
       leadId: '1',
       serviceStage: 'appointment_confirmed',
-      appointmentSummary: '8月21日 09:00 上门量房',
+      appointmentSummary: '8月21日 09:00 量房',
       nextActionKind: 'reschedule',
       nextActionLabel: '改期',
     }],
   });
-  assert.equal(state.insetTitle, '已预约上门量房');
+  assert.equal(state.insetTitle, '已预约量房');
   assert.equal(state.primaryCta.label, '改期');
   assert.equal(state.showSecondaryCta, true);
   const pills = buildProgressPills('appointment_confirmed');
@@ -73,7 +73,7 @@ test('published unsurveyed home keeps one hero archive CTA and routes makeup thr
   assert.equal(state.primaryCta.label, '我的服务档案');
   assert.equal(state.showSecondaryCta, false);
   assert.equal(state.bookShortcutKind, 'book');
-  assert.equal(state.bookShortcutDesc, '预约上门');
+  assert.equal(state.bookShortcutDesc, '预约量房');
   assert.deepEqual(resolveBookShortcut({
     nextActionKind: 'view_project',
     canRebook: true,
@@ -112,7 +112,7 @@ test('hides secondary archive CTA when primary already opens archive', () => {
 test('three-benefit status copy follows the real service stage', () => {
   assert.equal(resolveBenefitStatusLabel('design_published'), '方案已交付');
   assert.equal(resolveBenefitStatusLabel('survey_completed'), '量房已完成');
-  assert.equal(resolveBenefitStatusLabel('appointment_confirmed'), '已预约上门');
+  assert.equal(resolveBenefitStatusLabel('appointment_confirmed'), '已预约量房');
   assert.equal(resolveBenefitStatusLabel('appointment_expired'), '等待重新预约');
   assert.equal(resolveBenefitStatusLabel('claimed'), '服务进行中');
   assert.equal(resolveBenefitStatusLabel('closed'), '服务已结束');
@@ -133,7 +133,7 @@ test('switcherCount is length - 1 and hidden for single project', () => {
   const one = buildCompanionState({ projects: [{ leadId: '1', serviceStage: 'claimed', appointmentSummary: '等待派单', nextActionKind: 'wait_designer', nextActionLabel: '等待派单' }] });
   const two = buildCompanionState({
     projects: [
-      { leadId: '1', serviceStage: 'measurer_assigned', appointmentSummary: '请预约', nextActionKind: 'book', nextActionLabel: '预约上门' },
+      { leadId: '1', serviceStage: 'measurer_assigned', appointmentSummary: '请预约', nextActionKind: 'book', nextActionLabel: '预约量房' },
       { leadId: '2', serviceStage: 'claimed', appointmentSummary: '等待派单', nextActionKind: 'wait_designer', nextActionLabel: '等待派单' },
     ],
   });
@@ -154,8 +154,8 @@ test('falls back to kind labels when nextActionLabel missing', () => {
   const book = buildCompanionState({
     projects: [{ leadId: '1', serviceStage: 'measurer_assigned', appointmentSummary: '请预约', nextActionKind: 'book' }],
   });
-  assert.equal(book.primaryCta.label, '预约上门');
-  assert.equal(book.insetTitle, '待预约上门量房');
+  assert.equal(book.primaryCta.label, '预约量房');
+  assert.equal(book.insetTitle, '待预约量房');
 
   const wait = buildCompanionState({
     projects: [{ leadId: '2', serviceStage: 'claimed', appointmentSummary: '等待', nextActionKind: 'wait_designer' }],
@@ -191,7 +191,7 @@ test('pending match keeps 等待派单 only on the primary CTA', () => {
   });
   assert.equal(state.primaryCta.label, '等待派单');
   assert.equal(state.insetTitle, '服务匹配中');
-  assert.equal(state.insetHelper, '匹配完成后可预约上门');
+  assert.equal(state.insetHelper, '匹配完成后可预约量房');
   assert.notEqual(state.insetHelper, '等待派单');
 });
 

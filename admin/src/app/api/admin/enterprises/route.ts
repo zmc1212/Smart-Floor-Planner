@@ -233,13 +233,11 @@ export async function DELETE(request: Request) {
 
         let uniqueIds: bigint[];
         try {
-          uniqueIds = [
-            ...new Set(
-              body.ids.map((id: unknown) =>
-                parsePostgresId(String(id), 'enterprise id')
-              )
-            ),
-          ];
+          uniqueIds = [...new Set<bigint>(
+            body.ids.map((id: unknown) =>
+              parsePostgresId(String(id), 'enterprise id')
+            )
+          )];
         } catch {
           return NextResponse.json(
             { success: false, error: '企业 ID 无效' },

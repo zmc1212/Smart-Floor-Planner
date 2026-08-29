@@ -359,7 +359,7 @@ export class LeadLifecycleRepository {
     const restoredStatus = ['new', 'measuring', 'designing'].includes(normalizedOriginal)
       ? originalStatus
       : 'designing';
-    const voidedCommissionCount = await new LeadCommissionRepository(this.transaction)
+    const voidedCommissions = await new LeadCommissionRepository(this.transaction)
       .voidUnpaidForRevertedLead(input.leadId, input.actorId, input.reason);
     const now = new Date();
     await this.transaction
@@ -403,7 +403,26 @@ export class LeadLifecycleRepository {
         convertedOn: lead.convertedOn,
         convertedAt: lead.convertedAt?.toISOString() || null,
         contractAmount: lead.contractAmount,
-        voidedCommissionCount,
+        voidedCommissionCount: voidedCommissions.length,
+        voidedCommissionSnapshots: voidedCommissions.map((commission) => ({
+          id: commission.id.toString(),
+          role: commission.role,
+          beneficiaryUserId: commission.beneficiaryUserId.toString(),
+          originalBeneficiaryUserId: commission.originalBeneficiaryUserId.toString(),
+          ruleType: commission.ruleType,
+          ruleValue: commission.ruleValue,
+          ruleVersion: commission.ruleVersion,
+          contractAmount: commission.contractAmount,
+          payableAmount: commission.payableAmount,
+          originalPayableAmount: commission.originalPayableAmount,
+          adjustedAt: commission.adjustedAt?.toISOString() || null,
+          adjustedBy: commission.adjustedBy?.toString() || null,
+          adjustReason: commission.adjustReason,
+          createdAt: commission.createdAt.toISOString(),
+          voidedAt: commission.voidedAt?.toISOString() || null,
+          voidedBy: commission.voidedBy?.toString() || null,
+          voidReason: commission.voidReason,
+        })),
       }
     );
     return rows[0];

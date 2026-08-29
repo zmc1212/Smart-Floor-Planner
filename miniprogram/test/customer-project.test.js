@@ -171,7 +171,13 @@ test('customer project template and stylesheet stay aligned for the restored arc
   assert.match(less, /\.booking-action,\s*\n?\.booking-secondary \{[\s\S]*?width: auto;[\s\S]*?flex: 1;/);
   assert.match(less, /\.booking-actions > \.booking-action \+ \.booking-secondary[\s\S]*?margin-left: 16rpx;/);
   assert.match(less, /\.footer-outline,\s*\.footer-primary \{[^}]*display: flex;[^}]*align-items: center;[^}]*justify-content: center;/);
+  assert.match(wxml, /booking-heading[\s\S]*booking-title[\s\S]*booking-badge/);
+  assert.match(wxml, /选择方便的时间，家装现场顾问会提前与你确认/);
+  assert.match(less, /\.booking-heading \{[\s\S]*align-items: center;[\s\S]*flex-wrap: wrap;/);
   assert.match(less, /\.booking-badge \{[\s\S]*display: inline-flex;[\s\S]*align-items: center;/);
+  assert.match(less, /\.booking-helper \{[^}]*white-space: normal;/);
+  assert.doesNotMatch(less, /\.booking-helper \{[^}]*white-space: nowrap/);
+  assert.doesNotMatch(less, /\.booking-helper \{[^}]*text-overflow: ellipsis/);
   assert.match(less, /\.person-professional-proof \{[\s\S]*?font-size: 24rpx;/);
   assert.match(wxml, /person-phone-button[\s\S]*\/packages\/business\/assets\/customer-project-v4\/phone\.png/);
   assert.match(wxml, /footer-contact-icon[\s\S]*\/packages\/business\/assets\/customer-project-v4\/message-circle-more\.png/);

@@ -34,7 +34,7 @@ evidence only for the real dual-preview behavior.
 4. Two staggered service boards fill the lower viewport: `免费量房` opens the existing booking/archive path;
    `免费设计` opens the existing designer-contact/archive path. They reuse the packaged laser meter and easel assets.
 5. A compact assurance strip reads `量房、设计不收费` plus a stage-derived truthful status (`服务进行中`,
-   `已预约上门`, `量房已完成`, `方案已交付`, etc.).
+   `已预约量房`, `量房已完成`, `方案已交付`, etc.).
 
 The mockup is a north star, not a raster implementation: all text, controls, status, progress, thumbnails, and navigation
 remain native WXML/Less and live data. No design-reference image is packaged into the Mini Program.
@@ -69,11 +69,11 @@ remain native WXML/Less and live data. No design-reference image is packaged int
 2. Subtitle: **only** `appointmentSummary` (one customer-readable status sentence)
 3. Inset panel:
    - **Media slot:** Xiao K stage pose by default; replace with formal floor-plan preview and/or published scheme thumb when available (never invent images)
-   - **Inset title:** current stage status aligned with the micro-progress pills（匹配 / 预约 / 量房 / 方案）, e.g. confirmed appointment →「已预约上门量房」— never「下一步：{CTA}」; CTA labels stay on the primary button only
+   - **Inset title:** current stage status aligned with the micro-progress pills（匹配 / 预约 / 量房 / 方案）, e.g. confirmed appointment →「已预约量房」— never「下一步：{CTA}」; CTA labels stay on the primary button only
    - **Inset helper:** one short companion line (Xiao K voice)
    - **Micro-progress pills:** 匹配 → 预约 → 量房 → 方案 (done green / current orange / upcoming gray)
 4. CTAs:
-   - Primary: driven by `nextActionKind` (`预约上门` / `改期` / `重新预约` / `等待派单` / `我的服务档案`). Runtime `nextActionKind` is authoritative over the illustrative stage table.
+   - Primary: driven by `nextActionKind` (`预约量房` / `改期` / `重新预约` / `等待派单` / `我的服务档案`). Runtime `nextActionKind` is authoritative over the illustrative stage table.
    - Secondary「我的服务档案」only when primary does **not** already open the archive (i.e. primary is book / reschedule / rebook / wait). If primary is already archive (`view_project` / equivalent), render **one** full-width「我的服务档案」button and omit the secondary.
 5. Customer-facing label「看项目」→「我的服务档案」
 
@@ -104,11 +104,11 @@ remain native WXML/Less and live data. No design-reference image is packaged int
 
 | Stage keys | Xiao K action | Primary CTA | Inset title (current step) | Inset media |
 | --- | --- | --- | --- | --- |
-| `claimed`, `assignment_pending` | 陪你等待匹配（inset helper「匹配完成后可预约上门」; never repeat CTA「等待派单」） | 等待派单 (weak/disabled) | 服务匹配中 | Xiao K only |
-| `measurer_assigned` | 引导预约 | 预约上门 | 待预约上门量房 | Xiao K only |
-| `appointment_confirmed` | 日程提醒 | 改期 or 我的服务档案 | 已预约上门量房 | Xiao K only |
+| `claimed`, `assignment_pending` | 陪你等待匹配（inset helper「匹配完成后可预约量房」; never repeat CTA「等待派单」） | 等待派单 (weak/disabled) | 服务匹配中 | Xiao K only |
+| `measurer_assigned` | 引导预约 | 预约量房 | 待预约量房 | Xiao K only |
+| `appointment_confirmed` | 日程提醒 | 改期 or 我的服务档案 | 已预约量房 | Xiao K only |
 | `appointment_expired`, `awaiting_rebooking` | 协助重约 | 重新预约 | 需重新预约量房 | Xiao K only |
-| `appointment_in_progress` | 测量进行中 | 我的服务档案 | 上门量房进行中 | Xiao K only (unless preview exists) |
+| `appointment_in_progress` | 测量进行中 | 我的服务档案 | 量房进行中 | Xiao K only (unless preview exists) |
 | `survey_completed` | 展示户型 | 我的服务档案 (single CTA) | 量房完成 · 可进服务档案 | Floor-plan preview preferred, else Xiao K |
 | `design_published`, `converted` | 成果交付 | 我的服务档案 (single CTA) | 方案已发布 · 我的服务档案 | Prefer scheme thumb; if both floor-plan and scheme exist, show **dual thumbs** (plan + scheme) like design 01; never leave an empty second slot — if only one exists, single media + Xiao K or single media alone |
 | `closed` | 说明已结束 | none / archive if still readable | 服务已结束 | Xiao K only |
@@ -119,7 +119,7 @@ remain native WXML/Less and live data. No design-reference image is packaged int
 2. Inset title = current progress-step status (aligned with 匹配/预约/量房/方案); must not be「下一步：{CTA}」and must not repeat the subtitle  
 3. Do not surface `serviceStageLabel` alone as a list-card title on home  
 4. Micro-progress reflects derived stage, not marketing copy  
-5. Primary CTA keeps the action label (`改期` / `预约上门` / `等待派单` / …) on the button only; inset helper must not repeat that CTA label. Dual hero CTAs share one `28rpx` label size.
+5. Primary CTA keeps the action label (`改期` / `预约量房` / `等待派单` / …) on the button only; inset helper must not repeat that CTA label. Dual hero CTAs share one `28rpx` label size.
 
 ## Routing and API
 

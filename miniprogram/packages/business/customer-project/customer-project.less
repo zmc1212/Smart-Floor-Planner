@@ -45,7 +45,6 @@
 .nav-subtitle,
 .hero-title,
 .hero-subtitle,
-.booking-title,
 .booking-helper,
 .group-title,
 .person-role,
@@ -200,7 +199,7 @@
 .booking-summary {
   display: flex;
   min-width: 0;
-  align-items: center;
+  align-items: flex-start;
   gap: 18rpx;
 }
 
@@ -217,7 +216,16 @@
 
 .booking-icon { width: 60rpx; height: 60rpx; }
 
+.booking-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
 .booking-title {
+  flex: none;
   color: #202b24;
   font-size: 34rpx;
   font-weight: 700;
@@ -225,13 +233,12 @@
 }
 
 .booking-helper {
-  overflow: hidden;
   margin-top: 10rpx;
   color: #66756b;
   font-size: 24rpx;
   line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .booking-badge {

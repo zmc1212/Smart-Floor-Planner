@@ -10,7 +10,7 @@ import {
 export type ActiveRegistrationCodeImage =
   | {
       ok: true;
-      image: Buffer;
+      image: Uint8Array;
       contentType: string;
       extension: string;
     }
@@ -50,7 +50,7 @@ export async function loadActiveEnterpriseRegistrationCodeImage(input: {
 export function enterpriseRegistrationCodeImageResponse(
   result: Extract<ActiveRegistrationCodeImage, { ok: true }>
 ) {
-  return new NextResponse(result.image, {
+  return new NextResponse(new Uint8Array(result.image), {
     headers: {
       'Content-Type': result.contentType,
       'Cache-Control': 'private, no-store, max-age=0',

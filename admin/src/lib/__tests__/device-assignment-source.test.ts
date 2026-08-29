@@ -121,5 +121,6 @@ test('miniprogram device enroll is platform-admin only and rejects duplicate MAC
 test('platform device collection delete is limited to 1-100 ids', () => {
   assert.match(deviceRoute, /export async function DELETE/);
   assert.match(deviceRoute, /请选择 1-100 台设备进行删除/);
+  assert.match(deviceRoute, /ids: bigint\[\]/);
   assert.match(deviceRoute, /deleteMany/);
 });

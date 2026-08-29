@@ -760,7 +760,7 @@ test('lead conversion is atomic, protected from generic status writes, revertibl
   }
 });
 
-test('referral signing snapshots three decimal-safe commissions and voids unpaid records on reversion', async () => {
+test('referral signing snapshots three decimal-safe commissions, voids them on reversion, and refreshes them on re-signing', async () => {
   let leadId: bigint | null = null;
   let paidBlockerLeadId: bigint | null = null;
   let concurrentLeadId: bigint | null = null;
@@ -848,6 +848,59 @@ test('referral signing snapshots three decimal-safe commissions and voids unpaid
       });
       const voided = await commissionRepository.list(enterpriseAId, { leadId: lead.id });
       assert.equal(voided.every((item) => item.status === 'voided' && item.voidReason === 'contract correction'), true);
+      const revertedEvent = (await transaction
+        .select()
+        .from(leadLifecycleEvents)
+        .where(eq(leadLifecycleEvents.leadRecordId, lead.id)))
+        .find((event) => event.action === 'conversion_reverted');
+      const revertedMetadata = revertedEvent?.metadata as {
+        voidedCommissionCount?: number;
+        voidedCommissionSnapshots?: Array<{ role: string; payableAmount: string }>;
+      } | null;
+      assert.equal(revertedMetadata?.voidedCommissionCount, 3);
+      assert.deepEqual(
+        revertedMetadata?.voidedCommissionSnapshots?.map((item) => [item.role, item.payableAmount]).sort(),
+        [
+          ['designer', '88.13'],
+          ['measurer', '10.00'],
+          ['referrer', '125.00'],
+        ]
+      );
+
+      await commissionRepository.updateRules(enterpriseAId, designer.id, [
+        { role: 'referrer', calculationType: 'percentage', value: '10.0000', status: 'active', version: 2 },
+        { role: 'designer', calculationType: 'fixed', value: '90.0000', status: 'active', version: 2 },
+        { role: 'measurer', calculationType: 'fixed', value: '11.0000', status: 'active', version: 2 },
+      ]);
+      await new LeadLifecycleRepository(transaction).convert({
+        leadId: lead.id,
+        actorId: designer.id,
+        convertedOn: chinaDateString(),
+        contractAmount: '2000.00',
+        conversionNote: 'customer signed again',
+      });
+      const resigned = await commissionRepository.list(enterpriseAId, { leadId: lead.id });
+      assert.equal(resigned.length, 3);
+      assert.deepEqual(resigned.map((item) => [item.role, item.payableAmount]).sort(), [
+        ['designer', '90.00'],
+        ['measurer', '11.00'],
+        ['referrer', '200.00'],
+      ]);
+      assert.equal(
+        resigned.every(
+          (item) =>
+            item.status === 'payable' &&
+            item.voidedAt == null &&
+            item.voidedBy == null &&
+            item.voidReason == null &&
+            item.adjustedAt == null &&
+            item.adjustedBy == null &&
+            item.adjustReason == null &&
+            item.originalPayableAmount === item.payableAmount &&
+            item.originalBeneficiaryUserId === item.beneficiaryUserId
+        ),
+        true
+      );
 
       const paidBlockerLead = await new LeadRepository(transaction).create({
         enterpriseId: enterpriseAId,
@@ -1304,7 +1357,7 @@ test('payable commission adjust updates amount or beneficiary, rejects paid/void
         beneficiaryUserId: referrerB.id,
         reason: 'reassign referrer payout',
       });
-      assert.equal(beneficiaryAdjusted.payableAmount, '166.50');
+      assert.equal(beneficiaryAdjusted.payableAmount, '170.00');
       assert.equal(beneficiaryAdjusted.beneficiaryUserId, referrerB.id);
       assert.equal(beneficiaryAdjusted.originalBeneficiaryUserId, referrerA.id);
       assert.equal(beneficiaryAdjusted.originalPayableAmount, '100.00');
@@ -1368,22 +1421,20 @@ test('payable commission adjust updates amount or beneficiary, rejects paid/void
         reason: 'prepare zero quick ledger',
       });
       await assert.rejects(
-        () => commissionRepository.markPaid(enterpriseAId, [paidRows[0].id], designer.id, { rejectZeroAmount: true }),
-        /零金额提成需先录入实际付款金额/
+        () => commissionRepository.confirmPayments(enterpriseAId, [{
+          commissionId: paidRows[0].id,
+          paidAmount: '0.00',
+        }], designer.id),
+        /实际打款金额须为 0.01/
       );
-      await assert.rejects(
-        () => commissionRepository.recordZeroAmountPayment(enterpriseAId, paidRows[0].id, designer.id, '0.00'),
-        /实际付款金额必须大于 0/
-      );
-      const markedPaid = await commissionRepository.recordZeroAmountPayment(
+      const [markedPaid] = await commissionRepository.confirmPayments(
         enterpriseAId,
-        paidRows[0].id,
-        designer.id,
-        '33.00'
+        [{ commissionId: paidRows[0].id, paidAmount: '33.00' }],
+        designer.id
       );
       assert.equal(markedPaid.status, 'paid');
       assert.equal(markedPaid.payableAmount, '33.00');
-      assert.equal(markedPaid.adjustReason, '小程序线下付款补录');
+      assert.equal(markedPaid.adjustReason, '确认打款时录入最终金额');
       await assert.rejects(
         () => commissionRepository.adjustPayable(enterpriseAId, paidRows[0].id, designer.id, {
           payableAmount: '1.00',

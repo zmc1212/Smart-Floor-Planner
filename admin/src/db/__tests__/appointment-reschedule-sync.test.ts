@@ -252,7 +252,7 @@ test('booking then customer and staff reschedule keep customer, designer, measur
   assert.equal(afterCreate.leadDto.serviceStage, 'appointment_confirmed');
   assert.equal(afterCreate.staffStage.key, 'appointment_confirmed');
   assert.equal(afterCreate.home.kind, 'reschedule');
-  assert.match(afterCreate.home.appointmentSummary || '', /上门量房/);
+  assert.match(afterCreate.home.appointmentSummary || '', /量房/);
   assert.equal(isoRange(afterCreate.customerProject?.appointment?.timeRange), createdIso);
   assert.equal(String(afterCreate.customerIndex?.appointmentId), booked.id.toString());
   assert.equal(isoRange(afterCreate.customerIndex?.appointmentTimeRange), createdIso);

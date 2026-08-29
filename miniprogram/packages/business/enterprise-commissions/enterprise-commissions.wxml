@@ -7,7 +7,7 @@
     <view class="payout-hero-copy">
       <text class="intro-kicker">企业负责人付款台账</text>
       <text class="intro-title">本企业待发放提成</text>
-      <text class="intro-copy">先完成线下付款，再在这里确认；系统会记录付款人和时间。</text>
+      <text class="intro-copy">点击确认打款，核对实际金额后即可完成记账。</text>
       <text wx:if="{{enterpriseName}}" class="enterprise-name">{{enterpriseName}}</text>
       <view class="primary-total">
         <text class="primary-total-label">待支付金额</text>
@@ -46,24 +46,12 @@
         <view class="batch-customer"><view class="customer-marker"></view><view class="customer-copy"><text class="customer-label">{{group.customerLabel}}</text><text class="source-label">{{group.sourceLabel}}</text></view></view>
         <view class="batch-total"><text class="batch-total-label">本单待支付</text><text class="batch-total-value">{{group.payableAmountLabel}}</text></view>
       </view>
-      <view wx:if="{{group.canMarkGroup}}" class="batch-action" data-ids="{{group.payableIds}}" bindtap="markPaid"><text>{{group.markGroupLabel}}</text><text class="batch-action-arrow">›</text></view>
       <view wx:for="{{group.items}}" wx:for-item="item" wx:key="id" class="payout-row">
         <view class="payout-row-main"><view class="role-copy"><text class="role-label">{{item.roleLabel}}</text><text class="beneficiary-label">{{item.beneficiaryLabel}}</text></view><text class="amount">{{item.amountLabel}}</text></view>
-        <view class="payout-row-footer"><view class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</view><button wx:if="{{item.canMarkPaid}}" class="confirm-payment" data-id="{{item.id}}" bindtap="markPaid" hover-class="confirm-payment-pressed">确认线下付款</button><text wx:elif="{{item.status === 'paid'}}" class="payment-complete">已完成线下付款</text><text wx:else class="payment-voided">已作废，不发放</text></view>
-        <text wx:if="{{item.canMarkPaid}}" class="payment-helper">确认后将记录付款人和时间</text>
+        <view class="payout-row-footer"><view class="earning-status {{item.statusMeta.tone}}">{{item.statusMeta.label}}</view><commission-payout-actions wx:if="{{item.canConfirmPayment}}" item="{{item}}" bind:paid="handlePaymentCompleted" /><text wx:elif="{{item.status === 'paid'}}" class="payment-complete">已完成线下付款</text><text wx:else class="payment-voided">已作废，不发放</text></view>
       </view>
     </view>
     <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
-  </view>
-</view>
-<view wx:if="{{quickLedgerDialogVisible}}" class="quick-ledger-mask" catchtap="cancelQuickLedger">
-  <view class="quick-ledger-dialog" catchtap="stopDialogTap">
-    <text class="quick-ledger-kicker">快速记账</text>
-    <text class="quick-ledger-title">录入实际付款金额</text>
-    <text class="quick-ledger-copy">本笔待支付金额为 ¥0.00，请填写实际线下付款金额。</text>
-    <view class="quick-ledger-input-wrap {{quickLedgerError ? 'quick-ledger-input-error' : ''}}"><text class="quick-ledger-currency">¥</text><input class="quick-ledger-input" type="digit" value="{{quickLedgerAmount}}" placeholder="例如 200.00" placeholder-class="quick-ledger-placeholder" focus="{{quickLedgerDialogVisible}}" bindinput="changeQuickLedgerAmount" bindconfirm="confirmQuickLedger" /></view>
-    <text wx:if="{{quickLedgerError}}" class="quick-ledger-error">{{quickLedgerError}}</text>
-    <view class="quick-ledger-actions"><button class="quick-ledger-cancel" bindtap="cancelQuickLedger">取消</button><button class="quick-ledger-confirm" bindtap="confirmQuickLedger">记账并确认</button></view>
   </view>
 </view>
 <custom-tab-bar />

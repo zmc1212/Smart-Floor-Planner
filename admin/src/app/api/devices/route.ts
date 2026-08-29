@@ -148,11 +148,9 @@ export async function DELETE(request: Request) {
           );
         }
 
-        const ids = [
-          ...new Set(
-            body.ids.map((id: unknown) => parsePostgresId(String(id), 'device id'))
-          ),
-        ];
+        const ids: bigint[] = [...new Set<bigint>(
+          body.ids.map((id: unknown) => parsePostgresId(String(id), 'device id'))
+        )];
         const deleted = await withDevicePostgresTransaction(
           context,
           (transaction) => new DeviceRepository(transaction).deleteMany(ids)

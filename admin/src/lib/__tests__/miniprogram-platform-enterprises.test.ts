@@ -259,6 +259,8 @@ test('Mini platform registration-code routes are read-only and omit the token', 
   assert.match(helper, /getPlatformMiniProgramCodeConfig/);
   assert.match(helper, /envVersion:\s*environment/);
   assert.match(helper, /Cache-Control': 'private, no-store/);
+  assert.match(helper, /image: Uint8Array/);
+  assert.match(helper, /new Uint8Array\(result\.image\)/);
   assert.doesNotMatch(helper, /\.rotate\(/);
   assert.match(repository, /listForPlatformReview/);
   assert.match(repository, /contactPerson\}\s*->>\s*'phone'/);

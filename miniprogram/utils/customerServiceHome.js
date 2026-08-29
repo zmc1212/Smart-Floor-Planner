@@ -23,8 +23,8 @@ const PROGRESS_PILL_LABELS = {
 
 const STAGE_INSET_HELPER = {
   // Pending match: CTA is「等待派单」— helper must not repeat that label.
-  claimed: '匹配完成后可预约上门',
-  assignment_pending: '匹配完成后可预约上门',
+  claimed: '匹配完成后可预约量房',
+  assignment_pending: '匹配完成后可预约量房',
   measurer_assigned: '引导预约',
   appointment_confirmed: '日程提醒',
   appointment_expired: '协助重约',
@@ -41,10 +41,10 @@ const STAGE_INSET_HELPER = {
 const STAGE_INSET_TITLES = {
   claimed: '服务匹配中',
   assignment_pending: '服务匹配中',
-  measurer_assigned: '待预约上门量房',
-  appointment_confirmed: '已预约上门量房',
-  appointment_in_progress: '上门量房进行中',
-  survey_ready: '上门量房进行中',
+  measurer_assigned: '待预约量房',
+  appointment_confirmed: '已预约量房',
+  appointment_in_progress: '量房进行中',
+  survey_ready: '量房进行中',
   appointment_expired: '需重新预约量房',
   awaiting_rebooking: '需重新预约量房',
   survey_completed: '量房已完成',
@@ -55,7 +55,7 @@ const STAGE_INSET_TITLES = {
 };
 
 const KIND_LABELS = {
-  book: '预约上门',
+  book: '预约量房',
   rebook: '重新预约',
   reschedule: '改期',
   wait_designer: '等待派单',
@@ -128,7 +128,7 @@ function buildEmptyCompanionState() {
     xiaoKAction: '',
     isEmpty: true,
     bookShortcutKind: '',
-    bookShortcutDesc: '免费上门精准量尺',
+    bookShortcutDesc: '免费精准量尺',
     benefitStatusLabel: '扫码领取服务',
   };
 }
@@ -141,7 +141,7 @@ function resolveBenefitStatusLabel(serviceStage) {
     case 'survey_completed':
       return '量房已完成';
     case 'appointment_confirmed':
-      return '已预约上门';
+      return '已预约量房';
     case 'appointment_expired':
     case 'awaiting_rebooking':
       return '等待重新预约';
@@ -163,16 +163,16 @@ function resolveBookShortcut(project) {
     return { kind: 'rebook', desc: '重新预约' };
   }
   if (kind === 'book') {
-    return { kind: 'book', desc: '预约上门' };
+    return { kind: 'book', desc: '预约量房' };
   }
   if (project && project.canRebook) {
     const status = String(project.appointmentStatus || '');
     if (status === 'expired' || status === 'cancelled') {
       return { kind: 'rebook', desc: '重新预约' };
     }
-    return { kind: 'book', desc: '预约上门' };
+    return { kind: 'book', desc: '预约量房' };
   }
-  return { kind: '', desc: '免费上门精准量尺' };
+  return { kind: '', desc: '免费精准量尺' };
 }
 
 function buildCompanionState({ projects = [], selectedLeadId } = {}) {

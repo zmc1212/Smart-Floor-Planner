@@ -202,12 +202,14 @@ test('designer and measurer earnings are direct role-tab destinations', () => {
   assert.match(tabBar, /measurer: \[[\s\S]*key: 'earnings', capability: 'staff\.earnings'/);
 });
 
-test('enterprise owner commissions are a payout ledger tab with mark-paid', () => {
+test('enterprise owner commissions are a payout ledger tab with one-step payment confirmation', () => {
   const tabBar = fs.readFileSync(path.join(miniProgramRoot, 'custom-tab-bar', 'index.js'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'identity-navigation.js'), 'utf8');
   const config = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.json'), 'utf8'));
   const template = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.wxml'), 'utf8');
   const page = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-commissions', 'enterprise-commissions.js'), 'utf8');
+  const payoutActionsTemplate = fs.readFileSync(path.join(miniProgramRoot, 'components', 'commission-payout-actions', 'index.wxml'), 'utf8');
+  const payoutActions = fs.readFileSync(path.join(miniProgramRoot, 'components', 'commission-payout-actions', 'index.js'), 'utf8');
   const appConfig = JSON.parse(fs.readFileSync(path.join(miniProgramRoot, 'app.json'), 'utf8'));
   const business = appConfig.subPackages.find((entry) => entry.root === 'packages/business');
 
@@ -215,15 +217,16 @@ test('enterprise owner commissions are a payout ledger tab with mark-paid', () =
   assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   assert.match(template, /<custom-tab-bar\s*\/>/);
   assert.match(template, /提成发放/);
-  assert.match(template, /确认线下付款/);
+  assert.equal(config.usingComponents['commission-payout-actions'], '/components/commission-payout-actions/index');
+  assert.match(template, /<commission-payout-actions/);
+  assert.match(payoutActionsTemplate, /确认打款/);
+  assert.doesNotMatch(payoutActionsTemplate, /调整金额|确认线下付款/);
   assert.match(template, /待支付/);
   assert.match(template, /已作废/);
   assert.match(page, /['"`]\/miniprogram\/enterprise-commissions['"`]/);
-  assert.match(page, /['"`]\/miniprogram\/enterprise-commissions\/mark-paid['"`]/);
-  assert.match(page, /['"`]\/miniprogram\/enterprise-commissions\/record-zero-payment['"`]/);
-  assert.match(template, /quick-ledger-dialog/);
-  assert.match(template, /录入实际付款金额/);
-  assert.match(page, /确认标记已支付/);
+  assert.match(payoutActions, /['"`]\/miniprogram\/enterprise-commissions\/mark-paid['"`]/);
+  assert.match(payoutActions, /payments:\s*\[\{ commissionId:/);
+  assert.doesNotMatch(template, /quick-ledger-dialog|batch-action/);
   assert.match(navigation, /enterprise-commissions\/enterprise-commissions': 'enterprise\.commissions'/);
   assert.match(tabBar, /key: 'commissions', capability: 'enterprise\.commissions'/);
   assert.match(tabBar, /text: '提成'/);

@@ -20,19 +20,6 @@ function navigationMetrics() {
   };
 }
 
-function parseIds(value) {
-  return String(value || '')
-    .split(',')
-    .map((id) => id.trim())
-    .filter(Boolean);
-}
-
-function normalizePaidAmount(value) {
-  const amount = String(value || '').trim();
-  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/.test(amount) || Number(amount) <= 0) return '';
-  return amount;
-}
-
 Page({
   data: {
     navigationTop: 24,
@@ -40,7 +27,6 @@ Page({
     navigationRight: 96,
     loading: true,
     error: '',
-    paying: false,
     enterpriseName: '',
     filters: [],
     filter: 'all',
@@ -53,11 +39,7 @@ Page({
     page: 1,
     hasMore: false,
     loadingMore: false,
-    footerText: '',
-    quickLedgerDialogVisible: false,
-    quickLedgerCommissionId: '',
-    quickLedgerAmount: '',
-    quickLedgerError: ''
+    footerText: ''
   },
 
   onLoad() {
@@ -124,94 +106,9 @@ Page({
     }
   },
 
-  markPaid(event) {
-    const ids = parseIds(event.currentTarget.dataset.ids || event.currentTarget.dataset.id);
-    if (!ids.length || this.data.paying) return;
-    const isZeroAmountPayment = ids.length === 1 && this.data.items.some((item) => (
-      String(item.id) === ids[0] && item.requiresQuickLedger
-    ));
-    if (isZeroAmountPayment) {
-      this.promptZeroAmountPayment(ids[0]);
-      return;
-    }
-    wx.showModal({
-      title: '确认标记已支付',
-      content: `确认已在线下完成这 ${ids.length} 条提成的支付吗？该操作会保留付款审计。`,
-      confirmText: '确认付款',
-      cancelText: '取消',
-      success: (modal) => {
-        if (modal.confirm) this.submitMarkPaid(ids);
-      }
-    });
-  },
-
-  promptZeroAmountPayment(commissionId) {
-    this.setData({
-      quickLedgerDialogVisible: true,
-      quickLedgerCommissionId: commissionId,
-      quickLedgerAmount: '',
-      quickLedgerError: ''
-    });
-  },
-
-  changeQuickLedgerAmount(event) {
-    this.setData({ quickLedgerAmount: event.detail.value, quickLedgerError: '' });
-  },
-
-  cancelQuickLedger() {
-    if (this.data.paying) return;
-    this.setData({
-      quickLedgerDialogVisible: false,
-      quickLedgerCommissionId: '',
-      quickLedgerAmount: '',
-      quickLedgerError: ''
-    });
-  },
-
-  stopDialogTap() {},
-
-  confirmQuickLedger() {
-    const paidAmount = normalizePaidAmount(this.data.quickLedgerAmount);
-    if (!paidAmount) {
-      this.setData({ quickLedgerError: '请输入大于 0 的金额，最多两位小数' });
-      return;
-    }
-    const commissionId = this.data.quickLedgerCommissionId;
-    this.setData({ quickLedgerDialogVisible: false, quickLedgerError: '' });
-    this.submitZeroAmountPayment(commissionId, paidAmount);
-  },
-
-  async submitZeroAmountPayment(commissionId, paidAmount) {
-    if (this.data.paying) return;
-    this.setData({ paying: true });
-    try {
-      await api.request('/miniprogram/enterprise-commissions/record-zero-payment', 'POST', { commissionId, paidAmount });
-      wx.showToast({ title: '已记账并标记为已支付', icon: 'success' });
-      await this.load({ reset: true });
-      await this.refreshBadges();
-    } catch (error) {
-      wx.showToast({ title: error.message || error.error || '快速记账失败', icon: 'none' });
-    } finally {
-      this.setData({ paying: false });
-    }
-  },
-
-  async submitMarkPaid(ids) {
-    if (this.data.paying) return;
-    this.setData({ paying: true });
-    try {
-      await api.request('/miniprogram/enterprise-commissions/mark-paid', 'POST', { commissionIds: ids });
-      wx.showToast({ title: '已标记为已支付', icon: 'success' });
-      await this.load({ reset: true });
-      await this.refreshBadges();
-    } catch (error) {
-      wx.showToast({
-        title: error.message || error.error || '标记支付失败',
-        icon: 'none'
-      });
-    } finally {
-      this.setData({ paying: false });
-    }
+  async handlePaymentCompleted() {
+    await this.load({ reset: true });
+    await this.refreshBadges();
   },
 
   async refreshBadges() {

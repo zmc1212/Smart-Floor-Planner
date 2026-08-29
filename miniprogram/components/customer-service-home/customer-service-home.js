@@ -95,7 +95,7 @@ function emptyCompanionUi() {
     isEmpty: true,
     progressPills: buildProgressPills(''),
     bookShortcutKind: '',
-    bookShortcutDesc: '免费上门精准量尺',
+    bookShortcutDesc: '免费精准量尺',
     benefitStatusLabel: '扫码领取服务',
   };
 }
@@ -157,7 +157,7 @@ Component({
     isEmpty: true,
     progressPills: [],
     bookShortcutKind: '',
-    bookShortcutDesc: '免费上门精准量尺',
+    bookShortcutDesc: '免费精准量尺',
     benefitStatusLabel: '扫码领取服务',
     designer: null,
     designerSoftCopy: '家装设计顾问匹配后可联系',

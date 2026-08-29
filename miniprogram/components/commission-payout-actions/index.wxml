@@ -1,0 +1,13 @@
+<view class="actions">
+  <button class="confirm" bindtap="open" hover-class="pressed">确认打款</button>
+</view>
+<view wx:if="{{visible}}" class="mask" catchtap="close">
+  <view class="dialog" catchtap="stopTap">
+    <text class="kicker">付款确认</text>
+    <text class="title">确认向{{item.roleLabel}}打款</text>
+    <text class="copy">请输入实际打款金额。确认后将记录付款人和时间，并自动标记为已支付。</text>
+    <view class="input-wrap {{error ? 'input-error' : ''}}"><text class="currency">¥</text><input class="input" type="digit" value="{{amount}}" placeholder="请输入实际打款金额" placeholder-class="placeholder" focus="{{visible}}" bindinput="changeAmount" bindconfirm="confirm" /></view>
+    <text wx:if="{{error}}" class="error">{{error}}</text>
+    <view class="dialog-actions"><button class="cancel" bindtap="close" disabled="{{submitting}}">取消</button><button class="save" bindtap="confirm" loading="{{submitting}}" disabled="{{submitting}}">确认打款</button></view>
+  </view>
+</view>

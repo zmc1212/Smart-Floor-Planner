@@ -608,7 +608,7 @@ export function workflowNotificationToDto(
   };
 }
 
-export function parsePostgresId(value: unknown, field = 'id') {
+export function parsePostgresId(value: unknown, field = 'id'): bigint {
   const normalized = String(value ?? '');
   if (!/^[1-9]\d*$/.test(normalized)) {
     throw new Error(`${field} must be a positive PostgreSQL bigint`);

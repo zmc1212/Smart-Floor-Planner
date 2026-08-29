@@ -153,7 +153,7 @@ test('published unsurveyed leads keep visit time when a makeup appointment is co
   assert.equal(home.kind, 'view_project');
   assert.equal(home.canRebook, false);
   assert.equal(home.canReschedule, true);
-  assert.equal(home.appointmentSummary, '8月19日 09:00 上门量房');
+  assert.equal(home.appointmentSummary, '8月19日 09:00 量房');
 });
 
 test('rebooking is allowed after expiry or cancel when survey is not done', () => {
@@ -220,7 +220,7 @@ test('customer home exposes one next action from the shared service stage', () =
     stageKey: 'appointment_confirmed',
     stageLabel: '已预约上门量房',
     nextAction: '按预约上门，窗口内可改期',
-    appointmentSummary: '8月19日 09:00 上门量房',
+    appointmentSummary: '8月19日 09:00 量房',
     canReschedule: true,
     canRebook: false,
   });
@@ -243,11 +243,11 @@ test('customer home exposes one next action from the shared service stage', () =
     measurerId: '1',
   }), {
     kind: 'book',
-    label: '预约上门',
+    label: '预约量房',
     stageKey: 'measurer_assigned',
     stageLabel: '已匹配家装现场顾问',
     nextAction: '预约上门量房时间',
-    appointmentSummary: '已匹配家装设计顾问和家装现场顾问，请预约上门量房时间',
+    appointmentSummary: '已匹配家装设计顾问和家装现场顾问，可预约量房时间',
     canReschedule: false,
     canRebook: true,
   });
@@ -260,7 +260,7 @@ test('customer home exposes one next action from the shared service stage', () =
     label: '等待派单',
     stageKey: 'assignment_pending',
     stageLabel: '待派单',
-    nextAction: '服务匹配完成后即可预约上门',
+    nextAction: '服务匹配完成后即可预约量房',
     appointmentSummary: '正在为您匹配家装设计顾问和家装现场顾问',
     canReschedule: false,
     canRebook: false,
@@ -296,7 +296,7 @@ test('customer home exposes one next action from the shared service stage', () =
   assert.equal(pendingConfirm.kind, 'view_project');
   assert.equal(pendingConfirm.canReschedule, false);
   assert.equal(pendingConfirm.canRebook, false);
-  assert.equal(pendingConfirm.appointmentSummary, '家装现场顾问正在上门量房');
+  assert.equal(pendingConfirm.appointmentSummary, '家装现场顾问正在量房');
 });
 
 test('operational appointment prefers an active confirmed rebooking over an older expired row', () => {
