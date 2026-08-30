@@ -15,7 +15,8 @@ import { canStaffMutateLeadSurvey } from '@/lib/lead-staff-access';
 import { canDeleteLeadFloorPlan } from '@/lib/lead-status';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
-import { isFormalSurveyLayout } from '@/lib/survey-graph';
+import { assertFormalSurveyWrite } from '@/lib/formal-survey-write-validation';
+import { parseFormalSurveyLayout } from '@/lib/survey-graph';
 
 interface FloorPlanUpdateBody {
   name?: string;
@@ -104,7 +105,8 @@ export async function PUT(
     const { id } = await params;
     const planId = parsePostgresId(id, 'floor plan id');
     const body = (await request.json()) as FloorPlanUpdateBody;
-    if (!isFormalSurveyLayout(body.layoutData)) {
+    const formalLayout = parseFormalSurveyLayout(body.layoutData);
+    if (!formalLayout) {
       return NextResponse.json(
         {
           success: false,
@@ -120,7 +122,8 @@ export async function PUT(
         const repository = new FloorPlanRepository(transaction);
         const current = await repository.findById(planId);
         if (!current || !canAccessMiniProgramFloorPlan(current, context)) return null;
-        const nextStatus = body.status || current.status;
+        const nextStatus = (body.status || current.status) as 'draft' | 'completed';
+        assertFormalSurveyWrite(formalLayout, nextStatus);
         const becameCompleted =
           current.status !== 'completed' && nextStatus === 'completed';
         const plan = await repository.update(planId, {
@@ -206,8 +209,14 @@ export async function PUT(
     return NextResponse.json({ success: true, data: floorPlanToDto(plan) });
   } catch (error: unknown) {
     const message = getErrorMessage(error);
+    const validation = (error as { validation?: unknown })?.validation;
     return NextResponse.json(
-      { success: false, error: message, code: (error as { code?: string })?.code },
+      {
+        success: false,
+        error: message,
+        code: (error as { code?: string })?.code,
+        ...(validation ? { validation } : {}),
+      },
       {
         status: (error as { status?: number })?.status
           || (message.includes('access denied') ? 403 : 500),

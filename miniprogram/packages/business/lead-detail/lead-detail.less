@@ -38,7 +38,7 @@
   position: relative;
   min-height: 286rpx;
   padding: 42rpx 28rpx 30rpx;
-  background: linear-gradient(128deg, #0f9f4e 0%, #1fba61 48%, #eef7ed 48%, #f8fbf7 100%);
+  background: linear-gradient(112deg, #0f9f4e 0%, #1fba61 60%, #eef7ed 60%, #f8fbf7 100%);
 }
 
 .detail-hero .eyebrow,
@@ -50,8 +50,8 @@
 }
 
 .detail-hero .hero-copy {
-  width: 40%;
-  max-width: 300rpx;
+  width: 48%;
+  max-width: 360rpx;
   position: relative;
   z-index: 2;
 }
@@ -720,11 +720,6 @@
   width: 100%;
 }
 
-/* Native button ignores flex gap; keep explicit row spacing. */
-.whole-home-primary-actions > .whole-home-appointment-action + .whole-home-measure-action {
-  margin-left: 16rpx;
-}
-
 .whole-home-appointment-action.is-secondary {
   color: #087c36;
   background: #e9f8ed;
@@ -733,16 +728,16 @@
 .whole-home-secondary-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12rpx;
+  gap: 16rpx;
   margin-top: 16rpx;
 }
 
 .whole-home-action {
   width: 100%;
   min-width: 0;
-  height: 76rpx;
-  padding: 0 24rpx;
-  border-radius: 16rpx;
+  height: 84rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
   background: #17a14c;
   color: #ffffff;
   font-size: 26rpx;

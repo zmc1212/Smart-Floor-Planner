@@ -3,6 +3,7 @@ import {
   count,
   desc,
   eq,
+  sql,
   type SQL,
 } from 'drizzle-orm';
 import {
@@ -126,11 +127,53 @@ export class MeasurementRepository {
     } as MeasurementWithRelations;
   }
 
+  async findByAuditId(floorPlanId: bigint, auditId: string) {
+    const rows = await this.selectWithRelations()
+      .where(
+        and(
+          eq(measurements.floorPlanId, floorPlanId),
+          eq(measurements.auditId, auditId)
+        )
+      )
+      .limit(1);
+    if (!rows[0]) return null;
+    return {
+      ...rows[0].measurement,
+      operator: rows[0].operator,
+      enterprise: rows[0].enterprise,
+      floorPlan: rows[0].floorPlan,
+    } as MeasurementWithRelations;
+  }
+
   async create(input: NewMeasurement) {
     const rows = await this.transaction
       .insert(measurements)
       .values(input)
       .returning();
     return this.findById(rows[0].id);
+  }
+
+  async createIdempotent(input: NewMeasurement) {
+    if (!input.auditId) {
+      return { measurement: await this.create(input), created: true };
+    }
+    const rows = await this.transaction
+      .insert(measurements)
+      .values(input)
+      .onConflictDoNothing({
+        target: [measurements.floorPlanId, measurements.auditId],
+        where: sql`${measurements.auditId} is not null`,
+      })
+      .returning({ id: measurements.id });
+    if (rows[0]) {
+      return {
+        measurement: await this.findById(rows[0].id),
+        created: true,
+      };
+    }
+    return {
+      measurement: await this.findByAuditId(input.floorPlanId, input.auditId),
+      created: false,
+    };
   }
 }

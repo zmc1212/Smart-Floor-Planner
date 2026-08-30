@@ -298,7 +298,7 @@ test('platform admin uses review and devices subpackage tabs instead of index', 
   assert.equal(indexJson.usingComponents['platform-device-workbench'], undefined);
 });
 
-test('role-specific workbenches hide customer and non-measurer survey creation controls', () => {
+test('role-specific workbenches keep survey creation behind lead-detail permissions and route guards', () => {
   const mine = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'mine', 'mine.wxml'), 'utf8');
   const leadDetail = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'lead-detail', 'lead-detail.wxml'), 'utf8');
   const leadList = fs.readFileSync(path.join(miniProgramRoot, 'components', 'lead-list', 'lead-list.wxml'), 'utf8');

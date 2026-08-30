@@ -26,10 +26,10 @@ export async function GET(request: Request) {
         roleRequiresFiltering: !['super_admin', 'admin'].includes(context.role)
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     return NextResponse.json({
       success: false,
-      error: error.message
+      error: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }

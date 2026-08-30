@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
+import { createRequire } from "node:module";
 import type { NetworkInterfaceInfo } from "node:os";
+
+const require = createRequire(import.meta.url);
 
 const getLocalExternalIps = () => {
   // Production/Docker builds do not need LAN origins, and importing `os` into

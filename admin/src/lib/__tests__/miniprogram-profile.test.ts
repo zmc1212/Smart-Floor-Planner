@@ -8,6 +8,7 @@ import {
   serializeMiniProgramProfile,
   verifyProfileAvatarSignature,
 } from '@/lib/miniprogram-profile';
+import type { MiniProgramContext } from '@/lib/miniprogram-auth';
 
 test('referrer profile keeps the current display name and role from the signed context', () => {
   const profile = serializeMiniProgramProfile({
@@ -19,7 +20,7 @@ test('referrer profile keeps the current display name and role from the signed c
       enterprise: { _id: '7', name: '示例企业', code: 'demo' },
       staff: null,
       user: { _id: '12', nickname: '我设置的姓名', phone: '13800138000' },
-    } as any,
+    } satisfies MiniProgramContext,
   });
 
   assert.equal(profile.name, '我设置的姓名');

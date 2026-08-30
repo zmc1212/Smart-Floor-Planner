@@ -7,13 +7,16 @@ function createWallOperations(kernel) {
       const session = floor.session || {};
       const mode = session.fullValidationAfterClosedSplit ? 'full' : 'quick';
       delete session.fullValidationAfterClosedSplit;
-      return { mode };
+      return {
+        mode,
+        allowPendingClosure: mode === 'full' && session.closeCandidateType === 'partition'
+      };
     }),
     confirmClosure: wrapOperation('confirmClosure', kernel.confirmClosure, { mode: 'full' }),
     deleteWall: wrapOperation('deleteWall', kernel.deleteWall, { mode: 'full' }),
     deleteClosedSpace: wrapOperation('deleteClosedSpace', kernel.deleteClosedSpace, { mode: 'full' }),
     snapCursorToWall: wrapOperation('snapCursorToWall', kernel.snapCursorToWall),
-    remeasureSelectedWall: wrapOperation('remeasureSelectedWall', kernel.remeasureSelectedWall)
+    remeasureSelectedWall: wrapOperation('remeasureSelectedWall', kernel.remeasureSelectedWall, { mode: 'full' })
   };
 }
 

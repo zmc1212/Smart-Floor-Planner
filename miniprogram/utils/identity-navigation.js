@@ -37,7 +37,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/appointment-booking/appointment-booking': ['customer.projects', 'staff.appointments', 'staff.tasks', 'enterprise.appointments'],
   '/packages/business/appointment-detail/appointment-detail': ['customer.projects', 'staff.appointments', 'staff.schedule', 'enterprise.appointments'],
   '/packages/business/appointment-reschedule/appointment-reschedule': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
-  '/packages/surveying/editor/surveying-editor': ['staff.surveying', 'staff.leads'],
+  '/packages/surveying/editor/surveying-editor': ['staff.surveying', 'enterprise.customers'],
   '/packages/business/measurer-calendar/measurer-calendar': 'staff.schedule',
   '/packages/business/enterprise-appointments/enterprise-appointments': 'enterprise.appointments',
   '/packages/business/enterprise-commissions/enterprise-commissions': 'enterprise.commissions',

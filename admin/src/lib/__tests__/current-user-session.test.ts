@@ -8,6 +8,7 @@ import {
   parseCurrentUserResponse,
   shouldRetryCurrentUserError,
 } from '../current-user';
+import { GET as clearInvalidSession } from '../../app/api/auth/logout/route';
 
 const root = path.resolve(__dirname, '../..');
 
@@ -85,4 +86,23 @@ test('login antd shell does not mount account settings / current-user fetch', ()
   );
   assert.match(loginPage, /includeAccountSettings=\{false\}/);
   assert.match(provider, /includeAccountSettings/);
+});
+
+test('invalid database sessions are cleared before returning to login', async () => {
+  const homePage = fs.readFileSync(
+    path.join(root, 'app/(admin)/page.tsx'),
+    'utf8'
+  );
+  assert.match(homePage, /redirect\(['"]\/api\/auth\/logout['"]\)/);
+
+  const response = await clearInvalidSession(
+    new Request('http://localhost:3006/api/auth/logout', {
+      headers: { cookie: 'auth_token=stale-token' },
+    })
+  );
+
+  assert.equal(response.status, 303);
+  assert.equal(response.headers.get('location'), '/login');
+  assert.match(response.headers.get('set-cookie') || '', /auth_token=;/);
+  assert.match(response.headers.get('set-cookie') || '', /Max-Age=0/i);
 });

@@ -20,7 +20,8 @@ import {
 } from '@/lib/postgres-request-scope';
 import { persistAndAttachFloorPlanPreview } from '@/lib/floor-plan-preview';
 import { canStaffMutateLeadSurvey } from '@/lib/lead-staff-access';
-import { isFormalSurveyLayout } from '@/lib/survey-graph';
+import { assertFormalSurveyWrite } from '@/lib/formal-survey-write-validation';
+import { parseFormalSurveyLayout } from '@/lib/survey-graph';
 
 interface FloorPlanRequestBody {
   name?: string;
@@ -100,7 +101,8 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    if (!isFormalSurveyLayout(body.layoutData)) {
+    const formalLayout = parseFormalSurveyLayout(body.layoutData);
+    if (!formalLayout) {
       return NextResponse.json(
         {
           success: false,
@@ -110,6 +112,7 @@ export async function POST(request: Request) {
       );
     }
     const planStatus = body.status || 'completed';
+    assertFormalSurveyWrite(formalLayout, planStatus);
     const idempotencyKey = request.headers.get('Idempotency-Key')?.trim() || '';
     if (idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
       return NextResponse.json(
@@ -232,8 +235,14 @@ export async function POST(request: Request) {
     const message = getErrorMessage(error);
     const status = (error as { status?: number })?.status
       || (message.includes('access denied') ? 403 : 500);
+    const validation = (error as { validation?: unknown })?.validation;
     return NextResponse.json(
-      { success: false, error: message, code: (error as { code?: string })?.code },
+      {
+        success: false,
+        error: message,
+        code: (error as { code?: string })?.code,
+        ...(validation ? { validation } : {}),
+      },
       { status }
     );
   }

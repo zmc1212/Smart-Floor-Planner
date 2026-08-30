@@ -351,6 +351,13 @@
       "when": 1788012000000,
       "tag": "0049_admin_sensitive_password",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1788098400000,
+      "tag": "0050_measurement_audit_idempotency",
+      "breakpoints": true
     }
   ]
 }

@@ -156,6 +156,22 @@ test('enterprise owner guide deep links require enterprise operations capability
   }), false);
 });
 
+test('enterprise owner customer capability can enter the formal surveying editor', () => {
+  const route = '/packages/surveying/editor/surveying-editor';
+  assert.equal(navigation.canAccessRoute(route, {
+    mode: 'staff',
+    staffRole: 'enterprise_admin'
+  }), true);
+  assert.equal(navigation.canAccessRoute(route, {
+    current: { role: 'enterprise_admin', capabilities: ['enterprise.customers', 'account'] }
+  }), true);
+  assert.equal(navigation.canAccessRoute(route, {
+    mode: 'staff',
+    staffRole: 'designer'
+  }), false);
+  assert.equal(navigation.canAccessRoute(route, { mode: 'customer' }), false);
+});
+
 test('designer and measurer guide deep links require the signed workbench capability', () => {
   assert.equal(navigation.canAccessRoute('/packages/guides/designer-guide/designer-guide', {
     mode: 'staff',

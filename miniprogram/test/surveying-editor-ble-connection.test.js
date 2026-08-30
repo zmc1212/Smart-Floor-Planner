@@ -41,3 +41,10 @@ test('connected BLE dock measure without a pending or selected wall asks to drag
     /onBottomMeasure\(\)\s*\{[\s\S]*请先打开数字修改/
   );
 });
+
+test('formal BLE audits send the same audit ID at top level and in compatibility metadata', () => {
+  assert.match(
+    editorScript,
+    /sendMeasurementRecord\(floorPlanId, record\)[\s\S]*floorPlanId,\s*auditId: record\.auditId,[\s\S]*metadata:\s*\{[\s\S]*measurementMode: 'surveying',[\s\S]*auditId: record\.auditId/
+  );
+});

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { loadEnvConfig } from '@next/env';
-import { count, eq, inArray, like } from 'drizzle-orm';
+import { and, count, eq, inArray, like, sql } from 'drizzle-orm';
 import {
   aiPromptCategories,
   aiPromptLibraryRevisions,
@@ -32,6 +32,7 @@ import {
   leadLifecycleEvents,
   leads,
   mediaStorageConfigs,
+  measurements,
   referrerEnterpriseMemberships,
   referrerProfiles,
   packages,
@@ -4909,6 +4910,129 @@ test('surveying core repositories preserve bigint relations and tenant isolation
         await transaction
           .delete(adminUsers)
           .where(eq(adminUsers.id, secondaryAdminUserId));
+      }
+      if (userId) {
+        await transaction.delete(users).where(eq(users.id, userId));
+      }
+    });
+  }
+});
+
+test('measurement audit IDs are idempotent per floor plan without changing legacy null rows', async () => {
+  let userId: bigint | null = null;
+  const floorPlanIds: bigint[] = [];
+
+  try {
+    const created = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const user = await new UserRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        role: 'user',
+        openid: `${testRunKey}-audit-user`,
+        nickname: 'Audit Customer',
+      });
+      const repository = new FloorPlanRepository(transaction);
+      const plans = [];
+      for (const suffix of ['A', 'B']) {
+        plans.push(await repository.create({
+          enterpriseId: enterpriseAId,
+          creatorId: user.id,
+          name: `Audit plan ${suffix}`,
+          layoutData: {
+            version: 4,
+            measurementMode: 'surveying',
+            surveyGraph: {
+              kind: 'survey-wall-graph',
+              activeFloorId: 'floor-1',
+              floors: [{ id: 'floor-1', nodes: [], walls: [], spaces: [], openings: [] }],
+            },
+          },
+          source: 'manual',
+          status: 'draft',
+        }));
+      }
+      assert.ok(plans[0] && plans[1]);
+      return { user, plans: plans as [NonNullable<typeof plans[0]>, NonNullable<typeof plans[1]>] };
+    });
+    userId = created.user.id;
+    floorPlanIds.push(created.plans[0].id, created.plans[1].id);
+
+    const input = (floorPlanId: bigint, auditId: string | null) => ({
+      enterpriseId: enterpriseAId,
+      floorPlanId,
+      auditId,
+      value: '2.4500',
+      unit: 'meters',
+      type: 'length',
+      source: 'ble',
+      metadata: auditId ? { measurementMode: 'surveying', auditId } : {},
+      measuredAt: new Date(),
+    });
+
+    const serial = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const repository = new MeasurementRepository(transaction);
+      const first = await repository.createIdempotent(input(created.plans[0].id, 'serial-audit'));
+      const duplicate = await repository.createIdempotent(input(created.plans[0].id, 'serial-audit'));
+      return { first, duplicate };
+    });
+    assert.equal(serial.first.created, true);
+    assert.equal(serial.duplicate.created, false);
+    assert.equal(serial.first.measurement?.id, serial.duplicate.measurement?.id);
+
+    const concurrent = await Promise.all([
+      withTenantTransaction(enterpriseAId, (transaction) =>
+        new MeasurementRepository(transaction).createIdempotent(
+          input(created.plans[0].id, 'concurrent-audit')
+        )
+      ),
+      withTenantTransaction(enterpriseAId, (transaction) =>
+        new MeasurementRepository(transaction).createIdempotent(
+          input(created.plans[0].id, 'concurrent-audit')
+        )
+      ),
+    ]);
+    assert.deepEqual(concurrent.map((result) => result.created).sort(), [false, true]);
+    assert.equal(concurrent[0].measurement?.id, concurrent[1].measurement?.id);
+
+    const reusedAcrossPlans = await Promise.all(created.plans.map((plan) =>
+      withTenantTransaction(enterpriseAId, (transaction) =>
+        new MeasurementRepository(transaction).createIdempotent(
+          input(plan.id, 'reusable-audit')
+        )
+      )
+    ));
+    assert.equal(reusedAcrossPlans.every((result) => result.created), true);
+    assert.notEqual(reusedAcrossPlans[0].measurement?.id, reusedAcrossPlans[1].measurement?.id);
+
+    const legacyNullRows = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const repository = new MeasurementRepository(transaction);
+      const first = await repository.createIdempotent(input(created.plans[0].id, null));
+      const second = await repository.createIdempotent(input(created.plans[0].id, null));
+      return [first, second];
+    });
+    assert.equal(legacyNullRows.every((result) => result.created), true);
+    assert.notEqual(legacyNullRows[0].measurement?.id, legacyNullRows[1].measurement?.id);
+
+    const persisted = await withTenantTransaction(enterpriseAId, async (transaction) => ({
+      serial: await transaction.select({ value: count() }).from(measurements).where(and(
+        eq(measurements.floorPlanId, created.plans[0].id),
+        eq(measurements.auditId, 'serial-audit')
+      )),
+      concurrent: await transaction.select({ value: count() }).from(measurements).where(and(
+        eq(measurements.floorPlanId, created.plans[0].id),
+        eq(measurements.auditId, 'concurrent-audit')
+      )),
+      nulls: await transaction.select({ value: count() }).from(measurements).where(and(
+        eq(measurements.floorPlanId, created.plans[0].id),
+        sql`${measurements.auditId} is null`
+      )),
+    }));
+    assert.equal(Number(persisted.serial[0]?.value), 1);
+    assert.equal(Number(persisted.concurrent[0]?.value), 1);
+    assert.equal(Number(persisted.nulls[0]?.value), 2);
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (floorPlanIds.length) {
+        await transaction.delete(floorPlans).where(inArray(floorPlans.id, floorPlanIds));
       }
       if (userId) {
         await transaction.delete(users).where(eq(users.id, userId));

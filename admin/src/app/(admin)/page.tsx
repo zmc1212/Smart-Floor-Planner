@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   const user = await getSessionUser();
-  if (!user) redirect('/login');
+  if (!user) redirect('/api/auth/logout');
 
   return (
     <AdminHomeDashboard

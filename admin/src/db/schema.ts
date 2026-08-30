@@ -2283,6 +2283,7 @@ export const measurements = appSchema.table(
     roomId: text('room_id'),
     roomName: text('room_name'),
     deviceId: text('device_id'),
+    auditId: text('audit_id'),
     value: numeric('value', { precision: 16, scale: 4 }).notNull(),
     unit: text('unit').notNull(),
     type: text('type').notNull(),
@@ -2305,6 +2306,9 @@ export const measurements = appSchema.table(
       table.floorPlanId,
       table.measuredAt
     ),
+    uniqueIndex('measurements_floor_plan_audit_id_uidx')
+      .on(table.floorPlanId, table.auditId)
+      .where(sql`${table.auditId} is not null`),
     index('measurements_operator_measured_idx').on(
       table.operatorId,
       table.measuredAt

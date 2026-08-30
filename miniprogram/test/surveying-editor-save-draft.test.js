@@ -20,7 +20,7 @@ test('top-bar Save persists a draft then navigates back on cloud success', () =>
   assert.match(editorWxml, /class="topbar-chip save-draft" bindtap="onSaveDraft"/);
 
   const method = extractMethod(editorScript, 'async onSaveDraft');
-  assert.match(method, /await this\.saveFormalFloorPlan\('draft'\)/);
+  assert.match(method, /await this\._enqueueCloudSave\('draft'\)/);
   assert.match(method, /wx\.showToast\(\{ title: '已保存草稿', icon: 'success' \}\)/);
   assert.match(
     method,

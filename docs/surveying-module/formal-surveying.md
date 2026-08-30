@@ -27,6 +27,11 @@ copy back to `layoutData`.
 
 - The only formal measurement page is
   `miniprogram/packages/surveying/editor/surveying-editor.*`.
+- In the Mini Program, an assigned measurer enters from their own task, while
+  an enterprise owner may start, continue, add, or delete formal surveys from
+  any lead detail inside the signed enterprise. Client route capabilities and
+  the server tenant boundary both enforce this access. Designers retain the
+  read-only floor-plan preview and do not gain survey-editor access.
 - Every entry carries `leadId` and/or `floorPlanId`. A lead-only entry
   without `floorPlanId` resolves that lead's primary cloud plan instead of
   opening a blank canvas.
@@ -51,7 +56,10 @@ copy back to `layoutData`.
   upgrades and takes priority over queued `draft` work. New floor-plan POSTs
   carry a persisted `Idempotency-Key`, backed by the unique
   `floor_plans.create_idempotency_key` column, so a lost response can be safely
-  retried without creating a second floor plan.
+  retried without creating a second floor plan. Once a `floorPlanId` exists,
+  the client sends exactly one PUT; every PUT error (including 404, auth,
+  validation, server, and network errors) is propagated and must never fall
+  back to POST or clear the existing ID. POST is used only when no ID exists.
 
 ## CAD/DXF export
 
@@ -105,6 +113,15 @@ copy back to `layoutData`.
 
 - Manual and BLE readings are recorded as measurement audits with value, unit,
   source, operator, and timestamp.
+- `POST /api/measurements` accepts the canonical top-level `auditId` and, during
+  compatibility, also reads `metadata.auditId`. Formal surveying audits require
+  a non-empty value of at most 200 characters; other measurement sources may
+  omit it. The DTO returns `auditId` while retaining `metadata.auditId`.
+- PostgreSQL stores nullable `measurements.audit_id` and enforces a partial
+  unique index on `(floor_plan_id, audit_id)` when `audit_id IS NOT NULL`.
+  Idempotent creation returns 201 with `deduplicated: false` for the first row
+  and the same row with 200 and `deduplicated: true` for a duplicate. Existing
+  null rows are neither backfilled nor merged.
 - Readings captured before the first cloud save remain queued until a formal
   `floorPlanId` exists.
 - Temporary BLE callback owners restore the normal callback when they close.
@@ -134,6 +151,38 @@ copy back to `layoutData`.
   that closed space; shared walls with adjacent closed rooms stay, then spaces
   re-sync from faces. Ceiling height remains floor-level (`ceilingHeightMm`),
   not per room.
+
+## Write validation and stability boundary
+
+- `POST /api/floorplans` and `PUT /api/floorplans/[id]` reject a non-formal v4
+  envelope with 400 as before. A `draft` runs `quick` validation; a `completed`
+  plan runs `full` validation and must contain at least one closed Space.
+  Validation runs before database writes and preview generation and never
+  repairs or rewrites the submitted graph.
+- An invalid formal graph returns 422 with `success: false`, the first error
+  message and code, plus `validation: { mode, errors, stats }`. Full validation
+  classifies proper crossings as `UNSPLIT_WALL_INTERSECTION`, an endpoint on
+  another wall interior as `UNSPLIT_WALL_T_JUNCTION`, coincident endpoints with
+  different node IDs as `UNMERGED_WALL_ENDPOINT`, and positive-length collinear
+  overlap as `OVERLAPPING_WALLS`. These checks use integer-millimetre centerlines
+  and the existing geometry epsilon; the 350 mm snap tolerance is not a
+  topology-validity tolerance.
+- Manual and BLE wall remeasurement execute the same immutable transaction with
+  `full` validation. An invalid crossing, unsplit T touch, or overlap rejects
+  the transaction and leaves graph, spaces, openings, history, and draft
+  unchanged; it does not auto-split or auto-node walls.
+- This hardening freezes the current correct valid-survey result as the
+  compatibility baseline. It does not change snap/closure tolerances, closure
+  inference, multi-room shared-wall behavior, face extraction, wall bodies,
+  Canvas/WXML/Less, or the operator workflow. Apart from the targeted internal-L
+  face-inheritance correction and continued-divider boundary clamp below,
+  previously correct valid operations keep `nodes`, `walls`,
+  `openings`, `spaces`, and `session` unchanged apart from timestamp fields; the
+  face-inheritance correction also leaves `nodes`, `walls`, `openings`, and
+  `session` unchanged, while the clamp affects only the invalid overshoot path.
+  Shared-node joins, endpoint-only
+  collinear adjacency, correctly split T/cross junctions, shared walls, and
+  `closure-bridge` remain valid.
 
 ## Geometry invariants
 
@@ -265,6 +314,21 @@ copy back to `layoutData`.
   would leave a diagonal seam in the shared wall body).
   Vertex continuations and shared internal-wall partitions retain their
   boundary closure rules.
+- An internal divider remains bounded by its source closed room for the whole
+  active chain. If the operator confirms a short first segment and then
+  continues toward the opposite wall, the preview stops at the first source-
+  room boundary hit and closes there; it cannot cross the wall or persist an
+  endpoint outside the room. Outward adjacent-room chains keep their existing
+  two-wall ray-intersection threshold.
+- When a chain starts from the middle of a closed room boundary, enters that
+  room, turns one or more times, and lands on another boundary of the same
+  room, the new Face must keep the source room side of every reused exterior
+  wall. An `inner` start must not blanket those walls with
+  `wallFaceOverrides: offset`, which would count exterior wall bodies inside
+  the child room. The sum of the resulting clear-room areas is the original
+  clear area minus the union of the new divider solids. A probe along the first
+  new wall distinguishes this internal split from an outward adjacent-room
+  chain; existing adjacent-room face inheritance remains unchanged.
 
 ## Verification
 
@@ -276,6 +340,11 @@ aligned with extracted half-edge faces;
 `test/survey-kernel-invariants.test.js` are the catalog and invariant gates.
 Real-device or WeChat DevTools evidence is required
 when the change involves native Canvas, BLE, or host UI behavior.
+Deploy the nullable audit migration and Admin API before the Mini Program. An
+application rollback retains the nullable column and partial unique index; it
+must not run a reverse drop. Existing invalid floor plans and duplicate audit
+history are not cleaned up by this contract and require a separate dry-run and
+approved operation.
 The user-supplied exterior-T measurement screenshots are the behavior reference
 for inner/outer chains. The H5 outer-start right-preview, right-continuation,
 and left-continuation replays verify body side, red-line face, corner continuity,

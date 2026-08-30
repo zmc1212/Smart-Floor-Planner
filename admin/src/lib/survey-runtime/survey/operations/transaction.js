@@ -28,7 +28,10 @@ function runSurveyTransaction(draft, operationName, mutator, options) {
   }
   nextDraft.updatedAt = transactionTime;
   const resolvedOptions = typeof options === 'function' ? (options(nextDraft) || {}) : (options || {});
-  const validation = validateSurveyDraft(nextDraft, { mode: resolvedOptions.mode || 'quick' });
+  const validation = validateSurveyDraft(nextDraft, {
+    mode: resolvedOptions.mode || 'quick',
+    allowPendingClosure: resolvedOptions.allowPendingClosure === true
+  });
   if (!validation.valid) throw new SurveyInvariantError(operationName, validation);
   return nextDraft;
 }

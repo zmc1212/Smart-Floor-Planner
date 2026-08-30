@@ -440,6 +440,7 @@ export function measurementToDto(record: MeasurementWithRelations) {
     roomId: record.roomId,
     roomName: record.roomName,
     deviceId: record.deviceId,
+    auditId: record.auditId,
     value: Number(record.value),
     unit: record.unit,
     type: record.type,

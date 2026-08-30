@@ -76,14 +76,18 @@ test('formal-surveying tab has a defined surface and does not cover the lead-det
   assert.doesNotMatch(template, /class="lead-next-action"/);
 });
 
-test('lead-detail hero keeps community copy in the green lane and off the white scene', () => {
+test('lead-detail hero extends the green lane to Xiao K and keeps long community copy readable', () => {
   assert.match(template, /class="community-block"/);
   assert.match(template, /class="info community-label">小区/);
   assert.match(template, /class="community-name">\{\{lead\.communityName \|\| '未填写'\}\}/);
   assert.doesNotMatch(template, /小区：\{\{lead\.communityName/);
   assert.match(
     styles,
-    /\.detail-hero \.hero-copy\s*\{[^}]*width:\s*40%;[^}]*max-width:\s*300rpx;/s
+    /\.detail-hero\s*\{[^}]*background:\s*linear-gradient\(112deg,\s*#0f9f4e 0%,\s*#1fba61 60%,\s*#eef7ed 60%,\s*#f8fbf7 100%\);/s
+  );
+  assert.match(
+    styles,
+    /\.detail-hero \.hero-copy\s*\{[^}]*width:\s*48%;[^}]*max-width:\s*360rpx;/s
   );
   assert.match(
     styles,
@@ -159,13 +163,21 @@ test('formal-survey keeps next-action right of the tab, address on its own row, 
     styles,
     /\.whole-home-appointment-action,\s*\.whole-home-measure-action\s*\{[^}]*height:\s*84rpx;[^}]*border-radius:\s*999rpx;/s
   );
-  assert.match(
+  assert.doesNotMatch(
     styles,
-    /\.whole-home-primary-actions > \.whole-home-appointment-action \+ \.whole-home-measure-action\s*\{[^}]*margin-left:\s*16rpx;/s
+    /\.whole-home-primary-actions > \.whole-home-appointment-action \+ \.whole-home-measure-action\s*\{[^}]*margin-left:/s
   );
   assert.match(
     styles,
     /\.whole-home-primary-actions > \.whole-home-appointment-action:only-child,\s*\.whole-home-primary-actions > \.whole-home-measure-action:only-child\s*\{[^}]*width:\s*100%;/s
+  );
+  assert.match(
+    styles,
+    /\.whole-home-secondary-actions\s*\{[^}]*grid-template-columns:\s*1fr 1fr;[^}]*gap:\s*16rpx;/s
+  );
+  assert.match(
+    styles,
+    /\.whole-home-action\s*\{[^}]*width:\s*100%;[^}]*height:\s*84rpx;[^}]*border-radius:\s*999rpx;/s
   );
   assert.match(styles, /\.conversion-primary-action\s*\{[^}]*height:\s*84rpx;/s);
   const surveyIndex = template.indexOf('class="whole-home-card"');
@@ -178,13 +190,13 @@ test('formal-survey keeps next-action right of the tab, address on its own row, 
   assert.ok(conversionIndex > historyIndex);
 });
 
-test('designer AI design CTA appears on open leads without requiring survey or published schemes', () => {
+test('designer and enterprise owner AI design CTA appears on open leads without requiring survey or published schemes', () => {
   const script = fs.readFileSync(
     path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
   assert.match(script, /function canOpenAIDesignWorkbench\(/);
-  assert.match(script, /staffRole !== 'designer'/);
+  assert.match(script, /\['designer', 'enterprise_admin'\]\.includes\(staffRole\)/);
   assert.match(script, /function eligibleAIDesignFloorPlanId\(/);
   assert.match(script, /plan\.status !== 'completed'/);
   assert.match(script, /可用现场图开始出图/);
@@ -197,6 +209,20 @@ test('designer AI design CTA appears on open leads without requiring survey or p
   assert.match(template, /wx:if="\{\{publishedSchemes\.length > 0 \|\| canOpenAIDesign\}\}"/);
   assert.match(template, /wx:if="\{\{canOpenAIDesign\}\}"[\s\S]*?进入 AI 设计/);
   assert.match(template, /\{\{aiDesignEmptyHint\}\}/);
+});
+
+test('enterprise owner has the full lead-detail surveying action set', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    'utf8'
+  );
+  assert.match(
+    script,
+    /canEditMeasurements: staffRole === 'enterprise_admin' \|\| staffRole === 'measurer' \|\| isAssignedMeasurer/
+  );
+  assert.doesNotMatch(script, /enterprise_admin[\s\S]{0,100}查看量房进度与服务安排/);
+  assert.match(template, /wx:if="\{\{canEditMeasurements\}\}"[\s\S]*?开始量房/);
+  assert.match(template, /wx:if="\{\{canEditMeasurements && activeFloorPlan\}\}"[\s\S]*?新增量房[\s\S]*?删除/);
 });
 
 test('published-scheme CTAs share one equal-width row when both are visible', () => {

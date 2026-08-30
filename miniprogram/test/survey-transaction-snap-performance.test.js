@@ -31,6 +31,53 @@ function createLinearDraft(wallCount) {
   return draft;
 }
 
+function createClosedRemeasureDraft(kind) {
+  const draft = surveyGraph.createSurveyDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  floor.nodes = [
+    { id: 'a', xMm: 0, yMm: 0 },
+    { id: 'b', xMm: 4000, yMm: 0 },
+    { id: 'c', xMm: 4000, yMm: 3000 },
+    { id: 'd', xMm: 0, yMm: 3000 }
+  ];
+  floor.walls = [
+    { id: 'ab', startNodeId: 'a', endNodeId: 'b', lengthMm: 4000, thicknessMm: 200 },
+    { id: 'bc', startNodeId: 'b', endNodeId: 'c', lengthMm: 3000, thicknessMm: 200 },
+    { id: 'cd', startNodeId: 'c', endNodeId: 'd', lengthMm: 4000, thicknessMm: 200 },
+    { id: 'da', startNodeId: 'd', endNodeId: 'a', lengthMm: 3000, thicknessMm: 200 }
+  ];
+  floor.openings = [
+    { id: 'door', wallId: 'cd', type: 'door', centerOffsetMm: 1200, widthMm: 900 }
+  ];
+  floor.spaces = [
+    { id: 'room', name: '客厅', wallIds: ['ab', 'bc', 'cd', 'da'], closed: true }
+  ];
+
+  if (kind === 'overlap') {
+    floor.nodes.push(
+      { id: 'fixed', xMm: 5000, yMm: 0 },
+      { id: 'moving', xMm: 4500, yMm: 0 }
+    );
+    floor.walls.push({
+      id: 'target', startNodeId: 'fixed', endNodeId: 'moving', lengthMm: 500, thicknessMm: 200
+    });
+  } else {
+    floor.nodes.push(
+      { id: 'fixed', xMm: 2000, yMm: -2000 },
+      { id: 'moving', xMm: 2000, yMm: -500 }
+    );
+    floor.walls.push({
+      id: 'target', startNodeId: 'fixed', endNodeId: 'moving', lengthMm: 1500, thicknessMm: 200
+    });
+  }
+
+  floor.session.state = 'remeasureAwaitingInput';
+  floor.session.selectedWallId = 'target';
+  floor.session.fixedNodeId = 'fixed';
+  draft.measurementHistory = [{ auditId: 'existing-audit', distanceMm: 4000 }];
+  return draft;
+}
+
 test('transaction failure leaves the input byte-for-byte unchanged', () => {
   const draft = createOpenWallDraft(3000);
   const before = JSON.stringify(draft);
@@ -58,6 +105,50 @@ test('failed remeasurement cannot mutate the selected draft', () => {
   const before = JSON.stringify(draft);
   assert.throws(() => surveyGraph.remeasureSelectedWall(draft, 0, 'manual'));
   assert.equal(JSON.stringify(draft), before);
+});
+
+test('manual and BLE remeasurements atomically reject T, crossing and overlapping walls', () => {
+  const cases = [
+    { kind: 't', lengthMm: 2000, code: 'UNSPLIT_WALL_T_JUNCTION' },
+    { kind: 'cross', lengthMm: 3000, code: 'UNSPLIT_WALL_INTERSECTION' },
+    { kind: 'overlap', lengthMm: 3000, code: 'OVERLAPPING_WALLS' }
+  ];
+
+  for (const inputSource of ['manual', 'ble']) {
+    cases.forEach(({ kind, lengthMm, code }) => {
+      const draft = createClosedRemeasureDraft(kind);
+      const before = JSON.stringify(draft);
+      assert.throws(
+        () => surveyGraph.remeasureSelectedWall(draft, lengthMm, inputSource),
+        (error) => error && error.code === code,
+        `${inputSource}:${kind}`
+      );
+      assert.equal(JSON.stringify(draft), before, `${inputSource}:${kind} mutated source`);
+    });
+  }
+});
+
+test('legal closed-room remeasurement preserves topology, space and opening semantics', () => {
+  const draft = createClosedRemeasureDraft('t');
+  const floor = surveyGraph.getActiveFloor(draft);
+  floor.walls.pop();
+  floor.nodes.splice(-2);
+  floor.session.selectedWallId = 'ab';
+  floor.session.fixedNodeId = 'a';
+  const originalOpening = JSON.parse(JSON.stringify(floor.openings[0]));
+  const originalSpace = JSON.parse(JSON.stringify(floor.spaces[0]));
+
+  const next = surveyGraph.remeasureSelectedWall(draft, 3500, 'manual');
+  const nextFloor = surveyGraph.getActiveFloor(next);
+
+  assert.deepEqual(nextFloor.openings[0], originalOpening);
+  assert.deepEqual(nextFloor.spaces[0], originalSpace);
+  assert.deepEqual(surveyGraph.getNode(nextFloor, 'a'), { id: 'a', xMm: 0, yMm: 0 });
+  assert.deepEqual(surveyGraph.getNode(nextFloor, 'b'), { id: 'b', xMm: 3500, yMm: 0 });
+  assert.equal(surveyGraph.getWall(nextFloor, 'ab').lengthMm, 3500);
+  assert.equal(nextFloor.session.state, 'spaceClosed');
+  assert.equal(nextFloor.session.selectedWallId, 'ab');
+  assert.equal(surveyGraph.validateSurveyDraft(next, { mode: 'full' }).valid, true);
 });
 
 test('snap engine acquires at 16px, retains until 26px and returns integer millimetres', () => {

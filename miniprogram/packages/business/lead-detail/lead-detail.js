@@ -69,9 +69,6 @@ function getNextAction(status, staffRole, isAssignedMeasurer) {
     if (normalized === 'new') return '等待家装现场顾问完成正式量房';
     if (normalized === 'measuring') return '等待正式量房完成后进入方案设计';
   }
-  if (staffRole === 'enterprise_admin' && ['new', 'measuring'].includes(normalized)) {
-    return '查看量房进度与服务安排';
-  }
   if (normalized === 'new') return '开始正式量房';
   if (normalized === 'measuring') return '完成墙图后进入方案设计';
   if (normalized === 'designing') return '等待方案沟通或客户确认';
@@ -316,10 +313,10 @@ function canEditLeadProfile(lead, staffRole, staffId) {
   return false;
 }
 
-/** Designer AI entry on any open unarchived lead; photo path does not wait for survey. */
+/** Designer and enterprise-owner AI entry on any open unarchived lead. */
 function canOpenAIDesignWorkbench(lead, staffRole) {
   if (!lead || lead.archivedAt) return false;
-  if (staffRole !== 'designer') return false;
+  if (!['designer', 'enterprise_admin'].includes(staffRole)) return false;
   if (['converted', 'closed'].includes(lead.status)) return false;
   return true;
 }
@@ -456,7 +453,7 @@ Page({
       convertedAmountText: formatContractAmount(lead.contractAmount),
       showInternalConversionDetails: ['enterprise_admin', 'designer', 'measurer', 'salesperson'].includes(staffRole),
       canEditProfile: canEditLeadProfile(lead, staffRole, staffId),
-      canEditMeasurements: staffRole === 'measurer' || isAssignedMeasurer,
+      canEditMeasurements: staffRole === 'enterprise_admin' || staffRole === 'measurer' || isAssignedMeasurer,
       conversionSkipsStages: !['designing', 'measured', 'assigned', 'quoting'].includes(lead.status),
       activeFloorPlan,
       previousFloorPlans: formalPlans.slice(1),

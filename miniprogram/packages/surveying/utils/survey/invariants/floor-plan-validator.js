@@ -111,7 +111,29 @@ function validateQuick(floor, index, errors, warnings) {
   });
 }
 
-function validateFull(floor, index, errors, warnings) {
+function isAllowedPendingPartitionRelation(floor, firstWall, secondWall, relation, options) {
+  if (!options || options.allowPendingClosure !== true || relation.type !== 'endpoint-on-interior') {
+    return false;
+  }
+  const session = floor.session || {};
+  const pendingWall = floor.walls[floor.walls.length - 1];
+  if (
+    session.state !== 'closing' ||
+    session.closeCandidateType !== 'partition' ||
+    !session.closeCandidateSharedWallId ||
+    !session.closeCandidateNodeId ||
+    !pendingWall
+  ) {
+    return false;
+  }
+  const pairIds = new Set([firstWall.id, secondWall.id]);
+  return pairIds.has(session.closeCandidateSharedWallId) &&
+    pairIds.has(pendingWall.id) &&
+    (pendingWall.startNodeId === session.closeCandidateNodeId ||
+      pendingWall.endNodeId === session.closeCandidateNodeId);
+}
+
+function validateFull(floor, index, errors, warnings, options) {
   const wallKeys = new Map();
   floor.walls.forEach((wall, wallIndex) => {
     const start = index.nodesById.get(wall.startNodeId);
@@ -133,12 +155,24 @@ function validateFull(floor, index, errors, warnings) {
     if (!a1 || !a2) continue;
     for (let second = first + 1; second < floor.walls.length; second += 1) {
       const secondWall = floor.walls[second];
-      if ([secondWall.startNodeId, secondWall.endNodeId].includes(firstWall.startNodeId) ||
-          [secondWall.startNodeId, secondWall.endNodeId].includes(firstWall.endNodeId)) continue;
       const b1 = index.nodesById.get(secondWall.startNodeId);
       const b2 = index.nodesById.get(secondWall.endNodeId);
-      if (b1 && b2 && segment.properIntersection(a1, a2, b1, b2)) {
+      if (!b1 || !b2) continue;
+      const relation = segment.classifySegmentRelation(a1, a2, b1, b2);
+      if (relation.type === 'proper-intersection') {
         errors.push(issue('UNSPLIT_WALL_INTERSECTION', `walls[${second}]`, `墙体 ${firstWall.id} 与 ${secondWall.id} 在内部相交但未节点化`));
+      } else if (relation.type === 'endpoint-on-interior' &&
+          !isAllowedPendingPartitionRelation(floor, firstWall, secondWall, relation, options)) {
+        errors.push(issue('UNSPLIT_WALL_T_JUNCTION', `walls[${second}]`, `墙体 ${firstWall.id} 与 ${secondWall.id} 形成未节点化的 T 形连接`));
+      } else if (relation.type === 'collinear-overlap') {
+        errors.push(issue('OVERLAPPING_WALLS', `walls[${second}]`, `墙体 ${firstWall.id} 与 ${secondWall.id} 存在共线重叠`));
+      } else if (relation.type === 'endpoint-touch') {
+        const sharedNodeId = [firstWall.startNodeId, firstWall.endNodeId].some((nodeId) =>
+          nodeId === secondWall.startNodeId || nodeId === secondWall.endNodeId
+        );
+        if (!sharedNodeId) {
+          errors.push(issue('UNMERGED_WALL_ENDPOINT', `walls[${second}]`, `墙体 ${firstWall.id} 与 ${secondWall.id} 的几何端点重合但未共享节点`));
+        }
       }
     }
   }
@@ -197,7 +231,7 @@ function validateSurveyDraft(draft, options) {
     floorStats.openings += floor.openings.length;
     const index = createTopologyIndex(floor);
     validateQuick(floor, index, errors, warnings);
-    if (mode === 'full') validateFull(floor, index, errors, warnings);
+    if (mode === 'full') validateFull(floor, index, errors, warnings, options);
     errors.slice(floorStartError).forEach((error) => {
       error.path = error.path ? `floors[${floorIndex}].${error.path}` : `floors[${floorIndex}]`;
     });

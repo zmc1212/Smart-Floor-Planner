@@ -2592,6 +2592,54 @@ test('the latest confirmed diagonal can reopen as an angle preview without an or
   assert.equal(floor.nodes.some((node) => node.xMm === 4000 && node.yMm === 1732), false);
 });
 
+test('an internal L partition keeps reused exterior walls on the original room faces', () => {
+  let draft = createClosedDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const originalAreaMm2 = surveyGraph.calculateSpaceAreaMm2(draft, floor.spaces[0].id);
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 1500, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = commitWall(draft, { xMm: 1500, yMm: 1000 }, 1000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 1000 }, 1500);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'closing');
+  assert.equal(floor.session.closeCandidateType, 'shared-wall');
+
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  const plans = floor.spaces.map((space) => surveyGraph.buildSpaceDimensionPlan(floor, space));
+  const childSpace = floor.spaces.find((space) => (
+    surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds).length === 4
+  ));
+
+  assert.equal(originalAreaMm2, 6000000);
+  assert.equal(floor.nodes.length, 7);
+  assert.equal(floor.walls.length, 8);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(surveyGraph.validateSurveyDraft(draft, { mode: 'full' }).valid, true);
+  assert.ok(childSpace);
+  assert.deepEqual(
+    plans.map((plan) => plan.inner.areaMm2).sort((left, right) => left - right),
+    [1040000, 4500000]
+  );
+  assert.equal(plans.reduce((sum, plan) => sum + plan.inner.areaMm2, 0), 5540000);
+  assert.equal(floor.spaces.every((space) => !space.wallFaceOverrides), true);
+  assert.deepEqual(surveyGraph.buildSpaceRenderBoundaryPoints(floor, childSpace), [
+    { xMm: 1700, yMm: 0 },
+    { xMm: 3000, yMm: 0 },
+    { xMm: 3000, yMm: 800 },
+    { xMm: 1700, yMm: 800 }
+  ]);
+});
+
 test('an internal-wall partition stops at the opposite boundary and closes two rooms', () => {
   let draft = createClosedDraft();
   let floor = surveyGraph.getActiveFloor(draft);
@@ -2636,6 +2684,42 @@ test('an internal-wall partition stops at the opposite boundary and closes two r
     floor.spaces.every((space) => surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds).length >= 4),
     true
   );
+});
+
+test('a continued internal partition cannot extend through the opposite room boundary', () => {
+  let draft = createClosedDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 1500, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = commitWall(draft, { xMm: 1500, yMm: 600 }, 600);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'wallCommitted');
+
+  draft = surveyGraph.startPreview(draft, { xMm: 1500, yMm: 5000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 1500, yMm: 2000 });
+  assert.equal(floor.session.closeCandidateType, 'shared-wall');
+
+  draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'preview');
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'closing');
+  assert.equal(floor.session.closeCandidateType, 'shared-wall');
+
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(surveyGraph.validateSurveyDraft(draft, { mode: 'full' }).valid, true);
+  assert.equal(floor.nodes.some((node) => node.yMm > 2000), false);
 });
 
 test('a shared internal-wall partition selects the room entered by the drag', () => {

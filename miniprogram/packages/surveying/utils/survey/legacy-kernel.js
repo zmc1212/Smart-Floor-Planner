@@ -3082,8 +3082,18 @@ function findRayWallIntersection(floor, session, anchor, targetPoint) {
   const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
     ? session.activeSpaceStartWallIndex
     : 0;
-  const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
-  if (activeWallCount < 2) return null;
+  const activeWalls = (floor.walls || []).slice(startWallIndex);
+  const activeWallCount = activeWalls.length;
+  const continuesInsideClosedSpace = activeWallCount === 1 && !!findActiveChainInteriorSourceSpace(
+    floor,
+    session,
+    activeWalls.map((wall) => wall.id)
+  );
+  // A first internal divider drag already has its dedicated partition
+  // projection. Once that short segment is confirmed, the following drag must
+  // keep the same room-boundary stop instead of passing through the opposite
+  // wall. Outward chains keep the existing two-wall threshold.
+  if (activeWallCount < 2 && !continuesInsideClosedSpace) return null;
 
   const direction = { x: targetPoint.xMm - anchor.xMm, y: targetPoint.yMm - anchor.yMm };
   const len = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
@@ -3223,6 +3233,40 @@ function findPartitionClosureProjection(floor, session, anchor, point) {
   });
 
   return best;
+}
+
+function findActiveChainInteriorSourceSpace(floor, session, wallIds) {
+  if (!floor || !session || !session.activeSpaceSharedWallId || !session.activeSpaceStartNodeId) {
+    return null;
+  }
+  const sourceSpaces = findClosedSpacesForWall(floor, session.activeSpaceSharedWallId);
+  if (!sourceSpaces.length) return null;
+
+  const firstWall = (wallIds || [])
+    .map((wallId) => getWall(floor, wallId))
+    .find((wall) => wall && (
+      wall.startNodeId === session.activeSpaceStartNodeId ||
+      wall.endNodeId === session.activeSpaceStartNodeId
+    ));
+  if (!firstWall) return null;
+
+  const start = getNode(floor, session.activeSpaceStartNodeId);
+  const nextNodeId = firstWall.startNodeId === session.activeSpaceStartNodeId
+    ? firstWall.endNodeId
+    : firstWall.startNodeId;
+  const end = getNode(floor, nextNodeId);
+  if (!start || !end) return null;
+  const length = distanceMm(start, end);
+  if (length < 1) return null;
+
+  const probeDistanceMm = Math.min(MIN_WALL_LENGTH_MM, length / 2);
+  const probe = {
+    xMm: Math.round(start.xMm + (end.xMm - start.xMm) * probeDistanceMm / length),
+    yMm: Math.round(start.yMm + (end.yMm - start.yMm) * probeDistanceMm / length)
+  };
+  return sourceSpaces.find((space) => (
+    isPointInsidePolygon(probe, buildSpaceBoundaryPoints(floor, space.wallIds))
+  )) || null;
 }
 
 function findWallPathBetweenNodes(floor, fromNodeId, toNodeId, excludedWallIds) {
@@ -4561,6 +4605,16 @@ function confirmClosure(draft) {
   lastWall = getLastWall(floor);
 
   const newWallIds = floor.walls.slice(startWallIndex).map((wall) => wall.id);
+  // A chain drawn into an existing closed room is an internal partition, even
+  // when it needs two or more new walls before it reaches the old boundary.
+  // Keep that source room's boundary faces on the room side. Treating every
+  // inner-face restart as an adjacent-room close forces the reused exterior
+  // walls to their offset faces and makes the child Space include wall bodies.
+  const interiorSourceSpace = findActiveChainInteriorSourceSpace(
+    floor,
+    session,
+    newWallIds
+  );
   // The orange closing line is the live body reference. It can terminate on
   // the source room's inner face even when the new chain was measured toward
   // the exterior. A wall aligned to a neighbour's visible outer must keep that
@@ -4657,7 +4711,9 @@ function confirmClosure(draft) {
     throw new Error('公共边未连通，请从相邻墙边重新吸附光标');
   }
 
-  const inheritOverrides = session.activeSpaceSharedSnapLine === 'inner' && sharedWallIds.length
+  const inheritOverrides = !interiorSourceSpace &&
+    session.activeSpaceSharedSnapLine === 'inner' &&
+    sharedWallIds.length
     ? {
       wallIds: sharedWallIds,
       face: 'offset',

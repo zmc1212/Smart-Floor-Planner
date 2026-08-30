@@ -11,6 +11,7 @@ import {
 } from '@/db/repositories';
 import { getTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { resolveMeasurementAuditInput } from '@/lib/measurement-audit';
 import {
   withAdminPostgresTransaction,
   withMiniProgramPostgresTransaction,
@@ -145,7 +146,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const measurement = await withMiniProgramPostgresTransaction(
+    const { auditId, metadata } = resolveMeasurementAuditInput(body);
+
+    const creation = await withMiniProgramPostgresTransaction(
       context,
       async (transaction) => {
         const floorPlan = await new FloorPlanRepository(transaction).findById(
@@ -193,8 +196,9 @@ export async function POST(request: Request) {
               )
             )?.code ?? '';
         }
-        return new MeasurementRepository(transaction).create({
+        return new MeasurementRepository(transaction).createIdempotent({
           floorPlanId,
+          auditId,
           operatorId: staffId,
           roomId:
             typeof body.roomId === 'string' ? body.roomId.trim() || null : null,
@@ -210,10 +214,7 @@ export async function POST(request: Request) {
             typeof body.direction === 'string'
               ? body.direction.trim() || null
               : null,
-          metadata:
-            body.metadata && typeof body.metadata === 'object'
-              ? body.metadata
-              : {},
+          metadata,
           source,
           enterpriseId:
             floorPlan.enterpriseId ??
@@ -224,23 +225,27 @@ export async function POST(request: Request) {
         });
       }
     );
-    if (!measurement) {
+    if (!creation.measurement) {
       throw new Error('Failed to create measurement');
     }
     return NextResponse.json(
-      { success: true, data: measurementToDto(measurement) },
-      { status: 201 }
+      {
+        success: true,
+        data: measurementToDto(creation.measurement),
+        deduplicated: !creation.created,
+      },
+      { status: creation.created ? 201 : 200 }
     );
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     console.error('Create measurement error:', error);
-    const status =
-      message === 'FloorPlan not found'
+    const status = (error as { status?: number })?.status ??
+      (message === 'FloorPlan not found'
         ? 404
         : message.includes('access denied') ||
             message.includes('different enterprises')
           ? 403
-          : 500;
+          : 500);
     return NextResponse.json(
       { success: false, error: message },
       { status }

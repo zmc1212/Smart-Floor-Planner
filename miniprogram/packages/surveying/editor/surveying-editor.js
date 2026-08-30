@@ -10,6 +10,7 @@ const {
   isNearCursorHit
 } = require('../utils/surveyCursorAim.js');
 const { createPriorityCloudSaveQueue } = require('../utils/cloudSaveQueue.js');
+const { requestFormalFloorPlanSave } = require('../utils/formalFloorPlanSave.js');
 const bluetooth = require('../../../utils/bluetooth.js');
 const api = require('../../../utils/api.js');
 const util = require('../../../utils/util.js');
@@ -914,24 +915,12 @@ Page({
       stats
     });
 
-    let res;
-    if (currentDraftId) {
-      try {
-        res = await api.request(`/floorplans/${currentDraftId}`, 'PUT', payload);
-      } catch (err) {
-        console.warn('Update surveying draft failed, creating a new draft:', err);
-        res = null;
-        this.clearStoredServerDraftId(leadId);
-      }
-    }
-
-    if (!res) {
-      res = await api.request('/floorplans', 'POST', payload, {
-        headers: this.cloudSaveIdempotencyKey
-          ? { 'Idempotency-Key': this.cloudSaveIdempotencyKey }
-          : {}
-      });
-    }
+    const res = await requestFormalFloorPlanSave({
+      request: api.request,
+      floorPlanId: currentDraftId,
+      payload,
+      idempotencyKey: this.cloudSaveIdempotencyKey
+    });
 
     if (res && res.success && res.data && res.data._id) {
       this.persistServerDraftId(leadId, res.data._id);
@@ -4908,6 +4897,7 @@ Page({
 
     await api.request('/measurements', 'POST', {
       floorPlanId,
+      auditId: record.auditId,
       value: record.value,
       unit: 'meters',
       type: record.type || 'length',
@@ -4915,8 +4905,8 @@ Page({
       source: 'ble',
       metadata: {
         measurementMode: 'surveying',
-        auditId: record.auditId,
-        ...(record.metadata || {})
+        ...(record.metadata || {}),
+        auditId: record.auditId
       },
       measuredAt: record.measuredAt
     });
