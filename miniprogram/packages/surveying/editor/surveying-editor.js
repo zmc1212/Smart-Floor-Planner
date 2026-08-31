@@ -3,6 +3,7 @@ const surveyGraph = require('../utils/surveyWallGraph.js');
 const surveySnapEngine = require('../utils/survey/snap/snap-engine.js');
 const surveyCanvasRenderer = require('../utils/surveyCanvasRenderer.js');
 const surveyViewportInteraction = require('../utils/surveyViewportInteraction.js');
+const surveyCursorPlacementIndex = require('../utils/surveyCursorPlacementIndex.js');
 const {
   toAimClientPoint,
   wallGrabDelta,
@@ -114,7 +115,7 @@ const DIMENSION_COLLISION_GAP_PX = 8;
 const DIMENSION_PRIMARY_GAP_PX = 22;
 const CURSOR_LENS_SIZE_PX = 120;
 const CURSOR_LENS_SCALE = 0.12;
-const DOCK_AIM_MIN_FRAME_MS = 24;
+const DOCK_AIM_MIN_FRAME_MS = 16;
 const DOCK_SNAP_INTERVAL_MS = 48;
 const DOCK_LENS_PAINT_INTERVAL_MS = 120;
 const CURSOR_DRAG_CANVAS_MAX_DPR = 2;
@@ -524,12 +525,14 @@ Page({
     this.cursorDragStartPoint = null;
     this.cursorDragAnimationFrame = null;
     this.dockAimAnimationFrame = null;
+    this.dockAimAnimationFrameKind = '';
     this.pendingDockAimPoint = null;
     this.lastDockAimAt = 0;
     this.lastDockSnapAt = 0;
     this.dockLensPaintedAt = 0;
     this.cursorDragPreviousCanvasPoint = null;
     this.cursorDragHadSnapGuide = false;
+    this.cursorDragSnapGuideKey = '';
     this.transientCanvasMode = null;
     this.viewportInteraction = null;
     this.viewportInteractionFrameQueue = null;
@@ -560,6 +563,8 @@ Page({
     this.surveyCanvasDpr = sysInfo.pixelRatio || 1;
     this.surveyRenderScene = null;
     this.surveySceneRevision = 0;
+    this.cursorPlacementIndex = null;
+    this.cursorPlacementIndexSceneRevision = -1;
     this.surveyCanvasInitRevision = 0;
     this.cursorCanvasInitRevision = 0;
     this.canvasRectRevision = 0;
@@ -1805,6 +1810,7 @@ Page({
     this.cursorDragCanvasPoint = null;
     this.cursorDragPreviousCanvasPoint = null;
     this.cursorDragHadSnapGuide = false;
+    this.cursorDragSnapGuideKey = '';
     this.cursorDragCanvasShowCursor = true;
     this.cursorDragClientPoint = null;
     this.cursorDragSnapGuide = null;
@@ -2913,6 +2919,8 @@ Page({
     });
     this.surveyRenderScene = scene;
     this.surveySceneRevision = (this.surveySceneRevision || 0) + 1;
+    this.cursorPlacementIndex = null;
+    this.cursorPlacementIndexSceneRevision = -1;
     const wallUnionSignature = ['closed', 'open'].map((group) => {
       const plan = scene.wallSolidPlans && scene.wallSolidPlans[group];
       const rings = (plan && plan.rings) || [];
@@ -3828,6 +3836,24 @@ Page({
     };
   },
 
+  getCursorPlacementIndex(floor) {
+    if (
+      this.cursorPlacementIndex &&
+      this.cursorPlacementIndexSceneRevision === this.surveySceneRevision
+    ) {
+      return this.cursorPlacementIndex;
+    }
+    if (!floor || !this.surveyRenderScene) return null;
+    const index = surveyCursorPlacementIndex.createCursorPlacementIndex({
+      floor,
+      scene: this.surveyRenderScene
+    });
+    if (!index || !index.complete) return null;
+    this.cursorPlacementIndex = index;
+    this.cursorPlacementIndexSceneRevision = this.surveySceneRevision;
+    return index;
+  },
+
   getCursorPlacementCandidate(clientPoint, options) {
     const floor = surveyGraph.getActiveFloor(this.draft);
     const rawPoint = this.canvasPointToMm(clientPoint);
@@ -3837,11 +3863,45 @@ Page({
     const searchToleranceMm = opts.useHysteresis
       ? surveySnapEngine.SNAP_RELEASE_PX / Math.max(0.000001, viewport.scale)
       : surveyGraph.CLOSE_TOLERANCE_MM;
-    const target = surveyGraph.getCursorPlacementTarget(
-      floor,
-      rawPoint,
-      searchToleranceMm
-    );
+    const acquireToleranceMm = surveySnapEngine.SNAP_ACQUIRE_PX /
+      Math.max(0.000001, viewport.scale);
+    const placementIndex = this.getCursorPlacementIndex(floor);
+    if (opts.useHysteresis && placementIndex && this.cursorSnapLock && this.cursorSnapLock.candidate) {
+      const retained = surveyCursorPlacementIndex.resolveCursorPlacementLock(
+        placementIndex,
+        rawPoint,
+        this.cursorSnapLock.candidate,
+        searchToleranceMm,
+        acquireToleranceMm
+      );
+      if (retained) {
+        this.cursorSnapLock = {
+          candidate: retained,
+          pointMm: retained.pointMm
+        };
+        return {
+          type: retained.type,
+          pointMm: retained.pointMm,
+          nodeId: retained.nodeId || '',
+          wallId: retained.wallId || '',
+          snapLine: retained.snapLine || '',
+          axis: retained.axis || '',
+          referencePoint: retained.referencePoint || null
+        };
+      }
+      this.cursorSnapLock = null;
+    }
+    const target = placementIndex
+      ? surveyCursorPlacementIndex.resolveCursorPlacementTarget(
+        placementIndex,
+        rawPoint,
+        searchToleranceMm
+      )
+      : surveyGraph.getCursorPlacementTarget(
+        floor,
+        rawPoint,
+        searchToleranceMm
+      );
     let resolvedTarget = target;
     if (opts.useHysteresis) {
       const snapCandidate = target && ['vertex', 'wall', 'alignment'].includes(target.type)
@@ -4061,6 +4121,17 @@ Page({
     }
 
     const floor = surveyGraph.getActiveFloor(this.draft);
+    const placementIndex = this.getCursorPlacementIndex(floor);
+    const indexedSegment = surveyCursorPlacementIndex.getCursorPlacementGuideSegment(
+      placementIndex,
+      candidate
+    );
+    if (indexedSegment && indexedSegment.startMm && indexedSegment.endMm) {
+      return {
+        startPoint: this.mmToCanvasPoint(indexedSegment.startMm),
+        endPoint: this.mmToCanvasPoint(indexedSegment.endMm)
+      };
+    }
     let wall = candidate.wallId ? surveyGraph.getWall(floor, candidate.wallId) : null;
     if (!wall && candidate.nodeId) {
       wall = (floor.walls || []).find((item) => (
@@ -4109,12 +4180,22 @@ Page({
     this.cursorDragClientPoint = { x: displayPoint.x, y: displayPoint.y };
     this.cursorDragSnapGuide = this.buildCursorDragSnapGuide(candidate);
     const hasSnap = !!this.cursorDragSnapGuide;
+    const snapGuideKey = hasSnap
+      ? [
+        candidate.type || '',
+        candidate.wallId || '',
+        candidate.nodeId || '',
+        candidate.snapLine || '',
+        candidate.axis || ''
+      ].join(':')
+      : '';
+    const snapGuideChanged = snapGuideKey !== (this.cursorDragSnapGuideKey || '');
     const paintLens = includeLens
       || !!(options && options.paintLens)
-      || hasSnap
-      || this.cursorDragHadSnapGuide;
-    const forceFullPaint = paintLens || hasSnap || this.cursorDragHadSnapGuide;
+      || snapGuideChanged;
+    const forceFullPaint = paintLens || snapGuideChanged;
     this.cursorDragHadSnapGuide = hasSnap;
+    this.cursorDragSnapGuideKey = snapGuideKey;
     if (paintLens) {
       this.buildCursorLens(
         candidate && candidate.pointMm ? candidate.pointMm : this.canvasPointToMm(clientPoint),
@@ -4194,8 +4275,35 @@ Page({
 
   cancelDockCursorAim(options) {
     const keepPending = !!(options && options.keepPending);
+    if (this.dockAimAnimationFrame !== null) {
+      if (this.dockAimAnimationFrameKind === 'timeout') {
+        clearTimeout(this.dockAimAnimationFrame);
+      }
+    }
     this.dockAimAnimationFrame = null;
+    this.dockAimAnimationFrameKind = '';
     if (!keepPending) this.pendingDockAimPoint = null;
+  },
+
+  queueDockCursorAim() {
+    if (this.dockAimAnimationFrame !== null) return;
+    const render = () => {
+      this.dockAimAnimationFrame = null;
+      this.dockAimAnimationFrameKind = '';
+      if (this.cursorPlacementState !== 'dragging' || !this.pendingDockAimPoint) return;
+      const now = Date.now();
+      this.lastDockAimAt = now;
+      const runSnap = now - (this.lastDockSnapAt || 0) >= DOCK_SNAP_INTERVAL_MS;
+      this.flushDockCursorAim(false, { skipSnap: !runSnap });
+    };
+    const elapsedMs = Date.now() - (this.lastDockAimAt || 0);
+    const delayMs = Math.max(0, DOCK_AIM_MIN_FRAME_MS - elapsedMs);
+    if (delayMs === 0) {
+      render();
+      return;
+    }
+    this.dockAimAnimationFrameKind = 'timeout';
+    this.dockAimAnimationFrame = setTimeout(render, delayMs);
   },
 
   flushDockCursorAim(includeLens, options) {
@@ -5708,13 +5816,11 @@ Page({
       }, dragData));
       return;
     }
-    // Cover-view touchmove is denser than paint frames. WeChat type-2d canvas
-    // rAF lags the finger, so throttle and paint synchronously instead.
-    const now = Date.now();
-    if (now - this.lastDockAimAt < DOCK_AIM_MIN_FRAME_MS) return;
-    this.lastDockAimAt = now;
-    const runSnap = now - (this.lastDockSnapAt || 0) >= DOCK_SNAP_INTERVAL_MS;
-    this.flushDockCursorAim(false, { skipSnap: !runSnap });
+    // Keep the newest cover-view coordinate and consume it in the next 16 ms
+    // slot. Dropping every event inside a 24 ms window made the reticle move in
+    // visible chunks; this leading/trailing queue follows the latest finger
+    // position without stacking stale points or waiting on Canvas rAF.
+    this.queueDockCursorAim();
   },
 
   onCursorDragEnd(e) {

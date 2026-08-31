@@ -1227,6 +1227,131 @@ test('an outer-face closing line keeps its physical x coordinate and bridges to 
   });
 });
 
+test('a straight preview from an outer wall face stays on the anchor axis', () => {
+  let draft = surveyGraph.setThickness(surveyGraph.createSurveyDraft(), 200);
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 6000, yMm: 0 }, 6000);
+  draft = commitWall(draft, { xMm: 6000, yMm: 4000 }, 4000);
+  draft = commitWall(draft, { xMm: 0, yMm: 4000 }, 6000);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 4000);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: -200 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(target.snapLine, 'outer');
+
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = surveyGraph.startPreview(draft, { xMm: 4000, yMm: -200 });
+  floor = surveyGraph.getActiveFloor(draft);
+  const anchor = surveyGraph.getNode(floor, floor.session.anchorNodeId);
+
+  assert.deepEqual({ xMm: anchor.xMm, yMm: anchor.yMm }, { xMm: 3000, yMm: 0 });
+  assert.deepEqual(floor.session.previewPoint, { xMm: 4000, yMm: 0 });
+  assert.equal(floor.session.previewAngleDeg, 0);
+  assert.equal(floor.session.previewOuterFaceWallId, target.wallId);
+});
+
+test('a rightward partition leaving an existing T vertex keeps the room-edge axis from the first drag frame', () => {
+  let draft = surveyGraph.setThickness(surveyGraph.createSurveyDraft(), 200);
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 6000, yMm: 0 }, 6000);
+  draft = commitWall(draft, { xMm: 6000, yMm: 4000 }, 4000);
+  draft = commitWall(draft, { xMm: 0, yMm: 4000 }, 6000);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 4000);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const closePartition = (source, startPoint, endPoint) => {
+    let floor = surveyGraph.getActiveFloor(source);
+    const target = surveyGraph.getCursorPlacementTarget(
+      floor,
+      startPoint,
+      surveyGraph.CLOSE_TOLERANCE_MM
+    );
+    assert.ok(target.type === 'wall' || target.type === 'vertex');
+    let next = surveyGraph.snapCursorToWall(
+      surveyGraph.startWallSnap(source),
+      target.pointMm,
+      target
+    );
+    next = surveyGraph.startPreview(next, endPoint);
+    floor = surveyGraph.getActiveFloor(next);
+    assert.equal(floor.session.closeCandidateType, 'partition');
+    next = surveyGraph.commitPreviewLength(
+      next,
+      floor.session.previewLengthMm,
+      'manual'
+    );
+    return surveyGraph.confirmClosure(next);
+  };
+
+  // First divide the rectangle vertically, then divide only its left half.
+  // The remaining right half now starts at the same T vertex shown in the
+  // device sequence (it becomes a cross after closure): moving right must keep
+  // y=2000 throughout.
+  draft = closePartition(draft, { xMm: 3000, yMm: 0 }, { xMm: 3000, yMm: 4000 });
+  draft = closePartition(draft, { xMm: 3000, yMm: 2000 }, { xMm: 0, yMm: 2000 });
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(target.type, 'vertex');
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  floor = surveyGraph.getActiveFloor(draft);
+  const stationaryCursor = surveyGraph.getCursorDisplayPoint(floor, floor.session);
+  assert.deepEqual(
+    { xMm: stationaryCursor.xMm, yMm: stationaryCursor.yMm },
+    { xMm: 3000, yMm: 2000 }
+  );
+
+  // At 250 mm the finger is still inside the neighbouring miter/outer-face
+  // capture band. The old path copied that face's y=2200 and visibly jumped by
+  // one wall thickness before the drag continued to the right.
+  draft = surveyGraph.startPreview(draft, { xMm: 3250, yMm: 2000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.previewPoint.yMm, stationaryCursor.yMm);
+
+  draft = surveyGraph.startPreview(draft, { xMm: 3889, yMm: 2000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 3889, yMm: 2000 });
+
+  draft = surveyGraph.startPreview(draft, { xMm: 6000, yMm: 2000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 6000, yMm: 2000 });
+  assert.equal(floor.session.closeCandidateType, 'partition');
+  draft = surveyGraph.commitPreviewLength(
+    draft,
+    floor.session.previewLengthMm,
+    'manual'
+  );
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 4);
+  assert.equal(surveyGraph.validateSurveyDraft(draft, { mode: 'full' }).valid, true);
+  const rightDivider = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start && end && start.yMm === 2000 && end.yMm === 2000 &&
+      Math.min(start.xMm, end.xMm) === 3000 && Math.max(start.xMm, end.xMm) === 6000;
+  });
+  assert.ok(rightDivider, 'right-side room divider left the original horizontal axis');
+});
+
 test('cursor placement away from walls returns a free target without mutating the wall graph', () => {
   const draft = createWallDraft();
   const floor = surveyGraph.getActiveFloor(draft);

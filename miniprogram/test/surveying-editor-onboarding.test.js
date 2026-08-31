@@ -130,7 +130,7 @@ test('surveying toolbar uses the approved rail cuts and stateful BLE icons', () 
 
 test('selected walls do not replace the right rail with a contextual action panel', () => {
   assert.doesNotMatch(editorWxml, /class="tool-group primary-tools object-tools"/);
-  assert.match(editorWxml, /wx:if="\{\{!selectedOpening\}\}" class="tool-group primary-tools"/);
+  assert.match(editorWxml, /wx:if="\{\{!selectedOpening && !selectedSpace\}\}" class="tool-group primary-tools"/);
   assert.doesNotMatch(editorScript, /OBJECT_TOOLS|objectToolsVisible|objectTools:/);
   assert.doesNotMatch(editorWxss, /object-tools|tool-helper/);
 });
@@ -163,9 +163,11 @@ test('dock cursor drag aims upper-left of the finger; wall drag uses sticky grab
   assert.match(editorScript, /DOCK_SNAP_INTERVAL_MS/);
   assert.match(editorScript, /CURSOR_DRAG_CANVAS_MAX_DPR/);
   assert.match(editorScript, /this\.flushDockCursorAim\(false\)/);
-  assert.match(editorScript, /WeChat type-2d canvas[\s\S]*rAF lags the finger/);
+  assert.match(editorScript, /this\.queueDockCursorAim\(\)/);
+  assert.match(editorScript, /setTimeout\(render, delayMs\)/);
+  assert.match(editorScript, /consume it in the next 16 ms[\s\S]*without stacking stale points/);
   assert.match(editorScript, /skipSnap: !runSnap/);
-  assert.doesNotMatch(editorScript, /this\.queueDockCursorAim\(\)/);
+  assert.doesNotMatch(editorScript, /now - this\.lastDockAimAt < DOCK_AIM_MIN_FRAME_MS/);
   assert.match(editorScript, /flushDockCursorAim\(true\)/);
   assert.match(editorScript, /rawReleasePoint\s*\? this\.toDockAimPoint\(rawReleasePoint\)/);
   assert.match(editorScript, /Math\.hypot\(rawReleasePoint\.x - startPoint\.x, rawReleasePoint\.y - startPoint\.y\)/);

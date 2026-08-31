@@ -8,6 +8,7 @@ const RECT = { width: 520, height: 520 };
 const ROTATIONS = [0, 1, 2, 3];
 const THICKNESSES_MM = [100, 200, 400];
 const MEASUREMENT_SIDES = ['left', 'right'];
+const SHARED_WALL_BODY_SIDES = ['left', 'right'];
 const SNAP_FACES = ['inner', 'outer'];
 const BRANCH_DIRECTIONS = ['negative', 'positive'];
 
@@ -82,7 +83,8 @@ function createPartitionedTwoRoomDraft(options) {
   const opts = options || {};
   let draft = createClosedRectangleDraft(opts);
   let floor = surveyGraph.getActiveFloor(draft);
-  const sourceWall = floor.walls[0];
+  const reverseSharedWall = opts.sharedWallBodySide === 'right';
+  const sourceWall = floor.walls[reverseSharedWall ? 2 : 0];
   const targetPoint = wallTargetPoint(floor, sourceWall, 'inner');
   const target = surveyGraph.getCursorPlacementTarget(
     floor,
@@ -96,7 +98,12 @@ function createPartitionedTwoRoomDraft(options) {
   );
   draft = commitPreview(
     draft,
-    rotatePoint({ xMm: 3000, yMm: 4000 }, opts.rotation || 0)
+    rotatePoint(
+      reverseSharedWall
+        ? { xMm: 3000, yMm: 0 }
+        : { xMm: 3000, yMm: 4000 },
+      opts.rotation || 0
+    )
   );
   floor = surveyGraph.getActiveFloor(draft);
   assert.equal(floor.session.state, 'closing');
@@ -487,15 +494,17 @@ test('a T branch from a shared wall keeps both room contracts and the wall solid
   const cases = [];
   ROTATIONS.forEach((rotation) => {
     THICKNESSES_MM.forEach((thicknessMm) => {
-      SNAP_FACES.forEach((snapFace) => {
-        BRANCH_DIRECTIONS.forEach((branchDirection) => {
-          cases.push({
-            rotation,
-            thicknessMm,
-            measurementSide: 'left',
-            snapFace,
-            branchDirection,
-            label: `rotation=${rotation * 90}, thickness=${thicknessMm}, snap=${snapFace}, branch=${branchDirection}`
+      SHARED_WALL_BODY_SIDES.forEach((sharedWallBodySide) => {
+        SNAP_FACES.forEach((snapFace) => {
+          BRANCH_DIRECTIONS.forEach((branchDirection) => {
+            cases.push({
+              rotation,
+              thicknessMm,
+              sharedWallBodySide,
+              snapFace,
+              branchDirection,
+              label: `rotation=${rotation * 90}, thickness=${thicknessMm}, body=${sharedWallBodySide}, snap=${snapFace}, branch=${branchDirection}`
+            });
           });
         });
       });
@@ -550,6 +559,129 @@ test('a T branch from a shared wall keeps both room contracts and the wall solid
     assert.equal(missingSamples.length, 0, `shared wall lost ${missingSamples.length} samples`);
   });
   assertMatrixPassed(failures, cases, 'shared-wall T scenarios');
+});
+
+test('a shared-wall partition keeps the original wall body on both drag directions', () => {
+  const cases = [];
+  ROTATIONS.forEach((rotation) => {
+    THICKNESSES_MM.forEach((thicknessMm) => {
+      SHARED_WALL_BODY_SIDES.forEach((sharedWallBodySide) => {
+        SNAP_FACES.forEach((snapFace) => {
+          BRANCH_DIRECTIONS.forEach((branchDirection) => {
+            cases.push({
+              rotation,
+              thicknessMm,
+              sharedWallBodySide,
+              snapFace,
+              branchDirection,
+              label: `rotation=${rotation * 90}, thickness=${thicknessMm}, body=${sharedWallBodySide}, snap=${snapFace}, branch=${branchDirection}`
+            });
+          });
+        });
+      });
+    });
+  });
+
+  const failures = collectMatrixFailures(cases, (scenario) => {
+    let draft = createPartitionedTwoRoomDraft(scenario);
+    let floor = surveyGraph.getActiveFloor(draft);
+    const useCounts = {};
+    floor.spaces.filter((space) => space.closed).forEach((space) => {
+      space.wallIds.forEach((wallId) => {
+        useCounts[wallId] = (useCounts[wallId] || 0) + 1;
+      });
+    });
+    const sourceWall = floor.walls.find((wall) => useCounts[wall.id] === 2);
+    assert.ok(sourceWall, 'shared wall was not found');
+    assert.equal(sourceWall.bodyNormalSide, '', 'shared wall must exercise inferred body side');
+    const sourceWallId = sourceWall.id;
+    const sourceGeometry = surveyGraph.buildWallSnapGeometry(floor, sourceWall);
+    const expectedBodyOffset = {
+      xMm: Math.round(sourceGeometry.outerStart.xMm - sourceGeometry.start.xMm),
+      yMm: Math.round(sourceGeometry.outerStart.yMm - sourceGeometry.start.yMm)
+    };
+    const originalSpaces = floor.spaces.filter((space) => space.closed).map((space) => ({
+      id: space.id,
+      name: space.name,
+      renderBoundary: surveyGraph.buildSpaceRenderBoundaryPoints(floor, space),
+      inner: surveyGraph.buildSpaceDimensionPlan(floor, space).inner,
+      areaMm2: surveyGraph.calculateSpaceAreaMm2(draft, space.id)
+    }));
+    const targetPoint = wallTargetPoint(floor, sourceWall, scenario.snapFace);
+    const target = surveyGraph.getCursorPlacementTarget(
+      floor,
+      targetPoint,
+      surveyGraph.CLOSE_TOLERANCE_MM
+    );
+    draft = surveyGraph.snapCursorToWall(
+      surveyGraph.startWallSnap(draft),
+      target.pointMm,
+      target
+    );
+    const canonicalEnd = {
+      xMm: scenario.branchDirection === 'negative' ? 0 : 6000,
+      yMm: 2000
+    };
+    draft = surveyGraph.startPreview(draft, rotatePoint(canonicalEnd, scenario.rotation));
+    floor = surveyGraph.getActiveFloor(draft);
+    assert.equal(floor.session.closeCandidateType, 'partition');
+    const partitionSourceSpaceId = floor.session.partitionSourceSpaceId;
+    const unaffectedBefore = originalSpaces.find((space) => space.id !== partitionSourceSpaceId);
+    assert.ok(unaffectedBefore, 'unaffected closed room was not found');
+    draft = surveyGraph.commitPreviewLength(
+      draft,
+      floor.session.previewLengthMm,
+      'scenario-matrix'
+    );
+    floor = surveyGraph.getActiveFloor(draft);
+    const partitionWallId = floor.walls[floor.walls.length - 1].id;
+    draft = surveyGraph.confirmClosure(draft);
+    floor = surveyGraph.getActiveFloor(draft);
+
+    assert.equal(floor.spaces.filter((space) => space.closed).length, 3);
+    assert.equal(floor.nodes.length, 8);
+    assert.equal(floor.walls.length, 10);
+    const sourceSegments = splitSourceSegments(floor, sourceWallId);
+    assert.equal(sourceSegments.length, 2);
+    sourceSegments.forEach((segment) => {
+      assert.equal(segment.bodyNormalSide, scenario.sharedWallBodySide);
+      const geometry = surveyGraph.buildWallSnapGeometry(floor, segment);
+      assert.deepEqual({
+        xMm: Math.round(geometry.outerStart.xMm - geometry.start.xMm),
+        yMm: Math.round(geometry.outerStart.yMm - geometry.start.yMm)
+      }, expectedBodyOffset);
+    });
+    const wallUseCounts = {};
+    floor.spaces.filter((space) => space.closed).forEach((space) => {
+      space.wallIds.forEach((wallId) => {
+        wallUseCounts[wallId] = (wallUseCounts[wallId] || 0) + 1;
+      });
+    });
+    sourceSegments.forEach((segment) => assert.equal(wallUseCounts[segment.id], 2));
+    assert.equal(wallUseCounts[partitionWallId], 2);
+    floor.walls.forEach((wall) => {
+      if (wall.id === partitionWallId || sourceSegments.some((segment) => segment.id === wall.id)) return;
+      assert.equal(wallUseCounts[wall.id], 1);
+    });
+    const unaffectedAfter = floor.spaces.find((space) => space.id === unaffectedBefore.id);
+    assert.ok(unaffectedAfter, 'unaffected closed room was not preserved');
+    assert.equal(unaffectedAfter.name, unaffectedBefore.name);
+    assert.deepEqual(
+      surveyGraph.buildSpaceRenderBoundaryPoints(floor, unaffectedAfter),
+      unaffectedBefore.renderBoundary
+    );
+    assert.deepEqual(
+      surveyGraph.buildSpaceDimensionPlan(floor, unaffectedAfter).inner,
+      unaffectedBefore.inner
+    );
+    assert.equal(
+      surveyGraph.calculateSpaceAreaMm2(draft, unaffectedAfter.id),
+      unaffectedBefore.areaMm2
+    );
+    assertFullShadowMatches(draft);
+  });
+
+  assertMatrixPassed(failures, cases, 'shared-wall partition body-side scenarios');
 });
 
 test('deleting one shared divider leaves an unrelated third closed space unchanged', () => {

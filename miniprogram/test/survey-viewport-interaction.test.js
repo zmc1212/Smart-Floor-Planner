@@ -122,7 +122,7 @@ test('editor owns viewport frames from the primary Canvas and coalesces fallback
   assert.match(editorSource, /this\.cancelViewportDraftSync\(\);/);
   assert.match(editorSource, /if \(!this\.surveyCtx \|\| !this\.canvasRect \|\| !this\.surveyRenderScene \|\| !this\.viewportInteractionFrameQueue\)/);
 
-  const cursorInit = editorSource.match(/initCursorDragCanvas\(\) \{[\s\S]*?\n  \},\n\n  initViewportInteractionFrameQueue/);
+  const cursorInit = editorSource.match(/initCursorDragCanvas\(\) \{[\s\S]*?\n  \},/);
   assert.ok(cursorInit, 'cursor Canvas initializer should remain separate from viewport frame ownership');
   assert.doesNotMatch(cursorInit[0], /viewportInteractionFrameQueue/);
 });

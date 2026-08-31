@@ -463,6 +463,10 @@ function createScenarioCatalog(surveyGraph) {
     let draft = rectangle(6000, 4000);
     let floor = surveyGraph.getActiveFloor(draft);
     draft = surveyGraph.addOpeningToWall(draft, floor.walls[0].id, 'door');
+    floor = surveyGraph.getActiveFloor(draft);
+    draft = surveyGraph.updateOpening(draft, floor.openings[0].id, {
+      centerOffsetMm: 1200
+    });
     draft = snapCursor(draft, { xMm: 3000, yMm: 0 });
     return commitWall(draft, { xMm: 3000, yMm: -2200 });
   }
@@ -689,7 +693,7 @@ function createScenarioCatalog(surveyGraph) {
     },
     {
       key: 'opening-split-branch', category: '墙体与构件', label: '带门墙体分支',
-      description: '带门墙被交点切分后，开口仍映射到正确墙段。', expected: { walls: 6, spaces: 1, openings: 1 },
+      description: '门洞避开节点保护区时，宿主墙切分后仍映射到正确墙段。', expected: { walls: 6, spaces: 1, openings: 1 },
       build: openingSplitBranch
     },
     {

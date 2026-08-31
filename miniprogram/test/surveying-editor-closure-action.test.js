@@ -242,3 +242,22 @@ test('releasing a straight-wall drag on any valid closure target closes immediat
     /maybeAutoConfirmSharedBoundaryClose\(\s*surveyGraph\.commitPreviewLength\(this\.draft, session\.previewLengthMm, 'preview'\)/
   );
 });
+
+test('opening split conflicts reuse the existing non-layout closure toast path', () => {
+  assert.match(
+    editorScript,
+    /if \(directClosureHit\) \{[\s\S]*?surveyGraph\.confirmClosure\(this\.draft\)[\s\S]*?catch \(err\) \{\s*wx\.showToast\(\{ title: err\.message \|\| '闭合失败，请重新测量', icon: 'none' \}\);/
+  );
+  assert.match(
+    editorScript,
+    /onConfirmClose\(\) \{[\s\S]*?surveyGraph\.confirmClosure\(this\.draft\)[\s\S]*?catch \(err\) \{\s*wx\.showToast\(\{ title: err\.message \|\| '闭合失败，请重新测量', icon: 'none' \}\);/
+  );
+  assert.match(
+    editorScript,
+    /applyBleReadingToPendingWall\(distanceInMeters\) \{[\s\S]*?surveyGraph\.commitPreviewLength\(this\.draft, valueMm, 'ble'\)[\s\S]*?catch \(err\) \{\s*wx\.showToast\(\{ title: err\.message \|\| '更新墙体失败', icon: 'none' \}\);/
+  );
+  assert.match(
+    editorScript,
+    /if \(session\.state === 'awaitingLength' \|\| session\.state === 'wallPreview'\) \{[\s\S]*?surveyGraph\.commitPreviewLength\(this\.draft, value, 'manual'\)[\s\S]*?catch \(err\) \{\s*wx\.showToast\(\{ title: err\.message \|\| '输入无效', icon: 'none' \}\);/
+  );
+});

@@ -2121,6 +2121,30 @@ test('free dock drag dirty-clears only the reticle instead of the full overlay',
   assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'));
 });
 
+test('a retained wall snap dirty-clears the moving reticle without repainting the full overlay', () => {
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 400, height: 500 },
+    { x: 220, y: 120 },
+    {
+      dpr: 1,
+      previousPoint: { x: 180, y: 120 },
+      paintLens: false,
+      snapGuide: {
+        startPoint: { x: 80, y: 120 },
+        endPoint: { x: 280, y: 120 }
+      }
+    }
+  );
+
+  assert.equal(recorder.clearRects.some((rect) => rect.width === 400 && rect.height === 500), false);
+  const orangeGuide = recorder.strokeDetails.find((detail) => detail.strokeStyle === '#f07a21');
+  assert.ok(orangeGuide);
+  assert.equal(orangeGuide.path[0][2], 120);
+  assert.equal(orangeGuide.path[1][2], 120);
+});
+
 test('canvas cursor drag suppresses the transient green cursor and guides', () => {
   const recorder = createRecordingContext();
   surveyCanvasRenderer.drawDraggingCursor(
@@ -2570,6 +2594,40 @@ test('stationary canvas cursor stays on the visible outer corner after an outer 
   });
   assert.notDeepEqual(expectedMm, surveyGraph.getNode(snappedFloor, snappedFloor.session.anchorNodeId));
   assert.deepEqual(expectedMm, geometry.outerStart);
+});
+
+test('straight outer-face snapping renders an axis-aligned orange preview', () => {
+  const closedDraft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(closedDraft);
+  const topWall = floor.walls[0];
+  const geometry = surveyGraph.buildWallRenderGeometry(floor, topWall);
+  const outerMidpoint = {
+    xMm: Math.round((geometry.outerStart.xMm + geometry.outerEnd.xMm) / 2),
+    yMm: Math.round((geometry.outerStart.yMm + geometry.outerEnd.yMm) / 2)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    outerMidpoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  let previewDraft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(closedDraft),
+    target.pointMm,
+    target
+  );
+  previewDraft = surveyGraph.startPreview(previewDraft, {
+    xMm: outerMidpoint.xMm + 800,
+    yMm: outerMidpoint.yMm
+  });
+  const scene = createScene(previewDraft);
+
+  assert.equal(target.snapLine, 'outer');
+  assert.ok(scene.previewWall);
+  assert.equal(scene.previewWall.lineOnly, true);
+  assert.equal(
+    scene.previewWall.measurementStartPoint.y,
+    scene.previewWall.measurementEndPoint.y
+  );
 });
 
 test('an outer-corner continuation preview aligns its wall body with the adjacent wall', () => {

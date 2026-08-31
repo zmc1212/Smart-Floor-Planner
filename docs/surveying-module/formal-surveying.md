@@ -175,11 +175,16 @@ copy back to `layoutData`.
   compatibility baseline. It does not change snap/closure tolerances, closure
   inference, multi-room shared-wall behavior, face extraction, wall bodies,
   Canvas/WXML/Less, or the operator workflow. Apart from the targeted internal-L
-  face-inheritance correction and continued-divider boundary clamp below,
-  previously correct valid operations keep `nodes`, `walls`,
-  `openings`, `spaces`, and `session` unchanged apart from timestamp fields; the
-  face-inheritance correction also leaves `nodes`, `walls`, `openings`, and
-  `session` unchanged, while the clamp affects only the invalid overshoot path.
+  face-inheritance correction, continued-divider boundary clamp, and shared-wall
+  split body-side and opening-conflict corrections below, previously correct valid operations remain
+  unchanged. The face-inheritance correction leaves `nodes`, `walls`, `openings`,
+  and `session` unchanged; the clamp affects only the invalid overshoot path; the
+  body-side correction freezes the already-rendered physical side onto the source
+  shared wall and its replacement segments without changing centerlines,
+  measurement faces, openings, Space topology, or the operator flow. The opening
+  correction rejects a conflicting divider before a host-wall split and reuses
+  the editor's existing non-layout error Toast; the rejected immutable transaction
+  leaves walls, nodes, Spaces, openings, history, and persistence unchanged.
   Shared-node joins, endpoint-only
   collinear adjacency, correctly split T/cross junctions, shared walls, and
   `closure-bridge` remain valid.
@@ -209,9 +214,17 @@ copy back to `layoutData`.
   opening placement.   The cursor is placed only by dragging the dock control
   onto the canvas, so a drag does not lock the viewport.
   That dock drag aims 24×40 CSS px upper-left of the finger
-  and clamps the aim point to the canvas. Cover-view touchmove is throttled
-  and free-follow frames dirty-clear the reticle without a snap search so the
-  overlay can keep up with the finger. Canvas wall-endpoint
+  and clamps the aim point to the canvas. Cover-view touchmove uses a 16 ms
+  leading/trailing queue that consumes the latest point instead of dropping the
+  last coordinate inside a throttle window. One cursor-placement index is built
+  per stable render scene and reuses projected vertices, inner/outer wall faces,
+  and closed-space alignment axes while dragging. Unlocked free-follow frames
+  skip the full snap search and dirty-clear only the reticle. The 16 px acquire /
+  26 px release hysteresis stays unchanged: a retained wall or alignment lock
+  slides continuously along that target instead of staying pinned to its first
+  acquired coordinate; a higher-priority vertex or wall can still take over
+  inside the acquire radius, while a vertex remains a fixed lock. Magnifier crops keep their lower update cadence,
+  and a retained snap frame no longer clears the full overlay. Canvas wall-endpoint
   drags keep the grab delta from touchstart with a south-east-biased
   hit and must not apply the dock offset, so the first preview frame
   cannot invent a wall segment.
@@ -268,6 +281,24 @@ copy back to `layoutData`.
   trapezoid that cuts a triangular hole out of the join. Collinear remaining
   walls with opposite thickness keep a stepped outer facade and fill the outer
   step corner so inner faces stay aligned at the shared node.
+- When an operator starts at the middle of the wall shared by two closed rooms
+  and drags a divider to the opposite boundary on either side, the original
+  shared wall must freeze its current physical body side before it is split.
+  Every replacement with the same `topologySourceWallId` inherits the same
+  `bodyNormalSide`; segment bodies must not be re-inferred independently from
+  whichever Space happens to reference each segment first after face sync.
+  Leftward and rightward partitions are mirror-equivalent, and the untouched
+  original room keeps its render boundary, net area, and clear dimensions.
+- Before splitting an opening host wall, every interior cut is checked against
+  the opening's physical span expanded on both sides by one current/incident
+  divider-wall thickness. Contact with that protected span throws
+  `OPENING_SPLIT_CONFLICT` with `分隔线压到门窗，请先调整门窗位置`. Direct
+  release, the 「合」 action, manual length entry, and BLE length entry surface
+  the same error through their existing Toast paths. The immutable transaction
+  must not return partial wall, node, Space, opening, or history mutation. Safe
+  openings beyond the clearance remap to one replacement host segment without
+  changing world position. Cross-segment openings remain unsupported; the
+  operator must move or remove the opening before retrying the divider.
 - A T-branch started on a closed exterior wall middle keeps one topology node
   and physical wall. Inner/outer start selects the near/far point on the source
   wall boundary and the corresponding first-wall start inset; it does not
@@ -277,8 +308,13 @@ copy back to `layoutData`.
   source-space centroid may re-evaluate that side.   Orthogonal gesture input is
   stored on the internal graph, while the preview outline, orange/red path,
   live-dimension endpoints, and green cursor remain coincident on one continuous
-  path. Straight-mode vertex or closure snaps may change at most one axis; they
-  must not copy an off-axis vertex onto the orange preview. The wall-drag lens
+  path. Straight-mode vertex, closure, or outer-face snaps may change at most
+  one axis; they must not copy an off-axis vertex or wall-thickness offset onto
+  the orange preview. The physical outer face remains the contact/closure
+  target, while any off-axis gap is handled by the short orthogonal bridge on
+  confirmation. A drag leaving an existing T/cross vertex along a room edge
+  keeps that start axis even while its first frame remains inside a neighbouring
+  miter/outer-face capture band; it must not jump by one wall thickness. The wall-drag lens
   reports the actual snap type and shows a small green crosshair rather than the
   canvas Fig.1 reticle. Wall-endpoint dragging follows the sticky grab aim point,
   not a dock-style upper-left finger offset. Adjacent working faces meet at their line intersection, so the previous
@@ -338,6 +374,26 @@ changes to this contract. Topology writes through `confirmClosure`,
 aligned with extracted half-edge faces;
 `test/survey-topology-face-shadow-matrix.test.js` and
 `test/survey-kernel-invariants.test.js` are the catalog and invariant gates.
+`test/survey-closure-scenario-matrix.test.js` is the 4,096-case deterministic
+formal-closure catalog. It covers orthogonal rectangles, concave L/U and stepped
+outlines, diagonal triangles and quadrilaterals, release points inside/outside
+the effective closure tolerance, same-wall adjacent rooms, sequential
+four-room cross partitions, short manual/BLE divider continuations, two-cut
+opening hosts with safe positions immediately beside the split points and atomic
+conflict rejection, nearest-boundary partitions inside concave rooms, every
+100/200/400 mm source/divider thickness pair, formal save/restore, and
+immutable rejection of self-crossing closures. The catalog varies quarter-turn rotation, mirrored winding,
+100/200/400 mm thickness, both measurement sides, inner/outer face snaps, and
+direct versus committed closure. Every successful case must pass full
+validation and Face shadow agreement, keep each wall owned by one or two
+closed Spaces, retain valid area and clear dimensions, preserve untouched
+rooms, clamp divider nodes to the first boundary, keep split shared-wall body
+sides equal to the pre-split rendered side, preserve safe opening positions,
+and reject conflicting openings with the specified error while leaving the input
+draft byte-for-byte unchanged. Safe placements beside a split keep the opening
+span outside the junction's one-wall-thickness clearance. A touching or
+overlapping divider cut is blocked; the catalog does not model a cross-segment
+opening.
 Real-device or WeChat DevTools evidence is required
 when the change involves native Canvas, BLE, or host UI behavior.
 Deploy the nullable audit migration and Admin API before the Mini Program. An

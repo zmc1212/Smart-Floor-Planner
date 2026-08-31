@@ -3360,6 +3360,28 @@ function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
   };
 }
 
+function preserveSharedWallBodyNormalSide(floor, wall) {
+  if (!floor || !wall || wall.bodyNormalSide === 'left' || wall.bodyNormalSide === 'right') {
+    return wall;
+  }
+  if (findClosedSpacesForWall(floor, wall.id).length < 2) return wall;
+
+  const segment = buildBaseWallSegment(floor, wall);
+  const leftNormal = segment && normalForMeasurementSide(segment.start, segment.end, 'left');
+  const rightNormal = segment && normalForMeasurementSide(segment.start, segment.end, 'right');
+  if (!segment || !leftNormal || !rightNormal) return wall;
+
+  // A shared wall with no explicit body side currently derives its physical
+  // side from the first closed Space that references it. After a split, each
+  // replacement segment can have a different first Space, which flips one
+  // half of the same wall by a full thickness. Freeze the pre-split rendered
+  // normal once so every clone preserves the already visible wall body.
+  wall.bodyNormalSide = dot(segment.normal, leftNormal) >= dot(segment.normal, rightNormal)
+    ? 'left'
+    : 'right';
+  return wall;
+}
+
 function pointAlongWall(floor, wall, nodeId) {
   const start = getNode(floor, wall.startNodeId);
   const end = getNode(floor, wall.endNodeId);
@@ -3443,24 +3465,83 @@ function replaceWallInSpaces(floor, wallId, replacementIds) {
 }
 
 function remapOpeningsForSplitWall(floor, originalWall, segments) {
+  const originalStartAlongMm = getWallMeasurementInsets(originalWall).start -
+    normalizeMeasurementExtension(originalWall.measurementStartExtensionMm);
   ensureOpenings(floor).forEach((opening) => {
     if (opening.wallId !== originalWall.id) return;
-    const originalInsets = getWallMeasurementInsets(originalWall);
-    const centerOffset = (opening.centerOffsetMm || 0) + originalInsets.start;
+    const centerOffset = (opening.centerOffsetMm || 0) + originalStartAlongMm;
     const target = segments.find((segment) => (
       centerOffset >= segment.startAlongMm - 1 &&
       centerOffset <= segment.endAlongMm + 1
     )) || segments[segments.length - 1];
     if (!target) return;
     opening.wallId = target.wall.id;
+    const targetStartAlongMm = getWallMeasurementInsets(target.wall).start -
+      normalizeMeasurementExtension(target.wall.measurementStartExtensionMm);
     opening.centerOffsetMm = Math.round(
       centerOffset -
       target.startAlongMm -
-      getWallMeasurementInsets(target.wall).start
+      targetStartAlongMm
     );
     normalizeOpeningToWall(floor, opening);
     normalizeOpeningDirection(opening);
   });
+}
+
+function resolveOpeningSplitClearanceMm(floor, originalWall, cutNode) {
+  const sourceId = originalWall.topologySourceWallId || originalWall.id;
+  const incidentThicknesses = (floor.walls || [])
+    .filter((wall) => (
+      wall &&
+      wall.id !== originalWall.id &&
+      (wall.topologySourceWallId || wall.id) !== sourceId &&
+      cutNode &&
+      (wall.startNodeId === cutNode.id || wall.endNodeId === cutNode.id)
+    ))
+    .map((wall) => Number(wall.thicknessMm) || 0);
+  return Math.max(
+    0,
+    Number(floor.session && floor.session.thicknessMm) || 0,
+    ...incidentThicknesses
+  );
+}
+
+function assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength) {
+  const openings = ensureOpenings(floor).filter((opening) => (
+    opening && opening.wallId === originalWall.id
+  ));
+  if (!openings.length) return;
+
+  const openingOriginAlongMm = getWallMeasurementInsets(originalWall).start -
+    normalizeMeasurementExtension(originalWall.measurementStartExtensionMm);
+  const interiorCuts = (cutItems || []).filter((item) => (
+    item && item.node && item.alongMm > 1 && item.alongMm < wallLength - 1
+  ));
+  if (!interiorCuts.length) return;
+
+  for (let openingIndex = 0; openingIndex < openings.length; openingIndex += 1) {
+    const opening = openings[openingIndex];
+    const range = openingDomain.getOpeningRange(opening);
+    const openingStartAlongMm = openingOriginAlongMm + range.startMm;
+    const openingEndAlongMm = openingOriginAlongMm + range.endMm;
+    for (let cutIndex = 0; cutIndex < interiorCuts.length; cutIndex += 1) {
+      const cut = interiorCuts[cutIndex];
+      const clearanceMm = resolveOpeningSplitClearanceMm(floor, originalWall, cut.node);
+      if (
+        openingEndAlongMm < cut.alongMm - clearanceMm ||
+        openingStartAlongMm > cut.alongMm + clearanceMm
+      ) {
+        continue;
+      }
+      const error = new Error('分隔线压到门窗，请先调整门窗位置');
+      error.code = 'OPENING_SPLIT_CONFLICT';
+      error.wallId = originalWall.id;
+      error.openingId = opening.id;
+      error.cutAlongMm = cut.alongMm;
+      error.clearanceMm = clearanceMm;
+      throw error;
+    }
+  }
 }
 
 function splitWallAtNodes(floor, wallId, cutNodeIds) {
@@ -3480,6 +3561,10 @@ function splitWallAtNodes(floor, wallId, cutNodeIds) {
     })),
     { node: getNode(floor, originalWall.endNodeId), alongMm: wallLength }
   ]);
+  assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength);
+  if (cutItems.length > 2) {
+    preserveSharedWallBodyNormalSide(floor, originalWall);
+  }
 
   const segmentRecords = [];
   for (let index = 0; index < cutItems.length - 1; index += 1) {
@@ -3678,11 +3763,19 @@ function startPreview(draft, rawPoint) {
   if (rawOuterFaceProjection && session.mode === 'straight') {
     const outerDx = Math.abs(rawOuterFaceProjection.end.xMm - rawOuterFaceProjection.start.xMm);
     const outerDy = Math.abs(rawOuterFaceProjection.end.yMm - rawOuterFaceProjection.start.yMm);
-    // Preserve the physical outer coordinate selected by the cursor, while
-    // retaining any orthogonal/rectangle snap for the other coordinate.
-    previewPoint = outerDx >= outerDy
+    const faceAlignedPoint = outerDx >= outerDy
       ? { xMm: previewPoint.xMm, yMm: rawOuterFaceProjection.point.yMm }
       : { xMm: rawOuterFaceProjection.point.xMm, yMm: previewPoint.yMm };
+    // Keep the physical outer face as the eventual contact/closure target, but
+    // preserve an along-face endpoint snap only while the result remains on the
+    // current straight axis. Never copy an off-axis wall-thickness offset onto
+    // the orange preview; confirmClosure bridges that remaining gap instead.
+    previewPoint = constrainStraightSnapPoint(
+      session,
+      anchor,
+      faceAlignedPoint,
+      previewPoint
+    );
   } else if (rayIntersection) {
     const distToAnchor = distanceMm(anchor, previewPoint);
     if (distToAnchor > rayIntersection.distanceMm) {

@@ -173,7 +173,11 @@ Floor-plan writes keep the formal-v4 400 envelope gate. Drafts run `quick` valid
 
 Measurement-audit uploads send canonical top-level `auditId` and retain `metadata.auditId` for compatibility. Formal surveying requires a non-empty value of at most 200 characters. PostgreSQL's nullable `measurements.audit_id` partial unique index on `(floor_plan_id, audit_id)` is the final idempotency guard: a first create returns 201 / `deduplicated: false`; a repeat returns the same record with 200 / `deduplicated: true`. Existing null audit rows remain unchanged.
 
-This stability hardening keeps every previously correct survey path and UI unchanged: snap/closure tolerances, closure inference, multi-room shared walls, face extraction, wall solids, Canvas, WXML/Less, and the operator flow remain the baseline. The targeted corrections cover two internal-divider defects: an L-shaped divider now keeps reused exterior walls on the source-room face instead of forcing `offset`, and a divider continued after a short confirmed first segment now stops at the first opposite-boundary hit instead of crossing the room wall. The face-inheritance correction changes only affected Space-derived area; the continuation correction changes only the previously invalid overshoot path. Outward adjacent-room behavior remains unchanged.
+This stability hardening keeps every previously correct survey path and UI unchanged: snap/closure tolerances, closure inference, multi-room shared walls, face extraction, wall solids, Canvas, WXML/Less, and the operator flow remain the baseline. The targeted corrections cover four internal-divider defects: an L-shaped divider keeps reused exterior walls on the source-room face instead of forcing `offset`; a divider continued after a short confirmed first segment stops at the first opposite-boundary hit instead of crossing the room wall; splitting a wall shared by two closed rooms freezes its already-rendered body side before cloning replacement segments, so a leftward partition cannot flip one segment by a wall thickness merely because post-sync Space order differs; and a divider that would split through an existing door/window is rejected before wall mutation instead of remapping that opening onto one replacement segment. The shared-wall correction changes only affected `bodyNormalSide` values. The opening correction reuses the existing non-layout error-toast path; centerlines, measurement faces, openings, Spaces, history, route/API/permission boundaries, WXML/Less, and persistence remain unchanged when it rejects a closure. Outward adjacent-room behavior remains unchanged.
+
+The 4,096-case deterministic formal-closure catalog now exercises orthogonal and diagonal outlines, effective release tolerance, same-wall adjacent rooms, sequential four-room cross partitions, nearest-boundary partitions inside concave rooms, every source/divider wall-thickness pair, short manual/BLE divider continuations, safe door/window remapping immediately beside split points, atomic door/window-conflict rejection, formal save/restore, and immutable self-crossing rejection across rotations, mirrored winding, measurement sides, face snaps, and direct/committed closure actions. This adds no WXML/Less, route, API, permission, or persistence change.
+
+Opening-split contract: before any host wall is split, every interior cut is checked against the opening's physical span plus the junction clearance of one current/incident divider-wall thickness. A touching or overlapping cut throws `OPENING_SPLIT_CONFLICT` with `分隔线压到门窗，请先调整门窗位置`; the immutable transaction returns no partial wall/node/Space/opening/history mutation, and direct release, the “合” action, manual length entry, and BLE length entry surface that message through their existing Toast. Safe placements beyond the clearance still remap to one replacement host segment without changing the opening's world position. Cross-segment openings remain unsupported; the operator must move or remove the opening before retrying the divider.
 
 The only measurement editor is
 `packages/surveying/editor/surveying-editor`, entered with `leadId`
@@ -230,6 +234,11 @@ rectangles, outer-only opposite-thickness steps); Admin
 inner L extends into the merged room, opposite-thickness collinear walls stay a
 stepped facade and fill the outer step corner so inner faces stay aligned, and the two remaining
 walls keep overlapping rectangular solids instead of a convex-mitered trapezoid.
+Partitioning either side of a two-room shared wall freezes the wall's current
+physical side before splitting it. All replacement segments with the same
+`topologySourceWallId` inherit one `bodyNormalSide`; post-sync Space ordering
+cannot flip only one segment. Left/right partitions remain mirror-equivalent,
+and the untouched room keeps the same render boundary, net area, and clear dims.
 Closed exterior-wall T branches retain one topology node and physical wall.
 An inferred orthogonal close absorbs a collinear continuation into the last
 measured wall rather than leaving a butt joint. Two new walls started from a
@@ -248,9 +257,14 @@ start without a second tap. The formal canvas cursor and both dock states
 (`drawCursorGlyph` + `icons/cursor-reticle.png`). Dock wall-drop drags aim that
 reticle 24×40 CSS px upper-left of the finger and clamp the aim point to the
 canvas; snap, the corner magnifier, and release all use the aim point, not the
-finger pad. Dock drag throttles cover-view touchmove to 24 ms, skips snap
-search on free-follow frames, and dirty-clears the reticle on free placement so
-a full overlay blit does not stall the finger. Canvas wall-endpoint drags keep a sticky grab delta from
+finger pad. Dock input uses a 16 ms leading/trailing latest-point queue instead
+of dropping intermediate touchmove updates. One placement index per stable
+formal scene reuses visible vertices, inner/outer wall segments, and closed-room
+alignment axes. Free-follow frames skip the full snap search and dirty-clear
+only the reticle; retained wall/alignment locks slide continuously on the same
+target while vertex locks stay fixed, using the existing 16 px acquire / 26 px
+release hysteresis. Magnifier crops remain low cadence, and retained snap frames
+no longer full-clear the overlay. Canvas wall-endpoint drags keep a sticky grab delta from
 touchstart and a south-east-biased hit (`surveyCursorAim`); they must not apply
 the dock offset, so the first preview frame cannot invent a wall. The drag magnifier overlays a small green
 crosshair at its centre and does not magnify that glyph. During that wall-drop wait (`wallSnapPending`), the
@@ -272,8 +286,10 @@ must not overwrite that choice. Turn direction and the
 source-space centroid cannot re-evaluate that side. Orthogonal touch input stays
 on the internal graph, while the preview outline, orange/red path,
 live-dimension endpoints, and green cursor remain coincident. Straight-mode
-vertex or closure snaps may change at most one axis and must not copy an
-off-axis vertex onto the orange preview; the wall-drag lens reports the actual
+vertex, closure, or outer-face snaps may change at most one axis and must not
+copy an off-axis vertex or wall-thickness offset onto the orange preview. The
+physical outer face remains the contact/closure target while confirmation uses
+a short orthogonal bridge for any remaining off-axis gap; the wall-drag lens reports the actual
 snap type and shows a small green crosshair rather than the canvas Fig.1 reticle,
 following the sticky grab aim point rather than a dock-style finger offset. Adjacent red edges
 meet with equal endpoints, so beginning a second segment cannot shift the cursor
@@ -315,11 +331,14 @@ with a short orthogonal bridge (`closure-bridge`) instead of yanking the last
 wall onto an off-axis topology corner (which would draw a diagonal seam inside
 the shared wall body). Corner
 continuations and shared internal partitions keep their existing closure behavior.
+Leaving an existing T/cross vertex along a room edge keeps the original axis on
+the first drag frame even while the pointer is still inside a neighbouring
+miter/outer-face capture band; the reticle and preview cannot jump by one wall thickness.
 An internal divider also remains clamped to its source closed room after a short
 first segment has been confirmed: continuation preview stops at the first
 opposite-boundary hit and closes there instead of crossing the wall. The focused
-cursor-placement regression covers the user-provided one-drag versus continued-
-drag sequence; manual device screenshot verification remains pending, with no
+cursor-placement regressions cover both the user-provided T-vertex right-drag
+sequence and the one-drag versus continued-drag boundary sequence; manual device screenshot verification remains pending, with no
 WXML/Less, route, API, permission, or persisted-schema change.
 
 ## Shared APIs and utilities

@@ -47,6 +47,10 @@ function wallSplitWithOpening() {
   const hostWall = floor.walls[0];
   draft = surveyGraph.addOpeningToWall(draft, hostWall.id, 'door');
   floor = surveyGraph.getActiveFloor(draft);
+  draft = surveyGraph.updateOpening(draft, floor.openings[0].id, {
+    centerOffsetMm: 750
+  });
+  floor = surveyGraph.getActiveFloor(draft);
   const start = surveyGraph.getNode(floor, hostWall.startNodeId);
   const end = surveyGraph.getNode(floor, hostWall.endNodeId);
   const midpoint = {

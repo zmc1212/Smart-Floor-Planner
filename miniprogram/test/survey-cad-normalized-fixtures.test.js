@@ -49,7 +49,7 @@ const EXPECTED = {
       ['n2>n3', 2000, 200, 'left', 0, 0], ['n3>n4', 3000, 200, 'left', 0, 0],
       ['n4>n1', 2000, 200, 'left', 0, 0], ['n5>n6', 1000, 200, 'right', 200, 0]
     ],
-    openings: [['w1', 'door', 1050, 900]],
+    openings: [['w1', 'door', 750, 900]],
     spaces: [['w1,w2,w3,w4,w5', true]],
     session: { state: 'wallCommitted', anchorNodeId: 'n6', selectedWallId: '', selectedOpeningId: '' }
   }

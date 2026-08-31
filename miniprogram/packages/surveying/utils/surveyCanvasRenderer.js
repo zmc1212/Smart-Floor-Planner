@@ -2422,7 +2422,6 @@ function shouldFullPaintDraggingCursor(options, point) {
   const opts = options || {};
   if (opts.showCursor === false) return true;
   if (opts.forceFullPaint) return true;
-  if (opts.snapGuide) return true;
   if (opts.paintLens !== false) return true;
   if (!opts.previousPoint || !point) return true;
   const lens = lensPanelRect(opts.lensRect);
@@ -2671,7 +2670,7 @@ function drawDraggingCursor(ctx, rect, point, options) {
   // directly on the canvas. In that path this lightweight layer contributes
   // only the lens, otherwise it would paint a second green cursor.
   const showCursor = !options || options.showCursor !== false;
-  const snapGuide = fullPaint && showCursor && options && options.snapGuide;
+  const snapGuide = showCursor && options && options.snapGuide;
   if (snapGuide) {
     const drawAxis = (axis, axisPoint) => {
       if (!axisPoint) return;
