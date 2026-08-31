@@ -38,23 +38,30 @@ export async function GET(request: Request) {
     const staffId = parsePostgresId(context.staff!._id, 'staffId');
     const isOwner = role === 'enterprise_admin';
     const data = await withMiniProgramPostgresTransaction(context, async (transaction) => {
-      const codes = await new ReferrerNetworkRepository(
-        transaction
-      ).listEnterpriseJoinCodes(enterpriseId, {
+      const repository = new ReferrerNetworkRepository(transaction);
+      const codes = await repository.listEnterpriseJoinCodes(enterpriseId, {
         referrerInviterStaffId: staffId,
       });
       const visibleTypes = isOwner
         ? JOIN_CODE_TYPES
         : JOIN_CODE_TYPES.filter((codeType) => codeType === 'referrer');
-      const byType = visibleTypes.map((codeType) => {
+      const byType = await Promise.all(visibleTypes.map(async (codeType) => {
         const active =
           codes.find((row) => row.codeType === codeType && isActiveJoinCode(row)) ?? null;
+        const inviterDisplayName =
+          active?.codeType === 'referrer'
+            ? await repository.getReferrerInvitationDisplayName({
+                enterpriseId,
+                inviterStaffId: active.inviterStaffId,
+              })
+            : null;
         return {
           codeType,
           label: codeType === 'staff' ? '员工入驻码' : '我的推荐人入驻码',
           scope: codeType === 'staff' ? 'enterprise' : 'own',
           hasActive: Boolean(active),
           code: active ? enterpriseJoinCodeToDto(active) : null,
+          inviterDisplayName,
           token: active
             ? createEnterpriseJoinToken(
                 active.enterpriseId,
@@ -64,7 +71,7 @@ export async function GET(request: Request) {
               )
             : null,
         };
-      });
+      }));
       return {
         enterpriseName: context.enterprise?.name || '',
         scope: isOwner ? 'enterprise' : 'own',

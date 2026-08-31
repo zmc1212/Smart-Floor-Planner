@@ -184,6 +184,17 @@ export interface EnterpriseReferrerNetworkBranchRecord {
   items: EnterpriseReferrerMembershipRecord[];
 }
 
+export interface EnterpriseReferrerNetworkSummaryBranchRecord {
+  staff: {
+    id: bigint | null;
+    displayName: string;
+    role: string | null;
+    status: string;
+  } | null;
+  total: number;
+  activeCount: number;
+}
+
 export type ReferrerMembershipStatus = 'active' | 'disabled' | 'exited';
 
 export class ReferrerNetworkRepository {
@@ -260,6 +271,23 @@ export class ReferrerNetworkRepository {
       )
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  /**
+   * Public onboarding may identify only the active employee who owns a
+   * personal referrer invitation. Generated login names are never public.
+   */
+  async getReferrerInvitationDisplayName(input: {
+    enterpriseId: bigint;
+    inviterStaffId?: bigint | null;
+  }) {
+    if (input.inviterStaffId == null) return null;
+    const inviter = await this.findEligibleReferrerInviter(
+      input.enterpriseId,
+      input.inviterStaffId
+    );
+    const displayName = inviter?.displayName.trim() || '';
+    return displayName || null;
   }
 
   async listEnterpriseJoinCodes(
@@ -1406,6 +1434,138 @@ export class ReferrerNetworkRepository {
       },
       branches,
     };
+  }
+
+  /**
+   * The Mini Program overview must remain proportional to the number of
+   * employees, not the number of referrers. Keep member rows out of this
+   * query; employee details use the paged membership query instead.
+   */
+  async listEnterpriseReferrerNetworkSummary(enterpriseId: bigint) {
+    const [staffRows, countRows] = await Promise.all([
+      this.transaction
+        .select({
+          id: adminUsers.id,
+          displayName: adminUsers.displayName,
+          username: adminUsers.username,
+          role: adminUsers.role,
+          status: adminUsers.status,
+        })
+        .from(adminUsers)
+        .where(
+          and(
+            eq(adminUsers.enterpriseId, enterpriseId),
+            inArray(adminUsers.role, [...REFERRER_NETWORK_STAFF_ROLES])
+          )
+        ),
+      this.transaction
+        .select({
+          inviterStaffId: referrerEnterpriseMemberships.invitedByStaffId,
+          total: count(),
+          activeCount: sql<number>`count(*) filter (where ${referrerEnterpriseMemberships.status} = 'active')`,
+        })
+        .from(referrerEnterpriseMemberships)
+        .where(eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId))
+        .groupBy(referrerEnterpriseMemberships.invitedByStaffId),
+    ]);
+
+    const countsByInviter = new Map(
+      countRows.map((row) => [
+        row.inviterStaffId?.toString() ?? 'unassigned',
+        {
+          total: Number(row.total ?? 0),
+          activeCount: Number(row.activeCount ?? 0),
+        },
+      ])
+    );
+    const currentStaffIds = new Set(staffRows.map((staff) => staff.id.toString()));
+    const branches: EnterpriseReferrerNetworkSummaryBranchRecord[] = staffRows.map(
+      (staff) => {
+        const counts = countsByInviter.get(staff.id.toString()) || {
+          total: 0,
+          activeCount: 0,
+        };
+        return {
+          staff: {
+            id: staff.id,
+            displayName: staff.displayName.trim() || staff.username,
+            role: staff.role,
+            status: staff.status,
+          },
+          ...counts,
+        };
+      }
+    );
+
+    let unassignedCount = 0;
+    let unassignedActiveCount = 0;
+    for (const row of countRows) {
+      const inviterId = row.inviterStaffId?.toString();
+      if (inviterId && currentStaffIds.has(inviterId)) continue;
+      unassignedCount += Number(row.total ?? 0);
+      unassignedActiveCount += Number(row.activeCount ?? 0);
+    }
+    if (unassignedCount > 0) {
+      branches.push({
+        staff: null,
+        total: unassignedCount,
+        activeCount: unassignedActiveCount,
+      });
+    }
+
+    branches.sort((left, right) => {
+      const leftOwner = left.staff?.role === 'enterprise_admin' ? 0 : 1;
+      const rightOwner = right.staff?.role === 'enterprise_admin' ? 0 : 1;
+      if (leftOwner !== rightOwner) return leftOwner - rightOwner;
+      const leftKind = left.staff?.id != null ? 0 : 1;
+      const rightKind = right.staff?.id != null ? 0 : 1;
+      if (leftKind !== rightKind) return leftKind - rightKind;
+      if (left.activeCount !== right.activeCount) return right.activeCount - left.activeCount;
+      return (left.staff?.displayName || '').localeCompare(
+        right.staff?.displayName || '',
+        'zh-CN'
+      );
+    });
+
+    return {
+      summary: {
+        employeeCount: staffRows.length,
+        total: countRows.reduce((total, row) => total + Number(row.total ?? 0), 0),
+        activeCount: countRows.reduce(
+          (total, row) => total + Number(row.activeCount ?? 0),
+          0
+        ),
+        unassignedCount,
+      },
+      branches,
+    };
+  }
+
+  async getEnterpriseReferrerNetworkStaff(enterpriseId: bigint, staffId: bigint) {
+    const rows = await this.transaction
+      .select({
+        id: adminUsers.id,
+        displayName: adminUsers.displayName,
+        username: adminUsers.username,
+        role: adminUsers.role,
+        status: adminUsers.status,
+      })
+      .from(adminUsers)
+      .where(
+        and(
+          eq(adminUsers.id, staffId),
+          eq(adminUsers.enterpriseId, enterpriseId),
+          inArray(adminUsers.role, [...REFERRER_NETWORK_STAFF_ROLES])
+        )
+      )
+      .limit(1);
+    const staff = rows[0] ?? null;
+    return staff
+      ? {
+          ...staff,
+          displayName: staff.displayName.trim() || staff.username,
+        }
+      : null;
   }
 
   async disableEnterpriseReferrerMembership(enterpriseId: bigint, membershipId: bigint) {

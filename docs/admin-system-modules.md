@@ -94,6 +94,17 @@ multi-segment L divider splits one closed room. It no longer forces the reused
 exterior boundary to the offset face, so Admin room summaries/previews exclude
 exterior wall bodies and the new divider solid. Centerline nodes/walls and
 outward adjacent-room behavior are unchanged.
+The mirrored survey kernel keeps the ordinary `350 mm` direct-snap tolerance,
+but an eligible long orthogonal traverse can close a larger accumulated residual
+through audited wall-length adjustments. Each participating wall is limited to
+`2%` of its measured length, clamped to `25–150 mm`, and the total residual is
+hard-capped at `1,000 mm`; a chain outside those limits is rejected rather than
+balanced or completed with a micro bridge. This path exists for Mini Program / Admin
+runtime parity even though current Admin routes do not invoke editor mutations.
+Projected previews that resolve to the active chain start retain start-closure
+semantics, while reset-cursor joins remain merge closures; zero-rotation drag
+guides use the exact viewport bounds. Routes, APIs, permissions, and persisted
+graph data are unchanged.
 DXF generation is likewise read-only: `admin/src/lib/dxf.ts` adapts the graph
 to the MIT-licensed writer, emits unioned inner/outer wall `LINE` faces after
 opening gaps, inserts hinged-door blocks with an open 90° thick leaf, gray dashed
@@ -105,13 +116,18 @@ without a closed space before emitting a download.
 
 `POST /api/floorplans` and `PUT /api/floorplans/[id]` retain the formal-v4 400
 envelope gate. Draft writes run `quick` validation; completed writes run the
-enhanced `full` topology validation and require at least one closed Space before
-the database mutation and preview generation. An invalid formal graph returns
-422 with the first code/message and `validation.mode/errors/stats`; the API does
-not repair or rewrite the client graph. The strengthened full gate rejects
-proper crossings, unsplit T endpoints, geometrically coincident endpoints owned
-by different node IDs, and positive-length collinear overlaps while preserving
-valid shared-node, split T/cross, shared-wall, and `closure-bridge` graphs.
+enhanced `full` validation and require at least one closed Space before the
+database mutation and preview generation. An invalid formal graph returns 422
+with the first code/message and `validation.mode/errors/stats`; the API does not
+repair or rewrite the client graph. The strengthened full gate rejects proper
+crossings, unsplit T endpoints, geometrically coincident endpoints owned by
+different node IDs, and positive-length collinear overlaps. It also requires
+mode-valid stored `lengthMm` / `angleDeg`, non-negative integer measurement
+inset/extension fields that preserve a positive effective measured length, and
+a complete integer `rawMeasuredLengthMm` / `closureAdjustmentMm` pair whose sum
+equals the stored length. Synthesized zero-reading `closure-merge` /
+`closure-bridge` connectors without a raw reading remain valid, as do valid
+shared-node, split T/cross, and shared-wall graphs.
 
 `POST /api/measurements` accepts canonical top-level `auditId` and compatible
 `metadata.auditId`; formal-survey audits require a non-empty value of at most
@@ -121,7 +137,10 @@ index on `(floor_plan_id, audit_id)`, so first creation returns 201 with
 `deduplicated: true`. Existing null rows are not backfilled or merged. Deploy
 the nullable migration and Admin API before the Mini Program; application
 rollback retains the column and index, and historical cleanup is a separate
-dry-run/approval operation.
+dry-run/approval operation. The Mini Program now persists each accepted audit
+before upload, scopes and binds it to the formal plan when the ID becomes
+available, and retries it without silently truncating the queue; this does not
+change the Admin measurement API, data model, permission, or tenant boundary.
 
 ## Commission boundary
 

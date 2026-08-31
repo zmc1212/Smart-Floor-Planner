@@ -78,7 +78,7 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(styles, /margin:\s*0 -28rpx 20rpx/);
   assert.match(styles, /env\(safe-area-inset-bottom\)/);
   assert.match(styles, /font-size:24rpx/);
-  assert.match(componentTemplate, /role === 'enterprise_admin' && focus === 'overview'/);
+  assert.match(componentTemplate, /role === 'enterprise_admin' \|\| role === 'designer' \|\| role === 'measurer'\) && focus === 'overview'/);
   assert.match(componentTemplate, /经营大盘/);
   assert.match(componentTemplate, /dashboardPeriod\.subtitle/);
   assert.match(componentTemplate, /需优先处理事项/);
@@ -87,19 +87,45 @@ test('phase 14 workbench uses only server-derived role data and the sole formal-
   assert.match(componentTemplate, /joinCode\.label/);
   assert.match(component, /openJoinCodes\(\)/);
   assert.match(componentTemplate, /bindtap="openReferrerRoster"/);
-  assert.match(componentTemplate, /查看推广人/);
+  assert.match(componentTemplate, /referrerRoster\.label/);
   assert.match(component, /enterprise-referrers\/enterprise-referrers/);
   assert.match(component, /openQuickNav/);
   assert.match(component, /openEnterpriseException/);
   assert.match(component, /payload\.dashboard/);
   assert.match(componentTemplate, /focus === 'operations'/);
+  assert.match(componentTemplate, /personal-dashboard-card-{{item\.key}}/);
+  assert.match(componentTemplate, /staff-data-designer-v1\.png/);
+  assert.match(componentTemplate, /staff-data-measurer-v1\.png/);
+  assert.match(componentTemplate, /scheme-delivery-kpi-v1\.png/);
+  assert.match(componentTemplate, /signing-rate-kpi-v1\.png/);
+  assert.match(componentTemplate, /我的转化路径/);
+  assert.match(componentTemplate, /仅统计我的业务数据/);
+  assert.match(componentTemplate, /personalDashboardStages/);
+  assert.match(component, /normalizePersonalDashboard/);
   assert.match(component, /openBleConnector/);
   assert.match(component, /showBLEConnector/);
-  assert.match(componentTemplate, /链接测距仪/);
-  assert.match(componentTemplate, /bleConnected \? '已连接' : '未连接'/);
+  assert.match(componentTemplate, /连接测距仪/);
+  assert.match(componentTemplate, /bleConnected \? '设备已连接' : '设备未连接'/);
   assert.match(componentTemplate, /<ble-connector/);
   assert.doesNotMatch(componentTemplate, /进入量房编辑器/);
   assert.doesNotMatch(component, /openSurveyDirect/);
+});
+
+test('role data artwork is packaged as transparent PNG within the Mini Program budget', () => {
+  const assetRoot = path.join(miniProgramRoot, 'images', 'operations-dashboard');
+  const names = [
+    'staff-data-designer-v1.png',
+    'staff-data-measurer-v1.png',
+    'scheme-delivery-kpi-v1.png',
+    'signing-rate-kpi-v1.png',
+  ];
+
+  for (const name of names) {
+    const bytes = fs.readFileSync(path.join(assetRoot, name));
+    assert.equal(bytes.subarray(1, 4).toString(), 'PNG', `${name} must be PNG`);
+    assert.ok(bytes.length <= 300 * 1024, `${name} exceeds the generated-artwork budget`);
+    assert.ok(bytes.includes(Buffer.from('tRNS')), `${name} must preserve transparent pixels`);
+  }
 });
 
 test('measurer overview hero links the rangefinder instead of opening the editor', () => {

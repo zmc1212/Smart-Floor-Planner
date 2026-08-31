@@ -213,6 +213,15 @@ test('a projected close candidate does not become a direct start-vertex snap', (
     floor.session.alignmentSnapGuide && floor.session.alignmentSnapGuide.type,
     'start-vertex-closure'
   );
+
+  const committed = surveyGraph.commitPreviewLength(draft, 1900, 'manual');
+  const committedFloor = surveyGraph.getActiveFloor(committed);
+  assert.equal(committedFloor.session.state, 'closing');
+  assert.equal(committedFloor.session.closeCandidateType, 'start');
+  assert.throws(
+    () => surveyGraph.confirmClosure(committed),
+    /闭合误差超过/
+  );
 });
 
 test('dragging an adjacent straight room onto a shared-wall closure point closes directly', () => {

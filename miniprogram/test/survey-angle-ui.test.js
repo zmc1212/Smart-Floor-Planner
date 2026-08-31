@@ -28,7 +28,7 @@ test('angle measurement uses one sheet for phone, manual, and Pythagorean states
 test('angle measurement keeps real sensor and BLE lifecycle handlers', () => {
   assert.match(pageScript, /onAngleManualInput\(\)[\s\S]*stopPhoneAngleMeasurement\(\)/);
   assert.match(pageScript, /onAngleMeasureTab\(e\)[\s\S]*clearBleMeasureTimers\(\)/);
-  assert.match(pageScript, /if \(target === 'ignore'\) return/);
+  assert.match(pageScript, /if \(target === 'ignore'\) \{[\s\S]*?return;?[\s\S]*?\}/);
   assert.match(pageScript, /angleTriangleAmm: nextTriangle\.a \? String\(Math\.round\(nextTriangle\.a \* 1000\)\)/);
   assert.match(pageScript, /onNumberClose\(\)[\s\S]*stopPhoneAngleMeasurement\(\)/);
 });

@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const miniProgramRoot = path.resolve(__dirname, '..');
 const pageRoot = path.join(miniProgramRoot, 'packages', 'business', 'enterprise-referrers');
+const branchRoot = path.join(miniProgramRoot, 'packages', 'business', 'enterprise-referrer-branch');
 
 function read(name) {
   return fs.readFileSync(path.join(pageRoot, name), 'utf8');
@@ -24,6 +25,7 @@ test('enterprise referrer roster supports owner network and employee-owned lists
   const business = appConfig.subPackages.find((entry) => entry.root === 'packages/business');
 
   assert.ok(business.pages.includes('enterprise-referrers/enterprise-referrers'));
+  assert.ok(business.pages.includes('enterprise-referrer-branch/enterprise-referrer-branch'));
   assert.equal(config.navigationStyle, 'custom');
   assert.equal(config.usingComponents, undefined);
   assert.doesNotMatch(template, /<custom-tab-bar\s*\/>/);
@@ -40,8 +42,10 @@ test('enterprise referrer roster supports owner network and employee-owned lists
   assert.match(template, /networkSummary\.employeeCount/);
   assert.match(template, /networkSummary\.unassignedCount/);
   assert.match(template, /branches/);
-  assert.match(template, /branch\.staff \? '' : 'unassigned'/);
-  assert.match(template, /当前筛选下暂无推广人/);
+  assert.match(template, /network-branch-summary/);
+  assert.match(template, /查看该员工推广人/);
+  assert.match(template, /bindtap="openBranch"/);
+  assert.doesNotMatch(template, /branch-items/);
   assert.match(template, /statusChips/);
   assert.match(template, /全部|活动|已停用|已退出/);
   assert.match(template, /搜索姓名或手机号/);
@@ -51,7 +55,8 @@ test('enterprise referrer roster supports owner network and employee-owned lists
   assert.match(page, /view: requestedView === 'network' \? 'network' : ''/);
   assert.match(page, /normalizeRosterScope\(payload\.scope\)/);
   assert.match(page, /normalizeRosterView\(requestedView, scope\)/);
-  assert.match(page, /decorateNetworkBranches\(payload\.branches, canDisable\)/);
+  assert.match(page, /decorateNetworkBranches\(payload\.branches, false\)/);
+  assert.match(page, /enterprise-referrer-branch\/enterprise-referrer-branch/);
   assert.match(page, /Boolean\(isEnterpriseScope && payload\.canDisable\)/);
   assert.match(page, /\/miniprogram\/enterprise-referrers\/\$\{encodeURIComponent\(item\.id\)\}\/disable/);
   assert.match(page, /query,/);
@@ -66,7 +71,8 @@ test('enterprise referrer roster supports owner network and employee-owned lists
   const joinCodes = fs.readFileSync(path.join(miniProgramRoot, 'packages', 'business', 'enterprise-join-codes', 'enterprise-join-codes.wxml'), 'utf8');
   const mine = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'mine', 'mine.js'), 'utf8');
   assert.match(workbenchTemplate, /bindtap="openReferrerRoster"/);
-  assert.match(workbenchTemplate, /查看推广人/);
+  assert.match(workbenchTemplate, /\{\{referrerRoster\.label\}\}/);
+  assert.match(workbenchTemplate, /\{\{referrerRoster\.detail\}\}/);
   assert.match(workbench, /enterprise-referrers\/enterprise-referrers/);
   assert.match(joinCodes, /rosterLinkLabel/);
   assert.match(mine, /referrers: \(\) => wx\.navigateTo/);
@@ -93,6 +99,24 @@ test('enterprise referrer roster supports owner network and employee-owned lists
   assert.match(page, /list-pagination/);
   assert.match(template, /bindscrolltolower="onLoadMore"/);
   assert.match(template, /sfp-list-footer/);
+
+  const branchConfig = JSON.parse(fs.readFileSync(path.join(branchRoot, 'enterprise-referrer-branch.json'), 'utf8'));
+  const branchTemplate = fs.readFileSync(path.join(branchRoot, 'enterprise-referrer-branch.wxml'), 'utf8');
+  const branchPage = fs.readFileSync(path.join(branchRoot, 'enterprise-referrer-branch.js'), 'utf8');
+  const branchStyles = fs.readFileSync(path.join(branchRoot, 'enterprise-referrer-branch.less'), 'utf8');
+  assert.equal(branchConfig.navigationStyle, 'custom');
+  assert.match(navigation, /enterprise-referrer-branch\/enterprise-referrer-branch': 'referrer\.network'/);
+  assert.match(branchTemplate, /高容海的推广人|\{\{pageTitle\}\}/);
+  assert.match(branchTemplate, /搜索姓名或手机号/);
+  assert.match(branchTemplate, /电话联系/);
+  assert.match(branchTemplate, /item\.actionLabel/);
+  assert.match(branchTemplate, /bindscrolltolower="onLoadMore"/);
+  assert.match(branchPage, /view:'staff'/);
+  assert.match(branchPage, /停用后续扫码/);
+  assert.match(branchPage, /staffId:this\.data\.staffId/);
+  assert.match(branchPage, /\/miniprogram\/enterprise-referrers\/\$\{encodeURIComponent\(item\.id\)\}\/disable/);
+  assert.match(branchPage, /wx\.makePhoneCall/);
+  assert.match(branchStyles, /font-size:24rpx/);
 });
 
 test('referrer roster model keeps zero branches, deleted snapshots, and employee read-only actions', () => {
@@ -133,6 +157,7 @@ test('referrer roster model keeps zero branches, deleted snapshots, and employee
   assert.equal(ownerBranches[3].staff, null);
   assert.equal(ownerBranches[3].staffName, '历史未归属');
   assert.equal(ownerBranches[0].items[0].action, 'disable');
+  assert.equal(ownerBranches[0].staffInitial, '负');
 
   const employeeItems = model.decorateReferrerItems(source[0].items, false);
   assert.equal(employeeItems[0].action, null);

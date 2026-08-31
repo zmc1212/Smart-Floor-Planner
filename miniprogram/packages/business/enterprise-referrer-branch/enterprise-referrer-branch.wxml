@@ -1,0 +1,28 @@
+<template name="branch-referrer-card">
+  <view class="branch-referrer-card tone-{{item.statusTone}}">
+    <view class="card-copy">
+      <view class="card-header"><text class="referrer-name">{{item.displayName}}</text><view class="status-tag tag-{{item.statusTone}}"><text>{{item.statusLabel}}</text></view></view>
+      <text class="referrer-phone">{{item.phone || '暂未提供电话'}}</text>
+      <text wx:if="{{item.joinedAtLabel}}" class="joined-line">{{item.joinedAtLabel}} 加入</text>
+      <view wx:if="{{canDisable && item.actionLabel}}" class="referrer-actions">
+        <view wx:if="{{item.phone}}" class="inline-action dial-action sfp-icon-action" data-item="{{item}}" catchtap="callReferrer"><image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" /><text>电话联系</text></view>
+        <view class="inline-action disable-action" data-item="{{item}}" catchtap="disableReferrer"><text>{{item.actionLabel}}</text></view>
+      </view>
+    </view>
+  </view>
+</template>
+<view class="page">
+  <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view>
+    <view class="nav-copy"><text class="nav-title">{{pageTitle}}</text><text class="nav-subtitle">{{pageSubtitle}}</text></view>
+  </view>
+  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}" lower-threshold="120" bindscrolltolower="onLoadMore">
+    <view wx:if="{{staff}}" class="staff-summary"><view class="staff-initial">{{staffInitial}}</view><view class="staff-copy"><view class="staff-title-row"><text class="staff-name">{{staff.displayName}}</text><text class="staff-role">{{staffRoleLabel}}</text></view><text class="staff-count">推广人 {{branchSummary.total}} · 活动 {{branchSummary.activeCount}}</text></view></view>
+    <view class="chip-row"><view wx:for="{{statusChips}}" wx:key="key" class="chip {{focus === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectChip"><text>{{item.label}}</text></view></view>
+    <view class="search-surface"><image class="search-icon" src="/images/leads-v4/search.png" mode="aspectFit" /><input class="search-input" value="{{searchDraft}}" placeholder="搜索姓名或手机号" placeholder-class="search-placeholder" confirm-type="search" bindinput="onSearchInput" bindconfirm="onSearchConfirm" /></view>
+    <view wx:if="{{loading}}" class="state-card">正在读取推广人信息…</view>
+    <view wx:elif="{{error}}" class="state-card"><text class="state-error">{{error}}</text><view class="retry" bindtap="onRetry">重新加载</view></view>
+    <view wx:elif="{{!items.length}}" class="state-card"><text class="empty-title">当前没有{{emptyStatusLabel}}</text><text class="empty-desc">可更换状态或搜索关键词后重试</text></view>
+    <view wx:else class="referrer-list"><block wx:for="{{items}}" wx:for-item="referrer" wx:key="id"><template is="branch-referrer-card" data="{{item: referrer, canDisable: canDisable}}" /></block><view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view></view>
+  </scroll-view>
+</view>

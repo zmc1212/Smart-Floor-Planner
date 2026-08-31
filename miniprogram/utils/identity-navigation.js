@@ -12,8 +12,8 @@ const ROLE_LANDING_PATHS = Object.freeze({
 const ROLE_CAPABILITIES = Object.freeze({
   customer: ['customer.service', 'customer.projects', 'account'],
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
-  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'referrer.network', 'account'],
-  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'referrer.network', 'account'],
+  designer: ['staff.leads', 'staff.data', 'staff.appointments', 'staff.design', 'staff.earnings', 'referrer.network', 'account'],
+  measurer: ['staff.schedule', 'staff.data', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'referrer.network', 'account'],
   salesperson: ['promotion.records', 'promotion.commissions', 'referrer.network', 'account'],
   enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'referrer.network', 'account'],
   platform_admin: ['platform.review', 'platform.devices', 'account'],
@@ -22,7 +22,7 @@ const ROLE_CAPABILITIES = Object.freeze({
 
 const ROUTE_CAPABILITIES = Object.freeze({
   '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations'],
-  '/pages/enterprise-operations/enterprise-operations': 'enterprise.operations',
+  '/pages/enterprise-operations/enterprise-operations': ['staff.data', 'enterprise.operations'],
   '/pages/leads-management/leads-management': ['staff.leads', 'staff.tasks', 'enterprise.customers'],
   '/pages/ai-design/ai-design': ['staff.design', 'staff.surveying'],
   '/packages/platform/devices/devices': 'platform.devices',
@@ -60,6 +60,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/enterprise-join-codes/enterprise-join-codes': 'referrer.network',
   '/packages/business/enterprise-staff/enterprise-staff': 'enterprise.operations',
   '/packages/business/enterprise-referrers/enterprise-referrers': 'referrer.network',
+  '/packages/business/enterprise-referrer-branch/enterprise-referrer-branch': 'referrer.network',
   '/packages/business/customer-projects/customer-projects': 'customer.projects',
   '/packages/business/customer-project/customer-project': 'customer.projects',
   '/packages/business/service-needs/service-needs': 'customer.projects',

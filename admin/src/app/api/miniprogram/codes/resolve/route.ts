@@ -111,10 +111,18 @@ export async function POST(request: Request) {
           const enterprise = await new EnterpriseRepository(transaction).findById(
             joinCode.code.enterpriseId
           );
+          const inviterDisplayName =
+            joinCode.code.codeType === 'referrer'
+              ? await repository.getReferrerInvitationDisplayName({
+                  enterpriseId: joinCode.code.enterpriseId,
+                  inviterStaffId: joinCode.code.inviterStaffId,
+                })
+              : null;
           return {
             kind: 'onboarding' as const,
             codeType: joinCode.code.codeType,
             enterpriseName: enterprise?.name ?? null,
+            inviterDisplayName,
             result: joinCode.result,
           };
         }
@@ -192,6 +200,9 @@ export async function POST(request: Request) {
           ? {
               codeType: result.codeType,
               enterpriseName: result.enterpriseName,
+              ...('inviterDisplayName' in result && result.inviterDisplayName
+                ? { inviterDisplayName: result.inviterDisplayName }
+                : {}),
             }
           : {}),
         ...(result.kind === 'enterprise_registration'

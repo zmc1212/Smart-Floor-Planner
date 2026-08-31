@@ -7,7 +7,6 @@ FORM: design-references/role-onboarding-v1/enterprise-owner-onboarding-v1.png
 <view class="guide-page sfp-page">
   <view class="guide-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationTop + navigationHeight}}px; padding-right: {{navigationRight}}px;">
     <view class="guide-nav-title">企业负责人使用引导</view>
-    <button class="skip-action" bindtap="onSkip" aria-label="跳过企业负责人使用引导">跳过</button>
   </view>
   <view class="guide-content">
     <swiper
@@ -54,5 +53,6 @@ FORM: design-references/role-onboarding-v1/enterprise-owner-onboarding-v1.png
     <button class="primary-action" bindtap="onPrimary" hover-class="primary-action-pressed">
       {{currentStep === totalSteps - 1 ? '去分享活动码' : '下一步'}}
     </button>
+    <button class="skip-action" bindtap="onSkip" aria-label="跳过企业负责人使用引导">跳过</button>
   </view>
 </view>

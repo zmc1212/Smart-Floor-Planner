@@ -116,6 +116,34 @@ test('completed writes reject broken references before persistence', () => {
   assert.ok(errorCodes(layout, 'completed').includes('MISSING_WALL_END_NODE'));
 });
 
+test('completed writes reject incomplete or inconsistent measurement semantics', () => {
+  const missingLength = singleRoomLayout();
+  delete (missingLength.surveyGraph.floors[0].walls![0] as { lengthMm?: number }).lengthMm;
+  assert.ok(errorCodes(missingLength, 'completed').includes('MISSING_WALL_LENGTH'));
+
+  const missingAngle = singleRoomLayout();
+  const straightWall = missingAngle.surveyGraph.floors[0].walls![0] as {
+    mode?: string;
+    angleDeg?: number;
+  };
+  straightWall.mode = 'straight';
+  delete straightWall.angleDeg;
+  assert.ok(errorCodes(missingAngle, 'completed').includes('MISSING_WALL_ANGLE'));
+
+  const invalidCorrection = singleRoomLayout();
+  const correctedWall = invalidCorrection.surveyGraph.floors[0].walls![0] as {
+    measurementStartInsetMm?: number;
+    rawMeasuredLengthMm?: number;
+    closureAdjustmentMm?: number;
+  };
+  correctedWall.measurementStartInsetMm = -1;
+  correctedWall.rawMeasuredLengthMm = 3990;
+  correctedWall.closureAdjustmentMm = 5;
+  const codes = errorCodes(invalidCorrection, 'completed');
+  assert.ok(codes.includes('INVALID_WALL_MEASUREMENT_ADJUSTMENT'));
+  assert.ok(codes.includes('WALL_ADJUSTMENT_MISMATCH'));
+});
+
 test('malformed floor collections stay a structured validation failure', () => {
   const layout = singleRoomLayout();
   layout.surveyGraph.floors = [null as unknown as SurveyFloor];

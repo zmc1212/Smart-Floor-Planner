@@ -134,6 +134,14 @@ function resolveSurveyGuide(input) {
   }
 
   if ((state === 'idle' || state === 'cursorPlaced') && !walls.length) {
+    if (opts.bleInputMode) {
+      return createGuide(
+        'ble-first-wall',
+        '开启输入模式',
+        '点选方向箭头锁定第一面墙，再用测距仪读数落墙。',
+        'cursor'
+      );
+    }
     return createGuide(
       'first-wall',
       '拉出第一面墙',
@@ -143,6 +151,22 @@ function resolveSurveyGuide(input) {
   }
 
   if (state === 'cursorPlaced' || state === 'wallCommitted') {
+    if (opts.bleInputMode) {
+      if (opts.bleDirectionMode === 'auto') {
+        return createGuide(
+          'ble-auto-direction',
+          '朝向选方向',
+          '转动手机对准要量的墙，超过阈值后自动锁定方向。',
+          'cursor'
+        );
+      }
+      return createGuide(
+        'ble-manual-direction',
+        '点选方向',
+        '点选光标旁的方向箭头，再用测距仪读数落墙。',
+        'cursor'
+      );
+    }
     return createGuide(
       'next-wall',
       '继续下一面墙',

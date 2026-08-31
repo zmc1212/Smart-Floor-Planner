@@ -10,7 +10,6 @@
     style="padding-top: {{navigationTop}}px; min-height: {{navigationTop + navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
     <view class="guide-nav-title">装修服务向导</view>
-    <button class="skip-action" bindtap="onSkip" aria-label="跳过装修服务向导">跳过</button>
   </view>
 
   <view class="guide-content">
@@ -59,5 +58,6 @@
     <button class="primary-action" bindtap="onPrimary" hover-class="primary-action-pressed">
       {{currentStep === totalSteps - 1 ? '开始我的装修服务' : '下一步'}}
     </button>
+    <button class="skip-action" bindtap="onSkip" aria-label="跳过装修服务向导">跳过</button>
   </view>
 </view>

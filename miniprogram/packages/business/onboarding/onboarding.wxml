@@ -61,6 +61,9 @@
             <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
             <text>企业服务邀请</text>
           </view>
+          <view wx:if="{{inviterDisplayName}}" class="inviter-source-v7">
+            <text>由企业员工 </text><text class="inviter-name-v7">{{inviterDisplayName}}</text><text> 发起邀请</text>
+          </view>
           <text class="enterprise-name-v7">{{enterpriseName}}</text>
           <view class="referrer-role-v7">
             <image src="/packages/business/assets/onboarding-referrer-v7/promotion-person-plus-v7.png" mode="aspectFit" />

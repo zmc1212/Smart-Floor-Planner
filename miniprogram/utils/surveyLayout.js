@@ -6,6 +6,15 @@ function clone(value) {
   return value ? JSON.parse(JSON.stringify(value)) : value;
 }
 
+function clonePersistableSurveyGraph(surveyGraphData) {
+  const graph = clone(surveyGraphData);
+  const floors = graph && Array.isArray(graph.floors) ? graph.floors : [];
+  floors.forEach((floor) => {
+    if (floor && floor.session) delete floor.session.bleLockedBearingDeg;
+  });
+  return graph;
+}
+
 function isFormalSurveyLayout(layoutData) {
   return !!(
     layoutData &&
@@ -32,7 +41,7 @@ function parseFormalSurveyLayout(layoutData) {
 }
 
 function createFormalSurveyLayout(surveyGraphData, status) {
-  const graph = clone(surveyGraphData);
+  const graph = clonePersistableSurveyGraph(surveyGraphData);
   if (!graph || typeof graph !== 'object' || Array.isArray(graph)) {
     throw new Error('createFormalSurveyLayout requires a survey wall graph');
   }
@@ -62,6 +71,7 @@ module.exports = {
   FORMAL_MEASUREMENT_MODE,
   isFormalSurveyLayout,
   parseFormalSurveyLayout,
+  clonePersistableSurveyGraph,
   createFormalSurveyLayout,
   getActiveFloor
 };

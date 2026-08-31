@@ -175,8 +175,7 @@ test('role workbench identity nav left-aligns brand and enterprise name inside t
     template.indexOf('class="identity-nav"'),
     template.indexOf('class="role-hero-card enterprise-hero-card"')
   );
-  assert.match(template, /家客来 · \{\{role === 'designer' \? '家装设计顾问端'/);
-  assert.match(template, /家客来 · 经营端/);
+  assert.match(template, /role === 'enterprise_admin' \? '经营端' : role === 'designer' \? '家装设计顾问端' : '家装现场顾问端'/);
   assert.match(template, /min-height: \{\{navigationHeight\}\}px/);
   assert.match(template, /padding-right: \{\{navigationRight\}\}px/);
   assert.doesNotMatch(template, /identity-brand-row" style="height: \{\{navigationHeight\}\}px;"/);
@@ -186,7 +185,7 @@ test('role workbench identity nav left-aligns brand and enterprise name inside t
   assert.doesNotMatch(enterpriseNav, /mine-icons\/scan\.png/);
   assert.doesNotMatch(enterpriseNav, /mine-icons\/bell\.png/);
   assert.match(template, /bindtap="openActivityCode"/);
-  assert.match(template, /出示获客活动码/);
+  assert.match(template, /去分享活动码/);
   assert.match(workbench, /openActivityCode\(\)/);
   assert.match(workbench, /openSecondary\(\)/);
   assert.match(workbench, /function resolveStaffName/);
@@ -206,16 +205,20 @@ test('role workbench identity nav left-aligns brand and enterprise name inside t
   assert.doesNotMatch(styles, /word-break:\s*break-all/);
 });
 
-test('role workbench shows enterprise name under the brand and staff name in the hero', () => {
+test('role workbench keeps the enterprise under the brand and the unified overview hero role-only', () => {
   const template = source('components/role-workbench/role-workbench.wxml');
   const styles = source('components/role-workbench/role-workbench.less');
+  const professionalOverview = template.slice(
+    template.indexOf("role === 'enterprise_admin' || role === 'designer' || role === 'measurer'"),
+    template.indexOf("focus === 'operations'")
+  );
   assert.match(template, /wx:if="\{\{enterpriseName\}\}"[\s\S]*identity-enterprise-name[\s\S]*\{\{enterpriseName\}\}/);
-  assert.match(template, /wx:if="\{\{staffName\}\}"[\s\S]*hero-staff-name[\s\S]*\{\{staffName\}\}/);
+  assert.doesNotMatch(professionalOverview, /hero-staff-name|hero-subtitle/);
   assert.doesNotMatch(template, /staffName \+ ' · ' \+ enterpriseName/);
   assert.doesNotMatch(template, /企业负责人/);
   assert.doesNotMatch(template, /专业服务/);
   assert.match(styles, /\.identity-enterprise-name\s*\{[\s\S]*max-width:\s*calc\(100% - 50rpx\);/);
-  assert.match(styles, /\.hero-staff-name\s*\{[\s\S]*font-size:\s*24rpx;/);
+  assert.match(styles, /\.enterprise-hero-card\s*\{[\s\S]*min-height:\s*252rpx;/);
   assert.doesNotMatch(styles, /-webkit-line-clamp:\s*2;/);
 });
 
@@ -237,16 +240,16 @@ test('enterprise owner workbench prioritizes acquisition and team actions withou
     assert.ok(bytes.includes(Buffer.from('tRNS')) || [4, 6].includes(bytes[25]), `${asset} must retain transparent PNG pixels`);
   }
   assert.match(template, /aria-label="分享活动码，发给客户扫码留资"/);
-  assert.match(template, /aria-label="邀请员工或推荐人入驻"/);
-  assert.match(workbench, /normalizeEnterpriseCodeActions/);
+  assert.match(template, /aria-label="\{\{role === 'enterprise_admin' \? '邀请员工或推荐人入驻' : '邀请推荐人入驻'\}\}"/);
+  assert.match(workbench, /normalizeWorkbenchCodeActions/);
   assert.match(workbench, /rawActivity\.target === 'join-codes'/);
   assert.match(workbench, /rawJoin = rawJoin \|\| rawActivity/);
   assert.match(workbench, /label:\s*'分享活动码'/);
   assert.match(workbench, /detail:\s*activity\.detail \|\| '发给客户 · 扫码留资'/);
   assert.match(workbench, /label:\s*'邀请入驻'/);
-  assert.match(workbench, /detail:\s*rawJoin\.detail \|\| '员工 · 推荐人'/);
+  assert.match(workbench, /payload\.role === 'enterprise_admin' \? '员工 · 推荐人' : '仅推荐人'/);
   assert.match(template, /bindtap="openReferrerRoster"/);
-  assert.match(template, /查看推广人/);
+  assert.match(template, /referrerRoster\.label/);
   assert.match(workbench, /enterprise-referrers\/enterprise-referrers/);
   assert.match(template, /enterprise-appointment-row[\s\S]*secondary\.label/);
   assert.match(template, /enterprise-appointment-meta[\s\S]*appointmentCount/);
@@ -271,7 +274,8 @@ test('enterprise owner workbench prioritizes acquisition and team actions withou
   assert.match(styles, /\.enterprise-action-hub \.quick-nav-card\s*\{[\s\S]*height:\s*176rpx/);
   assert.match(styles, /\.exception-cta\s*\{[\s\S]*border-radius:\s*10rpx/);
   assert.match(styles, /\.enterprise-hero-card \.hero-top-row\s*\{[\s\S]*min-height:\s*116rpx/);
-  assert.match(styles, /\.enterprise-hero-card \.stats-pills-row\s*\{[\s\S]*margin-top:\s*12rpx/);
+  assert.match(styles, /\.enterprise-hero-card \.stats-pills-row\s*\{[\s\S]*margin-top:\s*12rpx[\s\S]*padding-right:\s*236rpx/);
+  assert.match(styles, /\.enterprise-hero-card \.stat-pill\s*\{[\s\S]*flex:\s*0 1 auto/);
   assert.match(styles, /\.enterprise-hero-mascot\s*\{[\s\S]*position:\s*absolute[\s\S]*width:\s*220rpx/);
   assert.match(styles, /@media \(max-width:\s*360px\)[\s\S]*\.enterprise-action-share-card[\s\S]*min-height:\s*370rpx[\s\S]*\.enterprise-activity-art[\s\S]*height:\s*184rpx/);
 });
@@ -335,6 +339,8 @@ test('enterprise owner operations dashboard restores the approved regular busine
   assert.match(operationsStyles, /\.enterprise-operations-hero\s*\{[\s\S]*min-height:\s*414rpx/);
   assert.match(operationsStyles, /\.operations-period-chip-row\s*\{[\s\S]*margin-top:\s*22rpx/);
   assert.match(operationsStyles, /\.operations-period-chip-row \.period-chip text\s*\{[\s\S]*font-size:\s*28rpx/);
+  assert.match(styles, /\.staff-data-period-row\s*\{[\s\S]*?margin:\s*22rpx 0 0/);
+  assert.match(styles, /\.staff-data-period-row\s*\{[\s\S]*?position:\s*relative/);
   assert.match(operationsStyles, /\.enterprise-operations-board\s*\{[\s\S]*min-height:\s*288rpx/);
   assert.match(operationsStyles, /\.operations-stage-grid\s*\{[\s\S]*gap:\s*0/);
   assert.match(operationsStyles, /\.operations-stage:not\(:last-child\)::after\s*\{[\s\S]*height:\s*3rpx/);

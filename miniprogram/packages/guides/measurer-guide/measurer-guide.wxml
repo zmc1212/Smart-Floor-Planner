@@ -7,7 +7,6 @@ FORM: design-references/measurer-onboarding-v1/measurer-onboarding-directions-v1
 <view class="guide-page sfp-page">
   <view class="guide-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationTop + navigationHeight}}px; padding-right: {{navigationRight}}px;">
     <view class="guide-nav-title">家装现场顾问使用引导</view>
-    <button class="skip-action" bindtap="onSkip" aria-label="跳过家装现场顾问使用引导">跳过</button>
   </view>
 
   <view class="guide-content">
@@ -59,5 +58,6 @@ FORM: design-references/measurer-onboarding-v1/measurer-onboarding-directions-v1
     <button class="primary-action" bindtap="onPrimary" hover-class="primary-action-pressed">
       {{currentStep === totalSteps - 1 ? '去看今日任务' : '下一步'}}
     </button>
+    <button class="skip-action" bindtap="onSkip" aria-label="跳过家装现场顾问使用引导">跳过</button>
   </view>
 </view>

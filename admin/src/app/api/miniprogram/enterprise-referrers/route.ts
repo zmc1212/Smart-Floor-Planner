@@ -65,23 +65,26 @@ export async function GET(request: Request) {
     const query = url.searchParams.get('query')?.trim() || undefined;
     const status = parseEnterpriseReferrerRosterStatus(url.searchParams.get('status'));
     const requestedView = url.searchParams.get('view') || 'flat';
-    if (requestedView !== 'flat' && requestedView !== 'network') {
+    if (requestedView !== 'flat' && requestedView !== 'network' && requestedView !== 'staff') {
       return NextResponse.json(
         { success: false, error: '推广人视图无效' },
         { status: 400 }
       );
     }
     const isOwner = role === 'enterprise_admin';
+    if (requestedView === 'staff' && !isOwner) {
+      return NextResponse.json(
+        { success: false, error: '仅企业负责人可查看员工推广人' },
+        { status: 403 }
+      );
+    }
     const view = isOwner ? requestedView : 'flat';
     const { page, limit } = getPaginationParams(url);
     const data = await withMiniProgramPostgresTransaction(context, async (transaction) => {
       const repository = new ReferrerNetworkRepository(transaction);
       const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
       if (view === 'network') {
-        const network = await repository.listEnterpriseReferrerNetwork(
-          enterpriseId,
-          { query, status }
-        );
+        const network = await repository.listEnterpriseReferrerNetworkSummary(enterpriseId);
         return {
           scope: 'enterprise' as const,
           view: 'network' as const,
@@ -96,10 +99,52 @@ export async function GET(request: Request) {
               : null,
             total: branch.total,
             activeCount: branch.activeCount,
-            items: branch.items.map((item) => rosterItem(item, true)),
           })),
           items: [],
           pagination: null,
+        };
+      }
+
+      if (view === 'staff') {
+        const rawStaffId = url.searchParams.get('staffId');
+        if (!rawStaffId) {
+          throw Object.assign(new Error('请选择员工推广分支'), { status: 400 });
+        }
+        const staffId = parsePostgresId(rawStaffId, 'staffId');
+        const staff = await repository.getEnterpriseReferrerNetworkStaff(enterpriseId, staffId);
+        if (!staff) {
+          throw Object.assign(new Error('员工推广分支不存在'), { status: 404 });
+        }
+        const [rows, counts, branchSummary] = await Promise.all([
+          repository.listEnterpriseReferrerMemberships(enterpriseId, {
+            query,
+            status,
+            page,
+            limit,
+            inviterStaffId: staffId,
+          }),
+          repository.countEnterpriseReferrerMemberships(enterpriseId, {
+            query,
+            status,
+            inviterStaffId: staffId,
+          }),
+          repository.countEnterpriseReferrerMemberships(enterpriseId, {
+            inviterStaffId: staffId,
+          }),
+        ]);
+        return {
+          scope: 'enterprise' as const,
+          view: 'staff' as const,
+          canDisable: true,
+          staff: {
+            ...staff,
+            id: staff.id.toString(),
+          },
+          items: rows.map((item) => rosterItem(item, true)),
+          branches: [],
+          summary: counts,
+          branchSummary,
+          pagination: createPaginationMetadata(counts.total, page, limit),
         };
       }
 

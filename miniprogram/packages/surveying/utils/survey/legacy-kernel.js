@@ -27,6 +27,15 @@ const wallFaces = require('./read-model/wall-faces.js');
 
 let idSeed = 1;
 const TRANSACTION_DRAFT_SYMBOL = Symbol.for('smart-floor-planner.survey-transaction-draft');
+// A fixed snap tolerance is too permissive for a short loop and too strict for
+// a long multi-corner traverse. Closure balance therefore has a per-wall
+// correction budget and a separate hard ceiling. The ordinary 350 mm snap
+// tolerance is unchanged; only a fully validated orthogonal adjustment may use
+// the additional accumulated budget.
+const MAX_ORTHOGONAL_CLOSURE_BALANCE_MM = 1000;
+const MIN_WALL_CLOSURE_CORRECTION_MM = 25;
+const MAX_WALL_CLOSURE_CORRECTION_MM = 150;
+const WALL_CLOSURE_CORRECTION_RATIO = 0.02;
 
 function nowIso() {
   return new Date().toISOString();
@@ -3764,6 +3773,7 @@ function setMode(draft, mode) {
   const floor = getActiveFloor(next);
   if (mode !== 'straight' && mode !== 'diagonal') return next;
   floor.session.mode = mode;
+  delete floor.session.bleLockedBearingDeg;
   return touchDraft(next);
 }
 
@@ -3790,6 +3800,7 @@ function placeCursor(draft, point) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.selectedWallId = '';
   session.selectedOpeningId = '';
   session.closeCandidateNodeId = '';
@@ -4083,8 +4094,14 @@ function startPreview(draft, rawPoint) {
       );
     } else if (
       activeWallCount + 1 >= inferredMergeWallCount &&
-      distanceMm(previewPoint, activeStartNode) <= CLOSE_TOLERANCE_MM &&
-      canResolvePreviewStartClosure(floor, session, anchor, previewPoint, activeStartNode)
+      canResolvePreviewStartClosure(
+        floor,
+        session,
+        anchor,
+        previewPoint,
+        activeStartNode,
+        { allowRejectedCandidate: true }
+      )
     ) {
       session.closeCandidateNodeId = activeStartNode.id;
       session.closeCandidateType = 'start';
@@ -4092,7 +4109,9 @@ function startPreview(draft, rawPoint) {
       const mergeCandidate = findMergeClosureCandidate(floor, session, previewPoint);
       if (mergeCandidate) {
         session.closeCandidateNodeId = mergeCandidate.id;
-        session.closeCandidateType = 'merge';
+        session.closeCandidateType = mergeCandidate.id === activeStartNode.id && activeWallCount >= 3
+          ? 'start'
+          : 'merge';
       }
     }
   }
@@ -4115,6 +4134,132 @@ function startPreview(draft, rawPoint) {
   );
 
   return touchDraft(next);
+}
+
+function isOrthogonalBearing(bearingDeg) {
+  const normalized = normalizeSignedAngle(Number(bearingDeg));
+  const mod90 = Math.abs(normalized % 90);
+  return mod90 < 1 || Math.abs(mod90 - 90) < 1;
+}
+
+function clearBleDirectionPreview(session) {
+  if (!session) return;
+  session.previewPoint = null;
+  session.previewLengthMm = 0;
+  session.previewAngleDeg = 0;
+  session.previewAngleSource = '';
+  session.previewInteriorAngleDeg = null;
+  session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
+  session.previewOuterFaceWallId = '';
+  session.previewBodyNormalSide = '';
+  session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.closeCandidateType = '';
+  session.closeCandidateSharedWallId = '';
+  session.partitionSourceSpaceId = '';
+  session.alignmentSnapGuide = null;
+  session.pendingWallId = '';
+}
+
+function hasBleLockedBearing(session) {
+  if (!session) return false;
+  const value = session.bleLockedBearingDeg;
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
+function materializeLockedPreview(draft) {
+  const floor = getActiveFloor(draft);
+  const session = floor && floor.session;
+  if (!hasBleLockedBearing(session) || session.previewPoint) {
+    return draft;
+  }
+  let next = startPreviewFromBearing(draft, Number(session.bleLockedBearingDeg));
+  next = holdPreviewForInput(next);
+  return next;
+}
+
+function lockPreviewBearing(draft, bearingDeg) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+  const anchor = getNode(floor, session.anchorNodeId);
+
+  if (!anchor) {
+    throw new Error('Place the cursor before choosing a wall direction');
+  }
+  if (session.mode !== 'straight') {
+    throw new Error('Direction picking is only available in straight mode');
+  }
+
+  const normalizedBearing = normalizeAngle(Number(bearingDeg));
+  if (!Number.isFinite(normalizedBearing) || !isOrthogonalBearing(normalizedBearing)) {
+    throw new Error('Wall direction must be horizontal or vertical');
+  }
+
+  clearBleDirectionPreview(session);
+  session.bleLockedBearingDeg = normalizedBearing;
+  session.state = 'awaitingLength';
+  return touchDraft(next);
+}
+
+function clearBleLockedBearing(draft) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = floor && floor.session;
+  if (!session || !Object.prototype.hasOwnProperty.call(session, 'bleLockedBearingDeg')) {
+    return next;
+  }
+  delete session.bleLockedBearingDeg;
+  if (!session.previewPoint && session.state === 'awaitingLength') {
+    if (floor.walls.length) {
+      session.state = 'wallCommitted';
+    } else if (session.anchorNodeId) {
+      session.state = 'cursorPlaced';
+    } else {
+      session.state = 'idle';
+    }
+  }
+  return touchDraft(next);
+}
+
+function startPreviewFromBearing(draft, bearingDeg, options) {
+  const opts = options || {};
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+  const anchor = getNode(floor, session.anchorNodeId);
+
+  if (!anchor) {
+    throw new Error('Place the cursor before choosing a wall direction');
+  }
+  if (session.mode !== 'straight') {
+    throw new Error('Direction picking is only available in straight mode');
+  }
+
+  const normalizedBearing = normalizeAngle(Number(bearingDeg));
+  if (!Number.isFinite(normalizedBearing) || !isOrthogonalBearing(normalizedBearing)) {
+    throw new Error('Wall direction must be horizontal or vertical');
+  }
+
+  const requestedStubLengthMm = Number(opts.stubLengthMm);
+  const stubLengthMm = Number.isFinite(requestedStubLengthMm) && requestedStubLengthMm >= MIN_WALL_LENGTH_MM
+    ? Math.round(requestedStubLengthMm)
+    : (
+      session.previewLengthMm >= MIN_WALL_LENGTH_MM
+        ? session.previewLengthMm
+        : MIN_WALL_LENGTH_MM
+    );
+
+  const radians = normalizedBearing * Math.PI / 180;
+  const rawPoint = {
+    xMm: Math.round(anchor.xMm + Math.cos(radians) * stubLengthMm),
+    yMm: Math.round(anchor.yMm + Math.sin(radians) * stubLengthMm)
+  };
+
+  return startPreview(next, rawPoint);
 }
 
 function holdPreviewForInput(draft) {
@@ -4229,10 +4374,7 @@ function cancelPending(draft) {
   session.previewMeasurementEndInsetMm = 0;
   session.previewAngleSource = '';
   session.previewInteriorAngleDeg = null;
-  session.previewMeasurementSide = '';
-  session.previewMeasurementStartInsetMm = 0;
-  session.previewMeasurementStartExtensionMm = 0;
-  session.previewMeasurementEndInsetMm = 0;
+  delete session.bleLockedBearingDeg;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
@@ -4262,7 +4404,17 @@ function cancelPending(draft) {
 
 function commitPreviewLength(draft, lengthMm, inputSource) {
   const parsedLength = validateLength(lengthMm);
-  const next = cloneDraft(draft);
+  let sourceDraft = draft;
+  const preFloor = getActiveFloor(sourceDraft);
+  const preSession = preFloor && preFloor.session;
+  if (
+    preSession &&
+    hasBleLockedBearing(preSession) &&
+    !preSession.previewPoint
+  ) {
+    sourceDraft = materializeLockedPreview(sourceDraft);
+  }
+  const next = cloneDraft(sourceDraft);
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
   const anchor = getNode(floor, session.anchorNodeId);
@@ -4332,9 +4484,22 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     endPoint
   );
   let closureProjection = partitionProjection || sharedProjection;
+  const canCloseAtActiveStart = !!(
+    session.mode === 'straight' &&
+    activeStartNode &&
+    activeWallCountBeforeCommit >= 3 &&
+    canResolvePreviewStartClosure(
+      floor,
+      session,
+      anchor,
+      endPoint,
+      activeStartNode,
+      { allowRejectedCandidate: true }
+    )
+  );
   const isClosingCurrentSpace = activeStartNode &&
     (activeWallCountBeforeCommit >= 2 || !!closureProjection || !!outerFaceProjection) &&
-    (closureProjection || outerFaceProjection || distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM);
+    (closureProjection || outerFaceProjection || canCloseAtActiveStart);
   if (closureProjection) {
     // Straight mode may change at most one axis. Never copy an off-axis
     // topology endpoint onto the confirmed wall; confirmClosure adds a short
@@ -4391,8 +4556,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     session.mode === 'straight' &&
     activeStartNode &&
     activeWallCountBeforeCommit >= 3 &&
-    distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM &&
-    session.closeCandidateType === 'start'
+    canCloseAtActiveStart
     ? resolvePreviewStartClosurePlan(floor, session, anchor, endPoint, activeStartNode)
     : null;
   const canBalanceNearStartIntersection = !!(
@@ -4507,6 +4671,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.previewOuterFaceWallId = '';
+  delete session.bleLockedBearingDeg;
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
@@ -4514,9 +4679,20 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.alignmentSnapGuide = null;
 
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  const directStartClosurePlan = activeStartNode && activeWallCount >= 3 &&
-    distanceMm(endNode, activeStartNode) <= CLOSE_TOLERANCE_MM
-    ? resolveStraightClosurePlan(floor, session, wall, activeStartNode)
+  const resolvedDirectStartClosurePlan = activeStartNode && activeWallCount >= 3
+    ? resolveStraightClosurePlan(
+      floor,
+      session,
+      wall,
+      activeStartNode,
+      { allowRejectedCandidate: true }
+    )
+    : null;
+  const directStartClosurePlan = resolvedDirectStartClosurePlan && (
+    distanceMm(endNode, activeStartNode) <= CLOSE_TOLERANCE_MM ||
+    resolvedDirectStartClosurePlan.type === 'orthogonal-adjustment'
+  )
+    ? resolvedDirectStartClosurePlan
     : null;
   if (partitionProjection && activeWallCount === 1) {
     session.state = 'closing';
@@ -4643,6 +4819,17 @@ function isOrthogonalClosureAdjustmentGeometrySafe(floor, entries, targetNode) {
   )));
 }
 
+function getWallClosureCorrectionBudgetMm(entry) {
+  const coordinateLengthMm = Math.abs(Number(entry && entry.signedLengthMm) || 0);
+  return Math.min(
+    MAX_WALL_CLOSURE_CORRECTION_MM,
+    Math.max(
+      MIN_WALL_CLOSURE_CORRECTION_MM,
+      Math.round(coordinateLengthMm * WALL_CLOSURE_CORRECTION_RATIO)
+    )
+  );
+}
+
 function buildOrthogonalClosureAdjustmentPlan(floor, session, targetNode) {
   if (!floor || !session || !targetNode || session.mode !== 'straight') return null;
   if (session.activeSpaceSharedWallId || session.closeCandidateSharedWallId) return null;
@@ -4703,12 +4890,21 @@ function buildOrthogonalClosureAdjustmentPlan(floor, session, targetNode) {
     if (incidentWalls.length !== expectedDegree) return null;
   }
 
+  // Straight walls tolerate a 1 mm perpendicular coordinate drift. Derive the
+  // residual from the strict-axis projection used by the adjustment itself;
+  // using the raw final node would lose that perpendicular millimetre and make
+  // an otherwise valid chain fail the final geometry check.
+  const projectedEnd = entries.reduce((point, entry) => (
+    entry.axis === 'x'
+      ? { xMm: point.xMm + entry.signedLengthMm, yMm: point.yMm }
+      : { xMm: point.xMm, yMm: point.yMm + entry.signedLengthMm }
+  ), { xMm: startNode.xMm, yMm: startNode.yMm });
   const residual = {
-    xMm: Math.round(currentNode.xMm - targetNode.xMm),
-    yMm: Math.round(currentNode.yMm - targetNode.yMm)
+    xMm: Math.round(projectedEnd.xMm - targetNode.xMm),
+    yMm: Math.round(projectedEnd.yMm - targetNode.yMm)
   };
   if (
-    Math.hypot(residual.xMm, residual.yMm) > CLOSE_TOLERANCE_MM ||
+    Math.hypot(residual.xMm, residual.yMm) > MAX_ORTHOGONAL_CLOSURE_BALANCE_MM ||
     (!residual.xMm && !residual.yMm)
   ) {
     return null;
@@ -4729,19 +4925,37 @@ function buildOrthogonalClosureAdjustmentPlan(floor, session, targetNode) {
       const shareMm = isLast
         ? remainingCorrectionMm
         : Math.round(correctionMm * Math.abs(entry.signedLengthMm) / totalLengthMm);
+      if (Math.abs(shareMm) > getWallClosureCorrectionBudgetMm(entry)) {
+        entry.exceedsCorrectionBudget = true;
+      }
       entry.adjustedSignedLengthMm += shareMm;
       remainingCorrectionMm -= shareMm;
     });
   }
 
+  if (entries.some((entry) => entry.exceedsCorrectionBudget)) {
+    return {
+      type: 'orthogonal-adjustment-rejected',
+      reason: 'correction-budget',
+      residual
+    };
+  }
   if (entries.some((entry) => (
     Math.sign(entry.adjustedSignedLengthMm) !== Math.sign(entry.signedLengthMm) ||
     Math.abs(entry.adjustedSignedLengthMm) < MIN_WALL_LENGTH_MM
   ))) {
-    return null;
+    return {
+      type: 'orthogonal-adjustment-rejected',
+      reason: 'minimum-wall-length',
+      residual
+    };
   }
   if (!isOrthogonalClosureAdjustmentGeometrySafe(floor, entries, targetNode)) {
-    return null;
+    return {
+      type: 'orthogonal-adjustment-rejected',
+      reason: 'unsafe-geometry',
+      residual
+    };
   }
 
   return {
@@ -4751,7 +4965,7 @@ function buildOrthogonalClosureAdjustmentPlan(floor, session, targetNode) {
   };
 }
 
-function resolvePreviewStartClosurePlan(floor, session, anchor, previewPoint, targetNode) {
+function resolvePreviewStartClosurePlan(floor, session, anchor, previewPoint, targetNode, options) {
   if (!floor || !session || !anchor || !previewPoint || !targetNode) return null;
   if (session.mode !== 'straight') return { type: 'snap' };
   const virtualFloor = JSON.parse(JSON.stringify(floor));
@@ -4777,15 +4991,36 @@ function resolvePreviewStartClosurePlan(floor, session, anchor, previewPoint, ta
     virtualFloor,
     virtualSession,
     virtualWall,
-    virtualTarget
+    virtualTarget,
+    options
   );
 }
 
-function canResolvePreviewStartClosure(floor, session, anchor, previewPoint, targetNode) {
-  return !!resolvePreviewStartClosurePlan(floor, session, anchor, previewPoint, targetNode);
+function canResolvePreviewStartClosure(floor, session, anchor, previewPoint, targetNode, options) {
+  const plan = resolvePreviewStartClosurePlan(
+    floor,
+    session,
+    anchor,
+    previewPoint,
+    targetNode,
+    options
+  );
+  return !!(
+    plan &&
+    (
+      (
+        distanceMm(previewPoint, targetNode) <= CLOSE_TOLERANCE_MM &&
+        (
+          plan.type !== 'orthogonal-adjustment-rejected' ||
+          (options && options.allowRejectedCandidate)
+        )
+      ) ||
+      plan.type === 'orthogonal-adjustment'
+    )
+  );
 }
 
-function resolveStraightClosurePlan(floor, session, wall, targetNode) {
+function resolveStraightClosurePlan(floor, session, wall, targetNode, options) {
   if (!wall || !targetNode) return null;
   const start = getNode(floor, wall.startNodeId);
   const end = getNode(floor, wall.endNodeId);
@@ -4794,7 +5029,10 @@ function resolveStraightClosurePlan(floor, session, wall, targetNode) {
     return { type: 'snap' };
   }
   const adjustmentPlan = buildOrthogonalClosureAdjustmentPlan(floor, session, targetNode);
-  if (adjustmentPlan) return adjustmentPlan;
+  if (adjustmentPlan && adjustmentPlan.type === 'orthogonal-adjustment') return adjustmentPlan;
+  if (adjustmentPlan && adjustmentPlan.type === 'orthogonal-adjustment-rejected') {
+    return options && options.allowRejectedCandidate ? adjustmentPlan : null;
+  }
   if (wallKeepsStrictAxis(start, targetNode)) return { type: 'snap' };
   if (wallKeepsStrictAxis(end, targetNode) && distanceMm(end, targetNode) > 0.001) {
     return { type: 'bridge' };
@@ -5080,7 +5318,7 @@ function confirmClosure(draft) {
       session.closeCandidateNodeId = closeTargetNode ? closeTargetNode.id : '';
     }
   }
-  if (!oldEndNode || !closeTargetNode || distanceMm(oldEndNode, closeTargetNode) > CLOSE_TOLERANCE_MM) {
+  if (!oldEndNode || !closeTargetNode) {
     throw new Error(`闭合误差超过 ${CLOSE_TOLERANCE_MM} mm，请补测最后一面墙`);
   }
 
@@ -5090,7 +5328,13 @@ function confirmClosure(draft) {
     lastWall,
     closeTargetNode
   );
-  if (!straightClosurePlan) {
+  if (
+    !straightClosurePlan ||
+    (
+      distanceMm(oldEndNode, closeTargetNode) > CLOSE_TOLERANCE_MM &&
+      straightClosurePlan.type !== 'orthogonal-adjustment'
+    )
+  ) {
     throw new Error(`闭合误差超过 ${CLOSE_TOLERANCE_MM} mm，请补测最后一面墙`);
   }
   if (straightClosurePlan.type === 'orthogonal-adjustment') {
@@ -5300,6 +5544,7 @@ function selectWall(draft, wallId) {
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
+  delete floor.session.bleLockedBearingDeg;
   floor.session.previewMeasurementStartInsetMm = 0;
   floor.session.previewMeasurementStartExtensionMm = 0;
   floor.session.previewMeasurementEndInsetMm = 0;
@@ -5324,6 +5569,7 @@ function selectOpening(draft, openingId) {
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
+  delete floor.session.bleLockedBearingDeg;
   floor.session.previewMeasurementStartInsetMm = 0;
   floor.session.previewMeasurementStartExtensionMm = 0;
   floor.session.previewMeasurementEndInsetMm = 0;
@@ -5348,6 +5594,7 @@ function selectSpace(draft, spaceId) {
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
+  delete floor.session.bleLockedBearingDeg;
   floor.session.previewMeasurementStartInsetMm = 0;
   floor.session.previewMeasurementStartExtensionMm = 0;
   floor.session.previewMeasurementEndInsetMm = 0;
@@ -5417,6 +5664,7 @@ function deleteClosedSpace(draft, spaceId) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
   session.previewMeasurementStartExtensionMm = 0;
@@ -5724,7 +5972,14 @@ function refreshStandaloneClosureSuggestion(floor, session) {
     session.state = 'wallCommitted';
     return;
   }
-  if (activeWallCount >= 3 && distanceMm(anchor, activeStartNode) <= CLOSE_TOLERANCE_MM) {
+  const lastWall = getLastWall(floor);
+  const startClosurePlan = activeWallCount >= 3 && lastWall
+    ? resolveStraightClosurePlan(floor, session, lastWall, activeStartNode)
+    : null;
+  if (startClosurePlan && (
+    distanceMm(anchor, activeStartNode) <= CLOSE_TOLERANCE_MM ||
+    startClosurePlan.type === 'orthogonal-adjustment'
+  )) {
     session.state = 'closing';
     session.closeCandidateNodeId = activeStartNode.id;
     session.closeCandidateType = 'start';
@@ -5853,6 +6108,7 @@ function deleteWall(draft, wallId) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
   session.previewMeasurementStartExtensionMm = 0;
@@ -5920,6 +6176,7 @@ function startWallSnap(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.pendingWallId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
@@ -6410,6 +6667,7 @@ function placeNewWallChainCursor(draft, point) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.previewAngleSource = '';
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
@@ -6462,6 +6720,7 @@ function resetCursor(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
   session.previewMeasurementStartExtensionMm = 0;
@@ -6781,6 +7040,10 @@ module.exports = {
   placeCursor,
   placeNewWallChainCursor,
   startPreview,
+  startPreviewFromBearing,
+  lockPreviewBearing,
+  clearBleLockedBearing,
+  materializeLockedPreview,
   holdPreviewForInput,
   applyPreviewInteriorAngle,
   reopenLastDiagonalWallForAngle,

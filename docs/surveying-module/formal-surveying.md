@@ -56,6 +56,34 @@ copy back to `layoutData`.
   `getViewport()` and never writes `rotationRad` into `floor.viewport` or
   `FloorPlan.layoutData`. Changing θ compensates offset so the millimetre point
   at screen centre stays fixed. The Admin 2D viewer does not pass rotation.
+- View rotation is editor-page transient state only. Tapping the canvas compass
+  (`survey-canvas-compass`) outside BLE input mode toggles heading follow. The
+  first heading sample becomes the relative baseline; after the activation and
+  hysteresis thresholds, the view snaps to the four cardinal rotations rather
+  than following every degree. Disabling follow animates the view back to
+  north-up (`viewRotationDeg = 0`). Pan and pinch remain available under
+  rotation, while pinch changes scale only. Heading changes run a full formal
+  redraw so walls, the drafting grid, dimensions, and BLE direction arrows stay
+  in one projection. Compass is the primary heading source and device motion is
+  its fallback through `surveyDeviceOrientation.sharedHeadingSensorHub`; the
+  phone-angle sheet keeps `sharedDeviceMotionHub` for beta/gamma measurements.
+  Follow and BLE automatic-direction subscriptions stop on `onHide`/`onUnload`
+  and resume on `onShow` when their logical modes remain enabled. Dimension
+  labels use world wall angle plus view rotation (`resolveScreenEffectiveAngle`)
+  so text stays upright; room cards remain screen-axis aligned. Geometry, ortho
+  snap, BLE semantics, and persisted viewport/graph data are unchanged.
+- Straight-mode BLE quick input exposes three or four orthogonal arrows at the
+  current anchor and excludes the active chain's immediate backtrack. Manual
+  selection calls `lockPreviewBearing` without moving the cursor or writing a
+  wall; a valid ATD distance materializes and commits the preview through the
+  existing `startPreviewFromBearing` / `commitPreviewLength` path. Tapping the
+  compass while BLE input is active switches manual/automatic direction pick.
+  Automatic pick maps Compass north/east/south/west to canvas north/east/south/
+  west, removes the current view-only rotation, applies circular median filtering
+  plus activation/switch hysteresis, and rearms after every committed wall so a
+  same-heading next wall can lock again. Privacy authorization completes before
+  either heading subscription starts. `bleLockedBearingDeg` is live editor state
+  only and is stripped from local and cloud graph serialization.
 - Autosave, manual draft save, and completed submission share one serialized
   cloud-save queue. Only one save is in flight; a queued `completed` request
   upgrades and takes priority over queued `draft` work. New floor-plan POSTs
@@ -213,8 +241,9 @@ copy back to `layoutData`.
   its opening rejects atomically with `OPENING_REMEASURE_CONFLICT`; it never
   silently moves or normalizes that opening.
 - This hardening freezes the current correct valid-survey result as the
-  compatibility baseline. It does not change snap/closure tolerances, closure
-  inference, multi-room shared-wall behavior, face extraction, wall bodies,
+  compatibility baseline. Apart from the bounded near-close adjustment and
+  remeasurement corrections above, it does not change snap/closure tolerances,
+  multi-room shared-wall behavior, face extraction, wall bodies,
   Canvas/WXML/Less, or the operator workflow. Apart from the targeted internal-L
   face-inheritance correction, continued-divider boundary clamp, and shared-wall
   split body-side and opening-conflict corrections below, previously correct valid operations remain
@@ -233,8 +262,13 @@ copy back to `layoutData`.
 ## Geometry invariants
 
 - When an isolated, opening-free, unshared, unbranched orthogonal chain returns
-  within the close tolerance, preview and confirmation use one closure-adjustment
-  plan. It distributes the X/Y residual over same-axis walls by measured-length
+  toward its start, preview and confirmation use one constrained
+  closure-adjustment plan. The ordinary 350 mm snap tolerance is unchanged; a
+  long multi-corner chain may consume additional accumulated residual only when
+  every wall stays inside its correction budget (2% of coordinate length,
+  clamped to 25–150 mm) and the total residual stays at or below 1,000 mm. A
+  short loop may therefore be rejected even inside 350 mm instead of distorting
+  one wall pair or falling back to a micro bridge. The plan distributes the X/Y residual over same-axis walls by measured-length
   weight, preserves direction and minimum wall length, and projects the whole
   result before offering closure. Any adjusted non-adjacent self-intersection,
   overlap, or contact with an external wall rejects the plan. Confirmation

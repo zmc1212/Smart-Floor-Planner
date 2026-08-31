@@ -41,6 +41,28 @@ test('guide mode is enabled by presentation state and never mutates the wall gra
   assert.equal(resolveSurveyGuide({ guideEnabled: false }), null);
 });
 
+test('ble input mode replaces drag guidance with direction-arrow copy', () => {
+  const firstWall = resolve('cursorPlaced', { bleInputMode: true });
+  assert.equal(firstWall.key, 'ble-first-wall');
+  assert.match(firstWall.body, /方向箭头/);
+
+  const manual = resolve('wallCommitted', {
+    floor: { walls: [{ id: 'w1' }], spaces: [], session: { state: 'wallCommitted', mode: 'straight' } },
+    session: { state: 'wallCommitted', mode: 'straight' },
+    bleInputMode: true,
+    bleDirectionMode: 'manual'
+  });
+  assert.equal(manual.key, 'ble-manual-direction');
+
+  const auto = resolve('wallCommitted', {
+    floor: { walls: [{ id: 'w1' }], spaces: [], session: { state: 'wallCommitted', mode: 'straight' } },
+    session: { state: 'wallCommitted', mode: 'straight' },
+    bleInputMode: true,
+    bleDirectionMode: 'auto'
+  });
+  assert.equal(auto.key, 'ble-auto-direction');
+});
+
 test('preview direction and BLE length states use the real measurement flow', () => {
   assert.equal(resolve('wallPreview').key, 'confirm-direction');
   assert.match(resolve('wallPreview', { session: { state: 'wallPreview', mode: 'diagonal' } }).body, /斜墙/);

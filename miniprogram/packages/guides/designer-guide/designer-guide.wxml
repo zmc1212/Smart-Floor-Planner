@@ -10,7 +10,6 @@ FORM: design-references/role-onboarding-v1/designer-advisor-onboarding-v1.png
     style="padding-top: {{navigationTop}}px; min-height: {{navigationTop + navigationHeight}}px; padding-right: {{navigationRight}}px;"
   >
     <view class="guide-nav-title">家装设计顾问使用引导</view>
-    <button class="skip-action" bindtap="onSkip" aria-label="跳过家装设计顾问使用引导">跳过</button>
   </view>
 
   <view class="guide-content">
@@ -60,5 +59,6 @@ FORM: design-references/role-onboarding-v1/designer-advisor-onboarding-v1.png
     <button class="primary-action" bindtap="onPrimary" hover-class="primary-action-pressed">
       {{currentStep === totalSteps - 1 ? '去看我的收益' : '下一步'}}
     </button>
+    <button class="skip-action" bindtap="onSkip" aria-label="跳过家装设计顾问使用引导">跳过</button>
   </view>
 </view>

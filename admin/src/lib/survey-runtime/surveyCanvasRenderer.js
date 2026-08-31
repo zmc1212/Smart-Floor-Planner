@@ -71,6 +71,22 @@ function normalizeAngleDiff(currentAngle, previousAngle) {
   return Math.round(diff);
 }
 
+// Compose a wall's world-space angle with the view rotation so dimension
+// labels can stay upright after the canvas follows the phone heading.
+function resolveScreenEffectiveAngle(worldAngleRad, rotationRad) {
+  return (Number(worldAngleRad) || 0) + (Number(rotationRad) || 0);
+}
+
+// A dimension label reads upright while its baseline points into the
+// right-facing half of screen space. The check must use the projected screen
+// angle (which already contains any view rotation), never the world angle,
+// or labels flip upside down as soon as the canvas rotates with the phone
+// heading.
+function shouldFlipDimensionLabel(screenAngleRad) {
+  const angle = Math.atan2(Math.sin(screenAngleRad), Math.cos(screenAngleRad));
+  return angle > Math.PI / 2 || angle <= -Math.PI / 2;
+}
+
 function rotateVector(x, y, rotationRad) {
   const angle = Number(rotationRad) || 0;
   if (!angle) {
@@ -1398,6 +1414,7 @@ function drawPolygon(ctx, points, fillStyle) {
 function drawGrid(ctx, scene) {
   const rect = scene.rect;
   const viewport = scene.viewport;
+  const rotationRad = Number(viewport.rotationRad) || 0;
   const originX = rect.width / 2 + viewport.offsetX;
   const originY = rect.height / 2 + viewport.offsetY;
   const minorStep = Math.max(10, GRID_MINOR_MM * viewport.scale);
@@ -1406,45 +1423,96 @@ function drawGrid(ctx, scene) {
   ctx.fillStyle = '#fcfffc';
   ctx.fillRect(0, 0, rect.width, rect.height);
 
-  function drawLines(step, color, width) {
+  if (!rotationRad) {
+    const drawLines = (step, color, width) => {
+      ctx.beginPath();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+
+      let x = originX % step;
+      if (x < 0) x += step;
+      for (; x <= rect.width; x += step) {
+        ctx.moveTo(Math.round(x) + 0.5, 0);
+        ctx.lineTo(Math.round(x) + 0.5, rect.height);
+      }
+
+      let y = originY % step;
+      if (y < 0) y += step;
+      for (; y <= rect.height; y += step) {
+        ctx.moveTo(0, Math.round(y) + 0.5);
+        ctx.lineTo(rect.width, Math.round(y) + 0.5);
+      }
+
+      ctx.stroke();
+    };
+
+    drawLines(minorStep, 'rgba(186, 202, 190, 0.12)', 1);
+    drawLines(majorStep, 'rgba(161, 177, 166, 0.14)', 1);
+    return;
+  }
+
+  // The grid is a world-space drafting aid, so it rotates with the walls when
+  // the view follows the phone heading. World axes pivot on the projected
+  // world origin; cover every screen corner from that pivot so rotated lines
+  // still fill the viewport.
+  const cover = Math.max(
+    Math.hypot(originX, originY),
+    Math.hypot(rect.width - originX, originY),
+    Math.hypot(originX, rect.height - originY),
+    Math.hypot(rect.width - originX, rect.height - originY)
+  );
+
+  ctx.save();
+  ctx.translate(originX, originY);
+  ctx.rotate(rotationRad);
+
+  const drawRotatedLines = (step, color, width) => {
     ctx.beginPath();
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
-
-    let x = originX % step;
-    if (x < 0) x += step;
-    for (; x <= rect.width; x += step) {
-      ctx.moveTo(Math.round(x) + 0.5, 0);
-      ctx.lineTo(Math.round(x) + 0.5, rect.height);
+    const first = -Math.ceil(cover / step) * step;
+    for (let x = first; x <= cover; x += step) {
+      ctx.moveTo(x, -cover);
+      ctx.lineTo(x, cover);
     }
-
-    let y = originY % step;
-    if (y < 0) y += step;
-    for (; y <= rect.height; y += step) {
-      ctx.moveTo(0, Math.round(y) + 0.5);
-      ctx.lineTo(rect.width, Math.round(y) + 0.5);
+    for (let y = first; y <= cover; y += step) {
+      ctx.moveTo(-cover, y);
+      ctx.lineTo(cover, y);
     }
-
     ctx.stroke();
-  }
+  };
 
-  drawLines(minorStep, 'rgba(186, 202, 190, 0.12)', 1);
-  drawLines(majorStep, 'rgba(161, 177, 166, 0.14)', 1);
+  drawRotatedLines(minorStep, 'rgba(186, 202, 190, 0.12)', 1);
+  drawRotatedLines(majorStep, 'rgba(161, 177, 166, 0.14)', 1);
+  ctx.restore();
 }
 
 function drawCursorGuide(ctx, scene) {
   const point = scene.cursor && scene.cursor.guidePoint;
   if (!point) return;
+  const rotationRad = Number(scene.viewport && scene.viewport.rotationRad) || 0;
 
   ctx.save();
   ctx.strokeStyle = BLUE_GUIDE_COLOR;
   ctx.lineWidth = GUIDE_STROKE_PX;
   if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
   ctx.beginPath();
-  ctx.moveTo(0, point.y);
-  ctx.lineTo(scene.rect.width, point.y);
-  ctx.moveTo(point.x, 0);
-  ctx.lineTo(point.x, scene.rect.height);
+  if (!rotationRad) {
+    ctx.moveTo(0, point.y);
+    ctx.lineTo(scene.rect.width, point.y);
+    ctx.moveTo(point.x, 0);
+    ctx.lineTo(point.x, scene.rect.height);
+  } else {
+    // The cross marks world X/Y through the cursor (straight-mode snapping is
+    // world-orthogonal), so it rotates together with the walls.
+    const cover = scene.rect.width + scene.rect.height;
+    ctx.translate(point.x, point.y);
+    ctx.rotate(rotationRad);
+    ctx.moveTo(-cover, 0);
+    ctx.lineTo(cover, 0);
+    ctx.moveTo(0, -cover);
+    ctx.lineTo(0, cover);
+  }
   ctx.stroke();
   if (ctx.setLineDash) ctx.setLineDash([]);
   ctx.restore();
@@ -2008,7 +2076,7 @@ function drawPlannedDimension(ctx, dimension) {
   if (!length) return;
   const direction = { x: dx / length, y: dy / length };
   const lineNormal = { x: -direction.y, y: direction.x };
-  const flipLabel = Math.atan2(dy, dx) > Math.PI / 2 || Math.atan2(dy, dx) <= -Math.PI / 2;
+  const flipLabel = shouldFlipDimensionLabel(Math.atan2(dy, dx));
 
   function toLocal(point) {
     const offsetX = point.x - start.x;
@@ -2077,7 +2145,7 @@ function drawPlannedDimension(ctx, dimension) {
   ctx.restore();
 }
 
-function drawDimension(ctx, dimension) {
+function drawDimension(ctx, dimension, viewRotationRad) {
   if (dimension.startPoint && dimension.endPoint) {
     drawPlannedDimension(ctx, dimension);
     return;
@@ -2085,7 +2153,10 @@ function drawDimension(ctx, dimension) {
   const wall = dimension.wall;
   const y = dimension.offset;
   const width = wall.widthPx;
-  const flipLabel = wall.angleDeg > 90 || wall.angleDeg <= -90;
+  const worldAngleRad = (Number(wall.angleDeg) * Math.PI) / 180;
+  const flipLabel = shouldFlipDimensionLabel(
+    resolveScreenEffectiveAngle(worldAngleRad, viewRotationRad)
+  );
 
   const startX = typeof dimension.startX === 'number' ? dimension.startX : 0;
   const endX = typeof dimension.endX === 'number' ? dimension.endX : width;
@@ -2143,7 +2214,8 @@ function drawDimension(ctx, dimension) {
 }
 
 function drawDimensions(ctx, scene) {
-  scene.dimensions.forEach((dimension) => drawDimension(ctx, dimension));
+  const viewRotationRad = Number(scene.viewport && scene.viewport.rotationRad) || 0;
+  scene.dimensions.forEach((dimension) => drawDimension(ctx, dimension, viewRotationRad));
 }
 
 function drawClosureGuide(ctx, scene) {
@@ -2441,6 +2513,14 @@ function createSurveyLensScene(input) {
   const centerPoint = opts.centerPoint || { xMm: 0, yMm: 0 };
   const size = opts.size || 120;
   const scale = opts.scale || 0.12;
+  const rotationRad = Number(opts.rotationRad) || 0;
+  // Keep the magnifier orientation aligned with the (possibly rotated) main
+  // canvas; the rotated offset keeps the lens target centred.
+  const rotatedCenter = rotateVector(
+    centerPoint.xMm * scale,
+    centerPoint.yMm * scale,
+    rotationRad
+  );
 
   return createSurveyRenderScene({
     floor: opts.floor,
@@ -2448,8 +2528,9 @@ function createSurveyLensScene(input) {
     rect: { width: size, height: size },
     viewport: {
       scale,
-      offsetX: -centerPoint.xMm * scale,
-      offsetY: -centerPoint.yMm * scale
+      offsetX: -rotatedCenter.x,
+      offsetY: -rotatedCenter.y,
+      rotationRad
     }
   });
 }
@@ -2773,15 +2854,29 @@ function drawDraggingCursor(ctx, rect, point, options) {
   const showCursor = !options || options.showCursor !== false;
   const snapGuide = showCursor && options && options.snapGuide;
   if (snapGuide) {
+    // Axis guides describe world X/Y alignment, so they rotate with the view
+    // rotation just like the walls they align with.
+    const rotationRad = Number(options && options.rotationRad) || 0;
+    const axisCover = rect.width + rect.height;
+    const axisCos = Math.cos(rotationRad);
+    const axisSin = Math.sin(rotationRad);
     const drawAxis = (axis, axisPoint) => {
       if (!axisPoint) return;
-      if (axis === 'x') {
-        ctx.moveTo(axisPoint.x, 0);
-        ctx.lineTo(axisPoint.x, rect.height);
-      } else if (axis === 'y') {
-        ctx.moveTo(0, axisPoint.y);
-        ctx.lineTo(rect.width, axisPoint.y);
+      if (Math.abs(rotationRad) < 1e-9) {
+        if (axis === 'x') {
+          ctx.moveTo(axisPoint.x, 0);
+          ctx.lineTo(axisPoint.x, rect.height);
+        } else {
+          ctx.moveTo(0, axisPoint.y);
+          ctx.lineTo(rect.width, axisPoint.y);
+        }
+        return;
       }
+      const dir = axis === 'x'
+        ? { x: -axisSin, y: axisCos }
+        : { x: axisCos, y: axisSin };
+      ctx.moveTo(axisPoint.x - dir.x * axisCover, axisPoint.y - dir.y * axisCover);
+      ctx.lineTo(axisPoint.x + dir.x * axisCover, axisPoint.y + dir.y * axisCover);
     };
     ctx.strokeStyle = STATUS_GUIDE_COLOR;
     ctx.lineWidth = GUIDE_STROKE_PX;
@@ -3070,6 +3165,8 @@ module.exports = {
   resolveViewport,
   persistSurveyViewport,
   compensateViewportOffsetForRotation,
+  resolveScreenEffectiveAngle,
+  shouldFlipDimensionLabel,
   createProjector,
   createUnprojector,
   projectSurveyPoint,

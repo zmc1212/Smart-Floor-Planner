@@ -612,7 +612,9 @@
 }
 
 .enterprise-hero-card {
+  min-height: 252rpx;
   margin-top: 4rpx;
+  padding: 28rpx 24rpx 22rpx;
 }
 
 .enterprise-hero-card .hero-top-row {
@@ -625,6 +627,22 @@
   position: relative;
   z-index: 2;
   margin-top: 12rpx;
+  /* Keep pills in the left lane; mascot is 220rpx wide + 16rpx inset. */
+  padding-right: 236rpx;
+  box-sizing: border-box;
+}
+
+.enterprise-hero-card .stat-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 10rpx 10rpx;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.enterprise-hero-card .stat-pill-label,
+.enterprise-hero-card .stat-pill-value {
+  font-size: 24rpx;
 }
 
 .enterprise-hero-mascot {
@@ -964,6 +982,280 @@
 
 .enterprise-action-hub .quick-nav-grid {
   margin-top: 14rpx;
+}
+
+.staff-role-quick-grid {
+  margin-top: 20rpx;
+}
+
+.staff-utility-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+
+.staff-utility-card {
+  min-width: 0;
+  min-height: 190rpx;
+  padding: 14rpx 12rpx 16rpx;
+  border-radius: 22rpx;
+  background: #ffffff;
+  box-shadow: 0 8rpx 20rpx rgba(24, 52, 38, 0.045);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.staff-utility-card.meter { background: #effaf4; }
+.staff-utility-card.calendar { background: #f2f7ff; }
+.staff-utility-card.leave { background: #fff7e8; }
+
+.staff-utility-card image {
+  width: 92rpx;
+  height: 92rpx;
+}
+
+.staff-utility-title {
+  margin-top: 2rpx;
+  color: #183426;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.staff-utility-detail {
+  margin-top: 6rpx;
+  max-width: 100%;
+  overflow: hidden;
+  color: #6f8077;
+  font-size: 22rpx;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.staff-task-heading {
+  margin-top: 30rpx;
+}
+
+.staff-task-heading-icon {
+  width: 34rpx;
+  height: 34rpx;
+  flex: none;
+}
+
+.staff-data-hero {
+  position: relative;
+  min-height: 290rpx;
+  margin-top: 8rpx;
+  padding: 30rpx 236rpx 28rpx 30rpx;
+  border-radius: 22rpx;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0) 36%),
+    linear-gradient(135deg, #e7faee 0%, #d9f6e4 100%);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.staff-data-hero-copy {
+  position: relative;
+  z-index: 2;
+}
+
+.staff-data-title,
+.staff-data-scope {
+  display: block;
+}
+
+.staff-data-title {
+  color: #183426;
+  font-size: 46rpx;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -1rpx;
+}
+
+.staff-data-scope {
+  margin-top: 8rpx;
+  color: #557466;
+  font-size: 24rpx;
+  line-height: 1.35;
+}
+
+.staff-data-mascot {
+  position: absolute;
+  z-index: 1;
+  right: 0;
+  object-position: center;
+}
+
+.staff-data-mascot.designer {
+  top: 10rpx;
+  width: 236rpx;
+  height: 220rpx;
+}
+
+.staff-data-mascot.measurer {
+  top: 0;
+  right: -2rpx;
+  width: 238rpx;
+  height: 258rpx;
+}
+
+.staff-data-period-row {
+  position: relative;
+  z-index: 3;
+  width: 408rpx;
+  margin: 22rpx 0 0;
+  flex-wrap: nowrap;
+  gap: 10rpx;
+}
+
+.staff-data-period-row .period-chip {
+  flex: 0 0 94rpx;
+  min-width: 0;
+  height: 52rpx;
+  padding: 0 8rpx;
+  border: 0;
+}
+
+.staff-data-period-row .period-chip.custom {
+  margin-left: 0;
+}
+
+.staff-data-period-row .period-chip text {
+  font-size: 24rpx;
+}
+
+.personal-dashboard-section {
+  margin-top: 18rpx;
+}
+
+.personal-dashboard-grid {
+  margin-top: 0;
+  gap: 14rpx;
+}
+
+.personal-dashboard-card {
+  min-height: 270rpx;
+  padding: 30rpx 14rpx 26rpx;
+  border: 1rpx solid #edf2ee;
+  border-radius: 20rpx;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.personal-dashboard-icon {
+  display: block;
+  width: 78rpx;
+  height: 78rpx;
+  margin-bottom: 16rpx;
+}
+
+.personal-dashboard-card .dashboard-label {
+  color: #315444;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.personal-dashboard-card .dashboard-value-row {
+  justify-content: center;
+  margin-top: 16rpx;
+  gap: 4rpx;
+}
+
+.personal-dashboard-card .dashboard-value {
+  font-size: 60rpx;
+  letter-spacing: -1rpx;
+}
+
+.personal-dashboard-card .dashboard-unit {
+  font-size: 26rpx;
+}
+
+.personal-data-path {
+  min-height: 304rpx;
+  margin-top: 18rpx;
+  padding: 28rpx 22rpx 30rpx;
+  border-radius: 22rpx;
+  background: #ffffff;
+  border: 1rpx solid #edf2ee;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.personal-data-stage-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 30rpx;
+  margin-top: 32rpx;
+}
+
+.personal-data-stage {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.personal-data-stage:not(:last-child)::after {
+  position: absolute;
+  z-index: 2;
+  top: 44rpx;
+  left: calc(100% + 6rpx);
+  width: 22rpx;
+  height: 2rpx;
+  background: #0bb963;
+  content: '';
+}
+
+.personal-data-stage:not(:last-child)::before {
+  position: absolute;
+  z-index: 3;
+  top: 38rpx;
+  left: calc(100% + 20rpx);
+  width: 10rpx;
+  height: 10rpx;
+  border-top: 2rpx solid #0bb963;
+  border-right: 2rpx solid #0bb963;
+  transform: rotate(45deg);
+  content: '';
+}
+
+.personal-data-stage-icon-wrap {
+  width: 92rpx;
+  height: 92rpx;
+  border-radius: 50%;
+  background: #e9f8ef;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.personal-data-stage-icon {
+  width: 68rpx;
+  height: 68rpx;
+}
+
+.personal-data-stage-label {
+  margin-top: 18rpx;
+  color: #315444;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .enterprise-action-hub .quick-nav-card {

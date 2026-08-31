@@ -1,15 +1,15 @@
 <!--
-THESIS: 经营角色先用一组紧凑的获客与团队操作完成高频调度，再以真实经营提醒承接周期事实。
-OWN-WORLD: 延续家客来明绿、轻白卡片与小K业务插画，数据面使用克制的薄荷底板。
-STORY: 工作台用于获客、人员、预约与异常处理；经营页用于读取全店周期事实。
-FIRST VIEWPORT: 工作台依次呈现短英雄区、左主右辅的获客团队操作、经营提醒、两张洞察卡和首条异常；经营页从周期筛选进入经营闭环。
-FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人信息架构，预约保留为待办区的上下文跳转。
+THESIS: 三个专业角色共用一套获客工作台骨架，角色差异只落在真实统计、权限文案和后续任务。
+OWN-WORLD: 延续家客来明绿 Hero、轻白卡片与小 K 业务插画，个人和全店数据面统一使用薄荷底板。
+STORY: 工作台先完成获客与推广，再进入角色任务；数据 Tab 分别读取本人或全店周期事实。
+FIRST VIEWPORT: 胶囊安全身份栏下是等高绿色 Hero，随后是一张主卡加两张次卡的获客入口。
+FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路由呈现五项个人数据，不出现全店金额。
 -->
 <wxs src="../../utils/stat-format.wxs" module="stat" />
 <view class="role-workbench sfp-tab-page">
   <scroll-view scroll-y class="role-scroll" enhanced show-scrollbar="{{false}}">
     <view class="role-content">
-      <block wx:if="{{role === 'enterprise_admin' && focus === 'overview'}}">
+      <block wx:if="{{(role === 'enterprise_admin' || role === 'designer' || role === 'measurer') && focus === 'overview'}}">
         <view
           class="identity-nav enterprise-operations-nav"
           style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
@@ -19,7 +19,7 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
               <view class="brand-mark">
                 <image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" />
               </view>
-              <text class="identity-brand-name">家客来 · 经营端</text>
+              <text class="identity-brand-name">家客来 · {{role === 'enterprise_admin' ? '经营端' : role === 'designer' ? '家装设计顾问端' : '家装现场顾问端'}}</text>
             </view>
             <text wx:if="{{enterpriseName}}" class="identity-enterprise-name">{{enterpriseName}}</text>
           </view>
@@ -28,11 +28,9 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
         <view class="role-hero-card enterprise-hero-card">
           <view class="hero-top-row">
             <view class="hero-text-wrap">
-              <text wx:if="{{staffName}}" class="hero-staff-name">{{staffName}}</text>
-              <text class="hero-title">{{title || '门店经营与全盘调度'}}</text>
-              <text class="hero-subtitle">{{subtitle || '派单跟踪 · 测量调度 · 方案交付'}}</text>
+              <text class="hero-title">{{title || (role === 'enterprise_admin' ? '门店经营与全盘调度' : role === 'designer' ? '家装设计顾问工作台' : '家装现场顾问工作台')}}</text>
             </view>
-            <image class="hero-mascot enterprise-hero-mascot" src="/images/operations-dashboard/enterprise-guide.png" mode="aspectFit" aria-label="小K" />
+            <image class="hero-mascot enterprise-hero-mascot" src="{{role === 'enterprise_admin' ? '/images/operations-dashboard/enterprise-guide.png' : role === 'designer' ? '/images/airy-v1/xiao-k-designer-3d.png' : '/images/airy-v1/xiao-k-measurer-3d.png'}}" mode="aspectFit" aria-label="小K" />
           </view>
 
           <view class="stats-pills-row">
@@ -45,7 +43,7 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
         </view>
 
         <view class="enterprise-action-hub">
-          <text class="enterprise-action-hub-title">获客与团队</text>
+          <text class="enterprise-action-hub-title">{{role === 'enterprise_admin' ? '获客与团队' : '获客与推广'}}</text>
           <view class="enterprise-action-layout {{activityCode ? '' : 'without-activity'}}">
             <view
               wx:if="{{activityCode}}"
@@ -70,7 +68,7 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
                 bindtap="openJoinCodes"
                 hover-class="card-pressed"
                 aria-role="button"
-                aria-label="邀请员工或推荐人入驻"
+                aria-label="{{role === 'enterprise_admin' ? '邀请员工或推荐人入驻' : '邀请推荐人入驻'}}"
               >
                 <view class="enterprise-action-copy mini">
                   <text class="enterprise-action-title">{{joinCode.label}}</text>
@@ -80,15 +78,16 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
                 <view class="enterprise-mini-arrow"><view></view></view>
               </view>
               <view
+                wx:if="{{referrerRoster}}"
                 class="enterprise-action-mini-card referrer"
                 bindtap="openReferrerRoster"
                 hover-class="card-pressed"
                 aria-role="button"
-                aria-label="查看已入驻推广人名单"
+                aria-label="{{referrerRoster.label}}，{{referrerRoster.detail}}"
               >
                 <view class="enterprise-action-copy mini">
-                  <text class="enterprise-action-title">查看推广人</text>
-                  <text class="enterprise-action-detail">名单管理</text>
+                  <text class="enterprise-action-title">{{referrerRoster.label}}</text>
+                  <text class="enterprise-action-detail">{{referrerRoster.detail}}</text>
                 </view>
                 <image class="enterprise-mini-art referrer" src="/images/operations-dashboard/referrer-roster-v2.png" mode="aspectFit" aria-hidden="true" />
                 <view class="enterprise-mini-arrow"><view></view></view>
@@ -96,14 +95,14 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
             </view>
           </view>
 
-          <view wx:if="{{secondary}}" class="enterprise-appointment-row" bindtap="openSecondary" hover-class="card-pressed" aria-role="button" aria-label="{{secondary.label}}">
+          <view wx:if="{{role === 'enterprise_admin' && secondary}}" class="enterprise-appointment-row" bindtap="openSecondary" hover-class="card-pressed" aria-role="button" aria-label="{{secondary.label}}">
             <image class="enterprise-appointment-icon" src="/images/mine-icons/book-g.png" mode="aspectFit" aria-hidden="true" />
             <text class="enterprise-appointment-label">{{secondary.label}}</text>
             <text class="enterprise-appointment-meta">· 共 {{stat.count(appointmentCount)}} 项</text>
             <view class="enterprise-code-chevron"></view>
           </view>
 
-          <view wx:if="{{enterpriseReminder.length}}" class="enterprise-reminder-row" bindtap="openOperations" hover-class="card-pressed" aria-role="button" aria-label="查看经营提醒">
+          <view wx:if="{{role === 'enterprise_admin' && enterpriseReminder.length}}" class="enterprise-reminder-row" bindtap="openOperations" hover-class="card-pressed" aria-role="button" aria-label="查看经营提醒">
             <image class="enterprise-reminder-icon" src="/images/mine-icons/bell.png" mode="aspectFit" aria-hidden="true" />
             <text class="enterprise-reminder-title">经营提醒</text>
             <view class="enterprise-reminder-title-divider"></view>
@@ -117,7 +116,7 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
             <view class="enterprise-code-chevron"></view>
           </view>
 
-          <view class="quick-nav-grid">
+          <view wx:if="{{role === 'enterprise_admin'}}" class="quick-nav-grid">
             <view
               wx:for="{{quickNav}}"
               wx:key="key"
@@ -140,7 +139,7 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
           </view>
         </view>
 
-        <view class="enterprise-priority-section">
+        <view wx:if="{{role === 'enterprise_admin'}}" class="enterprise-priority-section">
           <view class="enterprise-priority-tray {{items.length ? 'has-items' : 'is-empty'}}">
             <view class="section-head compact priority-head">
               <view class="section-title-wrap">
@@ -177,9 +176,97 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
             </view>
           </view>
         </view>
+
+        <block wx:else>
+          <view
+            wx:if="{{role === 'designer' && claimPoolSummary && claimPoolSummary.count > 0}}"
+            class="claim-pool-alert"
+            bindtap="openClaimPool"
+            hover-class="card-pressed"
+            aria-role="button"
+            aria-label="进入抢单池，共{{stat.count(claimPoolSummary.count)}}条待抢线索"
+          >
+            <view class="claim-alert-clock"><view class="claim-alert-hand"></view></view>
+            <view class="claim-alert-copy">
+              <text class="claim-alert-title">有 {{stat.count(claimPoolSummary.count)}} 条新线索正在等你</text>
+              <text class="claim-alert-subtitle">最近一单还剩 {{claimPoolSummary.remainingSeconds}} 秒{{claimPoolSummary.capacityAvailable ? '' : ' · 当前容量已满'}}</text>
+            </view>
+            <view class="claim-alert-action"><text>去抢单</text><view class="claim-alert-chevron"></view></view>
+          </view>
+
+          <view wx:if="{{role === 'designer'}}" class="quick-nav-grid staff-role-quick-grid">
+            <view class="quick-nav-card lead-inbox" bindtap="openCustomers" hover-class="card-pressed">
+              <view class="quick-text"><text class="quick-title">客户线索</text><text class="quick-desc">查看与推进我的客户 →</text></view>
+              <image class="quick-nav-mascot" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" aria-hidden="true" />
+            </view>
+            <view class="quick-nav-card staff-load" bindtap="openAIDesign" hover-class="card-pressed">
+              <view class="quick-text"><text class="quick-title">方案交付</text><text class="quick-desc">进入设计与风格配方 →</text></view>
+              <image class="quick-nav-mascot" src="/images/airy-v1/palette-recipe-3d.png" mode="aspectFit" aria-hidden="true" />
+            </view>
+          </view>
+
+          <view wx:if="{{role === 'measurer'}}" class="staff-utility-grid">
+            <view class="staff-utility-card meter" bindtap="openBleConnector" hover-class="card-pressed" aria-role="button">
+              <image src="/images/airy-v1/laser-meter-3d.png" mode="aspectFit" aria-hidden="true" />
+              <text class="staff-utility-title">连接测距仪</text>
+              <text class="staff-utility-detail">{{bleConnected ? '设备已连接' : '设备未连接'}}</text>
+            </view>
+            <view class="staff-utility-card calendar" bindtap="openCalendar" hover-class="card-pressed" aria-role="button">
+              <image src="/images/airy-v1/route-map-3d.png" mode="aspectFit" aria-hidden="true" />
+              <text class="staff-utility-title">量房日程</text>
+              <text class="staff-utility-detail">查看上门安排</text>
+            </view>
+            <view class="staff-utility-card leave" bindtap="openUnavailability" hover-class="card-pressed" aria-role="button">
+              <image src="/images/airy-v1/leave-calendar-3d.png" mode="aspectFit" aria-hidden="true" />
+              <text class="staff-utility-title">请假登记</text>
+              <text class="staff-utility-detail">维护不可用时段</text>
+            </view>
+          </view>
+
+          <view wx:if="{{withdrawalNotices.length}}" class="withdrawal-notice-list">
+            <view wx:for="{{withdrawalNotices}}" wx:key="id" class="withdrawal-notice">
+              <view class="withdrawal-notice-copy"><text class="withdrawal-notice-title">{{item.title}}</text><text class="withdrawal-notice-message">{{item.message}}</text><text wx:if="{{item.recordCode}}" class="withdrawal-notice-code">记录编号 {{item.recordCode}}</text></view>
+              <button class="withdrawal-notice-action" data-id="{{item.id}}" bindtap="acknowledgeWithdrawal">我知道了</button>
+            </view>
+          </view>
+
+          <view class="section-head staff-task-heading">
+            <view class="section-title-wrap">
+              <image class="staff-task-heading-icon" src="{{role === 'designer' ? '/images/ai-design-icons/floor-plan.png' : '/images/leads-v4/ruler-green.png'}}" mode="aspectFit" aria-hidden="true" />
+              <text class="section-title-text">{{role === 'designer' ? '待推进与方案交付' : '日程与量房任务'}}</text>
+            </view>
+            <view wx:if="{{secondary}}" class="section-link" bindtap="openSecondary"><text>{{secondary.label}}</text><view class="chevron"></view></view>
+          </view>
+
+          <view wx:if="{{loading}}" class="state-block"><text>正在读取真实工作数据</text></view>
+          <view wx:elif="{{error}}" class="state-block"><text>{{error}}</text><view class="retry" bindtap="load">重新加载</view></view>
+          <view wx:elif="{{items.length}}" class="item-list">
+            <view wx:for="{{items}}" wx:key="id" class="work-item" data-item="{{item}}" bindtap="openItem" hover-class="work-item-pressed">
+              <view class="item-marker tone-{{item.status === 'confirmed' ? 'green' : 'blue'}}"></view>
+              <view class="item-copy">
+                <view class="item-title-row"><text class="item-title">{{item.title}}</text><view wx:if="{{item.statusBadge}}" class="item-tag-green"><text>{{item.statusBadge}}</text></view></view>
+                <text class="item-subtitle">{{item.subtitle}}</text>
+                <text class="item-meta">{{item.metaLabel}}</text>
+                <view class="item-cta-row">
+                  <view wx:if="{{item.customerPhone}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="callCustomer" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" /><text>电话联系</text></view>
+                  <view wx:if="{{item.latitude && item.longitude}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openNavigation" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" /><text>导航</text></view>
+                  <view wx:if="{{item.canCompleteSurvey}}" class="item-cta sfp-icon-action" catchtap="openAppointment" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" /><text>确认完成量房</text></view>
+                  <view wx:if="{{(item.canSurveyNow || item.canContinueSurvey) && !item.canCompleteSurvey}}" class="item-cta sfp-icon-action" catchtap="openSurvey" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" /><text>{{item.canContinueSurvey ? '继续量房' : '立即量房'}}</text></view>
+                  <view wx:elif="{{item.canContinueSurvey && item.canCompleteSurvey}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openSurvey" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" /><text>继续量房</text></view>
+                  <view wx:if="{{item.canStartNewSurvey}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openNewSurvey" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/images/leads-v4/ruler-green.png" mode="aspectFit" /><text>新增量房</text></view>
+                  <view wx:if="{{item.canReschedule}}" class="item-cta sfp-icon-action" catchtap="openReschedule" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" /><text>{{item.actionLabel || '改期'}}</text></view>
+                  <view wx:elif="{{item.canBookAppointment}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openBooking" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" /><text>{{item.canRebook ? (item.actionLabel || '重新预约') : '预约上门'}}</text></view>
+                  <view wx:elif="{{item.action === 'appointment' && item.appointmentId && !item.canCompleteSurvey}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openAppointment" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" /><text>查看预约</text></view>
+                </view>
+              </view>
+              <view wx:if="{{!(item.canSurveyNow || item.canContinueSurvey || item.canStartNewSurvey || item.canCompleteSurvey || item.canBookAppointment || item.canReschedule || (item.action === 'appointment' && item.appointmentId))}}" class="item-action"><text>{{item.actionLabel}}</text><view class="chevron"></view></view>
+            </view>
+          </view>
+          <view wx:else class="state-block empty"><text>{{emptyCopy}}</text><view wx:if="{{secondary}}" class="retry" bindtap="openSecondary">{{secondary.label}}</view></view>
+        </block>
       </block>
 
-      <block wx:elif="{{role === 'enterprise_admin' && focus === 'operations'}}">
+      <block wx:elif="{{(role === 'enterprise_admin' || role === 'designer' || role === 'measurer') && focus === 'operations'}}">
         <view
           class="identity-nav"
           style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
@@ -187,12 +274,13 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
           <view class="identity-brand-stack">
             <view class="identity-brand-row">
               <view class="brand-mark"><image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" /></view>
-              <text class="identity-brand-name">家客来 · 经营端</text>
+              <text class="identity-brand-name">家客来 · {{role === 'enterprise_admin' ? '经营端' : role === 'designer' ? '家装设计顾问端' : '家装现场顾问端'}}</text>
             </view>
             <text wx:if="{{enterpriseName}}" class="identity-enterprise-name">{{enterpriseName}}</text>
           </view>
         </view>
 
+        <block wx:if="{{role === 'enterprise_admin'}}">
         <view class="enterprise-operations-hero">
           <view class="enterprise-operations-hero-copy">
             <text class="enterprise-operations-title">{{dashboardPeriod.label || '本月'}}经营大盘</text>
@@ -238,6 +326,47 @@ FORM: 已确认的「工作台｜经营｜客户｜提成｜我的」负责人�
             </view>
             <view wx:else class="operations-trend-empty"><text>暂无签约金额趋势数据</text></view>
           </view>
+        </block>
+        </block>
+
+        <block wx:else>
+          <view class="staff-data-hero">
+            <view class="staff-data-hero-copy">
+              <text class="staff-data-title">{{dashboardPeriod.label || '本月'}}个人数据</text>
+              <text class="staff-data-scope">仅统计我的业务数据</text>
+              <view class="period-chip-row staff-data-period-row">
+                <view wx:for="{{periodChips}}" wx:key="key" class="period-chip {{dashboardPeriod.kind === item.key ? 'active' : ''}}" data-kind="{{item.key}}" bindtap="selectPeriodChip"><text>{{item.label}}</text></view>
+                <view class="period-chip custom {{dashboardPeriod.kind === 'custom' ? 'active' : ''}}" bindtap="openPeriodSheet"><text>自定义</text></view>
+              </view>
+            </view>
+            <image class="staff-data-mascot {{role}}" src="{{role === 'designer' ? '/images/operations-dashboard/staff-data-designer-v1.png' : '/images/operations-dashboard/staff-data-measurer-v1.png'}}" mode="aspectFit" aria-label="{{role === 'designer' ? '手持户型图的家装设计顾问小K' : '使用测距仪量房的家装现场顾问小K'}}" />
+          </view>
+
+          <view wx:if="{{loading}}" class="state-block"><text>正在读取个人数据</text></view>
+          <view wx:elif="{{error}}" class="state-block"><text>{{error}}</text><view class="retry" bindtap="load">重新加载</view></view>
+          <block wx:else>
+            <view class="personal-dashboard-section">
+              <view class="enterprise-dashboard-grid personal-dashboard-grid">
+                <view wx:for="{{dashboard}}" wx:key="key" class="enterprise-dashboard-card personal-dashboard-card personal-dashboard-card-{{item.key}}">
+                  <image class="personal-dashboard-icon" src="{{item.key === 'newLeads' ? '/images/operations-dashboard/new-leads-kpi-v2.png' : item.key === 'completedSurveys' ? '/images/operations-dashboard/completed-survey-kpi-v2.png' : item.key === 'schemeDelivery' ? '/images/operations-dashboard/scheme-delivery-kpi-v1.png' : item.key === 'signedCount' ? '/images/operations-dashboard/signed-contract-kpi-v2.png' : '/images/operations-dashboard/signing-rate-kpi-v1.png'}}" mode="aspectFit" aria-hidden="true" />
+                  <text class="dashboard-label">{{item.label}}</text>
+                  <view class="dashboard-value-row"><text class="dashboard-value">{{item.key === 'schemeDelivery' || item.key === 'signingRate' ? stat.percent(item.value) : stat.count(item.value)}}</text><text wx:if="{{item.unit && item.key !== 'schemeDelivery' && item.key !== 'signingRate'}}" class="dashboard-unit">{{item.unit}}</text></view>
+                </view>
+              </view>
+            </view>
+
+            <view wx:if="{{personalDashboardStages.length}}" class="personal-data-path">
+              <view class="operations-board-kicker"><text>我的转化路径</text></view>
+              <view class="personal-data-stage-grid">
+                <view wx:for="{{personalDashboardStages}}" wx:key="key" class="personal-data-stage personal-data-stage-{{item.key}}">
+                  <view class="personal-data-stage-icon-wrap">
+                    <image class="personal-data-stage-icon" src="{{item.key === 'newLeads' ? '/images/operations-dashboard/new-leads-kpi-v2.png' : item.key === 'completedSurveys' ? '/images/operations-dashboard/completed-survey-kpi-v2.png' : item.key === 'schemeDelivery' ? '/images/operations-dashboard/scheme-delivery-kpi-v1.png' : '/images/operations-dashboard/signed-contract-kpi-v2.png'}}" mode="aspectFit" aria-hidden="true" />
+                  </view>
+                  <text class="personal-data-stage-label">{{item.flowLabel}}</text>
+                </view>
+              </view>
+            </view>
+          </block>
         </block>
       </block>
 

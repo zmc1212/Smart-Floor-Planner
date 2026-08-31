@@ -40,8 +40,8 @@ const ROLE_LABELS: Record<MiniProgramRole, string> = {
 const ROLE_CAPABILITIES: Record<MiniProgramRole, string[]> = {
   customer: ['customer.service', 'customer.projects', 'account'],
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
-  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'referrer.network', 'account'],
-  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'referrer.network', 'account'],
+  designer: ['staff.leads', 'staff.data', 'staff.appointments', 'staff.design', 'staff.earnings', 'referrer.network', 'account'],
+  measurer: ['staff.schedule', 'staff.data', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'referrer.network', 'account'],
   salesperson: ['promotion.records', 'promotion.commissions', 'referrer.network', 'account'],
   enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'referrer.network', 'account'],
   platform_admin: ['platform.review', 'platform.devices', 'account'],

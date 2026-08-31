@@ -44,7 +44,7 @@ test('the close action follows the graph minimum-wall rule for standalone and sh
   assert.match(editorScript, /drawViewportInteractionControls\(viewport\)/);
   assert.match(
     editorScript,
-    /cx: close\.cx \* transform\.scale \+ transform\.translateX[\s\S]*cy: close\.cy \* transform\.scale \+ transform\.translateY/
+    /surveyCanvasRenderer\.projectInteractionPoint\([\s\S]*?x: close\.cx, y: close\.cy[\s\S]*?transform[\s\S]*?cx: closePoint\.x,[\s\S]*?cy: closePoint\.y/
   );
 });
 

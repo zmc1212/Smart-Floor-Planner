@@ -4,6 +4,8 @@ const surveySnapEngine = require('../utils/survey/snap/snap-engine.js');
 const surveyCanvasRenderer = require('../utils/surveyCanvasRenderer.js');
 const surveyViewportInteraction = require('../utils/surveyViewportInteraction.js');
 const surveyCursorPlacementIndex = require('../utils/surveyCursorPlacementIndex.js');
+const surveyDeviceOrientation = require('../utils/surveyDeviceOrientation.js');
+const surveyBleDirectionOptions = require('../utils/surveyBleDirectionOptions.js');
 const {
   toAimClientPoint,
   wallGrabDelta,
@@ -118,12 +120,40 @@ const DIMENSION_COLLISION_GAP_PX = 8;
 const DIMENSION_PRIMARY_GAP_PX = 22;
 const CURSOR_LENS_SIZE_PX = 120;
 const CURSOR_LENS_SCALE = 0.12;
+const COMPASS_SIZE_RPX = 86;
+const COMPASS_LEFT_RPX = 26;
+const TOP_METRIC_LEFT_RPX = 34;
+const TOP_METRIC_HEIGHT_RPX = 56;
+const OVERLAY_STACK_GAP_RPX = 12;
+
+function resolveCanvasOverlayLayout(overlayContentTop, rpxScale) {
+  const compassTopPx = overlayContentTop;
+  const compassSizePx = COMPASS_SIZE_RPX * rpxScale;
+  const stackGapPx = OVERLAY_STACK_GAP_RPX * rpxScale;
+  const topMetricHeightPx = TOP_METRIC_HEIGHT_RPX * rpxScale;
+  const topMetricTopPx = compassTopPx + compassSizePx + stackGapPx;
+  const cursorLensTopPx = topMetricTopPx + topMetricHeightPx + stackGapPx;
+  return {
+    compassTopPx,
+    topMetricTopPx,
+    topMetricLeftPx: TOP_METRIC_LEFT_RPX * rpxScale,
+    cursorLensTopPx,
+    cursorLensLeftPx: COMPASS_LEFT_RPX * rpxScale + 8
+  };
+}
 const DOCK_AIM_MIN_FRAME_MS = 16;
 const DOCK_SNAP_INTERVAL_MS = 48;
 const DOCK_LENS_PAINT_INTERVAL_MS = 120;
 const CURSOR_DRAG_CANVAS_MAX_DPR = 2;
 const PHONE_LEVEL_TOLERANCE_DEG = 8;
 const PHONE_HEADING_SAMPLE_COUNT = 9;
+// After the heading stops moving, commit the lightweight rotation frames with
+// one full formal redraw (dimensions, labels, controls).
+const FOLLOW_ROTATION_SETTLE_MS = 280;
+const VIEW_ROTATION_RESET_MS = 220;
+const MANUAL_VIEW_ROTATION_STEP_DEG = 90;
+const COMPASS_DISPLAY_MIN_INTERVAL_MS = 120;
+const COMPASS_DISPLAY_MIN_DELTA_DEG = 2;
 const DIMENSION_OUTER_GAP_PX = 12;
 const REDLINE_JOIN_TRIM_PX = 0;
 const REDLINE_THICKNESS_PX = 3;
@@ -178,12 +208,19 @@ function median(values) {
   return sorted[Math.floor(sorted.length / 2)];
 }
 
-function buildCoreTools(activeTool, thicknessMm) {
+function buildCoreTools(activeTool, thicknessMm, bleInputMode) {
   return [
     { key: 'straight', label: '直线', helper: '正交吸附', icon: activeTool === 'straight' ? 'align-active' : 'align', enabled: true, active: activeTool === 'straight' },
     { key: 'diagonal', label: '斜线', helper: '自由角度', icon: activeTool === 'diagonal' ? 'annotation-active' : 'annotation', enabled: true, active: activeTool === 'diagonal' },
     { key: 'thickness', label: '墙厚', helper: formatMm(thicknessMm), icon: 'layers', enabled: true, active: false },
-    { key: 'input', label: '输入', helper: '手输 mm', icon: 'display', enabled: true, active: false },
+    {
+      key: 'input',
+      label: '输入',
+      helper: bleInputMode ? '方向落墙' : '手输 mm',
+      icon: 'display',
+      enabled: true,
+      active: !!bleInputMode
+    },
     { key: 'ble-measure', label: '测距', helper: '蓝牙读数', enabled: true, active: false },
     { key: 'reset', label: '重置', helper: '光标', enabled: true, active: false }
   ];
@@ -352,6 +389,8 @@ Page({
     statusBarHeight: 0,
     navigationSafeTop: 0,
     overlayContentTop: 0,
+    topMetricTop: 0,
+    topMetricLeft: 0,
     rightRailTop: 0,
     rightRailBottom: 0,
     bottomSafeArea: 0,
@@ -366,6 +405,10 @@ Page({
     formalNotice: '正式量房草稿',
     floorPlanStatus: '',
     showFormalExtras: false,
+    compassRotationDeg: 0,
+    compassFollowActive: false,
+    bleInputMode: false,
+    bleDirectionMode: 'manual',
     coreTools: buildCoreTools('straight', 200),
     reservedTools: RESERVED_TOOLS,
     canvasWidth: 0,
@@ -472,6 +515,7 @@ Page({
     // The reference shell is 80px tall at 390px. Canvas controls start below
     // that fixed shell instead of inheriting device-specific capsule height.
     const overlayContentTop = Math.max(navigationSafeTop + 12, headerBottom + 8 * rpxScale);
+    const overlayLayout = resolveCanvasOverlayLayout(overlayContentTop, rpxScale);
 
     const leadId = options.leadId || context.leadId || '';
     const contextFloorPlanId = options.floorPlanId || context.floorPlanId || '';
@@ -542,6 +586,30 @@ Page({
     this.viewportInteractionFrameQueue = null;
     this.viewportInteractionAwaitingHandoff = false;
     this.viewRotationDeg = 0;
+    this.headingFollowController = surveyDeviceOrientation.createHeadingFollowController({
+      cardinalOnly: true,
+      activateDeg: 20,
+      switchDeg: 25
+    });
+    this.directionPickController = surveyDeviceOrientation.createDirectionPickController();
+    this.followMotionHandler = this.onFollowDeviceMotionChange.bind(this);
+    this.bleDirectionMotionHandler = this.onBleDirectionMotionChange.bind(this);
+    this.followMotionUnsubscribe = null;
+    this.bleDirectionMotionUnsubscribe = null;
+    this.followEnabled = false;
+    this.bleInputMode = false;
+    this.bleDirectionMode = 'manual';
+    this.bleSelectedDirectionKey = '';
+    this.bleDirectionBaselineOffsetDeg = 0;
+    this.pageVisible = true;
+    this.headingPrivacyReady = false;
+    this.headingPrivacyPromise = null;
+    this.followSettleTimer = null;
+    this.followSampleTimer = null;
+    this.followMotionEventCount = 0;
+    this.followInteractionActive = false;
+    this.viewRotationAnimation = null;
+    this.compassDisplayUpdatedAt = 0;
     this.cursorLensLastUpdateAt = 0;
     this.cursorLensScene = null;
     this.cursorLensMeta = null;
@@ -553,8 +621,8 @@ Page({
     this.pendingWallDragFrame = null;
     this.rpxScale = rpxScale;
     this.cursorLensRect = {
-      left: 24 * rpxScale + 8,
-      top: 176 * rpxScale + 8,
+      left: overlayLayout.cursorLensLeftPx,
+      top: overlayLayout.cursorLensTopPx,
       size: CURSOR_LENS_SIZE_PX
     };
     this.componentCanvas = null;
@@ -593,7 +661,7 @@ Page({
     this.anglePhoneHeading = null;
     this.anglePhoneBaseline = null;
     this.anglePhoneSamples = [];
-    this.deviceMotionListening = false;
+    this.angleMotionUnsubscribe = null;
     this.deviceMotionHandler = this.onDeviceMotionChange.bind(this);
     this.angleRemeasureOriginalDraft = null;
     this.angleRemeasureHistoryDraft = null;
@@ -605,6 +673,8 @@ Page({
       statusBarHeight: sysInfo.statusBarHeight || 0,
       navigationSafeTop,
       overlayContentTop,
+      topMetricTop: overlayLayout.topMetricTopPx,
+      topMetricLeft: overlayLayout.topMetricLeftPx,
       rightRailTop: headerBottom + 48 * rpxScale,
       rightRailBottom: safeAreaBottom + 154,
       bottomSafeArea: safeAreaBottom,
@@ -626,14 +696,20 @@ Page({
   },
 
   onShow() {
+    this.pageVisible = true;
     this.refreshCanvasRect();
     if (this.data.angleMeasureVisible && this.data.angleMeasureTab === 'phone') {
       this.startPhoneAngleMeasurement();
     }
+    this.resumeBleDirectionAutoPick();
+    this.resumeHeadingFollow();
   },
 
   onHide() {
+    this.pageVisible = false;
     this.flushPendingComponentManualAudit();
+    this.suspendBleDirectionAutoPick();
+    this.suspendHeadingFollow();
     this.finishViewportInteraction({ sync: true, persist: false });
     this.flushViewportDraftSync({ sync: true });
     this.stopPhoneAngleMeasurement();
@@ -643,7 +719,11 @@ Page({
   },
 
   onUnload() {
+    this.pageVisible = false;
     this.flushPendingComponentManualAudit();
+    this.followEnabled = false;
+    this.stopBleDirectionAutoPick();
+    this.suspendHeadingFollow();
     this.surveyCanvasDisposed = true;
     this.canvasRectRevision += 1;
     this.surveyCanvasInitRevision += 1;
@@ -847,7 +927,7 @@ Page({
       this.localDraftSavedAt = savedAt;
       wx.setStorageSync(
         this.formalDraftKey || this.getFormalDraftKey(this.data.leadId || ''),
-        wrapFormalDraftStorage(surveyGraph.cloneDraft(this.draft), savedAt)
+        wrapFormalDraftStorage(surveyLayout.clonePersistableSurveyGraph(this.draft), savedAt)
       );
       return true;
     } catch (err) {
@@ -1204,6 +1284,15 @@ Page({
       return { target: 'pendingWall' };
     }
 
+    if (
+      this.bleInputMode &&
+      session &&
+      session.mode === 'straight' &&
+      (session.state === 'cursorPlaced' || session.state === 'wallCommitted')
+    ) {
+      return { target: '', reason: '请先点选方向箭头' };
+    }
+
     const currentWall = floor && floor.walls && floor.walls.length
       ? floor.walls[floor.walls.length - 1]
       : null;
@@ -1461,6 +1550,10 @@ Page({
         : null;
       const nextDraft = maybeAutoConfirmSharedBoundaryClose(committedDraft);
       const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
+      this.bleSelectedDirectionKey = '';
+      if (this.directionPickController) {
+        this.directionPickController.setSelectedKey('');
+      }
       this.applyDraft(this.enterResetCursorAfterClose(nextDraft), { recordHistory: true });
       wx.showToast({
         title: nextSession.state === 'spaceClosed' ? '已吸附闭合点并闭合' : '已更新当前墙体',
@@ -1571,32 +1664,636 @@ Page({
       angleMeasureStatus: '将手机水平贴合上一面墙后设为基准',
       numberInput: ''
     });
-    if (!wx.startDeviceMotionListening || !wx.onDeviceMotionChange) {
+    if (!surveyDeviceOrientation.sharedDeviceMotionHub.supported()) {
       this.setData({ angleMeasureStatus: '当前设备不支持手机姿态测角' });
       return;
     }
 
-    wx.onDeviceMotionChange(this.deviceMotionHandler);
-    wx.startDeviceMotionListening({
-      interval: 'game',
-      success: () => {
-        this.deviceMotionListening = true;
-      },
-      fail: () => {
-        if (wx.offDeviceMotionChange) wx.offDeviceMotionChange(this.deviceMotionHandler);
-        this.setData({ angleMeasureStatus: '无法启用手机姿态传感器，请手输或使用勾股定理测量' });
-      }
-    });
+    if (!this.angleMotionUnsubscribe) {
+      // The heading-follow mode shares the same global device-motion listener;
+      // the hub keeps one native subscription alive for both consumers.
+      this.angleMotionUnsubscribe = surveyDeviceOrientation.sharedDeviceMotionHub.subscribe(
+        this.deviceMotionHandler,
+        {
+          interval: 'game',
+          onError: () => {
+            this.angleMotionUnsubscribe = null;
+            this.setData({ angleMeasureStatus: '无法启用手机姿态传感器，请手输或使用勾股定理测量' });
+          }
+        }
+      );
+    }
   },
 
   stopPhoneAngleMeasurement() {
-    if (wx.offDeviceMotionChange && this.deviceMotionHandler) {
-      wx.offDeviceMotionChange(this.deviceMotionHandler);
+    if (this.angleMotionUnsubscribe) {
+      this.angleMotionUnsubscribe();
+      this.angleMotionUnsubscribe = null;
     }
-    if (this.deviceMotionListening && wx.stopDeviceMotionListening) {
-      wx.stopDeviceMotionListening({ fail: () => {} });
+  },
+
+  // ── 画布跟随手机朝向（仅视图旋转，不改绘制几何与持久化数据） ──
+
+  getViewRotationRad() {
+    return ((Number(this.viewRotationDeg) || 0) * Math.PI) / 180;
+  },
+
+  onCompassTap() {
+    if (this.bleInputMode) {
+      this.toggleBleDirectionAutoMode();
+      return;
     }
-    this.deviceMotionListening = false;
+    console.warn('[surveying-editor] compass tap', this.followEnabled ? 'off' : 'on');
+    if (this.followEnabled) {
+      this.disableHeadingFollow({ resetRotation: true });
+      return;
+    }
+    this.enableHeadingFollow();
+  },
+
+  setBleInputMode(enabled) {
+    const nextEnabled = !!enabled;
+    if (this.bleInputMode === nextEnabled) return;
+    this.bleInputMode = nextEnabled;
+    if (!nextEnabled) {
+      this.bleDirectionMode = 'manual';
+      this.bleSelectedDirectionKey = '';
+      this.stopBleDirectionAutoPick();
+      if (this.draft) {
+        this.draft = surveyGraph.clearBleLockedBearing(this.draft);
+      }
+    }
+    this.syncFromDraft();
+    this.drawSurveyCanvas();
+    wx.showToast({
+      title: nextEnabled ? '已开启输入模式' : '已关闭输入模式',
+      icon: 'none'
+    });
+  },
+
+  toggleBleDirectionAutoMode() {
+    if (this.bleDirectionMode === 'auto') {
+      this.bleDirectionMode = 'manual';
+      this.stopBleDirectionAutoPick();
+      if (this.followEnabled) {
+        this.disableHeadingFollow({ resetRotation: false });
+      }
+      wx.showToast({ title: '已切换为手动选方向', icon: 'none' });
+    } else {
+      this.bleDirectionMode = 'auto';
+      this.startBleDirectionAutoPick().then((started) => {
+        if (started && !this.followEnabled) {
+          this.enableHeadingFollow({ silent: true, privacyReady: true });
+        }
+      });
+      wx.showToast({ title: '已切换为朝向自动选方向', icon: 'none' });
+    }
+    this.syncFromDraft();
+    this.drawSurveyCanvas();
+  },
+
+  shouldShowBleDirectionArrows(floor, session) {
+    if (!this.bleInputMode || !floor || !session || session.mode !== 'straight') return false;
+    if (!session.anchorNodeId) return false;
+    if (session.state === 'wallPreview') return false;
+    if (['spaceClosed', 'wallSelected', 'remeasureAwaitingInput', 'closing', 'mergeClosing'].includes(session.state)) {
+      return false;
+    }
+    return session.state === 'idle'
+      || session.state === 'cursorPlaced'
+      || session.state === 'wallCommitted'
+      || session.state === 'awaitingLength'
+      || session.state === 'wallSnapPending';
+  },
+
+  buildBleDirectionSceneData(floor, session) {
+    if (!this.shouldShowBleDirectionArrows(floor, session)) return null;
+    const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
+    if (!anchor) return null;
+    const displayPoint = surveyGraph.getCursorDisplayPoint(floor, session) || anchor;
+
+    const viewport = this.getViewport();
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    const scale = viewport.scale || surveyGraph.DEFAULT_SCALE;
+    const arrowLengthMm = Math.max(
+      surveyBleDirectionOptions.DEFAULT_ARROW_LENGTH_MM,
+      Math.round(88 / Math.max(0.000001, scale))
+    );
+    const options = surveyBleDirectionOptions.buildBleDirectionOptions({
+      anchor: displayPoint,
+      floor,
+      session,
+      viewport,
+      rect,
+      arrowLengthMm
+    });
+    if (!options.length) return null;
+    const selectedKey = this.bleSelectedDirectionKey || '';
+
+    return {
+      anchorMm: { xMm: displayPoint.xMm, yMm: displayPoint.yMm },
+      directions: options.map((option) => ({
+        key: option.key,
+        bearingDeg: option.bearingDeg,
+        tipPointMm: option.tipPointMm,
+        selected: option.key === selectedKey
+      }))
+    };
+  },
+
+  projectBleDirectionAnchorScreen(viewport) {
+    const scene = this.surveyRenderScene;
+    if (!scene || !scene.bleDirectionScene) return null;
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    if (!rect.width || !rect.height) return null;
+    return surveyCanvasRenderer.projectSurveyPoint(
+      scene.bleDirectionScene.anchorMm,
+      viewport || this.getViewport(),
+      rect
+    );
+  },
+
+  buildBleDirectionControls(floor, session) {
+    const bleDirectionScene = this.buildBleDirectionSceneData(floor, session);
+    if (!bleDirectionScene) return [];
+    const anchorScreen = surveyCanvasRenderer.projectSurveyPoint(
+      bleDirectionScene.anchorMm,
+      this.getViewport(),
+      this.canvasRect || { width: 0, height: 0 }
+    );
+    if (!anchorScreen) return [];
+    return surveyCanvasRenderer.buildBleDirectionScreenControls(
+      bleDirectionScene,
+      anchorScreen,
+      this.viewRotationDeg
+    );
+  },
+
+  onBleDirectionTap(key) {
+    const controls = (this.canvasControls && this.canvasControls.bleDirections) || [];
+    const control = controls.find((item) => item.key === key);
+    if (!control) return;
+
+    try {
+      this.bleSelectedDirectionKey = key;
+      this.directionPickController.setSelectedKey(key);
+      this.draft = surveyGraph.lockPreviewBearing(this.draft, control.bearingDeg);
+      this.applyDraft(this.draft, { persist: false, recordHistory: false });
+    } catch (err) {
+      wx.showToast({ title: err.message || '方向无效', icon: 'none' });
+    }
+  },
+
+  subscribeBleDirectionMotion() {
+    if (this.bleDirectionMotionUnsubscribe) return true;
+    let startFailed = false;
+    const unsubscribe = surveyDeviceOrientation.sharedHeadingSensorHub.subscribe(
+      this.bleDirectionMotionHandler,
+      {
+        onError: () => {
+          startFailed = true;
+          this.fallbackBleDirectionToManual('自动选方向不可用，已切换为手动');
+        }
+      }
+    );
+    if (startFailed) {
+      if (unsubscribe) unsubscribe();
+      this.bleDirectionMotionUnsubscribe = null;
+      return false;
+    }
+    this.bleDirectionMotionUnsubscribe = unsubscribe;
+    return !!this.bleDirectionMotionUnsubscribe;
+  },
+
+  startBleDirectionAutoPick() {
+    if (surveyDeviceOrientation.isWechatDevtools()) {
+      this.fallbackBleDirectionToManual('自动选方向需真机预览');
+      return Promise.resolve(false);
+    }
+    return this.ensureHeadingSensorReady()
+      .then(() => {
+        if (!this.pageVisible || !this.bleInputMode || this.bleDirectionMode !== 'auto') {
+          return false;
+        }
+        this.directionPickController.begin(this.viewRotationDeg, this.bleDirectionBaselineOffsetDeg);
+        return this.subscribeBleDirectionMotion();
+      })
+      .catch(() => {
+        this.fallbackBleDirectionToManual('需同意隐私协议，已切换为手动');
+        return false;
+      });
+  },
+
+  stopBleDirectionAutoPick() {
+    this.directionPickController.stop();
+    if (this.bleDirectionMotionUnsubscribe) {
+      this.bleDirectionMotionUnsubscribe();
+      this.bleDirectionMotionUnsubscribe = null;
+    }
+  },
+
+  suspendBleDirectionAutoPick() {
+    this.stopBleDirectionAutoPick();
+  },
+
+  resumeBleDirectionAutoPick() {
+    if (!this.bleInputMode || this.bleDirectionMode !== 'auto') return;
+    this.startBleDirectionAutoPick();
+  },
+
+  fallbackBleDirectionToManual(message) {
+    this.stopBleDirectionAutoPick();
+    if (this.bleDirectionMode !== 'auto') return;
+    this.bleDirectionMode = 'manual';
+    if (this.draft) {
+      this.draft = surveyGraph.clearBleLockedBearing(this.draft);
+      this.bleSelectedDirectionKey = '';
+      this.syncFromDraft();
+      this.drawSurveyCanvas();
+    }
+    wx.showToast({ title: message || '已切换为手动选方向', icon: 'none' });
+  },
+
+  onBleDirectionMotionChange(event) {
+    if (!this.bleInputMode || this.bleDirectionMode !== 'auto') return;
+    if (!this.shouldShowBleDirectionArrows(
+      surveyGraph.getActiveFloor(this.draft),
+      surveyGraph.getActiveFloor(this.draft).session
+    )) {
+      return;
+    }
+
+    const alpha = Number(event && event.alpha);
+    if (!Number.isFinite(alpha)) return;
+
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor.session;
+    const candidates = this.buildBleDirectionControls(floor, session).map((control) => ({
+      key: control.key,
+      bearingDeg: control.bearingDeg
+    }));
+    if (!candidates.length) return;
+
+    if (!this.directionPickController.isActive()) {
+      this.directionPickController.begin(this.viewRotationDeg, this.bleDirectionBaselineOffsetDeg);
+    }
+
+    const result = this.directionPickController.update(alpha, candidates);
+    if (!result || !result.key) return;
+    const needsDirectionLock = !this.bleSelectedDirectionKey || session.state !== 'awaitingLength';
+    if (!result.changed && !needsDirectionLock) return;
+    if (session.state === 'awaitingLength' && result.key === this.bleSelectedDirectionKey) return;
+    this.onBleDirectionTap(result.key);
+  },
+
+  ensureHeadingSensorReady() {
+    if (this.headingPrivacyReady) return Promise.resolve(true);
+    if (this.headingPrivacyPromise) return this.headingPrivacyPromise;
+    const request = surveyDeviceOrientation.ensureHeadingSensorPrivacy();
+    this.headingPrivacyPromise = request.then(
+      () => {
+        this.headingPrivacyReady = true;
+        this.headingPrivacyPromise = null;
+        return true;
+      },
+      (error) => {
+        this.headingPrivacyPromise = null;
+        throw error;
+      }
+    );
+    return this.headingPrivacyPromise;
+  },
+
+  subscribeFollowMotion() {
+    if (this.followMotionUnsubscribe) return true;
+    let startFailed = false;
+    const unsubscribe = surveyDeviceOrientation.sharedHeadingSensorHub.subscribe(
+      this.followMotionHandler,
+      {
+        onError: () => {
+          startFailed = true;
+          this.disableHeadingFollow();
+          wx.showToast({ title: '无法启用朝向传感器', icon: 'none' });
+        }
+      }
+    );
+    if (startFailed) {
+      if (unsubscribe) unsubscribe();
+      this.followMotionUnsubscribe = null;
+      return false;
+    }
+    this.followMotionUnsubscribe = unsubscribe;
+    return !!this.followMotionUnsubscribe;
+  },
+
+  clearFollowSampleTimer() {
+    if (!this.followSampleTimer) return;
+    clearTimeout(this.followSampleTimer);
+    this.followSampleTimer = null;
+  },
+
+  scheduleFollowSampleWatchdog() {
+    this.clearFollowSampleTimer();
+    this.followSampleTimer = setTimeout(() => {
+      this.followSampleTimer = null;
+      if (!this.followEnabled) return;
+      if ((this.followMotionEventCount || 0) < 2) {
+        console.warn(
+          '[surveying-editor] heading follow timeout after',
+          this.followMotionEventCount || 0,
+          'samples'
+        );
+        this.disableHeadingFollow();
+        wx.showToast({
+          title: '未收到朝向数据，请检查定位/传感器权限',
+          icon: 'none',
+          duration: 3000
+        });
+      }
+    }, 3500);
+  },
+
+  enableHeadingFollow(options) {
+    const opts = options || {};
+    if (surveyDeviceOrientation.isWechatDevtools()) {
+      wx.showToast({
+        title: '朝向跟随需真机预览，模拟器无传感器',
+        icon: 'none',
+        duration: 3000
+      });
+      return;
+    }
+    if (!surveyDeviceOrientation.sharedHeadingSensorHub.supported()) {
+      wx.showToast({ title: '当前设备不支持朝向跟随', icon: 'none' });
+      return;
+    }
+    this.headingFollowController.stop();
+    this.clearFollowSampleTimer();
+    this.followEnabled = true;
+    this.followMotionEventCount = 0;
+
+    const privacyRequest = opts.privacyReady
+      ? Promise.resolve(true)
+      : this.ensureHeadingSensorReady();
+    privacyRequest
+      .then(() => {
+        if (!this.followEnabled || !this.pageVisible) return;
+        if (!this.subscribeFollowMotion()) {
+          this.followEnabled = false;
+          wx.showToast({ title: '无法启用朝向传感器', icon: 'none' });
+          return;
+        }
+        console.warn(
+          '[surveying-editor] heading sensors started via',
+          surveyDeviceOrientation.sharedHeadingSensorHub.currentSource() || 'pending'
+        );
+        this.scheduleFollowSampleWatchdog();
+        this.setData({ compassFollowActive: true });
+        if (!opts.silent) {
+          wx.showToast({ title: '已开启跟随，请转动手机', icon: 'none' });
+        }
+      })
+      .catch(() => {
+        this.followEnabled = false;
+        wx.showToast({ title: '需同意隐私协议后才能使用朝向跟随', icon: 'none' });
+      });
+  },
+
+  disableHeadingFollow(options) {
+    const opts = options || {};
+    this.followEnabled = false;
+    this.headingFollowController.stop();
+    this.clearFollowSampleTimer();
+    if (this.followSettleTimer) {
+      clearTimeout(this.followSettleTimer);
+      this.followSettleTimer = null;
+    }
+    if (this.followMotionUnsubscribe) {
+      this.followMotionUnsubscribe();
+      this.followMotionUnsubscribe = null;
+    }
+    if (this.followInteractionActive) {
+      this.followInteractionActive = false;
+      if (!this.touchState) this.finishViewportInteraction({ sync: true, persist: true });
+    }
+    if (this.data.compassFollowActive) this.setData({ compassFollowActive: false });
+    if (opts.resetRotation) this.animateViewRotationTo(0);
+  },
+
+  suspendHeadingFollow() {
+    this.cancelViewRotationAnimation();
+    this.headingFollowController.stop();
+    this.clearFollowSampleTimer();
+    if (this.followSettleTimer) {
+      clearTimeout(this.followSettleTimer);
+      this.followSettleTimer = null;
+    }
+    // onHide/onUnload finish the viewport interaction right after this call.
+    this.followInteractionActive = false;
+    if (this.followMotionUnsubscribe) {
+      this.followMotionUnsubscribe();
+      this.followMotionUnsubscribe = null;
+    }
+  },
+
+  resumeHeadingFollow() {
+    if (!this.followEnabled || !this.pageVisible) return;
+    if (!this.headingPrivacyReady) {
+      this.enableHeadingFollow({ silent: true });
+      return;
+    }
+    if (!this.subscribeFollowMotion()) this.disableHeadingFollow();
+  },
+
+  onFollowDeviceMotionChange(event) {
+    if (!this.followEnabled) return;
+    const alpha = Number(event && event.alpha);
+    if (!Number.isFinite(alpha)) return;
+    this.followMotionEventCount = (this.followMotionEventCount || 0) + 1;
+    if (!this.headingFollowController.isActive()) {
+      if (!this.headingFollowController.begin(alpha, this.viewRotationDeg)) return;
+      return;
+    }
+    const result = this.headingFollowController.update(alpha);
+    if (!result || !result.changed) return;
+    if ((this.followMotionEventCount || 0) >= 2) this.clearFollowSampleTimer();
+    if (this.touchState || this.viewRotationAnimation) return;
+    const nextCardinal = Math.round(Number(result.rotationDeg) || 0);
+    const currentCardinal = Math.round(Number(this.viewRotationDeg) || 0);
+    if (nextCardinal === currentCardinal) return;
+    if (!this.applyFollowViewRotation(result.rotationDeg)) {
+      console.warn('[surveying-editor] heading follow rotation apply failed', result.rotationDeg);
+      return;
+    }
+    if (this.bleDirectionMode === 'auto' && this.directionPickController.isActive()) {
+      this.directionPickController.begin(this.viewRotationDeg, this.bleDirectionBaselineOffsetDeg);
+    }
+    this.updateCompassDisplay(true);
+  },
+
+  applyFollowViewRotation(rotationDeg) {
+    return this.redrawFollowViewRotation(rotationDeg);
+  },
+
+  redrawFollowViewRotation(rotationDeg) {
+    const nextDeg = Number(rotationDeg) || 0;
+    const compensated = surveyCanvasRenderer.compensateViewportOffsetForRotation(
+      this.getViewport(),
+      (nextDeg * Math.PI) / 180
+    );
+    this.viewRotationDeg = nextDeg;
+    if (!this.draft || !this.surveyCtx || !this.canvasRect) return false;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    floor.viewport = Object.assign(
+      {},
+      floor.viewport || {},
+      surveyCanvasRenderer.persistSurveyViewport(compensated)
+    );
+    this.buildCanvasRenderData(floor, floor.session);
+    this.drawSurveyCanvas();
+    return true;
+  },
+
+  /**
+   * Applies a view rotation through the lightweight gesture-frame path.
+   * The offset is compensated so the world point at the screen centre stays
+   * fixed while the plan rotates around it.
+   */
+  applyTransientViewRotation(rotationDeg) {
+    const nextDeg = Number(rotationDeg) || 0;
+    const compensated = surveyCanvasRenderer.compensateViewportOffsetForRotation(
+      this.getViewport(),
+      (nextDeg * Math.PI) / 180
+    );
+    if (!this.viewportInteraction && !this.beginViewportInteraction()) return false;
+    this.viewRotationDeg = nextDeg;
+    this.updateViewportInteraction({
+      scale: compensated.scale,
+      offsetX: compensated.offsetX,
+      offsetY: compensated.offsetY,
+      rotationRad: compensated.rotationRad
+    });
+    return true;
+  },
+
+  applyViewRotationImmediate(rotationDeg) {
+    const nextDeg = Number(rotationDeg) || 0;
+    const compensated = surveyCanvasRenderer.compensateViewportOffsetForRotation(
+      this.getViewport(),
+      (nextDeg * Math.PI) / 180
+    );
+    this.viewRotationDeg = nextDeg;
+    if (!this.draft) return;
+    this.draft = surveyGraph.updateViewport(
+      this.draft,
+      surveyCanvasRenderer.persistSurveyViewport(compensated)
+    );
+    this.syncFromDraft();
+    this.scheduleFormalPersist();
+  },
+
+  stepViewRotation(stepDeg) {
+    const step = Number(stepDeg) || 0;
+    if (!step) return;
+    this.cancelViewRotationAnimation();
+    if (this.followEnabled) this.disableHeadingFollow();
+    const targetDeg = surveyDeviceOrientation.normalizeDeg(
+      (Number(this.viewRotationDeg) || 0) + step
+    );
+    if (this.bleDirectionMode === 'auto' && this.directionPickController.isActive()) {
+      this.directionPickController.begin(targetDeg, this.bleDirectionBaselineOffsetDeg);
+    }
+    this.animateViewRotationTo(targetDeg);
+  },
+
+  onCanvasRotateCwTap() {
+    this.stepViewRotation(MANUAL_VIEW_ROTATION_STEP_DEG);
+  },
+
+  onCanvasRotateCcwTap() {
+    this.stepViewRotation(-MANUAL_VIEW_ROTATION_STEP_DEG);
+  },
+
+  scheduleFollowSettle() {
+    if (this.followSettleTimer) clearTimeout(this.followSettleTimer);
+    this.followSettleTimer = setTimeout(() => {
+      this.followSettleTimer = null;
+      this.settleFollowRotation();
+    }, FOLLOW_ROTATION_SETTLE_MS);
+  },
+
+  settleFollowRotation() {
+    if (!this.followInteractionActive) return;
+    this.followInteractionActive = false;
+    this.updateCompassDisplay(true);
+    // An active touch gesture finishes the shared viewport interaction itself.
+    if (this.touchState) return;
+    this.finishViewportInteraction({ sync: true, persist: true });
+  },
+
+  cancelViewRotationAnimation() {
+    if (!this.viewRotationAnimation) return;
+    this.viewRotationAnimation.cancelled = true;
+    this.viewRotationAnimation = null;
+  },
+
+  animateViewRotationTo(targetDeg) {
+    this.cancelViewRotationAnimation();
+    const startDeg = Number(this.viewRotationDeg) || 0;
+    const target = Number(targetDeg) || 0;
+    // Rotate home along the shortest visual arc regardless of accumulated turns.
+    const endDeg = startDeg + surveyDeviceOrientation.shortestArcDeg(target - startDeg);
+    const fallbackToImmediate = () => {
+      this.applyViewRotationImmediate(target);
+      this.updateCompassDisplay(true);
+    };
+    if (Math.abs(endDeg - startDeg) < 0.5) {
+      fallbackToImmediate();
+      return;
+    }
+    if (this.touchState || (!this.viewportInteraction && !this.beginViewportInteraction())) {
+      fallbackToImmediate();
+      return;
+    }
+    const animation = { cancelled: false };
+    this.viewRotationAnimation = animation;
+    const startedAt = Date.now();
+    const raf = (fn) => {
+      if (this.surveyCanvas && typeof this.surveyCanvas.requestAnimationFrame === 'function') {
+        this.surveyCanvas.requestAnimationFrame(fn);
+      } else {
+        setTimeout(fn, 16);
+      }
+    };
+    const step = () => {
+      if (animation.cancelled || this.surveyCanvasDisposed) return;
+      const progress = Math.min(1, (Date.now() - startedAt) / VIEW_ROTATION_RESET_MS);
+      if (progress >= 1) {
+        this.viewRotationAnimation = null;
+        this.applyTransientViewRotation(target);
+        this.finishViewportInteraction({ sync: true, persist: true });
+        this.updateCompassDisplay(true);
+        return;
+      }
+      const eased = 1 - Math.pow(1 - progress, 3);
+      this.applyTransientViewRotation(startDeg + (endDeg - startDeg) * eased);
+      raf(step);
+    };
+    step();
+  },
+
+  updateCompassDisplay(force) {
+    const rotation = Math.round(surveyDeviceOrientation.normalizeDeg(this.viewRotationDeg));
+    const currentShown = Number(this.data.compassRotationDeg) || 0;
+    if (rotation === currentShown) return;
+    const now = Date.now();
+    if (!force) {
+      const delta = Math.abs(surveyDeviceOrientation.shortestArcDeg(rotation - currentShown));
+      if (delta < COMPASS_DISPLAY_MIN_DELTA_DEG) return;
+      if (now - this.compassDisplayUpdatedAt < COMPASS_DISPLAY_MIN_INTERVAL_MS) return;
+    }
+    this.compassDisplayUpdatedAt = now;
+    this.setData({ compassRotationDeg: rotation });
   },
 
   onDeviceMotionChange(event) {
@@ -1971,6 +2668,7 @@ Page({
           lensSource: this.cursorLensSource,
           lensSample: this.cursorLensSample,
           snapGuide: this.cursorDragSnapGuide,
+          rotationRad: this.getViewRotationRad(),
           previousPoint,
           paintLens: !options || options.paintLens !== false,
           forceFullPaint: !!(options && options.forceFullPaint)
@@ -2079,28 +2777,34 @@ Page({
 
   drawViewportInteractionControls(viewport) {
     const interaction = this.viewportInteraction;
-    const close = this.canvasControls && this.canvasControls.closeAction;
+    const controls = this.canvasControls || {};
+    const close = controls.closeAction;
     const ctx = this.surveyCtx;
     const rect = (interaction && interaction.baseScene && interaction.baseScene.rect) || this.canvasRect;
-    if (!interaction || !close || !ctx || !rect) return;
+    if (!interaction || !ctx || !rect) return;
     const transform = surveyCanvasRenderer.resolveViewportInteractionTransform(
       interaction.baseViewport,
       viewport,
       rect
     );
     const dpr = this.surveyCanvasDpr || 1;
-    const closePoint = surveyCanvasRenderer.projectInteractionPoint(
-      { x: close.cx, y: close.cy },
-      transform
-    );
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    surveyCanvasRenderer.drawCloseAction(ctx, {
-      cx: closePoint.x,
-      cy: closePoint.y,
-      radius: close.radius || 14
-    });
+
+    if (close) {
+      const closePoint = surveyCanvasRenderer.projectInteractionPoint(
+        { x: close.cx, y: close.cy },
+        transform
+      );
+      surveyCanvasRenderer.drawCloseAction(ctx, {
+        cx: closePoint.x,
+        cy: closePoint.y,
+        radius: close.radius || 14
+      });
+    }
+
     ctx.restore();
+    this.drawBleDirectionOverlay(viewport);
   },
 
   clearViewportInteractionCanvas() {
@@ -2139,7 +2843,9 @@ Page({
 
     if (dirty && opts.sync) {
       this.viewportInteractionAwaitingHandoff = true;
-      this.syncFromDraft();
+      this.syncFromDraft({}, () => {
+        this.drawBleDirectionOverlay();
+      });
     } else {
       this.viewportInteractionAwaitingHandoff = false;
       this.clearViewportInteractionCanvas();
@@ -2232,6 +2938,7 @@ Page({
     });
     this.drawCanvasControls();
     this.drawSurveyGuideCanvas();
+    this.drawBleDirectionOverlay();
     if (this.viewportInteractionAwaitingHandoff) {
       this.viewportInteractionAwaitingHandoff = false;
       this.clearViewportInteractionCanvas();
@@ -2327,6 +3034,34 @@ Page({
       ctx.restore();
     }
 
+    ctx.restore();
+  },
+
+  drawBleDirectionOverlay(viewport) {
+    const ctx = this.surveyCtx;
+    const scene = this.surveyRenderScene;
+    const rect = this.canvasRect;
+    const vp = viewport || this.getViewport();
+    if (!ctx || !scene || !scene.bleDirectionScene || !rect || !rect.width || !rect.height) return;
+    if (!scene.bleDirectionScene.directions || !scene.bleDirectionScene.directions.length) return;
+
+    const anchorScreen = surveyCanvasRenderer.projectSurveyPoint(
+      scene.bleDirectionScene.anchorMm,
+      vp,
+      rect
+    );
+    if (!anchorScreen || !Number.isFinite(anchorScreen.x) || !Number.isFinite(anchorScreen.y)) return;
+
+    const rotationDeg = (Number(vp.rotationRad) || 0) * 180 / Math.PI;
+    const dpr = this.surveyCanvasDpr || 1;
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    surveyCanvasRenderer.drawBleDirectionScreenOverlay(
+      ctx,
+      scene.bleDirectionScene,
+      anchorScreen,
+      rotationDeg
+    );
     ctx.restore();
   },
 
@@ -2758,8 +3493,13 @@ Page({
 
     if (scene.activeSegment && scene.activeSegment.lengthMm) {
       const rpx = this.rpxScale || ((this.canvasRect && this.canvasRect.width) || 390) / 750;
-      const top = Number(this.data.overlayContentTop || 0);
-      append({ left: 16 * rpx, right: 300 * rpx, top, bottom: top + 96 * rpx }, {
+      const topMetricTop = Number(this.data.topMetricTop || this.data.overlayContentTop || 0);
+      append({
+        left: TOP_METRIC_LEFT_RPX * rpx - 4,
+        right: (TOP_METRIC_LEFT_RPX + 220) * rpx,
+        top: topMetricTop,
+        bottom: topMetricTop + TOP_METRIC_HEIGHT_RPX * rpx
+      }, {
         kind: 'top-measurement',
         hard: true,
         padding: 5,
@@ -2767,6 +3507,39 @@ Page({
         pathWeight: 1800,
         pathPadding: 5
       });
+    }
+
+    {
+      const rpx = this.rpxScale || ((this.canvasRect && this.canvasRect.width) || 390) / 750;
+      const compassTop = Number(this.data.overlayContentTop || 0);
+      append({
+        left: COMPASS_LEFT_RPX * rpx - 4,
+        right: (COMPASS_LEFT_RPX + COMPASS_SIZE_RPX) * rpx + 4,
+        top: compassTop,
+        bottom: compassTop + COMPASS_SIZE_RPX * rpx
+      }, {
+        kind: 'compass',
+        hard: true,
+        padding: 5,
+        pathHard: true,
+        pathWeight: 1900,
+        pathPadding: 5
+      });
+      if (this.cursorLensRect) {
+        append({
+          left: (this.cursorLensRect.left || 0) - 8,
+          right: (this.cursorLensRect.left || 0) + (this.cursorLensRect.size || CURSOR_LENS_SIZE_PX) + 8,
+          top: (this.cursorLensRect.top || 0) - 8,
+          bottom: (this.cursorLensRect.top || 0) + (this.cursorLensRect.size || CURSOR_LENS_SIZE_PX) + 8
+        }, {
+          kind: 'cursor-lens',
+          hard: true,
+          padding: 5,
+          pathHard: true,
+          pathWeight: 1900,
+          pathPadding: 5
+        });
+      }
     }
 
     if (this.selectedWallToolbarRect) {
@@ -2823,6 +3596,20 @@ Page({
         pathWeight: 0
       });
     }
+    (controls.bleDirections || []).forEach((direction) => {
+      append({
+        left: direction.cx - direction.radius,
+        right: direction.cx + direction.radius,
+        top: direction.cy - direction.radius,
+        bottom: direction.cy + direction.radius
+      }, {
+        kind: 'ble-direction',
+        hard: true,
+        padding: 6,
+        pathHard: false,
+        pathWeight: 0
+      });
+    });
 
     return obstacles;
   },
@@ -2837,6 +3624,8 @@ Page({
       cursorPlacementState,
       cursorSnapLabel: state.cursorLensSnapLabel,
       bleConnected: !!state.bleConnected,
+      bleInputMode: !!this.bleInputMode,
+      bleDirectionMode: this.bleDirectionMode || 'manual',
       canSetInitialMeasurementSide: this.isFirstMeasurePositionStage(floor, session),
       numberPadVisible: !!state.numberPadVisible,
       angleMeasureVisible: !!state.angleMeasureVisible,
@@ -2944,7 +3733,7 @@ Page({
     };
   },
 
-  syncFromDraft(extraData) {
+  syncFromDraft(extraData, afterDraw) {
     if (!this.draft) return;
 
     const floor = surveyGraph.getActiveFloor(this.draft);
@@ -2978,7 +3767,9 @@ Page({
       activeTool: session.mode,
       measurementSide: session.measurementSide,
       thicknessMm: session.thicknessMm,
-      coreTools: buildCoreTools(session.mode, session.thicknessMm),
+      coreTools: buildCoreTools(session.mode, session.thicknessMm, this.bleInputMode),
+      bleInputMode: !!this.bleInputMode,
+      bleDirectionMode: this.bleDirectionMode || 'manual',
       cursorStyle: renderData.cursorStyle,
       cursorHorizontalGuideStyle: renderData.cursorHorizontalGuideStyle,
       cursorVerticalGuideStyle: renderData.cursorVerticalGuideStyle,
@@ -3067,13 +3858,21 @@ Page({
     const scale = viewport.scale;
 
     const padHeight = numPadVisible ? 240 : 0;
-
-    const nextOffsetX = -midXMm * scale;
-    const nextOffsetY = -midYMm * scale - (padHeight / 2);
+    const rect = this.canvasRect;
+    const offset = surveyCanvasRenderer.resolveViewportOffsetForAnchor(
+      rect,
+      {
+        x: rect.width / 2,
+        y: rect.height / 2 - padHeight / 2
+      },
+      { xMm: midXMm, yMm: midYMm },
+      scale,
+      viewport.rotationRad
+    );
 
     this.draft = surveyGraph.updateViewport(this.draft, {
-      offsetX: nextOffsetX,
-      offsetY: nextOffsetY
+      offsetX: offset.offsetX,
+      offsetY: offset.offsetY
     });
   },
 
@@ -3120,11 +3919,13 @@ Page({
   },
 
   buildCanvasRenderData(floor, session) {
+    const bleDirectionScene = this.buildBleDirectionSceneData(floor, session);
     const scene = surveyCanvasRenderer.createSurveyRenderScene({
       floor,
       session,
       viewport: this.getViewport(),
-      rect: this.canvasRect || { width: 0, height: 0 }
+      rect: this.canvasRect || { width: 0, height: 0 },
+      bleDirectionScene
     });
     this.surveyRenderScene = scene;
     this.surveySceneRevision = (this.surveySceneRevision || 0) + 1;
@@ -3192,7 +3993,9 @@ Page({
     this.canvasControls = this.buildCanvasControls(
       measurePosition,
       closure,
-      activeAngle
+      activeAngle,
+      floor,
+      session
     );
 
     return {
@@ -3214,16 +4017,18 @@ Page({
     };
   },
 
-  buildCanvasControls(measurePosition, closure, activeAngle) {
+  buildCanvasControls(measurePosition, closure, activeAngle, floor, session) {
     const measureControl = measurePosition && measurePosition.control
       ? Object.assign({}, measurePosition.control)
       : null;
+    const bleDirections = floor && session ? this.buildBleDirectionControls(floor, session) : [];
     return {
       closeAction: closure && closure.action
         ? Object.assign({ key: 'close', radius: 14 }, closure.action)
         : null,
       measurePosition: measureControl,
-      activeAngle: activeAngle || null
+      activeAngle: activeAngle || null,
+      bleDirections
     };
   },
 
@@ -3577,7 +4382,11 @@ Page({
     const edgeInset = 12 * designScale;
     const rightRailReserve = 105 * designScale;
     const bottomDockReserve = 128 * designScale;
-    const topInset = Math.max(edgeInset, (this.data.overlayContentTop || 0) + edgeInset);
+    const topStackBottom = (this.data.topMetricTop || this.data.overlayContentTop || 0)
+      + TOP_METRIC_HEIGHT_RPX * (this.rpxScale || 0.52)
+      + (this.cursorLensRect && this.cursorLensRect.size ? this.cursorLensRect.size : CURSOR_LENS_SIZE_PX)
+      + 12;
+    const topInset = Math.max(edgeInset, topStackBottom + edgeInset);
     return {
       left: edgeInset,
       top: topInset,
@@ -4180,7 +4989,8 @@ Page({
           session: floor.session,
           centerPoint: point,
           size: CURSOR_LENS_SIZE_PX,
-          scale: CURSOR_LENS_SCALE
+          scale: CURSOR_LENS_SCALE,
+          rotationRad: viewport.rotationRad
         })
         : null;
     }
@@ -4617,7 +5427,7 @@ Page({
     }
 
     if (tool === 'input') {
-      this.openLengthPad();
+      this.setBleInputMode(!this.bleInputMode);
       return;
     }
 
@@ -5415,11 +6225,22 @@ Page({
     if (controls.activeAngle && this.hitRect(localPoint, controls.activeAngle)) {
       return { key: 'angle' };
     }
+    const bleDirections = controls.bleDirections || [];
+    for (let index = bleDirections.length - 1; index >= 0; index -= 1) {
+      const direction = bleDirections[index];
+      if (direction && this.hitCircle(localPoint, direction)) {
+        return { key: 'ble-direction', directionKey: direction.key };
+      }
+    }
     return null;
   },
 
   handleCanvasControlTap(control) {
     if (!control) return false;
+    if (control.key === 'ble-direction') {
+      this.onBleDirectionTap(control.directionKey);
+      return true;
+    }
     if (control.key === 'close') {
       this.onConfirmClose();
       return true;
@@ -5536,7 +6357,8 @@ Page({
       startViewport: {
         scale: viewport.scale,
         offsetX: viewport.offsetX,
-        offsetY: viewport.offsetY
+        offsetY: viewport.offsetY,
+        rotationRad: viewport.rotationRad
       }
     };
   },
@@ -5552,6 +6374,8 @@ Page({
       const nextDistance = distancePx(first, second);
       if (!this.touchState.startDistance) return;
       const scale = clamp(this.touchState.startScale * (nextDistance / this.touchState.startDistance), MIN_SCALE, MAX_SCALE);
+
+      const rotationRad = this.getViewRotationRad();
       const anchorMm = this.touchState.startCenterMm || this.canvasPointToMm(center);
       const rect = this.canvasRect;
       const offset = surveyCanvasRenderer.resolveViewportOffsetForAnchor(
@@ -5562,12 +6386,13 @@ Page({
         },
         anchorMm,
         scale,
-        this.getViewport().rotationRad
+        rotationRad
       );
       const nextViewport = {
         scale,
         offsetX: offset.offsetX,
-        offsetY: offset.offsetY
+        offsetY: offset.offsetY,
+        rotationRad
       };
       if (!this.updateViewportInteraction(nextViewport)) {
         this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
@@ -5668,7 +6493,8 @@ Page({
       const nextViewport = {
         scale: startViewport.scale,
         offsetX: startViewport.offsetX + dx,
-        offsetY: startViewport.offsetY + dy
+        offsetY: startViewport.offsetY + dy,
+        rotationRad: this.getViewRotationRad()
       };
       if (!this.updateViewportInteraction(nextViewport)) {
         this.draft = surveyGraph.updateViewport(this.draft, nextViewport);

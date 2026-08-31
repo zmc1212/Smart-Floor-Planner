@@ -99,6 +99,8 @@ test('staff role mapping does not collapse designer and measurer capabilities', 
   const measurer = { ...customer, mode: 'staff' as const, staffRole: 'measurer' as const };
   assert.ok(buildMiniProgramBootstrap({ current: designer, contexts: [designer] }).current.capabilities.includes('staff.earnings'));
   assert.ok(buildMiniProgramBootstrap({ current: measurer, contexts: [measurer] }).current.capabilities.includes('staff.earnings'));
+  assert.ok(buildMiniProgramBootstrap({ current: designer, contexts: [designer] }).current.capabilities.includes('staff.data'));
+  assert.ok(buildMiniProgramBootstrap({ current: measurer, contexts: [measurer] }).current.capabilities.includes('staff.data'));
   const owner = { ...customer, mode: 'staff' as const, staffRole: 'enterprise_admin' as const };
   assert.ok(buildMiniProgramBootstrap({ current: owner, contexts: [owner] }).current.capabilities.includes('enterprise.commissions'));
   assert.equal(buildMiniProgramBootstrap({ current: owner, contexts: [owner] }).current.capabilities.includes('staff.earnings'), false);

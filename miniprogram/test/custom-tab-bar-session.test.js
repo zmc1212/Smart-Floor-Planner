@@ -88,18 +88,18 @@ test('custom TabBar uses the signed bootstrap role instead of the legacy staff s
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['promotion', 'progress', 'earnings', 'mine']);
 
-    globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'] } };
+    globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'staff.data', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'] } };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'design', 'earnings', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'data', 'customers', 'design', 'earnings', 'mine']);
     assert.equal(component.data.list.some((item) => item.key === 'measure'), false);
 
     globalData.bootstrap = { current: { role: 'designer', capabilities: ['staff.leads', 'account'] } };
     definition.methods.syncSelected.call(component);
     assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'mine']);
 
-    globalData.bootstrap = { current: { role: 'measurer', capabilities: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'] } };
+    globalData.bootstrap = { current: { role: 'measurer', capabilities: ['staff.schedule', 'staff.data', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'] } };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'earnings', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'data', 'customers', 'earnings', 'mine']);
     assert.equal(component.data.list[0].pagePath, '/pages/index/index');
 
     globalData.bootstrap = { current: { role: 'enterprise_admin', capabilities: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'] } };
@@ -153,6 +153,15 @@ test('earnings keeps its paired TabBar icon states and owner appointments stay c
   const operations = ROLE_ITEMS.enterprise_admin.find((item) => item.key === 'operations');
   assert.equal(operations.pagePath, '/pages/enterprise-operations/enterprise-operations');
   assert.equal(operations.tab, true);
+  assert.equal(ROLE_ITEMS.designer.length, 6);
+  assert.equal(ROLE_ITEMS.measurer.length, 5);
+  for (const role of ['designer', 'measurer']) {
+    const data = ROLE_ITEMS[role].find((item) => item.key === 'data');
+    assert.equal(data.capability, 'staff.data');
+    assert.equal(data.text, '数据');
+    assert.equal(data.pagePath, '/pages/enterprise-operations/enterprise-operations');
+    assert.equal(data.tab, true);
+  }
   const appConfig = JSON.parse(fs.readFileSync(path.resolve(__dirname, '..', 'app.json'), 'utf8'));
   assert.ok(
     appConfig.tabBar.list.some((item) => item.pagePath === 'pages/enterprise-operations/enterprise-operations'),
@@ -208,7 +217,7 @@ test('custom TabBar uses the stored signed role before bootstrap refresh complet
       setData(update) { this.data = { ...this.data, ...update }; }
     };
     definition.methods.syncSelected.call(component);
-    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'customers', 'design', 'earnings', 'mine']);
+    assert.deepEqual(component.data.list.map((item) => item.key), ['workbench', 'data', 'customers', 'design', 'earnings', 'mine']);
   } finally {
     restore();
   }

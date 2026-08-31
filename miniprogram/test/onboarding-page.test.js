@@ -94,8 +94,12 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.match(js, /onboardingTokenFromScanResult/);
   assert.match(js, /applyOnboardingToken/);
   assert.match(js, /enterpriseName/);
+  assert.match(js, /invitationDisplayName/);
+  assert.match(js, /inviterDisplayName/);
   assert.match(wxml, /将加入：/);
   assert.match(wxml, /\{\{enterpriseName\}\}/);
+  assert.match(wxml, /由企业员工/);
+  assert.match(wxml, /inviterDisplayName/);
   assert.match(wxml, /设置推荐人姓名/);
   assert.match(js, /displayName/);
   assert.match(js, /onConfirmReferrerName/);
@@ -130,7 +134,12 @@ test('onboarding code resolution records the resolved enterprise name before pho
   const definition = loadPage();
   const originalRequest = api.request;
   api.request = async () => ({
-    data: { kind: 'onboarding', codeType: 'referrer', enterpriseName: '嘉客来装饰' }
+    data: {
+      kind: 'onboarding',
+      codeType: 'referrer',
+      enterpriseName: '嘉客来装饰',
+      inviterDisplayName: '员工A'
+    }
   });
   try {
     const context = {
@@ -140,6 +149,7 @@ test('onboarding code resolution records the resolved enterprise name before pho
     await definition.resolveOnboardingCode.call(context);
     assert.equal(context.data.pageState, 'ready');
     assert.equal(context.data.enterpriseName, '嘉客来装饰');
+    assert.equal(context.data.inviterDisplayName, '员工A');
   } finally {
     api.request = originalRequest;
   }

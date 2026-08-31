@@ -62,9 +62,11 @@ test('custom guide navigation keeps the title in its capsule-left lane', () => {
     const wxml = source(`packages/guides/${guide}.wxml`);
     assert.match(less, /\.guide-nav\s*\{[^}]*box-sizing:\s*border-box/s, `${guide} nav must include capsule padding inside its width`);
     assert.match(less, /\.guide-nav-title\s*\{[^}]*white-space:\s*nowrap/s, `${guide} title must not wrap`);
-    assert.match(less, /\.skip-action\s*\{[^}]*flex-shrink:\s*0/s, `${guide} skip action must retain its width`);
-    assert.match(wxml, /min-height: \{\{navigationTop \+ navigationHeight\}\}px/, `${guide} nav height must keep skip aligned with the capsule`);
+    assert.match(wxml, /min-height: \{\{navigationTop \+ navigationHeight\}\}px/, `${guide} nav height must reserve the capsule lane`);
     assert.match(wxml, /padding-right: \{\{navigationRight\}\}px/, `${guide} must reserve the native capsule lane`);
+    assert.doesNotMatch(wxml, /class="guide-nav"[\s\S]*skip-action[\s\S]*class="guide-content"/, `${guide} skip must not stay in the nav`);
+    assert.match(wxml, /class="primary-action"[\s\S]*?class="skip-action"/, `${guide} skip must follow the primary CTA`);
+    assert.match(less, /\.skip-action\s*\{[^}]*margin:\s*16rpx auto 0/s, `${guide} skip must sit below the primary CTA`);
   }
 });
 

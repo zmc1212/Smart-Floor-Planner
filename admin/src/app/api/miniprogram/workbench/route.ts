@@ -69,6 +69,27 @@ function periodDayCount(period: WorkbenchPeriodRange) {
   return Math.round((period.end.getTime() - period.start.getTime()) / (24 * 60 * 60 * 1000));
 }
 
+function acquisitionEntries(role: WorkbenchRole) {
+  const isOwner = role === 'enterprise_admin';
+  return {
+    activityCode: {
+      label: '分享活动码',
+      detail: '发给客户 · 扫码留资',
+      target: 'activity-code',
+    },
+    joinCode: {
+      label: '邀请入驻',
+      detail: isOwner ? '员工 · 推荐人' : '仅推荐人',
+      target: 'join-codes',
+    },
+    referrerRoster: {
+      label: isOwner ? '查看推广人' : '我的推广人',
+      detail: isOwner ? '全店推广网络' : '仅查看本人网络',
+      target: 'referrers',
+    },
+  };
+}
+
 export async function GET(request: Request) {
   try {
     const context = await resolveMiniProgramContext(request);
@@ -185,7 +206,7 @@ export async function GET(request: Request) {
           ],
           primaryItems,
           tasks: [...ownExpired, ...surveyTasks],
-          activityCode: { label: '出示活动码', target: 'activity-code' },
+          ...acquisitionEntries(role),
           secondary: { label: '查看全部客户', target: 'customers' },
           ...opsDashboard,
           withdrawalNotices,
@@ -253,7 +274,7 @@ export async function GET(request: Request) {
         const items = [...expiredItems, ...unscheduled, ...appointmentItems];
         return {
           role,
-          title: '今日测量台',
+          title: '家装现场顾问工作台',
           subtitle: '过期待处理已离开已确认日程，量房只从已指派任务进入',
           summary: [
             { key: 'schedule', label: '已确认日程', value: appointmentItems.length, detail: '当前本人预约', tone: 'green' },
@@ -262,7 +283,7 @@ export async function GET(request: Request) {
           ],
           primaryItems: items.slice(0, 6),
           tasks: items,
-          activityCode: { label: '出示活动码', target: 'activity-code' },
+          ...acquisitionEntries(role),
           secondary: { label: '查看量房日程', target: 'calendar' },
           ...opsDashboard,
           withdrawalNotices,
@@ -345,8 +366,7 @@ export async function GET(request: Request) {
         ],
         primaryItems: exceptionItems.slice(0, 8),
         appointments: scheduleRows.map((item) => appointmentItem(item, appointmentLeadMap.get(String(item.leadId)))),
-        activityCode: { label: '分享活动码', detail: '发给客户 · 扫码留资', target: 'activity-code' },
-        joinCode: { label: '邀请入驻', detail: '员工 · 推荐人', target: 'join-codes' },
+        ...acquisitionEntries(role),
         secondary: { label: '查看预约安排', target: 'appointments' },
         ...opsDashboard,
         withdrawalNotices,

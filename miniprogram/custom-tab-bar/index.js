@@ -17,6 +17,7 @@ const ROLE_ITEMS = {
   ],
   designer: [
     { key: 'workbench', capability: 'staff.leads', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'data', capability: 'staff.data', pagePath: '/pages/enterprise-operations/enterprise-operations', text: '数据', tab: true, iconPath: '/images/operations-dashboard/chart.png', selectedIconPath: '/images/operations-dashboard/chart.png' },
     { key: 'customers', capability: 'staff.leads', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
     { key: 'design', capability: 'staff.design', pagePath: '/pages/ai-design/ai-design', text: '设计', tab: true, iconPath: '/images/mine-icons/tab-ai.png', selectedIconPath: '/images/mine-icons/tab-ai-active.png' },
     { key: 'earnings', capability: 'staff.earnings', pagePath: '/packages/business/staff-earnings/staff-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
@@ -24,6 +25,7 @@ const ROLE_ITEMS = {
   ],
   measurer: [
     { key: 'workbench', capability: 'staff.schedule', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'data', capability: 'staff.data', pagePath: '/pages/enterprise-operations/enterprise-operations', text: '数据', tab: true, iconPath: '/images/operations-dashboard/chart.png', selectedIconPath: '/images/operations-dashboard/chart.png' },
     { key: 'customers', capability: 'staff.tasks', pagePath: '/pages/leads-management/leads-management', text: '客户', tab: true, iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads-active.png' },
     { key: 'earnings', capability: 'staff.earnings', pagePath: '/packages/business/staff-earnings/staff-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }

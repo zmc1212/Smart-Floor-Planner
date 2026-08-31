@@ -54,9 +54,10 @@ function navigationMetrics() {
   };
 }
 
-function normalizeEnterpriseCodeActions(payload) {
+function normalizeWorkbenchCodeActions(payload) {
   const rawActivity = payload && payload.activityCode;
   let rawJoin = payload && payload.joinCode;
+  const rawRoster = payload && payload.referrerRoster;
   let activity = rawActivity;
 
   // Keep the owner home usable while the Mini Program and API deploy independently.
@@ -77,10 +78,38 @@ function normalizeEnterpriseCodeActions(payload) {
       ? {
           ...rawJoin,
           label: '邀请入驻',
-          detail: rawJoin.detail || '员工 · 推荐人',
+          detail: rawJoin.detail || (payload.role === 'enterprise_admin' ? '员工 · 推荐人' : '仅推荐人'),
+        }
+      : null,
+    referrerRoster: rawRoster && rawRoster.target === 'referrers'
+      ? {
+          ...rawRoster,
+          label: rawRoster.label || (payload.role === 'enterprise_admin' ? '查看推广人' : '我的推广人'),
+          detail: rawRoster.detail || (payload.role === 'enterprise_admin' ? '全店推广网络' : '仅查看本人网络'),
         }
       : null,
   };
+}
+
+function normalizePersonalDashboard(rows, role) {
+  const dashboardByKey = new Map((rows || []).map((item) => [item.key, item]));
+  const definitions = role === 'measurer'
+    ? [
+        { key: 'newLeads', flowLabel: '客户接收' },
+        { key: 'completedSurveys', flowLabel: '上门量房' },
+        { key: 'schemeDelivery', flowLabel: '户型交接' },
+        { key: 'signedCount', flowLabel: '签约' },
+      ]
+    : [
+        { key: 'newLeads', flowLabel: '客户跟进' },
+        { key: 'completedSurveys', flowLabel: '量房协作' },
+        { key: 'schemeDelivery', flowLabel: '方案交付' },
+        { key: 'signedCount', flowLabel: '签约' },
+      ];
+  return definitions.map((definition) => ({
+    ...definition,
+    ...(dashboardByKey.get(definition.key) || {}),
+  }));
 }
 
 function normalizeContractAmountTrend(input, periodKind) {
@@ -206,7 +235,9 @@ Component({
     appointmentCount: 0,
     activityCode: null,
     joinCode: null,
+    referrerRoster: null,
     dashboard: [],
+    personalDashboardStages: [],
     enterpriseReminder: [],
     dashboardStages: [],
     dashboardEfficiencies: [],
@@ -503,9 +534,7 @@ Component({
           from: periodPayload.from || this.data.dashboardPeriod.from || '',
           to: periodPayload.to || this.data.dashboardPeriod.to || '',
         };
-        const codeActions = payload.role === 'enterprise_admin'
-          ? normalizeEnterpriseCodeActions(payload)
-          : { activityCode: payload.activityCode || null, joinCode: null };
+        const codeActions = normalizeWorkbenchCodeActions(payload);
         const enterpriseDashboard = payload.role === 'enterprise_admin'
           ? normalizeEnterpriseDashboard(payload.dashboard, payload.contractAmountSum)
           : { dashboardStages: [], dashboardEfficiencies: [], enterpriseHeroKpis: [] };
@@ -526,7 +555,11 @@ Component({
           appointmentCount: Array.isArray(payload.appointments) ? payload.appointments.length : 0,
           activityCode: codeActions.activityCode,
           joinCode: codeActions.joinCode,
+          referrerRoster: codeActions.referrerRoster,
           dashboard: payload.dashboard || [],
+          personalDashboardStages: payload.role === 'designer' || payload.role === 'measurer'
+            ? normalizePersonalDashboard(payload.dashboard, payload.role)
+            : [],
           enterpriseReminder,
           dashboardStages: enterpriseDashboard.dashboardStages,
           dashboardEfficiencies: enterpriseDashboard.dashboardEfficiencies,

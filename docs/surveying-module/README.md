@@ -30,7 +30,8 @@ Git 历史保留。
   只有没有 `floorPlanId` 时才发 POST。
 - 空间填充、净面积、墙体实体和尺寸均从 graph 派生；不保存 legacy layout 副本。
 - 后台 `/floorplans/[id]` 2D 查看器同步运行小程序 `surveyCanvasRenderer`（只读平移/缩放，不写 graph）；已完成的正式 v4 户型在保存时把同一套 canvas 导出为 PNG 快照（`floor_plans.preview_asset_id`，不写入 `layoutData`）。DXF、3D 和 AI 仍使用同一 graph 的只读适配器。
-- 量房画布的平移与双指缩放由主 Canvas 的 `requestAnimationFrame` 合帧绘制；主 Canvas 暂不可用时，回退的 draft 同步也按动画帧合并，手势结束时再执行一次最终 `setData` 同步，不改变 graph 或 viewport 持久化契约。画布投影支持可选的仅视图 `rotationRad`（`screen = center + offset + R(θ)·(mm·scale)`），θ=0 与现有无旋转映射一致。编辑器在 `getViewport()` 合入页面级 `viewRotationDeg`，不把 `rotationRad` 写入 `floor.viewport` 或 `FloorPlan.layoutData`。θ 变化时补偿 offset，使屏幕中心对应的毫米点不动。后台 2D 查看器不传旋转。
+- 量房画布的平移与双指缩放由主 Canvas 的 `requestAnimationFrame` 合帧绘制；主 Canvas 暂不可用时，回退的 draft 同步也按动画帧合并，手势结束时再执行一次最终 `setData` 同步，不改变 graph 或 viewport 持久化契约。画布投影支持可选的仅视图 `rotationRad`（`screen = center + offset + R(θ)·(mm·scale)`），θ=0 与现有无旋转映射一致。编辑器在 `getViewport()` 合入页面级 `viewRotationDeg`，不把 `rotationRad` 写入 `floor.viewport` 或 `FloorPlan.layoutData`。θ 变化时补偿 offset，使屏幕中心对应的毫米点不动。后台 2D 查看器不传旋转。画布左上角常驻指北针（`survey-canvas-compass`）：未开启输入模式时点击开启/关闭**视图跟随**；开启后仅在手机朝向相对基准超过激活阈值时，将画布**吸附到东南西北四档（0°/90°/180°/270°）**，不做连续逐度旋转；关闭跟随时动画回正到北朝上。双指手势仅缩放，不旋转视图。朝向更新走完整场景重绘（`redrawFollowViewRotation`），保证输入模式方向箭头与墙图同步；视图跟随与输入模式自动选方向使用 `surveyDeviceOrientation.sharedHeadingSensorHub`，优先 Compass、失败时回退 DeviceMotion；测角面板仍独立使用 `sharedDeviceMotionHub` 读取 beta/gamma。`onHide`/`onUnload` 停止两类朝向订阅，`onShow` 在逻辑模式仍开启时恢复。尺寸标注用世界墙角加视图旋转的有效屏幕角（`resolveScreenEffectiveAngle`）判断文字朝向；房间卡片仍屏幕轴对齐；网格随平面图旋转。graph、正交吸附、BLE 语义与持久化 viewport 不变。
+- **BLE 快捷输入模式**（直线模式）：右侧「输入」工具切换为输入模式 toggle。开启后，光标处由主 Canvas `drawBleDirectionScreenOverlay` 以固定屏宽像素绘制最多 3/4 个正交方向箭头（`surveyBleDirectionOptions.js` 按当前活动墙链排除来向折返）；手动点箭头经 `lockPreviewBearing` 仅锁定方向（不改光标/已测墙），测距时再经 `startPreviewFromBearing` + `commitPreviewLength` 落墙，无需拖拽。输入模式开启时点击指北针可在手动/自动选方向间切换；自动模式先完成隐私授权，再把 Compass 的北/东/南/西映射为画布北/东/南/西并扣除仅视图旋转，经环形中值滤波和激活/切换滞回后高亮方向，同时默认开启四档视图跟随。每面墙提交后自动清空控制器选择，允许手机朝向不变时继续锁定下一面墙；页面隐藏时暂停订阅，显示时按模式恢复。`bleLockedBearingDeg` 只用于当前编辑器状态，本地草稿与云端 `surveyGraph` 序列化前都会剥离。BLE 读数仍经 `commitPreviewLength` 落墙；未选方向时底部测距与硬件 ATD 提示「请先点选方向箭头」。
 - 已完成且至少有一个闭合空间的正式 v4 户型可导出施工 DXF；后台 Cookie 端点为
   `GET /api/floorplans/[id]/export/dxf`，小程序 Bearer-JWT 端点为
   `GET /api/miniprogram/floorplans/[id]/export/dxf`。适配器只读取 graph，使用
@@ -80,8 +81,10 @@ Git 历史保留。
   已正确打断并共享节点的 T/十字、多房间共享墙和 `closure-bridge` 仍合法。
 - 手工与 BLE 复尺单独使用 `full` 不可变事务；产生穿墙、未打断 T 接或重叠时整笔拒绝并
   回滚，draft、房间、门窗和历史输入都不变，不自动拆墙或节点化。
-- 独立、无门窗、无共享/分支的正交墙链回到起点且误差在闭合容差内时，预览和确认共用同一
-  闭合平差解析器：按各轴墙长权重分摊 X/Y 残差，保持每段方向和最小墙长，并在承诺闭合前
+- 独立、无门窗、无共享/分支的正交墙链回到起点时，预览和确认共用同一约束闭合平差解析器：
+  既有 350mm 吸附容差不变；仅长、多拐角链可在通过每墙修正预算后使用更大的累计误差，总误差硬上限为
+  1000mm。单墙预算为坐标长度的 2%，不少于 25mm、不高于 150mm；任一墙超预算即不平差、不用微型桥接强行闭合。
+  解析器按各轴墙长权重分摊 X/Y 残差，保持每段方向和最小墙长，并在承诺闭合前
   用平差后的投影重查所有非相邻墙及外部墙。平差后仍自交、重叠、碰到外墙，或链中含斜墙、
   共享节点、门窗时不提供该闭合。确认输入立即保存 `rawMeasuredLengthMm` /
   `closureAdjustmentMm`，后续端点内缩、共线合并与拆墙保持二者可追溯。

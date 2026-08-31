@@ -106,6 +106,8 @@ test('enterprise join codes present owner dual codes and employee personal promo
   assert.match(js, /tabsForScope\(scope\)/);
   assert.match(js, /activeTypeForScope\(scope, this\.data\.activeType\)/);
   assert.match(js, /onShareAppMessage\(\)/);
+  assert.match(js, /inviterDisplayName/);
+  assert.match(js, /邀请你加入\$\{enterpriseName\}推广团队/);
   assert.match(js, /onboarding\/onboarding\?token=/);
   assert.match(js, /hideShareMenu/);
   assert.equal(json.enableShareAppMessage, true);

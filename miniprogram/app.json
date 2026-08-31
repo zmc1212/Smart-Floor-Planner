@@ -59,6 +59,7 @@
         "enterprise-join-codes/enterprise-join-codes",
         "enterprise-staff/enterprise-staff",
         "enterprise-referrers/enterprise-referrers",
+        "enterprise-referrer-branch/enterprise-referrer-branch",
         "free-design-service/free-design-service",
         "service-needs/service-needs",
         "onboarding/onboarding",

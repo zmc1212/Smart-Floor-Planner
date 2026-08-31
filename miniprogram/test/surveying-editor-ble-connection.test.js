@@ -8,6 +8,28 @@ const editorScript = fs.readFileSync(
   'utf8'
 );
 
+test('ble input mode requires a picked direction before hardware measurement', () => {
+  assert.match(editorScript, /bleInputMode[\s\S]*请先点选方向箭头/);
+  assert.match(editorScript, /setBleInputMode\(/);
+  assert.match(editorScript, /lockPreviewBearing\(/);
+  assert.match(editorScript, /drawBleDirectionScreenOverlay\(/);
+  assert.match(editorScript, /onBleDirectionTap\(/);
+  assert.match(editorScript, /createDirectionPickController\(/);
+});
+
+test('automatic BLE direction waits for privacy and follows the page lifecycle', () => {
+  assert.match(
+    editorScript,
+    /startBleDirectionAutoPick\(\)\s*\{[\s\S]*?ensureHeadingSensorReady\(\)/
+  );
+  assert.match(editorScript, /onHide\(\)\s*\{[\s\S]*?suspendBleDirectionAutoPick\(\)/);
+  assert.match(editorScript, /onShow\(\)\s*\{[\s\S]*?resumeBleDirectionAutoPick\(\)/);
+  assert.match(
+    editorScript,
+    /bleSelectedDirectionKey = '';[\s\S]*?directionPickController\.setSelectedKey\(''\)/
+  );
+});
+
 test('unconnected BLE measurement entries offer in-editor device connection', () => {
   assert.match(editorScript, /requestBluetoothConnection\(\)\s*\{[\s\S]*wx\.showModal/);
   assert.match(editorScript, /confirmText:\s*'去连接'/);

@@ -46,6 +46,10 @@ function usableDisplayName(value) {
   return name;
 }
 
+function invitationDisplayName(value) {
+  return String(value || '').trim().slice(0, 30);
+}
+
 function isRecoveryCode(code) {
   return ['code_rotated', 'code_disabled', 'code_expired', 'staff_enterprise_conflict', 'membership_limit_reached', 'referrer_protection_limit'].includes(code);
 }
@@ -106,6 +110,7 @@ Page({
     onboardingToken: '',
     codeType: '',
     enterpriseName: '',
+    inviterDisplayName: '',
     selectedStaffRole: 'designer',
     displayName: '',
     nameSheetVisible: false,
@@ -170,7 +175,10 @@ Page({
         pageState: 'ready',
         navTitle: navTitleFor('ready'),
         codeType: response.data.codeType,
-        enterpriseName: String(response.data.enterpriseName).trim()
+        enterpriseName: String(response.data.enterpriseName).trim(),
+        inviterDisplayName: response.data.codeType === 'referrer'
+          ? invitationDisplayName(response.data.inviterDisplayName)
+          : ''
       });
     } catch (error) {
       applyOnboardingFailure(this, error);

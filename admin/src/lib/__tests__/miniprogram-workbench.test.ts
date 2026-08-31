@@ -696,13 +696,17 @@ test('enterprise hero pending-delivery pill counts unpublished designing leads',
   assert.equal(summary.find((item) => item.key === 'delivered'), undefined);
 });
 
-test('enterprise workbench exposes store activity code plus join-code entries', () => {
+test('professional workbenches expose role-scoped acquisition entries', () => {
   const route = readFileSync(
     path.join(process.cwd(), 'src/app/api/miniprogram/workbench/route.ts'),
     'utf8'
   );
-  assert.match(route, /activityCode: \{ label: '分享活动码', detail: '发给客户 · 扫码留资', target: 'activity-code' \}/);
-  assert.match(route, /joinCode: \{ label: '邀请入驻', detail: '员工 · 推荐人', target: 'join-codes' \}/);
+  assert.match(route, /function acquisitionEntries\(role: WorkbenchRole\)/);
+  assert.match(route, /label: '分享活动码'/);
+  assert.match(route, /detail: isOwner \? '员工 · 推荐人' : '仅推荐人'/);
+  assert.match(route, /label: isOwner \? '查看推广人' : '我的推广人'/);
+  assert.match(route, /detail: isOwner \? '全店推广网络' : '仅查看本人网络'/);
+  assert.equal((route.match(/\.\.\.acquisitionEntries\(role\)/g) || []).length, 3);
   assert.match(route, /findByIds\(scheduleRows\.map\(\(item\) => item\.leadId\), \{ includeArchived: true \}\)/);
   assert.match(route, /appointmentLeadMap\.get\(String\(item\.leadId\)\)/);
   assert.match(route, /includeArchived: true/);

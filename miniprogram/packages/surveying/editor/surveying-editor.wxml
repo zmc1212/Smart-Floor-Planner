@@ -31,7 +31,7 @@
   <view class="canvas-overlay-layer">
 
     <!-- 顶部量测气泡 -->
-    <cover-view wx:if="{{!componentEditorVisible && topMetricVisible && topMetricLength && cursorPlacementState === 'placed'}}" class="top-measure-bubble" style="top: {{overlayContentTop}}px;">
+    <cover-view wx:if="{{!componentEditorVisible && topMetricVisible && topMetricLength && cursorPlacementState === 'placed'}}" class="top-measure-bubble" style="top: {{topMetricTop}}px; left: {{topMetricLeft}}px;">
       <cover-view>{{topMetricLength}}</cover-view>
       <cover-view
         wx:if="{{topMetricAngle}}"
@@ -75,7 +75,14 @@
     </cover-view>
 
   <!-- 使用 cover-view 作为组件根节点，验证组件是否可覆盖原生画布。 -->
-  <survey-canvas-compass wx:if="{{showFormalExtras && !componentEditorVisible}}" safe-top="{{overlayContentTop}}" bind:tap="onDisabledTap"></survey-canvas-compass>
+  <!-- 指北针：点击开启/关闭画布跟随手机朝向；关闭时回正到北朝上。 -->
+  <survey-canvas-compass
+    wx:if="{{!componentEditorVisible}}"
+    safe-top="{{overlayContentTop}}"
+    rotation-deg="{{compassRotationDeg}}"
+    active="{{compassFollowActive}}"
+    catch:tap="onCompassTap"
+  ></survey-canvas-compass>
 
   <!-- ══════════════════════════════════════════════ -->
   <!--  顶部导航浮层                                   -->
@@ -234,6 +241,38 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  底部光标控件：已放置 / 等待拖放 / 拖拽中为空      -->
   <!-- ══════════════════════════════════════════════ -->
+  <cover-view
+    wx:if="{{!componentEditorVisible && !numberPadVisible && !spaceNameSheetVisible}}"
+    class="canvas-rotate-controls native-canvas-overlay"
+    style="bottom: calc(188rpx + {{bottomSafeArea}}px);"
+  >
+    <cover-view
+      class="canvas-rotate-btn canvas-rotate-btn-ccw"
+      bindtap="onCanvasRotateCcwTap"
+      hover-class="canvas-rotate-btn-pressed"
+      aria-role="button"
+      aria-label="逆时针旋转画布"
+    >
+      <cover-image
+        class="canvas-rotate-icon"
+        src="/packages/surveying/assets/icons/angle/refresh-cw.png"
+        mode="aspectFit"
+      ></cover-image>
+    </cover-view>
+    <cover-view
+      class="canvas-rotate-btn"
+      bindtap="onCanvasRotateCwTap"
+      hover-class="canvas-rotate-btn-pressed"
+      aria-role="button"
+      aria-label="顺时针旋转画布"
+    >
+      <cover-image
+        class="canvas-rotate-icon"
+        src="/packages/surveying/assets/icons/angle/refresh-cw.png"
+        mode="aspectFit"
+      ></cover-image>
+    </cover-view>
+  </cover-view>
   <!-- The existing angle-sheet visibility contract remains independent of the restored dock. -->
   <cover-view wx:if="{{!numberPadVisible && !spaceNameSheetVisible}}" class="bottom-fab-bar legacy-angle-sheet-anchor"></cover-view>
   <cover-view wx:if="{{!numberPadVisible && !spaceNameSheetVisible}}" class="history-action-bar bottom-control-dock native-canvas-overlay" style="bottom: calc(64rpx + {{bottomSafeArea}}px);">

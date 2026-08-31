@@ -30,6 +30,20 @@ const OUTLINES = {
     [0, 1, 2000],
     [-1, 0, 4000],
     [0, -1, 5000]
+  ],
+  longNotched: [
+    [1, 0, 10000],
+    [0, 1, 1000],
+    [-1, 0, 2000],
+    [0, 1, 1000],
+    [1, 0, 2000],
+    [0, 1, 1000],
+    [-1, 0, 2000],
+    [0, 1, 1000],
+    [1, 0, 2000],
+    [0, 1, 1000],
+    [-1, 0, 10000],
+    [0, -1, 5000]
   ]
 };
 
@@ -89,6 +103,63 @@ test('a noisy multi-corner orthogonal traverse closes by adjustment instead of a
       Math.round(wall.lengthMm - wall.rawMeasuredLengthMm)
     );
   });
+});
+
+test('a long multi-corner traverse can use accumulated correction budget beyond snap tolerance', () => {
+  const measuredLengths = OUTLINES.longNotched.map((entry) => entry[2]);
+  measuredLengths[0] += 150;
+  measuredLengths[2] -= 25;
+  measuredLengths[4] += 25;
+  measuredLengths[6] -= 25;
+  measuredLengths[8] += 25;
+  measuredLengths[10] -= 150;
+
+  const draft = commitMeasuredOutline(OUTLINES.longNotched, measuredLengths);
+  const pendingFloor = surveyGraph.getActiveFloor(draft);
+  const pendingEnd = surveyGraph.getNode(pendingFloor, pendingFloor.session.anchorNodeId);
+  assert.equal(surveyGraph.distanceMm(pendingEnd, { xMm: 0, yMm: 0 }), 400);
+  assert.equal(pendingFloor.session.state, 'closing');
+  assert.equal(pendingFloor.session.closeCandidateType, 'start');
+
+  const closed = surveyGraph.confirmClosure(draft);
+  const floor = surveyGraph.getActiveFloor(closed);
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.walls.length, OUTLINES.longNotched.length);
+  assert.equal(floor.walls.some((wall) => wall.inputSource === 'closure-bridge'), false);
+  assert.equal(surveyGraph.validateSurveyDraft(closed, { mode: 'full' }).valid, true);
+});
+
+test('a short loop cannot spend the full snap tolerance on one wall pair', () => {
+  const draft = surveyGraph.createSurveyDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  floor.nodes = [
+    { id: 'a', xMm: 0, yMm: 0 },
+    { id: 'b', xMm: 500, yMm: 0 },
+    { id: 'c', xMm: 500, yMm: 1000 },
+    { id: 'd', xMm: -350, yMm: 1000 },
+    { id: 'e', xMm: -350, yMm: 0 }
+  ];
+  floor.walls = [
+    { id: 'ab', startNodeId: 'a', endNodeId: 'b', mode: 'straight', lengthMm: 500, angleDeg: 0, thicknessMm: 200 },
+    { id: 'bc', startNodeId: 'b', endNodeId: 'c', mode: 'straight', lengthMm: 1000, angleDeg: 90, thicknessMm: 200 },
+    { id: 'cd', startNodeId: 'c', endNodeId: 'd', mode: 'straight', lengthMm: 850, angleDeg: 180, thicknessMm: 200 },
+    { id: 'de', startNodeId: 'd', endNodeId: 'e', mode: 'straight', lengthMm: 1000, angleDeg: -90, thicknessMm: 200 }
+  ];
+  floor.spaces = [];
+  floor.openings = [];
+  floor.session.state = 'closing';
+  floor.session.anchorNodeId = 'e';
+  floor.session.activeSpaceStartNodeId = 'a';
+  floor.session.activeSpaceStartWallIndex = 0;
+  floor.session.closeCandidateNodeId = 'a';
+  floor.session.closeCandidateType = 'start';
+  const before = JSON.stringify(draft);
+
+  assert.throws(
+    () => surveyGraph.confirmClosure(draft),
+    /闭合误差超过/
+  );
+  assert.equal(JSON.stringify(draft), before);
 });
 
 test('a small concave endpoint drift that crosses the first wall is balanced before overlap rejection', () => {

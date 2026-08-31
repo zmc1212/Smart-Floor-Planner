@@ -26,6 +26,11 @@ test('Mini Program referrer roster list scopes employees to their own invitees a
   assert.match(listRoute, /withMiniProgramPostgresTransaction/);
   assert.match(listRoute, /listEnterpriseReferrerMemberships/);
   assert.match(listRoute, /listEnterpriseReferrerNetwork/);
+  assert.match(listRoute, /listEnterpriseReferrerNetworkSummary/);
+  assert.match(listRoute, /requestedView === 'staff'/);
+  assert.match(listRoute, /getEnterpriseReferrerNetworkStaff/);
+  assert.match(listRoute, /staffId/);
+  assert.match(listRoute, /branchSummary/);
   assert.match(listRoute, /inviterStaffId/);
   assert.match(listRoute, /requestedView/);
   assert.match(listRoute, /view === 'network'/);
