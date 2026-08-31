@@ -7,7 +7,8 @@ const {
   decorateTodos,
   buildDashboardSlices,
   getFloorPlanRoomCount,
-  profileForIdentity
+  profileForIdentity,
+  referrerNetworkEntryForIdentity
 } = require('../pages/mine/mine-model.js');
 
 test('Mine profile uses the signed referrer identity and latest cached display name', () => {
@@ -21,6 +22,61 @@ test('Mine profile uses the signed referrer identity and latest cached display n
       role: 'referrer',
       roleLabel: '推广人'
     }
+  );
+});
+
+test('Mine exposes the referrer network entry for every enterprise staff role with role-specific copy', () => {
+  const expected = {
+    designer: ['我的推广人', '邀请并查看我的推广人'],
+    measurer: ['我的推广人', '邀请并查看我的推广人'],
+    salesperson: ['我的推广人', '邀请并查看我的推广人'],
+    enterprise_admin: ['推广网络', '查看员工分支与全部推广人']
+  };
+
+  for (const [role, [label, helper]] of Object.entries(expected)) {
+    assert.deepEqual(
+      referrerNetworkEntryForIdentity(
+        role,
+        { mode: 'staff', staffRole: role, enterpriseId: '42' },
+        { current: { role, capabilities: ['referrer.network'] } }
+      ),
+      {
+        showReferrerNetworkEntry: true,
+        referrerNetworkEntryLabel: label,
+        referrerNetworkEntryHelper: helper
+      }
+    );
+  }
+});
+
+test('Mine hides the referrer network entry without an enterprise context or capability', () => {
+  assert.equal(
+    referrerNetworkEntryForIdentity('designer', { mode: 'staff', staffRole: 'designer' }).showReferrerNetworkEntry,
+    false
+  );
+  assert.equal(
+    referrerNetworkEntryForIdentity(
+      'designer',
+      { mode: 'staff', staffRole: 'designer', enterpriseId: '0' },
+      { current: { role: 'designer', capabilities: ['referrer.network'] } }
+    ).showReferrerNetworkEntry,
+    false
+  );
+  assert.equal(
+    referrerNetworkEntryForIdentity(
+      'designer',
+      { mode: 'staff', staffRole: 'designer', enterpriseId: '42' },
+      { current: { role: 'designer', capabilities: ['staff.leads'] } }
+    ).showReferrerNetworkEntry,
+    false
+  );
+  assert.equal(
+    referrerNetworkEntryForIdentity(
+      'referrer',
+      { mode: 'referrer', enterpriseId: '42' },
+      { current: { role: 'referrer', capabilities: ['referrer.network'] } }
+    ).showReferrerNetworkEntry,
+    false
   );
 });
 

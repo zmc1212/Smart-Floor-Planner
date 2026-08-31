@@ -112,3 +112,17 @@ test('Mine visitor gateway packages the dense hero and coherent identity icon fa
   assert.deepEqual([...trustIconBytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.ok(trustIconBytes.length < 10 * 1024, 'shield-check.png exceeds the 10 KB icon budget');
 });
+
+test('Mine account panel exposes the role-scoped referrer network entry', () => {
+  assert.match(
+    mineMarkup,
+    /wx:if="\{\{showReferrerNetworkEntry\}\}"[\s\S]*bindtap="onOpenReferrerNetwork"/
+  );
+  assert.match(mineMarkup, /user-round-plus\.png/);
+  assert.match(mineMarkup, /\{\{referrerNetworkEntryLabel\}\}/);
+  assert.match(mineMarkup, /\{\{referrerNetworkEntryHelper\}\}/);
+  assert.match(
+    mineMarkup,
+    /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper\}\}"/
+  );
+});

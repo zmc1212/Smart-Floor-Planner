@@ -8,6 +8,11 @@ const {
   currentEnterScene,
   leaveScanLanding: exitScanLanding
 } = require('../../../utils/identity-navigation.js');
+const {
+  refreshWechatLoginCode,
+  resolveWechatPhoneLoginInput,
+  wechatPhoneAuthToast
+} = require('../../../utils/wechat-phone-auth.js');
 
 const REGISTER_ROUTE = 'packages/business/enterprise-register/enterprise-register';
 const WORKBENCH_ROLES = new Set([
@@ -295,10 +300,15 @@ Page({
   },
 
   onLoad(options) {
+    refreshWechatLoginCode();
     const registrationToken = safeToken(options.token || options.scene);
     this.setData({ ...navigationMetrics(), registrationToken });
     if (this.leaveIfStickyScanReopen()) return;
     this.resolveRegistrationCode();
+  },
+
+  onShow() {
+    refreshWechatLoginCode();
   },
 
   leaveIfStickyScanReopen() {
@@ -434,14 +444,30 @@ Page({
       this.revealMissingFields();
       return;
     }
-    if (!event.detail || event.detail.errMsg !== 'getPhoneNumber:ok' || !event.detail.code) {
+    const resolved = resolveWechatPhoneLoginInput(event.detail);
+    if (!resolved.ok) {
+      if (resolved.reason === 'session') {
+        wx.showToast({
+          title: wechatPhoneAuthToast(resolved.reason),
+          icon: 'none'
+        });
+        return;
+      }
       presentPhoneAuthFailure(event.detail);
       return;
     }
     this.setData({ submitting: true, errorMessage: '' });
     pinRegisterAgainstRoleLanding();
     try {
-      const login = await api.phoneLogin(event.detail.code);
+      const login = await api.phoneLogin(
+        resolved.kind === 'code'
+          ? resolved.phoneCode
+          : {
+              loginCode: resolved.loginCode,
+              encryptedData: resolved.encryptedData,
+              iv: resolved.iv
+            }
+      );
       const phone = String((login && login.user && login.user.phone) || '').trim();
       if (!/^1[3-9]\d{9}$/.test(phone)) {
         throw Object.assign(new Error('未获取到有效手机号，请重试授权'), { code: 'VALIDATION' });

@@ -161,7 +161,7 @@ test('Mine replays held work-identity guides even while signed as customer', () 
     assert.match(navigations.at(-1), /designer-guide\/designer-guide\?source=mine/);
     assert.match(
       source('pages/mine/mine.wxml'),
-      /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, roleGuideHelper\}\}"/
+      /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper\}\}"/
     );
   } finally {
     delete require.cache[modulePath];

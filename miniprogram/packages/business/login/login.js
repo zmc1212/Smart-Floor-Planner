@@ -2,6 +2,11 @@ const app = getApp();
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 const { resolveLegalDoc, buildLegalWebviewUrl } = require('../../../utils/legal-docs.js');
+const {
+  refreshWechatLoginCode,
+  resolveWechatPhoneLoginInput,
+  wechatPhoneAuthToast
+} = require('../../../utils/wechat-phone-auth.js');
 
 function shouldStayOnLoginPage(pages, previousRoute, options) {
   if (options && options.mode === 'password') return true;
@@ -43,6 +48,7 @@ Page({
   },
 
   onLoad(options) {
+    refreshWechatLoginCode();
     if (options && options.recovery === 'identity_context_invalid') {
       wx.showToast({ title: '身份已变更，请重新登录', icon: 'none' });
     }
@@ -58,6 +64,10 @@ Page({
     ) {
       wx.navigateBack();
     }
+  },
+
+  onShow() {
+    refreshWechatLoginCode();
   },
 
   switchTab(e) {
@@ -102,18 +112,25 @@ Page({
       return;
     }
 
-    if (e.detail.errMsg !== 'getPhoneNumber:ok') {
-      wx.showToast({ title: '已取消授权', icon: 'none' });
+    const resolved = resolveWechatPhoneLoginInput(e.detail);
+    if (!resolved.ok) {
+      wx.showToast({
+        title: wechatPhoneAuthToast(resolved.reason),
+        icon: 'none'
+      });
       return;
     }
 
-    const phoneCode = e.detail.code;
-    if (!phoneCode) {
-      wx.showToast({ title: '获取手机号失败', icon: 'none' });
+    if (resolved.kind === 'code') {
+      this.performLogin(() => api.phoneLogin(resolved.phoneCode));
       return;
     }
 
-    this.performLogin(() => api.phoneLogin(phoneCode));
+    this.performLogin(() => api.phoneLogin({
+      loginCode: resolved.loginCode,
+      encryptedData: resolved.encryptedData,
+      iv: resolved.iv
+    }));
   },
 
   async onPasswordLogin() {

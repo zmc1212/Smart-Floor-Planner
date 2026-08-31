@@ -8,6 +8,11 @@ export type SurveyWall = {
   startNodeId: string;
   endNodeId: string;
   lengthMm?: number;
+  rawMeasuredLengthMm?: number;
+  closureAdjustmentMm?: number;
+  adjustmentSource?: 'closure-balance' | 'remeasure-balance' | 'coordinate-rounding';
+  angleDeg?: number;
+  mode?: 'straight' | 'diagonal';
   thicknessMm?: number;
   measurementStartInsetMm?: number;
   measurementStartExtensionMm?: number;

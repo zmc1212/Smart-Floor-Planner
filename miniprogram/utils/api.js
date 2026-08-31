@@ -228,31 +228,54 @@ function uploadProfileAvatar(filePath) {
 /**
  * Phone number quick login using unified auth endpoint
  */
-function phoneLogin(phoneCode) {
+function phoneLogin(phoneCodeOrPayload) {
   const app = getApp();
+  const payload = typeof phoneCodeOrPayload === 'string'
+    ? { phoneCode: phoneCodeOrPayload }
+    : phoneCodeOrPayload || {};
+
+  const postPhoneLogin = async (body) => {
+    const result = await request('/auth/miniprogram', 'POST', {
+      type: 'wechat_phone',
+      loginCode: body.loginCode,
+      phoneCode: body.phoneCode,
+      encryptedData: body.encryptedData,
+      iv: body.iv,
+      referral: app ? app.globalData.referral : {}
+    });
+
+    if (result.success && result.token) {
+      if (app && app.globalData) {
+        app.globalData.token = result.token;
+        app.globalData.userInfo = result.user;
+        app.globalData.openid = result.openid || (result.user && result.user.openid);
+      }
+      wx.setStorageSync('token', result.token);
+      wx.setStorageSync('userInfo', result.user);
+      if (result.openid) wx.setStorageSync('openid', result.openid);
+    }
+    return result;
+  };
+
+  if (
+    payload.loginCode &&
+    (payload.phoneCode || (payload.encryptedData && payload.iv))
+  ) {
+    return postPhoneLogin(payload).catch((err) => {
+      console.error('Phone login failed:', err);
+      throw err;
+    });
+  }
+
   return new Promise((resolve, reject) => {
     wx.login({
       success: async (loginRes) => {
         if (loginRes.code) {
           try {
-            const result = await request('/auth/miniprogram', 'POST', {
-              type: 'wechat_phone',
+            resolve(await postPhoneLogin({
               loginCode: loginRes.code,
-              phoneCode: phoneCode,
-              referral: app ? app.globalData.referral : {}
-            });
-            
-            if (result.success && result.token) {
-              if (app && app.globalData) {
-                app.globalData.token = result.token;
-                app.globalData.userInfo = result.user;
-                app.globalData.openid = result.openid || (result.user && result.user.openid);
-              }
-              wx.setStorageSync('token', result.token);
-              wx.setStorageSync('userInfo', result.user);
-              if (result.openid) wx.setStorageSync('openid', result.openid);
-            }
-            resolve(result);
+              phoneCode: payload.phoneCode
+            }));
           } catch (err) {
             console.error('Phone login failed:', err);
             reject(err);

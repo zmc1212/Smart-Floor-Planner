@@ -20,13 +20,21 @@ export async function GET(request: Request) {
       },
       async (context) => {
         const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+        // The legacy Admin page is a single enterprise-level code view. Keep
+        // it on the explicit null scope; personal employee codes are managed
+        // from the Mini Program and must not be selected arbitrarily here.
+        const referrerInviterStaffId = null;
         const { codes, events } = await withTenantTransaction(
           context.enterpriseId!,
           async (transaction) => {
             const network = new ReferrerNetworkRepository(transaction);
             const [codeRows, eventRows] = await Promise.all([
-              network.listEnterpriseJoinCodes(enterpriseId),
-              network.listEnterpriseJoinCodeEvents(enterpriseId),
+              network.listEnterpriseJoinCodes(enterpriseId, {
+                referrerInviterStaffId,
+              }),
+              network.listEnterpriseJoinCodeEvents(enterpriseId, 50, {
+                referrerInviterStaffId,
+              }),
             ]);
             return { codes: codeRows, events: eventRows };
           }

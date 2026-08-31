@@ -16,21 +16,46 @@ test('unconnected BLE measurement entries offer in-editor device connection', ()
 });
 
 test('current, closable, pending, selected, and cursor-snapped walls receive BLE measurements without opening the number pad', () => {
-  assert.match(editorScript, /onBottomMeasure\(\)\s*\{[\s\S]*session\.state === 'wallPreview'[\s\S]*startBluetoothMeasure\('pendingWall'\)[\s\S]*session\.state === 'cursorPlaced'[\s\S]*session\.state === 'wallCommitted' \|\| session\.state === 'closing' \|\| session\.state === 'mergeClosing'[\s\S]*selectedWall && !session\.selectedOpeningId[\s\S]*startBluetoothMeasure\('selectedWall'\)/);
+  assert.match(
+    editorScript,
+    /resolveBleMeasureTarget\(\)\s*\{[\s\S]*session\.state === 'wallPreview' \|\| session\.state === 'awaitingLength'[\s\S]*target: 'pendingWall'[\s\S]*session\.state === 'cursorPlaced'[\s\S]*session\.state === 'wallCommitted' \|\| session\.state === 'closing' \|\| session\.state === 'mergeClosing'[\s\S]*selectedWall && session && !session\.selectedOpeningId[\s\S]*target: 'selectedWall'/
+  );
+  assert.match(editorScript, /onBottomMeasure\(\)\s*\{[\s\S]*resolveBleMeasureTarget\(\)[\s\S]*startBluetoothMeasure\('pendingWall'\)[\s\S]*startBluetoothMeasure\('selectedWall'\)/);
   assert.match(editorScript, /target === 'selectedWall'[\s\S]*applyBleReadingToSelectedWall\(distanceInMeters\)/);
   assert.match(editorScript, /target === 'pendingWall'[\s\S]*applyBleReadingToPendingWall\(distanceInMeters\)/);
   assert.match(editorScript, /applyBleReadingToSelectedWall\(distanceInMeters\)\s*\{[\s\S]*remeasureSelectedWall\(this\.draft, valueMm, 'ble'\)/);
   assert.match(editorScript, /applyBleReadingToPendingWall\(distanceInMeters\)\s*\{[\s\S]*commitPreviewLength\(this\.draft, valueMm, 'ble'\)/);
 });
 
+test('device ATD frames apply to the current wall without a dock 测距 command', () => {
+  assert.match(
+    editorScript,
+    /onBluetoothMeasure\(distanceInMeters, frameMetadata\)\s*\{[\s\S]*const hardwareTriggered = !target;[\s\S]*resolveBleMeasureTarget\(\)[\s\S]*prepareBleMeasureTarget\(resolved\)/
+  );
+  assert.match(editorScript, /bleOrigin: hardwareTriggered \? 'device' : 'app'/);
+  assert.doesNotMatch(editorScript, /this\.bleMeasureTarget \|\| 'numberPad'/);
+  assert.match(
+    editorScript,
+    /target === 'pendingWall'[\s\S]*applyBleReadingToPendingWall\(distanceInMeters\)[\s\S]*target === 'numberPad'[\s\S]*applyBleReadingToNumberPad\(distanceInMeters\)/
+  );
+});
+
 test('selected-wall BLE remeasure restores the pre-measurement draft when applying or redrawing fails', () => {
   assert.match(editorScript, /applyBleReadingToSelectedWall\(distanceInMeters\)\s*\{[\s\S]*const historyDraft = this\.bleMeasureHistoryDraft;[\s\S]*const restoreMeasurementDraft = \(\) =>[\s\S]*this\.history\.undo\.splice\(historyUndoLength\);[\s\S]*this\.history\.redo = historyRedo;[\s\S]*this\.draft = surveyGraph\.cloneDraft\(historyDraft\);[\s\S]*distanceInMeters === null[\s\S]*restoreMeasurementDraft\(\);[\s\S]*catch \(err\) \{[\s\S]*restoreMeasurementDraft\(\);/);
+  assert.match(
+    editorScript,
+    /prepareBleMeasureTarget\(resolved\)\s*\{[\s\S]*bleMeasureHistoryDraft = surveyGraph\.cloneDraft\(this\.draft\);[\s\S]*startRemeasure\(selectedWallDraft\)/
+  );
 });
 
 test('connected BLE dock measure without a pending or selected wall asks to drag a wall first', () => {
   assert.match(
     editorScript,
-    /onBottomMeasure\(\)\s*\{[\s\S]*if \(this\.data\.numberPadVisible\) \{\s*this\.triggerBluetoothNumberMeasure\(\);\s*return;\s*\}\s*wx\.showToast\(\{\s*title:\s*'请先拉出一条墙'/
+    /onBottomMeasure\(\)\s*\{[\s\S]*resolved\.target === 'numberPad'[\s\S]*this\.triggerBluetoothNumberMeasure\(\);[\s\S]*wx\.showToast\(\{\s*title:\s*resolved\.reason \|\| '请先拉出一条墙'/
+  );
+  assert.match(
+    editorScript,
+    /resolveBleMeasureTarget\(\)\s*\{[\s\S]*return \{ target: '', reason: '请先拉出一条墙' \}/
   );
   assert.doesNotMatch(
     editorScript,

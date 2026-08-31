@@ -328,6 +328,72 @@ test('referrer onboarding opens a name sheet after phone authorization and submi
   }
 });
 
+test('referrer onboarding accepts encryptedData when WeChat omits the dynamic code', async () => {
+  const {
+    refreshWechatLoginCode,
+    resetWechatLoginCodeForTests
+  } = require('../utils/wechat-phone-auth.js');
+  const definition = loadPage();
+  const originalPhoneLogin = api.phoneLogin;
+  const originalGetApp = global.getApp;
+  const originalWx = global.wx;
+  const payloads = [];
+  const codes = ['pre-tap-code', 'next-code'];
+  resetWechatLoginCodeForTests();
+  global.wx = {
+    ...(originalWx || {}),
+    showToast() {},
+    setStorageSync() {},
+    getWindowInfo: () => ({ windowWidth: 390, statusBarHeight: 24 }),
+    getMenuButtonBoundingClientRect: () => ({ left: 296, top: 24, height: 32 }),
+    login(options) {
+      const code = codes.shift();
+      if (options.success) options.success({ code });
+      if (options.complete) options.complete();
+    }
+  };
+  global.getApp = () => ({
+    globalData: { sessionRecovery: null },
+    hydrateStoredSession: async () => {}
+  });
+  api.phoneLogin = async (payload) => {
+    payloads.push(payload);
+    return { success: true, token: 'phone', user: { nickname: '微信用户' } };
+  };
+  try {
+    await refreshWechatLoginCode();
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'ready',
+        codeType: 'referrer',
+        onboardingToken: 'ej_ABCDEFGHIJKLMNOPQRSTUVWXYZ123456'
+      },
+      setData(next) { Object.assign(this.data, next); },
+      submitOnboarding: definition.submitOnboarding,
+      persistOnboardingSession: definition.persistOnboardingSession
+    };
+    await definition.onGetPhoneNumber.call(context, {
+      detail: {
+        errMsg: 'getPhoneNumber:ok',
+        encryptedData: 'cipher',
+        iv: 'init-vector'
+      }
+    });
+    assert.deepEqual(payloads, [{
+      loginCode: 'pre-tap-code',
+      encryptedData: 'cipher',
+      iv: 'init-vector'
+    }]);
+    assert.equal(context.data.pageState, 'name');
+  } finally {
+    resetWechatLoginCodeForTests();
+    api.phoneLogin = originalPhoneLogin;
+    global.getApp = originalGetApp;
+    global.wx = originalWx;
+  }
+});
+
 test('recovery scan reapplies a WeChat mini-program code on the current onboarding page', () => {
   const definition = loadPage();
   const originalWx = global.wx;

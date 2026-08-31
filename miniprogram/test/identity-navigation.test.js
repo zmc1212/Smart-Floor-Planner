@@ -168,7 +168,10 @@ test('enterprise owner customer capability can enter the formal surveying editor
   assert.equal(navigation.canAccessRoute(route, {
     mode: 'staff',
     staffRole: 'designer'
-  }), false);
+  }), true);
+  assert.equal(navigation.canAccessRoute(route, {
+    current: { role: 'designer', capabilities: ['staff.leads', 'account'] }
+  }), true);
   assert.equal(navigation.canAccessRoute(route, { mode: 'customer' }), false);
 });
 

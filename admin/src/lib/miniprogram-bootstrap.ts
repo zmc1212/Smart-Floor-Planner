@@ -40,11 +40,18 @@ const ROLE_LABELS: Record<MiniProgramRole, string> = {
 const ROLE_CAPABILITIES: Record<MiniProgramRole, string[]> = {
   customer: ['customer.service', 'customer.projects', 'account'],
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
-  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'],
-  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
-  salesperson: ['promotion.records', 'promotion.commissions', 'account'],
-  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
+  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'referrer.network', 'account'],
+  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'referrer.network', 'account'],
+  salesperson: ['promotion.records', 'promotion.commissions', 'referrer.network', 'account'],
+  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'referrer.network', 'account'],
   platform_admin: ['platform.review', 'platform.devices', 'account'],
+};
+
+type MiniProgramCapabilityContext = Pick<
+  MiniProgramIdentityContextRecord,
+  'mode' | 'staffRole'
+> & {
+  enterpriseId: bigint | string | null | undefined;
 };
 
 export function getMiniProgramRole(
@@ -62,6 +69,21 @@ export function getMiniProgramRole(
     }
   }
   return null;
+}
+
+export function getMiniProgramCapabilities(
+  context: MiniProgramCapabilityContext
+): string[] {
+  const role = getMiniProgramRole(context);
+  if (!role) return [];
+  const hasEnterprise =
+    typeof context.enterpriseId === 'bigint'
+      ? context.enterpriseId > BigInt(0)
+      : typeof context.enterpriseId === 'string' &&
+        /^[1-9]\d*$/.test(context.enterpriseId);
+  return ROLE_CAPABILITIES[role].filter(
+    (capability) => capability !== 'referrer.network' || hasEnterprise
+  );
 }
 
 export function buildMiniProgramBootstrap(input: {
@@ -85,8 +107,10 @@ export function buildMiniProgramBootstrap(input: {
     context: miniProgramIdentityContextToDto(contexts[0]),
     contexts: contexts.map(miniProgramIdentityContextToDto),
     landingPath: MINI_PROGRAM_ROLE_LANDINGS[role],
-    capabilities: [...ROLE_CAPABILITIES[role]],
+    capabilities: getMiniProgramCapabilities(contexts[0]),
   }));
+
+  const currentCapabilities = getMiniProgramCapabilities(input.current);
 
   return {
     current: {
@@ -94,11 +118,11 @@ export function buildMiniProgramBootstrap(input: {
       mode: input.current.mode,
       context: miniProgramIdentityContextToDto(input.current),
       landingPath: MINI_PROGRAM_ROLE_LANDINGS[currentRole],
-      capabilities: [...ROLE_CAPABILITIES[currentRole]],
+      capabilities: currentCapabilities,
     },
     roles,
     navigation: {
-      capabilities: [...ROLE_CAPABILITIES[currentRole]],
+      capabilities: [...currentCapabilities],
       landingPath: MINI_PROGRAM_ROLE_LANDINGS[currentRole],
     },
     // Badge counts are server-owned. Unknown or failed queries stay

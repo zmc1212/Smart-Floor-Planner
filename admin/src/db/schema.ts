@@ -451,6 +451,10 @@ export const enterpriseJoinCodes = appSchema.table(
       .notNull()
       .references(() => enterprises.id, { onDelete: 'cascade' }),
     codeType: text('code_type').notNull(),
+    inviterStaffId: bigint('inviter_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'restrict' }
+    ),
     tokenHash: text('token_hash').notNull(),
     status: text('status').notNull().default('active'),
     version: integer('version').notNull().default(1),
@@ -469,13 +473,28 @@ export const enterpriseJoinCodes = appSchema.table(
   },
   (table) => [
     uniqueIndex('enterprise_join_codes_token_hash_uidx').on(table.tokenHash),
-    uniqueIndex('enterprise_join_codes_active_type_uidx')
+    uniqueIndex('enterprise_join_codes_active_enterprise_scope_uidx')
       .on(table.enterpriseId, table.codeType)
-      .where(sql`${table.status} = 'active'`),
+      .where(
+        sql`${table.status} = 'active' and ${table.inviterStaffId} is null`
+      ),
+    uniqueIndex('enterprise_join_codes_active_staff_scope_uidx')
+      .on(table.enterpriseId, table.codeType, table.inviterStaffId)
+      .where(
+        sql`${table.status} = 'active' and ${table.inviterStaffId} is not null`
+      ),
     index('enterprise_join_codes_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    index('enterprise_join_codes_inviter_staff_created_idx').on(
+      table.inviterStaffId,
+      table.createdAt
+    ),
     index('enterprise_join_codes_created_by_idx').on(table.createdBy),
     index('enterprise_join_codes_disabled_by_idx').on(table.disabledBy),
     check('enterprise_join_codes_type_check', sql`${table.codeType} in ('staff', 'referrer')`),
+    check(
+      'enterprise_join_codes_inviter_type_check',
+      sql`${table.inviterStaffId} is null or ${table.codeType} = 'referrer'`
+    ),
     check('enterprise_join_codes_status_check', sql`${table.status} in ('active', 'rotated', 'disabled', 'expired')`),
   ]
 );
@@ -603,6 +622,11 @@ export const referrerEnterpriseMemberships = appSchema.table(
     enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
       .notNull()
       .references(() => enterprises.id, { onDelete: 'restrict' }),
+    invitedByStaffId: bigint('invited_by_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    invitedByNameSnapshot: text('invited_by_name_snapshot'),
     status: text('status').notNull().default('active'),
     joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'date' })
       .notNull()
@@ -616,6 +640,11 @@ export const referrerEnterpriseMemberships = appSchema.table(
       .on(table.referrerId, table.enterpriseId)
       .where(sql`${table.status} = 'active'`),
     index('referrer_memberships_enterprise_status_idx').on(table.enterpriseId, table.status),
+    index('referrer_memberships_enterprise_inviter_status_idx').on(
+      table.enterpriseId,
+      table.invitedByStaffId,
+      table.status
+    ),
     index('referrer_memberships_referrer_status_idx').on(table.referrerId, table.status),
     check('referrer_memberships_status_check', sql`${table.status} in ('active', 'exited', 'disabled')`),
   ]

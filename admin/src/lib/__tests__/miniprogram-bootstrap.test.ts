@@ -129,6 +129,54 @@ test('staff role mapping does not collapse designer and measurer capabilities', 
   ]);
 });
 
+test('referrer network capability is limited to enterprise staff roles', () => {
+  const contexts = {
+    customer,
+    referrer: { ...customer, mode: 'referrer' as const, referrerMembershipId: '31' },
+    designer: { ...customer, mode: 'staff' as const, staffRole: 'designer' as const, enterpriseId: 7n },
+    measurer: { ...customer, mode: 'staff' as const, staffRole: 'measurer' as const, enterpriseId: 7n },
+    salesperson: { ...customer, mode: 'staff' as const, staffRole: 'salesperson' as const, enterpriseId: 7n },
+    enterpriseAdmin: { ...customer, mode: 'staff' as const, staffRole: 'enterprise_admin' as const, enterpriseId: 7n },
+    platformAdmin: { ...customer, mode: 'staff' as const, staffRole: 'admin' as const },
+  };
+
+  for (const context of [
+    contexts.designer,
+    contexts.measurer,
+    contexts.salesperson,
+    contexts.enterpriseAdmin,
+  ]) {
+    assert.ok(
+      buildMiniProgramBootstrap({ current: context, contexts: [context] })
+        .current.capabilities.includes('referrer.network')
+    );
+  }
+
+  for (const context of [contexts.customer, contexts.referrer, contexts.platformAdmin]) {
+    assert.equal(
+      buildMiniProgramBootstrap({ current: context, contexts: [context] })
+        .current.capabilities.includes('referrer.network'),
+      false
+    );
+  }
+});
+
+test('platform salesperson without an enterprise cannot enter a referrer network', () => {
+  const salesperson = {
+    ...customer,
+    mode: 'staff' as const,
+    staffRole: 'salesperson' as const,
+  };
+  const result = buildMiniProgramBootstrap({
+    current: salesperson,
+    contexts: [salesperson],
+  });
+
+  assert.equal(result.current.capabilities.includes('referrer.network'), false);
+  assert.equal(result.navigation.capabilities.includes('referrer.network'), false);
+  assert.equal(result.roles[0].capabilities.includes('referrer.network'), false);
+});
+
 test('salesperson badges stay empty without inventing local counts', () => {
   assert.deepEqual(buildMiniProgramBadges({
     role: 'salesperson',

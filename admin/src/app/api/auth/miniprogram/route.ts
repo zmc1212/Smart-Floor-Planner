@@ -24,8 +24,8 @@ import {
 } from '@/lib/staff-access';
 import { resolveProfileAvatarUrl } from '@/lib/miniprogram-profile';
 import {
-  getWechatPhoneNumber,
   getWechatSessionIdentity,
+  resolveWechatPhoneLogin,
 } from '@/lib/wechat-miniprogram-auth';
 import { authenticateAdminCredential } from '@/lib/admin-credential-auth';
 
@@ -129,16 +129,13 @@ export async function POST(request: Request) {
         source: 'wechat',
       };
     } else if (type === 'wechat_phone') {
-      const [wechat, phone] = await Promise.all([
-        getWechatSessionIdentity(body.loginCode),
-        getWechatPhoneNumber(body.phoneCode),
-      ]);
+      const wechat = await resolveWechatPhoneLogin(body);
       const result = await withPlatformTransaction(async (transaction) => {
         const identities = new MiniProgramIdentityRepository(transaction);
         const user = await identities.resolveWechatPhoneUser({
           openid: wechat.openid,
           unionid: wechat.unionid,
-          phone,
+          phone: wechat.phone,
         });
         const staff = await identities.findActiveStaffByUserId(user.id);
         return { user, staff };

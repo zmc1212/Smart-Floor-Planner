@@ -1,10 +1,15 @@
+import { createCipheriv } from 'node:crypto';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getWechatAccessToken,
   resetWechatAccessTokenCacheForTests,
 } from '@/lib/wechat-access-token';
-import { getWechatPhoneNumber } from '@/lib/wechat-miniprogram-auth';
+import {
+  decryptWechatEncryptedPhoneNumber,
+  getWechatPhoneNumber,
+  resolveWechatPhoneLogin,
+} from '@/lib/wechat-miniprogram-auth';
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -103,6 +108,93 @@ test('phone-number lookup retries once after a stale access_token', async () => 
     assert.match(phoneCalls[1], /fresh_token/);
   } finally {
     resetWechatAccessTokenCacheForTests();
+    if (previousAppId === undefined) delete process.env.WX_APPID;
+    else process.env.WX_APPID = previousAppId;
+    if (previousSecret === undefined) delete process.env.WX_APPSECRET;
+    else process.env.WX_APPSECRET = previousSecret;
+  }
+});
+
+function encryptWechatPhone(appId: string, sessionKey: Buffer, iv: Buffer, phone: string) {
+  const cipher = createCipheriv('aes-128-cbc', sessionKey, iv);
+  const payload = JSON.stringify({
+    phoneNumber: `86${phone}`,
+    purePhoneNumber: phone,
+    countryCode: '86',
+    watermark: { appid: appId, timestamp: 1_700_000_000 },
+  });
+  return Buffer.concat([cipher.update(payload, 'utf8'), cipher.final()]).toString(
+    'base64'
+  );
+}
+
+test('legacy encryptedData decrypts to the bound WeChat phone', () => {
+  const previousAppId = process.env.WX_APPID;
+  const previousSecret = process.env.WX_APPSECRET;
+  process.env.WX_APPID = 'wx_test_app';
+  process.env.WX_APPSECRET = 'test_secret';
+  const sessionKey = Buffer.alloc(16, 7);
+  const iv = Buffer.alloc(16, 9);
+  try {
+    const encryptedData = encryptWechatPhone(
+      'wx_test_app',
+      sessionKey,
+      iv,
+      '13800138000'
+    );
+    assert.equal(
+      decryptWechatEncryptedPhoneNumber({
+        encryptedData,
+        iv: iv.toString('base64'),
+        sessionKey: sessionKey.toString('base64'),
+      }),
+      '13800138000'
+    );
+  } finally {
+    if (previousAppId === undefined) delete process.env.WX_APPID;
+    else process.env.WX_APPID = previousAppId;
+    if (previousSecret === undefined) delete process.env.WX_APPSECRET;
+    else process.env.WX_APPSECRET = previousSecret;
+  }
+});
+
+test('legacy encryptedData login uses session_key and skips getuserphonenumber', async () => {
+  const previousAppId = process.env.WX_APPID;
+  const previousSecret = process.env.WX_APPSECRET;
+  process.env.WX_APPID = 'wx_test_app';
+  process.env.WX_APPSECRET = 'test_secret';
+  const sessionKey = Buffer.alloc(16, 3);
+  const iv = Buffer.alloc(16, 5);
+  const encryptedData = encryptWechatPhone(
+    'wx_test_app',
+    sessionKey,
+    iv,
+    '13900139000'
+  );
+  const fetchImpl = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes('/sns/jscode2session')) {
+      return jsonResponse({
+        openid: 'openid-legacy',
+        unionid: 'union-legacy',
+        session_key: sessionKey.toString('base64'),
+      });
+    }
+    throw new Error(`unexpected url ${url}`);
+  }) as typeof fetch;
+
+  try {
+    const identity = await resolveWechatPhoneLogin(
+      {
+        loginCode: 'pre-tap-login',
+        encryptedData,
+        iv: iv.toString('base64'),
+      },
+      { fetchImpl }
+    );
+    assert.equal(identity.openid, 'openid-legacy');
+    assert.equal(identity.phone, '13900139000');
+  } finally {
     if (previousAppId === undefined) delete process.env.WX_APPID;
     else process.env.WX_APPID = previousAppId;
     if (previousSecret === undefined) delete process.env.WX_APPSECRET;

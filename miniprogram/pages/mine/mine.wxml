@@ -46,6 +46,14 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         </view>
         <view class="account-chevron"></view>
       </view>
+      <view wx:if="{{showReferrerNetworkEntry}}" class="account-row" hover-class="account-row-pressed" bindtap="onOpenReferrerNetwork" aria-role="button">
+        <image class="account-row-icon" src="/images/mine-icons/user-round-plus.png" mode="aspectFit" />
+        <view class="account-row-copy">
+          <view class="account-row-label">{{referrerNetworkEntryLabel}}</view>
+          <view class="account-row-helper">{{referrerNetworkEntryHelper}}</view>
+        </view>
+        <view class="account-chevron"></view>
+      </view>
       <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenIdentitySwitch" aria-role="button">
         <image class="account-row-icon" src="/images/mine-icons/users.png" mode="aspectFit" />
         <view class="account-row-copy">
@@ -268,7 +276,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           <view class="ai-banner-arrow"><view class="css-chevron"></view></view>
         </view>
 
-        <template is="mineAccountPanel" data="{{showRoleGuideEntry, showRegistrationCodeEntry, roleGuideHelper}}" />
+        <template is="mineAccountPanel" data="{{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper}}" />
       </view>
 
       <view wx:else class="user-dashboard">
@@ -297,7 +305,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           </view>
         </view>
 
-        <view wx:if="{{!isRoleRestrictedUser}}" class="user-summary">
+        <view wx:if="{{!isRoleRestrictedUser && !isRoleShellMine}}" class="user-summary">
           <view>
             <view class="section-meta">我的空间档案</view>
             <view wx:if="{{floorPlansLoading}}" class="user-summary-title">正在读取户型</view>
@@ -308,7 +316,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           <button class="summary-action" bindtap="onCreateNew">新建量房</button>
         </view>
 
-        <view wx:if="{{!isRoleRestrictedUser}}" class="surface-section floorplan-section">
+        <view wx:if="{{!isRoleRestrictedUser && !isRoleShellMine}}" class="surface-section floorplan-section">
           <view class="section-heading-row">
             <view class="section-title">我的户型</view>
             <view class="section-meta">{{stat.count(floorPlans.length)}} 个</view>
@@ -341,7 +349,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           </view>
         </view>
 
-        <view wx:if="{{!isRoleRestrictedUser}}" class="user-actions">
+        <view wx:if="{{!isRoleRestrictedUser && !isRoleShellMine}}" class="user-actions">
           <view class="user-action tone-green" bindtap="onCreateNew" aria-role="button">
             <image src="/images/mine-icons/home.png" mode="aspectFit" /><text>开始量房</text>
           </view>
@@ -349,7 +357,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <image src="/images/mine-icons/bulb.png" mode="aspectFit" /><text>AI 设计</text>
           </view>
         </view>
-        <template is="mineAccountPanel" data="{{showRoleGuideEntry, showRegistrationCodeEntry, roleGuideHelper}}" />
+        <template is="mineAccountPanel" data="{{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper}}" />
       </view>
     </view>
   </scroll-view>

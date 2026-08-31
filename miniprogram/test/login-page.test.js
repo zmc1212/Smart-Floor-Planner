@@ -165,6 +165,54 @@ test('Login agreement toggle and phone CTA refuse login until the row is checked
   }
 });
 
+test('Login phone CTA sends encryptedData when WeChat omits the dynamic code', async () => {
+  const {
+    refreshWechatLoginCode,
+    resetWechatLoginCodeForTests
+  } = require('../utils/wechat-phone-auth.js');
+  const definition = loadPage();
+  const originalWx = global.wx;
+  const originalPhoneLogin = api.phoneLogin;
+  const payloads = [];
+  const codes = ['pre-tap-code', 'next-code'];
+  resetWechatLoginCodeForTests();
+  global.wx = {
+    ...(originalWx || {}),
+    login(options) {
+      const code = codes.shift();
+      if (options.success) options.success({ code });
+      if (options.complete) options.complete();
+    }
+  };
+  api.phoneLogin = async (payload) => {
+    payloads.push(payload);
+    return { success: false, error: 'stop' };
+  };
+  try {
+    await refreshWechatLoginCode();
+    const context = createContext(definition, { agreed: true });
+    context.performLogin = async (loginFn) => {
+      await loginFn();
+    };
+    await definition.onGetPhoneNumber.call(context, {
+      detail: {
+        errMsg: 'getPhoneNumber:ok',
+        encryptedData: 'cipher',
+        iv: 'init-vector'
+      }
+    });
+    assert.deepEqual(payloads, [{
+      loginCode: 'pre-tap-code',
+      encryptedData: 'cipher',
+      iv: 'init-vector'
+    }]);
+  } finally {
+    resetWechatLoginCodeForTests();
+    global.wx = originalWx;
+    api.phoneLogin = originalPhoneLogin;
+  }
+});
+
 test('Login legal links open the webview without toggling the agreement checkbox', () => {
   const definition = loadPage();
   const toasts = [];

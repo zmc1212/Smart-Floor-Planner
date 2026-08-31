@@ -25,6 +25,9 @@ export async function GET(request: Request) {
       async (context) => {
         const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
         const actorId = parsePostgresId(context.userId, 'actorId');
+        // Readiness feeds the legacy single-code Admin surfaces. Personal
+        // employee scopes are intentionally excluded from this aggregate.
+        const referrerInviterStaffId = null;
         const data = await withTenantTransaction(context.enterpriseId!, async (transaction) => {
           const network = new ReferrerNetworkRepository(transaction);
           const enterprise =
@@ -32,8 +35,12 @@ export async function GET(request: Request) {
               ? await new EnterpriseRepository(transaction).findById(enterpriseId)
               : null;
           const [codes, events, activeReferrerMemberships, activeReferrerPromotionCodes, activeStaffActivityCodes, staff, appointmentSettings, commissionRules, referrerMemberships] = await Promise.all([
-            network.listEnterpriseJoinCodes(enterpriseId),
-            network.listEnterpriseJoinCodeEvents(enterpriseId),
+            network.listEnterpriseJoinCodes(enterpriseId, {
+              referrerInviterStaffId,
+            }),
+            network.listEnterpriseJoinCodeEvents(enterpriseId, 50, {
+              referrerInviterStaffId,
+            }),
             network.countActiveReferrerMemberships(enterpriseId),
             network.countActiveReferrerPromotionCodes(enterpriseId),
             network.countActiveStaffActivityCodes(enterpriseId),

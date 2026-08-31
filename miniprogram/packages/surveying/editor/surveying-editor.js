@@ -43,6 +43,9 @@ const FORMAL_DRAFT_KEY = 'surveying_draft_v1';
 const FORMAL_DRAFT_BACKUP_KEY = 'surveying_last_draft_backup';
 const FORMAL_SERVER_DRAFT_ID_KEY = 'surveying_floorplan_id';
 const FORMAL_CLOUD_SAVE_KEY = 'surveying_floorplan_cloud_save_key';
+const FORMAL_MEASUREMENT_QUEUE_KEY = 'surveying_measurement_queue_v1';
+const MEASUREMENT_QUEUE_WARNING_THRESHOLD = 500;
+const BLE_LATE_APP_FRAME_GUARD_MS = 1500;
 const SURVEYING_GUIDE_ENABLED_KEY = 'surveying_editor_guide_enabled_v1';
 const COMPONENT_SPEC_OPTIONS = {
   door: [
@@ -119,7 +122,6 @@ const DOCK_AIM_MIN_FRAME_MS = 16;
 const DOCK_SNAP_INTERVAL_MS = 48;
 const DOCK_LENS_PAINT_INTERVAL_MS = 120;
 const CURSOR_DRAG_CANVAS_MAX_DPR = 2;
-const BLE_DUPLICATE_WINDOW_MS = 800;
 const PHONE_LEVEL_TOLERANCE_DEG = 8;
 const PHONE_HEADING_SAMPLE_COUNT = 9;
 const DIMENSION_OUTER_GAP_PX = 12;
@@ -504,7 +506,9 @@ Page({
       ? 'awaitingWallDrop'
       : 'placed';
     this.history = { undo: [], redo: [] };
-    this.pendingMeasurementRecords = [];
+    this.pendingMeasurementStorageKey = this.buildPendingMeasurementStorageKey('');
+    this.pendingMeasurementRecords = this.loadPendingMeasurements();
+    if (this.serverDraftId) this.adoptPendingMeasurementFloorPlan(this.serverDraftId);
     this._flushingMeasurements = false;
     this.reportedMeasurementKeys = Object.create(null);
     this._syncRAFPending = false;
@@ -537,6 +541,7 @@ Page({
     this.viewportInteraction = null;
     this.viewportInteractionFrameQueue = null;
     this.viewportInteractionAwaitingHandoff = false;
+    this.viewRotationDeg = 0;
     this.cursorLensLastUpdateAt = 0;
     this.cursorLensScene = null;
     this.cursorLensMeta = null;
@@ -576,10 +581,14 @@ Page({
     this.canvasControls = {};
     this.surveyGuideCanvasModel = null;
     this.surveyGuideImageCache = {};
-    this._lastBleNumberDist = null;
-    this._lastBleNumberTime = 0;
+    this.numberPadMeasurementSource = 'manual';
+    this.componentSpecMeasurementSource = 'manual';
+    this.pendingComponentManualAudit = null;
+    this.lastAppliedBleMeasurementContext = null;
     this.bleMeasureTimer = null;
     this.bleFailTimer = null;
+    this.bleMeasureRequestGeneration = 0;
+    this.bleIgnoreLateAppFramesUntil = 0;
     this.angleMeasurementSource = 'manual';
     this.anglePhoneHeading = null;
     this.anglePhoneBaseline = null;
@@ -624,6 +633,7 @@ Page({
   },
 
   onHide() {
+    this.flushPendingComponentManualAudit();
     this.finishViewportInteraction({ sync: true, persist: false });
     this.flushViewportDraftSync({ sync: true });
     this.stopPhoneAngleMeasurement();
@@ -633,6 +643,7 @@ Page({
   },
 
   onUnload() {
+    this.flushPendingComponentManualAudit();
     this.surveyCanvasDisposed = true;
     this.canvasRectRevision += 1;
     this.surveyCanvasInitRevision += 1;
@@ -647,6 +658,10 @@ Page({
     this.flushFormalPersist();
     this.autosaveFormalFloorPlan();
     this.destroyComponentScene();
+    if (this.bluetoothCallbackHandle) {
+      bluetooth.restoreTemporaryCallbacks(this.bluetoothCallbackHandle);
+      this.bluetoothCallbackHandle = null;
+    }
   },
 
   bindSpaceNameKeyboardListener() {
@@ -674,6 +689,105 @@ Page({
 
   getFormalDraftKey(leadId, scope) {
     return `${FORMAL_DRAFT_KEY}_${leadId || 'standalone'}${scope ? `_${scope}` : ''}`;
+  },
+
+  buildPendingMeasurementStorageKey(floorPlanId) {
+    if (floorPlanId) {
+      return `${FORMAL_MEASUREMENT_QUEUE_KEY}_floor_${String(floorPlanId)}`;
+    }
+    const draftKey = this.formalDraftKey || this.getFormalDraftKey(this.data.leadId || '');
+    return `${FORMAL_MEASUREMENT_QUEUE_KEY}_${draftKey}`;
+  },
+
+  getPendingMeasurementStorageKey() {
+    if (!this.pendingMeasurementStorageKey) {
+      this.pendingMeasurementStorageKey = this.buildPendingMeasurementStorageKey(
+        this.serverDraftId || this.data.serverDraftId || ''
+      );
+    }
+    return this.pendingMeasurementStorageKey;
+  },
+
+  loadPendingMeasurements() {
+    try {
+      const stored = wx.getStorageSync(this.getPendingMeasurementStorageKey());
+      if (!Array.isArray(stored)) return [];
+      return stored.filter((record) => (
+        record &&
+        typeof record.auditId === 'string' &&
+        record.auditId.length > 0 &&
+        Number.isFinite(Number(record.value)) &&
+        Number(record.value) > 0
+      ));
+    } catch (err) {
+      return [];
+    }
+  },
+
+  persistPendingMeasurements() {
+    const pending = Array.isArray(this.pendingMeasurementRecords)
+      ? this.pendingMeasurementRecords.slice()
+      : [];
+    this.pendingMeasurementRecords = pending;
+    if (pending.length > MEASUREMENT_QUEUE_WARNING_THRESHOLD && !this.measurementQueueWarningEmitted) {
+      this.measurementQueueWarningEmitted = true;
+      console.warn('[surveying-editor] Measurement audit queue is unusually large', pending.length);
+    }
+    try {
+      const storageKey = this.getPendingMeasurementStorageKey();
+      if (pending.length) {
+        wx.setStorageSync(storageKey, pending);
+      } else {
+        wx.removeStorageSync(storageKey);
+      }
+      return true;
+    } catch (err) {
+      console.warn('[surveying-editor] Failed to persist measurement audit queue', err);
+      return false;
+    }
+  },
+
+  adoptPendingMeasurementFloorPlan(floorPlanId) {
+    const normalizedFloorPlanId = String(floorPlanId || '');
+    if (!normalizedFloorPlanId) return false;
+    const previousKey = this.getPendingMeasurementStorageKey();
+    const targetKey = this.buildPendingMeasurementStorageKey(normalizedFloorPlanId);
+    try {
+      const targetStored = wx.getStorageSync(targetKey);
+      const targetRecords = Array.isArray(targetStored) ? targetStored : [];
+      const currentRecords = Array.isArray(this.pendingMeasurementRecords)
+        ? this.pendingMeasurementRecords
+        : [];
+      const mergedByAuditId = new Map();
+      const incompatibleRecords = [];
+      targetRecords.concat(currentRecords).forEach((record) => {
+        if (!record || !record.auditId) return;
+        if (record.floorPlanId && String(record.floorPlanId) !== normalizedFloorPlanId) {
+          incompatibleRecords.push(record);
+          return;
+        }
+        mergedByAuditId.set(record.auditId, {
+          ...record,
+          floorPlanId: normalizedFloorPlanId
+        });
+      });
+      const merged = Array.from(mergedByAuditId.values());
+      const targetQueue = previousKey === targetKey
+        ? merged.concat(incompatibleRecords)
+        : merged;
+      if (targetQueue.length) wx.setStorageSync(targetKey, targetQueue);
+      else wx.removeStorageSync(targetKey);
+      if (previousKey !== targetKey) {
+        if (incompatibleRecords.length) wx.setStorageSync(previousKey, incompatibleRecords);
+        else wx.removeStorageSync(previousKey);
+      }
+      this.pendingMeasurementStorageKey = targetKey;
+      this.pendingMeasurementRecords = targetQueue;
+      return true;
+    } catch (err) {
+      console.warn('[surveying-editor] Failed to bind measurement audits to floor plan', err);
+      return false;
+    }
   },
 
   loadGuideEnabled() {
@@ -793,6 +907,7 @@ Page({
     } catch (err) {
       // 服务端草稿 ID 本地缓存失败不影响本次保存结果。
     }
+    this.adoptPendingMeasurementFloorPlan(floorPlanId);
     this.setData({ serverDraftId: floorPlanId });
   },
 
@@ -882,6 +997,12 @@ Page({
         });
         this.syncFromDraft();
       }
+      // A previous audit upload can fail after the graph itself has already
+      // been saved. Retry the durable queue whenever a formal plan is loaded,
+      // even if its unchanged fingerprint makes autosave a no-op.
+      this.flushPendingMeasurements(res.data._id).catch((error) => {
+        console.warn('[surveying-editor] Restored measurement audit retry failed', error);
+      });
     } catch (err) {
       wx.showToast({ title: (err && err.error) || err.message || '户型加载失败', icon: 'none' });
     } finally {
@@ -1014,9 +1135,9 @@ Page({
   },
 
   _bindBluetoothCallbacks() {
-    bluetooth.setCallbacks(
-      (distanceInMeters) => {
-        this.onBluetoothMeasure(distanceInMeters);
+    this.bluetoothCallbackHandle = bluetooth.setTemporaryCallbacks(
+      (distanceInMeters, frameMetadata) => {
+        this.onBluetoothMeasure(distanceInMeters, frameMetadata);
       },
       (isConnected) => {
         this.updateBleConnected(isConnected);
@@ -1049,17 +1170,7 @@ Page({
   },
 
   connectBluetoothForMeasurement() {
-    bluetooth.initBLE(
-      (distanceInMeters) => {
-        this.onBluetoothMeasure(distanceInMeters);
-      },
-      (isConnected) => {
-        this.updateBleConnected(isConnected);
-      },
-      () => {
-        this.updateBleConnected(false);
-      }
-    );
+    bluetooth.initBLE();
   },
 
   clearBleMeasureTimers() {
@@ -1077,47 +1188,151 @@ Page({
     }
   },
 
-  onBluetoothMeasure(distanceInMeters) {
+  resolveBleMeasureTarget() {
+    if (this.data.componentEditorVisible) {
+      const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+      const openingId = floor && floor.session ? floor.session.selectedOpeningId : '';
+      if (this.data.componentPanelMode === 'spec' && openingId) {
+        return { target: 'componentSpec' };
+      }
+      return { target: '', reason: '请先选择门窗参数' };
+    }
+
+    const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+    const session = floor && floor.session;
+    if (session && (session.state === 'wallPreview' || session.state === 'awaitingLength')) {
+      return { target: 'pendingWall' };
+    }
+
+    const currentWall = floor && floor.walls && floor.walls.length
+      ? floor.walls[floor.walls.length - 1]
+      : null;
+    const selectedWallId = session && (session.selectedWallId || (
+      session.state === 'cursorPlaced'
+        ? session.activeSpaceSharedWallId
+        : ((session.state === 'wallCommitted' || session.state === 'closing' || session.state === 'mergeClosing') && currentWall
+          ? currentWall.id
+          : '')
+    ));
+    const selectedWall = selectedWallId
+      ? surveyGraph.getWall(floor, selectedWallId)
+      : null;
+    if (selectedWall && session && !session.selectedOpeningId) {
+      return { target: 'selectedWall', selectedWall };
+    }
+
+    if (this.data.numberPadVisible && this.numberPadMode) {
+      return { target: 'numberPad' };
+    }
+
+    return { target: '', reason: '请先拉出一条墙' };
+  },
+
+  prepareBleMeasureTarget(resolved) {
+    if (!resolved || resolved.target !== 'selectedWall' || !resolved.selectedWall) {
+      return;
+    }
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor && floor.session;
+    this.bleMeasureHistoryDraft = surveyGraph.cloneDraft(this.draft);
+    const selectedWallDraft = session && session.selectedWallId
+      ? this.draft
+      : surveyGraph.selectWall(this.draft, resolved.selectedWall.id);
+    this.draft = surveyGraph.startRemeasure(selectedWallDraft);
+    this.syncFromDraft({ numberPadVisible: false });
+  },
+
+  onBluetoothMeasure(distanceInMeters, frameMetadata) {
     this.clearBleMeasureTimers();
-    const target = this.bleMeasureTarget || 'numberPad';
+    let target = this.bleMeasureTarget || '';
     this.bleMeasureTarget = '';
-    if (target === 'ignore') return;
+    if (target === 'ignore') {
+      this.bleIgnoreLateAppFramesUntil = Date.now() + BLE_LATE_APP_FRAME_GUARD_MS;
+      return;
+    }
+    const hardwareTriggered = !target;
+    if (hardwareTriggered && Date.now() < (this.bleIgnoreLateAppFramesUntil || 0)) return;
+    if (!hardwareTriggered) {
+      this.bleMeasureRequestGeneration += 1;
+      this.bleIgnoreLateAppFramesUntil = Date.now() + BLE_LATE_APP_FRAME_GUARD_MS;
+    }
+    if (hardwareTriggered) {
+      const resolved = this.resolveBleMeasureTarget();
+      if (!resolved.target) {
+        if (Number.isFinite(Number(distanceInMeters)) && Number(distanceInMeters) > 0) {
+          wx.showToast({ title: resolved.reason || '请先拉出一条墙', icon: 'none' });
+        }
+        return;
+      }
+      if (distanceInMeters === null || !(Number(distanceInMeters) > 0)) {
+        wx.showToast({ title: '测量失败，请重试', icon: 'none' });
+        return;
+      }
+      this.prepareBleMeasureTarget(resolved);
+      target = resolved.target;
+    }
     const isAngleTriangleTarget = target.indexOf('angleTriangle') === 0;
-    if (distanceInMeters && distanceInMeters > 0) {
+    let auditRecord = null;
+    if (Number.isFinite(Number(distanceInMeters)) && Number(distanceInMeters) > 0) {
       const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
       const session = floor && floor.session ? floor.session : {};
       const opening = floor && session.selectedOpeningId ? surveyGraph.getOpening(floor, session.selectedOpeningId) : null;
-      this.reportMeasurement({
+      const numberPadMode = target === 'numberPad' ? this.numberPadMode : '';
+      let auditType = 'length';
+      let auditUnit = 'meters';
+      if (target === 'componentSpec' && opening) {
+        const specMode = this.data.componentSpecMode || 'length';
+        auditType = specMode === 'length' ? 'opening_width'
+          : (specMode === 'height' || specMode === 'sill' ? 'height'
+            : (specMode === 'edge1' || specMode === 'edge2' ? 'opening_offset' : 'length'));
+      } else if (numberPadMode === 'openingWidth') {
+        auditType = 'opening_width';
+      } else if (numberPadMode === 'openingHeight' || numberPadMode === 'openingSill') {
+        auditType = 'height';
+      }
+      const auditMetadata = {
+        target,
+        wallId: session.selectedWallId || (target === 'pendingWall' ? session.pendingWallId || '' : ''),
+        openingId: opening ? opening.id : '',
+        angleSide: isAngleTriangleTarget ? target.replace('angleTriangle', '').toLowerCase() : '',
+        numberPadMode,
+        measurementKind: numberPadMode === 'thickness' ? 'wall_thickness' : undefined,
+        bleOrigin: hardwareTriggered ? 'device' : 'app',
+        bleFrame: frameMetadata && typeof frameMetadata === 'object' ? frameMetadata : undefined
+      };
+      auditRecord = {
         value: distanceInMeters,
-        type: isAngleTriangleTarget ? 'angle_triangle_side' :
-          (target === 'componentSpec' ? (opening ? 'opening_width' : 'length') : 'length'),
+        unit: auditUnit,
+        type: auditType,
+        source: 'ble',
         direction: session.selectedWallId || (opening && opening.wallId) ||
           ((isAngleTriangleTarget || target === 'pendingWall') ? session.anchorNodeId || '' : ''),
-        metadata: {
-          target,
-          wallId: session.selectedWallId || (target === 'pendingWall' ? session.pendingWallId || '' : ''),
-          openingId: opening ? opening.id : '',
-          angleSide: isAngleTriangleTarget ? target.replace('angleTriangle', '').toLowerCase() : ''
-        }
-      });
+        metadata: auditMetadata
+      };
     }
+    let applied = false;
+    this.lastAppliedBleMeasurementContext = null;
     if (isAngleTriangleTarget) {
-      this.applyBleReadingToAngleTriangle(target, distanceInMeters);
-      return;
+      applied = this.applyBleReadingToAngleTriangle(target, distanceInMeters);
+    } else if (target === 'componentSpec') {
+      applied = this.applyBleReadingToComponentSpec(distanceInMeters);
+    } else if (target === 'selectedWall') {
+      applied = this.applyBleReadingToSelectedWall(distanceInMeters);
+    } else if (target === 'pendingWall') {
+      applied = this.applyBleReadingToPendingWall(distanceInMeters);
+    } else if (target === 'numberPad') {
+      applied = this.applyBleReadingToNumberPad(distanceInMeters);
     }
-    if (target === 'componentSpec') {
-      this.applyBleReadingToComponentSpec(distanceInMeters);
-      return;
+    if (applied && auditRecord) {
+      if (target === 'pendingWall' && this.lastAppliedBleMeasurementContext) {
+        const context = this.lastAppliedBleMeasurementContext;
+        auditRecord.direction = context.wallId || auditRecord.direction;
+        auditRecord.metadata.wallId = context.wallId || auditRecord.metadata.wallId;
+      }
+      if (target === 'numberPad') this.numberPadMeasurementSource = 'ble';
+      if (target === 'componentSpec') this.componentSpecMeasurementSource = 'ble';
+      this.reportMeasurement(auditRecord);
     }
-    if (target === 'selectedWall') {
-      this.applyBleReadingToSelectedWall(distanceInMeters);
-      return;
-    }
-    if (target === 'pendingWall') {
-      this.applyBleReadingToPendingWall(distanceInMeters);
-      return;
-    }
-    this.applyBleReadingToNumberPad(distanceInMeters);
   },
 
   triggerBluetoothNumberMeasure() {
@@ -1152,6 +1367,9 @@ Page({
 
   startBluetoothMeasure(target) {
     this.bleMeasureTarget = target || 'numberPad';
+    const requestGeneration = (this.bleMeasureRequestGeneration || 0) + 1;
+    this.bleMeasureRequestGeneration = requestGeneration;
+    this.bleIgnoreLateAppFramesUntil = 0;
     this.clearBleMeasureTimers();
     wx.showToast({ title: '正在测距...', icon: 'none' });
     bluetooth.sendBLECommand('ATK001#');
@@ -1163,34 +1381,21 @@ Page({
       this.bleMeasureTimer = setTimeout(() => {
         bluetooth.sendBLECommand('ATD001#');
         this.bleFailTimer = setTimeout(() => {
+          if (this.bleMeasureRequestGeneration !== requestGeneration) return;
           this.onBluetoothMeasure(null);
         }, 4000);
       }, 3500);
     }, 260);
   },
 
-  shouldIgnoreDuplicateBleReading(distanceInMeters) {
-    const now = Date.now();
-    if (distanceInMeters === this._lastBleNumberDist && now - this._lastBleNumberTime < BLE_DUPLICATE_WINDOW_MS) {
-      return true;
-    }
-    this._lastBleNumberDist = distanceInMeters;
-    this._lastBleNumberTime = now;
-    return false;
-  },
-
   applyBleReadingToNumberPad(distanceInMeters) {
     if (!this.data.numberPadVisible || !this.numberPadMode) {
-      return;
+      return false;
     }
 
     if (distanceInMeters === null || distanceInMeters <= 0) {
       wx.showToast({ title: '测量失败，请重试', icon: 'none' });
-      return;
-    }
-
-    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
-      return;
+      return false;
     }
 
     const valueMm = Math.round(distanceInMeters * 1000);
@@ -1198,6 +1403,7 @@ Page({
     this.setData({ numberInput: inputValue }, () => {
       wx.showToast({ title: '已填入测距结果', icon: 'none' });
     });
+    return true;
   },
 
   applyBleReadingToSelectedWall(distanceInMeters) {
@@ -1220,12 +1426,7 @@ Page({
     if (distanceInMeters === null || distanceInMeters <= 0) {
       restoreMeasurementDraft();
       wx.showToast({ title: '测量失败，请重试', icon: 'none' });
-      return;
-    }
-
-    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
-      restoreMeasurementDraft();
-      return;
+      return false;
     }
 
     const valueMm = Math.round(distanceInMeters * 1000);
@@ -1236,51 +1437,53 @@ Page({
         historyDraft
       });
       wx.showToast({ title: '已更新当前墙体', icon: 'success' });
+      return true;
     } catch (err) {
       restoreMeasurementDraft();
       wx.showToast({ title: err.message || '更新墙体失败', icon: 'none' });
+      return false;
     }
   },
 
   applyBleReadingToPendingWall(distanceInMeters) {
     if (distanceInMeters === null || distanceInMeters <= 0) {
       wx.showToast({ title: '测量失败，请重试', icon: 'none' });
-      return;
-    }
-
-    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
-      return;
+      return false;
     }
 
     const valueMm = Math.round(distanceInMeters * 1000);
     try {
-      const nextDraft = maybeAutoConfirmSharedBoundaryClose(
-        surveyGraph.commitPreviewLength(this.draft, valueMm, 'ble')
-      );
+      const committedDraft = surveyGraph.commitPreviewLength(this.draft, valueMm, 'ble');
+      const committedFloor = surveyGraph.getActiveFloor(committedDraft);
+      const measuredWall = committedFloor.walls[committedFloor.walls.length - 1];
+      this.lastAppliedBleMeasurementContext = measuredWall
+        ? { wallId: measuredWall.id }
+        : null;
+      const nextDraft = maybeAutoConfirmSharedBoundaryClose(committedDraft);
       const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
       this.applyDraft(this.enterResetCursorAfterClose(nextDraft), { recordHistory: true });
       wx.showToast({
         title: nextSession.state === 'spaceClosed' ? '已吸附闭合点并闭合' : '已更新当前墙体',
         icon: 'success'
       });
+      return true;
     } catch (err) {
       wx.showToast({ title: err.message || '更新墙体失败', icon: 'none' });
+      return false;
     }
   },
 
   applyBleReadingToComponentSpec(distanceInMeters) {
     if (!this.data.componentEditorVisible || this.data.componentPanelMode !== 'spec') {
-      return;
+      return false;
     }
 
     if (distanceInMeters === null || distanceInMeters <= 0) {
       wx.showToast({ title: '测量失败，请重试', icon: 'none' });
-      return;
+      return false;
     }
 
-    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
-      return;
-    }
+    this.flushPendingComponentManualAudit();
 
     const valueMm = Math.round(distanceInMeters * 1000);
     const inputValue = String(valueMm);
@@ -1299,8 +1502,10 @@ Page({
       });
       this.scheduleFormalPersist();
       wx.showToast({ title: '已填入测距结果', icon: 'none' });
+      return true;
     } catch (err) {
       wx.showToast({ title: err.message || '输入无效', icon: 'none' });
+      return false;
     }
   },
 
@@ -1327,6 +1532,7 @@ Page({
 
     this.draft = surveyGraph.holdPreviewForInput(this.draft);
     this.numberPadMode = 'angle';
+    this.numberPadMeasurementSource = 'manual';
     this.angleMeasurementSource = 'manual';
     this.resetAngleTriangle();
     this.resetPhoneAngleState();
@@ -1536,17 +1742,12 @@ Page({
   },
 
   applyBleReadingToAngleTriangle(target, distanceInMeters) {
-    if (!this.data.angleMeasureVisible || this.data.angleMeasureTab !== 'pythagorean') return;
+    if (!this.data.angleMeasureVisible || this.data.angleMeasureTab !== 'pythagorean') return false;
     if (distanceInMeters === null || distanceInMeters <= 0) {
       this.setData({ angleTriangleMeasuringSide: '' });
       wx.showToast({ title: '测量失败，请重试', icon: 'none' });
-      return;
+      return false;
     }
-    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
-      this.setData({ angleTriangleMeasuringSide: '' });
-      return;
-    }
-
     const side = target.replace('angleTriangle', '').toLowerCase();
     const nextTriangle = Object.assign({}, this.angleTriangle || {});
     nextTriangle[side] = distanceInMeters;
@@ -1575,6 +1776,7 @@ Page({
       }
     }
     this.setData(patch);
+    return true;
   },
 
   refreshCanvasRect() {
@@ -1887,11 +2089,15 @@ Page({
       rect
     );
     const dpr = this.surveyCanvasDpr || 1;
+    const closePoint = surveyCanvasRenderer.projectInteractionPoint(
+      { x: close.cx, y: close.cy },
+      transform
+    );
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     surveyCanvasRenderer.drawCloseAction(ctx, {
-      cx: close.cx * transform.scale + transform.translateX,
-      cy: close.cy * transform.scale + transform.translateY,
+      cx: closePoint.x,
+      cy: closePoint.y,
       radius: close.radius || 14
     });
     ctx.restore();
@@ -1925,7 +2131,10 @@ Page({
     this.viewportInteraction = null;
 
     if (dirty && this.draft) {
-      this.draft = surveyGraph.updateViewport(this.draft, viewport);
+      this.draft = surveyGraph.updateViewport(
+        this.draft,
+        surveyCanvasRenderer.persistSurveyViewport(viewport)
+      );
     }
 
     if (dirty && opts.sync) {
@@ -3802,20 +4011,26 @@ Page({
   },
 
   getViewport() {
+    let source = null;
     if (this.viewportInteraction && this.viewportInteraction.viewport) {
-      return this.viewportInteraction.viewport;
+      source = this.viewportInteraction.viewport;
+    } else if (this.draft) {
+      const floor = surveyGraph.getActiveFloor(this.draft);
+      source = floor && floor.viewport;
     }
-    const floor = surveyGraph.getActiveFloor(this.draft);
-    return floor.viewport || { scale: surveyGraph.DEFAULT_SCALE, offsetX: 0, offsetY: 0 };
+    const viewport = source || { scale: surveyGraph.DEFAULT_SCALE, offsetX: 0, offsetY: 0 };
+    const rotationDeg = Number(this.viewRotationDeg) || 0;
+    return Object.assign({}, viewport, {
+      rotationRad: (rotationDeg * Math.PI) / 180
+    });
   },
 
   mmToCanvasPoint(point) {
-    const rect = this.canvasRect || { width: 0, height: 0 };
-    const viewport = this.getViewport();
-    return {
-      x: rect.width / 2 + viewport.offsetX + point.xMm * viewport.scale,
-      y: rect.height / 2 + viewport.offsetY + point.yMm * viewport.scale
-    };
+    return surveyCanvasRenderer.projectSurveyPoint(
+      point,
+      this.getViewport(),
+      this.canvasRect || { width: 0, height: 0 }
+    );
   },
 
   mmToClientPoint(point) {
@@ -3829,10 +4044,17 @@ Page({
 
   canvasPointToMm(point) {
     const rect = this.canvasRect || { left: 0, top: 0, width: 0, height: 0 };
-    const viewport = this.getViewport();
+    const mm = surveyCanvasRenderer.unprojectSurveyPoint(
+      {
+        x: point.x - rect.left,
+        y: point.y - rect.top
+      },
+      this.getViewport(),
+      rect
+    );
     return {
-      xMm: Math.round((point.x - rect.left - rect.width / 2 - viewport.offsetX) / viewport.scale),
-      yMm: Math.round((point.y - rect.top - rect.height / 2 - viewport.offsetY) / viewport.scale)
+      xMm: Math.round(mm.xMm),
+      yMm: Math.round(mm.yMm)
     };
   },
 
@@ -4420,43 +4642,24 @@ Page({
       return;
     }
 
-    const floor = surveyGraph.getActiveFloor(this.draft);
-    const session = floor && floor.session;
-    if (session && (session.state === 'wallPreview' || session.state === 'awaitingLength')) {
+    const resolved = this.resolveBleMeasureTarget();
+    if (resolved.target === 'pendingWall') {
       this.startBluetoothMeasure('pendingWall');
       return;
     }
 
-    const currentWall = floor && floor.walls && floor.walls.length
-      ? floor.walls[floor.walls.length - 1]
-      : null;
-    const selectedWallId = session && (session.selectedWallId || (
-      session.state === 'cursorPlaced'
-        ? session.activeSpaceSharedWallId
-        : ((session.state === 'wallCommitted' || session.state === 'closing' || session.state === 'mergeClosing') && currentWall
-          ? currentWall.id
-          : '')
-    ));
-    const selectedWall = selectedWallId
-      ? surveyGraph.getWall(floor, selectedWallId)
-      : null;
-    if (selectedWall && !session.selectedOpeningId) {
-      this.bleMeasureHistoryDraft = surveyGraph.cloneDraft(this.draft);
-      const selectedWallDraft = session.selectedWallId
-        ? this.draft
-        : surveyGraph.selectWall(this.draft, selectedWall.id);
-      this.draft = surveyGraph.startRemeasure(selectedWallDraft);
-      this.syncFromDraft({ numberPadVisible: false });
+    if (resolved.target === 'selectedWall') {
+      this.prepareBleMeasureTarget(resolved);
       this.startBluetoothMeasure('selectedWall');
       return;
     }
 
-    if (this.data.numberPadVisible) {
+    if (resolved.target === 'numberPad') {
       this.triggerBluetoothNumberMeasure();
       return;
     }
 
-    wx.showToast({ title: '请先拉出一条墙', icon: 'none' });
+    wx.showToast({ title: resolved.reason || '请先拉出一条墙', icon: 'none' });
   },
 
   onObjectToolTap(tool) {
@@ -4568,6 +4771,7 @@ Page({
   },
 
   closeComponentEditor() {
+    this.flushPendingComponentManualAudit();
     this.setData({ componentEditorVisible: false }, () => {
       this.destroyComponentScene();
       this.onExitWallSelection();
@@ -4977,15 +5181,100 @@ Page({
       measuredAt: record.measuredAt || new Date().toISOString()
     };
     const floorPlanId = this.serverDraftId || this.data.serverDraftId || this.getStoredServerDraftId(this.data.leadId || '');
+    if (floorPlanId) measurement.floorPlanId = String(floorPlanId);
+    // Write ahead before any network request. A page unload or rejected request
+    // can therefore never lose a measurement that was already applied locally.
+    this.enqueuePendingMeasurement(measurement);
     if (!floorPlanId) {
-      this.enqueuePendingMeasurement(measurement);
       return Promise.resolve(false);
     }
 
-    return this.sendMeasurementRecord(floorPlanId, measurement).catch((err) => {
-      this.enqueuePendingMeasurement(measurement);
-      console.warn('[surveying-editor] Measurement audit logging failed', err);
-      return false;
+    return this.sendMeasurementRecord(floorPlanId, measurement)
+      .then((sent) => {
+        if (sent) this.removePendingMeasurement(measurement.auditId);
+        return sent;
+      })
+      .catch((err) => {
+        console.warn('[surveying-editor] Measurement audit logging failed', err);
+        return false;
+      });
+  },
+
+  reportManualMeasurementMm(valueMm, options = {}) {
+    const numericValueMm = Number(valueMm);
+    if (!Number.isFinite(numericValueMm) || numericValueMm <= 0) {
+      return Promise.resolve(false);
+    }
+    return this.reportMeasurement({
+      value: numericValueMm / 1000,
+      unit: 'meters',
+      type: options.type || 'length',
+      source: 'manual',
+      direction: options.direction || '',
+      metadata: {
+        inputSource: 'manual',
+        ...(options.metadata || {})
+      }
+    });
+  },
+
+  reportAngleMeasurement(angleDeg, source) {
+    const numericAngle = Number(angleDeg);
+    if (!Number.isFinite(numericAngle) || numericAngle <= 0) {
+      return Promise.resolve(false);
+    }
+    const normalizedSource = source === 'phone-motion' || source === 'pythagorean'
+      ? 'system'
+      : 'manual';
+    return this.reportMeasurement({
+      value: numericAngle,
+      unit: 'degrees',
+      type: 'angle',
+      source: normalizedSource,
+      direction: 'ANGLE',
+      metadata: {
+        target: 'angle',
+        angleSource: source || 'manual',
+        inputSource: normalizedSource
+      }
+    });
+  },
+
+  getComponentMeasurementSpec(specMode) {
+    if (specMode === 'length') return { type: 'opening_width', target: 'component.length' };
+    if (specMode === 'height' || specMode === 'sill') {
+      return { type: 'height', target: `component.${specMode}` };
+    }
+    if (specMode === 'edge1' || specMode === 'edge2') {
+      return { type: 'opening_offset', target: `component.${specMode}` };
+    }
+    return { type: 'length', target: `component.${specMode || 'depth'}` };
+  },
+
+  queueComponentManualAudit(openingId, wallId, specMode, valueMm) {
+    if (!openingId || !Number.isFinite(Number(valueMm)) || Number(valueMm) <= 0) return;
+    this.pendingComponentManualAudit = {
+      openingId,
+      wallId: wallId || '',
+      specMode: specMode || 'length',
+      valueMm: Math.round(Number(valueMm))
+    };
+  },
+
+  flushPendingComponentManualAudit() {
+    const pending = this.pendingComponentManualAudit;
+    this.pendingComponentManualAudit = null;
+    if (!pending) return Promise.resolve(false);
+    const spec = this.getComponentMeasurementSpec(pending.specMode);
+    return this.reportManualMeasurementMm(pending.valueMm, {
+      type: spec.type,
+      direction: pending.wallId,
+      metadata: {
+        target: spec.target,
+        openingId: pending.openingId,
+        wallId: pending.wallId,
+        specMode: pending.specMode
+      }
     });
   },
 
@@ -4996,10 +5285,28 @@ Page({
       pending.push(record);
     }
     this.pendingMeasurementRecords = pending;
+    this.persistPendingMeasurements();
+  },
+
+  removePendingMeasurement(auditId) {
+    if (!auditId) return;
+    const pending = this.pendingMeasurementRecords || [];
+    const next = pending.filter((item) => item && item.auditId !== auditId);
+    if (next.length === pending.length) return;
+    this.pendingMeasurementRecords = next;
+    this.persistPendingMeasurements();
   },
 
   async sendMeasurementRecord(floorPlanId, record) {
     if (!floorPlanId || !record || !record.auditId) return false;
+    if (record.floorPlanId && String(record.floorPlanId) !== String(floorPlanId)) {
+      console.warn('[surveying-editor] Refusing to send an audit to a different floor plan', {
+        auditId: record.auditId,
+        recordFloorPlanId: record.floorPlanId,
+        floorPlanId
+      });
+      return false;
+    }
     const reportKey = `${floorPlanId}:${record.auditId}`;
     if (this.reportedMeasurementKeys && this.reportedMeasurementKeys[reportKey]) return true;
 
@@ -5007,10 +5314,10 @@ Page({
       floorPlanId,
       auditId: record.auditId,
       value: record.value,
-      unit: 'meters',
+      unit: record.unit || 'meters',
       type: record.type || 'length',
       direction: record.direction || '',
-      source: 'ble',
+      source: record.source || 'manual',
       metadata: {
         measurementMode: 'surveying',
         ...(record.metadata || {}),
@@ -5024,20 +5331,26 @@ Page({
   },
 
   async flushPendingMeasurements(floorPlanId) {
-    const pending = this.pendingMeasurementRecords || [];
-    if (!floorPlanId || !pending.length) return;
-    this.pendingMeasurementRecords = [];
-
-    const failed = [];
-    for (const record of pending) {
-      try {
-        await this.sendMeasurementRecord(floorPlanId, record);
-      } catch (err) {
-        failed.push(record);
-        console.warn('[surveying-editor] Deferred measurement audit logging failed', err);
+    if (this._flushingMeasurements) return false;
+    const pending = (this.pendingMeasurementRecords || []).slice();
+    if (!floorPlanId || !pending.length) return true;
+    this._flushingMeasurements = true;
+    let allSent = true;
+    try {
+      for (const record of pending) {
+        try {
+          const sent = await this.sendMeasurementRecord(floorPlanId, record);
+          if (sent) this.removePendingMeasurement(record.auditId);
+          else allSent = false;
+        } catch (err) {
+          allSent = false;
+          console.warn('[surveying-editor] Deferred measurement audit logging failed', err);
+        }
       }
+    } finally {
+      this._flushingMeasurements = false;
     }
-    failed.forEach((record) => this.enqueuePendingMeasurement(record));
+    return allSent;
   },
 
   onBottomAction(e) {
@@ -5241,12 +5554,20 @@ Page({
       const scale = clamp(this.touchState.startScale * (nextDistance / this.touchState.startDistance), MIN_SCALE, MAX_SCALE);
       const anchorMm = this.touchState.startCenterMm || this.canvasPointToMm(center);
       const rect = this.canvasRect;
-      const offsetX = center.x - rect.left - rect.width / 2 - anchorMm.xMm * scale;
-      const offsetY = center.y - rect.top - rect.height / 2 - anchorMm.yMm * scale;
+      const offset = surveyCanvasRenderer.resolveViewportOffsetForAnchor(
+        rect,
+        {
+          x: center.x - rect.left,
+          y: center.y - rect.top
+        },
+        anchorMm,
+        scale,
+        this.getViewport().rotationRad
+      );
       const nextViewport = {
         scale,
-        offsetX,
-        offsetY
+        offsetX: offset.offsetX,
+        offsetY: offset.offsetY
       };
       if (!this.updateViewportInteraction(nextViewport)) {
         this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
@@ -5951,6 +6272,7 @@ Page({
     }
     this.history = { undo: [], redo: [] };
     this.pendingMeasurementRecords = [];
+    this.persistPendingMeasurements();
     this.draft = freshDraft;
     this.persistFormalDraft();
     this.syncFromDraft({ numberPadVisible: false });
@@ -5980,6 +6302,7 @@ Page({
     }
 
     this.numberPadMode = 'length';
+    this.numberPadMeasurementSource = 'manual';
     this.centerSelectedWall(true);
     this.syncFromDraft({
       numberPadVisible: true,
@@ -6075,6 +6398,7 @@ Page({
         numberInput: String(selectedWall ? selectedWall.thicknessMm : session.thicknessMm)
       });
       this.numberPadMode = 'thickness';
+      this.numberPadMeasurementSource = 'manual';
       return;
     }
 
@@ -6103,6 +6427,7 @@ Page({
         numberInput: this.getComponentSpecRawValue(floor, openingId, specMode)
       });
       this.numberPadMode = mode;
+      this.numberPadMeasurementSource = 'manual';
       return;
     }
 
@@ -6130,6 +6455,7 @@ Page({
         numberInput: String(valueMap[mode])
       });
       this.numberPadMode = mode;
+      this.numberPadMeasurementSource = 'manual';
       return;
     }
   },
@@ -6137,6 +6463,7 @@ Page({
   onNumberKey(e) {
     const key = e.currentTarget.dataset.key;
     let value = this.data.numberInput || '';
+    this.numberPadMeasurementSource = 'manual';
 
     if (key === '清空') {
       value = '';
@@ -6158,6 +6485,7 @@ Page({
       : parseInt(this.data.numberInput, 10);
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
+    const lengthInputSource = this.numberPadMeasurementSource || 'manual';
 
     try {
       if (this.numberPadMode === 'angle') {
@@ -6165,10 +6493,11 @@ Page({
           wx.showToast({ title: '请输入 1–179° 的有效角度', icon: 'none' });
           return;
         }
+        const angleSource = this.angleMeasurementSource || 'manual';
         const nextDraft = surveyGraph.applyPreviewInteriorAngle(
           this.draft,
           value,
-          this.angleMeasurementSource || 'manual'
+          angleSource
         );
         this.stopPhoneAngleMeasurement();
         this.draft = nextDraft;
@@ -6177,6 +6506,7 @@ Page({
           this.angleRemeasureOriginalDraft = null;
         }
         this.numberPadMode = '';
+        this.numberPadMeasurementSource = null;
         this.setData({
           numberPadVisible: false,
           numberInput: '',
@@ -6185,6 +6515,7 @@ Page({
           angleManualInputVisible: false,
           angleTriangleMeasuringSide: ''
         });
+        this.reportAngleMeasurement(value, angleSource);
         this.openLengthPad();
         return;
       }
@@ -6193,17 +6524,33 @@ Page({
         const selectedWallId = session.selectedWallId;
         const nextDraft = surveyGraph.setThickness(this.draft, value, selectedWallId);
         this.numberPadMode = '';
+        this.numberPadMeasurementSource = null;
         this.applyDraft(nextDraft, {
           recordHistory: !!selectedWallId,
           extraData: { numberPadVisible: false, numberInput: '' }
         });
+        if (lengthInputSource === 'manual') {
+          this.reportManualMeasurementMm(value, {
+            type: 'length',
+            direction: selectedWallId || session.anchorNodeId || '',
+            metadata: {
+              target: 'thickness',
+              wallId: selectedWallId || '',
+              measurementKind: 'wall_thickness'
+            }
+          });
+        }
         wx.showToast({ title: selectedWallId ? '墙厚已更新' : '后续墙厚已设置', icon: 'none' });
         return;
       }
 
       if (this.numberPadMode && this.numberPadMode.indexOf('component') === 0) {
         const specMode = this.getComponentSpecModeFromNumberPad();
+        const openingId = session.selectedOpeningId || '';
+        const opening = surveyGraph.getOpening(floor, openingId);
         this.numberPadMode = '';
+        const componentSource = this.componentSpecMeasurementSource || 'manual';
+        this.componentSpecMeasurementSource = 'manual';
         this.syncFromDraft({
           numberPadVisible: false,
           numberInput: '',
@@ -6211,34 +6558,78 @@ Page({
           componentSpecMode: specMode
         });
 
+        if (componentSource === 'manual' && opening) {
+          const spec = this.getComponentMeasurementSpec(specMode);
+          this.reportManualMeasurementMm(value, {
+            type: spec.type,
+            direction: opening.wallId || '',
+            metadata: {
+              target: spec.target,
+              openingId,
+              wallId: opening.wallId || '',
+              specMode
+            }
+          });
+        }
+
         return;
       }
 
       if (this.numberPadMode === 'openingWidth' || this.numberPadMode === 'openingHeight' || this.numberPadMode === 'openingSill') {
+        const openingId = session.selectedOpeningId || '';
+        const opening = surveyGraph.getOpening(floor, openingId);
+        const openingMode = this.numberPadMode;
         const patch = {};
-        if (this.numberPadMode === 'openingWidth') patch.widthMm = value;
-        if (this.numberPadMode === 'openingHeight') patch.heightMm = value;
-        if (this.numberPadMode === 'openingSill') patch.sillHeightMm = value;
-        const nextDraft = surveyGraph.updateOpening(this.draft, session.selectedOpeningId, patch);
+        if (openingMode === 'openingWidth') patch.widthMm = value;
+        if (openingMode === 'openingHeight') patch.heightMm = value;
+        if (openingMode === 'openingSill') patch.sillHeightMm = value;
+        const nextDraft = surveyGraph.updateOpening(this.draft, openingId, patch);
         this.numberPadMode = '';
+        this.numberPadMeasurementSource = null;
         this.applyDraft(nextDraft, {
           recordHistory: true,
           extraData: { numberPadVisible: false, numberInput: '' }
         });
+        if (lengthInputSource === 'manual' && opening) {
+          this.reportManualMeasurementMm(value, {
+            type: openingMode === 'openingWidth' ? 'opening_width' : 'height',
+            direction: opening.wallId || '',
+            metadata: {
+              target: openingMode,
+              openingId,
+              wallId: opening.wallId || '',
+              field: openingMode === 'openingWidth' ? 'widthMm'
+                : (openingMode === 'openingHeight' ? 'heightMm' : 'sillHeightMm')
+            }
+          });
+        }
         wx.showToast({ title: '门窗尺寸已更新', icon: 'none' });
         return;
       }
 
       if (session.state === 'awaitingLength' || session.state === 'wallPreview') {
         const nextDraft = maybeAutoConfirmSharedBoundaryClose(
-          surveyGraph.commitPreviewLength(this.draft, value, 'manual')
+          surveyGraph.commitPreviewLength(this.draft, value, lengthInputSource)
         );
-        const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
+        const nextFloor = surveyGraph.getActiveFloor(nextDraft);
+        const nextSession = nextFloor.session;
+        const confirmedWall = nextFloor.walls[nextFloor.walls.length - 1];
         this.applyDraft(this.enterResetCursorAfterClose(nextDraft), {
           recordHistory: true,
           historyDraft: this.angleRemeasureHistoryDraft || undefined,
           extraData: { numberPadVisible: false, numberInput: '' }
         });
+        if (lengthInputSource === 'manual') {
+          this.reportManualMeasurementMm(value, {
+            type: 'length',
+            direction: confirmedWall ? confirmedWall.id : '',
+            metadata: {
+              target: 'pendingWall',
+              wallId: confirmedWall ? confirmedWall.id : ''
+            }
+          });
+        }
+        this.numberPadMeasurementSource = null;
         this.angleRemeasureHistoryDraft = null;
         wx.showToast({
           title: nextSession.state === 'spaceClosed'
@@ -6250,13 +6641,25 @@ Page({
       }
 
       if (session.state === 'remeasureAwaitingInput') {
+        const remeasuredWallId = session.selectedWallId || '';
         const wasClosed = floor.spaces.some((space) => space.closed);
-        this.draft = surveyGraph.remeasureSelectedWall(this.draft, value, 'manual');
+        this.draft = surveyGraph.remeasureSelectedWall(this.draft, value, lengthInputSource);
         this.centerSelectedWall(false);
         this.applyDraft(this.draft, {
           recordHistory: true,
           extraData: { numberPadVisible: false, numberInput: '' }
         });
+        if (lengthInputSource === 'manual') {
+          this.reportManualMeasurementMm(value, {
+            type: 'length',
+            direction: remeasuredWallId,
+            metadata: {
+              target: 'selectedWall',
+              wallId: remeasuredWallId
+            }
+          });
+        }
+        this.numberPadMeasurementSource = null;
         wx.showToast({ title: wasClosed ? '已联动相邻墙' : '复尺已更新', icon: 'none' });
         return;
       }
@@ -6281,6 +6684,7 @@ Page({
         this.angleRemeasureOriginalDraft = null;
       }
     }
+    this.numberPadMeasurementSource = null;
     this.numberPadMode = '';
     this.centerSelectedWall(false);
     this.applyDraft(this.draft, { persist: false });
@@ -6299,6 +6703,7 @@ Page({
   },
 
   onComponentPanelTab(e) {
+    this.flushPendingComponentManualAudit();
     const mode = e.currentTarget.dataset.mode || 'spec';
     const updateData = { componentPanelMode: mode };
     if (mode === 'spec') {
@@ -6314,6 +6719,7 @@ Page({
   },
 
   onComponentSpecTab(e) {
+    this.flushPendingComponentManualAudit();
     const mode = e.currentTarget.dataset.mode || 'length';
     const floor = surveyGraph.getActiveFloor(this.draft);
     const rawVal = this.getComponentSpecRawValue(floor, floor.session.selectedOpeningId, mode);
@@ -6335,6 +6741,7 @@ Page({
   onComponentKeyboardKey(e) {
     const key = e.currentTarget.dataset.key;
     let value = this.data.componentSpecInput || '';
+    this.componentSpecMeasurementSource = 'manual';
 
     if (key === '清空') {
       value = '';
@@ -6358,6 +6765,7 @@ Page({
 
     const floor = surveyGraph.getActiveFloor(this.draft);
     const openingId = floor.session.selectedOpeningId;
+    const opening = surveyGraph.getOpening(floor, openingId);
     const specMode = this.data.componentSpecMode || 'length';
 
     try {
@@ -6369,6 +6777,12 @@ Page({
         componentSpecMode: specMode
       });
       this.scheduleFormalPersist();
+      this.queueComponentManualAudit(
+        openingId,
+        opening ? opening.wallId : '',
+        specMode,
+        intVal
+      );
     } catch (err) {
       wx.showToast({ title: err.message || '输入无效', icon: 'none' });
     }

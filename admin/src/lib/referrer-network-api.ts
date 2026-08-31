@@ -66,6 +66,7 @@ export function enterpriseJoinCodeToDto(
     id: code.id.toString(),
     enterpriseId: code.enterpriseId.toString(),
     codeType: code.codeType,
+    inviterStaffId: code.inviterStaffId?.toString() ?? null,
     status: code.status,
     version: code.version,
     expiresAt: code.expiresAt,

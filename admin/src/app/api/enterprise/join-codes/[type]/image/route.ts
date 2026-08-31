@@ -28,11 +28,15 @@ export async function POST(
       request,
       { roles: ['super_admin', 'admin', 'enterprise_admin'], requireEnterprise: true },
       async (context) => {
+        const actorStaffId = parsePostgresId(context.userId, 'staffId');
         const revealed = await withTenantTransaction(context.enterpriseId!, (transaction) =>
           new ReferrerNetworkRepository(transaction).revealActiveEnterpriseJoinCode({
             enterpriseId: parsePostgresId(context.enterpriseId!, 'enterpriseId'),
             codeType: type,
-            actorStaffId: parsePostgresId(context.userId, 'staffId'),
+            actorStaffId,
+            // The legacy Admin endpoint reveals the enterprise-wide code;
+            // personal employee codes are revealed by Mini Program routes.
+            inviterStaffId: null,
           })
         );
         if (!revealed) {

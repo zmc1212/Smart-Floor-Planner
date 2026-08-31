@@ -81,7 +81,7 @@ test('staff activity code renders a continuous service invitation and may show t
   assert.match(less, /\.qr-state-copy\s*\{[\s\S]*font-size:\s*22rpx/);
 });
 
-test('enterprise join codes present dual codes with generate, rotate, and disable', () => {
+test('enterprise join codes present owner dual codes and employee personal promoter codes', () => {
   const wxml = source('packages/business/enterprise-join-codes/enterprise-join-codes.wxml');
   const js = source('packages/business/enterprise-join-codes/enterprise-join-codes.js');
   const less = source('packages/business/enterprise-join-codes/enterprise-join-codes.less');
@@ -101,7 +101,10 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
   assert.doesNotMatch(less, /\.scan-glyph\s*\{[^}]*border:\s*3rpx solid/);
   assert.doesNotMatch(less, /\.share-scan\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /员工入驻码/);
-  assert.match(js, /推荐人入驻码/);
+  assert.match(js, /我的推广人入驻码/);
+  assert.match(js, /normalizeJoinCodeScope\(result\.data && result\.data\.scope\)/);
+  assert.match(js, /tabsForScope\(scope\)/);
+  assert.match(js, /activeTypeForScope\(scope, this\.data\.activeType\)/);
   assert.match(js, /onShareAppMessage\(\)/);
   assert.match(js, /onboarding\/onboarding\?token=/);
   assert.match(js, /hideShareMenu/);
@@ -138,8 +141,7 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
   assert.match(wxml, /journey-rail/);
   assert.match(wxml, /action-dock/);
   assert.match(wxml, /class="info-bar"[\s\S]*class="roster-link"[\s\S]*class="action-dock"/);
-  assert.match(wxml, /查看已入驻推荐人/);
-  assert.doesNotMatch(wxml, /activeType === 'referrer'[\s\S]*查看已入驻推荐人/);
+  assert.match(wxml, /rosterLinkLabel/);
   assert.match(js, /openReferrerRoster/);
   assert.match(js, /enterprise-referrers\/enterprise-referrers/);
   assert.match(less, /\.roster-link text\s*\{[\s\S]*font-size:\s*26rpx/);
@@ -148,6 +150,20 @@ test('enterprise join codes present dual codes with generate, rotate, and disabl
   assert.match(less, /\.code-invitation-card\s*\{[\s\S]*flex:\s*none/);
   assert.match(less, /\.qr-stage\s*\{[\s\S]*width:\s*380rpx/);
   assert.doesNotMatch(less, /\.action-dock\s*\{[\s\S]*margin-top:\s*auto/);
+});
+
+test('join-code scope model gives employees one personal promoter tab', () => {
+  const model = require('../packages/business/enterprise-join-codes/enterprise-join-codes-model.js');
+  assert.deepEqual(model.tabsForScope('own'), [
+    { codeType: 'referrer', label: '我的推广人入驻码' },
+  ]);
+  assert.deepEqual(model.tabsForScope('enterprise'), [
+    { codeType: 'staff', label: '员工入驻码' },
+    { codeType: 'referrer', label: '我的推广人入驻码' },
+  ]);
+  assert.equal(model.activeTypeForScope('own', 'staff'), 'referrer');
+  assert.equal(model.rosterLinkLabel('own'), '查看我的推广人');
+  assert.equal(model.rosterLinkLabel('enterprise'), '查看推广网络');
 });
 
 test('promotion service screen keeps the public presentation anonymous and scanable', () => {
@@ -333,6 +349,7 @@ test('free design service resolves into phone authorization and renders truthful
   assert.match(wxml, /home-ip-v1\/brand-logo\.png/);
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/referrals\/authorize-and-create-lead/);
+  assert.match(js, /encryptedData/);
   assert.doesNotMatch(js, /offerNotificationAuthorization/);
   assert.doesNotMatch(js, /requestSubscribeMessage/);
   assert.match(js, /kind !== 'referral' && response.data.kind !== 'staff_activity'/);

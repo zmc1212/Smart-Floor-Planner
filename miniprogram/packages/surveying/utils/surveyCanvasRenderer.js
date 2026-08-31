@@ -71,12 +71,54 @@ function normalizeAngleDiff(currentAngle, previousAngle) {
   return Math.round(diff);
 }
 
+function rotateVector(x, y, rotationRad) {
+  const angle = Number(rotationRad) || 0;
+  if (!angle) {
+    return { x: x, y: y };
+  }
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos
+  };
+}
+
 function resolveViewport(viewport) {
-  return Object.assign({
+  const resolved = Object.assign({
     scale: surveyGraph.DEFAULT_SCALE,
     offsetX: 0,
-    offsetY: 0
+    offsetY: 0,
+    rotationRad: 0
   }, viewport || {});
+  const rotationRad = Number(resolved.rotationRad);
+  resolved.rotationRad = Number.isFinite(rotationRad) ? rotationRad : 0;
+  return resolved;
+}
+
+function persistSurveyViewport(viewport) {
+  const vp = resolveViewport(viewport);
+  return {
+    scale: vp.scale,
+    offsetX: vp.offsetX,
+    offsetY: vp.offsetY
+  };
+}
+
+function compensateViewportOffsetForRotation(viewport, nextRotationRad) {
+  const vp = resolveViewport(viewport);
+  const next = Number(nextRotationRad);
+  const nextRad = Number.isFinite(next) ? next : 0;
+  const delta = nextRad - vp.rotationRad;
+  if (!delta) {
+    return Object.assign({}, vp, { rotationRad: nextRad });
+  }
+  const rotated = rotateVector(vp.offsetX, vp.offsetY, delta);
+  return Object.assign({}, vp, {
+    rotationRad: nextRad,
+    offsetX: rotated.x,
+    offsetY: rotated.y
+  });
 }
 
 function resolveRect(rect) {
@@ -86,11 +128,56 @@ function resolveRect(rect) {
 function createProjector(viewport, rect) {
   const vp = resolveViewport(viewport);
   const box = resolveRect(rect);
+  const rotationRad = vp.rotationRad;
   return function project(point) {
+    const rotated = rotateVector(point.xMm * vp.scale, point.yMm * vp.scale, rotationRad);
     return {
-      x: box.width / 2 + vp.offsetX + point.xMm * vp.scale,
-      y: box.height / 2 + vp.offsetY + point.yMm * vp.scale
+      x: box.width / 2 + vp.offsetX + rotated.x,
+      y: box.height / 2 + vp.offsetY + rotated.y
     };
+  };
+}
+
+function createUnprojector(viewport, rect) {
+  const vp = resolveViewport(viewport);
+  const box = resolveRect(rect);
+  const scale = Math.max(0.000001, Number(vp.scale) || surveyGraph.DEFAULT_SCALE);
+  const rotationRad = vp.rotationRad;
+  return function unproject(point) {
+    const unrotated = rotateVector(
+      Number(point.x) - box.width / 2 - vp.offsetX,
+      Number(point.y) - box.height / 2 - vp.offsetY,
+      -rotationRad
+    );
+    return {
+      xMm: unrotated.x / scale,
+      yMm: unrotated.y / scale
+    };
+  };
+}
+
+function projectSurveyPoint(point, viewport, rect) {
+  return createProjector(viewport, rect)(point);
+}
+
+function unprojectSurveyPoint(point, viewport, rect) {
+  return createUnprojector(viewport, rect)(point);
+}
+
+function resolveViewportOffsetForAnchor(rect, canvasPoint, mmPoint, scale, rotationRad) {
+  const box = resolveRect(rect);
+  const nextScale = Number(scale);
+  const resolvedScale = Number.isFinite(nextScale) && nextScale
+    ? nextScale
+    : surveyGraph.DEFAULT_SCALE;
+  const rotated = rotateVector(
+    Number(mmPoint && mmPoint.xMm) * resolvedScale,
+    Number(mmPoint && mmPoint.yMm) * resolvedScale,
+    rotationRad
+  );
+  return {
+    offsetX: Number(canvasPoint.x) - box.width / 2 - rotated.x,
+    offsetY: Number(canvasPoint.y) - box.height / 2 - rotated.y
   };
 }
 
@@ -2216,19 +2303,33 @@ function resolveViewportInteractionTransform(baseViewport, viewport, rect) {
   const scale = target.scale / base.scale;
   const centerX = box.width / 2;
   const centerY = box.height / 2;
+  const originX = centerX + base.offsetX;
+  const originY = centerY + base.offsetY;
+  const targetOriginX = centerX + target.offsetX;
+  const targetOriginY = centerY + target.offsetY;
 
   return {
     scale,
-    translateX: centerX + target.offsetX - scale * (centerX + base.offsetX),
-    translateY: centerY + target.offsetY - scale * (centerY + base.offsetY)
+    rotationRad: target.rotationRad - base.rotationRad,
+    originX,
+    originY,
+    targetOriginX,
+    targetOriginY,
+    translateX: targetOriginX - scale * originX,
+    translateY: targetOriginY - scale * originY
   };
 }
 
 function projectInteractionPoint(point, transform) {
   if (!point) return point;
+  const rotated = rotateVector(
+    (point.x - transform.originX) * transform.scale,
+    (point.y - transform.originY) * transform.scale,
+    transform.rotationRad
+  );
   return {
-    x: point.x * transform.scale + transform.translateX,
-    y: point.y * transform.scale + transform.translateY
+    x: transform.targetOriginX + rotated.x,
+    y: transform.targetOriginY + rotated.y
   };
 }
 
@@ -2966,7 +3067,16 @@ module.exports = {
   drawDraggingCursor,
   drawCloseAction,
   clearDraggingCursor,
+  resolveViewport,
+  persistSurveyViewport,
+  compensateViewportOffsetForRotation,
+  createProjector,
+  createUnprojector,
+  projectSurveyPoint,
+  unprojectSurveyPoint,
+  resolveViewportOffsetForAnchor,
   resolveViewportInteractionTransform,
+  projectInteractionPoint,
   createViewportInteractionScene,
   hitTestSurveyWall,
   hitTestSurveyOpening,

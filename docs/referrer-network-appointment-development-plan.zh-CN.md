@@ -169,7 +169,7 @@ closed 为终止状态
 
 ## 6. 双码与推荐人网络
 
-阶段 2 已实现本节的服务端合同：企业管理员可查询、换新、停用并生成员工/推荐人入驻码的私有微信小程序码 PNG，换码、扫码解析和码图片生成结果写入审计；已授权手机号的小程序用户可扫码进入专用入驻页，入驻为单企业员工或加入默认最多 3 家企业的推荐人网络，并可查询、退出成员关系和重取当前推广令牌。令牌为基于服务端密钥的 192-bit 不透明值，数据库只保存 SHA-256 哈希，不编码企业明文。
+阶段 2 已实现本节的服务端合同：企业负责人可查询、换新、停用并生成企业员工码及本人推荐人码的私有微信小程序码 PNG；活动家装设计顾问、家装现场顾问和渠道地推只能管理本人的推荐人码。个人推荐人码以 `enterprise_join_codes.inviter_staff_id` 区分员工范围，员工码仍属于企业范围。已授权手机号的小程序用户可扫码进入专用入驻页，入驻为单企业员工或加入默认最多 3 家企业的推荐人网络，并可查询、退出成员关系和重取当前推广令牌。令牌为基于服务端密钥的 192-bit 不透明值，数据库只保存 SHA-256 哈希，不编码企业或邀请员工明文。
 
 阶段 2 的 `POST /api/miniprogram/codes/resolve` 负责区分入驻码/推广码、校验状态并写审计；阶段 3 已在有效推广码响应中增加 10 分钟的加密签名待确认来源。阶段 4 已将批准设计落为推广服务码展示页和客户领取页；解析本身仍不创建线索，只有客户授权接口提交该来源后才创建归属与线索。
 
@@ -177,15 +177,20 @@ closed 为终止状态
 
 - 员工入驻码和推荐人入驻码使用不同 `code_type`，服务端拒绝跨类型调用。
 - 二维码只携带至少 128 bit 熵的随机短令牌；数据库只保存 token hash。
-- 换码创建新版本并在同一事务中停用旧版本；旧码随后解析为明确的 `code_rotated`。
+- 员工码属于企业范围，仅企业负责人可管理；推荐人码属于当前签名的负责人/家装设计顾问/家装现场顾问/渠道地推个人，查询、生成图片、换新和停用均由服务端强制限定当前员工，不接受客户端声明员工 ID。
+- 换码创建新版本，并在同一事务中只停用同一企业/个人范围的旧版本；旧码随后解析为明确的 `code_rotated`。
 - 员工扫码、授权手机号、选择 `designer` 或 `measurer` 后立即生效。
-- 推荐人扫码授权后立即建立活动成员关系；达到平台上限返回 `membership_limit_reached`。
+- 推荐人扫码授权后立即建立归企业所有的活动成员关系，并把个人码的邀请人写入 `referrer_enterprise_memberships.invited_by_staff_id` 及姓名快照。首个成功邀请人锁定归属：同一推荐人已在该企业活动时，再扫其他员工码仍幂等成功且不改归属；本切片不提供人工改归属接口。
+- 历史成员仅在企业恰好只有一名 `enterprise_admin` 时回填给该负责人；负责人不唯一的企业保留为明确的「历史未归属」分支。删除邀请员工后外键可置空，姓名快照继续保留历史分支标签。
+- 达到平台上限返回 `membership_limit_reached`。
 - 新设计师只有完成微信号与个人二维码后才进入自动派单池；测量员完成基本资料即可进入池。
 
 ### 6.2 推荐人推广码
 
 - 每个活动推荐人成员关系对应一个独立推广码。
 - 推荐人内部工作台允许查看已加入企业、退出企业、选择推广企业和展示对应推广码。
+- `GET /api/miniprogram/enterprise-referrers` 由 `referrer.network` 能力守卫。家装设计顾问、家装现场顾问和渠道地推被服务端强制为 `scope=own`，只能读取当前签名员工邀请的成员；企业负责人得到 `scope=enterprise`：`view=network` 返回全部业务员工分支（含 0 名推广人的员工）及可选「历史未归属」分支和企业汇总，扁平视图则按 `query`/`status` 分页读取本企业全部成员。
+- 只有企业负责人可调用 `POST /api/miniprogram/enterprise-referrers/[id]/disable`；普通员工只读。停用保持幂等且不提供重新启用。
 - 对客户展示的推广码页面遵循第 1.3 节匿名规则；企业选择器不得出现在客户可见投屏/分享画面中。
 - 退出成员关系只停用后续扫码能力，不修改已锁定线索、历史预约或提成受益人。
 
@@ -289,7 +294,7 @@ closed 为终止状态
 | --- | --- |
 | 身份 | `GET /api/miniprogram/identity-contexts`、`POST /api/miniprogram/identity-contexts/switch`；阶段 1 已实现。 |
 | 扫码解析 | `POST /api/miniprogram/codes/resolve`；阶段 3 已实现令牌类型/状态解析、审计和有效推广码的 10 分钟加密签名待确认来源；解析不创建线索。 |
-| 双码管理 | `GET /api/enterprise/join-codes`、`POST /api/enterprise/join-codes/[type]/rotate`、`POST /api/enterprise/join-codes/[type]/disable`、`POST /api/enterprise/join-codes/[type]/image`；阶段 2/10 已实现。图片接口受租户授权、写入审计、私有且禁止缓存，保留微信返回的 PNG/JPEG 类型，并始终通过 `getwxacodeunlimit` 生成 `develop` 小程序码。 |
+| 双码管理 | `GET /api/enterprise/join-codes`、`POST /api/enterprise/join-codes/[type]/rotate`、`POST /api/enterprise/join-codes/[type]/disable`、`POST /api/enterprise/join-codes/[type]/image`；阶段 2/10 已实现。旧后台接口在列表、就绪检查、换新、停用和图片生成时明确使用未分配的企业级推荐人范围（`inviterStaffId = null`），不会随机选取员工个人码；员工个人码统一由小程序接口管理。图片接口受租户授权、写入审计、私有且禁止缓存，保留微信返回的 PNG/JPEG 类型，并始终通过 `getwxacodeunlimit` 生成 `develop` 小程序码。 |
 | 入驻 | `POST /api/miniprogram/onboarding/staff`、`POST /api/miniprogram/onboarding/referrer`；阶段 2 已实现。 |
 | 推荐人 | `GET /api/miniprogram/referrer-memberships`、`DELETE /api/miniprogram/referrer-memberships/[id]`、`GET /api/miniprogram/referrer-memberships/[id]/promotion-code`；阶段 2 已实现。 |
 | 服务码图片 | `GET /api/miniprogram/referrer-memberships/[id]/promotion-code/image`；阶段 4 已实现，校验当前推荐人关系后在事务外调用微信小程序码接口，返回不缓存的 PNG/JPEG 字节；其 `getwxacodeunlimit` `develop` 环境与企业入驻码保持一致。 |
@@ -440,7 +445,7 @@ TabBar 使用角色白名单生成，不保留所有身份共用的固定中心�
 | --- | --- | --- |
 | 0. 计划与设计锁定 | `Completed` | 选定设计文件和本计划中英文版；未修改生产运行界面。 |
 | 1. Schema 与身份基础 | `Completed` | 目标表、`leads` 扩展、强制 RLS、Repository、数据库实时身份列表/切换、`contextVersion` 失效及普通客户手机号登录已实现；数据库合同测试通过。旧 OpenID 字段仅为第 8 阶段前的旧流程并存兼容。 |
-| 2. 双码与推荐人网络 | `Completed` | 双码换码/停用审计、员工单企业、推荐人默认三家上限与退出、可重取的不透明推广令牌已实现；Repository 数据库合同测试通过。 |
+| 2. 双码与推荐人网络 | `Completed` | 双码换码/停用审计、员工单企业、推荐人默认三家上限与退出、可重取的不透明推广令牌已实现。推荐人入驻码现为企业负责人/家装设计顾问/家装现场顾问/渠道地推的服务端强制个人邀请范围；成员仍归企业所有，同时记录首个成功邀请员工及姓名快照。员工只读本人邀请的推广人，负责人可读企业分支网络或扁平全量名册，停用仍仅限负责人。历史行仅在企业恰好一名负责人时回填，歧义行保持未归属，且无改归属接口。Repository 数据库合同测试通过。 |
 | 3. 客户授权与自动派单 | `Completed` | 两阶段扫码、原子用户关联/建线索、首次有效归属、稳定最小负载派单、无候选保留、事务后通知、服务身份及员工池变化重试已实现；Repository/RLS/并发测试通过。 |
 | 4. 选定设计生产实现 | `Completed` | `promotion-service-code` 与 `free-design-service` 两条路由按 `390x844` 实现三屏状态；服务码图片接口、扫码解析、手机号授权、幂等建线索、设计师二维码交付和无设计师待分配状态已接通。Antigravity 2.8.1 通过内置 `generate_image` 按固定 `3x2` prompt 和有序参考图生成画板，六个独立透明 PNG 已裁切、优化并接入 `packages/business/assets/referral-service-v1/`，均不超过 300KB。聚焦测试通过；真实微信开发者工具 automator 在 iPhone 12/13 Pro `390x844` 模拟器上完成精确路由、元素边界和包含原生胶囊的整窗截图核验。 |
 | 5. 预约与日历 | `Completed` | 租户预约设置、不可用时间、工作时段、首次预约、客户/内部改期、取消/完成、事件审计、乐观版本和排斥约束均已实现。后台设置单可确认默认策略；线索详情和测量员日程进入真实预约调度页，每个岗位只显示被允许的动作，取消原因必填，内部改期原因选填并在填写时写入审计。既有预约状态保留 `390x844` 证据；新增详情与内部动作状态待刷新截图。 |
@@ -452,7 +457,7 @@ TabBar 使用角色白名单生成，不保留所有身份共用的固定中心�
 | 11. 身份启动与权限外壳 | `Completed` | `GET /api/miniprogram/bootstrap` 返回当前签名角色、有效角色组、企业/成员上下文、落点、能力白名单和服务端徽标摘要；冷启动、登录、入驻、领取和切换均先刷新校验；撤权/停用/版本变化清理会话并保留恢复原因；身份导航拒绝未知身份和越权深链，不静默回落客户界面。上下文撤权、停用、多角色恢复及深链负向测试通过。 |
 | 12. 角色信息架构与设计批准 | `In progress` | 用户已批准沿用当前小程序风格。`docs/miniprogram-role-shell-design-v1.*` 定义五角色目标、白名单、恢复状态和安全区；生产已实现 bootstrap 驱动的当前真实路由导航、不泄露失效企业数据的恢复页，以及按身份待办计数的 Tab 徽标（失败显示「暂时无法读取」）。各路由还原台账待 `390x844` 核验。 |
 | 13. 客户与推荐人闭环 | `In progress` | 已实现客户项目索引 `GET /api/miniprogram/customer-projects`，仅按当前 JWT 客户读取本人未归档项目的阶段摘要；项目册将已发布图片分组为命名方案图集（`publishedSchemes`），无 workflow 的小程序单图归入「其他效果图」。推荐人工作台选择其他企业时会先交换签名 `referrerMembershipId` 上下文并刷新会话，故服务码与 `GET /api/miniprogram/referrer-progress` 使用同一当前成员关系边界；`GET /api/miniprogram/referrer-earnings` 仍校验该成员关系，并按当前提成行的 `beneficiaryUserId`/`payableAmount` 列出收益。聚合只返回脱敏客户标识、服务阶段/更新时间及本人应付、已付或作废收益。客户服务 Tab 徽标统计待预约/待改期/待重约，推荐人进度/收益徽标统计未完结里程碑与待付收益。客户/推荐人负向权限测试与小程序聚焦测试通过；分组相册的原生胶囊核验待补。 |
-| 14. 设计师、测量员与企业负责人闭环 | `In progress` | `GET /api/miniprogram/workbench` 现于租户事务中从签名员工上下文推导角色、企业和员工范围；企业负责人经营台返回待派失败、过期未重约和人员缺口，预约 Tab 进入 `enterprise-appointments` 真实列表（含过期），不再占用 `pages/ai-design`。测量员进入角色工作台，再由其中的日程入口打开 `measurer-calendar`；过期或已完成预约离开已确认列表。正式 v4 户型完成后也不再回到工作台待上门队列和「待量房任务」计数。客户服务首屏消费共享 `serviceStage`/`nextActionKind`（测量员匹配后下一步为预约上门，设计师仍可代约）。设计师可在 `profile-edit` 自助维护微信号和二维码。bootstrap 徽标分别统计设计师待跟进与过期、测量员工作台今日/任务、负责人异常（含过期未重约）。后台新增 `GET /api/workbench/staff`。聚焦导航/徽标测试已通过，后台角色登录态与小程序登录态 `390x844` 原生胶囊核验、真实多角色数据验收待完成。 |
+| 14. 设计师、测量员与企业负责人闭环 | `In progress` | `GET /api/miniprogram/workbench` 现于租户事务中从签名员工上下文推导角色、企业和员工范围；企业负责人经营台返回待派失败、过期未重约和人员缺口，预约 Tab 进入 `enterprise-appointments` 真实列表（含过期），不再占用 `pages/ai-design`。测量员进入角色工作台，再由其中的日程入口打开 `measurer-calendar`；过期或已完成预约离开已确认列表。正式 v4 户型完成后也不再回到工作台待上门队列和「待量房任务」计数。客户服务首屏消费共享 `serviceStage`/`nextActionKind`（测量员匹配后下一步为预约上门，设计师仍可代约）。设计师可在 `profile-edit` 自助维护微信号和二维码。bootstrap 徽标分别统计设计师待跟进与过期、测量员工作台今日/任务、负责人异常（含过期未重约）。后台新增 `GET /api/workbench/staff`。`referrer.network` 能力现为企业员工提供个人推荐人码与本人名册入口，为企业负责人提供分组网络及扁平全企业名册；这些状态只扩展既有入驻码和名册设计源，不新增插画。聚焦导航/徽标测试已通过；后台角色登录态、变更后推荐人状态的用户手工 `390x844` 原生胶囊核验及真实多角色数据验收待完成。 |
 | 15. 五角色真实全流程验收 | `Planned` | 使用真实微信账号或同一账号的真实多上下文，从推广码到客户授权、派单、预约、量房、发布、签约和三方提成逐步验收；覆盖冷启动、切换、撤权、通知失败、分页和深链负向场景，并完成每个受影响路由的 `390x844` 原生胶囊证据与双语文档收口。 |
 | 16. 员工活动码获客轨 | `Completed` | 新增 `staff_activity_codes`、扫码解析第三种码、可空推荐人归属锁、出示人锁定 `measurerId`、设计师兼任或自动派设计师、户型 `measurerId` 授权、活动线禁止自动换测量员、无预约待量房工作台任务、按来源快照 2/3 条提成。小程序活动码页沿用推荐人服务码视觉语言并允许企业品牌；`390x844` 原生胶囊核验待补。 |
 

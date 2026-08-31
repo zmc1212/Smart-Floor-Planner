@@ -4,6 +4,11 @@ const {
   restoreOnboardingToken,
   onboardingTokenFromScanResult
 } = require('../../../utils/onboardingScan.js');
+const {
+  refreshWechatLoginCode,
+  resolveWechatPhoneLoginInput,
+  wechatPhoneAuthToast
+} = require('../../../utils/wechat-phone-auth.js');
 
 function currentSignedIdentity() {
   const app = typeof getApp === 'function' ? getApp() : null;
@@ -110,6 +115,7 @@ Page({
   },
 
   onLoad(options) {
+    refreshWechatLoginCode();
     const onboardingToken = safeToken(options.token || options.scene);
     this._optionsToken = onboardingToken;
     this.setData({ ...navigationMetrics(), onboardingToken });
@@ -117,6 +123,7 @@ Page({
   },
 
   onShow() {
+    refreshWechatLoginCode();
     const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
     const current = pages && pages.length ? pages[pages.length - 1] : null;
     const options = (current && current.options) || {};
@@ -182,14 +189,26 @@ Page({
 
   async onGetPhoneNumber(event) {
     if (this.data.pageState !== 'ready' || this.data.submitting) return;
-    if (!event.detail || event.detail.errMsg !== 'getPhoneNumber:ok' || !event.detail.code) {
-      wx.showToast({ title: '需要授权手机号才能完成入驻', icon: 'none' });
+    const resolved = resolveWechatPhoneLoginInput(event.detail);
+    if (!resolved.ok) {
+      wx.showToast({
+        title: wechatPhoneAuthToast(resolved.reason, '需要授权手机号才能完成入驻'),
+        icon: 'none'
+      });
       return;
     }
 
     this.setData({ submitting: true, pageState: 'submitting', errorMessage: '' });
     try {
-      const login = await api.phoneLogin(event.detail.code);
+      const login = await api.phoneLogin(
+        resolved.kind === 'code'
+          ? resolved.phoneCode
+          : {
+              loginCode: resolved.loginCode,
+              encryptedData: resolved.encryptedData,
+              iv: resolved.iv
+            }
+      );
       if (this.data.codeType === 'referrer') {
         this.setData({
           submitting: false,

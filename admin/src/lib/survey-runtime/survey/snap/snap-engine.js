@@ -27,7 +27,7 @@ function resolveSnap(options) {
     const lock = { candidate, pointMm: candidate.pointMm };
     return { candidate, lock, acquired: true, retained: false };
   }
-  return { candidate, lock: null, acquired: false, retained: false };
+  return { candidate: null, lock: null, acquired: false, retained: false };
 }
 
 module.exports = {

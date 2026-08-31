@@ -63,12 +63,8 @@ function buildStageRail(status) {
   }));
 }
 
-function getNextAction(status, staffRole, isAssignedMeasurer) {
+function getNextAction(status) {
   const normalized = normalizeStatus(status);
-  if (staffRole === 'designer' && !isAssignedMeasurer) {
-    if (normalized === 'new') return '等待家装现场顾问完成正式量房';
-    if (normalized === 'measuring') return '等待正式量房完成后进入方案设计';
-  }
   if (normalized === 'new') return '开始正式量房';
   if (normalized === 'measuring') return '完成墙图后进入方案设计';
   if (normalized === 'designing') return '等待方案沟通或客户确认';
@@ -313,6 +309,14 @@ function canEditLeadProfile(lead, staffRole, staffId) {
   return false;
 }
 
+function canEditLeadMeasurements(lead, staffRole, staffId) {
+  if (!lead) return false;
+  if (staffRole === 'enterprise_admin' || staffRole === 'measurer') return true;
+  if (!staffId) return false;
+  if (staffRole === 'designer' && staffIdOf(lead.assignedTo) === staffId) return true;
+  return staffIdOf(lead.measurerId) === staffId;
+}
+
 /** Designer and enterprise-owner AI entry on any open unarchived lead. */
 function canOpenAIDesignWorkbench(lead, staffRole) {
   if (!lead || lead.archivedAt) return false;
@@ -444,7 +448,7 @@ Page({
       lead,
       staffRole,
       statusLabel: lead.serviceStageLabel || STATUS_LABELS[lead.status] || lead.status || '新线索',
-      nextAction: lead.nextAction || getNextAction(lead.status, staffRole, isAssignedMeasurer),
+      nextAction: lead.nextAction || getNextAction(lead.status),
       stageRail: buildStageRail(lead.status),
       canMarkConverted: Boolean(conversionActions.canMarkConverted),
       canRevertConversion: Boolean(conversionActions.canRevertConversion),
@@ -453,7 +457,7 @@ Page({
       convertedAmountText: formatContractAmount(lead.contractAmount),
       showInternalConversionDetails: ['enterprise_admin', 'designer', 'measurer', 'salesperson'].includes(staffRole),
       canEditProfile: canEditLeadProfile(lead, staffRole, staffId),
-      canEditMeasurements: staffRole === 'enterprise_admin' || staffRole === 'measurer' || isAssignedMeasurer,
+      canEditMeasurements: canEditLeadMeasurements(lead, staffRole, staffId),
       conversionSkipsStages: !['designing', 'measured', 'assigned', 'quoting'].includes(lead.status),
       activeFloorPlan,
       previousFloorPlans: formalPlans.slice(1),
@@ -886,6 +890,7 @@ Page({
   },
 
   onStartMeasure() {
+    if (!this.data.canEditMeasurements) return;
     const plan = this.data.activeFloorPlan;
     openSurveyingEditor({
       leadId: this.data.leadId,
@@ -896,6 +901,7 @@ Page({
   },
 
   onStartNewMeasure() {
+    if (!this.data.canEditMeasurements) return;
     openSurveyingEditor({
       leadId: this.data.leadId,
       leadName: this.data.lead && this.data.lead.name,

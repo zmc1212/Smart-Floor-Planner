@@ -1,3 +1,5 @@
+const surveyCanvasRenderer = require('./surveyCanvasRenderer.js');
+
 function distanceMm(first, second) {
   if (!first || !second) return Infinity;
   const dx = Number(first.xMm) - Number(second.xMm);
@@ -15,13 +17,7 @@ function roundPoint(point) {
 
 function unprojectCanvasPoint(scene, point) {
   if (!scene || !point) return null;
-  const rect = scene.rect || { width: 0, height: 0 };
-  const viewport = scene.viewport || { scale: 1, offsetX: 0, offsetY: 0 };
-  const scale = Math.max(0.000001, Number(viewport.scale) || 1);
-  return {
-    xMm: (Number(point.x) - Number(rect.width || 0) / 2 - Number(viewport.offsetX || 0)) / scale,
-    yMm: (Number(point.y) - Number(rect.height || 0) / 2 - Number(viewport.offsetY || 0)) / scale
-  };
+  return surveyCanvasRenderer.unprojectSurveyPoint(point, scene.viewport, scene.rect);
 }
 
 function projectPointToSegment(point, start, end) {

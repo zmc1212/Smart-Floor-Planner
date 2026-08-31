@@ -29,13 +29,17 @@ export async function POST(
         requireEnterprise: true,
       },
       async (context) => {
+        const actorStaffId = parsePostgresId(context.userId, 'staffId');
         const result = await withTenantTransaction(
           context.enterpriseId!,
           (transaction) =>
             new ReferrerNetworkRepository(transaction).disableEnterpriseJoinCode({
               enterpriseId: parsePostgresId(context.enterpriseId, 'enterpriseId'),
               codeType: type,
-              actorStaffId: parsePostgresId(context.userId, 'staffId'),
+              actorStaffId,
+              // The legacy Admin endpoint manages the enterprise-wide code;
+              // personal employee codes are owned by Mini Program routes.
+              inviterStaffId: null,
             })
         );
         if (!result) {

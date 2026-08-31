@@ -18,6 +18,7 @@ test('salesperson lands on promotion records with promotion capabilities', () =>
   assert.deepEqual(navigation.ROLE_CAPABILITIES.salesperson, [
     'promotion.records',
     'promotion.commissions',
+    'referrer.network',
     'account',
   ]);
   assert.equal(
@@ -140,7 +141,7 @@ test('staff roles retain distinct landing and capability contracts', () => {
   assert.equal(navigation.getRoleLanding({ mode: 'staff', staffRole: 'measurer' }), '/pages/index/index');
   assert.equal(navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', { mode: 'staff', staffRole: 'measurer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', { mode: 'staff', staffRole: 'enterprise_admin' }), true);
-  assert.equal(navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', { mode: 'staff', staffRole: 'designer' }), false);
+  assert.equal(navigation.canAccessRoute('/packages/surveying/editor/surveying-editor', { mode: 'staff', staffRole: 'designer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/staff-activity-code/staff-activity-code', { mode: 'staff', staffRole: 'designer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/staff-activity-code/staff-activity-code', { mode: 'staff', staffRole: 'measurer' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/staff-activity-code/staff-activity-code', { mode: 'staff', staffRole: 'enterprise_admin' }), true);
@@ -150,13 +151,20 @@ test('staff roles retain distinct landing and capability contracts', () => {
   assert.equal(navigation.canAccessRoute('/packages/business/staff-earnings/staff-earnings', { mode: 'staff', staffRole: 'enterprise_admin' }), false);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-commissions/enterprise-commissions', { mode: 'staff', staffRole: 'enterprise_admin' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-commissions/enterprise-commissions', { mode: 'staff', staffRole: 'designer' }), false);
-  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-join-codes/enterprise-join-codes', { mode: 'staff', staffRole: 'enterprise_admin' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-join-codes/enterprise-join-codes', { mode: 'staff', staffRole: 'enterprise_admin', enterpriseId: '1' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-join-codes/enterprise-join-codes', { mode: 'staff', staffRole: 'designer' }), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-join-codes/enterprise-join-codes', { mode: 'staff', staffRole: 'designer', enterpriseId: '1' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-join-codes/enterprise-join-codes', { mode: 'staff', staffRole: 'measurer', enterpriseId: '1' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-join-codes/enterprise-join-codes', { mode: 'staff', staffRole: 'salesperson', enterpriseId: '1' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-staff/enterprise-staff', { mode: 'staff', staffRole: 'enterprise_admin' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-staff/enterprise-staff', { mode: 'staff', staffRole: 'designer' }), false);
-  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'enterprise_admin' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'enterprise_admin', enterpriseId: '1' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'designer' }), false);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'measurer' }), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'salesperson' }), false);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'designer', enterpriseId: '1' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'measurer', enterpriseId: '1' }), true);
+  assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'staff', staffRole: 'salesperson', enterpriseId: '1' }), true);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'referrer' }), false);
   assert.equal(navigation.canAccessRoute('/packages/business/enterprise-referrers/enterprise-referrers', { mode: 'customer' }), false);
   assert.equal(navigation.canAccessRoute('/packages/business/appointment-booking/appointment-booking', { mode: 'staff', staffRole: 'measurer' }), true);

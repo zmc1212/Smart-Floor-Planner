@@ -133,7 +133,157 @@ function isAllowedPendingPartitionRelation(floor, firstWall, secondWall, relatio
       pendingWall.endNodeId === session.closeCandidateNodeId);
 }
 
+function normalizedWallAngleDeg(start, end) {
+  let angle = Math.atan2(
+    Number(end.yMm) - Number(start.yMm),
+    Number(end.xMm) - Number(start.xMm)
+  ) * 180 / Math.PI;
+  while (angle <= -180) angle += 360;
+  while (angle > 180) angle -= 360;
+  return Math.round(angle * 10) / 10;
+}
+
+function angleDifferenceDeg(first, second) {
+  return Math.abs(((Number(first) - Number(second) + 540) % 360) - 180);
+}
+
+function normalizedNonNegativeMm(value) {
+  return Math.max(0, Math.round(Number(value) || 0));
+}
+
+function validateMeasurementSemantics(floor, index, errors) {
+  floor.nodes.forEach((node, nodeIndex) => {
+    if (
+      Number.isFinite(Number(node.xMm)) &&
+      Number.isFinite(Number(node.yMm)) &&
+      (!Number.isInteger(Number(node.xMm)) || !Number.isInteger(Number(node.yMm)))
+    ) {
+      errors.push(issue(
+        'NON_INTEGER_NODE_COORDINATE',
+        `nodes[${nodeIndex}]`,
+        `节点 ${node.id || nodeIndex} 必须使用整数毫米坐标`
+      ));
+    }
+  });
+
+  floor.walls.forEach((wall, wallIndex) => {
+    const path = `walls[${wallIndex}]`;
+    const start = index.nodesById.get(wall.startNodeId);
+    const end = index.nodesById.get(wall.endNodeId);
+    if (!start || !end) return;
+    const dx = Number(end.xMm) - Number(start.xMm);
+    const dy = Number(end.yMm) - Number(start.yMm);
+    if (wall.mode === 'straight' && Math.abs(dx) > 1 && Math.abs(dy) > 1) {
+      errors.push(issue(
+        'STRAIGHT_WALL_OFF_AXIS',
+        path,
+        `直墙 ${wall.id} 未保持水平或垂直轴线`
+      ));
+    }
+
+    [
+      'measurementStartInsetMm',
+      'measurementStartExtensionMm',
+      'measurementEndInsetMm'
+    ].forEach((field) => {
+      if (!Object.prototype.hasOwnProperty.call(wall, field)) return;
+      const value = Number(wall[field]);
+      if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+        errors.push(issue(
+          'INVALID_WALL_MEASUREMENT_ADJUSTMENT',
+          `${path}.${field}`,
+          `墙体 ${wall.id} 的测量修正必须是非负整数毫米`
+        ));
+      }
+    });
+
+    const coordinateLengthMm = Math.round(wallDomain.coordinateLength(floor, wall, index));
+    const expectedLengthMm = coordinateLengthMm -
+      normalizedNonNegativeMm(wall.measurementStartInsetMm) +
+      normalizedNonNegativeMm(wall.measurementStartExtensionMm) -
+      normalizedNonNegativeMm(wall.measurementEndInsetMm);
+    const isZeroLengthClosureConnector = expectedLengthMm === 0 &&
+      (wall.inputSource === 'closure-merge' || wall.inputSource === 'closure-bridge') &&
+      !Object.prototype.hasOwnProperty.call(wall, 'rawMeasuredLengthMm');
+    if (expectedLengthMm <= 0 && !isZeroLengthClosureConnector) {
+      errors.push(issue(
+        'INVALID_WALL_MEASUREMENT_ADJUSTMENT',
+        path,
+        `墙体 ${wall.id} 的测量修正使有效墙长小于等于零`,
+        { coordinateLengthMm, expectedLengthMm }
+      ));
+    }
+    if (!Object.prototype.hasOwnProperty.call(wall, 'lengthMm')) {
+      errors.push(issue(
+        'MISSING_WALL_LENGTH',
+        `${path}.lengthMm`,
+        `墙体 ${wall.id} 缺少保存长度`
+      ));
+    } else if (
+      !Number.isFinite(Number(wall.lengthMm)) ||
+      Math.abs(Number(wall.lengthMm) - expectedLengthMm) > 1
+    ) {
+      errors.push(issue(
+        'WALL_LENGTH_MISMATCH',
+        `${path}.lengthMm`,
+        `墙体 ${wall.id} 的保存长度与节点及测量修正不一致`,
+        { expectedLengthMm, actualLengthMm: wall.lengthMm }
+      ));
+    }
+
+    const expectedAngleDeg = normalizedWallAngleDeg(start, end);
+    const requiresAngle = wall.mode === 'straight' || wall.mode === 'diagonal';
+    if (requiresAngle && !Object.prototype.hasOwnProperty.call(wall, 'angleDeg')) {
+      errors.push(issue(
+        'MISSING_WALL_ANGLE',
+        `${path}.angleDeg`,
+        `墙体 ${wall.id} 缺少保存角度`
+      ));
+    } else if (Object.prototype.hasOwnProperty.call(wall, 'angleDeg') && (
+      !Number.isFinite(Number(wall.angleDeg)) ||
+      angleDifferenceDeg(wall.angleDeg, expectedAngleDeg) > 0.11
+    )) {
+      errors.push(issue(
+        'WALL_ANGLE_MISMATCH',
+        `${path}.angleDeg`,
+        `墙体 ${wall.id} 的保存角度与节点方向不一致`,
+        { expectedAngleDeg, actualAngleDeg: wall.angleDeg }
+      ));
+    }
+
+    const hasRawMeasurement = Object.prototype.hasOwnProperty.call(wall, 'rawMeasuredLengthMm');
+    const hasAdjustment = Object.prototype.hasOwnProperty.call(wall, 'closureAdjustmentMm');
+    if (hasRawMeasurement !== hasAdjustment) {
+      errors.push(issue(
+        'INCOMPLETE_WALL_ADJUSTMENT',
+        path,
+        `墙体 ${wall.id} 的原始读数与平差量必须成对保存`
+      ));
+    } else if (hasRawMeasurement) {
+      const rawMeasuredLengthMm = Number(wall.rawMeasuredLengthMm);
+      const adjustmentMm = Number(wall.closureAdjustmentMm);
+      const storedLengthMm = Number(wall.lengthMm);
+      if (
+        !Number.isFinite(rawMeasuredLengthMm) ||
+        !Number.isFinite(adjustmentMm) ||
+        !Number.isInteger(rawMeasuredLengthMm) ||
+        !Number.isInteger(adjustmentMm) ||
+        rawMeasuredLengthMm < 0 ||
+        !Number.isFinite(storedLengthMm) ||
+        Math.abs(storedLengthMm - rawMeasuredLengthMm - adjustmentMm) > 1
+      ) {
+        errors.push(issue(
+          'WALL_ADJUSTMENT_MISMATCH',
+          path,
+          `墙体 ${wall.id} 的原始读数、平差量与保存长度不一致`
+        ));
+      }
+    }
+  });
+}
+
 function validateFull(floor, index, errors, warnings, options) {
+  validateMeasurementSemantics(floor, index, errors);
   const wallKeys = new Map();
   floor.walls.forEach((wall, wallIndex) => {
     const start = index.nodesById.get(wall.startNodeId);

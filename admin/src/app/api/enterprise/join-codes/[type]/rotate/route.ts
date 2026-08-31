@@ -29,6 +29,7 @@ export async function POST(
         requireEnterprise: true,
       },
       async (context) => {
+        const actorStaffId = parsePostgresId(context.userId, 'staffId');
         const body = await request.json().catch(() => ({}));
         const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
         if (expiresAt && (!Number.isFinite(expiresAt.getTime()) || expiresAt <= new Date())) {
@@ -43,7 +44,10 @@ export async function POST(
             new ReferrerNetworkRepository(transaction).rotateEnterpriseJoinCode({
               enterpriseId: parsePostgresId(context.enterpriseId, 'enterpriseId'),
               codeType: type,
-              actorStaffId: parsePostgresId(context.userId, 'staffId'),
+              actorStaffId,
+              // The legacy Admin endpoint manages the enterprise-wide code;
+              // personal employee codes are owned by Mini Program routes.
+              inviterStaffId: null,
               expiresAt,
             })
         );

@@ -6,8 +6,8 @@ Git 历史保留。
 ## 当前能力
 
 - 唯一编辑入口：`miniprogram/packages/surveying/editor/surveying-editor.*`。
-- 小程序中，已派家装现场顾问可从本人任务进入；企业负责人可从本企业客户线索详情开始、继续、新增或删除正式量房。
-  入口仍由已签名角色能力和服务端租户边界双重校验；家装设计顾问只读户型预览，不因此获得量房编辑权。
+- 小程序中，负责家装设计顾问可从本人客户线索详情开始、继续、新增或删除正式量房；已派家装现场顾问可从本人任务进入；企业负责人可从本企业客户线索详情开始、继续、新增或删除正式量房。
+  入口仍由已签名角色能力和服务端租户边界双重校验。
 - 墙图内核位于 `miniprogram/packages/surveying/utils/surveyWallGraph.js` 与
   `miniprogram/packages/surveying/utils/survey/`；主包只保留不加载内核的
   `utils/surveyLayout.js`。
@@ -16,7 +16,8 @@ Git 历史保留。
   按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。
 - 支持直墙、斜墙、连续墙链、共享墙、闭合空间、门窗、尺寸规划、撤销/重做、
   右侧工具栏经确认的清空重做、BLE 读数和正式保存。底部「测距」在已连设备时把读数
-  写到待确认墙预览或已选墙；尚未拉出墙时提示「请先拉出一条墙」，不误报「请先打开数字修改」。
+  写到待确认墙预览或已选墙；测距仪硬件测距键发出的 ATD 帧走同一套写入路径，无需再点底部「测距」。
+  尚未拉出墙时提示「请先拉出一条墙」，不误报「请先打开数字修改」。
   顶部「保存」云端成功后自动返回上一页（失败则留在编辑器以便重试）。页面 `onHide` /
   `onUnload` 会立即写入本地草稿并尽力静默保存到云端；再次进入时若本地草稿比云端更新，
   则保留本地测量图并回写云端。顶栏返回为
@@ -29,7 +30,7 @@ Git 历史保留。
   只有没有 `floorPlanId` 时才发 POST。
 - 空间填充、净面积、墙体实体和尺寸均从 graph 派生；不保存 legacy layout 副本。
 - 后台 `/floorplans/[id]` 2D 查看器同步运行小程序 `surveyCanvasRenderer`（只读平移/缩放，不写 graph）；已完成的正式 v4 户型在保存时把同一套 canvas 导出为 PNG 快照（`floor_plans.preview_asset_id`，不写入 `layoutData`）。DXF、3D 和 AI 仍使用同一 graph 的只读适配器。
-- 量房画布的平移与双指缩放由主 Canvas 的 `requestAnimationFrame` 合帧绘制；主 Canvas 暂不可用时，回退的 draft 同步也按动画帧合并，手势结束时再执行一次最终 `setData` 同步，不改变 graph 或 viewport 持久化契约。
+- 量房画布的平移与双指缩放由主 Canvas 的 `requestAnimationFrame` 合帧绘制；主 Canvas 暂不可用时，回退的 draft 同步也按动画帧合并，手势结束时再执行一次最终 `setData` 同步，不改变 graph 或 viewport 持久化契约。画布投影支持可选的仅视图 `rotationRad`（`screen = center + offset + R(θ)·(mm·scale)`），θ=0 与现有无旋转映射一致。编辑器在 `getViewport()` 合入页面级 `viewRotationDeg`，不把 `rotationRad` 写入 `floor.viewport` 或 `FloorPlan.layoutData`。θ 变化时补偿 offset，使屏幕中心对应的毫米点不动。后台 2D 查看器不传旋转。
 - 已完成且至少有一个闭合空间的正式 v4 户型可导出施工 DXF；后台 Cookie 端点为
   `GET /api/floorplans/[id]/export/dxf`，小程序 Bearer-JWT 端点为
   `GET /api/miniprogram/floorplans/[id]/export/dxf`。适配器只读取 graph，使用
@@ -61,7 +62,11 @@ Git 历史保留。
 正式户型 POST/PUT 的非 v4 外壳仍返回 400；`draft` 执行 `quick` 校验，
 `completed` 执行增强后的 `full` 校验并要求至少一个闭合 Space。校验先于数据库写入与
 预览生成，且不修复、不改写客户端 graph。无效正式图返回 422，并携带首个错误消息、
-具体错误码以及 `validation.mode/errors/stats`。
+具体错误码以及 `validation.mode/errors/stats`。`full` 还要求直/斜墙保存有效的
+`lengthMm` 与 `angleDeg`，墙长/角度必须与整数毫米节点及测量修正一致；三个
+`measurement*Mm` 修正必须是非负整数且不能把实测墙长压到零（没有仪器读数的零读数
+`closure-merge` / `closure-bridge` 拓扑连接段除外）。原始读数和平差量必须成对保存并满足
+`lengthMm = rawMeasuredLengthMm + closureAdjustmentMm`。
 
 关联线索处于 `new` 或 `measuring` 时可以删除正式户型；进入 `designing`、
 `converted` 或 `closed` 后，户型是后续流程的必要依据，删除接口返回业务冲突。
@@ -75,7 +80,15 @@ Git 历史保留。
   已正确打断并共享节点的 T/十字、多房间共享墙和 `closure-bridge` 仍合法。
 - 手工与 BLE 复尺单独使用 `full` 不可变事务；产生穿墙、未打断 T 接或重叠时整笔拒绝并
   回滚，draft、房间、门窗和历史输入都不变，不自动拆墙或节点化。
-- 本批将当前正确的合法量房效果作为兼容基线：不改吸附/闭合容差、闭合推断、多房共享墙、
+- 独立、无门窗、无共享/分支的正交墙链回到起点且误差在闭合容差内时，预览和确认共用同一
+  闭合平差解析器：按各轴墙长权重分摊 X/Y 残差，保持每段方向和最小墙长，并在承诺闭合前
+  用平差后的投影重查所有非相邻墙及外部墙。平差后仍自交、重叠、碰到外墙，或链中含斜墙、
+  共享节点、门窗时不提供该闭合。确认输入立即保存 `rawMeasuredLengthMm` /
+  `closureAdjustmentMm`，后续端点内缩、共线合并与拆墙保持二者可追溯。
+- 闭合正交房间复尺只在被测墙所在坐标轴内平差；另一轴的当前坐标长度和既有审计元数据保持
+  不变，因此连续横向、纵向复尺不会互相漂移。开口墙与闭合房间复尺都在移动节点前检查现有
+  门窗范围，容纳不下时抛出 `OPENING_REMEASURE_CONFLICT`，不再归一化并暗移门窗。
+- 本批将当前正确的合法量房效果作为兼容基线：不改吸附/闭合容差、多房共享墙、
   Face 提取、墙体内外皮、Canvas、WXML/Less 或操作流程。除下述“闭合房间内部 L 形分隔误继承
   外墙外皮”“确认首段后续拖穿墙”“共用墙分隔拆段后实体侧翻转”和“分隔线压到门窗”的定向纠正外，原本正确的
   合法操作保持不变。墙面继承纠正不改变 `nodes / walls / openings / session`，穿墙纠正只收紧
@@ -149,9 +162,18 @@ Git 历史保留。
 
 ## BLE 与测量审计
 
-BLE 集成位于 `miniprogram/utils/bluetooth.js`。读数以毫米写入正式测量审计，
-并保留来源、操作员和时间。首次云端保存前的读数在本地排队，获得正式
-`floorPlanId` 后再提交；临时回调所有者关闭时恢复普通回调。客户端同时发送顶层
+BLE 集成位于 `miniprogram/utils/bluetooth.js`。ATD 仅接受厂商协议定义的完整 17 字节帧，
+校验 `ATD` 头、`#` 尾和 CRC 后，以大端无符号距离与大端有符号 X/Y 角度解析；原始帧、通道和
+接收时间随审计保留。只有不同通知通道在 350ms 内送达的同一完整帧会去重，同一通道连续相同
+读数仍逐次交付。读数以毫米写入正式测量审计，并保留来源、操作员和时间。软件控制是底部
+「测距」发送 `ATK001#` / `ATD001#` 后把回包写到当前墙；硬件控制是测距仪按键主动上报，
+编辑器按当前预览墙或已选墙写入，审计 `metadata.bleOrigin` 为 `device`。软件请求超时或完成后的
+迟到帧不会再被误当作下一次硬件按键读数。
+
+审计采用本地 write-ahead：先按草稿持久化，再尝试网络提交；获得正式 `floorPlanId` 时原子迁移到
+该户型作用域并绑定每条记录，加载/保存正式户型都会重试。队列超过 500 条只告警、不静默截断，
+绑定到另一户型的记录拒绝发送。门窗嵌入键盘的一串按键合并为最终一次人工审计，BLE 新墙在提交
+成功后补入真实 `wallId`；页面关闭会恢复进入前的整组 BLE 回调。客户端同时发送顶层
 `auditId` 与兼容的 `metadata.auditId`。正式量房审计必须提供非空且不超过 200 字符的
 `auditId`；其他来源可选。PostgreSQL 使用 nullable `measurements.audit_id` 以及
 `(floor_plan_id, audit_id) WHERE audit_id IS NOT NULL` 部分唯一索引兜底：首次创建返回

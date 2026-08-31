@@ -297,6 +297,82 @@ test('phone authorization auto-submits when form fields are ready', async () => 
   }
 });
 
+test('open-account phone auth accepts encryptedData when WeChat omits the dynamic code', async () => {
+  const {
+    refreshWechatLoginCode,
+    resetWechatLoginCodeForTests
+  } = require('../utils/wechat-phone-auth.js');
+  const definition = loadPage();
+  const originalPhoneLogin = api.phoneLogin;
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  const payloads = [];
+  const codes = ['pre-tap-code', 'next-code'];
+  resetWechatLoginCodeForTests();
+  global.wx = {
+    ...(originalWx || {}),
+    showToast() {},
+    showModal() {},
+    login(options) {
+      const code = codes.shift();
+      if (options.success) options.success({ code });
+      if (options.complete) options.complete();
+    }
+  };
+  api.phoneLogin = async (payload) => {
+    payloads.push(payload);
+    return {
+      user: { mode: 'customer', phone: '13800138000', nickname: '张三' }
+    };
+  };
+  api.request = async () => ({ success: true });
+  try {
+    await refreshWechatLoginCode();
+    const context = {
+      data: {
+        ...definition.data,
+        pageState: 'ready',
+        canSubmit: true,
+        registrationToken: `er_${'D'.repeat(32)}`,
+        enterpriseName: '测试企业',
+        creditCode: '91310000MA1KTEST01',
+        contactName: '张三',
+        contactEmail: '',
+        contactPhone: '13800138000',
+        authorizedPhone: '',
+        submitting: false
+      },
+      setData(next) {
+        Object.assign(this.data, next);
+      },
+      async submitRegistration() {
+        return definition.submitRegistration.call(this);
+      },
+      leaveIfWorkbenchSignedIn() {
+        return false;
+      },
+      onGoToLogin() {}
+    };
+    await definition.onGetPhoneNumber.call(context, {
+      detail: {
+        errMsg: 'getPhoneNumber:ok',
+        encryptedData: 'cipher',
+        iv: 'init-vector'
+      }
+    });
+    assert.deepEqual(payloads, [{
+      loginCode: 'pre-tap-code',
+      encryptedData: 'cipher',
+      iv: 'init-vector'
+    }]);
+  } finally {
+    resetWechatLoginCodeForTests();
+    api.phoneLogin = originalPhoneLogin;
+    api.request = originalRequest;
+    global.wx = originalWx;
+  }
+});
+
 test('contact phone accepts manual input and blocks auto-submit on authorization mismatch', async () => {
   const definition = loadPage();
   const originalPhoneLogin = api.phoneLogin;

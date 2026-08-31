@@ -50,7 +50,12 @@ copy back to `layoutData`.
   frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
   coalesced to one callback per animation frame and flushed once at gesture end;
   this is a rendering-performance path only and does not change graph data or
-  viewport persistence.
+  viewport persistence. The canvas projector accepts an optional view-only
+  `rotationRad` (`screen = center + offset + R(θ)·(mm·scale)`). θ=0 matches the
+  unrotated mapping. The editor merges page-level `viewRotationDeg` in
+  `getViewport()` and never writes `rotationRad` into `floor.viewport` or
+  `FloorPlan.layoutData`. Changing θ compensates offset so the millimetre point
+  at screen centre stays fixed. The Admin 2D viewer does not pass rotation.
 - Autosave, manual draft save, and completed submission share one serialized
   cloud-save queue. Only one save is in flight; a queued `completed` request
   upgrades and takes priority over queued `draft` work. New floor-plan POSTs
@@ -122,9 +127,30 @@ copy back to `layoutData`.
   Idempotent creation returns 201 with `deduplicated: false` for the first row
   and the same row with 200 and `deduplicated: true` for a duplicate. Existing
   null rows are neither backfilled nor merged.
-- Readings captured before the first cloud save remain queued until a formal
-  `floorPlanId` exists.
-- Temporary BLE callback owners restore the normal callback when they close.
+- Every accepted manual or BLE edit is persisted to a local write-ahead queue
+  before its upload starts. Before the first cloud save the queue is scoped to
+  the stable local draft; when a formal `floorPlanId` is obtained, compatible
+  records are atomically moved and bound to that plan. Loading or saving the
+  plan retries the queue. More than 500 pending records emits a warning but
+  never truncates the queue, and a record bound to another plan is not sent.
+- Temporary BLE callback owners replace and restore the complete measure,
+  connect, and disconnect callback set when they close.
+- Hardware-triggered ATD frames (the meter's measure key, without an app
+  `ATD001#` query) use the same pending-wall / selected-wall write path as the
+  dock 测距 action. Audits set `metadata.bleOrigin` to `device` for those frames
+  and `app` for software-initiated queries. A valid ATD with no pending or
+  selected wall toasts「请先拉出一条墙」.
+- ATD parsing accepts only the vendor-defined complete 17-byte frame with the
+  `ATD` header, `#` tail, and valid CRC. Distance is an unsigned big-endian
+  32-bit value divided by 10,000; X/Y angles are signed big-endian 32-bit values
+  divided by 10. The audit retains the raw frame, notification channel, and
+  receive time. Only identical complete frames delivered by different channels
+  within 350 ms are deduplicated; repeated same-channel readings remain distinct.
+  A short guard after an app request completes or times out prevents its late
+  response from being classified as a hardware-key reading.
+- A sequence of embedded-component keyboard edits is collapsed into one manual
+  audit containing the final accepted value. A BLE reading applied to a pending
+  wall records the actual wall ID created by the commit, not the preview ID.
 - Failed cloud saves restore the last readable graph and undo/redo state; failed
   intermediate drafts are not persisted as a new layout contract.
 - Successful top-bar Save (`onSaveDraft`) persists the formal draft locally and
@@ -167,10 +193,25 @@ copy back to `layoutData`.
   overlap as `OVERLAPPING_WALLS`. These checks use integer-millimetre centerlines
   and the existing geometry epsilon; the 350 mm snap tolerance is not a
   topology-validity tolerance.
+- Full validation also requires every straight/diagonal wall to store an integer
+  millimetre `lengthMm` and the mode-required `angleDeg`. Measurement inset and
+  extension fields must be non-negative integer millimetres and may not consume
+  the effective measured length, except for synthesized zero-reading
+  `closure-merge` / `closure-bridge` connectors that have no raw instrument
+  reading. `rawMeasuredLengthMm` and `closureAdjustmentMm` must appear as a
+  finite integer pair satisfying
+  `lengthMm = rawMeasuredLengthMm + closureAdjustmentMm`.
 - Manual and BLE wall remeasurement execute the same immutable transaction with
   `full` validation. An invalid crossing, unsplit T touch, or overlap rejects
   the transaction and leaves graph, spaces, openings, history, and draft
   unchanged; it does not auto-split or auto-node walls.
+- Remeasuring an isolated closed orthogonal cycle balances residual only on the
+  selected wall's axis; the other axis keeps its current coordinate lengths and
+  audit metadata, so consecutive horizontal and vertical remeasurements do not
+  undo one another. Open-chain and closed-cycle remeasurement both preflight all
+  hosted opening spans before moving nodes. A wall that can no longer contain
+  its opening rejects atomically with `OPENING_REMEASURE_CONFLICT`; it never
+  silently moves or normalizes that opening.
 - This hardening freezes the current correct valid-survey result as the
   compatibility baseline. It does not change snap/closure tolerances, closure
   inference, multi-room shared-wall behavior, face extraction, wall bodies,
@@ -191,6 +232,15 @@ copy back to `layoutData`.
 
 ## Geometry invariants
 
+- When an isolated, opening-free, unshared, unbranched orthogonal chain returns
+  within the close tolerance, preview and confirmation use one closure-adjustment
+  plan. It distributes the X/Y residual over same-axis walls by measured-length
+  weight, preserves direction and minimum wall length, and projects the whole
+  result before offering closure. Any adjusted non-adjacent self-intersection,
+  overlap, or contact with an external wall rejects the plan. Confirmation
+  retains every raw instrument value in `rawMeasuredLengthMm` and the derived
+  correction in `closureAdjustmentMm`; endpoint inset, collinear merge, and
+  host-wall split operations preserve that traceable pair.
 - A physical wall is stored once. An inferred orthogonal close absorbs a
   collinear continuation into the last measured wall instead of storing a
   butt joint. Two new walls started from a closed-room corner close against

@@ -58,10 +58,13 @@ test('Mine hosts account settings inline and routes deep pages separately', () =
   assert.match(mineWxml, /bindtap="onOpenIdentitySwitch"/);
   assert.match(mineWxml, /当前身份/);
   assert.match(mineWxml, /在个人用户、员工和推荐人身份之间切换/);
-  assert.match(mineWxml, /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, roleGuideHelper\}\}"/);
+  assert.match(mineWxml, /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper\}\}"/);
   assert.match(mineWxml, /wx:if="\{\{showRoleGuideEntry\}\}"[\s\S]*bindtap="onOpenRoleGuide"/);
   assert.match(mineWxml, /角色使用引导/);
   assert.match(mineWxml, /roleGuideHelper/);
+  assert.match(mineWxml, /wx:if="\{\{showReferrerNetworkEntry\}\}"[\s\S]*bindtap="onOpenReferrerNetwork"/);
+  assert.match(mineJs, /referrerNetworkEntryForIdentity\(/);
+  assert.match(mineJs, /onOpenReferrerNetwork\(\)[\s\S]*enterprise-referrers\/enterprise-referrers/);
   assert.match(mineJs, /mineRoleGuideEntry\(/);
   assert.match(mineJs, /onOpenRoleGuide\(\)[\s\S]*openMineRoleGuide\(/);
   assert.match(mineWxml, /账号与安全[\s\S]*onOpenAccountSecurity|onOpenAccountSecurity[\s\S]*账号与安全/);

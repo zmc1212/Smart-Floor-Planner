@@ -1012,6 +1012,13 @@ type RosterReferrerInput = {
   joinedAt?: Date | string | null;
   exitedAt?: Date | string | null;
   hasActivePromotionCode?: boolean | null;
+  canDisable?: boolean;
+  inviter?: {
+    id: bigint | number | string | null;
+    displayName?: string | null;
+    role?: string | null;
+    status?: string | null;
+  } | null;
 };
 
 function formatReferrerJoinedAt(value: Date | string | null | undefined) {
@@ -1028,6 +1035,16 @@ export function buildEnterpriseReferrerRosterItem(member: RosterReferrerInput) {
   const displayName =
     String(member.displayName || '').trim() || String(member.phone || '').trim() || '未命名推荐人';
   const phone = String(member.phone || '').trim() || null;
+  const inviter = member.inviter
+    ? {
+        id: member.inviter.id == null ? null : String(member.inviter.id),
+        displayName:
+          String(member.inviter.displayName || '').trim() || '未命名员工',
+        role: member.inviter.role || null,
+        status: member.inviter.status || null,
+      }
+    : null;
+  const canDisable = member.canDisable !== false;
   const helperText = status === 'active'
     ? (hasActivePromotionCode ? '可出示活动推广码' : '暂无活动推广码')
     : status === 'disabled'
@@ -1037,6 +1054,7 @@ export function buildEnterpriseReferrerRosterItem(member: RosterReferrerInput) {
     id: String(member.id),
     displayName,
     phone,
+    inviter,
     status,
     joinedAt: member.joinedAt ?? null,
     exitedAt: member.exitedAt ?? null,
@@ -1045,8 +1063,8 @@ export function buildEnterpriseReferrerRosterItem(member: RosterReferrerInput) {
     statusLabel: status === 'active' ? '活动' : status === 'disabled' ? '已停用' : '已退出',
     statusTone: status === 'active' ? 'green' : 'orange',
     helperText,
-    action: status === 'active' ? 'disable' : null,
-    actionLabel: status === 'active' ? '停用后续扫码' : '',
+    action: status === 'active' && canDisable ? 'disable' : null,
+    actionLabel: status === 'active' && canDisable ? '停用后续扫码' : '',
   };
 }
 

@@ -21,9 +21,13 @@ function makeDraft(nodes, walls) {
   const draft = surveyGraph.createSurveyDraft();
   const floor = surveyGraph.getActiveFloor(draft);
   floor.nodes = nodes;
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
   floor.walls = walls.map((wall) => ({
     thicknessMm: 200,
-    lengthMm: 1000,
+    lengthMm: Math.round(Math.hypot(
+      nodeById.get(wall.endNodeId).xMm - nodeById.get(wall.startNodeId).xMm,
+      nodeById.get(wall.endNodeId).yMm - nodeById.get(wall.startNodeId).yMm
+    )),
     ...wall
   }));
   floor.openings = [];

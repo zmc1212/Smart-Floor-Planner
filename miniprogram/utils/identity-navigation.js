@@ -12,10 +12,10 @@ const ROLE_LANDING_PATHS = Object.freeze({
 const ROLE_CAPABILITIES = Object.freeze({
   customer: ['customer.service', 'customer.projects', 'account'],
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
-  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'account'],
-  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'account'],
-  salesperson: ['promotion.records', 'promotion.commissions', 'account'],
-  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'account'],
+  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'staff.earnings', 'referrer.network', 'account'],
+  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'referrer.network', 'account'],
+  salesperson: ['promotion.records', 'promotion.commissions', 'referrer.network', 'account'],
+  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'referrer.network', 'account'],
   platform_admin: ['platform.review', 'platform.devices', 'account'],
   staff: ['staff.leads', 'staff.appointments', 'account']
 });
@@ -37,7 +37,7 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/appointment-booking/appointment-booking': ['customer.projects', 'staff.appointments', 'staff.tasks', 'enterprise.appointments'],
   '/packages/business/appointment-detail/appointment-detail': ['customer.projects', 'staff.appointments', 'staff.schedule', 'enterprise.appointments'],
   '/packages/business/appointment-reschedule/appointment-reschedule': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
-  '/packages/surveying/editor/surveying-editor': ['staff.surveying', 'enterprise.customers'],
+  '/packages/surveying/editor/surveying-editor': ['staff.surveying', 'staff.leads', 'enterprise.customers'],
   '/packages/business/measurer-calendar/measurer-calendar': 'staff.schedule',
   '/packages/business/enterprise-appointments/enterprise-appointments': 'enterprise.appointments',
   '/packages/business/enterprise-commissions/enterprise-commissions': 'enterprise.commissions',
@@ -57,9 +57,9 @@ const ROUTE_CAPABILITIES = Object.freeze({
   '/packages/business/recommendations/index': 'staff.design',
   '/packages/business/promotion-service-code/promotion-service-code': 'referrer.promotion',
   '/packages/business/staff-activity-code/staff-activity-code': ['staff.leads', 'staff.tasks', 'staff.schedule', 'enterprise.operations'],
-  '/packages/business/enterprise-join-codes/enterprise-join-codes': 'enterprise.operations',
+  '/packages/business/enterprise-join-codes/enterprise-join-codes': 'referrer.network',
   '/packages/business/enterprise-staff/enterprise-staff': 'enterprise.operations',
-  '/packages/business/enterprise-referrers/enterprise-referrers': 'enterprise.operations',
+  '/packages/business/enterprise-referrers/enterprise-referrers': 'referrer.network',
   '/packages/business/customer-projects/customer-projects': 'customer.projects',
   '/packages/business/customer-project/customer-project': 'customer.projects',
   '/packages/business/service-needs/service-needs': 'customer.projects',
@@ -148,6 +148,19 @@ function availableRoleCapabilities(bootstrap) {
   return roles.flatMap((item) => item.capabilities || ROLE_CAPABILITIES[item.role] || []);
 }
 
+function hasEnterpriseContext(identity) {
+  const value = identity && identity.enterpriseId;
+  if (typeof value === 'number' && !Number.isSafeInteger(value)) return false;
+  return /^[1-9]\d*$/.test(String(value == null ? '' : value).trim());
+}
+
+function fallbackRoleCapabilities(identity) {
+  const capabilities = ROLE_CAPABILITIES[roleForIdentity(identity)] || [];
+  return capabilities.filter((capability) => (
+    capability !== 'referrer.network' || hasEnterpriseContext(identity)
+  ));
+}
+
 function canAccessRoute(route, bootstrapOrIdentity) {
   const path = routePath(route);
   const required = ROUTE_CAPABILITIES[path];
@@ -157,7 +170,7 @@ function canAccessRoute(route, bootstrapOrIdentity) {
     : null;
   const capabilities = bootstrap
     ? (bootstrap.current.capabilities || (bootstrap.navigation && bootstrap.navigation.capabilities) || [])
-    : (ROLE_CAPABILITIES[roleForIdentity(bootstrapOrIdentity)] || []);
+    : fallbackRoleCapabilities(bootstrapOrIdentity);
   if (capabilitiesMatch(required, capabilities)) return true;
   // Replay-only: a signed customer may reopen a guide they already hold as
   // another identity. Other workbench routes still require the current JWT.
@@ -228,8 +241,10 @@ module.exports = {
   roleForIdentity,
   normalizeIdentity,
   getRoleLanding,
+  hasEnterpriseContext,
   isRoleLanding,
   navigateToRoleLanding,
+  fallbackRoleCapabilities,
   canAccessRoute,
   guardDeepLink,
   isScanLandingRoute,

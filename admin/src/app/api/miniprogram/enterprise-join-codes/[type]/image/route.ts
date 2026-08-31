@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { ReferrerNetworkRepository } from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { requireMiniProgramReferrerNetwork } from '@/lib/miniprogram-portal-authority';
 import { getPlatformMiniProgramCodeConfig } from '@/lib/platform-mini-program-code-config';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import {
@@ -23,15 +24,6 @@ export async function GET(
   if (!context) {
     return referrerNetworkError('unauthorized', { status: 401 });
   }
-  if (
-    context.mode !== 'staff' ||
-    !context.enterpriseId ||
-    !context.staff ||
-    context.staff.role !== 'enterprise_admin'
-  ) {
-    return referrerNetworkError('enterprise_admin_required', { status: 403 });
-  }
-
   const { type } = await params;
   if (!isEnterpriseJoinCodeType(type)) {
     return referrerNetworkError('invalid_code_type', { status: 400 });
@@ -39,18 +31,29 @@ export async function GET(
 
   let revealed: { token: string } | null = null;
   try {
+    const role = requireMiniProgramReferrerNetwork(context);
+    if (type === 'staff' && role !== 'enterprise_admin') {
+      return referrerNetworkError('enterprise_admin_required', { status: 403 });
+    }
     const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
-    const staffId = parsePostgresId(context.staff._id, 'staffId');
+    const staffId = parsePostgresId(context.staff!._id, 'staffId');
     revealed = await withMiniProgramPostgresTransaction(context, (transaction) =>
       new ReferrerNetworkRepository(transaction).revealActiveEnterpriseJoinCode({
         enterpriseId,
         codeType: type,
         actorStaffId: staffId,
+        inviterStaffId: type === 'referrer' ? staffId : null,
       })
     );
   } catch (error) {
     console.error('[MiniProgramEnterpriseJoinCodes] reveal failed', error);
-    return referrerNetworkError('join_code_lookup_failed', { status: 500 });
+    const businessError = error as { code?: string; status?: number };
+    return businessError.code && businessError.status
+      ? referrerNetworkError(businessError.code, {
+          status: businessError.status,
+          message: error instanceof Error ? error.message : undefined,
+        })
+      : referrerNetworkError('join_code_lookup_failed', { status: 500 });
   }
 
   if (!revealed) {

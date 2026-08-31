@@ -30,8 +30,8 @@ import {
   notifyEnterpriseAdminOfNewLead,
 } from '@/lib/wechat-notification';
 import {
-  getWechatPhoneNumber,
-  getWechatSessionIdentity,
+  hasDirectWechatPhoneAuthorization,
+  resolveWechatPhoneLogin,
 } from '@/lib/wechat-miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
@@ -47,9 +47,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const directPhoneAuthorization =
-      typeof body.loginCode === 'string' &&
-      typeof body.phoneCode === 'string';
+    const directPhoneAuthorization = hasDirectWechatPhoneAuthorization(body);
     if (payload && payload.mode !== 'customer' && !directPhoneAuthorization) {
       return referrerNetworkError('customer_context_required', {
         status: 403,
@@ -80,10 +78,7 @@ export async function POST(request: Request) {
     }
 
     const wechat = directPhoneAuthorization
-      ? await Promise.all([
-          getWechatSessionIdentity(body.loginCode),
-          getWechatPhoneNumber(body.phoneCode),
-        ]).then(([identity, phone]) => ({ ...identity, phone }))
+      ? await resolveWechatPhoneLogin(body)
       : null;
 
     const result = await withPlatformTransaction(async (transaction) => {

@@ -211,15 +211,17 @@ test('designer and enterprise owner AI design CTA appears on open leads without 
   assert.match(template, /\{\{aiDesignEmptyHint\}\}/);
 });
 
-test('enterprise owner has the full lead-detail surveying action set', () => {
+test('enterprise owner and assigned designer have the lead-detail surveying action set', () => {
   const script = fs.readFileSync(
     path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
     'utf8'
   );
+  assert.match(script, /function canEditLeadMeasurements\(/);
   assert.match(
     script,
-    /canEditMeasurements: staffRole === 'enterprise_admin' \|\| staffRole === 'measurer' \|\| isAssignedMeasurer/
+    /staffRole === 'designer' && staffIdOf\(lead\.assignedTo\) === staffId/
   );
+  assert.match(script, /canEditMeasurements: canEditLeadMeasurements\(/);
   assert.doesNotMatch(script, /enterprise_admin[\s\S]{0,100}查看量房进度与服务安排/);
   assert.match(template, /wx:if="\{\{canEditMeasurements\}\}"[\s\S]*?开始量房/);
   assert.match(template, /wx:if="\{\{canEditMeasurements && activeFloorPlan\}\}"[\s\S]*?新增量房[\s\S]*?删除/);

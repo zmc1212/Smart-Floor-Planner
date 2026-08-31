@@ -204,7 +204,7 @@ test('closing a room automatically enters the reset-cursor wall-drop state', () 
   );
   assert.match(
     editorScript,
-    /maybeAutoConfirmSharedBoundaryClose\(\s*surveyGraph\.commitPreviewLength\(this\.draft, value, 'manual'\)[\s\S]*?this\.enterResetCursorAfterClose\(nextDraft\)/
+    /maybeAutoConfirmSharedBoundaryClose\(\s*surveyGraph\.commitPreviewLength\(this\.draft, value, lengthInputSource\)[\s\S]*?this\.enterResetCursorAfterClose\(nextDraft\)/
   );
   assert.match(
     editorScript,
@@ -258,6 +258,6 @@ test('opening split conflicts reuse the existing non-layout closure toast path',
   );
   assert.match(
     editorScript,
-    /if \(session\.state === 'awaitingLength' \|\| session\.state === 'wallPreview'\) \{[\s\S]*?surveyGraph\.commitPreviewLength\(this\.draft, value, 'manual'\)[\s\S]*?catch \(err\) \{\s*wx\.showToast\(\{ title: err\.message \|\| '输入无效', icon: 'none' \}\);/
+    /if \(session\.state === 'awaitingLength' \|\| session\.state === 'wallPreview'\) \{[\s\S]*?surveyGraph\.commitPreviewLength\(this\.draft, value, lengthInputSource\)[\s\S]*?catch \(err\) \{\s*wx\.showToast\(\{ title: err\.message \|\| '输入无效', icon: 'none' \}\);/
   );
 });

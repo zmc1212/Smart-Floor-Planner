@@ -1,4 +1,5 @@
 import type { MiniProgramContext } from '@/lib/miniprogram-auth';
+import { getMiniProgramCapabilities } from '@/lib/miniprogram-bootstrap';
 
 export function requireMiniProgramPortalMode(
   context: MiniProgramContext,
@@ -46,4 +47,25 @@ export function requireMiniProgramEnterpriseAdmin(context: MiniProgramContext) {
       code: 'miniprogram_portal_forbidden',
     });
   }
+}
+
+export function requireMiniProgramReferrerNetwork(context: MiniProgramContext) {
+  const role = context.staff?.role;
+  const capabilities = getMiniProgramCapabilities({
+    mode: context.mode,
+    staffRole: role ?? null,
+    enterpriseId: context.enterpriseId,
+  });
+  if (
+    context.mode !== 'staff' ||
+    !context.enterpriseId ||
+    !context.staff?._id ||
+    !capabilities.includes('referrer.network')
+  ) {
+    throw Object.assign(new Error('当前员工身份无权访问推广人网络'), {
+      status: 403,
+      code: 'miniprogram_portal_forbidden',
+    });
+  }
+  return role;
 }

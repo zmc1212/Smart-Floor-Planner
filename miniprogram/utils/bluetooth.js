@@ -6,6 +6,8 @@ var _onMeasureCallback = null;
 var _isConnecting = false;
 var _onConnectCallback = null;
 var _onDisconnectCallback = null;
+var _callbackOwnerSeed = 0;
+var _activeCallbackOwnerToken = 0;
 var _scanTimer = null; // 搜索总时间计时器
 var _scanPollTimer = null; // 搜索期间轮询已发现列表
 var _foundDevices = []; // 发现的目标设备列表，用于超时判断
@@ -19,6 +21,7 @@ var _deviceName = ''; // 存储当前连接的设备名称
 var _hasTriggeredReady = false; // 确保就绪回调仅触发一次
 var _hasRequestedDeviceIdCode = false; // 每次连接只查询一次 ATC001# 机器 ID
 var _dataBuffersByChannel = {};
+var _recentAtdFrameDeliveries = {};
 var _enrollMode = false;
 var _enrollCollectMode = false;
 var _onEnrollDeviceFound = null;
@@ -31,6 +34,7 @@ var _heartbeatTimer = null;
 var _lastResponseTime = 0;
 const HEARTBEAT_INTERVAL = 5000; // 5秒发一次心跳
 const HEARTBEAT_TIMEOUT = 12000;  // 12秒没收到任何回复认为断开
+const ATD_CROSS_CHANNEL_DEDUP_WINDOW_MS = 350;
 
 const TARGET_DEVICE_NAME = 'LDMStudio 4D';
 const TARGET_DEVICE_NAME_TOKEN = 'LDMSTUDIO';
@@ -462,9 +466,12 @@ function ensureBluetoothAdapterOpen(options) {
 }
 
 function initBLE(callback, connectCallback, disconnectCallback, silent = false, options = {}) {
-  _onMeasureCallback = callback;
-  _onConnectCallback = connectCallback;
-  _onDisconnectCallback = disconnectCallback;
+  if (callback !== undefined || connectCallback !== undefined || disconnectCallback !== undefined) {
+    _activeCallbackOwnerToken = 0;
+  }
+  if (callback !== undefined) _onMeasureCallback = callback;
+  if (connectCallback !== undefined) _onConnectCallback = connectCallback;
+  if (disconnectCallback !== undefined) _onDisconnectCallback = disconnectCallback;
   _verifyingDevices = {}; // 重置验证状态
   _unauthorizedMessages = [];
   _nearbySeenById = {};
@@ -795,6 +802,166 @@ function cancelBLEDiscovery() {
   }
 }
 
+function normalizeFrameBytes(frameBytes) {
+  if (Array.isArray(frameBytes)) return frameBytes.slice();
+  if (frameBytes instanceof Uint8Array) {
+    return Array.prototype.slice.call(frameBytes);
+  }
+  if (frameBytes instanceof ArrayBuffer) {
+    return Array.prototype.slice.call(new Uint8Array(frameBytes));
+  }
+  return [];
+}
+
+/**
+ * 按厂商 Ver 1.04 协议解析固定 17 字节 ATD 帧。
+ * 距离是无符号 int32 BE（万分之一米），X/Y 角度是有符号 int32 BE（十分之一度）。
+ */
+function parseAtdFrame(frameBytes, channelInfo, receivedAtMs) {
+  var bytes = normalizeFrameBytes(frameBytes);
+  var timestamp = Number.isFinite(Number(receivedAtMs)) ? Number(receivedAtMs) : Date.now();
+  var info = channelInfo || {};
+  var serviceId = String(info.serviceId || 'unknown-service');
+  var characteristicId = String(info.characteristicId || 'unknown-characteristic');
+  var channelKey = info.channelKey || getBleChannelKey(serviceId, characteristicId);
+  var channelLabel = info.channelLabel || getBleChannelLabel(serviceId, characteristicId);
+  var rawFrameHex = bytesToHex(bytes);
+
+  if (bytes.length !== 17) {
+    return {
+      valid: false,
+      error: 'invalid_length',
+      frameLength: bytes.length,
+      rawFrameHex: rawFrameHex,
+      receivedAtMs: timestamp
+    };
+  }
+  if (bytes[0] !== 0x41 || bytes[1] !== 0x54 || bytes[2] !== 0x44) {
+    return {
+      valid: false,
+      error: 'invalid_header',
+      rawFrameHex: rawFrameHex,
+      receivedAtMs: timestamp
+    };
+  }
+  if (bytes[16] !== 0x23) {
+    return {
+      valid: false,
+      error: 'invalid_tail',
+      rawFrameHex: rawFrameHex,
+      receivedAtMs: timestamp
+    };
+  }
+
+  var computedCrc = 0;
+  for (var crcIndex = 0; crcIndex < 15; crcIndex += 1) {
+    computedCrc += bytes[crcIndex];
+  }
+  computedCrc %= 256;
+  var receivedCrc = bytes[15];
+  if (computedCrc !== receivedCrc) {
+    return {
+      valid: false,
+      error: 'crc_mismatch',
+      computedCrc: computedCrc,
+      receivedCrc: receivedCrc,
+      rawFrameHex: rawFrameHex,
+      receivedAtMs: timestamp
+    };
+  }
+
+  var distanceBytes = new Uint8Array(bytes.slice(3, 7));
+  var angleXBytes = new Uint8Array(bytes.slice(7, 11));
+  var angleYBytes = new Uint8Array(bytes.slice(11, 15));
+  var rawDistance = new DataView(distanceBytes.buffer).getUint32(0, false);
+  var rawAngleX = new DataView(angleXBytes.buffer).getInt32(0, false);
+  var rawAngleY = new DataView(angleYBytes.buffer).getInt32(0, false);
+  return {
+    valid: true,
+    distanceInMeters: rawDistance / 10000.0,
+    metadata: {
+      protocol: 'ATD',
+      rawFrameHex: rawFrameHex,
+      rawFrameHexCompact: rawFrameHex.replace(/\s+/g, ''),
+      rawDistance: rawDistance,
+      angleXRaw: rawAngleX,
+      angleYRaw: rawAngleY,
+      angleXDeg: rawAngleX / 10.0,
+      angleYDeg: rawAngleY / 10.0,
+      crc: receivedCrc,
+      computedCrc: computedCrc,
+      crcValid: true,
+      receivedAtMs: timestamp,
+      receivedAt: new Date(timestamp).toISOString(),
+      channelKey: channelKey,
+      channelLabel: channelLabel,
+      serviceId: serviceId,
+      characteristicId: characteristicId,
+      deviceId: _deviceId || '',
+      deviceName: _deviceName || ''
+    }
+  };
+}
+
+function resetAtdFrameDeduplication() {
+  _recentAtdFrameDeliveries = {};
+}
+
+/**
+ * 仅压制“不同通知特征值”在极短时间内转发的同一完整帧。
+ * 同一通道的连续相同量测仍正常交付，不会误伤连续测量。
+ */
+function shouldSuppressDuplicateAtdFrame(rawFrameHex, channelKey, receivedAtMs) {
+  var timestamp = Number.isFinite(Number(receivedAtMs)) ? Number(receivedAtMs) : Date.now();
+  var frameKey = String(rawFrameHex || '');
+  var sourceChannelKey = String(channelKey || 'unknown-channel');
+  if (!frameKey) return false;
+
+  var recentKeys = Object.keys(_recentAtdFrameDeliveries);
+  for (var recentIndex = 0; recentIndex < recentKeys.length; recentIndex += 1) {
+    var recentKey = recentKeys[recentIndex];
+    if (timestamp - _recentAtdFrameDeliveries[recentKey].receivedAtMs > ATD_CROSS_CHANNEL_DEDUP_WINDOW_MS) {
+      delete _recentAtdFrameDeliveries[recentKey];
+    }
+  }
+
+  var previous = _recentAtdFrameDeliveries[frameKey];
+  if (
+    previous &&
+    previous.channelKey !== sourceChannelKey &&
+    timestamp >= previous.receivedAtMs &&
+    timestamp - previous.receivedAtMs <= ATD_CROSS_CHANNEL_DEDUP_WINDOW_MS
+  ) {
+    return true;
+  }
+
+  _recentAtdFrameDeliveries[frameKey] = {
+    channelKey: sourceChannelKey,
+    receivedAtMs: timestamp
+  };
+  return false;
+}
+
+function dispatchAtdFrame(frameBytes, channelInfo, receivedAtMs) {
+  var parsed = parseAtdFrame(frameBytes, channelInfo, receivedAtMs);
+  if (!parsed.valid) return parsed;
+
+  var metadata = parsed.metadata;
+  if (shouldSuppressDuplicateAtdFrame(metadata.rawFrameHex, metadata.channelKey, metadata.receivedAtMs)) {
+    parsed.duplicate = true;
+    parsed.delivered = false;
+    return parsed;
+  }
+
+  parsed.duplicate = false;
+  parsed.delivered = !!_onMeasureCallback;
+  if (_onMeasureCallback) {
+    // 第一参数保持旧版 distance 合同；新元数据只作为可选第二参数。
+    _onMeasureCallback(parsed.distanceInMeters, metadata);
+  }
+  return parsed;
+}
+
 /** 平台录入主动停止扫描，并将当前本轮实时发现结果回传给页面。 */
 function cancelBLEEnrollmentScan() {
   if (!_enrollCollectMode) return false;
@@ -807,6 +974,7 @@ function connectDevice(deviceId, name, silent = false) {
   _isConnecting = true;
   _writeCharacteristics = []; // 连接前重置写入通道
   _dataBuffersByChannel = {};
+  resetAtdFrameDeduplication();
   try { wx.stopBluetoothDevicesDiscovery(); } catch (e) {}
   detachDeviceFoundListener();
   if (!silent) wx.showLoading({ title: '连接 ' + name + '...' });
@@ -1009,43 +1177,42 @@ function listenValueChange() {
         }
 
         if (dataBuffer.length < 17) break; // 数据不足，等完整的 17 字节数据
+        var atdFrame = dataBuffer.slice(0, 17);
+        var atdResult = dispatchAtdFrame(atdFrame, {
+          serviceId: res.serviceId,
+          characteristicId: res.characteristicId,
+          channelKey: channelKey,
+          channelLabel: channelLabel
+        }, Date.now());
 
-        // 验证帧尾 #
-        if (dataBuffer[16] !== 0x23) {
-          console.log("ATD 数据包帧尾错误，非 #");
+        if (!atdResult.valid) {
+          if (atdResult.error === 'invalid_tail') {
+            console.log('ATD 数据包帧尾错误，非 #');
+          } else if (atdResult.error === 'crc_mismatch') {
+            console.log(
+              'ATD 数据包 CRC 校验失败, 计算得到: ' + atdResult.computedCrc +
+              ', 实际: ' + atdResult.receivedCrc
+            );
+          } else {
+            console.log('ATD 数据包解析失败:', atdResult.error);
+          }
           dataBuffer.shift();
           continue;
         }
 
-        // 验证 CRC: 累加前 15 字节 (A 到 最后一个数据字节)
-        var sum = 0;
-        for (var i = 0; i < 15; i++) {
-          sum += dataBuffer[i];
-        }
-        var crc = sum % 256;
-        if (crc !== dataBuffer[15]) {
-          console.log("ATD 数据包 CRC 校验失败, 计算得到: " + crc + ", 实际: " + dataBuffer[15]);
-          dataBuffer.shift();
-          continue;
-        }
-
-        var distU8 = new Uint8Array(dataBuffer.slice(3, 7));
-        var dataDv = new DataView(distU8.buffer);
-        // 使用大端控制 (false) 解析: 00 00 02 77 -> 631
-        var meadist = dataDv.getUint32(0, false);
-
-        var distanceInMeters = meadist / 10000.0;
-
-        // 提取角度X和Y (依据文档定义)
-        var angleXU8 = new Uint8Array(dataBuffer.slice(7, 11));
-        var angleYU8 = new Uint8Array(dataBuffer.slice(11, 15));
-
-        console.log("ATD测距结果:", distanceInMeters, "m", "原始距离字节:", distU8, "角度X:", angleXU8, "角度Y:", angleYU8);
-
-        if (_onMeasureCallback) {
-          _onMeasureCallback(distanceInMeters);
-        }
         dataBuffer.splice(0, 17);
+        if (atdResult.duplicate) {
+          console.log('[BLE ATD] 已压制跨通道重复帧 raw=[' + atdResult.metadata.rawFrameHex + ']');
+          continue;
+        }
+
+        console.log(
+          'ATD测距结果:', atdResult.distanceInMeters, 'm',
+          '角度X:', atdResult.metadata.angleXDeg, '度',
+          '角度Y:', atdResult.metadata.angleYDeg, '度',
+          'raw=[' + atdResult.metadata.rawFrameHex + ']',
+          atdResult.metadata.channelLabel
+        );
       } else if (a === 0x41 && b === 0x54 && (c === 0x4B || c === 0x4D || c === 0x45)) {
         // 处理 ATK/ATM/ATE (7字节)
         var cmdStr = String.fromCharCode.apply(null, dataBuffer.slice(0, 7));
@@ -1101,6 +1268,7 @@ function handleDisconnect(reason) {
   _foundDevices = [];
   _writeCharacteristics = [];
   _dataBuffersByChannel = {};
+  resetAtdFrameDeduplication();
   _hasRequestedDeviceIdCode = false;
   _enrollMode = false;
   stopHeartbeat();
@@ -1117,6 +1285,7 @@ function handleDisconnect(reason) {
 
 function clearBuffer() {
   _dataBuffersByChannel = {};
+  resetAtdFrameDeduplication();
   console.log('蓝牙数据缓冲区已清空');
 }
 
@@ -1205,6 +1374,7 @@ function finishAutoConnectInFlight() {
 }
 
 function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = false) {
+  _activeCallbackOwnerToken = 0;
   _onMeasureCallback = callback;
   _onConnectCallback = connectCallback;
   _onDisconnectCallback = disconnectCallback;
@@ -1287,31 +1457,54 @@ function isSessionConnected() {
 }
 
 function setCallbacks(callback, connectCallback, disconnectCallback) {
+  _activeCallbackOwnerToken = 0;
   if (callback !== undefined) _onMeasureCallback = callback;
   if (connectCallback !== undefined) _onConnectCallback = connectCallback;
   if (disconnectCallback !== undefined) _onDisconnectCallback = disconnectCallback;
 }
 
+function setTemporaryCallbacks(callback, connectCallback, disconnectCallback) {
+  var handle = {
+    token: ++_callbackOwnerSeed,
+    previousOwnerToken: _activeCallbackOwnerToken,
+    measureCallback: _onMeasureCallback,
+    connectCallback: _onConnectCallback,
+    disconnectCallback: _onDisconnectCallback
+  };
+  _activeCallbackOwnerToken = handle.token;
+  if (callback !== undefined) _onMeasureCallback = callback;
+  if (connectCallback !== undefined) _onConnectCallback = connectCallback;
+  if (disconnectCallback !== undefined) _onDisconnectCallback = disconnectCallback;
+  return handle;
+}
+
+function restoreTemporaryCallbacks(handle) {
+  if (!handle || handle.token !== _activeCallbackOwnerToken) return false;
+  _onMeasureCallback = handle.measureCallback;
+  _onConnectCallback = handle.connectCallback;
+  _onDisconnectCallback = handle.disconnectCallback;
+  _activeCallbackOwnerToken = handle.previousOwnerToken || 0;
+  return true;
+}
+
 // === 临时回调管理（供角度测量等子流程使用）===
-var _savedMeasureCallback = null;
+var _savedMeasureCallbackHandle = null;
 
 /**
  * 临时替换测量回调。调用后蓝牙的测量结果将发往 tempCb，
  * 直到调用 restoreMeasureCallback() 恢复原始回调。
  */
 function setTemporaryMeasureCallback(tempCb) {
-  _savedMeasureCallback = _onMeasureCallback;
-  _onMeasureCallback = tempCb;
+  _savedMeasureCallbackHandle = setTemporaryCallbacks(tempCb, undefined, undefined);
 }
 
 /**
  * 恢复之前被替换的测量回调
  */
 function restoreMeasureCallback() {
-  if (_savedMeasureCallback !== null) {
-    _onMeasureCallback = _savedMeasureCallback;
-    _savedMeasureCallback = null;
-  }
+  if (!_savedMeasureCallbackHandle) return;
+  restoreTemporaryCallbacks(_savedMeasureCallbackHandle);
+  _savedMeasureCallbackHandle = null;
 }
 
 function getCurrentDeviceInfo() {
@@ -1331,6 +1524,8 @@ module.exports = {
   sendBLECommand: sendBLECommand,
   autoConnectBLE: autoConnectBLE,
   setCallbacks: setCallbacks,
+  setTemporaryCallbacks: setTemporaryCallbacks,
+  restoreTemporaryCallbacks: restoreTemporaryCallbacks,
   clearBuffer: clearBuffer,
   setTemporaryMeasureCallback: setTemporaryMeasureCallback,
   restoreMeasureCallback: restoreMeasureCallback,
@@ -1340,5 +1535,12 @@ module.exports = {
   classifyBluetoothAdapterOpenFailure: classifyBluetoothAdapterOpenFailure,
   resolveDeviceName: resolveDeviceName,
   isTargetRangefinderName: isTargetRangefinderName,
-  TARGET_DEVICE_NAME: TARGET_DEVICE_NAME
+  TARGET_DEVICE_NAME: TARGET_DEVICE_NAME,
+  __test: {
+    parseAtdFrame: parseAtdFrame,
+    dispatchAtdFrame: dispatchAtdFrame,
+    shouldSuppressDuplicateAtdFrame: shouldSuppressDuplicateAtdFrame,
+    resetAtdFrameDeduplication: resetAtdFrameDeduplication,
+    ATD_CROSS_CHANNEL_DEDUP_WINDOW_MS: ATD_CROSS_CHANNEL_DEDUP_WINDOW_MS
+  }
 };

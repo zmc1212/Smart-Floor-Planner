@@ -1,5 +1,16 @@
 import crypto from 'node:crypto';
-import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm';
 import {
   adminUsers,
   enterpriseJoinCodeEvents,
@@ -18,6 +29,16 @@ import { normalizePlatformPromotionConfig } from '@/lib/platform-promotion-confi
 import { isReferrerProtectionLimitReached } from '@/lib/referrer-join-limits';
 
 export type EnterpriseJoinCodeType = 'staff' | 'referrer';
+
+export const REFERRER_NETWORK_STAFF_ROLES = [
+  'designer',
+  'measurer',
+  'salesperson',
+  'enterprise_admin',
+] as const;
+
+export type ReferrerNetworkStaffRole =
+  (typeof REFERRER_NETWORK_STAFF_ROLES)[number];
 
 export type JoinCodeResolutionCode =
   | 'ok'
@@ -81,12 +102,16 @@ export function hashReferrerNetworkToken(token: string) {
 export function createEnterpriseJoinToken(
   enterpriseId: bigint,
   codeType: EnterpriseJoinCodeType,
-  version: number
+  version: number,
+  inviterStaffId?: bigint | null
 ) {
+  const scope = inviterStaffId != null
+    ? `:staff:${inviterStaffId.toString()}`
+    : '';
   const digest = crypto
     .createHmac('sha256', tokenSecret())
     .update(
-      `enterprise-join:${enterpriseId.toString()}:${codeType}:${version}`
+      `enterprise-join:${enterpriseId.toString()}:${codeType}:${version}${scope}`
     )
     .digest()
     .subarray(0, TOKEN_BYTES)
@@ -141,6 +166,22 @@ export interface EnterpriseReferrerMembershipRecord {
   displayName: string;
   phone: string | null;
   promotionCode: typeof referrerPromotionCodes.$inferSelect | null;
+  inviter: Pick<
+    typeof adminUsers.$inferSelect,
+    'id' | 'displayName' | 'username' | 'role' | 'status'
+  > | null;
+}
+
+export interface EnterpriseReferrerNetworkBranchRecord {
+  staff: {
+    id: bigint | null;
+    displayName: string;
+    role: string | null;
+    status: string;
+  } | null;
+  total: number;
+  activeCount: number;
+  items: EnterpriseReferrerMembershipRecord[];
 }
 
 export type ReferrerMembershipStatus = 'active' | 'disabled' | 'exited';
@@ -192,11 +233,69 @@ export class ReferrerNetworkRepository {
     });
   }
 
-  async listEnterpriseJoinCodes(enterpriseId: bigint) {
+  private joinCodeScopeCondition(input: {
+    codeType: EnterpriseJoinCodeType;
+    inviterStaffId?: bigint | null;
+  }) {
+    if (input.codeType === 'staff' || input.inviterStaffId == null) {
+      return isNull(enterpriseJoinCodes.inviterStaffId);
+    }
+    return eq(enterpriseJoinCodes.inviterStaffId, input.inviterStaffId);
+  }
+
+  private async findEligibleReferrerInviter(
+    enterpriseId: bigint,
+    inviterStaffId: bigint
+  ) {
+    const rows = await this.transaction
+      .select()
+      .from(adminUsers)
+      .where(
+        and(
+          eq(adminUsers.id, inviterStaffId),
+          eq(adminUsers.enterpriseId, enterpriseId),
+          eq(adminUsers.status, 'active'),
+          inArray(adminUsers.role, [...REFERRER_NETWORK_STAFF_ROLES])
+        )
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async listEnterpriseJoinCodes(
+    enterpriseId: bigint,
+    options: { referrerInviterStaffId?: bigint | null } = {}
+  ) {
+    // An omitted scope is an enterprise-wide diagnostic query. `null` remains
+    // an explicit request for legacy, unassigned referrer codes.
+    const hasReferrerScope = Object.prototype.hasOwnProperty.call(
+      options,
+      'referrerInviterStaffId'
+    );
+    const referrerInviterStaffId = options.referrerInviterStaffId;
+    const referrerScope = !hasReferrerScope || referrerInviterStaffId === undefined
+      ? eq(enterpriseJoinCodes.codeType, 'referrer')
+      : and(
+          eq(enterpriseJoinCodes.codeType, 'referrer'),
+          referrerInviterStaffId === null
+            ? isNull(enterpriseJoinCodes.inviterStaffId)
+            : eq(enterpriseJoinCodes.inviterStaffId, referrerInviterStaffId)
+        );
     return this.transaction
       .select()
       .from(enterpriseJoinCodes)
-      .where(eq(enterpriseJoinCodes.enterpriseId, enterpriseId))
+      .where(
+        and(
+          eq(enterpriseJoinCodes.enterpriseId, enterpriseId),
+          or(
+            and(
+              eq(enterpriseJoinCodes.codeType, 'staff'),
+              isNull(enterpriseJoinCodes.inviterStaffId)
+            ),
+            referrerScope
+          )
+        )
+      )
       .orderBy(
         asc(enterpriseJoinCodes.codeType),
         desc(enterpriseJoinCodes.version),
@@ -204,7 +303,24 @@ export class ReferrerNetworkRepository {
       );
   }
 
-  async listEnterpriseJoinCodeEvents(enterpriseId: bigint, limit = 50) {
+  async listEnterpriseJoinCodeEvents(
+    enterpriseId: bigint,
+    limit = 50,
+    options: { referrerInviterStaffId?: bigint | null } = {}
+  ) {
+    const hasReferrerScope = Object.prototype.hasOwnProperty.call(
+      options,
+      'referrerInviterStaffId'
+    );
+    const referrerInviterStaffId = options.referrerInviterStaffId;
+    const referrerScope = !hasReferrerScope || referrerInviterStaffId === undefined
+      ? eq(enterpriseJoinCodes.codeType, 'referrer')
+      : and(
+          eq(enterpriseJoinCodes.codeType, 'referrer'),
+          referrerInviterStaffId === null
+            ? isNull(enterpriseJoinCodes.inviterStaffId)
+            : eq(enterpriseJoinCodes.inviterStaffId, referrerInviterStaffId)
+        );
     return this.transaction
       .select({
         event: enterpriseJoinCodeEvents,
@@ -215,7 +331,18 @@ export class ReferrerNetworkRepository {
         enterpriseJoinCodes,
         eq(enterpriseJoinCodeEvents.joinCodeId, enterpriseJoinCodes.id)
       )
-      .where(eq(enterpriseJoinCodeEvents.enterpriseId, enterpriseId))
+      .where(
+        and(
+          eq(enterpriseJoinCodeEvents.enterpriseId, enterpriseId),
+          or(
+            and(
+              eq(enterpriseJoinCodes.codeType, 'staff'),
+              isNull(enterpriseJoinCodes.inviterStaffId)
+            ),
+            referrerScope
+          )
+        )
+      )
       .orderBy(desc(enterpriseJoinCodeEvents.createdAt), desc(enterpriseJoinCodeEvents.id))
       .limit(Math.max(1, Math.min(limit, 100)));
   }
@@ -255,6 +382,7 @@ export class ReferrerNetworkRepository {
     enterpriseId: bigint;
     codeType: EnterpriseJoinCodeType;
     actorStaffId: bigint;
+    inviterStaffId?: bigint | null;
   }) {
     const rows = await this.transaction
       .select()
@@ -263,6 +391,7 @@ export class ReferrerNetworkRepository {
         and(
           eq(enterpriseJoinCodes.enterpriseId, input.enterpriseId),
           eq(enterpriseJoinCodes.codeType, input.codeType),
+          this.joinCodeScopeCondition(input),
           eq(enterpriseJoinCodes.status, 'active')
         )
       )
@@ -278,7 +407,12 @@ export class ReferrerNetworkRepository {
     });
     return {
       code,
-      token: createEnterpriseJoinToken(code.enterpriseId, input.codeType, code.version),
+      token: createEnterpriseJoinToken(
+        code.enterpriseId,
+        input.codeType,
+        code.version,
+        code.inviterStaffId
+      ),
     };
   }
 
@@ -286,10 +420,22 @@ export class ReferrerNetworkRepository {
     enterpriseId: bigint;
     codeType: EnterpriseJoinCodeType;
     actorStaffId: bigint;
+    inviterStaffId?: bigint | null;
     expiresAt?: Date | null;
   }) {
+    const inviterStaffId =
+      input.codeType === 'referrer' ? input.inviterStaffId ?? null : null;
+    if (
+      inviterStaffId != null &&
+      !(await this.findEligibleReferrerInviter(input.enterpriseId, inviterStaffId))
+    ) {
+      throw Object.assign(new Error('推荐人员工身份无效'), {
+        code: 'referrer_inviter_staff_invalid',
+        status: 403,
+      });
+    }
     await this.lockKey(
-      `enterprise-join-code:${input.enterpriseId.toString()}:${input.codeType}`
+      `enterprise-join-code:${input.enterpriseId.toString()}:${input.codeType}:${inviterStaffId?.toString() ?? 'enterprise'}`
     );
     const existing = await this.transaction
       .select()
@@ -297,7 +443,11 @@ export class ReferrerNetworkRepository {
       .where(
         and(
           eq(enterpriseJoinCodes.enterpriseId, input.enterpriseId),
-          eq(enterpriseJoinCodes.codeType, input.codeType)
+          eq(enterpriseJoinCodes.codeType, input.codeType),
+          this.joinCodeScopeCondition({
+            codeType: input.codeType,
+            inviterStaffId,
+          })
         )
       )
       .orderBy(desc(enterpriseJoinCodes.version), desc(enterpriseJoinCodes.id))
@@ -326,13 +476,15 @@ export class ReferrerNetworkRepository {
     const token = createEnterpriseJoinToken(
       input.enterpriseId,
       input.codeType,
-      version
+      version,
+      inviterStaffId
     );
     const rows = await this.transaction
       .insert(enterpriseJoinCodes)
       .values({
         enterpriseId: input.enterpriseId,
         codeType: input.codeType,
+        inviterStaffId,
         tokenHash: hashReferrerNetworkToken(token),
         status: 'active',
         version,
@@ -354,9 +506,12 @@ export class ReferrerNetworkRepository {
     enterpriseId: bigint;
     codeType: EnterpriseJoinCodeType;
     actorStaffId: bigint;
+    inviterStaffId?: bigint | null;
   }) {
+    const inviterStaffId =
+      input.codeType === 'referrer' ? input.inviterStaffId ?? null : null;
     await this.lockKey(
-      `enterprise-join-code:${input.enterpriseId.toString()}:${input.codeType}`
+      `enterprise-join-code:${input.enterpriseId.toString()}:${input.codeType}:${inviterStaffId?.toString() ?? 'enterprise'}`
     );
     const rows = await this.transaction
       .select()
@@ -365,6 +520,10 @@ export class ReferrerNetworkRepository {
         and(
           eq(enterpriseJoinCodes.enterpriseId, input.enterpriseId),
           eq(enterpriseJoinCodes.codeType, input.codeType),
+          this.joinCodeScopeCondition({
+            codeType: input.codeType,
+            inviterStaffId,
+          }),
           eq(enterpriseJoinCodes.status, 'active')
         )
       )
@@ -879,6 +1038,26 @@ export class ReferrerNetworkRepository {
       };
     }
 
+    const inviter = joinCode.inviterStaffId
+      ? await this.findEligibleReferrerInviter(
+          joinCode.enterpriseId,
+          joinCode.inviterStaffId
+        )
+      : null;
+    if (joinCode.inviterStaffId && !inviter) {
+      await this.recordJoinCodeEvent({
+        code: joinCode,
+        eventType: 'referrer_onboarding',
+        result: 'code_disabled',
+        actorUserId: user.id,
+        metadata: {
+          reason: 'inviter_staff_inactive_or_unsupported',
+          inviterStaffId: joinCode.inviterStaffId.toString(),
+        },
+      });
+      return { ok: false, code: 'code_disabled' };
+    }
+
     const activeMemberships = await this.transaction
       .select()
       .from(referrerEnterpriseMemberships)
@@ -942,6 +1121,10 @@ export class ReferrerNetworkRepository {
       .values({
         referrerId: profile.id,
         enterpriseId: joinCode.enterpriseId,
+        invitedByStaffId: inviter?.id ?? null,
+        invitedByNameSnapshot: inviter
+          ? inviter.displayName.trim() || inviter.username
+          : null,
         status: 'active',
       })
       .returning();
@@ -959,7 +1142,10 @@ export class ReferrerNetworkRepository {
       eventType: 'referrer_onboarding',
       result: 'joined',
       actorUserId: user.id,
-      metadata: { membershipId: memberships[0].id.toString() },
+      metadata: {
+        membershipId: memberships[0].id.toString(),
+        inviterStaffId: inviter?.id.toString() ?? null,
+      },
     });
     return {
       ok: true,
@@ -972,11 +1158,25 @@ export class ReferrerNetworkRepository {
 
   private buildEnterpriseReferrerMembershipFilters(
     enterpriseId: bigint,
-    options: { query?: string; status?: ReferrerMembershipStatus } = {}
+    options: {
+      query?: string;
+      status?: ReferrerMembershipStatus;
+      inviterStaffId?: bigint | null;
+    } = {}
   ) {
     const filters = [eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId)];
     if (options.status) {
       filters.push(eq(referrerEnterpriseMemberships.status, options.status));
+    }
+    if (options.inviterStaffId !== undefined) {
+      filters.push(
+        options.inviterStaffId == null
+          ? isNull(referrerEnterpriseMemberships.invitedByStaffId)
+          : eq(
+              referrerEnterpriseMemberships.invitedByStaffId,
+              options.inviterStaffId
+            )
+      );
     }
     const query = options.query?.trim().replace(/[%_]/g, '\\$&');
     if (query) {
@@ -998,6 +1198,7 @@ export class ReferrerNetworkRepository {
       status?: ReferrerMembershipStatus;
       page?: number;
       limit?: number;
+      inviterStaffId?: bigint | null;
     } = {}
   ): Promise<EnterpriseReferrerMembershipRecord[]> {
     const filters = this.buildEnterpriseReferrerMembershipFilters(enterpriseId, options);
@@ -1009,6 +1210,13 @@ export class ReferrerNetworkRepository {
         displayName: referrerProfiles.displayName,
         phone: referrerProfiles.phone,
         promotionCode: referrerPromotionCodes,
+        inviter: {
+          id: adminUsers.id,
+          displayName: adminUsers.displayName,
+          username: adminUsers.username,
+          role: adminUsers.role,
+          status: adminUsers.status,
+        },
       })
       .from(referrerEnterpriseMemberships)
       .innerJoin(
@@ -1020,6 +1228,13 @@ export class ReferrerNetworkRepository {
         and(
           eq(referrerPromotionCodes.membershipId, referrerEnterpriseMemberships.id),
           eq(referrerPromotionCodes.status, 'active')
+        )
+      )
+      .leftJoin(
+        adminUsers,
+        and(
+          eq(adminUsers.id, referrerEnterpriseMemberships.invitedByStaffId),
+          eq(adminUsers.enterpriseId, enterpriseId)
         )
       )
       .where(and(...filters))
@@ -1036,12 +1251,17 @@ export class ReferrerNetworkRepository {
 
   async countEnterpriseReferrerMemberships(
     enterpriseId: bigint,
-    options: { query?: string; status?: ReferrerMembershipStatus } = {}
+    options: {
+      query?: string;
+      status?: ReferrerMembershipStatus;
+      inviterStaffId?: bigint | null;
+    } = {}
   ) {
     const filtered = this.buildEnterpriseReferrerMembershipFilters(enterpriseId, options);
     const active = this.buildEnterpriseReferrerMembershipFilters(enterpriseId, {
       query: options.query,
       status: 'active',
+      inviterStaffId: options.inviterStaffId,
     });
     const fromMemberships = () => this.transaction
       .select({ value: count() })
@@ -1057,6 +1277,134 @@ export class ReferrerNetworkRepository {
     return {
       total: Number(totalRows[0]?.value ?? 0),
       activeCount: Number(activeRows[0]?.value ?? 0),
+    };
+  }
+
+  async listEnterpriseReferrerNetwork(
+    enterpriseId: bigint,
+    options: {
+      query?: string;
+      status?: ReferrerMembershipStatus;
+    } = {}
+  ) {
+    const [staffRows, items] = await Promise.all([
+      this.transaction
+        .select({
+          id: adminUsers.id,
+          displayName: adminUsers.displayName,
+          username: adminUsers.username,
+          role: adminUsers.role,
+          status: adminUsers.status,
+        })
+        .from(adminUsers)
+        .where(
+          and(
+            eq(adminUsers.enterpriseId, enterpriseId),
+            inArray(adminUsers.role, [...REFERRER_NETWORK_STAFF_ROLES])
+          )
+        ),
+      this.listEnterpriseReferrerMemberships(enterpriseId, options),
+    ]);
+
+    const currentStaffIds = new Set(staffRows.map((staff) => staff.id.toString()));
+    const branches: EnterpriseReferrerNetworkBranchRecord[] = staffRows.map(
+      (staff) => {
+        const branchItems = items.filter(
+          (item) => item.membership.invitedByStaffId === staff.id
+        );
+        return {
+          staff: {
+            id: staff.id,
+            displayName: staff.displayName.trim() || staff.username,
+            role: staff.role,
+            status: staff.status,
+          },
+          total: branchItems.length,
+          activeCount: branchItems.filter(
+            (item) => item.membership.status === 'active'
+          ).length,
+          items: branchItems,
+        };
+      }
+    );
+
+    const detachedItems = items.filter(
+      (item) =>
+        item.membership.invitedByStaffId == null ||
+        !currentStaffIds.has(item.membership.invitedByStaffId.toString())
+    );
+    const deletedInviterGroups = new Map<
+      string,
+      EnterpriseReferrerMembershipRecord[]
+    >();
+    const unassignedItems: EnterpriseReferrerMembershipRecord[] = [];
+    for (const item of detachedItems) {
+      const snapshot = item.membership.invitedByNameSnapshot?.trim() || '';
+      if (!snapshot) {
+        unassignedItems.push(item);
+        continue;
+      }
+      deletedInviterGroups.set(snapshot, [
+        ...(deletedInviterGroups.get(snapshot) || []),
+        item,
+      ]);
+    }
+    for (const [displayName, branchItems] of deletedInviterGroups) {
+      branches.push({
+        staff: {
+          id: null,
+          displayName,
+          role: null,
+          status: 'deleted',
+        },
+        total: branchItems.length,
+        activeCount: branchItems.filter(
+          (item) => item.membership.status === 'active'
+        ).length,
+        items: branchItems,
+      });
+    }
+    if (unassignedItems.length) {
+      branches.push({
+        staff: null,
+        total: unassignedItems.length,
+        activeCount: unassignedItems.filter(
+          (item) => item.membership.status === 'active'
+        ).length,
+        items: unassignedItems,
+      });
+    }
+
+    branches.sort((left, right) => {
+      const leftOwner = left.staff?.role === 'enterprise_admin' ? 0 : 1;
+      const rightOwner = right.staff?.role === 'enterprise_admin' ? 0 : 1;
+      if (leftOwner !== rightOwner) return leftOwner - rightOwner;
+      const leftKind = left.staff?.id != null ? 0 : left.staff ? 1 : 2;
+      const rightKind = right.staff?.id != null ? 0 : right.staff ? 1 : 2;
+      if (leftKind !== rightKind) return leftKind - rightKind;
+      if (left.activeCount !== right.activeCount) {
+        return right.activeCount - left.activeCount;
+      }
+      const byName = (left.staff?.displayName || '').localeCompare(
+        right.staff?.displayName || '',
+        'zh-CN'
+      );
+      if (byName !== 0) return byName;
+      const leftId = left.staff?.id ?? BigInt(0);
+      const rightId = right.staff?.id ?? BigInt(0);
+      return leftId === rightId ? 0 : leftId < rightId ? -1 : 1;
+    });
+
+    return {
+      summary: {
+        employeeCount: staffRows.length,
+        total: items.length,
+        activeCount: items.filter(
+          (item) => item.membership.status === 'active'
+        ).length,
+        unassignedCount: unassignedItems.length,
+      },
+      branches,
     };
   }
 

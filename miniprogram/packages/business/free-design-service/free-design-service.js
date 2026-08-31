@@ -4,6 +4,11 @@ const {
   customerProjectFromApiResponse,
   hasDesignerContact,
 } = require('../../../utils/designerContact.js');
+const {
+  refreshWechatLoginCode,
+  resolveWechatPhoneLoginInput,
+  wechatPhoneAuthToast
+} = require('../../../utils/wechat-phone-auth.js');
 
 function currentSignedIdentity() {
   const app = typeof getApp === 'function' ? getApp() : null;
@@ -242,10 +247,15 @@ Page({
   },
 
   onLoad(options) {
+    refreshWechatLoginCode();
     const promotionToken = safeToken(options.token || options.scene);
     this.setData({ ...navigationMetrics(), promotionToken });
     this.idempotencyKey = `claim-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
     this.resolvePromotionCode();
+  },
+
+  onShow() {
+    refreshWechatLoginCode();
   },
 
   async resolvePromotionCode() {
@@ -310,20 +320,26 @@ Page({
 
   async onGetPhoneNumber(event) {
     if (this.data.pageState !== 'phoneAuth' || this.data.submitting) return;
-    if (!event.detail || event.detail.errMsg !== 'getPhoneNumber:ok' || !event.detail.code) {
-      wx.showToast({ title: '需要授权手机号才能建立服务档案', icon: 'none' });
+    const resolved = resolveWechatPhoneLoginInput(event.detail);
+    if (!resolved.ok) {
+      wx.showToast({
+        title: wechatPhoneAuthToast(resolved.reason, '需要授权手机号才能建立服务档案'),
+        icon: 'none'
+      });
       return;
     }
 
     this.setData({ submitting: true, errorMessage: '' });
     try {
-      const code = await loginCode();
+      const code = resolved.kind === 'code' ? await loginCode() : resolved.loginCode;
       const response = await api.request(
         '/miniprogram/referrals/authorize-and-create-lead',
         'POST',
         {
           loginCode: code,
-          phoneCode: event.detail.code,
+          phoneCode: resolved.kind === 'code' ? resolved.phoneCode : undefined,
+          encryptedData: resolved.kind === 'encrypted' ? resolved.encryptedData : undefined,
+          iv: resolved.kind === 'encrypted' ? resolved.iv : undefined,
           pendingSource: this.data.pendingSource,
           idempotencyKey: this.idempotencyKey
         },

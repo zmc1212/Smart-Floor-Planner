@@ -9,6 +9,7 @@ import {
 } from '@/db/repositories';
 import { resolveStaffLeadListOptions } from '@/lib/lead-staff-visibility';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { getMiniProgramCapabilities } from '@/lib/miniprogram-bootstrap';
 import { resolveProfileAvatarUrl } from '@/lib/miniprogram-profile';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 
@@ -37,8 +38,8 @@ type WorkbenchCard = {
 const ROLE_LABELS: Record<string, string> = {
   salesperson: '渠道地推',
   enterprise_admin: '企业负责人',
-  admin: '平台负责人',
-  super_admin: '平台负责人',
+  admin: '平台管理员',
+  super_admin: '平台管理员',
   designer: '家装设计顾问',
   measurer: '家装现场顾问',
 };
@@ -47,11 +48,12 @@ const ACTIONS_BY_ROLE: Record<string, ActionItem[]> = {
   salesperson: [
     { key: 'create-report', label: '报备企业', sublabel: '拓展合作企业', icon: 'building', target: 'createPromotion' },
     { key: 'pool', label: '可认领客户', sublabel: '认领客户继续跟进', icon: 'users', target: 'promotion:pool' },
+    { key: 'referrers', label: '我的推广人', sublabel: '邀请并查看我的推广人', icon: 'user-round-plus', target: 'referrers' },
     { key: 'commissions', label: '我的提成', sublabel: '查看收益明细', icon: 'wallet', target: 'commissions' },
   ],
   enterprise_admin: [
     { key: 'claimable-customers', label: '线索池管理', sublabel: '查看可认领客户', icon: 'buildingCog', target: 'promotion:pool' },
-    { key: 'referrers', label: '已入驻推荐人', sublabel: '查看名单并停用扫码', icon: 'user-round-plus', target: 'referrers' },
+    { key: 'referrers', label: '推广网络', sublabel: '查看员工分支与全部推广人', icon: 'user-round-plus', target: 'referrers' },
     { key: 'customers', label: '服务客户', sublabel: '跟进客户线索', icon: 'users', target: 'leads' },
     { key: 'revenue', label: '收益概览', sublabel: '查看成交提成', icon: 'wallet', target: 'commissions' },
   ],
@@ -65,10 +67,12 @@ const ACTIONS_BY_ROLE: Record<string, ActionItem[]> = {
   ],
   designer: [
     { key: 'customers', label: '客户列表', sublabel: '服务客户线索', icon: 'users', target: 'leads' },
+    { key: 'referrers', label: '我的推广人', sublabel: '邀请并查看我的推广人', icon: 'user-round-plus', target: 'referrers' },
     { key: 'inspiration', label: '灵感库', sublabel: '查看设计灵感', icon: 'wallet', target: 'inspiration' },
   ],
   measurer: [
     { key: 'customers', label: '服务客户', sublabel: '查看客户信息', icon: 'users', target: 'leads' },
+    { key: 'referrers', label: '我的推广人', sublabel: '邀请并查看我的推广人', icon: 'user-round-plus', target: 'referrers' },
     { key: 'measure', label: '去量房', sublabel: '打开量房工具', icon: 'wallet', target: 'measure' },
   ],
 };
@@ -212,7 +216,17 @@ export async function GET(request: Request) {
       }
     );
 
-    const actions = ACTIONS_BY_ROLE[role] || ACTIONS_BY_ROLE.enterprise_admin;
+    const capabilities = getMiniProgramCapabilities({
+      mode: context.mode,
+      staffRole: role,
+      enterpriseId: context.enterpriseId,
+    });
+    const actions = (ACTIONS_BY_ROLE[role] || [])
+      .filter(
+        (action) =>
+          action.target !== 'referrers' ||
+          capabilities.includes('referrer.network')
+      );
 
     return NextResponse.json({
       success: true,

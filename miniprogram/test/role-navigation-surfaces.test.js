@@ -242,6 +242,10 @@ test('role shell staff Mine hides legacy workbench sections', () => {
   assert.match(mine, /wx:if="\{\{!isRoleShellMine\}\}" class="surface-section todo-section"/);
   assert.match(mine, /wx:if="\{\{canUseAIDesign && !isRoleShellMine\}\}" class="ai-banner"/);
   assert.match(mineJs, /ROLE_SHELL_MINE_ROLES = \['designer', 'measurer', 'enterprise_admin', 'platform_admin'\]/);
+  assert.match(
+    mineJs,
+    /STAFF_MINE_ROLES = \['designer', 'measurer', 'enterprise_admin', 'salesperson', 'platform_admin'\]/
+  );
 });
 
 test('salesperson uses promotion TabBar and staff Mine dashboard without role-workbench shell', () => {
@@ -274,7 +278,7 @@ test('salesperson uses promotion TabBar and staff Mine dashboard without role-wo
   assert.match(indexJs, /salesperson/);
   assert.match(indexJs, /reLaunch/);
   assert.match(indexJs, /promotion-records\/promotion-records/);
-  assert.match(mineJs, /\['designer', 'measurer', 'enterprise_admin', 'salesperson'\]/);
+  assert.match(mineJs, /STAFF_MINE_ROLES = \['designer', 'measurer', 'enterprise_admin', 'salesperson', 'platform_admin'\]/);
   assert.doesNotMatch(mineJs, /ROLE_SHELL_MINE_ROLES = \[[^\]]*salesperson/);
   assert.equal(promotionJson.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   assert.match(promotionWxml, /<custom-tab-bar\s*\/>/);
@@ -296,6 +300,15 @@ test('platform admin uses review and devices subpackage tabs instead of index', 
   assert.match(indexJs, /packages\/platform\/devices\/devices/);
   assert.doesNotMatch(indexJs, /platform_admin'\]/);
   assert.equal(indexJson.usingComponents['platform-device-workbench'], undefined);
+
+  const mine = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'mine', 'mine.wxml'), 'utf8');
+  const mineJs = fs.readFileSync(path.join(miniProgramRoot, 'pages', 'mine', 'mine.js'), 'utf8');
+  assert.match(mineJs, /STAFF_MINE_ROLES = \[[^\]]*platform_admin/);
+  assert.match(mineJs, /ROLE_SHELL_MINE_ROLES = \[[^\]]*platform_admin/);
+  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser && !isRoleShellMine\}\}" class="user-summary"/);
+  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser && !isRoleShellMine\}\}" class="surface-section floorplan-section"/);
+  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser && !isRoleShellMine\}\}" class="user-actions"/);
+  assert.match(mineJs, /hidesLegacyFloorPlanArchive\(this\.data\.isRoleRestrictedUser, this\.data\.isRoleShellMine\)/);
 });
 
 test('role-specific workbenches keep survey creation behind lead-detail permissions and route guards', () => {
@@ -304,9 +317,9 @@ test('role-specific workbenches keep survey creation behind lead-detail permissi
   const leadList = fs.readFileSync(path.join(miniProgramRoot, 'components', 'lead-list', 'lead-list.wxml'), 'utf8');
   const navigation = fs.readFileSync(path.join(miniProgramRoot, 'utils', 'surveyNavigation.js'), 'utf8');
 
-  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser\}\}" class="user-summary"/);
-  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser\}\}" class="surface-section floorplan-section"/);
-  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser\}\}" class="user-actions"/);
+  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser && !isRoleShellMine\}\}" class="user-summary"/);
+  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser && !isRoleShellMine\}\}" class="surface-section floorplan-section"/);
+  assert.match(mine, /wx:if="\{\{!isRoleRestrictedUser && !isRoleShellMine\}\}" class="user-actions"/);
   assert.match(leadDetail, /wx:if="\{\{canEditMeasurements\}\}"[\s\S]*class="whole-home-measure-action"/);
   assert.match(leadDetail, /class="whole-home-secondary-actions" wx:if="\{\{canEditMeasurements && activeFloorPlan\}\}"/);
   assert.match(leadDetail, /wx:if="\{\{canEditMeasurements\}\}" class="measurement-record-actions"/);

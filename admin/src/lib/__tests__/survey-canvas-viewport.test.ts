@@ -55,6 +55,25 @@ test('pan and zoom keep the pointer millimetre point stable and stay within edit
   assert.equal(clamped.scale, SURVEY_VIEWER_MAX_SCALE);
 });
 
+test('optional rotationRad keeps pan/zoom pointer millimetres stable', () => {
+  const rect = { width: 800, height: 600 };
+  const start = {
+    scale: 0.05,
+    offsetX: 24,
+    offsetY: -18,
+    rotationRad: Math.PI / 6,
+  };
+  const pointer = { x: 220, y: 180 };
+  const before = canvasPointToMm(pointer, rect, start);
+  const panned = panSurveyViewport(start, 30, -12);
+  assert.equal(panned.rotationRad, start.rotationRad);
+  const zoomed = zoomSurveyViewport(start, rect, pointer, 1.4);
+  const after = canvasPointToMm(pointer, rect, zoomed);
+  assert.ok(Math.abs(after.xMm - before.xMm) < 0.001);
+  assert.ok(Math.abs(after.yMm - before.yMm) < 0.001);
+  assert.equal(zoomed.rotationRad, start.rotationRad);
+});
+
 test('createReadonlySurveyFloor strips editor session so the viewer cannot keep a live preview', () => {
   const floor = {
     id: 'floor-1',

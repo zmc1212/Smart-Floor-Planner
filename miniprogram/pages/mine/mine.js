@@ -9,6 +9,7 @@ const session = require('../../utils/session.js');
 const {
   profileForIdentity,
   canShowPlatformRegistrationCode,
+  referrerNetworkEntryForIdentity,
   buildWorkbenchActions,
   buildDashboardSlices,
   getFloorPlanRoomCount
@@ -18,10 +19,16 @@ const {
 } = require('../../utils/account-settings-state.js');
 
 const DEFAULT_AVATAR = '/images/mine-v6/profile-avatar.jpg';
+const STAFF_MINE_ROLES = ['designer', 'measurer', 'enterprise_admin', 'salesperson', 'platform_admin'];
 const ROLE_SHELL_MINE_ROLES = ['designer', 'measurer', 'enterprise_admin', 'platform_admin'];
+const RESTRICTED_MINE_ROLES = ['customer', 'referrer'];
 
 function isRoleShellMineRole(role) {
   return ROLE_SHELL_MINE_ROLES.includes(role);
+}
+
+function hidesLegacyFloorPlanArchive(isRoleRestrictedUser, isRoleShellMine) {
+  return isRoleRestrictedUser || isRoleShellMine;
 }
 
 const FALLBACK_PROFILE = {
@@ -64,6 +71,9 @@ Page({
     activeRole: '',
     showRoleGuideEntry: false,
     showRegistrationCodeEntry: false,
+    showReferrerNetworkEntry: false,
+    referrerNetworkEntryLabel: '我的推广人',
+    referrerNetworkEntryHelper: '邀请并查看我的推广人',
     roleGuideHelper: '查看当前身份的工作方法',
     isRoleRestrictedUser: false,
     isRoleShellMine: false,
@@ -104,8 +114,8 @@ Page({
     const userInfo = app.globalData.userInfo || wx.getStorageSync('userInfo');
     const activeRole = (app.globalData.bootstrap && app.globalData.bootstrap.current && app.globalData.bootstrap.current.role)
       || roleForIdentity(userInfo);
-    const isStaffRole = ['designer', 'measurer', 'enterprise_admin', 'salesperson'].includes(activeRole);
-    const isRoleRestrictedUser = ['customer', 'referrer'].includes(activeRole);
+    const isStaffRole = STAFF_MINE_ROLES.includes(activeRole);
+    const isRoleRestrictedUser = RESTRICTED_MINE_ROLES.includes(activeRole);
     const token = wx.getStorageSync('token');
     const openid = app.globalData.openid || wx.getStorageSync('openid') || (userInfo && userInfo.openid);
 
@@ -119,6 +129,7 @@ Page({
         activeRole,
         ...mineRoleGuideEntry(activeRole, app.globalData.bootstrap, this._identityContexts),
         showRegistrationCodeEntry: canShowPlatformRegistrationCode(activeRole, app.globalData.bootstrap),
+        ...referrerNetworkEntryForIdentity(activeRole, userInfo, app.globalData.bootstrap),
         isRoleRestrictedUser,
         isRoleShellMine,
         canUseAIDesign: canAccessAIDesign(userInfo),
@@ -148,6 +159,7 @@ Page({
         activeRole,
         ...mineRoleGuideEntry(activeRole, app.globalData.bootstrap, this._identityContexts),
         showRegistrationCodeEntry: canShowPlatformRegistrationCode(activeRole, app.globalData.bootstrap),
+        ...referrerNetworkEntryForIdentity(activeRole, userInfo, app.globalData.bootstrap),
         isRoleRestrictedUser,
         isRoleShellMine,
         canUseAIDesign: canAccessAIDesign(userInfo),
@@ -162,7 +174,7 @@ Page({
       });
       if (isStaffRole) {
         this.fetchMineData();
-      } else if (!isRoleRestrictedUser) {
+      } else if (!hidesLegacyFloorPlanArchive(isRoleRestrictedUser, isRoleShellMine)) {
         this.fetchMyFloorPlans();
       }
       if (isRoleRestrictedUser) this.fetchProfileData();
@@ -176,6 +188,9 @@ Page({
       activeRole: '',
       showRoleGuideEntry: false,
       showRegistrationCodeEntry: false,
+      showReferrerNetworkEntry: false,
+      referrerNetworkEntryLabel: '我的推广人',
+      referrerNetworkEntryHelper: '邀请并查看我的推广人',
       roleGuideHelper: '查看当前身份的工作方法',
       isRoleRestrictedUser: false,
       isRoleShellMine: false,
@@ -237,6 +252,11 @@ Page({
       const res = await api.request('/miniprogram/profile', 'GET');
       const profile = res.data || {};
       this.setData({
+        ...referrerNetworkEntryForIdentity(
+          this.data.activeRole || profile.role,
+          profile,
+          app.globalData.bootstrap
+        ),
         mineData: {
           ...this.data.mineData,
           profile: { ...FALLBACK_PROFILE, ...profile }
@@ -277,6 +297,11 @@ Page({
         loadingMine: false,
         isStaff: !!data.isStaff,
         canUseAIDesign,
+        ...referrerNetworkEntryForIdentity(
+          this.data.activeRole || profile.role,
+          profile,
+          app.globalData.bootstrap
+        ),
         mineData: {
           profile: { ...FALLBACK_PROFILE, ...profile },
           actions: data.actions || [],
@@ -301,7 +326,10 @@ Page({
       wx.setStorageSync('userInfo', app.globalData.userInfo);
       this.syncTabBar();
 
-      if (!data.isStaff) {
+      if (
+        !data.isStaff
+        && !hidesLegacyFloorPlanArchive(this.data.isRoleRestrictedUser, this.data.isRoleShellMine)
+      ) {
         this.fetchMyFloorPlans();
       }
     } catch (err) {
@@ -418,7 +446,7 @@ Page({
   },
 
   onOpenFloorPlan(e) {
-    if (this.data.isRoleRestrictedUser) return;
+    if (hidesLegacyFloorPlanArchive(this.data.isRoleRestrictedUser, this.data.isRoleShellMine)) return;
     const id = e.currentTarget.dataset.id;
     const floorPlan = this.data.floorPlans.find((item) => item._id === id);
     if (!floorPlan) return;
@@ -426,7 +454,7 @@ Page({
   },
 
   onAIGen(e) {
-    if (this.data.isRoleRestrictedUser) return;
+    if (hidesLegacyFloorPlanArchive(this.data.isRoleRestrictedUser, this.data.isRoleShellMine)) return;
     const id = e.currentTarget.dataset.id;
     const floorPlan = this.data.floorPlans.find((item) => item._id === id);
     if (!floorPlan) {
@@ -441,7 +469,7 @@ Page({
   },
 
   onCreateNew() {
-    if (this.data.isRoleRestrictedUser) return;
+    if (hidesLegacyFloorPlanArchive(this.data.isRoleRestrictedUser, this.data.isRoleShellMine)) return;
     wx.switchTab({ url: '/pages/index/index' });
   },
 
@@ -469,6 +497,11 @@ Page({
     wx.navigateTo({ url: '/packages/platform/registration-code/registration-code' });
   },
 
+  onOpenReferrerNetwork() {
+    if (!this.data.showReferrerNetworkEntry) return;
+    wx.navigateTo({ url: '/packages/business/enterprise-referrers/enterprise-referrers' });
+  },
+
   async refreshRoleGuideEntry() {
     const userInfo = app.globalData.userInfo || (typeof wx !== 'undefined' && wx.getStorageSync
       ? wx.getStorageSync('userInfo')
@@ -481,6 +514,11 @@ Page({
     this.setData({
       activeRole,
       showRegistrationCodeEntry: canShowPlatformRegistrationCode(activeRole, app.globalData.bootstrap),
+      ...referrerNetworkEntryForIdentity(
+        activeRole,
+        this.data.mineData && this.data.mineData.profile,
+        app.globalData.bootstrap
+      ),
       ...mineRoleGuideEntry(activeRole, app.globalData.bootstrap, this._identityContexts)
     });
   },
@@ -509,6 +547,9 @@ Page({
       activeRole: '',
       showRoleGuideEntry: false,
       showRegistrationCodeEntry: false,
+      showReferrerNetworkEntry: false,
+      referrerNetworkEntryLabel: '我的推广人',
+      referrerNetworkEntryHelper: '邀请并查看我的推广人',
       roleGuideHelper: '查看当前身份的工作方法',
       loadingMine: false,
       mineError: '',

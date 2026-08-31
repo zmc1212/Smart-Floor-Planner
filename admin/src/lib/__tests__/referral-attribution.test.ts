@@ -386,7 +386,7 @@ test('promotion code image route keeps provider failures stable and private', ()
   assert.doesNotMatch(route, /error:\s*error\s+instanceof\s+Error/);
 });
 
-test('miniprogram enterprise join-code image route is enterprise_admin only and private', () => {
+test('miniprogram enterprise join-code routes separate owner staff codes from personal referrer codes', () => {
   const route = readFileSync(
     path.join(
       process.cwd(),
@@ -399,15 +399,75 @@ test('miniprogram enterprise join-code image route is enterprise_admin only and 
     'utf8'
   );
 
-  assert.match(list, /enterprise_admin_required/);
+  assert.match(list, /requireMiniProgramReferrerNetwork/);
+  assert.match(list, /const isOwner = role === 'enterprise_admin'/);
+  assert.match(list, /referrerInviterStaffId:\s*staffId/);
+  assert.match(list, /const visibleTypes = isOwner/);
+  assert.match(list, /canManageStaffCodes:\s*isOwner/);
+  assert.doesNotMatch(list, /enterprise_admin_required/);
   assert.match(list, /listEnterpriseJoinCodes/);
   assert.match(list, /createEnterpriseJoinToken/);
   assert.match(list, /token:\s*active\s*\?\s*createEnterpriseJoinToken/);
   assert.match(route, /enterprise_admin_required/);
+  assert.match(route, /if \(type === 'staff' && role !== 'enterprise_admin'\)/);
   assert.match(route, /revealActiveEnterpriseJoinCode/);
   assert.match(route, /createEnterpriseOnboardingCode/);
   assert.match(route, /wechat_code_unavailable[\s\S]*status:\s*502/);
   assert.match(route, /Cache-Control': 'private, no-store/);
+});
+
+test('legacy Admin join-code endpoints use the explicit enterprise-level referrer scope', () => {
+  const routePaths = [
+    'src/app/api/enterprise/join-codes/route.ts',
+    'src/app/api/enterprise/referrer-network-readiness/route.ts',
+    'src/app/api/enterprise/join-codes/[type]/rotate/route.ts',
+    'src/app/api/enterprise/join-codes/[type]/disable/route.ts',
+    'src/app/api/enterprise/join-codes/[type]/image/route.ts',
+  ];
+
+  for (const [index, routePath] of routePaths.entries()) {
+    const source = readFileSync(path.join(process.cwd(), routePath), 'utf8');
+    if (index < 2) {
+      assert.match(source, /const referrerInviterStaffId = null/);
+    } else {
+      assert.match(source, /inviterStaffId:\s*null/);
+    }
+  }
+
+  const list = readFileSync(
+    path.join(process.cwd(), 'src/app/api/enterprise/join-codes/route.ts'),
+    'utf8'
+  );
+  const readiness = readFileSync(
+    path.join(process.cwd(), 'src/app/api/enterprise/referrer-network-readiness/route.ts'),
+    'utf8'
+  );
+  assert.match(list, /const referrerInviterStaffId = null/);
+  assert.match(readiness, /const referrerInviterStaffId = null/);
+});
+
+test('staff referrer-network migration backfills only unambiguous owners through temporary RLS policies', () => {
+  const migration = readFileSync(
+    path.join(process.cwd(), 'drizzle/0051_staff_referrer_network.sql'),
+    'utf8'
+  );
+
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "inviter_staff_id"/);
+  assert.match(migration, /ADD COLUMN IF NOT EXISTS "invited_by_staff_id"/);
+  assert.match(migration, /HAVING count\(\*\) = 1/);
+  assert.match(migration, /membership\.invited_by_staff_id IS NULL/);
+  assert.match(
+    migration,
+    /CREATE POLICY "staff_referrer_network_migrator_admin_users"[\s\S]*FOR SELECT TO sfp_migrator/
+  );
+  assert.match(
+    migration,
+    /CREATE POLICY "staff_referrer_network_migrator_memberships"[\s\S]*FOR ALL TO sfp_migrator/
+  );
+  assert.match(
+    migration,
+    /DROP POLICY "staff_referrer_network_migrator_memberships"[\s\S]*DROP POLICY "staff_referrer_network_migrator_admin_users"/
+  );
 });
 
 test('miniprogram enterprise join-code mutate routes mirror Admin rotate/disable', () => {

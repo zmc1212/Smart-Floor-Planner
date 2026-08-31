@@ -31,8 +31,51 @@ export async function GET(request: Request) {
         const url = new URL(request.url);
         const query = url.searchParams.get('query')?.trim() || undefined;
         const status = parseStatus(url.searchParams.get('status'));
+        const requestedView = url.searchParams.get('view') || 'flat';
         if (url.searchParams.get('status') && !status) {
           return NextResponse.json({ success: false, error: '成员状态无效' }, { status: 400 });
+        }
+        if (requestedView !== 'flat' && requestedView !== 'network') {
+          return NextResponse.json({ success: false, error: '推广网络视图无效' }, { status: 400 });
+        }
+        if (requestedView === 'network' && context.role !== 'enterprise_admin') {
+          return NextResponse.json({ success: false, error: '仅企业负责人可查看推广网络' }, { status: 403 });
+        }
+        if (requestedView === 'network') {
+          const network = await withTenantTransaction(context.enterpriseId!, (transaction) =>
+            new ReferrerNetworkRepository(transaction).listEnterpriseReferrerNetwork(
+              parsePostgresId(context.enterpriseId!, 'enterpriseId'),
+              { query, status }
+            )
+          );
+          return NextResponse.json({
+            success: true,
+            data: {
+              view: 'network',
+              summary: network.summary,
+              branches: network.branches.map((branch) => ({
+                staff: branch.staff
+                  ? {
+                      id: branch.staff.id?.toString() ?? null,
+                      displayName: branch.staff.displayName,
+                      role: branch.staff.role,
+                      status: branch.staff.status,
+                    }
+                  : null,
+                total: branch.total,
+                activeCount: branch.activeCount,
+                items: branch.items.map((item) => ({
+                  id: item.membership.id.toString(),
+                  displayName: item.displayName || item.phone || '未命名推荐人',
+                  phone: item.phone || null,
+                  status: item.membership.status,
+                  joinedAt: item.membership.joinedAt,
+                  exitedAt: item.membership.exitedAt,
+                  hasActivePromotionCode: item.promotionCode?.status === 'active',
+                })),
+              })),
+            },
+          });
         }
         const rows = await withTenantTransaction(context.enterpriseId!, (transaction) =>
           new ReferrerNetworkRepository(transaction).listEnterpriseReferrerMemberships(
@@ -50,6 +93,24 @@ export async function GET(request: Request) {
             joinedAt: item.membership.joinedAt,
             exitedAt: item.membership.exitedAt,
             hasActivePromotionCode: item.promotionCode?.status === 'active',
+            inviter: item.inviter
+              ? {
+                  id: item.inviter.id.toString(),
+                  displayName:
+                    item.inviter.displayName.trim() ||
+                    item.membership.invitedByNameSnapshot ||
+                    item.inviter.username,
+                  role: item.inviter.role,
+                  status: item.inviter.status,
+                }
+              : item.membership.invitedByNameSnapshot
+                ? {
+                    id: null,
+                    displayName: item.membership.invitedByNameSnapshot,
+                    role: null,
+                    status: 'deleted',
+                  }
+                : null,
           })),
         });
       }

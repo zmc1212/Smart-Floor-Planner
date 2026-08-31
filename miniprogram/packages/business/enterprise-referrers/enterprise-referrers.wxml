@@ -1,107 +1,144 @@
-<!--
-THESIS: 企业负责人查看本店已入驻推荐人，并停用后续扫码。
-OWN-WORLD: 复用人员派单名册的左色条卡片、芯片行与领取页胶囊安全返回，不新造推荐人管理壳。
-STORY: 从出示入驻码推荐人 Tab 进入，按状态筛选并搜索姓名/手机，停用后历史线索和提成不变。
-FIRST VIEWPORT: 胶囊左侧返回与标题；芯片、搜索、名册卡和空态入驻码在 390x844 同屏可达。
-FORM: design-references/miniprogram-airy-minimalist-v1/20-enterprise-appointments.jpg; join-codes/claim back chrome
--->
+<template name="referrer-card">
+<view class="staff-card tone-{{item.statusTone}}">
+<view class="card-accent"></view>
+<view class="card-body">
+<view class="card-header">
+<text class="header-line">{{item.displayName}}</text>
+<view class="status-tag tag-{{item.statusTone}}">
+<text>{{item.statusLabel}}</text>
+</view>
+</view>
+<text wx:if="{{showInviter && item.inviterLabel}}" class="inviter-line">{{item.inviterLabel}}</text>
+<view
+wx:if="{{item.phone && !(canDisable && item.actionLabel)}}"
+class="phone-row sfp-icon-action"
+data-item="{{item}}"
+catchtap="callReferrer"
+aria-role="button"
+aria-label="拨打推广人电话"
+>
+<text class="phone-number">{{item.phone}}</text>
+<image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+</view>
+<text wx:elif="{{item.phone}}" class="meta-line">{{item.phone}}</text>
+<text wx:else class="meta-line">暂未提供电话</text>
+<text wx:if="{{item.joinedAtLabel}}" class="helper-line">加入 {{item.joinedAtLabel}}</text>
+<text wx:if="{{item.helperText}}" class="helper-line">{{item.helperText}}</text>
+<view wx:if="{{canDisable && item.actionLabel}}" class="card-footer">
+<view wx:if="{{item.phone}}" class="ghost-btn sfp-icon-action" data-item="{{item}}" catchtap="callReferrer">
+<image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+<text>电话联系</text>
+</view>
+<view class="cta-btn" data-item="{{item}}" catchtap="disableReferrer">{{item.actionLabel}}</view>
+</view>
+</view>
+</view>
+</template>
 <view class="page">
-  <view
-    class="nav"
-    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
-  >
-    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
-      <view class="back-chevron"></view>
-    </view>
-    <view class="nav-copy">
-      <text class="nav-title">推荐人</text>
-      <text class="nav-subtitle">{{summaryLine}}</text>
-    </view>
-  </view>
-
-  <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}" lower-threshold="120" bindscrolltolower="onLoadMore">
-    <view class="guide-row">
-      <view class="guide-copy">
-        <text class="guide-title">谁已入驻本店</text>
-        <text class="guide-desc">停用后该推荐人不能再出示活动推广码获客；历史线索和提成记录保持不变。</text>
-      </view>
-      <image class="guide-mascot" src="/images/airy-v1/xiao-k-measurer-3d.png" mode="aspectFit" aria-label="小K 推荐人名册向导" />
-    </view>
-
-    <view class="chip-row">
-      <view
-        wx:for="{{statusChips}}"
-        wx:key="key"
-        class="chip {{focus === item.key ? 'active' : ''}}"
-        data-key="{{item.key}}"
-        bindtap="selectChip"
-      >
-        <text>{{item.label}}</text>
-      </view>
-    </view>
-
-    <view class="search-surface">
-      <image class="search-icon" src="/images/leads-v4/search.png" mode="aspectFit" />
-      <input
-        class="search-input"
-        value="{{searchDraft}}"
-        placeholder="搜索姓名或手机号"
-        placeholder-class="search-placeholder"
-        confirm-type="search"
-        bindinput="onSearchInput"
-        bindconfirm="onSearchConfirm"
-      />
-    </view>
-
-    <view wx:if="{{loading}}" class="state-card">正在读取已入驻推荐人…</view>
-    <view wx:elif="{{error}}" class="state-card">
-      <text class="state-error">{{error}}</text>
-      <view class="retry" bindtap="load">重新加载</view>
-    </view>
-    <view wx:elif="{{!items.length}}" class="state-card empty">
-      <text class="empty-title">当前没有{{emptyStatusLabel}}</text>
-      <text class="empty-desc">{{emptyDesc}}</text>
-      <view wx:if="{{!searchQuery}}" class="retry" bindtap="openJoinCodes">出示入驻码</view>
-    </view>
-    <view wx:else class="staff-list">
-      <view wx:for="{{items}}" wx:key="id" class="staff-card tone-{{item.statusTone}}">
-        <view class="card-accent"></view>
-        <view class="card-body">
-          <view class="card-header">
-            <text class="header-line">{{item.displayName}}</text>
-            <view class="status-tag tag-{{item.statusTone}}">
-              <text>{{item.statusLabel}}</text>
-            </view>
-          </view>
-          <view
-            wx:if="{{item.phone && !item.actionLabel}}"
-            class="phone-row sfp-icon-action"
-            data-item="{{item}}"
-            catchtap="callReferrer"
-            aria-role="button"
-            aria-label="拨打推荐人电话"
-          >
-            <text class="phone-number">{{item.phone}}</text>
-            <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
-          </view>
-          <text wx:elif="{{item.phone}}" class="meta-line">{{item.phone}}</text>
-          <text wx:else class="meta-line">暂未提供电话</text>
-          <text wx:if="{{item.joinedAtLabel}}" class="helper-line">加入 {{item.joinedAtLabel}}</text>
-          <text wx:if="{{item.helperText}}" class="helper-line">{{item.helperText}}</text>
-          <view wx:if="{{item.actionLabel}}" class="card-footer">
-            <view wx:if="{{item.phone}}" class="ghost-btn sfp-icon-action" data-item="{{item}}" catchtap="callReferrer">
-              <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
-              <text>电话联系</text>
-            </view>
-            <view
-              class="cta-btn"
-              data-item="{{item}}"
-              catchtap="disableReferrer"
-            >{{item.actionLabel}}</view>
-          </view>
-        </view>
-      </view>
-      <view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
-    </view>
-  </scroll-view>
+<view
+class="nav"
+style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+>
+<view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
+<view class="back-chevron"></view>
+</view>
+<view class="nav-copy">
+<text class="nav-title">{{pageTitle}}</text>
+<text class="nav-subtitle">{{summaryLine}}</text>
+</view>
+</view>
+<scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}" lower-threshold="120" bindscrolltolower="onLoadMore">
+<view class="guide-row">
+<view class="guide-copy">
+<text class="guide-title">{{guideTitle}}</text>
+<text class="guide-desc">{{guideDesc}}</text>
+<button class="guide-action" bindtap="openJoinCodes" hover-class="guide-action-pressed">{{inviteLabel}}</button>
+</view>
+<image class="guide-mascot" src="/images/airy-v1/xiao-k-measurer-3d.png" mode="aspectFit" aria-label="小K 推广人名册向导" />
+</view>
+<view wx:if="{{isEnterpriseScope}}" class="view-switch">
+<view
+wx:for="{{viewChips}}"
+wx:key="key"
+class="view-option {{view === item.key ? 'active' : ''}}"
+data-key="{{item.key}}"
+bindtap="selectView"
+aria-role="button"
+aria-label="查看{{item.label}}"
+>
+<text>{{item.label}}</text>
+</view>
+</view>
+<view class="chip-row">
+<view
+wx:for="{{statusChips}}"
+wx:key="key"
+class="chip {{focus === item.key ? 'active' : ''}}"
+data-key="{{item.key}}"
+bindtap="selectChip"
+>
+<text>{{item.label}}</text>
+</view>
+</view>
+<view class="search-surface">
+<image class="search-icon" src="/images/leads-v4/search.png" mode="aspectFit" />
+<input
+class="search-input"
+value="{{searchDraft}}"
+placeholder="搜索姓名或手机号"
+placeholder-class="search-placeholder"
+confirm-type="search"
+bindinput="onSearchInput"
+bindconfirm="onSearchConfirm"
+/>
+</view>
+<view wx:if="{{loading}}" class="state-card">正在读取推广人信息…</view>
+<view wx:elif="{{error}}" class="state-card">
+<text class="state-error">{{error}}</text>
+<view class="retry" bindtap="onRetry">重新加载</view>
+</view>
+<block wx:elif="{{view === 'network' && isEnterpriseScope}}">
+<view class="network-summary" aria-label="企业推广网络汇总">
+<text>员工 <text class="summary-value">{{networkSummary.employeeCount}}</text></text>
+<text>推广人 <text class="summary-value">{{networkSummary.total}}</text></text>
+<text>活动 <text class="summary-value">{{networkSummary.activeCount}}</text></text>
+<text wx:if="{{networkSummary.unassignedCount}}">历史未归属 <text class="summary-value">{{networkSummary.unassignedCount}}</text></text>
+</view>
+<view wx:if="{{!branches.length}}" class="state-card empty">
+<text class="empty-title">暂无员工推广分支</text>
+<text class="empty-desc">{{emptyDesc}}</text>
+</view>
+<view wx:else class="network-list">
+<view wx:for="{{branches}}" wx:for-item="branch" wx:key="branchKey" class="network-branch {{branch.staff ? '' : 'unassigned'}}">
+<view class="branch-heading">
+<view class="branch-node"></view>
+<view class="branch-copy">
+<text class="branch-name">{{branch.staffName}}</text>
+<text class="branch-role">{{branch.staffRoleLabel}}</text>
+</view>
+<text class="branch-count">活动 {{branch.activeCount}} · 共 {{branch.total}}</text>
+</view>
+<view wx:if="{{!branch.items.length}}" class="branch-empty">当前筛选下暂无推广人</view>
+<view wx:else class="staff-list branch-items">
+<block wx:for="{{branch.items}}" wx:for-item="referrer" wx:key="id">
+<template is="referrer-card" data="{{item: referrer, canDisable: canDisable, showInviter: false}}" />
+</block>
+</view>
+</view>
+</view>
+</block>
+<block wx:else>
+<view wx:if="{{!items.length}}" class="state-card empty">
+<text class="empty-title">当前没有{{emptyStatusLabel}}</text>
+<text class="empty-desc">{{emptyDesc}}</text>
+<view wx:if="{{!searchQuery}}" class="retry" bindtap="openJoinCodes">{{inviteLabel}}</view>
+</view>
+<view wx:else class="staff-list">
+<block wx:for="{{items}}" wx:for-item="referrer" wx:key="id">
+<template is="referrer-card" data="{{item: referrer, canDisable: canDisable, showInviter: isEnterpriseScope}}" />
+</block>
+<view wx:if="{{footerText}}" class="sfp-list-footer">{{footerText}}</view>
+</view>
+</block>
+</scroll-view>
 </view>

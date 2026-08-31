@@ -21,6 +21,7 @@ import {
   aiWorkflows,
   commissionRecords,
   departments,
+  enterpriseJoinCodes,
   enterprises,
   measurementAppointments,
   staffActivityCodes,
@@ -484,6 +485,9 @@ export class AdminUserRepository {
 
   async delete(id: bigint) {
     await this.assertDeletable(id);
+    await this.transaction
+      .delete(enterpriseJoinCodes)
+      .where(eq(enterpriseJoinCodes.inviterStaffId, id));
     await this.transaction
       .delete(staffActivityCodes)
       .where(eq(staffActivityCodes.staffId, id));

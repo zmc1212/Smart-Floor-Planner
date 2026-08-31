@@ -6,6 +6,7 @@ export type SurveyViewport = {
   scale: number;
   offsetX: number;
   offsetY: number;
+  rotationRad?: number;
 };
 
 export type SurveyCanvasRect = {
@@ -27,6 +28,16 @@ const DEFAULT_PADDING = { x: 96, y: 96 };
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function rotateVector(x: number, y: number, rotationRad = 0) {
+  if (!rotationRad) return { x, y };
+  const cos = Math.cos(rotationRad);
+  const sin = Math.sin(rotationRad);
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos,
+  };
 }
 
 export function createReadonlySurveySession() {
@@ -76,11 +87,13 @@ export function fitSurveyViewport(
 }
 
 export function panSurveyViewport(viewport: SurveyViewport, dx: number, dy: number): SurveyViewport {
-  return {
+  const next: SurveyViewport = {
     scale: viewport.scale,
     offsetX: viewport.offsetX + dx,
     offsetY: viewport.offsetY + dy,
   };
+  if (viewport.rotationRad) next.rotationRad = viewport.rotationRad;
+  return next;
 }
 
 export function canvasPointToMm(
@@ -88,9 +101,14 @@ export function canvasPointToMm(
   rect: SurveyCanvasRect,
   viewport: SurveyViewport,
 ) {
+  const unrotated = rotateVector(
+    point.x - rect.width / 2 - viewport.offsetX,
+    point.y - rect.height / 2 - viewport.offsetY,
+    -(viewport.rotationRad || 0),
+  );
   return {
-    xMm: (point.x - rect.width / 2 - viewport.offsetX) / viewport.scale,
-    yMm: (point.y - rect.height / 2 - viewport.offsetY) / viewport.scale,
+    xMm: unrotated.x / viewport.scale,
+    yMm: unrotated.y / viewport.scale,
   };
 }
 
@@ -102,9 +120,16 @@ export function zoomSurveyViewport(
 ): SurveyViewport {
   const scale = clamp(viewport.scale * factor, SURVEY_VIEWER_MIN_SCALE, SURVEY_VIEWER_MAX_SCALE);
   const anchor = canvasPointToMm(localPoint, rect, viewport);
-  return {
+  const rotated = rotateVector(
+    anchor.xMm * scale,
+    anchor.yMm * scale,
+    viewport.rotationRad || 0,
+  );
+  const next: SurveyViewport = {
     scale,
-    offsetX: localPoint.x - rect.width / 2 - anchor.xMm * scale,
-    offsetY: localPoint.y - rect.height / 2 - anchor.yMm * scale,
+    offsetX: localPoint.x - rect.width / 2 - rotated.x,
+    offsetY: localPoint.y - rect.height / 2 - rotated.y,
   };
+  if (viewport.rotationRad) next.rotationRad = viewport.rotationRad;
+  return next;
 }

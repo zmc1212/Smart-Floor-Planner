@@ -175,6 +175,135 @@ test('enterprise join codes rotate, disable, and enforce code types', async () =
   });
 });
 
+test('personal referrer codes preserve the first inviter and build the complete employee network', async () => {
+  await withPlatformTransaction(async (transaction) => {
+    const adminRepository = new AdminUserRepository(transaction);
+    const repository = new ReferrerNetworkRepository(transaction);
+    const designer = await adminRepository.create({
+      enterpriseId: enterpriseIds[0],
+      username: `${runKey}-personal-designer`,
+      passwordHash: 'test-hash',
+      displayName: 'Personal designer',
+      role: 'designer',
+      menuPermissions: ['dashboard'],
+    });
+    const measurer = await adminRepository.create({
+      enterpriseId: enterpriseIds[0],
+      username: `${runKey}-personal-measurer`,
+      passwordHash: 'test-hash',
+      displayName: 'Personal measurer',
+      role: 'measurer',
+      menuPermissions: ['dashboard'],
+    });
+
+    const designerCode = await repository.rotateEnterpriseJoinCode({
+      enterpriseId: enterpriseIds[0],
+      codeType: 'referrer',
+      actorStaffId: designer.id,
+      inviterStaffId: designer.id,
+    });
+    const measurerCode = await repository.rotateEnterpriseJoinCode({
+      enterpriseId: enterpriseIds[0],
+      codeType: 'referrer',
+      actorStaffId: measurer.id,
+      inviterStaffId: measurer.id,
+    });
+    assert.notEqual(designerCode.token, measurerCode.token);
+    assert.equal(designerCode.code.inviterStaffId, designer.id);
+    assert.equal(measurerCode.code.inviterStaffId, measurer.id);
+
+    const designerScopedCodes = await repository.listEnterpriseJoinCodes(
+      enterpriseIds[0],
+      { referrerInviterStaffId: designer.id }
+    );
+    assert.deepEqual(
+      designerScopedCodes
+        .filter((row) => row.codeType === 'referrer')
+        .map((row) => row.inviterStaffId),
+      [designer.id]
+    );
+    const legacyScopedCodes = await repository.listEnterpriseJoinCodes(
+      enterpriseIds[0],
+      { referrerInviterStaffId: null }
+    );
+    assert.ok(
+      legacyScopedCodes
+        .filter((row) => row.codeType === 'referrer')
+        .every((row) => row.inviterStaffId === null)
+    );
+
+    const [user] = await transaction
+      .insert(users)
+      .values({ phone: `131${Date.now().toString().slice(-8)}` })
+      .returning();
+    userIds.push(user.id);
+    const joined = await repository.onboardReferrer({
+      token: designerCode.token,
+      userId: user.id,
+      contextVersion: user.contextVersion,
+      displayName: 'Personal invitee',
+      membershipLimit: 3,
+    });
+    assert.equal(joined.ok, true);
+    if (!joined.ok) return;
+    assert.equal(joined.membership.invitedByStaffId, designer.id);
+    assert.equal(joined.membership.invitedByNameSnapshot, designer.displayName);
+
+    const repeated = await repository.onboardReferrer({
+      token: measurerCode.token,
+      userId: user.id,
+      contextVersion: joined.user.contextVersion,
+      displayName: 'Personal invitee',
+      membershipLimit: 3,
+    });
+    assert.equal(repeated.ok && repeated.idempotent, true);
+    if (repeated.ok) {
+      assert.equal(repeated.membership.id, joined.membership.id);
+      assert.equal(repeated.membership.invitedByStaffId, designer.id);
+    }
+
+    const [designerRoster, measurerRoster, network] = await Promise.all([
+      repository.listEnterpriseReferrerMemberships(enterpriseIds[0], {
+        inviterStaffId: designer.id,
+      }),
+      repository.listEnterpriseReferrerMemberships(enterpriseIds[0], {
+        inviterStaffId: measurer.id,
+      }),
+      repository.listEnterpriseReferrerNetwork(enterpriseIds[0]),
+    ]);
+    assert.equal(designerRoster.length, 1);
+    assert.equal(measurerRoster.length, 0);
+    assert.equal(network.summary.total, 1);
+    assert.equal(
+      network.branches.find((branch) => branch.staff?.id === designer.id)?.total,
+      1
+    );
+    assert.equal(
+      network.branches.find((branch) => branch.staff?.id === measurer.id)?.total,
+      0
+    );
+
+    await transaction
+      .delete(referrerPromotionCodes)
+      .where(eq(referrerPromotionCodes.membershipId, joined.membership.id));
+    await transaction
+      .delete(referrerEnterpriseMemberships)
+      .where(eq(referrerEnterpriseMemberships.id, joined.membership.id));
+    await transaction
+      .delete(referrerProfiles)
+      .where(eq(referrerProfiles.userId, user.id));
+    await transaction
+      .delete(enterpriseJoinCodes)
+      .where(
+        inArray(enterpriseJoinCodes.inviterStaffId, [designer.id, measurer.id])
+      );
+    await transaction
+      .delete(adminUsers)
+      .where(inArray(adminUsers.id, [designer.id, measurer.id]));
+    await transaction.delete(users).where(eq(users.id, user.id));
+  });
+});
+
 test('staff onboarding is idempotent but cannot overwrite its enterprise', async () => {
   await withPlatformTransaction(async (transaction) => {
     const repository = new ReferrerNetworkRepository(transaction);

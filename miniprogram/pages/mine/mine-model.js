@@ -32,6 +32,61 @@ const ROLE_LABELS = {
   super_admin: '平台管理员'
 };
 
+const REFERRER_NETWORK_ROLES = Object.freeze([
+  'designer',
+  'measurer',
+  'salesperson',
+  'enterprise_admin'
+]);
+
+function hasEnterpriseContext(value) {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0;
+  }
+  return /^[1-9]\d*$/.test(String(value == null ? '' : value).trim());
+}
+
+function referrerNetworkEntryForIdentity(roleOrIdentity, identityOrBootstrap, maybeBootstrap) {
+  const identity = typeof roleOrIdentity === 'string'
+    ? (identityOrBootstrap || {})
+    : (roleOrIdentity || {});
+  const bootstrap = typeof roleOrIdentity === 'string'
+    ? (maybeBootstrap || {})
+    : (identityOrBootstrap || {});
+  const current = bootstrap && bootstrap.current ? bootstrap.current : {};
+  const roleCandidates = [
+    typeof roleOrIdentity === 'string' ? roleOrIdentity : '',
+    identity.staffRole,
+    identity.role,
+    current.context && current.context.staffRole,
+    current.role
+  ].map((value) => String(value == null ? '' : value).trim());
+  const role = roleCandidates.find((value) => REFERRER_NETWORK_ROLES.includes(value)) || '';
+  const owner = role === 'enterprise_admin';
+  const label = owner ? '推广网络' : '我的推广人';
+  const helper = owner ? '查看员工分支与全部推广人' : '邀请并查看我的推广人';
+  const context = current.context || {};
+  const enterpriseId = [
+    identity.enterpriseId,
+    identity.context && identity.context.enterpriseId,
+    context.enterpriseId,
+    current.enterpriseId
+  ].find(hasEnterpriseContext);
+  const capabilities = Array.isArray(current.capabilities)
+    ? current.capabilities
+    : (Array.isArray(identity.capabilities) ? identity.capabilities : []);
+  const capabilityAvailable = !capabilities.length || capabilities.includes('referrer.network');
+  const visible = REFERRER_NETWORK_ROLES.includes(role)
+    && hasEnterpriseContext(enterpriseId)
+    && capabilityAvailable;
+
+  return {
+    showReferrerNetworkEntry: visible,
+    referrerNetworkEntryLabel: label,
+    referrerNetworkEntryHelper: helper
+  };
+}
+
 function canShowPlatformRegistrationCode(role, bootstrap) {
   if (role !== 'platform_admin') return false;
   const capabilities = (bootstrap && bootstrap.current && bootstrap.current.capabilities) || [];
@@ -155,6 +210,7 @@ function getFloorPlanRoomCount(layoutData) {
 module.exports = {
   profileForIdentity,
   canShowPlatformRegistrationCode,
+  referrerNetworkEntryForIdentity,
   decorateActions,
   buildWorkbenchActions,
   decorateSummaryCards,
