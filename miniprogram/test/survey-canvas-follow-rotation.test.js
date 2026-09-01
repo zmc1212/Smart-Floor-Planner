@@ -639,7 +639,7 @@ test('navigation measurement is visible in an independent left slot while formal
   assert.match(compassWxml, /navigation-measure-bearing/);
   assert.doesNotMatch(compassWxml, />\s*N\s*</);
   assert.match(compassLess, /\.survey-canvas-compass\s*\{[\s\S]*?width:\s*132rpx;[\s\S]*?height:\s*88rpx;/);
-  assert.match(compassLess, /\.navigation-measure-label\s*\{[\s\S]*?font-size:\s*28rpx;/);
+  assert.match(compassLess, /\.navigation-measure-label\s*\{[\s\S]*?height:\s*32rpx;[\s\S]*?font-size:\s*28rpx;[\s\S]*?line-height:\s*32rpx;/);
   assert.match(compassLess, /\.navigation-measure-bearing\s*\{[\s\S]*?font-size:\s*28rpx;/);
 
   const asset = fs.readFileSync(navigationMeasureAssetPath);
@@ -655,7 +655,7 @@ test('navigation measurement calibrates the entry-door azimuth before auto direc
   assert.match(editorScript, /navigationBearingLabel:\s*`\$\{Math\.round\(this\.navigationEntryDoorAzimuthDeg\)\}°`/);
   assert.match(editorScript, /directionPickController\.begin\([\s\S]*?this\.navigationEntryDoorAlphaDeg/);
   assert.match(editorScript, /pickCardinalRotationDeg\(\s*Number\(result\.worldBearing\)/);
-  assert.match(editorScript, /nextRotation = -nextBearing/);
+  assert.match(editorScript, /nextRotation = nextBearing/);
   assert.doesNotMatch(editorScript, /nextRotation = -Number\(result\.worldBearing\)/);
   assert.match(editorScript, /animateViewRotationTo\(nextRotation, \{ durationMs: NAVIGATION_VIEW_ROTATION_MS \}\)/);
   assert.match(editorScript, /const NAVIGATION_VIEW_ROTATION_MS = 420/);

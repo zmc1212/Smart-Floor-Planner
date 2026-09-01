@@ -20,7 +20,7 @@ export type CreationBatchControlKind =
 
 export type CreationBatchRenderMode = 'whole_floor_plan' | 'single_room_photo' | 'soft_furnishing';
 
-const SINGLE_ROOM_FULL_SPACE_BOUNDARY = `SINGLE-ROOM FULL-SPACE REDESIGN BOUNDARY
+export const DEFAULT_SINGLE_ROOM_FULL_SPACE_PROMPT = `SINGLE-ROOM FULL-SPACE REDESIGN BOUNDARY
 
 Use the supplied site photo as the authority for the existing room envelope and output camera. Preserve the camera position, viewing direction, perspective, lens height, field of view, crop, walls, columns, doors, windows, openings, and their relative geometry.
 
@@ -28,7 +28,7 @@ You may redesign every visible interior design layer inside that fixed envelope:
 
 Do not add, remove, move, resize, or reshape structural elements or openings. Any non-site reference image supplies style, material, color, furniture, and decoration only; it must not replace the site photo camera or architecture.`;
 
-const SOFT_FURNISHING_ONLY_BOUNDARY = `SINGLE-ROOM SOFT-FURNISHING-ONLY BOUNDARY
+export const DEFAULT_SOFT_FURNISHING_ONLY_PROMPT = `SINGLE-ROOM SOFT-FURNISHING-ONLY BOUNDARY
 
 Use the supplied site photo as the authority for both the existing room and output camera. Preserve exactly the camera position, viewing direction, perspective, lens height, field of view, crop, walls, columns, ceiling, floor, doors, windows, openings, stairs, fixed cabinetry, built-ins, sanitary fixtures, kitchen fixtures, architectural lighting, and all visible hard-finish materials, colors, patterns, and construction details.
 
@@ -39,12 +39,13 @@ Do not repaint, reclad, demolish, rebuild, or redesign any architecture, hard fi
 export function composePhotoFirstCreationBatchPrompt(input: {
   renderMode: CreationBatchRenderMode;
   prompt: string;
+  boundaryPrompt?: string;
 }) {
   const userPrompt = input.prompt.trim();
   const boundary = input.renderMode === 'soft_furnishing'
-    ? SOFT_FURNISHING_ONLY_BOUNDARY
+    ? input.boundaryPrompt?.trim() || DEFAULT_SOFT_FURNISHING_ONLY_PROMPT
     : input.renderMode === 'single_room_photo'
-      ? SINGLE_ROOM_FULL_SPACE_BOUNDARY
+      ? input.boundaryPrompt?.trim() || DEFAULT_SINGLE_ROOM_FULL_SPACE_PROMPT
       : '';
   if (!boundary) return userPrompt;
   return [

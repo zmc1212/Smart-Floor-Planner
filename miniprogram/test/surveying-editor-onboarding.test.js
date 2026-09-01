@@ -25,6 +25,17 @@ test('opening a lead without floorPlanId still loads that lead\'s existing cloud
   assert.match(editorScript, /readLeadFloorPlanId\(/);
 });
 
+test('formal survey drafts are isolated per existing floor plan', () => {
+  assert.match(
+    editorScript,
+    /const floorPlanDraftScope = !startNewSurvey && contextFloorPlanId\s*\? `floor_\$\{String\(contextFloorPlanId\)\}`\s*:\s*'';/
+  );
+  assert.match(
+    editorScript,
+    /this\.getFormalDraftKey\(\s*leadId,\s*newSurveyDraftScope \|\| floorPlanDraftScope\s*\)/
+  );
+});
+
 test('formal surveying titles resolve to the linked community instead of a formal-survey label', () => {
   assert.match(navigationScript, /communityName: opts\.communityName \|\| ''/);
   assert.match(editorScript, /title: context\.communityName \|\| '未填写小区'/);

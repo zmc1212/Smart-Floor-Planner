@@ -47,9 +47,11 @@
 }
 
 .navigation-measure-label {
-  margin-top: 2rpx;
+  height: 32rpx;
+  margin-top: 0;
   font-size: 28rpx;
   font-weight: 700;
-  line-height: 1;
+  /* Native cover-view clips glyph ascenders when its line box equals font-size. */
+  line-height: 32rpx;
   white-space: nowrap;
 }

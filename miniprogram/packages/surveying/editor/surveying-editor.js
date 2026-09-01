@@ -552,8 +552,17 @@ Page({
     const startNewSurvey = options.newSurvey === '1' || !!context.startNewSurvey;
     const newSurveyKey = options.newSurveyKey || context.newSurveyKey || '';
     const newSurveyDraftScope = startNewSurvey ? `new_${newSurveyKey || Date.now()}` : '';
+    // Existing plans must keep separate local drafts. A lead can have multiple
+    // formal surveys, so a lead-only key would restore one plan's draft while
+    // another plan is loading.
+    const floorPlanDraftScope = !startNewSurvey && contextFloorPlanId
+      ? `floor_${String(contextFloorPlanId)}`
+      : '';
     this.isNewSurveySession = startNewSurvey;
-    this.formalDraftKey = this.getFormalDraftKey(leadId, newSurveyDraftScope);
+    this.formalDraftKey = this.getFormalDraftKey(
+      leadId,
+      newSurveyDraftScope || floorPlanDraftScope
+    );
     this.serverDraftId = startNewSurvey ? '' : (contextFloorPlanId || this.getStoredServerDraftId(leadId));
     this.cloudSaveIdempotencyKey = this.getStoredCloudSaveIdempotencyKey(this.formalDraftKey);
     const restoredDraft = startNewSurvey
@@ -2303,7 +2312,9 @@ Page({
         this.navigationViewBearingDeg,
         NAVIGATION_VIEW_ROTATION_THRESHOLD_DEG
       );
-      const nextRotation = -nextBearing;
+      // `nextBearing` is measured from the calibrated entry-door axis. Applying
+      // it directly makes the plan counter-rotate against the phone movement.
+      const nextRotation = nextBearing;
       const rotationDelta = Math.abs(
         surveyDeviceOrientation.shortestArcDeg(nextRotation - (Number(this.viewRotationDeg) || 0))
       );

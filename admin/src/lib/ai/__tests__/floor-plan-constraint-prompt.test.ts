@@ -8,10 +8,14 @@ import {
   validateFloorPlanConstraintPrompt,
 } from '@/lib/ai/floor-plan-constraint-prompt';
 import {
+  DEFAULT_SINGLE_ROOM_FULL_SPACE_PROMPT,
+  DEFAULT_SOFT_FURNISHING_ONLY_PROMPT,
   requiresCreationBatchSitePhoto,
   shouldAttachCreationBatchFloorPlanControl,
 } from '@/lib/ai/creation-batch-floorplan';
-import { normalizePlatformAiPromptConfig } from '@/lib/ai/platform-ai-prompt-config';
+import {
+  normalizePlatformAiPromptConfig,
+} from '@/lib/ai/platform-ai-prompt-config';
 import { resolveDirectRenderPrompts } from '@/lib/ai/postgres-direct-generation-service';
 
 test('default floor-plan constraint separates geometry from camera references', () => {
@@ -71,6 +75,18 @@ test('platform AI prompt config falls back to the maintained default and rejects
   assert.equal(
     normalizePlatformAiPromptConfig(null).floorPlanConstraintPrompt,
     DEFAULT_FLOOR_PLAN_CONSTRAINT_PROMPT
+  );
+  assert.equal(
+    normalizePlatformAiPromptConfig(null).singleRoomFullSpacePrompt,
+    DEFAULT_SINGLE_ROOM_FULL_SPACE_PROMPT,
+  );
+  assert.equal(
+    normalizePlatformAiPromptConfig(null).softFurnishingOnlyPrompt,
+    DEFAULT_SOFT_FURNISHING_ONLY_PROMPT,
+  );
+  assert.equal(
+    normalizePlatformAiPromptConfig({ singleRoomFullSpacePrompt: '  full-space  ' }).singleRoomFullSpacePrompt,
+    'full-space',
   );
   assert.equal(validateFloorPlanConstraintPrompt('  custom rule  '), 'custom rule');
   assert.throws(() => validateFloorPlanConstraintPrompt(''), /不能为空/);

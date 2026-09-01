@@ -79,8 +79,10 @@ copy back to `layoutData`.
   Relative room bearings are hysteresis-snapped to the four orthogonal axes
   (`0°/90°/180°/270°`); only a `20°` trigger delta changes the selected axis, so
   the raw compass value can never become a diagonal canvas rotation. Axis changes
-  rotate along the shortest arc over `420ms` with an ease-out curve instead of
-  snapping to the target. Disabling navigation eases back to `viewRotationDeg = 0`.
+  rotate along the shortest arc over `420ms` with an ease-out curve and an
+  inverse visual sign so the plan counter-rotates against phone movement,
+  instead of snapping to the target. Disabling navigation eases back to
+  `viewRotationDeg = 0`.
   Compass is the primary heading source and device
   motion is its fallback through `surveyDeviceOrientation.sharedHeadingSensorHub`;
   `sharedDeviceMotionHub` validates phone level when available. Subscriptions stop

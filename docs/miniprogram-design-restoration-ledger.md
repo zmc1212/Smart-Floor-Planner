@@ -10,12 +10,17 @@ For `packages/surveying/editor/surveying-editor`, the approved navigation-measur
 flow keeps the absolute azimuth readout (for example `231°`) separate from the
 canvas transform. Relative room bearings snap to the four orthogonal axes and
 crossing the `20°` trigger threshold animates the canvas between those axes over
-`420ms`; the canvas must never settle at the raw diagonal heading. Navigation
+`420ms` with an inverse visual sign so the plan counter-rotates against phone
+movement; the canvas must never settle at the raw diagonal heading. Navigation
 sensor callbacks rotate the canvas only; direction arrows remain manual choices.
 The current navigation label and live bearing readout are `28rpx`; calibration title/body/
 actions are `36/26/28rpx`. This enlarged navigation/calibration typography is
 part of the current restored state; runtime
 visual QA remains pending the user's manual screenshot.
+
+Its `28rpx` Navigation Measurement label uses a fixed `32rpx` native line box
+inside the `132×88rpx` action. This preserves the full glyph ascenders on
+native `cover-view` rather than relying on the clipped `line-height: 1` default.
 
 The current `pages/mine/mine` account panel also includes the native
 **检查当前版本** row, using the existing account-row/icon treatment and no new

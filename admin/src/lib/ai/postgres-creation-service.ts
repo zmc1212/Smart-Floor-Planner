@@ -349,7 +349,8 @@ export async function preparePostgresCreationBatch(input: {
     renderMode,
     hasFloorPlan: hasBoundFloorPlan,
   });
-  const aiPromptConfig = attachFloorPlanControl && workflowBinding?.floorPlanId && workflowBinding.layoutData
+  const photoFirstMode = renderMode === 'single_room_photo' || renderMode === 'soft_furnishing';
+  const aiPromptConfig = attachFloorPlanControl || photoFirstMode
     ? await getPlatformAiPromptConfig()
     : null;
   const targetContext = workflowBinding?.floorPlanId && workflowBinding.layoutData
@@ -374,6 +375,9 @@ export async function preparePostgresCreationBatch(input: {
   const providerPrompt = floorPlanScope?.providerPrompt || composePhotoFirstCreationBatchPrompt({
     renderMode,
     prompt,
+    boundaryPrompt: renderMode === 'soft_furnishing'
+      ? aiPromptConfig?.softFurnishingOnlyPrompt
+      : aiPromptConfig?.singleRoomFullSpacePrompt,
   });
   if (requiresCreationBatchSitePhoto({ renderMode, sitePhotoAssetIds, hasSitePhoto })) {
     throw Object.assign(new Error(styleReferenceAssetId

@@ -37,10 +37,10 @@ export async function PATCH(request: Request) {
       async () => {
         const body = (await request.json()) as {
           floorPlanConstraintPrompt?: unknown;
+          singleRoomFullSpacePrompt?: unknown;
+          softFurnishingOnlyPrompt?: unknown;
         };
-        const config = await savePlatformAiPromptConfig(
-          body.floorPlanConstraintPrompt
-        );
+        const config = await savePlatformAiPromptConfig(body);
         return NextResponse.json({
           success: true,
           data: platformAiPromptConfigDto(config),
