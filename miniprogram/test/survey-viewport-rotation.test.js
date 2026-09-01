@@ -95,6 +95,31 @@ test('rotation offset compensation keeps the screen-centre world point fixed', (
   assert.equal(rotated.rotationRad, Math.PI / 6);
 });
 
+test('content-centering offset keeps the rotated survey bounds centered', () => {
+  const rect = { width: 420, height: 300 };
+  const points = [
+    { xMm: -1200, yMm: -400 },
+    { xMm: 2600, yMm: -400 },
+    { xMm: 2600, yMm: 1400 },
+    { xMm: -1200, yMm: 1400 }
+  ];
+  const viewport = { scale: 0.05, offsetX: 180, offsetY: -90, rotationRad: 0 };
+  const rotated = surveyCanvasRenderer.resolveViewportOffsetForContentCenter(
+    rect,
+    points,
+    viewport,
+    Math.PI / 2
+  );
+  const projected = points.map((point) => surveyCanvasRenderer.projectSurveyPoint(point, rotated, rect));
+  const minX = Math.min(...projected.map((point) => point.x));
+  const maxX = Math.max(...projected.map((point) => point.x));
+  const minY = Math.min(...projected.map((point) => point.y));
+  const maxY = Math.max(...projected.map((point) => point.y));
+  almostEqual((minX + maxX) / 2, rect.width / 2, 1e-6);
+  almostEqual((minY + maxY) / 2, rect.height / 2, 1e-6);
+  assert.equal(rotated.rotationRad, Math.PI / 2);
+});
+
 test('pinch anchor offset with rotation keeps the millimetre point under the canvas point', () => {
   const rect = { width: 390, height: 650 };
   const rotationRad = -Math.PI / 7;
@@ -187,4 +212,6 @@ test('editor viewport helpers merge page-level rotation and share the renderer p
   assert.match(editorScript, /surveyCanvasRenderer\.unprojectSurveyPoint/);
   assert.match(editorScript, /surveyCanvasRenderer\.persistSurveyViewport/);
   assert.match(editorScript, /surveyCanvasRenderer\.resolveViewportOffsetForAnchor/);
+  assert.match(editorScript, /surveyCanvasRenderer\.resolveViewportOffsetForContentCenter/);
+  assert.match(editorScript, /getViewportContentPoints/);
 });

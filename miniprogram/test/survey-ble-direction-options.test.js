@@ -179,6 +179,24 @@ test('lockPreviewBearing records direction without moving the cursor or walls', 
   assert.equal(floor.walls.length, 0);
 });
 
+test('clearBleLockedBearing returns a locked direction to the candidate state', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 1000, yMm: 2000 });
+  draft = surveyGraph.lockPreviewBearing(draft, 90);
+  draft = surveyGraph.clearBleLockedBearing(draft);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const session = floor.session;
+  const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
+
+  assert.equal(session.state, 'cursorPlaced');
+  assert.equal(session.previewPoint, null);
+  assert.equal(Object.hasOwn(session, 'bleLockedBearingDeg'), false);
+  assert.equal(anchor.xMm, 1000);
+  assert.equal(anchor.yMm, 2000);
+  assert.equal(floor.walls.length, 0);
+});
+
 test('formal layout serialization strips the transient BLE direction lock', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
@@ -265,15 +283,16 @@ test('startPreviewFromBearing rejects diagonal mode', () => {
   );
 });
 
-test('drawBleDirectionArrows paints the approved wide shaftless triangular pointers', () => {
+test('drawBleDirectionArrows paints compact single-layer candidate pointers', () => {
   const surveyCanvasRenderer = require('../packages/surveying/utils/surveyCanvasRenderer.js');
   const calls = [];
+  const linePoints = [];
   const ctx = {
     save() { calls.push('save'); },
     restore() { calls.push('restore'); },
     beginPath() { calls.push('beginPath'); },
-    moveTo() { calls.push('moveTo'); },
-    lineTo() { calls.push('lineTo'); },
+    moveTo(x, y) { calls.push('moveTo'); linePoints.push({ x, y }); },
+    lineTo(x, y) { calls.push('lineTo'); linePoints.push({ x, y }); },
     closePath() { calls.push('closePath'); },
     stroke() { calls.push('stroke'); },
     fill() { calls.push('fill'); },
@@ -286,11 +305,100 @@ test('drawBleDirectionArrows paints the approved wide shaftless triangular point
 
   surveyCanvasRenderer.drawBleDirectionArrows(ctx, { x: 100, y: 200 }, [
     { tipX: 160, tipY: 200, selected: false },
-    { tipX: 100, tipY: 140, selected: true }
+    { tipX: 100, tipY: 140, selected: false }
   ]);
 
   assert.equal(calls.filter((name) => name === 'stroke').length, 2);
   assert.equal(calls.filter((name) => name === 'fill').length, 2);
   assert.equal(calls.filter((name) => name === 'moveTo').length, 2);
   assert.equal(calls.filter((name) => name === 'lineTo').length, 4);
+  assert.deepEqual(linePoints.slice(0, 3), [
+    { x: 160, y: 200 },
+    { x: 138, y: 213 },
+    { x: 138, y: 187 }
+  ]);
+  assert.deepEqual(linePoints.slice(3), [
+    { x: 100, y: 140 },
+    { x: 113, y: 162 },
+    { x: 87, y: 162 }
+  ]);
+});
+
+test('buildBleDirectionScreenControls keeps only the selected direction after lock', () => {
+  const surveyCanvasRenderer = require('../packages/surveying/utils/surveyCanvasRenderer.js');
+  const controls = surveyCanvasRenderer.buildBleDirectionScreenControls({
+    directions: [
+      { key: 'east', bearingDeg: 0, selected: true },
+      { key: 'south', bearingDeg: 90, selected: false },
+      { key: 'north', bearingDeg: -90, selected: false }
+    ]
+  }, { x: 100, y: 200 }, 0);
+
+  assert.equal(controls.length, 1);
+  assert.equal(controls[0].key, 'east');
+  assert.equal(controls[0].selected, true);
+  assert.equal(controls[0].tipX, 176);
+  assert.equal(controls[0].tipY, 200);
+});
+
+test('drawBleDirectionArrows hides other candidates and keeps the locked arrow small', () => {
+  const surveyCanvasRenderer = require('../packages/surveying/utils/surveyCanvasRenderer.js');
+  const linePoints = [];
+  const calls = [];
+  const ctx = {
+    save() { calls.push('save'); },
+    restore() { calls.push('restore'); },
+    beginPath() { calls.push('beginPath'); },
+    moveTo(x, y) { linePoints.push({ x, y }); },
+    lineTo(x, y) { linePoints.push({ x, y }); },
+    closePath() { calls.push('closePath'); },
+    stroke() { calls.push('stroke'); },
+    fill() { calls.push('fill'); },
+    strokeStyle: '',
+    fillStyle: '',
+    lineWidth: 0,
+    lineJoin: ''
+  };
+
+  surveyCanvasRenderer.drawBleDirectionArrows(ctx, { x: 100, y: 200 }, [
+    { tipX: 176, tipY: 200, selected: true },
+    { tipX: 100, tipY: 276, selected: false }
+  ]);
+
+  assert.equal(calls.filter((name) => name === 'stroke').length, 1);
+  assert.equal(calls.filter((name) => name === 'fill').length, 1);
+  assert.equal(linePoints.length, 3);
+  assert.deepEqual(linePoints[0], { x: 176, y: 200 });
+  assert.ok(linePoints.slice(1).every((point) => Math.abs(point.x - 162) < 0.001));
+  assert.ok(linePoints.slice(1).every((point) => Math.abs(point.y - 200) <= 7.001));
+});
+
+test('drawBleDirectionGuides paints blue dashed cross guides in input mode', () => {
+  const surveyCanvasRenderer = require('../packages/surveying/utils/surveyCanvasRenderer.js');
+  const dashCalls = [];
+  const calls = [];
+  const ctx = {
+    save() { calls.push('save'); },
+    restore() { calls.push('restore'); },
+    translate() { calls.push('translate'); },
+    rotate() { calls.push('rotate'); },
+    beginPath() { calls.push('beginPath'); },
+    moveTo() { calls.push('moveTo'); },
+    lineTo() { calls.push('lineTo'); },
+    stroke() { calls.push('stroke'); },
+    setLineDash(value) { dashCalls.push(value.slice()); },
+    strokeStyle: '',
+    lineWidth: 0
+  };
+
+  surveyCanvasRenderer.drawBleDirectionGuides(
+    ctx,
+    { x: 100, y: 200 },
+    { width: 390, height: 700 },
+    0
+  );
+
+  assert.deepEqual(dashCalls, [[8, 6], []]);
+  assert.equal(calls.filter((name) => name === 'moveTo').length, 2);
+  assert.equal(calls.filter((name) => name === 'lineTo').length, 2);
 });

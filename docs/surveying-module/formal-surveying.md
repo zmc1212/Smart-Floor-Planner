@@ -49,13 +49,17 @@ copy back to `layoutData`.
 - Surveying pan and pinch gestures use the primary Canvas `requestAnimationFrame`
   frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
   coalesced to one callback per animation frame and flushed once at gesture end;
-  this is a rendering-performance path only and does not change graph data or
-  viewport persistence. The canvas projector accepts an optional view-only
+  the lightweight gesture frame keeps the current green reticle visible, moves
+  its position through the same viewport transform as the plan, and preserves
+  its screen-space glyph size as a zoom reference. This is a rendering-performance
+  path only and does not change graph data or viewport persistence. The canvas projector accepts an optional view-only
   `rotationRad` (`screen = center + offset + R(θ)·(mm·scale)`). θ=0 matches the
   unrotated mapping. The editor merges page-level `viewRotationDeg` in
   `getViewport()` and never writes `rotationRad` into `floor.viewport` or
-  `FloorPlan.layoutData`. Changing θ compensates offset so the millimetre point
-  at screen centre stays fixed. The Admin 2D viewer does not pass rotation.
+  `FloorPlan.layoutData`. Manual clockwise/counterclockwise rotation recenters
+  the rotated bounds of the current survey nodes and active preview point; an
+  empty draft keeps the existing screen-centre world-point compensation. The
+  Admin 2D viewer does not pass rotation.
 - View rotation is editor-page transient state only. Tapping the canvas compass
   (`survey-canvas-compass`) outside BLE input mode toggles heading follow. The
   first heading sample becomes the relative baseline; after the activation and
@@ -72,11 +76,19 @@ copy back to `layoutData`.
   labels use world wall angle plus view rotation (`resolveScreenEffectiveAngle`)
   so text stays upright; room cards remain screen-axis aligned. Geometry, ortho
   snap, BLE semantics, and persisted viewport/graph data are unchanged.
-- Straight-mode BLE quick input exposes three or four orthogonal arrows at the
-  current anchor and excludes the active chain's immediate backtrack. Manual
-  selection calls `lockPreviewBearing` without moving the cursor or writing a
-  wall; a valid ATD distance materializes and commits the preview through the
-  existing `startPreviewFromBearing` / `commitPreviewLength` path. Tapping the
+- Straight-mode BLE quick input exposes blue dashed cardinal guides and three
+  or four compact, single-layer translucent-green candidate pointers at the current anchor,
+  excluding the active chain's immediate backtrack. The `closing` and
+  `mergeClosing` states keep those candidates visible alongside the `合` close
+  action, so closure guidance does not remove direction selection. After a
+  direction locks, every other candidate disappears and the selected bearing
+  keeps only a small blue arrow on its guide. Tapping otherwise empty canvas
+  space clears that transient lock and restores the candidate pointers without
+  moving the cursor or changing any wall; an automatic lock returns to manual
+  direction picking so the sensor cannot immediately relock it. Manual selection calls `lockPreviewBearing` without
+  moving the cursor or writing a wall; a valid ATD distance materializes and
+  commits the preview through the existing `startPreviewFromBearing` /
+  `commitPreviewLength` path. Tapping the
   compass while BLE input is active switches manual/automatic direction pick.
   Automatic pick maps Compass north/east/south/west to canvas north/east/south/
   west, removes the current view-only rotation, applies circular median filtering

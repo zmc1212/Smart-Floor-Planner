@@ -4,9 +4,10 @@
       <view class="card-header"><text class="referrer-name">{{item.displayName}}</text><view class="status-tag tag-{{item.statusTone}}"><text>{{item.statusLabel}}</text></view></view>
       <text class="referrer-phone">{{item.phone || '暂未提供电话'}}</text>
       <text wx:if="{{item.joinedAtLabel}}" class="joined-line">{{item.joinedAtLabel}} 加入</text>
-      <view wx:if="{{canDisable && item.actionLabel}}" class="referrer-actions">
+      <view class="referrer-actions">
         <view wx:if="{{item.phone}}" class="inline-action dial-action sfp-icon-action" data-item="{{item}}" catchtap="callReferrer"><image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" /><text>电话联系</text></view>
-        <view class="inline-action disable-action" data-item="{{item}}" catchtap="disableReferrer"><text>{{item.actionLabel}}</text></view>
+        <view class="inline-action view-leads-action" data-item="{{item}}" catchtap="viewReferrerLeads"><text>查看推广客户</text></view>
+        <view wx:if="{{canDisable && item.actionLabel}}" class="inline-action disable-action" data-item="{{item}}" catchtap="disableReferrer"><text>{{item.actionLabel}}</text></view>
       </view>
     </view>
   </view>

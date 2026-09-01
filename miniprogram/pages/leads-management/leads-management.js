@@ -26,6 +26,10 @@ Page({
     if (options && options.leadId) this.setData({ pendingLeadId: String(options.leadId) });
   },
 
+  onHide() {
+    this._leftCustomerTab = true;
+  },
+
   onShow() {
     const app = getApp();
     this.syncTabBar();
@@ -38,11 +42,34 @@ Page({
     if (this.data.openid !== nextOpenid) patch.openid = nextOpenid;
     if (Object.keys(patch).length) this.setData(patch);
 
-    if (this._listReady) {
-      const leadList = this.selectComponent('#leadList');
-      if (leadList) leadList.fetchLeads(true);
+    const leadList = this.selectComponent('#leadList');
+    const pending = app.globalData.pendingLeadReferrerFilter;
+    const pendingMembershipId = pending && String(pending.membershipId || '').trim();
+    let handledList = false;
+
+    if (pendingMembershipId) {
+      app.globalData.pendingLeadReferrerFilter = null;
+      this._leftCustomerTab = false;
+      if (leadList && typeof leadList.setReferrerFilter === 'function') {
+        leadList.setReferrerFilter({
+          membershipId: pendingMembershipId,
+          displayName: String(pending.displayName || '推广人').trim() || '推广人'
+        });
+        handledList = true;
+      }
+    } else if (this._leftCustomerTab) {
+      this._leftCustomerTab = false;
+      if (leadList && typeof leadList.hasReferrerFilter === 'function' && leadList.hasReferrerFilter()) {
+        leadList.clearReferrerFilter();
+        handledList = true;
+      }
+    }
+
+    if (!handledList && this._listReady && leadList) {
+      leadList.fetchLeads(true);
     }
     this._listReady = true;
+
     if (this.data.pendingLeadId) {
       const leadId = this.data.pendingLeadId;
       this.setData({ pendingLeadId: '' });

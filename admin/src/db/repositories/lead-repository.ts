@@ -82,6 +82,7 @@ export interface LeadListOptions {
   query?: string;
   staffId?: bigint;
   staffVisibility?: 'assigned' | 'promoted-or-assigned' | 'measurer';
+  referrerMembershipId?: bigint;
   page?: number;
   limit?: number;
   createdSince?: Date;
@@ -220,6 +221,9 @@ export class LeadRepository {
             )!
           : eq(leads.assignedTo, options.staffId)
       );
+    }
+    if (options.referrerMembershipId) {
+      filters.push(eq(leads.referrerMembershipId, options.referrerMembershipId));
     }
     return filters.length > 0 ? and(...filters) : undefined;
   }

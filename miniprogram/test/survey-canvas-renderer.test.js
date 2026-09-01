@@ -2514,6 +2514,37 @@ test('viewport interaction transform matches a full scene rebuilt at the target 
   assert.ok(Math.abs(transformedPoint.y - targetPoint.y) < 0.0001);
 });
 
+test('viewport interaction keeps the cursor visible at its transformed position', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 1200, yMm: 800 });
+  const scene = createScene(draft);
+  const viewport = Object.assign({}, scene.viewport, {
+    scale: scene.viewport.scale * 1.4,
+    offsetX: scene.viewport.offsetX + 36,
+    offsetY: scene.viewport.offsetY - 24
+  });
+  const transform = surveyCanvasRenderer.resolveViewportInteractionTransform(
+    scene.viewport,
+    viewport,
+    scene.rect
+  );
+  const interactionScene = surveyCanvasRenderer.createViewportInteractionScene(scene, viewport);
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyInteractionScene(recorder.context, scene, {
+    dpr: 1,
+    baseViewport: scene.viewport,
+    viewport
+  });
+
+  assert.deepEqual(interactionScene.cursor.point, {
+    x: scene.cursor.point.x * transform.scale + transform.translateX,
+    y: scene.cursor.point.y * transform.scale + transform.translateY
+  });
+  assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#c8ccd0'));
+  assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'));
+});
+
 test('viewport interaction projects closed fills, wall solids, and openings into one target coordinate space', () => {
   const scene = createScene(createTwoClosedRoomsWithSharedDoorDraft());
   const viewport = Object.assign({}, scene.viewport, {

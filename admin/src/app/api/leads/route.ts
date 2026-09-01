@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { and, eq } from 'drizzle-orm';
 import {
   leadToDto,
   parseOptionalPostgresId,
@@ -11,6 +12,7 @@ import {
   type LeadListOptions,
   type LeadUpdate,
 } from '@/db/repositories';
+import { referrerEnterpriseMemberships } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 import { getTenantContext, type TenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
@@ -85,6 +87,18 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const { page, limit } = parsePage(searchParams);
     const status = searchParams.get('status') || undefined;
+    let referrerMembershipId: bigint | null = null;
+    try {
+      referrerMembershipId = parseOptionalPostgresId(
+        searchParams.get('referrerMembershipId'),
+        'referrerMembershipId'
+      );
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'referrerMembershipId must be a positive PostgreSQL bigint' },
+        { status: 400 }
+      );
+    }
     const miniContext = await resolveMiniProgramContext(request);
 
     if (miniContext) {
@@ -95,13 +109,34 @@ export async function GET(request: Request) {
         );
       }
       const staffId = parsePostgresId(miniContext.staff._id, 'staff id');
-      const baseOptions: LeadListOptions = resolveStaffLeadListOptions(
-        miniContext.staff.role,
-        staffId
-      );
+      const baseOptions: LeadListOptions = {
+        ...resolveStaffLeadListOptions(miniContext.staff.role, staffId),
+        ...(referrerMembershipId ? { referrerMembershipId } : {}),
+      };
       const result = await withMiniProgramPostgresTransaction(
         miniContext,
         async (transaction) => {
+          if (referrerMembershipId) {
+            const enterpriseId = miniContext.enterpriseId
+              ? parsePostgresId(miniContext.enterpriseId, 'enterprise id')
+              : null;
+            if (!enterpriseId) {
+              return { kind: 'forbidden' as const };
+            }
+            const membershipRows = await transaction
+              .select({ id: referrerEnterpriseMemberships.id })
+              .from(referrerEnterpriseMemberships)
+              .where(
+                and(
+                  eq(referrerEnterpriseMemberships.id, referrerMembershipId),
+                  eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId)
+                )
+              )
+              .limit(1);
+            if (!membershipRows[0]) {
+              return { kind: 'missingMembership' as const };
+            }
+          }
           const repository = new LeadRepository(transaction);
           const [list, all, stats, todayNew] = await Promise.all([
             repository.list({ ...baseOptions, status, page, limit }),
@@ -122,9 +157,21 @@ export async function GET(request: Request) {
               createdSince: startOfChinaBusinessDay(),
             }),
           ]);
-          return { list, all, stats, todayNew };
+          return { kind: 'ok' as const, list, all, stats, todayNew };
         }
       );
+      if (result.kind === 'forbidden') {
+        return NextResponse.json(
+          { success: false, error: 'Enterprise context required' },
+          { status: 403 }
+        );
+      }
+      if (result.kind === 'missingMembership') {
+        return NextResponse.json(
+          { success: false, error: '推广人不存在或不属于当前企业' },
+          { status: 404 }
+        );
+      }
       const following = [
         'new',
         'acquired',

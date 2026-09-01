@@ -39,6 +39,13 @@
       </view>
     </view>
 
+    <view wx:if="{{referrerMembershipId}}" class="referrer-filter-bar">
+      <text class="referrer-filter-label">{{referrerFilterLabel}}的推广客户</text>
+      <view class="referrer-filter-clear" bindtap="clearReferrerFilter" aria-role="button" aria-label="清除推广人筛选">
+        <text>清除</text>
+      </view>
+    </view>
+
     <scroll-view scroll-x class="tabs-scroll" show-scrollbar="{{false}}">
       <view class="tabs-row">
         <view
@@ -156,7 +163,7 @@
 
       <view class="empty-placeholder" wx:else>
         <image class="empty-icon-box" src="/images/mine-icons/users.png" mode="aspectFit" />
-        <text class="empty-msg">{{searchKeyword ? '未找到匹配客户' : '暂无此类客户'}}</text>
+        <text class="empty-msg">{{referrerMembershipId ? '该推广人暂无客户线索' : (searchKeyword ? '未找到匹配客户' : '暂无此类客户')}}</text>
         <view wx:if="{{canAdd}}" class="empty-cta" bindtap="onAddLead">新增客户</view>
       </view>
     </scroll-view>

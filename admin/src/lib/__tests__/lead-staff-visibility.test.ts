@@ -30,3 +30,18 @@ test('Mini Program leads list routes measurer visibility through the shared help
   assert.match(source, /resolveStaffLeadListOptions/);
   assert.match(source, /role === 'measurer' \? 'measurer'/);
 });
+
+test('Mini Program leads list accepts referrerMembershipId filtered against the tenant membership', () => {
+  const route = fs.readFileSync(
+    path.resolve(__dirname, '../../app/api/leads/route.ts'),
+    'utf8'
+  );
+  const repository = fs.readFileSync(
+    path.resolve(__dirname, '../../db/repositories/lead-repository.ts'),
+    'utf8'
+  );
+  assert.match(route, /referrerMembershipId/);
+  assert.match(route, /referrerEnterpriseMemberships/);
+  assert.match(repository, /referrerMembershipId\?: bigint/);
+  assert.match(repository, /eq\(leads\.referrerMembershipId, options\.referrerMembershipId\)/);
+});

@@ -32,7 +32,8 @@ App({
     roleLandingRedirected: false,
     roleLandingRestoreRetries: 0,
     deepLinkRedirecting: false,
-    launchOptions: null
+    launchOptions: null,
+    pendingLeadReferrerFilter: null
   },
   onLaunch(options) {
     console.log('智能量房大师小程序启动', options);

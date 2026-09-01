@@ -1756,14 +1756,16 @@ Page({
     if (!this.bleInputMode || !floor || !session || session.mode !== 'straight') return false;
     if (!session.anchorNodeId) return false;
     if (session.state === 'wallPreview') return false;
-    if (['spaceClosed', 'wallSelected', 'remeasureAwaitingInput', 'closing', 'mergeClosing'].includes(session.state)) {
+    if (['spaceClosed', 'wallSelected', 'remeasureAwaitingInput'].includes(session.state)) {
       return false;
     }
     return session.state === 'idle'
       || session.state === 'cursorPlaced'
       || session.state === 'wallCommitted'
       || session.state === 'awaitingLength'
-      || session.state === 'wallSnapPending';
+      || session.state === 'wallSnapPending'
+      || session.state === 'closing'
+      || session.state === 'mergeClosing';
   },
 
   buildBleDirectionSceneData(floor, session) {
@@ -1842,6 +1844,32 @@ Page({
     } catch (err) {
       wx.showToast({ title: err.message || '方向无效', icon: 'none' });
     }
+  },
+
+  clearBleDirectionSelection() {
+    if (!this.bleInputMode || !this.draft) return false;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor && floor.session;
+    const hasLockedBearing = !!session && Object.prototype.hasOwnProperty.call(
+      session,
+      'bleLockedBearingDeg'
+    );
+    if (!this.bleSelectedDirectionKey && !hasLockedBearing) return false;
+
+    if (this.bleDirectionMode === 'auto') {
+      this.bleDirectionMode = 'manual';
+      this.stopBleDirectionAutoPick();
+    }
+    this.bleSelectedDirectionKey = '';
+    if (this.directionPickController) {
+      this.directionPickController.setSelectedKey('');
+    }
+    this.applyDraft(surveyGraph.clearBleLockedBearing(this.draft), {
+      extraData: { numberPadVisible: false },
+      persist: false,
+      recordHistory: false
+    });
+    return true;
   },
 
   subscribeBleDirectionMotion() {
@@ -2156,15 +2184,24 @@ Page({
 
   /**
    * Applies a view rotation through the lightweight gesture-frame path.
-   * The offset is compensated so the world point at the screen centre stays
-   * fixed while the plan rotates around it.
+   * Existing survey content recenters as it rotates; an empty draft keeps the
+   * former screen-centre world-point compensation.
    */
   applyTransientViewRotation(rotationDeg) {
     const nextDeg = Number(rotationDeg) || 0;
-    const compensated = surveyCanvasRenderer.compensateViewportOffsetForRotation(
-      this.getViewport(),
-      (nextDeg * Math.PI) / 180
+    const currentViewport = this.getViewport();
+    const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+    const points = this.getViewportContentPoints(floor);
+    const nextRotationRad = (nextDeg * Math.PI) / 180;
+    const centered = surveyCanvasRenderer.resolveViewportOffsetForContentCenter(
+      this.canvasRect || { width: 0, height: 0 },
+      points,
+      currentViewport,
+      nextRotationRad
     );
+    const compensated = points.length
+      ? centered
+      : surveyCanvasRenderer.compensateViewportOffsetForRotation(currentViewport, nextRotationRad);
     if (!this.viewportInteraction && !this.beginViewportInteraction()) return false;
     this.viewRotationDeg = nextDeg;
     this.updateViewportInteraction({
@@ -2178,10 +2215,19 @@ Page({
 
   applyViewRotationImmediate(rotationDeg) {
     const nextDeg = Number(rotationDeg) || 0;
-    const compensated = surveyCanvasRenderer.compensateViewportOffsetForRotation(
-      this.getViewport(),
-      (nextDeg * Math.PI) / 180
+    const currentViewport = this.getViewport();
+    const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+    const points = this.getViewportContentPoints(floor);
+    const nextRotationRad = (nextDeg * Math.PI) / 180;
+    const centered = surveyCanvasRenderer.resolveViewportOffsetForContentCenter(
+      this.canvasRect || { width: 0, height: 0 },
+      points,
+      currentViewport,
+      nextRotationRad
     );
+    const compensated = points.length
+      ? centered
+      : surveyCanvasRenderer.compensateViewportOffsetForRotation(currentViewport, nextRotationRad);
     this.viewRotationDeg = nextDeg;
     if (!this.draft) return;
     this.draft = surveyGraph.updateViewport(
@@ -4834,6 +4880,23 @@ Page({
     });
   },
 
+  getViewportContentPoints(floor) {
+    const points = [];
+    (floor && floor.nodes || []).forEach((node) => {
+      if (node && Number.isFinite(Number(node.xMm)) && Number.isFinite(Number(node.yMm))) {
+        points.push({ xMm: Number(node.xMm), yMm: Number(node.yMm) });
+      }
+    });
+    const session = floor && floor.session;
+    [session && session.previewPoint, session && session.closeCandidatePoint]
+      .forEach((point) => {
+        if (point && Number.isFinite(Number(point.xMm)) && Number.isFinite(Number(point.yMm))) {
+          points.push({ xMm: Number(point.xMm), yMm: Number(point.yMm) });
+        }
+      });
+    return points;
+  },
+
   mmToCanvasPoint(point) {
     return surveyCanvasRenderer.projectSurveyPoint(
       point,
@@ -6529,6 +6592,9 @@ Page({
     }
 
     if (controlTap) {
+      // Native canvas emits bindtap after touchend. Mark an already handled
+      // control so the fallback blank-canvas tap cannot immediately undo it.
+      this.canvasTapSelectedObject = true;
       this.handleCanvasControlTap(touchState.control);
       return;
     }
@@ -6632,6 +6698,10 @@ Page({
         return;
       }
 
+      if (this.clearBleDirectionSelection()) {
+        return;
+      }
+
       if ((session.state === 'idle' || session.state === 'cursorPlaced') && !floor.walls.length) {
         const pointMm = this.canvasPointToMm(touchState.startPoint);
         const nextDraft = surveyGraph.placeCursor(this.draft, pointMm);
@@ -6709,7 +6779,9 @@ Page({
     }
     if (floor && floor.session && floor.session.state === 'wallSelected') {
       this.onExitWallSelection();
+      return;
     }
+    this.clearBleDirectionSelection();
   },
 
   hitTestWallAtClientPoint(point) {

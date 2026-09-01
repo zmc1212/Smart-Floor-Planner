@@ -99,6 +99,17 @@ test('lead-detail hero extends the green lane to Xiao K and keeps long community
   );
 });
 
+test('lead-detail hero shows the referral source in the formal-survey tab treatment', () => {
+  assert.match(
+    template,
+    /class="hero-referrer">[\s\S]*推荐人：\{\{lead\.referrer\.displayName\}\}/
+  );
+  assert.match(
+    styles,
+    /\.hero-referrer\s*\{[^}]*position:\s*absolute;[^}]*right:\s*0;[^}]*bottom:\s*0;[^}]*height:\s*58rpx;[^}]*border-radius:\s*22rpx 0 22rpx 0;[^}]*background:\s*var\(--brand-primary\);[^}]*color:\s*#fff;[^}]*font-size:\s*24rpx;/s
+  );
+});
+
 test('lead-detail scene is anchored to its hero instead of covering measurement history', () => {
   assert.match(
     styles,

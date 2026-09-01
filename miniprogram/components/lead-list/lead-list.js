@@ -76,6 +76,8 @@ Component({
     allLeads: [],
     leads: [],
     searchKeyword: '',
+    referrerMembershipId: '',
+    referrerFilterLabel: '',
     loading: false,
     refreshing: false,
     errorMessage: '',
@@ -115,6 +117,9 @@ Component({
         let url = `/leads?page=${page}&limit=${this.data.pageSize}`;
         if (activeTab.query !== 'all') {
           url += `&status=${activeTab.query}`;
+        }
+        if (this.data.referrerMembershipId) {
+          url += `&referrerMembershipId=${encodeURIComponent(this.data.referrerMembershipId)}`;
         }
 
         const res = await api.request(url, 'GET');
@@ -355,6 +360,33 @@ Component({
     },
 
     onRetry() {
+      this.fetchLeads(true);
+    },
+
+    hasReferrerFilter() {
+      return Boolean(this.data.referrerMembershipId);
+    },
+
+    setReferrerFilter(filter) {
+      const membershipId = String((filter && filter.membershipId) || '').trim();
+      const displayName = String((filter && filter.displayName) || '推广人').trim() || '推广人';
+      if (!membershipId) return;
+      this.setData({
+        referrerMembershipId: membershipId,
+        referrerFilterLabel: displayName
+      });
+      this.fetchLeads(true);
+    },
+
+    clearReferrerFilter() {
+      if (!this.data.referrerMembershipId && !this.data.referrerFilterLabel) {
+        this.fetchLeads(true);
+        return;
+      }
+      this.setData({
+        referrerMembershipId: '',
+        referrerFilterLabel: ''
+      });
       this.fetchLeads(true);
     },
 

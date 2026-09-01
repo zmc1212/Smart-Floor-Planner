@@ -64,6 +64,19 @@ test('a placed cursor keeps its guide visibility when the canvas render data is 
   assert.match(editorScript, /return \{\s*cursorVisible,\s*guideVisible,/);
 });
 
+test('BLE direction arrows remain available while the close action is shown', () => {
+  const start = editorScript.indexOf('shouldShowBleDirectionArrows(floor, session) {');
+  const end = editorScript.indexOf('buildBleDirectionSceneData', start);
+  assert.ok(start >= 0 && end > start, 'direction visibility helper should remain present');
+  const visibility = editorScript.slice(start, end);
+  assert.match(visibility, /session\.state === 'closing'/);
+  assert.match(visibility, /session\.state === 'mergeClosing'/);
+  assert.doesNotMatch(
+    visibility,
+    /\['spaceClosed', 'wallSelected', 'remeasureAwaitingInput', 'closing', 'mergeClosing'\]/
+  );
+});
+
 test('wall dragging starts from the rendered cursor face instead of its hidden topology node', () => {
   assert.match(
     editorScript,

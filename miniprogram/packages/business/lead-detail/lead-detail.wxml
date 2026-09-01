@@ -34,6 +34,9 @@
         <view class="status-pill">{{statusLabel}}</view>
       </view>
     </view>
+    <view wx:if="{{lead.referrer && lead.referrer.displayName}}" class="hero-referrer">
+      <text>推荐人：{{lead.referrer.displayName}}</text>
+    </view>
     <image class="lead-detail-scene" src="/packages/business/assets/leads/lead-detail.png" mode="aspectFit"></image>
   </view>
   <view class="staff-assignment-grid" wx:if="{{lead}}">

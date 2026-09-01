@@ -25,7 +25,7 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
           </view>
         </view>
 
-        <view class="role-hero-card enterprise-hero-card">
+        <view class="role-hero-card enterprise-hero-card role-hero-card-{{role}}">
           <view class="hero-top-row">
             <view class="hero-text-wrap">
               <text class="hero-title">{{title || (role === 'enterprise_admin' ? '门店经营与全盘调度' : role === 'designer' ? '家装设计顾问工作台' : '家装现场顾问工作台')}}</text>

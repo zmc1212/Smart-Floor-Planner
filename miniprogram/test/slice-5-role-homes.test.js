@@ -276,6 +276,10 @@ test('enterprise owner workbench prioritizes acquisition and team actions withou
   assert.match(styles, /\.enterprise-hero-card \.hero-top-row\s*\{[\s\S]*min-height:\s*116rpx/);
   assert.match(styles, /\.enterprise-hero-card \.stats-pills-row\s*\{[\s\S]*margin-top:\s*12rpx[\s\S]*padding-right:\s*236rpx/);
   assert.match(styles, /\.enterprise-hero-card \.stat-pill\s*\{[\s\S]*flex:\s*0 1 auto/);
+  assert.match(template, /role-hero-card-\{\{role\}\}/);
+  assert.match(styles, /\.role-hero-card-designer \.hero-top-row\s*\{[\s\S]*min-height:\s*48rpx/);
+  assert.match(styles, /\.role-hero-card-designer \.stats-pills-row\s*\{[\s\S]*flex-direction:\s*column[\s\S]*align-items:\s*flex-start[\s\S]*gap:\s*8rpx/);
+  assert.match(styles, /\.role-hero-card-designer \.stat-pill\s*\{[\s\S]*width:\s*260rpx[\s\S]*max-width:\s*100%[\s\S]*justify-content:\s*space-between/);
   assert.match(styles, /\.enterprise-hero-mascot\s*\{[\s\S]*position:\s*absolute[\s\S]*width:\s*220rpx/);
   assert.match(styles, /@media \(max-width:\s*360px\)[\s\S]*\.enterprise-action-share-card[\s\S]*min-height:\s*370rpx[\s\S]*\.enterprise-activity-art[\s\S]*height:\s*184rpx/);
 });

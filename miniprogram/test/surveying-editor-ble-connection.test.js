@@ -30,6 +30,22 @@ test('automatic BLE direction waits for privacy and follows the page lifecycle',
   );
 });
 
+test('blank canvas taps clear the BLE direction lock and restore candidates', () => {
+  assert.match(
+    editorScript,
+    /clearBleDirectionSelection\(\)\s*\{[\s\S]*?bleDirectionMode === 'auto'[\s\S]*?bleDirectionMode = 'manual';[\s\S]*?stopBleDirectionAutoPick\(\)[\s\S]*?bleSelectedDirectionKey = '';[\s\S]*?directionPickController\.setSelectedKey\(''\)[\s\S]*?clearBleLockedBearing\(this\.draft\)[\s\S]*?recordHistory: false/
+  );
+  assert.match(
+    editorScript,
+    /if \(wasTap && !touchState\.nearCursor\)\s*\{[\s\S]*?hitTestOpeningAtClientPoint[\s\S]*?hitTestWallAtClientPoint[\s\S]*?hitTestClosedSpaceAtClientPoint[\s\S]*?clearBleDirectionSelection\(\)/
+  );
+  assert.match(
+    editorScript,
+    /if \(controlTap\)\s*\{[\s\S]*?canvasTapSelectedObject = true;[\s\S]*?handleCanvasControlTap\(touchState\.control\)/
+  );
+  assert.match(editorScript, /onCanvasTap\(\)\s*\{[\s\S]*?clearBleDirectionSelection\(\)/);
+});
+
 test('unconnected BLE measurement entries offer in-editor device connection', () => {
   assert.match(editorScript, /requestBluetoothConnection\(\)\s*\{[\s\S]*wx\.showModal/);
   assert.match(editorScript, /confirmText:\s*'去连接'/);
