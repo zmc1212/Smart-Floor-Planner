@@ -41,6 +41,7 @@ export const ALL_MENUS = [
   { key: 'commissions', label: '提成结算中心' },
   { key: 'leads', label: '线索转化' },
   { key: 'referrer-network-operations', label: '推荐网络 / 运营工作台' },
+  { key: 'referrers', label: '我的推广人' },
   { key: 'floorplans', label: '户型图库' },
   { key: 'measurements', label: '量房记录' },
   { key: 'ai-scenarios', label: 'AI 工作台' },
@@ -91,8 +92,9 @@ export const MENU_PERMISSION_GROUPS: Array<{
   },
   {
     title: '推荐网络',
-    description: '入驻码、推荐人、预约设置随父权限 referrer-network-operations，无需单独勾选。',
-    keys: ['referrer-network-operations'],
+    description:
+      '入驻码、预约设置随 referrer-network-operations；推荐人名册另可单独授予 referrers（设计师/测量员仅本人推广人）。',
+    keys: ['referrer-network-operations', 'referrers'],
   },
   {
     title: '户型图库',
@@ -164,9 +166,10 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'measurements',
     'ai-scenarios',
     'inspirations',
+    'referrers',
   ],
   salesperson: ['dashboard', 'promotion-records'],
-  measurer: ['dashboard', 'leads', 'measurements', 'floorplans'],
+  measurer: ['dashboard', 'leads', 'measurements', 'floorplans', 'referrers'],
   viewer: ['dashboard', 'floorplans', 'inspirations', 'ai-scenarios'],
 };
 

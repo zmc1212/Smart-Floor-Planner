@@ -13,6 +13,10 @@ const editorWxml = fs.readFileSync(
   path.join(__dirname, '..', 'packages', 'surveying', 'editor', 'surveying-editor.wxml'),
   'utf8'
 );
+const editorLess = fs.readFileSync(
+  path.join(__dirname, '..', 'packages', 'surveying', 'editor', 'surveying-editor.less'),
+  'utf8'
+);
 const compassWxml = fs.readFileSync(
   path.join(
     __dirname,
@@ -24,6 +28,27 @@ const compassWxml = fs.readFileSync(
     'survey-canvas-compass.wxml'
   ),
   'utf8'
+);
+const compassLess = fs.readFileSync(
+  path.join(
+    __dirname,
+    '..',
+    'packages',
+    'surveying',
+    'components',
+    'survey-canvas-compass',
+    'survey-canvas-compass.less'
+  ),
+  'utf8'
+);
+const navigationMeasureAssetPath = path.join(
+  __dirname,
+  '..',
+  'packages',
+  'surveying',
+  'assets',
+  'icons',
+  'navigation-measure.png'
 );
 
 function almostEqual(actual, expected, epsilon) {
@@ -250,6 +275,65 @@ test('direction pick controller applies median filtering and hysteresis', () => 
   assert.equal(switched.changed, true);
   assert.equal(controller.update(180, candidates).changed, false);
   assert.equal(surveyBleDirectionOptions.DEFAULT_ACTIVATE_DEG, 12);
+});
+
+test('entry-door calibration keeps the absolute azimuth while mapping later headings into room-relative bearings', () => {
+  // A 231° compass azimuth is exposed by the shared hub as alpha 129°.
+  const entryDoorAlpha = surveyDeviceOrientation.compassDirectionToAlpha(231);
+  assert.equal(entryDoorAlpha, 129);
+  assert.equal(
+    surveyDeviceOrientation.mapEntryDoorRelativeHeading(entryDoorAlpha, entryDoorAlpha),
+    0
+  );
+  assert.equal(
+    surveyDeviceOrientation.mapEntryDoorRelativeHeading(
+      surveyDeviceOrientation.compassDirectionToAlpha(321),
+      entryDoorAlpha
+    ),
+    90
+  );
+
+  const controller = surveyDeviceOrientation.createDirectionPickController({
+    activateDeg: 12,
+    switchDeg: 15,
+    sampleCount: 1
+  });
+  const candidates = [
+    { key: 'east', bearingDeg: 0 },
+    { key: 'south', bearingDeg: 90 },
+    { key: 'west', bearingDeg: 180 },
+    { key: 'north', bearingDeg: -90 }
+  ];
+  controller.begin(0, 0, entryDoorAlpha);
+  assert.equal(controller.update(entryDoorAlpha, candidates).key, 'east');
+  assert.equal(
+    controller.update(surveyDeviceOrientation.compassDirectionToAlpha(321), candidates).key,
+    'south'
+  );
+});
+
+test('navigation room heading snaps to orthogonal view axes', () => {
+  assert.equal(surveyDeviceOrientation.snapToCardinalDeg(1), 0);
+  assert.equal(surveyDeviceOrientation.snapToCardinalDeg(44), 0);
+  assert.equal(surveyDeviceOrientation.snapToCardinalDeg(46), 90);
+  assert.equal(surveyDeviceOrientation.snapToCardinalDeg(137), 180);
+  assert.equal(surveyDeviceOrientation.snapToCardinalDeg(269), 270);
+  assert.equal(surveyDeviceOrientation.snapToCardinalDeg(315), 0);
+  assert.equal(
+    surveyDeviceOrientation.pickCardinalRotationDeg(44, 0, 20),
+    0,
+    'stay on the current axis before the hysteresis threshold'
+  );
+  assert.equal(
+    surveyDeviceOrientation.pickCardinalRotationDeg(60, 0, 20),
+    90,
+    'switch axes only after the trigger threshold is crossed'
+  );
+  assert.equal(
+    surveyDeviceOrientation.pickCardinalRotationDeg(137, 0, 20),
+    180,
+    '137 degrees resolves to the nearest orthogonal axis'
+  );
 });
 
 test('direction filtering remains stable across the 360-degree seam', () => {
@@ -515,10 +599,12 @@ test('editor wires the heading-follow mode into gestures, compass, and lifecycle
   assert.match(editorScript, /applyFollowViewRotation/);
   assert.match(editorScript, /redrawFollowViewRotation/);
 
-  // Compass toggle and reset-to-north handler.
+  // The navigation action opens entry-door calibration; disabling it eases
+  // the view back to the unrotated survey frame.
   assert.match(editorScript, /onCompassTap\(\)/);
-  assert.match(editorScript, /disableHeadingFollow\(\{ resetRotation: true \}\)/);
-  assert.match(editorScript, /animateViewRotationTo\(0\)/);
+  assert.match(editorScript, /this\.openNavigationCalibration\(\)/);
+  assert.match(editorScript, /onNavigationMeasurementDisable\(\)/);
+  assert.match(editorScript, /animateViewRotationTo\(0, \{ durationMs: NAVIGATION_VIEW_ROTATION_MS \}\)/);
 
   // Sensor frames ride the lightweight interaction path and settle with a
   // full redraw.
@@ -540,10 +626,69 @@ test('editor wires the heading-follow mode into gestures, compass, and lifecycle
   );
 });
 
-test('compass control is mounted on the formal canvas with live rotation', () => {
-  assert.match(editorWxml, /survey-canvas-compass[\s\S]*?wx:if="\{\{!componentEditorVisible\}\}"/);
-  assert.match(editorWxml, /rotation-deg="\{\{compassRotationDeg\}\}"/);
+test('navigation measurement is visible in an independent left slot while formal actions stay grouped at the right', () => {
+  assert.match(editorWxml, /wx:if="\{\{!componentEditorVisible\}\}" class="survey-topbar native-canvas-overlay"/);
+  assert.match(editorScript, /compassControlVisible:\s*true/);
+  assert.match(editorWxml, /survey-canvas-compass[\s\S]*?wx:if="\{\{compassControlVisible\}\}"/);
   assert.match(editorWxml, /active="\{\{compassFollowActive\}\}"/);
+  assert.match(editorWxml, /bearing-label="\{\{navigationBearingLabel\}\}"/);
   assert.match(editorWxml, /catch:tap="onCompassTap"/);
-  assert.match(compassWxml, /rotate\(\{\{rotationDeg\}\}deg\)/);
+  assert.match(editorWxml, /class="topbar-right"[\s\S]*?survey-canvas-compass[\s\S]*?class="topbar-actions-right"[\s\S]*?class="topbar-chip guide-trigger/);
+  assert.match(compassWxml, /navigation-measure\.png/);
+  assert.match(compassWxml, />导航测量</);
+  assert.match(compassWxml, /navigation-measure-bearing/);
+  assert.doesNotMatch(compassWxml, />\s*N\s*</);
+  assert.match(compassLess, /\.survey-canvas-compass\s*\{[\s\S]*?width:\s*132rpx;[\s\S]*?height:\s*88rpx;/);
+  assert.match(compassLess, /\.navigation-measure-label\s*\{[\s\S]*?font-size:\s*28rpx;/);
+  assert.match(compassLess, /\.navigation-measure-bearing\s*\{[\s\S]*?font-size:\s*28rpx;/);
+
+  const asset = fs.readFileSync(navigationMeasureAssetPath);
+  assert.deepEqual(Array.from(asset.subarray(0, 8)), [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(asset.byteLength <= 300 * 1024, 'navigation measurement PNG must stay within the packaged-asset limit');
+});
+
+test('navigation measurement calibrates the entry-door azimuth before auto direction and eases canvas turns', () => {
+  assert.match(editorScript, /openNavigationCalibration\(\)/);
+  assert.match(editorScript, /navigationCalibrationVisible:\s*true/);
+  assert.match(editorScript, /navigationEntryDoorAzimuthDeg\s*=\s*surveyDeviceOrientation\.normalizeDeg/);
+  assert.match(editorScript, /360\s*-\s*this\.navigationEntryDoorAlphaDeg/);
+  assert.match(editorScript, /navigationBearingLabel:\s*`\$\{Math\.round\(this\.navigationEntryDoorAzimuthDeg\)\}°`/);
+  assert.match(editorScript, /directionPickController\.begin\([\s\S]*?this\.navigationEntryDoorAlphaDeg/);
+  assert.match(editorScript, /pickCardinalRotationDeg\(\s*Number\(result\.worldBearing\)/);
+  assert.match(editorScript, /nextRotation = -nextBearing/);
+  assert.doesNotMatch(editorScript, /nextRotation = -Number\(result\.worldBearing\)/);
+  assert.match(editorScript, /animateViewRotationTo\(nextRotation, \{ durationMs: NAVIGATION_VIEW_ROTATION_MS \}\)/);
+  assert.match(editorScript, /const NAVIGATION_VIEW_ROTATION_MS = 420/);
+  assert.match(editorScript, /const NAVIGATION_VIEW_ROTATION_THRESHOLD_DEG = 20/);
+  assert.match(editorScript, /if \(this\.navigationMeasurementActive\) return;\s*const needsDirectionLock/);
+  assert.match(editorScript, /1 - Math\.pow\(1 - progress, 4\)/);
+  assert.match(editorWxml, /定位入户门方向/);
+  assert.match(editorWxml, /蓝牙测距仪已连接/);
+  assert.match(editorWxml, /重新定位/);
+  assert.match(editorWxml, /关闭导航测量/);
+  assert.match(editorWxml, /navigation-calibration-dialog[\s\S]*?catchtap="onNavigationCalibrationDialogTap"/);
+  assert.match(editorLess, /navigation-calibration-dialog-in 240ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
+  assert.match(editorLess, /\.navigation-calibration-cancel[\s\S]*?text-align:\s*center;/);
+  assert.match(editorLess, /\.navigation-calibration-confirm[\s\S]*?margin-left:\s*16rpx;/);
+  assert.match(editorScript, /onCanvasTouchStart\(e\)[\s\S]*?navigationCalibrationVisible/);
+  assert.match(editorScript, /onCanvasTap\(\)[\s\S]*?navigationCalibrationClosing/);
+});
+
+test('canvas rotation controls reserve explicit native-overlay spacing and distinct directions', () => {
+  assert.match(
+    editorWxml,
+    /canvas-rotate-btn canvas-rotate-btn-ccw[\s\S]*?rotate-counterclockwise-v2\.png/
+  );
+  assert.match(
+    editorWxml,
+    /onCanvasRotateCwTap[\s\S]*?rotate-clockwise-v2\.png/
+  );
+  assert.match(
+    editorLess,
+    /\.canvas-rotate-btn-ccw\s*\{[\s\S]*?margin-bottom:\s*24rpx;/
+  );
+  assert.doesNotMatch(
+    editorLess,
+    /(?:^|\r?\n)\.canvas-rotate-controls\s*\{[^}]*\bgap:\s*\d+rpx;/
+  );
 });

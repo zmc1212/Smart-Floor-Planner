@@ -118,27 +118,28 @@ const DIMENSION_LINE_CENTER_PX = 16;
 const DIMENSION_LABEL_HEIGHT_PX = 24;
 const DIMENSION_COLLISION_GAP_PX = 8;
 const DIMENSION_PRIMARY_GAP_PX = 22;
-const CURSOR_LENS_SIZE_PX = 120;
+const CURSOR_LENS_SIZE_PX = 132;
 const CURSOR_LENS_SCALE = 0.12;
-const COMPASS_SIZE_RPX = 86;
-const COMPASS_LEFT_RPX = 26;
-const TOP_METRIC_LEFT_RPX = 34;
-const TOP_METRIC_HEIGHT_RPX = 56;
-const OVERLAY_STACK_GAP_RPX = 12;
+const CURSOR_LENS_LEFT_RPX = 16;
+const TOP_METRIC_WIDTH_RPX = 236;
+const TOP_METRIC_HEIGHT_RPX = 64;
+const OVERLAY_ROW_INSET_RPX = 12;
+const OVERLAY_ROW_GAP_RPX = 16;
 
-function resolveCanvasOverlayLayout(overlayContentTop, rpxScale) {
-  const compassTopPx = overlayContentTop;
-  const compassSizePx = COMPASS_SIZE_RPX * rpxScale;
-  const stackGapPx = OVERLAY_STACK_GAP_RPX * rpxScale;
-  const topMetricHeightPx = TOP_METRIC_HEIGHT_RPX * rpxScale;
-  const topMetricTopPx = compassTopPx + compassSizePx + stackGapPx;
-  const cursorLensTopPx = topMetricTopPx + topMetricHeightPx + stackGapPx;
+function resolveCanvasOverlayLayout(overlayContentTop, rpxScale, viewportWidthPx) {
+  const overlayRowTopPx = overlayContentTop + OVERLAY_ROW_INSET_RPX * rpxScale;
+  const cursorLensLeftPx = CURSOR_LENS_LEFT_RPX * rpxScale;
+  const lensPanelRightPx = cursorLensLeftPx + CURSOR_LENS_SIZE_PX + 8;
+  const centeredMetricLeftPx = (viewportWidthPx - TOP_METRIC_WIDTH_RPX * rpxScale) / 2;
+  const topMetricLeftPx = Math.max(
+    centeredMetricLeftPx,
+    lensPanelRightPx + OVERLAY_ROW_GAP_RPX * rpxScale
+  );
   return {
-    compassTopPx,
-    topMetricTopPx,
-    topMetricLeftPx: TOP_METRIC_LEFT_RPX * rpxScale,
-    cursorLensTopPx,
-    cursorLensLeftPx: COMPASS_LEFT_RPX * rpxScale + 8
+    topMetricTopPx: overlayRowTopPx,
+    topMetricLeftPx,
+    cursorLensTopPx: overlayRowTopPx,
+    cursorLensLeftPx
   };
 }
 const DOCK_AIM_MIN_FRAME_MS = 16;
@@ -147,10 +148,14 @@ const DOCK_LENS_PAINT_INTERVAL_MS = 120;
 const CURSOR_DRAG_CANVAS_MAX_DPR = 2;
 const PHONE_LEVEL_TOLERANCE_DEG = 8;
 const PHONE_HEADING_SAMPLE_COUNT = 9;
+const NAVIGATION_CALIBRATION_SAMPLE_COUNT = 9;
+const NAVIGATION_CALIBRATION_MAX_SPREAD_DEG = 6;
 // After the heading stops moving, commit the lightweight rotation frames with
 // one full formal redraw (dimensions, labels, controls).
 const FOLLOW_ROTATION_SETTLE_MS = 280;
 const VIEW_ROTATION_RESET_MS = 220;
+const NAVIGATION_VIEW_ROTATION_MS = 420;
+const NAVIGATION_VIEW_ROTATION_THRESHOLD_DEG = 20;
 const MANUAL_VIEW_ROTATION_STEP_DEG = 90;
 const COMPASS_DISPLAY_MIN_INTERVAL_MS = 120;
 const COMPASS_DISPLAY_MIN_DELTA_DEG = 2;
@@ -206,6 +211,16 @@ function median(values) {
   if (!values || !values.length) return null;
   const sorted = values.slice().sort((first, second) => first - second);
   return sorted[Math.floor(sorted.length / 2)];
+}
+
+function headingSampleSpread(values, centerDeg) {
+  if (!Array.isArray(values) || !values.length || !Number.isFinite(Number(centerDeg))) {
+    return Infinity;
+  }
+  return values.reduce((largest, value) => Math.max(
+    largest,
+    Math.abs(surveyDeviceOrientation.shortestArcDeg(Number(value) - Number(centerDeg)))
+  ), 0);
 }
 
 function buildCoreTools(activeTool, thicknessMm, bleInputMode) {
@@ -405,11 +420,21 @@ Page({
     formalNotice: '正式量房草稿',
     floorPlanStatus: '',
     showFormalExtras: false,
+    compassControlVisible: true,
     compassRotationDeg: 0,
     compassFollowActive: false,
-    bleInputMode: false,
+    navigationBearingLabel: '',
+    navigationCalibrationVisible: false,
+    navigationCalibrationClosing: false,
+    navigationCalibrationRelocating: false,
+    navigationCalibrationReady: false,
+    navigationCalibrationLevelReady: false,
+    navigationCalibrationLevelSupported: true,
+    navigationCalibrationHeadingReady: false,
+    navigationCalibrationStatus: '请正对入户门并保持手机水平',
+    bleInputMode: true,
     bleDirectionMode: 'manual',
-    coreTools: buildCoreTools('straight', 200),
+    coreTools: buildCoreTools('straight', 200, true),
     reservedTools: RESERVED_TOOLS,
     canvasWidth: 0,
     canvasHeight: 0,
@@ -431,7 +456,7 @@ Page({
     measurementTitle: '准备测墙',
     measurementValue: '从橙色光标拖出墙体方向',
     isSurveyEmpty: true,
-    guideEnabled: true,
+    guideEnabled: false,
     surveyGuideVisible: false,
     surveyGuideTarget: '',
     modePillText: '测墙模式',
@@ -511,11 +536,16 @@ Page({
     const capsuleBottom = menuButtonInfo.bottom || (sysInfo.statusBarHeight || 0);
     const navigationSafeTop = capsuleBottom + 6;
     const rpxScale = (sysInfo.windowWidth || 375) / 750;
-    const headerBottom = (sysInfo.statusBarHeight || 0) + 160 * rpxScale;
-    // The reference shell is 80px tall at 390px. Canvas controls start below
-    // that fixed shell instead of inheriting device-specific capsule height.
+    const headerBottom = (sysInfo.statusBarHeight || 0) + 190 * rpxScale;
+    // The header must contain the 94rpx-top, 88rpx-high navigation control.
+    // Canvas controls start below that fixed shell instead of inheriting
+    // device-specific capsule height.
     const overlayContentTop = Math.max(navigationSafeTop + 12, headerBottom + 8 * rpxScale);
-    const overlayLayout = resolveCanvasOverlayLayout(overlayContentTop, rpxScale);
+    const overlayLayout = resolveCanvasOverlayLayout(
+      overlayContentTop,
+      rpxScale,
+      sysInfo.windowWidth || 375
+    );
 
     const leadId = options.leadId || context.leadId || '';
     const contextFloorPlanId = options.floorPlanId || context.floorPlanId || '';
@@ -597,10 +627,24 @@ Page({
     this.followMotionUnsubscribe = null;
     this.bleDirectionMotionUnsubscribe = null;
     this.followEnabled = false;
-    this.bleInputMode = false;
+    // Start each formal survey with the BLE direction-input workflow ready.
+    // Operators can still turn it off from the existing 输入 tool.
+    this.bleInputMode = true;
     this.bleDirectionMode = 'manual';
     this.bleSelectedDirectionKey = '';
     this.bleDirectionBaselineOffsetDeg = 0;
+    this.navigationMeasurementActive = false;
+    this.navigationViewBearingDeg = 0;
+    this.navigationEntryDoorAlphaDeg = null;
+    this.navigationEntryDoorAzimuthDeg = null;
+    this.navigationBearingUpdatedAt = 0;
+    this.navigationCalibrationHeading = null;
+    this.navigationCalibrationSamples = [];
+    this.navigationCalibrationHeadingUnsubscribe = null;
+    this.navigationCalibrationLevelUnsubscribe = null;
+    this.navigationCalibrationCloseTimer = null;
+    this.navigationCalibrationHeadingHandler = this.onNavigationCalibrationHeadingChange.bind(this);
+    this.navigationCalibrationLevelHandler = this.onNavigationCalibrationLevelChange.bind(this);
     this.pageVisible = true;
     this.headingPrivacyReady = false;
     this.headingPrivacyPromise = null;
@@ -698,11 +742,13 @@ Page({
   onShow() {
     this.pageVisible = true;
     this.refreshCanvasRect();
+    this.syncBleConnectionState();
     if (this.data.angleMeasureVisible && this.data.angleMeasureTab === 'phone') {
       this.startPhoneAngleMeasurement();
     }
     this.resumeBleDirectionAutoPick();
     this.resumeHeadingFollow();
+    if (this.data.navigationCalibrationVisible) this.startNavigationCalibrationSensors();
   },
 
   onHide() {
@@ -710,6 +756,7 @@ Page({
     this.flushPendingComponentManualAudit();
     this.suspendBleDirectionAutoPick();
     this.suspendHeadingFollow();
+    this.stopNavigationCalibrationSensors();
     this.finishViewportInteraction({ sync: true, persist: false });
     this.flushViewportDraftSync({ sync: true });
     this.stopPhoneAngleMeasurement();
@@ -724,6 +771,11 @@ Page({
     this.followEnabled = false;
     this.stopBleDirectionAutoPick();
     this.suspendHeadingFollow();
+    this.stopNavigationCalibrationSensors();
+    if (this.navigationCalibrationCloseTimer) {
+      clearTimeout(this.navigationCalibrationCloseTimer);
+      this.navigationCalibrationCloseTimer = null;
+    }
     this.surveyCanvasDisposed = true;
     this.canvasRectRevision += 1;
     this.surveyCanvasInitRevision += 1;
@@ -873,9 +925,11 @@ Page({
   loadGuideEnabled() {
     try {
       const stored = wx.getStorageSync(SURVEYING_GUIDE_ENABLED_KEY);
-      return stored === '' || typeof stored === 'undefined' ? true : stored !== false;
+      // A guide is opt-in for new installations. Preserve an explicit user
+      // preference so the top-bar toggle remains meaningful across sessions.
+      return stored === '' || typeof stored === 'undefined' ? false : stored !== false;
     } catch (err) {
-      return true;
+      return false;
     }
   },
 
@@ -904,6 +958,13 @@ Page({
     const session = floor.session || {};
     if (session.state === 'wallPreview' || session.state === 'awaitingLength' || session.state === 'remeasureAwaitingInput') {
       return surveyGraph.repairCollinearDegree2Walls(surveyGraph.cancelPending(restored));
+    }
+    // A persisted close can still carry the pre-transition `spaceClosed` state
+    // when the page is exited immediately after saving. Re-entering a completed
+    // room should continue at the next-room wall-drop step, never ask for an
+    // extra reset-cursor tap.
+    if (session.state === 'spaceClosed') {
+      return surveyGraph.repairCollinearDegree2Walls(surveyGraph.startWallSnap(restored));
     }
     return surveyGraph.repairCollinearDegree2Walls(restored);
   },
@@ -1228,11 +1289,19 @@ Page({
     );
   },
 
+  syncBleConnectionState() {
+    const connected = typeof bluetooth.isSessionConnected === 'function'
+      ? bluetooth.isSessionConnected()
+      : !!app.globalData.bleConnected;
+    this.updateBleConnected(connected);
+  },
+
   updateBleConnected(isConnected) {
     const connected = !!isConnected;
     app.globalData.bleConnected = connected;
     this.setData({ bleConnected: connected }, () => {
       if (this.draft) this.syncFromDraft();
+      if (this.data.navigationCalibrationVisible) this.syncNavigationCalibrationState();
     });
   },
 
@@ -1250,7 +1319,12 @@ Page({
   },
 
   connectBluetoothForMeasurement() {
+    if (typeof bluetooth.isSessionConnected === 'function' && bluetooth.isSessionConnected()) {
+      this.syncBleConnectionState();
+      return true;
+    }
     bluetooth.initBLE();
+    return false;
   },
 
   clearBleMeasureTimers() {
@@ -1699,16 +1773,251 @@ Page({
   },
 
   onCompassTap() {
-    if (this.bleInputMode) {
-      this.toggleBleDirectionAutoMode();
+    this.openNavigationCalibration();
+  },
+
+  openNavigationCalibration() {
+    const relocating = !!this.navigationMeasurementActive;
+    if (this.navigationCalibrationCloseTimer) {
+      clearTimeout(this.navigationCalibrationCloseTimer);
+      this.navigationCalibrationCloseTimer = null;
+    }
+    this.stopNavigationCalibrationSensors();
+    this.navigationCalibrationHeading = null;
+    this.navigationCalibrationSamples = [];
+    this.setData({
+      navigationCalibrationVisible: true,
+      navigationCalibrationClosing: false,
+      navigationCalibrationRelocating: relocating,
+      navigationCalibrationReady: false,
+      navigationCalibrationLevelReady: false,
+      navigationCalibrationLevelSupported: true,
+      navigationCalibrationHeadingReady: false,
+      navigationCalibrationStatus: '正在读取手机方向…'
+    }, () => {
+      this.startNavigationCalibrationSensors();
+    });
+  },
+
+  onNavigationCalibrationCancel() {
+    this.closeNavigationCalibrationDialog();
+  },
+
+  onNavigationCalibrationDialogTap() {
+    // The dialog is a native cover-view above Canvas. Keep taps inside the
+    // modal from reaching the canvas even on devices that do not honour the
+    // child cover-view catchtap boundary consistently.
+  },
+
+  closeNavigationCalibrationDialog() {
+    this.stopNavigationCalibrationSensors();
+    if (!this.data.navigationCalibrationVisible) return;
+    if (this.navigationCalibrationCloseTimer) clearTimeout(this.navigationCalibrationCloseTimer);
+    this.setData({ navigationCalibrationClosing: true });
+    this.navigationCalibrationCloseTimer = setTimeout(() => {
+      this.navigationCalibrationCloseTimer = null;
+      this.setData({
+        navigationCalibrationVisible: false,
+        navigationCalibrationClosing: false
+      });
+    }, 200);
+  },
+
+  startNavigationCalibrationSensors() {
+    if (!this.data.navigationCalibrationVisible || !this.pageVisible) return;
+    if (surveyDeviceOrientation.isWechatDevtools()) {
+      this.setData({
+        navigationCalibrationStatus: '入户门定位需在真机上使用',
+        navigationCalibrationReady: false
+      });
       return;
     }
-    console.warn('[surveying-editor] compass tap', this.followEnabled ? 'off' : 'on');
-    if (this.followEnabled) {
-      this.disableHeadingFollow({ resetRotation: true });
+    if (!surveyDeviceOrientation.sharedHeadingSensorHub.supported()) {
+      this.setData({
+        navigationCalibrationStatus: '当前设备不支持朝向传感器',
+        navigationCalibrationReady: false
+      });
       return;
     }
-    this.enableHeadingFollow();
+
+    this.ensureHeadingSensorReady()
+      .then(() => {
+        if (!this.pageVisible || !this.data.navigationCalibrationVisible) return;
+        if (!this.navigationCalibrationHeadingUnsubscribe) {
+          this.navigationCalibrationHeadingUnsubscribe = surveyDeviceOrientation.sharedHeadingSensorHub.subscribe(
+            this.navigationCalibrationHeadingHandler,
+            {
+              onError: () => {
+                this.stopNavigationCalibrationSensors();
+                this.setData({
+                  navigationCalibrationStatus: '无法读取手机方向，请检查传感器权限',
+                  navigationCalibrationReady: false
+                });
+              }
+            }
+          );
+        }
+
+        const levelSupported = surveyDeviceOrientation.sharedDeviceMotionHub.supported();
+        if (levelSupported && !this.navigationCalibrationLevelUnsubscribe) {
+          this.navigationCalibrationLevelUnsubscribe = surveyDeviceOrientation.sharedDeviceMotionHub.subscribe(
+            this.navigationCalibrationLevelHandler,
+            {
+              interval: 'game',
+              onError: () => {
+                if (this.navigationCalibrationLevelUnsubscribe) {
+                  this.navigationCalibrationLevelUnsubscribe();
+                  this.navigationCalibrationLevelUnsubscribe = null;
+                }
+                this.setData({
+                  navigationCalibrationLevelSupported: false,
+                  navigationCalibrationLevelReady: true
+                }, () => this.syncNavigationCalibrationState());
+              }
+            }
+          );
+        }
+        this.setData({
+          navigationCalibrationLevelSupported: levelSupported,
+          navigationCalibrationLevelReady: !levelSupported
+        }, () => this.syncNavigationCalibrationState());
+      })
+      .catch(() => {
+        this.setData({
+          navigationCalibrationStatus: '需同意隐私协议后才能定位入户门',
+          navigationCalibrationReady: false
+        });
+      });
+  },
+
+  stopNavigationCalibrationSensors() {
+    if (this.navigationCalibrationHeadingUnsubscribe) {
+      this.navigationCalibrationHeadingUnsubscribe();
+      this.navigationCalibrationHeadingUnsubscribe = null;
+    }
+    if (this.navigationCalibrationLevelUnsubscribe) {
+      this.navigationCalibrationLevelUnsubscribe();
+      this.navigationCalibrationLevelUnsubscribe = null;
+    }
+  },
+
+  onNavigationCalibrationHeadingChange(event) {
+    if (!this.data.navigationCalibrationVisible) return;
+    const alpha = Number(event && event.alpha);
+    if (!Number.isFinite(alpha)) return;
+    this.navigationCalibrationSamples.push(surveyDeviceOrientation.normalizeDeg(alpha));
+    if (this.navigationCalibrationSamples.length > NAVIGATION_CALIBRATION_SAMPLE_COUNT) {
+      this.navigationCalibrationSamples.shift();
+    }
+    const heading = surveyDeviceOrientation.circularMedianDeg(this.navigationCalibrationSamples);
+    const headingReady = this.navigationCalibrationSamples.length >= NAVIGATION_CALIBRATION_SAMPLE_COUNT
+      && headingSampleSpread(this.navigationCalibrationSamples, heading) <= NAVIGATION_CALIBRATION_MAX_SPREAD_DEG;
+    this.navigationCalibrationHeading = heading;
+    if (headingReady !== this.data.navigationCalibrationHeadingReady) {
+      this.setData({ navigationCalibrationHeadingReady: headingReady }, () => {
+        this.syncNavigationCalibrationState();
+      });
+    } else {
+      this.syncNavigationCalibrationState();
+    }
+  },
+
+  onNavigationCalibrationLevelChange(event) {
+    if (!this.data.navigationCalibrationVisible) return;
+    const beta = Number(event && event.beta);
+    const gamma = Number(event && event.gamma);
+    if (!Number.isFinite(beta) || !Number.isFinite(gamma)) return;
+    const levelReady = Math.abs(beta) <= PHONE_LEVEL_TOLERANCE_DEG
+      && Math.abs(gamma) <= PHONE_LEVEL_TOLERANCE_DEG;
+    if (levelReady === this.data.navigationCalibrationLevelReady) return;
+    this.setData({ navigationCalibrationLevelReady: levelReady }, () => {
+      this.syncNavigationCalibrationState();
+    });
+  },
+
+  syncNavigationCalibrationState() {
+    if (!this.data.navigationCalibrationVisible) return;
+    const bleReady = !!this.data.bleConnected;
+    const levelReady = !!this.data.navigationCalibrationLevelReady;
+    const headingReady = !!this.data.navigationCalibrationHeadingReady;
+    const ready = bleReady && levelReady && headingReady;
+    let status = '方向稳定，可以定位';
+    if (!bleReady) status = '请先连接蓝牙测距仪';
+    else if (!levelReady) status = '请保持手机水平静置';
+    else if (!headingReady) status = '请将手机顶部正对入户门并保持静止';
+    if (status === this.data.navigationCalibrationStatus
+      && ready === this.data.navigationCalibrationReady) return;
+    this.setData({
+      navigationCalibrationStatus: status,
+      navigationCalibrationReady: ready
+    });
+  },
+
+  onNavigationCalibrationConfirm() {
+    if (!this.data.bleConnected) {
+      const sessionReady = this.connectBluetoothForMeasurement();
+      if (sessionReady) {
+        this.syncBleConnectionState();
+      } else {
+        wx.showToast({ title: '正在连接测距仪', icon: 'none' });
+        return;
+      }
+    }
+    if (!this.data.navigationCalibrationReady
+      || !Number.isFinite(this.navigationCalibrationHeading)) {
+      wx.showToast({ title: this.data.navigationCalibrationStatus || '请保持手机稳定', icon: 'none' });
+      return;
+    }
+
+    this.navigationEntryDoorAlphaDeg = surveyDeviceOrientation.normalizeDeg(
+      this.navigationCalibrationHeading
+    );
+    this.navigationEntryDoorAzimuthDeg = surveyDeviceOrientation.normalizeDeg(
+      360 - this.navigationEntryDoorAlphaDeg
+    );
+    this.navigationMeasurementActive = true;
+    this.navigationViewBearingDeg = 0;
+    this.bleDirectionMode = 'auto';
+    this.bleSelectedDirectionKey = '';
+    this.closeNavigationCalibrationDialog();
+    this.setData({
+      compassFollowActive: true,
+      navigationBearingLabel: `${Math.round(this.navigationEntryDoorAzimuthDeg)}°`
+    });
+    this.animateViewRotationTo(0, { durationMs: NAVIGATION_VIEW_ROTATION_MS });
+    this.startBleDirectionAutoPick().then((started) => {
+      if (started) return;
+      this.navigationMeasurementActive = false;
+      this.navigationEntryDoorAlphaDeg = null;
+      this.navigationEntryDoorAzimuthDeg = null;
+      this.setData({ compassFollowActive: false, navigationBearingLabel: '' });
+    });
+    this.syncFromDraft();
+    this.drawSurveyCanvas();
+    wx.showToast({
+      title: '入户门定位成功，已开启平滑旋转',
+      icon: 'none',
+      duration: 2600
+    });
+  },
+
+  onNavigationMeasurementDisable() {
+    this.closeNavigationCalibrationDialog();
+    this.navigationMeasurementActive = false;
+    this.navigationViewBearingDeg = 0;
+    this.navigationEntryDoorAlphaDeg = null;
+    this.navigationEntryDoorAzimuthDeg = null;
+    this.bleDirectionMode = 'manual';
+    this.bleSelectedDirectionKey = '';
+    this.stopBleDirectionAutoPick();
+    this.setData({
+      compassFollowActive: false,
+      navigationBearingLabel: ''
+    });
+    this.animateViewRotationTo(0, { durationMs: NAVIGATION_VIEW_ROTATION_MS });
+    this.syncFromDraft();
+    this.drawSurveyCanvas();
+    wx.showToast({ title: '已关闭导航测量', icon: 'none' });
   },
 
   setBleInputMode(enabled) {
@@ -1903,7 +2212,11 @@ Page({
         if (!this.pageVisible || !this.bleInputMode || this.bleDirectionMode !== 'auto') {
           return false;
         }
-        this.directionPickController.begin(this.viewRotationDeg, this.bleDirectionBaselineOffsetDeg);
+        this.directionPickController.begin(
+          this.viewRotationDeg,
+          this.bleDirectionBaselineOffsetDeg,
+          this.navigationEntryDoorAlphaDeg
+        );
         return this.subscribeBleDirectionMotion();
       })
       .catch(() => {
@@ -1933,6 +2246,13 @@ Page({
     this.stopBleDirectionAutoPick();
     if (this.bleDirectionMode !== 'auto') return;
     this.bleDirectionMode = 'manual';
+    if (this.navigationMeasurementActive) {
+      this.navigationMeasurementActive = false;
+      this.navigationViewBearingDeg = 0;
+      this.navigationEntryDoorAlphaDeg = null;
+      this.navigationEntryDoorAzimuthDeg = null;
+      this.setData({ compassFollowActive: false, navigationBearingLabel: '' });
+    }
     if (this.draft) {
       this.draft = surveyGraph.clearBleLockedBearing(this.draft);
       this.bleSelectedDirectionKey = '';
@@ -1944,15 +2264,15 @@ Page({
 
   onBleDirectionMotionChange(event) {
     if (!this.bleInputMode || this.bleDirectionMode !== 'auto') return;
+    const alpha = Number(event && event.alpha);
+    if (!Number.isFinite(alpha)) return;
+    if (this.navigationMeasurementActive) this.updateNavigationBearingDisplay(alpha);
     if (!this.shouldShowBleDirectionArrows(
       surveyGraph.getActiveFloor(this.draft),
       surveyGraph.getActiveFloor(this.draft).session
     )) {
       return;
     }
-
-    const alpha = Number(event && event.alpha);
-    if (!Number.isFinite(alpha)) return;
 
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
@@ -1963,11 +2283,38 @@ Page({
     if (!candidates.length) return;
 
     if (!this.directionPickController.isActive()) {
-      this.directionPickController.begin(this.viewRotationDeg, this.bleDirectionBaselineOffsetDeg);
+      this.directionPickController.begin(
+        this.viewRotationDeg,
+        this.bleDirectionBaselineOffsetDeg,
+        this.navigationEntryDoorAlphaDeg
+      );
     }
 
     const result = this.directionPickController.update(alpha, candidates);
     if (!result || !result.key) return;
+    if (
+      this.navigationMeasurementActive
+      && Number.isFinite(Number(result.worldBearing))
+      && !this.touchState
+      && !this.viewRotationAnimation
+    ) {
+      const nextBearing = surveyDeviceOrientation.pickCardinalRotationDeg(
+        Number(result.worldBearing),
+        this.navigationViewBearingDeg,
+        NAVIGATION_VIEW_ROTATION_THRESHOLD_DEG
+      );
+      const nextRotation = -nextBearing;
+      const rotationDelta = Math.abs(
+        surveyDeviceOrientation.shortestArcDeg(nextRotation - (Number(this.viewRotationDeg) || 0))
+      );
+      if (rotationDelta >= NAVIGATION_VIEW_ROTATION_THRESHOLD_DEG) {
+        this.navigationViewBearingDeg = nextBearing;
+        this.animateViewRotationTo(nextRotation, { durationMs: NAVIGATION_VIEW_ROTATION_MS });
+      }
+    }
+    // Navigation measurement owns the canvas heading only. Direction arrows
+    // remain an explicit user choice and must never be locked by sensor input.
+    if (this.navigationMeasurementActive) return;
     const needsDirectionLock = !this.bleSelectedDirectionKey || session.state !== 'awaitingLength';
     if (!result.changed && !needsDirectionLock) return;
     if (session.state === 'awaitingLength' && result.key === this.bleSelectedDirectionKey) return;
@@ -2154,7 +2501,11 @@ Page({
       return;
     }
     if (this.bleDirectionMode === 'auto' && this.directionPickController.isActive()) {
-      this.directionPickController.begin(this.viewRotationDeg, this.bleDirectionBaselineOffsetDeg);
+      this.directionPickController.begin(
+        this.viewRotationDeg,
+        this.bleDirectionBaselineOffsetDeg,
+        this.navigationEntryDoorAlphaDeg
+      );
     }
     this.updateCompassDisplay(true);
   },
@@ -2246,8 +2597,19 @@ Page({
     const targetDeg = surveyDeviceOrientation.normalizeDeg(
       (Number(this.viewRotationDeg) || 0) + step
     );
+    if (this.navigationMeasurementActive) {
+      this.navigationViewBearingDeg = surveyDeviceOrientation.pickCardinalRotationDeg(
+        -targetDeg,
+        this.navigationViewBearingDeg,
+        NAVIGATION_VIEW_ROTATION_THRESHOLD_DEG
+      );
+    }
     if (this.bleDirectionMode === 'auto' && this.directionPickController.isActive()) {
-      this.directionPickController.begin(targetDeg, this.bleDirectionBaselineOffsetDeg);
+      this.directionPickController.begin(
+        targetDeg,
+        this.bleDirectionBaselineOffsetDeg,
+        this.navigationEntryDoorAlphaDeg
+      );
     }
     this.animateViewRotationTo(targetDeg);
   },
@@ -2283,10 +2645,14 @@ Page({
     this.viewRotationAnimation = null;
   },
 
-  animateViewRotationTo(targetDeg) {
+  animateViewRotationTo(targetDeg, options) {
+    const opts = options || {};
     this.cancelViewRotationAnimation();
     const startDeg = Number(this.viewRotationDeg) || 0;
     const target = Number(targetDeg) || 0;
+    const durationMs = Number.isFinite(Number(opts.durationMs))
+      ? Math.max(120, Number(opts.durationMs))
+      : VIEW_ROTATION_RESET_MS;
     // Rotate home along the shortest visual arc regardless of accumulated turns.
     const endDeg = startDeg + surveyDeviceOrientation.shortestArcDeg(target - startDeg);
     const fallbackToImmediate = () => {
@@ -2313,7 +2679,7 @@ Page({
     };
     const step = () => {
       if (animation.cancelled || this.surveyCanvasDisposed) return;
-      const progress = Math.min(1, (Date.now() - startedAt) / VIEW_ROTATION_RESET_MS);
+      const progress = Math.min(1, (Date.now() - startedAt) / durationMs);
       if (progress >= 1) {
         this.viewRotationAnimation = null;
         this.applyTransientViewRotation(target);
@@ -2321,7 +2687,9 @@ Page({
         this.updateCompassDisplay(true);
         return;
       }
-      const eased = 1 - Math.pow(1 - progress, 3);
+      // Exponential-feeling ease-out keeps the wall plan spatially legible:
+      // it responds immediately, then decelerates into the calibrated bearing.
+      const eased = 1 - Math.pow(1 - progress, 4);
       this.applyTransientViewRotation(startDeg + (endDeg - startDeg) * eased);
       raf(step);
     };
@@ -2340,6 +2708,18 @@ Page({
     }
     this.compassDisplayUpdatedAt = now;
     this.setData({ compassRotationDeg: rotation });
+  },
+
+  updateNavigationBearingDisplay(alphaDeg, force) {
+    const alpha = Number(alphaDeg);
+    if (!Number.isFinite(alpha)) return;
+    const azimuth = Math.round(surveyDeviceOrientation.normalizeDeg(360 - alpha)) % 360;
+    const nextLabel = `${azimuth}°`;
+    if (nextLabel === this.data.navigationBearingLabel) return;
+    const now = Date.now();
+    if (!force && now - this.navigationBearingUpdatedAt < COMPASS_DISPLAY_MIN_INTERVAL_MS) return;
+    this.navigationBearingUpdatedAt = now;
+    this.setData({ navigationBearingLabel: nextLabel });
   },
 
   onDeviceMotionChange(event) {
@@ -3541,8 +3921,8 @@ Page({
       const rpx = this.rpxScale || ((this.canvasRect && this.canvasRect.width) || 390) / 750;
       const topMetricTop = Number(this.data.topMetricTop || this.data.overlayContentTop || 0);
       append({
-        left: TOP_METRIC_LEFT_RPX * rpx - 4,
-        right: (TOP_METRIC_LEFT_RPX + 220) * rpx,
+        left: Number(this.data.topMetricLeft || 0) - 4,
+        right: Number(this.data.topMetricLeft || 0) + TOP_METRIC_WIDTH_RPX * rpx + 4,
         top: topMetricTop,
         bottom: topMetricTop + TOP_METRIC_HEIGHT_RPX * rpx
       }, {
@@ -3556,21 +3936,6 @@ Page({
     }
 
     {
-      const rpx = this.rpxScale || ((this.canvasRect && this.canvasRect.width) || 390) / 750;
-      const compassTop = Number(this.data.overlayContentTop || 0);
-      append({
-        left: COMPASS_LEFT_RPX * rpx - 4,
-        right: (COMPASS_LEFT_RPX + COMPASS_SIZE_RPX) * rpx + 4,
-        top: compassTop,
-        bottom: compassTop + COMPASS_SIZE_RPX * rpx
-      }, {
-        kind: 'compass',
-        hard: true,
-        padding: 5,
-        pathHard: true,
-        pathWeight: 1900,
-        pathPadding: 5
-      });
       if (this.cursorLensRect) {
         append({
           left: (this.cursorLensRect.left || 0) - 8,
@@ -4428,10 +4793,12 @@ Page({
     const edgeInset = 12 * designScale;
     const rightRailReserve = 105 * designScale;
     const bottomDockReserve = 128 * designScale;
-    const topStackBottom = (this.data.topMetricTop || this.data.overlayContentTop || 0)
-      + TOP_METRIC_HEIGHT_RPX * (this.rpxScale || 0.52)
-      + (this.cursorLensRect && this.cursorLensRect.size ? this.cursorLensRect.size : CURSOR_LENS_SIZE_PX)
-      + 12;
+    const metricBottom = (this.data.topMetricTop || this.data.overlayContentTop || 0)
+      + TOP_METRIC_HEIGHT_RPX * (this.rpxScale || 0.52);
+    const lensBottom = this.cursorLensRect
+      ? this.cursorLensRect.top + (this.cursorLensRect.size || CURSOR_LENS_SIZE_PX) + 8
+      : metricBottom;
+    const topStackBottom = Math.max(metricBottom, lensBottom) + 12;
     const topInset = Math.max(edgeInset, topStackBottom + edgeInset);
     return {
       left: edgeInset,
@@ -6351,7 +6718,12 @@ Page({
   },
 
   onCanvasTouchStart(e) {
-    if (this.data.numberPadVisible || !this.canvasRect) return;
+    if (
+      this.data.numberPadVisible
+      || this.data.navigationCalibrationVisible
+      || this.data.navigationCalibrationClosing
+      || !this.canvasRect
+    ) return;
     this.canvasTapSelectedObject = false;
     const touches = e.touches || [];
 
@@ -6386,8 +6758,18 @@ Page({
       return;
     }
 
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor.session;
+    const openingHit = this.hitTestOpeningAtClientPoint(point);
+    const wallHit = this.hitTestWallAtClientPoint(point);
     const controlHit = this.hitTestCanvasControl(point);
-    if (controlHit) {
+    const bleDirectionOverlapsObject = controlHit && controlHit.key === 'ble-direction' && (
+      (openingHit && openingHit.openingId) || (wallHit && wallHit.wallId)
+    );
+    // Direction arrows are generous touch targets, but they must not cover a
+    // wall/opening hit. A short object tap selects it; dragging from the cursor
+    // still starts the normal wall gesture below.
+    if (controlHit && !bleDirectionOverlapsObject) {
       this.touchState = {
         mode: 'control',
         control: controlHit,
@@ -6396,9 +6778,6 @@ Page({
       return;
     }
 
-    const floor = surveyGraph.getActiveFloor(this.draft);
-    const session = floor.session;
-    const openingHit = this.hitTestOpeningAtClientPoint(point);
     const nearCursor = this.isCursorTouchTarget(e) || this.isNearCursorPoint(point);
     const viewport = this.getViewport();
     const snapPending = session.state === 'wallSnapPending';
@@ -6659,7 +7038,7 @@ Page({
       return;
     }
 
-    if (wasTap && !touchState.nearCursor) {
+    if (wasTap) {
       const openingHit = this.hitTestOpeningAtClientPoint(touchState.startPoint);
       if (openingHit && openingHit.openingId) {
         this.canvasTapSelectedObject = true;
@@ -6771,6 +7150,7 @@ Page({
   },
 
   onCanvasTap() {
+    if (this.data.navigationCalibrationVisible || this.data.navigationCalibrationClosing) return;
     // 空白处仍应收起工具栏。
     const floor = this.draft && surveyGraph.getActiveFloor(this.draft);
     if (this.canvasTapSelectedObject) {

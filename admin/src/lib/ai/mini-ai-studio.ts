@@ -124,6 +124,34 @@ function signGenerationForMini<T extends Record<string, unknown>>(
   };
 }
 
+function compactGenerationForMini<T extends Record<string, unknown>>(
+  generation: T | null | undefined,
+): T | undefined {
+  if (!generation) return undefined;
+  const input = generation.input && typeof generation.input === 'object'
+    ? generation.input as Record<string, unknown>
+    : {};
+  const output = generation.output && typeof generation.output === 'object'
+    ? generation.output as Record<string, unknown>
+    : {};
+  const prompt = typeof input.userMessage === 'string'
+    ? input.userMessage
+    : typeof input.customPrompt === 'string'
+      ? input.customPrompt
+      : undefined;
+  const generationRecord = generation as Record<string, unknown>;
+  const imageUrl = typeof generationRecord.imageUrl === 'string'
+    ? generationRecord.imageUrl
+    : typeof output.imageUrl === 'string'
+      ? output.imageUrl
+      : undefined;
+  return {
+    ...generation,
+    ...(prompt ? { input: { userMessage: prompt } } : { input: undefined }),
+    output: imageUrl ? { imageUrl } : {},
+  };
+}
+
 type WorkflowListItem = {
   coverImageUrl?: string;
   latestGeneration?: Record<string, unknown>;
@@ -162,8 +190,12 @@ export async function serializeWorkflowListForMini<T extends { data: readonly un
         ...workflow,
         coverUrl,
         coverImageUrl: coverUrl,
-        latestGeneration: signGenerationForMini(request, enterpriseId, workflow.latestGeneration, displayByAssetId),
-        selectedGeneration: signGenerationForMini(request, enterpriseId, workflow.selectedGeneration, displayByAssetId),
+        latestGeneration: compactGenerationForMini(
+          signGenerationForMini(request, enterpriseId, workflow.latestGeneration, displayByAssetId),
+        ),
+        selectedGeneration: compactGenerationForMini(
+          signGenerationForMini(request, enterpriseId, workflow.selectedGeneration, displayByAssetId),
+        ),
       };
     }),
   };
@@ -207,15 +239,15 @@ export async function serializeWorkflowContextForMini(
             enterpriseId,
           })
         : undefined,
-      latestGeneration: signGenerationForMini(
+      latestGeneration: compactGenerationForMini(signGenerationForMini(
         request,
         enterpriseId,
         context.workflow.latestGeneration as Record<string, unknown> | undefined,
         displayByAssetId,
-      ),
+      )),
     },
     lead: context.lead,
-    generations: context.generations.map((generation) => ({
+    generations: context.generations.map((generation) => compactGenerationForMini({
       ...generation,
       imageUrl: rewriteStudioImageUrl(
         request,
@@ -223,7 +255,7 @@ export async function serializeWorkflowContextForMini(
         getGenerationImageUrl(generation),
         displayByAssetId,
       ),
-    })),
+    })!),
     publishedScheme: context.publishedScheme,
   };
 }

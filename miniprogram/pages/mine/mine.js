@@ -64,6 +64,19 @@ function formatFloorPlanDate(value) {
     .replace(/\//g, '-');
 }
 
+function updateStatusLabel(state) {
+  const labels = {
+    idle: '检查微信版本更新',
+    checking: '正在检查线上版本',
+    downloading: '发现新版本，正在下载',
+    ready: '新版本已准备好，点击重启',
+    latest: '当前已是最新版本',
+    failed: '检查失败，点击重试',
+    unsupported: '当前微信版本不支持检查'
+  };
+  return labels[state] || labels.idle;
+}
+
 Page({
   data: {
     isLoggedIn: false,
@@ -101,7 +114,8 @@ Page({
     navigationRight: 14,
     defaultAvatarUrl: DEFAULT_AVATAR,
     identityLabel: '读取中',
-    identityCount: 0
+    identityCount: 0,
+    updateStatusLabel: '检查微信版本更新'
   },
 
   onLoad() {
@@ -111,6 +125,7 @@ Page({
   onShow() {
     this.syncNavigationMetrics();
     this.syncTabBar();
+    this.syncUpdateStatus();
     const userInfo = app.globalData.userInfo || wx.getStorageSync('userInfo');
     const activeRole = (app.globalData.bootstrap && app.globalData.bootstrap.current && app.globalData.bootstrap.current.role)
       || roleForIdentity(userInfo);
@@ -213,6 +228,42 @@ Page({
       displayTodos: [],
       overviewCards: []
     });
+  },
+
+  syncUpdateStatus() {
+    const state = typeof app.getUpdateState === 'function' ? app.getUpdateState() : 'idle';
+    this.setData({ updateStatusLabel: updateStatusLabel(state) });
+  },
+
+  onCheckVersion() {
+    const state = typeof app.getUpdateState === 'function' ? app.getUpdateState() : 'idle';
+    if (state === 'ready') {
+      app.promptUpdateRestart();
+      return;
+    }
+    if (state === 'latest') {
+      wx.showModal({ title: '版本检查', content: '当前已是线上最新版本。', showCancel: false });
+      return;
+    }
+    if (state === 'downloading' || state === 'checking') {
+      wx.showToast({ title: state === 'checking' ? '正在检查，请稍候' : '新版本下载中', icon: 'none' });
+      return;
+    }
+    if (state === 'failed') {
+      wx.showModal({
+        title: '版本检查失败',
+        content: '微信暂时无法完成检查，请稍后重新打开小程序再试。',
+        showCancel: false
+      });
+      return;
+    }
+    if (state === 'unsupported') {
+      wx.showToast({ title: '当前微信版本不支持检查', icon: 'none' });
+      return;
+    }
+    if (typeof app.initUpdateManager === 'function') app.initUpdateManager();
+    wx.showToast({ title: '正在检查，请稍候', icon: 'none' });
+    this.syncUpdateStatus();
   },
 
   syncTabBar() {

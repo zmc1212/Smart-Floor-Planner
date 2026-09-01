@@ -21,6 +21,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { isStaffReferrerRosterRole } from '@/lib/referrer-roster-access';
 
 type ReferrerMember = {
   id: string;
@@ -89,7 +90,7 @@ export default function ReferrersPage() {
   const actionRef = useRef<ActionType>(undefined);
   const [actingMembershipId, setActingMembershipId] = useState<string | null>(null);
   const [globalTenantId, setGlobalTenantId] = useState('all');
-  const [rosterView, setRosterView] = useState<'network' | 'all'>('network');
+  const [rosterView, setRosterView] = useState<'network' | 'all'>('all');
   const [network, setNetwork] = useState<ReferrerNetwork | null>(null);
   const [networkLoading, setNetworkLoading] = useState(false);
   const [networkError, setNetworkError] = useState('');
@@ -97,15 +98,33 @@ export default function ReferrersPage() {
   const requiresTenantSelection = Boolean(
     ['super_admin', 'admin'].includes(user?.role || '') && globalTenantId === 'all'
   );
-  const isEnterpriseOwner = user?.role === 'enterprise_admin';
+  const isStaffReferrerViewer = isStaffReferrerRosterRole(user?.role);
+  const canViewReferrerNetwork = Boolean(
+    !isStaffReferrerViewer &&
+    (user?.role === 'enterprise_admin' ||
+    (['super_admin', 'admin'].includes(user?.role || '') && !requiresTenantSelection))
+  );
+  const canDisableReferrers = Boolean(
+    user?.role === 'enterprise_admin' ||
+    ['super_admin', 'admin'].includes(user?.role || '')
+  );
+  const hasReferrerOperationsAccess = Boolean(
+    user?.effectivePermissions?.includes('referrer-network-operations')
+  );
 
   useEffect(() => {
     const tenant = document.cookie.split('; ').find((item) => item.startsWith('global_tenant_id='));
     setGlobalTenantId(tenant?.split('=')[1] || 'all');
   }, []);
 
+  useEffect(() => {
+    if (canViewReferrerNetwork) {
+      setRosterView('network');
+    }
+  }, [canViewReferrerNetwork]);
+
   const loadNetwork = useCallback(async () => {
-    if (!isEnterpriseOwner || requiresTenantSelection) return;
+    if (!canViewReferrerNetwork || requiresTenantSelection) return;
     setNetworkLoading(true);
     setNetworkError('');
     try {
@@ -119,7 +138,7 @@ export default function ReferrersPage() {
     } finally {
       setNetworkLoading(false);
     }
-  }, [isEnterpriseOwner, requiresTenantSelection]);
+  }, [canViewReferrerNetwork, requiresTenantSelection]);
 
   useEffect(() => {
     if (rosterView === 'network') void loadNetwork();
@@ -195,15 +214,17 @@ export default function ReferrersPage() {
         exited: { text: '已退出', status: 'Default' },
       },
     },
-    {
-      title: '操作',
-      key: 'actions',
-      hideInSearch: true,
-      width: 140,
-      render: (_, item) => item.status === 'active'
-        ? <Button size="small" danger loading={actingMembershipId === item.id} onClick={() => void disableReferrerMembership(item)}>停用后续扫码</Button>
-        : '—',
-    },
+    ...(canDisableReferrers
+      ? [{
+          title: '操作',
+          key: 'actions',
+          hideInSearch: true,
+          width: 140,
+          render: (_: unknown, item: ReferrerMember) => item.status === 'active'
+            ? <Button size="small" danger loading={actingMembershipId === item.id} onClick={() => void disableReferrerMembership(item)}>停用后续扫码</Button>
+            : '—',
+        } satisfies ProColumns<ReferrerMember>]
+      : []),
   ];
 
   const networkColumns: TableColumnsType<ReferrerNetworkMember> = [
@@ -270,17 +291,21 @@ export default function ReferrersPage() {
       <PageContainer
         breadcrumbRender={false}
         className="admin-page-container"
-        title="推荐人"
-        content={isEnterpriseOwner
+        title={isStaffReferrerViewer ? '我的推广人' : '推荐人'}
+        content={isStaffReferrerViewer
+          ? '查看本人直接邀请的推广人。推荐人只能扫你的个人入驻码加入；后台不手工建档，也不能停用后续扫码。'
+          : canViewReferrerNetwork
           ? '查看员工推广分支或企业全部推广人。推广关系归属企业，首次邀请员工会保留在对应分支。'
           : '查看当前企业已入驻推荐人的姓名和手机号。推荐人只能扫入驻码加入，后台不手工建档；停用只关闭后续扫码，不改历史线索和提成。'}
-        extra={<Button icon={<ArrowLeft size={16} />} href="/referrer-network-operations">返回运营工作台</Button>}
+        extra={hasReferrerOperationsAccess
+          ? <Button icon={<ArrowLeft size={16} />} href="/referrer-network-operations">返回运营工作台</Button>
+          : undefined}
       >
         {requiresTenantSelection ? (
           <Alert showIcon type="info" message="请先选择企业" description="平台管理员需要先在左侧导航切换到具体企业，才能查看该企业的推荐人。" />
         ) : (
           <Flex vertical gap={16}>
-            {isEnterpriseOwner ? (
+            {canViewReferrerNetwork ? (
               <Segmented
                 value={rosterView}
                 onChange={(value) => setRosterView(value as 'network' | 'all')}
@@ -290,7 +315,7 @@ export default function ReferrersPage() {
                 ]}
               />
             ) : null}
-            {rosterView === 'network' && isEnterpriseOwner ? (
+            {rosterView === 'network' && canViewReferrerNetwork ? (
               <Card className="admin-panel-card" title="员工推广网络">
                 {networkLoading ? (
                   <Flex justify="center" style={{ padding: 40 }}><Spin tip="正在加载推广网络" /></Flex>
@@ -307,7 +332,9 @@ export default function ReferrersPage() {
               </Card>
             ) : (
               <>
-                <Alert showIcon type="info" message="只管理后续扫码资格" description="停用不会改写历史线索或提成；后台不展示推广令牌明文，活动码仍由推荐人本人在小程序出示。" />
+                {canDisableReferrers ? (
+                  <Alert showIcon type="info" message="只管理后续扫码资格" description="停用不会改写历史线索或提成；后台不展示推广令牌明文，活动码仍由推荐人本人在小程序出示。" />
+                ) : null}
                 <ProTable<ReferrerMember>
               rowKey="id"
               actionRef={actionRef}

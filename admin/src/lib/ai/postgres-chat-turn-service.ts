@@ -19,6 +19,7 @@ import {
 } from '@/lib/ai/conversation-prompt';
 import { leadArchivedError } from '@/lib/lead-lifecycle';
 import { getPostgresAiWorkflowContext } from '@/lib/ai/postgres-workflow-service';
+import { getPlatformAiPromptConfig } from '@/lib/ai/platform-ai-prompt-config';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -50,6 +51,7 @@ export async function runPostgresWorkflowChatTurn(input: {
 
   await assertEnterpriseAiActionAllowed(enterpriseId.toString(), 'image.scenario');
   const price = await getAiCreditPrice('image.scenario');
+  const aiPromptConfig = await getPlatformAiPromptConfig();
 
   const prepared = await withTenantTransaction(enterpriseId, async (transaction) => {
     const workflows = new AiWorkflowRepository(transaction);
@@ -83,7 +85,10 @@ export async function runPostgresWorkflowChatTurn(input: {
     }
 
     const baseline = resolveConversationBaseline(generations, requestedBaselineId);
-    const floorPlanContext = buildWorkflowFloorPlanContext(floorPlan.layoutData);
+    const floorPlanContext = buildWorkflowFloorPlanContext(
+      floorPlan.layoutData,
+      aiPromptConfig.floorPlanConstraintPrompt,
+    );
     const fallbackPrompt = buildConversationFallbackPrompt({
       userMessage,
       floorPlanContext,
@@ -157,7 +162,7 @@ export async function runPostgresWorkflowChatTurn(input: {
       maxTokens: 400,
       metadata: { workflowStage: 'conversation', step: 'prompt_expansion' },
     });
-    const customPrompt = [expanded.content.trim(), prepared.floorPlanContext].filter(Boolean).join('\n\n');
+    const customPrompt = [prepared.floorPlanContext, expanded.content.trim()].filter(Boolean).join('\n\n');
     if (customPrompt.trim()) {
       await withTenantTransaction(enterpriseId, async (transaction) => {
         const creations = new AiCreationRepository(transaction);

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   applyModelDefaults,
+  applyRenderModeToDraft,
   applyScopeToDraft,
   buildComposerPickerOptions,
   buildComposerPickerTitle,
@@ -88,11 +89,11 @@ test('applyModelDefaults follows model catalog defaults', () => {
 });
 
 test('buildComposerViewState enables submit when draft and balance are valid', () => {
-  const draft = {
+  const draft = applyRenderModeToDraft({
     ...createDefaultDraft(bootstrap),
     prompt: '奶油风客厅，自然光',
     count: 1,
-  };
+  }, 'whole_floor_plan');
   const view = buildComposerViewState(draft, bootstrap);
   assert.equal(view.canSubmit, true);
   assert.equal(view.estimatedCredits, 4);
@@ -169,7 +170,7 @@ test('composer apply-to scope defaults to the whole floor plan and can select a 
   });
   assert.equal(buildScopeSubmitPayload(draft).roomId, undefined);
 
-  const view = buildComposerViewState({ ...roomDraft, prompt: '奶油风客厅' }, bootstrap, { scopes });
+  const view = buildComposerViewState(applyRenderModeToDraft({ ...roomDraft, prompt: '奶油风客厅' }, 'whole_floor_plan'), bootstrap, { scopes });
   assert.equal(view.hasScopePicker, true);
   assert.equal(view.scopeLabel, '客厅');
   assert.equal(view.canSubmit, true);
@@ -182,16 +183,23 @@ test('buildDraftFromBatch restores the persisted room scope', () => {
     prompt: '客厅灯光',
     modelProfileId: 'model-a',
     requestedCount: 2,
+    referenceAssetIds: ['control-1', 'site-1', 'baseline-1'],
     parameterSnapshot: {
       aspectRatio: '4:3',
       resolutionTier: '2K',
       targetScope: 'single_room',
       targetLabel: '客厅',
       roomId: 'living',
+      floorPlanControlAssetId: 'control-1',
+      sitePhotoAssetIds: ['site-1'],
     },
   }, bootstrap);
   assert.equal(draft.targetScope, 'single_room');
   assert.equal(draft.roomId, 'living');
+  assert.deepEqual(draft.referenceAssets, [
+    { id: 'site-1', previewUrl: '', role: 'site_photo' },
+    { id: 'baseline-1', previewUrl: '', role: 'baseline' },
+  ]);
   assert.equal(resolveDraftScope(buildScopes([], 0), draft).targetScope, 'whole_floor_plan');
 });
 
@@ -207,12 +215,12 @@ test('composer locks the bound floor-plan preview in the first reference slot', 
     [{ roomId: 'living', roomName: '客厅', roomSize: '4.20 m x 3.60 m' }],
     2,
   );
-  const draft = applyScopeToDraft({
+  const draft = applyRenderModeToDraft(applyScopeToDraft({
     ...createDefaultDraft(bootstrap),
     prompt: '奶油风客厅',
     targetScope: 'single_room',
     roomId: 'living',
-  }, scopes[1]);
+  }, scopes[1]), 'whole_floor_plan');
   const view = buildComposerViewState(draft, bootstrap, {
     scopes,
     floorPlanPreviewUrl: signed,
@@ -220,6 +228,77 @@ test('composer locks the bound floor-plan preview in the first reference slot', 
   assert.equal(view.hasControlPreview, true);
   assert.equal(view.controlPreviewUrl, `${signed}&roomId=living`);
   assert.equal(view.controlPreviewLabel, '客厅控制图');
+});
+
+test('composer mode selection separates floor-plan control from site-photo modes', () => {
+  const scopes = buildScopes(
+    [{ roomId: 'living', roomName: '客厅', roomSize: '4.20 m x 3.60 m' }],
+    1,
+  );
+  const base = { ...createDefaultDraft(bootstrap), prompt: '自然原木客厅' };
+  const unselected = buildComposerViewState(base, bootstrap, { scopes });
+  assert.equal(unselected.canSubmit, false);
+  assert.equal(unselected.blockedReason, '请先选择设计方式');
+  assert.equal(unselected.wholeHouseAvailable, false);
+
+  const whole = buildComposerViewState(applyRenderModeToDraft(base, 'whole_floor_plan'), bootstrap, {
+    scopes,
+    floorPlanPreviewUrl: 'https://example.com/floor-plan.png',
+  });
+  assert.equal(whole.hasControlPreview, true);
+  assert.equal(whole.wholeHouseAvailable, true);
+  assert.equal(whole.canSubmit, true);
+
+  const roomDraft = applyScopeToDraft(
+    applyRenderModeToDraft(base, 'single_room_photo'),
+    scopes[1],
+  );
+  const roomWithoutPhoto = buildComposerViewState(roomDraft, bootstrap, {
+    scopes,
+    floorPlanPreviewUrl: 'https://example.com/floor-plan.png',
+  });
+  assert.equal(roomWithoutPhoto.hasControlPreview, false);
+  assert.equal(roomWithoutPhoto.blockedReason, '请先添加现场图');
+
+  const roomWithBaselineOnly = buildComposerViewState({
+    ...roomDraft,
+    referenceAssets: [{ id: 'generation-1', role: 'baseline' }],
+  }, bootstrap, { scopes });
+  assert.equal(roomWithBaselineOnly.blockedReason, '请先添加现场图');
+
+  const roomWithPhoto = buildComposerViewState({
+    ...roomDraft,
+    referenceAssets: [{ id: 'photo-1', role: 'site_photo' }],
+  }, bootstrap, { scopes });
+  assert.equal(roomWithPhoto.canSubmit, true);
+  assert.deepEqual(roomWithPhoto.scopePickerOptions.map((item) => item.targetScope), ['single_room']);
+
+  const soft = buildComposerViewState({
+    ...applyRenderModeToDraft(roomDraft, 'soft_furnishing'),
+    referenceAssets: [{ id: 'photo-1', role: 'site_photo' }],
+  }, bootstrap, { scopes, floorPlanPreviewUrl: 'https://example.com/floor-plan.png' });
+  assert.equal(soft.hasControlPreview, false);
+  assert.equal(soft.softFurnishingActive, true);
+  assert.equal(soft.canSubmit, true);
+});
+
+test('photo-first single-room mode can submit without a selected floor-plan room', () => {
+  const scopes = buildScopes(
+    [{ roomId: 'living', roomName: '客厅', roomSize: '4.20 m x 3.60 m' }],
+    1,
+  );
+  const draft = applyRenderModeToDraft({
+    ...createDefaultDraft(bootstrap),
+    prompt: '按现场照片设计',
+    // A stale single-room scope must not make the photo-first mode require a room.
+    targetScope: 'single_room',
+    roomId: '',
+    referenceAssets: [{ id: 'site-1', role: 'site_photo' }],
+  }, 'single_room_photo');
+  const view = buildComposerViewState(draft, bootstrap, { scopes });
+  assert.equal(view.blockedReason, '');
+  assert.equal(view.canSubmit, true);
+  assert.equal(view.hasControlPreview, false);
 });
 
 test('composer toolbar keeps four tools without a reference chip', () => {
@@ -319,6 +398,7 @@ test('composer wxml keeps a bottom toolbar and keyboard-safe sheets', () => {
   const wxml = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.wxml'), 'utf8');
   const less = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
   const script = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.js'), 'utf8');
+  const studioWxml = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.wxml'), 'utf8');
 
   assert.match(wxml, /dock-toolbar/);
   assert.match(wxml, /dock-tool-label/);
@@ -334,6 +414,27 @@ test('composer wxml keeps a bottom toolbar and keyboard-safe sheets', () => {
   assert.match(script, /runAfterKeyboardHidden/);
   assert.match(script, /restorePromptFocus/);
   assert.match(script, /KEYBOARD_HIDE_TIMEOUT_MS/);
+  assert.match(wxml, /开始新一轮设计/);
+  assert.match(wxml, /设计整屋/);
+  assert.match(wxml, /设计单间/);
+  assert.match(wxml, /仅软装换搭/);
+  assert.match(wxml, /whole-house-material-board\.png/);
+  assert.match(wxml, /single-room-camera-board\.png/);
+  assert.match(studioWxml, /bind:rendermodechange="onComposerRenderModeChange"/);
+});
+
+test('mode-flow artwork is packaged as transparent PNG under the Mini Program limit', () => {
+  const miniRoot = path.resolve(__dirname, '..');
+  const assets = [
+    'packages/ai-workflow/assets/mode-flow-v1/whole-house-material-board.png',
+    'packages/ai-workflow/assets/mode-flow-v1/single-room-camera-board.png',
+  ];
+  for (const relativePath of assets) {
+    const contents = fs.readFileSync(path.join(miniRoot, relativePath));
+    assert.deepEqual([...contents.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(contents.length <= 300 * 1024, `${relativePath} exceeds 300KB`);
+    assert.ok(contents.includes(Buffer.from('tRNS')), `${relativePath} must preserve transparency`);
+  }
 });
 
 test('mask dismiss on a tool sheet restores prompt focus', async () => {

@@ -22,6 +22,8 @@ import { getSignedMiniAiAssetUrl, getSignedMiniAiTaskResultUrl } from '@/lib/ai/
 import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-types';
 import { assertEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
 import { leadArchivedError } from '@/lib/lead-lifecycle';
+import { getPlatformAiPromptConfig } from '@/lib/ai/platform-ai-prompt-config';
+import { composeFloorPlanConstrainedPrompt } from '@/lib/ai/floor-plan-constraint-prompt';
 import { getMiniAiRecipeRuntime } from '@/lib/ai/mini-ai-recipes';
 
 export type CreateMiniAiTaskInput = {
@@ -232,10 +234,23 @@ export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, con
       })).asset
     : null;
   const roomData = target ? { summary: target.summary, roomId: target.roomId, targetScope: target.targetScope, targetLabel: target.targetLabel, roomCount: target.roomCount, ...(target.targetScope === 'whole_floor_plan' ? { navigationRenderVersion: MINI_AI_WHOLE_PLAN_RENDER_VERSION } : {}) } : undefined;
+  const basePrompt = buildPrompt({
+    mode: input.mode,
+    style: input.styleKey,
+    summary: plan ? undefined : roomData?.summary,
+    recipePrompt: recipe?.promptContent,
+  });
+  const customPrompt = plan
+    ? composeFloorPlanConstrainedPrompt({
+      constraintPrompt: (await getPlatformAiPromptConfig()).floorPlanConstraintPrompt,
+      measuredContext: roomData?.summary,
+      userPrompt: basePrompt,
+    })
+    : basePrompt;
   const generation = await withTenantTransaction(enterpriseId, async (transaction) => {
     if (leadId) await assertMiniAiGenerationLeadActive(transaction, { leadId, floorPlanId: plan?.id ?? null });
     return new AiCreationRepository(transaction).createGeneration({
-      enterpriseId, operatorId, floorPlanId: plan?.id, leadId: leadId ?? null, workflowId: workflowId ?? null, parentGenerationId: sourceTask?.id ?? null, type: 'miniprogram', channel: 'miniprogram', stageKey: config.stageKey, sourceAssetRole: plan ? 'floor_plan' : 'rough_sketch', nextRecommendedStage: config.nextStageKey, status: 'pending', actionKey: config.actionKey, capability: config.logicalModelKey === 'image.edit.standard' ? 'image.edit' : 'image.generate', logicalModelKey: plan && input.mode === 'floor_plan_render' ? 'image.edit.standard' : config.logicalModelKey, input: { mode: input.mode, style: input.styleKey || 'modern', recipeId: recipe?.id, recipeName: recipe?.name, recipeCategoryId: recipe?.categorySourceId, customPrompt: buildPrompt({ mode: input.mode, style: input.styleKey, summary: roomData?.summary, recipePrompt: recipe?.promptContent }), roomData, spaceImage: spaceAsset ? getPostgresMediaAssetImageUrl(spaceAsset.id) : undefined, referenceImage: referenceAsset ? getPostgresMediaAssetImageUrl(referenceAsset.id) : undefined, controlImage: controlAsset ? getPostgresMediaAssetImageUrl(controlAsset.id) : undefined, outputAspectRatio: input.mode === 'floor_plan_render' ? '1:1' : '16:9', outputSize: input.mode === 'floor_plan_render' ? '1024x1024' : '1280x720' }, output: {}, billing: { cycle: 0, actionKey: config.actionKey, price: price.credits, status: 'unbilled' } });
+      enterpriseId, operatorId, floorPlanId: plan?.id, leadId: leadId ?? null, workflowId: workflowId ?? null, parentGenerationId: sourceTask?.id ?? null, type: 'miniprogram', channel: 'miniprogram', stageKey: config.stageKey, sourceAssetRole: plan ? 'floor_plan' : 'rough_sketch', nextRecommendedStage: config.nextStageKey, status: 'pending', actionKey: config.actionKey, capability: config.logicalModelKey === 'image.edit.standard' ? 'image.edit' : 'image.generate', logicalModelKey: plan && input.mode === 'floor_plan_render' ? 'image.edit.standard' : config.logicalModelKey, input: { mode: input.mode, style: input.styleKey || 'modern', recipeId: recipe?.id, recipeName: recipe?.name, recipeCategoryId: recipe?.categorySourceId, customPrompt, roomData, spaceImage: spaceAsset ? getPostgresMediaAssetImageUrl(spaceAsset.id) : undefined, referenceImage: referenceAsset ? getPostgresMediaAssetImageUrl(referenceAsset.id) : undefined, controlImage: controlAsset ? getPostgresMediaAssetImageUrl(controlAsset.id) : undefined, outputAspectRatio: input.mode === 'floor_plan_render' ? '1:1' : '16:9', outputSize: input.mode === 'floor_plan_render' ? '1024x1024' : '1280x720' }, output: {}, billing: { cycle: 0, actionKey: config.actionKey, price: price.credits, status: 'unbilled' } });
   });
   await withTenantTransaction(enterpriseId, async (transaction) => {
     const repo = new AiCreationRepository(transaction);

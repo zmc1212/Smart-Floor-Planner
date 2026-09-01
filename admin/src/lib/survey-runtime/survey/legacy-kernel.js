@@ -3773,6 +3773,7 @@ function setMode(draft, mode) {
   const floor = getActiveFloor(next);
   if (mode !== 'straight' && mode !== 'diagonal') return next;
   floor.session.mode = mode;
+  delete floor.session.bleLockedBearingDeg;
   return touchDraft(next);
 }
 
@@ -3799,6 +3800,7 @@ function placeCursor(draft, point) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.selectedWallId = '';
   session.selectedOpeningId = '';
   session.closeCandidateNodeId = '';
@@ -4134,6 +4136,132 @@ function startPreview(draft, rawPoint) {
   return touchDraft(next);
 }
 
+function isOrthogonalBearing(bearingDeg) {
+  const normalized = normalizeSignedAngle(Number(bearingDeg));
+  const mod90 = Math.abs(normalized % 90);
+  return mod90 < 1 || Math.abs(mod90 - 90) < 1;
+}
+
+function clearBleDirectionPreview(session) {
+  if (!session) return;
+  session.previewPoint = null;
+  session.previewLengthMm = 0;
+  session.previewAngleDeg = 0;
+  session.previewAngleSource = '';
+  session.previewInteriorAngleDeg = null;
+  session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
+  session.previewOuterFaceWallId = '';
+  session.previewBodyNormalSide = '';
+  session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.closeCandidateType = '';
+  session.closeCandidateSharedWallId = '';
+  session.partitionSourceSpaceId = '';
+  session.alignmentSnapGuide = null;
+  session.pendingWallId = '';
+}
+
+function hasBleLockedBearing(session) {
+  if (!session) return false;
+  const value = session.bleLockedBearingDeg;
+  return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+}
+
+function materializeLockedPreview(draft) {
+  const floor = getActiveFloor(draft);
+  const session = floor && floor.session;
+  if (!hasBleLockedBearing(session) || session.previewPoint) {
+    return draft;
+  }
+  let next = startPreviewFromBearing(draft, Number(session.bleLockedBearingDeg));
+  next = holdPreviewForInput(next);
+  return next;
+}
+
+function lockPreviewBearing(draft, bearingDeg) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+  const anchor = getNode(floor, session.anchorNodeId);
+
+  if (!anchor) {
+    throw new Error('Place the cursor before choosing a wall direction');
+  }
+  if (session.mode !== 'straight') {
+    throw new Error('Direction picking is only available in straight mode');
+  }
+
+  const normalizedBearing = normalizeAngle(Number(bearingDeg));
+  if (!Number.isFinite(normalizedBearing) || !isOrthogonalBearing(normalizedBearing)) {
+    throw new Error('Wall direction must be horizontal or vertical');
+  }
+
+  clearBleDirectionPreview(session);
+  session.bleLockedBearingDeg = normalizedBearing;
+  session.state = 'awaitingLength';
+  return touchDraft(next);
+}
+
+function clearBleLockedBearing(draft) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = floor && floor.session;
+  if (!session || !Object.prototype.hasOwnProperty.call(session, 'bleLockedBearingDeg')) {
+    return next;
+  }
+  delete session.bleLockedBearingDeg;
+  if (!session.previewPoint && session.state === 'awaitingLength') {
+    if (floor.walls.length) {
+      session.state = 'wallCommitted';
+    } else if (session.anchorNodeId) {
+      session.state = 'cursorPlaced';
+    } else {
+      session.state = 'idle';
+    }
+  }
+  return touchDraft(next);
+}
+
+function startPreviewFromBearing(draft, bearingDeg, options) {
+  const opts = options || {};
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+  const anchor = getNode(floor, session.anchorNodeId);
+
+  if (!anchor) {
+    throw new Error('Place the cursor before choosing a wall direction');
+  }
+  if (session.mode !== 'straight') {
+    throw new Error('Direction picking is only available in straight mode');
+  }
+
+  const normalizedBearing = normalizeAngle(Number(bearingDeg));
+  if (!Number.isFinite(normalizedBearing) || !isOrthogonalBearing(normalizedBearing)) {
+    throw new Error('Wall direction must be horizontal or vertical');
+  }
+
+  const requestedStubLengthMm = Number(opts.stubLengthMm);
+  const stubLengthMm = Number.isFinite(requestedStubLengthMm) && requestedStubLengthMm >= MIN_WALL_LENGTH_MM
+    ? Math.round(requestedStubLengthMm)
+    : (
+      session.previewLengthMm >= MIN_WALL_LENGTH_MM
+        ? session.previewLengthMm
+        : MIN_WALL_LENGTH_MM
+    );
+
+  const radians = normalizedBearing * Math.PI / 180;
+  const rawPoint = {
+    xMm: Math.round(anchor.xMm + Math.cos(radians) * stubLengthMm),
+    yMm: Math.round(anchor.yMm + Math.sin(radians) * stubLengthMm)
+  };
+
+  return startPreview(next, rawPoint);
+}
+
 function holdPreviewForInput(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
@@ -4246,10 +4374,7 @@ function cancelPending(draft) {
   session.previewMeasurementEndInsetMm = 0;
   session.previewAngleSource = '';
   session.previewInteriorAngleDeg = null;
-  session.previewMeasurementSide = '';
-  session.previewMeasurementStartInsetMm = 0;
-  session.previewMeasurementStartExtensionMm = 0;
-  session.previewMeasurementEndInsetMm = 0;
+  delete session.bleLockedBearingDeg;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
@@ -4279,7 +4404,17 @@ function cancelPending(draft) {
 
 function commitPreviewLength(draft, lengthMm, inputSource) {
   const parsedLength = validateLength(lengthMm);
-  const next = cloneDraft(draft);
+  let sourceDraft = draft;
+  const preFloor = getActiveFloor(sourceDraft);
+  const preSession = preFloor && preFloor.session;
+  if (
+    preSession &&
+    hasBleLockedBearing(preSession) &&
+    !preSession.previewPoint
+  ) {
+    sourceDraft = materializeLockedPreview(sourceDraft);
+  }
+  const next = cloneDraft(sourceDraft);
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
   const anchor = getNode(floor, session.anchorNodeId);
@@ -4536,6 +4671,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.previewOuterFaceWallId = '';
+  delete session.bleLockedBearingDeg;
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
@@ -5408,6 +5544,7 @@ function selectWall(draft, wallId) {
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
+  delete floor.session.bleLockedBearingDeg;
   floor.session.previewMeasurementStartInsetMm = 0;
   floor.session.previewMeasurementStartExtensionMm = 0;
   floor.session.previewMeasurementEndInsetMm = 0;
@@ -5432,6 +5569,7 @@ function selectOpening(draft, openingId) {
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
+  delete floor.session.bleLockedBearingDeg;
   floor.session.previewMeasurementStartInsetMm = 0;
   floor.session.previewMeasurementStartExtensionMm = 0;
   floor.session.previewMeasurementEndInsetMm = 0;
@@ -5456,6 +5594,7 @@ function selectSpace(draft, spaceId) {
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
+  delete floor.session.bleLockedBearingDeg;
   floor.session.previewMeasurementStartInsetMm = 0;
   floor.session.previewMeasurementStartExtensionMm = 0;
   floor.session.previewMeasurementEndInsetMm = 0;
@@ -5525,6 +5664,7 @@ function deleteClosedSpace(draft, spaceId) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
   session.previewMeasurementStartExtensionMm = 0;
@@ -5968,6 +6108,7 @@ function deleteWall(draft, wallId) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
   session.previewMeasurementStartExtensionMm = 0;
@@ -6035,6 +6176,7 @@ function startWallSnap(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.pendingWallId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
@@ -6525,6 +6667,7 @@ function placeNewWallChainCursor(draft, point) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.previewAngleSource = '';
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
@@ -6577,6 +6720,7 @@ function resetCursor(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  delete session.bleLockedBearingDeg;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
   session.previewMeasurementStartExtensionMm = 0;
@@ -6896,6 +7040,10 @@ module.exports = {
   placeCursor,
   placeNewWallChainCursor,
   startPreview,
+  startPreviewFromBearing,
+  lockPreviewBearing,
+  clearBleLockedBearing,
+  materializeLockedPreview,
   holdPreviewForInput,
   applyPreviewInteriorAngle,
   reopenLastDiagonalWallForAngle,

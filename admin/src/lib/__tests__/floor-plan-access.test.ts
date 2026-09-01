@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   canAccessMiniProgramFloorPlan,
   canReadMiniProgramFloorPlan,
+  canRecordMiniProgramFloorPlanMeasurement,
 } from '@/lib/floor-plan-access';
 
 const plan = {
@@ -115,6 +116,57 @@ test('reassigned measurer can read a plan originally saved by a previous measure
       { ...linkedLead, measurerId: 24n }
     ),
     true
+  );
+});
+
+test('assigned collaborators can record audits on a plan saved by the other role', () => {
+  const assignedDesignerContext = {
+    user: { _id: '11' },
+    enterpriseId: '7',
+    staff: { _id: '99', enterpriseId: '7', role: 'designer' },
+  };
+  const reassignedMeasurerContext = {
+    user: { _id: '11' },
+    enterpriseId: '7',
+    staff: { _id: '24', enterpriseId: '7', role: 'measurer' },
+  };
+
+  assert.equal(
+    canRecordMiniProgramFloorPlanMeasurement(
+      plan,
+      assignedDesignerContext,
+      linkedLead
+    ),
+    true
+  );
+  assert.equal(
+    canRecordMiniProgramFloorPlanMeasurement(
+      { ...plan, staffId: 23n },
+      reassignedMeasurerContext,
+      { ...linkedLead, measurerId: 24n }
+    ),
+    true
+  );
+});
+
+test('unassigned or cross-tenant staff cannot record floor-plan audits', () => {
+  const context = {
+    user: { _id: '11' },
+    enterpriseId: '7',
+    staff: { _id: '100', enterpriseId: '7', role: 'designer' },
+  };
+
+  assert.equal(
+    canRecordMiniProgramFloorPlanMeasurement(plan, context, linkedLead),
+    false
+  );
+  assert.equal(
+    canRecordMiniProgramFloorPlanMeasurement(
+      plan,
+      { ...context, staff: { ...context.staff, _id: '99' } },
+      { ...linkedLead, enterpriseId: 8n }
+    ),
+    false
   );
 });
 

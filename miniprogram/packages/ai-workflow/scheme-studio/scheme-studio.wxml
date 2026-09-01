@@ -205,6 +205,7 @@
       template-has-more="{{templateHasMore}}"
       template-sheet-visible="{{templateSheetVisible}}"
       bind:draftchange="onComposerDraftChange"
+      bind:rendermodechange="onComposerRenderModeChange"
       bind:scopechange="onComposerScopeChange"
       bind:modelchange="onComposerModelChange"
       bind:uploadreference="uploadReferenceImage"

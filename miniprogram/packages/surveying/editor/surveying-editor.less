@@ -37,8 +37,213 @@ page {
 .canvas-overlay-layer > .top-measure-bubble,
 .canvas-overlay-layer > .closure-action,
 .canvas-overlay-layer > .wall-object-toolbar,
+.canvas-overlay-layer > .navigation-calibration-mask,
+.canvas-overlay-layer > .navigation-calibration-dialog,
 .canvas-overlay-layer > survey-canvas-compass {
   pointer-events: auto;
+}
+
+.navigation-calibration-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(12, 20, 15, 0.56);
+  animation: navigation-calibration-mask-in 240ms ease-out both;
+}
+
+.navigation-calibration-mask.closing {
+  animation: navigation-calibration-mask-out 180ms ease-in both;
+}
+
+.navigation-calibration-dialog {
+  position: fixed;
+  z-index: 91;
+  left: 36rpx;
+  right: 36rpx;
+  top: 50%;
+  padding: 34rpx 32rpx 28rpx;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow: 0 28rpx 64rpx rgba(7, 24, 14, 0.24);
+  color: #17211b;
+  box-sizing: border-box;
+  animation: navigation-calibration-dialog-in 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.navigation-calibration-dialog.closing {
+  animation: navigation-calibration-dialog-out 180ms ease-in both;
+}
+
+.navigation-calibration-heading {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.navigation-calibration-icon {
+  width: 52rpx;
+  height: 52rpx;
+  flex: 0 0 52rpx;
+}
+
+.navigation-calibration-title {
+  font-size: 36rpx;
+  font-weight: 760;
+  line-height: 1.25;
+}
+
+.navigation-calibration-kicker {
+  margin-top: 30rpx;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #08a944;
+}
+
+.navigation-calibration-copy {
+  margin-top: 12rpx;
+  font-size: 26rpx;
+  line-height: 1.6;
+  color: #34443a;
+}
+
+.navigation-calibration-checks {
+  margin-top: 24rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: #f2f7f3;
+}
+
+.navigation-calibration-check {
+  min-height: 44rpx;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  font-size: 26rpx;
+  line-height: 1.45;
+  color: #69766e;
+}
+
+.navigation-calibration-dot {
+  width: 14rpx;
+  height: 14rpx;
+  flex: 0 0 14rpx;
+  border-radius: 50%;
+  background: #b7c1ba;
+}
+
+.navigation-calibration-check.ready {
+  color: #166c38;
+}
+
+.navigation-calibration-check.ready .navigation-calibration-dot {
+  background: #08b94b;
+}
+
+.navigation-calibration-status {
+  margin-top: 20rpx;
+  font-size: 26rpx;
+  font-weight: 650;
+  line-height: 1.4;
+  color: #b25d15;
+}
+
+.navigation-calibration-status.ready {
+  color: #087d35;
+}
+
+.navigation-calibration-helper {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  line-height: 1.5;
+  color: #708078;
+}
+
+.navigation-calibration-actions {
+  margin-top: 28rpx;
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.navigation-calibration-cancel,
+.navigation-calibration-confirm {
+  min-height: 80rpx;
+  height: 80rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 80rpx;
+  text-align: center;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.navigation-calibration-cancel {
+  width: 36%;
+  flex: 0 0 36%;
+  color: #405148;
+  background: #edf3ef;
+}
+
+.navigation-calibration-confirm {
+  width: calc(64% - 16rpx);
+  flex: 0 0 calc(64% - 16rpx);
+  margin-left: 16rpx;
+  color: #ffffff;
+  background: #08b94b;
+  box-shadow: 0 10rpx 22rpx rgba(8, 185, 75, 0.2);
+}
+
+.navigation-calibration-confirm.disabled {
+  color: #568566;
+  background: #a9d9b8;
+  box-shadow: none;
+}
+
+.navigation-calibration-disable {
+  min-height: 64rpx;
+  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26rpx;
+  color: #66746c;
+}
+
+@keyframes navigation-calibration-mask-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes navigation-calibration-mask-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes navigation-calibration-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 24rpx));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+}
+
+@keyframes navigation-calibration-dialog-out {
+  from {
+    opacity: 1;
+    transform: translateY(-50%);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(calc(-50% + 16rpx));
+  }
 }
 
 
@@ -52,7 +257,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16rpx;
+  gap: 24rpx;
   padding: 14rpx 16rpx;
   border: 1rpx solid rgba(207, 220, 207, 0.72);
   border-radius: 20rpx;
@@ -1857,7 +2062,9 @@ page,
 .survey-topbar {
   left: 0;
   right: 0;
-  height: 160rpx;
+  /* The navigation control starts at 94rpx and is 88rpx tall. Keep a bottom
+     reserve because native cover-view clips children at the topbar boundary. */
+  height: 190rpx;
   padding: 0 34rpx;
   border: 0;
   border-radius: 0;
@@ -1937,8 +2144,10 @@ page,
 .topbar-right {
   position: absolute;
   top: 94rpx;
+  left: 28rpx;
   right: 28rpx;
-  gap: 16rpx;
+  justify-content: flex-start;
+  gap: 0;
 }
 
 .topbar-chip,
@@ -1990,6 +2199,13 @@ page,
 
 .topbar-chip.guide-trigger:not(.active) .topbar-chip-icon {
   opacity: 0.42;
+}
+
+.topbar-compass {
+  width: 132rpx;
+  height: 88rpx;
+  flex: 0 0 132rpx;
+  margin-right: auto;
 }
 
 .topbar-chip-icon {
@@ -2118,16 +2334,17 @@ page,
 }
 
 .top-measure-bubble {
-  left: 34rpx;
+  height: 64rpx;
+  min-width: 236rpx;
+  min-height: 64rpx;
   transform: none;
-  min-width: 198rpx;
-  min-height: 56rpx;
-  padding: 14rpx 18rpx;
+  padding: 0 18rpx;
   border: 1rpx solid rgba(19, 41, 27, 0.12);
   border-radius: 16rpx;
   background: rgba(255, 255, 255, 0.96);
   color: #17345e;
   box-shadow: 0 4rpx 16rpx rgba(15, 35, 23, 0.05);
+  box-sizing: border-box;
 }
 
 .top-measure-bubble .top-measure-angle {
@@ -2167,7 +2384,6 @@ page,
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16rpx;
   pointer-events: auto;
 }
 
@@ -2188,13 +2404,15 @@ page,
   background: #f3fbf5;
 }
 
-.canvas-rotate-icon {
-  width: 36rpx;
-  height: 36rpx;
+.canvas-rotate-btn-ccw {
+  // `cover-view` does not reliably honour flex `gap`; keep the separation on
+  // the first native overlay control itself so it is present on every device.
+  margin-bottom: 24rpx;
 }
 
-.canvas-rotate-btn-ccw .canvas-rotate-icon {
-  transform: scaleX(-1);
+.canvas-rotate-icon {
+  width: 40rpx;
+  height: 40rpx;
 }
 
 .bottom-control-dock {
@@ -2679,9 +2897,24 @@ page,
   flex-shrink: 0;
 }
 
-.topbar-right .topbar-chip + .topbar-chip {
+.topbar-actions-right {
+  display: flex;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 16rpx;
+}
+
+.topbar-actions-right .topbar-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 8rpx;
+  white-space: nowrap;
+}
+
+.topbar-actions-right .topbar-chip + .topbar-chip {
   /* `gap` is not reliable for sibling cover-view controls on every device. */
-  margin-left: 20rpx;
+  margin-left: 12rpx;
 }
 
 /* ════════════════════════════════════════

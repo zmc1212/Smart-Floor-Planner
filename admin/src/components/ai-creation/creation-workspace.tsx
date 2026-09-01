@@ -1149,7 +1149,7 @@ export function CreationWorkspace() {
                   applyModelDefaults(bootstrap.models.find((item) => item.id === value));
                 }}
                 className={cn(darkSelectClassName, 'col-span-2 h-10 w-full shrink-0 sm:w-[186px] [&_.ant-select-selector]:!h-10')}
-                popupClassName={darkSelectPopupClassName}
+                classNames={{ popup: { root: darkSelectPopupClassName } }}
                 options={bootstrap.models.map((item) => ({ value: item.id, label: item.name }))}
                 suffixIcon={<Bot className="size-4 text-[#7047ff]" />}
               />
@@ -1157,7 +1157,7 @@ export function CreationWorkspace() {
                 value={String(count)}
                 onChange={(value) => setCount(Number(value))}
                 className={cn(darkSelectClassName, 'h-10 w-full shrink-0 sm:w-[104px] [&_.ant-select-selector]:!h-10')}
-                popupClassName={darkSelectPopupClassName}
+                classNames={{ popup: { root: darkSelectPopupClassName } }}
                 options={[1, 2, 3, 4].map((value) => ({ value: String(value), label: `${value}张` }))}
                 suffixIcon={<Images className="size-4 text-[#f5f5f5]" />}
               />
@@ -1166,7 +1166,7 @@ export function CreationWorkspace() {
                   value={aspectRatio}
                   onChange={setAspectRatio}
                   className={cn(darkSelectClassName, 'h-10 w-full shrink-0 sm:w-[128px] [&_.ant-select-selector]:!h-10')}
-                  popupClassName={darkSelectPopupClassName}
+                  classNames={{ popup: { root: darkSelectPopupClassName } }}
                   options={availableAspectRatios.map((item) => ({ value: item, label: item === 'auto' ? '自动比例' : item }))}
                   suffixIcon={<Crop className="size-4 text-[#f5f5f5]" />}
                 />
@@ -1182,7 +1182,7 @@ export function CreationWorkspace() {
                   }
                 }}
                 className={cn(darkSelectClassName, 'h-10 w-full shrink-0 sm:w-[116px] [&_.ant-select-selector]:!h-10')}
-                popupClassName={darkSelectPopupClassName}
+                classNames={{ popup: { root: darkSelectPopupClassName } }}
                 options={(model?.resolutionTiers || []).map((item) => ({ value: item, label: item === 'CUSTOM' ? '自定义' : item }))}
                 suffixIcon={<Maximize2 className="size-4 text-[#f5f5f5]" />}
               />
@@ -1255,7 +1255,7 @@ export function CreationWorkspace() {
           placeholder="选择客户方案"
           onChange={setAttachWorkflowId}
           className={cn(darkSelectClassName, 'w-full [&_.ant-select-selector]:!border-white/10 [&_.ant-select-selector]:!bg-[#222328]')}
-          popupClassName={darkSelectPopupClassName}
+          classNames={{ popup: { root: darkSelectPopupClassName } }}
           options={bootstrap.workflows.map((workflow) => ({
             value: workflow.id,
             label: `${workflow.leadName ? `${workflow.leadName} · ` : ''}${workflow.title}`,

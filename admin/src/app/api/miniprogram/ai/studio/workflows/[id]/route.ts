@@ -38,6 +38,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const workflowContext = await getPostgresAiWorkflowContext({
       enterpriseId: context.enterpriseId,
       workflowId: id,
+      summary: true,
     });
     const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
     const access = await withTenantTransaction(enterpriseId, (transaction) =>
@@ -73,6 +74,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const workflowContext = await getPostgresAiWorkflowContext({
       enterpriseId: context.enterpriseId,
       workflowId: id,
+      summary: true,
     });
     const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
     const access = await withTenantTransaction(enterpriseId, (transaction) =>
@@ -88,6 +90,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     const updated = await getPostgresAiWorkflowContext({
       enterpriseId: context.enterpriseId,
       workflowId: id,
+      summary: true,
     });
     return NextResponse.json({
       success: true,

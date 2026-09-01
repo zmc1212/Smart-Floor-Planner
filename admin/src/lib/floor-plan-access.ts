@@ -70,3 +70,11 @@ export function canReadMiniProgramFloorPlan(
     linkedLead.measurerId?.toString() === staffId
   );
 }
+
+export function canRecordMiniProgramFloorPlanMeasurement(
+  plan: FloorPlanAccessRecord,
+  context: MiniProgramFloorPlanAccessContext,
+  linkedLead?: LinkedLeadFloorPlanAccessRecord | null
+) {
+  return canReadMiniProgramFloorPlan(plan, context, linkedLead);
+}

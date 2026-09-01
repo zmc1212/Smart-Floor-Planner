@@ -11,6 +11,7 @@ import {
   resolveLogicalModel,
 } from '@/components/ai-presets/types';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { FloorPlanConstraintSettings } from '@/components/ai-presets/floor-plan-constraint-settings';
 
 const TYPE_VALUE_ENUM = {
   floor_plan_style: { text: 'AI 室内平面' },
@@ -137,41 +138,44 @@ export default function AiPresetsPage() {
         breadcrumbRender={false}
         className="admin-page-container"
         title="AI 预设配置"
-        content="统一维护室内平面、风格设计与 AI 设计工作流的提示词和生图参数。"
+        content="统一维护正式户型结构约束、室内平面、风格设计与 AI 设计工作流的提示词和生图参数。"
       >
-        <ProTable<AiPreset>
-          actionRef={actionRef}
-          rowKey="_id"
-          columns={columns}
-          options={{ reload: true, density: true, setting: true }}
-          pagination={{ defaultPageSize: 10, showSizeChanger: true }}
-          search={{ labelWidth: 'auto', defaultCollapsed: false }}
-          scroll={{ x: 1220 }}
-          request={async (params) => {
-            const response = await fetch('/api/ai/presets?includeDisabled=true');
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error(result.error || '读取 AI 预设失败');
+        <Space direction="vertical" size={20} className="w-full">
+          <FloorPlanConstraintSettings />
+          <ProTable<AiPreset>
+            actionRef={actionRef}
+            rowKey="_id"
+            columns={columns}
+            options={{ reload: true, density: true, setting: true }}
+            pagination={{ defaultPageSize: 10, showSizeChanger: true }}
+            search={{ labelWidth: 'auto', defaultCollapsed: false }}
+            scroll={{ x: 1220 }}
+            request={async (params) => {
+              const response = await fetch('/api/ai/presets?includeDisabled=true');
+              const result = await response.json();
+              if (!response.ok || !result.success) throw new Error(result.error || '读取 AI 预设失败');
 
-            const query = String(params.name || '').trim().toLocaleLowerCase();
-            const type = params.type ? String(params.type) : '';
-            const enabled = params.enabled === undefined ? '' : String(params.enabled);
-            const filtered = (result.data as AiPreset[]).filter((preset) => {
-              const matchesQuery = !query || [preset.name, preset.key, preset.description]
-                .some((value) => value.toLocaleLowerCase().includes(query));
-              const matchesType = !type || preset.type === type;
-              const matchesEnabled = !enabled || String(preset.enabled) === enabled;
-              return matchesQuery && matchesType && matchesEnabled;
-            });
-            const current = Number(params.current || 1);
-            const pageSize = Number(params.pageSize || 10);
-            const start = (current - 1) * pageSize;
-            return {
-              data: filtered.slice(start, start + pageSize),
-              total: filtered.length,
-              success: true,
-            };
-          }}
-        />
+              const query = String(params.name || '').trim().toLocaleLowerCase();
+              const type = params.type ? String(params.type) : '';
+              const enabled = params.enabled === undefined ? '' : String(params.enabled);
+              const filtered = (result.data as AiPreset[]).filter((preset) => {
+                const matchesQuery = !query || [preset.name, preset.key, preset.description]
+                  .some((value) => value.toLocaleLowerCase().includes(query));
+                const matchesType = !type || preset.type === type;
+                const matchesEnabled = !enabled || String(preset.enabled) === enabled;
+                return matchesQuery && matchesType && matchesEnabled;
+              });
+              const current = Number(params.current || 1);
+              const pageSize = Number(params.pageSize || 10);
+              const start = (current - 1) * pageSize;
+              return {
+                data: filtered.slice(start, start + pageSize),
+                total: filtered.length,
+                success: true,
+              };
+            }}
+          />
+        </Space>
       </PageContainer>
     </div>
   );

@@ -157,6 +157,26 @@ test('serializeWorkflowContextForMini preserves published flags and signs floor-
   }), true);
 });
 
+test('serializeWorkflowContextForMini drops bulky generation payloads', async () => {
+  const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/workflows/42');
+  const serialized = await serializeWorkflowContextForMini(request, '23', {
+    workflow: { id: '42', latestGeneration: { id: '901', output: { imageUrl: '/api/ai/assets/91/image', providerResult: { blob: 'x'.repeat(10000) } }, input: { roomData: { walls: 'x'.repeat(10000) } } } },
+    lead: { id: '12', name: '张先生' },
+    generations: [{
+      id: '901',
+      status: 'succeeded',
+      input: { userMessage: '保留这句提示词', roomData: { walls: 'x'.repeat(10000) } },
+      output: { imageUrl: '/api/ai/assets/91/image', providerResult: { blob: 'x'.repeat(10000) } },
+      published: false,
+    }],
+    publishedScheme: null,
+  } as never);
+  assert.deepEqual(serialized.generations[0]?.input, { userMessage: '保留这句提示词' });
+  assert.deepEqual(serialized.generations[0]?.output, {
+    imageUrl: rewriteStudioImageUrl(request, '23', '/api/ai/assets/91/image'),
+  });
+});
+
 test('serializeCreationTaskForMini rewrites batch generation image URLs stably', async () => {
   const request = new Request('http://192.168.10.111:3005/api/miniprogram/ai/studio/tasks');
   const serialized = await serializeCreationTaskForMini(request, '23', {

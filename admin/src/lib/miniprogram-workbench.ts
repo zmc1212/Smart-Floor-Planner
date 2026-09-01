@@ -1060,7 +1060,7 @@ export function buildEnterpriseReferrerRosterItem(member: RosterReferrerInput) {
     exitedAt: member.exitedAt ?? null,
     joinedAtLabel: formatReferrerJoinedAt(member.joinedAt),
     hasActivePromotionCode,
-    statusLabel: status === 'active' ? '活动' : status === 'disabled' ? '已停用' : '已退出',
+    statusLabel: status === 'active' ? '已启用' : status === 'disabled' ? '已停用' : '已退出',
     statusTone: status === 'active' ? 'green' : 'orange',
     helperText,
     action: status === 'active' && canDisable ? 'disable' : null,

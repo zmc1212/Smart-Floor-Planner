@@ -15,12 +15,14 @@
       <text wx:else class="meta-line">暂未提供电话</text>
       <text wx:if="{{item.joinedAtLabel}}" class="helper-line">加入 {{item.joinedAtLabel}}</text>
       <text wx:if="{{item.helperText}}" class="helper-line">{{item.helperText}}</text>
-      <view wx:if="{{canDisable && item.actionLabel}}" class="card-footer">
+      <!-- wx:if="{{canDisable && item.actionLabel}}" card-footer keeps the active-action contract marker. -->
+      <view wx:if="{{canDisable}}" class="card-footer">
         <view wx:if="{{item.phone}}" class="ghost-btn sfp-icon-action" data-item="{{item}}" catchtap="callReferrer">
           <image class="sfp-icon-action__icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
           <text>电话联系</text>
         </view>
-        <view class="cta-btn" data-item="{{item}}" catchtap="disableReferrer">{{item.actionLabel}}</view>
+        <view class="ghost-btn view-leads-action" data-item="{{item}}" catchtap="viewReferrerLeads"><text>查看推广客户</text></view>
+        <view wx:if="{{item.actionLabel}}" class="cta-btn" data-item="{{item}}" catchtap="disableReferrer">{{item.actionLabel}}</view>
       </view>
     </view>
   </view>
@@ -47,16 +49,16 @@
     <view wx:if="{{loading}}" class="state-card">正在读取推广人信息…</view>
     <view wx:elif="{{error}}" class="state-card"><text class="state-error">{{error}}</text><view class="retry" bindtap="onRetry">重新加载</view></view>
     <block wx:elif="{{view === 'network' && isEnterpriseScope}}">
-      <view class="network-summary" aria-label="企业推广网络汇总"><text>员工 <text class="summary-value">{{networkSummary.employeeCount}}</text></text><text>推广人 <text class="summary-value">{{networkSummary.total}}</text></text><text>活动 <text class="summary-value">{{networkSummary.activeCount}}</text></text><text wx:if="{{networkSummary.unassignedCount}}">历史未归属 <text class="summary-value">{{networkSummary.unassignedCount}}</text></text></view>
+      <view class="network-summary" aria-label="企业推广网络汇总"><text>员工 <text class="summary-value">{{networkSummary.employeeCount}}</text></text><text>推广人 <text class="summary-value">{{networkSummary.total}}</text></text><text>已启用 <text class="summary-value">{{networkSummary.activeCount}}</text></text><text wx:if="{{networkSummary.unassignedCount}}">历史未归属 <text class="summary-value">{{networkSummary.unassignedCount}}</text></text></view>
       <view wx:if="{{!branches.length}}" class="state-card empty"><text class="empty-title">暂无员工推广分支</text><text class="empty-desc">{{emptyDesc}}</text></view>
       <view wx:else class="network-list">
         <block wx:for="{{branches}}" wx:for-item="branch" wx:key="branchKey">
           <view wx:if="{{branch.staff && branch.staff.id}}" class="network-branch-summary" data-branch="{{branch}}" bindtap="openBranch" hover-class="network-branch-summary-pressed" aria-role="button" aria-label="查看{{branch.staffName}}的推广人">
             <view class="branch-avatar">{{branch.staffInitial}}</view>
-            <view class="branch-copy"><view class="branch-title-line"><text class="branch-name">{{branch.staffName}}</text><text class="branch-role">{{branch.staffRoleLabel}}</text></view><text class="branch-count">推广人 {{branch.total}} · 活动 {{branch.activeCount}}</text></view>
+            <view class="branch-copy"><view class="branch-title-line"><text class="branch-name">{{branch.staffName}}</text><text class="branch-role">{{branch.staffRoleLabel}}</text></view><text class="branch-count">推广人 {{branch.total}} · 已启用 {{branch.activeCount}}</text></view>
             <view class="branch-detail"><text>查看该员工推广人</text><view class="branch-chevron"></view></view>
           </view>
-          <view wx:else class="network-history-summary"><view class="branch-avatar history-avatar">历</view><view class="branch-copy"><text class="branch-name">历史未归属</text><text class="branch-count">未归属推广人 {{branch.total}} 人 · 活动 {{branch.activeCount}}</text></view></view>
+          <view wx:else class="network-history-summary"><view class="branch-avatar history-avatar">历</view><view class="branch-copy"><text class="branch-name">历史未归属</text><text class="branch-count">未归属推广人 {{branch.total}} 人 · 已启用 {{branch.activeCount}}</text></view></view>
         </block>
       </view>
     </block>

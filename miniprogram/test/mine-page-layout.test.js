@@ -119,10 +119,28 @@ test('Mine account panel exposes the role-scoped referrer network entry', () => 
     /wx:if="\{\{showReferrerNetworkEntry\}\}"[\s\S]*bindtap="onOpenReferrerNetwork"/
   );
   assert.match(mineMarkup, /user-round-plus\.png/);
+  assert.match(mineMarkup, /images\/mine-icons\/settings\.png/);
+  assert.doesNotMatch(mineMarkup, /images\/mine-v6\/settings\.png/);
   assert.match(mineMarkup, /\{\{referrerNetworkEntryLabel\}\}/);
   assert.match(mineMarkup, /\{\{referrerNetworkEntryHelper\}\}/);
   assert.match(
     mineMarkup,
-    /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper\}\}"/
+    /template is="mineAccountPanel" data="\{\{showRoleGuideEntry, showRegistrationCodeEntry, showReferrerNetworkEntry, referrerNetworkEntryLabel, referrerNetworkEntryHelper, roleGuideHelper, updateStatusLabel\}\}"/
   );
+});
+
+test('Mine account panel exposes the official mini program update check entry', () => {
+  assert.match(mineMarkup, /bindtap="onCheckVersion"/);
+  assert.match(mineMarkup, /检查当前版本/);
+  assert.match(mineMarkup, /\{\{updateStatusLabel\}\}/);
+  assert.match(mineMarkup, /search\.png/);
+  assert.match(mineMarkup, /updateStatusLabel/);
+});
+
+test('Mine permission and referrer icons use small transparent PNG assets from the account icon family', () => {
+  for (const name of ['settings', 'user-round-plus']) {
+    const bytes = fs.readFileSync(path.join(__dirname, `../images/mine-icons/${name}.png`));
+    assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(bytes.length < 10 * 1024, `${name}.png exceeds the 10 KB icon budget`);
+  }
 });

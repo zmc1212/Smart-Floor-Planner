@@ -30,13 +30,13 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
             <view class="hero-text-wrap">
               <text class="hero-title">{{title || (role === 'enterprise_admin' ? '门店经营与全盘调度' : role === 'designer' ? '家装设计顾问工作台' : '家装现场顾问工作台')}}</text>
             </view>
-            <image class="hero-mascot enterprise-hero-mascot" src="{{role === 'enterprise_admin' ? '/images/operations-dashboard/enterprise-guide.png' : role === 'designer' ? '/images/airy-v1/xiao-k-designer-3d.png' : '/images/airy-v1/xiao-k-measurer-3d.png'}}" mode="aspectFit" aria-label="小K" />
+            <image class="hero-mascot enterprise-hero-mascot" src="{{role === 'enterprise_admin' ? '/images/operations-dashboard/enterprise-guide.png' : role === 'designer' ? '/images/airy-v1/xiao-k-designer-workbench-v2.png' : '/images/airy-v1/xiao-k-measurer-3d.png'}}" mode="aspectFit" aria-label="小K" />
           </view>
 
           <view class="stats-pills-row">
             <view wx:for="{{summary}}" wx:key="key" class="stat-pill">
               <text class="stat-pill-label">{{item.label}}</text>
-              <text class="stat-pill-value">{{item.value}}</text>
+              <text class="stat-pill-value">{{stat.count(item.value)}}</text>
             </view>
           </view>
 
@@ -196,11 +196,17 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
 
           <view wx:if="{{role === 'designer'}}" class="quick-nav-grid staff-role-quick-grid">
             <view class="quick-nav-card lead-inbox" bindtap="openCustomers" hover-class="card-pressed">
-              <view class="quick-text"><text class="quick-title">客户线索</text><text class="quick-desc">查看与推进我的客户 →</text></view>
+              <view class="quick-text">
+                <text class="quick-title">客户线索</text>
+                <view class="quick-desc quick-desc-lines"><text>查看与推进</text><text>我的客户 →</text></view>
+              </view>
               <image class="quick-nav-mascot" src="/images/airy-v1/leads-phone-3d.png" mode="aspectFit" aria-hidden="true" />
             </view>
             <view class="quick-nav-card staff-load" bindtap="openAIDesign" hover-class="card-pressed">
-              <view class="quick-text"><text class="quick-title">方案交付</text><text class="quick-desc">进入设计与风格配方 →</text></view>
+              <view class="quick-text">
+                <text class="quick-title">方案交付</text>
+                <view class="quick-desc quick-desc-lines"><text>进入设计与</text><text>风格配方 →</text></view>
+              </view>
               <image class="quick-nav-mascot" src="/images/airy-v1/palette-recipe-3d.png" mode="aspectFit" aria-hidden="true" />
             </view>
           </view>

@@ -19,8 +19,13 @@ import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
 import { getPostgresImageModelPrice, serializePostgresCatalogProfile } from '@/lib/ai/image-model-catalog';
 import {
   buildCreationBatchRoomData,
+  composePhotoFirstCreationBatchPrompt,
+  requiresCreationBatchSitePhoto,
   resolveCreationBatchControlPng,
   resolveCreationBatchFloorPlanScope,
+  resolveCreationBatchTargetContext,
+  shouldAttachCreationBatchFloorPlanControl,
+  type CreationBatchRenderMode,
 } from '@/lib/ai/creation-batch-floorplan';
 import { getPostgresMediaAssetImageUrl, storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import { getActivePromptTemplate } from '@/lib/ai/prompt-library-query';
@@ -28,6 +33,7 @@ import { resolveGrsImageParameters, type GrsResolutionTier } from '@/lib/ai/grs-
 import { capabilityForLogicalModel, type AiLogicalModelKey } from '@/lib/ai/provider-types';
 import { assertEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
 import { leadArchivedError } from '@/lib/lead-lifecycle';
+import { getPlatformAiPromptConfig } from '@/lib/ai/platform-ai-prompt-config';
 
 type CreationParameters = {
   aspectRatio: string;
@@ -46,6 +52,23 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+/** Provider responses may contain a full data URI. Keep metadata, never persist
+ * the binary image inline in the generation JSON document. */
+function sanitizeProviderResult(value: Record<string, unknown>) {
+  const sanitize = (item: unknown): unknown => {
+    if (typeof item === 'string' && item.startsWith('data:')) return 'data-uri';
+    if (Array.isArray(item)) return item.map(sanitize);
+    if (item && typeof item === 'object') {
+      return Object.fromEntries(Object.entries(item as Record<string, unknown>).map(([key, nested]) => [
+        key,
+        sanitize(nested),
+      ]));
+    }
+    return item;
+  };
+  return sanitize(value) as Record<string, unknown>;
 }
 
 function withoutPostgresProviderPollLease(value: unknown): Record<string, unknown> {
@@ -263,6 +286,11 @@ export async function preparePostgresCreationBatch(input: {
   workflowId?: string;
   targetScope?: string;
   roomId?: string;
+  renderMode?: CreationBatchRenderMode;
+  hasStyleReference?: boolean;
+  hasSitePhoto?: boolean;
+  styleReferenceAssetId?: string;
+  sitePhotoAssetIds?: string[];
 }) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const operatorId = parsePostgresId(input.operatorId, 'operatorId');
@@ -272,6 +300,11 @@ export async function preparePostgresCreationBatch(input: {
   if (!prompt) throw new Error('请输入提示词');
   if (prompt.length > 12000) throw new Error('提示词不能超过 12000 个字符');
   const requestedRoomId = typeof input.roomId === 'string' ? input.roomId.trim() : '';
+  const renderMode: CreationBatchRenderMode = input.renderMode === 'single_room_photo'
+    ? 'single_room_photo'
+    : input.renderMode === 'soft_furnishing'
+      ? 'soft_furnishing'
+      : 'whole_floor_plan';
   if ((input.targetScope || requestedRoomId) && !input.workflowId) {
     throw Object.assign(new Error('设计范围仅可在方案对话出图时指定'), { status: 400 });
   }
@@ -281,6 +314,28 @@ export async function preparePostgresCreationBatch(input: {
     input.templateId ? getActivePromptTemplate(input.templateId) : Promise.resolve(null),
   ]);
   let referenceAssetIds = [...new Set((input.referenceAssetIds || []).map((id) => parsePostgresId(id, 'referenceAssetId')))];
+  const referenceAssetIdSet = new Set(referenceAssetIds.map((id) => id.toString()));
+  const styleReferenceAssetId = input.styleReferenceAssetId
+    ? parsePostgresId(input.styleReferenceAssetId, 'styleReferenceAssetId')
+    : null;
+  const sitePhotoAssetIds = input.sitePhotoAssetIds === undefined
+    ? null
+    : [...new Set(input.sitePhotoAssetIds.map((id) => parsePostgresId(id, 'sitePhotoAssetId')))];
+  if (styleReferenceAssetId && !referenceAssetIdSet.has(styleReferenceAssetId.toString())) {
+    throw Object.assign(new Error('模板封面参考图不在本次参考图中'), { status: 400 });
+  }
+  if (sitePhotoAssetIds?.some((id) => !referenceAssetIdSet.has(id.toString()))) {
+    throw Object.assign(new Error('现场图不在本次参考图中'), { status: 400 });
+  }
+  if (styleReferenceAssetId && sitePhotoAssetIds?.some((id) => id === styleReferenceAssetId)) {
+    throw Object.assign(new Error('模板封面不能同时作为现场图'), { status: 400 });
+  }
+  const hasStyleReference = styleReferenceAssetId
+    ? true
+    : input.hasStyleReference ?? Boolean(input.templateId);
+  const hasSitePhoto = sitePhotoAssetIds !== null
+    ? sitePhotoAssetIds.length > 0
+    : input.hasSitePhoto ?? Boolean(input.templateId ? referenceAssetIds.length >= 2 : referenceAssetIds.length >= 1);
   const capabilities = profile.capabilities || {};
   const maxReferenceImages = Number(capabilities.maxReferenceImages || 0);
   const workflowBinding = input.workflowId
@@ -289,17 +344,43 @@ export async function preparePostgresCreationBatch(input: {
       workflowId: parsePostgresId(input.workflowId, 'workflowId'),
     })
     : null;
-  const floorPlanScope = workflowBinding?.floorPlanId && workflowBinding.layoutData
-    ? resolveCreationBatchFloorPlanScope({
+  const hasBoundFloorPlan = Boolean(workflowBinding?.floorPlanId && workflowBinding.layoutData);
+  const attachFloorPlanControl = shouldAttachCreationBatchFloorPlanControl({
+    renderMode,
+    hasFloorPlan: hasBoundFloorPlan,
+  });
+  const aiPromptConfig = attachFloorPlanControl && workflowBinding?.floorPlanId && workflowBinding.layoutData
+    ? await getPlatformAiPromptConfig()
+    : null;
+  const targetContext = workflowBinding?.floorPlanId && workflowBinding.layoutData
+    ? resolveCreationBatchTargetContext({
       layoutData: workflowBinding.layoutData,
-      prompt,
       targetScope: input.targetScope,
       roomId: requestedRoomId || undefined,
     })
     : null;
-  let roomData = floorPlanScope?.roomData;
-  const providerPrompt = floorPlanScope?.providerPrompt || prompt;
-  if (workflowBinding && floorPlanScope && workflowBinding.floorPlanId) {
+  const floorPlanScope = attachFloorPlanControl && workflowBinding?.floorPlanId && workflowBinding.layoutData
+    ? resolveCreationBatchFloorPlanScope({
+      layoutData: workflowBinding.layoutData,
+      prompt,
+      constraintPrompt: aiPromptConfig?.floorPlanConstraintPrompt,
+      hasStyleReference,
+      hasSitePhoto,
+      targetScope: input.targetScope,
+      roomId: requestedRoomId || undefined,
+    })
+    : null;
+  let roomData = targetContext?.roomData;
+  const providerPrompt = floorPlanScope?.providerPrompt || composePhotoFirstCreationBatchPrompt({
+    renderMode,
+    prompt,
+  });
+  if (requiresCreationBatchSitePhoto({ renderMode, sitePhotoAssetIds, hasSitePhoto })) {
+    throw Object.assign(new Error(styleReferenceAssetId
+      ? '当前只有模板封面图，单间或软装模式还需从客户现场图选择或从电脑上传至少一张现场照片'
+      : '单间或软装模式需从客户现场图选择或从电脑上传至少一张现场照片'), { status: 400 });
+  }
+  if (workflowBinding && floorPlanScope && workflowBinding.floorPlanId && attachFloorPlanControl) {
     if (!capabilities.supportsReferenceImages || maxReferenceImages < 1) {
       throw Object.assign(new Error('当前模型不支持参考图，无法带入正式户型控制图，请更换模型'), { status: 400 });
     }
@@ -357,12 +438,21 @@ export async function preparePostgresCreationBatch(input: {
       modelProfileSnapshot: profileSnapshot,
       parameterSnapshot: {
         ...parameters,
-        ...(floorPlanScope ? {
-          floorPlanControlAssetId: referenceAssetIds[0]?.toString(),
+        renderMode,
+        hasStyleReference,
+        hasSitePhoto,
+        ...(styleReferenceAssetId ? { styleReferenceAssetId: styleReferenceAssetId.toString() } : {}),
+        ...(sitePhotoAssetIds ? { sitePhotoAssetIds: sitePhotoAssetIds.map((id) => id.toString()) } : {}),
+        ...(targetContext ? {
+          ...(attachFloorPlanControl ? { floorPlanControlAssetId: referenceAssetIds[0]?.toString() } : {}),
+          renderMode,
           targetScope: roomData?.targetScope || 'whole_floor_plan',
           targetLabel: roomData?.targetLabel || '完整户型',
           ...(roomData?.roomId ? { roomId: roomData.roomId } : {}),
           ...(roomData?.controlKind ? { controlKind: roomData.controlKind } : {}),
+          ...(attachFloorPlanControl
+            ? { floorPlanConstraintPrompt: aiPromptConfig?.floorPlanConstraintPrompt }
+            : {}),
         } : {}),
       },
       requestedCount: count,
@@ -1257,7 +1347,7 @@ export async function completePostgresCreationProviderAttempt(input: {
       status: 'succeeded',
       output: {
         ...asRecord(generation.output),
-        providerResult: input.output ?? {},
+        providerResult: sanitizeProviderResult(input.output ?? {}),
       },
       externalTask: {
         ...withoutPostgresProviderPollLease(generation.externalTask),

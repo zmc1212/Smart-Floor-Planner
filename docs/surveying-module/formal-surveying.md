@@ -60,29 +60,46 @@ copy back to `layoutData`.
   the rotated bounds of the current survey nodes and active preview point; an
   empty draft keeps the existing screen-centre world-point compensation. The
   Admin 2D viewer does not pass rotation.
-- View rotation is editor-page transient state only. Tapping the canvas compass
-  (`survey-canvas-compass`) outside BLE input mode toggles heading follow. The
-  first heading sample becomes the relative baseline; after the activation and
-  hysteresis thresholds, the view snaps to the four cardinal rotations rather
-  than following every degree. Disabling follow animates the view back to
-  north-up (`viewRotationDeg = 0`). Pan and pinch remain available under
-  rotation, while pinch changes scale only. Heading changes run a full formal
-  redraw so walls, the drafting grid, dimensions, and BLE direction arrows stay
-  in one projection. Compass is the primary heading source and device motion is
-  its fallback through `surveyDeviceOrientation.sharedHeadingSensorHub`; the
-  phone-angle sheet keeps `sharedDeviceMotionHub` for beta/gamma measurements.
-  Follow and BLE automatic-direction subscriptions stop on `onHide`/`onUnload`
-  and resume on `onShow` when their logical modes remain enabled. Dimension
-  labels use world wall angle plus view rotation (`resolveScreenEffectiveAngle`)
-  so text stays upright; room cards remain screen-axis aligned. Geometry, ortho
-  snap, BLE semantics, and persisted viewport/graph data are unchanged.
+- View rotation is editor-page transient state only. The top action row keeps a
+  visible `132×88rpx` **导航测量** action in an independent far-left slot (the
+  technical component remains `survey-canvas-compass`), while Guide / Save / CAD /
+  Finish remain a compact, fixed-gap group aligned to the far right. Its native
+  `28rpx` label and `28rpx` live bearing readout are paired with the independently generated transparent
+  `packages/surveying/assets/icons/navigation-measure.png` (128×128, 7,858 bytes);
+  the UI no longer renders `N`. Tapping it opens an entry-door calibration dialog.
+  The operator must keep the phone level and still while its top edge faces the
+  entry door, and the BLE distance meter must be connected before confirmation.
+  Nine circular heading samples with at most `6°` spread establish the reading.
+  The captured value remains its absolute compass azimuth (for example `231°`)
+  and is shown on the active action; it is not rewritten as a displayed `0°`.
+  Internally, current azimuth minus the entry-door azimuth becomes the room-relative
+  cardinal bearing used only for canvas rotation; direction arrows remain manual
+  choices. A later tap reopens the
+  dialog for relocation or allows navigation measurement to be disabled.
+  Relative room bearings are hysteresis-snapped to the four orthogonal axes
+  (`0°/90°/180°/270°`); only a `20°` trigger delta changes the selected axis, so
+  the raw compass value can never become a diagonal canvas rotation. Axis changes
+  rotate along the shortest arc over `420ms` with an ease-out curve instead of
+  snapping to the target. Disabling navigation eases back to `viewRotationDeg = 0`.
+  Compass is the primary heading source and device
+  motion is its fallback through `surveyDeviceOrientation.sharedHeadingSensorHub`;
+  `sharedDeviceMotionHub` validates phone level when available. Subscriptions stop
+  on `onHide`/`onUnload` and resume on `onShow` for an active logical mode. The
+  calibration and view rotation remain editor-session state and are not added to
+  version-4 `surveyGraph`, local/cloud layout serialization, route APIs, or
+  permission contracts. Dimension labels, room cards, grid projection, geometry,
+  ortho snap, and BLE `ATD` distance semantics remain unchanged.
 - Straight-mode BLE quick input exposes blue dashed cardinal guides and three
   or four compact, single-layer translucent-green candidate pointers at the current anchor,
   excluding the active chain's immediate backtrack. The `closing` and
   `mergeClosing` states keep those candidates visible alongside the `合` close
   action, so closure guidance does not remove direction selection. After a
   direction locks, every other candidate disappears and the selected bearing
-  keeps only a small blue arrow on its guide. Tapping otherwise empty canvas
+  keeps only a small blue arrow on its guide. If a direction pointer's `28px`
+  touch radius overlaps an opening or wall, the object hit takes priority so
+  the operator can still select that wall and enter **复尺**. A short tap near
+  the reticle likewise selects an opening or wall under it; only a moved gesture
+  starts the normal wall drag. Tapping otherwise empty canvas
   space clears that transient lock and restores the candidate pointers without
   moving the cursor or changing any wall; an automatic lock returns to manual
   direction picking so the sensor cannot immediately relock it. Manual selection calls `lockPreviewBearing` without
@@ -162,6 +179,11 @@ copy back to `layoutData`.
   compatibility, also reads `metadata.auditId`. Formal surveying audits require
   a non-empty value of at most 200 characters; other measurement sources may
   omit it. The DTO returns `auditId` while retaining `metadata.auditId`.
+- For staff sessions, audit creation accepts the formal plan's owning staff
+  member, the linked lead's current assigned designer or measurer in the same
+  enterprise, and the signed enterprise administrator. This remains fail-closed
+  for unassigned staff and cross-enterprise links. Non-staff access remains
+  restricted to the plan creator.
 - PostgreSQL stores nullable `measurements.audit_id` and enforces a partial
   unique index on `(floor_plan_id, audit_id)` when `audit_id IS NOT NULL`.
   Idempotent creation returns 201 with `deduplicated: false` for the first row
@@ -180,6 +202,9 @@ copy back to `layoutData`.
   dock 测距 action. Audits set `metadata.bleOrigin` to `device` for those frames
   and `app` for software-initiated queries. A valid ATD with no pending or
   selected wall toasts「请先拉出一条墙」.
+- The dock's native label makes its connection state explicit: `测距 · 已连接`
+  when connected and `测距 · 未连接` when disconnected. This presentation-only
+  state does not change the BLE command, wall-write, route, or permission flow.
 - ATD parsing accepts only the vendor-defined complete 17-byte frame with the
   `ATD` header, `#` tail, and valid CRC. Distance is an unsigned big-endian
   32-bit value divided by 10,000; X/Y angles are signed big-endian 32-bit values
@@ -302,7 +327,9 @@ copy back to `layoutData`.
   cannot fail the post-transaction session validator as `MISSING_SESSION_NODE`.
   Confirming a closed room
   automatically enters the same reset-cursor / wall-drop state as tapping
-  重置光标. In guide mode that state immediately shows the Xiao K
+  重置光标. Restoring a saved closed room normalizes a residual `spaceClosed`
+  session to that same wall-drop state, so reopening the editor immediately
+  shows 光标拖动到墙体 rather than requiring an extra reset. In guide mode that state immediately shows the Xiao K
   place-next-start tip even when closed-room dimension labels would otherwise
   leave no hard-avoiding layout. During that wall-drop wait
   (`wallSnapPending`), the canvas still pans and pinch-zooms; direct taps on a

@@ -13,9 +13,12 @@ import {
 import {
   assertEligibleWorkflowFloorPlan,
   buildWorkflowFloorPlanContext,
+  buildWorkflowFloorPlanMeasuredContext,
   isEligibleWorkflowFloorPlan,
   resolveWorkflowImageMode,
+  usesFloorPlanControlImage,
 } from '@/lib/ai/workflow-floorplan';
+import { getPlatformAiPromptConfig } from '@/lib/ai/platform-ai-prompt-config';
 import {
   canRunStageFromState,
   getAiWorkflowStageAvailabilityFromDocs,
@@ -115,6 +118,8 @@ export type ListPostgresWorkflowsInput = {
   status?: 'active' | 'archived';
   page?: number;
   limit?: number;
+  /** Return only fields needed for workflow cards and avoid loading JSON blobs. */
+  summary?: boolean;
 };
 
 function notFound(message: string) {
@@ -303,6 +308,7 @@ export async function createPostgresAiWorkflow(input: CreatePostgresWorkflowInpu
 export async function getPostgresAiWorkflowContext(input: {
   enterpriseId: string | bigint;
   workflowId: string | bigint;
+  summary?: boolean;
 }) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const workflowId = parsePostgresId(input.workflowId, 'workflowId');
@@ -314,11 +320,20 @@ export async function getPostgresAiWorkflowContext(input: {
     const lead = await new LeadRepository(transaction).findById(workflow.leadId);
     if (!lead) throw notFound('客户线索不存在或无权访问');
 
-    const generations = await new AiCreationRepository(transaction).listGenerationsByWorkflowId(workflow.id);
-    const publications = await new CustomerProjectRepository(transaction).listActivePublications(
-      enterpriseId,
-      workflow.leadId
-    );
+    const generationRows = input.summary
+      ? await new AiCreationRepository(transaction).listGenerationSummariesByWorkflowIds([workflow.id])
+      : await new AiCreationRepository(transaction).listGenerationsByWorkflowId(workflow.id);
+    const generations = generationRows.map((generation) => {
+      if (!input.summary || !('outputImageUrl' in generation)) return generation;
+      return {
+        ...generation,
+        input: generation.inputPrompt ? { userMessage: generation.inputPrompt } : undefined,
+        output: generation.outputImageUrl ? { imageUrl: generation.outputImageUrl } : {},
+      };
+    });
+    const publications = input.summary
+      ? await new CustomerProjectRepository(transaction).listActivePublicationSummaries(enterpriseId, workflow.leadId)
+      : await new CustomerProjectRepository(transaction).listActivePublications(enterpriseId, workflow.leadId);
     const publishedImages = publications.filter((item) => item.publication.workflowId === workflow.id);
     const publishedGenerationIdSet = new Set(publishedImages.map((item) => item.generation.id.toString()));
     const availability = getAiWorkflowStageAvailabilityFromDocs(
@@ -333,6 +348,9 @@ export async function getPostgresAiWorkflowContext(input: {
     const boundFloorPlan = workflow.sourceFloorPlanId
       ? lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId)
       : undefined;
+    const floorPlanPreviewVersion = boundFloorPlan
+      ? boundFloorPlan.previewAssetId?.toString() || boundFloorPlan.updatedAt.toISOString()
+      : '';
     const closedRooms = boundFloorPlan
       ? serializeWorkflowClosedRooms(boundFloorPlan.layoutData)
       : [];
@@ -346,12 +364,13 @@ export async function getPostgresAiWorkflowContext(input: {
           : undefined,
         stageState: availability,
         floorPlanPreviewUrl: workflow.sourceFloorPlanId
-          ? workbenchFloorPlanPreviewPath(String(workflow.id))
+          ? workbenchFloorPlanPreviewPath(String(workflow.id), undefined, floorPlanPreviewVersion)
           : undefined,
         sourceFloorPlan: boundFloorPlan
           ? {
               id: String(boundFloorPlan.id),
               name: boundFloorPlan.name || '正式户型',
+              previewVersion: floorPlanPreviewVersion,
               rooms: closedRooms,
               closedRoomCount: closedRooms.length,
             }
@@ -434,24 +453,46 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
       limit,
     });
     const workflowIds = workflows.rows.map((workflow) => workflow.id);
-    const [workflowLeads, generations] = await Promise.all([
+    const [workflowLeads, rawGenerations] = await Promise.all([
       leads.findByIds(
         Array.from(new Set(workflows.rows.map((workflow) => workflow.leadId))),
         { includeArchived: true },
       ),
-      new AiCreationRepository(transaction).listGenerationsByWorkflowIds(workflowIds),
+      input.summary
+        ? new AiCreationRepository(transaction).listGenerationSummariesByWorkflowIds(workflowIds)
+        : new AiCreationRepository(transaction).listGenerationsByWorkflowIds(workflowIds),
     ]);
+    const generations = rawGenerations.map((generation) => {
+      if (!input.summary || !('outputImageUrl' in generation)) return generation;
+      return {
+        ...generation,
+        input: generation.inputPrompt ? { userMessage: generation.inputPrompt } : undefined,
+        output: generation.outputImageUrl ? { imageUrl: generation.outputImageUrl } : {},
+      };
+    });
 
     const publishedCountsByWorkflowId = new Map<bigint, number>();
-    const publishedGenerationByWorkflowId = new Map<bigint, (typeof generations)[number]>();
+    const publishedGenerationByWorkflowId = new Map<bigint, { status: string; output: unknown }>();
     if (requestedLeadId) {
-      const activePublications = await new CustomerProjectRepository(transaction).listActivePublications(enterpriseId, requestedLeadId);
+      const activePublications = input.summary
+        ? await new CustomerProjectRepository(transaction).listActivePublicationSummaries(enterpriseId, requestedLeadId)
+        : await new CustomerProjectRepository(transaction).listActivePublications(enterpriseId, requestedLeadId);
       for (const item of activePublications) {
         const workflowId = item.publication.workflowId;
         if (!workflowId) continue;
         publishedCountsByWorkflowId.set(workflowId, (publishedCountsByWorkflowId.get(workflowId) ?? 0) + 1);
         if (!publishedGenerationByWorkflowId.has(workflowId)) {
-          publishedGenerationByWorkflowId.set(workflowId, item.generation);
+          if (input.summary && 'outputImageUrl' in item.generation) {
+            publishedGenerationByWorkflowId.set(workflowId, {
+              status: item.generation.status,
+              output: item.generation.outputImageUrl ? { imageUrl: item.generation.outputImageUrl } : {},
+            });
+          } else {
+            publishedGenerationByWorkflowId.set(workflowId, {
+              status: item.generation.status,
+              output: 'output' in item.generation ? item.generation.output : {},
+            });
+          }
         }
       }
     }
@@ -478,7 +519,14 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
           generationCount: workflowGenerations.length,
           publishedCount: publishedCountsByWorkflowId.get(workflow.id) ?? 0,
           coverImageUrl: pickWorkflowCoverImageUrl(
-            workflowGenerations,
+            workflowGenerations.map((generation) => ({
+              status: generation.status,
+              output: 'output' in generation
+                ? generation.output
+                : ('outputImageUrl' in generation && generation.outputImageUrl
+                  ? { imageUrl: generation.outputImageUrl }
+                  : {}),
+            })),
             publishedGenerationByWorkflowId.get(workflow.id),
           ),
           latestGeneration: workflowGenerations[0]
@@ -704,6 +752,7 @@ export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkf
     || getDefaultAiStylePresetByKey('scenario', requestedPresetKey);
   if (!preset) throw Object.assign(new Error('当前阶段没有可用的 AI 预设'), { status: 400 });
   const price = await getAiCreditPrice('image.scenario');
+  const aiPromptConfig = await getPlatformAiPromptConfig();
 
   const prepared = await withTenantTransaction(enterpriseId, async (transaction) => {
     const workflows = new AiWorkflowRepository(transaction);
@@ -752,10 +801,19 @@ export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkf
     if (floorPlan) assertEligibleWorkflowFloorPlan(floorPlan);
 
     const imageMode = resolveWorkflowImageMode(input.stageKey, preset.image.mode);
-    const prompt = [
-      buildPromptFromPreset(preset.promptTemplate, {}),
-      floorPlan ? buildWorkflowFloorPlanContext(floorPlan.layoutData) : '',
-    ].filter(Boolean).join(' ');
+    const presetPrompt = buildPromptFromPreset(preset.promptTemplate, {});
+    const usesFloorPlanControl = Boolean(floorPlan) && usesFloorPlanControlImage(input.stageKey);
+    const prompt = floorPlan && usesFloorPlanControl
+      ? [
+        buildWorkflowFloorPlanContext(
+          floorPlan.layoutData,
+          aiPromptConfig.floorPlanConstraintPrompt,
+        ),
+        `USER OR TEMPLATE DESIGN REQUEST\n${presetPrompt}`,
+      ].join('\n\n')
+      : floorPlan
+        ? [presetPrompt, buildWorkflowFloorPlanMeasuredContext(floorPlan.layoutData)].join('\n\n')
+        : presetPrompt;
     const parentGenerationId = availability.parentGenerationId
       ? parsePostgresId(availability.parentGenerationId, 'parentGenerationId')
       : null;
@@ -823,7 +881,14 @@ export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkf
       lighting: input.stageKey === 'lighting'
         ? {
             sourceImage: lightingSource!,
-            floorPlanContext: floorPlan ? buildWorkflowFloorPlanContext(floorPlan.layoutData) : '',
+            floorPlanContext: floorPlan && usesFloorPlanControl
+              ? buildWorkflowFloorPlanContext(
+                floorPlan.layoutData,
+                aiPromptConfig.floorPlanConstraintPrompt,
+              )
+              : floorPlan
+                ? buildWorkflowFloorPlanMeasuredContext(floorPlan.layoutData)
+              : '',
             promptTemplate: preset.promptTemplate,
             promptTemplateSecondStage: preset.promptTemplateSecondStage,
             negativePrompt: preset.negativePrompt,

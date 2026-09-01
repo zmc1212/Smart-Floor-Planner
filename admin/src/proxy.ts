@@ -1,3 +1,4 @@
+import { hasReferrersMenuPermission } from '@/lib/referrer-roster-access';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as jose from 'jose';
@@ -25,7 +26,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/lead-commissions': 'lead-commissions',
   '/referrer-network-operations': 'referrer-network-operations',
   '/join-codes': 'referrer-network-operations',
-  '/referrers': 'referrer-network-operations',
+  '/referrers': 'referrers',
   '/appointment-settings': 'referrer-network-operations',
   '/assignment-settings': 'referrer-network-operations',
   '/staff': 'staff',
@@ -38,7 +39,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/commission-rules': 'lead-commissions',
   '/api/lead-commissions': 'lead-commissions',
   '/api/enterprise/join-codes': 'referrer-network-operations',
-  '/api/enterprise/referrer-memberships': 'referrer-network-operations',
+  '/api/enterprise/referrer-memberships': 'referrers',
   '/api/enterprise/referrer-network-readiness': 'referrer-network-operations',
   '/api/enterprise/enterprise-reset': 'referrer-network-operations',
   '/api/enterprise/enterprise-purge': 'referrer-network-operations',
@@ -178,6 +179,8 @@ export async function proxy(request: NextRequest) {
 
     const hasRequiredPermission = !requiredPermission || userPermissions.includes(requiredPermission) || (
       requiredPermission === 'ai-scenarios' && LEGACY_AI_PERMISSIONS.some((permission) => userPermissions.includes(permission))
+    ) || (
+      requiredPermission === 'referrers' && hasReferrersMenuPermission(userPermissions)
     );
 
     if (!hasRequiredPermission) {

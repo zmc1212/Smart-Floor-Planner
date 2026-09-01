@@ -74,16 +74,6 @@
       </cover-view>
     </cover-view>
 
-  <!-- 使用 cover-view 作为组件根节点，验证组件是否可覆盖原生画布。 -->
-  <!-- 指北针：点击开启/关闭画布跟随手机朝向；关闭时回正到北朝上。 -->
-  <survey-canvas-compass
-    wx:if="{{!componentEditorVisible}}"
-    safe-top="{{overlayContentTop}}"
-    rotation-deg="{{compassRotationDeg}}"
-    active="{{compassFollowActive}}"
-    catch:tap="onCompassTap"
-  ></survey-canvas-compass>
-
   <!-- ══════════════════════════════════════════════ -->
   <!--  顶部导航浮层                                   -->
   <!-- ══════════════════════════════════════════════ -->
@@ -96,34 +86,107 @@
       </cover-view>
     </cover-view>
     <cover-view class="topbar-right">
-      <cover-view
-        class="topbar-chip guide-trigger {{guideEnabled ? 'active' : ''}}"
-        bindtap="onGuideToggle"
-        aria-label="{{guideEnabled ? '关闭引导模式' : '开启引导模式'}}"
-      >
-        <cover-image class="topbar-chip-icon" src="/packages/surveying/assets/icons/guide-help.png" mode="aspectFit"></cover-image>
-        <cover-view>引导</cover-view>
-      </cover-view>
-      <cover-view class="topbar-chip save-draft" bindtap="onSaveDraft">
-        <cover-image class="topbar-chip-icon" src="/packages/surveying/assets/icons/save-draft.png" mode="aspectFit"></cover-image>
-        <cover-view>保存</cover-view>
-      </cover-view>
-      <cover-view
-        class="topbar-chip cad-export {{floorPlanStatus === 'completed' ? '' : 'disabled'}}"
-        bindtap="onExportCad"
-        aria-label="{{floorPlanStatus === 'completed' ? '导出 CAD' : '完成量房后可导出 CAD'}}"
-      >
-        <cover-image class="topbar-chip-icon" src="/packages/surveying/assets/icons/save-draft.png" mode="aspectFit"></cover-image>
-        <cover-view>CAD</cover-view>
-      </cover-view>
-      <cover-view class="topbar-chip finish" bindtap="onSubmitFloorPlan">
-        <cover-image class="topbar-chip-icon finish-icon" src="/packages/surveying/assets/icons/angle/circle-check.png" mode="aspectFit"></cover-image>
-        <cover-view>完成</cover-view>
+      <!-- 导航测量保留为独立左侧槽位，不参与右侧正式操作组的间距分配。 -->
+      <survey-canvas-compass
+        wx:if="{{compassControlVisible}}"
+        class="topbar-compass"
+        active="{{compassFollowActive}}"
+        bearing-label="{{navigationBearingLabel}}"
+        catch:tap="onCompassTap"
+      ></survey-canvas-compass>
+      <cover-view class="topbar-actions-right">
+        <cover-view
+          class="topbar-chip guide-trigger {{guideEnabled ? 'active' : ''}}"
+          bindtap="onGuideToggle"
+          aria-label="{{guideEnabled ? '关闭引导模式' : '开启引导模式'}}"
+        >
+          <cover-image class="topbar-chip-icon" src="/packages/surveying/assets/icons/guide-help.png" mode="aspectFit"></cover-image>
+          <cover-view>引导</cover-view>
+        </cover-view>
+        <cover-view class="topbar-chip save-draft" bindtap="onSaveDraft">
+          <cover-image class="topbar-chip-icon" src="/packages/surveying/assets/icons/save-draft.png" mode="aspectFit"></cover-image>
+          <cover-view>保存</cover-view>
+        </cover-view>
+        <cover-view
+          class="topbar-chip cad-export {{floorPlanStatus === 'completed' ? '' : 'disabled'}}"
+          bindtap="onExportCad"
+          aria-label="{{floorPlanStatus === 'completed' ? '导出 CAD' : '完成量房后可导出 CAD'}}"
+        >
+          <cover-image class="topbar-chip-icon" src="/packages/surveying/assets/icons/save-draft.png" mode="aspectFit"></cover-image>
+          <cover-view>CAD</cover-view>
+        </cover-view>
+        <cover-view class="topbar-chip finish" bindtap="onSubmitFloorPlan">
+          <cover-image class="topbar-chip-icon finish-icon" src="/packages/surveying/assets/icons/angle/circle-check.png" mode="aspectFit"></cover-image>
+          <cover-view>完成</cover-view>
+        </cover-view>
       </cover-view>
     </cover-view>
     <cover-view class="back-button" catchtap="onBack" aria-label="返回">
       <cover-image class="topbar-icon topbar-back-icon" src="/packages/surveying/assets/icons/topbar-back.png" catchtap="onBack"></cover-image>
     </cover-view>
+  </cover-view>
+
+  <!-- 入户门方位是导航测量的房屋坐标基准；仅保存于当前编辑会话。 -->
+  <cover-view
+    wx:if="{{navigationCalibrationVisible}}"
+    class="navigation-calibration-mask native-canvas-overlay {{navigationCalibrationClosing ? 'closing' : ''}}"
+    catchtap="onNavigationCalibrationCancel"
+  ></cover-view>
+  <cover-view
+    wx:if="{{navigationCalibrationVisible}}"
+    class="navigation-calibration-dialog native-canvas-overlay {{navigationCalibrationClosing ? 'closing' : ''}}"
+    catchtap="onNavigationCalibrationDialogTap"
+    aria-role="dialog"
+    aria-label="{{navigationCalibrationRelocating ? '重新定位入户门方向' : '定位入户门方向'}}"
+  >
+    <cover-view class="navigation-calibration-heading">
+      <cover-image
+        class="navigation-calibration-icon"
+        src="/packages/surveying/assets/icons/navigation-measure.png"
+        mode="aspectFit"
+      ></cover-image>
+      <cover-view class="navigation-calibration-title">
+        {{navigationCalibrationRelocating ? '重新定位入户门' : '定位入户门方向'}}
+      </cover-view>
+    </cover-view>
+    <cover-view class="navigation-calibration-kicker">请站在房间里面</cover-view>
+    <cover-view class="navigation-calibration-copy">
+      将手机顶部正对入户门，保持水平静置；方向稳定后确认定位。
+    </cover-view>
+    <cover-view class="navigation-calibration-checks">
+      <cover-view class="navigation-calibration-check {{navigationCalibrationLevelReady ? 'ready' : ''}}">
+        <cover-view class="navigation-calibration-dot"></cover-view>
+        <cover-view>{{navigationCalibrationLevelSupported ? (navigationCalibrationLevelReady ? '手机已保持水平' : '请保持手机水平') : '请人工保持手机水平'}}</cover-view>
+      </cover-view>
+      <cover-view class="navigation-calibration-check {{navigationCalibrationHeadingReady ? 'ready' : ''}}">
+        <cover-view class="navigation-calibration-dot"></cover-view>
+        <cover-view>{{navigationCalibrationHeadingReady ? '入户门方向已稳定' : '正在读取入户门方向'}}</cover-view>
+      </cover-view>
+      <cover-view class="navigation-calibration-check {{bleConnected ? 'ready' : ''}}">
+        <cover-view class="navigation-calibration-dot"></cover-view>
+        <cover-view>{{bleConnected ? '蓝牙测距仪已连接' : '蓝牙测距仪未连接'}}</cover-view>
+      </cover-view>
+    </cover-view>
+    <cover-view class="navigation-calibration-status {{navigationCalibrationReady ? 'ready' : ''}}">
+      {{navigationCalibrationStatus}}
+    </cover-view>
+    <cover-view class="navigation-calibration-helper">
+      定位后，画布会随测量方向平滑旋转，不改变正式墙图坐标。
+    </cover-view>
+    <cover-view class="navigation-calibration-actions">
+      <cover-view class="navigation-calibration-cancel" catchtap="onNavigationCalibrationCancel">取消</cover-view>
+      <cover-view
+        class="navigation-calibration-confirm {{bleConnected && !navigationCalibrationReady ? 'disabled' : ''}}"
+        catchtap="onNavigationCalibrationConfirm"
+      >
+        {{bleConnected ? (navigationCalibrationRelocating ? '重新定位' : '确定定位') : '连接测距仪'}}
+      </cover-view>
+    </cover-view>
+    <cover-view
+      wx:if="{{navigationCalibrationRelocating}}"
+      class="navigation-calibration-disable"
+      catchtap="onNavigationMeasurementDisable"
+    >关闭导航测量</cover-view>
   </cover-view>
 
   <!-- ══════════════════════════════════════════════ -->
@@ -255,7 +318,7 @@
     >
       <cover-image
         class="canvas-rotate-icon"
-        src="/packages/surveying/assets/icons/angle/refresh-cw.png"
+        src="/packages/surveying/assets/icons/angle/rotate-counterclockwise-v2.png"
         mode="aspectFit"
       ></cover-image>
     </cover-view>
@@ -268,7 +331,7 @@
     >
       <cover-image
         class="canvas-rotate-icon"
-        src="/packages/surveying/assets/icons/angle/refresh-cw.png"
+        src="/packages/surveying/assets/icons/angle/rotate-clockwise-v2.png"
         mode="aspectFit"
       ></cover-image>
     </cover-view>
@@ -310,7 +373,7 @@
     </cover-view>
     <cover-view class="dock-measure {{bleConnected ? '' : 'disconnected'}} {{surveyGuideTarget === 'measure' ? 'guide-target-control' : ''}}" bindtap="onBottomMeasure">
       <cover-image class="dock-bluetooth" src="/packages/surveying/assets/icons/ble-{{bleConnected ? 'green' : 'muted'}}.png" mode="aspectFit"></cover-image>
-      <cover-view class="dock-measure-label">测距{{bleConnected ? ' · 已连接' : ''}}</cover-view>
+      <cover-view class="dock-measure-label">测距{{bleConnected ? ' · 已连接' : ' · 未连接'}}</cover-view>
       <cover-view wx:if="{{bleConnected}}" class="dock-status-dot"></cover-view>
       <cover-view wx:if="{{surveyGuideTarget === 'measure'}}" class="dock-guide-native-marker">
         <cover-view class="dock-guide-native-pointer"></cover-view>

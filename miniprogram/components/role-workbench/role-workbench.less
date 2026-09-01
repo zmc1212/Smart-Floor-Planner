@@ -618,7 +618,7 @@
 }
 
 .enterprise-hero-card .hero-top-row {
-  min-height: 116rpx;
+  min-height: 48rpx;
   padding-right: 200rpx;
   box-sizing: border-box;
 }
@@ -627,6 +627,9 @@
   position: relative;
   z-index: 2;
   margin-top: 12rpx;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12rpx;
   /* Keep pills in the left lane; mascot is 220rpx wide + 16rpx inset. */
   padding-right: 236rpx;
   box-sizing: border-box;
@@ -634,10 +637,19 @@
 
 .enterprise-hero-card .stat-pill {
   flex: 0 1 auto;
+  align-self: flex-start;
+  width: auto;
   min-width: 0;
-  padding: 10rpx 10rpx;
-  justify-content: center;
+  max-width: 100%;
+  padding: 4rpx 6rpx 4rpx 14rpx;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  gap: 10rpx;
   white-space: nowrap;
+}
+
+.enterprise-hero-card .stat-pill-label {
+  flex: 0 0 auto;
 }
 
 .enterprise-hero-card .stat-pill-label,
@@ -645,29 +657,27 @@
   font-size: 24rpx;
 }
 
-/* The designer labels are longer than the owner/measurer summaries. Stack the
- * three facts in the open left lane instead of shrinking or clipping the copy. */
-.role-hero-card-designer .hero-top-row {
-  min-height: 48rpx;
-}
-
-.role-hero-card-designer .stats-pills-row {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8rpx;
-  margin-top: 4rpx;
-}
-
-.role-hero-card-designer .stat-pill {
-  width: 260rpx;
-  max-width: 100%;
-  padding: 6rpx 16rpx;
+/* Keep all three professional summaries in the same compact three-row rhythm. */
+.enterprise-hero-card .stat-pill-value {
+  min-width: 34rpx;
+  height: 34rpx;
+  padding: 0 6rpx;
+  border-radius: 17rpx;
+  background: #dff7ea;
   box-sizing: border-box;
-  justify-content: space-between;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.role-hero-card-designer .stat-pill-value {
-  flex-shrink: 0;
+.role-hero-card-designer .enterprise-hero-mascot {
+  top: 8rpx;
+  right: 8rpx;
+  width: 236rpx;
+  height: 236rpx;
 }
 
 .enterprise-hero-mascot {
@@ -1011,6 +1021,42 @@
 
 .staff-role-quick-grid {
   margin-top: 20rpx;
+}
+
+.staff-role-quick-grid .quick-nav-card {
+  align-items: flex-start;
+  padding: 22rpx 18rpx 18rpx 22rpx;
+}
+
+.staff-role-quick-grid .quick-text {
+  width: 166rpx;
+  max-width: calc(100% - 128rpx);
+}
+
+.staff-role-quick-grid .quick-desc-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.staff-role-quick-grid .quick-desc-lines text {
+  display: block;
+}
+
+.staff-role-quick-grid .quick-nav-mascot {
+  right: 6rpx;
+  bottom: 8rpx;
+  width: 128rpx;
+  height: 140rpx;
+}
+
+.staff-role-quick-grid .quick-nav-card.staff-load .quick-nav-mascot {
+  right: 4rpx;
+  bottom: 8rpx;
+  width: 138rpx;
+  height: 136rpx;
 }
 
 .staff-utility-grid {

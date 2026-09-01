@@ -11,6 +11,7 @@ const {
   resolveDraftScope,
   resolvePreferredTemplateCategoryId,
   TEMPLATE_PAGE_SIZE,
+  WHOLE_HOUSE_RENDER_MODE,
 } = require('../../../components/ai-scheme-composer/ai-scheme-composer-model.js');
 const {
   applySelectionToView,
@@ -34,6 +35,8 @@ const { openSheet, closeSheet, dismissSheet, clearSheetTimer } = require('../../
 const sitePhotos = require('../../../utils/sitePhotoService.js');
 
 const POLL_INTERVAL_MS = 4000;
+const WORKFLOW_LOOKUP_TIMEOUT_MS = 8000;
+const SIBLING_WORKFLOW_CACHE_MS = 30000;
 const MENU_SHEET = { mountedKey: 'menuMounted', openKey: 'menuVisible' };
 const RENAME_SHEET = { mountedKey: 'renameMounted', openKey: 'renameModalVisible' };
 const SEND_SHEET = { mountedKey: 'sendMounted', openKey: 'sendModalVisible' };
@@ -159,6 +162,12 @@ Page({
   },
 
   async initializePage() {
+    // Start the workflow read at the same time as bootstrap. The workflow
+    // content is what makes the page useful; waiting for model/credit config
+    // first made a slow bootstrap endpoint leave the whole screen in loading.
+    const workflowPromise = this.data.workflowId
+      ? this.loadStudio()
+      : this.bootstrapWorkflow();
     try {
       const bootstrap = await aiService.loadStudioBootstrap();
       this.setData({
@@ -167,23 +176,13 @@ Page({
       });
     } catch (error) {
       this.setData({
-        loading: false,
         error: error.error || error.message || '加载创作配置失败',
       });
-      return;
     }
-
-    if (this.data.workflowId) {
-      await this.loadStudio();
-      return;
+    await workflowPromise;
+    if (!this.data.bootstrap && this.data.view) {
+      this.setData({ error: '创作配置加载失败，暂时无法使用出图功能' });
     }
-
-    if (this.data.leadId) {
-      await this.bootstrapWorkflow();
-      return;
-    }
-
-    this.setData({ loading: false, error: '缺少客户线索，无法打开方案工作台' });
   },
 
   onShow() {
@@ -226,13 +225,14 @@ Page({
         const existing = await aiService.listStudioWorkflows({
           leadId: this.data.leadId,
           limit: 50,
-        }).catch(() => []);
+        }, { timeout: WORKFLOW_LOOKUP_TIMEOUT_MS }).catch(() => []);
         const preferred = pickPreferredStudioWorkflow(existing, {
           floorPlanId: this.data.floorPlanId,
           preferredWorkflowId: this.data.workflowId,
         });
         const workflowId = preferred ? workflowIdentity(preferred) : '';
         if (workflowId) {
+          this.siblingWorkflowsLoadedAt = Date.now();
           this.setData({ workflowId, creating: false, siblingWorkflows: existing });
           await this.loadStudio();
           return;
@@ -261,15 +261,14 @@ Page({
 
   async loadStudio(options = {}) {
     const silent = Boolean(options.silent);
+    const requestedWorkflowId = String(this.data.workflowId || '');
     if (!silent) this.setData({ loading: true, error: '' });
     try {
-      const [detail, task, siblingWorkflows] = await Promise.all([
+      const [detail, task] = await Promise.all([
         aiService.getStudioWorkflow(this.data.workflowId),
         aiService.getStudioTask(this.data.workflowId).catch(() => null),
-        this.data.leadId
-          ? aiService.listStudioWorkflows({ leadId: this.data.leadId, limit: 50 }).catch(() => this.data.siblingWorkflows || [])
-          : Promise.resolve(this.data.siblingWorkflows || []),
       ]);
+      const initialSiblingWorkflows = this.data.siblingWorkflows || [];
       const baseView = buildStudioView(detail, task);
       const selectedGenerationIds = mergeSendSelection(
         this.previousView,
@@ -278,7 +277,7 @@ Page({
       );
       const view = applySelectionToView(baseView, selectedGenerationIds);
       this.previousView = baseView;
-      const schemeChips = buildWorkflowSwitcherOptions(siblingWorkflows, this.data.workflowId);
+      const schemeChips = buildWorkflowSwitcherOptions(initialSiblingWorkflows, this.data.workflowId);
       const bound = roomsFromWorkflowDetail(detail);
       const scopes = bound.floorPlanId ? buildScopes(bound.rooms, bound.closedRoomCount) : [];
       const currentDraft = this.data.composerDraft || createDefaultDraft(this.data.bootstrap);
@@ -289,7 +288,7 @@ Page({
       const nextData = {
         view,
         task,
-        siblingWorkflows,
+        siblingWorkflows: initialSiblingWorkflows,
         schemeChips,
         scopes,
         selectedGenerationIds,
@@ -304,9 +303,32 @@ Page({
         nextData.composerDraft = nextDraft;
       }
       this.setData(nextData);
+      const siblingCacheFresh = Date.now() - Number(this.siblingWorkflowsLoadedAt || 0)
+        < SIBLING_WORKFLOW_CACHE_MS;
+      if (this.data.leadId && !siblingCacheFresh && !this.siblingWorkflowsPromise) {
+        const siblingWorkflowsPromise = aiService.listStudioWorkflows({ leadId: this.data.leadId, limit: 50 }, {
+          timeout: WORKFLOW_LOOKUP_TIMEOUT_MS,
+        });
+        this.siblingWorkflowsPromise = siblingWorkflowsPromise;
+        void siblingWorkflowsPromise.then((siblingWorkflows) => {
+          this.siblingWorkflowsLoadedAt = Date.now();
+          if (String(this.data.workflowId || '') !== requestedWorkflowId) return;
+          this.setData({
+            siblingWorkflows,
+            schemeChips: buildWorkflowSwitcherOptions(siblingWorkflows, this.data.workflowId),
+          });
+          if (!silent) this.maybeOfferPreferredWorkflow(siblingWorkflows, view, detail);
+        }).catch(() => {}).finally(() => {
+          if (this.siblingWorkflowsPromise === siblingWorkflowsPromise) {
+            this.siblingWorkflowsPromise = null;
+          }
+        });
+      } else if (!silent && siblingCacheFresh) {
+        this.maybeOfferPreferredWorkflow(initialSiblingWorkflows, view, detail);
+      }
       if (shouldPollStudioView(baseView)) this.startPolling();
       else this.stopPolling();
-      if (!silent) this.maybeOfferPreferredWorkflow(siblingWorkflows, baseView, detail);
+      if (!silent && !this.data.leadId) this.maybeOfferPreferredWorkflow(initialSiblingWorkflows, baseView, detail);
     } catch (error) {
       this.setData({
         loading: false,
@@ -603,6 +625,12 @@ Page({
     this.setData({ composerDraft: { ...this.data.composerDraft, [field]: value } });
   },
 
+  onComposerRenderModeChange(event) {
+    const draft = event.detail && event.detail.draft;
+    if (!draft) return;
+    this.setData({ composerDraft: draft });
+  },
+
   onComposerScopeChange(event) {
     const targetScope = event.detail && event.detail.targetScope === 'single_room'
       ? 'single_room'
@@ -890,7 +918,7 @@ Page({
     }
     const referenceAssets = [
       ...existing,
-      { id: assetId, previewUrl: photo.imagePath || photo.previewUrl || '' },
+      { id: assetId, previewUrl: photo.imagePath || photo.previewUrl || '', role: 'site_photo' },
     ];
     this.setData({
       uploadingReference: false,
@@ -921,13 +949,13 @@ Page({
     this.setData({ uploadingReference: Boolean(event.detail && event.detail.uploading) });
   },
 
-  async uploadReferencePath(filePath) {
+  async uploadReferencePath(filePath, role = 'site_photo') {
     this.setData({ uploadingReference: true });
     try {
       const asset = await aiService.uploadStudioAsset(filePath);
       const referenceAssets = [
         ...(this.data.composerDraft?.referenceAssets || []),
-        { id: asset.id, previewUrl: asset.previewUrl || asset.url || '' },
+        { id: asset.id, previewUrl: asset.previewUrl || asset.url || '', role },
       ];
       this.setData({
         uploadingReference: false,
@@ -954,11 +982,15 @@ Page({
       wx.showToast({ title: '请输入提示词', icon: 'none' });
       return;
     }
-    const scopePayload = this.data.floorPlanId ? buildScopeSubmitPayload(draft) : null;
-    if (scopePayload && scopePayload.targetScope === 'single_room' && !scopePayload.roomId) {
-      wx.showToast({ title: '请先选择具体房间', icon: 'none' });
-      return;
-    }
+    // Whole-house rounds use the floor-plan scope by default. Photo-first
+    // rounds can run from the现场图 alone; only an explicitly selected room
+    // is sent as optional identity metadata.
+    const hasSelectedRoom = draft.targetScope === 'single_room'
+      && String(draft.roomId || '').trim();
+    const scopePayload = this.data.floorPlanId
+      && (draft.renderMode === WHOLE_HOUSE_RENDER_MODE || hasSelectedRoom)
+      ? buildScopeSubmitPayload(draft)
+      : null;
     this.setData({ generating: true });
     wx.showLoading({ title: '提交中', mask: true });
     try {
@@ -981,6 +1013,12 @@ Page({
         templateId: draft.templateId || undefined,
         count: draft.count || 1,
         workflowId: this.data.workflowId,
+        renderMode: draft.renderMode,
+        hasStyleReference: false,
+        hasSitePhoto: (draft.referenceAssets || []).some((item) => item.role === 'site_photo'),
+        sitePhotoAssetIds: (draft.referenceAssets || [])
+          .filter((item) => item.role === 'site_photo')
+          .map((item) => item.id),
         ...(scopePayload ? {
           targetScope: scopePayload.targetScope,
           roomId: scopePayload.roomId,
@@ -995,6 +1033,10 @@ Page({
       wx.hideLoading();
       wx.showToast({ title: '生成任务已提交', icon: 'success' });
       await this.loadStudio({ silent: true });
+      const nextDraft = createDefaultDraft(this.data.bootstrap);
+      this.setData({
+        composerDraft: applyScopeToDraft(nextDraft, resolveDraftScope(this.data.scopes, nextDraft)),
+      });
     } catch (error) {
       wx.hideLoading();
       this.setData({ generating: false });
@@ -1142,7 +1184,7 @@ Page({
     try {
       const filePath = await downloadImage(target.generation.imageUrl);
       wx.hideLoading();
-      await this.uploadReferencePath(filePath);
+      await this.uploadReferencePath(filePath, 'baseline');
       wx.showToast({ title: '已加入参考图', icon: 'success' });
     } catch (error) {
       wx.hideLoading();

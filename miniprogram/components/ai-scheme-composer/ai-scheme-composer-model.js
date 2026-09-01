@@ -12,6 +12,9 @@ function getUnitPrice(model, resolutionTier) {
 }
 
 const WHOLE_FLOOR_SCOPE_KEY = 'whole_floor_plan';
+const WHOLE_HOUSE_RENDER_MODE = 'whole_floor_plan';
+const SINGLE_ROOM_RENDER_MODE = 'single_room_photo';
+const SOFT_FURNISHING_RENDER_MODE = 'soft_furnishing';
 const SCOPE_APPLY_NOTE = '只应用到当前选择，不会自动为其他房间生成，也不会产生额外扣点。';
 const COMPOSER_TOOL_ICONS = {
   scope: '/images/ai-design-icons/floor-plan.png',
@@ -42,8 +45,23 @@ function createDefaultDraft(bootstrap) {
     templateId: '',
     templateName: '',
     referenceAssets: [],
+    renderMode: '',
+    renderModeConfirmed: false,
     targetScope: WHOLE_FLOOR_SCOPE_KEY,
     roomId: '',
+  };
+}
+
+function applyRenderModeToDraft(draft, renderMode) {
+  const normalized = renderMode === SINGLE_ROOM_RENDER_MODE
+    ? SINGLE_ROOM_RENDER_MODE
+    : renderMode === SOFT_FURNISHING_RENDER_MODE
+      ? SOFT_FURNISHING_RENDER_MODE
+      : WHOLE_HOUSE_RENDER_MODE;
+  return {
+    ...(draft || {}),
+    renderMode: normalized,
+    renderModeConfirmed: true,
   };
 }
 
@@ -65,9 +83,11 @@ function resolveDraftScope(scopes, draft) {
   return list.find((item) => item && item.targetScope === WHOLE_FLOOR_SCOPE_KEY) || list[0] || null;
 }
 
-function buildScopePickerOptions(scopes, draft) {
+function buildScopePickerOptions(scopes, draft, options = {}) {
   const selected = resolveDraftScope(scopes, draft);
-  return (Array.isArray(scopes) ? scopes : []).map((item) => ({
+  return (Array.isArray(scopes) ? scopes : [])
+    .filter((item) => !options.singleRoomOnly || item.targetScope === 'single_room')
+    .map((item) => ({
     value: item.key,
     label: item.name,
     subtitle: item.targetScope === 'single_room'
@@ -86,7 +106,7 @@ function buildComposerToolbarItems(view) {
     items.push({
       key: 'scope',
       type: 'scope',
-      label: '户型',
+      label: view.scopeToolLabel || '户型',
       icon: COMPOSER_TOOL_ICONS.scope,
     });
   }
@@ -170,9 +190,14 @@ function buildDraftFromBatch(batch, bootstrap) {
     };
   }
   const parameterSnapshot = batch.parameterSnapshot || {};
+  const floorPlanControlAssetId = String(parameterSnapshot.floorPlanControlAssetId || '');
+  const hasPersistedSitePhotoIds = Array.isArray(parameterSnapshot.sitePhotoAssetIds);
+  const sitePhotoAssetIds = new Set(
+    hasPersistedSitePhotoIds ? parameterSnapshot.sitePhotoAssetIds.map((id) => String(id)) : [],
+  );
   const referenceAssets = (batch.referenceAssetIds || [])
     .map((id) => ({ id, previewUrl: '' }))
-    .filter((item) => item.id);
+    .filter((item) => item.id && String(item.id) !== floorPlanControlAssetId);
   const targetScope = parameterSnapshot.targetScope === 'single_room' ? 'single_room' : WHOLE_FLOOR_SCOPE_KEY;
   return {
     prompt: batch.prompt || '',
@@ -183,7 +208,18 @@ function buildDraftFromBatch(batch, bootstrap) {
     count: Number(batch.requestedCount || 1),
     templateId: parameterSnapshot.templateId || '',
     templateName: '',
-    referenceAssets,
+    referenceAssets: referenceAssets.map((item) => ({
+      ...item,
+      role: !hasPersistedSitePhotoIds || sitePhotoAssetIds.has(String(item.id))
+        ? 'site_photo'
+        : 'baseline',
+    })),
+    renderMode: parameterSnapshot.renderMode === SINGLE_ROOM_RENDER_MODE
+      ? SINGLE_ROOM_RENDER_MODE
+      : parameterSnapshot.renderMode === SOFT_FURNISHING_RENDER_MODE
+        ? SOFT_FURNISHING_RENDER_MODE
+        : WHOLE_HOUSE_RENDER_MODE,
+    renderModeConfirmed: true,
     targetScope,
     roomId: targetScope === 'single_room' ? String(parameterSnapshot.roomId || '') : '',
   };
@@ -205,7 +241,6 @@ function withFloorPlanPreviewRoom(url, targetScope, roomId) {
 
 function buildComposerViewState(draft, bootstrap, options = {}) {
   const model = findModel(bootstrap, draft.modelProfileId);
-  const maxRefs = maxUserReferenceImages(model?.maxReferenceImages || 0);
   const unitPrice = getUnitPrice(model, draft.resolutionTier);
   const estimatedCredits = unitPrice * Math.max(1, Number(draft.count || 1));
   const balance = Number(bootstrap?.account?.availableBalance || 0);
@@ -216,17 +251,41 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
   const creditsReady = balance >= estimatedCredits;
   const providerReady = Boolean(provider.actionEnabled);
   const referenceCount = (draft.referenceAssets || []).length;
+  const renderMode = draft.renderMode === SINGLE_ROOM_RENDER_MODE
+    ? SINGLE_ROOM_RENDER_MODE
+    : draft.renderMode === SOFT_FURNISHING_RENDER_MODE
+      ? SOFT_FURNISHING_RENDER_MODE
+      : draft.renderMode === WHOLE_HOUSE_RENDER_MODE
+        ? WHOLE_HOUSE_RENDER_MODE
+        : '';
+  const modeConfirmed = Boolean(draft.renderModeConfirmed && renderMode);
+  const maxRefs = renderMode === WHOLE_HOUSE_RENDER_MODE
+    ? maxUserReferenceImages(model?.maxReferenceImages || 0)
+    : Math.max(0, Math.trunc(Number(model?.maxReferenceImages) || 0));
+  const sitePhotoRequired = renderMode === SINGLE_ROOM_RENDER_MODE
+    || renderMode === SOFT_FURNISHING_RENDER_MODE;
+  const sitePhotoReady = !sitePhotoRequired || (draft.referenceAssets || [])
+    .some((item) => item.role === 'site_photo');
   const editReady = !referenceCount || Boolean(provider.supportsEdit);
   const scopes = Array.isArray(options.scopes) ? options.scopes : [];
   const selectedScope = resolveDraftScope(scopes, draft);
-  const scopeReady = !(draft.targetScope === 'single_room' && !String(draft.roomId || '').trim());
-  const controlPreviewUrl = withFloorPlanPreviewRoom(
-    options.floorPlanPreviewUrl,
-    draft.targetScope,
-    draft.roomId,
-  );
+  // Photo-first modes use the selected现场图 as the source of truth. A bound
+  // formal floor plan may still provide an optional room identity, but it must
+  // not turn into a required control-image/room selection gate.
+  const singleRoomSelectionRequired = renderMode === WHOLE_HOUSE_RENDER_MODE
+    && draft.targetScope === 'single_room';
+  const scopeReady = !singleRoomSelectionRequired || Boolean(String(draft.roomId || '').trim());
+  const controlPreviewUrl = renderMode === WHOLE_HOUSE_RENDER_MODE
+    ? withFloorPlanPreviewRoom(
+      options.floorPlanPreviewUrl,
+      draft.targetScope,
+      draft.roomId,
+    )
+    : '';
   let blockedReason = '';
-  if (!promptReady) blockedReason = '请输入提示词';
+  if (!modeConfirmed) blockedReason = '请先选择设计方式';
+  else if (!sitePhotoReady) blockedReason = '请先添加现场图';
+  else if (!promptReady) blockedReason = '请输入提示词';
   else if (!modelReady) blockedReason = '请选择模型';
   else if (!scopeReady) blockedReason = '请先选择具体房间';
   else if (!priceReady) blockedReason = '当前分辨率不可用';
@@ -270,6 +329,8 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
     canSubmit: !options.generating
       && !options.assisting
       && !options.uploading
+      && modeConfirmed
+      && sitePhotoReady
       && promptReady
       && modelReady
       && scopeReady
@@ -278,11 +339,37 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
       && editReady
       && creditsReady,
     blockedReason,
+    renderMode,
+    modeConfirmed,
+    modeTitle: renderMode === WHOLE_HOUSE_RENDER_MODE
+      ? '设计整屋'
+      : renderMode === SOFT_FURNISHING_RENDER_MODE
+        ? '单间 · 仅软装换搭'
+        : '设计单间',
+    modeCopy: renderMode === WHOLE_HOUSE_RENDER_MODE
+      ? '正式户型负责结构，现场图负责镜头'
+      : '现场图锁定镜头与透视，默认不上传户型控制图',
+    wholeHouseAvailable: Boolean(options.floorPlanPreviewUrl),
+    modeArtwork: renderMode === WHOLE_HOUSE_RENDER_MODE
+      ? '/packages/ai-workflow/assets/mode-flow-v1/whole-house-material-board.png'
+      : '/packages/ai-workflow/assets/mode-flow-v1/single-room-camera-board.png',
+    showRenovationType: renderMode === SINGLE_ROOM_RENDER_MODE
+      || renderMode === SOFT_FURNISHING_RENDER_MODE,
+    fullRoomActive: renderMode === SINGLE_ROOM_RENDER_MODE,
+    softFurnishingActive: renderMode === SOFT_FURNISHING_RENDER_MODE,
+    sitePhotoRequired,
     hasScopePicker: scopes.length > 0,
-    toolbarItems: buildComposerToolbarItems({ hasScopePicker: scopes.length > 0 }),
-    scopeLabel: selectedScope ? selectedScope.name : '完整户型',
+    toolbarItems: buildComposerToolbarItems({
+      hasScopePicker: scopes.length > 0,
+      scopeToolLabel: sitePhotoRequired ? '空间' : '户型',
+    }),
+    scopeLabel: singleRoomSelectionRequired && draft.targetScope !== 'single_room'
+      ? '请选择空间'
+      : selectedScope ? selectedScope.name : '完整户型',
     scopeNote: SCOPE_APPLY_NOTE,
-    scopePickerOptions: buildScopePickerOptions(scopes, draft),
+    scopePickerOptions: buildScopePickerOptions(scopes, draft, {
+      singleRoomOnly: sitePhotoRequired,
+    }),
     aspectOptions,
     resolutionOptions,
     countOptions,
@@ -383,10 +470,14 @@ function parseTemplateListPayload(payload) {
 module.exports = {
   COMPOSER_TOOL_ICONS,
   PREFERRED_TEMPLATE_CATEGORY_NAME,
+  SINGLE_ROOM_RENDER_MODE,
+  SOFT_FURNISHING_RENDER_MODE,
   SCOPE_APPLY_NOTE,
   TEMPLATE_PAGE_SIZE,
+  WHOLE_HOUSE_RENDER_MODE,
   WHOLE_FLOOR_SCOPE_KEY,
   applyModelDefaults,
+  applyRenderModeToDraft,
   applyScopeToDraft,
   buildComposerPickerOptions,
   buildComposerPickerTitle,

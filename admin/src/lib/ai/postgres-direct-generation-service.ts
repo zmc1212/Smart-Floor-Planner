@@ -28,6 +28,8 @@ import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/wor
 import { getNextWorkflowStage } from '@/lib/ai/workflow-stages';
 import { executePostgresWorkflowChat } from '@/lib/ai/postgres-workflow-chat';
 import { leadArchivedError } from '@/lib/lead-lifecycle';
+import { getPlatformAiPromptConfig } from '@/lib/ai/platform-ai-prompt-config';
+import { composeFloorPlanConstrainedPrompt, normalizeFloorPlanNegativePrompt } from '@/lib/ai/floor-plan-constraint-prompt';
 
 type DirectGenerationType = 'floor_plan_style' | 'furnishing_render' | 'soft_furnishing_render';
 
@@ -116,6 +118,23 @@ function assertDirectGenerationType(type: string): asserts type is DirectGenerat
   }
 }
 
+export function resolveDirectRenderPrompts(input: {
+  hasFloorPlanConstraint: boolean;
+  storedPrompt: string;
+  storedNegativePrompt: string;
+  requestedPrompt?: string;
+  requestedNegativePrompt?: string;
+}) {
+  return {
+    prompt: input.hasFloorPlanConstraint
+      ? input.storedPrompt
+      : input.requestedPrompt?.trim() || input.storedPrompt,
+    negativePrompt: input.hasFloorPlanConstraint
+      ? input.storedNegativePrompt
+      : input.requestedNegativePrompt?.trim() || input.storedNegativePrompt,
+  };
+}
+
 export async function preparePostgresDirectGeneration(input: {
   enterpriseId: string;
   operatorId: string;
@@ -144,13 +163,24 @@ export async function preparePostgresDirectGeneration(input: {
   const workflowId = parseOptionalPostgresId(input.generation.workflowId, 'workflowId');
   const parentGenerationId = parseOptionalPostgresId(input.generation.parentGenerationId, 'parentGenerationId');
   const floorPlanId = parseOptionalPostgresId(input.generation.floorPlanId, 'floorPlanId');
-  const initialPrompt = input.generation.type === 'soft_furnishing_render'
+  const basePrompt = input.generation.type === 'soft_furnishing_render'
     ? buildSoftFurnishingPromptFromPreset({
         promptTemplate: preset.promptTemplate,
         furnitureItems: Array.isArray(input.generation.furnitureItems) ? input.generation.furnitureItems : [],
         roomType: input.generation.roomType,
       })
     : buildPromptFromPreset(preset.promptTemplate, input.generation);
+  const floorPlanPromptConfig = floorPlanId
+    && ['floor_plan_style', 'furnishing_render'].includes(input.generation.type)
+    && resolvedStageKey !== 'lighting'
+    ? await getPlatformAiPromptConfig()
+    : null;
+  const initialPrompt = floorPlanPromptConfig
+    ? composeFloorPlanConstrainedPrompt({
+      constraintPrompt: floorPlanPromptConfig.floorPlanConstraintPrompt,
+      userPrompt: basePrompt,
+    })
+    : basePrompt;
 
   let parentImageUrl: string | undefined;
   const generation = await withTenantTransaction(enterpriseId, async (transaction) => {
@@ -206,7 +236,10 @@ export async function preparePostgresDirectGeneration(input: {
         presetSnapshot: buildPresetSnapshot(preset),
         styleReferenceImage,
         customPrompt: initialPrompt,
-        negativePrompt: preset.negativePrompt,
+        floorPlanConstraintPrompt: floorPlanPromptConfig?.floorPlanConstraintPrompt,
+        negativePrompt: floorPlanPromptConfig
+          ? normalizeFloorPlanNegativePrompt(preset.negativePrompt)
+          : preset.negativePrompt,
       },
       output: { promptUsed: initialPrompt },
       billing: {
@@ -406,15 +439,30 @@ export async function renderPostgresDirectGeneration(input: {
     const existingBilling = generation.billing && typeof generation.billing === 'object' ? generation.billing : {};
     const retrying = generation.status === 'failed';
     const billingCycle = Math.max(0, Number(existingBilling.cycle || generation.retryCount || 0));
+    const hasFloorPlanConstraint = typeof existingInput.floorPlanConstraintPrompt === 'string'
+      && existingInput.floorPlanConstraintPrompt.trim().length > 0;
+    const storedPrompt = typeof existingInput.customPrompt === 'string'
+      ? existingInput.customPrompt
+      : '';
+    const storedNegativePrompt = typeof existingInput.negativePrompt === 'string'
+      ? existingInput.negativePrompt
+      : '';
+    const nextPrompts = resolveDirectRenderPrompts({
+      hasFloorPlanConstraint,
+      storedPrompt,
+      storedNegativePrompt,
+      requestedPrompt: input.prompt,
+      requestedNegativePrompt: input.negativePrompt,
+    });
     await repository.updateGeneration(generationId, {
       status: 'pending',
       input: {
         ...existingInput,
         sourceImage: persistedImage,
-        customPrompt: input.prompt || existingInput.customPrompt,
-        negativePrompt: input.negativePrompt || existingInput.negativePrompt,
+        customPrompt: nextPrompts.prompt,
+        negativePrompt: nextPrompts.negativePrompt,
       },
-      output: { ...existingOutput, promptUsed: input.prompt || existingOutput.promptUsed || existingInput.customPrompt },
+      output: { ...existingOutput, promptUsed: nextPrompts.prompt },
       errorCode: null,
       errorMessage: null,
       ...(retrying ? {

@@ -49,6 +49,7 @@ export async function GET(request: Request) {
       status: 'active',
       page,
       limit,
+      summary: true,
     });
     return NextResponse.json({
       success: true,

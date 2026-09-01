@@ -745,6 +745,7 @@ export const platformConfigs = appSchema.table(
     notificationConfig: jsonObject<Record<string, unknown>>('notification_config'),
     smsConfig: jsonObject<Record<string, unknown>>('sms_config'),
     miniProgramCodeConfig: jsonObject<Record<string, unknown>>('mini_program_code_config'),
+    aiPromptConfig: jsonObject<Record<string, unknown>>('ai_prompt_config'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

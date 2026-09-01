@@ -1,6 +1,9 @@
 const AI_DESIGN_TAB_URL = '/pages/ai-design/ai-design';
 const CONTEXT_KEYS = ['floorPlanId', 'leadId', 'roomId', 'targetScope', 'workflowId'];
+const OPEN_AI_DESIGN_RESET_MS = 800;
 const { ensureAIDesignAccess } = require('./aiDesignAccess.js');
+
+let openingAIDesignEntry = false;
 
 function normalizeAIDesignContext(options = {}) {
   const context = CONTEXT_KEYS.reduce((result, key) => {
@@ -68,6 +71,7 @@ function consumeAIDesignContext() {
 }
 
 function openSchemeStudio(options = {}) {
+  if (openingAIDesignEntry) return false;
   if (!ensureAIDesignAccess()) return false;
 
   const context = normalizeAIDesignContext(options);
@@ -76,13 +80,20 @@ function openSchemeStudio(options = {}) {
     return false;
   }
 
+  openingAIDesignEntry = true;
   const url = buildSchemeStudioUrl(context);
   const navigate = options.redirect ? wx.redirectTo : wx.navigateTo;
   navigate({
     url,
     fail(error) {
+      openingAIDesignEntry = false;
       console.error('Open scheme studio failed:', error);
       wx.showToast({ title: '打开方案工作台失败', icon: 'none' });
+    },
+    complete: () => {
+      setTimeout(() => {
+        openingAIDesignEntry = false;
+      }, OPEN_AI_DESIGN_RESET_MS);
     },
   });
 
@@ -91,10 +102,20 @@ function openSchemeStudio(options = {}) {
 
 /** Prefer scheme-studio when a lead is known; otherwise open the Design tab. */
 function openAIDesignEntry(options = {}) {
+  if (openingAIDesignEntry) return false;
   if (shouldOpenSchemeStudio(options)) {
     return openSchemeStudio(options);
   }
-  return openAIDesignTab(options);
+  openingAIDesignEntry = true;
+  const opened = openAIDesignTab(options);
+  if (!opened) {
+    openingAIDesignEntry = false;
+    return false;
+  }
+  setTimeout(() => {
+    openingAIDesignEntry = false;
+  }, OPEN_AI_DESIGN_RESET_MS);
+  return true;
 }
 
 module.exports = {

@@ -26,6 +26,7 @@ import {
   getPostgresAssetIdFromImageUrl,
   storePostgresMediaBuffer,
 } from '@/lib/ai/postgres-media-assets';
+import { normalizeFloorPlanNegativePrompt } from '@/lib/ai/floor-plan-constraint-prompt';
 import {
   AiProviderError,
   capabilityForLogicalModel,
@@ -267,31 +268,38 @@ async function loadScenarioProviderImages(
     return images;
   }
   if (usesFloorPlanControl && floorPlan) {
-    const existing = await resolvePostgresScenarioProviderImage(
+    let controlImage = await resolvePostgresScenarioProviderImage(
       enterpriseId,
       typeof input.controlImage === 'string' ? input.controlImage : undefined
     );
-    if (existing) return [existing];
-
-    const controlBuffer = await resolveFloorPlanControlPng(floorPlan);
-    const control = await storePostgresMediaBuffer({
-      enterpriseId,
-      ownerType: 'ai_generation_input',
-      ownerId: generation.id,
-      mimeType: 'image/png',
-      buffer: controlBuffer,
-    });
-    await withTenantTransaction(enterpriseId, async (transaction) => {
-      const repository = new AiCreationRepository(transaction);
-      const current = await repository.findGenerationForUpdate(generation.id);
-      if (!current || current.status !== 'created') {
-        throw new Error('场景生成任务已变更，无法附加正式户型控制图');
-      }
-      await repository.updateGeneration(generation.id, {
-        input: { ...asRecord(current.input), controlImage: control.imageUrl },
+    if (!controlImage) {
+      const controlBuffer = await resolveFloorPlanControlPng(floorPlan);
+      const control = await storePostgresMediaBuffer({
+        enterpriseId,
+        ownerType: 'ai_generation_input',
+        ownerId: generation.id,
+        mimeType: 'image/png',
+        buffer: controlBuffer,
       });
-    });
-    return [`data:image/png;base64,${controlBuffer.toString('base64')}`];
+      await withTenantTransaction(enterpriseId, async (transaction) => {
+        const repository = new AiCreationRepository(transaction);
+        const current = await repository.findGenerationForUpdate(generation.id);
+        if (!current || current.status !== 'created') {
+          throw new Error('场景生成任务已变更，无法附加正式户型控制图');
+        }
+        await repository.updateGeneration(generation.id, {
+          input: { ...asRecord(current.input), controlImage: control.imageUrl },
+        });
+      });
+      controlImage = `data:image/png;base64,${controlBuffer.toString('base64')}`;
+    }
+    const source = [
+      typeof input.styleReferenceImage === 'string' ? input.styleReferenceImage : undefined,
+      typeof asRecord(parentGeneration?.output).imageUrl === 'string' ? String(asRecord(parentGeneration?.output).imageUrl) : undefined,
+      typeof asRecord(selectedGeneration?.output).imageUrl === 'string' ? String(asRecord(selectedGeneration?.output).imageUrl) : undefined,
+    ].find((value): value is string => Boolean(value));
+    const additionalReference = await resolvePostgresScenarioProviderImage(enterpriseId, source);
+    return additionalReference ? [controlImage, additionalReference] : [controlImage];
   }
 
   const source = [
@@ -319,9 +327,13 @@ function providerRequest(generation: AiGenerationRecord, images: string[]): Prov
       modelProfileKey: undefined,
       remoteModel: '',
       prompt: String(input.customPrompt || '').trim(),
-      negativePrompt: typeof input.negativePrompt === 'string'
-        ? input.negativePrompt
-        : typeof preset.negativePrompt === 'string' ? preset.negativePrompt : undefined,
+      negativePrompt: generation.floorPlanId && generation.type !== 'soft_furnishing_render'
+        ? normalizeFloorPlanNegativePrompt(
+          typeof input.negativePrompt === 'string' ? input.negativePrompt : preset.negativePrompt,
+        )
+        : typeof input.negativePrompt === 'string'
+          ? input.negativePrompt
+          : typeof preset.negativePrompt === 'string' ? preset.negativePrompt : undefined,
       size: typeof input.outputSize === 'string'
         ? input.outputSize
         : typeof image.size === 'string' ? image.size : '1024x1024',

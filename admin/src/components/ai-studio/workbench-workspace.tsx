@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Bot,
+  Check,
   Coins,
   Columns2,
   Copy,
@@ -97,6 +98,7 @@ type WorkflowDetail = {
     sourceFloorPlan?: {
       id: string;
       name?: string;
+      previewVersion?: string;
       rooms?: ClosedRoomOption[];
       closedRoomCount?: number;
     } | null;
@@ -114,6 +116,21 @@ type WorkflowDetail = {
   publishedScheme?: { title: string; publishedAt?: string; generationIds: string[]; finalized?: boolean } | null;
 };
 type TemplateDetail = PromptTemplate & { parameterTemplate?: { parameters?: Record<string, unknown> } };
+type WorkbenchRenderMode = 'whole_floor_plan' | 'single_room_photo' | 'soft_furnishing';
+type LeadSitePhotoOption = {
+  id: string;
+  assetId: string;
+  previewUrl: string;
+  spaceTag?: string | null;
+  spaceTagLabel: string;
+  width?: number | null;
+  height?: number | null;
+  createdAt: string;
+};
+
+function normalizeWorkbenchRenderMode(value?: string): WorkbenchRenderMode {
+  return value === 'single_room_photo' ? 'single_room_photo' : 'whole_floor_plan';
+}
 
 const darkSelectPopupClassName = '[&_.ant-select-item]:!text-[#f5f5f5] [&_.ant-select-item-option-active]:!bg-white/10 [&_.ant-select-item-option-selected]:!bg-white/[0.08] [&_.ant-select-item-option-selected]:!text-white';
 const lightSelectPopupClassName = '[&_.ant-select-item]:!text-[#171717] [&_.ant-select-item-option-active]:!bg-[#f3faf4] [&_.ant-select-item-option-selected]:!bg-[#e8f6ea] [&_.ant-select-item-option-selected]:!text-[#166534]';
@@ -274,11 +291,17 @@ export function WorkbenchWorkspace() {
   const [customWidth, setCustomWidth] = useState(1024);
   const [customHeight, setCustomHeight] = useState(1024);
   const [count, setCount] = useState(1);
+  const [renderMode, setRenderMode] = useState<WorkbenchRenderMode>('whole_floor_plan');
   const [scopeSelection, setScopeSelection] = useState(WORKBENCH_WHOLE_FLOOR_SCOPE_KEY);
   const [assets, setAssets] = useState<CreationAsset[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDetail | null>(null);
   const [templateAssetId, setTemplateAssetId] = useState('');
   const [templateOpen, setTemplateOpen] = useState(false);
+  const [sitePhotoOpen, setSitePhotoOpen] = useState(false);
+  const [sitePhotos, setSitePhotos] = useState<LeadSitePhotoOption[]>([]);
+  const [sitePhotosLoading, setSitePhotosLoading] = useState(false);
+  const [sitePhotosError, setSitePhotosError] = useState('');
+  const [selectedSitePhotoAssetIds, setSelectedSitePhotoAssetIds] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -427,7 +450,11 @@ export function WorkbenchWorkspace() {
     setPrompt('');
     setSelectedTemplate(null);
     setTemplateAssetId('');
+    setSitePhotoOpen(false);
+    setSitePhotos([]);
+    setSelectedSitePhotoAssetIds([]);
     setScopeSelection(WORKBENCH_WHOLE_FLOOR_SCOPE_KEY);
+    setRenderMode('whole_floor_plan');
     setFloorPlanOpen(false);
     setPreviewGeneration(null);
   }, [loadConversation, selectedWorkflowId]);
@@ -469,6 +496,7 @@ export function WorkbenchWorkspace() {
   const eligibleFloorPlans = selectedLead?.floorPlans || detail?.lead.floorPlans || [];
   const floorPlanPreviewUrl = detail?.workflow.floorPlanPreviewUrl || '';
   const sourceFloorPlanId = detail?.workflow.sourceFloorPlan?.id || detail?.workflow.sourceFloorPlanId || '';
+  const floorPlanPreviewVersion = detail?.workflow.sourceFloorPlan?.previewVersion || '';
   const hasBoundFloorPlan = Boolean(sourceFloorPlanId);
   const sourceFloorPlanName = detail?.workflow.sourceFloorPlan?.name || '正式户型';
   const closedRooms = useMemo(
@@ -492,8 +520,9 @@ export function WorkbenchWorkspace() {
   const targetScope = scopeSelection === WORKBENCH_WHOLE_FLOOR_SCOPE_KEY ? 'whole_floor_plan' : 'single_room';
   const selectedRoomId = targetScope === 'single_room' ? scopeSelection : '';
   const selectedRoom = closedRooms.find((room) => room.roomId === selectedRoomId);
-  const controlPreviewUrl = sourceFloorPlanId
-    ? workbenchComposerControlPreviewUrl(selectedWorkflowId, scopeSelection)
+  const attachFloorPlanControl = hasBoundFloorPlan && renderMode === 'whole_floor_plan';
+  const controlPreviewUrl = attachFloorPlanControl && sourceFloorPlanId
+    ? workbenchComposerControlPreviewUrl(selectedWorkflowId, scopeSelection, floorPlanPreviewVersion)
     : '';
   const controlPreviewAlt = targetScope === 'single_room'
     ? `${selectedRoom?.roomName || '房间'}控制图`
@@ -513,7 +542,16 @@ export function WorkbenchWorkspace() {
 
   const selectedBatch = latestBatch(task);
   const model = bootstrap?.models.find((item) => item.id === modelProfileId);
-  const maxUserRefs = workbenchMaxUserReferenceImages(model?.maxReferenceImages || 0, hasBoundFloorPlan);
+  const handleRenderModeChange = (value: WorkbenchRenderMode) => {
+    setRenderMode(value);
+    const nextAttachControl = hasBoundFloorPlan && value === 'whole_floor_plan';
+    if (model) {
+      setAssets((current) => current.slice(0, workbenchMaxUserReferenceImages(model.maxReferenceImages || 0, nextAttachControl)));
+    }
+  };
+  const maxUserRefs = workbenchMaxUserReferenceImages(model?.maxReferenceImages || 0, attachFloorPlanControl);
+  const sitePhotoLibraryAssetIds = new Set(sitePhotos.map((item) => item.assetId));
+  const sitePhotoSelectionLimit = Math.max(0, maxUserRefs - assets.filter((asset) => !sitePhotoLibraryAssetIds.has(asset.id)).length);
   const availableAspectRatios = model?.aspectRatiosByResolutionTier?.[resolutionTier] || model?.aspectRatios || [];
   const unitPrice = model?.prices.find((price) => price.resolutionTier === resolutionTier)?.credits || 0;
   const estimatedCredits = unitPrice * count;
@@ -569,6 +607,7 @@ export function WorkbenchWorkspace() {
     || aspectRatio !== (selectedBatch.parameterSnapshot.aspectRatio || '1:1')
     || resolutionTier !== selectedBatchTier
     || count !== selectedBatch.requestedCount
+    || renderMode !== (selectedBatch.parameterSnapshot.renderMode || 'whole_floor_plan')
     || scopeSelection !== batchScopeSelection(selectedBatch)
     || assets.map((asset) => asset.id).join(',') !== userReferenceIds(selectedBatch).join(',')
   ));
@@ -589,7 +628,7 @@ export function WorkbenchWorkspace() {
     setResolutionTier(profile.defaults.resolutionTier);
     setCustomWidth(1024);
     setCustomHeight(1024);
-    setAssets((current) => current.slice(0, workbenchMaxUserReferenceImages(profile.maxReferenceImages, hasBoundFloorPlan)));
+    setAssets((current) => current.slice(0, workbenchMaxUserReferenceImages(profile.maxReferenceImages, attachFloorPlanControl)));
   };
 
   const applyBatchToComposer = (batch: CreationBatch) => {
@@ -605,17 +644,31 @@ export function WorkbenchWorkspace() {
     setCustomWidth(batch.parameterSnapshot.width || 1024);
     setCustomHeight(batch.parameterSnapshot.height || 1024);
     setCount(batch.requestedCount || 1);
+    setRenderMode(normalizeWorkbenchRenderMode(batch.parameterSnapshot.renderMode));
     setSelectedTemplate(batch.parameterSnapshot.templateId ? { id: batch.parameterSnapshot.templateId } as TemplateDetail : null);
     setScopeSelection(batchScopeSelection(batch));
-    setAssets(userReferenceIds(batch).map((id) => ({ id, previewUrl: `/api/ai/assets/${id}/image` })));
-    setTemplateAssetId('');
+    const nextReferenceIds = userReferenceIds(batch);
+    const nextStyleAssetId = batch.parameterSnapshot.styleReferenceAssetId
+      || (batch.parameterSnapshot.hasStyleReference ? nextReferenceIds[0] || '' : '');
+    const nextSitePhotoIds = new Set(batch.parameterSnapshot.sitePhotoAssetIds
+      || (batch.parameterSnapshot.hasSitePhoto ? nextReferenceIds.filter((id) => id !== nextStyleAssetId) : []));
+    setAssets(nextReferenceIds.map((id) => ({
+      id,
+      previewUrl: `/api/ai/assets/${id}/image`,
+      role: id === nextStyleAssetId ? 'style_reference' : nextSitePhotoIds.has(id) ? 'site_photo' : 'additional_reference',
+    })));
+    setTemplateAssetId(nextStyleAssetId);
   };
 
-  const uploadReferenceFiles = async (files: File[], successMessage = '已添加参考图') => {
+  const uploadReferenceFiles = async (
+    files: File[],
+    successMessage = '已添加参考图',
+    role: CreationAsset['role'] = 'site_photo',
+  ) => {
     if (!files.length || !model) return false;
     const slots = Math.max(0, maxUserRefs - assets.length);
     if (!model.supportsReferenceImages || !slots) {
-      notify.warning(hasBoundFloorPlan
+      notify.warning(attachFloorPlanControl
         ? `当前模型最多支持 ${maxUserRefs} 张参考图（户型控制图会自动占用 1 张）`
         : `当前模型最多支持 ${maxUserRefs} 张参考图`);
       return false;
@@ -628,7 +681,7 @@ export function WorkbenchWorkspace() {
         const payload = await readJson(await fetch('/api/ai/creation/assets', { method: 'POST', body: formData }));
         return payload.data as CreationAsset;
       }));
-      setAssets((current) => [...current, ...uploaded]);
+      setAssets((current) => [...current, ...uploaded.map((asset) => ({ ...asset, role }))]);
       notify.success(`${successMessage}（${uploaded.length} 张）`);
       return true;
     } catch (error) {
@@ -639,11 +692,63 @@ export function WorkbenchWorkspace() {
     }
   };
 
+  const loadLeadSitePhotos = async () => {
+    if (!selectedLeadId) return;
+    setSitePhotosLoading(true);
+    setSitePhotosError('');
+    try {
+      const payload = await readJson(await fetch(`/api/ai/workflow-leads/${selectedLeadId}/site-photos`));
+      const items = (payload.data?.items || []) as LeadSitePhotoOption[];
+      setSitePhotos(items);
+      const libraryAssetIds = new Set(items.map((item) => item.assetId));
+      setSelectedSitePhotoAssetIds(assets.filter((asset) => libraryAssetIds.has(asset.id)).map((asset) => asset.id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '读取客户现场图失败';
+      setSitePhotosError(message);
+      notify.error(message);
+    } finally {
+      setSitePhotosLoading(false);
+    }
+  };
+
+  const openLeadSitePhotos = () => {
+    if (!selectedLeadId) return notify.warning('请先选择客户线索');
+    if (!model?.supportsReferenceImages || !maxUserRefs) return notify.warning('当前模型不支持参考图');
+    setSitePhotoOpen(true);
+    void loadLeadSitePhotos();
+  };
+
+  const toggleLeadSitePhoto = (assetId: string) => {
+    const libraryAssetIds = new Set(sitePhotos.map((item) => item.assetId));
+    const fixedAssetCount = assets.filter((asset) => !libraryAssetIds.has(asset.id)).length;
+    const selectableCount = Math.max(0, maxUserRefs - fixedAssetCount);
+    setSelectedSitePhotoAssetIds((current) => {
+      if (current.includes(assetId)) return current.filter((id) => id !== assetId);
+      if (current.length >= selectableCount) {
+        notify.warning(`当前还可选择 ${selectableCount} 张客户现场图`);
+        return current;
+      }
+      return [...current, assetId];
+    });
+  };
+
+  const applyLeadSitePhotos = () => {
+    const libraryAssetIds = new Set(sitePhotos.map((item) => item.assetId));
+    const kept = assets.filter((asset) => !libraryAssetIds.has(asset.id));
+    const selected = selectedSitePhotoAssetIds
+      .map((assetId) => sitePhotos.find((item) => item.assetId === assetId))
+      .filter((item): item is LeadSitePhotoOption => Boolean(item))
+      .map((item) => ({ id: item.assetId, previewUrl: item.previewUrl, width: item.width || undefined, height: item.height || undefined, role: 'site_photo' as const }));
+    setAssets([...kept, ...selected].slice(0, maxUserRefs));
+    setSitePhotoOpen(false);
+    notify.success(selected.length ? `已选用 ${selected.length} 张客户现场图` : '已清除客户现场图选择');
+  };
+
   const reuseGeneration = async (generation: CreationGeneration) => {
     if (!generation.imageUrl || !model) return;
     const slots = Math.max(0, maxUserRefs - assets.length);
     if (!model.supportsReferenceImages || !slots) {
-      notify.warning(hasBoundFloorPlan
+      notify.warning(attachFloorPlanControl
         ? `当前模型最多支持 ${maxUserRefs} 张参考图（户型控制图会自动占用 1 张）`
         : `当前模型最多支持 ${maxUserRefs} 张参考图`);
       return;
@@ -660,7 +765,7 @@ export function WorkbenchWorkspace() {
         notify.info('该图片已在参考图中');
         return;
       }
-      setAssets((current) => current.some((item) => item.id === asset.id) ? current : [...current, asset]);
+      setAssets((current) => current.some((item) => item.id === asset.id) ? current : [...current, { ...asset, role: 'additional_reference' }]);
       notify.success('已基于此图继续（1 张）');
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '引用生成结果失败');
@@ -682,7 +787,7 @@ export function WorkbenchWorkspace() {
       }
     }
     const nextMaxUserRefs = nextModel?.supportsReferenceImages
-      ? workbenchMaxUserReferenceImages(nextModel.maxReferenceImages || 0, hasBoundFloorPlan)
+      ? workbenchMaxUserReferenceImages(nextModel.maxReferenceImages || 0, attachFloorPlanControl)
       : 0;
     const plan = planPromptTemplateReferenceAttach({
       previewSrc: promptTemplatePreviewSrc(template),
@@ -706,7 +811,7 @@ export function WorkbenchWorkspace() {
     setUploading(true);
     try {
       const payload = await readJson(await fetch(promptTemplateCoverClonePath(template.id), { method: 'POST' }));
-      const uploaded = payload.data as CreationAsset;
+      const uploaded = { ...(payload.data as CreationAsset), role: 'style_reference' as const };
       const kept = assets.filter((asset) => plan.keptAssetIds.includes(asset.id));
       setAssets(mergeTemplateReferenceAsset(kept, uploaded));
       setTemplateAssetId(uploaded.id);
@@ -740,6 +845,11 @@ export function WorkbenchWorkspace() {
 
   const submitGeneration = async (sourceBatch?: CreationBatch) => {
     if (!selectedWorkflowId) return notify.warning('请先选择或新建方案对话');
+    const sourceReferenceIds = sourceBatch ? userReferenceIds(sourceBatch) : [];
+    const sourceStyleAssetId = sourceBatch?.parameterSnapshot.styleReferenceAssetId
+      || (sourceBatch?.parameterSnapshot.hasStyleReference ? sourceReferenceIds[0] || '' : '');
+    const sourceSitePhotoAssetIds = sourceBatch?.parameterSnapshot.sitePhotoAssetIds
+      || (sourceBatch?.parameterSnapshot.hasSitePhoto ? sourceReferenceIds.filter((id) => id !== sourceStyleAssetId) : []);
     const draft = sourceBatch && !String(sourceBatch.id).startsWith('legacy-') ? {
       prompt: sourceBatch.prompt,
       negativePrompt: sourceBatch.negativePrompt || '',
@@ -751,6 +861,11 @@ export function WorkbenchWorkspace() {
       height: sourceBatch.parameterSnapshot.height || 1024,
       templateId: sourceBatch.parameterSnapshot.templateId,
       count: sourceBatch.requestedCount || 1,
+      renderMode: normalizeWorkbenchRenderMode(sourceBatch.parameterSnapshot.renderMode),
+      hasStyleReference: sourceBatch.parameterSnapshot.hasStyleReference ?? Boolean(sourceBatch.parameterSnapshot.templateId),
+      hasSitePhoto: sourceSitePhotoAssetIds.length > 0,
+      styleReferenceAssetId: sourceStyleAssetId,
+      sitePhotoAssetIds: sourceSitePhotoAssetIds,
       targetScope: sourceBatch.parameterSnapshot.targetScope === 'single_room' ? 'single_room' as const : 'whole_floor_plan' as const,
       roomId: sourceBatch.parameterSnapshot.targetScope === 'single_room'
         ? String(sourceBatch.parameterSnapshot.roomId || '')
@@ -766,6 +881,11 @@ export function WorkbenchWorkspace() {
       height: customHeight,
       templateId: selectedTemplate?.id,
       count,
+      renderMode,
+      hasStyleReference: Boolean(templateAssetId),
+      hasSitePhoto: assets.some((asset) => asset.role === 'site_photo'),
+      styleReferenceAssetId: templateAssetId,
+      sitePhotoAssetIds: assets.filter((asset) => asset.role === 'site_photo').map((asset) => asset.id),
       targetScope,
       roomId: selectedRoomId,
     };
@@ -773,6 +893,11 @@ export function WorkbenchWorkspace() {
     const draftUnitPrice = draftModel?.prices.find((price) => price.resolutionTier === draft.resolutionTier)?.credits || 0;
     if (!draft.prompt.trim()) return notify.warning('请输入提示词');
     if (!draft.modelProfileId) return notify.warning('请选择模型');
+    if (draft.renderMode === 'single_room_photo' && !draft.sitePhotoAssetIds.length) {
+      return notify.warning(draft.styleReferenceAssetId
+        ? '当前只有模板封面图，还需从客户现场图选择或从电脑上传至少一张现场照片'
+        : '单间现场模式请从客户现场图选择或从电脑上传至少一张现场照片');
+    }
     if (!draftUnitPrice) return notify.warning('当前模型分辨率尚未开放');
     if (!bootstrap?.provider.actionEnabled) return notify.error('当前企业未开放 AI 创作');
     if ((bootstrap.account.availableBalance || 0) < draftUnitPrice * draft.count) {
@@ -809,8 +934,13 @@ export function WorkbenchWorkspace() {
           height: draft.resolutionTier === 'CUSTOM' ? draft.height : undefined,
           templateId: draft.templateId,
           count: draft.count,
+          renderMode: draft.renderMode,
+          hasStyleReference: draft.hasStyleReference,
+          hasSitePhoto: draft.hasSitePhoto,
+          styleReferenceAssetId: draft.styleReferenceAssetId || undefined,
+          sitePhotoAssetIds: draft.sitePhotoAssetIds,
           workflowId: selectedWorkflowId,
-          ...(hasBoundFloorPlan ? {
+          ...(hasBoundFloorPlan && draft.renderMode === 'whole_floor_plan' ? {
             targetScope: draft.targetScope,
             roomId: draft.roomId || undefined,
           } : {}),
@@ -1201,6 +1331,9 @@ export function WorkbenchWorkspace() {
                                   {batch.parameterSnapshot.targetScope === 'single_room' ? ' · 单房间' : ' · 整屋方案'}
                                 </p>
                               ) : null}
+                              {!String(batch.id).startsWith('legacy-') && batch.parameterSnapshot.renderMode === 'single_room_photo' ? (
+                                <p className={cn('mt-1 text-[11px]', t.muted)}>出图模式：单间现场 · 现场图决定镜头</p>
+                              ) : null}
                             </div>
                             <time className={cn('shrink-0 text-[11px]', t.muted)} dateTime={batch.createdAt}>{formatDateTime(batch.createdAt)}</time>
                           </div>
@@ -1290,7 +1423,7 @@ export function WorkbenchWorkspace() {
                             style={{ zIndex: 0 }}
                           >
                             <img key={controlPreviewUrl} src={controlPreviewUrl} alt={controlPreviewAlt} className="h-full w-full object-contain" />
-                            <span className="absolute inset-x-0 bottom-0 bg-black/65 px-1 py-0.5 text-center text-[10px] leading-3 text-white">控制图</span>
+                            <span className="absolute inset-x-0 bottom-0 bg-black/65 px-1 py-0.5 text-center text-[10px] leading-3 text-white">户型结构</span>
                           </div>
                         ) : null}
                         {assets.map((asset, index) => {
@@ -1302,7 +1435,10 @@ export function WorkbenchWorkspace() {
                               className="absolute left-0 top-1.5 h-[78px] w-[61px] overflow-hidden rounded-md border border-[#8b72ff]/80 bg-[#222226] shadow-[0_6px_14px_rgba(0,0,0,0.28)]"
                               style={{ transform: `translate3d(${offsetX}px, 0, 0)`, zIndex: stackIndex + 1 }}
                             >
-                              <img src={asset.previewUrl} alt={`参考图 ${index + 1}`} className="h-full w-full object-cover" />
+                              <img src={asset.previewUrl} alt={asset.role === 'style_reference' || asset.id === templateAssetId ? '模板封面风格参考' : asset.role === 'site_photo' ? '现场图镜头参考' : `补充参考图 ${index + 1}`} className="h-full w-full object-cover" />
+                              <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1 py-0.5 text-center text-[10px] leading-3 text-white">
+                                {asset.role === 'style_reference' || asset.id === templateAssetId ? '风格图' : asset.role === 'site_photo' ? '现场图' : '补充参考'}
+                              </span>
                               <button type="button" aria-label={`删除第 ${index + 1} 张参考图`} className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-[#414148] text-white" onClick={() => {
                                 if (asset.id === templateAssetId) setTemplateAssetId('');
                                 setAssets((current) => current.filter((item) => item.id !== asset.id));
@@ -1328,13 +1464,32 @@ export function WorkbenchWorkspace() {
                     <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" multiple className="hidden" onChange={(event) => { if (event.target.files) void uploadReferenceFiles(Array.from(event.target.files)); event.target.value = ''; }} />
                   </div>
                   <div className="relative flex h-full min-h-0 flex-col pt-0.5 [&_.ant-input]:!h-full [&_.ant-input]:!min-h-0 [&_textarea]:!h-full [&_textarea]:!min-h-0">
-                    {selectedTemplate ? <div className={cn('mb-1 flex shrink-0 items-center gap-2 text-[11px]', dark ? 'text-[#9f8cff]' : 'text-[#166534]')}><PanelsTopLeft className="size-3" /><span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span><button type="button" onClick={() => {
-                      setSelectedTemplate(null);
-                      if (templateAssetId) {
-                        setAssets((current) => current.filter((item) => item.id !== templateAssetId));
-                        setTemplateAssetId('');
-                      }
-                    }} title="取消模板"><X className="size-3" /></button></div> : null}
+                    {selectedTemplate || renderMode === 'single_room_photo' ? (
+                      <div className="mb-1 flex min-w-0 shrink-0 items-center gap-2 text-[11px]">
+                        {selectedTemplate ? (
+                          <div className={cn('flex min-w-0 items-center gap-2', dark ? 'text-[#9f8cff]' : 'text-[#166534]')}>
+                            <PanelsTopLeft className="size-3 shrink-0" />
+                            <span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span>
+                            <button type="button" onClick={() => {
+                              setSelectedTemplate(null);
+                              if (templateAssetId) {
+                                setAssets((current) => current.filter((item) => item.id !== templateAssetId));
+                                setTemplateAssetId('');
+                              }
+                            }} title="取消模板"><X className="size-3" /></button>
+                          </div>
+                        ) : null}
+                        {renderMode === 'single_room_photo' ? (
+                          <button
+                            type="button"
+                            onClick={openLeadSitePhotos}
+                            className={cn('ml-auto flex shrink-0 items-center gap-1 rounded-md px-2 py-1 font-medium', dark ? 'bg-white/[0.07] text-[#d7d7dc] hover:bg-white/10 hover:text-white' : 'bg-[#e8f6ea] text-[#166534] hover:bg-[#d8f0dc]')}
+                          >
+                            <Images className="size-3" />客户现场图
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <Input.TextArea
                       value={prompt}
                       onChange={(event) => setPrompt(event.target.value)}
@@ -1353,7 +1508,23 @@ export function WorkbenchWorkspace() {
                   <button type="button" onClick={() => setPromptExpanded(true)} title="全屏编辑提示词" className={cn('flex size-[30px] items-center justify-center rounded-full', t.muted)}><Maximize2 className="size-4" /></button>
                 </div>
                 <div className="flex min-w-0 flex-wrap items-center gap-2 lg:flex-nowrap">
-                  {hasBoundFloorPlan ? (
+                  <Select
+                    value={renderMode}
+                    onChange={(value) => handleRenderModeChange(value as WorkbenchRenderMode)}
+                    aria-label="出图模式"
+                    optionLabelProp="label"
+                    className={cn('h-10 min-w-0 flex-1 basis-[150px] sm:max-w-[190px]', t.selectTrigger)}
+                    classNames={{ popup: { root: t.selectPopup } }}
+                    options={[
+                      { value: 'whole_floor_plan', label: '整屋户型', title: '整屋户型', desc: '锁定户型结构' },
+                      { value: 'single_room_photo', label: '单间现场', title: '单间现场', desc: '现场图决定镜头' },
+                    ].map((item) => ({ ...item, label: <span className="flex items-center gap-1.5"><Home className={cn('size-4', t.accent)} />{item.label}</span> }))}
+                    suffixIcon={<Columns2 className={cn('size-4', t.accent)} />}
+                  />
+                  <span className={cn('hidden shrink-0 text-[11px] leading-4 xl:inline', t.muted)}>
+                    {renderMode === 'single_room_photo' ? '现场图优先，不上传户型控制图' : '户型控制图锁定空间结构'}
+                  </span>
+                  {hasBoundFloorPlan && renderMode === 'whole_floor_plan' ? (
                   <Select
                     value={scopeSelection}
                     onChange={setScopeSelection}
@@ -1361,7 +1532,7 @@ export function WorkbenchWorkspace() {
                     aria-label="应用到哪里"
                     optionLabelProp="title"
                     className={cn('h-10 min-w-0 flex-1 basis-[132px] sm:max-w-[168px]', t.selectTrigger)}
-                    popupClassName={t.selectPopup}
+                    classNames={{ popup: { root: t.selectPopup } }}
                     options={scopeOptions}
                     suffixIcon={<Home className={cn('size-4', t.accent)} />}
                     popupRender={(menu) => (
@@ -1379,7 +1550,7 @@ export function WorkbenchWorkspace() {
                     onChange={(value) => { setModelProfileId(value); applyModelDefaults(bootstrap.models.find((item) => item.id === value)); }}
                     placeholder="选择模型"
                     className={cn('h-10 min-w-0 flex-1 basis-[132px] sm:max-w-[168px]', t.selectTrigger)}
-                    popupClassName={t.selectPopup}
+                    classNames={{ popup: { root: t.selectPopup } }}
                     options={bootstrap.models.map((item) => ({ value: item.id, label: item.name }))}
                     suffixIcon={<Bot className={cn('size-4', t.accent)} />}
                   />
@@ -1387,7 +1558,7 @@ export function WorkbenchWorkspace() {
                     value={String(count)}
                     onChange={(value) => setCount(Number(value))}
                     className={cn('h-10 w-[88px] shrink-0', t.selectTrigger)}
-                    popupClassName={t.selectPopup}
+                    classNames={{ popup: { root: t.selectPopup } }}
                     options={[1, 2, 3, 4].map((value) => ({ value: String(value), label: `${value}张` }))}
                     suffixIcon={<Images className="size-4" />}
                   />
@@ -1396,7 +1567,7 @@ export function WorkbenchWorkspace() {
                       value={aspectRatio}
                       onChange={setAspectRatio}
                       className={cn('h-10 w-[88px] shrink-0', t.selectTrigger)}
-                      popupClassName={t.selectPopup}
+                      classNames={{ popup: { root: t.selectPopup } }}
                       options={availableAspectRatios.map((item) => ({ value: item, label: item === 'auto' ? '自动比例' : item }))}
                       suffixIcon={<Crop className="size-4" />}
                     />
@@ -1412,7 +1583,7 @@ export function WorkbenchWorkspace() {
                       }
                     }}
                     className={cn('h-10 w-[88px] shrink-0', t.selectTrigger)}
-                    popupClassName={t.selectPopup}
+                    classNames={{ popup: { root: t.selectPopup } }}
                     options={(model?.resolutionTiers || []).map((item) => ({ value: item, label: item === 'CUSTOM' ? '自定义' : item }))}
                     suffixIcon={<Maximize2 className="size-4" />}
                   />
@@ -1441,8 +1612,83 @@ export function WorkbenchWorkspace() {
       </div>
 
       <TemplateLibraryDialog open={templateOpen} onOpenChange={setTemplateOpen} selectedTemplateId={selectedTemplate?.id} onSelect={applyTemplate} />
+      <Modal
+        open={sitePhotoOpen}
+        onCancel={() => setSitePhotoOpen(false)}
+        title="选择客户现场图"
+        width={820}
+        className={t.modal}
+        footer={(
+          <div className="flex items-center justify-between gap-4">
+            <span className={cn('text-xs', t.muted)}>
+              已选 {selectedSitePhotoAssetIds.length}/{sitePhotoSelectionLimit} 张 · 现场图将决定生成视角
+            </span>
+            <div className="flex gap-2">
+              <Button onClick={() => setSitePhotoOpen(false)}>取消</Button>
+              <Button type="primary" className={t.primaryBtn} disabled={sitePhotosLoading || Boolean(sitePhotosError)} onClick={applyLeadSitePhotos}>
+                使用所选现场图
+              </Button>
+            </div>
+          </div>
+        )}
+      >
+        <p className={cn('mb-4 text-sm leading-6', t.muted)}>
+          来自当前客户档案。单间现场模式不会上传户型控制图，所选现场图负责镜头位置、方向、透视和构图。
+        </p>
+        {sitePhotosLoading ? (
+          <div className={cn('flex h-52 items-center justify-center gap-2 rounded-xl', dark ? 'bg-white/[0.04] text-[#b3b3b3]' : 'bg-[#f6f8f6] text-[#526052]')}>
+            <Loader2 className="size-5 animate-spin" />正在读取客户现场图
+          </div>
+        ) : sitePhotosError ? (
+          <div className={cn('flex h-52 flex-col items-center justify-center gap-3 rounded-xl px-6 text-center', dark ? 'bg-red-500/10 text-red-200' : 'bg-red-50 text-red-700')}>
+            <span>{sitePhotosError}</span>
+            <Button onClick={() => void loadLeadSitePhotos()}>重新加载</Button>
+          </div>
+        ) : sitePhotos.length ? (
+          <div className="grid max-h-[480px] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 lg:grid-cols-4">
+            {sitePhotos.map((photo) => {
+              const selected = selectedSitePhotoAssetIds.includes(photo.assetId);
+              const disabled = !selected && selectedSitePhotoAssetIds.length >= sitePhotoSelectionLimit;
+              return (
+                <button
+                  key={photo.id}
+                  type="button"
+                  aria-pressed={selected}
+                  disabled={disabled}
+                  onClick={() => toggleLeadSitePhoto(photo.assetId)}
+                  className={cn(
+                    'group relative overflow-hidden rounded-xl border text-left transition disabled:cursor-not-allowed disabled:opacity-45',
+                    selected
+                      ? dark ? 'border-[#8b72ff] bg-[#7047ff]/10' : 'border-[#16a34a] bg-[#e8f6ea]'
+                      : dark ? 'border-white/10 bg-white/[0.035] hover:border-white/25' : 'border-[#e5e9e5] bg-white hover:border-[#9bd4a5]',
+                  )}
+                >
+                  <div className={cn('aspect-[4/3] overflow-hidden', dark ? 'bg-[#111216]' : 'bg-[#eef3ee]')}>
+                    <img src={photo.previewUrl} alt={`${photo.spaceTagLabel}现场图`} loading="lazy" className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
+                  </div>
+                  <div className="flex min-w-0 items-center justify-between gap-2 px-3 py-2.5">
+                    <span className="truncate text-sm font-medium">{photo.spaceTagLabel}</span>
+                    {photo.width && photo.height ? <span className={cn('shrink-0 text-[10px]', t.muted)}>{photo.width}×{photo.height}</span> : null}
+                  </div>
+                  {selected ? (
+                    <span className={cn('absolute right-2 top-2 flex size-6 items-center justify-center rounded-full text-white shadow-sm', dark ? 'bg-[#7047ff]' : 'bg-[#16a34a]')}>
+                      <Check className="size-4" />
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className={cn('flex h-52 flex-col items-center justify-center rounded-xl px-6 text-center', dark ? 'bg-white/[0.04]' : 'bg-[#f6f8f6]')}>
+            <Images className={cn('mb-3 size-7', t.muted)} />
+            <p className="text-sm font-medium">该客户还没有房屋现场图</p>
+            <p className={cn('mt-1 text-xs', t.muted)}>可先使用工作台左侧上传按钮临时添加参考图。</p>
+          </div>
+        )}
+      </Modal>
       <ImageEditorDialog imageUrl={editorGeneration?.imageUrl} open={Boolean(editorGeneration)} onOpenChange={(open) => !open && setEditorGeneration(null)} onUse={async (file, extraPrompt) => {
-        const added = await uploadReferenceFiles([file], '已使用标注图片');
+        const added = await uploadReferenceFiles([file], '已使用标注图片', 'additional_reference');
         if (added && extraPrompt) setPrompt((current) => current.trim() ? `${current.trim()}\n${extraPrompt}` : extraPrompt);
       }} />
 
@@ -1565,7 +1811,7 @@ export function WorkbenchWorkspace() {
               onChange={setCreateFloorPlanId}
               placeholder="选择户型"
               className={cn('w-full', t.selectTrigger)}
-              popupClassName={t.selectPopup}
+              classNames={{ popup: { root: t.selectPopup } }}
               options={eligibleFloorPlans.map((plan) => ({ value: plan.id, label: plan.name || '正式户型' }))}
             />
           </>

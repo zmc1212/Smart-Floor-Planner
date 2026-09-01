@@ -1,5 +1,8 @@
 const FORMAL_DRAFT_KEY = 'surveying_draft_v1';
 const FORMAL_SERVER_DRAFT_ID_KEY = 'surveying_floorplan_id';
+const OPEN_SURVEY_RESET_MS = 800;
+
+let openingSurveyEditor = false;
 
 async function ensureOnSiteVisit(leadId) {
   const id = String(leadId || '').trim();
@@ -14,6 +17,8 @@ async function ensureOnSiteVisit(leadId) {
 }
 
 async function openSurveyingEditor(options) {
+  if (openingSurveyEditor) return false;
+
   const opts = options || {};
   const app = getApp();
   const signedContext = app && app.globalData && (app.globalData.bootstrap || app.globalData.userInfo);
@@ -26,32 +31,47 @@ async function openSurveyingEditor(options) {
       return false;
     }
   }
-  if (opts.leadId) {
-    await ensureOnSiteVisit(opts.leadId);
+
+  openingSurveyEditor = true;
+  try {
+    if (opts.leadId) {
+      await ensureOnSiteVisit(opts.leadId);
+    }
+    const startNewSurvey = !!opts.startNewSurvey;
+    const newSurveyKey = startNewSurvey
+      ? (opts.newSurveyKey || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
+      : '';
+    app.globalData.surveyingEditorContext = {
+      leadId: opts.leadId || '',
+      leadName: opts.leadName || '',
+      communityName: opts.communityName || '',
+      floorPlanId: opts.floorPlanId || '',
+      startNewSurvey,
+      newSurveyKey
+    };
+    const query = [];
+    if (opts.leadId) query.push(`leadId=${encodeURIComponent(opts.leadId)}`);
+    if (opts.floorPlanId) query.push(`floorPlanId=${encodeURIComponent(opts.floorPlanId)}`);
+    if (startNewSurvey) {
+      query.push('newSurvey=1');
+      query.push(`newSurveyKey=${encodeURIComponent(newSurveyKey)}`);
+    }
+    wx.navigateTo({
+      url: `/packages/surveying/editor/surveying-editor${query.length ? `?${query.join('&')}` : ''}`,
+      fail: () => {
+        openingSurveyEditor = false;
+      },
+      complete: () => {
+        setTimeout(() => {
+          openingSurveyEditor = false;
+        }, OPEN_SURVEY_RESET_MS);
+      }
+    });
+    return true;
+  } catch (error) {
+    openingSurveyEditor = false;
+    return false;
   }
-  const startNewSurvey = !!opts.startNewSurvey;
-  const newSurveyKey = startNewSurvey
-    ? (opts.newSurveyKey || `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`)
-    : '';
-  app.globalData.surveyingEditorContext = {
-    leadId: opts.leadId || '',
-    leadName: opts.leadName || '',
-    communityName: opts.communityName || '',
-    floorPlanId: opts.floorPlanId || '',
-    startNewSurvey,
-    newSurveyKey
-  };
-  const query = [];
-  if (opts.leadId) query.push(`leadId=${encodeURIComponent(opts.leadId)}`);
-  if (opts.floorPlanId) query.push(`floorPlanId=${encodeURIComponent(opts.floorPlanId)}`);
-  if (startNewSurvey) {
-    query.push('newSurvey=1');
-    query.push(`newSurveyKey=${encodeURIComponent(newSurveyKey)}`);
-  }
-  wx.navigateTo({
-    url: `/packages/surveying/editor/surveying-editor${query.length ? `?${query.join('&')}` : ''}`
-  });
-  return true;
 }
 
 function clearSurveyingEditorDraft(leadId, floorPlanId) {

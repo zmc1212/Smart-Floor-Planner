@@ -8,6 +8,10 @@ const editorDir = path.join(miniRoot, 'packages', 'surveying', 'editor');
 const editorScript = fs.readFileSync(path.join(editorDir, 'surveying-editor.js'), 'utf8');
 const editorWxml = fs.readFileSync(path.join(editorDir, 'surveying-editor.wxml'), 'utf8');
 const editorWxss = fs.readFileSync(path.join(editorDir, 'surveying-editor.less'), 'utf8');
+const canvasRendererScript = fs.readFileSync(
+  path.join(miniRoot, 'packages', 'surveying', 'utils', 'surveyCanvasRenderer.js'),
+  'utf8'
+);
 const navigationScript = fs.readFileSync(path.join(miniRoot, 'utils', 'surveyNavigation.js'), 'utf8');
 const planRoute = fs.readFileSync(
   path.join(miniRoot, '..', 'admin', 'src', 'app', 'api', 'floorplans', '[id]', 'route.ts'),
@@ -65,6 +69,13 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.doesNotMatch(editorWxss, /\.survey-guide-overlay\s*\{/);
   assert.doesNotMatch(editorWxss, /\.cursor-drag-lens-layer\s*\{/);
   assert.match(editorScript, /ctx\.fillText\(line, card\.left \+ 16/);
+});
+
+test('formal surveying defaults to BLE direction input with guide mode off', () => {
+  assert.match(editorScript, /bleInputMode:\s*true/);
+  assert.match(editorScript, /this\.bleInputMode = true;/);
+  assert.match(editorScript, /typeof stored === 'undefined' \? false : stored !== false/);
+  assert.match(editorScript, /catch \(err\) \{\s*return false;/);
 });
 
 test('contextual guide uses three transparent Xiao K pointing poses', () => {
@@ -139,7 +150,9 @@ test('cursor magnifier uses one Canvas panel instead of a second native cover la
   assert.doesNotMatch(editorWxml, /cursor-lens/);
   assert.doesNotMatch(editorWxss, /\.cursor-lens/);
   assert.match(editorScript, /this\.cursorLensMeta = \{[\s\S]*coordinateLabel:/);
-  assert.match(editorScript, /const CURSOR_LENS_SIZE_PX = 120/);
+  assert.match(editorScript, /const CURSOR_LENS_SIZE_PX = 132/);
+  assert.doesNotMatch(canvasRendererScript, /fillText\(meta\.snapLabel/);
+  assert.doesNotMatch(canvasRendererScript, /fillText\(meta\.coordinateLabel/);
 });
 
 test('cursor magnifier blits a formal crop without the canvas reticle and overlays a small crosshair', () => {
@@ -187,17 +200,21 @@ test('dock cursor drag aims upper-left of the finger; wall drag uses sticky grab
   assert.doesNotMatch(editorScript, /startPreview\(this\.draft, toAimClientPoint/);
 });
 
-test('formal surveying fixed chrome follows the compact high-fidelity reference geometry', () => {
-  assert.match(editorWxss, /\.survey-topbar\s*\{[\s\S]*height:\s*160rpx;/);
-  assert.match(editorWxss, /\.topbar-right\s*\{[\s\S]*top:\s*94rpx;[\s\S]*right:\s*28rpx;/);
+test('formal surveying fixed chrome leaves room for the full navigation control', () => {
+  assert.match(editorWxss, /\.survey-topbar\s*\{[\s\S]*height:\s*190rpx;/);
+  assert.match(editorScript, /const headerBottom = \(sysInfo\.statusBarHeight \|\| 0\) \+ 190 \* rpxScale;/);
+  assert.match(editorWxss, /\.topbar-right\s*\{[\s\S]*top:\s*94rpx;[\s\S]*left:\s*28rpx;[\s\S]*right:\s*28rpx;[\s\S]*justify-content:\s*flex-start;/);
   assert.match(editorWxss, /\.right-rail\s*\{[\s\S]*right:\s*34rpx;[\s\S]*width:\s*88rpx;/);
   assert.match(editorWxss, /\.history-action-bar\.bottom-control-dock\s*\{[\s\S]*width:\s*575rpx;[\s\S]*height:\s*108rpx;/);
-  assert.match(editorWxml, /测距\{\{bleConnected \? ' · 已连接' : ''\}\}/);
+  assert.match(editorWxml, /测距\{\{bleConnected \? ' · 已连接' : ' · 未连接'\}\}/);
   assert.match(editorWxml, /wx:if="\{\{bleConnected\}\}" class="dock-status-dot"/);
   assert.match(editorWxss, /\.dock-status-dot\s*\{[\s\S]*?margin-left:\s*12rpx;/);
   assert.match(editorScript, /rect\.width \/ 390/);
   assert.match(editorWxml, /class="page-subtitle-text"/);
-  assert.match(editorWxss, /\.topbar-right \.topbar-chip \+ \.topbar-chip\s*\{[\s\S]*margin-left:\s*20rpx;/);
+  assert.match(editorWxml, /class="topbar-actions-right"/);
+  assert.match(editorWxss, /\.topbar-actions-right\s*\{[\s\S]*flex:\s*1 1 0;[\s\S]*margin-left:\s*16rpx;/);
+  assert.match(editorWxss, /\.topbar-actions-right \.topbar-chip\s*\{[\s\S]*flex:\s*1 1 0;[\s\S]*min-width:\s*0;[\s\S]*white-space:\s*nowrap;/);
+  assert.match(editorWxss, /\.topbar-actions-right \.topbar-chip \+ \.topbar-chip\s*\{[\s\S]*margin-left:\s*12rpx;/);
   assert.match(editorScript, /title:\s*'小K提示'/);
   assert.match(editorScript, /tailHalfWidth = 8 \* scale/);
   assert.match(editorScript, /stroking only the two sides/);

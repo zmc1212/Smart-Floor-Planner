@@ -12,6 +12,13 @@ context rail and its continue-wall workflow action. Their orange, white, green,
 and danger-red 48px PNG derivatives preserve the approved selected-opening
 hierarchy without runtime filters.
 
+`navigation-measure.png` is a project-owned, independently generated transparent
+PNG based on the user-approved phone-orientation metaphor. It was not cropped or
+sliced from the reference UI. The retained ImageGen source is
+`design-references/surveying/navigation-measure-v1/navigation-measure-source.png`;
+the packaged 128px derivative is
+`miniprogram/packages/surveying/assets/icons/navigation-measure.png`.
+
 `bluetooth.svg`, `circle-check.svg`, `crosshair.svg`, `refresh-cw.svg`,
 `guide-help.svg`, and `save-draft.svg` are adapted from Lucide Icons v1.8.0.
 They are rendered as transparent PNG files in

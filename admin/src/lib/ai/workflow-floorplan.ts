@@ -7,6 +7,10 @@ import {
   type SurveyWall,
 } from '@/lib/survey-graph';
 import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
+import {
+  DEFAULT_FLOOR_PLAN_CONSTRAINT_PROMPT,
+  composeFloorPlanConstrainedPrompt,
+} from '@/lib/ai/floor-plan-constraint-prompt';
 
 type WorkflowFloorPlanCandidate = {
   status?: unknown;
@@ -106,7 +110,7 @@ function wallLengthMm(wall: SurveyWall, nodes: Map<string, SurveyNode>) {
   return start && end ? Math.round(Math.hypot(end.xMm - start.xMm, end.yMm - start.yMm)) : 0;
 }
 
-export function buildWorkflowFloorPlanContext(layoutData: unknown) {
+export function buildWorkflowFloorPlanMeasuredContext(layoutData: unknown) {
   const layout = parseFormalSurveyLayout(layoutData);
   const floor = layout ? getActiveSurveyFloor(layout) : null;
   if (!floor) throw new Error('正式户型缺少可用楼层');
@@ -140,8 +144,18 @@ export function buildWorkflowFloorPlanContext(layoutData: unknown) {
     `Formal measured floor-plan constraints (read-only; coordinates and dimensions are millimetres): ${rooms.length} closed rooms. ${roomSummary}.`,
     `Wall topology (${walls.length} walls): ${wallSchedule}.`,
     openings.length ? `Opening schedule (${openings.length} openings): ${openingSchedule}.` : 'Opening schedule: no measured openings.',
-    'Use the supplied control image as the authoritative plan. Preserve the exact outer boundary, wall topology, room adjacency, door and window positions, and circulation. Do not invent, remove, or move structural elements.',
   ].join(' ');
+}
+
+export function buildWorkflowFloorPlanContext(
+  layoutData: unknown,
+  constraintPrompt = DEFAULT_FLOOR_PLAN_CONSTRAINT_PROMPT,
+) {
+  return composeFloorPlanConstrainedPrompt({
+    constraintPrompt,
+    measuredContext: buildWorkflowFloorPlanMeasuredContext(layoutData),
+    userPrompt: '',
+  });
 }
 
 export function usesFloorPlanControlImage(stageKey?: string | null) {

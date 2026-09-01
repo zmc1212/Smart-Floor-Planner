@@ -193,9 +193,9 @@ test('lead detail keeps every measurement action on the formal surveying entry',
   assert.match(source, /floorPlanId: plan && plan\._id/);
   assert.match(source, /startNewSurvey: true/);
   assert.match(source, /api\.request\(`\/floorplans\/\$\{plan\._id\}`, 'DELETE'\)/);
-  assert.match(wxml, /bindtap="onStartMeasure"/);
-  assert.match(wxml, /bindtap="onStartNewMeasure"/);
-  assert.match(wxml, /bindtap="onContinueMeasure"/);
-  assert.match(wxml, /bindtap="onDeleteMeasure"/);
+  assert.match(wxml, /catchtap="onStartMeasure"/);
+  assert.match(wxml, /catchtap="onStartNewMeasure"/);
+  assert.match(wxml, /catchtap="onContinueMeasure"/);
+  assert.match(wxml, /catchtap="onDeleteMeasure"/);
   assert.doesNotMatch(source + wxml, /pages\/editor\/editor|restoreFloorPlan/);
 });

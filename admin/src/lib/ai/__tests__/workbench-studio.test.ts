@@ -74,6 +74,17 @@ test('workbench floor-plan preview path crops a selected closed room', () => {
   assert.equal(workbenchFloorPlanPreviewPath('42', '   '), '/api/ai/workflows/42/floor-plan-preview?v=3');
 });
 
+test('workbench floor-plan preview path busts browser cache when the snapshot changes', () => {
+  assert.equal(
+    workbenchFloorPlanPreviewPath('42', undefined, 'asset-108'),
+    '/api/ai/workflows/42/floor-plan-preview?v=3&fp=asset-108',
+  );
+  assert.equal(
+    workbenchFloorPlanPreviewPath('42', 'bedroom', 'asset-108'),
+    '/api/ai/workflows/42/floor-plan-preview?v=3&roomId=bedroom&fp=asset-108',
+  );
+});
+
 test('composer control preview follows the apply-to scope so the room crop is the visible reference', () => {
   assert.equal(WORKBENCH_WHOLE_FLOOR_SCOPE_KEY, 'whole_floor_plan');
   assert.equal(
@@ -83,5 +94,9 @@ test('composer control preview follows the apply-to scope so the room crop is th
   assert.equal(
     workbenchComposerControlPreviewUrl('42', 'bedroom'),
     '/api/ai/workflows/42/floor-plan-preview?v=3&roomId=bedroom',
+  );
+  assert.equal(
+    workbenchComposerControlPreviewUrl('42', 'bedroom', 'asset-108'),
+    '/api/ai/workflows/42/floor-plan-preview?v=3&roomId=bedroom&fp=asset-108',
   );
 });

@@ -85,6 +85,15 @@ test('measurement API maps idempotent creation to 201/200 and a deduplication fl
   assert.match(route, /status: creation\.created \? 201 : 200/);
 });
 
+test('measurement API authorizes the linked lead collaborators', () => {
+  const route = fs.readFileSync(
+    path.resolve(__dirname, '../../app/api/measurements/route.ts'),
+    'utf8'
+  );
+  assert.match(route, /findByFloorPlanId\(floorPlan\.id\)/);
+  assert.match(route, /canRecordMiniProgramFloorPlanMeasurement\(/);
+});
+
 test('audit migration is nullable, partial-unique and leaves historical rows untouched', () => {
   const migration = fs.readFileSync(
     path.resolve(__dirname, '../../../drizzle/0050_measurement_audit_idempotency.sql'),

@@ -33,11 +33,14 @@ App({
     roleLandingRestoreRetries: 0,
     deepLinkRedirecting: false,
     launchOptions: null,
-    pendingLeadReferrerFilter: null
+    pendingLeadReferrerFilter: null,
+    updateState: 'idle',
+    updateManager: null
   },
   onLaunch(options) {
     console.log('智能量房大师小程序启动', options);
     this.globalData.launchOptions = options || {};
+    this.initUpdateManager();
     this.handleReferral(options);
     
     // 1. Restore session from storage (Priority: Token)
@@ -77,6 +80,70 @@ App({
     this.trySilentBluetoothReconnect();
   },
 
+  initUpdateManager() {
+    if (this._updateManagerInitialized) return this.globalData.updateManager;
+    this._updateManagerInitialized = true;
+    if (
+      typeof wx === 'undefined'
+      || typeof wx.getUpdateManager !== 'function'
+      || (typeof wx.canIUse === 'function' && !wx.canIUse('getUpdateManager'))
+    ) {
+      this.globalData.updateState = 'unsupported';
+      return null;
+    }
+    const updateManager = wx.getUpdateManager();
+    this.globalData.updateManager = updateManager;
+    this.globalData.updateState = 'checking';
+
+    updateManager.onCheckForUpdate((res) => {
+      this.globalData.updateState = res && res.hasUpdate ? 'downloading' : 'latest';
+      this.globalData.updateHasUpdate = !!(res && res.hasUpdate);
+      this.syncUpdateStateToCurrentPage();
+    });
+    updateManager.onUpdateReady(() => {
+      this.globalData.updateState = 'ready';
+      this.syncUpdateStateToCurrentPage();
+      this.promptUpdateRestart();
+    });
+    updateManager.onUpdateFailed(() => {
+      this.globalData.updateState = 'failed';
+      this.syncUpdateStateToCurrentPage();
+    });
+    return updateManager;
+  },
+
+  promptUpdateRestart() {
+    if (this._updatePromptVisible || typeof wx === 'undefined' || typeof wx.showModal !== 'function') return;
+    const updateManager = this.globalData.updateManager;
+    if (!updateManager || typeof updateManager.applyUpdate !== 'function') return;
+    this._updatePromptVisible = true;
+    wx.showModal({
+      title: '版本更新',
+      content: '新版本已准备好，请重启小程序后使用。',
+      confirmText: '立即重启',
+      cancelText: '稍后再说',
+      success: (res) => {
+        this._updatePromptVisible = false;
+        if (res && res.confirm) updateManager.applyUpdate();
+      },
+      fail: () => {
+        this._updatePromptVisible = false;
+      }
+    });
+  },
+
+  getUpdateState() {
+    return this.globalData.updateState || 'idle';
+  },
+
+  syncUpdateStateToCurrentPage() {
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    const currentPage = pages.length ? pages[pages.length - 1] : null;
+    if (currentPage && typeof currentPage.syncUpdateStatus === 'function') {
+      currentPage.syncUpdateStatus();
+    }
+  },
+
   trySilentBluetoothReconnect() {
     if (this.globalData.bleConnected) return;
     if (!(this.globalData.token || this.globalData.openid)) return;
@@ -108,6 +175,9 @@ App({
     const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
     if (!pages.length) return;
     const currentPage = pages[pages.length - 1];
+    if (typeof currentPage.updateBleConnected === 'function') {
+      currentPage.updateBleConnected(!!success);
+    }
     if (success) {
       if (typeof currentPage.onBLESuccess === 'function') currentPage.onBLESuccess();
       if (typeof currentPage.syncBleConnectionState === 'function') {

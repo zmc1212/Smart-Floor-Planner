@@ -197,6 +197,45 @@ function resolveViewportOffsetForAnchor(rect, canvasPoint, mmPoint, scale, rotat
   };
 }
 
+// Center the visible survey content after a view rotation. Points are supplied
+// in millimetres and projected with the candidate rotation, so the result is
+// independent of the previous pan position.
+function resolveViewportOffsetForContentCenter(rect, points, viewport, nextRotationRad) {
+  const box = resolveRect(rect);
+  const vp = resolveViewport(viewport);
+  const next = Number(nextRotationRad);
+  const rotationRad = Number.isFinite(next) ? next : vp.rotationRad;
+  const scale = Number(vp.scale) || surveyGraph.DEFAULT_SCALE;
+  const validPoints = (Array.isArray(points) ? points : []).filter((point) => (
+    point && Number.isFinite(Number(point.xMm)) && Number.isFinite(Number(point.yMm))
+  ));
+  if (!validPoints.length || !box.width || !box.height) {
+    return Object.assign({}, vp, { rotationRad });
+  }
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  validPoints.forEach((point) => {
+    const projected = rotateVector(
+      Number(point.xMm) * scale,
+      Number(point.yMm) * scale,
+      rotationRad
+    );
+    minX = Math.min(minX, projected.x);
+    maxX = Math.max(maxX, projected.x);
+    minY = Math.min(minY, projected.y);
+    maxY = Math.max(maxY, projected.y);
+  });
+
+  return Object.assign({}, vp, {
+    rotationRad,
+    offsetX: -(minX + maxX) / 2,
+    offsetY: -(minY + maxY) / 2
+  });
+}
+
 function getVisualThicknessPx(thicknessMm, scale) {
   // Wall faces, outer-edge snap points, cursor axes, and closure geometry all
   // describe the same millimetre coordinates. Keep the visible wall thickness
@@ -1379,6 +1418,7 @@ function createSurveyRenderScene(input) {
     openings,
     previewWall,
     dimensions,
+    bleDirectionScene: input.bleDirectionScene || null,
     activeMeasurementWallIds: walls
       .filter((wall) => wall.isActiveMeasurement)
       .map((wall) => wall.id),
@@ -2492,6 +2532,10 @@ function createViewportInteractionScene(scene, viewport) {
       plans[key] = projectInteractionSolidPlan(scene.wallSolidPlans[key], transform);
       return plans;
     }, {}),
+    cursor: scene.cursor ? Object.assign({}, scene.cursor, {
+      point: projectInteractionPoint(scene.cursor.point, transform),
+      guidePoint: projectInteractionPoint(scene.cursor.guidePoint, transform)
+    }) : scene.cursor,
     openings: (scene.openings || []).map((opening) => {
       const projected = Object.assign({}, opening, {
         wall: opening.wall && projectedWallsById[opening.wall.id],
@@ -2556,8 +2600,13 @@ function drawSurveyInteractionScene(ctx, scene, options) {
   drawClosedSpaceFills(ctx, interactionScene);
   drawWallBodies(ctx, interactionScene);
   drawWallOutlines(ctx, interactionScene);
+  drawBleDirectionSceneGuides(ctx, interactionScene);
   drawRedlines(ctx, interactionScene);
   drawOpenings(ctx, interactionScene);
+  // Keep the reticle visible while the viewport moves. Its position follows
+  // the same gesture transform as the walls, while the glyph stays a stable
+  // screen size so operators retain a clear zoom reference.
+  drawCursor(ctx, interactionScene);
 }
 
 function clearDraggingCursor(ctx, rect, options) {
@@ -2668,6 +2717,152 @@ function getCloseActionSprite(radius) {
   }
 }
 
+function drawBleDirectionArrows(ctx, anchorScreen, directionControls) {
+  if (!ctx || !anchorScreen || !Array.isArray(directionControls) || !directionControls.length) {
+    return;
+  }
+
+  const selectedControls = directionControls.filter((control) => control && control.selected);
+  const visibleControls = selectedControls.length ? selectedControls : directionControls;
+
+  visibleControls.forEach((control) => {
+    if (!control || !Number.isFinite(control.tipX) || !Number.isFinite(control.tipY)) return;
+
+    const selected = !!control.selected;
+    const dx = control.tipX - anchorScreen.x;
+    const dy = control.tipY - anchorScreen.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (!length) return;
+
+    const ux = dx / length;
+    const uy = dy / length;
+    const depth = selected ? 14 : 22;
+    const halfWidth = selected ? 7 : 13;
+    const baseX = control.tipX - ux * depth;
+    const baseY = control.tipY - uy * depth;
+    const normalX = -uy;
+    const normalY = ux;
+    const fill = selected ? 'rgba(22, 119, 255, 0.92)' : 'rgba(111, 215, 123, 0.42)';
+    const stroke = selected ? 'rgba(22, 119, 255, 1)' : 'rgba(22, 163, 74, 0.72)';
+
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(control.tipX, control.tipY);
+    ctx.lineTo(
+      baseX + normalX * halfWidth,
+      baseY + normalY * halfWidth
+    );
+    ctx.lineTo(
+      baseX - normalX * halfWidth,
+      baseY - normalY * halfWidth
+    );
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = selected ? 1.25 : 1.5;
+    ctx.stroke();
+
+    ctx.restore();
+  });
+}
+
+const BLE_ARROW_SCREEN_PX = 76;
+
+function drawBleDirectionGuides(ctx, anchorScreen, rect, viewRotationDeg) {
+  if (!ctx || !anchorScreen || !rect || !Number(rect.width) || !Number(rect.height)) return;
+  const rotationRad = ((Number(viewRotationDeg) || 0) * Math.PI) / 180;
+  const cover = Number(rect.width) + Number(rect.height);
+
+  ctx.save();
+  ctx.translate(anchorScreen.x, anchorScreen.y);
+  ctx.rotate(rotationRad);
+  ctx.strokeStyle = BLUE_GUIDE_COLOR;
+  ctx.lineWidth = GUIDE_STROKE_PX;
+  if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
+  ctx.beginPath();
+  ctx.moveTo(-cover, 0);
+  ctx.lineTo(cover, 0);
+  ctx.moveTo(0, -cover);
+  ctx.lineTo(0, cover);
+  ctx.stroke();
+  if (ctx.setLineDash) ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawBleDirectionSceneGuides(ctx, scene) {
+  if (!scene || !scene.bleDirectionScene || !scene.bleDirectionScene.anchorMm) return;
+  const anchorScreen = projectSurveyPoint(
+    scene.bleDirectionScene.anchorMm,
+    scene.viewport,
+    scene.rect
+  );
+  if (!anchorScreen) return;
+  const rotationDeg = (Number(scene.viewport && scene.viewport.rotationRad) || 0) * 180 / Math.PI;
+  drawBleDirectionGuides(ctx, anchorScreen, scene.rect, rotationDeg);
+}
+
+function buildBleDirectionScreenControls(bleDirectionScene, anchorScreen, viewRotationDeg) {
+  if (!bleDirectionScene || !anchorScreen || !Number.isFinite(anchorScreen.x) || !Number.isFinite(anchorScreen.y)) {
+    return [];
+  }
+  const rotation = Number(viewRotationDeg) || 0;
+  const directions = bleDirectionScene.directions || [];
+  const selectedDirections = directions.filter((direction) => direction && direction.selected);
+  return (selectedDirections.length ? selectedDirections : directions).map((direction) => {
+    const rad = ((Number(direction.bearingDeg) + rotation) * Math.PI) / 180;
+    const tipX = anchorScreen.x + Math.cos(rad) * BLE_ARROW_SCREEN_PX;
+    const tipY = anchorScreen.y + Math.sin(rad) * BLE_ARROW_SCREEN_PX;
+    return {
+      key: direction.key,
+      bearingDeg: direction.bearingDeg,
+      anchorX: anchorScreen.x,
+      anchorY: anchorScreen.y,
+      tipX,
+      tipY,
+      cx: tipX,
+      cy: tipY,
+      radius: 28,
+      selected: !!direction.selected
+    };
+  });
+}
+
+function drawBleDirectionScreenOverlay(ctx, bleDirectionScene, anchorScreen, viewRotationDeg) {
+  const controls = buildBleDirectionScreenControls(bleDirectionScene, anchorScreen, viewRotationDeg);
+  if (!controls.length) return;
+  drawBleDirectionArrows(ctx, { x: anchorScreen.x, y: anchorScreen.y }, controls);
+}
+
+function buildBleDirectionControlsFromScene(bleDirectionScene, project) {
+  if (!bleDirectionScene || typeof project !== 'function') return [];
+  const anchor = project(bleDirectionScene.anchorMm);
+  if (!anchor) return [];
+  return (bleDirectionScene.directions || []).map((direction) => {
+    const tip = project(direction.tipPointMm);
+    return {
+      key: direction.key,
+      bearingDeg: direction.bearingDeg,
+      anchorX: anchor.x,
+      anchorY: anchor.y,
+      tipX: tip.x,
+      tipY: tip.y,
+      cx: tip.x,
+      cy: tip.y,
+      radius: 24,
+      selected: !!direction.selected
+    };
+  });
+}
+
+function drawBleDirectionScene(ctx, bleDirectionScene, project) {
+  if (!ctx || !bleDirectionScene || typeof project !== 'function') return;
+  const controls = buildBleDirectionControlsFromScene(bleDirectionScene, project);
+  if (!controls.length) return;
+  drawBleDirectionArrows(ctx, { x: controls[0].anchorX, y: controls[0].anchorY }, controls);
+}
+
 function drawCloseAction(ctx, close) {
   if (!ctx || !close) return;
   const radius = close.radius || 14;
@@ -2712,11 +2907,10 @@ function drawCursorLensScene(ctx, scene, lensRect, meta, options) {
   const top = lensRect.top || 0;
   const size = lensRect.size || (scene && scene.rect && scene.rect.width) || 120;
   const panelPadding = 8;
-  const panelMetaHeight = 44;
   const panelLeft = left - panelPadding;
   const panelTop = top - panelPadding;
   const panelWidth = size + panelPadding * 2;
-  const panelHeight = size + panelPadding * 2 + panelMetaHeight;
+  const panelHeight = size + panelPadding * 2;
   const opts = options || {};
   const source = opts.source;
   const sample = opts.sample;
@@ -2814,17 +3008,8 @@ function drawCursorLensScene(ctx, scene, lensRect, meta, options) {
   ctx.stroke();
   ctx.restore();
 
-  if (!meta) return;
-  const snapY = top + size + 16;
-  const coordY = top + size + 32;
-  ctx.save();
-  ctx.fillStyle = '#374151';
-  ctx.font = '600 10px sans-serif';
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'left';
-  ctx.fillText(meta.snapLabel || '', panelLeft + 10, snapY);
-  ctx.fillText(meta.coordinateLabel || '', panelLeft + 10, coordY);
-  ctx.restore();
+  // Keep this overlay as a pure magnifier. Snap status and coordinates remain
+  // available to placement state but are intentionally not painted here.
 }
 
 /**
@@ -3071,12 +3256,17 @@ function drawSurveyScene(ctx, scene, options) {
   drawDimensions(ctx, scene);
   drawClosedSpaceLabel(ctx, scene);
   drawLockHandles(ctx, scene);
-  drawCursorGuide(ctx, scene);
+  if (scene.bleDirectionScene) {
+    drawBleDirectionSceneGuides(ctx, scene);
+  } else {
+    drawCursorGuide(ctx, scene);
+  }
   drawAlignmentSnapGuide(ctx, scene);
   drawClosureGuide(ctx, scene);
   if (!options || options.omitCursor !== true) {
     drawCursor(ctx, scene);
   }
+  // BLE direction arrows are painted once by the editor overlay pass.
   // The active measuring edge must remain visible above every dashed guide.
   drawRedlines(ctx, scene);
 }
@@ -3161,6 +3351,12 @@ module.exports = {
   drawSurveyInteractionScene,
   drawDraggingCursor,
   drawCloseAction,
+  drawBleDirectionArrows,
+  drawBleDirectionGuides,
+  drawBleDirectionScene,
+  drawBleDirectionScreenOverlay,
+  buildBleDirectionScreenControls,
+  buildBleDirectionControlsFromScene,
   clearDraggingCursor,
   resolveViewport,
   persistSurveyViewport,
@@ -3172,6 +3368,7 @@ module.exports = {
   projectSurveyPoint,
   unprojectSurveyPoint,
   resolveViewportOffsetForAnchor,
+  resolveViewportOffsetForContentCenter,
   resolveViewportInteractionTransform,
   projectInteractionPoint,
   createViewportInteractionScene,

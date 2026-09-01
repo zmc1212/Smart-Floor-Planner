@@ -254,6 +254,35 @@ test('External preview images win and missing floor plans stay explicit', () => 
   assert.equal(empty.segments.length, 0);
 });
 
+test('Referrer branch filter applies once and clears after leaving the Customers tab', () => {
+  const pageJs = fs.readFileSync(
+    path.join(miniRoot, 'pages', 'leads-management', 'leads-management.js'),
+    'utf8'
+  );
+
+  assert.match(
+    pageJs,
+    /if \(pendingMembershipId\) \{[\s\S]*pendingLeadReferrerFilter = null;[\s\S]*leadList\.setReferrerFilter\(/
+  );
+  assert.match(
+    pageJs,
+    /onHide\(\) \{[\s\S]*this\._leftCustomerTab = true;[\s\S]*else if \(this\._leftCustomerTab\) \{[\s\S]*leadList\.hasReferrerFilter\(\)[\s\S]*leadList\.clearReferrerFilter\(\)/
+  );
+  assert.match(
+    componentJs,
+    /setReferrerFilter\(filter\) \{[\s\S]*referrerMembershipId: membershipId,[\s\S]*this\.fetchLeads\(true\);/
+  );
+  assert.match(
+    componentJs,
+    /clearReferrerFilter\(\) \{[\s\S]*referrerMembershipId: '',[\s\S]*referrerFilterLabel: ''[\s\S]*this\.fetchLeads\(true\);/
+  );
+  assert.match(
+    componentJs,
+    /url \+= `&referrerMembershipId=\$\{encodeURIComponent\(this\.data\.referrerMembershipId\)\}`;/
+  );
+  assert.match(componentWxml, /bindtap="clearReferrerFilter"/);
+});
+
 test('Leads list does not background-poll or re-enter pull-to-refresh', () => {
   const pageJs = fs.readFileSync(
     path.join(miniRoot, 'pages', 'leads-management', 'leads-management.js'),
@@ -265,7 +294,7 @@ test('Leads list does not background-poll or re-enter pull-to-refresh', () => {
   assert.match(componentJs, /this\._closingRefresher = true/);
   assert.match(componentJs, /if \(this\._fetching \|\| this\._closingRefresher\) return;/);
   assert.doesNotMatch(componentJs, /this\.setData\(\{ refreshing: true \}\)/);
-  assert.match(pageJs, /if \(this\._listReady\)/);
+  assert.match(pageJs, /if \(!handledList && this\._listReady && leadList\)/);
   assert.match(pageJs, /leadList\.fetchLeads\(true\)/);
   assert.match(pageJs, /onLeadSuccess\(\)[\s\S]*leadList\.onRefresh\(\)/);
 });

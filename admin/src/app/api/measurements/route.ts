@@ -7,9 +7,11 @@ import {
 import {
   DeviceRepository,
   FloorPlanRepository,
+  LeadRepository,
   MeasurementRepository,
 } from '@/db/repositories';
 import { getTenantContext } from '@/lib/auth';
+import { canRecordMiniProgramFloorPlanMeasurement } from '@/lib/floor-plan-access';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { resolveMeasurementAuditInput } from '@/lib/measurement-audit';
 import {
@@ -155,6 +157,9 @@ export async function POST(request: Request) {
           floorPlanId
         );
         if (!floorPlan) throw new Error('FloorPlan not found');
+        const linkedLead = await new LeadRepository(
+          transaction
+        ).findByFloorPlanId(floorPlan.id);
 
         const staffId = context.staff
           ? parsePostgresId(context.staff._id, 'staff id')
@@ -172,16 +177,13 @@ export async function POST(request: Request) {
               'Staff and floor plan belong to different enterprises'
             );
           }
-          if (
-            context.staff.role !== 'enterprise_admin' &&
-            floorPlan.staffId &&
-            floorPlan.staffId !== staffId
-          ) {
-            throw new Error('Floor plan access denied');
-          }
-        } else if (
-          floorPlan.creatorId !==
-          parsePostgresId(context.user._id, 'user id')
+        }
+        if (
+          !canRecordMiniProgramFloorPlanMeasurement(
+            floorPlan,
+            context,
+            linkedLead
+          )
         ) {
           throw new Error('Floor plan access denied');
         }

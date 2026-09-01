@@ -6,7 +6,7 @@ export function buildConversationFallbackPrompt(input: {
   const instruction = input.hasBaselineImage
     ? 'Edit the supplied interior rendering. Keep the same camera, architecture, and furniture layout unless the designer explicitly asks to change them. Apply only the requested design change.'
     : 'Generate a photorealistic interior design rendering from the supplied measured floor-plan control image. Preserve wall topology, room adjacency, openings, and circulation.';
-  return [instruction, input.userMessage.trim(), input.floorPlanContext].filter(Boolean).join('\n\n');
+  return [input.floorPlanContext, instruction, input.userMessage.trim()].filter(Boolean).join('\n\n');
 }
 
 export function conversationPromptExpansionMessages(input: {

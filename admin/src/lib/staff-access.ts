@@ -1,4 +1,5 @@
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
+import { isStaffReferrerRosterRole } from '@/lib/referrer-roster-access';
 import { SystemRoleRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 
@@ -49,6 +50,9 @@ export async function getEffectivePermissions(role: string, _menuPermissions?: s
     const normalized = normalizeMenuPermissions(permissions);
     if (REFERRER_NETWORK_OPERATIONS_ROLES.has(role)) {
       normalized.push('referrer-network-operations');
+    }
+    if (isStaffReferrerRosterRole(role)) {
+      normalized.push('referrers');
     }
     return Array.from(new Set(normalized));
   };

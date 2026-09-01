@@ -200,13 +200,15 @@ function loadStudioLeads(params = {}) {
   }));
 }
 
-function listStudioWorkflows(params = {}) {
+function listStudioWorkflows(params = {}, options = {}) {
   const query = buildQueryString(params);
-  return api.request(`/miniprogram/ai/studio/workflows${query ? `?${query}` : ''}`, 'GET').then((res) => res.data || []);
+  return api.request(`/miniprogram/ai/studio/workflows${query ? `?${query}` : ''}`, 'GET', {}, options)
+    .then((res) => res.data || []);
 }
 
-function getStudioWorkflow(workflowId) {
-  return api.request(`/miniprogram/ai/studio/workflows/${encodeURIComponent(workflowId)}`, 'GET').then((res) => res.data);
+function getStudioWorkflow(workflowId, options = {}) {
+  return api.request(`/miniprogram/ai/studio/workflows/${encodeURIComponent(workflowId)}`, 'GET', {}, options)
+    .then((res) => res.data);
 }
 
 function createStudioWorkflow(payload) {
@@ -231,8 +233,9 @@ function deleteStudioGeneration(workflowId, generationId) {
   ).then((res) => res.data);
 }
 
-function getStudioTask(workflowId) {
-  return api.request(`/miniprogram/ai/studio/tasks?workflowId=${encodeURIComponent(workflowId)}`, 'GET').then((res) => res.data);
+function getStudioTask(workflowId, options = {}) {
+  return api.request(`/miniprogram/ai/studio/tasks?workflowId=${encodeURIComponent(workflowId)}`, 'GET', {}, options)
+    .then((res) => res.data);
 }
 
 function createStudioTask(payload) {

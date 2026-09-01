@@ -71,3 +71,8 @@ test('BLE already-connect resumes the existing system session instead of failing
   assert.match(bluetoothSource, /isSessionConnected/);
   assert.match(bluetoothSource, /_autoConnectInFlight/);
 });
+
+test('App forwards silent BLE state changes to pages that expose the editor hook', () => {
+  const appSource = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+  assert.match(appSource, /notifyBleConnectionResult\(success\)[\s\S]*?currentPage\.updateBleConnected\(!!success\)/);
+});

@@ -66,6 +66,14 @@ function shortestArcDeg(delta) {
   return ((Number(delta) % 360) + 540) % 360 - 180;
 }
 
+// Navigation view rotations are intentionally limited to the four orthogonal
+// room axes. Keep this helper separate from the raw compass heading so callers
+// cannot accidentally paint a diagonal canvas angle.
+function snapToCardinalDeg(angle) {
+  const normalized = normalizeDeg(angle);
+  return normalizeDeg(Math.round(normalized / 90) * 90);
+}
+
 function isWechatDevtools(wxImpl) {
   const wxApi = wxImpl || (typeof wx !== 'undefined' ? wx : null);
   if (!wxApi) return false;
@@ -397,6 +405,19 @@ function circularMedianDeg(values) {
   return normalizeDeg(median(unwrapped));
 }
 
+/**
+ * Treat the heading captured while the phone faces the entry door as the
+ * survey's zero-degree world bearing. The shared heading hub exposes alpha as
+ * 360 - compassDirection, so a clockwise physical turn increases the returned
+ * room-relative bearing.
+ */
+function mapEntryDoorRelativeHeading(deviceAlphaDeg, entryDoorAlphaDeg) {
+  const alpha = Number(deviceAlphaDeg);
+  const baseline = Number(entryDoorAlphaDeg);
+  if (!Number.isFinite(alpha) || !Number.isFinite(baseline)) return null;
+  return normalizeDeg(baseline - alpha);
+}
+
 function createHeadingFollowController(options) {
   const opts = options || {};
   const cardinalOnly = opts.cardinalOnly !== false;
@@ -509,14 +530,18 @@ function createDirectionPickController(options) {
   let active = false;
   let viewRotationDeg = 0;
   let baselineOffsetDeg = 0;
+  let entryDoorAlphaDeg = null;
   let samples = [];
   let selectedKey = '';
 
   return {
-    begin(rotationDeg, offsetDeg) {
+    begin(rotationDeg, offsetDeg, calibratedEntryDoorAlphaDeg) {
       active = true;
       viewRotationDeg = Number(rotationDeg) || 0;
       baselineOffsetDeg = Number(offsetDeg) || 0;
+      entryDoorAlphaDeg = Number.isFinite(Number(calibratedEntryDoorAlphaDeg))
+        ? normalizeDeg(Number(calibratedEntryDoorAlphaDeg))
+        : null;
       samples = [];
       selectedKey = '';
       return true;
@@ -531,11 +556,13 @@ function createDirectionPickController(options) {
       const filteredAlpha = circularMedianDeg(samples);
       if (!Number.isFinite(filteredAlpha)) return null;
 
-      const worldBearing = surveyBleDirectionOptions.mapDeviceHeadingToWorldBearing(
-        filteredAlpha,
-        viewRotationDeg,
-        baselineOffsetDeg
-      );
+      const worldBearing = Number.isFinite(entryDoorAlphaDeg)
+        ? mapEntryDoorRelativeHeading(filteredAlpha, entryDoorAlphaDeg)
+        : surveyBleDirectionOptions.mapDeviceHeadingToWorldBearing(
+          filteredAlpha,
+          viewRotationDeg,
+          baselineOffsetDeg
+        );
       const nextKey = surveyBleDirectionOptions.pickDirectionWithHysteresis(
         candidates,
         worldBearing,
@@ -558,6 +585,7 @@ function createDirectionPickController(options) {
     },
     stop() {
       active = false;
+      entryDoorAlphaDeg = null;
       samples = [];
       selectedKey = '';
     }
@@ -573,7 +601,9 @@ module.exports = {
   DEFAULT_DIRECTION_PICK_SAMPLE_COUNT,
   normalizeDeg,
   shortestArcDeg,
+  snapToCardinalDeg,
   circularMedianDeg,
+  mapEntryDoorRelativeHeading,
   pickCardinalRotationDeg,
   compassDirectionToAlpha,
   isWechatDevtools,

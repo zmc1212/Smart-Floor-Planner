@@ -1,4 +1,5 @@
 const {
+  applyRenderModeToDraft,
   buildComposerPickerOptions,
   buildComposerPickerTitle,
   buildComposerViewState,
@@ -13,6 +14,7 @@ const {
 const PICKER_SHEET = { mountedKey: 'pickerMounted', openKey: 'pickerVisible' };
 const SETTINGS_SHEET = { mountedKey: 'settingsMounted', openKey: 'settingsOpen' };
 const TEMPLATE_SHEET = { mountedKey: 'templateSheetMounted', openKey: 'templateSheetOpen' };
+const MODE_PICKER_SHEET = { mountedKey: 'modePickerMounted', openKey: 'modePickerVisible' };
 const KEYBOARD_HIDE_TIMEOUT_MS = 300;
 
 Component({
@@ -51,6 +53,8 @@ Component({
     templateSheetOpen: false,
     templatePreviewVisible: false,
     templatePreview: null,
+    modePickerMounted: false,
+    modePickerVisible: false,
   },
 
   observers: {
@@ -124,6 +128,7 @@ Component({
       clearSheetTimer(this, PICKER_SHEET.openKey);
       clearSheetTimer(this, SETTINGS_SHEET.openKey);
       clearSheetTimer(this, TEMPLATE_SHEET.openKey);
+      clearSheetTimer(this, MODE_PICKER_SHEET.openKey);
     },
   },
 
@@ -195,7 +200,45 @@ Component({
 
     expandDock() {
       this.clearCollapseTimer();
+      if (this.data.view && !this.data.view.modeConfirmed) {
+        this.openModePicker();
+        return;
+      }
       this.setDockExpanded(true);
+    },
+
+    openModePicker() {
+      this.clearCollapseTimer();
+      this.setData({ promptFocused: false });
+      openSheet(this, MODE_PICKER_SHEET);
+    },
+
+    closeModePicker() {
+      closeSheet(this, MODE_PICKER_SHEET, () => {
+        if (this.properties.draft && this.properties.draft.renderModeConfirmed) {
+          this.setDockExpanded(true);
+        }
+      });
+    },
+
+    selectRenderMode(event) {
+      const mode = event.currentTarget.dataset.mode;
+      if (mode === 'whole_floor_plan' && !this.data.view?.wholeHouseAvailable) {
+        wx.showToast({ title: '整屋设计需先完成正式量房', icon: 'none' });
+        return;
+      }
+      const draft = applyRenderModeToDraft(this.properties.draft, mode);
+      this.triggerEvent('rendermodechange', { draft, renderMode: draft.renderMode });
+      closeSheet(this, MODE_PICKER_SHEET, () => {
+        this.setDockExpanded(true);
+      });
+    },
+
+    selectRenovationType(event) {
+      const mode = event.currentTarget.dataset.mode;
+      const draft = applyRenderModeToDraft(this.properties.draft, mode);
+      this.triggerEvent('rendermodechange', { draft, renderMode: draft.renderMode });
+      this.holdDockExpanded();
     },
 
     collapseDock() {
@@ -206,6 +249,7 @@ Component({
         || this.data.pickerVisible
         || this.data.templateSheetOpen
         || this.data.templatePreviewVisible
+        || this.data.modePickerVisible
       ) {
         return;
       }

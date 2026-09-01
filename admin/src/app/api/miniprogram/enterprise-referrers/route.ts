@@ -168,8 +168,10 @@ export async function GET(request: Request) {
       return {
         scope: isOwner ? 'enterprise' as const : 'own' as const,
         view: 'flat' as const,
-        canDisable: isOwner,
-        items: rows.map((item) => rosterItem(item, isOwner)),
+        // Owners manage the whole tenant; ordinary staff are scoped below
+        // to memberships they invited and can manage that personal network.
+        canDisable: true,
+        items: rows.map((item) => rosterItem(item, true)),
         branches: [],
         summary: {
           total: counts.total,

@@ -1,6 +1,13 @@
-<cover-view class="survey-canvas-compass {{active ? 'active' : ''}}" style="top: {{safeTop}}px;" catchtap="onTap">
-  <cover-view class="compass-dial" style="transform: rotate({{rotationDeg}}deg);">
-    <cover-view class="compass-needle"></cover-view>
-    <cover-view class="compass-label">N</cover-view>
-  </cover-view>
+<cover-view
+  class="survey-canvas-compass {{active ? 'active' : ''}} {{bearingLabel ? 'with-bearing' : ''}}"
+  catchtap="onTap"
+  aria-label="{{active ? '重新定位入户门方向，当前方位角' + bearingLabel : '开启导航测量'}}"
+>
+  <cover-image
+    class="navigation-measure-icon"
+    src="/packages/surveying/assets/icons/navigation-measure.png"
+    mode="aspectFit"
+  ></cover-image>
+  <cover-view wx:if="{{bearingLabel}}" class="navigation-measure-bearing">{{bearingLabel}}</cover-view>
+  <cover-view class="navigation-measure-label">导航测量</cover-view>
 </cover-view>

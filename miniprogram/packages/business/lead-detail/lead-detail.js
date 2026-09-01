@@ -349,6 +349,8 @@ function appointmentSummary(value) {
   return `${display.dateLabel.replace('/', '月')}日 ${display.time.replace(' - ', '-')}`;
 }
 
+const NAVIGATE_RESET_MS = 800;
+
 Page({
   data: {
     leadId: '',
@@ -840,19 +842,35 @@ Page({
     wx.previewImage({ current: floorPlanPreviewPath, urls: [floorPlanPreviewPath] });
   },
 
+  navigateOnce(url) {
+    if (this._navigating) return;
+    this._navigating = true;
+    wx.navigateTo({
+      url,
+      fail: () => {
+        this._navigating = false;
+      },
+      complete: () => {
+        setTimeout(() => {
+          this._navigating = false;
+        }, NAVIGATE_RESET_MS);
+      },
+    });
+  },
+
   onScheduleAppointment() {
     if (!this.data.canScheduleAppointment || !this.data.leadId) return;
-    wx.navigateTo({
-      url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}`,
-    });
+    this.navigateOnce(
+      `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}`,
+    );
   },
 
   onOpenAppointment() {
     const appointment = this.data.appointment;
     if (!appointment || !this.data.leadId) return;
-    wx.navigateTo({
-      url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(this.data.leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`
-    });
+    this.navigateOnce(
+      `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(this.data.leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`,
+    );
   },
 
   onOpenPublishedScheme(event) {
@@ -860,18 +878,18 @@ Page({
     const scheme = this.data.publishedSchemes[schemeIndex];
     if (!scheme || !this.data.leadId) return;
     const schemeId = encodeURIComponent(scheme.id || '');
-    wx.navigateTo({
-      url: `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(this.data.leadId)}&schemeId=${schemeId}&mode=staff`,
-    });
+    this.navigateOnce(
+      `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(this.data.leadId)}&schemeId=${schemeId}&mode=staff`,
+    );
   },
 
   onOpenAllPublishedSchemes() {
     if (!this.data.leadId || !this.data.publishedSchemes.length) return;
     const finalized = this.data.publishedSchemes.find((scheme) => scheme && scheme.finalized);
     const schemeId = finalized ? `&schemeId=${encodeURIComponent(finalized.id)}` : '';
-    wx.navigateTo({
-      url: `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(this.data.leadId)}${schemeId}&mode=staff`,
-    });
+    this.navigateOnce(
+      `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(this.data.leadId)}${schemeId}&mode=staff`,
+    );
   },
 
   onOpenAIDesignWorkbench() {
@@ -884,9 +902,9 @@ Page({
 
   onEditProfile() {
     if (!this.data.canEditProfile || !this.data.leadId) return;
-    wx.navigateTo({
-      url: `/packages/business/lead-form/lead-form?mode=edit&leadId=${encodeURIComponent(this.data.leadId)}`
-    });
+    this.navigateOnce(
+      `/packages/business/lead-form/lead-form?mode=edit&leadId=${encodeURIComponent(this.data.leadId)}`,
+    );
   },
 
   onStartMeasure() {

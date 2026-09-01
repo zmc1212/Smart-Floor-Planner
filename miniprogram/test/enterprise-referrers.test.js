@@ -47,7 +47,7 @@ test('enterprise referrer roster supports owner network and employee-owned lists
   assert.match(template, /bindtap="openBranch"/);
   assert.doesNotMatch(template, /branch-items/);
   assert.match(template, /statusChips/);
-  assert.match(template, /全部|活动|已停用|已退出/);
+  assert.match(template, /全部|已启用|已停用|已退出/);
   assert.match(template, /搜索姓名或手机号/);
   assert.match(template, /canDisable && item\.actionLabel/);
   assert.match(template, /inviteLabel/);
@@ -58,6 +58,8 @@ test('enterprise referrer roster supports owner network and employee-owned lists
   assert.match(page, /decorateNetworkBranches\(payload\.branches, false\)/);
   assert.match(page, /enterprise-referrer-branch\/enterprise-referrer-branch/);
   assert.match(page, /Boolean\(isEnterpriseScope && payload\.canDisable\)/);
+  assert.match(page, /viewReferrerLeads/);
+  assert.match(template, /查看推广客户/);
   assert.match(page, /\/miniprogram\/enterprise-referrers\/\$\{encodeURIComponent\(item\.id\)\}\/disable/);
   assert.match(page, /query,/);
   assert.match(page, /status:/);
@@ -162,6 +164,8 @@ test('referrer roster model keeps zero branches, deleted snapshots, and employee
   const employeeItems = model.decorateReferrerItems(source[0].items, false);
   assert.equal(employeeItems[0].action, null);
   assert.equal(employeeItems[0].actionLabel, '');
+  const employeeManagedItems = model.decorateReferrerItems(source[0].items, true);
+  assert.equal(employeeManagedItems[0].action, 'disable');
   assert.equal(model.normalizeRosterView('network', 'own'), 'all');
   assert.equal(model.rosterPresentation('own').pageTitle, '我的推广人');
 });

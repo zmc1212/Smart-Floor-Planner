@@ -3,7 +3,32 @@
     <view wx:if="{{view}}" class="credit-bar">{{view.creditSummary}}</view>
     <view wx:else class="credit-bar muted">加载模型与点数配置中</view>
 
-    <view wx:if="{{dockExpanded}}" class="dock-expanded" catchtap="noop">
+    <view wx:if="{{view && !view.modeConfirmed}}" class="start-round" catchtap="openModePicker" aria-role="button" aria-label="开始新一轮设计">
+      <view class="start-round-copy">
+        <text class="start-round-title">开始新一轮设计</text>
+        <text class="start-round-meta">先选整屋或单间，再安排参考图</text>
+      </view>
+      <view class="start-round-action">选择方式</view>
+    </view>
+
+    <view wx:if="{{dockExpanded && view && view.modeConfirmed}}" class="dock-expanded" catchtap="noop">
+      <view class="mode-intent-banner">
+        <image class="mode-intent-art" src="{{view.modeArtwork}}" mode="aspectFit"></image>
+        <view class="mode-intent-copy">
+          <text class="mode-intent-title">{{view.modeTitle}}</text>
+          <text class="mode-intent-meta">{{view.modeCopy}}</text>
+        </view>
+        <view class="mode-intent-change" bindtap="openModePicker">更换方式</view>
+      </view>
+
+      <view wx:if="{{view.showRenovationType}}" class="renovation-switch">
+        <text class="renovation-label">改造类型</text>
+        <view class="renovation-options">
+          <view class="renovation-option {{view.fullRoomActive ? 'active' : ''}}" data-mode="single_room_photo" bindtap="selectRenovationType">全空间设计</view>
+          <view class="renovation-option {{view.softFurnishingActive ? 'active' : ''}}" data-mode="soft_furnishing" bindtap="selectRenovationType">仅软装换搭</view>
+        </view>
+      </view>
+
       <view wx:if="{{view && (view.hasControlPreview || view.hasReferences || view.canAddReference)}}" class="reference-row">
         <view
           wx:if="{{view.hasControlPreview}}"
@@ -31,6 +56,7 @@
             <view wx:for="{{view.referenceAssets}}" wx:key="id" class="reference-item compact">
               <image wx:if="{{item.previewUrl}}" class="reference-image" src="{{item.previewUrl}}" mode="aspectFill"></image>
               <view wx:else class="reference-image placeholder"></view>
+              <text class="site-photo-badge">{{item.role === 'site_photo' ? '现场图' : '基准图'}}</text>
               <view class="reference-remove" data-id="{{item.id}}" catchtap="removeReference">×</view>
             </view>
           </view>
@@ -39,13 +65,13 @@
       </view>
     </view>
 
-    <view class="prompt-row">
+    <view wx:if="{{!view || view.modeConfirmed}}" class="prompt-row">
       <view class="prompt-field">
         <textarea
           class="prompt-input"
           value="{{draft.prompt}}"
           maxlength="2000"
-          placeholder="描述空间、光线与风格，一键出图"
+          placeholder="{{view && view.renderMode === 'whole_floor_plan' ? '补充整屋设计要求…' : '补充这个房间的设计要求…'}}"
           focus="{{promptFocused}}"
           bindinput="onPromptInput"
           bindfocus="onPromptFocus"
@@ -66,7 +92,7 @@
       </view>
     </view>
 
-    <view wx:if="{{dockExpanded && view}}" class="dock-toolbar" catchtap="noop">
+    <view wx:if="{{dockExpanded && view && view.modeConfirmed}}" class="dock-toolbar" catchtap="noop">
       <view class="dock-toolbar-actions">
         <view
           wx:for="{{view.toolbarItems}}"
@@ -86,6 +112,34 @@
         <view class="generate-fab-spark"></view>
         <text class="generate-fab-label">{{generating ? '提交' : '生成'}}</text>
       </view>
+    </view>
+  </view>
+
+  <view wx:if="{{modePickerMounted}}" class="sheet-root mode-picker-layer">
+    <view class="sheet-mask {{modePickerVisible ? 'open' : ''}}" catchtap="closeModePicker"></view>
+    <view class="sheet-panel mode-picker-panel {{modePickerVisible ? 'open' : ''}}" catchtap="noop">
+      <view class="sheet-handle"></view>
+      <text class="mode-picker-title">选择设计方式</text>
+      <text class="mode-picker-copy">先选目标，系统会自动安排参考图</text>
+      <view class="mode-choice" data-mode="whole_floor_plan" bindtap="selectRenderMode">
+        <image class="mode-choice-art whole" src="/packages/ai-workflow/assets/mode-flow-v1/whole-house-material-board.png" mode="aspectFit"></image>
+        <view class="mode-choice-copy">
+          <text class="mode-choice-title">设计整屋</text>
+          <text class="mode-choice-meta">正式户型锁定墙体、房间与门窗</text>
+          <text class="mode-choice-tag">结构优先</text>
+        </view>
+        <view class="mode-choice-chevron"></view>
+      </view>
+      <view class="mode-choice" data-mode="single_room_photo" bindtap="selectRenderMode">
+        <image class="mode-choice-art single" src="/packages/ai-workflow/assets/mode-flow-v1/single-room-camera-board.png" mode="aspectFit"></image>
+        <view class="mode-choice-copy">
+          <text class="mode-choice-title">设计单间</text>
+          <text class="mode-choice-meta">现场照片锁定镜头、透视与构图</text>
+          <text class="mode-choice-tag">现场图优先</text>
+        </view>
+        <view class="mode-choice-chevron"></view>
+      </view>
+      <text class="mode-picker-footnote">稍后仍可更换风格与参考图</text>
     </view>
   </view>
 

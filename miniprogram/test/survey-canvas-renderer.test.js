@@ -2271,8 +2271,8 @@ test('cursor lens reuses the formal wall scene around the drag target', () => {
     detail.path.some((command) => command[0] === 'moveTo' && command[1] === 98 && command[2] === 188) &&
     detail.path.some((command) => command[0] === 'lineTo' && command[1] === 122 && command[2] === 188)
   )));
-  assert.ok(recorder.texts.some((detail) => detail.text === '自由放置'));
-  assert.ok(recorder.texts.some((detail) => detail.text === 'X 3000 / Y 1000'));
+  assert.equal(recorder.texts.some((detail) => detail.text === '自由放置'), false);
+  assert.equal(recorder.texts.some((detail) => detail.text === 'X 3000 / Y 1000'), false);
   assert.ok(recorder.strokeDetails.some((detail) => (
     detail.strokeStyle === 'rgba(22, 119, 255, 0.92)' &&
     detail.path.some((command) => command[0] === 'moveTo' && command[1] === 0 && command[2] === 90) &&
@@ -2282,7 +2282,7 @@ test('cursor lens reuses the formal wall scene around the drag target', () => {
   )));
 });
 
-test('cursor lens stacks snap and coordinate labels so four-digit values do not overlap', () => {
+test('cursor lens omits snap and coordinate captions for an image-only crop', () => {
   const draft = createTwoClosedRoomsWithSharedDoorDraft();
   const floor = surveyGraph.getActiveFloor(draft);
   const scene = surveyCanvasRenderer.createSurveyLensScene({
@@ -2304,12 +2304,8 @@ test('cursor lens stacks snap and coordinate labels so four-digit values do not 
       lensMeta: { snapLabel: '外边顶点延长吸附', coordinateLabel: 'X 2636 / Y 3106' }
     }
   );
-  const snap = recorder.texts.find((detail) => detail.text === '外边顶点延长吸附');
-  const coords = recorder.texts.find((detail) => detail.text === 'X 2636 / Y 3106');
-  assert.ok(snap);
-  assert.ok(coords);
-  assert.equal(snap.x, coords.x);
-  assert.ok(coords.y - snap.y >= 14);
+  assert.equal(recorder.texts.some((detail) => detail.text === '外边顶点延长吸附'), false);
+  assert.equal(recorder.texts.some((detail) => detail.text === 'X 2636 / Y 3106'), false);
 });
 
 test('cursor drag overlay leaves the close action on the formal canvas', () => {
@@ -2384,7 +2380,7 @@ test('cursor lens can blit a magnified formal-canvas crop instead of redrawing w
   assert.equal(recorder.drawImages[0][6], 98);
   assert.equal(recorder.drawImages[0][7], 120);
   assert.equal(recorder.drawImages[0][8], 120);
-  assert.ok(recorder.texts.some((detail) => detail.text === '自由放置'));
+  assert.equal(recorder.texts.some((detail) => detail.text === '自由放置'), false);
 });
 
 test('cursor lens paints a small green crosshair on top of the crop instead of the canvas reticle', () => {

@@ -238,6 +238,13 @@ test('closing a room automatically enters the reset-cursor wall-drop state', () 
   assert.match(editorWxss, /\.cursor-dock-helper-label\s*\{[\s\S]*?text-align:\s*center;/);
 });
 
+test('restoring a saved closed room resumes at the next-room wall-drop state', () => {
+  assert.match(
+    editorScript,
+    /normalizeRestoredFormalDraft\(draft\) \{[\s\S]*?session\.state === 'spaceClosed'[\s\S]*?surveyGraph\.startWallSnap\(restored\)/
+  );
+});
+
 test('viewport gestures render on the primary canvas instead of the cursor overlay', () => {
   assert.match(
     editorScript,

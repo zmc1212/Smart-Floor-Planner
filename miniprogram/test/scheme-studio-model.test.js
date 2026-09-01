@@ -20,6 +20,7 @@ const {
   shouldRenameWorkflowOnSend,
 } = require('../packages/ai-workflow/scheme-studio/scheme-studio-model.js');
 const {
+  applyRenderModeToDraft,
   buildComposerViewState,
   createDefaultDraft,
   estimateCredits,
@@ -227,11 +228,11 @@ test('composer model estimates credits and blocks insufficient balance', () => {
       prices: [{ resolutionTier: '1K', credits: 4 }],
     }],
   };
-  const draft = {
+  const draft = applyRenderModeToDraft({
     ...createDefaultDraft(bootstrap),
     prompt: '测试提示词',
     count: 2,
-  };
+  }, 'whole_floor_plan');
   assert.equal(estimateCredits(draft, bootstrap), 8);
   const blocked = buildComposerViewState(draft, bootstrap);
   assert.equal(blocked.canSubmit, false);
@@ -353,7 +354,7 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(wxml, /\+ 新建/);
   assert.match(wxml, /context-card/);
   assert.match(wxml, /send-button/);
-  assert.match(wxml, /已确认 \{\{view\.workflow\.publishedCount\}\} 张/);
+  assert.match(wxml, /已确认 \{\{stat\.count\(view\.workflow\.publishedCount\)\}\} 张/);
   assert.match(wxml, /published-badge/);
   assert.match(wxml, /ai-scheme-composer/);
   assert.match(wxml, /sendModalVisible/);
@@ -396,7 +397,7 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(wxml, /openGenerationActions/);
   assert.match(wxml, /toggleGenerationSelect/);
   assert.match(wxml, /retryBatch/);
-  assert.match(composerWxml, /一键出图/);
+  assert.match(composerWxml, /\{\{generating \? '提交' : '生成'\}\}/);
   assert.match(composerWxml, /template-grid/);
   assert.match(composerWxml, /template-cover/);
   assert.match(composerWxml, /item\.previewUrl/);
@@ -437,8 +438,12 @@ test('scheme-studio route wires composer, send modal, and studio APIs', () => {
   assert.match(script, /publishScheme/);
   assert.match(script, /sourceAssetRole: 'rough_sketch'/);
   assert.match(script, /bound\.floorPlanId \? buildScopes/);
-  assert.match(script, /this\.data\.floorPlanId \? buildScopeSubmitPayload/);
-  assert.match(script, /if \(this\.data\.leadId\) \{/);
+  assert.match(
+    script,
+    /const \{[\s\S]*WHOLE_HOUSE_RENDER_MODE,[\s\S]*\} = require\('\.\.\/\.\.\/\.\.\/components\/ai-scheme-composer\/ai-scheme-composer-model\.js'\)/,
+  );
+  assert.match(script, /this\.data\.floorPlanId[\s\S]*WHOLE_HOUSE_RENDER_MODE[\s\S]*buildScopeSubmitPayload/);
+  assert.match(script, /this\.data\.leadId && !siblingCacheFresh && !this\.siblingWorkflowsPromise/);
   assert.match(script, /finalizeScheme/);
   assert.match(script, /openFinalizeModal/);
   assert.match(wxml, /设为定稿/);

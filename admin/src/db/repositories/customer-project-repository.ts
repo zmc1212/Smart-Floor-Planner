@@ -300,6 +300,43 @@ export class CustomerProjectRepository {
       );
   }
 
+  async listActivePublicationSummaries(enterpriseId: bigint, leadId: bigint) {
+    return this.transaction
+      .select({
+        publication: {
+          id: aiGenerationPublications.id,
+          workflowId: aiGenerationPublications.workflowId,
+          generationId: aiGenerationPublications.generationId,
+          schemeTitle: aiGenerationPublications.schemeTitle,
+          publishedAt: aiGenerationPublications.publishedAt,
+          sortOrder: aiGenerationPublications.sortOrder,
+        },
+        generation: {
+          id: aiGenerations.id,
+          workflowId: aiGenerations.workflowId,
+          status: aiGenerations.status,
+          outputImageUrl: sql<string | null>`coalesce(${aiGenerations.output} ->> 'imageUrl', '')`,
+        },
+      })
+      .from(aiGenerationPublications)
+      .innerJoin(aiGenerations, eq(aiGenerationPublications.generationId, aiGenerations.id))
+      .where(and(
+        eq(aiGenerationPublications.enterpriseId, enterpriseId),
+        eq(aiGenerationPublications.leadId, leadId),
+        isNull(aiGenerationPublications.withdrawnAt),
+        eq(aiGenerations.enterpriseId, enterpriseId),
+        eq(aiGenerations.leadId, leadId),
+        eq(aiGenerations.status, 'succeeded'),
+        isNull(aiGenerations.deletedAt),
+        sql`coalesce(${aiGenerations.output} ->> 'imageUrl', '') <> ''`
+      ))
+      .orderBy(
+        desc(aiGenerationPublications.publishedAt),
+        asc(aiGenerationPublications.sortOrder),
+        desc(aiGenerationPublications.id)
+      );
+  }
+
   async listPublishableGenerations(enterpriseId: bigint, leadId: bigint) {
     const publishedIds = sql`(
       select ${aiGenerationPublications.generationId}

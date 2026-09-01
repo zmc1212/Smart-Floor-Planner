@@ -2907,11 +2907,10 @@ function drawCursorLensScene(ctx, scene, lensRect, meta, options) {
   const top = lensRect.top || 0;
   const size = lensRect.size || (scene && scene.rect && scene.rect.width) || 120;
   const panelPadding = 8;
-  const panelMetaHeight = 44;
   const panelLeft = left - panelPadding;
   const panelTop = top - panelPadding;
   const panelWidth = size + panelPadding * 2;
-  const panelHeight = size + panelPadding * 2 + panelMetaHeight;
+  const panelHeight = size + panelPadding * 2;
   const opts = options || {};
   const source = opts.source;
   const sample = opts.sample;
@@ -3009,17 +3008,8 @@ function drawCursorLensScene(ctx, scene, lensRect, meta, options) {
   ctx.stroke();
   ctx.restore();
 
-  if (!meta) return;
-  const snapY = top + size + 16;
-  const coordY = top + size + 32;
-  ctx.save();
-  ctx.fillStyle = '#374151';
-  ctx.font = '600 10px sans-serif';
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'left';
-  ctx.fillText(meta.snapLabel || '', panelLeft + 10, snapY);
-  ctx.fillText(meta.coordinateLabel || '', panelLeft + 10, coordY);
-  ctx.restore();
+  // Keep this overlay as a pure magnifier. Snap status and coordinates remain
+  // available to placement state but are intentionally not painted here.
 }
 
 /**

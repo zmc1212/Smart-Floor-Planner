@@ -260,7 +260,11 @@ export function TemplateLibraryDialog({
               value={categoryId || '__all__'}
               onChange={(value) => setCategoryId(value === '__all__' ? '' : value)}
               className="h-8 w-[42%] min-w-0 [&_.ant-select-selector]:!h-8 [&_.ant-select-selector]:!rounded [&_.ant-select-selector]:!border-[#343741] [&_.ant-select-selector]:!bg-[#1d1e23] [&_.ant-select-selector]:!text-xs [&_.ant-select-selector]:!text-white [&_.ant-select-selection-item]:!leading-7"
-              popupClassName="border border-[#343741] bg-[#18191d] text-white [&_.ant-select-item]:text-white [&_.ant-select-item-option-active]:!bg-white/10 [&_.ant-select-item-option-selected]:!bg-white/[0.08]"
+              classNames={{
+                popup: {
+                  root: 'border border-[#343741] bg-[#18191d] text-white [&_.ant-select-item]:text-white [&_.ant-select-item-option-active]:!bg-white/10 [&_.ant-select-item-option-selected]:!bg-white/[0.08]',
+                },
+              }}
               options={[
                 { value: '__all__', label: '全部分类' },
                 ...categoryOptions.map((category) => ({

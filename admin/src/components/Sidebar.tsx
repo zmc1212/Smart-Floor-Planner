@@ -37,6 +37,7 @@ import {
 import { Button, Divider, Drawer, Dropdown, Select } from 'antd';
 import { cn } from '@/lib/utils';
 import { getAdminRoleLabel } from '@/lib/admin-user-roles';
+import { hasReferrersMenuPermission } from '@/lib/referrer-roster-access';
 import { canManageSensitivePassword } from '@/lib/sensitive-password-access';
 import { useAccountSettings } from '@/components/admin/account-settings-provider';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -117,7 +118,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'referrer-network-operations', label: '运营工作台', icon: Network, href: '/referrer-network-operations' },
         { key: 'join-codes', permissionKey: 'referrer-network-operations', label: '入驻码', icon: QrCode, href: '/join-codes' },
-        { key: 'referrers', permissionKey: 'referrer-network-operations', label: '推荐人', icon: UsersRound, href: '/referrers' },
+        { key: 'referrers', permissionKey: 'referrers', label: '推荐人', icon: UsersRound, href: '/referrers' },
         { key: 'appointment-settings', permissionKey: 'referrer-network-operations', label: '预约设置', icon: CalendarClock, href: '/appointment-settings' },
         { key: 'assignment-settings', permissionKey: 'referrer-network-operations', label: '派单设置', icon: SlidersHorizontal, href: '/assignment-settings' },
       ]
@@ -493,6 +494,7 @@ export default function Sidebar() {
     if (key === 'sms-settings') return admin.role === 'super_admin' || admin.role === 'admin';
     if (['ai-credit-prices', 'ai-presets', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;
     if (admin.effectivePermissions?.includes(key)) return true;
+    if (key === 'referrers' && hasReferrersMenuPermission(admin.effectivePermissions)) return true;
     if (key === 'kujiale-floorplans' && admin.effectivePermissions?.includes('floorplans')) return true;
     if (
       key === 'ai-scenarios' &&

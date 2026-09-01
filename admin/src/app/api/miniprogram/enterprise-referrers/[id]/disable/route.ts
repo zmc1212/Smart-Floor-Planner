@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { ReferrerNetworkRepository } from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
-import { requireMiniProgramEnterpriseAdmin } from '@/lib/miniprogram-portal-authority';
+import { requireMiniProgramReferrerNetwork } from '@/lib/miniprogram-portal-authority';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 
 export const dynamic = 'force-dynamic';
@@ -16,13 +16,16 @@ export async function POST(
     if (!context) {
       return NextResponse.json({ success: false, error: '需要有效登录身份' }, { status: 401 });
     }
-    requireMiniProgramEnterpriseAdmin(context);
+    const role = requireMiniProgramReferrerNetwork(context);
 
     const membershipId = parsePostgresId((await params).id, 'membershipId');
     const result = await withMiniProgramPostgresTransaction(context, (transaction) =>
       new ReferrerNetworkRepository(transaction).disableEnterpriseReferrerMembership(
         parsePostgresId(context.enterpriseId!, 'enterpriseId'),
-        membershipId
+        membershipId,
+        role === 'enterprise_admin'
+          ? {}
+          : { inviterStaffId: parsePostgresId(context.staff!._id, 'staffId') }
       )
     );
     if (!result) {

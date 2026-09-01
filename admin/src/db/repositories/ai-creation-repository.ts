@@ -355,6 +355,37 @@ export class AiCreationRepository {
       .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id));
   }
 
+  async listGenerationSummariesByWorkflowIds(workflowIds: bigint[]) {
+    if (!workflowIds.length) return [];
+    return this.transaction
+      .select({
+        id: aiGenerations.id,
+        leadId: aiGenerations.leadId,
+        workflowId: aiGenerations.workflowId,
+        parentGenerationId: aiGenerations.parentGenerationId,
+        type: aiGenerations.type,
+        channel: aiGenerations.channel,
+        stageKey: aiGenerations.stageKey,
+        sourceAssetRole: aiGenerations.sourceAssetRole,
+        isSelectedBaseline: aiGenerations.isSelectedBaseline,
+        nextRecommendedStage: aiGenerations.nextRecommendedStage,
+        status: aiGenerations.status,
+        inputPrompt: sql<string | null>`coalesce(${aiGenerations.input} ->> 'userMessage', ${aiGenerations.input} ->> 'customPrompt')`,
+        outputImageUrl: sql<string | null>`${aiGenerations.output} ->> 'imageUrl'`,
+        errorMessage: aiGenerations.errorMessage,
+        provider: aiGenerations.provider,
+        durationMs: aiGenerations.durationMs,
+        createdAt: aiGenerations.createdAt,
+        updatedAt: aiGenerations.updatedAt,
+      })
+      .from(aiGenerations)
+      .where(and(
+        inArray(aiGenerations.workflowId, workflowIds),
+        sql`${aiGenerations.deletedAt} is null`,
+      ))
+      .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id));
+  }
+
   listEnterpriseGenerationsWithOperators(enterpriseId: bigint, limit = 30) {
     const boundedLimit = Math.min(30, Math.max(1, limit));
     return this.transaction
@@ -499,7 +530,17 @@ export class AiCreationRepository {
 
   async findMediaAssets(ids: bigint[]) {
     if (!ids.length) return [];
-    return this.transaction.select().from(mediaAssets).where(and(inArray(mediaAssets.id, nonEmptyIds(ids)), sql`${mediaAssets.deletedAt} is null`));
+    const rows = await this.transaction
+      .select()
+      .from(mediaAssets)
+      .where(and(
+        inArray(mediaAssets.id, nonEmptyIds(ids)),
+        sql`${mediaAssets.deletedAt} is null`
+      ));
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((row): row is (typeof rows)[number] => Boolean(row));
   }
 
   async updateMediaAsset(id: bigint, values: Partial<typeof mediaAssets.$inferInsert>) {

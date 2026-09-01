@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   assertEligibleWorkflowFloorPlan,
   buildWorkflowFloorPlanContext,
+  buildWorkflowFloorPlanMeasuredContext,
   getWorkflowFloorPlanEligibility,
   isEligibleWorkflowFloorPlan,
   resolveWorkflowImageMode,
@@ -82,6 +83,13 @@ test('workflow floor-plan context includes wall topology and opening constraints
   assert.match(context, /window on w3, center offset 2000mm, 1800x1500mm, sill 900mm/);
   assert.match(context, /supplied control image as the authoritative plan/);
   assert.equal(JSON.stringify(layout), before);
+});
+
+test('measured-only context does not claim a floor-plan reference for stages that do not send one', () => {
+  const context = buildWorkflowFloorPlanMeasuredContext(layout);
+  assert.match(context, /Wall topology/);
+  assert.doesNotMatch(context, /Reference image 1/);
+  assert.doesNotMatch(context, /top-down viewpoint/);
 });
 
 test('direction always uses image editing even when a stored preset still says generation', () => {

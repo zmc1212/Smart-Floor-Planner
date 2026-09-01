@@ -1,47 +1,55 @@
 .survey-canvas-compass {
-  position: fixed;
-  left: 26rpx;
-  top: 132rpx;
-  z-index: 9999;
-  width: 86rpx;
-  height: 86rpx;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.12);
-  color: #17a14c;
-  font-size: 22rpx;
-  font-weight: 700;
+  position: relative;
+  z-index: 1;
+  width: 132rpx;
+  height: 88rpx;
+  padding: 6rpx 8rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid #e3e9e4;
+  border-radius: 16rpx;
+  background: #ffffff;
+  box-shadow: none;
+  color: #202421;
+  box-sizing: border-box;
 }
 
 .survey-canvas-compass.active {
-  background: rgba(235, 250, 240, 0.96);
-  box-shadow: 0 8rpx 24rpx rgba(23, 161, 76, 0.28), 0 0 0 3rpx rgba(23, 161, 76, 0.45);
+  border-color: #08b94b;
+  background: #e9f8ed;
+  color: #087d35;
 }
 
-.compass-dial {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 86rpx;
-  height: 86rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.compass-needle {
-  position: absolute;
-  width: 4rpx;
+.navigation-measure-icon {
+  width: 44rpx;
   height: 44rpx;
-  border-radius: 999rpx;
-  background: linear-gradient(180deg, #17a14c 0%, rgba(23, 161, 76, 0.15) 100%);
-  transform: translateY(-8rpx);
+  flex: 0 0 44rpx;
 }
 
-.compass-label {
+.survey-canvas-compass.with-bearing .navigation-measure-icon {
+  transform: translateX(-22rpx);
+}
+
+.navigation-measure-bearing {
   position: absolute;
-  top: 8rpx;
-  left: 0;
-  width: 86rpx;
-  text-align: center;
+  top: 13rpx;
+  right: 10rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1;
+  color: #087d35;
+}
+
+.survey-canvas-compass.active .navigation-measure-icon {
+  filter: brightness(0) saturate(100%) invert(43%) sepia(93%) saturate(1185%) hue-rotate(103deg) brightness(91%) contrast(96%);
+}
+
+.navigation-measure-label {
+  margin-top: 2rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }

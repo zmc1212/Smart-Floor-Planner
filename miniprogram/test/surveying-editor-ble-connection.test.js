@@ -37,7 +37,7 @@ test('blank canvas taps clear the BLE direction lock and restore candidates', ()
   );
   assert.match(
     editorScript,
-    /if \(wasTap && !touchState\.nearCursor\)\s*\{[\s\S]*?hitTestOpeningAtClientPoint[\s\S]*?hitTestWallAtClientPoint[\s\S]*?hitTestClosedSpaceAtClientPoint[\s\S]*?clearBleDirectionSelection\(\)/
+    /if \(wasTap\)\s*\{[\s\S]*?hitTestOpeningAtClientPoint[\s\S]*?hitTestWallAtClientPoint[\s\S]*?hitTestClosedSpaceAtClientPoint[\s\S]*?clearBleDirectionSelection\(\)/
   );
   assert.match(
     editorScript,
@@ -46,11 +46,45 @@ test('blank canvas taps clear the BLE direction lock and restore candidates', ()
   assert.match(editorScript, /onCanvasTap\(\)\s*\{[\s\S]*?clearBleDirectionSelection\(\)/);
 });
 
+test('BLE direction arrows do not block wall selection or cursor-adjacent short taps', () => {
+  const touchStart = editorScript.slice(
+    editorScript.indexOf('onCanvasTouchStart(e) {'),
+    editorScript.indexOf('onCanvasTouchMove(e) {')
+  );
+  assert.match(
+    touchStart,
+    /const openingHit = this\.hitTestOpeningAtClientPoint\(point\);[\s\S]*?const wallHit = this\.hitTestWallAtClientPoint\(point\);[\s\S]*?const controlHit = this\.hitTestCanvasControl\(point\);/
+  );
+  assert.match(
+    touchStart,
+    /controlHit\.key === 'ble-direction'[\s\S]*?openingHit && openingHit\.openingId[\s\S]*?wallHit && wallHit\.wallId[\s\S]*?if \(controlHit && !bleDirectionOverlapsObject\)/
+  );
+  assert.match(editorScript, /if \(wasTap\)\s*\{[\s\S]*?surveyGraph\.selectWall\(this\.draft, wallHit\.wallId\)/);
+  assert.doesNotMatch(editorScript, /if \(wasTap && !touchState\.nearCursor\)/);
+});
+
 test('unconnected BLE measurement entries offer in-editor device connection', () => {
   assert.match(editorScript, /requestBluetoothConnection\(\)\s*\{[\s\S]*wx\.showModal/);
   assert.match(editorScript, /confirmText:\s*'去连接'/);
   assert.match(editorScript, /connectBluetoothForMeasurement\(\)\s*\{[\s\S]*bluetooth\.initBLE/);
   assert.equal((editorScript.match(/this\.requestBluetoothConnection\(\);/g) || []).length, 4);
+});
+
+test('editor syncs an active BLE session when shown and avoids duplicate discovery', () => {
+  assert.match(editorScript, /onShow\(\)\s*\{[\s\S]*?this\.syncBleConnectionState\(\);/);
+  assert.match(
+    editorScript,
+    /syncBleConnectionState\(\)\s*\{[\s\S]*?bluetooth\.isSessionConnected\(\)[\s\S]*?this\.updateBleConnected\(connected\)/
+  );
+  assert.match(
+    editorScript,
+    /connectBluetoothForMeasurement\(\)\s*\{[\s\S]*?bluetooth\.isSessionConnected\(\)[\s\S]*?this\.syncBleConnectionState\(\)[\s\S]*?return true;[\s\S]*?bluetooth\.initBLE/
+  );
+  assert.match(editorScript, /bluetooth\.initBLE\([\s\S]*?return false;/);
+  assert.match(
+    editorScript,
+    /onNavigationCalibrationConfirm\(\)\s*\{[\s\S]*?const sessionReady = this\.connectBluetoothForMeasurement\(\)[\s\S]*?if \(sessionReady\)[\s\S]*?this\.syncBleConnectionState\(\)/
+  );
 });
 
 test('current, closable, pending, selected, and cursor-snapped walls receive BLE measurements without opening the number pad', () => {

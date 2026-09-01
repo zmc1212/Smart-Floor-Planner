@@ -28,6 +28,7 @@ test('conversation fallback prompt keeps the designer request and floor-plan con
   assert.match(prompt, /客厅暖光/);
   assert.match(prompt, /Living room 4000mm/);
   assert.match(prompt, /control image/);
+  assert.ok(prompt.startsWith('Living room 4000mm'));
 });
 
 test('conversation baseline must belong to the same succeeded image set', () => {

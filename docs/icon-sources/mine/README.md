@@ -19,7 +19,7 @@ License: `LICENSE.md`
 
 `miniprogram/images/mine-v6/` contains the profile scene and fallback avatar,
 three summary-card illustrations, four workbench illustrations, two todo
-thumbnails, AI banner image, settings control, and an unused rectangular
+thumbnails, AI banner image, and an unused rectangular
 center-tab reference crop from the user-provided
 `design-references/mine/miniprogram-mine-v6.png` and
 `design-references/mine/miniprogram-mine-v6-icon.png`. These are page-specific visual
@@ -37,10 +37,14 @@ are the editable sources and retain their supplied asset rights.
 - `search.png`: `search`
 - `user.png`: `user`
 - `users.png`: `users`
-- `user-round-plus.png`: Lucide-derived person outline plus one white circular
-  badge with a green plus, used by the enterprise owner onboarding entry. The
-  badge is part of this single packaged icon; the UI must not overlay another
-  plus asset.
+- `user-round-plus.png`: Lucide-derived person outline with an outlined plus
+  badge, used by the Mine referrer-network entry. The 2026-09 regeneration uses
+  the same green rounded-outline family as the neighbouring account actions;
+  the badge is part of this single packaged icon and the UI must not overlay
+  another plus asset.
+- `settings.png`: `settings.svg`, a green rounded-outline system-permission cog
+  used by the Mine WeChat permission-management entry. It replaces the old
+  page-specific `mine-v6/settings.png` crop.
 - `identity-personal-user.png`: `user-round`, used for the logged-out gateway's
   `个人用户` identity rail.
 - `identity-staff.png`: `badge`, used for the logged-out gateway's `员工`

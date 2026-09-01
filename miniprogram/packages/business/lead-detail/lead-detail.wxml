@@ -146,31 +146,31 @@
       <button
         wx:if="{{canScheduleAppointment && canRebookAppointment}}"
         class="whole-home-appointment-action"
-        bindtap="onScheduleAppointment"
+        catchtap="onScheduleAppointment"
         aria-label="重新预约上门"
       >重新预约上门</button>
       <button
         wx:elif="{{canScheduleAppointment}}"
         class="whole-home-appointment-action"
-        bindtap="onScheduleAppointment"
+        catchtap="onScheduleAppointment"
         aria-label="安排上门量房"
       >安排上门量房</button>
       <button
         wx:elif="{{appointment}}"
         class="whole-home-appointment-action is-secondary"
-        bindtap="onOpenAppointment"
+        catchtap="onOpenAppointment"
         aria-label="{{lead.serviceStage === 'survey_ready' ? '确认完成量房' : '查看预约'}}"
       >{{lead.serviceStage === 'survey_ready' ? '确认完成量房' : '查看预约'}}</button>
       <button
         wx:if="{{canEditMeasurements}}"
         class="whole-home-measure-action"
-        bindtap="onStartMeasure"
+        catchtap="onStartMeasure"
         aria-label="{{activeFloorPlan ? '继续量房' : '开始量房'}}"
       >{{activeFloorPlan ? '继续量房' : '开始量房'}}</button>
     </view>
     <view class="whole-home-secondary-actions" wx:if="{{canEditMeasurements && activeFloorPlan}}">
-      <view class="whole-home-action secondary" bindtap="onStartNewMeasure">新增量房</view>
-      <view class="whole-home-action danger" bindtap="onDeleteMeasure">{{deleting ? '删除中' : '删除'}}</view>
+      <view class="whole-home-action secondary" catchtap="onStartNewMeasure">新增量房</view>
+      <view class="whole-home-action danger" catchtap="onDeleteMeasure">{{deleting ? '删除中' : '删除'}}</view>
     </view>
   </view>
   <view class="site-photos-card">
@@ -218,13 +218,13 @@
       <button
         wx:if="{{publishedSchemes.length > 0}}"
         class="published-schemes-secondary"
-        bindtap="onOpenAllPublishedSchemes"
+        catchtap="onOpenAllPublishedSchemes"
         aria-label="查看全部方案"
       >查看全部方案</button>
       <button
         wx:if="{{canOpenAIDesign}}"
         class="published-schemes-primary"
-        bindtap="onOpenAIDesignWorkbench"
+        catchtap="onOpenAIDesignWorkbench"
         aria-label="进入 AI 设计工作台"
       >进入 AI 设计</button>
     </view>

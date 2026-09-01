@@ -36,6 +36,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       workflowId?: string;
       targetScope?: string;
       roomId?: string;
+      renderMode?: 'whole_floor_plan' | 'single_room_photo' | 'soft_furnishing';
+      hasStyleReference?: boolean;
+      hasSitePhoto?: boolean;
+      sitePhotoAssetIds?: string[];
     };
     if (!body.modelProfileId) {
       return NextResponse.json({ success: false, error: '请选择模型' }, { status: 400 });
@@ -62,6 +66,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       workflowId: body.workflowId,
       targetScope: body.targetScope,
       roomId: body.roomId,
+      renderMode: body.renderMode,
+      hasStyleReference: body.hasStyleReference,
+      hasSitePhoto: body.hasSitePhoto,
+      sitePhotoAssetIds: body.sitePhotoAssetIds,
     });
     await Promise.allSettled(result.generations.map((generation) =>
       submitPostgresCreationGeneration({

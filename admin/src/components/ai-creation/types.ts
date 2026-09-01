@@ -64,6 +64,11 @@ export type CreationBatch = {
     size?: string;
     quality?: string;
     templateId?: string;
+    renderMode?: 'whole_floor_plan' | 'single_room_photo' | 'soft_furnishing';
+    hasStyleReference?: boolean;
+    hasSitePhoto?: boolean;
+    styleReferenceAssetId?: string;
+    sitePhotoAssetIds?: string[];
     floorPlanControlAssetId?: string;
     targetScope?: 'whole_floor_plan' | 'single_room';
     targetLabel?: string;
@@ -93,6 +98,7 @@ export type CreationAsset = {
   previewUrl: string;
   width?: number;
   height?: number;
+  role?: 'style_reference' | 'site_photo' | 'additional_reference';
 };
 
 export type PromptCategory = {

@@ -365,6 +365,13 @@
       "when": 1788184800000,
       "tag": "0051_staff_referrer_network",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1788192000000,
+      "tag": "0052_platform_ai_prompt_config",
+      "breakpoints": true
     }
   ]
 }

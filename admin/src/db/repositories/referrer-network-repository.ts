@@ -1568,15 +1568,25 @@ export class ReferrerNetworkRepository {
       : null;
   }
 
-  async disableEnterpriseReferrerMembership(enterpriseId: bigint, membershipId: bigint) {
+  async disableEnterpriseReferrerMembership(
+    enterpriseId: bigint,
+    membershipId: bigint,
+    options: { inviterStaffId?: bigint } = {}
+  ) {
+    const membershipFilters = [
+      eq(referrerEnterpriseMemberships.id, membershipId),
+      eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId),
+    ];
+    if (options.inviterStaffId != null) {
+      membershipFilters.push(
+        eq(referrerEnterpriseMemberships.invitedByStaffId, options.inviterStaffId)
+      );
+    }
     const rows = await this.transaction
       .select({ membership: referrerEnterpriseMemberships, userId: referrerProfiles.userId })
       .from(referrerEnterpriseMemberships)
       .innerJoin(referrerProfiles, eq(referrerProfiles.id, referrerEnterpriseMemberships.referrerId))
-      .where(and(
-        eq(referrerEnterpriseMemberships.id, membershipId),
-        eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId)
-      ))
+      .where(and(...membershipFilters))
       .limit(1)
       .for('update');
     const current = rows[0];
