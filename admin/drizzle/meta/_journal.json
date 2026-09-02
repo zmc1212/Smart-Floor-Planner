@@ -372,6 +372,20 @@
       "when": 1788192000000,
       "tag": "0052_platform_ai_prompt_config",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1788278400000,
+      "tag": "0053_foreign_key_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1788364800000,
+      "tag": "0054_enterprise_registration_code_template_config",
+      "breakpoints": true
     }
   ]
 }

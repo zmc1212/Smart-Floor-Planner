@@ -3,6 +3,7 @@ const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/
 const {
   applyModelDefaults,
   applyScopeToDraft,
+  applyTemplateToDraft,
   buildDraftFromBatch,
   buildScopeSubmitPayload,
   buildTemplateListParams,
@@ -43,6 +44,36 @@ const SEND_SHEET = { mountedKey: 'sendMounted', openKey: 'sendModalVisible' };
 const FINALIZE_SHEET = { mountedKey: 'finalizeMounted', openKey: 'finalizeModalVisible' };
 const GALLERY_SHEET = { mountedKey: 'galleryMounted', openKey: 'galleryOpen' };
 
+function templateMetaStorageKey(templateId) {
+  return `ai-studio-template-meta:${String(templateId || '').trim()}`;
+}
+
+function readStoredTemplateMeta(templateId) {
+  const id = String(templateId || '').trim();
+  if (!id || typeof wx === 'undefined' || typeof wx.getStorageSync !== 'function') return null;
+  try {
+    const value = wx.getStorageSync(templateMetaStorageKey(id));
+    return value && typeof value === 'object' ? value : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeStoredTemplateMeta(template) {
+  const id = String(template?.id || '').trim();
+  if (!id || typeof wx === 'undefined' || typeof wx.setStorageSync !== 'function') return;
+  try {
+    wx.setStorageSync(templateMetaStorageKey(id), {
+      id,
+      name: template.name || '',
+      previewUrl: template.previewUrl || template.localPreviewUrl || '',
+      promptContent: template.promptContent || template.internalPrompt || '',
+    });
+  } catch (error) {
+    // Storage is only a presentation fallback; a failure must not block submit.
+  }
+}
+
 function downloadImage(url) {
   return new Promise((resolve, reject) => {
     wx.downloadFile({
@@ -77,6 +108,72 @@ function isAlbumPermissionError(error) {
     || message.includes('permission denied');
 }
 
+function buildCanvasState(view, preferredBatchId = '', preferredGenerationId = '') {
+  const batches = (view && view.batches) || [];
+  let batchIndex = Math.max(0, batches.findIndex((item) => String(item.id) === String(preferredBatchId)));
+  if (!preferredBatchId || batchIndex < 0) batchIndex = Math.max(0, batches.length - 1);
+  const batch = batches[batchIndex] || null;
+  const successful = batch ? batch.generations.filter((item) => item.statusClass === 'succeeded' && item.imageUrl) : [];
+  let generation = successful.find((item) => String(item.id) === String(preferredGenerationId)) || successful[0] || null;
+  const generationIndex = generation && batch
+    ? batch.generations.findIndex((item) => String(item.id) === String(generation.id))
+    : 0;
+  const failedCount = batch ? batch.generations.filter((item) => item.statusClass === 'failed').length : 0;
+  const canvasStatus = !batch
+    ? 'empty'
+    : batch.hasProcessing
+      ? 'processing'
+      : failedCount && successful.length
+        ? 'partial'
+        : failedCount && !successful.length
+          ? 'failed'
+          : 'complete';
+  const roundNodes = batches.map((item, index) => {
+    const cover = item.generations.find((entry) => entry.statusClass === 'succeeded' && entry.imageUrl);
+    return {
+      ...item,
+      active: index === batchIndex,
+      coverUrl: cover ? cover.imageUrl : '',
+      completed: !item.hasProcessing && item.status !== 'failed',
+    };
+  });
+  return {
+    batchIndex,
+    generationIndex: Math.max(0, generationIndex),
+    batch,
+    generation,
+    roundNodes,
+    canvasStatus,
+    successfulCount: successful.length,
+    failedCount,
+  };
+}
+
+function buildTimelineBatches(view) {
+  const batches = (view && view.batches) || [];
+  let previousImage = (view && view.workflow && view.workflow.floorPlanPreviewUrl) || '';
+  return batches.map((batch) => {
+    const outputs = (batch.generations || []).filter((item) => item.statusClass === 'succeeded' && item.imageUrl);
+    const referenceImageUrl = previousImage || (view && view.workflow && view.workflow.floorPlanPreviewUrl) || '';
+    if (outputs.length) previousImage = outputs[outputs.length - 1].imageUrl;
+    const progress = Number(batch.progress ?? batch.progressPercent ?? 0);
+    return {
+      ...batch,
+      timelineStatus: batch.hasProcessing ? 'processing' : batch.status === 'failed' ? 'failed' : outputs.length ? 'complete' : 'empty',
+      timelinePrompt: String(batch.promptSummary || '').replace(/\s+/g, ' ').trim(),
+      timelineOutputs: outputs,
+      timelineReferenceUrl: referenceImageUrl,
+      timelineProgress: Number.isFinite(progress) && progress > 0 ? Math.min(100, Math.round(progress)) : 0,
+      timelineModel: (batch.modelProfileSnapshot && batch.modelProfileSnapshot.name) || '通用室内 V2.1',
+    };
+  });
+}
+
+function resolveSchemeLabel(options, currentWorkflowId) {
+  const currentIndex = (options || []).findIndex((item) => String(item.id) === String(currentWorkflowId || ''));
+  return currentIndex >= 0 ? `方案 ${currentIndex + 1}` : '方案';
+}
+
 Page({
   data: {
     leadId: '',
@@ -97,6 +194,11 @@ Page({
     uploadingReference: false,
     retryingBatchId: '',
     selectedGenerationIds: [],
+    canvasState: buildCanvasState(null),
+    timelineBatches: [],
+    timelineCompletedCount: 0,
+    timelineProcessingCount: 0,
+    currentSchemeLabel: '方案',
     sendMounted: false,
     sendModalVisible: false,
     sendTitle: '',
@@ -135,6 +237,9 @@ Page({
     navigationTop: 24,
     navigationHeight: 32,
     navigationRight: 96,
+    pendingRecipeId: '',
+    pendingRecipeInputMode: 'floor_plan',
+    startNewRound: false,
   },
 
   onLoad(options) {
@@ -151,6 +256,9 @@ Page({
       leadId: options.leadId || '',
       workflowId: options.workflowId || '',
       floorPlanId: options.floorPlanId || '',
+      pendingRecipeId: options.recipeId || '',
+      pendingRecipeInputMode: options.inputMode === 'photo' ? 'photo' : 'floor_plan',
+      startNewRound: options.startNewRound === '1',
     });
 
     if (!this.data.leadId) {
@@ -170,10 +278,23 @@ Page({
       : this.bootstrapWorkflow();
     try {
       const bootstrap = await aiService.loadStudioBootstrap();
-      this.setData({
-        bootstrap,
-        composerDraft: createDefaultDraft(bootstrap),
-      });
+      let composerDraft = createDefaultDraft(bootstrap);
+      if (this.data.pendingRecipeId) {
+        const recipe = await aiService.getRecipe(this.data.pendingRecipeId).catch(() => null);
+        if (recipe) {
+          composerDraft = {
+            ...composerDraft,
+            prompt: recipe.promptContent || recipe.internalPrompt || composerDraft.prompt,
+            templateId: String(recipe.id || this.data.pendingRecipeId),
+            templateName: recipe.name || '装修配方',
+            templatePreviewUrl: recipe.previewUrl || recipe.localPreviewUrl || recipe.coverUrl || recipe.previewAssetUrl || '',
+            templateBasePrompt: recipe.promptContent || recipe.internalPrompt || composerDraft.prompt,
+            templateEditMode: 'full',
+            renderMode: this.data.pendingRecipeInputMode === 'photo' ? 'single_room_photo' : WHOLE_HOUSE_RENDER_MODE,
+          };
+        }
+      }
+      this.setData({ bootstrap, composerDraft });
     } catch (error) {
       this.setData({
         error: error.error || error.message || '加载创作配置失败',
@@ -276,22 +397,46 @@ Page({
         this.data.selectedGenerationIds,
       );
       const view = applySelectionToView(baseView, selectedGenerationIds);
+      const canvasState = buildCanvasState(
+        view,
+        this.data.canvasState && this.data.canvasState.batch && this.data.canvasState.batch.id,
+        this.data.canvasState && this.data.canvasState.generation && this.data.canvasState.generation.id,
+      );
       this.previousView = baseView;
       const schemeChips = buildWorkflowSwitcherOptions(initialSiblingWorkflows, this.data.workflowId);
       const bound = roomsFromWorkflowDetail(detail);
       const scopes = bound.floorPlanId ? buildScopes(bound.rooms, bound.closedRoomCount) : [];
       const currentDraft = this.data.composerDraft || createDefaultDraft(this.data.bootstrap);
-      const selectedScope = resolveDraftScope(scopes, currentDraft);
-      const nextDraft = applyScopeToDraft(currentDraft, selectedScope);
-      const scopeDrifted = nextDraft.targetScope !== currentDraft.targetScope
-        || String(nextDraft.roomId || '') !== String(currentDraft.roomId || '');
+      const storedTemplate = currentDraft.templateId
+        ? readStoredTemplateMeta(currentDraft.templateId)
+        : null;
+      const hydratedDraft = storedTemplate && (!currentDraft.templateName || !currentDraft.templatePreviewUrl)
+        ? {
+          ...currentDraft,
+          templateName: currentDraft.templateName || storedTemplate.name || '',
+          templatePreviewUrl: currentDraft.templatePreviewUrl || storedTemplate.previewUrl || '',
+          templateBasePrompt: currentDraft.templateBasePrompt || storedTemplate.promptContent || '',
+        }
+        : currentDraft;
+      const selectedScope = resolveDraftScope(scopes, hydratedDraft);
+      const nextDraft = applyScopeToDraft(hydratedDraft, selectedScope);
+      if (!nextDraft.renderMode && bound.floorPlanId) {
+        nextDraft.renderMode = WHOLE_HOUSE_RENDER_MODE;
+        nextDraft.renderModeConfirmed = true;
+      }
+      const scopeDrifted = nextDraft.targetScope !== hydratedDraft.targetScope
+        || String(nextDraft.roomId || '') !== String(hydratedDraft.roomId || '')
+        || hydratedDraft !== currentDraft;
       const nextData = {
         view,
+        timelineBatches: buildTimelineBatches(view),
         task,
         siblingWorkflows: initialSiblingWorkflows,
         schemeChips,
+        currentSchemeLabel: resolveSchemeLabel(schemeChips, this.data.workflowId),
         scopes,
         selectedGenerationIds,
+        canvasState,
         loading: false,
         error: '',
         floorPlanId: bound.floorPlanId || this.data.floorPlanId,
@@ -299,6 +444,8 @@ Page({
           ? this.data.sendTitle
           : resolveSendTitlePrefill(view),
       };
+      nextData.timelineCompletedCount = nextData.timelineBatches.filter((item) => item.timelineStatus === 'complete').length;
+      nextData.timelineProcessingCount = nextData.timelineBatches.filter((item) => item.timelineStatus === 'processing').length;
       if (!silent || !this.data.composerDraft || scopeDrifted) {
         nextData.composerDraft = nextDraft;
       }
@@ -313,9 +460,11 @@ Page({
         void siblingWorkflowsPromise.then((siblingWorkflows) => {
           this.siblingWorkflowsLoadedAt = Date.now();
           if (String(this.data.workflowId || '') !== requestedWorkflowId) return;
+          const nextSchemeChips = buildWorkflowSwitcherOptions(siblingWorkflows, this.data.workflowId);
           this.setData({
             siblingWorkflows,
-            schemeChips: buildWorkflowSwitcherOptions(siblingWorkflows, this.data.workflowId),
+            schemeChips: nextSchemeChips,
+            currentSchemeLabel: resolveSchemeLabel(nextSchemeChips, this.data.workflowId),
           });
           if (!silent) this.maybeOfferPreferredWorkflow(siblingWorkflows, view, detail);
         }).catch(() => {}).finally(() => {
@@ -457,6 +606,79 @@ Page({
         }
       },
     });
+  },
+
+  selectRound(event) {
+    const batchIndex = Number(event.currentTarget.dataset.batchIndex);
+    const batch = this.data.view && this.data.view.batches[batchIndex];
+    if (!batch) return;
+    this.setData({ canvasState: buildCanvasState(this.data.view, batch.id, '') });
+  },
+
+  selectCanvasGeneration(event) {
+    const generationIndex = Number(event.currentTarget.dataset.generationIndex);
+    const batch = this.data.canvasState && this.data.canvasState.batch;
+    const generation = batch && batch.generations[generationIndex];
+    if (!generation || !generation.imageUrl) return;
+    this.setData({ canvasState: buildCanvasState(this.data.view, batch.id, generation.id) });
+  },
+
+  previewCanvasGeneration() {
+    const state = this.data.canvasState;
+    if (!state || !state.generation || !state.generation.imageUrl) return;
+    const urls = state.batch.generations.filter((item) => item.imageUrl).map((item) => item.imageUrl);
+    wx.previewImage({ urls, current: state.generation.imageUrl });
+  },
+
+  startNewRound() {
+    const composer = this.selectComponent('#studioComposer');
+    if (composer && typeof composer.openModePicker === 'function') composer.openModePicker();
+  },
+
+  resolveTimelineBatch(event) {
+    const batchId = event?.currentTarget?.dataset?.batchId;
+    if (batchId) {
+      return (this.data.view?.batches || []).find((item) => String(item.id) === String(batchId));
+    }
+    return this.data.canvasState && this.data.canvasState.batch;
+  },
+
+  editSelectedBatch(event) {
+    const batch = this.resolveTimelineBatch(event);
+    if (!batch) return;
+    this.editBatch({ currentTarget: { dataset: { batchId: batch.id } } });
+  },
+
+  regenerateSelectedBatch(event) {
+    const batch = this.resolveTimelineBatch(event);
+    if (!batch) return;
+    this.regenerateBatch({ currentTarget: { dataset: { batchId: batch.id } } });
+  },
+
+  retrySelectedBatch(event) {
+    const batch = this.resolveTimelineBatch(event);
+    if (!batch) return;
+    this.retryBatch({ currentTarget: { dataset: { batchId: batch.id } } });
+  },
+
+  sendSelectedGeneration(event) {
+    const batch = this.resolveTimelineBatch(event);
+    const generation = event?.currentTarget?.dataset?.batchId
+      ? (batch?.generations || []).find((item) => item.imageUrl && item.statusClass === 'succeeded')
+      : this.data.canvasState?.generation;
+    if (!generation) return;
+    const generationId = String(generation.id || '');
+    if (!generationId || generation.published) {
+      if (generation.published) wx.showToast({ title: '该效果图已发送给客户', icon: 'none' });
+      return;
+    }
+    const selectedGenerationIds = this.data.selectedGenerationIds.includes(generationId)
+      ? this.data.selectedGenerationIds
+      : [...this.data.selectedGenerationIds, generationId];
+    this.setData({
+      selectedGenerationIds,
+      view: applySelectionToView(this.previousView, selectedGenerationIds),
+    }, () => this.openSendModal());
   },
 
   previewRoundFirst(event) {
@@ -621,7 +843,12 @@ Page({
   },
 
   onComposerDraftChange(event) {
-    const { field, value } = event.detail;
+    const { field, value, draft } = event.detail || {};
+    if (draft) {
+      this.setData({ composerDraft: draft });
+      return;
+    }
+    if (!field) return;
     this.setData({ composerDraft: { ...this.data.composerDraft, [field]: value } });
   },
 
@@ -809,18 +1036,29 @@ Page({
   onSelectTemplate(event) {
     const { template } = event.detail;
     if (!template) return;
-    let draft = {
-      ...this.data.composerDraft,
-      prompt: template.promptContent || this.data.composerDraft.prompt,
-      templateId: template.id,
-      templateName: template.name || '',
+    // Keep the authenticated/local preview route when the source asset URL is
+    // not directly renderable in the Mini Program. The list item is the
+    // source of truth for the selected template metadata.
+    const enrichedTemplate = {
+      ...template,
+      previewUrl: template.previewUrl
+        || template.localPreviewUrl
+        || template.coverUrl
+        || template.previewAssetUrl
+        || '',
     };
+    let draft = applyTemplateToDraft(this.data.composerDraft, enrichedTemplate);
+    if (!draft.prompt) {
+      wx.showToast({ title: '该模板没有可编辑的提示词', icon: 'none' });
+      return;
+    }
     if (template.recommendedModelProfileId) {
       const model = (this.data.bootstrap?.models || []).find((item) => item.id === template.recommendedModelProfileId);
       if (model) draft = applyModelDefaults({ ...draft, modelProfileId: model.id }, model);
     }
+    writeStoredTemplateMeta(enrichedTemplate);
     this.setData({ composerDraft: draft, templateSheetVisible: false });
-    wx.showToast({ title: `已应用：${template.name}`, icon: 'none' });
+    wx.showToast({ title: `已应用：${enrichedTemplate.name}`, icon: 'none' });
   },
 
   onTemplateImageError(event) {
@@ -1011,6 +1249,10 @@ Page({
         aspectRatio: draft.aspectRatio,
         resolutionTier: draft.resolutionTier,
         templateId: draft.templateId || undefined,
+        templateName: draft.templateName || undefined,
+        templatePreviewUrl: draft.templatePreviewUrl || undefined,
+        templateBasePrompt: draft.templateBasePrompt || undefined,
+        templateEditMode: draft.templateEditMode || undefined,
         count: draft.count || 1,
         workflowId: this.data.workflowId,
         renderMode: draft.renderMode,

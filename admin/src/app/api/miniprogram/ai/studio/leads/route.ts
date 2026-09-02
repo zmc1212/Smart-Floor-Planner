@@ -35,7 +35,17 @@ export async function GET(request: Request) {
         total: result.total,
         items: visibleLeads.map((lead) => {
         const workflowMeta = workflowMap.get(lead.id);
-        const floorPlans = lead.floorPlanRecords
+        // A lead's primary floor plan is the authoritative current plan, but
+        // older records may not have a matching lead_floor_plans row. Include
+        // it as a fallback so one completed formal plan cannot be hidden by
+        // other draft measurement records.
+        const candidateFloorPlans = [
+          ...lead.floorPlanRecords,
+          ...(lead.primaryFloorPlanRecord ? [lead.primaryFloorPlanRecord] : []),
+        ];
+        const floorPlans = Array.from(
+          new Map(candidateFloorPlans.map((plan) => [plan.id.toString(), plan])).values(),
+        )
           .filter(isEligibleWorkflowFloorPlan)
           .map((plan) => ({
             id: plan.id.toString(),

@@ -3,33 +3,6 @@
     <view class="back-action" bindtap="goBack"><view></view></view>
     <text>装修配方</text>
   </view>
-  <view wx:if="{{loading}}" class="detail-state"><view class="state-art shimmer"></view><text>正在翻开方案页…</text></view>
+  <view wx:if="{{loading}}" class="detail-state"><view class="state-art shimmer"></view><text>正在带入客户方案…</text></view>
   <view wx:elif="{{error}}" class="detail-state"><text class="state-title">这份配方暂时无法使用</text><text>{{error}}</text><view class="state-action" bindtap="retry">重新加载</view></view>
-  <scroll-view wx:else scroll-y enhanced show-scrollbar="{{false}}" class="detail-scroll">
-    <view class="detail-content">
-      <view class="detail-hero">
-        <image wx:if="{{recipe.previewUrl}}" src="{{recipe.previewUrl}}" mode="aspectFill"></image>
-        <view wx:else class="detail-placeholder"><image src="/images/ai-design-icons/palette.png" mode="aspectFit"></image></view>
-        <view class="detail-shade"></view>
-        <text class="detail-bookmark">{{recipe.categoryName}}</text>
-        <view class="detail-hero-copy"><text>{{recipe.name}}</text><text>{{recipe.description}}</text></view>
-      </view>
-      <view class="recipe-facts">
-        <view><text>适用空间</text><text>{{recipe.spaceLabel}}</text></view>
-        <view><text>结构处理</text><text>保留正式墙体、门窗与空间关系</text></view>
-        <view><text>预计点数</text><text>{{inputMode === 'photo' ? photoPrice : floorPlanPrice}} 点</text></view>
-      </view>
-      <view wx:if="{{recipe.inputTypes.length > 1}}" class="input-choice">
-        <text class="block-title">选择应用方式</text>
-        <view class="choice-row">
-          <view class="choice-card {{inputMode === 'floor_plan' ? 'active' : ''}}" data-mode="floor_plan" bindtap="selectInputMode"><image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image><text>按户型设计</text><text>完整户型或单个房间</text></view>
-          <view class="choice-card {{inputMode === 'photo' ? 'active' : ''}}" data-mode="photo" bindtap="selectInputMode"><image src="/images/ai-design-icons/reference.png" mode="aspectFit"></image><text>拍照改造</text><text>需要清晰现场照片</text></view>
-        </view>
-      </view>
-      <view wx:elif="{{recipe.requiresPhoto}}" class="material-notice"><image src="/images/ai-design-icons/reference.png" mode="aspectFit"></image><view><text>需要一张现场照片</text><text>下一步选择客户空间后，可拍摄、从相册上传或使用该客户已有成果。</text></view></view>
-      <view wx:else class="material-notice"><image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image><view><text>支持完整户型和单个房间</text><text>正式量房中的闭合空间会在下一步列出，不需要再上传房间照片。</text></view></view>
-      <view class="detail-safe-space"></view>
-    </view>
-  </scroll-view>
-  <view wx:if="{{recipe}}" class="detail-bottom"><view class="use-recipe" bindtap="useRecipe">使用配方 · {{inputMode === 'photo' ? photoPrice : floorPlanPrice}} 点</view></view>
 </view>

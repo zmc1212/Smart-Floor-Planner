@@ -52,7 +52,7 @@ test('Design replaces Inspiration as the primary immersive design tab', () => {
     false
   );
 
-  assert.match(customTabSource, /key: 'ai-design'/);
+  assert.match(customTabSource, /key: 'design'/);
   assert.match(customTabSource, /pagePath: '\/pages\/ai-design\/ai-design'/);
   assert.match(customTabSource, /text: '设计'/);
   assert.match(customTabSource, /this\.setData\(\{ selected: index \}\)/);
@@ -72,15 +72,14 @@ test('AI Design uses the shared tab-page scrolling contract', () => {
   assert.match(aiDesignWxml, /class="ai-page sfp-tab-page"/);
   assert.match(aiDesignWxml, /class="ai-scroll"/);
   assert.match(aiDesignWxml, /padding-top: \{\{navigationTop\}\}px/);
-  assert.match(aiDesignWxml, /--ai-navigation-top: \{\{navigationTop\}\}px/);
   assert.match(aiDesignWxml, /padding-right: \{\{navigationRight\}\}px/);
   assert.match(aiDesignWxml, /bindrefresherrefresh="onRefresh"/);
   assert.match(aiDesignWxss, /\.recipe-search-overlay[^}]+position:\s*fixed/);
   assert.match(aiDesignWxss, /safe-area-inset-bottom/);
-  assert.match(aiDesignWxml, /class="create-scheme-hero"/);
-  assert.match(aiDesignWxml, /最近设计项目/);
-  assert.match(aiDesignWxml, /wx:for="\{\{recentProjects\}\}"/);
-  assert.match(aiDesignWxml, /bindtap="openRecentProject"/);
+  assert.match(aiDesignWxml, /class="project-hero"/);
+  assert.match(aiDesignWxml, /recentProjects\[0\]/);
+  assert.match(aiDesignWxml, /bindtap="openRecentProject(StartNew|Continue)"/);
+  assert.match(aiDesignWxss, /\.hero-action-icon\s*\{[\s\S]*?width:\s*30rpx;[\s\S]*?height:\s*30rpx;/);
   assert.match(aiDesignWxml, /bindtap="openCreateScheme"/);
   assert.match(aiDesignWxml, /class="recipe-waterfall"/);
   assert.match(aiDesignPageSource, /openSchemeStudio/);
@@ -132,6 +131,10 @@ test('contextual AI entries preserve plan and room scope across switchTab', () =
     buildSchemeStudioUrl({ leadId: '1', workflowId: '2', floorPlanId: '3' }),
     '/packages/ai-workflow/scheme-studio/scheme-studio?leadId=1&workflowId=2&floorPlanId=3'
   );
+  assert.equal(
+    buildSchemeStudioUrl({ leadId: '1', workflowId: '2', startNewRound: '1' }),
+    '/packages/ai-workflow/scheme-studio/scheme-studio?leadId=1&workflowId=2&startNewRound=1'
+  );
 
   const indexSource = fs.readFileSync(path.join(miniRoot, 'pages', 'index', 'index.js'), 'utf8');
   const leadDetailSource = fs.readFileSync(
@@ -142,12 +145,24 @@ test('contextual AI entries preserve plan and room scope across switchTab', () =
   assert.match(leadDetailSource, /openAIDesignEntry/);
 });
 
+test('Design hero actions keep new-round and continuation routes distinct', () => {
+  assert.match(aiDesignWxml, /bindtap="openRecentProjectStartNew"/);
+  assert.match(aiDesignWxml, /bindtap="openRecentProjectContinue"/);
+  assert.match(aiDesignPageSource, /openRecentProjectStartNew/);
+  assert.match(aiDesignPageSource, /openRecentProjectContinue/);
+  assert.match(aiDesignPageSource, /startNewRound: options\.startNewRound \? '1' : ''/);
+  assert.match(
+    fs.readFileSync(path.join(miniRoot, 'packages', 'ai-workflow', 'scheme-studio', 'scheme-studio.wxml'), 'utf8'),
+    /auto-open-round="\{\{startNewRound\}\}"/
+  );
+});
+
 test('standalone channel promoters cannot open or preload enterprise AI design', () => {
   assert.equal(canAccessAIDesign({ role: 'staff', staffRole: 'salesperson', enterpriseId: '' }), false);
   assert.equal(canAccessAIDesign({ role: 'staff', staffRole: 'salesperson', enterpriseId: '42' }), true);
   assert.equal(canAccessAIDesign({ role: 'user', enterpriseId: '42' }), false);
-  assert.match(customTabSource, /requiresEnterprise: true/);
-  assert.match(customTabSource, /visible: !item\.requiresEnterprise \|\| canUseAIDesign/);
+  assert.match(customTabSource, /capability: 'staff\.design'/);
+  assert.match(customTabSource, /capabilities\.includes\(item\.capability\)/);
   assert.match(customTabSource, /compactMeasureTab: list\.some\(\(item\) => item\.center\)/);
   assert.match(customTabWxml, /wx:if="\{\{item\.visible !== false\}\}"/);
   assert.match(customTabWxml, /center-icon-compact/);

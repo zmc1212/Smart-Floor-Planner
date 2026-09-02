@@ -3311,7 +3311,10 @@ test('PostgreSQL workbench floor-plan preview renders the bound survey control P
       enterpriseId: enterpriseAId,
       workflowId: workflow.id,
     });
-    assert.equal(context.workflow.floorPlanPreviewUrl, `/api/ai/workflows/${workflow.id}/floor-plan-preview?v=3`);
+    const previewUrl = new URL(context.workflow.floorPlanPreviewUrl!, 'http://localhost');
+    assert.equal(previewUrl.pathname, `/api/ai/workflows/${workflow.id}/floor-plan-preview`);
+    assert.equal(previewUrl.searchParams.get('v'), '3');
+    assert.ok(previewUrl.searchParams.get('fp'), '预览 URL 应携带正式户型快照版本');
     assert.equal(context.workflow.sourceFloorPlan?.id, String(created.plan.id));
     assert.equal(context.workflow.sourceFloorPlan?.name, 'Workbench control plan');
 

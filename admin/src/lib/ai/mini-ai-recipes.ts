@@ -128,6 +128,18 @@ export async function getMiniAiRecipe(input: {
   };
 }
 
+/**
+ * Expose the selected recipe's editable prompt under the Mini Program DTO
+ * field while keeping the internal compatibility alias private.
+ */
+export function serializeMiniAiRecipeDetail(recipe: Record<string, unknown>) {
+  const { internalPrompt, ...data } = recipe;
+  return {
+    ...data,
+    promptContent: String(data.promptContent || internalPrompt || ''),
+  };
+}
+
 export async function getMiniAiRecipeRuntime(recipeId: string) {
   const [categoryData, template] = await Promise.all([
     listActivePromptCategories(),

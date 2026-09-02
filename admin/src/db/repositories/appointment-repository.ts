@@ -333,6 +333,7 @@ export class AppointmentRepository {
     enterpriseId: bigint;
     leadId: bigint;
     date: string;
+    now?: Date;
   }) {
     const [settings, lead] = await Promise.all([
       this.getSettings(input.enterpriseId),
@@ -341,7 +342,8 @@ export class AppointmentRepository {
     if (!lead || lead.archivedAt || lead.status === 'closed') {
       throw appointmentError('appointment_lead_not_found', '线索不存在或已关闭', 404);
     }
-    const today = localDateInTimeZone(new Date(), settings.timezone);
+    const now = input.now || new Date();
+    const today = localDateInTimeZone(now, settings.timezone);
     const maxDate = new Date(`${today}T00:00:00.000Z`);
     maxDate.setUTCDate(maxDate.getUTCDate() + settings.maxAdvanceDays);
     const maxDateText = maxDate.toISOString().slice(0, 10);
@@ -363,7 +365,7 @@ export class AppointmentRepository {
     const excludeAppointmentId = await this.confirmedAppointmentIdForLead(input.leadId);
     const available = [] as Array<{ startAt: Date; endAt: Date; measurerId: bigint }>;
     for (const slot of slots) {
-      if (slot.startAt <= new Date()) continue;
+      if (slot.startAt <= now) continue;
       const target = appointmentRange(slot.startAt, settings.defaultDurationMinutes);
       for (const candidate of candidates) {
         if (await this.isMeasurerAvailable(candidate.id, target, { excludeAppointmentId })) {
@@ -378,17 +380,18 @@ export class AppointmentRepository {
   private async assertBookableSlot(
     enterpriseId: bigint,
     startAt: Date,
-    endAt: Date
+    endAt: Date,
+    now = new Date()
   ) {
     const settings = await this.getSettings(enterpriseId);
-    if (startAt <= new Date()) {
+    if (startAt <= now) {
       throw appointmentError('appointment_time_past', '预约时间必须晚于当前时间', 400);
     }
     if (endAt.getTime() - startAt.getTime() !== settings.defaultDurationMinutes * 60_000) {
       throw appointmentError('appointment_duration_invalid', '预约时长不符合企业设置', 400);
     }
     const date = localDateInTimeZone(startAt, settings.timezone);
-    const today = localDateInTimeZone(new Date(), settings.timezone);
+    const today = localDateInTimeZone(now, settings.timezone);
     const latest = new Date(`${today}T00:00:00.000Z`);
     latest.setUTCDate(latest.getUTCDate() + settings.maxAdvanceDays);
     if (date < today || date > latest.toISOString().slice(0, 10)) {
@@ -413,6 +416,7 @@ export class AppointmentRepository {
     location?: AppointmentLocationInput | null;
     actorUserId: bigint | null;
     eventKey: string;
+    now?: Date;
   }) {
     const lead = await this.findLead(input.enterpriseId, input.leadId, true);
     if (!lead || lead.archivedAt || lead.status === 'closed' || lead.status === 'converted' || !lead.assignedTo) {
@@ -428,7 +432,7 @@ export class AppointmentRepository {
     if (await this.activeAppointmentForLead(input.leadId)) {
       throw appointmentError('appointment_already_exists', '该线索已有有效预约', 409);
     }
-    await this.assertBookableSlot(input.enterpriseId, input.startAt, input.endAt);
+    await this.assertBookableSlot(input.enterpriseId, input.startAt, input.endAt, input.now);
     const timeRange = range(input.startAt, input.endAt);
     const measurer = await this.resolveMeasurer(
       input.enterpriseId,
@@ -701,6 +705,7 @@ export class AppointmentRepository {
     eventKey: string;
     reason?: string | null;
     customerUserId?: bigint;
+    now?: Date;
   }) {
     const current = await this.findById(input.enterpriseId, input.appointmentId, true);
     if (!current || current.appointment.status !== 'confirmed') {
@@ -717,11 +722,11 @@ export class AppointmentRepository {
       const appointmentStart = current.appointment.timeRange;
       const match = appointmentStart.match(/[[(]([^,]+),/);
       const start = match ? new Date(match[1].replaceAll('"', '')) : null;
-      if (!start || Date.now() > start.getTime() - settings.customerRescheduleCutoffHours * 3_600_000) {
+      if (!start || (input.now || new Date()).getTime() > start.getTime() - settings.customerRescheduleCutoffHours * 3_600_000) {
         throw appointmentError('appointment_customer_cutoff', '已超过客户可改期时间', 409);
       }
     }
-    await this.assertBookableSlot(input.enterpriseId, input.startAt, input.endAt);
+    await this.assertBookableSlot(input.enterpriseId, input.startAt, input.endAt, input.now);
     const timeRange = range(input.startAt, input.endAt);
     const measurer = await this.resolveMeasurer(
       input.enterpriseId,

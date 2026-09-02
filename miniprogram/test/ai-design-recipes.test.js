@@ -6,22 +6,22 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
-test('AI Design discovery renders real recipe browsing instead of the four-stage workbench', () => {
+test('AI Design discovery keeps the approved recipe discovery section inside the unified entry', () => {
   const wxml = read('pages/ai-design/ai-design.wxml');
   const source = read('pages/ai-design/ai-design.js');
   const service = read('utils/aiDesignService.js');
   assert.match(wxml, /热门空间风格配方/);
   assert.match(wxml, /class="recipe-waterfall"/);
   assert.match(wxml, /class="featured-recipe-strip"/);
-  assert.match(wxml, /class="create-scheme-hero"/);
-  assert.match(wxml, /最近设计项目/);
+  assert.match(wxml, /class="project-hero"/);
+  assert.match(wxml, /看看配方效果/);
   assert.doesNotMatch(wxml, />设计记录</);
   assert.doesNotMatch(wxml, /bindtap="openHistory"/);
   assert.match(service, /\/miniprogram\/ai\/history/);
-  assert.match(wxml, /bindtap="openRecipeDetail"/);
+  assert.match(wxml, /bindtap="openRecipeBinding"/);
+  assert.match(source, /\/recipe-project\/recipe-project\?recipeId=/);
   assert.doesNotMatch(wxml, /bindtap="switchRecipeInputMode"/);
   assert.doesNotMatch(wxml, /class="input-chevron"/);
-  assert.match(wxml, /aria-disabled="true"/);
   assert.doesNotMatch(wxml, /project-hero-stage-rail/);
   assert.match(source, /loadRecipes\(\{ page: 1, limit: 24 \}\)/);
   assert.doesNotMatch(source, /visibleRecipes\.length \? visibleRecipes/);
@@ -29,18 +29,17 @@ test('AI Design discovery renders real recipe browsing instead of the four-stage
   assert.match(service, /\/miniprogram\/ai\/recipes/);
 });
 
-test('recipe flow picks customer then scheme then space before confirmation', () => {
+test('recipe flow picks customer then scheme before confirmation', () => {
   const detail = read('packages/ai-workflow/recipe-detail/recipe-detail.wxml');
   const project = read('packages/ai-workflow/recipe-project/recipe-project.wxml');
   const projectScript = read('packages/ai-workflow/recipe-project/recipe-project.js');
   const confirm = read('packages/ai-workflow/recipe-confirm/recipe-confirm.wxml');
   const confirmScript = read('packages/ai-workflow/recipe-confirm/recipe-confirm.js');
   const service = read('utils/aiDesignService.js');
-  assert.match(detail, /支持完整户型和单个房间/);
-  assert.match(detail, /需要一张现场照片/);
+  assert.match(detail, /正在带入客户方案/);
+  assert.doesNotMatch(detail, /detail-hero|recipe-facts|input-choice/);
   assert.match(project, /选择客户/);
   assert.match(project, /选择方案/);
-  assert.match(project, /选择设计空间/);
   assert.match(project, /item\.actionLabel/);
   assert.match(project, /方案对话/);
   assert.match(project, /bindtap="createScheme"/);

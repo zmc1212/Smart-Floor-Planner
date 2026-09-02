@@ -1,9 +1,20 @@
 <view class="composer-root">
-  <view class="composer-shell dock {{dockExpanded ? 'expanded' : 'collapsed'}} {{keyboardHeight > 0 ? 'keyboard-open' : ''}}" catchtap="expandDock">
-    <view wx:if="{{view}}" class="credit-bar">{{view.creditSummary}}</view>
-    <view wx:else class="credit-bar muted">加载模型与点数配置中</view>
+  <view class="composer-shell dock {{dockExpanded ? 'expanded' : 'collapsed'}} {{keyboardHeight > 0 ? 'keyboard-open' : ''}} {{timelineMode ? 'timeline' : ''}}" catchtap="toggleDock">
+    <view wx:if="{{timelineMode}}" class="timeline-dock-handle" catchtap="toggleDock" aria-role="button" aria-label="展开或收起创作参数">
+      <image src="/images/ai-studio-icons-v3/chevron-down.png" mode="aspectFit"></image>
+    </view>
 
-    <view wx:if="{{view && !view.modeConfirmed}}" class="start-round" catchtap="openModePicker" aria-role="button" aria-label="开始新一轮设计">
+    <view wx:if="{{view && !timelineMode}}" class="credit-bar">
+      <block wx:if="{{timelineMode}}">
+        <image class="credit-info" src="/images/ai-studio-icons-v3/info.png" mode="aspectFit"></image>
+        <text>{{view.timelineCreditLabel}}</text>
+        <image class="credit-chevron" src="/images/ai-studio-icons-v3/chevron-right.png" mode="aspectFit"></image>
+      </block>
+      <text wx:else>{{view.creditSummary}}</text>
+    </view>
+    <view wx:elif="{{!timelineMode}}" class="credit-bar muted">加载模型与点数配置中</view>
+
+    <view wx:if="{{view && !view.modeConfirmed && !timelineMode}}" class="start-round" catchtap="openModePicker" aria-role="button" aria-label="开始新一轮设计">
       <view class="start-round-copy">
         <text class="start-round-title">开始新一轮设计</text>
         <text class="start-round-meta">先选整屋或单间，再安排参考图</text>
@@ -11,7 +22,7 @@
       <view class="start-round-action">选择方式</view>
     </view>
 
-    <view wx:if="{{dockExpanded && view && view.modeConfirmed}}" class="dock-expanded" catchtap="noop">
+    <view wx:if="{{dockExpanded && view && (view.modeConfirmed || timelineMode)}}" class="dock-expanded" catchtap="noop">
       <view class="mode-intent-banner">
         <image class="mode-intent-art" src="{{view.modeArtwork}}" mode="aspectFit"></image>
         <view class="mode-intent-copy">
@@ -65,13 +76,72 @@
       </view>
     </view>
 
-    <view wx:if="{{!view || view.modeConfirmed}}" class="prompt-row">
-      <view class="prompt-field">
+    <view wx:if="{{timelineMode && dockExpanded && view && !view.hasTemplate}}" class="timeline-compose-heading" catchtap="noop">
+      <text>手动创作</text>
+      <view bindtap="openTemplates" aria-role="button">选择模板</view>
+    </view>
+
+    <view wx:if="{{timelineMode && !dockExpanded && view && view.hasTemplate}}" class="template-collapsed-row" catchtap="enterTemplateFullEdit">
+      <image wx:if="{{draft.templatePreviewUrl}}" class="template-collapsed-cover" src="{{draft.templatePreviewUrl}}" mode="aspectFill"></image>
+      <view wx:else class="template-collapsed-cover placeholder"><text>模板</text></view>
+      <view class="template-collapsed-copy">
+        <text class="template-collapsed-name">{{draft.templateName || view.templateName}}</text>
+        <text class="template-collapsed-meta">模板底稿 · 可编辑</text>
+      </view>
+      <view class="template-collapsed-adjust">编辑</view>
+      <view class="timeline-control {{view.timelineControlUrl ? '' : 'empty'}}" catchtap="openTimelineControl">
+        <image wx:if="{{view.timelineControlUrl}}" src="{{view.timelineControlUrl}}" mode="aspectFill"></image>
+        <text>{{view.timelineControlLabel}}</text>
+        <image class="timeline-control-chevron" src="/images/ai-studio-icons-v3/chevron-down.png" mode="aspectFit"></image>
+      </view>
+      <view class="generate-fab compact {{!view.canSubmit ? 'blocked' : ''}}" catchtap="submitGeneration">
+        <image class="generate-fab-spark" src="/images/ai-studio-icons-v3/generate-white.png" mode="aspectFit"></image>
+      </view>
+    </view>
+
+    <view wx:if="{{timelineMode && dockExpanded && view && view.hasTemplate}}" class="template-full-edit-panel" catchtap="noop">
+      <view class="template-edit-head">
+        <image wx:if="{{draft.templatePreviewUrl}}" src="{{draft.templatePreviewUrl}}" mode="aspectFill"></image>
+        <view wx:else class="template-edit-cover placeholder"><text>模板</text></view>
+        <view class="template-edit-title-wrap">
+          <text class="template-edit-title">{{draft.templateName || view.templateName}}</text>
+          <text class="template-edit-badge">模板底稿</text>
+        </view>
+        <view class="template-edit-change" bindtap="returnToTemplateSummary">收起</view>
+      </view>
+      <view class="template-adjustment-label">完整提示词 <text>ⓘ</text></view>
+      <text class="template-adjustment-copy">可逐字修改，保存后仍保留模板来源</text>
+      <view class="template-full-field">
+        <textarea
+          class="template-full-input"
+          value="{{draft.prompt}}"
+          maxlength="2000"
+          bindinput="onPromptInput"
+          bindblur="onTemplateFullEditBlur"
+          auto-height="true"
+          show-confirm-bar="{{false}}"
+          adjust-position="{{false}}"
+        ></textarea>
+        <text class="template-adjustment-count">{{draft.prompt.length || 0}}/2000</text>
+      </view>
+      <view class="template-full-footer">
+        <view class="template-source-line"><image src="/images/ai-studio-icons-v3/check-white.png" mode="aspectFit"></image><text>源自模板：{{draft.templateName || view.templateName}}</text></view>
+        <view class="template-restore" bindtap="restoreSelectedTemplate">恢复模板</view>
+      </view>
+    </view>
+
+    <view wx:if="{{timelineMode && !dockExpanded && view && !view.modeConfirmed && !view.hasTemplate}}" class="timeline-start-round" catchtap="openModePicker" aria-role="button" aria-label="开始新一轮设计">
+      <image src="/images/ai-studio-icons-v3/generate-white.png" mode="aspectFit"></image>
+      <text>开始新一轮设计</text>
+    </view>
+
+    <view wx:if="{{!view || (!timelineMode && view.modeConfirmed) || (timelineMode && !draft.templateId && view && view.modeConfirmed)}}" class="prompt-row">
+      <view wx:if="{{!timelineMode || (view && view.modeConfirmed)}}" class="prompt-field">
         <textarea
           class="prompt-input"
           value="{{draft.prompt}}"
           maxlength="2000"
-          placeholder="{{view && view.renderMode === 'whole_floor_plan' ? '补充整屋设计要求…' : '补充这个房间的设计要求…'}}"
+          placeholder="{{timelineMode ? '补充本轮设计要求…' : (view && view.renderMode === 'whole_floor_plan' ? '补充整屋设计要求…' : '补充这个房间的设计要求…')}}"
           focus="{{promptFocused}}"
           bindinput="onPromptInput"
           bindfocus="onPromptFocus"
@@ -83,16 +153,26 @@
           hold-keyboard="{{false}}"
         ></textarea>
       </view>
+      <view wx:if="{{timelineMode && view && view.modeConfirmed}}" class="timeline-control {{view.timelineControlUrl ? '' : 'empty'}}" bindtap="openTimelineControl">
+        <image wx:if="{{view.timelineControlUrl}}" src="{{view.timelineControlUrl}}" mode="aspectFill"></image>
+        <text>{{view.timelineControlLabel}}</text>
+        <image class="timeline-control-chevron" src="/images/ai-studio-icons-v3/chevron-down.png" mode="aspectFit"></image>
+      </view>
       <view
-        wx:if="{{!dockExpanded}}"
+        wx:if="{{!dockExpanded && (!timelineMode || (view && view.modeConfirmed))}}"
         class="generate-fab compact {{!view || !view.canSubmit ? 'blocked' : ''}}"
         catchtap="submitGeneration"
       >
-        <view class="generate-fab-spark"></view>
+        <image class="generate-fab-spark" src="/images/ai-studio-icons-v3/generate-white.png" mode="aspectFit"></image>
       </view>
     </view>
 
-    <view wx:if="{{dockExpanded && view && view.modeConfirmed}}" class="dock-toolbar" catchtap="noop">
+    <view wx:if="{{timelineMode && !dockExpanded && view && view.modeConfirmed}}" class="timeline-expand-hint" catchtap="expandDock">
+      <text>展开参数</text>
+      <image src="/images/ai-studio-icons-v3/chevron-down.png" mode="aspectFit"></image>
+    </view>
+
+    <view wx:if="{{dockExpanded && view && (view.modeConfirmed || timelineMode)}}" class="dock-toolbar" catchtap="noop">
       <view class="dock-toolbar-actions">
         <view
           wx:for="{{view.toolbarItems}}"
@@ -109,7 +189,7 @@
         class="generate-fab {{!view || !view.canSubmit ? 'blocked' : ''}}"
         catchtap="submitGeneration"
       >
-        <view class="generate-fab-spark"></view>
+        <image class="generate-fab-spark" src="/images/ai-studio-icons-v3/generate-white.png" mode="aspectFit"></image>
         <text class="generate-fab-label">{{generating ? '提交' : '生成'}}</text>
       </view>
     </view>
@@ -119,27 +199,50 @@
     <view class="sheet-mask {{modePickerVisible ? 'open' : ''}}" catchtap="closeModePicker"></view>
     <view class="sheet-panel mode-picker-panel {{modePickerVisible ? 'open' : ''}}" catchtap="noop">
       <view class="sheet-handle"></view>
-      <text class="mode-picker-title">选择设计方式</text>
-      <text class="mode-picker-copy">先选目标，系统会自动安排参考图</text>
-      <view class="mode-choice" data-mode="whole_floor_plan" bindtap="selectRenderMode">
-        <image class="mode-choice-art whole" src="/packages/ai-workflow/assets/mode-flow-v1/whole-house-material-board.png" mode="aspectFit"></image>
-        <view class="mode-choice-copy">
-          <text class="mode-choice-title">设计整屋</text>
-          <text class="mode-choice-meta">正式户型锁定墙体、房间与门窗</text>
-          <text class="mode-choice-tag">结构优先</text>
-        </view>
-        <view class="mode-choice-chevron"></view>
+      <view class="mode-picker-heading">
+        <text class="mode-picker-title">准备新一轮</text>
+        <text class="mode-picker-copy">先定目标，系统会自动匹配输入依据</text>
       </view>
-      <view class="mode-choice" data-mode="single_room_photo" bindtap="selectRenderMode">
-        <image class="mode-choice-art single" src="/packages/ai-workflow/assets/mode-flow-v1/single-room-camera-board.png" mode="aspectFit"></image>
-        <view class="mode-choice-copy">
-          <text class="mode-choice-title">设计单间</text>
-          <text class="mode-choice-meta">现场照片锁定镜头、透视与构图</text>
-          <text class="mode-choice-tag">现场图优先</text>
-        </view>
-        <view class="mode-choice-chevron"></view>
+      <view class="setup-label">
+        <view class="setup-label-main"><text class="setup-step-number">1</text><text class="setup-label-title">设计目标</text></view>
       </view>
-      <text class="mode-picker-footnote">稍后仍可更换风格与参考图</text>
+      <view class="mode-choice-grid">
+        <view class="mode-choice {{pendingRenderMode === 'whole_floor_plan' ? 'active' : ''}}" data-mode="whole_floor_plan" bindtap="selectRenderMode">
+          <view class="mode-choice-select"><image src="/images/ai-studio-icons-v3/check-white.png" mode="aspectFit"></image></view>
+          <image class="mode-choice-art whole" src="/images/ai-design/round-setup-v3/whole-floor-plan.png" mode="aspectFit"></image>
+          <view class="mode-choice-copy">
+            <text class="mode-choice-title">设计整屋</text>
+            <text class="mode-choice-meta">正式户型负责结构</text>
+          </view>
+        </view>
+        <view class="mode-choice {{pendingRenderMode === 'single_room_photo' ? 'active' : ''}}" data-mode="single_room_photo" bindtap="selectRenderMode">
+          <view class="mode-choice-select"><image src="/images/ai-studio-icons-v3/check-white.png" mode="aspectFit"></image></view>
+          <image class="mode-choice-art single" src="/images/ai-design/round-setup-v3/single-room-reference.png" mode="aspectFit"></image>
+          <view class="mode-choice-copy">
+            <text class="mode-choice-title">设计单间</text>
+            <text class="mode-choice-meta">现场照片负责镜头</text>
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{view && view.wholeHouseAvailable}}" class="setup-label setup-label-secondary">
+        <view class="setup-label-main"><text class="setup-step-number">2</text><text class="setup-label-title">输入依据</text></view>
+      </view>
+      <view wx:if="{{view && view.wholeHouseAvailable}}" class="setup-basis-row">
+        <view class="setup-basis-icon"><image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image></view>
+        <view><text>正式户型与结构</text><text>系统已安排</text></view>
+        <view wx:if="{{view.canAddReference}}" class="setup-basis-change" bindtap="uploadReference"><text>更换输入依据</text><image src="/images/ai-studio-icons-v3/chevron-right.png" mode="aspectFit"></image></view>
+        <text wx:else class="setup-basis-status">系统安排</text>
+      </view>
+      <view wx:if="{{draft.templateName}}" class="setup-label setup-label-secondary">
+        <view class="setup-label-main"><text class="setup-step-number">3</text><text class="setup-label-title">装修配方</text><text class="setup-optional">可选</text></view>
+      </view>
+      <view wx:if="{{draft.templateName}}" class="setup-recipe-row">
+        <image src="/images/ai-design/unified-entry-v1/recipe-modern-minimal.jpg" mode="aspectFill"></image>
+        <view><text>{{draft.templateName}}</text></view>
+        <view class="setup-recipe-change" bindtap="openTemplates"><text>更换</text><image src="/images/ai-studio-icons-v3/chevron-right.png" mode="aspectFit"></image></view>
+      </view>
+      <view class="mode-picker-footnote"><image src="/images/ai-studio-icons-v3/info.png" mode="aspectFit"></image><text>切换为设计单间后，系统会改为要求现场照片</text></view>
+      <view class="mode-picker-primary" bindtap="confirmRenderMode"><image src="/images/ai-studio-icons-v3/generate-white.png" mode="aspectFit"></image><text>进入创作</text></view>
     </view>
   </view>
 
@@ -147,7 +250,7 @@
     <view class="sheet-mask {{settingsOpen ? 'open' : ''}}" catchtap="closeSettings"></view>
     <view class="sheet-panel tall settings-panel {{settingsOpen ? 'open' : ''}}" catchtap="noop">
       <view class="sheet-head">
-        <text class="sheet-title">出图设置</text>
+        <text class="sheet-title">创作设置</text>
         <view class="sheet-close" bindtap="closeSettings">×</view>
       </view>
       <scroll-view wx:if="{{view}}" scroll-y class="settings-scroll">
@@ -256,7 +359,7 @@
     <view class="sheet-mask {{templateSheetOpen ? 'open' : ''}}" catchtap="closeTemplates"></view>
     <view class="sheet-panel tall {{templateSheetOpen ? 'open' : ''}}" catchtap="noop">
       <view class="sheet-head">
-        <text class="sheet-title">提示词模板</text>
+        <text class="sheet-title">选择模板</text>
         <view class="sheet-close" bindtap="closeTemplates">×</view>
       </view>
 

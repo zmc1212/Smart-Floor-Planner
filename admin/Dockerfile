@@ -3,9 +3,9 @@
 # ============================================
 FROM node:20-alpine AS deps
 
-# Official Alpine CDN often fails TLS from China; npm already uses npmmirror.
-RUN sed -i 's#dl-cdn.alpinelinux.org#mirrors.aliyun.com#g' /etc/apk/repositories \
-    && apk add --no-cache libc6-compat
+# Keep Alpine's official CDN; the previous Aliyun mirror could stall
+# indefinitely while downloading the CJK font package.
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
@@ -35,12 +35,15 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
+ARG SFP_RELEASE_VERSION=development
+LABEL org.opencontainers.image.title="Smart Floor Planner Admin" \
+      org.opencontainers.image.version="$SFP_RELEASE_VERSION"
+
 ENV NODE_ENV=production
 ENV HOSTNAME="0.0.0.0"
 ENV PORT=3005
 
-RUN sed -i 's#dl-cdn.alpinelinux.org#mirrors.aliyun.com#g' /etc/apk/repositories \
-    && apk add --no-cache font-noto-cjk libc6-compat
+RUN apk add --no-cache font-noto-cjk libc6-compat
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 RUN mkdir -p /data/ai-assets && chown -R nextjs:nodejs /data/ai-assets

@@ -50,7 +50,7 @@
           </view>
           <text class="hero-description-v7">通过专属推广码推荐客户，\n客户成功签单后可获得对应推广提成</text>
         </view>
-        <image class="hero-k-v7" src="/images/onboarding-referrer-v7/xiao-k-promoter-hero-v7.png" mode="aspectFit" aria-label="小K推广团队欢迎你" />
+        <image class="hero-k-v7" src="/packages/business/assets/onboarding-referrer-v7/xiao-k-promoter-hero-v7.png" mode="aspectFit" aria-label="小K推广团队欢迎你" />
         <view class="hero-plant-v7 plant-one" aria-hidden="true"></view>
         <view class="hero-plant-v7 plant-two" aria-hidden="true"></view>
       </view>
@@ -75,7 +75,7 @@
             <text>已认证企业邀请</text>
           </view>
         </view>
-        <image class="enterprise-building-v7" src="/images/onboarding-referrer-v7/enterprise-building-v7.png" mode="aspectFit" aria-hidden="true" />
+        <image class="enterprise-building-v7" src="/packages/business/assets/onboarding-referrer-v7/enterprise-building-v7.png" mode="aspectFit" aria-hidden="true" />
       </view>
 
       <view class="promotion-steps-v7">

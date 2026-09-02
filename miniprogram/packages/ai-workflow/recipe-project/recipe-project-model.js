@@ -35,11 +35,17 @@ function isAssignedUnclosedLead(lead) {
 function decorateLead(lead, options = {}) {
   const inputMode = options.inputMode === 'photo' ? 'photo' : 'floor_plan';
   const floorPlans = Array.isArray(lead && lead.floorPlans) ? lead.floorPlans : [];
-  const surveyedDesignable = ['survey_completed', 'design_published', 'converted'].includes(
+  // The picker is gated by the formal floor-plan capability, not by whether
+  // the appointment workflow has separately been confirmed complete. A lead
+  // can have several measurement records; one eligible completed/closed plan
+  // is enough to continue into AI design.
+  const hasCompletedFormalPlan = floorPlans.some((plan) => String(plan && plan.status || '') === 'completed');
+  const surveyedDesignable = hasCompletedFormalPlan || ['survey_completed', 'design_published', 'converted'].includes(
     String((lead && lead.serviceStage) || '')
   );
   const photoSelectable = inputMode === 'photo' && isAssignedUnclosedLead(lead);
   const selectable = photoSelectable || surveyedDesignable;
+  const eligibleFloorPlan = floorPlans.find((plan) => String(plan && plan.status || '') === 'completed') || floorPlans[0];
   const name = String((lead && lead.name) || '未命名客户');
   const communityName = String((lead && lead.communityName) || '');
   const workflowCount = Number((lead && lead.workflowCount) || 0);
@@ -47,6 +53,7 @@ function decorateLead(lead, options = {}) {
     ...(lead || {}),
     id: String((lead && lead.id) || ''),
     name,
+    avatarText: name.slice(0, 1) || '客',
     communityName,
     workflowCount,
     inputMode,
@@ -58,7 +65,7 @@ function decorateLead(lead, options = {}) {
     helper: inputMode === 'photo'
       ? '可用户型图或现场照出图并发送'
       : (selectable ? '选择后进入方案对话' : '需先完成正式量房'),
-    eligibleFloorPlanId: floorPlans[0] && floorPlans[0].id ? String(floorPlans[0].id) : '',
+    eligibleFloorPlanId: eligibleFloorPlan && eligibleFloorPlan.id ? String(eligibleFloorPlan.id) : '',
   };
 }
 

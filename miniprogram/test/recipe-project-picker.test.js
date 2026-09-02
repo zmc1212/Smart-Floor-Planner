@@ -99,6 +99,18 @@ test('recipe picker switches to designable after the surveyed lead becomes eligi
   );
 });
 
+test('recipe picker treats one completed formal plan as designable even when appointment stage is survey_ready', () => {
+  const lead = decorateLead({
+    id: '4',
+    name: '已有闭合户型',
+    serviceStage: 'survey_ready',
+    floorPlans: [{ id: 'completed-plan', status: 'completed' }, { id: 'draft-plan', status: 'draft' }],
+  });
+  assert.equal(lead.group, 'designable');
+  assert.equal(lead.actionLabel, '选择');
+  assert.equal(lead.eligibleFloorPlanId, 'completed-plan');
+});
+
 test('recipe picker continues an existing scheme and names a new one like Admin', () => {
   const scheme = decorateScheme({
     id: '88',
@@ -185,7 +197,7 @@ test('photo recipes treat assigned unsurveyed leads as selectable and skip surve
   );
   assert.match(projectScript, /inputMode !== 'photo' && lead\.group === 'needs_survey'/);
   assert.match(projectScript, /sourceAssetRole: 'rough_sketch'/);
-  assert.match(projectScript, /skipScope: true/);
+  assert.doesNotMatch(projectScript, /skipScope: true/);
   assert.match(confirmScript, /if \(!photoMode && !bound\.floorPlanId\)/);
   assert.match(confirmScript, /\.\.\.\(this\.data\.floorPlanId \? \{/);
 });

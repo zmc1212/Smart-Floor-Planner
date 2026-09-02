@@ -44,7 +44,7 @@ Page({
     navigationRight: 96,
     loading: true,
     hasActive: true,
-    qrImagePath: '',
+    posterImagePath: '',
     errorMessage: '',
     statusLine: '当前有效 · 未换新',
   },
@@ -77,7 +77,7 @@ Page({
     this.setData({
       loading: true,
       errorMessage: '',
-      qrImagePath: '',
+      posterImagePath: '',
       hasActive: true,
       statusLine: '当前有效 · 未换新',
     });
@@ -103,7 +103,7 @@ Page({
           ? `当前有效 · 未换新 · ${expiresLabel} 前有效`
           : '当前有效 · 未换新',
       });
-      await this.fetchCodeImage(requestId);
+      await this.fetchPosterImage(requestId);
       if (requestId !== this.qrRequestId) return;
       this.setData({ loading: false });
     } catch (error) {
@@ -116,12 +116,12 @@ Page({
     }
   },
 
-  fetchCodeImage(requestId) {
+  fetchPosterImage(requestId) {
     const token = getApp().globalData.token || wx.getStorageSync('token');
     const baseUrl = api.getBaseUrls()[0];
     return new Promise((resolve, reject) => {
       wx.request({
-        url: `${baseUrl}/miniprogram/platform/enterprise-registration-code/image?cache=${Date.now()}`,
+        url: `${baseUrl}/miniprogram/platform/enterprise-registration-code/image?variant=poster&cache=${Date.now()}`,
         method: 'GET',
         responseType: 'arraybuffer',
         header: { Authorization: token ? `Bearer ${token}` : '' },
@@ -133,7 +133,7 @@ Page({
           if (response.statusCode === 404) {
             this.setData({
               hasActive: false,
-              qrImagePath: '',
+              posterImagePath: '',
               statusLine: '请先在后台生成开户码',
             });
             resolve('');
@@ -141,15 +141,15 @@ Page({
           }
           if (response.statusCode < 200 || response.statusCode >= 300 || !(response.data instanceof ArrayBuffer)) {
             const payload = parseImageError(response);
-            reject(new Error((payload && payload.error) || '开户码图片响应无效'));
+            reject(new Error((payload && payload.error) || '开户海报响应无效'));
             return;
           }
-          const filePath = `${wx.env.USER_DATA_PATH}/enterprise-registration-code.png`;
+          const filePath = `${wx.env.USER_DATA_PATH}/enterprise-registration-poster.jpg`;
           wx.getFileSystemManager().writeFile({
             filePath,
             data: response.data,
             success: () => {
-              if (requestId === this.qrRequestId) this.setData({ qrImagePath: filePath });
+              if (requestId === this.qrRequestId) this.setData({ posterImagePath: filePath });
               resolve(filePath);
             },
             fail: reject,

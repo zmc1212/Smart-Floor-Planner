@@ -32,6 +32,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       size?: string;
       quality?: string;
       templateId?: string;
+      templateName?: string;
+      templatePreviewUrl?: string;
+      templateBasePrompt?: string;
+      templateAdjustmentPrompt?: string;
+      templateEditMode?: 'adjustment' | 'full';
       count?: number;
       workflowId?: string;
       targetScope?: string;
@@ -62,6 +67,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         quality: body.quality,
       },
       templateId: body.templateId,
+      templateName: body.templateName,
+      templatePreviewUrl: body.templatePreviewUrl,
+      templateBasePrompt: body.templateBasePrompt,
+      templateAdjustmentPrompt: body.templateAdjustmentPrompt,
+      templateEditMode: body.templateEditMode,
       count: body.count,
       workflowId: body.workflowId,
       targetScope: body.targetScope,

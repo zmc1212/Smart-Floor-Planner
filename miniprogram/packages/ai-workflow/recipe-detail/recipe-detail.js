@@ -10,8 +10,6 @@ Page({
     navigationTop: 24,
     navigationHeight: 32,
     navigationRight: 96,
-    floorPlanPrice: 10,
-    photoPrice: 10,
   },
 
   onLoad(options) {
@@ -22,7 +20,7 @@ Page({
     }
     this.syncNavigationMetrics();
     this.setData({
-      recipeId: options.id || '',
+      recipeId: options.recipeId || options.id || '',
       inputMode: options.inputMode === 'photo' ? 'photo' : 'floor_plan',
     });
     this.loadRecipe();
@@ -50,21 +48,17 @@ Page({
     }
     this.setData({ loading: true, error: '' });
     try {
-      const [recipe, capabilities] = await Promise.all([
-        aiService.getRecipe(this.data.recipeId),
-        aiService.loadCapabilities(),
-      ]);
-      const floorMode = (capabilities.modes || []).find((item) => item.key === 'floor_plan_render');
-      const photoMode = (capabilities.modes || []).find((item) => item.key === 'style_transform');
+      const recipe = await aiService.getRecipe(this.data.recipeId);
       const inputMode = (recipe.inputTypes || []).includes(this.data.inputMode)
         ? this.data.inputMode
         : (recipe.inputTypes || [])[0] || 'floor_plan';
       this.setData({
         recipe,
         inputMode,
-        floorPlanPrice: Number(floorMode && floorMode.credits || 10),
-        photoPrice: Number(photoMode && photoMode.credits || 10),
-        loading: false,
+      });
+      wx.redirectTo({
+        url: `/packages/ai-workflow/recipe-project/recipe-project?recipeId=${encodeURIComponent(recipe.id)}&inputMode=${encodeURIComponent(inputMode)}`,
+        fail: () => this.setData({ loading: false, error: '无法进入客户方案绑定页' }),
       });
     } catch (error) {
       this.setData({ loading: false, error: error.error || error.message || '装修配方加载失败' });
@@ -79,19 +73,4 @@ Page({
     this.loadRecipe();
   },
 
-  selectInputMode(event) {
-    const mode = event.currentTarget.dataset.mode;
-    if (!(this.data.recipe.inputTypes || []).includes(mode)) return;
-    this.setData({ inputMode: mode });
-  },
-
-  useRecipe() {
-    const recipe = this.data.recipe;
-    if (!recipe) return;
-    const query = [
-      `recipeId=${encodeURIComponent(recipe.id)}`,
-      `inputMode=${encodeURIComponent(this.data.inputMode)}`,
-    ].join('&');
-    wx.navigateTo({ url: `/packages/ai-workflow/recipe-project/recipe-project?${query}` });
-  },
 });

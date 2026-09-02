@@ -24,8 +24,15 @@ export function describeMiniProgramCodeQrError(error: unknown, fallback: string)
   return raw;
 }
 
-export async function fetchMiniProgramCodeQr(url: string): Promise<MiniProgramCodeQrImage> {
-  const response = await fetch(url, { method: 'POST' });
+export async function fetchMiniProgramCodeQr(
+  url: string,
+  options: { variant?: 'poster' | 'raw' } = {}
+): Promise<MiniProgramCodeQrImage> {
+  const variant = options.variant ?? 'poster';
+  const requestUrl = url.includes('?')
+    ? `${url}&variant=${variant}`
+    : `${url}?variant=${variant}`;
+  const response = await fetch(requestUrl, { method: 'POST' });
   if (!response.ok) {
     const result = await response.json().catch(() => null);
     throw new Error(result?.error || '读取当前二维码失败');
@@ -47,6 +54,11 @@ export function MiniProgramCodeQr(props: {
   error?: string | null;
   onReload?: () => void;
   onDownload?: () => void;
+  downloadLabel?: string;
+  secondaryDownloadLabel?: string;
+  onSecondaryDownload?: () => void;
+  helperText?: string;
+  imageClassName?: string;
 }) {
   return (
     <Flex vertical align="center" gap={12} className="mt-4 rounded-lg bg-slate-50 p-4">
@@ -55,14 +67,15 @@ export function MiniProgramCodeQr(props: {
         <img
           src={props.value.imageUrl}
           alt={props.alt}
-          className="h-60 w-60 max-w-full rounded bg-white p-2"
+          className={props.imageClassName || 'h-60 w-60 max-w-full rounded bg-white p-2'}
         />
       ) : null}
       {props.error ? (
         <Typography.Text type="danger">{props.error}</Typography.Text>
       ) : (
         <Typography.Text type="secondary">
-          当前有效二维码可直接查看和下载，不会换新。只有点「换新」才会让旧码失效。
+          {props.helperText ||
+            '当前有效二维码可直接查看和下载，不会换新。只有点「换新」才会让旧码失效。'}
         </Typography.Text>
       )}
       <Flex gap={8} wrap justify="center">
@@ -73,7 +86,12 @@ export function MiniProgramCodeQr(props: {
         ) : null}
         {props.value && props.onDownload ? (
           <Button type="primary" icon={<Download size={15} />} onClick={props.onDownload}>
-            下载二维码
+            {props.downloadLabel || '下载二维码'}
+          </Button>
+        ) : null}
+        {props.value && props.onSecondaryDownload ? (
+          <Button icon={<Download size={15} />} onClick={props.onSecondaryDownload}>
+            {props.secondaryDownloadLabel || '下载裸码'}
           </Button>
         ) : null}
       </Flex>

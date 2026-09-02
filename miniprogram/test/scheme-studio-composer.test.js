@@ -6,6 +6,7 @@ const {
   applyModelDefaults,
   applyRenderModeToDraft,
   applyScopeToDraft,
+  applyTemplateToDraft,
   buildComposerPickerOptions,
   buildComposerPickerTitle,
   buildComposerToolbarItems,
@@ -23,6 +24,8 @@ const {
   pickDefaultModel,
   resolveDraftScope,
   resolvePreferredTemplateCategoryId,
+  restoreTemplatePrompt,
+  setTemplateFullEditMode,
   SCOPE_APPLY_NOTE,
   withFloorPlanPreviewRoom,
 } = require('../components/ai-scheme-composer/ai-scheme-composer-model.js');
@@ -86,6 +89,41 @@ test('applyModelDefaults follows model catalog defaults', () => {
   assert.equal(draft.modelProfileId, 'model-a');
   assert.equal(draft.aspectRatio, '4:3');
   assert.equal(draft.resolutionTier, '2K');
+});
+
+test('template selection rehydrates the editable manual prompt instead of appending an override', () => {
+  const draft = applyTemplateToDraft({
+    ...createDefaultDraft(bootstrap),
+    prompt: '上一轮的手动文字',
+    templateId: 'previous-template',
+    templateName: '旧模板',
+  }, {
+    id: 'template-wood',
+    name: '现代原木全屋',
+    promptContent: '现代原木客厅，保留通透采光与木质地面。',
+  });
+
+  assert.equal(draft.prompt, '现代原木客厅，保留通透采光与木质地面。');
+  assert.equal(draft.templateId, 'template-wood');
+  assert.equal(draft.templateName, '现代原木全屋');
+  assert.doesNotMatch(draft.prompt, /上一轮/);
+});
+
+test('template selection opens the full editable prompt and can restore the source', () => {
+  const selected = applyTemplateToDraft(createDefaultDraft(bootstrap), {
+    id: 'template-wood',
+    name: '现代原木全屋',
+    previewUrl: 'https://example.com/wood.jpg',
+    promptContent: '现代原木客厅，保留通透采光与木质地面。',
+  });
+  assert.equal(selected.templateEditMode, 'full');
+  assert.equal('templateAdjustmentPrompt' in selected, false);
+  const edited = setTemplateFullEditMode(selected, '完整重写后的提示词');
+  assert.equal(edited.templateEditMode, 'full');
+  assert.equal(edited.prompt, '完整重写后的提示词');
+  const restored = restoreTemplatePrompt(edited);
+  assert.equal(restored.prompt, selected.templateBasePrompt);
+  assert.equal(restored.templateEditMode, 'full');
 });
 
 test('buildComposerViewState enables submit when draft and balance are valid', () => {
@@ -312,6 +350,7 @@ test('composer toolbar keeps four tools without a reference chip', () => {
   }, bootstrap, { scopes });
   assert.deepEqual(view.toolbarItems.map((item) => item.label), ['户型', '模型', '模板', '设置']);
   assert.equal(view.toolbarItems[0].icon, COMPOSER_TOOL_ICONS.scope);
+  assert.equal(COMPOSER_TOOL_ICONS.settings, '/images/ai-studio-icons-v3/settings.png');
   assert.deepEqual(buildComposerToolbarItems({ hasScopePicker: false }).map((item) => item.key), [
     'model',
     'template',
@@ -399,6 +438,7 @@ test('composer wxml keeps a bottom toolbar and keyboard-safe sheets', () => {
   const less = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
   const script = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.js'), 'utf8');
   const studioWxml = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.wxml'), 'utf8');
+  const studioScript = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.js'), 'utf8');
 
   assert.match(wxml, /dock-toolbar/);
   assert.match(wxml, /dock-tool-label/);
@@ -418,8 +458,57 @@ test('composer wxml keeps a bottom toolbar and keyboard-safe sheets', () => {
   assert.match(wxml, /设计整屋/);
   assert.match(wxml, /设计单间/);
   assert.match(wxml, /仅软装换搭/);
-  assert.match(wxml, /whole-house-material-board\.png/);
-  assert.match(wxml, /single-room-camera-board\.png/);
+  assert.match(wxml, /setup-step-number/);
+  assert.match(wxml, /setup-label-title">设计目标/);
+  assert.match(wxml, /setup-label-title">输入依据/);
+  assert.match(wxml, /setup-label-title">装修配方/);
+  assert.match(wxml, /setup-basis-change" bindtap="uploadReference"/);
+  assert.match(wxml, /setup-recipe-change" bindtap="openTemplates"/);
+  assert.match(wxml, /mode-picker-primary" bindtap="confirmRenderMode"/);
+  assert.match(less, /Round setup V2: design-references\/ai-design\/unified-entry-v2\/04-round-setup-v2\.png/);
+  assert.match(wxml, /mode-picker-heading/);
+  assert.match(wxml, /round-setup-v3\/whole-floor-plan\.png/);
+  assert.match(wxml, /round-setup-v3\/single-room-reference\.png/);
+  assert.match(less, /\.setup-label \.setup-step-number\s*\{\s*color:\s*#fff !important/);
+  assert.match(less, /\.setup-label \.setup-label-title\s*\{\s*color:\s*#202923 !important[\s\S]*font-size:\s*30rpx !important/);
+  assert.match(less, /\.mode-choice-copy\s*\{\s*display:\s*flex !important[\s\S]*flex-direction:\s*column !important/);
+  assert.match(less, /\.setup-recipe-row > \.setup-recipe-change\s*\{\s*display:\s*flex !important[\s\S]*flex-direction:\s*row !important/);
+  ['whole-floor-plan.png', 'single-room-reference.png'].forEach((filename) => {
+    const assetPath = path.join(miniRoot, 'images/ai-design/round-setup-v3', filename);
+    assert.ok(fs.existsSync(assetPath));
+    assert.deepEqual(fs.readFileSync(assetPath).subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+    assert.ok(fs.statSync(assetPath).size <= 300 * 1024);
+  });
+  assert.match(wxml, /timelineMode \? 'timeline' : ''/);
+  assert.match(wxml, /timelineControlUrl/);
+  assert.match(wxml, /openTimelineControl/);
+  assert.match(wxml, /timeline-dock-handle/);
+  assert.match(wxml, /timeline-compose-heading/);
+  assert.match(wxml, /展开参数/);
+  assert.match(wxml, /选择模板/);
+  assert.match(wxml, /template-collapsed-row/);
+  assert.match(wxml, /template-full-edit-panel/);
+  assert.match(wxml, /template-collapsed-row" catchtap="enterTemplateFullEdit"/);
+  assert.match(wxml, /恢复模板/);
+  assert.match(wxml, /收起/);
+  assert.match(wxml, /bindtap="returnToTemplateSummary"/);
+  assert.doesNotMatch(wxml, /个性化调整|需要逐字编辑|template-adjustment-panel/);
+  assert.doesNotMatch(studioScript, /templateAdjustmentPrompt/);
+  assert.match(wxml, /timeline-start-round/);
+  assert.match(wxml, /!view\.modeConfirmed && !view\.hasTemplate/);
+  assert.match(less, /timeline-start-round[\s\S]*linear-gradient\(135deg, #1ac86a 0%, #08b65a 100%\)/);
+  assert.match(less, /grid-template-columns: 92rpx minmax\(0, 1fr\) 52rpx 198rpx 74rpx/);
+  assert.match(less, /template-collapsed-row \.timeline-control \{[\s\S]*width: 100%/);
+  assert.match(script, /toggleDock\(\)/);
+  assert.match(wxml, /!timelineMode && view\.modeConfirmed/);
+  assert.match(wxml, /timelineMode && !draft\.templateId/);
+  assert.doesNotMatch(wxml, /check-green\.png/);
+  assert.match(less, /12-studio-manual-collapsed-v1\.png/);
+  assert.match(less, /14-studio-manual-expanded-v1\.png/);
+  assert.match(less, /\.composer-shell\.dock\.timeline \.generate-fab\s*\{[\s\S]*height: 76rpx[\s\S]*align-self: center[\s\S]*justify-content: center/);
+  assert.match(studioWxml, /composer-collapsed/);
+  assert.match(script, /dockExpanded:\s*false/);
+  assert.match(less, /\.composer-shell\.dock\.timeline \.dock-expanded\s*\{[^}]*display:\s*none/);
   assert.match(studioWxml, /bind:rendermodechange="onComposerRenderModeChange"/);
 });
 
@@ -469,6 +558,71 @@ test('mask dismiss on a tool sheet restores prompt focus', async () => {
     });
     templateHost.closeTemplates();
     assert.equal(templateHost._refocusAfterTemplate, true);
+  } finally {
+    restore();
+  }
+});
+
+test('round setup swaps to the template sheet and returns there after template dismissal', async () => {
+  const { definition, restore } = loadComposerComponent();
+  try {
+    const events = [];
+    const host = createComposerHost(definition, {
+      modePickerMounted: true,
+      modePickerVisible: true,
+      dockExpanded: true,
+      promptFocused: false,
+    });
+    host.triggerEvent = (name) => events.push(name);
+
+    host.openTemplates();
+    assert.equal(host.data.modePickerVisible, false);
+    assert.equal(host._templateReturnTarget, 'mode-picker');
+    await waitForSheetClose();
+    assert.equal(host.data.modePickerMounted, false);
+    assert.deepEqual(events, ['opentemplates']);
+
+    definition.observers.templateSheetVisible.call(host, true);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(host.data.templateSheetOpen, true);
+
+    host.closeTemplates();
+    assert.deepEqual(events, ['opentemplates', 'closetemplates']);
+    definition.observers.templateSheetVisible.call(host, false);
+    await waitForSheetClose();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(host.data.modePickerMounted, true);
+    assert.equal(host.data.modePickerVisible, true);
+    assert.equal(host.data.promptFocused, false);
+  } finally {
+    restore();
+  }
+});
+
+test('applying a template from round setup returns to the preserved round sheet', async () => {
+  const { definition, restore } = loadComposerComponent();
+  try {
+    const events = [];
+    const host = createComposerHost(definition, {
+      templateSheetMounted: true,
+      templateSheetOpen: true,
+      promptFocused: false,
+    });
+    host.properties = {
+      timelineMode: true,
+      templates: [{ id: 'template-a', name: '现代简约' }],
+    };
+    host._templateReturnTarget = 'mode-picker';
+    host.triggerEvent = (name) => events.push(name);
+
+    host.selectTemplate({ currentTarget: { dataset: { id: 'template-a' } } });
+    assert.deepEqual(events, ['selecttemplate', 'closetemplates']);
+    definition.observers.templateSheetVisible.call(host, false);
+    await waitForSheetClose();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(host.data.modePickerVisible, true);
+    assert.equal(host._templateReturnTarget, '');
+    assert.equal(host.data.promptFocused, false);
   } finally {
     restore();
   }

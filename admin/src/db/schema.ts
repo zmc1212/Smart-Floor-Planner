@@ -745,6 +745,9 @@ export const platformConfigs = appSchema.table(
     notificationConfig: jsonObject<Record<string, unknown>>('notification_config'),
     smsConfig: jsonObject<Record<string, unknown>>('sms_config'),
     miniProgramCodeConfig: jsonObject<Record<string, unknown>>('mini_program_code_config'),
+    enterpriseRegistrationCodeTemplateConfig: jsonObject<Record<string, unknown>>(
+      'enterprise_registration_code_template_config'
+    ),
     aiPromptConfig: jsonObject<Record<string, unknown>>('ai_prompt_config'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1561,6 +1564,9 @@ export const leads = appSchema.table(
       table.id
     ),
     index('leads_archived_by_idx').on(table.archivedBy),
+    index('leads_finalized_by_idx').on(table.finalizedBy),
+    index('leads_terminated_by_user_idx').on(table.terminatedByUserId),
+    index('leads_terminated_by_referrer_membership_idx').on(table.terminatedByReferrerMembershipId),
     index('leads_enterprise_archived_created_idx').on(
       table.enterpriseId,
       table.archivedAt,
@@ -1597,6 +1603,8 @@ export const leadServiceNeeds = appSchema.table(
   (table) => [
     uniqueIndex('lead_service_needs_lead_key_uidx').on(table.leadId, table.needKey),
     index('lead_service_needs_enterprise_lead_idx').on(table.enterpriseId, table.leadId),
+    index('lead_service_needs_updated_by_user_idx').on(table.updatedByUserId),
+    index('lead_service_needs_updated_by_staff_idx').on(table.updatedByStaffId),
     check(
       'lead_service_needs_key_check',
       sql`${table.needKey} in ('old_house_consultation', 'materials_consultation', 'partial_space_advice')`
@@ -2103,6 +2111,7 @@ export const leadLifecycleEvents = appSchema.table(
     ),
     index('lead_lifecycle_events_actor_idx').on(table.actorId),
     index('lead_lifecycle_events_actor_user_idx').on(table.actorUserId),
+    index('lead_lifecycle_events_actor_referrer_membership_idx').on(table.actorReferrerMembershipId),
   ]
 );
 
@@ -2615,6 +2624,8 @@ export const leadSitePhotos = appSchema.table(
     index('lead_site_photos_lead_active_idx')
       .on(table.leadId, table.createdAt)
       .where(sql`${table.deletedAt} is null`),
+    index('lead_site_photos_created_by_user_idx').on(table.createdByUserId),
+    index('lead_site_photos_created_by_staff_idx').on(table.createdByStaffId),
   ]
 );
 

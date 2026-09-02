@@ -25,7 +25,7 @@ function loadPageConfig(relativePath) {
 test('V3 page-role assets remain native artwork instead of flattened page screenshots', () => {
   const aiHome = read('pages/ai-design/ai-design.wxml');
   assert.match(aiHome, /class="create-scheme-hero"/);
-  assert.match(aiHome, /class="recipe-waterfall"/);
+  assert.doesNotMatch(aiHome, /class="recipe-waterfall"/);
   assert.match(aiHome, /\/images\/airy-v1\/xiao-k-designer-3d\.png/);
   assert.doesNotMatch(aiHome, /\/images\/page-ip-v3\/ai-home\.png/);
 

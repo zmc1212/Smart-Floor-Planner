@@ -11,7 +11,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
     <view class="account-section-title">权限</view>
     <view class="account-surface">
       <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenSystemSettings" aria-role="button">
-        <image class="account-row-icon" src="/images/mine-icons/settings.png" mode="aspectFit" />
+        <image class="account-row-icon" src="/images/mine-icons/permission-management-v2.png" mode="aspectFit" />
         <view class="account-row-copy">
           <view class="account-row-label">微信权限管理</view>
           <view class="account-row-helper">查看通知、相册等系统授权</view>
@@ -19,7 +19,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         <view class="account-chevron"></view>
       </view>
       <view class="account-row" hover-class="account-row-pressed" bindtap="onCheckVersion" aria-role="button">
-        <image class="account-row-icon" src="/images/mine-icons/search.png" mode="aspectFit" />
+        <image class="account-row-icon" src="/images/mine-icons/version-check-v2.png" mode="aspectFit" />
         <view class="account-row-copy">
           <view class="account-row-label">检查当前版本</view>
           <view class="account-row-helper">{{updateStatusLabel}}</view>
@@ -55,7 +55,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         <view class="account-chevron"></view>
       </view>
       <view wx:if="{{showReferrerNetworkEntry}}" class="account-row" hover-class="account-row-pressed" bindtap="onOpenReferrerNetwork" aria-role="button">
-        <image class="account-row-icon" src="/images/mine-icons/user-round-plus.png" mode="aspectFit" />
+        <image class="account-row-icon" src="/images/mine-icons/referrer-network-v2.png" mode="aspectFit" />
         <view class="account-row-copy">
           <view class="account-row-label">{{referrerNetworkEntryLabel}}</view>
           <view class="account-row-helper">{{referrerNetworkEntryHelper}}</view>

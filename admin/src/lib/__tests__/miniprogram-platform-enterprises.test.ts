@@ -253,6 +253,8 @@ test('Mini platform registration-code routes are read-only and omit the token', 
   assert.match(metaRoute, /enterpriseRegistrationCodeToDto/);
   assert.doesNotMatch(metaRoute, /token:/);
   assert.match(imageRoute, /loadActiveEnterpriseRegistrationCodeImage/);
+  assert.match(imageRoute, /loadActiveEnterpriseRegistrationCodePoster/);
+  assert.match(imageRoute, /parseVariant/);
   assert.match(imageRoute, /parsePlatformAdminActorId/);
   assert.match(helper, /revealActive/);
   assert.match(helper, /createEnterpriseRegistrationCode/);
@@ -268,6 +270,8 @@ test('Mini platform registration-code routes are read-only and omit the token', 
     'app/api/admin/enterprise-registration-codes/image/route.ts'
   );
   assert.match(adminImage, /loadActiveEnterpriseRegistrationCodeImage/);
+  assert.match(adminImage, /loadActiveEnterpriseRegistrationCodePoster/);
+  assert.match(adminImage, /parseVariant/);
   assert.doesNotMatch(adminImage, /\.rotate\(/);
 });
 

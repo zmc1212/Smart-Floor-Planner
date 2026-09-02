@@ -1,9 +1,9 @@
 <!--
-THESIS: 平台管理员现场出示当前生效企业开户码。
-OWN-WORLD: 胶囊安全出示顶栏 + 审核运营列表卡片，主包 scan/shield 图标，不新画小 K。
-STORY: 打开即展示只读 er_ 码图；无码或微信失败可重试，不换新。
-FIRST VIEWPORT: 返回、标题、码图与说明在 390x844 同屏可达。
-FORM: enterprise-join-codes 信息结构 + enterprise-review 运营列表语言
+THESIS: 平台管理员现场出示当前生效企业开户码合成海报。
+OWN-WORLD: 胶囊安全出示顶栏 + 全幅服务端合成海报，不新画小 K。
+STORY: 打开即展示只读 er_ 海报；无码或微信失败可重试，不换新。
+FIRST VIEWPORT: 返回、标题、海报与说明在 390x844 同屏可达。
+FORM: 内置商户入驻海报模板 + 服务端二维码叠加
 -->
 <view class="page">
   <view
@@ -22,32 +22,22 @@ FORM: enterprise-join-codes 信息结构 + enterprise-review 运营列表语言
   </view>
 
   <scroll-view scroll-y class="body" enhanced show-scrollbar="{{false}}">
-    <view class="code-card">
-      <text class="hero-title">企业入驻开户</text>
-      <text class="hero-subtitle">请装修公司扫描此码申请开户</text>
-
-      <view class="qr-stage">
-        <view wx:if="{{loading}}" class="qr-state">
-          <text class="qr-state-copy">开户码加载中</text>
-        </view>
-        <view wx:elif="{{!hasActive}}" class="qr-state">
-          <image class="qr-state-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-          <text class="qr-state-title">暂无生效开户码</text>
-          <text class="qr-state-copy">请在电脑后台生成后再出示</text>
-        </view>
-        <view wx:elif="{{errorMessage}}" class="qr-state">
-          <image class="qr-state-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-          <text class="qr-state-title">开户码暂不可用</text>
-          <text class="qr-state-copy">{{errorMessage}}</text>
-          <view class="retry" bindtap="onRetry">重新查看</view>
-        </view>
-        <image wx:else class="qr-image" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
-      </view>
-
-      <view class="scan-plaque" aria-hidden="true">
-        <image class="scan-glyph" src="/images/mine-icons/scan.png" mode="aspectFit" />
-        <text>请扫码</text>
-      </view>
+    <view wx:if="{{loading}}" class="poster-state">
+      <text class="poster-state-copy">开户海报加载中</text>
+    </view>
+    <view wx:elif="{{!hasActive}}" class="poster-state">
+      <image class="poster-state-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+      <text class="poster-state-title">暂无生效开户码</text>
+      <text class="poster-state-copy">请在电脑后台生成后再出示</text>
+    </view>
+    <view wx:elif="{{errorMessage}}" class="poster-state">
+      <image class="poster-state-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+      <text class="poster-state-title">开户海报暂不可用</text>
+      <text class="poster-state-copy">{{errorMessage}}</text>
+      <view class="retry" bindtap="onRetry">重新查看</view>
+    </view>
+    <view wx:else class="poster-wrap">
+      <image class="poster-image" src="{{posterImagePath}}" mode="widthFix" show-menu-by-longpress />
       <text class="status-line">{{statusLine}}</text>
     </view>
   </scroll-view>

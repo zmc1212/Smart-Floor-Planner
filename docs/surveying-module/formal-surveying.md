@@ -27,11 +27,13 @@ copy back to `layoutData`.
 
 - The only formal measurement page is
   `miniprogram/packages/surveying/editor/surveying-editor.*`.
-- In the Mini Program, an assigned measurer enters from their own task, while
+- In the Mini Program, an assigned measurer enters from their own task, an
+  assigned designer can continue the linked plan from their lead detail, and
   an enterprise owner may start, continue, add, or delete formal surveys from
   any lead detail inside the signed enterprise. Client route capabilities and
-  the server tenant boundary both enforce this access. Designers retain the
-  read-only floor-plan preview and do not gain survey-editor access.
+  the server tenant boundary both enforce this access; PUT completion uses the
+  same linked-lead responsibility check when the other field role originally
+  saved the plan.
 - Every entry carries `leadId` and/or `floorPlanId`. A lead-only entry
   without `floorPlanId` resolves that lead's primary cloud plan instead of
   opening a blank canvas.

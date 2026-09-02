@@ -243,30 +243,35 @@ test('project index task states drive truthful progress, recovery, stale, and co
   assert.equal(continuation.sourceResultTaskId, 'task-3');
 });
 
-test('AI Design home exposes the D01 workbench hierarchy with recipes and recent projects', () => {
+test('AI Design home exposes the approved unified-entry hierarchy', () => {
   assert.match(pageWxml, />AI 方案创作</);
-  assert.match(pageWxml, /class="create-scheme-hero"/);
-  assert.match(pageWxml, /创建全新 AI 设计方案/);
+  assert.match(pageWxml, /class="project-hero"/);
+  assert.match(pageWxml, /开始新一轮/);
+  assert.match(pageWxml, /继续上次创作/);
   assert.match(pageWxml, /热门空间风格配方/);
-  assert.match(pageWxml, /最近设计项目/);
-  assert.match(pageWxml, /wx:for="\{\{recentProjects\}\}"/);
-  assert.match(pageWxml, /bindtap="openRecentProject"/);
+  assert.match(pageWxml, /看看配方效果/);
+  assert.match(pageWxml, /recentProjects\[0\]/);
+  assert.match(pageWxml, /bindtap="openRecentProject(StartNew|Continue)"/);
   assert.match(pageWxml, /bindtap="openCreateScheme"/);
   assert.doesNotMatch(pageWxml, /bindtap="openHistory"/);
   assert.doesNotMatch(pageWxml, />设计记录</);
   assert.match(pageSource, /openHistory\(\)/);
   assert.match(aiServiceSource, /\/miniprogram\/ai\/history/);
-  assert.match(pageWxml, /class="create-credit-pill"/);
+  assert.doesNotMatch(pageWxml, /class="create-credit-pill"/);
   assert.doesNotMatch(pageWxml, /bindtap="switchRecipeInputMode"/);
-  assert.match(pageWxml, /aria-disabled="true"/);
   assert.match(pageWxml, /bindtap="openRecipeSearch"/);
   assert.match(pageWxml, /class="featured-recipe-strip"/);
   assert.match(pageWxml, /class="recipe-waterfall"/);
   assert.match(pageWxml, /wx:for="\{\{column\.items\}\}"/);
-  assert.match(pageWxml, /<text class="sheet-title">选择客户设计项目<\/text>/);
-  assert.match(pageWxml, /37-ai-design-workbench\.jpg/);
+  assert.match(pageWxss, /\.project-hero\{height:480rpx\}/);
+  assert.match(pageWxss, /\.project-hero-actions\{grid-template-columns:1\.32fr 1fr\}/);
+  assert.match(pageWxss, /\.project-avatar\{width:88rpx;height:88rpx\}/);
+  assert.match(pageWxss, /\.project-identity-copy text:first-child\{font-size:34rpx;line-height:40rpx\}/);
+  assert.match(pageWxml, /<text class="sheet-title">选择客户项目<\/text>/);
+  assert.match(pageWxml, /unified-entry-v2\/01-design-tab-v2\.png/);
   assert.match(pageSource, /loadRecipes/);
-  assert.match(pageSource, /openRecipeDetail/);
+  assert.match(pageSource, /openRecipeBinding/);
+  assert.match(pageSource, /\/recipe-project\/recipe-project\?recipeId=/);
   assert.match(pageSource, /buildRecentProjects/);
   assert.match(pageSource, /openSchemeStudio/);
   assert.match(pageSource, /shouldOpenSchemeStudioFromContext/);

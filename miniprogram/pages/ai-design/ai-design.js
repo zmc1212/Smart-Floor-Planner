@@ -36,12 +36,23 @@ const MODE_TITLES = WORKFLOW_DEFINITIONS.reduce((result, item) => {
 }, {});
 
 const RECIPE_SPACE_FILTERS = [
-  { key: 'all', label: '精选', icon: '/images/ai-design-icons/palette.png' },
+  { key: 'all', label: '精选', icon: '/images/ai-studio-icons-v3/process-spark.png' },
   { key: 'living_room', label: '客厅', icon: '/images/ai-design-icons/armchair.png' },
-  { key: 'bedroom', label: '卧室', icon: '/images/ai-design-icons/reference.png' },
+  { key: 'bedroom', label: '卧室', icon: '/images/ai-studio-icons-v3/reference.png' },
   { key: 'dining_kitchen', label: '餐厨', icon: '/images/ai-design-icons/floor-plan.png' },
-  { key: 'study', label: '书房', icon: '/images/mine-icons/clipboard-pen.png' },
+  { key: 'study', label: '书房', icon: '/images/ai-studio-icons-v3/template.png' },
 ];
+
+const RECIPE_FALLBACK_COVERS = [
+  '/images/ai-design/unified-entry-v1/recipe-modern-minimal.jpg',
+  '/images/ai-design/unified-entry-v1/recipe-cream-interior.jpg',
+];
+
+function resolveRecipeFallbackCover(recipe, index) {
+  const name = String((recipe && recipe.name) || '');
+  if (/奶油|原木/.test(name)) return RECIPE_FALLBACK_COVERS[1];
+  return RECIPE_FALLBACK_COVERS[Number(index || 0) % RECIPE_FALLBACK_COVERS.length];
+}
 
 function decorateRecipeCard(recipe, index) {
   const heightClasses = ['recipe-tall', 'recipe-short', 'recipe-mid', 'recipe-tallest'];
@@ -50,6 +61,7 @@ function decorateRecipeCard(recipe, index) {
     heightClass: heightClasses[index % heightClasses.length],
     featured: index === 0,
     previewFailed: false,
+    fallbackPreviewUrl: resolveRecipeFallbackCover(recipe, index),
   };
 }
 
@@ -569,6 +581,10 @@ Page({
     }
   },
 
+  retryRecipes() {
+    this.submitRecipeSearch();
+  },
+
   async loadMoreRecipes() {
     if (this.data.recipeLoadingMore || this.data.recipePage >= this.data.recipeTotalPages) return;
     this.setData({ recipeLoadingMore: true });
@@ -591,10 +607,6 @@ Page({
     }
   },
 
-  retryRecipes() {
-    this.submitRecipeSearch();
-  },
-
   clearRecipeSearch() {
     this.setData({ recipeQuery: '', recipeSpaceFilter: 'all' }, () => this.submitRecipeSearch());
   },
@@ -605,13 +617,18 @@ Page({
     this.setData({ recipes }, () => this.applyRecipeFilters());
   },
 
-  openRecipeDetail(event) {
+  openRecipeBinding(event) {
     const id = event.currentTarget.dataset.id;
     if (!id) return;
     const recipe = (this.data.recipes || []).find((item) => String(item.id) === String(id));
     wx.navigateTo({
-      url: `/packages/ai-workflow/recipe-detail/recipe-detail?id=${encodeURIComponent(id)}&inputMode=${resolveRecipeInputMode(recipe)}`,
+      url: `/packages/ai-workflow/recipe-project/recipe-project?recipeId=${encodeURIComponent(id)}&inputMode=${resolveRecipeInputMode(recipe)}`,
     });
+  },
+
+  // Backward-compatible handler for cards restored from the previous recipe list.
+  openRecipeDetail(event) {
+    return this.openRecipeBinding(event);
   },
 
   retryLoad() {
@@ -887,7 +904,16 @@ Page({
     this.setTabBarHidden(true);
   },
 
-  openRecentProject(event) {
+  openRecentProjectStartNew(event) {
+    return this.openRecentProject(event, { startNewRound: true });
+  },
+
+  openRecentProjectContinue(event) {
+    return this.openRecentProject(event, { startNewRound: false });
+  },
+
+  // Backward-compatible handler for older restored cards: continue the current scheme.
+  openRecentProject(event, options = {}) {
     const plan = this.data.recentProjects[Number(event.currentTarget.dataset.index)];
     if (!plan) return;
     if (!plan.eligibility || !plan.eligibility.eligible) {
@@ -903,6 +929,7 @@ Page({
       leadId: plan.leadId,
       floorPlanId: plan.floorPlanId,
       workflowId: plan.activeWorkflow && plan.activeWorkflow.id,
+      startNewRound: options.startNewRound ? '1' : '',
     });
   },
 

@@ -37,14 +37,13 @@ are the editable sources and retain their supplied asset rights.
 - `search.png`: `search`
 - `user.png`: `user`
 - `users.png`: `users`
-- `user-round-plus.png`: Lucide-derived person outline with an outlined plus
-  badge, used by the Mine referrer-network entry. The 2026-09 regeneration uses
-  the same green rounded-outline family as the neighbouring account actions;
-  the badge is part of this single packaged icon and the UI must not overlay
-  another plus asset.
-- `settings.png`: `settings.svg`, a green rounded-outline system-permission cog
-  used by the Mine WeChat permission-management entry. It replaces the old
-  page-specific `mine-v6/settings.png` crop.
+- `permission-management-v2.png`: `permission-management-v2.svg`, a green
+  rounded-outline controls icon shared by Mine WeChat permission management and
+  the AI composer settings tool.
+- `referrer-network-v2.png`: `referrer-network-v2.svg`, a green rounded-outline
+  three-node promotion-network icon for the Mine referrer-network entry.
+- `version-check-v2.png`: `version-check-v2.svg`, a green rounded-outline
+  refresh-and-check icon for Mine's current-version entry.
 - `identity-personal-user.png`: `user-round`, used for the logged-out gateway's
   `个人用户` identity rail.
 - `identity-staff.png`: `badge`, used for the logged-out gateway's `员工`

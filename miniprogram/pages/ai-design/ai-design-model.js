@@ -5,7 +5,8 @@ const STAGE_DEFINITIONS = [
   { key: 'handoff', label: '提案深化' },
 ];
 
-const PROJECT_FOLIO_COVER = '/images/ai-design-project-folio-cover-v1.png';
+const PROJECT_FOLIO_COVER = '/images/ai-design/unified-entry-v1/scheme-wood-cream-showcase.jpg';
+const PROJECT_FLOORPLAN_COVER = '/images/ai-design/unified-entry-v1/cad-floorplan-archive.jpg';
 
 const MODE_COPY = {
   reference_recreate: {
@@ -265,16 +266,20 @@ function decorateRecentProject(plan) {
   const stageLabel = plan.activeWorkflow && plan.activeWorkflow.currentStageLabel;
   return {
     ...plan,
-    coverUrl: (plan.navigationPreview && plan.navigationPreview.imageUrl) || PROJECT_FOLIO_COVER,
+    coverUrl: (plan.navigationPreview && plan.navigationPreview.imageUrl)
+      || (group === 'in_progress' ? PROJECT_FOLIO_COVER : PROJECT_FLOORPLAN_COVER),
     schemeActionLabel,
     schemeActionTone,
+    projectMetaCopy: hasWorkflow
+      ? `${plan.activeWorkflow.title || '客户方案'} · ${Number(plan.closedRoomCount || 0)} 个闭合空间`
+      : `正式量房 · ${Number(plan.closedRoomCount || 0)} 个闭合空间`,
     progressCopy: plan.statusLabel
       || (stageLabel ? `${stageLabel} · 进行中` : '')
       || (group === 'ready' ? '正式量房已就绪 · 待生成效果图' : '正式量房'),
   };
 }
 
-function buildRecentProjects(sources, limit = 6) {
+function buildRecentProjects(sources, limit = 2) {
   const rank = { in_progress: 0, ready: 1, needs_survey: 2 };
   return (sources || [])
     .map(decorateRecentProject)

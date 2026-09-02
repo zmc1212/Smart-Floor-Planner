@@ -282,6 +282,11 @@ export async function preparePostgresCreationBatch(input: {
   modelProfileId: string;
   parameters?: ParameterRequest;
   templateId?: string;
+  templateName?: string;
+  templatePreviewUrl?: string;
+  templateBasePrompt?: string;
+  templateAdjustmentPrompt?: string;
+  templateEditMode?: 'adjustment' | 'full';
   count?: number;
   workflowId?: string;
   targetScope?: string;
@@ -345,6 +350,12 @@ export async function preparePostgresCreationBatch(input: {
     })
     : null;
   const hasBoundFloorPlan = Boolean(workflowBinding?.floorPlanId && workflowBinding.layoutData);
+  if (workflowBinding && renderMode === 'whole_floor_plan' && !hasBoundFloorPlan) {
+    throw Object.assign(new Error('请先关联合格的正式户型再出图'), {
+      status: 400,
+      code: 'WORKFLOW_FLOOR_PLAN_REQUIRED',
+    });
+  }
   const attachFloorPlanControl = shouldAttachCreationBatchFloorPlanControl({
     renderMode,
     hasFloorPlan: hasBoundFloorPlan,
@@ -442,6 +453,11 @@ export async function preparePostgresCreationBatch(input: {
       modelProfileSnapshot: profileSnapshot,
       parameterSnapshot: {
         ...parameters,
+        ...(input.templateName ? { templateName: input.templateName } : {}),
+        ...(input.templatePreviewUrl ? { templatePreviewUrl: input.templatePreviewUrl } : {}),
+        ...(input.templateBasePrompt ? { templateBasePrompt: input.templateBasePrompt } : {}),
+        ...(input.templateAdjustmentPrompt ? { templateAdjustmentPrompt: input.templateAdjustmentPrompt } : {}),
+        ...(input.templateEditMode ? { templateEditMode: input.templateEditMode } : {}),
         renderMode,
         hasStyleReference,
         hasSitePhoto,

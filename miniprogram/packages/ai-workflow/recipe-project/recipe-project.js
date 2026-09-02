@@ -37,6 +37,7 @@ Page({
     leadHasMore: false,
     loadingMore: false,
     footerText: '',
+    focusedLead: null,
     selectedLead: null,
     schemes: [],
     selectedScheme: null,
@@ -84,7 +85,11 @@ Page({
   async loadData() {
     this.setData({ loading: true, error: '' });
     try {
-      const recipe = await aiService.getRecipe(this.data.recipeId);
+      const loadedRecipe = await aiService.getRecipe(this.data.recipeId);
+      const recipe = {
+        ...loadedRecipe,
+        previewUrl: loadedRecipe.previewUrl || '/images/ai-design/unified-entry-v1/recipe-modern-minimal.jpg',
+      };
       this.setData({ recipe });
       await this.fetchLeads({ reset: true, chooseDefault: true });
       this.setData({ loading: false });
@@ -154,9 +159,13 @@ Page({
       return;
     }
     if (this.data.step === 'schemes') {
-      this.setData({ step: 'leads', selectedLead: null, schemes: [], selectedScheme: null });
+      this.setData({ step: 'leads', focusedLead: null, selectedLead: null, schemes: [], selectedScheme: null });
       return;
     }
+    wx.navigateBack();
+  },
+
+  changeRecipe() {
     wx.navigateBack();
   },
 
@@ -168,7 +177,7 @@ Page({
 
   selectLeadGroup(event) {
     const leadGroup = event.currentTarget.dataset.key;
-    this.setData({ leadGroup, ...buildLeadPickerView(this.data.leads, leadGroup, '') });
+    this.setData({ leadGroup, focusedLead: null, ...buildLeadPickerView(this.data.leads, leadGroup, '') });
   },
 
   onLeadSearch(event) {
@@ -183,6 +192,12 @@ Page({
   async selectLead(event) {
     const lead = this.data.leads.find((item) => item.id === event.currentTarget.dataset.id);
     if (!lead) return;
+    this.setData({ focusedLead: lead });
+  },
+
+  async continueWithFocusedLead() {
+    const lead = this.data.focusedLead;
+    if (!lead || this.data.creating) return;
     if (this.data.inputMode !== 'photo' && lead.group === 'needs_survey') {
       this._surveyingLeadId = lead.id;
       openSurveyingEditor({
@@ -201,7 +216,8 @@ Page({
     });
     try {
       const list = await aiService.listStudioWorkflows({ leadId: lead.id, limit: 50 });
-      this.setData({ schemes: (list || []).map(decorateScheme), schemesLoading: false });
+      const schemes = (list || []).map(decorateScheme);
+      this.setData({ schemes, selectedScheme: schemes[0] || null, schemesLoading: false });
     } catch (error) {
       wx.showToast({ title: error.error || error.message || '方案列表加载失败', icon: 'none' });
       this.setData({
@@ -212,10 +228,16 @@ Page({
     }
   },
 
-  async selectScheme(event) {
+  selectScheme(event) {
     const scheme = this.data.schemes.find((item) => item.id === event.currentTarget.dataset.id);
     if (!scheme) return;
-    await this.enterScheme(scheme.id);
+    this.setData({ selectedScheme: scheme });
+  },
+
+  async continueWithSelectedScheme() {
+    const scheme = this.data.selectedScheme;
+    if (!scheme || this.data.creating) return;
+    this.enterScheme(scheme.id);
   },
 
   async createScheme() {
@@ -245,52 +267,27 @@ Page({
         )),
         selectedLead: { ...lead, workflowCount: Number(lead.workflowCount || 0) + 1 },
       });
-      await this.enterScheme(workflowId);
+      this.enterScheme(workflowId);
     } catch (error) {
       wx.showToast({ title: error.error || error.message || '新建方案失败', icon: 'none' });
       this.setData({ creating: false });
     }
   },
 
-  async enterScheme(workflowId) {
-    try {
-      const detail = await aiService.getStudioWorkflow(workflowId);
-      const bound = roomsFromWorkflowDetail(detail);
-      const photoMode = this.data.inputMode === 'photo';
-      if (!photoMode && !bound.floorPlanId) {
-        wx.showToast({ title: '该方案尚未关联正式户型', icon: 'none' });
-        this.setData({ creating: false });
-        return;
-      }
-      const scheme = decorateScheme(bound.workflow);
-      if (photoMode) {
-        this.setData({
-          selectedScheme: scheme,
-          floorPlanId: bound.floorPlanId || '',
-          closedRoomCount: bound.closedRoomCount,
-          scopes: [],
-          selectedScope: null,
-          creating: false,
-          schemesLoading: false,
-        });
-        this.continueToConfirm({ skipScope: true, scheme, floorPlanId: bound.floorPlanId || '' });
-        return;
-      }
-      const scopes = buildScopes(bound.rooms, bound.closedRoomCount);
-      this.setData({
-        selectedScheme: scheme,
-        floorPlanId: bound.floorPlanId,
-        closedRoomCount: bound.closedRoomCount,
-        scopes,
-        selectedScope: scopes[0],
-        step: 'scope',
-        creating: false,
-        schemesLoading: false,
-      });
-    } catch (error) {
-      wx.showToast({ title: error.error || error.message || '方案详情加载失败', icon: 'none' });
-      this.setData({ creating: false, schemesLoading: false });
-    }
+  enterScheme(workflowId) {
+    const lead = this.data.selectedLead;
+    if (!lead || !workflowId) return;
+    const floorPlanId = lead.eligibleFloorPlanId || this.data.floorPlanId || '';
+    const query = [
+      `leadId=${encodeURIComponent(lead.id)}`,
+      `workflowId=${encodeURIComponent(workflowId)}`,
+      floorPlanId ? `floorPlanId=${encodeURIComponent(floorPlanId)}` : '',
+      `recipeId=${encodeURIComponent(this.data.recipeId)}`,
+      `inputMode=${encodeURIComponent(this.data.inputMode)}`,
+      'startNewRound=1',
+    ].filter(Boolean).join('&');
+    this.setData({ creating: false, schemesLoading: false });
+    wx.navigateTo({ url: `/packages/ai-workflow/scheme-studio/scheme-studio?${query}` });
   },
 
   selectScope(event) {

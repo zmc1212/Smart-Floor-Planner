@@ -20,7 +20,7 @@ import {
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { leadToDto } from '@/db/postgres-dto';
 import { appointmentToDto } from '@/lib/appointment-api';
-import { localDateInTimeZone } from '@/lib/appointment-scheduling';
+import { localDateInTimeZone, zonedDateTimeToUtc } from '@/lib/appointment-scheduling';
 import {
   formatAppointmentTimeRangeIso,
   resolveCustomerHomeAction,
@@ -34,6 +34,8 @@ import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresq
 const runKey = `appt-same-day-${process.pid}-${Date.now()}`;
 const TIMEZONE = 'Asia/Shanghai';
 const CUTOFF_MS = 2 * 3_600_000;
+const TEST_DATE = localDateInTimeZone(new Date(Date.now() + 24 * 3_600_000), TIMEZONE);
+const TEST_NOW = zonedDateTimeToUtc(TEST_DATE, '10:00', TIMEZONE);
 const ALL_DAY = Object.fromEntries(
   Array.from({ length: 7 }, (_, day) => [String(day), [{ start: '08:00', end: '23:00' }]])
 );
@@ -62,7 +64,8 @@ async function todayAvailability(targetLeadId: bigint) {
     new AppointmentRepository(transaction).listAvailability({
       enterpriseId,
       leadId: targetLeadId,
-      date: localDateInTimeZone(new Date(), TIMEZONE),
+      date: localDateInTimeZone(TEST_NOW, TIMEZONE),
+      now: TEST_NOW,
     })
   );
 }
@@ -100,6 +103,7 @@ async function readPartyViews(appointmentId: bigint, targetLeadId = leadId) {
         measurerId: leadRecord.measurerId,
         appointment: leadRecord.appointment,
         customerRescheduleCutoffHours: 2,
+        now: TEST_NOW,
       }),
       events: await transaction
         .select()
@@ -232,7 +236,7 @@ after(async () => {
 
 describe('same-day appointment reschedule', { concurrency: 1 }, () => {
 test('same-day availability hides past starts and keeps later today bookable', async () => {
-  const now = new Date();
+  const now = TEST_NOW;
   const { available } = await todayAvailability(leadId);
   assert.ok(available.length >= 2, '当天应仍有未来时段（测试把窗口放到 23:00）');
   assert.ok(available.every((slot) => slot.startAt.getTime() > now.getTime()), '已开始的档不能出现在当天可选列表');
@@ -247,6 +251,7 @@ test('same-day availability hides past starts and keeps later today bookable', a
         address: '当天改期小区 1 栋',
         actorUserId: customerUserId,
         eventKey: `${runKey}-past-create`,
+        now,
       })
     ),
     (error: { code?: string }) => {
@@ -257,7 +262,7 @@ test('same-day availability hides past starts and keeps later today bookable', a
 });
 
 test('same-day customer reschedule can move to a nearby overlapping slot and syncs every party', async () => {
-  const now = Date.now();
+  const now = TEST_NOW.getTime();
   const { available } = await todayAvailability(leadId);
   const beyondCutoff = available.filter((slot) => slot.startAt.getTime() - now > CUTOFF_MS);
   assert.ok(beyondCutoff.length >= 2, '当天需至少两个超过客户改期截止的时段');
@@ -281,6 +286,7 @@ test('same-day customer reschedule can move to a nearby overlapping slot and syn
       address: '当天改期小区 2 栋 201',
       actorUserId: customerUserId,
       eventKey: `${runKey}-same-day-create`,
+      now: TEST_NOW,
     })
   );
 
@@ -298,6 +304,7 @@ test('same-day customer reschedule can move to a nearby overlapping slot and syn
       actorUserId: customerUserId,
       customerUserId,
       eventKey: `${runKey}-same-day-customer`,
+      now: TEST_NOW,
     })
   );
 
@@ -323,7 +330,7 @@ test('same-day customer reschedule can move to a nearby overlapping slot and syn
 });
 
 test('same-day customer cutoff still blocks last-minute changes while staff can move the visit', async (t) => {
-  const now = Date.now();
+  const now = TEST_NOW.getTime();
   const { available } = await todayAvailability(cutoffLeadId);
   const insideCutoff = available.find((slot) => {
     const wait = slot.startAt.getTime() - now;
@@ -346,6 +353,7 @@ test('same-day customer cutoff still blocks last-minute changes while staff can 
       address: '当天改期小区 3 栋',
       actorUserId: customerUserId,
       eventKey: `${runKey}-cutoff-create`,
+      now: TEST_NOW,
     })
   );
 
@@ -363,6 +371,7 @@ test('same-day customer cutoff still blocks last-minute changes while staff can 
         actorUserId: customerUserId,
         customerUserId,
         eventKey: `${runKey}-cutoff-customer`,
+        now: TEST_NOW,
       })
     ),
     (error: { code?: string }) => {
@@ -381,6 +390,7 @@ test('same-day customer cutoff still blocks last-minute changes while staff can 
       actorUserId: designerUserId,
       reason: '当天临时改到晚些',
       eventKey: `${runKey}-cutoff-staff`,
+      now: TEST_NOW,
     })
   );
 

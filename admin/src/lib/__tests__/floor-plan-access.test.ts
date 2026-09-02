@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   canAccessMiniProgramFloorPlan,
+  canMutateMiniProgramFloorPlan,
   canReadMiniProgramFloorPlan,
   canRecordMiniProgramFloorPlanMeasurement,
 } from '@/lib/floor-plan-access';
@@ -86,6 +87,33 @@ test('assigned designer can read a measurer-saved plan on the linked lead', () =
       linkedLead
     ),
     true
+  );
+});
+
+test('assigned collaborator can complete a plan saved by the other field role', () => {
+  assert.equal(
+    canMutateMiniProgramFloorPlan(
+      plan,
+      {
+        user: { _id: '11' },
+        enterpriseId: '7',
+        staff: { _id: '99', enterpriseId: '7', role: 'designer' },
+      },
+      linkedLead
+    ),
+    true
+  );
+  assert.equal(
+    canMutateMiniProgramFloorPlan(
+      plan,
+      {
+        user: { _id: '11' },
+        enterpriseId: '7',
+        staff: { _id: '100', enterpriseId: '7', role: 'designer' },
+      },
+      linkedLead
+    ),
+    false
   );
 });
 

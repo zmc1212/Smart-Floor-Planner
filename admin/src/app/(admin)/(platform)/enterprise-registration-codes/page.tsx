@@ -14,6 +14,7 @@ import {
   type MiniProgramCodeQrImage,
 } from '@/components/admin/miniprogram-code-qr';
 import { notify } from '@/components/admin/operation-feedback';
+import { EnterpriseRegistrationPosterPlacementEditor } from '@/components/admin/enterprise-registration-poster-placement-editor';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
   getCodeAuditEventTypeLabel,
@@ -38,6 +39,17 @@ type RegistrationCodeEvent = {
   actorUserId: string | null;
   actorStaffId: string | null;
   createdAt: string;
+};
+
+type TemplateConfig = {
+  templateId: string;
+  templateLabel: string;
+  qrPlacement: {
+    centerX: number;
+    centerY: number;
+    diameter: number;
+    shape: 'circle' | 'square';
+  };
 };
 
 function formatTime(value: string | null | undefined) {
@@ -65,11 +77,18 @@ export default function EnterpriseRegistrationCodesPage() {
   const [qrLoading, setQrLoading] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<MiniProgramCodeQrImage | null>(null);
+  const [rawQrCode, setRawQrCode] = useState<MiniProgramCodeQrImage | null>(null);
+  const [templateConfig, setTemplateConfig] = useState<TemplateConfig | null>(null);
+  const [templateDraft, setTemplateDraft] = useState<TemplateConfig['qrPlacement'] | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(true);
+  const [templateSaving, setTemplateSaving] = useState(false);
   const loadedCodeIdRef = useRef<string | null>(null);
   const inflightCodeIdRef = useRef<string | null>(null);
   const qrCodeRef = useRef<MiniProgramCodeQrImage | null>(null);
+  const rawQrCodeRef = useRef<MiniProgramCodeQrImage | null>(null);
   const activeCodeIdRef = useRef<string | null>(null);
   qrCodeRef.current = qrCode;
+  rawQrCodeRef.current = rawQrCode;
 
   const loadCodes = useCallback(async () => {
     if (!canManage) return;
@@ -89,16 +108,38 @@ export default function EnterpriseRegistrationCodesPage() {
     }
   }, [canManage]);
 
+  const loadTemplateConfig = useCallback(async () => {
+    if (!canManage) return;
+    setTemplateLoading(true);
+    try {
+      const response = await fetch('/api/platform/enterprise-registration-code-template-config');
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '读取开户海报模板失败');
+      }
+      setTemplateConfig(result.data);
+      setTemplateDraft(result.data.qrPlacement);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '读取开户海报模板失败');
+    } finally {
+      setTemplateLoading(false);
+    }
+  }, [canManage]);
+
   useEffect(() => {
     if (!canManage) {
       setLoading(false);
       return;
     }
     void loadCodes();
-  }, [canManage, loadCodes]);
+    void loadTemplateConfig();
+  }, [canManage, loadCodes, loadTemplateConfig]);
 
   useEffect(() => {
-    return () => revokeMiniProgramCodeQr(qrCodeRef.current);
+    return () => {
+      revokeMiniProgramCodeQr(qrCodeRef.current);
+      revokeMiniProgramCodeQr(rawQrCodeRef.current);
+    };
   }, []);
 
   const loadQr = useCallback(async (codeId: string, options: { notifySuccess?: boolean } = {}) => {
@@ -106,21 +147,29 @@ export default function EnterpriseRegistrationCodesPage() {
     setQrLoading(true);
     setQrError(null);
     try {
-      const image = await fetchMiniProgramCodeQr('/api/admin/enterprise-registration-codes/image');
+      const [posterImage, rawImage] = await Promise.all([
+        fetchMiniProgramCodeQr('/api/admin/enterprise-registration-codes/image', { variant: 'poster' }),
+        fetchMiniProgramCodeQr('/api/admin/enterprise-registration-codes/image', { variant: 'raw' }),
+      ]);
       if (activeCodeIdRef.current !== codeId) {
-        revokeMiniProgramCodeQr(image);
+        revokeMiniProgramCodeQr(posterImage);
+        revokeMiniProgramCodeQr(rawImage);
         return;
       }
       setQrCode((current) => {
         revokeMiniProgramCodeQr(current);
-        return image;
+        return posterImage;
+      });
+      setRawQrCode((current) => {
+        revokeMiniProgramCodeQr(current);
+        return rawImage;
       });
       loadedCodeIdRef.current = codeId;
-      if (options.notifySuccess) notify.success('已展示当前有效开户码，未换新');
+      if (options.notifySuccess) notify.success('已展示当前有效开户海报，未换新');
     } catch (error) {
       if (activeCodeIdRef.current !== codeId) return;
       loadedCodeIdRef.current = null;
-      const message = describeMiniProgramCodeQrError(error, '读取开户二维码失败');
+      const message = describeMiniProgramCodeQrError(error, '读取开户海报失败');
       setQrError(message);
       if (options.notifySuccess) notify.error(message);
     } finally {
@@ -141,6 +190,10 @@ export default function EnterpriseRegistrationCodesPage() {
       setQrLoading(false);
       setQrError(null);
       setQrCode((current) => {
+        revokeMiniProgramCodeQr(current);
+        return null;
+      });
+      setRawQrCode((current) => {
         revokeMiniProgramCodeQr(current);
         return null;
       });
@@ -209,14 +262,54 @@ export default function EnterpriseRegistrationCodesPage() {
     }
   };
 
-  const downloadQr = () => {
+  const downloadPoster = () => {
     if (!qrCode) return;
     const link = document.createElement('a');
     link.href = qrCode.imageUrl;
-    link.download = `enterprise-registration-code.${qrCode.imageType === 'image/jpeg' ? 'jpg' : 'png'}`;
+    link.download = 'enterprise-registration-poster.jpg';
     document.body.appendChild(link);
     link.click();
     link.remove();
+  };
+
+  const downloadRawQr = () => {
+    if (!rawQrCode) return;
+    const link = document.createElement('a');
+    link.href = rawQrCode.imageUrl;
+    link.download = `enterprise-registration-code.${rawQrCode.imageType === 'image/jpeg' ? 'jpg' : 'png'}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
+
+  const saveTemplateConfig = async () => {
+    if (!templateDraft) return;
+    setTemplateSaving(true);
+    try {
+      const response = await fetch('/api/platform/enterprise-registration-code-template-config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateId: templateConfig?.templateId,
+          qrPlacement: templateDraft,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '保存开户海报模板失败');
+      }
+      setTemplateConfig(result.data);
+      setTemplateDraft(result.data.qrPlacement);
+      notify.success('开户海报模板已保存');
+      loadedCodeIdRef.current = null;
+      if (active && code) {
+        void loadQr(code.id);
+      }
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '保存开户海报模板失败');
+    } finally {
+      setTemplateSaving(false);
+    }
   };
 
   const copyWebRegisterLink = async () => {
@@ -280,7 +373,7 @@ export default function EnterpriseRegistrationCodesPage() {
         breadcrumbRender={false}
         className="admin-page-container"
         title="企业开户码"
-        content="平台级小程序扫码开户入口。生效中的码可直接查看和下载；换新才会让旧码失效。与商户员工/推荐人入驻码（ej_）隔离；后台不展示令牌明文。"
+        content="平台级小程序扫码开户入口。生效中的码可预览合成开户海报并下载；换新才会让旧码失效。与商户员工/推荐人入驻码（ej_）隔离；后台不展示令牌明文。"
         extra={(
           <Space>
             <Button icon={<Copy size={16} />} onClick={() => void copyWebRegisterLink()}>
@@ -347,16 +440,58 @@ export default function EnterpriseRegistrationCodesPage() {
             </Space>
             {active ? (
               <MiniProgramCodeQr
-                alt="企业开户二维码"
+                alt="企业开户海报"
                 value={qrCode}
                 loading={qrLoading}
                 error={qrError}
+                imageClassName="max-h-[640px] w-auto max-w-full rounded bg-white"
+                helperText="当前有效开户海报可直接查看和下载，不会换新。只有点「换新」才会让旧码失效。"
                 onReload={() => {
                   if (!code) return;
                   void loadQr(code.id, { notifySuccess: true });
                 }}
-                onDownload={downloadQr}
+                onDownload={downloadPoster}
+                downloadLabel="下载开户海报"
+                onSecondaryDownload={downloadRawQr}
+                secondaryDownloadLabel="下载裸码"
               />
+            ) : null}
+          </Card>
+
+          <Card loading={templateLoading} title="海报模板">
+            <Descriptions
+              size="small"
+              column={1}
+              items={[
+                {
+                  key: 'template',
+                  label: '当前模板',
+                  children: templateConfig?.templateLabel || '家客来商户入驻',
+                },
+              ]}
+            />
+            {templateDraft && templateConfig ? (
+              <div className="mt-4 space-y-4">
+                <EnterpriseRegistrationPosterPlacementEditor
+                  templateId={templateConfig.templateId}
+                  value={templateDraft}
+                  qrPreviewUrl={rawQrCode?.imageUrl}
+                  onChange={setTemplateDraft}
+                />
+                <Space>
+                  <Button type="primary" loading={templateSaving} onClick={() => void saveTemplateConfig()}>
+                    保存配置
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!templateConfig) return;
+                      setTemplateDraft(templateConfig.qrPlacement);
+                    }}
+                  >
+                    重置
+                  </Button>
+                </Space>
+              </div>
             ) : null}
           </Card>
 

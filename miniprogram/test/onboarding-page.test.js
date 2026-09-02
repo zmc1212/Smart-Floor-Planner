@@ -41,8 +41,8 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   const referrerHelper = wxml.match(/<view class="identity-link referrer-ready identity-link-v7">[\s\S]*?<\/view>/)?.[0];
   assert.ok(referrerHelper);
   assert.doesNotMatch(referrerHelper, /bindtap|aria-role|link-chevron/);
-  assert.match(wxml, /images\/onboarding-referrer-v7\/xiao-k-promoter-hero-v7\.png/);
-  assert.match(wxml, /images\/onboarding-referrer-v7\/enterprise-building-v7\.png/);
+  assert.match(wxml, /packages\/business\/assets\/onboarding-referrer-v7\/xiao-k-promoter-hero-v7\.png/);
+  assert.match(wxml, /packages\/business\/assets\/onboarding-referrer-v7\/enterprise-building-v7\.png/);
   assert.match(wxml, /专属服务码/);
   assert.match(wxml, /推广记录/);
   assert.match(wxml, /对应提成/);
@@ -57,7 +57,7 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.deepEqual([...welcomeAsset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.ok(welcomeAsset.byteLength <= 300 * 1024);
   for (const assetName of ['xiao-k-promoter-hero-v7.png', 'enterprise-building-v7.png']) {
-    const asset = fs.readFileSync(path.join(miniRoot, 'images/onboarding-referrer-v7', assetName));
+    const asset = fs.readFileSync(path.join(miniRoot, 'packages/business/assets/onboarding-referrer-v7', assetName));
     assert.deepEqual([...asset.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
     assert.ok(asset.byteLength <= 300 * 1024, `${assetName} exceeds the generated-artwork budget`);
   }

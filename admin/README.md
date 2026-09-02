@@ -16,19 +16,47 @@ business flows.
 
 ## Production release
 
-On Windows, `release.bat` builds `release/sfp-admin-release.zip` and copies
-`auto_deploy.sh` beside it. The image is packed as `sfp-admin.tar` inside the
-ZIP; Docker Hub push is skipped because production deploy loads that tar.
-Alpine `apk` uses `mirrors.aliyun.com` because `dl-cdn.alpinelinux.org` often
-fails TLS from China during `libc6-compat` / CJK font install.
+On Windows, `release.bat` runs ESLint, the survey/AI/PostgreSQL test suites, a
+production Next.js build, and a no-cache Docker build. A release gets a stable
+`YYYYMMDD-NNN` version, a matching `zmc1212/sfp-admin:<version>` image, integrity
+manifests, and `release/sfp-admin-release-<version>.zip`. Pass an explicit
+version when needed, for example `release.bat -Version 20260901-001`.
 
-Upload the ZIP to the server directory that already holds the previous extract
-(for example `/datas/smartfloor`). First time only, also upload `auto_deploy.sh`
-to that same directory and run `chmod +x auto_deploy.sh`. After each later ZIP
-upload, run `./auto_deploy.sh`. That script overwrites the previous extract
-without an unzip prompt, makes `sfp-admin-release/deploy.sh` executable, and
-starts the existing Compose deploy. Windows ZIP warnings about backslash path
-separators are ignored; only a real unzip failure stops the script.
+The archive intentionally contains no `.env.production`. Keep production
+secrets in `/datas/smartfloor/.env.production` on the server with mode `600`,
+and configure a dedicated low-privilege smoke account through
+`DEPLOY_SMOKE_USERNAME` / `DEPLOY_SMOKE_PASSWORD`. Optional comma-separated
+authenticated GET checks use `DEPLOY_SMOKE_PATHS`; `/api/auth/me` is always
+checked.
+
+Upload the versioned ZIP, its `.sha256` sidecar, and the current
+`auto_deploy.sh` to the stable deployment root. Then use:
+
+```bash
+chmod +x auto_deploy.sh
+./auto_deploy.sh deploy                         # newest uploaded ZIP
+./auto_deploy.sh status
+./auto_deploy.sh rollback                       # recorded previous version
+./auto_deploy.sh rollback 20260901-001          # exact retained version
+```
+
+Deployment uses a temporary extraction directory, discovers and preserves the
+existing Compose project name (and therefore the existing PostgreSQL volume),
+verifies every packaged checksum, creates and validates a custom PostgreSQL
+dump plus SHA-256 before migration, runs Drizzle migrations, recreates Admin and
+the claim worker, and requires database health, worker health, authenticated
+login, and configured core API checks to pass. Releases, deployment state, and
+backups remain outside the extracted package. A failed new application check
+automatically restores the previously running image when available.
+
+Application rollback never reverses a PostgreSQL migration. Every migration
+must remain backward compatible with the immediately previous application
+release. See the bilingual production runbook in
+`../docs/production-deployment.md` and
+`../docs/production-deployment.zh-CN.md`.
+
+Alpine `apk` uses `mirrors.aliyun.com` because `dl-cdn.alpinelinux.org` often
+fails TLS from China during `libc6-compat` / CJK font installation.
 
 ## Runtime references
 

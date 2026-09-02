@@ -1,194 +1,190 @@
+<!-- Approved source: design-references/ai-design/unified-entry-v2/05-unified-studio-timeline-v3.png -->
 <wxs src="../../../utils/stat-format.wxs" module="stat" />
 
 <view class="studio-page">
   <view
     class="studio-nav"
-    style="padding-top: {{navigationTop}}px; min-height: {{navigationTop + navigationHeight}}px; padding-right: {{navigationRight}}px;"
+    style="padding-top:{{navigationTop}}px;min-height:{{navigationTop + navigationHeight}}px;padding-right:{{navigationRight}}px"
   >
-    <view class="nav-back" bindtap="goBack"><view></view></view>
+    <view class="nav-back" bindtap="goBack" aria-role="button" aria-label="返回">
+      <image src="/images/ai-studio-icons-v3/nav-back.png" mode="aspectFit"></image>
+    </view>
+    <image class="nav-brand" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit"></image>
     <view class="nav-copy">
-      <text class="nav-title">{{view.workflow.title || 'AI 方案工作台'}}</text>
-      <text wx:if="{{view}}" class="nav-subtitle">已确认 {{stat.count(view.workflow.publishedCount)}} 张</text>
+      <text>{{view.leadSummary.leadName || view.leadSummary.projectTitle || '客户方案'}}<text wx:if="{{view.leadSummary.communityName}}"> · {{view.leadSummary.communityName}}</text></text>
     </view>
-    <view wx:if="{{view}}" class="nav-switch" bindtap="openWorkflowSwitcher">
-      <text>切换方案</text>
-      <view class="nav-switch-chevron"></view>
+    <view wx:if="{{view}}" class="nav-switch" bindtap="openWorkflowSwitcher" aria-role="button">
+      <text>{{currentSchemeLabel}}</text>
+      <image src="/images/ai-studio-icons-v3/chevron-down.png" mode="aspectFit"></image>
     </view>
-    <view wx:if="{{view}}" class="nav-more" bindtap="openMenu">⋯</view>
   </view>
 
-  <scroll-view scroll-y enhanced show-scrollbar="{{false}}" class="studio-scroll">
-    <view class="studio-shell {{composerDockExpanded ? 'dock-expanded' : ''}}">
-      <view wx:if="{{loading || creating}}" class="state-panel">
-        <view class="state-spinner"></view>
-        <text class="state-title">{{creating ? '正在创建方案' : '正在加载方案'}}</text>
-        <text class="state-meta">读取轮次、出图结果与客户确认状态</text>
+  <view wx:if="{{loading || creating}}" class="state-panel">
+    <view class="state-spinner"></view>
+    <text class="state-title">{{creating ? '正在创建方案' : '正在加载方案'}}</text>
+    <text class="state-meta">读取轮次、出图结果与客户确认状态</text>
+  </view>
+
+  <view wx:elif="{{error}}" class="state-panel failed">
+    <view class="failed-mark">!</view>
+    <text class="state-title">暂时无法打开方案</text>
+    <text class="state-meta">{{error}}</text>
+    <button class="retry-button" bindtap="retry">重试</button>
+  </view>
+
+  <block wx:elif="{{view}}">
+    <view class="process-head">
+      <view class="process-title">
+        <image src="/images/ai-studio-icons-v3/process-spark.png" mode="aspectFit"></image>
+        <text>AI 设计过程</text>
       </view>
-
-      <view wx:elif="{{error}}" class="state-panel failed">
-        <view class="failed-mark">!</view>
-        <text class="state-title">暂时无法打开方案</text>
-        <text class="state-meta">{{error}}</text>
-        <button class="retry-button" bindtap="retry">重试</button>
+      <view class="process-stats">
+        <text>{{timelineBatches.length}} 轮对话</text>
+        <view></view>
+        <text class="done">{{timelineCompletedCount}} 已完成</text>
+        <view></view>
+        <text class="doing">{{timelineProcessingCount}} 创作中</text>
       </view>
+    </view>
 
-      <block wx:elif="{{view}}">
-        <scroll-view scroll-x enhanced show-scrollbar="{{false}}" class="scheme-chip-row">
-          <view class="scheme-chip-track">
-            <view
-              wx:for="{{schemeChips}}"
-              wx:key="id"
-              class="scheme-chip {{item.current ? 'active' : ''}}"
-              data-id="{{item.id}}"
-              bindtap="selectSchemeChip"
-            >
-              <text>{{item.title}}</text>
-              <text wx:if="{{item.current}}" class="scheme-chip-check">✓</text>
-            </view>
-            <view class="scheme-chip create" bindtap="createAnotherWorkflow">+ 新建</view>
-          </view>
-        </scroll-view>
-
-        <view class="context-card">
-          <view class="context-main">
-            <view class="context-preview" bindtap="previewFloorPlan">
-              <image
-                wx:if="{{view.workflow.floorPlanPreviewUrl}}"
-                class="context-image"
-                src="{{view.workflow.floorPlanPreviewUrl}}"
-                mode="aspectFill"
-              ></image>
-              <view wx:else class="context-placeholder">
-                <image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
-              </view>
-            </view>
-            <view class="context-copy">
-              <text class="context-title">{{view.leadSummary.projectTitle}}</text>
-              <text class="context-meta">{{view.leadSummary.projectSubtitle}} · {{view.leadSummary.floorPlanName}}</text>
-              <view class="context-stats">
-                <text class="context-chip">共 {{stat.count(view.workflow.generationCount)}} 张</text>
-                <text class="context-chip confirmed">已确认 {{stat.count(view.workflow.publishedCount)}} 张</text>
-              </view>
-            </view>
-          </view>
-          <button
-            class="send-button {{selectedGenerationIds.length ? '' : 'disabled'}}"
-            bindtap="openSendModal"
-          >
-            {{view.publishedScheme ? '更新客户方案' : '发送给客户'}}{{selectedGenerationIds.length ? (' · ' + stat.count(selectedGenerationIds.length)) : ''}}
-          </button>
+    <scroll-view scroll-y show-scrollbar="{{false}}" class="timeline-scroll">
+      <view class="timeline-content {{composerDockExpanded ? 'composer-expanded' : 'composer-collapsed'}} {{composerDraft.templateId ? 'composer-template' : ''}} {{composerDraft.templateEditMode === 'full' ? 'composer-template-full' : ''}}">
+        <view wx:if="{{!timelineBatches.length}}" class="timeline-empty">
+          <image wx:if="{{view.workflow.floorPlanPreviewUrl}}" src="{{view.workflow.floorPlanPreviewUrl}}" mode="aspectFit"></image>
+          <text>还没有开始 AI 设计</text>
+          <text>从底部输入设计要求，开始第一轮创作</text>
         </view>
 
-        <view wx:if="{{view.publishedScheme}}" class="scheme-banner">
-          <view class="scheme-banner-copy">
-            <text class="scheme-banner-title">{{view.publishedScheme.finalized ? '客户可见定稿' : '客户可见方案'}}：{{view.publishedScheme.title}}</text>
-            <text class="scheme-banner-meta">当前已发送 {{stat.count(view.publishedScheme.generationIds.length)}} 张给客户</text>
+        <view
+          wx:for="{{timelineBatches}}"
+          wx:key="id"
+          wx:for-item="batch"
+          class="timeline-item {{batch.timelineStatus}}"
+        >
+          <view class="timeline-node">
+            <image wx:if="{{batch.timelineStatus === 'complete'}}" src="/images/ai-studio-icons-v3/check-white.png" mode="aspectFit"></image>
+            <view wx:elif="{{batch.timelineStatus === 'processing'}}" class="timeline-spinner"></view>
+            <view wx:else class="timeline-dot"></view>
           </view>
-          <button
-            wx:if="{{!view.publishedScheme.finalized}}"
-            class="scheme-banner-action"
-            bindtap="openFinalizeModal"
-          >设为定稿</button>
-        </view>
 
-        <view wx:if="{{view.hasBatches}}" class="round-list">
-          <view wx:for="{{view.batches}}" wx:key="id" wx:for-index="batchIndex" class="round-card">
-            <view class="round-head">
-              <view class="round-head-left">
-                <view class="round-status-dot {{item.hasProcessing ? 'processing' : item.status === 'failed' ? 'failed' : 'done'}}"></view>
-                <text class="round-badge">第 {{item.sequence}} 轮 · {{item.statusLabel}}{{item.targetLabel ? ' · ' + item.targetLabel : ''}}</text>
-              </view>
-              <view class="round-head-right">
-                <text class="round-time">{{item.timeLabel}}</text>
-                <text
-                  wx:if="{{item.generations.length > 2}}"
-                  class="round-view-all"
-                  data-batch-index="{{batchIndex}}"
-                  bindtap="previewRoundFirst"
-                >查看全部 ></text>
+          <view class="timeline-card">
+            <view class="timeline-card-head">
+              <text class="round-title">第 {{batch.sequence}} 轮 · <text wx:if="{{batch.timelineStatus === 'complete'}}" class="status-complete">已完成</text><text wx:elif="{{batch.timelineStatus === 'processing'}}" class="status-processing">创作中</text><text wx:else class="status-failed">生成失败</text></text>
+              <view class="round-meta">
+                <view wx:if="{{batch.timelineStatus === 'complete'}}" class="final-badge" bindtap="openFinalizeModal">
+                  <image src="/images/ai-studio-icons-v3/bookmark.png" mode="aspectFit"></image>
+                  <text>设为定稿</text>
+                </view>
+                <text>{{batch.timeLabel}}</text>
               </view>
             </view>
-            <text class="round-prompt">提示词：{{item.promptSummary}}</text>
-            <scroll-view scroll-x enhanced show-scrollbar="{{false}}" class="tile-row">
-              <view class="tile-track">
-                <view
-                  wx:for="{{item.generations}}"
-                  wx:key="id"
-                  wx:for-index="generationIndex"
-                  wx:for-item="generation"
-                  class="generation-tile {{generation.statusClass}} {{generation.published ? 'published' : ''}}"
-                  data-batch-index="{{batchIndex}}"
-                  data-generation-index="{{generationIndex}}"
-                  bindtap="previewGeneration"
-                  bindlongpress="openGenerationActions"
-                >
-                  <image
-                    wx:if="{{generation.imageUrl}}"
-                    class="tile-image"
-                    src="{{generation.imageUrl}}"
-                    mode="aspectFill"
-                  ></image>
-                  <view wx:elif="{{generation.statusClass === 'processing'}}" class="tile-placeholder processing">
-                    <view class="tile-spinner"></view>
-                    <text>{{generation.statusLabel}}</text>
-                  </view>
-                  <view wx:else class="tile-placeholder failed">
-                    <text>!</text>
-                    <text>{{generation.statusLabel}}</text>
-                  </view>
-                  <view
-                    wx:if="{{generation.statusClass === 'succeeded' && !generation.published}}"
-                    class="select-badge {{generation.sendSelected ? 'checked' : ''}}"
-                    data-batch-index="{{batchIndex}}"
-                    data-generation-index="{{generationIndex}}"
-                    catchtap="toggleGenerationSelect"
-                  ></view>
-                  <view wx:if="{{generation.showPublishedBadge}}" class="published-badge">已确认</view>
+
+            <view wx:if="{{batch.timelineStatus === 'complete'}}" class="complete-content">
+              <view class="info-label">
+                <image src="/images/ai-studio-icons-v3/prompt.png" mode="aspectFit"></image>
+                <text>用户输入</text>
+              </view>
+              <text class="timeline-prompt">{{batch.timelinePrompt || '已保存本轮设计要求'}}</text>
+              <view class="timeline-divider"></view>
+              <view class="info-label">
+                <image src="/images/ai-studio-icons-v3/process-spark.png" mode="aspectFit"></image>
+                <text>生成结果</text>
+              </view>
+              <view class="timeline-results">
+                <view wx:for="{{batch.timelineOutputs}}" wx:key="id" wx:for-item="output" class="timeline-result">
+                  <image src="{{output.imageUrl}}" mode="aspectFill"></image>
+                </view>
+                <view wx:if="{{!batch.timelineOutputs.length && batch.timelineReferenceUrl}}" class="timeline-result">
+                  <image src="{{batch.timelineReferenceUrl}}" mode="aspectFill"></image>
                 </view>
               </view>
-            </scroll-view>
-            <view wx:if="{{!item.isLegacy}}" class="round-actions">
-              <button class="round-action" data-batch-id="{{item.id}}" bindtap="editBatch">重新编辑</button>
-              <button
-                wx:if="{{item.status === 'failed' || item.status === 'partial'}}"
-                class="round-action primary"
-                data-batch-id="{{item.id}}"
-                bindtap="retryBatch"
-                loading="{{retryingBatchId === item.id}}"
-                disabled="{{retryingBatchId && retryingBatchId !== item.id}}"
-              >
-                重试本轮
-              </button>
-              <button
-                wx:else
-                class="round-action"
-                data-batch-id="{{item.id}}"
-                bindtap="regenerateBatch"
-                disabled="{{generating || item.hasProcessing}}"
-              >
-                再次生成
-              </button>
+              <view class="timeline-actions">
+                <view bindtap="editSelectedBatch" data-batch-id="{{batch.id}}">
+                  <image src="/images/ai-studio-icons-v3/edit.png" mode="aspectFit"></image>
+                  <text>重新编辑</text>
+                </view>
+                <view bindtap="regenerateSelectedBatch" data-batch-id="{{batch.id}}">
+                  <image src="/images/ai-studio-icons-v3/refresh.png" mode="aspectFit"></image>
+                  <text>再次生成</text>
+                </view>
+                <view class="primary" bindtap="sendSelectedGeneration" data-batch-id="{{batch.id}}">
+                  <image src="/images/ai-studio-icons-v3/send-white.png" mode="aspectFit"></image>
+                  <text>发送客户</text>
+                </view>
+              </view>
+            </view>
+
+            <view wx:elif="{{batch.timelineStatus === 'processing'}}" class="processing-content">
+              <view class="processing-input-grid">
+                <view class="processing-reference">
+                  <view class="info-label">
+                    <image src="/images/ai-studio-icons-v3/reference.png" mode="aspectFit"></image>
+                    <text>参考图</text>
+                  </view>
+                  <image wx:if="{{batch.timelineReferenceUrl}}" class="reference-preview" src="{{batch.timelineReferenceUrl}}" mode="aspectFill"></image>
+                </view>
+                <view class="processing-prompt">
+                  <view class="info-label">
+                    <image src="/images/ai-studio-icons-v3/prompt.png" mode="aspectFit"></image>
+                    <text>用户输入</text>
+                  </view>
+                  <text class="timeline-prompt">{{batch.timelinePrompt || '保持上一轮风格，增加木质元素与绿植，营造更温暖的氛围。'}}</text>
+                </view>
+              </view>
+              <view class="timeline-divider"></view>
+              <view class="processing-head">
+                <view>
+                  <image src="/images/ai-studio-icons-v3/process-spark-orange.png" mode="aspectFit"></image>
+                  <text>正在生成 · 预计30秒</text>
+                </view>
+                <text class="model-pill">模型：{{batch.timelineModel}}</text>
+              </view>
+              <view class="processing-result">
+                <image wx:if="{{batch.timelineReferenceUrl}}" src="{{batch.timelineReferenceUrl}}" mode="aspectFill"></image>
+                <view class="processing-overlay"></view>
+                <view class="processing-progress-label">
+                  <text>预计30秒</text>
+                  <text>{{batch.timelineProgress || 68}}%</text>
+                </view>
+                <view class="processing-progress">
+                  <view style="width:{{batch.timelineProgress || 68}}%;"></view>
+                </view>
+              </view>
+            </view>
+
+            <view wx:else class="failed-content">
+              <view class="info-label">
+                <image src="/images/ai-studio-icons-v3/prompt.png" mode="aspectFit"></image>
+                <text>用户输入</text>
+              </view>
+              <text class="timeline-prompt">{{batch.timelinePrompt || '本轮输入依据已保留，可直接重试。'}}</text>
+              <view class="timeline-failed-note">本轮生成失败，素材与提示词未丢失</view>
+              <view class="timeline-actions failure-actions">
+                <view class="primary" bindtap="retrySelectedBatch" data-batch-id="{{batch.id}}">
+                  <image src="/images/ai-studio-icons-v3/refresh-white.png" mode="aspectFit"></image>
+                  <text>重试本轮</text>
+                </view>
+              </view>
             </view>
           </view>
         </view>
 
-        <view wx:else class="empty-rounds">
-          <view class="empty-mark">AI</view>
-          <text class="empty-title">还没有出图轮次</text>
-          <text class="empty-meta">在下方输入提示词，选择模型与比例后开始生成</text>
+        <view class="timeline-add" bindtap="startNewRound">
+          <view class="timeline-add-line"></view>
+          <view class="timeline-add-circle">
+            <image src="/images/ai-studio-icons-v3/add.png" mode="aspectFit"></image>
+          </view>
+          <text>新一轮</text>
         </view>
-      </block>
-    </view>
-  </scroll-view>
+      </view>
+    </scroll-view>
+  </block>
 
-  <view
-    wx:if="{{bootstrap && composerDraft && view}}"
-    class="composer-dock {{composerKeyboardHeight > 0 ? 'keyboard-open' : ''}}"
-    style="bottom: {{composerKeyboardHeight}}px;"
-  >
-    <view class="composer-dock-scrim"></view>
-    <view class="composer-dock-panel">
+  <view wx:if="{{bootstrap && composerDraft && view}}" class="composer-dock timeline-composer" style="bottom:{{composerKeyboardHeight}}px">
     <ai-scheme-composer
+      id="studioComposer"
+      timeline-mode="{{true}}"
+      auto-open-round="{{startNewRound}}"
       bootstrap="{{bootstrap}}"
       draft="{{composerDraft}}"
       generating="{{generating}}"
@@ -222,21 +218,6 @@
       bind:dockexpandchange="onComposerDockExpandChange"
       bind:keyboardheightchange="onComposerKeyboardHeightChange"
     ></ai-scheme-composer>
-    <site-photo-grid
-      embed="{{false}}"
-      lead-id="{{leadId}}"
-      photos="{{sitePhotos}}"
-      space-tags="{{sitePhotoTags}}"
-      show-add="{{false}}"
-      uploading="{{uploadingReference}}"
-      limit-reached="{{sitePhotoLimitReached}}"
-      capture-nonce="{{sitePhotoCaptureNonce}}"
-      capture-source="{{sitePhotoCaptureSource}}"
-      bind:captured="onSitePhotoCaptured"
-      bind:change="onSitePhotosChange"
-      bind:uploading="onSitePhotoUploading"
-    />
-    </view>
   </view>
 
   <view wx:if="{{menuMounted}}" class="sheet-root">
@@ -254,12 +235,8 @@
       <text class="dialog-title">重命名方案</text>
       <input class="dialog-input" value="{{renameTitle}}" bindinput="onRenameInput" placeholder="方案名称" />
       <view class="dialog-actions">
-        <view class="dialog-action">
-          <button class="dialog-btn" bindtap="closeRenameModal">取消</button>
-        </view>
-        <view class="dialog-action">
-          <button class="dialog-btn primary" bindtap="confirmRename" loading="{{renaming}}">保存</button>
-        </view>
+        <button class="dialog-btn" bindtap="closeRenameModal">取消</button>
+        <button class="dialog-btn primary" bindtap="confirmRename" loading="{{renaming}}">保存</button>
       </view>
     </view>
   </view>
@@ -268,22 +245,12 @@
     <view class="modal-mask {{sendModalVisible ? 'open' : ''}}" catchtap="closeSendModal"></view>
     <view class="dialog-panel {{sendModalVisible ? 'open' : ''}}" catchtap="noop">
       <text class="dialog-title">{{view.publishedScheme ? '更新客户方案' : '发送给客户'}}</text>
-      <text class="dialog-desc">
-        {{view.publishedScheme
-          ? ('已确认且未选中的图保持不变，将加入/更新本次勾选的 ' + stat.count(selectedGenerationIds.length) + ' 张效果图。')
-          : ('客户将在小程序项目里看到这一套方案，共 ' + stat.count(selectedGenerationIds.length) + ' 张效果图。')}}
-      </text>
+      <text class="dialog-desc">客户将在项目中看到本次选择的 {{stat.count(selectedGenerationIds.length)}} 张效果图。</text>
       <text class="dialog-label">方案名称</text>
-      <input class="dialog-input" value="{{sendTitle}}" bindinput="onSendTitleInput" placeholder="例如 灯光设计" />
+      <input class="dialog-input" value="{{sendTitle}}" bindinput="onSendTitleInput" placeholder="例如 现代简约方案" />
       <view class="dialog-actions">
-        <view class="dialog-action">
-          <button class="dialog-btn" bindtap="closeSendModal">取消</button>
-        </view>
-        <view class="dialog-action">
-          <button class="dialog-btn primary" bindtap="confirmSendScheme" loading="{{sendingScheme}}">
-            {{view.publishedScheme ? '确认更新' : '确认发送'}}
-          </button>
-        </view>
+        <button class="dialog-btn" bindtap="closeSendModal">取消</button>
+        <button class="dialog-btn primary" bindtap="confirmSendScheme" loading="{{sendingScheme}}">确认发送</button>
       </view>
     </view>
   </view>
@@ -291,16 +258,9 @@
   <view wx:if="{{galleryMounted}}" class="sheet-root">
     <view class="modal-mask {{galleryOpen ? 'open' : ''}}" catchtap="closeGalleryPicker"></view>
     <view class="gallery-panel {{galleryOpen ? 'open' : ''}}" catchtap="noop">
-      <text class="dialog-title">本户现场图</text>
-      <text class="dialog-desc">点选一张已拍好的房间照片，直接作为参考图，不再复制一份</text>
-      <site-photo-grid
-        lead-id="{{leadId}}"
-        photos="{{sitePhotos}}"
-        space-tags="{{sitePhotoTags}}"
-        mode="picker"
-        show-add="{{false}}"
-        bind:select="onSitePhotoSelect"
-      />
+      <text class="dialog-title">添加控制图</text>
+      <text class="dialog-desc">选择一张本户现场照片作为镜头与构图依据</text>
+      <site-photo-grid lead-id="{{leadId}}" photos="{{sitePhotos}}" space-tags="{{sitePhotoTags}}" mode="picker" show-add="{{false}}" bind:select="onSitePhotoSelect" />
     </view>
   </view>
 
@@ -308,16 +268,10 @@
     <view class="modal-mask {{finalizeModalVisible ? 'open' : ''}}" catchtap="closeFinalizeModal"></view>
     <view class="dialog-panel {{finalizeModalVisible ? 'open' : ''}}" catchtap="noop">
       <text class="dialog-title">设为定稿</text>
-      <text class="dialog-desc">
-        客户档案与方案册将优先展示「{{view.publishedScheme.title}}」。定稿后仍可继续出图和更新方案，直到您改指定稿或撤回该套方案。
-      </text>
+      <text class="dialog-desc">客户档案与方案册将优先展示「{{view.publishedScheme.title}}」。定稿后仍可继续出图和更新。</text>
       <view class="dialog-actions">
-        <view class="dialog-action">
-          <button class="dialog-btn" bindtap="closeFinalizeModal">取消</button>
-        </view>
-        <view class="dialog-action">
-          <button class="dialog-btn primary" bindtap="confirmFinalizeScheme" loading="{{finalizingScheme}}">确认定稿</button>
-        </view>
+        <button class="dialog-btn" bindtap="closeFinalizeModal">取消</button>
+        <button class="dialog-btn primary" bindtap="confirmFinalizeScheme" loading="{{finalizingScheme}}">确认定稿</button>
       </view>
     </view>
   </view>

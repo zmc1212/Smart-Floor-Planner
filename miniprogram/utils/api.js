@@ -6,7 +6,7 @@ const API_BASE_URLS = Object.freeze({
 
 // Switch this value before building or previewing the Mini Program.
 // `local` targets the development machine and is intended for WeChat Developer Tools.
-const ACTIVE_API_ENVIRONMENT = 'production';
+const ACTIVE_API_ENVIRONMENT = 'local';
 
 let isShowingAuthModal = false;
 const session = require('./session.js');

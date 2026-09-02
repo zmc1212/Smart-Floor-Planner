@@ -17,11 +17,20 @@ const SINGLE_ROOM_RENDER_MODE = 'single_room_photo';
 const SOFT_FURNISHING_RENDER_MODE = 'soft_furnishing';
 const SCOPE_APPLY_NOTE = '只应用到当前选择，不会自动为其他房间生成，也不会产生额外扣点。';
 const COMPOSER_TOOL_ICONS = {
-  scope: '/images/ai-design-icons/floor-plan.png',
-  model: '/images/mine-icons/tab-ai.png',
-  template: '/images/ai-design-icons/palette.png',
-  settings: '/images/mine-v6/settings.png',
+  scope: '/images/ai-studio-icons-v3/floor-plan.png',
+  model: '/images/ai-studio-icons-v3/model.png',
+  template: '/images/ai-studio-icons-v3/template.png',
+  settings: '/images/ai-studio-icons-v3/settings.png',
 };
+
+function formatCompactBalance(value) {
+  const balance = Math.max(0, Number(value) || 0);
+  if (balance >= 10000) {
+    const compact = (balance / 10000).toFixed(balance >= 100000 ? 0 : 1).replace(/\.0$/, '');
+    return `${compact}万`;
+  }
+  return String(Math.trunc(balance));
+}
 
 function pickDefaultModel(bootstrap) {
   const models = bootstrap?.models || [];
@@ -44,11 +53,51 @@ function createDefaultDraft(bootstrap) {
     count: 1,
     templateId: '',
     templateName: '',
+    templatePreviewUrl: '',
+    templateBasePrompt: '',
+    templateEditMode: '',
     referenceAssets: [],
     renderMode: '',
     renderModeConfirmed: false,
     targetScope: WHOLE_FLOOR_SCOPE_KEY,
     roomId: '',
+  };
+}
+
+function applyTemplateToDraft(draft, template) {
+  const prompt = String(template?.promptContent || template?.internalPrompt || '').trim();
+  const previewUrl = String(
+    template?.previewUrl
+      || template?.localPreviewUrl
+      || template?.coverUrl
+      || template?.previewAssetUrl
+      || '',
+  );
+  return {
+    ...(draft || {}),
+    prompt,
+    templateId: String(template?.id || ''),
+    templateName: String(template?.name || ''),
+    templatePreviewUrl: previewUrl,
+    templateBasePrompt: prompt,
+    templateEditMode: prompt ? 'full' : '',
+  };
+}
+
+function setTemplateFullEditMode(draft, prompt) {
+  return {
+    ...(draft || {}),
+    prompt: String(prompt == null ? draft?.prompt || '' : prompt),
+    templateEditMode: 'full',
+  };
+}
+
+function restoreTemplatePrompt(draft) {
+  const base = String(draft?.templateBasePrompt || draft?.prompt || '');
+  return {
+    ...(draft || {}),
+    prompt: base,
+    templateEditMode: 'full',
   };
 }
 
@@ -207,7 +256,16 @@ function buildDraftFromBatch(batch, bootstrap) {
     resolutionTier: parameterSnapshot.resolutionTier || '1K',
     count: Number(batch.requestedCount || 1),
     templateId: parameterSnapshot.templateId || '',
-    templateName: '',
+    templateName: parameterSnapshot.templateName || '',
+    templatePreviewUrl: parameterSnapshot.templatePreviewUrl
+      || parameterSnapshot.templateCoverUrl
+      || parameterSnapshot.localPreviewUrl
+      || '',
+    templateBasePrompt: parameterSnapshot.templateBasePrompt || (parameterSnapshot.templateId ? batch.prompt || '' : ''),
+    // Historical batches may contain an adjustment snapshot. Their final
+    // `batch.prompt` remains authoritative, but the current UI has one direct
+    // full-prompt editor rather than a separate adjustment mode.
+    templateEditMode: parameterSnapshot.templateId ? 'full' : '',
     referenceAssets: referenceAssets.map((item) => ({
       ...item,
       role: !hasPersistedSitePhotoIds || sitePhotoAssetIds.has(String(item.id))
@@ -282,6 +340,8 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
       draft.roomId,
     )
     : '';
+  const timelineReference = (draft.referenceAssets || []).find((item) => item.previewUrl);
+  const timelineControlUrl = controlPreviewUrl || timelineReference?.previewUrl || '';
   let blockedReason = '';
   if (!modeConfirmed) blockedReason = '请先选择设计方式';
   else if (!sitePhotoReady) blockedReason = '请先添加现场图';
@@ -321,6 +381,11 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
 
   return {
     draft,
+    hasTemplate: Boolean(String(draft.templateId || '').trim()),
+    templateName: String(draft.templateName || '已选模板'),
+    templatePreviewUrl: String(draft.templatePreviewUrl || ''),
+    templateBasePrompt: String(draft.templateBasePrompt || ''),
+    templateEditMode: draft.templateId ? 'full' : '',
     model,
     maxRefs,
     unitPrice,
@@ -386,6 +451,9 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
     controlPreviewLabel: selectedScope && selectedScope.targetScope === 'single_room'
       ? `${selectedScope.name || '房间'}控制图`
       : '完整户型控制图',
+    timelineControlUrl,
+    timelineControlLabel: timelineControlUrl ? '控制图 1' : '+ 控制图',
+    timelineCreditLabel: `算力余额 ${formatCompactBalance(balance)}`,
     creditSummary: creditsReady
       ? `预计消耗 ${estimatedCredits} 点 · 可用 ${balance} 点`
       : `需要 ${estimatedCredits} 点 · 可用 ${balance} 点`,
@@ -461,7 +529,17 @@ function parseTemplateListPayload(payload) {
     : (Array.isArray(payload) ? payload : []);
   const total = Number(payload?.pagination?.total);
   return {
-    items,
+    items: items.map((item) => ({
+      ...item,
+      // The API may expose a remote source URL and a local authenticated
+      // preview route. Prefer the source but keep the local route as a
+      // reliable fallback for the selected-template summary.
+      previewUrl: item?.previewUrl
+        || item?.localPreviewUrl
+        || item?.coverUrl
+        || item?.previewAssetUrl
+        || '',
+    })),
     total: Number.isFinite(total) ? total : items.length,
     page: Number(payload?.pagination?.page) || 1,
   };
@@ -479,6 +557,7 @@ module.exports = {
   applyModelDefaults,
   applyRenderModeToDraft,
   applyScopeToDraft,
+  applyTemplateToDraft,
   buildComposerPickerOptions,
   buildComposerPickerTitle,
   buildComposerToolbarItems,
@@ -498,5 +577,7 @@ module.exports = {
   pickDefaultModel,
   resolveDraftScope,
   resolvePreferredTemplateCategoryId,
+  restoreTemplatePrompt,
+  setTemplateFullEditMode,
   withFloorPlanPreviewRoom,
 };

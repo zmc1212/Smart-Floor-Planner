@@ -8,6 +8,7 @@ import {
 import { persistAndAttachFloorPlanPreview } from '@/lib/floor-plan-preview';
 import {
   canAccessMiniProgramFloorPlan,
+  canMutateMiniProgramFloorPlan,
   canReadMiniProgramFloorPlan,
 } from '@/lib/floor-plan-access';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
@@ -121,7 +122,9 @@ export async function PUT(
       async (transaction) => {
         const repository = new FloorPlanRepository(transaction);
         const current = await repository.findById(planId);
-        if (!current || !canAccessMiniProgramFloorPlan(current, context)) return null;
+        if (!current) return null;
+        const linkedLead = await new LeadRepository(transaction).findByFloorPlanId(current.id);
+        if (!canMutateMiniProgramFloorPlan(current, context, linkedLead)) return null;
         const nextStatus = (body.status || current.status) as 'draft' | 'completed';
         assertFormalSurveyWrite(formalLayout, nextStatus);
         const becameCompleted =
@@ -185,18 +188,18 @@ export async function PUT(
           throw new Error('Lead access denied');
         }
         await linkFloorPlanToLead(transaction, lead.id, plan.id);
-        const linkedLead = await new LeadRepository(transaction).findById(lead.id);
-        if (nextStatus === 'completed' && linkedLead?.enterpriseId && linkedLead.assignedTo) {
+        const linkedLeadAfterLink = await new LeadRepository(transaction).findById(lead.id);
+        if (nextStatus === 'completed' && linkedLeadAfterLink?.enterpriseId && linkedLeadAfterLink.assignedTo) {
           await new AppointmentRepository(transaction).tryCreateOnSiteVisit({
-            enterpriseId: linkedLead.enterpriseId,
-            leadId: linkedLead.id,
+            enterpriseId: linkedLeadAfterLink.enterpriseId,
+            leadId: linkedLeadAfterLink.id,
             actorUserId: /^[1-9]\d*$/.test(context.user._id)
               ? BigInt(context.user._id)
               : null,
-            eventKey: `on-site-floorplan:${linkedLead.id.toString()}:${plan.id.toString()}`,
+            eventKey: `on-site-floorplan:${linkedLeadAfterLink.id.toString()}:${plan.id.toString()}`,
           });
         }
-        return { plan, becameCompleted, lead: linkedLead };
+        return { plan, becameCompleted, lead: linkedLeadAfterLink };
       }
     );
     if (!updated) {

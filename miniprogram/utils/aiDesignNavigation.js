@@ -1,5 +1,5 @@
 const AI_DESIGN_TAB_URL = '/pages/ai-design/ai-design';
-const CONTEXT_KEYS = ['floorPlanId', 'leadId', 'roomId', 'targetScope', 'workflowId'];
+const CONTEXT_KEYS = ['floorPlanId', 'leadId', 'roomId', 'targetScope', 'workflowId', 'startNewRound'];
 const OPEN_AI_DESIGN_RESET_MS = 800;
 const { ensureAIDesignAccess } = require('./aiDesignAccess.js');
 
@@ -29,7 +29,7 @@ function shouldOpenSchemeStudio(options = {}) {
 
 function buildSchemeStudioUrl(options = {}) {
   const context = normalizeAIDesignContext(options);
-  const query = ['leadId', 'workflowId', 'floorPlanId']
+  const query = ['leadId', 'workflowId', 'floorPlanId', 'startNewRound']
     .filter((key) => context[key])
     .map((key) => `${key}=${encodeURIComponent(context[key])}`)
     .join('&');

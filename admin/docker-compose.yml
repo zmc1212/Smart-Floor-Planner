@@ -1,13 +1,13 @@
 services:
   admin:
-    image: zmc1212/sfp-admin:latest
+    image: ${SFP_ADMIN_IMAGE:-zmc1212/sfp-admin:latest}
     build: .
     container_name: smart-floor-planner-admin
     restart: unless-stopped
     ports:
       - "3005:3005"
     env_file:
-      - .env.production
+      - ${SFP_RUNTIME_ENV_FILE:-.env.production}
     environment:
       # Production Node also blocks tenant reset/purge unless
       # ALLOW_TENANT_ENTERPRISE_RESET=true is present in .env.production.
@@ -26,11 +26,9 @@ services:
         condition: service_healthy
 
   migrate:
-    image: zmc1212/sfp-admin:latest
+    image: ${SFP_ADMIN_IMAGE:-zmc1212/sfp-admin:latest}
     profiles: ["migration"]
     restart: "no"
-    volumes:
-      - ./drizzle:/app/drizzle:ro
     environment:
       - NODE_ENV=production
       - DATABASE_MIGRATION_URL=postgresql://sfp_migrator:sfp_migrator_local_only@postgres:5432/smart_floor_planner
@@ -40,12 +38,12 @@ services:
     command: ["node", "scripts/postgres-migrate.mjs"]
 
   lead-claim-worker:
-    image: zmc1212/sfp-admin:latest
+    image: ${SFP_ADMIN_IMAGE:-zmc1212/sfp-admin:latest}
     build: .
     container_name: smart-floor-planner-lead-claim-worker
     restart: unless-stopped
     env_file:
-      - .env.production
+      - ${SFP_RUNTIME_ENV_FILE:-.env.production}
     environment:
       - NODE_ENV=production
       - LEAD_CLAIM_WORKER_ENDPOINT=http://admin:3005/api/internal/lead-claim-windows/run
@@ -64,7 +62,9 @@ services:
     container_name: smart-floor-planner-postgres
     restart: unless-stopped
     ports:
-      - "5432:5432"
+      # Keep host-side maintenance access local; application containers use the
+      # private Compose network and production must never publish PostgreSQL.
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: sfp_owner
       POSTGRES_PASSWORD: sfp_owner_local_only

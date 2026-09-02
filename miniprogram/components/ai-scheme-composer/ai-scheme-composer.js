@@ -4,6 +4,8 @@ const {
   buildComposerPickerTitle,
   buildComposerViewState,
   buildTemplateCategoryChips,
+  restoreTemplatePrompt,
+  setTemplateFullEditMode,
 } = require('./ai-scheme-composer-model.js');
 const {
   openSheet,
@@ -32,8 +34,10 @@ Component({
     templateLoadingMore: { type: Boolean, value: false },
     templateHasMore: { type: Boolean, value: false },
     templateSheetVisible: { type: Boolean, value: false },
+    timelineMode: { type: Boolean, value: false },
     scopes: { type: Array, value: [] },
     floorPlanPreviewUrl: { type: String, value: '' },
+    autoOpenRound: { type: Boolean, value: false },
   },
 
   data: {
@@ -55,6 +59,7 @@ Component({
     templatePreview: null,
     modePickerMounted: false,
     modePickerVisible: false,
+    pendingRenderMode: 'whole_floor_plan',
   },
 
   observers: {
@@ -88,11 +93,22 @@ Component({
       }
       this.setData({ templatePreviewVisible: false, templatePreview: null });
       closeSheet(this, TEMPLATE_SHEET, () => {
+        if (this._templateReturnTarget === 'mode-picker') {
+          this._templateReturnTarget = '';
+          this._refocusAfterTemplate = false;
+          openSheet(this, MODE_PICKER_SHEET);
+          return;
+        }
         if (this._refocusAfterTemplate) {
           this._refocusAfterTemplate = false;
           this.restorePromptFocus();
         }
       });
+    },
+    'autoOpenRound, view': function autoOpenRound(visible, view) {
+      if (!visible || !view || this._autoRoundOpened) return;
+      this._autoRoundOpened = true;
+      setTimeout(() => this.openModePicker(), 120);
     },
   },
 
@@ -207,9 +223,49 @@ Component({
       this.setDockExpanded(true);
     },
 
-    openModePicker() {
+    toggleDock() {
+      if (!this.data.dockExpanded) {
+        this.expandDock();
+        return;
+      }
+      if (this.data.keyboardHeight > 0) {
+        this.setData({ promptFocused: false });
+        if (typeof wx.hideKeyboard === 'function') wx.hideKeyboard();
+        setTimeout(() => this.setDockExpanded(false), KEYBOARD_HIDE_TIMEOUT_MS);
+        return;
+      }
+      this.collapseDock();
+    },
+
+    enterTemplateFullEdit() {
+      if (!this.properties.draft?.templateId) return;
+      this.clearCollapseTimer();
+      const draft = setTemplateFullEditMode(this.properties.draft, this.properties.draft?.prompt || '');
+      this.triggerEvent('draftchange', { draft });
+      this.setDockExpanded(true);
+      this.setData({ promptFocused: false }, () => this.setData({ promptFocused: true }));
+    },
+
+    restoreSelectedTemplate() {
+      const draft = restoreTemplatePrompt(this.properties.draft);
+      this.triggerEvent('draftchange', { draft });
+      this.setDockExpanded(true);
+      this.setData({ promptFocused: false }, () => this.setData({ promptFocused: true }));
+    },
+
+    returnToTemplateSummary() {
       this.clearCollapseTimer();
       this.setData({ promptFocused: false });
+      if (typeof wx.hideKeyboard === 'function') wx.hideKeyboard();
+      setTimeout(() => this.setDockExpanded(false), KEYBOARD_HIDE_TIMEOUT_MS);
+    },
+
+    openModePicker() {
+      this.clearCollapseTimer();
+      const currentMode = this.properties.draft && this.properties.draft.renderMode;
+      const pendingRenderMode = currentMode
+        || (this.data.view && this.data.view.wholeHouseAvailable ? 'whole_floor_plan' : 'single_room_photo');
+      this.setData({ promptFocused: false, pendingRenderMode });
       openSheet(this, MODE_PICKER_SHEET);
     },
 
@@ -223,6 +279,15 @@ Component({
 
     selectRenderMode(event) {
       const mode = event.currentTarget.dataset.mode;
+      if (mode === 'whole_floor_plan' && !this.data.view?.wholeHouseAvailable) {
+        wx.showToast({ title: '整屋设计需先完成正式量房', icon: 'none' });
+        return;
+      }
+      this.setData({ pendingRenderMode: mode });
+    },
+
+    confirmRenderMode() {
+      const mode = this.data.pendingRenderMode;
       if (mode === 'whole_floor_plan' && !this.data.view?.wholeHouseAvailable) {
         wx.showToast({ title: '整屋设计需先完成正式量房', icon: 'none' });
         return;
@@ -278,6 +343,11 @@ Component({
 
     onPromptInput(event) {
       this.triggerEvent('draftchange', { field: 'prompt', value: event.detail.value });
+    },
+
+    onTemplateFullEditBlur() {
+      this.clearCollapseTimer();
+      this._collapseTimer = setTimeout(() => this.collapseDock(), 220);
     },
 
     onToolbarTap(event) {
@@ -398,6 +468,16 @@ Component({
       wx.previewImage({ urls: [url], current: url });
     },
 
+    openTimelineControl() {
+      const url = this.data.view && this.data.view.timelineControlUrl;
+      if (url) {
+        this.holdDockExpanded();
+        wx.previewImage({ urls: [url], current: url });
+        return;
+      }
+      this.uploadReference();
+    },
+
     removeReference(event) {
       const { id } = event.currentTarget.dataset;
       this.holdDockExpanded();
@@ -410,6 +490,14 @@ Component({
         this.holdDockExpanded();
         this.triggerEvent('opentemplates');
       };
+      if (this.data.modePickerVisible) {
+        // The round-setup sheet sits above the template sheet. Swap the panels
+        // instead of stacking their masks, then restore this exact setup state
+        // after the user applies or cancels a template selection.
+        this._templateReturnTarget = 'mode-picker';
+        closeSheet(this, MODE_PICKER_SHEET, proceed);
+        return;
+      }
       if (nested) {
         proceed();
         return;
@@ -488,7 +576,8 @@ Component({
       const template = (this.properties.templates || []).find((item) => String(item.id) === String(id));
       if (!template) return;
       this.setData({ templatePreviewVisible: false, templatePreview: null });
-      this._refocusAfterTemplate = !this.data.settingsOpen;
+      this._refocusAfterTemplate = !this.data.settingsOpen && !this.properties.timelineMode;
+      if (this.properties.timelineMode) this.setDockExpanded(false);
       this.triggerEvent('selecttemplate', { template });
       this.closeTemplates();
     },

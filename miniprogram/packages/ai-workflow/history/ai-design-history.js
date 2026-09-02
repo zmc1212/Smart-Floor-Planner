@@ -144,7 +144,8 @@ Page({
     const item = this.data.items.find((entry) => entry.id === event.currentTarget.dataset.id);
     if (!item) return;
     if (item.recipeId) {
-      wx.navigateTo({ url: `/packages/ai-workflow/recipe-detail/recipe-detail?id=${encodeURIComponent(item.recipeId)}` });
+      const inputMode = ['reference_recreate', 'style_transform'].includes(item.mode) ? 'photo' : 'floor_plan';
+      wx.navigateTo({ url: `/packages/ai-workflow/recipe-project/recipe-project?recipeId=${encodeURIComponent(item.recipeId)}&inputMode=${inputMode}` });
       return;
     }
     wx.navigateTo({ url: `/packages/ai-workflow/create/ai-design-create?mode=${item.mode}&sourceTaskId=${item.id}` });

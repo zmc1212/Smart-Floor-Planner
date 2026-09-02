@@ -116,12 +116,13 @@ test('platform registration-code page is a read-only subpackage presenter', () =
   assert.equal(json.enableShareAppMessage, undefined);
   assert.match(js, /['"`]\/miniprogram\/platform\/enterprise-registration-code/);
   assert.match(js, /enterprise-registration-code\/image/);
+  assert.match(js, /variant=poster/);
   assert.match(js, /responseType:\s*'arraybuffer'/);
   assert.match(js, /当前有效 · 未换新/);
   assert.doesNotMatch(js, /rotate|disable/);
   assert.match(wxml, /出示开户码/);
-  assert.match(wxml, /请装修公司扫描此码申请开户/);
-  assert.match(wxml, /\/images\/mine-icons\/scan\.png/);
+  assert.match(wxml, /poster-image/);
+  assert.doesNotMatch(wxml, /\/images\/mine-icons\/scan\.png/);
   assert.doesNotMatch(wxml.replace(/<!--[\s\S]*?-->/g, ''), /packages\/business/);
   assert.doesNotMatch(JSON.stringify(appConfig.tabBar), /registration-code/);
   assert.match(mineWxml, /bindtap="onOpenRegistrationCode"/);

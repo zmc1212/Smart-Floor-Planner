@@ -7,6 +7,7 @@ import {
   verifyMiniAiTaskResultSignature,
 } from '@/lib/ai/mini-ai-assets';
 import { serializePostgresMiniAiTask } from '@/lib/ai/postgres-mini-ai-tasks';
+import { serializeMiniAiRecipeDetail } from '@/lib/ai/mini-ai-recipes';
 
 function generation(overrides: Record<string, unknown> = {}) {
   return {
@@ -53,6 +54,17 @@ test('placeholder public origins fall back to the real Mini Program API host', (
     if (previous === undefined) delete process.env.MINIPROGRAM_API_PUBLIC_ORIGIN;
     else process.env.MINIPROGRAM_API_PUBLIC_ORIGIN = previous;
   }
+});
+
+test('selected Mini Program recipe exposes promptContent without leaking internalPrompt', () => {
+  const serialized = serializeMiniAiRecipeDetail({
+    id: '501',
+    name: '舒适北欧办公',
+    internalPrompt: 'Preserve the office layout and render a calm Nordic interior.',
+  });
+
+  assert.equal(serialized.promptContent, 'Preserve the office layout and render a calm Nordic interior.');
+  assert.equal('internalPrompt' in serialized, false);
 });
 
 test('Mini Program task DTO signs protected input and result assets', () => {
