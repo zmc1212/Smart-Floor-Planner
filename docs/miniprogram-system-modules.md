@@ -310,6 +310,12 @@ otherwise the view only zooms out far enough to keep it visible. Navigation
 disable still returns to the existing whole-content-centred, unrotated view.
 Markup, styling, BLE semantics, graph persistence, routes, APIs, and permissions
 are unchanged.
+While navigation measurement is active, tapping empty canvas after selecting a
+direction arrow clears only that transient arrow lock. It restores all manual
+candidate arrows without switching `bleDirectionMode` to `manual` or stopping
+the shared heading subscription, so the live azimuth and canvas rotation keep
+following the phone. Standalone automatic direction picking retains its prior
+clear-to-manual behavior to prevent immediate sensor relock.
 The paired left-side actions use separate generated transparent PNGs at
 `packages/surveying/assets/icons/angle/{rotate-counterclockwise-v2,rotate-clockwise-v2}.png`
 with a `24rpx` vertical gap supplied by the first button's explicit margin rather

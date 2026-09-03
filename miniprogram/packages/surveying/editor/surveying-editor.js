@@ -2183,7 +2183,10 @@ Page({
     );
     if (!this.bleSelectedDirectionKey && !hasLockedBearing) return false;
 
-    if (this.bleDirectionMode === 'auto') {
+    // In navigation measurement, the shared heading subscription also drives
+    // the live azimuth and canvas rotation. Clearing a manually selected arrow
+    // must restore candidates without tearing that navigation session down.
+    if (this.bleDirectionMode === 'auto' && !this.navigationMeasurementActive) {
       this.bleDirectionMode = 'manual';
       this.stopBleDirectionAutoPick();
     }

@@ -110,8 +110,11 @@ copy back to `layoutData`.
   the reticle likewise selects an opening or wall under it; only a moved gesture
   starts the normal wall drag. Tapping otherwise empty canvas
   space clears that transient lock and restores the candidate pointers without
-  moving the cursor or changing any wall; an automatic lock returns to manual
-  direction picking so the sensor cannot immediately relock it. Manual selection calls `lockPreviewBearing` without
+  moving the cursor or changing any wall. Outside navigation measurement, an
+  automatic lock returns to manual direction picking so the sensor cannot
+  immediately relock it. During navigation measurement, clearing an arrow keeps
+  the shared heading subscription alive, so the live azimuth and canvas rotation
+  continue while all manual candidate pointers return. Manual selection calls `lockPreviewBearing` without
   moving the cursor or writing a wall; a valid ATD distance materializes and
   commits the preview through the existing `startPreviewFromBearing` /
   `commitPreviewLength` path. Tapping the

@@ -664,6 +664,11 @@ test('navigation measurement calibrates the entry-door azimuth before auto direc
   assert.match(editorScript, /1 - Math\.pow\(1 - progress, 4\)/);
   assert.match(editorScript, /resolveViewportForContentFit/);
   assert.match(editorScript, /surveyGraph\.getCursorDisplayPoint\(floor, session\)/);
+  assert.match(
+    editorScript,
+    /if \(this\.bleDirectionMode === 'auto' && !this\.navigationMeasurementActive\) \{[\s\S]*?this\.stopBleDirectionAutoPick\(\);[\s\S]*?\}/,
+    'clearing a direction arrow must keep the navigation heading subscription alive'
+  );
   assert.match(editorWxml, /定位入户门方向/);
   assert.match(editorWxml, /蓝牙测距仪已连接/);
   assert.match(editorWxml, /重新定位/);
