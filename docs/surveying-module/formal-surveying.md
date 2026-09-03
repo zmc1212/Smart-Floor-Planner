@@ -565,6 +565,16 @@ draft byte-for-byte unchanged. Safe placements beside a split keep the opening
 span outside the junction's one-wall-thickness clearance. A touching or
 overlapping divider cut is blocked; the catalog does not model a cross-segment
 opening.
+Before and after migrating any `legacy-kernel.js` function family, run
+`cd miniprogram && npm run test:survey-kernel-phase1`. The test-only Phase 1
+harness runs legacy and candidate implementations twice from isolated copies of
+the same input, compares graph/session/error plus quick/full validation, checks
+references and input immutability, and differentially executes the Mini Program
+and Admin runtime mirrors. Persisted graph values are exact; only derived
+read-model floating-point values have an explicit `1e-6` tolerance. Its sole
+legacy-core adapter omission is the transaction-only
+`session.fullValidationAfterClosedSplit` handoff flag. This guard changes no
+runtime route, API, permission, UI, or version-4 persistence contract.
 Real-device or WeChat DevTools evidence is required
 when the change involves native Canvas, BLE, or host UI behavior.
 Deploy the nullable audit migration and Admin API before the Mini Program. An

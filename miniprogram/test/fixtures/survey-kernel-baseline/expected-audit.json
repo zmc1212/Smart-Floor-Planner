@@ -1286,6 +1286,24 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/survey-kernel-phase1-differential.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../../admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "getActiveFloor"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/survey-layout.test.js",
         "classification": "test-only",
         "binding": "direct-require",
@@ -1894,6 +1912,19 @@
         "exports": []
       },
       {
+        "file": "miniprogram/test/survey-kernel-phase1-differential.test.js",
+        "classification": "test-only",
+        "access": "require",
+        "specifiers": [
+          "../packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "unresolved": false,
+        "exports": []
+      },
+      {
         "file": "surveying-h5/test-3room-merge.js",
         "classification": "suspected-dead",
         "access": "require",
@@ -2328,7 +2359,7 @@
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",

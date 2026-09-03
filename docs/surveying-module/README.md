@@ -7,7 +7,10 @@ Git 历史保留。
 [`legacy-kernel-governance-plan.md`](./legacy-kernel-governance-plan.md)。该文档是跨会话
 执行计划，不代表尚未完成的拆分已经成为当前能力。已完成的 Phase 0 导出、
 调用方、依赖、行为与性能基线见
-[`legacy-kernel-phase0-baseline.md`](./legacy-kernel-phase0-baseline.md)。
+[`legacy-kernel-phase0-baseline.md`](./legacy-kernel-phase0-baseline.md)；已完成的 Phase 1
+语义比较、双跑、失败原子性、重复执行与 Mini Program/Admin 镜像护栏见
+[`legacy-kernel-phase1-differential.md`](./legacy-kernel-phase1-differential.md)。两阶段均为
+测试与治理能力，不改变正式量房运行合同。
 
 ## 当前能力
 
@@ -209,6 +212,10 @@ null 行不回填、不删除、不合并。员工写入审计时，服务端允
 - 修改 graph、渲染、尺寸、BLE 或保存流程时，运行对应聚焦测试和正式小程序测试。
   拓扑写入还须跑 `miniprogram/test/survey-topology-face-shadow-matrix.test.js`
   和 `miniprogram/test/survey-kernel-invariants.test.js`。
+- 迁移 `legacy-kernel.js` 的任何函数族前后都须运行
+  `cd miniprogram && npm run test:survey-kernel-phase1`。该测试侧 harness 对旧实现和候选实现
+  双跑同一输入，精确比较 graph/session/错误/`quick`/`full` 校验并检查输入不可变、
+  重复执行和 Mini Program/Admin 镜像一致性；只有派生 read-model 使用 `1e-6` 误差。
 - `miniprogram/test/survey-closure-scenario-matrix.test.js` 是包含 4,096 个组合的正式闭合场景目录：直角矩形、凹 L、
   凹 U、阶梯轮廓、三角形和斜四边形；闭合容差内外松手；同墙两点围出相邻房；连续十字
   四房分隔；凹形房内分隔在最近边界截停；外墙/分隔墙不同墙厚组合；短段经手工或 BLE

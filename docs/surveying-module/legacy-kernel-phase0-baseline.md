@@ -62,7 +62,8 @@ legacy-kernel
 ## 3. 调用方与当前依赖图
 
 审计扫描 `miniprogram/`、`admin/src/`、`admin/scripts/`、`surveying-h5/` 和仓库
-`scripts/` 下的 JS/TS 源码。发现 40 个 façade 消费者：
+`scripts/` 下的 JS/TS 源码。Phase 0 完成时发现 40 个 façade 消费者；Phase 1 新增一个
+测试专用双跑合同后，当前机器审计为 41 个：
 
 | 分类 | 数量 | 关键边界 |
 | --- | ---: | --- |
@@ -70,16 +71,18 @@ legacy-kernel
 | editor 直连 | 1 | `packages/surveying/editor/surveying-editor.js` |
 | Admin 生产 | 1 | `admin/src/lib/survey-runtime/surveyCanvasRenderer.js` |
 | H5 开发验证台 | 2 | `surveying-h5/src/main.js`, `surveying-h5/src/scenarios.js` |
-| 测试专用 | 26 | 正式测试与 fixture/helper；完整文件和导出使用见机器清单 |
+| 测试专用 | 27 | 正式测试、Phase 1 差分合同与 fixture/helper；完整文件和导出使用见机器清单 |
 | 基线脚本 | 2 | 依赖审计和性能基线 |
 | 疑似死调用方 | 7 | 2 个 `miniprogram/tmp-*` 和 5 个已使用旧路径的 H5 脚本 |
 
-另有 29 个源码位置直接提及或 `require` `legacy-kernel`：4 个为生产镜像/
-façade/同步或审计脚本，1 个为边界测试，24 个为仍指向已移动旧路径的
+另有 30 个源码位置直接提及或 `require` `legacy-kernel`：4 个为生产镜像/
+façade/同步或审计脚本，2 个为边界/Phase 1 差分测试，24 个为仍指向已移动旧路径的
 H5 独立脚本。后两类只标注为疑似死代码，Phase 0 不删除、不重定向，防止在未确认用途前改变开发工作流。
 
 内核目录共有 27 个审计节点和 39 条静态 CommonJS 边：21 个由 façade 生产可达，
 1 个 façade 根节点，1 个 editor 直连节点，0 个仅测试直连节点，4 个疑似死节点。
+`legacy-kernel.js` 因 Phase 1 合同同时带 `testDirect: true`，但其主分类仍是 façade
+生产可达；节点数、边数和生产可达分类未改变。
 
 ```mermaid
 flowchart TD

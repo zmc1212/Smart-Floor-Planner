@@ -1,8 +1,11 @@
 # `legacy-kernel.js` 渐进式治理计划
 
-> 状态：执行中  
-> 当前阶段：Phase 1 — 建立合同与差分护栏  
-> 最后检查：2026-09-03  
+> 状态：执行中
+>
+> 当前阶段：Phase 2 — 收口纯基础能力
+>
+> 最后检查：2026-09-03
+>
 > 适用范围：小程序正式量房墙图内核及其 Admin 只读运行镜像
 
 ## 1. 文档用途
@@ -157,13 +160,13 @@ test: capture surveying kernel baseline
 
 任务：
 
-- [ ] 保留并扩展 legacy CommonJS 导出合同测试。
-- [ ] 建立 graph 语义规范化与比较 helper。
-- [ ] 建立旧实现/新实现双跑 harness，仅用于测试。
-- [ ] 为 `validateSurveyDraft` 的 `quick` 和 `full` 模式补齐操作后校验。
-- [ ] 覆盖失败原子性：失败时 graph 和 session 不得留下半次操作。
-- [ ] 覆盖输入不可变性及重复调用的一致性。
-- [ ] 对 Mini Program 源码与 Admin 镜像增加一致性验证。
+- [x] 保留并扩展 legacy CommonJS 导出合同测试。
+- [x] 建立 graph 语义规范化与比较 helper。
+- [x] 建立旧实现/新实现双跑 harness，仅用于测试。
+- [x] 为 `validateSurveyDraft` 的 `quick` 和 `full` 模式补齐操作后校验。
+- [x] 覆盖失败原子性：失败时 graph 和 session 不得留下半次操作。
+- [x] 覆盖输入不可变性及重复调用的一致性。
+- [x] 对 Mini Program 源码与 Admin 镜像增加一致性验证。
 
 验收门槛：
 
@@ -176,6 +179,9 @@ test: capture surveying kernel baseline
 ```text
 test: add surveying kernel differential harness
 ```
+
+完成证据与重复执行规则见
+[`legacy-kernel-phase1-differential.md`](./legacy-kernel-phase1-differential.md)。
 
 ### Phase 2：收口纯基础能力
 
@@ -478,7 +484,7 @@ node --test test/survey*.test.js test/surveying-editor*.test.js
 
 ### 当前阶段
 
-Phase 1 — 建立合同与差分护栏。
+Phase 2 — 收口纯基础能力。
 
 ### 已完成
 
@@ -494,19 +500,32 @@ Phase 1 — 建立合同与差分护栏。
 - [x] 固化 `cd miniprogram && npm run test:survey-kernel-phase0` 验收命令，并通过 Phase 0 验收。
 - [x] Phase 0 仅变更基线脚本、fixture、测试、测试命令与文档，并将 H5 的旧 renderer
       revision 断言对齐当前生产值；对外合同和生产行为无变化。
+- [x] 冻结 legacy kernel 的 64 个 CommonJS 导出、公共 façade 的 69 个导出和 17 个
+      覆盖关系。
+- [x] 建立 graph 语义规范化、逐字段差异报告与 node/wall/opening/space/session
+      引用完整性 helper；持久化 graph 精确比较，仅派生 read-model 使用 `1e-6` 误差。
+- [x] 建立旧实现/候选实现双跑 harness；两边均从隔离输入执行两次，并比较 graph、
+      session、结构化错误、`quick`/`full` validation、read-model、输入不可变和重复一致性。
+- [x] 将 Phase 0 的 18 个高风险成功/失败/no-op 场景全部用于 legacy core ↔ 事务 façade
+      以及 Mini Program ↔ Admin 镜像差分；另保留 30 对源码哈希镜像护栏。
+- [x] 固化 `cd miniprogram && npm run test:survey-kernel-phase1`；当前 530 项量房定向测试、
+      55 项 H5 测试和大图性能门槛通过。
+- [x] 完整 `cd miniprogram && npm test` 发现 1,021 项，1,007 项通过；14 项失败与
+      Phase 0 已记录的页面、资源包和引导合同既有失败一致，量房测试无新增失败。
+- [x] Phase 1 仅增加测试 helper、合同测试、审计快照、npm 命令与文档；对外合同和生产
+      行为无变化。
 
 ### 尚未开始
 
 - [ ] 尚未修改任何生产内核代码。
-- [ ] 尚未建立旧实现/新实现的双跑差分 harness；Phase 0 归一化器只用于冻结单路旧行为。
 - [ ] 尚未迁移任何 façade 导出。
 - [ ] 尚未改变任何路由、API、权限、UI 或数据合同。
 
 ### 下一步唯一目标
 
-执行 Phase 1：在 Phase 0 快照之上建立可报告具体字段差异的 graph 语义比较 helper 和
-旧实现/新实现双跑 harness，并补齐失败原子性、输入不变性、重复调用一致性与
-Mini Program/Admin 镜像合同护栏。Phase 1 验收前不开始 Phase 2 的纯基础能力收口。
+执行 Phase 2 的第一个独立函数族：收口 `cloneDraft`、`getActiveFloor`、`touchDraft`
+等 draft 基础操作。先把 legacy 实现与候选模块接入 Phase 1 双跑，再令 kernel 调用权威模块；
+本轮不同时迁移 session、geometry、domain 或任何高风险业务 operation。
 
 ## 12. 整体完成定义
 

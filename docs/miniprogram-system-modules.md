@@ -151,7 +151,12 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   The survey wall-graph kernel lives in the surveying subpackage
   (`packages/surveying/utils/surveyWallGraph.js` and `packages/surveying/utils/survey/`);
   the main package keeps a kernel-free `utils/surveyLayout.js` for lead-list
-  previews and business read models. The three surveying guide poses under
+  previews and business read models. Its test-only Phase 1 differential harness
+  freezes the 64-export legacy kernel, 69-export facade, graph/session/error and
+  quick/full validation semantics, repeatability, and the Mini Program/Admin
+  mirror; it is excluded from every runtime package and changes no route, API,
+  role, permission, UI, or version-4 data contract. The three surveying guide
+  poses under
   `packages/surveying/assets/surveying-guide-k-*-v3.png` are indexed-palette
   transparent PNGs so that subpackage stays under the same 2MB source cap.
   Main-package artwork under `images/` is
