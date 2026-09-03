@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { executePostgresAdviceGeneration } from '@/lib/ai/postgres-advice-service';
 
+export const maxDuration = 120;
+
 export async function POST(request: Request) {
   try {
     return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {

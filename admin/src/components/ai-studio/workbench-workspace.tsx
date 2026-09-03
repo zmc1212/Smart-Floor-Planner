@@ -1171,7 +1171,7 @@ export function WorkbenchWorkspace() {
               onClick={() => setFinalizeOpen(true)}
               className={cn('hidden sm:inline-flex', t.iconBtn)}
             >
-              设为定稿
+              设为定稿方案
             </Button>
           ) : null}
           <Button
@@ -1823,7 +1823,7 @@ export function WorkbenchWorkspace() {
       <Modal
         open={finalizeOpen}
         onCancel={() => setFinalizeOpen(false)}
-        title="设为定稿"
+        title="设为定稿方案"
         footer={
           <div className="flex justify-end gap-2">
             <Button className={t.iconBtn} onClick={() => setFinalizeOpen(false)}>取消</Button>
@@ -1840,7 +1840,7 @@ export function WorkbenchWorkspace() {
         className={dark ? '[&_.ant-modal-content]:bg-[#1b1c20] [&_.ant-modal-content]:text-white [&_.ant-modal-header]:bg-[#1b1c20] [&_.ant-modal-title]:text-white [&_.ant-modal-close]:text-white' : undefined}
       >
         <p className={cn('text-sm', t.muted)}>
-          客户档案与方案册将优先展示「{detail?.publishedScheme?.title || detail?.workflow.title || '当前方案'}」。定稿后仍可继续出图和更新方案，直到您改指定稿或撤回该套方案。
+          客户档案与方案册将优先展示「{detail?.publishedScheme?.title || detail?.workflow.title || '当前方案'}」。定稿表示客户主推方案，后续仍可继续出图和更新；如需冻结版本，请新建方案。
         </p>
       </Modal>
 

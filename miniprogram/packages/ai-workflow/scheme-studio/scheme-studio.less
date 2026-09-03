@@ -139,7 +139,49 @@ page {
 }
 
 .timeline-scroll {
-  height: calc(100vh - 192rpx);
+  height: calc(100vh - 256rpx);
+}
+
+.scheme-finalize-bar {
+  min-height: 64rpx;
+  padding: 0 40rpx 10rpx;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+}
+
+.scheme-finalize-action,
+.scheme-finalized-state {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  color: #08a963;
+  font-size: 23rpx;
+  font-weight: 650;
+}
+
+.scheme-finalize-action {
+  min-height: 52rpx;
+  padding: 0 18rpx;
+  border: 1rpx solid #b8e5cf;
+  border-radius: 28rpx;
+  background: #f1fff7;
+}
+
+.scheme-finalize-action image,
+.scheme-finalized-state image {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.scheme-finalized-state {
+  color: #707a74;
+}
+
+.scheme-finalize-hint {
+  color: #8a928d;
+  font-size: 22rpx;
 }
 
 .timeline-content {
@@ -151,21 +193,21 @@ page {
 }
 
 .timeline-content.composer-collapsed {
-  padding-bottom: 300rpx;
+  padding-bottom: 470rpx;
 }
 
 .timeline-content.composer-expanded {
-  padding-bottom: 472rpx;
+  padding-bottom: 900rpx;
 }
 
 /* Template edit panels are taller than the manual composer. Keep the final
  * “新一轮” affordance above the fixed dock in every edit mode. */
 .timeline-content.composer-expanded.composer-template {
-  padding-bottom: 680rpx;
+  padding-bottom: 900rpx;
 }
 
 .timeline-content.composer-expanded.composer-template-full {
-  padding-bottom: 860rpx;
+  padding-bottom: 900rpx;
 }
 
 .timeline-content::before {
@@ -246,21 +288,39 @@ page {
   box-shadow: 0 8rpx 24rpx rgba(7, 137, 77, 0.075);
 }
 
-/* The active round is a reply in the design conversation. Its single rounded
- * tail touches the node-side edge without the detached diamond artifact. */
-.timeline-item.processing .timeline-card::before {
+/* The active round is a reply in the design conversation. Two attached
+ * triangles form one short outlined tail while keeping the timeline node
+ * visually separate from the bubble. */
+.timeline-item.processing .timeline-card::before,
+.timeline-item.processing .timeline-card::after {
   content: '';
   position: absolute;
   z-index: 1;
+  width: 0;
+  height: 0;
+  border-top-style: solid;
+  border-top-color: transparent;
+  border-bottom-style: solid;
+  border-bottom-color: transparent;
+  border-right-style: solid;
+}
+
+.timeline-item.processing .timeline-card::before {
+  top: 24rpx;
+  left: -13rpx;
+  border-top-width: 10rpx;
+  border-bottom-width: 10rpx;
+  border-right-width: 13rpx;
+  border-right-color: #0abd70;
+}
+
+.timeline-item.processing .timeline-card::after {
   top: 26rpx;
-  left: -24rpx;
-  width: 26rpx;
-  height: 30rpx;
-  box-sizing: border-box;
-  background: #fbfffc;
-  border-bottom: 2rpx solid #0abd70;
-  border-left: 2rpx solid #0abd70;
-  border-bottom-left-radius: 26rpx;
+  left: -9rpx;
+  border-top-width: 8rpx;
+  border-bottom-width: 8rpx;
+  border-right-width: 11rpx;
+  border-right-color: #fff;
 }
 
 .timeline-item.processing .timeline-card-head,
@@ -423,6 +483,32 @@ page {
   width: 168rpx;
   height: 108rpx;
   margin-top: 10rpx;
+  display: block;
+  border-radius: 12rpx;
+  background: #edf1ee;
+}
+
+.reference-preview-grid,
+.timeline-reference-grid {
+  margin-top: 10rpx;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10rpx;
+}
+
+.reference-preview-grid .reference-preview {
+  width: 100%;
+  height: 60rpx;
+  margin-top: 0;
+}
+
+.timeline-reference-grid {
+  margin-bottom: 18rpx;
+}
+
+.timeline-reference-thumb {
+  width: 100%;
+  height: 216rpx;
   display: block;
   border-radius: 12rpx;
   background: #edf1ee;
@@ -756,16 +842,22 @@ page {
 
 .dialog-actions {
   margin-top: 20rpx;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
   gap: 12rpx;
 }
 
 .dialog-btn {
+  width: 0;
+  min-width: 0;
   height: 72rpx;
+  margin: 0;
+  padding: 0 16rpx;
+  box-sizing: border-box;
+  flex: 1;
   border-radius: 18rpx;
   background: #eef1ee !important;
   font-size: 24rpx;
+  line-height: 72rpx;
 }
 
 .dialog-btn.primary {
@@ -782,6 +874,11 @@ page {
   .process-head {
     padding-right: 28rpx;
     padding-left: 30rpx;
+  }
+
+  .scheme-finalize-bar {
+    padding-right: 28rpx;
+    padding-left: 28rpx;
   }
 
   .process-stats {

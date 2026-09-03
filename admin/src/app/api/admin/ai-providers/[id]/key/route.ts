@@ -4,7 +4,7 @@ import { AiProviderConfigRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { encryptedKeyFields, serializeProviderConfig } from '@/lib/ai/provider-admin';
-import type { AiProviderAdapterType } from '@/lib/ai/provider-types';
+import { isPlatformLlmOverrideProvider, type AiProviderAdapterType } from '@/lib/ai/provider-types';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,6 +16,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         new AiProviderConfigRepository(transaction).findById(providerId)
       );
       if (!existing) return NextResponse.json({ success: false, error: 'Provider not found' }, { status: 404 });
+      if (isPlatformLlmOverrideProvider(existing.key)) {
+        return NextResponse.json({ success: false, error: 'Provider not found' }, { status: 404 });
+      }
       const provider = await withPlatformTransaction((transaction) =>
         new AiProviderConfigRepository(transaction).update(providerId, {
           ...encryptedKeyFields(

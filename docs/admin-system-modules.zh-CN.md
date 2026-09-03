@@ -5,6 +5,11 @@
 本文只记录后台当前运行入口、合同、权限和限制。实现过程由 Git 提交保留，
 不在清单中追加日期流水。
 
+AI 工作台与线索详情的方案发布界面均按 workflow/方案级提供一次定稿入口。定稿表示客户主推方案，
+不冻结后续出图；共享定稿接口要求该方案已有客户可见的有效发布记录。定稿及自动取消定稿会写入
+`leadLifecycleEvents`，撤回最后一张有效发布图时清理定稿指针。现有租户隔离以及“负责设计师 / 企业负责人”
+权限边界保持不变。
+
 ## 共用架构
 
 AI 工作台户型预览缓存约束：`/ai-studio/scenarios` 的预览 URL 必须携带当前正式户型快照资产版本，测量数据更新后不能继续命中浏览器旧图片缓存；历史生成批次保留原始控制图资产，以保证方案可追溯。工作台出图条提供 `whole_floor_plan` 与 `single_room_photo` 模式；后者跳过控制图并强制要求显式 `sitePhotoAssetIds`（`styleReferenceAssetId` 模板封面不能充当现场图），前者保留正式户型控制图合同。`GET /api/ai/workflow-leads/[id]/site-photos` 是按租户隔离的后台只读图库来源，只返回当前线索未删除的持久化现场图；工作台直接复用其媒体资产 ID 作为生成参考图。
@@ -34,6 +39,7 @@ AI 工作台户型预览缓存约束：`/ai-studio/scenarios` 的预览 URL 必�
 
 | 模块 | 当前入口 | API/数据边界 | 权限/状态 | 当前限制 |
 | --- | --- | --- | --- | --- |
+| 平台 LLM 大模型配置 | `/llm-settings` | `GET/PATCH /api/platform/llm-config`、`POST /api/platform/llm-config/models` 与 `POST /api/platform/llm-config/test`。平台级 OpenAI 兼容配置在 `platform_configs.llm_config` 保存启用状态、预设、Base URL、模型 ID、加密 API Key、脱敏显示值和当前配置的连通性结果。启用后会严格覆盖既有 AI 供应商池的 `chat.general` 调用（设计建议、提示词扩写与文本编译）；关闭后恢复按 AI 供应商能力/优先级路由。`vision.reference_analysis`、生图和改图始终继续走 AI 供应商。系统在 `ai_provider_configs` 维护一条不出现在普通供应商列表和默认路由中的 `llm-settings-override` 托管投影，复用现有供应商适配器，并保持 `ai_provider_attempts.provider_config_id` 必填审计链。模型目录请求 `/models`，测试真实请求 `/chat/completions`；外部网络 I/O 不占用数据库事务 | 仅平台 `super_admin` / `admin`，同时受 `llm-settings` 菜单权限和服务端角色守卫限制；Implemented/Limited | 覆盖配置调用失败时不会静默切回 AI 供应商，避免供应商、成本与数据流向意外变化。目标端点须支持 OpenAI 兼容 `/models` 与 `/chat/completions`；localhost 从后台服务/容器解析。覆盖 Chat 请求为推理模型预留最长 90 秒；小程序提示词优化在客户端/API 边界最长等待 120 秒。没有单独的提示词优化页面，也不影响图片工作流 |
 | 抢单与赛马派单 | `/lead-pool`、`/assignment-settings`、`/leads` 详情抽屉、`/staff` 个人容量覆盖 | `GET /api/lead-claim-pool`、`POST /api/leads/[id]/claim`、`GET/PUT /api/assignment-settings`、`GET /api/assignment-performance`、`POST /api/leads/[id]/close-lost`、`POST /api/leads/[id]/reopen` 及 `GET/POST /api/internal/lead-claim-windows/run`。企业规则按不可变版本保存抢单时长、70/30 目标、绩效门槛/周期/样本和容量；窗口按服务端截止时间、行锁、哈希幂等键、脱敏池 DTO 与截止兜底运行。签单/正常未签单结案快照当时负责设计师；无效、重复、误录不计绩效。自动派单使用持久化确定性补差与组内稳定负荷排序。每次成功归属设计师还会按线索+设计师写入一次幂等短信提醒，测量员不会进入短信分支。`/lead-pool` 仅在标签页可见且 2 分钟内有指针/键盘/滚动操作时每 3 秒轮询 `GET /api/lead-claim-pool`、每 1 秒刷新倒计时；切回标签页或空闲后下一次操作会立即补刷。服务端抢单窗口与 worker 扫描不受影响。详见[运行合同](./lead-claim-racing.zh-CN.md)和[worker 运维说明](./lead-claim-worker-operations.zh-CN.md) | 设计师只能读取/领取当前签名企业的池，并可正常结案本人线索；企业负责人可监控、指派、配置、选择无效分类和重新激活；平台角色可操作已选企业。新增业务表全部启用并强制 RLS；Implemented/Limited | 可选 `lead_claim_available` 微信模板仍须运营配置真实模板 ID/字段并由设计师明确授权；短信为平台全局配置，须有已审核的阿里云/腾讯云签名模板和有效设计师手机号；短信失败不阻断线索事务 |
 | 线索转化卡片呈现 | `/leads` 列表的 `tableViewRender` | 仅调整既有线索 DTO 的可视化：客户头部展示阶段、联系方式、中文来源、面积/风格与方案主操作；派生工作流 `Steps` 配合下一步行动；上门预约与符合条件的卡内改期；推广人/设计师/测量员/派单状态四列协作信息。设计师/测量员字段按服务端 `assignmentActions` 提供「分配/更换」，弹窗 `Select` 数据来自 `GET /api/leads/[id]/assignable-staff`，提交 `POST /api/leads/[id]/assign-staff`，成功和 409 走共享 `notify`。待派单展示具体 `assignmentErrorCode` 文案（如「暂无可用设计师」）与补齐指引；设计师缺微信号/二维码时在重试旁提供「去员工管理」；重试仍失败时用警告反馈同一原因，不再用泛化成功提示。列表增加浅色 16px 内层与 16px 卡片节奏；卡片头部/底部明确保留 20px 内边距，身份/操作组间保留可见 12px 间距；分页器独立为有边界的收尾栏。底部仍调用原有归档、恢复、永久删除和重试派单处理器。`status=closed`（含 `terminationType=referrer_withdrawn`）的卡片隐藏方案主操作、卡内改期和重试派单 | 原有租户与归档/关闭边界；Implemented | 聚焦 `lead-assignment-actions`、`lead-assign-staff`、`referral-lead` 测试覆盖改派写入、角色矩阵、预约改写与后台 notify；自动池重试路径不变 |
 | 登录与会话 | `/login`、`/register` | `/api/auth/*`；`PUT /api/auth/password` 允许任何已登录 Admin 用户修改自己的登录密码（校验当前密码、6–32 位新密码与确认、bcrypt 写入 `admin_users.password_hash`；不强制重登）。`admin_users` 在租户内对 `(enterprise_id, user_id)` / `(enterprise_id, phone)` 唯一，`username` 仍全局唯一；身份查找（`findByUsernameOrPhone` / `findByOpenidOrPhone` / `existsWithPhone` / 小程序 `findActiveStaffByPhone`）在命中 0/1 行时与原先一致，≥2 行时禁止静默 `limit(1)`，须按 `enterpriseId`/`staffId` 过滤或返回列表。密码登录成功后用 `window.location.assign('/')` 整页进入后台（与退出同一模式），避免登录前未认证的 `GET /api/auth/me` 被 SWR 缓存复用。`/login` 使用 `AdminAntdProvider includeAccountSettings={false}`，不挂载 `AccountSettingsProvider`/`useCurrentUser`。`GET /api/auth/logout` 会清理 Cookie 并重定向到 `/login`；当 `/` 发现签名仍有效的 JWT 已无法解析为数据库中的有效会话时，会先经过该端点，避免 `/` 与 `/login` 形成 307 循环。已登录的 `useCurrentUser` 在 `/api/auth/me` 非 OK 时抛错，且不重试 401。小程序 JWT 使用基础用户 `sub`、当前 `customer/staff/referrer` 上下文和 `contextVersion`。`POST /api/auth/miniprogram` 的 `wechat_phone` 接受当前微信 `phoneCode`，或旧客户端的 `encryptedData`/`iv`（用该 `loginCode` 换到的 `session_key` 解密）。`getTenantContext` 会拒绝 `aud=miniprogram` 的 Bearer，避免把小程序员工 JWT 当成 Admin 会话（`payload.id` 是 `users.id`，不是 `admin_users.id`）。平台 `admin`/`super_admin` 员工记录不属于小程序工作台角色；小程序登录/刷新会选择同一基础账号的有效推荐人上下文，无推荐成员关系时使用客户上下文 | 公开入口与登录后路由；平台权限仅限后台；Implemented | 微信供应商配置依赖环境；旧身份字段在旧获客流程下线前并存 |
@@ -87,6 +93,8 @@ AI 工作台户型预览缓存约束：`/ai-studio/scenarios` 的预览 URL 必�
 当路由、API、模型、权限、状态或限制变化时，更新受影响行及其英文镜像。每个模块只保留一条当前描述；不要在本文件记录修改序列或粘贴测试全文。
 
 English mirror: [admin-system-modules.md](./admin-system-modules.md)
+
+AI 工作台并发说明：同一方案会话可在前一轮仍处于 `pending` 或 `processing` 时继续提交多轮生成。批次序号仍由任务行锁串行分配，点数冻结按每条生成记录独立隔离。
 ### 推广人撤销线索生命周期（已实现）
 
 线索生命周期新增 `referrer_withdrawn`、`referrer_withdrawal_reverted` 审计动作、`referrerRecordCode` 以及小程序用户/推广企业成员关系的独立操作人字段。专用小程序接口在事务内关闭或撤回满足“实质服务前”条件的推广线索，释放客户归属锁和抢单窗口并生成去重的员工提醒；撤销线索保留为只读历史，不计入推广人有效统计。后台 `/leads` 列表和详情对这些已关闭行隐藏开始方案、预约、补充资料、跟进、方案发布和重试派单，企业负责人仍可「重新激活」。派单审计 `eventType`/`errorCode` 与抢单窗口 `resolutionReason` 以中文标签展示。

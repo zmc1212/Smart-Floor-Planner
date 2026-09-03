@@ -4,7 +4,7 @@ import { AiProviderConfigRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { serializeProviderConfig, validateProviderPayload } from '@/lib/ai/provider-admin';
-import type { AiProviderAdapterType } from '@/lib/ai/provider-types';
+import { isPlatformLlmOverrideProvider, type AiProviderAdapterType } from '@/lib/ai/provider-types';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,6 +16,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         new AiProviderConfigRepository(transaction).findById(providerId)
       );
       if (!existing) return NextResponse.json({ success: false, error: 'Provider not found' }, { status: 404 });
+      if (isPlatformLlmOverrideProvider(existing.key)) {
+        return NextResponse.json({ success: false, error: 'Provider not found' }, { status: 404 });
+      }
       const update = validateProviderPayload(
         body,
         true,
@@ -40,9 +43,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   try {
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
-      const provider = await withPlatformTransaction((transaction) =>
-        new AiProviderConfigRepository(transaction).delete(parsePostgresId(id, 'provider id'))
-      );
+      const providerId = parsePostgresId(id, 'provider id');
+      const provider = await withPlatformTransaction(async (transaction) => {
+        const repository = new AiProviderConfigRepository(transaction);
+        const existing = await repository.findById(providerId);
+        if (!existing || isPlatformLlmOverrideProvider(existing.key)) return null;
+        return repository.delete(providerId);
+      });
       if (!provider) return NextResponse.json({ success: false, error: 'Provider not found' }, { status: 404 });
       return NextResponse.json({ success: true, data: { id: String(provider.id) } });
     });

@@ -749,6 +749,7 @@ export const platformConfigs = appSchema.table(
       'enterprise_registration_code_template_config'
     ),
     aiPromptConfig: jsonObject<Record<string, unknown>>('ai_prompt_config'),
+    llmConfig: jsonObject<Record<string, unknown>>('llm_config'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

@@ -10,6 +10,7 @@ import {
   enterprises,
   floorPlans,
   leadFloorPlans,
+  leadLifecycleEvents,
   leads,
   users,
 } from '@/db/schema';
@@ -162,6 +163,7 @@ after(async () => {
       await transaction.delete(leadFloorPlans).where(eq(leadFloorPlans.leadId, leadId));
       await transaction.delete(floorPlans).where(eq(floorPlans.enterpriseId, enterpriseId));
       await transaction.delete(leads).where(eq(leads.enterpriseId, enterpriseId));
+      await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.enterpriseId, enterpriseId));
       await transaction.delete(adminUsers).where(eq(adminUsers.enterpriseId, enterpriseId));
       await transaction.delete(enterprises).where(inArray(enterprises.id, [enterpriseId, otherEnterpriseId]));
     }

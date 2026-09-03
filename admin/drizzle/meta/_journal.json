@@ -386,6 +386,20 @@
       "when": 1788364800000,
       "tag": "0054_enterprise_registration_code_template_config",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1788368400000,
+      "tag": "0055_platform_llm_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1788372000000,
+      "tag": "0056_scheme_finalization_audit",
+      "breakpoints": true
     }
   ]
 }

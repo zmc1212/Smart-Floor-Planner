@@ -222,6 +222,11 @@ test('buildDraftFromBatch restores the persisted room scope', () => {
     modelProfileId: 'model-a',
     requestedCount: 2,
     referenceAssetIds: ['control-1', 'site-1', 'baseline-1'],
+    referenceAssets: [
+      { id: 'control-1', previewUrl: 'https://example.com/control.jpg', role: 'baseline' },
+      { id: 'site-1', previewUrl: 'https://example.com/site.jpg', role: 'site_photo' },
+      { id: 'baseline-1', previewUrl: 'https://example.com/baseline.jpg', role: 'baseline' },
+    ],
     parameterSnapshot: {
       aspectRatio: '4:3',
       resolutionTier: '2K',
@@ -235,8 +240,8 @@ test('buildDraftFromBatch restores the persisted room scope', () => {
   assert.equal(draft.targetScope, 'single_room');
   assert.equal(draft.roomId, 'living');
   assert.deepEqual(draft.referenceAssets, [
-    { id: 'site-1', previewUrl: '', role: 'site_photo' },
-    { id: 'baseline-1', previewUrl: '', role: 'baseline' },
+    { id: 'site-1', previewUrl: 'https://example.com/site.jpg', role: 'site_photo' },
+    { id: 'baseline-1', previewUrl: 'https://example.com/baseline.jpg', role: 'baseline' },
   ]);
   assert.equal(resolveDraftScope(buildScopes([], 0), draft).targetScope, 'whole_floor_plan');
 });
@@ -339,7 +344,7 @@ test('photo-first single-room mode can submit without a selected floor-plan room
   assert.equal(view.hasControlPreview, false);
 });
 
-test('composer toolbar keeps four tools without a reference chip', () => {
+test('composer exposes only the three high-frequency round configuration entries', () => {
   const scopes = buildScopes(
     [{ roomId: 'living', roomName: '客厅', roomSize: '4.20 m x 3.60 m' }],
     2,
@@ -348,20 +353,17 @@ test('composer toolbar keeps four tools without a reference chip', () => {
     ...createDefaultDraft(bootstrap),
     prompt: '奶油风客厅',
   }, bootstrap, { scopes });
-  assert.deepEqual(view.toolbarItems.map((item) => item.label), ['户型', '模型', '模板', '设置']);
-  assert.equal(view.toolbarItems[0].icon, COMPOSER_TOOL_ICONS.scope);
+  assert.deepEqual(view.toolbarItems.map((item) => item.key), ['goal', 'template', 'reference']);
+  assert.equal(view.toolbarItems[0].icon, COMPOSER_TOOL_ICONS.goal);
+  assert.equal(view.toolbarItems[2].icon, COMPOSER_TOOL_ICONS.reference);
   assert.equal(COMPOSER_TOOL_ICONS.settings, '/images/ai-studio-icons-v3/settings.png');
-  assert.deepEqual(buildComposerToolbarItems({ hasScopePicker: false }).map((item) => item.key), [
-    'model',
-    'template',
-    'settings',
-  ]);
+  assert.deepEqual(buildComposerToolbarItems({}).map((item) => item.key), ['goal', 'template', 'reference']);
   const photoView = buildComposerViewState({
     ...createDefaultDraft(bootstrap),
     prompt: '奶油风客厅',
   }, bootstrap, { scopes: [] });
   assert.equal(photoView.hasScopePicker, false);
-  assert.deepEqual(photoView.toolbarItems.map((item) => item.key), ['model', 'template', 'settings']);
+  assert.deepEqual(photoView.toolbarItems.map((item) => item.key), ['goal', 'template', 'reference']);
 });
 
 test('composer picker options carry icon, title, and subtitle', () => {
@@ -372,7 +374,7 @@ test('composer picker options carry icon, title, and subtitle', () => {
   const draft = createDefaultDraft(bootstrap);
   const view = buildComposerViewState({ ...draft, prompt: '奶油风客厅' }, bootstrap, { scopes });
   const scopeOptions = buildComposerPickerOptions('scope', view);
-  assert.equal(buildComposerPickerTitle('scope'), '应用到哪里');
+  assert.equal(buildComposerPickerTitle('scope'), '选择设计空间');
   assert.equal(scopeOptions[0].label, '完整户型');
   assert.equal(scopeOptions[0].subtitle, SCOPE_APPLY_NOTE);
   assert.equal(scopeOptions[0].icon, COMPOSER_TOOL_ICONS.scope);
@@ -392,6 +394,7 @@ const composerPath = path.resolve(__dirname, '..', 'components/ai-scheme-compose
 function loadComposerComponent() {
   const originals = { Component: global.Component, wx: global.wx };
   let definition;
+  const previewCalls = [];
   global.Component = (componentDefinition) => {
     definition = componentDefinition;
   };
@@ -399,12 +402,13 @@ function loadComposerComponent() {
     onKeyboardHeightChange() {},
     offKeyboardHeightChange() {},
     showToast() {},
-    previewImage() {},
+    previewImage(options) { previewCalls.push(options); },
   };
   delete require.cache[composerPath];
   require(composerPath);
   return {
     definition,
+    previewCalls,
     restore() {
       for (const [key, value] of Object.entries(originals)) {
         if (value === undefined) delete global[key];
@@ -432,7 +436,7 @@ function waitForSheetClose() {
   return new Promise((resolve) => setTimeout(resolve, 280));
 }
 
-test('composer wxml keeps a bottom toolbar and keyboard-safe sheets', () => {
+test('composer wxml restores the approved collapsed, expanded, and configuration states', () => {
   const miniRoot = path.resolve(__dirname, '..');
   const wxml = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.wxml'), 'utf8');
   const less = fs.readFileSync(path.join(miniRoot, 'components/ai-scheme-composer/ai-scheme-composer.less'), 'utf8');
@@ -440,17 +444,42 @@ test('composer wxml keeps a bottom toolbar and keyboard-safe sheets', () => {
   const studioWxml = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.wxml'), 'utf8');
   const studioScript = fs.readFileSync(path.join(miniRoot, 'packages/ai-workflow/scheme-studio/scheme-studio.js'), 'utf8');
 
-  assert.match(wxml, /dock-toolbar/);
-  assert.match(wxml, /dock-tool-label/);
-  assert.match(wxml, /onToolbarTap/);
+  assert.match(wxml, /composer-v4-collapsed/);
+  assert.match(wxml, /composer-v4-expanded/);
+  assert.match(wxml, /composer-dock-mask \{\{dockExpanded \? 'open' : ''\}\}/);
+  assert.match(wxml, /composer-dock-mask[\s\S]*?catchtap="toggleDock"/);
+  assert.match(less, /\.composer-dock-mask\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?background:\s*rgba\(12, 20, 16, 0\.46\);[\s\S]*?pointer-events:\s*none;/);
+  assert.match(less, /\.composer-dock-mask\.open\s*\{[\s\S]*?opacity:\s*1;[\s\S]*?pointer-events:\s*auto;/);
+  assert.match(wxml, /config-sheet/);
+  assert.match(wxml, /scroll-y enhanced show-scrollbar="\{\{false\}\}" class="config-sheet-surface"/);
+  assert.match(wxml, />本轮创作</);
+  assert.match(wxml, />本轮配置</);
+  assert.match(wxml, /quick-config-grid/);
+  assert.match(wxml, /设计要求/);
+  assert.match(wxml, /AI 优化/);
+  assert.match(wxml, /class="expanded-prompt-count"/);
+  assert.match(less, /\.expanded-prompt-field\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex-direction:\s*column;/);
+  assert.match(less, /\.expanded-prompt-input\s*\{[\s\S]*?height:\s*188rpx;[\s\S]*?padding:\s*20rpx;/);
+  assert.match(less, /\.expanded-prompt-count\s*\{[\s\S]*?height:\s*44rpx;[\s\S]*?flex:\s*none;/);
+  assert.doesNotMatch(less, /\.expanded-prompt-field\s*>\s*text/);
+  assert.match(wxml, /参考图 \{\{view\.referenceDisplayCount\}\}张/);
+  assert.match(wxml, /户型图 · 结构参考/);
+  assert.match(wxml, /现场图 · 镜头参考/);
+  assert.match(wxml, /bindtap="previewReferenceImage"/);
+  assert.match(wxml, /更多设置/);
+  assert.match(wxml, /保存配置/);
+  assert.doesNotMatch(wxml, /dock-toolbar|dock-tool-label|>输入依据</);
   assert.match(wxml, /sheet-handle/);
   assert.match(wxml, /sheet-option-subtitle/);
   assert.match(wxml, /hold-keyboard=\"\{\{false\}\}\"/);
   assert.match(wxml, /focus=\"\{\{promptFocused\}\}\"/);
   assert.doesNotMatch(wxml, /dock-tools-scroll/);
-  assert.doesNotMatch(wxml, />参考</);
   assert.doesNotMatch(less, /overflow-x:\s*auto/);
-  assert.match(less, /\.dock-tool-label\s*\{[^}]*font-size:\s*24rpx/);
+  assert.match(less, /18-studio-composer-expanded-mint-arc-v1\.png/);
+  assert.match(less, /19-studio-composer-collapsed-mint-arc-v1\.png/);
+  assert.match(less, /20-round-config-mint-arc-v2\.png/);
+  assert.match(less, /\.composer-shell\.dock\.composer-v4\s*\{[\s\S]*linear-gradient/);
+  assert.match(less, /\.sheet-panel\.mode-picker-panel\.config-sheet\s*\{[\s\S]*border-radius:\s*100rpx 100rpx 0 0/);
   assert.match(script, /runAfterKeyboardHidden/);
   assert.match(script, /restorePromptFocus/);
   assert.match(script, /KEYBOARD_HIDE_TIMEOUT_MS/);
@@ -458,58 +487,79 @@ test('composer wxml keeps a bottom toolbar and keyboard-safe sheets', () => {
   assert.match(wxml, /设计整屋/);
   assert.match(wxml, /设计单间/);
   assert.match(wxml, /仅软装换搭/);
-  assert.match(wxml, /setup-step-number/);
-  assert.match(wxml, /setup-label-title">设计目标/);
-  assert.match(wxml, /setup-label-title">输入依据/);
-  assert.match(wxml, /setup-label-title">装修配方/);
-  assert.match(wxml, /setup-basis-change" bindtap="uploadReference"/);
-  assert.match(wxml, /setup-recipe-change" bindtap="openTemplates"/);
-  assert.match(wxml, /mode-picker-primary" bindtap="confirmRenderMode"/);
-  assert.match(less, /Round setup V2: design-references\/ai-design\/unified-entry-v2\/04-round-setup-v2\.png/);
-  assert.match(wxml, /mode-picker-heading/);
+  assert.match(wxml, /config-section-label/);
+  assert.match(wxml, /config-template-row" bindtap="openTemplates"/);
+  assert.match(wxml, /config-template-change"(?: catchtap| bindtap)="openTemplates"/);
+  assert.match(wxml, /class="template-card \{\{draft\.templateId === item\.id \? 'selected' : ''\}\}" data-id="\{\{item\.id\}\}" bindtap="selectTemplate"/);
+  assert.match(wxml, /quick-config-card configured/);
+  assert.match(wxml, /quick-config-card \{\{view\.hasTemplate \? 'configured' : ''\}\}/);
+  assert.match(wxml, /quick-config-card \{\{view\.referenceDisplayCount > 0 \? 'configured' : ''\}\}/);
+  assert.match(less, /\.quick-config-card\.configured\s*\{[\s\S]*?background:\s*#08b969;/);
+  assert.match(less, /\.quick-config-card\.configured[^}]*>[\s\S]*?filter:\s*brightness\(0\) invert\(1\)/);
+  assert.match(wxml, /config-save" bindtap="confirmRenderMode"/);
+  assert.match(less, /\.sheet-panel\.mode-picker-panel\.config-sheet\s*\{[\s\S]*?height:\s*calc\(100vh - 120rpx\);[\s\S]*?display:\s*flex;/);
+  assert.match(less, /\.config-sheet-surface\s*\{[\s\S]*?flex:\s*1;/);
+  assert.match(less, /\.config-save\s*\{[\s\S]*?flex:\s*none;[\s\S]*?margin:\s*18rpx 52rpx/);
   assert.match(wxml, /round-setup-v3\/whole-floor-plan\.png/);
   assert.match(wxml, /round-setup-v3\/single-room-reference\.png/);
-  assert.match(less, /\.setup-label \.setup-step-number\s*\{\s*color:\s*#fff !important/);
-  assert.match(less, /\.setup-label \.setup-label-title\s*\{\s*color:\s*#202923 !important[\s\S]*font-size:\s*30rpx !important/);
-  assert.match(less, /\.mode-choice-copy\s*\{\s*display:\s*flex !important[\s\S]*flex-direction:\s*column !important/);
-  assert.match(less, /\.setup-recipe-row > \.setup-recipe-change\s*\{\s*display:\s*flex !important[\s\S]*flex-direction:\s*row !important/);
   ['whole-floor-plan.png', 'single-room-reference.png'].forEach((filename) => {
     const assetPath = path.join(miniRoot, 'images/ai-design/round-setup-v3', filename);
     assert.ok(fs.existsSync(assetPath));
     assert.deepEqual(fs.readFileSync(assetPath).subarray(0, 8), Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
     assert.ok(fs.statSync(assetPath).size <= 300 * 1024);
   });
-  assert.match(wxml, /timelineMode \? 'timeline' : ''/);
-  assert.match(wxml, /timelineControlUrl/);
-  assert.match(wxml, /openTimelineControl/);
-  assert.match(wxml, /timeline-dock-handle/);
-  assert.match(wxml, /timeline-compose-heading/);
-  assert.match(wxml, /展开参数/);
+  assert.match(wxml, /composer-arc-handle/);
+  assert.match(wxml, /collapsed-entry-row/);
+  assert.match(wxml, /collapsed-config-entry" bindtap="openModePicker"/);
+  assert.match(wxml, /collapsed-generate/);
+  assert.doesNotMatch(wxml, /collapsed-prompt-input|collapsed-compose-row/);
+  assert.doesNotMatch(wxml, /collapsed-generate[^<]*<image/);
+  assert.doesNotMatch(wxml, /class="collapsed-expand"/);
   assert.match(wxml, /选择模板/);
-  assert.match(wxml, /template-collapsed-row/);
-  assert.match(wxml, /template-full-edit-panel/);
-  assert.match(wxml, /template-collapsed-row" catchtap="enterTemplateFullEdit"/);
   assert.match(wxml, /恢复模板/);
   assert.match(wxml, /收起/);
-  assert.match(wxml, /bindtap="returnToTemplateSummary"/);
   assert.doesNotMatch(wxml, /个性化调整|需要逐字编辑|template-adjustment-panel/);
   assert.doesNotMatch(studioScript, /templateAdjustmentPrompt/);
-  assert.match(wxml, /timeline-start-round/);
-  assert.match(wxml, /!view\.modeConfirmed && !view\.hasTemplate/);
-  assert.match(less, /timeline-start-round[\s\S]*linear-gradient\(135deg, #1ac86a 0%, #08b65a 100%\)/);
-  assert.match(less, /grid-template-columns: 92rpx minmax\(0, 1fr\) 52rpx 198rpx 74rpx/);
-  assert.match(less, /template-collapsed-row \.timeline-control \{[\s\S]*width: 100%/);
+  assert.match(wxml, /composer-v4-empty/);
   assert.match(script, /toggleDock\(\)/);
-  assert.match(wxml, /!timelineMode && view\.modeConfirmed/);
-  assert.match(wxml, /timelineMode && !draft\.templateId/);
   assert.doesNotMatch(wxml, /check-green\.png/);
-  assert.match(less, /12-studio-manual-collapsed-v1\.png/);
-  assert.match(less, /14-studio-manual-expanded-v1\.png/);
-  assert.match(less, /\.composer-shell\.dock\.timeline \.generate-fab\s*\{[\s\S]*height: 76rpx[\s\S]*align-self: center[\s\S]*justify-content: center/);
   assert.match(studioWxml, /composer-collapsed/);
   assert.match(script, /dockExpanded:\s*false/);
-  assert.match(less, /\.composer-shell\.dock\.timeline \.dock-expanded\s*\{[^}]*display:\s*none/);
   assert.match(studioWxml, /bind:rendermodechange="onComposerRenderModeChange"/);
+  assert.match(studioWxml, /bindtap="previewGeneration"[\s\S]*?data-generation-index="\{\{output\.generationIndex\}\}"/);
+  assert.match(studioWxml, /bindtap="previewTimelineReference"/);
+  assert.match(studioScript, /previewTimelineReference\(event\)/);
+  assert.match(studioScript, /items\.push\(\{ \.\.\.generation, generationIndex \}\)/);
+});
+
+test('composer previews uploaded references together with the locked floor-plan reference', () => {
+  const { definition, previewCalls, restore } = loadComposerComponent();
+  try {
+    const host = createComposerHost(definition, {
+      pendingRenderMode: 'whole_floor_plan',
+      view: {
+        wholeHouseAvailable: true,
+        referenceAssets: [
+          { id: 'site-1', previewUrl: 'https://example.com/site-1.jpg' },
+          { id: 'site-2', previewUrl: 'https://example.com/site-2.jpg' },
+        ],
+      },
+    });
+    host.properties = { floorPlanPreviewUrl: 'https://example.com/floor-plan.jpg' };
+
+    host.previewReferenceImage({ currentTarget: { dataset: { referenceIndex: 1 } } });
+
+    assert.deepEqual(previewCalls, [{
+      current: 'https://example.com/site-2.jpg',
+      urls: [
+        'https://example.com/floor-plan.jpg',
+        'https://example.com/site-1.jpg',
+        'https://example.com/site-2.jpg',
+      ],
+    }]);
+  } finally {
+    restore();
+  }
 });
 
 test('mode-flow artwork is packaged as transparent PNG under the Mini Program limit', () => {

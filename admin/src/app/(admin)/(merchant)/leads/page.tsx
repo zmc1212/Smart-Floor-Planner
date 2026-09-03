@@ -749,8 +749,8 @@ function LeadsPage() {
   const finalizeScheme = async (scheme: AiSchemePublication) => {
     if (!selectedLead || !scheme.workflowId || scheme.finalized) return;
     const confirmed = await confirmAction({
-      title: '设为定稿',
-      description: `客户档案与方案册将优先展示「${scheme.title}」。定稿后仍可继续出图和更新方案，直到您改指定稿或撤回该套方案。`,
+      title: '设为定稿方案',
+      description: `客户档案与方案册将优先展示「${scheme.title}」。定稿表示客户主推方案，后续仍可继续出图和更新；如需冻结版本，请新建方案。`,
       confirmText: '确认定稿',
     });
     if (!confirmed) return;
@@ -2350,7 +2350,7 @@ function LeadsPage() {
                                 loading={publicationFinalizingId === item.id}
                                 onClick={() => void finalizeScheme(item)}
                               >
-                                设为定稿
+                                设为定稿方案
                               </Button>
                             ) : null}
                             <Button

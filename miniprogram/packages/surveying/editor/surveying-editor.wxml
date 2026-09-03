@@ -186,6 +186,8 @@
       wx:if="{{navigationCalibrationRelocating}}"
       class="navigation-calibration-disable"
       catchtap="onNavigationMeasurementDisable"
+      hover-class="navigation-calibration-disable-pressed"
+      aria-label="关闭导航测量"
     >关闭导航测量</cover-view>
   </cover-view>
 

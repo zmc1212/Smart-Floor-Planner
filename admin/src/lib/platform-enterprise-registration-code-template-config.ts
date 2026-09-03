@@ -37,7 +37,7 @@ export const DEFAULT_ENTERPRISE_REGISTRATION_CODE_TEMPLATE_CONFIG: EnterpriseReg
   };
 
 type StoredEnterpriseRegistrationCodeTemplateConfig =
-  Partial<EnterpriseRegistrationCodeTemplateConfig> & {
+  Partial<Omit<EnterpriseRegistrationCodeTemplateConfig, 'qrPlacement'>> & {
     qrPlacement?: Partial<EnterpriseRegistrationQrPlacement>;
   };
 

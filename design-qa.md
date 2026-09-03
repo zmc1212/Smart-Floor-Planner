@@ -1,38 +1,37 @@
-# Scheme Studio round setup V2 visual QA
+# Scheme Studio composer V4 visual QA
 
-## Current V2 result
+## Current V4 result
 
 **Findings**
 
-- [P1] Runtime visual comparison is blocked.
-  Location: `packages/ai-workflow/scheme-studio/scheme-studio`, `ai-scheme-composer` mode picker.
-  Evidence: the approved source is `design-references/ai-design/unified-entry-v2/04-round-setup-v2.png` (`512×1024`), but no updated `390×844` Mini Program capture of the open **准备新一轮** sheet exists.
-  Impact: panel height, vertical rhythm, optical type scale, selected-state glyphs, and bottom-safe-area spacing cannot be accepted from code alone.
-  Fix: manually capture the open sheet on the existing route with a formal floor plan and selected recipe, including native WeChat chrome, then compare it against the source at a normalized viewport.
+- [P0] Resolved. The former one-time round setup was consolidated into a reopenable three-state Composer configuration sheet.
+  Location: `packages/ai-workflow/scheme-studio/scheme-studio`, `ai-scheme-composer`.
+  Evidence: `tmp/ai-composer-v4-qa/01-collapsed-final.png`, `02-expanded-final.png`, and `03-config-final.png`, all captured from the exact scheme-studio route at `390×844` after a fresh DevTools compile.
+- [P1] No remaining visual blocker for the approved Composer states. The live capture confirms the system mint-green arc, white inset surface, safe-area treatment, three high-frequency entries (**设计目标 / 提示词模板 / 参考图**), and the locked whole-house **参考图1** followed by user references.
 
 **Open Questions**
 
-- DevTools automation was not requested and is not used for this Mini Program task; the implementation capture must be user-provided manual runtime evidence.
+- DevTools automation was explicitly authorized for this task and was used only after verifying the exact workspace path `G:\workspace\向总\Smart-Floor-Planner\miniprogram`.
 
 **Implementation Checklist**
 
-1. Capture the open sheet at `390×844` with whole-plan selected and a selected recipe.
-2. Compare source and runtime capture together for title, cards, input/recipe rows, notice, CTA, and safe bottom spacing.
-3. Fix any P1/P2 drift and append the post-fix comparison evidence.
+1. Keep the three-state source and the three runtime captures together when changing the Composer.
+2. Recheck collapsed, expanded, and configuration states at `390×844` after any visible change.
+3. Preserve the route/API/tenant/permission contracts when changing presentation.
 
 **Required fidelity surfaces**
 
-- Fonts/typography: implemented targets are 44rpx title, 30rpx section/card titles, 22rpx helper/status text, and 28rpx CTA; visual confirmation pending.
-- Spacing/layout rhythm: 70vh bounded native sheet with content-intrinsic groups and equal mode cards; visual confirmation pending.
-- Colors/tokens: white sheet, brand-green selection/CTA, neutral borders, and muted helper text; visual confirmation pending.
+- Fonts/typography: section title, card labels, helper text, and CTA remain above the Mini Program typography floors and are visually readable in all three captures.
+- Spacing/layout rhythm: the configuration sheet uses an arc-led bounded surface with intrinsic grouped content; the collapsed and expanded panels preserve the bottom safe area.
+- Colors/tokens: mint-green system gradient, white inset surfaces, brand-green selection/CTA, neutral borders, and muted helper text match the approved direction.
 - Image quality: existing packaged transparent PNG icons are used; no composite reference image is shipped.
 - Copy/content: all mode, input, recipe, and confirmation controls retain their existing behavior; runtime wrapping pending.
 
-Source visual truth: `design-references/ai-design/unified-entry-v2/04-round-setup-v2.png` (`512×1024`).
+Source visual truth: `design-references/ai-design/unified-entry-v2/21-studio-composer-v4-three-states.png` (`633×470` composite of the three approved `390×844` states).
 
-Implementation screenshot: unavailable; required viewport `390×844` with native WeChat capsule and bottom safe area.
+Implementation screenshots: `tmp/ai-composer-v4-qa/01-collapsed-final.png`, `02-expanded-final.png`, and `03-config-final.png`; required viewport `390×844` with native WeChat capsule and bottom safe area.
 
-final result: blocked
+final result: passed
 
 ## Recipe project V2 visual QA
 

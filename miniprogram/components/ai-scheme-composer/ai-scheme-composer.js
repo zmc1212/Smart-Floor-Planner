@@ -64,19 +64,7 @@ Component({
 
   observers: {
     'bootstrap, draft, generating, assisting, uploading, scopes, floorPlanPreviewUrl': function updateView() {
-      if (!this.properties.draft || !this.properties.bootstrap) {
-        this.setData({ view: null });
-        return;
-      }
-      this.setData({
-        view: buildComposerViewState(this.properties.draft, this.properties.bootstrap, {
-          generating: this.properties.generating,
-          assisting: this.properties.assisting,
-          uploading: this.properties.uploading,
-          scopes: this.properties.scopes,
-          floorPlanPreviewUrl: this.properties.floorPlanPreviewUrl,
-        }),
-      });
+      this.refreshView();
     },
     'templateCategories, templateCategoryId': function updateCategoryChips() {
       this.setData({
@@ -114,6 +102,7 @@ Component({
 
   lifetimes: {
     attached() {
+      this.refreshView();
       this._onKeyboardHeightChange = (res) => {
         const height = Math.max(0, Math.floor(Number(res && res.height) || 0));
         if (height === this.data.keyboardHeight) {
@@ -149,6 +138,23 @@ Component({
   },
 
   methods: {
+    refreshView(draftOverride) {
+      const draft = draftOverride || this.properties.draft;
+      if (!draft || !this.properties.bootstrap) {
+        this.setData({ view: null });
+        return;
+      }
+      this.setData({
+        view: buildComposerViewState(draft, this.properties.bootstrap, {
+          generating: this.properties.generating,
+          assisting: this.properties.assisting,
+          uploading: this.properties.uploading,
+          scopes: this.properties.scopes,
+          floorPlanPreviewUrl: this.properties.floorPlanPreviewUrl,
+        }),
+      });
+    },
+
     clearCollapseTimer() {
       if (this._collapseTimer) {
         clearTimeout(this._collapseTimer);
@@ -283,7 +289,20 @@ Component({
         wx.showToast({ title: '整屋设计需先完成正式量房', icon: 'none' });
         return;
       }
-      this.setData({ pendingRenderMode: mode });
+      const current = this.data.pendingRenderMode;
+      const next = mode === 'single_room_photo' && current === 'soft_furnishing'
+        ? 'soft_furnishing'
+        : mode;
+      this.setData({ pendingRenderMode: next });
+    },
+
+    commitPendingRenderMode() {
+      const mode = this.data.pendingRenderMode;
+      const current = this.properties.draft || {};
+      if (current.renderModeConfirmed && current.renderMode === mode) return current;
+      const draft = applyRenderModeToDraft(current, mode);
+      this.triggerEvent('rendermodechange', { draft, renderMode: draft.renderMode });
+      return draft;
     },
 
     confirmRenderMode() {
@@ -292,8 +311,7 @@ Component({
         wx.showToast({ title: '整屋设计需先完成正式量房', icon: 'none' });
         return;
       }
-      const draft = applyRenderModeToDraft(this.properties.draft, mode);
-      this.triggerEvent('rendermodechange', { draft, renderMode: draft.renderMode });
+      this.commitPendingRenderMode();
       closeSheet(this, MODE_PICKER_SHEET, () => {
         this.setDockExpanded(true);
       });
@@ -301,9 +319,7 @@ Component({
 
     selectRenovationType(event) {
       const mode = event.currentTarget.dataset.mode;
-      const draft = applyRenderModeToDraft(this.properties.draft, mode);
-      this.triggerEvent('rendermodechange', { draft, renderMode: draft.renderMode });
-      this.holdDockExpanded();
+      this.setData({ pendingRenderMode: mode });
     },
 
     collapseDock() {
@@ -319,6 +335,15 @@ Component({
         return;
       }
       this.setDockExpanded(false);
+    },
+
+    collapseAfterSubmit() {
+      this.clearCollapseTimer();
+      this.clearKeyboardWait();
+      this._openingSheet = false;
+      this.setData({ promptFocused: false, keyboardHeight: 0, dockExpanded: false });
+      this.triggerEvent('keyboardheightchange', { height: 0 });
+      this.triggerEvent('dockexpandchange', { expanded: false });
     },
 
     onPromptFocus() {
@@ -367,19 +392,34 @@ Component({
 
     openSettings() {
       if (!this.data.view) return;
-      this.runAfterKeyboardHidden(() => {
-        openSheet(this, SETTINGS_SHEET);
-      });
+      const proceed = () => openSheet(this, SETTINGS_SHEET);
+      if (this.data.modePickerVisible) {
+        this._settingsReturnTarget = 'mode-picker';
+        closeSheet(this, MODE_PICKER_SHEET, proceed);
+        return;
+      }
+      this.runAfterKeyboardHidden(proceed);
     },
 
     closeSettings() {
       closeSheet(this, SETTINGS_SHEET, () => {
+        if (this._settingsReturnTarget === 'mode-picker') {
+          this._settingsReturnTarget = '';
+          openSheet(this, MODE_PICKER_SHEET);
+          return;
+        }
         this.restorePromptFocus();
       });
     },
 
     applySettings() {
+      this.commitPendingRenderMode();
       closeSheet(this, SETTINGS_SHEET, () => {
+        if (this._settingsReturnTarget === 'mode-picker') {
+          this._settingsReturnTarget = '';
+          openSheet(this, MODE_PICKER_SHEET);
+          return;
+        }
         this.restorePromptFocus();
       });
     },
@@ -415,7 +455,16 @@ Component({
         proceed();
         return;
       }
+      if (this.data.modePickerVisible) {
+        this._pickerReturnTarget = 'mode-picker';
+        closeSheet(this, MODE_PICKER_SHEET, proceed);
+        return;
+      }
       this.runAfterKeyboardHidden(proceed);
+    },
+
+    openScopePicker() {
+      this.openPicker({ currentTarget: { dataset: { type: 'scope' } } });
     },
 
     closePicker() {
@@ -425,6 +474,11 @@ Component({
     finishPicker({ refocus }) {
       closeSheet(this, PICKER_SHEET, () => {
         this.setData({ pickerType: '', pickerOptions: [] });
+        if (this._pickerReturnTarget === 'mode-picker') {
+          this._pickerReturnTarget = '';
+          openSheet(this, MODE_PICKER_SHEET);
+          return;
+        }
         if (refocus) {
           this.restorePromptFocus();
           return;
@@ -456,7 +510,12 @@ Component({
     },
 
     uploadReference() {
-      if (!this.data.view || !this.data.view.canAddReference || this.properties.uploading) return;
+      if (!this.data.view || this.properties.uploading) return;
+      const canAdd = this.data.pendingRenderMode === 'whole_floor_plan'
+        ? this.data.view.canAddReference
+        : this.data.view.singleModeCanAddReference;
+      if (!canAdd) return;
+      this.commitPendingRenderMode();
       this.holdDockExpanded();
       this.triggerEvent('uploadreference');
     },
@@ -466,6 +525,28 @@ Component({
       if (!url) return;
       this.holdDockExpanded();
       wx.previewImage({ urls: [url], current: url });
+    },
+
+    previewFloorPlanReference() {
+      const url = String(this.properties.floorPlanPreviewUrl || '');
+      if (!url) return;
+      wx.previewImage({ urls: [url], current: url });
+    },
+
+    previewReferenceImage(event) {
+      const referenceIndex = Number(event.currentTarget.dataset.referenceIndex);
+      const references = (this.data.view && this.data.view.referenceAssets) || [];
+      const current = references[referenceIndex] && references[referenceIndex].previewUrl;
+      if (!current) return;
+      const urls = [];
+      if (this.data.pendingRenderMode === 'whole_floor_plan' && this.data.view?.wholeHouseAvailable) {
+        urls.push(String(this.properties.floorPlanPreviewUrl || ''));
+      }
+      references.forEach((item) => urls.push(String(item.previewUrl || '')));
+      wx.previewImage({
+        current,
+        urls: [...new Set(urls.filter(Boolean))],
+      });
     },
 
     openTimelineControl() {
@@ -507,7 +588,8 @@ Component({
 
     closeTemplates() {
       this.setData({ templatePreviewVisible: false, templatePreview: null });
-      this._refocusAfterTemplate = !this.data.settingsOpen;
+      this._refocusAfterTemplate = this._templateReturnTarget !== 'mode-picker'
+        && !this.data.settingsOpen;
       this.triggerEvent('closetemplates');
     },
 
@@ -576,10 +658,23 @@ Component({
       const template = (this.properties.templates || []).find((item) => String(item.id) === String(id));
       if (!template) return;
       this.setData({ templatePreviewVisible: false, templatePreview: null });
-      this._refocusAfterTemplate = !this.data.settingsOpen && !this.properties.timelineMode;
-      if (this.properties.timelineMode) this.setDockExpanded(false);
+      const returningToConfig = this._templateReturnTarget === 'mode-picker';
+      this._refocusAfterTemplate = !returningToConfig && !this.data.settingsOpen && !this.properties.timelineMode;
+      if (this.properties.timelineMode && !returningToConfig) this.setDockExpanded(false);
       this.triggerEvent('selecttemplate', { template });
       this.closeTemplates();
+    },
+
+    clearTemplate() {
+      const draft = {
+        ...(this.properties.draft || {}),
+        templateId: '',
+        templateName: '',
+        templatePreviewUrl: '',
+        templateBasePrompt: '',
+        templateEditMode: '',
+      };
+      this.triggerEvent('draftchange', { draft });
     },
 
     onTemplateImageError(event) {
@@ -597,9 +692,21 @@ Component({
     submitGeneration() {
       this.holdDockExpanded();
       if (!this.data.view || !this.data.view.canSubmit) {
-        if (this.data.view?.blockedReason) {
-          wx.showToast({ title: this.data.view.blockedReason, icon: 'none' });
+        const reason = this.data.view?.blockedReason || '';
+        if (reason === '请先选择设计方式' || reason === '请先添加现场图' || reason === '请先选择具体房间') {
+          this.openModePicker();
+          return;
         }
+        if (reason === '请输入提示词') {
+          this.setDockExpanded(true);
+          this.setData({ promptFocused: true });
+          return;
+        }
+        if (reason === '请选择模型' || reason === '当前分辨率不可用') {
+          this.openSettings();
+          return;
+        }
+        if (reason) wx.showToast({ title: reason, icon: 'none' });
         return;
       }
       this.triggerEvent('submit');

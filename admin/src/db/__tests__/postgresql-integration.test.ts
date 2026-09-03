@@ -3229,6 +3229,134 @@ test('PostgreSQL workbench creation batch requires an eligible workflow floor pl
   }
 });
 
+test('PostgreSQL workbench permits another round while a previous round is active', async () => {
+  const eligibleLayout = {
+    version: 4,
+    measurementMode: 'surveying',
+    surveyGraph: {
+      kind: 'survey-wall-graph',
+      activeFloorId: 'floor-1',
+      floors: [{
+        id: 'floor-1',
+        name: '一层',
+        ceilingHeightMm: 2800,
+        nodes: [
+          { id: 'n1', xMm: 0, yMm: 0 },
+          { id: 'n2', xMm: 4000, yMm: 0 },
+          { id: 'n3', xMm: 4000, yMm: 3000 },
+          { id: 'n4', xMm: 0, yMm: 3000 },
+        ],
+        walls: [
+          { id: 'w1', startNodeId: 'n1', endNodeId: 'n2' },
+          { id: 'w2', startNodeId: 'n2', endNodeId: 'n3' },
+          { id: 'w3', startNodeId: 'n3', endNodeId: 'n4' },
+          { id: 'w4', startNodeId: 'n4', endNodeId: 'n1' },
+        ],
+        openings: [],
+        spaces: [{ id: 'living', name: '客厅', wallIds: ['w1', 'w2', 'w3', 'w4'], closed: true }],
+      }],
+    },
+  };
+  let userId: bigint | null = null;
+  let leadId: bigint | null = null;
+  let floorPlanId: bigint | null = null;
+  let workflowId: bigint | null = null;
+  let taskId: bigint | null = null;
+  const generationIds: bigint[] = [];
+  const referenceAssetIds: bigint[] = [];
+  try {
+    const profile = (await listPostgresExecutableImageModelProfiles()).find((item) => item.key === 'grs-gpt-image-2');
+    assert.ok(profile);
+    const created = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const user = await new UserRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        role: 'user',
+        openid: `${testRunKey}-concurrent-round-user`,
+        nickname: 'Concurrent round customer',
+      });
+      const plan = await new FloorPlanRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        creatorId: user.id,
+        staffId: promotionDesignerAId,
+        name: 'Concurrent round plan',
+        layoutData: eligibleLayout,
+        source: 'surveying',
+        status: 'completed',
+        completedAt: new Date(),
+      });
+      const lead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'Concurrent round lead',
+        phone: `135${String(Date.now()).slice(-8)}`,
+        source: 'integration-test',
+        status: 'new',
+      });
+      await new LeadRepository(transaction).linkFloorPlan(lead.id, plan.id);
+      return { user, plan, lead };
+    });
+    userId = created.user.id;
+    floorPlanId = created.plan.id;
+    leadId = created.lead.id;
+    const workflow = await createPostgresAiWorkflow({
+      enterpriseId: enterpriseAId,
+      operatorId: promotionDesignerAId,
+      leadId: leadId,
+      sourceFloorPlanId: floorPlanId,
+      title: 'Concurrent rounds',
+    });
+    workflowId = workflow.id;
+    const task = await createPostgresCreationTask({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      modelProfileId: profile!.id.toString(),
+      title: 'Concurrent rounds task',
+      prompt: 'Warm living room',
+    });
+    taskId = task.id;
+    const first = await preparePostgresCreationBatch({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      taskId: task.id.toString(),
+      modelProfileId: profile!.id.toString(),
+      prompt: 'Warm living room',
+      parameters: { aspectRatio: '1:1', resolutionTier: '1K' },
+      count: 1,
+      workflowId: workflow.id.toString(),
+    });
+    generationIds.push(...first.generations.map((generation) => generation.id));
+    const second = await preparePostgresCreationBatch({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      taskId: task.id.toString(),
+      modelProfileId: profile!.id.toString(),
+      prompt: 'Add more daylight and greenery',
+      parameters: { aspectRatio: '1:1', resolutionTier: '1K' },
+      count: 1,
+      workflowId: workflow.id.toString(),
+    });
+    generationIds.push(...second.generations.map((generation) => generation.id));
+    assert.equal(first.batch.sequence, 1);
+    assert.equal(second.batch.sequence, 2);
+    assert.equal(second.generations.length, 1);
+    const view = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).loadTaskView(task.id)
+    );
+    assert.equal(view?.batches.length, 2);
+    referenceAssetIds.push(...(view?.batches || []).flatMap((batch) => batch.referenceAssetIds));
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (generationIds.length) await transaction.delete(aiGenerations).where(inArray(aiGenerations.id, generationIds));
+      if (taskId) await transaction.delete(aiCreationTasks).where(eq(aiCreationTasks.id, taskId));
+      if (workflowId) await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
+      if (floorPlanId) await transaction.delete(floorPlans).where(eq(floorPlans.id, floorPlanId));
+      if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
+      if (userId) await transaction.delete(users).where(eq(users.id, userId));
+      if (referenceAssetIds.length) await transaction.delete(mediaAssets).where(inArray(mediaAssets.id, referenceAssetIds));
+    });
+  }
+});
+
 test('PostgreSQL workbench floor-plan preview renders the bound survey control PNG', async () => {
   const eligibleLayout = {
     version: 4,

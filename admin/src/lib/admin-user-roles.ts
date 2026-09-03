@@ -27,6 +27,7 @@ export const ALL_MENUS = [
   { key: 'dashboard', label: '业务概览' },
   { key: 'enterprises', label: '企业管理' },
   { key: 'ai-providers', label: 'AI 供应商' },
+  { key: 'llm-settings', label: 'LLM大模型配置' },
   { key: 'media-storage', label: '媒体存储' },
   { key: 'mini-program-code-settings', label: '小程序码环境' },
   { key: 'sms-settings', label: '短信设置' },
@@ -67,6 +68,7 @@ export const MENU_PERMISSION_GROUPS: Array<{
     keys: [
       'enterprises',
       'ai-providers',
+      'llm-settings',
       'media-storage',
       'mini-program-code-settings',
       'sms-settings',
@@ -122,6 +124,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'dashboard',
     'enterprises',
     'ai-providers',
+    'llm-settings',
     'media-storage',
     'mini-program-code-settings',
     'ai-credit-prices',

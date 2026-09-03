@@ -153,8 +153,28 @@ function buildTimelineBatches(view) {
   const batches = (view && view.batches) || [];
   let previousImage = (view && view.workflow && view.workflow.floorPlanPreviewUrl) || '';
   return batches.map((batch) => {
-    const outputs = (batch.generations || []).filter((item) => item.statusClass === 'succeeded' && item.imageUrl);
-    const referenceImageUrl = previousImage || (view && view.workflow && view.workflow.floorPlanPreviewUrl) || '';
+    const outputs = (batch.generations || []).reduce((items, generation, generationIndex) => {
+      if (generation.statusClass === 'succeeded' && generation.imageUrl) {
+        items.push({ ...generation, generationIndex });
+      }
+      return items;
+    }, []);
+    const snapshot = batch.parameterSnapshot && typeof batch.parameterSnapshot === 'object'
+      ? batch.parameterSnapshot
+      : {};
+    const references = [];
+    const templatePreviewUrl = String(snapshot.templatePreviewUrl || '').trim();
+    if (templatePreviewUrl) {
+      references.push({ id: `template-${batch.id}`, previewUrl: templatePreviewUrl, role: 'template' });
+    }
+    (batch.referenceAssets || []).forEach((item) => {
+      const previewUrl = String(item && item.previewUrl || '').trim();
+      if (previewUrl) references.push({ ...item, previewUrl });
+    });
+    const referenceImageUrl = references[0]?.previewUrl
+      || previousImage
+      || (view && view.workflow && view.workflow.floorPlanPreviewUrl)
+      || '';
     if (outputs.length) previousImage = outputs[outputs.length - 1].imageUrl;
     const progress = Number(batch.progress ?? batch.progressPercent ?? 0);
     return {
@@ -162,6 +182,7 @@ function buildTimelineBatches(view) {
       timelineStatus: batch.hasProcessing ? 'processing' : batch.status === 'failed' ? 'failed' : outputs.length ? 'complete' : 'empty',
       timelinePrompt: String(batch.promptSummary || '').replace(/\s+/g, ' ').trim(),
       timelineOutputs: outputs,
+      timelineReferences: references,
       timelineReferenceUrl: referenceImageUrl,
       timelineProgress: Number.isFinite(progress) && progress > 0 ? Math.min(100, Math.round(progress)) : 0,
       timelineModel: (batch.modelProfileSnapshot && batch.modelProfileSnapshot.name) || '通用室内 V2.1',
@@ -690,6 +711,18 @@ Page({
     });
   },
 
+  previewTimelineReference(event) {
+    const batchIndex = Number(event.currentTarget.dataset.batchIndex);
+    const batch = this.data.timelineBatches && this.data.timelineBatches[batchIndex];
+    const current = batch && (batch.timelineReferenceUrl
+      || batch.timelineReferences?.[0]?.previewUrl);
+    if (!current) return;
+    const urls = [...new Set((this.data.timelineBatches || [])
+      .flatMap((item) => (item.timelineReferences || []).map((reference) => reference.previewUrl))
+      .filter(Boolean))];
+    wx.previewImage({ urls, current });
+  },
+
   openMenu() {
     openSheet(this, MENU_SHEET);
   },
@@ -816,7 +849,15 @@ Page({
   },
 
   openFinalizeModal() {
-    if (!this.data.view?.publishedScheme || this.data.view.publishedScheme.finalized) return;
+    const publishedScheme = this.data.view?.publishedScheme;
+    if (!publishedScheme) {
+      wx.showToast({ title: '请先发送给客户，再设为定稿', icon: 'none' });
+      return;
+    }
+    if (publishedScheme.finalized) {
+      wx.showToast({ title: '该方案已定稿', icon: 'none' });
+      return;
+    }
     openSheet(this, FINALIZE_SHEET);
   },
 
@@ -1274,6 +1315,9 @@ Page({
       this.setData({ generating: false, task: payload?.task || task });
       wx.hideLoading();
       wx.showToast({ title: '生成任务已提交', icon: 'success' });
+      const composer = this.selectComponent('#studioComposer');
+      if (composer && typeof composer.collapseAfterSubmit === 'function') composer.collapseAfterSubmit();
+      this.setData({ composerDockExpanded: false, composerKeyboardHeight: 0 });
       await this.loadStudio({ silent: true });
       const nextDraft = createDefaultDraft(this.data.bootstrap);
       this.setData({

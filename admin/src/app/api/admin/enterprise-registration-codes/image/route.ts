@@ -17,6 +17,55 @@ function parseVariant(request: Request) {
   return variant === 'raw' ? 'raw' : 'poster';
 }
 
+type RegistrationCodeLoadFailure =
+  | { ok: false; kind: 'active_code_not_found' }
+  | { ok: false; kind: 'template_background_missing' }
+  | { ok: false; kind: 'poster_composition_failed'; error: unknown }
+  | { ok: false; kind: 'wechat_code_unavailable'; error: unknown };
+
+function registrationCodeFailureResponse(result: RegistrationCodeLoadFailure) {
+  if (result.kind === 'active_code_not_found') {
+    return NextResponse.json(
+      {
+        success: false,
+        code: 'active_code_not_found',
+        error: 'No active enterprise registration code',
+      },
+      { status: 404 }
+    );
+  }
+  if (result.kind === 'template_background_missing') {
+    return NextResponse.json(
+      {
+        success: false,
+        code: 'template_background_missing',
+        error: 'Enterprise registration poster template is missing',
+      },
+      { status: 500 }
+    );
+  }
+  if (result.kind === 'poster_composition_failed') {
+    console.error('[Enterprise registration poster]', result.error);
+    return NextResponse.json(
+      {
+        success: false,
+        code: 'poster_composition_failed',
+        error: 'Unable to compose enterprise registration poster',
+      },
+      { status: 500 }
+    );
+  }
+  console.error('[Enterprise registration code provider]', result.error);
+  return NextResponse.json(
+    {
+      success: false,
+      code: 'wechat_code_unavailable',
+      error: 'The WeChat Mini Program code is temporarily unavailable',
+    },
+    { status: 502 }
+  );
+}
+
 export async function POST(request: Request) {
   try {
     return await withTenantRoute(
@@ -25,55 +74,14 @@ export async function POST(request: Request) {
       async (context) => {
         const actorStaffId = parsePostgresId(context.userId, 'staffId');
         const variant = parseVariant(request);
-        const result =
-          variant === 'raw'
-            ? await loadActiveEnterpriseRegistrationCodeImage({ actorStaffId })
-            : await loadActiveEnterpriseRegistrationCodePoster({ actorStaffId });
-        if (!result.ok) {
-          if (result.kind === 'active_code_not_found') {
-            return NextResponse.json(
-              {
-                success: false,
-                code: 'active_code_not_found',
-                error: 'No active enterprise registration code',
-              },
-              { status: 404 }
-            );
-          }
-          if (result.kind === 'template_background_missing') {
-            return NextResponse.json(
-              {
-                success: false,
-                code: 'template_background_missing',
-                error: 'Enterprise registration poster template is missing',
-              },
-              { status: 500 }
-            );
-          }
-          if (result.kind === 'poster_composition_failed') {
-            console.error('[Enterprise registration poster]', result.error);
-            return NextResponse.json(
-              {
-                success: false,
-                code: 'poster_composition_failed',
-                error: 'Unable to compose enterprise registration poster',
-              },
-              { status: 500 }
-            );
-          }
-          console.error('[Enterprise registration code provider]', result.error);
-          return NextResponse.json(
-            {
-              success: false,
-              code: 'wechat_code_unavailable',
-              error: 'The WeChat Mini Program code is temporarily unavailable',
-            },
-            { status: 502 }
-          );
+        if (variant === 'raw') {
+          const result = await loadActiveEnterpriseRegistrationCodeImage({ actorStaffId });
+          if (!result.ok) return registrationCodeFailureResponse(result);
+          return enterpriseRegistrationCodeImageResponse(result);
         }
-        return variant === 'raw'
-          ? enterpriseRegistrationCodeImageResponse(result)
-          : enterpriseRegistrationCodePosterResponse(result);
+        const result = await loadActiveEnterpriseRegistrationCodePoster({ actorStaffId });
+        if (!result.ok) return registrationCodeFailureResponse(result);
+        return enterpriseRegistrationCodePosterResponse(result);
       }
     );
   } catch (error) {

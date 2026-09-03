@@ -4,6 +4,10 @@ import { withTenantTransaction } from '@/db/transaction';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
 import { getAiProviderAdapter, listProviderRuntimes } from '@/lib/ai/provider-registry';
 import {
+  getPlatformLlmOverrideRuntime,
+  isPlatformLlmOverrideModelKey,
+} from '@/lib/platform-llm-config';
+import {
   capabilityForLogicalModel,
   AiProviderError,
   isSafeProviderFallback,
@@ -31,7 +35,12 @@ export async function executePostgresWorkflowChat(input: {
   metadata?: Record<string, unknown>;
 }) {
   const capability = capabilityForLogicalModel(input.logicalModelKey);
-  const runtimes = await listProviderRuntimes(capability, input.logicalModelKey);
+  const llmOverride = isPlatformLlmOverrideModelKey(input.logicalModelKey)
+    ? await getPlatformLlmOverrideRuntime()
+    : null;
+  const runtimes = llmOverride
+    ? [llmOverride]
+    : await listProviderRuntimes(capability, input.logicalModelKey);
   if (!runtimes.length) throw new Error(`没有可用的 AI 供应商支持 ${input.logicalModelKey}`);
 
   let lastError: unknown;

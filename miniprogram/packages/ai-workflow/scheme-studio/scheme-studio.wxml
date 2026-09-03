@@ -47,6 +47,18 @@
       </view>
     </view>
 
+    <view class="scheme-finalize-bar">
+      <view wx:if="{{view.publishedScheme && !view.publishedScheme.finalized}}" class="scheme-finalize-action" bindtap="openFinalizeModal">
+        <image src="/images/ai-studio-icons-v3/bookmark.png" mode="aspectFit"></image>
+        <text>设为定稿方案</text>
+      </view>
+      <view wx:elif="{{view.publishedScheme && view.publishedScheme.finalized}}" class="scheme-finalized-state">
+        <image src="/images/ai-studio-icons-v3/bookmark.png" mode="aspectFit"></image>
+        <text>当前方案已定稿</text>
+      </view>
+      <text wx:else class="scheme-finalize-hint">发送效果图给客户后，可将整套方案设为定稿</text>
+    </view>
+
     <scroll-view scroll-y show-scrollbar="{{false}}" class="timeline-scroll">
       <view class="timeline-content {{composerDockExpanded ? 'composer-expanded' : 'composer-collapsed'}} {{composerDraft.templateId ? 'composer-template' : ''}} {{composerDraft.templateEditMode === 'full' ? 'composer-template-full' : ''}}">
         <view wx:if="{{!timelineBatches.length}}" class="timeline-empty">
@@ -59,6 +71,7 @@
           wx:for="{{timelineBatches}}"
           wx:key="id"
           wx:for-item="batch"
+          wx:for-index="timelineBatchIndex"
           class="timeline-item {{batch.timelineStatus}}"
         >
           <view class="timeline-node">
@@ -71,10 +84,6 @@
             <view class="timeline-card-head">
               <text class="round-title">第 {{batch.sequence}} 轮 · <text wx:if="{{batch.timelineStatus === 'complete'}}" class="status-complete">已完成</text><text wx:elif="{{batch.timelineStatus === 'processing'}}" class="status-processing">创作中</text><text wx:else class="status-failed">生成失败</text></text>
               <view class="round-meta">
-                <view wx:if="{{batch.timelineStatus === 'complete'}}" class="final-badge" bindtap="openFinalizeModal">
-                  <image src="/images/ai-studio-icons-v3/bookmark.png" mode="aspectFit"></image>
-                  <text>设为定稿</text>
-                </view>
                 <text>{{batch.timeLabel}}</text>
               </view>
             </view>
@@ -86,15 +95,22 @@
               </view>
               <text class="timeline-prompt">{{batch.timelinePrompt || '已保存本轮设计要求'}}</text>
               <view class="timeline-divider"></view>
+              <view wx:if="{{batch.timelineReferences.length}}" class="info-label">
+                <image src="/images/ai-studio-icons-v3/reference.png" mode="aspectFit"></image>
+                <text>参考图</text>
+              </view>
+              <view wx:if="{{batch.timelineReferences.length}}" class="timeline-reference-grid">
+                <image wx:for="{{batch.timelineReferences}}" wx:key="id" class="timeline-reference-thumb" src="{{item.previewUrl}}" mode="aspectFit" bindtap="previewTimelineReference" data-batch-index="{{timelineBatchIndex}}" aria-role="button" aria-label="预览本轮参考图"></image>
+              </view>
               <view class="info-label">
                 <image src="/images/ai-studio-icons-v3/process-spark.png" mode="aspectFit"></image>
                 <text>生成结果</text>
               </view>
               <view class="timeline-results">
-                <view wx:for="{{batch.timelineOutputs}}" wx:key="id" wx:for-item="output" class="timeline-result">
+                <view wx:for="{{batch.timelineOutputs}}" wx:key="id" wx:for-item="output" class="timeline-result" bindtap="previewGeneration" data-batch-index="{{timelineBatchIndex}}" data-generation-index="{{output.generationIndex}}" aria-role="button" aria-label="预览本轮效果图">
                   <image src="{{output.imageUrl}}" mode="aspectFill"></image>
                 </view>
-                <view wx:if="{{!batch.timelineOutputs.length && batch.timelineReferenceUrl}}" class="timeline-result">
+                <view wx:if="{{!batch.timelineOutputs.length && batch.timelineReferenceUrl}}" class="timeline-result" bindtap="previewTimelineReference" data-batch-index="{{timelineBatchIndex}}" aria-role="button" aria-label="预览本轮参考图">
                   <image src="{{batch.timelineReferenceUrl}}" mode="aspectFill"></image>
                 </view>
               </view>
@@ -121,7 +137,9 @@
                     <image src="/images/ai-studio-icons-v3/reference.png" mode="aspectFit"></image>
                     <text>参考图</text>
                   </view>
-                  <image wx:if="{{batch.timelineReferenceUrl}}" class="reference-preview" src="{{batch.timelineReferenceUrl}}" mode="aspectFill"></image>
+                  <view wx:if="{{batch.timelineReferences.length}}" class="reference-preview-grid">
+                    <image wx:for="{{batch.timelineReferences}}" wx:key="id" class="reference-preview" src="{{item.previewUrl}}" mode="aspectFit" bindtap="previewTimelineReference" data-batch-index="{{timelineBatchIndex}}" aria-role="button" aria-label="预览本轮参考图"></image>
+                  </view>
                 </view>
                 <view class="processing-prompt">
                   <view class="info-label">
@@ -267,8 +285,8 @@
   <view wx:if="{{finalizeMounted}}" class="sheet-root">
     <view class="modal-mask {{finalizeModalVisible ? 'open' : ''}}" catchtap="closeFinalizeModal"></view>
     <view class="dialog-panel {{finalizeModalVisible ? 'open' : ''}}" catchtap="noop">
-      <text class="dialog-title">设为定稿</text>
-      <text class="dialog-desc">客户档案与方案册将优先展示「{{view.publishedScheme.title}}」。定稿后仍可继续出图和更新。</text>
+      <text class="dialog-title">设为定稿方案</text>
+      <text class="dialog-desc">客户档案与方案册将优先展示「{{view.publishedScheme.title}}」。定稿是客户主推标记，后续仍可继续出图；如需冻结版本，请新建方案。</text>
       <view class="dialog-actions">
         <button class="dialog-btn" bindtap="closeFinalizeModal">取消</button>
         <button class="dialog-btn primary" bindtap="confirmFinalizeScheme" loading="{{finalizingScheme}}">确认定稿</button>

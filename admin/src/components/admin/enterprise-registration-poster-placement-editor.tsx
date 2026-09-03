@@ -85,8 +85,6 @@ export function EnterpriseRegistrationPosterPlacementEditor(props: {
   const dragRef = useRef<{ pointerId: number } | null>(null);
   const placementRef = useRef(props.value);
   const onChangeRef = useRef(props.onChange);
-  placementRef.current = props.value;
-  onChangeRef.current = props.onChange;
   const [metrics, setMetrics] = useState<DisplayMetrics>({
     offsetX: 0,
     offsetY: 0,
@@ -96,6 +94,11 @@ export function EnterpriseRegistrationPosterPlacementEditor(props: {
     naturalHeight: 0,
   });
   const [backgroundReady, setBackgroundReady] = useState(false);
+
+  useEffect(() => {
+    placementRef.current = props.value;
+    onChangeRef.current = props.onChange;
+  }, [props.value, props.onChange]);
 
   const backgroundUrl = `/api/platform/enterprise-registration-code-template-config/background?templateId=${encodeURIComponent(props.templateId)}`;
 

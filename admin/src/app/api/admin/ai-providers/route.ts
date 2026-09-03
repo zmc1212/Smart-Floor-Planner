@@ -8,6 +8,7 @@ import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { encryptedKeyFields, serializeProviderConfig, validateProviderPayload } from '@/lib/ai/provider-admin';
 import { ensureEnvironmentAiProviders } from '@/lib/ai/provider-registry';
+import { isPlatformLlmOverrideProvider } from '@/lib/ai/provider-types';
 
 export async function GET(request: Request) {
   try {
@@ -16,7 +17,12 @@ export async function GET(request: Request) {
       const providers = await withPlatformTransaction((transaction) =>
         new AiProviderConfigRepository(transaction).list()
       );
-      return NextResponse.json({ success: true, data: providers.map(serializeProviderConfig) });
+      return NextResponse.json({
+        success: true,
+        data: providers
+          .filter((provider) => !isPlatformLlmOverrideProvider(provider.key))
+          .map(serializeProviderConfig),
+      });
     });
   } catch (error) {
     console.error('[AI Providers GET]', error);

@@ -670,6 +670,9 @@ test('navigation measurement calibrates the entry-door azimuth before auto direc
   assert.match(editorLess, /navigation-calibration-dialog-in 240ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
   assert.match(editorLess, /\.navigation-calibration-cancel[\s\S]*?text-align:\s*center;/);
   assert.match(editorLess, /\.navigation-calibration-confirm[\s\S]*?margin-left:\s*16rpx;/);
+  assert.match(editorWxml, /class="navigation-calibration-disable"[\s\S]*?hover-class="navigation-calibration-disable-pressed"[\s\S]*?aria-label="关闭导航测量"/);
+  assert.match(editorLess, /\.navigation-calibration-disable\s*\{[\s\S]*?width:\s*100%;[\s\S]*?height:\s*72rpx;[\s\S]*?text-align:\s*center;/);
+  assert.match(editorLess, /\.navigation-calibration-disable-pressed\s*\{[\s\S]*?background:\s*#e4f0e7;/);
   assert.match(editorScript, /onCanvasTouchStart\(e\)[\s\S]*?navigationCalibrationVisible/);
   assert.match(editorScript, /onCanvasTap\(\)[\s\S]*?navigationCalibrationClosing/);
 });

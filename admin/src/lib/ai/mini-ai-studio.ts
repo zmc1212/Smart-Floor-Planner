@@ -268,14 +268,35 @@ export async function serializeCreationTaskForMini(
   task: CreationTaskView,
 ) {
   const serialized = serializePostgresCreationTask(task);
-  const imageUrls = serialized.batches.flatMap((batch) =>
-    batch.generations.map((generation) => generation.imageUrl)
-  );
+  const imageUrls = serialized.batches.flatMap((batch) => [
+    ...batch.generations.map((generation) => generation.imageUrl),
+    ...batch.referenceAssetIds.map((id) => `/api/ai/assets/${id}/image`),
+  ]);
   const displayByAssetId = await resolveStudioDisplayByAssetId(request, enterpriseId, imageUrls);
   return {
     ...serialized,
     batches: serialized.batches.map((batch) => ({
       ...batch,
+      referenceAssets: batch.referenceAssetIds.map((id) => {
+        const idText = String(id);
+        const snapshot = batch.parameterSnapshot && typeof batch.parameterSnapshot === 'object'
+          ? batch.parameterSnapshot as Record<string, unknown>
+          : {};
+        const sitePhotoIds = Array.isArray(snapshot.sitePhotoAssetIds)
+          ? snapshot.sitePhotoAssetIds.map(String)
+          : [];
+        return {
+          id: idText,
+          previewUrl: displayByAssetId.get(idText) || getSignedMiniAiAssetUrl({
+            request,
+            assetId: idText,
+            enterpriseId,
+            ttlSeconds: mediaAssetDisplayUrlTtlSeconds(),
+            alignDeadline: true,
+          }),
+          role: sitePhotoIds.includes(idText) ? 'site_photo' : 'baseline',
+        };
+      }),
       generations: batch.generations.map((generation) => ({
         ...generation,
         imageUrl: rewriteStudioImageUrl(request, enterpriseId, generation.imageUrl, displayByAssetId),

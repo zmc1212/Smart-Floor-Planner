@@ -17,9 +17,11 @@ const SINGLE_ROOM_RENDER_MODE = 'single_room_photo';
 const SOFT_FURNISHING_RENDER_MODE = 'soft_furnishing';
 const SCOPE_APPLY_NOTE = '只应用到当前选择，不会自动为其他房间生成，也不会产生额外扣点。';
 const COMPOSER_TOOL_ICONS = {
+  goal: '/images/ai-studio-icons-v3/floor-plan.png',
   scope: '/images/ai-studio-icons-v3/floor-plan.png',
   model: '/images/ai-studio-icons-v3/model.png',
   template: '/images/ai-studio-icons-v3/template.png',
+  reference: '/images/ai-studio-icons-v3/reference.png',
   settings: '/images/ai-studio-icons-v3/settings.png',
 };
 
@@ -150,36 +152,26 @@ function buildScopePickerOptions(scopes, draft, options = {}) {
 }
 
 function buildComposerToolbarItems(view) {
-  const items = [];
-  if (view && view.hasScopePicker) {
-    items.push({
-      key: 'scope',
-      type: 'scope',
-      label: view.scopeToolLabel || '户型',
-      icon: COMPOSER_TOOL_ICONS.scope,
-    });
-  }
-  items.push(
+  return [
     {
-      key: 'model',
-      type: 'model',
-      label: '模型',
-      icon: COMPOSER_TOOL_ICONS.model,
+      key: 'goal',
+      type: 'configuration',
+      label: view?.modeTitle || '设计目标',
+      icon: COMPOSER_TOOL_ICONS.goal,
     },
     {
       key: 'template',
-      type: 'template',
-      label: '模板',
+      type: 'configuration',
+      label: view?.templateDisplayName || '提示词模板',
       icon: COMPOSER_TOOL_ICONS.template,
     },
     {
-      key: 'settings',
-      type: 'settings',
-      label: '设置',
-      icon: COMPOSER_TOOL_ICONS.settings,
+      key: 'reference',
+      type: 'configuration',
+      label: `参考图 ${Math.max(0, Number(view?.referenceDisplayCount || 0))}张`,
+      icon: COMPOSER_TOOL_ICONS.reference,
     },
-  );
-  return items;
+  ];
 }
 
 function buildComposerPickerTitle(type) {
@@ -187,7 +179,7 @@ function buildComposerPickerTitle(type) {
   if (type === 'aspect') return '选择比例';
   if (type === 'resolution') return '选择分辨率';
   if (type === 'count') return '出图张数';
-  if (type === 'scope') return '应用到哪里';
+  if (type === 'scope') return '选择设计空间';
   return '';
 }
 
@@ -244,8 +236,27 @@ function buildDraftFromBatch(batch, bootstrap) {
   const sitePhotoAssetIds = new Set(
     hasPersistedSitePhotoIds ? parameterSnapshot.sitePhotoAssetIds.map((id) => String(id)) : [],
   );
-  const referenceAssets = (batch.referenceAssetIds || [])
-    .map((id) => ({ id, previewUrl: '' }))
+  // The Mini Program studio payload includes the signed preview alongside the
+  // persisted ids. Keep that URL when reopening a batch; using ids alone makes
+  // the edit sheet render every carried-over reference as a blank placeholder.
+  const previewByAssetId = new Map(
+    (Array.isArray(batch.referenceAssets) ? batch.referenceAssets : [])
+      .map((asset) => [String(asset?.id || ''), asset])
+      .filter(([id]) => id),
+  );
+  const referenceAssetIds = Array.isArray(batch.referenceAssetIds) && batch.referenceAssetIds.length
+    ? batch.referenceAssetIds
+    : (Array.isArray(batch.referenceAssets) ? batch.referenceAssets.map((asset) => asset?.id) : []);
+  const referenceAssets = referenceAssetIds
+    .map((id) => {
+      const persisted = previewByAssetId.get(String(id));
+      return {
+        id,
+        previewUrl: String(persisted?.previewUrl || ''),
+        ...(persisted?.role ? { role: persisted.role } : {}),
+      };
+    })
+    .filter((item) => item.id)
     .filter((item) => item.id && String(item.id) !== floorPlanControlAssetId);
   const targetScope = parameterSnapshot.targetScope === 'single_room' ? 'single_room' : WHOLE_FLOOR_SCOPE_KEY;
   return {
@@ -268,9 +279,9 @@ function buildDraftFromBatch(batch, bootstrap) {
     templateEditMode: parameterSnapshot.templateId ? 'full' : '',
     referenceAssets: referenceAssets.map((item) => ({
       ...item,
-      role: !hasPersistedSitePhotoIds || sitePhotoAssetIds.has(String(item.id))
+      role: item.role || (!hasPersistedSitePhotoIds || sitePhotoAssetIds.has(String(item.id))
         ? 'site_photo'
-        : 'baseline',
+        : 'baseline'),
     })),
     renderMode: parameterSnapshot.renderMode === SINGLE_ROOM_RENDER_MODE
       ? SINGLE_ROOM_RENDER_MODE
@@ -342,6 +353,15 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
     : '';
   const timelineReference = (draft.referenceAssets || []).find((item) => item.previewUrl);
   const timelineControlUrl = controlPreviewUrl || timelineReference?.previewUrl || '';
+  const modeTitle = renderMode === WHOLE_HOUSE_RENDER_MODE
+    ? '设计整屋'
+    : renderMode === SOFT_FURNISHING_RENDER_MODE
+      ? '单间 · 仅软装换搭'
+      : '设计单间';
+  const templateDisplayName = String(draft.templateName || '选择模板');
+  const referenceDisplayCount = referenceCount + (controlPreviewUrl ? 1 : 0);
+  const summaryPreviewUrl = String(draft.templatePreviewUrl || timelineReference?.previewUrl || controlPreviewUrl || '');
+  const modelSummaryLabel = model?.isDefault ? '默认模型' : (model?.name || '未选模型');
   let blockedReason = '';
   if (!modeConfirmed) blockedReason = '请先选择设计方式';
   else if (!sitePhotoReady) blockedReason = '请先添加现场图';
@@ -406,11 +426,7 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
     blockedReason,
     renderMode,
     modeConfirmed,
-    modeTitle: renderMode === WHOLE_HOUSE_RENDER_MODE
-      ? '设计整屋'
-      : renderMode === SOFT_FURNISHING_RENDER_MODE
-        ? '单间 · 仅软装换搭'
-        : '设计单间',
+    modeTitle,
     modeCopy: renderMode === WHOLE_HOUSE_RENDER_MODE
       ? '正式户型负责结构，现场图负责镜头'
       : '现场图锁定镜头与透视，默认不上传户型控制图',
@@ -425,8 +441,9 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
     sitePhotoRequired,
     hasScopePicker: scopes.length > 0,
     toolbarItems: buildComposerToolbarItems({
-      hasScopePicker: scopes.length > 0,
-      scopeToolLabel: sitePhotoRequired ? '空间' : '户型',
+      modeTitle,
+      templateDisplayName,
+      referenceDisplayCount,
     }),
     scopeLabel: singleRoomSelectionRequired && draft.targetScope !== 'single_room'
       ? '请选择空间'
@@ -445,7 +462,12 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
     countLabel: `${Math.max(1, Number(draft.count || 1))} 张`,
     referenceAssets: draft.referenceAssets || [],
     hasReferences: referenceCount > 0,
+    hasSitePhoto: (draft.referenceAssets || []).some((item) => item.role === 'site_photo'),
+    referenceDisplayCount,
+    summaryPreviewUrl,
+    templateDisplayName,
     canAddReference: referenceCount < maxRefs,
+    singleModeCanAddReference: referenceCount < Math.max(0, Math.trunc(Number(model?.maxReferenceImages) || 0)),
     hasControlPreview: Boolean(controlPreviewUrl),
     controlPreviewUrl,
     controlPreviewLabel: selectedScope && selectedScope.targetScope === 'single_room'
@@ -453,6 +475,8 @@ function buildComposerViewState(draft, bootstrap, options = {}) {
       : '完整户型控制图',
     timelineControlUrl,
     timelineControlLabel: timelineControlUrl ? '控制图 1' : '+ 控制图',
+    advancedSummary: `${modelSummaryLabel} · ${draft.resolutionTier || '1K'} · ${Math.max(1, Number(draft.count || 1))}张`,
+    estimatedCreditLabel: `预计 ${estimatedCredits} 点`,
     timelineCreditLabel: `算力余额 ${formatCompactBalance(balance)}`,
     creditSummary: creditsReady
       ? `预计消耗 ${estimatedCredits} 点 · 可用 ${balance} 点`

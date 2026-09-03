@@ -73,16 +73,6 @@ export async function runPostgresWorkflowChatTurn(input: {
 
     const creations = new AiCreationRepository(transaction);
     const generations = await creations.listGenerationsByWorkflowId(workflow.id);
-    const activeGeneration = generations.find((generation) =>
-      ['created', 'pending', 'processing'].includes(generation.status)
-    );
-    if (activeGeneration) {
-      throw Object.assign(new Error('当前对话仍有出图任务进行中，请稍候再试'), {
-        status: 409,
-        code: 'ACTIVE_GENERATION_EXISTS',
-        generationId: activeGeneration.id.toString(),
-      });
-    }
 
     const baseline = resolveConversationBaseline(generations, requestedBaselineId);
     const floorPlanContext = buildWorkflowFloorPlanContext(

@@ -248,17 +248,6 @@ async function resolveWorkflowCreationBinding(input: {
       });
     }
     if (floorPlan) assertEligibleWorkflowFloorPlan(floorPlan);
-    const generations = await new AiCreationRepository(transaction).listGenerationsByWorkflowId(workflow.id);
-    const activeGeneration = generations.find((generation) =>
-      ['created', 'pending', 'processing'].includes(generation.status)
-    );
-    if (activeGeneration) {
-      throw Object.assign(new Error('当前对话仍有出图任务进行中，请稍候再试'), {
-        status: 409,
-        code: 'ACTIVE_GENERATION_EXISTS',
-        generationId: activeGeneration.id.toString(),
-      });
-    }
     return {
       workflowId: workflow.id,
       leadId: workflow.leadId,

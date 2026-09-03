@@ -1,6 +1,12 @@
 export const AI_CAPABILITIES = ['chat', 'vision', 'image.generate', 'image.edit'] as const;
 export type AiCapability = (typeof AI_CAPABILITIES)[number];
 
+export const PLATFORM_LLM_OVERRIDE_PROVIDER_KEY = 'llm-settings-override';
+
+export function isPlatformLlmOverrideProvider(key: unknown) {
+  return key === PLATFORM_LLM_OVERRIDE_PROVIDER_KEY;
+}
+
 export const LOGICAL_MODEL_KEYS = [
   'chat.general',
   'vision.reference_analysis',

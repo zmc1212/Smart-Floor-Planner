@@ -274,7 +274,8 @@ function loadStudioPromptTemplates(params = {}) {
 }
 
 function assistStudioPrompt(payload) {
-  return api.request('/miniprogram/ai/studio/prompt-assist', 'POST', payload).then((res) => res.data);
+  // Reasoning models may need longer than the generic 30s API timeout.
+  return api.request('/miniprogram/ai/studio/prompt-assist', 'POST', payload, { timeout: 120000 }).then((res) => res.data);
 }
 
 module.exports = {

@@ -12,6 +12,7 @@ export type PlatformConfigValues = Pick<
   | 'miniProgramCodeConfig'
   | 'enterpriseRegistrationCodeTemplateConfig'
   | 'aiPromptConfig'
+  | 'llmConfig'
 >;
 
 export class PlatformConfigRepository {

@@ -2,7 +2,24 @@
   position: relative;
 }
 
+.composer-dock-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: rgba(12, 20, 16, 0.46);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 240ms ease-out;
+}
+
+.composer-dock-mask.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .composer-shell.dock {
+  position: relative;
+  z-index: 1;
   margin: 0 16rpx calc(16rpx + env(safe-area-inset-bottom));
   padding: 0;
   border-radius: 44rpx;
@@ -1773,7 +1790,7 @@
   border-radius: 999rpx;
   background: rgba(16, 22, 19, 0.62);
   color: #fff;
-  font-size: 20rpx;
+  font-size: 22rpx;
   font-weight: 650;
   line-height: 1.2;
 }
@@ -2087,7 +2104,7 @@
   border-radius: 8rpx;
   background: #f3f4f3;
   color: #8d948f;
-  font-size: 20rpx;
+  font-size: 22rpx;
   font-weight: 600;
 }
 
@@ -2635,4 +2652,889 @@
 
 .composer-shell.dock.timeline .dock-tool + .dock-tool {
   border-left-color: rgba(27, 125, 72, 0.12);
+}
+
+/* Consolidated composer V4
+ * Approved states:
+ * - design-references/ai-design/unified-entry-v2/18-studio-composer-expanded-mint-arc-v1.png
+ * - design-references/ai-design/unified-entry-v2/19-studio-composer-collapsed-mint-arc-v1.png
+ * - design-references/ai-design/unified-entry-v2/20-round-config-mint-arc-v2.png */
+.composer-shell.dock.composer-v4 {
+  margin: 0;
+  padding: 42rpx 10rpx 0;
+  border: 1rpx solid rgba(17, 156, 83, 0.12);
+  border-radius: 96rpx 96rpx 0 0;
+  background: linear-gradient(155deg, #effff6 0%, #dcf9e8 54%, #c6efd6 100%);
+  box-shadow: 0 -12rpx 36rpx rgba(29, 119, 70, 0.1);
+  overflow: hidden;
+  transition: none;
+}
+
+.composer-shell.dock.composer-v4.keyboard-open {
+  margin-bottom: 0;
+}
+
+.composer-arc-handle {
+  position: absolute;
+  top: 8rpx;
+  left: 50%;
+  width: 88rpx;
+  height: 30rpx;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.composer-arc-handle image {
+  width: 24rpx;
+  height: 24rpx;
+  opacity: 0.68;
+  transform: rotate(180deg);
+}
+
+.composer-v4.expanded .composer-arc-handle image {
+  width: 54rpx;
+  height: 12rpx;
+  border-radius: 99rpx;
+  background: #aeb6b1;
+  opacity: 0.82;
+}
+
+.composer-v4.expanded .composer-arc-handle image {
+  visibility: hidden;
+}
+
+.composer-v4.expanded .composer-arc-handle::after {
+  content: '';
+  width: 54rpx;
+  height: 6rpx;
+  border-radius: 99rpx;
+  background: #aeb6b1;
+}
+
+.composer-v4-surface {
+  width: 100%;
+  border-radius: 48rpx 48rpx 24rpx 24rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-sizing: border-box;
+}
+
+.composer-v4-empty {
+  min-height: 126rpx;
+  padding: 24rpx 26rpx calc(24rpx + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.composer-empty-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.composer-empty-copy text:first-child {
+  color: #17241c;
+  font-size: 28rpx;
+  font-weight: 760;
+}
+
+.composer-empty-copy text:last-child {
+  color: #7a857e;
+  font-size: 22rpx;
+}
+
+.composer-empty-action {
+  min-width: 136rpx;
+  height: 68rpx;
+  border-radius: 18rpx;
+  background: #06b960;
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.composer-v4-collapsed {
+  padding: 30rpx 20rpx calc(20rpx + env(safe-area-inset-bottom));
+}
+
+.collapsed-entry-row {
+  width: 100%;
+  min-height: 104rpx;
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.collapsed-config-entry {
+  min-width: 0;
+  flex: 1;
+  min-height: 104rpx;
+  padding: 0 18rpx 0 12rpx;
+  border: 1rpx solid #e2e7e3;
+  border-radius: 16rpx;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  box-sizing: border-box;
+}
+
+.collapsed-template-cover {
+  width: 76rpx;
+  height: 68rpx;
+  flex: none;
+  border-radius: 12rpx;
+  background: #eef3ef;
+  overflow: hidden;
+}
+
+.collapsed-template-cover.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.collapsed-template-cover.placeholder image {
+  width: 36rpx;
+  height: 36rpx;
+}
+
+.collapsed-summary-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.collapsed-summary-title {
+  overflow: hidden;
+  color: #18241d;
+  font-size: 26rpx;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collapsed-summary-meta {
+  overflow: hidden;
+  color: #7b857f;
+  font-size: 22rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collapsed-adjust {
+  height: 60rpx;
+  padding-left: 10rpx;
+  color: #00a958;
+  font-size: 24rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+}
+
+.collapsed-adjust image {
+  width: 22rpx;
+  height: 22rpx;
+}
+
+.collapsed-generate {
+  width: 160rpx;
+  height: 104rpx;
+  flex: none;
+  border-radius: 16rpx;
+  background: #08b961;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.collapsed-generate.blocked,
+.expanded-generate.blocked {
+  background: #a9d9b8;
+}
+
+.collapsed-generate text {
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.composer-cost-strip {
+  min-height: 54rpx;
+  margin-top: 14rpx;
+  padding: 0 16rpx;
+  border-radius: 14rpx;
+  background: linear-gradient(90deg, #f7f8f7 0%, #fafafa 100%);
+  color: #6c7770;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.composer-v4-expanded {
+  padding: 34rpx 32rpx calc(20rpx + env(safe-area-inset-bottom));
+}
+
+.composer-v4-heading {
+  min-height: 58rpx;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.composer-v4-heading > text {
+  color: #17231b;
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.composer-v4-heading > view {
+  padding: 4rpx 0 12rpx 20rpx;
+  color: #00a858;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.quick-config-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10rpx;
+}
+
+.quick-config-card {
+  min-width: 0;
+  height: 98rpx;
+  padding: 0 10rpx;
+  border: 1rpx solid #e1e7e3;
+  border-radius: 14rpx;
+  background: #f7f9f7;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  box-sizing: border-box;
+}
+
+.quick-config-card > image:first-child {
+  width: 34rpx;
+  height: 34rpx;
+  flex: none;
+}
+
+.quick-config-card > text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #27332c;
+  font-size: 22rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-config-card .quick-config-chevron {
+  width: 18rpx;
+  height: 18rpx;
+  flex: none;
+}
+
+/* A quick entry doubles as a compact configuration receipt. Keep configured
+ * choices visually distinct and switch the existing artwork/text to white
+ * so the green state reads as one selected surface. */
+.quick-config-card.configured {
+  border-color: #08b969;
+  background: #08b969;
+  box-shadow: 0 4rpx 12rpx rgba(8, 185, 105, 0.14);
+}
+
+.quick-config-card.configured > image,
+.quick-config-card.configured .quick-config-chevron {
+  filter: brightness(0) invert(1);
+  opacity: 1;
+}
+
+.quick-config-card.configured > text {
+  color: #fff;
+}
+
+.design-requirement-head {
+  min-height: 106rpx;
+  margin-top: 14rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.design-requirement-head > view {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.design-requirement-head > view:first-child text {
+  color: #17231b;
+  font-size: 28rpx;
+  font-weight: 760;
+}
+
+.design-requirement-head > view:first-child image {
+  width: 22rpx;
+  height: 22rpx;
+  opacity: 0.62;
+}
+
+.design-requirement-head .prompt-assist {
+  min-height: 54rpx;
+  color: #00a858;
+  font-size: 24rpx;
+}
+
+.prompt-assist image {
+  width: 26rpx;
+  height: 26rpx;
+}
+
+.prompt-assist.disabled {
+  opacity: 0.55;
+}
+
+.expanded-prompt-field {
+  height: 232rpx;
+  border: 1rpx solid #e2e7e3;
+  border-radius: 18rpx;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.expanded-prompt-input {
+  width: 100%;
+  height: 188rpx;
+  min-height: 188rpx;
+  padding: 20rpx;
+  color: #2c3731;
+  font-size: 24rpx;
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+
+.expanded-prompt-count {
+  height: 44rpx;
+  padding: 0 16rpx 12rpx;
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  background: #fff;
+  color: #a1a8a3;
+  font-size: 22rpx;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.template-source-footer {
+  min-height: 66rpx;
+  padding: 4rpx 2rpx 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.template-source-footer > view:first-child {
+  min-width: 0;
+  flex: 1;
+  color: #65716a;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.template-source-footer > view:first-child image {
+  width: 22rpx;
+  height: 22rpx;
+  padding: 3rpx;
+  border-radius: 50%;
+  background: #08b969;
+  box-sizing: border-box;
+}
+
+.template-source-footer > view:last-child,
+.template-source-footer.manual > view {
+  height: 50rpx;
+  padding: 0 16rpx;
+  border: 1rpx solid #cbd2cd;
+  border-radius: 14rpx;
+  color: #4c5750;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.template-source-footer.manual > text {
+  color: #7a857e;
+  font-size: 22rpx;
+}
+
+.composer-cost-strip.expanded {
+  margin-top: 2rpx;
+}
+
+.expanded-generate {
+  height: 86rpx;
+  margin-top: 18rpx;
+  border-radius: 16rpx;
+  background: #07b85f;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+}
+
+.expanded-generate image {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.expanded-generate text {
+  font-size: 28rpx;
+  font-weight: 740;
+}
+
+.sheet-panel.mode-picker-panel.config-sheet {
+  /* Keep the action footer in the initial viewport. The content list may
+   * scroll, but the primary save action must never be hidden inside it. */
+  height: calc(100vh - 120rpx);
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  padding: 42rpx 10rpx 0;
+  border-radius: 100rpx 100rpx 0 0;
+  background: linear-gradient(150deg, #eafff2 0%, #d8f8e5 48%, #bfeecf 100%);
+  box-shadow: 0 -12rpx 36rpx rgba(24, 101, 59, 0.12);
+  overflow: hidden;
+}
+
+.config-arc-handle {
+  position: absolute;
+  top: 16rpx;
+  left: 50%;
+  width: 54rpx;
+  height: 6rpx;
+  border-radius: 99rpx;
+  background: #9eaaa3;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.config-sheet-surface {
+  height: auto;
+  min-height: 0;
+  flex: 1;
+  padding: 34rpx 52rpx calc(24rpx + env(safe-area-inset-bottom));
+  border-radius: 54rpx 54rpx 0 0;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.config-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6rpx;
+}
+
+.config-title {
+  color: #17231b;
+  font-size: 36rpx;
+  font-weight: 820;
+}
+
+.config-subtitle {
+  color: #7c8580;
+  font-size: 22rpx;
+}
+
+.config-section-label {
+  min-height: 48rpx;
+  margin-top: 14rpx;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.config-section-label > text {
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  background: #08b969;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.config-section-label > view {
+  color: #26322b;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.config-goal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24rpx;
+}
+
+.config-goal-card {
+  position: relative;
+  height: 140rpx;
+  border: 1rpx solid #e1e7e3;
+  border-radius: 18rpx;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  box-sizing: border-box;
+}
+
+.config-goal-card.active {
+  border: 2rpx solid #09b968;
+  background: #f3fff8;
+}
+
+.config-goal-card > image {
+  width: 54rpx;
+  height: 54rpx;
+}
+
+.config-goal-card > image.single {
+  filter: grayscale(1) brightness(0.45);
+}
+
+.config-goal-card > text {
+  color: #202d25;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.config-check {
+  position: absolute;
+  top: 10rpx;
+  right: 10rpx;
+  width: 28rpx;
+  height: 28rpx;
+  border: 1rpx solid #dfe5e1;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.config-check image {
+  display: none;
+  width: 20rpx;
+  height: 20rpx;
+}
+
+.config-goal-card.active .config-check {
+  border-color: #08b969;
+  background: #08b969;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.config-goal-card.active .config-check image {
+  display: block;
+}
+
+.config-linked-row,
+.config-template-row,
+.config-more-row {
+  min-height: 64rpx;
+  margin-top: 12rpx;
+  padding: 0 14rpx;
+  border: 1rpx solid #edf0ee;
+  border-radius: 14rpx;
+  background: #f8faf8;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  box-sizing: border-box;
+}
+
+.config-linked-row > image {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.config-linked-row > text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: #29352e;
+  font-size: 22rpx;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-linked-row > view,
+.config-template-change {
+  color: #00a858;
+  font-size: 22rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+}
+
+.config-linked-row > view image,
+.config-template-change image {
+  width: 18rpx;
+  height: 18rpx;
+}
+
+.config-template-row {
+  min-height: 108rpx;
+  margin-top: 0;
+  padding: 8rpx 12rpx;
+  border-color: #09b968;
+  background: #f7fffa;
+}
+
+.config-template-row > image,
+.config-template-placeholder {
+  width: 82rpx;
+  height: 68rpx;
+  flex: none;
+  border-radius: 10rpx;
+  background: #eef4ef;
+  overflow: hidden;
+}
+
+.config-template-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.config-template-placeholder image {
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.config-template-copy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.config-template-copy text:first-child {
+  overflow: hidden;
+  color: #202d25;
+  font-size: 22rpx;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-template-copy text:last-child {
+  color: #08a95d;
+  font-size: 22rpx;
+}
+
+.config-template-clear {
+  padding: 14rpx 0 14rpx 8rpx;
+  color: #7e8781;
+  font-size: 22rpx;
+}
+
+.config-reference-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+}
+
+.config-reference-card,
+.config-reference-add {
+  position: relative;
+  min-width: 0;
+  height: 188rpx;
+  padding: 8rpx;
+  border: 1rpx solid #e2e7e3;
+  border-radius: 14rpx;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.config-reference-image {
+  width: 100%;
+  height: 112rpx;
+  border-radius: 9rpx;
+  background: #eef2ef;
+}
+
+.config-reference-image.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.config-reference-image.placeholder image {
+  width: 34rpx;
+  height: 34rpx;
+}
+
+.config-reference-card > text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-reference-card > text:nth-last-child(2) {
+  margin-top: 5rpx;
+  color: #26322b;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.config-reference-card > text:last-child {
+  margin-top: 2rpx;
+  color: #8a938d;
+  font-size: 22rpx;
+}
+
+.reference-lock,
+.config-reference-card .reference-remove {
+  position: absolute;
+  top: 12rpx;
+  right: 12rpx;
+  width: 28rpx;
+  height: 28rpx;
+  border-radius: 50%;
+  background: rgba(52, 61, 56, 0.8);
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 28rpx;
+  text-align: center;
+  z-index: 2;
+}
+
+.config-reference-add {
+  border-style: dashed;
+  color: #8b948e;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+}
+
+.config-reference-add image {
+  width: 32rpx;
+  height: 32rpx;
+  opacity: 0.66;
+}
+
+.config-reference-add text {
+  font-size: 22rpx;
+}
+
+.config-reference-warning {
+  display: block;
+  margin-top: 8rpx;
+  color: #b16c1f;
+  font-size: 22rpx;
+}
+
+.config-more-row {
+  min-height: 72rpx;
+  margin-top: 18rpx;
+  background: #fff;
+}
+
+.config-more-row > image {
+  width: 26rpx;
+  height: 26rpx;
+}
+
+.config-more-row > text {
+  flex: 1;
+  color: #29352e;
+  font-size: 22rpx;
+}
+
+.config-more-row > view {
+  color: #5f6b64;
+  font-size: 22rpx;
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.config-more-row > view image {
+  width: 18rpx;
+  height: 18rpx;
+}
+
+.config-save {
+  height: 74rpx;
+  flex: none;
+  margin: 18rpx 52rpx calc(24rpx + env(safe-area-inset-bottom));
+  border-radius: 14rpx;
+  background: #06b75e;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+}
+
+.config-save image {
+  width: 28rpx;
+  height: 28rpx;
+}
+
+.config-save text {
+  font-size: 26rpx;
+  font-weight: 720;
+}
+
+@media (max-width: 360px) {
+  .composer-v4-expanded {
+    padding-right: 24rpx;
+    padding-left: 24rpx;
+  }
+
+  .config-sheet-surface {
+    padding-right: 32rpx;
+    padding-left: 32rpx;
+  }
+
+  .config-save {
+    margin-right: 32rpx;
+    margin-left: 32rpx;
+  }
 }

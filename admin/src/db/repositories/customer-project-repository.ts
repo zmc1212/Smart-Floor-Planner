@@ -7,6 +7,7 @@ import {
   enterpriseAppointmentSettings,
   enterprises,
   floorPlans,
+  leadLifecycleEvents,
   leads,
   measurementAppointments,
   users,
@@ -366,7 +367,7 @@ export class CustomerProjectRepository {
     publishedBy: bigint;
   }) {
     const leadRows = await this.transaction
-      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt, status: leads.status })
+      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt, status: leads.status, finalizedWorkflowId: leads.finalizedWorkflowId })
       .from(leads)
       .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
       .for('update')
@@ -414,7 +415,7 @@ export class CustomerProjectRepository {
     withdrawnBy: bigint;
   }) {
     const leadRows = await this.transaction
-      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt, status: leads.status })
+      .select({ id: leads.id, assignedTo: leads.assignedTo, archivedAt: leads.archivedAt, status: leads.status, finalizedWorkflowId: leads.finalizedWorkflowId })
       .from(leads)
       .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
       .for('update')
@@ -434,7 +435,36 @@ export class CustomerProjectRepository {
         isNull(aiGenerationPublications.withdrawnAt)
       ))
       .returning();
-    return { kind: rows[0] ? 'withdrawn' as const : 'publication_not_found' as const, lead, publication: rows[0] ?? null };
+    if (!rows[0]) return { kind: 'publication_not_found' as const, lead, publication: null };
+
+    const publicationWorkflowId = rows[0].workflowId;
+    if (lead.finalizedWorkflowId !== null && publicationWorkflowId !== null && lead.finalizedWorkflowId === publicationWorkflowId) {
+      const remaining = await this.transaction
+        .select({ id: aiGenerationPublications.id })
+        .from(aiGenerationPublications)
+        .where(and(
+          eq(aiGenerationPublications.enterpriseId, input.enterpriseId),
+          eq(aiGenerationPublications.leadId, input.leadId),
+          eq(aiGenerationPublications.workflowId, publicationWorkflowId),
+          isNull(aiGenerationPublications.withdrawnAt),
+        ))
+        .limit(1);
+      if (!remaining[0]) {
+        const now = new Date();
+        await this.transaction.update(leads).set({ finalizedWorkflowId: null, finalizedAt: null, finalizedBy: null, updatedAt: now }).where(eq(leads.id, input.leadId));
+        await this.transaction.insert(leadLifecycleEvents).values({
+          enterpriseId: input.enterpriseId,
+          leadRecordId: input.leadId,
+          actorId: input.withdrawnBy,
+          actorUserId: null,
+          actorReferrerMembershipId: null,
+          action: 'scheme_unfinalized',
+          reason: '最后一张客户可见效果图已撤回',
+          metadata: { workflowId: publicationWorkflowId.toString(), trigger: 'last_publication_withdrawn' },
+        });
+      }
+    }
+    return { kind: 'withdrawn' as const, lead, publication: rows[0] };
   }
 
   async publishScheme(input: {
@@ -730,6 +760,16 @@ export class CustomerProjectRepository {
           updatedAt: now,
         })
         .where(eq(leads.id, input.leadId));
+      await this.transaction.insert(leadLifecycleEvents).values({
+        enterpriseId: input.enterpriseId,
+        leadRecordId: input.leadId,
+        actorId: input.withdrawnBy,
+        actorUserId: null,
+        actorReferrerMembershipId: null,
+        action: 'scheme_unfinalized',
+        reason: '撤回定稿方案',
+        metadata: { workflowId: input.workflowId.toString(), trigger: 'scheme_withdrawn' },
+      });
     }
 
     return { kind: 'withdrawn' as const, lead, publications: rows };
@@ -747,6 +787,7 @@ export class CustomerProjectRepository {
         assignedTo: leads.assignedTo,
         archivedAt: leads.archivedAt,
         status: leads.status,
+        finalizedWorkflowId: leads.finalizedWorkflowId,
       })
       .from(leads)
       .where(and(eq(leads.id, input.leadId), eq(leads.enterpriseId, input.enterpriseId)))
@@ -790,6 +831,20 @@ export class CustomerProjectRepository {
         updatedAt: now,
       })
       .where(eq(leads.id, input.leadId));
+
+    await this.transaction.insert(leadLifecycleEvents).values({
+      enterpriseId: input.enterpriseId,
+      leadRecordId: input.leadId,
+      actorId: input.finalizedBy,
+      actorUserId: null,
+      actorReferrerMembershipId: null,
+      action: 'scheme_finalized',
+      reason: null,
+      metadata: {
+        workflowId: input.workflowId.toString(),
+        previousWorkflowId: lead.finalizedWorkflowId?.toString() || null,
+      },
+    });
 
     return { kind: 'finalized' as const, lead };
   }

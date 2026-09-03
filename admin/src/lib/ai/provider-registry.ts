@@ -5,6 +5,7 @@ import {
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import {
+  isPlatformLlmOverrideProvider,
   normalizeModelMappings,
   toStoredModelMappings,
   type AiCapability,
@@ -135,6 +136,7 @@ export async function listProviderRuntimes(capability: AiCapability, logicalMode
   );
 
   return configs
+    .filter((config) => !isPlatformLlmOverrideProvider(config.key))
     .filter((config) => Boolean(normalizeModelMappings(config.modelMappings)[logicalModelKey]))
     .sort((left, right) => {
       const leftFallback = left.key.endsWith('-fallback');
@@ -154,13 +156,17 @@ export async function listProviderRuntimesByAdapter(capability: AiCapability, ad
     })
   );
 
-  return configs.map(toProviderRuntime);
+  return configs
+    .filter((config) => !isPlatformLlmOverrideProvider(config.key))
+    .map(toProviderRuntime);
 }
 
 export async function getProviderRuntimeById(id: string) {
   const config = await withPlatformTransaction((transaction) =>
     new AiProviderConfigRepository(transaction).findById(BigInt(id))
   );
-  if (!config) throw httpError('AI 供应商配置不存在', 404);
+  if (!config || isPlatformLlmOverrideProvider(config.key)) {
+    throw httpError('AI 供应商配置不存在', 404);
+  }
   return toProviderRuntime(config);
 }

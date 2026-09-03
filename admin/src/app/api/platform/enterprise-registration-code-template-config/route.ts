@@ -3,6 +3,7 @@ import {
   ENTERPRISE_REGISTRATION_TEMPLATE_LABELS,
   getPlatformEnterpriseRegistrationCodeTemplateConfig,
   savePlatformEnterpriseRegistrationCodeTemplateConfig,
+  type EnterpriseRegistrationQrPlacement,
 } from '@/lib/platform-enterprise-registration-code-template-config';
 import { withTenantRoute } from '@/lib/tenant-route';
 
@@ -38,12 +39,7 @@ export async function PATCH(request: Request) {
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const body = (await request.json()) as {
         templateId?: unknown;
-        qrPlacement?: {
-          centerX?: unknown;
-          centerY?: unknown;
-          diameter?: unknown;
-          shape?: unknown;
-        };
+        qrPlacement?: Partial<EnterpriseRegistrationQrPlacement>;
       };
       const data = await savePlatformEnterpriseRegistrationCodeTemplateConfig({
         templateId: body.templateId as never,

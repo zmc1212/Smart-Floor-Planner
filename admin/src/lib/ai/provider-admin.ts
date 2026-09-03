@@ -1,6 +1,6 @@
 import { encryptText, maskSecret } from '@/lib/crypto';
 import type { AiProviderConfigRecord } from '@/db/repositories';
-import { AI_CAPABILITIES, LOGICAL_MODEL_KEYS, normalizeModelMappings, toStoredModelMappings, type AiCapability, type AiLogicalModelKey, type AiProviderAdapterType } from './provider-types';
+import { AI_CAPABILITIES, LOGICAL_MODEL_KEYS, isPlatformLlmOverrideProvider, normalizeModelMappings, toStoredModelMappings, type AiCapability, type AiLogicalModelKey, type AiProviderAdapterType } from './provider-types';
 import { getProviderAdapterManifest, validateProviderAdapterConfig } from './provider-adapter-manifest';
 
 export function serializeProviderConfig(provider: AiProviderConfigRecord | Record<string, unknown>) {
@@ -49,6 +49,7 @@ export function validateProviderPayload(
   if (!partial || body.key !== undefined) {
     const key = String(body.key || '').trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9-]{1,49}$/.test(key)) throw new Error('供应商标识仅支持 2-50 位小写字母、数字和连字符');
+    if (isPlatformLlmOverrideProvider(key)) throw new Error('该供应商标识由 LLM 大模型配置专用');
     result.key = key;
   }
   if (!partial || body.name !== undefined) {
