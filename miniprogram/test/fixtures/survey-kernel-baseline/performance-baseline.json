@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "environment": {
+    "node": "v24.9.0",
+    "platform": "win32",
+    "arch": "x64",
+    "cpuModel": "Intel(R) Core(TM) Ultra 7 265K",
+    "logicalCpuCount": 20,
+    "gcExposed": true
+  },
+  "scenario": {
+    "columns": 20,
+    "rows": 12,
+    "nodes": 273,
+    "walls": 512,
+    "spaces": 240,
+    "openings": 0
+  },
+  "metrics": [
+    {
+      "name": "cloneDraft",
+      "iterations": 30,
+      "minMs": 0.432,
+      "medianMs": 0.48,
+      "p95Ms": 0.926,
+      "maxMs": 1.685
+    },
+    {
+      "name": "quickValidation",
+      "iterations": 30,
+      "minMs": 0.289,
+      "medianMs": 0.357,
+      "p95Ms": 1.267,
+      "maxMs": 1.831
+    },
+    {
+      "name": "fullValidation",
+      "iterations": 8,
+      "minMs": 11.638,
+      "medianMs": 12.78,
+      "p95Ms": 15.471,
+      "maxMs": 15.471
+    },
+    {
+      "name": "wallReadModels",
+      "iterations": 20,
+      "minMs": 65.703,
+      "medianMs": 70.495,
+      "p95Ms": 81.7,
+      "maxMs": 88.538
+    },
+    {
+      "name": "spaceReadModels",
+      "iterations": 8,
+      "minMs": 33.918,
+      "medianMs": 36.437,
+      "p95Ms": 51.474,
+      "maxMs": 51.474
+    }
+  ],
+  "memory": {
+    "retainedCloneCount": 8,
+    "heapUsedBeforeBytes": 5958608,
+    "heapUsedPeakBytes": 9682576,
+    "heapUsedAfterGcBytes": 6210288,
+    "retainedHeapDeltaBytes": 3723968
+  },
+  "thresholds": {
+    "policy": "time = max(4 x observed p95, observed max + 25 ms); retained heap = max(4 x observed delta, observed delta + 16 MiB)",
+    "metricsMs": {
+      "cloneDraft": 27,
+      "quickValidation": 27,
+      "fullValidation": 62,
+      "wallReadModels": 327,
+      "spaceReadModels": 206
+    },
+    "retainedHeapDeltaBytes": 20501184
+  }
+}

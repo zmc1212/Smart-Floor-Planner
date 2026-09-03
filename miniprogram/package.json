@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "check:survey-kernel-baseline": "node scripts/capture-survey-kernel-baseline.js && node scripts/audit-survey-kernel.js",
+    "benchmark:survey-kernel": "node --expose-gc scripts/benchmark-survey-kernel.js",
+    "test:survey-kernel-phase0": "npm run check:survey-kernel-baseline && node --test test/survey-kernel-phase0-baseline.test.js && npm --prefix ../surveying-h5 test && npm run benchmark:survey-kernel"
   },
   "keywords": [],
   "author": "",
