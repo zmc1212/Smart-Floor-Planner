@@ -120,6 +120,38 @@ test('content-centering offset keeps the rotated survey bounds centered', () => 
   assert.equal(rotated.rotationRad, Math.PI / 2);
 });
 
+test('navigation content fit keeps the closed plan, active wall, and cursor inside one centered view', () => {
+  const rect = { width: 390, height: 844 };
+  const points = [
+    { xMm: 0, yMm: 0 },
+    { xMm: 3385, yMm: 0 },
+    { xMm: 3385, yMm: 5825 },
+    { xMm: 0, yMm: 5825 },
+    { xMm: 3385, yMm: -4489 }
+  ];
+  const insets = { left: 56, right: 72, top: 156, bottom: 132 };
+  const viewport = { scale: 0.08, offsetX: 0, offsetY: 0, rotationRad: 0 };
+  const fitted = surveyCanvasRenderer.resolveViewportForContentFit(
+    rect,
+    points,
+    viewport,
+    Math.PI / 2,
+    insets
+  );
+  const projected = points.map((point) => surveyCanvasRenderer.projectSurveyPoint(point, fitted, rect));
+  const minX = Math.min(...projected.map((point) => point.x));
+  const maxX = Math.max(...projected.map((point) => point.x));
+  const minY = Math.min(...projected.map((point) => point.y));
+  const maxY = Math.max(...projected.map((point) => point.y));
+  assert.ok(fitted.scale < viewport.scale, 'wide rotated content should zoom out');
+  assert.ok(minX >= insets.left - 1e-6);
+  assert.ok(maxX <= rect.width - insets.right + 1e-6);
+  assert.ok(minY >= insets.top - 1e-6);
+  assert.ok(maxY <= rect.height - insets.bottom + 1e-6);
+  almostEqual((minX + maxX) / 2, (insets.left + rect.width - insets.right) / 2, 1e-6);
+  almostEqual((minY + maxY) / 2, (insets.top + rect.height - insets.bottom) / 2, 1e-6);
+});
+
 test('pinch anchor offset with rotation keeps the millimetre point under the canvas point', () => {
   const rect = { width: 390, height: 650 };
   const rotationRad = -Math.PI / 7;

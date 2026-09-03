@@ -83,7 +83,12 @@ copy back to `layoutData`.
   the raw compass value can never become a diagonal canvas rotation. Axis changes
   rotate along the shortest arc over `420ms` with an ease-out curve and an
   inverse visual sign so the plan counter-rotates against phone movement,
-  instead of snapping to the target. Disabling navigation eases back to
+  instead of snapping to the target. Navigation-triggered frames fit the closed
+  plan, active wall chain, preview/closure points, and current cursor as one
+  centred spatial context inside the usable canvas. They retain the current
+  scale when that complete context fits and only zoom out when necessary.
+  Manual rotation and disabling navigation retain their existing whole-content
+  centering. Disabling navigation eases back to
   `viewRotationDeg = 0`.
   Compass is the primary heading source and device
   motion is its fallback through `surveyDeviceOrientation.sharedHeadingSensorHub`;

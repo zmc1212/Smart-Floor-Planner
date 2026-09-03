@@ -302,6 +302,14 @@ Manual clockwise/counterclockwise rotation in `packages/surveying/editor/surveyi
 recenters the rotated bounds of the current survey nodes and active preview point.
 An empty draft retains screen-centre world-point compensation. This is view-only:
 graph geometry, routes, APIs, permissions, and persisted viewport fields are unchanged.
+Navigation-measurement axis changes use a different viewport policy from those
+manual controls: each `420ms` rotation fits the closed plan, active wall chain,
+preview/closure points, and current cursor into one centred spatial context in
+the usable canvas. The current scale is retained when the complete context fits;
+otherwise the view only zooms out far enough to keep it visible. Navigation
+disable still returns to the existing whole-content-centred, unrotated view.
+Markup, styling, BLE semantics, graph persistence, routes, APIs, and permissions
+are unchanged.
 The paired left-side actions use separate generated transparent PNGs at
 `packages/surveying/assets/icons/angle/{rotate-counterclockwise-v2,rotate-clockwise-v2}.png`
 with a `24rpx` vertical gap supplied by the first button's explicit margin rather

@@ -156,6 +156,12 @@ const FOLLOW_ROTATION_SETTLE_MS = 280;
 const VIEW_ROTATION_RESET_MS = 220;
 const NAVIGATION_VIEW_ROTATION_MS = 420;
 const NAVIGATION_VIEW_ROTATION_THRESHOLD_DEG = 20;
+const NAVIGATION_VIEW_FIT_INSETS_PX = Object.freeze({
+  left: 56,
+  right: 72,
+  top: 156,
+  bottom: 132
+});
 const MANUAL_VIEW_ROTATION_STEP_DEG = 90;
 const COMPASS_DISPLAY_MIN_INTERVAL_MS = 120;
 const COMPASS_DISPLAY_MIN_DELTA_DEG = 2;
@@ -1993,7 +1999,10 @@ Page({
       compassFollowActive: true,
       navigationBearingLabel: `${Math.round(this.navigationEntryDoorAzimuthDeg)}°`
     });
-    this.animateViewRotationTo(0, { durationMs: NAVIGATION_VIEW_ROTATION_MS });
+    this.animateViewRotationTo(0, {
+      durationMs: NAVIGATION_VIEW_ROTATION_MS,
+      fitContent: true
+    });
     this.startBleDirectionAutoPick().then((started) => {
       if (started) return;
       this.navigationMeasurementActive = false;
@@ -2320,7 +2329,10 @@ Page({
       );
       if (rotationDelta >= NAVIGATION_VIEW_ROTATION_THRESHOLD_DEG) {
         this.navigationViewBearingDeg = nextBearing;
-        this.animateViewRotationTo(nextRotation, { durationMs: NAVIGATION_VIEW_ROTATION_MS });
+        this.animateViewRotationTo(nextRotation, {
+          durationMs: NAVIGATION_VIEW_ROTATION_MS,
+          fitContent: true
+        });
       }
     }
     // Navigation measurement owns the canvas heading only. Direction arrows
@@ -2546,10 +2558,11 @@ Page({
 
   /**
    * Applies a view rotation through the lightweight gesture-frame path.
-   * Existing survey content recenters as it rotates; an empty draft keeps the
-   * former screen-centre world-point compensation.
+   * Manual rotation recenters at the current scale. Navigation rotation treats
+   * the closed plan, active chain, and cursor as one fitted spatial context.
    */
-  applyTransientViewRotation(rotationDeg) {
+  applyTransientViewRotation(rotationDeg, options) {
+    const opts = options || {};
     const nextDeg = Number(rotationDeg) || 0;
     const currentViewport = this.getViewport();
     const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
@@ -2561,9 +2574,18 @@ Page({
       currentViewport,
       nextRotationRad
     );
-    const compensated = points.length
+    let compensated = points.length
       ? centered
       : surveyCanvasRenderer.compensateViewportOffsetForRotation(currentViewport, nextRotationRad);
+    if (opts.fitContent && points.length) {
+      compensated = surveyCanvasRenderer.resolveViewportForContentFit(
+        this.canvasRect || { width: 0, height: 0 },
+        points,
+        currentViewport,
+        nextRotationRad,
+        NAVIGATION_VIEW_FIT_INSETS_PX
+      );
+    }
     if (!this.viewportInteraction && !this.beginViewportInteraction()) return false;
     this.viewRotationDeg = nextDeg;
     this.updateViewportInteraction({
@@ -2575,7 +2597,8 @@ Page({
     return true;
   },
 
-  applyViewRotationImmediate(rotationDeg) {
+  applyViewRotationImmediate(rotationDeg, options) {
+    const opts = options || {};
     const nextDeg = Number(rotationDeg) || 0;
     const currentViewport = this.getViewport();
     const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
@@ -2587,9 +2610,18 @@ Page({
       currentViewport,
       nextRotationRad
     );
-    const compensated = points.length
+    let compensated = points.length
       ? centered
       : surveyCanvasRenderer.compensateViewportOffsetForRotation(currentViewport, nextRotationRad);
+    if (opts.fitContent && points.length) {
+      compensated = surveyCanvasRenderer.resolveViewportForContentFit(
+        this.canvasRect || { width: 0, height: 0 },
+        points,
+        currentViewport,
+        nextRotationRad,
+        NAVIGATION_VIEW_FIT_INSETS_PX
+      );
+    }
     this.viewRotationDeg = nextDeg;
     if (!this.draft) return;
     this.draft = surveyGraph.updateViewport(
@@ -2667,7 +2699,7 @@ Page({
     // Rotate home along the shortest visual arc regardless of accumulated turns.
     const endDeg = startDeg + surveyDeviceOrientation.shortestArcDeg(target - startDeg);
     const fallbackToImmediate = () => {
-      this.applyViewRotationImmediate(target);
+      this.applyViewRotationImmediate(target, { fitContent: opts.fitContent });
       this.updateCompassDisplay(true);
     };
     if (Math.abs(endDeg - startDeg) < 0.5) {
@@ -2693,7 +2725,7 @@ Page({
       const progress = Math.min(1, (Date.now() - startedAt) / durationMs);
       if (progress >= 1) {
         this.viewRotationAnimation = null;
-        this.applyTransientViewRotation(target);
+        this.applyTransientViewRotation(target, { fitContent: opts.fitContent });
         this.finishViewportInteraction({ sync: true, persist: true });
         this.updateCompassDisplay(true);
         return;
@@ -2701,7 +2733,10 @@ Page({
       // Exponential-feeling ease-out keeps the wall plan spatially legible:
       // it responds immediately, then decelerates into the calibrated bearing.
       const eased = 1 - Math.pow(1 - progress, 4);
-      this.applyTransientViewRotation(startDeg + (endDeg - startDeg) * eased);
+      this.applyTransientViewRotation(
+        startDeg + (endDeg - startDeg) * eased,
+        { fitContent: opts.fitContent }
+      );
       raf(step);
     };
     step();
@@ -5272,6 +5307,12 @@ Page({
           points.push({ xMm: Number(point.xMm), yMm: Number(point.yMm) });
         }
       });
+    const cursorPoint = floor && session
+      ? surveyGraph.getCursorDisplayPoint(floor, session)
+      : null;
+    if (cursorPoint && Number.isFinite(Number(cursorPoint.xMm)) && Number.isFinite(Number(cursorPoint.yMm))) {
+      points.push({ xMm: Number(cursorPoint.xMm), yMm: Number(cursorPoint.yMm) });
+    }
     return points;
   },
 

@@ -604,7 +604,7 @@ test('editor wires the heading-follow mode into gestures, compass, and lifecycle
   assert.match(editorScript, /onCompassTap\(\)/);
   assert.match(editorScript, /this\.openNavigationCalibration\(\)/);
   assert.match(editorScript, /onNavigationMeasurementDisable\(\)/);
-  assert.match(editorScript, /animateViewRotationTo\(0, \{ durationMs: NAVIGATION_VIEW_ROTATION_MS \}\)/);
+  assert.match(editorScript, /animateViewRotationTo\(0, \{[\s\S]*?durationMs: NAVIGATION_VIEW_ROTATION_MS,[\s\S]*?fitContent: true[\s\S]*?\}\)/);
 
   // Sensor frames ride the lightweight interaction path and settle with a
   // full redraw.
@@ -657,11 +657,13 @@ test('navigation measurement calibrates the entry-door azimuth before auto direc
   assert.match(editorScript, /pickCardinalRotationDeg\(\s*Number\(result\.worldBearing\)/);
   assert.match(editorScript, /nextRotation = nextBearing/);
   assert.doesNotMatch(editorScript, /nextRotation = -Number\(result\.worldBearing\)/);
-  assert.match(editorScript, /animateViewRotationTo\(nextRotation, \{ durationMs: NAVIGATION_VIEW_ROTATION_MS \}\)/);
+  assert.match(editorScript, /animateViewRotationTo\(nextRotation, \{[\s\S]*?durationMs: NAVIGATION_VIEW_ROTATION_MS,[\s\S]*?fitContent: true[\s\S]*?\}\)/);
   assert.match(editorScript, /const NAVIGATION_VIEW_ROTATION_MS = 420/);
   assert.match(editorScript, /const NAVIGATION_VIEW_ROTATION_THRESHOLD_DEG = 20/);
   assert.match(editorScript, /if \(this\.navigationMeasurementActive\) return;\s*const needsDirectionLock/);
   assert.match(editorScript, /1 - Math\.pow\(1 - progress, 4\)/);
+  assert.match(editorScript, /resolveViewportForContentFit/);
+  assert.match(editorScript, /surveyGraph\.getCursorDisplayPoint\(floor, session\)/);
   assert.match(editorWxml, /定位入户门方向/);
   assert.match(editorWxml, /蓝牙测距仪已连接/);
   assert.match(editorWxml, /重新定位/);

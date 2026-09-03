@@ -236,6 +236,54 @@ function resolveViewportOffsetForContentCenter(rect, points, viewport, nextRotat
   });
 }
 
+// Center all supplied survey points inside the usable canvas and only zoom out
+// when the rotated bounds no longer fit. This keeps the closed plan, active wall
+// chain, and measurement cursor readable as one spatial context.
+function resolveViewportForContentFit(rect, points, viewport, nextRotationRad, insets) {
+  const box = resolveRect(rect);
+  const vp = resolveViewport(viewport);
+  const next = Number(nextRotationRad);
+  const rotationRad = Number.isFinite(next) ? next : vp.rotationRad;
+  const padding = typeof insets === 'number'
+    ? { left: insets, right: insets, top: insets, bottom: insets }
+    : Object.assign({ left: 0, right: 0, top: 0, bottom: 0 }, insets || {});
+  const validPoints = (Array.isArray(points) ? points : []).filter((point) => (
+    point && Number.isFinite(Number(point.xMm)) && Number.isFinite(Number(point.yMm))
+  ));
+  if (!validPoints.length || !box.width || !box.height) {
+    return Object.assign({}, vp, { rotationRad });
+  }
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  validPoints.forEach((point) => {
+    const rotated = rotateVector(Number(point.xMm), Number(point.yMm), rotationRad);
+    minX = Math.min(minX, rotated.x);
+    maxX = Math.max(maxX, rotated.x);
+    minY = Math.min(minY, rotated.y);
+    maxY = Math.max(maxY, rotated.y);
+  });
+
+  const availableWidth = Math.max(1, box.width - Number(padding.left) - Number(padding.right));
+  const availableHeight = Math.max(1, box.height - Number(padding.top) - Number(padding.bottom));
+  const spanX = Math.max(0, maxX - minX);
+  const spanY = Math.max(0, maxY - minY);
+  const fitScaleX = spanX > 0 ? availableWidth / spanX : Infinity;
+  const fitScaleY = spanY > 0 ? availableHeight / spanY : Infinity;
+  const scale = Math.max(0.000001, Math.min(vp.scale, fitScaleX, fitScaleY));
+  const targetX = (Number(padding.left) + box.width - Number(padding.right)) / 2;
+  const targetY = (Number(padding.top) + box.height - Number(padding.bottom)) / 2;
+
+  return Object.assign({}, vp, {
+    scale,
+    rotationRad,
+    offsetX: targetX - box.width / 2 - ((minX + maxX) * scale) / 2,
+    offsetY: targetY - box.height / 2 - ((minY + maxY) * scale) / 2
+  });
+}
+
 function getVisualThicknessPx(thicknessMm, scale) {
   // Wall faces, outer-edge snap points, cursor axes, and closure geometry all
   // describe the same millimetre coordinates. Keep the visible wall thickness
@@ -3369,6 +3417,7 @@ module.exports = {
   unprojectSurveyPoint,
   resolveViewportOffsetForAnchor,
   resolveViewportOffsetForContentCenter,
+  resolveViewportForContentFit,
   resolveViewportInteractionTransform,
   projectInteractionPoint,
   createViewportInteractionScene,
