@@ -62,6 +62,11 @@ test('the right rail exposes a separately confirmed canvas-reset action', () => 
 
 test('a placed cursor keeps its guide visibility when the canvas render data is returned', () => {
   assert.match(editorScript, /return \{\s*cursorVisible,\s*guideVisible,/);
+  const start = editorScript.indexOf('buildCanvasRenderData(floor, session) {');
+  const end = editorScript.indexOf('buildCanvasControls(', start);
+  const renderDataBuilder = editorScript.slice(start, end);
+  assert.ok(start >= 0 && end > start, 'canvas render-data builder should remain present');
+  assert.doesNotMatch(renderDataBuilder, /session\.state !== 'wallSelected'/);
 });
 
 test('BLE direction arrows remain available while the close action is shown', () => {

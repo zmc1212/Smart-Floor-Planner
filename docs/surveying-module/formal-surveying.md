@@ -254,6 +254,10 @@ copy back to `layoutData`.
   that closed space; shared walls with adjacent closed rooms stay, then spaces
   re-sync from faces. Ceiling height remains floor-level (`ceilingHeightMm`),
   not per room.
+- Wall selection is an object-edit overlay, not a cursor reset. When the cursor
+  is already placed, opening the wall toolbar preserves its `anchorNodeId` and
+  renders the reticle at the same plan coordinate. Selection does not move,
+  dock, or recreate the cursor.
 
 ## Write validation and stability boundary
 
@@ -337,6 +341,10 @@ copy back to `layoutData`.
   remasure `session.fixedNodeId` (and the same field is cleared when remasure
   completes or pending selection is cancelled) so an orphaned free-tip pin
   cannot fail the post-transaction session validator as `MISSING_SESSION_NODE`.
+  A successful direct, inferred-merge, shared-boundary, or partition close also
+  clears `session.lastWallSnap*`; if collinear degree-2 folding removes the prior
+  cursor-drop joint, stale snap memory cannot roll back the otherwise valid
+  closure as `MISSING_SESSION_NODE`.
   Confirming a closed room
   automatically enters the same reset-cursor / wall-drop state as tapping
   重置光标. Restoring a saved closed room normalizes a residual `spaceClosed`

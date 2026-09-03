@@ -424,7 +424,14 @@ infer extra closing walls. Loading a saved draft also
 folds remaining collinear degree-2 splices into one wall. Deleting a wall that
 opens a single closed room restores the remaining loop as the active chain and
 offers the missing-edge close when the dangling ends still determine it.
+Successful direct, inferred-merge, shared-boundary, and partition closure clears
+the prior `lastWallSnap*` cursor-drop memory before orphan-node cleanup, so
+absorbing a collinear joint cannot roll back a valid close with
+`MISSING_SESSION_NODE`.
 Resetting the cursor onto either dangling vertex resumes that same open chain.
+Selecting a wall is an object-edit overlay: an already placed cursor keeps the
+same `anchorNodeId` and remains rendered at the identical plan coordinate while
+the wall toolbar is open; selection does not move, dock, or recreate it.
 Confirming a closed room automatically enters the same reset-cursor / wall-drop
 state as tapping 重置光标, so the operator can drag the dock cursor to the next
 start without a second tap. Restoring a saved closed room likewise normalizes a

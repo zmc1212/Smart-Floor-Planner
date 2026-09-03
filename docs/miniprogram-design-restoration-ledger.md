@@ -48,6 +48,9 @@ crossing the `20°` trigger threshold animates the canvas between those axes ove
 `420ms` with an inverse visual sign so the plan counter-rotates against phone
 movement; the canvas must never settle at the raw diagonal heading. Navigation
 sensor callbacks rotate the canvas only; direction arrows remain manual choices.
+Wall selection remains an object-edit overlay on that approved cursor state:
+opening the wall toolbar preserves the existing cursor anchor and visible plan
+coordinate instead of hiding it or presenting the selection as a cursor reset.
 The current navigation label and live bearing readout are `28rpx`; calibration title/body/
 actions are `36/26/28rpx`. This enlarged navigation/calibration typography is
 part of the current restored state; runtime

@@ -1176,7 +1176,6 @@ function buildCursor(floor, session, project, activeSegment) {
     !session ||
     !session.anchorNodeId ||
     session.state === 'spaceClosed' ||
-    session.state === 'wallSelected' ||
     session.state === 'remeasureAwaitingInput'
   ) {
     return null;

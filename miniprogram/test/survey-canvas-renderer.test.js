@@ -24,6 +24,52 @@ function createOpenDraft() {
   return commitWall(draft, { xMm: 3000, yMm: 2000 }, 2000);
 }
 
+test('selecting a wall keeps the placed cursor at its existing position', () => {
+  const draft = createOpenDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wallId = floor.walls[0].id;
+  const beforeScene = createScene(draft);
+
+  const selectedDraft = surveyGraph.selectWall(draft, wallId);
+  const selectedFloor = surveyGraph.getActiveFloor(selectedDraft);
+  const selectedScene = createScene(selectedDraft);
+
+  assert.equal(selectedFloor.session.anchorNodeId, floor.session.anchorNodeId);
+  assert.ok(beforeScene.cursor);
+  assert.ok(selectedScene.cursor);
+  assert.deepEqual(selectedScene.cursor.point, beforeScene.cursor.point);
+  assert.deepEqual(selectedScene.cursor.guidePoint, beforeScene.cursor.guidePoint);
+});
+
+test('closing the selected-wall toolbar restores the same cursor anchor', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[0];
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    surveyGraph.getNode(floor, wall.startNodeId),
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  floor = surveyGraph.getActiveFloor(draft);
+  const anchorId = floor.session.anchorNodeId;
+  const cursorPoint = surveyGraph.getCursorDisplayPoint(floor, floor.session);
+
+  const restoredDraft = surveyGraph.cancelPending(surveyGraph.selectWall(draft, wall.id));
+  const restoredFloor = surveyGraph.getActiveFloor(restoredDraft);
+
+  assert.equal(restoredFloor.session.state, 'cursorPlaced');
+  assert.equal(restoredFloor.session.anchorNodeId, anchorId);
+  assert.deepEqual(
+    surveyGraph.getCursorDisplayPoint(restoredFloor, restoredFloor.session),
+    cursorPoint
+  );
+});
+
 function createSteppedClosureDraft() {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });

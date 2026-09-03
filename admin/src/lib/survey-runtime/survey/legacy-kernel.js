@@ -109,6 +109,15 @@ function resetPreviewSideLock(session) {
   session.measurementSideUserSet = false;
 }
 
+function clearLastWallSnap(session) {
+  if (!session) return;
+  session.lastWallSnapNodeId = '';
+  session.lastWallSnapWallId = '';
+  session.lastWallSnapT = null;
+  session.lastWallSnapWallMiddle = false;
+  session.lastWallSnapLine = '';
+}
+
 function createSurveyDraft() {
   const timestamp = nowIso();
   return {
@@ -5291,6 +5300,7 @@ function confirmClosure(draft) {
     session.activeSpaceSharedWallId = '';
     session.activeSpaceSharedStartT = null;
     session.activeSpaceSharedSnapLine = '';
+    clearLastWallSnap(session);
     removeUnreferencedNodes(floor);
     return touchDraft(next);
   }
@@ -5499,6 +5509,10 @@ function confirmClosure(draft) {
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
   session.activeSpaceSharedSnapLine = '';
+  // Closing can fold two collinear walls into one and remove their joint node.
+  // Once the chain is a closed Space, the prior cursor-drop memory is no
+  // longer a valid restart target and must not fail session validation.
+  clearLastWallSnap(session);
   removeUnreferencedNodes(floor);
 
   return touchDraft(next);

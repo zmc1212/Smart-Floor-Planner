@@ -2597,6 +2597,67 @@ test('deleting a closed-room wall clears stale cursor snap and keeps the missing
   assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
 });
 
+test('merge closure clears a cursor snap whose collinear joint node is absorbed', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2985, yMm: 0 }, 2985);
+  draft = commitWall(draft, { xMm: 2985, yMm: 5425 }, 5425);
+  draft = commitWall(draft, { xMm: 0, yMm: 5425 }, 2985);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 5425);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  let target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 5425 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 0, yMm: 10114 }, 4689);
+  draft = commitWall(draft, { xMm: 6910, yMm: 10114 }, 6910);
+  draft = surveyGraph.commitPreviewLength(
+    surveyGraph.startPreview(draft, { xMm: 6910, yMm: 8243 }),
+    1871,
+    'ble'
+  );
+
+  floor = surveyGraph.getActiveFloor(draft);
+  const absorbedNodeId = floor.session.anchorNodeId;
+  target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    surveyGraph.getNode(floor, absorbedNodeId),
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 6910, yMm: 5425 }, 2818);
+
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'mergeClosing');
+  assert.equal(floor.session.lastWallSnapNodeId, absorbedNodeId);
+
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  const validation = surveyGraph.validateSurveyDraft(draft, { mode: 'full' });
+
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(floor.nodes.some((node) => node.id === absorbedNodeId), false);
+  assert.equal(floor.session.lastWallSnapNodeId, '');
+  assert.equal(floor.session.lastWallSnapWallId, '');
+  assert.equal(floor.session.lastWallSnapT, null);
+  assert.equal(floor.session.lastWallSnapWallMiddle, false);
+  assert.equal(floor.session.lastWallSnapLine, '');
+  assert.equal(validation.valid, true, validation.errors.map((error) => error.message).join('; '));
+});
+
 test('a free-standing wall chain still allows its initial measurement-side choice', () => {
   let draft = createWallDraft();
   draft = surveyGraph.placeNewWallChainCursor(draft, { xMm: 6000, yMm: 0 });

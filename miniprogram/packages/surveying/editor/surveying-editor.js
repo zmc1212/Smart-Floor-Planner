@@ -4411,7 +4411,6 @@ Page({
       this.resolveCursorPlacementState(floor, session) === 'placed' &&
       session.anchorNodeId &&
       session.state !== 'spaceClosed' &&
-      session.state !== 'wallSelected' &&
       session.state !== 'remeasureAwaitingInput'
     ) {
       const anchor = surveyGraph.getNode(floor, session.anchorNodeId);

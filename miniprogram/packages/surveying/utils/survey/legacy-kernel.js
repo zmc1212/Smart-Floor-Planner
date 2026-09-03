@@ -109,6 +109,15 @@ function resetPreviewSideLock(session) {
   session.measurementSideUserSet = false;
 }
 
+function clearLastWallSnap(session) {
+  if (!session) return;
+  session.lastWallSnapNodeId = '';
+  session.lastWallSnapWallId = '';
+  session.lastWallSnapT = null;
+  session.lastWallSnapWallMiddle = false;
+  session.lastWallSnapLine = '';
+}
+
 function createSurveyDraft() {
   const timestamp = nowIso();
   return {
@@ -4364,6 +4373,12 @@ function cancelPending(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
+  const selectedCursorAnchorId = session.state === 'wallSelected'
+    ? session.anchorNodeId
+    : '';
+  const selectedCursorWasNewChainStart = !!selectedCursorAnchorId &&
+    Number.isInteger(session.activeSpaceStartWallIndex) &&
+    session.activeSpaceStartWallIndex >= floor.walls.length;
 
   session.previewPoint = null;
   session.previewLengthMm = 0;
@@ -4386,7 +4401,10 @@ function cancelPending(draft) {
   session.selectedSpaceId = '';
   session.fixedNodeId = '';
 
-  if (floor.spaces.some((space) => space.closed)) {
+  if (selectedCursorAnchorId && getNode(floor, selectedCursorAnchorId)) {
+    session.anchorNodeId = selectedCursorAnchorId;
+    session.state = selectedCursorWasNewChainStart ? 'cursorPlaced' : 'wallCommitted';
+  } else if (floor.spaces.some((space) => space.closed)) {
     session.state = 'spaceClosed';
     session.anchorNodeId = '';
   } else if (floor.walls.length) {
@@ -5291,6 +5309,7 @@ function confirmClosure(draft) {
     session.activeSpaceSharedWallId = '';
     session.activeSpaceSharedStartT = null;
     session.activeSpaceSharedSnapLine = '';
+    clearLastWallSnap(session);
     removeUnreferencedNodes(floor);
     return touchDraft(next);
   }
@@ -5499,6 +5518,10 @@ function confirmClosure(draft) {
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
   session.activeSpaceSharedSnapLine = '';
+  // Closing can fold two collinear walls into one and remove their joint node.
+  // Once the chain is a closed Space, the prior cursor-drop memory is no
+  // longer a valid restart target and must not fail session validation.
+  clearLastWallSnap(session);
   removeUnreferencedNodes(floor);
 
   return touchDraft(next);
