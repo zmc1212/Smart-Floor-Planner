@@ -10,7 +10,7 @@ const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
 const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
-const RENDER_REVISION = 'cursor-lens-small-cross-v19';
+const RENDER_REVISION = 'wall-union-outline-v20';
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
 // Blue cursor coordinates use a denser cadence than the closure cue so the
@@ -1677,23 +1677,6 @@ function drawWallOutlines(ctx, scene) {
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
   drawCompoundRings(ctx, scene.wallSolidPlan && scene.wallSolidPlan.rings, null, '#1f1f1f', WALL_STROKE_PX);
-  // A topology-face override records that the operator deliberately closed an
-  // adjacent room on the existing room's inner vertices. The compound wall
-  // union keeps the shared wall solid, but otherwise hides the final
-  // wall-thickness segment of both adjoining walls as an internal seam. Redraw
-  // that selected clear boundary so closure does not appear to move those
-  // endpoints back to the shared wall's opposite face.
-  (scene.wallFaceOverrideBoundaries || []).forEach((boundary) => {
-    const points = boundary && boundary.points;
-    if (!points || points.length < 3) return;
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let index = 1; index < points.length; index += 1) {
-      ctx.lineTo(points[index].x, points[index].y);
-    }
-    ctx.closePath();
-    ctx.stroke();
-  });
   if (scene.previewWall && scene.previewWall.lineOnly) {
     const startPoint = scene.previewWall.measurementStartPoint || scene.previewWall.startPoint;
     const endPoint = scene.previewWall.measurementEndPoint || scene.previewWall.endPoint;

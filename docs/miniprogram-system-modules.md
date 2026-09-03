@@ -428,6 +428,9 @@ Successful direct, inferred-merge, shared-boundary, and partition closure clears
 the prior `lastWallSnap*` cursor-drop memory before orphan-node cleanup, so
 absorbing a collinear joint cannot roll back a valid close with
 `MISSING_SESSION_NODE`.
+When adjacent collinear segments select different physical faces at a shared-wall/exterior-wall transition, the room fill and net dimension read models insert an explicit wall-thickness orthogonal step instead of connecting the two offset face endpoints with a diagonal. Graph, measurement audit, route, API, permission, WXML/Less, and persistence contracts are unchanged.
+Closed walls are filled and stroked once from their geometric union outline; room `wallFaceOverrides` boundaries are no longer superimposed over fused walls, eliminating extraneous seams at T-junctions and thickness steps. Renderer revision is updated to `wall-union-outline-v20` to refresh stale Admin preview snapshots.
+When dragging or measuring a new wall towards an existing closed room, ray intersection (`findRayWallIntersection`) clamps preview and committed endpoints to the first contacted boundary, preventing new walls from penetrating closed room interiors; internal divider drags (`isPotentialPartitionDrag`) remain governed by the dedicated partition closure solver. When the closing wall of an adjacent room overshoots the contact boundary, the endpoint is clamped to the ray hit and synthesizes a shared-wall closure candidate, entering `closing` / `shared-wall` and auto-confirming closure without creating an unsplit T-junction node or throwing `UNSPLIT_WALL_T_JUNCTION`. No route, API, permission, or persistence contract changes.
 Resetting the cursor onto either dangling vertex resumes that same open chain.
 Selecting a wall is an object-edit overlay: an already placed cursor keeps the
 same `anchorNodeId` and remains rendered at the identical plan coordinate while

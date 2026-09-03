@@ -345,6 +345,25 @@ copy back to `layoutData`.
   clears `session.lastWallSnap*`; if collinear degree-2 folding removes the prior
   cursor-drop joint, stale snap memory cannot roll back the otherwise valid
   closure as `MISSING_SESSION_NODE`.
+  When adjacent collinear segments select different physical faces at a
+  shared-wall/exterior-wall transition, the space render boundary and net
+  dimension plan insert an explicit wall-thickness orthogonal step. They must
+  not connect the two offset face endpoints with a diagonal.
+  Closed-wall outlines are stroked once from the classified geometric union
+  rings. `wallFaceOverrides` may guide room fills and net dimensions, but its
+  full working-face boundary is not replayed as seams through fused wall
+  material. Renderer revision `wall-union-outline-v20` invalidates older Admin
+  preview snapshots on their next refresh.
+  When a new wall is dragged or measured towards an existing closed room,
+  ray intersection (`findRayWallIntersection`) clamps preview and committed
+  endpoints to the first contacted wall boundary, preventing new walls from
+  penetrating closed room interiors; internal divider drags
+  (`isPotentialPartitionDrag`) remain governed by the dedicated partition
+  closure solver. When the closing wall of an adjacent room overshoots the
+  contact boundary, the endpoint is clamped to the ray hit and synthesizes a
+  shared-wall closure candidate, entering `closing` / `shared-wall` and
+  auto-confirming closure without creating an unsplit T-junction node or throwing
+  `UNSPLIT_WALL_T_JUNCTION`.
   Confirming a closed room
   automatically enters the same reset-cursor / wall-drop state as tapping
   重置光标. Restoring a saved closed room normalizes a residual `spaceClosed`
@@ -377,7 +396,16 @@ copy back to `layoutData`.
   either dangling vertex resumes that same open chain instead of starting a
   new room from the existing wall. Dragging back along that
   restored last wall shortens it instead of reporting overlap with the
-  measured wall. Shared-wall faces and room boundaries are
+  measured wall. That strict terminal-wall edit takes precedence over a nearby
+  start/shared-wall closure candidate: while the reverse endpoint remains on
+  the editable wall and leaves at least the minimum wall length, the operation
+  moves the existing endpoint and never appends a reverse duplicate wall.
+  Returning exactly to the preceding corner retracts that terminal wall and
+  resumes the chain from the corner instead of attempting to store a zero-length
+  or fully reversed duplicate.
+  Closed, shared, branched, opening-host, non-terminal, and past-start edits
+  remain outside this gesture and retain their existing validation paths.
+  Shared-wall faces and room boundaries are
   derived from wall direction, thickness, and each space's ordered `wallIds`.
   `confirmClosure`, `deleteWall`, and closed-wall splits write those `wallIds`
   by syncing closed spaces from half-edge faces (`extractFaces` /

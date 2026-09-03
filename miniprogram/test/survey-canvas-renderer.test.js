@@ -1229,16 +1229,12 @@ test('2205/2901/2834 inner-corner closure keeps its visible lower-wall endpoint 
 
   const recorder = createRecordingContext();
   surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
-  assert.equal(recorder.strokeDetails.some((detail) => (
-    detail.strokeStyle === '#1f1f1f' &&
-    detail.path.some((command, index, path) => (
-      index > 0 && command[0] === 'lineTo' && path[index - 1][0] === 'moveTo' &&
-      path[index - 1][1] === lowerWallBefore.startPoint.x &&
-      path[index - 1][2] === lowerWallBefore.startPoint.y &&
-      command[1] === lowerWallBefore.endPoint.x &&
-      command[2] === lowerWallBefore.endPoint.y
-    ))
-  )), true);
+  // Closed wall material is outlined from its geometric union once. Replaying
+  // the room's face-override boundary would draw working-face seams through the
+  // already fused T/step junctions.
+  assert.equal(recorder.strokeDetails.filter((detail) => (
+    detail.strokeStyle === '#1f1f1f'
+  )).length, 1);
 
   const openedDraft = surveyGraph.deleteWall(draft, upperWallId);
   const lowerWallAfter = createScene(openedDraft).walls.find((wall) => wall.id === lowerWallId);

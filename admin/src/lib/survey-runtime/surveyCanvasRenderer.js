@@ -10,7 +10,7 @@ const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
 const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
-const RENDER_REVISION = 'cursor-lens-small-cross-v19';
+const RENDER_REVISION = 'wall-union-outline-v20';
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
 // Blue cursor coordinates use a denser cadence than the closure cue so the
@@ -233,6 +233,54 @@ function resolveViewportOffsetForContentCenter(rect, points, viewport, nextRotat
     rotationRad,
     offsetX: -(minX + maxX) / 2,
     offsetY: -(minY + maxY) / 2
+  });
+}
+
+// Center all supplied survey points inside the usable canvas and only zoom out
+// when the rotated bounds no longer fit. This keeps the closed plan, active wall
+// chain, and measurement cursor readable as one spatial context.
+function resolveViewportForContentFit(rect, points, viewport, nextRotationRad, insets) {
+  const box = resolveRect(rect);
+  const vp = resolveViewport(viewport);
+  const next = Number(nextRotationRad);
+  const rotationRad = Number.isFinite(next) ? next : vp.rotationRad;
+  const padding = typeof insets === 'number'
+    ? { left: insets, right: insets, top: insets, bottom: insets }
+    : Object.assign({ left: 0, right: 0, top: 0, bottom: 0 }, insets || {});
+  const validPoints = (Array.isArray(points) ? points : []).filter((point) => (
+    point && Number.isFinite(Number(point.xMm)) && Number.isFinite(Number(point.yMm))
+  ));
+  if (!validPoints.length || !box.width || !box.height) {
+    return Object.assign({}, vp, { rotationRad });
+  }
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  validPoints.forEach((point) => {
+    const rotated = rotateVector(Number(point.xMm), Number(point.yMm), rotationRad);
+    minX = Math.min(minX, rotated.x);
+    maxX = Math.max(maxX, rotated.x);
+    minY = Math.min(minY, rotated.y);
+    maxY = Math.max(maxY, rotated.y);
+  });
+
+  const availableWidth = Math.max(1, box.width - Number(padding.left) - Number(padding.right));
+  const availableHeight = Math.max(1, box.height - Number(padding.top) - Number(padding.bottom));
+  const spanX = Math.max(0, maxX - minX);
+  const spanY = Math.max(0, maxY - minY);
+  const fitScaleX = spanX > 0 ? availableWidth / spanX : Infinity;
+  const fitScaleY = spanY > 0 ? availableHeight / spanY : Infinity;
+  const scale = Math.max(0.000001, Math.min(vp.scale, fitScaleX, fitScaleY));
+  const targetX = (Number(padding.left) + box.width - Number(padding.right)) / 2;
+  const targetY = (Number(padding.top) + box.height - Number(padding.bottom)) / 2;
+
+  return Object.assign({}, vp, {
+    scale,
+    rotationRad,
+    offsetX: targetX - box.width / 2 - ((minX + maxX) * scale) / 2,
+    offsetY: targetY - box.height / 2 - ((minY + maxY) * scale) / 2
   });
 }
 
@@ -1128,7 +1176,6 @@ function buildCursor(floor, session, project, activeSegment) {
     !session ||
     !session.anchorNodeId ||
     session.state === 'spaceClosed' ||
-    session.state === 'wallSelected' ||
     session.state === 'remeasureAwaitingInput'
   ) {
     return null;
@@ -1630,23 +1677,6 @@ function drawWallOutlines(ctx, scene) {
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
   drawCompoundRings(ctx, scene.wallSolidPlan && scene.wallSolidPlan.rings, null, '#1f1f1f', WALL_STROKE_PX);
-  // A topology-face override records that the operator deliberately closed an
-  // adjacent room on the existing room's inner vertices. The compound wall
-  // union keeps the shared wall solid, but otherwise hides the final
-  // wall-thickness segment of both adjoining walls as an internal seam. Redraw
-  // that selected clear boundary so closure does not appear to move those
-  // endpoints back to the shared wall's opposite face.
-  (scene.wallFaceOverrideBoundaries || []).forEach((boundary) => {
-    const points = boundary && boundary.points;
-    if (!points || points.length < 3) return;
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let index = 1; index < points.length; index += 1) {
-      ctx.lineTo(points[index].x, points[index].y);
-    }
-    ctx.closePath();
-    ctx.stroke();
-  });
   if (scene.previewWall && scene.previewWall.lineOnly) {
     const startPoint = scene.previewWall.measurementStartPoint || scene.previewWall.startPoint;
     const endPoint = scene.previewWall.measurementEndPoint || scene.previewWall.endPoint;
@@ -3369,6 +3399,7 @@ module.exports = {
   unprojectSurveyPoint,
   resolveViewportOffsetForAnchor,
   resolveViewportOffsetForContentCenter,
+  resolveViewportForContentFit,
   resolveViewportInteractionTransform,
   projectInteractionPoint,
   createViewportInteractionScene,

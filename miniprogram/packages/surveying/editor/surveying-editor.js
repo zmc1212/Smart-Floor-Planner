@@ -1281,7 +1281,9 @@ Page({
     }
 
     try {
-      const status = this.data.floorPlanStatus === 'completed' ? 'completed' : 'draft';
+      const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+      const isPendingClosure = floor && floor.session && floor.session.closeCandidateType === 'partition';
+      const status = (this.data.floorPlanStatus === 'completed' && !isPendingClosure) ? 'completed' : 'draft';
       await this._enqueueCloudSave(status);
       return true;
     } catch (err) {
@@ -6372,6 +6374,11 @@ Page({
     const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
     if (!floor || !(floor.spaces || []).some((space) => space.closed)) {
       wx.showToast({ title: '请先完成至少一个闭合空间', icon: 'none' });
+      return;
+    }
+    const session = floor.session || {};
+    if (session.closeCandidateType === 'partition') {
+      wx.showToast({ title: '请先完成当前的内墙绘制', icon: 'none' });
       return;
     }
     wx.showLoading({ title: '提交量房...' });

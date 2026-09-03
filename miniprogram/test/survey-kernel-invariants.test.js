@@ -228,3 +228,53 @@ test('H5 catalog keeps face write, readings, and working-line continuity', () =>
     }
   });
 });
+
+test('drawing a wall towards an existing closed room clamps to its boundary without penetrating', () => {
+  let draft = closedRectangle(); // (0,0) -> (6000,0) -> (6000,4000) -> (0,4000) -> (0,0)
+  // Start a new wall chain at (8000, 2000) pointing left (180 deg) by 5000mm towards the room's right wall (x=6000)
+  draft = surveyGraph.placeNewWallChainCursor(draft, { xMm: 8000, yMm: 2000 });
+  draft = surveyGraph.startPreview(draft, { xMm: 3000, yMm: 2000 });
+  const preview = surveyGraph.getActiveFloor(draft).session.previewPoint;
+  assert.equal(preview.xMm, 6000, 'preview must clamp to the existing wall at x=6000');
+
+  draft = surveyGraph.commitPreviewLength(draft, 5000, 'manual');
+  const floor1 = surveyGraph.getActiveFloor(draft);
+  const lastWall = floor1.walls[floor1.walls.length - 1];
+  assert.equal(lastWall.lengthMm, 2000, 'committed length must clamp from 5000mm to 2000mm');
+  const endNode = surveyGraph.getNode(floor1, lastWall.endNodeId);
+  assert.equal(endNode.xMm, 6000, 'end node must lie on the boundary at x=6000');
+});
+
+test('adjacent room closure wall overshooting the target wall clamps and closes successfully', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = surveyGraph.commitPreviewLength(surveyGraph.startPreview(draft, { xMm: 3369, yMm: 0 }), 3369, 'manual');
+  draft = surveyGraph.commitPreviewLength(surveyGraph.startPreview(draft, { xMm: 3369, yMm: -5019 }), 5019, 'manual');
+  draft = surveyGraph.commitPreviewLength(surveyGraph.startPreview(draft, { xMm: 0, yMm: -5019 }), 3369, 'manual');
+  draft = surveyGraph.commitPreviewLength(surveyGraph.startPreview(draft, { xMm: 0, yMm: 0 }), 5019, 'manual');
+  draft = surveyGraph.confirmClosure(draft);
+
+  const rightWall = surveyGraph.getActiveFloor(draft).walls.find((w) => {
+    const s = surveyGraph.getNode(surveyGraph.getActiveFloor(draft), w.startNodeId);
+    const e = surveyGraph.getNode(surveyGraph.getActiveFloor(draft), w.endNodeId);
+    return s.xMm === 3369 && e.xMm === 3369;
+  });
+
+  // Snap to right wall at y=-3466 (distance to bottom wall y=-5019 is 1553mm)
+  draft = surveyGraph.snapCursorToWall(draft, { xMm: 3369, yMm: -3466 }, { wallId: rightWall.id });
+  draft = surveyGraph.commitPreviewLength(surveyGraph.startPreview(draft, { xMm: 5857, yMm: -3466 }), 2488, 'manual');
+  draft = surveyGraph.commitPreviewLength(surveyGraph.startPreview(draft, { xMm: 5857, yMm: -5019 }), 1553, 'manual');
+
+  // Wall 3 goes left 2488 to x=3369, y=-5019
+  draft = surveyGraph.startPreview(draft, { xMm: 3369, yMm: -5019 });
+  // Input overshooting length 2283mm when actual distance is 1553mm
+  draft = surveyGraph.commitPreviewLength(draft, 2283, 'manual');
+  assert.equal(surveyGraph.getActiveFloor(draft).session.state, 'closing');
+  assert.equal(surveyGraph.getActiveFloor(draft).session.closeCandidateType, 'shared-wall');
+
+  draft = surveyGraph.confirmClosure(draft);
+  const floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.spaces.length, 2);
+  assert.equal(floor.spaces.every((s) => s.closed), true);
+});
+
