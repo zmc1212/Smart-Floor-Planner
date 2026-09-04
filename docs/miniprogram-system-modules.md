@@ -137,8 +137,12 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   assignment 归属企业 stays independent of the list scope. Enterprise staff
   still must pass `POST /api/devices/verify-binding` (enterprise ownership only)
   before a single measurement connection. Refresh work is token-versioned, so a
-  stale cold-start failure cannot clear a newer phone-login session; an invalid active context clears
-  local session state, and a referrer
+  stale cold-start failure cannot clear a newer phone-login session. An invalid active context clears
+  local session state and normally enters explicit identity recovery. When the active or launching route
+  is the public `free-design-service`, employee/referrer `onboarding`, or enterprise-registration QR
+  landing, the same stale context is cleared without replacing that destination: code resolution and
+  phone authorization continue anonymously, so direct scans and WeChat share cards follow the same
+  entry contract. A referrer
   context restores the promotion workbench instead of silently falling into the
   ordinary-customer shell.
 - Primary actions use locally stored, license-documented icons. Native host

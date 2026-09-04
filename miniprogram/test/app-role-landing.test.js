@@ -229,6 +229,105 @@ test('an invalid signed context clears the session and enters explicit recovery'
   }
 });
 
+test('an invalid stored role does not replace public QR landings with identity recovery', async () => {
+  const definition = loadAppDefinition();
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  const originalPages = global.getCurrentPages;
+  const scanRoutes = [
+    'packages/business/free-design-service/free-design-service',
+    'packages/business/onboarding/onboarding',
+    'packages/business/enterprise-register/enterprise-register',
+  ];
+
+  try {
+    for (const route of scanRoutes) {
+      const removed = [];
+      const relaunched = [];
+      global.getCurrentPages = () => [{ route }];
+      global.wx = {
+        removeStorageSync(key) { removed.push(key); },
+        getStorageSync() { return null; },
+        reLaunch(options) { relaunched.push(options.url); },
+      };
+      api.request = async () => {
+        throw { error: 'Unauthorized', statusCode: 401, code: 'identity_context_invalid' };
+      };
+      const app = {
+        globalData: {
+          token: 'stale-role-token',
+          userInfo: { mode: 'staff', staffRole: 'designer' },
+          openid: 'openid',
+          sessionHydrating: false,
+          sessionHydrated: false,
+          sessionHydrationToken: null,
+          sessionHydrationPromise: null,
+          bootstrap: { current: { role: 'designer' } },
+          sessionRecovery: null,
+          lastValidIdentityContext: { mode: 'staff', staffRole: 'designer' },
+          launchOptions: { path: route },
+        },
+      };
+
+      await definition.hydrateStoredSession.call(app);
+
+      assert.equal(app.globalData.token, null, `${route} should clear the stale token`);
+      assert.equal(app.globalData.sessionRecovery, null, `${route} should remain public`);
+      assert.equal(app.globalData.sessionHydrated, true);
+      assert.deepEqual(relaunched, []);
+      assert.deepEqual(removed.sort(), ['lastValidIdentityContext', 'openid', 'token', 'userInfo']);
+    }
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+    global.getCurrentPages = originalPages;
+  }
+});
+
+test('cold-start QR landing is preserved before the page stack becomes available', async () => {
+  const definition = loadAppDefinition();
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  const originalPages = global.getCurrentPages;
+  const relaunched = [];
+  global.getCurrentPages = () => [];
+  global.wx = {
+    removeStorageSync() {},
+    getStorageSync() { return null; },
+    reLaunch(options) { relaunched.push(options.url); },
+  };
+  api.request = async () => {
+    throw { error: 'Unauthorized', statusCode: 401, code: 'identity_context_invalid' };
+  };
+  const app = {
+    globalData: {
+      token: 'stale-role-token',
+      userInfo: { mode: 'referrer' },
+      openid: 'openid',
+      sessionHydrating: false,
+      sessionHydrated: false,
+      sessionHydrationToken: null,
+      sessionHydrationPromise: null,
+      bootstrap: null,
+      sessionRecovery: null,
+      lastValidIdentityContext: { mode: 'referrer' },
+      launchOptions: { path: 'packages/business/free-design-service/free-design-service' },
+    },
+  };
+
+  try {
+    await definition.hydrateStoredSession.call(app);
+    assert.equal(app.globalData.sessionRecovery, null);
+    assert.deepEqual(relaunched, []);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+    global.getCurrentPages = originalPages;
+  }
+});
+
 test('a stale cold-start refresh cannot invalidate a newer phone-login session', async () => {
   const definition = loadAppDefinition();
   const api = require('../utils/api.js');

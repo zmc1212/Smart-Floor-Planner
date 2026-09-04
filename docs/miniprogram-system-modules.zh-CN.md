@@ -74,7 +74,7 @@ AI 设计界面已按批准的 `design-references/ai-design/unified-entry-v1/` �
   `contextVersion` 使旧 token 失效。专业员工、企业上下文、线索、户型、AI 任务、
   提成和报备记录都通过共享 API 解析。小程序启动/回到前台时会用保存的 token 调用
   `refresh` 重新读取当前上下文，随后由 bootstrap 确认服务端能力与落点；小程序员工工作台支持 `designer`、`measurer`、`salesperson`（渠道地推，落点为企业报备页）、`enterprise_admin` 与 `platform_admin`（由 `admin` / `super_admin` 映射）。平台渠道地推允许 `enterpriseId` 为空，bootstrap 能力为 `promotion.records` / `promotion.commissions` / `account`。平台管理员落点为 `packages/platform/devices/devices`（已从主包 `platform-device-workbench` 迁出）：扫描附近多台 `LDMStudio 4D` 只收集 MAC（不建立连接），勾选或一键全部分配经 `POST /api/miniprogram/devices`（可填可选 SN 码：单台共用字段或扫描行 `serialNumber`）；企业员工连接前仍须通过 `POST /api/devices/verify-binding`（仅校验企业归属），量房仍为单台连接。刷新任务按 token 版本隔离，旧冷启动任务失败不会清理随后手机号登录的新会话；当前上下文失效才会清理本地会话，推荐人上下文从首页或“我的”
-  冷启动时恢复到推广工作台，避免静默落入普通客户界面。小程序对用户展示的岗位名：`designer` 为家装设计顾问、`measurer` 为家装现场顾问；接口角色键不变。
+  冷启动时恢复到推广工作台，避免静默落入普通客户界面。普通业务页遇到失效上下文仍清理会话并进入明确的身份恢复页；若当前或冷启动目标是公开的 `free-design-service`、员工/推荐人 `onboarding` 或企业开户二维码落地页，则只清理失效登录态而不改写扫码目标，继续匿名解析码并完成手机号授权，使直接扫码与微信分享卡片使用同一入口合同。小程序对用户展示的岗位名：`designer` 为家装设计顾问、`measurer` 为家装现场顾问；接口角色键不变。
 - 平台设备录入扫描只接受本轮实时发现的 `LDMStudio 4D` MAC，不读取
   `getBluetoothDevices` 的历史缓存；搜索按钮在进行中变为可点击的「取消搜索」，不再使用遮罩
   loading。已登记的 MAC 返回 `409` 和「该设备已录入」，不重新分配给所选企业；聚焦自动化测试

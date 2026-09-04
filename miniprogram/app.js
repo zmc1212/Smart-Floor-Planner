@@ -240,6 +240,12 @@ App({
       } catch (error) {
         if (this.globalData.token !== activeToken) return;
         if (error && (error.statusCode === 401 || error.error === 'Unauthorized')) {
+          const navigation = require('./utils/identity-navigation.js');
+          const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+          const currentRoute = pages.length
+            ? pages[pages.length - 1].route
+            : (this.globalData.launchOptions && this.globalData.launchOptions.path);
+          const keepPublicScanLanding = navigation.isScanLandingRoute(currentRoute);
           this.globalData.token = null;
           this.globalData.userInfo = null;
           this.globalData.openid = null;
@@ -247,6 +253,17 @@ App({
           wx.removeStorageSync('userInfo');
           wx.removeStorageSync('openid');
           this.globalData.bootstrap = null;
+          if (keepPublicScanLanding) {
+            // Service, onboarding and enterprise-registration codes are public
+            // entry points. A stale role token must not replace their cold-start
+            // destination with identity recovery; the page can continue its
+            // anonymous resolve/phone-authorization flow after the token clears.
+            this.globalData.sessionRecovery = null;
+            this.globalData.lastValidIdentityContext = null;
+            wx.removeStorageSync('lastValidIdentityContext');
+            this.globalData.sessionHydrated = true;
+            return;
+          }
           this.globalData.sessionRecovery = {
             reason: error.code || 'identity_context_invalid',
             lastValidIdentityContext: this.globalData.lastValidIdentityContext || wx.getStorageSync('lastValidIdentityContext') || null
