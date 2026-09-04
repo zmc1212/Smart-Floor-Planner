@@ -3483,6 +3483,8 @@ test('PostgreSQL workbench floor-plan preview renders the bound survey control P
       /方案会话不存在或无权访问/
     );
 
+    await withTenantTransaction(enterpriseAId, (transaction) => transaction.update(floorPlans)
+      .set({ status: 'draft' }).where(eq(floorPlans.id, created.plan.id)));
     const imageOnly = await createPostgresAiWorkflow({
       enterpriseId: enterpriseAId,
       operatorId: promotionDesignerAId,
@@ -3504,6 +3506,29 @@ test('PostgreSQL workbench floor-plan preview renders the bound survey control P
       }),
       /方案尚未关联正式户型/
     );
+
+    // The conversation predates survey completion. A later list read repairs it,
+    // and a subsequent direct detail read must use the persisted association.
+    await withTenantTransaction(enterpriseAId, (transaction) => transaction.update(floorPlans)
+      .set({ status: 'completed' }).where(eq(floorPlans.id, created.plan.id)));
+    const repairedList = await listPostgresAiWorkflows({ enterpriseId: enterpriseAId, leadId: created.lead.id, summary: true });
+    assert.equal(repairedList.data.find((item) => item.id === String(imageOnly.id))?.sourceFloorPlanId, String(created.plan.id));
+    const repaired = await getPostgresAiWorkflowContext({ enterpriseId: enterpriseAId, workflowId: imageOnly.id, summary: true });
+    assert.equal(repaired.workflow.sourceFloorPlan?.id, String(created.plan.id));
+    assert.ok(repaired.workflow.floorPlanPreviewUrl);
+    assert.equal(repaired.workflow.sourceAssetRole, imageOnly.sourceAssetRole);
+    const persisted = await withTenantTransaction(enterpriseAId, (transaction) => new AiWorkflowRepository(transaction).findById(imageOnly.id));
+    assert.deepEqual(persisted, { ...imageOnly, sourceFloorPlanId: created.plan.id });
+
+    // An already-bound workflow must not be overwritten, even by a stale caller.
+    const unchanged = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiWorkflowRepository(transaction).bindFloorPlanIfUnbound(imageOnly.id, created.lead.id, 9223372036854775807n));
+    assert.equal(unchanged?.sourceFloorPlanId, created.plan.id);
+    await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiWorkflowRepository(transaction).update(imageOnly.id, { sourceFloorPlanId: null }));
+    await assert.rejects(() => getPostgresAiWorkflowContext({ enterpriseId: enterpriseBId, workflowId: imageOnly.id }), /无权访问/);
+    const directRepair = await getPostgresAiWorkflowContext({ enterpriseId: enterpriseAId, workflowId: imageOnly.id });
+    assert.equal(directRepair.workflow.sourceFloorPlan?.id, String(created.plan.id));
   } finally {
     await withPlatformTransaction(async (transaction) => {
       if (imageOnlyWorkflowId) await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, imageOnlyWorkflowId));

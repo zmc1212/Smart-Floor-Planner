@@ -35,16 +35,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!isPostgresWorkflowId(id)) {
       return NextResponse.json({ success: false, error: '方案会话不存在或无权访问' }, { status: 404 });
     }
+    const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+    const access = await withTenantTransaction(enterpriseId, async (transaction) => {
+      const workflow = await new AiWorkflowRepository(transaction).findById(parsePostgresId(id, 'workflowId'));
+      if (!workflow || workflow.status !== 'active') {
+        return { kind: 'missing' as const, response: NextResponse.json({ success: false, error: '方案会话不存在或无权访问' }, { status: 404 }) };
+      }
+      return assertMiniStudioLeadAccess(transaction, context, workflow.leadId);
+    });
+    if (access.kind !== 'ok') return access.response;
     const workflowContext = await getPostgresAiWorkflowContext({
       enterpriseId: context.enterpriseId,
       workflowId: id,
       summary: true,
     });
-    const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
-    const access = await withTenantTransaction(enterpriseId, (transaction) =>
-      assertMiniStudioLeadAccess(transaction, context, parsePostgresId(workflowContext.lead.id, 'leadId')),
-    );
-    if (access.kind !== 'ok') return access.response;
     return NextResponse.json({
       success: true,
       data: await serializeWorkflowContextForMini(request, context.enterpriseId, workflowContext),
@@ -71,15 +75,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (body.action !== 'rename' || !body.title?.trim()) {
       return NextResponse.json({ success: false, error: '请提供有效的重命名参数' }, { status: 400 });
     }
-    const workflowContext = await getPostgresAiWorkflowContext({
-      enterpriseId: context.enterpriseId,
-      workflowId: id,
-      summary: true,
-    });
     const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
-    const access = await withTenantTransaction(enterpriseId, (transaction) =>
-      assertMiniStudioLeadAccess(transaction, context, parsePostgresId(workflowContext.lead.id, 'leadId')),
-    );
+    const access = await withTenantTransaction(enterpriseId, async (transaction) => {
+      const workflow = await new AiWorkflowRepository(transaction).findById(parsePostgresId(id, 'workflowId'));
+      if (!workflow || workflow.status !== 'active') {
+        return { kind: 'missing' as const, response: NextResponse.json({ success: false, error: '方案会话不存在或无权访问' }, { status: 404 }) };
+      }
+      return assertMiniStudioLeadAccess(transaction, context, workflow.leadId);
+    });
     if (access.kind !== 'ok') return access.response;
     await updatePostgresAiWorkflowState({
       enterpriseId: context.enterpriseId,

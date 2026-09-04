@@ -91,5 +91,8 @@ available. The batch submits explicit `styleReferenceAssetId` and
 role, and both client and server block single-room-photo generation until at
 least one gallery-selected or computer-uploaded site photo exists. Reference
 thumbnails are labeled by role (`户型结构`, `风格图`, `现场图`).
+The round gallery also renders every persisted `referenceAssetIds` item on each
+batch card, including the control image and supplemental references, so Admin
+and Mini Program show the same complete reference set.
 
 Chinese mirror: [admin-ui-refactor.zh-CN.md](./admin-ui-refactor.zh-CN.md)

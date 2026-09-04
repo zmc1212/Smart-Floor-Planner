@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray } from 'drizzle-orm';
-import { aiProviderAttempts, aiProviderConfigs } from '@/db/schema';
+import { aiProviderAttempts, aiProviderConfigs, platformConfigs } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 
 export type AiProviderConfigRecord = typeof aiProviderConfigs.$inferSelect;
@@ -67,6 +67,23 @@ export class AiProviderConfigRepository {
     return this.findByKey(input.key);
   }
 
+  private async markEnvironmentInitialized(keys: string[]) {
+    if (!keys.length) return [];
+    return this.transaction
+      .insert(platformConfigs)
+      .values([...new Set(keys)].sort().map((key) => ({ key: `ai-provider-environment:${key}` })))
+      .onConflictDoNothing({ target: platformConfigs.key })
+      .returning({ key: platformConfigs.key });
+  }
+
+  async initializeFromEnvironment(input: NewAiProviderConfig) {
+    // The marker and provider share a transaction. Persist it across deletion
+    // and process restarts, and let the unique key serialize concurrent seeds.
+    const claimed = await this.markEnvironmentInitialized([input.key]);
+    if (!claimed.length) return this.findByKey(input.key);
+    return this.createIfMissing(input);
+  }
+
   async update(id: bigint, values: AiProviderConfigUpdate) {
     const rows = await this.transaction
       .update(aiProviderConfigs)
@@ -77,6 +94,10 @@ export class AiProviderConfigRepository {
   }
 
   async delete(id: bigint) {
+    const existing = await this.findById(id);
+    if (!existing) return null;
+    // Also covers providers created before initialization markers existed.
+    await this.markEnvironmentInitialized([existing.key]);
     const rows = await this.transaction
       .delete(aiProviderConfigs)
       .where(eq(aiProviderConfigs.id, id))
@@ -95,6 +116,11 @@ export class AiProviderConfigRepository {
 
   async deleteMany(ids: bigint[]) {
     if (!ids.length) return [];
+    const existing = await this.transaction
+      .select({ key: aiProviderConfigs.key })
+      .from(aiProviderConfigs)
+      .where(inArray(aiProviderConfigs.id, ids));
+    await this.markEnvironmentInitialized(existing.map((provider) => provider.key));
     return this.transaction
       .delete(aiProviderConfigs)
       .where(inArray(aiProviderConfigs.id, ids))

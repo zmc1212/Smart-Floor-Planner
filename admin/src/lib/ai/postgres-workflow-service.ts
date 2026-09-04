@@ -3,7 +3,7 @@ import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { AiWorkflowRepository, type AiWorkflowRecord } from '@/db/repositories/ai-workflow-repository';
 import { CustomerProjectRepository } from '@/db/repositories/customer-project-repository';
 import { LeadLifecycleRepository } from '@/db/repositories/lead-lifecycle-repository';
-import { LeadRepository } from '@/db/repositories/lead-repository';
+import { LeadRepository, type LeadWithRelations } from '@/db/repositories/lead-repository';
 import { withTenantTransaction } from '@/db/transaction';
 import {
   getNextWorkflowStage,
@@ -15,6 +15,7 @@ import {
   buildWorkflowFloorPlanContext,
   buildWorkflowFloorPlanMeasuredContext,
   isEligibleWorkflowFloorPlan,
+  selectAutomaticWorkflowFloorPlan,
   resolveWorkflowImageMode,
   usesFloorPlanControlImage,
 } from '@/lib/ai/workflow-floorplan';
@@ -55,6 +56,19 @@ function serializeWorkflowClosedRooms(layoutData: unknown) {
     roomSize: `${(room.width / 10).toFixed(2)} m x ${(room.height / 10).toFixed(2)} m`,
     openingCount: room.openings.length,
   }));
+}
+
+async function bindAvailableWorkflowFloorPlan(
+  repository: AiWorkflowRepository,
+  workflow: AiWorkflowRecord,
+  lead: LeadWithRelations | undefined,
+) {
+  if (workflow.sourceFloorPlanId || workflow.status !== 'active' || !lead || lead.archivedAt) {
+    return workflow;
+  }
+  const plan = selectAutomaticWorkflowFloorPlan(lead.floorPlanRecords, lead.primaryFloorPlanId);
+  if (!plan) return workflow;
+  return await repository.bindFloorPlanIfUnbound(workflow.id, lead.id, plan.id) ?? workflow;
 }
 
 export type CreatePostgresWorkflowInput = {
@@ -313,12 +327,15 @@ export async function getPostgresAiWorkflowContext(input: {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const workflowId = parsePostgresId(input.workflowId, 'workflowId');
   return withTenantTransaction(enterpriseId, async (transaction) => {
-    const workflow = await new AiWorkflowRepository(transaction).findById(workflowId);
-    if (!workflow) throw notFound('方案会话不存在或无权访问');
-    if (workflow.status !== 'active') throw notFound('方案会话不存在或无权访问');
+    const repository = new AiWorkflowRepository(transaction);
+    const storedWorkflow = await repository.findById(workflowId);
+    if (!storedWorkflow) throw notFound('方案会话不存在或无权访问');
+    if (storedWorkflow.status !== 'active') throw notFound('方案会话不存在或无权访问');
 
-    const lead = await new LeadRepository(transaction).findById(workflow.leadId);
+    const lead = await new LeadRepository(transaction).findById(storedWorkflow.leadId);
     if (!lead) throw notFound('客户线索不存在或无权访问');
+
+    const workflow = await bindAvailableWorkflowFloorPlan(repository, storedWorkflow, lead);
 
     const generationRows = input.summary
       ? await new AiCreationRepository(transaction).listGenerationSummariesByWorkflowIds([workflow.id])
@@ -498,6 +515,11 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
     }
 
     const leadById = new Map(workflowLeads.map((lead) => [lead.id, lead]));
+    const repository = new AiWorkflowRepository(transaction);
+    for (let index = 0; index < workflows.rows.length; index += 1) {
+      const workflow = workflows.rows[index];
+      workflows.rows[index] = await bindAvailableWorkflowFloorPlan(repository, workflow, leadById.get(workflow.leadId));
+    }
     const generationsByWorkflow = new Map<bigint, typeof generations>();
     for (const generation of generations) {
       if (!generation.workflowId) continue;

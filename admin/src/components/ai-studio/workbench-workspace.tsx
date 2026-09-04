@@ -180,6 +180,26 @@ function batchScopeLabel(batch: CreationBatch) {
   return batch.parameterSnapshot.targetScope === 'single_room' ? '单房间' : '完整户型';
 }
 
+function batchReferenceItems(batch: CreationBatch) {
+  const snapshot = batch.parameterSnapshot || {};
+  const controlId = String(snapshot.floorPlanControlAssetId || '');
+  const styleId = String(snapshot.styleReferenceAssetId || '');
+  const sitePhotoIds = new Set((snapshot.sitePhotoAssetIds || []).map(String));
+  return batch.referenceAssetIds.map((assetId, index) => {
+    const id = String(assetId);
+    const isControl = Boolean(controlId && id === controlId);
+    const isStyle = Boolean(styleId && id === styleId);
+    const isSitePhoto = sitePhotoIds.has(id);
+    return {
+      id,
+      index,
+      previewUrl: `/api/ai/assets/${encodeURIComponent(id)}/image`,
+      label: isControl ? '户型结构' : isStyle ? '风格图' : isSitePhoto ? '现场图' : '补充参考',
+      alt: isControl ? '户型结构参考图' : isStyle ? '风格参考图' : isSitePhoto ? '现场图参考' : `补充参考图 ${index + 1}`,
+    };
+  });
+}
+
 function GenerationTile({
   generation,
   batchStatus,
@@ -1319,6 +1339,7 @@ export function WorkbenchWorkspace() {
                     {conversationBatches.map((batch) => {
                       const isLatest = batch.id === selectedBatch?.id;
                       const generations = batch.generations.length ? batch.generations : Array.from({ length: batch.requestedCount || 1 }, () => undefined);
+                      const references = batchReferenceItems(batch);
                       return (
                         <article key={batch.id} className={cn('shrink-0 rounded-xl border p-3', isLatest ? t.round : t.roundIdle)}>
                           <div className="mb-3 flex items-start gap-3">
@@ -1337,6 +1358,19 @@ export function WorkbenchWorkspace() {
                             </div>
                             <time className={cn('shrink-0 text-[11px]', t.muted)} dateTime={batch.createdAt}>{formatDateTime(batch.createdAt)}</time>
                           </div>
+                          {references.length ? (
+                            <div className="mb-3">
+                              <div className={cn('mb-2 text-[11px] font-medium', t.muted)}>参考图 · {references.length} 张</div>
+                              <div className="scrollbar-hide flex gap-2 overflow-x-auto pb-1">
+                                {references.map((reference) => (
+                                  <div key={`${batch.id}-${reference.id}`} className={cn('relative h-[64px] w-[64px] shrink-0 overflow-hidden rounded-md border', dark ? 'border-white/15 bg-[#222226]' : 'border-[#e5e9e5] bg-[#f3faf4]')}>
+                                    <img src={reference.previewUrl} alt={reference.alt} className="h-full w-full object-cover" />
+                                    <span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1 py-0.5 text-center text-[10px] leading-3 text-white">{reference.label}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
                           <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-1">
                             {generations.map((generation, index) => (
                               <GenerationTile

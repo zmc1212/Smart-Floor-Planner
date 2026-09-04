@@ -73,5 +73,6 @@ AI 工作台当前出图行为：`/ai-studio/scenarios` 提供明确的「整屋
 `lead_site_photos`，同时保留电脑上传入口。批次显式提交 `styleReferenceAssetId` 与
 `sitePhotoAssetIds`，模板封面不能充当现场图；在图库选择或电脑上传至少一张现场照片前，
 前端与服务端都会阻止单间现场生成。参考图缩略图按「户型结构」「风格图」「现场图」标识角色。
+每轮卡片还会渲染该轮全部持久化 `referenceAssetIds`（包括户型控制图和补充参考图），确保后台与小程序展示同一套完整参考图。
 
 English mirror: [admin-ui-refactor.md](./admin-ui-refactor.md)

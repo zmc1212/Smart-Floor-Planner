@@ -17,6 +17,19 @@ type WorkflowFloorPlanCandidate = {
   layoutData?: unknown;
 };
 
+/** Never guess between surveys or replace an explicitly selected primary plan. */
+export function selectAutomaticWorkflowFloorPlan<T extends WorkflowFloorPlanCandidate & { id: bigint }>(
+  plans: T[],
+  primaryFloorPlanId: bigint | null,
+): T | null {
+  if (primaryFloorPlanId) {
+    const primary = plans.find((plan) => plan.id === primaryFloorPlanId);
+    return primary && isEligibleWorkflowFloorPlan(primary) ? primary : null;
+  }
+  const eligible = plans.filter(isEligibleWorkflowFloorPlan);
+  return eligible.length === 1 ? eligible[0] : null;
+}
+
 export type WorkflowFloorPlanEligibilityReasonCode =
   | 'survey_incomplete'
   | 'invalid_formal_graph'

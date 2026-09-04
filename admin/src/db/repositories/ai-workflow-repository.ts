@@ -118,6 +118,22 @@ export class AiWorkflowRepository {
     return rows[0] ?? null;
   }
 
+  async bindFloorPlanIfUnbound(id: bigint, leadId: bigint, floorPlanId: bigint) {
+    const rows = await this.transaction
+      .update(aiWorkflows)
+      // Keep activity ordering and historical generation/source-mode snapshots intact.
+      .set({ sourceFloorPlanId: floorPlanId })
+      .where(and(
+        eq(aiWorkflows.id, id),
+        eq(aiWorkflows.leadId, leadId),
+        eq(aiWorkflows.status, 'active'),
+        isNull(aiWorkflows.sourceFloorPlanId),
+      ))
+      .returning();
+    // Another request may already have bound the workflow. Use its actual binding.
+    return rows[0] ?? this.findById(id);
+  }
+
   async updateActive(id: bigint, values: AiWorkflowUpdate) {
     const workflowRows = await this.transaction
       .select()

@@ -7,6 +7,7 @@ import {
   getWorkflowFloorPlanEligibility,
   isEligibleWorkflowFloorPlan,
   resolveWorkflowImageMode,
+  selectAutomaticWorkflowFloorPlan,
 } from '@/lib/ai/workflow-floorplan';
 
 const layout = {
@@ -38,6 +39,20 @@ const layout = {
     }],
   },
 };
+
+test('automatic binding selects a usable primary or the only eligible survey, never an ambiguous fallback', () => {
+  const first = { id: 1n, status: 'completed', layoutData: layout };
+  const second = { ...first, id: 2n };
+  const draft = { ...first, id: 3n, status: 'draft' };
+  const empty = { id: 4n, status: 'completed', layoutData: {} };
+  assert.equal(selectAutomaticWorkflowFloorPlan([], null), null);
+  assert.equal(selectAutomaticWorkflowFloorPlan([first, draft, empty], null), first);
+  assert.equal(selectAutomaticWorkflowFloorPlan([first, second], null), null);
+  assert.equal(selectAutomaticWorkflowFloorPlan([first, second], 2n), second);
+  assert.equal(selectAutomaticWorkflowFloorPlan([first, draft], 3n), null);
+  assert.equal(selectAutomaticWorkflowFloorPlan([first, empty], 4n), null);
+  assert.equal(selectAutomaticWorkflowFloorPlan([first], 99n), null);
+});
 
 test('workflow floor-plan eligibility requires a completed formal v4 plan', () => {
   assert.equal(isEligibleWorkflowFloorPlan({ status: 'completed', layoutData: layout }), true);

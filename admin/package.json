@@ -23,6 +23,7 @@
     "db:restore-drill": "node scripts/postgres-restore-drill.mjs",
     "db:cleanup:dry-run": "node scripts/postgres-cleanup-dry-run.mjs",
     "db:cleanup:execute": "node scripts/postgres-cleanup-execute.mjs",
+    "db:refresh-service-codes": "node scripts/refresh-service-codes.mjs",
     "docker:build": "docker compose build",
     "docker:build-admin": "docker compose build --no-cache admin",
     "docker:migrate": "docker compose run --rm migrate",

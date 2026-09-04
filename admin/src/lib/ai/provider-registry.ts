@@ -108,7 +108,7 @@ export async function ensureEnvironmentAiProviders() {
   await Promise.all(
     defaults.filter((item) => item.apiKey).map((item) =>
       withPlatformTransaction((transaction) =>
-        new AiProviderConfigRepository(transaction).createIfMissing({
+        new AiProviderConfigRepository(transaction).initializeFromEnvironment({
           key: item.key,
             name: item.name,
             adapterType: item.adapterType,

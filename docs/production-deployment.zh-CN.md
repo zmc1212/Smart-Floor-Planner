@@ -141,6 +141,34 @@ SQL/参数、请求/响应体、查询字符串、手机号和凭据。角标/�
 部署替换容器后应重新执行 `docker logs`。这只是五个接口的诊断日志，全部 HTTP 访问以 Nginx
 日志为准。
 
+如需在发布小程序前先修复线上活动码/推广码，可在 Admin 容器内执行脚本。默认只读检查，
+不会写库；`--apply` 才提交事务，`--rotate-all` 才会强制轮换所有 active 码。脚本只输出
+类型、主体 ID 和版本，不输出令牌：
+
+```bash
+docker exec smart-floor-planner-admin node scripts/refresh-service-codes.mjs --kind all
+docker exec smart-floor-planner-admin node scripts/refresh-service-codes.mjs --kind all --apply
+```
+
+脚本不要求随镜像发布。也可以只把单文件上传到服务器，再复制到现有容器执行；容器需要
+能使用现有 `DATABASE_URL`、`REFERRER_TOKEN_SECRET`/`JWT_SECRET` 和 Node `pg` 依赖：
+
+```bash
+scp admin/scripts/refresh-service-codes.mjs user@server:/tmp/
+docker cp /tmp/refresh-service-codes.mjs smart-floor-planner-admin:/tmp/refresh-service-codes.mjs
+docker exec smart-floor-planner-admin node /tmp/refresh-service-codes.mjs --kind all
+```
+
+执行 `--apply` 的复制命令同样只替换最后一个参数。上传到 `/tmp` 的脚本不会把上传目录当作
+`.env` 目录；容器运行时优先使用已注入的环境变量。若在仓库工作目录直接运行且已安装
+`@next/env`，脚本也会读取该工作目录的 `.env` 文件。若在宿主机直接运行 Node，请使用 Node 20
+的 `--env-file` 或显式导出环境变量，并确保宿主机已安装兼容版本的 `pg`。
+
+可选参数为 `--kind staff|promotion|all` 和 `--enterprise-id ID`。不加 `--rotate-all` 时，
+只轮换当前 `REFERRER_TOKEN_SECRET`（未设置则使用 `JWT_SECRET`）无法重建的 active 记录；
+加上后会让旧码立即失效并生成下一版本。脚本执行期间按员工/成员关系加行锁，提交失败会
+整体回滚。数据库刷新只更新令牌记录，不会改写已经下载或分发的二维码图片。
+
 扫码返回 `404` 时应看响应体：JSON `code_not_found` 表示不透明令牌未匹配到数据库记录，
 不是 Next.js 路由缺失。向 `/api/miniprogram/codes/resolve` 发送空对象 `{}` 应在任何数据库
 写入之前返回 `400 / invalid_token`，可用于验证路由存在。随后确认二维码来自同一数据库。

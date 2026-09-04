@@ -140,6 +140,43 @@ require deployment of the updated image; restarting an older image cannot add
 them. Reattach `docker logs` after deployment replaces its container. This is
 diagnostic logging for five routes, not a global HTTP access logger.
 
+To repair production activity/promotion rows before publishing a Mini Program
+build, run the script inside the Admin container. It is read-only by default;
+`--apply` commits the transaction and `--rotate-all` explicitly rotates every
+active code. The output contains only code type, owner ID, and versions, never
+tokens:
+
+```bash
+docker exec smart-floor-planner-admin node scripts/refresh-service-codes.mjs --kind all
+docker exec smart-floor-planner-admin node scripts/refresh-service-codes.mjs --kind all --apply
+```
+
+The script does not have to ship in the image. Upload the single file and copy
+it into the existing container before running it; the container must expose its
+existing `DATABASE_URL`, `REFERRER_TOKEN_SECRET`/`JWT_SECRET`, and Node `pg`
+dependency:
+
+```bash
+scp admin/scripts/refresh-service-codes.mjs user@server:/tmp/
+docker cp /tmp/refresh-service-codes.mjs smart-floor-planner-admin:/tmp/refresh-service-codes.mjs
+docker exec smart-floor-planner-admin node /tmp/refresh-service-codes.mjs --kind all
+```
+
+Use `--apply` in the final command to commit. A script uploaded under `/tmp`
+does not treat that upload directory as an `.env` directory; container runs use
+the injected environment variables first. When run from a checkout with
+`@next/env` installed, it can also load `.env` files from the current working
+directory. Running it on the host instead can use Node 20's `--env-file` (or
+explicitly exported variables) and requires a compatible installed `pg` package.
+
+Optional filters are `--kind staff|promotion|all` and `--enterprise-id ID`.
+Without `--rotate-all`, only active rows that cannot be reconstructed from the
+current `REFERRER_TOKEN_SECRET` (falling back to `JWT_SECRET`) are rotated. With
+it, old codes become invalid immediately and the next version is inserted. The
+script locks each staff/member owner while it runs and rolls the whole
+transaction back on failure. It changes token rows only; already downloaded or
+distributed QR images cannot be rewritten.
+
 For a scan-time `404`, inspect the response body: JSON `code_not_found` means the
 opaque token has no matching database record; it is not a missing Next.js route.
 An empty `{}` POST to `/api/miniprogram/codes/resolve` should return
