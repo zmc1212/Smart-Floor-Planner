@@ -118,6 +118,20 @@ copy back to `layoutData`.
   suite passes 1,184 of 1,198 tests; all 14 failures match the Phase 0 list.
   No UI, route, API, permission or v4 contract changes. Evidence:
   [`legacy-kernel-phase4b-wall-operations.md`](./legacy-kernel-phase4b-wall-operations.md).
+- Phase 4C measurement writes are Implemented in
+  `survey/operations/measurement.js`. `remeasureSelectedWall` now builds a
+  read-only plan and applies it through the existing immutable `full`
+  transaction. Open-wall remeasurement and isolated closed orthogonal cycles
+  validate fixed endpoints, opening spans, axis-only balancing, and the
+  complete measurement audit before moving any node. The raw instrument value,
+  effective stored wall length, and derived closure correction remain linked by
+  `lengthMm = rawMeasuredLengthMm + closureAdjustmentMm`. Existing-wall
+  extension/shortening and new-wall commits in `commitPreviewLength` use the
+  same measurement-write helpers. Mini Program and Admin keep one mirrored
+  implementation; the legacy kernel retains only its compatibility proxy.
+  Closure confirmation, snap policy, UI, routes, APIs, permissions, and the
+  version-4 data envelope are unchanged. Evidence:
+  [`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md).
 - Surveying pan and pinch gestures use the primary Canvas `requestAnimationFrame`
   frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
   coalesced to one callback per animation frame and flushed once at gesture end;

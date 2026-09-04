@@ -29,4 +29,33 @@ function getClosedSpace(floor, spaceId) {
   )) || null;
 }
 
-module.exports = { getNode, getWall, getFirstNode, getLastWall, getLastEndNode, getClosedSpace };
+// Return the only endpoint of a wall that is connected to another wall.
+// Measurement operations use this to keep the connected endpoint fixed while
+// moving a free endpoint. Keeping the lookup in the shared graph-query layer
+// avoids a second topology implementation in the legacy compatibility kernel.
+function getSingleSharedEndpoint(floor, wall) {
+  if (!floor || !wall) return null;
+  const startShared = (floor.walls || []).some((item) => (
+    item.id !== wall.id &&
+    (item.startNodeId === wall.startNodeId || item.endNodeId === wall.startNodeId)
+  ));
+  const endShared = (floor.walls || []).some((item) => (
+    item.id !== wall.id &&
+    (item.startNodeId === wall.endNodeId || item.endNodeId === wall.endNodeId)
+  ));
+
+  if (startShared === endShared) return null;
+  return startShared
+    ? { fixedNodeId: wall.startNodeId, movingNodeId: wall.endNodeId }
+    : { fixedNodeId: wall.endNodeId, movingNodeId: wall.startNodeId };
+}
+
+module.exports = {
+  getNode,
+  getWall,
+  getFirstNode,
+  getLastWall,
+  getLastEndNode,
+  getClosedSpace,
+  getSingleSharedEndpoint
+};

@@ -112,11 +112,18 @@ Phase 4B 墙体结构事务已同步实现（Implemented）：镜像 `operations
 `operations/wall-deletion.js` 使用只读 plan、既有不可变/full 校验事务及 Face/Space 同步。
 门窗迁移、审计分摊、共享墙实体侧、删除/恢复墙链和 session 引用清理与冻结旧实现一致；
 墙链恢复使用独立的 `topology/closure-queries.js`，闭合写入仍待后续阶段。
-kernel 当前为 4,595 行 / 116 个顶层函数；39 模块 / 141 边审计验证 42 对镜像
-（41 对精确副本及 renderer 路径改写）。39 项后台画布/PNG/DXF/房间/3D/AI 测试、
+Phase 4B 快照为 4,595 行 / 116 个顶层函数；Phase 4C 抽取测量写入后 kernel 为
+4,319 行 / 110 个顶层函数；40 模块 / 158 边审计验证 43 对镜像
+（42 对精确副本及 1 对 renderer 路径改写）。39 项后台画布/PNG/DXF/房间/3D/AI 测试、
 697 项量房、55 项 H5 测试与性能门槛通过。不新增后台写入口，路由、API、权限、UI、
 设计源与 v4 数据不变；详见
 [Phase 4B 完成记录](./surveying-module/legacy-kernel-phase4b-wall-operations.md)。
+Phase 4C 测量写入已同步实现（Implemented）：镜像 `survey/operations/measurement.js` 通过
+只读 plan、既有 full 不可变事务接管 `remeasureSelectedWall`，在移动节点前预检固定端点、
+门窗范围、闭合正交单轴平差及 `rawMeasuredLengthMm` / `lengthMm` / `closureAdjustmentMm`
+审计关系。`commitPreviewLength` 的已有墙长延长/缩短和新墙写入复用同一测量 helper。后台
+仍只读，不新增写路由；闭合确认、路由、API、权限、UI、设计源和 version-4 合同不变。详见
+[Phase 4C 完成记录](./surveying-module/legacy-kernel-phase4c-measurement-operations.md)。
 
 `POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
 

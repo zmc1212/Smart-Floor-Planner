@@ -124,6 +124,8 @@ function buildFacadeAudit() {
   const spaceDimensions = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'space-dimensions.js'));
   const wallOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'wall-operations.js'))
     .createWallOperations(kernel);
+  const measurementOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'measurement.js'))
+    .createMeasurementOperations();
   const openingOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'opening-operations.js'))
     .createOpeningOperations();
   const { validateSurveyDraft } = require(path.join(
@@ -140,6 +142,7 @@ function buildFacadeAudit() {
     ['spaceBoundary', 'space-boundary-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js', spaceBoundary],
     ['spaceDimensions', 'space-dimension-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js', spaceDimensions],
     ['transactionalWalls', 'transactional-wall-operations', 'miniprogram/packages/surveying/utils/survey/operations/wall-operations.js', wallOperations],
+    ['transactionalMeasurements', 'transactional-measurement-operations', 'miniprogram/packages/surveying/utils/survey/operations/measurement.js', measurementOperations],
     ['transactionalOpenings', 'transactional-opening-operations', 'miniprogram/packages/surveying/utils/survey/operations/opening-operations.js', openingOperations],
     ['validator', 'floor-plan-validator', 'miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js', { validateSurveyDraft }]
   ];

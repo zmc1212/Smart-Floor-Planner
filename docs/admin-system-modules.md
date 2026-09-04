@@ -209,12 +209,24 @@ plans, the existing immutable/full-validation transaction and face/Space sync.
 Opening remapping, audit allocation, shared-wall body side, deletion/recovery
 and session reference cleanup preserve the frozen behavior. Chain recovery uses
 independent `topology/closure-queries.js`; closure writes remain pending.
-The kernel is now 4,595 lines / 116 top-level functions; the 39-module / 141-edge
-audit verifies 42 mirror pairs (41 exact copies plus the renderer path rewrite).
+The Phase 4B snapshot was 4,595 lines / 116 top-level functions; after Phase 4C
+measurement extraction the kernel is 4,319 lines / 110 top-level functions. The
+current 40-module / 158-edge audit verifies 43 mirror pairs (42 exact copies
+plus the renderer path rewrite).
 All 39 Admin canvas/PNG/DXF/room/3D/AI tests pass, alongside 697 surveying and
 55 H5 tests plus the performance gates. No new Admin mutation route is exposed;
 routes, APIs, permissions, UI, design sources and v4 data remain unchanged. See the
 [Phase 4B completion record](./surveying-module/legacy-kernel-phase4b-wall-operations.md).
+Phase 4C measurement writes are Implemented in the mirrored
+`survey/operations/measurement.js` module. `remeasureSelectedWall` uses a
+read-only plan and the existing immutable `full` transaction, preflighting
+fixed endpoints, opening spans, axis-only closed-cycle balancing, and the
+raw/effective/closure audit relation before moving graph nodes. The existing
+wall extension/shortening and new-wall branches of `commitPreviewLength` share
+the same measurement-write helpers. Admin remains read-only and exposes no new
+mutation route; closure confirmation, UI, routes, APIs, permissions, and the
+version-4 envelope are unchanged. See the
+[Phase 4C completion record](./surveying-module/legacy-kernel-phase4c-measurement-operations.md).
 
 DXF generation is likewise read-only: `admin/src/lib/dxf.ts` adapts the graph
 to the MIT-licensed writer, emits unioned inner/outer wall `LINE` faces after

@@ -28,7 +28,20 @@ const {
   reverseWallDirection,
   setWallEndpointInset
 } = require('./operations/wall-mutation-helpers.js');
-const { getFirstNode, getLastWall, getLastEndNode, getClosedSpace, getNode, getWall } = require('./core/graph-query.js');
+const {
+  getFirstNode,
+  getLastWall,
+  getLastEndNode,
+  getClosedSpace,
+  getNode,
+  getWall,
+  getSingleSharedEndpoint
+} = require('./core/graph-query.js');
+const {
+  legacyRemeasureSelectedWall,
+  applyExistingWallMeasurement,
+  recordCommittedWallMeasurement
+} = require('./operations/measurement.js');
 const { nowIso, nextId } = require('./core/runtime-id.js');
 const {
   buildWallSnapGeometry,
@@ -2141,32 +2154,6 @@ function splitClosedSpaceWithPartition(floor, session, partitionWall) {
   return (floor.spaces || []).filter((space) => space && space.closed).length >= closedBefore + 1;
 }
 
-function normalizeOpeningsForWall(floor, wallId) {
-  ensureOpenings(floor).forEach((opening) => {
-    if (opening.wallId === wallId) {
-      normalizeOpeningToWall(floor, opening);
-      normalizeOpeningDirection(opening);
-    }
-  });
-}
-
-function getSingleSharedEndpoint(floor, wall) {
-  if (!floor || !wall) return null;
-  const startShared = floor.walls.some((item) => (
-    item.id !== wall.id &&
-    (item.startNodeId === wall.startNodeId || item.endNodeId === wall.startNodeId)
-  ));
-  const endShared = floor.walls.some((item) => (
-    item.id !== wall.id &&
-    (item.startNodeId === wall.endNodeId || item.endNodeId === wall.endNodeId)
-  ));
-
-  if (startShared === endShared) return null;
-  return startShared
-    ? { fixedNodeId: wall.startNodeId, movingNodeId: wall.endNodeId }
-    : { fixedNodeId: wall.endNodeId, movingNodeId: wall.startNodeId };
-}
-
 function clampNumber(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -3042,20 +3029,16 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   let wall;
   if (extendLastWall || shortenLastWall) {
     wall = getLastWall(floor);
-    const previousRawMeasuredLengthMm = Number.isFinite(Number(wall.rawMeasuredLengthMm))
-      ? Math.round(Number(wall.rawMeasuredLengthMm))
-      : Math.round(Number(wall.lengthMm) || getMeasuredWallLength(floor, wall));
-    const combinedRawMeasuredLengthMm = extendLastWall
-      ? previousRawMeasuredLengthMm + parsedLength
-      : Math.max(0, previousRawMeasuredLengthMm - parsedLength);
-    anchor.xMm = Math.round(endPoint.xMm);
-    anchor.yMm = Math.round(endPoint.yMm);
     endNode = anchor;
-    wall.lengthMm = getMeasuredWallLength(floor, wall);
-    recordWallRawMeasurement(wall, combinedRawMeasuredLengthMm, 'coordinate-rounding');
-    wall.angleDeg = angleDeg(getNode(floor, wall.startNodeId), endNode);
-    wall.inputSource = inputSource || 'manual';
-    wall.measuredAt = nowIso();
+    applyExistingWallMeasurement(
+      floor,
+      wall,
+      anchor,
+      endPoint,
+      parsedLength,
+      inputSource,
+      extendLastWall ? 'extend' : 'shorten'
+    );
   } else {
     if (activeWallCountBeforeCommit === 0 && session.activeSpaceSharedWallId && session.activeSpaceSharedWallMiddle) {
       const splitSource = getWall(floor, session.activeSpaceSharedWallId);
@@ -3106,7 +3089,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       status: 'confirmed',
       measuredAt: nowIso()
     };
-    recordWallRawMeasurement(wall, parsedLength, 'coordinate-rounding');
+    recordCommittedWallMeasurement(wall, parsedLength, inputSource);
     floor.walls.push(wall);
     applyWallBodyInsetToIncidentWalls(floor, wall, wall.startNodeId);
     applyWallBodyInsetToIncidentWalls(floor, wall, wall.endNodeId);
@@ -4048,264 +4031,6 @@ function setFixedNode(draft, nodeId) {
   return touchDraft(next);
 }
 
-function assertOpeningsFitMeasuredLength(floor, wall, prospectiveMeasuredLengthMm) {
-  const openings = ensureOpenings(floor).filter((opening) => opening.wallId === wall.id);
-  for (const opening of openings) {
-    const range = openingDomain.getOpeningRange(opening);
-    if (range.startMm < -1 || range.endMm > prospectiveMeasuredLengthMm + 1) {
-      throw createSurveyDomainError(DOMAIN_ERROR_CODES.OPENING_REMEASURE_CONFLICT, {
-        wallId: wall.id,
-        openingId: opening.id,
-        prospectiveMeasuredLengthMm
-      });
-    }
-  }
-}
-
-function buildClosedOrthogonalRemeasurePlan(floor, space, selectedWall, fixedNodeId, measuredLengthMm) {
-  if (!floor || !space || !selectedWall || !fixedNodeId) return null;
-  const wallIds = Array.isArray(space.wallIds) ? space.wallIds : [];
-  const walls = wallIds.map((wallId) => getWall(floor, wallId)).filter(Boolean);
-  if (walls.length !== wallIds.length || walls.length < 4) return null;
-  const cycleWallIds = new Set(wallIds);
-  if (!cycleWallIds.has(selectedWall.id)) return null;
-
-  const adjacency = new Map();
-  walls.forEach((wall) => {
-    [wall.startNodeId, wall.endNodeId].forEach((nodeId) => {
-      const values = adjacency.get(nodeId) || [];
-      values.push(wall);
-      adjacency.set(nodeId, values);
-    });
-  });
-  if ([...adjacency.values()].some((values) => values.length !== 2)) return null;
-  for (const nodeId of adjacency.keys()) {
-    const incidentWalls = (floor.walls || []).filter((wall) => (
-      wall.startNodeId === nodeId || wall.endNodeId === nodeId
-    ));
-    if (incidentWalls.length !== 2 || incidentWalls.some((wall) => !cycleWallIds.has(wall.id))) {
-      return null;
-    }
-  }
-  if (walls.some((wall) => {
-    const owners = findClosedSpacesForWall(floor, wall.id);
-    return owners.length !== 1 || owners[0].id !== space.id;
-  })) return null;
-
-  const entries = [];
-  const usedWallIds = new Set();
-  let currentNode = getNode(floor, fixedNodeId);
-  let currentWall = selectedWall;
-  let selectedAxis = '';
-  while (currentNode && currentWall && !usedWallIds.has(currentWall.id)) {
-    const nextNodeId = currentWall.startNodeId === currentNode.id
-      ? currentWall.endNodeId
-      : (currentWall.endNodeId === currentNode.id ? currentWall.startNodeId : '');
-    const nextNode = getNode(floor, nextNodeId);
-    if (!nextNode || currentWall.mode === 'diagonal' || !wallKeepsStrictAxis(currentNode, nextNode)) {
-      return null;
-    }
-    const dx = nextNode.xMm - currentNode.xMm;
-    const dy = nextNode.yMm - currentNode.yMm;
-    const axis = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
-    const sign = Math.sign(axis === 'x' ? dx : dy);
-    const insets = getWallMeasurementInsets(currentWall);
-    const currentCoordinateLengthMm = Math.abs(axis === 'x' ? dx : dy);
-    if (currentWall.id === selectedWall.id) selectedAxis = axis;
-    const existingRawMeasuredLengthMm = Number.isFinite(Number(currentWall.rawMeasuredLengthMm))
-      ? Math.round(Number(currentWall.rawMeasuredLengthMm))
-      : Math.round(Number(currentWall.lengthMm) || getMeasuredWallLength(floor, currentWall));
-    const rawMeasuredLengthMm = currentWall.id === selectedWall.id
-      ? measuredLengthMm
-      : existingRawMeasuredLengthMm;
-    const coordinateLengthMm = currentWall.id === selectedWall.id
-      ? rawMeasuredLengthMm + insets.start + insets.end -
-        normalizeMeasurementExtension(currentWall.measurementStartExtensionMm)
-      : currentCoordinateLengthMm;
-    if (coordinateLengthMm < MIN_WALL_LENGTH_MM || !sign) return null;
-    entries.push({
-      wall: currentWall,
-      fromNode: currentNode,
-      toNode: nextNode,
-      axis,
-      rawMeasuredLengthMm,
-      signedLengthMm: sign * coordinateLengthMm,
-      adjustedSignedLengthMm: sign * coordinateLengthMm
-    });
-    usedWallIds.add(currentWall.id);
-    currentNode = nextNode;
-    currentWall = (adjacency.get(currentNode.id) || []).find((wall) => !usedWallIds.has(wall.id));
-  }
-  if (usedWallIds.size !== walls.length || !currentNode || currentNode.id !== fixedNodeId) return null;
-  if (!selectedAxis) return null;
-
-  for (const axis of ['x', 'y']) {
-    const residualMm = entries
-      .filter((entry) => entry.axis === axis)
-      .reduce((total, entry) => total + entry.adjustedSignedLengthMm, 0);
-    if (!residualMm) continue;
-    if (axis !== selectedAxis) return null;
-    const adjustable = entries.filter((entry) => (
-      entry.axis === axis && entry.wall.id !== selectedWall.id
-    ));
-    if (!adjustable.length) return null;
-    const totalLengthMm = adjustable.reduce(
-      (total, entry) => total + Math.abs(entry.signedLengthMm),
-      0
-    );
-    let remainingCorrectionMm = -residualMm;
-    adjustable.forEach((entry, index) => {
-      const correctionMm = index === adjustable.length - 1
-        ? remainingCorrectionMm
-        : Math.round(-residualMm * Math.abs(entry.signedLengthMm) / totalLengthMm);
-      entry.adjustedSignedLengthMm += correctionMm;
-      remainingCorrectionMm -= correctionMm;
-    });
-  }
-
-  if (entries.some((entry) => (
-    Math.sign(entry.adjustedSignedLengthMm) !== Math.sign(entry.signedLengthMm) ||
-    Math.abs(entry.adjustedSignedLengthMm) < MIN_WALL_LENGTH_MM
-  ))) return null;
-
-  // A balanced cycle can move more than the selected wall alone. Check every
-  // opening against its prospective measured span before touching any node so
-  // a short remeasure cannot silently leave an opening outside its host wall.
-  for (const entry of entries) {
-    const insets = getWallMeasurementInsets(entry.wall);
-    const coordinateLengthMm = Math.abs(entry.adjustedSignedLengthMm);
-    const prospectiveMeasuredLengthMm = Math.max(
-      0,
-      coordinateLengthMm - insets.start +
-        normalizeMeasurementExtension(entry.wall.measurementStartExtensionMm) -
-        insets.end
-    );
-    assertOpeningsFitMeasuredLength(floor, entry.wall, prospectiveMeasuredLengthMm);
-  }
-  return { entries, fixedNode: getNode(floor, fixedNodeId), selectedAxis };
-}
-
-function applyClosedOrthogonalRemeasurePlan(floor, plan, selectedWall, inputSource) {
-  if (!floor || !plan || !plan.fixedNode || !plan.entries.length) return false;
-  let currentPoint = { xMm: plan.fixedNode.xMm, yMm: plan.fixedNode.yMm };
-  plan.entries.forEach((entry, index) => {
-    const nextPoint = entry.axis === 'x'
-      ? { xMm: Math.round(currentPoint.xMm + entry.adjustedSignedLengthMm), yMm: currentPoint.yMm }
-      : { xMm: currentPoint.xMm, yMm: Math.round(currentPoint.yMm + entry.adjustedSignedLengthMm) };
-    if (index < plan.entries.length - 1) {
-      entry.toNode.xMm = nextPoint.xMm;
-      entry.toNode.yMm = nextPoint.yMm;
-    }
-    currentPoint = nextPoint;
-  });
-  if (currentPoint.xMm !== plan.fixedNode.xMm || currentPoint.yMm !== plan.fixedNode.yMm) {
-    return false;
-  }
-
-  refreshWallMetrics(floor);
-  const adjustedAt = nowIso();
-  plan.entries.forEach((entry) => {
-    if (entry.axis !== plan.selectedAxis) return;
-    const adjustmentMm = Math.round(entry.wall.lengthMm - entry.rawMeasuredLengthMm);
-    entry.wall.rawMeasuredLengthMm = entry.rawMeasuredLengthMm;
-    entry.wall.closureAdjustmentMm = adjustmentMm;
-    if (adjustmentMm) {
-      entry.wall.adjustmentSource = 'remeasure-balance';
-    } else {
-      delete entry.wall.adjustmentSource;
-    }
-  });
-  selectedWall.inputSource = inputSource || 'manual';
-  selectedWall.measuredAt = adjustedAt;
-  return true;
-}
-
-function remeasureSelectedWall(draft, lengthMm, inputSource) {
-  const parsedLength = validateLength(lengthMm);
-  const next = cloneDraft(draft);
-  const floor = getActiveFloor(next);
-  const session = floor.session;
-  const wall = getWall(floor, session.selectedWallId);
-  if (!wall || session.state !== SESSION_STATES.REMEASURE_AWAITING_INPUT) {
-    throw createSurveyDomainError(DOMAIN_ERROR_CODES.REMEASURE_SELECTION_REQUIRED);
-  }
-
-  const sharedEndpoint = getSingleSharedEndpoint(floor, wall);
-  const fixedNodeId = session.fixedNodeId || (sharedEndpoint ? sharedEndpoint.fixedNodeId : wall.startNodeId);
-  const closedSpaces = findClosedSpacesForWall(floor, wall.id);
-  if (closedSpaces.length > 1) {
-    throw createSurveyDomainError(DOMAIN_ERROR_CODES.SHARED_WALL_REMEASURE_UNSUPPORTED);
-  }
-  if (closedSpaces.length === 1) {
-    const closedPlan = buildClosedOrthogonalRemeasurePlan(
-      floor,
-      closedSpaces[0],
-      wall,
-      fixedNodeId,
-      parsedLength
-    );
-    if (!closedPlan || !applyClosedOrthogonalRemeasurePlan(floor, closedPlan, wall, inputSource)) {
-      throw createSurveyDomainError(DOMAIN_ERROR_CODES.CLOSED_REMEASURE_UNSAFE);
-    }
-    session.state = SESSION_STATES.SPACE_CLOSED;
-    session.anchorNodeId = '';
-    session.selectedWallId = wall.id;
-    session.selectedOpeningId = '';
-    session.fixedNodeId = '';
-    return touchDraft(next);
-  }
-
-  const movingNodeId = fixedNodeId === wall.startNodeId ? wall.endNodeId : wall.startNodeId;
-  const fixedNode = getNode(floor, fixedNodeId);
-  const movingNode = getNode(floor, movingNodeId);
-  if (!fixedNode || !movingNode) {
-    throw createSurveyDomainError(DOMAIN_ERROR_CODES.INVALID_REMEASURE_ENDPOINT);
-  }
-  const movingNodeShared = (floor.walls || []).some((item) => (
-    item.id !== wall.id && (item.startNodeId === movingNodeId || item.endNodeId === movingNodeId)
-  ));
-  if (movingNodeShared) {
-    throw createSurveyDomainError(DOMAIN_ERROR_CODES.REMEASURE_CONNECTED_ENDPOINT);
-  }
-  const rawDx = movingNode.xMm - fixedNode.xMm;
-  const rawDy = movingNode.yMm - fixedNode.yMm;
-  const safeLength = Math.hypot(rawDx, rawDy) || 1;
-  const dx = rawDx / safeLength;
-  const dy = rawDy / safeLength;
-
-  const insets = getWallMeasurementInsets(wall);
-  const coordinateLength = parsedLength + insets.start + insets.end -
-    normalizeMeasurementExtension(wall.measurementStartExtensionMm);
-  if (coordinateLength < MIN_WALL_LENGTH_MM) {
-    throw createSurveyDomainError(DOMAIN_ERROR_CODES.REMEASURE_LENGTH_TOO_SHORT, {
-      minimumMm: MIN_WALL_LENGTH_MM
-    });
-  }
-  assertOpeningsFitMeasuredLength(floor, wall, parsedLength);
-  movingNode.xMm = Math.round(fixedNode.xMm + dx * coordinateLength);
-  movingNode.yMm = Math.round(fixedNode.yMm + dy * coordinateLength);
-
-  refreshWallMetrics(floor);
-  recordWallRawMeasurement(wall, parsedLength, 'coordinate-rounding');
-  wall.inputSource = inputSource || 'manual';
-  wall.measuredAt = nowIso();
-  normalizeOpeningsForWall(floor, wall.id);
-
-  if (floor.spaces.some((space) => space.closed)) {
-    session.state = SESSION_STATES.SPACE_CLOSED;
-    session.anchorNodeId = '';
-    session.selectedWallId = wall.id;
-  } else {
-    session.state = SESSION_STATES.WALL_COMMITTED;
-    session.anchorNodeId = movingNodeId;
-    session.selectedWallId = '';
-  }
-
-  session.selectedOpeningId = '';
-  session.fixedNodeId = '';
-  return touchDraft(next);
-}
-
 function setMeasurementSide(draft, side, wallId) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
@@ -4524,7 +4249,6 @@ const legacyCommitPreviewLength = adaptLegacySurveyOperation(commitPreviewLength
 const legacyConfirmClosure = adaptLegacySurveyOperation(confirmClosure);
 const legacyRenameClosedSpace = adaptLegacySurveyOperation(renameClosedSpace);
 const legacySnapCursorToWall = adaptLegacySurveyOperation(snapCursorToWall);
-const legacyRemeasureSelectedWall = adaptLegacySurveyOperation(remeasureSelectedWall);
 const legacySetThickness = adaptLegacySurveyOperation(setThickness);
 
 module.exports = {

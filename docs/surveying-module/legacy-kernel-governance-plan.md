@@ -2,7 +2,7 @@
 
 > 状态：执行中
 >
-> 当前阶段：Phase 4C — 测量写入（Phase 4B 已完成）
+> 当前阶段：Phase 4D — 闭合与合并（Phase 4C 已完成）
 >
 > 最后检查：2026-09-04
 >
@@ -299,9 +299,12 @@ refactor: extract survey graph read models
 
 #### Phase 4C：测量写入
 
-- [ ] `remeasureSelectedWall`
-- [ ] 实测长度、有效长度和闭合平差的持久化关系
-- [ ] `commitPreviewLength` 中可独立的测量写入部分
+- [x] `remeasureSelectedWall`
+- [x] 实测长度、有效长度和闭合平差的持久化关系
+- [x] `commitPreviewLength` 中可独立的测量写入部分
+
+完成证据、行为差分、失败原子性、审计守恒及 Mini Program/Admin 镜像验证见
+[`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md)。
 
 #### Phase 4D：闭合与合并
 
@@ -496,7 +499,7 @@ node --test test/survey*.test.js test/surveying-editor*.test.js
 
 ### 当前阶段
 
-Phase 4C — 测量写入；Phase 4B 已完成。
+Phase 4D — 闭合与合并；Phase 4C 已完成。
 
 ### 已完成
 
@@ -518,19 +521,25 @@ Phase 4C — 测量写入；Phase 4B 已完成。
 - [x] 中英文量房合同及 Mini Program/Admin 模块清单已同步。对外合同无变化：路由、API、
       角色、权限、UI、错误文案、吸附/闭合策略与正式 v4 数据保持不变。详见
       [Phase 4B 墙体结构事务迁移记录](./legacy-kernel-phase4b-wall-operations.md)。
+- [x] Phase 4C 将 `remeasureSelectedWall` 迁移至
+      `operations/measurement.js` 的只读 plan/apply 和 full 不可变事务；开链及单一闭合
+      正交空间复尺、固定端点、单轴平差、门窗范围预检与审计守恒均与冻结旧行为一致。
+      `commitPreviewLength` 的已有墙延长/缩短和新墙审计写入复用同一 helper。累计 kernel
+      当前为 4,319 行 / 110 个顶层函数；64 个 legacy 与 69 个 façade 导出不变。40 模块 /
+      158 边无反向/循环依赖，43 对 Mini Program/Admin 镜像通过审计；新增 6 项 Phase 4C
+      测试通过。详见 [Phase 4C 测量写入事务迁移记录](./legacy-kernel-phase4c-measurement-operations.md)。
 
 ### 仍保留的边界
 
-- [ ] Phase 4C 复尺/测量与 Phase 4D 闭合写操作仍待迁移；移出的只读闭合查询不代表
+- [ ] Phase 4D 闭合写操作仍待迁移；移出的只读闭合查询和 Phase 4C 测量事务不代表
       Phase 4D 已完成。Phase 5 交互/session 状态机尚未分离。
 - [ ] legacy kernel 仍保留尚未迁移的写操作与交互逻辑；兼容导出未删除或改变。
 - [ ] Phase 6 运行来源收口和 Phase 7 最终治理仍待完成；Admin 继续作为生成镜像。
 
 ### 下一步唯一目标
 
-执行 Phase 4C 的首个测量事务：迁移 `remeasureSelectedWall`。先冻结开口墙、闭合正交
-空间、固定端点、连续双轴复尺、门窗范围冲突及原始读数/平差元数据语义，再复用既有
-full 不可变事务接管；不同时迁移闭合确认、改变 UI、吸附阈值或正式 v4 数据合同。
+执行 Phase 4D 的首个闭合计划：在不改变 UI、吸附阈值或正式 v4 数据合同的前提下，迁移
+closure candidate 的纯计划生成；`confirmClosure` 仍需在后续独立事务步骤中接管。
 
 ## 12. 整体完成定义
 

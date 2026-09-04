@@ -18,8 +18,10 @@ Phase 3 墙体、墙面、空间边界/尺寸独立读模型与显式 façade �
 [`legacy-kernel-phase4a-opening-operations.md`](./legacy-kernel-phase4a-opening-operations.md)。
 已完成的 Phase 4B 拆墙、删墙与删除空间事务见
 [`legacy-kernel-phase4b-wall-operations.md`](./legacy-kernel-phase4b-wall-operations.md)。
-Phase 0/1 建立测试治理能力，Phase 2/3/4A/4B 是行为等价的内部运行时重构；均不改变正式量房
-运行合同。
+已完成的 Phase 4C 复尺与测量写入事务见
+[`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md)。
+Phase 0/1 建立测试治理能力，Phase 2/3/4A/4B/4C 是行为等价的内部运行时重构；均不改变正式
+量房运行合同。
 
 ## 当前能力
 
@@ -71,11 +73,21 @@ Phase 0/1 建立测试治理能力，Phase 2/3/4A/4B 是行为等价的内部运
   外层事务同步 Face 并 full 校验；独立 split 入口同样复用既有事务，无新增公共导出。
   门窗安全迁移/冲突拒绝、审计分摊、共享墙实体侧、session 引用清理、共线共享界面打通、
   全共享房间保留几何及 undo/redo 保持不变。墙链恢复依赖的原有只读闭合查询移至
-  `topology/closure-queries.js`，不接管闭合写入。kernel 当前 4,595 行 / 116 个顶层函数，
+  `topology/closure-queries.js`，不接管闭合写入。Phase 4B 快照中的 kernel 为 4,595 行 /
+  116 个顶层函数，
   39 模块 / 141 边和 42 对运行镜像通过审计；697 项量房、55 项 H5、39 项 Admin 测试及
-  大图性能门槛通过。全量小程序 1,198 项中 1,184 项通过，14 项失败与 Phase 0 既有清单
+  大图性能门槛通过。Phase 4B 快照的全量小程序 1,198 项中 1,184 项通过，14 项失败与 Phase 0 既有清单
   一致。无 UI、路由、API、权限或 v4 合同变化；详见
   [`legacy-kernel-phase4b-wall-operations.md`](./legacy-kernel-phase4b-wall-operations.md)。
+- Phase 4C 测量写入已实现（Implemented）：`survey/operations/measurement.js` 独立拥有
+  `remeasureSelectedWall` 的只读 plan/apply 与 full 不可变事务；开链复尺、单一闭合正交空间
+  复尺、固定端点、连续双轴平差和门窗范围冲突均在写入前完成校验。原始读数
+  `rawMeasuredLengthMm`、有效墙长 `lengthMm` 与派生 `closureAdjustmentMm` 始终保持
+  `lengthMm = rawMeasuredLengthMm + closureAdjustmentMm`，`commitPreviewLength` 的已有墙长
+  延长/缩短和新墙审计写入复用同一测量 helper。Mini Program/Admin 使用同一镜像，legacy
+  kernel 仅保留兼容代理；不接管闭合确认或改变吸附策略。新增 6 项 Phase 4C 单元测试，
+  并通过既有量房、Admin 镜像与 full validator 护栏；详见
+  [`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md)。
 - 编辑器使用 version-4 `surveyGraph`，坐标、长度、墙厚、开口和层高均为毫米。
   门宽/窗宽上限为当前宿主墙长度（不少于 100 mm），由 `normalizeOpeningToWall`
   按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。

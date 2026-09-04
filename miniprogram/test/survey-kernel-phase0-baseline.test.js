@@ -112,7 +112,7 @@ test('dependency audit separates facade reachability, editor direct code, and su
 });
 
 test('Admin runtime mirror matches every authoritative Mini Program source or approved require rewrite', () => {
-  assert.equal(expectedAudit.adminMirror.length, 42);
+  assert.equal(expectedAudit.adminMirror.length, 43);
   expectedAudit.adminMirror.forEach((entry) => {
     assert.equal(entry.targetExists, true, entry.target);
     assert.equal(entry.contentMatches, true, entry.target);

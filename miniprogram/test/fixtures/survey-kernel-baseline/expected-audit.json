@@ -3,8 +3,8 @@
   "scope": "Mini Program survey wall-graph facade, kernel modules, callers, and Admin runtime mirror",
   "kernel": {
     "file": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-    "lineCount": 4595,
-    "topLevelFunctionCount": 116
+    "lineCount": 4319,
+    "topLevelFunctionCount": 110
   },
   "facade": {
     "selection": "explicit-property-bindings",
@@ -15,6 +15,7 @@
       "space-boundary-read-model",
       "space-dimension-read-model",
       "transactional-wall-operations",
+      "transactional-measurement-operations",
       "transactional-opening-operations",
       "floor-plan-validator"
     ],
@@ -566,11 +567,11 @@
       {
         "name": "remeasureSelectedWall",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
-        "binding": "transactionalWalls.remeasureSelectedWall",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "binding": "transactionalMeasurements.remeasureSelectedWall",
         "sourceLayers": [
           "legacy-kernel",
-          "transactional-wall-operations"
+          "transactional-measurement-operations"
         ],
         "overwritten": true,
         "sameReferenceAsLegacy": false
@@ -1473,6 +1474,30 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/survey-kernel-phase4c-measurement-operations.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "commitPreviewLength",
+          "createSurveyDraft",
+          "getActiveFloor",
+          "getNode",
+          "placeCursor",
+          "remeasureSelectedWall",
+          "selectWall",
+          "startPreview",
+          "startRemeasure"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/survey-layout.test.js",
         "classification": "test-only",
         "binding": "direct-require",
@@ -2276,6 +2301,15 @@
         "exports": []
       },
       {
+        "file": "miniprogram/test/survey-kernel-phase4c-measurement-operations.test.js",
+        "classification": "test-only",
+        "access": "source-reference",
+        "specifiers": [],
+        "resolvedFiles": [],
+        "unresolved": false,
+        "exports": []
+      },
+      {
         "file": "surveying-h5/test-3room-merge.js",
         "classification": "suspected-dead",
         "access": "require",
@@ -2748,6 +2782,13 @@
         "testDirect": true
       },
       {
+        "file": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
         "file": "miniprogram/packages/surveying/utils/survey/operations/open-chain.js",
         "classification": "production-reachable",
         "facadeReachable": true,
@@ -3041,6 +3082,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/measurement.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/operations/open-chain.js"
       },
       {
@@ -3082,6 +3127,66 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/wall-path.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/runtime-id.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/opening.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/validation.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/transaction.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/open-chain.js",
@@ -3445,6 +3550,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/measurement.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
         "to": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js"
       },
       {
@@ -3585,6 +3694,13 @@
     {
       "source": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
       "target": "admin/src/lib/survey-runtime/survey/legacy-kernel.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+      "target": "admin/src/lib/survey-runtime/survey/operations/measurement.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true

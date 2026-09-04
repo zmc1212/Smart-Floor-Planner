@@ -97,12 +97,20 @@ Phase 4B 墙体结构事务已实现（Implemented）：`survey/operations/wall-
 `wall-deletion.js` 使用只读 plan、不可变事务草稿，保持门窗迁移、审计分摊、共享墙实体侧、
 session 清理和 Face/Space 同步。删除 façade 不再调用 kernel 实现；内部拆墙在落墙/闭合
 事务中组合，全部切点完成后执行 full 校验。墙链恢复的既有只读查询位于
-`topology/closure-queries.js`，没有接管闭合写入或改变吸附/闭合策略。kernel 当前为
-4,595 行 / 116 个顶层函数，64 个 legacy 与 69 个 façade 导出保持兼容；39 模块 / 141 边
-审计验证 42 对镜像。当前验收命令为 `cd miniprogram && npm run test:survey-kernel-phase4b`：
-697 项量房、55 项 H5、39 项 Admin 测试及大图性能门槛通过。完整小程序 1,198 项中
-1,184 项通过，14 项失败与 Phase 0 无关既有清单一致。测量/闭合写入与交互分离仍待后续
+`topology/closure-queries.js`，没有接管闭合写入或改变吸附/闭合策略。Phase 4B 快照为
+4,595 行 / 116 个顶层函数；Phase 4C 抽取测量写入后 kernel 为 4,319 行 / 110 个顶层
+函数，64 个 legacy 与 69 个 façade 导出保持兼容；40 模块 / 158 边审计验证 43 对镜像。
+Phase 4B 的 697 项量房、55 项 H5、39 项 Admin 测试及大图性能门槛继续作为护栏，新增
+Phase 4C 单元覆盖测量 plan、审计持久化与门窗冲突原子拒绝。闭合写入与交互分离仍待后续
 阶段，详见 [Phase 4B 完成记录](./surveying-module/legacy-kernel-phase4b-wall-operations.md)。
+Phase 4C 测量写入已实现（Implemented）：镜像 `survey/operations/measurement.js` 独立拥有
+`remeasureSelectedWall` 的只读 plan/apply 与现有 full 不可变事务。开链复尺、单一闭合正交
+空间复尺、固定端点、连续双轴平差及门窗范围均在移动节点前预检；原始读数、有效墙长和
+闭合平差保持 `lengthMm = rawMeasuredLengthMm + closureAdjustmentMm`。`commitPreviewLength`
+的已有墙长延长/缩短和新墙审计写入复用同一 helper，legacy kernel 仅保留兼容代理。闭合
+确认、交互状态机及吸附策略仍待后续阶段；本次不新增后台写入口，不改变路由、API、角色、
+权限、UI、设计源或 version-4 数据合同。详见
+[Phase 4C 完成记录](./surveying-module/legacy-kernel-phase4c-measurement-operations.md)。
 测试源码不进入运行包；内部重构没有可见 UI 或设计源变化，不需要微信 DevTools 自动化，
 不改变路由、API、角色、权限、错误文案或 version-4 数据合同。
 

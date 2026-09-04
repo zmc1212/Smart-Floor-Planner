@@ -11,7 +11,8 @@
     "test:survey-kernel-phase2": "npm run check:survey-kernel-baseline && node --test test/survey*.test.js test/surveying-editor*.test.js && npm --prefix ../surveying-h5 test && npm run benchmark:survey-kernel",
     "test:survey-kernel-phase3": "npm run check:survey-kernel-baseline && node --test test/survey*.test.js test/surveying-editor*.test.js && npm --prefix ../surveying-h5 test && npm run benchmark:survey-kernel",
     "test:survey-kernel-phase4a": "npm run check:survey-kernel-baseline && node --test test/survey*.test.js test/surveying-editor*.test.js && npm --prefix ../surveying-h5 test && npm run benchmark:survey-kernel",
-    "test:survey-kernel-phase4b": "npm run check:survey-kernel-baseline && node --test test/survey*.test.js test/surveying-editor*.test.js && npm --prefix ../surveying-h5 test && npm run benchmark:survey-kernel"
+    "test:survey-kernel-phase4b": "npm run check:survey-kernel-baseline && node --test test/survey*.test.js test/surveying-editor*.test.js && npm --prefix ../surveying-h5 test && npm run benchmark:survey-kernel",
+    "test:survey-kernel-phase4c": "npm run check:survey-kernel-baseline && node --test test/survey*.test.js test/surveying-editor*.test.js && npm --prefix ../surveying-h5 test && npm run benchmark:survey-kernel"
   },
   "keywords": [],
   "author": "",
