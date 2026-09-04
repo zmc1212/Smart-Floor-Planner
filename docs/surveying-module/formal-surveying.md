@@ -462,6 +462,10 @@ copy back to `layoutData`.
   the existing boundary when the second wall lands on an adjacent wall and
   completes a face with the start edge; axis-aligning to a distant corner
   without hitting an existing wall still does not infer extra closing walls.
+  When a drag extends the current collinear terminal wall and its visible
+  preview already offers a `mergeClosing` action, committing that same preview
+  retains the action instead of dropping it when the two lengths coalesce into
+  one stored wall.
   Loading a saved draft also folds remaining collinear degree-2
   splices into one wall.   Deleting a wall that opens a single closed room
   restores the remaining loop as the active chain and offers the missing-edge

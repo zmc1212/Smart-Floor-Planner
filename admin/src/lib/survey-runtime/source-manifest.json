@@ -110,7 +110,7 @@
     {
       "source": "survey/interaction/commit-preview.js",
       "target": "src/lib/survey-runtime/survey/interaction/commit-preview.js",
-      "sha256": "1eb3726a1d95726af8697b7427b07d1528674942da5c22f8b966bb87f22aac9e"
+      "sha256": "140a598126d1cc79ae5e36b94a727786643f165c3f02f63e186a3ea12645bc44"
     },
     {
       "source": "survey/interaction/direction-lock.js",
@@ -175,7 +175,7 @@
     {
       "source": "survey/operations/commit-preview.js",
       "target": "src/lib/survey-runtime/survey/operations/commit-preview.js",
-      "sha256": "c208a0877461814ba172715f44ca50021ac6874e5487b63125b19f563800e1f8"
+      "sha256": "0a0eff88e52f4ac91390ecc0221c692a0784f4fcb7167df0881ba58ab30f438c"
     },
     {
       "source": "survey/operations/cursor.js",
@@ -330,7 +330,7 @@
     {
       "source": "survey/topology/closure-candidates.js",
       "target": "src/lib/survey-runtime/survey/topology/closure-candidates.js",
-      "sha256": "d3fca8d225180082fcd01eb03721d882f551182ae4b4fb59c9153c38c58c9329"
+      "sha256": "678da927a7109e83061d877825e59ca396c3b19724e24340fd14ea1e6639c10b"
     },
     {
       "source": "survey/topology/closure-plans.js",

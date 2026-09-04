@@ -2684,6 +2684,48 @@ test('deleting a closed-room wall clears stale cursor snap and keeps the missing
   assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
 });
 
+test('committing a collinear extension retains the visible merge closure candidate', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2914, yMm: 0 }, 2914);
+  draft = commitWall(draft, { xMm: 2914, yMm: 5425 }, 5425);
+  draft = commitWall(draft, { xMm: 0, yMm: 5425 }, 2914);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 5425);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 2914, yMm: 5425 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 4857, yMm: 5425 }, 1943);
+  draft = commitWall(draft, { xMm: 4857, yMm: 3219 }, 2206);
+  draft = surveyGraph.startPreview(draft, { xMm: 4857, yMm: 484 });
+
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'wallPreview');
+  assert.equal(floor.session.closeCandidateType, 'merge');
+  assert.equal(floor.session.previewLengthMm, 2735);
+
+  draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'preview');
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'mergeClosing');
+  assert.equal(floor.session.closeCandidateType, 'merge');
+  assert.equal(floor.walls.at(-1).lengthMm, 4941);
+
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(surveyGraph.validateSurveyDraft(draft, { mode: 'full' }).valid, true);
+});
+
 test('merge closure clears a cursor snap whose collinear joint node is absorbed', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });

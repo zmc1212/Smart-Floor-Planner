@@ -31,7 +31,8 @@ function applyCommitPreviewPlan(next, plan) {
   const anchor = getNode(floor, plan.anchorNodeId);
   const activeStartNode = getNode(floor, plan.activeStartNodeId);
   const { parsedLength, inputSource, endPoint, measurementStartInsetMm, measurementStartExtensionMm,
-    measurementEndInsetMm, measurementSide, activeWallCountBeforeCommit, extendLastWall, shortenLastWall } = plan;
+    measurementEndInsetMm, measurementSide, activeWallCountBeforeCommit, extendLastWall, shortenLastWall,
+    retainsPreviewMergeCandidate } = plan;
   const closureProjection = resolveProjectionIntent(floor, plan.closureProjection);
   const partitionProjection = resolveProjectionIntent(floor, plan.partitionProjection);
   const sharedProjection = resolveProjectionIntent(floor, plan.sharedProjection);
@@ -147,6 +148,7 @@ function applyCommitPreviewPlan(next, plan) {
   applyClosureCandidatePlan(session, planCommittedClosureCandidate(floor, session, {
     activeWallCount, endNode, activeStartNode, partitionProjection, sharedProjection,
     rayFallbackProjection, outerFaceProjection, directStartClosurePlan,
+    mergeCandidateWallCount: activeWallCount + (retainsPreviewMergeCandidate ? 1 : 0),
     minimumMergeWallCount: getMinimumClosureSuggestionWallCount(floor, session)
   }), 'WALL_COMMITTED');
 

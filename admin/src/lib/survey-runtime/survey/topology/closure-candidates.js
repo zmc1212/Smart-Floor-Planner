@@ -149,6 +149,10 @@ function planCommittedClosureCandidate(floor, session, context) {
   const input = context || {};
   const patch = emptyCandidatePatch(session.partitionSourceSpaceId);
   const activeWallCount = Math.max(0, Number(input.activeWallCount) || 0);
+  const mergeCandidateWallCount = Math.max(
+    activeWallCount,
+    Number(input.mergeCandidateWallCount) || 0
+  );
   const endNode = input.endNode || null;
   const activeStartNode = input.activeStartNode || null;
 
@@ -191,7 +195,7 @@ function planCommittedClosureCandidate(floor, session, context) {
     patch.closeCandidateNodeId = activeStartNode.id;
     patch.closeCandidateType = 'start';
   } else {
-    const mergeCandidate = activeWallCount >= Number(input.minimumMergeWallCount || 0)
+    const mergeCandidate = mergeCandidateWallCount >= Number(input.minimumMergeWallCount || 0)
       ? findMergeClosureCandidate(floor, session, endNode)
       : null;
     if (mergeCandidate) {

@@ -4934,7 +4934,10 @@ Page({
       : 0;
     const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
     const minimumActiveWallCount = surveyGraph.getMinimumActiveCloseWallCount(floor, session);
-    if (activeWallCount + (session.previewPoint ? 1 : 0) < minimumActiveWallCount) {
+    const hasCommittedMergeCandidate = session.state === 'mergeClosing' &&
+      session.closeCandidateType === 'merge' &&
+      !!session.closeCandidateNodeId;
+    if (!hasCommittedMergeCandidate && activeWallCount + (session.previewPoint ? 1 : 0) < minimumActiveWallCount) {
       return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
     }
 

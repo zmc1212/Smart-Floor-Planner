@@ -201,6 +201,13 @@ function planCommitPreview(floor, lengthMm, inputSource) {
     measurementSide,
     isClosingCurrentSpace
   );
+  const retainsPreviewMergeCandidate = !!(
+    extendLastWall &&
+    session.closeCandidateType === 'merge' &&
+    session.closeCandidateNodeId &&
+    session.previewPoint &&
+    distanceMm(endPoint, session.previewPoint) <= 1
+  );
 
   return {
     kind: 'commit-wall', floorId: floor.id, anchorNodeId: anchor.id,
@@ -208,6 +215,7 @@ function planCommitPreview(floor, lengthMm, inputSource) {
     parsedLength, inputSource: inputSource || 'manual', endPoint,
     measurementStartInsetMm, measurementStartExtensionMm, measurementEndInsetMm,
     measurementSide, activeWallCountBeforeCommit, extendLastWall: !!extendLastWall, shortenLastWall,
+    retainsPreviewMergeCandidate,
     closureProjection: projectionIntent(closureProjection), partitionProjection: projectionIntent(partitionProjection),
     sharedProjection: projectionIntent(sharedProjection), rayFallbackProjection: projectionIntent(rayFallbackProjection),
     outerFaceProjection: projectionIntent(outerFaceProjection)

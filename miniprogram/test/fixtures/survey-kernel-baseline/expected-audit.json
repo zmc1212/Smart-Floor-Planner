@@ -1977,6 +1977,31 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/surveying-editor-closure-action.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "CLOSE_TOLERANCE_MM",
+          "commitPreviewLength",
+          "confirmClosure",
+          "createSurveyDraft",
+          "getActiveFloor",
+          "getCursorPlacementTarget",
+          "placeCursor",
+          "snapCursorToWall",
+          "startPreview",
+          "startWallSnap"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/tmp-lshape-preview.js",
         "classification": "suspected-dead",
         "binding": "direct-require",

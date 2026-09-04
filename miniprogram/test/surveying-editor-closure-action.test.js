@@ -15,6 +15,45 @@ const editorWxss = fs.readFileSync(
   path.join(__dirname, '..', 'packages', 'surveying', 'editor', 'surveying-editor.less'),
   'utf8'
 );
+const surveyGraph = require('../packages/surveying/utils/surveyWallGraph.js');
+const editorPath = require.resolve('../packages/surveying/editor/surveying-editor.js');
+
+function loadEditorDefinition() {
+  delete require.cache[editorPath];
+  const previousPage = global.Page;
+  const previousGetApp = global.getApp;
+  const previousWx = global.wx;
+  let definition = null;
+  global.getApp = () => ({ globalData: {} });
+  global.wx = {
+    getStorageSync: () => '',
+    setStorageSync() {},
+    removeStorageSync() {}
+  };
+  global.Page = (pageDefinition) => {
+    definition = pageDefinition;
+  };
+  try {
+    require(editorPath);
+    assert.ok(definition);
+    return definition;
+  } finally {
+    if (previousPage === undefined) delete global.Page;
+    else global.Page = previousPage;
+    if (previousGetApp === undefined) delete global.getApp;
+    else global.getApp = previousGetApp;
+    if (previousWx === undefined) delete global.wx;
+    else global.wx = previousWx;
+  }
+}
+
+function commitWall(draft, point, lengthMm) {
+  return surveyGraph.commitPreviewLength(
+    surveyGraph.startPreview(draft, point),
+    lengthMm,
+    'manual'
+  );
+}
 
 test('the close action follows the graph minimum-wall rule for standalone and shared starts', () => {
   assert.match(
@@ -46,6 +85,47 @@ test('the close action follows the graph minimum-wall rule for standalone and sh
     editorScript,
     /surveyCanvasRenderer\.projectInteractionPoint\([\s\S]*?x: close\.cx, y: close\.cy[\s\S]*?transform[\s\S]*?cx: closePoint\.x,[\s\S]*?cy: closePoint\.y/
   );
+});
+
+test('a committed merge candidate remains renderable after a collinear extension clears previewPoint', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2914, yMm: 0 }, 2914);
+  draft = commitWall(draft, { xMm: 2914, yMm: 5425 }, 5425);
+  draft = commitWall(draft, { xMm: 0, yMm: 5425 }, 2914);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 5425);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 2914, yMm: 5425 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 4857, yMm: 5425 }, 1943);
+  draft = commitWall(draft, { xMm: 4857, yMm: 3219 }, 2206);
+  draft = surveyGraph.startPreview(draft, { xMm: 4857, yMm: 484 });
+  floor = surveyGraph.getActiveFloor(draft);
+  draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'preview');
+  floor = surveyGraph.getActiveFloor(draft);
+
+  const editor = loadEditorDefinition();
+  editor.draft = draft;
+  editor.canvasRect = { width: 390, height: 650 };
+  editor.mmToCanvasPoint = (point) => ({ x: point.xMm / 20, y: point.yMm / 20 });
+  const closure = editor.buildClosureRender(floor, floor.session);
+  const renderData = editor.buildCanvasRenderData(floor, floor.session);
+
+  assert.equal(floor.session.state, 'mergeClosing');
+  assert.equal(floor.session.previewPoint, null);
+  assert.equal(closure.actionVisible, true);
+  assert.match(closure.actionStyle, /left:[^;]+px; top:[^;]+px;/);
+  assert.equal(renderData.closeActionVisible, true);
 });
 
 test('the right rail exposes a separately confirmed canvas-reset action', () => {

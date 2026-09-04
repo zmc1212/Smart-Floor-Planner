@@ -496,6 +496,10 @@ Canvas renderer, dimensions, BLE readings, audit queue, undo/redo, and formal-su
 entry defaults follow the same contract: guide mode is off by default (an explicit
 top-bar preference is retained), while BLE direction input mode is on by default for
 every editor entry. No route, API, permission, or persisted floor-plan data changes.
+A straight-wall drag that extends the current collinear terminal wall keeps a
+visible `mergeClosing` **合** action after release when the committed endpoint
+still matches the preview; coalescing the two measured lengths no longer clears
+that valid closure candidate.
 The native dock label follows the same BLE state: it reads `测距 · 已连接` when
 connected and `测距 · 未连接` when disconnected.
 The
