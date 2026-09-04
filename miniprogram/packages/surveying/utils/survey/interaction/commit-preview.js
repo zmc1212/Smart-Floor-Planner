@@ -52,11 +52,16 @@ function planCommitPreview(floor, lengthMm, inputSource) {
       normalizeMeasurementInset(session.previewMeasurementStartInsetMm) > 0 ||
       normalizeMeasurementExtension(session.previewMeasurementStartExtensionMm) > 0
     );
-  // Length confirmation (manual or BLE) rebuilds the endpoint from the
-  // measured value. Reapply rectangle/closure snapping here so confirmation
-  // cannot silently discard a snap that was visible during the drag preview.
-  endPoint = resolveConfirmationSnap(floor, session, anchor, measuredEndPoint,
-    shortenLastWall, preservesOuterTWorkingLength).point;
+  // Releasing an unchanged preview confirms the endpoint the operator saw.
+  // The preview may have refined a rectangle snap onto a physical outer face;
+  // running the earlier rectangle stage again would pull it back by a wall
+  // thickness. Explicit manual/BLE measurements retain their length-snap rules.
+  const confirmsVisiblePreview = ['preview', 'preview-continuation', 'closure-preview'].includes(inputSource) &&
+    distanceMm(measuredEndPoint, session.previewPoint) <= 1;
+  endPoint = confirmsVisiblePreview
+    ? { xMm: session.previewPoint.xMm, yMm: session.previewPoint.yMm }
+    : resolveConfirmationSnap(floor, session, anchor, measuredEndPoint,
+      shortenLastWall, preservesOuterTWorkingLength).point;
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCountBeforeCommit = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
   const canCloseWithSharedBoundary = activeWallCountBeforeCommit + 1 >=

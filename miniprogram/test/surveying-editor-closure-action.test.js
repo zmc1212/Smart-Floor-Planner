@@ -128,6 +128,60 @@ test('a committed merge candidate remains renderable after a collinear extension
   assert.equal(renderData.closeActionVisible, true);
 });
 
+test('releasing an outer-aligned wall keeps its cursor until explicit close and supports undo/redo', () => {
+  let draft = surveyGraph.placeCursor(surveyGraph.createSurveyDraft(), { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 4000 }, 4000);
+  draft = commitWall(draft, { xMm: 0, yMm: 4000 }, 3000);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 4000);
+  draft = surveyGraph.confirmClosure(draft);
+  const target = surveyGraph.getCursorPlacementTarget(surveyGraph.getActiveFloor(draft), { xMm: 3000, yMm: 4000 }, 350);
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 5000, yMm: 4000 }, 1800);
+  draft = commitWall(draft, { xMm: 5000, yMm: -1000 }, 5000);
+  const historyDraft = draft;
+  const endpoint = { xMm: 3200, yMm: -1000 };
+  draft = surveyGraph.startPreview(draft, endpoint);
+
+  const editor = loadEditorDefinition();
+  editor.draft = draft;
+  editor.history = { undo: [], redo: [] };
+  editor.touchState = { mode: 'wall', lastPoint: endpoint, historyDraft };
+  editor.canvasPointToMm = value => value;
+  editor.clearCanvasCursorLens = () => {};
+  editor.clearCursorDragCanvas = () => {};
+  editor.syncFromDraft = () => {};
+  editor.scheduleFormalPersist = () => {};
+  editor.applyDraft = function(next, options = {}) {
+    if (options.recordHistory) this.history.undo.push(surveyGraph.cloneDraft(options.historyDraft || this.draft));
+    this.draft = next;
+  };
+  const previousWx = global.wx;
+  const toasts = [];
+  global.wx = { showToast: value => toasts.push(value) };
+  try {
+    editor.onCanvasTouchEnd();
+    let floor = surveyGraph.getActiveFloor(editor.draft);
+    const cursor = surveyGraph.getCursorDisplayPoint(floor, floor.session);
+    assert.deepEqual({ xMm: cursor.xMm, yMm: cursor.yMm }, endpoint);
+    assert.equal(floor.session.state, 'mergeClosing');
+    assert.equal(floor.spaces.length, 1, 'a distant merge guide does not auto-close on release');
+    editor.onConfirmClose();
+    floor = surveyGraph.getActiveFloor(editor.draft);
+    assert.equal(floor.spaces.length, 2);
+    assert.equal(floor.session.state, 'wallSnapPending');
+    const closed = JSON.stringify(editor.draft);
+    editor.onUndo();
+    assert.equal(surveyGraph.getActiveFloor(editor.draft).session.state, 'mergeClosing');
+    editor.onRedoTap();
+    assert.equal(JSON.stringify(editor.draft), closed);
+    assert.deepEqual(toasts.map(value => value.title), ['可闭合，点击“合”确认', '单空间已闭合']);
+  } finally {
+    if (previousWx === undefined) delete global.wx;
+    else global.wx = previousWx;
+  }
+});
+
 test('the right rail exposes a separately confirmed canvas-reset action', () => {
   assert.match(editorWxml, /class="rail-reset-canvas"[\s\S]*?bindtap="onRequestResetCanvas"/);
   assert.match(editorWxml, /aria-label="清空画布后重新测量"[\s\S]*?rail-reset-canvas-label">清空</);

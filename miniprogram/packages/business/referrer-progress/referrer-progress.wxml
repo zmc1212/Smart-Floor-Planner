@@ -33,8 +33,8 @@ FORM: design-references/referrer-customers-v1/referrer-customers-v1.png
   </view>
   <view wx:elif="{{!items.length}}" class="state-card sfp-card">
     <text class="empty-title">还没有推荐客户</text>
-    <text class="empty-copy">出示服务码后，客户会以记录编号出现在这里。</text>
-    <button class="return-action sfp-primary-action" bindtap="backToPromotion">出示服务码</button>
+    <text class="empty-copy">客户扫描服务码并授权手机号后，推荐记录会显示在这里。</text>
+    <button class="return-action sfp-primary-action" bindtap="showServiceCode">出示服务码</button>
   </view>
   <view wx:else class="fact-list">
     <view

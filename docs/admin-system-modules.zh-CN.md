@@ -96,6 +96,8 @@ AI 工作台户型预览缓存约束：`/ai-studio/scenarios` 的预览 URL 必�
 
 ## 正式量房边界
 
+生成量房运行镜像同步小程序的外墙对齐闭合修正：松手保留可见预览端点，外墙对齐的回接沿原共墙实体范围返回后再桥接拓扑。后台仍为只读消费者；此次镜像同步不新增后台 UI、路由、API、权限变化或存量墙图迁移。
+
 权威合同见 [`surveying-module/formal-surveying.md`](./surveying-module/formal-surveying.md)。`FloorPlan.layoutData` 只含 `version: 4`、`measurementMode: 'surveying'` 与 `surveyGraph`。测量为不可变审计；尺寸与房间摘要为派生读模型。`/floorplans/[id]` 用小程序 `surveyCanvasRenderer` 的后台镜像（从 `miniprogram/packages/surveying/utils` 同步到 `admin/src/lib/survey-runtime/`）绘制，不写回 graph；镜像投影接受可选仅视图 `rotationRad`（默认 0），后台查看器不传入。已完成正式 v4 保存会把该画布 PNG 快照存到 `floor_plans.preview_asset_id`，不写入 `layoutData`。闭合房间内部的多段 L 形分隔会在镜像读模型中继续沿用源房间墙面，不再把复用外墙强制到外皮，因此后台房间摘要/预览不会把外墙和新增分隔墙实体计入净面积；中心线节点/墙以及向外新建相邻房效果不变。DXF 仍使用与小程序规划器相同局部凸/凹规则的 `admin/src/lib/surveyWallSolidPlan.js`。DXF 生成同样只读：`admin/src/lib/dxf.ts` 适配 MIT 许可写入器，开口切开后导出并集内外皮墙 `LINE`，插入打开 90° 厚门扇、灰色虚线弧和门垛的平开门块，推拉门为双轨、窗为离开墙皮的四线，闭合房间写四行 MTEXT，并用关联客户线索填充通高标题栏与黄色指北针（企业名与负责设计师）；草稿、无效 v4 或无闭合空间的户型在下载前被拒绝。
 
 后台镜像量房内核保留普通闭合的 `350 mm` 直接吸附阈值；符合条件的长正交墙链可通过带审计的墙长平差闭合更大的累计残差。每面参与墙的修正量限制为实测长度的 `2%`，并约束在 `25–150 mm`，总残差硬上限为 `1,000 mm`；超出任一预算的墙链会被拒绝，不会继续平差或补微型桥接墙。投影预览若解析到当前活动墙链起点，保持起点闭合语义；重置光标后的拼接仍保持合并闭合。零旋转拖动辅助线使用精确视口边界。该路径用于保持小程序与后台运行时一致，当前后台路由不调用编辑写路径；路由、API、权限与持久化 graph 数据不变。

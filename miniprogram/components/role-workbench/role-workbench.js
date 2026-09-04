@@ -853,6 +853,15 @@ Component({
     openItem(event) {
       const item = event.currentTarget.dataset.item;
       if (!item) return;
+      // Published overview cards open the delivered schemes even when an older
+      // appointment or survey action is still present in the workbench payload.
+      if (this.properties.role === 'designer' && this.properties.focus === 'overview'
+        && item.serviceStage === 'design_published' && item.leadId) {
+        wx.navigateTo({
+          url: `/packages/business/customer-ai-schemes/customer-ai-schemes?leadId=${encodeURIComponent(item.leadId)}&mode=staff`,
+        });
+        return;
+      }
       if (item.action === 'appointment' && item.appointmentId && item.leadId) {
         this.openAppointment({ currentTarget: { dataset: { item } } });
         return;

@@ -71,7 +71,12 @@ function resolvePreviewSnap(floor, session, anchor, rawPoint) {
 
 function resolveConfirmationSnap(floor, session, anchor, measuredEndPoint, shortenLastWall, preservesOuterTWorkingLength) {
   const rectangle = shortenLastWall ? { point: measuredEndPoint, guide: null }
-    : maybeSnapThirdWallForRectangle(floor, session, anchor, measuredEndPoint);
+    : maybeSnapThirdWallForRectangle(floor, session, anchor, measuredEndPoint, {
+      // A numeric length correction must not switch an inner-axis preview to
+      // the neighbouring outer axis merely because its rebuilt endpoint is
+      // closer. An explicitly outer-aligned preview keeps that choice.
+      allowOuterAxis: !!(session.alignmentSnapGuide && session.alignmentSnapGuide.snapLine === 'outer')
+    });
   const reset = maybeSnapResetChainForRectangleClosure(floor, session, anchor, rectangle.point);
   const axis = reset.guide || rectangle.guide ? { point: reset.point, guide: null }
     : maybeSnapStraightPreviewToVertexAxis(floor, session, anchor, reset.point);

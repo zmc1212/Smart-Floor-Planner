@@ -442,6 +442,22 @@ copy back to `layoutData`.
 
 ## Geometry invariants
 
+- A release/continuation/direct-close commit of the unchanged visible preview
+  keeps its endpoint instead of reapplying the earlier rectangle snap. Beyond a
+  closed boundary corner, the closest visible outer extension takes priority
+  over the inner rectangle axis. An inferred shared close on that outer
+  extension follows it before bridging to the topology corner; it must not
+  lengthen the measured wall or shift the returning wall's physical body by one
+  thickness. Both preview and committed close use this same plan. Manual/BLE
+  corrections keep their prior snapping rules and the preview's inner/outer
+  intent. On-wall contact, interior partitions, validation and the v4 schema
+  retain their contracts; existing saved rooms are not migrated. The 25 cases
+  in `miniprogram/test/survey-outer-alignment-closure.test.js` plus the editor
+  release/close/undo/redo regression cover this behavior. The user's drag and
+  expected result are retained under
+  `design-references/surveying/closure-outer-alignment-20260904/`; production
+  geometry QA is `tmp/survey-outer-alignment/closed-geometry.png`. Runtime
+  visual QA at `390x844` and on the user's tall device awaits manual captures.
 - When an isolated, opening-free, unshared, unbranched orthogonal chain returns
   toward its start, preview and confirmation use one constrained
   closure-adjustment plan. The ordinary 350 mm snap tolerance is unchanged; a

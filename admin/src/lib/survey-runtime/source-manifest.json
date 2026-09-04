@@ -110,7 +110,7 @@
     {
       "source": "survey/interaction/commit-preview.js",
       "target": "src/lib/survey-runtime/survey/interaction/commit-preview.js",
-      "sha256": "140a598126d1cc79ae5e36b94a727786643f165c3f02f63e186a3ea12645bc44"
+      "sha256": "27059b7f873c74f08dd97c71ce640b59ab052c47a4e7b359ffd9f55d31675bec"
     },
     {
       "source": "survey/interaction/direction-lock.js",
@@ -310,12 +310,12 @@
     {
       "source": "survey/snap/preview-alignment.js",
       "target": "src/lib/survey-runtime/survey/snap/preview-alignment.js",
-      "sha256": "d4099f68299156ffdb8bf386088ebbeafc863101244e127c02ce7e48793df61f"
+      "sha256": "127ecc0a66b3952a8caaf3209f3de754c4625f676288091c0e2df3bfc97561c1"
     },
     {
       "source": "survey/snap/snap-engine.js",
       "target": "src/lib/survey-runtime/survey/snap/snap-engine.js",
-      "sha256": "008630e771c0ac8bfa6d27445ca07f1f349c03389f1f5a9d3e47055ab186a7ac"
+      "sha256": "403f295a1ac0e4d1df6b5d00231c4f6373be681e190501a319ee2fc01d013602"
     },
     {
       "source": "survey/snap/wall-targets.js",
@@ -340,7 +340,7 @@
     {
       "source": "survey/topology/closure-queries.js",
       "target": "src/lib/survey-runtime/survey/topology/closure-queries.js",
-      "sha256": "b2f30b11158e0d7234e5ae88b5ec7572a956e8d5b13b29a836be9093569d3650"
+      "sha256": "c8f5cbf6291fa0c56c8e0a975ae1fe970e8c8cd047245f03cd1e6769ae5f7387"
     },
     {
       "source": "survey/topology/face-extractor.js",

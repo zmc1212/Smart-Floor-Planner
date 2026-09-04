@@ -247,7 +247,7 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
           <view wx:if="{{loading}}" class="state-block"><text>正在读取真实工作数据</text></view>
           <view wx:elif="{{error}}" class="state-block"><text>{{error}}</text><view class="retry" bindtap="load">重新加载</view></view>
           <view wx:elif="{{items.length}}" class="item-list">
-            <view wx:for="{{items}}" wx:key="id" class="work-item" data-item="{{item}}" bindtap="openItem" hover-class="work-item-pressed">
+            <view wx:for="{{items}}" wx:key="id" class="work-item staff-task-item" data-item="{{item}}" bindtap="openItem" hover-class="work-item-pressed">
               <view class="item-marker tone-{{item.status === 'confirmed' ? 'green' : 'blue'}}"></view>
               <view class="item-copy">
                 <view class="item-title-row"><text class="item-title">{{item.title}}</text><view wx:if="{{item.statusBadge}}" class="item-tag-green"><text>{{item.statusBadge}}</text></view></view>
@@ -263,9 +263,9 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
                   <view wx:if="{{item.canReschedule}}" class="item-cta sfp-icon-action" catchtap="openReschedule" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" /><text>{{item.actionLabel || '改期'}}</text></view>
                   <view wx:elif="{{item.canBookAppointment}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openBooking" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" /><text>{{item.canRebook ? (item.actionLabel || '重新预约') : '预约上门'}}</text></view>
                   <view wx:elif="{{item.action === 'appointment' && item.appointmentId && !item.canCompleteSurvey}}" class="item-cta item-cta-secondary sfp-icon-action" catchtap="openAppointment" data-item="{{item}}"><image class="sfp-icon-action__icon" src="/packages/business/assets/promotion-detail/calendar.png" mode="aspectFit" /><text>查看预约</text></view>
+                  <view wx:if="{{!(item.canSurveyNow || item.canContinueSurvey || item.canStartNewSurvey || item.canCompleteSurvey || item.canBookAppointment || item.canReschedule || (item.action === 'appointment' && item.appointmentId))}}" class="item-action"><text>{{item.actionLabel}}</text><view class="chevron"></view></view>
                 </view>
               </view>
-              <view wx:if="{{!(item.canSurveyNow || item.canContinueSurvey || item.canStartNewSurvey || item.canCompleteSurvey || item.canBookAppointment || item.canReschedule || (item.action === 'appointment' && item.appointmentId))}}" class="item-action"><text>{{item.actionLabel}}</text><view class="chevron"></view></view>
             </view>
           </view>
           <view wx:else class="state-block empty"><text>{{emptyCopy}}</text><view wx:if="{{secondary}}" class="retry" bindtap="openSecondary">{{secondary.label}}</view></view>

@@ -2,6 +2,7 @@ const { findClosedSpaceForWall } = require('./closed-boundary.js');
 const { WALL_OVERLAP_TOLERANCE_MM, MIN_WALL_LENGTH_MM, MIN_CLOSED_SPACE_AREA_MM2 } = require('../core/constants.js');
 const { getNode, getFirstNode, getWall } = require('../core/graph-query.js');
 const { findWallPathBetweenNodes } = require('./wall-path.js');
+const { buildWallRenderGeometry } = require('../read-model/wall-geometry.js');
 
 const segmentGeometry = require('../geometry/segment.js');
 
@@ -123,6 +124,28 @@ function getMinimumDirectBoundaryCloseWallCount(floor, session) {
   return 2;
 }
 
+function buildOuterAlignedClosurePath(floor, boundaryPath, target, current) {
+  const wall = getWall(floor, boundaryPath[0]);
+  if (!wall || !findClosedSpaceForWall(floor, wall.id)) return null;
+  const other = getNode(floor, wall.startNodeId === target.id ? wall.endNodeId : wall.startNodeId);
+  const geometry = other ? buildWallRenderGeometry(floor, wall) : null;
+  if (!geometry || !wallKeepsStrictAxis(target, other)) return null;
+  const horizontal = isHorizontalSegment(target, other);
+  const alongKey = horizontal ? 'xMm' : 'yMm';
+  const acrossKey = horizontal ? 'yMm' : 'xMm';
+  // Only a cursor on the physical outer extension beyond this boundary corner
+  // selects this route. Other inferred closures retain their existing order.
+  if (Math.abs(current[acrossKey] - geometry.outerStart[acrossKey]) > 1 ||
+      Math.abs(current[acrossKey] - target[acrossKey]) <= 1 ||
+      (current[alongKey] - target[alongKey]) * (other[alongKey] - target[alongKey]) >= 0) {
+    return null;
+  }
+  const bridgeStart = horizontal
+    ? { xMm: target.xMm, yMm: current.yMm }
+    : { xMm: current.xMm, yMm: target.yMm };
+  return [current, bridgeStart, target];
+}
+
 function findMergeClosurePlan(floor, session, endPoint) {
   if (!floor || !session || !endPoint) return null;
 
@@ -237,6 +260,10 @@ function findMergeClosurePlan(floor, session, endPoint) {
             : []
         )
         : [[closureStart, candidate]];
+      const outerAlignedPath = useOrthogonalSharedPath
+        ? buildOuterAlignedClosurePath(floor, boundaryPath, candidate, closureStart)
+        : null;
+      if (outerAlignedPath) pathCandidates.unshift(outerAlignedPath);
       for (let pathIndex = 0; pathIndex < pathCandidates.length; pathIndex += 1) {
         const points = normalizeClosurePoints(pathCandidates[pathIndex]);
         if (session.mode === 'straight' && points.some((point, pointIndex) => (

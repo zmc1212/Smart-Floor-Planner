@@ -1788,6 +1788,37 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/survey-outer-alignment-closure.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "buildSpaceRenderBoundaryPoints",
+          "buildWallRenderGeometry",
+          "commitPreviewLength",
+          "confirmClosure",
+          "createSurveyDraft",
+          "getActiveFloor",
+          "getClosurePath",
+          "getCursorDisplayPoint",
+          "getCursorPlacementTarget",
+          "getNode",
+          "getWall",
+          "placeCursor",
+          "snapCursorToWall",
+          "startPreview",
+          "startWallSnap",
+          "validateSurveyDraft"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/survey-segment-relation.test.js",
         "classification": "test-only",
         "binding": "direct-require",
@@ -1989,10 +2020,12 @@
         "unresolved": false,
         "exports": [
           "CLOSE_TOLERANCE_MM",
+          "cloneDraft",
           "commitPreviewLength",
           "confirmClosure",
           "createSurveyDraft",
           "getActiveFloor",
+          "getCursorDisplayPoint",
           "getCursorPlacementTarget",
           "placeCursor",
           "snapCursorToWall",
@@ -4294,6 +4327,10 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js",
         "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js",

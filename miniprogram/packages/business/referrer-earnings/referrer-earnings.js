@@ -89,5 +89,4 @@ Page({
       this._fetching = false;
     }
   },
-  backToPromotion() { wx.navigateBack(); },
 });

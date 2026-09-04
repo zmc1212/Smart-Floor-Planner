@@ -1,4 +1,5 @@
 .dcs-root {
+  --dcs-qr-base-size: 442rpx;
   position: fixed;
   inset: 0;
   z-index: 50;
@@ -11,6 +12,8 @@
 
 /* Custom TabBar sits above page overlays. Dock the sheet above that lane. */
 .dcs-root.above-tabbar {
+  /* Give the tab lane its space by shrinking the square, not clipping contact actions. */
+  --dcs-tab-qr-size: max(240rpx, calc(var(--dcs-qr-base-size) - var(--sfp-custom-tabbar-safe-height, calc(128rpx + env(safe-area-inset-bottom)))));
   bottom: var(--sfp-custom-tabbar-safe-height, calc(128rpx + env(safe-area-inset-bottom)));
 }
 
@@ -561,6 +564,7 @@
 
 @media (max-height: 720px) {
   .dcs-root {
+    --dcs-qr-base-size: 384rpx;
     padding-top: calc(var(--dcs-capsule-bottom, 84px) + 104rpx);
   }
 
@@ -603,4 +607,16 @@
     width: 344rpx;
     height: 344rpx;
   }
+}
+
+/* Keep loaded, loading and error QR states identical in size on tab pages. */
+.dcs-root.above-tabbar .dcs-qr-shell {
+  width: var(--dcs-tab-qr-size);
+  height: var(--dcs-tab-qr-size);
+}
+
+.dcs-root.above-tabbar .dcs-qr,
+.dcs-root.above-tabbar .dcs-qr-state {
+  width: calc(var(--dcs-tab-qr-size) - 40rpx);
+  height: calc(var(--dcs-tab-qr-size) - 40rpx);
 }

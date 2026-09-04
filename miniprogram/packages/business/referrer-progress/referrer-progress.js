@@ -124,10 +124,17 @@ Page({
       this._fetching = false;
     }
   },
-  backToPromotion() {
-    wx.reLaunch({
-      url: '/packages/business/referrer-workbench/referrer-workbench',
-      fail: () => wx.navigateBack()
+  showServiceCode() {
+    const app = getApp();
+    const current = app && app.globalData && app.globalData.bootstrap && app.globalData.bootstrap.current;
+    const membershipId = current && current.context && current.context.referrerMembershipId;
+    if (!membershipId) {
+      wx.showToast({ title: '未找到当前推广企业，请重新选择推广身份', icon: 'none' });
+      return;
+    }
+    wx.navigateTo({
+      url: `/packages/business/promotion-service-code/promotion-service-code?membershipId=${encodeURIComponent(membershipId)}`,
+      fail: () => wx.showToast({ title: '服务码页面打开失败，请重试', icon: 'none' })
     });
   },
   async withdrawLead(event) {

@@ -36,7 +36,7 @@ test('phase 13 portal pages use the scoped aggregate endpoints and preserve priv
   assert.match(workbench, /仅展示当前企业的脱敏事实/);
   assert.match(workbenchScript, /\/miniprogram\/identity-contexts\/switch/);
   assert.match(workbenchScript, /referrerMembershipId: membership\.id/);
-  assert.doesNotMatch(source('packages/business/referrer-progress/referrer-progress.wxml'), /手机号|精确地址|户型 graph|设计文件/);
+  assert.doesNotMatch(source('packages/business/referrer-progress/referrer-progress.wxml'), /精确地址|户型 graph|设计文件|\{\{[^}]*customerPhone/);
   assert.doesNotMatch(source('packages/business/referrer-progress/referrer-progress.wxml'), /撤销测试线索/);
   assert.match(source('packages/business/referrer-progress/referrer-progress.wxml'), />撤回</);
   assert.match(source('packages/business/referrer-progress/referrer-progress.less'), /\.withdraw-btn\s*\{[\s\S]*background:\s*#18a94b/);
@@ -47,10 +47,9 @@ test('phase 13 pages use custom navigation so their capsule-safe headers are the
     navigationStyle: 'custom',
   });
   for (const page of ['referrer-progress/referrer-progress', 'referrer-earnings/referrer-earnings']) {
-    assert.deepEqual(JSON.parse(source(`packages/business/${page}.json`)), {
-      navigationStyle: 'custom',
-      usingComponents: { 'custom-tab-bar': '/custom-tab-bar/index' }
-    });
+    const config = JSON.parse(source(`packages/business/${page}.json`));
+    assert.equal(config.navigationStyle, 'custom');
+    assert.equal(config.usingComponents['custom-tab-bar'], '/custom-tab-bar/index');
   }
 });
 

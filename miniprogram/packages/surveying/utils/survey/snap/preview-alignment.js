@@ -50,7 +50,7 @@ function snapPreviewPoint(anchor, rawPoint, mode) {
   return { xMm: anchor.xMm, yMm: point.yMm };
 }
 
-function maybeSnapThirdWallForRectangle(floor, session, anchor, previewPoint) {
+function maybeSnapThirdWallForRectangle(floor, session, anchor, previewPoint, options) {
   if (!floor || !session || session.mode !== 'straight' || !anchor || !previewPoint) {
     return { point: previewPoint, guide: null };
   }
@@ -79,12 +79,28 @@ function maybeSnapThirdWallForRectangle(floor, session, anchor, previewPoint) {
     return { point: previewPoint, guide: null };
   }
 
+  const axisKey = firstIsHorizontal ? 'xMm' : 'yMm';
+  const alongKey = firstIsHorizontal ? 'yMm' : 'xMm';
+  const guideDirection = firstIsHorizontal ? 'vertical' : 'horizontal';
+  const sharedOpposite = !session.activeSpaceSharedWallMiddle && isClosedBoundaryCorner(floor, session)
+    ? resolveSharedBoundaryOppositeNode(floor, session)
+    : null;
+  const extendsSharedBoundary = sharedOpposite &&
+    (previewPoint[alongKey] - firstStart[alongKey]) *
+      (previewPoint[alongKey] - sharedOpposite[alongKey]) > 0;
+  const outerVertex = extendsSharedBoundary && !(options && options.allowOuterAxis === false)
+    ? resolveClosedCornerOuterVertex(floor, firstStart, guideDirection)
+    : null;
+  // Beyond a shared corner's boundary, respect the closer outer extension.
+  // Contacts on the existing wall retain the physical-face projection below.
+  const usesOuterAxis = outerVertex &&
+    Math.abs(previewPoint[axisKey] - outerVertex[axisKey]) <
+      Math.abs(previewPoint[axisKey] - firstStart[axisKey]);
+  const referencePoint = usesOuterAxis ? outerVertex : firstStart;
   const alignedPoint = firstIsHorizontal
-    ? { xMm: firstStart.xMm, yMm: previewPoint.yMm }
-    : { xMm: previewPoint.xMm, yMm: firstStart.yMm };
-  const offset = firstIsHorizontal
-    ? Math.abs(previewPoint.xMm - firstStart.xMm)
-    : Math.abs(previewPoint.yMm - firstStart.yMm);
+    ? { xMm: referencePoint.xMm, yMm: previewPoint.yMm }
+    : { xMm: previewPoint.xMm, yMm: referencePoint.yMm };
+  const offset = Math.abs(previewPoint[axisKey] - referencePoint[axisKey]);
 
   if (offset > RECTANGLE_ALIGNMENT_TOLERANCE_MM || distanceMm(anchor, alignedPoint) < MIN_WALL_LENGTH_MM) {
     return { point: previewPoint, guide: null };
@@ -92,12 +108,12 @@ function maybeSnapThirdWallForRectangle(floor, session, anchor, previewPoint) {
 
   return {
     point: alignedPoint,
-    guide: {
+    guide: Object.assign({
       type: 'rectangle-third-wall',
-      direction: firstIsHorizontal ? 'vertical' : 'horizontal',
-      referencePoint: { xMm: firstStart.xMm, yMm: firstStart.yMm },
+      direction: guideDirection,
+      referencePoint: { xMm: referencePoint.xMm, yMm: referencePoint.yMm },
       snappedPoint: { xMm: alignedPoint.xMm, yMm: alignedPoint.yMm }
-    }
+    }, usesOuterAxis ? { snapLine: 'outer' } : {})
   };
 }
 

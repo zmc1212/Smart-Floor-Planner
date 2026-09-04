@@ -181,6 +181,14 @@ Phase 0/1 建立测试治理能力，Phase 2–7 为行为等价的内部重构�
 
 ## 几何不变量
 
+- 原预览松手、继续拉墙或预览直接点「合」时，提交保留已显示端点，不重新执行前面的矩形吸附。
+  闭合边界墙角之外，更近的可见外墙延长轴优先于内侧矩形轴；端点在回接边外墙延长线上时，
+  推断闭合沿该轴回接，再短桥接到拓扑角点，不能延长最后一面已测墙或让回接墙实体错开一个墙厚。
+  预览提示与提交后「合」使用同一计划；手工/BLE 长度修正保留原吸附规则及预览内/外边意图。
+  实墙接触、房内分隔、校验及 v4 结构沿用既有合同，不迁移已保存房间。
+  `miniprogram/test/survey-outer-alignment-closure.test.js` 的 25 项回归及编辑器松手/闭合/撤销/重做
+  回归覆盖该行为。用户拖动和期望结果保留在 `design-references/surveying/closure-outer-alignment-20260904/`；
+  生产几何核验图为 `tmp/survey-outer-alignment/closed-geometry.png`。`390x844` 与用户长屏真机视觉仍待手动截图。
 - `full` 校验只按整数毫米中心线和既有几何 epsilon 判定，不使用 350mm 吸附容差。
   真交叉、端点落在另一墙中段、不同节点 ID 占用同一几何端点、共线正长度重叠分别返回
   `UNSPLIT_WALL_INTERSECTION`、`UNSPLIT_WALL_T_JUNCTION`、

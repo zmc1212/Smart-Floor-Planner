@@ -136,6 +136,12 @@ and supports long-press save.
 
 ## Formal surveying boundary
 
+The generated survey runtime includes the Mini Program's outer-alignment
+closure correction: preview release keeps the visible endpoint and an
+outer-aligned return follows the shared wall's physical band before bridging
+to topology. Admin remains a read-only consumer; this mirror sync adds no
+Admin UI, route, API, permission or stored-graph migration.
+
 The authoritative contract is
 [`surveying-module/formal-surveying.md`](./surveying-module/formal-surveying.md).
 `FloorPlan.layoutData` contains only `version: 4`,
