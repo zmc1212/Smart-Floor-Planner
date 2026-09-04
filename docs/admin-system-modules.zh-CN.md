@@ -106,7 +106,17 @@ Phase 2 复核已镜像剩余的点到直线距离、测量面法向、预览实
 
 Phase 3 只读模型抽取已实现（Implemented）：墙体几何/墙面及空间边界/尺寸通过 graph 查询、闭合边界拓扑和纯几何独立加载，不依赖 kernel。façade 的 69 个导出显式指定来源，64 个 legacy 导出保持兼容；35 对 Mini Program/Admin 镜像通过审计。`cd admin && npm run test:survey-read-models` 的 38 项测试覆盖画布、PNG 快照、DXF、房间/3D 数据及 AI 适配器，包括 11 类冻结图且不回写派生 `layoutData`。现有路由、API、角色、权限、UI 和 v4 数据不变；内部重构没有设计源变更或运行态截图要求。门窗写操作由下述 Phase 4A 接管，其余写操作与交互路径留待后续阶段，详见 [Phase 3 完成记录](./surveying-module/legacy-kernel-phase3-read-models.md)。
 
-Phase 4A 门窗事务也已同步到后台运行镜像（Implemented）：`addOpeningToWall`、`updateOpening`、`deleteOpening` 由独立的 `survey/operations/opening-operations.js` 模块拥有，使用只读 plan、不可变事务草稿、Phase 2 opening 校验及共享 invariant validator。façade 不再注入 kernel，legacy runtime 只保留三个兼容代理。冻结差分与架构测试保持宿主墙规格化、入户门/selection 状态、旧错误、删除 no-op、undo/redo 和失败原子性；35 对镜像与 38 项后台画布/PNG/DXF/房间/3D/AI 测试均通过。后台路由仍只读，不新增或改变路由、API、模型、角色、租户权限、UI、设计源或 v4 数据合同。详见 [Phase 4A 完成记录](./surveying-module/legacy-kernel-phase4a-opening-operations.md)。
+Phase 4A 门窗事务也已同步到后台运行镜像（Implemented）：`addOpeningToWall`、`updateOpening`、`deleteOpening` 由独立的 `survey/operations/opening-operations.js` 模块拥有，使用只读 plan、不可变事务草稿、Phase 2 opening 校验及共享 invariant validator。façade 不再注入 kernel，legacy runtime 只保留三个兼容代理。冻结差分与架构测试保持宿主墙规格化、入户门/selection 状态、旧错误、删除 no-op、undo/redo 和失败原子性；这些检查继续纳入下述 Phase 4B 验收。后台路由仍只读，不新增或改变路由、API、模型、角色、租户权限、UI、设计源或 v4 数据合同。详见 [Phase 4A 完成记录](./surveying-module/legacy-kernel-phase4a-opening-operations.md)。
+
+Phase 4B 墙体结构事务已同步实现（Implemented）：镜像 `operations/wall-split.js` 与
+`operations/wall-deletion.js` 使用只读 plan、既有不可变/full 校验事务及 Face/Space 同步。
+门窗迁移、审计分摊、共享墙实体侧、删除/恢复墙链和 session 引用清理与冻结旧实现一致；
+墙链恢复使用独立的 `topology/closure-queries.js`，闭合写入仍待后续阶段。
+kernel 当前为 4,595 行 / 116 个顶层函数；39 模块 / 141 边审计验证 42 对镜像
+（41 对精确副本及 renderer 路径改写）。39 项后台画布/PNG/DXF/房间/3D/AI 测试、
+697 项量房、55 项 H5 测试与性能门槛通过。不新增后台写入口，路由、API、权限、UI、
+设计源与 v4 数据不变；详见
+[Phase 4B 完成记录](./surveying-module/legacy-kernel-phase4b-wall-operations.md)。
 
 `POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
 

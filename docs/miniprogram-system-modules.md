@@ -170,22 +170,25 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   deterministic variants, and dependency guards verify immutable and equivalent
   Mini/Admin outputs. See the
   [Phase 3 completion record](./surveying-module/legacy-kernel-phase3-read-models.md).
-  Phase 4A opening transactions are Implemented: `addOpeningToWall`,
-  `updateOpening`, and `deleteOpening` now live independently in
-  `survey/operations/opening-operations.js`, using read-only plans, immutable
-  transaction drafts, Phase 2 normalization/validation, and the existing graph
-  invariant validator. Frozen comparisons preserve defaults, full-host-wall width
-  clamping, offset/direction normalization, model/material and single-entry-door
-  fields, selection, missing-delete no-op behavior, legacy errors, undo/redo, and
-  atomic rejection. The facade no longer injects the kernel; the kernel retains
-  only three compatibility proxies and is now 6,064 lines / 173 top-level
-  functions. The current acceptance command is
-  `cd miniprogram && npm run test:survey-kernel-phase4a`; 604 surveying tests, 55
-  H5 tests, large-graph performance gates, all 35 mirrors, and 38 Admin consumer
-  tests pass. The full Mini Program suite passes 1,081 of 1,095 tests; its 14
-  failures match the Phase 0 unrelated failures. Remaining wall, measurement,
-  closure, and interaction paths stay in later phases. See the
-  [Phase 4A completion record](./surveying-module/legacy-kernel-phase4a-opening-operations.md).
+  Phase 4A opening transactions remain Implemented in
+  `survey/operations/opening-operations.js`, preserving normalization, host bounds,
+  entry-door/selection state, missing-delete no-ops and legacy errors.
+  Phase 4B wall-structure transactions are Implemented in
+  `survey/operations/wall-split.js` and `wall-deletion.js`: read-only plans,
+  immutable transaction drafts, opening migration, audit allocation, shared-wall
+  body side, session cleanup and face/Space sync retain frozen behavior.
+  Deletion facade entries no longer invoke kernel implementations. Internal
+  splits compose inside commit/closure transactions; full validation follows
+  all cuts. Existing chain-recovery queries live in `topology/closure-queries.js`,
+  without migrating closure writes or changing snap/closure policy. The kernel
+  is now 4,595 lines / 116 top-level functions; all 64 legacy and 69 facade
+  exports remain compatible. The 39-module / 141-edge audit verifies 42 mirrors.
+  Current acceptance is `cd miniprogram && npm run test:survey-kernel-phase4b`:
+  697 surveying tests, 55 H5 tests, large-graph performance gates and 39 Admin
+  consumer tests pass. The full Mini Program suite passes 1,184 of 1,198 tests;
+  all 14 failures match the unrelated Phase 0 list. Measurement/closure writes
+  and interaction separation remain pending. See the
+  [Phase 4B completion record](./surveying-module/legacy-kernel-phase4b-wall-operations.md).
   Test sources are excluded from every runtime package. These internal refactors
   have no visible UI or design-source change, need no WeChat DevTools automation,
   and change no route, API, role, permission, snap/closure rule, error copy, or

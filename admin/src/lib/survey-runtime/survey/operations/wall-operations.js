@@ -1,6 +1,8 @@
 const { wrapOperation } = require('./transaction.js');
+const { createWallDeletionOperations } = require('./wall-deletion.js');
 
 function createWallOperations(kernel) {
+  const deletions = createWallDeletionOperations();
   return {
     commitPreviewLength: wrapOperation('commitPreviewLength', kernel.commitPreviewLength, (draft) => {
       const floor = kernel.getActiveFloor(draft);
@@ -13,8 +15,8 @@ function createWallOperations(kernel) {
       };
     }),
     confirmClosure: wrapOperation('confirmClosure', kernel.confirmClosure, { mode: 'full' }),
-    deleteWall: wrapOperation('deleteWall', kernel.deleteWall, { mode: 'full' }),
-    deleteClosedSpace: wrapOperation('deleteClosedSpace', kernel.deleteClosedSpace, { mode: 'full' }),
+    deleteWall: deletions.deleteWall,
+    deleteClosedSpace: deletions.deleteClosedSpace,
     snapCursorToWall: wrapOperation('snapCursorToWall', kernel.snapCursorToWall),
     remeasureSelectedWall: wrapOperation('remeasureSelectedWall', kernel.remeasureSelectedWall, { mode: 'full' })
   };

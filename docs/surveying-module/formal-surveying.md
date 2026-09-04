@@ -94,13 +94,30 @@ copy back to `layoutData`.
   selection state, delete no-op semantics, timestamps, undo/redo snapshots, and
   failure atomicity retain the frozen Phase 3 behavior. Opening edits change no
   node, wall, or Space topology, so no topology/space synchronization is added.
-  The kernel retains only three compatibility proxies: their mutation bodies are
-  removed, reducing it to 6,064 lines / 173 top-level functions. The 69 facade
-  and 64 legacy exports remain unchanged; 35 Mini Program/Admin mirrors pass the
+  The kernel's opening exports retain three compatibility proxies: their mutation bodies are
+  removed, reducing it at that phase to 6,064 lines / 173 top-level functions. The 69 facade
+  and 64 legacy exports remain unchanged; that phase's 35 Mini Program/Admin mirrors pass the
   32-module / 91-edge dependency audit. This internal refactor changes no route,
   API, role, permission, UI, error copy, snap/closure policy, or version-4 data.
   Evidence and limits:
   [`legacy-kernel-phase4a-opening-operations.md`](./legacy-kernel-phase4a-opening-operations.md).
+- Phase 4B wall-structure transactions are Implemented in
+  `operations/wall-split.js` and `operations/wall-deletion.js`, with independent
+  read-only plans and apply steps for splitting walls, deleting walls and deleting
+  closed spaces. Deletion facade entries no longer invoke kernel implementations.
+  Splits remain composable steps inside commit/closure transactions; face sync and
+  full validation occur after all cuts are applied. Standalone splits reuse the
+  same transaction framework without adding a public facade export. Opening
+  remapping/conflict rejection, audit allocation, shared-wall body side, session
+  reference cleanup, collinear shared-run punch-through, shared-only-room geometry
+  and undo/redo retain their frozen behavior. Chain recovery's existing read-only
+  closure queries now live in `topology/closure-queries.js`; closure writes remain
+  for Phase 4D. The kernel is now 4,595 lines / 116 top-level functions, with
+  39 modules / 141 edges and 42 verified mirrors. The 697 surveying, 55 H5 and
+  39 Admin tests plus large-graph performance gates pass. The full Mini Program
+  suite passes 1,184 of 1,198 tests; all 14 failures match the Phase 0 list.
+  No UI, route, API, permission or v4 contract changes. Evidence:
+  [`legacy-kernel-phase4b-wall-operations.md`](./legacy-kernel-phase4b-wall-operations.md).
 - Surveying pan and pinch gestures use the primary Canvas `requestAnimationFrame`
   frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
   coalesced to one callback per animation frame and flushed once at gesture end;
@@ -619,7 +636,7 @@ span outside the junction's one-wall-thickness clearance. A touching or
 overlapping divider cut is blocked; the catalog does not model a cross-segment
 opening.
 Before and after migrating any `legacy-kernel.js` function family, run
-`cd miniprogram && npm run test:survey-kernel-phase4a`. That command retains the
+`cd miniprogram && npm run test:survey-kernel-phase4b`. That command retains the
 test-only Phase 1 harness, which runs legacy and candidate implementations twice
 from isolated copies of the same input, compares graph/session/error plus
 quick/full validation, checks references and input immutability, and
@@ -635,7 +652,11 @@ input; architecture guards reject reverse/cyclic dependencies and implicit or
 duplicate exports. Phase 4A additionally compares 15 frozen opening-mutation
 inputs against both the extracted legacy proxies and transactional facade, and
 checks read-only plans, structured results, host bounds, atomic rejection,
-undo/redo, dependency closure, and removal of the three kernel bodies. Run
+undo/redo, dependency closure, and removal of the three kernel bodies. Phase 4B
+also compares a frozen pre-migration function closure across 27 split and 59
+deletion inputs in both runtimes, verifying replayable read-only plans,
+composable/full transactions, Space sync, reference cleanup, atomic rejection
+and re-execution on operation output. Run
 `cd admin && npm run test:survey-read-models` for 2D scenes,
 PNG, DXF, room/3D and AI consumer checks, and run the complete Mini Program suite
 before handoff. This guard changes no

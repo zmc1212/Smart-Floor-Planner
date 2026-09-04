@@ -16,7 +16,9 @@ Phase 3 墙体、墙面、空间边界/尺寸独立读模型与显式 façade �
 [`legacy-kernel-phase3-read-models.md`](./legacy-kernel-phase3-read-models.md)；已完成的 Phase 4A
 门窗事务、规格化、宿主墙关系校验与失败原子性迁移见
 [`legacy-kernel-phase4a-opening-operations.md`](./legacy-kernel-phase4a-opening-operations.md)。
-Phase 0/1 建立测试治理能力，Phase 2/3/4A 是行为等价的内部运行时重构；均不改变正式量房
+已完成的 Phase 4B 拆墙、删墙与删除空间事务见
+[`legacy-kernel-phase4b-wall-operations.md`](./legacy-kernel-phase4b-wall-operations.md)。
+Phase 0/1 建立测试治理能力，Phase 2/3/4A/4B 是行为等价的内部运行时重构；均不改变正式量房
 运行合同。
 
 ## 当前能力
@@ -56,13 +58,24 @@ Phase 0/1 建立测试治理能力，Phase 2/3/4A 是行为等价的内部运行
   独立拥有 `addOpeningToWall`、`updateOpening`、`deleteOpening`，通过只读 plan、事务草稿、
   Phase 2 opening/domain 校验和既有 invariant validator 提交。宽度、中心偏移、门向、默认
   模型/材质、唯一入户门、selection、删除 no-op、旧错误消息与失败原子性保持不变。
-  façade 不再向 opening operation 注入 kernel；legacy kernel 只保留三个兼容代理，对应
-  函数体已删除，当前为 6,064 行 / 173 个顶层函数。15 类冻结输入分别对比 legacy proxy
-  和 transactional façade，另验证 undo/redo、宿主墙缺失/越界及无循环反向依赖；当前
+  façade 不再向 opening operation 注入 kernel；legacy kernel 的门窗导出只保留三个兼容代理，对应
+  函数体已删除，该阶段结束时为 6,064 行 / 173 个顶层函数。15 类冻结输入分别对比 legacy proxy
+  和 transactional façade，另验证 undo/redo、宿主墙缺失/越界及无循环反向依赖；该阶段的
   32 个模块 / 91 条边与 35 对 Admin 镜像通过审计。门窗增删改不改变 wall/node/Space
   拓扑，无需额外 space 同步。本阶段不改变可见 UI、路由、API、权限、错误文案、吸附/闭合
   规则或 v4 graph；详见
   [`legacy-kernel-phase4a-opening-operations.md`](./legacy-kernel-phase4a-opening-operations.md)。
+- Phase 4B 墙体结构事务已实现（Implemented）：`operations/wall-split.js` 和
+  `operations/wall-deletion.js` 独立拥有拆墙、删墙及删除闭合空间的只读 plan/apply；删除
+  façade 不再调用 kernel 实现。拆墙仍是闭合/落墙事务中的组合步骤，所有切点应用后由
+  外层事务同步 Face 并 full 校验；独立 split 入口同样复用既有事务，无新增公共导出。
+  门窗安全迁移/冲突拒绝、审计分摊、共享墙实体侧、session 引用清理、共线共享界面打通、
+  全共享房间保留几何及 undo/redo 保持不变。墙链恢复依赖的原有只读闭合查询移至
+  `topology/closure-queries.js`，不接管闭合写入。kernel 当前 4,595 行 / 116 个顶层函数，
+  39 模块 / 141 边和 42 对运行镜像通过审计；697 项量房、55 项 H5、39 项 Admin 测试及
+  大图性能门槛通过。全量小程序 1,198 项中 1,184 项通过，14 项失败与 Phase 0 既有清单
+  一致。无 UI、路由、API、权限或 v4 合同变化；详见
+  [`legacy-kernel-phase4b-wall-operations.md`](./legacy-kernel-phase4b-wall-operations.md)。
 - 编辑器使用 version-4 `surveyGraph`，坐标、长度、墙厚、开口和层高均为毫米。
   门宽/窗宽上限为当前宿主墙长度（不少于 100 mm），由 `normalizeOpeningToWall`
   按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。
@@ -254,7 +267,7 @@ null 行不回填、不删除、不合并。员工写入审计时，服务端允
   拓扑写入还须跑 `miniprogram/test/survey-topology-face-shadow-matrix.test.js`
   和 `miniprogram/test/survey-kernel-invariants.test.js`。
 - 迁移 `legacy-kernel.js` 的任何函数族前后都须运行
-  `cd miniprogram && npm run test:survey-kernel-phase4a`。该命令保留 Phase 1 harness 对旧实现和候选实现
+  `cd miniprogram && npm run test:survey-kernel-phase4b`。该命令保留 Phase 1 harness 对旧实现和候选实现
   双跑同一输入，精确比较 graph/session/错误/`quick`/`full` 校验并检查输入不可变、
   重复执行和 Mini Program/Admin 镜像一致性；只有派生 read-model 使用 `1e-6` 误差，并另行
   执行 Phase 2 基础模块边界、退化输入、旧消息兼容和依赖方向测试。Phase 3 另将冻结的
@@ -262,6 +275,8 @@ null 行不回填、不删除、不合并。员工写入审计时，服务端允
   验证每个读模型输入不可变，并禁止反向依赖、循环依赖、隐式或重复导出。Phase 4A 再以
   独立冻结 mutation 对 15 类门窗输入双端差分，并验证只读 plan、事务 validator、失败
   原子性、undo/redo、宿主墙关系及 kernel 函数体移除。
+  Phase 4B 以迁移前冻结函数闭包对 27 类拆墙及 59 类删除输入执行双端差分，检查
+  可重放只读 plan、组合/完整事务、Space 同步、引用清理、原子拒绝和对操作结果再次执行。
   `cd admin && npm run test:survey-read-models` 验证 2D 场景、PNG、DXF、房间/3D 与 AI
   消费路径及原 v4 外壳，完成前同时运行完整小程序测试。
 - `miniprogram/test/survey-closure-scenario-matrix.test.js` 是包含 4,096 个组合的正式闭合场景目录：直角矩形、凹 L、

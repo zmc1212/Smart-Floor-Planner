@@ -87,7 +87,24 @@ AI 设计界面已按批准的 `design-references/ai-design/unified-entry-v1/` �
 
 Phase 2 复核已把剩余点到直线距离、测量面法向、预览实测长度及端点反算收口到基础模块，保留 legacy 空楼层访问语义，并以 Phase 1 冻结公式约束精确取整结果，逐一验证全部 32 个领域错误码的旧消息与字段映射；运行包、路由、API、权限和 v4 合同边界不变。
 
-Phase 3 只读模型抽取已实现（Implemented）：墙体几何/墙面和空间边界/尺寸直接消费 `core/graph-query.js`、`topology/closed-boundary.js` 与纯基础模块，独立于 kernel 加载。69 个 façade 导出显式指定来源，64 个 legacy 导出保持兼容。逐函数写入拦截、迁移前冻结公式、11 类代表图、48 组确定性变体和依赖守卫共同验证 Mini Program/Admin 只读且输出等价；详见 [Phase 3 完成记录](./surveying-module/legacy-kernel-phase3-read-models.md)。Phase 4A 门窗事务也已实现（Implemented）：`addOpeningToWall`、`updateOpening`、`deleteOpening` 独立位于 `survey/operations/opening-operations.js`，使用只读 plan、不可变事务草稿、Phase 2 规格化/校验和既有 graph invariant validator。冻结差分保持默认值、宽度占满宿主墙的夹紧规则、偏移/门向规格化、模型/材质与唯一入户门字段、selection、删除缺失对象 no-op、旧错误、undo/redo 和失败原子性。façade 不再注入 kernel；kernel 只保留三个兼容代理，当前为 6,064 行 / 173 个顶层函数。当前验收命令为 `cd miniprogram && npm run test:survey-kernel-phase4a`；604 项量房测试、55 项 H5 测试、大图性能门槛、35 对镜像和 38 项 Admin 消费者测试通过。完整小程序测试 1,095 项中 1,081 项通过，14 项失败与 Phase 0 的无关既有失败一致。墙体结构、测量、闭合及交互路径留待后续阶段；详见 [Phase 4A 完成记录](./surveying-module/legacy-kernel-phase4a-opening-operations.md)。测试源码不进入运行包；这些内部重构无可见 UI 或设计源变更，无需微信 DevTools 自动化，也不改变路由、API、角色、权限、吸附/闭合规则、错误文案或 version-4 数据合同。
+Phase 3 只读模型抽取已实现（Implemented）：墙体几何/墙面和空间边界/尺寸直接消费
+`core/graph-query.js`、`topology/closed-boundary.js` 与纯基础模块，独立于 kernel 加载。
+69 个 façade 导出显式指定来源，64 个 legacy 导出保持兼容；逐函数只读及冻结公式差分
+详见 [Phase 3 完成记录](./surveying-module/legacy-kernel-phase3-read-models.md)。
+Phase 4A 门窗事务继续由 `survey/operations/opening-operations.js` 独立实现，保持规格化、
+宿主墙范围、入户门/selection、缺失删除 no-op 和旧错误语义。
+Phase 4B 墙体结构事务已实现（Implemented）：`survey/operations/wall-split.js` 与
+`wall-deletion.js` 使用只读 plan、不可变事务草稿，保持门窗迁移、审计分摊、共享墙实体侧、
+session 清理和 Face/Space 同步。删除 façade 不再调用 kernel 实现；内部拆墙在落墙/闭合
+事务中组合，全部切点完成后执行 full 校验。墙链恢复的既有只读查询位于
+`topology/closure-queries.js`，没有接管闭合写入或改变吸附/闭合策略。kernel 当前为
+4,595 行 / 116 个顶层函数，64 个 legacy 与 69 个 façade 导出保持兼容；39 模块 / 141 边
+审计验证 42 对镜像。当前验收命令为 `cd miniprogram && npm run test:survey-kernel-phase4b`：
+697 项量房、55 项 H5、39 项 Admin 测试及大图性能门槛通过。完整小程序 1,198 项中
+1,184 项通过，14 项失败与 Phase 0 无关既有清单一致。测量/闭合写入与交互分离仍待后续
+阶段，详见 [Phase 4B 完成记录](./surveying-module/legacy-kernel-phase4b-wall-operations.md)。
+测试源码不进入运行包；内部重构没有可见 UI 或设计源变化，不需要微信 DevTools 自动化，
+不改变路由、API、角色、权限、错误文案或 version-4 数据合同。
 
 ### 运行时版本检查
 

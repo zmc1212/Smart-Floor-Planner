@@ -2,7 +2,7 @@
 
 > 状态：执行中
 >
-> 当前阶段：Phase 4B — 墙体结构操作
+> 当前阶段：Phase 4C — 测量写入（Phase 4B 已完成）
 >
 > 最后检查：2026-09-04
 >
@@ -289,10 +289,13 @@ refactor: extract survey graph read models
 
 #### Phase 4B：墙体结构操作
 
-- [ ] `splitWallAtNodes`
-- [ ] `deleteWall`
-- [ ] `deleteClosedSpace`
-- [ ] 操作后的 opening 迁移、session 引用清理和 space 同步
+- [x] `splitWallAtNodes`
+- [x] `deleteWall`
+- [x] `deleteClosedSpace`
+- [x] 操作后的 opening 迁移、session 引用清理和 space 同步
+
+完成证据、冻结差分、组合/独立事务边界与镜像验证见
+[`legacy-kernel-phase4b-wall-operations.md`](./legacy-kernel-phase4b-wall-operations.md)。
 
 #### Phase 4C：测量写入
 
@@ -493,56 +496,41 @@ node --test test/survey*.test.js test/surveying-editor*.test.js
 
 ### 当前阶段
 
-Phase 4B — 墙体结构操作。
+Phase 4C — 测量写入；Phase 4B 已完成。
 
 ### 已完成
 
-- [x] Phase 0/1 的导出、消费者、依赖、行为快照、差分 harness、失败原子性、重复执行、
-      validator 和性能门槛保持有效；Phase 0 行为快照和性能阈值未重建或放宽。
-- [x] Phase 2 完成 draft/session、纯几何、wall/opening 规格化与长度、领域错误和旧消息
-      边界收口，并补齐四个冻结公式与 legacy 空楼层语义；详见 Phase 2 完成记录。
-- [x] Phase 3 按墙体、空间边界、尺寸的函数族顺序迁移；四个 read-model 模块直接依赖
-      graph 查询、闭合墙链和纯基础模块，可在 kernel 与写操作不可用时独立加载。
-- [x] Phase 3 将 32 个只读/查询函数体移出 kernel。
-      64 个 legacy 导出与 69 个 façade 导出保留，原 17 个同名提供者改为显式选择；
-      审计不再靠覆盖顺序推断来源。
-- [x] 为每个公开读模型及共享内部 helper 增加输入写入拦截、重复执行、冻结公式精确
-      差分和双端验证；覆盖 11 类冻结图、48 组确定性变体及退化输入，另有依赖与导出守卫。
-- [x] 核查小程序画布、Admin 2D、PNG、DXF、房间/3D 数据和 AI 消费者；场景与 graph
-      语义不变，不生成可编辑派生副本或回写额外的 `layoutData` 字段。
-- [x] Phase 3 是内部行为等价重构；路由、API、角色、权限、UI、吸附/闭合阈值、错误
-      文案与 version-4 持久化合同无变化。完成证据见
-      [Phase 3 只读模型迁移记录](./legacy-kernel-phase3-read-models.md)。
-- [x] Phase 4A 已迁移 `addOpeningToWall`、`updateOpening`、`deleteOpening` 和宿主墙
-      规格化/校验。三个 operation 使用只读 plan、事务草稿、既有 invariant validator 与
-      结构化结果；门窗操作不改变 wall/node/Space 拓扑，因此无需额外 space 同步。
-- [x] 迁移前 Phase 3 mutation 作为测试专用冻结参考；15 类输入分别与 Mini Program/Admin 的
-      legacy proxy 和 transactional façade 差分，另覆盖计划只读、失败原子性、undo/redo、入户门唯一性、
-      宿主墙关系、越界校验、依赖闭包和旧函数体移除。
-- [x] 三个 mutation 函数体已从 kernel 删除；kernel 当前为 6,064 行 / 173 个顶层函数。
-      64 个 legacy 导出与 69 个 façade 导出保持不变，opening façade 不再注入 kernel。
-- [x] 当前结构为 32 个模块节点 / 91 条边；35 对运行镜像继续通过源码哈希审计
-      （34 对精确副本及 1 对已批准 renderer 路径改写）。
-- [x] `npm --prefix miniprogram run test:survey-kernel-phase4a` 通过 604 项量房定向测试、
-      55 项 H5 测试和大图性能门槛；Admin 38 项消费者测试通过。完整小程序测试 1,095 项中
-      1,081 项通过，14 项失败名称仍与 Phase 0 无关既有清单一致。
-- [x] Phase 4A 是内部行为等价重构；路由、API、角色、权限、UI、错误文案、吸附/闭合策略
-      与 version-4 持久化合同无变化。完成证据见
-      [Phase 4A 门窗事务迁移记录](./legacy-kernel-phase4a-opening-operations.md)。
+- [x] Phase 0/1 的行为基线、差分 harness、导出/消费者审计、失败原子性、重复执行、
+      validator 与性能门槛继续有效；行为快照、性能阈值及 validator 未重建或放宽。
+- [x] Phase 2 基础能力、Phase 3 独立读模型/显式 façade 及 Phase 4A 门窗事务保持通过。
+- [x] Phase 4B 先迁移拆墙、再迁移墙体/空间删除；
+      `operations/wall-split.js` 和 `operations/wall-deletion.js` 独立拥有只读 plan/apply，
+      复用既有事务与 full validator。组合拆墙在所有切点完成后由外层事务同步 Space。
+- [x] opening 安全迁移/冲突拒绝、共享墙实体侧、审计分摊、session 引用清理、共线共享
+      界面打通、全共享房间保留几何和删除后墙链恢复均与冻结旧实现等价。
+- [x] 墙链恢复所需的只读路径/闭合查询已移出 kernel；没有迁移闭合确认写入或更改策略。
+      57 个函数体移出 kernel，当前为 4,595 行 / 116 个顶层函数；64 个 legacy 与
+      69 个 façade 导出不变。39 模块 / 141 边无新操作反向/循环依赖，42 对镜像通过审计。
+- [x] 新增 93 项 Phase 4B 测试；27 类拆墙及 59 类删除输入覆盖双端冻结差分、只读计划、
+      原子性、undo/redo、重复输入及对结果再执行。697 项量房、55 项 H5、39 项 Admin
+      消费者测试与大图性能门槛通过。全量小程序 1,198 项中 1,184 项通过，14 项失败
+      名称与 Phase 0 无关既有清单一致。
+- [x] 中英文量房合同及 Mini Program/Admin 模块清单已同步。对外合同无变化：路由、API、
+      角色、权限、UI、错误文案、吸附/闭合策略与正式 v4 数据保持不变。详见
+      [Phase 4B 墙体结构事务迁移记录](./legacy-kernel-phase4b-wall-operations.md)。
 
 ### 仍保留的边界
 
-- [ ] Phase 4B–4D 的墙体结构、复尺/测量与闭合写操作仍待迁移；Phase 5 交互/session
-      分离尚未开始。
-- [ ] legacy kernel 仍保留尚未迁移的写操作和交互查询；兼容导出未删除或改变。
-- [ ] Phase 6 运行来源收口及 Phase 7 最终治理仍待完成；显式 façade 已由 Phase 3 接管。
+- [ ] Phase 4C 复尺/测量与 Phase 4D 闭合写操作仍待迁移；移出的只读闭合查询不代表
+      Phase 4D 已完成。Phase 5 交互/session 状态机尚未分离。
+- [ ] legacy kernel 仍保留尚未迁移的写操作与交互逻辑；兼容导出未删除或改变。
+- [ ] Phase 6 运行来源收口和 Phase 7 最终治理仍待完成；Admin 继续作为生成镜像。
 
 ### 下一步唯一目标
 
-执行 Phase 4B 的首个墙体结构事务：迁移 `splitWallAtNodes`。先冻结无切点、单切点、
-多切点、共享墙、宿主 opening 安全迁移/冲突拒绝、session 引用和 Space 同步语义，再复用
-既有事务与 full invariant validation 接管；不同时迁移 `deleteWall`、改变 UI、吸附/闭合
-策略或正式 v4 数据合同。
+执行 Phase 4C 的首个测量事务：迁移 `remeasureSelectedWall`。先冻结开口墙、闭合正交
+空间、固定端点、连续双轴复尺、门窗范围冲突及原始读数/平差元数据语义，再复用既有
+full 不可变事务接管；不同时迁移闭合确认、改变 UI、吸附阈值或正式 v4 数据合同。
 
 ## 12. 整体完成定义
 

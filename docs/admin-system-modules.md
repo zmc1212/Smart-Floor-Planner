@@ -194,14 +194,28 @@ Phase 4A opening transactions are also Implemented in the synchronized runtime:
 `addOpeningToWall`, `updateOpening`, and `deleteOpening` are owned by the
 standalone `survey/operations/opening-operations.js` module and use read-only
 plans, immutable transaction drafts, Phase 2 opening validation, and the shared
-invariant validator. The facade no longer injects the kernel; the legacy runtime
-retains only three compatibility proxies. Frozen differential and architecture
+invariant validator. The facade no longer injects the kernel; the legacy runtime's
+opening exports retain three compatibility proxies. Frozen differential and architecture
 tests preserve host-wall normalization, entry-door and selection state, legacy
-errors, no-op deletion, undo/redo, and atomic rejection. All 35 mirror pairs and
-the 38 Admin canvas/PNG/DXF/room/3D/AI tests pass. Admin routes remain read-only;
+errors, no-op deletion, undo/redo, and atomic rejection. These checks remain part
+of the current Phase 4B acceptance below. Admin routes remain read-only;
 there is no route, API, model, role, tenant permission, UI, design-source, or v4
 data-contract change. See the
 [Phase 4A completion record](./surveying-module/legacy-kernel-phase4a-opening-operations.md).
+
+Phase 4B wall-structure transactions are Implemented in mirrored
+`operations/wall-split.js` and `operations/wall-deletion.js`, with read-only
+plans, the existing immutable/full-validation transaction and face/Space sync.
+Opening remapping, audit allocation, shared-wall body side, deletion/recovery
+and session reference cleanup preserve the frozen behavior. Chain recovery uses
+independent `topology/closure-queries.js`; closure writes remain pending.
+The kernel is now 4,595 lines / 116 top-level functions; the 39-module / 141-edge
+audit verifies 42 mirror pairs (41 exact copies plus the renderer path rewrite).
+All 39 Admin canvas/PNG/DXF/room/3D/AI tests pass, alongside 697 surveying and
+55 H5 tests plus the performance gates. No new Admin mutation route is exposed;
+routes, APIs, permissions, UI, design sources and v4 data remain unchanged. See the
+[Phase 4B completion record](./surveying-module/legacy-kernel-phase4b-wall-operations.md).
+
 DXF generation is likewise read-only: `admin/src/lib/dxf.ts` adapts the graph
 to the MIT-licensed writer, emits unioned inner/outer wall `LINE` faces after
 opening gaps, inserts hinged-door blocks with an open 90° thick leaf, gray dashed
