@@ -1,3 +1,4 @@
+const { preferOuterVertex, preferOuterProjection, targetPriority } = require('./survey/snap/candidate-policy.js');
 const surveyCanvasRenderer = require('./surveyCanvasRenderer.js');
 
 function distanceMm(first, second) {
@@ -220,17 +221,8 @@ function innerVertexPreferenceRadiusMm(index, vertex, maxDistanceMm) {
 }
 
 function shouldPreferOuterVertex(index, innerVertex, outerVertex, maxDistanceMm) {
-  if (!outerVertex) return false;
-  if (!innerVertex) return true;
-  const innerRadiusMm = innerVertexPreferenceRadiusMm(index, innerVertex, maxDistanceMm);
-  const outerTerminalBandMm = innerRadiusMm * 0.4;
-  if (
-    innerVertex.distanceMm <= innerRadiusMm &&
-    outerVertex.distanceMm > outerTerminalBandMm
-  ) {
-    return false;
-  }
-  return outerVertex.distanceMm < innerVertex.distanceMm;
+  return preferOuterVertex(innerVertex, outerVertex,
+    innerVertexPreferenceRadiusMm(index, innerVertex, maxDistanceMm));
 }
 
 function findNearestVertex(vertices, point, limit) {
@@ -323,25 +315,14 @@ function resolveCursorPlacementTarget(index, point, maxDistanceMm) {
   const innerPreferenceRadiusMm = nearestVertex && !nearestVertex.snapLine
     ? innerVertexPreferenceRadiusMm(index, nearestVertex, limit)
     : 0;
-  const outerProjectionWins = nearestVertex && projection &&
-    projection.snapLine === 'outer' &&
-    projection.distanceMm <= limit &&
-    nearestVertex.distanceMm > innerPreferenceRadiusMm &&
-    projection.distanceMm < nearestVertex.distanceMm;
+  const outerProjectionWins = preferOuterProjection(nearestVertex, projection, limit,
+    innerPreferenceRadiusMm);
   if (nearestVertex && !outerProjectionWins) return nearestVertex;
 
   if (!projection || projection.distanceMm > limit) {
     return findNearestAlignment(index, point, limit) || freeTarget;
   }
   return projection;
-}
-
-function targetPriority(target) {
-  if (!target) return 0;
-  if (target.type === 'vertex') return 3;
-  if (target.type === 'wall') return 2;
-  if (target.type === 'alignment') return 1;
-  return 0;
 }
 
 function resolveCursorPlacementLock(index, point, candidate, maxDistanceMm, acquireDistanceMm) {

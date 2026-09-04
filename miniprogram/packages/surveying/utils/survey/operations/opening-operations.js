@@ -1,3 +1,4 @@
+const { transitionSessionState } = require('../session/state-machine.js');
 const {
   DEFAULT_DOOR_WIDTH_MM,
   DEFAULT_DOOR_HEIGHT_MM,
@@ -187,7 +188,7 @@ function applyOpeningPlan(draft, plan) {
 
   if (plan.kind === 'add-opening') {
     ensureOpenings(floor).push(plan.opening);
-    floor.session.state = SESSION_STATES.WALL_SELECTED;
+    transitionSessionState(floor.session, 'OBJECT_SELECTED', SESSION_STATES.WALL_SELECTED);
     floor.session.selectedWallId = plan.wallId;
     floor.session.selectedOpeningId = plan.opening.id;
     floor.session.selectedSpaceId = '';
@@ -207,7 +208,7 @@ function applyOpeningPlan(draft, plan) {
       const item = getOpening(floor, entry.openingId);
       if (item && item.type === 'door') item.entryDoor = entry.entryDoor;
     });
-    floor.session.state = SESSION_STATES.WALL_SELECTED;
+    transitionSessionState(floor.session, 'OBJECT_SELECTED', SESSION_STATES.WALL_SELECTED);
     floor.session.selectedWallId = opening.wallId;
     floor.session.selectedOpeningId = opening.id;
     return {
@@ -229,7 +230,7 @@ function applyOpeningPlan(draft, plan) {
       };
     }
     floor.openings = openings.filter((item) => item.id !== plan.openingId);
-    floor.session.state = SESSION_STATES.WALL_SELECTED;
+    transitionSessionState(floor.session, 'OBJECT_SELECTED', SESSION_STATES.WALL_SELECTED);
     floor.session.selectedWallId = plan.wallId;
     floor.session.selectedOpeningId = '';
     return {

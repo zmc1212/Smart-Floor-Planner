@@ -1,4 +1,5 @@
 const { DEFAULT_THICKNESS_MM } = require('./constants.js');
+const { SESSION_FIELD_GROUPS, readSessionGroups } = require('../session/field-groups.js');
 
 const SESSION_STATES = Object.freeze({
   IDLE: 'idle',
@@ -196,6 +197,8 @@ function collectSessionReferences(session, options) {
 }
 
 module.exports = {
+  SESSION_FIELD_GROUPS,
+  readSessionGroups,
   SESSION_STATES,
   SESSION_DEFAULTS,
   OPTIONAL_SESSION_FIELDS,

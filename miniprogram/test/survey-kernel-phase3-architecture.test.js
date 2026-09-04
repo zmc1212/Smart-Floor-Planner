@@ -21,7 +21,7 @@ test('Phase 3 read-model dependency closure is acyclic and excludes legacy, inte
     graph.edges.filter((edge) => edge.from === file).forEach((edge) => visit(edge.to, [...stack, file]));
   };
   const roots = graph.nodes.filter((node) => node.file.includes('/read-model/'));
-  assert.equal(roots.length, 4);
+  assert.equal(roots.length, 5); // Phase 5 adds the read-only cursor/closure guide.
   roots.forEach((node) => visit(node.file, []));
   assert.ok(checked.has(surveyRoot + 'core/graph-query.js'));
   assert.ok(checked.has(surveyRoot + 'topology/closed-boundary.js'));
@@ -38,7 +38,7 @@ test('Phase 3 standalone modules load in a fresh process with kernel and operati
       return originalLoad.call(this, request, ...args);
     };
     for (const root of ['miniprogram/packages/surveying/utils/survey', 'admin/src/lib/survey-runtime/survey']) {
-      for (const name of ['wall-geometry', 'wall-faces', 'space-boundary', 'space-dimensions']) {
+      for (const name of ['wall-geometry', 'wall-faces', 'space-boundary', 'space-dimensions', 'cursor']) {
         const api = require('./' + root + '/read-model/' + name + '.js');
         if (!Object.values(api).every(value => typeof value === 'function')) throw new Error('Unexpected read-model export');
         if (Object.keys(api).some(key => /^create.*ReadModel$/.test(key))) throw new Error('Factory proxy remains');
@@ -53,7 +53,7 @@ test('Phase 3 facade binds every export explicitly and rejects duplicates or ord
   assert.equal(audit.selection, 'explicit-property-bindings');
   assert.equal(audit.facadeExportCount, 69);
   assert.equal(audit.legacyExportCount, 64);
-  assert.equal(audit.overrides.length, 17);
+  assert.equal(audit.overrides.length, 42);
   const original = 'module.exports = {\n  first: a.first,\n  second: b.second\n};';
   const reordered = 'module.exports = {\n  second: b.second,\n  first: a.first\n};';
   assert.deepEqual(parseFacadeBindings(original), parseFacadeBindings(reordered));

@@ -1,3 +1,4 @@
+const { transitionSessionState } = require('../session/state-machine.js');
 const { getNode, getLastWall, getWall } = require('../core/graph-query.js');
 const { SESSION_STATES } = require('../core/session.js');
 const { resolveStraightClosurePlan, findMergeClosureCandidate } = require('../topology/closure-queries.js');
@@ -20,7 +21,7 @@ function refreshStandaloneClosureSuggestion(floor, session) {
     : 0;
   const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
   if (!anchor || !activeStartNode || activeWallCount < 2) {
-    session.state = SESSION_STATES.WALL_COMMITTED;
+    transitionSessionState(session, 'OPEN_CHAIN_RESUMED', SESSION_STATES.WALL_COMMITTED);
     return;
   }
   const lastWall = getLastWall(floor);
@@ -31,19 +32,19 @@ function refreshStandaloneClosureSuggestion(floor, session) {
     distanceMm(anchor, activeStartNode) <= CLOSE_TOLERANCE_MM ||
     startClosurePlan.type === 'orthogonal-adjustment'
   )) {
-    session.state = SESSION_STATES.CLOSING;
+    transitionSessionState(session, 'OPEN_CHAIN_RESUMED', SESSION_STATES.CLOSING);
     session.closeCandidateNodeId = activeStartNode.id;
     session.closeCandidateType = 'start';
     return;
   }
   const mergeCandidate = findMergeClosureCandidate(floor, session, anchor);
   if (mergeCandidate) {
-    session.state = SESSION_STATES.MERGE_CLOSING;
+    transitionSessionState(session, 'OPEN_CHAIN_RESUMED', SESSION_STATES.MERGE_CLOSING);
     session.closeCandidateNodeId = mergeCandidate.id;
     session.closeCandidateType = 'merge';
     return;
   }
-  session.state = SESSION_STATES.WALL_COMMITTED;
+  transitionSessionState(session, 'OPEN_CHAIN_RESUMED', SESSION_STATES.WALL_COMMITTED);
 }
 
 function restoreOpenedSpaceChain(floor, session, fromNodeId, toNodeId) {

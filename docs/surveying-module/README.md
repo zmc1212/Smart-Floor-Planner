@@ -20,8 +20,9 @@ Phase 3 墙体、墙面、空间边界/尺寸独立读模型与显式 façade �
 [`legacy-kernel-phase4b-wall-operations.md`](./legacy-kernel-phase4b-wall-operations.md)。
 已完成的 Phase 4C 复尺与测量写入事务见
 [`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md)。
-Phase 0/1 建立测试治理能力，Phase 2/3/4A/4B/4C 是行为等价的内部运行时重构；均不改变正式
-量房运行合同。
+Phase 4D 闭合事务见 [完成记录](./legacy-kernel-phase4d-closure-operations.md)；Phase 5
+交互、吸附与 session 状态机见 [完成记录](./legacy-kernel-phase5-interaction-state-machine.md)。
+Phase 0/1 建立测试治理能力，Phase 2–5 为行为等价的内部重构；均不改变正式量房运行合同。
 
 ## 当前能力
 
@@ -88,19 +89,28 @@ Phase 0/1 建立测试治理能力，Phase 2/3/4A/4B/4C 是行为等价的内部
   kernel 仅保留兼容代理；不接管闭合确认或改变吸附策略。新增 6 项 Phase 4C 单元测试，
   并通过既有量房、Admin 镜像与 full validator 护栏；详见
   [`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md)。
-- Phase 4D 闭合与合并已实现（Implemented）：`topology/closure-candidates.js` 与
-  `closure-plans.js` 只读生成候选、bridge/merge/partition 及正交调整意图；
-  `operations/closure.js` 独立拥有 `confirmClosure`，在一次 full 不可变事务中组合预览提交、
-  共享墙切点、门窗迁移、共线合并和 Face/Space 同步。规划不读时钟、不分配 ID、不保存图引用；
-  失败保留完整输入与历史，旧错误、raw/effective/closure 审计及 session 清理语义不变。
-  façade 绑定 `transactionalClosures.confirmClosure`，kernel 只保留兼容代理。预览提交仍通过
-  显式回调复用 kernel 的落墙编排，闭合模块不导入 kernel；Phase 5 交互分离尚未完成。
-  当前 kernel 为 3,193 行 / 80 个顶层函数，45 模块 / 202 边审计验证 48 对镜像；
-  64 个 legacy 与 69 个 façade 导出不变。721 项量房/编辑器、55 项 H5、39 项 Admin 消费者及
-  性能门槛通过，新增 18 项测试含完整 4,096 场景冻结闭合差分、双端重复/undo/redo 和原子拒绝。
-  全量小程序 1,224 项中 1,210 项通过；14 项失败名称与 Phase 0 既有清单一致。
-  后台仍只读，无新增路由、API、角色、租户权限、UI、设计源、BLE、吸附策略或 v4 合同变化。
-  详见 [Phase 4D 完成记录](./legacy-kernel-phase4d-closure-operations.md)。
+- Phase 4D 闭合与合并已实现（Implemented）：只读 `topology/closure-candidates.js`
+  和 `closure-plans.js` 向 `operations/closure.js` 提供计划；预览提交、共享墙拆分、门窗迁移、
+  合并及 Face/Space 同步组合在一次 full 事务中。计划不读时钟、不分配 ID、不保留 graph 引用，
+  失败保留输入与历史；完整 4,096 场景冻结差分继续生效。详见 [Phase 4D 完成记录](./legacy-kernel-phase4d-closure-operations.md)。
+
+- Phase 5 交互与 session 分离已实现（Implemented）。`session/state-machine.js`
+  定义 11 个正式状态、19 类事件、明确允许转换及原子拒绝的 `INVALID_SESSION_TRANSITION`；
+  历史 `openingSelected` 只兼容读取，不作为新状态输出。`session/field-groups.js` 将原 42 个
+  扁平字段分为 preview（10）、selection（3）、closure（18）、measurement（10）、viewport（1），
+  不改变可选字段缺席语义或存档格式。`interaction/` 只为预览、方向、内角、墙体吸附、确认和
+  视口产生隔离 session 或值/ID 意图；`snap/snap-engine.js` 明确预览/确认计算顺序，普通图查询
+  与 Canvas 缓存共用 `snap/candidate-policy.js`，graph 修改由 operation 应用。
+  `startPreview` 编排预览服务和可选创建光标意图；`commitPreviewLength` 分离输入确认与既有
+  quick/full 事务。闭合直接组合独立落墙操作，不回调 kernel，也不嵌套事务；editor 继续拥有设备、
+  手势、Toast 和 BLE 回调，吸附阈值不变。当前 kernel 为 277 行 / 7 个顶层函数，74 模块 /
+  377 条依赖边与 77 对生成镜像通过审计；64 个 legacy 和 69 个 façade 导出保留且来源显式。
+  新增 368 项测试，含逐转换验证、双端所有状态的冻结命令差分、完整 4,096 场景逐次
+  preview/commit/snap 比较、无时钟计划、重复/撤销/重做、失败原子性和冻结 Canvas 索引对照。
+  1,089 项量房/编辑器、55 项 H5、39 项 Admin 消费者和既有性能门槛通过；全量结果见
+  [Phase 5 完成记录](./legacy-kernel-phase5-interaction-state-machine.md)。UI、图片、路由、API、角色、租户权限、BLE 协议、测量审计队列及
+  正式 v4 合同均无变化，后台继续只读；无需新设计源或 DevTools 自动化。Phase 6 兼容层/运行
+  来源收口与 Phase 7 最终治理仍待完成。
 - 编辑器使用 version-4 `surveyGraph`，坐标、长度、墙厚、开口和层高均为毫米。
   门宽/窗宽上限为当前宿主墙长度（不少于 100 mm），由 `normalizeOpeningToWall`
   按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。

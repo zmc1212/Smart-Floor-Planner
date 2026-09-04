@@ -1,12 +1,13 @@
+const { canExtendLastWall } = require('../topology/wall-edit-queries.js');
 const { syncClosedSpacesFromFaces } = require('../topology/space-sync.js');
 const { nextId } = require('../core/runtime-id.js');
 const { getWall, getNode } = require('../core/graph-query.js');
+const { buildBaseWallSegment } = require('../read-model/wall-geometry.js');
 const {
   MIN_OPENING_SIZE_MM,
   MAX_OPENING_WALL_RATIO,
   WALL_EXTENSION_DIRECTION_TOLERANCE_DEG
 } = require('../core/constants.js');
-const { buildBaseWallSegment } = require('../read-model/wall-geometry.js');
 const segmentGeometry = require('../geometry/segment.js');
 
 const openingDomain = require('../domain/opening.js');
@@ -133,32 +134,6 @@ function reverseWallDirection(floor, wall) {
   });
 }
 
-function canExtendLastWall(floor, session, anchor, endPoint, measurementSide, isClosingCurrentSpace) {
-  if (isClosingCurrentSpace || !anchor || !endPoint) return false;
-  const lastWallIndex = floor.walls.length - 1;
-  const lastWall = floor.walls[lastWallIndex];
-  if (!lastWall || lastWallIndex < session.activeSpaceStartWallIndex || lastWall.endNodeId !== anchor.id) {
-    return false;
-  }
-  if (lastWall.status !== 'confirmed' || lastWall.mode !== session.mode ||
-      Number(lastWall.thicknessMm) !== Number(session.thicknessMm)) {
-    return false;
-  }
-  if (floor.spaces.some((space) => (
-    space && space.closed && Array.isArray(space.wallIds) && space.wallIds.indexOf(lastWall.id) !== -1
-  ))) {
-    return false;
-  }
-  const anchorReferenceCount = floor.walls.reduce((count, wall) => (
-    count + (wall.startNodeId === anchor.id ? 1 : 0) + (wall.endNodeId === anchor.id ? 1 : 0)
-  ), 0);
-  if (anchorReferenceCount !== 1) return false;
-  const lastStart = getNode(floor, lastWall.startNodeId);
-  if (!lastStart) return false;
-  const previousAngle = angleDeg(lastStart, anchor);
-  const extensionAngle = angleDeg(anchor, endPoint);
-  return Math.abs(normalizeSignedAngle(extensionAngle - previousAngle)) <= WALL_EXTENSION_DIRECTION_TOLERANCE_DEG;
-}
 
 function nodeIncidentWallCount(floor, nodeId) {
   return (floor.walls || []).reduce((count, wall) => (

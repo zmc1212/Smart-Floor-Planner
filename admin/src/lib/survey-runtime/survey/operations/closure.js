@@ -1,3 +1,4 @@
+const { transitionSessionState } = require('../session/state-machine.js');
 const { cloneDraft, getActiveFloor, touchDraft } = require('../core/draft.js');
 const { getNode, getWall, getLastWall } = require('../core/graph-query.js');
 const { SESSION_STATES, ensureSessionSpaceTracking } = require('../core/session.js');
@@ -138,7 +139,7 @@ function attachStraightWallToCloseNode(floor, wall, targetNode, inputSource) {
 }
 
 function completeSessionAfterClosure(floor, session, oldEndNodeId) {
-  session.state = SESSION_STATES.SPACE_CLOSED;
+  transitionSessionState(session, 'CLOSURE_COMPLETED', SESSION_STATES.SPACE_CLOSED);
   session.anchorNodeId = '';
   session.pendingWallId = '';
   session.selectedWallId = '';
@@ -262,7 +263,7 @@ function applyClosurePlan(draft, plan) {
       closureStartNode = closureEndNode;
     });
     session.anchorNodeId = closeTargetNode.id;
-    session.state = SESSION_STATES.CLOSING;
+    transitionSessionState(session, 'CLOSURE_JOINED', SESSION_STATES.CLOSING);
     session.closeCandidateNodeId = closeTargetNode.id;
     session.closeCandidatePoint = null;
     let correctSharedWallId = session.activeSpaceSharedWallId;

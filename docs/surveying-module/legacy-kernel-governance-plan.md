@@ -2,7 +2,7 @@
 
 > 状态：执行中
 >
-> 当前阶段：Phase 5 — 交互策略与 session 状态机（Phase 4D 已完成）
+> 当前阶段：Phase 6 — 兼容层与运行来源收口（Phase 5 已完成）
 >
 > 最后检查：2026-09-04
 >
@@ -343,14 +343,14 @@ refactor: migrate survey closure transaction
 
 任务：
 
-- [ ] 明确定义 session 状态、事件、允许转换及非法转换结果。
-- [ ] 将 42 个散落 session 字段按 preview、selection、closure、measurement、viewport 分组。
-- [ ] 收口 `snap-engine`，明确吸附候选的输入、优先级和输出。
-- [ ] 分离 preview、wall snap、closure candidate 和 direction lock。
-- [ ] `startPreview` 只编排明确的 interaction service，不再包含拓扑写入细节。
-- [ ] `commitPreviewLength` 将交互确认与领域事务分开。
-- [ ] editor 继续处理 `wx`、Toast、触控和 BLE 回调；领域模块不得引用这些能力。
-- [ ] 保持现有提示、手势、吸附阈值和画布表现，除非用户单独批准行为变更。
+- [x] 明确定义 session 状态、事件、允许转换及非法转换结果。
+- [x] 将 42 个散落 session 字段按 preview、selection、closure、measurement、viewport 分组。
+- [x] 收口 `snap-engine`，明确吸附候选的输入、优先级和输出。
+- [x] 分离 preview、wall snap、closure candidate 和 direction lock。
+- [x] `startPreview` 只编排明确的 interaction service，不再包含拓扑写入细节。
+- [x] `commitPreviewLength` 将交互确认与领域事务分开。
+- [x] editor 继续处理 `wx`、Toast、触控和 BLE 回调；领域模块不得引用这些能力。
+- [x] 保持现有提示、手势、吸附阈值和画布表现，除非用户单独批准行为变更。
 
 验收门槛：
 
@@ -365,6 +365,9 @@ refactor: migrate survey closure transaction
 refactor: extract surveying interaction state machine
 refactor: isolate surveying snap policy
 ```
+
+状态/事件表、字段分组、只读意图与操作边界、冻结差分和性能证据见
+[`legacy-kernel-phase5-interaction-state-machine.md`](./legacy-kernel-phase5-interaction-state-machine.md)。
 
 ### Phase 6：收缩兼容层并统一运行来源
 
@@ -502,42 +505,43 @@ node --test test/survey*.test.js test/surveying-editor*.test.js
 
 ### 当前阶段
 
-Phase 4D 已完成（Implemented，2026-09-04）；下一阶段为 Phase 5 — 交互策略与 session 状态机。
+Phase 5 已完成（Implemented，2026-09-04）；下一阶段为 Phase 6 — 兼容层与运行来源收口。
 
 ### 已完成
 
-- [x] Phase 0–4C 的冻结行为、差分、读模型、门窗、墙体结构、测量写入与性能护栏继续有效；
-      不重建行为/性能快照，不放宽 validator。
-- [x] Phase 4D 的 closure candidate、bridge、merge、partition 与正交调整均产生只读值计划；
-      规划不读时钟、不分配运行 ID、不规格化调用方 session，不保存整图快照或引用。
-- [x] `operations/closure.js` 接管 `confirmClosure`；所有预览提交、桥接、共线合并、共享墙
-      切点与 Space 同步组合在一次外层 full 事务中，失败不改变输入或历史。
-      façade 显式绑定 `transactionalClosures.confirmClosure`，kernel 只保留兼容代理。
-- [x] 移除 kernel 中 30 个顶层函数体，当前 3,193 行 / 80 个顶层函数；
-      64 个 legacy 与 69 个 façade 导出不变。45 模块 / 202 边、48 对 Mini Program/Admin
-      镜像通过审计，新闭合模块的依赖闭包没有 kernel 反向依赖、循环或客户端能力。
-- [x] 新增 18 项 Phase 4D 测试，复用完整 4,096 场景矩阵执行冻结旧实现差分；
-      H5 目录额外逐步比较 preview/commit candidate。双端成功、失败、no-op、重复输入、
-      对结果再执行、snapshot undo/redo、门窗冲突和后置 full 校验原子性均通过。
-- [x] `test:survey-kernel-phase4d`：721 项量房/编辑器、55 项 H5 和大图性能门槛通过；
-      Admin 消费者 39 项通过（8 项 Canvas + 31 项 DXF/读模型/AI）。
-      全量小程序 1,224 项中 1,210 项通过，14 个失败名称与 Phase 0 既有无关清单一致。
-- [x] 中英文量房合同和两端模块清单已同步。对外合同无变化：UI、路由、API、角色、
-      权限、错误文案、吸附/闭合策略、BLE 与正式 v4 数据保持不变。详见
-      [Phase 4D 闭合事务迁移记录](./legacy-kernel-phase4d-closure-operations.md)。
+- [x] Phase 0–4D 冻结行为、差分、读模型、门窗、结构/测量/闭合事务及性能护栏继续有效；
+      未重建行为/性能快照，未放宽 validator。
+- [x] `session/state-machine.js` 定义 11 个正式状态、19 类事件及非法转换原子拒绝；
+      42 个字段按五组归属，原扁平 session 和可选字段缺席语义不变。历史
+      `openingSelected` 只在入口兼容读取，不作为新状态输出。
+- [x] preview、direction/angle、wall snap、closure projection、confirmation 和 viewport
+      使用独立只读 interaction 服务；吸附引擎明确计算顺序，图查询和 Canvas 缓存共用
+      候选优先级。计划不读时钟、不创建 ID、不写 graph，不依赖 operations 或 kernel。
+- [x] `startPreview` 编排预览服务与光标创建意图；`operations/commit-preview.js` 消费
+      值/ID 计划，复用原 quick/full 事务。闭合组合独立落墙步骤，不再回调 kernel，
+      不新增嵌套事务。editor 的设备/手势/Toast/BLE 处理、画布和 UI 未改。
+- [x] kernel 当前 277 行 / 7 个顶层函数；64 个 legacy 和 69 个 façade 导出保留。
+      74 模块 / 377 边、77 对 Mini Program/Admin 镜像通过审计，所有胜出来源显式绑定。
+- [x] 新增 368 项 Phase 5 测试：逐转换、双端全状态命令冻结差分、完整 4,096 场景每次
+      preview/commit/snap 差分、方向锁、反向编辑、只读/重复/undo/redo、失败原子性及
+      冻结 Canvas 缓存索引比较通过。
+- [x] `test:survey-kernel-phase5`：1,089 项量房/编辑器、55 项 H5、大图性能门槛通过；
+      Admin 消费者 39 项通过。全量小程序 1,592 项中 1,578 项通过，14 个失败名称与
+      Phase 0 既有清单逐项一致，没有新增失败。
+- [x] 中英文量房合同和两端模块清单同步；对外合同无变化，详见
+      [Phase 5 交互与状态机迁移记录](./legacy-kernel-phase5-interaction-state-machine.md)。
 
 ### 仍保留的边界
 
-- [ ] Phase 5 交互/session 状态机尚未分离。kernel 仍编排预览与落墙；预览闭合通过显式
-      注入的 `commitPreviewLength` 回调提交既有墙体意图。闭合模块不导入 kernel，
-      已提交闭合不需要该回调，回调不拥有或嵌套另一层事务。
-- [ ] Phase 6 兼容层/运行来源收口与 Phase 7 最终治理仍待完成；Admin 继续是生成镜像，
-      未删除兼容导出或宣称整体治理完成。
+- [ ] Phase 6 仍需审计 legacy 导出状态、剩余修复/命名/测量侧/墙厚实现、旧死函数与
+      兼容代理；不能把 kernel 行数减少视为整体退役完成。
+- [ ] Phase 6 运行来源收口和 Phase 7 最终治理仍待完成；Admin 继续保留生成镜像与
+      同步检查，未删除兼容导出或宣称整体治理完成。
 
 ### 下一步唯一目标
 
-进入 Phase 5：先建立 session 状态、事件与转换合同，再拆分 preview、snap 和落墙交互编排；
-保持现有 UI、阈值、错误及正式 v4 数据合同。
+进入 Phase 6：逐一分类 64 个 legacy 导出并审计剩余生产调用、动态访问和测试消费者，
+再收口兼容实现与运行来源；保留 Phase 0–5 行为、镜像和性能护栏。
 
 ## 12. 整体完成定义
 

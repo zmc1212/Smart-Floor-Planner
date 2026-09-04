@@ -1,3 +1,4 @@
+const { transitionSessionState } = require('../session/state-machine.js');
 const { cloneDraft, getActiveFloor: findActiveFloor, touchDraft } = require('../core/draft.js');
 const { ensureSessionSpaceTracking, SESSION_STATES } = require('../core/session.js');
 const { getClosedSpace, getWall, getNode, getLastEndNode } = require('../core/graph-query.js');
@@ -90,7 +91,7 @@ function applyDeleteClosedSpacePlan(draft, plan) {
   if (plan.sharedOnly) {
     // Shared-only loop: removing the space identity is not supported; keep geometry.
     clearObjectSelection(session);
-    session.state = SESSION_STATES.SPACE_CLOSED;
+    transitionSessionState(session, 'WALL_DELETED', SESSION_STATES.SPACE_CLOSED);
     session.anchorNodeId = '';
     return { changed: true, kind: plan.kind, spaceId: plan.spaceId, wallIds: [] };
   }
@@ -150,17 +151,17 @@ function applyDeleteClosedSpacePlan(draft, plan) {
   if (!restoredOpenedChain) {
     if (closedAfter) {
       session.anchorNodeId = '';
-      session.state = SESSION_STATES.SPACE_CLOSED;
+      transitionSessionState(session, 'WALL_DELETED', SESSION_STATES.SPACE_CLOSED);
     } else if (floor.walls.length) {
       const lastEnd = getLastEndNode(floor);
       session.anchorNodeId = lastEnd ? lastEnd.id : '';
-      session.state = SESSION_STATES.WALL_COMMITTED;
+      transitionSessionState(session, 'WALL_DELETED', SESSION_STATES.WALL_COMMITTED);
     } else if (seedNode) {
       session.anchorNodeId = seedNode.id;
-      session.state = SESSION_STATES.CURSOR_PLACED;
+      transitionSessionState(session, 'WALL_DELETED', SESSION_STATES.CURSOR_PLACED);
     } else {
       session.anchorNodeId = '';
-      session.state = SESSION_STATES.IDLE;
+      transitionSessionState(session, 'WALL_DELETED', SESSION_STATES.IDLE);
     }
   }
 
@@ -330,17 +331,17 @@ function applyDeleteWallPlan(draft, plan) {
   if (!restoredOpenedChain) {
     if (deletesClosedSpaceWall && closedAfter) {
       session.anchorNodeId = '';
-      session.state = SESSION_STATES.SPACE_CLOSED;
+      transitionSessionState(session, 'WALL_DELETED', SESSION_STATES.SPACE_CLOSED);
     } else if (floor.walls.length) {
       const lastEnd = getLastEndNode(floor);
       session.anchorNodeId = lastEnd ? lastEnd.id : '';
-      session.state = SESSION_STATES.WALL_COMMITTED;
+      transitionSessionState(session, 'WALL_DELETED', SESSION_STATES.WALL_COMMITTED);
     } else if (deletedStartNode) {
       session.anchorNodeId = deletedStartNode.id;
-      session.state = SESSION_STATES.CURSOR_PLACED;
+      transitionSessionState(session, 'WALL_DELETED', SESSION_STATES.CURSOR_PLACED);
     } else {
       session.anchorNodeId = '';
-      session.state = SESSION_STATES.IDLE;
+      transitionSessionState(session, 'WALL_DELETED', SESSION_STATES.IDLE);
     }
   }
 

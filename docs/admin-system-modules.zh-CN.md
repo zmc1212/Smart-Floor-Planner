@@ -125,19 +125,28 @@ Phase 4C 测量写入已同步实现（Implemented）：镜像 `survey/operation
 仍只读，不新增写路由；闭合确认、路由、API、权限、UI、设计源和 version-4 合同不变。详见
 [Phase 4C 完成记录](./surveying-module/legacy-kernel-phase4c-measurement-operations.md)。
 
-Phase 4D 闭合与合并已实现（Implemented）：`topology/closure-candidates.js` 与
-`closure-plans.js` 只读生成候选、bridge/merge/partition 及正交调整意图；
-`operations/closure.js` 独立拥有 `confirmClosure`，在一次 full 不可变事务中组合预览提交、
-共享墙切点、门窗迁移、共线合并和 Face/Space 同步。规划不读时钟、不分配 ID、不保存图引用；
-失败保留完整输入与历史，旧错误、raw/effective/closure 审计及 session 清理语义不变。
-façade 绑定 `transactionalClosures.confirmClosure`，kernel 只保留兼容代理。预览提交仍通过
-显式回调复用 kernel 的落墙编排，闭合模块不导入 kernel；Phase 5 交互分离尚未完成。
-当前 kernel 为 3,193 行 / 80 个顶层函数，45 模块 / 202 边审计验证 48 对镜像；
-64 个 legacy 与 69 个 façade 导出不变。721 项量房/编辑器、55 项 H5、39 项 Admin 消费者及
-性能门槛通过，新增 18 项测试含完整 4,096 场景冻结闭合差分、双端重复/undo/redo 和原子拒绝。
-全量小程序 1,224 项中 1,210 项通过；14 项失败名称与 Phase 0 既有清单一致。
-后台仍只读，无新增路由、API、角色、租户权限、UI、设计源、BLE、吸附策略或 v4 合同变化。
-详见 [Phase 4D 完成记录](./surveying-module/legacy-kernel-phase4d-closure-operations.md)。
+Phase 4D 闭合与合并已实现（Implemented）：只读 `topology/closure-candidates.js`
+和 `closure-plans.js` 向 `operations/closure.js` 提供计划；预览提交、共享墙拆分、门窗迁移、
+合并及 Face/Space 同步组合在一次 full 事务中。计划不读时钟、不分配 ID、不保留 graph 引用，
+失败保留输入与历史；完整 4,096 场景冻结差分继续生效。详见 [Phase 4D 完成记录](./surveying-module/legacy-kernel-phase4d-closure-operations.md)。
+
+Phase 5 交互与 session 分离已实现（Implemented）。`session/state-machine.js`
+定义 11 个正式状态、19 类事件、明确允许转换及原子拒绝的 `INVALID_SESSION_TRANSITION`；
+历史 `openingSelected` 只兼容读取，不作为新状态输出。`session/field-groups.js` 将原 42 个
+扁平字段分为 preview（10）、selection（3）、closure（18）、measurement（10）、viewport（1），
+不改变可选字段缺席语义或存档格式。`interaction/` 只为预览、方向、内角、墙体吸附、确认和
+视口产生隔离 session 或值/ID 意图；`snap/snap-engine.js` 明确预览/确认计算顺序，普通图查询
+与 Canvas 缓存共用 `snap/candidate-policy.js`，graph 修改由 operation 应用。
+`startPreview` 编排预览服务和可选创建光标意图；`commitPreviewLength` 分离输入确认与既有
+quick/full 事务。闭合直接组合独立落墙操作，不回调 kernel，也不嵌套事务；editor 继续拥有设备、
+手势、Toast 和 BLE 回调，吸附阈值不变。当前 kernel 为 277 行 / 7 个顶层函数，74 模块 /
+377 条依赖边与 77 对生成镜像通过审计；64 个 legacy 和 69 个 façade 导出保留且来源显式。
+新增 368 项测试，含逐转换验证、双端所有状态的冻结命令差分、完整 4,096 场景逐次
+preview/commit/snap 比较、无时钟计划、重复/撤销/重做、失败原子性和冻结 Canvas 索引对照。
+1,089 项量房/编辑器、55 项 H5、39 项 Admin 消费者和既有性能门槛通过；全量结果见
+[Phase 5 完成记录](./surveying-module/legacy-kernel-phase5-interaction-state-machine.md)。UI、图片、路由、API、角色、租户权限、BLE 协议、测量审计队列及
+正式 v4 合同均无变化，后台继续只读；无需新设计源或 DevTools 自动化。Phase 6 兼容层/运行
+来源收口与 Phase 7 最终治理仍待完成。
 
 `POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
 

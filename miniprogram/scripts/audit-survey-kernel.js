@@ -123,11 +123,12 @@ function buildFacadeAudit() {
   const spaceBoundary = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'space-boundary.js'));
   const spaceDimensions = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'space-dimensions.js'));
   const wallOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'wall-operations.js'))
-    .createWallOperations(kernel);
+    .createWallOperations();
   const measurementOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'measurement.js'))
     .createMeasurementOperations();
+  const previewCommit = require(path.join(miniSurveyUtils, 'survey', 'operations', 'commit-preview.js'));
   const closureOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'closure.js'))
-    .createClosureOperations(kernel.commitPreviewLength);
+    .createClosureOperations(previewCommit.commitPreviewLength);
   const openingOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'opening-operations.js'))
     .createOpeningOperations();
   const { validateSurveyDraft } = require(path.join(
@@ -137,7 +138,15 @@ function buildFacadeAudit() {
     'floor-plan-validator.js'
   ));
   const facade = require(path.join(miniSurveyUtils, 'surveyWallGraph.js'));
+  const interactions = require(path.join(miniSurveyUtils, 'survey/operations/interaction-operations.js'));
+  const snapEngine = require(path.join(miniSurveyUtils, 'survey/snap/snap-engine.js'));
+  const cursorReadModel = require(path.join(miniSurveyUtils, 'survey/read-model/cursor.js'));
+  const closureInteraction = require(path.join(miniSurveyUtils, 'survey/interaction/closure-projection.js'));
   const layers = [
+    ['interactions', 'interaction-operations', 'miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js', interactions],
+    ['snapEngine', 'snap-engine', 'miniprogram/packages/surveying/utils/survey/snap/snap-engine.js', snapEngine],
+    ['cursorReadModel', 'cursor-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/cursor.js', cursorReadModel],
+    ['closureInteraction', 'closure-interaction', 'miniprogram/packages/surveying/utils/survey/interaction/closure-projection.js', closureInteraction],
     ['kernel', 'legacy-kernel', 'miniprogram/packages/surveying/utils/survey/legacy-kernel.js', kernel],
     ['wallGeometry', 'wall-geometry-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js', wallGeometry],
     ['wallFaces', 'wall-faces-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js', wallFaces],

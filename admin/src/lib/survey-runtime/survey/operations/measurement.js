@@ -1,3 +1,4 @@
+const { transitionSessionState } = require('../session/state-machine.js');
 const { cloneDraft, getActiveFloor: findActiveFloor, touchDraft } = require('../core/draft.js');
 const { SESSION_STATES } = require('../core/session.js');
 const {
@@ -429,7 +430,7 @@ function applyRemeasurePlan(draft, plan) {
       throw createSurveyDomainError(DOMAIN_ERROR_CODES.CLOSED_REMEASURE_UNSAFE);
     }
     applyClosedRemeasurePlan(floor, plan);
-    session.state = SESSION_STATES.SPACE_CLOSED;
+    transitionSessionState(session, 'REMEASURE_COMPLETED', SESSION_STATES.SPACE_CLOSED);
     session.anchorNodeId = '';
     session.selectedWallId = wall.id;
     session.selectedOpeningId = '';
@@ -449,11 +450,11 @@ function applyRemeasurePlan(draft, plan) {
   normalizeOpeningsForWall(floor, wall.id);
 
   if (floor.spaces.some((space) => space.closed)) {
-    session.state = SESSION_STATES.SPACE_CLOSED;
+    transitionSessionState(session, 'REMEASURE_COMPLETED', SESSION_STATES.SPACE_CLOSED);
     session.anchorNodeId = '';
     session.selectedWallId = wall.id;
   } else {
-    session.state = SESSION_STATES.WALL_COMMITTED;
+    transitionSessionState(session, 'REMEASURE_COMPLETED', SESSION_STATES.WALL_COMMITTED);
     session.anchorNodeId = plan.movingNodeId;
     session.selectedWallId = '';
   }

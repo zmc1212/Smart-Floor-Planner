@@ -203,30 +203,43 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   audit relation before moving nodes. The existing-wall extension/shortening
   and new-wall branches of `commitPreviewLength` use the same measurement
   write helpers. The legacy kernel retains only its measurement compatibility proxy.
-  Phase 4D now owns closure confirmation; interaction separation remains pending.
+  Phase 4D owns closure confirmation; Phase 5 owns interaction separation.
   The Phase 4C unit and mirror checks add no route, API, role, permission, UI, snap/
   closure-policy or version-4 data-contract changes. See the
   [Phase 4C completion record](./surveying-module/legacy-kernel-phase4c-measurement-operations.md).
 
-  Phase 4D closure and merge operations are Implemented: `topology/closure-candidates.js`
-  and `closure-plans.js` produce read-only candidate, bridge/merge/partition and orthogonal
-  adjustment intents. `operations/closure.js` owns `confirmClosure`, composing preview commits,
-  shared-wall cuts, opening remapping, collinear merging and Face/Space sync in one immutable
-  full-validation transaction. Plans read no clock, allocate no runtime IDs and retain no graph
-  references. Failures preserve the entire input/history; legacy errors, measurement audits and
-  session cleanup stay equivalent. The facade binds `transactionalClosures.confirmClosure`;
-  the kernel retains only its compatibility proxy. Preview submission still uses an explicit
-  commit callback for existing kernel wall orchestration, without a kernel import in closure
-  modules; Phase 5 interaction separation remains pending.
-  The current kernel has 3,193 lines / 80 top-level functions; the 45-module / 202-edge audit
-  verifies 48 mirror pairs. All 64 legacy and 69 facade exports remain compatible.
-  The 721 surveying/editor, 55 H5 and 39 Admin consumer tests plus performance gates pass.
-  The 18 new tests include frozen closure comparisons across all 4,096 formal matrix cases,
-  both-client repeat/undo/redo and atomic rejection. The full Mini Program suite passes
-  1,210 of 1,224 tests; all 14 failure names match the existing Phase 0 list.
-  Admin stays read-only: no route, API, role, tenant permission, UI, design source, BLE,
-  snap policy or v4 contract changes. See the
-  [Phase 4D completion record](./surveying-module/legacy-kernel-phase4d-closure-operations.md).
+  Phase 4D closure and merge operations are Implemented: read-only
+  `topology/closure-candidates.js` and `closure-plans.js` feed `operations/closure.js`.
+  Preview commits, shared-wall cuts, opening remapping, merging and Face/Space sync compose
+  inside one full-validation transaction. Plans read no clock, allocate no runtime IDs and
+  retain no graph references; failure preserves input and history. Its frozen 4,096-case
+  matrix remains active. See the [Phase 4D completion record](./surveying-module/legacy-kernel-phase4d-closure-operations.md).
+
+  Phase 5 interaction and session separation is Implemented. `session/state-machine.js`
+  defines 11 canonical states and 19 event types with explicit legal transitions and atomic
+  `INVALID_SESSION_TRANSITION` results; the old `openingSelected` input alias is accepted
+  without being emitted. `session/field-groups.js` groups the existing 42 flat fields into
+  preview (10), selection (3), closure (18), measurement (10) and viewport (1); optional
+  absence and the persisted schema stay unchanged. `interaction/` produces isolated session
+  or value/ID intentions for preview, direction, angle, wall snap, confirmation and viewport.
+  `snap/snap-engine.js` owns the explicit preview/confirmation order; graph queries and the
+  Canvas cache share `snap/candidate-policy.js`. Operations alone apply graph changes.
+  `startPreview` orchestrates the preview service and optional cursor-creation intention;
+  `commitPreviewLength` separates input confirmation from the existing quick/full transaction.
+  Closure composes the standalone commit operation directly, with no kernel callback or nested
+  transaction. Editor device/gesture/Toast/BLE responsibilities and all snap thresholds stay unchanged.
+  The kernel now has 277 lines / 7 top-level functions; 74 modules / 377 dependency edges and
+  77 generated mirror pairs are audited. All 64 legacy and 69 facade exports remain available
+  with explicit ownership. The 368 new tests include individual transition checks, both-client
+  frozen command comparisons over every state, per-step preview/commit/snap comparisons in
+  the complete 4,096-case matrix, clock-free plans, repeat/undo/redo, rejection atomicity and
+  frozen Canvas-index comparisons. All 1,089 surveying/editor tests, 55 H5 tests, 39 Admin
+  consumer tests and existing performance gates pass. Full-suite results are recorded in the
+  [Phase 5 completion record](./surveying-module/legacy-kernel-phase5-interaction-state-machine.md).
+  No UI, artwork, route, API, role, tenant permission, BLE protocol, measurement-audit queue or
+  formal v4 data contract changes. Admin remains read-only. No new design source or DevTools
+  automation is required. Phase 6 compatibility/runtime-source consolidation and Phase 7 final
+  governance remain pending.
   Test sources are excluded from every runtime package. These internal refactors
   have no visible UI or design-source change, need no WeChat DevTools automation,
   and change no route, API, role, permission, snap/closure rule, error copy, or
