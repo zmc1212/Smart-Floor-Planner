@@ -53,7 +53,7 @@ test('Phase 3 facade binds every export explicitly and rejects duplicates or ord
   assert.equal(audit.selection, 'explicit-property-bindings');
   assert.equal(audit.facadeExportCount, 69);
   assert.equal(audit.legacyExportCount, 64);
-  assert.equal(audit.overrides.length, 42);
+  assert.equal(audit.overrides.length, 64);
   const original = 'module.exports = {\n  first: a.first,\n  second: b.second\n};';
   const reordered = 'module.exports = {\n  second: b.second,\n  first: a.first\n};';
   assert.deepEqual(parseFacadeBindings(original), parseFacadeBindings(reordered));

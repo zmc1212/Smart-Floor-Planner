@@ -106,5 +106,5 @@ git diff --check
 ## 5. 下一阶段
 
 Phase 4D 完成。Phase 5 仍需分离 session 状态机、preview/snap 交互和
-`commitPreviewLength` 编排；Phase 6 兼容层/运行来源收口和 Phase 7 最终治理未完成。
+`commitPreviewLength` 编排；Phase 6 兼容层与运行来源收口已完成；Phase 7 最终治理仍待完成。
 本次无可见 UI 改动，不需要设计源变更或微信 DevTools 自动化验收。

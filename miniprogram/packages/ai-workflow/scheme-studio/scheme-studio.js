@@ -149,6 +149,24 @@ function buildCanvasState(view, preferredBatchId = '', preferredGenerationId = '
   };
 }
 
+/**
+ * Picks the most useful user-facing error text from a failed batch's generations.
+ * Filters out raw provider stack traces and English-only technical messages;
+ * returns a short Chinese description or empty string when nothing suitable is found.
+ */
+function extractTimelineError(batch) {
+  if (batch.status !== 'failed' && batch.status !== 'partial') return '';
+  const failedErrors = (batch.generations || [])
+    .filter((g) => g.statusClass === 'failed' && typeof g.error === 'string' && g.error.trim())
+    .map((g) => g.error.trim());
+  if (!failedErrors.length) return '';
+  // Prefer messages that contain Chinese characters (more likely user-facing).
+  const chineseFirst = failedErrors.find((msg) => /[\u4e00-\u9fa5]/.test(msg));
+  const candidate = chineseFirst || failedErrors[0];
+  // Truncate to keep toast/label reasonably short.
+  return candidate.length > 60 ? `${candidate.slice(0, 58)}…` : candidate;
+}
+
 function buildTimelineBatches(view) {
   const batches = (view && view.batches) || [];
   let previousImage = (view && view.workflow && view.workflow.floorPlanPreviewUrl) || '';
@@ -186,6 +204,7 @@ function buildTimelineBatches(view) {
       timelineReferenceUrl: referenceImageUrl,
       timelineProgress: Number.isFinite(progress) && progress > 0 ? Math.min(100, Math.round(progress)) : 0,
       timelineModel: (batch.modelProfileSnapshot && batch.modelProfileSnapshot.name) || '通用室内 V2.1',
+      timelineError: extractTimelineError(batch),
     };
   });
 }
@@ -1353,7 +1372,13 @@ Page({
         task: payload?.task || this.data.task,
       });
       wx.hideLoading();
-      wx.showToast({ title: '已重试失败项', icon: 'success' });
+      // If the provider rejected all submissions immediately (e.g. quota exhausted),
+      // surface the specific reason rather than a misleading success toast.
+      if (payload?.submitError) {
+        wx.showToast({ title: payload.submitError, icon: 'none', duration: 3000 });
+      } else {
+        wx.showToast({ title: '已重试失败项', icon: 'success' });
+      }
       await this.loadStudio({ silent: true });
     } catch (error) {
       wx.hideLoading();

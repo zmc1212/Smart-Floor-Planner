@@ -177,6 +177,7 @@
               </view>
               <text class="timeline-prompt">{{batch.timelinePrompt || '本轮输入依据已保留，可直接重试。'}}</text>
               <view class="timeline-failed-note">本轮生成失败，素材与提示词未丢失</view>
+              <text wx:if="{{batch.timelineError}}" class="timeline-failed-reason">{{batch.timelineError}}</text>
               <view class="timeline-actions failure-actions">
                 <view class="primary" bindtap="retrySelectedBatch" data-batch-id="{{batch.id}}">
                   <image src="/images/ai-studio-icons-v3/refresh-white.png" mode="aspectFit"></image>

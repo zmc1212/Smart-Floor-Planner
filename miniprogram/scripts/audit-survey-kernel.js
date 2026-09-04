@@ -68,13 +68,19 @@ function requireSpecifiers(source) {
 
 function propertyUses(source, aliases) {
   const names = [];
+  const code = source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`/g, match => ' '.repeat(match.length));
   aliases.forEach((alias) => {
     const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const dotted = new RegExp(`\\b${escaped}\\s*(?:\\?\\.|\\.)\\s*([A-Za-z_$][\\w$]*)`, 'g');
     const bracketed = new RegExp(`\\b${escaped}\\s*\\[\\s*['"]([^'"]+)['"]\\s*\\]`, 'g');
     let match;
-    while ((match = dotted.exec(source))) names.push(match[1]);
+    while ((match = dotted.exec(code))) names.push(match[1]);
     while ((match = bracketed.exec(source))) names.push(match[1]);
+    // Computed access and passing the whole object (including arrays of both
+    // runtimes in differential tests) conservatively retain every export.
+    const dynamic = new RegExp(`\\b${escaped}\\s*\\[\\s*[^'"\\s]`, 'g');
+    const escapedObject = new RegExp(`(?:[([,=:]\\s*${escaped}\\s*[,\\])}]|\\.\\.\\.\\s*${escaped}\\b)`, 'g');
+    if (dynamic.test(source) || escapedObject.test(code)) names.push('*');
   });
   return uniqueSorted(names);
 }
@@ -158,8 +164,25 @@ function buildFacadeAudit() {
     ['transactionalOpenings', 'transactional-opening-operations', 'miniprogram/packages/surveying/utils/survey/operations/opening-operations.js', openingOperations],
     ['validator', 'floor-plan-validator', 'miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js', { validateSurveyDraft }]
   ];
+  const directOwners = {
+    constants: 'core/constants', draftCore: 'core/draft', queries: 'core/graph-query',
+    legacyQueries: 'compat/legacy-queries', geometry: 'geometry/vector2',
+    closureQueries: 'topology/closure-queries', wallHelpers: 'operations/wall-mutation-helpers',
+    wallProperties: 'operations/wall-properties', spaceProperties: 'operations/space-properties',
+    wallRepair: 'operations/wall-repair', measurementSide: 'interaction/measurement-side'
+  };
+  Object.entries(directOwners).forEach(([owner, relativePath]) => {
+    const source = `miniprogram/packages/surveying/utils/survey/${relativePath}.js`;
+    layers.push([owner, relativePath, source, require(path.join(repoRoot, source))]);
+  });
   const bindings = parseFacadeBindings(fs.readFileSync(path.join(miniSurveyUtils, 'surveyWallGraph.js'), 'utf8'));
   const exportNames = Object.keys(facade).sort();
+  const compatibilityProxyNames = new Set([
+    'addOpeningToWall', 'commitPreviewLength', 'confirmClosure', 'deleteClosedSpace',
+    'deleteOpening', 'deleteWall', 'remeasureSelectedWall', 'repairCollinearDegree2Walls',
+    'renameClosedSpace', 'setMeasurementSide', 'setThickness', 'snapCursorToWall', 'updateOpening'
+  ]);
+  const facadeOnlyNames = new Set(['measuredReadingMm', 'projectWallFaces', 'projectWorkingFace', 'resolveBodyNormal', 'validateSurveyDraft']);
   if (JSON.stringify([...bindings.keys()].sort()) !== JSON.stringify(exportNames)) {
     throw new Error('Facade runtime exports differ from explicit source bindings');
   }
@@ -183,6 +206,8 @@ function buildFacadeAudit() {
     }
     return {
       name,
+      legacyStatus: facadeOnlyNames.has(name) ? 'facade-only' :
+        (compatibilityProxyNames.has(name) ? 'compatibility-proxy' : 'migrated'),
       kind: typeof facade[name],
       actualSource: winner[2],
       binding: `${binding.owner}.${binding.property}`,
@@ -250,10 +275,10 @@ function buildConsumerAudit(facadeExportNames) {
         specifiers,
         resolvedFiles: uniqueSorted(resolvedFiles),
         unresolved,
-        exports: used.filter((name) => facadeExportSet.has(name)).length
+        exports: used.includes('*') ? ['*'] : used.filter((name) => facadeExportSet.has(name)).length
           ? used.filter((name) => facadeExportSet.has(name))
           : ['*'],
-        unknownProperties: used.filter((name) => !facadeExportSet.has(name))
+        unknownProperties: used.filter((name) => name !== '*' && !facadeExportSet.has(name))
       });
     }
 
@@ -472,6 +497,7 @@ module.exports = {
   buildModuleGraph,
   createSurveyKernelAudit,
   parseFacadeBindings,
+  propertyUses,
   expectedPath,
   main,
   serialize

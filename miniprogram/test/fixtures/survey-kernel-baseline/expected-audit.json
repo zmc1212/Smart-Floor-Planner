@@ -3,8 +3,8 @@
   "scope": "Mini Program survey wall-graph facade, kernel modules, callers, and Admin runtime mirror",
   "kernel": {
     "file": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-    "lineCount": 277,
-    "topLevelFunctionCount": 7
+    "lineCount": 97,
+    "topLevelFunctionCount": 0
   },
   "facade": {
     "selection": "explicit-property-bindings",
@@ -22,79 +22,103 @@
       "transactional-measurement-operations",
       "transactional-closure-operations",
       "transactional-opening-operations",
-      "floor-plan-validator"
+      "floor-plan-validator",
+      "core/constants",
+      "core/draft",
+      "core/graph-query",
+      "compat/legacy-queries",
+      "geometry/vector2",
+      "topology/closure-queries",
+      "operations/wall-mutation-helpers",
+      "operations/wall-properties",
+      "operations/space-properties",
+      "operations/wall-repair",
+      "interaction/measurement-side"
     ],
     "legacyExportCount": 64,
     "facadeExportCount": 69,
     "exports": [
       {
         "name": "CLOSE_TOLERANCE_MM",
+        "legacyStatus": "migrated",
         "kind": "number",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.CLOSE_TOLERANCE_MM",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/constants.js",
+        "binding": "constants.CLOSE_TOLERANCE_MM",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/constants"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "DEFAULT_SCALE",
+        "legacyStatus": "migrated",
         "kind": "number",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.DEFAULT_SCALE",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/constants.js",
+        "binding": "constants.DEFAULT_SCALE",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/constants"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "DEFAULT_THICKNESS_MM",
+        "legacyStatus": "migrated",
         "kind": "number",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.DEFAULT_THICKNESS_MM",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/constants.js",
+        "binding": "constants.DEFAULT_THICKNESS_MM",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/constants"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "MIN_THICKNESS_MM",
+        "legacyStatus": "migrated",
         "kind": "number",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.MIN_THICKNESS_MM",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/constants.js",
+        "binding": "constants.MIN_THICKNESS_MM",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/constants"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "MIN_WALL_LENGTH_MM",
+        "legacyStatus": "migrated",
         "kind": "number",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.MIN_WALL_LENGTH_MM",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/constants.js",
+        "binding": "constants.MIN_WALL_LENGTH_MM",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/constants"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "VERTEX_AXIS_SNAP_TOLERANCE_MM",
+        "legacyStatus": "migrated",
         "kind": "number",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.VERTEX_AXIS_SNAP_TOLERANCE_MM",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/constants.js",
+        "binding": "constants.VERTEX_AXIS_SNAP_TOLERANCE_MM",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/constants"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "addOpeningToWall",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
         "binding": "transactionalOpenings.addOpeningToWall",
@@ -107,17 +131,20 @@
       },
       {
         "name": "angleDeg",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.angleDeg",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js",
+        "binding": "geometry.angleDeg",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "geometry/vector2"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "applyPreviewInteriorAngle",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.applyPreviewInteriorAngle",
@@ -126,10 +153,11 @@
           "legacy-kernel"
         ],
         "overwritten": true,
-        "sameReferenceAsLegacy": false
+        "sameReferenceAsLegacy": true
       },
       {
         "name": "buildSpaceBoundaryPoints",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
         "binding": "spaceBoundary.buildSpaceBoundaryPoints",
@@ -142,6 +170,7 @@
       },
       {
         "name": "buildSpaceDimensionPlan",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
         "binding": "spaceDimensions.buildSpaceDimensionPlan",
@@ -154,6 +183,7 @@
       },
       {
         "name": "buildSpaceInnerBoundaryPoints",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
         "binding": "spaceBoundary.buildSpaceInnerBoundaryPoints",
@@ -166,6 +196,7 @@
       },
       {
         "name": "buildSpaceRenderBoundaryPoints",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
         "binding": "spaceBoundary.buildSpaceRenderBoundaryPoints",
@@ -178,6 +209,7 @@
       },
       {
         "name": "buildWallJoinRenderGeometries",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
         "binding": "wallGeometry.buildWallJoinRenderGeometries",
@@ -190,6 +222,7 @@
       },
       {
         "name": "buildWallRenderGeometry",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
         "binding": "wallGeometry.buildWallRenderGeometry",
@@ -202,6 +235,7 @@
       },
       {
         "name": "buildWallSnapGeometry",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
         "binding": "wallGeometry.buildWallSnapGeometry",
@@ -214,6 +248,7 @@
       },
       {
         "name": "calculateSpaceAreaMm2",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
         "binding": "spaceDimensions.calculateSpaceAreaMm2",
@@ -226,17 +261,20 @@
       },
       {
         "name": "canSetInitialMeasurementSide",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.canSetInitialMeasurementSide",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/interaction/measurement-side.js",
+        "binding": "measurementSide.canSetInitialMeasurementSide",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "interaction/measurement-side"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "cancelPending",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.cancelPending",
@@ -249,6 +287,7 @@
       },
       {
         "name": "clearBleLockedBearing",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.clearBleLockedBearing",
@@ -261,17 +300,20 @@
       },
       {
         "name": "cloneDraft",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.cloneDraft",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/draft.js",
+        "binding": "draftCore.cloneDraft",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/draft"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "commitPreviewLength",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
         "binding": "transactionalWalls.commitPreviewLength",
@@ -284,6 +326,7 @@
       },
       {
         "name": "confirmClosure",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
         "binding": "transactionalClosures.confirmClosure",
@@ -296,17 +339,20 @@
       },
       {
         "name": "createSurveyDraft",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.createSurveyDraft",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/draft.js",
+        "binding": "draftCore.createSurveyDraft",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/draft"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "deleteClosedSpace",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
         "binding": "transactionalWalls.deleteClosedSpace",
@@ -319,6 +365,7 @@
       },
       {
         "name": "deleteOpening",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
         "binding": "transactionalOpenings.deleteOpening",
@@ -331,6 +378,7 @@
       },
       {
         "name": "deleteWall",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
         "binding": "transactionalWalls.deleteWall",
@@ -343,28 +391,34 @@
       },
       {
         "name": "distanceMm",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.distanceMm",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js",
+        "binding": "geometry.distanceMm",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "geometry/vector2"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "getActiveFloor",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.getActiveFloor",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/compat/legacy-queries.js",
+        "binding": "legacyQueries.getActiveFloor",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/draft",
+          "compat/legacy-queries"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "getClosurePath",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/cursor.js",
         "binding": "cursorReadModel.getClosurePath",
@@ -377,6 +431,7 @@
       },
       {
         "name": "getCursorDisplayPoint",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/cursor.js",
         "binding": "cursorReadModel.getCursorDisplayPoint",
@@ -389,6 +444,7 @@
       },
       {
         "name": "getCursorPlacementTarget",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/snap/snap-engine.js",
         "binding": "snapEngine.getCursorPlacementTarget",
@@ -401,72 +457,85 @@
       },
       {
         "name": "getMinimumActiveCloseWallCount",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.getMinimumActiveCloseWallCount",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js",
+        "binding": "closureQueries.getMinimumActiveCloseWallCount",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "topology/closure-queries"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "getMinimumClosureSuggestionWallCount",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.getMinimumClosureSuggestionWallCount",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js",
+        "binding": "closureQueries.getMinimumClosureSuggestionWallCount",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "topology/closure-queries"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "getMinimumDirectBoundaryCloseWallCount",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.getMinimumDirectBoundaryCloseWallCount",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js",
+        "binding": "closureQueries.getMinimumDirectBoundaryCloseWallCount",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "topology/closure-queries"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "getNode",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.getNode",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/graph-query.js",
+        "binding": "queries.getNode",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/graph-query"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "getOpening",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.getOpening",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js",
+        "binding": "wallHelpers.getOpening",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "operations/wall-mutation-helpers"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "getWall",
+        "legacyStatus": "migrated",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.getWall",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/core/graph-query.js",
+        "binding": "queries.getWall",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "core/graph-query"
         ],
-        "overwritten": false,
+        "overwritten": true,
         "sameReferenceAsLegacy": true
       },
       {
         "name": "getWallSnapPoint",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/snap/snap-engine.js",
         "binding": "snapEngine.getWallSnapPoint",
@@ -479,6 +548,7 @@
       },
       {
         "name": "holdPreviewForInput",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.holdPreviewForInput",
@@ -491,6 +561,7 @@
       },
       {
         "name": "isDirectClosureHit",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/interaction/closure-projection.js",
         "binding": "closureInteraction.isDirectClosureHit",
@@ -503,6 +574,7 @@
       },
       {
         "name": "lockPreviewBearing",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.lockPreviewBearing",
@@ -511,10 +583,11 @@
           "legacy-kernel"
         ],
         "overwritten": true,
-        "sameReferenceAsLegacy": false
+        "sameReferenceAsLegacy": true
       },
       {
         "name": "materializeLockedPreview",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.materializeLockedPreview",
@@ -523,10 +596,11 @@
           "legacy-kernel"
         ],
         "overwritten": true,
-        "sameReferenceAsLegacy": false
+        "sameReferenceAsLegacy": true
       },
       {
         "name": "measuredReadingMm",
+        "legacyStatus": "facade-only",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
         "binding": "wallFaces.measuredReadingMm",
@@ -538,6 +612,7 @@
       },
       {
         "name": "placeCursor",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.placeCursor",
@@ -550,6 +625,7 @@
       },
       {
         "name": "placeNewWallChainCursor",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.placeNewWallChainCursor",
@@ -562,6 +638,7 @@
       },
       {
         "name": "projectWallFaces",
+        "legacyStatus": "facade-only",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
         "binding": "wallFaces.projectWallFaces",
@@ -573,6 +650,7 @@
       },
       {
         "name": "projectWorkingFace",
+        "legacyStatus": "facade-only",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
         "binding": "wallFaces.projectWorkingFace",
@@ -584,6 +662,7 @@
       },
       {
         "name": "remeasureSelectedWall",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
         "binding": "transactionalMeasurements.remeasureSelectedWall",
@@ -596,17 +675,20 @@
       },
       {
         "name": "renameClosedSpace",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.renameClosedSpace",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js",
+        "binding": "spaceProperties.renameClosedSpace",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "operations/space-properties"
         ],
-        "overwritten": false,
-        "sameReferenceAsLegacy": true
+        "overwritten": true,
+        "sameReferenceAsLegacy": false
       },
       {
         "name": "reopenLastDiagonalWallForAngle",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.reopenLastDiagonalWallForAngle",
@@ -615,21 +697,24 @@
           "legacy-kernel"
         ],
         "overwritten": true,
-        "sameReferenceAsLegacy": false
-      },
-      {
-        "name": "repairCollinearDegree2Walls",
-        "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.repairCollinearDegree2Walls",
-        "sourceLayers": [
-          "legacy-kernel"
-        ],
-        "overwritten": false,
         "sameReferenceAsLegacy": true
       },
       {
+        "name": "repairCollinearDegree2Walls",
+        "legacyStatus": "compatibility-proxy",
+        "kind": "function",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-repair.js",
+        "binding": "wallRepair.repairCollinearDegree2Walls",
+        "sourceLayers": [
+          "legacy-kernel",
+          "operations/wall-repair"
+        ],
+        "overwritten": true,
+        "sameReferenceAsLegacy": false
+      },
+      {
         "name": "resetCursor",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.resetCursor",
@@ -642,6 +727,7 @@
       },
       {
         "name": "resolveBodyNormal",
+        "legacyStatus": "facade-only",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
         "binding": "wallFaces.resolveBodyNormal",
@@ -653,6 +739,7 @@
       },
       {
         "name": "selectOpening",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.selectOpening",
@@ -665,6 +752,7 @@
       },
       {
         "name": "selectSpace",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.selectSpace",
@@ -677,6 +765,7 @@
       },
       {
         "name": "selectWall",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.selectWall",
@@ -689,6 +778,7 @@
       },
       {
         "name": "setFixedNode",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.setFixedNode",
@@ -701,17 +791,20 @@
       },
       {
         "name": "setMeasurementSide",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.setMeasurementSide",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+        "binding": "wallProperties.setMeasurementSide",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "operations/wall-properties"
         ],
-        "overwritten": false,
-        "sameReferenceAsLegacy": true
+        "overwritten": true,
+        "sameReferenceAsLegacy": false
       },
       {
         "name": "setMode",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.setMode",
@@ -724,17 +817,20 @@
       },
       {
         "name": "setThickness",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "binding": "kernel.setThickness",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+        "binding": "wallProperties.setThickness",
         "sourceLayers": [
-          "legacy-kernel"
+          "legacy-kernel",
+          "operations/wall-properties"
         ],
-        "overwritten": false,
-        "sameReferenceAsLegacy": true
+        "overwritten": true,
+        "sameReferenceAsLegacy": false
       },
       {
         "name": "snapCursorToWall",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
         "binding": "transactionalWalls.snapCursorToWall",
@@ -747,6 +843,7 @@
       },
       {
         "name": "startPreview",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.startPreview",
@@ -759,6 +856,7 @@
       },
       {
         "name": "startPreviewFromBearing",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.startPreviewFromBearing",
@@ -767,10 +865,11 @@
           "legacy-kernel"
         ],
         "overwritten": true,
-        "sameReferenceAsLegacy": false
+        "sameReferenceAsLegacy": true
       },
       {
         "name": "startRemeasure",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.startRemeasure",
@@ -783,6 +882,7 @@
       },
       {
         "name": "startWallSnap",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.startWallSnap",
@@ -795,6 +895,7 @@
       },
       {
         "name": "updateOpening",
+        "legacyStatus": "compatibility-proxy",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
         "binding": "transactionalOpenings.updateOpening",
@@ -807,6 +908,7 @@
       },
       {
         "name": "updateViewport",
+        "legacyStatus": "migrated",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "binding": "interactions.updateViewport",
@@ -819,6 +921,7 @@
       },
       {
         "name": "validateSurveyDraft",
+        "legacyStatus": "facade-only",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js",
         "binding": "validator.validateSurveyDraft",
@@ -830,7 +933,14 @@
       }
     ],
     "overrides": [
+      "CLOSE_TOLERANCE_MM",
+      "DEFAULT_SCALE",
+      "DEFAULT_THICKNESS_MM",
+      "MIN_THICKNESS_MM",
+      "MIN_WALL_LENGTH_MM",
+      "VERTEX_AXIS_SNAP_TOLERANCE_MM",
       "addOpeningToWall",
+      "angleDeg",
       "applyPreviewInteriorAngle",
       "buildSpaceBoundaryPoints",
       "buildSpaceDimensionPlan",
@@ -840,16 +950,27 @@
       "buildWallRenderGeometry",
       "buildWallSnapGeometry",
       "calculateSpaceAreaMm2",
+      "canSetInitialMeasurementSide",
       "cancelPending",
       "clearBleLockedBearing",
+      "cloneDraft",
       "commitPreviewLength",
       "confirmClosure",
+      "createSurveyDraft",
       "deleteClosedSpace",
       "deleteOpening",
       "deleteWall",
+      "distanceMm",
+      "getActiveFloor",
       "getClosurePath",
       "getCursorDisplayPoint",
       "getCursorPlacementTarget",
+      "getMinimumActiveCloseWallCount",
+      "getMinimumClosureSuggestionWallCount",
+      "getMinimumDirectBoundaryCloseWallCount",
+      "getNode",
+      "getOpening",
+      "getWall",
       "getWallSnapPoint",
       "holdPreviewForInput",
       "isDirectClosureHit",
@@ -858,13 +979,17 @@
       "placeCursor",
       "placeNewWallChainCursor",
       "remeasureSelectedWall",
+      "renameClosedSpace",
       "reopenLastDiagonalWallForAngle",
+      "repairCollinearDegree2Walls",
       "resetCursor",
       "selectOpening",
       "selectSpace",
       "selectWall",
       "setFixedNode",
+      "setMeasurementSide",
       "setMode",
+      "setThickness",
       "snapCursorToWall",
       "startPreview",
       "startPreviewFromBearing",
@@ -1023,20 +1148,7 @@
         "resolvedFiles": [],
         "unresolved": false,
         "exports": [
-          "buildSpaceBoundaryPoints",
-          "buildSpaceDimensionPlan",
-          "buildSpaceInnerBoundaryPoints",
-          "buildSpaceRenderBoundaryPoints",
-          "buildWallRenderGeometry",
-          "buildWallSnapGeometry",
-          "calculateSpaceAreaMm2",
-          "cloneDraft",
-          "distanceMm",
-          "getActiveFloor",
-          "getNode",
-          "measuredReadingMm",
-          "projectWallFaces",
-          "validateSurveyDraft"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1081,26 +1193,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "CLOSE_TOLERANCE_MM",
-          "addOpeningToWall",
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "deleteClosedSpace",
-          "deleteOpening",
-          "deleteWall",
-          "getActiveFloor",
-          "getCursorPlacementTarget",
-          "placeCursor",
-          "remeasureSelectedWall",
-          "selectWall",
-          "setMode",
-          "setThickness",
-          "snapCursorToWall",
-          "startPreview",
-          "startRemeasure",
-          "startWallSnap",
-          "updateOpening"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1392,23 +1485,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "CLOSE_TOLERANCE_MM",
-          "buildWallRenderGeometry",
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "distanceMm",
-          "getActiveFloor",
-          "getCursorPlacementTarget",
-          "getNode",
-          "getWall",
-          "placeCursor",
-          "placeNewWallChainCursor",
-          "setThickness",
-          "snapCursorToWall",
-          "startPreview",
-          "startWallSnap",
-          "validateSurveyDraft"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1426,7 +1503,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "getActiveFloor"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1494,10 +1571,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "addOpeningToWall",
-          "deleteOpening",
-          "updateOpening",
-          "validateSurveyDraft"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1515,16 +1589,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "buildSpaceDimensionPlan",
-          "buildSpaceRenderBoundaryPoints",
-          "buildWallRenderGeometry",
-          "calculateSpaceAreaMm2",
-          "cloneDraft",
-          "getActiveFloor",
-          "getNode",
-          "getWall",
-          "selectSpace",
-          "validateSurveyDraft"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1567,13 +1632,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "getActiveFloor",
-          "getNode",
-          "startPreview",
-          "validateSurveyDraft"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1592,14 +1651,26 @@
         ],
         "unresolved": false,
         "exports": [
-          "commitPreviewLength",
-          "createSurveyDraft",
-          "getActiveFloor",
-          "lockPreviewBearing",
-          "materializeLockedPreview",
-          "placeCursor",
-          "snapCursorToWall",
-          "startPreview"
+          "*"
+        ],
+        "unknownProperties": []
+      },
+      {
+        "file": "miniprogram/test/survey-kernel-phase6-compatibility.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../../admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "../packages/surveying/utils/surveyWallGraph.js",
+          "/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1742,8 +1813,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "deleteWall",
-          "getActiveFloor"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1898,9 +1968,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "createSurveyDraft",
-          "placeCursor",
-          "validateSurveyDraft"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1968,16 +2036,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "MIN_WALL_LENGTH_MM",
-          "calculateSpaceAreaMm2",
-          "cloneDraft",
-          "createSurveyDraft",
-          "getActiveFloor",
-          "getCursorDisplayPoint",
-          "resetCursor",
-          "selectWall",
-          "startRemeasure",
-          "updateViewport"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -1989,65 +2048,7 @@
         "resolvedFiles": [],
         "unresolved": false,
         "exports": [
-          "CLOSE_TOLERANCE_MM",
-          "addOpeningToWall",
-          "buildWallSnapGeometry",
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "deleteWall",
-          "getActiveFloor",
-          "getCursorPlacementTarget",
-          "placeCursor",
-          "resetCursor",
-          "setMode",
-          "setThickness",
-          "snapCursorToWall",
-          "startPreview",
-          "startWallSnap",
-          "updateOpening"
-        ],
-        "unknownProperties": []
-      },
-      {
-        "file": "surveying-h5/src/test-del.js",
-        "classification": "suspected-dead",
-        "binding": "direct-require",
-        "specifiers": [
-          "../../miniprogram/utils/surveyWallGraph.js"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "deleteWall"
-        ],
-        "unknownProperties": []
-      },
-      {
-        "file": "surveying-h5/src/test-scenario.js",
-        "classification": "suspected-dead",
-        "binding": "direct-require",
-        "specifiers": [
-          "../../miniprogram/utils/surveyWallGraph.js"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "deleteWall"
-        ],
-        "unknownProperties": []
-      },
-      {
-        "file": "surveying-h5/test-topology.js",
-        "classification": "suspected-dead",
-        "binding": "direct-require",
-        "specifiers": [
-          "../miniprogram/utils/surveyWallGraph.js"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "getCursorPlacementTarget"
+          "*"
         ],
         "unknownProperties": []
       },
@@ -2086,145 +2087,12 @@
         ],
         "unresolved": false,
         "exports": [
-          "CLOSE_TOLERANCE_MM",
-          "buildSpaceDimensionPlan",
-          "buildWallRenderGeometry",
-          "buildWallSnapGeometry",
-          "commitPreviewLength",
-          "confirmClosure",
-          "getActiveFloor",
-          "getCursorPlacementTarget",
-          "getNode",
-          "snapCursorToWall",
-          "startPreview",
-          "startWallSnap",
-          "validateSurveyDraft"
-        ],
-        "unknownProperties": []
-      },
-      {
-        "file": "surveying-h5/tmp-diag-mid-merge.js",
-        "classification": "suspected-dead",
-        "binding": "direct-require",
-        "specifiers": [
-          "../miniprogram/utils/surveyWallGraph.js"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "buildSpaceBoundaryPoints",
-          "buildSpaceDimensionPlan",
-          "buildWallRenderGeometry",
-          "deleteWall",
-          "getActiveFloor",
-          "getNode",
-          "getWall"
-        ],
-        "unknownProperties": []
-      },
-      {
-        "file": "surveying-h5/tmp-diag-rings.js",
-        "classification": "suspected-dead",
-        "binding": "direct-require",
-        "specifiers": [
-          "../miniprogram/utils/surveyWallGraph.js"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "buildSpaceDimensionPlan",
-          "deleteWall",
-          "getActiveFloor"
+          "*"
         ],
         "unknownProperties": []
       }
     ],
     "legacyReferences": [
-      {
-        "file": "admin/scripts/sync-survey-dimension-plan.mjs",
-        "classification": "script",
-        "access": "source-reference",
-        "specifiers": [
-          "legacy-kernel.js"
-        ],
-        "resolvedFiles": [],
-        "unresolved": false,
-        "exports": []
-      },
-      {
-        "file": "admin/src/lib/survey-runtime/surveyWallGraph.js",
-        "classification": "admin-production",
-        "access": "require",
-        "specifiers": [
-          "./survey/legacy-kernel.js"
-        ],
-        "resolvedFiles": [
-          "admin/src/lib/survey-runtime/survey/legacy-kernel.js"
-        ],
-        "unresolved": false,
-        "exports": [
-          "CLOSE_TOLERANCE_MM",
-          "DEFAULT_SCALE",
-          "DEFAULT_THICKNESS_MM",
-          "MIN_THICKNESS_MM",
-          "MIN_WALL_LENGTH_MM",
-          "VERTEX_AXIS_SNAP_TOLERANCE_MM",
-          "angleDeg",
-          "canSetInitialMeasurementSide",
-          "cloneDraft",
-          "createSurveyDraft",
-          "distanceMm",
-          "getActiveFloor",
-          "getMinimumActiveCloseWallCount",
-          "getMinimumClosureSuggestionWallCount",
-          "getMinimumDirectBoundaryCloseWallCount",
-          "getNode",
-          "getOpening",
-          "getWall",
-          "js",
-          "renameClosedSpace",
-          "repairCollinearDegree2Walls",
-          "setMeasurementSide",
-          "setThickness"
-        ]
-      },
-      {
-        "file": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
-        "classification": "production-reachable",
-        "access": "require",
-        "specifiers": [
-          "./survey/legacy-kernel.js"
-        ],
-        "resolvedFiles": [
-          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
-        ],
-        "unresolved": false,
-        "exports": [
-          "CLOSE_TOLERANCE_MM",
-          "DEFAULT_SCALE",
-          "DEFAULT_THICKNESS_MM",
-          "MIN_THICKNESS_MM",
-          "MIN_WALL_LENGTH_MM",
-          "VERTEX_AXIS_SNAP_TOLERANCE_MM",
-          "angleDeg",
-          "canSetInitialMeasurementSide",
-          "cloneDraft",
-          "createSurveyDraft",
-          "distanceMm",
-          "getActiveFloor",
-          "getMinimumActiveCloseWallCount",
-          "getMinimumClosureSuggestionWallCount",
-          "getMinimumDirectBoundaryCloseWallCount",
-          "getNode",
-          "getOpening",
-          "getWall",
-          "js",
-          "renameClosedSpace",
-          "repairCollinearDegree2Walls",
-          "setMeasurementSide",
-          "setThickness"
-        ]
-      },
       {
         "file": "miniprogram/scripts/audit-survey-kernel.js",
         "classification": "script",
@@ -2239,7 +2107,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "js"
+          "*"
         ]
       },
       {
@@ -2275,7 +2143,9 @@
           "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
         ],
         "unresolved": false,
-        "exports": []
+        "exports": [
+          "*"
+        ]
       },
       {
         "file": "miniprogram/test/survey-kernel-phase2-compatibility.test.js",
@@ -2289,7 +2159,7 @@
         ],
         "unresolved": false,
         "exports": [
-          "js"
+          "*"
         ]
       },
       {
@@ -2337,6 +2207,7 @@
         ],
         "unresolved": false,
         "exports": [
+          "*",
           "deleteOpening"
         ]
       },
@@ -2354,7 +2225,9 @@
           "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
         ],
         "unresolved": false,
-        "exports": []
+        "exports": [
+          "*"
+        ]
       },
       {
         "file": "miniprogram/test/survey-kernel-phase4c-measurement-operations.test.js",
@@ -2378,7 +2251,9 @@
           "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
         ],
         "unresolved": false,
-        "exports": []
+        "exports": [
+          "*"
+        ]
       },
       {
         "file": "miniprogram/test/survey-kernel-phase5-interaction.test.js",
@@ -2393,355 +2268,29 @@
           "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
         ],
         "unresolved": false,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-3room-merge.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-aligned-merge.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
         "exports": [
-          "addNode",
-          "addSpace",
-          "addWall",
-          "buildMergedSpaceForDeletedSharedWall",
-          "createSurveyDraft",
-          "orderClosedBoundaryWallIds",
-          "splitWallAtNodes"
+          "*"
         ]
       },
       {
-        "file": "surveying-h5/test-aligned-merge2.js",
-        "classification": "suspected-dead",
+        "file": "miniprogram/test/survey-kernel-phase6-compatibility.test.js",
+        "classification": "test-only",
         "access": "require",
         "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
+          "../../admin/src/lib/survey-runtime/survey/legacy-kernel.js",
+          "../packages/surveying/utils/survey/legacy-kernel.js",
+          "./legacy-kernel.js",
+          "/legacy-kernel.js"
         ],
-        "resolvedFiles": [],
-        "unresolved": true,
+        "resolvedFiles": [
+          "admin/src/lib/survey-runtime/survey/legacy-kernel.js",
+          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "unresolved": false,
         "exports": [
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "deleteWall",
-          "getCursorPlacementTarget",
-          "orderClosedBoundaryWallIds",
-          "placeCursor",
-          "startPreview"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-closure-target.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "deleteWall",
-          "getCursorPlacementTarget",
-          "placeCursor",
-          "startPreview"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-collinear-merge.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-merge.js",
-        "classification": "suspected-dead",
-        "access": "source-reference",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel.js"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-merge2.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-merge3.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "addNode",
-          "addSpace",
-          "addWall",
-          "buildMergedSpaceForDeletedSharedWall",
-          "createFloor",
-          "orderClosedBoundaryWallIds",
-          "splitWallAtNodes"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-merge4.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "deleteWall"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-merge5.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "deleteWall"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-merge6.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "deleteWall"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-merge7.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "addNode",
-          "addSpace",
-          "addWall",
-          "buildMergedSpaceForDeletedSharedWall",
-          "createFloor",
-          "orderClosedBoundaryWallIds",
-          "splitWallAtNodes"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-middle-attach.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "deleteWall",
-          "getCursorPlacementTarget",
-          "orderClosedBoundaryWallIds",
-          "placeCursor",
-          "startPreview"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-middle-merge.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-middle-merge2.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "deleteWall"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-middle-merge3.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-middle-merge4.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-middle-top-merge.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-partition-merge.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "deleteWall"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-partition.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": []
-      },
-      {
-        "file": "surveying-h5/test-staggered-merge.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "addNode",
-          "addSpace",
-          "addWall",
-          "buildMergedSpaceForDeletedSharedWall",
-          "createSurveyDraft",
-          "orderClosedBoundaryWallIds",
-          "splitWallAtNodes"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-staggered-merge2.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "deleteWall",
-          "getCursorPlacementTarget",
-          "placeCursor",
-          "startPreview"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-stub.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "getCursorPlacementTarget",
-          "placeCursor",
-          "startPreview"
-        ]
-      },
-      {
-        "file": "surveying-h5/test-verify.js",
-        "classification": "suspected-dead",
-        "access": "require",
-        "specifiers": [
-          "../miniprogram/utils/survey/legacy-kernel"
-        ],
-        "resolvedFiles": [],
-        "unresolved": true,
-        "exports": [
-          "deleteWall"
+          "*",
+          "setMeasurementSide",
+          "setThickness"
         ]
       }
     ]
@@ -2754,6 +2303,13 @@
         "facadeReachable": true,
         "editorDirect": false,
         "testDirect": true
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/compat/legacy-queries.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": false
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/core/constants.js",
@@ -2854,13 +2410,6 @@
         "testDirect": true
       },
       {
-        "file": "miniprogram/packages/surveying/utils/survey/geometry/intersection.js",
-        "classification": "suspected-dead",
-        "facadeReachable": false,
-        "editorDirect": false,
-        "testDirect": false
-      },
-      {
         "file": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js",
         "classification": "production-reachable",
         "facadeReachable": true,
@@ -2917,6 +2466,13 @@
         "testDirect": false
       },
       {
+        "file": "miniprogram/packages/surveying/utils/survey/interaction/measurement-side.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
         "file": "miniprogram/packages/surveying/utils/survey/interaction/preview.js",
         "classification": "production-reachable",
         "facadeReachable": true,
@@ -2960,8 +2516,8 @@
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "classification": "production-reachable",
-        "facadeReachable": true,
+        "classification": "test-only",
+        "facadeReachable": false,
         "editorDirect": false,
         "testDirect": true
       },
@@ -3050,6 +2606,13 @@
         "testDirect": false
       },
       {
+        "file": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
         "file": "miniprogram/packages/surveying/utils/survey/operations/transaction.js",
         "classification": "production-reachable",
         "facadeReachable": true,
@@ -3079,6 +2642,20 @@
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": false
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/operations/wall-repair.js",
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
@@ -3218,13 +2795,6 @@
         "testDirect": true
       },
       {
-        "file": "miniprogram/packages/surveying/utils/survey/topology/space-topology.js",
-        "classification": "suspected-dead",
-        "facadeReachable": false,
-        "editorDirect": false,
-        "testDirect": false
-      },
-      {
         "file": "miniprogram/packages/surveying/utils/survey/topology/topology-index.js",
         "classification": "production-reachable",
         "facadeReachable": true,
@@ -3253,13 +2823,6 @@
         "testDirect": true
       },
       {
-        "file": "miniprogram/packages/surveying/utils/survey/topology/wall-split.js",
-        "classification": "suspected-dead",
-        "facadeReachable": false,
-        "editorDirect": false,
-        "testDirect": false
-      },
-      {
         "file": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
         "classification": "facade",
         "facadeReachable": true,
@@ -3271,6 +2834,10 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js",
         "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/compat/legacy-queries.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/core/draft.js",
@@ -3315,10 +2882,6 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/domain/wall.js",
         "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/geometry/intersection.js",
-        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js",
@@ -3501,6 +3064,18 @@
         "to": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js"
       },
       {
+        "from": "miniprogram/packages/surveying/utils/survey/interaction/measurement-side.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/interaction/measurement-side.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/interaction/measurement-side.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js"
+      },
+      {
         "from": "miniprogram/packages/surveying/utils/survey/interaction/preview.js",
         "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
       },
@@ -3650,6 +3225,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/compat/legacy-queries.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
       },
       {
@@ -3662,27 +3241,15 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/domain/validation.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/interaction/closure-projection.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/interaction/measurement-side.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
@@ -3698,6 +3265,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/operations/measurement.js"
       },
       {
@@ -3706,15 +3277,7 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/operations/preview.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/operations/session-actions.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/operations/viewport.js"
+        "to": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
@@ -3723,6 +3286,14 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-repair.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
@@ -3742,19 +3313,11 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/snap/wall-targets.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js"
+        "to": "miniprogram/packages/surveying/utils/survey/snap/snap-engine.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/topology/wall-edit-queries.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/closure-candidate.js",
@@ -4197,6 +3760,26 @@
         "to": "miniprogram/packages/surveying/utils/survey/interaction/session-actions.js"
       },
       {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/transaction.js"
+      },
+      {
         "from": "miniprogram/packages/surveying/utils/survey/operations/transaction.js",
         "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
       },
@@ -4307,6 +3890,42 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
         "to": "miniprogram/packages/surveying/utils/survey/operations/wall-deletion.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/validation.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/interaction/measurement-side.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/transaction.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-repair.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-repair.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/transaction.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-repair.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/wall-split.js",
@@ -4665,10 +4284,6 @@
         "to": "miniprogram/packages/surveying/utils/survey/topology/face-extractor.js"
       },
       {
-        "from": "miniprogram/packages/surveying/utils/survey/topology/space-topology.js",
-        "to": "miniprogram/packages/surveying/utils/survey/domain/space.js"
-      },
-      {
         "from": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
         "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
       },
@@ -4718,15 +4333,35 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/compat/legacy-queries.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
         "to": "miniprogram/packages/surveying/utils/survey/interaction/closure-projection.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
-        "to": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js"
+        "to": "miniprogram/packages/surveying/utils/survey/interaction/measurement-side.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
-        "to": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        "to": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
@@ -4750,7 +4385,23 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
         "to": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-repair.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
@@ -4775,6 +4426,10 @@
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
         "to": "miniprogram/packages/surveying/utils/survey/snap/snap-engine.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js"
       }
     ]
   },
@@ -4782,6 +4437,13 @@
     {
       "source": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js",
       "target": "admin/src/lib/survey-runtime/survey/compat/legacy-error-messages.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/compat/legacy-queries.js",
+      "target": "admin/src/lib/survey-runtime/survey/compat/legacy-queries.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true
@@ -4885,13 +4547,6 @@
       "contentMatches": true
     },
     {
-      "source": "miniprogram/packages/surveying/utils/survey/geometry/intersection.js",
-      "target": "admin/src/lib/survey-runtime/survey/geometry/intersection.js",
-      "mode": "exact",
-      "targetExists": true,
-      "contentMatches": true
-    },
-    {
       "source": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js",
       "target": "admin/src/lib/survey-runtime/survey/geometry/polygon.js",
       "mode": "exact",
@@ -4943,6 +4598,13 @@
     {
       "source": "miniprogram/packages/surveying/utils/survey/interaction/measurement-preview.js",
       "target": "admin/src/lib/survey-runtime/survey/interaction/measurement-preview.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/interaction/measurement-side.js",
+      "target": "admin/src/lib/survey-runtime/survey/interaction/measurement-side.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true
@@ -5081,6 +4743,13 @@
       "contentMatches": true
     },
     {
+      "source": "miniprogram/packages/surveying/utils/survey/operations/space-properties.js",
+      "target": "admin/src/lib/survey-runtime/survey/operations/space-properties.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
       "source": "miniprogram/packages/surveying/utils/survey/operations/transaction.js",
       "target": "admin/src/lib/survey-runtime/survey/operations/transaction.js",
       "mode": "exact",
@@ -5111,6 +4780,20 @@
     {
       "source": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
       "target": "admin/src/lib/survey-runtime/survey/operations/wall-operations.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/operations/wall-properties.js",
+      "target": "admin/src/lib/survey-runtime/survey/operations/wall-properties.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/operations/wall-repair.js",
+      "target": "admin/src/lib/survey-runtime/survey/operations/wall-repair.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true
@@ -5249,13 +4932,6 @@
       "contentMatches": true
     },
     {
-      "source": "miniprogram/packages/surveying/utils/survey/topology/space-topology.js",
-      "target": "admin/src/lib/survey-runtime/survey/topology/space-topology.js",
-      "mode": "exact",
-      "targetExists": true,
-      "contentMatches": true
-    },
-    {
       "source": "miniprogram/packages/surveying/utils/survey/topology/topology-index.js",
       "target": "admin/src/lib/survey-runtime/survey/topology/topology-index.js",
       "mode": "exact",
@@ -5279,13 +4955,6 @@
     {
       "source": "miniprogram/packages/surveying/utils/survey/topology/wall-path.js",
       "target": "admin/src/lib/survey-runtime/survey/topology/wall-path.js",
-      "mode": "exact",
-      "targetExists": true,
-      "contentMatches": true
-    },
-    {
-      "source": "miniprogram/packages/surveying/utils/survey/topology/wall-split.js",
-      "target": "admin/src/lib/survey-runtime/survey/topology/wall-split.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true

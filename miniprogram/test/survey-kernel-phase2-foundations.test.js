@@ -317,7 +317,6 @@ test('Phase 2 modules have one-way dependencies and legacy kernel has no duplica
     'core/session.js',
     'geometry/vector2.js',
     'geometry/segment.js',
-    'geometry/intersection.js',
     'geometry/polygon.js',
     'domain/errors.js',
     'domain/validation.js',

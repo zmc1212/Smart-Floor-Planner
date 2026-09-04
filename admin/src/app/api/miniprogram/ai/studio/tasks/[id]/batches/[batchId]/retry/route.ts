@@ -29,12 +29,19 @@ export async function POST(
       taskId: id,
       batchId,
     });
-    await Promise.allSettled(result.generations.map((generation) =>
+    const submitResults = await Promise.allSettled(result.generations.map((generation) =>
       submitPostgresCreationGeneration({
         enterpriseId: enterpriseId.toString(),
         generationId: generation.id.toString(),
       }),
     ));
+    // Collect submit-level errors so the client can show a meaningful reason.
+    const submitErrors = submitResults
+      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+      .map((r) => (r.reason instanceof Error ? r.reason.message : String(r.reason)));
+    if (submitErrors.length) {
+      console.warn('[Mini AI Studio Batch Retry POST] submit failures:', submitErrors);
+    }
     const view = await withTenantTransaction(enterpriseId, (transaction) =>
       new AiCreationRepository(transaction).loadTaskView(result.taskId),
     );
@@ -45,6 +52,8 @@ export async function POST(
         task: await serializeCreationTaskForMini(request, context.enterpriseId, view),
         account: serializeAiCreditAccount(await ensureAiCreditAccount(enterpriseId.toString())),
         retriedCount: result.generations.length,
+        // First submit error message, if all submissions failed immediately.
+        submitError: submitErrors.length === result.generations.length ? submitErrors[0] : undefined,
       },
     });
   } catch (error) {

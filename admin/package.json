@@ -12,6 +12,7 @@
     "start": "next start",
     "worker:lead-claims": "node scripts/lead-claim-worker.mjs",
     "lint": "eslint",
+    "check:survey-runtime": "node scripts/sync-survey-dimension-plan.mjs --check",
     "test:survey-canvas": "npx tsx --test src/lib/__tests__/survey-canvas-viewport.test.ts src/lib/__tests__/survey-canvas-runtime.test.ts src/lib/__tests__/survey-floor-plan-snapshot.test.ts",
     "test:survey-read-models": "npm run test:survey-canvas && npx tsx --test src/lib/__tests__/survey-read-model-consumers.test.ts src/lib/__tests__/dxf.test.ts src/lib/ai/__tests__/mini-ai-floorplan.test.ts src/lib/ai/__tests__/workflow-floorplan.test.ts",
     "test:ai": "npx tsx --test src/lib/ai/__tests__/*.test.ts",

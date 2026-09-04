@@ -139,14 +139,12 @@ Phase 5 交互与 session 分离已实现（Implemented）。`session/state-mach
 与 Canvas 缓存共用 `snap/candidate-policy.js`，graph 修改由 operation 应用。
 `startPreview` 编排预览服务和可选创建光标意图；`commitPreviewLength` 分离输入确认与既有
 quick/full 事务。闭合直接组合独立落墙操作，不回调 kernel，也不嵌套事务；editor 继续拥有设备、
-手势、Toast 和 BLE 回调，吸附阈值不变。当前 kernel 为 277 行 / 7 个顶层函数，74 模块 /
-377 条依赖边与 77 对生成镜像通过审计；64 个 legacy 和 69 个 façade 导出保留且来源显式。
+手势、Toast 和 BLE 回调，吸附阈值不变。Phase 6 后 kernel 仅为 97 行、0 个顶层领域函数的兼容入口，76 个模块 / 400 条依赖边与 79 对生成镜像通过审计；64 个 legacy 和 69 个 façade 导出保留且来源显式。
 新增 368 项测试，含逐转换验证、双端所有状态的冻结命令差分、完整 4,096 场景逐次
 preview/commit/snap 比较、无时钟计划、重复/撤销/重做、失败原子性和冻结 Canvas 索引对照。
 1,089 项量房/编辑器、55 项 H5、39 项 Admin 消费者和既有性能门槛通过；全量结果见
 [Phase 5 完成记录](./surveying-module/legacy-kernel-phase5-interaction-state-machine.md)。UI、图片、路由、API、角色、租户权限、BLE 协议、测量审计队列及
-正式 v4 合同均无变化，后台继续只读；无需新设计源或 DevTools 自动化。Phase 6 兼容层/运行
-来源收口与 Phase 7 最终治理仍待完成。
+正式 v4 合同均无变化，后台继续只读；无需新设计源或 DevTools 自动化。Phase 6 兼容层与运行来源收口已完成，详见 [Phase 6 完成记录](./surveying-module/legacy-kernel-phase6-compatibility.md)。
 
 `POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
 

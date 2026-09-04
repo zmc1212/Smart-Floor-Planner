@@ -1,0 +1,401 @@
+{
+  "schemaVersion": 1,
+  "authority": "miniprogram/packages/surveying/utils",
+  "files": [
+    {
+      "source": "survey/compat/legacy-error-messages.js",
+      "target": "src/lib/survey-runtime/survey/compat/legacy-error-messages.js",
+      "sha256": "c47322dcf6550a344b3c389524e97a89b2cec0905c03043ca935d861cb357a1d"
+    },
+    {
+      "source": "survey/compat/legacy-queries.js",
+      "target": "src/lib/survey-runtime/survey/compat/legacy-queries.js",
+      "sha256": "259877957ee94d08609160d41a3bf5632ef9a93bba5ce674468e2aec5d6bd809"
+    },
+    {
+      "source": "survey/core/constants.js",
+      "target": "src/lib/survey-runtime/survey/core/constants.js",
+      "sha256": "4730bd949bfa57715808934bf16df4030e2872d830da7e241f8d582a7fd7057e"
+    },
+    {
+      "source": "survey/core/draft.js",
+      "target": "src/lib/survey-runtime/survey/core/draft.js",
+      "sha256": "867d24ee0e697085e15e114be5061e2bd796668cab0c70f208a077694aa40de0"
+    },
+    {
+      "source": "survey/core/graph-query.js",
+      "target": "src/lib/survey-runtime/survey/core/graph-query.js",
+      "sha256": "130d5918733b432c9463642cc81c2ff064a712d88cf1b0c4ab8a3d88288f39dc"
+    },
+    {
+      "source": "survey/core/incoming-wall.js",
+      "target": "src/lib/survey-runtime/survey/core/incoming-wall.js",
+      "sha256": "8eeb310aa8967c0cff81aae870664363310ec281adb365096c904ee413275a58"
+    },
+    {
+      "source": "survey/core/preview-session.js",
+      "target": "src/lib/survey-runtime/survey/core/preview-session.js",
+      "sha256": "80616503279c0f32000ece7d259ac3f0264587105c7c7ef6a6b6d94f75431ac9"
+    },
+    {
+      "source": "survey/core/runtime-id.js",
+      "target": "src/lib/survey-runtime/survey/core/runtime-id.js",
+      "sha256": "a7da464531989f6c13683f342a684df64c80bda66ba532b3b73b40f7816fa7b6"
+    },
+    {
+      "source": "survey/core/session-copy.js",
+      "target": "src/lib/survey-runtime/survey/core/session-copy.js",
+      "sha256": "b9332c25f2bfc8365b4293aa8b83e445e3a206de7c3384090e323fe2d47d65d2"
+    },
+    {
+      "source": "survey/core/session-value.js",
+      "target": "src/lib/survey-runtime/survey/core/session-value.js",
+      "sha256": "3c05b9c8ec5ac1e667f619c280c6fe8e1de34ee2a4aec8f35e9f3b18064f7012"
+    },
+    {
+      "source": "survey/core/session.js",
+      "target": "src/lib/survey-runtime/survey/core/session.js",
+      "sha256": "cbdb1560abd073f9e569d6c95cfde34c4fb4989dd283502ff6f03b44dc1cb4d7"
+    },
+    {
+      "source": "survey/domain/errors.js",
+      "target": "src/lib/survey-runtime/survey/domain/errors.js",
+      "sha256": "51087353b9a71848bdeddbfbac275dd7b2413280c03d781c75bdb338ab840ec9"
+    },
+    {
+      "source": "survey/domain/opening.js",
+      "target": "src/lib/survey-runtime/survey/domain/opening.js",
+      "sha256": "5237e394eec4c944bc27428d50496aba81e0a5347a90f4ac50ebaf30167e7325"
+    },
+    {
+      "source": "survey/domain/space.js",
+      "target": "src/lib/survey-runtime/survey/domain/space.js",
+      "sha256": "0679cd4d62c141311297ce805a3fb1f276efca1d89ea99f7560b3270c474469d"
+    },
+    {
+      "source": "survey/domain/validation.js",
+      "target": "src/lib/survey-runtime/survey/domain/validation.js",
+      "sha256": "23fa0062be5e50c7cc85383baa519c60919b447a64ef4ed9a0e7a66400d88ff7"
+    },
+    {
+      "source": "survey/domain/wall.js",
+      "target": "src/lib/survey-runtime/survey/domain/wall.js",
+      "sha256": "6297401de31d5ce2407c328cb9e350f6902b91a10483151c12f5534105f29266"
+    },
+    {
+      "source": "survey/geometry/polygon.js",
+      "target": "src/lib/survey-runtime/survey/geometry/polygon.js",
+      "sha256": "ab38240b0258d6ef1ac7bd6a897a2c395ee8ebf864652acf66130d310eecb116"
+    },
+    {
+      "source": "survey/geometry/segment.js",
+      "target": "src/lib/survey-runtime/survey/geometry/segment.js",
+      "sha256": "49aad822c9674da9cece4e12bfc5ac43b1874c03898289666abb44f9a0177537"
+    },
+    {
+      "source": "survey/geometry/vector2.js",
+      "target": "src/lib/survey-runtime/survey/geometry/vector2.js",
+      "sha256": "c88f8362dd4bba34b9428a79205a4269f104aa3e4cf03cc0615a6c657b5f83a5"
+    },
+    {
+      "source": "survey/interaction/angle-preview.js",
+      "target": "src/lib/survey-runtime/survey/interaction/angle-preview.js",
+      "sha256": "e07f1073867f4c1a9ce0451a46c0185163fff293c9c715ce3a8e5a6b8ab6407b"
+    },
+    {
+      "source": "survey/interaction/closure-projection.js",
+      "target": "src/lib/survey-runtime/survey/interaction/closure-projection.js",
+      "sha256": "8857da52d925bfcb76541d03eb86bd44b65ed6f91e0311fc687883941a9c8625"
+    },
+    {
+      "source": "survey/interaction/commit-preview.js",
+      "target": "src/lib/survey-runtime/survey/interaction/commit-preview.js",
+      "sha256": "1eb3726a1d95726af8697b7427b07d1528674942da5c22f8b966bb87f22aac9e"
+    },
+    {
+      "source": "survey/interaction/direction-lock.js",
+      "target": "src/lib/survey-runtime/survey/interaction/direction-lock.js",
+      "sha256": "3adf9594eaadf155dd965ea8df14b263bbe188060877943e9d47bbf371e25ea9"
+    },
+    {
+      "source": "survey/interaction/measurement-preview.js",
+      "target": "src/lib/survey-runtime/survey/interaction/measurement-preview.js",
+      "sha256": "3c43f880bd9d672b086c8faa37edc2c9aa74a313ff3ab0325acd6c432273a900"
+    },
+    {
+      "source": "survey/interaction/measurement-side.js",
+      "target": "src/lib/survey-runtime/survey/interaction/measurement-side.js",
+      "sha256": "6e2e4292464f4f9236943d1db105b69c5060b15a8feb7af131a1781bca880c84"
+    },
+    {
+      "source": "survey/interaction/preview.js",
+      "target": "src/lib/survey-runtime/survey/interaction/preview.js",
+      "sha256": "0f940698de12e797809cfd0e0feccc06c1b11d4ff3714b0b4519c75713dcf1b0"
+    },
+    {
+      "source": "survey/interaction/projection-intent.js",
+      "target": "src/lib/survey-runtime/survey/interaction/projection-intent.js",
+      "sha256": "8cc5c6332f5f89106d41fa69997b90dc48877c6e6fabc4f65f2068a5ec76048a"
+    },
+    {
+      "source": "survey/interaction/session-actions.js",
+      "target": "src/lib/survey-runtime/survey/interaction/session-actions.js",
+      "sha256": "848c8d53e40fc24655137d2b09b6c62ba88ec24f85c99933ea93ea93521763fb"
+    },
+    {
+      "source": "survey/interaction/viewport.js",
+      "target": "src/lib/survey-runtime/survey/interaction/viewport.js",
+      "sha256": "0313dfc7ea1025fc7aeb4ab70ca16128ba8a3dab65f7b858605d9dc3aeedb48e"
+    },
+    {
+      "source": "survey/interaction/wall-snap.js",
+      "target": "src/lib/survey-runtime/survey/interaction/wall-snap.js",
+      "sha256": "cf89ede40b6c7987f02e522611d9049c5064f30a23939d8dca937da7c270f56a"
+    },
+    {
+      "source": "survey/invariants/floor-plan-validator.js",
+      "target": "src/lib/survey-runtime/survey/invariants/floor-plan-validator.js",
+      "sha256": "3450c08a54aa60a3f85cf4a5d7a4b37f40d04d7aad6865b8aef734dad67cdfd5"
+    },
+    {
+      "source": "survey/legacy-kernel.js",
+      "target": "src/lib/survey-runtime/survey/legacy-kernel.js",
+      "sha256": "2ff2c78223a3c8c8529798d310ffcf94f00e3acfcc770a0f80130be72356e265"
+    },
+    {
+      "source": "survey/operations/closure-candidate.js",
+      "target": "src/lib/survey-runtime/survey/operations/closure-candidate.js",
+      "sha256": "4db9b3e3839c7667498677308ecc768f1f8e92a3231bd70fbc8ead032fe4721c"
+    },
+    {
+      "source": "survey/operations/closure.js",
+      "target": "src/lib/survey-runtime/survey/operations/closure.js",
+      "sha256": "5c62576fcace0c7f950a889215f22db6c66f4e8a31ecd4463404d2743138bdcc"
+    },
+    {
+      "source": "survey/operations/commit-preview.js",
+      "target": "src/lib/survey-runtime/survey/operations/commit-preview.js",
+      "sha256": "c208a0877461814ba172715f44ca50021ac6874e5487b63125b19f563800e1f8"
+    },
+    {
+      "source": "survey/operations/cursor.js",
+      "target": "src/lib/survey-runtime/survey/operations/cursor.js",
+      "sha256": "5564b6858f2499c99ccfc303c4ccb577ee6c63ca3089d0288a24d6cc80cf3760"
+    },
+    {
+      "source": "survey/operations/interaction-operations.js",
+      "target": "src/lib/survey-runtime/survey/operations/interaction-operations.js",
+      "sha256": "247ac9b1f3c5df8d2b8ae3d5019c2eef1d9fd647b36cba15c56d6e141fd656c3"
+    },
+    {
+      "source": "survey/operations/measurement.js",
+      "target": "src/lib/survey-runtime/survey/operations/measurement.js",
+      "sha256": "28c28540f51a6837869252f6b1d9728941322113caffeb0690eb8cfa313a138a"
+    },
+    {
+      "source": "survey/operations/open-chain.js",
+      "target": "src/lib/survey-runtime/survey/operations/open-chain.js",
+      "sha256": "07a2a796f007182cede8a7b7a1d34a1ca3917bca354262d8bc64fd1241deaf4f"
+    },
+    {
+      "source": "survey/operations/opening-operations.js",
+      "target": "src/lib/survey-runtime/survey/operations/opening-operations.js",
+      "sha256": "e72f9b900a320af0ba573573353ab37a15a95d71729135b7311223bbf012e3aa"
+    },
+    {
+      "source": "survey/operations/preview-insets.js",
+      "target": "src/lib/survey-runtime/survey/operations/preview-insets.js",
+      "sha256": "d5698fc67c73f8ff9bfa04591b5d5fae781dccf6558202c976a9181ec3d3ddd4"
+    },
+    {
+      "source": "survey/operations/preview.js",
+      "target": "src/lib/survey-runtime/survey/operations/preview.js",
+      "sha256": "40dc3c91b381955358a38b5057bd165bce2fea9fb05d152fde694a83528b3654"
+    },
+    {
+      "source": "survey/operations/projection-intent.js",
+      "target": "src/lib/survey-runtime/survey/operations/projection-intent.js",
+      "sha256": "030cad3cecc3680a1ec2a4ae202d5b6d875ecd189682dd083bbfc359b8c8bb58"
+    },
+    {
+      "source": "survey/operations/session-actions.js",
+      "target": "src/lib/survey-runtime/survey/operations/session-actions.js",
+      "sha256": "ecc6ffff8d8a4748254fcf5be7bfe17d4243503306039f41791fde4a28a90e7b"
+    },
+    {
+      "source": "survey/operations/space-properties.js",
+      "target": "src/lib/survey-runtime/survey/operations/space-properties.js",
+      "sha256": "137b9051294a37aff73e274cef50dfe2ca2d880f3f3419a8b700fe56ad1614bf"
+    },
+    {
+      "source": "survey/operations/transaction.js",
+      "target": "src/lib/survey-runtime/survey/operations/transaction.js",
+      "sha256": "d5a7c24eb2c0519dfdbb93f4076a57b304cade37c20c7e7c8ebf826834c3b3df"
+    },
+    {
+      "source": "survey/operations/viewport.js",
+      "target": "src/lib/survey-runtime/survey/operations/viewport.js",
+      "sha256": "7ab4bf425d32d759a4082f9227922aca4a6239d33ff30587732a4ed751abd4ea"
+    },
+    {
+      "source": "survey/operations/wall-deletion.js",
+      "target": "src/lib/survey-runtime/survey/operations/wall-deletion.js",
+      "sha256": "8e4dc84052ef65735066bba4248a004826214b2123ca8221af348a27882bf9af"
+    },
+    {
+      "source": "survey/operations/wall-mutation-helpers.js",
+      "target": "src/lib/survey-runtime/survey/operations/wall-mutation-helpers.js",
+      "sha256": "b30b18b7fbd8eb1f5791cb4ff7a1c4e66f9e30508f1c5c43370873d191afa6d4"
+    },
+    {
+      "source": "survey/operations/wall-operations.js",
+      "target": "src/lib/survey-runtime/survey/operations/wall-operations.js",
+      "sha256": "c2f0459a5b73af5cb3c3936f418bdafb7adb4446e076a847c9a7e97feea6fb11"
+    },
+    {
+      "source": "survey/operations/wall-properties.js",
+      "target": "src/lib/survey-runtime/survey/operations/wall-properties.js",
+      "sha256": "61b76e1f37dbcd9efbf4cf5fa820a548679c69a325ebef75934323757bf661d2"
+    },
+    {
+      "source": "survey/operations/wall-repair.js",
+      "target": "src/lib/survey-runtime/survey/operations/wall-repair.js",
+      "sha256": "3375b23b8c9d51a3df184a415b132ba1eb0e6e4b44b4f0c4db2aa393c07b3314"
+    },
+    {
+      "source": "survey/operations/wall-split.js",
+      "target": "src/lib/survey-runtime/survey/operations/wall-split.js",
+      "sha256": "e5f1ea16aec23cf2db8b67104c53eb36cf0e8425889a82772218480dc6b315b8"
+    },
+    {
+      "source": "survey/read-model/cursor.js",
+      "target": "src/lib/survey-runtime/survey/read-model/cursor.js",
+      "sha256": "95be45ea6336693346d6ce6fca2a618ca2ea0c09173ec8c214ba7e476893a3fb"
+    },
+    {
+      "source": "survey/read-model/space-boundary.js",
+      "target": "src/lib/survey-runtime/survey/read-model/space-boundary.js",
+      "sha256": "b0a92ad3a15fcdfef60a8550cd63738e8acf92109a61cea9eaf03fcf412de242"
+    },
+    {
+      "source": "survey/read-model/space-dimensions.js",
+      "target": "src/lib/survey-runtime/survey/read-model/space-dimensions.js",
+      "sha256": "ef9ab0b03830503a4949a1faaf9487dab71f0acba83c41b02797ceb715f02e4b"
+    },
+    {
+      "source": "survey/read-model/wall-faces.js",
+      "target": "src/lib/survey-runtime/survey/read-model/wall-faces.js",
+      "sha256": "62bbee66224954d4e84fcc60c9a1cabd68e442698c3a0306fc3bfacf61f7733b"
+    },
+    {
+      "source": "survey/read-model/wall-geometry.js",
+      "target": "src/lib/survey-runtime/survey/read-model/wall-geometry.js",
+      "sha256": "d93f62bcbe3a8b7ad0f9c8d796fc7df5e9bc2270488b5f288223747c8e30ca1f"
+    },
+    {
+      "source": "survey/session/field-groups.js",
+      "target": "src/lib/survey-runtime/survey/session/field-groups.js",
+      "sha256": "069afc1798f133664de88542a39e60c60a89b3a23a561fb49236c7b88b5f64ac"
+    },
+    {
+      "source": "survey/session/state-machine.js",
+      "target": "src/lib/survey-runtime/survey/session/state-machine.js",
+      "sha256": "e56b08ae06865af9e45c7c3840c32349e29426b70bd797c037f68f6964fe783e"
+    },
+    {
+      "source": "survey/snap/candidate-policy.js",
+      "target": "src/lib/survey-runtime/survey/snap/candidate-policy.js",
+      "sha256": "7806df72935133bc0bacef4f8dbe5f7fed879e27ee4af6385abb58c8abb5249f"
+    },
+    {
+      "source": "survey/snap/preview-alignment.js",
+      "target": "src/lib/survey-runtime/survey/snap/preview-alignment.js",
+      "sha256": "d4099f68299156ffdb8bf386088ebbeafc863101244e127c02ce7e48793df61f"
+    },
+    {
+      "source": "survey/snap/snap-engine.js",
+      "target": "src/lib/survey-runtime/survey/snap/snap-engine.js",
+      "sha256": "008630e771c0ac8bfa6d27445ca07f1f349c03389f1f5a9d3e47055ab186a7ac"
+    },
+    {
+      "source": "survey/snap/wall-targets.js",
+      "target": "src/lib/survey-runtime/survey/snap/wall-targets.js",
+      "sha256": "b18405ee8168562d86a9b0ed8536b2bdd178441dd86277be633bc8a83736f6d7"
+    },
+    {
+      "source": "survey/topology/closed-boundary.js",
+      "target": "src/lib/survey-runtime/survey/topology/closed-boundary.js",
+      "sha256": "ed48b2c01df40791af580ee6b70fe2c950446fdfc1db19c8b667c8b7a942f521"
+    },
+    {
+      "source": "survey/topology/closure-candidates.js",
+      "target": "src/lib/survey-runtime/survey/topology/closure-candidates.js",
+      "sha256": "d3fca8d225180082fcd01eb03721d882f551182ae4b4fb59c9153c38c58c9329"
+    },
+    {
+      "source": "survey/topology/closure-plans.js",
+      "target": "src/lib/survey-runtime/survey/topology/closure-plans.js",
+      "sha256": "a1e4eee2e008f0c321892146c441a2d36935beaf83948bdaddf152d0edc5e7c3"
+    },
+    {
+      "source": "survey/topology/closure-queries.js",
+      "target": "src/lib/survey-runtime/survey/topology/closure-queries.js",
+      "sha256": "b2f30b11158e0d7234e5ae88b5ec7572a956e8d5b13b29a836be9093569d3650"
+    },
+    {
+      "source": "survey/topology/face-extractor.js",
+      "target": "src/lib/survey-runtime/survey/topology/face-extractor.js",
+      "sha256": "6dab94324576615dc6d63ea5cf60eb31f49e7591e302d0a40c506dc49d35f805"
+    },
+    {
+      "source": "survey/topology/face-shadow.js",
+      "target": "src/lib/survey-runtime/survey/topology/face-shadow.js",
+      "sha256": "a839eb7fc40b5e92ae8ef423306d5b1b6820e7b9ae3aa10ed317c46cf9089201"
+    },
+    {
+      "source": "survey/topology/space-sync.js",
+      "target": "src/lib/survey-runtime/survey/topology/space-sync.js",
+      "sha256": "cd0097b5e51e84cec4e2ce343572b44082cd375386002ad7f501e1f8486b64ab"
+    },
+    {
+      "source": "survey/topology/topology-index.js",
+      "target": "src/lib/survey-runtime/survey/topology/topology-index.js",
+      "sha256": "a3d320d9ee83362b8f94a7705c32ea82cc0f9466c3144090259d0320af3870c5"
+    },
+    {
+      "source": "survey/topology/wall-alignment.js",
+      "target": "src/lib/survey-runtime/survey/topology/wall-alignment.js",
+      "sha256": "a5c8a215a8987cb51e0802a466ff99cdb980bdf4955be40ea60f573f20d21a41"
+    },
+    {
+      "source": "survey/topology/wall-edit-queries.js",
+      "target": "src/lib/survey-runtime/survey/topology/wall-edit-queries.js",
+      "sha256": "68d9f7e69333fe1642c08c85981276850645f25ea392db29654351b28a0e8e5d"
+    },
+    {
+      "source": "survey/topology/wall-path.js",
+      "target": "src/lib/survey-runtime/survey/topology/wall-path.js",
+      "sha256": "94cb5241c8464d9bd5188b9f6a3b3825b141713a452f5a488e582852a843c843"
+    },
+    {
+      "source": "surveyCanvasRenderer.js",
+      "target": "src/lib/survey-runtime/surveyCanvasRenderer.js",
+      "sha256": "4237e949ce81ac2380f37e21ae2e258065d0504d14713994034da02cf1c9ca7f"
+    },
+    {
+      "source": "surveyDimensionPlan.js",
+      "target": "src/lib/surveyDimensionPlan.js",
+      "sha256": "700d64b19d61d2bfce0c4a69aea3290e928e2e5dbaad24b2f1baa18fdaaa7263"
+    },
+    {
+      "source": "surveyWallGraph.js",
+      "target": "src/lib/survey-runtime/surveyWallGraph.js",
+      "sha256": "6cd0f5e77953e94071c53757feca70bcd99d6296832cb291dbdc39678d2499c3"
+    },
+    {
+      "source": "surveyWallSolidPlan.js",
+      "target": "src/lib/surveyWallSolidPlan.js",
+      "sha256": "ac99b85727946746acfd68968fd080bf5be95c97fa53d261c05b576be61897ea"
+    }
+  ]
+}

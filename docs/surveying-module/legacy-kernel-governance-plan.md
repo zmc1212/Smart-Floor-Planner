@@ -2,7 +2,7 @@
 
 > 状态：执行中
 >
-> 当前阶段：Phase 6 — 兼容层与运行来源收口（Phase 5 已完成）
+> 当前阶段：Phase 6 已完成（Implemented，2026-09-04）；下一阶段为 Phase 7 — 最终治理与防回退约束
 >
 > 最后检查：2026-09-04
 >
@@ -375,15 +375,14 @@ refactor: isolate surveying snap policy
 
 任务：
 
-- [ ] 为 64 个 legacy 导出标记“已迁移、兼容代理、仍待迁移、可删除”。
-- [ ] 全仓搜索每个待删除导出，包括动态属性访问和测试引用。
+- [x] 为 64 个 legacy 导出标记“已迁移 51、兼容代理 13、仍待迁移 0、可删除 0”。
+- [x] 全仓搜索每个待删除导出，包括动态属性访问、整体对象分发和测试引用。
 - [x] 将 `surveyWallGraph.js` 改为显式导出，避免合并顺序覆盖实现（Phase 3 已完成）。
-- [ ] 让 `legacy-kernel.js` 只保留尚未迁移的兼容代理。
-- [ ] 评估 WeChat 构建和 Next.js 运行约束后，确定单一权威源码方案。
-- [ ] 在共享 package 尚不稳妥时，保留“Mini Program 为权威源、Admin 为生成镜像”的方式，
-      并用同步检查阻止漂移。
-- [ ] 只有在构建和运行环境都验证后，才移除 Admin 镜像或同步脚本。
-- [ ] 删除全部死代码、无生产消费者的过渡模块和重复测试 helper。
+- [x] 让 `legacy-kernel.js` 只保留 64 个历史兼容入口，不再承载领域实现。
+- [x] 评估 WeChat 构建和 Next.js 运行约束，确定 Mini Program 为唯一权威源码。
+- [x] 保留“Mini Program 为权威源、Admin 为生成镜像”，以 `source-manifest.json` SHA-256 检查阻止漂移。
+- [x] 在 Admin 运行时检查、H5 构建和小程序回归通过后保留同步脚本与提交镜像。
+- [x] 删除无生产消费者的三个过渡模块、H5 临时 kernel/合并调试脚本和重复测试 helper。
 
 验收门槛：
 
@@ -505,7 +504,7 @@ node --test test/survey*.test.js test/surveying-editor*.test.js
 
 ### 当前阶段
 
-Phase 5 已完成（Implemented，2026-09-04）；下一阶段为 Phase 6 — 兼容层与运行来源收口。
+Phase 6 已完成（Implemented，2026-09-04）；下一阶段为 Phase 7 — 最终治理与防回退约束。
 
 ### 已完成
 
@@ -520,8 +519,8 @@ Phase 5 已完成（Implemented，2026-09-04）；下一阶段为 Phase 6 — �
 - [x] `startPreview` 编排预览服务与光标创建意图；`operations/commit-preview.js` 消费
       值/ID 计划，复用原 quick/full 事务。闭合组合独立落墙步骤，不再回调 kernel，
       不新增嵌套事务。editor 的设备/手势/Toast/BLE 处理、画布和 UI 未改。
-- [x] kernel 当前 277 行 / 7 个顶层函数；64 个 legacy 和 69 个 façade 导出保留。
-      74 模块 / 377 边、77 对 Mini Program/Admin 镜像通过审计，所有胜出来源显式绑定。
+- [x] Phase 6 kernel 兼容入口为 97 行 / 0 个顶层函数；64 个 legacy 和 69 个 façade 导出保留。
+      76 个模块 / 400 条边、79 对 Mini Program/Admin 镜像通过审计，所有胜出来源显式绑定。
 - [x] 新增 368 项 Phase 5 测试：逐转换、双端全状态命令冻结差分、完整 4,096 场景每次
       preview/commit/snap 差分、方向锁、反向编辑、只读/重复/undo/redo、失败原子性及
       冻结 Canvas 缓存索引比较通过。
@@ -531,17 +530,23 @@ Phase 5 已完成（Implemented，2026-09-04）；下一阶段为 Phase 6 — �
 - [x] 中英文量房合同和两端模块清单同步；对外合同无变化，详见
       [Phase 5 交互与状态机迁移记录](./legacy-kernel-phase5-interaction-state-machine.md)。
 
+### Phase 6 完成
+
+- [x] 64 个 legacy 导出已分类并由显式来源覆盖；生产路径不再加载 kernel 实现。
+- [x] source-manifest.json 与同步脚本阻止 Mini Program/Admin 镜像漂移；无生产消费者的过渡模块和 H5 临时脚本已清理。
+- [x] 22 项 Phase 6 专项、55 项 H5、1,111 项量房/编辑器定向回归通过；完整小程序 1,614 项中 1,600 项通过，14 项为 Phase 0 既有失败（新增 Phase 6 测试通过）。
+- [x] 对外合同无变化，详见 [Phase 6 完成记录](./legacy-kernel-phase6-compatibility.md)。
+
 ### 仍保留的边界
 
-- [ ] Phase 6 仍需审计 legacy 导出状态、剩余修复/命名/测量侧/墙厚实现、旧死函数与
-      兼容代理；不能把 kernel 行数减少视为整体退役完成。
-- [ ] Phase 6 运行来源收口和 Phase 7 最终治理仍待完成；Admin 继续保留生成镜像与
-      同步检查，未删除兼容导出或宣称整体治理完成。
+- [ ] Phase 7 仍需增加架构测试、重复导出/循环依赖/镜像漂移的长期守卫，并收口最终文档。
+- [x] Phase 6 运行来源收口已完成；Admin 继续保留生成镜像与同步检查，64 个兼容导出待
+      后续合同变更再删除。
 
 ### 下一步唯一目标
 
-进入 Phase 6：逐一分类 64 个 legacy 导出并审计剩余生产调用、动态访问和测试消费者，
-再收口兼容实现与运行来源；保留 Phase 0–5 行为、镜像和性能护栏。
+进入 Phase 7：把 Phase 6 的审计和镜像清单固化为长期架构守卫与最终文档；保留 Phase 0–6
+行为、镜像和性能护栏。
 
 ## 12. 整体完成定义
 

@@ -228,8 +228,7 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   `commitPreviewLength` separates input confirmation from the existing quick/full transaction.
   Closure composes the standalone commit operation directly, with no kernel callback or nested
   transaction. Editor device/gesture/Toast/BLE responsibilities and all snap thresholds stay unchanged.
-  The kernel now has 277 lines / 7 top-level functions; 74 modules / 377 dependency edges and
-  77 generated mirror pairs are audited. All 64 legacy and 69 facade exports remain available
+  Phase 6 reduces the kernel to a 97-line compatibility entry with no top-level domain functions; 76 modules / 400 dependency edges and 79 generated mirror pairs are audited. All 64 legacy and 69 facade exports remain available
   with explicit ownership. The 368 new tests include individual transition checks, both-client
   frozen command comparisons over every state, per-step preview/commit/snap comparisons in
   the complete 4,096-case matrix, clock-free plans, repeat/undo/redo, rejection atomicity and
@@ -238,8 +237,7 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   [Phase 5 completion record](./surveying-module/legacy-kernel-phase5-interaction-state-machine.md).
   No UI, artwork, route, API, role, tenant permission, BLE protocol, measurement-audit queue or
   formal v4 data contract changes. Admin remains read-only. No new design source or DevTools
-  automation is required. Phase 6 compatibility/runtime-source consolidation and Phase 7 final
-  governance remain pending.
+  automation is required. Phase 6 compatibility/runtime-source consolidation is complete; see [the Phase 6 completion record](./surveying-module/legacy-kernel-phase6-compatibility.md).
   Test sources are excluded from every runtime package. These internal refactors
   have no visible UI or design-source change, need no WeChat DevTools automation,
   and change no route, API, role, permission, snap/closure rule, error copy, or

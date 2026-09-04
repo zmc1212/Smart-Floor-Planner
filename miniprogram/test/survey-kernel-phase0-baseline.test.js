@@ -88,7 +88,7 @@ test('facade exports, winning sources, callers, and module dependencies match th
   assert.deepEqual(createSurveyKernelAudit(), expectedAudit);
   assert.equal(expectedAudit.facade.legacyExportCount, 64);
   assert.equal(expectedAudit.facade.facadeExportCount, 69);
-  assert.equal(expectedAudit.facade.overrides.length, 42);
+  assert.equal(expectedAudit.facade.overrides.length, 64); // All legacy names now have explicit independent owners.
 });
 
 test('dependency audit separates facade reachability, editor direct code, and suspected dead modules', () => {
@@ -103,16 +103,12 @@ test('dependency audit separates facade reachability, editor direct code, and su
   );
   assert.deepEqual(
     (classifications['suspected-dead'] || []).map((entry) => entry.file),
-    [
-      'miniprogram/packages/surveying/utils/survey/geometry/intersection.js',
-      'miniprogram/packages/surveying/utils/survey/topology/space-topology.js',
-      'miniprogram/packages/surveying/utils/survey/topology/wall-split.js'
-    ]
+    [] // Phase 6 removed the three audited transition modules.
   );
 });
 
 test('Admin runtime mirror matches every authoritative Mini Program source or approved require rewrite', () => {
-  assert.equal(expectedAudit.adminMirror.length, 77);
+  assert.equal(expectedAudit.adminMirror.length, 79);
   expectedAudit.adminMirror.forEach((entry) => {
     assert.equal(entry.targetExists, true, entry.target);
     assert.equal(entry.contentMatches, true, entry.target);

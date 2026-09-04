@@ -22,7 +22,7 @@ Phase 3 墙体、墙面、空间边界/尺寸独立读模型与显式 façade �
 [`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md)。
 Phase 4D 闭合事务见 [完成记录](./legacy-kernel-phase4d-closure-operations.md)；Phase 5
 交互、吸附与 session 状态机见 [完成记录](./legacy-kernel-phase5-interaction-state-machine.md)。
-Phase 0/1 建立测试治理能力，Phase 2–5 为行为等价的内部重构；均不改变正式量房运行合同。
+Phase 0/1 建立测试治理能力，Phase 2–6 为行为等价的内部重构；均不改变正式量房运行合同。Phase 6 完成记录见 [兼容层与运行来源收口](./legacy-kernel-phase6-compatibility.md)。
 
 ## 当前能力
 
@@ -103,14 +103,12 @@ Phase 0/1 建立测试治理能力，Phase 2–5 为行为等价的内部重构�
   与 Canvas 缓存共用 `snap/candidate-policy.js`，graph 修改由 operation 应用。
   `startPreview` 编排预览服务和可选创建光标意图；`commitPreviewLength` 分离输入确认与既有
   quick/full 事务。闭合直接组合独立落墙操作，不回调 kernel，也不嵌套事务；editor 继续拥有设备、
-  手势、Toast 和 BLE 回调，吸附阈值不变。当前 kernel 为 277 行 / 7 个顶层函数，74 模块 /
-  377 条依赖边与 77 对生成镜像通过审计；64 个 legacy 和 69 个 façade 导出保留且来源显式。
+  手势、Toast 和 BLE 回调，吸附阈值不变。Phase 6 后 kernel 仅为 97 行、0 个顶层领域函数的兼容入口，76 个模块 / 400 条依赖边与 79 对生成镜像通过审计；64 个 legacy 和 69 个 façade 导出保留且来源显式。
   新增 368 项测试，含逐转换验证、双端所有状态的冻结命令差分、完整 4,096 场景逐次
   preview/commit/snap 比较、无时钟计划、重复/撤销/重做、失败原子性和冻结 Canvas 索引对照。
   1,089 项量房/编辑器、55 项 H5、39 项 Admin 消费者和既有性能门槛通过；全量结果见
   [Phase 5 完成记录](./legacy-kernel-phase5-interaction-state-machine.md)。UI、图片、路由、API、角色、租户权限、BLE 协议、测量审计队列及
-  正式 v4 合同均无变化，后台继续只读；无需新设计源或 DevTools 自动化。Phase 6 兼容层/运行
-  来源收口与 Phase 7 最终治理仍待完成。
+  正式 v4 合同均无变化，后台继续只读；无需新设计源或 DevTools 自动化。Phase 6 兼容层与运行来源收口已完成，详见 [Phase 6 完成记录](./legacy-kernel-phase6-compatibility.md)。
 - 编辑器使用 version-4 `surveyGraph`，坐标、长度、墙厚、开口和层高均为毫米。
   门宽/窗宽上限为当前宿主墙长度（不少于 100 mm），由 `normalizeOpeningToWall`
   按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。
