@@ -208,10 +208,10 @@ Phase 4B wall-structure transactions are Implemented in mirrored
 plans, the existing immutable/full-validation transaction and face/Space sync.
 Opening remapping, audit allocation, shared-wall body side, deletion/recovery
 and session reference cleanup preserve the frozen behavior. Chain recovery uses
-independent `topology/closure-queries.js`; closure writes remain pending.
-The Phase 4B snapshot was 4,595 lines / 116 top-level functions; after Phase 4C
-measurement extraction the kernel is 4,319 lines / 110 top-level functions. The
-current 40-module / 158-edge audit verifies 43 mirror pairs (42 exact copies
+independent `topology/closure-queries.js`; Phase 4D now owns closure writes.
+The Phase 4B snapshot was 4,595 lines / 116 top-level functions; at Phase 4C
+measurement extraction the kernel was 4,319 lines / 110 top-level functions. The
+Phase 4C 40-module / 158-edge audit verifies 43 mirror pairs (42 exact copies
 plus the renderer path rewrite).
 All 39 Admin canvas/PNG/DXF/room/3D/AI tests pass, alongside 697 surveying and
 55 H5 tests plus the performance gates. No new Admin mutation route is exposed;
@@ -227,6 +227,26 @@ the same measurement-write helpers. Admin remains read-only and exposes no new
 mutation route; closure confirmation, UI, routes, APIs, permissions, and the
 version-4 envelope are unchanged. See the
 [Phase 4C completion record](./surveying-module/legacy-kernel-phase4c-measurement-operations.md).
+
+Phase 4D closure and merge operations are Implemented: `topology/closure-candidates.js`
+and `closure-plans.js` produce read-only candidate, bridge/merge/partition and orthogonal
+adjustment intents. `operations/closure.js` owns `confirmClosure`, composing preview commits,
+shared-wall cuts, opening remapping, collinear merging and Face/Space sync in one immutable
+full-validation transaction. Plans read no clock, allocate no runtime IDs and retain no graph
+references. Failures preserve the entire input/history; legacy errors, measurement audits and
+session cleanup stay equivalent. The facade binds `transactionalClosures.confirmClosure`;
+the kernel retains only its compatibility proxy. Preview submission still uses an explicit
+commit callback for existing kernel wall orchestration, without a kernel import in closure
+modules; Phase 5 interaction separation remains pending.
+The current kernel has 3,193 lines / 80 top-level functions; the 45-module / 202-edge audit
+verifies 48 mirror pairs. All 64 legacy and 69 facade exports remain compatible.
+The 721 surveying/editor, 55 H5 and 39 Admin consumer tests plus performance gates pass.
+The 18 new tests include frozen closure comparisons across all 4,096 formal matrix cases,
+both-client repeat/undo/redo and atomic rejection. The full Mini Program suite passes
+1,210 of 1,224 tests; all 14 failure names match the existing Phase 0 list.
+Admin stays read-only: no route, API, role, tenant permission, UI, design source, BLE,
+snap policy or v4 contract changes. See the
+[Phase 4D completion record](./surveying-module/legacy-kernel-phase4d-closure-operations.md).
 
 DXF generation is likewise read-only: `admin/src/lib/dxf.ts` adapts the graph
 to the MIT-licensed writer, emits unioned inner/outer wall `LINE` faces after

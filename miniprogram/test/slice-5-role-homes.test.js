@@ -367,6 +367,7 @@ test('enterprise owner operations dashboard restores the approved regular busine
   assert.match(operationsStyles, /\.operations-efficiency-card\s*\{[\s\S]*min-height:\s*192rpx/);
   assert.match(workbench, /legacyClosureDetail[\s\S]*方案同步中/);
   assert.match(styles, /\.enterprise-priority-tray\s*\{[\s\S]*background:\s*rgba\(242, 251, 246, 0\.92\)/);
+  assert.match(styles, /\.enterprise-exception-list\s*\{[\s\S]*gap:\s*14rpx/);
 });
 
 test('enterprise owner dashboard cutouts are standalone optimized transparent PNGs', () => {

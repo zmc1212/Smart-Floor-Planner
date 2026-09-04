@@ -98,19 +98,32 @@ Phase 4B 墙体结构事务已实现（Implemented）：`survey/operations/wall-
 session 清理和 Face/Space 同步。删除 façade 不再调用 kernel 实现；内部拆墙在落墙/闭合
 事务中组合，全部切点完成后执行 full 校验。墙链恢复的既有只读查询位于
 `topology/closure-queries.js`，没有接管闭合写入或改变吸附/闭合策略。Phase 4B 快照为
-4,595 行 / 116 个顶层函数；Phase 4C 抽取测量写入后 kernel 为 4,319 行 / 110 个顶层
+4,595 行 / 116 个顶层函数；Phase 4C 快照中 kernel 为 4,319 行 / 110 个顶层
 函数，64 个 legacy 与 69 个 façade 导出保持兼容；40 模块 / 158 边审计验证 43 对镜像。
 Phase 4B 的 697 项量房、55 项 H5、39 项 Admin 测试及大图性能门槛继续作为护栏，新增
-Phase 4C 单元覆盖测量 plan、审计持久化与门窗冲突原子拒绝。闭合写入与交互分离仍待后续
-阶段，详见 [Phase 4B 完成记录](./surveying-module/legacy-kernel-phase4b-wall-operations.md)。
+Phase 4C 单元覆盖测量 plan、审计持久化与门窗冲突原子拒绝。闭合写入已由下述 Phase 4D 接管，交互分离仍待 Phase 5，详见 [Phase 4B 完成记录](./surveying-module/legacy-kernel-phase4b-wall-operations.md)。
 Phase 4C 测量写入已实现（Implemented）：镜像 `survey/operations/measurement.js` 独立拥有
 `remeasureSelectedWall` 的只读 plan/apply 与现有 full 不可变事务。开链复尺、单一闭合正交
 空间复尺、固定端点、连续双轴平差及门窗范围均在移动节点前预检；原始读数、有效墙长和
 闭合平差保持 `lengthMm = rawMeasuredLengthMm + closureAdjustmentMm`。`commitPreviewLength`
 的已有墙长延长/缩短和新墙审计写入复用同一 helper，legacy kernel 仅保留兼容代理。闭合
-确认、交互状态机及吸附策略仍待后续阶段；本次不新增后台写入口，不改变路由、API、角色、
+确认已由下述 Phase 4D 接管，交互状态机拆分仍待 Phase 5；本次不新增后台写入口，不改变路由、API、角色、
 权限、UI、设计源或 version-4 数据合同。详见
 [Phase 4C 完成记录](./surveying-module/legacy-kernel-phase4c-measurement-operations.md)。
+
+Phase 4D 闭合与合并已实现（Implemented）：`topology/closure-candidates.js` 与
+`closure-plans.js` 只读生成候选、bridge/merge/partition 及正交调整意图；
+`operations/closure.js` 独立拥有 `confirmClosure`，在一次 full 不可变事务中组合预览提交、
+共享墙切点、门窗迁移、共线合并和 Face/Space 同步。规划不读时钟、不分配 ID、不保存图引用；
+失败保留完整输入与历史，旧错误、raw/effective/closure 审计及 session 清理语义不变。
+façade 绑定 `transactionalClosures.confirmClosure`，kernel 只保留兼容代理。预览提交仍通过
+显式回调复用 kernel 的落墙编排，闭合模块不导入 kernel；Phase 5 交互分离尚未完成。
+当前 kernel 为 3,193 行 / 80 个顶层函数，45 模块 / 202 边审计验证 48 对镜像；
+64 个 legacy 与 69 个 façade 导出不变。721 项量房/编辑器、55 项 H5、39 项 Admin 消费者及
+性能门槛通过，新增 18 项测试含完整 4,096 场景冻结闭合差分、双端重复/undo/redo 和原子拒绝。
+全量小程序 1,224 项中 1,210 项通过；14 项失败名称与 Phase 0 既有清单一致。
+后台仍只读，无新增路由、API、角色、租户权限、UI、设计源、BLE、吸附策略或 v4 合同变化。
+详见 [Phase 4D 完成记录](./surveying-module/legacy-kernel-phase4d-closure-operations.md)。
 测试源码不进入运行包；内部重构没有可见 UI 或设计源变化，不需要微信 DevTools 自动化，
 不改变路由、API、角色、权限、错误文案或 version-4 数据合同。
 

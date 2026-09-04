@@ -2,7 +2,7 @@
 
 > 状态：执行中
 >
-> 当前阶段：Phase 4D — 闭合与合并（Phase 4C 已完成）
+> 当前阶段：Phase 5 — 交互策略与 session 状态机（Phase 4D 已完成）
 >
 > 最后检查：2026-09-04
 >
@@ -308,10 +308,13 @@ refactor: extract survey graph read models
 
 #### Phase 4D：闭合与合并
 
-- [ ] closure candidate 的纯计划生成
-- [ ] bridge / merge / partition 计划
-- [ ] `confirmClosure`
-- [ ] 多空间、共享墙和闭合后分裂的完整校验
+- [x] closure candidate 的纯计划生成
+- [x] bridge / merge / partition 计划
+- [x] `confirmClosure`
+- [x] 多空间、共享墙和闭合后分裂的完整校验
+
+完成证据、冻结矩阵差分、计划/事务边界和双端镜像见
+[`legacy-kernel-phase4d-closure-operations.md`](./legacy-kernel-phase4d-closure-operations.md)。
 
 `confirmClosure` 是最后迁移的最高风险操作。它不得与新的吸附策略、UI 状态或数据合同
 变更合并实施。
@@ -499,47 +502,42 @@ node --test test/survey*.test.js test/surveying-editor*.test.js
 
 ### 当前阶段
 
-Phase 4D — 闭合与合并；Phase 4C 已完成。
+Phase 4D 已完成（Implemented，2026-09-04）；下一阶段为 Phase 5 — 交互策略与 session 状态机。
 
 ### 已完成
 
-- [x] Phase 0/1 的行为基线、差分 harness、导出/消费者审计、失败原子性、重复执行、
-      validator 与性能门槛继续有效；行为快照、性能阈值及 validator 未重建或放宽。
-- [x] Phase 2 基础能力、Phase 3 独立读模型/显式 façade 及 Phase 4A 门窗事务保持通过。
-- [x] Phase 4B 先迁移拆墙、再迁移墙体/空间删除；
-      `operations/wall-split.js` 和 `operations/wall-deletion.js` 独立拥有只读 plan/apply，
-      复用既有事务与 full validator。组合拆墙在所有切点完成后由外层事务同步 Space。
-- [x] opening 安全迁移/冲突拒绝、共享墙实体侧、审计分摊、session 引用清理、共线共享
-      界面打通、全共享房间保留几何和删除后墙链恢复均与冻结旧实现等价。
-- [x] 墙链恢复所需的只读路径/闭合查询已移出 kernel；没有迁移闭合确认写入或更改策略。
-      57 个函数体移出 kernel，当前为 4,595 行 / 116 个顶层函数；64 个 legacy 与
-      69 个 façade 导出不变。39 模块 / 141 边无新操作反向/循环依赖，42 对镜像通过审计。
-- [x] 新增 93 项 Phase 4B 测试；27 类拆墙及 59 类删除输入覆盖双端冻结差分、只读计划、
-      原子性、undo/redo、重复输入及对结果再执行。697 项量房、55 项 H5、39 项 Admin
-      消费者测试与大图性能门槛通过。全量小程序 1,198 项中 1,184 项通过，14 项失败
-      名称与 Phase 0 无关既有清单一致。
-- [x] 中英文量房合同及 Mini Program/Admin 模块清单已同步。对外合同无变化：路由、API、
-      角色、权限、UI、错误文案、吸附/闭合策略与正式 v4 数据保持不变。详见
-      [Phase 4B 墙体结构事务迁移记录](./legacy-kernel-phase4b-wall-operations.md)。
-- [x] Phase 4C 将 `remeasureSelectedWall` 迁移至
-      `operations/measurement.js` 的只读 plan/apply 和 full 不可变事务；开链及单一闭合
-      正交空间复尺、固定端点、单轴平差、门窗范围预检与审计守恒均与冻结旧行为一致。
-      `commitPreviewLength` 的已有墙延长/缩短和新墙审计写入复用同一 helper。累计 kernel
-      当前为 4,319 行 / 110 个顶层函数；64 个 legacy 与 69 个 façade 导出不变。40 模块 /
-      158 边无反向/循环依赖，43 对 Mini Program/Admin 镜像通过审计；新增 6 项 Phase 4C
-      测试通过。详见 [Phase 4C 测量写入事务迁移记录](./legacy-kernel-phase4c-measurement-operations.md)。
+- [x] Phase 0–4C 的冻结行为、差分、读模型、门窗、墙体结构、测量写入与性能护栏继续有效；
+      不重建行为/性能快照，不放宽 validator。
+- [x] Phase 4D 的 closure candidate、bridge、merge、partition 与正交调整均产生只读值计划；
+      规划不读时钟、不分配运行 ID、不规格化调用方 session，不保存整图快照或引用。
+- [x] `operations/closure.js` 接管 `confirmClosure`；所有预览提交、桥接、共线合并、共享墙
+      切点与 Space 同步组合在一次外层 full 事务中，失败不改变输入或历史。
+      façade 显式绑定 `transactionalClosures.confirmClosure`，kernel 只保留兼容代理。
+- [x] 移除 kernel 中 30 个顶层函数体，当前 3,193 行 / 80 个顶层函数；
+      64 个 legacy 与 69 个 façade 导出不变。45 模块 / 202 边、48 对 Mini Program/Admin
+      镜像通过审计，新闭合模块的依赖闭包没有 kernel 反向依赖、循环或客户端能力。
+- [x] 新增 18 项 Phase 4D 测试，复用完整 4,096 场景矩阵执行冻结旧实现差分；
+      H5 目录额外逐步比较 preview/commit candidate。双端成功、失败、no-op、重复输入、
+      对结果再执行、snapshot undo/redo、门窗冲突和后置 full 校验原子性均通过。
+- [x] `test:survey-kernel-phase4d`：721 项量房/编辑器、55 项 H5 和大图性能门槛通过；
+      Admin 消费者 39 项通过（8 项 Canvas + 31 项 DXF/读模型/AI）。
+      全量小程序 1,224 项中 1,210 项通过，14 个失败名称与 Phase 0 既有无关清单一致。
+- [x] 中英文量房合同和两端模块清单已同步。对外合同无变化：UI、路由、API、角色、
+      权限、错误文案、吸附/闭合策略、BLE 与正式 v4 数据保持不变。详见
+      [Phase 4D 闭合事务迁移记录](./legacy-kernel-phase4d-closure-operations.md)。
 
 ### 仍保留的边界
 
-- [ ] Phase 4D 闭合写操作仍待迁移；移出的只读闭合查询和 Phase 4C 测量事务不代表
-      Phase 4D 已完成。Phase 5 交互/session 状态机尚未分离。
-- [ ] legacy kernel 仍保留尚未迁移的写操作与交互逻辑；兼容导出未删除或改变。
-- [ ] Phase 6 运行来源收口和 Phase 7 最终治理仍待完成；Admin 继续作为生成镜像。
+- [ ] Phase 5 交互/session 状态机尚未分离。kernel 仍编排预览与落墙；预览闭合通过显式
+      注入的 `commitPreviewLength` 回调提交既有墙体意图。闭合模块不导入 kernel，
+      已提交闭合不需要该回调，回调不拥有或嵌套另一层事务。
+- [ ] Phase 6 兼容层/运行来源收口与 Phase 7 最终治理仍待完成；Admin 继续是生成镜像，
+      未删除兼容导出或宣称整体治理完成。
 
 ### 下一步唯一目标
 
-执行 Phase 4D 的首个闭合计划：在不改变 UI、吸附阈值或正式 v4 数据合同的前提下，迁移
-closure candidate 的纯计划生成；`confirmClosure` 仍需在后续独立事务步骤中接管。
+进入 Phase 5：先建立 session 状态、事件与转换合同，再拆分 preview、snap 和落墙交互编排；
+保持现有 UI、阈值、错误及正式 v4 数据合同。
 
 ## 12. 整体完成定义
 

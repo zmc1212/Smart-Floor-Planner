@@ -29,6 +29,13 @@ function getClosedSpace(floor, spaceId) {
   )) || null;
 }
 
+function getNodeWallUseCount(floor, nodeId) {
+  if (!floor || !nodeId) return 0;
+  return (floor.walls || []).filter((wall) => (
+    wall.startNodeId === nodeId || wall.endNodeId === nodeId
+  )).length;
+}
+
 // Return the only endpoint of a wall that is connected to another wall.
 // Measurement operations use this to keep the connected endpoint fixed while
 // moving a free endpoint. Keeping the lookup in the shared graph-query layer
@@ -57,5 +64,6 @@ module.exports = {
   getLastWall,
   getLastEndNode,
   getClosedSpace,
+  getNodeWallUseCount,
   getSingleSharedEndpoint
 };

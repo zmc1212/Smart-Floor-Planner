@@ -111,8 +111,9 @@ copy back to `layoutData`.
   remapping/conflict rejection, audit allocation, shared-wall body side, session
   reference cleanup, collinear shared-run punch-through, shared-only-room geometry
   and undo/redo retain their frozen behavior. Chain recovery's existing read-only
-  closure queries now live in `topology/closure-queries.js`; closure writes remain
-  for Phase 4D. The kernel is now 4,595 lines / 116 top-level functions, with
+  closure queries now live in `topology/closure-queries.js`; closure writes were
+  outside Phase 4B and are now owned by Phase 4D.
+  The Phase 4B kernel snapshot was 4,595 lines / 116 top-level functions, with
   39 modules / 141 edges and 42 verified mirrors. The 697 surveying, 55 H5 and
   39 Admin tests plus large-graph performance gates pass. The full Mini Program
   suite passes 1,184 of 1,198 tests; all 14 failures match the Phase 0 list.
@@ -132,6 +133,25 @@ copy back to `layoutData`.
   Closure confirmation, snap policy, UI, routes, APIs, permissions, and the
   version-4 data envelope are unchanged. Evidence:
   [`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md).
+- Phase 4D closure and merge operations are Implemented: `topology/closure-candidates.js`
+  and `closure-plans.js` produce read-only candidate, bridge/merge/partition and orthogonal
+  adjustment intents. `operations/closure.js` owns `confirmClosure`, composing preview commits,
+  shared-wall cuts, opening remapping, collinear merging and Face/Space sync in one immutable
+  full-validation transaction. Plans read no clock, allocate no runtime IDs and retain no graph
+  references. Failures preserve the entire input/history; legacy errors, measurement audits and
+  session cleanup stay equivalent. The facade binds `transactionalClosures.confirmClosure`;
+  the kernel retains only its compatibility proxy. Preview submission still uses an explicit
+  commit callback for existing kernel wall orchestration, without a kernel import in closure
+  modules; Phase 5 interaction separation remains pending.
+  The current kernel has 3,193 lines / 80 top-level functions; the 45-module / 202-edge audit
+  verifies 48 mirror pairs. All 64 legacy and 69 facade exports remain compatible.
+  The 721 surveying/editor, 55 H5 and 39 Admin consumer tests plus performance gates pass.
+  The 18 new tests include frozen closure comparisons across all 4,096 formal matrix cases,
+  both-client repeat/undo/redo and atomic rejection. The full Mini Program suite passes
+  1,210 of 1,224 tests; all 14 failure names match the existing Phase 0 list.
+  Admin stays read-only: no route, API, role, tenant permission, UI, design source, BLE,
+  snap policy or v4 contract changes. See the
+  [Phase 4D completion record](./legacy-kernel-phase4d-closure-operations.md).
 - Surveying pan and pinch gestures use the primary Canvas `requestAnimationFrame`
   frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
   coalesced to one callback per animation frame and flushed once at gesture end;

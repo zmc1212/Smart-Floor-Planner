@@ -14,7 +14,6 @@ function createWallOperations(kernel) {
         allowPendingClosure: mode === 'full' && session.closeCandidateType === 'partition'
       };
     }),
-    confirmClosure: wrapOperation('confirmClosure', kernel.confirmClosure, { mode: 'full' }),
     deleteWall: deletions.deleteWall,
     deleteClosedSpace: deletions.deleteClosedSpace,
     snapCursorToWall: wrapOperation('snapCursorToWall', kernel.snapCursorToWall)

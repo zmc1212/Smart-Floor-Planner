@@ -88,6 +88,19 @@ Phase 0/1 建立测试治理能力，Phase 2/3/4A/4B/4C 是行为等价的内部
   kernel 仅保留兼容代理；不接管闭合确认或改变吸附策略。新增 6 项 Phase 4C 单元测试，
   并通过既有量房、Admin 镜像与 full validator 护栏；详见
   [`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md)。
+- Phase 4D 闭合与合并已实现（Implemented）：`topology/closure-candidates.js` 与
+  `closure-plans.js` 只读生成候选、bridge/merge/partition 及正交调整意图；
+  `operations/closure.js` 独立拥有 `confirmClosure`，在一次 full 不可变事务中组合预览提交、
+  共享墙切点、门窗迁移、共线合并和 Face/Space 同步。规划不读时钟、不分配 ID、不保存图引用；
+  失败保留完整输入与历史，旧错误、raw/effective/closure 审计及 session 清理语义不变。
+  façade 绑定 `transactionalClosures.confirmClosure`，kernel 只保留兼容代理。预览提交仍通过
+  显式回调复用 kernel 的落墙编排，闭合模块不导入 kernel；Phase 5 交互分离尚未完成。
+  当前 kernel 为 3,193 行 / 80 个顶层函数，45 模块 / 202 边审计验证 48 对镜像；
+  64 个 legacy 与 69 个 façade 导出不变。721 项量房/编辑器、55 项 H5、39 项 Admin 消费者及
+  性能门槛通过，新增 18 项测试含完整 4,096 场景冻结闭合差分、双端重复/undo/redo 和原子拒绝。
+  全量小程序 1,224 项中 1,210 项通过；14 项失败名称与 Phase 0 既有清单一致。
+  后台仍只读，无新增路由、API、角色、租户权限、UI、设计源、BLE、吸附策略或 v4 合同变化。
+  详见 [Phase 4D 完成记录](./legacy-kernel-phase4d-closure-operations.md)。
 - 编辑器使用 version-4 `surveyGraph`，坐标、长度、墙厚、开口和层高均为毫米。
   门宽/窗宽上限为当前宿主墙长度（不少于 100 mm），由 `normalizeOpeningToWall`
   按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。

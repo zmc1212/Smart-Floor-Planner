@@ -2,6 +2,7 @@ const kernel = require('./survey/legacy-kernel.js');
 const validator = require('./survey/invariants/floor-plan-validator.js');
 const { createWallOperations } = require('./survey/operations/wall-operations.js');
 const { createMeasurementOperations } = require('./survey/operations/measurement.js');
+const { createClosureOperations } = require('./survey/operations/closure.js');
 const { createOpeningOperations } = require('./survey/operations/opening-operations.js');
 const wallGeometry = require('./survey/read-model/wall-geometry.js');
 const wallFaces = require('./survey/read-model/wall-faces.js');
@@ -10,6 +11,7 @@ const spaceDimensions = require('./survey/read-model/space-dimensions.js');
 
 const transactionalWalls = createWallOperations(kernel);
 const transactionalMeasurements = createMeasurementOperations();
+const transactionalClosures = createClosureOperations(kernel.commitPreviewLength);
 const transactionalOpenings = createOpeningOperations();
 
 // Each compatibility export has one explicit owner. Read models are standalone;
@@ -58,7 +60,7 @@ module.exports = {
   reopenLastDiagonalWallForAngle: kernel.reopenLastDiagonalWallForAngle,
   cancelPending: kernel.cancelPending,
   commitPreviewLength: transactionalWalls.commitPreviewLength,
-  confirmClosure: transactionalWalls.confirmClosure,
+  confirmClosure: transactionalClosures.confirmClosure,
   repairCollinearDegree2Walls: kernel.repairCollinearDegree2Walls,
   selectWall: kernel.selectWall,
   selectOpening: kernel.selectOpening,

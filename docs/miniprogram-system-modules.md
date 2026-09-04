@@ -185,15 +185,15 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   splits compose inside commit/closure transactions; full validation follows
   all cuts. Existing chain-recovery queries live in `topology/closure-queries.js`,
   without migrating closure writes or changing snap/closure policy. The Phase
-  4B snapshot was 4,595 lines / 116 top-level functions; after Phase 4C
-  measurement extraction the kernel is 4,319 lines / 110 top-level functions.
-  All 64 legacy and 69 facade exports remain compatible. The current
+  4B snapshot was 4,595 lines / 116 top-level functions; at Phase 4C
+  measurement extraction the kernel was 4,319 lines / 110 top-level functions.
+  All 64 legacy and 69 facade exports remain compatible. The Phase 4C
   40-module / 158-edge audit verifies 43 mirrors.
-  Current acceptance is `cd miniprogram && npm run test:survey-kernel-phase4b`:
+  Phase 4B acceptance was `cd miniprogram && npm run test:survey-kernel-phase4b`:
   697 surveying tests, 55 H5 tests, large-graph performance gates and 39 Admin
   consumer tests pass. The Phase 4C unit checks cover measurement plans, audit
-  persistence and atomic opening rejection. Closure writes and interaction
-  separation remain pending. See the
+  persistence and atomic opening rejection. Closure writes were outside Phase 4B;
+  Phase 4D now owns them. See the
   [Phase 4B completion record](./surveying-module/legacy-kernel-phase4b-wall-operations.md).
   Phase 4C measurement writes are Implemented in the mirrored
   `survey/operations/measurement.js` module. `remeasureSelectedWall` builds a
@@ -202,11 +202,31 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   endpoints, opening spans, axis-only balancing and the raw/effective/closure
   audit relation before moving nodes. The existing-wall extension/shortening
   and new-wall branches of `commitPreviewLength` use the same measurement
-  write helpers. The legacy kernel retains only its compatibility proxy, while
-  closure confirmation and interaction separation remain pending. The Phase
-  4C unit and mirror checks add no route, API, role, permission, UI, snap/
+  write helpers. The legacy kernel retains only its measurement compatibility proxy.
+  Phase 4D now owns closure confirmation; interaction separation remains pending.
+  The Phase 4C unit and mirror checks add no route, API, role, permission, UI, snap/
   closure-policy or version-4 data-contract changes. See the
   [Phase 4C completion record](./surveying-module/legacy-kernel-phase4c-measurement-operations.md).
+
+  Phase 4D closure and merge operations are Implemented: `topology/closure-candidates.js`
+  and `closure-plans.js` produce read-only candidate, bridge/merge/partition and orthogonal
+  adjustment intents. `operations/closure.js` owns `confirmClosure`, composing preview commits,
+  shared-wall cuts, opening remapping, collinear merging and Face/Space sync in one immutable
+  full-validation transaction. Plans read no clock, allocate no runtime IDs and retain no graph
+  references. Failures preserve the entire input/history; legacy errors, measurement audits and
+  session cleanup stay equivalent. The facade binds `transactionalClosures.confirmClosure`;
+  the kernel retains only its compatibility proxy. Preview submission still uses an explicit
+  commit callback for existing kernel wall orchestration, without a kernel import in closure
+  modules; Phase 5 interaction separation remains pending.
+  The current kernel has 3,193 lines / 80 top-level functions; the 45-module / 202-edge audit
+  verifies 48 mirror pairs. All 64 legacy and 69 facade exports remain compatible.
+  The 721 surveying/editor, 55 H5 and 39 Admin consumer tests plus performance gates pass.
+  The 18 new tests include frozen closure comparisons across all 4,096 formal matrix cases,
+  both-client repeat/undo/redo and atomic rejection. The full Mini Program suite passes
+  1,210 of 1,224 tests; all 14 failure names match the existing Phase 0 list.
+  Admin stays read-only: no route, API, role, tenant permission, UI, design source, BLE,
+  snap policy or v4 contract changes. See the
+  [Phase 4D completion record](./surveying-module/legacy-kernel-phase4d-closure-operations.md).
   Test sources are excluded from every runtime package. These internal refactors
   have no visible UI or design-source change, need no WeChat DevTools automation,
   and change no route, API, role, permission, snap/closure rule, error copy, or

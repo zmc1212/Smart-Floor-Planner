@@ -542,6 +542,17 @@ function resolveStraightClosurePlan(floor, session, wall, targetNode, options) {
   return null;
 }
 
+function getMinimumActiveCloseWallCount(floor, session) {
+  const hasSharedBoundary = !!(
+    session && (session.activeSpaceSharedWallId || session.closeCandidateSharedWallId)
+  );
+  if (session && session.closeCandidateType === 'merge') {
+    return getMinimumClosureSuggestionWallCount(floor, session);
+  }
+  if (hasSharedBoundary) return getMinimumDirectBoundaryCloseWallCount(floor, session);
+  return 3;
+}
+
 module.exports = {
   isClosedBoundaryCorner,
   hasClosureInteriorIntersection,
@@ -559,5 +570,6 @@ module.exports = {
   isOrthogonalClosureAdjustmentGeometrySafe,
   getWallClosureCorrectionBudgetMm,
   buildOrthogonalClosureAdjustmentPlan,
-  resolveStraightClosurePlan
+  resolveStraightClosurePlan,
+  getMinimumActiveCloseWallCount
 };

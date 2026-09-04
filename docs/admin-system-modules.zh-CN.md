@@ -111,8 +111,8 @@ Phase 4A 门窗事务也已同步到后台运行镜像（Implemented）：`addOp
 Phase 4B 墙体结构事务已同步实现（Implemented）：镜像 `operations/wall-split.js` 与
 `operations/wall-deletion.js` 使用只读 plan、既有不可变/full 校验事务及 Face/Space 同步。
 门窗迁移、审计分摊、共享墙实体侧、删除/恢复墙链和 session 引用清理与冻结旧实现一致；
-墙链恢复使用独立的 `topology/closure-queries.js`，闭合写入仍待后续阶段。
-Phase 4B 快照为 4,595 行 / 116 个顶层函数；Phase 4C 抽取测量写入后 kernel 为
+墙链恢复使用独立的 `topology/closure-queries.js`，闭合写入由下述 Phase 4D 接管。
+Phase 4B 快照为 4,595 行 / 116 个顶层函数；Phase 4C 快照中 kernel 为
 4,319 行 / 110 个顶层函数；40 模块 / 158 边审计验证 43 对镜像
 （42 对精确副本及 1 对 renderer 路径改写）。39 项后台画布/PNG/DXF/房间/3D/AI 测试、
 697 项量房、55 项 H5 测试与性能门槛通过。不新增后台写入口，路由、API、权限、UI、
@@ -124,6 +124,20 @@ Phase 4C 测量写入已同步实现（Implemented）：镜像 `survey/operation
 审计关系。`commitPreviewLength` 的已有墙长延长/缩短和新墙写入复用同一测量 helper。后台
 仍只读，不新增写路由；闭合确认、路由、API、权限、UI、设计源和 version-4 合同不变。详见
 [Phase 4C 完成记录](./surveying-module/legacy-kernel-phase4c-measurement-operations.md)。
+
+Phase 4D 闭合与合并已实现（Implemented）：`topology/closure-candidates.js` 与
+`closure-plans.js` 只读生成候选、bridge/merge/partition 及正交调整意图；
+`operations/closure.js` 独立拥有 `confirmClosure`，在一次 full 不可变事务中组合预览提交、
+共享墙切点、门窗迁移、共线合并和 Face/Space 同步。规划不读时钟、不分配 ID、不保存图引用；
+失败保留完整输入与历史，旧错误、raw/effective/closure 审计及 session 清理语义不变。
+façade 绑定 `transactionalClosures.confirmClosure`，kernel 只保留兼容代理。预览提交仍通过
+显式回调复用 kernel 的落墙编排，闭合模块不导入 kernel；Phase 5 交互分离尚未完成。
+当前 kernel 为 3,193 行 / 80 个顶层函数，45 模块 / 202 边审计验证 48 对镜像；
+64 个 legacy 与 69 个 façade 导出不变。721 项量房/编辑器、55 项 H5、39 项 Admin 消费者及
+性能门槛通过，新增 18 项测试含完整 4,096 场景冻结闭合差分、双端重复/undo/redo 和原子拒绝。
+全量小程序 1,224 项中 1,210 项通过；14 项失败名称与 Phase 0 既有清单一致。
+后台仍只读，无新增路由、API、角色、租户权限、UI、设计源、BLE、吸附策略或 v4 合同变化。
+详见 [Phase 4D 完成记录](./surveying-module/legacy-kernel-phase4d-closure-operations.md)。
 
 `POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
 

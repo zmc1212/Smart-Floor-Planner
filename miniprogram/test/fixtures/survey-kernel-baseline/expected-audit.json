@@ -3,8 +3,8 @@
   "scope": "Mini Program survey wall-graph facade, kernel modules, callers, and Admin runtime mirror",
   "kernel": {
     "file": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-    "lineCount": 4319,
-    "topLevelFunctionCount": 110
+    "lineCount": 3193,
+    "topLevelFunctionCount": 80
   },
   "facade": {
     "selection": "explicit-property-bindings",
@@ -16,6 +16,7 @@
       "space-dimension-read-model",
       "transactional-wall-operations",
       "transactional-measurement-operations",
+      "transactional-closure-operations",
       "transactional-opening-operations",
       "floor-plan-validator"
     ],
@@ -277,11 +278,11 @@
       {
         "name": "confirmClosure",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
-        "binding": "transactionalWalls.confirmClosure",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "binding": "transactionalClosures.confirmClosure",
         "sourceLayers": [
           "legacy-kernel",
-          "transactional-wall-operations"
+          "transactional-closure-operations"
         ],
         "overwritten": true,
         "sameReferenceAsLegacy": false
@@ -1498,6 +1499,31 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/survey-kernel-phase4d-closure-operations.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../../admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "../packages/surveying/utils/surveyWallGraph.js",
+          "/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "commitPreviewLength",
+          "confirmClosure",
+          "createSurveyDraft",
+          "getActiveFloor",
+          "getNode",
+          "startPreview",
+          "validateSurveyDraft"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/survey-layout.test.js",
         "classification": "test-only",
         "binding": "direct-require",
@@ -2069,6 +2095,7 @@
           "cancelPending",
           "clearBleLockedBearing",
           "cloneDraft",
+          "commitPreviewLength",
           "createSurveyDraft",
           "distanceMm",
           "getActiveFloor",
@@ -2131,6 +2158,7 @@
           "cancelPending",
           "clearBleLockedBearing",
           "cloneDraft",
+          "commitPreviewLength",
           "createSurveyDraft",
           "distanceMm",
           "getActiveFloor",
@@ -2183,6 +2211,7 @@
         ],
         "unresolved": false,
         "exports": [
+          "commitPreviewLength",
           "js"
         ]
       },
@@ -2306,6 +2335,21 @@
         "access": "source-reference",
         "specifiers": [],
         "resolvedFiles": [],
+        "unresolved": false,
+        "exports": []
+      },
+      {
+        "file": "miniprogram/test/survey-kernel-phase4d-closure-operations.test.js",
+        "classification": "test-only",
+        "access": "require",
+        "specifiers": [
+          "../../admin/src/lib/survey-runtime/survey/legacy-kernel.js",
+          "../packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "resolvedFiles": [
+          "admin/src/lib/survey-runtime/survey/legacy-kernel.js",
+          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        ],
         "unresolved": false,
         "exports": []
       },
@@ -2695,7 +2739,7 @@
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/core/session.js",
@@ -2782,6 +2826,20 @@
         "testDirect": true
       },
       {
+        "file": "miniprogram/packages/surveying/utils/survey/operations/closure-candidate.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
         "file": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
         "classification": "production-reachable",
         "facadeReachable": true,
@@ -2793,7 +2851,7 @@
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
@@ -2880,6 +2938,20 @@
         "testDirect": true
       },
       {
+        "file": "miniprogram/packages/surveying/utils/survey/topology/closure-candidates.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
         "file": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js",
         "classification": "production-reachable",
         "facadeReachable": true,
@@ -2922,11 +2994,18 @@
         "testDirect": true
       },
       {
-        "file": "miniprogram/packages/surveying/utils/survey/topology/wall-path.js",
+        "file": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
         "testDirect": false
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/topology/wall-path.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/topology/wall-split.js",
@@ -3082,6 +3161,14 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/closure-candidate.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/closure.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/operations/measurement.js"
       },
       {
@@ -3122,10 +3209,90 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closure-candidates.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/runtime-id.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/transaction.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-split.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/wall-path.js"
       },
       {
@@ -3307,6 +3474,10 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js",
         "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js",
@@ -3481,6 +3652,58 @@
         "to": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js"
       },
       {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-candidates.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-candidates.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-candidates.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-candidates.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-candidates.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js"
+      },
+      {
         "from": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js",
         "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
       },
@@ -3541,12 +3764,44 @@
         "to": "miniprogram/packages/surveying/utils/survey/domain/space.js"
       },
       {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js"
+      },
+      {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
         "to": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
         "to": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/closure.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
@@ -3699,6 +3954,20 @@
       "contentMatches": true
     },
     {
+      "source": "miniprogram/packages/surveying/utils/survey/operations/closure-candidate.js",
+      "target": "admin/src/lib/survey-runtime/survey/operations/closure-candidate.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/operations/closure.js",
+      "target": "admin/src/lib/survey-runtime/survey/operations/closure.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
       "source": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
       "target": "admin/src/lib/survey-runtime/survey/operations/measurement.js",
       "mode": "exact",
@@ -3797,6 +4066,20 @@
       "contentMatches": true
     },
     {
+      "source": "miniprogram/packages/surveying/utils/survey/topology/closure-candidates.js",
+      "target": "admin/src/lib/survey-runtime/survey/topology/closure-candidates.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/topology/closure-plans.js",
+      "target": "admin/src/lib/survey-runtime/survey/topology/closure-plans.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
       "source": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js",
       "target": "admin/src/lib/survey-runtime/survey/topology/closure-queries.js",
       "mode": "exact",
@@ -3834,6 +4117,13 @@
     {
       "source": "miniprogram/packages/surveying/utils/survey/topology/topology-index.js",
       "target": "admin/src/lib/survey-runtime/survey/topology/topology-index.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js",
+      "target": "admin/src/lib/survey-runtime/survey/topology/wall-alignment.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true
