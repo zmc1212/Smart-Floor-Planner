@@ -1,8 +1,8 @@
 # `legacy-kernel.js` 渐进式治理计划
 
-> 状态：执行中
+> 状态：已完成
 >
-> 当前阶段：Phase 6 已完成（Implemented，2026-09-04）；下一阶段为 Phase 7 — 最终治理与防回退约束
+> 当前阶段：Phase 7 已完成（Implemented，2026-09-04）；治理计划关闭
 >
 > 最后检查：2026-09-04
 >
@@ -405,12 +405,12 @@ refactor: retire legacy survey kernel
 
 任务：
 
-- [ ] 在正式量房文档中记录最终模块边界、写入路径和不变量所有权。
-- [ ] 更新受影响的中英文模块清单或合同文档。
-- [ ] 增加架构测试，禁止 pure geometry/read-model 反向依赖 editor、BLE 或 legacy kernel。
-- [ ] 增加重复导出、循环依赖、Mini/Admin 镜像漂移检查。
-- [ ] 更新新功能接入说明：新增规则应放在哪一层、需要哪些测试。
-- [ ] 确认本文所有阶段已完成，再将状态改为“已完成”。
+- [x] 在正式量房文档中记录最终模块边界、写入路径和不变量所有权。
+- [x] 更新受影响的中英文模块清单或合同文档。
+- [x] 增加架构测试，禁止 pure geometry/read-model 反向依赖 editor、BLE 或 legacy kernel。
+- [x] 增加重复导出、循环依赖、Mini/Admin 镜像漂移检查。
+- [x] 更新新功能接入说明：新增规则应放在哪一层、需要哪些测试。
+- [x] 确认本文所有阶段已完成，再将状态改为“已完成”。
 
 验收门槛：
 
@@ -504,7 +504,7 @@ node --test test/survey*.test.js test/surveying-editor*.test.js
 
 ### 当前阶段
 
-Phase 6 已完成（Implemented，2026-09-04）；下一阶段为 Phase 7 — 最终治理与防回退约束。
+Phase 7 已完成（Implemented，2026-09-04）；Phase 0–7 的代码、测试与当前文档已收口。
 
 ### 已完成
 
@@ -537,28 +537,41 @@ Phase 6 已完成（Implemented，2026-09-04）；下一阶段为 Phase 7 — �
 - [x] 22 项 Phase 6 专项、55 项 H5、1,111 项量房/编辑器定向回归通过；完整小程序 1,614 项中 1,600 项通过，14 项为 Phase 0 既有失败（新增 Phase 6 测试通过）。
 - [x] 对外合同无变化，详见 [Phase 6 完成记录](./legacy-kernel-phase6-compatibility.md)。
 
-### 仍保留的边界
+### Phase 7 完成
 
-- [ ] Phase 7 仍需增加架构测试、重复导出/循环依赖/镜像漂移的长期守卫，并收口最终文档。
+- [x] `audit-survey-kernel.js` 的 schema version 2 在快照比较前强制执行架构策略，重写
+      `expected-audit.json` 不能绕过循环依赖、反向依赖、legacy 入边、隐式导出或镜像漂移。
+- [x] 新增 5 项专项测试，覆盖 geometry/read-model 依赖闭包、环路检测器、69/64 显式唯一
+      导出合同、79 文件镜像/manifest 以及当前整体治理门槛。
+- [x] `test:survey-kernel-phase7` 固化 Admin 镜像与 39 项消费者、量房/editor 1,117 项、
+      H5 55 项及构建、大图性能门槛；以上全部通过。
+- [x] 完整小程序 1,620 项中 1,606 项通过；14 项失败名称与 Phase 0 既有清单逐项一致，
+      没有新增失败。
+- [x] 中英文正式合同、Admin/Mini Program 模块清单及 Phase 7 完成记录同步；对外合同无变化。
+
+### 保留的兼容边界
+
 - [x] Phase 6 运行来源收口已完成；Admin 继续保留生成镜像与同步检查，64 个兼容导出待
       后续合同变更再删除。
+- [x] 13 个历史错误/返回代理继续保留；生产 façade 不依赖兼容 kernel，且新增领域行为不得
+      进入这些代理。
 
-### 下一步唯一目标
+### 后续变更入口
 
-进入 Phase 7：把 Phase 6 的审计和镜像清单固化为长期架构守卫与最终文档；保留 Phase 0–6
-行为、镜像和性能护栏。
+本治理计划已完成。后续量房功能按 Phase 7 分层与测试接入说明实施，并运行
+`check:survey-kernel-architecture` / `test:survey-kernel-phase7`；删除兼容导出须另行批准合同变更。
 
 ## 12. 整体完成定义
 
 只有同时满足以下条件，才能宣布本治理完成：
 
-- [ ] `legacy-kernel.js` 不再承载生产领域逻辑，或已在调用审计后安全删除；
-- [ ] façade 保留的每个兼容导出都有显式来源和测试；
-- [ ] geometry、topology、measurement、interaction、operations、session、read-model 边界明确；
-- [ ] graph 的所有写入经过事务和 invariant validation；
-- [ ] read-model 不修改 graph；
-- [ ] BLE/UI/Admin 不进入领域内核；
-- [ ] Mini Program 与 Admin 共享一个权威实现来源；
-- [ ] 基线、差分、模块和完整测试全部通过，或既有无关失败有可复现证据；
-- [ ] 当前中英文文档与最终代码一致；
-- [ ] 没有为了减少行数而留下循环依赖、代理套代理或新的“第二个 kernel”。
+- [x] `legacy-kernel.js` 不再承载生产领域逻辑，或已在调用审计后安全删除；
+- [x] façade 保留的每个兼容导出都有显式来源和测试；
+- [x] geometry、topology、measurement、interaction、operations、session、read-model 边界明确；
+- [x] graph 的所有写入经过事务和 invariant validation；
+- [x] read-model 不修改 graph；
+- [x] BLE/UI/Admin 不进入领域内核；
+- [x] Mini Program 与 Admin 共享一个权威实现来源；
+- [x] 基线、差分、模块和完整测试全部通过，或既有无关失败有可复现证据；
+- [x] 当前中英文文档与最终代码一致；
+- [x] 没有为了减少行数而留下循环依赖、代理套代理或新的“第二个 kernel”。

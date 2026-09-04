@@ -163,6 +163,19 @@ copy back to `layoutData`.
   No UI, artwork, route, API, role, tenant permission, BLE protocol, measurement-audit queue or
   formal v4 data contract changes. Admin remains read-only. No new design source or DevTools
   automation is required. Phase 6 compatibility/runtime-source consolidation is complete; see [the Phase 6 completion record](./legacy-kernel-phase6-compatibility.md).
+- Phase 7 governance is Implemented. `geometry/` remains graph-free and may depend only on
+  geometry; `read-model/` dependency closures cannot reach operations, interaction, snap,
+  compat, the facade, legacy kernel, editor, BLE, `wx`, or browser globals. The complete
+  surveyed module graph must remain acyclic. The facade and legacy compatibility entry each
+  use one explicit export object with unique, runtime-complete bindings. The Mini Program is
+  the sole source authority and the 79-file Admin manifest/mirror rejects missing, stale,
+  extra or divergent files. Graph writes enter through `operations/`, apply to an isolated
+  transaction draft, synchronize topology/Spaces, and pass quick/full validation before the
+  exact version-4 envelope reaches an authorized API write. Geometry, domain, topology,
+  session state, graph invariants, mutation atomicity/audits and server persistence own their
+  respective invariants; read models never write. Placement and test rules for new behavior,
+  plus retained compatibility limits, are recorded in the
+  [Phase 7 governance closure](./legacy-kernel-phase7-governance.md).
 - Surveying pan and pinch gestures use the primary Canvas `requestAnimationFrame`
   frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
   coalesced to one callback per animation frame and flushed once at gesture end;

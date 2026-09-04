@@ -22,7 +22,7 @@ Phase 3 墙体、墙面、空间边界/尺寸独立读模型与显式 façade �
 [`legacy-kernel-phase4c-measurement-operations.md`](./legacy-kernel-phase4c-measurement-operations.md)。
 Phase 4D 闭合事务见 [完成记录](./legacy-kernel-phase4d-closure-operations.md)；Phase 5
 交互、吸附与 session 状态机见 [完成记录](./legacy-kernel-phase5-interaction-state-machine.md)。
-Phase 0/1 建立测试治理能力，Phase 2–6 为行为等价的内部重构；均不改变正式量房运行合同。Phase 6 完成记录见 [兼容层与运行来源收口](./legacy-kernel-phase6-compatibility.md)。
+Phase 0/1 建立测试治理能力，Phase 2–7 为行为等价的内部重构；均不改变正式量房运行合同。Phase 6 完成记录见 [兼容层与运行来源收口](./legacy-kernel-phase6-compatibility.md)，Phase 7 最终边界、写入路径、不变量所有权和接入规则见 [最终治理与防回退约束](./legacy-kernel-phase7-governance.zh-CN.md)。
 
 ## 当前能力
 
@@ -109,6 +109,12 @@ Phase 0/1 建立测试治理能力，Phase 2–6 为行为等价的内部重构�
   1,089 项量房/编辑器、55 项 H5、39 项 Admin 消费者和既有性能门槛通过；全量结果见
   [Phase 5 完成记录](./legacy-kernel-phase5-interaction-state-machine.md)。UI、图片、路由、API、角色、租户权限、BLE 协议、测量审计队列及
   正式 v4 合同均无变化，后台继续只读；无需新设计源或 DevTools 自动化。Phase 6 兼容层与运行来源收口已完成，详见 [Phase 6 完成记录](./legacy-kernel-phase6-compatibility.md)。
+- Phase 7 最终治理已实现（Implemented）：`geometry/` 与 `read-model/` 的单向依赖、全模块
+  无环、façade/legacy 显式唯一导出、生产路径不依赖 legacy kernel，以及 79 对 Mini/Admin
+  镜像与 manifest 一致性均成为不可通过重写快照绕过的架构守卫。graph 写入只由
+  `operations/` 经隔离事务、topology/Space 同步和 quick/full validator 应用；设备、手势、
+  Toast 与 BLE 留在 editor，Admin 保持只读生成镜像。新增规则的分层位置和必需测试见
+  [Phase 7 完成记录](./legacy-kernel-phase7-governance.zh-CN.md)。
 - 编辑器使用 version-4 `surveyGraph`，坐标、长度、墙厚、开口和层高均为毫米。
   门宽/窗宽上限为当前宿主墙长度（不少于 100 mm），由 `normalizeOpeningToWall`
   按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。

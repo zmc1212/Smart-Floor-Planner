@@ -145,6 +145,10 @@ preview/commit/snap 比较、无时钟计划、重复/撤销/重做、失败原�
 1,089 项量房/编辑器、55 项 H5、39 项 Admin 消费者和既有性能门槛通过；全量结果见
 [Phase 5 完成记录](./surveying-module/legacy-kernel-phase5-interaction-state-machine.md)。UI、图片、路由、API、角色、租户权限、BLE 协议、测量审计队列及
 正式 v4 合同均无变化，后台继续只读；无需新设计源或 DevTools 自动化。Phase 6 兼容层与运行来源收口已完成，详见 [Phase 6 完成记录](./surveying-module/legacy-kernel-phase6-compatibility.md)。
+Phase 7 最终治理也已实现：Admin 量房运行时继续作为小程序权威源码的 79 文件只读生成镜像；
+manifest/文件清单/哈希漂移、循环依赖、纯层反向依赖、重复或隐式导出及生产路径依赖 legacy
+kernel 均由长期架构门槛拒绝。本次不改变后台路由、API、模型、角色、租户权限、UI、设计源或
+version-4 合同，详见 [Phase 7 完成记录](./surveying-module/legacy-kernel-phase7-governance.zh-CN.md)。
 
 `POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
 

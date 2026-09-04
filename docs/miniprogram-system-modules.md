@@ -238,6 +238,13 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   No UI, artwork, route, API, role, tenant permission, BLE protocol, measurement-audit queue or
   formal v4 data contract changes. Admin remains read-only. No new design source or DevTools
   automation is required. Phase 6 compatibility/runtime-source consolidation is complete; see [the Phase 6 completion record](./surveying-module/legacy-kernel-phase6-compatibility.md).
+  Phase 7 governance is Implemented: pure geometry/read-model direction, acyclic dependencies,
+  unique explicit facade/legacy exports, production isolation from the compatibility kernel,
+  and the 79-file Mini/Admin manifest mirror are permanent executable gates. New graph writes
+  must use the existing operations transaction, topology/Space synchronization and validator;
+  host/BLE behavior remains in the editor. No route, API, role, permission, UI, BLE protocol,
+  design source or version-4 contract changed. See the
+  [Phase 7 closure](./surveying-module/legacy-kernel-phase7-governance.md).
   Test sources are excluded from every runtime package. These internal refactors
   have no visible UI or design-source change, need no WeChat DevTools automation,
   and change no route, API, role, permission, snap/closure rule, error copy, or

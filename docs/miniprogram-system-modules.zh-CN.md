@@ -131,6 +131,11 @@ preview/commit/snap 比较、无时钟计划、重复/撤销/重做、失败原�
 1,089 项量房/编辑器、55 项 H5、39 项 Admin 消费者和既有性能门槛通过；全量结果见
 [Phase 5 完成记录](./surveying-module/legacy-kernel-phase5-interaction-state-machine.md)。UI、图片、路由、API、角色、租户权限、BLE 协议、测量审计队列及
 正式 v4 合同均无变化，后台继续只读；无需新设计源或 DevTools 自动化。Phase 6 兼容层与运行来源收口已完成，详见 [Phase 6 完成记录](./surveying-module/legacy-kernel-phase6-compatibility.md)。
+Phase 7 最终治理已实现：纯 geometry/read-model 依赖方向、全模块无环、façade/legacy 唯一显式
+导出、生产路径隔离兼容 kernel，以及 79 文件 Mini/Admin manifest 镜像均成为长期可执行门槛。
+新增 graph 写入必须复用现有 operations 事务、topology/Space 同步和 validator；宿主与 BLE 行为
+继续留在 editor。本次不改变路由、API、角色、权限、UI、BLE 协议、设计源或 version-4 合同，
+详见 [Phase 7 完成记录](./surveying-module/legacy-kernel-phase7-governance.zh-CN.md)。
 测试源码不进入运行包；内部重构没有可见 UI 或设计源变化，不需要微信 DevTools 自动化，
 不改变路由、API、角色、权限、错误文案或 version-4 数据合同。
 

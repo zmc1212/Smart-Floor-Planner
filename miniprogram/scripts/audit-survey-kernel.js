@@ -109,6 +109,8 @@ function classifyConsumer(relativePath) {
 }
 
 function parseFacadeBindings(source) {
+  const assignments = source.match(/^module\.exports\s*=/gm) || [];
+  if (assignments.length !== 1) throw new Error('Facade must have exactly one explicit export object');
   const block = source.match(/^module\.exports = \{([\s\S]*?)^\};/m);
   if (!block) throw new Error('Facade must use explicit property bindings');
   const bindings = new Map();
@@ -120,6 +122,22 @@ function parseFacadeBindings(source) {
     bindings.set(name, { owner, property });
   });
   return bindings;
+}
+
+function parseExplicitExportNames(source) {
+  const assignments = source.match(/^module\.exports\s*=/gm) || [];
+  if (assignments.length !== 1) throw new Error('Module must have exactly one explicit export object');
+  const block = source.match(/^module\.exports = \{([\s\S]*?)^\};/m);
+  if (!block) throw new Error('Module must use explicit property bindings');
+  const names = new Set();
+  block[1].split('\n').map((line) => line.trim()).filter(Boolean).forEach((line) => {
+    const match = line.match(/^([A-Za-z_$][\w$]*): [A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+,?$/);
+    if (!match) throw new Error(`Implicit module export binding: ${line}`);
+    const name = match[1];
+    if (names.has(name)) throw new Error(`Duplicate module export: ${name}`);
+    names.add(name);
+  });
+  return [...names].sort();
 }
 
 function buildFacadeAudit() {
@@ -394,6 +412,137 @@ function buildModuleGraph() {
   return { nodes, edges };
 }
 
+function findDependencyCycles(moduleGraph) {
+  const adjacency = new Map();
+  moduleGraph.nodes.forEach(({ file }) => adjacency.set(file, []));
+  moduleGraph.edges.forEach(({ from, to }) => {
+    if (!adjacency.has(from)) adjacency.set(from, []);
+    if (!adjacency.has(to)) adjacency.set(to, []);
+    adjacency.get(from).push(to);
+  });
+  adjacency.forEach((targets, file) => adjacency.set(file, uniqueSorted(targets)));
+
+  let nextIndex = 0;
+  const indexes = new Map();
+  const lowLinks = new Map();
+  const stack = [];
+  const onStack = new Set();
+  const cycles = [];
+
+  const visit = (file) => {
+    indexes.set(file, nextIndex);
+    lowLinks.set(file, nextIndex);
+    nextIndex += 1;
+    stack.push(file);
+    onStack.add(file);
+
+    (adjacency.get(file) || []).forEach((target) => {
+      if (!indexes.has(target)) {
+        visit(target);
+        lowLinks.set(file, Math.min(lowLinks.get(file), lowLinks.get(target)));
+      } else if (onStack.has(target)) {
+        lowLinks.set(file, Math.min(lowLinks.get(file), indexes.get(target)));
+      }
+    });
+
+    if (lowLinks.get(file) !== indexes.get(file)) return;
+    const component = [];
+    let current;
+    do {
+      current = stack.pop();
+      onStack.delete(current);
+      component.push(current);
+    } while (current !== file);
+    component.sort();
+    if (component.length > 1 || (adjacency.get(file) || []).includes(file)) {
+      cycles.push(component);
+    }
+  };
+
+  [...adjacency.keys()].sort().forEach((file) => {
+    if (!indexes.has(file)) visit(file);
+  });
+  return cycles.sort((first, second) => first.join('\n').localeCompare(second.join('\n')));
+}
+
+function collectReachableFiles(moduleGraph, root) {
+  const adjacency = new Map();
+  moduleGraph.edges.forEach(({ from, to }) => {
+    const targets = adjacency.get(from) || [];
+    targets.push(to);
+    adjacency.set(from, targets);
+  });
+  const reachable = new Set();
+  const queue = [root];
+  while (queue.length) {
+    const current = queue.shift();
+    if (reachable.has(current)) continue;
+    reachable.add(current);
+    (adjacency.get(current) || []).forEach((target) => queue.push(target));
+  }
+  return [...reachable].sort();
+}
+
+function buildPureBoundaryAudit(moduleGraph) {
+  const geometryRoots = moduleGraph.nodes
+    .map(({ file }) => file)
+    .filter((file) => file.includes('/survey/geometry/'));
+  const readModelRoots = moduleGraph.nodes
+    .map(({ file }) => file)
+    .filter((file) => file.includes('/survey/read-model/'));
+  const dependencyViolations = [];
+  const environmentViolations = [];
+  const prohibitedReadModelDependency = (file) => (
+    file.endsWith('/surveyWallGraph.js') ||
+    file.endsWith('/legacy-kernel.js') ||
+    /\/survey\/(?:compat|interaction|operations|snap)\//.test(file)
+  );
+
+  geometryRoots.forEach((root) => {
+    collectReachableFiles(moduleGraph, root).forEach((dependency) => {
+      if (!dependency.includes('/survey/geometry/')) {
+        dependencyViolations.push({ root, dependency, rule: 'geometry-only' });
+      }
+    });
+  });
+  readModelRoots.forEach((root) => {
+    collectReachableFiles(moduleGraph, root).forEach((dependency) => {
+      if (prohibitedReadModelDependency(dependency)) {
+        dependencyViolations.push({ root, dependency, rule: 'read-model-no-upward-dependency' });
+      }
+    });
+  });
+
+  const pureClosureFiles = uniqueSorted([
+    ...geometryRoots.flatMap((root) => collectReachableFiles(moduleGraph, root)),
+    ...readModelRoots.flatMap((root) => collectReachableFiles(moduleGraph, root))
+  ]);
+  pureClosureFiles.forEach((file) => {
+    const source = fs.readFileSync(path.join(repoRoot, file), 'utf8');
+    const hostSpecifiers = requireSpecifiers(source).filter((specifier) => (
+      /(?:legacy-kernel|surveyWallGraph|bluetooth|(?:^|[\\/])editor(?:[\\/]|$))/i.test(specifier)
+    ));
+    const hostGlobals = uniqueSorted([
+      ...[...source.matchAll(/\b(wx|window|document|global|globalThis)\s*\./g)].map((match) => match[1]),
+      ...[...source.matchAll(/\b(getApp|getCurrentPages|Page|Component)\s*\(/g)].map((match) => match[1])
+    ]);
+    if (hostSpecifiers.length || hostGlobals.length) {
+      environmentViolations.push({ file, hostSpecifiers: uniqueSorted(hostSpecifiers), hostGlobals });
+    }
+  });
+
+  dependencyViolations.sort((first, second) => (
+    `${first.root}:${first.dependency}`.localeCompare(`${second.root}:${second.dependency}`)
+  ));
+  environmentViolations.sort((first, second) => first.file.localeCompare(second.file));
+  return {
+    geometryRoots: geometryRoots.sort(),
+    readModelRoots: readModelRoots.sort(),
+    dependencyViolations,
+    environmentViolations
+  };
+}
+
 function buildMirrorAudit() {
   const adminRuntimeRoot = path.join(repoRoot, 'admin', 'src', 'lib', 'survey-runtime');
   const exactPairs = walkFiles(path.join(miniSurveyUtils, 'survey')).map((sourcePath) => ({
@@ -439,6 +588,118 @@ function buildMirrorAudit() {
   });
 }
 
+function buildManifestMirrorAudit(adminMirror) {
+  const adminRoot = path.join(repoRoot, 'admin');
+  const manifestPath = path.join(adminRoot, 'src', 'lib', 'survey-runtime', 'source-manifest.json');
+  const errors = [];
+  const expectedEntries = adminMirror.map(({ source, target }) => ({
+    source: source.replace(/^miniprogram\/packages\/surveying\/utils\//, ''),
+    target: target.replace(/^admin\//, '')
+  }));
+  const expectedBySource = new Map(expectedEntries.map((entry) => [entry.source, entry]));
+  let manifest = null;
+  if (!fs.existsSync(manifestPath)) {
+    errors.push('missing source-manifest.json');
+  } else {
+    try {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    } catch (error) {
+      errors.push(`invalid source-manifest.json: ${error.message}`);
+    }
+  }
+
+  const files = Array.isArray(manifest?.files) ? manifest.files : [];
+  if (manifest && manifest.schemaVersion !== 1) errors.push('unexpected manifest schemaVersion');
+  if (manifest && manifest.authority !== 'miniprogram/packages/surveying/utils') {
+    errors.push('unexpected manifest authority');
+  }
+  if (manifest && !Array.isArray(manifest.files)) errors.push('manifest files must be an array');
+  const seenSources = new Set();
+  const seenTargets = new Set();
+  files.forEach((entry) => {
+    if (!entry || typeof entry.source !== 'string' || typeof entry.target !== 'string') {
+      errors.push('invalid manifest entry shape');
+      return;
+    }
+    if (seenSources.has(entry.source)) errors.push(`duplicate manifest source: ${entry.source}`);
+    if (seenTargets.has(entry.target)) errors.push(`duplicate manifest target: ${entry.target}`);
+    seenSources.add(entry.source);
+    seenTargets.add(entry.target);
+    const expected = expectedBySource.get(entry.source);
+    if (!expected) {
+      errors.push(`stale manifest source: ${entry.source}`);
+      return;
+    }
+    if (entry.target !== expected.target) errors.push(`wrong manifest target: ${entry.source}`);
+    const targetPath = path.join(adminRoot, entry.target);
+    if (!/^[a-f0-9]{64}$/.test(entry.sha256 || '')) {
+      errors.push(`invalid manifest hash: ${entry.source}`);
+    } else if (!fs.existsSync(targetPath) || hashFile(targetPath) !== entry.sha256) {
+      errors.push(`manifest hash mismatch: ${entry.source}`);
+    }
+  });
+  expectedEntries.forEach(({ source }) => {
+    if (!seenSources.has(source)) errors.push(`manifest missing source: ${source}`);
+  });
+
+  const hostFiles = new Set([
+    'admin/src/lib/survey-runtime/surveyCanvasRenderer.d.ts'
+  ]);
+  const actualTargets = walkFiles(path.join(adminRoot, 'src', 'lib', 'survey-runtime'))
+    .map(toRepoPath)
+    .filter((file) => !hostFiles.has(file));
+  ['surveyDimensionPlan.js', 'surveyWallSolidPlan.js'].forEach((name) => {
+    const file = path.join(adminRoot, 'src', 'lib', name);
+    if (fs.existsSync(file)) actualTargets.push(toRepoPath(file));
+  });
+  const expectedTargets = new Set(adminMirror.map(({ target }) => target));
+  uniqueSorted(actualTargets).forEach((target) => {
+    if (!expectedTargets.has(target)) errors.push(`stale mirror file: ${target}`);
+  });
+  expectedTargets.forEach((target) => {
+    if (!actualTargets.includes(target)) errors.push(`missing mirror file: ${target}`);
+  });
+
+  return {
+    file: toRepoPath(manifestPath),
+    schemaVersion: manifest?.schemaVersion ?? null,
+    authority: manifest?.authority ?? null,
+    manifestEntryCount: files.length,
+    expectedEntryCount: expectedEntries.length,
+    errors: uniqueSorted(errors)
+  };
+}
+
+function buildExplicitExportContract(relativePath) {
+  const absolutePath = path.join(repoRoot, relativePath);
+  const sourceExports = parseExplicitExportNames(fs.readFileSync(absolutePath, 'utf8'));
+  const runtimeExports = Object.keys(require(absolutePath)).sort();
+  return {
+    file: relativePath,
+    sourceExportCount: sourceExports.length,
+    runtimeExportCount: runtimeExports.length,
+    missingAtRuntime: sourceExports.filter((name) => !runtimeExports.includes(name)),
+    implicitAtRuntime: runtimeExports.filter((name) => !sourceExports.includes(name))
+  };
+}
+
+function buildGovernanceAudit(moduleGraph, adminMirror) {
+  const legacyKernelPath = 'miniprogram/packages/surveying/utils/survey/legacy-kernel.js';
+  return {
+    dependencyCycles: findDependencyCycles(moduleGraph),
+    legacyKernelInboundDependencies: moduleGraph.edges.filter(({ to }) => to === legacyKernelPath),
+    pureBoundaries: buildPureBoundaryAudit(moduleGraph),
+    explicitExportContracts: [
+      buildExplicitExportContract('miniprogram/packages/surveying/utils/surveyWallGraph.js'),
+      buildExplicitExportContract(legacyKernelPath)
+    ],
+    mirrorManifest: buildManifestMirrorAudit(adminMirror),
+    mirrorMismatches: adminMirror.filter(({ targetExists, contentMatches }) => (
+      !targetExists || !contentMatches
+    ))
+  };
+}
+
 function buildKernelFacts() {
   const kernelPath = path.join(miniSurveyUtils, 'survey', 'legacy-kernel.js');
   const source = fs.readFileSync(kernelPath, 'utf8');
@@ -452,15 +713,56 @@ function buildKernelFacts() {
 function createSurveyKernelAudit() {
   const facade = buildFacadeAudit();
   const consumers = buildConsumerAudit(facade.exports.map((entry) => entry.name));
+  const moduleGraph = buildModuleGraph();
+  const adminMirror = buildMirrorAudit();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     scope: 'Mini Program survey wall-graph facade, kernel modules, callers, and Admin runtime mirror',
     kernel: buildKernelFacts(),
     facade,
     consumers,
-    moduleGraph: buildModuleGraph(),
-    adminMirror: buildMirrorAudit()
+    moduleGraph,
+    adminMirror,
+    governance: buildGovernanceAudit(moduleGraph, adminMirror)
   };
+}
+
+function collectGovernanceViolations(audit) {
+  const violations = [];
+  audit.governance.dependencyCycles.forEach((cycle) => {
+    violations.push(`dependency cycle: ${cycle.join(' -> ')}`);
+  });
+  audit.governance.legacyKernelInboundDependencies.forEach(({ from, to }) => {
+    violations.push(`legacy kernel inbound dependency: ${from} -> ${to}`);
+  });
+  audit.governance.pureBoundaries.dependencyViolations.forEach(({ root, dependency, rule }) => {
+    violations.push(`${rule}: ${root} -> ${dependency}`);
+  });
+  audit.governance.pureBoundaries.environmentViolations.forEach(({ file, hostSpecifiers, hostGlobals }) => {
+    violations.push(`host dependency in ${file}: ${[...hostSpecifiers, ...hostGlobals].join(', ')}`);
+  });
+  audit.governance.explicitExportContracts.forEach((contract) => {
+    if (contract.missingAtRuntime.length || contract.implicitAtRuntime.length) {
+      violations.push(`explicit export mismatch in ${contract.file}`);
+    }
+  });
+  audit.governance.mirrorMismatches.forEach(({ source, target }) => {
+    violations.push(`Admin mirror mismatch: ${source} -> ${target}`);
+  });
+  audit.governance.mirrorManifest.errors.forEach((error) => {
+    violations.push(`Admin mirror manifest: ${error}`);
+  });
+  if (audit.kernel.topLevelFunctionCount !== 0) {
+    violations.push(`legacy kernel contains ${audit.kernel.topLevelFunctionCount} top-level functions`);
+  }
+  return violations;
+}
+
+function assertSurveyKernelGovernance(audit) {
+  const violations = collectGovernanceViolations(audit);
+  if (violations.length) {
+    throw new Error(`Survey kernel governance violations:\n- ${violations.join('\n- ')}`);
+  }
 }
 
 function serialize(value) {
@@ -468,7 +770,16 @@ function serialize(value) {
 }
 
 function main() {
-  const actual = serialize(createSurveyKernelAudit());
+  let audit;
+  try {
+    audit = createSurveyKernelAudit();
+    assertSurveyKernelGovernance(audit);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const actual = serialize(audit);
   if (process.argv.includes('--write')) {
     fs.writeFileSync(expectedPath, actual, 'utf8');
     process.stdout.write(`Wrote ${path.relative(process.cwd(), expectedPath)}\n`);
@@ -486,16 +797,25 @@ function main() {
     process.exitCode = 1;
     return;
   }
-  process.stdout.write('Survey kernel Phase 0 export/consumer/dependency audit matches.\n');
+  process.stdout.write('Survey kernel export, dependency, boundary, and mirror governance audit matches.\n');
 }
 
 if (require.main === module) main();
 
 module.exports = {
+  assertSurveyKernelGovernance,
+  buildExplicitExportContract,
   buildConsumerAudit,
   buildFacadeAudit,
+  buildGovernanceAudit,
+  buildManifestMirrorAudit,
+  buildMirrorAudit,
   buildModuleGraph,
+  buildPureBoundaryAudit,
+  collectGovernanceViolations,
   createSurveyKernelAudit,
+  findDependencyCycles,
+  parseExplicitExportNames,
   parseFacadeBindings,
   propertyUses,
   expectedPath,

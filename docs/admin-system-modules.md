@@ -258,6 +258,12 @@ consumer tests and existing performance gates pass. Full-suite results are recor
 No UI, artwork, route, API, role, tenant permission, BLE protocol, measurement-audit queue or
 formal v4 data contract changes. Admin remains read-only. No new design source or DevTools
 automation is required. Phase 6 compatibility/runtime-source consolidation is complete; see [the Phase 6 completion record](./surveying-module/legacy-kernel-phase6-compatibility.md).
+Phase 7 governance is also Implemented: the Admin survey runtime remains a read-only generated
+79-file mirror of the Mini Program authority, and manifest/inventory/hash drift, dependency
+cycles, upward pure-layer imports, duplicate/implicit exports, and production legacy-kernel
+dependencies now fail the permanent architecture gate. No Admin route, API, model, role,
+tenant permission, UI, design source, or version-4 contract changed. See the
+[Phase 7 closure](./surveying-module/legacy-kernel-phase7-governance.md).
 
 DXF generation is likewise read-only: `admin/src/lib/dxf.ts` adapts the graph
 to the MIT-licensed writer, emits unioned inner/outer wall `LINE` faces after

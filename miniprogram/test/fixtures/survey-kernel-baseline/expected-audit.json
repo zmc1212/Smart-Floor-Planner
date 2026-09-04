@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "scope": "Mini Program survey wall-graph facade, kernel modules, callers, and Admin runtime mirror",
   "kernel": {
     "file": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
@@ -1128,10 +1128,14 @@
         "classification": "script",
         "binding": "direct-require",
         "specifiers": [
+          "/surveyWallGraph.js",
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js",
           "surveyWallGraph",
           "surveyWallGraph.js"
         ],
-        "resolvedFiles": [],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
         "unresolved": false,
         "exports": [
           "*"
@@ -2098,6 +2102,7 @@
         "classification": "script",
         "access": "require",
         "specifiers": [
+          "/legacy-kernel.js",
           "legacy-kernel",
           "legacy-kernel.js",
           "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
@@ -2107,7 +2112,8 @@
         ],
         "unresolved": false,
         "exports": [
-          "*"
+          "*",
+          "topLevelFunctionCount"
         ]
       },
       {
@@ -2292,6 +2298,19 @@
           "setMeasurementSide",
           "setThickness"
         ]
+      },
+      {
+        "file": "miniprogram/test/survey-kernel-phase7-governance.test.js",
+        "classification": "test-only",
+        "access": "source-reference",
+        "specifiers": [
+          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "unresolved": false,
+        "exports": []
       }
     ]
   },
@@ -4987,5 +5006,50 @@
       "targetExists": true,
       "contentMatches": true
     }
-  ]
+  ],
+  "governance": {
+    "dependencyCycles": [],
+    "legacyKernelInboundDependencies": [],
+    "pureBoundaries": {
+      "geometryRoots": [
+        "miniprogram/packages/surveying/utils/survey/geometry/polygon.js",
+        "miniprogram/packages/surveying/utils/survey/geometry/segment.js",
+        "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      ],
+      "readModelRoots": [
+        "miniprogram/packages/surveying/utils/survey/read-model/cursor.js",
+        "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
+        "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
+        "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js"
+      ],
+      "dependencyViolations": [],
+      "environmentViolations": []
+    },
+    "explicitExportContracts": [
+      {
+        "file": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "sourceExportCount": 69,
+        "runtimeExportCount": 69,
+        "missingAtRuntime": [],
+        "implicitAtRuntime": []
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "sourceExportCount": 64,
+        "runtimeExportCount": 64,
+        "missingAtRuntime": [],
+        "implicitAtRuntime": []
+      }
+    ],
+    "mirrorManifest": {
+      "file": "admin/src/lib/survey-runtime/source-manifest.json",
+      "schemaVersion": 1,
+      "authority": "miniprogram/packages/surveying/utils",
+      "manifestEntryCount": 79,
+      "expectedEntryCount": 79,
+      "errors": []
+    },
+    "mirrorMismatches": []
+  }
 }
