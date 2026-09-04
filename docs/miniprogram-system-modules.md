@@ -151,11 +151,34 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   The survey wall-graph kernel lives in the surveying subpackage
   (`packages/surveying/utils/surveyWallGraph.js` and `packages/surveying/utils/survey/`);
   the main package keeps a kernel-free `utils/surveyLayout.js` for lead-list
-  previews and business read models. Its test-only Phase 1 differential harness
-  freezes the 64-export legacy kernel, 69-export facade, graph/session/error and
-  quick/full validation semantics, repeatability, and the Mini Program/Admin
-  mirror; it is excluded from every runtime package and changes no route, API,
-  role, permission, UI, or version-4 data contract. The three surveying guide
+  previews and business read models. Phase 2 centralizes draft/session helpers,
+  vector/segment/polygon geometry, wall/opening normalization and length rules,
+  and structured domain errors in one-way foundation modules; the legacy export
+  boundary maps errors back to its historical messages and fields. The Phase 1
+  differential harness plus Phase 2 foundation tests freeze the 64-export legacy
+  kernel, 69-export facade, graph/session/error and quick/full validation semantics,
+  repeatability, dependency direction, and all 35 Mini Program/Admin mirror pairs.
+  The Phase 2 follow-up centralizes the remaining line-distance, measurement-side
+  normal, preview-length and endpoint helpers, preserves legacy empty-floor
+  access, and checks exact rounding against frozen Phase 1 formulas plus all 32
+  domain error-message/field mappings.
+  Phase 3 read-model extraction is Implemented: wall geometry/faces and space
+  boundaries/dimensions now load independently through `core/graph-query.js`,
+  `topology/closed-boundary.js`, and pure foundations. All 69 facade exports have
+  explicit owners; 64 legacy exports remain compatible. Per-function write
+  interception, frozen pre-migration formulas, 11 representative graphs, 48
+  deterministic variants, and dependency guards verify immutable and equivalent
+  Mini/Admin outputs. The acceptance command is
+  `cd miniprogram && npm run test:survey-kernel-phase3`; current evidence is
+  566 surveying tests, 55 H5 tests, and passing large-graph performance gates.
+  The full Mini Program suite passes 1,043 of 1,057 tests; its 14 failures match
+  the Phase 0 unrelated failures. All 35 mirrors and 38 Admin consumer tests pass.
+  Write operations and interaction policy remain for later phases. This internal
+  change has no visible UI or design-source change and needs no WeChat DevTools
+  automation. See the [Phase 3 completion record](./surveying-module/legacy-kernel-phase3-read-models.md).
+  Test sources are excluded from every runtime package, and the refactor changes no
+  route, API, role, permission, UI, snap/closure rule, or version-4 data contract.
+  The three surveying guide
   poses under
   `packages/surveying/assets/surveying-guide-k-*-v3.png` are indexed-palette
   transparent PNGs so that subpackage stays under the same 2MB source cap.

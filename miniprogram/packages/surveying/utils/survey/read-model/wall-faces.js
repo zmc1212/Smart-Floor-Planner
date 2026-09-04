@@ -1,7 +1,6 @@
-function normalizeInset(value) {
-  const amount = Number(value);
-  return Number.isFinite(amount) && amount > 0 ? amount : 0;
-}
+const segment = require('../geometry/segment.js');
+const vector2 = require('../geometry/vector2.js');
+const wallDomain = require('../domain/wall.js');
 
 function wallFrame(start, end) {
   if (!start || !end) return null;
@@ -19,10 +18,7 @@ function wallFrame(start, end) {
 }
 
 function addScaled(point, vector, amount) {
-  return {
-    xMm: Number(point.xMm) + vector.x * amount,
-    yMm: Number(point.yMm) + vector.y * amount
-  };
+  return vector2.addScaled(point, vector, amount);
 }
 
 function resolveBodyNormal(wall, start, end, centroid) {
@@ -61,17 +57,7 @@ function projectWallFaces(wall, start, end, thicknessMm, centroid) {
   };
 }
 
-function measuredReadingMm(topologyLengthMm, wall) {
-  const topology = Number(topologyLengthMm);
-  if (!Number.isFinite(topology)) return 0;
-  return Math.max(
-    0,
-    topology -
-      normalizeInset(wall && wall.measurementStartInsetMm) +
-      normalizeInset(wall && wall.measurementStartExtensionMm) -
-      normalizeInset(wall && wall.measurementEndInsetMm)
-  );
-}
+const measuredReadingMm = wallDomain.measuredReadingMm;
 
 function projectWorkingFace(wall, start, end) {
   const frame = wallFrame(start, end);
@@ -86,25 +72,7 @@ function projectWorkingFace(wall, start, end) {
 
 function intersectWorkingLines(previous, next) {
   if (!previous || !next) return null;
-  const first = {
-    x: Number(previous.end.xMm) - Number(previous.start.xMm),
-    y: Number(previous.end.yMm) - Number(previous.start.yMm)
-  };
-  const second = {
-    x: Number(next.end.xMm) - Number(next.start.xMm),
-    y: Number(next.end.yMm) - Number(next.start.yMm)
-  };
-  const cross = first.x * second.y - first.y * second.x;
-  if (Math.abs(cross) < 0.000001) return null;
-  const between = {
-    x: Number(next.start.xMm) - Number(previous.start.xMm),
-    y: Number(next.start.yMm) - Number(previous.start.yMm)
-  };
-  const factor = (between.x * second.y - between.y * second.x) / cross;
-  return {
-    xMm: Number(previous.start.xMm) + factor * first.x,
-    yMm: Number(previous.start.yMm) + factor * first.y
-  };
+  return segment.intersectLines(previous.start, previous.end, next.start, next.end);
 }
 
 module.exports = {

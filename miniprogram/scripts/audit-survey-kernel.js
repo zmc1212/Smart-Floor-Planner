@@ -102,14 +102,26 @@ function classifyConsumer(relativePath) {
   return 'production-reachable';
 }
 
+function parseFacadeBindings(source) {
+  const block = source.match(/^module\.exports = \{([\s\S]*?)^\};/m);
+  if (!block) throw new Error('Facade must use explicit property bindings');
+  const bindings = new Map();
+  block[1].split('\n').map((line) => line.trim()).filter(Boolean).forEach((line) => {
+    const match = line.match(/^([A-Za-z_$][\w$]*): ([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*),?$/);
+    if (!match) throw new Error(`Implicit facade binding: ${line}`);
+    const [, name, owner, property] = match;
+    if (bindings.has(name)) throw new Error(`Duplicate facade export: ${name}`);
+    bindings.set(name, { owner, property });
+  });
+  return bindings;
+}
+
 function buildFacadeAudit() {
   const kernel = require(path.join(miniSurveyUtils, 'survey', 'legacy-kernel.js'));
-  const wallGeometry = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'wall-geometry.js'))
-    .createWallGeometryReadModel(kernel);
-  const spaceBoundary = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'space-boundary.js'))
-    .createSpaceBoundaryReadModel(kernel);
-  const spaceDimensions = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'space-dimensions.js'))
-    .createSpaceDimensionReadModel(kernel);
+  const wallGeometry = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'wall-geometry.js'));
+  const wallFaces = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'wall-faces.js'));
+  const spaceBoundary = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'space-boundary.js'));
+  const spaceDimensions = require(path.join(miniSurveyUtils, 'survey', 'read-model', 'space-dimensions.js'));
   const wallOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'wall-operations.js'))
     .createWallOperations(kernel);
   const openingOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'opening-operations.js'))
@@ -122,22 +134,30 @@ function buildFacadeAudit() {
   ));
   const facade = require(path.join(miniSurveyUtils, 'surveyWallGraph.js'));
   const layers = [
-    ['legacy-kernel', 'miniprogram/packages/surveying/utils/survey/legacy-kernel.js', kernel],
-    ['wall-geometry-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js', wallGeometry],
-    ['space-boundary-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js', spaceBoundary],
-    ['space-dimension-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js', spaceDimensions],
-    ['transactional-wall-operations', 'miniprogram/packages/surveying/utils/survey/operations/wall-operations.js', wallOperations],
-    ['transactional-opening-operations', 'miniprogram/packages/surveying/utils/survey/operations/opening-operations.js', openingOperations],
-    ['floor-plan-validator', 'miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js', { validateSurveyDraft }]
+    ['kernel', 'legacy-kernel', 'miniprogram/packages/surveying/utils/survey/legacy-kernel.js', kernel],
+    ['wallGeometry', 'wall-geometry-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js', wallGeometry],
+    ['wallFaces', 'wall-faces-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js', wallFaces],
+    ['spaceBoundary', 'space-boundary-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js', spaceBoundary],
+    ['spaceDimensions', 'space-dimension-read-model', 'miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js', spaceDimensions],
+    ['transactionalWalls', 'transactional-wall-operations', 'miniprogram/packages/surveying/utils/survey/operations/wall-operations.js', wallOperations],
+    ['transactionalOpenings', 'transactional-opening-operations', 'miniprogram/packages/surveying/utils/survey/operations/opening-operations.js', openingOperations],
+    ['validator', 'floor-plan-validator', 'miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js', { validateSurveyDraft }]
   ];
+  const bindings = parseFacadeBindings(fs.readFileSync(path.join(miniSurveyUtils, 'surveyWallGraph.js'), 'utf8'));
   const exportNames = Object.keys(facade).sort();
+  if (JSON.stringify([...bindings.keys()].sort()) !== JSON.stringify(exportNames)) {
+    throw new Error('Facade runtime exports differ from explicit source bindings');
+  }
   const exports = exportNames.map((name) => {
     const sources = layers
-      .filter(([, , values]) => Object.prototype.hasOwnProperty.call(values, name))
-      .map(([layer, source]) => ({ layer, source }));
-    const winner = sources[sources.length - 1];
-    const winnerValues = layers.find(([layer]) => winner && layer === winner.layer)[2];
-    const winnerValue = winnerValues[name];
+      .filter(([, , , values]) => Object.prototype.hasOwnProperty.call(values, name))
+      .map(([, layer, source]) => ({ layer, source }));
+    const binding = bindings.get(name);
+    const winner = layers.find(([owner]) => owner === binding.owner);
+    if (!winner || !Object.prototype.hasOwnProperty.call(winner[3], binding.property)) {
+      throw new Error(`Unknown facade owner for ${name}`);
+    }
+    const winnerValue = winner[3][binding.property];
     const matchesWinner = facade[name] === winnerValue || (
       typeof facade[name] === 'function' &&
       typeof winnerValue === 'function' &&
@@ -149,14 +169,16 @@ function buildFacadeAudit() {
     return {
       name,
       kind: typeof facade[name],
-      actualSource: winner.source,
+      actualSource: winner[2],
+      binding: `${binding.owner}.${binding.property}`,
       sourceLayers: sources.map((source) => source.layer),
       overwritten: sources.length > 1,
       sameReferenceAsLegacy: Object.prototype.hasOwnProperty.call(kernel, name) && facade[name] === kernel[name]
     };
   });
   return {
-    compositionOrder: layers.map(([layer]) => layer),
+    selection: 'explicit-property-bindings',
+    sourceModules: layers.map(([, layer]) => layer),
     legacyExportCount: Object.keys(kernel).length,
     facadeExportCount: exportNames.length,
     exports,
@@ -434,6 +456,7 @@ module.exports = {
   buildFacadeAudit,
   buildModuleGraph,
   createSurveyKernelAudit,
+  parseFacadeBindings,
   expectedPath,
   main,
   serialize

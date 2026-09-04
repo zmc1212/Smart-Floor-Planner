@@ -80,6 +80,12 @@ AI 工作台户型预览缓存约束：`/ai-studio/scenarios` 的预览 URL 必�
 
 后台镜像量房内核保留普通闭合的 `350 mm` 直接吸附阈值；符合条件的长正交墙链可通过带审计的墙长平差闭合更大的累计残差。每面参与墙的修正量限制为实测长度的 `2%`，并约束在 `25–150 mm`，总残差硬上限为 `1,000 mm`；超出任一预算的墙链会被拒绝，不会继续平差或补微型桥接墙。投影预览若解析到当前活动墙链起点，保持起点闭合语义；重置光标后的拼接仍保持合并闭合。零旋转拖动辅助线使用精确视口边界。该路径用于保持小程序与后台运行时一致，当前后台路由不调用编辑写路径；路由、API、权限与持久化 graph 数据不变。
 
+Phase 2 后台运行镜像已与小程序共同把 draft/session helper、vector/segment/polygon 几何、wall/opening 规格化与长度，以及结构化领域错误收口到单向依赖的基础模块。legacy 边界保留原错误消息和冲突错误可枚举字段，35 对镜像均通过源码哈希审计（34 对精确副本，另 1 对使用已批准的 renderer require 路径改写）。后台路由仍只读消费这些能力；路由、API、权限、UI、阈值与正式 v4 持久化合同均未改变。
+
+Phase 2 复核已镜像剩余的点到直线距离、测量面法向、预览实测长度及端点反算纯函数，并保留空楼层访问的历史策略。Phase 1 冻结公式差分约束取整和错误行为；不增加后台流程或数据合同变化。
+
+Phase 3 只读模型抽取已实现（Implemented）：墙体几何/墙面及空间边界/尺寸通过 graph 查询、闭合边界拓扑和纯几何独立加载，不依赖 kernel。façade 的 69 个导出显式指定来源，64 个 legacy 导出保持兼容；35 对 Mini Program/Admin 镜像通过审计。`cd admin && npm run test:survey-read-models` 的 38 项测试覆盖画布、PNG 快照、DXF、房间/3D 数据及 AI 适配器，包括 11 类冻结图且不回写派生 `layoutData`。现有路由、API、角色、权限、UI 和 v4 数据不变；内部重构没有设计源变更或运行态截图要求。legacy 写操作与交互路径仍留待后续阶段，详见 [Phase 3 完成记录](./surveying-module/legacy-kernel-phase3-read-models.md)。
+
 `POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
 
 `POST /api/measurements` 接受正式顶层 `auditId`，并兼容 `metadata.auditId`；正式量房审计要求非空且不超过 200 字符。nullable `measurements.audit_id` 使用 `(floor_plan_id, audit_id)` 部分唯一索引：首次创建返回 201 / `deduplicated: false`，重复提交返回同一记录和 200 / `deduplicated: true`。员工审计写入允许户型原保存人、同企业关联线索当前已派家装设计顾问或家装现场顾问，以及已签名企业负责人；未指派员工和跨企业关联继续拒绝，非员工身份仍限定户型创建人。既有 null 行不回填、不合并。发布时先执行 nullable 迁移并上线 Admin API，再发布小程序；应用回滚保留列和索引，历史清理另立经过 dry-run 与审批的批次。小程序现会在上传前持久化每条已接受的审计，获得正式户型 ID 时再按户型绑定并重试，队列不会被静默截断；数据模型与租户边界不变。

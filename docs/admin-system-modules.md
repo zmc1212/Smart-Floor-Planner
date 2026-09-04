@@ -138,6 +138,29 @@ Projected previews that resolve to the active chain start retain start-closure
 semantics, while reset-cursor joins remain merge closures; zero-rotation drag
 guides use the exact viewport bounds. Routes, APIs, permissions, and persisted
 graph data are unchanged.
+The Phase 2 runtime mirror now centralizes draft/session helpers,
+vector/segment/polygon geometry, wall/opening normalization and length rules,
+and structured domain errors in the same one-way foundation modules as the Mini
+Program. The legacy boundary retains historical messages and enumerable conflict
+fields; all 35 mirror pairs pass the source-hash audit (34 exact copies plus the
+approved renderer require-path rewrite). Admin routes remain read-only
+consumers, and no route, API, permission, UI, threshold, or persisted-v4 contract
+changed.
+The Phase 2 follow-up mirrors the remaining pure line-distance, measurement-side
+normal, preview-length and endpoint helpers, plus the historical empty-floor
+access policy. Frozen Phase 1 comparisons preserve rounding and error behavior;
+this adds no Admin workflow or data-contract change.
+Phase 3 read-model extraction is Implemented: wall geometry/faces and space
+boundaries/dimensions load independently of the kernel through graph queries,
+closed-boundary topology, and pure geometry. The facade binds all 69 exports
+explicitly while the 64 legacy exports retain compatibility. Thirty-five
+Mini/Admin mirror pairs pass the audit. The 38 tests in
+`cd admin && npm run test:survey-read-models` cover canvas, PNG snapshots, DXF,
+room/3D data, and AI adapters, including all 11 frozen graph fixtures with no
+derived writes to `layoutData`. Current routes, APIs, roles, permissions, UI and
+v4 data remain unchanged; this internal change has no visual design-source or
+runtime screenshot requirement. The legacy write and interaction paths remain
+for later phases. See the [Phase 3 completion record](./surveying-module/legacy-kernel-phase3-read-models.md).
 DXF generation is likewise read-only: `admin/src/lib/dxf.ts` adapts the graph
 to the MIT-licensed writer, emits unioned inner/outer wall `LINE` faces after
 opening gaps, inserts hinged-door blocks with an open 90° thick leaf, gray dashed

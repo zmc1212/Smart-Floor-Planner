@@ -1,4 +1,5 @@
 const segment = require('./segment.js');
+const vector2 = require('./vector2.js');
 
 const DEGENERATE_EDGE_MM = 0.001;
 
@@ -13,7 +14,50 @@ function signedArea(points) {
 }
 
 function edgeLengthMm(start, end) {
-  return Math.hypot(Number(end.xMm) - Number(start.xMm), Number(end.yMm) - Number(start.yMm));
+  return vector2.distance(start, end);
+}
+
+function orientation(points) {
+  const areaMm2 = signedArea(points);
+  if (areaMm2 > 0) return 'counterclockwise';
+  if (areaMm2 < 0) return 'clockwise';
+  return 'degenerate';
+}
+
+function containsPoint(point, points) {
+  if (!point || !Array.isArray(points) || points.length < 3) return false;
+  let inside = false;
+  for (let index = 0, previous = points.length - 1; index < points.length; previous = index, index += 1) {
+    const currentPoint = points[index];
+    const previousPoint = points[previous];
+    const crossesRay = (currentPoint.yMm > point.yMm) !== (previousPoint.yMm > point.yMm);
+    if (!crossesRay) continue;
+    const intersectionX = (
+      (previousPoint.xMm - currentPoint.xMm) * (point.yMm - currentPoint.yMm) /
+      (previousPoint.yMm - currentPoint.yMm) + currentPoint.xMm
+    );
+    if (point.xMm < intersectionX) inside = !inside;
+  }
+  return inside;
+}
+
+function centroid(points) {
+  if (!Array.isArray(points) || points.length < 3) return null;
+  let twiceArea = 0;
+  let centroidX = 0;
+  let centroidY = 0;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const crossValue = point.xMm * next.yMm - next.xMm * point.yMm;
+    twiceArea += crossValue;
+    centroidX += (point.xMm + next.xMm) * crossValue;
+    centroidY += (point.yMm + next.yMm) * crossValue;
+  });
+  if (Math.abs(twiceArea) < 0.000001) return null;
+  return {
+    xMm: centroidX / (3 * twiceArea),
+    yMm: centroidY / (3 * twiceArea)
+  };
 }
 
 // Collapse zero-length consecutive ring points (including the wrap-around seam).
@@ -75,6 +119,9 @@ function hasSelfIntersection(points) {
 module.exports = {
   signedArea,
   area: (points) => Math.abs(signedArea(points)),
+  orientation,
+  containsPoint,
+  centroid,
   hasSelfIntersection,
   collapseDegenerateRing
 };

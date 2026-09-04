@@ -2,9 +2,9 @@
 
 > 状态：执行中
 >
-> 当前阶段：Phase 2 — 收口纯基础能力
+> 当前阶段：Phase 4A — 门窗及低拓扑风险操作
 >
-> 最后检查：2026-09-03
+> 最后检查：2026-09-04
 >
 > 适用范围：小程序正式量房墙图内核及其 Admin 只读运行镜像
 
@@ -199,11 +199,11 @@ test: add surveying kernel differential harness
 
 执行规则：
 
-- [ ] 每次只收口一个基础函数族。
-- [ ] kernel 先改为调用权威模块，再删除 kernel 内重复实现。
-- [ ] 纯函数模块不能读取或修改 editor/session 全局状态。
-- [ ] 领域层返回错误码和结构化详情；旧中文消息暂由 façade 或 editor 适配。
-- [ ] 不趁机调整吸附阈值、闭合规则或视觉反馈。
+- [x] 每次只收口一个基础函数族。
+- [x] kernel 先改为调用权威模块，再删除 kernel 内重复实现。
+- [x] 纯函数模块不能读取或修改 editor/session 全局状态。
+- [x] 领域层返回错误码和结构化详情；旧消息由兼容导出边界适配。
+- [x] 不趁机调整吸附阈值、闭合规则或视觉反馈。
 
 验收门槛：
 
@@ -220,6 +220,9 @@ refactor: centralize survey geometry primitives
 refactor: separate survey domain errors
 ```
 
+完成证据与当前权威模块映射见
+[`legacy-kernel-phase2-foundations.md`](./legacy-kernel-phase2-foundations.md)。
+
 ### Phase 3：迁移只读模型
 
 目标：让派生视图先脱离 kernel，降低后续写操作的影响面。
@@ -234,11 +237,11 @@ refactor: separate survey domain errors
 
 任务：
 
-- [ ] read-model 直接依赖 graph、topology 和 pure geometry，而不是整个 kernel。
-- [ ] 为每个 read-model 添加“不修改输入 graph”测试。
-- [ ] 对代表性 fixture 比较新旧输出。
-- [ ] 检查小程序画布、Admin 2D 查看器、预览图、DXF、3D 和 AI 适配器的消费者。
-- [ ] 移除 façade 中依赖 `Object.assign` 覆盖顺序的隐式选择。
+- [x] read-model 直接依赖 graph、topology 和 pure geometry，而不是整个 kernel。
+- [x] 为每个 read-model 添加“不修改输入 graph”测试。
+- [x] 对代表性 fixture 比较新旧输出。
+- [x] 检查小程序画布、Admin 2D 查看器、预览图、DXF、3D 和 AI 适配器的消费者。
+- [x] 移除 façade 中依赖 `Object.assign` 覆盖顺序的隐式选择。
 
 验收门槛：
 
@@ -252,6 +255,9 @@ refactor: separate survey domain errors
 ```text
 refactor: extract survey graph read models
 ```
+
+完成证据、消费者映射、只读/差分护栏与性能对照见
+[`legacy-kernel-phase3-read-models.md`](./legacy-kernel-phase3-read-models.md)。
 
 ### Phase 4：按业务操作迁移写路径
 
@@ -356,7 +362,7 @@ refactor: isolate surveying snap policy
 
 - [ ] 为 64 个 legacy 导出标记“已迁移、兼容代理、仍待迁移、可删除”。
 - [ ] 全仓搜索每个待删除导出，包括动态属性访问和测试引用。
-- [ ] 将 `surveyWallGraph.js` 改为显式导出，避免合并顺序覆盖实现。
+- [x] 将 `surveyWallGraph.js` 改为显式导出，避免合并顺序覆盖实现（Phase 3 已完成）。
 - [ ] 让 `legacy-kernel.js` 只保留尚未迁移的兼容代理。
 - [ ] 评估 WeChat 构建和 Next.js 运行约束后，确定单一权威源码方案。
 - [ ] 在共享 package 尚不稳妥时，保留“Mini Program 为权威源、Admin 为生成镜像”的方式，
@@ -484,48 +490,45 @@ node --test test/survey*.test.js test/surveying-editor*.test.js
 
 ### 当前阶段
 
-Phase 2 — 收口纯基础能力。
+Phase 4A — 门窗及低拓扑风险操作。
 
 ### 已完成
 
-- [x] 完成一次只读结构审计，确认 façade、legacy kernel、模块目录和 Admin 镜像关系。
-- [x] 确认 BLE 协议解析不是 `legacy-kernel.js` 的主要职责。
-- [x] 确认现有模块化属于部分抽取，核心写路径仍集中在 kernel。
-- [x] 建立本渐进式治理计划。
-- [x] 固化 69 个 façade 导出的实际来源、17 个覆盖关系、40 个 façade 消费者和
-      27 节点 / 39 边的内核依赖图。
-- [x] 建立 11 个代表性 graph fixture 及其 validator 和只读派生基线。
-- [x] 固化 9 个高风险操作的 18 个成功、失败或显式 no-op 场景，并校验输入不变。
-- [x] 建立 273 节点 / 512 墙 / 240 空间的大图时间与 heap 基线。
-- [x] 固化 `cd miniprogram && npm run test:survey-kernel-phase0` 验收命令，并通过 Phase 0 验收。
-- [x] Phase 0 仅变更基线脚本、fixture、测试、测试命令与文档，并将 H5 的旧 renderer
-      revision 断言对齐当前生产值；对外合同和生产行为无变化。
-- [x] 冻结 legacy kernel 的 64 个 CommonJS 导出、公共 façade 的 69 个导出和 17 个
-      覆盖关系。
-- [x] 建立 graph 语义规范化、逐字段差异报告与 node/wall/opening/space/session
-      引用完整性 helper；持久化 graph 精确比较，仅派生 read-model 使用 `1e-6` 误差。
-- [x] 建立旧实现/候选实现双跑 harness；两边均从隔离输入执行两次，并比较 graph、
-      session、结构化错误、`quick`/`full` validation、read-model、输入不可变和重复一致性。
-- [x] 将 Phase 0 的 18 个高风险成功/失败/no-op 场景全部用于 legacy core ↔ 事务 façade
-      以及 Mini Program ↔ Admin 镜像差分；另保留 30 对源码哈希镜像护栏。
-- [x] 固化 `cd miniprogram && npm run test:survey-kernel-phase1`；当前 530 项量房定向测试、
-      55 项 H5 测试和大图性能门槛通过。
-- [x] 完整 `cd miniprogram && npm test` 发现 1,021 项，1,007 项通过；14 项失败与
-      Phase 0 已记录的页面、资源包和引导合同既有失败一致，量房测试无新增失败。
-- [x] Phase 1 仅增加测试 helper、合同测试、审计快照、npm 命令与文档；对外合同和生产
-      行为无变化。
+- [x] Phase 0/1 的导出、消费者、依赖、行为快照、差分 harness、失败原子性、重复执行、
+      validator 和性能门槛保持有效；Phase 0 行为快照和性能阈值未重建或放宽。
+- [x] Phase 2 完成 draft/session、纯几何、wall/opening 规格化与长度、领域错误和旧消息
+      边界收口，并补齐四个冻结公式与 legacy 空楼层语义；详见 Phase 2 完成记录。
+- [x] Phase 3 按墙体、空间边界、尺寸的函数族顺序迁移；四个 read-model 模块直接依赖
+      graph 查询、闭合墙链和纯基础模块，可在 kernel 与写操作不可用时独立加载。
+- [x] 32 个只读/查询函数体已移出 kernel；剩余 176 个函数体未改动。
+      64 个 legacy 导出与 69 个 façade 导出保留，原 17 个同名提供者改为显式选择；
+      审计不再靠覆盖顺序推断来源。
+- [x] 为每个公开读模型及共享内部 helper 增加输入写入拦截、重复执行、冻结公式精确
+      差分和双端验证；覆盖 11 类冻结图、48 组确定性变体及退化输入，另有依赖与导出守卫。
+- [x] 核查小程序画布、Admin 2D、PNG、DXF、房间/3D 数据和 AI 消费者；场景与 graph
+      语义不变，不生成可编辑派生副本或回写额外的 `layoutData` 字段。
+- [x] 当前结构为 32 个模块节点 / 82 条边；35 对运行镜像通过源码哈希审计
+      （34 对精确副本及 1 对已批准 renderer 路径改写）。
+- [x] `npm --prefix miniprogram run test:survey-kernel-phase3` 通过 566 项量房定向测试、
+      55 项 H5 测试和大图性能门槛；`npm --prefix admin run test:survey-read-models`
+      通过 38 项画布/消费者/DXF/AI 测试。
+- [x] 完整小程序测试 1,057 项，1,043 项通过；14 项失败与 Phase 0 登记的无关既有
+      失败名称完全一致，量房范围无新增失败。
+- [x] Phase 3 是内部行为等价重构；路由、API、角色、权限、UI、吸附/闭合阈值、错误
+      文案与 version-4 持久化合同无变化。完成证据见
+      [Phase 3 只读模型迁移记录](./legacy-kernel-phase3-read-models.md)。
 
-### 尚未开始
+### 仍保留的边界
 
-- [ ] 尚未修改任何生产内核代码。
-- [ ] 尚未迁移任何 façade 导出。
-- [ ] 尚未改变任何路由、API、权限、UI 或数据合同。
+- [ ] Phase 4 写操作迁移与 Phase 5 交互/session 分离尚未开始。
+- [ ] legacy kernel 仍保留写操作和交互查询；没有删除或改变兼容导出。
+- [ ] Phase 6 运行来源收口及 Phase 7 最终治理仍待完成；显式 façade 已由 Phase 3 接管。
 
 ### 下一步唯一目标
 
-执行 Phase 2 的第一个独立函数族：收口 `cloneDraft`、`getActiveFloor`、`touchDraft`
-等 draft 基础操作。先把 legacy 实现与候选模块接入 Phase 1 双跑，再令 kernel 调用权威模块；
-本轮不同时迁移 session、geometry、domain 或任何高风险业务 operation。
+执行 Phase 4A 的首个门窗事务操作：迁移 `addOpeningToWall`。先冻结成功、拒绝、
+输入不变、重复执行与撤销/重做场景，再复用现有事务框架接管；不同时调整门窗规格、
+UI、吸附/闭合策略或正式 v4 数据合同。
 
 ## 12. 整体完成定义
 

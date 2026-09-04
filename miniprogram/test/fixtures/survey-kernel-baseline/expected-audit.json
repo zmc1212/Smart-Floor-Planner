@@ -3,13 +3,15 @@
   "scope": "Mini Program survey wall-graph facade, kernel modules, callers, and Admin runtime mirror",
   "kernel": {
     "file": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-    "lineCount": 7239,
-    "topLevelFunctionCount": 245
+    "lineCount": 6180,
+    "topLevelFunctionCount": 176
   },
   "facade": {
-    "compositionOrder": [
+    "selection": "explicit-property-bindings",
+    "sourceModules": [
       "legacy-kernel",
       "wall-geometry-read-model",
+      "wall-faces-read-model",
       "space-boundary-read-model",
       "space-dimension-read-model",
       "transactional-wall-operations",
@@ -23,6 +25,7 @@
         "name": "CLOSE_TOLERANCE_MM",
         "kind": "number",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.CLOSE_TOLERANCE_MM",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -33,6 +36,7 @@
         "name": "DEFAULT_SCALE",
         "kind": "number",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.DEFAULT_SCALE",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -43,6 +47,7 @@
         "name": "DEFAULT_THICKNESS_MM",
         "kind": "number",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.DEFAULT_THICKNESS_MM",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -53,6 +58,7 @@
         "name": "MIN_THICKNESS_MM",
         "kind": "number",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.MIN_THICKNESS_MM",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -63,6 +69,7 @@
         "name": "MIN_WALL_LENGTH_MM",
         "kind": "number",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.MIN_WALL_LENGTH_MM",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -73,6 +80,7 @@
         "name": "VERTEX_AXIS_SNAP_TOLERANCE_MM",
         "kind": "number",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.VERTEX_AXIS_SNAP_TOLERANCE_MM",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -83,6 +91,7 @@
         "name": "addOpeningToWall",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "binding": "transactionalOpenings.addOpeningToWall",
         "sourceLayers": [
           "legacy-kernel",
           "transactional-opening-operations"
@@ -94,6 +103,7 @@
         "name": "angleDeg",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.angleDeg",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -104,6 +114,7 @@
         "name": "applyPreviewInteriorAngle",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.applyPreviewInteriorAngle",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -114,6 +125,7 @@
         "name": "buildSpaceBoundaryPoints",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "binding": "spaceBoundary.buildSpaceBoundaryPoints",
         "sourceLayers": [
           "legacy-kernel",
           "space-boundary-read-model"
@@ -125,6 +137,7 @@
         "name": "buildSpaceDimensionPlan",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
+        "binding": "spaceDimensions.buildSpaceDimensionPlan",
         "sourceLayers": [
           "legacy-kernel",
           "space-dimension-read-model"
@@ -136,6 +149,7 @@
         "name": "buildSpaceInnerBoundaryPoints",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "binding": "spaceBoundary.buildSpaceInnerBoundaryPoints",
         "sourceLayers": [
           "legacy-kernel",
           "space-boundary-read-model"
@@ -147,6 +161,7 @@
         "name": "buildSpaceRenderBoundaryPoints",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "binding": "spaceBoundary.buildSpaceRenderBoundaryPoints",
         "sourceLayers": [
           "legacy-kernel",
           "space-boundary-read-model"
@@ -158,6 +173,7 @@
         "name": "buildWallJoinRenderGeometries",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "binding": "wallGeometry.buildWallJoinRenderGeometries",
         "sourceLayers": [
           "legacy-kernel",
           "wall-geometry-read-model"
@@ -169,6 +185,7 @@
         "name": "buildWallRenderGeometry",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "binding": "wallGeometry.buildWallRenderGeometry",
         "sourceLayers": [
           "legacy-kernel",
           "wall-geometry-read-model"
@@ -180,6 +197,7 @@
         "name": "buildWallSnapGeometry",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "binding": "wallGeometry.buildWallSnapGeometry",
         "sourceLayers": [
           "legacy-kernel",
           "wall-geometry-read-model"
@@ -191,6 +209,7 @@
         "name": "calculateSpaceAreaMm2",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
+        "binding": "spaceDimensions.calculateSpaceAreaMm2",
         "sourceLayers": [
           "legacy-kernel",
           "space-dimension-read-model"
@@ -202,6 +221,7 @@
         "name": "canSetInitialMeasurementSide",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.canSetInitialMeasurementSide",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -212,6 +232,7 @@
         "name": "cancelPending",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.cancelPending",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -222,6 +243,7 @@
         "name": "clearBleLockedBearing",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.clearBleLockedBearing",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -232,6 +254,7 @@
         "name": "cloneDraft",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.cloneDraft",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -242,6 +265,7 @@
         "name": "commitPreviewLength",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
+        "binding": "transactionalWalls.commitPreviewLength",
         "sourceLayers": [
           "legacy-kernel",
           "transactional-wall-operations"
@@ -253,6 +277,7 @@
         "name": "confirmClosure",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
+        "binding": "transactionalWalls.confirmClosure",
         "sourceLayers": [
           "legacy-kernel",
           "transactional-wall-operations"
@@ -264,6 +289,7 @@
         "name": "createSurveyDraft",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.createSurveyDraft",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -274,6 +300,7 @@
         "name": "deleteClosedSpace",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
+        "binding": "transactionalWalls.deleteClosedSpace",
         "sourceLayers": [
           "legacy-kernel",
           "transactional-wall-operations"
@@ -285,6 +312,7 @@
         "name": "deleteOpening",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "binding": "transactionalOpenings.deleteOpening",
         "sourceLayers": [
           "legacy-kernel",
           "transactional-opening-operations"
@@ -296,6 +324,7 @@
         "name": "deleteWall",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
+        "binding": "transactionalWalls.deleteWall",
         "sourceLayers": [
           "legacy-kernel",
           "transactional-wall-operations"
@@ -307,6 +336,7 @@
         "name": "distanceMm",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.distanceMm",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -317,6 +347,7 @@
         "name": "getActiveFloor",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getActiveFloor",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -327,6 +358,7 @@
         "name": "getClosurePath",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getClosurePath",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -337,6 +369,7 @@
         "name": "getCursorDisplayPoint",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getCursorDisplayPoint",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -347,6 +380,7 @@
         "name": "getCursorPlacementTarget",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getCursorPlacementTarget",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -357,6 +391,7 @@
         "name": "getMinimumActiveCloseWallCount",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getMinimumActiveCloseWallCount",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -367,6 +402,7 @@
         "name": "getMinimumClosureSuggestionWallCount",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getMinimumClosureSuggestionWallCount",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -377,6 +413,7 @@
         "name": "getMinimumDirectBoundaryCloseWallCount",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getMinimumDirectBoundaryCloseWallCount",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -387,6 +424,7 @@
         "name": "getNode",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getNode",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -397,6 +435,7 @@
         "name": "getOpening",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getOpening",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -407,6 +446,7 @@
         "name": "getWall",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getWall",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -417,6 +457,7 @@
         "name": "getWallSnapPoint",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.getWallSnapPoint",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -427,6 +468,7 @@
         "name": "holdPreviewForInput",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.holdPreviewForInput",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -437,6 +479,7 @@
         "name": "isDirectClosureHit",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.isDirectClosureHit",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -447,6 +490,7 @@
         "name": "lockPreviewBearing",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.lockPreviewBearing",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -457,6 +501,7 @@
         "name": "materializeLockedPreview",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.materializeLockedPreview",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -466,9 +511,10 @@
       {
         "name": "measuredReadingMm",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
+        "binding": "wallFaces.measuredReadingMm",
         "sourceLayers": [
-          "wall-geometry-read-model"
+          "wall-faces-read-model"
         ],
         "overwritten": false,
         "sameReferenceAsLegacy": false
@@ -477,6 +523,7 @@
         "name": "placeCursor",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.placeCursor",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -487,6 +534,7 @@
         "name": "placeNewWallChainCursor",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.placeNewWallChainCursor",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -496,9 +544,10 @@
       {
         "name": "projectWallFaces",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
+        "binding": "wallFaces.projectWallFaces",
         "sourceLayers": [
-          "wall-geometry-read-model"
+          "wall-faces-read-model"
         ],
         "overwritten": false,
         "sameReferenceAsLegacy": false
@@ -506,9 +555,10 @@
       {
         "name": "projectWorkingFace",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
+        "binding": "wallFaces.projectWorkingFace",
         "sourceLayers": [
-          "wall-geometry-read-model"
+          "wall-faces-read-model"
         ],
         "overwritten": false,
         "sameReferenceAsLegacy": false
@@ -517,6 +567,7 @@
         "name": "remeasureSelectedWall",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
+        "binding": "transactionalWalls.remeasureSelectedWall",
         "sourceLayers": [
           "legacy-kernel",
           "transactional-wall-operations"
@@ -528,6 +579,7 @@
         "name": "renameClosedSpace",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.renameClosedSpace",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -538,6 +590,7 @@
         "name": "reopenLastDiagonalWallForAngle",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.reopenLastDiagonalWallForAngle",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -548,6 +601,7 @@
         "name": "repairCollinearDegree2Walls",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.repairCollinearDegree2Walls",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -558,6 +612,7 @@
         "name": "resetCursor",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.resetCursor",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -567,9 +622,10 @@
       {
         "name": "resolveBodyNormal",
         "kind": "function",
-        "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "actualSource": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
+        "binding": "wallFaces.resolveBodyNormal",
         "sourceLayers": [
-          "wall-geometry-read-model"
+          "wall-faces-read-model"
         ],
         "overwritten": false,
         "sameReferenceAsLegacy": false
@@ -578,6 +634,7 @@
         "name": "selectOpening",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.selectOpening",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -588,6 +645,7 @@
         "name": "selectSpace",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.selectSpace",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -598,6 +656,7 @@
         "name": "selectWall",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.selectWall",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -608,6 +667,7 @@
         "name": "setFixedNode",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.setFixedNode",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -618,6 +678,7 @@
         "name": "setMeasurementSide",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.setMeasurementSide",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -628,6 +689,7 @@
         "name": "setMode",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.setMode",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -638,6 +700,7 @@
         "name": "setThickness",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.setThickness",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -648,6 +711,7 @@
         "name": "snapCursorToWall",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
+        "binding": "transactionalWalls.snapCursorToWall",
         "sourceLayers": [
           "legacy-kernel",
           "transactional-wall-operations"
@@ -659,6 +723,7 @@
         "name": "startPreview",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.startPreview",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -669,6 +734,7 @@
         "name": "startPreviewFromBearing",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.startPreviewFromBearing",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -679,6 +745,7 @@
         "name": "startRemeasure",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.startRemeasure",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -689,6 +756,7 @@
         "name": "startWallSnap",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.startWallSnap",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -699,6 +767,7 @@
         "name": "updateOpening",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "binding": "transactionalOpenings.updateOpening",
         "sourceLayers": [
           "legacy-kernel",
           "transactional-opening-operations"
@@ -710,6 +779,7 @@
         "name": "updateViewport",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "binding": "kernel.updateViewport",
         "sourceLayers": [
           "legacy-kernel"
         ],
@@ -720,6 +790,7 @@
         "name": "validateSurveyDraft",
         "kind": "function",
         "actualSource": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js",
+        "binding": "validator.validateSurveyDraft",
         "sourceLayers": [
           "floor-plan-validator"
         ],
@@ -1304,6 +1375,56 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/survey-kernel-phase2-compatibility.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "*"
+        ],
+        "unknownProperties": []
+      },
+      {
+        "file": "miniprogram/test/survey-kernel-phase3-architecture.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "*"
+        ],
+        "unknownProperties": []
+      },
+      {
+        "file": "miniprogram/test/survey-kernel-phase3-read-models.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../../admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "*"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/survey-layout.test.js",
         "classification": "test-only",
         "binding": "direct-require",
@@ -1863,7 +1984,54 @@
         ],
         "unresolved": false,
         "exports": [
-          "js"
+          "CLOSE_TOLERANCE_MM",
+          "DEFAULT_SCALE",
+          "DEFAULT_THICKNESS_MM",
+          "MIN_THICKNESS_MM",
+          "MIN_WALL_LENGTH_MM",
+          "VERTEX_AXIS_SNAP_TOLERANCE_MM",
+          "angleDeg",
+          "applyPreviewInteriorAngle",
+          "canSetInitialMeasurementSide",
+          "cancelPending",
+          "clearBleLockedBearing",
+          "cloneDraft",
+          "createSurveyDraft",
+          "distanceMm",
+          "getActiveFloor",
+          "getClosurePath",
+          "getCursorDisplayPoint",
+          "getCursorPlacementTarget",
+          "getMinimumActiveCloseWallCount",
+          "getMinimumClosureSuggestionWallCount",
+          "getMinimumDirectBoundaryCloseWallCount",
+          "getNode",
+          "getOpening",
+          "getWall",
+          "getWallSnapPoint",
+          "holdPreviewForInput",
+          "isDirectClosureHit",
+          "js",
+          "lockPreviewBearing",
+          "materializeLockedPreview",
+          "placeCursor",
+          "placeNewWallChainCursor",
+          "renameClosedSpace",
+          "reopenLastDiagonalWallForAngle",
+          "repairCollinearDegree2Walls",
+          "resetCursor",
+          "selectOpening",
+          "selectSpace",
+          "selectWall",
+          "setFixedNode",
+          "setMeasurementSide",
+          "setMode",
+          "setThickness",
+          "startPreview",
+          "startPreviewFromBearing",
+          "startRemeasure",
+          "startWallSnap",
+          "updateViewport"
         ]
       },
       {
@@ -1878,7 +2046,54 @@
         ],
         "unresolved": false,
         "exports": [
-          "js"
+          "CLOSE_TOLERANCE_MM",
+          "DEFAULT_SCALE",
+          "DEFAULT_THICKNESS_MM",
+          "MIN_THICKNESS_MM",
+          "MIN_WALL_LENGTH_MM",
+          "VERTEX_AXIS_SNAP_TOLERANCE_MM",
+          "angleDeg",
+          "applyPreviewInteriorAngle",
+          "canSetInitialMeasurementSide",
+          "cancelPending",
+          "clearBleLockedBearing",
+          "cloneDraft",
+          "createSurveyDraft",
+          "distanceMm",
+          "getActiveFloor",
+          "getClosurePath",
+          "getCursorDisplayPoint",
+          "getCursorPlacementTarget",
+          "getMinimumActiveCloseWallCount",
+          "getMinimumClosureSuggestionWallCount",
+          "getMinimumDirectBoundaryCloseWallCount",
+          "getNode",
+          "getOpening",
+          "getWall",
+          "getWallSnapPoint",
+          "holdPreviewForInput",
+          "isDirectClosureHit",
+          "js",
+          "lockPreviewBearing",
+          "materializeLockedPreview",
+          "placeCursor",
+          "placeNewWallChainCursor",
+          "renameClosedSpace",
+          "reopenLastDiagonalWallForAngle",
+          "repairCollinearDegree2Walls",
+          "resetCursor",
+          "selectOpening",
+          "selectSpace",
+          "selectWall",
+          "setFixedNode",
+          "setMeasurementSide",
+          "setMode",
+          "setThickness",
+          "startPreview",
+          "startPreviewFromBearing",
+          "startRemeasure",
+          "startWallSnap",
+          "updateViewport"
         ]
       },
       {
@@ -1897,6 +2112,15 @@
         "exports": [
           "js"
         ]
+      },
+      {
+        "file": "miniprogram/test/fixtures/survey-kernel-phase2/foundation-reference.js",
+        "classification": "test-only",
+        "access": "source-reference",
+        "specifiers": [],
+        "resolvedFiles": [],
+        "unresolved": false,
+        "exports": []
       },
       {
         "file": "miniprogram/test/survey-cad-runtime-boundaries.test.js",
@@ -1921,6 +2145,51 @@
         "resolvedFiles": [
           "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
         ],
+        "unresolved": false,
+        "exports": []
+      },
+      {
+        "file": "miniprogram/test/survey-kernel-phase2-compatibility.test.js",
+        "classification": "test-only",
+        "access": "require",
+        "specifiers": [
+          "../packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "js"
+        ]
+      },
+      {
+        "file": "miniprogram/test/survey-kernel-phase2-foundations.test.js",
+        "classification": "test-only",
+        "access": "require",
+        "specifiers": [
+          "../packages/surveying/utils/survey/legacy-kernel.js",
+          "legacy-kernel.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "addOpeningToWall",
+          "commitPreviewLength",
+          "createSurveyDraft",
+          "setThickness"
+        ]
+      },
+      {
+        "file": "miniprogram/test/survey-kernel-phase3-architecture.test.js",
+        "classification": "test-only",
+        "access": "source-reference",
+        "specifiers": [
+          "legacy-kernel.js"
+        ],
+        "resolvedFiles": [],
         "unresolved": false,
         "exports": []
       },
@@ -2278,16 +2547,30 @@
   "moduleGraph": {
     "nodes": [
       {
+        "file": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
         "file": "miniprogram/packages/surveying/utils/survey/core/constants.js",
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/core/draft.js",
-        "classification": "suspected-dead",
-        "facadeReachable": false,
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/core/graph-query.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
         "editorDirect": false,
         "testDirect": false
       },
@@ -2296,7 +2579,14 @@
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/domain/errors.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/domain/opening.js",
@@ -2313,11 +2603,18 @@
         "testDirect": false
       },
       {
+        "file": "miniprogram/packages/surveying/utils/survey/domain/validation.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
         "file": "miniprogram/packages/surveying/utils/survey/domain/wall.js",
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/geometry/intersection.js",
@@ -2345,7 +2642,7 @@
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js",
@@ -2387,14 +2684,14 @@
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
@@ -2408,13 +2705,20 @@
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/snap/snap-engine.js",
         "classification": "editor-direct",
         "facadeReachable": false,
         "editorDirect": true,
+        "testDirect": true
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
         "testDirect": true
       },
       {
@@ -2469,6 +2773,30 @@
     ],
     "edges": [
       {
+        "from": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/core/draft.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/core/draft.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/core/session.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/domain/validation.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/domain/validation.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
+      },
+      {
         "from": "miniprogram/packages/surveying/utils/survey/domain/wall.js",
         "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
       },
@@ -2479,6 +2807,10 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js",
         "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/geometry/segment.js",
@@ -2514,6 +2846,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/face-shadow.js"
       },
       {
@@ -2522,11 +2858,43 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/domain/opening.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/validation.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
@@ -2538,7 +2906,19 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-        "to": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js"
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
@@ -2550,6 +2930,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/transaction.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/transaction.js",
         "to": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js"
       },
       {
@@ -2557,8 +2941,88 @@
         "to": "miniprogram/packages/surveying/utils/survey/operations/transaction.js"
       },
       {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
         "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
         "to": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/snap/snap-engine.js",
@@ -2567,6 +3031,14 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/snap/snap-engine.js",
         "to": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/topology/face-extractor.js",
@@ -2622,11 +3094,22 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/surveyWallGraph.js",
         "to": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js"
       }
     ]
   },
   "adminMirror": [
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js",
+      "target": "admin/src/lib/survey-runtime/survey/compat/legacy-error-messages.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
     {
       "source": "miniprogram/packages/surveying/utils/survey/core/constants.js",
       "target": "admin/src/lib/survey-runtime/survey/core/constants.js",
@@ -2642,8 +3125,22 @@
       "contentMatches": true
     },
     {
+      "source": "miniprogram/packages/surveying/utils/survey/core/graph-query.js",
+      "target": "admin/src/lib/survey-runtime/survey/core/graph-query.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
       "source": "miniprogram/packages/surveying/utils/survey/core/session.js",
       "target": "admin/src/lib/survey-runtime/survey/core/session.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/domain/errors.js",
+      "target": "admin/src/lib/survey-runtime/survey/domain/errors.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true
@@ -2658,6 +3155,13 @@
     {
       "source": "miniprogram/packages/surveying/utils/survey/domain/space.js",
       "target": "admin/src/lib/survey-runtime/survey/domain/space.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/domain/validation.js",
+      "target": "admin/src/lib/survey-runtime/survey/domain/validation.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true
@@ -2763,6 +3267,13 @@
     {
       "source": "miniprogram/packages/surveying/utils/survey/snap/snap-engine.js",
       "target": "admin/src/lib/survey-runtime/survey/snap/snap-engine.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js",
+      "target": "admin/src/lib/survey-runtime/survey/topology/closed-boundary.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true

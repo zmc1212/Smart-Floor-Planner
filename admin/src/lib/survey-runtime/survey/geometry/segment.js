@@ -24,8 +24,7 @@ function properIntersection(a1, a2, b1, b2) {
 }
 
 function samePoint(first, second) {
-  return Math.abs(Number(first.xMm) - Number(second.xMm)) <= EPSILON &&
-    Math.abs(Number(first.yMm) - Number(second.yMm)) <= EPSILON;
+  return vector2.samePointByCoordinates(first, second, EPSILON);
 }
 
 function pointOnSegmentInterior(point, start, end) {
@@ -45,6 +44,147 @@ function collinearOverlapLength(a1, a2, b1, b2) {
   const bMin = Math.min(coordinate(b1), coordinate(b2));
   const bMax = Math.max(coordinate(b1), coordinate(b2));
   return Math.min(aMax, bMax) - Math.max(aMin, bMin);
+}
+
+function intersectLines(a1, a2, b1, b2) {
+  const origin = { x: Number(a1.xMm), y: Number(a1.yMm) };
+  const direction = {
+    x: Number(a2.xMm) - Number(a1.xMm),
+    y: Number(a2.yMm) - Number(a1.yMm)
+  };
+  const otherOrigin = { x: Number(b1.xMm), y: Number(b1.yMm) };
+  const otherDirection = {
+    x: Number(b2.xMm) - Number(b1.xMm),
+    y: Number(b2.yMm) - Number(b1.yMm)
+  };
+  const denominator = vector2.cross(direction, otherDirection);
+  if (Math.abs(denominator) < 0.000001) return null;
+  const t = vector2.cross({
+    x: otherOrigin.x - origin.x,
+    y: otherOrigin.y - origin.y
+  }, otherDirection) / denominator;
+  return {
+    xMm: origin.x + t * direction.x,
+    yMm: origin.y + t * direction.y
+  };
+}
+
+function projectAlong(segment, point) {
+  return vector2.dot({
+    x: Number(point.xMm) - Number(segment.start.xMm),
+    y: Number(point.yMm) - Number(segment.start.yMm)
+  }, segment.direction);
+}
+
+function perpendicularDistanceToLineMm(point, start, end) {
+  if (!point || !start || !end) return Infinity;
+  const dx = end.xMm - start.xMm;
+  const dy = end.yMm - start.yMm;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (!length) return vector2.distanceMm(point, start);
+  return Math.abs((point.xMm - start.xMm) * dy - (point.yMm - start.yMm) * dx) / length;
+}
+
+function overlapLengthMm(start, end, otherStart, otherEnd, toleranceMm) {
+  const dx = Number(end.xMm) - Number(start.xMm);
+  const dy = Number(end.yMm) - Number(start.yMm);
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (!length) return 0;
+  const tolerance = Number.isFinite(toleranceMm) ? toleranceMm : 0;
+  const direction = { x: dx / length, y: dy / length };
+  if (
+    vector2.pointLineDistanceMm(otherStart, start, direction) > tolerance ||
+    vector2.pointLineDistanceMm(otherEnd, start, direction) > tolerance
+  ) {
+    return 0;
+  }
+  const otherStartAlong = vector2.dot({
+    x: Number(otherStart.xMm) - Number(start.xMm),
+    y: Number(otherStart.yMm) - Number(start.yMm)
+  }, direction);
+  const otherEndAlong = vector2.dot({
+    x: Number(otherEnd.xMm) - Number(start.xMm),
+    y: Number(otherEnd.yMm) - Number(start.yMm)
+  }, direction);
+  const overlapStart = Math.max(0, Math.min(otherStartAlong, otherEndAlong));
+  const overlapEnd = Math.min(length, Math.max(otherStartAlong, otherEndAlong));
+  return Math.max(0, overlapEnd - overlapStart);
+}
+
+function hasInteriorIntersection(start, end, otherStart, otherEnd, options) {
+  const tolerance = Number(options && options.overlapToleranceMm) || 0;
+  const direction = {
+    x: Number(end.xMm) - Number(start.xMm),
+    y: Number(end.yMm) - Number(start.yMm)
+  };
+  const otherDirection = {
+    x: Number(otherEnd.xMm) - Number(otherStart.xMm),
+    y: Number(otherEnd.yMm) - Number(otherStart.yMm)
+  };
+  const denominator = vector2.cross(direction, otherDirection);
+  if (Math.abs(denominator) < 0.000001) {
+    return overlapLengthMm(start, end, otherStart, otherEnd, tolerance) > tolerance;
+  }
+  const otherLength = Math.sqrt(
+    otherDirection.x * otherDirection.x + otherDirection.y * otherDirection.y
+  );
+  if (otherLength > 0) {
+    const normalized = {
+      x: otherDirection.x / otherLength,
+      y: otherDirection.y / otherLength
+    };
+    const startDistance = vector2.pointLineDistanceMm(start, otherStart, normalized);
+    const endDistance = vector2.pointLineDistanceMm(end, otherStart, normalized);
+    if (startDistance <= tolerance || endDistance <= tolerance) return false;
+  }
+  const offset = {
+    x: Number(otherStart.xMm) - Number(start.xMm),
+    y: Number(otherStart.yMm) - Number(start.yMm)
+  };
+  const t = vector2.cross(offset, otherDirection) / denominator;
+  const u = vector2.cross(offset, direction) / denominator;
+  const epsilon = 0.0001;
+  return t > epsilon && t < 1 - epsilon && u >= -epsilon && u <= 1 + epsilon;
+}
+
+function projectPointToSegment(point, start, end) {
+  if (!point || !start || !end) return null;
+  const dx = Number(end.xMm) - Number(start.xMm);
+  const dy = Number(end.yMm) - Number(start.yMm);
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return null;
+  const rawT = (
+    (Number(point.xMm) - Number(start.xMm)) * dx +
+    (Number(point.yMm) - Number(start.yMm)) * dy
+  ) / lengthSquared;
+  const t = Math.max(0, Math.min(1, rawT));
+  const projected = {
+    xMm: Math.round(Number(start.xMm) + dx * t),
+    yMm: Math.round(Number(start.yMm) + dy * t)
+  };
+  return {
+    point: projected,
+    t,
+    distanceMm: vector2.distanceMm(point, projected)
+  };
+}
+
+function pointTouchesSegment(point, start, end) {
+  if (!point || !start || !end) return false;
+  const dx = Number(end.xMm) - Number(start.xMm);
+  const dy = Number(end.yMm) - Number(start.yMm);
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return vector2.distanceMm(point, start) <= 1;
+  const t = (
+    (Number(point.xMm) - Number(start.xMm)) * dx +
+    (Number(point.yMm) - Number(start.yMm)) * dy
+  ) / lengthSquared;
+  if (t < -0.0001 || t > 1.0001) return false;
+  const projected = {
+    xMm: Number(start.xMm) + dx * t,
+    yMm: Number(start.yMm) + dy * t
+  };
+  return vector2.distanceMm(point, projected) <= 1;
 }
 
 /**
@@ -104,5 +244,12 @@ module.exports = {
   pointOnSegmentInterior,
   properIntersection,
   segmentsIntersect,
-  classifySegmentRelation
+  classifySegmentRelation,
+  intersectLines,
+  projectAlong,
+  perpendicularDistanceToLineMm,
+  overlapLengthMm,
+  hasInteriorIntersection,
+  projectPointToSegment,
+  pointTouchesSegment
 };

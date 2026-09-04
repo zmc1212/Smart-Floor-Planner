@@ -204,7 +204,7 @@ test('Phase 1 freezes both the 64-export legacy kernel and 69-export CommonJS fa
     if (TRANSACTIONAL_FACADE_EXPORTS.includes(name)) {
       assert.notEqual(miniSurveyGraph[name], legacyKernel[name], `${name} must keep its transaction wrapper`);
     } else {
-      assert.equal(miniSurveyGraph[name], legacyKernel[name], `${name} must keep its read-model proxy`);
+      assert.equal(miniSurveyGraph[name], legacyKernel[name], `${name} must share its authoritative read model`);
     }
   });
 });

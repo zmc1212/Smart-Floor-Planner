@@ -9,8 +9,12 @@ Git 历史保留。
 调用方、依赖、行为与性能基线见
 [`legacy-kernel-phase0-baseline.md`](./legacy-kernel-phase0-baseline.md)；已完成的 Phase 1
 语义比较、双跑、失败原子性、重复执行与 Mini Program/Admin 镜像护栏见
-[`legacy-kernel-phase1-differential.md`](./legacy-kernel-phase1-differential.md)。两阶段均为
-测试与治理能力，不改变正式量房运行合同。
+[`legacy-kernel-phase1-differential.md`](./legacy-kernel-phase1-differential.md)；已完成的
+Phase 2 draft/session、纯几何、wall/opening 与领域错误边界收口见
+[`legacy-kernel-phase2-foundations.md`](./legacy-kernel-phase2-foundations.md)。已完成的
+Phase 3 墙体、墙面、空间边界/尺寸独立读模型与显式 façade 导出见
+[`legacy-kernel-phase3-read-models.md`](./legacy-kernel-phase3-read-models.md)。Phase 0/1
+建立测试治理能力，Phase 2/3 是行为等价的内部运行时重构；均不改变正式量房运行合同。
 
 ## 当前能力
 
@@ -22,6 +26,28 @@ Git 历史保留。
 - 墙图内核位于 `miniprogram/packages/surveying/utils/surveyWallGraph.js` 与
   `miniprogram/packages/surveying/utils/survey/`；主包只保留不加载内核的
   `utils/surveyLayout.js`。
+- Phase 2 基础能力的生产权威源为 `survey/core/{draft,session}.js`、
+  `survey/geometry/{vector2,segment,polygon}.js`、
+  `survey/domain/{wall,opening,errors,validation}.js` 与
+  `survey/compat/legacy-error-messages.js`。`legacy-kernel.js` 消费这些模块且不再保留对应
+  重复函数体；纯基础模块不依赖 kernel、editor、BLE 或 `wx`。内部领域错误使用稳定代码与
+  结构化详情，64 个 legacy 公共导出继续返回原错误消息和历史字段。Admin 运行时保持 35 对
+  可验证镜像；路由、API、权限、UI、吸附/闭合规则和 version-4 graph 不变。
+  复核已补齐点到直线距离、测量面法向、预览实测长度/端点反算，并用 Phase 1 冻结公式
+  精确对照；预览修正取整与存量墙读数保留小数的区别不变。legacy 活动楼层访问保留
+  空数组返回 `undefined`、缺失列表抛错的历史语义，core 安全访问仍返回 `null`。
+- Phase 3 读模型已实现（Implemented）：`survey/read-model/{wall-geometry,wall-faces,
+  space-boundary,space-dimensions}.js` 直接消费 `core/graph-query.js`、
+  `topology/closed-boundary.js` 和纯几何/领域基础能力，不依赖 kernel 或写操作。
+  墙体实体/吸附几何、墙面、空间内皮/渲染边界、净尺寸与面积保持原输出；闭合墙链仍按
+  既有顺序和反向起墙回退解析，连接点比较保留整数毫米取整规则。公共 façade 的 69 个
+  导出逐项指定来源，64 个 legacy 导出保留，其中 8 个读模型直接转发同一权威函数。
+  原 17 个同名提供者改为显式选择，不再依赖 `Object.assign` 的覆盖顺序。
+  32 个迁出函数体没有重复留在 kernel，写操作及交互策略继续由后续阶段治理。
+  11 类冻结图、48 组确定性几何变体及退化输入覆盖逐函数只读、重复执行和双端等价；
+  画布、预览、DXF、房间/3D 数据及 AI 消费者验证不回写派生布局。此阶段无可见 UI
+  改动，不涉及设计源或微信 DevTools 操作；运行镜像为 35 对（34 对精确副本及 renderer
+  的 1 对已批准路径改写）。
 - 编辑器使用 version-4 `surveyGraph`，坐标、长度、墙厚、开口和层高均为毫米。
   门宽/窗宽上限为当前宿主墙长度（不少于 100 mm），由 `normalizeOpeningToWall`
   按该墙 `lengthMm` 夹紧，不再按墙长 60% 封顶。
@@ -213,9 +239,14 @@ null 行不回填、不删除、不合并。员工写入审计时，服务端允
   拓扑写入还须跑 `miniprogram/test/survey-topology-face-shadow-matrix.test.js`
   和 `miniprogram/test/survey-kernel-invariants.test.js`。
 - 迁移 `legacy-kernel.js` 的任何函数族前后都须运行
-  `cd miniprogram && npm run test:survey-kernel-phase1`。该测试侧 harness 对旧实现和候选实现
+  `cd miniprogram && npm run test:survey-kernel-phase3`。该命令保留 Phase 1 harness 对旧实现和候选实现
   双跑同一输入，精确比较 graph/session/错误/`quick`/`full` 校验并检查输入不可变、
-  重复执行和 Mini Program/Admin 镜像一致性；只有派生 read-model 使用 `1e-6` 误差。
+  重复执行和 Mini Program/Admin 镜像一致性；只有派生 read-model 使用 `1e-6` 误差，并另行
+  执行 Phase 2 基础模块边界、退化输入、旧消息兼容和依赖方向测试。Phase 3 另将冻结的
+  迁移前只读公式与 Mini Program/Admin 的独立模块及 façade 精确差分，以写入拦截代理
+  验证每个读模型输入不可变，并禁止反向依赖、循环依赖、隐式或重复导出。
+  `cd admin && npm run test:survey-read-models` 验证 2D 场景、PNG、DXF、房间/3D 与 AI
+  消费路径及原 v4 外壳，完成前同时运行完整小程序测试。
 - `miniprogram/test/survey-closure-scenario-matrix.test.js` 是包含 4,096 个组合的正式闭合场景目录：直角矩形、凹 L、
   凹 U、阶梯轮廓、三角形和斜四边形；闭合容差内外松手；同墙两点围出相邻房；连续十字
   四房分隔；凹形房内分隔在最近边界截停；外墙/分隔墙不同墙厚组合；短段经手工或 BLE

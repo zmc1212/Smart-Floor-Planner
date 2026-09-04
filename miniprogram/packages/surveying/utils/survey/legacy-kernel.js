@@ -1,3 +1,20 @@
+const { buildSpaceDimensionPlan, calculateSpaceAreaMm2 } = require('./read-model/space-dimensions.js');
+const { buildSpaceInnerBoundaryPoints, buildSpaceRenderBoundaryPoints } = require('./read-model/space-boundary.js');
+const {
+  buildWallSnapGeometry,
+  buildWallRenderGeometry,
+  buildWallJoinRenderGeometries,
+  buildBaseWallSegment,
+  buildResolvedSegment,
+  resolveClosedBoundaryInsetMm
+} = require('./read-model/wall-geometry.js');
+const {
+  findClosedSpaceForWall,
+  findClosedSpacesForWall,
+  buildClosedSpaceWallChain,
+  buildSpaceBoundaryPoints
+} = require('./topology/closed-boundary.js');
+const { getNode, getWall } = require('./core/graph-query.js');
 const {
   DEFAULT_THICKNESS_MM,
   DEFAULT_SCALE,
@@ -19,14 +36,61 @@ const {
   MIN_OPENING_SIZE_MM,
   MAX_OPENING_WALL_RATIO
 } = require('./core/constants.js');
+const {
+  createSurveyDraft,
+  cloneDraft,
+  getActiveFloor: findActiveFloor,
+  touchDraft
+} = require('./core/draft.js');
+const {
+  SESSION_STATES,
+  ensureSessionSpaceTracking
+} = require('./core/session.js');
 const vector2 = require('./geometry/vector2.js');
 const segmentGeometry = require('./geometry/segment.js');
+const polygonGeometry = require('./geometry/polygon.js');
 const openingDomain = require('./domain/opening.js');
+const wallDomain = require('./domain/wall.js');
+const domainValidation = require('./domain/validation.js');
+const {
+  SURVEY_DOMAIN_ERROR_CODES: DOMAIN_ERROR_CODES,
+  createSurveyDomainError
+} = require('./domain/errors.js');
+const { adaptLegacySurveyOperation } = require('./compat/legacy-error-messages.js');
 const { syncClosedSpacesFromFaces } = require('./topology/space-sync.js');
-const wallFaces = require('./read-model/wall-faces.js');
+
+const getActiveFloor = (draft) => findActiveFloor(draft, { requireFloorList: true });
+const distanceMm = vector2.distanceMm;
+const angleDeg = vector2.angleDeg;
+const dot = vector2.dot;
+const cross = vector2.cross;
+const pointLineDistanceMm = vector2.pointLineDistanceMm;
+const normalizeAngle = vector2.normalizeAngleDeg;
+const normalizeSignedAngle = vector2.normalizeSignedAngleDeg;
+const addVector = vector2.addScaled;
+const pointTouchesWallSegment = segmentGeometry.pointTouchesSegment;
+const projectPointToWallSegment = segmentGeometry.projectPointToSegment;
+const perpendicularDistanceToLineMm = segmentGeometry.perpendicularDistanceToLineMm;
+const isPointInsidePolygon = polygonGeometry.containsPoint;
+const calculatePolygonAreaMm2 = polygonGeometry.area;
+const normalizeMeasurementInset = wallDomain.normalizeMeasurementAdjustment;
+const normalizeMeasurementExtension = wallDomain.normalizeMeasurementAdjustment;
+const getWallCoordinateLength = wallDomain.coordinateLengthMm;
+const getWallMeasurementInsets = wallDomain.measurementInsets;
+const getMeasuredWallLength = wallDomain.measuredLengthMm;
+const normalForMeasurementSide = wallDomain.normalForMeasurementSide;
+const calculateMeasuredPreviewLength = wallDomain.measuredPreviewLengthMm;
+const pointFromLength = wallDomain.pointFromMeasuredLength;
+const syncWallAdjustmentAfterMetricChange = wallDomain.syncAdjustmentAfterMetricChange;
+const recordWallRawMeasurement = wallDomain.recordRawMeasurement;
+const normalizeOpeningDirection = openingDomain.normalizeOpeningDirection;
+const validateInteriorAngle = domainValidation.validateInteriorAngle;
+const validateLength = domainValidation.validateLength;
+const validateThickness = domainValidation.validateThickness;
+const validateOpeningSize = domainValidation.validateOpeningSize;
+const validateOpeningDepth = domainValidation.validateOpeningDepth;
 
 let idSeed = 1;
-const TRANSACTION_DRAFT_SYMBOL = Symbol.for('smart-floor-planner.survey-transaction-draft');
 // A fixed snap tolerance is too permissive for a short loop and too strict for
 // a long multi-corner traverse. Closure balance therefore has a per-wall
 // correction budget and a separate hard ceiling. The ordinary 350 mm snap
@@ -53,56 +117,6 @@ function syncFloorSpaces(floor, inheritOverrides) {
   });
 }
 
-function cloneDraft(draft) {
-  if (draft && draft[TRANSACTION_DRAFT_SYMBOL]) return draft;
-  return JSON.parse(JSON.stringify(draft));
-}
-
-function createSession() {
-  return {
-    state: 'idle',
-    anchorNodeId: '',
-    previewPoint: null,
-    previewAngleDeg: 0,
-    previewLengthMm: 0,
-    previewAngleSource: '',
-    previewInteriorAngleDeg: null,
-    mode: 'straight',
-    thicknessMm: DEFAULT_THICKNESS_MM,
-    measurementSide: 'left',
-    pendingWallId: '',
-    selectedWallId: '',
-    selectedOpeningId: '',
-    selectedSpaceId: '',
-    closeCandidateNodeId: '',
-    closeCandidatePoint: null,
-    closeCandidateType: '',
-    closeCandidateSharedWallId: '',
-    alignmentSnapGuide: null,
-    activeSpaceStartNodeId: '',
-    activeSpaceStartWallIndex: 0,
-    activeSpaceSharedWallId: '',
-    activeSpaceSharedStartT: null,
-    activeSpaceSharedWallMiddle: false,
-    activeSpaceSharedSnapLine: '',
-    partitionSourceSpaceId: '',
-    lastWallSnapNodeId: '',
-    lastWallSnapWallId: '',
-    lastWallSnapT: null,
-    lastWallSnapWallMiddle: false,
-    lastWallSnapLine: '',
-    previewMeasurementSide: '',
-    previewBodyNormalSide: '',
-    measurementSideUserSet: false,
-    previewMeasurementStartInsetMm: 0,
-    previewMeasurementStartExtensionMm: 0,
-    previewMeasurementEndInsetMm: 0,
-    // The raw cursor can intentionally target a source wall's rendered outer
-    // face. Keep that intent only for the active preview/confirmation pair.
-    previewOuterFaceWallId: ''
-  };
-}
-
 function resetPreviewSideLock(session) {
   if (!session) return;
   session.previewBodyNormalSide = '';
@@ -118,47 +132,6 @@ function clearLastWallSnap(session) {
   session.lastWallSnapLine = '';
 }
 
-function createSurveyDraft() {
-  const timestamp = nowIso();
-  return {
-    schemaVersion: 1,
-    kind: 'survey-wall-graph',
-    status: 'draft',
-    activeFloorId: 'floor-1',
-    floors: [
-      {
-        id: 'floor-1',
-        name: '1F',
-        elevationMm: 0,
-        nodes: [],
-        walls: [],
-        openings: [],
-        spaces: [],
-        session: createSession(),
-        viewport: { scale: DEFAULT_SCALE, offsetX: 0, offsetY: 0 }
-      }
-    ],
-    settings: {
-      defaultThicknessMm: DEFAULT_THICKNESS_MM,
-      orientationDeg: 0
-    },
-    source: 'surveying-editor',
-    updatedAt: timestamp
-  };
-}
-
-function getActiveFloor(draft) {
-  return draft.floors.find((floor) => floor.id === draft.activeFloorId) || draft.floors[0];
-}
-
-function getNode(floor, nodeId) {
-  return floor.nodes.find((node) => node.id === nodeId);
-}
-
-function getWall(floor, wallId) {
-  return floor.walls.find((wall) => wall.id === wallId);
-}
-
 function ensureOpenings(floor) {
   if (!Array.isArray(floor.openings)) {
     floor.openings = [];
@@ -170,395 +143,6 @@ function getOpening(floor, openingId) {
   return ensureOpenings(floor).find((opening) => opening.id === openingId);
 }
 
-function ensureSessionSpaceTracking(floor) {
-  const session = floor.session || createSession();
-  floor.session = session;
-  if (typeof session.activeSpaceStartNodeId !== 'string') {
-    session.activeSpaceStartNodeId = '';
-  }
-  if (!Number.isInteger(session.activeSpaceStartWallIndex) || session.activeSpaceStartWallIndex < 0) {
-    session.activeSpaceStartWallIndex = 0;
-  }
-  if (session.activeSpaceStartWallIndex > floor.walls.length) {
-    session.activeSpaceStartWallIndex = floor.walls.length;
-  }
-  if (typeof session.activeSpaceSharedWallId !== 'string') {
-    session.activeSpaceSharedWallId = '';
-  }
-  if (typeof session.activeSpaceSharedStartT !== 'number') {
-    session.activeSpaceSharedStartT = null;
-  }
-  if (typeof session.activeSpaceSharedWallMiddle !== 'boolean') {
-    session.activeSpaceSharedWallMiddle = false;
-  }
-  if (typeof session.activeSpaceSharedSnapLine !== 'string') {
-    session.activeSpaceSharedSnapLine = '';
-  }
-  if (typeof session.partitionSourceSpaceId !== 'string') {
-    session.partitionSourceSpaceId = '';
-  }
-  if (typeof session.lastWallSnapNodeId !== 'string') {
-    session.lastWallSnapNodeId = '';
-  }
-  if (typeof session.lastWallSnapWallId !== 'string') {
-    session.lastWallSnapWallId = '';
-  }
-  if (typeof session.lastWallSnapT !== 'number') {
-    session.lastWallSnapT = null;
-  }
-  if (typeof session.lastWallSnapWallMiddle !== 'boolean') {
-    session.lastWallSnapWallMiddle = false;
-  }
-  if (typeof session.lastWallSnapLine !== 'string') {
-    session.lastWallSnapLine = '';
-  }
-  if (typeof session.previewMeasurementSide !== 'string') {
-    session.previewMeasurementSide = '';
-  }
-  if (typeof session.previewBodyNormalSide !== 'string') {
-    session.previewBodyNormalSide = '';
-  }
-  if (typeof session.measurementSideUserSet !== 'boolean') {
-    session.measurementSideUserSet = false;
-  }
-  if (!Number.isFinite(Number(session.previewMeasurementStartInsetMm))) {
-    session.previewMeasurementStartInsetMm = 0;
-  }
-  if (!Number.isFinite(Number(session.previewMeasurementStartExtensionMm))) {
-    session.previewMeasurementStartExtensionMm = 0;
-  }
-  if (!Number.isFinite(Number(session.previewMeasurementEndInsetMm))) {
-    session.previewMeasurementEndInsetMm = 0;
-  }
-  if (typeof session.previewOuterFaceWallId !== 'string') {
-    session.previewOuterFaceWallId = '';
-  }
-  if (typeof session.selectedSpaceId !== 'string') {
-    session.selectedSpaceId = '';
-  }
-  if (typeof session.previewAngleSource !== 'string') {
-    session.previewAngleSource = '';
-  }
-  if (!Object.prototype.hasOwnProperty.call(session, 'previewInteriorAngleDeg')) {
-    session.previewInteriorAngleDeg = null;
-  }
-  if (!Object.prototype.hasOwnProperty.call(session, 'closeCandidatePoint')) {
-    session.closeCandidatePoint = null;
-  }
-  if (typeof session.closeCandidateType !== 'string') {
-    session.closeCandidateType = '';
-  }
-  if (typeof session.closeCandidateSharedWallId !== 'string') {
-    session.closeCandidateSharedWallId = '';
-  }
-  if (!Object.prototype.hasOwnProperty.call(session, 'alignmentSnapGuide')) {
-    session.alignmentSnapGuide = null;
-  }
-  return session;
-}
-
-function distanceMm(a, b) {
-  return Math.round(vector2.distance(a, b));
-}
-
-function angleDeg(a, b) {
-  if (!a || !b) return 0;
-  return normalizeAngle(Math.atan2(b.yMm - a.yMm, b.xMm - a.xMm) * 180 / Math.PI);
-}
-
-function dot(a, b) {
-  return a.x * b.x + a.y * b.y;
-}
-
-function cross(a, b) {
-  return a.x * b.y - a.y * b.x;
-}
-
-function pointLineDistanceMm(point, start, direction) {
-  return Math.abs(cross({
-    x: point.xMm - start.xMm,
-    y: point.yMm - start.yMm
-  }, direction));
-}
-
-function normalizeAngle(angle) {
-  let normalized = angle;
-  while (normalized <= -180) normalized += 360;
-  while (normalized > 180) normalized -= 360;
-  return Math.round(normalized * 10) / 10;
-}
-
-function findClosedSpaceForWall(floor, wallId) {
-  if (!floor || !wallId || !Array.isArray(floor.spaces)) return null;
-  return floor.spaces.find((space) => (
-    space &&
-    space.closed &&
-    Array.isArray(space.wallIds) &&
-    space.wallIds.indexOf(wallId) !== -1
-  )) || null;
-}
-
-function findClosedSpacesForWall(floor, wallId) {
-  if (!floor || !wallId || !Array.isArray(floor.spaces)) return [];
-  return floor.spaces.filter((space) => (
-    space &&
-    space.closed &&
-    Array.isArray(space.wallIds) &&
-    space.wallIds.indexOf(wallId) !== -1
-  ));
-}
-
-function isPointInsidePolygon(point, polygon) {
-  if (!point || !Array.isArray(polygon) || polygon.length < 3) return false;
-  let inside = false;
-  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
-    const currentPoint = polygon[index];
-    const previousPoint = polygon[previous];
-    const crossesRay = (currentPoint.yMm > point.yMm) !== (previousPoint.yMm > point.yMm);
-    if (!crossesRay) continue;
-    const intersectionX = (
-      (previousPoint.xMm - currentPoint.xMm) * (point.yMm - currentPoint.yMm) /
-      (previousPoint.yMm - currentPoint.yMm) + currentPoint.xMm
-    );
-    if (point.xMm < intersectionX) inside = !inside;
-  }
-  return inside;
-}
-
-function normalizeMeasurementInset(value) {
-  const parsed = Math.round(Number(value) || 0);
-  return Math.max(0, parsed);
-}
-
-function normalizeMeasurementExtension(value) {
-  const parsed = Math.round(Number(value) || 0);
-  return Math.max(0, parsed);
-}
-
-function getWallCoordinateLength(floor, wall) {
-  if (!floor || !wall) return 0;
-  return distanceMm(
-    getNode(floor, wall.startNodeId),
-    getNode(floor, wall.endNodeId)
-  );
-}
-
-function getWallMeasurementInsets(wall) {
-  return {
-    start: normalizeMeasurementInset(wall && wall.measurementStartInsetMm),
-    end: normalizeMeasurementInset(wall && wall.measurementEndInsetMm)
-  };
-}
-
-function getMeasuredWallLength(floor, wall) {
-  return wallFaces.measuredReadingMm(getWallCoordinateLength(floor, wall), wall);
-}
-
-function calculateBoundaryCentroid(floor, wallIds) {
-  const points = buildSpaceBoundaryPoints(floor, wallIds);
-  if (!points || points.length < 3) return null;
-
-  let twiceArea = 0;
-  let centroidX = 0;
-  let centroidY = 0;
-  points.forEach((point, index) => {
-    const next = points[(index + 1) % points.length];
-    const crossValue = point.xMm * next.yMm - next.xMm * point.yMm;
-    twiceArea += crossValue;
-    centroidX += (point.xMm + next.xMm) * crossValue;
-    centroidY += (point.yMm + next.yMm) * crossValue;
-  });
-  if (Math.abs(twiceArea) < 0.000001) return null;
-  return {
-    xMm: centroidX / (3 * twiceArea),
-    yMm: centroidY / (3 * twiceArea)
-  };
-}
-
-function pointsNearlyEqual(a, b) {
-  return distanceMm(a, b) <= 1;
-}
-
-function addVector(point, vector, amount) {
-  return {
-    xMm: point.xMm + vector.x * amount,
-    yMm: point.yMm + vector.y * amount
-  };
-}
-
-function resolveRenderThicknessMm(wall, options) {
-  const opts = options || {};
-  const thicknessMap = opts.renderThicknessMmMap || {};
-  const mappedThickness = wall && wall.id ? thicknessMap[wall.id] : null;
-  const explicitThickness = opts.renderThicknessMm;
-  const resolved = mappedThickness || explicitThickness || (wall && wall.thicknessMm) || DEFAULT_THICKNESS_MM;
-  return Math.max(MIN_THICKNESS_MM, resolved);
-}
-
-function traceClosedSpaceWallChain(floor, wallIds, reverseFirstWall) {
-  if (!floor || !Array.isArray(wallIds) || wallIds.length < 3) return [];
-  const firstWall = getWall(floor, wallIds[0]);
-  if (!firstWall) return [];
-
-  const initialNodeId = reverseFirstWall ? firstWall.endNodeId : firstWall.startNodeId;
-  let currentNodeId = initialNodeId;
-  const chain = [];
-
-  for (let index = 0; index < wallIds.length; index += 1) {
-    const wall = getWall(floor, wallIds[index]);
-    if (!wall) return [];
-    let nextNodeId = '';
-    if (wall.startNodeId === currentNodeId) {
-      nextNodeId = wall.endNodeId;
-    } else if (wall.endNodeId === currentNodeId) {
-      nextNodeId = wall.startNodeId;
-    } else {
-      return [];
-    }
-    const start = getNode(floor, currentNodeId);
-    const end = getNode(floor, nextNodeId);
-    if (!start || !end) return [];
-    chain.push({ wall, start, end, reversed: wall.endNodeId === currentNodeId });
-    currentNodeId = nextNodeId;
-  }
-
-  return currentNodeId === initialNodeId ? chain : [];
-}
-
-function buildClosedSpaceWallChain(floor, wallIds) {
-  const forward = traceClosedSpaceWallChain(floor, wallIds, false);
-  return forward.length ? forward : traceClosedSpaceWallChain(floor, wallIds, true);
-}
-
-function resolveAdjacentWalls(floor, wall, options) {
-  const opts = options || {};
-  const hasPrevious = Object.prototype.hasOwnProperty.call(opts, 'previousWall');
-  const hasNext = Object.prototype.hasOwnProperty.call(opts, 'nextWall');
-  const index = floor.walls.findIndex((item) => item.id === wall.id);
-  const closedSpace = findClosedSpaceForWall(floor, wall.id);
-  let startWall = null;
-  let endWall = null;
-
-  if (!hasPrevious && !hasNext && closedSpace) {
-    const chain = buildClosedSpaceWallChain(floor, closedSpace.wallIds);
-    const closedIndex = chain.findIndex((entry) => entry.wall.id === wall.id);
-    if (closedIndex >= 0) {
-      const entry = chain[closedIndex];
-      const previousWall = chain[(closedIndex - 1 + chain.length) % chain.length].wall;
-      const nextWall = chain[(closedIndex + 1) % chain.length].wall;
-      return entry.reversed
-        ? { startWall: nextWall, endWall: previousWall }
-        : { startWall: previousWall, endWall: nextWall };
-    }
-  }
-
-  if (hasPrevious) {
-    startWall = opts.previousWall;
-  } else if (index > 0) {
-    startWall = floor.walls[index - 1];
-  }
-
-  if (hasNext) {
-    endWall = opts.nextWall;
-  } else if (index >= 0 && index < floor.walls.length - 1) {
-    endWall = floor.walls[index + 1];
-  }
-
-  return { startWall, endWall };
-}
-
-function pointTouchesWallSegment(point, start, end) {
-  if (!point || !start || !end) return false;
-  const dx = end.xMm - start.xMm;
-  const dy = end.yMm - start.yMm;
-  const lengthSquared = dx * dx + dy * dy;
-  if (!lengthSquared) return distanceMm(point, start) <= 1;
-  const t = ((point.xMm - start.xMm) * dx + (point.yMm - start.yMm) * dy) / lengthSquared;
-  if (t < -0.0001 || t > 1.0001) return false;
-  const projected = { xMm: start.xMm + dx * t, yMm: start.yMm + dy * t };
-  return distanceMm(point, projected) <= 1;
-}
-
-function hasWallConnectionAtPoint(floor, wall, point) {
-  return (floor.walls || []).some((candidate) => {
-    if (!candidate || candidate.id === wall.id) return false;
-    const start = getNode(floor, candidate.startNodeId);
-    const end = getNode(floor, candidate.endNodeId);
-    return pointTouchesWallSegment(point, start, end);
-  });
-}
-
-function buildBaseWallSegment(floor, wall, options) {
-  const opts = options || {};
-  const start = opts.startPoint || getNode(floor, wall.startNodeId);
-  const end = opts.endPoint || getNode(floor, wall.endNodeId);
-  if (!start || !end) return null;
-
-  const closedSpace = findClosedSpaceForWall(floor, wall.id);
-  const centroid = closedSpace ? calculateBoundaryCentroid(floor, closedSpace.wallIds) : null;
-  const thicknessMm = resolveRenderThicknessMm(wall, opts);
-  const faces = wallFaces.projectWallFaces(wall, start, end, thicknessMm, centroid);
-  if (!faces) return null;
-
-  return {
-    wall,
-    start,
-    end,
-    direction: faces.direction,
-    normal: faces.normal,
-    thicknessMm,
-    lengthMm: distanceMm(start, end),
-    outerStart: faces.outerStart,
-    outerEnd: faces.outerEnd
-  };
-}
-
-function findPerpendicularClosedBoundaryWall(floor, node, towardPoint, excludedWallId, preferredWallId) {
-  if (!floor || !node || !towardPoint) return null;
-  const dx = towardPoint.xMm - node.xMm;
-  const dy = towardPoint.yMm - node.yMm;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  if (!length) return null;
-  const outgoingDirection = { x: dx / length, y: dy / length };
-  const candidates = [];
-
-  (floor.walls || []).forEach((candidate) => {
-    if (!candidate || candidate.id === excludedWallId || !findClosedSpaceForWall(floor, candidate.id)) return;
-    const candidateStart = getNode(floor, candidate.startNodeId);
-    const candidateEnd = getNode(floor, candidate.endNodeId);
-    const isPreferred = candidate.id === preferredWallId;
-    const touchesNode = candidate.startNodeId === node.id || candidate.endNodeId === node.id ||
-      (isPreferred && pointTouchesWallSegment(node, candidateStart, candidateEnd));
-    if (!touchesNode) return;
-    const segment = buildBaseWallSegment(floor, candidate);
-    if (!segment) return;
-    const parallelScore = Math.abs(dot(outgoingDirection, segment.direction));
-    const outwardScore = dot(outgoingDirection, segment.normal);
-    if (parallelScore > 0.25 || outwardScore < 0.25) return;
-    candidates.push({ wall: candidate, parallelScore, outwardScore, isPreferred });
-  });
-
-  candidates.sort((first, second) => (
-    first.parallelScore - second.parallelScore ||
-    Number(second.isPreferred) - Number(first.isPreferred) ||
-    second.outwardScore - first.outwardScore
-  ));
-  return candidates.length ? candidates[0].wall : null;
-}
-
-function resolveClosedBoundaryInsetMm(floor, node, towardPoint, options) {
-  const opts = options || {};
-  const boundaryWall = findPerpendicularClosedBoundaryWall(
-    floor,
-    node,
-    towardPoint,
-    opts.excludedWallId || '',
-    opts.preferredWallId || ''
-  );
-  if (!boundaryWall) return 0;
-  return Math.round(resolveRenderThicknessMm(boundaryWall, opts));
-}
-
 function isClosedBoundaryCorner(floor, session) {
   if (!floor || !session || !session.activeSpaceStartNodeId || !session.activeSpaceSharedWallId) return false;
   if (!findClosedSpaceForWall(floor, session.activeSpaceSharedWallId)) return false;
@@ -567,69 +151,6 @@ function isClosedBoundaryCorner(floor, session) {
     !!findClosedSpaceForWall(floor, wall.id)
   ));
   return incidentClosedWalls.length >= 2;
-}
-
-function buildResolvedSegment(floor, wall, options) {
-  const opts = options || {};
-  const base = buildBaseWallSegment(floor, wall, opts);
-  if (!base) return null;
-  const storedInsets = getWallMeasurementInsets(wall);
-  const storedStartExtension = normalizeMeasurementExtension(wall.measurementStartExtensionMm);
-  const renderStartInset = storedInsets.start > 0
-    ? resolveClosedBoundaryInsetMm(floor, base.start, base.end, {
-      excludedWallId: wall.id,
-      renderThicknessMmMap: opts.renderThicknessMmMap
-    }) || storedInsets.start
-    : 0;
-  const renderEndInset = storedInsets.end > 0
-    ? resolveClosedBoundaryInsetMm(floor, base.end, base.start, {
-      excludedWallId: wall.id,
-      renderThicknessMmMap: opts.renderThicknessMmMap
-    }) || storedInsets.end
-    : 0;
-  const maximumInset = Math.max(0, base.lengthMm - 1);
-  const startInset = Math.min(renderStartInset, maximumInset);
-  const startExtension = Math.min(storedStartExtension, maximumInset);
-  const endInset = Math.min(renderEndInset, Math.max(0, maximumInset - startInset));
-  const start = addVector(base.start, base.direction, startInset - startExtension);
-  const end = addVector(base.end, base.direction, -endInset);
-
-  return Object.assign({}, base, {
-    topologyStart: base.start,
-    topologyEnd: base.end,
-    start,
-    end,
-    lengthMm: Number.isFinite(Number(wall.lengthMm))
-      ? Math.max(0, Math.round(Number(wall.lengthMm)))
-      : Math.max(0, base.lengthMm - storedInsets.start + storedStartExtension - storedInsets.end),
-    measurementStartInsetMm: storedInsets.start,
-    measurementStartExtensionMm: storedStartExtension,
-    measurementEndInsetMm: storedInsets.end,
-    outerStart: addVector(start, base.normal, base.thicknessMm),
-    outerEnd: addVector(end, base.normal, base.thicknessMm)
-  });
-}
-
-function normalForMeasurementSide(start, end, side) {
-  if (!start || !end) return null;
-  const dx = end.xMm - start.xMm;
-  const dy = end.yMm - start.yMm;
-  const rawLength = Math.sqrt(dx * dx + dy * dy);
-  if (!rawLength) return null;
-
-  const direction = { x: dx / rawLength, y: dy / rawLength };
-  const leftNormal = { x: direction.y, y: -direction.x };
-  const rightNormal = { x: -direction.y, y: direction.x };
-  return side === 'left' ? leftNormal : rightNormal;
-}
-
-function perpendicularDistanceToLineMm(point, start, end) {
-  if (!point || !start || !end) return Infinity;
-  const dx = end.xMm - start.xMm;
-  const dy = end.yMm - start.yMm;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  if (!length) return distanceMm(point, start);
-  return Math.abs((point.xMm - start.xMm) * dy - (point.yMm - start.yMm) * dx) / length;
 }
 
 function resolveCollinearClosedOuterBodySide(floor, start, end, sourceSharedWallId) {
@@ -998,60 +519,14 @@ function resolveMeasurementEndInsetMm(floor, start, end, preferredWallId, exclud
   });
 }
 
-function calculateMeasuredPreviewLength(anchor, previewPoint, startInsetMm, endInsetMm, startExtensionMm) {
-  return Math.max(
-    0,
-    distanceMm(anchor, previewPoint) -
-      normalizeMeasurementInset(startInsetMm) -
-      normalizeMeasurementInset(endInsetMm) +
-      normalizeMeasurementExtension(startExtensionMm)
-  );
-}
-
-function intersectLines(a1, a2, b1, b2) {
-  const p = { x: a1.xMm, y: a1.yMm };
-  const r = { x: a2.xMm - a1.xMm, y: a2.yMm - a1.yMm };
-  const q = { x: b1.xMm, y: b1.yMm };
-  const s = { x: b2.xMm - b1.xMm, y: b2.yMm - b1.yMm };
-  const denominator = cross(r, s);
-
-  if (Math.abs(denominator) < 0.000001) {
-    return null;
-  }
-
-  const t = cross({ x: q.x - p.x, y: q.y - p.y }, s) / denominator;
-  return {
-    xMm: p.x + t * r.x,
-    yMm: p.y + t * r.y
-  };
-}
-
-function projectAlong(segment, point) {
-  return dot(
-    { x: point.xMm - segment.start.xMm, y: point.yMm - segment.start.yMm },
-    segment.direction
-  );
-}
-
 function segmentOverlapLengthMm(start, end, otherStart, otherEnd) {
-  const dx = end.xMm - start.xMm;
-  const dy = end.yMm - start.yMm;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  if (!length) return 0;
-
-  const direction = { x: dx / length, y: dy / length };
-  if (
-    pointLineDistanceMm(otherStart, start, direction) > WALL_OVERLAP_TOLERANCE_MM ||
-    pointLineDistanceMm(otherEnd, start, direction) > WALL_OVERLAP_TOLERANCE_MM
-  ) {
-    return 0;
-  }
-
-  const otherStartAlong = dot({ x: otherStart.xMm - start.xMm, y: otherStart.yMm - start.yMm }, direction);
-  const otherEndAlong = dot({ x: otherEnd.xMm - start.xMm, y: otherEnd.yMm - start.yMm }, direction);
-  const overlapStart = Math.max(0, Math.min(otherStartAlong, otherEndAlong));
-  const overlapEnd = Math.min(length, Math.max(otherStartAlong, otherEndAlong));
-  return Math.max(0, overlapEnd - overlapStart);
+  return segmentGeometry.overlapLengthMm(
+    start,
+    end,
+    otherStart,
+    otherEnd,
+    WALL_OVERLAP_TOLERANCE_MM
+  );
 }
 
 function findOverlappingWall(floor, start, end, options) {
@@ -1077,41 +552,9 @@ function findOverlappingWall(floor, start, end, options) {
 }
 
 function hasClosureInteriorIntersection(start, end, otherStart, otherEnd) {
-  const direction = { x: end.xMm - start.xMm, y: end.yMm - start.yMm };
-  const otherDirection = { x: otherEnd.xMm - otherStart.xMm, y: otherEnd.yMm - otherStart.yMm };
-  const denominator = cross(direction, otherDirection);
-
-  if (Math.abs(denominator) < 0.000001) {
-    return segmentOverlapLengthMm(start, end, otherStart, otherEnd) > WALL_OVERLAP_TOLERANCE_MM;
-  }
-
-  const otherLen = Math.sqrt(otherDirection.x * otherDirection.x + otherDirection.y * otherDirection.y);
-  if (otherLen > 0) {
-    const otherDirNorm = { x: otherDirection.x / otherLen, y: otherDirection.y / otherLen };
-    const startDist = pointLineDistanceMm(start, otherStart, otherDirNorm);
-    const endDist = pointLineDistanceMm(end, otherStart, otherDirNorm);
-    if (startDist <= WALL_OVERLAP_TOLERANCE_MM || endDist <= WALL_OVERLAP_TOLERANCE_MM) {
-      return false;
-    }
-  }
-
-  const offset = { x: otherStart.xMm - start.xMm, y: otherStart.yMm - start.yMm };
-  const t = cross(offset, otherDirection) / denominator;
-  const u = cross(offset, direction) / denominator;
-  const epsilon = 0.0001;
-
-  // The segment cuts across the other wall in the interior of both
-  return t > epsilon && t < 1 - epsilon && u >= -epsilon && u <= 1 + epsilon;
-}
-
-function calculatePolygonAreaMm2(points) {
-  if (!Array.isArray(points) || points.length < 3) return 0;
-  let twiceArea = 0;
-  points.forEach((point, index) => {
-    const next = points[(index + 1) % points.length];
-    twiceArea += point.xMm * next.yMm - next.xMm * point.yMm;
+  return segmentGeometry.hasInteriorIntersection(start, end, otherStart, otherEnd, {
+    overlapToleranceMm: WALL_OVERLAP_TOLERANCE_MM
   });
-  return Math.abs(twiceArea) / 2;
 }
 
 function buildOrthogonalClosurePoints(startPoint, endPoint, incomingStart) {
@@ -1470,149 +913,6 @@ function getClosurePath(floor, session) {
   return points;
 }
 
-function isUsableJoinPoint(segment, point) {
-  if (!point) return false;
-  const along = projectAlong(segment, point);
-  const limit = Math.max(segment.thicknessMm * 4, CLOSE_TOLERANCE_MM);
-  return along >= -limit && along <= segment.lengthMm + limit;
-}
-
-function isInteriorJoinProjection(segment, point) {
-  if (!segment || !point) return false;
-  const along = projectAlong(segment, point);
-  const inset = Math.max(Number(segment.thicknessMm) || 0, CLOSE_TOLERANCE_MM) * 0.5;
-  return along > inset && along < segment.lengthMm - inset;
-}
-
-function offsetJoinPoint(current, adjacent) {
-  if (!current || !adjacent) return null;
-  const point = intersectLines(current.outerStart, current.outerEnd, adjacent.outerStart, adjacent.outerEnd);
-  // Validate against BOTH segments. Previously only `current` was checked,
-  // so at acute angles (< 30°) the intersection could land far outside the
-  // adjacent wall's extents, producing a miter point that detaches the outer
-  // corner from the wall body.
-  if (!isUsableJoinPoint(current, point) || !isUsableJoinPoint(adjacent, point)) return null;
-  // A convex outer miter sits at or beyond the shared endpoint. A reflex L
-  // corner (270° room interior) intersects one wall-thickness inside both
-  // outers; applying that miter stairs the remaining wall into the room.
-  if (isInteriorJoinProjection(current, point) && isInteriorJoinProjection(adjacent, point)) {
-    return null;
-  }
-  return point;
-}
-
-function buildWallRenderGeometry(floor, wall, options) {
-  const opts = options || {};
-  const current = buildResolvedSegment(floor, wall, options);
-  if (!current) return null;
-
-  const adjacent = resolveAdjacentWalls(floor, wall, options);
-  const adjacentOptions = {
-    renderThicknessMmMap: opts.renderThicknessMmMap
-  };
-  const startAdjacent = adjacent.startWall ? buildResolvedSegment(floor, adjacent.startWall, adjacentOptions) : null;
-  const endAdjacent = adjacent.endWall ? buildResolvedSegment(floor, adjacent.endWall, adjacentOptions) : null;
-  const startJoined = !!(startAdjacent && (
-    pointsNearlyEqual(startAdjacent.start, current.start) || pointsNearlyEqual(startAdjacent.end, current.start)
-  ));
-  const endJoined = !!(endAdjacent && (
-    pointsNearlyEqual(endAdjacent.start, current.end) || pointsNearlyEqual(endAdjacent.end, current.end)
-  ));
-  const startMiter = startJoined ? offsetJoinPoint(current, startAdjacent) : null;
-  const endMiter = endJoined ? offsetJoinPoint(current, endAdjacent) : null;
-  const outerStart = startMiter || current.outerStart;
-  const outerEnd = endMiter || current.outerEnd;
-
-  return {
-    start: current.start,
-    end: current.end,
-    lengthMm: current.lengthMm,
-    angleDeg: angleDeg(current.start, current.end),
-    startJoined,
-    endJoined,
-    // Insets shorten only the measured/red segment. Physical wall connectivity
-    // is a topology property and must still be evaluated at the graph nodes.
-    startOpen: !hasWallConnectionAtPoint(floor, wall, current.topologyStart),
-    endOpen: !hasWallConnectionAtPoint(floor, wall, current.topologyEnd),
-    outerStart,
-    outerEnd,
-    outerStartAlongMm: projectAlong(current, outerStart),
-    outerEndAlongMm: projectAlong(current, outerEnd),
-    thicknessMm: current.thicknessMm
-  };
-}
-
-function buildWallSnapGeometry(floor, wall) {
-  const segment = buildResolvedSegment(floor, wall);
-  if (!segment) return null;
-  return {
-    start: segment.start,
-    end: segment.end,
-    outerStart: segment.outerStart,
-    outerEnd: segment.outerEnd
-  };
-}
-
-function pointsToJoinFill(previous, next) {
-  if (!previous || !next || !pointsNearlyEqual(previous.end, next.start)) {
-    return null;
-  }
-  if (Math.abs(dot(previous.normal, next.normal)) > 0.98) {
-    return null;
-  }
-
-  const joint = previous.end;
-  const miter = intersectLines(previous.outerStart, previous.outerEnd, next.outerStart, next.outerEnd);
-  const hasSharedMiter = isUsableJoinPoint(previous, miter) && isUsableJoinPoint(next, miter);
-
-  // Each wall body already reaches the shared miter point. Adding the former
-  // four-point patch here created a second, offset corner on diagonal joins.
-  if (hasSharedMiter) return null;
-
-  return {
-    id: `${previous.wall.id}-${next.wall.id}`,
-    wallIds: [previous.wall.id, next.wall.id],
-    joint,
-    // Only cover the small open gap when an extreme join cannot be mitered.
-    points: [joint, previous.outerEnd, next.outerStart]
-  };
-}
-
-function buildWallJoinRenderGeometries(floor, options) {
-  if (!floor || !floor.walls || floor.walls.length < 2) return [];
-
-  const opts = options || {};
-  const segmentOptions = {
-    renderThicknessMmMap: opts.renderThicknessMmMap
-  };
-  const joins = [];
-
-  for (let index = 0; index < floor.walls.length - 1; index += 1) {
-    const previous = buildResolvedSegment(floor, floor.walls[index], segmentOptions);
-    const next = buildResolvedSegment(floor, floor.walls[index + 1], segmentOptions);
-    const join = pointsToJoinFill(previous, next);
-    if (join) joins.push(join);
-  }
-
-  const singleWholePathClosed = floor.spaces &&
-    floor.spaces.filter((space) => space.closed && Array.isArray(space.wallIds)).length === 1 &&
-    floor.spaces.some((space) => (
-      space.closed &&
-      Array.isArray(space.wallIds) &&
-      space.wallIds.length === floor.walls.length &&
-      floor.walls.every((wall, index) => wall.id === space.wallIds[index])
-    ));
-
-  if (singleWholePathClosed && floor.walls.length > 2) {
-    const previous = buildResolvedSegment(floor, floor.walls[floor.walls.length - 1], segmentOptions);
-    const next = buildResolvedSegment(floor, floor.walls[0], segmentOptions);
-    const join = pointsToJoinFill(previous, next);
-    if (join) joins.push(join);
-  }
-
-  return joins;
-}
-
 function addNode(floor, point) {
   const node = {
     id: nextId('node'),
@@ -1622,11 +922,6 @@ function addNode(floor, point) {
   };
   floor.nodes.push(node);
   return node;
-}
-
-function touchDraft(draft) {
-  draft.updatedAt = nowIso();
-  return draft;
 }
 
 function snapPreviewPoint(anchor, rawPoint, mode) {
@@ -1750,26 +1045,6 @@ function maybeSnapStraightClosureToStart(floor, session, anchor, rawPoint, previ
       referencePoint: snappedPoint,
       snappedPoint
     }
-  };
-}
-
-function pointFromLength(anchor, previewPoint, lengthMm, startInsetMm, endInsetMm, startExtensionMm) {
-  const dx = previewPoint.xMm - anchor.xMm;
-  const dy = previewPoint.yMm - anchor.yMm;
-  const length = Math.sqrt(dx * dx + dy * dy);
-
-  const coordinateLengthMm = lengthMm +
-    normalizeMeasurementInset(startInsetMm) +
-    normalizeMeasurementInset(endInsetMm) -
-    normalizeMeasurementExtension(startExtensionMm);
-
-  if (length === 0) {
-    return { xMm: anchor.xMm + coordinateLengthMm, yMm: anchor.yMm };
-  }
-
-  return {
-    xMm: Math.round(anchor.xMm + dx / length * coordinateLengthMm),
-    yMm: Math.round(anchor.yMm + dy / length * coordinateLengthMm)
   };
 }
 
@@ -1950,21 +1225,6 @@ function getIncomingAngleAtAnchor(floor, wall, anchorNodeId) {
   return wall.endNodeId === anchorNodeId ? angleDeg(start, end) : angleDeg(end, start);
 }
 
-function normalizeSignedAngle(angle) {
-  let normalized = angle;
-  while (normalized <= -180) normalized += 360;
-  while (normalized > 180) normalized -= 360;
-  return normalized;
-}
-
-function validateInteriorAngle(angle) {
-  const parsed = Number(angle);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 180) {
-    throw new Error('Angle must be between 0 and 180 degrees');
-  }
-  return Math.round(parsed * 10) / 10;
-}
-
 function getFirstNode(floor) {
   if (!floor.walls.length) return null;
   return getNode(floor, floor.walls[0].startNodeId);
@@ -1987,35 +1247,6 @@ function refreshWallMetrics(floor) {
     wall.angleDeg = angleDeg(start, end);
     syncWallAdjustmentAfterMetricChange(wall);
   });
-}
-
-// A topology operation can change a wall's derived reading without replacing
-// its instrument reading (for example an endpoint inset repair). Keep the raw
-// reading as the audit anchor and recompute only the derived adjustment so the
-// pair remains internally consistent until the wall is explicitly remeasured.
-function syncWallAdjustmentAfterMetricChange(wall) {
-  if (!wall) return;
-  const hasRaw = Object.prototype.hasOwnProperty.call(wall, 'rawMeasuredLengthMm');
-  const hasAdjustment = Object.prototype.hasOwnProperty.call(wall, 'closureAdjustmentMm');
-  if (!hasRaw || !hasAdjustment) return;
-  const rawMeasuredLengthMm = Number(wall.rawMeasuredLengthMm);
-  const measuredLengthMm = Number(wall.lengthMm);
-  if (!Number.isFinite(rawMeasuredLengthMm) || !Number.isFinite(measuredLengthMm)) return;
-  wall.rawMeasuredLengthMm = Math.round(rawMeasuredLengthMm);
-  wall.closureAdjustmentMm = Math.round(measuredLengthMm - rawMeasuredLengthMm);
-}
-
-function recordWallRawMeasurement(wall, rawMeasuredLengthMm, adjustmentSource) {
-  if (!wall || !Number.isFinite(Number(rawMeasuredLengthMm))) return;
-  wall.rawMeasuredLengthMm = Math.round(Number(rawMeasuredLengthMm));
-  wall.closureAdjustmentMm = Math.round(
-    Number(wall.lengthMm) - wall.rawMeasuredLengthMm
-  );
-  if (wall.closureAdjustmentMm && adjustmentSource) {
-    wall.adjustmentSource = adjustmentSource;
-  } else if (!wall.closureAdjustmentMm) {
-    delete wall.adjustmentSource;
-  }
 }
 
 function removeUnreferencedNodes(floor) {
@@ -2220,57 +1451,6 @@ function repairCollinearDegree2Walls(draft) {
   }
   removeUnreferencedNodes(floor);
   return touchDraft(next);
-}
-
-function validateLength(lengthMm) {
-  const parsed = Number(lengthMm);
-  if (!Number.isInteger(parsed) || parsed < MIN_WALL_LENGTH_MM) {
-    throw new Error(`请输入不少于 ${MIN_WALL_LENGTH_MM} mm 的整数长度`);
-  }
-  return parsed;
-}
-
-function validateThickness(thicknessMm) {
-  const parsed = Number(thicknessMm);
-  if (!Number.isInteger(parsed) || parsed < MIN_THICKNESS_MM) {
-    throw new Error(`请输入不少于 ${MIN_THICKNESS_MM} mm 的整数墙厚`);
-  }
-  return parsed;
-}
-
-function validateOpeningSize(value, label) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < MIN_OPENING_SIZE_MM) {
-    throw new Error(`${label || 'opening size'} must be an integer >= ${MIN_OPENING_SIZE_MM} mm`);
-  }
-  return parsed;
-}
-
-function validateOpeningDepth(value) {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < MIN_THICKNESS_MM) {
-    throw new Error(`opening depth must be an integer >= ${MIN_THICKNESS_MM} mm`);
-  }
-  return parsed;
-}
-
-function projectPointToWallSegment(point, start, end) {
-  if (!point || !start || !end) return null;
-  const dx = end.xMm - start.xMm;
-  const dy = end.yMm - start.yMm;
-  const lengthSq = dx * dx + dy * dy;
-  if (!lengthSq) return null;
-  const rawT = ((point.xMm - start.xMm) * dx + (point.yMm - start.yMm) * dy) / lengthSq;
-  const t = clampNumber(rawT, 0, 1);
-  const projected = {
-    xMm: Math.round(start.xMm + dx * t),
-    yMm: Math.round(start.yMm + dy * t)
-  };
-  return {
-    point: projected,
-    t,
-    distanceMm: distanceMm(point, projected)
-  };
 }
 
 function buildWallProjectionCandidate(wall, start, end, projection, snapLine) {
@@ -3662,13 +2842,12 @@ function assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength)
       ) {
         continue;
       }
-      const error = new Error('分隔线压到门窗，请先调整门窗位置');
-      error.code = 'OPENING_SPLIT_CONFLICT';
-      error.wallId = originalWall.id;
-      error.openingId = opening.id;
-      error.cutAlongMm = cut.alongMm;
-      error.clearanceMm = clearanceMm;
-      throw error;
+      throw createSurveyDomainError(DOMAIN_ERROR_CODES.OPENING_SPLIT_CONFLICT, {
+        wallId: originalWall.id,
+        openingId: opening.id,
+        cutAlongMm: cut.alongMm,
+        clearanceMm
+      });
     }
   }
 }
@@ -3790,12 +2969,6 @@ function normalizeOpeningToWall(floor, opening) {
   });
 }
 
-function normalizeOpeningDirection(opening) {
-  if (!opening || opening.type !== 'door') return opening;
-  opening.openDirection = opening.openDirection === 'outside' ? 'outside' : 'inside';
-  return opening;
-}
-
 function normalizeOpeningsForWall(floor, wallId) {
   ensureOpenings(floor).forEach((opening) => {
     if (opening.wallId === wallId) {
@@ -3854,7 +3027,7 @@ function placeCursor(draft, point) {
     session.anchorNodeId = node.id;
   }
 
-  session.state = floor.walls.length ? 'wallCommitted' : 'cursorPlaced';
+  session.state = floor.walls.length ? SESSION_STATES.WALL_COMMITTED : SESSION_STATES.CURSOR_PLACED;
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
@@ -4032,7 +3205,7 @@ function startPreview(draft, rawPoint) {
     session.measurementSide = previewMeasurementSide;
   }
 
-  session.state = 'wallPreview';
+  session.state = SESSION_STATES.WALL_PREVIEW;
   session.previewPoint = previewPoint;
   session.previewLengthMm = previewLengthMm;
   session.previewAngleDeg = angleDeg(anchor, previewPoint);
@@ -4256,20 +3429,20 @@ function lockPreviewBearing(draft, bearingDeg) {
   const anchor = getNode(floor, session.anchorNodeId);
 
   if (!anchor) {
-    throw new Error('Place the cursor before choosing a wall direction');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.CURSOR_REQUIRED_FOR_DIRECTION);
   }
   if (session.mode !== 'straight') {
-    throw new Error('Direction picking is only available in straight mode');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.STRAIGHT_MODE_REQUIRED_FOR_DIRECTION);
   }
 
   const normalizedBearing = normalizeAngle(Number(bearingDeg));
   if (!Number.isFinite(normalizedBearing) || !isOrthogonalBearing(normalizedBearing)) {
-    throw new Error('Wall direction must be horizontal or vertical');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.ORTHOGONAL_DIRECTION_REQUIRED);
   }
 
   clearBleDirectionPreview(session);
   session.bleLockedBearingDeg = normalizedBearing;
-  session.state = 'awaitingLength';
+  session.state = SESSION_STATES.AWAITING_LENGTH;
   return touchDraft(next);
 }
 
@@ -4281,13 +3454,13 @@ function clearBleLockedBearing(draft) {
     return next;
   }
   delete session.bleLockedBearingDeg;
-  if (!session.previewPoint && session.state === 'awaitingLength') {
+  if (!session.previewPoint && session.state === SESSION_STATES.AWAITING_LENGTH) {
     if (floor.walls.length) {
-      session.state = 'wallCommitted';
+      session.state = SESSION_STATES.WALL_COMMITTED;
     } else if (session.anchorNodeId) {
-      session.state = 'cursorPlaced';
+      session.state = SESSION_STATES.CURSOR_PLACED;
     } else {
-      session.state = 'idle';
+      session.state = SESSION_STATES.IDLE;
     }
   }
   return touchDraft(next);
@@ -4301,15 +3474,15 @@ function startPreviewFromBearing(draft, bearingDeg, options) {
   const anchor = getNode(floor, session.anchorNodeId);
 
   if (!anchor) {
-    throw new Error('Place the cursor before choosing a wall direction');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.CURSOR_REQUIRED_FOR_DIRECTION);
   }
   if (session.mode !== 'straight') {
-    throw new Error('Direction picking is only available in straight mode');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.STRAIGHT_MODE_REQUIRED_FOR_DIRECTION);
   }
 
   const normalizedBearing = normalizeAngle(Number(bearingDeg));
   if (!Number.isFinite(normalizedBearing) || !isOrthogonalBearing(normalizedBearing)) {
-    throw new Error('Wall direction must be horizontal or vertical');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.ORTHOGONAL_DIRECTION_REQUIRED);
   }
 
   const requestedStubLengthMm = Number(opts.stubLengthMm);
@@ -4335,11 +3508,11 @@ function holdPreviewForInput(draft) {
   const floor = getActiveFloor(next);
   const session = floor.session;
 
-  if (session.state !== 'wallPreview' || !session.previewPoint || session.previewLengthMm < MIN_WALL_LENGTH_MM) {
+  if (session.state !== SESSION_STATES.WALL_PREVIEW || !session.previewPoint || session.previewLengthMm < MIN_WALL_LENGTH_MM) {
     return next;
   }
 
-  session.state = 'awaitingLength';
+  session.state = SESSION_STATES.AWAITING_LENGTH;
   return touchDraft(next);
 }
 
@@ -4353,7 +3526,7 @@ function applyPreviewInteriorAngle(draft, interiorAngleDeg, source) {
   const angle = validateInteriorAngle(interiorAngleDeg);
 
   if (!anchor || !session.previewPoint || !session.previewLengthMm || session.mode !== 'diagonal' || incomingAngle === null) {
-    throw new Error('A connected diagonal preview is required before measuring its angle');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.DIAGONAL_PREVIEW_REQUIRED);
   }
 
   const currentAngle = angleDeg(anchor, session.previewPoint);
@@ -4368,7 +3541,7 @@ function applyPreviewInteriorAngle(draft, interiorAngleDeg, source) {
 
   const previewed = startPreview(next, nextPoint);
   const previewSession = getActiveFloor(previewed).session;
-  previewSession.state = 'awaitingLength';
+  previewSession.state = SESSION_STATES.AWAITING_LENGTH;
   previewSession.previewAngleSource = source || 'manual';
   previewSession.previewInteriorAngleDeg = angle;
   return touchDraft(previewed);
@@ -4382,14 +3555,14 @@ function reopenLastDiagonalWallForAngle(draft) {
   const hasAttachedOpening = lastWall && floor.openings.some((opening) => opening.wallId === lastWall.id);
 
   if (!lastWall || lastWall.mode !== 'diagonal' || floor.walls.length < 2 ||
-    session.state !== 'wallCommitted' || session.previewPoint || hasAttachedOpening) {
-    throw new Error('Only the latest unadorned diagonal wall can be remeasured by angle');
+    session.state !== SESSION_STATES.WALL_COMMITTED || session.previewPoint || hasAttachedOpening) {
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.LATEST_DIAGONAL_NOT_EDITABLE);
   }
 
   const start = getNode(floor, lastWall.startNodeId);
   const end = getNode(floor, lastWall.endNodeId);
   if (!start || !end) {
-    throw new Error('The latest diagonal wall is incomplete');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.LATEST_DIAGONAL_INCOMPLETE);
   }
 
   floor.walls.pop();
@@ -4398,7 +3571,7 @@ function reopenLastDiagonalWallForAngle(draft) {
   }
   session.anchorNodeId = start.id;
   session.mode = 'diagonal';
-  session.state = 'awaitingLength';
+  session.state = SESSION_STATES.AWAITING_LENGTH;
   session.previewPoint = { xMm: end.xMm, yMm: end.yMm };
   session.previewLengthMm = lastWall.lengthMm;
   session.previewAngleDeg = lastWall.angleDeg;
@@ -4432,7 +3605,7 @@ function cancelPending(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
-  const selectedCursorAnchorId = session.state === 'wallSelected'
+  const selectedCursorAnchorId = session.state === SESSION_STATES.WALL_SELECTED
     ? session.anchorNodeId
     : '';
   const selectedCursorWasNewChainStart = !!selectedCursorAnchorId &&
@@ -4462,18 +3635,18 @@ function cancelPending(draft) {
 
   if (selectedCursorAnchorId && getNode(floor, selectedCursorAnchorId)) {
     session.anchorNodeId = selectedCursorAnchorId;
-    session.state = selectedCursorWasNewChainStart ? 'cursorPlaced' : 'wallCommitted';
+    session.state = selectedCursorWasNewChainStart ? SESSION_STATES.CURSOR_PLACED : SESSION_STATES.WALL_COMMITTED;
   } else if (floor.spaces.some((space) => space.closed)) {
-    session.state = 'spaceClosed';
+    session.state = SESSION_STATES.SPACE_CLOSED;
     session.anchorNodeId = '';
   } else if (floor.walls.length) {
     const lastEnd = getLastEndNode(floor);
-    session.state = 'wallCommitted';
+    session.state = SESSION_STATES.WALL_COMMITTED;
     session.anchorNodeId = lastEnd ? lastEnd.id : '';
   } else if (session.anchorNodeId) {
-    session.state = 'cursorPlaced';
+    session.state = SESSION_STATES.CURSOR_PLACED;
   } else {
-    session.state = 'idle';
+    session.state = SESSION_STATES.IDLE;
   }
 
   return touchDraft(next);
@@ -4496,8 +3669,8 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   const session = ensureSessionSpaceTracking(floor);
   const anchor = getNode(floor, session.anchorNodeId);
 
-  if (!anchor || !session.previewPoint || (session.state !== 'awaitingLength' && session.state !== 'wallPreview')) {
-    throw new Error('请先拖出待确认墙体');
+  if (!anchor || !session.previewPoint || (session.state !== SESSION_STATES.AWAITING_LENGTH && session.state !== SESSION_STATES.WALL_PREVIEW)) {
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.WALL_PREVIEW_REQUIRED);
   }
 
   let endPoint = pointFromLength(
@@ -4677,7 +3850,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     !shortenLastWall &&
     findOverlappingWall(floor, anchor, endPoint, { ignoredWallIds })
   ) {
-    throw new Error('当前墙与已测墙重叠，请从光标转角继续测量');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.WALL_OVERLAP);
   }
 
   const measurementSide = session.previewMeasurementSide ||
@@ -4804,14 +3977,14 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     ? resolvedDirectStartClosurePlan
     : null;
   if (partitionProjection && activeWallCount === 1) {
-    session.state = 'closing';
+    session.state = SESSION_STATES.CLOSING;
     session.closeCandidateNodeId = endNode.id;
     session.closeCandidatePoint = partitionProjection.point;
     session.closeCandidateType = 'partition';
     session.closeCandidateSharedWallId = partitionProjection.wall.id;
     session.partitionSourceSpaceId = partitionProjection.sourceSpace.id;
   } else if (sharedProjection && activeWallCount >= 1) {
-    session.state = 'closing';
+    session.state = SESSION_STATES.CLOSING;
     if (!session.activeSpaceSharedWallId) {
       session.activeSpaceSharedWallId = sharedProjection.wall.id;
     }
@@ -4823,7 +3996,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     // The wall was clamped to a cross-boundary intersection at commit time.
     // Route through shared-wall so confirmClosure splits the target wall and
     // completes the room boundary.
-    session.state = 'closing';
+    session.state = SESSION_STATES.CLOSING;
     session.closeCandidateNodeId = endNode.id;
     session.closeCandidatePoint = rayFallbackProjection.point;
     session.closeCandidateType = 'shared-wall';
@@ -4842,19 +4015,19 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     // the shared boundary back to the chain's start node.
     const mergeCandidate = outerFaceProjection.topologyNode;
     if (mergeCandidate) {
-      session.state = 'mergeClosing';
+      session.state = SESSION_STATES.MERGE_CLOSING;
       session.closeCandidateNodeId = mergeCandidate.id;
       session.closeCandidateType = 'merge';
     } else {
       // Mid-wall outer-face hit: use shared-wall insertion path.
-      session.state = 'closing';
+      session.state = SESSION_STATES.CLOSING;
       session.closeCandidateNodeId = endNode.id;
       session.closeCandidatePoint = outerFaceProjection.point;
       session.closeCandidateType = 'shared-wall';
       session.closeCandidateSharedWallId = outerFaceProjection.wall.id;
     }
   } else if (directStartClosurePlan) {
-    session.state = 'closing';
+    session.state = SESSION_STATES.CLOSING;
     session.closeCandidateNodeId = activeStartNode.id;
     session.closeCandidateType = 'start';
   } else {
@@ -4863,11 +4036,11 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       ? findMergeClosureCandidate(floor, session, endNode)
       : null;
     if (mergeCandidate) {
-      session.state = 'mergeClosing';
+      session.state = SESSION_STATES.MERGE_CLOSING;
       session.closeCandidateNodeId = mergeCandidate.id;
       session.closeCandidateType = 'merge';
     } else {
-      session.state = 'wallCommitted';
+      session.state = SESSION_STATES.WALL_COMMITTED;
     }
   }
 
@@ -5208,7 +4381,9 @@ function attachStraightWallToCloseNode(floor, wall, targetNode, inputSource) {
     return wall;
   }
   if (!wallKeepsStrictAxis(end, targetNode) || distanceMm(end, targetNode) <= 0.001) {
-    throw new Error(`闭合误差超过 ${CLOSE_TOLERANCE_MM} mm，请补测最后一面墙`);
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.CLOSURE_OUT_OF_TOLERANCE, {
+      toleranceMm: CLOSE_TOLERANCE_MM
+    });
   }
   const bridge = {
     id: nextId('wall'),
@@ -5239,7 +4414,7 @@ function confirmClosure(draft) {
     session.previewPoint &&
     session.previewLengthMm >= MIN_WALL_LENGTH_MM &&
     (session.closeCandidateNodeId || session.closeCandidatePoint) &&
-    (session.state === 'wallPreview' || session.state === 'awaitingLength')
+    (session.state === SESSION_STATES.WALL_PREVIEW || session.state === SESSION_STATES.AWAITING_LENGTH)
   );
 
   if (hasPreviewCloseCandidate) {
@@ -5249,18 +4424,18 @@ function confirmClosure(draft) {
       'closure-preview'
     );
     const committedState = getActiveFloor(committed).session.state;
-    if (committedState !== 'closing' && committedState !== 'mergeClosing') {
-      throw new Error('当前轮廓不能安全闭合，请继续补测墙体');
+    if (committedState !== SESSION_STATES.CLOSING && committedState !== SESSION_STATES.MERGE_CLOSING) {
+      throw createSurveyDomainError(DOMAIN_ERROR_CODES.UNSAFE_CLOSURE);
     }
     return confirmClosure(committed);
   }
 
-  if (session.state === 'mergeClosing') {
+  if (session.state === SESSION_STATES.MERGE_CLOSING) {
     const anchor = getNode(floor, session.anchorNodeId);
     const closurePlan = findMergeClosurePlan(floor, session, anchor);
     const closeTargetNode = closurePlan && closurePlan.targetNode;
     if (!anchor || !closeTargetNode || closurePlan.points.length < 2) {
-      throw new Error('当前轮廓不能安全闭合，请继续补测墙体');
+      throw createSurveyDomainError(DOMAIN_ERROR_CODES.UNSAFE_CLOSURE);
     }
 
     const closurePoints = closurePlan.points;
@@ -5360,7 +4535,7 @@ function confirmClosure(draft) {
       closureStartNode = closureEndNode;
     });
     session.anchorNodeId = closeTargetNode.id;
-    session.state = 'closing';
+    session.state = SESSION_STATES.CLOSING;
     session.closeCandidateNodeId = closeTargetNode.id;
     session.closeCandidatePoint = null;
     let correctSharedWallId = session.activeSpaceSharedWallId;
@@ -5384,12 +4559,12 @@ function confirmClosure(draft) {
   const closeCandidateSharedWallId = session.closeCandidateSharedWallId;
   const minimumActiveWallCount = getMinimumActiveCloseWallCount(floor, session);
 
-  if (session.state === 'closing' && session.closeCandidateType === 'partition') {
+  if (session.state === SESSION_STATES.CLOSING && session.closeCandidateType === 'partition') {
     const partitionWall = getLastWall(floor);
     if (!partitionWall || !splitClosedSpaceWithPartition(floor, session, partitionWall)) {
-      throw new Error('当前分隔墙无法安全拆分房间，请重新从内部墙开始测量');
+      throw createSurveyDomainError(DOMAIN_ERROR_CODES.PARTITION_SPLIT_UNSAFE);
     }
-    session.state = 'spaceClosed';
+    session.state = SESSION_STATES.SPACE_CLOSED;
     session.anchorNodeId = '';
     session.pendingWallId = '';
     session.selectedWallId = '';
@@ -5417,7 +4592,7 @@ function confirmClosure(draft) {
     return touchDraft(next);
   }
 
-  if (session.state !== 'closing' || (!session.closeCandidateNodeId && !session.closeCandidatePoint) || activeWallCount < minimumActiveWallCount) {
+  if (session.state !== SESSION_STATES.CLOSING || (!session.closeCandidateNodeId && !session.closeCandidatePoint) || activeWallCount < minimumActiveWallCount) {
     return next;
   }
 
@@ -5441,7 +4616,9 @@ function confirmClosure(draft) {
     }
   }
   if (!oldEndNode || !closeTargetNode) {
-    throw new Error(`闭合误差超过 ${CLOSE_TOLERANCE_MM} mm，请补测最后一面墙`);
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.CLOSURE_OUT_OF_TOLERANCE, {
+      toleranceMm: CLOSE_TOLERANCE_MM
+    });
   }
 
   const straightClosurePlan = resolveStraightClosurePlan(
@@ -5457,7 +4634,9 @@ function confirmClosure(draft) {
       straightClosurePlan.type !== 'orthogonal-adjustment'
     )
   ) {
-    throw new Error(`闭合误差超过 ${CLOSE_TOLERANCE_MM} mm，请补测最后一面墙`);
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.CLOSURE_OUT_OF_TOLERANCE, {
+      toleranceMm: CLOSE_TOLERANCE_MM
+    });
   }
   if (straightClosurePlan.type === 'orthogonal-adjustment') {
     applyOrthogonalClosureAdjustmentPlan(floor, straightClosurePlan);
@@ -5579,7 +4758,7 @@ function confirmClosure(draft) {
     ? findWallPathBetweenNodes(floor, sharedCloseNodeId, sharedStartNodeId, excludedWallIds)
     : [];
   if (sharedBoundaryWallIds.length && !sharedWallIds.length && !closeCandidateSharedWallId) {
-    throw new Error('公共边未连通，请从相邻墙边重新吸附光标');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.SHARED_BOUNDARY_DISCONNECTED);
   }
 
   const inheritOverrides = !interiorSourceSpace &&
@@ -5598,7 +4777,7 @@ function confirmClosure(draft) {
     syncFloorSpaces(floor, inheritOverrides);
   }
 
-  session.state = 'spaceClosed';
+  session.state = SESSION_STATES.SPACE_CLOSED;
   session.anchorNodeId = '';
   session.pendingWallId = '';
   session.selectedWallId = '';
@@ -5663,7 +4842,7 @@ function selectWall(draft, wallId) {
   const wall = getWall(floor, wallId);
   if (!wall) return next;
 
-  floor.session.state = 'wallSelected';
+  floor.session.state = SESSION_STATES.WALL_SELECTED;
   floor.session.selectedWallId = wallId;
   floor.session.selectedOpeningId = '';
   floor.session.selectedSpaceId = '';
@@ -5688,7 +4867,7 @@ function selectOpening(draft, openingId) {
   const opening = getOpening(floor, openingId);
   if (!opening || !getWall(floor, opening.wallId)) return next;
 
-  floor.session.state = 'wallSelected';
+  floor.session.state = SESSION_STATES.WALL_SELECTED;
   floor.session.selectedWallId = opening.wallId;
   floor.session.selectedOpeningId = opening.id;
   floor.session.selectedSpaceId = '';
@@ -5713,7 +4892,7 @@ function selectSpace(draft, spaceId) {
   const space = getClosedSpace(floor, spaceId);
   if (!space) return next;
 
-  floor.session.state = 'wallSelected';
+  floor.session.state = SESSION_STATES.WALL_SELECTED;
   floor.session.selectedWallId = '';
   floor.session.selectedOpeningId = '';
   floor.session.selectedSpaceId = space.id;
@@ -5739,14 +4918,16 @@ function renameClosedSpace(draft, spaceId, name) {
   const floor = getActiveFloor(next);
   const space = getClosedSpace(floor, spaceId || (floor.session && floor.session.selectedSpaceId));
   if (!space) {
-    throw new Error('Please select a closed room first');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.CLOSED_SPACE_REQUIRED);
   }
   const nextName = String(name == null ? '' : name).trim();
   if (!nextName) {
-    throw new Error('Room name cannot be empty');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.ROOM_NAME_REQUIRED);
   }
   if (nextName.length > MAX_SPACE_NAME_LENGTH) {
-    throw new Error(`Room name cannot exceed ${MAX_SPACE_NAME_LENGTH} characters`);
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.ROOM_NAME_TOO_LONG, {
+      maximumCharacters: MAX_SPACE_NAME_LENGTH
+    });
   }
   space.name = nextName;
   return touchDraft(next);
@@ -5763,7 +4944,7 @@ function deleteClosedSpace(draft, spaceId) {
   if (!exclusiveWallIds.length) {
     // Shared-only loop: removing the space identity is not supported; keep geometry.
     clearObjectSelection(session);
-    session.state = 'spaceClosed';
+    session.state = SESSION_STATES.SPACE_CLOSED;
     session.anchorNodeId = '';
     return touchDraft(next);
   }
@@ -5823,17 +5004,17 @@ function deleteClosedSpace(draft, spaceId) {
   if (!restoredOpenedChain) {
     if (closedAfter) {
       session.anchorNodeId = '';
-      session.state = 'spaceClosed';
+      session.state = SESSION_STATES.SPACE_CLOSED;
     } else if (floor.walls.length) {
       const lastEnd = getLastEndNode(floor);
       session.anchorNodeId = lastEnd ? lastEnd.id : '';
-      session.state = 'wallCommitted';
+      session.state = SESSION_STATES.WALL_COMMITTED;
     } else if (seedNode) {
       session.anchorNodeId = seedNode.id;
-      session.state = 'cursorPlaced';
+      session.state = SESSION_STATES.CURSOR_PLACED;
     } else {
       session.anchorNodeId = '';
-      session.state = 'idle';
+      session.state = SESSION_STATES.IDLE;
     }
   }
 
@@ -5846,7 +5027,7 @@ function addOpeningToWall(draft, wallId, type) {
   const floor = getActiveFloor(next);
   const wall = getWall(floor, wallId || floor.session.selectedWallId);
   if (!wall) {
-    throw new Error('Please select a wall before adding an opening');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.WALL_REQUIRED_FOR_OPENING);
   }
 
   const openingType = type === 'window' ? 'window' : 'door';
@@ -5873,7 +5054,7 @@ function addOpeningToWall(draft, wallId, type) {
   normalizeOpeningToWall(floor, opening);
   normalizeOpeningDirection(opening);
   ensureOpenings(floor).push(opening);
-  floor.session.state = 'wallSelected';
+  floor.session.state = SESSION_STATES.WALL_SELECTED;
   floor.session.selectedWallId = wall.id;
   floor.session.selectedOpeningId = opening.id;
   floor.session.selectedSpaceId = '';
@@ -5885,7 +5066,7 @@ function updateOpening(draft, openingId, patch) {
   const floor = getActiveFloor(next);
   const opening = getOpening(floor, openingId || floor.session.selectedOpeningId);
   if (!opening) {
-    throw new Error('Please select a door or window first');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.OPENING_REQUIRED);
   }
 
   const updates = patch || {};
@@ -5896,24 +5077,16 @@ function updateOpening(draft, openingId, patch) {
     opening.heightMm = validateOpeningSize(updates.heightMm, 'opening height');
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'sillHeightMm')) {
-    const parsedSill = Number(updates.sillHeightMm);
-    if (!Number.isInteger(parsedSill) || parsedSill < 0) {
-      throw new Error('opening sill height must be an integer >= 0 mm');
-    }
-    opening.sillHeightMm = parsedSill;
+    opening.sillHeightMm = domainValidation.validateOpeningSillHeight(updates.sillHeightMm);
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'depthMm')) {
     opening.depthMm = validateOpeningDepth(updates.depthMm);
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'centerOffsetMm')) {
-    const parsedOffset = Number(updates.centerOffsetMm);
-    if (!Number.isInteger(parsedOffset)) {
-      throw new Error('opening offset must be an integer');
-    }
-    opening.centerOffsetMm = parsedOffset;
+    opening.centerOffsetMm = domainValidation.validateOpeningOffset(updates.centerOffsetMm);
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'openDirection') && opening.type === 'door') {
-    opening.openDirection = updates.openDirection === 'outside' ? 'outside' : 'inside';
+    opening.openDirection = updates.openDirection;
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'modelId')) {
     opening.modelId = String(updates.modelId || '');
@@ -5936,7 +5109,7 @@ function updateOpening(draft, openingId, patch) {
   normalizeOpeningToWall(floor, opening);
   normalizeOpeningDirection(opening);
   opening.updatedAt = nowIso();
-  floor.session.state = 'wallSelected';
+  floor.session.state = SESSION_STATES.WALL_SELECTED;
   floor.session.selectedWallId = opening.wallId;
   floor.session.selectedOpeningId = opening.id;
   return touchDraft(next);
@@ -5950,7 +5123,7 @@ function deleteOpening(draft, openingId) {
   if (!opening) return next;
 
   floor.openings = ensureOpenings(floor).filter((item) => item.id !== targetId);
-  floor.session.state = 'wallSelected';
+  floor.session.state = SESSION_STATES.WALL_SELECTED;
   floor.session.selectedWallId = opening.wallId;
   floor.session.selectedOpeningId = '';
   return touchDraft(next);
@@ -6095,7 +5268,7 @@ function refreshStandaloneClosureSuggestion(floor, session) {
     : 0;
   const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
   if (!anchor || !activeStartNode || activeWallCount < 2) {
-    session.state = 'wallCommitted';
+    session.state = SESSION_STATES.WALL_COMMITTED;
     return;
   }
   const lastWall = getLastWall(floor);
@@ -6106,19 +5279,19 @@ function refreshStandaloneClosureSuggestion(floor, session) {
     distanceMm(anchor, activeStartNode) <= CLOSE_TOLERANCE_MM ||
     startClosurePlan.type === 'orthogonal-adjustment'
   )) {
-    session.state = 'closing';
+    session.state = SESSION_STATES.CLOSING;
     session.closeCandidateNodeId = activeStartNode.id;
     session.closeCandidateType = 'start';
     return;
   }
   const mergeCandidate = findMergeClosureCandidate(floor, session, anchor);
   if (mergeCandidate) {
-    session.state = 'mergeClosing';
+    session.state = SESSION_STATES.MERGE_CLOSING;
     session.closeCandidateNodeId = mergeCandidate.id;
     session.closeCandidateType = 'merge';
     return;
   }
-  session.state = 'wallCommitted';
+  session.state = SESSION_STATES.WALL_COMMITTED;
 }
 
 function restoreOpenedSpaceChain(floor, session, fromNodeId, toNodeId) {
@@ -6274,17 +5447,17 @@ function deleteWall(draft, wallId) {
   if (!restoredOpenedChain) {
     if (deletesClosedSpaceWall && closedAfter) {
       session.anchorNodeId = '';
-      session.state = 'spaceClosed';
+      session.state = SESSION_STATES.SPACE_CLOSED;
     } else if (floor.walls.length) {
       const lastEnd = getLastEndNode(floor);
       session.anchorNodeId = lastEnd ? lastEnd.id : '';
-      session.state = 'wallCommitted';
+      session.state = SESSION_STATES.WALL_COMMITTED;
     } else if (deletedStartNode) {
       session.anchorNodeId = deletedStartNode.id;
-      session.state = 'cursorPlaced';
+      session.state = SESSION_STATES.CURSOR_PLACED;
     } else {
       session.anchorNodeId = '';
-      session.state = 'idle';
+      session.state = SESSION_STATES.IDLE;
     }
   }
 
@@ -6297,7 +5470,7 @@ function startWallSnap(draft) {
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
 
-  session.state = 'wallSnapPending';
+  session.state = SESSION_STATES.WALL_SNAP_PENDING;
   session.anchorNodeId = '';
   session.previewPoint = null;
   session.previewLengthMm = 0;
@@ -6397,7 +5570,7 @@ function snapCursorToWall(draft, point, target) {
   let snappedT = topologyProjection && topologyProjection.t;
   const snappedAtWallMiddle = !!(snappedWall && snappedT > 0.0001 && snappedT < 0.9999);
 
-  session.state = 'cursorPlaced';
+  session.state = SESSION_STATES.CURSOR_PLACED;
   session.anchorNodeId = node.id;
   session.previewPoint = null;
   session.previewLengthMm = 0;
@@ -6441,7 +5614,7 @@ function startRemeasure(draft) {
     return next;
   }
 
-  floor.session.state = 'remeasureAwaitingInput';
+  floor.session.state = SESSION_STATES.REMEASURE_AWAITING_INPUT;
   const existingFixed = floor.session.fixedNodeId;
   const isWallEndpoint = existingFixed === wall.startNodeId || existingFixed === wall.endNodeId;
   if (!isWallEndpoint) {
@@ -6463,12 +5636,11 @@ function assertOpeningsFitMeasuredLength(floor, wall, prospectiveMeasuredLengthM
   for (const opening of openings) {
     const range = openingDomain.getOpeningRange(opening);
     if (range.startMm < -1 || range.endMm > prospectiveMeasuredLengthMm + 1) {
-      const error = new Error('复尺后的墙长不足以容纳现有门窗，请先调整门窗位置');
-      error.code = 'OPENING_REMEASURE_CONFLICT';
-      error.wallId = wall.id;
-      error.openingId = opening.id;
-      error.prospectiveMeasuredLengthMm = prospectiveMeasuredLengthMm;
-      throw error;
+      throw createSurveyDomainError(DOMAIN_ERROR_CODES.OPENING_REMEASURE_CONFLICT, {
+        wallId: wall.id,
+        openingId: opening.id,
+        prospectiveMeasuredLengthMm
+      });
     }
   }
 }
@@ -6637,15 +5809,15 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
   const floor = getActiveFloor(next);
   const session = floor.session;
   const wall = getWall(floor, session.selectedWallId);
-  if (!wall || session.state !== 'remeasureAwaitingInput') {
-    throw new Error('请先选择需要复尺的墙体');
+  if (!wall || session.state !== SESSION_STATES.REMEASURE_AWAITING_INPUT) {
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.REMEASURE_SELECTION_REQUIRED);
   }
 
   const sharedEndpoint = getSingleSharedEndpoint(floor, wall);
   const fixedNodeId = session.fixedNodeId || (sharedEndpoint ? sharedEndpoint.fixedNodeId : wall.startNodeId);
   const closedSpaces = findClosedSpacesForWall(floor, wall.id);
   if (closedSpaces.length > 1) {
-    throw new Error('共用墙关联多个房间，暂不支持直接复尺，请先解除共用关系');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.SHARED_WALL_REMEASURE_UNSUPPORTED);
   }
   if (closedSpaces.length === 1) {
     const closedPlan = buildClosedOrthogonalRemeasurePlan(
@@ -6656,9 +5828,9 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
       parsedLength
     );
     if (!closedPlan || !applyClosedOrthogonalRemeasurePlan(floor, closedPlan, wall, inputSource)) {
-      throw new Error('该闭合房间无法安全联动复尺，请先处理共享节点或斜墙');
+      throw createSurveyDomainError(DOMAIN_ERROR_CODES.CLOSED_REMEASURE_UNSAFE);
     }
-    session.state = 'spaceClosed';
+    session.state = SESSION_STATES.SPACE_CLOSED;
     session.anchorNodeId = '';
     session.selectedWallId = wall.id;
     session.selectedOpeningId = '';
@@ -6669,12 +5841,14 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
   const movingNodeId = fixedNodeId === wall.startNodeId ? wall.endNodeId : wall.startNodeId;
   const fixedNode = getNode(floor, fixedNodeId);
   const movingNode = getNode(floor, movingNodeId);
-  if (!fixedNode || !movingNode) throw new Error('复尺墙体端点无效');
+  if (!fixedNode || !movingNode) {
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.INVALID_REMEASURE_ENDPOINT);
+  }
   const movingNodeShared = (floor.walls || []).some((item) => (
     item.id !== wall.id && (item.startNodeId === movingNodeId || item.endNodeId === movingNodeId)
   ));
   if (movingNodeShared) {
-    throw new Error('该墙两端均连接其他墙，无法在不改变相邻实测值的情况下直接复尺');
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.REMEASURE_CONNECTED_ENDPOINT);
   }
   const rawDx = movingNode.xMm - fixedNode.xMm;
   const rawDy = movingNode.yMm - fixedNode.yMm;
@@ -6686,7 +5860,9 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
   const coordinateLength = parsedLength + insets.start + insets.end -
     normalizeMeasurementExtension(wall.measurementStartExtensionMm);
   if (coordinateLength < MIN_WALL_LENGTH_MM) {
-    throw new Error(`复尺换算后的墙体长度不能少于 ${MIN_WALL_LENGTH_MM} mm`);
+    throw createSurveyDomainError(DOMAIN_ERROR_CODES.REMEASURE_LENGTH_TOO_SHORT, {
+      minimumMm: MIN_WALL_LENGTH_MM
+    });
   }
   assertOpeningsFitMeasuredLength(floor, wall, parsedLength);
   movingNode.xMm = Math.round(fixedNode.xMm + dx * coordinateLength);
@@ -6699,11 +5875,11 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
   normalizeOpeningsForWall(floor, wall.id);
 
   if (floor.spaces.some((space) => space.closed)) {
-    session.state = 'spaceClosed';
+    session.state = SESSION_STATES.SPACE_CLOSED;
     session.anchorNodeId = '';
     session.selectedWallId = wall.id;
   } else {
-    session.state = 'wallCommitted';
+    session.state = SESSION_STATES.WALL_COMMITTED;
     session.anchorNodeId = movingNodeId;
     session.selectedWallId = '';
   }
@@ -6763,12 +5939,12 @@ function canSetInitialMeasurementSide(floor, session, wallId) {
     const previewStage = startsFromClosedBoundary &&
       activeWallCount === 0 &&
       !!session.previewPoint &&
-      (session.state === 'wallPreview' || session.state === 'awaitingLength');
+      (session.state === SESSION_STATES.WALL_PREVIEW || session.state === SESSION_STATES.AWAITING_LENGTH);
     const committedStage = startsFromClosedBoundary &&
       activeWallCount === 1 &&
       !!firstWall &&
       (!wallId || wallId === firstWall.id) &&
-      (session.state === 'wallCommitted' || session.state === 'mergeClosing') &&
+      (session.state === SESSION_STATES.WALL_COMMITTED || session.state === SESSION_STATES.MERGE_CLOSING) &&
       !session.previewPoint;
     return previewStage || committedStage;
   }
@@ -6777,7 +5953,7 @@ function canSetInitialMeasurementSide(floor, session, wallId) {
     firstWall &&
     (!wallId || wallId === firstWall.id) &&
     floor.walls.length === startWallIndex + 1 &&
-    session.state === 'wallCommitted' &&
+    session.state === SESSION_STATES.WALL_COMMITTED &&
     !session.previewPoint
   );
 }
@@ -6788,7 +5964,7 @@ function placeNewWallChainCursor(draft, point) {
   const session = ensureSessionSpaceTracking(floor);
   const node = addNode(floor, point);
 
-  session.state = 'cursorPlaced';
+  session.state = SESSION_STATES.CURSOR_PLACED;
   session.anchorNodeId = node.id;
   session.previewPoint = null;
   session.previewLengthMm = 0;
@@ -6869,7 +6045,7 @@ function resetCursor(draft) {
   const lastSnapNode = session.lastWallSnapNodeId ? getNode(floor, session.lastWallSnapNodeId) : null;
   const lastSnapWall = session.lastWallSnapWallId ? getWall(floor, session.lastWallSnapWallId) : null;
   if (lastSnapNode && lastSnapWall) {
-    session.state = 'cursorPlaced';
+    session.state = SESSION_STATES.CURSOR_PLACED;
     session.anchorNodeId = lastSnapNode.id;
     session.activeSpaceStartNodeId = lastSnapNode.id;
     session.activeSpaceStartWallIndex = floor.walls.length;
@@ -6884,7 +6060,7 @@ function resetCursor(draft) {
   }
 
   if (floor.spaces.some((space) => space.closed)) {
-    session.state = 'spaceClosed';
+    session.state = SESSION_STATES.SPACE_CLOSED;
     session.anchorNodeId = '';
     return touchDraft(next);
   }
@@ -6892,7 +6068,7 @@ function resetCursor(draft) {
   if (floor.walls.length) {
     const lastEnd = getLastEndNode(floor);
     session.anchorNodeId = lastEnd ? lastEnd.id : '';
-    session.state = 'wallCommitted';
+    session.state = SESSION_STATES.WALL_COMMITTED;
     return touchDraft(next);
   }
 
@@ -6904,7 +6080,7 @@ function resetCursor(draft) {
     const node = addNode(floor, { xMm: 0, yMm: 0 });
     session.anchorNodeId = node.id;
   }
-  session.state = 'cursorPlaced';
+  session.state = SESSION_STATES.CURSOR_PLACED;
   return touchDraft(next);
 }
 
@@ -6918,258 +6094,23 @@ function updateViewport(draft, viewportPatch) {
   return touchDraft(next);
 }
 
-function buildSpaceBoundaryPoints(floor, wallIds) {
-  const forward = traceClosedSpaceWallChain(floor, wallIds, false);
-  const chain = forward.length ? forward : traceClosedSpaceWallChain(floor, wallIds, true);
-  if (!chain.length) return [];
-  return chain.map((entry) => entry.start);
-}
-
-function buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides) {
-  const chain = buildClosedSpaceWallChain(floor, wallIds);
-  const centroid = calculateBoundaryCentroid(floor, wallIds);
-  if (!chain.length || !centroid) return [];
-
-  return chain.map((entry) => {
-    // Closure may persist a short topology bridge whose entire coordinate
-    // length is consumed by a measurement inset. It represents the thickness
-    // connection to a shared wall, not an additional clear-room boundary.
-    if (getMeasuredWallLength(floor, entry.wall) <= 0) return null;
-    const base = buildBaseWallSegment(floor, entry.wall);
-    if (!base) return null;
-    const midpoint = {
-      xMm: (base.start.xMm + base.end.xMm) / 2,
-      yMm: (base.start.yMm + base.end.yMm) / 2
-    };
-    const centroidOffset = dot({
-      x: centroid.xMm - midpoint.xMm,
-      y: centroid.yMm - midpoint.yMm
-    }, base.normal);
-    // A physical wall is emitted once between its topology face and offset
-    // face.  For a shared wall, the two spaces sit on opposite sides and must
-    // therefore select opposite inner faces from the same wall object.
-    const faceOverride = wallFaceOverrides && wallFaceOverrides[entry.wall.id];
-    const usesOffsetFace = faceOverride === 'offset'
-      ? true
-      : (faceOverride === 'topology' ? false : centroidOffset > 0);
-    let innerStart = usesOffsetFace ? base.outerStart : base.start;
-    let innerEnd = usesOffsetFace ? base.outerEnd : base.end;
-    let oppositeStart = usesOffsetFace ? base.start : base.outerStart;
-    let oppositeEnd = usesOffsetFace ? base.end : base.outerEnd;
-    if (entry.reversed) {
-      [innerStart, innerEnd] = [innerEnd, innerStart];
-      [oppositeStart, oppositeEnd] = [oppositeEnd, oppositeStart];
-    }
-    return {
-      wallId: entry.wall.id,
-      wall: entry.wall,
-      thicknessMm: base.thicknessMm,
-      face: usesOffsetFace ? 'offset' : 'topology',
-      innerStart,
-      innerEnd,
-      oppositeStart,
-      oppositeEnd
-    };
-  }).filter(Boolean);
-}
-
-function buildPlanEdgeSegments(faces, boundaryPoints, edgeFaceIndexes) {
-  const points = (boundaryPoints || []).filter((point) => (
-    point && Number.isFinite(Number(point.xMm)) && Number.isFinite(Number(point.yMm))
-  ));
-  if (points.length < 2) return [];
-  return points.map((start, index) => {
-    const faceIndex = Array.isArray(edgeFaceIndexes)
-      ? edgeFaceIndexes[index]
-      : index;
-    const face = Number.isInteger(faceIndex)
-      ? (faces || [])[faceIndex]
-      : null;
-    return {
-      wallId: (face && face.wallId) || '',
-      start,
-      end: points[(index + 1) % points.length]
-    };
-  });
-}
-
-function buildFaceBoundaryPlan(segments, startKey, endKey) {
-  if (!Array.isArray(segments) || segments.length < 3) {
-    return { points: [], edgeFaceIndexes: [] };
-  }
-  const vertices = [];
-  const pushVertex = (point, edgeFaceIndex) => {
-    const previous = vertices[vertices.length - 1];
-    if (previous && pointsNearlyEqual(previous.point, point)) {
-      previous.edgeFaceIndex = edgeFaceIndex;
-      return;
-    }
-    vertices.push({ point, edgeFaceIndex });
-  };
-
-  segments.forEach((segment, index) => {
-    const previous = segments[(index - 1 + segments.length) % segments.length];
-    const previousStart = previous[startKey];
-    const previousEnd = previous[endKey];
-    const currentStart = segment[startKey];
-    const currentEnd = segment[endKey];
-    const intersection = intersectLines(previousStart, previousEnd, currentStart, currentEnd);
-    if (!intersection) {
-      // Adjacent collinear walls can deliberately use opposite physical faces,
-      // for example where a shared wall meets the exterior continuation of a
-      // wider neighbouring room. Their clear-room faces are parallel and one
-      // wall thickness apart, so they need a short perpendicular step. Keeping
-      // only currentStart would connect the prior corner to it diagonally.
-      if (!pointsNearlyEqual(previousEnd, currentStart)) {
-        pushVertex(previousEnd, null);
-      }
-      pushVertex(currentStart, index);
-      return;
-    }
-
-    const cornerLimit = Math.max(
-      Number(previous.thicknessMm) || DEFAULT_THICKNESS_MM,
-      Number(segment.thicknessMm) || DEFAULT_THICKNESS_MM,
-      CLOSE_TOLERANCE_MM
-    ) * 4;
-    pushVertex(distanceMm(intersection, currentStart) <= cornerLimit
-      ? intersection
-      : currentStart, index);
-  });
-
-  if (
-    vertices.length > 1 &&
-    pointsNearlyEqual(vertices[0].point, vertices[vertices.length - 1].point)
-  ) {
-    vertices[0].edgeFaceIndex = vertices[vertices.length - 1].edgeFaceIndex;
-    vertices.pop();
-  }
-  return {
-    points: vertices.map((vertex) => vertex.point),
-    edgeFaceIndexes: vertices.map((vertex) => vertex.edgeFaceIndex)
-  };
-}
-
-function buildFaceBoundaryPoints(segments, startKey, endKey) {
-  return buildFaceBoundaryPlan(segments, startKey, endKey).points;
-}
-
-function buildSpaceInnerBoundaryPoints(floor, spaceOrWallIds) {
-  const wallIds = Array.isArray(spaceOrWallIds)
-    ? spaceOrWallIds
-    : (spaceOrWallIds && spaceOrWallIds.wallIds);
-  const wallFaceOverrides = !Array.isArray(spaceOrWallIds) && spaceOrWallIds
-    ? spaceOrWallIds.wallFaceOverrides
-    : null;
-  const segments = buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides);
-  const points = buildFaceBoundaryPoints(segments, 'innerStart', 'innerEnd');
-  return points.length >= 3 && calculatePolygonAreaMm2(points) > 0
-    ? points
-    : buildSpaceBoundaryPoints(floor, wallIds);
-}
-
-function buildSpaceRenderBoundaryPoints(floor, spaceOrWallIds) {
-  const wallIds = Array.isArray(spaceOrWallIds)
-    ? spaceOrWallIds
-    : (spaceOrWallIds && spaceOrWallIds.wallIds);
-  const wallFaceOverrides = !Array.isArray(spaceOrWallIds) && spaceOrWallIds
-    ? spaceOrWallIds.wallFaceOverrides
-    : null;
-  const segments = buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides);
-  const points = buildFaceBoundaryPoints(segments, 'innerStart', 'innerEnd');
-  if (points.length < 3) return buildSpaceBoundaryPoints(floor, wallIds);
-  if (points.length !== segments.length) return points;
-
-  const renderPoints = points.filter((point, index) => {
-    const previousSegment = segments[(index - 1 + segments.length) % segments.length];
-    const currentSegment = segments[index];
-    const previousSourceId = previousSegment.wall.topologySourceWallId;
-    const currentSourceId = currentSegment.wall.topologySourceWallId;
-    if (!previousSourceId || previousSourceId !== currentSourceId) return true;
-    const previousDirection = {
-      x: previousSegment.innerEnd.xMm - previousSegment.innerStart.xMm,
-      y: previousSegment.innerEnd.yMm - previousSegment.innerStart.yMm
-    };
-    const currentDirection = {
-      x: currentSegment.innerEnd.xMm - currentSegment.innerStart.xMm,
-      y: currentSegment.innerEnd.yMm - currentSegment.innerStart.yMm
-    };
-    return Math.abs(cross(previousDirection, currentDirection)) > 0.001 ||
-      dot(previousDirection, currentDirection) < 0;
-  });
-  return renderPoints.length >= 3 && calculatePolygonAreaMm2(renderPoints) > 0
-    ? renderPoints
-    : points;
-}
-
-function calculateBoundaryBounds(points) {
-  if (!Array.isArray(points) || !points.length) {
-    return { widthMm: 0, heightMm: 0 };
-  }
-  const xs = points.map((point) => Number(point.xMm));
-  const ys = points.map((point) => Number(point.yMm));
-  return {
-    widthMm: Math.round(Math.max(...xs) - Math.min(...xs)),
-    heightMm: Math.round(Math.max(...ys) - Math.min(...ys))
-  };
-}
-
-function buildSpaceDimensionPlan(floor, spaceOrWallIds) {
-  const wallIds = Array.isArray(spaceOrWallIds)
-    ? spaceOrWallIds
-    : (spaceOrWallIds && spaceOrWallIds.wallIds);
-  const wallFaceOverrides = !Array.isArray(spaceOrWallIds) && spaceOrWallIds
-    ? spaceOrWallIds.wallFaceOverrides
-    : null;
-  if (!floor || !Array.isArray(wallIds)) return null;
-  const faces = buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides);
-  if (faces.length < 3) return null;
-  const innerBoundary = buildFaceBoundaryPlan(faces, 'innerStart', 'innerEnd');
-  const outerBoundary = buildFaceBoundaryPlan(faces, 'oppositeStart', 'oppositeEnd');
-  const innerBoundaryPoints = innerBoundary.points;
-  const outerBoundaryPoints = outerBoundary.points;
-  if (innerBoundaryPoints.length < 3 || outerBoundaryPoints.length < 3) return null;
-  const innerBounds = calculateBoundaryBounds(innerBoundaryPoints);
-  const outerBounds = calculateBoundaryBounds(outerBoundaryPoints);
-  return {
-    innerBoundaryPoints,
-    outerBoundaryPoints,
-    innerSegments: buildPlanEdgeSegments(faces, innerBoundaryPoints, innerBoundary.edgeFaceIndexes),
-    inner: Object.assign({}, innerBounds, {
-      areaMm2: Math.round(calculatePolygonAreaMm2(innerBoundaryPoints))
-    }),
-    outer: Object.assign({}, outerBounds, {
-      areaMm2: Math.round(calculatePolygonAreaMm2(outerBoundaryPoints))
-    }),
-    wallThicknessSegments: faces.map((face) => {
-      const start = {
-        xMm: (face.innerStart.xMm + face.innerEnd.xMm) / 2,
-        yMm: (face.innerStart.yMm + face.innerEnd.yMm) / 2
-      };
-      const end = {
-        xMm: (face.oppositeStart.xMm + face.oppositeEnd.xMm) / 2,
-        yMm: (face.oppositeStart.yMm + face.oppositeEnd.yMm) / 2
-      };
-      return {
-        wallId: face.wallId,
-        kind: 'wall-thickness',
-        start,
-        end,
-        lengthMm: Math.round(distanceMm(start, end))
-      };
-    })
-  };
-}
-
-function calculateSpaceAreaMm2(draft, spaceId) {
-  const floor = getActiveFloor(draft);
-  const closedSpace = floor.spaces.find((space) => (
-    space.closed && (!spaceId || space.id === spaceId)
-  ));
-  if (!closedSpace) return 0;
-  const plan = buildSpaceDimensionPlan(floor, closedSpace);
-  return plan ? plan.inner.areaMm2 : 0;
-}
+// Keep the public compatibility facade byte-for-byte compatible with the
+// historical errors while domain modules use stable, language-neutral codes.
+// Internal calls intentionally keep the structured error until they cross one
+// of these exported operation boundaries.
+const legacyStartPreviewFromBearing = adaptLegacySurveyOperation(startPreviewFromBearing);
+const legacyLockPreviewBearing = adaptLegacySurveyOperation(lockPreviewBearing);
+const legacyMaterializeLockedPreview = adaptLegacySurveyOperation(materializeLockedPreview);
+const legacyApplyPreviewInteriorAngle = adaptLegacySurveyOperation(applyPreviewInteriorAngle);
+const legacyReopenLastDiagonalWallForAngle = adaptLegacySurveyOperation(reopenLastDiagonalWallForAngle);
+const legacyCommitPreviewLength = adaptLegacySurveyOperation(commitPreviewLength);
+const legacyConfirmClosure = adaptLegacySurveyOperation(confirmClosure);
+const legacyRenameClosedSpace = adaptLegacySurveyOperation(renameClosedSpace);
+const legacyAddOpeningToWall = adaptLegacySurveyOperation(addOpeningToWall);
+const legacyUpdateOpening = adaptLegacySurveyOperation(updateOpening);
+const legacySnapCursorToWall = adaptLegacySurveyOperation(snapCursorToWall);
+const legacyRemeasureSelectedWall = adaptLegacySurveyOperation(remeasureSelectedWall);
+const legacySetThickness = adaptLegacySurveyOperation(setThickness);
 
 module.exports = {
   DEFAULT_THICKNESS_MM,
@@ -7206,34 +6147,34 @@ module.exports = {
   placeCursor,
   placeNewWallChainCursor,
   startPreview,
-  startPreviewFromBearing,
-  lockPreviewBearing,
+  startPreviewFromBearing: legacyStartPreviewFromBearing,
+  lockPreviewBearing: legacyLockPreviewBearing,
   clearBleLockedBearing,
-  materializeLockedPreview,
+  materializeLockedPreview: legacyMaterializeLockedPreview,
   holdPreviewForInput,
-  applyPreviewInteriorAngle,
-  reopenLastDiagonalWallForAngle,
+  applyPreviewInteriorAngle: legacyApplyPreviewInteriorAngle,
+  reopenLastDiagonalWallForAngle: legacyReopenLastDiagonalWallForAngle,
   cancelPending,
-  commitPreviewLength,
-  confirmClosure,
+  commitPreviewLength: legacyCommitPreviewLength,
+  confirmClosure: legacyConfirmClosure,
   repairCollinearDegree2Walls,
   selectWall,
   selectOpening,
   selectSpace,
-  renameClosedSpace,
+  renameClosedSpace: legacyRenameClosedSpace,
   deleteClosedSpace,
-  addOpeningToWall,
-  updateOpening,
+  addOpeningToWall: legacyAddOpeningToWall,
+  updateOpening: legacyUpdateOpening,
   deleteOpening,
   deleteWall,
   startWallSnap,
-  snapCursorToWall,
+  snapCursorToWall: legacySnapCursorToWall,
   startRemeasure,
-  remeasureSelectedWall,
+  remeasureSelectedWall: legacyRemeasureSelectedWall,
   setFixedNode,
   setMeasurementSide,
   canSetInitialMeasurementSide,
-  setThickness,
+  setThickness: legacySetThickness,
   resetCursor,
   updateViewport
 };

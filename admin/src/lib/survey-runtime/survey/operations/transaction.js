@@ -1,6 +1,9 @@
 const { validateSurveyDraft } = require('../invariants/floor-plan-validator.js');
-
-const TRANSACTION_DRAFT_SYMBOL = Symbol.for('smart-floor-planner.survey-transaction-draft');
+const {
+  TRANSACTION_DRAFT_SYMBOL,
+  cloneDraft,
+  touchDraft
+} = require('../core/draft.js');
 
 class SurveyInvariantError extends Error {
   constructor(operationName, validation) {
@@ -16,7 +19,7 @@ class SurveyInvariantError extends Error {
 function runSurveyTransaction(draft, operationName, mutator, options) {
   if (!draft || typeof mutator !== 'function') throw new TypeError('量房事务参数无效');
   const transactionTime = new Date().toISOString();
-  const workingDraft = JSON.parse(JSON.stringify(draft));
+  const workingDraft = cloneDraft(draft, { force: true });
   Object.defineProperty(workingDraft, TRANSACTION_DRAFT_SYMBOL, {
     value: true,
     configurable: true,
@@ -26,7 +29,7 @@ function runSurveyTransaction(draft, operationName, mutator, options) {
   if (nextDraft && nextDraft[TRANSACTION_DRAFT_SYMBOL]) {
     delete nextDraft[TRANSACTION_DRAFT_SYMBOL];
   }
-  nextDraft.updatedAt = transactionTime;
+  touchDraft(nextDraft, transactionTime);
   const resolvedOptions = typeof options === 'function' ? (options(nextDraft) || {}) : (options || {});
   const validation = validateSurveyDraft(nextDraft, {
     mode: resolvedOptions.mode || 'quick',

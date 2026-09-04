@@ -19,4 +19,10 @@ function normalizeOpeningToWall(opening, wall, options) {
   return opening;
 }
 
-module.exports = { getOpeningRange, normalizeOpeningToWall };
+function normalizeOpeningDirection(opening) {
+  if (!opening || opening.type !== 'door') return opening;
+  opening.openDirection = opening.openDirection === 'outside' ? 'outside' : 'inside';
+  return opening;
+}
+
+module.exports = { getOpeningRange, normalizeOpeningToWall, normalizeOpeningDirection };

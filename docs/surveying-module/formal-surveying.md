@@ -48,6 +48,41 @@ copy back to `layoutData`.
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js`,
   `surveyDimensionPlan.js`, and `surveyWallSolidPlan.js`. The main package keeps
   only kernel-free `utils/surveyLayout.js` for formal-layout read helpers.
+- Phase 2 foundation authority lives in `survey/core/{draft,session}.js`,
+  `survey/geometry/{vector2,segment,polygon}.js`,
+  `survey/domain/{wall,opening,errors,validation}.js`, and
+  `survey/compat/legacy-error-messages.js`. `legacy-kernel.js` consumes those
+  modules and no longer retains their duplicate function bodies. Foundation
+  modules do not depend on the kernel, editor, BLE, or `wx`; domain failures use
+  stable codes and structured details internally, while the 64 legacy public
+  exports retain their historical messages and enumerable conflict fields.
+  The Admin runtime passes the 35-pair mirror audit (34 exact copies plus the
+  approved renderer require-path rewrite). This internal refactor
+  changes no route, API, permission, UI, snap/closure rule, or version-4 graph.
+  The follow-up also centralizes perpendicular line distance, measurement-side
+  normals, preview measured lengths and endpoint reconstruction, checked exactly
+  against frozen Phase 1 formulas. Preview adjustments still round before
+  arithmetic while stored-wall readings preserve fractions. Legacy active-floor
+  access still returns `undefined` for an empty list and throws for a missing
+  list; guarded core access remains nullable.
+- Phase 3 read models are Implemented in `survey/read-model/{wall-geometry,
+  wall-faces,space-boundary,space-dimensions}.js`. They consume
+  `core/graph-query.js`, `topology/closed-boundary.js`, and pure geometry/domain
+  foundations without depending on the kernel or write operations. Wall solids,
+  snap geometry, faces, inner/render boundaries, dimensions, and area retain
+  their existing output. Closed chains retain ordered traversal and reverse-first
+  fallback; render joins retain rounded-millimetre point comparison. All 69
+  facade exports have explicit owners, including the former 17 overlapping
+  providers. The 64 legacy exports remain, with eight read models aliasing the
+  authoritative functions; 32 moved function bodies no longer live in the kernel.
+  Eleven frozen graph shapes, 48 deterministic geometry variants, and degenerate
+  inputs verify per-function immutability, repeatability, and Mini/Admin parity.
+  Canvas, preview, DXF, room/3D data, and AI consumer checks prohibit derived
+  layout writes. The 35 mirrors comprise 34 exact copies and the approved
+  renderer path rewrite. This internal refactor changes no visible UI and
+  requires no design-source change or WeChat DevTools operation. Write operations
+  and interaction policy remain for later governance phases. Evidence and limits:
+  [`legacy-kernel-phase3-read-models.md`](./legacy-kernel-phase3-read-models.md).
 - Surveying pan and pinch gestures use the primary Canvas `requestAnimationFrame`
   frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
   coalesced to one callback per animation frame and flushed once at gesture end;
@@ -566,14 +601,22 @@ span outside the junction's one-wall-thickness clearance. A touching or
 overlapping divider cut is blocked; the catalog does not model a cross-segment
 opening.
 Before and after migrating any `legacy-kernel.js` function family, run
-`cd miniprogram && npm run test:survey-kernel-phase1`. The test-only Phase 1
-harness runs legacy and candidate implementations twice from isolated copies of
-the same input, compares graph/session/error plus quick/full validation, checks
-references and input immutability, and differentially executes the Mini Program
-and Admin runtime mirrors. Persisted graph values are exact; only derived
-read-model floating-point values have an explicit `1e-6` tolerance. Its sole
+`cd miniprogram && npm run test:survey-kernel-phase3`. That command retains the
+test-only Phase 1 harness, which runs legacy and candidate implementations twice
+from isolated copies of the same input, compares graph/session/error plus
+quick/full validation, checks references and input immutability, and
+differentially executes the Mini Program and Admin runtime mirrors. It also runs
+the Phase 2 foundation boundary, degenerate-input, legacy-message, and dependency
+direction tests. Persisted graph values are exact; only derived read-model
+floating-point values have an explicit `1e-6` tolerance. The harness's sole
 legacy-core adapter omission is the transaction-only
-`session.fullValidationAfterClosedSplit` handoff flag. This guard changes no
+`session.fullValidationAfterClosedSplit` handoff flag. Phase 3 additionally
+compares frozen pre-migration read formulas exactly against standalone modules
+and facades in both runtimes. Write-intercepting proxies check every read-model
+input; architecture guards reject reverse/cyclic dependencies and implicit or
+duplicate exports. Run `cd admin && npm run test:survey-read-models` for 2D scenes,
+PNG, DXF, room/3D and AI consumer checks, and run the complete Mini Program suite
+before handoff. This guard changes no
 runtime route, API, permission, UI, or version-4 persistence contract.
 Real-device or WeChat DevTools evidence is required
 when the change involves native Canvas, BLE, or host UI behavior.

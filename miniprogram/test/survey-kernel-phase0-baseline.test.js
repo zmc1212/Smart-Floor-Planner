@@ -104,7 +104,6 @@ test('dependency audit separates facade reachability, editor direct code, and su
   assert.deepEqual(
     (classifications['suspected-dead'] || []).map((entry) => entry.file),
     [
-      'miniprogram/packages/surveying/utils/survey/core/draft.js',
       'miniprogram/packages/surveying/utils/survey/geometry/intersection.js',
       'miniprogram/packages/surveying/utils/survey/topology/space-topology.js',
       'miniprogram/packages/surveying/utils/survey/topology/wall-split.js'
@@ -113,7 +112,7 @@ test('dependency audit separates facade reachability, editor direct code, and su
 });
 
 test('Admin runtime mirror matches every authoritative Mini Program source or approved require rewrite', () => {
-  assert.equal(expectedAudit.adminMirror.length, 30);
+  assert.equal(expectedAudit.adminMirror.length, 35);
   expectedAudit.adminMirror.forEach((entry) => {
     assert.equal(entry.targetExists, true, entry.target);
     assert.equal(entry.contentMatches, true, entry.target);

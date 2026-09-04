@@ -1,10 +1,11 @@
 const constants = require('../core/constants.js');
-const { collectSessionReferences } = require('../core/session.js');
+const { SESSION_STATES, collectSessionReferences } = require('../core/session.js');
 const wallDomain = require('../domain/wall.js');
 const openingDomain = require('../domain/opening.js');
 const spaceDomain = require('../domain/space.js');
 const polygon = require('../geometry/polygon.js');
 const segment = require('../geometry/segment.js');
+const vector2 = require('../geometry/vector2.js');
 const { createTopologyIndex } = require('../topology/topology-index.js');
 const { compareClosedSpacesToFaces } = require('../topology/face-shadow.js');
 
@@ -118,7 +119,7 @@ function isAllowedPendingPartitionRelation(floor, firstWall, secondWall, relatio
   const session = floor.session || {};
   const pendingWall = floor.walls[floor.walls.length - 1];
   if (
-    session.state !== 'closing' ||
+    session.state !== SESSION_STATES.CLOSING ||
     session.closeCandidateType !== 'partition' ||
     !session.closeCandidateSharedWallId ||
     !session.closeCandidateNodeId ||
@@ -134,13 +135,7 @@ function isAllowedPendingPartitionRelation(floor, firstWall, secondWall, relatio
 }
 
 function normalizedWallAngleDeg(start, end) {
-  let angle = Math.atan2(
-    Number(end.yMm) - Number(start.yMm),
-    Number(end.xMm) - Number(start.xMm)
-  ) * 180 / Math.PI;
-  while (angle <= -180) angle += 360;
-  while (angle > 180) angle -= 360;
-  return Math.round(angle * 10) / 10;
+  return vector2.angleDeg(start, end);
 }
 
 function angleDifferenceDeg(first, second) {
@@ -148,7 +143,7 @@ function angleDifferenceDeg(first, second) {
 }
 
 function normalizedNonNegativeMm(value) {
-  return Math.max(0, Math.round(Number(value) || 0));
+  return wallDomain.normalizeMeasurementAdjustment(value);
 }
 
 function validateMeasurementSemantics(floor, index, errors) {
