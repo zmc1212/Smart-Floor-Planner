@@ -2,7 +2,7 @@
 
 > 状态：执行中
 >
-> 当前阶段：Phase 4A — 门窗及低拓扑风险操作
+> 当前阶段：Phase 4B — 墙体结构操作
 >
 > 最后检查：2026-09-04
 >
@@ -279,10 +279,13 @@ refactor: extract survey graph read models
 
 #### Phase 4A：门窗及低拓扑风险操作
 
-- [ ] `addOpeningToWall`
-- [ ] `updateOpening`
-- [ ] `deleteOpening`
-- [ ] opening 规格化、越界和墙体关系校验
+- [x] `addOpeningToWall`
+- [x] `updateOpening`
+- [x] `deleteOpening`
+- [x] opening 规格化、越界和墙体关系校验
+
+完成证据、行为差分、失败原子性及依赖边界见
+[`legacy-kernel-phase4a-opening-operations.md`](./legacy-kernel-phase4a-opening-operations.md)。
 
 #### Phase 4B：墙体结构操作
 
@@ -490,7 +493,7 @@ node --test test/survey*.test.js test/surveying-editor*.test.js
 
 ### 当前阶段
 
-Phase 4A — 门窗及低拓扑风险操作。
+Phase 4B — 墙体结构操作。
 
 ### 已完成
 
@@ -500,35 +503,46 @@ Phase 4A — 门窗及低拓扑风险操作。
       边界收口，并补齐四个冻结公式与 legacy 空楼层语义；详见 Phase 2 完成记录。
 - [x] Phase 3 按墙体、空间边界、尺寸的函数族顺序迁移；四个 read-model 模块直接依赖
       graph 查询、闭合墙链和纯基础模块，可在 kernel 与写操作不可用时独立加载。
-- [x] 32 个只读/查询函数体已移出 kernel；剩余 176 个函数体未改动。
+- [x] Phase 3 将 32 个只读/查询函数体移出 kernel。
       64 个 legacy 导出与 69 个 façade 导出保留，原 17 个同名提供者改为显式选择；
       审计不再靠覆盖顺序推断来源。
 - [x] 为每个公开读模型及共享内部 helper 增加输入写入拦截、重复执行、冻结公式精确
       差分和双端验证；覆盖 11 类冻结图、48 组确定性变体及退化输入，另有依赖与导出守卫。
 - [x] 核查小程序画布、Admin 2D、PNG、DXF、房间/3D 数据和 AI 消费者；场景与 graph
       语义不变，不生成可编辑派生副本或回写额外的 `layoutData` 字段。
-- [x] 当前结构为 32 个模块节点 / 82 条边；35 对运行镜像通过源码哈希审计
-      （34 对精确副本及 1 对已批准 renderer 路径改写）。
-- [x] `npm --prefix miniprogram run test:survey-kernel-phase3` 通过 566 项量房定向测试、
-      55 项 H5 测试和大图性能门槛；`npm --prefix admin run test:survey-read-models`
-      通过 38 项画布/消费者/DXF/AI 测试。
-- [x] 完整小程序测试 1,057 项，1,043 项通过；14 项失败与 Phase 0 登记的无关既有
-      失败名称完全一致，量房范围无新增失败。
 - [x] Phase 3 是内部行为等价重构；路由、API、角色、权限、UI、吸附/闭合阈值、错误
       文案与 version-4 持久化合同无变化。完成证据见
       [Phase 3 只读模型迁移记录](./legacy-kernel-phase3-read-models.md)。
+- [x] Phase 4A 已迁移 `addOpeningToWall`、`updateOpening`、`deleteOpening` 和宿主墙
+      规格化/校验。三个 operation 使用只读 plan、事务草稿、既有 invariant validator 与
+      结构化结果；门窗操作不改变 wall/node/Space 拓扑，因此无需额外 space 同步。
+- [x] 迁移前 Phase 3 mutation 作为测试专用冻结参考；15 类输入分别与 Mini Program/Admin 的
+      legacy proxy 和 transactional façade 差分，另覆盖计划只读、失败原子性、undo/redo、入户门唯一性、
+      宿主墙关系、越界校验、依赖闭包和旧函数体移除。
+- [x] 三个 mutation 函数体已从 kernel 删除；kernel 当前为 6,064 行 / 173 个顶层函数。
+      64 个 legacy 导出与 69 个 façade 导出保持不变，opening façade 不再注入 kernel。
+- [x] 当前结构为 32 个模块节点 / 91 条边；35 对运行镜像继续通过源码哈希审计
+      （34 对精确副本及 1 对已批准 renderer 路径改写）。
+- [x] `npm --prefix miniprogram run test:survey-kernel-phase4a` 通过 604 项量房定向测试、
+      55 项 H5 测试和大图性能门槛；Admin 38 项消费者测试通过。完整小程序测试 1,095 项中
+      1,081 项通过，14 项失败名称仍与 Phase 0 无关既有清单一致。
+- [x] Phase 4A 是内部行为等价重构；路由、API、角色、权限、UI、错误文案、吸附/闭合策略
+      与 version-4 持久化合同无变化。完成证据见
+      [Phase 4A 门窗事务迁移记录](./legacy-kernel-phase4a-opening-operations.md)。
 
 ### 仍保留的边界
 
-- [ ] Phase 4 写操作迁移与 Phase 5 交互/session 分离尚未开始。
-- [ ] legacy kernel 仍保留写操作和交互查询；没有删除或改变兼容导出。
+- [ ] Phase 4B–4D 的墙体结构、复尺/测量与闭合写操作仍待迁移；Phase 5 交互/session
+      分离尚未开始。
+- [ ] legacy kernel 仍保留尚未迁移的写操作和交互查询；兼容导出未删除或改变。
 - [ ] Phase 6 运行来源收口及 Phase 7 最终治理仍待完成；显式 façade 已由 Phase 3 接管。
 
 ### 下一步唯一目标
 
-执行 Phase 4A 的首个门窗事务操作：迁移 `addOpeningToWall`。先冻结成功、拒绝、
-输入不变、重复执行与撤销/重做场景，再复用现有事务框架接管；不同时调整门窗规格、
-UI、吸附/闭合策略或正式 v4 数据合同。
+执行 Phase 4B 的首个墙体结构事务：迁移 `splitWallAtNodes`。先冻结无切点、单切点、
+多切点、共享墙、宿主 opening 安全迁移/冲突拒绝、session 引用和 Space 同步语义，再复用
+既有事务与 full invariant validation 接管；不同时迁移 `deleteWall`、改变 UI、吸附/闭合
+策略或正式 v4 数据合同。
 
 ## 12. 整体完成定义
 

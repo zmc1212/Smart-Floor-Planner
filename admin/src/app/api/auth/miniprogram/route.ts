@@ -8,6 +8,7 @@ import {
 } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
+import { withMiniProgramRequestLog, type MiniProgramRequestLog } from '@/lib/miniprogram-request-log';
 import {
   defaultMiniProgramIdentityContext,
   isMiniProgramIdentityContextSupported,
@@ -44,12 +45,18 @@ function badRequest(error: string) {
 }
 
 export async function POST(request: Request) {
+  return withMiniProgramRequestLog(request, '/api/auth/miniprogram', (log) => authenticate(request, log));
+}
+
+async function authenticate(request: Request, log: MiniProgramRequestLog) {
   try {
+    log.stage('parse_body');
     const body = await request.json();
     const { type } = body;
     let identity: IdentityResult | null = null;
 
     if (type === 'password') {
+      log.stage('password_login');
       const identifier = body.username?.trim();
       if (!identifier || !body.password) {
         return badRequest('请输入用户名和密码');
@@ -91,7 +98,9 @@ export async function POST(request: Request) {
         source: 'password',
       };
     } else if (type === 'wechat_code') {
+      log.stage('wechat_code');
       const wechat = await getWechatSessionIdentity(body.code);
+      log.stage('database');
       const result = await withPlatformTransaction(async (transaction) => {
         const identities = new MiniProgramIdentityRepository(transaction);
         const existing = await identities.findByOpenid(wechat.openid);
@@ -129,7 +138,9 @@ export async function POST(request: Request) {
         source: 'wechat',
       };
     } else if (type === 'wechat_phone') {
+      log.stage('wechat_phone');
       const wechat = await resolveWechatPhoneLogin(body);
+      log.stage('database');
       const result = await withPlatformTransaction(async (transaction) => {
         const identities = new MiniProgramIdentityRepository(transaction);
         const user = await identities.resolveWechatPhoneUser({
@@ -146,6 +157,7 @@ export async function POST(request: Request) {
         source: 'phone',
       };
     } else if (type === 'refresh') {
+      log.stage('refresh');
       const payload = await verifyMiniProgramToken(body.token);
       if (!payload) {
         return NextResponse.json(
@@ -205,6 +217,7 @@ export async function POST(request: Request) {
       return badRequest('Invalid login method');
     }
 
+    log.stage('database');
     const responseContext = await withPlatformTransaction(
       async (transaction) => {
         const identities = new MiniProgramIdentityRepository(transaction);
@@ -225,6 +238,7 @@ export async function POST(request: Request) {
           selectedStaff.menuPermissions
         )
       : [];
+    log.stage('sign_token');
     const token = await signMiniProgramIdentityContextToken({
       userId: user.id,
       contextVersion: user.contextVersion,
@@ -276,7 +290,7 @@ export async function POST(request: Request) {
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[UnifiedAuth] Error:', error);
+    log.error(error);
     const identityConflictMessages: Record<string, { code: string; error: string }> = {
       STAFF_PHONE_LINKED_TO_OTHER_USER: {
         code: 'staff_phone_linked_to_other_user',

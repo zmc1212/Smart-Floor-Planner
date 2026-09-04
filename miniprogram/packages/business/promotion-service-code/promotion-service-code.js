@@ -1,5 +1,6 @@
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
+const { fetchServiceCodeImage, removeServiceCodeImage } = require('../../../utils/serviceCodeImage.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -34,11 +35,19 @@ Page({
       ...navigationMetrics(),
       membershipId: String(options.membershipId || '').trim()
     });
-    this.loadServiceCode();
+  },
+
+  onShow() {
+    return this.loadServiceCode();
+  },
+
+  onHide() {
+    this.qrRequestId = (this.qrRequestId || 0) + 1;
   },
 
   onUnload() {
     this.qrRequestId = (this.qrRequestId || 0) + 1;
+    removeServiceCodeImage(this.data.qrImagePath);
   },
 
   async loadServiceCode() {
@@ -50,15 +59,17 @@ Page({
 
     const requestId = (this.qrRequestId || 0) + 1;
     this.qrRequestId = requestId;
-    this.setData({ loading: true, errorMessage: '', qrImagePath: '' });
+    const previousImage = this.data.qrImagePath;
+    this.setData({ loading: true, errorMessage: '', qrImagePath: '', promotionToken: '' });
+    removeServiceCodeImage(previousImage);
     try {
-      const [promotion] = await Promise.all([
-        api.request(`/miniprogram/referrer-memberships/${encodeURIComponent(membershipId)}/promotion-code`, 'GET'),
-        this.fetchServiceCodeImage(membershipId, requestId)
-      ]);
+      const promotion = await api.request(`/miniprogram/referrer-memberships/${encodeURIComponent(membershipId)}/promotion-code`, 'GET');
+      if (requestId !== this.qrRequestId) return;
+      const qrImagePath = await this.fetchServiceCodeImage(membershipId, requestId);
       if (requestId !== this.qrRequestId) return;
       this.setData({
         loading: false,
+        qrImagePath,
         promotionToken: promotion.data && promotion.data.token || ''
       });
     } catch (error) {
@@ -72,32 +83,10 @@ Page({
   },
 
   fetchServiceCodeImage(membershipId, requestId) {
-    const token = getApp().globalData.token || wx.getStorageSync('token');
-    const baseUrl = api.getBaseUrls()[0];
-    return new Promise((resolve, reject) => {
-      wx.request({
-        url: `${baseUrl}/miniprogram/referrer-memberships/${encodeURIComponent(membershipId)}/promotion-code/image?cache=${Date.now()}`,
-        method: 'GET',
-        responseType: 'arraybuffer',
-        header: { Authorization: token ? `Bearer ${token}` : '' },
-        success: (response) => {
-          if (response.statusCode < 200 || response.statusCode >= 300 || !(response.data instanceof ArrayBuffer)) {
-            reject(new Error('服务码图片响应无效'));
-            return;
-          }
-          const filePath = `${wx.env.USER_DATA_PATH}/promotion-service-${membershipId}.png`;
-          wx.getFileSystemManager().writeFile({
-            filePath,
-            data: response.data,
-            success: () => {
-              if (requestId === this.qrRequestId) this.setData({ qrImagePath: filePath });
-              resolve(filePath);
-            },
-            fail: reject
-          });
-        },
-        fail: reject
-      });
+    return fetchServiceCodeImage({
+      endpoint: `/miniprogram/referrer-memberships/${encodeURIComponent(membershipId)}/promotion-code/image`,
+      fileKey: `promotion-${membershipId}`,
+      isCurrent: () => requestId === this.qrRequestId
     });
   },
 

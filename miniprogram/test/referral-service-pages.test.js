@@ -40,6 +40,7 @@ const codePresenterV3Assets = [
 test('staff activity code renders a continuous service invitation and may show the enterprise name', () => {
   const wxml = source('packages/business/staff-activity-code/staff-activity-code.wxml');
   const js = source('packages/business/staff-activity-code/staff-activity-code.js');
+  const imageLoader = source('utils/serviceCodeImage.js');
   const less = source('packages/business/staff-activity-code/staff-activity-code.less');
 
   assert.match(wxml, /免费设计服务/);
@@ -58,6 +59,8 @@ test('staff activity code renders a continuous service invitation and may show t
   assert.doesNotMatch(less, /\.share-scan\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /\/miniprogram\/staff-activity-code/);
   assert.match(js, /staff-activity-code\/image/);
+  assert.match(js, /fetchServiceCodeImage/);
+  assert.match(imageLoader, /responseType:\s*'arraybuffer'/);
   assert.match(js, /designer_profile_incomplete/);
   assert.match(js, /profile-edit\/profile-edit/);
   assert.match(js, /onFixProfile/);
@@ -171,6 +174,7 @@ test('join-code scope model gives employees one personal promoter tab', () => {
 test('promotion service screen keeps the public presentation anonymous and scanable', () => {
   const wxml = source('packages/business/promotion-service-code/promotion-service-code.wxml');
   const js = source('packages/business/promotion-service-code/promotion-service-code.js');
+  const imageLoader = source('utils/serviceCodeImage.js');
   const less = source('packages/business/promotion-service-code/promotion-service-code.less');
 
   assert.match(wxml, /免费设计服务/);
@@ -190,8 +194,9 @@ test('promotion service screen keeps the public presentation anonymous and scana
   assert.doesNotMatch(less, /\.scan-glyph\s*\{[^}]*border:\s*3rpx solid/);
   assert.doesNotMatch(less, /\.share-scan\s*\{[^}]*border:\s*3rpx solid/);
   assert.match(js, /promotion-code\/image/);
+  assert.match(js, /fetchServiceCodeImage/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
-  assert.match(js, /responseType:\s*'arraybuffer'/);
+  assert.match(imageLoader, /responseType:\s*'arraybuffer'/);
   assert.match(wxml, /service-invitation-card/);
   assert.match(wxml, /service-code-scroll/);
   assert.match(wxml, /action-dock/);

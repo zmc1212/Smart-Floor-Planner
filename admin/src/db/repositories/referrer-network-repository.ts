@@ -727,7 +727,17 @@ export class ReferrerNetworkRepository {
         )
       )
       .limit(1);
-    if (currentRows[0]) return currentRows[0];
+    const current = currentRows[0];
+    if (current) {
+      const expectedHash = hashReferrerNetworkToken(createStaffActivityToken(staff.id, current.version));
+      if (current.tokenHash === expectedHash) return current;
+      // The caller holds the staff row lock. Preserve the old row for audits,
+      // but never return a reconstructed token that cannot resolve from its hash.
+      const now = new Date();
+      await this.transaction.update(staffActivityCodes).set({
+        status: 'rotated', disabledAt: now, updatedAt: now,
+      }).where(eq(staffActivityCodes.id, current.id));
+    }
     const previousRows = await this.transaction
       .select({ version: staffActivityCodes.version })
       .from(staffActivityCodes)
@@ -911,7 +921,17 @@ export class ReferrerNetworkRepository {
         )
       )
       .limit(1);
-    if (currentRows[0]) return currentRows[0];
+    const current = currentRows[0];
+    if (current) {
+      const expectedHash = hashReferrerNetworkToken(createReferrerPromotionToken(membership.id, current.version));
+      if (current.tokenHash === expectedHash) return current;
+      // Onboarding/owner reads hold the user or membership lock. A stale secret
+      // must not leave an active record whose newly rendered image always 404s.
+      const now = new Date();
+      await this.transaction.update(referrerPromotionCodes).set({
+        status: 'rotated', disabledAt: now, updatedAt: now,
+      }).where(eq(referrerPromotionCodes.id, current.id));
+    }
     const previousRows = await this.transaction
       .select({ version: referrerPromotionCodes.version })
       .from(referrerPromotionCodes)

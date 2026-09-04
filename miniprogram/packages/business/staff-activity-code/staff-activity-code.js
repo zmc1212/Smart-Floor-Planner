@@ -1,5 +1,6 @@
 const api = require('../../../utils/api.js');
 const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
+const { fetchServiceCodeImage, removeServiceCodeImage } = require('../../../utils/serviceCodeImage.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -46,39 +47,44 @@ Page({
 
   onLoad() {
     this.setData(navigationMetrics());
-    this.loadServiceCode();
   },
 
   onShow() {
-    if (this._shouldReloadOnShow) {
-      this._shouldReloadOnShow = false;
-      this.loadServiceCode();
-    }
+    return this.loadServiceCode();
+  },
+
+  onHide() {
+    this.qrRequestId = (this.qrRequestId || 0) + 1;
   },
 
   onUnload() {
     this.qrRequestId = (this.qrRequestId || 0) + 1;
+    removeServiceCodeImage(this.data.qrImagePath);
   },
 
   async loadServiceCode() {
     const requestId = (this.qrRequestId || 0) + 1;
     this.qrRequestId = requestId;
+    const previousImage = this.data.qrImagePath;
     this.setData({
       loading: true,
       errorMessage: '',
       errorAction: 'retry',
-      qrImagePath: ''
+      qrImagePath: '',
+      activityToken: ''
     });
+    removeServiceCodeImage(previousImage);
     try {
       const activity = await api.request('/miniprogram/staff-activity-code', 'GET');
       if (requestId !== this.qrRequestId) return;
+      const qrImagePath = await this.fetchServiceCodeImage(requestId);
+      if (requestId !== this.qrRequestId) return;
       this.setData({
+        loading: false,
+        qrImagePath,
         activityToken: activity.data && activity.data.token || '',
         enterpriseName: activity.data && activity.data.enterpriseName || ''
       });
-      await this.fetchServiceCodeImage(requestId);
-      if (requestId !== this.qrRequestId) return;
-      this.setData({ loading: false });
     } catch (error) {
       if (requestId !== this.qrRequestId) return;
       this.setData({
@@ -90,32 +96,10 @@ Page({
   },
 
   fetchServiceCodeImage(requestId) {
-    const token = getApp().globalData.token || wx.getStorageSync('token');
-    const baseUrl = api.getBaseUrls()[0];
-    return new Promise((resolve, reject) => {
-      wx.request({
-        url: `${baseUrl}/miniprogram/staff-activity-code/image?cache=${Date.now()}`,
-        method: 'GET',
-        responseType: 'arraybuffer',
-        header: { Authorization: token ? `Bearer ${token}` : '' },
-        success: (response) => {
-          if (response.statusCode < 200 || response.statusCode >= 300 || !(response.data instanceof ArrayBuffer)) {
-            reject(parseImageError(response) || new Error('服务码图片响应无效'));
-            return;
-          }
-          const filePath = `${wx.env.USER_DATA_PATH}/staff-activity-code.png`;
-          wx.getFileSystemManager().writeFile({
-            filePath,
-            data: response.data,
-            success: () => {
-              if (requestId === this.qrRequestId) this.setData({ qrImagePath: filePath });
-              resolve(filePath);
-            },
-            fail: reject
-          });
-        },
-        fail: reject
-      });
+    return fetchServiceCodeImage({
+      endpoint: '/miniprogram/staff-activity-code/image',
+      fileKey: 'staff-activity',
+      isCurrent: () => requestId === this.qrRequestId
     });
   },
 
@@ -124,7 +108,6 @@ Page({
   },
 
   onFixProfile() {
-    this._shouldReloadOnShow = true;
     wx.navigateTo({ url: '/packages/business/profile-edit/profile-edit' });
   },
 
@@ -157,16 +140,3 @@ Page({
     };
   }
 });
-
-function parseImageError(response) {
-  try {
-    const bytes = response && response.data;
-    if (!(bytes instanceof ArrayBuffer)) return null;
-    const text = String.fromCharCode.apply(null, new Uint8Array(bytes));
-    const payload = JSON.parse(text);
-    if (payload && payload.code) return payload;
-  } catch (error) {
-    return null;
-  }
-  return null;
-}

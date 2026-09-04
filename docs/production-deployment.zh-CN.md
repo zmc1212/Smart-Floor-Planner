@@ -91,6 +91,63 @@ Compose 预检会显式启用 `migration` profile，确保仅在该 profile 下�
 
 任何备份、迁移、启动或检查失败都会返回非零状态。若新应用已经切换但检查失败，脚本会尝试恢复发布前的应用镜像；数据库迁移不会逆转。未通过的版本不会成为 `current`。
 
+## 实时请求日志
+
+正式域名使用系统安装的 Nginx。该站点的访问日志用于查看所有到达它的 HTTP 请求，
+包括静态资源、API 响应和上游失败。先确认实际 `server` / `location` 的日志配置：
+
+```bash
+sudo nginx -T 2>&1 | grep -E 'server_name|access_log|error_log'
+```
+
+如果该域名使用以下常见路径，可直接跟踪；否则替换为配置中的实际路径。
+`-F` 会在日志轮转后继续跟踪新文件。
+
+```bash
+sudo tail -n 100 -F /var/log/nginx/access.log /var/log/nginx/error.log
+```
+
+另开一个 SSH 窗口发送不写业务数据的探测请求，再重新扫码：
+
+```bash
+curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://smartfloor.zlyun168.com/api/health
+```
+
+Nginx 在请求处理结束时记录访问。如果看不到探测请求，核对对应域名与 location 是否有
+`access_log off`、独立日志路径、条件记录或 `buffer` / `flush` 缓冲。需要记录全部请求时，
+为该站点启用无条件 `access_log`，并移除相关 location 中覆盖它的 `off`。
+例如不带缓冲的 `access_log /var/log/nginx/smartfloor.access.log combined;` 会逐条写入
+已完成请求；如果站点原有格式含需要的耗时字段，继续使用该格式。
+修改配置后先运行 `sudo nginx -t`，通过后用 `sudo systemctl reload nginx` 平滑重载，
+再跟踪配置的文件。本仓库不远程修改 Nginx 配置。
+
+应用内部输出单独查看：
+
+```bash
+docker logs --tail 200 --timestamps -f smart-floor-planner-admin
+```
+
+部署已接入诊断的新 Admin 后，`[MiniProgramRequest]` JSON 日志覆盖
+`POST /api/miniprogram/codes/resolve`、`POST /api/auth/miniprogram`、
+`POST /api/miniprogram/onboarding/referrer`、`POST /api/miniprogram/onboarding/staff` 和
+`GET /api/miniprogram/bootstrap`。每次请求立即记录 `start`，完成时记录 `complete`，
+包含状态码、业务结果、阶段、耗时及同一 `requestId`（同时通过 `X-Request-Id` 返回）。
+捕获异常增加 `exception`；未捕获异常增加 `failed` 并保留原抛出行为。
+日志保留错误类型、源码位置、嵌套 PostgreSQL/网络错误码和微信数字错误码，不记录异常原文、
+SQL/参数、请求/响应体、查询字符串、手机号和凭据。角标/派单异常后仍可能记录成功结果，
+因为既有业务流程允许对应子步骤降级。
+
+查看日志本身不需要 DEBUG 开关或重启。新增应用日志需要部署新镜像，重启旧镜像不会补上日志。
+部署替换容器后应重新执行 `docker logs`。这只是五个接口的诊断日志，全部 HTTP 访问以 Nginx
+日志为准。
+
+扫码返回 `404` 时应看响应体：JSON `code_not_found` 表示不透明令牌未匹配到数据库记录，
+不是 Next.js 路由缺失。向 `/api/miniprogram/codes/resolve` 发送空对象 `{}` 应在任何数据库
+写入之前返回 `400 / invalid_token`，可用于验证路由存在。随后确认二维码来自同一数据库。
+查看已有码时，服务端用 `REFERRER_TOKEN_SECRET`（未设置则用 `JWT_SECRET`）、范围与版本
+重建令牌；若改过密钥但已有记录仍保存旧令牌哈希，重新下载的图片也可能校验失败。
+换码或改密钥前先确认该条件；换码会使已分发的旧码失效。仅凭 Nginx 的状态码不能确定是哪种原因。
+
 ## 状态与回滚
 
 查看当前容器、版本和最近备份：

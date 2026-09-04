@@ -82,6 +82,76 @@ Only a fully verified release becomes current. If verification fails after the
 new image starts, the script attempts to restore the image that was running
 before deployment; database migrations are never reversed.
 
+## Live request logs
+
+The production domain uses system-installed Nginx. Its access log is the source
+for all HTTP requests that reach that virtual host, including static resources,
+API responses and upstream failures. Find the actual `server`/`location` log
+configuration first:
+
+```bash
+sudo nginx -T 2>&1 | grep -E 'server_name|access_log|error_log'
+```
+
+If the domain uses the standard paths below, follow them; otherwise substitute
+the configured paths. `-F` continues following a file after log rotation.
+
+```bash
+sudo tail -n 100 -F /var/log/nginx/access.log /var/log/nginx/error.log
+```
+
+From another SSH terminal, send a non-mutating probe, then reproduce the scan:
+
+```bash
+curl -sS -o /dev/null -w 'HTTP %{http_code}\n' https://smartfloor.zlyun168.com/api/health
+```
+
+Nginx records access when request processing finishes. If the probe is absent,
+check the matching virtual host and location: `access_log off`, a different file,
+conditional logging or `buffer`/`flush` can suppress or delay a line. For all
+requests, enable an unconditional `access_log` on the site and remove overriding
+`off` directives from relevant locations. An unbuffered directive such as
+`access_log /var/log/nginx/smartfloor.access.log combined;` writes each completed
+request. Use the site's existing log format if it contains needed timing fields.
+Validate a configuration edit with `sudo nginx -t`, then use
+`sudo systemctl reload nginx`; follow the configured file after reloading.
+The repository does not remotely modify Nginx configuration.
+
+Application output is separate:
+
+```bash
+docker logs --tail 200 --timestamps -f smart-floor-planner-admin
+```
+
+After deploying the instrumented Admin, `[MiniProgramRequest]` JSON records cover
+`POST /api/miniprogram/codes/resolve`, `POST /api/auth/miniprogram`,
+`POST /api/miniprogram/onboarding/referrer`, `POST /api/miniprogram/onboarding/staff`,
+and `GET /api/miniprogram/bootstrap`. Every invocation emits `start` immediately,
+then `complete` with status, result, stage, duration and the same `requestId`
+(also returned in `X-Request-Id`). Caught errors add `exception`; uncaught errors
+add `failed` and keep their original throw behavior. Error types, source locations,
+nested PostgreSQL/network codes and numeric WeChat codes are retained, without
+raw error text, SQL/parameters, request/response bodies, query strings, phone
+numbers or credentials. A badge/assignment error may be followed by a successful
+completion because the existing flow tolerates that failure.
+
+The log follower needs no debug setting or restart. These application records do
+require deployment of the updated image; restarting an older image cannot add
+them. Reattach `docker logs` after deployment replaces its container. This is
+diagnostic logging for five routes, not a global HTTP access logger.
+
+For a scan-time `404`, inspect the response body: JSON `code_not_found` means the
+opaque token has no matching database record; it is not a missing Next.js route.
+An empty `{}` POST to `/api/miniprogram/codes/resolve` should return
+`400 / invalid_token` before any database write, which safely verifies route
+availability. Check that the QR image was generated against the same database.
+Viewing an existing code reconstructs its token from `REFERRER_TOKEN_SECRET`
+(or `JWT_SECRET` when the former is unset), scope and version. Changing that
+secret without updating existing records can make newly downloaded images fail
+the stored token-hash lookup. Confirm this before any rotation or secret change;
+rotation invalidates previously distributed codes. Nginx access status alone
+does not establish which of these conditions caused a failure.
+
 ## Status and rollback
 
 ```bash

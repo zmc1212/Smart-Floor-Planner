@@ -66,6 +66,23 @@ AI 工作台户型预览缓存约束：`/ai-studio/scenarios` 的预览 URL 必�
 平台 `/devices` 在既有 ProTable 搜索栏提供企业下拉筛选，可按企业（含既有的「未分配企业」）
 过滤当前平台可见设备列表；接口、平台写入权限和企业只读边界均不变。
 
+## 小程序入驻请求诊断（Implemented）
+
+`admin/src/lib/miniprogram-request-log.ts` 为 `POST /api/miniprogram/codes/resolve`、
+`POST /api/auth/miniprogram`、`POST /api/miniprogram/onboarding/referrer`、
+`POST /api/miniprogram/onboarding/staff` 和 `GET /api/miniprogram/bootstrap` 输出
+`[MiniProgramRequest]` JSON 日志。每次调用都有 `start` 与 `complete`（HTTP 状态、业务结果、
+阶段、耗时）；捕获异常输出 `exception`，未捕获异常还会在原样抛出前输出 `failed`。
+服务端生成的 `requestId` 关联单次调用事件，并通过 `X-Request-Id` 返回；它不是跨请求用户标识。
+异常诊断保留错误类型、源码位置、嵌套 PostgreSQL/网络错误码及微信供应商数字错误码，
+不记录异常原文、SQL/参数、请求/响应数据、查询字符串、令牌、手机号和授权凭据。
+
+原响应体/状态码、身份校验、租户事务、权限和业务写入不变。新日志需要重新部署 Admin，
+只覆盖上述五个接口；包括未进入 handler 的失败在内的全部 HTTP 访问，需要查看系统 Nginx
+访问日志，操作见[生产运维](./production-deployment.zh-CN.md#实时请求日志)。
+回归检查覆盖五个真实入口的早期拒绝、完成前的开始事件、响应保持、并发请求编号、异常脱敏和
+微信错误码；线上扫码复现仍待运维日志。没有可见 UI 或设计源变更，不需要运行态截图验收。
+
 ## 全局小程序码环境
 
 `/mini-program-code-settings` 为后续新生成的企业入驻码（`ej_`）、平台企业开户码（`er_`）、推荐推广码和员工活动码提供统一平台设置。`GET/PATCH /api/platform/mini-program-code-config` 读写 `platform_configs.mini_program_code_config` 中的 `develop`、`trial` 或 `release`。仅 `super_admin` 与 `admin` 可使用该页或 API。设置立即作用于之后生成的码图片，不改写已下载或已分发的历史图片。它取代此前固定开发版环境的行为。
@@ -84,7 +101,9 @@ Phase 2 后台运行镜像已与小程序共同把 draft/session helper、vector
 
 Phase 2 复核已镜像剩余的点到直线距离、测量面法向、预览实测长度及端点反算纯函数，并保留空楼层访问的历史策略。Phase 1 冻结公式差分约束取整和错误行为；不增加后台流程或数据合同变化。
 
-Phase 3 只读模型抽取已实现（Implemented）：墙体几何/墙面及空间边界/尺寸通过 graph 查询、闭合边界拓扑和纯几何独立加载，不依赖 kernel。façade 的 69 个导出显式指定来源，64 个 legacy 导出保持兼容；35 对 Mini Program/Admin 镜像通过审计。`cd admin && npm run test:survey-read-models` 的 38 项测试覆盖画布、PNG 快照、DXF、房间/3D 数据及 AI 适配器，包括 11 类冻结图且不回写派生 `layoutData`。现有路由、API、角色、权限、UI 和 v4 数据不变；内部重构没有设计源变更或运行态截图要求。legacy 写操作与交互路径仍留待后续阶段，详见 [Phase 3 完成记录](./surveying-module/legacy-kernel-phase3-read-models.md)。
+Phase 3 只读模型抽取已实现（Implemented）：墙体几何/墙面及空间边界/尺寸通过 graph 查询、闭合边界拓扑和纯几何独立加载，不依赖 kernel。façade 的 69 个导出显式指定来源，64 个 legacy 导出保持兼容；35 对 Mini Program/Admin 镜像通过审计。`cd admin && npm run test:survey-read-models` 的 38 项测试覆盖画布、PNG 快照、DXF、房间/3D 数据及 AI 适配器，包括 11 类冻结图且不回写派生 `layoutData`。现有路由、API、角色、权限、UI 和 v4 数据不变；内部重构没有设计源变更或运行态截图要求。门窗写操作由下述 Phase 4A 接管，其余写操作与交互路径留待后续阶段，详见 [Phase 3 完成记录](./surveying-module/legacy-kernel-phase3-read-models.md)。
+
+Phase 4A 门窗事务也已同步到后台运行镜像（Implemented）：`addOpeningToWall`、`updateOpening`、`deleteOpening` 由独立的 `survey/operations/opening-operations.js` 模块拥有，使用只读 plan、不可变事务草稿、Phase 2 opening 校验及共享 invariant validator。façade 不再注入 kernel，legacy runtime 只保留三个兼容代理。冻结差分与架构测试保持宿主墙规格化、入户门/selection 状态、旧错误、删除 no-op、undo/redo 和失败原子性；35 对镜像与 38 项后台画布/PNG/DXF/房间/3D/AI 测试均通过。后台路由仍只读，不新增或改变路由、API、模型、角色、租户权限、UI、设计源或 v4 数据合同。详见 [Phase 4A 完成记录](./surveying-module/legacy-kernel-phase4a-opening-operations.md)。
 
 `POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
 

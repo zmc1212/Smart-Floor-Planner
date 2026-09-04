@@ -8,6 +8,7 @@ import {
 } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
+import { withMiniProgramRequestLog, type MiniProgramRequestLog } from '@/lib/miniprogram-request-log';
 import {
   hashRequestAddress,
   normalizeOpaqueToken,
@@ -33,7 +34,12 @@ function tokenCandidates(token: string) {
 }
 
 export async function POST(request: Request) {
+  return withMiniProgramRequestLog(request, '/api/miniprogram/codes/resolve', (log) => resolveCode(request, log));
+}
+
+async function resolveCode(request: Request, log: MiniProgramRequestLog) {
   try {
+    log.stage('parse_body');
     const body = await request.json();
     const token = normalizeOpaqueToken(body.token);
     if (!token) {
@@ -41,7 +47,9 @@ export async function POST(request: Request) {
         message: 'A valid opaque token is required',
       });
     }
+    log.stage('authenticate');
     const payload = await readMiniProgramPayload(request);
+    log.stage('database');
     const result = await withPlatformTransaction(async (transaction) => {
       const authenticatedUser = payload
         ? await new MiniProgramIdentityRepository(transaction).findUserById(
@@ -229,6 +237,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    log.error(error);
     return NextResponse.json(
       {
         success: false,

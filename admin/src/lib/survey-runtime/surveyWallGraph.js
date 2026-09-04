@@ -8,7 +8,7 @@ const spaceBoundary = require('./survey/read-model/space-boundary.js');
 const spaceDimensions = require('./survey/read-model/space-dimensions.js');
 
 const transactionalWalls = createWallOperations(kernel);
-const transactionalOpenings = createOpeningOperations(kernel);
+const transactionalOpenings = createOpeningOperations();
 
 // Each compatibility export has one explicit owner. Read models are standalone;
 // write operations keep their existing transaction and legacy-error boundaries.

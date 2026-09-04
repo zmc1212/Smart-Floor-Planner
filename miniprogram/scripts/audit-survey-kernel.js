@@ -125,7 +125,7 @@ function buildFacadeAudit() {
   const wallOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'wall-operations.js'))
     .createWallOperations(kernel);
   const openingOperations = require(path.join(miniSurveyUtils, 'survey', 'operations', 'opening-operations.js'))
-    .createOpeningOperations(kernel);
+    .createOpeningOperations();
   const { validateSurveyDraft } = require(path.join(
     miniSurveyUtils,
     'survey',

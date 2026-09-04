@@ -21,7 +21,7 @@ function wechatCredentials() {
   const appId = process.env.WX_APPID;
   const appSecret = process.env.WX_APPSECRET;
   if (!appId || !appSecret) {
-    throw new Error('Server misconfiguration: WX_APPID or WX_APPSECRET missing');
+    throw Object.assign(new Error('Server misconfiguration: WX_APPID or WX_APPSECRET missing'), { code: 'WX_CONFIG_MISSING' });
   }
   return { appId, appSecret };
 }
@@ -43,7 +43,7 @@ export async function getWechatSessionIdentity(
   );
   const data = await response.json();
   if (data.errcode || !data.openid) {
-    throw new Error(data.errmsg || 'WeChat API error');
+    throw Object.assign(new Error(data.errmsg || 'WeChat API error'), { code: data.errcode });
   }
   return {
     openid: data.openid,
@@ -201,7 +201,7 @@ export async function getWechatPhoneNumber(
   } | undefined;
   const rawPhone = phoneInfo?.purePhoneNumber || phoneInfo?.phoneNumber;
   if (phoneData.errcode !== 0 || !rawPhone) {
-    throw new Error(phoneData.errmsg || 'Unable to obtain WeChat phone number');
+    throw Object.assign(new Error(phoneData.errmsg || 'Unable to obtain WeChat phone number'), { code: phoneData.errcode });
   }
   return normalizeCustomerPhone(rawPhone);
 }

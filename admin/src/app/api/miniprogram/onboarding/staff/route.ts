@@ -5,6 +5,7 @@ import {
 } from '@/db/repositories';
 import { adminUserToDto } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
+import { withMiniProgramRequestLog, type MiniProgramRequestLog } from '@/lib/miniprogram-request-log';
 import { hashEnterpriseAdminInitialPassword } from '@/lib/enterprise-admin-provision';
 import {
   miniProgramIdentityContextToDto,
@@ -22,12 +23,18 @@ import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  return withMiniProgramRequestLog(request, '/api/miniprogram/onboarding/staff', (log) => onboardStaff(request, log));
+}
+
+async function onboardStaff(request: Request, log: MiniProgramRequestLog) {
+  log.stage('authenticate');
   const payload = await readMiniProgramPayload(request);
   if (!payload) {
     return referrerNetworkError('unauthorized', { status: 401 });
   }
 
   try {
+    log.stage('parse_body');
     const body = await request.json();
     const token = normalizeOpaqueToken(body.token);
     if (!token) return referrerNetworkError('invalid_token');
@@ -41,11 +48,13 @@ export async function POST(request: Request) {
       typeof body.displayName === 'string'
         ? body.displayName.trim().slice(0, 60)
         : '';
+    log.stage('staff_setup');
     const [menuPermissions, passwordHash] = await Promise.all([
       getEffectivePermissions(role),
       hashEnterpriseAdminInitialPassword(),
     ]);
 
+    log.stage('database');
     const result = await withPlatformTransaction(async (transaction) => {
       const identities = new MiniProgramIdentityRepository(transaction);
       const authenticated = await validateMiniProgramIdentity(
@@ -91,6 +100,7 @@ export async function POST(request: Request) {
     if (!result.selected) {
       return referrerNetworkError('staff_context_missing', { status: 500 });
     }
+    log.stage('sign_token');
     const switchedToken = await signMiniProgramIdentityContextToken({
       userId: result.onboarding.user.id,
       contextVersion: result.onboarding.user.contextVersion,
@@ -98,11 +108,12 @@ export async function POST(request: Request) {
       source: payload.source,
     });
     if (result.onboarding.staff.enterpriseId) {
+      log.stage('assignment_retry');
       await retryPendingLeadAssignmentsForEnterprise({
         enterpriseId: result.onboarding.staff.enterpriseId,
         reason: 'staff_onboarded',
       }).catch((error) => {
-        console.error('[Staff onboarding assignment retry]', error);
+        log.error(error);
       });
     }
     return NextResponse.json({
@@ -114,6 +125,7 @@ export async function POST(request: Request) {
       idempotent: result.onboarding.idempotent,
     });
   } catch (error) {
+    log.error(error);
     return NextResponse.json(
       {
         success: false,

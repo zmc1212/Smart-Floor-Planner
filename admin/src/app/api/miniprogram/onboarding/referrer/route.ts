@@ -4,6 +4,7 @@ import {
   ReferrerNetworkRepository,
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
+import { withMiniProgramRequestLog, type MiniProgramRequestLog } from '@/lib/miniprogram-request-log';
 import {
   miniProgramIdentityContextToDto,
   signMiniProgramIdentityContextToken,
@@ -20,12 +21,18 @@ import {
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  return withMiniProgramRequestLog(request, '/api/miniprogram/onboarding/referrer', (log) => onboardReferrer(request, log));
+}
+
+async function onboardReferrer(request: Request, log: MiniProgramRequestLog) {
+  log.stage('authenticate');
   const payload = await readMiniProgramPayload(request);
   if (!payload) {
     return referrerNetworkError('unauthorized', { status: 401 });
   }
 
   try {
+    log.stage('parse_body');
     const body = await request.json();
     const token = normalizeOpaqueToken(body.token);
     if (!token) return referrerNetworkError('invalid_token');
@@ -38,6 +45,7 @@ export async function POST(request: Request) {
         message: '请填写推荐人姓名',
       });
     }
+    log.stage('database');
     const result = await withPlatformTransaction(async (transaction) => {
       const identities = new MiniProgramIdentityRepository(transaction);
       const authenticated = await validateMiniProgramIdentity(
@@ -80,6 +88,7 @@ export async function POST(request: Request) {
     if (!result.selected) {
       return referrerNetworkError('referrer_context_missing', { status: 500 });
     }
+    log.stage('sign_token');
     const switchedToken = await signMiniProgramIdentityContextToken({
       userId: result.onboarding.user.id,
       contextVersion: result.onboarding.user.contextVersion,
@@ -103,6 +112,7 @@ export async function POST(request: Request) {
       idempotent: result.onboarding.idempotent,
     });
   } catch (error) {
+    log.error(error);
     return NextResponse.json(
       {
         success: false,

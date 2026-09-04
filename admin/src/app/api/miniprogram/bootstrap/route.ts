@@ -12,6 +12,7 @@ import {
   getMiniProgramRole,
 } from '@/lib/miniprogram-bootstrap';
 import { verifyMiniProgramToken } from '@/lib/miniprogram-jwt';
+import { withMiniProgramRequestLog, type MiniProgramRequestLog } from '@/lib/miniprogram-request-log';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,11 @@ function bearerToken(request: Request) {
 }
 
 export async function GET(request: Request) {
+  return withMiniProgramRequestLog(request, '/api/miniprogram/bootstrap', (log) => bootstrap(request, log));
+}
+
+async function bootstrap(request: Request, log: MiniProgramRequestLog) {
+  log.stage('authenticate');
   const token = bearerToken(request);
   const payload = token ? await verifyMiniProgramToken(token) : null;
   if (!payload) {
@@ -31,6 +37,7 @@ export async function GET(request: Request) {
   }
 
   try {
+    log.stage('database');
     const result = await withPlatformTransaction(async (transaction) => {
       const identities = new MiniProgramIdentityRepository(transaction);
       const userId = parsePostgresId(payload.sub, 'user id');
@@ -79,6 +86,7 @@ export async function GET(request: Request) {
 
     let badges = unavailableMiniProgramBadges();
     try {
+      log.stage('badges');
       const facts = result.current.enterpriseId
         ? await withTenantTransaction(result.current.enterpriseId, (transaction) =>
           loadMiniProgramBadgeCounts({
@@ -96,7 +104,7 @@ export async function GET(request: Request) {
           }));
       badges = buildMiniProgramBadges({ role, facts });
     } catch (error) {
-      console.error('[MiniProgramBootstrap] Badge load failed:', error);
+      log.error(error);
       badges = unavailableMiniProgramBadges();
     }
 
@@ -105,7 +113,7 @@ export async function GET(request: Request) {
       ...buildMiniProgramBootstrap({ ...result, badges }),
     });
   } catch (error) {
-    console.error('[MiniProgramBootstrap] Error:', error);
+    log.error(error);
     return NextResponse.json(
       { success: false, error: 'Unable to load identity bootstrap', code: 'bootstrap_unavailable' },
       { status: 500 }

@@ -7,7 +7,7 @@ function wechatCredentials() {
   const appId = process.env.WX_APPID;
   const appSecret = process.env.WX_APPSECRET;
   if (!appId || !appSecret) {
-    throw new Error('Server misconfiguration: WX_APPID or WX_APPSECRET missing');
+    throw Object.assign(new Error('Server misconfiguration: WX_APPID or WX_APPSECRET missing'), { code: 'WX_CONFIG_MISSING' });
   }
   return { appId, appSecret };
 }
@@ -41,7 +41,7 @@ export async function getWechatAccessToken(options: {
   });
   const data = await response.json();
   if (!response.ok || data.errcode || !data.access_token) {
-    throw new Error(data.errmsg || 'Unable to obtain WeChat access token');
+    throw Object.assign(new Error(data.errmsg || 'Unable to obtain WeChat access token'), { code: data.errcode });
   }
 
   cachedAccessToken = data.access_token as string;

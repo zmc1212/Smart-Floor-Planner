@@ -3,8 +3,8 @@
   "scope": "Mini Program survey wall-graph facade, kernel modules, callers, and Admin runtime mirror",
   "kernel": {
     "file": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
-    "lineCount": 6180,
-    "topLevelFunctionCount": 176
+    "lineCount": 6064,
+    "topLevelFunctionCount": 173
   },
   "facade": {
     "selection": "explicit-property-bindings",
@@ -1425,6 +1425,27 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/survey-kernel-phase4a-opening-operations.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../../admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "admin/src/lib/survey-runtime/surveyWallGraph.js",
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "addOpeningToWall",
+          "deleteOpening",
+          "updateOpening",
+          "validateSurveyDraft"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/survey-layout.test.js",
         "classification": "test-only",
         "binding": "direct-require",
@@ -2194,6 +2215,24 @@
         "exports": []
       },
       {
+        "file": "miniprogram/test/survey-kernel-phase4a-opening-operations.test.js",
+        "classification": "test-only",
+        "access": "require",
+        "specifiers": [
+          "../../admin/src/lib/survey-runtime/survey/legacy-kernel.js",
+          "../packages/surveying/utils/survey/legacy-kernel.js",
+          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "resolvedFiles": [
+          "admin/src/lib/survey-runtime/survey/legacy-kernel.js",
+          "miniprogram/packages/surveying/utils/survey/legacy-kernel.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "deleteOpening"
+        ]
+      },
+      {
         "file": "surveying-h5/test-3room-merge.js",
         "classification": "suspected-dead",
         "access": "require",
@@ -2572,7 +2611,7 @@
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/core/session.js",
@@ -2663,7 +2702,7 @@
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
-        "testDirect": false
+        "testDirect": true
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/operations/transaction.js",
@@ -2906,6 +2945,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js"
       },
       {
@@ -2923,6 +2966,38 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/legacy-kernel.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/space-sync.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "to": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/errors.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/opening.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/validation.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",

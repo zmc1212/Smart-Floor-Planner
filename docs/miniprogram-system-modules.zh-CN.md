@@ -87,7 +87,7 @@ AI 设计界面已按批准的 `design-references/ai-design/unified-entry-v1/` �
 
 Phase 2 复核已把剩余点到直线距离、测量面法向、预览实测长度及端点反算收口到基础模块，保留 legacy 空楼层访问语义，并以 Phase 1 冻结公式约束精确取整结果，逐一验证全部 32 个领域错误码的旧消息与字段映射；运行包、路由、API、权限和 v4 合同边界不变。
 
-Phase 3 只读模型抽取已实现（Implemented）：墙体几何/墙面和空间边界/尺寸直接消费 `core/graph-query.js`、`topology/closed-boundary.js` 与纯基础模块，独立于 kernel 加载。69 个 façade 导出显式指定来源，64 个 legacy 导出保持兼容。逐函数写入拦截、迁移前冻结公式、11 类代表图、48 组确定性变体和依赖守卫共同验证 Mini Program/Admin 只读且输出等价。验收命令为 `cd miniprogram && npm run test:survey-kernel-phase3`；当前 566 项量房测试、55 项 H5 测试和大图性能门槛通过。完整小程序测试 1,057 项中 1,043 项通过，14 项失败与 Phase 0 的无关既有失败一致；35 对镜像与 38 项 Admin 消费者测试通过。写操作及交互策略留待后续阶段；此次无可见 UI 或设计源变更，无需微信 DevTools 自动化。详见 [Phase 3 完成记录](./surveying-module/legacy-kernel-phase3-read-models.md)。
+Phase 3 只读模型抽取已实现（Implemented）：墙体几何/墙面和空间边界/尺寸直接消费 `core/graph-query.js`、`topology/closed-boundary.js` 与纯基础模块，独立于 kernel 加载。69 个 façade 导出显式指定来源，64 个 legacy 导出保持兼容。逐函数写入拦截、迁移前冻结公式、11 类代表图、48 组确定性变体和依赖守卫共同验证 Mini Program/Admin 只读且输出等价；详见 [Phase 3 完成记录](./surveying-module/legacy-kernel-phase3-read-models.md)。Phase 4A 门窗事务也已实现（Implemented）：`addOpeningToWall`、`updateOpening`、`deleteOpening` 独立位于 `survey/operations/opening-operations.js`，使用只读 plan、不可变事务草稿、Phase 2 规格化/校验和既有 graph invariant validator。冻结差分保持默认值、宽度占满宿主墙的夹紧规则、偏移/门向规格化、模型/材质与唯一入户门字段、selection、删除缺失对象 no-op、旧错误、undo/redo 和失败原子性。façade 不再注入 kernel；kernel 只保留三个兼容代理，当前为 6,064 行 / 173 个顶层函数。当前验收命令为 `cd miniprogram && npm run test:survey-kernel-phase4a`；604 项量房测试、55 项 H5 测试、大图性能门槛、35 对镜像和 38 项 Admin 消费者测试通过。完整小程序测试 1,095 项中 1,081 项通过，14 项失败与 Phase 0 的无关既有失败一致。墙体结构、测量、闭合及交互路径留待后续阶段；详见 [Phase 4A 完成记录](./surveying-module/legacy-kernel-phase4a-opening-operations.md)。测试源码不进入运行包；这些内部重构无可见 UI 或设计源变更，无需微信 DevTools 自动化，也不改变路由、API、角色、权限、吸附/闭合规则、错误文案或 version-4 数据合同。
 
 ### 运行时版本检查
 
@@ -190,6 +190,31 @@ V3 负责人元素台账为：仅企业负责人 Hero 的顶部内容预留 `114
 
 企业入驻码（`ej_`）、平台企业开户码（`er_`）、推荐推广码和员工活动码由后台平台管理员统一选择 `develop`、`trial` 或 `release`：`develop`/`trial` 使用 `getwxacodeunlimit`，`release` 使用 `getwxacode`。该设置只影响后续新生成的小程序码图片，历史图片保持不变。开户码与商户 `ej_` 入驻码语义隔离，勿混用。
 
+## 入驻服务端诊断（Implemented）
+
+既有入驻页调用的 `POST /api/miniprogram/codes/resolve`、`POST /api/auth/miniprogram`、
+`POST /api/miniprogram/onboarding/referrer`、`POST /api/miniprogram/onboarding/staff` 和
+`GET /api/miniprogram/bootstrap` 已接入服务端日志。重新部署 Admin 后，每次调用输出
+`[MiniProgramRequest]` 开始/结果与异常诊断，包含单次请求编号（响应头 `X-Request-Id`）、
+阶段、耗时、HTTP 状态及业务错误码；不记录数据体、查询字符串、凭据、手机号和异常/SQL 原文，
+保留诊断错误码及源码位置。`404 / code_not_found` 属于既有业务拒绝，不能直接视为路由缺失。
+全部 HTTP 请求仍以 Nginx 访问日志为准，操作见[实时日志](./production-deployment.zh-CN.md#实时请求日志)。
+请求/响应体、UI、设计源、客户端环境选择、导航、认证、租户边界和持久化均不变。
+测试验证五个真实入口及诊断隐私/响应保持；线上扫码复现仍待运维证据。
+上述请求诊断部分仅改服务端；下方服务码刷新同时改动小程序，发布时需要重新编译上传，
+视觉布局与设计源未改，因此不需要新增视觉截图验收。
+
+## 推广服务码与员工活动码刷新（Implemented）
+
+`promotion-service-code` 与 `staff-activity-code` 每次 `onShow`（包括从其他页面返回）
+都会重新读取码元数据和微信图片。图片请求带缓存随机值，共享加载器校验 PNG/JPEG 文件签名，
+每次写入独立本地路径，删除被替换文件，并忽略页面隐藏/销毁后的迟到响应。
+既有重试与资料补全状态继续使用；新响应完成前会清除分享路径，未新增按钮或视觉素材。
+
+Repository 现在会校验活动推广码/员工活动码的 active 记录哈希是否与当前密钥、主体 ID 和版本
+推导出的令牌一致。若旧记录由其他密钥生成，读取路径在持有锁的事务中换成可解析的新版本；
+正常一致的记录继续复用，打开页面不会让有效码失效。该修复不改变扫码归因、身份、权限、路由或持久化
+结构。需要部署新 Admin 镜像并重新编译小程序；已经分发的二维码图片无法远程修改。
 ## 平台企业开户 API
 
 当前开户页的联系人手机号输入框支持手动填写，但提交前仍必须完成微信手机号授权并通过一致性校验；主按钮明确为「授权手机号并提交」，授权成功后自动提交，号码不一致时停留在表单并提示修改。该交互与本节 API 的 Bearer JWT 手机号一致性约束保持一致。

@@ -27,12 +27,6 @@ const {
   WALL_OVERLAP_TOLERANCE_MM,
   WALL_EXTENSION_DIRECTION_TOLERANCE_DEG,
   MIN_CLOSED_SPACE_AREA_MM2,
-  DEFAULT_DOOR_WIDTH_MM,
-  DEFAULT_DOOR_HEIGHT_MM,
-  DEFAULT_WINDOW_WIDTH_MM,
-  DEFAULT_WINDOW_HEIGHT_MM,
-  DEFAULT_WINDOW_SILL_HEIGHT_MM,
-  DEFAULT_OPENING_DEPTH_MM,
   MIN_OPENING_SIZE_MM,
   MAX_OPENING_WALL_RATIO
 } = require('./core/constants.js');
@@ -58,6 +52,7 @@ const {
 } = require('./domain/errors.js');
 const { adaptLegacySurveyOperation } = require('./compat/legacy-error-messages.js');
 const { syncClosedSpacesFromFaces } = require('./topology/space-sync.js');
+const { legacyOpeningOperations } = require('./operations/opening-operations.js');
 
 const getActiveFloor = (draft) => findActiveFloor(draft, { requireFloorList: true });
 const distanceMm = vector2.distanceMm;
@@ -87,8 +82,6 @@ const normalizeOpeningDirection = openingDomain.normalizeOpeningDirection;
 const validateInteriorAngle = domainValidation.validateInteriorAngle;
 const validateLength = domainValidation.validateLength;
 const validateThickness = domainValidation.validateThickness;
-const validateOpeningSize = domainValidation.validateOpeningSize;
-const validateOpeningDepth = domainValidation.validateOpeningDepth;
 
 let idSeed = 1;
 // A fixed snap tolerance is too permissive for a short loop and too strict for
@@ -5022,113 +5015,6 @@ function deleteClosedSpace(draft, spaceId) {
   return touchDraft(next);
 }
 
-function addOpeningToWall(draft, wallId, type) {
-  const next = cloneDraft(draft);
-  const floor = getActiveFloor(next);
-  const wall = getWall(floor, wallId || floor.session.selectedWallId);
-  if (!wall) {
-    throw createSurveyDomainError(DOMAIN_ERROR_CODES.WALL_REQUIRED_FOR_OPENING);
-  }
-
-  const openingType = type === 'window' ? 'window' : 'door';
-  const widthMm = openingType === 'window' ? DEFAULT_WINDOW_WIDTH_MM : DEFAULT_DOOR_WIDTH_MM;
-  const opening = {
-    id: nextId('opening'),
-    wallId: wall.id,
-    type: openingType,
-    centerOffsetMm: Math.round((wall.lengthMm || 0) / 2),
-    widthMm,
-    heightMm: openingType === 'window' ? DEFAULT_WINDOW_HEIGHT_MM : DEFAULT_DOOR_HEIGHT_MM,
-    sillHeightMm: openingType === 'window' ? DEFAULT_WINDOW_SILL_HEIGHT_MM : 0,
-    openDirection: openingType === 'door' ? 'inside' : '',
-    modelId: openingType === 'window' ? 'window-flat-basic' : 'door-single-basic',
-    modelCategory: openingType === 'window' ? 'flat-window' : 'single-door',
-    materialId: openingType === 'window' ? 'dark-gray' : 'warm-white',
-    depthMm: wall.thicknessMm || DEFAULT_OPENING_DEPTH_MM,
-    entryDoor: false,
-    source: 'manual',
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  };
-
-  normalizeOpeningToWall(floor, opening);
-  normalizeOpeningDirection(opening);
-  ensureOpenings(floor).push(opening);
-  floor.session.state = SESSION_STATES.WALL_SELECTED;
-  floor.session.selectedWallId = wall.id;
-  floor.session.selectedOpeningId = opening.id;
-  floor.session.selectedSpaceId = '';
-  return touchDraft(next);
-}
-
-function updateOpening(draft, openingId, patch) {
-  const next = cloneDraft(draft);
-  const floor = getActiveFloor(next);
-  const opening = getOpening(floor, openingId || floor.session.selectedOpeningId);
-  if (!opening) {
-    throw createSurveyDomainError(DOMAIN_ERROR_CODES.OPENING_REQUIRED);
-  }
-
-  const updates = patch || {};
-  if (Object.prototype.hasOwnProperty.call(updates, 'widthMm')) {
-    opening.widthMm = validateOpeningSize(updates.widthMm, 'opening width');
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'heightMm')) {
-    opening.heightMm = validateOpeningSize(updates.heightMm, 'opening height');
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'sillHeightMm')) {
-    opening.sillHeightMm = domainValidation.validateOpeningSillHeight(updates.sillHeightMm);
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'depthMm')) {
-    opening.depthMm = validateOpeningDepth(updates.depthMm);
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'centerOffsetMm')) {
-    opening.centerOffsetMm = domainValidation.validateOpeningOffset(updates.centerOffsetMm);
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'openDirection') && opening.type === 'door') {
-    opening.openDirection = updates.openDirection;
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'modelId')) {
-    opening.modelId = String(updates.modelId || '');
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'modelCategory')) {
-    opening.modelCategory = String(updates.modelCategory || '');
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'materialId')) {
-    opening.materialId = String(updates.materialId || '');
-  }
-  if (Object.prototype.hasOwnProperty.call(updates, 'entryDoor') && opening.type === 'door') {
-    const nextEntryDoor = !!updates.entryDoor;
-    ensureOpenings(floor).forEach((item) => {
-      if (item.type === 'door') {
-        item.entryDoor = nextEntryDoor && item.id === opening.id;
-      }
-    });
-  }
-
-  normalizeOpeningToWall(floor, opening);
-  normalizeOpeningDirection(opening);
-  opening.updatedAt = nowIso();
-  floor.session.state = SESSION_STATES.WALL_SELECTED;
-  floor.session.selectedWallId = opening.wallId;
-  floor.session.selectedOpeningId = opening.id;
-  return touchDraft(next);
-}
-
-function deleteOpening(draft, openingId) {
-  const next = cloneDraft(draft);
-  const floor = getActiveFloor(next);
-  const targetId = openingId || floor.session.selectedOpeningId;
-  const opening = getOpening(floor, targetId);
-  if (!opening) return next;
-
-  floor.openings = ensureOpenings(floor).filter((item) => item.id !== targetId);
-  floor.session.state = SESSION_STATES.WALL_SELECTED;
-  floor.session.selectedWallId = opening.wallId;
-  floor.session.selectedOpeningId = '';
-  return touchDraft(next);
-}
-
 function orderClosedBoundaryWallIds(floor, wallIds) {
   const uniqueWallIds = (wallIds || []).filter((wallId, index, list) => (
     wallId && list.indexOf(wallId) === index && !!getWall(floor, wallId)
@@ -6106,8 +5992,6 @@ const legacyReopenLastDiagonalWallForAngle = adaptLegacySurveyOperation(reopenLa
 const legacyCommitPreviewLength = adaptLegacySurveyOperation(commitPreviewLength);
 const legacyConfirmClosure = adaptLegacySurveyOperation(confirmClosure);
 const legacyRenameClosedSpace = adaptLegacySurveyOperation(renameClosedSpace);
-const legacyAddOpeningToWall = adaptLegacySurveyOperation(addOpeningToWall);
-const legacyUpdateOpening = adaptLegacySurveyOperation(updateOpening);
 const legacySnapCursorToWall = adaptLegacySurveyOperation(snapCursorToWall);
 const legacyRemeasureSelectedWall = adaptLegacySurveyOperation(remeasureSelectedWall);
 const legacySetThickness = adaptLegacySurveyOperation(setThickness);
@@ -6163,9 +6047,9 @@ module.exports = {
   selectSpace,
   renameClosedSpace: legacyRenameClosedSpace,
   deleteClosedSpace,
-  addOpeningToWall: legacyAddOpeningToWall,
-  updateOpening: legacyUpdateOpening,
-  deleteOpening,
+  addOpeningToWall: legacyOpeningOperations.addOpeningToWall,
+  updateOpening: legacyOpeningOperations.updateOpening,
+  deleteOpening: legacyOpeningOperations.deleteOpening,
   deleteWall,
   startWallSnap,
   snapCursorToWall: legacySnapCursorToWall,

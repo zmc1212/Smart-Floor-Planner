@@ -80,9 +80,27 @@ copy back to `layoutData`.
   Canvas, preview, DXF, room/3D data, and AI consumer checks prohibit derived
   layout writes. The 35 mirrors comprise 34 exact copies and the approved
   renderer path rewrite. This internal refactor changes no visible UI and
-  requires no design-source change or WeChat DevTools operation. Write operations
-  and interaction policy remain for later governance phases. Evidence and limits:
+  requires no design-source change or WeChat DevTools operation. Opening writes
+  are covered by Phase 4A below; remaining writes and interaction policy stay in
+  later governance phases. Evidence and limits:
   [`legacy-kernel-phase3-read-models.md`](./legacy-kernel-phase3-read-models.md).
+- Phase 4A opening transactions are Implemented in
+  `survey/operations/opening-operations.js`. `addOpeningToWall`, `updateOpening`,
+  and `deleteOpening` now create read-only mutation plans, apply them to an
+  immutable transaction draft, and pass the existing invariant validator without
+  kernel injection. Phase 2 opening normalization and numeric validation remain
+  authoritative for host-wall width/offset bounds, door direction, and legacy
+  error adaptation. Defaults, model/material fields, single-entry-door behavior,
+  selection state, delete no-op semantics, timestamps, undo/redo snapshots, and
+  failure atomicity retain the frozen Phase 3 behavior. Opening edits change no
+  node, wall, or Space topology, so no topology/space synchronization is added.
+  The kernel retains only three compatibility proxies: their mutation bodies are
+  removed, reducing it to 6,064 lines / 173 top-level functions. The 69 facade
+  and 64 legacy exports remain unchanged; 35 Mini Program/Admin mirrors pass the
+  32-module / 91-edge dependency audit. This internal refactor changes no route,
+  API, role, permission, UI, error copy, snap/closure policy, or version-4 data.
+  Evidence and limits:
+  [`legacy-kernel-phase4a-opening-operations.md`](./legacy-kernel-phase4a-opening-operations.md).
 - Surveying pan and pinch gestures use the primary Canvas `requestAnimationFrame`
   frame queue. If the primary Canvas is temporarily unavailable, draft syncing is
   coalesced to one callback per animation frame and flushed once at gesture end;
@@ -601,7 +619,7 @@ span outside the junction's one-wall-thickness clearance. A touching or
 overlapping divider cut is blocked; the catalog does not model a cross-segment
 opening.
 Before and after migrating any `legacy-kernel.js` function family, run
-`cd miniprogram && npm run test:survey-kernel-phase3`. That command retains the
+`cd miniprogram && npm run test:survey-kernel-phase4a`. That command retains the
 test-only Phase 1 harness, which runs legacy and candidate implementations twice
 from isolated copies of the same input, compares graph/session/error plus
 quick/full validation, checks references and input immutability, and
@@ -614,7 +632,11 @@ legacy-core adapter omission is the transaction-only
 compares frozen pre-migration read formulas exactly against standalone modules
 and facades in both runtimes. Write-intercepting proxies check every read-model
 input; architecture guards reject reverse/cyclic dependencies and implicit or
-duplicate exports. Run `cd admin && npm run test:survey-read-models` for 2D scenes,
+duplicate exports. Phase 4A additionally compares 15 frozen opening-mutation
+inputs against both the extracted legacy proxies and transactional facade, and
+checks read-only plans, structured results, host bounds, atomic rejection,
+undo/redo, dependency closure, and removal of the three kernel bodies. Run
+`cd admin && npm run test:survey-read-models` for 2D scenes,
 PNG, DXF, room/3D and AI consumer checks, and run the complete Mini Program suite
 before handoff. This guard changes no
 runtime route, API, permission, UI, or version-4 persistence contract.

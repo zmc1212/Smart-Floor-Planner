@@ -168,16 +168,28 @@ The owner's five manual tall-device captures (`67b515…`, `a57211…`, `74d638�
   explicit owners; 64 legacy exports remain compatible. Per-function write
   interception, frozen pre-migration formulas, 11 representative graphs, 48
   deterministic variants, and dependency guards verify immutable and equivalent
-  Mini/Admin outputs. The acceptance command is
-  `cd miniprogram && npm run test:survey-kernel-phase3`; current evidence is
-  566 surveying tests, 55 H5 tests, and passing large-graph performance gates.
-  The full Mini Program suite passes 1,043 of 1,057 tests; its 14 failures match
-  the Phase 0 unrelated failures. All 35 mirrors and 38 Admin consumer tests pass.
-  Write operations and interaction policy remain for later phases. This internal
-  change has no visible UI or design-source change and needs no WeChat DevTools
-  automation. See the [Phase 3 completion record](./surveying-module/legacy-kernel-phase3-read-models.md).
-  Test sources are excluded from every runtime package, and the refactor changes no
-  route, API, role, permission, UI, snap/closure rule, or version-4 data contract.
+  Mini/Admin outputs. See the
+  [Phase 3 completion record](./surveying-module/legacy-kernel-phase3-read-models.md).
+  Phase 4A opening transactions are Implemented: `addOpeningToWall`,
+  `updateOpening`, and `deleteOpening` now live independently in
+  `survey/operations/opening-operations.js`, using read-only plans, immutable
+  transaction drafts, Phase 2 normalization/validation, and the existing graph
+  invariant validator. Frozen comparisons preserve defaults, full-host-wall width
+  clamping, offset/direction normalization, model/material and single-entry-door
+  fields, selection, missing-delete no-op behavior, legacy errors, undo/redo, and
+  atomic rejection. The facade no longer injects the kernel; the kernel retains
+  only three compatibility proxies and is now 6,064 lines / 173 top-level
+  functions. The current acceptance command is
+  `cd miniprogram && npm run test:survey-kernel-phase4a`; 604 surveying tests, 55
+  H5 tests, large-graph performance gates, all 35 mirrors, and 38 Admin consumer
+  tests pass. The full Mini Program suite passes 1,081 of 1,095 tests; its 14
+  failures match the Phase 0 unrelated failures. Remaining wall, measurement,
+  closure, and interaction paths stay in later phases. See the
+  [Phase 4A completion record](./surveying-module/legacy-kernel-phase4a-opening-operations.md).
+  Test sources are excluded from every runtime package. These internal refactors
+  have no visible UI or design-source change, need no WeChat DevTools automation,
+  and change no route, API, role, permission, snap/closure rule, error copy, or
+  version-4 data contract.
   The three surveying guide
   poses under
   `packages/surveying/assets/surveying-guide-k-*-v3.png` are indexed-palette
@@ -318,6 +330,45 @@ Covered: `enterprise-staff`, `enterprise-referrers` own/flat views, `referrer-pr
 
 `packages/business/login/login` and `packages/business/account-security/account-security` implement the current password-login contract. `/api/auth/miniprogram` returns `requiresPasswordChange` only for password-authenticated flagged staff and may still sign that flag into the token. The login page still runs normal bootstrap and role landing; it shows a one-time native `wx.showModal` reminder so the user can enter the workbench and TabBar immediately. Choosing **去修改** opens the existing account-security page after landing; **稍后** stays on the role landing. Cold start and token refresh do not trap the session or re-prompt. Mini Program APIs are not locked by this flag. `PUT /api/miniprogram/account/password` still clears `admin_users.must_change_password`; the existing page then clears local session and requires login with the new password. WeChat authorization and phone quick login do not trigger this reminder. Shared password matching reports `invalid_credentials` or, after filtering by password, explicit `ambiguous_identifier`. Existing sessions are not proactively revoked; the latest flag is acquired at token refresh or the next password login. Status: Implemented. Design source remains `design-references/miniprogram-airy-minimalist-v1/30-account-security.jpg`; the layout is unchanged and authenticated `390x844` runtime confirmation is pending.
 
+## Onboarding server diagnostics (Implemented)
+
+The existing onboarding page calls the instrumented server routes
+`POST /api/miniprogram/codes/resolve`, `POST /api/auth/miniprogram`,
+`POST /api/miniprogram/onboarding/referrer`, `POST /api/miniprogram/onboarding/staff`,
+and `GET /api/miniprogram/bootstrap`. After deploying the updated Admin, every
+invocation emits `[MiniProgramRequest]` start/result and exception diagnostics
+with a per-request ID (`X-Request-Id` response header), stage, duration, HTTP
+status and business code. The logger omits payloads, query strings, credentials,
+phone numbers and raw error/SQL text; it retains diagnostic error codes and
+source locations. A `404 / code_not_found` is an existing business rejection,
+not proof that the route is missing. Nginx access logs remain the source for all
+HTTP requests; see [live logs](./production-deployment.md#live-request-logs).
+Request/response bodies, UI, design sources, client environment selection,
+navigation, authentication, tenant boundaries and persistence are unchanged.
+Tests verify the five actual entry points and diagnostic privacy/response
+preservation; production scan replay awaits operator evidence. The request
+diagnostic portion is server-only; the code-refresh behavior below also changes
+the Mini Program and therefore requires a new client build. It does not change
+the visual layout or design source, so no new visual screenshot QA is required.
+
+## Promotion and staff activity code refresh (Implemented)
+
+`promotion-service-code` and `staff-activity-code` reload their metadata and
+WeChat image on every `onShow`, including returning from another page. A cache
+nonce is sent to the image endpoint, and the shared loader validates PNG/JPEG
+signatures, writes each response to a unique local path, removes superseded files,
+and ignores late responses after hide/unload. The existing retry and profile
+recovery states remain in use; share paths are cleared while a new response is
+pending. No new button or visual asset is introduced.
+
+The repository now verifies that an active promotion/activity row's stored hash
+matches the token derived from its current secret, entity ID and version. If a
+legacy row was created under a different secret, the read path rotates that row
+atomically and returns a resolvable next version. Normal matching rows are reused,
+so opening a page does not invalidate a working code. This repairs stale codes
+without changing scan attribution, identity, permissions, routes, or persistence
+shape. A freshly deployed Admin image and newly compiled Mini Program are
+required; previously distributed QR image files cannot be changed remotely.
 ## Platform enterprise registration APIs
 
 The enterprise-register form now exposes an editable contact-phone input. Users may type the number, but submission still requires WeChat phone authorization and an exact match; the CTA reads **授权手机号并提交**, auto-submits after successful authorization, and keeps the form open with an inline correction message on mismatch.

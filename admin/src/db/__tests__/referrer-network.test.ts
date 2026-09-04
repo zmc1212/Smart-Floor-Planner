@@ -11,12 +11,15 @@ import {
   referrerEnterpriseMemberships,
   referrerProfiles,
   referrerPromotionCodes,
+  staffActivityCodes,
   users,
 } from '@/db/schema';
 import {
   AdminUserRepository,
   EnterpriseRepository,
   ReferrerNetworkRepository,
+  createReferrerPromotionToken,
+  createStaffActivityToken,
   hashReferrerNetworkToken,
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
@@ -72,6 +75,9 @@ after(async () => {
       await transaction
         .delete(referrerPromotionCodes)
         .where(inArray(referrerPromotionCodes.enterpriseId, enterpriseIds));
+      await transaction
+        .delete(staffActivityCodes)
+        .where(inArray(staffActivityCodes.enterpriseId, enterpriseIds));
       await transaction
         .delete(referrerEnterpriseMemberships)
         .where(inArray(referrerEnterpriseMemberships.enterpriseId, enterpriseIds));
@@ -361,6 +367,82 @@ test('staff onboarding is idempotent but cannot overwrite its enterprise', async
       ok: false,
       code: 'staff_enterprise_conflict',
     });
+  });
+});
+
+test('service-code reads rotate active rows whose hash no longer matches the current secret', async () => {
+  await withPlatformTransaction(async (transaction) => {
+    const adminRepository = new AdminUserRepository(transaction);
+    const repository = new ReferrerNetworkRepository(transaction);
+    const [staffUser] = await transaction
+      .insert(users)
+      .values({ phone: `138${Date.now().toString().slice(-8)}` })
+      .returning();
+    userIds.push(staffUser.id);
+    const staff = await adminRepository.create({
+      enterpriseId: enterpriseIds[2],
+      userId: staffUser.id,
+      username: `${runKey}-activity-repair`,
+      passwordHash: 'test-hash',
+      displayName: 'Activity repair',
+      role: 'measurer',
+      menuPermissions: ['dashboard'],
+    });
+
+    const firstActivity = await repository.getStaffActivityCode(staffUser.id, staff.id);
+    assert.ok(firstActivity);
+    if (!firstActivity) return;
+    await transaction
+      .update(staffActivityCodes)
+      .set({ tokenHash: `${runKey}-stale-activity` })
+      .where(eq(staffActivityCodes.id, firstActivity.code.id));
+    const repairedActivity = await repository.getStaffActivityCode(staffUser.id, staff.id);
+    assert.ok(repairedActivity);
+    assert.equal(repairedActivity?.code.version, firstActivity.code.version + 1);
+    assert.equal(
+      repairedActivity?.token,
+      createStaffActivityToken(staff.id, repairedActivity!.code.version)
+    );
+
+    const joinCode = await repository.rotateEnterpriseJoinCode({
+      enterpriseId: enterpriseIds[2],
+      codeType: 'referrer',
+      actorStaffId: actorIds[2],
+    });
+    const [referrerUser] = await transaction
+      .insert(users)
+      .values({ phone: `136${Date.now().toString().slice(-8)}` })
+      .returning();
+    userIds.push(referrerUser.id);
+    const joined = await repository.onboardReferrer({
+      token: joinCode.token,
+      userId: referrerUser.id,
+      contextVersion: referrerUser.contextVersion,
+      displayName: 'Promotion repair',
+      membershipLimit: 3,
+    });
+    assert.equal(joined.ok, true);
+    if (!joined.ok) return;
+    const firstPromotion = await repository.getReferrerPromotionCode(
+      referrerUser.id,
+      joined.membership.id
+    );
+    assert.ok(firstPromotion);
+    if (!firstPromotion) return;
+    await transaction
+      .update(referrerPromotionCodes)
+      .set({ tokenHash: `${runKey}-stale-promotion` })
+      .where(eq(referrerPromotionCodes.id, firstPromotion.code.id));
+    const repairedPromotion = await repository.getReferrerPromotionCode(
+      referrerUser.id,
+      joined.membership.id
+    );
+    assert.ok(repairedPromotion);
+    assert.equal(repairedPromotion?.code.version, firstPromotion.code.version + 1);
+    assert.equal(
+      repairedPromotion?.token,
+      createReferrerPromotionToken(joined.membership.id, repairedPromotion!.code.version)
+    );
   });
 });
 

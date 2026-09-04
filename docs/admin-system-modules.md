@@ -78,6 +78,31 @@ It filters the currently loaded platform-visible device list by enterprise, incl
 existing unassigned option; the endpoint, platform-only write boundary, and enterprise
 read boundary are unchanged.
 
+## Mini Program onboarding request diagnostics (Implemented)
+
+`admin/src/lib/miniprogram-request-log.ts` emits `[MiniProgramRequest]` JSON
+records for `POST /api/miniprogram/codes/resolve`,
+`POST /api/auth/miniprogram`, `POST /api/miniprogram/onboarding/referrer`,
+`POST /api/miniprogram/onboarding/staff`, and `GET /api/miniprogram/bootstrap`.
+Every invocation records `start` and `complete` (HTTP status, business result,
+stage, duration); caught exceptions emit `exception`, and uncaught exceptions
+also emit `failed` before being rethrown. A server-generated `requestId` joins
+that invocation's events and is returned in `X-Request-Id`; it is not a
+cross-request user identifier. Error diagnostics retain error types, source
+locations, nested PostgreSQL/network codes, and numeric WeChat provider codes,
+but omit messages, SQL/parameters, request/response payloads, query strings,
+tokens, phone numbers, and authorization credentials.
+
+Existing response bodies/statuses, identity validation, tenant transactions,
+permissions, and business writes are unchanged. These logs require a new Admin
+deployment and cover only these five routes. All HTTP access, including requests
+that fail before a handler runs, must be checked in the system Nginx access log;
+see [production operations](./production-deployment.md#live-request-logs).
+Regression checks exercise early rejection through all five real entry points,
+start-before-completion, response preservation, concurrent IDs, error redaction,
+and WeChat error codes. Production scan replay remains pending operator logs.
+There is no visible UI/design-source change or screenshot requirement.
+
 ## Global Mini Program code environment
 
 `/mini-program-code-settings` provides one persisted platform setting for every
@@ -159,8 +184,21 @@ Mini/Admin mirror pairs pass the audit. The 38 tests in
 room/3D data, and AI adapters, including all 11 frozen graph fixtures with no
 derived writes to `layoutData`. Current routes, APIs, roles, permissions, UI and
 v4 data remain unchanged; this internal change has no visual design-source or
-runtime screenshot requirement. The legacy write and interaction paths remain
-for later phases. See the [Phase 3 completion record](./surveying-module/legacy-kernel-phase3-read-models.md).
+runtime screenshot requirement. Opening writes are covered by Phase 4A below;
+remaining writes and interaction paths stay in later phases. See the
+[Phase 3 completion record](./surveying-module/legacy-kernel-phase3-read-models.md).
+Phase 4A opening transactions are also Implemented in the synchronized runtime:
+`addOpeningToWall`, `updateOpening`, and `deleteOpening` are owned by the
+standalone `survey/operations/opening-operations.js` module and use read-only
+plans, immutable transaction drafts, Phase 2 opening validation, and the shared
+invariant validator. The facade no longer injects the kernel; the legacy runtime
+retains only three compatibility proxies. Frozen differential and architecture
+tests preserve host-wall normalization, entry-door and selection state, legacy
+errors, no-op deletion, undo/redo, and atomic rejection. All 35 mirror pairs and
+the 38 Admin canvas/PNG/DXF/room/3D/AI tests pass. Admin routes remain read-only;
+there is no route, API, model, role, tenant permission, UI, design-source, or v4
+data-contract change. See the
+[Phase 4A completion record](./surveying-module/legacy-kernel-phase4a-opening-operations.md).
 DXF generation is likewise read-only: `admin/src/lib/dxf.ts` adapts the graph
 to the MIT-licensed writer, emits unioned inner/outer wall `LINE` faces after
 opening gaps, inserts hinged-door blocks with an open 90° thick leaf, gray dashed

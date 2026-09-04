@@ -8,6 +8,7 @@ import {
 import {
   decryptWechatEncryptedPhoneNumber,
   getWechatPhoneNumber,
+  getWechatSessionIdentity,
   resolveWechatPhoneLogin,
 } from '@/lib/wechat-miniprogram-auth';
 
@@ -17,6 +18,33 @@ function jsonResponse(body: unknown, status = 200) {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+test('WeChat failures retain the provider code without changing the existing error message', async () => {
+  const previousAppId = process.env.WX_APPID;
+  const previousSecret = process.env.WX_APPSECRET;
+  process.env.WX_APPID = 'wx_test_app';
+  process.env.WX_APPSECRET = 'test_secret';
+  try {
+    for (const endpoint of ['/cgi-bin/stable_token', '/sns/jscode2session', '/wxa/business/getuserphonenumber']) {
+      resetWechatAccessTokenCacheForTests();
+      const fetchImpl = (async (input: string | URL | Request) => String(input).includes(endpoint)
+        ? jsonResponse({ errcode: 40029, errmsg: 'provider declined' })
+        : jsonResponse({ access_token: 'test_token', expires_in: 7200 })) as typeof fetch;
+      const call = endpoint === '/cgi-bin/stable_token'
+        ? () => getWechatAccessToken({ fetchImpl })
+        : endpoint === '/sns/jscode2session'
+          ? () => getWechatSessionIdentity('test_code', { fetchImpl })
+          : () => getWechatPhoneNumber('test_code', { fetchImpl });
+      await assert.rejects(call, { code: 40029, message: 'provider declined' });
+    }
+  } finally {
+    resetWechatAccessTokenCacheForTests();
+    if (previousAppId === undefined) delete process.env.WX_APPID;
+    else process.env.WX_APPID = previousAppId;
+    if (previousSecret === undefined) delete process.env.WX_APPSECRET;
+    else process.env.WX_APPSECRET = previousSecret;
+  }
+});
 
 test('WeChat access tokens come from the stable-token API and are reused until expiry', async () => {
   const previousAppId = process.env.WX_APPID;
