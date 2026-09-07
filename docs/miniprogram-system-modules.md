@@ -440,6 +440,10 @@ The enterprise-register form now exposes an editable contact-phone input. Users 
 
 ## Formal surveying
 
+Measured inner/outer alignment on adjacent-room closure is Implemented: a confirmed wall keeps its pre-close body side even when collinear with another closed room’s outer extension. Inner and outer alignment remain distinct; an outer-aligned return retains its one-thickness connector instead of flipping the measured top wall inward or losing the clear-length difference. This applies to explicit closure and automatic Face completion. Inferred unmeasured connectors retain their boundary-side solver. The 96 new regressions cover 100/200/400 mm thickness, rotations/reflections, inner/outer alignment, direct/committed closure, unchanged original rooms and readings, and formal save/reload; all 96 fail against the old closure implementation. Behavior source: user-approved right → down → left sequence and `design-references/surveying/closure-face-alignment-20260907/{01-inner,02-outer,03-defect}.jpg` (Fig.3 is defect evidence). Existing UI/Canvas styling, routes, APIs, permissions, audit fields and v4 envelope are unchanged; saved rooms are not migrated. Native `390x844`/tall-device visual QA remains pending the user’s manual screenshots.
+
+Verification for this correction: 96 new regressions pass (0/96 with the old closure code), 39 Admin consumer tests and 55 H5 tests pass, and the 83-file generated mirror check passes. The full Mini Program suite passes 1,815/1,856; all 41 failing test names match the 1,719/1,760 pre-fix control run, including pre-existing `wall.use` frozen-baseline differences. Logs are in `tmp/closure-face-alignment/`. Generated Admin mirrors also include the pre-existing validator/commit-preview source edits, whose behavior this correction preserves.
+
 Outer-aligned adjacent-room closure is corrected (Implemented). Releasing an
 unchanged wall preview, continuing it, or confirming it directly preserves its
 visible endpoint; it does not rerun rectangle snapping and shift the cursor to
@@ -685,9 +689,9 @@ or shorten confirmed readings. A shared-boundary closure
 chain retains its rendered body side when it closes,
 including an exterior-facing chain whose final orange line snaps to an existing
 room's inner face; the close operation cannot flip that body across the aligned
-line by one wall thickness. A new wall aligned to a neighbouring closed room's
-visible outer keeps that outer as its working face on close and must not
-extrude another thickness. When the final cursor targets a source wall's
+line by one wall thickness. A measured wall aligned to a neighbouring closed room’s
+visible outer keeps its working face and pre-close body side; alignment alone
+cannot flip its thickness. When the final cursor targets a source wall's
 visible outer face, it retains that physical outer coordinate and bridges to
 the topology corner instead of projecting it to the centre line. The same rule
 applies when a straight close overshoots by one wall thickness: preview and

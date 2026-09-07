@@ -47,6 +47,22 @@ function clearLastWallSnap(session) {
   session.lastWallSnapLine = '';
 }
 
+function preserveMeasuredClosureBodySide(wall, session) {
+  if (!session.activeSpaceSharedWallId || !Number.isFinite(wall.rawMeasuredLengthMm)) return false;
+  // A confirmed working face is a measurement, even when it happens to lie on
+  // another room's outer-axis extension. Flipping its body here moves the clear
+  // boundary by one thickness. Only inferred connectors may resolve their side
+  // from neighbouring closed walls.
+  // An empty body side is intentionally left to the boundary solver. Using the
+  // measurement side as a fallback here makes every newly measured segment
+  // claim the same physical side and can duplicate a shared wall in the source
+  // room by one thickness.
+  const side = wall.bodyNormalSide;
+  if (side !== 'left' && side !== 'right') return false;
+  wall.bodyNormalSide = side;
+  return true;
+}
+
 function findActiveChainInteriorSourceSpace(floor, session, wallIds) {
   if (!floor || !session || !session.activeSpaceSharedWallId || !session.activeSpaceStartNodeId) {
     return null;
@@ -198,7 +214,9 @@ function prepareExactClosureFaces(floor) {
   activeWalls.forEach(wall => {
     const outerSide = resolveCollinearClosedOuterBodySide(floor,
       getNode(floor, wall.startNodeId), getNode(floor, wall.endNodeId), session.activeSpaceSharedWallId);
-    if (outerSide) wall.bodyNormalSide = outerSide;
+    if (outerSide) {
+      if (!preserveMeasuredClosureBodySide(wall, session)) wall.bodyNormalSide = outerSide;
+    }
     else if (session.closeCandidateType === 'shared-wall' && !wall.bodyNormalSide &&
         (wall.measurementSide === 'left' || wall.measurementSide === 'right')) {
       wall.bodyNormalSide = wall.measurementSide;
@@ -366,7 +384,7 @@ function applyClosurePlan(draft, plan) {
       session.activeSpaceSharedWallId
     );
     if (outerBodySide) {
-      wall.bodyNormalSide = outerBodySide;
+      if (!preserveMeasuredClosureBodySide(wall, session)) wall.bodyNormalSide = outerBodySide;
       return;
     }
     if (

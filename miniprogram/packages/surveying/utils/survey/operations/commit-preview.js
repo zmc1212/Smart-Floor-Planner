@@ -83,6 +83,7 @@ function applyCommitPreviewPlan(next, plan) {
       startNodeId: anchor.id,
       endNodeId: endNode.id,
       mode: session.mode,
+      use: session.wallUse || 'room-boundary',
       lengthMm: Math.max(
         0,
         distanceMm(anchor, endNode) - measurementStartInsetMm + measurementStartExtensionMm - measurementEndInsetMm

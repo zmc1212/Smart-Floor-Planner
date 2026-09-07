@@ -1148,7 +1148,7 @@ test('outer wall snap keeps rectangle guide and shared closure on one graph coor
   assert.deepEqual(geometryAfterClosure.outerEnd, geometryBeforeClosure.outerEnd);
 });
 
-test('a third room aligned to a neighbour outer face does not extrude another wall thickness on inner close', () => {
+test('a third room aligned to a neighbour outer face keeps its measured body side on inner close', () => {
   const commitPreview = (draft, point) => {
     const preview = surveyGraph.startPreview(draft, point);
     const previewFloor = surveyGraph.getActiveFloor(preview);

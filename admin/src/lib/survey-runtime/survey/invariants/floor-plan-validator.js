@@ -142,6 +142,9 @@ function validateQuick(floor, index, errors, warnings) {
     if (!Number.isFinite(Number(wall.thicknessMm)) || Number(wall.thicknessMm) < constants.MIN_THICKNESS_MM) {
       errors.push(issue('INVALID_WALL_THICKNESS', `${path}.thicknessMm`, `墙体 ${wall.id} 的墙厚无效`));
     }
+    if (wall.use !== undefined && !['room-boundary', 'independent', 'half-wall'].includes(wall.use)) {
+      errors.push(issue('INVALID_WALL_USE', `${path}.use`, `墙体 ${wall.id} 的用途无效`));
+    }
   });
 
   floor.spaces.forEach((space, spaceIndex) => {
@@ -492,7 +495,9 @@ function validateFull(floor, index, errors, warnings, options) {
       errors.push(issue(mismatch.code, mismatch.path, mismatch.message, mismatch.details));
     });
     shadow.dangles.forEach((dangle) => {
-      if (options && options.requireComplete) errors.push(issue('INCOMPLETE_WALL_CHAIN', `walls.${dangle.wallId}`, '请先闭合或删除未完成墙链', dangle));
+      const dangleWall = index.wallsById.get(dangle.wallId);
+      const exempt = dangleWall && (dangleWall.use === 'independent' || dangleWall.use === 'half-wall');
+      if (options && options.requireComplete && !exempt) errors.push(issue('INCOMPLETE_WALL_CHAIN', `walls.${dangle.wallId}`, '请先闭合或删除未完成墙链', dangle));
       warnings.push(issue('DANGLE_WALL', `walls.${dangle.wallId}`, `墙体 ${dangle.wallId} 未参与任何有界 Face`, dangle));
     });
   } else {

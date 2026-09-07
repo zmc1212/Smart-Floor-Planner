@@ -656,8 +656,8 @@ copy back to `layoutData`.
   preserves its pre-close body side, including an exterior-facing measurement
   whose final orange line snaps to a source room's inner face. Closing cannot
   move that aligned red/orange edge to the opposite side by one wall thickness.
-  A new wall aligned to a neighbouring closed room's visible outer keeps that
-  outer as its working face on close and must not extrude another thickness.
+  A measured wall aligned to a neighbouring closed room’s visible outer keeps its
+  working face and pre-close body side; alignment alone cannot flip its thickness.
   When the final cursor hits a source wall's visible outer face, the close must
   retain that physical outer coordinate and bridge to the topology corner rather
   than silently projecting it to the centre line. A one-thickness overshoot in
@@ -685,6 +685,8 @@ copy back to `layoutData`.
   chain; existing adjacent-room face inheritance remains unchanged.
 
 ## Verification
+
+Measured inner/outer alignment on adjacent-room closure is Implemented: a confirmed wall keeps its pre-close body side even when collinear with another closed room’s outer extension. Inner and outer alignment remain distinct; an outer-aligned return retains its one-thickness connector instead of flipping the measured top wall inward or losing the clear-length difference. This applies to explicit closure and automatic Face completion. Inferred unmeasured connectors retain their boundary-side solver. The 96 new regressions cover 100/200/400 mm thickness, rotations/reflections, inner/outer alignment, direct/committed closure, unchanged original rooms and readings, and formal save/reload; all 96 fail against the old closure implementation. Behavior source: user-approved right → down → left sequence and `design-references/surveying/closure-face-alignment-20260907/{01-inner,02-outer,03-defect}.jpg` (Fig.3 is defect evidence). Existing UI/Canvas styling, routes, APIs, permissions, audit fields and v4 envelope are unchanged; saved rooms are not migrated. Native `390x844`/tall-device visual QA remains pending the user’s manual screenshots.
 
 Use focused wall-graph, renderer, dimension, persistence, and BLE tests for
 changes to this contract. Topology writes through `confirmClosure`,
