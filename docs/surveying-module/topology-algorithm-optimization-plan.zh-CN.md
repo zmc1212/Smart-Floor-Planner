@@ -185,3 +185,8 @@
 - 完成写入已要求所有普通 Space 闭合、普通墙参与有界 Face；未完成墙链返回 INCOMPLETE_WALL_CHAIN，草稿仍可保留 DANGLE_WALL。
 - Canvas、净面积、DXF、3D、AI 和 Admin 已通过统一 survey read-model 消费规范化墙体、门窗和空间边界，未回写 surveyGraph。
 - Face、墙体实体、空间边界在事务提交后重新计算，墙厚、拆墙和 Space 同步不会复用旧派生结果；现有 Node 大图性能门槛已通过。低端真机帧率/内存预算仍需真实设备采样，标记为 Limited。
+
+### 阶段验收与收口（2026-09-07）
+- 自动化验收通过：拓扑/读模型回归 92 项、架构治理 5 项、Admin 消费者 31 项；Mini Program/Admin 镜像同步检查通过。
+- 大图桌面基准通过：512 墙 full validation P95 40.332ms，wall read-model P95 72.488ms，space read-model P95 57.431ms，保留 clone heap 增量 3,727,944 bytes。
+- 真机 Canvas 桥接帧率、内存和长时间拖动采样仍为 Limited，已提供 profile-survey-stage4.js；未将桌面 Node 结果冒充真机验收。

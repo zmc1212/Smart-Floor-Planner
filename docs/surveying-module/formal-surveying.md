@@ -766,3 +766,6 @@ All seven P1 fixes are Implemented: business fingerprints, concave-room sides/in
 
 ## Topology stage 4 contract
 Stage 4 core behavior is implemented: completion requires closed ordinary spaces, consumers use normalized survey read models, and topology indexes are reused only within one read-only validation pass and rebuilt after invalidation or floor changes. Desktop Node performance gates pass; low-end device frame and memory sampling remains Limited.
+
+## Stage acceptance and closeout
+Automated closeout passed: 92 surveying/topology/read-model tests, 5 architecture governance tests, and 31 Admin consumer tests. Desktop large-graph gates passed (full validation P95 40.332 ms; wall read-model P95 72.488 ms; space read-model P95 57.431 ms). Device Canvas bridge frame, memory, and sustained-drag sampling remains Limited and must be collected with profile-survey-stage4.js on a real device.
