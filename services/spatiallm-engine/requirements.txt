@@ -1,0 +1,8 @@
+fastapi==0.103.1
+uvicorn==0.23.2
+python-multipart==0.0.6
+torch==2.1.2+cu121 ; sys_platform == 'linux'
+torchvision==0.16.2+cu121 ; sys_platform == 'linux'
+spconv-cu120==2.3.6
+open3d==0.18.0
+huggingface_hub==0.24.6
