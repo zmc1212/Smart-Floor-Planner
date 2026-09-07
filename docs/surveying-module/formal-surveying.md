@@ -16,9 +16,8 @@ experiments and rollback narratives belong in Git history, not the live contract
 ```
 
 Coordinates, lengths, wall thickness, openings, and heights use millimetres.
-Door and window `widthMm` may occupy the full host wall; `normalizeOpeningToWall`
-clamps width to that wall's current `lengthMm` (minimum 100 mm) and does not
-apply a fixed 60% wall-ratio cap.
+Door and window widths use the clear host interval described under Opening
+junction bounds; a free wall still has no fixed 60% cap.
 The graph is the only persisted editable geometry. Do not write `rooms`,
 `homeOutline`, `partitions`, `surveyDraft`, `prototypeOnly`, or a legacy layout
 copy back to `layoutData`.
@@ -780,3 +779,7 @@ S4-A code-side closeout now requires Canvas bridge P95/max, heap delta, and at l
 ## S4-B Snap Rounding contract
 
 **Implemented**: ordinary commits route the complete arrangement through unit hot pixels before wall splitting and Face/Space synchronization. The generated Mini Program/Admin implementation retains the v4 envelope, routes, APIs and permission boundaries; the server validates without silently repairing submitted graphs. No visible UI, artwork, BLE or design-source change. See the [current algorithm, measurement and verification contract](./snap-rounding.md).
+
+## Opening junction bounds
+
+**Implemented**: Door/window add and edit operations now clamp width and position to the clear host interval after excluding incident wall bodies. The interval uses actual wall thickness, body side and angle; it is not a fixed percentage or a fixed corner margin. Less than 100 mm of usable space rejects atomically with OPENING_HOST_TOO_SHORT. Integer-centre rounding stays inside junction bounds. Existing saved openings are not migrated on load; editing them applies the new bounds. Routes, APIs, permissions, v4 fields, Canvas symbols and WXML/Less remain unchanged. Behavior source: user-provided 2026-09-07 Fig.1 (f88b2f17ace1bb32c1ecc7826a9ad132.jpg), with Fig.2 showing the defect. Focused regressions cover width/offset, unequal thickness, diagonal junctions, rotation/reflection, reversed hosts, free ends and short hosts; manual runtime screenshot verification remains pending.

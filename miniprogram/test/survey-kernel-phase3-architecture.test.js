@@ -21,7 +21,7 @@ test('Phase 3 read-model dependency closure is acyclic and excludes legacy, inte
     graph.edges.filter((edge) => edge.from === file).forEach((edge) => visit(edge.to, [...stack, file]));
   };
   const roots = graph.nodes.filter((node) => node.file.includes('/read-model/'));
-  assert.equal(roots.length, 5); // Phase 5 adds the read-only cursor/closure guide.
+  assert.equal(roots.length, 6); // Includes read-only opening junction bounds.
   roots.forEach((node) => visit(node.file, []));
   assert.ok(checked.has(surveyRoot + 'core/graph-query.js'));
   assert.ok(checked.has(surveyRoot + 'topology/closed-boundary.js'));
@@ -38,7 +38,7 @@ test('Phase 3 standalone modules load in a fresh process with kernel and operati
       return originalLoad.call(this, request, ...args);
     };
     for (const root of ['miniprogram/packages/surveying/utils/survey', 'admin/src/lib/survey-runtime/survey']) {
-      for (const name of ['wall-geometry', 'wall-faces', 'space-boundary', 'space-dimensions', 'cursor']) {
+      for (const name of ['wall-geometry', 'wall-faces', 'space-boundary', 'space-dimensions', 'cursor', 'opening-bounds']) {
         const api = require('./' + root + '/read-model/' + name + '.js');
         if (!Object.values(api).every(value => typeof value === 'function')) throw new Error('Unexpected read-model export');
         if (Object.keys(api).some(key => /^create.*ReadModel$/.test(key))) throw new Error('Factory proxy remains');

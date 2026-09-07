@@ -17,6 +17,7 @@ const {
 const { getWall } = require('../core/graph-query.js');
 const { SESSION_STATES } = require('../core/session.js');
 const openingDomain = require('../domain/opening.js');
+const { getOpeningHostBounds } = require('../read-model/opening-bounds.js');
 const domainValidation = require('../domain/validation.js');
 const {
   SURVEY_DOMAIN_ERROR_CODES: DOMAIN_ERROR_CODES,
@@ -55,6 +56,7 @@ function normalizeOpeningForHost(floor, opening) {
   const wall = getWall(floor, opening.wallId);
   openingDomain.normalizeOpeningToWall(opening, wall, {
     minimumSizeMm: MIN_OPENING_SIZE_MM,
+    bounds: getOpeningHostBounds(floor, wall),
     maximumWallRatio: MAX_OPENING_WALL_RATIO
   });
   openingDomain.normalizeOpeningDirection(opening);

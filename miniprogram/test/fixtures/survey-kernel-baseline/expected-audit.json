@@ -2899,6 +2899,13 @@
         "testDirect": false
       },
       {
+        "file": "miniprogram/packages/surveying/utils/survey/read-model/opening-bounds.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
         "file": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
         "classification": "production-reachable",
         "facadeReachable": true,
@@ -3952,6 +3959,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/opening-bounds.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/opening-operations.js",
         "to": "miniprogram/packages/surveying/utils/survey/session/state-machine.js"
       },
       {
@@ -4273,6 +4284,10 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/read-model/cursor.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/wall-alignment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/read-model/opening-bounds.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/wall-geometry.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
@@ -5125,6 +5140,13 @@
       "contentMatches": true
     },
     {
+      "source": "miniprogram/packages/surveying/utils/survey/read-model/opening-bounds.js",
+      "target": "admin/src/lib/survey-runtime/survey/read-model/opening-bounds.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
       "source": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
       "target": "admin/src/lib/survey-runtime/survey/read-model/space-boundary.js",
       "mode": "exact",
@@ -5312,6 +5334,7 @@
       ],
       "readModelRoots": [
         "miniprogram/packages/surveying/utils/survey/read-model/cursor.js",
+        "miniprogram/packages/surveying/utils/survey/read-model/opening-bounds.js",
         "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js",
         "miniprogram/packages/surveying/utils/survey/read-model/space-dimensions.js",
         "miniprogram/packages/surveying/utils/survey/read-model/wall-faces.js",
@@ -5340,8 +5363,8 @@
       "file": "admin/src/lib/survey-runtime/source-manifest.json",
       "schemaVersion": 1,
       "authority": "miniprogram/packages/surveying/utils",
-      "manifestEntryCount": 82,
-      "expectedEntryCount": 82,
+      "manifestEntryCount": 83,
+      "expectedEntryCount": 83,
       "errors": []
     },
     "mirrorMismatches": []

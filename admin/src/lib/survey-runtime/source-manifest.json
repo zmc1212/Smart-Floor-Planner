@@ -65,7 +65,7 @@
     {
       "source": "survey/domain/opening.js",
       "target": "src/lib/survey-runtime/survey/domain/opening.js",
-      "sha256": "5237e394eec4c944bc27428d50496aba81e0a5347a90f4ac50ebaf30167e7325"
+      "sha256": "ae80c94e6abb62194eafcfd963ad1f78f0ab240ad3c01d88b422381a960a1ee9"
     },
     {
       "source": "survey/domain/space.js",
@@ -215,7 +215,7 @@
     {
       "source": "survey/operations/opening-operations.js",
       "target": "src/lib/survey-runtime/survey/operations/opening-operations.js",
-      "sha256": "e72f9b900a320af0ba573573353ab37a15a95d71729135b7311223bbf012e3aa"
+      "sha256": "8894336bc154f66f5c572bbb192ef810bf31735818c207e2d56f2add5d3708e8"
     },
     {
       "source": "survey/operations/preview-insets.js",
@@ -286,6 +286,11 @@
       "source": "survey/read-model/cursor.js",
       "target": "src/lib/survey-runtime/survey/read-model/cursor.js",
       "sha256": "95be45ea6336693346d6ce6fca2a618ca2ea0c09173ec8c214ba7e476893a3fb"
+    },
+    {
+      "source": "survey/read-model/opening-bounds.js",
+      "target": "src/lib/survey-runtime/survey/read-model/opening-bounds.js",
+      "sha256": "0e4247b62b62c4e6033e86f6adc89d1dc160906904189dde09c92b980f073ec7"
     },
     {
       "source": "survey/read-model/space-boundary.js",

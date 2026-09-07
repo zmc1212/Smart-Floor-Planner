@@ -549,7 +549,7 @@ local draft wins over a stale cloud copy on reopen. Closed `spaces` written by `
 transaction rejects the edit if saved spaces and extracted faces diverge.
 `deleteWall` (and remasure complete / cancel-pending) clears remasure
 `session.fixedNodeId` so a deleted free tip cannot leave a stale session node
-reference. Door/window width is clamped to the current host wall length (minimum 100 mm), not a 60% wall-ratio cap. Tap hit order is opening → wall → closed-space interior; selecting a
+reference. Door/window width and position are clamped to the clear host interval excluding incident wall bodies (minimum 100 mm), not a 60% wall-ratio cap. Tap hit order is opening → wall → closed-space interior; selecting a
 closed room sets `selectedSpaceId`, paints blue fill/stroke with internal clear
 dims, and switches the right rail to rename (`renameClosedSpace`) / delete
 (`deleteClosedSpace`, exclusive walls only; shared walls kept).
@@ -1245,3 +1245,7 @@ Automatic formal-plan binding (Implemented): the shared backend reconciles unbou
 ## S4-B Snap Rounding contract
 
 **Implemented**: ordinary commits route the complete arrangement through unit hot pixels before wall splitting and Face/Space synchronization. The generated Mini Program/Admin implementation retains the v4 envelope, routes, APIs and permission boundaries; the server validates without silently repairing submitted graphs. No visible UI, artwork, BLE or design-source change. See the [current algorithm, measurement and verification contract](./surveying-module/snap-rounding.md).
+
+## Opening junction bounds
+
+**Implemented**: Door/window add and edit operations now clamp width and position to the clear host interval after excluding incident wall bodies. The interval uses actual wall thickness, body side and angle; it is not a fixed percentage or a fixed corner margin. Less than 100 mm of usable space rejects atomically with OPENING_HOST_TOO_SHORT. Integer-centre rounding stays inside junction bounds. Existing saved openings are not migrated on load; editing them applies the new bounds. Routes, APIs, permissions, v4 fields, Canvas symbols and WXML/Less remain unchanged. Behavior source: user-provided 2026-09-07 Fig.1 (f88b2f17ace1bb32c1ecc7826a9ad132.jpg), with Fig.2 showing the defect. Focused regressions cover width/offset, unequal thickness, diagonal junctions, rotation/reflection, reversed hosts, free ends and short hosts; manual runtime screenshot verification remains pending.
