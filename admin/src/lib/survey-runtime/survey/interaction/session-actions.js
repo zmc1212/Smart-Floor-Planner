@@ -36,6 +36,8 @@ function planCancelPending(sourceFloor) {
     Number.isInteger(session.activeSpaceStartWallIndex) &&
     session.activeSpaceStartWallIndex >= floor.walls.length;
 
+  delete session.pendingMeasuredClosure;
+
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
@@ -85,6 +87,7 @@ function planSelectWall(sourceFloor, wallId) {
   floor.session.selectedWallId = wallId;
   floor.session.selectedOpeningId = '';
   floor.session.selectedSpaceId = '';
+  delete floor.session.pendingMeasuredClosure;
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
@@ -109,6 +112,7 @@ function planSelectOpening(sourceFloor, openingId) {
   floor.session.selectedWallId = opening.wallId;
   floor.session.selectedOpeningId = opening.id;
   floor.session.selectedSpaceId = '';
+  delete floor.session.pendingMeasuredClosure;
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
@@ -133,6 +137,7 @@ function planSelectSpace(sourceFloor, spaceId) {
   floor.session.selectedWallId = '';
   floor.session.selectedOpeningId = '';
   floor.session.selectedSpaceId = space.id;
+  delete floor.session.pendingMeasuredClosure;
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
@@ -154,6 +159,7 @@ function planStartWallSnap(sourceFloor) {
 
   transitionSessionState(session, 'WALL_SNAP_STARTED', SESSION_STATES.WALL_SNAP_PENDING);
   session.anchorNodeId = '';
+  delete session.pendingMeasuredClosure;
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;

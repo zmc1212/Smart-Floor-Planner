@@ -80,9 +80,9 @@ test('a noisy multi-corner orthogonal traverse closes by adjustment instead of a
     [6003, 2002, 2996, 3001, 3005, 4998]
   );
   const pendingFloor = surveyGraph.getActiveFloor(draft);
-  const pendingEnd = surveyGraph.getNode(pendingFloor, pendingFloor.session.anchorNodeId);
+  const pendingEnd = pendingFloor.session.previewPoint;
 
-  assert.equal(pendingFloor.session.state, 'closing');
+  assert.equal(pendingFloor.session.state, 'wallPreview');
   assert.equal(pendingFloor.session.closeCandidateType, 'start');
   assert.equal(surveyGraph.distanceMm(pendingEnd, { xMm: 0, yMm: 0 }), 5);
 
@@ -116,9 +116,9 @@ test('a long multi-corner traverse can use accumulated correction budget beyond 
 
   const draft = commitMeasuredOutline(OUTLINES.longNotched, measuredLengths);
   const pendingFloor = surveyGraph.getActiveFloor(draft);
-  const pendingEnd = surveyGraph.getNode(pendingFloor, pendingFloor.session.anchorNodeId);
+  const pendingEnd = pendingFloor.session.previewPoint;
   assert.equal(surveyGraph.distanceMm(pendingEnd, { xMm: 0, yMm: 0 }), 400);
-  assert.equal(pendingFloor.session.state, 'closing');
+  assert.equal(pendingFloor.session.state, 'wallPreview');
   assert.equal(pendingFloor.session.closeCandidateType, 'start');
 
   const closed = surveyGraph.confirmClosure(draft);
@@ -171,7 +171,7 @@ test('a small concave endpoint drift that crosses the first wall is balanced bef
     [6002, 1987, 3027, 2983, 2958, 5046]
   );
   const floor = surveyGraph.getActiveFloor(draft);
-  assert.equal(floor.session.state, 'closing');
+  assert.equal(floor.session.state, 'wallPreview');
   assert.equal(floor.session.closeCandidateType, 'start');
 
   const closed = surveyGraph.confirmClosure(draft);
@@ -279,7 +279,7 @@ test('independent five-millimetre readings remain closable across concave orthog
       const draft = commitMeasuredOutline(vectors, measuredLengths);
       const floor = surveyGraph.getActiveFloor(draft);
       assert.ok(
-        floor.session.state === 'closing' || floor.session.state === 'mergeClosing',
+        floor.session.pendingMeasuredClosure || floor.session.state === 'spaceClosed' || floor.session.state === 'closing' || floor.session.state === 'mergeClosing',
         `${name}:${iteration} did not offer closure`
       );
       const closed = surveyGraph.confirmClosure(draft);

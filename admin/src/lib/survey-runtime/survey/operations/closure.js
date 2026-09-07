@@ -110,6 +110,27 @@ function applyOrthogonalClosureAdjustmentPlan(floor, plan) {
 }
 
 function attachStraightWallToCloseNode(floor, wall, targetNode, inputSource) {
+  if (wall.startNodeId === targetNode.id && wall.topologySourceWallId) {
+    const tailEnd = getNode(floor, wall.endNodeId);
+    const predecessor = floor.walls.find(candidate => {
+      if (candidate.id === wall.id || candidate.endNodeId !== targetNode.id) return false;
+      const start = getNode(floor, candidate.startNodeId);
+      const dx = targetNode.xMm - start.xMm, dy = targetNode.yMm - start.yMm;
+      const tx = tailEnd.xMm - targetNode.xMm, ty = tailEnd.yMm - targetNode.yMm;
+      return dx * ty === dy * tx && dx * tx + dy * ty > 0;
+    });
+    const used = floor.spaces.some(space => space.closed && space.wallIds.includes(wall.id)) ||
+      floor.openings.some(opening => opening.wallId === wall.id);
+    if (predecessor && !used && Number.isFinite(wall.rawMeasuredLengthMm) &&
+        Number.isFinite(predecessor.rawMeasuredLengthMm)) {
+      // The confirmed close retracts a noded outer-face overrun. Preserve its
+      // measured audit on the remaining fragment instead of creating a zero wall.
+      predecessor.rawMeasuredLengthMm += wall.rawMeasuredLengthMm;
+      syncWallAdjustmentAfterMetricChange(predecessor);
+      floor.walls = floor.walls.filter(candidate => candidate.id !== wall.id);
+      return predecessor;
+    }
+  }
   const plan = planClosureBridge(floor, wall, targetNode);
   if (plan.kind === 'noop') return wall;
   if (plan.kind === 'snap') {
@@ -140,6 +161,7 @@ function attachStraightWallToCloseNode(floor, wall, targetNode, inputSource) {
 
 function completeSessionAfterClosure(floor, session, oldEndNodeId) {
   transitionSessionState(session, 'CLOSURE_COMPLETED', SESSION_STATES.SPACE_CLOSED);
+  delete session.pendingMeasuredClosure;
   session.anchorNodeId = '';
   session.pendingWallId = '';
   session.selectedWallId = '';
@@ -164,6 +186,29 @@ function completeSessionAfterClosure(floor, session, oldEndNodeId) {
   session.activeSpaceSharedSnapLine = '';
   clearLastWallSnap(session);
   removeUnreferencedNodes(floor);
+}
+
+// Apply the same wall-face ownership as confirmed direct closure, without
+// moving any node or applying a closure adjustment.
+function prepareExactClosureFaces(floor) {
+  const session = floor.session;
+  const activeWalls = floor.walls.slice(session.activeSpaceStartWallIndex || 0);
+  const ids = activeWalls.map(wall => wall.id);
+  const interior = findActiveChainInteriorSourceSpace(floor, session, ids);
+  activeWalls.forEach(wall => {
+    const outerSide = resolveCollinearClosedOuterBodySide(floor,
+      getNode(floor, wall.startNodeId), getNode(floor, wall.endNodeId), session.activeSpaceSharedWallId);
+    if (outerSide) wall.bodyNormalSide = outerSide;
+    else if (session.closeCandidateType === 'shared-wall' && !wall.bodyNormalSide &&
+        (wall.measurementSide === 'left' || wall.measurementSide === 'right')) {
+      wall.bodyNormalSide = wall.measurementSide;
+    }
+  });
+  const excluded = Object.fromEntries(ids.map(id => [id, true]));
+  const shared = session.activeSpaceStartNodeId && session.anchorNodeId
+    ? findWallPathBetweenNodes(floor, session.anchorNodeId, session.activeSpaceStartNodeId, excluded) : [];
+  return !interior && session.activeSpaceSharedSnapLine === 'inner' && shared.length
+    ? { wallIds: shared, face: 'offset', preferWallIds: ids } : null;
 }
 
 // Each dependent stage plans against the current transaction draft. No nested
@@ -403,11 +448,18 @@ function applyClosurePlan(draft, plan) {
 
 function createConfirmClosureCore(commitPreviewLength) {
   return function confirmClosure(draft) {
+    if (getActiveFloor(draft).session.state === SESSION_STATES.SPACE_CLOSED) return cloneDraft(draft);
+    const pending = getActiveFloor(draft).session.pendingMeasuredClosure;
+    if (pending) {
+      const committed = commitPreviewLength(cloneDraft(draft), pending.lengthMm, pending.inputSource);
+      return applyClosurePlan(committed, planConfirmClosure(committed));
+    }
     const plan = planConfirmClosure(draft);
     if (plan.type === 'preview') {
       if (typeof commitPreviewLength !== 'function') throw new TypeError('预览闭合需要墙体提交操作');
       const committed = commitPreviewLength(cloneDraft(draft), plan.lengthMm, 'closure-preview');
       const state = getActiveFloor(committed, { requireFloorList: true }).session.state;
+      if (state === SESSION_STATES.SPACE_CLOSED) return committed;
       if (state !== SESSION_STATES.CLOSING && state !== SESSION_STATES.MERGE_CLOSING) {
         throw createSurveyDomainError(DOMAIN_ERROR_CODES.UNSAFE_CLOSURE);
       }
@@ -432,6 +484,8 @@ function createClosureOperations(commitPreviewLength) {
 }
 
 module.exports = {
+  prepareExactClosureFaces,
+  completeSessionAfterClosure,
   planConfirmClosure,
   applyClosurePlan,
   createConfirmClosureCore,

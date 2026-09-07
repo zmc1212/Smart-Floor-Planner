@@ -1,6 +1,6 @@
 const { copySessionValue } = require('../core/session-value.js');
 
-// Logical ownership only: the persisted 38 defaults + 4 optional keys remain
+// Logical ownership only: the persisted 38 defaults + 5 optional keys remain
 // flat. Optional absence and unknown forward-compatible keys are preserved.
 const SESSION_FIELD_GROUPS = Object.freeze({
   preview: Object.freeze([
@@ -13,7 +13,7 @@ const SESSION_FIELD_GROUPS = Object.freeze({
     'activeSpaceStartNodeId', 'activeSpaceStartWallIndex', 'activeSpaceSharedWallId',
     'activeSpaceSharedStartT', 'activeSpaceSharedWallMiddle', 'activeSpaceSharedSnapLine',
     'partitionSourceSpaceId', 'lastWallSnapNodeId', 'lastWallSnapWallId', 'lastWallSnapT',
-    'lastWallSnapWallMiddle', 'lastWallSnapLine', 'closedFromNodeId', 'fullValidationAfterClosedSplit'
+    'lastWallSnapWallMiddle', 'lastWallSnapLine', 'closedFromNodeId', 'fullValidationAfterClosedSplit', 'pendingMeasuredClosure'
   ]),
   measurement: Object.freeze([
     'thicknessMm', 'measurementSide', 'previewMeasurementSide', 'previewBodyNormalSide',

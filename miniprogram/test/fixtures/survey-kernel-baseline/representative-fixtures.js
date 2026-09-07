@@ -192,13 +192,11 @@ function buildPendingWallInput() {
 }
 
 function buildClosingRectangleInput() {
-  return buildClosingPolygon([
-    { xMm: 0, yMm: 0 },
-    { xMm: 6000, yMm: 0 },
-    { xMm: 6000, yMm: 4000 },
-    { xMm: 0, yMm: 4000 },
-    { xMm: 0, yMm: 0 }
+  const draft = buildOpenChain([
+    { xMm: 0, yMm: 0 }, { xMm: 6000, yMm: 0 },
+    { xMm: 6000, yMm: 4000 }, { xMm: 0, yMm: 4000 }
   ]);
+  return surveyGraph.startPreview(draft, { xMm: 0, yMm: 0 });
 }
 
 function buildSplitCommitInput(withOpening) {

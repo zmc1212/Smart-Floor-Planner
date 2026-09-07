@@ -152,7 +152,7 @@ manifest/文件清单/哈希漂移、循环依赖、纯层反向依赖、重复�
 kernel 均由长期架构门槛拒绝。本次不改变后台路由、API、模型、角色、租户权限、UI、设计源或
 version-4 合同，详见 [Phase 7 完成记录](./surveying-module/legacy-kernel-phase7-governance.zh-CN.md)。
 
-`POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
+`POST /api/floorplans` 与 `PUT /api/floorplans/[id]` 保留正式 v4 外壳的 400 闸门。草稿与完成态均执行 `full` 校验；完成态还要求无待确认近闭合读数且至少有一个闭合 Space，校验先于数据库写入和预览生成。无效正式图返回 422，携带首个错误码/消息及 `validation.mode/errors/stats`；API 不修复或改写客户端 graph。增强后的完整闸门拒绝真交叉、未打断 T 接、不同节点 ID 占用同一几何端点与共线正长度重叠；同时要求按墙体模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法，共享节点、已打断 T/十字与多房共享墙也保持合法。
 
 `POST /api/measurements` 接受正式顶层 `auditId`，并兼容 `metadata.auditId`；正式量房审计要求非空且不超过 200 字符。nullable `measurements.audit_id` 使用 `(floor_plan_id, audit_id)` 部分唯一索引：首次创建返回 201 / `deduplicated: false`，重复提交返回同一记录和 200 / `deduplicated: true`。员工审计写入允许户型原保存人、同企业关联线索当前已派家装设计顾问或家装现场顾问，以及已签名企业负责人；未指派员工和跨企业关联继续拒绝，非员工身份仍限定户型创建人。既有 null 行不回填、不合并。发布时先执行 nullable 迁移并上线 Admin API，再发布小程序；应用回滚保留列和索引，历史清理另立经过 dry-run 与审批的批次。小程序现会在上传前持久化每条已接受的审计，获得正式户型 ID 时再按户型绑定并重试，队列不会被静默截断；数据模型与租户边界不变。
 
@@ -176,3 +176,9 @@ AI 工作台参考图展示：`/ai-studio/scenarios` 在每轮生成结果旁渲
 ### 小程序推广人自主管理（已实现）
 
 `GET /api/miniprogram/enterprise-referrers` 继续按 `inviterStaffId` 将普通员工限制在本人邀请的成员。设计师、测量员和渠道地推可在「我的推广人」查看推广客户、电话联系并停用该成员后续扫码；`POST /api/miniprogram/enterprise-referrers/[id]/disable` 在事务内再次校验邀请员工归属，企业负责人保留全店管理权限。
+
+## 拓扑 P0 当前合同
+
+**Implemented**：正式草稿本地保存、云端写入和恢复统一完整校验；普通提交自动节点化精确 T/X、同步 Face/Space，有序简单空间边界成为硬约束。嵌套闭环明确拒绝。近闭合读数作为 `session.pendingMeasuredClosure` 持久化，沿用现有“合”确认，恢复失败保留原稿与诊断。路由、权限、租户边界和正式 v4 外壳保持现有合同。
+
+**Limited**：非整数毫米交点若无法同时保持两条墙的共线关系则拒绝；暂不支持内洞、嵌套空间及通用 snap rounding。现有量房视觉来源及布局不变，待用户提供运行截图验证近闭合状态。详见 [P0 合同与验证](./surveying-module/topology-p0.zh-CN.md)。

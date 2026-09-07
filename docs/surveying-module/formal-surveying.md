@@ -390,8 +390,8 @@ copy back to `layoutData`.
 ## Write validation and stability boundary
 
 - `POST /api/floorplans` and `PUT /api/floorplans/[id]` reject a non-formal v4
-  envelope with 400 as before. A `draft` runs `quick` validation; a `completed`
-  plan runs `full` validation and must contain at least one closed Space.
+  envelope with 400 as before. Both `draft` and `completed` plans run `full` validation; a completed
+  plan must contain at least one closed Space and no pending measured closure.
   Validation runs before database writes and preview generation and never
   repairs or rewrites the submitted graph.
 - An invalid formal graph returns 422 with `success: false`, the first error
@@ -753,3 +753,9 @@ and cursor placement; automated regressions also require adjacent red-line
 endpoints to be identical.
 
 Chinese module overview: [README.md](./README.md)
+
+## Current topology P0 contract
+
+**Implemented**: local draft persistence, cloud writes and restoration use full validation. Ordinary commits node exact T/X junctions and synchronize Faces/Spaces; ordered simple Space boundaries are mandatory and nested loops are rejected. Near-closure readings persist as `session.pendingMeasuredClosure` and use the existing closure confirmation; failed restoration retains the original draft and diagnostics. Routes, permissions, tenant boundaries and the formal v4 envelope retain their existing contract.
+
+**Limited**: fractional intersections that cannot preserve both wall lines on the integer-millimetre grid are rejected. Holes, nested spaces and general snap rounding remain unsupported. The existing surveying visual source and layout are preserved; runtime screenshots of near-closure states remain pending from the user. See [P0 contract and verification](./topology-p0.md).

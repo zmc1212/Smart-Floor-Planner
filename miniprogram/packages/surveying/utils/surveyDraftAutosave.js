@@ -49,6 +49,7 @@ function getDraftGeometryFingerprint(draft) {
   return JSON.stringify(draft.floors.map((floor) => ({
     id: floor && floor.id,
     ceilingHeightMm: floor && floor.ceilingHeightMm,
+    pendingMeasuredClosure: floor && floor.session && floor.session.pendingMeasuredClosure,
     nodes: mapGeometryItems(floor && floor.nodes, (node) => [
       node.id,
       node.xMm,

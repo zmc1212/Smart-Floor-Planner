@@ -193,7 +193,7 @@ function finishPendingClosure(draft, closeAction) {
     );
     floor = surveyGraph.getActiveFloor(next);
     assert.ok(
-      floor.session.state === 'closing' || floor.session.state === 'mergeClosing',
+      floor.session.state === 'closing' || floor.session.state === 'mergeClosing' || floor.session.state === 'spaceClosed',
       `unexpected committed closure state: ${floor.session.state}`
     );
   }
@@ -1339,21 +1339,13 @@ test('door and window spans block both adjacent-room split cuts atomically', () 
         pending = surveyGraph.startPreview(pending, secondFacePoint);
         pendingFloor = surveyGraph.getActiveFloor(pending);
         assert.ok(pendingFloor.session.closeCandidateType, 'final source-wall cut was not offered');
-        if (scenario.pathMode === 'measured-commit') {
-          pending = surveyGraph.commitPreviewLength(
-            pending,
-            pendingFloor.session.previewLengthMm,
-            'ble'
-          );
-          pendingFloor = surveyGraph.getActiveFloor(pending);
-          assert.ok(
-            pendingFloor.session.state === 'closing' ||
-              pendingFloor.session.state === 'mergeClosing',
-            `unexpected committed closure state: ${pendingFloor.session.state}`
-          );
-        }
         rejectionInput = pending;
-        rejectSplit = () => surveyGraph.confirmClosure(rejectionInput);
+        rejectSplit = () => {
+          const committed = scenario.pathMode === 'measured-commit'
+            ? surveyGraph.commitPreviewLength(rejectionInput, pendingFloor.session.previewLengthMm, 'ble')
+            : rejectionInput;
+          return surveyGraph.confirmClosure(committed);
+        };
       }
 
       const rejectionSnapshot = JSON.stringify(rejectionInput);

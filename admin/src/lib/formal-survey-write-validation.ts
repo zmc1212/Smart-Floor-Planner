@@ -39,12 +39,13 @@ export function validateFormalSurveyWrite(
   layout: FormalSurveyLayout,
   status: 'draft' | 'completed'
 ): FormalSurveyWriteValidation {
-  const mode: FormalSurveyValidationMode = status === 'completed' ? 'full' : 'quick';
+  const mode: FormalSurveyValidationMode = 'full';
   const result = surveyValidator.validateSurveyDraft(
     layout.surveyGraph,
-    { mode }
+    { mode, requireComplete: status === 'completed' }
   ) as KernelValidationResult;
   const errors = result.errors.slice();
+
 
   if (status === 'completed' && !hasClosedSpace(layout)) {
     errors.unshift(MISSING_CLOSED_SPACE);

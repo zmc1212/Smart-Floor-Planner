@@ -27,7 +27,7 @@ const closures = require('./operations/closure.js');
 const { adaptLegacySurveyOperation } = require('./compat/legacy-error-messages.js');
 const legacyCommit = { commitPreviewLength: adaptLegacySurveyOperation(previewCommit.commitPreviewLength) };
 const legacyCursor = { snapCursorToWall: adaptLegacySurveyOperation(cursor.snapCursorToWall) };
-const legacyClosure = { confirmClosure: closures.createLegacyConfirmClosure(previewCommit.commitPreviewLength) };
+const legacyClosure = { confirmClosure: closures.createLegacyConfirmClosure(previewCommit.commitPreviewForClosure) };
 
 module.exports = {
   DEFAULT_THICKNESS_MM: constants.DEFAULT_THICKNESS_MM,

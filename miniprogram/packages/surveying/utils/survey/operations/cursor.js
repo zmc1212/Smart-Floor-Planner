@@ -35,6 +35,7 @@ function placeCursor(draft, point) {
   }
 
   transitionSessionState(session, 'CURSOR_PLACED', floor.walls.length ? SESSION_STATES.WALL_COMMITTED : SESSION_STATES.CURSOR_PLACED);
+  delete session.pendingMeasuredClosure;
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
@@ -62,6 +63,7 @@ function placeNewWallChainCursor(draft, point) {
 
   transitionSessionState(session, 'CURSOR_PLACED', SESSION_STATES.CURSOR_PLACED);
   session.anchorNodeId = node.id;
+  delete session.pendingMeasuredClosure;
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
@@ -105,6 +107,8 @@ function snapCursorToWall(draft, point, target) {
 
   if (!node) return next;
 
+  delete session.pendingMeasuredClosure;
+
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
@@ -136,6 +140,7 @@ function snapCursorToWall(draft, point, target) {
 
   transitionSessionState(session, 'CURSOR_PLACED', SESSION_STATES.CURSOR_PLACED);
   session.anchorNodeId = node.id;
+  delete session.pendingMeasuredClosure;
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
@@ -174,6 +179,8 @@ function resetCursor(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
+
+  delete session.pendingMeasuredClosure;
 
   session.previewPoint = null;
   session.previewLengthMm = 0;

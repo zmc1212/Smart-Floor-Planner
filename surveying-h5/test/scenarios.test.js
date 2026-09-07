@@ -257,7 +257,7 @@ test('the H5 T closure replay keeps confirmed lengths stable for inner and outer
   ['inner', 'outer'].forEach((snapLine) => {
     const result = createMeasuredTClosureDraft(snapLine);
     const floor = surveyGraph.getActiveFloor(result.draft);
-    const activeWalls = floor.walls.slice(floor.session.activeSpaceStartWallIndex);
+    const activeWalls = floor.walls.slice(-3);
 
     assert.deepEqual(result.lengthsBeforeClosingWall, [2000, 1582], snapLine);
     assert.deepEqual(activeWalls.map((wall) => wall.lengthMm), [2000, 1582, 2000], snapLine);

@@ -82,7 +82,7 @@ test('Phase 7 facade and compatibility exports are explicit, unique and runtime-
 
 test('Phase 7 Mini Program authority and Admin generated mirror cannot drift', () => {
   const mirror = buildMirrorAudit();
-  assert.equal(mirror.length, 79);
+  assert.equal(mirror.length, 81);
   assert.deepEqual(mirror.filter(({ targetExists, contentMatches }) => (
     !targetExists || !contentMatches
   )), []);
@@ -97,7 +97,7 @@ test('Phase 7 governance gate passes the current audited architecture', () => {
   assert.equal(audit.schemaVersion, 2);
   assert.doesNotThrow(() => assertSurveyKernelGovernance(audit));
   assert.deepEqual(audit.governance.legacyKernelInboundDependencies, []);
-  assert.equal(audit.governance.mirrorManifest.manifestEntryCount, 79);
+  assert.equal(audit.governance.mirrorManifest.manifestEntryCount, 81);
   assert.deepEqual(audit.governance.mirrorManifest.errors, []);
   assert.deepEqual(audit.governance.mirrorMismatches, []);
 });

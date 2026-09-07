@@ -115,6 +115,7 @@ function applyDeleteClosedSpacePlan(draft, plan) {
     });
   }
 
+  delete session.pendingMeasuredClosure;
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
@@ -288,6 +289,7 @@ function applyDeleteWallPlan(draft, plan) {
     });
   }
 
+  delete session.pendingMeasuredClosure;
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;

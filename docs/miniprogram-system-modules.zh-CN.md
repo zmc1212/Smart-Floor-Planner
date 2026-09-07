@@ -290,7 +290,7 @@ Repository 现在会校验活动推广码/员工活动码的 active 记录哈希
 
 云保存合同：自动保存、手动保存和提交完成统一进入串行队列；同一时间只允许一个请求在途，排队中的 `completed` 会升级并优先于 `draft`。首次创建请求携带持久化 `Idempotency-Key`，服务端唯一键 `floor_plans.create_idempotency_key` 让响应丢失后的重试返回原户型，不重复创建 floor plan。已有 `floorPlanId` 时客户端只发送一次 PUT；任何 PUT 失败都原样抛出，不清除 ID，也不降级为 POST。PUT 现在授权户型所有者或同企业关联线索的当前负责人，因此重新派单后的设计师/测量员可以完成另一岗位保存的户型。只有没有 ID 时才发送 POST。
 
-户型写入继续保留正式 v4 外壳的 400 闸门。草稿执行 `quick` 校验；完成态执行增强后的 `full` 校验并要求至少一个闭合 Space，且校验先于数据库写入和预览生成。无效数据返回 422，携带首个错误码/消息以及 `validation.mode/errors/stats`，服务端不修复客户端 graph。完整校验拒绝真交叉、未打断 T 接、不同节点 ID 的同坐标端点与共线正长度重叠；同时要求墙体按模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始仪器读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法。几何按整数毫米中心线和既有 epsilon 判定，不使用 350mm 吸附容差。手工和 BLE 复尺走相同的 full 不可变事务；独立闭合正交环只沿被测墙所在轴平差，后续垂直方向复尺不会覆盖前一次。开链与闭合复尺都会在移动节点前检查门窗容纳范围，无法容纳时以 `OPENING_REMEASURE_CONFLICT` 整笔拒绝，不自动拆墙或暗移门窗。
+户型写入继续保留正式 v4 外壳的 400 闸门。草稿与完成态均执行 `full` 校验；完成态还要求无待确认近闭合读数且至少有一个闭合 Space，且校验先于数据库写入和预览生成。无效数据返回 422，携带首个错误码/消息以及 `validation.mode/errors/stats`，服务端不修复客户端 graph。完整校验拒绝真交叉、未打断 T 接、不同节点 ID 的同坐标端点与共线正长度重叠；同时要求墙体按模式保存有效 `lengthMm` / `angleDeg`，三个测量内缩/延伸字段是非负整数且不得将有效实测长度压到零，`rawMeasuredLengthMm` / `closureAdjustmentMm` 以完整整数对出现且之和等于保存长度。没有原始仪器读数的零读数 `closure-merge` / `closure-bridge` 拓扑连接段仍合法。几何按整数毫米中心线和既有 epsilon 判定，不使用 350mm 吸附容差。手工和 BLE 复尺走相同的 full 不可变事务；独立闭合正交环只沿被测墙所在轴平差，后续垂直方向复尺不会覆盖前一次。开链与闭合复尺都会在移动节点前检查门窗容纳范围，无法容纳时以 `OPENING_REMEASURE_CONFLICT` 整笔拒绝，不自动拆墙或暗移门窗。
 
 对无门窗、无共享节点、无分支的独立正交墙链，回到起点的残差按同轴墙实测长度权重分摊。既有 350mm 吸附容差不变；长、多拐角链只有在每墙均不超过“坐标长度 2%，且限于 25–150mm”的修正预算、总残差不超过 1000mm 时，才可使用额外累计误差。短环即使落在 350mm 内，只要需过度扭曲某一墙对，也会拒绝平差而不用微型桥接强行闭合。预览与确认共用同一方案，将直墙允许的 1mm 垂直轴偏差也纳入投影残差，保持每段方向和最小墙长，并在提供闭合前投影整条墙链；任何新的非相邻交叉、重叠或碰到外部墙都会拒绝该方案。确认后分别保存原始读数和派生闭合修正，后续端点内缩、共线合并和拆墙仍保持该追溯关系。
 
@@ -566,3 +566,9 @@ English mirror: [miniprogram-system-modules.md](./miniprogram-system-modules.md)
 `packages/business/referrer-progress/referrer-progress` 保留已批准客户档案设计（`design-references/referrer-customers-v1/referrer-customers-v1.png`）。空态说明为「客户扫描服务码并授权手机号后，推荐记录会显示在这里。」；「出示服务码」读取当前 bootstrap 签名身份的 `context.referrerMembershipId`，通过 `navigateTo` 直接打开现有 `promotion-service-code?membershipId=…`，保留客户页栈，返回后仍在客户 Tab。关系缺失或打开失败显示提示，不静默跳首页、不回退到其他企业。服务码生成及重试沿用原页面和成员关系 API。
 
 `packages/business/referrer-earnings/referrer-earnings` 沿用现有 Phase-13 设计语言及本次用户批准的空态调整：保留笔数汇总，空态仅显示「暂时还没有收益记录」和「推荐客户完成签约后，符合条件的收益会显示在这里。」，无按钮、无按钮占位，卡片按内容自然收拢。路由、API、数据及角色权限边界不变。聚焦导航回归测试通过；修改后的 `390x844` 原生胶囊及高屏视觉 QA 等待用户手动截图，未自动操作微信开发者工具。
+
+## 拓扑 P0 当前合同
+
+**Implemented**：正式草稿本地保存、云端写入和恢复统一完整校验；普通提交自动节点化精确 T/X、同步 Face/Space，有序简单空间边界成为硬约束。嵌套闭环明确拒绝。近闭合读数作为 `session.pendingMeasuredClosure` 持久化，沿用现有“合”确认，恢复失败保留原稿与诊断。路由、权限、租户边界和正式 v4 外壳保持现有合同。
+
+**Limited**：非整数毫米交点若无法同时保持两条墙的共线关系则拒绝；暂不支持内洞、嵌套空间及通用 snap rounding。现有量房视觉来源及布局不变，待用户提供运行截图验证近闭合状态。详见 [P0 合同与验证](./surveying-module/topology-p0.zh-CN.md)。

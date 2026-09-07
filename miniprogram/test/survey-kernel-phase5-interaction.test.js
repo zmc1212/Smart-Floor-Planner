@@ -42,12 +42,14 @@ function compare(expected, actual, label) {
   const diff = compareSurveyDrafts(expected, actual);
   assert.ok(diff.equal, label + '\n' + formatSurveyDifferences(diff.differences));
 }
-const frozenCommit = wrapOperation('commitPreviewLength', frozen.commitPreviewLength, draft => {
-  const session = floorOf(draft).session;
-  const mode = session.fullValidationAfterClosedSplit ? 'full' : 'quick';
-  delete session.fullValidationAfterClosedSplit;
-  return { mode, allowPendingClosure: mode === 'full' && session.closeCandidateType === 'partition' };
-});
+// The historical commit body is compared under the explicitly approved P0
+// transaction postcondition; independent P0 tests verify that postcondition.
+const { finalizeCommittedTopology } = require('../packages/surveying/utils/survey/operations/finalize-commit.js');
+const { adaptLegacySurveyOperation } = require('../packages/surveying/utils/survey/compat/legacy-error-messages.js');
+const frozenCommit = wrapOperation('commitPreviewLength', adaptLegacySurveyOperation((draft, ...args) => {
+  const previousCount = floorOf(draft).spaces.filter(space => space.closed).length;
+  return finalizeCommittedTopology(frozen.commitPreviewLength(draft, ...args), previousCount);
+}), { mode: 'full' });
 const frozenSnap = wrapOperation('snapCursorToWall', frozen.snapCursorToWall);
 function differential(name, reference, candidate, input, args = [], rethrow = false) {
   const before = JSON.stringify({ input, args });
@@ -123,12 +125,12 @@ test('Phase 5 rejects every illegal state/event pair atomically and preserves th
   assert.equal(machine.evaluateSessionTransition({ state: 'openingSelected' }, 'OBJECT_SELECTED', 'wallSelected').ok, true);
 });
 
-test('Phase 5 groups exactly 42 session fields without changing the flat stored schema or optional absence', () => {
+test('Phase 5 groups exactly 43 session fields without changing the flat stored schema or optional absence', () => {
   const { SESSION_FIELD_GROUPS, SESSION_DEFAULTS, OPTIONAL_SESSION_FIELDS, readSessionGroups } = sessionCore;
   assert.deepEqual(Object.keys(SESSION_FIELD_GROUPS), ['preview', 'selection', 'closure', 'measurement', 'viewport']);
   const fields = Object.values(SESSION_FIELD_GROUPS).flat();
-  assert.equal(fields.length, 42);
-  assert.equal(new Set(fields).size, 42);
+  assert.equal(fields.length, 43);
+  assert.equal(new Set(fields).size, 43);
   assert.deepEqual(fields.slice().sort(), Object.keys(SESSION_DEFAULTS).concat(OPTIONAL_SESSION_FIELDS).sort());
   const input = sessionCore.createSession();
   input.previewPoint = { xMm: 11, yMm: 22 };

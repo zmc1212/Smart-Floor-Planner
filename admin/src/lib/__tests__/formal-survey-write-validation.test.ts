@@ -85,7 +85,7 @@ function errorCodes(layout: FormalSurveyLayout, status: 'draft' | 'completed') {
   return validateFormalSurveyWrite(layout, status).errors.map((error) => error.code);
 }
 
-test('draft writes keep quick validation and accept an unfinished valid graph', () => {
+test('draft writes use full validation and accept an unfinished valid graph', () => {
   const layout = layoutWithFloor({
     id: 'floor-1',
     nodes: [
@@ -98,7 +98,7 @@ test('draft writes keep quick validation and accept an unfinished valid graph', 
   });
 
   const validation = validateFormalSurveyWrite(layout, 'draft');
-  assert.equal(validation.mode, 'quick');
+  assert.equal(validation.mode, 'full');
   assert.deepEqual(validation.errors, []);
 });
 
@@ -157,7 +157,7 @@ test('malformed floor collections stay a structured validation failure', () => {
   );
 });
 
-test('completed writes reject unsplit crossing, T junction and overlap relations', () => {
+test('draft and completed writes reject unsplit crossing, T junction and overlap relations', () => {
   const cases = [
     {
       expected: 'UNSPLIT_WALL_INTERSECTION',
@@ -189,7 +189,9 @@ test('completed writes reject unsplit crossing, T junction and overlap relations
     const layout = layoutWithFloor({
       id: 'floor-1', nodes, walls, openings: [], spaces: [],
     });
-    assert.ok(errorCodes(layout, 'completed').includes(expected), expected);
+    for (const status of ['draft', 'completed'] as const) {
+      assert.ok(errorCodes(layout, status).includes(expected), `${status}: ${expected}`);
+    }
   });
 });
 
@@ -241,4 +243,19 @@ test('POST and PUT routes validate before database writes and preview generation
   assert.ok(putValidation < putSource.indexOf('await persistAndAttachFloorPlanPreview'));
   assert.match(postSource, /\.\.\.\(validation \? \{ validation \} : \{\}\)/);
   assert.match(putSource, /\.\.\.\(validation \? \{ validation \} : \{\}\)/);
+});
+
+test('draft and completed writes reject unordered and nested room boundaries', () => {
+  const unordered = singleRoomLayout();
+  unordered.surveyGraph.floors[0].spaces![0].wallIds = ['ab', 'cd', 'bc', 'da'];
+  const nested = singleRoomLayout();
+  const floor = nested.surveyGraph.floors[0];
+  floor.nodes!.push({ id: 'e', xMm: 1000, yMm: 1000 }, { id: 'f', xMm: 2000, yMm: 1000 },
+    { id: 'g', xMm: 2000, yMm: 2000 }, { id: 'h', xMm: 1000, yMm: 2000 });
+  floor.walls!.push(wall('ef', 'e', 'f', 1000), wall('fg', 'f', 'g', 1000), wall('gh', 'g', 'h', 1000), wall('he', 'h', 'e', 1000));
+  floor.spaces!.push({ id: 'nested', wallIds: ['ef', 'fg', 'gh', 'he'], closed: true });
+  for (const status of ['draft', 'completed'] as const) {
+    assert.ok(errorCodes(unordered, status).includes('BROKEN_SPACE_CYCLE'));
+    assert.ok(errorCodes(nested, status).includes('UNSUPPORTED_NESTED_SPACE'));
+  }
 });

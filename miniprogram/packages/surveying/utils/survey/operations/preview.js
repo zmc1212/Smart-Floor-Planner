@@ -20,6 +20,7 @@ function startPreview(draft, rawPoint) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
   ensureSessionSpaceTracking(floor);
+  delete floor.session.pendingMeasuredClosure;
   let plan = planPreview(floor, rawPoint);
   if (plan.kind === 'place-preview-anchor') {
     const anchor = addNode(floor, plan.point);

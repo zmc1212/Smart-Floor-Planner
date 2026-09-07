@@ -90,6 +90,13 @@ function validateQuick(floor, index, errors, warnings) {
   });
 
   const references = collectSessionReferences(floor.session);
+  const pending = floor.session && floor.session.pendingMeasuredClosure;
+  if (pending !== undefined && (!pending || typeof pending !== 'object' ||
+      !Number.isInteger(pending.lengthMm) || pending.lengthMm < constants.MIN_WALL_LENGTH_MM ||
+      typeof pending.inputSource !== 'string' || !floor.session.previewPoint ||
+      ![SESSION_STATES.WALL_PREVIEW, SESSION_STATES.AWAITING_LENGTH].includes(floor.session.state))) {
+    errors.push(issue('INVALID_PENDING_MEASURED_CLOSURE', 'session.pendingMeasuredClosure', '待确认闭合测量无效'));
+  }
   references.nodeIds.forEach(({ field, id }) => {
     if (!index.nodesById.has(id)) errors.push(issue('MISSING_SESSION_NODE', `session.${field}`, `会话引用的节点 ${id} 不存在`));
   });
@@ -333,6 +340,23 @@ function validateFull(floor, index, errors, warnings, options) {
       ));
     }
   });
+  const rings = floor.spaces.filter(space => space.closed).map(space => ({
+    space, points: spaceDomain.buildSpaceNodeCycle(space, index).map(id => index.nodesById.get(id))
+  }));
+  const strictlyInside = (point, ring) => !ring.some((start, i) =>
+    segment.pointOnSegment(point, start, ring[(i + 1) % ring.length], 1e-7)) &&
+    polygon.containsPoint(point, ring);
+  for (let i = 0; i < rings.length; i += 1) {
+    for (let j = i + 1; j < rings.length; j += 1) {
+      const a = rings[i];
+      const b = rings[j];
+      if (a.points.some(point => strictlyInside(point, b.points)) ||
+          b.points.some(point => strictlyInside(point, a.points))) {
+        errors.push(issue('UNSUPPORTED_NESTED_SPACE', `spaces.${b.space.id}`,
+          '暂不支持嵌套空间、内洞或重叠房间', { spaceIds: [a.space.id, b.space.id] }));
+      }
+    }
+  }
   index.spacesByWallId.forEach((spaces, wallId) => {
     const closedSpaces = spaces.filter((space) => space.closed);
     if (closedSpaces.length > 2) {
@@ -376,6 +400,9 @@ function validateSurveyDraft(draft, options) {
     floorStats.openings += floor.openings.length;
     const index = createTopologyIndex(floor);
     validateQuick(floor, index, errors, warnings);
+    if (options && options.requireComplete && floor.session && floor.session.pendingMeasuredClosure) {
+      errors.push(issue('PENDING_MEASURED_CLOSURE', 'session.pendingMeasuredClosure', '请先确认或取消待闭合测量'));
+    }
     if (mode === 'full') validateFull(floor, index, errors, warnings, options);
     errors.slice(floorStartError).forEach((error) => {
       error.path = error.path ? `floors[${floorIndex}].${error.path}` : `floors[${floorIndex}]`;

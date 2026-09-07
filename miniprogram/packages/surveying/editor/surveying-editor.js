@@ -28,6 +28,7 @@ const {
   wrapFormalDraftStorage,
   unwrapFormalDraftStorage,
   getDraftGeometryFingerprint,
+  hasPersistedSurveyContent,
   shouldAutosaveSurveyDraft,
   shouldKeepLocalSurveyDraft
 } = require('../utils/surveyDraftAutosave.js');
@@ -968,10 +969,17 @@ Page({
 
   normalizeRestoredFormalDraft(draft) {
     if (!isRestorableSurveyDraft(draft)) return null;
+    const validation = surveyGraph.validateSurveyDraft(draft, { mode: 'full' });
+    if (!validation.valid) {
+      const error = new Error(validation.errors[0].message);
+      error.code = validation.errors[0].code;
+      error.validation = validation;
+      throw error;
+    }
     const restored = surveyGraph.cloneDraft(draft);
     const floor = surveyGraph.getActiveFloor(restored);
     const session = floor.session || {};
-    if (session.state === 'wallPreview' || session.state === 'awaitingLength' || session.state === 'remeasureAwaitingInput') {
+    if (!session.pendingMeasuredClosure && (session.state === 'wallPreview' || session.state === 'awaitingLength' || session.state === 'remeasureAwaitingInput')) {
       return surveyGraph.repairCollinearDegree2Walls(surveyGraph.cancelPending(restored));
     }
     // A persisted close can still carry the pre-transition `spaceClosed` state
@@ -985,20 +993,34 @@ Page({
   },
 
   loadFormalDraft(leadId, serverDraft, draftKey) {
+    let stored;
+    const key = draftKey || this.getFormalDraftKey(leadId);
     try {
-      const stored = unwrapFormalDraftStorage(wx.getStorageSync(draftKey || this.getFormalDraftKey(leadId)));
+      stored = unwrapFormalDraftStorage(wx.getStorageSync(key));
       if (stored.savedAt) this.localDraftSavedAt = stored.savedAt;
       const localDraft = this.normalizeRestoredFormalDraft(stored.draft);
       if (localDraft) return localDraft;
       return this.normalizeRestoredFormalDraft(serverDraft);
     } catch (err) {
+      if (stored && stored.draft) {
+        this.formalDraftRecovery = { draft: stored.draft, savedAt: stored.savedAt, validation: err.validation || null };
+        // Keep the original bytes and diagnostics even if a valid cloud graph is
+        // subsequently loaded. Never overwrite the rejected local graph with an empty fallback.
+        try { wx.setStorageSync(`${key}_recovery`, this.formalDraftRecovery); } catch (_) { /* Original key remains intact. */ }
+      }
       return this.normalizeRestoredFormalDraft(serverDraft);
     }
   },
 
   persistFormalDraft() {
     if (!this.draft) return false;
+    if (this.formalDraftRecovery && !hasPersistedSurveyContent(this.draft)) return false;
     try {
+      const validation = surveyGraph.validateSurveyDraft(this.draft, { mode: 'full' });
+      if (!validation.valid) {
+        this.formalDraftValidation = validation;
+        return false;
+      }
       const savedAt = Date.now();
       this.localDraftSavedAt = savedAt;
       wx.setStorageSync(
@@ -1094,15 +1116,15 @@ Page({
   },
 
   buildFormalCloudLayoutData(status) {
-    if (status === 'completed') {
-      const validation = surveyGraph.validateSurveyDraft(this.draft, { mode: 'full' });
-      if (!validation.valid) {
-        const first = validation.errors[0];
-        const error = new Error(first ? first.message : '正式量房墙图未通过完整校验');
-        error.code = first ? first.code : 'SURVEY_VALIDATION_FAILED';
-        error.validation = validation;
-        throw error;
-      }
+    const validation = surveyGraph.validateSurveyDraft(this.draft, {
+      mode: 'full', requireComplete: status === 'completed'
+    });
+    if (!validation.valid) {
+      const first = validation.errors[0];
+      const error = new Error(first ? first.message : '正式量房墙图未通过完整校验');
+      error.code = first ? first.code : 'SURVEY_VALIDATION_FAILED';
+      error.validation = validation;
+      throw error;
     }
     return surveyLayout.createFormalSurveyLayout(this.draft, status);
   },
@@ -4972,6 +4994,7 @@ Page({
     // When the preview is already on a direct-closure snap target, release
     // closes immediately — do not paint the 「合」 disc on top of the cursor.
     const directCloseReady = !!(
+      !session.pendingMeasuredClosure &&
       session.previewPoint &&
       surveyGraph.isDirectClosureHit(floor, session, session.previewPoint)
     );

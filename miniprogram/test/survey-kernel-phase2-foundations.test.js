@@ -87,7 +87,8 @@ test('session schema centralizes stable states, defaults, optional fields, and r
     'bleLockedBearingDeg',
     'closedFromNodeId',
     'fixedNodeId',
-    'fullValidationAfterClosedSplit'
+    'fullValidationAfterClosedSplit',
+    'pendingMeasuredClosure'
   ]);
 
   const floor = {

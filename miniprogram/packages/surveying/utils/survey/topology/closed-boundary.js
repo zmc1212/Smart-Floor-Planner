@@ -1,4 +1,5 @@
 const { getNode, getWall } = require('../core/graph-query.js');
+const { traceSpaceBoundary } = require('../domain/space.js');
 const polygonGeometry = require('../geometry/polygon.js');
 
 function findClosedSpaceForWall(floor, wallId) {
@@ -27,33 +28,9 @@ function calculateBoundaryCentroid(floor, wallIds) {
 }
 
 function traceClosedSpaceWallChain(floor, wallIds, reverseFirstWall) {
-  if (!floor || !Array.isArray(wallIds) || wallIds.length < 3) return [];
-  const firstWall = getWall(floor, wallIds[0]);
-  if (!firstWall) return [];
-
-  const initialNodeId = reverseFirstWall ? firstWall.endNodeId : firstWall.startNodeId;
-  let currentNodeId = initialNodeId;
-  const chain = [];
-
-  for (let index = 0; index < wallIds.length; index += 1) {
-    const wall = getWall(floor, wallIds[index]);
-    if (!wall) return [];
-    let nextNodeId = '';
-    if (wall.startNodeId === currentNodeId) {
-      nextNodeId = wall.endNodeId;
-    } else if (wall.endNodeId === currentNodeId) {
-      nextNodeId = wall.startNodeId;
-    } else {
-      return [];
-    }
-    const start = getNode(floor, currentNodeId);
-    const end = getNode(floor, nextNodeId);
-    if (!start || !end) return [];
-    chain.push({ wall, start, end, reversed: wall.endNodeId === currentNodeId });
-    currentNodeId = nextNodeId;
-  }
-
-  return currentNodeId === initialNodeId ? chain : [];
+  if (!floor) return [];
+  return traceSpaceBoundary(wallIds, id => getWall(floor, id),
+    id => getNode(floor, id), reverseFirstWall);
 }
 
 function buildClosedSpaceWallChain(floor, wallIds) {

@@ -26,7 +26,7 @@ const spaceDimensions = require('./survey/read-model/space-dimensions.js');
 
 const transactionalWalls = createWallOperations();
 const transactionalMeasurements = createMeasurementOperations();
-const transactionalClosures = createClosureOperations(previewCommit.commitPreviewLength);
+const transactionalClosures = createClosureOperations(previewCommit.commitPreviewForClosure);
 const transactionalOpenings = createOpeningOperations();
 
 // Each compatibility export has one explicit owner. Read models are standalone;

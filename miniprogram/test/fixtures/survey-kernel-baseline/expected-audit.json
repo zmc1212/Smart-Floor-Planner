@@ -1853,6 +1853,31 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/survey-topology-p0.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "buildSpaceBoundaryPoints",
+          "commitPreviewLength",
+          "confirmClosure",
+          "createSurveyDraft",
+          "getActiveFloor",
+          "getNode",
+          "getWall",
+          "placeCursor",
+          "startPreview",
+          "validateSurveyDraft"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/survey-topology-scenario-matrix.test.js",
         "classification": "test-only",
         "binding": "direct-require",
@@ -2031,6 +2056,31 @@
           "snapCursorToWall",
           "startPreview",
           "startWallSnap"
+        ],
+        "unknownProperties": []
+      },
+      {
+        "file": "miniprogram/test/surveying-editor-topology-p0.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "cancelPending",
+          "commitPreviewLength",
+          "confirmClosure",
+          "createSurveyDraft",
+          "deleteWall",
+          "placeCursor",
+          "selectWall",
+          "startPreview",
+          "startWallSnap",
+          "validateSurveyDraft"
         ],
         "unknownProperties": []
       },
@@ -2627,6 +2677,13 @@
         "testDirect": false
       },
       {
+        "file": "miniprogram/packages/surveying/utils/survey/operations/finalize-commit.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
         "file": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
         "classification": "production-reachable",
         "facadeReachable": true,
@@ -2635,6 +2692,13 @@
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
@@ -3522,6 +3586,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/commit-preview.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/finalize-commit.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/commit-preview.js",
         "to": "miniprogram/packages/surveying/utils/survey/operations/measurement.js"
       },
       {
@@ -3599,6 +3667,26 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/cursor.js",
         "to": "miniprogram/packages/surveying/utils/survey/session/state-machine.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/finalize-commit.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/finalize-commit.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/closure.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/finalize-commit.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/finalize-commit.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/finalize-commit.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/face-extractor.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
@@ -3683,6 +3771,26 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/closure-queries.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/runtime-id.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
+        "to": "miniprogram/packages/surveying/utils/survey/core/session.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
+        "to": "miniprogram/packages/surveying/utils/survey/operations/wall-split.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/open-chain.js",
@@ -3947,10 +4055,6 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
         "to": "miniprogram/packages/surveying/utils/survey/compat/legacy-error-messages.js"
-      },
-      {
-        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
-        "to": "miniprogram/packages/surveying/utils/survey/core/draft.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/wall-operations.js",
@@ -4247,6 +4351,10 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js",
         "to": "miniprogram/packages/surveying/utils/survey/core/graph-query.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js",
+        "to": "miniprogram/packages/surveying/utils/survey/domain/space.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js",
@@ -4768,6 +4876,13 @@
       "contentMatches": true
     },
     {
+      "source": "miniprogram/packages/surveying/utils/survey/operations/finalize-commit.js",
+      "target": "admin/src/lib/survey-runtime/survey/operations/finalize-commit.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
       "source": "miniprogram/packages/surveying/utils/survey/operations/interaction-operations.js",
       "target": "admin/src/lib/survey-runtime/survey/operations/interaction-operations.js",
       "mode": "exact",
@@ -4777,6 +4892,13 @@
     {
       "source": "miniprogram/packages/surveying/utils/survey/operations/measurement.js",
       "target": "admin/src/lib/survey-runtime/survey/operations/measurement.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
+      "source": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
+      "target": "admin/src/lib/survey-runtime/survey/operations/node-intersections.js",
       "mode": "exact",
       "targetExists": true,
       "contentMatches": true
@@ -5108,8 +5230,8 @@
       "file": "admin/src/lib/survey-runtime/source-manifest.json",
       "schemaVersion": 1,
       "authority": "miniprogram/packages/surveying/utils",
-      "manifestEntryCount": 79,
-      "expectedEntryCount": 79,
+      "manifestEntryCount": 81,
+      "expectedEntryCount": 81,
       "errors": []
     },
     "mirrorMismatches": []

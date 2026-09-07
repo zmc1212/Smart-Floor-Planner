@@ -60,7 +60,8 @@ const OPTIONAL_SESSION_FIELDS = Object.freeze([
   'bleLockedBearingDeg',
   'closedFromNodeId',
   'fixedNodeId',
-  'fullValidationAfterClosedSplit'
+  'fullValidationAfterClosedSplit',
+  'pendingMeasuredClosure'
 ]);
 
 const NODE_REFERENCE_FIELDS = Object.freeze([

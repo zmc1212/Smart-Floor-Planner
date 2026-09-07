@@ -25,12 +25,14 @@ const clone = value => structuredClone(value);
 const floorOf = draft => facade.getActiveFloor(draft);
 const side = implementation => ({ implementation, validateSurveyDraft: facade.validateSurveyDraft, captureReadModels });
 const frozenConfirm = wrapOperation('confirmClosure', frozen.confirmClosure, { mode: 'full' });
-const frozenCommit = wrapOperation('commitPreviewLength', frozen.commitPreviewLength, draft => {
-  const session = floorOf(draft).session;
-  const mode = session.fullValidationAfterClosedSplit ? 'full' : 'quick';
-  delete session.fullValidationAfterClosedSplit;
-  return { mode, allowPendingClosure: mode === 'full' && session.closeCandidateType === 'partition' };
-});
+// The historical commit body is compared under the explicitly approved P0
+// transaction postcondition; independent P0 tests verify that postcondition.
+const { finalizeCommittedTopology } = require('../packages/surveying/utils/survey/operations/finalize-commit.js');
+const { adaptLegacySurveyOperation } = require('../packages/surveying/utils/survey/compat/legacy-error-messages.js');
+const frozenCommit = wrapOperation('commitPreviewLength', adaptLegacySurveyOperation((draft, ...args) => {
+  const previousCount = floorOf(draft).spaces.filter(space => space.closed).length;
+  return finalizeCommittedTopology(frozen.commitPreviewLength(draft, ...args), previousCount);
+}), { mode: 'full' });
 function freeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.values(value).forEach(freeze);
@@ -52,6 +54,19 @@ function differentialCall(name, reference, candidate, input, args = []) {
   assert.equal(JSON.stringify(input), before, name + ': frozen input mutation');
   try { actual = candidate(input, ...args); } catch (error) { actualError = error; }
   assert.equal(JSON.stringify(input), before, name + ': candidate input mutation');
+  if (name === 'confirmClosure' && expectedError && expectedError.code === 'ZERO_LENGTH_WALL' && !actualError) {
+    // P0 explicitly fixes retracting a noded outer-face tail. Keep the frozen
+    // failure as evidence, then check the replacement's independent invariants.
+    const oldFloor = floorOf(input), nextFloor = floorOf(actual);
+    const tail = oldFloor.walls.at(-1);
+    assert.ok(tail.topologySourceWallId);
+    assert.ok(!oldFloor.spaces.some(space => space.wallIds.includes(tail.id)));
+    assert.ok(!nextFloor.walls.some(wall => wall.id === tail.id));
+    assert.equal(nextFloor.walls.reduce((sum, wall) => sum + (wall.rawMeasuredLengthMm || 0), 0),
+      oldFloor.walls.reduce((sum, wall) => sum + (wall.rawMeasuredLengthMm || 0), 0));
+    assert.deepEqual(facade.validateSurveyDraft(actual, { mode: 'full' }).errors, []);
+    return actual;
+  }
   assert.deepEqual(actualError && captureError(actualError), expectedError && captureError(expectedError), name);
   if (actualError) throw actualError;
   compare(expected, actual, name);
@@ -108,7 +123,8 @@ test('Phase 4D H5 catalog preserves preview and commit candidates against frozen
   assert.ok(closureComparisons >= 4096);
   assert.ok(outcomes.get('OPENING_SPLIT_CONFLICT') > 0);
   assert.ok(outcomes.get('success') > 0);
-  for (const type of ['preview', 'direct', 'partition', 'merge']) assert.ok(samples.has(type), type);
+  // Exact partitions now finish inside commit; the matrix checks both child rooms.
+  for (const type of ['preview', 'direct', 'merge']) assert.ok(samples.has(type), type);
 });
 
 test('Phase 4D closure plans are clock-free, deterministic and do not normalize or alias input', () => {

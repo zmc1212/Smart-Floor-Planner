@@ -55,7 +55,7 @@
     {
       "source": "survey/core/session.js",
       "target": "src/lib/survey-runtime/survey/core/session.js",
-      "sha256": "cbdb1560abd073f9e569d6c95cfde34c4fb4989dd283502ff6f03b44dc1cb4d7"
+      "sha256": "3b08153d6ac20ff249de2542bcadea1453a56228bc4558ec98872ea3ff7367cc"
     },
     {
       "source": "survey/domain/errors.js",
@@ -70,7 +70,7 @@
     {
       "source": "survey/domain/space.js",
       "target": "src/lib/survey-runtime/survey/domain/space.js",
-      "sha256": "0679cd4d62c141311297ce805a3fb1f276efca1d89ea99f7560b3270c474469d"
+      "sha256": "ae0bab11307d9ba2c1ea8cc0523f63fd597ce0627cbbedfd05615f65eaa7c119"
     },
     {
       "source": "survey/domain/validation.js",
@@ -140,7 +140,7 @@
     {
       "source": "survey/interaction/session-actions.js",
       "target": "src/lib/survey-runtime/survey/interaction/session-actions.js",
-      "sha256": "848c8d53e40fc24655137d2b09b6c62ba88ec24f85c99933ea93ea93521763fb"
+      "sha256": "da0ce55b1c4c4a0d1e89d251d9d547374200e69e76af8d2d51411519f5fb61a7"
     },
     {
       "source": "survey/interaction/viewport.js",
@@ -155,12 +155,12 @@
     {
       "source": "survey/invariants/floor-plan-validator.js",
       "target": "src/lib/survey-runtime/survey/invariants/floor-plan-validator.js",
-      "sha256": "3450c08a54aa60a3f85cf4a5d7a4b37f40d04d7aad6865b8aef734dad67cdfd5"
+      "sha256": "5dc3ebb02e7050ea868918964230fcd10ee514182d1e06e47d3a856b26e6ba08"
     },
     {
       "source": "survey/legacy-kernel.js",
       "target": "src/lib/survey-runtime/survey/legacy-kernel.js",
-      "sha256": "2ff2c78223a3c8c8529798d310ffcf94f00e3acfcc770a0f80130be72356e265"
+      "sha256": "9de435e9156d18576d6401e678c164df230e0def67ad462adbbfb71440070936"
     },
     {
       "source": "survey/operations/closure-candidate.js",
@@ -170,17 +170,22 @@
     {
       "source": "survey/operations/closure.js",
       "target": "src/lib/survey-runtime/survey/operations/closure.js",
-      "sha256": "5c62576fcace0c7f950a889215f22db6c66f4e8a31ecd4463404d2743138bdcc"
+      "sha256": "e503e3f6cf8560f5f1a86d202888f85733c52ac095ca9985072e70a201175cc8"
     },
     {
       "source": "survey/operations/commit-preview.js",
       "target": "src/lib/survey-runtime/survey/operations/commit-preview.js",
-      "sha256": "0a0eff88e52f4ac91390ecc0221c692a0784f4fcb7167df0881ba58ab30f438c"
+      "sha256": "47a77f521678082f745623159e0fa6c15e5de406caab338e3e1027d18df0ed58"
     },
     {
       "source": "survey/operations/cursor.js",
       "target": "src/lib/survey-runtime/survey/operations/cursor.js",
-      "sha256": "5564b6858f2499c99ccfc303c4ccb577ee6c63ca3089d0288a24d6cc80cf3760"
+      "sha256": "b6505f32e92d70dad1216d80615be184a09d3106e998b2215861a29da76ff9ea"
+    },
+    {
+      "source": "survey/operations/finalize-commit.js",
+      "target": "src/lib/survey-runtime/survey/operations/finalize-commit.js",
+      "sha256": "fea620607f2526e2d7d27054829cc0d75ca4569a5fa7340fe23a81eda2fd908a"
     },
     {
       "source": "survey/operations/interaction-operations.js",
@@ -191,6 +196,11 @@
       "source": "survey/operations/measurement.js",
       "target": "src/lib/survey-runtime/survey/operations/measurement.js",
       "sha256": "28c28540f51a6837869252f6b1d9728941322113caffeb0690eb8cfa313a138a"
+    },
+    {
+      "source": "survey/operations/node-intersections.js",
+      "target": "src/lib/survey-runtime/survey/operations/node-intersections.js",
+      "sha256": "6084d5181c1f725ea7e8db7314fa494abdd820acc6a5531407870c6e133c3a28"
     },
     {
       "source": "survey/operations/open-chain.js",
@@ -210,7 +220,7 @@
     {
       "source": "survey/operations/preview.js",
       "target": "src/lib/survey-runtime/survey/operations/preview.js",
-      "sha256": "40dc3c91b381955358a38b5057bd165bce2fea9fb05d152fde694a83528b3654"
+      "sha256": "b67fa96fb4833b7ca8f79d9d040da04dc8910b9623b6ca5b7ae0490b68684bc0"
     },
     {
       "source": "survey/operations/projection-intent.js",
@@ -240,7 +250,7 @@
     {
       "source": "survey/operations/wall-deletion.js",
       "target": "src/lib/survey-runtime/survey/operations/wall-deletion.js",
-      "sha256": "8e4dc84052ef65735066bba4248a004826214b2123ca8221af348a27882bf9af"
+      "sha256": "7452e49a3af2d3221a7698f1a5bbdfefc31dcf3b743c8825c6bf9ab9c72e2cf7"
     },
     {
       "source": "survey/operations/wall-mutation-helpers.js",
@@ -250,7 +260,7 @@
     {
       "source": "survey/operations/wall-operations.js",
       "target": "src/lib/survey-runtime/survey/operations/wall-operations.js",
-      "sha256": "c2f0459a5b73af5cb3c3936f418bdafb7adb4446e076a847c9a7e97feea6fb11"
+      "sha256": "ebc5a931c8b829c887ce9b5b69369f3af7b0dec48c288357434a29e4bb96ba47"
     },
     {
       "source": "survey/operations/wall-properties.js",
@@ -295,7 +305,7 @@
     {
       "source": "survey/session/field-groups.js",
       "target": "src/lib/survey-runtime/survey/session/field-groups.js",
-      "sha256": "069afc1798f133664de88542a39e60c60a89b3a23a561fb49236c7b88b5f64ac"
+      "sha256": "fd620bf6992c6ea45ced388b65b48b60af502bccafcc7aa3080b736d0b505437"
     },
     {
       "source": "survey/session/state-machine.js",
@@ -325,7 +335,7 @@
     {
       "source": "survey/topology/closed-boundary.js",
       "target": "src/lib/survey-runtime/survey/topology/closed-boundary.js",
-      "sha256": "ed48b2c01df40791af580ee6b70fe2c950446fdfc1db19c8b667c8b7a942f521"
+      "sha256": "d78e778e1064da23e8c774740942f1509f15cfdf1d7300d56cdc46eb2ce5375d"
     },
     {
       "source": "survey/topology/closure-candidates.js",
@@ -390,7 +400,7 @@
     {
       "source": "surveyWallGraph.js",
       "target": "src/lib/survey-runtime/surveyWallGraph.js",
-      "sha256": "6cd0f5e77953e94071c53757feca70bcd99d6296832cb291dbdc39678d2499c3"
+      "sha256": "5d60a46f8a554eaa3ec178bde79226c781c72248ac4ea57f78bdaf57639d5e09"
     },
     {
       "source": "surveyWallSolidPlan.js",

@@ -1,28 +1,32 @@
-function buildSpaceNodeCycle(space, index) {
-  const wallIds = Array.isArray(space && space.wallIds) ? space.wallIds : [];
-  const walls = wallIds.map((wallId) => index.wallsById.get(wallId)).filter(Boolean);
-  if (walls.length !== wallIds.length || walls.length < 3) return [];
-  const adjacency = new Map();
-  walls.forEach((wall) => {
-    [wall.startNodeId, wall.endNodeId].forEach((nodeId) => {
-      const values = adjacency.get(nodeId) || [];
-      values.push(wall);
-      adjacency.set(nodeId, values);
-    });
-  });
-  if ([...adjacency.values()].some((values) => values.length !== 2)) return [];
-  const cycle = [];
-  const used = new Set();
-  let wall = walls[0];
-  let nodeId = wall.startNodeId;
-  const startNodeId = nodeId;
-  while (wall && !used.has(wall.id)) {
-    used.add(wall.id);
-    cycle.push(nodeId);
-    nodeId = wall.startNodeId === nodeId ? wall.endNodeId : wall.startNodeId;
-    wall = (adjacency.get(nodeId) || []).find((candidate) => !used.has(candidate.id));
+// Persisted boundaries are ordered cycles, never unordered bags of walls.
+function traceSpaceBoundary(wallIds, getWall, getNode, reverseFirstWall) {
+  if (!Array.isArray(wallIds) || wallIds.length < 3 || new Set(wallIds).size !== wallIds.length) return [];
+  const first = getWall(wallIds[0]);
+  if (!first) return [];
+  const origin = reverseFirstWall ? first.endNodeId : first.startNodeId;
+  let current = origin;
+  const visited = new Set();
+  const chain = [];
+  for (const id of wallIds) {
+    const wall = getWall(id);
+    if (!wall || visited.has(current)) return [];
+    visited.add(current);
+    const next = wall.startNodeId === current ? wall.endNodeId :
+      (wall.endNodeId === current ? wall.startNodeId : null);
+    const start = getNode(current);
+    const end = getNode(next);
+    if (!start || !end) return [];
+    chain.push({ wall, start, end, reversed: wall.endNodeId === current });
+    current = next;
   }
-  return used.size === walls.length && nodeId === startNodeId ? cycle : [];
+  return current === origin ? chain : [];
 }
 
-module.exports = { buildSpaceNodeCycle };
+function buildSpaceNodeCycle(space, index) {
+  const trace = reverse => traceSpaceBoundary(space && space.wallIds,
+    id => index.wallsById.get(id), id => index.nodesById.get(id), reverse);
+  const forward = trace(false);
+  return (forward.length ? forward : trace(true)).map(entry => entry.start.id);
+}
+
+module.exports = { buildSpaceNodeCycle, traceSpaceBoundary };

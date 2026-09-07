@@ -106,7 +106,7 @@ function createPartitionedTwoRoomDraft(options) {
     )
   );
   floor = surveyGraph.getActiveFloor(draft);
-  assert.equal(floor.session.state, 'closing');
+  assert.equal(floor.session.state, 'spaceClosed');
   draft = surveyGraph.confirmClosure(draft);
   assert.equal(surveyGraph.getActiveFloor(draft).spaces.filter((space) => space.closed).length, 2);
   return draft;
@@ -127,7 +127,7 @@ function createThreeRoomRowDraft() {
       target
     );
     draft = commitPreview(draft, { xMm, yMm: 4000 });
-    assert.equal(surveyGraph.getActiveFloor(draft).session.state, 'closing');
+    assert.equal(surveyGraph.getActiveFloor(draft).session.state, 'spaceClosed');
     draft = surveyGraph.confirmClosure(draft);
   });
   return draft;

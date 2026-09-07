@@ -303,7 +303,7 @@ test('a projected close candidate does not become a direct start-vertex snap', (
 
   const committed = surveyGraph.commitPreviewLength(draft, 1900, 'manual');
   const committedFloor = surveyGraph.getActiveFloor(committed);
-  assert.equal(committedFloor.session.state, 'closing');
+  assert.equal(committedFloor.session.state, 'wallPreview');
   assert.equal(committedFloor.session.closeCandidateType, 'start');
   assert.throws(
     () => surveyGraph.confirmClosure(committed),
@@ -974,9 +974,9 @@ test('a near-inner touch closes the photographed adjacent room on the selected i
   draft = commitWall(draft, { xMm: 0, yMm: 0 }, 1896);
 
   floor = surveyGraph.getActiveFloor(draft);
-  const activeWalls = floor.walls.slice(floor.session.activeSpaceStartWallIndex);
-  const closeNode = surveyGraph.getNode(floor, floor.session.closeCandidateNodeId);
-  assert.equal(floor.session.state, 'closing');
+  const activeWalls = floor.walls.slice(-3);
+  const closeNode = floor.nodes.find(node => node.xMm === 0 && node.yMm === 0);
+  assert.equal(floor.session.state, 'spaceClosed');
   assert.deepEqual({ xMm: closeNode.xMm, yMm: closeNode.yMm }, { xMm: 0, yMm: 0 });
   assert.deepEqual(activeWalls.map((wall) => wall.lengthMm), [1896, 3799, 1896]);
   assert.deepEqual(activeWalls.map((wall) => wall.measurementStartInsetMm || 0), [200, 0, 0]);
@@ -1257,8 +1257,8 @@ test('an exterior-facing chain that closes on an inner shared face keeps the ora
   floor = surveyGraph.getActiveFloor(draft);
   const closingWall = floor.walls.at(-1);
   const geometryBeforeClosure = surveyGraph.buildWallRenderGeometry(floor, closingWall);
-  assert.equal(floor.session.closeCandidateType, 'shared-wall');
-  assert.equal(closingWall.bodyNormalSide, '');
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(closingWall.bodyNormalSide, 'right');
   assert.equal(geometryBeforeClosure.outerStart.xMm, 2379);
 
   draft = surveyGraph.confirmClosure(draft);
@@ -2677,7 +2677,7 @@ test('deleting a closed-room wall clears stale cursor snap and keeps the missing
 
   draft = surveyGraph.commitPreviewLength(draft, 3000, 'manual');
   floor = surveyGraph.getActiveFloor(draft);
-  assert.equal(floor.session.state, 'closing');
+  assert.equal(floor.session.state, 'spaceClosed');
   draft = surveyGraph.confirmClosure(draft);
   floor = surveyGraph.getActiveFloor(draft);
   assert.equal(floor.session.state, 'spaceClosed');
@@ -2988,8 +2988,8 @@ test('an internal L partition keeps reused exterior walls on the original room f
   draft = commitWall(draft, { xMm: 1500, yMm: 1000 }, 1000);
   draft = commitWall(draft, { xMm: 3000, yMm: 1000 }, 1500);
   floor = surveyGraph.getActiveFloor(draft);
-  assert.equal(floor.session.state, 'closing');
-  assert.equal(floor.session.closeCandidateType, 'shared-wall');
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.session.closeCandidateType, '');
 
   draft = surveyGraph.confirmClosure(draft);
   floor = surveyGraph.getActiveFloor(draft);
@@ -3045,8 +3045,8 @@ test('an internal-wall partition stops at the opposite boundary and closes two r
 
   draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'manual');
   floor = surveyGraph.getActiveFloor(draft);
-  assert.equal(floor.session.state, 'closing');
-  assert.equal(floor.session.closeCandidateType, 'partition');
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.session.closeCandidateType, '');
   assert.equal(floor.walls.at(-1).lengthMm, 3000);
 
   draft = surveyGraph.confirmClosure(draft);
@@ -3089,8 +3089,8 @@ test('a continued internal partition cannot extend through the opposite room bou
 
   draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'preview');
   floor = surveyGraph.getActiveFloor(draft);
-  assert.equal(floor.session.state, 'closing');
-  assert.equal(floor.session.closeCandidateType, 'shared-wall');
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.session.closeCandidateType, '');
 
   draft = surveyGraph.confirmClosure(draft);
   floor = surveyGraph.getActiveFloor(draft);

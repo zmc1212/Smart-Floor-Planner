@@ -3339,9 +3339,9 @@ test('inner- and outer-face T closures preserve every confirmed measurement thro
   ['inner', 'outer'].forEach((snapLine) => {
     const result = createMeasuredTClosureDraft(snapLine);
     const floor = surveyGraph.getActiveFloor(result.draft);
-    const activeWalls = floor.walls.slice(floor.session.activeSpaceStartWallIndex);
+    const activeWalls = floor.walls.slice(-3);
     const scene = createScene(result.draft);
-    const renderedActiveWalls = scene.walls.filter((wall) => wall.isActiveMeasurement);
+    const renderedActiveWalls = scene.walls.filter((wall) => activeWalls.some(active => active.id === wall.id));
 
     assert.deepEqual(result.lengthsBeforeClosingWall, [2000, 1582], snapLine);
     assert.deepEqual(activeWalls.map((wall) => wall.lengthMm), [2000, 1582, 2000], snapLine);

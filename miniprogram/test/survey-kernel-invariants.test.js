@@ -269,8 +269,8 @@ test('adjacent room closure wall overshooting the target wall clamps and closes 
   draft = surveyGraph.startPreview(draft, { xMm: 3369, yMm: -5019 });
   // Input overshooting length 2283mm when actual distance is 1553mm
   draft = surveyGraph.commitPreviewLength(draft, 2283, 'manual');
-  assert.equal(surveyGraph.getActiveFloor(draft).session.state, 'closing');
-  assert.equal(surveyGraph.getActiveFloor(draft).session.closeCandidateType, 'shared-wall');
+  assert.equal(surveyGraph.getActiveFloor(draft).session.state, 'spaceClosed');
+  assert.equal(surveyGraph.getActiveFloor(draft).session.closeCandidateType, '');
 
   draft = surveyGraph.confirmClosure(draft);
   const floor = surveyGraph.getActiveFloor(draft);

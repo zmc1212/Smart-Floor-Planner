@@ -281,8 +281,8 @@ linked customer lead (enterprise name and assigned designer), and rejects drafts
 without a closed space before emitting a download.
 
 `POST /api/floorplans` and `PUT /api/floorplans/[id]` retain the formal-v4 400
-envelope gate. Draft writes run `quick` validation; completed writes run the
-enhanced `full` validation and require at least one closed Space before the
+envelope gate. Draft and completed writes run `full` validation; completed writes additionally
+require no pending measured closure and at least one closed Space before the
 database mutation and preview generation. An invalid formal graph returns 422
 with the first code/message and `validation.mode/errors/stats`; the API does not
 repair or rewrite the client graph. The strengthened full gate rejects proper
@@ -353,3 +353,9 @@ Lead lifecycle now supports `referrer_withdrawn` and `referrer_withdrawal_revert
 ### Mini Program referrer self-management (Implemented)
 
 `GET /api/miniprogram/enterprise-referrers` keeps ordinary staff scoped to memberships they invited. Designers, measurers, and salespeople can open **查看推广客户**, call the referrer, and disable that member's future scans; `POST /api/miniprogram/enterprise-referrers/[id]/disable` enforces the inviter-staff boundary transactionally. Enterprise owners retain tenant-wide management.
+
+## Current topology P0 contract
+
+**Implemented**: local draft persistence, cloud writes and restoration use full validation. Ordinary commits node exact T/X junctions and synchronize Faces/Spaces; ordered simple Space boundaries are mandatory and nested loops are rejected. Near-closure readings persist as `session.pendingMeasuredClosure` and use the existing closure confirmation; failed restoration retains the original draft and diagnostics. Routes, permissions, tenant boundaries and the formal v4 envelope retain their existing contract.
+
+**Limited**: fractional intersections that cannot preserve both wall lines on the integer-millimetre grid are rejected. Holes, nested spaces and general snap rounding remain unsupported. The existing surveying visual source and layout are preserved; runtime screenshots of near-closure states remain pending from the user. See [P0 contract and verification](./surveying-module/topology-p0.md).

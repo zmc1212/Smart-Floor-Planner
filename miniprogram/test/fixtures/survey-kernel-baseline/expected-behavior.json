@@ -3065,8 +3065,7 @@
                 "rawMeasuredLengthMm": 3200,
                 "startNodeId": "node-1-1",
                 "status": "confirmed",
-                "thicknessMm": 200,
-                "topologySourceWallId": "wall-1-1"
+                "thicknessMm": 200
               },
               {
                 "angleDeg": 90,
@@ -3087,8 +3086,7 @@
                 "rawMeasuredLengthMm": 3600,
                 "startNodeId": "node-1-2",
                 "status": "confirmed",
-                "thicknessMm": 200,
-                "topologySourceWallId": "wall-1-2"
+                "thicknessMm": 200
               },
               {
                 "angleDeg": 180,
@@ -6727,7 +6725,7 @@
               "closeCandidatePoint": null,
               "closeCandidateSharedWallId": "",
               "closeCandidateType": "",
-              "closedFromNodeId": "node-runtime-1",
+              "closedFromNodeId": "node-1-8",
               "lastWallSnapLine": "",
               "lastWallSnapNodeId": "",
               "lastWallSnapT": null,
@@ -9434,12 +9432,6 @@
                 "id": "node-1-4",
                 "xMm": 0,
                 "yMm": 4000
-              },
-              {
-                "createdAt": "<timestamp>",
-                "id": "node-1-5",
-                "xMm": 0,
-                "yMm": 0
               }
             ],
             "openings": [],
@@ -9450,8 +9442,19 @@
               "activeSpaceSharedWallMiddle": false,
               "activeSpaceStartNodeId": "",
               "activeSpaceStartWallIndex": 0,
-              "alignmentSnapGuide": null,
-              "anchorNodeId": "node-1-5",
+              "alignmentSnapGuide": {
+                "direction": "horizontal",
+                "referencePoint": {
+                  "xMm": 0,
+                  "yMm": 0
+                },
+                "snappedPoint": {
+                  "xMm": 0,
+                  "yMm": 0
+                },
+                "type": "start-vertex-closure"
+              },
+              "anchorNodeId": "node-1-4",
               "closeCandidateNodeId": "node-1-1",
               "closeCandidatePoint": null,
               "closeCandidateSharedWallId": "",
@@ -9466,21 +9469,24 @@
               "mode": "straight",
               "partitionSourceSpaceId": "",
               "pendingWallId": "",
-              "previewAngleDeg": 0,
+              "previewAngleDeg": -90,
               "previewAngleSource": "",
               "previewBodyNormalSide": "",
               "previewInteriorAngleDeg": null,
-              "previewLengthMm": 0,
+              "previewLengthMm": 4000,
               "previewMeasurementEndInsetMm": 0,
-              "previewMeasurementSide": "",
+              "previewMeasurementSide": "left",
               "previewMeasurementStartExtensionMm": 0,
               "previewMeasurementStartInsetMm": 0,
               "previewOuterFaceWallId": "",
-              "previewPoint": null,
+              "previewPoint": {
+                "xMm": 0,
+                "yMm": 0
+              },
               "selectedOpeningId": "",
               "selectedSpaceId": "",
               "selectedWallId": "",
-              "state": "closing",
+              "state": "wallPreview",
               "thicknessMm": 200
             },
             "spaces": [],
@@ -9552,27 +9558,6 @@
                 "startNodeId": "node-1-3",
                 "status": "confirmed",
                 "thicknessMm": 200
-              },
-              {
-                "angleDeg": -90,
-                "angleInteriorDeg": null,
-                "angleSource": "",
-                "bodyNormalSide": "",
-                "closureAdjustmentMm": 0,
-                "endNodeId": "node-1-5",
-                "id": "wall-1-4",
-                "inputSource": "phase0-baseline",
-                "lengthMm": 4000,
-                "measuredAt": "<timestamp>",
-                "measurementEndInsetMm": 0,
-                "measurementSide": "left",
-                "measurementStartExtensionMm": 0,
-                "measurementStartInsetMm": 0,
-                "mode": "straight",
-                "rawMeasuredLengthMm": 4000,
-                "startNodeId": "node-1-4",
-                "status": "confirmed",
-                "thicknessMm": 200
               }
             ]
           }
@@ -9594,8 +9579,19 @@
         "activeSpaceSharedWallMiddle": false,
         "activeSpaceStartNodeId": "",
         "activeSpaceStartWallIndex": 0,
-        "alignmentSnapGuide": null,
-        "anchorNodeId": "node-1-5",
+        "alignmentSnapGuide": {
+          "direction": "horizontal",
+          "referencePoint": {
+            "xMm": 0,
+            "yMm": 0
+          },
+          "snappedPoint": {
+            "xMm": 0,
+            "yMm": 0
+          },
+          "type": "start-vertex-closure"
+        },
+        "anchorNodeId": "node-1-4",
         "closeCandidateNodeId": "node-1-1",
         "closeCandidatePoint": null,
         "closeCandidateSharedWallId": "",
@@ -9610,21 +9606,24 @@
         "mode": "straight",
         "partitionSourceSpaceId": "",
         "pendingWallId": "",
-        "previewAngleDeg": 0,
+        "previewAngleDeg": -90,
         "previewAngleSource": "",
         "previewBodyNormalSide": "",
         "previewInteriorAngleDeg": null,
-        "previewLengthMm": 0,
+        "previewLengthMm": 4000,
         "previewMeasurementEndInsetMm": 0,
-        "previewMeasurementSide": "",
+        "previewMeasurementSide": "left",
         "previewMeasurementStartExtensionMm": 0,
         "previewMeasurementStartInsetMm": 0,
         "previewOuterFaceWallId": "",
-        "previewPoint": null,
+        "previewPoint": {
+          "xMm": 0,
+          "yMm": 0
+        },
         "selectedOpeningId": "",
         "selectedSpaceId": "",
         "selectedWallId": "",
-        "state": "closing",
+        "state": "wallPreview",
         "thicknessMm": 200
       },
       "inputUnchanged": true,
@@ -9796,7 +9795,7 @@
                   "closureAdjustmentMm": 0,
                   "endNodeId": "node-1-1",
                   "id": "wall-1-4",
-                  "inputSource": "phase0-baseline",
+                  "inputSource": "closure-preview",
                   "lengthMm": 4000,
                   "measuredAt": "<timestamp>",
                   "measurementEndInsetMm": 0,
@@ -11075,8 +11074,7 @@
                 "rawMeasuredLengthMm": 3200,
                 "startNodeId": "node-1-1",
                 "status": "confirmed",
-                "thicknessMm": 200,
-                "topologySourceWallId": "wall-1-1"
+                "thicknessMm": 200
               },
               {
                 "angleDeg": 90,
@@ -11097,8 +11095,7 @@
                 "rawMeasuredLengthMm": 3600,
                 "startNodeId": "node-1-2",
                 "status": "confirmed",
-                "thicknessMm": 200,
-                "topologySourceWallId": "wall-1-2"
+                "thicknessMm": 200
               },
               {
                 "angleDeg": 180,
@@ -11391,8 +11388,7 @@
                   "rawMeasuredLengthMm": 3200,
                   "startNodeId": "node-1-1",
                   "status": "confirmed",
-                  "thicknessMm": 200,
-                  "topologySourceWallId": "wall-1-1"
+                  "thicknessMm": 200
                 },
                 {
                   "angleDeg": 180,
@@ -12072,8 +12068,7 @@
                 "rawMeasuredLengthMm": 3200,
                 "startNodeId": "node-1-1",
                 "status": "confirmed",
-                "thicknessMm": 200,
-                "topologySourceWallId": "wall-1-1"
+                "thicknessMm": 200
               },
               {
                 "angleDeg": 90,
@@ -12094,8 +12089,7 @@
                 "rawMeasuredLengthMm": 3600,
                 "startNodeId": "node-1-2",
                 "status": "confirmed",
-                "thicknessMm": 200,
-                "topologySourceWallId": "wall-1-2"
+                "thicknessMm": 200
               },
               {
                 "angleDeg": 180,
@@ -12377,8 +12371,7 @@
                   "rawMeasuredLengthMm": 3600,
                   "startNodeId": "node-1-1",
                   "status": "confirmed",
-                  "thicknessMm": 200,
-                  "topologySourceWallId": "wall-1-1"
+                  "thicknessMm": 200
                 },
                 {
                   "angleDeg": 0,

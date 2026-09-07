@@ -167,8 +167,8 @@ Phase 0/1 建立测试治理能力，Phase 2–7 为行为等价的内部重构�
 时先读取该线索主户型，避免空白画布。详见
 [`formal-surveying.md`](./formal-surveying.md)。
 
-正式户型 POST/PUT 的非 v4 外壳仍返回 400；`draft` 执行 `quick` 校验，
-`completed` 执行增强后的 `full` 校验并要求至少一个闭合 Space。校验先于数据库写入与
+正式户型 POST/PUT 的非 v4 外壳仍返回 400；`draft` 与 `completed` 均执行 `full` 校验；
+`completed` 还要求至少一个闭合 Space，且不能有待确认近闭合读数。校验先于数据库写入与
 预览生成，且不修复、不改写客户端 graph。无效正式图返回 422，并携带首个错误消息、
 具体错误码以及 `validation.mode/errors/stats`。`full` 还要求直/斜墙保存有效的
 `lengthMm` 与 `angleDeg`，墙长/角度必须与整数毫米节点及测量修正一致；三个
@@ -354,3 +354,9 @@ null 行不回填、不删除、不合并。员工写入审计时，服务端允
 流水、实验过程或重复测试报告。
 
 English contract: [formal-surveying.md](./formal-surveying.md)
+
+## 拓扑 P0 当前合同
+
+**Implemented**：正式草稿本地保存、云端写入和恢复统一完整校验；普通提交自动节点化精确 T/X、同步 Face/Space，有序简单空间边界成为硬约束。嵌套闭环明确拒绝。近闭合读数作为 `session.pendingMeasuredClosure` 持久化，沿用现有“合”确认，恢复失败保留原稿与诊断。路由、权限、租户边界和正式 v4 外壳保持现有合同。
+
+**Limited**：非整数毫米交点若无法同时保持两条墙的共线关系则拒绝；暂不支持内洞、嵌套空间及通用 snap rounding。现有量房视觉来源及布局不变，待用户提供运行截图验证近闭合状态。详见 [P0 合同与验证](./topology-p0.zh-CN.md)。

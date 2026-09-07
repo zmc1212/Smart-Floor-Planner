@@ -9,12 +9,12 @@ function read(relativePath) {
   return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
 }
 
-test('full validation is completion-only and absent from load, drag and render paths', () => {
+test('full validation guards persistence and restore but stays out of renderer', () => {
   const editor = read('packages/surveying/editor/surveying-editor.js');
   const renderer = read('packages/surveying/utils/surveyCanvasRenderer.js');
   const matches = editor.match(/validateSurveyDraft/g) || [];
-  assert.equal(matches.length, 1);
-  assert.match(editor, /if \(status === 'completed'\)[\s\S]{0,180}validateSurveyDraft\(this\.draft, \{ mode: 'full' \}\)/);
+  assert.equal(matches.length, 3);
+  assert.match(editor, /buildFormalCloudLayoutData\(status\) \{[\s\S]{0,180}validateSurveyDraft/);
   assert.doesNotMatch(editor, /face-extractor/);
   assert.doesNotMatch(renderer, /validateSurveyDraft|face-extractor/);
 });

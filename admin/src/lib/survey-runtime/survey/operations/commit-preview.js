@@ -6,7 +6,7 @@ const { applyWallBodyInsetToIncidentWalls } = require('./preview-insets.js');
 const { cloneDraft, getActiveFloor: findActiveFloor, touchDraft } = require('../core/draft.js');
 const { deleteWall } = require('./wall-deletion.js');
 const { ensureSessionSpaceTracking } = require('../core/session.js');
-const { getLastWall, getNode, getWall } = require('../core/graph-query.js');
+const { getFirstNode, getLastWall, getNode, getWall } = require('../core/graph-query.js');
 const { getMinimumClosureSuggestionWallCount, resolveStraightClosurePlan } = require('../topology/closure-queries.js');
 const { hasBleLockedBearing } = require('../interaction/direction-lock.js');
 const { materializeLockedPreview } = require('./preview.js');
@@ -17,6 +17,7 @@ const { resolveProjectionIntent } = require('./projection-intent.js');
 const { splitWallAtNodes } = require('./wall-split.js');
 const domainValidation = require('../domain/validation.js');
 const vector2 = require('../geometry/vector2.js');
+const { finalizeCommittedTopology } = require('./finalize-commit.js');
 
 const validateLength = domainValidation.validateLength;
 const angleDeg = vector2.angleDeg;
@@ -155,7 +156,7 @@ function applyCommitPreviewPlan(next, plan) {
   return touchDraft(next);
 }
 
-function commitPreviewLength(draft, lengthMm, inputSource) {
+function commitPreviewForClosure(draft, lengthMm, inputSource) {
   // Validate before direction materialization to preserve legacy error priority.
   validateLength(lengthMm);
   let sourceDraft = draft;
@@ -167,10 +168,35 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   const next = cloneDraft(sourceDraft);
   const floor = getActiveFloor(next);
   ensureSessionSpaceTracking(floor);
+  delete floor.session.pendingMeasuredClosure;
   return applyCommitPreviewPlan(next, planCommitPreview(floor, lengthMm, inputSource));
+}
+
+function commitPreviewLength(draft, lengthMm, inputSource) {
+  const before = cloneDraft(draft, { force: true });
+  const previousCount = getActiveFloor(before).spaces.filter(space => space.closed).length;
+  const next = commitPreviewForClosure(draft, lengthMm, inputSource);
+  const floor = getActiveFloor(next);
+  const session = floor.session;
+  const start = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
+  const end = getNode(floor, session.anchorNodeId);
+  if (session.closeCandidateType === 'start' && start && end && distanceMm(start, end) > 0) {
+    // A near closure is a measured intent until the operator confirms “合”.
+    // In particular, never persist its temporary crossing as un-noded geometry.
+    const pending = getActiveFloor(before).session;
+    pending.pendingMeasuredClosure = { lengthMm: Number(lengthMm), inputSource: inputSource || 'manual' };
+    pending.previewLengthMm = Number(lengthMm);
+    pending.previewPoint = { xMm: end.xMm, yMm: end.yMm };
+    pending.closeCandidateType = session.closeCandidateType;
+    pending.closeCandidateNodeId = session.closeCandidateNodeId;
+    pending.closeCandidatePoint = session.closeCandidatePoint;
+    return before;
+  }
+  return finalizeCommittedTopology(next, previousCount);
 }
 
 module.exports = {
   applyCommitPreviewPlan,
+  commitPreviewForClosure,
   commitPreviewLength
 };
