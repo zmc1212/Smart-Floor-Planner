@@ -23,7 +23,7 @@ interface FloorPlanUpdateBody {
   name?: string;
   layoutData?: unknown;
   status?: 'draft' | 'completed';
-  leadId?: string;
+  leadId?: string;\n  baseRevision?: string;
 }
 
 function getErrorMessage(error: unknown) {
@@ -146,8 +146,11 @@ export async function PUT(
                 'staff enterprise id'
               )
             : current.enterpriseId,
-        });
-        if (!plan) return null;
+        }, { baseRevision: body.baseRevision });
+        if (!plan) {
+          if (body.baseRevision) throw Object.assign(new Error('Floor plan revision conflict, please reload and retry'), { status: 409, code: 'FLOOR_PLAN_REVISION_CONFLICT' });
+          return null;
+        }
         if (!body.leadId) {
           const linkedLead = nextStatus === 'completed'
             ? await new LeadRepository(transaction).findByFloorPlanId(plan.id)
@@ -274,3 +277,4 @@ export async function DELETE(
     );
   }
 }
+

@@ -232,11 +232,11 @@ export class FloorPlanRepository {
     };
   }
 
-  async update(id: bigint, input: FloorPlanUpdate) {
+  async update(id: bigint, input: FloorPlanUpdate, options: { baseRevision?: string } = {}) {
     const rows = await this.transaction
       .update(floorPlans)
       .set({ ...input, updatedAt: new Date() })
-      .where(eq(floorPlans.id, id))
+      .where(options.baseRevision ? and(eq(floorPlans.id, id), eq(floorPlans.updatedAt, new Date(options.baseRevision))) : eq(floorPlans.id, id))
       .returning({ id: floorPlans.id });
     return rows[0] ? this.findById(rows[0].id) : null;
   }
@@ -251,8 +251,10 @@ export class FloorPlanRepository {
       .where(eq(leadFloorPlans.floorPlanId, id));
     const rows = await this.transaction
       .delete(floorPlans)
-      .where(eq(floorPlans.id, id))
+      .where(options.baseRevision ? and(eq(floorPlans.id, id), eq(floorPlans.updatedAt, new Date(options.baseRevision))) : eq(floorPlans.id, id))
       .returning({ id: floorPlans.id });
     return rows[0] ?? null;
   }
 }
+
+
