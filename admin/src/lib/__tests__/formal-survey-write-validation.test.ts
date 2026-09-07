@@ -259,3 +259,56 @@ test('draft and completed writes reject unordered and nested room boundaries', (
     assert.ok(errorCodes(nested, status).includes('UNSUPPORTED_NESTED_SPACE'));
   }
 });
+
+test('P1 formal draft and completed writes structurally reject malformed collections before geometry', () => {
+  for (const collection of ['nodes', 'walls', 'spaces', 'openings']) {
+    for (const value of [null, 42, [], 'invalid']) {
+      const layout = JSON.parse(JSON.stringify(singleRoomLayout()));
+      layout.surveyGraph.floors[0][collection].push(value);
+      for (const status of ['draft', 'completed'] as const) {
+        const validation = validateFormalSurveyWrite(layout, status);
+        assert.ok(validation.errors.some(error => error.code === 'INVALID_COLLECTION_ELEMENT'));
+        assert.throws(() => assertFormalSurveyWrite(layout, status), FormalSurveyWriteValidationError);
+      }
+    }
+  }
+  for (const value of [null, {}, 'bad']) {
+    const layout = JSON.parse(JSON.stringify(singleRoomLayout()));
+    layout.surveyGraph.floors[0].spaces = value;
+    assert.ok(validateFormalSurveyWrite(layout, 'completed').errors.length);
+  }
+});
+
+test('P1 formal writes reject opening occupancy, fractional lengths and oversized remeasure audits', () => {
+  const mutations = [
+    (layout: ReturnType<typeof JSON.parse>) => {
+      layout.surveyGraph.floors[0].openings = ['a', 'b'].map(id => ({
+        id, wallId: 'ab', widthMm: 800, centerOffsetMm: 1000, type: 'door',
+      }));
+      return 'OPENING_OCCUPANCY_CONFLICT';
+    },
+    (layout: ReturnType<typeof JSON.parse>) => {
+      layout.surveyGraph.floors[0].walls[0].lengthMm += 0.25;
+      return 'INVALID_INTEGER_MM';
+    },
+    (layout: ReturnType<typeof JSON.parse>) => {
+      Object.assign(layout.surveyGraph.floors[0].walls[0], {
+        rawMeasuredLengthMm: 2000, closureAdjustmentMm: 2000, adjustmentSource: 'remeasure-balance',
+      });
+      return 'MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED';
+    },
+  ];
+  for (const mutate of mutations) {
+    const layout = JSON.parse(JSON.stringify(singleRoomLayout()));
+    const expected = mutate(layout);
+    for (const status of ['draft', 'completed'] as const) assert.ok(errorCodes(layout, status).includes(expected));
+  }
+});
+
+test('P1 completed writes reject a disconnected unfinished wall without blocking draft save', () => {
+  const layout = singleRoomLayout(), floor = layout.surveyGraph.floors[0];
+  floor.nodes.push({ id: 'x', xMm: 9000, yMm: 0 }, { id: 'y', xMm: 10000, yMm: 0 });
+  floor.walls.push(wall('xy', 'x', 'y', 1000));
+  assert.deepEqual(errorCodes(layout, 'draft'), []);
+  assert.ok(errorCodes(layout, 'completed').includes('INCOMPLETE_WALL_CHAIN'));
+});

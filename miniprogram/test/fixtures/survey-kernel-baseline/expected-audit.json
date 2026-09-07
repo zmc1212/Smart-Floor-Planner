@@ -1878,6 +1878,29 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/test/survey-topology-p1.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "addOpeningToWall",
+          "buildSpaceBoundaryPoints",
+          "calculateSpaceAreaMm2",
+          "createSurveyDraft",
+          "deleteWall",
+          "remeasureSelectedWall",
+          "updateOpening",
+          "validateSurveyDraft"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/survey-topology-scenario-matrix.test.js",
         "classification": "test-only",
         "binding": "direct-require",
@@ -3354,6 +3377,10 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js",
+        "to": "miniprogram/packages/surveying/utils/survey/read-model/space-boundary.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/invariants/floor-plan-validator.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/face-shadow.js"
       },
       {
@@ -4013,6 +4040,10 @@
         "to": "miniprogram/packages/surveying/utils/survey/session/state-machine.js"
       },
       {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/wall-deletion.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/space-sync.js"
+      },
+      {
         "from": "miniprogram/packages/surveying/utils/survey/operations/wall-mutation-helpers.js",
         "to": "miniprogram/packages/surveying/utils/survey/core/constants.js"
       },
@@ -4467,6 +4498,14 @@
       {
         "from": "miniprogram/packages/surveying/utils/survey/topology/face-shadow.js",
         "to": "miniprogram/packages/surveying/utils/survey/topology/face-extractor.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/space-sync.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/polygon.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/topology/space-sync.js",
+        "to": "miniprogram/packages/surveying/utils/survey/topology/closed-boundary.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/topology/space-sync.js",

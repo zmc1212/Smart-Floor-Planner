@@ -644,7 +644,13 @@ test('a shared-wall partition keeps the original wall body on both drag directio
     const sourceSegments = splitSourceSegments(floor, sourceWallId);
     assert.equal(sourceSegments.length, 2);
     sourceSegments.forEach((segment) => {
-      assert.equal(segment.bodyNormalSide, scenario.sharedWallBodySide);
+      // P1 geometric identity ties may retain the other original child after
+      // rotation. Preserve the actual pre-split physical side, not room order.
+      const start = surveyGraph.getNode(floor, segment.startNodeId);
+      const end = surveyGraph.getNode(floor, segment.endNodeId);
+      const leftDot = (end.yMm - start.yMm) * expectedBodyOffset.xMm -
+        (end.xMm - start.xMm) * expectedBodyOffset.yMm;
+      assert.equal(segment.bodyNormalSide, leftDot > 0 ? 'left' : 'right');
       const geometry = surveyGraph.buildWallSnapGeometry(floor, segment);
       assert.deepEqual({
         xMm: Math.round(geometry.outerStart.xMm - geometry.start.xMm),

@@ -1,0 +1,29 @@
+# Current topology P1 implementation and verification
+
+Status: **Implemented** for all seven P1 defects in the [optimization plan](./topology-algorithm-optimization-plan.zh-CN.md). P2 and the broader four-stage extensions are not included.
+
+## Current runtime contract
+
+1. Autosave fingerprints recursively cover persisted business fields: opening `centerOffsetMm`, dimensions/models/materials, raw readings and adjustments, measurement-face corrections, room names/ordered boundaries/face overrides, floor properties and settings. Object keys are sorted. Viewports, ordinary session state, top-level save status and timestamps are excluded; P0 `pendingMeasuredClosure` is explicitly included. Moving an opening triggers autosave and local/cloud freshness comparison.
+2. Directed boundary winding and each edge's local normal determine room sides. Explicit `bodyNormalSide` and `wallFaceOverrides` remain authoritative. Concave C-shaped rooms no longer depend on a global centroid that can lie outside the room. Full validation checks simple inner boundaries, winding, minimum area (10,000mm²) and forward edge direction. `INVALID_SPACE_INNER_BOUNDARY` also rejects double-axis reversal whose signed area remains positive.
+3. Closure and remeasurement share the `domain/wall.js` budget function: 2% of length, clamped to 25–150mm, with a 1,000mm residual limit. Closure retains its existing coordinate-correction budget; remeasurement additionally checks cumulative corrections against raw readings, preventing repeated edits from bypassing the limit. Full validation rejects oversized `remeasure-balance` audits and their aggregate. Remeasuring 6m to 20m rejects atomically and requires another measurement. Existing snap, face inset/extension and `coordinate-rounding` audits retain their distinct semantics and are not treated as closure noise. Shared-wall/shared-node coupled and diagonal closed-room remeasurement remain unsupported.
+4. Same-host opening intervals are sorted. Overlap or endpoint contact returns `OPENING_OCCUPANCY_CONFLICT` with the wall and both opening IDs; a strictly positive gap is allowed. Openings may still touch host-wall endpoints, and the existing 50mm split clearance remains. Opening edits, commits, splits, persistence and restoration use the common validator; rejection preserves the input graph and history.
+5. Completion requires at least one closed room, all Spaces closed and all ordinary walls participating in bounded Faces. Other open chains return `INCOMPLETE_WALL_CHAIN`. Valid unfinished graphs remain draft-saveable with `DANGLE_WALL` warnings. **Limited**: no independent-wall/half-wall marker or interaction is implemented, so there is no purpose-based completion exemption.
+6. Transactions structurally validate before cloning and geometry execution. Persistence, restoration and server writes likewise check collection elements, IDs, reference types, integer millimetres and session-point shape first. Null elements, null/string coordinates and fractional wall lengths return stable `code/path/details` instead of entering geometry or the database. Session space references are checked for existence. P0 recovery still retains rejected original local data and diagnostics; an empty fallback cannot overwrite it.
+7. Unchanged complete boundaries retain their identities first. On a true split, the largest child inherits the old ID/name; on a merge, the largest previous room survives. Ties use canonical boundary coordinates, independent of wall-array order. Deletion captures previous area/boundary in transaction-local memory without persisting an identity cache. Existing room output order is retained so Face enumeration alone cannot flip inferred shared-wall bodies.
+
+## Entry, permissions and compatibility
+
+The sole runtime entry remains `packages/surveying/editor/surveying-editor`. `POST /api/floorplans` and `PUT /api/floorplans/[id]` use the same generated validator, retaining 422 `validation.mode/errors/stats` errors and 400 envelope errors. Routes, roles, tenant boundaries and `layoutData = { version: 4, measurementMode: 'surveying', surveyGraph }` are unchanged. Admin, Canvas, DXF, 3D and AI remain read-only graph consumers. There is no automatic historical repair or migration: preserve rejected source data and correct it through further measurement.
+
+The visual source remains the existing surveying-editor row in both restoration ledgers. Geometry and existing error-feedback data paths change; WXML, styles, icons, artwork and navigation do not. WeChat DevTools was not controlled. Manual 390×844 and tall-device runtime screenshots remain pending from the user.
+
+## Verification
+
+The 40 new `survey-topology-p1.test.js` cases cover independent area expectations, rotation/reflection/translation, array permutation, split/merge identity, cumulative remeasurement, opening contact, malformed elements, atomic rejection and save/reload/undo-redo snapshots. Two editor tests cover rejected local recovery and completion writes; three Admin tests add write-validation counterexample matrices.
+
+Previous 500mm successful remeasurement samples now use a legal 50mm correction, with independent P1 over-budget rejection cases. The Phase 3 frozen reference explicitly amends only the defective centroid rule using an independent shoelace winding calculation. Phase 4B frozen deletion adds only pre-deletion identity capture and structural preflight; other frozen algorithms remain. Concave outer-face and room-identity snapshot differences were reviewed, not substituted for P1 geometric assertions.
+
+An isolated 512-wall/240-room Node benchmark reports approximately 35ms median and 39ms P95 full validation, passing the existing 62ms threshold. This is not a low-end device performance guarantee. Final results are recorded in the delivery table.
+
+P2 `revision/baseRevision` conditional updates, full snap rounding and low-end device budgets remain pending.

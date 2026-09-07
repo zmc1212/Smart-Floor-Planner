@@ -354,20 +354,20 @@ test('closed orthogonal remeasurement balances the opposite axis wall without sk
     ],
     [{ id: 'room', name: '房间', wallIds: ['ab', 'bc', 'cd', 'da'], closed: true }]
   );
-  const result = surveyGraph.remeasureSelectedWall(draft, 3500, 'manual');
+  const result = surveyGraph.remeasureSelectedWall(draft, 3950, 'manual');
   const floor = surveyGraph.getActiveFloor(result);
 
   assert.deepEqual(floor.nodes, [
     { id: 'a', xMm: 0, yMm: 0 },
-    { id: 'b', xMm: 3500, yMm: 0 },
-    { id: 'c', xMm: 3500, yMm: 3000 },
+    { id: 'b', xMm: 3950, yMm: 0 },
+    { id: 'c', xMm: 3950, yMm: 3000 },
     { id: 'd', xMm: 0, yMm: 3000 }
   ]);
   assert.equal(surveyGraph.getWall(floor, 'bc').lengthMm, 3000);
   assert.equal(surveyGraph.getWall(floor, 'bc').angleDeg, 90);
-  assert.equal(surveyGraph.getWall(floor, 'cd').lengthMm, 3500);
+  assert.equal(surveyGraph.getWall(floor, 'cd').lengthMm, 3950);
   assert.equal(surveyGraph.getWall(floor, 'cd').rawMeasuredLengthMm, 4000);
-  assert.equal(surveyGraph.getWall(floor, 'cd').closureAdjustmentMm, -500);
+  assert.equal(surveyGraph.getWall(floor, 'cd').closureAdjustmentMm, -50);
   assert.equal(surveyGraph.validateSurveyDraft(result, { mode: 'full' }).valid, true);
 });
 
@@ -393,14 +393,14 @@ test('closed remeasurement rejects an opening that would fall outside the balanc
     type: 'window',
     wallId: 'cd',
     widthMm: 800,
-    centerOffsetMm: 3500,
+    centerOffsetMm: 3580,
     heightMm: 1500,
     sillHeightMm: 900
   });
   const before = JSON.stringify({ nodes: floor.nodes, walls: floor.walls, openings: floor.openings });
 
   assert.throws(
-    () => surveyGraph.remeasureSelectedWall(draft, 1000, 'manual'),
+    () => surveyGraph.remeasureSelectedWall(draft, 3950, 'manual'),
     (error) => error && error.code === 'OPENING_REMEASURE_CONFLICT'
   );
   const afterFloor = surveyGraph.getActiveFloor(draft);
@@ -418,7 +418,7 @@ test('open-wall remeasurement rejects an opening that would be silently shifted'
   const floor = surveyGraph.getActiveFloor(draft);
   floor.openings.push({
     id: 'window-1', type: 'window', wallId: 'ab', widthMm: 1000,
-    centerOffsetMm: 3500, heightMm: 1500, sillHeightMm: 900
+    centerOffsetMm: 3950, heightMm: 1500, sillHeightMm: 900
   });
   const before = JSON.stringify(draft);
 
@@ -445,24 +445,24 @@ test('consecutive closed-room remeasurements preserve the previously balanced ax
     ],
     [{ id: 'room', name: '房间', wallIds: ['ab', 'bc', 'cd', 'da'], closed: true }]
   );
-  draft = surveyGraph.remeasureSelectedWall(draft, 3500, 'manual');
+  draft = surveyGraph.remeasureSelectedWall(draft, 3950, 'manual');
   let floor = surveyGraph.getActiveFloor(draft);
   floor.session.state = 'remeasureAwaitingInput';
   floor.session.selectedWallId = 'bc';
   floor.session.fixedNodeId = 'b';
-  draft = surveyGraph.remeasureSelectedWall(draft, 2500, 'manual');
+  draft = surveyGraph.remeasureSelectedWall(draft, 2950, 'manual');
   floor = surveyGraph.getActiveFloor(draft);
 
   assert.deepEqual(floor.nodes, [
     { id: 'a', xMm: 0, yMm: 0 },
-    { id: 'b', xMm: 3500, yMm: 0 },
-    { id: 'c', xMm: 3500, yMm: 2500 },
-    { id: 'd', xMm: 0, yMm: 2500 }
+    { id: 'b', xMm: 3950, yMm: 0 },
+    { id: 'c', xMm: 3950, yMm: 2950 },
+    { id: 'd', xMm: 0, yMm: 2950 }
   ]);
   assert.equal(surveyGraph.getWall(floor, 'cd').rawMeasuredLengthMm, 4000);
-  assert.equal(surveyGraph.getWall(floor, 'cd').closureAdjustmentMm, -500);
+  assert.equal(surveyGraph.getWall(floor, 'cd').closureAdjustmentMm, -50);
   assert.equal(surveyGraph.getWall(floor, 'da').rawMeasuredLengthMm, 3000);
-  assert.equal(surveyGraph.getWall(floor, 'da').closureAdjustmentMm, -500);
+  assert.equal(surveyGraph.getWall(floor, 'da').closureAdjustmentMm, -50);
   assert.equal(surveyGraph.validateSurveyDraft(draft, { mode: 'full' }).valid, true);
 });
 

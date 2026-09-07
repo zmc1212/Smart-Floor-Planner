@@ -145,6 +145,20 @@ function hasWallConnectionAtPoint(floor, wall, point) {
   });
 }
 
+// P1 amendment: independent shoelace/local-edge oracle replaces the known
+// invalid global-centroid side rule; all other Phase 3 formulas remain frozen.
+function localInteriorPoint(floor, wallIds, wallId, start, end) {
+  const chain = buildClosedSpaceWallChain(floor, wallIds);
+  const entry = chain.find(item => item.wall.id === wallId);
+  if (!entry) return null;
+  const twiceArea = chain.reduce((sum, edge) => sum +
+    edge.start.xMm * edge.end.yMm - edge.end.xMm * edge.start.yMm, 0);
+  const x = entry.end.xMm - entry.start.xMm, y = entry.end.yMm - entry.start.yMm;
+  const size = Math.hypot(x, y);
+  return { xMm: (start.xMm + end.xMm) / 2 - y / size * Math.sign(twiceArea),
+    yMm: (start.yMm + end.yMm) / 2 + x / size * Math.sign(twiceArea) };
+}
+
 function buildBaseWallSegment(floor, wall, options) {
   const opts = options || {};
   const start = opts.startPoint || getNode(floor, wall.startNodeId);
@@ -152,7 +166,7 @@ function buildBaseWallSegment(floor, wall, options) {
   if (!start || !end) return null;
 
   const closedSpace = findClosedSpaceForWall(floor, wall.id);
-  const centroid = closedSpace ? calculateBoundaryCentroid(floor, closedSpace.wallIds) : null;
+  const centroid = closedSpace ? localInteriorPoint(floor, closedSpace.wallIds, wall.id, start, end) : null;
   const thicknessMm = resolveRenderThicknessMm(wall, opts);
   const faces = wallFaces.projectWallFaces(wall, start, end, thicknessMm, centroid);
   if (!faces) return null;
@@ -402,8 +416,7 @@ function buildWallJoinRenderGeometries(floor, options) {
 
 function buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides) {
   const chain = buildClosedSpaceWallChain(floor, wallIds);
-  const centroid = calculateBoundaryCentroid(floor, wallIds);
-  if (!chain.length || !centroid) return [];
+  if (!chain.length) return [];
 
   return chain.map((entry) => {
     // Closure may persist a short topology bridge whose entire coordinate
@@ -416,6 +429,7 @@ function buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides) {
       xMm: (base.start.xMm + base.end.xMm) / 2,
       yMm: (base.start.yMm + base.end.yMm) / 2
     };
+    const centroid = localInteriorPoint(floor, wallIds, entry.wall.id, base.start, base.end);
     const centroidOffset = dot({
       x: centroid.xMm - midpoint.xMm,
       y: centroid.yMm - midpoint.yMm

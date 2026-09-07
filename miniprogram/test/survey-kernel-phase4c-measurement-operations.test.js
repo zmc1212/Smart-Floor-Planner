@@ -111,7 +111,7 @@ test('Phase 4C open remeasure plans are immutable, replayable and preserve audit
 
 test('Phase 4C closed orthogonal plans balance only the selected axis', () => {
   const draft = createClosedRemeasureDraft();
-  const plan = freeze(measurement.planRemeasureSelectedWall(draft, 3500, 'manual'));
+  const plan = freeze(measurement.planRemeasureSelectedWall(draft, 3950, 'manual'));
   assert.equal(plan.mode, 'closed-orthogonal');
   assert.equal(plan.selectedAxis, 'x');
   const floor = surveyGraph.getActiveFloor(draft);
@@ -120,7 +120,7 @@ test('Phase 4C closed orthogonal plans balance only the selected axis', () => {
     floor.spaces[0],
     floor.walls[0],
     'a',
-    3500,
+    3950,
     'manual'
   );
   assert.equal(directPlan.entries.some((entry) => Object.prototype.hasOwnProperty.call(entry, 'wall')), false);
@@ -130,11 +130,11 @@ test('Phase 4C closed orthogonal plans balance only the selected axis', () => {
   assert.equal(result.changed, true);
   assert.deepEqual(outputFloor.nodes, [
     { id: 'a', xMm: 0, yMm: 0 },
-    { id: 'b', xMm: 3500, yMm: 0 },
-    { id: 'c', xMm: 3500, yMm: 3000 },
+    { id: 'b', xMm: 3950, yMm: 0 },
+    { id: 'c', xMm: 3950, yMm: 3000 },
     { id: 'd', xMm: 0, yMm: 3000 }
   ]);
-  assert.equal(outputFloor.walls.find((wall) => wall.id === 'cd').closureAdjustmentMm, -500);
+  assert.equal(outputFloor.walls.find((wall) => wall.id === 'cd').closureAdjustmentMm, -50);
   assert.equal(outputFloor.walls.find((wall) => wall.id === 'bc').rawMeasuredLengthMm, undefined);
 });
 

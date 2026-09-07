@@ -99,6 +99,7 @@ test('remaining pure helpers retain degenerate inputs and preview-versus-stored 
 
 test('every domain error maps to its exact historical message without leaking internal fields', () => {
   const messages = {
+    MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED: '复尺平差超过安全预算，请补测相关墙体',
     INVALID_INTERIOR_ANGLE: 'Angle must be between 0 and 180 degrees',
     INVALID_WALL_LENGTH: '请输入不少于 100 mm 的整数长度',
     INVALID_WALL_THICKNESS: '请输入不少于 100 mm 的整数墙厚',
@@ -147,9 +148,9 @@ test('every domain error maps to its exact historical message without leaking in
       ? ['code', 'wallId', 'openingId', 'cutAlongMm', 'clearanceMm']
       : code === CODES.OPENING_REMEASURE_CONFLICT
         ? ['code', 'wallId', 'openingId', 'prospectiveMeasuredLengthMm']
-        : [];
+        : code === CODES.MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED ? ['code', 'details'] : [];
     assert.deepEqual(Object.keys(legacy).sort(), fields.sort(), code);
-    for (const field of fields) assert.equal(legacy[field], field === 'code' ? code : details[field]);
+    for (const field of fields) assert.deepEqual(legacy[field], field === 'code' ? code : field === 'details' ? details : details[field]);
     assert.equal(error.message, code);
     assert.deepEqual(error.details, details);
   }

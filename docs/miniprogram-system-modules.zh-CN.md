@@ -572,3 +572,7 @@ English mirror: [miniprogram-system-modules.md](./miniprogram-system-modules.md)
 **Implemented**：正式草稿本地保存、云端写入和恢复统一完整校验；普通提交自动节点化精确 T/X、同步 Face/Space，有序简单空间边界成为硬约束。嵌套闭环明确拒绝。近闭合读数作为 `session.pendingMeasuredClosure` 持久化，沿用现有“合”确认，恢复失败保留原稿与诊断。路由、权限、租户边界和正式 v4 外壳保持现有合同。
 
 **Limited**：非整数毫米交点若无法同时保持两条墙的共线关系则拒绝；暂不支持内洞、嵌套空间及通用 snap rounding。现有量房视觉来源及布局不变，待用户提供运行截图验证近闭合状态。详见 [P0 合同与验证](./surveying-module/topology-p0.zh-CN.md)。
+
+## 拓扑 P1 当前合同
+
+**Implemented**：持久化业务字段自动保存指纹（包含 `centerOffsetMm`）、局部有向房间侧向、净边界校验、复尺预算、同墙门窗占用、严格完成条件、结构化异常输入拒绝及稳定分割/合并身份。草稿与完成写入共用小程序/Admin 校验器。路由、API、角色、租户边界和 v4 外壳不变，非法写入仍返回 422 诊断。**Limited**：独立墙/半墙豁免、版本冲突和真机预算尚未实现。沿用现有量房界面，手工运行 QA 待用户截图。详见 [P1 合同与验证](./surveying-module/topology-p1.zh-CN.md)。

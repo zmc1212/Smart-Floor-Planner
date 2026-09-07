@@ -4,6 +4,7 @@ const {
 } = require('../domain/errors.js');
 
 const MESSAGE_FACTORIES = Object.freeze({
+  MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED: () => '复尺平差超过安全预算，请补测相关墙体',
   [CODES.INVALID_INTERIOR_ANGLE]: () => 'Angle must be between 0 and 180 degrees',
   [CODES.INVALID_WALL_LENGTH]: ({ minimumMm }) => `请输入不少于 ${minimumMm} mm 的整数长度`,
   [CODES.INVALID_WALL_THICKNESS]: ({ minimumMm }) => `请输入不少于 ${minimumMm} mm 的整数墙厚`,
@@ -56,6 +57,10 @@ function formatLegacySurveyError(error) {
 function toLegacySurveyError(error) {
   if (!isSurveyDomainError(error)) return error;
   const legacy = new Error(formatLegacySurveyError(error));
+  if (error.code === 'MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED') {
+    legacy.code = error.code;
+    legacy.details = error.details;
+  }
   const fields = LEGACY_CODE_FIELDS[error.code];
   if (fields) {
     legacy.code = error.code;

@@ -118,7 +118,14 @@ function undirectedKey(wall) {
   return [wall.startNodeId, wall.endNodeId].sort().join('|');
 }
 
+const MAX_MEASUREMENT_RESIDUAL_MM = 1000;
+function measurementCorrectionBudgetMm(lengthMm) {
+  return Math.min(150, Math.max(25, Math.round(Math.abs(lengthMm) * 0.02)));
+}
+
 module.exports = {
+  MAX_MEASUREMENT_RESIDUAL_MM,
+  measurementCorrectionBudgetMm,
   coordinateLength,
   coordinateLengthMm,
   normalizeMeasurementAdjustment,

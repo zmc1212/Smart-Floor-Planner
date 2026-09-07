@@ -2,7 +2,7 @@ const { DEFAULT_THICKNESS_MM, MIN_THICKNESS_MM, CLOSE_TOLERANCE_MM } = require('
 const { getNode } = require('../core/graph-query.js');
 const {
   findClosedSpaceForWall,
-  calculateBoundaryCentroid,
+  boundaryInteriorNormal,
   buildClosedSpaceWallChain
 } = require('../topology/closed-boundary.js');
 const {
@@ -79,7 +79,12 @@ function buildBaseWallSegment(floor, wall, options) {
   if (!start || !end) return null;
 
   const closedSpace = findClosedSpaceForWall(floor, wall.id);
-  const centroid = closedSpace ? calculateBoundaryCentroid(floor, closedSpace.wallIds) : null;
+  const interior = closedSpace ? boundaryInteriorNormal(floor, closedSpace.wallIds, wall.id) : null;
+  // Use a point inside this directed edge; a concave room's centroid may be outside.
+  const centroid = interior ? {
+    xMm: (start.xMm + end.xMm) / 2 + interior.x,
+    yMm: (start.yMm + end.yMm) / 2 + interior.y
+  } : null;
   const thicknessMm = resolveRenderThicknessMm(wall, opts);
   const faces = wallFaces.projectWallFaces(wall, start, end, thicknessMm, centroid);
   if (!faces) return null;

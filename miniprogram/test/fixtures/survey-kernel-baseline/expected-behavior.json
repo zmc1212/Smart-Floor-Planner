@@ -2119,7 +2119,7 @@
                 }
               ],
               "outer": {
-                "areaMm2": 22720000,
+                "areaMm2": 23680000,
                 "heightMm": 4600,
                 "widthMm": 6400
               },
@@ -2134,11 +2134,11 @@
                 },
                 {
                   "xMm": 6200,
-                  "yMm": 1600
+                  "yMm": 2000
                 },
                 {
                   "xMm": 3800,
-                  "yMm": 1600
+                  "yMm": 2000
                 },
                 {
                   "xMm": 3800,
@@ -2179,7 +2179,7 @@
                 {
                   "end": {
                     "xMm": 4800,
-                    "yMm": 1600
+                    "yMm": 2000
                   },
                   "kind": "wall-thickness",
                   "lengthMm": 200,
@@ -2468,9 +2468,9 @@
               "lengthMm": 1800,
               "outerEnd": {
                 "xMm": 6200,
-                "yMm": 1600
+                "yMm": 2000
               },
-              "outerEndAlongMm": 1600,
+              "outerEndAlongMm": 2000,
               "outerStart": {
                 "xMm": 6200,
                 "yMm": -200
@@ -2567,12 +2567,12 @@
               "lengthMm": 2200,
               "outerEnd": {
                 "xMm": 3800,
-                "yMm": 1600
+                "yMm": 2000
               },
               "outerEndAlongMm": 2200,
               "outerStart": {
                 "xMm": 6200,
-                "yMm": 1600
+                "yMm": 2000
               },
               "outerStartAlongMm": -200,
               "start": {
@@ -2590,11 +2590,11 @@
               },
               "outerEnd": {
                 "xMm": 3800,
-                "yMm": 1600
+                "yMm": 2000
               },
               "outerStart": {
                 "xMm": 6000,
-                "yMm": 1600
+                "yMm": 2000
               },
               "start": {
                 "xMm": 6000,
@@ -6760,10 +6760,10 @@
                 "name": "房间1",
                 "source": "measured",
                 "wallIds": [
-                  "wall-1-1",
-                  "wall-1-9",
-                  "wall-1-7",
-                  "wall-1-8"
+                  "wall-1-2",
+                  "wall-1-10",
+                  "wall-1-6",
+                  "wall-1-9"
                 ]
               },
               {
@@ -6772,10 +6772,10 @@
                 "name": "房间2",
                 "source": "measured",
                 "wallIds": [
-                  "wall-1-2",
-                  "wall-1-10",
-                  "wall-1-6",
-                  "wall-1-9"
+                  "wall-1-1",
+                  "wall-1-9",
+                  "wall-1-7",
+                  "wall-1-8"
                 ]
               },
               {
@@ -7066,221 +7066,7 @@
               },
               "innerBoundaryPoints": [
                 {
-                  "xMm": 0,
-                  "yMm": 0
-                },
-                {
                   "xMm": 3000,
-                  "yMm": 0
-                },
-                {
-                  "xMm": 3000,
-                  "yMm": 3600
-                },
-                {
-                  "xMm": 0,
-                  "yMm": 3600
-                }
-              ],
-              "innerSegments": [
-                {
-                  "end": {
-                    "xMm": 3000,
-                    "yMm": 0
-                  },
-                  "start": {
-                    "xMm": 0,
-                    "yMm": 0
-                  },
-                  "wallId": "wall-1-1"
-                },
-                {
-                  "end": {
-                    "xMm": 3000,
-                    "yMm": 3600
-                  },
-                  "start": {
-                    "xMm": 3000,
-                    "yMm": 0
-                  },
-                  "wallId": "wall-1-9"
-                },
-                {
-                  "end": {
-                    "xMm": 0,
-                    "yMm": 3600
-                  },
-                  "start": {
-                    "xMm": 3000,
-                    "yMm": 3600
-                  },
-                  "wallId": "wall-1-7"
-                },
-                {
-                  "end": {
-                    "xMm": 0,
-                    "yMm": 0
-                  },
-                  "start": {
-                    "xMm": 0,
-                    "yMm": 3600
-                  },
-                  "wallId": "wall-1-8"
-                }
-              ],
-              "outer": {
-                "areaMm2": 13600000,
-                "heightMm": 4000,
-                "widthMm": 3400
-              },
-              "outerBoundaryPoints": [
-                {
-                  "xMm": -200,
-                  "yMm": -200
-                },
-                {
-                  "xMm": 3200,
-                  "yMm": -200
-                },
-                {
-                  "xMm": 3200,
-                  "yMm": 3800
-                },
-                {
-                  "xMm": -200,
-                  "yMm": 3800
-                }
-              ],
-              "wallThicknessSegments": [
-                {
-                  "end": {
-                    "xMm": 1500,
-                    "yMm": -200
-                  },
-                  "kind": "wall-thickness",
-                  "lengthMm": 200,
-                  "start": {
-                    "xMm": 1500,
-                    "yMm": 0
-                  },
-                  "wallId": "wall-1-1"
-                },
-                {
-                  "end": {
-                    "xMm": 3200,
-                    "yMm": 1800
-                  },
-                  "kind": "wall-thickness",
-                  "lengthMm": 200,
-                  "start": {
-                    "xMm": 3000,
-                    "yMm": 1800
-                  },
-                  "wallId": "wall-1-9"
-                },
-                {
-                  "end": {
-                    "xMm": 1500,
-                    "yMm": 3800
-                  },
-                  "kind": "wall-thickness",
-                  "lengthMm": 200,
-                  "start": {
-                    "xMm": 1500,
-                    "yMm": 3600
-                  },
-                  "wallId": "wall-1-7"
-                },
-                {
-                  "end": {
-                    "xMm": -200,
-                    "yMm": 1800
-                  },
-                  "kind": "wall-thickness",
-                  "lengthMm": 200,
-                  "start": {
-                    "xMm": 0,
-                    "yMm": 1800
-                  },
-                  "wallId": "wall-1-8"
-                }
-              ]
-            },
-            "id": "space-1-1",
-            "innerBoundary": [
-              {
-                "xMm": 0,
-                "yMm": 0
-              },
-              {
-                "xMm": 3000,
-                "yMm": 0
-              },
-              {
-                "xMm": 3000,
-                "yMm": 3600
-              },
-              {
-                "xMm": 0,
-                "yMm": 3600
-              }
-            ],
-            "renderBoundary": [
-              {
-                "xMm": 0,
-                "yMm": 0
-              },
-              {
-                "xMm": 3000,
-                "yMm": 0
-              },
-              {
-                "xMm": 3000,
-                "yMm": 3600
-              },
-              {
-                "xMm": 0,
-                "yMm": 3600
-              }
-            ],
-            "topologyBoundary": [
-              {
-                "createdAt": "<timestamp>",
-                "id": "node-1-1",
-                "xMm": 0,
-                "yMm": 0
-              },
-              {
-                "createdAt": "<timestamp>",
-                "id": "node-1-5",
-                "xMm": 3000,
-                "yMm": 0
-              },
-              {
-                "createdAt": "<timestamp>",
-                "id": "node-1-6",
-                "xMm": 3000,
-                "yMm": 3600
-              },
-              {
-                "createdAt": "<timestamp>",
-                "id": "node-1-4",
-                "xMm": 0,
-                "yMm": 3600
-              }
-            ]
-          },
-          {
-            "areaMm2": 10080000,
-            "dimensionPlan": {
-              "inner": {
-                "areaMm2": 10080000,
-                "heightMm": 3600,
-                "widthMm": 2800
-              },
-              "innerBoundaryPoints": [
-                {
-                  "xMm": 3200,
                   "yMm": 0
                 },
                 {
@@ -7292,7 +7078,7 @@
                   "yMm": 3600
                 },
                 {
-                  "xMm": 3200,
+                  "xMm": 3000,
                   "yMm": 3600
                 }
               ],
@@ -7303,7 +7089,7 @@
                     "yMm": 0
                   },
                   "start": {
-                    "xMm": 3200,
+                    "xMm": 3000,
                     "yMm": 0
                   },
                   "wallId": "wall-1-2"
@@ -7321,7 +7107,7 @@
                 },
                 {
                   "end": {
-                    "xMm": 3200,
+                    "xMm": 3000,
                     "yMm": 3600
                   },
                   "start": {
@@ -7332,24 +7118,24 @@
                 },
                 {
                   "end": {
-                    "xMm": 3200,
+                    "xMm": 3000,
                     "yMm": 0
                   },
                   "start": {
-                    "xMm": 3200,
+                    "xMm": 3000,
                     "yMm": 3600
                   },
                   "wallId": "wall-1-9"
                 }
               ],
               "outer": {
-                "areaMm2": 12800000,
+                "areaMm2": 13600000,
                 "heightMm": 4000,
-                "widthMm": 3200
+                "widthMm": 3400
               },
               "outerBoundaryPoints": [
                 {
-                  "xMm": 3000,
+                  "xMm": 2800,
                   "yMm": -200
                 },
                 {
@@ -7361,7 +7147,7 @@
                   "yMm": 3800
                 },
                 {
-                  "xMm": 3000,
+                  "xMm": 2800,
                   "yMm": 3800
                 }
               ],
@@ -7407,23 +7193,23 @@
                 },
                 {
                   "end": {
-                    "xMm": 3000,
+                    "xMm": 2800,
                     "yMm": 1800
                   },
                   "kind": "wall-thickness",
                   "lengthMm": 200,
                   "start": {
-                    "xMm": 3200,
+                    "xMm": 3000,
                     "yMm": 1800
                   },
                   "wallId": "wall-1-9"
                 }
               ]
             },
-            "id": "space-1-2",
+            "id": "space-1-1",
             "innerBoundary": [
               {
-                "xMm": 3200,
+                "xMm": 3000,
                 "yMm": 0
               },
               {
@@ -7435,13 +7221,13 @@
                 "yMm": 3600
               },
               {
-                "xMm": 3200,
+                "xMm": 3000,
                 "yMm": 3600
               }
             ],
             "renderBoundary": [
               {
-                "xMm": 3200,
+                "xMm": 3000,
                 "yMm": 0
               },
               {
@@ -7453,7 +7239,7 @@
                 "yMm": 3600
               },
               {
-                "xMm": 3200,
+                "xMm": 3000,
                 "yMm": 3600
               }
             ],
@@ -7480,6 +7266,220 @@
                 "createdAt": "<timestamp>",
                 "id": "node-1-6",
                 "xMm": 3000,
+                "yMm": 3600
+              }
+            ]
+          },
+          {
+            "areaMm2": 10080000,
+            "dimensionPlan": {
+              "inner": {
+                "areaMm2": 10080000,
+                "heightMm": 3600,
+                "widthMm": 2800
+              },
+              "innerBoundaryPoints": [
+                {
+                  "xMm": 0,
+                  "yMm": 0
+                },
+                {
+                  "xMm": 2800,
+                  "yMm": 0
+                },
+                {
+                  "xMm": 2800,
+                  "yMm": 3600
+                },
+                {
+                  "xMm": 0,
+                  "yMm": 3600
+                }
+              ],
+              "innerSegments": [
+                {
+                  "end": {
+                    "xMm": 2800,
+                    "yMm": 0
+                  },
+                  "start": {
+                    "xMm": 0,
+                    "yMm": 0
+                  },
+                  "wallId": "wall-1-1"
+                },
+                {
+                  "end": {
+                    "xMm": 2800,
+                    "yMm": 3600
+                  },
+                  "start": {
+                    "xMm": 2800,
+                    "yMm": 0
+                  },
+                  "wallId": "wall-1-9"
+                },
+                {
+                  "end": {
+                    "xMm": 0,
+                    "yMm": 3600
+                  },
+                  "start": {
+                    "xMm": 2800,
+                    "yMm": 3600
+                  },
+                  "wallId": "wall-1-7"
+                },
+                {
+                  "end": {
+                    "xMm": 0,
+                    "yMm": 0
+                  },
+                  "start": {
+                    "xMm": 0,
+                    "yMm": 3600
+                  },
+                  "wallId": "wall-1-8"
+                }
+              ],
+              "outer": {
+                "areaMm2": 12800000,
+                "heightMm": 4000,
+                "widthMm": 3200
+              },
+              "outerBoundaryPoints": [
+                {
+                  "xMm": -200,
+                  "yMm": -200
+                },
+                {
+                  "xMm": 3000,
+                  "yMm": -200
+                },
+                {
+                  "xMm": 3000,
+                  "yMm": 3800
+                },
+                {
+                  "xMm": -200,
+                  "yMm": 3800
+                }
+              ],
+              "wallThicknessSegments": [
+                {
+                  "end": {
+                    "xMm": 1500,
+                    "yMm": -200
+                  },
+                  "kind": "wall-thickness",
+                  "lengthMm": 200,
+                  "start": {
+                    "xMm": 1500,
+                    "yMm": 0
+                  },
+                  "wallId": "wall-1-1"
+                },
+                {
+                  "end": {
+                    "xMm": 3000,
+                    "yMm": 1800
+                  },
+                  "kind": "wall-thickness",
+                  "lengthMm": 200,
+                  "start": {
+                    "xMm": 2800,
+                    "yMm": 1800
+                  },
+                  "wallId": "wall-1-9"
+                },
+                {
+                  "end": {
+                    "xMm": 1500,
+                    "yMm": 3800
+                  },
+                  "kind": "wall-thickness",
+                  "lengthMm": 200,
+                  "start": {
+                    "xMm": 1500,
+                    "yMm": 3600
+                  },
+                  "wallId": "wall-1-7"
+                },
+                {
+                  "end": {
+                    "xMm": -200,
+                    "yMm": 1800
+                  },
+                  "kind": "wall-thickness",
+                  "lengthMm": 200,
+                  "start": {
+                    "xMm": 0,
+                    "yMm": 1800
+                  },
+                  "wallId": "wall-1-8"
+                }
+              ]
+            },
+            "id": "space-1-2",
+            "innerBoundary": [
+              {
+                "xMm": 0,
+                "yMm": 0
+              },
+              {
+                "xMm": 2800,
+                "yMm": 0
+              },
+              {
+                "xMm": 2800,
+                "yMm": 3600
+              },
+              {
+                "xMm": 0,
+                "yMm": 3600
+              }
+            ],
+            "renderBoundary": [
+              {
+                "xMm": 0,
+                "yMm": 0
+              },
+              {
+                "xMm": 2800,
+                "yMm": 0
+              },
+              {
+                "xMm": 2800,
+                "yMm": 3600
+              },
+              {
+                "xMm": 0,
+                "yMm": 3600
+              }
+            ],
+            "topologyBoundary": [
+              {
+                "createdAt": "<timestamp>",
+                "id": "node-1-1",
+                "xMm": 0,
+                "yMm": 0
+              },
+              {
+                "createdAt": "<timestamp>",
+                "id": "node-1-5",
+                "xMm": 3000,
+                "yMm": 0
+              },
+              {
+                "createdAt": "<timestamp>",
+                "id": "node-1-6",
+                "xMm": 3000,
+                "yMm": 3600
+              },
+              {
+                "createdAt": "<timestamp>",
+                "id": "node-1-4",
+                "xMm": 0,
                 "yMm": 3600
               }
             ]
@@ -7744,10 +7744,10 @@
               "endOpen": false,
               "lengthMm": 3000,
               "outerEnd": {
-                "xMm": 3200,
+                "xMm": 2800,
                 "yMm": -200
               },
-              "outerEndAlongMm": 3200,
+              "outerEndAlongMm": 2800,
               "outerStart": {
                 "xMm": -200,
                 "yMm": -200
@@ -8239,10 +8239,10 @@
               "endOpen": false,
               "lengthMm": 3000,
               "outerEnd": {
-                "xMm": 3200,
+                "xMm": 2800,
                 "yMm": 3800
               },
-              "outerEndAlongMm": 2800,
+              "outerEndAlongMm": 3200,
               "outerStart": {
                 "xMm": 6200,
                 "yMm": 3800
@@ -8343,10 +8343,10 @@
               },
               "outerEndAlongMm": 3200,
               "outerStart": {
-                "xMm": 3200,
+                "xMm": 2800,
                 "yMm": 3800
               },
-              "outerStartAlongMm": -200,
+              "outerStartAlongMm": 200,
               "start": {
                 "xMm": 3000,
                 "yMm": 3600
@@ -8536,20 +8536,20 @@
               "endOpen": false,
               "lengthMm": 3600,
               "outerEnd": {
-                "xMm": 3200,
+                "xMm": 2800,
                 "yMm": 3800
               },
               "outerEndAlongMm": 3800,
               "outerStart": {
-                "xMm": 3200,
-                "yMm": -200
+                "xMm": 2800,
+                "yMm": 0
               },
-              "outerStartAlongMm": -200,
+              "outerStartAlongMm": 0,
               "start": {
                 "xMm": 3000,
                 "yMm": 0
               },
-              "startJoined": true,
+              "startJoined": false,
               "startOpen": false,
               "thicknessMm": 200
             },
@@ -8559,11 +8559,11 @@
                 "yMm": 3600
               },
               "outerEnd": {
-                "xMm": 3200,
+                "xMm": 2800,
                 "yMm": 3600
               },
               "outerStart": {
-                "xMm": 3200,
+                "xMm": 2800,
                 "yMm": 0
               },
               "start": {

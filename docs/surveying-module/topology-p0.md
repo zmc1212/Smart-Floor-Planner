@@ -24,7 +24,7 @@ The Admin runtime mirror contains 81 files. Behavior and dependency snapshots re
 
 The visual source is the existing surveying-editor row in both restoration ledgers. Preview and closure conditions reuse the approved UI; WXML, styles and assets are unchanged. Automated state tests pass; manual 390x844 and tall-device runtime screenshots remain pending from the user. WeChat DevTools was not automated.
 
-P1/P2 remain pending: centerOffsetMm fingerprint coverage, general malformed-element protection, concave-room wall sides, remeasurement budgets, opening occupancy, complete-plan policy, stable room inheritance, revision conflicts and device budgets.
+P1 is now Implemented: see the [P1 contract](./topology-p1.md). P2 revision conflicts and device budgets remain pending.
 
 ## Delivery checks
 

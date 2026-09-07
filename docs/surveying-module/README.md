@@ -360,3 +360,7 @@ English contract: [formal-surveying.md](./formal-surveying.md)
 **Implemented**：正式草稿本地保存、云端写入和恢复统一完整校验；普通提交自动节点化精确 T/X、同步 Face/Space，有序简单空间边界成为硬约束。嵌套闭环明确拒绝。近闭合读数作为 `session.pendingMeasuredClosure` 持久化，沿用现有“合”确认，恢复失败保留原稿与诊断。路由、权限、租户边界和正式 v4 外壳保持现有合同。
 
 **Limited**：非整数毫米交点若无法同时保持两条墙的共线关系则拒绝；暂不支持内洞、嵌套空间及通用 snap rounding。现有量房视觉来源及布局不变，待用户提供运行截图验证近闭合状态。详见 [P0 合同与验证](./topology-p0.zh-CN.md)。
+
+## 拓扑 P1 当前合同
+
+七项 P1 修复已实现（Implemented）：自动保存指纹、凹房间内外侧/净边界、复尺预算、门窗占用、完成条件、异常结构拒绝和稳定房间身份。路由、权限与 v4 外壳不变；独立墙豁免及 P2 未实施，运行视觉 QA 待用户截图。当前数据语义与验证见 [P1 合同](./topology-p1.zh-CN.md)。

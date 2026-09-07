@@ -138,14 +138,14 @@ test('legal closed-room remeasurement preserves topology, space and opening sema
   const originalOpening = JSON.parse(JSON.stringify(floor.openings[0]));
   const originalSpace = JSON.parse(JSON.stringify(floor.spaces[0]));
 
-  const next = surveyGraph.remeasureSelectedWall(draft, 3500, 'manual');
+  const next = surveyGraph.remeasureSelectedWall(draft, 3950, 'manual');
   const nextFloor = surveyGraph.getActiveFloor(next);
 
   assert.deepEqual(nextFloor.openings[0], originalOpening);
   assert.deepEqual(nextFloor.spaces[0], originalSpace);
   assert.deepEqual(surveyGraph.getNode(nextFloor, 'a'), { id: 'a', xMm: 0, yMm: 0 });
-  assert.deepEqual(surveyGraph.getNode(nextFloor, 'b'), { id: 'b', xMm: 3500, yMm: 0 });
-  assert.equal(surveyGraph.getWall(nextFloor, 'ab').lengthMm, 3500);
+  assert.deepEqual(surveyGraph.getNode(nextFloor, 'b'), { id: 'b', xMm: 3950, yMm: 0 });
+  assert.equal(surveyGraph.getWall(nextFloor, 'ab').lengthMm, 3950);
   assert.equal(nextFloor.session.state, 'spaceClosed');
   assert.equal(nextFloor.session.selectedWallId, 'ab');
   assert.equal(surveyGraph.validateSurveyDraft(next, { mode: 'full' }).valid, true);

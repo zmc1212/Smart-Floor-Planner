@@ -5,12 +5,106 @@ const openingDomain = require('../domain/opening.js');
 const spaceDomain = require('../domain/space.js');
 const polygon = require('../geometry/polygon.js');
 const segment = require('../geometry/segment.js');
+const spaceBoundary = require('../read-model/space-boundary.js');
 const vector2 = require('../geometry/vector2.js');
 const { createTopologyIndex } = require('../topology/topology-index.js');
 const { compareClosedSpacesToFaces } = require('../topology/face-shadow.js');
 
 function issue(code, path, message, details) {
   return Object.assign({ code, path, message }, details ? { details } : {});
+}
+
+// Reject malformed payloads before indexing or invoking geometry. Never coerce
+// null, numeric strings or fractional persisted millimetres into valid geometry.
+function validateStructure(floor, errors) {
+  const object = value => !!value && typeof value === 'object' && !Array.isArray(value);
+  const id = value => typeof value === 'string' && value.trim().length > 0;
+  const integer = (value, path, owner) => {
+    if (!Number.isSafeInteger(value)) errors.push(issue(path.endsWith('.xMm') || path.endsWith('.yMm') ?
+      (typeof value === 'number' ? 'NON_INTEGER_NODE_COORDINATE' : 'INVALID_NODE_COORDINATE') :
+      (path.endsWith('.lengthMm') && value === undefined ? 'MISSING_WALL_LENGTH' : 'INVALID_INTEGER_MM'), path,
+      '长度和坐标必须为安全整数毫米', { id: owner, value }));
+  };
+  for (const kind of ['nodes', 'walls', 'spaces', 'openings']) {
+    floor[kind].forEach((item, i) => {
+      const path = `${kind}[${i}]`;
+      if (!object(item)) {
+        errors.push(issue('INVALID_COLLECTION_ELEMENT', path, '墙图集合元素必须为对象', { kind, index: i }));
+        return;
+      }
+      if (!id(item.id)) errors.push(issue('MISSING_ID', `${path}.id`, '墙图对象缺少有效 ID'));
+      const required = kind === 'nodes' ? ['xMm', 'yMm'] :
+        kind === 'walls' ? ['lengthMm', 'thicknessMm'] :
+        kind === 'openings' ? ['widthMm', 'centerOffsetMm'] : [];
+      const optional = kind === 'walls' ? ['rawMeasuredLengthMm', 'closureAdjustmentMm',
+        'measurementStartInsetMm', 'measurementEndInsetMm', 'measurementStartExtensionMm'] :
+        kind === 'openings' ? ['heightMm', 'sillHeightMm', 'depthMm'] : [];
+      required.concat(optional.filter(key => Object.prototype.hasOwnProperty.call(item, key)))
+        .forEach(key => integer(item[key], `${path}.${key}`, item.id));
+      if (kind === 'openings') {
+        for (const field of ['heightMm', 'depthMm', 'sillHeightMm']) {
+          if (item[field] !== undefined && (item[field] < 0 || (field !== 'sillHeightMm' && item[field] === 0))) {
+            errors.push(issue('INVALID_OPENING_SIZE', `${path}.${field}`, '门窗实体尺寸无效', { openingId: item.id }));
+          }
+        }
+      }
+      const refs = kind === 'walls' ? ['startNodeId', 'endNodeId'] : kind === 'openings' ? ['wallId'] : [];
+      refs.forEach(key => {
+        if (!id(item[key])) errors.push(issue('INVALID_REFERENCE_ID', `${path}.${key}`, '引用 ID 必须为非空字符串'));
+      });
+      if (kind === 'spaces') {
+        if (!Array.isArray(item.wallIds) || item.wallIds.some(value => !id(value))) {
+          errors.push(issue('INVALID_SPACE_WALLS', `${path}.wallIds`, '房间墙链必须为 ID 数组'));
+        }
+        if (typeof item.closed !== 'boolean') errors.push(issue('INVALID_SPACE_CLOSED', `${path}.closed`, '房间闭合状态必须为布尔值'));
+        if (item.wallFaceOverrides !== undefined && !object(item.wallFaceOverrides)) {
+          errors.push(issue('INVALID_WALL_FACE_OVERRIDE', `${path}.wallFaceOverrides`, '墙面覆盖必须为对象'));
+        }
+      }
+    });
+  }
+  for (const field of ['elevationMm', 'ceilingHeightMm']) {
+    if (Object.prototype.hasOwnProperty.call(floor, field)) integer(floor[field], field, floor.id);
+  }
+  if (floor.session !== undefined && !object(floor.session)) {
+    errors.push(issue('INVALID_SESSION', 'session', '测量会话必须为对象'));
+  } else if (floor.session) {
+    for (const field of ['previewPoint', 'closeCandidatePoint']) {
+      const point = floor.session[field];
+      if (point !== undefined && point !== null && (!object(point) ||
+          !Number.isFinite(point.xMm) || !Number.isFinite(point.yMm))) {
+        errors.push(issue('INVALID_SESSION_POINT', `session.${field}`, '会话点坐标无效'));
+      }
+    }
+    Object.entries(floor.session).forEach(([key, value]) => {
+      if (key.endsWith('Id') && typeof value !== 'string') {
+        errors.push(issue('INVALID_REFERENCE_ID', `session.${key}`, '会话引用 ID 必须为字符串'));
+      }
+    });
+    if (floor.session.activeSpaceStartWallIndex !== undefined && !Number.isSafeInteger(floor.session.activeSpaceStartWallIndex)) {
+      errors.push(issue('INVALID_ACTIVE_WALL_INDEX', 'session.activeSpaceStartWallIndex', '墙索引必须为整数'));
+    }
+  }
+}
+
+function validateOpeningOccupancy(floor, errors) {
+  const byWall = new Map();
+  floor.openings.forEach(opening => {
+    const entries = byWall.get(opening.wallId) || [];
+    entries.push({ opening, range: openingDomain.getOpeningRange(opening) });
+    byWall.set(opening.wallId, entries);
+  });
+  byWall.forEach((entries, wallId) => {
+    entries.sort((a, b) => a.range.startMm - b.range.startMm || a.range.endMm - b.range.endMm);
+    let previous = null;
+    entries.forEach(entry => {
+      if (previous && entry.range.startMm <= previous.range.endMm) {
+        errors.push(issue('OPENING_OCCUPANCY_CONFLICT', `openings.${entry.opening.id}`,
+          '同一墙体的门窗不能重叠或相接', { wallId, openingIds: [previous.opening.id, entry.opening.id] }));
+      }
+      if (!previous || entry.range.endMm > previous.range.endMm) previous = entry;
+    });
+  });
 }
 
 function collectIdIssues(index, kind, errors) {
@@ -89,7 +183,11 @@ function validateQuick(floor, index, errors, warnings) {
     }
   });
 
+  validateOpeningOccupancy(floor, errors);
   const references = collectSessionReferences(floor.session);
+  references.spaceIds.forEach(({ field, id }) => {
+    if (!index.spacesById.has(id)) errors.push(issue('MISSING_SESSION_SPACE', `session.${field}`, `会话引用的空间 ${id} 不存在`));
+  });
   const pending = floor.session && floor.session.pendingMeasuredClosure;
   if (pending !== undefined && (!pending || typeof pending !== 'object' ||
       !Number.isInteger(pending.lengthMm) || pending.lengthMm < constants.MIN_WALL_LENGTH_MM ||
@@ -154,6 +252,10 @@ function normalizedNonNegativeMm(value) {
 }
 
 function validateMeasurementSemantics(floor, index, errors) {
+  const totalAdjustmentMm = floor.walls.filter(wall => wall.adjustmentSource === 'remeasure-balance')
+    .reduce((sum, wall) => sum + Math.abs(wall.closureAdjustmentMm || 0), 0);
+  if (totalAdjustmentMm > wallDomain.MAX_MEASUREMENT_RESIDUAL_MM) errors.push(issue(
+    'MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED', 'walls', '累计复尺平差超过安全预算，请补测', { totalAdjustmentMm }));
   floor.nodes.forEach((node, nodeIndex) => {
     if (
       Number.isFinite(Number(node.xMm)) &&
@@ -265,6 +367,10 @@ function validateMeasurementSemantics(floor, index, errors) {
       const rawMeasuredLengthMm = Number(wall.rawMeasuredLengthMm);
       const adjustmentMm = Number(wall.closureAdjustmentMm);
       const storedLengthMm = Number(wall.lengthMm);
+      const budgetMm = wallDomain.measurementCorrectionBudgetMm(rawMeasuredLengthMm);
+      if (wall.adjustmentSource === 'remeasure-balance' && Math.abs(adjustmentMm) > budgetMm) errors.push(issue(
+        'MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED', path, '墙体平差超过安全预算，请补测',
+        { wallId: wall.id, adjustmentMm, budgetMm }));
       if (
         !Number.isFinite(rawMeasuredLengthMm) ||
         !Number.isFinite(adjustmentMm) ||
@@ -332,6 +438,22 @@ function validateFull(floor, index, errors, warnings, options) {
   floor.spaces.filter((space) => space.closed).forEach((space) => {
     const nodeCycle = spaceDomain.buildSpaceNodeCycle(space, index);
     const points = nodeCycle.map((nodeId) => index.nodesById.get(nodeId));
+    const faces = spaceBoundary.buildSpaceWallFaceSegments(floor, space.wallIds, space.wallFaceOverrides);
+    const inner = spaceBoundary.buildFaceBoundaryPlan(faces, 'innerStart', 'innerEnd');
+    const signedArea = polygon.signedArea(inner.points);
+    const backwards = inner.points.some((point, i) => {
+      const faceIndex = inner.edgeFaceIndexes[i];
+      if (faceIndex === null || faceIndex === undefined) return false;
+      const face = faces[faceIndex];
+      const next = inner.points[(i + 1) % inner.points.length];
+      return (next.xMm - point.xMm) * (face.innerEnd.xMm - face.innerStart.xMm) +
+        (next.yMm - point.yMm) * (face.innerEnd.yMm - face.innerStart.yMm) <= 0;
+    });
+    if (inner.points.length < 3 || Math.abs(signedArea) < constants.MIN_CLOSED_SPACE_AREA_MM2 ||
+        signedArea * polygon.signedArea(points) <= 0 || backwards || polygon.hasSelfIntersection(inner.points)) {
+      errors.push(issue('INVALID_SPACE_INNER_BOUNDARY', `spaces.${space.id}`,
+        '房间净边界退化、反转或相交，请检查墙厚及墙面', { spaceId: space.id }));
+    }
     if (points.length >= 4 && polygon.hasSelfIntersection(points)) {
       errors.push(issue(
         'SELF_INTERSECTING_SPACE',
@@ -370,6 +492,7 @@ function validateFull(floor, index, errors, warnings, options) {
       errors.push(issue(mismatch.code, mismatch.path, mismatch.message, mismatch.details));
     });
     shadow.dangles.forEach((dangle) => {
+      if (options && options.requireComplete) errors.push(issue('INCOMPLETE_WALL_CHAIN', `walls.${dangle.wallId}`, '请先闭合或删除未完成墙链', dangle));
       warnings.push(issue('DANGLE_WALL', `walls.${dangle.wallId}`, `墙体 ${dangle.wallId} 未参与任何有界 Face`, dangle));
     });
   } else {
@@ -385,25 +508,39 @@ function validateSurveyDraft(draft, options) {
     errors.push(issue('INVALID_SURVEY_DRAFT', '', '正式量房草稿结构无效'));
     return { valid: false, errors, warnings, stats: { mode, floors: 0, nodes: 0, walls: 0, spaces: 0, openings: 0 } };
   }
+  const floorIds = new Set();
   const floorStats = { nodes: 0, walls: 0, spaces: 0, openings: 0 };
   draft.floors.forEach((floor, floorIndex) => {
     const floorStartError = errors.length;
     const floorStartWarning = warnings.length;
+    if (floor && (typeof floor.id !== 'string' || !floor.id.trim() || floorIds.has(floor.id))) {
+      errors.push(issue('INVALID_FLOOR_ID', `floors[${floorIndex}].id`, '楼层 ID 无效或重复'));
+    }
+    if (floor) floorIds.add(floor.id);
     if (!floor || !Array.isArray(floor.nodes) || !Array.isArray(floor.walls) ||
         !Array.isArray(floor.spaces) || !Array.isArray(floor.openings)) {
       errors.push(issue('INVALID_FLOOR_COLLECTIONS', `floors[${floorIndex}]`, '楼层墙图集合结构无效'));
       return;
     }
+    if (options && options.requireComplete && floor.spaces.some(space => space && space.closed !== true)) {
+      errors.push(issue('INCOMPLETE_SPACE', `floors[${floorIndex}].spaces`, '请先闭合所有房间'));
+    }
     floorStats.nodes += floor.nodes.length;
     floorStats.walls += floor.walls.length;
     floorStats.spaces += floor.spaces.filter((space) => space && space.closed).length;
     floorStats.openings += floor.openings.length;
+    validateStructure(floor, errors);
+    if (errors.length > floorStartError) {
+      errors.slice(floorStartError).forEach(error => { error.path = error.path.startsWith('floors[') ? error.path : `floors[${floorIndex}].${error.path}`; });
+      return;
+    }
+    if (options && options.structureOnly) return;
     const index = createTopologyIndex(floor);
     validateQuick(floor, index, errors, warnings);
     if (options && options.requireComplete && floor.session && floor.session.pendingMeasuredClosure) {
       errors.push(issue('PENDING_MEASURED_CLOSURE', 'session.pendingMeasuredClosure', '请先确认或取消待闭合测量'));
     }
-    if (mode === 'full') validateFull(floor, index, errors, warnings, options);
+    if ((mode === 'full' || (options && options.requireComplete)) && errors.length === floorStartError) validateFull(floor, index, errors, warnings, options);
     errors.slice(floorStartError).forEach((error) => {
       error.path = error.path ? `floors[${floorIndex}].${error.path}` : `floors[${floorIndex}]`;
     });
@@ -411,6 +548,10 @@ function validateSurveyDraft(draft, options) {
       warning.path = warning.path ? `floors[${floorIndex}].${warning.path}` : `floors[${floorIndex}]`;
     });
   });
+  if (options && options.requireComplete && !draft.floors.some(floor => floor &&
+      Array.isArray(floor.spaces) && floor.spaces.some(space => space && space.closed === true))) {
+    errors.push(issue('MISSING_CLOSED_SPACE', 'floors', '请先完成至少一个闭合空间'));
+  }
   return {
     valid: errors.length === 0,
     errors,

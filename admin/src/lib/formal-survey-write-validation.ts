@@ -30,8 +30,8 @@ const MISSING_CLOSED_SPACE: FormalSurveyValidationIssue = {
 };
 
 function hasClosedSpace(layout: FormalSurveyLayout) {
-  return layout.surveyGraph.floors.some((floor) =>
-    (floor?.spaces || []).some((space) => space?.closed === true)
+  return Array.isArray(layout.surveyGraph.floors) && layout.surveyGraph.floors.some((floor) =>
+    (Array.isArray(floor?.spaces) ? floor.spaces : []).some((space) => space?.closed === true)
   );
 }
 
@@ -48,6 +48,8 @@ export function validateFormalSurveyWrite(
 
 
   if (status === 'completed' && !hasClosedSpace(layout)) {
+    const missingIndex = errors.findIndex(error => error.code === 'MISSING_CLOSED_SPACE');
+    if (missingIndex >= 0) errors.splice(missingIndex, 1);
     errors.unshift(MISSING_CLOSED_SPACE);
   }
 

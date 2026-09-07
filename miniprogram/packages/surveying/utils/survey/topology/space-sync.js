@@ -1,4 +1,39 @@
+const { buildSpaceBoundaryPoints } = require('./closed-boundary.js');
+const polygon = require('../geometry/polygon.js');
 const { extractFaces } = require('./face-extractor.js');
+
+// Canonical coordinate order, invariant under cycle reversal/rotation and IDs.
+function geometryKey(points) {
+  if (!points.length) return '';
+  const tokens = points.map(p => [p.xMm, p.yMm]);
+  const compare = (a, b) => {
+    for (let i = 0; i < a.length; i += 1) {
+      const delta = a[i][0] - b[i][0] || a[i][1] - b[i][1];
+      if (delta) return delta;
+    }
+    return 0;
+  };
+  const cycles = [];
+  for (const order of [tokens, tokens.slice().reverse()]) {
+    for (let i = 0; i < order.length; i += 1) cycles.push(order.slice(i).concat(order.slice(0, i)));
+  }
+  return cycles.sort(compare)[0];
+}
+function compareGeometry(a, b) {
+  for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
+    const delta = a[i][0] - b[i][0] || a[i][1] - b[i][1];
+    if (delta) return delta;
+  }
+  return a.length - b.length;
+}
+function captureSpaceIdentity(floor) {
+  const identities = new Map();
+  (floor.spaces || []).filter(space => space && space.closed).forEach(space => {
+    const points = buildSpaceBoundaryPoints(floor, space.wallIds);
+    identities.set(space.id, { area: polygon.area(points), key: geometryKey(points) });
+  });
+  return identities;
+}
 
 function wallSet(wallIds) {
   return new Set(Array.isArray(wallIds) ? wallIds : []);
@@ -96,6 +131,7 @@ function syncClosedSpacesFromFaces(floor, options) {
     throw new TypeError('syncClosedSpacesFromFaces 需要 nextId');
   }
   const faceResult = extractFaces(floor);
+  const identities = opts.previousIdentity || captureSpaceIdentity(floor);
   const existingClosed = (floor.spaces || []).filter((space) => space && space.closed);
   const openSpaces = (floor.spaces || []).filter((space) => space && !space.closed);
   const pairs = [];
@@ -111,7 +147,19 @@ function syncClosedSpacesFromFaces(floor, options) {
       });
     });
   });
-  pairs.sort((left, right) => right.overlap - left.overlap || left.delta - right.delta);
+  pairs.sort((left, right) => {
+    const leftFace = faceResult.faces[left.faceIndex];
+    const rightFace = faceResult.faces[right.faceIndex];
+    const leftOld = identities.get(existingClosed[left.spaceIndex].id);
+    const rightOld = identities.get(existingClosed[right.spaceIndex].id);
+    const exact = pair => pair.overlap === faceResult.faces[pair.faceIndex].wallIds.length &&
+      pair.overlap === existingClosed[pair.spaceIndex].wallIds.length;
+    return Number(exact(right)) - Number(exact(left)) || rightFace.areaMm2 - leftFace.areaMm2 ||
+      ((rightOld && rightOld.area) || 0) - ((leftOld && leftOld.area) || 0) ||
+      compareGeometry(geometryKey(leftFace.points), geometryKey(rightFace.points)) ||
+      compareGeometry((leftOld && leftOld.key) || [], (rightOld && rightOld.key) || []) ||
+      existingClosed[left.spaceIndex].id.localeCompare(existingClosed[right.spaceIndex].id);
+  });
 
   const faceToSpace = new Map();
   const usedFaces = new Set();
@@ -147,6 +195,9 @@ function syncClosedSpacesFromFaces(floor, options) {
     if (previous) reused.push(space);
     else created.push(space);
   });
+  // Keep existing owners in their previous order. Inferred shared-wall bodies
+  // must not flip merely because the Face extractor enumerated a new first face.
+  reused.sort((a, b) => existingClosed.findIndex(s => s.id === a.id) - existingClosed.findIndex(s => s.id === b.id));
   const nextClosed = reused.concat(created);
 
   applyInheritOverrides(nextClosed, opts.inheritOverrides);
@@ -159,6 +210,7 @@ function syncClosedSpacesFromFaces(floor, options) {
 }
 
 module.exports = {
+  captureSpaceIdentity,
   syncClosedSpacesFromFaces,
   overlapCount
 };

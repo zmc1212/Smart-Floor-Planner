@@ -45,7 +45,19 @@ function buildSpaceBoundaryPoints(floor, wallIds) {
   return chain.map((entry) => entry.start);
 }
 
+function boundaryInteriorNormal(floor, wallIds, wallId) {
+  const chain = buildClosedSpaceWallChain(floor, wallIds);
+  const entry = chain.find(item => item.wall.id === wallId);
+  if (!entry) return null;
+  const winding = Math.sign(polygonGeometry.signedArea(chain.map(item => item.start)));
+  const dx = entry.end.xMm - entry.start.xMm;
+  const dy = entry.end.yMm - entry.start.yMm;
+  const length = Math.hypot(dx, dy);
+  return length && winding ? { x: -dy / length * winding, y: dx / length * winding } : null;
+}
+
 module.exports = {
+  boundaryInteriorNormal,
   findClosedSpaceForWall,
   findClosedSpacesForWall,
   calculateBoundaryCentroid,

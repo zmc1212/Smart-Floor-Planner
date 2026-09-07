@@ -167,6 +167,9 @@ function buildClosedOrthogonalRemeasurePlanInternal(
     const residualMm = entries
       .filter((entry) => entry.axis === axis)
       .reduce((total, entry) => total + entry.adjustedSignedLengthMm, 0);
+    if (Math.abs(residualMm) > wallDomain.MAX_MEASUREMENT_RESIDUAL_MM) {
+      throw createSurveyDomainError('MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED', { residualMm });
+    }
     if (!residualMm) continue;
     if (axis !== selectedAxis) return null;
     const adjustable = entries.filter((entry) => (
@@ -204,6 +207,13 @@ function buildClosedOrthogonalRemeasurePlanInternal(
         normalizeMeasurementExtension(entry.wall.measurementStartExtensionMm) -
         insets.end
     );
+    const adjustmentMm = prospectiveMeasuredLengthMm - entry.rawMeasuredLengthMm;
+    const budgetMm = wallDomain.measurementCorrectionBudgetMm(entry.rawMeasuredLengthMm);
+    if (Math.abs(adjustmentMm) > budgetMm) {
+      throw createSurveyDomainError('MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED', {
+        wallId: entry.wall.id, adjustmentMm, budgetMm
+      });
+    }
     assertOpeningsFitMeasuredLength(floor, entry.wall, prospectiveMeasuredLengthMm);
   }
 

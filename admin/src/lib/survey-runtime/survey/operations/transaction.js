@@ -18,6 +18,8 @@ class SurveyInvariantError extends Error {
 
 function runSurveyTransaction(draft, operationName, mutator, options) {
   if (!draft || typeof mutator !== 'function') throw new TypeError('量房事务参数无效');
+  const inputValidation = validateSurveyDraft(draft, { structureOnly: true });
+  if (!inputValidation.valid) throw new SurveyInvariantError(operationName, inputValidation);
   const transactionTime = new Date().toISOString();
   const workingDraft = cloneDraft(draft, { force: true });
   Object.defineProperty(workingDraft, TRANSACTION_DRAFT_SYMBOL, {

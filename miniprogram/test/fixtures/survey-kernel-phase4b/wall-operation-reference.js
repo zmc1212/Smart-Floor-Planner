@@ -53,7 +53,7 @@ const {
   createSurveyDomainError
 } = require('../../../packages/surveying/utils/survey/domain/errors.js');
 const { adaptLegacySurveyOperation } = require('../../../packages/surveying/utils/survey/compat/legacy-error-messages.js');
-const { syncClosedSpacesFromFaces } = require('../../../packages/surveying/utils/survey/topology/space-sync.js');
+const { syncClosedSpacesFromFaces, captureSpaceIdentity } = require('../../../packages/surveying/utils/survey/topology/space-sync.js');
 
 const getActiveFloor = (draft) => findActiveFloor(draft, { requireFloorList: true });
 const distanceMm = vector2.distanceMm;
@@ -471,6 +471,7 @@ function deleteWall(draft, wallId) {
   const deletedWalls = [...removedWallIds].map((id) => getWall(floor, id)).filter(Boolean);
   const deletedNodeIds = [...new Set(deletedWalls.flatMap((item) => [item.startNodeId, item.endNodeId]))];
   const deletedStartNode = getNode(floor, wall.startNodeId);
+  const previousIdentity = captureSpaceIdentity(floor); // P1 identity precondition
   floor.walls = floor.walls.filter((item) => !removedWallIds.has(item.id));
   floor.openings = ensureOpenings(floor).filter((opening) => !removedWallIds.has(opening.wallId));
   let repairedBoundaryWallIds = deletedNodeIds.flatMap((nodeId) => recomputeSplitNodeBodyInsets(floor, nodeId));
@@ -479,7 +480,7 @@ function deleteWall(draft, wallId) {
       clearDeletedSharedWallBoundaryInsets(floor, deletedWalls)
     );
   }
-  syncFloorSpaces(floor);
+  syncFloorSpaces(floor, null, previousIdentity);
 
   refreshWallMetrics(floor);
   if (repairedBoundaryWallIds.length) {
@@ -732,9 +733,10 @@ function clearDeletedSharedWallBoundaryInsets(floor, deletedWalls) {
   return repairedWallIds;
 }
 
-function syncFloorSpaces(floor, inheritOverrides) {
+function syncFloorSpaces(floor, inheritOverrides, previousIdentity) {
   return syncClosedSpacesFromFaces(floor, {
     nextId,
+    previousIdentity,
     inheritOverrides: inheritOverrides || null
   });
 }
@@ -1447,10 +1449,11 @@ function deleteClosedSpace(draft, spaceId) {
     ? getNode(floor, deletedWalls[0].startNodeId)
     : null;
 
+  const previousIdentity = captureSpaceIdentity(floor); // P1 identity precondition
   floor.walls = floor.walls.filter((item) => !removedWallIds.has(item.id));
   floor.openings = ensureOpenings(floor).filter((opening) => !removedWallIds.has(opening.wallId));
   const repairedBoundaryWallIds = deletedNodeIds.flatMap((nodeId) => recomputeSplitNodeBodyInsets(floor, nodeId));
-  syncFloorSpaces(floor);
+  syncFloorSpaces(floor, null, previousIdentity);
   refreshWallMetrics(floor);
   if (repairedBoundaryWallIds.length) {
     const repairedWallIdSet = new Set(repairedBoundaryWallIds);

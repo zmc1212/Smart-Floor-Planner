@@ -16,10 +16,7 @@ const calculatePolygonAreaMm2 = polygonGeometry.area;
 
 // Existing read-only topology queries shared by preview and deleted-room recovery.
 // Phase 4D still owns migration of closure writes; all thresholds stay frozen.
-const MAX_WALL_CLOSURE_CORRECTION_MM = 150;
-const MIN_WALL_CLOSURE_CORRECTION_MM = 25;
-const WALL_CLOSURE_CORRECTION_RATIO = 0.02;
-const MAX_ORTHOGONAL_CLOSURE_BALANCE_MM = 1000;
+const MAX_ORTHOGONAL_CLOSURE_BALANCE_MM = wallDomain.MAX_MEASUREMENT_RESIDUAL_MM;
 
 function isClosedBoundaryCorner(floor, session) {
   if (!floor || !session || !session.activeSpaceStartNodeId || !session.activeSpaceSharedWallId) return false;
@@ -404,14 +401,7 @@ function isOrthogonalClosureAdjustmentGeometrySafe(floor, entries, targetNode) {
 }
 
 function getWallClosureCorrectionBudgetMm(entry) {
-  const coordinateLengthMm = Math.abs(Number(entry && entry.signedLengthMm) || 0);
-  return Math.min(
-    MAX_WALL_CLOSURE_CORRECTION_MM,
-    Math.max(
-      MIN_WALL_CLOSURE_CORRECTION_MM,
-      Math.round(coordinateLengthMm * WALL_CLOSURE_CORRECTION_RATIO)
-    )
-  );
+  return wallDomain.measurementCorrectionBudgetMm(Number(entry && entry.signedLengthMm) || 0);
 }
 
 function buildOrthogonalClosureAdjustmentPlan(floor, session, targetNode) {

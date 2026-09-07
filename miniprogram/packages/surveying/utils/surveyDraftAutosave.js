@@ -39,47 +39,29 @@ function hasPersistedSurveyContent(draft) {
   return stats.wallCount > 0 || stats.spaceCount > 0 || stats.openingCount > 0;
 }
 
-function mapGeometryItems(items, pick) {
-  if (!Array.isArray(items)) return [];
-  return items.map(pick);
+// Fingerprint all persisted business fields, without view/session noise or clocks.
+// Sorted keys also make override-map insertion order immaterial.
+function businessValue(value) {
+  if (Array.isArray(value)) return value.map(businessValue);
+  if (!value || typeof value !== 'object') return value;
+  const result = {};
+  Object.keys(value).sort().forEach(key => {
+    if (['viewport', 'session', 'updatedAt', 'createdAt', 'measuredAt'].includes(key)) return;
+    result[key] = businessValue(value[key]);
+  });
+  return result;
 }
 
 function getDraftGeometryFingerprint(draft) {
   if (!draft || !Array.isArray(draft.floors)) return '';
-  return JSON.stringify(draft.floors.map((floor) => ({
-    id: floor && floor.id,
-    ceilingHeightMm: floor && floor.ceilingHeightMm,
-    pendingMeasuredClosure: floor && floor.session && floor.session.pendingMeasuredClosure,
-    nodes: mapGeometryItems(floor && floor.nodes, (node) => [
-      node.id,
-      node.xMm,
-      node.yMm
-    ]),
-    walls: mapGeometryItems(floor && floor.walls, (wall) => [
-      wall.id,
-      wall.startNodeId,
-      wall.endNodeId,
-      wall.lengthMm,
-      wall.thicknessMm,
-      wall.measurementSide,
-      wall.bodyNormalSide
-    ]),
-    openings: mapGeometryItems(floor && floor.openings, (opening) => [
-      opening.id,
-      opening.wallId,
-      opening.type,
-      opening.widthMm,
-      opening.heightMm,
-      opening.offsetMm,
-      opening.openDirection
-    ]),
-    spaces: mapGeometryItems(floor && floor.spaces, (space) => [
-      space.id,
-      space.closed,
-      space.name,
-      space.wallIds
-    ])
-  })));
+  const content = businessValue(draft);
+  delete content.status;
+  content.floors.forEach((floor, index) => {
+    if (!floor) return;
+    const pending = draft.floors[index].session && draft.floors[index].session.pendingMeasuredClosure;
+    if (pending) floor.pendingMeasuredClosure = businessValue(pending);
+  });
+  return JSON.stringify(content);
 }
 
 function shouldAutosaveSurveyDraft(draft, options) {

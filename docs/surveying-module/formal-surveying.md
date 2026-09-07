@@ -759,3 +759,7 @@ Chinese module overview: [README.md](./README.md)
 **Implemented**: local draft persistence, cloud writes and restoration use full validation. Ordinary commits node exact T/X junctions and synchronize Faces/Spaces; ordered simple Space boundaries are mandatory and nested loops are rejected. Near-closure readings persist as `session.pendingMeasuredClosure` and use the existing closure confirmation; failed restoration retains the original draft and diagnostics. Routes, permissions, tenant boundaries and the formal v4 envelope retain their existing contract.
 
 **Limited**: fractional intersections that cannot preserve both wall lines on the integer-millimetre grid are rejected. Holes, nested spaces and general snap rounding remain unsupported. The existing surveying visual source and layout are preserved; runtime screenshots of near-closure states remain pending from the user. See [P0 contract and verification](./topology-p0.md).
+
+## Current topology P1 contract
+
+All seven P1 fixes are Implemented: business fingerprints, concave-room sides/inner boundaries, remeasurement budgets, opening occupancy, completion policy, structural rejection and stable room identity. Routes, permissions and the v4 envelope are unchanged. Independent-wall exemptions and P2 remain unimplemented; manual runtime QA is pending. Current data semantics and verification: [P1 contract](./topology-p1.md).

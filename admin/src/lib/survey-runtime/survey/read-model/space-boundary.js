@@ -1,7 +1,7 @@
 const { DEFAULT_THICKNESS_MM, CLOSE_TOLERANCE_MM } = require('../core/constants.js');
 const {
   buildClosedSpaceWallChain,
-  calculateBoundaryCentroid,
+  boundaryInteriorNormal,
   buildSpaceBoundaryPoints
 } = require('../topology/closed-boundary.js');
 const { buildBaseWallSegment } = require('./wall-geometry.js');
@@ -12,8 +12,7 @@ const { measuredLengthMm: getMeasuredWallLength } = require('../domain/wall.js')
 
 function buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides) {
   const chain = buildClosedSpaceWallChain(floor, wallIds);
-  const centroid = calculateBoundaryCentroid(floor, wallIds);
-  if (!chain.length || !centroid) return [];
+  if (!chain.length) return [];
 
   return chain.map((entry) => {
     // Closure may persist a short topology bridge whose entire coordinate
@@ -22,14 +21,8 @@ function buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides) {
     if (getMeasuredWallLength(floor, entry.wall) <= 0) return null;
     const base = buildBaseWallSegment(floor, entry.wall);
     if (!base) return null;
-    const midpoint = {
-      xMm: (base.start.xMm + base.end.xMm) / 2,
-      yMm: (base.start.yMm + base.end.yMm) / 2
-    };
-    const centroidOffset = dot({
-      x: centroid.xMm - midpoint.xMm,
-      y: centroid.yMm - midpoint.yMm
-    }, base.normal);
+    const interior = boundaryInteriorNormal(floor, wallIds, entry.wall.id);
+    const centroidOffset = interior ? dot(interior, base.normal) : 0;
     // A physical wall is emitted once between its topology face and offset
     // face.  For a shared wall, the two spaces sit on opposite sides and must
     // therefore select opposite inner faces from the same wall object.

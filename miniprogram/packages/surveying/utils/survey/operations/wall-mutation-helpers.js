@@ -64,9 +64,10 @@ function getOrCreateWallCenterNode(floor, wallId, point) {
   return existing || addNode(floor, projection.point);
 }
 
-function syncFloorSpaces(floor, inheritOverrides) {
+function syncFloorSpaces(floor, inheritOverrides, previousIdentity) {
   return syncClosedSpacesFromFaces(floor, {
     nextId,
+    previousIdentity,
     inheritOverrides: inheritOverrides || null
   });
 }

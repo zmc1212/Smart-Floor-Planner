@@ -1,3 +1,4 @@
+const { captureSpaceIdentity } = require('../topology/space-sync.js');
 const { transitionSessionState } = require('../session/state-machine.js');
 const { cloneDraft, getActiveFloor: findActiveFloor, touchDraft } = require('../core/draft.js');
 const { ensureSessionSpaceTracking, SESSION_STATES } = require('../core/session.js');
@@ -103,10 +104,11 @@ function applyDeleteClosedSpacePlan(draft, plan) {
     ? getNode(floor, deletedWalls[0].startNodeId)
     : null;
 
+  const previousIdentity = captureSpaceIdentity(floor);
   floor.walls = floor.walls.filter((item) => !removedWallIds.has(item.id));
   floor.openings = ensureOpenings(floor).filter((opening) => !removedWallIds.has(opening.wallId));
   const repairedBoundaryWallIds = deletedNodeIds.flatMap((nodeId) => recomputeSplitNodeBodyInsets(floor, nodeId));
-  syncFloorSpaces(floor);
+  syncFloorSpaces(floor, null, previousIdentity);
   refreshWallMetrics(floor);
   if (repairedBoundaryWallIds.length) {
     const repairedWallIdSet = new Set(repairedBoundaryWallIds);
@@ -271,6 +273,7 @@ function applyDeleteWallPlan(draft, plan) {
   const deletedWalls = [...removedWallIds].map((id) => getWall(floor, id)).filter(Boolean);
   const deletedNodeIds = [...new Set(deletedWalls.flatMap((item) => [item.startNodeId, item.endNodeId]))];
   const deletedStartNode = getNode(floor, wall.startNodeId);
+  const previousIdentity = captureSpaceIdentity(floor);
   floor.walls = floor.walls.filter((item) => !removedWallIds.has(item.id));
   floor.openings = ensureOpenings(floor).filter((opening) => !removedWallIds.has(opening.wallId));
   let repairedBoundaryWallIds = deletedNodeIds.flatMap((nodeId) => recomputeSplitNodeBodyInsets(floor, nodeId));
@@ -279,7 +282,7 @@ function applyDeleteWallPlan(draft, plan) {
       clearDeletedSharedWallBoundaryInsets(floor, deletedWalls)
     );
   }
-  syncFloorSpaces(floor);
+  syncFloorSpaces(floor, null, previousIdentity);
 
   refreshWallMetrics(floor);
   if (repairedBoundaryWallIds.length) {

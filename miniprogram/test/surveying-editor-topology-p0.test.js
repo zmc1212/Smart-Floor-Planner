@@ -84,3 +84,27 @@ test('P0 pending measurement is fingerprinted and cancelled/replaced without lea
   }
   assert.equal(pending.floors[0].session.pendingMeasuredClosure.lengthMm, 3950);
 });
+
+test('P1 malformed local elements retain recovery evidence and cannot enter cloud writes', () => withEditor((editor, storage) => {
+  const bad = pendingDraft(); bad.floors[0].nodes.push(null);
+  const stored = wrapFormalDraftStorage(bad, 20); storage.set('draft', stored);
+  const page = { ...editor, formalDraftKey: 'draft', data: {}, draft: bad };
+  assert.equal(page.loadFormalDraft('', null, 'draft'), null);
+  assert.deepEqual(storage.get('draft'), stored);
+  assert.ok(storage.get('draft_recovery').validation.errors.some(e => e.code === 'INVALID_COLLECTION_ELEMENT'));
+  assert.throws(() => page.buildFormalCloudLayoutData('draft'), { code: 'INVALID_COLLECTION_ELEMENT' });
+  assert.equal(page.persistFormalDraft(), false);
+  assert.deepEqual(storage.get('draft'), stored);
+}));
+
+test('P1 editor saves a valid open-chain draft but cannot mark that plan complete', () => withEditor((editor, storage) => {
+  const draft = graph.confirmClosure(pendingDraft()), floor = draft.floors[0];
+  floor.nodes.push({ id: 'x', xMm: 9000, yMm: 0 }, { id: 'y', xMm: 10000, yMm: 0 });
+  floor.walls.push({ id: 'xy', startNodeId: 'x', endNodeId: 'y', lengthMm: 1000, thicknessMm: 100 });
+  const page = { ...editor, formalDraftKey: 'draft', data: {}, draft };
+  assert.equal(page.persistFormalDraft(), true);
+  const saved = structuredClone(storage.get('draft'));
+  assert.ok(page.buildFormalCloudLayoutData('draft'));
+  assert.throws(() => page.buildFormalCloudLayoutData('completed'), { code: 'INCOMPLETE_WALL_CHAIN' });
+  assert.deepEqual(storage.get('draft'), saved);
+}));

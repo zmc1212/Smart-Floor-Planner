@@ -11,7 +11,7 @@ const adminFacade = require('../../admin/src/lib/survey-runtime/surveyWallGraph.
 const adminLegacy = require('../../admin/src/lib/survey-runtime/survey/legacy-kernel.js');
 const split = require('../packages/surveying/utils/survey/operations/wall-split.js');
 const adminSplit = require('../../admin/src/lib/survey-runtime/survey/operations/wall-split.js');
-const { wrapOperation } = require('../packages/surveying/utils/survey/operations/transaction.js');
+const { wrapOperation, SurveyInvariantError } = require('../packages/surveying/utils/survey/operations/transaction.js');
 const { syncFloorSpaces } = require('../packages/surveying/utils/survey/operations/wall-mutation-helpers.js');
 const { adaptLegacySurveyOperation } = require('../packages/surveying/utils/survey/compat/legacy-error-messages.js');
 const { assertSurveyKernelDifferential } = require('./helpers/survey-kernel-differential-harness.js');
@@ -45,6 +45,8 @@ function readModels(draft) {
 const side = implementation => ({ implementation, validateSurveyDraft: facade.validateSurveyDraft, captureReadModels: readModels });
 function splitAdapter(implementation, transactional) {
   const operation = adaptLegacySurveyOperation((draft, wallId, cuts) => {
+    const validation = facade.validateSurveyDraft(draft, { structureOnly: true });
+    if (!validation.valid) throw new SurveyInvariantError('splitWallAtNodes', validation);
     const next = facade.cloneDraft(draft);
     implementation.splitWallAtNodes(floorOf(next), wallId, cuts);
     if (transactional) syncFloorSpaces(floorOf(next));
@@ -93,7 +95,7 @@ function splitCases() {
   for (const metadata of [{ rawMeasuredLengthMm: 4100 }, { closureAdjustmentMm: 10 }, { rawMeasuredLengthMm: 'invalid', closureAdjustmentMm: 10 }]) {
     const draft = fixture('single-wall');
     Object.assign(floorOf(draft).walls[0], metadata);
-    cases.push({ id: `incomplete-audit-${JSON.stringify(metadata)}`, draft, args: ['wall-1-1', addCuts(draft, 0, [0.5])], outcome: 'success' });
+    cases.push({ id: `incomplete-audit-${JSON.stringify(metadata)}`, draft, args: ['wall-1-1', addCuts(draft, 0, [0.5])], outcome: typeof metadata.rawMeasuredLengthMm === 'string' ? 'error' : 'success' });
   }
   const inset = fixture('wall-with-openings');
   const insetFloor = floorOf(inset);
