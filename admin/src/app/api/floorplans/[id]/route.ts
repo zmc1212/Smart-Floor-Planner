@@ -23,7 +23,8 @@ interface FloorPlanUpdateBody {
   name?: string;
   layoutData?: unknown;
   status?: 'draft' | 'completed';
-  leadId?: string;\n  baseRevision?: string;
+  leadId?: string;
+  baseRevision?: string;
 }
 
 function getErrorMessage(error: unknown) {

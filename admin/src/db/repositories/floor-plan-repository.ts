@@ -251,7 +251,7 @@ export class FloorPlanRepository {
       .where(eq(leadFloorPlans.floorPlanId, id));
     const rows = await this.transaction
       .delete(floorPlans)
-      .where(options.baseRevision ? and(eq(floorPlans.id, id), eq(floorPlans.updatedAt, new Date(options.baseRevision))) : eq(floorPlans.id, id))
+      .where(eq(floorPlans.id, id))
       .returning({ id: floorPlans.id });
     return rows[0] ?? null;
   }
