@@ -109,9 +109,8 @@ test('P0 disjoint rooms and an exact divider remain valid; shared walls are coun
   validReload(divided);
 });
 
-test('P0 fractional crossings and overlapping walls reject without altering input', () => {
+test('P0 overlapping walls reject without altering input', () => {
   for (const [lines, code] of [
-    [[[[0, 0], [3000, 3000]], [[0, 1001], [3000, 0]]], 'UNSUPPORTED_INTERSECTION_PRECISION'],
     [[[[0, 0], [6000, 0]], [[2000, 0], [8000, 0]]], 'OVERLAPPING_WALLS']
   ]) {
     const input = draftFromLines(lines);

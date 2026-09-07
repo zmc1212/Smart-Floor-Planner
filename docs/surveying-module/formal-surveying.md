@@ -758,7 +758,7 @@ Chinese module overview: [README.md](./README.md)
 
 **Implemented**: local draft persistence, cloud writes and restoration use full validation. Ordinary commits node exact T/X junctions and synchronize Faces/Spaces; ordered simple Space boundaries are mandatory and nested loops are rejected. Near-closure readings persist as `session.pendingMeasuredClosure` and use the existing closure confirmation; failed restoration retains the original draft and diagnostics. Routes, permissions, tenant boundaries and the formal v4 envelope retain their existing contract.
 
-**Limited**: fractional intersections that cannot preserve both wall lines on the integer-millimetre grid are rejected. Holes, nested spaces and general snap rounding remain unsupported. The existing surveying visual source and layout are preserved; runtime screenshots of near-closure states remain pending from the user. See [P0 contract and verification](./topology-p0.md).
+**Limited**: Holes and nested spaces remain unsupported. S4-B arrangement-wide integer-grid Snap Rounding is now Implemented, including fractional intersections, shared hot-pixel nodes, 1mm fragments, opening protection and bounded raw-reading allocation. Rounded physical overlaps still reject. The existing surveying visual source and layout are preserved; runtime screenshots of near-closure states remain pending from the user. See [P0 contract and verification](./topology-p0.md).
 
 ## Current topology P1 contract
 
@@ -769,3 +769,14 @@ Stage 4 core behavior is implemented: completion requires closed ordinary spaces
 
 ## Stage acceptance and closeout
 Automated closeout passed: 92 surveying/topology/read-model tests, 5 architecture governance tests, and 31 Admin consumer tests. Desktop large-graph gates passed (full validation P95 40.332 ms; wall read-model P95 72.488 ms; space read-model P95 57.431 ms). Device Canvas bridge frame, memory, and sustained-drag sampling remains Limited and must be collected with profile-survey-stage4.js on a real device.
+
+## Next stage: low-end device performance acceptance
+The profiler now evaluates frame P95 <= 33.3ms, single-frame <= 50ms, and heap growth <= 8MB. Canvas bridge time remains a real-device measurement and is not inferred from Node results.
+
+## Stable follow-up work IDs
+P0/P1/P2 are defect priorities, not sequence numbers. The numbered implementation stages describe the original rollout. After stage 4, use these stable IDs: `S4-A` low-end device performance acceptance; `S4-B` complete snap rounding; `S4-C` independent-wall and half-wall semantics; `S4-D` holes and nested spaces; `S4-E` real-device visual acceptance. Ask the AI to implement exactly one ID per task and require code, tests, bilingual documentation, and an explicit acceptance result.
+S4-A code-side closeout now requires Canvas bridge P95/max, heap delta, and at least 300 sustained frames; missing bridge evidence returns incomplete rather than passing by inference.
+
+## S4-B Snap Rounding contract
+
+**Implemented**: ordinary commits route the complete arrangement through unit hot pixels before wall splitting and Face/Space synchronization. The generated Mini Program/Admin implementation retains the v4 envelope, routes, APIs and permission boundaries; the server validates without silently repairing submitted graphs. No visible UI, artwork, BLE or design-source change. See the [current algorithm, measurement and verification contract](./snap-rounding.md).

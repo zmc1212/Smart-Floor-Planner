@@ -1236,8 +1236,12 @@ Automatic formal-plan binding (Implemented): the shared backend reconciles unbou
 
 **Implemented**: local draft persistence, cloud writes and restoration use full validation. Ordinary commits node exact T/X junctions and synchronize Faces/Spaces; ordered simple Space boundaries are mandatory and nested loops are rejected. Near-closure readings persist as `session.pendingMeasuredClosure` and use the existing closure confirmation; failed restoration retains the original draft and diagnostics. Routes, permissions, tenant boundaries and the formal v4 envelope retain their existing contract.
 
-**Limited**: fractional intersections that cannot preserve both wall lines on the integer-millimetre grid are rejected. Holes, nested spaces and general snap rounding remain unsupported. The existing surveying visual source and layout are preserved; runtime screenshots of near-closure states remain pending from the user. See [P0 contract and verification](./surveying-module/topology-p0.md).
+**Limited**: Holes and nested spaces remain unsupported. S4-B arrangement-wide integer-grid Snap Rounding is now Implemented, including fractional intersections, shared hot-pixel nodes, 1mm fragments, opening protection and bounded raw-reading allocation. Rounded physical overlaps still reject. The existing surveying visual source and layout are preserved; runtime screenshots of near-closure states remain pending from the user. See [P0 contract and verification](./surveying-module/topology-p0.md).
 
 ## Current topology P1 contract
 
 **Implemented**: business-field autosave fingerprints (including `centerOffsetMm`), local directed room sides, inner-boundary validation, bounded remeasurement, same-wall opening occupancy, strict completion, structural input rejection and deterministic split/merge identity. Both draft and completed writes use the shared Mini Program/Admin validator. Routes, APIs, roles, tenant boundaries and the v4 envelope remain unchanged; invalid writes retain 422 diagnostics. **Limited**: independent/half-wall exemptions, revision conflicts and device budgets are not implemented. Existing surveying UI is preserved; manual runtime QA remains pending. See [P1 contract and verification](./surveying-module/topology-p1.md).
+
+## S4-B Snap Rounding contract
+
+**Implemented**: ordinary commits route the complete arrangement through unit hot pixels before wall splitting and Face/Space synchronization. The generated Mini Program/Admin implementation retains the v4 envelope, routes, APIs and permission boundaries; the server validates without silently repairing submitted graphs. No visible UI, artwork, BLE or design-source change. See the [current algorithm, measurement and verification contract](./surveying-module/snap-rounding.md).

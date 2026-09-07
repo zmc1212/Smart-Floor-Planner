@@ -93,6 +93,11 @@
       "sha256": "49aad822c9674da9cece4e12bfc5ac43b1874c03898289666abb44f9a0177537"
     },
     {
+      "source": "survey/geometry/snap-rounding.js",
+      "target": "src/lib/survey-runtime/survey/geometry/snap-rounding.js",
+      "sha256": "b2b3cc7c1afded106b70943ccc1190c3d454a4df2534a5bf078040848cb7bce3"
+    },
+    {
       "source": "survey/geometry/vector2.js",
       "target": "src/lib/survey-runtime/survey/geometry/vector2.js",
       "sha256": "c88f8362dd4bba34b9428a79205a4269f104aa3e4cf03cc0615a6c657b5f83a5"
@@ -200,7 +205,7 @@
     {
       "source": "survey/operations/node-intersections.js",
       "target": "src/lib/survey-runtime/survey/operations/node-intersections.js",
-      "sha256": "6084d5181c1f725ea7e8db7314fa494abdd820acc6a5531407870c6e133c3a28"
+      "sha256": "6f038ddfe6cf5e5c60da710d4a8dbccee559e7ea02d149aa34ba3a5ee0b28346"
     },
     {
       "source": "survey/operations/open-chain.js",
@@ -275,7 +280,7 @@
     {
       "source": "survey/operations/wall-split.js",
       "target": "src/lib/survey-runtime/survey/operations/wall-split.js",
-      "sha256": "e5f1ea16aec23cf2db8b67104c53eb36cf0e8425889a82772218480dc6b315b8"
+      "sha256": "ab0a454851964a5f994936b5402164658342d7491d51ebf5a02b92252ac76d55"
     },
     {
       "source": "survey/read-model/cursor.js",

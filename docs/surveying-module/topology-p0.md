@@ -1,11 +1,11 @@
 # Current topology P0 implementation and verification
 
-Status: **Implemented** for the four P0 defects; intersection precision and holes remain **Limited**. This implements P0 from the [optimization plan](./topology-algorithm-optimization-plan.zh-CN.md), not all of phases 1–3 or P1/P2.
+Status: **Implemented** for the four P0 defects; holes remain **Limited**; S4-B intersection precision is now **Implemented**. This implements P0 from the [optimization plan](./topology-algorithm-optimization-plan.zh-CN.md), not all of phases 1–3 or P1/P2.
 
 ## Data and commit contract
 
 - Ordinary commits classify exact intersections, share nodes, split walls in batches, migrate openings and measurement audits, synchronize Faces/Spaces and run full validation inside one isolated transaction. Inputs and undo snapshots remain unchanged; failures never publish partial results. Exact loops form rooms automatically and new dividing faces split rooms.
-- T/X classification uses strict geometry, not the 350mm interaction snap tolerance. Coincident endpoints share one node. A quantized intersection is accepted only if it still lies on both original segments; otherwise UNSUPPORTED_INTERSECTION_PRECISION rejects it without bending the walls. Positive collinear overlap returns OVERLAPPING_WALLS.
+- T/X classification uses strict geometry, not the 350mm interaction snap tolerance. Coincident endpoints share one node. S4-B now routes the complete arrangement through shared unit hot pixels, replacing UNSUPPORTED_INTERSECTION_PRECISION rejection; see [Snap Rounding](./snap-rounding.md). Positive collinear overlap returns OVERLAPPING_WALLS.
 - Splits retain existing opening-clearance protection, measurement-origin adjustments, wall-body sides and audit allocation, preserving opening world positions and aggregate raw readings. Confirming retraction of a noded outer-face overrun tail transfers its reading to the preceding segment instead of creating a zero-length wall.
 - Space.wallIds must be unique, ordered, continuous and closed without repeated interior vertices. Reversal and cyclic rotation are valid; arbitrary reordering returns BROKEN_SPACE_CYCLE. Validation and Canvas/area/DXF/3D/AI share the boundary parser.
 - A separate loop inside another loop returns UNSUPPORTED_NESTED_SPACE: a 6m × 6m outer loop plus a 1m × 1m inner loop no longer reports 37 square metres. Shared-wall and disjoint rooms remain supported. Hole and nested-space semantics are not implemented.
@@ -20,7 +20,7 @@ Local persistence, cloud draft/completed writes and restoration run full validat
 
 New survey-topology-p0.test.js and surveying-editor-topology-p0.test.js cover rotated, mirrored and translated T/X/diagonal crossings, unique junctions, audit conservation, idempotence, opening migration/conflicts, an independent area oracle, invalid rings, atomic rejection, persistence/restoration and near-closure confirmation. Server tests reject unsplit T/X, overlap, unordered and nested boundaries for both draft and completed writes. Existing closure matrices, read models and frozen operation-body comparisons remain active. Frozen commits explicitly compose the new P0 noding postcondition; overrun-tail comparisons allow only the verified audit-preserving retraction difference.
 
-The Admin runtime mirror contains 81 files. Behavior and dependency snapshots reflect the intentional closure changes; architecture still requires acyclic dependencies and read-only models. The 512-wall/240-space benchmark passes (local full validation approximately 27ms median, 31ms p95); this is not a low-end device performance guarantee.
+The Admin runtime mirror now contains 82 files after S4-B. Behavior and dependency snapshots reflect the intentional closure changes; architecture still requires acyclic dependencies and read-only models. The 512-wall/240-space benchmark passes (local full validation approximately 27ms median, 31ms p95); this is not a low-end device performance guarantee.
 
 The visual source is the existing surveying-editor row in both restoration ledgers. Preview and closure conditions reuse the approved UI; WXML, styles and assets are unchanged. Automated state tests pass; manual 390x844 and tall-device runtime screenshots remain pending from the user. WeChat DevTools was not automated.
 

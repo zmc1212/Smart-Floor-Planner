@@ -1,0 +1,32 @@
+# S4-B: integer-grid Snap Rounding
+
+Status: **Implemented** for the formal integer-millimetre wall graph. This replaces the P0 fractional-intersection rejection. It does not implement S4-C independent walls, S4-D holes/nested spaces, or S4-A/S4-E device acceptance.
+
+## Algorithm and transaction
+
+- `miniprogram/packages/surveying/utils/survey/geometry/snap-rounding.js` builds a pure plan from all original wall endpoints and proper intersections before changing any wall. Intersections use exact rational rounding, including negative half-grid ties; safe integer determinants have a fast path and large values use exact arithmetic. The unit pixel owns `[x−0.5,x+0.5) × [y−0.5,y+0.5)`. Half ties go toward positive infinity; exact half ties therefore are not reflection/rotation invariant. The grid policy is deterministic under wall/endpoint reordering and integer translation.
+- Every original segment traversing a hot pixel is routed through its centre, including third walls that do not intersect the original crossing. Equal pixels share one node. Vertices are ordered along the source's dominant axis, with the minor axis breaking corner ties. Original integer endpoints stay fixed.
+- A monotone, finite closure over the same pixel set also processes pixels entered by the bent fragments. It only adds vertices, preventing a subsequent commit from unexpectedly renoding an accepted result. This stabilization extends the initial Snap Rounding pass; it is not independent pairwise rounding or a UI snap tolerance. Each source path can add at most the number of arrangement pixels. The implementation uses all-pairs intersection discovery and pixel scans; it does not claim sweep-line complexity or low-end device timing.
+- `operations/node-intersections.js` applies the plan inside the existing isolated commit transaction. `wall-split.js` accepts ordered topology cuts without its interactive 1mm deduplication, preserving distinct 1mm fragments. Original wall IDs remain on the first replacement, source IDs and Space references propagate, session node aliases and active-chain indices are remapped, and Face/Space synchronization plus full validation decide publication.
+- Hot-pixel definitions follow the arrangement-wide principle described by [JTS SnapRoundingNoder](https://locationtech.github.io/jts/javadoc/org/locationtech/jts/noding/snapround/SnapRoundingNoder.html). This is a local implementation, not a JTS runtime dependency. Exact arithmetic uses the JavaScript `BigInt` builtin internally; no BigInt, rational value, pixel cache or derived path is serialized.
+
+## Measurements, openings and rejection
+
+The shared splitter preserves aggregate raw readings, allocates them to fragments and maintains `lengthMm = rawMeasuredLengthMm + closureAdjustmentMm`. The effective sum may change because bent segments and individual integer lengths differ from the original straight length; the change is accounted for in the existing adjustment pair, never invented as another raw reading. A source-wall effective change exceeding the shared 2% budget clamped to 25–150mm, or a transaction total above 1,000mm, rejects with `MEASUREMENT_ADJUSTMENT_BUDGET_EXCEEDED`.
+
+Opening cuts retain the existing physical-span protection. All incident walls' thicknesses are collected from the complete plan before splitting, so a 400mm crossing wall cannot bypass clearance because it appears later in the wall array. Topological cuts within 1mm of an endpoint are also checked. Safe openings retain their width and host-relative position through the existing remapper; a bent host can shift the world position at grid precision. Existing exact-line splits preserve their world position. Cross-fragment openings remain unsupported and reject with `OPENING_SPLIT_CONFLICT`.
+
+Original positive overlaps reject with `OVERLAPPING_WALLS`. Rounded duplicate fragments, invalid wall bodies, degenerate rooms and nested spaces still reject through the shared validator; geometric rounding does not authorize guessing physical-wall ownership or new room semantics. Rejection preserves the input graph, session and undo/redo snapshots. Server writes and restore validate the supplied graph without silently running a repair.
+
+Routes, APIs, roles, tenant boundaries and the v4 `layoutData` envelope are unchanged. WXML, styles, artwork, interaction controls and BLE protocol are unchanged; no new UI design or restoration-ledger entry is required. Runtime Canvas/host QA remains pending the user's manual screenshots under S4-E; WeChat DevTools was not automated.
+
+## Verification
+
+- `miniprogram/test/survey-snap-rounding.test.js`: 12 tests pass, including 2,000 seeded six-segment arrangements checked with an independent BigInt determinant oracle, half-open corner ownership, large coordinates, coalesced crossings, 1mm cuts, stabilized repeat execution, opening migration/atomic rejection, bounded audit correction, Face/Space formation, save/reload and Mini Program/Admin parity.
+- Existing frozen behavior, dependency and mirror checks remain active; the generated Admin runtime now has 82 files. The dependency snapshot also records the already-present S4-A profiler consumers without changing those files.
+- H5: 55 tests and build pass. Admin consumer suite and formal-write validation pass. Final Mini Program full-suite totals are recorded below; unrelated existing UI/package failures are not treated as successful checks.
+- Isolated 512-wall/240-space desktop benchmark passes: full validation P95 43.891ms, wall read models P95 71.912ms, space read models P95 55.017ms, retained-clone heap 3,727,944 bytes. Earlier runs had full-validation timing outliers; the unchanged HEAD implementation was also measured separately (P95 40.201ms). No threshold was relaxed. A separate 512-wall Snap Rounding probe took 10.601–27.829ms across eight calls. These are Node results, not native device guarantees.
+
+Final delivery: Mini Program 1,755 tests, 1,742 passed and 13 existing failures in account pages, API environment selection, conversion UI, calendar dates, typography, device workbench, main/business packaging and route ownership, referral services, role guides and V3 assets. Their product files are unchanged. All surveying checks pass. Admin consumers: 31/31; formal writes: 13/13; H5: 55/55 plus build; architecture/mirror and `git diff --check`: pass. No real-device performance or visual acceptance is claimed.
+
+Chinese mirror: [snap-rounding.zh-CN.md](./snap-rounding.zh-CN.md).

@@ -193,7 +193,7 @@ function resolveOpeningSplitClearanceMm(floor, originalWall, cutNode) {
   );
 }
 
-function assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength) {
+function assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength, options) {
   const openings = (Array.isArray(floor.openings) ? floor.openings : []).filter((opening) => (
     opening && opening.wallId === originalWall.id
   ));
@@ -202,7 +202,9 @@ function assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength)
   const openingOriginAlongMm = getWallMeasurementInsets(originalWall).start -
     normalizeMeasurementExtension(originalWall.measurementStartExtensionMm);
   const interiorCuts = (cutItems || []).filter((item) => (
-    item && item.node && item.alongMm > 1 && item.alongMm < wallLength - 1
+    item && item.node && (options && options.snapRounding
+      ? item.node.id !== originalWall.startNodeId && item.node.id !== originalWall.endNodeId
+      : item.alongMm > 1 && item.alongMm < wallLength - 1)
   ));
   if (!interiorCuts.length) return;
 
@@ -213,7 +215,8 @@ function assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength)
     const openingEndAlongMm = openingOriginAlongMm + range.endMm;
     for (let cutIndex = 0; cutIndex < interiorCuts.length; cutIndex += 1) {
       const cut = interiorCuts[cutIndex];
-      const clearanceMm = resolveOpeningSplitClearanceMm(floor, originalWall, cut.node);
+      const clearanceMm = Math.max(resolveOpeningSplitClearanceMm(floor, originalWall, cut.node),
+        (options && options.cutClearanceByNodeId && options.cutClearanceByNodeId.get(cut.node.id)) || 0);
       if (
         openingEndAlongMm < cut.alongMm - clearanceMm ||
         openingStartAlongMm > cut.alongMm + clearanceMm
@@ -231,7 +234,8 @@ function assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength)
 }
 
 // Plans own detached replacement walls. No graph/session writes occur until apply.
-function planWallSplit(floor, wallId, cutNodeIds) {
+function planWallSplit(floor, wallId, cutNodeIds, options) {
+  const snapRounding = !!(options && options.snapRounding);
   const wallIndex = floor.walls.findIndex((wall) => wall.id === wallId);
   const sourceWall = floor.walls[wallIndex];
   if (wallIndex === -1 || !sourceWall) {
@@ -255,15 +259,21 @@ function planWallSplit(floor, wallId, cutNodeIds) {
     getNode(floor, originalWall.startNodeId),
     getNode(floor, originalWall.endNodeId)
   );
-  const cutItems = uniqueCutNodesByAlong([
+  const candidates = [
     { node: getNode(floor, originalWall.startNodeId), alongMm: 0 },
     ...cutNodeIds.map((nodeId) => ({
       node: getNode(floor, nodeId),
-      alongMm: pointAlongWall(floor, originalWall, nodeId)
+      alongMm: snapRounding
+        ? projectPointToWallSegment(getNode(floor, nodeId),
+          getNode(floor, originalWall.startNodeId), getNode(floor, originalWall.endNodeId)).t * wallLength
+        : pointAlongWall(floor, originalWall, nodeId)
     })),
     { node: getNode(floor, originalWall.endNodeId), alongMm: wallLength }
-  ]);
-  assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength);
+  ];
+  // Arrangement order and distinct 1mm pixels are topological facts. The
+  // historical interactive splitter's 1mm deduplication must not erase them.
+  const cutItems = snapRounding ? candidates : uniqueCutNodesByAlong(candidates);
+  assertSplitCutsAvoidOpenings(floor, originalWall, cutItems, wallLength, options);
   if (cutItems.length > 2) {
     preserveSharedWallBodyNormalSide(floor, originalWall);
   }
@@ -272,7 +282,7 @@ function planWallSplit(floor, wallId, cutNodeIds) {
   for (let index = 0; index < cutItems.length - 1; index += 1) {
     const current = cutItems[index];
     const next = cutItems[index + 1];
-    if (!current.node || !next.node || Math.abs(next.alongMm - current.alongMm) <= 1) {
+    if (!current.node || !next.node || (snapRounding ? current.node.id === next.node.id : Math.abs(next.alongMm - current.alongMm) <= 1)) {
       continue;
     }
     const wall = cloneWallSegment(
@@ -363,8 +373,8 @@ function applyWallSplitPlan(floor, plan) {
 
 // Composable internal step: the enclosing commit/closure transaction owns the
 // final face sync and full validation, after all divider cuts have been applied.
-function splitWallAtNodes(floor, wallId, cutNodeIds) {
-  const result = applyWallSplitPlan(floor, planWallSplit(floor, wallId, cutNodeIds));
+function splitWallAtNodes(floor, wallId, cutNodeIds, options) {
+  const result = applyWallSplitPlan(floor, planWallSplit(floor, wallId, cutNodeIds, options));
   // Preserve the historical internal result shape for callers in closure code.
   const { changed, kind, ...legacyResult } = result;
   return legacyResult;

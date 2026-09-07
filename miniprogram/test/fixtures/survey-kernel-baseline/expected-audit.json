@@ -1157,6 +1157,22 @@
         "unknownProperties": []
       },
       {
+        "file": "miniprogram/scripts/profile-survey-stage4.js",
+        "classification": "script",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "getActiveFloor"
+        ],
+        "unknownProperties": []
+      },
+      {
         "file": "miniprogram/test/fixtures/survey-cad/scenarios.js",
         "classification": "test-only",
         "binding": "direct-require",
@@ -1833,6 +1849,42 @@
           "createSurveyDraft",
           "getActiveFloor",
           "validateSurveyDraft"
+        ],
+        "unknownProperties": []
+      },
+      {
+        "file": "miniprogram/test/survey-snap-rounding.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js",
+          "surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "createSurveyDraft",
+          "getNode",
+          "getWall",
+          "validateSurveyDraft"
+        ],
+        "unknownProperties": []
+      },
+      {
+        "file": "miniprogram/test/survey-stage4-profile.test.js",
+        "classification": "test-only",
+        "binding": "direct-require",
+        "specifiers": [
+          "../packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "resolvedFiles": [
+          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
+        ],
+        "unresolved": false,
+        "exports": [
+          "createSurveyDraft"
         ],
         "unknownProperties": []
       },
@@ -2568,6 +2620,13 @@
       },
       {
         "file": "miniprogram/packages/surveying/utils/survey/geometry/segment.js",
+        "classification": "production-reachable",
+        "facadeReachable": true,
+        "editorDirect": false,
+        "testDirect": true
+      },
+      {
+        "file": "miniprogram/packages/surveying/utils/survey/geometry/snap-rounding.js",
         "classification": "production-reachable",
         "facadeReachable": true,
         "editorDirect": false,
@@ -3813,7 +3872,11 @@
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
-        "to": "miniprogram/packages/surveying/utils/survey/geometry/segment.js"
+        "to": "miniprogram/packages/surveying/utils/survey/domain/wall.js"
+      },
+      {
+        "from": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
+        "to": "miniprogram/packages/surveying/utils/survey/geometry/snap-rounding.js"
       },
       {
         "from": "miniprogram/packages/surveying/utils/survey/operations/node-intersections.js",
@@ -4789,6 +4852,13 @@
       "contentMatches": true
     },
     {
+      "source": "miniprogram/packages/surveying/utils/survey/geometry/snap-rounding.js",
+      "target": "admin/src/lib/survey-runtime/survey/geometry/snap-rounding.js",
+      "mode": "exact",
+      "targetExists": true,
+      "contentMatches": true
+    },
+    {
       "source": "miniprogram/packages/surveying/utils/survey/geometry/vector2.js",
       "target": "admin/src/lib/survey-runtime/survey/geometry/vector2.js",
       "mode": "exact",
@@ -5237,6 +5307,7 @@
       "geometryRoots": [
         "miniprogram/packages/surveying/utils/survey/geometry/polygon.js",
         "miniprogram/packages/surveying/utils/survey/geometry/segment.js",
+        "miniprogram/packages/surveying/utils/survey/geometry/snap-rounding.js",
         "miniprogram/packages/surveying/utils/survey/geometry/vector2.js"
       ],
       "readModelRoots": [
@@ -5269,8 +5340,8 @@
       "file": "admin/src/lib/survey-runtime/source-manifest.json",
       "schemaVersion": 1,
       "authority": "miniprogram/packages/surveying/utils",
-      "manifestEntryCount": 81,
-      "expectedEntryCount": 81,
+      "manifestEntryCount": 82,
+      "expectedEntryCount": 82,
       "errors": []
     },
     "mirrorMismatches": []

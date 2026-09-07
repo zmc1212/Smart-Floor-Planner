@@ -5,6 +5,12 @@ const { performance } = require('node:perf_hooks');
 const surveyGraph = require('../packages/surveying/utils/surveyWallGraph.js');
 const renderer = require('../packages/surveying/utils/surveyCanvasRenderer.js');
 
+const STAGE4_BUDGET = Object.freeze({
+  frameP95Ms: 33.3,
+  frameMaxMs: 50,
+  heapDeltaBytes: 8 * 1024 * 1024
+});
+
 function profile(draft, options = {}) {
   const floor = surveyGraph.getActiveFloor(draft);
   const frames = Math.max(1, Number(options.frames || 60));
@@ -18,15 +24,43 @@ function profile(draft, options = {}) {
   }
   const sorted = samples.slice().sort((a, b) => a - b);
   const percentile = (p) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
-  return {
+  const result = {
     frames,
     frameP50Ms: percentile(0.5),
     frameP95Ms: percentile(0.95),
     frameMaxMs: sorted[sorted.length - 1],
     heapUsedBytes: typeof process !== 'undefined' && process.memoryUsage
       ? process.memoryUsage().heapUsed : null,
-    deviceCanvasBridgeMeasured: false
+    deviceCanvasBridgeMeasured: false,
+    budget: evaluateBudget({
+      frameP95Ms: percentile(0.95),
+      frameMaxMs: sorted[sorted.length - 1],
+      heapDeltaBytes: null
+    })
   };
+  return result;
 }
 
-module.exports = { profile };
+function evaluateBudget(sample, budget = STAGE4_BUDGET) {
+  const checks = {
+    frameP95: Number.isFinite(sample.frameP95Ms) && sample.frameP95Ms <= budget.frameP95Ms,
+    frameMax: Number.isFinite(sample.frameMaxMs) && sample.frameMaxMs <= budget.frameMaxMs,
+    heap: sample.heapDeltaBytes == null || sample.heapDeltaBytes <= budget.heapDeltaBytes
+  };
+  return { checks, passed: Object.values(checks).every(Boolean), budget };
+}
+
+function evaluateDeviceSample(sample, budget = STAGE4_BUDGET) {
+  if (!sample || !Number.isFinite(sample.canvasBridgeP95Ms) || !Number.isFinite(sample.canvasBridgeMaxMs)) {
+    return { status: 'incomplete', reason: 'canvasBridgeSamplesRequired', checks: null, passed: false, budget };
+  }
+  const checks = {
+    canvasBridgeP95: sample.canvasBridgeP95Ms <= budget.frameP95Ms,
+    canvasBridgeMax: sample.canvasBridgeMaxMs <= budget.frameMaxMs,
+    heap: Number.isFinite(sample.heapDeltaBytes) && sample.heapDeltaBytes <= budget.heapDeltaBytes,
+    sustainedFrames: Number.isFinite(sample.frames) && sample.frames >= 300
+  };
+  return { status: 'complete', checks, passed: Object.values(checks).every(Boolean), budget };
+}
+
+module.exports = { STAGE4_BUDGET, evaluateBudget, evaluateDeviceSample, profile };

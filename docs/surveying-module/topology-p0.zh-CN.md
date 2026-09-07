@@ -1,11 +1,11 @@
 # 拓扑 P0 当前实现与验证
 
-状态：**Implemented**（P0 四项缺陷）；精度及内洞能力为 **Limited**。对应 [优化计划](./topology-algorithm-optimization-plan.zh-CN.md) 的 P0，不表示阶段 1–3 或 P1/P2 全部完成。
+状态：**Implemented**（P0 四项缺陷）；内洞能力为 **Limited**，S4-B 交点精度已 **Implemented**。对应 [优化计划](./topology-algorithm-optimization-plan.zh-CN.md) 的 P0，不表示阶段 1–3 或 P1/P2 全部完成。
 
 ## 数据与提交合同
 
 - 普通提交在一次隔离事务内执行精确交点分类、共享节点、批量拆墙、门窗与测量审计迁移、Face/Space 同步及 full 校验。输入图和撤销快照不被修改；失败不提交部分结果。精确闭环自动成房，新增分割面自动分房。
-- T/X 使用严格几何关系，不使用 350mm 交互吸附容差。重复坐标端点合并为一个节点。整数毫米交点仅在量化后仍同时落在原两线段上时接受，否则返回 UNSUPPORTED_INTERSECTION_PRECISION；不单独舍入后弯折墙体。正长度共线重叠返回 OVERLAPPING_WALLS。
+- T/X 使用严格几何关系，不使用 350mm 交互吸附容差。重复坐标端点合并为一个节点。S4-B 现通过共享单位热像素节点化全图 arrangement，替代 UNSUPPORTED_INTERSECTION_PRECISION 拒绝，见 [Snap Rounding](./snap-rounding.zh-CN.md)。正长度共线重叠返回 OVERLAPPING_WALLS。
 - 拆墙沿用既有开口净距保护、测量起点修正、墙面侧向与审计分摊，保持开口世界坐标及原始读数总和。精确节点化留下的外墙面过冲尾段，在确认回缩时将读数归并到前段，避免产生零长度墙。
 - Space.wallIds 必须唯一、连续、有序、首尾闭合，且不重复内部顶点。整体倒序和循环换起点允许；任意乱序返回 BROKEN_SPACE_CYCLE。校验器和 Canvas/面积/DXF/3D/AI 使用同一边界解析入口。
 - 独立闭环位于另一闭环内部时返回 UNSUPPORTED_NESTED_SPACE；不再将 6m × 6m 外环与 1m × 1m 内环计作 37㎡。共享墙房间及相互分离房间继续支持。内洞和嵌套语义尚未实现。
@@ -20,7 +20,7 @@
 
 新增 survey-topology-p0.test.js 与 surveying-editor-topology-p0.test.js 覆盖 T/X/斜交的旋转、镜像、平移、唯一节点、审计守恒、幂等、开口迁移/冲突、独立面积 oracle、非法环、原子拒绝、保存恢复和近闭合确认。服务端写入测试同时验证 draft/completed 拒绝未节点化 T/X、重叠、乱序和嵌套。既有闭合矩阵、读模型和冻结运算体比较继续执行；冻结提交对比显式附加 P0 节点化后置步骤，过冲尾段只允许已验证的读数守恒回缩差异。
 
-Admin 运行时镜像为 81 个文件，行为与依赖快照随本次有意闭合语义同步；架构仍要求无依赖环且纯读模型不写图。512 墙/240 空间基准通过（本机 full 校验中位约 27ms、p95 约 31ms），不代表低端真机性能承诺。
+S4-B 后 Admin 运行时镜像现为 82 个文件，行为与依赖快照随本次有意闭合语义同步；架构仍要求无依赖环且纯读模型不写图。512 墙/240 空间基准通过（本机 full 校验中位约 27ms、p95 约 31ms），不代表低端真机性能承诺。
 
 视觉依据为双语恢复台账现有 surveying-editor 单行记录，复用预览及“合”条件，未修改 WXML、样式、资源。自动状态测试通过；390x844 与高屏的人工运行截图验证待用户提供，未操作微信开发者工具。
 
