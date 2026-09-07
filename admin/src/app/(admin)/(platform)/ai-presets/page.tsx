@@ -143,12 +143,13 @@ export default function AiPresetsPage() {
         <Space direction="vertical" size={20} className="w-full">
           <FloorPlanConstraintSettings />
           <ProTable<AiPreset>
+            className="admin-mobile-filter-stack"
             actionRef={actionRef}
             rowKey="_id"
             columns={columns}
             options={{ reload: true, density: true, setting: true }}
             pagination={{ defaultPageSize: 10, showSizeChanger: true }}
-            search={{ labelWidth: 'auto', defaultCollapsed: false }}
+            search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
             scroll={{ x: 1220 }}
             request={async (params) => {
               const response = await fetch('/api/ai/presets?includeDisabled=true');

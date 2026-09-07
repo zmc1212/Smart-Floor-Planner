@@ -8,7 +8,7 @@ function boundaryKey(wallIds) {
 
 function compareClosedSpacesToFaces(floor, options) {
   const stopOnCountMismatch = !options || options.stopOnCountMismatch !== false;
-  const faceResult = extractFaces(floor);
+  const faceResult = extractFaces(floor, options && options.topologyIndex);
   const closedSpaces = (floor.spaces || []).filter((space) => space && space.closed);
   const mismatches = [];
 

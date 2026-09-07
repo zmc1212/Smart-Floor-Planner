@@ -155,7 +155,7 @@
     {
       "source": "survey/invariants/floor-plan-validator.js",
       "target": "src/lib/survey-runtime/survey/invariants/floor-plan-validator.js",
-      "sha256": "00451f0c5d3eb5fc3d31b99ebc92c4a00929d67773f428ae54ad054c90055b4e"
+      "sha256": "103cd653053e22f898d9296aed663c24c4d60077e9b087971181bb4d6d46537f"
     },
     {
       "source": "survey/legacy-kernel.js",
@@ -355,12 +355,12 @@
     {
       "source": "survey/topology/face-extractor.js",
       "target": "src/lib/survey-runtime/survey/topology/face-extractor.js",
-      "sha256": "6dab94324576615dc6d63ea5cf60eb31f49e7591e302d0a40c506dc49d35f805"
+      "sha256": "b1ab9ba6f78ae6a5b43f362bad8c4bddd6daba830c2fa6deede0f699308f9e25"
     },
     {
       "source": "survey/topology/face-shadow.js",
       "target": "src/lib/survey-runtime/survey/topology/face-shadow.js",
-      "sha256": "a839eb7fc40b5e92ae8ef423306d5b1b6820e7b9ae3aa10ed317c46cf9089201"
+      "sha256": "07ad7c7d96606d8f563b6f87feb582f4535ffbc242e04ffca1a26e3c44686828"
     },
     {
       "source": "survey/topology/space-sync.js",
@@ -370,7 +370,7 @@
     {
       "source": "survey/topology/topology-index.js",
       "target": "src/lib/survey-runtime/survey/topology/topology-index.js",
-      "sha256": "a3d320d9ee83362b8f94a7705c32ea82cc0f9466c3144090259d0320af3870c5"
+      "sha256": "141789fd386d2ac45171d8756b6697e5ba4e9f59bdd440ee7cb399ac8986ffc9"
     },
     {
       "source": "survey/topology/wall-alignment.js",

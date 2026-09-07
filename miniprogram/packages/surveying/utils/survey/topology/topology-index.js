@@ -21,6 +21,9 @@ function createTopologyIndex(floor) {
     duplicateIds: { nodes: [], walls: [], spaces: [], openings: [] },
     missingIdIndexes: { nodes: [], walls: [], spaces: [], openings: [] },
     invalidated: false,
+    isForFloor(floor) {
+      return floor === source && !this.invalidated;
+    },
     invalidate() {
       this.invalidated = true;
     }

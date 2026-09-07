@@ -87,8 +87,11 @@ function findBridgeWallIds(index) {
   return bridges;
 }
 
-function extractFaces(floor) {
-  const index = createTopologyIndex(floor);
+function extractFaces(floor, topologyIndex) {
+  // Reuse only within a synchronous, read-only validation pass. Callers must
+  // invalidate their index before any mutation; no index survives a transaction.
+  const index = topologyIndex && typeof topologyIndex.isForFloor === 'function' && topologyIndex.isForFloor(floor)
+    ? topologyIndex : createTopologyIndex(floor);
   const componentByNodeId = buildNodeComponents(index);
   const bridgeWallIds = findBridgeWallIds(index);
   const outgoing = new Map();

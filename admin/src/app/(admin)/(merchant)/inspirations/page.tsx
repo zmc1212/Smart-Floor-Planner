@@ -260,7 +260,7 @@ export default function InspirationsPage() {
           rowKey="_id"
           scroll={{ x: 1080 }}
           options={{ density: true, reload: true, setting: true }}
-          search={{ defaultCollapsed: false, labelWidth: 'auto' }}
+          search={{ defaultCollapsed: false, labelWidth: 'auto', span: 12 }}
           locale={{
             emptyText: <Empty description="暂无符合条件的灵感方案" image={Empty.PRESENTED_IMAGE_SIMPLE} />,
           }}

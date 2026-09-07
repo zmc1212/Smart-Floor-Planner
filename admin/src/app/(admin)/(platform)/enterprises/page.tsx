@@ -376,12 +376,13 @@ export default function EnterprisesPage() {
             </Card>
           ) : null}
           <ProTable<EnterpriseListItem>
-          actionRef={actionRef}
-          rowKey="_id"
-          columns={columns}
-          params={{ listVersion }}
-          search={{ labelWidth: 'auto', defaultCollapsed: false }}
-          options={{ reload: true, density: true, setting: true }}
+            className="admin-mobile-filter-stack"
+            actionRef={actionRef}
+            rowKey="_id"
+            columns={columns}
+            params={{ listVersion }}
+            search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
+            options={{ reload: true, density: true, setting: true }}
           pagination={{
             current: page,
             defaultPageSize: 10,

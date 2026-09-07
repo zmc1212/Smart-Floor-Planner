@@ -763,3 +763,6 @@ Chinese module overview: [README.md](./README.md)
 ## Current topology P1 contract
 
 All seven P1 fixes are Implemented: business fingerprints, concave-room sides/inner boundaries, remeasurement budgets, opening occupancy, completion policy, structural rejection and stable room identity. Routes, permissions and the v4 envelope are unchanged. Independent-wall exemptions and P2 remain unimplemented; manual runtime QA is pending. Current data semantics and verification: [P1 contract](./topology-p1.md).
+
+## Topology stage 4 contract
+Stage 4 core behavior is implemented: completion requires closed ordinary spaces, consumers use normalized survey read models, and topology indexes are reused only within one read-only validation pass and rebuilt after invalidation or floor changes. Desktop Node performance gates pass; low-end device frame and memory sampling remains Limited.

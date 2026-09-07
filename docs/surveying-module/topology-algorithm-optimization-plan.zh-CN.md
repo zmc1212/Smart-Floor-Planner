@@ -175,3 +175,13 @@
 ### P2 当前实现（2026-09-07）
 - 正式量房 PUT 支持 baseRevision 条件更新；revision 使用资源 updatedAt 的 ISO 序列化值，冲突稳定返回 HTTP 409 / FLOOR_PLAN_REVISION_CONFLICT，避免多会话静默覆盖。
 - GET/PUT DTO 暴露 revision，客户端可在保存时回传。
+
+### 阶段 3 当前实现（Implemented，2026-09-07）
+- 墙体实体、净边界方向、共享墙关系和最小净面积由 full validator 与 read-model 统一检查；禁止用 abs(area) 掩盖反向或穿越边界。
+- 同宿主墙门窗执行区间排序、重叠/端点接触检查和拆墙保护距离检查；复尺沿用统一的 2%/25–150mm/总残差 1,000mm 预算，并保持 lengthMm = rawMeasuredLengthMm + closureAdjustmentMm。
+- 阶段 3 回归覆盖凹房间、厚墙反向边界、门窗占用、累计复尺和共享墙场景，现有 topology P1 测试全部通过。
+
+### 阶段 4 当前实现（核心已实施，性能真机项 Limited，2026-09-07）
+- 完成写入已要求所有普通 Space 闭合、普通墙参与有界 Face；未完成墙链返回 INCOMPLETE_WALL_CHAIN，草稿仍可保留 DANGLE_WALL。
+- Canvas、净面积、DXF、3D、AI 和 Admin 已通过统一 survey read-model 消费规范化墙体、门窗和空间边界，未回写 surveyGraph。
+- Face、墙体实体、空间边界在事务提交后重新计算，墙厚、拆墙和 Space 同步不会复用旧派生结果；现有 Node 大图性能门槛已通过。低端真机帧率/内存预算仍需真实设备采样，标记为 Limited。

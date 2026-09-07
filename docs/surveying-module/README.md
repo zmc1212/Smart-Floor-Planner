@@ -175,3 +175,12 @@
 ### P2 当前实现（2026-09-07）
 - 正式量房 PUT 支持 baseRevision 条件更新；revision 使用资源 updatedAt 的 ISO 序列化值，冲突稳定返回 HTTP 409 / FLOOR_PLAN_REVISION_CONFLICT，避免多会话静默覆盖。
 - GET/PUT DTO 暴露 revision，客户端可在保存时回传。
+
+## 拓扑阶段 2 当前合同
+阶段 2 已实现：明确 T/X/端点内交在提交事务中统一节点化并批量拆墙，随后提取 Face、同步 Space 并执行完整校验；共线重叠、歧义交点和无法保持整数毫米共线关系的交点原子拒绝。精确闭环自动成房，近闭合保留“合”确认。实现入口为 survey/operations/node-intersections.js 与 survey/operations/finalize-commit.js。
+
+## 拓扑阶段 3 当前合同
+阶段 3 已实现：墙体实体与净边界使用有向局部规则校验，门窗使用宿主墙区间占用校验，复尺与闭合共享统一平差预算，超限和反向/穿越边界均原子拒绝。
+
+## 拓扑阶段 4 当前合同
+阶段 4 核心已实现：完成写入要求普通空间全部闭合，消费者统一读取 survey read-model，事务提交后重新计算 Face/墙体实体/空间边界。桌面 Node 性能门槛已通过，低端真机帧率与内存预算仍待设备采样。

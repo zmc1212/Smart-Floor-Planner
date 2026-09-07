@@ -24,7 +24,7 @@ import { isFormalSurveyLayout, parseFormalSurveyLayout } from '@/lib/survey-grap
 
 export function aiChatSessionSummaryToDto(record: AiChatSessionRecord) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     title: record.title,
     lastMessageAt: record.lastMessageAt,
     createdAt: record.createdAt,
@@ -49,7 +49,7 @@ export function aiChatSessionToDto(record: AiChatSessionRecord) {
 
 export function enterpriseOrderToDto(record: EnterpriseOrderWithRelations) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(), enterpriseId: record.enterpriseId?.toString() ?? null,
+    _id: record.id.toString(), enterpriseId: record.enterpriseId?.toString() ?? null,
     recordId: record.record ? { _id: record.record.id.toString(), enterpriseName: record.record.enterpriseName, businessStage: record.record.businessStage, promoterId: record.record.promoterId?.toString() ?? null } : record.recordId.toString(),
     enterpriseNameSnapshot: record.enterpriseNameSnapshot, packageName: record.packageName,
     amount: Number(record.amount), currency: record.currency, status: record.status, paidAt: record.paidAt,
@@ -60,7 +60,7 @@ export function enterpriseOrderToDto(record: EnterpriseOrderWithRelations) {
 
 export function commissionToDto(record: CommissionWithRelations) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(), recordId: record.record ? { _id: record.record.id.toString(), enterpriseName: record.record.enterpriseName, contactPerson: record.record.contactPerson } : record.recordId.toString(),
+    _id: record.id.toString(), recordId: record.record ? { _id: record.record.id.toString(), enterpriseName: record.record.enterpriseName, contactPerson: record.record.contactPerson } : record.recordId.toString(),
     orderId: record.order ? { _id: record.order.id.toString(), packageName: record.order.packageName, amount: Number(record.order.amount), status: record.order.status } : record.orderId.toString(),
     promoterId: record.promoter ? { _id: record.promoter.id.toString(), displayName: record.promoter.displayName, username: record.promoter.username, role: record.promoter.role } : record.promoterId.toString(),
     enterpriseId: record.enterpriseId?.toString() ?? null, commissionType: record.commissionType,
@@ -72,7 +72,7 @@ export function commissionToDto(record: CommissionWithRelations) {
 
 export function staffNotificationToDto(record: StaffNotificationWithLead) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     enterpriseId: record.enterpriseId?.toString() ?? null,
     recipientStaffId: record.recipientStaffId?.toString() ?? null,
     leadId: record.lead ? { _id: record.lead.id.toString(), name: record.lead.name, communityName: record.lead.communityName, status: record.lead.status } : record.leadId?.toString() ?? null,
@@ -91,7 +91,7 @@ export function staffNotificationToDto(record: StaffNotificationWithLead) {
 
 export function enterpriseToDto(record: EnterpriseRecord) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     name: record.name,
     code: record.code,
     status: record.status,
@@ -120,7 +120,7 @@ export function enterpriseToDto(record: EnterpriseRecord) {
 
 export function enterpriseStatusEventToDto(record: EnterpriseStatusEventRecord) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     enterpriseId: record.enterpriseId.toString(),
     fromStatus: record.fromStatus,
     toStatus: record.toStatus,
@@ -133,7 +133,7 @@ export function enterpriseStatusEventToDto(record: EnterpriseStatusEventRecord) 
 
 export function departmentToDto(record: DepartmentRecord) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     enterpriseId: record.enterpriseId.toString(),
     parentId: record.parentId?.toString() ?? null,
     name: record.name,
@@ -151,7 +151,7 @@ export function adminUserToDto(
 ) {
   const withRelations = record as Partial<AdminUserWithRelations>;
   const result: Record<string, unknown> = {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     enterpriseId:
       options.populateRelations && record.enterpriseId
         ? {
@@ -198,7 +198,7 @@ export function adminUserToDto(
 
 export function userToDto(record: UserRecord) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     enterpriseId: record.enterpriseId?.toString() ?? null,
     username: record.username,
     role: record.role,
@@ -235,7 +235,8 @@ export function floorPlanToDto(
         }
       : record.creatorId.toString();
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
+    revision: record.updatedAt.toISOString(),
     enterpriseId: record.enterpriseId?.toString() ?? null,
     creator: creatorSummary,
     staffId: record.staffId?.toString() ?? null,
@@ -264,7 +265,7 @@ function staffSummaryToDto(
 ) {
   return record
     ? {
-        _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+        _id: record.id.toString(),
         displayName: record.displayName,
         username: record.username,
         phone: record.phone || null,
@@ -295,7 +296,7 @@ export function leadToDto(record: LeadWithRelations, options: {
     publishedDesignCount: options.publishedDesignCount,
   });
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     enterpriseId: record.enterpriseId?.toString() ?? null,
     promoterId:
       staffSummaryToDto(record.promoter) ?? record.promoterId?.toString() ?? null,
@@ -399,7 +400,7 @@ export function deviceToDto(record: DeviceWithRelations) {
     username: assignedUser.username,
   }));
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     code: record.code,
     serialNumber: record.serialNumber,
     description: record.description,
@@ -418,7 +419,7 @@ export function deviceToDto(record: DeviceWithRelations) {
 
 export function measurementToDto(record: MeasurementWithRelations) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     floorPlanId: record.floorPlan
       ? {
           _id: record.floorPlan.id.toString(),
@@ -455,7 +456,7 @@ export function measurementToDto(record: MeasurementWithRelations) {
 
 export function packageToDto(record: PackageRecord) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     name: record.name,
     price: Number(record.price),
     description: record.description,
@@ -472,7 +473,7 @@ function promotionStaffToDto(
 ) {
   return record
     ? {
-        _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+        _id: record.id.toString(),
         displayName: record.displayName,
         username: record.username,
         role: record.role,
@@ -482,7 +483,7 @@ function promotionStaffToDto(
 
 export function promotionRecordToDto(record: PromotionRecordWithRelations) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     enterpriseId: record.enterprise
       ? { _id: record.enterprise.id.toString(), name: record.enterprise.name }
       : record.enterpriseId?.toString() ?? null,
@@ -573,7 +574,7 @@ export function workflowNotificationToDto(
   record: WorkflowNotificationWithRelations
 ) {
   return {
-    _id: record.id.toString(),\n    revision: record.updatedAt.toISOString(),
+    _id: record.id.toString(),
     enterpriseId: record.enterpriseId?.toString() ?? null,
     recordId: record.record
       ? {

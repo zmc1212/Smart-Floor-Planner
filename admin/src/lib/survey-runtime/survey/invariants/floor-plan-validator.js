@@ -487,7 +487,7 @@ function validateFull(floor, index, errors, warnings, options) {
   });
 
   if (!errors.length) {
-    const shadow = compareClosedSpacesToFaces(floor);
+    const shadow = compareClosedSpacesToFaces(floor, { topologyIndex: index });
     shadow.mismatches.forEach((mismatch) => {
       errors.push(issue(mismatch.code, mismatch.path, mismatch.message, mismatch.details));
     });
