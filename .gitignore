@@ -9,6 +9,7 @@ desktop.ini
 *.tmp
 *.pyc
 __pycache__/
+services/**/.env
 scratch/
 scratch/smart-floor-planner-intro-video/
 miniprogram/design-mockups/

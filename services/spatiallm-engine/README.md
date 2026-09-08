@@ -1,56 +1,72 @@
 # SpatialLM 3D Prediction Engine
 
-这是一个独立的 FastAPI 微服务，专门用于运行 `SpatialLM` 大模型的 3D 点云结构化提取。
-该微服务被设计为部署在配有 `RTX 4080 / 4090 (sm_89)` 或其他兼容 CUDA 架构的独立 GPU 云主机上，以此与主业务 Node.js 系统完全解耦。
+Standalone FastAPI service for converting axis-aligned PLY point clouds into
+structured walls, doors, windows, and objects. The API emits millimetres for
+the Smart Floor Planner adapter while the upstream model works in metres.
 
-## 环境配置与启动 (在 GPU 主机上运行)
+## Modes
 
-1. 创建并激活 Python 3.10 的虚拟环境。
-2. 安装依赖：
-   ```bash
-   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121
-   ```
-3. 需自行编译安装 `torchsparse`：
-   ```bash
-   wget https://github.com/mit-han-lab/torchsparse/archive/refs/heads/master.zip -O torchsparse.zip
-   unzip torchsparse.zip && cd torchsparse-master
-   pip install --no-build-isolation .
-   ```
-4. 启动微服务：
-   ```bash
-   python main.py
-   # 服务将运行在 http://0.0.0.0:8002
-   ```
+- `SPATIALLM_MODE=mock`: API integration without CUDA or model dependencies.
+- `SPATIALLM_MODE=real`: preload SpatialLM 1.1 on CUDA and run real inference.
 
-## 接口说明
+The default is `mock`, so production or GPU evaluation must explicitly set
+`SPATIALLM_MODE=real`.
 
-**Endpoint**: `POST /api/v1/predict3d`
-**Content-Type**: `multipart/form-data`
-**Body**: 包含名为 `file` 的字段，值为上传的 `.ply` 点云文件。
+## API
 
-### CURL 调用示例
+- `GET /healthz`: process, mode, model, and device readiness.
+- `POST /api/v1/predict3d`: multipart upload with a `file` field ending in
+  `.ply`. Uploads are limited to 512 MB by default and GPU requests are
+  serialized.
 
 ```bash
-curl -X POST -F "file=@/path/to/your/pointcloud.ply" http://localhost:8002/api/v1/predict3d
+curl -F "file=@pointcloud.ply" http://localhost:8002/api/v1/predict3d
 ```
 
-### 返回格式示例
+## RTX 4080 deployment
 
-返回一份 JSON，由 3D 浮点噪声构成的墙体、门、窗坐标包围盒（Node.js 端需经过 Adapter 处理）：
+Use WSL 2 with Ubuntu. From this directory inside WSL:
 
-```json
-{
-  "project_id": "spatiallm_inference_v1",
-  "layout": {
-    "walls": [
-      {
-        "id": "wall_1",
-        "start": [0.5, 0.2, 0.0],
-        "end": [4002.1, -1.8, 0.0],
-        "thickness": 200.0
-      }
-    ],
-    "openings": []
-  }
-}
+```bash
+chmod +x bootstrap-wsl.sh
+./bootstrap-wsl.sh
 ```
+
+When the official Hugging Face endpoint is not reachable from the deployment
+network, run the same bootstrap with a download endpoint override:
+
+```bash
+HF_ENDPOINT=https://hf-mirror.com ./bootstrap-wsl.sh
+```
+
+The script installs an isolated Python 3.11/CUDA 12.4 environment, checks out
+the pinned official SpatialLM source revision, installs the SpatialLM 1.1
+Sonata dependencies, downloads the Qwen 0.5B model and official test PLY, and
+starts the system-level `spatiallm-engine.service` under a dedicated
+low-privilege account.
+
+The bootstrap builds FlashAttention for the `sm80` target used compatibly by
+the RTX 4080 and limits build parallelism for a 32 GB WSL host. The installed
+service uses the completed Hugging Face cache in offline mode.
+
+From Windows PowerShell, register the scoped login keepalive so WSL and the
+systemd service remain reachable after interactive WSL terminals close:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\register-wsl-keepalive.ps1
+```
+
+See [deployment operations](../../docs/spatiallm-4080-deployment.md).
+
+## Development test
+
+```bash
+python -m pip install -r requirements-dev.txt
+pytest -q
+```
+
+## License boundary
+
+The upstream SpatialLM 1.1 model weights are CC-BY-NC-4.0. This deployment is
+suitable for local technical evaluation, but commercial production use needs
+separate authorization from the model rights holder.

@@ -1,3 +1,4 @@
 admin/*.sh text eol=lf
+services/spatiallm-engine/*.sh text eol=lf
 admin/*.bat text eol=crlf
 admin/*.ps1 text eol=crlf

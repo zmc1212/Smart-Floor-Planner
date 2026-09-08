@@ -27,6 +27,12 @@ AI 工作台户型预览缓存约束：`/ai-studio/scenarios` 的预览 URL 必�
 - 外部供应商和对象存储 I/O 在短数据库事务之外执行；API handler 通过 DTO 显式
   序列化 `bigint`。
 - 正式户型为 v4 量房 wall graph。查看器、DXF、3D 和 AI 只消费读模型，不写旧布局字段。
+- 独立 `services/spatiallm-engine` FastAPI 服务已具备通过测试的 Mock 上传边界，
+  并实现固定上游版本的 SpatialLM 1.1 Qwen 0.5B CUDA 真实推理。服务提供
+  `GET /healthz` 与 `POST /api/v1/predict3d`，GPU 请求串行执行并输出毫米制数据。
+  状态为 Limited/Placeholder：Admin 与小程序尚无调用路由，服务本身没有租户或鉴权
+  边界，响应也尚未转换并持久化为正式 version-4 测绘墙图。详见
+  [RTX 4080 部署说明](./spatiallm-4080-deployment.zh-CN.md)。
 
 ## 状态定义
 

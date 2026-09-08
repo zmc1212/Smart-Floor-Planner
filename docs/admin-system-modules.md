@@ -35,6 +35,14 @@ AI workbench floor-plan preview cache contract: the current formal floor-plan sn
   transactions. API handlers serialize `bigint` values through DTOs.
 - Formal floor plans are version-4 surveying graphs. Viewers, DXF, 3D, and AI
   consume derived read models and never write legacy layout fields.
+- The standalone `services/spatiallm-engine` FastAPI service has a tested Mock
+  upload boundary and a real CUDA inference implementation for the pinned
+  upstream SpatialLM 1.1 Qwen 0.5B model. It exposes `GET /healthz` and
+  `POST /api/v1/predict3d`, serializes GPU requests, and emits millimetres.
+  Status: Limited/Placeholder. No Admin or Mini Program route calls it, no
+  tenant/authentication boundary exists in the service, and no response is
+  adapted to or persisted as a formal version-4 survey graph. See
+  [RTX 4080 deployment](./spatiallm-4080-deployment.md).
 
 ## Status legend
 

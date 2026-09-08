@@ -1,68 +1,96 @@
-# SpatialLM 4080 极速部署指南 (GPU 端到端闭环)
+# SpatialLM Engine: RTX 4080 Deployment
 
-这份文档是我们刚刚在 5070 机器上踩坑并跑通逻辑后，提炼出的**最精简、100% 可用的 4080 部署方案**。由于 4080 完美兼容当前的 PyTorch 3D 体系，您只需要在 4080 电脑上按以下步骤操作，即可实现“点云进，2D 图纸出”的完整闭环。
+## Current status
 
----
+`services/spatiallm-engine` provides a standalone FastAPI boundary. Mock mode
+is tested locally. Real inference is implemented against the official
+`manycore-research/SpatialLM` repository at pinned commit
+`8913c44d84a450c53e9340b13317f8cf7144a738`, using SpatialLM 1.1 Qwen 0.5B,
+Python 3.11, PyTorch 2.4.1, and CUDA 12.4.
 
-## 方案 A：让 AI 助理 (Antigravity) 为您全自动部署（最快！）
+Real mode has been verified on the local RTX 4080 under Ubuntu 24.04/WSL 2.
+`/healthz` reported the Qwen 0.5B model on `cuda`, and the official
+`scene0000_00.ply` test request returned HTTP 200 with 6 walls and 2 openings
+in millimetres. One measured inference completed in 27.50 seconds while the
+RTX 4080 reached 100% utilization and approximately 15.9 GB VRAM usage.
 
-既然您在使用我（Antigravity 助理），最省事的方法是：
-1. 在您的 4080 电脑上，克隆/拉取最新的 `Smart-Floor-Planner` 代码库。
-2. 在那台电脑上呼叫我，并直接对我说：
-   > **“请读取 `docs/spatiallm-4080-deployment.md` 文件，帮我一键配置 SpatialLM 环境并用点云跑出测试结果！”**
-3. 我会自动识别下方的代码，接管 WSL，全自动为您把环境装好并跑出图纸。
+This service is not yet called by an Admin or Mini Program route. No inferred
+layout is persisted to `FloorPlan.layoutData`; a future Node adapter must
+validate and convert the response into the formal version-4 survey graph.
 
----
+## Windows 11 and WSL 2
 
-## 方案 B：手动极速部署脚本 (如需手动控制)
-
-如果您想自己敲命令控制进度，请在 4080 电脑的 **WSL (Ubuntu) 终端** 里直接运行以下梳理好的命令：
-
-### 1. 核心环境一键安装
-
-```bash
-# 1. 创建隔离环境
-mkdir -p ~/spatiallm-env && cd ~/spatiallm-env
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
-bash miniconda.sh -b -p $HOME/miniconda
-source ~/miniconda/bin/activate
-conda create -n spatiallm python=3.10 -y
-conda activate spatiallm
-
-# 2. 安装兼容 4080 的底层运算库 (重点！)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install spconv-cu120 open3d huggingface_hub
-
-# 3. 编译安装 TorchSparse (这一步大概需要 3 分钟)
-sudo apt-get update && sudo apt-get install -y build-essential libsparsehash-dev unzip
-wget https://ghp.ci/https://github.com/mit-han-lab/torchsparse/archive/refs/heads/master.zip -O torchsparse.zip
-unzip -q torchsparse.zip
-cd torchsparse-master
-pip install --no-build-isolation .
-```
-
-### 2. 获取模型与源码
+1. Enable `Microsoft-Windows-Subsystem-Linux` and `VirtualMachinePlatform`, then
+   restart Windows when requested.
+2. Install Ubuntu 24.04 with `wsl --install -d Ubuntu-24.04` and complete its
+   first-run user setup.
+3. Open Ubuntu, enter the checked-out service directory, and run:
 
 ```bash
-cd ~/spatiallm-env
-# 克隆 SpatialLM 官方源码
-git clone https://ghp.ci/https://github.com/baaivision/SpatialLM.git
-
-# 下载我们已经验证过的 1B 模型权重 (约2GB)
-huggingface-cli download BAAI/SpatialLM-1B-Instruct --local-dir ./weights
+cd /mnt/h/workspaces/Smart-Floor-Planner/services/spatiallm-engine
+chmod +x bootstrap-wsl.sh
+./bootstrap-wsl.sh
 ```
 
-### 3. 用您的真实点云执行推理
+If the official Hugging Face endpoint is unavailable on the deployment
+network, select an alternate endpoint for the download only:
 
-```python
-# 届时 AI 助理会自动帮您编写胶水代码：
-# 1. 加载 4080 CUDA 设备
-# 2. 读取 pointcloud.ply
-# 3. 将结果输出为 SpatialLM JSON
+```bash
+HF_ENDPOINT=https://hf-mirror.com ./bootstrap-wsl.sh
 ```
 
-### 4. 2D 图纸适配器 (转为 v4 格式)
+The bootstrap is repeatable. It keeps the model environment under
+`/opt/smart-floor-planner/spatiallm`, writes the runtime `.env` beside the
+service, and registers the system-level `spatiallm-engine.service` under a
+dedicated low-privilege `spatiallm` account. It does not install Python packages
+into the Node.js application. FlashAttention is built for the compatible
+`sm80` target with bounded parallelism to fit a 32 GB WSL environment. After
+the model is cached, the service starts with `HF_HUB_OFFLINE=1` and does not
+depend on the selected download endpoint at runtime.
 
-调用我们在预研阶段已经写好的 Node.js 转换适配器，将上一步生成的 JSON 降维并正交化，即可得到 100% 验证通过的系统真实测绘图纸！
+WSL can stop an otherwise healthy systemd service after the last Windows-side
+WSL session exits. Register the scoped login keepalive from PowerShell so the
+Windows Node.js process can always reach `localhost:8002`:
 
-> 💡 **提示**：您的 4080 (sm_89) 在执行这套代码时，GPU 的 CUDA 流水线会火力全开，点云推演的过程**只需要几秒钟**。期待您在 4080 机器上的唤醒！
+```powershell
+powershell -ExecutionPolicy Bypass -File `
+  .\services\spatiallm-engine\register-wsl-keepalive.ps1
+```
+
+The script creates or updates the current user's `SpatialLM WSL Keepalive`
+scheduled task. It keeps only `Ubuntu-24.04` active under the low-privilege
+`spatiallm` Linux account; it does not change the global WSL idle timeout.
+
+## Operations
+
+```bash
+sudo systemctl status spatiallm-engine.service
+sudo journalctl -u spatiallm-engine.service -f
+sudo systemctl restart spatiallm-engine.service
+curl http://localhost:8002/healthz
+curl -F "file=@/opt/smart-floor-planner/spatiallm/testdata/pcd/scene0000_00.ply" \
+  http://localhost:8002/api/v1/predict3d
+```
+
+The health response must report `mode: real`, the configured model, and
+`device: cuda`. A successful Mock response is not evidence of GPU inference.
+
+## API contract
+
+`POST /api/v1/predict3d` accepts one `.ply` multipart file in the `file` field.
+The default upload limit is 512 MB. The service handles one GPU inference at a
+time and returns `units: millimetres` with `layout.walls`, `layout.openings`,
+and `layout.objects`. Input must be axis-aligned with Z as the up axis, matching
+the upstream model contract.
+
+## Limits and security
+
+- SpatialLM output is probabilistic and is not a formal survey graph. Validate
+  topology, units, wall/opening relationships, and tenant ownership in Node
+  before persistence.
+- The API currently has no authentication or TLS. Bind it only to a trusted
+  private network or place it behind an authenticated reverse proxy.
+- The upstream SpatialLM 1.1 weights use CC-BY-NC-4.0. Commercial deployment
+  requires authorization from the model rights holder.
+- GPU startup and first model download can take several minutes. Service
+  readiness is represented only by `/healthz` returning `status: ok`.
