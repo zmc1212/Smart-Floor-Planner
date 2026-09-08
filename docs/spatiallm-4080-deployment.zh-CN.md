@@ -58,6 +58,9 @@ powershell -ExecutionPolicy Bypass -File `
 
 ## 运维命令
 
+浏览器打开 `http://localhost:8002/` 会返回服务状态，以及健康检查、交互式 API
+文档和推理接口的入口。
+
 ```bash
 sudo systemctl status spatiallm-engine.service
 sudo journalctl -u spatiallm-engine.service -f

@@ -63,6 +63,9 @@ scheduled task. It keeps only `Ubuntu-24.04` active under the low-privilege
 
 ## Operations
 
+Opening `http://localhost:8002/` in a browser returns service status and links
+to the health check, interactive API documentation, and prediction endpoint.
+
 ```bash
 sudo systemctl status spatiallm-engine.service
 sudo journalctl -u spatiallm-engine.service -f

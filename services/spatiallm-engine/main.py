@@ -30,7 +30,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SpatialLM 3D Prediction Engine",
-    version="1.1.0",
+    version="1.1.1",
     lifespan=lifespan,
 )
 
@@ -43,6 +43,20 @@ async def health() -> dict:
         "mode": engine.mode,
         "model": engine.model_name,
         "device": engine.device,
+    }
+
+
+@app.get("/")
+async def root() -> dict:
+    status = await health()
+    return {
+        "service": "SpatialLM 3D Prediction Engine",
+        **status,
+        "endpoints": {
+            "health": "/healthz",
+            "documentation": "/docs",
+            "prediction": "/api/v1/predict3d",
+        },
     }
 
 

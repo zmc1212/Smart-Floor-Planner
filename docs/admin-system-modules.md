@@ -37,8 +37,9 @@ AI workbench floor-plan preview cache contract: the current formal floor-plan sn
   consume derived read models and never write legacy layout fields.
 - The standalone `services/spatiallm-engine` FastAPI service has a tested Mock
   upload boundary and a real CUDA inference implementation for the pinned
-  upstream SpatialLM 1.1 Qwen 0.5B model. It exposes `GET /healthz` and
-  `POST /api/v1/predict3d`, serializes GPU requests, and emits millimetres.
+  upstream SpatialLM 1.1 Qwen 0.5B model. It exposes a discoverable `GET /`
+  status response, `GET /healthz`, and `POST /api/v1/predict3d`, serializes GPU
+  requests, and emits millimetres.
   Status: Limited/Placeholder. No Admin or Mini Program route calls it, no
   tenant/authentication boundary exists in the service, and no response is
   adapted to or persisted as a formal version-4 survey graph. See

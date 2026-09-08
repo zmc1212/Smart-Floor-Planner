@@ -23,6 +23,24 @@ def test_health_reports_mock_engine(monkeypatch):
     }
 
 
+def test_root_reports_service_and_endpoints(monkeypatch):
+    with create_client(monkeypatch) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert response.json() == {
+        "service": "SpatialLM 3D Prediction Engine",
+        "status": "ok",
+        "mode": "mock",
+        "model": "mock",
+        "device": "cpu",
+        "endpoints": {
+            "health": "/healthz",
+            "documentation": "/docs",
+            "prediction": "/api/v1/predict3d",
+        },
+    }
+
+
 def test_predict_accepts_ply(monkeypatch):
     with create_client(monkeypatch) as client:
         response = client.post(

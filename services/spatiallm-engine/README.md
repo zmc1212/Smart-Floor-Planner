@@ -14,6 +14,7 @@ The default is `mock`, so production or GPU evaluation must explicitly set
 
 ## API
 
+- `GET /`: service readiness and links to the available endpoints.
 - `GET /healthz`: process, mode, model, and device readiness.
 - `POST /api/v1/predict3d`: multipart upload with a `file` field ending in
   `.ply`. Uploads are limited to 512 MB by default and GPU requests are
