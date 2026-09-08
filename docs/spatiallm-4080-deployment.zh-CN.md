@@ -60,6 +60,11 @@ powershell -ExecutionPolicy Bypass -File `
 
 浏览器打开 `http://localhost:8002/` 会返回服务状态，以及健康检查、交互式 API
 文档和推理接口的入口。
+日常使用时，双击 `services/spatiallm-engine/start-spatiallm.bat` 即可启动 WSL
+常驻任务和模型服务；双击 `services/spatiallm-engine/stop-spatiallm.bat` 即可停止
+两者。关闭脚本会终止专用的 `Ubuntu-24.04` 发行版，立即释放其系统内存和
+SpatialLM 显存，因此也会结束该发行版中的其他进程；它不会关闭 Windows 上的
+ComfyUI 等应用。
 
 ```bash
 sudo systemctl status spatiallm-engine.service

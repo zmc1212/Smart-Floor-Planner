@@ -65,6 +65,13 @@ scheduled task. It keeps only `Ubuntu-24.04` active under the low-privilege
 
 Opening `http://localhost:8002/` in a browser returns service status and links
 to the health check, interactive API documentation, and prediction endpoint.
+For one-click Windows operation, double-click
+`services/spatiallm-engine/start-spatiallm.bat` to start the WSL keepalive and
+service, and double-click `services/spatiallm-engine/stop-spatiallm.bat` to stop
+both. The stop script terminates the dedicated `Ubuntu-24.04` distribution to
+release its RAM and SpatialLM GPU allocation immediately. Consequently, it also
+ends any other processes running inside that distribution, but it does not stop
+Windows applications such as ComfyUI.
 
 ```bash
 sudo systemctl status spatiallm-engine.service

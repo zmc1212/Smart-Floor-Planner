@@ -57,6 +57,13 @@ systemd service remain reachable after interactive WSL terminals close:
 powershell -ExecutionPolicy Bypass -File .\register-wsl-keepalive.ps1
 ```
 
+For day-to-day operation on the installed workstation, double-click
+`start-spatiallm.bat` to start the keepalive and service, or
+`stop-spatiallm.bat` to stop both. The start script waits until real CUDA mode
+is healthy before reporting success. The stop script then terminates the
+dedicated `Ubuntu-24.04` instance so its RAM and SpatialLM VRAM are released;
+this also ends any other processes running inside that distribution.
+
 See [deployment operations](../../docs/spatiallm-4080-deployment.md).
 
 ## Development test
