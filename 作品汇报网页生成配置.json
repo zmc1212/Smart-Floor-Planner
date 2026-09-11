@@ -1,0 +1,52 @@
+{
+  "project": {
+    "type": "interior",
+    "name": "家装设计方案汇报",
+    "description": "客户方案汇报展示"
+  },
+  "interaction": {
+    "mode": "scroll",
+    "motionPlan": [
+      {
+        "index": "0",
+        "chapterId": "intro",
+        "transition": "curtain",
+        "enter": "rise"
+      },
+      {
+        "index": "1",
+        "chapterId": "design",
+        "transition": "focus",
+        "enter": "cascade"
+      },
+      {
+        "index": "2",
+        "chapterId": "design",
+        "transition": "vertical",
+        "enter": "image"
+      },
+      {
+        "index": "3",
+        "chapterId": "design",
+        "transition": "flip",
+        "enter": "sequence"
+      },
+      {
+        "index": "4",
+        "chapterId": "design",
+        "transition": "light",
+        "enter": "draw"
+      },
+      {
+        "index": "5",
+        "chapterId": "conclusion",
+        "transition": "gallery",
+        "enter": "type"
+      }
+    ]
+  },
+  "style": {
+    "palette": ["#ffffff", "#333333", "#f0f0f0", "#0078d4"],
+    "pageStylePlan": "minimalist"
+  }
+}

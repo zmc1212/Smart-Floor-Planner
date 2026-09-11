@@ -1,5 +1,7 @@
 'use client';
 
+import { ReportEntry } from '@/components/design-reports/report-entry';
+
 import { useCallback, useEffect, useRef, useState, type Key } from 'react';
 import {
   PageContainer,
@@ -2231,9 +2233,12 @@ function LeadsPage() {
         title={selectedLead ? `${selectedLead.name}的线索详情` : '线索详情'}
         onClose={closeLeadDetail}
         extra={selectedLead && canMutateLead(selectedLead) ? (
-          <Button icon={<FilePenLine size={16} />} onClick={() => openAiWorkbench(selectedLead._id)}>
-            {selectedLead.floorPlanIds?.length || selectedLead.followUpRecords?.length ? '查看方案' : '开始方案'}
-          </Button>
+          <Space>
+            <ReportEntry leadId={selectedLead._id} />
+            <Button icon={<FilePenLine size={16} />} onClick={() => openAiWorkbench(selectedLead._id)}>
+              {selectedLead.floorPlanIds?.length || selectedLead.followUpRecords?.length ? '查看方案' : '开始方案'}
+            </Button>
+          </Space>
         ) : null}
       >
         {selectedLead ? (
@@ -2326,6 +2331,7 @@ function LeadsPage() {
                   <Button size="small" icon={<FilePenLine size={14} />} onClick={() => openAiWorkbench(selectedLead._id)}>
                     前往 AI 工作台
                   </Button>
+
                 </Flex>
                 {publicationLoading ? (
                   <Typography.Text type="secondary">读取发布状态中…</Typography.Text>

@@ -34,6 +34,13 @@ Compose 只把 PostgreSQL 映射到宿主机 `127.0.0.1:5432`；容器间走私�
 
 ## 构建发布包
 
+质量门禁前，脚本先检查 Docker 引擎并执行 `npm run db:check`。Docker Desktop
+必须就绪，`DATABASE_URL` 指向的本地数据库必须可连接且已迁移。本地 `5432`
+端口报 `ECONNREFUSED` 表示数据库未接受连接，并非 ESLint 失败。启动已有的
+本地 PostgreSQL 服务或容器，必要时执行 `npm run db:migrate` 应用待执行的本地
+迁移，再运行 `release.bat`。不要把合同测试指向生产数据库。预检失败会终止发布，
+不会跳过测试或自动迁移数据库。
+
 在 Windows 的 `admin` 目录执行：
 
 ```powershell

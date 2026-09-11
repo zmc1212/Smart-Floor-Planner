@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家装设计方案汇报 - AI 渲染效果</title>
+    <style>
+        :root {
+            --bg-color: #f7f9fa;
+            --text-color: #2c3e50;
+            --accent-color: #3498db;
+            --heading-color: #1a252f;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100dvh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color); color: var(--text-color);
+            overflow: hidden;
+        }
+        #presentation-container { width: 100%; height: 100%; position: relative; }
+        .slide {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: row; justify-content: center; align-items: center;
+            opacity: 0; visibility: hidden; transition: opacity 0.6s ease;
+            box-sizing: border-box; padding: 40px;
+        }
+        .slide.active { opacity: 1; visibility: visible; z-index: 10; }
+        
+        .slide-cover { flex-direction: column; text-align: center; }
+        .slide-cover h1 { font-size: 3.5rem; color: var(--heading-color); margin-bottom: 20px; }
+        .slide-cover p { font-size: 1.5rem; color: #7f8c8d; }
+        
+        .slide-content {
+            display: flex; width: 90%; max-width: 1400px; height: 85%;
+            background: #ffffff; border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08); overflow: hidden;
+        }
+        .text-panel { flex: 1; padding: 50px; display: flex; flex-direction: column; justify-content: center; }
+        .text-panel h2 { font-size: 2.5rem; color: var(--heading-color); margin-bottom: 20px; }
+        .text-panel p { font-size: 1.2rem; line-height: 1.8; color: #555; }
+        .image-panel { flex: 1.5; position: relative; background-color: #eee; overflow: hidden; }
+        .image-panel img { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; }
+        .image-panel.split { display: flex; flex-direction: column; }
+        .image-panel.split img { position: relative; height: 50%; width: 100%; }
+
+        /* Motion keyframes */
+        @keyframes reportTransitionCurtain { from { clip-path: inset(0 50%); filter: brightness(0.5); } to { clip-path: inset(0); filter: none; } }
+        @keyframes reportTransitionFocus { from { opacity: .2; transform: scale(1.12); } to { opacity: 1; transform: none; } }
+        @keyframes reportTransitionShutter { from { clip-path: inset(0 0 100% 0); } to { clip-path: inset(0); } }
+        @keyframes reportTransitionFlip { from { opacity: 0; transform: rotateY(-90deg); } to { opacity: 1; transform: none; } }
+        @keyframes reportTransitionLight { from { opacity: 0.5; filter: brightness(2); } to { opacity: 1; filter: none; } }
+        @keyframes reportTransitionGallery { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: none; } }
+
+        @keyframes reportEnterRise { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+        @keyframes reportEnterCascade { from { opacity: 0; transform: translate(18px, 14px); } to { opacity: 1; transform: none; } }
+        @keyframes reportEnterImage { from { filter: brightness(1.5); } to { filter: none; } }
+        @keyframes reportEnterSequence { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes reportEnterDraw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
+        @keyframes reportEnterType { from { opacity: 0; } to { opacity: 1; } }
+
+        [data-report-slide].is-motion-entering[data-transition="curtain"] > [data-motion-surface] { animation: reportTransitionCurtain 0.8s ease both; }
+        [data-report-slide].is-motion-entering[data-transition="focus"] > [data-motion-surface] { animation: reportTransitionFocus 0.8s ease both; }
+        [data-report-slide].is-motion-entering[data-transition="vertical"] > [data-motion-surface] { animation: reportTransitionShutter 0.8s ease both; }
+        [data-report-slide].is-motion-entering[data-transition="flip"] > [data-motion-surface] { animation: reportTransitionFlip 0.8s ease both; }
+        [data-report-slide].is-motion-entering[data-transition="light"] > [data-motion-surface] { animation: reportTransitionLight 0.8s ease both; }
+        [data-report-slide].is-motion-entering[data-transition="gallery"] > [data-motion-surface] { animation: reportTransitionGallery 0.8s ease both; }
+
+        @media (prefers-reduced-motion: reduce) {
+            [data-report-slide].is-motion-entering > [data-motion-surface],
+            [data-report-slide].is-motion-entering [data-motion-enter-target] {
+                animation: none !important;
+            }
+        }
+        
+        .controls { position: fixed; bottom: 30px; right: 30px; z-index: 100; display: flex; gap: 10px; }
+        button { background-color: rgba(255, 255, 255, 0.9); color: var(--heading-color); border: 1px solid #ddd; padding: 10px 20px; cursor: pointer; border-radius: 30px; }
+        
+        /* Mobile responsive adjustments */
+        @media (max-width: 768px) {
+            .slide { padding: 20px; flex-direction: column; }
+            .slide-cover h1 { font-size: 2rem; }
+            .slide-cover p { font-size: 1.1rem; }
+            .slide-content { flex-direction: column; width: 100%; height: 90%; overflow-y: auto; }
+            .text-panel { padding: 20px; flex: none; height: auto; }
+            .text-panel h2 { font-size: 1.5rem; margin-bottom: 10px; }
+            .text-panel p { font-size: 1rem; }
+            .image-panel { flex: 1; min-height: 250px; }
+            .image-panel.split img { height: 50%; }
+            .controls { bottom: 15px; right: 15px; }
+            button { padding: 8px 15px; font-size: 0.9rem; }
+        }
+    </style>
+</head>
+<body>
+    <div id="presentation-container">
+        <!-- 0: Intro -->
+        <div class="slide slide-cover active" data-report-slide="true" data-chapter-id="intro" data-transition="curtain" data-enter="rise" data-motion-index="0">
+            <div data-motion-surface="true" style="width: 100%; text-align: center;">
+                <h1 data-motion-enter-target="true">家客来：AI 空间设计方案</h1>
+                <p data-motion-enter-target="true">基于本地客户空间素材与智能效果图的提案汇报</p>
+            </div>
+        </div>
+        
+        <!-- 1: Design 1 -->
+        <div class="slide" data-report-slide="true" data-chapter-id="design" data-transition="focus" data-enter="cascade" data-motion-index="1">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel" data-motion-enter-target="true">
+                    <h2>01 现场勘测与原始空间</h2>
+                    <p>利用微信小程序端正式量房功能录入的数据，这是该客户客厅空间的原始毛坯状态。</p>
+                </div>
+                <div class="image-panel">
+                    <img src="design-references/presentation-ai-demo-2026-08/01-before-empty.jpg" alt="原始毛坯空间">
+                </div>
+            </div>
+        </div>
+        
+        <!-- 2: Design 2 -->
+        <div class="slide" data-report-slide="true" data-chapter-id="design" data-transition="vertical" data-enter="image" data-motion-index="2">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel" data-motion-enter-target="true">
+                    <h2>02 现代奶油风提案</h2>
+                    <p>结合客户的年轻化需求，系统生成的现代奶油风效果。整体色调温润。</p>
+                </div>
+                <div class="image-panel">
+                    <img src="design-references/presentation-ai-demo-2026-08/02-modern-cream.jpg" alt="现代奶油风效果图">
+                </div>
+            </div>
+        </div>
+        
+        <!-- 3: Design 3 -->
+        <div class="slide" data-report-slide="true" data-chapter-id="design" data-transition="flip" data-enter="sequence" data-motion-index="3">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel" data-motion-enter-target="true">
+                    <h2>03 风格探索：法式与新中式</h2>
+                    <p>上图展示了浪漫优雅的现代法式风格，下图展示了现代新中式风格。</p>
+                </div>
+                <div class="image-panel split">
+                    <img src="design-references/presentation-ai-demo-2026-08/03-modern-french.jpg" alt="现代法式">
+                    <img src="design-references/presentation-ai-demo-2026-08/04-modern-chinese.jpg" alt="现代新中式">
+                </div>
+            </div>
+        </div>
+
+        <!-- 4: Design 4 -->
+        <div class="slide" data-report-slide="true" data-chapter-id="design" data-transition="light" data-enter="draw" data-motion-index="4">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel" data-motion-enter-target="true">
+                    <h2>04 材质方案替换与细节</h2>
+                    <p>在确认大体风格后，AI 设计支持局部的材质替换。本例展示了替换后的材质效果。</p>
+                </div>
+                <div class="image-panel">
+                    <img src="design-references/presentation-ai-demo-2026-08/05-material-replacement.jpg" alt="材质替换">
+                </div>
+            </div>
+        </div>
+
+        <!-- 5: Conclusion -->
+        <div class="slide" data-report-slide="true" data-chapter-id="conclusion" data-transition="gallery" data-enter="type" data-motion-index="5">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel" data-motion-enter-target="true">
+                    <h2>05 改造前后对比</h2>
+                    <p>极具说服力的成果展示：从原始的空旷框架，到落地的高品质现代奶油风空间。</p>
+                </div>
+                <div class="image-panel split">
+                    <img src="design-references/presentation-ai-demo-2026-08/01-before-empty.jpg" alt="改造前">
+                    <img src="design-references/presentation-ai-demo-2026-08/02-modern-cream.jpg" alt="改造后">
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button onclick="prevSlide()">上一页 (←)</button>
+        <button onclick="nextSlide()">下一页 (→)</button>
+    </div>
+
+    <script>
+        (function attachReportMotion(global) {
+            "use strict";
+            const enteringClass = "is-motion-entering";
+            function assignMotionOrder(slide) {
+                slide.querySelectorAll("[data-motion-enter-target]").forEach((element, index) => {
+                    if (!element.style.getPropertyValue("--motion-order")) {
+                        element.style.setProperty("--motion-order", String(index));
+                    }
+                });
+            }
+            function replay(slide) {
+                if (!(slide instanceof Element)) return;
+                assignMotionOrder(slide);
+                slide.classList.remove(enteringClass);
+                void slide.offsetWidth;
+                slide.classList.add(enteringClass);
+            }
+            function clear(slide) {
+                if (slide instanceof Element) slide.classList.remove(enteringClass);
+            }
+            global.ReportMotion = Object.freeze({ replay, clear });
+        })(window);
+
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        
+        function updateSlides() {
+            slides.forEach((slide, index) => {
+                if (index === currentSlide) {
+                    slide.classList.add('active');
+                    ReportMotion.replay(slide);
+                } else {
+                    slide.classList.remove('active');
+                    ReportMotion.clear(slide);
+                }
+            });
+        }
+        
+        function nextSlide() {
+            if (currentSlide < slides.length - 1) {
+                currentSlide++;
+                updateSlides();
+            }
+        }
+        
+        function prevSlide() {
+            if (currentSlide > 0) {
+                currentSlide--;
+                updateSlides();
+            }
+        }
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') nextSlide();
+            else if (e.key === 'ArrowLeft') prevSlide();
+        });
+        
+        setTimeout(() => updateSlides(), 100);
+    </script>
+</body>
+</html>

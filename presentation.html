@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>家装设计方案汇报 - AI 渲染效果</title>
+    <style>
+        :root {
+            --bg-color: #f7f9fa;
+            --text-color: #2c3e50;
+            --accent-color: #3498db;
+            --heading-color: #1a252f;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100dvh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+        }
+        #presentation-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.6s ease;
+            box-sizing: border-box;
+            padding: 40px;
+        }
+        .slide.active {
+            opacity: 1;
+            visibility: visible;
+            z-index: 10;
+        }
+        
+        /* 封面 Slide */
+        .slide-cover { flex-direction: column; text-align: center; }
+        .slide-cover h1 { font-size: 3.5rem; color: var(--heading-color); margin-bottom: 20px; }
+        .slide-cover p { font-size: 1.5rem; color: #7f8c8d; }
+        
+        /* 内容 Slide 布局 */
+        .slide-content {
+            display: flex;
+            width: 90%;
+            max-width: 1400px;
+            height: 85%;
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .text-panel {
+            flex: 1;
+            padding: 50px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .text-panel h2 { font-size: 2.5rem; color: var(--heading-color); margin-bottom: 20px; }
+        .text-panel p { font-size: 1.2rem; line-height: 1.8; color: #555; }
+        
+        .image-panel {
+            flex: 1.5;
+            position: relative;
+            background-color: #eee;
+            overflow: hidden;
+        }
+        .image-panel img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transition: transform 0.5s ease;
+        }
+        
+        /* 双图对比布局 */
+        .image-panel.split {
+            display: flex;
+            flex-direction: column;
+        }
+        .image-panel.split img {
+            position: relative;
+            height: 50%;
+            width: 100%;
+        }
+
+        /* 动画设定 */
+        [data-report-slide].is-motion-entering[data-transition="fade-in"] > [data-motion-surface] {
+            animation: reportTransitionFade 0.8s ease both;
+        }
+        [data-report-slide].is-motion-entering[data-transition="slide-up"] > [data-motion-surface] {
+            animation: reportEnterRise 0.8s ease both;
+        }
+        [data-report-slide].is-motion-entering[data-transition="curtain"] > [data-motion-surface] {
+            animation: reportTransitionCurtain 0.8s ease both;
+        }
+        
+        @keyframes reportTransitionFade {
+            from { opacity: 0; filter: blur(5px); }
+            to { opacity: 1; filter: none; }
+        }
+        @keyframes reportEnterRise {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes reportTransitionCurtain {
+            from { clip-path: inset(0 50%); filter: brightness(0.5); }
+            to { clip-path: inset(0); filter: none; }
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            background-color: rgba(255, 255, 255, 0.9);
+            color: var(--heading-color);
+            border: 1px solid #ddd;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: 600;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+        }
+        button:hover {
+            background-color: var(--accent-color);
+            color: white;
+            border-color: var(--accent-color);
+        }
+        .progress-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            height: 5px;
+            background-color: var(--accent-color);
+            transition: width 0.3s ease;
+            z-index: 101;
+        }
+    </style>
+</head>
+<body>
+    <div id="presentation-container">
+        
+        <!-- 幻灯片 1：封面 -->
+        <div class="slide slide-cover active" data-report-slide="true" data-chapter-id="intro" data-transition="fade-in">
+            <div data-motion-surface="true" style="width: 100%; text-align: center;">
+                <h1>家客来：AI 空间设计方案</h1>
+                <p>基于本地客户空间素材与智能效果图的提案汇报</p>
+            </div>
+        </div>
+        
+        <!-- 幻灯片 2：现状分析 -->
+        <div class="slide" data-report-slide="true" data-chapter-id="design" data-transition="slide-up">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel">
+                    <h2>01 现场勘测与原始空间</h2>
+                    <p>利用微信小程序端正式量房功能录入的数据，这是该客户客厅空间的原始毛坯状态。</p>
+                    <p>通过蓝牙测距仪（BLE）精准采集的尺寸，为接下来的 AI 设计提供了可靠的框架基础。</p>
+                </div>
+                <div class="image-panel">
+                    <img src="design-references/presentation-ai-demo-2026-08/01-before-empty.jpg" alt="原始毛坯空间">
+                </div>
+            </div>
+        </div>
+        
+        <!-- 幻灯片 3：奶油风 -->
+        <div class="slide" data-report-slide="true" data-chapter-id="design" data-transition="curtain">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel">
+                    <h2>02 现代奶油风提案</h2>
+                    <p>结合客户的年轻化需求，系统生成的现代奶油风效果。整体色调温润，弧形线条搭配柔软材质，为空间注入温馨感。</p>
+                    <p>此风格也是目前装修公司推广会上的高转化风格之一。</p>
+                </div>
+                <div class="image-panel">
+                    <img src="design-references/presentation-ai-demo-2026-08/02-modern-cream.jpg" alt="现代奶油风效果图">
+                </div>
+            </div>
+        </div>
+        
+        <!-- 幻灯片 4：法式与新中式对比 -->
+        <div class="slide" data-report-slide="true" data-chapter-id="design" data-transition="slide-up">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel">
+                    <h2>03 风格探索：法式与新中式</h2>
+                    <p>系统支持基于同一空间框架，进行多风格的快速探索与切换。</p>
+                    <p>上图展示了浪漫优雅的<strong>现代法式</strong>风格，带有经典石膏线元素。</p>
+                    <p>下图展示了沉稳大气的<strong>现代新中式</strong>风格，融合了木质结构与当代审美的平衡。</p>
+                </div>
+                <div class="image-panel split">
+                    <img src="design-references/presentation-ai-demo-2026-08/03-modern-french.jpg" alt="现代法式">
+                    <img src="design-references/presentation-ai-demo-2026-08/04-modern-chinese.jpg" alt="现代新中式">
+                </div>
+            </div>
+        </div>
+
+        <!-- 幻灯片 5：材质替换与细节 -->
+        <div class="slide" data-report-slide="true" data-chapter-id="design" data-transition="fade-in">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel">
+                    <h2>04 材质方案替换与细节</h2>
+                    <p>在确认大体风格后，AI 设计支持局部的材质替换。本例展示了替换后的材质效果，增强了地面的反光度与家具的质感表现。</p>
+                    <p>这一步为设计师在与客户洽谈时提供了即时互动的能力。</p>
+                </div>
+                <div class="image-panel">
+                    <img src="design-references/presentation-ai-demo-2026-08/05-material-replacement.jpg" alt="材质替换">
+                </div>
+            </div>
+        </div>
+
+        <!-- 幻灯片 6：前后对比图 -->
+        <div class="slide" data-report-slide="true" data-chapter-id="conclusion" data-transition="curtain">
+            <div data-motion-surface="true" class="slide-content">
+                <div class="text-panel">
+                    <h2>05 改造前后对比</h2>
+                    <p>极具说服力的成果展示：从原始的空旷框架，到落地的高品质现代奶油风空间。</p>
+                    <p>通过直观的对比图，极大提升了客户对装修方案的信心，助力装修公司负责人达成交易闭环。</p>
+                </div>
+                <div class="image-panel split">
+                    <img src="design-references/presentation-ai-demo-2026-08/01-before-empty.jpg" alt="改造前">
+                    <img src="design-references/presentation-ai-demo-2026-08/02-modern-cream.jpg" alt="改造后">
+                </div>
+            </div>
+        </div>
+
+    </div>
+    
+    <div class="progress-bar" id="progress"></div>
+
+    <div class="controls">
+        <button onclick="prevSlide()">上一页 (←)</button>
+        <button onclick="nextSlide()">下一页 (→)</button>
+    </div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const progress = document.getElementById('progress');
+        
+        function updateSlides() {
+            slides.forEach((slide, index) => {
+                if (index === currentSlide) {
+                    slide.classList.add('active');
+                    slide.classList.add('is-motion-entering');
+                } else {
+                    slide.classList.remove('active');
+                    slide.classList.remove('is-motion-entering');
+                }
+            });
+            progress.style.width = ((currentSlide + 1) / slides.length) * 100 + '%';
+        }
+        
+        function nextSlide() {
+            if (currentSlide < slides.length - 1) {
+                currentSlide++;
+                updateSlides();
+            }
+        }
+        
+        function prevSlide() {
+            if (currentSlide > 0) {
+                currentSlide--;
+                updateSlides();
+            }
+        }
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                prevSlide();
+            }
+        });
+        
+        setTimeout(() => {
+            updateSlides();
+        }, 100);
+    </script>
+</body>
+</html>

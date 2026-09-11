@@ -18,6 +18,28 @@ import {
 
 export const appSchema = pgSchema('app');
 
+// Report snapshots are a read model; they never mutate formal floor-plan geometry.
+export const designReports = appSchema.table('design_reports', {
+  id: bigint('id', { mode: 'bigint' }).primaryKey().generatedAlwaysAsIdentity(),
+  enterpriseId: bigint('enterprise_id', { mode: 'bigint' }).notNull().references(() => enterprises.id, { onDelete: 'restrict' }),
+  leadId: bigint('lead_id', { mode: 'bigint' }).notNull().references(() => leads.id, { onDelete: 'cascade' }),
+  createdBy: bigint('created_by', { mode: 'bigint' }).notNull().references(() => adminUsers.id, { onDelete: 'restrict' }),
+  draft: jsonb('draft').$type<import('@/lib/design-reports/contract').ReportDraft>().notNull(),
+  previousDraft: jsonb('previous_draft').$type<import('@/lib/design-reports/contract').ReportDraft>(),
+  version: integer('version').notNull().default(1),
+  publishedDraft: jsonb('published_draft').$type<import('@/lib/design-reports/contract').ReportDraft>(),
+  publishedVersion: integer('published_version'),
+  shareToken: text('share_token'),
+  publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+}, (table) => [
+  index('design_reports_enterprise_lead_idx').on(table.enterpriseId, table.leadId),
+  index('design_reports_lead_idx').on(table.leadId),
+  index('design_reports_creator_idx').on(table.createdBy),
+  uniqueIndex('design_reports_share_token_idx').on(table.shareToken),
+]);
+
 const id = () =>
   bigint('id', { mode: 'bigint' }).primaryKey().generatedAlwaysAsIdentity();
 const createdAt = () =>

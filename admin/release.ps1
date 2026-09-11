@@ -137,6 +137,16 @@ try {
   Write-Host "Release version: $Version"
   Write-Host "Docker image: $imageName"
 
+  Write-Host '[PRECHECK] Checking Docker and PostgreSQL before the release quality gate...'
+  & docker info --format '{{.ServerVersion}}'
+  if ($LASTEXITCODE -ne 0) {
+    throw 'Docker engine is unavailable. Start Docker Desktop, wait for the engine to be ready, then rerun release.bat.'
+  }
+  & npm run db:check
+  if ($LASTEXITCODE -ne 0) {
+    throw 'PostgreSQL preflight failed. Check the local DATABASE_URL, start the local PostgreSQL service, and apply pending local migrations before rerunning release.bat. See docs/production-deployment.md.'
+  }
+
   Write-Host '[1/6] Running the release quality gate...'
   Invoke-CheckedCommand 'ESLint' { npm run lint }
   Invoke-CheckedCommand 'Survey canvas tests' { npm run test:survey-canvas }

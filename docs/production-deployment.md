@@ -51,6 +51,15 @@ next daily `YYYYMMDD-NNN` version or accepts an explicit value such as:
 release.bat -Version 20260901-001
 ```
 
+Before the quality gate, the script checks the Docker engine and runs `npm run
+db:check`. Docker Desktop must be running, and the local database selected by
+`DATABASE_URL` must be reachable and migrated. `ECONNREFUSED` on local port
+`5432` means the database is not accepting connections; it is not an ESLint
+failure. Start the existing local PostgreSQL service/container, then apply any
+pending local migrations with `npm run db:migrate` and rerun `release.bat`.
+Do not point the contract tests at production. Failed prechecks stop the release;
+they do not skip tests or automatically migrate a database.
+
 The outputs are the versioned ZIP, its `.sha256` sidecar, and
 `auto_deploy.sh`. The ZIP contains the equally versioned Docker image, Compose,
 migrations, build metadata, and nested integrity manifests; it contains no

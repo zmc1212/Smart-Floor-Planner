@@ -1,5 +1,9 @@
 # 后台系统当前功能清单
 
+发布前置条件：`admin/release.ps1` 在现有质量门禁前检查 Docker 引擎并执行
+`npm run db:check`。引擎或本地 PostgreSQL 不可用时终止发布并提示恢复步骤；
+预检不会跳过测试或自动迁移数据库。具体操作见正式环境发布文档。
+
 正式户型 PUT 更新与小程序读取使用同一关联线索负责人边界：当前已派设计师或测量员可在同企业范围内继续并完成另一岗位最初保存的户型。
 
 本文只记录后台当前运行入口、合同、权限和限制。实现过程由 Git 提交保留，
@@ -190,3 +194,14 @@ AI 工作台参考图展示：`/ai-studio/scenarios` 在每轮生成结果旁渲
 ## S4-B Snap Rounding 合同
 
 **Implemented**：普通提交在拆墙及 Face/Space 同步前，将全图 arrangement 经过单位热像素节点化。小程序/Admin 生成镜像保持 v4 外壳、路由、API 及权限边界；服务端验证提交图，不暗中修复。未修改可见 UI、插画、BLE 或设计来源。详见[当前算法、测量及验收合同](./surveying-module/snap-rounding.zh-CN.md)。
+
+## 设计汇报（Implemented / Limited）
+
+- 页面：/design-reports、/design-reports/[id]。后台侧栏、线索详情抽屉顶栏、AI 工作台提供入口。复用 ai-scenarios 菜单权限（沿用企业负责人/设计师既有默认权限），页面/API 允许企业负责人、当前负责设计师，以及通过既有 global_tenant_id 解析器选定企业的平台管理员 admin／超级管理员 super_admin。平台角色沿用既有菜单豁免，但所有汇报读写继续使用选中企业的事务/RLS，不进行平台全量汇报查询。抽屉顶栏在“查看方案”旁独立展示“设计汇报”，不受原方案发布权限限制；其他角色不能管理汇报。
+- API：GET/POST /api/design-reports（GET view=customers 搜索有权访问的客户）；GET/PUT /api/design-reports/[id]；POST /api/design-reports/[id]/{generate,publish,withdraw,restore}；GET /api/design-reports/[id]/{asset,price,export}。素材由设计师主动选择，来源为客户已发布方案图、当前客户现场照片、已完成正式 v4 户型快照；不写户型几何。
+- PostgreSQL 迁移 0057_design_reports 新增具备租户 RLS 的 design_reports，保存草稿、上次草稿、乐观版本号、发布快照/版本和可撤回随机分享令牌。编辑保存不改变发布版；重新发布轮换链接，撤回使链接失效。拒绝跨企业及非负责设计师访问。关闭/归档客户不可编辑或分享；停用企业不可分享。选中素材被删除或方案撤回后停止提供该发布版。
+- GET /api/public/design-reports/[token] 向持有链接的人提供无需登录的发布 HTML；assetId 仅交付发布快照中选中的图片。使用 private no-store、no-referrer、文本转义和受限 CSP。发布弹窗明确确认对外可见性；此功能是持链阅读，不是客户账号鉴权。
+- 流程：选择客户/汇报目的；编辑排序章节；确认大纲；每页选择最多四张图并编辑正文；连续阅读/逐页演示预览；发布、复制、撤回；导出单文件离线 HTML（原图合计上限 30MB）。支持恢复上次保存、撤销最近一次采用的 AI 建议；离线文件无法撤回。最多 30 章、标题 100 字、每页正文 3000 字；演示长页可在页内滚动。
+- 真实 AI 大纲/单页建议复用 executePostgresAdviceGeneration、chat.general、text.design_advice 计费审计；按钮消耗读取既有定价。外部调用不占数据库事务。建议需主动采用并保存，模型失败不会覆盖草稿。本版 AI 不分析图片像素，不声称识别图片内容。
+- 设计依据：双语后台 UI 改造合同、既有 Ant Design/Admin Pro 控件，以及用户批准的章节/预览/编辑三栏结构。验证：本地迁移、七项聚焦合同/PostgreSQL 测试及生产构建通过；范围 lint 无错误（一个动态图片警告）。生成阅读器样例通过单活动页切换及 390px 无横向溢出检查；截图：tmp/design-report-reader-mobile.png。登录态 Chrome 视觉核验和真实上游 AI 调用仍待补。没有小程序源码/路由改动。
+- Limited：暂不支持说明文档上传/OCR、自由画布、生成图片、多主题、PDF/PPTX 导出、客户批注或小程序档案入口；首版使用已持久化项目图片和手工补充事实。

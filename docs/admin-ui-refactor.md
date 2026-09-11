@@ -29,6 +29,7 @@ Keep at most one current record per route. A record contains:
 
 | Field | Required value |
 | --- | --- |
+| /design-reports and /design-reports/[id] | Existing bright Ant Design/Admin Pro design authority; list/create dialog, chapter/preview/editor columns, explicit AI adoption, publication confirmation and HTML reader. The lead drawer header and AI workbench expose report links independently of scheme publication permissions. | Reuses ai-scenarios; assigned designer / enterprise_admin plus admin/super_admin in a selected enterprise (tenant RLS remains enforced). New report APIs and bearer-link publication; existing scheme publication and geometry contracts unchanged. | Local migration, focused contract/RLS lifecycle tests and production build pass. Authenticated Chrome visual QA pending; reader fixture passes single-active-page and 390px overflow checks (tmp/design-report-reader-mobile.png). | Reopen for reproducible editor/reader layout defects or report workflow/access changes. |
 | Route | Current pathname and page owner |
 | Visual scope | The current surface changed or restored |
 | Boundaries | Unchanged API, permission, tenant, and navigation contracts |

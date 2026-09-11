@@ -54,6 +54,8 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/platform/sms-delivery-logs': 'sms-settings',
   '/api/platform/llm-config': 'llm-settings',
   '/ai-studio': 'ai-scenarios',
+  '/design-reports': 'ai-scenarios',
+  '/api/design-reports': 'ai-scenarios',
   '/api/ai/workflows': 'ai-scenarios',
   '/api/ai/workflow-leads': 'ai-scenarios',
   '/api/ai/design-capabilities': 'ai-scenarios',
@@ -135,6 +137,7 @@ export async function proxy(request: NextRequest) {
   // 1. Allow unauthenticated entry points and routes with their own verification.
   if (
     pathname === '/api/health' ||
+    pathname.startsWith('/api/public/design-reports/') ||
     pathname === '/api/internal/seed' ||
     pathname === '/api/internal/lead-claim-windows/run' ||
     pathname.startsWith('/api/auth/') || 
@@ -161,6 +164,9 @@ export async function proxy(request: NextRequest) {
     }
 
     const role = payload.role as string;
+    if ((pathname.startsWith('/design-reports') || pathname.startsWith('/api/design-reports')) && !['super_admin', 'admin', 'enterprise_admin', 'designer'].includes(role)) {
+      return pathname.startsWith('/api/') ? NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }) : NextResponse.redirect(new URL('/', request.url));
+    }
     const userPermissions = (payload.permissions as string[]) || [];
 
     if (pathname.startsWith('/media-storage') && role !== 'super_admin' && role !== 'admin') {

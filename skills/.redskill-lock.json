@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "skills": {
+    "residential-spatial-design": {
+      "name": "residential-spatial-design",
+      "version": "1.0.0",
+      "source": "redskill",
+      "install_dir": "/mnt/g/workspace/向总/Smart-Floor-Planner/skills/residential-spatial-design",
+      "installed_at": "1788850733016",
+      "sha256": "015682293066f0815af009f23298f0ccf7fae769d8d63e4c31cac10e1776f827"
+    }
+  }
+}

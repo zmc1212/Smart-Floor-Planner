@@ -138,6 +138,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'ai-create', permissionKey: 'ai-scenarios', label: 'AI 创作台', icon: Sparkles, href: '/ai-studio/create', newTab: true },
         { key: 'ai-scenarios', label: 'AI 工作台', icon: Sparkles, href: '/ai-studio/scenarios', newTab: true },
+        { key: 'design-reports', label: '设计汇报', icon: Sparkles, href: '/design-reports' },
         { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
         { key: 'ai-presets', label: 'AI 预设配置', icon: Settings, href: '/ai-presets' },
       ]
@@ -491,6 +492,7 @@ export default function Sidebar() {
 
   const hasMenuPermission = (key: string) => {
     if (!admin) return true;
+    if (key === 'design-reports') return ['admin', 'super_admin'].includes(admin.role || '') || (['enterprise_admin', 'designer'].includes(admin.role || '') && Boolean(admin.effectivePermissions?.includes('ai-scenarios')));
     if (admin.role === 'super_admin') return true;
     if (key === 'media-storage') return admin.role === 'super_admin' || admin.role === 'admin';
     if (key === 'sms-settings') return admin.role === 'super_admin' || admin.role === 'admin';

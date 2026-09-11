@@ -17,7 +17,7 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { useConfirmDialog } from '@/components/admin/confirm-dialog';
 import { notify } from '@/components/admin/operation-feedback';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -316,7 +316,19 @@ export default function ReferrersPage() {
               />
             ) : null}
             {rosterView === 'network' && canViewReferrerNetwork ? (
-              <Card className="admin-panel-card" title="员工推广网络">
+              <Card
+                className="admin-panel-card"
+                title="员工推广网络"
+                extra={
+                  <Button
+                    icon={<RefreshCw size={14} />}
+                    loading={networkLoading}
+                    onClick={() => void loadNetwork()}
+                  >
+                    刷新
+                  </Button>
+                }
+              >
                 {networkLoading ? (
                   <Flex justify="center" style={{ padding: 40 }}><Spin tip="正在加载推广网络" /></Flex>
                 ) : networkError ? (

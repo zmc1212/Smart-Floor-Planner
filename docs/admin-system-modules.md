@@ -1,5 +1,10 @@
 # Admin System: Current Module Inventory
 
+Release prerequisite contract: `admin/release.ps1` checks Docker engine availability
+and `npm run db:check` before the existing quality gate. An unavailable engine or
+local PostgreSQL database stops release with a recovery hint; preflight never
+skips tests or migrates a database automatically. See the production runbook.
+
 Formal floor-plan PUT mutations use the same linked-lead responsibility boundary as Mini Program reads: the currently assigned designer or measurer may continue and complete a plan originally saved by the other field role, subject to the shared enterprise boundary.
 
 This is the current Admin runtime inventory. It records stable entry points,
@@ -367,3 +372,14 @@ Lead lifecycle now supports `referrer_withdrawn` and `referrer_withdrawal_revert
 ## S4-B Snap Rounding contract
 
 **Implemented**: ordinary commits route the complete arrangement through unit hot pixels before wall splitting and Face/Space synchronization. The generated Mini Program/Admin implementation retains the v4 envelope, routes, APIs and permission boundaries; the server validates without silently repairing submitted graphs. No visible UI, artwork, BLE or design-source change. See the [current algorithm, measurement and verification contract](./surveying-module/snap-rounding.md).
+
+## Design reports (Implemented / Limited)
+
+- Routes: /design-reports and /design-reports/[id]. Sidebar, lead drawer header, and AI workbench expose the entry. Reuses ai-scenarios menu permission (including existing enterprise_admin/designer defaults); route and API guards allow enterprise_admin, the assigned designer, and platform admin/super_admin after selecting an enterprise via the existing global_tenant_id resolver. Platform roles retain their standard menu bypass, but every report read/write still uses the selected tenant transaction/RLS, never platform-wide report queries. The drawer header exposes Design report beside View scheme independently of scheme-publication permission. Other roles cannot manage reports.
+- APIs: GET/POST /api/design-reports (GET view=customers searches eligible customers); GET/PUT /api/design-reports/[id]; POST /api/design-reports/[id]/{generate,publish,withdraw,restore}; GET /api/design-reports/[id]/{asset,price,export}. Assets are explicitly selected from active customer-published scheme images, current lead site photos, and completed formal-v4 floor-plan preview assets. No geometry writes.
+- PostgreSQL migration 0057_design_reports adds tenant-RLS design_reports with draft, previous draft, optimistic version, publication snapshot/version, and revocable random share token. Saved edits never alter the publication snapshot. Re-publication rotates the link; withdrawal revokes it. Cross-tenant and non-assigned access is rejected. Closed/archived leads cannot be edited or shared; disabled enterprises cannot share. Deleted/withdrawn selected source assets stop the publication from being served.
+- GET /api/public/design-reports/[token] serves the published HTML without login to anyone holding the link; assetId serves only images selected in that snapshot. Private no-store delivery, no-referrer, escaped text and a restrictive CSP apply. The publish dialog explicitly confirms external visibility. This is a bearer-link reader, not customer-account authentication.
+- Workflow: choose customer/purpose; edit/reorder chapters; confirm outline; select up to four images per chapter; edit text; preview continuous reading or single-page presentation; publish/copy/revoke; export self-contained HTML (30MB source-image budget). Last saved draft and last adopted AI suggestion can be restored. Exported files cannot be revoked. Up to 30 chapters, 100-character titles, 3000-character body per page; long presentation pages scroll internally.
+- Real AI outline/page suggestions use executePostgresAdviceGeneration, chat.general and text.design_advice billing/audit. The displayed point cost is loaded from existing pricing. External I/O runs outside database transactions. Suggestions require explicit adoption and save; model errors do not overwrite drafts. AI does not inspect image pixels in this release and cannot claim visual observations.
+- Design authority: bilingual Admin UI refactor contract, existing Ant Design/Admin Pro controls, and the user-approved chapter/preview/editor arrangement. Validation: local migration, seven focused contract/PostgreSQL tests and production build pass; scoped lint passes with one dynamic-image warning. The generated reader fixture passed single-active-page switching and 390px no-horizontal-overflow checks; screenshot: tmp/design-report-reader-mobile.png. Authenticated Chrome visual QA and a real upstream AI call remain pending. No Mini Program source or route changes.
+- Limited: no document uploads/OCR, freeform canvas, image generation, multi-style themes, PDF/PPTX export, customer comments, or Mini Program archive entry. First release uses existing persisted project images and manually entered facts.

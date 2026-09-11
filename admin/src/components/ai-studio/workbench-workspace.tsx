@@ -68,6 +68,7 @@ import {
   promptTemplatePreviewSrc,
 } from '@/lib/ai/prompt-template-reference';
 import { cn } from '@/lib/utils';
+import { ReportEntry } from '@/components/design-reports/report-entry';
 
 type BootstrapData = {
   account: { balance: number; frozenBalance: number; availableBalance: number };
@@ -1215,6 +1216,7 @@ export function WorkbenchWorkspace() {
           >
             {detail?.publishedScheme ? '更新客户方案' : '发送给客户'}{selectedImageIds.length ? `（${selectedImageIds.length}）` : ''}
           </Button>
+          <ReportEntry leadId={selectedLeadId} />
           <button type="button" title={dark ? '切换日间主题' : '切换夜间主题'} onClick={() => persistTheme(dark ? 'light' : 'dark')} className={cn('flex size-9 items-center justify-center rounded-full border', t.iconBtn)}>
             {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </button>
