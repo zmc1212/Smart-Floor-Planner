@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import * as jose from 'jose';
 import { tenantStorage, TenantStore } from './tenant-context';
 
@@ -56,6 +56,30 @@ export async function getTenantContext(request: Request | NextRequest): Promise<
   } catch {
     return null;
   }
+}
+
+/**
+ * Route-level guard for platform-only admin APIs (`super_admin` / `admin`).
+ * Returns the 401/403 response to send, or null when the caller may proceed.
+ * Mini Program tokens (aud=miniprogram) are rejected by getTenantContext.
+ */
+export async function authorizePlatformAdmin(
+  request: Request | NextRequest
+): Promise<NextResponse | null> {
+  const context = await getTenantContext(request);
+  if (!context) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+  if (context.role !== 'super_admin' && context.role !== 'admin') {
+    return NextResponse.json(
+      { success: false, error: 'Forbidden' },
+      { status: 403 }
+    );
+  }
+  return null;
 }
 
 /**

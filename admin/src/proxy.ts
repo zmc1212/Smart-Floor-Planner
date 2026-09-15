@@ -50,6 +50,8 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/assignment-performance': 'referrer-network-operations',
   '/api/enterprises': 'enterprises',
   '/api/admin/enterprise-registration-codes': 'enterprises',
+  '/api/admin-users': 'admins',
+  '/api/users': 'users',
   '/api/platform/sms-config': 'sms-settings',
   '/api/platform/sms-delivery-logs': 'sms-settings',
   '/api/platform/llm-config': 'llm-settings',
@@ -141,10 +143,24 @@ export async function proxy(request: NextRequest) {
     pathname === '/api/internal/seed' ||
     pathname === '/api/internal/lead-claim-windows/run' ||
     pathname.startsWith('/api/auth/') || 
-    pathname.startsWith('/api/miniprogram/') ||
-    authHeader?.startsWith('Bearer ')
+    pathname.startsWith('/api/miniprogram/')
   ) {
     return passThrough(request);
+  }
+
+  // 1b. Bearer callers (mini-program staff tokens reaching shared routes) skip
+  // cookie-session permission mapping, but the token itself must verify so
+  // unauthenticated requests cannot bypass middleware authorization.
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      await jose.jwtVerify(authHeader.slice(7), secret);
+      return passThrough(request);
+    } catch {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
   }
 
   // 2. Check for auth token

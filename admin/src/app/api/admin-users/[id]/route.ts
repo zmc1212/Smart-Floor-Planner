@@ -7,6 +7,7 @@ import {
 } from '@/db/postgres-dto';
 import { AdminUserRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
+import { authorizePlatformAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await authorizePlatformAdmin(request);
+  if (denied) return denied;
   try {
     const { id } = await params;
     const adminId = parsePostgresId(id);
@@ -146,9 +149,11 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await authorizePlatformAdmin(request);
+  if (denied) return denied;
   try {
     const { id } = await params;
     const admin = await withPlatformTransaction((transaction) =>

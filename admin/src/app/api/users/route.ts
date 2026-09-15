@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server';
 import { userToDto } from '@/db/postgres-dto';
 import { FloorPlanRepository, UserRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
+import { authorizePlatformAdmin } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
+  const denied = await authorizePlatformAdmin(req);
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(req.url);
     const page = Math.max(Number(searchParams.get('page')) || 1, 1);
@@ -51,6 +54,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const denied = await authorizePlatformAdmin(req);
+  if (denied) return denied;
   try {
     const body = await req.json();
     const user = await withPlatformTransaction((transaction) =>

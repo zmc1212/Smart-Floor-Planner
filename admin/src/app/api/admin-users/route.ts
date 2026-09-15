@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { adminUserToDto, parseOptionalPostgresId } from '@/db/postgres-dto';
 import { AdminUserRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
+import { authorizePlatformAdmin } from '@/lib/auth';
 import {
   getEffectivePermissions,
   getRolePermissionMap,
@@ -38,6 +39,8 @@ function duplicateResponse(error: unknown) {
 }
 
 export async function GET(request: Request) {
+  const denied = await authorizePlatformAdmin(request);
+  if (denied) return denied;
   try {
     const { searchParams } = new URL(request.url);
     const admins = await withPlatformTransaction((transaction) =>
@@ -65,6 +68,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = await authorizePlatformAdmin(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const {
