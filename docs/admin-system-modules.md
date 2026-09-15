@@ -351,6 +351,8 @@ Chinese mirror: [admin-system-modules.zh-CN.md](./admin-system-modules.zh-CN.md)
 AI workbench concurrency note: a single workflow may submit multiple creation rounds while earlier rounds are pending or processing. Batch sequence allocation remains serialized by the task-row lock, and credit holds remain isolated per generation.
 
 AI workbench reference gallery: `/ai-studio/scenarios` renders every persisted batch `referenceAssetIds` item as a labeled thumbnail (`户型结构`, `风格图`, `现场图`, or `补充参考`) alongside that round's generated images, matching the Mini Program workbench. The existing tenant, asset-image route, and generation contracts are unchanged.
+
+The floor-plan image proxy requires an authenticated Admin session with AI permission, rejects private/link-local/metadata targets and redirects, accepts only bounded image responses, and uses private no-store caching.
 ### Referrer withdrawal lifecycle (Implemented)
 
 Lead lifecycle now supports `referrer_withdrawn` and `referrer_withdrawal_reverted` audit actions, opaque `referrerRecordCode`, and actor fields for the Mini Program user/referrer membership. The dedicated Mini Program routes atomically close or undo eligible pre-service referrals, release attribution and claim windows, and create deduplicated staff notifications; closed withdrawn leads remain visible as read-only history and are excluded from active referrer metrics. Admin `/leads` list and detail hide scheme, appointment, profile, follow-up, publication, and retry CTAs on those closed rows; enterprise owners still have **重新激活**. Assignment-audit `eventType`/`errorCode` and claim-window `resolutionReason` render through Chinese label maps.

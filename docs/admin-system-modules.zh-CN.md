@@ -173,6 +173,8 @@ English mirror: [admin-system-modules.md](./admin-system-modules.md)
 AI 工作台并发说明：同一方案会话可在前一轮仍处于 `pending` 或 `processing` 时继续提交多轮生成。批次序号仍由任务行锁串行分配，点数冻结按每条生成记录独立隔离。
 
 AI 工作台参考图展示：`/ai-studio/scenarios` 在每轮生成结果旁渲染该批次全部持久化 `referenceAssetIds` 缩略图，并按「户型结构」「风格图」「现场图」「补充参考」标注，和小程序工作台保持一致。租户范围、媒体图片接口及生成合同不变。
+
+户型图片代理要求已认证后台会话具备 AI 权限，拒绝内网/链路本地/云元数据地址与跳转，仅接受有大小上限的图片响应，并使用 private no-store 缓存。
 ### 推广人撤销线索生命周期（已实现）
 
 线索生命周期新增 `referrer_withdrawn`、`referrer_withdrawal_reverted` 审计动作、`referrerRecordCode` 以及小程序用户/推广企业成员关系的独立操作人字段。专用小程序接口在事务内关闭或撤回满足“实质服务前”条件的推广线索，释放客户归属锁和抢单窗口并生成去重的员工提醒；撤销线索保留为只读历史，不计入推广人有效统计。后台 `/leads` 列表和详情对这些已关闭行隐藏开始方案、预约、补充资料、跟进、方案发布和重试派单，企业负责人仍可「重新激活」。派单审计 `eventType`/`errorCode` 与抢单窗口 `resolutionReason` 以中文标签展示。

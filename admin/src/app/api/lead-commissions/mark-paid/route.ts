@@ -23,7 +23,7 @@ export async function POST(request: Request) {
         const repository = new LeadCommissionRepository(transaction);
         return payments
           ? repository.confirmPayments(enterpriseId, payments, actorId)
-          : repository.markPaid(enterpriseId, commissionIds, actorId);
+          : repository.markPaid(enterpriseId, commissionIds, actorId, { rejectZeroAmount: true });
       });
       return NextResponse.json({ success: true, data: rows.map((row) => ({
         id: row.id.toString(), payableAmount: row.payableAmount, status: row.status, paidAt: row.paidAt, paidBy: row.paidBy?.toString() ?? null,

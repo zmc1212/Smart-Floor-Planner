@@ -23,6 +23,8 @@ test('Admin and Mini Program confirm final amounts and paid status through the s
   assert.match(adminRoute, /withTenantTransaction\(enterpriseId/);
   assert.match(miniRoute, /confirmPayments\(enterpriseId, payments, actorId\)/);
   assert.match(adminRoute, /confirmPayments\(enterpriseId, payments, actorId\)/);
+  assert.match(adminRoute, /markPaid\(enterpriseId, commissionIds, actorId, \{ rejectZeroAmount: true \}\)/);
+  assert.match(miniRoute, /markPaid\(enterpriseId, commissionIds, actorId, \{ rejectZeroAmount: true \}\)/);
   assert.match(parser, /0\.01 至 999999999999\.99/);
   assert.match(parser, /commission_payment_duplicate/);
 });
