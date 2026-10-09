@@ -551,6 +551,16 @@ export class AiCreationRepository {
     return rows[0] ?? null;
   }
 
+  /** Marks live media assets as soft-deleted so the purge runner can reclaim their objects later. */
+  async markMediaAssetsDeleted(ids: bigint[]) {
+    if (!ids.length) return [];
+    const rows = await this.transaction.update(mediaAssets)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(inArray(mediaAssets.id, nonEmptyIds(ids)), sql`${mediaAssets.deletedAt} is null`))
+      .returning();
+    return rows;
+  }
+
   async countMediaAssets(ids: bigint[]) {
     if (!ids.length) return 0;
     const rows = await this.transaction.select({ value: count() }).from(mediaAssets)

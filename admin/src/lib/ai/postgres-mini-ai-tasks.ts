@@ -7,6 +7,7 @@ import {
   getPostgresMediaAssetImageUrl,
   getPostgresAssetIdFromImageUrl,
   readPostgresMediaAssetBuffer,
+  softDeleteGenerationMediaAssetsInTransaction,
   storePostgresMediaBuffer,
 } from '@/lib/ai/postgres-media-assets';
 import { submitPostgresCreationGeneration } from '@/lib/ai/postgres-creation-runtime';
@@ -400,6 +401,13 @@ export async function deletePostgresMiniAiTask(id: string, context: MiniAiContex
   if (!generation) return false;
   if (generation.status === 'processing' || String(asRecord(generation.billing).status) === 'held') throw Object.assign(new Error('生成中的任务不能删除'), { status: 409 });
   const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
-  await withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).updateGeneration(generation.id, { deletedAt: new Date() }));
+  await withTenantTransaction(enterpriseId, async (transaction) => {
+    await new AiCreationRepository(transaction).updateGeneration(generation.id, { deletedAt: new Date() });
+    await softDeleteGenerationMediaAssetsInTransaction(transaction, {
+      enterpriseId,
+      generationId: generation.id,
+      output: generation.output,
+    });
+  });
   return true;
 }

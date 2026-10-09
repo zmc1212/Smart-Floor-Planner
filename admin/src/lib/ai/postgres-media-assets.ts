@@ -1,11 +1,18 @@
 import crypto from 'node:crypto';
 import sharp from 'sharp';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { parsePostgresId } from '@/db/postgres-dto';
+import {
+  aiCreationBatchReferenceAssets,
+  aiCreationTaskReferenceAssets,
+  aiGenerations,
+  aiWorkflows,
+} from '@/db/schema';
 import {
   AiCreationRepository,
   type MediaAssetRecord,
 } from '@/db/repositories';
-import { withTenantTransaction } from '@/db/transaction';
+import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
 import {
   alignedSignedUrlExpiresInSeconds,
@@ -264,4 +271,90 @@ export async function updatePostgresMediaAssetOwner(
   await withTenantTransaction(enterpriseId, (transaction) =>
     new AiCreationRepository(transaction).updateMediaAsset(assetId, { ownerId })
   );
+}
+
+/** Deep-collects media asset ids referenced by synthetic image URLs inside a JSON record. */
+export function collectAssetIdsFromMediaRecord(value: unknown): bigint[] {
+  const ids = new Set<string>();
+  const visit = (node: unknown) => {
+    if (typeof node === 'string') {
+      const assetId = getPostgresAssetIdFromImageUrl(node);
+      if (assetId) ids.add(assetId.toString());
+    } else if (Array.isArray(node)) {
+      node.forEach(visit);
+    } else if (node && typeof node === 'object') {
+      Object.values(node).forEach(visit);
+    }
+  };
+  visit(value);
+  return [...ids].map((id) => BigInt(id));
+}
+
+/**
+ * Soft-deletes the media assets produced by a deleted generation so the purge
+ * runner can reclaim their storage objects later. The generation row must
+ * already carry `deleted_at` inside this transaction, so the live-generation
+ * check below naturally skips it. An asset is kept (not marked) while any of
+ * these still references it:
+ * - another live generation's input/output JSON (cross-round reference URLs)
+ * - a workflow's `source_image` URL
+ * - a hard reference row in `ai_creation_task_reference_assets` /
+ *   `ai_creation_batch_reference_assets` (legacy creation pipeline inputs)
+ *
+ * Returns the asset ids that were actually marked.
+ */
+export async function softDeleteGenerationMediaAssetsInTransaction(
+  transaction: PostgresTransaction,
+  input: { enterpriseId: bigint; generationId: bigint; output: unknown }
+) {
+  const candidateIds = collectAssetIdsFromMediaRecord(input.output);
+  if (!candidateIds.length) return [];
+
+  const patterns = candidateIds.map((id) => `%/api/ai/assets/${id.toString()}/image%`);
+  const referenced = new Set<string>();
+  const scanRecord = (value: unknown) => {
+    for (const assetId of collectAssetIdsFromMediaRecord(value)) {
+      const key = assetId.toString();
+      if (candidateIds.some((candidate) => candidate.toString() === key)) referenced.add(key);
+    }
+  };
+
+  const generationHaystacks = await transaction
+    .select({ input: aiGenerations.input, output: aiGenerations.output })
+    .from(aiGenerations)
+    .where(and(
+      eq(aiGenerations.enterpriseId, input.enterpriseId),
+      sql`${aiGenerations.deletedAt} is null`,
+      or(...patterns.map((pattern) => sql`concat(${aiGenerations.input}::text, ' ', ${aiGenerations.output}::text) like ${pattern}`))
+    ));
+  generationHaystacks.forEach((row) => {
+    scanRecord(row.input);
+    scanRecord(row.output);
+  });
+
+  const workflowSources = await transaction
+    .select({ sourceImage: aiWorkflows.sourceImage })
+    .from(aiWorkflows)
+    .where(and(
+      eq(aiWorkflows.enterpriseId, input.enterpriseId),
+      or(...patterns.map((pattern) => sql`${aiWorkflows.sourceImage} like ${pattern}`))
+    ));
+  workflowSources.forEach((row) => scanRecord(row.sourceImage));
+
+  const taskReferenceHits = await transaction
+    .select({ assetId: aiCreationTaskReferenceAssets.assetId })
+    .from(aiCreationTaskReferenceAssets)
+    .where(inArray(aiCreationTaskReferenceAssets.assetId, candidateIds));
+  taskReferenceHits.forEach((row) => referenced.add(row.assetId.toString()));
+
+  const batchReferenceHits = await transaction
+    .select({ assetId: aiCreationBatchReferenceAssets.assetId })
+    .from(aiCreationBatchReferenceAssets)
+    .where(inArray(aiCreationBatchReferenceAssets.assetId, candidateIds));
+  batchReferenceHits.forEach((row) => referenced.add(row.assetId.toString()));
+
+  const eligibleIds = candidateIds.filter((id) => !referenced.has(id.toString()));
+  if (!eligibleIds.length) return [];
+  const marked = await new AiCreationRepository(transaction).markMediaAssetsDeleted(eligibleIds);
+  return marked.map((row) => row.id);
 }

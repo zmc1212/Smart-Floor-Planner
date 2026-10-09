@@ -8,6 +8,7 @@ import {
 } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
 import { canManageLead, isMiniStudioContext, requireMiniStudioContext } from '@/lib/ai/mini-ai-studio';
+import { softDeleteGenerationMediaAssetsInTransaction } from '@/lib/ai/postgres-media-assets';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,11 @@ export async function DELETE(
         return NextResponse.json({ success: false, error: '无权删除该方案轮次' }, { status: 403 });
       }
       await new AiCreationRepository(transaction).updateGeneration(generationId, { deletedAt: now });
+      await softDeleteGenerationMediaAssetsInTransaction(transaction, {
+        enterpriseId,
+        generationId,
+        output: generation.output,
+      });
       await new CustomerProjectRepository(transaction).withdraw({
         enterpriseId,
         leadId: generation.leadId,

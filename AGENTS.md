@@ -175,6 +175,23 @@ Use a Conventional Commit English subject: `feat:`, `fix:`, `refactor:`,
 `docs:`, `chore:`, or `test:`. Keep it concise and limited to the related
 staged change; split unrelated work.
 
+### Repository Hygiene
+
+- `design-references/` is a git-ignored, recyclable working area. The durable
+  set is the files referenced from repository documents (restoration ledger,
+  icon-source license notes, module docs, brand guidelines, source comments);
+  `scripts/cleanup-design-references.mjs` rebuilds that protection list on
+  every run. A directory-level reference in a doc protects the whole subtree,
+  so keep index-style directory pointers intentional.
+- After a design milestone, or at least monthly, run
+  `node scripts/cleanup-design-references.mjs` (dry run), then `--apply` to
+  move unreferenced files older than 30 days into `design-references/.recycle/`.
+  Review the batch, then reclaim the space with `--purge`; `--restore <batch>`
+  recovers a batch.
+- Runtime AI-generated images never go into `design-references/`. They belong
+  to admin media storage (`uploads/ai-assets`) and follow its soft-delete and
+  purge pipeline (`admin/scripts/media-purge.mjs`).
+
 ### Admin UI And Feedback
 
 - Follow the existing Admin UI direction: Ant Design 5, Ant Design Pro

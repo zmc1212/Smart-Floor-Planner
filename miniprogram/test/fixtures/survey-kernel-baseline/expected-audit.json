@@ -2160,58 +2160,6 @@
         "unknownProperties": []
       },
       {
-        "file": "miniprogram/tmp-lshape-preview.js",
-        "classification": "suspected-dead",
-        "binding": "direct-require",
-        "specifiers": [
-          "./packages/surveying/utils/surveyWallGraph.js"
-        ],
-        "resolvedFiles": [
-          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
-        ],
-        "unresolved": false,
-        "exports": [
-          "CLOSE_TOLERANCE_MM",
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "getActiveFloor",
-          "getCursorPlacementTarget",
-          "getNode",
-          "placeCursor",
-          "snapCursorToWall",
-          "startPreview",
-          "startWallSnap"
-        ],
-        "unknownProperties": []
-      },
-      {
-        "file": "miniprogram/tmp-preview-check.js",
-        "classification": "suspected-dead",
-        "binding": "direct-require",
-        "specifiers": [
-          "./packages/surveying/utils/surveyWallGraph.js"
-        ],
-        "resolvedFiles": [
-          "miniprogram/packages/surveying/utils/surveyWallGraph.js"
-        ],
-        "unresolved": false,
-        "exports": [
-          "CLOSE_TOLERANCE_MM",
-          "commitPreviewLength",
-          "confirmClosure",
-          "createSurveyDraft",
-          "getActiveFloor",
-          "getCursorPlacementTarget",
-          "getNode",
-          "placeCursor",
-          "snapCursorToWall",
-          "startPreview",
-          "startWallSnap"
-        ],
-        "unknownProperties": []
-      },
-      {
         "file": "surveying-h5/src/main.js",
         "classification": "developer-harness",
         "binding": "direct-require",

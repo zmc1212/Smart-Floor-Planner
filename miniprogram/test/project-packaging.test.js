@@ -41,8 +41,6 @@ test('source package ignores only development files after unused artwork was del
   );
 
   assert.deepEqual(ignoredFiles, new Set([
-    'tmp-lshape-preview.js',
-    'tmp-preview-check.js',
     'DESIGN.md',
     'design-tokens.json',
   ]));
