@@ -1,5 +1,9 @@
 # 小K第二期：需求整理与人工交接
 
+**P4A共享查询边界（限定实现，整体Limited）。** 原`packages/construction/chat/chat`消息接口在建记录/任务前区分资料查询、处理请求、普通确认与进展上报。查询将原话/照片及有来源的回复持久化到同一项目对话，返回当前项目/房间记录ID/版本/原件，并明确缺少点位图和获准共享的客户需求；不开放私人咨询。记录/媒体/房间变化使派生文字失效，历史、媒体、写入和原键回执每次重验成员/租户。模糊语言先澄清；这是有限确定性分流，不宣称通用语义理解。复用原PPT22/38回复文字和记录组件，不增样式/素材/导航，无迁移或供应商变更。隔离服务5/5、Mini查询/现场12/12通过；原生验证在本批待执行。正式图纸读取/共享、事项动作、P5关闭/批准和外部投递不记完成。证据：`tmp/xiaok-followup-batch/`；合同：[二期](./xiaok-assistant-phase-2.zh-CN.md)。
+
+本次聚焦复用Postgres事务、原键幂等及现有outbox/消息协议，不增编排器或框架checkpointer。已复核维护中的[LangGraph工作流](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents)、[消息/工具测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭ToolMessage问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，不以工具status代替业务回执。查询走确定性服务、不调用模型，原报告整理模型/提示版本不变。
+
 ## 当前P2M.3/P3B：资料关联与持续接续基础（限定Implemented，整体Limited）
 
 资料关联由本人会话/明确房屋组合原话、完成的正式v4主户型与本人可见现场发布版本，带精确来源类型/ID/hash/版本、房间候选、原始消息/媒体ID、受众、依据与查询时间。只读且不建进度草稿。多房屋/多个项目/重名房间先澄清，同名不升级为已核验关系；点位图及共享设计资料仍缺业务来源，不能从墙图虚构。同一房屋多项目或重名房间目前安全停止并待员工核对，工具尚未提供项目/楼层选择器，不宣称完整消歧。当前查询限本人原咨询，未增加设计师共享卡或跨私聊资料读取。C01/C02/U01普通文字气泡与已有发布记录为设计依据，原PPT15/23实际内容已读取；无新布局/素材/导航。
