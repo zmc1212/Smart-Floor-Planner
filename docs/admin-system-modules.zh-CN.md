@@ -1,5 +1,7 @@
 # 后台系统当前功能清单
 
+C05后续：已批准隔离评估库的公开服务专项9/9通过。开发限定真实HTTP验证脚本为`admin/scripts/construction-public-c05-acceptance.ts --development`（在admin用`node --import tsx`运行）；固定localhost:5432/smart_floor_planner，写入前核验既有合成企业2404、操作账号、身份及项目，会话仅内存、结束禁用测试账号。本轮C05客户端回执校验不改变Admin API、模型、角色或管理界面合同。进行中结果及限制见[交接](./xiaok-assistant-handoff.zh-CN.md)。
+
 发布前置条件：`admin/release.ps1` 在现有质量门禁前检查 Docker 引擎并执行
 `npm run db:check`。引擎或本地 PostgreSQL 不可用时终止发布并提示恢复步骤；
 预检不会跳过测试或自动迁移数据库。具体操作见正式环境发布文档。

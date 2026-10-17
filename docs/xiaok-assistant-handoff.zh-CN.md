@@ -2,7 +2,17 @@
 
 本文件记录当前可接续状态；功能范围仍以双语路线图为准。每个新对话先读AGENTS.md、最近嵌套规则、相关模块清单、路线图3.7/3.8及本文件，再检查工作区、Git暂存区和运行进程。仓库.agents目录本批未发现文件；rg不可用，使用受限文件枚举和context-mode处理日志。
 
-## 当前阶段：C03原生围观/恢复验证完成
+## 当前批次：C05回执校验及真实HTTP完成，继续原生与相邻验证
+
+用户最新要求在同一对话推进多个相关节点后再交回，取代每个极小节点立即切换。本批从a8b95cd8eb8a74f8d1935ec8c07af8e44247f0a5、codex/xiaok-public-site-lifecycle接续，开始时481条既有改动/未跟踪路径，暂存为空；`.agents`不存在。快照`tmp/xiaok-vector/c05-batch/workspace-before.json`逐文件记录哈希，pre-edit/保留涉及文件原内容。不得全部暂存或覆盖量房等并行改动。
+
+- 节点A修复客户端回执：工地、版本、revision+1及动作状态须与原请求匹配；预览还须带匹配完整材料。错配保留原action/path/body/key，复用U01原操作核对，无页面结构/样式/素材/API/权限变化。相关源码原为未跟踪的P4B工作，只定向纳入本节点必需的client/public-sites控制器及相关回归，不笼统提交全部P4B。
+- 新增回归修复前14项失败，定向62/62通过；隔离公开服务9/9、开发企业2404真实HTTP7/7步骤通过。`cd admin; node --import tsx scripts/construction-public-c05-acceptance.ts --development`仅核实并修改既有测试工地1/2/5；未预览禁止同意、访客/其他线索拒绝、拒绝/撤回幂等、独立预览与同意、真实提交后丢回包/重建客户端原键核对、新版本不继承同意均通过。会话仅内存、最终测试账号禁用并回写fixture当前状态。首次脚本因签名模块早于env加载而失败401，已改为加载env后导入，失败证据保留为c05-http-harness-import-failure.*。
+- 全量小程序1966项中1965通过/1失败，95.6秒：`survey-kernel-phase0-baseline.test.js`漏录既有`surveying-editor-autosave.test.js`的createSurveyDraft依赖，相关文件哈希未变；保留既有修改，不把全量记通过。节点A相关回归均通过，后续是否修该无关基线须尊重量房工作范围。
+- 节点B正在以唯一副屏Stable2.02.2608080、autoPort9424、SDK0.13.0、基础库3.17.2、390×844验证C05真实点击/重进/未知回执/审核/撤回/版本/切身份。完整施工及Admin lint也在执行，结果以最终证据为准。凭据与journal仅临时内存、不得打印或保存JWT；结束恢复原传输/身份/存储方法并禁用测试账号。
+- 当前证据`tmp/xiaok-vector/c05-batch/`：receipts-before.log、receipts-focused.log、public-service-initial.log、mini-full-node1.log、c05-http.json/.log；原生运行中记录为c05-native.json/.log。双语路线图3.9及模块清单已同步节点A，原C05设计来源未变。
+
+## 上一阶段：C03原生围观/恢复验证完成
 
 - 本批为验证阶段，没有新的产品功能或生产发布。上一阶段ec9ae5ec88f8cbc2d4c6bc473d64b236fce4bb75的入口epoch/无效入口清媒体/禁刷新请求修复保持。未改运行JS、WXML、Less、图片、API、数据模型、权限或Agent，也没有数据库写入；Admin运行合同无变化，因此不虚增Admin模块功能状态。
 - 最终原生11/11步骤通过，定向48/48和真实公开HTTP8/8通过。仅完成C03限定原生围观/恢复，P4B整体仍Limited；C05具体版本业主决定/认证写入、完整光学/高屏/键盘、真实微信授权、真机/BLE和生产发布未验证/未交付，不把本批当作这些项目通过。

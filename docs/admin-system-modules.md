@@ -1,5 +1,7 @@
 # Admin System: Current Module Inventory
 
+C05 follow-up: public service regression9/9 passes against the approved isolated evaluation database. A development-only real-HTTP acceptance driver is `admin/scripts/construction-public-c05-acceptance.ts --development` (run with `node --import tsx` from admin). It pins localhost:5432/smart_floor_planner and verifies existing synthetic enterprise2404/operator/identities/projects before writes; sessions remain in memory and the operator is disabled in cleanup. Current C05 client receipt validation changes no Admin API, model, role or management UI contract. Ongoing results and limitations are in the [handoff](./xiaok-assistant-handoff.zh-CN.md).
+
 Release prerequisite contract: `admin/release.ps1` checks Docker engine availability
 and `npm run db:check` before the existing quality gate. An unavailable engine or
 local PostgreSQL database stops release with a recovery hint; preflight never
