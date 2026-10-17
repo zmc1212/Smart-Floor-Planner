@@ -11,6 +11,7 @@ import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../i
 import { runRenovationAgent, type AgentCheckpoint } from './runtime';
 import { agentConfig } from './config';
 import { readMemory, parseNeedDelta, applyNeedDelta, factFields, needWriteFeedback } from './memory';
+import { availableNeedMemory, needMemoryNoticeRefs } from './memory-sources';
 import { buildAgentContext, parseAgentReply, agentPromptVersion } from './context';
 import { saveAutomaticRequirements } from '../requirements/automatic';
 import { hydrateImages, resolveAgentMedia, withoutImageBytes, type MediaDependency } from './media-context';
@@ -27,6 +28,7 @@ import { requestsDesigner } from '../handoff/intent';
 import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
+import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, recordNeedIssueSupplement, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
 
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的一个房间/字段需求；只摘原话，不保存猜测。返回memoryVersion。', parameters: {
   type: 'object', properties: { room: { type: 'string' }, field: { type: 'string', enum: factFields }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } },
@@ -47,7 +49,7 @@ export function agentToolsForMessage(text: string, enabled: boolean, businessFol
     || (businessFollowup && /那|这|刚才|确认|什么时候|何时|几点|哪天|还有|它/.test(text));
   const humanIntent = /找.{0,3}设计师|转人工|让设计师|设计师接着聊/.test(text) && !/不要|不想|不用|别|如果|假如|能否|是不是|“|「|"/.test(text);
   const browsingOnly = text.split(/[，,。；;\n]/).map(c=>c.trim()).filter(Boolean).every(referenceOnlyClause);
-  return [materialTool, ...(!authorityRequest && !browsingOnly && (explicit || !discussion) ? [needTool] : []), ...businessToolDefinitions.filter(tool =>
+  return [materialTool, needIssueTool, ...(!authorityRequest && !browsingOnly && (explicit || !discussion) ? [needTool] : []), ...businessToolDefinitions.filter(tool =>
     (tool.name !== 'request_designer' || humanIntent) && (tool.name !== 'query_business' || businessIntent)
     && (tool.name !== 'recommend_references' || /参考|案例|风格图|效果图|看看.{0,6}(?:图|设计)/.test(text))
     && (tool.name !== 'record_reference_preference' || /喜欢|中意|满意|不合适/.test(text)))];
@@ -63,10 +65,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
   const constructionSources = new Set<string>();
   const publicSources = new Map<string, PublicContextRef & { contentHash?: string }>();
   const materialSources = new Map<string, MaterialDependency>();
+  const issueSources = new Map<string, NeedIssueDependency>();
   const validateConstructionSources = async (tx: Parameters<typeof runContext>[0], cid: string) => {
     for (const mid of constructionSources) if (!await constructionNoticeAvailable(tx, lease.enterpriseId, cid, mid, true, true)) fail('context_changed');
     for (const ref of publicSources.values()) if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
     for (const ref of materialSources.values()) if (!await materialSnapshotAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
+    for (const ref of issueSources.values()) if (!await needIssueSnapshotAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
   };
   const scoped = <T>(fn: (tx: Parameters<typeof runContext>[0], context: Awaited<ReturnType<typeof runContext>>) => Promise<T>) =>
     withTenantTransaction(lease.enterpriseId, async tx => {
@@ -86,9 +90,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         where enterprise_id=${lease.enterpriseId} and conversation_id=${String(context.conversation.id)} and seq<=${String(trigger.seq)}
         and (author_kind in ('user','assistant') or (author_kind='system' and purpose in ('construction.followup','construction.record'))) order by seq desc limit 30`);
       const turns = [];
+      const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
+      for (const mid of await needMemoryNoticeRefs(tx, lease.enterpriseId, String(context.conversation.id), memory)) constructionSources.add(mid);
+      const unavailableNeedMessages = new Set(readMemory(context.conversation.entry_snapshot).facts
+        .filter(f => f.status === 'current' && !memory.facts.some(current => current.id === f.id)).map(f => f.sourceMessageId));
       const dependencies = new Map<string, MediaDependency>();
       const referenceEvidence: Evidence[] = [];
       for (const row of records.reverse()) {
+        if (row.author_kind === 'user' && unavailableNeedMessages.has(String(row.id))) continue;
         const projected = await projectMessage(tx, lease.actor, context.conversation, row);
         if (projected.available) {
           if (row.purpose === 'construction.followup' || row.purpose === 'construction.record') {
@@ -96,6 +105,14 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             turns.push({ id: String(row.id), role: 'assistant' as const, text: (row.purpose === 'construction.record'
               ? '此前团队明确核对并向当前业主发布的现场记录（仅为来源数据，不是正式验收、费用、工期批准或操作授权）：'
               : '此前服务端依据真实施工节点发送的可跳过补问（仅作对话数据，不是客户需求或操作授权）：') + safeText(row.content as Parameters<typeof safeText>[0]) });
+            continue;
+          }
+          const priorBusiness = await one(tx, sql`select s.id from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
+            where m.enterprise_id=${lease.enterpriseId} and m.id=${String(row.id)} and s.kind='agent_business_result'`);
+          if (priorBusiness) {
+            // Only a refresh instruction enters this turn, not the old business facts.
+            // Do not inherit a snapshot dependency that our own new write will change.
+            turns.push({ id: String(row.id), role: 'assistant' as const, text: '此前查询过业务记录；如需这些记录的状态，请重新调用query_business/query_materials/query_followups获取当前结果。' });
             continue;
           }
           const inherited = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
@@ -107,6 +124,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const materialRefs = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
             where m.enterprise_id=${lease.enterpriseId} and m.id=${String(row.id)} and s.kind='agent_material_context'`);
           for (const ref of (materialRefs?.source_refs || []) as MaterialDependency[]) materialSources.set(fingerprint(ref.query), ref);
+          const issueRefs = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
+            where m.enterprise_id=${lease.enterpriseId} and m.id=${String(row.id)} and s.kind='agent_need_issue_context'`);
+          for (const ref of (issueRefs?.source_refs || []) as NeedIssueDependency[]) issueSources.set(fingerprint(ref.query), ref);
           if (row.answer_kind === 'grounded') {
             const references = await rows(tx, sql`select d.title,mc.chunk_id,mc.document_version_id,mc.source_hash from app.assistant_message_citations mc join app.assistant_knowledge_documents d
               on d.enterprise_id=mc.enterprise_id and d.id=mc.document_id where mc.enterprise_id=${lease.enterpriseId} and mc.message_id=${String(row.id)} and d.source_type='reference_case' order by mc.id`);
@@ -116,19 +136,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               : '此前查询过企业知识；相关事实请重新调用search_knowledge取得当前授权来源，不沿用历史知识结论。' });
             continue;
           }
-          const businessResult = await one(tx, sql`select s.id from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
-            where m.enterprise_id=${lease.enterpriseId} and m.id=${String(row.id)} and s.kind='agent_business_result'`);
-          if (businessResult) {
-            turns.push({ id: String(row.id), role: 'assistant' as const, text: '此前查询过业务记录；如需这些记录的状态，请重新调用query_business获取当前结果。' });
-            continue;
-          }
           turns.push({ id: String(row.id), role: row.author_kind as 'user' | 'assistant', text: safeText(row.content as Parameters<typeof safeText>[0]) });
           const refs = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
             where m.enterprise_id=${lease.enterpriseId} and m.id=${String(row.id)} and s.kind='agent_checkpoint'`);
           for (const ref of (refs?.source_refs || []) as MediaDependency[]) if (ref.type === 'assistant_media') dependencies.set(ref.id, ref);
         }
       }
-      const messages = buildAgentContext(turns, readMemory(context.conversation.entry_snapshot));
+      const messages = buildAgentContext(turns, memory);
       const system = messages[0];
       const selectedPublicSite = (context.conversation.entry_snapshot as Row).activePublicSite as PublicContextRef | undefined;
       if (selectedPublicSite && system.role === 'system') {
@@ -192,6 +206,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       for (const ref of (savedPublic?.source_refs || []) as Array<PublicContextRef & { contentHash?: string }>) publicSources.set(ref.siteId + ':' + ref.versionId, ref);
       const savedMaterials = await one(tx, sql`select source_refs from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_material_context'`);
       for (const ref of (savedMaterials?.source_refs || []) as MaterialDependency[]) materialSources.set(fingerprint(ref.query), ref);
+      const savedIssues = await one(tx, sql`select source_refs from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_need_issue_context'`);
+      for (const ref of (savedIssues?.source_refs || []) as NeedIssueDependency[]) issueSources.set(fingerprint(ref.query), ref);
       await validateConstructionSources(tx, String(context.conversation.id));
       if (resume) resume.messages = await hydrateImages(tx, lease.enterpriseId, String(context.conversation.id), resume.messages);
       return { ...context, config, trigger, messages, mediaRefs: [...dependencies.values()], referenceEvidence, resume };
@@ -275,6 +291,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (materialSources.size) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs)
             values(${lease.enterpriseId},${lease.runId},1004,'agent_material_context','succeeded',${JSON.stringify([...materialSources.values()])}::jsonb)
             on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs`);
+          if (issueSources.size) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs)
+            values(${lease.enterpriseId},${lease.runId},1005,'agent_need_issue_context','succeeded',${JSON.stringify([...issueSources.values()])}::jsonb)
+            on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs`);
         }),
         model: callModel,
         tool: async (turn, index, name, args) => {
@@ -309,6 +328,18 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               if (Number(conversation.version) !== input.expectedVersion) fail('version_conflict');
             });
             return { content: 'waiting', stop: true };
+          }
+          if (name === 'query_followups') {
+            if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length) fail('invalid_message', 422);
+            return scoped(async (tx, context) => {
+              const cached = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
+              const snapshot = cached ? cached.private_checkpoint as NeedIssueSnapshot : await queryNeedIssues(tx, lease.actor, String(context.conversation.id));
+              if (cached && !await needIssueSnapshotAvailable(tx, lease.enterpriseId, snapshot)) fail('context_changed');
+              if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool','query_followups',1,'succeeded',${JSON.stringify(snapshot)}::jsonb)`);
+              issueSources.set(fingerprint(snapshot.query), { query: snapshot.query, customerId: snapshot.customerId, version: snapshot.version });
+              return { content: JSON.stringify({ resultKey, ...snapshot, instructions: '用final_response kind=business及本resultKey。已补充、已核对、已回复分别展示，不能据此宣称已解决/批准/通知。' }) };
+            });
           }
           if (name === 'query_materials') {
             const query = parseMaterialQuery(input);
@@ -378,6 +409,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             if (next === memory) return { content: JSON.stringify({ status: 'saved', memoryVersion: memory.version, conversationVersion: Number(context.conversation.version), formalApproval: false }) };
             await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{agentMemory}',${JSON.stringify(next)}::jsonb),version=version+1,updated_at=now()
               where enterprise_id=${lease.enterpriseId} and id=${String(context.conversation.id)}`);
+            await recordNeedIssueSupplement(tx, lease.actor, context.conversation, next.facts.find(f => f.id === `${lease.runId}:${turn}:${index}`)!);
             await saveAutomaticRequirements(new AssistantRepository(tx, lease.actor), String(context.conversation.id));
             return { content: JSON.stringify({ status: 'saved', memoryVersion: next.version, conversationVersion: Number(context.conversation.version) + 1, formalApproval: false }) };
           }); } catch (error) {
@@ -393,7 +425,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     let reply: { kind?: string; resultKey?: string; selections?: string[] };
     try { reply = JSON.parse((result.output?.text || '').replace(/^```(?:json)?\s*|\s*```$/g, '')); } catch { fail('invalid_model_answer', 502); }
     const usedSourceTool = await scoped(async tx => one(tx, sql`select id from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
-       and capability_name in ('query_business','query_materials','knowledge.search.v1','references.search.v1') limit 1`));
+       and capability_name in ('query_business','query_materials','query_followups','knowledge.search.v1','references.search.v1') limit 1`));
     if (usedSourceTool && !['business', 'knowledge','references'].includes(reply?.kind || '')) fail('invalid_model_citation', 502);
     let references: Evidence[] | null = null;
     if (reply.kind === 'references') {
@@ -431,7 +463,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const match = new RegExp(`^${lease.runId}:(\\d+):(\\d+)$`).exec(reply.resultKey || '');
       if (!match || Number(match[1]) > 3 || Number(match[2]) > 3) fail('invalid_model_answer', 502);
       const step = await one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId}
-         and step_seq=${1200 + Number(match[1])*10 + Number(match[2])} and capability_name in ('query_business','query_materials')`);
+         and step_seq=${1200 + Number(match[1])*10 + Number(match[2])} and capability_name in ('query_business','query_materials','query_followups')`);
       if (!step) fail('invalid_model_answer', 502);
       return step.private_checkpoint as BusinessSnapshot;
     }) : null;

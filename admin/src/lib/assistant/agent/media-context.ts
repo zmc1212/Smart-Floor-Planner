@@ -8,6 +8,7 @@ import { businessSnapshotAvailable, type BusinessSnapshot } from './business-too
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { publicMessageAvailable } from '@/lib/construction/public-projections';
 import { materialSnapshotAvailable, type MaterialDependency } from './materials';
+import { needIssueSnapshotAvailable, type NeedIssueDependency } from '@/lib/construction/need-issues';
 export type MediaDependency = { type: 'assistant_media'; id: string; hash: string };
 /** Call only after conversation authorization; this does not grant conversation access. */
 export async function resolveAgentMedia(tx: PostgresTransaction, enterpriseId: string, conversationId: string, ref: MediaDependency) {
@@ -27,6 +28,9 @@ export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseI
   const materials = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_material_context'`);
   for (const ref of (materials?.source_refs || []) as MaterialDependency[]) if (!await materialSnapshotAvailable(tx, enterpriseId, ref)) return false;
+  const issues = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
+    where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_need_issue_context'`);
+  for (const ref of (issues?.source_refs || []) as NeedIssueDependency[]) if (!await needIssueSnapshotAvailable(tx, enterpriseId, ref)) return false;
   const step = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_checkpoint'`);
   const refs = (step?.source_refs || []) as MediaDependency[];

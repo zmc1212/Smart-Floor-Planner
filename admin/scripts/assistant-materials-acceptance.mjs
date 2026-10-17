@@ -14,10 +14,12 @@ process.env.DATABASE_URL = config.DATABASE_URL;
 const release = await lockAssistantAcceptance();
 try {
   const out = path.resolve(root, '../tmp/xiaok-vector/materials-followups-batch'); fs.mkdirSync(out, { recursive: true });
-  const logPath = path.join(out, process.env.XIAOK_MATERIALS_LIVE === '1' ? 'materials-live.log' : 'materials-isolated.log');
+  const suite = process.argv.includes('--issues') ? 'issues' : 'materials';
+  const pattern = process.env.XIAOK_MATERIALS_TEST_PATTERN;
+  const logPath = path.join(out, suite + (pattern ? '-filtered.log' : process.env.XIAOK_MATERIALS_LIVE === '1' ? '-live.log' : '-isolated.log'));
   fs.writeFileSync(logPath, '');
-  const child = spawn(process.execPath, ['--import', 'tsx', '--test', '--test-concurrency=1',
-    'src/db/__tests__/assistant-materials.test.ts'], { cwd: root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  const child = spawn(process.execPath, ['--import', 'tsx', '--test', '--test-concurrency=1', ...(pattern ? ['--test-name-pattern', pattern] : []),
+    'src/db/__tests__/' + (suite === 'issues' ? 'assistant-need-issues.test.ts' : 'assistant-materials.test.ts')], { cwd: root, env: process.env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   let log = ''; const collect = c => { log += c; fs.appendFileSync(logPath, c); };
   child.stdout.on('data', collect); child.stderr.on('data', collect);
   process.exitCode = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', c => resolve(c ?? 1)); });

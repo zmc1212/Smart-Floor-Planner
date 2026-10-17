@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -13,6 +14,7 @@ import { queryMaterials, materialSnapshotAvailable, parseMaterialQuery, type Mat
 import { fingerprint, type ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { HandoffService } from '@/lib/assistant/handoff/service';
+import { agentPromptVersion } from '@/lib/assistant/agent/context';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
 
 const prefix = 'synthetic-xk-materials-' + randomUUID(), tenants: string[] = [], users: string[] = [];
@@ -160,6 +162,7 @@ test('XK08 human takeover after a materials query fences the answer while keepin
 test('PPT15/23 configured model repeats the sourced need-to-materials path twice', { skip: !live }, async () => {
   for (let iteration = 0; iteration < 2; iteration++) {
     const x = await fixture();
+    const startedAt = Date.now();
     const write = await x.send('请记录书房靠窗，偶尔两人办公。'); assert.equal(write.run.status, 'succeeded', JSON.stringify(write.run));
     const result = await x.send('帮我找下书房对应的图纸和客户需求，缺什么请说清楚。');
     assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
@@ -169,6 +172,17 @@ test('PPT15/23 configured model repeats the sourced need-to-materials path twice
     assert.ok(snapshot.data.sources.some(s => s.ref.type === 'customer_need' && /靠窗|两人办公/.test(s.text)));
     const message = (await x.chat.messages(x.cid)).items.find(m => m.id === result.run.outputMessageId)!;
     assert.equal(message.available, true); assert.match(JSON.stringify(message), /待核对.*点位图/);
-    console.log(JSON.stringify({ case: 'XK01-XK03', iteration, runId: result.lease.runId, sourceTypes: snapshot.data.sources.map(s => s.ref.type), model: 'deepseek-flash', promptVersion: 'xiaok-renovation-v16' }));
+    const trace = await withTenantTransaction(x.eid, async tx => ({
+      steps: await rows(tx, sql`select run_id::text,step_seq,kind,status,capability_name,private_checkpoint,source_refs from app.assistant_run_steps
+        where enterprise_id=${x.eid} and run_id in (${write.lease.runId},${result.lease.runId}) and kind not in ('agent_checkpoint') order by run_id,step_seq`),
+      usage: await rows(tx, sql`select run_id::text,category,quantity,measurement_kind,input_tokens,output_tokens from app.assistant_usage_records
+        where enterprise_id=${x.eid} and run_id in (${write.lease.runId},${result.lease.runId}) order by id`),
+    }));
+    fs.writeFileSync(`../tmp/xiaok-vector/materials-followups-batch/materials-model-trace-${iteration}.json`, JSON.stringify({
+      case: 'XK01-XK03', iteration, promptVersion: agentPromptVersion, model: 'deepseek-flash', elapsedMs: Date.now() - startedAt,
+      sourceTypes: snapshot.data.sources.map(s => s.ref.type), snapshot, output: message, unsupportedClaims: 'not separately scored', repeatedQuestions: 'not separately scored',
+      cost: 'unknown; observed token usage retained, no inferred fee', ...trace,
+    }, null, 2));
+    console.log(JSON.stringify({ case: 'XK01-XK03', iteration, runId: result.lease.runId, sourceTypes: snapshot.data.sources.map(s => s.ref.type), model: 'deepseek-flash', promptVersion: agentPromptVersion }));
   }
 });

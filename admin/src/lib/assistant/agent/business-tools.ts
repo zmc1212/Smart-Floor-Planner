@@ -8,6 +8,7 @@ import { fail, fingerprint, id, type ActorContext } from '../contracts';
 import type { ModelTool } from '../contracts/model';
 import { constructionRead } from '@/lib/construction/customer';
 import { materialSnapshotAvailable, type MaterialSnapshot } from './materials';
+import { needIssueSnapshotAvailable, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
 
 export const businessToolDefinitions: ModelTool[] = [
   { name: 'recommend_references', description: '按客户明确方向查询本企业已授权发布的少量参考案例；query仅用风格/房型/用途关键词，泛看参考时传空字符串。不联网、不生成图片，不是正式施工方案。', parameters: {
@@ -27,7 +28,7 @@ export const businessToolDefinitions: ModelTool[] = [
   } },
 ];
 export type BusinessQuery = { domain: 'appointments' | 'schemes' | 'floorplans' | 'construction'; leadId: string };
-export type BusinessSnapshot = { query: BusinessQuery; customerId: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string } | MaterialSnapshot;
+export type BusinessSnapshot = { query: BusinessQuery; customerId: string; leadIds: string[]; version: string; displayText: string; data: unknown[]; queriedAt: string } | MaterialSnapshot | NeedIssueSnapshot;
 export function parseBusinessQuery(raw: unknown): BusinessQuery {
   const value = raw as BusinessQuery;
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['domain','leadId'].includes(k))
@@ -78,6 +79,7 @@ export async function queryBusiness(tx: PostgresTransaction, actor: ActorContext
 }
 export async function businessSnapshotAvailable(tx: PostgresTransaction, enterpriseId: string, snapshot: BusinessSnapshot) {
   if (snapshot.query.domain === 'materials') return materialSnapshotAvailable(tx, enterpriseId, snapshot as MaterialSnapshot);
+  if (snapshot.query.domain === 'followups') return needIssueSnapshotAvailable(tx, enterpriseId, snapshot as NeedIssueSnapshot);
   const current = await queryBusiness(tx, { enterpriseId, principal: { kind: 'user', userId: snapshot.customerId }, contextVersion: 0, capabilities: [] }, snapshot.query);
   return current.version === snapshot.version && fingerprint(current.leadIds) === fingerprint(snapshot.leadIds);
 }

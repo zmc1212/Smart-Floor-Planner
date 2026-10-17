@@ -2,12 +2,12 @@ import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { adaptSurveyGraphToRooms, parseFormalSurveyLayout } from '@/lib/survey-graph';
-import { customerProjects, constructionNoticeAvailable } from '@/lib/construction/customer';
+import { customerProjects } from '@/lib/construction/customer';
 import { publishedSiteRecord } from '@/lib/construction/site-publications';
 import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
 import { fail, fingerprint, id, safeText, type ActorContext } from '../contracts';
 import type { ModelTool } from '../contracts/model';
-import { readMemory } from './memory';
+import { availableNeedMemory } from './memory-sources';
 
 export const materialTool: ModelTool = {
   name: 'query_materials',
@@ -89,18 +89,11 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
   lines.push(`「${String(lead.community_name || '本人房屋')}」${query.room ? ' / ' + query.room : ''}的当前资料：`);
   // A generic chat is bound only when there is exactly one owned home. No other chat is searched.
   const homeCount = boundLead ? 1 : Number((await one(tx, sql`select count(*) n from app.leads where enterprise_id=${eid} and customer_user_id=${uid} and archived_at is null`))?.n);
-  const memory = readMemory(entry);
+  const memory = await availableNeedMemory(tx, eid, conversationId, entry);
   for (const fact of memory.facts.filter(f => homeCount === 1 && f.status === 'current' && (!query.room || !f.room || f.room === query.room)).slice(-20)) {
     const origin = await one(tx, sql`select id,content from app.assistant_messages where enterprise_id=${eid} and conversation_id=${conversationId}
       and id=${fact.sourceMessageId} and author_kind='user' for share`);
     if (!origin || !safeText(origin.content as Parameters<typeof safeText>[0]).includes(fact.quote)) continue;
-    const contexts = await rows(tx, sql`select s.source_refs from app.assistant_runs r join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id
-      where r.enterprise_id=${eid} and r.conversation_id=${conversationId} and r.trigger_message_id=${fact.sourceMessageId} and s.kind='agent_construction_context'`);
-    let available = true;
-    for (const context of contexts) for (const mid of (context.source_refs || []) as string[]) {
-      if (!await constructionNoticeAvailable(tx, eid, conversationId, mid, true, true)) available = false;
-    }
-    if (!available) continue;
     sources.push({ ref: { type: 'customer_need', id: fact.id, version: fingerprint(fact) }, hash: fingerprint(origin.content), leadId,
       projectId: null, roomId: null, roomName: fact.room, sourceMessageId: fact.sourceMessageId, mediaIds: [], audience: 'customer_self',
       basis: 'owned_conversation', status: 'current', text: fact.quote });
@@ -111,7 +104,7 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
     sources.push({ ref: { type: 'formal_floorplan', id: String(plan.id), version: fingerprint(layout) }, hash: fingerprint(layout), leadId,
       projectId: null, roomId: query.room ? matchingPlanRooms[0].id : null, roomName: query.room, sourceMessageId: null, mediaIds: [],
       audience: 'customer_self', basis: 'primary_plan', status: 'current', text: String(plan.name) });
-    lines.push(`正式户型：「${String(plan.name)}」${query.room ? '包含「' + query.room + '」' : '，闭合房间：' + planRooms.map(r => r.name).join('、')}。由当前主户型读取，未修改量房数据。`);
+    lines.push(`正式户型：「${String(plan.name)}」${query.room ? '包含「' + query.room + '」' : '，房间：' + planRooms.map(r => r.name).join('、')}。`);
   } else missing.push(query.room ? '含该房间的已完成正式主户型' : '已完成正式主户型');
   if (project && (!query.room || matchingRooms.length === 1)) {
     const candidates = await rows(tx, sql`select id from app.construction_site_records where enterprise_id=${eid} and project_id=${projectId}
@@ -130,9 +123,9 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
     }
   }
   if (!sources.some(s => s.ref.type === 'site_record')) missing.push('向本人明确发布的对应现场记录');
-  missing.push('经业务核验的有效点位图及其与现场房间的明确映射');
-  lines.push('关联依据：本人房屋、当前主正式户型、原话房间名及团队发布记录。房间同名只作候选，尚不等于已核验的图纸与现场映射。');
-  lines.push('待核对：' + missing.join('；') + '。需由有权设计师核对，当前资料不代表方案、费用、工期或验收批准。');
+  missing.push('当前有效点位图及其对应房间');
+  lines.push('来源：这次咨询原话、这套房屋的当前正式户型及团队已向你发布的记录。房间对应关系和具体点位仍需设计师核对。');
+  lines.push('待核对：' + missing.join('；') + '。这些资料尚不代表方案、费用、工期或验收已获批准。');
   return finish();
 }
 
