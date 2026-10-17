@@ -11,9 +11,9 @@
 ## 工作区与Git边界
 
 - 仓库G:\workspace\向总\Smart-Floor-Planner，沿用codex/xiaok-public-site-lifecycle，不另建仓库/分支，不合并、不部署、不force push。
-- 开始HEAD为ec9ae5ec88f8cbc2d4c6bc473d64b236fce4bb75，原479条改动/未跟踪路径已建立哈希快照workspace-before.json。运行中另有并行任务更新两份surveying文档及小程序清单；原内容保留，未纳入本批暂存。所有运行源文件和API配置字节保持。
+- 开始HEAD为ec9ae5ec88f8cbc2d4c6bc473d64b236fce4bb75，原479条改动/未跟踪路径已建立哈希快照workspace-before.json并全部保留。并行任务更新两份surveying文档及小程序清单，收尾时另有miniprogram/packages/surveying/editor/surveying-editor.js和miniprogram/test/surveying-editor-autosave.test.js出现改动，当前共481条；均未纳入本批暂存。本阶段未改任何运行源文件或API配置；不要把并行任务的改动归入本阶段。
 - 本批保存只含四份双语模块/还原台账的独立验证备注及本交接，不整体暂存清单/台账里既有大量前置改动。完整路线图和两条C03当前台账行已在本机同步最终验证状态；它们的原P4B前置内容继续留工作区，不笼统提交。不能仅靠本批窄提交重建全部未提交P4B实现。
-- 中间本地记录188c75adb657d4f4d96ea9195e05682caa5dae31仅含四段部分验证备注；最终完成记录在其后。最终commit、普通push、远端开发分支/main SHA核验见tmp/xiaok-vector/p4b-native-followup/p4b-git-save.json。已知远端main基线f273b57171d6dab5c3b8beef1fe124e634d51864；主分支未获修改授权。交回时须核对该JSON与git log -1及远端SHA，不把中间记录误作最终交付。
+- 验证主体提交85463f376954f78c85e45d3ecf66ce31df8e4cad已普通push至origin/codex/xiaok-public-site-lifecycle，git ls-remote已核验远端SHA完全一致；远端main仍为f273b57171d6dab5c3b8beef1fe124e634d51864。中间记录188c75adb657d4f4d96ea9195e05682caa5dae31仅含四段部分验证备注。随后仅追加本交接的Git回执与并行改动边界；最新交接提交/远端核验见tmp/xiaok-vector/p4b-native-followup/p4b-git-save.json，交回时与git log -1复核。没有修改main或扩大提交范围。
 - 用户已有明确逐阶段commit/push授权；当前沙箱.git只读，初次暂存被文件系统拒绝后使用自动审查的定向Git权限成功，不存在自动审批拒绝或待用户批准事项。暂存只通过已审查备注补丁和本交接文件进行；不提交密钥、媒体或无关业务改动。
 
 ## 本阶段实际验证
