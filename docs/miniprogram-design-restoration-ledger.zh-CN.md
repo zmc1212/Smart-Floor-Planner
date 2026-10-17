@@ -1,6 +1,6 @@
 # 小程序设计还原台账
 
-C03当前复核：`packages/construction/public-sites/public-sites`、`packages/construction/public-site/public-site`的最新批准来源保持。390×844原生列表输入、点卡、双Tab、返回与精确版本重进已通过；模拟器PNG348×752、完整宿主1700×960见`tmp/xiaok-vector/p4b-native-followup/`。后续非脚本首页/量房路由中止剩余检查；这是部分原生证据，完整视觉/光学/高屏验收及生产批准均未完成，详见[交接](./xiaok-assistant-handoff.zh-CN.md)。
+C03当前复核：`packages/construction/public-sites/public-sites`、`packages/construction/public-site/public-site`的最新批准来源保持。用户解除占用后，390×844限定原生围观/恢复11/11通过，含输入/清空、点卡、双Tab、返回/重进、文字工地、撤回/重试及无效入口不发请求。已核对路由的模拟器PNG348×752和含胶囊的宿主1700×960见`tmp/xiaok-vector/p4b-native-followup/`。完整光学/高屏/键盘/真实授权验收及生产批准仍未完成，详见[交接](./xiaok-assistant-handoff.zh-CN.md)。
 
 ## 2026-09-03 方案定稿反馈修正
 
