@@ -1,64 +1,60 @@
 # 小K助手阶段接力记录
 
-本文件记录当前可接续状态；功能范围仍以双语路线图为准。每个新对话先读AGENTS.md、最近嵌套规则、相关模块清单、路线图3.7/3.8及本文件，再检查工作区、Git暂存区和运行进程。仓库.agents目录本批未发现文件；rg不可用，使用受限文件枚举和context-mode处理日志。
+**本轮收尾后暂停。** 用户最新要求是“目前对话完成后先暂停，等我通知再继续”。父对话不得自动新建下一阶段。下列入口只供用户明确继续之后使用。
 
-## 当前批次：C05回执校验及真实HTTP完成，继续原生与相邻验证
+## 当前交付：C05具体版本决定、原键回执及来源撤回闭环
 
-用户最新要求在同一对话推进多个相关节点后再交回，取代每个极小节点立即切换。本批从a8b95cd8eb8a74f8d1935ec8c07af8e44247f0a5、codex/xiaok-public-site-lifecycle接续，开始时481条既有改动/未跟踪路径，暂存为空；`.agents`不存在。快照`tmp/xiaok-vector/c05-batch/workspace-before.json`逐文件记录哈希，pre-edit/保留涉及文件原内容。不得全部暂存或覆盖量房等并行改动。
+限定修复Implemented，P4B整体仍Limited。沿用C01/C05同聊卡及U01，未改WXML、Less、图片、导航、API路径、模型/迁移或Agent架构；不扩大角色、租户或来源权限，不合并、不部署。
 
-- 节点A修复客户端回执：工地、版本、revision+1及动作状态须与原请求匹配；预览还须带匹配完整材料。错配保留原action/path/body/key，复用U01原操作核对，无页面结构/样式/素材/API/权限变化。相关源码原为未跟踪的P4B工作，只定向纳入本节点必需的client/public-sites控制器及相关回归，不笼统提交全部P4B。
-- 新增回归修复前14项失败，定向62/62通过；隔离公开服务9/9、开发企业2404真实HTTP7/7步骤通过。`cd admin; node --import tsx scripts/construction-public-c05-acceptance.ts --development`仅核实并修改既有测试工地1/2/5；未预览禁止同意、访客/其他线索拒绝、拒绝/撤回幂等、独立预览与同意、真实提交后丢回包/重建客户端原键核对、新版本不继承同意均通过。会话仅内存、最终测试账号禁用并回写fixture当前状态。首次脚本因签名模块早于env加载而失败401，已改为加载env后导入，失败证据保留为c05-http-harness-import-failure.*。
-- 全量小程序1966项中1965通过/1失败，95.6秒：`survey-kernel-phase0-baseline.test.js`漏录既有`surveying-editor-autosave.test.js`的createSurveyDraft依赖，相关文件哈希未变；保留既有修改，不把全量记通过。节点A相关回归均通过，后续是否修该无关基线须尊重量房工作范围。
-- 节点B正在以唯一副屏Stable2.02.2608080、autoPort9424、SDK0.13.0、基础库3.17.2、390×844验证C05真实点击/重进/未知回执/审核/撤回/版本/切身份。完整施工及Admin lint也在执行，结果以最终证据为准。凭据与journal仅临时内存、不得打印或保存JWT；结束恢复原传输/身份/存储方法并禁用测试账号。
-- 当前证据`tmp/xiaok-vector/c05-batch/`：receipts-before.log、receipts-focused.log、public-service-initial.log、mini-full-node1.log、c05-http.json/.log；原生运行中记录为c05-native.json/.log。双语路线图3.9及模块清单已同步节点A，原C05设计来源未变。
+1. 客户端只接受匹配原动作/工地/不可变版本/预期revision+1/动作结果状态的回执；preview还须包含同版本/revision的完整材料。缺失或错配保留原path/action/body/Idempotency-Key，不假报成功。修复前新增14项回归均失败，修复后通过。
+2. 服务端在返回preview/approve幂等记录之前重验当前材料来源及项目/客户访问。已复现旧记录能在来源撤回后返还旧材料和旧批准回执；现已阻止。来源失效时仍可核对拒绝/撤回，避免妨碍撤回。源失效回执通过既有U01清卡、展开状态与媒体路径。
+3. 业主查看/稍后/同意/拒绝/撤回、实际服务写入、重进、原回包丢失后核对、审核发布、新版本不继承同意、本人/访客/其他线索及切身份后的迟到回执均有自动验证。来源撤销补测还核对恢复原身份后先核对原操作，再进入新版本；不以旧键执行新动作。
 
-## 上一阶段：C03原生围观/恢复验证完成
+## 本批检查与限制
 
-- 本批为验证阶段，没有新的产品功能或生产发布。上一阶段ec9ae5ec88f8cbc2d4c6bc473d64b236fce4bb75的入口epoch/无效入口清媒体/禁刷新请求修复保持。未改运行JS、WXML、Less、图片、API、数据模型、权限或Agent，也没有数据库写入；Admin运行合同无变化，因此不虚增Admin模块功能状态。
-- 最终原生11/11步骤通过，定向48/48和真实公开HTTP8/8通过。仅完成C03限定原生围观/恢复，P4B整体仍Limited；C05具体版本业主决定/认证写入、完整光学/高屏/键盘、真实微信授权、真机/BLE和生产发布未验证/未交付，不把本批当作这些项目通过。
-- 用户在中途明确说“你继续 我把占用解除了”。重新核验现有同一项目后重编译、重跑全部11步成功；无需再向用户索取继续、自动化许可或手工验收。此前异常导航的根因没有定位为产品缺陷，早期失败与不确定诊断保留。
-
-## 工作区与Git边界
-
-- 仓库G:\workspace\向总\Smart-Floor-Planner，沿用codex/xiaok-public-site-lifecycle，不另建仓库/分支，不合并、不部署、不force push。
-- 开始HEAD为ec9ae5ec88f8cbc2d4c6bc473d64b236fce4bb75，原479条改动/未跟踪路径已建立哈希快照workspace-before.json并全部保留。并行任务更新两份surveying文档及小程序清单，收尾时另有miniprogram/packages/surveying/editor/surveying-editor.js和miniprogram/test/surveying-editor-autosave.test.js出现改动，当前共481条；均未纳入本批暂存。本阶段未改任何运行源文件或API配置；不要把并行任务的改动归入本阶段。
-- 本批保存只含四份双语模块/还原台账的独立验证备注及本交接，不整体暂存清单/台账里既有大量前置改动。完整路线图和两条C03当前台账行已在本机同步最终验证状态；它们的原P4B前置内容继续留工作区，不笼统提交。不能仅靠本批窄提交重建全部未提交P4B实现。
-- 验证主体提交85463f376954f78c85e45d3ecf66ce31df8e4cad已普通push至origin/codex/xiaok-public-site-lifecycle，git ls-remote已核验远端SHA完全一致；远端main仍为f273b57171d6dab5c3b8beef1fe124e634d51864。中间记录188c75adb657d4f4d96ea9195e05682caa5dae31仅含四段部分验证备注。随后仅追加本交接的Git回执与并行改动边界；最新交接提交/远端核验见tmp/xiaok-vector/p4b-native-followup/p4b-git-save.json，交回时与git log -1复核。没有修改main或扩大提交范围。
-- 用户已有明确逐阶段commit/push授权；当前沙箱.git只读，初次暂存被文件系统拒绝后使用自动审查的定向Git权限成功，不存在自动审批拒绝或待用户批准事项。暂存只通过已审查备注补丁和本交接文件进行；不提交密钥、媒体或无关业务改动。
-
-## 本阶段实际验证
-
-原生复用唯一副屏Stable2.02.2608080窗口，精确projectpath为本仓库miniprogram，自动化端口9424（不是旧9422或IDE HTTP端口），官方miniprogram-automator0.13.0、基础库3.17.2、逻辑390×844。用户解除占用后只读预检未见其他活跃自动化连接；未关闭、新开或重新配置窗口。最终运行2026-10-17T15:39:56.683Z至15:40:41.310Z，退出0。
-
-| 检查 | 最终结果 |
+| 检查 | 实际结果 |
 | --- | --- |
-| 唯一正确项目/副屏、新鲜编译、SDK/数据/正向元素、仅测试企业传输 | 4步通过，真实服务，不替换响应 |
-| 列表/输入/清空/照片 | 通过，真实3项工地/3项片区选择；输入未发送，随后清空 |
-| 真实点卡/详情双Tab | 工地4版本4；照片元素与服务时间轴均验证 |
-| 原生返回 | 列表重新读取，3项仍可见，未残留详情 |
-| 同一精确版本重进 | 工地4版本4及照片重新获取，详情读取从1增至2 |
-| 文字工地 | 工地9版本9，0张照片、1条真实节选 |
-| 已撤回版本及实际点重试 | 工地6版本6两次404，界面仍不可用、无旧详情 |
-| 无效版本刷新 | 请求总数15→15，保持无效状态，不发请求 |
+| 小程序定向：回执/公开/聊天/生命周期/包装 | 63/63通过 |
+| 真实开发HTTP7步 | 7/7，最终服务修复后重新运行通过 |
+| 最终C05原生 | 12/12，最终原生真实写入/重进/错误恢复通过 |
+| 最终施工全量，包含来源撤回回执新回归 | 67项：64通过、3按原配置跳过、0失败；399.0秒 |
+| 最终Admin全量ESLint | 0错误、30项既有警告 |
+| 最终小程序全量 | 1967项：1966通过、1失败、0跳过；93.1秒 |
+| 文档/路径/双语/唯一台账/暂存差异检查 | 已通过，见stage-validation.json；仅暂存10个相关路径 |
 
-原生请求共13次200、2次404。仅将/api/public/construction/2404/临时内存转向localhost:3006；结束时恢复wx.request/downloadFile，读回transportActiveAfterCleanup=false并回pages/index/index。未改账号/登录凭据/API源文件/安全网络配置或合成业务数据。
+全量失败为既有test/survey-kernel-phase0-baseline.test.js:87调用审计：miniprogram/test/surveying-editor-autosave.test.js新增createSurveyDraft依赖未录入expected-audit.json。本批开始时两文件已经如此，前后SHA-256均一致；保留相关既有/并行量房改动，没有修改测试或伪造全量通过。此项仍是未解决的全仓检查失败。
 
-在miniprogram运行node --test test/public-sites-lifecycle.test.js test/assistant-public-sites.test.js test/assistant-chat.test.js test/project-packaging.test.js：48/48通过，0失败/跳过，945.3902ms。上批全量1950/1950（97.2秒）保留为历史证据，本批无产品源码变化，未重跑全量、Admin lint/build、付费模型评测或类型检查；不能称本批重新通过。
+未运行Admin生产构建、独立全仓tsc、付费真实模型评测或部署。本批未改路由/模型/构建契约；旧355处tsc诊断和历史模型结果不当作本批重新通过。完整宿主胶囊、光学、高屏、键盘、真实微信授权、真机/BLE和生产验收仍未验证、非开发手测门槛。
 
-独立localhost:3006匿名HTTP8/8通过：2404的areas、sites、工地4版本4、文字工地9版本9、JPEG4返回200；工地6版本6、工地4错误版本6和撤回媒体6返回404/public_site_unavailable。均no-store，公开DTO排除已检查的私人ID/原件链接/存储键，照片JPEG签名及34,175字节已核验。这是只读验证，不替代C05/S07服务写入和完整权限回归。
+## 原生、测试数据与恢复
 
-## 设计来源与证据
+复用唯一副屏Stable2.02.2608080原项目窗口，精确projectpath为本仓库miniprogram，autoPort9424、官方SDK0.13.0、基础库3.17.2、逻辑390×844；每次控制均先新鲜编译。没有关闭/新开窗口或更改网络安全配置。模拟器PNG为348×752，截图前均核对顶部路由packages/assistant/chat/chat。宿主辅助捕获无法确认前台归属，未接受宿主图；后续跳过抢前台捕获，不把模拟器图当完整胶囊验收。
 
-- 两路由唯一最新来源仍为design-references/xiaok-p4b-public-sites-v1/C03-01-public-list.png、C03-02-public-detail.png及该目录既有状态/元素表，未提出新设计、切片或更换资产。双语清单/路线图及每路由唯一台账行已同步。
-- 最终证据目录tmp/xiaok-vector/p4b-native-followup/：p4b-native-regression.json/.log、p4b-focused-tests.log、p4b-public-http.json、p4b-stage-validation.json。复用命令node tmp/xiaok-vector/p4b-native-followup/p4b-native-regression.cjs；可用SFP_REPO/SFP_QA_OUTPUT指定仓库/输出。它依赖本机既有tmp中的SDK/CDP/window辅助脚本，不是可脱离现有工作区运行的已发布测试包。
-- 已核对路由与渲染的截图：p4b-native-catalog.png、p4b-native-detail.png、p4b-native-withdrawn.png，以及各自-host.png。逻辑390×844，模拟器PNG348×752，宿主1700×960且包含真实胶囊；最终详情为服务记录Tab，撤回反馈保持原恢复界面。没有将截图比例、元素查询或普通无重叠当成完整像素/光学验收。
-- 早期attempt1至5及before-user-release/、discarded-timeout-captures/只作诊断，不当作最终通过证据。脚本修正了短步骤超时、SDK页栈RPC等待、异步导航/渲染等待、屏外卡片点击和null路径读取断言；未据此改产品代码。最终结果以主JSON中passed=true且11步通过为准。
+只使用已批准localhost:5432/smart_floor_planner的合成企业2404，核验prefix、虚构账号与业主/项目绑定，触及既有测试工地1/2/5（项目3/4/7，业主3193、访客3194、访客咨询121）。状态随运行变化，必须重读tmp/xiaok-vector/p4b-development-fixture.json及真实revision。原生传输仅在内存转向localhost测试路径，JWT和journal仅内存；结束恢复wx.request/downloadFile、存储方法与原身份，读回transportActiveAfterCleanup=false并返回首页。虚构操作账号最终禁用；来源补测临时收紧测试项目customer_access并恢复原true值，未扩大原权限范围。隔离55432/xiaok_embedding_eval的回归自行创建并清理标注合成数据，不写真实业务/生产。
 
-## 下一阶段精确入口（立即新建下一对话，无需等用户说继续）
+repeatable commands：
 
-做一个有边界的“C05具体版本业主决定与原键回执端到端验证/修复”小阶段，保留既有C01/C05同聊卡，不扩展P4C/P5新界面。读取admin/AGENTS.md、双语Admin/Mini清单及路线图3.7/3.8、现有设计README；如修改行为先写可复现回归，再作聚焦修改。
+- 在miniprogram：node --test test/public-owner-receipts.test.js test/assistant-public-sites.test.js test/assistant-chat.test.js test/public-sites-lifecycle.test.js test/project-packaging.test.js
+- 在miniprogram：node --test --test-concurrency=4 test/*.test.js
+- 在admin：node scripts/construction-acceptance.mjs；node node_modules/eslint/bin/eslint.js
+- 在admin：node --import tsx scripts/construction-public-c05-acceptance.ts --development
+- 原生加--native，依赖本机tmp/xiaok-vector/c05-batch/c05-native.cjs及既有SDK/CDP/window辅助文件，不是可脱离当前工作区的已发布测试包。先核验唯一项目/副屏/无占用；本批测试已结束，不要因本文自行操作窗口。
 
-1. 入口代码miniprogram/packages/assistant/lib/public-sites.js、packages/assistant/chat/chat.*、admin/src/lib/construction/public-customer.ts、admin/scripts/construction-public-fixture.ts。验证看全具体版本后同意、拒绝、稍后不写同意、撤回及未知结果原action/version/revision/Idempotency-Key核对；验证重进与本人/跨身份/租户拒绝边界。
-2. 只用已批准localhost:5432/smart_floor_planner开发库的合成企业2404。现有ownerId3193/visitorId3194，访客咨询121，待业主场景project4/conversation125/site2/version2；状态会变化，必须重读当前revision和fixture清单，不盲用旧期望。缺数据可按现有受限fixture流程新建清楚标注的测试场景；不得写真实客户或生产。虚构账号默认禁用，测试会话按已有受限内存签发流程，不保存/打印凭据，结束恢复禁用。
-3. 原生QA仍使用稳定默认工作流，先重新发现精确项目/autoPort、确认副屏及无争用，再新鲜编译。用户本轮已解除占用，不要求新的自动化许可；若再次发现外部路由/控制，停止争抢并继续独立客户端/服务验证，准确记录未覆盖项，不转成用户必做手工清单。
-4. 完成后更新本交接、双语模块/路线图；定向commit、测试通过后普通push开发分支、核验远端SHA，再交回父对话立即建立下一阶段。P4C/P5新设计、ASR、真实微信授权及生产发布仍遵守原授权边界。
+证据目录tmp/xiaok-vector/c05-batch/：receipts-before.log、receipts-focused.log、final-focused-mini.log、source-receipt-before.log、c05-http.json/.log、c05-native.json/.log及driver.json、final-checks-status.json、construction-final.log、construction-final-detail.log、mini-final.log、admin-lint-final.log、stage-validation.json。四个C05状态和来源失效的路由核对截图在同目录。attempt1-host-capture/保留宿主捕获失败，attempt2-business-passed/保留初次11步通过，attempt3-pending-order/保留测试未先核对旧操作而超时的诊断；均不覆盖最终结果。
+
+设计源保持design-references/xiaok-p4b-public-sites-v1/README.md及其C05-01-owner-consent.png、继承的C01/C02/U01状态规则。双语清单、路线图3.9及两份还原台账的唯一chat路由行已同步；没有另立设计权威或声称完成光学校准。
+
+## Git与工作区边界
+
+开始HEAD为a8b95cd8eb8a74f8d1935ec8c07af8e44247f0a5，分支codex/xiaok-public-site-lifecycle，481条既有改动/未跟踪路径、暂存为空。.agents不存在、rg不可用。workspace-before.json与pre-edit/保留逐文件哈希/原文；非本批路径保持，特别是量房源/测试/基线。仅定向提交相关C05源、回归、开发验证脚本、交接和窄双语备注，不能全部提交工作区。
+
+- 节点A：f2ac26ecd099280de0a050fc3d130ee71047b04c（fix: validate exact public consent receipts），已普通push并核验远端相同。
+- 节点B：本交接所在的fix: revalidate consent receipts after source revocation提交；完整SHA及远端核验回执见tmp/xiaok-vector/c05-batch/git-final.json和git log -1。
+- 最终远端核验：收尾执行普通push及GitHub API核验，结果写入tmp/xiaok-vector/c05-batch/git-final.json；无记录不得写成通过。
+- main保持f273b57171d6dab5c3b8beef1fe124e634d51864。GitHub状态/检查/工作流API均核验，当前0条，不记CI通过。没有force push、合并或部署。
+
+相关C05依赖原为未跟踪的前置P4B实现，本批只纳入必要文件。双语路线图/台账及模块清单的大量原P4B前置内容继续留工作区；本批Git提交只保存窄变更和当前交接，不能凭这两次提交重建全部P4B部署包。该事实不影响已在当前授权工作区执行的测试证据。
+
+## 等用户通知后再接续的精确入口
+
+用户明确继续后，优先做既有已批准S07“审核退回→准备新版本→业主原聊再次决定→再审核”的后台/小程序联动及普通作者/经理/企业管理三类边界，复用现有Drawer和C05，不扩展P5/P4C新界面。先读本文件、AGENTS/admin规则、双语模块清单、路线图3.7/3.9及既有设计README，检查Git/进程/实际fixture状态，再选择下一批。P5/P4C新设计、ASR、真实授权及生产发布仍须各自授权。当前不要自动开始。

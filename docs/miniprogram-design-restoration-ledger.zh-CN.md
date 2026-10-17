@@ -1,5 +1,7 @@
 # 小程序设计还原台账
 
+C05当前复核：packages/assistant/chat/chat继续只使用design-references/xiaok-p4b-public-sites-v1/README.md及继承的C01/C02/U01，未改结构/样式/素材。390×844原生12/12业务步骤通过，含真实决定/重进/原键回包恢复/审核发布/撤回/新版本/切身份/来源失效409及清卡媒体路径；逻辑与PNG348×752分开记录。宿主捕获不能确认前台归属，未接受宿主图；完整胶囊/光学/高屏/键盘与真机仍未验证。唯一chat行已同步；证据及本批后暂停见[交接](./xiaok-assistant-handoff.zh-CN.md)。
+
 C03当前复核：`packages/construction/public-sites/public-sites`、`packages/construction/public-site/public-site`的最新批准来源保持。用户解除占用后，390×844限定原生围观/恢复11/11通过，含输入/清空、点卡、双Tab、返回/重进、文字工地、撤回/重试及无效入口不发请求。已核对路由的模拟器PNG348×752和含胶囊的宿主1700×960见`tmp/xiaok-vector/p4b-native-followup/`。完整光学/高屏/键盘/真实授权验收及生产批准仍未完成，详见[交接](./xiaok-assistant-handoff.zh-CN.md)。
 
 ## 2026-09-03 方案定稿反馈修正

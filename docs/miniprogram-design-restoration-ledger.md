@@ -1,5 +1,7 @@
 # Mini Program Design Restoration Ledger
 
+Current C05 verification: packages/assistant/chat/chat retains design-references/xiaok-p4b-public-sites-v1/README.md and inherited C01/C02/U01; markup/styles/artwork are unchanged. All12 native business steps pass at390×844, including real decisions/reentry/original receipt recovery/review/withdrawal/new versions/identity switching and revoked-source409 with protected cards/media paths cleared. Encoded PNG348×752 is recorded separately. Host foreground ownership could not be confirmed, so no host capture is accepted; full capsule/optical/tall/keyboard/device checks remain unverified. The unique chat row is current; evidence and post-batch pause: [handoff](./xiaok-assistant-handoff.zh-CN.md).
+
 Current C03 verification: the approved sources for `packages/construction/public-sites/public-sites` and `packages/construction/public-site/public-site` remain unchanged. After the user released contention, the bounded native browsing/recovery regression passed11/11 at390×844. Input/clear, card tap, both tabs, back/reentry, text-only, withdrawal/retry and invalid-entry request suppression passed. Route-verified simulator PNGs348×752 and host captures1700×960 including the capsule are in `tmp/xiaok-vector/p4b-native-followup/`. Full optical/tall/keyboard/real-login acceptance and production approval remain unverified; see the [handoff](./xiaok-assistant-handoff.zh-CN.md).
 
 ## 2026-09-03 Scheme finalization feedback correction

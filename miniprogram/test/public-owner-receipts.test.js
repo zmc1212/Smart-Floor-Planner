@@ -72,3 +72,24 @@ test('an invalid preview never expands a card or enables agreement; the original
   assert.equal(controller.state.publicExpanded, '21_31');
   assert.equal(controller.state.publicCards['21_31'].revision, 2);
 });
+
+test('a revoked source during original-operation reconciliation clears protected cards and media', async () => {
+  let revoked = false, clears = 0;
+  const client = new AssistantClient(async (_path, method) => {
+    if (method === 'GET') return { success: true, data: { items: [] } };
+    throw revoked ? { statusCode: 409, code: 'public_source_unavailable' } : { statusCode: 503 };
+  });
+  const controller = new PublicChatController({ emit() {}, identity: () => 'test-owner', client, media: { clear() { clears++; }, async load() {} } });
+  await controller.load('11', '1', [{ publicConsent: { ...material(), revision: 1 } }]);
+  assert.equal(await controller.decide('21_31', 'preview'), false);
+  assert.ok(controller.state.publicPending);
+  const before = clears;
+  revoked = true;
+  assert.equal(await controller.retry(), false);
+  assert.deepEqual(controller.state.publicCards, {});
+  assert.equal(controller.state.publicExpanded, '');
+  assert.equal(controller.state.publicPending, null);
+  assert.equal(client.pending.size, 0);
+  assert.equal(clears, before + 1);
+  assert.match(controller.state.publicError, /原始材料已有变化/);
+});
