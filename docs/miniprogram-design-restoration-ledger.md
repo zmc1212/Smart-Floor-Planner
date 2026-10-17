@@ -1,5 +1,7 @@
 # Mini Program Design Restoration Ledger
 
+Current C03 verification: the approved sources for `packages/construction/public-sites/public-sites` and `packages/construction/public-site/public-site` remain unchanged. Native catalog input, card tap, both tabs, back and exact-version reentry passed at390×844; simulator PNGs348×752 and full host captures1700×960 are in `tmp/xiaok-vector/p4b-native-followup/`. Later unrequested home/surveying navigation stopped the remaining checks. This is partial native evidence, not complete visual/optical/tall-device acceptance or production approval; see the [handoff](./xiaok-assistant-handoff.zh-CN.md).
+
 ## 2026-09-03 Scheme finalization feedback correction
 
 The **设为定稿** action in `packages/ai-workflow/scheme-studio/scheme-studio` is

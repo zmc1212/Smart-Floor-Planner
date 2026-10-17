@@ -1,5 +1,7 @@
 # Mini Program: Current Module Inventory
 
+P4B C03 native follow-up (2026-10-17): four environment checks plus catalog input/clear, real card tap/both tabs, return and exact-version reentry passed (8 steps). The next text-only-detail step encountered an unrequested home route; cleanup last observed the surveying editor. Control stopped and the enterprise2404-only in-memory transport was restored. Native text-only/withdrawal/invalid-entry completion and full visual acceptance remain unverified; P4B remains Limited. Independent focused tests pass48/48 and actual localhost public HTTP checks pass8/8 (including no-store, private-field exclusion, JPEG and revoked/wrong-version404). This validation-only stage changes no runtime/API/data/permission contract and performs no database writes. The prior1950/1950 full run was not repeated. Evidence and continuation: [handoff](./xiaok-assistant-handoff.zh-CN.md).
+
 ## 2026-09-03 Scheme re-edit reference preview correction
 
 When `scheme-studio` reopens a timeline batch through **重新编辑**, the draft

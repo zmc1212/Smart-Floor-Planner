@@ -1,5 +1,7 @@
 # 小程序设计还原台账
 
+C03当前复核：`packages/construction/public-sites/public-sites`、`packages/construction/public-site/public-site`的最新批准来源保持。390×844原生列表输入、点卡、双Tab、返回与精确版本重进已通过；模拟器PNG348×752、完整宿主1700×960见`tmp/xiaok-vector/p4b-native-followup/`。后续非脚本首页/量房路由中止剩余检查；这是部分原生证据，完整视觉/光学/高屏验收及生产批准均未完成，详见[交接](./xiaok-assistant-handoff.zh-CN.md)。
+
 ## 2026-09-03 方案定稿反馈修正
 
 `packages/ai-workflow/scheme-studio/scheme-studio` 的**设为定稿**现收敛为整套方案级入口，未发布时显示前置提示，已定稿时显示明确状态。定稿定义为客户主推标记，后续仍可继续出图；批准稿来源和视觉语言不变。生产还原仍为已实现，常规负责人运行截图仍待补充。
