@@ -1,5 +1,7 @@
 # 后台系统当前功能清单
 
+**P2M.3资料关联基础Limited。** 原Agent新增只读`query_materials`，服务端限定本人会话/房屋并组合原话、正式v4主户型和本人可见现场发布版本，记录来源/版本/hash/受众/依据及缺项。多对象或重名房间先澄清，同名不是已核验映射；点位图缺项不虚构。工具缓存/模型/恢复/提交/历史和接续派生文本重验来源，不新建API/表/迁移、不改正式墙图、后台界面或原角色/私聊权限。prompt v16；隔离工程6通过/1配置跳过，DeepSeek deepseek-flash两次核心场景通过、专项7/7；原生链待验。完整PPT23设计师资料卡和正式变更仍属后续；见[二期当前记录](./xiaok-assistant-phase-2.zh-CN.md)。
+
 C05后续：**回执限定修复Implemented，P4B整体Limited。** POST /api/miniprogram/assistant/conversations/:cid/public-sites/:siteId/preview|approve在返回任何幂等记录前重新核验当前材料来源及项目/客户访问；历史回执不能复活已撤回文字/访问，来源不可用时仍可核对拒绝/撤回。业主/本人会话/租户与管理边界、路由、模型及管理界面保持。开发脚本node --import tsx scripts/construction-public-c05-acceptance.ts --development固定localhost:5432/smart_floor_planner并核验合成企业2404、操作账号、身份及项目，凭据仅内存、结束禁用操作账号。最终真实HTTP7/7、C05原生12/12、定向小程序63/63、施工67项64通过/3配置跳过/0失败、ESLint0错误/30既有警告；小程序全量1967项1966通过/1既有量房审计失败，保留且不记全量通过。无数据库结构/Agent/远程访问变更或生产发布。证据及本轮后暂停见[交接](./xiaok-assistant-handoff.zh-CN.md)。
 
 发布前置条件：`admin/release.ps1` 在现有质量门禁前检查 Docker 引擎并执行
