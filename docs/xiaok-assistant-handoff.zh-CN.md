@@ -1,5 +1,9 @@
 # 小客接力：事实边界、连续问答与共享依赖
 
+共享Chrome101请求兼容提交为 [`7f4f980987eac57e7a5fd63efdcd82ffe4e798e6`](https://github.com/zmc1212/Smart-Floor-Planner/commit/7f4f980987eac57e7a5fd63efdcd82ffe4e798e6)，在原共享事实边界提交之上普通推送，本地/上游/远端及GitHub均已核验。每请求独立AbortController与原30秒期限覆盖正文读取，不依赖缺失的AbortSignal静态方法；取消、未知回执与原操作键语义保持，结束后清理计时器/监听。仅7项共享客户端、测试及双语文档，无知识专属或Mini运行代码改动。
+
+该阶段Node14/14；本机Chrome101.0.4951.54 10/10、Edge155.0.4283.62 9/9合成HTTP传输检查，正文期限分别实际等待30,008.6ms/30,015.3ms，未注入信号polyfill或测试时钟。旧Chrome HTTP前TypeError按0请求复现。Chrome原生连接透明重试归原幂等键；101返回自身AbortError而非传入对象，未改写为新的业务错误。相关npm lint通过，同程序类型287→287/新增0；自有服务、浏览器驱动均退出、临时端口已核实关闭。证据为本worktree `tmp/xiaok-fact-boundaries/chrome101/acceptance-summary.json`。前三次浏览器夹具调试失败也保留：透明重试、原生异常身份及小正文缓冲均只修正夹具，产品源码在最终浏览器检查期间未变。未访问DB/Worker/模型/Embedding，不冒充已登录KB页面或小程序验收，未知费用保持。
+
 当前共享功能提交为 [`e01a18188a5548a59909f26d36d841568ca2ccef`](https://github.com/zmc1212/Smart-Floor-Planner/commit/e01a18188a5548a59909f26d36d841568ca2ccef)，分支 `codex/xiaok-fact-boundaries`，工作区 `G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-fact-boundaries`。已普通推送，本地/上游/远端分支一致，GitHub提交可读。当前为 `xiaok-renovation-v61` / `current-turn-sources-v11`。**4115限定缺陷已闭环，整体仍Limited；知识两题新的实模语义验收尚未执行，不代表整份PPT、通用专业正确性或生产批准。** 未合并知识线、其他分支或main，未部署、强推或新增凭据权限。
 
 ## 已完成的共享修复
@@ -41,6 +45,6 @@ Stable2.02.2608080、SDK0.13.0、基础库3.17.2，复用原项目和原副屏�
 
 知识线当前稳定记录包含b30e75d7、2f44f460、21e4fd39、6b974e3d、5fa13cef及后续bb89e54c。其专属批次、v4检索、DOCX和材料样本文件均未由本线修改或合并。当前checkout仍不能据另一分支的实现宣称已集成KB批次/v4或自动执行。父任务可据本功能SHA准确集成后，让知识线接回四来源题与冲突题的小量新实模语义验收；本线准备的临时组合Runner尚未运行、未创建新知识夹具、未发生额外知识模型/Embedding调用。勿重试历史4242或拿64合同通过替代新答案。
 
-本线继续唯一持有共享runtime/worker/context/business-tools/引用权限协议。接下来处理共享Chrome101请求兼容，再推进实际执行配置固定与跨进程取消围栏的原服务边界。当前修复尚未实现这两项；验收锁不是业务取消围栏。执行Revision必须覆盖真正的preview/Agent模式、供应商/模型及部署覆盖、prompt/生成参数和retrievalConfiguration，排除凭据；已验证单改存储model会被部署覆盖屏蔽，不能以存储配置代替实际执行配置。取消仍须沿原run/cancel及原操作键，来源失效不得挡住原调用取消，未知费用不得核销。知识专属UI/回归服务和共享服务按既定文件归属协调，不自动合并main或部署。
+本线继续唯一持有共享runtime/worker/context/business-tools/引用权限协议。Chrome101共享传输依赖已按上述限定闭环，继续核对实际执行配置固定与跨进程取消围栏的原服务边界。当前修复尚未实现这两项；验收锁不是业务取消围栏。执行Revision必须覆盖真正的preview/Agent模式、供应商/模型及部署覆盖、prompt/生成参数和retrievalConfiguration，排除凭据；已验证单改存储model会被部署覆盖屏蔽，不能以存储配置代替实际执行配置。取消仍须沿原run/cancel及原操作键，来源失效不得挡住原调用取消，未知费用不得核销。知识专属UI/回归服务和共享服务按既定文件归属协调，不自动合并main或部署。
 
 旧完整构建的AiDesignerLegacyPage导出错误仍未处理；当前类型仍有287项基线错误。一般专业语义、多房屋复杂冲突、未知人数中性澄清及实际图内识读仍Limited/未验。以上不追加人工A10、截图或手工真机推进门槛，也不构成生产发布批准。
