@@ -15,10 +15,11 @@ const primary = new URL(process.env.DATABASE_URL || '');
 if (!['localhost', '127.0.0.1'].includes(primary.hostname) || primary.port !== '5432' || primary.pathname !== '/smart_floor_planner') throw Error('Existing approved development environment required for read-only provider/template reuse');
 const connectionFile = process.env.XIAOK_ACCEPTANCE_CONNECTION_FILE || path.join(root, 'tmp/xiaok-vector/connection.private.json');
 const isolated = JSON.parse(fs.readFileSync(connectionFile, 'utf8').replace(/^\uFEFF/, '')).DATABASE_URL;
-const release = await lockAssistantAcceptance(isolated);
+console.log('Waiting for the canonical isolated acceptance mutex before starting fixtures or Worker.');
+const release = await lockAssistantAcceptance(isolated, { waitForLock: true });
 const env = { ...process.env, NEXT_TELEMETRY_DISABLED: '1', DATABASE_URL: isolated, XIAOK_ACCEPTANCE_PRIMARY_DATABASE_URL: primary.toString(),
-  XIAOK_ACCEPTANCE_LOCK_OWNER: String(process.pid), XIAOK_ACCEPTANCE_OUTPUT: output, XIAOK_ACCEPTANCE_ORIGIN: 'http://localhost:3007',
-  ASSISTANT_WORKER_ENDPOINT: 'http://localhost:3007/api/internal/assistant/jobs/run', ASSISTANT_WORKER_HEALTH_FILE: path.join(output, 'worker-health.json') };
+  XIAOK_ACCEPTANCE_LOCK_OWNER: String(process.pid), XIAOK_ACCEPTANCE_OUTPUT: output, XIAOK_ACCEPTANCE_ORIGIN: 'http://localhost:3008',
+  ASSISTANT_WORKER_ENDPOINT: 'http://localhost:3008/api/internal/assistant/jobs/run', ASSISTANT_WORKER_HEALTH_FILE: path.join(output, 'worker-health.json') };
 const status = { started: new Date().toISOString(), root, origin: env.XIAOK_ACCEPTANCE_ORIGIN, lockHeld: true, isolated: 'loopback:55432/xiaok_embedding_eval', children: [], passed: false };
 const statusFile = path.join(output, process.argv.includes('--native') ? 'native-isolated-status.json' : 'live-isolated-status.json');
 const save = () => fs.writeFileSync(statusFile, JSON.stringify(status, null, 2));
@@ -32,12 +33,12 @@ function start(label, args) {
 }
 async function freePort() {
   await new Promise((resolve, reject) => {
-    const server = net.createServer(); server.once('error', reject); server.listen(3007, 'localhost', () => server.close(resolve));
+    const server = net.createServer(); server.once('error', reject); server.listen(3008, 'localhost', () => server.close(resolve));
   });
 }
 try {
   await freePort();
-  const server = start('isolated-next', ['node_modules/next/dist/bin/next', 'dev', '--webpack', '-H', 'localhost', '-p', '3007']);
+  const server = start('isolated-next', ['node_modules/next/dist/bin/next', 'dev', '--webpack', '-H', 'localhost', '-p', '3008']);
   let ready = false;
   for (let n = 0; n < 90; n++) {
     if (server.exitCode !== null) throw Error('Isolated Next process exited before ready; inspect isolated-next.log');
@@ -47,7 +48,7 @@ try {
   }
   if (!ready) throw Error('Isolated worktree server did not become ready');
   start('isolated-worker', ['scripts/assistant-worker.mjs']);
-  const driver = start(process.argv.includes('--native') ? 'native-driver' : 'live-driver', ['--import', 'tsx', 'scripts/assistant-continuity-development.ts', '--isolated', ...(process.argv.includes('--native') ? ['--native'] : [])]);
+  const driver = start(process.argv.includes('--native') ? 'native-driver' : 'live-driver', ['--import', 'tsx', 'scripts/assistant-continuity-development.ts', '--isolated', ...(process.argv.includes('--native') ? ['--native'] : []), ...(process.argv.includes('--focus-continuation') ? ['--focus-continuation'] : [])]);
   const code = await new Promise((resolve, reject) => { driver.once('error', reject); driver.once('exit', code => resolve(code ?? 1)); });
   status.driverExitCode = code; status.passed = code === 0; process.exitCode = code;
 } catch (error) {

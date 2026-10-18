@@ -246,17 +246,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     }); };
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], perception = false): Promise<ModelTurnOutput> => {
           const modelMessages = turn > 0 && !perception ? focusedSynthesisMessages(messages, String(initial.trigger.id)) : messages;
-          await heartbeat(lease); outcomeKnown = false;
+          await heartbeat(lease); outcomeKnown = true;
           const sequence = 1100 + turn * 10;
           // A completed provider response can be replayed after a worker crash; never re-dispatch a running/unknown attempt.
           const cached = await scoped(async tx => one(tx, sql`select status,private_checkpoint from app.assistant_run_steps
             where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
-          if (cached) { if (cached.status !== 'succeeded') fail('provider_outcome_unknown'); outcomeKnown = true; return cached.private_checkpoint as ModelTurnOutput; }
-          const beforeProviderCall = () => scoped(async tx => {
+          if (cached) { if (cached.status !== 'succeeded') { outcomeKnown = false; fail('provider_outcome_unknown'); } return cached.private_checkpoint as ModelTurnOutput; }
+          const beforeProviderCall = async () => { await scoped(async tx => {
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, promptVersion: agentPromptVersion, contextPolicy: modelMessages === messages ? 'conversation' : 'current-turn-sources-v9' })}::jsonb)`);
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, promptVersion: agentPromptVersion, contextPolicy: modelMessages === messages ? 'conversation' : 'current-turn-sources-v11' })}::jsonb)`);
             await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
-          });
+          }); outcomeKnown = false; };
           const injected = perception ? dependencies.vision : dependencies.model;
           const output = injected ? await (async () => {
             await beforeProviderCall();

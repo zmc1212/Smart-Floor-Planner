@@ -14,13 +14,14 @@ import type { SynthesisContext, SynthesisAnswer } from '@/lib/assistant/agent/sy
 import { readMemory, applyNeedDelta, parseNeedDelta, type NeedFact } from '@/lib/assistant/agent/memory';
 import { defaultConstructionStages } from '@/lib/construction/stages';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
+import { hasExplicitUseFormalComparison } from './assistant-continuity-checks';
 
 const root = path.resolve('..'), output = path.resolve(process.env.XIAOK_ACCEPTANCE_OUTPUT || path.join(root, 'tmp/xiaok-corrections-continuity')), native = process.argv.includes('--native');
 const isolated = process.argv.includes('--isolated'), origin = process.env.XIAOK_ACCEPTANCE_ORIGIN || 'http://localhost:3006';
-assert.ok(['http://localhost:3006','http://localhost:3007'].includes(origin), 'Approved loopback acceptance origin required');
-const sourceFiles = [...['answer-continuity','memory-sources','business-tools','memory','materials','context','worker','bound-context','synthesis','synthesis-sources']
+assert.ok(['http://localhost:3006','http://localhost:3008'].includes(origin), 'Approved business loopback acceptance origin required;3007 belongs to the knowledge task');
+const sourceFiles = [...['answer-continuity','memory-sources','business-tools','memory','materials','context','worker','bound-context','synthesis','synthesis-sources','synthesis-projection','synthesis-attribution']
   .map(f => 'src/lib/assistant/agent/' + f + '.ts'), 'src/lib/construction/need-issues.ts',
-  'scripts/assistant-continuity-development.ts', 'scripts/assistant-continuity-native.mjs', 'scripts/construction-chat-native.mjs', 'scripts/assistant-continuity-isolated.mjs'];
+  'src/lib/ai/postgres-workflow-chat.ts', 'src/lib/ai/providers/agent-chat.ts', 'scripts/assistant-continuity-development.ts', 'scripts/assistant-continuity-native.mjs', 'scripts/construction-chat-native.mjs', 'scripts/assistant-continuity-isolated.mjs', 'scripts/assistant-continuity-checks.ts', 'scripts/assistant-acceptance-safety.mjs'];
 const sourceHash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const prefix = (isolated ? 'synthetic-fact-boundaries-' : 'synthetic-continuity-live-') + randomUUID();
 export const initialNeeds = '请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。';
@@ -31,7 +32,8 @@ export const withdrawnQuestion = '结合当前可用资料和企业专业做法�
 type Expected = { phase: string; versionId: string; single: boolean };
 let expected: Expected = { phase: 'baseline', versionId: '', single: false };
 const report: Row = { started: new Date().toISOString(), prefix, passed: false, requests: [], runs: [], checks: [],
-  preregistered: ['baseline: expressed window preference is known; site dimensions remain unverified; no phone dependency',
+  selection: native && process.argv.includes('--focus-continuation') ? 'fresh native correction, continuation and withdrawn-source answer; baseline not rerun' : 'full existing scenario sequence',
+  preregistered: [native && process.argv.includes('--focus-continuation') ? 'baseline not rerun; prior actual4239/v59 is historical evidence only' : 'baseline: expressed window preference is known; site dimensions remain unverified; no phone dependency',
     'mixed-correction: save use before retrieval, retain desk/devices/other room; preserve shared original and exact approved version',
     'continuation: current need and same unresolved issue/owner survive reentry; enterprise rule and actual stage explain the remaining gap',
     'withdrawal: dependent historical answers unavailable; no formal action or disclosure caused by private correction'],
@@ -149,6 +151,9 @@ async function audit(runId: string, label: string, started: number, withdrawn = 
     assert.ok(use.supersedes); assert.ok(cited.some(s => s.material?.need?.field === 'use' && /单人/.test(s.material.need.value)));
     assert.ok(cited.some(s => s.material?.ref.id === expected.versionId && s.material.ref.type === 'formal_plan'), 'private correction is compared to the exact unchanged formal version');
     assert.match(result.text, /单人/); assert.match(result.text, /双人/); assert.match(result.text, /不一致|差异|不同|冲突/);
+    assert.ok(hasExplicitUseFormalComparison(answer, context.sources, {
+      useId: use.id, formalId: expected.versionId, currentTerm: '单人', formalTerm: '双人',
+    }), 'one evidence paragraph must compare current use to the exact quoted formal version; the answer must also cite the current use original');
     assert.ok(snapshot.data.sources.some(s => s.need?.field === 'desk' && s.need.qualifiedBy?.some(q => q.factId === use.id)), 'legacy compound statement is qualified by this exact current use correction');
   }
   for (const segment of answer.segments) for (const citation of segment.citations) assert.ok(context.sources.find(s => s.sourceId === citation.sourceId)?.text.includes(citation.quote));
@@ -249,6 +254,7 @@ async function main() {
     if (native) {
       const { run } = await import('./assistant-continuity-native.mjs');
       await run({ root: process.env.XIAOK_NATIVE_PROJECT_ROOT || root, origin, output, projectId: pid, identities: staff, customer: { conversationId: cid, token: customerToken, enterpriseId: eid }, question,
+        focusContinuation: process.argv.includes('--focus-continuation'),
         diagramBase64, audit, auditPreparation, seedLegacyMemory, materials, followups, initialNeeds, correction, continuation, withdrawnQuestion, setExpected, planText, setIssue: (id: string) => { issueId = id; },
         disclosure: () => withTenantTransaction(eid, tx => rows(tx, sql`select id::text,type from app.domain_event_outbox where enterprise_id=${eid}
           and (type like 'construction.plan.%' or type='construction.material.shared.v1') order by id`)),

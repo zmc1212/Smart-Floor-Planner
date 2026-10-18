@@ -27,9 +27,9 @@ export function synthesisAnswerFocus(sources: SynthesisSource[]) {
     knowledgeSourceIds: [...new Set(sources.filter(s => s.kind === 'knowledge').map(s => s.sourceId))],
     responseRules: {
       format: '最多6段，每段最多4条引用；按事实主题分段，不把需求、设备、知识、图纸、阶段挤在一段。保留支持当前更正和正式版本的必要原文。不重复建议或待核实前缀，不承诺一次就能定准。',
-      knownUse: '已明确的人数直接沿用，不再要求客户继续说明、补充或确认同一人数；解释已更正需求时实际引用对应当前use原话，事项状态或正式版本不能代替该原话。人数改变不推定设备或插座数量应减少。',
+      knownUse: '已明确的人数直接沿用，不再要求客户继续说明、补充或确认同一人数；解释已更正需求时实际引用对应当前use原话，事项状态或正式版本不能代替该原话。当前用途与同房间正式版原文确有差异时，同段说明双方具体值与差异、分别引用原话；仅分列人数或等待对象不算解释差异，不改写正式决定。人数改变不推定设备或插座数量应减少。',
       professionalWhy: '承接专业原因时，结合本轮相关企业依据和项目实况解释，引用真正支持原因的知识原文及其条件；不退化为只报事项状态。无相关依据就如实说明，不机械引用。',
-      queryGaps: '缺项就地限定本轮可用资料，例如“本轮未取得现场尺寸或坐标，本次不能据此定点”；不把查询缺项改写成现场没有量测或尚不能施工。继续核对的原因按企业核对要求及团队实际待核对记录解释。',
+      queryGaps: '缺项就地限定本轮可用资料，例如“本轮未取得现场尺寸或坐标，本次不能据此定点”；不把查询缺项改写成现场没有量测或尚不能施工。团队图纸关联只说明这条核对记录，不概括房间整体进度。继续核对的原因按企业核对要求及团队实际待核对记录解释。',
       delivery: '在原聊天补充只保存在本咨询，不自动共享或送达团队；需要人工时沿原接续流程，不追加每轮分享或转人工的追问。',
       telephone: '没有询问联系方式时不附加电话说明；缺号码只影响电话入口，原聊天和既有人工接续不等待电话配置。',
     } };
@@ -75,6 +75,9 @@ export function assertAnswerContinuity(answer: SynthesisAnswer, sources: Synthes
       const explicitReport = segment.citations.some(c => c.quote.includes(sentence.trim()) && sources.some(s => s.sourceId === c.sourceId
         && (s.material?.ref.type === 'site_record' || s.material?.ref.type === 'team_review') && s.text.includes(c.quote)));
       if (missingMeasurement && !scoped && !explicitReport) fail('invalid_model_answer', 502);
+      const onlyDrawingStep = /(?:只|仅)(?:到|做到|完成到)了?\s*(?:图纸|参考图)(?:关联|核对|关联核对)(?:这一步|阶段)/.test(sentence);
+      const recordSubject = /^(?:(?:这|该|本)(?:条|份))?(?:图纸|参考图)?(?:关联)?(?:核对)?记录/.test(sentence.trim());
+      if (onlyDrawingStep && !recordSubject && !explicitReport) fail('invalid_model_answer', 502);
     }
     for (const use of focus.currentUses) {
       // Multiple rooms require an explicit subject; don't project one room's

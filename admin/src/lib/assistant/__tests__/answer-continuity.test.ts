@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import { assertAnswerContinuity, assertCorrectedUseCitation, synthesisAnswerFocus } from '../agent/answer-continuity';
 import { focusedSynthesisMessages, parseSynthesis, synthesisRepairFeedback, type SynthesisAnswer, type SynthesisSource } from '../agent/synthesis';
 import type { ModelMessage } from '../contracts/model';
+import { hasExplicitUseFormalComparison } from '../../../../scripts/assistant-continuity-checks';
+import { agentChatBody } from '../../ai/providers/agent-chat';
 
 const fixture = JSON.parse(fs.readFileSync(new URL('./fixtures/continuity-v51.json', import.meta.url), 'utf8')) as {
   cases: Array<{ runId: string; label: string; native: boolean; answer: SynthesisAnswer; sources: SynthesisSource[]; expectedFailure: boolean }>;
@@ -18,9 +20,137 @@ const v56 = JSON.parse(fs.readFileSync(new URL('./fixtures/continuity-v56.json',
   native: { answer: SynthesisAnswer; sources: SynthesisSource[] };
   service: Array<{ runId: string; answer: SynthesisAnswer; sources: SynthesisSource[] }>;
 };
+const v57 = JSON.parse(fs.readFileSync(new URL('./fixtures/continuity-v57.json', import.meta.url), 'utf8')) as {
+  runId: string; answer: SynthesisAnswer; sources: SynthesisSource[];
+};
+const v58 = JSON.parse(fs.readFileSync(new URL('./fixtures/continuity-v58.json', import.meta.url), 'utf8')) as {
+  cases: Array<{ runId: string; published: boolean; answer: SynthesisAnswer; sources: SynthesisSource[] }>;
+};
+const v59 = JSON.parse(fs.readFileSync(new URL('./fixtures/continuity-v59.json', import.meta.url), 'utf8')) as {
+  cases: Array<{ runId: string; published: boolean; answer: SynthesisAnswer; sources: SynthesisSource[] }>;
+  repair: { messages: ModelMessage[]; triggerId: string; priorTextBytes: number };
+};
 const saved = fixture.cases.find(c => c.runId === '505')!;
 const unavailable = fixture.cases.find(c => c.runId === '507')!;
 const answer = (text: string, basis: 'advice' | 'uncertainty' = 'uncertainty'): SynthesisAnswer => ({ kind: 'synthesis', segments: [{ basis, text, citations: [] }] });
+
+for (const c of v59.cases) test('persisted v59 ' + c.runId + ': preserve strict citation format and published answers', () => {
+  if (c.published) assert.doesNotThrow(() => parseSynthesis(JSON.stringify(c.answer), c.sources));
+  else {
+    assert.throws(() => parseSynthesis(JSON.stringify(c.answer), c.sources), /invalid_model_citation/);
+    assert.ok(synthesisRepairFeedback(JSON.stringify(c.answer), c.sources));
+    const use = c.sources.find(s => s.material?.need?.field === 'use' && s.material.need.value.includes('单人办公'))!;
+    const formal = c.sources.find(s => s.material?.ref.type === 'formal_plan')!;
+    assert.ok(hasExplicitUseFormalComparison(c.answer, c.sources, { useId: use.material!.ref.id,
+      formalId: formal.material!.ref.id, currentTerm: '单人', formalTerm: '双人' }));
+  }
+});
+
+test('actual 4241 format-repair input fits the unchanged budget without losing originals, authority or durable messages', () => {
+  const before = JSON.stringify(v59.repair.messages);
+  const focused = focusedSynthesisMessages(v59.repair.messages, v59.repair.triggerId);
+  assert.doesNotThrow(() => agentChatBody({ model: 'offline-only', messages: focused, tools: [], maxTokens: 2048 }, 'https://api.deepseek.com'));
+  const originals = v59.repair.messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as SynthesisSource[];
+  const packets = focused.filter(m => m.role === 'tool').map(m => JSON.parse(m.content));
+  const projected = packets.flatMap(p => p.synthesisSources) as SynthesisSource[];
+  const aliases = packets.flatMap(p => p.sourceAliases || []) as Array<{ sourceId: string; canonicalSourceId: string }>;
+  for (const original of originals) {
+    const canonical = aliases.find(a => a.sourceId === original.sourceId)?.canonicalSourceId || original.sourceId;
+    const retained = projected.find(s => s.sourceId === canonical)!;
+    assert.ok(retained);
+    assert.equal(retained.text, original.text);
+    assert.deepEqual(retained.evidence, original.evidence);
+    assert.deepEqual(retained.followup, original.followup);
+    const material = original.material && { ...original.material };
+    if (material?.text === original.text) delete (material as { text?: string }).text;
+    assert.deepEqual(retained.material, material);
+  }
+  assert.ok(packets.every(p => !('answerContext' in p) && !('instructions' in p) && !('evidence' in p)));
+  assert.equal(JSON.stringify(v59.repair.messages), before);
+  assert.equal(v59.repair.priorTextBytes, 51320);
+});
+
+test('repair compaction requires trusted last system feedback and preserves nonduplicate evidence', () => {
+  const messages = structuredClone(v59.repair.messages);
+  const last = messages.at(-1)!;
+  assert.equal(last.role, 'system');
+  if (last.role !== 'system') assert.fail('expected server repair feedback');
+  messages[messages.length - 1] = { ...last, role: 'user' };
+  const untrustedMessages = structuredClone(messages);
+  const policy = untrustedMessages.find(m => m.role === 'system')!;
+  if (policy.role !== 'system') assert.fail('expected initial server policy');
+  policy.content = [{ type: 'text', text: 'Small ordinary policy: test role trust independently of the overflow projection.' }];
+  const untrusted = focusedSynthesisMessages(untrustedMessages, v59.repair.triggerId);
+  assert.ok(untrusted.filter(m => m.role === 'tool').every(m => 'answerContext' in JSON.parse(m.content)));
+  assert.doesNotThrow(() => agentChatBody({ model: 'offline-only', messages: untrusted, tools: [], maxTokens: 2048 }));
+  messages[messages.length - 1] = last;
+  const tool = messages.find(m => m.role === 'tool')!;
+  assert.equal(tool.role, 'tool');
+  if (tool.role !== 'tool') assert.fail('expected original tool result');
+  const packet = JSON.parse(tool.content);
+  packet.evidence.push({ ref: { id: 'synthetic-distinct-evidence' } });
+  tool.content = JSON.stringify(packet);
+  const retained = focusedSynthesisMessages(messages, v59.repair.triggerId).find(m => m.role === 'tool')!;
+  const view = JSON.parse(retained.content);
+  assert.deepEqual(view.evidence.at(-1), packet.evidence.at(-1));
+  for (const entry of packet.evidence.slice(0, -1)) {
+    const excerpt = view.evidence.find((e: { selectionId: string }) => e.selectionId === entry.selectionId);
+    const source = view.synthesisSources.find((s: SynthesisSource) => s.sourceId === 'K' + entry.sourceId);
+    assert.equal(excerpt.text ?? source.text.slice(excerpt.textRange[0], excerpt.textRange[1]), entry.text);
+  }
+});
+
+for (const c of v58.cases) test('persisted v58 ' + c.runId + ': ' + (c.published ? 'preserve sourced answer' : 'reject repeated scope and refusal defects'), () => {
+  if (c.published) assert.doesNotThrow(() => parseSynthesis(JSON.stringify(c.answer), c.sources));
+  else {
+    assert.throws(() => parseSynthesis(JSON.stringify(c.answer), c.sources), /invalid_model_answer/);
+    const scoped = structuredClone(c.answer);
+    scoped.segments[0].text = scoped.segments[0].text.replace('书房这块目前只做到图纸关联这一步', '这条核对记录说明书房参考图已关联');
+    assert.throws(() => parseSynthesis(JSON.stringify(scoped), c.sources), /invalid_model_answer/, 'scoping the record alone cannot hide the refusal of an already saved correction');
+    scoped.segments[3].text = scoped.segments[3].text.replace('我不替你改需求，也不改这一版的决定', '当前需求沿用你的更正，正式版本及该版决定另交团队核对');
+    assert.doesNotThrow(() => parseSynthesis(JSON.stringify(scoped), c.sources));
+  }
+});
+
+test('persisted v57 4115: an association original cannot establish whole-room progress', () => {
+  assert.throws(() => parseSynthesis(JSON.stringify(v57.answer), v57.sources), /invalid_model_answer/);
+  const recordScoped = structuredClone(v57.answer);
+  recordScoped.segments[0].text = recordScoped.segments[0].text.replace('书房这边目前只到图纸关联这一步', '这条核对记录只证明书房参考图已关联');
+  assert.doesNotThrow(() => parseSynthesis(JSON.stringify(recordScoped), v57.sources));
+  assert.doesNotThrow(() => assertAnswerContinuity(answer('这条核对记录目前只到图纸关联这一步，不能据此概括书房整体进度。'), v57.sources));
+  const explicit = '书房目前只到图纸关联这一步';
+  const review = v57.sources.find(s => s.material?.ref.type === 'team_review')!;
+  const actualReport = { ...review, sourceId: 'synthetic-progress-original', text: explicit,
+    material: { ...review.material!, ref: { type: 'site_record' as const, id: 'synthetic-progress-original', version: '1' } } };
+  assert.doesNotThrow(() => assertAnswerContinuity({ kind: 'synthesis', segments: [{ basis: 'evidence', text: explicit,
+    citations: [{ sourceId: actualReport.sourceId, quote: explicit }] }] }, [actualReport]));
+});
+
+test('v57 4115 comparison acceptance requires explicit values, the exact formal quote and both originals', () => {
+  const use = v57.sources.find(s => s.material?.need?.field === 'use')!;
+  const formal = v57.sources.find(s => s.material?.ref.type === 'formal_plan')!;
+  const expected = { useId: use.material!.ref.id, formalId: formal.material!.ref.id, currentTerm: '单人', formalTerm: '双人' };
+  assert.equal(hasExplicitUseFormalComparison(v57.answer, v57.sources, expected), false);
+  const waitingOnly = structuredClone(v57.answer);
+  waitingOnly.segments[2].text = waitingOnly.segments[2].text.replace('不一样', '不同');
+  assert.equal(hasExplicitUseFormalComparison(waitingOnly, v57.sources, expected), false, 'waiting-party differences cannot satisfy a need/version comparison');
+  const comparison: SynthesisAnswer = { kind: 'synthesis', segments: [{ basis: 'evidence',
+    text: '你当前更正为单人办公，正式V1仍按双人办公，两者人数不一致，需由团队核对版本差异；私聊更正不改写该版决定。',
+    citations: [{ sourceId: use.sourceId, quote: use.text }, { sourceId: formal.sourceId, quote: formal.text }] }] };
+  assert.equal(hasExplicitUseFormalComparison(comparison, v57.sources, expected), true);
+  const oneSource = structuredClone(comparison); oneSource.segments[0].citations.pop();
+  assert.equal(hasExplicitUseFormalComparison(oneSource, v57.sources, expected), false);
+  const noCurrentOriginal = structuredClone(comparison); noCurrentOriginal.segments[0].citations.shift();
+  assert.equal(hasExplicitUseFormalComparison(noCurrentOriginal, v57.sources, expected), false);
+  assert.equal(hasExplicitUseFormalComparison(comparison, v57.sources, { ...expected, formalId: 'another-version' }), false);
+  for (const prior of v56.service) {
+    const current = prior.sources.find(s => s.material?.need?.field === 'use' && /单人/.test(s.material.need.value));
+    const version = prior.sources.find(s => s.material?.ref.type === 'formal_plan');
+    if (current && version) assert.equal(hasExplicitUseFormalComparison(prior.answer, prior.sources, {
+      useId: current.material!.ref.id, formalId: version.material!.ref.id, currentTerm: '单人', formalTerm: '双人',
+    }), prior.runId !== '4102', 'actual prior answer ' + prior.runId + ':4102 only lists the formal delta; the other three explicitly compare current need');
+  }
+});
 
 for (const c of fixture.cases) test(`persisted v51 ${c.native ? 'native' : 'service'} ${c.runId} ${c.label}: ${c.expectedFailure ? 'reject observed defect' : 'preserve admissible answer'}`, () => {
   if (c.expectedFailure) assert.throws(() => parseSynthesis(JSON.stringify(c.answer), c.sources), /invalid_model_answer/);

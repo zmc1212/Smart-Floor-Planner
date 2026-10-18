@@ -99,7 +99,8 @@ export async function run(ctx) {
         return { versionId: first, previewCapture };
       });
       const before = await ctx.disclosure();
-      for (const phase of ['baseline', 'mixed-correction', 'continuation']) {
+      const phases = ctx.focusContinuation ? ['mixed-correction', 'continuation'] : ['baseline', 'mixed-correction', 'continuation'];
+      for (const phase of phases) {
         ctx.setExpected({ phase, versionId: first, single: phase !== 'baseline' });
         const text = phase === 'mixed-correction' ? ctx.correction : phase === 'continuation' ? ctx.continuation : ctx.question;
         // Repeated model samples belong to the serial service harness. Native
