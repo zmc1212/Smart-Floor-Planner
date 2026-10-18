@@ -15,6 +15,17 @@
 
 
 
+### 当前恢复证据边界
+
+知识稳定`0030eb8245c40f2fe18f5530da013eb75366a06f`仅只读核验，未合入或重跑。独立run4370真实PostgreSQL/C01撤回1组通过，向量/回答为确定性注入，5项证据断言通过；真实模型/Embedding/供应商fetch为0，107张企业表及身份清零、当次互斥锁释放。这些结果不证明4369的供应商结果，也不累加进本补丁230项离线检查。
+
+| 归档run | 已留存证据 | 缺失恢复证据 | 当前授权 |
+| --- | --- | --- | --- |
+| 4369 | 原send key/hash、failed/accepted=false attempt、indeterminate run及reconciling预留 | `originalCreateKey: null`；当前夹具行已清理 | `archive_only_wait_shared_review`、`dispatchApproved: false` |
+| 4242 | indeterminate run、unknown/accepted attempt及reconciling预留 | 原create/send key及request hash保持null；当前夹具行已清理 | `archive_only_wait_shared_review`、`dispatchApproved: false` |
+
+“最多一次未来执行”是上限，不是授权。仅send归档不是可调用`originalSubmission`的完整create/send证据；不探测、不补造键、不建立等价替代发送。仍缺可靠原身份/操作证据、有效授权恢复机制及供应商结果/计量证据；新增撤回检查和仅未来生效的连接分类均不能解除这些阻碍。源证据为知识工作区`tmp/knowledge-revocation/recovery-preparation.json`、`stage-summary.json`和`service-1/`；共享核验为`tmp/xiaok-provider-certainty/recovery-review.json`。本补充只有文档/证据影响，模块清单当前运行行为、API、角色和UI均不变。
+
 <!-- continuity:start -->
 <a id="当前p3bp4a客户更正与原事项接续"></a>
 ## 当前P3B/P4A：客户更正与原事项接续

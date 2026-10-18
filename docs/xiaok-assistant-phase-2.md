@@ -15,6 +15,17 @@ Reproduce the mocked transport regression from `admin/`: `node --import tsx --te
 
 
 
+### Current recovery evidence boundary
+
+Knowledge stable `0030eb8245c40f2fe18f5530da013eb75366a06f` was reviewed read-only, not merged or rerun. Its separate run4370 passed one real PostgreSQL/C01 withdrawal group with deterministic injected vectors/answer, five evidence assertions, zero real model/Embedding/provider fetches,107 clean tenant tables/identities and its mutex released. These results do not establish the supplier outcome of4369 and are not added to this patch's230 offline checks.
+
+| Archived run | Retained evidence | Missing recovery evidence | Current authorization |
+| --- | --- | --- | --- |
+| 4369 | Original send key/hash, failed/accepted=false attempt, indeterminate run and reconciling reservation | `originalCreateKey: null`; current fixture rows cleaned | `archive_only_wait_shared_review`, `dispatchApproved: false` |
+| 4242 | Indeterminate run, unknown/accepted attempt and reconciling reservation | Original create/send keys and request hash remain null; current fixture rows cleaned | `archive_only_wait_shared_review`, `dispatchApproved: false` |
+
+The documented maximum of one future execution is a limit, not permission. A send-only archive is insufficient complete create/send evidence for `originalSubmission`; do not probe, regenerate keys or create an equivalent replacement send. Reliable original identity/operation evidence, a valid authorized recovery mechanism and supplier-side outcome/usage evidence are still missing. Neither the new withdrawal check nor the future-only connection classification clears those blockers. Source evidence: knowledge worktree `tmp/knowledge-revocation/recovery-preparation.json`, `stage-summary.json` and `service-1/`; shared review: `tmp/xiaok-provider-certainty/recovery-review.json`. This supplement changes documentation/evidence only; current module inventory behavior, API, roles and UI are unchanged.
+
 <!-- continuity:start -->
 <a id="current-p3bp4a-customer-corrections-and-live-issue-continuity"></a>
 ## Current P3B/P4A: customer corrections and live issue continuity

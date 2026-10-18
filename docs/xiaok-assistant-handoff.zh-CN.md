@@ -10,6 +10,14 @@
 - 当前230/230离线（194业务/知识＋32原AI/供应商＋4模拟传输），失败/跳过/取消0；新增传输修复前3通过/1失败。两项受影响TS lint无错误警告；同程序对照05edc4d3仍287→287、新增0，不是完整类型通过。没有新DB、供应商HTTP、实模、Embedding、浏览器或原生调用，未占用共用锁/启动Worker。历史知识的实际调用和费用单列，不计成本轮新验证。
 - 证据tmp/xiaok-provider-certainty/incident-evidence.json、offline.log、before.log、type-comparison.json、lint.log及[当前双语合同](./xiaok-assistant-phase-2.zh-CN.md#当前共享供应商连接错误与结果确定性)。供应商/费用缺证、实模语义、完整构建、原生/图内/真机/BLE/真实微信未验限制保持。原97项修改和5项删除保留；父任务继续协调知识线离线补全，当前没有新实模授权。
 
+## 当前恢复边界：已纳入知识0030eb82
+
+仅只读核验`0030eb8245c40f2fe18f5530da013eb75366a06f`，未自动合入知识后续分支或重跑其数据库。独立run4370的真实PostgreSQL/C01撤回1/1、证据断言5/5及107表/身份清理均属知识线证据；向量/回答注入模拟，真实模型/Embedding/provider fetch为0，当次锁已释放，不与本分支230单元累加。
+
+原4369仍没有足够证据收敛：原send/key/hash已留存但create key缺失，当前行已清理；4242原create/send key及request hash也未在知识线归档中留存。缺项保持null，没有推测、补造或换键。两份恢复准备均为`archive_only_wait_shared_review`、`dispatchApproved=false`；“至多一次”仅未来上限，不是执行授权。仅有4369的send归档不能作为完整create/send证据调用`originalSubmission`，不得据此重建等价发送。
+
+仍缺供应商结果/用量证据、完整可靠原身份/操作证据及有效授权恢复机制。连接分类修复610ec0d2只约束未来调用，不能证明旧请求未到达、解除indeterminate/reconciling或核销费用。证据`tmp/xiaok-provider-certainty/recovery-review.json`记录原准备文件hash/空缺字段。此补充仅文档证据影响，代码及四份模块清单当前行为不变；没有重复测试、DB/模型请求或恢复动作，原97项及5项删除保持。
+
 ## 上一稳定人数解释05edc4d3（v63证据）
 
 本提交在独立分支codex/xiaok-need-interpretation、工作区G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-need-interpretation继续，基线04a85946。既有路线图10.1第1/3场景的内部可靠性增量，整体Limited，不宣称完整阶段或发布验收。
