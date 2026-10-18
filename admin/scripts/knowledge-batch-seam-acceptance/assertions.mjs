@@ -1,5 +1,15 @@
 import assert from 'node:assert/strict';
 
+/** Preserve wrapped PostgreSQL codes without logging SQL, parameters or credentials. */
+export function safeErrorCode(error, fallback = 'SEAM_ACTION_FAILED') {
+  const seen = new Set();
+  for (let current = error; current && typeof current === 'object' && !seen.has(current); current = current.cause) {
+    seen.add(current);
+    if (typeof current.code === 'string' && /^[A-Za-z0-9_]{1,100}$/.test(current.code)) return current.code;
+  }
+  return typeof error?.message === 'string' && /^[A-Za-z0-9_]{1,100}$/.test(error.message) ? error.message : fallback;
+}
+
 const countFields = ['runs', 'jobs', 'reservations', 'providerAttempts', 'providerMarkers'];
 export function unchangedEffects(before, after) {
   for (const name of countFields) {

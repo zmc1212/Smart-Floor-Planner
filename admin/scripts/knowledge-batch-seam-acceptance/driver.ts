@@ -3,7 +3,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { createPair } from './process-pair.mjs';
 import { createOfflineStore } from './offline-store';
-import { assertTwoProcesses, assertSameItemOnce, assertCancellationFence, assertRecovered, assertConfigurationRejected } from './assertions.mjs';
+import { assertTwoProcesses, assertSameItemOnce, assertCancellationFence, assertRecovered, assertConfigurationRejected, safeErrorCode } from './assertions.mjs';
 import type { AcceptanceEvent, AcceptanceFixture } from './types';
 
 if (!process.send) throw Error('SEAM_DRIVER_IPC_REQUIRED');
@@ -16,10 +16,7 @@ process.once('disconnect', () => {
 });
 type Config = { mode: 'offline' | 'service'; admin: string; output: string; factoryModule?: string; factoryExport?: string };
 type Reply = { error?: string; value?: Record<string, unknown> };
-const safeCode = (error: unknown) => {
-  const value = (error as { code?: string; message?: string })?.code || (error as Error)?.message || '';
-  return /^[a-zA-Z0-9_]{1,100}$/.test(value) ? value : 'SEAM_DRIVER_FAILED';
-};
+const safeCode = (error: unknown) => safeErrorCode(error, 'SEAM_DRIVER_FAILED');
 async function run(config: Config) {
   const events: AcceptanceEvent[] = [], cases: Array<Record<string, unknown>> = [];
   let fixture: AcceptanceFixture | undefined, pair: ReturnType<typeof createPair> | undefined;
@@ -27,6 +24,7 @@ async function run(config: Config) {
     reality: config.mode === 'offline' ? 'Two real OS processes, actual adapter, simulated serialized store/shared ports and association repair; not PostgreSQL'
       : 'Two real OS processes, real isolated PostgreSQL and injected business factory; no real external HTTP/Embedding/model calls' };
   const save = () => fs.writeFileSync(path.join(config.output, 'driver-report.json'), JSON.stringify(report, null, 2));
+  let phase = 'fixture-and-process-setup';
   try {
     if (config.mode === 'service') {
       if (!config.factoryModule || !config.factoryExport || !process.env.XIAOK_SEAM_LOCK_OWNER) throw Error('SEAM_FACTORY_NOT_READY');
@@ -57,19 +55,19 @@ async function run(config: Config) {
     };
     const record = (name: string, evidence: Record<string, unknown>) => { cases.push({ name, passed: true, ...evidence }); save(); };
 
-    const same = await current.prepare();
+    phase = 'same-item-two-processes'; const same = await current.prepare();
     await Promise.all([0, 1].map(index => command(index, 'resume', { evaluationId: same.items[0].evaluationId })));
     const one = await snapshot(same.batchId); assertSameItemOnce(one); record('same-item-two-processes', { after: one });
     await command(0, 'cancel', { batchId: same.batchId, requestKey: 'same-cleanup' });
 
-    const race = await current.prepare(), raceBefore = await snapshot(race.batchId);
+    phase = 'advance-cancel-race'; const race = await current.prepare(), raceBefore = await snapshot(race.batchId);
     await Promise.all([command(0, 'advance', { batchId: race.batchId }, true), command(1, 'cancel', { batchId: race.batchId, requestKey: 'race-cancel' })]);
     const fenced = await snapshot(race.batchId);
     assert.ok(fenced.counts.runs - raceBefore.counts.runs <= 1); assert.equal(fenced.intentCount, 1);
     await command(0, 'advance', { batchId: race.batchId }, true);
     const late = await snapshot(race.batchId); assertCancellationFence(fenced, late); record('advance-cancel-race-and-late-admission', { before: fenced, after: late });
 
-    const interrupted = await current.prepare();
+    phase = 'cancel-intent-survives-failure'; const interrupted = await current.prepare();
     await command(0, 'resume', { evaluationId: interrupted.items[0].evaluationId });
     const cancel = await command(1, 'cancel', { batchId: interrupted.batchId, requestKey: 'first-durable-cancel', failCancel: 'true' });
     assert.ok((cancel.value!.items as Array<{ action: string }>).some(i => i.action === 'unconfirmed'));
@@ -79,25 +77,30 @@ async function run(config: Config) {
     const retried = await command(1, 'cancel', { batchId: interrupted.batchId, requestKey: 'second-client-cancel' });
     assert.equal(retried.value!.requestKey, 'first-durable-cancel'); record('committed-intent-survives-individual-cancel-failure', { before: intent, after: blocked });
     if(current.routeAfterCancellation){
+      phase = 'existing-authenticated-route';
       const prior=await snapshot(interrupted.batchId),route=await current.routeAfterCancellation(interrupted.batchId),now=await snapshot(interrupted.batchId);
       assertCancellationFence(prior,now);record('existing-authenticated-route-uses-shared-factory',{route,before:prior,after:now});
     }
 
-    const lost = await current.prepare(); await command(0, 'resume', { evaluationId: lost.items[0].evaluationId });
+    phase = 'recovery-prepare'; const lost = await current.prepare(); await command(0, 'resume', { evaluationId: lost.items[0].evaluationId });
     const original = await snapshot(lost.batchId); assert.ok(original.runId && original.conversationId);
-    await current.loseAssociation(lost.batchId); const missing = await snapshot(lost.batchId);
+    phase = 'recovery-remove-association'; await current.loseAssociation(lost.batchId);
+    phase = 'recovery-missing-snapshot'; const missing = await snapshot(lost.batchId);
+    report.recoverySetup = { original, missing }; save();
     assert.equal(missing.runId, null); assert.equal(missing.runStatus, 'indeterminate'); assert.equal(missing.reservationStatus, 'reconciling');
-    await Promise.all([0, 1].map(index => command(index, 'recover', { evaluationId: lost.items[0].evaluationId })));
+    phase = 'recovery-two-processes'; await Promise.all([0, 1].map(index => command(index, 'recover', { evaluationId: lost.items[0].evaluationId })));
+    phase = 'recovery-oracle';
     const recovered = await snapshot(lost.batchId); assertRecovered(original, missing, recovered);
     record('old-receipt-recovery-no-new-effects', { before: missing, after: recovered,
       providerBoundary: 'explicit synthetic marker; no real original provider HTTP; zero-delta HTTP is not a live retry proof' });
     await command(0, 'cancel', { batchId: lost.batchId, requestKey: 'lost-cleanup' });
 
-    const drift = await current.prepare(), before = await snapshot(drift.batchId);
+    phase = 'admission-configuration-drift'; const drift = await current.prepare(), before = await snapshot(drift.batchId);
     const rejected = await command(1, 'drift', { batchId: drift.batchId });
     const after = await snapshot(drift.batchId); assertConfigurationRejected(before, after, rejected.value); record('actual-child-configuration-drift-before-admission', { before, after, rejection: rejected.value });
 
     if (config.mode === 'service' && current.leaseFor) {
+      phase = 'provider-start-configuration-drift';
       const queued = await current.prepare(); await command(0, 'resume', { evaluationId: queued.items[0].evaluationId });
       await snapshot(queued.batchId); const lease = await current.leaseFor(queued.batchId), prior = await snapshot(queued.batchId);
       // Lease token remains in memory/IPC only; never store it in the report or logs.
@@ -107,7 +110,7 @@ async function run(config: Config) {
       await command(0, 'cancel', { batchId: queued.batchId, requestKey: 'provider-drift-cleanup' });
     } else report.deferred = ['Real PostgreSQL and provider-start gateway require the exact stable business SHA/factory; not executed'];
     assert.equal(current.activeTransactions?.() ?? 0, 0); report.passed = true;
-  } catch (error) { report.passed = false; report.errorCode = safeCode(error); }
+  } catch (error) { report.passed = false; report.errorCode = safeCode(error); report.failedPhase = phase; }
   finally {
     try { if (pair) await pair.close(); report.childrenStopped = true; } catch (error) { report.passed = false; report.cleanupError = safeCode(error); }
     if (pair && !report.childrenStopped) report.fixtureCleanup = 'pending_until_children_verified_stopped';

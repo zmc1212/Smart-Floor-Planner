@@ -1,6 +1,7 @@
 import { KnowledgeBatchExecutionAdapter, type KnowledgeBatchExecutionStore, type KnowledgeBatchSharedPort } from '../../src/lib/assistant/knowledge/batch-execution-adapter';
 import type { ActorContext } from '../../src/lib/assistant/contracts';
 import type { EvaluationBatchManifest } from '../../src/lib/assistant/knowledge/evaluation-batch';
+import { safeErrorCode } from './assertions.mjs';
 
 if (!process.send || !['offline', 'service'].includes(process.env.XIAOK_SEAM_MODE || '')) throw Error('SEAM_IPC_BOOT_REQUIRED');
 const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
@@ -10,11 +11,7 @@ let operation: { resume(id: string): Promise<unknown>; recoverEvaluation(id: str
   advanceExecutionBatch(id: string): Promise<unknown>; cancelExecutionBatch(id: string, key: string): Promise<unknown> };
 let describe: (batchId: string) => Promise<{ mode: string; revision: string }>;
 let shutdown = async () => {};
-const safeCode = (error: unknown) => {
-  const e = error as { code?: string; message?: string };
-  const code = e?.code || e?.message || '';
-  return /^[a-zA-Z0-9_]{1,100}$/.test(code) ? code : 'SEAM_CHILD_ACTION_FAILED';
-};
+const safeCode = (error: unknown) => safeErrorCode(error, 'SEAM_CHILD_ACTION_FAILED');
 function rpc<T>(method: string, input: unknown): Promise<T> {
   const id = ++sequence;
   return new Promise((resolve, reject) => { pending.set(id, { resolve: value => resolve(value as T), reject }); process.send!({ type: 'rpc', id, method, input }); });

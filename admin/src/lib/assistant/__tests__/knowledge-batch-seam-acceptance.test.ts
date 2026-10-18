@@ -5,7 +5,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { unchangedEffects, assertTwoProcesses, assertSameItemOnce, assertCancellationFence, assertRecovered, assertConfigurationRejected } from '../../../../scripts/knowledge-batch-seam-acceptance/assertions.mjs';
+import { unchangedEffects, assertTwoProcesses, assertSameItemOnce, assertCancellationFence, assertRecovered, assertConfigurationRejected, safeErrorCode } from '../../../../scripts/knowledge-batch-seam-acceptance/assertions.mjs';
 import { parseSeamArguments } from '../../../../scripts/assistant-knowledge-batch-seam-acceptance.mjs';
 
 const sha = 'a'.repeat(64);
@@ -13,6 +13,14 @@ const snapshot = () => ({ counts: { runs: 1, jobs: 1, reservations: 1, providerA
   dispatchCalls: 1, providerFetches: 1, intent: { cancelled: true, manifestHash: sha, requestKey: 'original-cancel' }, intentCount: 1,
   runId: '21', conversationId: '20', createKey: 'original-create', sendKey: 'original-send',
   runStatus: 'indeterminate', reservationStatus: 'reconciling', costMicros: null });
+
+test('wrapped database diagnostics retain only safe codes and terminate for cyclic causes', () => {
+  const error = new Error('SQL and private parameters must stay out of the report', { cause: Object.assign(new Error('private value'), { code: '40P01' }) });
+  assert.equal(safeErrorCode(error), '40P01');
+  assert.equal(safeErrorCode(new Error('private value')), 'SEAM_ACTION_FAILED');
+  const cyclic: { cause?: unknown } = {}; cyclic.cause = cyclic;
+  assert.equal(safeErrorCode(cyclic), 'SEAM_ACTION_FAILED');
+});
 
 test('independent process evidence requires two distinct positive PIDs', () => {
   assertTwoProcesses([100, 101]);
