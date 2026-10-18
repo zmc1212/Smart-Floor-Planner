@@ -13,13 +13,16 @@ import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import type { SynthesisContext, SynthesisAnswer } from '@/lib/assistant/agent/synthesis';
 import { readMemory, applyNeedDelta, parseNeedDelta, type NeedFact } from '@/lib/assistant/agent/memory';
 import { defaultConstructionStages } from '@/lib/construction/stages';
+import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
 
-const root = path.resolve('..'), output = path.join(root, 'tmp/xiaok-corrections-continuity'), native = process.argv.includes('--native');
-const sourceFiles = [...['memory-sources','business-tools','memory','materials','context','worker','bound-context','synthesis','synthesis-sources']
+const root = path.resolve('..'), output = path.resolve(process.env.XIAOK_ACCEPTANCE_OUTPUT || path.join(root, 'tmp/xiaok-corrections-continuity')), native = process.argv.includes('--native');
+const isolated = process.argv.includes('--isolated'), origin = process.env.XIAOK_ACCEPTANCE_ORIGIN || 'http://localhost:3006';
+assert.ok(['http://localhost:3006','http://localhost:3007'].includes(origin), 'Approved loopback acceptance origin required');
+const sourceFiles = [...['answer-continuity','memory-sources','business-tools','memory','materials','context','worker','bound-context','synthesis','synthesis-sources']
   .map(f => 'src/lib/assistant/agent/' + f + '.ts'), 'src/lib/construction/need-issues.ts',
-  'scripts/assistant-continuity-development.ts', 'scripts/assistant-continuity-native.mjs'];
+  'scripts/assistant-continuity-development.ts', 'scripts/assistant-continuity-native.mjs', 'scripts/construction-chat-native.mjs', 'scripts/assistant-continuity-isolated.mjs'];
 const sourceHash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const prefix = 'synthetic-continuity-live-' + randomUUID();
+const prefix = (isolated ? 'synthetic-fact-boundaries-' : 'synthetic-continuity-live-') + randomUUID();
 export const initialNeeds = '请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。';
 export const question = '结合我书房现在的需求、团队核对和当前正式方案，按企业专业做法解释底盒为什么仍需核对；办公需求补充和底盒核对这两件事分别在等谁？';
 export const correction = '更正一下，书房办公人数改为单人办公，电脑和台灯不变。按企业专业做法，底盒现在还要核对什么；办公需求补充和底盒核对这两件事分别在等谁？';
@@ -32,8 +35,8 @@ const report: Row = { started: new Date().toISOString(), prefix, passed: false, 
     'mixed-correction: save use before retrieval, retain desk/devices/other room; preserve shared original and exact approved version',
     'continuation: current need and same unresolved issue/owner survive reentry; enterprise rule and actual stage explain the remaining gap',
     'withdrawal: dependent historical answers unavailable; no formal action or disclosure caused by private correction'],
-  reality: { factsAndMedia: 'clearly labelled synthetic; no real customer or engineering data', http: 'localhost:3006',
-    database: 'approved development5432', worker: 'existing real Worker', model: 'configured DeepSeek/deepseek-flash', imagePixels: false, costMicros: null } };
+  reality: { factsAndMedia: 'clearly labelled synthetic; no real customer or engineering data', http: origin,
+    database: isolated ? 'approved isolated55432/xiaok_embedding_eval' : 'approved development5432', worker: isolated ? 'isolated worktree HTTP Worker under shared acceptance lock' : 'existing real Worker', model: 'configured DeepSeek/deepseek-flash', imagePixels: false, costMicros: null } };
 const save = () => { fs.mkdirSync(output, { recursive: true }); fs.writeFileSync(path.join(output, native ? 'native-driver.json' : 'live.json'), JSON.stringify(report, null, 2)); };
 const check = (name: string) => { (report.checks as Row[]).push({ name, passed: true }); save(); console.log('PASS ' + name); };
 async function wait<T>(read: () => Promise<T | false | null>, label: string): Promise<T> {
@@ -44,7 +47,7 @@ let eid = '', uid = '', pid = '', cid = '', leadId = '', did = '', vid = '', cus
 const staff: { enterpriseId: string; adminId: string; userId: string; role: 'enterprise_admin' | 'designer' | 'construction_staff'; token: string }[] = [];
 const actor = (): ActorContext => ({ enterpriseId: eid, principal: { kind: 'user', userId: uid }, contextVersion: 1, capabilities: ['assistant.chat.self'], entry: { kind: 'lead', id: leadId } });
 async function http(url: string, token: string, method = 'GET', body?: unknown, status = 200, key = randomUUID()) {
-  const r = await fetch('http://localhost:3006' + url, { method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', 'Idempotency-Key': key },
+  const r = await fetch(origin + url, { method, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', 'Idempotency-Key': key },
     ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(60000) });
   const j = await r.json(); (report.requests as Row[]).push({ url, method, status: r.status, noStore: r.headers.get('cache-control') }); save();
   assert.equal(r.status, status, JSON.stringify(j)); assert.match(r.headers.get('cache-control') || '', /no-store/); return j.data;
@@ -159,18 +162,40 @@ async function audit(runId: string, label: string, started: number, withdrawn = 
   return result;
 }
 async function main() {
-  loadEnvConfig(process.cwd(), true); const target = new URL(resolvePostgresRuntimeConfig().connectionString);
-  assert.ok(process.argv.includes('--development') && ['localhost','127.0.0.1'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
+  loadEnvConfig(process.env.XIAOK_ACCEPTANCE_ENV_ROOT || process.cwd(), true); const target = new URL(resolvePostgresRuntimeConfig().connectionString);
+  assert.ok(['localhost','127.0.0.1'].includes(target.hostname)
+    && (isolated ? target.port === '55432' && target.pathname === '/xiaok_embedding_eval' && process.env.XIAOK_ACCEPTANCE_LOCK_OWNER === String(process.ppid)
+      : process.argv.includes('--development') && target.port === '5432' && target.pathname === '/smart_floor_planner'));
   report.promptVersion = (await import('@/lib/assistant/agent/context')).agentPromptVersion;
   report.sourceManifest = sourceFiles.map(file => ({ file, sha256: sourceHash(file) }));
   const [{ signMiniProgramToken }, { ConstructionService }, { ConversationService }, { KnowledgeService }] = await Promise.all([
     import('@/lib/miniprogram-jwt'), import('@/lib/construction/service'), import('@/lib/assistant/core/conversation'), import('@/lib/assistant/knowledge/service')]);
   save();
+  let restoreProvider: (() => Promise<unknown>) | undefined;
   try {
+    let template: Row | undefined;
+    if (isolated) {
+      const primary = new URL(process.env.XIAOK_ACCEPTANCE_PRIMARY_DATABASE_URL || '');
+      assert.ok(['localhost','127.0.0.1'].includes(primary.hostname) && primary.port === '5432' && primary.pathname === '/smart_floor_planner');
+      const evaluation = process.env.DATABASE_URL;
+      await closePostgresPool();
+      let provider: Awaited<ReturnType<typeof getPlatformLlmRuntimeConfig>>;
+      try {
+        process.env.DATABASE_URL = primary.toString();
+        provider = await getPlatformLlmRuntimeConfig();
+        template = await withPlatformTransaction(tx => one(tx, sql`select s.agent_config,e.code from app.assistant_enterprise_settings s join app.enterprises e on e.id=s.enterprise_id where s.enterprise_id=2404`));
+      } finally { await closePostgresPool(); process.env.DATABASE_URL = evaluation; }
+      assert.equal(provider.providerKey, 'deepseek'); assert.equal(new URL(provider.baseUrl).origin, 'https://api.deepseek.com');
+      const prior = await getPlatformLlmRuntimeConfig();
+      if (prior.apiKey !== provider.apiKey || prior.providerKey !== provider.providerKey || prior.baseUrl !== provider.baseUrl || prior.model !== provider.model || !prior.enabled) {
+        restoreProvider = () => savePlatformLlmConfig(prior);
+        await savePlatformLlmConfig({ enabled: true, providerKey: 'deepseek', baseUrl: provider.baseUrl, model: 'deepseek-flash', apiKey: provider.apiKey });
+      }
+      report.provider = { reusedExistingAuthorizedProvider: true, changedIsolatedOverride: Boolean(restoreProvider), credentialsPersistedInEvidence: false };
+    } else template = await withPlatformTransaction(tx => one(tx, sql`select s.agent_config,e.code from app.assistant_enterprise_settings s join app.enterprises e on e.id=s.enterprise_id where s.enterprise_id=2404`));
+    assert.ok(template && String(template.code).startsWith('p4b-development-')); const config = template.agent_config as Row;
+    assert.equal(config.providerKey, 'deepseek'); assert.equal(config.model, 'deepseek-flash'); assert.equal(config.runtime, 'langgraph-v1');
     await withPlatformTransaction(async tx => {
-      const template = await one(tx, sql`select s.agent_config,e.code from app.assistant_enterprise_settings s join app.enterprises e on e.id=s.enterprise_id where s.enterprise_id=2404`);
-      assert.ok(template && String(template.code).startsWith('p4b-development-')); const config = template.agent_config as Row;
-      assert.equal(config.providerKey, 'deepseek'); assert.equal(config.model, 'deepseek-flash'); assert.equal(config.runtime, 'langgraph-v1');
       eid = String((await one(tx, sql`insert into app.enterprises(name,code,status) values('测试专用 · 更正记忆与事项接续',${prefix},'active') returning id`))!.id);
       await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
         values(${eid},true,200,12000000,1000000000,30,${JSON.stringify({ ...config, imageInput: false })}::jsonb)`);
@@ -210,7 +235,7 @@ async function main() {
     const planText = (conflict = false) => `发布方案事项${issueId}\n标题：合成书房点位调整\n差异：${conflict ? '改为单人办公，取消台灯设备位，需客户核对这一差异。' : '按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。'}\n费用变化：+${conflict ? '800' : '500'}.00元\n工期变化：+${conflict ? '3' : '2'}天`;
     const publish = async (conflict = false) => {
       const form = new FormData(); form.append('file', new Blob([new Uint8Array(bytes)], { type: 'image/png' }), 'synthetic-formal.png');
-      const response = await fetch('http://localhost:3006' + base() + '/media', { method: 'POST', headers: { Authorization: 'Bearer ' + staff[1].token, 'Idempotency-Key': randomUUID() }, body: form });
+      const response = await fetch(origin + base() + '/media', { method: 'POST', headers: { Authorization: 'Bearer ' + staff[1].token, 'Idempotency-Key': randomUUID() }, body: form });
       const payload = await response.json(); assert.equal(response.status, 200, JSON.stringify(payload));
       (report.requests as Row[]).push({ url: base() + '/media', method: 'POST', status: response.status, kind: 'real multipart upload' }); save();
       const result = await staffSend(1, planText(conflict), [String(payload.data.id)]);
@@ -223,7 +248,7 @@ async function main() {
     };
     if (native) {
       const { run } = await import('./assistant-continuity-native.mjs');
-      await run({ root, output, projectId: pid, identities: staff, customer: { conversationId: cid, token: customerToken, enterpriseId: eid }, question,
+      await run({ root: process.env.XIAOK_NATIVE_PROJECT_ROOT || root, origin, output, projectId: pid, identities: staff, customer: { conversationId: cid, token: customerToken, enterpriseId: eid }, question,
         diagramBase64, audit, auditPreparation, seedLegacyMemory, materials, followups, initialNeeds, correction, continuation, withdrawnQuestion, setExpected, planText, setIssue: (id: string) => { issueId = id; },
         disclosure: () => withTenantTransaction(eid, tx => rows(tx, sql`select id::text,type from app.domain_event_outbox where enterprise_id=${eid}
           and (type like 'construction.plan.%' or type='construction.material.shared.v1') order by id`)),
@@ -288,8 +313,11 @@ async function main() {
         (select count(*) from app.assistant_jobs where enterprise_id=${eid} and status in ('queued','running')) active_jobs`);
     });
     } finally {
-      report.changedDuringRun = ((report.sourceManifest || []) as Array<{ file: string; sha256: string }>).filter(s => s.sha256 !== sourceHash(s.file)).map(s => s.file);
-      report.finished = new Date().toISOString(); save(); await closePostgresPool();
+      try { if (restoreProvider) { await restoreProvider(); report.providerRestored = true; } }
+      finally {
+        report.changedDuringRun = ((report.sourceManifest || []) as Array<{ file: string; sha256: string }>).filter(s => s.sha256 !== sourceHash(s.file)).map(s => s.file);
+        report.finished = new Date().toISOString(); save(); await closePostgresPool();
+      }
     }
   }
   assert.deepEqual(report.changedDuringRun, [], 'final evidence must use unchanged source files');

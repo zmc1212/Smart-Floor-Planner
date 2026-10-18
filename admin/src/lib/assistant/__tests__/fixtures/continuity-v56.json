@@ -1,0 +1,4097 @@
+{
+  "provenance": "Exact synthetic actual v56 outputs: native4109 duplicate adjacent same-source quotes rejected by old shape check, plus eight completed v56 service answers replayed under final parser. No new provider calls or credentials.",
+  "native": {
+    "runId": "4109",
+    "label": "baseline-1",
+    "answer": {
+      "kind": "synthesis",
+      "segments": [
+        {
+          "basis": "evidence",
+          "text": "先说结论：底盒现在还要核对，是因为企业做法要求水电阶段底盒固定前核对具体点位，而书房办公要先按你的原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道和插座。你书房目前是偶尔双人办公、使用电脑和台灯，书桌靠窗；团队已把参考图按本项目书房核对关联，但明确回传现场尺寸仍待复核，所以点位还不能直接定。",
+          "citations": [
+            {
+              "sourceId": "K948",
+              "quote": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。"
+            },
+            {
+              "sourceId": "K948",
+              "quote": "水电阶段底盒固定前须核对具体点位。"
+            },
+            {
+              "sourceId": "Bbound:4109:0:0:customer_need:4108:0:0:need:1",
+              "quote": "书房偶尔双人办公"
+            },
+            {
+              "sourceId": "Bbound:4109:0:0:customer_need:4108:0:0:need:2",
+              "quote": "书房使用电脑和台灯"
+            },
+            {
+              "sourceId": "Bbound:4109:0:0:team_review:17675",
+              "quote": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。"
+            }
+          ]
+        },
+        {
+          "basis": "evidence",
+          "text": "当前正式方案这一版是按双人办公补充电脑和台灯设备位，但具体安装尺寸仍待现场核对；你同意的是这一版方案，方案同意本身不等于现场点位已经落实，所以底盒核对仍要按现场尺寸走。",
+          "citations": [
+            {
+              "sourceId": "Bbound:4109:0:0:formal_plan:17678",
+              "quote": "方案17678 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。"
+            },
+            {
+              "sourceId": "K948",
+              "quote": "客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。"
+            }
+          ]
+        },
+        {
+          "basis": "evidence",
+          "text": "两件事的等待对象不同。办公需求补充（书房用途）目前仍待核对，尚未分配有权负责人；底盒所在的现场问题跟进仍待核对，等待项目团队，当前接续人是合成设计师，已有处理回复但现场尺寸仍待复核。",
+          "citations": [
+            {
+              "sourceId": "Bfollowups:4109:0:0:followup:need:17663",
+              "quote": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。"
+            },
+            {
+              "sourceId": "Bfollowups:4109:0:0:followup:team_result:17654",
+              "quote": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。"
+            }
+          ]
+        },
+        {
+          "basis": "evidence",
+          "text": "项目当前实际节点是水电，团队标记为底盒等待现场点位核对，这与上面“固定前核对点位”的要求一致。",
+          "citations": [
+            {
+              "sourceId": "Bstage:4109:0:0",
+              "quote": "团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对"
+            }
+          ]
+        },
+        {
+          "basis": "uncertainty",
+          "text": "本轮可用资料未提供书房现场尺寸和点位坐标，因此具体底盒位置、高度和数量还不能据此判断，需由项目团队结合现场复核后确认。",
+          "citations": []
+        }
+      ]
+    },
+    "sources": [
+      {
+        "sourceId": "K948",
+        "kind": "knowledge",
+        "title": "企业知识",
+        "text": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。",
+        "citationQuotes": [
+          "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。"
+        ]
+      },
+      {
+        "sourceId": "Bbound:4109:0:0",
+        "kind": "project",
+        "title": "本次材料查询范围与缺项",
+        "text": "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+        "resultKey": "bound:4109:0:0",
+        "citationQuotes": [
+          "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+        ],
+        "summaryTitle": "本次材料查询范围与缺项"
+      },
+      {
+        "sourceId": "Bbound:4109:0:0:customer_need:4108:0:0:need:1",
+        "kind": "project",
+        "title": "本咨询客户原话（书房）",
+        "summaryTitle": "本咨询客户原话（书房）",
+        "text": "书房偶尔双人办公",
+        "resultKey": "bound:4109:0:0",
+        "material": {
+          "ref": {
+            "type": "customer_need",
+            "id": "4108:0:0:need:1",
+            "version": "843c02c140776175f035dc866d104c1ff2d154531842da536fc4889c711bd79a"
+          },
+          "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+          "leadId": "5947",
+          "projectId": null,
+          "roomId": null,
+          "roomName": "书房",
+          "sourceMessageId": "20046",
+          "mediaIds": [],
+          "audience": "customer_self",
+          "basis": "owned_conversation",
+          "status": "current",
+          "text": "书房偶尔双人办公",
+          "need": {
+            "field": "use",
+            "value": "书房偶尔双人办公",
+            "supersedes": null,
+            "authority": "customer_statement",
+            "formalApproval": false
+          }
+        },
+        "citationQuotes": [
+          "书房偶尔双人办公"
+        ]
+      },
+      {
+        "sourceId": "Bbound:4109:0:0:customer_need:4108:0:0:need:2",
+        "kind": "project",
+        "title": "本咨询客户原话（书房）",
+        "summaryTitle": "本咨询客户原话（书房）",
+        "text": "书房使用电脑和台灯",
+        "resultKey": "bound:4109:0:0",
+        "material": {
+          "ref": {
+            "type": "customer_need",
+            "id": "4108:0:0:need:2",
+            "version": "eafa777aed2a50bcd9492819b24e242b5fb91b2be9b861e8d60b122079202cb2"
+          },
+          "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+          "leadId": "5947",
+          "projectId": null,
+          "roomId": null,
+          "roomName": "书房",
+          "sourceMessageId": "20046",
+          "mediaIds": [],
+          "audience": "customer_self",
+          "basis": "owned_conversation",
+          "status": "current",
+          "text": "书房使用电脑和台灯",
+          "need": {
+            "field": "devices",
+            "value": "书房使用电脑和台灯",
+            "supersedes": null,
+            "authority": "customer_statement",
+            "formalApproval": false
+          }
+        },
+        "citationQuotes": [
+          "书房使用电脑和台灯"
+        ]
+      },
+      {
+        "sourceId": "Bbound:4109:0:0:customer_need:4108:0:0:need:3",
+        "kind": "project",
+        "title": "本咨询客户原话（厨房）",
+        "summaryTitle": "本咨询客户原话（厨房）",
+        "text": "厨房为封闭式",
+        "resultKey": "bound:4109:0:0",
+        "material": {
+          "ref": {
+            "type": "customer_need",
+            "id": "4108:0:0:need:3",
+            "version": "b56e49560a1d687ea36866bfef0d3021cf1862b2273dda3b3fec73af487cc790"
+          },
+          "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+          "leadId": "5947",
+          "projectId": null,
+          "roomId": null,
+          "roomName": "厨房",
+          "sourceMessageId": "20046",
+          "mediaIds": [],
+          "audience": "customer_self",
+          "basis": "owned_conversation",
+          "status": "current",
+          "text": "厨房为封闭式",
+          "need": {
+            "field": "other",
+            "value": "厨房为封闭式",
+            "supersedes": null,
+            "authority": "customer_statement",
+            "formalApproval": false
+          }
+        },
+        "citationQuotes": [
+          "厨房为封闭式"
+        ]
+      },
+      {
+        "sourceId": "Bbound:4109:0:0:customer_need:synthetic:legacy-mixed:6788",
+        "kind": "project",
+        "title": "本咨询客户原话（书房）",
+        "summaryTitle": "本咨询客户原话（书房）",
+        "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+        "resultKey": "bound:4109:0:0",
+        "material": {
+          "ref": {
+            "type": "customer_need",
+            "id": "synthetic:legacy-mixed:6788",
+            "version": "fda6d279f5b22fbc093fa20826d227375a5977e316af75da381486e390c8b981"
+          },
+          "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+          "leadId": "5947",
+          "projectId": null,
+          "roomId": null,
+          "roomName": "书房",
+          "sourceMessageId": "20046",
+          "mediaIds": [],
+          "audience": "customer_self",
+          "basis": "owned_conversation",
+          "status": "current",
+          "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "need": {
+            "field": "desk",
+            "value": "书房书桌靠窗；书房偶尔双人办公",
+            "supersedes": "4108:0:0",
+            "authority": "customer_statement",
+            "formalApproval": false
+          }
+        },
+        "citationQuotes": [
+          "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+        ]
+      },
+      {
+        "sourceId": "Bbound:4109:0:0:shared_drawing:17668",
+        "kind": "project",
+        "title": "客户共享点位图原件说明（书房）",
+        "summaryTitle": "客户共享点位图原件说明（书房）",
+        "text": "客户参考图，图内尺寸尚未核实。",
+        "resultKey": "bound:4109:0:0",
+        "material": {
+          "ref": {
+            "type": "shared_drawing",
+            "id": "17668",
+            "version": "404f10d505372a9cc1ed843509bc18d07623f85b3c93e0e4ca66cb02ef141f38"
+          },
+          "hash": "12da9031a0e4f9a23728877eccc311d66972fb9a2fbab77147c47739cb1f8492",
+          "leadId": "5947",
+          "projectId": "988",
+          "roomId": "1630",
+          "roomName": "书房",
+          "sourceMessageId": "20052",
+          "mediaIds": [
+            "395"
+          ],
+          "audience": "customer_self",
+          "basis": "customer_shared_grant",
+          "status": "current",
+          "text": "客户参考图，图内尺寸尚未核实。",
+          "original": {
+            "grantId": "17668",
+            "conversationId": "4107",
+            "sourceHash": "16da29f1065d0595b0b8154db3fe13709efaa91805566dcea472ec992fdec5c1",
+            "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+            "authority": "customer_reference",
+            "imagePixels": false
+          }
+        },
+        "citationQuotes": [
+          "客户参考图，图内尺寸尚未核实。"
+        ]
+      },
+      {
+        "sourceId": "Bbound:4109:0:0:shared_need:17666",
+        "kind": "project",
+        "title": "客户共享需求原话（书房）",
+        "summaryTitle": "客户共享需求原话（书房）",
+        "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+        "resultKey": "bound:4109:0:0",
+        "material": {
+          "ref": {
+            "type": "shared_need",
+            "id": "17666",
+            "version": "7c122b5d335b6b5a00ad6906759359b4b192219406db62619e32cabb32e1ac6c"
+          },
+          "hash": "7146981d6418773b76b9682351958088db5954a5007911dac62454db05cbee5a",
+          "leadId": "5947",
+          "projectId": "988",
+          "roomId": "1630",
+          "roomName": "书房",
+          "sourceMessageId": "20048",
+          "mediaIds": [],
+          "audience": "customer_self",
+          "basis": "customer_shared_grant",
+          "status": "current",
+          "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+          "original": {
+            "grantId": "17666",
+            "conversationId": "4107",
+            "sourceHash": "421167d8d5f77dd48ee836586f19b2974b83c9c16fe6cd77352c0c2d8309e524",
+            "mediaHash": null,
+            "authority": "customer_reference",
+            "imagePixels": false
+          }
+        },
+        "citationQuotes": [
+          "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+        ]
+      },
+      {
+        "sourceId": "Bbound:4109:0:0:team_review:17675",
+        "kind": "project",
+        "title": "团队明确回传的图纸关联核对（书房）",
+        "summaryTitle": "团队明确回传的图纸关联核对（书房）",
+        "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+        "resultKey": "bound:4109:0:0",
+        "material": {
+          "ref": {
+            "type": "team_review",
+            "id": "17675",
+            "version": "f7638388e9f07f047add3eb61ead1f71d59357ea4409fc0e3d4a5d52372c817b"
+          },
+          "hash": "f7638388e9f07f047add3eb61ead1f71d59357ea4409fc0e3d4a5d52372c817b",
+          "leadId": "5947",
+          "projectId": "988",
+          "roomId": "1630",
+          "roomName": "书房",
+          "sourceMessageId": "20062",
+          "mediaIds": [],
+          "audience": "customer_self",
+          "basis": "returned_drawing_review",
+          "status": "current",
+          "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+          "review": {
+            "issueId": "17654",
+            "issueRevision": 8,
+            "needGrantId": "17666",
+            "drawingGrantId": "17668",
+            "materialVersion": "0cf0da0af5374f6aba2d3f9518793500f0659b1aa806afeb099a57b33281cd50",
+            "authority": "team_returned_association"
+          }
+        },
+        "citationQuotes": [
+          "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。"
+        ]
+      },
+      {
+        "sourceId": "Bbound:4109:0:0:formal_plan:17678",
+        "kind": "project",
+        "title": "精确正式方案版本与客户决定（书房）",
+        "summaryTitle": "精确正式方案版本与客户决定（书房）",
+        "text": "方案17678 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+        "resultKey": "bound:4109:0:0",
+        "material": {
+          "ref": {
+            "type": "formal_plan",
+            "id": "17678",
+            "version": "bac1ba9033df60f9daafeb3a6952f715e6eda0f34b0e2a0ae812fa88a55e8951"
+          },
+          "hash": "bac1ba9033df60f9daafeb3a6952f715e6eda0f34b0e2a0ae812fa88a55e8951",
+          "leadId": "5947",
+          "projectId": "988",
+          "roomId": "1630",
+          "roomName": "书房",
+          "sourceMessageId": "20066",
+          "mediaIds": [
+            "811"
+          ],
+          "audience": "customer_self",
+          "basis": "delivered_formal_plan",
+          "status": "current",
+          "text": "方案17678 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+          "formal": {
+            "issueId": "17654",
+            "issueRevision": 8,
+            "number": 1,
+            "revision": 3,
+            "decision": "approved",
+            "previousVersionId": null,
+            "needGrantId": "17666",
+            "materialVersion": "0cf0da0af5374f6aba2d3f9518793500f0659b1aa806afeb099a57b33281cd50",
+            "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+            "authority": "enterprise_published_version",
+            "imagePixels": false
+          }
+        },
+        "citationQuotes": [
+          "方案17678 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+        ]
+      },
+      {
+        "sourceId": "Bstage:4109:0:0",
+        "kind": "project",
+        "title": "本人项目实际节点",
+        "text": "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+        "resultKey": "stage:4109:0:0",
+        "citationQuotes": [
+          "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+        ],
+        "summaryTitle": "本人项目实际节点"
+      },
+      {
+        "sourceId": "Bfollowups:4109:0:0:followup:need:17663",
+        "kind": "project",
+        "title": "原咨询事项当前接续状态",
+        "summaryTitle": "原咨询事项当前接续状态",
+        "text": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房偶尔双人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+        "resultKey": "followups:4109:0:0",
+        "followup": {
+          "issueId": "17663",
+          "revision": 2,
+          "projectId": "988",
+          "room": "书房",
+          "field": "use",
+          "status": "awaiting_review",
+          "waitingFor": "unassigned",
+          "ownerName": "",
+          "sourceMessageId": "20046",
+          "sourceFactId": "4108:0:0:need:1",
+          "lastProgress": "customer_supplement"
+        },
+        "citationQuotes": [
+          "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房偶尔双人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+        ]
+      },
+      {
+        "sourceId": "Bfollowups:4109:0:0:followup:team_result:17654",
+        "kind": "project",
+        "title": "原咨询事项当前接续状态",
+        "summaryTitle": "原咨询事项当前接续状态",
+        "text": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+        "resultKey": "followups:4109:0:0",
+        "followup": {
+          "issueId": "17654",
+          "revision": 8,
+          "projectId": "988",
+          "room": "书房",
+          "field": "site_result",
+          "status": "awaiting_review",
+          "waitingFor": "team",
+          "ownerName": "合成设计师",
+          "sourceMessageId": "20062",
+          "sourceFactId": null,
+          "lastProgress": "team_result",
+          "kind": "team_result",
+          "sourceVersion": "245860160948c672ee199d73fb9d0ec8e0e4f1ea01d99c2a809740e675e80a8f"
+        },
+        "citationQuotes": [
+          "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+        ]
+      },
+      {
+        "sourceId": "Bfollowups:4109:0:0:followup:formal_plan:17654",
+        "kind": "project",
+        "title": "原事项精确方案及决定",
+        "summaryTitle": "原事项精确方案及决定",
+        "text": "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17678 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+        "resultKey": "followups:4109:0:0",
+        "followup": {
+          "issueId": "17654",
+          "revision": 3,
+          "projectId": "988",
+          "room": "书房",
+          "field": "formal_plan",
+          "status": "approved",
+          "waitingFor": "team",
+          "ownerName": "项目团队",
+          "sourceMessageId": "20066",
+          "sourceFactId": null,
+          "lastProgress": "approved",
+          "kind": "formal_plan",
+          "sourceVersion": "bac1ba9033df60f9daafeb3a6952f715e6eda0f34b0e2a0ae812fa88a55e8951"
+        },
+        "citationQuotes": [
+          "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17678 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+        ]
+      }
+    ]
+  },
+  "service": [
+    {
+      "runId": "4098",
+      "label": "baseline-1",
+      "answer": {
+        "kind": "synthesis",
+        "segments": [
+          {
+            "basis": "evidence",
+            "text": "书房现在的需求是偶尔双人办公，使用电脑和台灯，书桌靠窗。企业做法是先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座；水电阶段底盒固定前须核对具体点位。所以底盒要核对，是因为人数和设备位只是需求层面，具体点位还要落到家具尺寸和现场位置上。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4098:0:0:customer_need:4096:0:0:need:1",
+                "quote": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+              },
+              {
+                "sourceId": "Bbound:4098:0:0:customer_need:4096:0:0:need:2",
+                "quote": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "水电阶段底盒固定前须核对具体点位。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "团队已回传的图纸关联核对也说明，图纸已按本项目书房核对关联，现场尺寸仍待复核；关联核对本身不证明具体位置与尺寸正确。当前项目节点是水电，底盒正等待现场点位核对。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4098:0:0:team_review:17630",
+                "quote": "图纸已按本项目书房核对关联，现场尺寸仍待复核。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。"
+              },
+              {
+                "sourceId": "Bstage:4098:0:0",
+                "quote": "团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "当前这一版正式方案是按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对；这一版你已经同意，但同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4098:0:0:formal_plan:17633",
+                "quote": "差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。"
+              },
+              {
+                "sourceId": "Bbound:4098:0:0:formal_plan:17633",
+                "quote": "这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "两件事的等待对象不同：办公需求补充（书房用途）目前仍待核对，尚未分配有权负责人；底盒所在的现场问题跟进仍待核对，等待对象是项目团队，当前接续人是合成设计师，已有处理回复但仍待团队核对。",
+            "citations": [
+              {
+                "sourceId": "Bfollowups:4098:0:0:followup:need:17615",
+                "quote": "当前状态：仍待核对。等待对象：尚未分配有权负责人。"
+              },
+              {
+                "sourceId": "Bfollowups:4098:0:0:followup:team_result:17622",
+                "quote": "当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。"
+              }
+            ]
+          },
+          {
+            "basis": "uncertainty",
+            "text": "本轮可用资料未提供书房现场尺寸和图内细节，因此具体点位还不能据此判断，仍需团队结合现场复核。",
+            "citations": []
+          }
+        ]
+      },
+      "sources": [
+        {
+          "sourceId": "K947",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。",
+          "citationQuotes": [
+            "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4098:0:0",
+          "kind": "project",
+          "title": "本次材料查询范围与缺项",
+          "text": "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+          "resultKey": "bound:4098:0:0",
+          "citationQuotes": [
+            "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+          ],
+          "summaryTitle": "本次材料查询范围与缺项"
+        },
+        {
+          "sourceId": "Bbound:4098:0:0:customer_need:4096:0:0:need:1",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4098:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:1",
+              "version": "35ede1f8fc895c9ceb6e3eaee182a1e47c5d17b1c6dbf33cc541c1b35aac3581"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "use",
+              "value": "书房偶尔双人办公",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4098:0:0:customer_need:4096:0:0:need:2",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4098:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:2",
+              "version": "964f268806c2b355d1536254ae121bcaf5847c684dd124e5a7b9d2f22c460216"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "devices",
+              "value": "书房使用电脑和台灯",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4098:0:0:customer_need:4096:0:0:need:3",
+          "kind": "project",
+          "title": "本咨询客户原话（厨房）",
+          "summaryTitle": "本咨询客户原话（厨房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4098:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:3",
+              "version": "13bd9d24e5a24c904e77f19d3871870877d68d6df859fae1255e1a4aadd1ccab"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "厨房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "other",
+              "value": "厨房为封闭式",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4098:0:0:customer_need:synthetic:legacy-mixed:6784",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4098:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "synthetic:legacy-mixed:6784",
+              "version": "efadbfa679140c54cf49d6f148779e79e7efc9fd897c37a1abb4295e30c38248"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "desk",
+              "value": "书房书桌靠窗；书房偶尔双人办公",
+              "supersedes": "4096:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4098:0:0:shared_drawing:17620",
+          "kind": "project",
+          "title": "客户共享点位图原件说明（书房）",
+          "summaryTitle": "客户共享点位图原件说明（书房）",
+          "text": "客户参考图，图内尺寸尚未核实。",
+          "resultKey": "bound:4098:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_drawing",
+              "id": "17620",
+              "version": "1757541457acae9ecd33c98e66d4c66f61c93cc09597e8b427edd3def48bee9d"
+            },
+            "hash": "12da9031a0e4f9a23728877eccc311d66972fb9a2fbab77147c47739cb1f8492",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19992",
+            "mediaIds": [
+              "394"
+            ],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "客户参考图，图内尺寸尚未核实。",
+            "original": {
+              "grantId": "17620",
+              "conversationId": "4105",
+              "sourceHash": "16da29f1065d0595b0b8154db3fe13709efaa91805566dcea472ec992fdec5c1",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "客户参考图，图内尺寸尚未核实。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4098:0:0:shared_need:17618",
+          "kind": "project",
+          "title": "客户共享需求原话（书房）",
+          "summaryTitle": "客户共享需求原话（书房）",
+          "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+          "resultKey": "bound:4098:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_need",
+              "id": "17618",
+              "version": "d717cb434221312dec0679c60c07060e726862305b561138475c7aa6887d03f4"
+            },
+            "hash": "7146981d6418773b76b9682351958088db5954a5007911dac62454db05cbee5a",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19988",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+            "original": {
+              "grantId": "17618",
+              "conversationId": "4105",
+              "sourceHash": "421167d8d5f77dd48ee836586f19b2974b83c9c16fe6cd77352c0c2d8309e524",
+              "mediaHash": null,
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4098:0:0:team_review:17630",
+          "kind": "project",
+          "title": "团队明确回传的图纸关联核对（书房）",
+          "summaryTitle": "团队明确回传的图纸关联核对（书房）",
+          "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+          "resultKey": "bound:4098:0:0",
+          "material": {
+            "ref": {
+              "type": "team_review",
+              "id": "17630",
+              "version": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04"
+            },
+            "hash": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20006",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "returned_drawing_review",
+            "status": "current",
+            "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+            "review": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "needGrantId": "17618",
+              "drawingGrantId": "17620",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "authority": "team_returned_association"
+            }
+          },
+          "citationQuotes": [
+            "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4098:0:0:formal_plan:17633",
+          "kind": "project",
+          "title": "精确正式方案版本与客户决定（书房）",
+          "summaryTitle": "精确正式方案版本与客户决定（书房）",
+          "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+          "resultKey": "bound:4098:0:0",
+          "material": {
+            "ref": {
+              "type": "formal_plan",
+              "id": "17633",
+              "version": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+            },
+            "hash": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20010",
+            "mediaIds": [
+              "810"
+            ],
+            "audience": "customer_self",
+            "basis": "delivered_formal_plan",
+            "status": "current",
+            "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+            "formal": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "number": 1,
+              "revision": 3,
+              "decision": "approved",
+              "previousVersionId": null,
+              "needGrantId": "17618",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "enterprise_published_version",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+          ]
+        },
+        {
+          "sourceId": "Bstage:4098:0:0",
+          "kind": "project",
+          "title": "本人项目实际节点",
+          "text": "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+          "resultKey": "stage:4098:0:0",
+          "citationQuotes": [
+            "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+          ],
+          "summaryTitle": "本人项目实际节点"
+        },
+        {
+          "sourceId": "Bfollowups:4098:0:0:followup:need:17615",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房偶尔双人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4098:0:0",
+          "followup": {
+            "issueId": "17615",
+            "revision": 2,
+            "projectId": "987",
+            "room": "书房",
+            "field": "use",
+            "status": "awaiting_review",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": "19986",
+            "sourceFactId": "4096:0:0:need:1",
+            "lastProgress": "customer_supplement"
+          },
+          "citationQuotes": [
+            "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房偶尔双人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4098:0:0:followup:team_result:17622",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4098:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 5,
+            "projectId": "987",
+            "room": "书房",
+            "field": "site_result",
+            "status": "awaiting_review",
+            "waitingFor": "team",
+            "ownerName": "合成设计师",
+            "sourceMessageId": "20006",
+            "sourceFactId": null,
+            "lastProgress": "team_result",
+            "kind": "team_result",
+            "sourceVersion": "4e44b38a5dd74cb5fcb24c851871b3b8dee73b600afd841328b73046364d7288"
+          },
+          "citationQuotes": [
+            "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4098:0:0:followup:formal_plan:17622",
+          "kind": "project",
+          "title": "原事项精确方案及决定",
+          "summaryTitle": "原事项精确方案及决定",
+          "text": "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4098:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 3,
+            "projectId": "987",
+            "room": "书房",
+            "field": "formal_plan",
+            "status": "approved",
+            "waitingFor": "team",
+            "ownerName": "项目团队",
+            "sourceMessageId": "20010",
+            "sourceFactId": null,
+            "lastProgress": "approved",
+            "kind": "formal_plan",
+            "sourceVersion": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+          },
+          "citationQuotes": [
+            "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        }
+      ]
+    },
+    {
+      "runId": "4099",
+      "label": "baseline-2",
+      "answer": {
+        "kind": "synthesis",
+        "segments": [
+          {
+            "basis": "evidence",
+            "text": "书房这边，你现在的需求是偶尔双人办公，使用电脑和台灯，书桌靠窗。企业做法是办公位先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道和插座；水电阶段底盒固定前必须核对具体点位。所以底盒不是“图纸关联过就能定”，而是要把人数、设备、家具尺寸和现场位置对到一起。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4099:0:0:customer_need:4096:0:0:need:1",
+                "quote": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+              },
+              {
+                "sourceId": "Bbound:4099:0:0:customer_need:4096:0:0:need:2",
+                "quote": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "水电阶段底盒固定前须核对具体点位。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "团队回传的图纸关联核对也说明了这一点：图纸已按本项目书房核对关联，但现场尺寸仍待复核，关联核对本身不等于具体位置和尺寸正确。你项目当前节点是水电，底盒正等待现场点位核对。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4099:0:0:team_review:17630",
+                "quote": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。"
+              },
+              {
+                "sourceId": "Bstage:4099:0:0",
+                "quote": "团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "当前这一版正式方案是按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对；你已同意这一版，但同意方案本身不会自动落实，处理结果要另行核对。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4099:0:0:formal_plan:17633",
+                "quote": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "两件事的等待对象不同：办公需求补充目前仍待核对，尚未分配有权负责人；底盒所在的现场问题跟进仍待核对，等待项目团队，当前接续人是合成设计师。",
+            "citations": [
+              {
+                "sourceId": "Bfollowups:4099:0:0:followup:need:17615",
+                "quote": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。"
+              },
+              {
+                "sourceId": "Bfollowups:4099:0:0:followup:team_result:17622",
+                "quote": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。"
+              }
+            ]
+          },
+          {
+            "basis": "uncertainty",
+            "text": "本轮可用资料未提供书房现场尺寸和家具实际尺寸，因此具体底盒点位还不能据此判断；需要团队结合现场复核后再定。",
+            "citations": []
+          }
+        ]
+      },
+      "sources": [
+        {
+          "sourceId": "K947",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。",
+          "citationQuotes": [
+            "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4099:0:0",
+          "kind": "project",
+          "title": "本次材料查询范围与缺项",
+          "text": "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+          "resultKey": "bound:4099:0:0",
+          "citationQuotes": [
+            "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+          ],
+          "summaryTitle": "本次材料查询范围与缺项"
+        },
+        {
+          "sourceId": "Bbound:4099:0:0:customer_need:4096:0:0:need:1",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4099:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:1",
+              "version": "35ede1f8fc895c9ceb6e3eaee182a1e47c5d17b1c6dbf33cc541c1b35aac3581"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "use",
+              "value": "书房偶尔双人办公",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4099:0:0:customer_need:4096:0:0:need:2",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4099:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:2",
+              "version": "964f268806c2b355d1536254ae121bcaf5847c684dd124e5a7b9d2f22c460216"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "devices",
+              "value": "书房使用电脑和台灯",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4099:0:0:customer_need:4096:0:0:need:3",
+          "kind": "project",
+          "title": "本咨询客户原话（厨房）",
+          "summaryTitle": "本咨询客户原话（厨房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4099:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:3",
+              "version": "13bd9d24e5a24c904e77f19d3871870877d68d6df859fae1255e1a4aadd1ccab"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "厨房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "other",
+              "value": "厨房为封闭式",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4099:0:0:customer_need:synthetic:legacy-mixed:6784",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4099:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "synthetic:legacy-mixed:6784",
+              "version": "efadbfa679140c54cf49d6f148779e79e7efc9fd897c37a1abb4295e30c38248"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "desk",
+              "value": "书房书桌靠窗；书房偶尔双人办公",
+              "supersedes": "4096:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4099:0:0:shared_drawing:17620",
+          "kind": "project",
+          "title": "客户共享点位图原件说明（书房）",
+          "summaryTitle": "客户共享点位图原件说明（书房）",
+          "text": "客户参考图，图内尺寸尚未核实。",
+          "resultKey": "bound:4099:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_drawing",
+              "id": "17620",
+              "version": "1757541457acae9ecd33c98e66d4c66f61c93cc09597e8b427edd3def48bee9d"
+            },
+            "hash": "12da9031a0e4f9a23728877eccc311d66972fb9a2fbab77147c47739cb1f8492",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19992",
+            "mediaIds": [
+              "394"
+            ],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "客户参考图，图内尺寸尚未核实。",
+            "original": {
+              "grantId": "17620",
+              "conversationId": "4105",
+              "sourceHash": "16da29f1065d0595b0b8154db3fe13709efaa91805566dcea472ec992fdec5c1",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "客户参考图，图内尺寸尚未核实。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4099:0:0:shared_need:17618",
+          "kind": "project",
+          "title": "客户共享需求原话（书房）",
+          "summaryTitle": "客户共享需求原话（书房）",
+          "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+          "resultKey": "bound:4099:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_need",
+              "id": "17618",
+              "version": "d717cb434221312dec0679c60c07060e726862305b561138475c7aa6887d03f4"
+            },
+            "hash": "7146981d6418773b76b9682351958088db5954a5007911dac62454db05cbee5a",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19988",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+            "original": {
+              "grantId": "17618",
+              "conversationId": "4105",
+              "sourceHash": "421167d8d5f77dd48ee836586f19b2974b83c9c16fe6cd77352c0c2d8309e524",
+              "mediaHash": null,
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4099:0:0:team_review:17630",
+          "kind": "project",
+          "title": "团队明确回传的图纸关联核对（书房）",
+          "summaryTitle": "团队明确回传的图纸关联核对（书房）",
+          "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+          "resultKey": "bound:4099:0:0",
+          "material": {
+            "ref": {
+              "type": "team_review",
+              "id": "17630",
+              "version": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04"
+            },
+            "hash": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20006",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "returned_drawing_review",
+            "status": "current",
+            "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+            "review": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "needGrantId": "17618",
+              "drawingGrantId": "17620",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "authority": "team_returned_association"
+            }
+          },
+          "citationQuotes": [
+            "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4099:0:0:formal_plan:17633",
+          "kind": "project",
+          "title": "精确正式方案版本与客户决定（书房）",
+          "summaryTitle": "精确正式方案版本与客户决定（书房）",
+          "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+          "resultKey": "bound:4099:0:0",
+          "material": {
+            "ref": {
+              "type": "formal_plan",
+              "id": "17633",
+              "version": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+            },
+            "hash": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20010",
+            "mediaIds": [
+              "810"
+            ],
+            "audience": "customer_self",
+            "basis": "delivered_formal_plan",
+            "status": "current",
+            "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+            "formal": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "number": 1,
+              "revision": 3,
+              "decision": "approved",
+              "previousVersionId": null,
+              "needGrantId": "17618",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "enterprise_published_version",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+          ]
+        },
+        {
+          "sourceId": "Bstage:4099:0:0",
+          "kind": "project",
+          "title": "本人项目实际节点",
+          "text": "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+          "resultKey": "stage:4099:0:0",
+          "citationQuotes": [
+            "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+          ],
+          "summaryTitle": "本人项目实际节点"
+        },
+        {
+          "sourceId": "Bfollowups:4099:0:0:followup:need:17615",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房偶尔双人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4099:0:0",
+          "followup": {
+            "issueId": "17615",
+            "revision": 2,
+            "projectId": "987",
+            "room": "书房",
+            "field": "use",
+            "status": "awaiting_review",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": "19986",
+            "sourceFactId": "4096:0:0:need:1",
+            "lastProgress": "customer_supplement"
+          },
+          "citationQuotes": [
+            "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房偶尔双人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4099:0:0:followup:team_result:17622",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4099:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 5,
+            "projectId": "987",
+            "room": "书房",
+            "field": "site_result",
+            "status": "awaiting_review",
+            "waitingFor": "team",
+            "ownerName": "合成设计师",
+            "sourceMessageId": "20006",
+            "sourceFactId": null,
+            "lastProgress": "team_result",
+            "kind": "team_result",
+            "sourceVersion": "4e44b38a5dd74cb5fcb24c851871b3b8dee73b600afd841328b73046364d7288"
+          },
+          "citationQuotes": [
+            "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4099:0:0:followup:formal_plan:17622",
+          "kind": "project",
+          "title": "原事项精确方案及决定",
+          "summaryTitle": "原事项精确方案及决定",
+          "text": "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4099:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 3,
+            "projectId": "987",
+            "room": "书房",
+            "field": "formal_plan",
+            "status": "approved",
+            "waitingFor": "team",
+            "ownerName": "项目团队",
+            "sourceMessageId": "20010",
+            "sourceFactId": null,
+            "lastProgress": "approved",
+            "kind": "formal_plan",
+            "sourceVersion": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+          },
+          "citationQuotes": [
+            "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        }
+      ]
+    },
+    {
+      "runId": "4100",
+      "label": "mixed-correction-1",
+      "answer": {
+        "kind": "synthesis",
+        "segments": [
+          {
+            "basis": "evidence",
+            "text": "书房办公人数已按你的更正更新为单人办公，电脑和台灯这两项设备需求保持不变。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4100:1:0:customer_need:4100:0:0",
+                "quote": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。"
+              },
+              {
+                "sourceId": "Bbound:4100:1:0:customer_need:4096:0:0:need:2",
+                "quote": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "按企业做法，书房办公要先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座；水电阶段底盒固定前须核对具体点位。所以现在底盒要核对的是：单人办公下书桌的实际位置与尺寸、电脑和台灯各自的使用位置与插座需求，以及书桌周边通道和插座是否够用、位置是否合适。",
+            "citations": [
+              {
+                "sourceId": "K947",
+                "quote": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "水电阶段底盒固定前须核对具体点位。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "项目当前处于水电阶段，底盒正等待现场点位核对。团队已把书房参考图与本项目书房核对关联，但明确回传现场尺寸仍待复核；图纸关联本身不等于具体位置和尺寸已经确认。",
+            "citations": [
+              {
+                "sourceId": "Bstage:4100:1:0",
+                "quote": "团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对"
+              },
+              {
+                "sourceId": "Bbound:4100:1:0:team_review:17630",
+                "quote": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "两件事的等待对象不同：办公需求补充目前仍待核对，尚未分配有权负责人；底盒所在的现场问题跟进仍待核对，等待项目团队，当前接续人是合成设计师。",
+            "citations": [
+              {
+                "sourceId": "Bfollowups:4100:1:0:followup:need:17615",
+                "quote": "当前状态：仍待核对。等待对象：尚未分配有权负责人。"
+              },
+              {
+                "sourceId": "Bfollowups:4100:1:0:followup:team_result:17622",
+                "quote": "当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "另外要提醒一处差异：此前发给你的正式方案是按双人办公补充电脑和台灯设备位，与你现在的单人办公不一致，这一版的具体安装尺寸也仍待现场核对。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4100:1:0:formal_plan:17633",
+                "quote": "差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。"
+              }
+            ]
+          },
+          {
+            "basis": "uncertainty",
+            "text": "本轮未取得书桌实际尺寸和现场点位坐标，具体底盒位置与数量仍需团队现场核对；正式方案是否随单人办公调整，也需团队核实后另行确认。",
+            "citations": []
+          }
+        ]
+      },
+      "sources": [
+        {
+          "sourceId": "K947",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。",
+          "citationQuotes": [
+            "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4100:1:0",
+          "kind": "project",
+          "title": "本次材料查询范围与缺项",
+          "text": "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+          "resultKey": "bound:4100:1:0",
+          "citationQuotes": [
+            "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+          ],
+          "summaryTitle": "本次材料查询范围与缺项"
+        },
+        {
+          "sourceId": "Bbound:4100:1:0:customer_need:4096:0:0:need:2",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4100:1:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:2",
+              "version": "964f268806c2b355d1536254ae121bcaf5847c684dd124e5a7b9d2f22c460216"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "devices",
+              "value": "书房使用电脑和台灯",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4100:1:0:customer_need:4096:0:0:need:3",
+          "kind": "project",
+          "title": "本咨询客户原话（厨房）",
+          "summaryTitle": "本咨询客户原话（厨房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4100:1:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:3",
+              "version": "13bd9d24e5a24c904e77f19d3871870877d68d6df859fae1255e1a4aadd1ccab"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "厨房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "other",
+              "value": "厨房为封闭式",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4100:1:0:customer_need:synthetic:legacy-mixed:6784",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4100:1:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "synthetic:legacy-mixed:6784",
+              "version": "efadbfa679140c54cf49d6f148779e79e7efc9fd897c37a1abb4295e30c38248"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "desk",
+              "value": "书房书桌靠窗；书房偶尔双人办公",
+              "supersedes": "4096:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false,
+              "qualifiedBy": [
+                {
+                  "factId": "4100:0:0",
+                  "field": "use",
+                  "value": "书房办公人数改为单人办公",
+                  "sourceMessageId": "20015"
+                }
+              ],
+              "interpretation": {
+                "factId": "synthetic:legacy-mixed:6784",
+                "field": "use",
+                "currentFactId": "4100:0:0"
+              }
+            }
+          },
+          "citationQuotes": [
+            "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4100:1:0:customer_need:4100:0:0",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。",
+          "resultKey": "bound:4100:1:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4100:0:0",
+              "version": "ef9f9745b982ed9b9cee31bd41289138a37140854d4ab1327937267c38515ce4"
+            },
+            "hash": "b92b1a9ea2f9eef8d1b4deee5a0f3ff3a15d0df98574efcd6f8364d71c7d41ff",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "20015",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。",
+            "need": {
+              "field": "use",
+              "value": "书房办公人数改为单人办公",
+              "supersedes": "4096:0:0:need:1",
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "更正一下，书房办公人数改为单人办公，电脑和台灯不变。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4100:1:0:shared_drawing:17620",
+          "kind": "project",
+          "title": "客户共享点位图原件说明（书房）",
+          "summaryTitle": "客户共享点位图原件说明（书房）",
+          "text": "客户参考图，图内尺寸尚未核实。",
+          "resultKey": "bound:4100:1:0",
+          "material": {
+            "ref": {
+              "type": "shared_drawing",
+              "id": "17620",
+              "version": "1757541457acae9ecd33c98e66d4c66f61c93cc09597e8b427edd3def48bee9d"
+            },
+            "hash": "12da9031a0e4f9a23728877eccc311d66972fb9a2fbab77147c47739cb1f8492",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19992",
+            "mediaIds": [
+              "394"
+            ],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "客户参考图，图内尺寸尚未核实。",
+            "original": {
+              "grantId": "17620",
+              "conversationId": "4105",
+              "sourceHash": "16da29f1065d0595b0b8154db3fe13709efaa91805566dcea472ec992fdec5c1",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "客户参考图，图内尺寸尚未核实。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4100:1:0:shared_need:17618",
+          "kind": "project",
+          "title": "客户共享需求原话（书房）",
+          "summaryTitle": "客户共享需求原话（书房）",
+          "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+          "resultKey": "bound:4100:1:0",
+          "material": {
+            "ref": {
+              "type": "shared_need",
+              "id": "17618",
+              "version": "d717cb434221312dec0679c60c07060e726862305b561138475c7aa6887d03f4"
+            },
+            "hash": "7146981d6418773b76b9682351958088db5954a5007911dac62454db05cbee5a",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19988",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+            "original": {
+              "grantId": "17618",
+              "conversationId": "4105",
+              "sourceHash": "421167d8d5f77dd48ee836586f19b2974b83c9c16fe6cd77352c0c2d8309e524",
+              "mediaHash": null,
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4100:1:0:team_review:17630",
+          "kind": "project",
+          "title": "团队明确回传的图纸关联核对（书房）",
+          "summaryTitle": "团队明确回传的图纸关联核对（书房）",
+          "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+          "resultKey": "bound:4100:1:0",
+          "material": {
+            "ref": {
+              "type": "team_review",
+              "id": "17630",
+              "version": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04"
+            },
+            "hash": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20006",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "returned_drawing_review",
+            "status": "current",
+            "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+            "review": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "needGrantId": "17618",
+              "drawingGrantId": "17620",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "authority": "team_returned_association"
+            }
+          },
+          "citationQuotes": [
+            "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4100:1:0:formal_plan:17633",
+          "kind": "project",
+          "title": "精确正式方案版本与客户决定（书房）",
+          "summaryTitle": "精确正式方案版本与客户决定（书房）",
+          "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+          "resultKey": "bound:4100:1:0",
+          "material": {
+            "ref": {
+              "type": "formal_plan",
+              "id": "17633",
+              "version": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+            },
+            "hash": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20010",
+            "mediaIds": [
+              "810"
+            ],
+            "audience": "customer_self",
+            "basis": "delivered_formal_plan",
+            "status": "current",
+            "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+            "formal": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "number": 1,
+              "revision": 3,
+              "decision": "approved",
+              "previousVersionId": null,
+              "needGrantId": "17618",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "enterprise_published_version",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+          ]
+        },
+        {
+          "sourceId": "Bstage:4100:1:0",
+          "kind": "project",
+          "title": "本人项目实际节点",
+          "text": "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+          "resultKey": "stage:4100:1:0",
+          "citationQuotes": [
+            "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+          ],
+          "summaryTitle": "本人项目实际节点"
+        },
+        {
+          "sourceId": "Bfollowups:4100:1:0:followup:need:17615",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房办公人数改为单人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4100:1:0",
+          "followup": {
+            "issueId": "17615",
+            "revision": 3,
+            "projectId": "987",
+            "room": "书房",
+            "field": "use",
+            "status": "awaiting_review",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": "20015",
+            "sourceFactId": "4100:0:0",
+            "lastProgress": "customer_supplement"
+          },
+          "citationQuotes": [
+            "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房办公人数改为单人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4100:1:0:followup:team_result:17622",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4100:1:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 5,
+            "projectId": "987",
+            "room": "书房",
+            "field": "site_result",
+            "status": "awaiting_review",
+            "waitingFor": "team",
+            "ownerName": "合成设计师",
+            "sourceMessageId": "20006",
+            "sourceFactId": null,
+            "lastProgress": "team_result",
+            "kind": "team_result",
+            "sourceVersion": "4e44b38a5dd74cb5fcb24c851871b3b8dee73b600afd841328b73046364d7288"
+          },
+          "citationQuotes": [
+            "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4100:1:0:followup:formal_plan:17622",
+          "kind": "project",
+          "title": "原事项精确方案及决定",
+          "summaryTitle": "原事项精确方案及决定",
+          "text": "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4100:1:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 3,
+            "projectId": "987",
+            "room": "书房",
+            "field": "formal_plan",
+            "status": "approved",
+            "waitingFor": "team",
+            "ownerName": "项目团队",
+            "sourceMessageId": "20010",
+            "sourceFactId": null,
+            "lastProgress": "approved",
+            "kind": "formal_plan",
+            "sourceVersion": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+          },
+          "citationQuotes": [
+            "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        }
+      ]
+    },
+    {
+      "runId": "4101",
+      "label": "mixed-correction-2",
+      "answer": {
+        "kind": "synthesis",
+        "segments": [
+          {
+            "basis": "evidence",
+            "text": "书房办公人数已按你的更正更新为单人办公，电脑和台灯这两项设备需求保持不变。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4101:1:0:customer_need:4101:0:0",
+                "quote": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。"
+              },
+              {
+                "sourceId": "Bbound:4101:1:0:customer_need:4096:0:0:need:2",
+                "quote": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "按企业做法，书房办公要先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座；水电阶段底盒固定前须核对具体点位。所以现在底盒要核的是：书桌实际尺寸与靠窗摆放后，电脑、台灯对应的插座位置、高度和数量是否与家具落位对得上，以及通道是否够用。",
+            "citations": [
+              {
+                "sourceId": "K947",
+                "quote": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "水电阶段底盒固定前须核对具体点位。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "项目当前节点是水电，底盒正等待现场点位核对；团队已回传图纸按本项目书房核对关联，但现场尺寸仍待复核，图纸关联本身不证明具体位置与尺寸正确。",
+            "citations": [
+              {
+                "sourceId": "Bstage:4101:1:0",
+                "quote": "团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对"
+              },
+              {
+                "sourceId": "Bbound:4101:1:0:team_review:17630",
+                "quote": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "两件事的等待对象不同：办公需求补充这条目前仍待核对，尚未分配有权负责人；底盒所在的现场问题跟进仍待核对，等待项目团队，当前接续人是合成设计师。",
+            "citations": [
+              {
+                "sourceId": "Bfollowups:4101:1:0:followup:need:17615",
+                "quote": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。"
+              },
+              {
+                "sourceId": "Bfollowups:4101:1:0:followup:team_result:17622",
+                "quote": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "另外要提醒一处差异：此前发给你的正式版本是按双人办公补充电脑和台灯设备位，与你现在的单人办公不一致，这一版的具体安装尺寸也仍待现场核对，需要团队按当前需求核实。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4101:1:0:formal_plan:17633",
+                "quote": "差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。"
+              }
+            ]
+          },
+          {
+            "basis": "uncertainty",
+            "text": "本轮可用资料未提供书桌实际尺寸和现场点位坐标，因此具体插座位置、高度和数量还不能据此定，需团队结合现场尺寸核对。",
+            "citations": []
+          }
+        ]
+      },
+      "sources": [
+        {
+          "sourceId": "K947",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。",
+          "citationQuotes": [
+            "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4101:1:0",
+          "kind": "project",
+          "title": "本次材料查询范围与缺项",
+          "text": "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+          "resultKey": "bound:4101:1:0",
+          "citationQuotes": [
+            "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+          ],
+          "summaryTitle": "本次材料查询范围与缺项"
+        },
+        {
+          "sourceId": "Bbound:4101:1:0:customer_need:4096:0:0:need:2",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4101:1:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:2",
+              "version": "964f268806c2b355d1536254ae121bcaf5847c684dd124e5a7b9d2f22c460216"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "devices",
+              "value": "书房使用电脑和台灯",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4101:1:0:customer_need:4096:0:0:need:3",
+          "kind": "project",
+          "title": "本咨询客户原话（厨房）",
+          "summaryTitle": "本咨询客户原话（厨房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4101:1:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:3",
+              "version": "13bd9d24e5a24c904e77f19d3871870877d68d6df859fae1255e1a4aadd1ccab"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "厨房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "other",
+              "value": "厨房为封闭式",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4101:1:0:customer_need:synthetic:legacy-mixed:6784",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4101:1:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "synthetic:legacy-mixed:6784",
+              "version": "efadbfa679140c54cf49d6f148779e79e7efc9fd897c37a1abb4295e30c38248"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "desk",
+              "value": "书房书桌靠窗；书房偶尔双人办公",
+              "supersedes": "4096:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false,
+              "qualifiedBy": [
+                {
+                  "factId": "4101:0:0",
+                  "field": "use",
+                  "value": "书房办公人数改为单人办公",
+                  "sourceMessageId": "20017"
+                }
+              ],
+              "interpretation": {
+                "factId": "synthetic:legacy-mixed:6784",
+                "field": "use",
+                "currentFactId": "4101:0:0"
+              }
+            }
+          },
+          "citationQuotes": [
+            "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4101:1:0:customer_need:4101:0:0",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。",
+          "resultKey": "bound:4101:1:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4101:0:0",
+              "version": "872d049fd6574b21b991d2cedb70cd4b4553d7929f5347ffcb1093d5df6684ba"
+            },
+            "hash": "b92b1a9ea2f9eef8d1b4deee5a0f3ff3a15d0df98574efcd6f8364d71c7d41ff",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "20017",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。",
+            "need": {
+              "field": "use",
+              "value": "书房办公人数改为单人办公",
+              "supersedes": "4100:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "更正一下，书房办公人数改为单人办公，电脑和台灯不变。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4101:1:0:shared_drawing:17620",
+          "kind": "project",
+          "title": "客户共享点位图原件说明（书房）",
+          "summaryTitle": "客户共享点位图原件说明（书房）",
+          "text": "客户参考图，图内尺寸尚未核实。",
+          "resultKey": "bound:4101:1:0",
+          "material": {
+            "ref": {
+              "type": "shared_drawing",
+              "id": "17620",
+              "version": "1757541457acae9ecd33c98e66d4c66f61c93cc09597e8b427edd3def48bee9d"
+            },
+            "hash": "12da9031a0e4f9a23728877eccc311d66972fb9a2fbab77147c47739cb1f8492",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19992",
+            "mediaIds": [
+              "394"
+            ],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "客户参考图，图内尺寸尚未核实。",
+            "original": {
+              "grantId": "17620",
+              "conversationId": "4105",
+              "sourceHash": "16da29f1065d0595b0b8154db3fe13709efaa91805566dcea472ec992fdec5c1",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "客户参考图，图内尺寸尚未核实。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4101:1:0:shared_need:17618",
+          "kind": "project",
+          "title": "客户共享需求原话（书房）",
+          "summaryTitle": "客户共享需求原话（书房）",
+          "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+          "resultKey": "bound:4101:1:0",
+          "material": {
+            "ref": {
+              "type": "shared_need",
+              "id": "17618",
+              "version": "d717cb434221312dec0679c60c07060e726862305b561138475c7aa6887d03f4"
+            },
+            "hash": "7146981d6418773b76b9682351958088db5954a5007911dac62454db05cbee5a",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19988",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+            "original": {
+              "grantId": "17618",
+              "conversationId": "4105",
+              "sourceHash": "421167d8d5f77dd48ee836586f19b2974b83c9c16fe6cd77352c0c2d8309e524",
+              "mediaHash": null,
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4101:1:0:team_review:17630",
+          "kind": "project",
+          "title": "团队明确回传的图纸关联核对（书房）",
+          "summaryTitle": "团队明确回传的图纸关联核对（书房）",
+          "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+          "resultKey": "bound:4101:1:0",
+          "material": {
+            "ref": {
+              "type": "team_review",
+              "id": "17630",
+              "version": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04"
+            },
+            "hash": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20006",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "returned_drawing_review",
+            "status": "current",
+            "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+            "review": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "needGrantId": "17618",
+              "drawingGrantId": "17620",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "authority": "team_returned_association"
+            }
+          },
+          "citationQuotes": [
+            "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4101:1:0:formal_plan:17633",
+          "kind": "project",
+          "title": "精确正式方案版本与客户决定（书房）",
+          "summaryTitle": "精确正式方案版本与客户决定（书房）",
+          "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+          "resultKey": "bound:4101:1:0",
+          "material": {
+            "ref": {
+              "type": "formal_plan",
+              "id": "17633",
+              "version": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+            },
+            "hash": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20010",
+            "mediaIds": [
+              "810"
+            ],
+            "audience": "customer_self",
+            "basis": "delivered_formal_plan",
+            "status": "current",
+            "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+            "formal": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "number": 1,
+              "revision": 3,
+              "decision": "approved",
+              "previousVersionId": null,
+              "needGrantId": "17618",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "enterprise_published_version",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+          ]
+        },
+        {
+          "sourceId": "Bstage:4101:1:0",
+          "kind": "project",
+          "title": "本人项目实际节点",
+          "text": "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+          "resultKey": "stage:4101:1:0",
+          "citationQuotes": [
+            "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+          ],
+          "summaryTitle": "本人项目实际节点"
+        },
+        {
+          "sourceId": "Bfollowups:4101:1:0:followup:need:17615",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房办公人数改为单人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4101:1:0",
+          "followup": {
+            "issueId": "17615",
+            "revision": 4,
+            "projectId": "987",
+            "room": "书房",
+            "field": "use",
+            "status": "awaiting_review",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": "20017",
+            "sourceFactId": "4101:0:0",
+            "lastProgress": "customer_supplement"
+          },
+          "citationQuotes": [
+            "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房办公人数改为单人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4101:1:0:followup:team_result:17622",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4101:1:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 5,
+            "projectId": "987",
+            "room": "书房",
+            "field": "site_result",
+            "status": "awaiting_review",
+            "waitingFor": "team",
+            "ownerName": "合成设计师",
+            "sourceMessageId": "20006",
+            "sourceFactId": null,
+            "lastProgress": "team_result",
+            "kind": "team_result",
+            "sourceVersion": "4e44b38a5dd74cb5fcb24c851871b3b8dee73b600afd841328b73046364d7288"
+          },
+          "citationQuotes": [
+            "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4101:1:0:followup:formal_plan:17622",
+          "kind": "project",
+          "title": "原事项精确方案及决定",
+          "summaryTitle": "原事项精确方案及决定",
+          "text": "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4101:1:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 3,
+            "projectId": "987",
+            "room": "书房",
+            "field": "formal_plan",
+            "status": "approved",
+            "waitingFor": "team",
+            "ownerName": "项目团队",
+            "sourceMessageId": "20010",
+            "sourceFactId": null,
+            "lastProgress": "approved",
+            "kind": "formal_plan",
+            "sourceVersion": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+          },
+          "citationQuotes": [
+            "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        }
+      ]
+    },
+    {
+      "runId": "4102",
+      "label": "continuation-1",
+      "answer": {
+        "kind": "synthesis",
+        "segments": [
+          {
+            "basis": "evidence",
+            "text": "还要核对，是因为书房办公要按你的人数、电脑和台灯，再结合实际家具尺寸核对通道和插座；水电阶段底盒固定前也要核对具体点位。你此前已把书房办公人数更正为单人办公，电脑和台灯不变，这个用途沿用。",
+            "citations": [
+              {
+                "sourceId": "K947",
+                "quote": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "水电阶段底盒固定前须核对具体点位。"
+              },
+              {
+                "sourceId": "Bbound:4102:0:0:customer_need:4101:0:0",
+                "quote": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "项目当前节点是水电，底盒等待现场点位核对。团队回传的是图纸已按本项目书房核对关联，现场尺寸仍待复核；图纸关联核对不等于具体位置和尺寸已经确认。",
+            "citations": [
+              {
+                "sourceId": "Bstage:4102:0:0",
+                "quote": "团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对"
+              },
+              {
+                "sourceId": "Bbound:4102:0:0:team_review:17630",
+                "quote": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "两件事的等待对象不同：用途补充这条仍待核对，目前尚未分配有权负责人；现场问题跟进这条仍待核对，等待项目团队，当前接续人是合成设计师。",
+            "citations": [
+              {
+                "sourceId": "Bfollowups:4102:0:0:followup:need:17615",
+                "quote": "当前状态：仍待核对。等待对象：尚未分配有权负责人。"
+              },
+              {
+                "sourceId": "Bfollowups:4102:0:0:followup:team_result:17622",
+                "quote": "当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "另外，书房这一版方案你已同意，差异是按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对；费用变化+500.00元，工期变化+2天。同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4102:0:0:formal_plan:17633",
+                "quote": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+              }
+            ]
+          },
+          {
+            "basis": "uncertainty",
+            "text": "本轮可用资料未提供书房现场尺寸和图内细节，所以具体点位还不能据此判断；这两条事项也没有已确认的期限。",
+            "citations": []
+          }
+        ]
+      },
+      "sources": [
+        {
+          "sourceId": "K947",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。",
+          "citationQuotes": [
+            "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4102:0:0",
+          "kind": "project",
+          "title": "本次材料查询范围与缺项",
+          "text": "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+          "resultKey": "bound:4102:0:0",
+          "citationQuotes": [
+            "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+          ],
+          "summaryTitle": "本次材料查询范围与缺项"
+        },
+        {
+          "sourceId": "Bbound:4102:0:0:customer_need:4096:0:0:need:2",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4102:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:2",
+              "version": "964f268806c2b355d1536254ae121bcaf5847c684dd124e5a7b9d2f22c460216"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "devices",
+              "value": "书房使用电脑和台灯",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4102:0:0:customer_need:4096:0:0:need:3",
+          "kind": "project",
+          "title": "本咨询客户原话（厨房）",
+          "summaryTitle": "本咨询客户原话（厨房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4102:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:3",
+              "version": "13bd9d24e5a24c904e77f19d3871870877d68d6df859fae1255e1a4aadd1ccab"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "厨房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "other",
+              "value": "厨房为封闭式",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4102:0:0:customer_need:synthetic:legacy-mixed:6784",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4102:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "synthetic:legacy-mixed:6784",
+              "version": "efadbfa679140c54cf49d6f148779e79e7efc9fd897c37a1abb4295e30c38248"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "desk",
+              "value": "书房书桌靠窗；书房偶尔双人办公",
+              "supersedes": "4096:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false,
+              "qualifiedBy": [
+                {
+                  "factId": "4101:0:0",
+                  "field": "use",
+                  "value": "书房办公人数改为单人办公",
+                  "sourceMessageId": "20017"
+                }
+              ],
+              "interpretation": {
+                "factId": "synthetic:legacy-mixed:6784",
+                "field": "use",
+                "currentFactId": "4101:0:0"
+              }
+            }
+          },
+          "citationQuotes": [
+            "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4102:0:0:customer_need:4101:0:0",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。",
+          "resultKey": "bound:4102:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4101:0:0",
+              "version": "872d049fd6574b21b991d2cedb70cd4b4553d7929f5347ffcb1093d5df6684ba"
+            },
+            "hash": "b92b1a9ea2f9eef8d1b4deee5a0f3ff3a15d0df98574efcd6f8364d71c7d41ff",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "20017",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。",
+            "need": {
+              "field": "use",
+              "value": "书房办公人数改为单人办公",
+              "supersedes": "4100:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "更正一下，书房办公人数改为单人办公，电脑和台灯不变。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4102:0:0:shared_drawing:17620",
+          "kind": "project",
+          "title": "客户共享点位图原件说明（书房）",
+          "summaryTitle": "客户共享点位图原件说明（书房）",
+          "text": "客户参考图，图内尺寸尚未核实。",
+          "resultKey": "bound:4102:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_drawing",
+              "id": "17620",
+              "version": "1757541457acae9ecd33c98e66d4c66f61c93cc09597e8b427edd3def48bee9d"
+            },
+            "hash": "12da9031a0e4f9a23728877eccc311d66972fb9a2fbab77147c47739cb1f8492",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19992",
+            "mediaIds": [
+              "394"
+            ],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "客户参考图，图内尺寸尚未核实。",
+            "original": {
+              "grantId": "17620",
+              "conversationId": "4105",
+              "sourceHash": "16da29f1065d0595b0b8154db3fe13709efaa91805566dcea472ec992fdec5c1",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "客户参考图，图内尺寸尚未核实。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4102:0:0:shared_need:17618",
+          "kind": "project",
+          "title": "客户共享需求原话（书房）",
+          "summaryTitle": "客户共享需求原话（书房）",
+          "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+          "resultKey": "bound:4102:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_need",
+              "id": "17618",
+              "version": "d717cb434221312dec0679c60c07060e726862305b561138475c7aa6887d03f4"
+            },
+            "hash": "7146981d6418773b76b9682351958088db5954a5007911dac62454db05cbee5a",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19988",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+            "original": {
+              "grantId": "17618",
+              "conversationId": "4105",
+              "sourceHash": "421167d8d5f77dd48ee836586f19b2974b83c9c16fe6cd77352c0c2d8309e524",
+              "mediaHash": null,
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4102:0:0:team_review:17630",
+          "kind": "project",
+          "title": "团队明确回传的图纸关联核对（书房）",
+          "summaryTitle": "团队明确回传的图纸关联核对（书房）",
+          "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+          "resultKey": "bound:4102:0:0",
+          "material": {
+            "ref": {
+              "type": "team_review",
+              "id": "17630",
+              "version": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04"
+            },
+            "hash": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20006",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "returned_drawing_review",
+            "status": "current",
+            "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+            "review": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "needGrantId": "17618",
+              "drawingGrantId": "17620",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "authority": "team_returned_association"
+            }
+          },
+          "citationQuotes": [
+            "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4102:0:0:formal_plan:17633",
+          "kind": "project",
+          "title": "精确正式方案版本与客户决定（书房）",
+          "summaryTitle": "精确正式方案版本与客户决定（书房）",
+          "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+          "resultKey": "bound:4102:0:0",
+          "material": {
+            "ref": {
+              "type": "formal_plan",
+              "id": "17633",
+              "version": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+            },
+            "hash": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20010",
+            "mediaIds": [
+              "810"
+            ],
+            "audience": "customer_self",
+            "basis": "delivered_formal_plan",
+            "status": "current",
+            "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+            "formal": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "number": 1,
+              "revision": 3,
+              "decision": "approved",
+              "previousVersionId": null,
+              "needGrantId": "17618",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "enterprise_published_version",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+          ]
+        },
+        {
+          "sourceId": "Bstage:4102:0:0",
+          "kind": "project",
+          "title": "本人项目实际节点",
+          "text": "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+          "resultKey": "stage:4102:0:0",
+          "citationQuotes": [
+            "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+          ],
+          "summaryTitle": "本人项目实际节点"
+        },
+        {
+          "sourceId": "Bfollowups:4102:0:0:followup:need:17615",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房办公人数改为单人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4102:0:0",
+          "followup": {
+            "issueId": "17615",
+            "revision": 4,
+            "projectId": "987",
+            "room": "书房",
+            "field": "use",
+            "status": "awaiting_review",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": "20017",
+            "sourceFactId": "4101:0:0",
+            "lastProgress": "customer_supplement"
+          },
+          "citationQuotes": [
+            "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房办公人数改为单人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4102:0:0:followup:team_result:17622",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4102:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 5,
+            "projectId": "987",
+            "room": "书房",
+            "field": "site_result",
+            "status": "awaiting_review",
+            "waitingFor": "team",
+            "ownerName": "合成设计师",
+            "sourceMessageId": "20006",
+            "sourceFactId": null,
+            "lastProgress": "team_result",
+            "kind": "team_result",
+            "sourceVersion": "4e44b38a5dd74cb5fcb24c851871b3b8dee73b600afd841328b73046364d7288"
+          },
+          "citationQuotes": [
+            "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4102:0:0:followup:formal_plan:17622",
+          "kind": "project",
+          "title": "原事项精确方案及决定",
+          "summaryTitle": "原事项精确方案及决定",
+          "text": "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4102:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 3,
+            "projectId": "987",
+            "room": "书房",
+            "field": "formal_plan",
+            "status": "approved",
+            "waitingFor": "team",
+            "ownerName": "项目团队",
+            "sourceMessageId": "20010",
+            "sourceFactId": null,
+            "lastProgress": "approved",
+            "kind": "formal_plan",
+            "sourceVersion": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+          },
+          "citationQuotes": [
+            "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        }
+      ]
+    },
+    {
+      "runId": "4103",
+      "label": "continuation-2",
+      "answer": {
+        "kind": "synthesis",
+        "segments": [
+          {
+            "basis": "evidence",
+            "text": "还要核对，是因为图纸关联和现场点位是两件事：团队已把书房参考图按本项目核对关联，但明确回传现场尺寸仍待复核；而水电阶段底盒固定前本身就要核对具体点位，所以关联核对不能替代现场定点。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4103:0:0:team_review:17630",
+                "quote": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "水电阶段底盒固定前须核对具体点位。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "你之前把书房办公人数更正为单人办公，电脑和台灯不变；这条用途补充目前仍待核对，还没有分配到有权负责人，所以这一项暂时没有具体在等某个人。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4103:0:0:customer_need:4101:0:0",
+                "quote": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。"
+              },
+              {
+                "sourceId": "Bfollowups:4103:0:0:followup:need:17615",
+                "quote": "当前状态：仍待核对。等待对象：尚未分配有权负责人。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "另一件是书房现场问题跟进，现在等的是项目团队，当前接续人是合成设计师；团队已有处理回复，但现场尺寸仍待复核。",
+            "citations": [
+              {
+                "sourceId": "Bfollowups:4103:0:0:followup:team_result:17622",
+                "quote": "当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。"
+              },
+              {
+                "sourceId": "Bfollowups:4103:0:0:followup:team_result:17622",
+                "quote": "图纸已按本项目书房核对关联，现场尺寸仍待复核。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "另外，当前这一版方案是按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对，这与你后来更正的单人办公存在差异，需要团队核实；这一版你已同意，但同意本身不等于现场落实。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4103:0:0:formal_plan:17633",
+                "quote": "差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。"
+              },
+              {
+                "sourceId": "Bfollowups:4103:0:0:followup:formal_plan:17622",
+                "quote": "这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+              }
+            ]
+          },
+          {
+            "basis": "uncertainty",
+            "text": "本轮可用资料未提供书房现场尺寸和图内细节，所以具体点位还不能据此判断；这两件事的后续进展，可在原聊天继续补充，需要人工时沿原接续流程。",
+            "citations": []
+          }
+        ]
+      },
+      "sources": [
+        {
+          "sourceId": "K947",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。",
+          "citationQuotes": [
+            "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4103:0:0",
+          "kind": "project",
+          "title": "本次材料查询范围与缺项",
+          "text": "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+          "resultKey": "bound:4103:0:0",
+          "citationQuotes": [
+            "「本人房屋」的当前资料：\n本轮待核对：已完成正式主户型；向本人明确发布的对应现场记录；图内细节、对应现场尺寸及实际落实依据。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+          ],
+          "summaryTitle": "本次材料查询范围与缺项"
+        },
+        {
+          "sourceId": "Bbound:4103:0:0:customer_need:4096:0:0:need:2",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4103:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:2",
+              "version": "964f268806c2b355d1536254ae121bcaf5847c684dd124e5a7b9d2f22c460216"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "devices",
+              "value": "书房使用电脑和台灯",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4103:0:0:customer_need:4096:0:0:need:3",
+          "kind": "project",
+          "title": "本咨询客户原话（厨房）",
+          "summaryTitle": "本咨询客户原话（厨房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4103:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:3",
+              "version": "13bd9d24e5a24c904e77f19d3871870877d68d6df859fae1255e1a4aadd1ccab"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "厨房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "other",
+              "value": "厨房为封闭式",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4103:0:0:customer_need:synthetic:legacy-mixed:6784",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4103:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "synthetic:legacy-mixed:6784",
+              "version": "efadbfa679140c54cf49d6f148779e79e7efc9fd897c37a1abb4295e30c38248"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "desk",
+              "value": "书房书桌靠窗；书房偶尔双人办公",
+              "supersedes": "4096:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false,
+              "qualifiedBy": [
+                {
+                  "factId": "4101:0:0",
+                  "field": "use",
+                  "value": "书房办公人数改为单人办公",
+                  "sourceMessageId": "20017"
+                }
+              ],
+              "interpretation": {
+                "factId": "synthetic:legacy-mixed:6784",
+                "field": "use",
+                "currentFactId": "4101:0:0"
+              }
+            }
+          },
+          "citationQuotes": [
+            "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4103:0:0:customer_need:4101:0:0",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。",
+          "resultKey": "bound:4103:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4101:0:0",
+              "version": "872d049fd6574b21b991d2cedb70cd4b4553d7929f5347ffcb1093d5df6684ba"
+            },
+            "hash": "b92b1a9ea2f9eef8d1b4deee5a0f3ff3a15d0df98574efcd6f8364d71c7d41ff",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "20017",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "更正一下，书房办公人数改为单人办公，电脑和台灯不变。",
+            "need": {
+              "field": "use",
+              "value": "书房办公人数改为单人办公",
+              "supersedes": "4100:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "更正一下，书房办公人数改为单人办公，电脑和台灯不变。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4103:0:0:shared_drawing:17620",
+          "kind": "project",
+          "title": "客户共享点位图原件说明（书房）",
+          "summaryTitle": "客户共享点位图原件说明（书房）",
+          "text": "客户参考图，图内尺寸尚未核实。",
+          "resultKey": "bound:4103:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_drawing",
+              "id": "17620",
+              "version": "1757541457acae9ecd33c98e66d4c66f61c93cc09597e8b427edd3def48bee9d"
+            },
+            "hash": "12da9031a0e4f9a23728877eccc311d66972fb9a2fbab77147c47739cb1f8492",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19992",
+            "mediaIds": [
+              "394"
+            ],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "客户参考图，图内尺寸尚未核实。",
+            "original": {
+              "grantId": "17620",
+              "conversationId": "4105",
+              "sourceHash": "16da29f1065d0595b0b8154db3fe13709efaa91805566dcea472ec992fdec5c1",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "客户参考图，图内尺寸尚未核实。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4103:0:0:shared_need:17618",
+          "kind": "project",
+          "title": "客户共享需求原话（书房）",
+          "summaryTitle": "客户共享需求原话（书房）",
+          "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+          "resultKey": "bound:4103:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_need",
+              "id": "17618",
+              "version": "d717cb434221312dec0679c60c07060e726862305b561138475c7aa6887d03f4"
+            },
+            "hash": "7146981d6418773b76b9682351958088db5954a5007911dac62454db05cbee5a",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19988",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+            "original": {
+              "grantId": "17618",
+              "conversationId": "4105",
+              "sourceHash": "421167d8d5f77dd48ee836586f19b2974b83c9c16fe6cd77352c0c2d8309e524",
+              "mediaHash": null,
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4103:0:0:team_review:17630",
+          "kind": "project",
+          "title": "团队明确回传的图纸关联核对（书房）",
+          "summaryTitle": "团队明确回传的图纸关联核对（书房）",
+          "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+          "resultKey": "bound:4103:0:0",
+          "material": {
+            "ref": {
+              "type": "team_review",
+              "id": "17630",
+              "version": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04"
+            },
+            "hash": "7821810238ea7188aa0ff6e420573b90352c89f5df8e48c7bcf27656df94ad04",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20006",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "returned_drawing_review",
+            "status": "current",
+            "text": "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。",
+            "review": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "needGrantId": "17618",
+              "drawingGrantId": "17620",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "authority": "team_returned_association"
+            }
+          },
+          "citationQuotes": [
+            "团队已核对关联「书房」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：图纸已按本项目书房核对关联，现场尺寸仍待复核。\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4103:0:0:formal_plan:17633",
+          "kind": "project",
+          "title": "精确正式方案版本与客户决定（书房）",
+          "summaryTitle": "精确正式方案版本与客户决定（书房）",
+          "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+          "resultKey": "bound:4103:0:0",
+          "material": {
+            "ref": {
+              "type": "formal_plan",
+              "id": "17633",
+              "version": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+            },
+            "hash": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "20010",
+            "mediaIds": [
+              "810"
+            ],
+            "audience": "customer_self",
+            "basis": "delivered_formal_plan",
+            "status": "current",
+            "text": "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。",
+            "formal": {
+              "issueId": "17622",
+              "issueRevision": 5,
+              "number": 1,
+              "revision": 3,
+              "decision": "approved",
+              "previousVersionId": null,
+              "needGrantId": "17618",
+              "materialVersion": "16405de1419c29671cd8f4b1edf1692a6f42df5c9dbd7c438f23ae5374fe7309",
+              "mediaHash": "039880c91501f07d4c4f33e1662d094a72a3e088fa6a2d69ef0d22c14089a727",
+              "authority": "enterprise_published_version",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。"
+          ]
+        },
+        {
+          "sourceId": "Bstage:4103:0:0",
+          "kind": "project",
+          "title": "本人项目实际节点",
+          "text": "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+          "resultKey": "stage:4103:0:0",
+          "citationQuotes": [
+            "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+          ],
+          "summaryTitle": "本人项目实际节点"
+        },
+        {
+          "sourceId": "Bfollowups:4103:0:0:followup:need:17615",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房办公人数改为单人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4103:0:0",
+          "followup": {
+            "issueId": "17615",
+            "revision": 4,
+            "projectId": "987",
+            "room": "书房",
+            "field": "use",
+            "status": "awaiting_review",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": "20017",
+            "sourceFactId": "4101:0:0",
+            "lastProgress": "customer_supplement"
+          },
+          "citationQuotes": [
+            "书房 · 用途补充。\n当前状态：仍待核对。等待对象：尚未分配有权负责人。\n客户当前补充：书房办公人数改为单人办公\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4103:0:0:followup:team_result:17622",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4103:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 5,
+            "projectId": "987",
+            "room": "书房",
+            "field": "site_result",
+            "status": "awaiting_review",
+            "waitingFor": "team",
+            "ownerName": "合成设计师",
+            "sourceMessageId": "20006",
+            "sourceFactId": null,
+            "lastProgress": "team_result",
+            "kind": "team_result",
+            "sourceVersion": "4e44b38a5dd74cb5fcb24c851871b3b8dee73b600afd841328b73046364d7288"
+          },
+          "citationQuotes": [
+            "书房 · 现场问题跟进。\n当前状态：仍待核对。等待对象：项目团队。当前接续人：合成设计师。\n本咨询获权回传：已有处理回复，仍待团队核对。\n图纸已按本项目书房核对关联，现场尺寸仍待复核。\n当前负责人：合成设计师。\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4103:0:0:followup:formal_plan:17622",
+          "kind": "project",
+          "title": "原事项精确方案及决定",
+          "summaryTitle": "原事项精确方案及决定",
+          "text": "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4103:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 3,
+            "projectId": "987",
+            "room": "书房",
+            "field": "formal_plan",
+            "status": "approved",
+            "waitingFor": "team",
+            "ownerName": "项目团队",
+            "sourceMessageId": "20010",
+            "sourceFactId": null,
+            "lastProgress": "approved",
+            "kind": "formal_plan",
+            "sourceVersion": "574a4bfce858f60549515b85eeedc9e91fc13935274bb19c2be5ba3c19ba0685"
+          },
+          "citationQuotes": [
+            "书房 · 正式方案决定。\n当前状态：该版客户同意。等待对象：项目团队。当前接续人：项目团队。\n本咨询获权回传：方案17633 · V1 · 书房 · 已同意这一版\n合成书房点位调整\n差异：按双人办公补充电脑和台灯设备位，具体安装尺寸仍待现场核对。\n费用变化：+500.00元；工期变化：+2天。\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        }
+      ]
+    },
+    {
+      "runId": "4104",
+      "label": "withdrawn-no-fallback-1",
+      "answer": {
+        "kind": "synthesis",
+        "segments": [
+          {
+            "basis": "evidence",
+            "text": "现在书房办公人数不能确定。本轮可用资料里，当前有效的办公人数更正来源没有取得，先前的人数不作为当前依据；所以不能按“偶尔双人”或任何具体人数来定书桌长度、座位和插座数量。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4104:0:0",
+                "quote": "本轮待核对：当前有效的办公人数更正来源；已完成正式主户型；向本人明确发布的对应现场记录；当前有效点位图及其对应房间。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "仍可沿用的是书房的位置和设备意向：书桌靠窗，使用电脑和台灯。这些是独立于人数的需求，人数不明不影响它们继续作为设计前提。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4104:0:0:customer_need:4096:0:0:need:2",
+                "quote": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "你此前共享给项目的书房需求写的是“靠窗双人办公，电脑和台灯，具体尺寸待核对”。这份共享原话与当前私聊里人数待核对的状态不一致，共享版本不能直接当作当前人数意向，需要团队按当前资料核对。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4104:0:0:shared_need:17618",
+                "quote": "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "企业做法是先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座；水电阶段底盒固定前须核对具体点位。项目当前正处水电节点，底盒等待现场点位核对，所以人数和设备确认会直接影响点位核对，但本轮未取得现场尺寸和坐标，不能据此定点。",
+            "citations": [
+              {
+                "sourceId": "K947",
+                "quote": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "水电阶段底盒固定前须核对具体点位。"
+              },
+              {
+                "sourceId": "Bstage:4104:0:0",
+                "quote": "团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对"
+              }
+            ]
+          },
+          {
+            "basis": "advice",
+            "text": "一般建议：先把书房实际办公人数定下来，再据此比较单人或双人桌型、座位朝向和插座预留；靠窗、电脑和台灯这几项可以先保留，等人数明确后一并纳入点位核对。",
+            "citations": []
+          },
+          {
+            "basis": "uncertainty",
+            "text": "本轮尚未取得书房现场尺寸、家具实际尺寸和有效点位图，具体桌长、摆放和插座位置仍需团队现场核对。",
+            "citations": []
+          }
+        ]
+      },
+      "sources": [
+        {
+          "sourceId": "K947",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。",
+          "citationQuotes": [
+            "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4104:0:0",
+          "kind": "project",
+          "title": "本次材料查询范围与缺项",
+          "text": "「本人房屋」的当前资料：\n本轮待核对：当前有效的办公人数更正来源；已完成正式主户型；向本人明确发布的对应现场记录；当前有效点位图及其对应房间。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+          "resultKey": "bound:4104:0:0",
+          "citationQuotes": [
+            "「本人房屋」的当前资料：\n本轮待核对：当前有效的办公人数更正来源；已完成正式主户型；向本人明确发布的对应现场记录；当前有效点位图及其对应房间。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+          ],
+          "summaryTitle": "本次材料查询范围与缺项"
+        },
+        {
+          "sourceId": "Bbound:4104:0:0:customer_need:4096:0:0:need:2",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4104:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:2",
+              "version": "964f268806c2b355d1536254ae121bcaf5847c684dd124e5a7b9d2f22c460216"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "devices",
+              "value": "书房使用电脑和台灯",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4104:0:0:customer_need:4096:0:0:need:3",
+          "kind": "project",
+          "title": "本咨询客户原话（厨房）",
+          "summaryTitle": "本咨询客户原话（厨房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4104:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:3",
+              "version": "13bd9d24e5a24c904e77f19d3871870877d68d6df859fae1255e1a4aadd1ccab"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "厨房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "other",
+              "value": "厨房为封闭式",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4104:0:0:customer_need:synthetic:legacy-mixed:6784",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4104:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "synthetic:legacy-mixed:6784",
+              "version": "efadbfa679140c54cf49d6f148779e79e7efc9fd897c37a1abb4295e30c38248"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "desk",
+              "value": "书房书桌靠窗；书房偶尔双人办公",
+              "supersedes": "4096:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false,
+              "interpretation": {
+                "factId": "synthetic:legacy-mixed:6784",
+                "field": "use",
+                "currentFactId": null
+              }
+            }
+          },
+          "citationQuotes": [
+            "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4104:0:0:shared_need:17618",
+          "kind": "project",
+          "title": "客户共享需求原话（书房）",
+          "summaryTitle": "客户共享需求原话（书房）",
+          "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+          "resultKey": "bound:4104:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_need",
+              "id": "17618",
+              "version": "d717cb434221312dec0679c60c07060e726862305b561138475c7aa6887d03f4"
+            },
+            "hash": "7146981d6418773b76b9682351958088db5954a5007911dac62454db05cbee5a",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19988",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+            "original": {
+              "grantId": "17618",
+              "conversationId": "4105",
+              "sourceHash": "421167d8d5f77dd48ee836586f19b2974b83c9c16fe6cd77352c0c2d8309e524",
+              "mediaHash": null,
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+          ]
+        },
+        {
+          "sourceId": "Bstage:4104:0:0",
+          "kind": "project",
+          "title": "本人项目实际节点",
+          "text": "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+          "resultKey": "stage:4104:0:0",
+          "citationQuotes": [
+            "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+          ],
+          "summaryTitle": "本人项目实际节点"
+        },
+        {
+          "sourceId": "Bfollowups:4104:0:0:followup:need:17615",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "本咨询 · 需求补充。\n当前状态：原来源不可用，须按当前资料核对。等待对象：尚未分配有权负责人。\n旧内容不再作为当前处理依据。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4104:0:0",
+          "followup": {
+            "issueId": "17615",
+            "revision": 4,
+            "projectId": "987",
+            "room": "",
+            "field": "",
+            "status": "invalidated",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": null,
+            "sourceFactId": null,
+            "lastProgress": ""
+          },
+          "citationQuotes": [
+            "本咨询 · 需求补充。\n当前状态：原来源不可用，须按当前资料核对。等待对象：尚未分配有权负责人。\n旧内容不再作为当前处理依据。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4104:0:0:followup:team_result:17622",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "本咨询 · 现场问题跟进。\n当前状态：原来源不可用，须按当前资料核对。等待对象：尚未分配有权负责人。\n旧内容不再作为当前处理依据。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4104:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 5,
+            "projectId": "987",
+            "room": "",
+            "field": "site_result",
+            "status": "invalidated",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": "20006",
+            "sourceFactId": null,
+            "lastProgress": "team_result",
+            "kind": "team_result",
+            "sourceVersion": ""
+          },
+          "citationQuotes": [
+            "本咨询 · 现场问题跟进。\n当前状态：原来源不可用，须按当前资料核对。等待对象：尚未分配有权负责人。\n旧内容不再作为当前处理依据。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        }
+      ]
+    },
+    {
+      "runId": "4105",
+      "label": "withdrawn-no-fallback-2",
+      "answer": {
+        "kind": "synthesis",
+        "segments": [
+          {
+            "basis": "evidence",
+            "text": "本轮可用资料不足以确认书房当前的办公人数：此前“偶尔双人办公”的人数部分已不再作为当前依据，本轮也没有取得有效的办公人数更正来源。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4105:0:0",
+                "quote": "本轮待核对：当前有效的办公人数更正来源；已完成正式主户型；向本人明确发布的对应现场记录；当前有效点位图及其对应房间。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "仍可沿用的是书房的其他独立需求：书桌靠窗、使用电脑和台灯。这些与人数是不同事实，人数待定不影响它们继续作为布置依据。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4105:0:0:customer_need:4096:0:0:need:2",
+                "quote": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+              },
+              {
+                "sourceId": "Bbound:4105:0:0:shared_need:17618",
+                "quote": "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "企业做法是先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道与插座；项目当前处于水电阶段，底盒固定前须核对具体点位。所以人数这一项需要先明确，点位才能据此核对。",
+            "citations": [
+              {
+                "sourceId": "K947",
+                "quote": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "水电阶段底盒固定前须核对具体点位。"
+              },
+              {
+                "sourceId": "Bstage:4105:0:0",
+                "quote": "团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对"
+              }
+            ]
+          },
+          {
+            "basis": "evidence",
+            "text": "另外，此前共享的“靠窗双人办公”是较早的共享版本，与当前人数待定的状态存在差异，这一差异需要团队按当前资料核对，不能直接当作现行人数依据。",
+            "citations": [
+              {
+                "sourceId": "Bbound:4105:0:0:shared_need:17618",
+                "quote": "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+              },
+              {
+                "sourceId": "K947",
+                "quote": "若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。"
+              }
+            ]
+          },
+          {
+            "basis": "advice",
+            "text": "一般建议：人数未定前，可先按“电脑+台灯”的基本用电需求保留点位余量，不必因人数待定而减少预留；等人数明确后，再结合书桌实际尺寸核对通道和插座位置。",
+            "citations": []
+          },
+          {
+            "basis": "uncertainty",
+            "text": "本轮未取得书桌实际尺寸和现场点位坐标，具体点位仍需团队现场核对。",
+            "citations": []
+          }
+        ]
+      },
+      "sources": [
+        {
+          "sourceId": "K947",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。",
+          "citationQuotes": [
+            "合成企业专业做法：书房办公先按客户原话核对人数、电脑和台灯，再结合实际家具尺寸核对通道及插座。水电阶段底盒固定前须核对具体点位。客户参考图、团队图纸关联、精确正式版本决定分别保留依据：关联核对不证明具体位置与尺寸正确；方案待决定时不能直接用于施工，同意该版也仍需现场落实依据。新版不继承旧版同意。若正式方案差异与客户原话不一致，保留双方来源并请团队核实，不替客户改需求。方案费用及工期变化仅按精确版本说明，不承诺总价或实际完成日期。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4105:0:0",
+          "kind": "project",
+          "title": "本次材料查询范围与缺项",
+          "text": "「本人房屋」的当前资料：\n本轮待核对：当前有效的办公人数更正来源；已完成正式主户型；向本人明确发布的对应现场记录；当前有效点位图及其对应房间。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+          "resultKey": "bound:4105:0:0",
+          "citationQuotes": [
+            "「本人房屋」的当前资料：\n本轮待核对：当前有效的办公人数更正来源；已完成正式主户型；向本人明确发布的对应现场记录；当前有效点位图及其对应房间。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+          ],
+          "summaryTitle": "本次材料查询范围与缺项"
+        },
+        {
+          "sourceId": "Bbound:4105:0:0:customer_need:4096:0:0:need:2",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4105:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:2",
+              "version": "964f268806c2b355d1536254ae121bcaf5847c684dd124e5a7b9d2f22c460216"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "devices",
+              "value": "书房使用电脑和台灯",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4105:0:0:customer_need:4096:0:0:need:3",
+          "kind": "project",
+          "title": "本咨询客户原话（厨房）",
+          "summaryTitle": "本咨询客户原话（厨房）",
+          "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4105:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "4096:0:0:need:3",
+              "version": "13bd9d24e5a24c904e77f19d3871870877d68d6df859fae1255e1a4aadd1ccab"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "厨房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "other",
+              "value": "厨房为封闭式",
+              "supersedes": null,
+              "authority": "customer_statement",
+              "formalApproval": false
+            }
+          },
+          "citationQuotes": [
+            "书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4105:0:0:customer_need:synthetic:legacy-mixed:6784",
+          "kind": "project",
+          "title": "本咨询客户原话（书房）",
+          "summaryTitle": "本咨询客户原话（书房）",
+          "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+          "resultKey": "bound:4105:0:0",
+          "material": {
+            "ref": {
+              "type": "customer_need",
+              "id": "synthetic:legacy-mixed:6784",
+              "version": "efadbfa679140c54cf49d6f148779e79e7efc9fd897c37a1abb4295e30c38248"
+            },
+            "hash": "3fbbad8dfd1cb7d236c732b10b7641104e4a41afa4d044f26d51550c562141bd",
+            "leadId": "5946",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "书房",
+            "sourceMessageId": "19986",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "owned_conversation",
+            "status": "current",
+            "text": "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。",
+            "need": {
+              "field": "desk",
+              "value": "书房书桌靠窗；书房偶尔双人办公",
+              "supersedes": "4096:0:0",
+              "authority": "customer_statement",
+              "formalApproval": false,
+              "interpretation": {
+                "factId": "synthetic:legacy-mixed:6784",
+                "field": "use",
+                "currentFactId": null
+              }
+            }
+          },
+          "citationQuotes": [
+            "请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。"
+          ]
+        },
+        {
+          "sourceId": "Bbound:4105:0:0:shared_need:17618",
+          "kind": "project",
+          "title": "客户共享需求原话（书房）",
+          "summaryTitle": "客户共享需求原话（书房）",
+          "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+          "resultKey": "bound:4105:0:0",
+          "material": {
+            "ref": {
+              "type": "shared_need",
+              "id": "17618",
+              "version": "d717cb434221312dec0679c60c07060e726862305b561138475c7aa6887d03f4"
+            },
+            "hash": "7146981d6418773b76b9682351958088db5954a5007911dac62454db05cbee5a",
+            "leadId": "5946",
+            "projectId": "987",
+            "roomId": "1628",
+            "roomName": "书房",
+            "sourceMessageId": "19988",
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "customer_shared_grant",
+            "status": "current",
+            "text": "靠窗双人办公，电脑和台灯，具体尺寸待核对。",
+            "original": {
+              "grantId": "17618",
+              "conversationId": "4105",
+              "sourceHash": "421167d8d5f77dd48ee836586f19b2974b83c9c16fe6cd77352c0c2d8309e524",
+              "mediaHash": null,
+              "authority": "customer_reference",
+              "imagePixels": false
+            }
+          },
+          "citationQuotes": [
+            "靠窗双人办公，电脑和台灯，具体尺寸待核对。"
+          ]
+        },
+        {
+          "sourceId": "Bstage:4105:0:0",
+          "kind": "project",
+          "title": "本人项目实际节点",
+          "text": "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+          "resultKey": "stage:4105:0:0",
+          "citationQuotes": [
+            "「合成核对问答工地」：进行中。\n团队标记的当前节点：水电。合成水电阶段，底盒等待现场点位核对\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+          ],
+          "summaryTitle": "本人项目实际节点"
+        },
+        {
+          "sourceId": "Bfollowups:4105:0:0:followup:need:17615",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "本咨询 · 需求补充。\n当前状态：原来源不可用，须按当前资料核对。等待对象：尚未分配有权负责人。\n旧内容不再作为当前处理依据。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4105:0:0",
+          "followup": {
+            "issueId": "17615",
+            "revision": 4,
+            "projectId": "987",
+            "room": "",
+            "field": "",
+            "status": "invalidated",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": null,
+            "sourceFactId": null,
+            "lastProgress": ""
+          },
+          "citationQuotes": [
+            "本咨询 · 需求补充。\n当前状态：原来源不可用，须按当前资料核对。等待对象：尚未分配有权负责人。\n旧内容不再作为当前处理依据。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        },
+        {
+          "sourceId": "Bfollowups:4105:0:0:followup:team_result:17622",
+          "kind": "project",
+          "title": "原咨询事项当前接续状态",
+          "summaryTitle": "原咨询事项当前接续状态",
+          "text": "本咨询 · 现场问题跟进。\n当前状态：原来源不可用，须按当前资料核对。等待对象：尚未分配有权负责人。\n旧内容不再作为当前处理依据。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。",
+          "resultKey": "followups:4105:0:0",
+          "followup": {
+            "issueId": "17622",
+            "revision": 5,
+            "projectId": "987",
+            "room": "",
+            "field": "site_result",
+            "status": "invalidated",
+            "waitingFor": "unassigned",
+            "ownerName": "",
+            "sourceMessageId": "20006",
+            "sourceFactId": null,
+            "lastProgress": "team_result",
+            "kind": "team_result",
+            "sourceVersion": ""
+          },
+          "citationQuotes": [
+            "本咨询 · 现场问题跟进。\n当前状态：原来源不可用，须按当前资料核对。等待对象：尚未分配有权负责人。\n旧内容不再作为当前处理依据。\n补充、核对回复、精确方案决定和现场落实分别核验；本次读取不执行任何处理。"
+          ]
+        }
+      ]
+    }
+  ]
+}

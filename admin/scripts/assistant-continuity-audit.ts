@@ -9,20 +9,23 @@ import { rows } from '@/db/repositories/assistant-repository';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 
 async function main() {
-  loadEnvConfig(process.cwd(), true);
+  loadEnvConfig(process.env.XIAOK_ACCEPTANCE_ENV_ROOT || process.cwd(), true);
+  const isolated = process.argv.includes('--isolated');
+  if (isolated) process.env.DATABASE_URL = JSON.parse(fs.readFileSync(process.env.XIAOK_ACCEPTANCE_CONNECTION_FILE || '../tmp/xiaok-vector/connection.private.json', 'utf8').replace(/^\uFEFF/, '')).DATABASE_URL;
   const target = new URL(resolvePostgresRuntimeConfig().connectionString);
-  assert.ok(process.argv.includes('--development') && ['localhost','127.0.0.1'].includes(target.hostname)
-    && target.port === '5432' && target.pathname === '/smart_floor_planner');
-  const output = path.resolve('../tmp/xiaok-corrections-continuity');
+  assert.ok(['localhost','127.0.0.1'].includes(target.hostname) && (isolated ? target.port === '55432' && target.pathname === '/xiaok_embedding_eval'
+    : process.argv.includes('--development') && target.port === '5432' && target.pathname === '/smart_floor_planner'));
+  const output = path.resolve(process.env.XIAOK_ACCEPTANCE_OUTPUT || '../tmp/xiaok-corrections-continuity');
   const paths = fs.readdirSync(output).filter(f => /^(?:live|native-driver).*\.json$/.test(f)).map(f => path.join(output,f));
-  for (const dir of fs.readdirSync(output, { withFileTypes: true }).filter(d => d.isDirectory() && d.name.startsWith('native-')).map(d => d.name)) {
-    const archivedNative = path.join(output, dir, 'native-driver.json');
-    if (fs.existsSync(archivedNative)) paths.push(archivedNative);
+  for (const dir of fs.readdirSync(output, { withFileTypes: true }).filter(d => d.isDirectory() && /^(?:native|live)-/.test(d.name)).map(d => d.name)) {
+    for (const file of ['native-driver.json','live.json']) {
+      const archived = path.join(output, dir, file); if (fs.existsSync(archived)) paths.push(archived);
+    }
   }
   const reports = paths.map(f => JSON.parse(fs.readFileSync(f,'utf8'))).filter(r => r.fixture?.enterpriseId && r.prefix);
   const expected = new Map<string,string>(reports.map(r => [String(r.fixture.enterpriseId),String(r.prefix)]));
   assert.ok(expected.size>0&&expected.size<=16);
-  for(const [eid,prefix] of expected){assert.match(eid,/^[1-9]\d{0,18}$/);assert.ok(prefix.startsWith('synthetic-continuity-live-'));}
+  for(const [eid,prefix] of expected){assert.match(eid,/^[1-9]\d{0,18}$/);assert.ok(prefix.startsWith(isolated ? 'synthetic-fact-boundaries-' : 'synthetic-continuity-live-'));}
   const ids = JSON.stringify([...expected.keys()]);
   try {
     const result = await withPlatformTransaction(async tx => {
@@ -62,7 +65,7 @@ async function main() {
         and (type like 'construction.plan.%' or type='construction.site.issue.lifecycle.v1') order by id`);
       const reservations = await rows(tx, sql`select enterprise_id::text,status,count(*)::int as count from app.assistant_quota_reservations
         where enterprise_id in (select value::bigint from jsonb_array_elements_text(${ids}::jsonb)) group by enterprise_id,status order by enterprise_id,status`);
-      return { generated: new Date().toISOString(), target: 'approved development5432', scope: 'only exact synthetic fixture IDs from this batch reports',
+      return { generated: new Date().toISOString(), target: isolated ? 'approved isolated55432' : 'approved development5432', scope: 'only exact synthetic fixture IDs from this batch reports',
         enterprises, runs, usage, attempts, indexJobs: indexUsage, formalEvents, reservations, costMicros: null,
         limits: 'Cost remains unknown. Query/text usage does not include all index work. No sample percentile/production-quality claim.' };
     });

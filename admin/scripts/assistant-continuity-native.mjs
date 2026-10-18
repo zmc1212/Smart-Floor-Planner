@@ -8,15 +8,15 @@ export async function run(ctx) {
   return runSharedChat({ ...ctx, skipCancel: true, afterReply: async tools => {
     const { mp, step, waitFor, identity, send, issueId } = tools, route = 'packages/assistant/chat/chat', outputs = [];
     ctx.setIssue(issueId); let imagePath = '';
-    await mp.evaluate(() => {
+    await mp.evaluate(backendOrigin => {
       const s = getApp().__qaShared, prior = wx.request; s.teamCitationIds = new Set();
       wx.request = function(o) {
         const raw = String(o.url), i = raw.indexOf('/api/'), p = i < 0 ? '' : raw.slice(i), m = /^\/api\/miniprogram\/assistant\/citations\/([1-9]\d*)$/.exec(p);
         if (!m || !s.teamCitationIds.has(m[1])) return prior.call(wx, o);
         const row = { path: p, verb: o.method || 'GET', status: null }; s.requests.push(row); const success = o.success;
-        return s.request.call(wx, { ...o, url: 'http://localhost:3006' + p, success(r) { row.status = r.statusCode; success?.(r); } });
+        return s.request.call(wx, { ...o, url: backendOrigin + p, success(r) { row.status = r.statusCode; success?.(r); } });
       };
-    });
+    }, ctx.origin || 'http://localhost:3006');
     async function customer() {
       await mp.evaluate(s => { const app = getApp(); app.globalData.token = s.token;
         app.globalData.bootstrap = { current: { mode: 'customer', role: 'user', context: { enterpriseId: s.enterpriseId } } }; app.__qaShared.memory.set('token', s.token);
