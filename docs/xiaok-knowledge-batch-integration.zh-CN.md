@@ -1,20 +1,42 @@
 # 企业知识：多来源覆盖与批量回归集成交接
 
-状态：**Limited；多文档检索覆盖、知识专属手动批次管理及本地 DOCX 表头保真修复已有有界实现，自动批量派发与客户语义验收仍待集成。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
+状态：**Limited；检索/手动批次管理和共享端口接线已有有界证据，未开放生产自动批量入口，客户实模语义仍未验收。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
 <!-- knowledge-seam-integration:start -->
 
-## 知识入口集成检查点
+## 知识入口集成与真实双进程验收
 
 业务 `a579e51227294427826d49ac017e00f9c80691ad` 已正常集成，无归属路径重叠。既有知识运营 API 现从 `core/evaluation-execution.ts` 注入 `KnowledgeOperations(manager, createKnowledgeBatchSharedPort())`；路由/动作/请求体/权限/UI 边界保持，不新增自动批量接口或生产启用。共享事务/runtime 仍归业务线，本线未改。
 
-真实验收脚本增加已认证 Request handler 断言：已固定评测取消后，从原 resume 路由重进必须 **409 `batch_cancelled`**，不能是缺端口或回退旧派发；合成 cookie 仅在内存使用既有 JWT secret。接线已通过 **9/9** 断言/门控单元、6 文件 lint；以集成业务 SHA 做同一源码程序对照为 **287→287，新增 0**。类型比较现只排除在所选基线尚不存在的候选文件，保留已由业务集成的知识合同。
+冻结的产品接线为 `1cb4acf850d60fa02d11a2e90f1e8755f65f5fbd`，最终夹具工具为 `c5f4afe2a56e15fec85b1e5dfd9703fdf693d9fb`。2026-10-18 最终 service 运行 **7/7 组通过，0 失败/未执行**，使用真实隔离 PostgreSQL 和两个独立客户端进程（PID `316484/460712`）。协调方在准入、受控领取原 lease、审计及精确清理全程持既有 `assistant_isolated_acceptance` 锁；该整套互斥锁不代替两个业务客户端的真实事务竞争。
 
-本检查点下一步是真实 PostgreSQL 执行，尚不计通过。集成人应在最终有界事务证据完成后，将原知识 API 的惰性 factory 注入范围更新到双语 KB-4 清单/二期当前段；无 Mini 或视觉还原变化。整体 **Limited**。
+| 真实数据库组 | 实际结果 |
+| --- | --- |
+| 两进程恢复同一评测执行 | run/job/预留/shared dispatch 各恰好 1，无 provider attempt、开始标记或 HTTP。 |
+| advance/cancel 竞争及晚到 advance | 唯一规范意图已提交；晚到动作不新增 run/job/预留/dispatch/attempt/标记/HTTP。 |
+| 意图提交后单项取消中断 | 返回 unconfirmed，持久意图保留；另一客户端键读回第一次意图身份，不能重新开放准入。 |
+| 原已认证 resume handler | **409 `batch_cancelled`**、`cache-control: no-store`，计数不增。调用真实 Request handler，合成 cookie 仅在内存使用既有 secret；这不是浏览器/监听服务 HTTP 验收。 |
+| 两进程并发恢复原回执 | 夹具先提交共享 create/send，尚不写评测关联；两个客户端恢复原 run `4366`、会话及 create/send keys，未新增派发或 attempt，`indeterminate/reconciling` 和未知费用 `null` 保留。没有清空任何已关联的不可变字段。 |
+| 准入前真实配置漂移 | 子进程实际模型覆盖使 revision hash 改变，准入在新副作用前拒绝 `execution_changed`。 |
+| 真实 provider-start 配置漂移 | 原夹具 lease 加真实 `textGateway/answerMessages` 在新 provider attempt/开始标记/HTTP 前拒绝 `context_changed`。 |
+
+本次 **真实模型/Embedding/供应商 HTTP 调用 0，provider attempt 0**。恢复 run 的一个 provider-start 标记明确为合成，原供应商 HTTP 未发生，不能升级为付费请求重试安全或账单已知。清理前审计四个 run：`4364/4365/4367` 为 cancelled、预留 released；`4366` 保留 indeterminate/reconciling，settled tokens/cost 为 `null`。两个客户端先退出，协调进程再审计/清理夹具，**109** 项表/身份检查均为零，之后协调进程退出并释放互斥锁；被测源码 hash 稳定，锁持有者/协调/客户端守卫 fetch 尝试与外部 socket 阻断数均为零。未启动竞争 Worker、监听服务、生产启用，未重试 `4242` 或改凭据。
+
+前两次 service 各通过四组，在恢复准备失败，最后两组未执行。首轮只记通用失败；诊断提交 `19124e66` 在第二轮保留 PostgreSQL `P0001`，确认是测试清空已关联评测而正确触发不可变约束。夹具已改为“原回执已提交、评测关联尚未写入”，未改约束、迁移或产品代码。两轮失败均先停止自有进程、审计并精确清理本套夹具、释放锁，失败证据保留。
+
+最终离线为模拟 store/共享端口 **5/5 组**；断言/门控/守卫单元 **10/10，0 失败/跳过/取消**，七个变化的工具/单元文件 ESLint 通过，产品接线此前六文件 lint 也通过。以业务 `a579e512` 做同一源码程序类型比较为 **287→287，新增 0**；这是既有诊断，不是全仓类型干净。比较只排除在所选基线尚不存在的候选文件。未重跑前批 45/64/18 整套。证据位于 `tmp/knowledge-seam-integration/`：`service-attempt-{1,2,3}/`、`recovery-fixture-offline/`、`recovery-fixture-{unit,lint}.log`、`recovery-fixture-types/`、`preservation-check.json`。原分支/HEAD/status，以及两份计划原件/副本和 roadmap hash 均保持。
+
+### 集成人单点更新的当前清单
+
+共享双语清单/二期文档保持集成人单点所有权，本线提供以下准确 KB-4 当前记录替换文本，不并行修改共享文件：
+
+> **Limited — 知识共享执行端口已接线，有界事务验收通过。** 原知识运营 API 惰性注入 `core/evaluation-execution.ts::createKnowledgeBatchSharedPort()` 到 `KnowledgeOperations`。路由/动作/请求体、租户/角色、私有来源/引用权限、schema 和 UI 均无新增边界；未开放生产自动批量接口或启用。真实隔离 PostgreSQL 两进程 7/7 组通过，覆盖唯一准入、跨进程持久取消、单项取消中断重进、原已认证 resume（409 batch_cancelled）、原键恢复不增派发、真实配置 pin 及 provider-start 在新 attempt/标记/HTTP 前拒绝。实模/Embedding 调用 0，恢复 unknown 标记为合成，费用保留 null。自有夹具精确清零、原互斥锁释放。付费实模语义和生产批量启用仍未验收，整体 Limited。
+
+应用位置为 `docs/admin-system-modules.zh-CN.md` 及英文镜像、`docs/xiaok-assistant-phase-2.zh-CN.md` 的当前 KB-4 段及英文镜像。本增量未改 Mini 入口、markup、样式、文案、资源、视觉还原或设计账本行为；未执行浏览器/原生 QA。下一集成是正常合入本可审查分支，复核事务证据后另做有界实模语义场景；历史 run `4242` 保持不动。本内部事务检查点不等于用户阶段完整交付或发布批准。
 
 <!-- knowledge-seam-integration:end -->
 
-## 双进程验收准备检查点
+## 双进程验收准备证据（历史检查点）
 
 本节保留接回前的工具证据；现已收到业务稳定 `a579e512`，其正常集成/真实事务结果在后续检查点另列，不能由下述模拟结果提前升级。
 
@@ -27,7 +49,7 @@
 | 两进程恢复同一评测 | 原 run/job/预留/shared dispatch 各恰好 1，无 provider attempt/开始标记/HTTP。 |
 | advance/cancel 竞争及晚到 advance | 唯一规范意图已提交后，另一进程不新增 run/job/预留/attempt/标记或 dispatch/HTTP；整套验收互斥锁不替代这些业务事务竞争。 |
 | 意图提交后单项失败 | 人为中断单 run 取消得到 unconfirmed，但持久意图仍阻止新派发，不同客户端键读回原意图身份。 |
-| 评测关联丢失 | 只清本套可变关联，保留原 send 回执/run；并发按原键恢复，副作用/HTTP 计数不增，原 ID 及 indeterminate/reconciling 保留。 |
+| 原回执已提交但评测未关联 | 在评测关联写入前提交共享 create/send；并发按原键恢复，副作用/HTTP 计数不增，indeterminate/reconciling 保留。不得清空已关联的不可变评测。 |
 | 派发前配置漂移 | 仅在一个子进程改 `ASSISTANT_TEXT_MODEL`，确认真实 revision hash 改变后，要求 execution_changed/context_changed 且无新增副作用；还原原环境值。 |
 | 真实 provider-start 漂移（仅 service） | 原夹具 run 经原 claim 得到 lease，改子进程模型覆盖后调用真实 textGateway/answerMessages，须在新 attempt/开始标记/HTTP 前拒绝；即使回归到网络边界，外部请求也一律阻断，不用注入假模型冒充该检查。 |
 
@@ -40,15 +62,15 @@ node scripts/assistant-knowledge-batch-seam-acceptance.mjs --offline --output-di
 node --import tsx --test --test-reporter=tap src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts
 ```
 
-**尚未执行的 service 模式**必须提供 `--service`、`--business-sha <完整40位hex>`、`--factory-module <业务实际文件，相对admin>`、`--factory-export <实际零参数factory导出>` 和原批准 `--connection-file`，`--env-dir` 可指原 admin；在读私有环境/连接文件前确认 SHA 已集成、factory/共享源码与之匹配且产品源码干净。缺就绪参数已实测 `SEAM_FACTORY_NOT_READY`、无 driver、databaseOpened=false。脚本不伪造业务 factory，准确绑定继续等待业务 SHA/导出。
+service 启动合同必须提供 `--service`、`--business-sha <完整40位hex>`、`--factory-module <业务实际文件，相对admin>`、`--factory-export <实际零参数factory导出>` 和原批准 `--connection-file`，`--env-dir` 可指原 admin；在读私有环境/连接文件前确认 SHA 已集成、factory/共享源码与之匹配且产品源码干净。缺就绪参数已实测 `SEAM_FACTORY_NOT_READY`、无 driver、databaseOpened=false。上方已验证的当前准确绑定为业务 `a579e512`、`src/lib/assistant/core/evaluation-execution.ts`、`createKnowledgeBatchSharedPort`。
 
 后续该模式由父进程持有原 `assistant_isolated_acceptance` 整套锁，目标仅 loopback:55432/xiaok_embedding_eval，锁会话使用唯一 application name；协调和两个数据库客户端在夹具/动作前核验实际库、非 superuser/non-BYPASSRLS 及该准确父锁所有者。之后才创建一个明确合成企业/管理员、两道 missing-data 题和 profile 元数据；无文档/索引任务/Embedding，不新增供应商凭据，不改平台/全局模型配置。恢复夹具在原 claim 的 lease 上设置明确合成的 provider-start 标记形成 unknown 边界，**不代表原 HTTP 曾发生**；其恢复 HTTP 基线为 0，断言反例另覆盖 1→2，均不替代付费实模未知恢复验收。
 
-夹具 ID 独立留存；清理前审计 run/供应商 attempt/预留及未知费用 `null`，再精确 ID 清理并逐表核验所有带 enterprise_id 的 app 基础表及准确企业/管理员 ID。必须先停本套子进程再清理/解锁；若仍有自有 DB 客户端，结果不确定并保留父互斥锁，不能假报清理完成。不重置既有服务/Worker/锁或他人夹具。service 的 SQL、清理及 provider-start 代码目前**仅准备并通过类型检查，尚未经 PostgreSQL 运行验证**。
+夹具 ID 独立留存；清理前审计 run/供应商 attempt/预留及未知费用 `null`，再精确 ID 清理并逐表核验所有带 enterprise_id 的 app 基础表及准确企业/管理员 ID。必须先停本套子进程再清理/解锁；若仍有自有 DB 客户端，结果不确定并保留父互斥锁，不能假报清理完成。不重置既有服务/Worker/锁或他人夹具。准备检查点仅做类型验证，该待执行状态已由上方真实数据库结果取代。
 
 当前证据 `tmp/knowledge-seam-preparation/{frozen-offline/,frozen-unit.log,frozen-unit-status.json,frozen-types/,frozen-lint-status.json}`，driver/runner 均保留真实检查待执行记录。本轮**实际 SQL/数据库连接 0、模型/Embedding 调用 0、外部 HTTP 0**；运行模块清单/还原账本无行为或视觉变化。**待接回，未被拒绝**：收到准确业务 SHA/factory 导出后，先复查归属/冲突并普通集成，再在约定知识入口注入，沿既有锁做有界真实验收；此前保留本任务，不另造功能、不重试 `4242` 或新增模型费用。整体 **Limited**。
 
-## 共享执行接缝：知识适配已写，业务实现待接
+## 共享执行合同（95ff8f20 检查点，当前接回结果见上方）
 
 业务提交 `4b5fb96d515d302751250921315a819d0c844c2f` 已核对 GitHub 分支，并普通合入本独立知识分支。相对 `d0238543`，其 41 路径与本线 36 路径无重叠，只读合并预演无冲突；导入的共享文件与该提交逐字节一致。原脏工作区/分支保留。没有合并 main、部署、重试 `4242` 或新增实模语义验收。
 
