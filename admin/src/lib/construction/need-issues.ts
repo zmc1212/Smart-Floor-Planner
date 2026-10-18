@@ -6,15 +6,16 @@ import type { ModelTool } from '@/lib/assistant/contracts/model';
 import { readMemory, type NeedFact } from '@/lib/assistant/agent/memory';
 import { constructionNoticeAvailable } from './customer';
 import { customerSiteResults } from './site-results';
+import { customerPlans } from './site-plans';
 
 export const needIssueTool: ModelTool = {
-  name: 'query_followups', description: '查询当前本人咨询中节点补充事项，以及项目团队明确回传到本咨询的处理结果、真实等待状态和核对进展。只读；不开放工地内部会话或未发布回复，未分配如实显示，不假称已通知/已解决/已批准。谈到之前交代的事、团队刚才的回复、在等谁或是否有下文时可用。',
+  name: 'query_followups', description: '查询当前本人咨询中节点补充事项、项目团队回传，以及发给本咨询的具体方案版本、图纸差异、费用/工期变化和客户真实决定。只读；不批准方案、不开放内部会话或未发布回复。追问方案改了什么、是否同意这一版、团队回复或在等谁时可用；收到回复不等于已解决。',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
 };
 type IssueState = { issueId: string; revision: number; projectId: string; room: string; field: string;
-  status: 'awaiting_customer' | 'awaiting_review' | 'invalidated'; waitingFor: 'customer' | 'designer' | 'unassigned' | 'team';
+  status: 'awaiting_customer' | 'awaiting_review' | 'invalidated' | 'approved' | 'declined' | 'changes_requested' | 'deferred'; waitingFor: 'customer' | 'designer' | 'unassigned' | 'team';
   ownerName: string; sourceMessageId: string | null; sourceFactId: string | null; lastProgress: string; question: string; value: string;
-  kind?: 'team_result'; sourceVersion?: string };
+  kind?: 'team_result' | 'formal_plan'; sourceVersion?: string };
 export type NeedIssueSnapshot = { query: { domain: 'followups'; conversationId: string }; customerId: string; leadIds: string[];
   version: string; displayText: string; data: IssueState[]; queriedAt: string };
 export type NeedIssueDependency = Pick<NeedIssueSnapshot, 'query' | 'customerId' | 'version'>;
@@ -106,6 +107,14 @@ export async function queryNeedIssues(tx: PostgresTransaction, actor: ActorConte
       lastProgress: 'team_result', question: '', value: result.text, kind: 'team_result', sourceVersion: result.sourceVersion });
     lines.push(result.status === 'invalidated' ? `事项${result.issueId}的原团队回传已失效，等待项目团队按当前资料重新核对，旧结果不能沿用。`
       : `${result.room}事项${result.issueId} · 修订${result.revision}，团队明确回传：${result.text}\n仍待项目团队核对，不代表已解决、已正式批准或可以据此施工。`);
+  }
+  for (const plan of await customerPlans(tx, eid, uid, cid)) {
+    const status = plan.status === 'pending_customer' ? 'awaiting_customer' : plan.status as IssueState['status'];
+    data.push({ issueId: plan.issueId, revision: plan.revision, projectId: plan.projectId, room: plan.roomName, field: 'formal_plan',
+      status, waitingFor: ['pending_customer','deferred'].includes(plan.status) ? 'customer' : 'team', ownerName: '项目团队',
+      sourceMessageId: plan.messageId, sourceFactId: null, lastProgress: plan.status, question: '', value: plan.text,
+      kind: 'formal_plan', sourceVersion: plan.hash });
+    lines.push(plan.text);
   }
   return { query: { domain: 'followups', conversationId: cid }, customerId: uid, leadIds: [], version: fingerprint(data), data,
     displayText: lines.join('\n') || '这次咨询目前没有可接续的节点补充事项或已回传的团队结果。', queriedAt: new Date().toISOString() };

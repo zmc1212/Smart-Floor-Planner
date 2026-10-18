@@ -5,6 +5,7 @@ const { ReferenceImage } = require('../lib/reference-image');
 const { RecommendationController } = require('../lib/portfolio');
 const { SiteRecordMedia } = require('../lib/site-records');
 const { PublicChatController, initialPublic } = require('../lib/public-sites');
+const { PlanChatController, initialPlans } = require('../lib/plans');
 
 function sessionToken() {
   const app = getApp();
@@ -15,6 +16,7 @@ Page({
   data: {
     ...initial(), navigationTop: 47, navigationHeight: 44, navigationRight: 100,
     ...initialPublic(),
+    ...initialPlans(),
     viewportHeight: 844, keyboardHeight: 0, sheet: '', sheetOpen: false,
     scrollTarget: '', prompts: ['水电开工前，我需要确认什么？', '装修报价里，哪些项目要问清楚？', '厨房用电需求，哪些要提前想好？'],
     mediaItems: [], mediaPaths: {}, mediaLoading: false, mediaBusy: false, mediaPending: false, mediaError: '', mediaKind: 0, mediaRoom: '',
@@ -40,12 +42,14 @@ Page({
             this.siteRecords.clear();
             this.recommendations.clear();
             if (this.publicSites) this.publicSites.clear();
+            if (this.plans) this.plans.clear();
             this.referenceImages.clear();
             if (this.media) this.media.dispose(); this.media = null;
             this.setData({ mediaPaths: {}, mediaItems: [], sheet: '' });
           } else if (patch.messages) {
             if (this._shown) this.siteRecords.load(this.controller.conversationId, patch.messages);
             if (this._shown && this.publicSites) this.publicSites.load(this.controller.conversationId, this.data.enterpriseId, patch.messages);
+            if (this._shown && this.plans) this.plans.load(this.controller.conversationId, patch.messages);
             this.loadMessageImages(patch.messages);
             const key = (this.data.conversation?.id || '') + ':' + (patch.messages[patch.messages.length - 1]?.id || '');
             if (this._shown && key !== this._portfolioKey) {
@@ -53,7 +57,7 @@ Page({
               this.recommendations.load(patch.messages.length ? this.data.conversation?.id : null);
             }
           }
-          if (patch.conversation === null) { this._portfolioKey = ''; this.recommendations.clear(); if (this.publicSites) this.publicSites.clear(); }
+          if (patch.conversation === null) { this._portfolioKey = ''; this.recommendations.clear(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); }
           const next = patch.messages;
           if (next && next.length && (!previous.length || next[next.length - 1].id !== previous[previous.length - 1].id)) {
             this.scrollBottom();
@@ -64,6 +68,7 @@ Page({
   },
 
   async onShow() {
+    if (!this.plans) this.plans = new PlanChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
     if (!this.publicSites) this.publicSites = new PublicChatController({ identity: sessionToken, client: this.controller.client, emit: p => { if (this._alive && this._shown) this.setData(p); } });
     this._portfolioKey = '';
     this._shown = true;
@@ -88,7 +93,7 @@ Page({
       }
     }
   },
-  onHide() { this._shown = false; this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); if (this.publicSites) this.publicSites.clear(); this.closeSheet(); this.setData({ keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic() }); },
+  onHide() { this._shown = false; this.controller.hide(); this.siteRecords.clear(); this.recommendations.clear(); if (this.publicSites) this.publicSites.clear(); if (this.plans) this.plans.clear(); this.closeSheet(); this.setData({ keyboardHeight: 0, siteRecordPaths: {}, siteRecordError: '', ...initialPublic(), ...initialPlans() }); },
   onUnload() {
     this._alive = false; clearTimeout(this._sheetTimer);
     this.controller.dispose();
@@ -96,6 +101,7 @@ Page({
     this.referenceImages.clear();
     this.recommendations.clear();
     if (this.publicSites) this.publicSites.clear();
+    if (this.plans) this.plans.clear();
     if (this.media) this.media.dispose();
   },
   onResize() { if (!this.data.keyboardHeight) this.measureWindow(); },
@@ -119,6 +125,21 @@ Page({
   chooseOption(event) { return this.controller.chooseOption(event.currentTarget.dataset.key, event.currentTarget.dataset.text); },
   confirmOptions() { return this.controller.confirmOptions(); },
   send() { return this.controller.send(); },
+  async planDecision(e) {
+    const { id, action } = e.currentTarget.dataset;
+    let reason = '';
+    if (action === 'request-changes') {
+      const result = await new Promise(resolve => wx.showModal({ title: '希望怎样修改', content: this.plans.reason(String(id)), editable: true, placeholderText: '说明需要调整的内容', success: resolve, fail: () => resolve({ confirm: false }) }));
+      if (!result.confirm || !String(result.content || '').trim()) return;
+      reason = String(result.content).trim();
+    }
+    if (await this.plans.decide(String(id), action, reason)) {
+      if (action !== 'preview') await this.controller.refresh();
+      this.scrollBottom();
+    }
+  },
+  async retryPlan() { if (await this.plans.retry()) await this.controller.refresh(); },
+  previewPlan(e) { return this.plans.preview(String(e.currentTarget.dataset.id)); },
   cancelSiteWatch(e) { return this.controller.cancelSiteWatch(e.currentTarget.dataset.message); },
   previewSiteRecord(e) { const d = e.currentTarget.dataset; return this.siteRecords.preview(String(d.record), Number(d.version), String(d.media)); },
   refresh() { return this.controller.refresh(); },

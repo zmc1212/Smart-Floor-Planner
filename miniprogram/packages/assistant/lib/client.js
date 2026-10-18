@@ -50,6 +50,16 @@ function validOwnerReceipt(slot, pending, data) {
     && Array.isArray(material.photos) && Array.isArray(material.excerpts);
 }
 
+function validPlanReceipt(slot, pending, data) {
+  const m = /^\/conversations\/([1-9]\d*)\/plans\/([1-9]\d*)\/(preview|approve|decline|request-changes|defer)$/.exec(pending.path);
+  if (!m || slot !== `plan-decision:${m[1]}:${m[2]}` || data.id !== m[2] || !Number.isSafeInteger(data.revision) || data.revision !== pending.body.expectedRevision + 1) return false;
+  if (m[3] === 'preview') return ['pending_customer','deferred'].includes(data.status) && data.material?.id === data.id
+    && data.material.revision === data.revision && data.material.status === data.status && typeof data.material.difference === 'string'
+    && typeof data.material.title === 'string' && Number.isSafeInteger(data.material.number) && data.material.number > 0 && /^[1-9]\d*$/.test(String(data.material.issueId))
+    && /^[1-9]\d*$/.test(String(data.material.mediaId)) && Number.isSafeInteger(data.material.costDeltaCents) && Number.isSafeInteger(data.material.scheduleDeltaDays);
+  return data.status === { approve: 'approved', decline: 'declined', 'request-changes': 'changes_requested', defer: 'deferred' }[m[3]];
+}
+
 const COPY = {
   portfolio_not_found: '作品或设计师当前不可用，可以返回原咨询看看其他方向。',
   portfolio_forbidden: '当前身份无法查看这份作品，请切换到业主身份。',
@@ -74,6 +84,10 @@ const COPY = {
   invalid_message: '请检查文字内容和长度后再发送。',
   construction_material_scope_required: '请说明一个已开放工地的具体房间；重名时使用“项目名·房间名”。',
   construction_material_image_required: '请先发一张点位图，再紧接着说明共享到哪个房间；需求节选请用文字。',
+  plan_unavailable: '此方案已撤回、替换或依据已变化，请刷新查看当前版本。',
+  plan_state_conflict: '这份方案已有决定，请刷新查看结果。',
+  plan_preview_required: '请先查看这一版的完整图纸、差异和影响。',
+  invalid_plan: '请核对方案版本和修改说明后重试。',
   model_unavailable: '小K暂时无法回答，请稍后再试。',
   retrieval_unavailable: '暂时无法读取装修资料，请稍后重试。',
   knowledge_not_ready: '企业装修资料还在准备中，请稍后再来。',
@@ -126,6 +140,7 @@ class AssistantClient {
       else if (slot.startsWith('portfolio-write:') && pending.path.endsWith('/contact')
         && (!data.conversationId || !data.handoff)) throw { code: 'invalid_response' };
       else if (slot.startsWith('public-owner:') && !validOwnerReceipt(slot, pending, data)) throw { code: 'invalid_response' };
+      else if (slot.startsWith('plan-decision:') && !validPlanReceipt(slot, pending, data)) throw { code: 'invalid_response' };
       else if (slot.startsWith('public-context:') && !data.conversationId) throw { code: 'invalid_response' };
       this.pending.delete(slot);
       return data;
@@ -143,6 +158,11 @@ function entryInput(options = {}) {
 }
 
 function messagesForView(items) {
+  const latestPlan = new Map();
+  for (const m of items || []) if (m.planDecision && m.available !== false) {
+    const previous = latestPlan.get(m.planDecision.id), seq = String(m.seq || '0'), before = String(previous?.seq || '0');
+    if (!previous || seq.length > before.length || seq.length === before.length && seq >= before) latestPlan.set(m.planDecision.id, m);
+  }
   const latestPublic = new Map();
   for (const message of items || []) if (message.publicConsent) {
     const k = message.publicConsent.id + '_' + message.publicConsent.versionId, previous = latestPublic.get(k);
@@ -154,6 +174,7 @@ function messagesForView(items) {
   return (items || []).map(item => ({
     ...item,
     isUser: item.authorKind === 'user',
+    planDecision: item.available !== false && item.planDecision && latestPlan.get(item.planDecision.id) === item ? item.planDecision : null,
     publicConsent: item.available !== false && item.publicConsent && latestPublic.get(item.publicConsent.id + '_' + item.publicConsent.versionId) === item && /^[1-9]\d*$/.test(String(item.publicConsent.id)) && /^[1-9]\d*$/.test(String(item.publicConsent.versionId)) && Array.isArray(item.publicConsent.photos) && Array.isArray(item.publicConsent.excerpts) ? item.publicConsent : null,
     publicContext: item.available !== false && item.publicContext && /^[1-9]\d*$/.test(String(item.publicContext.id)) && /^[1-9]\d*$/.test(String(item.publicContext.versionId)) ? item.publicContext : null,
     publicReferences: item.available !== false ? (item.publicReferences || []).filter(r => /^[1-9]\d*$/.test(String(r.id)) && /^[1-9]\d*$/.test(String(r.versionId))).slice(0, 8) : [],

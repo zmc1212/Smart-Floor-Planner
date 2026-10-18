@@ -82,7 +82,7 @@ async function main() {
             from app.assistant_runs r left join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.output_message_id
             where r.enterprise_id=${eid} and r.conversation_id=${cid} and r.id=${runId}`));
           if(run && !['queued','running'].includes(String(run.status))){
-            assert.equal(run.status,'succeeded');assert.equal(run.prompt_version,'xiaok-renovation-v18');assert.ok((run.refs as string[]).includes(String(run.result_id)));
+            assert.equal(run.status,'succeeded');assert.equal(run.prompt_version,(await import('@/lib/assistant/agent/context')).agentPromptVersion);assert.ok((run.refs as string[]).includes(String(run.result_id)));
             const text=((run.content as {blocks:{text?:string;fallbackText?:string}[]}).blocks).map(b=>b.text||b.fallbackText||'').join('\n');
             return {runId,outputMessageId:String(run.output_message_id),text,promptVersion:run.prompt_version,sourceMessageIds:run.refs};
           }

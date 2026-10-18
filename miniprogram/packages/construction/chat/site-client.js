@@ -8,6 +8,8 @@ function errorText(e) {
     construction_forbidden: '当前身份没有这项工地权限。', construction_not_found: '工地已不可访问，请返回列表。', assistant_resource_not_found: '工地或原材料已不可访问。',
     assistant_disabled: '企业暂未开放小K整理，请联系负责人。', assistant_quota_exceeded: '本次整理额度暂不可用，内容已保留。',
     site_retry_unavailable: '本次整理仍在核对结果，可先人工修改草稿。', site_review_required: '请先核对并补充本条现场内容。',
+    invalid_plan: '请按标题、差异、费用变化（元）、工期变化（天）逐行说明，再附上一张本次方案图纸。',
+    plan_original_required: '正式方案需附上一张你本次上传的图纸原件。',
     construction_staff_unavailable: '未找到唯一且有权接续的项目成员，请核对姓名和当前分工。',
     media_limit: '本工地图片数量已达当前上限，请联系负责人。', media_invalid: '请选择4MB以内的JPEG或PNG图片。',
     construction_media_unavailable: '照片已不可访问，请重新读取。', idempotency_conflict: '本次操作内容不一致，请重新读取。',
@@ -78,7 +80,7 @@ class SiteClient {
       if (older) items = [...fresh, ...this.state.items.filter(i => !fresh.some(n => n.message.id === i.message.id))];
       // Keep command revisions private: the page's `versions` field belongs to
       // the existing record-history sheet and may be open when this read returns.
-      this.sourceVersions = { records: Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), issues: versions && versions.issues || {}, materials: versions && versions.materials || {} };
+      this.sourceVersions = { records: Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), issues: versions && versions.issues || {}, materials: versions && versions.materials || {}, plans: versions && versions.plans || {} };
       this.set({ ...data, items, nextCursor: data.nextCursor, loading: false, error: '', fatal: false });
       const mids = new Set([...items.flatMap(i => i.record.media.map(m => String(m.id))), ...this.state.attachments.map(String)]);
       const mediaPaths = { ...this.state.mediaPaths };

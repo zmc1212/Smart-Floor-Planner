@@ -13,6 +13,7 @@ import { customerSiteMedia } from '@/lib/construction/site-publications';
 import { withTenantTransaction } from '@/db/transaction';
 import { AssistantRepository } from '@/db/repositories/assistant-repository';
 import { customerPublicHttp } from '@/lib/construction/public-http';
+import { customerPlanHttp } from '@/lib/construction/plan-http';
 
 function only(body: Record<string, unknown>, allowed: string[]) {
   if (Object.keys(body).some(k => !allowed.includes(k))) fail('invalid_message', 422);
@@ -22,6 +23,10 @@ export async function assistantHttp(request: Request, path: string[]) {
   const requestId = randomUUID();
   try {
     const identity = await customerIdentity(request);
+    if (path[0] === 'conversations' && path[2] === 'plans') {
+      const cid = id(path[1]);
+      return await customerPlanHttp(request, await locate(identity, 'conversation', cid), cid, path.slice(3));
+    }
     if (path[0] === 'conversations' && path[2] === 'public-sites') {
       const cid = id(path[1]);
       return await customerPublicHttp(request, await locate(identity, 'conversation', cid), cid, path.slice(3));

@@ -84,6 +84,24 @@ test('role guides stay in their own subpackage and under the WeChat 2MB limit', 
   assert.equal(fs.existsSync(path.join(miniRoot, 'images', 'role-guides')), false);
 });
 
+test('assistant subpackage stays under 2MB with standalone PNG assets below 300KB each', () => {
+  const root = path.join(__dirname, '..', 'packages', 'assistant');
+  let total = 0;
+  for (const file of fs.readdirSync(root, { recursive: true })) {
+    const absolute = path.join(root, file);
+    if (!fs.statSync(absolute).isFile()) continue;
+    const bytes = fs.readFileSync(absolute);
+    total += bytes.length;
+    assert.ok(!file.endsWith('.webp'), 'runtime WebP is prohibited');
+    if (file.endsWith('.png')) {
+      assert.ok(bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])));
+      assert.ok(bytes.length <= 300 * 1024, `${file} exceeds the artwork budget`);
+      assert.ok([4, 6].includes(bytes[25]) || bytes.includes(Buffer.from('tRNS')), `${file} must retain alpha`);
+    }
+  }
+  assert.ok(total <= 2048 * 1024, `assistant source size ${total} exceeds the subpackage budget`);
+});
+
 test('surveying subpackage source stays under the WeChat 2MB subpackage limit', () => {
   const miniRoot = path.join(__dirname, '..');
   const surveyingRoot = path.join(miniRoot, 'packages', 'surveying');
@@ -200,6 +218,8 @@ test('main package contains only primary tabs and low-frequency flows are split 
     'pages/leads-management/leads-management',
   ]);
   assert.deepEqual(appConfig.subPackages, [
+    { root: 'packages/construction', pages: ['projects/projects', 'chat/chat', 'public-sites/public-sites', 'public-site/public-site'] },
+    { root: 'packages/assistant', pages: ['chat/chat', 'requirements/requirements', 'handoff/handoff', 'designer/designer', 'work/work'] },
     { root: 'packages/surveying', pages: ['editor/surveying-editor'] },
     {
       root: 'packages/ai-workflow',

@@ -12,6 +12,24 @@
     <text class="owner-public-meta">只决定这次预览，其他聊天照常继续。</text>
   </view>
 </template>
+<template name="plan-decision-card">
+  <view wx:if="{{card}}" class="owner-public-card">
+    <text class="owner-public-title">这次方案，请你决定</text>
+    <text class="owner-public-name">{{card.title}} · V{{card.number}} · {{card.roomName}}</text>
+    <view class="owner-public-quote"><text user-select>{{card.full ? card.difference : card.summary}}</text></view>
+    <text class="owner-public-scope">费用变化 {{card.costLabel}} · 工期变化 {{card.scheduleLabel}}</text>
+    <view wx:if="{{card.full}}" class="owner-public-photos"><image wx:if="{{paths[card.key]}}" src="{{paths[card.key]}}" mode="aspectFit" data-id="{{card.id}}" bindtap="previewPlan"/><text wx:else class="owner-public-meta">正在读取这一版图纸…</text></view>
+    <text class="owner-public-meta">方案 {{card.id}} · {{card.statusLabel}}{{card.reason ? ' · ' + card.reason : ''}}</text>
+    <text class="owner-public-scope">只决定这一版图纸、差异及上述影响；现场落实与事项关闭由团队另行核对。</text>
+    <block wx:if="{{card.canDecide}}">
+      <button class="owner-public-primary" data-id="{{card.id}}" data-action="{{card.full && expanded === card.id ? 'approve' : 'preview'}}" bindtap="planDecision" disabled="{{busy || pending || disabled || card.full && !paths[card.key]}}">{{busy ? '正在确认…' : card.full && expanded === card.id ? '同意这一版方案' : '查看完整图纸与差异'}}</button>
+      <view class="owner-public-options"><button data-id="{{card.id}}" data-action="decline" bindtap="planDecision" disabled="{{busy || pending || disabled}}">不同意这一版</button><button data-id="{{card.id}}" data-action="defer" bindtap="planDecision" disabled="{{busy || pending || disabled}}">稍后决定</button></view>
+      <button class="notice-action" data-id="{{card.id}}" data-action="request-changes" bindtap="planDecision" disabled="{{busy || pending || disabled}}">希望调整一下</button>
+    </block>
+    <button wx:elif="{{!card.full}}" class="notice-action" data-id="{{card.id}}" data-action="details" bindtap="planDecision" disabled="{{busy || pending || disabled}}">查看这一版图纸</button>
+    <text class="owner-public-meta">拒绝或稍后决定，其他聊天照常继续。</text>
+  </view>
+</template>
 <view class="chat-page" style="height: {{viewportHeight - keyboardHeight}}px;">
   <image class="room-scene" src="../assets/xiaok-chat-room.png" mode="aspectFit" aria-hidden="true" />
   <view class="chat-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
@@ -52,8 +70,8 @@
           <button wx:for="{{prompts}}" wx:key="*this" class="prompt-row" data-text="{{item}}" bindtap="pickPrompt" disabled="{{busy || pendingSend}}"><text>{{item}}</text><view class="chevron"></view></button>
         </view>
 
-        <view wx:for="{{messages}}" wx:key="id" class="message {{item.authorKind === 'system' && !item.constructionReminder && !item.constructionFollowUp ? 'system-message' : item.isUser ? 'user-message' : 'assistant-message'}} {{item.publicConsent ? 'consent-message' : ''}}" id="message-{{item.id}}">
-          <view wx:if="{{!item.isUser && (item.authorKind !== 'system' || item.constructionReminder || item.constructionFollowUp || item.publicConsent)}}" class="avatar"><image src="../assets/{{item.authorKind === 'admin' ? 'person' : 'xiaok-chat-avatar'}}.png" mode="aspectFit" /></view>
+        <view wx:for="{{messages}}" wx:key="id" class="message {{item.authorKind === 'system' && !item.constructionReminder && !item.constructionFollowUp && !item.planDecision ? 'system-message' : item.isUser ? 'user-message' : 'assistant-message'}} {{item.publicConsent || item.planDecision ? 'consent-message' : ''}}" id="message-{{item.id}}">
+          <view wx:if="{{!item.isUser && (item.authorKind !== 'system' || item.constructionReminder || item.constructionFollowUp || item.publicConsent || item.planDecision)}}" class="avatar"><image src="../assets/{{item.authorKind === 'admin' ? 'person' : 'xiaok-chat-avatar'}}.png" mode="aspectFit" /></view>
           <view class="message-main">
             <view class="bubble {{item.available === false ? 'unavailable-bubble' : ''}}">
               <block wx:if="{{item.mediaId}}">
@@ -73,11 +91,13 @@
             <text wx:if="{{item.siteRecordList.length && siteRecordError}}" class="pending-label">{{siteRecordError}}</text>
             <button wx:if="{{item.siteWatch}}" class="notice-action" data-message="{{item.id}}" bindtap="cancelSiteWatch" disabled="{{busy || pendingSend || pendingAction}}">取消关注</button>
             <template wx:if="{{item.publicConsent}}" is="owner-public-card" data="{{card: publicCards[item.publicConsent.id + '_' + item.publicConsent.versionId], expanded: publicExpanded, paths: publicPaths, busy: publicBusy, pending: publicPending, disabled: readOnly || fatal}}"/>
+            <template wx:if="{{item.planDecision}}" is="plan-decision-card" data="{{card: planCards[item.planDecision.id], expanded: planExpanded, paths: planPaths, busy: planBusy, pending: planPending, disabled: readOnly || fatal}}"/>
             <button wx:if="{{item.publicContext}}" class="citation-chip" data-id="{{item.publicContext.id}}" data-version="{{item.publicContext.versionId}}" bindtap="openPublicSite">正在围观：{{item.publicContext.name}} · 查看公开节选</button>
             <button wx:for="{{item.publicReferences}}" wx:for-item="reference" wx:key="id" class="citation-chip" data-id="{{reference.id}}" data-version="{{reference.versionId}}" bindtap="openPublicSite">公开工地 · {{reference.name}}</button>
           </view>
         </view>
 
+        <view wx:if="{{planError || planPending}}" class="notice"><text>{{planError || '有一项方案决定等待核对。'}}</text><button class="notice-action" bindtap="retryPlan" disabled="{{planBusy}}">核对同次决定</button><button wx:if="{{!planPending}}" class="notice-action" bindtap="refresh">重新读取</button></view>
         <view wx:if="{{enterpriseId && !fatal}}" class="public-recommendations">
           <view wx:for="{{publicItems}}" wx:key="id" class="public-recommendation"><image wx:if="{{item.photos.length && publicPaths[item.photos[0].key]}}" src="{{publicPaths[item.photos[0].key]}}" mode="aspectFill"/><view><text class="public-recommendation-name">{{item.name}} · {{item.stageName}}</text><text class="owner-public-meta">{{item.district}} · 业主授权公开</text><button class="notice-action" data-id="{{item.id}}" data-version="{{item.versionId}}" bindtap="openPublicSite">去围观 ›</button></view></view>
           <button class="notice-action" bindtap="browseSites">看看附近的公开工地 ›</button>

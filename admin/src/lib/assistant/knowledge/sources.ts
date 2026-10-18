@@ -7,6 +7,7 @@ import { constructionMessageActions } from '@/lib/construction/customer';
 import { siteRecordProjection, siteBusinessRecords } from '@/lib/construction/site-publications';
 import { siteWatchProjection } from '@/lib/construction/site-watches';
 import { publicMessageProjection } from '@/lib/construction/public-projections';
+import { planMessageProjection } from '@/lib/construction/site-plans';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
 export function previewPolicy(c:Row):PreviewPolicy {
   const value=(c.entry_snapshot as {preview?:PreviewPolicy})?.preview;
@@ -89,12 +90,14 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
   const projected=[];
   for(const citation of citations)projected.push(await citationProjection(tx,actor,c,citation));
   const publicProjection = await publicMessageProjection(tx, actor, c, String(message.id));
-  const available=publicProjection?.available !== false && !(message.answer_kind==='grounded' && !citations.length) && projected.every(x=>x.available)
+  const planProjection = await planMessageProjection(tx, actor.enterpriseId, String(c.id), String(message.id));
+  const available=planProjection?.available !== false && publicProjection?.available !== false && !(message.answer_kind==='grounded' && !citations.length) && projected.every(x=>x.available)
     && await agentMessageAvailable(tx, actor.enterpriseId, String(c.id), String(message.id));
   return {id:String(message.id),seq:String(message.seq),authorKind:message.author_kind,answerKind:message.answer_kind ?? null,available,
     content:available?message.content:{version:1,blocks:[{type:'notice',code:'source_unavailable',fallbackText:'这条回答所依据的资料已不可用，请重新提问。'}]},
     citations:projected,createdAt:message.created_at,constructionReminder: available && message.purpose === 'construction.stage',
     constructionFollowUp: available && message.purpose === 'construction.followup',
+    planDecision: available && planProjection?.available ? planProjection.planDecision : null,
     siteRecord: available && message.purpose === 'construction.record' ? await siteRecordProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
     siteRecords: available && message.author_kind === 'assistant' ? await siteBusinessRecords(tx, actor.enterpriseId, String(c.id), String(message.id)) : [],
     siteWatch: available && message.purpose === 'construction.watch' ? await siteWatchProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,

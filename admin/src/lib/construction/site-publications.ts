@@ -6,6 +6,7 @@ import { appendMessage } from '@/lib/assistant/core/conversation';
 import { fail, type ActorContext } from '@/lib/assistant/contracts';
 import { siteRecordText, type SiteDraft } from './site-contract';
 import { deliverSiteResults, syncSiteResults } from './site-results';
+import { deliverPlans, syncPlans } from './site-plans';
 
 /** Public projection: an exact publication/version/customer grant, never the internal conversation. */
 export async function publishedSiteRecord(tx: PostgresTransaction, eid: string, uid: string, recordId: string, expectedVersion?: number, lock = false) {
@@ -55,6 +56,7 @@ export async function customerSiteMedia(tx: PostgresTransaction, actor: ActorCon
   return { data: m.data as Buffer, mime: String(m.mime_type) };
 }
 export async function syncSitePublications(tx: PostgresTransaction, actor: ActorContext, conversation: Row) {
+  await syncPlans(tx, actor, conversation);
   await syncSiteResults(tx, actor, conversation);
   if (actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation' || conversation.mode !== 'ai' || conversation.status !== 'open') return;
   const eid = actor.enterpriseId, uid = actor.principal.userId, entry = conversation.entry_snapshot as Row;
@@ -120,5 +122,5 @@ export async function deliverSiteNotifications() {
       delivered += Number(after?.last_seq || before) - before;
     });
   }
-  return delivered + await deliverSiteResults();
+  return delivered + await deliverSiteResults() + await deliverPlans();
 }

@@ -10,11 +10,11 @@ type Issue = { issueId: string; revision: number; projectId: string; recordId: s
   ownerId: string | null; state: 'awaiting_owner' | 'awaiting_review' | 'cancelled'; progressMessageId: string | null; action: string;
   materialVersion?: string; drawingGrantId?: string | null };
 export type IssueView = Issue & { status: string; ownerName: string; text: string };
-export type SiteVersions = { records: Record<string, number>; issues: Record<string, number>; materials?: Record<string, string> };
+export type SiteVersions = { records: Record<string, number>; issues: Record<string, number>; materials?: Record<string, string>; plans?: Record<string, number> };
 
 export function parseSiteVersions(value: unknown): SiteVersions {
   if (value === undefined) return { records: {}, issues: {} };
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['records','issues','materials'].includes(k))) fail('invalid_construction', 422);
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['records','issues','materials','plans'].includes(k))) fail('invalid_construction', 422);
   const result: SiteVersions = { records: {}, issues: {}, materials: {} };
   for (const kind of ['records','issues'] as const) {
     const map = (value as Row)[kind];
@@ -25,6 +25,15 @@ export function parseSiteVersions(value: unknown): SiteVersions {
     }
   }
   const materials = (value as Row).materials;
+  if ((value as Row).plans !== undefined) {
+    const plans = (value as Row).plans;
+    if (!plans || typeof plans !== 'object' || Array.isArray(plans) || Object.keys(plans).length > 100) fail('invalid_construction', 422);
+    result.plans = {};
+    for (const [pid, revision] of Object.entries(plans)) {
+      id(pid); if (!Number.isSafeInteger(revision) || Number(revision) < 1) fail('invalid_construction', 422);
+      result.plans[pid] = Number(revision);
+    }
+  }
   if (materials !== undefined) {
     if (!materials || typeof materials !== 'object' || Array.isArray(materials) || Object.keys(materials).length > 100) fail('invalid_construction', 422);
     for (const [roomId, hash] of Object.entries(materials)) {

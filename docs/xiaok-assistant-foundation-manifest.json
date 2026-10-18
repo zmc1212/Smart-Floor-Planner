@@ -556,5 +556,11 @@
     "standardBuild": "webpack compile succeeded in 59s; type validation failed on pre-existing AiDesignerLegacyPage named page export",
     "independentInstall": false,
     "evidence": "tmp/xiaok-p5/"
+  },
+  "additionalPartialFoundation": {
+    "path": "miniprogram/test/project-packaging.test.js",
+    "scope": "Only the XiaoK assistant-package budget test and assistant/construction entry assertions",
+    "verification": "Isolated-source assistant budget 1/1 passed",
+    "remainingUncommitted": "Existing tmp-ignore, AI composer relocation assertions, and unrelated business-entry assertion portions"
   }
 }
