@@ -23,6 +23,10 @@ import type { SynthesisSource } from '@/lib/assistant/agent/synthesis';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import { readMemory } from '@/lib/assistant/agent/memory';
+import { fingerprint } from '@/lib/assistant/contracts';
+import { defaultConstructionStages } from '@/lib/construction/stages';
+import { queryNeedIssues } from '@/lib/construction/need-issues';
 
 const prefix = 'synthetic-team-materials-' + randomUUID(), tenants: string[] = [], users: string[] = [], admins: string[] = [];
 let eid = '';
@@ -102,6 +106,107 @@ async function fixture() {
   return { uid, leadId, pid, roomId, actor, chat, cid, customer, say, query, command, boss, designer, drawing, issueId, check, forward, publish, decide, answer };
 }
 const available = (s: Awaited<ReturnType<typeof queryMaterials>>) => withTenantTransaction(eid, tx => materialSnapshotAvailable(tx, eid, s));
+
+test('QA05/06 PPT15/23 a private field correction preserves independent needs and the exact approved formal version', async () => {
+  const x = await fixture(); await x.check(); await x.forward(); const planId = await x.publish(); await deliverPlans();
+  await x.decide(planId, 'preview'); await x.decide(planId, 'approve');
+  async function save(text: string, facts: Array<{ room: string; field: string; value: string }>) {
+    const sent = await x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
+    const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+    await processAgentAnswer(lease!, { model: async (_messages, tools, turn) => {
+      if (turn) return call('final_response', { kind: 'general', text: '需求工作记录已更新，具体方案仍按对应版本核对。' });
+      assert.ok(tools.some(t => t.name === 'record_need'));
+      const [first, ...rest] = facts.map(f => ({ ...f, quote: text }));
+      return call('record_need', { ...first, ...(rest.length ? { additionalNeeds: rest } : {}) });
+    } });
+    assert.equal((await x.chat.run(lease!.runId)).status, 'succeeded');
+  }
+  await save('书房靠窗，偶尔双人办公，电脑和台灯；厨房保持封闭式。', [
+    { room: '书房', field: 'daylight', value: '靠窗' }, { room: '书房', field: 'use', value: '偶尔双人办公' },
+    { room: '书房', field: 'devices', value: '电脑和台灯' }, { room: '厨房', field: 'use', value: '封闭式' },
+  ]);
+  const before = await x.query();
+  await save('更正一下，书房改为单人办公，电脑和台灯不变。底盒该怎样核对？', [{ room: '书房', field: 'use', value: '单人办公' }]);
+  const after = await new ConversationService(x.actor).messages(x.cid); assert.ok(after.items.length);
+  const snapshot = await x.query(''), current = snapshot.data.sources.filter(s => s.need);
+  assert.deepEqual(current.map(s => [s.roomName, s.need!.field, s.need!.value]), [
+    ['书房', 'daylight', '靠窗'], ['书房', 'devices', '电脑和台灯'], ['厨房', 'use', '封闭式'], ['书房', 'use', '单人办公'],
+  ]);
+  assert.ok(current.at(-1)!.need!.supersedes); assert.equal(current.at(-1)!.need!.formalApproval, false);
+  assert.match(snapshot.data.sources.find(s => s.ref.type === 'shared_need')!.text, /双人/);
+  const plan = snapshot.data.sources.find(s => s.ref.type === 'formal_plan')!;
+  assert.equal(plan.ref.id, planId); assert.equal(plan.formal!.decision, 'approved');
+  assert.equal(await available(before), false);
+  const legacyData = { ...snapshot.data, sources: snapshot.data.sources.map(source => { const copy = { ...source }; delete copy.need; return copy; }) };
+  assert.equal(snapshot.version, fingerprint({ data: legacyData, leadIds: snapshot.leadIds }), 'metadata alone preserves the legacy dependency hash');
+  const stored = await withTenantTransaction(eid, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`));
+  const memory = readMemory(stored!.entry_snapshot); assert.equal(memory.facts.length, 5);
+  assert.equal(memory.facts.find(f => f.id === current.at(-1)!.need!.supersedes)!.status, 'superseded');
+});
+
+test('QA05/07 an invalid reported suggestion in a memory batch rolls back every fact and progress write', async () => {
+  const x = await fixture();
+  const service = new ConstructionService({ enterpriseId: eid, adminId: admins[0] }), settings = await service.execute('stages');
+  await service.execute('saveStages', { expectedVersion: settings.version, stages: defaultConstructionStages.map(s => s.key === 'utilities'
+    ? { ...s, followUps: [{ field: 'devices', room: '书房', question: '书房还有其他设备需要补充吗？' }] } : s) }, randomUUID());
+  const detail = await service.execute('detail', { projectId: x.pid });
+  await service.execute('progress', { projectId: x.pid, expectedVersion: Number((detail.project as Row).version), stageKey: 'utilities', note: '', sendReminder: false }, randomUUID());
+  await x.chat.messages(x.cid);
+  const before = await withTenantTransaction(eid, tx => queryNeedIssues(tx, x.actor, x.cid));
+  const opened = before.data.find(i => !i.kind && i.field === 'devices')!; assert.ok(opened);
+  const sent = await x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '请记录书房电脑和台灯；方案写的是书房单人办公，仍待我决定。' }] });
+  const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+  await processAgentAnswer(lease!, { model: async (messages, _tools, turn) => {
+    if (!turn) return call('record_need', { room: '书房', field: 'devices', value: '电脑和台灯', quote: '书房电脑和台灯',
+      additionalNeeds: [{ room: '书房', field: 'use', value: '单人办公', quote: '方案写的是书房单人办公，仍待我决定' }] });
+    assert.match(JSON.stringify(messages), /not_saved/);
+    return call('final_response', { kind: 'general', text: '本次没有保存需求；方案建议还需要你明确表达自己的选择。' });
+  } });
+  assert.equal((await x.chat.run(lease!.runId)).status, 'succeeded');
+  const stored = await withTenantTransaction(eid, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`));
+  assert.deepEqual(readMemory(stored!.entry_snapshot), { version: 0, facts: [] });
+  const after = await withTenantTransaction(eid, tx => queryNeedIssues(tx, x.actor, x.cid));
+  const unchanged = after.data.find(i => i.issueId === opened.issueId)!;
+  assert.equal(unchanged.revision, opened.revision); assert.equal(unchanged.status, 'awaiting_customer');
+});
+
+test('QA05 legacy mixed desk memory retains its original and devices while the later use correction qualifies only occupancy', async () => {
+  const x = await fixture();
+  const service = new ConstructionService({ enterpriseId: eid, adminId: admins[0] }), settings = await service.execute('stages');
+  await service.execute('saveStages', { expectedVersion: settings.version, stages: defaultConstructionStages.map(s => s.key === 'utilities'
+    ? { ...s, followUps: [{ field: 'use', room: '书房', question: '书房办公用途还有需要补充的吗？' }] } : s) }, randomUUID());
+  const detail = await service.execute('detail', { projectId: x.pid });
+  await service.execute('progress', { projectId: x.pid, expectedVersion: Number((detail.project as Row).version), stageKey: 'utilities', note: '', sendReminder: false }, randomUUID());
+  await x.chat.messages(x.cid);
+  async function remember(text: string, input: Row) {
+    const sent = await x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] }); const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+    await processAgentAnswer(lease!, { model: async (_messages, _tools, turn) => !turn ? call('record_need', input)
+      : call('final_response', { kind: 'general', text: '需求工作记录已更新，具体方案另行核对。' }) });
+    assert.equal((await x.chat.run(lease!.runId)).status, 'succeeded');
+  }
+  const original = '书房书桌靠窗，偶尔双人办公；书房电脑和台灯。';
+  await remember(original, { room: '书房', field: 'desk', value: '书桌靠窗，偶尔双人办公', quote: original,
+    additionalNeeds: [{ room: '书房', field: 'devices', value: '电脑和台灯', quote: original }] });
+  const before = await x.query(), legacy = before.data.sources.find(s => s.need?.field === 'desk')!;
+  const devices = before.data.sources.find(s => s.need?.field === 'devices')!; assert.equal(legacy.need!.qualifiedBy, undefined);
+  await x.check(); await x.forward();
+  const correction = '更正一下，书房改为单人办公，电脑和台灯不变。底盒怎样核对？';
+  await remember(correction, { room: '书房', field: 'use', value: '单人办公', quote: correction });
+  const after = await x.query(), use = after.data.sources.find(s => s.need?.field === 'use')!, preserved = after.data.sources.find(s => s.ref.id === legacy.ref.id)!;
+  const liveFollowups = await withTenantTransaction(eid, tx => queryNeedIssues(tx, x.actor, x.cid));
+  assert.ok(liveFollowups.data.some(i => !i.kind && i.field === 'use' && i.value === '单人办公'));
+  assert.equal(use.need!.supersedes, null); assert.equal(preserved.text, original); assert.equal(preserved.ref.version, legacy.ref.version);
+  assert.deepEqual(preserved.need!.qualifiedBy, [{ factId: use.ref.id, field: 'use', value: '单人办公', sourceMessageId: use.sourceMessageId }]);
+  assert.equal(after.data.sources.find(s => s.ref.id === devices.ref.id)!.need!.value, '电脑和台灯');
+  assert.equal(await available(before), false); assert.deepEqual((await x.query('厨房')).data.sources.filter(s => s.need?.qualifiedBy), []);
+  await x.say('撤回共享资料' + x.drawing.id);
+  const withdrawn = await x.query(), surviving = withdrawn.data.sources.find(s => s.ref.id === legacy.ref.id)!;
+  assert.ok(surviving); assert.equal(withdrawn.data.sources.some(s => s.need?.field === 'use'), false);
+  assert.deepEqual(surviving.need!.interpretation, { factId: legacy.ref.id, field: 'use', currentFactId: null });
+  assert.equal(surviving.need!.qualifiedBy, undefined); assert.equal(surviving.text, original);
+  const followups = await withTenantTransaction(eid, tx => queryNeedIssues(tx, x.actor, x.cid));
+  assert.ok(!JSON.stringify(followups).includes('单人办公'), 'no unavailable correction can return through the followup adapter');
+});
 
 test('PPT23 private reply and drawing check do not grant the customer an internal conversation', async () => {
   const x = await fixture(); await x.check();

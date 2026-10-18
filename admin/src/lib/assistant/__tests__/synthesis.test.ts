@@ -3,10 +3,68 @@ import { test } from 'node:test';
 import { parseSynthesis, focusedSynthesisMessages, synthesisQuoteHints, synthesisRepairFeedback, businessSynthesisSources, type SynthesisSource } from '../agent/synthesis';
 import { agentChatBody } from '@/lib/ai/providers/agent-chat';
 import type { ModelMessage } from '../contracts/model';
+import type { MaterialSnapshot } from '../agent/materials';
+import type { NeedIssueSnapshot } from '@/lib/construction/need-issues';
 
 const sources: SynthesisSource[] = [{ sourceId: 'K1', kind: 'knowledge', title: '合成办公原则', text: '显示器避免直对窗户，先核对眩光和通道。净宽需现场核对，参考值为900毫米。' },
   { sourceId: 'B2', kind: 'project', title: '合成书房资料', text: '客户原话：书房靠窗，偶尔两人办公。正式户型含书房，缺少点位图。' }];
 const parse = (segments: unknown[]) => parseSynthesis(JSON.stringify({ kind: 'synthesis', segments }), sources);
+
+test('current field identity is separate from old compound quotes and the scope source does not duplicate originals', () => {
+  const original = '书房靠窗，偶尔双人办公，电脑和台灯。';
+  const snapshot: MaterialSnapshot = { query: { domain: 'materials', conversationId: '1', leadId: '1', room: '书房' }, customerId: '1', leadIds: ['1'],
+    version: 'v', queriedAt: '', displayText: '书房的当前资料：\n客户原话：' + original,
+    data: { resolution: 'resolved', missing: ['现场尺寸'], sources: [{ ref: { type: 'customer_need', id: 'fact', version: 'v' },
+      hash: 'h', leadId: '1', projectId: null, roomId: null, roomName: '书房', sourceMessageId: '2', mediaIds: [], audience: 'customer_self',
+      basis: 'owned_conversation', status: 'current', text: original,
+      need: { field: 'devices', value: '电脑和台灯', supersedes: null, authority: 'customer_statement', formalApproval: false } }] } };
+  const result = businessSynthesisSources('current', snapshot);
+  assert.doesNotMatch(result[0].text, /双人办公/); assert.match(result[0].text, /现场尺寸/);
+  assert.equal(result[1].text, original); assert.equal(result[1].material!.need!.value, '电脑和台灯');
+});
+
+test('each followup carries its stable issue, live waiting object and source version without reviving invalidated content', () => {
+  const snapshot: NeedIssueSnapshot = { query: { domain: 'followups', conversationId: '1' }, customerId: '1', leadIds: [], version: 'v', queriedAt: '', displayText: '',
+    data: [{ issueId: '12', revision: 3, projectId: '4', room: '书房', field: 'use', status: 'awaiting_review', waitingFor: 'unassigned', ownerName: '',
+      sourceMessageId: '5', sourceFactId: 'new', lastProgress: 'customer_supplement', question: '还有其他安排吗？', value: '单人办公' },
+    { issueId: '13', revision: 4, projectId: '4', room: '书房', field: 'site_result', status: 'invalidated', waitingFor: 'unassigned', ownerName: '',
+      sourceMessageId: null, sourceFactId: null, lastProgress: '', question: 'PRIVATE_OLD', value: 'PRIVATE_OLD', kind: 'team_result' }] };
+  const result = businessSynthesisSources('follow', snapshot); assert.equal(result.length, 2);
+  assert.deepEqual(result.map(s => s.followup!.issueId), ['12', '13']); assert.match(result[0].text, /单人办公/);
+  assert.equal(result[0].followup!.waitingFor, 'unassigned'); assert.doesNotMatch(JSON.stringify(result), /PRIVATE_OLD/);
+  assert.doesNotMatch(result[0].text, /事项12|修订3/); assert.match(result[0].text, /用途补充/);
+});
+
+test('repeated explicit and bound sources share one model original while differing versions and tool pairs stay intact', () => {
+  const source = { sourceId: 'A', kind: 'project', title: '客户当前原话', text: '书房单人办公，电脑和台灯不变。',
+    resultKey: 'explicit', material: { ref: { type: 'customer_need', id: 'fact', version: 'one' }, hash: 'hash', text: '书房单人办公，电脑和台灯不变。',
+      need: { field: 'use', value: '单人办公', supersedes: 'old', authority: 'customer_statement', formalApproval: false } } };
+  const messages: ModelMessage[] = [{ role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: '9', text: '为什么还要核对？' }) }] },
+    { role: 'assistant', content: '', toolCalls: [{ id: 'one', name: 'query_materials', arguments: '{}' }, { id: 'two', name: 'search_knowledge', arguments: '{}' }] },
+    { role: 'tool', callId: 'one', content: JSON.stringify({ resultKey: 'explicit', synthesisSources: [source] }) },
+    { role: 'tool', callId: 'two', content: JSON.stringify({ synthesisSources: [{ ...source, sourceId: 'B', resultKey: 'bound' },
+      { ...source, sourceId: 'C', resultKey: 'different', material: { ...source.material, ref: { ...source.material.ref, version: 'two' } } }] }) }];
+  const original = JSON.stringify(messages), focused = focusedSynthesisMessages(messages, '9');
+  const tools = focused.filter(m => m.role === 'tool'); assert.equal(tools.length, 2);
+  const second = JSON.parse(tools[1].content); assert.deepEqual(second.sourceAliases, [{ sourceId: 'B', canonicalSourceId: 'A', resultKey: 'bound' }]);
+  assert.deepEqual(second.synthesisSources.map((s: SynthesisSource) => s.sourceId), ['C']);
+  assert.equal(second.synthesisSources[0].material.ref.version, 'two'); assert.equal(JSON.stringify(messages), original);
+  assert.equal(tools[0].callId, 'one'); assert.equal(tools[1].callId, 'two');
+});
+
+test('one format-repair control message stays after the rejected response once, with tool pairs preserved', () => {
+  const feedback = { role: 'system' as const, content: [{ type: 'text' as const, text: 'Only repair this same response with its current sources.' }] };
+  const messages: ModelMessage[] = [{ role: 'system', content: [{ type: 'text', text: 'Original policy.' }] },
+    { role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: '7', text: '为什么还要核对？' }) }] },
+    { role: 'assistant', content: '', toolCalls: [{ id: 'a', name: 'search_knowledge', arguments: '{}' }] },
+    { role: 'tool', callId: 'a', content: JSON.stringify({ synthesisSources: sources }) },
+    { role: 'assistant', content: 'Rejected candidate for format repair.' }, feedback];
+  const focused = focusedSynthesisMessages(messages, '7');
+  assert.equal(focused.filter(m => m.role === 'system').length, 2);
+  assert.equal(focused.filter(m => JSON.stringify(m) === JSON.stringify(feedback)).length, 1);
+  assert.equal(focused.at(-2), feedback); assert.equal(focused.at(-3)?.content, 'Rejected candidate for format repair.');
+  assert.equal(focused.filter(m => m.role === 'tool')[0].callId, 'a');
+});
 
 test('a missing node or record lookup is never labelled as a consulted actual stage or published record', () => {
   for (const data of [[], [{ stageKey: null, records: [] }]]) {
@@ -34,6 +92,15 @@ test('an advice or uncertainty label cannot bypass formal-action guards', () => 
     assert.throws(() => parse([{ basis: 'advice', text, citations: [] }]), /unsupported_model_commitment/);
   assert.throws(() => parse([{ basis: 'evidence', text: '企业要求必须这样', citations: [] }]), /invalid_model_answer/);
   assert.equal(parse([{ basis: 'advice', text: '可以先比较侧向和正对窗的眩光感受。', citations: [] }]).segments.length, 1);
+});
+test('a denial of completion inference stays negative without hiding a separate positive claim', () => {
+  const text = '你同意这一版也不等于现场已经落实，处理结果要另行核对。';
+  const answer = parse([{ basis: 'uncertainty', text, citations: [] }]);
+  assert.equal(answer.segments[0].text, '你同意这一版也不能据此确认处理结果，处理结果要另行核对。');
+  for (const suffix of ['但现场已落实。', '事项已经正式关闭。', '已验收合格。'])
+    assert.throws(() => parse([{ basis: 'uncertainty', text: text + suffix, citations: [] }]), /unsupported_model_commitment/);
+  for (const positive of ['不等于没有落实，现场已经落实。', '不能证明有问题，事项已解决。', '现场已经落实。'])
+    assert.throws(() => parse([{ basis: 'uncertainty', text: positive, citations: [] }]), /unsupported_model_commitment/);
 });
 test('final model context retains current tool pairs and original but drops old topics', () => {
   const context = focusedSynthesisMessages([{role:'system',content:[{type:'text',text:'policy'}]},

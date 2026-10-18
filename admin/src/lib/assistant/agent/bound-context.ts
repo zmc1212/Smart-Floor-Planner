@@ -4,6 +4,7 @@ import { one, type Row } from '@/db/repositories/assistant-repository';
 import { fail, type ActorContext } from '../contracts';
 import { queryMaterials, type MaterialSnapshot } from './materials';
 import { businessSnapshotAvailable, queryBusiness, type BusinessSnapshot } from './business-tools';
+import { queryNeedIssues } from '@/lib/construction/need-issues';
 
 type BoundSnapshot<T extends BusinessSnapshot> = { resultKey: string; snapshot: T };
 
@@ -30,7 +31,9 @@ export async function boundKnowledgeContext(tx: PostgresTransaction, actor: Acto
     () => queryMaterials(tx, actor, conversationId, { leadId, room: '' }));
   const construction = await snapshot(1500 + turn * 10 + index, 'synthesis.bound_construction.v1', 'stage:' + resultKey,
     () => queryBusiness(tx, actor, { domain: 'construction', leadId }));
+  const followups = await snapshot(1600 + turn * 10 + index, 'synthesis.bound_followups.v1', 'followups:' + resultKey,
+    () => queryNeedIssues(tx, actor, conversationId));
   for (const project of construction.snapshot.data as Row[]) await tx.execute(sql`insert into app.construction_links(enterprise_id,project_id,conversation_id)
     values(${actor.enterpriseId},${String(project.projectId)},${conversationId}) on conflict do nothing`);
-  return { materials: materials as BoundSnapshot<MaterialSnapshot>, construction };
+  return { materials: materials as BoundSnapshot<MaterialSnapshot>, construction, followups };
 }

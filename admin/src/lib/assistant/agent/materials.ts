@@ -11,6 +11,7 @@ import { customerPlans } from '@/lib/construction/site-plans';
 import { fail, fingerprint, id, safeText, type ActorContext } from '../contracts';
 import type { ModelTool } from '../contracts/model';
 import { availableNeedMemory } from './memory-sources';
+import { needQualifications, type NeedFact, type NeedQualification, type NeedInterpretation } from './memory';
 
 export const materialTool: ModelTool = {
   name: 'query_materials',
@@ -27,6 +28,7 @@ export type MaterialSource = {
   review?: { issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; authority: 'team_returned_association' };
   formal?: { issueId: string; issueRevision: number; number: number; revision: number; decision: string; previousVersionId: string | null;
     needGrantId: string; materialVersion: string; mediaHash: string; authority: 'enterprise_published_version'; imagePixels: false };
+  need?: { field: NeedFact['field']; value: string; supersedes: string | null; authority: 'customer_statement'; formalApproval: false; qualifiedBy?: NeedQualification[]; interpretation?: NeedInterpretation };
 };
 export type MaterialSnapshot = {
   query: MaterialQuery & { domain: 'materials'; conversationId: string }; customerId: string; leadIds: string[];
@@ -65,7 +67,9 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
   const finish = (): MaterialSnapshot => {
     const data = { resolution, sources, missing };
     return { query: { ...query, domain: 'materials', conversationId }, customerId: uid, leadIds: leads.map(l => String(l.id)),
-      version: fingerprint({ data, leadIds: leads.map(l => String(l.id)) }), data,
+      // The added need metadata is already bound by ref.version=fingerprint(fact).
+      // Do not invalidate unchanged historical sources solely on a code upgrade.
+      version: fingerprint({ data: { ...data, sources: sources.map(source => { const copy = { ...source }; delete copy.need; return copy; }) }, leadIds: leads.map(l => String(l.id)) }), data,
       displayText: lines.join('\n'), queriedAt: new Date().toISOString() };
   };
   if (leads.length !== 1) {
@@ -97,15 +101,29 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
   // A generic chat is bound only when there is exactly one owned home. No other chat is searched.
   const homeCount = boundLead ? 1 : Number((await one(tx, sql`select count(*) n from app.leads where enterprise_id=${eid} and customer_user_id=${uid} and archived_at is null`))?.n);
   const memory = await availableNeedMemory(tx, eid, conversationId, entry);
-  for (const fact of memory.facts.filter(f => homeCount === 1 && f.status === 'current' && (!query.room || !f.room || f.room === query.room)).slice(-20)) {
+  const currentNeeds = memory.facts.filter(f => homeCount === 1 && f.status === 'current' && (!query.room || !f.room || f.room === query.room)).slice(-20);
+  const origins = new Map<string, Row>(), originalTexts = new Map<string, string>();
+  for (const sourceId of new Set(currentNeeds.map(f => f.sourceMessageId))) {
     const origin = await one(tx, sql`select id,content from app.assistant_messages where enterprise_id=${eid} and conversation_id=${conversationId}
-      and id=${fact.sourceMessageId} and author_kind='user' for share`);
+      and id=${sourceId} and author_kind='user' for share`);
+    if (origin) { origins.set(sourceId, origin); originalTexts.set(sourceId, safeText(origin.content as Parameters<typeof safeText>[0])); }
+  }
+  for (const fact of currentNeeds) {
+    const origin = origins.get(fact.sourceMessageId);
     if (!origin || !safeText(origin.content as Parameters<typeof safeText>[0]).includes(fact.quote)) continue;
+    const qualifiedBy = needQualifications(fact, currentNeeds, originalTexts);
+    const interpretation = memory.interpretations?.find(i => i.factId === fact.id);
     sources.push({ ref: { type: 'customer_need', id: fact.id, version: fingerprint(fact) }, hash: fingerprint(origin.content), leadId,
       projectId: null, roomId: null, roomName: fact.room, sourceMessageId: fact.sourceMessageId, mediaIds: [], audience: 'customer_self',
-      basis: 'owned_conversation', status: 'current', text: fact.quote });
+      basis: 'owned_conversation', status: 'current', text: fact.quote,
+      need: { field: fact.field, value: fact.value, supersedes: fact.supersedes, authority: 'customer_statement', formalApproval: false,
+        ...(qualifiedBy.length ? { qualifiedBy } : {}), ...(interpretation ? { interpretation } : {}) } });
     lines.push(`客户原话${fact.room ? '（' + fact.room + '）' : ''}：“${fact.quote}”。`);
+    if (interpretation) lines.push(interpretation.currentFactId
+      ? '这条混合原话的人数只作历史背景，以当前有效用途更正为准；位置、桌型和设备仍分别保留。'
+      : '这条混合原话的人数已有后续更正，但更正来源当前不可用；不能恢复旧人数，位置、桌型和设备仍按有效原话分别核对。');
   }
+  if (memory.interpretations?.some(i => i.currentFactId === null && currentNeeds.some(f => f.id === i.factId))) missing.push('当前有效的办公人数更正来源');
   if (!sources.length) missing.push('这次咨询中对应的有效原话需求');
   if (project) {
     // The project grant alone never exposes another private consultation, even

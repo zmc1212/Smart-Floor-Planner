@@ -116,6 +116,60 @@ test('XK02/04 explicit supplement and correction advance one issue; duplicate re
   const updated = (await x.query()).data[0]; assert.equal(updated.issueId, opened.issueId); assert.equal(updated.revision, 3); assert.match(updated.value, /更正为/);
   assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === answer.run.outputMessageId)!.available, false);
 });
+
+test('QA05/XK04 a mixed correction and professional question reads the same live issue in the knowledge-bound answer', async () => {
+  const x = await fixture(); await x.progress(); const opened = (await x.query()).data[0];
+  await x.save('还需要显示器和台灯插座');
+  const text = '更正一下，书房设备改为只用电脑。底盒为什么仍要核对，还在等谁？';
+  const result = await x.send(text, async (messages, tools, turn) => {
+    if (turn === 0) { assert.ok(tools.some(t => t.name === 'record_need')); return output('record_need', { room: '书房', field: 'devices', value: '只用电脑', quote: '书房设备改为只用电脑' }); }
+    if (turn === 1) {
+      const receipt = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content)).at(-1);
+      assert.equal(receipt.savedFacts[0].value, '只用电脑'); assert.ok(receipt.savedFacts[0].supersedes);
+      return output('search_knowledge', { query: '书房设备 底盒核对' });
+    }
+    const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as Array<{
+      sourceId: string; text: string; followup?: { issueId: string; revision: number; waitingFor: string; sourceFactId: string }; material?: { need?: { value: string } } }>;
+    const source = sources.find(s => s.followup?.issueId === opened.issueId)!; assert.ok(source);
+    assert.equal(source.followup!.revision, 3); assert.equal(source.followup!.waitingFor, 'unassigned'); assert.match(source.text, /只用电脑/);
+    assert.ok(sources.some(s => s.material?.need?.value === '只用电脑'));
+    return output('final_response', { kind: 'synthesis', segments: [{ basis: 'evidence', text: '本次设备补充仍沿原事项等待核对，当前尚未分配有权接续的人。',
+      citations: [{ sourceId: source.sourceId, quote: source.text.split('\n')[1] }] },
+      { basis: 'advice', text: '具体点位还需结合现场尺寸，可以继续在原聊天补充。', citations: [] }] });
+  });
+  assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run));
+  const current = (await x.query()).data[0]; assert.equal(current.issueId, opened.issueId); assert.equal(current.revision, 3);
+  await x.chat.messages(x.cid); await x.chat.messages(x.cid); assert.equal((await x.query()).data.length, 1);
+  const step = await withTenantTransaction(eid, tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps
+    where enterprise_id=${eid} and run_id=${result.lease.runId} and capability_name='synthesis.bound_followups.v1'`));
+  assert.ok(step); assert.equal(((step.private_checkpoint as Row).snapshot as Row).version, (await x.query()).version);
+  const history = await new ConversationService(x.actor).messages(x.cid); assert.equal(history.items.find(m => m.id === result.run.outputMessageId)!.available, true);
+  await x.progress('painting');
+  assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === result.run.outputMessageId)!.available, false);
+});
+for (const acknowledgement of ['已记录书房双人办公需求。', '书房人数已按你的更正记为双人办公。', '书房人数已按你的更正更新为双人办公。'])
+test('QA05 uncommitted memory cannot be acknowledged by a sourced synthesis: ' + acknowledgement, async () => {
+  const x = await fixture(); await x.progress(); await x.save('需要电脑插座');
+  const before = await x.query();
+  const text = '请记录这个假设：如果书房改为双人办公，底盒怎样核对？';
+  const result = await x.send(text, async (messages, _tools, turn) => {
+    if (!turn) return output('record_need', { room: '书房', field: 'use', value: '双人办公', quote: '如果书房改为双人办公' });
+    if (turn === 1) {
+      const receipt = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content)).at(-1);
+      assert.equal(receipt.status, 'not_saved');
+      return output('search_knowledge', { query: '书房设备 底盒核对' });
+    }
+    const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []);
+    const source = sources.find(s => s.material?.need?.field === 'devices'); assert.ok(source);
+    return output('final_response', { kind: 'synthesis', segments: [{ basis: 'evidence', text: acknowledgement,
+      citations: [{ sourceId: source.sourceId, quote: source.text }] }] });
+  });
+  assert.equal(result.run.status, 'failed', JSON.stringify(result.run));
+  assert.equal(result.run.errorCode, 'unsupported_model_commitment'); assert.equal(result.run.outputMessageId, null);
+  const after = await x.query(); assert.equal(after.version, before.version); assert.deepEqual(after.data, before.data);
+  const entry = await withTenantTransaction(eid, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`));
+  assert.ok(!readMemory(entry!.entry_snapshot).facts.some(f => f.id.startsWith(result.lease.runId + ':')));
+});
 test('XK04 S01 consent gates review; a reviewed item and a human reply are not an approved or resolved change', async () => {
   const x = await fixture(); await x.progress(); const answer = await x.save('需要显示器插座');
   await assert.rejects(x.staff.staffRead(x.cid), /not_found|forbidden|context_changed/);
@@ -155,18 +209,22 @@ test('XK04/07 questions, okay and unrelated rooms do not falsely advance an issu
   const y = await fixture(); await assert.rejects(withTenantTransaction(eid, tx => queryNeedIssues(tx, y.actor, x.cid)), /assistant_resource_not_found/);
   await assert.rejects(withTenantTransaction(eid, tx => queryNeedIssues(tx, { ...x.actor, principal: { kind: 'admin', adminId: ownerId } }, x.cid)), /assistant_capability_forbidden/);
 });
-test('XK08 expired lease replays a committed supplement before its checkpoint without a second memory or issue write', async () => {
+for (const batch of [false, true]) test('XK08 expired lease replays a committed ' + (batch ? 'batch' : 'supplement') + ' before its checkpoint without a second memory or issue write', async () => {
   const x = await fixture(); await x.progress();
-  const quote = '书房需要显示器插座', input = { room: '书房', field: 'devices', value: '需要显示器插座', quote };
+  const quote = '书房需要显示器插座' + (batch ? '，书桌靠窗' : ''), input = { room: '书房', field: 'devices', value: '需要显示器插座', quote,
+    ...(batch ? { additionalNeeds: [{ room: '书房', field: 'desk', value: '靠窗', quote }] } : {}) };
   const sent = await x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: quote }] });
   const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
   const modelOutput = output('record_need', input);
   await withTenantTransaction(eid, async tx => {
     const c = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid} for update`))!;
-    const memory = readMemory(c.entry_snapshot), next = applyNeedDelta(memory, parseNeedDelta({ ...input, sourceMessageId: sent.messageId, expectedVersion: memory.version }),
+    const memory = readMemory(c.entry_snapshot), { additionalNeeds, ...primary } = input;
+    let next = applyNeedDelta(memory, parseNeedDelta({ ...primary, sourceMessageId: sent.messageId, expectedVersion: memory.version }),
       { id: String(sent.messageId), text: quote }, `${lease.runId}:0:0`, new Date().toISOString());
+    if (batch) next = applyNeedDelta(next, parseNeedDelta({ ...additionalNeeds![0], sourceMessageId: sent.messageId, expectedVersion: next.version }),
+      { id: String(sent.messageId), text: quote }, `${lease.runId}:0:0:need:1`, new Date().toISOString());
     await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{agentMemory}',${JSON.stringify(next)}::jsonb),version=version+1 where enterprise_id=${eid} and id=${x.cid}`);
-    await recordNeedIssueSupplement(tx, x.actor, c, next.facts.at(-1)!);
+    await recordNeedIssueSupplement(tx, x.actor, c, next.facts.find(f => f.id === `${lease.runId}:0:0`)!);
     await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,private_checkpoint)
       values(${eid},${lease.runId},1100,'agent_model','succeeded',${JSON.stringify(modelOutput)}::jsonb)`);
     await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
@@ -180,7 +238,7 @@ test('XK08 expired lease replays a committed supplement before its checkpoint wi
   assert.equal(calls, 1); assert.equal((await x.chat.run(lease.runId)).status, 'succeeded');
   assert.equal((await x.query()).data[0].revision, 2);
   const c = await withTenantTransaction(eid, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`));
-  assert.equal(readMemory(c!.entry_snapshot).version, 1); assert.equal(readMemory(c!.entry_snapshot).facts.length, 1);
+  assert.equal(readMemory(c!.entry_snapshot).version, batch ? 2 : 1); assert.equal(readMemory(c!.entry_snapshot).facts.length, batch ? 2 : 1);
 });
 test('PPT16/37 configured model repeats same-issue supplement and waiting-state lookup twice', { skip: !live }, async () => {
   for (let iteration = 0; iteration < 2; iteration++) {

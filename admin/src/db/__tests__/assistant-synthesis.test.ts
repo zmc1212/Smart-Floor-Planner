@@ -89,7 +89,7 @@ test('QA02/05 PPT6/15: real retrieval plus authorized originals produces persist
   const a = await x.send('书房靠窗办公为什么还要考虑桌子的朝向？', async (m,_t,turn) => {
     assert.doesNotMatch(JSON.stringify(m), /PRIVATE_ONLY_NEVER_SEND/);
     if (turn === 0) { const a = call('search_knowledge', { query: '书房靠窗办公 屏幕眩光 双人桌' }); a.toolCalls.push(...call('query_materials', { leadId: '', room: '书房' }).toolCalls); return a; }
-    const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!, b = s.find(s => s.kind === 'project')!;
+    const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!, b = s.find(s => s.sourceId.includes(':customer_need:'))!;
     return synth([{ basis: 'evidence', text: '你希望靠窗并偶尔两人办公，可以保留采光偏好，但桌向需要同时照顾屏幕眩光和共用通道，因此先比较侧向摆放更有讨论价值。',
       citations: [{ sourceId: k.sourceId, quote: '显示器避免直对强光窗户，可比较侧向布置。' }, { sourceId: b.sourceId, quote: '靠窗，偶尔两人办公' }] },
     { basis: 'uncertainty', text: '目前缺少有效点位图和现场尺寸，需要设计师核对后再确定位置。', citations: [] }]);

@@ -1,5 +1,35 @@
 # 小K第二期：需求整理与人工交接
 
+<!-- continuity:start -->
+<a id="当前p3bp4a客户更正与原事项接续"></a>
+## 当前P3B/P4A：客户更正与原事项接续
+
+**限定实现，整体Limited。** 沿路线图3.1及PPT15/23/37/38，复用下文获权来源、精确正式版本与处理链。当前行为为v51；下文v43及更早执行记录只保留各自范围的历史证据。
+
+- 明确更正后紧接专业提问仍可调用`record_need`，服务端绑定实际当前消息/房间，拒绝假设和转述建议。原参数兼容，新增可选`additionalNeeds`最多三条，合计四个独立房间/字段；先核验全部原话及重复字段，再同事务保存记忆、自动草稿及对应原事项进展。四条原话不必耗尽四个模型轮次，任一条不合法则全部不写。首条操作键保持，附加条目用`:need:n`；已提交批次恢复不重复事实、进展或供应商调用。单条/重进也返回`savedFacts`，高版本回执优先于开轮旧记忆，不形成正式批准。
+- 存储的`NeedMemory`更正链仍是不可变原话记录。材料的need元数据携带字段/值/supersedes及客户表达身份。只读`qualifiedBy`限定兼容desk/other混写人数与位置的旧行，仅关联同咨询/房间、后续明确且当前有效的use更正，只限定人数；原话、桌型、靠窗、设备、其他房间均保留。仅使用当前获权原话，来源失效时关系不复活旧内容。更正来源不可用时保留无值interpretation屏蔽标识，不能回退旧人数；`NeedMemory.interpretations`及材料的`need.interpretation`为只读`{ factId, field: 'use', currentFactId }`，不可用时`currentFactId: null`，不由`applyNeedDelta`持久化。`query_followups`事项也经`availableNeedMemory`读取，不能从另一适配器带回失效值，不暴露不可用更正的值或来源ID。不是第二套记忆、正式变更或共享grant。其他复合字段增删、隐含更正和复杂多房屋/跨阶段冲突仍Limited。
+  可用性继续沿用原消息及其run的工地来源依赖；本轮共享图撤回使同轮更正的既有依赖链失效，当前use按未知投影，原更正链仍保留。这不是客户明确撤回其人数更正的业务决定，未新增需求撤回入口。
+- 绑定房屋的`search_knowledge`现复用`queryNeedIssues`，将`synthesis.bound_followups.v1`与原材料、实际施工快照一起持久化，保留原咨询、稳定issueId/revision、真实负责人/等待对象及来源版本。显式和绑定路径共用缓存/恢复、每次模型调用、提交、历史及接续包守卫。需求补充、团队明确回传的现场事项与正式决定分别溯源；普通解释不新建/分派事项，也不批准、落实、解决、关闭或共享。
+- 事项模型来源按业务内容描述当前状态，正文不展示内部事项编号，ID/修订仍用于来源核对。当前用途、旧混合记忆、旧共享原话、团队图纸关联及精确正式决定不混用；旧版描述不覆盖后来客户更正，更正也不改该版决定或冒称送达内部负责人。靠窗意向已知则沿用，可量测坐标/检查记录缺失只说明本轮查询未知，不认定现实没有做。电话缺失不成为原聊天沟通前置；内部负责人姓名不证明客户已获直接拨号/私聊渠道。
+- `current-turn-sources-v4`只改变模型视图：保留标准工具配对、结果键、完整原文和全部权限/版本元数据；显式与绑定查询中完全相同的来源共用一份完整正文，并保留来源ID/结果键别名映射，不合并不同版本、决定、受众或元数据。材料汇总只说明范围/缺项，不再复制全部原文。触发消息之后的修复反馈按原顺序只保留一次，压缩重复协议文案，不删引文修正数据、不增加修复轮次或放宽守卫。持久检查点/快照、来源重验及原48,000 UTF-8文字字节/四轮上限不变。被拒入参离线复放49,133→40,698文字字节，原未知attempt不重试、不回写；本地预检失败不冒称供应商故障。
+- 对“同意这一版不等于现场已经落实”等紧邻否定谓语，仅等义转为“不能据此确认处理结果”；另一个分句的正面完成断言、无据数字、越权来源ID及非原文引述仍由原守卫拒绝。该窄范围处理修正已记录的误拦，不增加重试或授权正式动作。
+- 带来源综合回答及普通自由回答现于最终提交事务共用真实保存回执守卫。出现“已记录/已按你的更正记为/更新为”等已覆盖的回执形式前，须有本轮实际记忆/偏好操作，旧事实与引文不能替代；假设性写入被拒后不能发布虚假保存回执。这是必要操作检查，不保证任意回执改写，也不证明每个自然语言字段/值或推断都已有语义支持。历史需求只说沿用原记录，已存私聊更正与未改正式版本分别表述；客户说明不说成图内观察，授权查询缺项不说成现实现场尚不能施工。
+
+| 触发 | 沿用可见反馈/动作 | 恢复及边界 |
+| --- | --- | --- |
+| 明确更正后提问 / 多条独立原话 | 原C01气泡、真实保存回执后解释，不强制摘要/共享步骤 | 同字段链及原子批次；原话持久保留，失败不假报保存 |
+| 存量混合书桌行与当前人数 / 旧共享或正式描述不同 | 同一批准回答/来源面板说明具体差异与保留意向 | 只读限定；supersedes仍精确同字段，不自动正式改版或外发 |
+| 专业问题及未解决事项 | 企业依据与实际节点解释条件；相关原事项分别显示真实等待状态 | 同ID/版本重进，不编负责人、期限或结束状态 |
+| 来源换版/撤回、成员/客户变化、人工接管 | 原失效/重试/真人态及受保护原件/卡片清理 | 原守卫重验，别名/缓存不能复活来源或插入迟到AI |
+
+无新API路由、schema/迁移、角色/菜单、Mini WXML/Less/素材/导航或正式v4写入。C01/C02/C05/U01沿唯一批准台账，S04仍为原PPT22/38，853×1844映射390×844，PPT23提供资料语境。无整屏切片、新设计或新增视觉还原声明。原生证据逐张登记精确route/stack、副屏/重新编译、逻辑视口和PNG编码尺寸；真机/真实微信/BLE/完整宿主光学/高屏/键盘/Chrome按实际证据未验。
+
+在`admin`复跑：`node scripts/assistant-continuity-acceptance.mjs`（隔离核心）、`--unit`、`--claims`（拒写后虚假回执反例）、`--regression`、`--agent-regression`（受影响Agent来源回归）、`--mini`；实模`node --import tsx scripts/assistant-continuity-development.ts --development`，Stable原生加`--native`；审计`node --import tsx scripts/assistant-continuity-audit.ts --development`；同源类型`node scripts/assistant-continuity-typecheck.mjs 9db99f40`。隔离用55432/xiaok_embedding_eval、共享锁及非superuser/non-BYPASSRLS角色；开发/原生用批准5432/smart_floor_planner、localhost:3006、原Worker及配置DeepSeek，二者串行。全部夹具明确合成；存量混合行的显式准备复用生产记忆校验，不计作AI或客户业务动作。实际次数、被拒原输出、装配/类型失败、逐轮语义审读、来源/用量及限制统一见[交接](./xiaok-assistant-handoff.zh-CN.md)与`tmp/xiaok-corrections-continuity/acceptance-summary.json`；结构或基本原生冒烟通过不等于完整专业/PPT或发布验收。
+
+实施前复核[LangGraph记忆/工具消息配对](https://docs.langchain.com/oss/javascript/langgraph/add-memory)、[维护中的工具/检查点测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[已关闭ToolMessage status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。沿已安装LangGraph有界循环和标准工具消息，PostgreSQL继续掌握租户/撤回/持久任务/用量/真人权威，不迁移框架或另建记忆库，不把DeepSeek特定行为泛化；配置模型的端到端回归仍须实际执行。
+<!-- continuity:end -->
+
+
 <a id="当前p3bp4a获权需求与点位图原件投影"></a>
 
 ## 当前P3B/P4A：团队核对与精确正式版本进入专业问答

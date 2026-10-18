@@ -3,7 +3,8 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTool } from '@/lib/assistant/contracts/model';
-import { readMemory, type NeedFact } from '@/lib/assistant/agent/memory';
+import type { NeedFact } from '@/lib/assistant/agent/memory';
+import { availableNeedMemory } from '@/lib/assistant/agent/memory-sources';
 import { constructionNoticeAvailable } from './customer';
 import { customerSiteResults } from './site-results';
 import { customerPlans } from './site-plans';
@@ -12,7 +13,7 @@ export const needIssueTool: ModelTool = {
   name: 'query_followups', description: '查询当前本人咨询中节点补充事项、团队明确回传的事项取消/恢复后的等待状态与负责人、现场落实证据及正式解决/关闭结果，以及发给本咨询的具体方案版本、差异、费用/工期变化和客户真实决定。只读；不取消/恢复或批准方案、不解决或关闭事项，不开放内部会话或未回传内容。恢复不复活旧回复或批准；普通回复或客户同意不等于现场落实、解决或关闭；关闭不等于验收付款。',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
 };
-type IssueState = { issueId: string; revision: number; projectId: string; room: string; field: string;
+export type IssueState = { issueId: string; revision: number; projectId: string; room: string; field: string;
   status: 'awaiting_customer' | 'awaiting_owner' | 'awaiting_review' | 'cancelled' | 'invalidated' | 'approved' | 'declined' | 'changes_requested' | 'deferred' | 'resolved' | 'closed'; waitingFor: 'customer' | 'designer' | 'unassigned' | 'team' | 'none';
   ownerName: string; sourceMessageId: string | null; sourceFactId: string | null; lastProgress: string; question: string; value: string;
   kind?: 'team_result' | 'formal_plan'; sourceVersion?: string };
@@ -71,7 +72,7 @@ export async function queryNeedIssues(tx: PostgresTransaction, actor: ActorConte
     and p.conversation_id=c.id and p.user_id=${uid} and p.status='active' where c.enterprise_id=${eid} and c.id=${cid}
     and c.purpose='customer_consultation' and not coalesce((c.entry_snapshot->>'retentionRedacted')::boolean,false) for share of c,p`);
   if (!conversation) fail('assistant_resource_not_found', 404);
-  const facts = readMemory(conversation.entry_snapshot).facts, data: IssueState[] = [], lines: string[] = [];
+  const facts = (await availableNeedMemory(tx, eid, cid, conversation.entry_snapshot)).facts, data: IssueState[] = [], lines: string[] = [];
   for (const opened of await questions(tx, eid, cid)) {
     const payload = opened.payload as Row;
     if (String(payload.customerId) !== uid) continue;

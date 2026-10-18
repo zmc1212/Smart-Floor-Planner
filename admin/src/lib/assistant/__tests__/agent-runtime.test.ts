@@ -81,3 +81,10 @@ test('an explicit correction followed by a save acknowledgement question allows 
     assert.equal(agentToolsForMessage(text, true).some(t => t.name === 'record_need'), false, text);
   }
 });
+
+test('a professional question after an explicit correction retains the memory tool without granting a designer request', () => {
+  const tools = agentToolsForMessage('更正一下，书房改为单人办公，设备不变。底盒现在怎样核对，还在等谁？', true);
+  assert.ok(tools.some(t => t.name === 'record_need'));
+  assert.ok(tools.some(t => t.name === 'search_knowledge'));
+  assert.equal(tools.some(t => t.name === 'request_designer'), false);
+});

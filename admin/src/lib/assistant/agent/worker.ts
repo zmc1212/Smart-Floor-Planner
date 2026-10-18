@@ -10,7 +10,7 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, type AgentCheckpoint } from './runtime';
 import { agentConfig } from './config';
-import { readMemory, parseNeedDelta, applyNeedDelta, factFields, needWriteFeedback } from './memory';
+import { readMemory, parseNeedDelta, parseNeedWrites, applyNeedDelta, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs } from './memory-sources';
 import { buildAgentContext, parseAgentReply, agentPromptVersion } from './context';
 import { saveAutomaticRequirements } from '../requirements/automatic';
@@ -34,8 +34,10 @@ import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
 
-export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的一个房间/字段需求；只摘原话，不保存猜测。返回memoryVersion。', parameters: {
-  type: 'object', properties: { room: { type: 'string' }, field: { type: 'string', enum: factFields }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } },
+const needProperties = { room: { type: 'string' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，daylight记录采光，devices记录设备；独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } };
+export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释。返回memoryVersion。', parameters: {
+  type: 'object', properties: { ...needProperties, additionalNeeds: { type: 'array', maxItems: 3,
+    items: { type: 'object', properties: needProperties, required: ['room','field','value','quote'], additionalProperties: false } } },
   required: ['room','field','value','quote'], additionalProperties: false,
 } };
 const checkpointSeq = 1000;
@@ -44,8 +46,7 @@ export function agentToolsForMessage(text: string, enabled: boolean, businessFol
   if (!enabled) return [];
   // A question about saving a preceding explicit correction is not a hypothetical need.
   // Match the complete two-clause intent, never a quoted snippet or a proposed change.
-  const correctionAcknowledgement = /^(?:更正|纠正)(?:一下)?[，,:：]\s*[^，。！？?\n]+(?:改成|改为|调整为|换成)[^，。！？?\n]+[，。]\s*(?:你|您)?(?:记住|记下|记录)(?:了)?吗[？?]?\s*$/.test(text)
-    && !/如果|假如|假设|可能|是否|是不是|要不要|能不能|可以|不改|不要|不用|别记录|[“”「」"]/.test(text);
+  const correctionAcknowledgement = hasExplicitNeedCorrection(text);
   const explicit = (/请记住|请记录|记一下|帮我记录/.test(text) || correctionAcknowledgement) && !/不要记录|不用记录|别记录|不要记住/.test(text);
   const discussion = /[？?]|怎么|怎样|如何|是否|能不能|要不要|(?:吗|呢)[。！!]?\s*$|先聊|讨论|填表|不说预算|不要记录|不用记录|别记录/.test(text);
   const authorityRequest = /保证|假装|冒充|忽略.{0,8}指令|系统提示|其他客户|别人的/.test(text);
@@ -252,7 +253,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (cached) { if (cached.status !== 'succeeded') fail('provider_outcome_unknown'); outcomeKnown = true; return cached.private_checkpoint as ModelTurnOutput; }
           const beforeProviderCall = () => scoped(async tx => {
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, promptVersion: agentPromptVersion, contextPolicy: modelMessages === messages ? 'conversation' : 'current-turn-sources-v2' })}::jsonb)`);
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, promptVersion: agentPromptVersion, contextPolicy: modelMessages === messages ? 'conversation' : 'current-turn-sources-v4' })}::jsonb)`);
             await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
           });
           const injected = perception ? dependencies.vision : dependencies.model;
@@ -458,10 +459,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               if (current) {
                 const { snapshot } = current.materials;
                 materialSources.set(fingerprint(snapshot.query), { query: snapshot.query, customerId: snapshot.customerId, version: snapshot.version });
+                const followups = current.followups.snapshot;
+                issueSources.set(fingerprint(followups.query), { query: followups.query, customerId: followups.customerId, version: followups.version });
               }
               return current;
             });
-            const synthesisSources = [...knowledgeSynthesisSources(selected), ...(bound ? [bound.materials,bound.construction].flatMap(s=>businessSynthesisSources(s.resultKey,s.snapshot)) : [])];
+            const synthesisSources = [...knowledgeSynthesisSources(selected), ...(bound ? [bound.materials,bound.construction,bound.followups].flatMap(s=>businessSynthesisSources(s.resultKey,s.snapshot)) : [])];
             const unresolvedConflict = unresolvedSynthesisConflict(synthesisSources);
             return { content: JSON.stringify({ knowledgeStatus, unresolvedConflict, evidence: answerExcerpts(selected), synthesisSources:synthesisSources.map(({evidence,...source})=>({...source,
               ...(evidence?.file?{file:evidence.file,...(source.text.length<=400?{citationQuote:source.text}:{})}:{}),
@@ -469,24 +472,32 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               boundProjectContext: bound ? { resolution: bound.materials.snapshot.data.resolution, missing: bound.materials.snapshot.data.missing, constructionQueriedAt: bound.construction.snapshot.queriedAt } : null,
               instructions: (unresolvedConflict ? '资料明确含尚未核实的规则冲突。综合回答第一段必须basis=uncertainty，先说明不能按企业规则择一；随后分别引述双方，不用“主流/倾向/优先”认定企业现行口径。一般建议另标身份。' : '')
                 + '解释专业原理、取舍、适用条件时用kind=synthesis，引用本轮synthesisSources。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。兼容原文查询kind=knowledge。'
-                + '当前问题若问验收或完成状态，直接用“当前证据不足以支持该结论，仍需核对实际检查记录”等措辞回答判断。text中禁止复述完成词，包括否定句、引号与举例中的“已验收”“已经验收”“已批准”“已经批准”“已完成验收”；不要写“不能认定已经验收/不支持已经验收”，改为“当前证据不能支持该结论”。原文quote仍须逐字保留，不能改写。' }) };
+                  + '当前问题若问验收或完成状态，直接用“当前证据不足以支持该结论，仍需核对实际检查记录”等措辞回答判断。text中禁止复述完成词，包括否定句、引号与举例中的“已验收”“已经验收”“已批准”“已经批准”“已完成验收”；不要写“不能认定已经验收/不支持已经验收”，改为“当前证据不能支持该结论”。原文quote仍须逐字保留，不能改写。' }) };
           }
           if (name !== 'record_need') fail('assistant_capability_forbidden', 403);
           try { return await scoped(async (tx, context) => {
-            const memory = readMemory(context.conversation.entry_snapshot);
-            if (!input || Object.keys(input).some(k => !['room','field','value','quote'].includes(k))) fail('invalid_message', 422);
+            const memory = readMemory(context.conversation.entry_snapshot), writes = parseNeedWrites(input);
             const sourceText = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
             if (/喜欢|中意|满意|不合适/.test(sourceText) && /第[一二三123](?:个|款|张|套|例)|这(?:款|张|套)参考/.test(sourceText)) fail('need_source_mismatch', 422);
             // Provenance and expected version are server-bound under the conversation lock, never model-selected authority.
-            const delta = parseNeedDelta({ ...input, sourceMessageId: String(initial.trigger.id), expectedVersion: memory.version });
-            const next = applyNeedDelta(memory, delta, { id: String(initial.trigger.id), text: safeText(initial.trigger.content as Parameters<typeof safeText>[0]) },
-              `${lease.runId}:${turn}:${index}`, new Date().toISOString());
-            if (next === memory) return { content: JSON.stringify({ status: 'saved', memoryVersion: memory.version, conversationVersion: Number(context.conversation.version), formalApproval: false }) };
+            let next = memory;
+            const changedFacts = [];
+            for (const [position, write] of writes.entries()) {
+              const operationId = `${lease.runId}:${turn}:${index}` + (position ? `:need:${position}` : '');
+              const delta = parseNeedDelta({ ...write, sourceMessageId: String(initial.trigger.id), expectedVersion: next.version });
+              const updated = applyNeedDelta(next, delta, { id: String(initial.trigger.id), text: sourceText }, operationId, new Date().toISOString());
+              if (updated !== next) changedFacts.push(updated.facts.find(f => f.id === operationId)!);
+              next = updated;
+            }
+            const savedFacts = writes.flatMap(write => next.facts.filter(f => f.status === 'current' && f.room === write.room && f.field === write.field))
+              .map(f => ({ id: f.id, room: f.room, field: f.field, value: f.value, supersedes: f.supersedes }));
+            if (next === memory) return { content: JSON.stringify({ status: 'saved', memoryVersion: memory.version, conversationVersion: Number(context.conversation.version), formalApproval: false, savedFacts }) };
             await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{agentMemory}',${JSON.stringify(next)}::jsonb),version=version+1,updated_at=now()
               where enterprise_id=${lease.enterpriseId} and id=${String(context.conversation.id)}`);
-            await recordNeedIssueSupplement(tx, lease.actor, context.conversation, next.facts.find(f => f.id === `${lease.runId}:${turn}:${index}`)!);
+            for (const fact of changedFacts) await recordNeedIssueSupplement(tx, lease.actor, context.conversation, fact);
             await saveAutomaticRequirements(new AssistantRepository(tx, lease.actor), String(context.conversation.id));
-            return { content: JSON.stringify({ status: 'saved', memoryVersion: next.version, conversationVersion: Number(context.conversation.version) + 1, formalApproval: false }) };
+            return { content: JSON.stringify({ status: 'saved', memoryVersion: next.version, conversationVersion: Number(context.conversation.version) + 1, formalApproval: false,
+              savedFacts }) };
           }); } catch (error) {
             const feedback = needWriteFeedback(error, safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
             if (!feedback) throw error;
@@ -507,6 +518,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       await scoped(async (tx, context) => {
         const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
         const answer = parseSynthesis(result.output?.text || '', evidence.sources);
+        const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
+        assertRecordedReply(answer.segments.map(s => s.text).join('\n'), readMemory(context.conversation.entry_snapshot), lease.runId,
+          preferences.map(p => p.operationId));
         // Persist the full consulted set, including conflict candidates and missing-data snapshots.
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(evidence)}::jsonb,${JSON.stringify(answer)}::jsonb,
@@ -593,12 +607,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       return step.private_checkpoint as BusinessSnapshot;
     }) : null;
     const text = references ? NO_REFERENCE : business ? business.displayText : parseAgentReply(result.output?.text || '');
-    if (!business && /(?:已(?:经)?|帮你|帮您)(?:记下|记住|记录|保存)|记下了|记住了|记录好了/.test(text)) {
-      const memory = await scoped(async (_tx, context) => readMemory(context.conversation.entry_snapshot));
-      const preferences = await scoped(async (_tx, context) => ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[]);
-      if (!memory.facts.some(f => f.id.startsWith(lease.runId + ':')) && !preferences.some(p => p.operationId.startsWith(lease.runId + ':'))) fail('unsupported_model_commitment', 502);
-    }
     await scoped(async (tx, context) => {
+      if (!business) {
+        const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
+        assertRecordedReply(text, readMemory(context.conversation.entry_snapshot), lease.runId, preferences.map(p => p.operationId));
+      }
       for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
       for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');
       if (business) {
