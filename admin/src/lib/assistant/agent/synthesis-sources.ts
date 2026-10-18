@@ -10,7 +10,7 @@ import { businessSynthesisSource, knowledgeSynthesisSources, type SynthesisConte
 export async function currentSynthesisContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row, runId: string): Promise<SynthesisContext> {
   const steps = await rows(tx, sql`select step_seq,capability_name,private_checkpoint from app.assistant_run_steps
     where enterprise_id=${actor.enterpriseId} and run_id=${runId} and status='succeeded'
-      and capability_name in ('knowledge.search.v1','query_business','query_materials','query_followups','synthesis.bound_materials.v1') order by step_seq`);
+      and capability_name in ('knowledge.search.v1','query_business','query_materials','query_followups','synthesis.bound_materials.v1','synthesis.bound_construction.v1') order by step_seq`);
   const context: SynthesisContext = { version: 1, knowledge: [], snapshots: [], sources: [] };
   for (const step of steps) {
     if (step.capability_name === 'knowledge.search.v1') {
@@ -23,7 +23,7 @@ export async function currentSynthesisContext(tx: PostgresTransaction, actor: Ac
         }
       }
     } else {
-      const bound = step.capability_name === 'synthesis.bound_materials.v1'
+      const bound = ['synthesis.bound_materials.v1','synthesis.bound_construction.v1'].includes(String(step.capability_name))
         ? step.private_checkpoint as { resultKey: string; snapshot: BusinessSnapshot } : null;
       const snapshot = bound ? bound.snapshot : step.private_checkpoint as BusinessSnapshot;
       if (!await businessSnapshotAvailable(tx, actor.enterpriseId, snapshot)) fail('context_changed');

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseSynthesis, focusedSynthesisMessages, type SynthesisSource } from '../agent/synthesis';
+import { parseSynthesis, focusedSynthesisMessages, synthesisQuoteHints, synthesisRepairFeedback, type SynthesisSource } from '../agent/synthesis';
 
 const sources: SynthesisSource[] = [{ sourceId: 'K1', kind: 'knowledge', title: '合成办公原则', text: '显示器避免直对窗户，先核对眩光和通道。净宽需现场核对，参考值为900毫米。' },
   { sourceId: 'B2', kind: 'project', title: '合成书房资料', text: '客户原话：书房靠窗，偶尔两人办公。正式户型含书房，缺少点位图。' }];
@@ -37,4 +37,18 @@ test('final model context retains current tool pairs and original but drops old 
 test('explicit unresolved source conflicts cannot open by selecting an enterprise priority',()=>{
   const conflict=[...sources,{sourceId:'K3',kind:'knowledge' as const,title:'冲突规则',text:'屏幕必须正对强光窗户，适用范围未核实。'}];
   assert.throws(()=>parseSynthesis(JSON.stringify({kind:'synthesis',segments:[{basis:'evidence',text:'主流做法为侧向。',citations:[{sourceId:'K1',quote:'显示器避免直对窗户，先核对眩光和通道。'}]}]}),conflict),/unresolved_evidence_conflict/);
+});
+test('KB3 quote hints preserve exact punctuation and conditions without truncating a long original',()=>{
+  const original='客户原话：“需要台灯。”\n'+('长'.repeat(401))+'\n条件：仍需核对。';
+  assert.deepEqual(synthesisQuoteHints(original),['客户原话：“需要台灯。”','条件：仍需核对。']);
+  assert.ok(synthesisQuoteHints(original).every(q=>original.includes(q)));
+});
+test('KB3 ordinary known-source citation errors receive bounded feedback; unknown IDs and commitments remain closed',()=>{
+  const raw=(text:string,sourceId='K1')=>JSON.stringify({kind:'synthesis',segments:[{basis:'evidence',text,citations:[{sourceId,quote:'显示器避免正对窗户。'}]}]});
+  assert.match(synthesisRepairFeedback(raw('可先比较桌向。'),sources)!.feedback,/唯一一次格式修复/);
+  const corrected=synthesisRepairFeedback(raw('可先比较桌向。'),sources)!;
+  assert.ok(corrected.feedback.includes(JSON.stringify({sourceId:'K1',providedQuote:'显示器避免正对窗户。',copyExactQuote:sources[0].text})));
+  assert.throws(()=>synthesisRepairFeedback(raw('可先比较桌向。','foreign'),sources),/invalid_model_citation/);
+  assert.throws(()=>synthesisRepairFeedback(raw('已经批准方案。'),sources),/unsupported_model_commitment/);
+  assert.throws(()=>synthesisRepairFeedback(raw('你家净宽800毫米。'),sources),/unsupported_model_commitment/);
 });

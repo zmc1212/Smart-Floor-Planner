@@ -126,8 +126,8 @@ test('QA03 PPT18: actual project stage enters synthesis and a later stage change
   const progress = async (key: string) => { const d = await service.execute('detail', { projectId: pid }); await service.execute('progress', { projectId: pid, expectedVersion: (d.project as Row).version, stageKey: key, note: '', sendReminder: false }, randomUUID()); };
   await progress('waterproofing');
   const a = await x.send('我家现场现在防水阶段，为什么还不能直接铺砖？', async (m,_t,turn) => {
-    if (!turn) { const a = call('query_business', { domain: 'construction', leadId: x.leadId }); a.toolCalls.push(...call('search_knowledge', { query: '防水阶段 闭水检查 铺砖条件' }).toolCalls); return a; }
-    const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('闭水检查前'))!, b = s.find(s => s.kind === 'project')!;
+    if (!turn) return call('search_knowledge', { query: '防水阶段 闭水检查 铺砖条件' });
+    const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('闭水检查前'))!, b = s.find(s => s.sourceId.startsWith('Bstage:'))!;
     assert.match(b.text, /防水/);
     return synth([{ basis: 'evidence', text: '当前进入防水节点只说明所处阶段；铺砖前还需核对检查记录，不能据此认定防水已经完成。',
       citations: [{ sourceId: b.sourceId, quote: '防水' + (b.text.includes('防水施工') ? '施工' : '阶段') }, { sourceId: k.sourceId, quote: '闭水检查前不能把进入防水节点当作防水完成；铺砖前须核对检查记录。' }] },
@@ -136,6 +136,43 @@ test('QA03 PPT18: actual project stage enters synthesis and a later stage change
   assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === a.run.outputMessageId)?.available, true);
   await progress('tiling');
   assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === a.run.outputMessageId)?.available, false);
+  const fresh = await x.send('那现在呢？',async(m,_t,turn)=>{
+    if(!turn)return call('search_knowledge',{query:'防水检查与铺砖条件'});
+    const stage=results(m).find(s=>s.sourceId.startsWith('Bstage:'))!;assert.match(stage.text,/铺砖阶段/);
+    return synth([{basis:'evidence',text:'团队现在标记为铺砖阶段，具体检查结果仍需核对记录。',citations:[{sourceId:stage.sourceId,quote:'团队标记的当前节点：铺砖阶段。'}]}]);
+  });assert.equal(fresh.run.status,'succeeded',JSON.stringify(fresh.run));
+  const reentry=await new ConversationService(x.actor).messages(x.cid);
+  assert.equal(reentry.items.find(m=>m.id===fresh.run.outputMessageId)?.available,true);
+  const steps=await withTenantTransaction(eid,tx=>rows(tx,sql`select capability_name from app.assistant_run_steps where enterprise_id=${eid} and run_id=${fresh.runId}`));
+  assert.ok(steps.some(s=>s.capability_name==='synthesis.bound_construction.v1'));
+});
+
+test('KB3 XK07/08 a changed actual node during generation fences a knowledge-only late answer',async()=>{
+  const x=await fixture(),service=new ConstructionService({enterpriseId:eid,adminId:ownerId});
+  const pid=String((await service.execute('create',{leadId:x.leadId,name:'合成KB3在途变化',managerId:ownerId,rooms:['书房']},randomUUID())).id);
+  const a=await x.send('结合我家阶段解释铺砖前提',async(m,_t,turn)=>{
+    if(!turn)return call('search_knowledge',{query:'防水与铺砖检查'});
+    assert.ok(results(m).some(s=>s.sourceId.startsWith('Bstage:')));
+    const d=await service.execute('detail',{projectId:pid});await service.execute('progress',{projectId:pid,expectedVersion:(d.project as Row).version,stageKey:'tiling',note:'合成在途更新',sendReminder:false},randomUUID());
+    return synth([{basis:'advice',text:'先核对项目团队当前检查记录。',citations:[]}]);
+  });assert.notEqual(a.run.status,'succeeded');
+  assert.equal((await x.chat.messages(x.cid)).items.filter(m=>m.authorKind==='assistant').length,0);
+});
+
+test('KB3 citation repair uses the same authorized originals and persists one repair without replaying business tools',async()=>{
+  const x=await fixture();let modelCalls=0;
+  const a=await x.send('书房靠窗办公应如何考虑屏幕方向？',async(m,tools,turn)=>{
+    modelCalls++;
+    if(!turn)return call('search_knowledge',{query:'书房靠窗办公 屏幕眩光'});
+    const k=results(m).find(s=>s.kind==='knowledge'&&s.text.includes('屏幕眩光'))!;assert.ok(k);
+    if(turn===2){assert.equal(tools.length,0);assert.match(JSON.stringify(m),/唯一一次格式修复/);assert.match(JSON.stringify(m),/copyExactQuote/);}
+    return synth([{basis:'evidence',text:'可以比较侧向布置，兼顾采光和屏幕眩光。',citations:[{sourceId:k.sourceId,
+      quote:turn===1?'显示器避免正对强光窗户，可比较侧向布置。':'显示器避免直对强光窗户，可比较侧向布置。'}]}]);
+  });assert.equal(a.run.status,'succeeded',JSON.stringify(a.run));assert.equal(modelCalls,3);
+  const steps=await withTenantTransaction(eid,tx=>rows(tx,sql`select kind,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
+  assert.equal(steps.filter(s=>s.kind==='agent_validation').length,1);
+  assert.ok(steps.some(s=>s.kind==='agent_checkpoint'&&(s.private_checkpoint as Row).validationRepairs===1));
+  assert.equal((await new ConversationService(x.actor).messages(x.cid)).items.filter(m=>m.authorKind==='assistant').length,1);
 });
 
 test('QA06/07: consulted but uncited conflict candidates remain dependencies; withdrawal hides synthesis and human packets', async () => {

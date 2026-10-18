@@ -64,7 +64,7 @@ export async function run(ctx) {
       },customer);installed=true;return value;
     });
     await step('enter original C01 route and identify the persisted customer consultation',async()=>{const p=await open();return{route:p.path,conversationId:(await p.data('conversation')).id};});
-    const first=await step('PPT6/15/23 native input returns real knowledge and site-material synthesis',()=>say(ctx.question,'office'));
+    const first=await step(ctx.firstLabel||'PPT6/15/23 native input returns real knowledge and site-material synthesis',()=>say(ctx.question,'office'));
     await step('approved citation chip opens the real current knowledge source sheet',async()=>{
       const p=await mp.currentPage(),chips=await p.$$('.citation-chip');assert.ok(chips.length);
       const intended=ctx.citationId?.(),chip=intended?await p.$(`.citation-chip[data-id="${intended}"]`):chips[chips.length-1];assert.ok(chip);await chip.tap();
@@ -74,10 +74,12 @@ export async function run(ctx) {
       await(await p.$('.sheet-head .icon-button')).tap();await wait(async()=>!(await p.data('sheet')),'citation close');return result;
     });
     await step('source-linked explanation survives navigation and persisted native reentry',async()=>{const p=await open();assert.ok((await p.data('messages')).find(m=>m.id===first.outputMessageId&&m.available));return{outputMessageId:first.outputMessageId};});
-    await step('PPT6/15 native follow-up uses the existing subject and fresh real knowledge',()=>say(ctx.followup,'followup'));
+    if(ctx.beforeFollowup)await step('real project update before the next native question',ctx.beforeFollowup);
+    const followup=await step(ctx.followupLabel||'PPT6/15 native follow-up uses the existing subject and fresh real knowledge',()=>say(ctx.followup,'followup'));
     await step(ctx.withdrawLabel||'withdrawn site evidence invalidates the dependent explanation on actual native reentry',async()=>{
-      await ctx.withdraw();const p=await open();await wait(async()=>(await p.data('messages')).find(m=>m.id===first.outputMessageId&&m.available===false),'source unavailable feedback');
-      return{outputMessageId:first.outputMessageId,capture:await capture('native-withdrawn')};
+      const dependent=ctx.withdrawTarget==='followup'?followup:first;
+      await ctx.withdraw();const p=await open();await wait(async()=>(await p.data('messages')).find(m=>m.id===dependent.outputMessageId&&m.available===false),'source unavailable feedback');
+      return{outputMessageId:dependent.outputMessageId,capture:await capture('native-withdrawn')};
     });
     report.passed=true;return report;
   } finally {

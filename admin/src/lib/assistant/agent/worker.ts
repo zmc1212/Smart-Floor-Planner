@@ -31,6 +31,8 @@ import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvail
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, recordNeedIssueSupplement, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
 import { businessSynthesisSource, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict } from './synthesis';
 import { currentSynthesisContext } from './synthesis-sources';
+import { boundKnowledgeContext } from './bound-context';
+import { anchorKnowledgeQuery } from '../knowledge/query-context';
 
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的一个房间/字段需求；只摘原话，不保存猜测。返回memoryVersion。', parameters: {
   type: 'object', properties: { room: { type: 'string' }, field: { type: 'string', enum: factFields }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } },
@@ -325,7 +327,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const evidence=await currentSynthesisContext(tx,lease.actor,context.conversation,lease.runId);
             const issue=synthesisRepairFeedback(raw,evidence.sources);
             if(issue)await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-              values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:'file_citation_only',noBusinessTools:true})}::jsonb)
+              values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:'authorized_citation_only',noBusinessTools:true})}::jsonb)
               on conflict(enterprise_id,run_id,step_seq) do nothing`);
             return issue;
           });
@@ -432,7 +434,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               // Distinguish only a known absent profile before I/O; never swallow real/unknown provider failures.
               const profile = await scoped(async tx => one(tx, sql`select active_index_profile_id from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`));
               if (!profile?.active_index_profile_id) { evidence = []; knowledgeStatus = 'not_ready'; }
-              else {const result=await retrieveKnowledge(String(initial.conversation.id),lease.actor,input.query,Number(initial.run.knowledge_epoch));evidence=result.evidence;diagnostic=result.diagnostic;}
+              else {const query=anchorKnowledgeQuery(input.query,safeText(initial.trigger.content as Parameters<typeof safeText>[0]));const result=await retrieveKnowledge(String(initial.conversation.id),lease.actor,query,Number(initial.run.knowledge_epoch));evidence=result.evidence;diagnostic=result.diagnostic;}
             }
             const selected = evidence.filter(e => e.similarity === undefined || e.similarity >= 0.3).slice(0, 5);
             if(diagnostic)diagnostic={...diagnostic,candidates:diagnostic.candidates.map(c=>{const included=selected.find(e=>e.ref.id===c.ref.id);return {...c,contextIncluded:!!included,contextChars:included?Array.from(included.text).length:0};})};
@@ -449,30 +451,22 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               if (diagnostic?.embeddingUsage) await tx.execute(sql`update app.assistant_usage_records set quantity=${diagnostic.embeddingUsage.inputTokens},input_tokens=${diagnostic.embeddingUsage.inputTokens},measurement_kind='observed',updated_at=now(),version=version+1
                 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and operation_key=${'agent-search:'+resultKey} and category='query_embedding'`);
             });
-            // A short follow-up may select only knowledge. Refresh the already-bound home here,
-            // rather than letting the model turn yesterday's missing material into today's fact.
+            // Short follow-ups receive both current materials and the actual node.
+            // Source validation and checkpoints are shared with explicit business tools.
             const bound = await scoped(async (tx, context) => {
-              const entry = context.conversation.entry_snapshot as Row;
-              if (lease.actor.principal.kind !== 'user' || entry.kind !== 'lead') return null;
-              const boundSequence = 1400 + turn * 10 + index, boundKey = 'bound:' + resultKey;
-              const prior = await one(tx, sql`select private_checkpoint from app.assistant_run_steps
-                where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${boundSequence}`);
-              const snapshot = prior ? (prior.private_checkpoint as { snapshot: MaterialSnapshot }).snapshot
-                : await queryMaterials(tx, lease.actor, String(context.conversation.id), { leadId: String(entry.id), room: '' });
-              if (!await materialSnapshotAvailable(tx, lease.enterpriseId, snapshot)) fail('context_changed');
-              if (!prior) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs,input_summary)
-                values(${lease.enterpriseId},${lease.runId},${boundSequence},'agent_source','synthesis.bound_materials.v1',1,'succeeded',
-                  ${JSON.stringify({ resultKey: boundKey, snapshot })}::jsonb,${JSON.stringify(snapshot.data.sources.map(s => ({ ref: s.ref, hash: s.hash })))}::jsonb,
-                  '{"initiatedBy":"search_knowledge","scope":"conversation_bound_home"}'::jsonb)`);
-              materialSources.set(fingerprint(snapshot.query), { query: snapshot.query, customerId: snapshot.customerId, version: snapshot.version });
-              return { resultKey: boundKey, snapshot };
+              const current = await boundKnowledgeContext(tx, lease.actor, context.conversation, lease.runId, turn, index, resultKey);
+              if (current) {
+                const { snapshot } = current.materials;
+                materialSources.set(fingerprint(snapshot.query), { query: snapshot.query, customerId: snapshot.customerId, version: snapshot.version });
+              }
+              return current;
             });
-            const synthesisSources = [...knowledgeSynthesisSources(selected), ...(bound ? [businessSynthesisSource(bound.resultKey, bound.snapshot)] : [])];
+            const synthesisSources = [...knowledgeSynthesisSources(selected), ...(bound ? [bound.materials,bound.construction].map(s=>businessSynthesisSource(s.resultKey,s.snapshot)) : [])];
             const unresolvedConflict = unresolvedSynthesisConflict(synthesisSources);
             return { content: JSON.stringify({ knowledgeStatus, unresolvedConflict, evidence: answerExcerpts(selected), synthesisSources:synthesisSources.map(({evidence,...source})=>({...source,
               ...(evidence?.file?{file:evidence.file,...(source.text.length<=400?{citationQuote:source.text}:{})}:{}),
               ...(evidence?.professional?{professional:{origin:evidence.professional.entry.origin,conditions:evidence.professional.entry.conditions,prerequisites:evidence.professional.entry.prerequisites,exceptions:evidence.professional.entry.exceptions},applicability:evidence.professional.applicability,context:evidence.professional.context}: {})})),
-              boundProjectContext: bound ? { resolution: bound.snapshot.data.resolution, missing: bound.snapshot.data.missing } : null,
+              boundProjectContext: bound ? { resolution: bound.materials.snapshot.data.resolution, missing: bound.materials.snapshot.data.missing, constructionQueriedAt: bound.construction.snapshot.queriedAt } : null,
               instructions: (unresolvedConflict ? '资料明确含尚未核实的规则冲突。综合回答第一段必须basis=uncertainty，先说明不能按企业规则择一；随后分别引述双方，不用“主流/倾向/优先”认定企业现行口径。一般建议另标身份。' : '')
                 + '解释专业原理、取舍、适用条件时用kind=synthesis，引用本轮synthesisSources。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。兼容原文查询kind=knowledge。'
                 + '当前问题若问验收或完成状态，直接用“当前证据不足以支持该结论，仍需核对实际检查记录”等措辞回答判断。text中禁止复述完成词，包括否定句、引号与举例中的“已验收”“已经验收”“已批准”“已经批准”“已完成验收”；不要写“不能认定已经验收/不支持已经验收”，改为“当前证据不能支持该结论”。原文quote仍须逐字保留，不能改写。' }) };

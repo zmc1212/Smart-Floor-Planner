@@ -13,9 +13,11 @@ import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { synthesisCases, synthesisPolicies } from './assistant-synthesis-cases';
 import { agentPromptVersion } from '@/lib/assistant/agent/context';
 import { professionalEntry, professionalCases, professionalMaterialPolicy } from './assistant-professional-cases';
+import { contextCases, contextPolicies } from './assistant-context-cases';
 
-const professionalMode=process.argv.includes('--professional');
-const output = path.resolve(professionalMode?'../tmp/xiaok-kb1':'../tmp/xiaok-synthesis'), delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+const contextMode=process.argv.includes('--context'),professionalMode=process.argv.includes('--professional')||contextMode;
+const cases=contextMode?{...synthesisCases,...contextCases}:synthesisCases;
+const output = path.resolve(contextMode?'../tmp/xiaok-kb3':professionalMode?'../tmp/xiaok-kb1':'../tmp/xiaok-synthesis'), delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function wait<T>(work: () => Promise<T | null | false>, label: string): Promise<T> {
   for (let i = 0; i < 240; i++) { const result = await work(); if (result) return result; await delay(500); }
   throw Error('Timeout: ' + label);
@@ -33,7 +35,7 @@ async function main() {
   const report: Row = { prefix, started: new Date().toISOString(), promptVersion: agentPromptVersion, model: 'configured existing DeepSeek/deepseek-flash',
     reality: { model: 'real', retrieval: 'real existing embedding service', database: 'approved development', http: 'real localhost:3006', worker: 'existing real Worker',
       fixtures: 'clearly labelled synthetic enterprise/users/projects/policies/formal graph/records', photos: 'synthetic JPEG, no image pixels sent to current model' },
-    criteria: professionalMode?{...synthesisCases,...professionalCases}:synthesisCases, checks: [], runs: [], passed: false };
+    criteria: contextMode?contextCases:professionalMode?{...synthesisCases,...professionalCases}:synthesisCases, checks: [], runs: [], passed: false };
   const save = () => fs.writeFileSync(path.join(output, native ? 'native-driver.json' : 'live.json'), JSON.stringify(report, null, 2));
   let eid = '', aid = '';
   const customers: Array<{ uid: string; leadId: string; projectId: string; planId: string; cid: string; token: string; recordId: string; stage: string }> = [];
@@ -76,6 +78,17 @@ async function main() {
       assert.ok((ctx.knowledge as Row[]).some(e=>e.professional),'Expected structured professional entry in real model evidence');assert.ok(steps.some(s=>s.capability_name==='knowledge.search.v1'&&(s.input_summary as Row)?.diagnostic),'Expected actual shared retrieval diagnostic');
       const documents=report.documents as Row,required=caseName==='stage'?[documents.stage]:caseName==='material'?[documents.material]:caseName==='conflict'?[documents.office,report.conflict]:[documents.office];
       for(const document of required as Row[]){assert.ok((ctx.knowledge as Row[]).some(e=>String((e.ref as Row).version)===String(document.versionId)),'Required published source must reach synthesis');assert.ok(message.citations.some((c:Row)=>String(c.version)===String(document.versionId)),'Required source must support actual answer citations');}
+      if(contextMode){
+        assert.ok(steps.some(s=>s.capability_name==='synthesis.bound_construction.v1'),'Current actual node must be included even for a knowledge-only follow-up');
+        const current=ctx.snapshots.filter(s=>s.query.domain==='construction').flatMap(s=>s.data as Row[]);
+        assert.ok(current.length&&current.every(p=>p.projectId===c.projectId&&p.stageKey===c.stage),'Only the correct current project/stage may enter the answer');
+        if(caseName==='stage'){
+          const specific=documents[c.stage] as Row;
+          assert.ok(message.citations.some((r:Row)=>r.version===specific.versionId),'Stage-specific rule must support the actual answer');
+          assert.match(text,c.stage==='utilities'?/给排水|插座|点位/:/闭水|基层/);
+          assert.doesNotMatch(text,/(?:基层|防水|闭水).{0,25}(?:无从谈起|无法(?:开展检查|进行检查)|不能开展检查)/);
+        }
+      }
     }
     if (caseName === 'office') {
       assert.match(text, /眩光|反光|强光/); assert.match(text, /两人|双人/); assert.match(text, /底盒|点位/);
@@ -119,10 +132,14 @@ async function main() {
       private:await publish('合成内部不可信资料',synthesisPolicies.private,'staff_internal') };
     if(professionalMode){(report.documents as Row).material=await publish('合成地暖型粘结材料适用说明',professionalMaterialPolicy,'customer_public',professionalEntry({kind:'material',topics:['地暖型粘结材料','地砖','瓷砖铺贴'],conditions:[{field:'material',operator:'in',values:['地暖型粘结材料']}]}));
       (report.documents as Row).waterproofOnly=await publish('合成防水节点检查安排','本条仅说明防水阶段的施工和闭水检查安排，水电阶段不适用本条作为当前施工指令。进入防水节点仍不证明施工或检查完成。','customer_public',professionalEntry({conditions:[{field:'stage',operator:'in',values:['waterproofing']}]}));} save();
+    if(contextMode){
+      for(const stage of ['utilities','waterproofing'] as const)(report.documents as Row)[stage]=await publish('合成KB3阶段依据 · '+stage,contextPolicies[stage],'customer_public',professionalEntry({topics:['铺砖','施工阶段','检查安排'],conditions:[{field:'stage',operator:'in',values:[stage]}]}));
+      save();
+    }
     const service = new ConstructionService({enterpriseId:eid,adminId:aid}), site = new SiteChatService(service.actor);
     const settings = await service.execute('stages');
     await service.execute('saveStages',{expectedVersion:settings.version,stages:[{key:'utilities',name:'水电',visitReminder:false,visitReason:'',watchPoints:''},{key:'waterproofing',name:'防水',visitReminder:false,visitReason:'',watchPoints:''}]},randomUUID());
-    for (const stage of ['utilities','waterproofing']) {
+    for (const stage of (native&&contextMode?['utilities']:['utilities','waterproofing'])) {
       const uid = await withPlatformTransaction(async tx=>{const u=String((await one(tx,sql`insert into app.users(nickname,context_version) values('合成综合问答业主',1) returning id`))!.id);await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${u},${prefix+u})`);return u;});
       const layout={version:4,measurementMode:'surveying',surveyGraph:{kind:'survey-wall-graph',activeFloorId:'f',floors:[{id:'f',name:'一层',ceilingHeightMm:2800,nodes:[{id:'a',xMm:0,yMm:0},{id:'b',xMm:4000,yMm:0},{id:'c',xMm:4000,yMm:3000},{id:'d',xMm:0,yMm:3000}],walls:[{id:'ab',startNodeId:'a',endNodeId:'b'},{id:'bc',startNodeId:'b',endNodeId:'c'},{id:'cd',startNodeId:'c',endNodeId:'d'},{id:'da',startNodeId:'d',endNodeId:'a'}],openings:[],spaces:[{id:'study',name:'书房',closed:true,wallIds:['ab','bc','cd','da']}]}]}};
       const {leadId,planId}=await withTenantTransaction(eid,async tx=>{const l=String((await one(tx,sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source,community_name) values(${eid},${uid},'合成综合问答客户','13800000000','natural',${'合成'+stage+'之家'}) returning id`))!.id);const p=String((await one(tx,sql`insert into app.floor_plans(enterprise_id,creator_id,name,source,status,layout_data) values(${eid},${uid},'合成书房正式户型','manual','completed',${JSON.stringify(layout)}::jsonb) returning id`))!.id);await tx.execute(sql`update app.leads set primary_floor_plan_id=${p} where enterprise_id=${eid} and id=${l}`);return{leadId:l,planId:p};});
@@ -140,13 +157,30 @@ async function main() {
       report.customers=customers.map(c=>({uid:c.uid,leadId:c.leadId,projectId:c.projectId,planId:c.planId,cid:c.cid,recordId:c.recordId,stage:c.stage})); save();
     }
     const execute = async (c: typeof customers[number], name: keyof typeof synthesisCases|'material', round: number) => {
-      const started=Date.now(),sent=await request(c,'/messages','POST',name==='material'?professionalCases.material.question:synthesisCases[name].question);return audit(c,String(sent.runId),name,round,started);
+      const started=Date.now(),sent=await request(c,'/messages','POST',name==='material'?professionalCases.material.question:cases[name].question);return audit(c,String(sent.runId),name,round,started);
     };
     if (native) {
       const {run}=await import('./assistant-synthesis-native.mjs');
       report.native=await run({root:path.resolve('..'),output,customer:{...customers[0],enterpriseId:eid},
-        question:synthesisCases.office.question,followup:synthesisCases.followup.question,withdrawLabel:professionalMode?'withdrawn professional knowledge invalidates dependent explanation on actual native reentry':undefined,audit:(id:string,name:'office'|'followup',started:number)=>audit(customers[0],id,name,1,started),
-        withdraw:async()=>{if(professionalMode){await knowledge.execute('retire',{documentId:((report.documents as Row).office as Row).documentId,expectedVersion:2},randomUUID());return;}const r=(await withTenantTransaction(eid,tx=>one(tx,sql`select version from app.construction_site_records where enterprise_id=${eid} and id=${customers[0].recordId}`)))!;await site.mutate(customers[0].projectId,customers[0].recordId,'withdraw',{expectedVersion:Number(r.version),reason:'合成自动验收撤回'},randomUUID());}}); save();
+        question:contextMode?cases.stage.question:cases.office.question,followup:contextMode?cases.stage.question:cases.followup.question,
+        firstLabel:contextMode?'PPT17/18 native actual utilities stage and enterprise prerequisites':undefined,
+        followupLabel:contextMode?'PPT18/19 same native question uses changed actual waterproofing stage':undefined,
+        withdrawTarget:contextMode?'followup':undefined,
+        beforeFollowup:contextMode?async()=>{const c=customers[0],d=await service.execute('detail',{projectId:c.projectId});await service.execute('progress',{projectId:c.projectId,expectedVersion:(d.project as Row).version,stageKey:'waterproofing',note:'合成原生KB3实际阶段变更，检查结果待核对',sendReminder:false},randomUUID());c.stage='waterproofing';return{projectId:c.projectId,stage:c.stage};}:undefined,
+        withdrawLabel:contextMode?'stage-specific knowledge withdrawal invalidates native derived answer':professionalMode?'withdrawn professional knowledge invalidates dependent explanation on actual native reentry':undefined,
+        audit:(id:string,name:'office'|'followup',started:number)=>audit(customers[0],id,contextMode?'stage':name,1,started),
+        withdraw:async()=>{if(professionalMode){await knowledge.execute('retire',{documentId:((report.documents as Row)[contextMode?'waterproofing':'office'] as Row).documentId,expectedVersion:2},randomUUID());return;}const r=(await withTenantTransaction(eid,tx=>one(tx,sql`select version from app.construction_site_records where enterprise_id=${eid} and id=${customers[0].recordId}`)))!;await site.mutate(customers[0].projectId,customers[0].recordId,'withdraw',{expectedVersion:Number(r.version),reason:'合成自动验收撤回'},randomUUID());}}); save();
+    } else if(contextMode){
+      for(let round=1;round<=2;round++){await execute(customers[0],'office',round);await execute(customers[0],'followup',round);for(const c of customers)await execute(c,'stage',round);await execute(customers[0],'missing',round);}
+      const c=customers[0],old=(report.runs as Row[]).filter(r=>r.conversationId===c.cid).map(r=>r.outputMessageId);
+      const d=await service.execute('detail',{projectId:c.projectId});await service.execute('progress',{projectId:c.projectId,expectedVersion:(d.project as Row).version,stageKey:'waterproofing',note:'合成KB3同项目实际阶段变更，检查结果仍待核对',sendReminder:false},randomUUID());c.stage='waterproofing';
+      const reread=await request(c,'/messages');assert.ok(old.every(id=>reread.items.find((m:Row)=>m.id===id)?.available===false));
+      (report.checks as Row[]).push({name:'same-project actual node change invalidates dependent historical answers',passed:true});
+      for(let round=1;round<=2;round++)await execute(c,'stage',round);
+      const after=(report.runs as Row[]).slice(-2).map(r=>r.outputMessageId);
+      await knowledge.execute('retire',{documentId:((report.documents as Row).waterproofing as Row).documentId,expectedVersion:2},randomUUID());
+      const revoked=await request(c,'/messages');assert.ok(after.every(id=>revoked.items.find((m:Row)=>m.id===id)?.available===false));
+      (report.checks as Row[]).push({name:'stage-specific enterprise source withdrawal invalidates new derived answers',passed:true});
     } else {
       for(let round=1;round<=2;round++){await execute(customers[0],'office',round);await execute(customers[0],'followup',round);for(const c of customers)await execute(c,'stage',round);}
       if(professionalMode)for(let round=1;round<=2;round++)await execute(customers[0],'material',round);

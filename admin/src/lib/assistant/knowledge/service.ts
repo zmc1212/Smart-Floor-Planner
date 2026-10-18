@@ -223,9 +223,9 @@ export class KnowledgeService {
         }
         if (action === 'publish') {
           // A future replacement must not hide the still-effective published version.
-          if (d.published_version_id && new Date(String(v.effective_from)).getTime()>Date.now()) fail('knowledge_not_ready');
           const ready = await one(tx,sql`select id from app.assistant_knowledge_versions where enterprise_id=${a.enterpriseId} and id=${String(v.id)}
             and index_status='ready' and indexed_hash=content_hash and index_profile_id=${String(profile.id)} and chunk_count>0
+            ${d.published_version_id?sql`and effective_from<=now()`:sql``}
             and (effective_to is null or effective_to>now())`);
           if (!ready || content(String(d.source_type),v).hash!==v.content_hash) fail('knowledge_not_ready');
           const count = (await one(tx,sql`select count(*) n from app.assistant_knowledge_chunks where enterprise_id=${a.enterpriseId} and document_version_id=${String(v.id)}

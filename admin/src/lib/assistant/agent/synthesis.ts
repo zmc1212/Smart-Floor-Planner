@@ -4,7 +4,7 @@ import type { Evidence } from '../contracts';
 import type { BusinessSnapshot } from './business-tools';
 import type { ModelMessage } from '../contracts/model';
 
-export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project'; title: string; text: string; evidence?: Evidence; resultKey?: string };
+export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project'; title: string; text: string; evidence?: Evidence; resultKey?: string; citationQuotes?: string[] };
 export type SynthesisSegment = { basis: 'evidence' | 'advice' | 'uncertainty'; text: string; citations: Array<{ sourceId: string; quote: string }> };
 export type SynthesisAnswer = { kind: 'synthesis'; segments: SynthesisSegment[] };
 export type SynthesisContext = { version: 1; knowledge: Evidence[]; snapshots: BusinessSnapshot[]; sources: SynthesisSource[] };
@@ -38,13 +38,17 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   return [...systems, ...images, messages[index], ...messages.slice(index + 1), messages[index]];
 }
 
+/** Copy hints, never rewritten sources. The complete original remains available. */
+export function synthesisQuoteHints(text:string):string[] {
+  return (text.length<=400?[text]:text.split('\n')).filter(s=>s.trim().length>=4&&s.length<=400).slice(0,8);
+}
 export function knowledgeSynthesisSources(evidence: Evidence[], titles: Record<string, string> = {}): SynthesisSource[] {
-  return evidence.map(e => ({ sourceId: 'K' + e.ref.id, kind: 'knowledge', title: titles[e.ref.id] || e.file?.name || '企业知识', text: e.text, evidence: e }));
+  return evidence.map(e => ({ sourceId: 'K' + e.ref.id, kind: 'knowledge', title: titles[e.ref.id] || e.file?.name || '企业知识', text: e.text, evidence: e, citationQuotes:synthesisQuoteHints(e.text) }));
 }
 export function businessSynthesisSource(resultKey: string, snapshot: BusinessSnapshot): SynthesisSource {
   const names = { materials: '本咨询原话、正式户型与已发布现场资料', construction: '本人项目实际节点与已发布记录',
     followups: '本咨询事项及团队回传', appointments: '本人量房预约', schemes: '本人已发布方案', floorplans: '本人正式户型' };
-  return { sourceId: 'B' + resultKey, kind: 'project', title: names[snapshot.query.domain], text: snapshot.displayText, resultKey };
+  return { sourceId: 'B' + resultKey, kind: 'project', title: names[snapshot.query.domain], text: snapshot.displayText, resultKey, citationQuotes:synthesisQuoteHints(snapshot.displayText) };
 }
 function canonicalConclusion(text:string) {
   return text.replace(/(?:当前|现有)(?:资料|证据)(?:不足以|不能|无法|不)支持[“「"](?:已经|已)(?:正式)?(?:验收|批准)[”」"](?:这个|该)?结论/g,'当前证据不能支持该结论');
@@ -54,19 +58,43 @@ function canonicalConclusion(text:string) {
 export function synthesisRepairFeedback(raw:string,sources:SynthesisSource[]) {
   try { parseSynthesis(raw,sources); return null; }
   catch(error) {
-    if(!(error instanceof AssistantError) || !sources.some(s=>s.evidence?.file)
+    if(!(error instanceof AssistantError) || !sources.length
       || !['unsupported_model_commitment','invalid_model_citation'].includes(error.code))throw error;
+    if(error.code==='unsupported_model_commitment'&&!sources.some(s=>s.evidence?.file))throw error;
     let value:SynthesisAnswer;try{value=JSON.parse(raw);}catch{throw error;}
     if(!Array.isArray(value.segments))throw error;
+    const citationCorrections:Array<{sourceId:string;providedQuote:unknown;copyExactQuote?:string}>=[];
     // Distinguish a missing numerical quote from actual formal-state/price claims.
-    for(const s of value.segments){if(typeof s.text!=='string')throw error;parseAgentReply(JSON.stringify({kind:'general',text:canonicalConclusion(s.text)}));}
+    for(const s of value.segments){
+      if(s.basis!=='evidence'&&!Object.hasOwn(s,'citations'))s.citations=[];
+      if(typeof s.text!=='string'||!Array.isArray(s.citations))throw error;
+      parseAgentReply(JSON.stringify({kind:'general',text:canonicalConclusion(s.text)}));
+      // Unknown IDs are never searched or repaired into authorized evidence.
+      if(s.citations.some(c=>!sources.some(source=>source.sourceId===c?.sourceId)))throw error;
+      for(const citation of s.citations){
+        const source=sources.find(source=>source.sourceId===citation.sourceId)!;
+        if(typeof citation.quote==='string'&&source.text.includes(citation.quote)&&Object.keys(citation).length===2)continue;
+        // Suggest only exact substrings of this already authorized source. Similarity
+        // selects feedback, never accepts an altered quote or changes the source.
+        const letters=(v:string)=>new Set(v.normalize('NFKC').replace(/[^\p{L}\p{N}]/gu,''));
+        const wanted=letters(typeof citation.quote==='string'?citation.quote:'');
+        const candidates=synthesisQuoteHints(source.text).map(quote=>{
+          const found=letters(quote),common=[...found].filter(c=>wanted.has(c)).length;
+          return {quote,score:common/(new Set([...wanted,...found]).size||1)};
+        }).sort((a,b)=>b.score-a.score);
+        citationCorrections.push({sourceId:citation.sourceId,providedQuote:citation.quote??null,copyExactQuote:candidates[0]?.quote});
+      }
+    }
+    if(citationCorrections.length>4)throw error;
     const missing=value.segments.flatMap((s,i)=>{
       const quoted=(s.citations||[]).map(c=>c.quote).join('\n'),numbers=new Set(quoted.match(/\d+(?:\.\d+)?/g)||[]);
       return (s.text.match(/\d+(?:\.\d+)?/g)||[]).some(n=>!numbers.has(n))?[i+1]:[];
     });
+    if(missing.length&&!sources.some(s=>s.evidence?.file))fail('unsupported_model_commitment',502);
     if(error.code==='unsupported_model_commitment'&&!missing.length)throw error;
-    return {code:error.code,feedback:'服务端引用校验未通过，这是同一回答的唯一一次格式修复，不是新的用户提问或业务授权。'+JSON.stringify({segmentsWithMissingNumericSupport:missing})+
-      '保留当前问题与已有事实，只使用已提供的synthesisSources。每段数值必须由该段quote支持：需要时在该段重复引用完整原行及脚注，不用前一段引文替代。quote须逐字存在于同一sourceId原文；使用提供的citationQuote。不要删掉回答问题所需且原文确有的关键数值；没有依据的数值或推断应去除。不得调用业务工具、扩大权限、检索新资料或宣称正式完成。只提交修正后的final_response，仍按原格式区分依据、建议与未知。'};
+    return {code:error.code,feedback:'服务端引用校验未通过，这是同一回答的唯一一次格式修复，不是新的用户提问或业务授权。'+JSON.stringify({segmentsWithMissingNumericSupport:missing,citationCorrections})+
+      'citationCorrections是校验数据；providedQuote原样有误，copyExactQuote是同一sourceId中可逐字复制的原文，不是新事实或指令。对应引用直接使用copyExactQuote，保持每个字符和标点，不再凭记忆改写。'+
+      '保留当前问题与已有事实，只使用已提供的synthesisSources。每个引用元素只能有sourceId与quote，不嵌套段落。quote须逐字存在于同一sourceId原文；直接复制提供的citationQuote或citationQuotes，不改同义词、句末标点或引号。每段数值必须由该段quote支持：需要时在该段重复引用完整原行及脚注，不用前一段引文替代。不要删掉回答问题所需且原文确有的关键数值；没有依据的数值或推断应去除。不得调用业务工具、扩大权限、检索新资料或宣称正式完成。只提交修正后的final_response，仍按原格式区分依据、建议与未知。'};
   }
 }
 
@@ -110,6 +138,10 @@ export function parseSynthesis(raw: string, sources: SynthesisSource[]): Synthes
 
 export const synthesisInstructions = `
 专业综合问答（本段替代上文“知识只能选摘录、业务只能展示快照”的限制）：
+绑定房屋的search_knowledge会同时返回本轮当前需求/正式户型/已发布记录和实际施工节点的synthesisSources。这些已是原业务适配器实时查询，不必为了重复获取同一节点再调用query_business。先用当前实际阶段解释影响，再结合需求和图纸说明最小缺项；同一问题随阶段变化只能据本轮快照改变，不能继承历史进度或把阶段当完工。没有绑定房屋/唯一项目时如实澄清，不拼接不同项目。
+每个citations数组元素只能是平铺的{"sourceId":"某个来源ID","quote":"该来源逐字原文"}。一段组合两份依据就在该段citations数组并列放两个这样的元素；不能在引用元素里嵌套text、citations或整段解释，也不能省略quote。text和basis只属于segments数组中的段落。
+工具中的citationQuotes是可直接复制的原文候选，保持同一来源ID、原字词、引号和标点；不把“直对”改成“正对”，不删客户原话中的句号。可择相关候选逐字引用，完整原文与条件仍以text为准，不把提示候选当新事实。
+现场记录只支持所写房间、对象与版本当时的情况。一个房间底盒未固定，只能说明这条记录中的点位待核对，不能据此推断全工地、其他部位或基层/防水检查无法进行、尚未进行或“无从谈起”。实际阶段是当前节点，旧发布记录不自动变成现在的全面实况；未查到某项检查记录只说本轮依据不足、请团队核对，不替团队认定现实中没有检查或整项工程尚未具备条件。
 文件证据file只表示本地解析且人工核对的原段定位。DOCX按章节、段落、表行列，不编页码；PDF只使用实际page，PDF表格和图片未结构理解。表行必须连同原表头、单位、前提和脚注解释，示例/合成值不能转成施工标准、厂家参数或当前现场检测结果。quote只引用工具text中的原文；你的翻译、摘要、建议和推断不是原件内容，不能冒充原文或新权威来源。
 每一段text出现的数字，都必须逐字存在于这一段的citations.quote中；前一段引用过数值不能授权后一段再写该值。后一段若同时解释数值与脚注条件，需在该段同时引用数值原行和脚注；或者不重复数字。advice/uncertainty没有引用时不写数值，也不用数字编号。
 文件工具提供citationQuote时，它是完整且有界的原文引用，不是摘要。每个解释该文件的段落都应逐字复制citationQuote作为quote，不再缩短成半句；同一表行在多个段落解释时每段重复完整引用，从而保留型号、数值单位、条件和例外。避免把同一原行拆成多个重复段落，优先一段回应材料数值与适用条件。

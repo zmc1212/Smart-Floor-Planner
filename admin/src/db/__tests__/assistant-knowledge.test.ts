@@ -171,7 +171,10 @@ test('audience, effective time, profile and current version are enforced before 
   assert.ok((await retrieve()).some(e=>e.ref.version===d.versionId));
   const v=await exec('newVersion',{documentId:d.documentId,expectedVersion:4,fromVersionId:d.versionId});
   const next={documentId:d.documentId,versionId:String(v.id),expectedEditVersion:1,expectedVersion:5};
-  await indexed(next);await exec('publish',next);
+  await indexed(next);
+  // Validity is a database fact, independent of an application host clock lag.
+  const applicationNow=Date.now;Date.now=()=>applicationNow()-60000;
+  try{await exec('publish',next);}finally{Date.now=applicationNow;}
   assert.ok((await retrieve()).every(e=>e.ref.version!==d.versionId));
   assert.ok((await retrieve()).some(e=>e.ref.version===next.versionId));
   const expired=await create('过期防水政策。');

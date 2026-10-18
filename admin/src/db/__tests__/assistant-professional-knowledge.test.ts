@@ -77,6 +77,19 @@ test('K08 real stage changes invalidate prior applicability and refresh the same
   assert.equal(await withTenantTransaction(eid,async tx=>resolveEvidence(tx,actor,(await one(tx,sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${cid}`))!,old)),undefined);
   const after=await retrieveKnowledge(cid,actor,'防水铺砖前提',await epoch());assert.equal(after.evidence.find(e=>e.ref.version===published.versionId)?.professional?.applicability.status,'applicable');
 });
+
+test('KB3 K01/04/09 eligible rules survive a crowded wrong-stage candidate pool',async()=>{
+  const docs:Row[]=[];
+  for(let i=0;i<7;i++){
+    const d=await create(professionalEntry({conditions:[{field:'stage',operator:'in',values:[i<6?'utilities':'waterproofing']}]}));
+    await index(d);await op('publish',d);docs.push(d);
+  }
+  const r=await retrieveKnowledge(cid,actor,'防水施工与闭水检查由团队安排，铺砖前核对实际检查记录',await epoch());
+  const required=docs[6];assert.ok(r.evidence.some(e=>e.ref.version===required.versionId));
+  assert.ok(r.diagnostic.candidates.filter(c=>c.applicability?.status==='not_applicable').length>=5);
+  assert.ok(r.evidence.slice(0,2).every(e=>e.professional?.applicability.status!=='not_applicable'));
+  assert.ok((r.diagnostic.candidates.find(c=>c.ref.version===required.versionId)?.selectionRank??0)>0);
+});
 test('K07/11 actual preview Worker stores authorized candidates and reentry diagnostic, no internal text leaks',async()=>{
   const secret=await create(professionalEntry(),'staff_internal');await index(secret);await op('publish',secret);
   const preview=new ConversationService(manager);previewCid=String((await preview.create(randomUUID(),{audience:'customer_public',draftVersionIds:[]})).id);
@@ -85,7 +98,7 @@ test('K07/11 actual preview Worker stores authorized candidates and reentry diag
   const model:TextModelGateway={capabilities:{streaming:false,toolCalling:false,usage:false},generate:async input=>{try{assert.doesNotMatch(JSON.stringify(input.messages),/INTERNAL_KB_REVIEW_NOTE/);const e=JSON.parse(input.messages[1].content).evidence;return{text:JSON.stringify({selections:[e[0].selectionId]}),attemptId:'',usage:null,finishReason:null,providerRequestId:null};}catch(e){modelFailure=(e as Error).message;throw e;}}};
   await processAnswer(lease,{model});const execution=await preview.run(previewRun);assert.equal(execution.status,'succeeded',JSON.stringify({execution,modelFailure}));
   const diagnostic=await readRetrievalDiagnostics(manager,previewRun);assert.equal(diagnostic.available,true);
-  if ('traces' in diagnostic) {assert.ok(diagnostic.traces.length);const t=diagnostic.traces[0] as Row;assert.ok((t.candidates as Row[]).every(c=>c.documentId!==secret.documentId));assert.ok((t.candidates as Row[]).some(c=>c.contextIncluded&&Number(c.contextChars)>0));assert.equal((t.configuration as Row).version,'professional-hybrid-v1');assert.ok((diagnostic.coverage as Row).audience_filtered);}
+  if ('traces' in diagnostic) {assert.ok(diagnostic.traces.length);const t=diagnostic.traces[0] as Row;assert.ok((t.candidates as Row[]).every(c=>c.documentId!==secret.documentId));assert.ok((t.candidates as Row[]).some(c=>c.contextIncluded&&Number(c.contextChars)>0));assert.equal((t.configuration as Row).version,'professional-hybrid-v3');assert.ok((diagnostic.coverage as Row).audience_filtered);}
   await assert.rejects(readRetrievalDiagnostics(actor,previewRun),/assistant_capability_forbidden/);
   const other={...manager,principal:{kind:'admin' as const,adminId:globalAdmins[0]}};await assert.rejects(readRetrievalDiagnostics(other,previewRun),/assistant_resource_not_found/);
 });

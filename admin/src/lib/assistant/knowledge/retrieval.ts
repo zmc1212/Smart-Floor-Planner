@@ -10,12 +10,13 @@ import { sourceScope, sourceReady, validatePreviewSnapshot } from './sources';
 import { applicability } from './professional';
 import { knowledgeContext } from './applicability-context';
 import type { FileLocator } from '../contracts/source-file';
+import { selectContextCandidates } from './context-selection';
 
-export const retrievalConfiguration = {version:'professional-hybrid-v1',perBranch:30,limit:5,rrfK:60,minSimilarity:0.3,reranker:'none',parser:'manual_text_faq_or_local_file_v1'} as const;
+export const retrievalConfiguration = {version:'professional-hybrid-v3',perBranch:30,limit:5,rrfK:60,minSimilarity:0.3,reranker:'none',agentQuery:'current_question_and_model_terms_v1',contextSelection:'server_applicability_document_coverage',maxPerDocumentFirstPass:2,parser:'manual_text_faq_or_local_file_v1'} as const;
 export type RetrievalDiagnostic = {
   configuration:typeof retrievalConfiguration; profileId:string; epoch:number; query:string; terms:string[]; context:KnowledgeContext; elapsedMs:number; embeddingUsage:{inputTokens:number}|null;costMicros:null;
   candidates:Array<{ref:Evidence['ref'];hash:string;title:string;documentId:string;contentHash:string;similarity:number;semanticRank:number|null;lexicalRank:number|null;fusionRank:number;
-    disposition:'selected'|'below_similarity'|'ranked_out';applicability:ReturnType<typeof applicability>|null;contextIncluded?:boolean;contextChars?:number}>;
+    disposition:'selected'|'below_similarity'|'ranked_out';selectionRank:number|null;applicability:ReturnType<typeof applicability>|null;contextIncluded?:boolean;contextChars?:number}>;
 };
 async function authorize(tx: PostgresTransaction, actor: ActorContext, conversationId: string, epoch: number) {
   const repo=new AssistantRepository(tx,actor), settings=await repo.settings(true), conversation=await repo.conversation(id(conversationId));
@@ -48,14 +49,17 @@ export async function retrieveKnowledge(conversationId:string,actor:ActorContext
     const semantic=[...candidates].sort((a,b)=>a.distance-b.distance||a.id.localeCompare(b.id));
     const lexical=[...candidates].filter(c=>Number(c.lexical)>0).sort((a,b)=>Number(b.lexical)-Number(a.lexical)||a.id.localeCompare(b.id));
     const fused=fuseAuthorizedCandidates(candidates,query,60);
-    // Conditions annotate evidence. Missing context must not silently erase a useful rule.
-    const evidence:Evidence[]=fused.filter(c=>1-c.distance>=retrievalConfiguration.minSimilarity).slice(0,5).map(c=>({ref:{type:'knowledge_chunk',id:c.id,version:c.document_version_id},text:c.text,hash:c.text_hash,similarity:1-c.distance,
+    const conditions=new Map(fused.map(c=>[c.id,c.professional?applicability(c.professional,context):null]));
+    // Apply current applicability before the context limit. Missing conditions
+    // stay usable; incompatible rules can explain a mismatch only in spare slots.
+    const selected=selectContextCandidates(fused.filter(c=>1-c.distance>=retrievalConfiguration.minSimilarity),conditions,retrievalConfiguration.limit);
+    const evidence:Evidence[]=selected.map(c=>({ref:{type:'knowledge_chunk',id:c.id,version:c.document_version_id},text:c.text,hash:c.text_hash,similarity:1-c.distance,
       ...(c.locator?.file?{file:c.locator.file}:{}),
       ...(c.professional?{professional:{documentId:c.document_id,title:c.title,contentHash:c.content_hash,entry:c.professional,applicability:applicability(c.professional,context),context}}:{})}));
     const diagnostic:RetrievalDiagnostic={configuration:retrievalConfiguration,profileId:String(profile.id),epoch,query,terms,context,elapsedMs:Date.now()-started,embeddingUsage:result.usage,costMicros:null,
       candidates:fused.map((c,i)=>({ref:{type:'knowledge_chunk',id:c.id,version:c.document_version_id},hash:c.text_hash,title:c.title,documentId:c.document_id,contentHash:c.content_hash,similarity:1-c.distance,
         semanticRank:semantic.indexOf(c)<30?semantic.indexOf(c)+1:null,lexicalRank:lexical.includes(c)&&lexical.indexOf(c)<30?lexical.indexOf(c)+1:null,fusionRank:i+1,
-        disposition:1-c.distance<0.3?'below_similarity':evidence.some(e=>e.ref.id===c.id)?'selected':'ranked_out',applicability:c.professional?applicability(c.professional,context):null}))};
+        disposition:1-c.distance<0.3?'below_similarity':evidence.some(e=>e.ref.id===c.id)?'selected':'ranked_out',selectionRank:selected.includes(c)?selected.indexOf(c)+1:null,applicability:conditions.get(c.id)??null}))};
     return {evidence,diagnostic};
   });
 }
