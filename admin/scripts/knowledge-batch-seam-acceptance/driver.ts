@@ -78,6 +78,10 @@ async function run(config: Config) {
     const blocked = await snapshot(interrupted.batchId); assertCancellationFence(intent, blocked);
     const retried = await command(1, 'cancel', { batchId: interrupted.batchId, requestKey: 'second-client-cancel' });
     assert.equal(retried.value!.requestKey, 'first-durable-cancel'); record('committed-intent-survives-individual-cancel-failure', { before: intent, after: blocked });
+    if(current.routeAfterCancellation){
+      const prior=await snapshot(interrupted.batchId),route=await current.routeAfterCancellation(interrupted.batchId),now=await snapshot(interrupted.batchId);
+      assertCancellationFence(prior,now);record('existing-authenticated-route-uses-shared-factory',{route,before:prior,after:now});
+    }
 
     const lost = await current.prepare(); await command(0, 'resume', { evaluationId: lost.items[0].evaluationId });
     const original = await snapshot(lost.batchId); assert.ok(original.runId && original.conversationId);

@@ -2,6 +2,18 @@
 
 状态：**Limited；多文档检索覆盖、知识专属手动批次管理及本地 DOCX 表头保真修复已有有界实现，自动批量派发与客户语义验收仍待集成。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+<!-- knowledge-seam-integration:start -->
+
+## 知识入口集成检查点
+
+业务 `a579e51227294427826d49ac017e00f9c80691ad` 已正常集成，无归属路径重叠。既有知识运营 API 现从 `core/evaluation-execution.ts` 注入 `KnowledgeOperations(manager, createKnowledgeBatchSharedPort())`；路由/动作/请求体/权限/UI 边界保持，不新增自动批量接口或生产启用。共享事务/runtime 仍归业务线，本线未改。
+
+真实验收脚本增加已认证 Request handler 断言：已固定评测取消后，从原 resume 路由重进必须 **409 `batch_cancelled`**，不能是缺端口或回退旧派发；合成 cookie 仅在内存使用既有 JWT secret。接线已通过 **9/9** 断言/门控单元、6 文件 lint；以集成业务 SHA 做同一源码程序对照为 **287→287，新增 0**。类型比较现只排除在所选基线尚不存在的候选文件，保留已由业务集成的知识合同。
+
+本检查点下一步是真实 PostgreSQL 执行，尚不计通过。集成人应在最终有界事务证据完成后，将原知识 API 的惰性 factory 注入范围更新到双语 KB-4 清单/二期当前段；无 Mini 或视觉还原变化。整体 **Limited**。
+
+<!-- knowledge-seam-integration:end -->
+
 ## 双进程验收准备检查点
 
 本节保留接回前的工具证据；现已收到业务稳定 `a579e512`，其正常集成/真实事务结果在后续检查点另列，不能由下述模拟结果提前升级。

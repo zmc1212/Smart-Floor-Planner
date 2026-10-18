@@ -2,6 +2,18 @@
 
 Status: **Limited; multi-document retrieval coverage, knowledge-specific manual batch management and a local DOCX header-fidelity repair have bounded implementations; automatic batch dispatch and customer semantic acceptance still need integration.** Actual verification is recorded below; code existence is not full-stage acceptance. This is a reviewable knowledge-line handoff, not a replacement for the [phase-two contract](./xiaok-assistant-phase-2.md), [admin inventory](./admin-system-modules.md), or the user's local enterprise-knowledge plans. Baseline: `d023854313842ef447efb2973beb540d1511e125`. The original business worktree's branch and product source are not changed.
 
+<!-- knowledge-seam-integration:start -->
+
+## Knowledge entry integration checkpoint
+
+Business `a579e51227294427826d49ac017e00f9c80691ad` is now normally integrated, without overlapping ownership changes. The existing knowledge operations API constructs `KnowledgeOperations(manager, createKnowledgeBatchSharedPort())` from `core/evaluation-execution.ts`; route/action/body/permission/UI boundaries are unchanged, with no new automatic batch route or production enablement. Shared transaction/runtime code remains business-owned and unchanged by this line.
+
+The prepared real suite adds an authenticated Request-handler assertion that an existing pinned evaluation's resume route returns **409 `batch_cancelled`**, not a missing-port error or a legacy dispatch. The synthetic cookie uses the existing JWT secret only in memory. The wiring passes **9/9** oracle/gate units, six-file lint and same-program **287→287 / 0 added** against the integrated business SHA. Type comparison now excludes only candidate files absent at the chosen baseline, retaining the knowledge contracts already integrated by business.
+
+At this checkpoint real PostgreSQL execution is next, not yet a passed result. The integrator's bilingual KB-4 inventory/phase-two entry should record this lazy injection into the existing knowledge API after final bounded transaction evidence; no Mini or visual-restoration change applies. Overall **Limited**.
+
+<!-- knowledge-seam-integration:end -->
+
 ## Two-process acceptance preparation checkpoint
 
 This section preserves pre-integration tooling evidence. Business `a579e512` has now arrived; its normal integration and real transaction results belong to the next checkpoint and are not inferred from the simulations below.

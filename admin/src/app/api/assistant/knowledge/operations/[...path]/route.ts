@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { KnowledgeOperations } from '@/lib/assistant/knowledge/operations';
+import { createKnowledgeBatchSharedPort } from '@/lib/assistant/core/evaluation-execution';
 export const runtime='nodejs';
 type Context={params:Promise<{path:string[]}>};
 const fields:Record<string,string[]>={save:['title','question','expectation','gapNote'],edit:['title','question','expectation','gapNote','expectedVersion'],start:['expectedVersion'],resume:[],cancel:[],review:['expectedVersion','outcome','note'],prepareBatch:['cases']};
 async function handle(request:NextRequest,context:Context) {
   return withTenantRoute(request,{roles:['super_admin','admin','enterprise_admin'],requireEnterprise:true},async actor=>{
     try{
-      const {path:p}=await context.params,method=request.method,service=new KnowledgeOperations({enterpriseId:actor.enterpriseId!,adminId:actor.userId});
+      const {path:p}=await context.params,method=request.method,service=new KnowledgeOperations({enterpriseId:actor.enterpriseId!,adminId:actor.userId},createKnowledgeBatchSharedPort());
       let action='';
       if(p[0]==='health'&&p.length===1&&method==='GET')action='health';
       if(p[0]==='batches'){

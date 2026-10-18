@@ -16,6 +16,7 @@ export type AcceptanceFixture = {
   loseAssociation(batchId: string): void | Promise<void>;
   rpc?(method: string, input: Record<string, unknown>, owner: number): Promise<unknown>;
   leaseFor?(batchId: string): Promise<Lease>;
+  routeAfterCancellation?(batchId: string): Promise<{status:number;error:string}>;
   cleanup?(): Promise<unknown>;
   activeTransactions?(): number;
 };

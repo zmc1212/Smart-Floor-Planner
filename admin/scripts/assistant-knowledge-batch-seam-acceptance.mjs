@@ -30,7 +30,8 @@ export function verifySeamFactory(args) {
     git('diff', '--exit-code', sha, '--', 'admin/src/lib/assistant/core', 'admin/src/lib/assistant/agent',
       'admin/src/lib/assistant/infrastructure', 'admin/src/lib/assistant/contracts', 'admin/src/lib/ai',
       'admin/src/lib/assistant/knowledge/sources.ts', 'admin/src/lib/assistant/knowledge/answer.ts', 'admin/src/lib/platform-llm-config.ts');
-    git('diff', '--exit-code', 'HEAD', '--', 'admin/src/lib/assistant', 'admin/src/lib/ai', 'admin/src/db');
+    git('diff', '--exit-code', 'HEAD', '--', 'admin/src/lib/assistant', 'admin/src/lib/ai', 'admin/src/db',
+      'admin/src/app/api/assistant/knowledge/operations');
   } catch { throw Error('SEAM_FACTORY_COMMIT_NOT_INTEGRATED'); }
   if (!fs.existsSync(target)) throw Error('SEAM_FACTORY_NOT_READY');
   return { businessSha: sha, factoryModule: pathToFileURL(target).href, factoryExport: name,
@@ -48,7 +49,7 @@ async function main() {
   const status = { mode, started: new Date().toISOString(), databaseOpened: false, lockHeld: false, passed: false };
   const save = () => fs.writeFileSync(path.join(output, 'runner-status.json'), JSON.stringify(status, null, 2));
   const sources = ['src/lib/assistant/knowledge/operations.ts', 'src/lib/assistant/knowledge/batch-execution-adapter.ts',
-    'src/lib/assistant/knowledge/evaluation-batch.ts', 'scripts/assistant-knowledge-batch-seam-acceptance.mjs',
+    'src/lib/assistant/knowledge/evaluation-batch.ts','src/app/api/assistant/knowledge/operations/[...path]/route.ts', 'scripts/assistant-knowledge-batch-seam-acceptance.mjs',
     ...fs.readdirSync(path.join(admin, 'scripts/knowledge-batch-seam-acceptance')).map(file => 'scripts/knowledge-batch-seam-acceptance/' + file)];
   const listed=execFileSync('git',['ls-files','--','src/lib/assistant','src/lib/ai','src/db/transaction.ts',
     'src/db/repositories/assistant-repository.ts','src/lib/postgresql.ts','src/lib/platform-llm-config.ts',':(exclude)**/__tests__/**'],

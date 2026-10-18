@@ -129,5 +129,19 @@ export async function createPostgresFixture(factoryModule: string, factoryExport
     const lease = await claimJob(); assert.ok(lease); assert.equal(lease.enterpriseId, enterpriseId); assert.equal(lease.runId, expected.runId);
     return lease;
   }
-  return { actor: operations.actor, prepare, snapshot, loseAssociation, leaseFor, cleanup };
+  async function routeAfterCancellation(batchId:string){
+    if(!process.env.JWT_SECRET)throw Error('SEAM_AUTH_SECRET_REQUIRED');
+    const {SignJWT}=await import('jose'),{NextRequest}=await import('next/server');
+    const {POST}=await import('../../src/app/api/assistant/knowledge/operations/[...path]/route');
+    const {manifest}=await operations.executionBatchAdapter().receipt(batchId),evaluationId=manifest.items[0].evaluationId;
+    const token=await new SignJWT({id:adminId,role:'enterprise_admin',enterpriseId,permissions:[]}).setProtectedHeader({alg:'HS256'})
+      .setExpirationTime('5m').sign(new TextEncoder().encode(process.env.JWT_SECRET));
+    const request=new NextRequest('http://localhost:3007/api/assistant/knowledge/operations/evaluations/'+evaluationId+'/resume',{
+      method:'POST',headers:{cookie:`auth_token=${token}; global_tenant_id=${enterpriseId}`,'idempotency-key':randomUUID()},body:'{}'});
+    const response=await POST(request,{params:Promise.resolve({path:['evaluations',evaluationId,'resume']})});
+    const body=await response.json();assert.equal(response.status,409);assert.equal(body.error,'batch_cancelled');
+    assert.equal(response.headers.get('cache-control'),'no-store');
+    return{status:response.status,error:String(body.error)};
+  }
+  return { actor: operations.actor, prepare, snapshot, loseAssociation, leaseFor, routeAfterCancellation, cleanup };
 }

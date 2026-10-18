@@ -12,7 +12,7 @@ const changed = ['src/lib/assistant/knowledge/operations.ts', 'src/db/__tests__/
   'src/app/(admin)/(merchant)/assistant-knowledge/page.tsx', 'src/lib/assistant/knowledge/context-selection.ts',
   'src/lib/assistant/knowledge/retrieval.ts', 'src/lib/assistant/__tests__/context-selection.test.ts',
   'src/db/__tests__/assistant-professional-knowledge.test.ts'];
-const added = new Set(['src/lib/assistant/knowledge/evaluation-batch.ts', 'src/lib/assistant/__tests__/knowledge-evaluation-batch.test.ts',
+const addedCandidates = ['src/lib/assistant/knowledge/evaluation-batch.ts', 'src/lib/assistant/__tests__/knowledge-evaluation-batch.test.ts',
   'src/lib/assistant/knowledge/operation-batch-view.ts', 'src/components/assistant/knowledge-batch-client.ts',
   'src/components/assistant/knowledge-batches.tsx', 'src/lib/assistant/__tests__/knowledge-batch-client.test.ts',
   'src/db/__tests__/assistant-knowledge-batches.test.ts', 'src/db/__tests__/assistant-knowledge-coverage.test.ts',
@@ -24,7 +24,10 @@ const added = new Set(['src/lib/assistant/knowledge/evaluation-batch.ts', 'src/l
   'src/lib/assistant/__tests__/knowledge-batch-execution-adapter.test.ts',
   'scripts/knowledge-batch-seam-acceptance/process.ts', 'scripts/knowledge-batch-seam-acceptance/offline-store.ts',
   'scripts/knowledge-batch-seam-acceptance/postgres-fixture.ts', 'scripts/knowledge-batch-seam-acceptance/driver.ts',
-  'scripts/knowledge-batch-seam-acceptance/types.ts', 'src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts'].map(file => norm(root + '/' + file)));
+  'scripts/knowledge-batch-seam-acceptance/types.ts', 'src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts'];
+const baselineFiles = new Set(cp.execFileSync('git', ['-C', path.resolve(root, '..'), 'ls-tree', '-r', '--name-only', base, '--',
+  ...addedCandidates.map(file => 'admin/' + file)], { encoding: 'utf8', windowsHide: true }).trim().split('\n'));
+const added = new Set(addedCandidates.filter(file => !baselineFiles.has('admin/' + file)).map(file => norm(root + '/' + file)));
 const overrides = new Map(changed.map(file => [norm(root + '/' + file), cp.execFileSync('git',
   ['-C', path.resolve(root, '..'), 'show', base + ':admin/' + file], { encoding: 'utf8', windowsHide: true })]));
 const config = ts.readConfigFile(root + '/tsconfig.json', ts.sys.readFile).config;
