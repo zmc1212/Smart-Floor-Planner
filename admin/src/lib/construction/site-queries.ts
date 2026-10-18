@@ -4,6 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fingerprint, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import type { IssueView } from './site-issues';
+import { sharedMaterials } from './site-materials';
 
 /** Conservative, bounded routing before any record/job is created. Ambiguity has no business side effect. */
 export function siteMessageIntent(raw: string, photoCount: number): 'report' | 'query' | 'request' | 'clarify' {
@@ -49,7 +50,19 @@ export async function querySiteMaterials(tx: PostgresTransaction, eid: string, p
       lines.push(`记录${r.id} · 版本${r.version} · ${r.room_name_snapshot || '部位待核对'}${r.status === 'draft' ? '（待核对草稿）' : '（已核对发布）'}：${original.slice(0,1200)}${media.length ? '\n原现场照片：' + media.length + '张，可在本条原记录查看。' : ''}`);
     }
     if (!sources.length) lines.push('本项目该范围内还没有可关联的有效现场记录。');
-    lines.push('缺项：当前有效点位图、已授权共享的客户需求。项目成员身份不开放业主私人咨询；请有权设计师从原接待入口核对。正式户型不能代替点位图。');
+    const rooms = query.roomId ? [{ id: query.roomId }] : await rows(tx, sql`select id from app.construction_rooms where enterprise_id=${eid} and project_id=${pid} order by id`);
+    const shared = [];
+    for (const room of rooms) shared.push(...(await sharedMaterials(tx, eid, pid, String(room.id))).sources);
+    for (const s of shared) {
+      sources.push({ ref: { type: s.kind === 'need' ? 'shared_need' : 'shared_drawing', id: s.id, version: s.sourceHash }, hash: fingerprint(s),
+        sourceMessageId: s.sourceMessageId, roomId: s.roomId, roomName: s.roomName, mediaIds: s.mediaId ? [s.mediaId] : [],
+        audience: 'project_members', basis: 'customer_explicit_excerpt', text: s.text });
+      lines.push(`共享资料${s.id} · ${s.roomName} · ${s.kind === 'need' ? '客户明确共享的需求节选' : '客户提供点位图原件（须核对关联）'} · 来源版本${s.sourceHash.slice(0,12)}：${s.text}`);
+    }
+    const missing = [!shared.some(s => s.kind === 'drawing') && '当前有效点位图', !shared.some(s => s.kind === 'need') && '已授权共享的客户需求'].filter(Boolean);
+    if (missing.length) lines.push('缺项：' + missing.join('、') + '。');
+    if (shared.some(s => s.kind === 'drawing')) lines.push('图纸仅为客户明确提供的原件，尚须有权人员对本事项核对关联及现场尺寸；不自动认定为有效施工方案。');
+    lines.push('项目成员身份不开放业主私人咨询；只使用明确共享的节选/原件。正式户型不能代替点位图。');
     lines.push('以上按项目及房间标识关联原材料，不代表方案、费用、工期或验收批准。');
   }
   return { query, projectId: pid, version: fingerprint({ query, validRoom, sources }), sources, queriedAt: new Date().toISOString(), text: lines.join('\n') };
@@ -72,13 +85,17 @@ export async function siteResponse(tx: PostgresTransaction, eid: string, pid: st
   if (!response) return null;
   const payload = response.payload as Row;
   let text = safeText(response.content as Parameters<typeof safeText>[0]);
-  if (payload.query && (await querySiteMaterials(tx, eid, pid, payload.query as SiteQuery)).version !== payload.version)
+  const snapshot = payload.query ? await querySiteMaterials(tx, eid, pid, payload.query as SiteQuery) : null;
+  if (snapshot && snapshot.version !== payload.version)
     text = '关联资料已变化，原查询结果不再沿用。请重新查询当前资料。';
   const issue = payload.issueId ? issues.find(i => i.issueId === payload.issueId) : null;
   if (payload.issueId) text = issue?.text || '原事项已不可用，请重新核对。';
   if (payload.issueQuery) text = issues.filter(i => !payload.issueQueryId || i.issueId === payload.issueQueryId).map(i => i.text).join('\n\n') || '本项目当前没有对应的持续事项。';
   const media = (payload.mediaIds as string[] || []).length ? await rows(tx, sql`select id,width,height,byte_size from app.construction_site_media where enterprise_id=${eid} and project_id=${pid}
     and id=any(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(payload.mediaIds)}::jsonb))::bigint[]) and deleted_at is null order by id`) : [];
+  if (snapshot && snapshot.version === payload.version) for (const source of snapshot.sources.filter(s => (s.ref as Row).type === 'shared_drawing')) {
+    for (const mid of source.mediaIds as string[]) media.push({ id: `shared-${(source.ref as Row).id}-${mid}` });
+  }
   return { text, intent: payload.intent, media, issue };
 }
 

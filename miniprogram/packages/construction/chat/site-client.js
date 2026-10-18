@@ -62,6 +62,10 @@ class SiteClient {
   }
   saveDraft() { this.storage.set(this.draftKey, { text: this.state.draft, attachments: this.state.attachments }); }
   input(text) { if (!this.state.pending && !this.state.busy) { this.set({ draft: text }); this.saveDraft(); } }
+  mediaUrl(id) {
+    const shared = /^shared-([1-9]\d*)-([1-9]\d*)$/.exec(String(id));
+    return shared ? this.base + '/materials/' + shared[1] + '/media/' + shared[2] : this.base + '/media/' + id;
+  }
   async load(older = false, epoch = this.epoch) {
     if (!this.current(epoch) || (older && !this.state.nextCursor)) return;
     const readSeq = this.readSeq = (this.readSeq || 0) + 1, valid = () => this.current(epoch) && readSeq === this.readSeq;
@@ -74,7 +78,7 @@ class SiteClient {
       if (older) items = [...fresh, ...this.state.items.filter(i => !fresh.some(n => n.message.id === i.message.id))];
       // Keep command revisions private: the page's `versions` field belongs to
       // the existing record-history sheet and may be open when this read returns.
-      this.sourceVersions = { records: Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), issues: versions && versions.issues || {} };
+      this.sourceVersions = { records: Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), issues: versions && versions.issues || {}, materials: versions && versions.materials || {} };
       this.set({ ...data, items, nextCursor: data.nextCursor, loading: false, error: '', fatal: false });
       const mids = new Set([...items.flatMap(i => i.record.media.map(m => String(m.id))), ...this.state.attachments.map(String)]);
       const mediaPaths = { ...this.state.mediaPaths };
@@ -82,7 +86,7 @@ class SiteClient {
       this.set({ mediaPaths });
       for (const mid of mids) if (!mediaPaths[mid]) {
         try {
-          const d = await this.download(this.base + '/media/' + mid, { suppressUnauthorized: true });
+          const d = await this.download(this.mediaUrl(mid), { suppressUnauthorized: true });
           if (!valid()) { this.unlink(d.tempFilePath); return; }
           this.paths.add(d.tempFilePath); mediaPaths[mid] = d.tempFilePath; this.set({ mediaPaths: { ...mediaPaths } });
         } catch (e) { if (valid()) this.set({ error: errorText(e) }); }

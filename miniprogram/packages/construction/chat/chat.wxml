@@ -20,7 +20,7 @@
       <view wx:for="{{items}}" wx:key="message.id" class="conversation-turn" id="source-{{item.message.id}}">
         <text class="message-time">{{item.time}}</text>
         <view class="source-message"><view class="source-copy"><text class="source-author">{{item.message.display_name || '项目成员'}}</text><view class="source-bubble"><text user-select>{{item.text}}</text></view></view><view class="source-avatar"><image src="../assets/person.png" mode="aspectFit" /></view></view>
-        <view wx:if="{{item.record.media.length}}" class="source-photos"><text class="photos-label">现场照片 · {{item.record.media.length}}张</text><view class="photo-grid"><view wx:for="{{item.record.media}}" wx:for-item="media" wx:key="id" class="photo-slot" data-id="{{media.id}}" bindtap="preview"><image wx:if="{{mediaPaths[media.id]}}" src="{{mediaPaths[media.id]}}" mode="aspectFill" /><text wx:else>照片读取中</text></view></view></view>
+        <view wx:if="{{item.record.media.length}}" class="source-photos"><text class="photos-label">{{item.response ? '资料原件' : '现场照片'}} · {{item.record.media.length}}张</text><view class="photo-grid"><view wx:for="{{item.record.media}}" wx:for-item="media" wx:key="id" class="photo-slot" data-id="{{media.id}}" bindtap="preview"><image wx:if="{{mediaPaths[media.id]}}" src="{{mediaPaths[media.id]}}" mode="aspectFill" /><text wx:else>照片读取中</text></view></view></view>
         <view class="xiaok-reply">
           <view class="xiaok-heading"><image class="xiaok-art" src="../assets/xiaok-site-assistant.png" mode="aspectFit" /><text class="xiaok-name">小K</text><text class="xiaok-chip">{{item.response ? '项目协作' : '现场整理'}}</text></view>
           <text wx:if="{{item.response}}" class="reply-intro" user-select>{{item.response.text}}</text>

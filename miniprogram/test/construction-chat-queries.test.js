@@ -52,3 +52,33 @@ test('issue conflicts preserve the draft, refresh revisions, and require a new e
   await client.send(); assert.equal(posts.length, 2); assert.equal(posts[1].body.versions.issues['123'], 4);
   assert.notEqual(posts[1].key, posts[0].key); assert.equal(client.state.draft, '');
 });
+
+test('shared drawing originals use the project grant URL and revocation clears cached bytes on the next read', async () => {
+  const store = new Map(), downloads = [], removed = []; let revoked = false;
+  global.wx = { getFileSystemManager: () => ({ unlink: value => removed.push(value.filePath) }) };
+  const client = new SiteClient({ emit() {}, identity: () => ({ key: '1:2', token: 'fixture' }),
+    storage: { get: k => store.get(k), set: (k,v) => store.set(k,v), remove: k => store.delete(k) },
+    request: async () => ({ data: { write: true, items: [{ message: { id: '10', content: { blocks: [{ text: '查书房图纸' }] } }, record: null,
+      response: { text: revoked ? '关联资料已变化，请重新查询。' : '客户提供点位图原件', media: revoked ? [] : [{ id: 'shared-7-8' }] } }], nextCursor: null } }),
+    download: async url => { downloads.push(url); return { tempFilePath: '/synthetic-drawing.png' }; } });
+  await client.show('3'); assert.deepEqual(downloads, ['/miniprogram/construction/projects/3/chat/materials/7/media/8']);
+  assert.equal(client.state.mediaPaths['shared-7-8'], '/synthetic-drawing.png');
+  revoked = true; await client.load(); assert.deepEqual(client.state.mediaPaths, {});
+  assert.ok(removed.includes('/synthetic-drawing.png')); assert.equal(downloads.length, 1);
+  client.hide(); assert.equal(client.sourceVersions, null);
+});
+
+test('material hash conflicts retain the original text and require explicit resend with the refreshed hash', async () => {
+  const store = new Map(), writes = []; let hash = 'a'.repeat(64);
+  const client = new SiteClient({ emit() {}, identity: () => ({ key: '1:2', token: 'fixture' }),
+    storage: { get: k => store.get(k), set: (k,v) => store.set(k,v), remove: k => store.delete(k) },
+    request: async (url,method,body) => {
+      if (method === 'POST') { writes.push(structuredClone(body)); if (writes.length === 1) { hash = 'b'.repeat(64); throw { statusCode: 409, code: 'version_conflict' }; }
+        return { data: { recordId: null, runId: null } }; }
+      return { data: { write: true, items: [], nextCursor: null, versions: { records: {}, issues: { 12: 3 }, materials: { 9: hash } } } };
+    } });
+  await client.show('3'); client.input('回复事项12：采用当前图纸核对位置'); await client.send();
+  assert.equal(writes.length, 1); assert.equal(writes[0].versions.materials['9'], 'a'.repeat(64));
+  assert.equal(client.state.draft, '回复事项12：采用当前图纸核对位置'); assert.equal(client.state.pending, null);
+  await client.send(); assert.equal(writes.length, 2); assert.equal(writes[1].versions.materials['9'], 'b'.repeat(64));
+});

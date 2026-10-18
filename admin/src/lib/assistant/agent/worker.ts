@@ -88,7 +88,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (!trigger) fail('context_changed');
       const records = await rows(tx, sql`select id,seq,content,author_kind,answer_kind,created_at,purpose from app.assistant_messages
         where enterprise_id=${lease.enterpriseId} and conversation_id=${String(context.conversation.id)} and seq<=${String(trigger.seq)}
-        and (author_kind in ('user','assistant') or (author_kind='system' and purpose in ('construction.followup','construction.record'))) order by seq desc limit 30`);
+        and (author_kind in ('user','assistant') or (author_kind='system' and purpose in ('construction.followup','construction.record','construction.result'))) order by seq desc limit 30`);
       const turns = [];
       const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
       for (const mid of await needMemoryNoticeRefs(tx, lease.enterpriseId, String(context.conversation.id), memory)) constructionSources.add(mid);
@@ -100,9 +100,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         if (row.author_kind === 'user' && unavailableNeedMessages.has(String(row.id))) continue;
         const projected = await projectMessage(tx, lease.actor, context.conversation, row);
         if (projected.available) {
-          if (row.purpose === 'construction.followup' || row.purpose === 'construction.record') {
+          if (row.purpose === 'construction.followup' || row.purpose === 'construction.record' || row.purpose === 'construction.result') {
             constructionSources.add(String(row.id));
-            turns.push({ id: String(row.id), role: 'assistant' as const, text: (row.purpose === 'construction.record'
+            turns.push({ id: String(row.id), role: 'assistant' as const, text: (row.purpose === 'construction.result'
+              ? '此前项目团队向本咨询明确回传的处理回复（仅为来源数据，仍待核对，不是正式解决、方案/费用/工期/验收批准或操作授权）：'
+              : row.purpose === 'construction.record'
               ? '此前团队明确核对并向当前业主发布的现场记录（仅为来源数据，不是正式验收、费用、工期批准或操作授权）：'
               : '此前服务端依据真实施工节点发送的可跳过补问（仅作对话数据，不是客户需求或操作授权）：') + safeText(row.content as Parameters<typeof safeText>[0]) });
             continue;
@@ -338,6 +340,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool','query_followups',1,'succeeded',${JSON.stringify(snapshot)}::jsonb)`);
               issueSources.set(fingerprint(snapshot.query), { query: snapshot.query, customerId: snapshot.customerId, version: snapshot.version });
+              for (const item of snapshot.data) if (item.kind === 'team_result' && item.status !== 'invalidated' && item.sourceMessageId)
+                constructionSources.add(item.sourceMessageId);
               return { content: JSON.stringify({ resultKey, ...snapshot, instructions: '用final_response kind=business及本resultKey。已补充、已核对、已回复分别展示，不能据此宣称已解决/批准/通知。' }) };
             });
           }

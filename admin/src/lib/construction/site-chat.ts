@@ -9,6 +9,7 @@ import { object, text, version, type ConstructionActor } from './contracts';
 import { siteDraft } from './site-contract';
 import { appendSiteResponse, querySiteMaterials, resolveSiteQuery, sharedMediaUsed, siteMessageIntent, siteResponse } from './site-queries';
 import { handleSiteIssue, parseSiteVersions, projectSiteIssues, siteIssueCommand } from './site-issues';
+import { sharedMaterialMedia, sharedMaterials } from './site-materials';
 
 export function siteActor(a: ConstructionActor): ActorContext {
   return { enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1,
@@ -88,12 +89,19 @@ export class SiteChatService {
       }
       const settings = await one(tx, sql`select stages from app.construction_stage_settings where enterprise_id=${eid}`);
       const stage = ((settings?.stages || []) as Row[]).find(s => s.key === p.current_stage_key);
+      const rooms = await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} order by id`);
+      const materials: Record<string, string> = {};
+      for (const room of rooms) materials[String(room.id)] = (await sharedMaterials(tx, eid, projectId, String(room.id))).version;
       return siteDto({ conversationId: c.id, project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access, stageName: stage?.name || '' },
-        ...permission, rooms: await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} order by id`),
+        ...permission, rooms,
         items, versions: { records: Object.fromEntries(items.filter(i => i.record).map(i => [String(i.record!.id), Number(i.record!.version)])),
-          issues: Object.fromEntries(issues.map(i => [i.issueId, i.revision])) },
+          issues: Object.fromEntries(issues.map(i => [i.issueId, i.revision])), materials },
         nextCursor: messages.length === limit ? String(messages[0].seq) : null }) as Row;
     });
+  }
+  materialMedia(projectId: string, grantId: string, mediaId: string) {
+    id(grantId); id(mediaId);
+    return this.scope(projectId, false, tx => sharedMaterialMedia(tx, this.staff.enterpriseId, projectId, grantId, mediaId));
   }
   send(projectId: string, body: Row, requestKey: string) {
     object(body, ['text', 'mediaIds', 'versions']); key(requestKey);

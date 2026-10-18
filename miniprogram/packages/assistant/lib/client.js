@@ -72,6 +72,8 @@ const COPY = {
   version_conflict: '对话状态已更新，请刷新后再操作。',
   idempotency_conflict: '这次操作的内容已改变，请刷新对话后继续。',
   invalid_message: '请检查文字内容和长度后再发送。',
+  construction_material_scope_required: '请说明一个已开放工地的具体房间；重名时使用“项目名·房间名”。',
+  construction_material_image_required: '请先发一张点位图，再紧接着说明共享到哪个房间；需求节选请用文字。',
   model_unavailable: '小K暂时无法回答，请稍后再试。',
   retrieval_unavailable: '暂时无法读取装修资料，请稍后重试。',
   knowledge_not_ready: '企业装修资料还在准备中，请稍后再来。',

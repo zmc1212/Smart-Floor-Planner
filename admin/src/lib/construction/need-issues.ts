@@ -5,14 +5,16 @@ import { fail, fingerprint, id, safeText, type ActorContext } from '@/lib/assist
 import type { ModelTool } from '@/lib/assistant/contracts/model';
 import { readMemory, type NeedFact } from '@/lib/assistant/agent/memory';
 import { constructionNoticeAvailable } from './customer';
+import { customerSiteResults } from './site-results';
 
 export const needIssueTool: ModelTool = {
-  name: 'query_followups', description: '查询当前本人咨询中节点补充事项的真实等待状态、已保存补充和设计师核对进展。只读；未分配如实显示未分配，不假称已通知/已解决。无需特定关键词，谈到之前交代的事、在等谁或是否有下文时可用。',
+  name: 'query_followups', description: '查询当前本人咨询中节点补充事项，以及项目团队明确回传到本咨询的处理结果、真实等待状态和核对进展。只读；不开放工地内部会话或未发布回复，未分配如实显示，不假称已通知/已解决/已批准。谈到之前交代的事、团队刚才的回复、在等谁或是否有下文时可用。',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
 };
 type IssueState = { issueId: string; revision: number; projectId: string; room: string; field: string;
-  status: 'awaiting_customer' | 'awaiting_review' | 'invalidated'; waitingFor: 'customer' | 'designer' | 'unassigned';
-  ownerName: string; sourceMessageId: string | null; sourceFactId: string | null; lastProgress: string; question: string; value: string };
+  status: 'awaiting_customer' | 'awaiting_review' | 'invalidated'; waitingFor: 'customer' | 'designer' | 'unassigned' | 'team';
+  ownerName: string; sourceMessageId: string | null; sourceFactId: string | null; lastProgress: string; question: string; value: string;
+  kind?: 'team_result'; sourceVersion?: string };
 export type NeedIssueSnapshot = { query: { domain: 'followups'; conversationId: string }; customerId: string; leadIds: string[];
   version: string; displayText: string; data: IssueState[]; queriedAt: string };
 export type NeedIssueDependency = Pick<NeedIssueSnapshot, 'query' | 'customerId' | 'version'>;
@@ -98,8 +100,15 @@ export async function queryNeedIssues(tx: PostgresTransaction, actor: ActorConte
       + (state.lastProgress === 'designer_review' ? '已有内部核对记录。' : state.lastProgress === 'designer_reply' ? '设计师已在原对话回复。' : '')
       + '仍待核对，不代表正式方案已批准或现场问题已解决。' : `${state.room || '全屋'}补问：“${state.question}”。等待你方便时补充，可以继续聊其他问题。`);
   }
+  for (const result of await customerSiteResults(tx, eid, uid, cid)) {
+    data.push({ issueId: result.issueId, revision: result.revision, projectId: result.projectId, room: result.room, field: 'site_result',
+      status: result.status, waitingFor: 'team', ownerName: '', sourceMessageId: result.messageId, sourceFactId: null,
+      lastProgress: 'team_result', question: '', value: result.text, kind: 'team_result', sourceVersion: result.sourceVersion });
+    lines.push(result.status === 'invalidated' ? `事项${result.issueId}的原团队回传已失效，等待项目团队按当前资料重新核对，旧结果不能沿用。`
+      : `${result.room}事项${result.issueId} · 修订${result.revision}，团队明确回传：${result.text}\n仍待项目团队核对，不代表已解决、已正式批准或可以据此施工。`);
+  }
   return { query: { domain: 'followups', conversationId: cid }, customerId: uid, leadIds: [], version: fingerprint(data), data,
-    displayText: lines.join('\n') || '这次咨询目前没有可接续的节点补充事项。', queriedAt: new Date().toISOString() };
+    displayText: lines.join('\n') || '这次咨询目前没有可接续的节点补充事项或已回传的团队结果。', queriedAt: new Date().toISOString() };
 }
 export async function needIssueSnapshotAvailable(tx: PostgresTransaction, enterpriseId: string, snapshot: NeedIssueDependency) {
   try { return (await queryNeedIssues(tx, { enterpriseId, principal: { kind: 'user', userId: snapshot.customerId }, contextVersion: 0, capabilities: [] }, snapshot.query.conversationId)).version === snapshot.version; }
