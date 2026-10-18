@@ -1,5 +1,20 @@
 # 小K第二期：需求整理与人工交接
 
+<a id="当前共享供应商连接错误与结果确定性"></a>
+## 当前共享供应商连接错误与结果确定性
+
+**共享供应商连接错误：限定修复，整体Limited。** 已调用fetch后，无响应的普通连接/TypeError现归`unknown`，不再是`safe_fallback`，不能据此自动向第二供应商提交。错误码/文字/状态、配置超时及原明确HTTP响应/派发前策略保留。attempt/run/用量/预留及租户/角色/来源/租约/回执接口保持，不改表、队列、factory、API或UI。347762ff归档run4369/attempt1804仍为attempt failed/accepted=false、run indeterminate、预留reconciling及费用null；原queued发送确认和该布尔均不是供应商接收或未接收证明。不改历史行/费用/请求键，不重试4369/4242。当前230/230离线通过，含194业务/知识、32项既有供应商/账务和4组模拟传输测试（修复前1组失败）；受影响lint通过，同程序与05edc4d3对比类型287→287，新增0。无新DB/供应商/实模/Embedding/浏览器/原生调用；PostgreSQL收敛/retry守卫仅源码核验，未重跑。缺供应商结果/用量证据，原夹具也已清理，费用收敛和实模语义仍未验。准确只读证据及合同见[传输确定性](./xiaok-assistant-phase-2.zh-CN.md#当前共享供应商连接错误与结果确定性)、`tmp/xiaok-provider-certainty/`。
+
+只读原归档：操作send:4327、原键f70b08ac-26af-4e9b-8101-36bc828261ba绑定conversation4327/message21543/run4369；queued是不可变的本地准入确认，不是当前run结果或供应商回执。一次text_model客户端fetch记录transport_unknown，响应0、无输出；turn0的agent_model开始标记仍running。attempt1804真实是failed/accepted=false/actual_cost={}，不能改写成unknown attempt；该状态来自HTTP层将普通连接错误归safe_fallback。原send、供应商body及attempt的hash属于不同层，不假定彼此相同。
+
+冻结0fe63d5d相关HTTP/gateway/Worker/队列实现与诊断基线05edc4d3一致。Worker在开始事务后将outcomeKnown置false，failRun对已开始且结果未知保持indeterminate/reconciling；retry只允许failed/cancelled且无reconciling预留，accepted=false不能令原run可重试。accepted布尔是保守内部路由/审计标记，正反均不是供应商实际接收证明。未来HTTP分类改用原unknown路径，不重写1804、不结算4369；不新增对账通道、重试或模型循环。原HTTP401/429/503显式响应策略保持，也不据此声称费用0。
+
+证据tmp/xiaok-provider-certainty/incident-evidence.json记录原归档hash及回执/状态；before.log保留传输反例3/4通过、1失败，offline.log最终230/230；type-comparison.json和lint.log为本次工程结果。知识工作区原tmp/knowledge-semantic-followup/live-1/live.json的SHA256为a97df5ae9b7f4b3aed68d04082b84577096faec418961e3991363d9d4dd456a5，只读未重执行或改动。本补丁DB/实模/Embedding调用0；此前知识一轮失败文本fetch和成功索引保留各自范围，不计成本轮调用。知识原夹具已清理，当前无行不表示账单已知；仍缺供应商结果/计量证据，不重发、不换键、不填零费用。
+
+在admin/用node --import tsx --test src/lib/ai/__tests__/provider-transport.test.ts复跑模拟传输反例；原供应商/AI及194业务测试合为230项。本次未声明全仓类型干净、无关旧页面完整构建通过、实模语义或原生/真机验收。
+
+
+
 <!-- continuity:start -->
 <a id="当前p3bp4a客户更正与原事项接续"></a>
 ## 当前P3B/P4A：客户更正与原事项接续

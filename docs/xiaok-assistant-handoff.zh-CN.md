@@ -1,4 +1,16 @@
-# 小客接力：否定/未定人数解释 v63
+# 小客接力：供应商连接失败确定性
+
+当前分支codex/xiaok-provider-certainty，工作区G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-provider-certainty，基线05edc4d30ddc5424d839c2d5e74e3171685b2f3e。此前人数解释修复05edc4d3已完成194项离线并普通推送，原构建问题仅诊断、未改旧AIStudio页面。当前按父任务只读核验知识稳定347762ff的run4369/attempt1804，未自动合入该知识后续分支。整体Limited，不生产启用、合main或部署。
+
+**共享供应商连接错误：限定修复，整体Limited。** 已调用fetch后，无响应的普通连接/TypeError现归`unknown`，不再是`safe_fallback`，不能据此自动向第二供应商提交。错误码/文字/状态、配置超时及原明确HTTP响应/派发前策略保留。attempt/run/用量/预留及租户/角色/来源/租约/回执接口保持，不改表、队列、factory、API或UI。347762ff归档run4369/attempt1804仍为attempt failed/accepted=false、run indeterminate、预留reconciling及费用null；原queued发送确认和该布尔均不是供应商接收或未接收证明。不改历史行/费用/请求键，不重试4369/4242。当前230/230离线通过，含194业务/知识、32项既有供应商/账务和4组模拟传输测试（修复前1组失败）；受影响lint通过，同程序与05edc4d3对比类型287→287，新增0。无新DB/供应商/实模/Embedding/浏览器/原生调用；PostgreSQL收敛/retry守卫仅源码核验，未重跑。缺供应商结果/用量证据，原夹具也已清理，费用收敛和实模语义仍未验。准确只读证据及合同见[传输确定性](./xiaok-assistant-phase-2.zh-CN.md#当前共享供应商连接错误与结果确定性)、`tmp/xiaok-provider-certainty/`。
+
+- 确切证据：原send:4327原键回执绑定21543/4369，queued仅本地准入；一次客户端text_model fetch为transport_unknown、无响应和输出，agent_model开始标记已提交。attempt1804仍failed/accepted=false/actual_cost={}，权威run4369仍indeterminate/provider_outcome_unknown，预留reconciling、tokens/cost为null。原夹具已清理，当前无行不表示费用已知。原档hash a97df5ae9b7f4b3aed68d04082b84577096faec418961e3991363d9d4dd456a5保持。
+- 收敛结论：有本地开始/调用证据，无供应商接收、未接收或计量证据。accepted=false不能证明零派发/零费用，原queued回执也不是模型回执；应继续保留不确定。缺供应商结果/用量证据是剩余阻碍，不是权限拒绝。未重试4369/4242、换键、改attempt或费用；未复建已清理夹具。
+- 实际修改只在共享HTTP连接异常的disposition由safe_fallback改unknown，代码/文字/状态保持。原Postgres attempt未知分支、Worker outcomeKnown围栏、run/额度/retry守卫复用不改，不添加新schema/API/队列/factory或接口字段。现有布尔也不能当作供应商证明。HTTP明确响应及派发前策略保持。
+- 当前230/230离线（194业务/知识＋32原AI/供应商＋4模拟传输），失败/跳过/取消0；新增传输修复前3通过/1失败。两项受影响TS lint无错误警告；同程序对照05edc4d3仍287→287、新增0，不是完整类型通过。没有新DB、供应商HTTP、实模、Embedding、浏览器或原生调用，未占用共用锁/启动Worker。历史知识的实际调用和费用单列，不计成本轮新验证。
+- 证据tmp/xiaok-provider-certainty/incident-evidence.json、offline.log、before.log、type-comparison.json、lint.log及[当前双语合同](./xiaok-assistant-phase-2.zh-CN.md#当前共享供应商连接错误与结果确定性)。供应商/费用缺证、实模语义、完整构建、原生/图内/真机/BLE/真实微信未验限制保持。原97项修改和5项删除保留；父任务继续协调知识线离线补全，当前没有新实模授权。
+
+## 上一稳定人数解释05edc4d3（v63证据）
 
 本提交在独立分支codex/xiaok-need-interpretation、工作区G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-need-interpretation继续，基线04a85946。既有路线图10.1第1/3场景的内部可靠性增量，整体Limited，不宣称完整阶段或发布验收。
 
