@@ -1,53 +1,49 @@
-# 小客交接：P4A同事项取消、恢复与原咨询状态回传
+# 小客交接：获权需求与点位图原件进入专业问答
 
-2026-10-18，接续最新双语计划/KB-4交接，选择总路线图3.1已有P3B/P4A的真实缺口：现场事项取消后不能沿原ID恢复，取消或恢复后的等待状态不能明确回传客户。本批不是KB-5，不重做P5；**整体仍Limited，不代表完整专业客服、全PPT或发布就绪**。分支codex/xiaok-public-site-lifecycle，基点9210a012b08af38ec28f383e6c78196df958838f。功能提交`82baf5157acd877dbdf4c8aedb5287e3ac822680`；交接另提交，最终HEAD/上游/GitHub核验见tmp/xiaok-issue-continuation/git-final.json。只普通推送，不合并main、强推或部署。
+2026-10-18。继续现行路线图3.1的P3B/P4A及PPT23/38，补齐上一交接明确的原件投影缺口。**限定闭环Implemented，整体仍Limited**，不代表完整专业客服、全PPT或发布验收。当前分支`codex/xiaok-public-site-lifecycle`，基线`a44f4c74be9037241214f486cc40e778b449da04`；本轮功能提交`11d12f4188ef31cb371d62b6679aeb267b3f89a8`。最终交接提交、本地/上游/GitHub校验见`tmp/xiaok-material-projection/git-final.json`。
 
-前序KB-4功能`baf557f8569de4f2852f438e162966099bc93577`及交接`9210a012`保持有效；[历史交接](https://github.com/zmc1212/Smart-Floor-Planner/blob/9210a012b08af38ec28f383e6c78196df958838f/docs/xiaok-assistant-handoff.zh-CN.md)保留原检查、0087备份/迁移和恢复待验记录。本批不迁移、不重算先前69通过/10跳过为新结果，OCR/复杂格式/影子重建按真实材料需要接续。
+上一阶段`82baf515`/`a44f4c74`的同事项取消、恢复和原咨询状态回传继续有效；[原交接](https://github.com/zmc1212/Smart-Floor-Planner/blob/a44f4c74be9037241214f486cc40e778b449da04/docs/xiaok-assistant-handoff.zh-CN.md)及`tmp/xiaok-issue-continuation/`的原始成功/失败记录未改写。现行路线图/知识完善计划保留用户原工作区状态，没有混入本轮提交。
 
-## 本批交付
+## 实际完成
 
-- 读根/admin指令、双语模块/二期合同、最新双语知识计划/路线图及PPT。相关目录与祖先没有.agents/skills或新的嵌套AGENTS。原PPT SHA256仍9221a83057fb1b2aa691ecde6cf60a0aa2dfb0d352aad4b6eab2cb6f15209af4。17/20/24/36提供持续事项与等待安排，23提供底盒/同房间/设计师上下文，38提供团队确认及非批准边界；合成办公规则不是PPT工程标准。
-- 原S04输入“恢复事项123：原因”，仅对已取消事项沿同一issueId追加修订。原发起人或管理者，核对当前事项/记录/房间资料版本（空资料hash也校验），重绑当前原记录，清掉旧回复及图纸关联；有效负责人保留、撤权负责人不复活。正式方案/决定/落实/解决/关闭仍走P5，普通恢复不能绕过。
-- 原GET版本快照补最多50事项的当前原记录版本，即使原记录已滑出消息分页；records上限150（页100＋事项来源50），不复制原文或依赖旧缓存。恢复仍在事务内重验，不自动批准新版本。
-- 管理者“回传事项123：明确节选”可发送精确取消/待团队/未分配状态与负责人，也保留原已回复待核对路径的回复/图纸要求。只回原授权咨询，不复制内部原话/图片、开放内部会话或新增关注订阅。负责人移出后明确回传未分配会清旧分派/回复，不能靠再加入复活。
-- 原outbox/progress/result、幂等事务、Worker/人类模式延后、来源/参与者/租户/版本守卫复用，无新表/迁移/路由。结果保存state/owner/waitingFor；旧无state与P5正式结果保留原hash/lastProgress形状，避免代码升级批量作废旧有效问答。真实来源/权限变化仍失效，成员审计阻止旧回传恢复。
-- v39的query_followups只读实际已投递的状态，进入原construction source_refs和知识＋实际节点的同轮综合解释。客户普通聊天/模型建议不能取消/恢复/批准；无期限不编逾期，不把节点或恢复当已验收/可固定底盒。owner/admin/super_admin继承原所选企业管理边界，未改角色授权、配置或凭据。
-- 复用S04原PPT22/38、PPT23资料屏及C01/C02/U01组件/状态；无Mini WXML/Less/素材/导航改动。双语当前模块、二期合同及两路由唯一还原台账已同步，计划和旧未验范围保留。
+- 原`query_materials`和`search_knowledge`绑定房屋路径复用`sharedMaterials`，投影同客户、同原咨询、同项目/施工房间的有效共享需求与点位图原件说明。`shared_need`/`shared_drawing`携带grant ID/版本、原消息/hash、原咨询、房间、图片ID/hash和客户参考身份。不同咨询即使同客户/房屋也不继承；多房屋/项目/重名房间仍先澄清，全房最多20个房间并明确剩余查询范围。
+- 最新同类grant替换旧版，撤回最新不回退旧版；消息/图片hash、删除/用途、咨询用途/参与者、客户访问/归属、房间变更及保留期沿原服务重验。既有材料/业务快照守卫覆盖缓存、最终提交、重进、历史/派生回答及原有任务来源。原件继续走C01私有媒体和S04获权原件接口，没有新表、迁移、路由、菜单或授权系统。
+- 每份材料提供独立sourceId/逐字原文，显式和知识绑定路径一致。v40把客户参考说明、企业规则、实际节点、建议与未知分开；尾注只列实际引用类型/房间，无节点/记录时不会把缺项查询标成已查阅实况。普通解释不创建正式处理。旧人数不能被推成旧桌型的提示约束已补齐。
+- 当前配置模型未接收本轮点位图像素：原件媒体与说明确实进入授权投影，但只有说明进入文本解释，不能称看过图内细节、精确尺寸或正式核对。`imagePixels:false`描述这份投影未附像素，不关闭既有获权图像输入/观察协议；另一路图像证据须核对同一mediaId/hash。本轮未验证该图像路径。
+- 保留原C01/C02/S04/U01结构、样式、素材、字体和导航。PPT23对应原件与同房间资料，38对应关键事项由团队核实；双语合同、四份当前模块记录和两个路由的双语唯一还原台账已同步。正式v4墙图仍只读，未更改其数据/量房/分佣合同，因此未改正式量房文档。
 
-## 执行验证与证据
+## 已执行检查
 
-主证据目录：tmp/xiaok-issue-continuation/。acceptance-summary.json、semantic-review.json、development-audit.json、usage-summary.json、native.json、native-driver.json、native-visual-review.json。
+证据统一在`tmp/xiaok-material-projection/`，总表`acceptance-summary.json`、逐段复核`semantic-review.json`、原生`native.json`/`native-driver.json`/`native-visual-review.json`、数据/用量审计`development-audit.json`/`usage-summary.json`。
 
-| 检查 | 最终结果 |
+| 检查 | 实际结果与口径 |
 | --- | --- |
-| 隔离核心 | 12/12；同ID/并发原键/过期版本/分页/来源/撤权/三类管理者/旧格式兼容 |
-| 受影响回归 | 63项按最终执行汇总61通过/2显式跳过/0失败；初轮58/3/2日志保留，受影响材料组12/12重跑后逐题替换结果 |
-| Mini专项 | 92/92，不是全小程序套件 |
-| 配置实模主线 | 4/4：run382/383取消、384/385恢复；同题各2次，真实HTTP/Worker/索引/DeepSeek deepseek-flash，不是确定性provider语义评分 |
-| 最终Stable原生 | 17/17功能步骤，真实客户run392/393；首轮桌面17步及run388/389仅为补充，不累加核心题 |
-| 类型/Lint/编译 | 变更路径lint0错误/0警告，全量lint0错误/30既有警告；同源类型287→287无新增诊断；隔离Webpack编译通过。完整构建仍被既有AiDesignerLegacyPage非法导出阻断 |
+| 原件核心 | 隔离服务17/17，加最终综合解释单元8/8；去重25项。早先合组日志是24项（17+旧7），保留原样，不伪造单条25/25日志 |
+| 相关回归 | 完整命令75项：73通过、2项显式配置跳过、0失败；实际包含原件、同事项恢复、正式版本/落实关闭、三类管理者继承、并发及撤权恢复 |
+| Mini专项 | 92/92，客户端单元，不是全小程序或原生业务验收 |
+| 配置实模 | 最终6/6：有效原件、需求替换、撤图三组各两次；真实HTTP/开发数据库/原Worker/DeepSeek deepseek-flash；需要实际引用当前原件及企业依据，不只检查工具返回 |
+| Stable原生 | 最终20/20，包含另外4次实模回答、真实输入/点击、图片上传、精确原件读取、来源片、持久重进、换版/撤回和成员撤权；临时网络/身份/存储恢复，SDK断开 |
+| 工程检查 | 触及文件lint0错误/0警告，全量lint0错误/30既有警告；同源类型287→287，无新增诊断；隔离Webpack编译通过；完整构建仍在既有`AiDesignerLegacyPage`非法导出失败 |
+| 文档/保留 | diff检查通过；两个路由每种语言均只有一行、唯一批准设计源不变；暂存前53项既有改动和原五项删除逐字节保留，小程序清单各只暂存一行本轮更新 |
 
-主线enterprise2467/project85/lead2943/cid290/user3334，owner5053/designer5054/worker5055，知识document170/version172，issue1121、客户回传revision5→7。最终原生enterprise2470/project88/lead2946/cid296/user3346、owner5062/designer5063/worker5064，document173/version175，issue1176、回传revision6→8。六条最终回答均逐条独立读原回答/引文/工具快照核对：已取消没有待执行安排；恢复等合成设计师核对；企业知识、实际水电节点与未知点位图/尺寸分开；未推定批准或创建额外正式事项。不是人类装修专业验收。
+隔离检查固定55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS和原共享锁。中止的首次Node测试夹具3360/3361及其九个合成用户已在该锁下清理，见`isolated-cleanup.json`，未选择开发库或客户企业。
 
-5个合成开发企业2466–2470（含失败尝试）均关闭开关、停用账号、提升用户context_version；审计active_staff/active_runs/active_jobs均0，正式方案/处理事件均0。13个实际run/21次供应商调用均成功：最终主线8次53,089 text tokens，最终原生4次26,436，首轮原生4次26,522，5次现场文字整理2,015。8次查询Embedding共607输入tokens（主线298、最终原生153、早期原生156）；不含全部索引工作。4次索引任务各1 attempt且成功。所有费用未知/null，不记零、不编小样本P50/P95或专业质量百分比。
+最终实模合成样本：enterprise2474/project92/lead2950/cid303/user3362，知识document176/version178，run400/401/403/405/406/407。最终原生样本：enterprise2476/project94/lead2952/cid307/user3370，知识document178/version180，客户run411–414。其他失败/早期样本2471–2475只作审计；六个开发测试企业均已关闭AI写入，测试员工账号禁用、合成用户context_version递增使本轮令牌失效，active_staff/active_runs/active_jobs均0，正式方案/落实/解决关闭事件均0。开发数据保留供溯源，不是已删除或真实工程数据。
 
-原生沿唯一副屏Stable2.02.2608080、automator0.13.0/base3.17.2，新编译并核对项目路径/实时data/元素/输入/按钮/导航。逻辑390×844，PNG348×752；当前5张取消/恢复/撤回图已查看，路径区分site/customer，每图前查精确route/stack。输入15px对原30rpx约15.6px，发送43px对84rpx约43.68px，品牌右边214px在胶囊左边296px内，具体容差及实测见JSON。C01长文捕获显示尾段，开头状态由实际持久/原生数据另核对，不把局部截图当完整光学验收。最终transport.active=false，回原首页，SDK断开；真实微信登录、完整宿主/光学/高屏/键盘/BLE/真机保持未验证、非阻塞，不转交用户必做手测。
+所有业务内容和图片均为标记合成样本；240×180纯色PNG用于验证原件传输/hash/权限，不验证图纸内容理解。HTTP、模型、Embedding、Worker和开发数据库真实；隔离库模型适配器是确定性的，不能算实模。全轮含失败尝试21个真实run/38次供应商调用，供应商调用均技术成功但不等于语义全过；observed文本tokens264,818，查询Embedding输入tokens1,394，另有5个索引任务。费用未知/null，查询用量不包含所有索引用量，不推算费用或小样本P50/P95/产品正确率。
+
+原生复用唯一副屏Stable2.02.2608080、automator0.13.0、base3.17.2，先新编译再核对实时数据/元素；每图前检查准确route/stack。逻辑390×844，PNG348×752。已查看实际原件消息、来源片、回答和撤回失效截图；输入15px对原30rpx约15.6px，发送43px对84rpx约43.68px，品牌右边214px在原生胶囊左边296px以内。长回答在消息区滚动，完整文字另核持久/原生数据，不把尾部截图当完整光学验收。
 
 ## 失败、限制及复跑
 
-- 初轮隔离外层120秒超时及boss.write测试夹具误用，未计通过；确认相关进程结束后，只清理确切标记隔离企业3339/3340及user6310，见initial-cleanup.json。第二轮9/10因测试按不存在的purpose过滤历史失败，改为真实content文本投影后10/10；新增旧格式/分页反例后最终核心12/12。
-- 初次实模2466把clientMessageId与Idempotency-Key配成两值，被422正确拒绝；修复测试装配，未放宽认证。初次原生2468沙箱枚举不到桌面窗口；已授权桌面只读核验唯一副屏后按原流程接入，不新开/关闭项目窗口。相关失败企业均关闭。
-- 首轮桌面原生17/17功能通过，但S04/C01取消截图重名；旧证据归档native-first-desktop，误覆盖图不作S04视觉依据。最终使用不同路由文件名完整重跑17/17，并增加控件/胶囊边界断言。
-- 原材料回归旧mock在每轮都要求历史包装文本，与既有current-turn-evidence-v1聚焦策略冲突，首项indeterminate及两个依赖用例连带失败；改为首轮原回传、后续实时工具回执/原来源ID断言，未改权限/来源或未知结果保护，受影响材料组最终12/12，合并同名题最终61通过/2显式跳过/0失败。初轮完整日志不覆盖。
-- 临时CJS探针在Admin目录引入两项lint错误，已只移走该任务自建探针；临时日志保留。既有AiDesignerLegacyPage非法页面导出是完整构建阻断，未动无关代码。没有新完整恢复演练，旧pending保持。
-- 仍是单一合成双人办公问题。单独共享需求/图纸尚未进入query_materials的有效原话/图纸投影，因此正文会保守提示缺项；两条回答有不必要的可选恢复/记录追问，回答仍长。construction来源尾注仍是节点/发布记录的域级合称，不当作“确有已发布记录”的证明，下一资料投影应一起细化。未声称全照片/正式图纸、完整跨天节点事项、S05/P6、全格式/OCR/影子重建、外部微信或生产完成。
+- 初轮6次实模虽通过来源/运行检查，run396/397/399把“双人办公”补成未确认的旧双人长桌。完整原输出`live.initial-unsupported-table.json`及`semantic-review.initial.json`保留，语义判定失败；修正提示后用相同原始夹具重跑最终六次，不更改样本掩盖问题。
+- 首次Bun包装器不能运行Node测试，改为真实Node。首次Node包装器55秒中止、测试夹具字段/软删状态问题及开发脚本在环境加载前间接导入JWT造成401，记录在`initial-failures.json`和可用日志；中止包装器的原输出不完整，不作为整组通过证据。类型初轮新增3条诊断已修复，初始比较文件保留。
+- 原生首轮沙箱看不到桌面窗口，未发生页面操作；沿已授权稳定流程在可访问桌面的环境重试。首次桌面原生因共用S04测试白名单未包含引用详情而超时，归档`native-first-citation-transport/`及对应根目录报告。测试器只放行本合成回答实际返回的citation ID，没有扩大产品权限；最终重跑20步通过。所有失败阶段及前批日志不计最终通过。
+- 当前仍为单房间固定题的限定专业解释，不是开放题、图像阅读或工程规范级建议评审。部分回答偏长、重复可选转设计师或对查询缺项表达不够精确，后续继续收敛。与旧NeedMemory、未标记矛盾、多房间/跨阶段复杂更正的广泛语义覆盖未完成；不把结构引用校验当完整语义保证。
+- 完整构建的确切失败见`build.log`，隔离编译见`compile-current.log`；没有改无关的AI Designer页面。Chrome、完整宿主/字体光学/高屏/键盘、真实微信登录、真机、BLE、全小程序打包/全量测试、干净克隆安装及生产仍保持未验或原历史失败状态，不能由本轮专项通过升级；不是要求用户手测的开发门槛。
 
-在admin：node scripts/construction-issue-continuation-acceptance.mjs；--regression、--materials-regression、--mini；node --import tsx scripts/construction-issue-continuation-development.ts --development（原生加--native）；node --import tsx scripts/construction-issue-continuation-audit.ts --development；node scripts/construction-issue-continuation-typecheck.mjs 9210a012。隔离固定55432/xiaok_embedding_eval与共享锁，主线固定批准5432/smart_floor_planner、localhost:3006、现有Worker/provider；不迁移、不改SSH/隧道/端点/供应商或生产配置。基础manifest420路径及历史检查不升级为干净克隆/独立安装证明。
+在`admin`：`node scripts/assistant-shared-materials-acceptance.mjs`、`--regression`、`--mini`；实模`node --import tsx scripts/assistant-shared-materials-development.ts --development`，原生加`--native`；审计`node --import tsx scripts/assistant-shared-materials-audit.ts --development`；同源类型`node scripts/assistant-shared-materials-typecheck.mjs a44f4c74`。原生依赖既有本机Stable/CDP/窗口辅助脚本；复用已批准5432/smart_floor_planner、localhost:3006及现有Worker/provider，不迁移或更改SSH、凭证、角色/菜单或生产配置。首次调用本机工具时需保留真实Node与环境加载顺序。
 
-## 工作区、提交与下一步
+功能提交只含本轮20项，双语Mini模块清单用HEAD内容加单段更新构造暂存，不夹带用户既有改动；范围与哈希见`staging-review.json`/`preservation-check.json`。本交接另作文档提交；只普通推送当前分支，不合并main、force push或部署。
 
-本批只选择相关路径；具体暂存清单/保留核验见staging-review.json、preservation-check.json及baseline.json。初始55个脏路径中，除两份Mini模块清单本事项行外其余原哈希（含5删除状态）保持；两份共享清单只暂存本行，原用户正文/路线图/知识计划/无关代码与未跟踪内容不混入提交。没有全量add/reset/clean/stash或强推。
-
-下一优先仍按总路线图3.1的P3B/P4A专业实况答疑：接入现有获权sharedMaterials的需求/点位图到query_materials，而不是新建知识/图纸真相源。当前agent/materials.ts仅读有效NeedMemory、正式v4主户型和向本人发布记录，并无条件把点位图列为缺项；本次真实回答已暴露这段缺口。沿明确同项目/房间/原咨询/同客户的有效grant ID/hash取原件/节选，客户提供图不得冒充正式批准版本；更新snapshot重验、撤回/替换/在途/重进与现有照片原件组件，再跑对应PPT23/38及同题知识＋实际资料至少2次。同步细化来源尾注，不重新做已交付P5，不自造KB-5。
-
-若本批后无新增材料需求，原P3B节点需求事项跨阶段再绑定再接续；OCR/复杂格式/影子扩展按实际材料触发。用户持续授权有效，无需等待手工截图/A10/确认。新或冲突设计、真实客户导入/外发和生产仍守原授权边界。
+下一步继续原P3B/P4A专业实况主线：复用原事项的图纸核对与正式版本来源，使回答区分“客户参考图”“团队核对关联”“精确正式版本”，并补需求/资料冲突及更正的来源解释；仍按现行PPT与既有组件自动验收。完整像素理解、后续阶段和外部条件据实际能力单独记录，不另起KB-5，不等待人工A10/截图/确认。
