@@ -30,6 +30,14 @@ Full professional semantic acceptance remains incomplete: v57 native17 checks pa
 
 Frozen engineering verification:123 distinct tests across core104 and disjoint Agent19,121 pass/2 configured live-repeat skips,0 failures; both source manifests unchanged. The73 units are included, not additive. Related lint has0 errors/warnings; type baseline287→287 adds0, not a full type pass. Mini92/92 is the earlier unchanged-client check. These checks do not replace the failed native semantic acceptance.
 
+<!-- admin-request-compatibility:start -->
+
+The shared Admin assistant client uses a request-scoped `AbortController` and a 30-second timer, including JSON body consumption, without requiring `AbortSignal.timeout/any`. Caller cancellation keeps the first signal reason; the existing raw native fetch abort is returned before headers. A deadline/network failure remains `network_unknown`; a body failure remains `response_unknown` with its HTTP status. Uncertain mutations reuse their original key/body, while a known failure or successful intentional repeat clears that pending identity. Every finished path clears the timer and caller listener. Routes, APIs, permissions, error copy, markup/styles and Mini Program behavior are unchanged.
+
+Verification: 14/14 Node client checks; installed Chrome **101.0.4951.54** passes 10 bounded transport checks, including reproducing the old pre-HTTP TypeError, and Edge **155.0.4283.62** passes 9. Both enforce the actual 30-second deadline during native response-body reads; no signal polyfill or test clock is injected. Chrome101's native fetch returns its own AbortError rather than the supplied exception object; existing raw abort semantics are preserved. The local fixture uses synthetic in-memory HTTP writes only, with no database, model, Embedding, authenticated page or KB batch acceptance claim. Evidence: independent worktree `tmp/xiaok-fact-boundaries/chrome101/`. Scoped lint passes; same-program types remain 287→287 with no added diagnostics. Overall assistant status remains **Limited**.
+
+<!-- admin-request-compatibility:end -->
+
 <!-- boundaries-v61:start -->
 
 - Current v61 / `current-turn-sources-v11` keeps the explicit current-private-use/exact-formal-version comparison and scopes drawing association to its own returned record, with actual construction stage read independently. Raw4115/4102 and4235 remain negative fixtures; raw4241 retains its extra citation property and historical indeterminate outcome. No citation field is silently stripped and no semantic repair or extra model round is added.

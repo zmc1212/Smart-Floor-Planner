@@ -30,6 +30,14 @@
 
 冻结工程验证：核心104项及不重叠Agent19项，去重123项中121通过、2项配置实模重复路径跳过，零失败，两组源码清单均未变。73项单元已含其中，不重复累计。相关lint零错误零警告；类型基线287→287、新增0，仍非全量类型通过。Mini92/92为较早的未改客户端检查；这些检查不能替代仍失败的原生语义验收。
 
+<!-- admin-request-compatibility:start -->
+
+共享Admin小客客户端使用每请求独立的`AbortController`和30秒计时器，覆盖JSON正文读取，不再依赖`AbortSignal.timeout/any`。调用方取消保留信号首次原因；响应头前仍返回原生fetch的取消异常。期限/网络失败仍为`network_unknown`，正文失败仍为带HTTP状态的`response_unknown`；不确定变更沿原操作键/正文重试，已知失败或成功后的主动重复清除原待确认身份。所有已结束路径清理计时器和调用方监听。路由、API、权限、错误文案、结构/样式及小程序行为不变。
+
+验证：Node请求检查14/14；本机Chrome **101.0.4951.54**通过10项限定传输检查，包含旧代码HTTP前TypeError复现；Edge **155.0.4283.62**通过9项。两者均实际等待生产30秒期限并中止原生正文读取，未注入信号polyfill或测试时钟。Chrome101原生fetch会返回自己的AbortError而非传入的异常对象，原取消错误语义保持。仅本地合成内存HTTP写入，无数据库、模型、Embedding、已登录页面或KB批次验收声明。证据位于独立worktree的`tmp/xiaok-fact-boundaries/chrome101/`。相关lint通过，同程序类型287→287、新增0；小客整体仍**Limited**。
+
+<!-- admin-request-compatibility:end -->
+
 <!-- boundaries-v61:start -->
 
 - 当前v61 / `current-turn-sources-v11`保留当前私聊用途与精确正式版的明确对照，图纸关联限定于这条实际回传记录，真实施工阶段另查当前节点。原4115/4102及4235仍为反例；原4241保留多余引用字段及历史indeterminate状态。不静默剥离引用字段，不增加语义修复或模型轮次。
