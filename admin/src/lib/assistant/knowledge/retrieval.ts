@@ -12,7 +12,7 @@ import { knowledgeContext } from './applicability-context';
 import type { FileLocator } from '../contracts/source-file';
 import { selectContextCandidates } from './context-selection';
 
-export const retrievalConfiguration = {version:'professional-hybrid-v3',perBranch:30,limit:5,rrfK:60,minSimilarity:0.3,reranker:'none',agentQuery:'current_question_and_model_terms_v1',contextSelection:'server_applicability_document_coverage',maxPerDocumentFirstPass:2,parser:'manual_text_faq_or_local_file_v1'} as const;
+export const retrievalConfiguration = {version:'professional-hybrid-v4',perBranch:30,limit:5,rrfK:60,minSimilarity:0.3,reranker:'none',agentQuery:'current_question_and_model_terms_v1',contextSelection:'server_applicability_document_coverage',maxPerDocumentFirstPass:1,parser:'manual_text_faq_or_local_file_v1'} as const;
 export type RetrievalDiagnostic = {
   configuration:typeof retrievalConfiguration; profileId:string; epoch:number; query:string; terms:string[]; context:KnowledgeContext; elapsedMs:number; embeddingUsage:{inputTokens:number}|null;costMicros:null;
   candidates:Array<{ref:Evidence['ref'];hash:string;title:string;documentId:string;contentHash:string;similarity:number;semanticRank:number|null;lexicalRank:number|null;fusionRank:number;

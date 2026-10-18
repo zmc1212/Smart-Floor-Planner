@@ -1,0 +1,1252 @@
+{
+  "version": 1,
+  "synthetic": true,
+  "scope": "Offline counterexamples, not an authorization cache, a general semantic judge or proof of a production fix",
+  "provenance": {
+    "commit": "21e4fd390e564bed4def226e2cf379ad68eac57e",
+    "capturedAt": "2026-10-18T18:26:14.576Z",
+    "wideReportSha256": "b35c553ee8bc382e611c207346ba649a636d308910f1134d4e90af6e4c58dc7c",
+    "kb1ReportSha256": "7f75c02e7427ece3f5662516f4c4bb5f8b681eda3d161c193bfad76cf855dc10",
+    "offlineReplaySha256": "7fea111fb2c076ad34e0d4bbd44a7739c01f1db77386a65bcdad4e954e7d8b9e"
+  },
+  "attribution": [
+    {
+      "runId": "4245",
+      "round": 1,
+      "question": "书房屏幕到底该正对窗还是侧放？按现在企业资料解释原因，资料说法不一致怎么办？",
+      "excerptNote": "Verbatim first four delivered segments; later advice/unknown paragraphs omitted because this counterexample targets the fourth paragraph.",
+      "segments": [
+        {
+          "text": "按现在企业资料，这个问题不能直接择一：两份规则对书房屏幕朝向的口径相反，且适用范围尚未核实，所以我不把任何一份当作现行统一做法。",
+          "basis": "uncertainty",
+          "citations": [
+            {
+              "quote": "本条与另一份规则存在不同说法，适用范围未核实。",
+              "sourceId": "K1002"
+            }
+          ]
+        },
+        {
+          "text": "一份口径是侧向：靠窗办公要同时考虑自然采光、屏幕眩光和通道，显示器避免直对强光窗户，可比较侧向布置。",
+          "basis": "evidence",
+          "citations": [
+            {
+              "quote": "书房靠窗办公需同时考虑自然采光、屏幕眩光和通道。显示器避免直对强光窗户，可比较侧向布置。",
+              "sourceId": "K1001"
+            }
+          ]
+        },
+        {
+          "text": "另一份口径相反，要求屏幕正对强光窗户、不采用侧向布置。",
+          "basis": "evidence",
+          "citations": [
+            {
+              "quote": "书房办公桌朝向的另一份合成规则：办公屏幕必须正对强光窗户，不采用侧向布置。",
+              "sourceId": "K1002"
+            }
+          ]
+        },
+        {
+          "text": "两份规则都带同样的前置条件：现场尺寸、完整点位资料和团队核对均待确认；底盒尚未固定时，应把使用设备和桌向交设计师核对有效点位图后再确定位置。",
+          "basis": "evidence",
+          "citations": [
+            {
+              "quote": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+              "sourceId": "K1001"
+            },
+            {
+              "quote": "底盒尚未固定时，应把使用设备和桌向交设计师核对有效点位图后再确定位置。",
+              "sourceId": "K1001"
+            }
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "sourceId": "K1001",
+          "documentId": "928",
+          "ref": {
+            "id": "1001",
+            "type": "knowledge_chunk",
+            "version": "1044"
+          },
+          "hash": "451418f966d779b8f793e34704208e267633eaaf6e81a127a4dcff5df447e177",
+          "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n房间适用：书房\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n规则主题：书房屏幕朝向；明确口径：侧向\n\n书房靠窗办公需同时考虑自然采光、屏幕眩光和通道。显示器避免直对强光窗户，可比较侧向布置。偶尔两人办公可比较共用长桌与独立桌，具体尺寸、插座和通道须现场核对，不从户型名称推断。底盒尚未固定时，应把使用设备和桌向交设计师核对有效点位图后再确定位置。",
+          "model": {
+            "professional": {
+              "origin": {
+                "title": "合成专业知识验收资料",
+                "locator": "人工测试条目（无文件页码）",
+                "version": "synthetic-v1",
+                "authority": "enterprise_rule"
+              },
+              "conditions": [
+                {
+                  "field": "room",
+                  "values": [
+                    "书房"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prerequisites": [
+                "现场尺寸、完整点位资料和团队核对均待确认"
+              ],
+              "exceptions": [
+                "不据阶段名称认定已完成或验收合格"
+              ]
+            },
+            "applicability": {
+              "status": "unknown",
+              "matched": [],
+              "missing": [
+                "房间"
+              ],
+              "mismatched": []
+            },
+            "context": {
+              "leadId": "6012"
+            }
+          }
+        },
+        {
+          "sourceId": "K1002",
+          "documentId": "929",
+          "ref": {
+            "id": "1002",
+            "type": "knowledge_chunk",
+            "version": "1045"
+          },
+          "hash": "3e35d44cde8bfbb3b4ec7a03e33d21916ef6138be52b27989c8f01484e717148",
+          "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n房间适用：书房\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n规则主题：书房屏幕朝向；明确口径：正对窗\n\n书房办公桌朝向的另一份合成规则：办公屏幕必须正对强光窗户，不采用侧向布置。本条与另一份规则存在不同说法，适用范围未核实。",
+          "model": {
+            "professional": {
+              "origin": {
+                "title": "合成专业知识验收资料",
+                "locator": "人工测试条目（无文件页码）",
+                "version": "synthetic-v1",
+                "authority": "enterprise_rule"
+              },
+              "conditions": [
+                {
+                  "field": "room",
+                  "values": [
+                    "书房"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prerequisites": [
+                "现场尺寸、完整点位资料和团队核对均待确认"
+              ],
+              "exceptions": [
+                "不据阶段名称认定已完成或验收合格"
+              ]
+            },
+            "applicability": {
+              "status": "unknown",
+              "matched": [],
+              "missing": [
+                "房间"
+              ],
+              "mismatched": []
+            },
+            "context": {
+              "leadId": "6012"
+            }
+          }
+        }
+      ],
+      "expectation": {
+        "segmentIndex": 3,
+        "support": [
+          {
+            "sourceId": "K1001",
+            "documentId": "928",
+            "version": "1044",
+            "quote": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+            "hash": "451418f966d779b8f793e34704208e267633eaaf6e81a127a4dcff5df447e177"
+          },
+          {
+            "sourceId": "K1002",
+            "documentId": "929",
+            "version": "1045",
+            "quote": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+            "hash": "3e35d44cde8bfbb3b4ec7a03e33d21916ef6138be52b27989c8f01484e717148"
+          }
+        ]
+      }
+    },
+    {
+      "runId": "4246",
+      "round": 2,
+      "question": "书房屏幕到底该正对窗还是侧放？按现在企业资料解释原因，资料说法不一致怎么办？",
+      "excerptNote": "Verbatim first four delivered segments; later advice/unknown paragraphs omitted because this counterexample targets the fourth paragraph.",
+      "segments": [
+        {
+          "text": "按现在企业资料，这个问题不能直接给你一个“正对窗”或“侧放”的定论：两份企业规则对书房屏幕朝向的口径相反，且适用范围尚未核实，我不能自行择一当作现行做法。",
+          "basis": "uncertainty",
+          "citations": [
+            {
+              "quote": "本条与另一份规则存在不同说法，适用范围未核实。",
+              "sourceId": "K1002"
+            }
+          ]
+        },
+        {
+          "text": "其中一份口径是侧向：靠窗办公要同时兼顾自然采光、屏幕眩光和通道，显示器避免直对强光窗户，可比较侧向布置。",
+          "basis": "evidence",
+          "citations": [
+            {
+              "quote": "书房靠窗办公需同时考虑自然采光、屏幕眩光和通道。显示器避免直对强光窗户，可比较侧向布置。",
+              "sourceId": "K1001"
+            }
+          ]
+        },
+        {
+          "text": "另一份口径则相反，要求屏幕正对强光窗户、不采用侧向布置。",
+          "basis": "evidence",
+          "citations": [
+            {
+              "quote": "书房办公桌朝向的另一份合成规则：办公屏幕必须正对强光窗户，不采用侧向布置。",
+              "sourceId": "K1002"
+            }
+          ]
+        },
+        {
+          "text": "两份规则共同的前提是现场尺寸、完整点位资料和团队核对都还要确认；若底盒尚未固定，应把使用设备和桌向交设计师核对有效点位图后再定位置。",
+          "basis": "evidence",
+          "citations": [
+            {
+              "quote": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+              "sourceId": "K1001"
+            },
+            {
+              "quote": "底盒尚未固定时，应把使用设备和桌向交设计师核对有效点位图后再确定位置。",
+              "sourceId": "K1001"
+            }
+          ]
+        }
+      ],
+      "sources": [
+        {
+          "sourceId": "K1001",
+          "documentId": "928",
+          "ref": {
+            "id": "1001",
+            "type": "knowledge_chunk",
+            "version": "1044"
+          },
+          "hash": "451418f966d779b8f793e34704208e267633eaaf6e81a127a4dcff5df447e177",
+          "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n房间适用：书房\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n规则主题：书房屏幕朝向；明确口径：侧向\n\n书房靠窗办公需同时考虑自然采光、屏幕眩光和通道。显示器避免直对强光窗户，可比较侧向布置。偶尔两人办公可比较共用长桌与独立桌，具体尺寸、插座和通道须现场核对，不从户型名称推断。底盒尚未固定时，应把使用设备和桌向交设计师核对有效点位图后再确定位置。",
+          "model": {
+            "professional": {
+              "origin": {
+                "title": "合成专业知识验收资料",
+                "locator": "人工测试条目（无文件页码）",
+                "version": "synthetic-v1",
+                "authority": "enterprise_rule"
+              },
+              "conditions": [
+                {
+                  "field": "room",
+                  "values": [
+                    "书房"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prerequisites": [
+                "现场尺寸、完整点位资料和团队核对均待确认"
+              ],
+              "exceptions": [
+                "不据阶段名称认定已完成或验收合格"
+              ]
+            },
+            "applicability": {
+              "status": "unknown",
+              "matched": [],
+              "missing": [
+                "房间"
+              ],
+              "mismatched": []
+            },
+            "context": {
+              "leadId": "6013"
+            }
+          }
+        },
+        {
+          "sourceId": "K1002",
+          "documentId": "929",
+          "ref": {
+            "id": "1002",
+            "type": "knowledge_chunk",
+            "version": "1045"
+          },
+          "hash": "3e35d44cde8bfbb3b4ec7a03e33d21916ef6138be52b27989c8f01484e717148",
+          "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n房间适用：书房\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n规则主题：书房屏幕朝向；明确口径：正对窗\n\n书房办公桌朝向的另一份合成规则：办公屏幕必须正对强光窗户，不采用侧向布置。本条与另一份规则存在不同说法，适用范围未核实。",
+          "model": {
+            "professional": {
+              "origin": {
+                "title": "合成专业知识验收资料",
+                "locator": "人工测试条目（无文件页码）",
+                "version": "synthetic-v1",
+                "authority": "enterprise_rule"
+              },
+              "conditions": [
+                {
+                  "field": "room",
+                  "values": [
+                    "书房"
+                  ],
+                  "operator": "in"
+                }
+              ],
+              "prerequisites": [
+                "现场尺寸、完整点位资料和团队核对均待确认"
+              ],
+              "exceptions": [
+                "不据阶段名称认定已完成或验收合格"
+              ]
+            },
+            "applicability": {
+              "status": "unknown",
+              "matched": [],
+              "missing": [
+                "房间"
+              ],
+              "mismatched": []
+            },
+            "context": {
+              "leadId": "6013"
+            }
+          }
+        }
+      ],
+      "expectation": {
+        "segmentIndex": 3,
+        "support": [
+          {
+            "sourceId": "K1001",
+            "documentId": "928",
+            "version": "1044",
+            "quote": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+            "hash": "451418f966d779b8f793e34704208e267633eaaf6e81a127a4dcff5df447e177"
+          },
+          {
+            "sourceId": "K1002",
+            "documentId": "929",
+            "version": "1045",
+            "quote": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+            "hash": "3e35d44cde8bfbb3b4ec7a03e33d21916ef6138be52b27989c8f01484e717148"
+          }
+        ]
+      }
+    }
+  ],
+  "fourSource": {
+    "runId": "4242",
+    "requiredDocumentIds": [
+      "915",
+      "916",
+      "917",
+      "918"
+    ],
+    "selectedSources": [
+      {
+        "sourceId": "K985",
+        "documentId": "916",
+        "ref": {
+          "id": "985",
+          "type": "knowledge_chunk",
+          "version": "1032"
+        },
+        "hash": "f48d9c02cf7444d5f501fb6373d67698721991850b2a608e813e2169aa7a5051",
+        "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n合成压力段1：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段2：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段3：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段4：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段5：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段6：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段7：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段8：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段9：书房办公屏幕眩光、通道和电气点位需一并",
+        "model": {
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        }
+      },
+      {
+        "sourceId": "K983",
+        "documentId": "915",
+        "ref": {
+          "id": "983",
+          "type": "knowledge_chunk",
+          "version": "1031"
+        },
+        "hash": "49eec26c6d366e5671e8abc41ad03312cb93267f6d53815b9f7aa45566428dcb",
+        "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n合成压力段1：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段2：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段3：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段4：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段5：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段6：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段7：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段8：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段9：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段10：书房办公屏幕眩光、通道和电气点位需一并核对",
+        "model": {
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        }
+      },
+      {
+        "sourceId": "K988",
+        "documentId": "917",
+        "ref": {
+          "id": "988",
+          "type": "knowledge_chunk",
+          "version": "1033"
+        },
+        "hash": "a9b1f93ee39b2f03ad4e46f7217cb7213643816cb016b2a2c4dbff6d7058da0a",
+        "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n书房办公综合核对的前提：需要现场尺寸、家具布置和经核对的电气点位图。资料未齐时先列缺项，说明只能解释已有依据。",
+        "model": {
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        }
+      },
+      {
+        "sourceId": "K989",
+        "documentId": "918",
+        "ref": {
+          "id": "989",
+          "type": "knowledge_chunk",
+          "version": "1034"
+        },
+        "hash": "932e512848b49dee2f80d99b77a8ae5364c272099afffa8aa0b9e793e2258fff",
+        "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n书房办公综合解释不等于企业批准，不构成定位指令或施工承诺。是否批准须由有权团队依据完整资料核对，当前没有批准记录。",
+        "model": {
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        }
+      },
+      {
+        "sourceId": "K987",
+        "documentId": "916",
+        "ref": {
+          "id": "987",
+          "type": "knowledge_chunk",
+          "version": "1032"
+        },
+        "hash": "7fac8c01cd79747207f6f4d14795e0e45e71b89a6bca48a6de443f80990d5475",
+        "text": "位图时记录缺项，不只按户型决定。\n合成压力段17：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段18：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+        "model": {
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        }
+      }
+    ],
+    "toolPayload": {
+      "knowledgeStatus": "ready",
+      "unresolvedConflict": false,
+      "evidence": [
+        {
+          "sourceId": "985",
+          "text": "专业类型：专业解释",
+          "selectionId": "E1"
+        },
+        {
+          "sourceId": "985",
+          "text": "主题/同义表达：合成书房办公",
+          "selectionId": "E2"
+        },
+        {
+          "sourceId": "985",
+          "text": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+          "selectionId": "E3"
+        },
+        {
+          "sourceId": "985",
+          "text": "例外/限制：不据阶段名称认定已完成或验收合格",
+          "selectionId": "E4"
+        },
+        {
+          "sourceId": "985",
+          "text": "依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）",
+          "selectionId": "E5"
+        },
+        {
+          "sourceId": "985",
+          "text": "依据性质：企业规则",
+          "selectionId": "E6"
+        },
+        {
+          "sourceId": "985",
+          "text": "合成压力段1：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E7"
+        },
+        {
+          "sourceId": "985",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E8"
+        },
+        {
+          "sourceId": "985",
+          "text": "合成压力段2：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E9"
+        },
+        {
+          "sourceId": "985",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E10"
+        },
+        {
+          "sourceId": "985",
+          "text": "合成压力段3：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E11"
+        },
+        {
+          "sourceId": "985",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E12"
+        },
+        {
+          "sourceId": "985",
+          "text": "合成压力段4：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E13"
+        },
+        {
+          "sourceId": "985",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E14"
+        },
+        {
+          "sourceId": "985",
+          "text": "合成压力段5：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E15"
+        },
+        {
+          "sourceId": "985",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E16"
+        },
+        {
+          "sourceId": "985",
+          "text": "合成压力段6：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E17"
+        },
+        {
+          "sourceId": "985",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E18"
+        },
+        {
+          "sourceId": "985",
+          "text": "合成压力段7：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E19"
+        },
+        {
+          "sourceId": "985",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E20"
+        },
+        {
+          "sourceId": "985",
+          "text": "合成压力段8：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E21"
+        },
+        {
+          "sourceId": "985",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E22"
+        },
+        {
+          "sourceId": "985",
+          "text": "合成压力段9：书房办公屏幕眩光、通道和电气点位需一并",
+          "selectionId": "E23"
+        },
+        {
+          "sourceId": "983",
+          "text": "专业类型：专业解释",
+          "selectionId": "E24"
+        },
+        {
+          "sourceId": "983",
+          "text": "主题/同义表达：合成书房办公",
+          "selectionId": "E25"
+        },
+        {
+          "sourceId": "983",
+          "text": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+          "selectionId": "E26"
+        },
+        {
+          "sourceId": "983",
+          "text": "例外/限制：不据阶段名称认定已完成或验收合格",
+          "selectionId": "E27"
+        },
+        {
+          "sourceId": "983",
+          "text": "依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）",
+          "selectionId": "E28"
+        },
+        {
+          "sourceId": "983",
+          "text": "依据性质：企业规则",
+          "selectionId": "E29"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段1：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E30"
+        },
+        {
+          "sourceId": "983",
+          "text": "屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+          "selectionId": "E31"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段2：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E32"
+        },
+        {
+          "sourceId": "983",
+          "text": "屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+          "selectionId": "E33"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段3：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E34"
+        },
+        {
+          "sourceId": "983",
+          "text": "屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+          "selectionId": "E35"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段4：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E36"
+        },
+        {
+          "sourceId": "983",
+          "text": "屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+          "selectionId": "E37"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段5：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E38"
+        },
+        {
+          "sourceId": "983",
+          "text": "屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+          "selectionId": "E39"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段6：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E40"
+        },
+        {
+          "sourceId": "983",
+          "text": "屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+          "selectionId": "E41"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段7：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E42"
+        },
+        {
+          "sourceId": "983",
+          "text": "屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+          "selectionId": "E43"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段8：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E44"
+        },
+        {
+          "sourceId": "983",
+          "text": "屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+          "selectionId": "E45"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段9：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E46"
+        },
+        {
+          "sourceId": "983",
+          "text": "屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+          "selectionId": "E47"
+        },
+        {
+          "sourceId": "983",
+          "text": "合成压力段10：书房办公屏幕眩光、通道和电气点位需一并核对",
+          "selectionId": "E48"
+        },
+        {
+          "sourceId": "988",
+          "text": "专业类型：专业解释",
+          "selectionId": "E49"
+        },
+        {
+          "sourceId": "988",
+          "text": "主题/同义表达：合成书房办公",
+          "selectionId": "E50"
+        },
+        {
+          "sourceId": "988",
+          "text": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+          "selectionId": "E51"
+        },
+        {
+          "sourceId": "988",
+          "text": "例外/限制：不据阶段名称认定已完成或验收合格",
+          "selectionId": "E52"
+        },
+        {
+          "sourceId": "988",
+          "text": "依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）",
+          "selectionId": "E53"
+        },
+        {
+          "sourceId": "988",
+          "text": "依据性质：企业规则",
+          "selectionId": "E54"
+        },
+        {
+          "sourceId": "988",
+          "text": "书房办公综合核对的前提：需要现场尺寸、家具布置和经核对的电气点位图。",
+          "selectionId": "E55"
+        },
+        {
+          "sourceId": "988",
+          "text": "资料未齐时先列缺项，说明只能解释已有依据。",
+          "selectionId": "E56"
+        },
+        {
+          "sourceId": "989",
+          "text": "专业类型：专业解释",
+          "selectionId": "E57"
+        },
+        {
+          "sourceId": "989",
+          "text": "主题/同义表达：合成书房办公",
+          "selectionId": "E58"
+        },
+        {
+          "sourceId": "989",
+          "text": "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+          "selectionId": "E59"
+        },
+        {
+          "sourceId": "989",
+          "text": "例外/限制：不据阶段名称认定已完成或验收合格",
+          "selectionId": "E60"
+        },
+        {
+          "sourceId": "989",
+          "text": "依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）",
+          "selectionId": "E61"
+        },
+        {
+          "sourceId": "989",
+          "text": "依据性质：企业规则",
+          "selectionId": "E62"
+        },
+        {
+          "sourceId": "989",
+          "text": "书房办公综合解释不等于企业批准，不构成定位指令或施工承诺。",
+          "selectionId": "E63"
+        },
+        {
+          "sourceId": "989",
+          "text": "是否批准须由有权团队依据完整资料核对，当前没有批准记录。",
+          "selectionId": "E64"
+        },
+        {
+          "sourceId": "987",
+          "text": "位图时记录缺项，不只按户型决定。",
+          "selectionId": "E65"
+        },
+        {
+          "sourceId": "987",
+          "text": "合成压力段17：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E66"
+        },
+        {
+          "sourceId": "987",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E67"
+        },
+        {
+          "sourceId": "987",
+          "text": "合成压力段18：书房办公屏幕眩光、通道和电气点位需一并核对。",
+          "selectionId": "E68"
+        },
+        {
+          "sourceId": "987",
+          "text": "点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "selectionId": "E69"
+        }
+      ],
+      "synthesisSources": [
+        {
+          "sourceId": "K985",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n合成压力段1：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段2：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段3：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段4：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段5：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段6：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段7：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段8：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段9：书房办公屏幕眩光、通道和电气点位需一并",
+          "citationQuotes": [
+            "专业类型：专业解释",
+            "主题/同义表达：合成书房办公",
+            "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+            "例外/限制：不据阶段名称认定已完成或验收合格",
+            "依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）",
+            "依据性质：企业规则",
+            "合成压力段1：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+            "合成压力段2：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。"
+          ],
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        },
+        {
+          "sourceId": "K983",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n合成压力段1：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段2：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段3：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段4：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段5：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段6：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段7：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段8：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段9：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。\n合成压力段10：书房办公屏幕眩光、通道和电气点位需一并核对",
+          "citationQuotes": [
+            "专业类型：专业解释",
+            "主题/同义表达：合成书房办公",
+            "前置条件：现场尺寸、完整点位资料和团队核对均待确认",
+            "例外/限制：不据阶段名称认定已完成或验收合格",
+            "依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）",
+            "依据性质：企业规则",
+            "合成压力段1：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。",
+            "合成压力段2：书房办公屏幕眩光、通道和电气点位需一并核对。屏幕方向须结合窗户和实际使用位置，通道须结合家具布置；本条不代替现场尺寸。"
+          ],
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        },
+        {
+          "sourceId": "K988",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n书房办公综合核对的前提：需要现场尺寸、家具布置和经核对的电气点位图。资料未齐时先列缺项，说明只能解释已有依据。",
+          "citationQuotes": [
+            "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n书房办公综合核对的前提：需要现场尺寸、家具布置和经核对的电气点位图。资料未齐时先列缺项，说明只能解释已有依据。"
+          ],
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        },
+        {
+          "sourceId": "K989",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n书房办公综合解释不等于企业批准，不构成定位指令或施工承诺。是否批准须由有权团队依据完整资料核对，当前没有批准记录。",
+          "citationQuotes": [
+            "专业类型：专业解释\n主题/同义表达：合成书房办公\n前置条件：现场尺寸、完整点位资料和团队核对均待确认\n例外/限制：不据阶段名称认定已完成或验收合格\n依据：合成专业知识验收资料；来源版本：synthetic-v1；章节/条目：人工测试条目（无文件页码）\n依据性质：企业规则\n\n书房办公综合解释不等于企业批准，不构成定位指令或施工承诺。是否批准须由有权团队依据完整资料核对，当前没有批准记录。"
+          ],
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        },
+        {
+          "sourceId": "K987",
+          "kind": "knowledge",
+          "title": "企业知识",
+          "text": "位图时记录缺项，不只按户型决定。\n合成压力段17：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段18：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。",
+          "citationQuotes": [
+            "位图时记录缺项，不只按户型决定。\n合成压力段17：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。\n合成压力段18：书房办公屏幕眩光、通道和电气点位需一并核对。点位核对需检查插座用途、设备与家具位置；缺少点位图时记录缺项，不只按户型决定。"
+          ],
+          "professional": {
+            "origin": {
+              "title": "合成专业知识验收资料",
+              "locator": "人工测试条目（无文件页码）",
+              "version": "synthetic-v1",
+              "authority": "enterprise_rule"
+            },
+            "conditions": [],
+            "prerequisites": [
+              "现场尺寸、完整点位资料和团队核对均待确认"
+            ],
+            "exceptions": [
+              "不据阶段名称认定已完成或验收合格"
+            ]
+          },
+          "applicability": {
+            "status": "applicable",
+            "matched": [],
+            "missing": [],
+            "mismatched": []
+          },
+          "context": {
+            "leadId": "6009",
+            "projectId": "1029",
+            "revision": 1,
+            "stage": "utilities"
+          }
+        },
+        {
+          "sourceId": "Bbound:4242:0:0",
+          "kind": "project",
+          "title": "本次材料查询范围与缺项",
+          "text": "「本人房屋」的当前资料：\n本轮待核对：这次咨询中对应的有效原话需求；向本人明确发布的对应现场记录；当前有效点位图及其对应房间。缺项只表示本次授权查询未提供，不表示现实中未发生。",
+          "resultKey": "bound:4242:0:0",
+          "citationQuotes": [
+            "「本人房屋」的当前资料：\n本轮待核对：这次咨询中对应的有效原话需求；向本人明确发布的对应现场记录；当前有效点位图及其对应房间。缺项只表示本次授权查询未提供，不表示现实中未发生。"
+          ],
+          "summaryTitle": "本次材料查询范围与缺项"
+        },
+        {
+          "sourceId": "Bbound:4242:0:0:formal_floorplan:562",
+          "kind": "project",
+          "title": "正式户型",
+          "summaryTitle": "正式户型",
+          "text": "合成书房正式主户型",
+          "resultKey": "bound:4242:0:0",
+          "material": {
+            "ref": {
+              "type": "formal_floorplan",
+              "id": "562",
+              "version": "36b1c8518e9b605cb88cb8da4781c72c6c4ce0619a299f65477b162aead47a74"
+            },
+            "hash": "36b1c8518e9b605cb88cb8da4781c72c6c4ce0619a299f65477b162aead47a74",
+            "leadId": "6009",
+            "projectId": null,
+            "roomId": null,
+            "roomName": "",
+            "sourceMessageId": null,
+            "mediaIds": [],
+            "audience": "customer_self",
+            "basis": "primary_plan",
+            "status": "current",
+            "text": "合成书房正式主户型"
+          },
+          "citationQuotes": [
+            "合成书房正式主户型"
+          ]
+        },
+        {
+          "sourceId": "Bstage:4242:0:0",
+          "kind": "project",
+          "title": "本人项目实际节点",
+          "text": "「合成知识语义工地」：进行中。\n团队标记的当前节点：水电。合成当前阶段，未登记点位批准或检查结果\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。",
+          "resultKey": "stage:4242:0:0",
+          "citationQuotes": [
+            "「合成知识语义工地」：进行中。\n团队标记的当前节点：水电。合成当前阶段，未登记点位批准或检查结果\n当前阶段联系电话尚未配置，请等项目团队补充后再联系。"
+          ],
+          "summaryTitle": "本人项目实际节点"
+        },
+        {
+          "sourceId": "Bfollowups:4242:0:0",
+          "kind": "project",
+          "title": "本咨询事项及团队回传",
+          "text": "这次咨询目前没有可接续的节点补充事项或已回传的团队结果。",
+          "resultKey": "followups:4242:0:0",
+          "citationQuotes": [
+            "这次咨询目前没有可接续的节点补充事项或已回传的团队结果。"
+          ]
+        }
+      ],
+      "boundProjectContext": {
+        "resolution": "resolved",
+        "missing": [
+          "这次咨询中对应的有效原话需求",
+          "向本人明确发布的对应现场记录",
+          "当前有效点位图及其对应房间"
+        ],
+        "constructionQueriedAt": "2026-10-18T18:25:49.616Z"
+      },
+      "instructions": "解释专业原理、取舍、适用条件时用kind=synthesis，引用本轮synthesisSources。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。兼容原文查询kind=knowledge。当前问题若问验收或完成状态，直接用“当前证据不足以支持该结论，仍需核对实际检查记录”等措辞回答判断。text中禁止复述完成词，包括否定句、引号与举例中的“已验收”“已经验收”“已批准”“已经批准”“已完成验收”；不要写“不能认定已经验收/不支持已经验收”，改为“当前证据不能支持该结论”。原文quote仍须逐字保留，不能改写。"
+    },
+    "currentUserMessage": {
+      "role": "user",
+      "content": [
+        {
+          "text": "{\"sourceMessageId\":\"20889\",\"text\":\"合成书房办公：屏幕眩光、通道和电气点位怎样一起核对？缺少点位图时，能只按户型定位并认定已批准吗？\"}",
+          "type": "text"
+        }
+      ]
+    },
+    "searchCallMessage": {
+      "role": "assistant",
+      "content": "",
+      "toolCalls": [
+        {
+          "id": "call_00_Sy5gulif7bpnC0ImsX3x0194",
+          "name": "search_knowledge",
+          "arguments": "{\"query\": \"书房办公 屏幕眩光 通道 电气点位 点位图 核对\"}"
+        }
+      ]
+    },
+    "toolCallId": "call_00_Sy5gulif7bpnC0ImsX3x0194",
+    "triggerMessageId": "20889"
+  },
+  "budget": {
+    "runId": "4242",
+    "modelTurn": 1,
+    "limit": 48000,
+    "focusedTextBytes": 48553,
+    "focusedLedger": [
+      {
+        "role": "system",
+        "bytes": 26032
+      },
+      {
+        "role": "user",
+        "bytes": 181
+      },
+      {
+        "role": "assistant",
+        "bytes": 0
+      },
+      {
+        "role": "tool",
+        "bytes": 22159
+      },
+      {
+        "role": "user",
+        "bytes": 181
+      }
+    ],
+    "note": "Ledger is measured from the original focused checkpoint. Tests reconstruct opaque byte-equivalent strings, not the original system prompt; the captured tool payload and source snapshots above remain literal. Observed second-turn state/order derives from persisted marker/attempt status and the frozen call order; no second model HTTP was observed. The event/attempt trace covers the rejected target turn only. The previous successful HTTP call has unknown cost, so its whole-run reconciliation must remain; it is not a rejection defect.",
+    "observed": {
+      "events": [
+        {
+          "kind": "attempt_created"
+        },
+        {
+          "kind": "provider_started"
+        },
+        {
+          "kind": "preparation_rejected",
+          "code": "agent_input_limit"
+        }
+      ],
+      "httpCalls": 0,
+      "terminalStatus": "indeterminate",
+      "reservationStatus": "reconciling",
+      "priorBillableUnsettled": true,
+      "providerAttempts": [
+        {
+          "status": "unknown",
+          "accepted": true
+        }
+      ]
+    }
+  }
+}

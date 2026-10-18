@@ -2,13 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, id, type ActorContext } from '../contracts';
+import { AssistantError, fail, fingerprint, id, key, principalKey, type ActorContext } from '../contracts';
 import { ConversationService, idempotent } from '../core/conversation';
 import { knowledgeManager, text, expected, type KnowledgeActor } from './service';
 import { readRetrievalDiagnostics } from './diagnostics';
 import { projectMessage, resolveEvidence, validatePreviewSnapshot } from './sources';
 import type { RetrievalDiagnostic } from './retrieval';
 import { checkKnowledgeEvaluation, type ExpectedSource, type KnowledgeExpectation } from './evaluation-check';
+import { evaluationBatchCases, type EvaluationBatchPreparation } from './evaluation-batch';
+import { knowledgeBatchCounts, knowledgeBatchStates, type KnowledgeBatchList, type KnowledgeBatchProgress,
+  type KnowledgeBatchProgressItem, type KnowledgeBatchState } from './operation-batch-view';
 
 const json=(value:unknown)=>JSON.stringify(value);
 type EvaluationSnapshot={question:string;title:string;expectation:KnowledgeExpectation;required:ExpectedSource[]};
@@ -58,19 +61,25 @@ export class KnowledgeOperations {
     }
     return required;
   }
+  private async publishedSources(tx:PostgresTransaction,documentIds:string[],settings:Row) {
+    const ids=[...new Set(documentIds.map(id))];if(!ids.length)return new Map<string,ExpectedSource>();
+    const current=await rows(tx,sql`select d.id::text document_id,v.id::text version_id,v.content_hash
+      from app.assistant_knowledge_documents d join app.assistant_knowledge_versions v
+      on v.enterprise_id=d.enterprise_id and v.id=d.published_version_id where d.enterprise_id=${this.manager.enterpriseId}
+      and d.id in (${sql.join(ids.map(value=>sql`${value}`),sql`,`)}) and d.status='active' and d.audience='customer_public'
+      and v.indexed_hash=v.content_hash and v.index_status='ready' and v.index_profile_id=${settings.active_index_profile_id}
+      and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`);
+    return new Map(current.map(source=>[String(source.document_id),{documentId:String(source.document_id),versionId:String(source.version_id),hash:String(source.content_hash)}]));
+  }
+  private requiredCurrent(required:ExpectedSource[],current:Map<string,ExpectedSource>) {
+    return required.every(source=>{const live=current.get(source.documentId);return live?.versionId===source.versionId&&live.hash===source.hash;});
+  }
   private async current(tx:PostgresTransaction,e:Row,settings:Row) {
     const c=await this.case(tx,String(e.case_id));
     if(Number(e.knowledge_epoch)!==Number(settings.knowledge_epoch)||Number(e.case_revision)!==Number(c.revision))return false;
-    // Epoch is the broad fence. Exact required-version/hash checks also reject corrupt or mismatched pointers.
-    for(const source of (e.snapshot as {required:ExpectedSource[]}).required) {
-      const v=await one(tx,sql`select v.id from app.assistant_knowledge_documents d join app.assistant_knowledge_versions v
-        on v.enterprise_id=d.enterprise_id and v.id=d.published_version_id where d.enterprise_id=${this.manager.enterpriseId}
-        and d.id=${source.documentId} and d.status='active' and d.audience='customer_public' and v.id=${source.versionId}
-        and v.content_hash=${source.hash} and v.indexed_hash=v.content_hash and v.index_status='ready'
-        and v.index_profile_id=${settings.active_index_profile_id} and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`);
-      if(!v)return false;
-    }
-    return true;
+    // Same exact publication/hash/profile/effective-time fence, loaded once for all required documents.
+    const required=(e.snapshot as EvaluationSnapshot).required;
+    return this.requiredCurrent(required,await this.publishedSources(tx,required.map(source=>source.documentId),settings));
   }
   async list(input:Row={}) {const p=page(input);return this.tx(async(tx,s)=>{
     const items=await rows(tx,sql`select * from app.assistant_knowledge_cases where enterprise_id=${this.manager.enterpriseId} and id<${p.before} order by id desc limit ${p.limit+1}`);
@@ -91,15 +100,103 @@ export class KnowledgeOperations {
         values(${this.manager.enterpriseId},${title},${question},${json(e)}::jsonb,${note},${this.manager.adminId},${this.manager.adminId}) returning *`);
     }return caseDto(c!,s.knowledge_epoch);
   }));}
+  private async reserveEvaluation(tx:PostgresTransaction,s:Row,c:Row) {
+    const e=c.expectation as KnowledgeExpectation,required=await this.sources(tx,e);
+    const snapshot={question:c.question,title:c.title,expectation:e,required};
+    const row=await one(tx,sql`insert into app.assistant_knowledge_evaluations(enterprise_id,case_id,case_revision,snapshot,knowledge_epoch,created_by,create_key,send_key)
+      values(${this.manager.enterpriseId},${String(c.id)},${Number(c.revision)},${json(snapshot)}::jsonb,
+      ${Number(s.knowledge_epoch)},${this.manager.adminId},${randomUUID()},${randomUUID()}) returning id`);
+    return {caseId:String(c.id),caseVersion:Number(c.version),caseRevision:Number(c.revision),evaluationId:String(row!.id),snapshotHash:fingerprint(snapshot)};
+  }
+  /** Persists original item keys without dispatching chat/model jobs. */
+  async prepareBatch(input:Row,requestKey:string):Promise<EvaluationBatchPreparation> {
+    if(Object.keys(input).some(k=>k!=='cases'))fail('invalid_message',422);
+    const cases=evaluationBatchCases(input.cases);
+    return this.tx(async(tx,s)=>idempotent(tx,this.actor,'knowledge-batch-prepare',requestKey,input,async()=>{
+      const n=await one(tx,sql`select count(*)::int n from app.assistant_knowledge_evaluations where enterprise_id=${this.manager.enterpriseId}`);
+      if(Number(n!.n)+cases.length>2000)fail('knowledge_evaluation_limit',422);
+      const profile=s.active_index_profile_id?await one(tx,sql`select id,configuration from app.assistant_knowledge_index_profiles
+        where enterprise_id=${this.manager.enterpriseId} and id=${String(s.active_index_profile_id)} and status='active'`):null;
+      if(!profile)fail('knowledge_not_ready');
+      const items=[];
+      for(const item of cases) {
+        const c=await this.case(tx,item.caseId);if(Number(c.version)!==item.expectedVersion)fail('version_conflict');
+        items.push(await this.reserveEvaluation(tx,s,c));
+      }
+      return {batchId:requestKey,enterpriseId:this.manager.enterpriseId,adminId:this.manager.adminId,
+        knowledgeEpoch:Number(s.knowledge_epoch),profileId:String(profile.id),profileHash:fingerprint(profile.configuration),policyVersion:Number(s.policy_version),items};
+    }),true) as Promise<EvaluationBatchPreparation>;
+  }
+  async batchHistory(input:Row={}):Promise<KnowledgeBatchList> {
+    const pagination=page(input);
+    return this.tx(async tx=>{
+      const items=await rows(tx,sql`select r.id::text,r.key,r.created_at,jsonb_array_length(r.result->'items') item_count,
+        r.result->>'knowledgeEpoch' knowledge_epoch from app.assistant_idempotency_records r
+        where r.enterprise_id=${this.manager.enterpriseId} and r.principal_key=${principalKey(this.actor)}
+        and r.operation='knowledge-batch-prepare' and r.id<${pagination.before} order by r.id desc limit ${pagination.limit+1}`);
+      return {scope:{...this.manager},items:items.slice(0,pagination.limit).map(row=>({batchId:String(row.key),
+        createdAt:new Date(row.created_at as string).toISOString(),count:Number(row.item_count),knowledgeEpoch:Number(row.knowledge_epoch)})),
+        nextCursor:items.length>pagination.limit?String(items[pagination.limit-1].id):null};
+    });
+  }
+  private async batchReceipt(tx:PostgresTransaction,batchId:string) {
+    const receipt=await one(tx,sql`select key,result,created_at from app.assistant_idempotency_records
+      where enterprise_id=${this.manager.enterpriseId} and principal_key=${principalKey(this.actor)}
+      and operation='knowledge-batch-prepare' and key=${key(batchId)}`);
+    if(!receipt)fail('assistant_resource_not_found',404);
+    const preparation=receipt.result as EvaluationBatchPreparation;
+    if(!preparation||preparation.batchId!==batchId||preparation.enterpriseId!==this.manager.enterpriseId||preparation.adminId!==this.manager.adminId
+      ||!Array.isArray(preparation.items)||!preparation.items.length||preparation.items.length>50)fail('assistant_resource_not_found',404);
+    for(const item of preparation.items){id(item.caseId);id(item.evaluationId);expected(item.caseVersion);expected(item.caseRevision);}
+    if(new Set(preparation.items.map(item=>item.evaluationId)).size!==preparation.items.length)fail('assistant_resource_not_found',404);
+    return {preparation,createdAt:new Date(receipt.created_at as string).toISOString()};
+  }
+  /** Metadata only. The original read endpoint remains the answer/citation/review authority. */
+  async readBatch(batchId:string):Promise<KnowledgeBatchProgress> {
+    return this.tx(async(tx,settings)=>{
+      const {preparation,createdAt}=await this.batchReceipt(tx,batchId);
+      const evaluations=await rows(tx,sql`select e.*,c.title current_title,c.revision current_revision,r.status run_status,
+        exists(select 1 from app.assistant_quota_reservations q where q.enterprise_id=e.enterprise_id and q.run_id=e.run_id and q.status='reconciling') awaiting_reconciliation
+        from app.assistant_knowledge_evaluations e left join app.assistant_knowledge_cases c on c.enterprise_id=e.enterprise_id and c.id=e.case_id
+        left join app.assistant_runs r on r.enterprise_id=e.enterprise_id and r.id=e.run_id and r.conversation_id=e.conversation_id
+        where e.enterprise_id=${this.manager.enterpriseId} and e.created_by=${this.manager.adminId}
+        and e.id in (${sql.join(preparation.items.map(item=>sql`${item.evaluationId}`),sql`,`)})`);
+      const byId=new Map(evaluations.map(e=>[String(e.id),e]));
+      const required=evaluations.flatMap(e=>(e.snapshot as EvaluationSnapshot).required);
+      const current=await this.publishedSources(tx,required.map(source=>source.documentId),settings);
+      const profile=settings.active_index_profile_id?await one(tx,sql`select configuration from app.assistant_knowledge_index_profiles
+        where enterprise_id=${this.manager.enterpriseId} and id=${String(settings.active_index_profile_id)} and status='active'`):null;
+      const contextChanged=preparation.knowledgeEpoch!==Number(settings.knowledge_epoch)||preparation.profileId!==String(settings.active_index_profile_id)
+        ||!profile||preparation.profileHash!==fingerprint(profile.configuration)||preparation.policyVersion!==Number(settings.policy_version);
+      const readable=new Set<string>(),repo=new AssistantRepository(tx,this.actor);
+      for(const conversationId of new Set(evaluations.filter(e=>e.conversation_id).map(e=>String(e.conversation_id)))){
+        try{await repo.conversation(conversationId);readable.add(conversationId);}
+        catch(error){if(!(error instanceof AssistantError)||error.code!=='assistant_resource_not_found')throw error;}
+      }
+      const items:KnowledgeBatchProgressItem[]=preparation.items.map(item=>{
+        const e=byId.get(item.evaluationId);
+        const scopeValid=Boolean(e&&String(e.case_id)===item.caseId&&Number(e.case_revision)===item.caseRevision
+          &&fingerprint(e.snapshot)===item.snapshotHash&&(!e.conversation_id||readable.has(String(e.conversation_id))));
+        const sourcesValid=scopeValid&&!contextChanged&&Number(e!.case_revision)===Number(e!.current_revision)
+          &&Number(e!.knowledge_epoch)===Number(settings.knowledge_epoch)&&this.requiredCurrent((e!.snapshot as EvaluationSnapshot).required,current);
+        let status:KnowledgeBatchState=!scopeValid||!e?.current_revision?'unavailable':!sourcesValid?'source_changed':e.run_id?String(e.run_status) as KnowledgeBatchState:'dispatch_pending';
+        if(!knowledgeBatchStates.includes(status))status='unavailable';
+        const available=scopeValid&&sourcesValid&&status!=='unavailable';
+        return {caseId:item.caseId,evaluationId:item.evaluationId,caseRevision:item.caseRevision,currentRevision:e?.current_revision?Number(e.current_revision):null,
+          title:e?.current_title?String(e.current_title):'问题不可用',available,status,runId:available&&e?.run_id?String(e.run_id):null,
+          dispatchState:available?(e?.run_id?'linked':e?.conversation_id?'receipt_pending':'not_started'):null,
+          awaitingReconciliation:available&&Boolean(e?.awaiting_reconciliation)};
+      });
+      await knowledgeManager(tx,this.manager);
+      return {scope:{...this.manager},batchId,createdAt,contextChanged,knowledgeEpoch:Number(settings.knowledge_epoch),preparedEpoch:preparation.knowledgeEpoch,
+        items,counts:knowledgeBatchCounts(items),contentIncluded:false,semanticCorrectness:'requires_review',costMicros:null};
+    });
+  }
   async start(caseId:string,input:Row,requestKey:string) {
     const created=await this.tx(async(tx,s)=>idempotent(tx,this.actor,'knowledge-evaluate:'+caseId,requestKey,input,async()=>{
       const c=await this.case(tx,caseId);if(Number(c.version)!==expected(input.expectedVersion))fail('version_conflict');
       const n=await one(tx,sql`select count(*)::int n from app.assistant_knowledge_evaluations where enterprise_id=${this.manager.enterpriseId}`);if(Number(n!.n)>=2000)fail('knowledge_evaluation_limit',422);
-      const e=c.expectation as KnowledgeExpectation,required=await this.sources(tx,e);
-      const row=await one(tx,sql`insert into app.assistant_knowledge_evaluations(enterprise_id,case_id,case_revision,snapshot,knowledge_epoch,created_by,create_key,send_key)
-        values(${this.manager.enterpriseId},${caseId},${Number(c.revision)},${json({question:c.question,title:c.title,expectation:e,required})}::jsonb,
-        ${Number(s.knowledge_epoch)},${this.manager.adminId},${randomUUID()},${randomUUID()}) returning id`);
-      return {evaluationId:String(row!.id)};
+      const prepared=await this.reserveEvaluation(tx,s,c);return {evaluationId:prepared.evaluationId};
     }),true);
     // A crash at either boundary resumes with the same create/send keys, never a parallel model/usage pipeline.
     await this.resume(String(created.evaluationId));return {evaluationId:String(created.evaluationId)};
@@ -114,6 +211,20 @@ export class KnowledgeOperations {
     const sent=await chat.send(String(c.id),String(e.send_key),{version:1,blocks:[{type:'text',text:String(snapshot.question)}]});
     await this.tx(async tx=>{await this.evaluation(tx,evaluationId);await tx.execute(sql`update app.assistant_knowledge_evaluations set run_id=${String(sent.runId)} where enterprise_id=${this.manager.enterpriseId} and id=${evaluationId}`);});
     return {evaluationId,runId:String(sent.runId)};
+  }
+  /** Only an already linked private preview run; this creates no pending-item cancellation fence. */
+  async cancel(evaluationId:string,requestKey:string) {
+    const e=await this.tx(async tx=>{
+      const row=await this.evaluation(tx,evaluationId);
+      if(!row.run_id||!row.conversation_id)fail('context_changed');
+      await new AssistantRepository(tx,this.actor).conversation(String(row.conversation_id));
+      if(!await one(tx,sql`select id from app.assistant_runs where enterprise_id=${this.manager.enterpriseId}
+        and id=${String(row.run_id)} and conversation_id=${String(row.conversation_id)}`))fail('assistant_resource_not_found',404);
+      return row;
+    });
+    // The shared service rechecks current identity/participation and owns cancellation, jobs and quota reconciliation.
+    const run=await new ConversationService(this.actor).run(String(e.run_id),'cancel',requestKey);
+    return {evaluationId,runId:String(e.run_id),status:run.status};
   }
   async history(caseId:string,input:Row={}) {const p=page(input);return this.tx(async tx=>{
     await this.case(tx,caseId);const items=await rows(tx,sql`select e.id::text,e.case_revision,e.created_at,e.run_id::text from app.assistant_knowledge_evaluations e

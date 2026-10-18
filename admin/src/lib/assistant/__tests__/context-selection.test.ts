@@ -16,7 +16,7 @@ test('K03/04 document coverage retains a second required document and leaves its
   const first = Array.from({length:6},(_,i)=>({id:String(i),document_id:'1',text:'original '+i,locator:{row:i}}));
   const other = {id:'9',document_id:'2',text:'other original',locator:{row:1}};
   const selected = selectContextCandidates([...first,other],new Map());
-  assert.equal(selected[2],other); assert.equal(selected.length,5); assert.equal(selected[0],first[0]);
+  assert.ok(selected.includes(other)); assert.equal(selected.length,5); assert.equal(selected[0],first[0]);
 });
 test('K04 incompatible rules remain available to explain a mismatch when there is room', () => {
   const ranked=[{id:'1',document_id:'1'}];

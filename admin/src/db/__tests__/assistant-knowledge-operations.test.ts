@@ -13,6 +13,7 @@ import {claimKnowledgeJob,runKnowledgeJob} from '@/lib/assistant/knowledge/index
 import {claimJob} from '@/lib/assistant/infrastructure/job-queue';
 import {processAnswer} from '@/lib/assistant/infrastructure/answer-worker';
 import type {TextModelGateway} from '@/lib/assistant/contracts';
+import {fingerprint} from '@/lib/assistant/contracts';
 const prefix='synthetic-kb4-'+randomUUID(),tenants:string[]=[],admins:string[]=[];
 let eid:string,aid:string,other:string,ops:KnowledgeOperations,knowledge:KnowledgeService,published:Row,internal:Row,saved:Row,firstId:string;
 const body='合成运营样例：书房靠窗办公先核对屏幕眩光和通道，插座位置需要设计师核对点位图，不能据此认定已批准。';
@@ -34,7 +35,30 @@ before(async()=>{
     for(let i=0;i<2;i++)admins.push(String((await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password) values(${eid},${prefix+i},'unusable-synthetic','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!.id));aid=admins[0];other=admins[1];
   });ops=new KnowledgeOperations(manager());knowledge=new KnowledgeService(manager());published=await publish('customer_public');internal=await publish('staff_internal');
 });
-after(async()=>{try{await withPlatformTransaction(async tx=>{for(const t of tenants){await deleteAssistantData(tx,BigInt(t));await tx.execute(sql`delete from app.admin_users where enterprise_id=${t}`);await tx.execute(sql`delete from app.enterprises where id=${t}`);}for(const a of admins)await tx.execute(sql`delete from app.admin_users where id=${a}`);});}finally{await closePostgresPool();}});
+after(async()=>{
+  try{
+    try{
+      const audit=await withPlatformTransaction(async tx=>{
+        const items=[];
+        for(const t of tenants)items.push({enterpriseId:t,
+          indexAttempts:await rows(tx,sql`select operation,status,count(*)::int calls,sum(input_tokens)::text known_input_tokens,
+            count(*) filter(where input_tokens is null)::int unknown_input_calls from app.assistant_knowledge_attempts
+            where enterprise_id=${t} group by operation,status order by operation,status`),
+          queryEmbedding:await rows(tx,sql`select measurement_kind,count(*)::int calls,sum(input_tokens)::text known_input_tokens,
+            count(*) filter(where input_tokens is null)::int unknown_input_calls from app.assistant_usage_records
+            where enterprise_id=${t} and category='query_embedding' group by measurement_kind order by measurement_kind`),
+          reservations:await rows(tx,sql`select status,count(*)::int count from app.assistant_quota_reservations
+            where enterprise_id=${t} group by status order by status`),
+        });
+        return items;
+      });
+      // Complete persisted call accounting before fixture cleanup; chunk/tokenization is not Embedding.
+      console.log('KB4_SERVICE_AUDIT '+JSON.stringify({fixturePrefix:prefix,tenantIds:tenants,adminIds:admins,items:audit,costMicros:null}));
+    }finally{
+      await withPlatformTransaction(async tx=>{for(const t of tenants){await deleteAssistantData(tx,BigInt(t));await tx.execute(sql`delete from app.admin_users where enterprise_id=${t}`);await tx.execute(sql`delete from app.enterprises where id=${t}`);}for(const a of admins)await tx.execute(sql`delete from app.admin_users where id=${a}`);});
+    }
+  }finally{await closePostgresPool();}
+});
 test('K11 curated question persists with predeclared required/forbidden sources, conflict and tenant guards',async()=>{
   const input={title:'测试专用 · 办公同题',question,expectation:{kind:'grounded',requiredDocumentIds:[published.documentId],forbiddenDocumentIds:[internal.documentId]},gapNote:'核对屏幕与通道；不自动批准点位'},key=randomUUID();
   saved=await ops.save(input,key);assert.deepEqual(JSON.parse(JSON.stringify(await ops.save(input,key))),JSON.parse(JSON.stringify(saved)));assert.equal((await ops.detail(String(saved.id))).revision,1);
@@ -118,4 +142,77 @@ test('K10/11 history sorts numeric identities across digit widths and keeps the 
     from app.assistant_knowledge_evaluations where enterprise_id=${eid} and id=${firstId}`);});
   const first=await ops.history(String(saved.id),{limit:1});assert.equal(first.items[0].id,higher);assert.equal(first.nextCursor,higher);
   const next=await ops.history(String(saved.id),{limit:1,beforeId:first.nextCursor});assert.equal(next.items[0].id,lower);
+});
+
+test('KB4 batch preparation persists ordered private item identities atomically without dispatching',async()=>{
+  const cases=[];
+  for(let i=0;i<2;i++)cases.push(await ops.save({title:'测试专用批量准备 '+i,question:question+' 合成批量 '+i,
+    expectation:{kind:'missing',requiredDocumentIds:[],forbiddenDocumentIds:[]}},randomUUID()));
+  const input={cases:cases.map(c=>({caseId:String(c.id),expectedVersion:Number(c.version)}))},key=randomUUID();
+  const counts=()=>withTenantTransaction(eid,async tx=>({
+    evaluations:(await one(tx,sql`select count(*)::int n from app.assistant_knowledge_evaluations where enterprise_id=${eid}`))!.n,
+    runs:(await one(tx,sql`select count(*)::int n from app.assistant_runs where enterprise_id=${eid}`))!.n,
+    jobs:(await one(tx,sql`select count(*)::int n from app.assistant_jobs where enterprise_id=${eid}`))!.n,
+    reservations:(await one(tx,sql`select count(*)::int n from app.assistant_quota_reservations where enterprise_id=${eid}`))!.n,
+  }));
+  const before=await counts();const a=await ops.prepareBatch(input,key);
+  const duplicates=await Promise.all([ops.prepareBatch(input,key),ops.prepareBatch(input,key)]);
+  assert.deepEqual(duplicates,[a,a]);assert.deepEqual(a.items.map(i=>i.caseId),input.cases.map(c=>c.caseId));
+  assert.equal(a.adminId,aid);assert.equal(a.enterpriseId,eid);assert.ok(a.profileId);assert.match(a.profileHash,/^[a-f0-9]{64}$/);
+  const after=await counts();assert.equal(Number(after.evaluations),Number(before.evaluations)+2);
+  for(const k of ['runs','jobs','reservations'] as const)assert.equal(after[k],before[k]);
+  for(const item of a.items){
+    const detail=await ops.read(item.evaluationId);assert.equal(detail.status,'dispatch_pending');assert.equal(detail.available,true);
+    assert.equal(item.snapshotHash,fingerprint(detail.snapshot));assert.equal(item.caseRevision,1);
+    await assert.rejects(new KnowledgeOperations({enterpriseId:eid,adminId:other}).read(item.evaluationId),/assistant_capability_forbidden/);
+  }
+  await assert.rejects(ops.prepareBatch({cases:input.cases.slice(0,1)},key),/idempotency_conflict/);
+});
+
+test('KB4 batch version/source failures roll back the complete receipt and every prepared item',async()=>{
+  const c=await ops.save({title:'测试专用批量原子性',question,expectation:{kind:'missing',requiredDocumentIds:[],forbiddenDocumentIds:[]}},randomUUID());
+  const second=await ops.save({title:'测试专用批量未发布反例',question,expectation:{kind:'grounded',requiredDocumentIds:[internal.documentId],forbiddenDocumentIds:[]}},randomUUID());
+  const count=()=>withTenantTransaction(eid,tx=>one(tx,sql`select count(*)::int n from app.assistant_knowledge_evaluations where enterprise_id=${eid}`));
+  const before=Number((await count())!.n),key=randomUUID();
+  await assert.rejects(ops.prepareBatch({cases:[{caseId:String(c.id),expectedVersion:1},{caseId:String(second.id),expectedVersion:2}]},key),/version_conflict/);
+  assert.equal(Number((await count())!.n),before);
+  await assert.rejects(ops.prepareBatch({cases:[{caseId:String(c.id),expectedVersion:1},{caseId:String(second.id),expectedVersion:1}]},key),/knowledge_not_ready/);
+  assert.equal(Number((await count())!.n),before);
+  const receipts=await withTenantTransaction(eid,tx=>rows(tx,sql`select id from app.assistant_idempotency_records where enterprise_id=${eid} and operation='knowledge-batch-prepare' and key=${key}`));
+  assert.equal(receipts.length,0);
+  for(const input of [{cases:[]},{cases:Array(51).fill({caseId:String(c.id),expectedVersion:1})},
+    {cases:[{caseId:String(c.id),expectedVersion:1},{caseId:String(c.id),expectedVersion:1}]},
+    {cases:[{caseId:String(c.id),expectedVersion:1}],tenantId:tenants[1]},
+    {cases:[{caseId:String(c.id),expectedVersion:1,question:'不能替换已保存问题'}]}])await assert.rejects(ops.prepareBatch(input,randomUUID()),/invalid_message/);
+  assert.equal(Number((await count())!.n),before);
+});
+
+test('KB4 original preparation survives reentry while revised cases and epochs invalidate dispatch',async()=>{
+  let c=await ops.save({title:'测试专用批量重进',question,expectation:{kind:'missing',requiredDocumentIds:[],forbiddenDocumentIds:[]}},randomUUID());
+  const input={cases:[{caseId:String(c.id),expectedVersion:Number(c.version)}]},key=randomUUID(),first=await ops.prepareBatch(input,key);
+  c=await ops.save({title:c.title,question:question+' 修改问法',expectation:c.expectation,expectedVersion:c.version},randomUUID(),String(c.id));
+  assert.deepEqual(await ops.prepareBatch(input,key),first);
+  const hidden=await ops.read(first.items[0].evaluationId);assert.equal(hidden.available,false);assert.ok(!('snapshot' in hidden));
+  await assert.rejects(ops.resume(first.items[0].evaluationId),/context_changed/);
+  await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_enterprise_settings set knowledge_epoch=knowledge_epoch+1 where enterprise_id=${eid}`));
+  const next=await ops.prepareBatch({cases:[{caseId:String(c.id),expectedVersion:Number(c.version)}]},randomUUID());
+  assert.notEqual(next.items[0].evaluationId,first.items[0].evaluationId);assert.equal(next.items[0].caseRevision,2);
+  assert.ok(next.knowledgeEpoch>first.knowledgeEpoch);assert.notEqual(next.items[0].snapshotHash,first.items[0].snapshotHash);
+});
+
+test('KB4 batch selected-enterprise and private-owner boundaries preserve all three manager roles',async()=>{
+  const c=await ops.save({title:'测试专用批量权限',question,expectation:{kind:'missing',requiredDocumentIds:[],forbiddenDocumentIds:[]}},randomUUID());
+  const input={cases:[{caseId:String(c.id),expectedVersion:Number(c.version)}]};
+  for(const role of ['enterprise_admin','admin','super_admin']){
+    const permissions=role==='enterprise_admin'?sql`ARRAY['assistant-knowledge']::text[]`:sql`ARRAY[]::text[]`;
+    const a=String((await withPlatformTransaction(tx=>one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password)
+      values(${role==='enterprise_admin'?eid:null},${prefix+'batch-'+role},'unusable-synthetic',${role},'active',${permissions},false) returning id`)))!.id);admins.push(a);
+    const service=new KnowledgeOperations({enterpriseId:eid,adminId:a}),batch=await service.prepareBatch(input,randomUUID());assert.equal(batch.items.length,1);
+    await assert.rejects(ops.read(batch.items[0].evaluationId),/assistant_resource_not_found/);
+    await withPlatformTransaction(tx=>tx.execute(sql`update app.admin_users set must_change_password=true where id=${a}`));
+    await assert.rejects(service.prepareBatch(input,randomUUID()),/assistant_capability_forbidden/);
+    await withPlatformTransaction(tx=>tx.execute(sql`update app.admin_users set must_change_password=false,status='disabled' where id=${a}`));
+    await assert.rejects(service.prepareBatch(input,randomUUID()),/assistant_capability_forbidden/);
+  }
+  await assert.rejects(new KnowledgeOperations({enterpriseId:tenants[1],adminId:aid}).prepareBatch(input,randomUUID()),/assistant_capability_forbidden/);
 });

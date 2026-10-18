@@ -5,6 +5,7 @@ import { crc32 } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 const VERSION = 'xiaok-file-v1';
+const DOCX_VERSION = 'xiaok-file-v1.1';
 const bad = code => { throw new Error(code); };
 const WORD = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 function xml(bytes) {
@@ -25,6 +26,17 @@ function xml(bytes) {
 const children = (n, name) => n.children.filter(c => typeof c !== 'string' && c.name === name && c.uri === WORD);
 function all(n, name) { return n.children.flatMap(c => typeof c === 'string' ? [] : [...(c.name === name && c.uri === WORD ? [c] : []), ...all(c, name)]); }
 const value = n => n?.attrs.val;
+function rowHeader(row) {
+  // Read current row properties only, never historical trPrChange descendants.
+  const markers = children(row, 'trPr').flatMap(properties => children(properties, 'tblHeader'));
+  if (!markers.length) return false;
+  if (markers.length > 1) bad('knowledge_file_invalid');
+  const flag = value(markers[0]);
+  // on/off are the format values; accept true/false and 1/0 for compatibility.
+  if (flag === undefined || ['on', 'true', '1'].includes(flag)) return true;
+  if (['off', 'false', '0'].includes(flag)) return false;
+  bad('knowledge_file_invalid');
+}
 function plain(n) { return n.children.map(c => typeof c === 'string' ? c : plain(c)).join(''); }
 function paragraph(n) {
   function read(node) {
@@ -102,8 +114,10 @@ async function docx(bytes) {
         });
         return { kind: 'table_row', table, row: index + 1, cells, text: cells.map(c => c.text).join(' | '), notes: notes(row) };
       });
-      const headers = parsedRows.filter((_, j) => j === 0 || all(rows[j], 'tblHeader').length).map(r => r.text);
-      if (!all(rows[0], 'tblHeader').length) warnings.push('table_first_row_header_requires_review');
+      const markedHeaders = rows.map(rowHeader); let headerCount = 0;
+      while (markedHeaders[headerCount]) headerCount++;
+      const headers = parsedRows.slice(0, Math.max(1, headerCount)).map(r => r.text);
+      if (!headerCount) warnings.push('table_first_row_header_requires_review');
       const following = nodes[i + 1]?.name === 'p' ? paragraph(nodes[i + 1]) : '';
       for (const row of parsedRows) if (row.text.trim()) push({ ...row, headers, notes: [...row.notes, ...(/^(?:注[：:]|说明[：:]|例外|前提)/u.test(following) ? [following] : [])] });
     } else if (!['sectPr','bookmarkStart','bookmarkEnd'].includes(n.name)) {
@@ -112,7 +126,7 @@ async function docx(bytes) {
     }
   }
   if (!blocks.length) bad('knowledge_file_no_text');
-  return { parser: VERSION + ':docx:yauzl3.4.0:saxes6.0.0', blocks, warnings: [...new Set(warnings)] };
+  return { parser: DOCX_VERSION + ':docx:yauzl3.4.0:saxes6.0.0', blocks, warnings: [...new Set(warnings)] };
 }
 async function pdf(bytes) {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
