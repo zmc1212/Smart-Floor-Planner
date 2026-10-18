@@ -1,57 +1,57 @@
-# 小客交接：KB-3 实况综合检索限定闭环，接续 KB-4
+# 小客交接：KB-4 知识运营核心限定闭环
 
-2026-10-18，本批按用户最新双语企业知识计划完成KB-3限定实现与对应固定场景自动验收，**完整专业客服、P5和全PPT仍Limited，不是发布就绪或生产批准**。分支`codex/xiaok-public-site-lifecycle`；功能提交`034c26ba5d4d14d01dee77d8b7f8f3f72e46fb68`，交接单独提交，最终HEAD/上游/远端核验见`tmp/xiaok-kb3/git-final.json`。未合并main、强推或部署。上一轮KB-2功能`0c519236`、交接`a1b47404`保留；用户最新双语roadmap及企业知识计划仍保留在工作区、未纳入本批提交。
+2026-10-18，接续用户最新双语计划完成KB-4运营核心；**整体仍Limited，不代表全格式/影子重建、完整专业客服、全PPT或发布就绪**。分支`codex/xiaok-public-site-lifecycle`，基点`f2651bd6781adae6ad6abe1622d497ba3b0f11c9`，功能提交`baf557f8569de4f2852f438e162966099bc93577`；交接另一次提交，最终HEAD/上游/GitHub核验见`tmp/xiaok-kb4/git-final.json`。普通推送，无合并main、强推或部署。
 
-## 本批行为与依据
+## 本批交付与依据
 
-- 先核实AGENTS/管理员嵌套指令、原模块/合同、双语最新计划、依赖及原PPT。PPT SHA256 `9221a83057fb1b2aa691ecde6cf60a0aa2dfb0d352aad4b6eab2cb6f15209af4`；17/18实际节点及检查安排、19铺贴前沟通、23底盒/需求/图纸、38缺失/冲突交团队核实，6/15自然追问。书房摆放、水电/防水政策都是明确合成验收资料，**不是PPT原文中的工程标准**。QA04/XK03本批仅原话、文字记录及正式主v4墙图片段，不宣称识图或完整点位图匹配。
-- 原共享`retrieveKnowledge`升级`professional-hybrid-v3`：硬授权/相关度之后、5片上限之前优先当前适用或未知条件、将明确不适用后移，首轮每文档最多2片再补齐。原1024维Embedding、每路30候选、RRF60、相似度0.3与最终5片保持；诊断增加selectionRank，未降低门槛、安装外部重排或另建索引/事实库。
-- v37实模暴露模型词遗漏“书房”，必需来源相似度0.297而缺失；同夹具/真实Embedding探针保留原问题后0.378。v38将服务端本次原问题和模型检索词合成一次有界查询（600/1000 UTF-16长度，不拆Unicode字符），不增加Embedding调用，不把提问当项目事实/权限。原后台试问继续直接使用原问题、共享相同检索实现。
-- `agent/bound-context.ts`复用原业务适配器，同轮持久刷新本咨询材料和实际施工节点。短追问仅查知识也能带入当前节点。`synthesis.bound_construction.v1`沿原run/短事务/租约/恢复；恢复先重验旧检查点，已供模型的来源变化即context_changed。阶段、需求、v4主户型、已发布记录、权限/版本/epoch在继续生成、提交、历史、引用及人工接续中继续重验。
-- prompt`xiaok-renovation-v38`区分企业依据、本人事实、通用建议和未知；现场记录仅限房间/对象/版本当时范围，阶段不等于检查结果，缺记录不证明现实未检查/其他部位不能检查。正式费用、工期、验收、批准与人工边界不变，不自动建处理事项。
-- 原逐字引文守卫保持，工具增加有界原文复制提示。原一次格式修复扩展到已知获权的普通知识/现场引用，并提供同源copyExactQuote；只允许final_response、原轮数/截止/用量，结果与修复次数持久化。未知来源、正式承诺、无文件数值错误、来源变化及未知调用不修复；不是自动改原文或放宽引用。
-- 发布回归查到数据库比应用快约5.4秒；替换版本的effective_from就绪检查改为数据库now，与检索一致，真正未来替换仍拒绝。显式模拟应用钟落后的定向及整组回归通过，无迁移或已应用SQL改写。
-- 维护中Dify检索节点、Haystack过滤测试、LangGraph工具/恢复测试的原始链接和采用决定在[双语二期合同](./xiaok-assistant-phase-2.zh-CN.md)。保留现有框架与服务，未新建凭据、扩大授权或向新外部服务传资料。
+- 核对根/admin指令、双语模块/二期合同、最新双语知识计划、路线图、依赖及原PPT；本检出及祖先目录不存在`.agents/skills`。PPT SHA256仍`9221a83057fb1b2aa691ecde6cf60a0aa2dfb0d352aad4b6eab2cb6f15209af4`。5/6/15的自然提问，23/38的缺资料/冲突及团队核实作为本批服务依据；运营后台设计源仍为双语Admin UI合同和既有Ant Design/Admin Pro，不冒充PPT新增看板。办公规则均为合成验收资料，不是PPT工程标准。
+- 原`/assistant-knowledge`新增「问题集与健康」：企业共享整理固定问法、应有据/应缺依据、各最多5份必需/禁止文档、缺口备注；维护修订及版本冲突。每企业100题/2,000次执行，列表有界游标，来源选项最多200份；一次操作执行一道题，未实现批量调度或证明更大容量。
+- 每次回归固定问题修订、epoch、当前发布必需版本ID/hash，只用客户公开受众、无草稿，沿本人原预览/Worker/额度/计量。create/send持久键覆盖关页、并发、丢包及发送后崩溃；`dispatch_pending`表示执行回执待核对，不宣称尚未调用。恢复继续原run，不另建模型/任务权威。问题共享不开放他人私有预览；不自动复制私人咨询、项目事实或创建施工事项。
+- 实际召回、入选、引用、禁止来源和生成错误分开。索引未就绪/诊断不完整不能当“预期缺资料”通过；结构通过也不代表专业语义正确。管理者明确备注可保留缺口/核对本版，状态写入校验版本。知识/问题变化收起旧回答、诊断与核对投影；知识变化后已核对缺口待复验。回读原outputMessageId，不依赖最新聊天分页；历史按数值ID排序，跨位数游标不丢精度。
+- 健康展示真实解析/索引任务、过期租约、当前profile/epoch、30天attempt、已知输入token小计与未知次数；profile仅返回所需元数据，不带凭据。费用未知保持null。聊天用量沿原独立授权和UsageService，索引单列，不扩大平台管理者的用量/费用核对权限。诊断不再误写manual-only；支持正文/FAQ/DOCX/文字PDF，扫描OCR、复杂PDF表格、XLSX/旧格式、影子profile切换/回滚仍按实际材料接续。
+- 真实C01审阅发现原正向资料尾注会在缺房屋档案时列“正式户型与现场资料”。现只按实际返回的原话/正式户型/发布记录类别组装尾注，空材料不追加正向尾注；缺项快照、引用、旧业务授权仍保留。不改Mini WXML/Less/插画/导航或prompt v38，复用批准C01/C02/C05/U01的数据状态。旧历史消息未批量改写。
+- `0087_assistant_knowledge_operations.sql`新增两张强制RLS表、租户复合FK、管理者引用保护及不可变评测快照；企业清理已先删除两表。新API位于`/api/assistant/knowledge/operations`：cases列表/创建/详情/编辑、case evaluations历史/执行、evaluation详情/resume/review及health，响应no-store。原selected-enterprise三类管理者继承及实时身份/受众/参与者边界不变。
 
-## 最终验收与证据
+## 执行验收与计量
 
-主证据`tmp/xiaok-kb3/acceptance-summary.json`、`semantic-review.json`、`native-driver.json`、`native.json`与对应日志。实模使用现有DeepSeek/deepseek-flash、既有Qwen Embedding、已批准开发库5432、真实localhost:3006 HTTP及既有Worker；工程测试的模型为确定性注入，两者分别登记。全部本批资料和项目是合成样例，不是客户业务资料。
+主证据：`tmp/xiaok-kb4/acceptance-summary.json`、`semantic-review.json`、`development-audit.json`、`native.json`、`native-driver.json`。工程服务用真实隔离数据库/Embedding及确定性注入模型；下表实模另走开发库、真实HTTP/Worker和既有`openai_compatible / deepseek-flash`，两者不混算。
 
-| 执行检查 | 最终结果 |
+| 检查 | 最终结果 |
 | --- | --- |
-| 配置实模固定主线 | 12/12；run 349,351,353,354,355,356,357,358,359,360,361,362。办公/追问/水电/防水/缺点位图各两轮，再对同一项目真实推进到防水后同题两轮；逐条独立阅读持久回答和来源，必要来源均真实引用，非只看脚本passed |
-| Stable原生 | 10/10功能检查，真实模型run 350,352；同项目水电→防水同题、引用面板、历史重进、阶段失效、来源撤回；不是静态页面或模拟响应 |
-| 单元 | 18/18；context-selection/synthesis/source-file兼容，unit.log |
-| 隔离服务核心 | 21/21；真实隔离数据库/Embedding，确定性模型，含阶段刷新/在途变化/跨客户与租户/撤回/接管/一次修复；service.log |
-| 修复定向 / 发布时钟定向 | 各1/1；repair.log、version.log，已包含在相关整组，不额外叠加总数 |
-| 知识/文件/回答/平台回归 | 35通过/4显式跳过/0失败；regression.log。最初时钟失败单独保留，不混为通过 |
-| 既有Agent/材料回归 | 18通过/8显式跳过/0失败；synthesis.log。跳过的实模不计通过，本批另跑真实配置 |
-| Mini助手专项 | 73/73，mini.log；不是全量Mini测试 |
-| Lint / 类型 | lint0错误/30既有警告；同范围source-only363→363，新增0/移除0，生成Next声明双方排除；不是全量tsc通过 |
+| 隔离运营核心 | 10/10；包含租户/本人预览、三类管理者、禁用/改密、真实索引/发布、冲突、同键并发、原回执恢复、长聊天精确投影、撤回、未就绪索引反例及18/19位数值游标；service.log |
+| 单元 | 14/14；含缺项/部分/完整材料来源尾注、召回/入选/引用/版本/缺资料预期分离，unit.log |
+| 知识/文件/权限/用量/运维回归 | 39通过/2显式跳过/0失败，regression.log；不是将跳过算通过 |
+| Agent/材料/综合回归 | 30通过/8显式跳过/0失败，synthesis.log；含跨客户/租户、阶段/图纸更新、在途撤回、接管与参与者移出 |
+| Mini助手专项 | 73/73，mini.log；不是全小程序套件 |
+| 配置实模管理端 | 同一保存问题修订前后各2次，共4/4原摘录预览；run371/372/377/378，case4，必需/禁止来源和版本回读通过；不冒充客户Agent语义验收 |
+| 配置实模客户Agent | 修订前后各2轮，4/4；run374/375/379/380。逐条独立读持久回答及原引文，必要有效版本真实引用，建议/未知分开，无点位批准/实际尺寸推定 |
+| Stable原生 | 10/10功能步骤、真实Agent run373/376；同题知识版本167→170、真实输入、原来源片、重进及撤回失效；native.json |
+| Lint/类型/构建 | 全量lint0错误/30既有警告，最终触及文件定向lint0；同一source-only程序287→287，新增/移除0，双方排除生成Next声明。隔离Webpack编译/追踪通过；完整生产构建仍被既有AiDesignerLegacyPage非法页面导出阻断，不称构建通过 |
 
-最终v38主线24次模型调用、观测token 186469，查询Embedding 12次/输入token 852；原生4次模型调用、token 32226，Embedding 2次/输入token 135。本次最终0次受限引用修复；此前失败尝试另记。计量只涵盖审计的问答run，**不包括夹具现场草稿生成、入库索引和诊断探针**；费用未知为null，不编零费用/成功率/P50/P95。逐轮耗时见summary，不把原生input/tap的feedbackMs当首token延迟。
+最终审计10个问答run有16次成功供应商调用：客户主线8次、实测43,746 text tokens；原生4次、21,534 tokens；预览4次text用量为unavailable/null，不能记零。10次查询Embedding共610输入tokens（客户276、原生138、预览196）；费用均未知/null。计量不含索引、诊断和早期失败尝试，不计算小样本P50/P95或专业质量百分比；elapsedMs含轮询，原生feedbackMs不是首token时延。
 
-最终主线夹具企业2458/owner5042，原生企业2459/owner5043；项目/客户/文档版本及精确run映射见summary。两个脚本finally均关闭合成开关和账号、提升客户context_version，active_staff/active_runs均0；没有预约、正式处理/批准等处理副作用。原生内存会话/传输已恢复，transport.active=false，回原首页并断开。
+最终主线企业2464/owner5048/user3325，文档166、版本166→171、case4；原生企业2465/owner5049/user3326，文档167、版本167→170。包括早期失败在内的6个合成企业均已关闭开关/停用账号并提升用户context_version，active_staff/active_runs均0，全部construction表副作用计数0；精确夹具/用量/来源在JSON。未向真实客户导入资料或发送消息。
 
-原生沿用唯一既有Stable2.02.2608080窗口、automator0.13.0/base3.17.2，核对项目和副屏位置，不新开窗口。逻辑390×844/PNG348×752；4张当前capture已查看，native-visual-review.json登记。灰绿矩形是40×32合成JPEG `#b9c4b4`，不是真实照片/质量结论，本轮未向模型提供照片像素。C01设计源仍为`design-references/xiaok-p4b-public-sites-v1/README.md`继承的C01/C02/C05/U01；WXML/Less/字号/素材/导航未改，不宣称新一轮高保真还原。双语唯一chat台账保留单路由/单当前来源。
+原生复用唯一既有副屏Stable2.02.2608080窗口、automator0.13.0/base3.17.2，先新编译，逻辑390×844、PNG348×752。四张当前capture均核对精确route/stack并已查看，见native-visual-review.json及native-{office,citation,followup,withdrawn}.png。原源、字号与组件保持，完整宿主/光学/高屏/键盘、真机/真实微信授权/BLE仍未验证；不是新高保真还原验收。内存账号/传输已恢复，transport.active=false，回原首页并断开。双语唯一chat台账已替换当前行。
 
-## 失败历史与明确限制
+## 早期失败、修复与明确限制
 
-- v33引用嵌套、v34原话/引文改写被严格拒绝；v35虽12轮服务/来源断言通过，run323语义把书房底盒待核对扩大成基层/防水检查“无从谈起”，**语义验收未通过**，不列为最终成功。v36唯一修复后仍改写句号而失败，v37缺必需办公来源而失败。`live-v33-citation-failure.json`、`live-v34-missing-citation-failure.json`、`live-v35-semantic-boundary-failure.json`、`semantic-review-v35.json`、`live-v36-attempt-failure.json`、`live-v37-required-source-failure.json`、`query-anchor-probe.json`保留。v38按原固定核心复验，不靠降低门槛或把拒答算正向成功。
-- 首次普通沙箱原生枚举0窗口，未交互；提权只读核实唯一副屏窗口后沿用已批准自动化完成。初始失败保留v34-sandbox-*；无新人工验收门槛。
-- 回答仍有冗长、可选下一步提议；Codex对小样本逐条对照证据，不是人类验收或通用自动语义判定器。任意语义归因、跨语言召回、复杂PDF/OCR/XLSX/旧格式、完整点位/照片理解尚未验证或Limited，不新增为本批门槛。
-- 全量构建既有AiDesignerLegacyPage非法命名导出/类型阻碍保持；本批未改路由/schema，未重跑全量构建。source-only对比不替代构建。认证后台Chrome视觉、全宿主窗口/光学/高屏/键盘、真机/真实微信/BLE、真实Worker进程重启与完整恢复演练仍未验证，开发非阻塞，不要求用户手工补验，不把旧pending写成通过。
+- context-mode进程使用Bun启动node:test失败，改用实际Node24.9.0后执行；initial-bun-failure日志保留，不计成功。
+- 前两次实模夹具的Mini令牌字段/环境加载时序错误导致401；改为加载环境后动态导入并使用既有customer JWT契约，增加实模前身份守卫预检。两个失败企业均关闭，initial/second-token-fixture-failure保留；未放宽认证。
+- live/native回读最初错误使用displayText，实际消息在content.blocks；测试及新运营面板一起改正。同时查到并修复缺项来源尾注，projection-footer-failure与原回答保留。当前六轮回答由Codex独立逐条对照，不是人类专业验收；夹具核对操作也明确标为模拟运营。
+- 多轮隔离回归实际跨过ID位数后，history的id::text别名使排序按文本，取错旧执行；守卫返回source_changed，未泄露旧片段。改为限定原数值列排序，并补18/19位确定性游标反例。numeric-order-failure保留。无索引反例最初错期待候选not_ready trace，真实失败路径在生成状态报retrieval_unavailable；修正断言后确认不能核对通过，未将检索失败当预期缺口。
+- 原fs.cpSync复制目录在沙箱报EIO，改为只向既有标记的忽略快照目录逐文件复制，不碰开发.next；初始日志保留。新类型检查脚本的require风格lint及测试夹具类型错误已修正，相关失败记录仍在tmp。完整构建错误属于既有AiDesignerLegacyPage，不以编译模式/source-only检查代替。
+- 仍是单一合成办公问题/两知识版本，回答偏长且有可选追问；不证明代表性工程知识、OCR、复杂格式、项目实况的全部语义覆盖或生产容量。预览只跑客户公开发布范围、无草稿/项目绑定；无批量调度、自动语义判定或影子profile重建。
+- 用户Chrome认证态运营Tab的操作/渲染未验：无可调用Chrome连接器，现有Chrome进程无调试端口；未重启或更换用户会话。此项及真机等为开发未验证项，不转交用户必做手测。新完整恢复演练也未执行，旧pending保持。
 
-## 复跑、依赖与工作区
+## 依赖、复跑与工作区
 
-在admin运行`node scripts/assistant-context-acceptance.mjs`，可选`--unit/--regression/--synthesis/--repair/--version/--mini/--lint`。隔离模式使用已有`tmp/xiaok-vector/connection.private.json`与套件锁，目标55432/xiaok_embedding_eval，非superuser/非BYPASSRLS。实模：`node --import tsx scripts/assistant-synthesis-development-acceptance.ts --development --context`；另加`--native`使用同一已验证Stable流程，必须从能读取真实桌面窗口的授权执行环境运行。连接配置/令牌不入Git，不重建凭据或替换用户窗口。
+在admin：`node scripts/assistant-knowledge-operations-acceptance.mjs`，另有`--unit/--regression/--synthesis/--unready/--mini/--lint/--types/--build/--compile`。隔离模式固定既有55432/xiaok_embedding_eval、应用非superuser/非BYPASSRLS及套件互斥锁。实模`node --import tsx scripts/assistant-knowledge-operations-development.ts --development`，原生再加`--native`并沿已授权桌面执行环境。类型对照`node scripts/assistant-knowledge-operations-typecheck.mjs f2651bd6`。
 
-依赖只读核实PG17.10/vector0.8.2/1024维及23张相关表强制RLS，dependencies.json。foundation manifest409路径均存在、62项partial继续登记，原verification为历史记录；本批不宣称干净克隆/完整独立安装通过。0086 SQL SHA256 `659952be208cbc701c4a4ce1df14e10b1fae2cc182b4252f7d132f2e008c545f`未改，仅既有开发主库/隔离库应用。上轮备份`tmp/xiaok-kb2/development-before-0086.dump`为9,280,708字节，SHA256 `cceb87c22b0479696e05276e2d167099eb248c10844be472311ecd3e3f45ff72`；新的完整恢复演练未做。原文件4MB/企业100份100MB/PDF50页/128片/512token等限制保持。
+迁移核验`node scripts/assistant-knowledge-operations-migration.mjs`；只有明确`--apply`才备份/迁移。0087两批准开发目标已应用、SHA256 `0da098b83bd65f9fd23ab54516ed25c5e13b9e3feaad0ab3823b0a46dc2ed77b`不变，PG17.10/vector0.8.2、25张相关表强制RLS。迁移前custom备份`tmp/xiaok-kb4/development-before-0087.dump`，11,382,721字节，SHA256 `ed966ecfd3571b7d9c9d21f7ece22c51f6a93deef24bcda01d091540e031a9a7`，签名/归档列表通过，完整恢复未做。原SSH、隧道、端点、供应商/凭据/权限和生产边界保持。foundation420路径均存在，62项partial及原verification历史性质保留，不宣称干净克隆/独立全量安装通过。
 
-仅选择性提交本批27路径（25完整文件，两份共享Mini清单仅KB-3段落），交接另一次提交。48个原已修改文件哈希未变，5项原删除保持；两份共享Mini清单的原pending diff正文完全保留（不声称其原文件完整字节重建hash匹配）。用户roadmap/知识计划、其他原修改和未跟踪项未覆盖/全量暂存；staging-review.json、baseline-*可核查。没有reset、clean、stash、全量add或强推。
+功能只选择31路径：27完整文件、4共享文档仅KB-4段落/当前路由行；交接另一次提交。原50项修改中，45项原哈希不变，四共享文档原无关正文保留；`miniprogram/utils/api.js`在运行期间较起始哈希变化，本轮未编辑/暂存或覆盖，保持当前内容。原5项删除、用户roadmap/知识计划、其他未跟踪内容均保留。检查见preservation-check.json、staging-review.json及baseline-*。没有全量add、reset、clean、stash或强推。
 
 ## 下一接续
 
-按用户最新双语企业知识专项计划继续**KB-4运营与规模扩展**：可复跑问题集、知识缺口/修订回归、用量/索引健康，按真实材料需求再扩扫描/复杂表格/旧格式及影子重建。先复核当前实现和K-05/06/10/11，不自造阶段，不把全格式/OCR或额外语言长尾测评设为已交付批次门槛。已有诊断覆盖说明里若仍有manual-only旧文案，先映射真实文件能力与原批准Admin设计再修正；每批继续原后台操作、C01真实写入/可见反馈/重进、权限/失败与自动化，避免后端单交付。
-
-用户持续开发授权有效，无需等待手工截图、A10或确认。新/冲突设计与生产部署继续遵守既有明确授权边界；不改SSH/隧道/端点/凭据或扩大对外资料范围。接续先读取本文件、最新双语计划、模块合同和依赖，再用真实问题选择必要改动。
+用户持续推进授权有效，无需等待人工截图、A10或确认。下一轮先读本文件、最新双语知识计划/路线图及当前合同，依据实际材料/容量需要选择KB-4剩余格式/影子/规模工作；没有新增材料触发时，按总路线图3.1接P3B/P4A的跨天同事项、取消/恢复及既有P5接续缺口，复用已有实现，不自造KB-5、不重做已交付P5。新/冲突设计及生产部署仍需原明确授权；不新增供应商、凭据、外发范围或真实客户导入。
