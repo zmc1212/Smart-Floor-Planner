@@ -378,7 +378,25 @@
     "miniprogram/test/construction-site-chat.test.js",
     "miniprogram/test/construction-site-ordering.test.js",
     "miniprogram/utils/api.js",
-    "miniprogram/utils/identity-navigation.js"
+    "miniprogram/utils/identity-navigation.js",
+    "admin/Dockerfile",
+    "admin/scripts/assistant-synthesis-native.mjs",
+    "admin/src/lib/assistant/agent/context.ts",
+    "admin/src/lib/assistant/agent/synthesis.ts",
+    "admin/src/lib/assistant/agent/worker.ts",
+    "admin/src/lib/assistant/knowledge/retrieval.ts",
+    "admin/drizzle/0086_assistant_source_files.sql",
+    "admin/scripts/assistant-file-fixtures.ts",
+    "admin/scripts/assistant-file-parser.mjs",
+    "admin/scripts/assistant-source-file-acceptance.mjs",
+    "admin/scripts/assistant-source-file-development.ts",
+    "admin/scripts/assistant-source-file-migration-check.mjs",
+    "admin/src/components/assistant/source-file.tsx",
+    "admin/src/db/__tests__/assistant-source-file.test.ts",
+    "admin/src/lib/assistant/__tests__/source-file.test.ts",
+    "admin/src/lib/assistant/contracts/source-file.ts",
+    "admin/src/lib/assistant/knowledge/file-service.ts",
+    "admin/src/lib/assistant/knowledge/source-file.ts"
   ],
   "partialPaths": [
     "admin/drizzle/meta/_journal.json",
@@ -441,7 +459,8 @@
     "docs/admin-ui-refactor.zh-CN.md",
     "docs/xiaok-assistant-phase-2.md",
     "docs/xiaok-assistant-phase-2.zh-CN.md",
-    "admin/package.json"
+    "admin/package.json",
+    "admin/next.config.ts"
   ],
   "excluded": [
     ".gitignore",
@@ -449,7 +468,6 @@
     "admin/.env.example",
     "admin/AGENTS.md",
     "admin/docker-compose.yml",
-    "admin/next.config.ts",
     "admin/src/app/(admin)/(merchant)/referrer-network-operations/page.tsx",
     "admin/src/app/api/inspirations/route.ts",
     "docs/referrer-network-appointment-development-plan.md",
@@ -562,5 +580,10 @@
     "scope": "Only the XiaoK assistant-package budget test and assistant/construction entry assertions",
     "verification": "Isolated-source assistant budget 1/1 passed",
     "remainingUncommitted": "Existing tmp-ignore, AI composer relocation assertions, and unrelated business-entry assertion portions"
+  },
+  "kb2PartialFoundation": {
+    "path": "admin/next.config.ts",
+    "scope": "Only the /api/internal/assistant/jobs/run parser script/dependency tracing additions. Existing unrelated local configuration remains excluded from the commit.",
+    "verification": "Local bounded parser tests and isolated webpack build; production image/standalone runtime remains unverified."
   }
 }

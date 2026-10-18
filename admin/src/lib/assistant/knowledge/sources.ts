@@ -10,6 +10,8 @@ import { siteWatchProjection } from '@/lib/construction/site-watches';
 import { publicMessageProjection } from '@/lib/construction/public-projections';
 import { planMessageProjection } from '@/lib/construction/site-plans';
 import { siteResultRecords } from '@/lib/construction/site-results';
+import type { FileLocator } from '../contracts/source-file';
+import { fileQuoteSpans } from './source-file';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
 export function previewPolicy(c:Row):PreviewPolicy {
   const value=(c.entry_snapshot as {preview?:PreviewPolicy})?.preview;
@@ -55,6 +57,7 @@ export async function resolveEvidence(tx:PostgresTransaction,actor:ActorContext,
     and c.text_hash=${evidence.hash} and ${sourceReady} and ${sourceScope(actor,conversation,historical)}`);
   if (row && evidence.professional && (fingerprint(evidence.professional.entry)!==fingerprint(row.professional)
     || evidence.professional.contentHash!==row.content_hash || fingerprint(evidence.professional.context)!==fingerprint(await knowledgeContext(tx,actor,conversation)))) return undefined;
+  if(row && evidence.file && fingerprint(evidence.file)!==fingerprint((row.locator as {file?:FileLocator})?.file))return undefined;
   return row;
 }
 export async function validatePreviewSnapshot(tx:PostgresTransaction,actor:ActorContext,c:Row) {
@@ -78,9 +81,11 @@ export async function citationProjection(tx:PostgresTransaction,actor:ActorConte
   const source=await resolveEvidence(tx,actor,c,{ref:{type:String(citation.resource_type),id:String(citation.chunk_id),version:String(citation.document_version_id)},hash:String(citation.source_hash),text:''},
     (citation.locator as { synthesis?: boolean } | null)?.synthesis !== true);
   if(!source) return unavailable;
+  const file=(source.locator as {file?:FileLocator})?.file;
   return {id:String(citation.id),available:true,title:source.title,version:String(citation.document_version_id),versionNumber:Number(source.version_number),
     referenceCase:source.source_type==='reference_case',
     quote:source.text?String(citation.quote_snapshot):'',locator:citation.locator,isDraft:citation.is_draft,
+    ...(file?{sourceLocation:`${file.name} · ${file.label}`,sourceFile:file,quoteSpans:fileQuoteSpans(String(source.text),String(citation.quote_snapshot),Number((source.locator as Row).start))}:{}),
     ...(source.professional ? {professional:{kind:(source.professional as Row).kind,origin:(source.professional as Row).origin,conditions:(source.professional as Row).conditions,prerequisites:(source.professional as Row).prerequisites,exceptions:(source.professional as Row).exceptions}} : {}),
     historical:String(source.published_version_id)!==String(citation.document_version_id)};
 }

@@ -36,7 +36,7 @@ function KnowledgeWorkbench({ canHandoff }: { canHandoff: boolean }) {
   const columns: ProColumns<KnowledgeDocument>[] = [
     { title: '知识标题', dataIndex: 'title', render: (_, row) => <Button type="link" onClick={() => setEditor(String(row.id))} style={{ whiteSpace: 'normal', textAlign: 'left', height: 'auto' }}>{row.title}</Button> },
     { title: '分类', dataIndex: 'category', renderText: value => value || '未分类' },
-    { title: '内容类型', dataIndex: 'source_type', renderText: value => value === 'reference_case' ? '授权参考案例' : value === 'faq' ? '常见问答' : '服务说明' },
+    { title: '内容类型', dataIndex: 'source_type', renderText: value => value === 'file' ? '企业文件' : value === 'reference_case' ? '授权参考案例' : value === 'faq' ? '常见问答' : '服务说明' },
     { title: '使用范围', dataIndex: 'audience', renderText: value => audienceLabels[value as Audience] },
     { title: '发布状态', dataIndex: 'status', render: (_, row) => <Tag color={row.status === 'active' ? 'green' : 'default'}>{statusLabels[row.status]}</Tag> },
     { title: '最近更新', dataIndex: 'updated_at', renderText: formatTime },

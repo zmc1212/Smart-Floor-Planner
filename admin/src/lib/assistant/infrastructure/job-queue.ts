@@ -138,7 +138,7 @@ export async function processAssistantJob(processRun: (lease: Lease) => Promise<
     (status='queued' and available_at<=now()) or (status='running' and lease_expires_at<=now()) order by available_at,id limit 1`));
   const lease=next?.kind==='chat_turn'?await claimJob():null;
   if(lease) await processRun(lease);
-  const knowledgeClaimed=next?.kind==='knowledge_index'?await processKnowledgeJob():false;
+  const knowledgeClaimed=['knowledge_index','knowledge_parse'].includes(String(next?.kind))?await processKnowledgeJob():false;
   await deliverMetrics();
   return { claimed: Boolean(lease) || knowledgeClaimed };
 }

@@ -1,4 +1,4 @@
-import { bigint, boolean, integer, jsonb, pgSchema, text, timestamp, vector } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, integer, jsonb, pgSchema, text, timestamp, vector } from 'drizzle-orm/pg-core';
 // Migrations 0060/0063 own tenant FKs, forced RLS, manager identity guards and immutable versions.
 const app=pgSchema('app');
 const identity=()=>({id:bigint('id',{mode:'bigint'}).primaryKey().generatedAlwaysAsIdentity(),enterpriseId:bigint('enterprise_id',{mode:'bigint'}).notNull(),
@@ -13,9 +13,14 @@ export const assistantKnowledgeDocuments=app.table('assistant_knowledge_document
   status:text('status').notNull(),publishedVersionId:ref('published_version_id'),version:integer('version').notNull(),
   createdBy:ref('created_by').notNull(),updatedBy:ref('updated_by').notNull(),updatedAt:time('updated_at').notNull(),
 });
+const privateBytes=customType<{data:Buffer}>({dataType:()=> 'bytea'});
+export const assistantKnowledgeAssets=app.table('assistant_knowledge_assets',{
+  ...identity(),documentId:ref('document_id').notNull(),name:text('name').notNull(),format:text('format').notNull(),sourceHash:text('source_hash').notNull(),
+  usageRights:text('usage_rights').notNull(),data:privateBytes('data').notNull(),uploadedBy:ref('uploaded_by').notNull(),
+});
 export const assistantKnowledgeVersions=app.table('assistant_knowledge_versions',{
   ...identity(),documentId:ref('document_id').notNull(),versionNumber:integer('version_number').notNull(),body:text('body').notNull(),faq:jsonb('faq').notNull(),
-  referenceCase:jsonb('reference_case'),professional:jsonb('professional'),contentHash:text('content_hash').notNull(),editVersion:integer('edit_version').notNull(),indexStatus:text('index_status').notNull(),
+  referenceCase:jsonb('reference_case'),professional:jsonb('professional'),sourceAssetId:ref('source_asset_id'),sourceFile:jsonb('source_file'),contentHash:text('content_hash').notNull(),editVersion:integer('edit_version').notNull(),indexStatus:text('index_status').notNull(),
   indexProfileId:ref('index_profile_id'),indexedHash:text('indexed_hash'),chunkCount:integer('chunk_count').notNull(),
   effectiveFrom:time('effective_from').notNull(),effectiveTo:time('effective_to'),publishedAt:time('published_at'),publishedBy:ref('published_by'),
   createdBy:ref('created_by').notNull(),updatedAt:time('updated_at').notNull(),

@@ -7,7 +7,7 @@ export const assistantCleanupTables = [
   'assistant_context_bindings', 'assistant_participants', 'assistant_idempotency_records',
   'domain_event_deliveries', 'assistant_messages', 'assistant_runs', 'domain_event_outbox',
   'assistant_conversations', 'assistant_enterprise_settings',
-  'assistant_knowledge_attempts','assistant_knowledge_chunks','assistant_knowledge_versions','assistant_knowledge_documents','assistant_knowledge_index_profiles',
+  'assistant_knowledge_attempts','assistant_knowledge_chunks','assistant_knowledge_assets','assistant_knowledge_versions','assistant_knowledge_documents','assistant_knowledge_index_profiles',
   'assistant_message_citations', 'assistant_cost_reviews', 'assistant_requirement_summaries', 'assistant_media',
 ] as const;
 export async function assistantCounts(tx: PostgresTransaction, enterpriseId: bigint) {
@@ -36,7 +36,8 @@ export async function deleteAssistantData(tx: PostgresTransaction, enterpriseId:
     await tx.execute(sql`delete from ${sql.identifier('app')}.${sql.identifier(table)} where enterprise_id=${enterpriseId}`);
   }
   await tx.execute(sql`delete from app.assistant_knowledge_chunks where enterprise_id=${enterpriseId}`);
-  await tx.execute(sql`with deleted_versions as (delete from app.assistant_knowledge_versions where enterprise_id=${enterpriseId})
+  await tx.execute(sql`with deleted_versions as (delete from app.assistant_knowledge_versions where enterprise_id=${enterpriseId}),
+    deleted_assets as (delete from app.assistant_knowledge_assets where enterprise_id=${enterpriseId})
     delete from app.assistant_knowledge_documents where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_knowledge_index_profiles where enterprise_id=${enterpriseId}`);
   return counts;

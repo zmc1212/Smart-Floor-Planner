@@ -15,7 +15,7 @@ export type InvocationOwner = { kind: 'generation'; generationId: bigint }
 export type RunTrigger = { kind: 'user_message'; messageId: string }
   | { kind: 'domain_event'; eventId: string } | { kind: 'scheduled_task'; occurrenceKey: string };
 export type ResourceRef = { type: string; id: string; version?: string };
-export type Evidence = { ref: ResourceRef; text: string; hash: string; similarity?:number; professional?: ProfessionalEvidence };
+export type Evidence = { ref: ResourceRef; text: string; hash: string; similarity?:number; professional?: ProfessionalEvidence; file?: import('./source-file').FileLocator };
 export interface ContextProvider {
   authorize(actor: ActorContext, ref: ResourceRef): Promise<boolean>;
   resolve(actor: ActorContext, ref: ResourceRef): Promise<Evidence[]>;

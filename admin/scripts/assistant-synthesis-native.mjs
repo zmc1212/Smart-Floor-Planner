@@ -66,9 +66,11 @@ export async function run(ctx) {
     await step('enter original C01 route and identify the persisted customer consultation',async()=>{const p=await open();return{route:p.path,conversationId:(await p.data('conversation')).id};});
     const first=await step('PPT6/15/23 native input returns real knowledge and site-material synthesis',()=>say(ctx.question,'office'));
     await step('approved citation chip opens the real current knowledge source sheet',async()=>{
-      const p=await mp.currentPage(),chips=await p.$$('.citation-chip');assert.ok(chips.length);await chips[chips.length-1].tap();
+      const p=await mp.currentPage(),chips=await p.$$('.citation-chip');assert.ok(chips.length);
+      const intended=ctx.citationId?.(),chip=intended?await p.$(`.citation-chip[data-id="${intended}"]`):chips[chips.length-1];assert.ok(chip);await chip.tap();
       await wait(async()=>{const d=await p.data();if(d.citationError||d.fatal)throw Error(d.citationError||d.fatal);return d.sheet&&d.citation?.available&&!d.citationLoading;},'real authorized citation projection');
-      const d=await p.data(),result={title:d.citation.title,quote:d.citation.quote,version:d.citation.version,capture:await capture('native-citation')};
+      const d=await p.data();if(ctx.citationCheck)await ctx.citationCheck(d.citation);
+      const result={title:d.citation.title,quote:d.citation.quote,version:d.citation.version,sourceLocation:d.citation.sourceLocation,sourceFile:d.citation.sourceFile,capture:await capture('native-citation')};
       await(await p.$('.sheet-head .icon-button')).tap();await wait(async()=>!(await p.data('sheet')),'citation close');return result;
     });
     await step('source-linked explanation survives navigation and persisted native reentry',async()=>{const p=await open();assert.ok((await p.data('messages')).find(m=>m.id===first.outputMessageId&&m.available));return{outputMessageId:first.outputMessageId};});

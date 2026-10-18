@@ -29,7 +29,7 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, recordNeedIssueSupplement, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { businessSynthesisSource, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, focusedSynthesisMessages, unresolvedSynthesisConflict } from './synthesis';
+import { businessSynthesisSource, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict } from './synthesis';
 import { currentSynthesisContext } from './synthesis-sources';
 
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的一个房间/字段需求；只摘原话，不保存猜测。返回memoryVersion。', parameters: {
@@ -318,6 +318,18 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             values(${lease.enterpriseId},${lease.runId},1005,'agent_need_issue_context','succeeded',${JSON.stringify([...issueSources.values()])}::jsonb)
             on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs`);
         }),
+        validateFinal:async(raw,turn)=>{
+          let candidate:{kind?:string};try{candidate=JSON.parse(raw);}catch{return null;}
+          if(candidate?.kind!=='synthesis')return null;
+          return scoped(async(tx,context)=>{
+            const evidence=await currentSynthesisContext(tx,lease.actor,context.conversation,lease.runId);
+            const issue=synthesisRepairFeedback(raw,evidence.sources);
+            if(issue)await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+              values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:'file_citation_only',noBusinessTools:true})}::jsonb)
+              on conflict(enterprise_id,run_id,step_seq) do nothing`);
+            return issue;
+          });
+        },
         model: callModel,
         tool: async (turn, index, name, args) => {
           const input = JSON.parse(args);
@@ -458,10 +470,12 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             const synthesisSources = [...knowledgeSynthesisSources(selected), ...(bound ? [businessSynthesisSource(bound.resultKey, bound.snapshot)] : [])];
             const unresolvedConflict = unresolvedSynthesisConflict(synthesisSources);
             return { content: JSON.stringify({ knowledgeStatus, unresolvedConflict, evidence: answerExcerpts(selected), synthesisSources:synthesisSources.map(({evidence,...source})=>({...source,
+              ...(evidence?.file?{file:evidence.file,...(source.text.length<=400?{citationQuote:source.text}:{})}:{}),
               ...(evidence?.professional?{professional:{origin:evidence.professional.entry.origin,conditions:evidence.professional.entry.conditions,prerequisites:evidence.professional.entry.prerequisites,exceptions:evidence.professional.entry.exceptions},applicability:evidence.professional.applicability,context:evidence.professional.context}: {})})),
               boundProjectContext: bound ? { resolution: bound.snapshot.data.resolution, missing: bound.snapshot.data.missing } : null,
               instructions: (unresolvedConflict ? '资料明确含尚未核实的规则冲突。综合回答第一段必须basis=uncertainty，先说明不能按企业规则择一；随后分别引述双方，不用“主流/倾向/优先”认定企业现行口径。一般建议另标身份。' : '')
-                + '解释专业原理、取舍、适用条件时用kind=synthesis，引用本轮synthesisSources。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。兼容原文查询kind=knowledge。' }) };
+                + '解释专业原理、取舍、适用条件时用kind=synthesis，引用本轮synthesisSources。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。兼容原文查询kind=knowledge。'
+                + '当前问题若问验收或完成状态，直接用“当前证据不足以支持该结论，仍需核对实际检查记录”等措辞回答判断。text中禁止复述完成词，包括否定句、引号与举例中的“已验收”“已经验收”“已批准”“已经批准”“已完成验收”；不要写“不能认定已经验收/不支持已经验收”，改为“当前证据不能支持该结论”。原文quote仍须逐字保留，不能改写。' }) };
           }
           if (name !== 'record_need') fail('assistant_capability_forbidden', 403);
           try { return await scoped(async (tx, context) => {

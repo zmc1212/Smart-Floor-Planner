@@ -603,6 +603,13 @@
       "when": 1792195214000,
       "tag": "0085_assistant_professional_knowledge",
       "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1792195215000,
+      "tag": "0086_assistant_source_files",
+      "breakpoints": true
     }
   ]
 }

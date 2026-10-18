@@ -1,4 +1,9 @@
 const messages: Record<string, string> = {
+  knowledge_file_invalid:'请选择4MB以内、扩展名和实际格式一致的DOCX或文字PDF，并填写出处与使用许可。',
+  knowledge_file_review_required:'请先对照原件核对解析结果和限制，再保存核对范围。',
+  knowledge_file_text_limit:'解析文字超过本批16,000字符/48,000字节范围，请上传有出处的较小文件。',
+  knowledge_file_block_limit:'原段或表行超过512 tokens，或片段超过128片；请核对并拆分源文件，不截断条件或例外。',
+  knowledge_file_storage_limit:'本企业原件达到100份/100MB限额，请联系管理员核对。',
   invalid_professional_knowledge: '请核对专业类型、条件值、来源版本、章节及审校备注；规则主题与口径需一起填写，重复条件或过长内容请精简后再保存。',
   invalid_reference_case: '请填写案例出处、授权凭据、1–12个方向标签、400字以内说明，并选择4MB以内的JPEG/PNG独立图片。',
   reference_unavailable: '案例未发布、已撤回或不对客户开放，请重新核对当前版本。',

@@ -1,4 +1,4 @@
-import { fail } from '../contracts';
+import { AssistantError, fail } from '../contracts';
 import { parseAgentReply } from './context';
 import type { Evidence } from '../contracts';
 import type { BusinessSnapshot } from './business-tools';
@@ -39,12 +39,35 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
 }
 
 export function knowledgeSynthesisSources(evidence: Evidence[], titles: Record<string, string> = {}): SynthesisSource[] {
-  return evidence.map(e => ({ sourceId: 'K' + e.ref.id, kind: 'knowledge', title: titles[e.ref.id] || '企业知识', text: e.text, evidence: e }));
+  return evidence.map(e => ({ sourceId: 'K' + e.ref.id, kind: 'knowledge', title: titles[e.ref.id] || e.file?.name || '企业知识', text: e.text, evidence: e }));
 }
 export function businessSynthesisSource(resultKey: string, snapshot: BusinessSnapshot): SynthesisSource {
   const names = { materials: '本咨询原话、正式户型与已发布现场资料', construction: '本人项目实际节点与已发布记录',
     followups: '本咨询事项及团队回传', appointments: '本人量房预约', schemes: '本人已发布方案', floorplans: '本人正式户型' };
   return { sourceId: 'B' + resultKey, kind: 'project', title: names[snapshot.query.domain], text: snapshot.displayText, resultKey };
+}
+function canonicalConclusion(text:string) {
+  return text.replace(/(?:当前|现有)(?:资料|证据)(?:不足以|不能|无法|不)支持[“「"](?:已经|已)(?:正式)?(?:验收|批准)[”」"](?:这个|该)?结论/g,'当前证据不能支持该结论');
+}
+/** Known citation failures may be corrected once using the same authorized evidence.
+ * Positive commitments, permission failures and unknown dispatches never enter repair. */
+export function synthesisRepairFeedback(raw:string,sources:SynthesisSource[]) {
+  try { parseSynthesis(raw,sources); return null; }
+  catch(error) {
+    if(!(error instanceof AssistantError) || !sources.some(s=>s.evidence?.file)
+      || !['unsupported_model_commitment','invalid_model_citation'].includes(error.code))throw error;
+    let value:SynthesisAnswer;try{value=JSON.parse(raw);}catch{throw error;}
+    if(!Array.isArray(value.segments))throw error;
+    // Distinguish a missing numerical quote from actual formal-state/price claims.
+    for(const s of value.segments){if(typeof s.text!=='string')throw error;parseAgentReply(JSON.stringify({kind:'general',text:canonicalConclusion(s.text)}));}
+    const missing=value.segments.flatMap((s,i)=>{
+      const quoted=(s.citations||[]).map(c=>c.quote).join('\n'),numbers=new Set(quoted.match(/\d+(?:\.\d+)?/g)||[]);
+      return (s.text.match(/\d+(?:\.\d+)?/g)||[]).some(n=>!numbers.has(n))?[i+1]:[];
+    });
+    if(error.code==='unsupported_model_commitment'&&!missing.length)throw error;
+    return {code:error.code,feedback:'服务端引用校验未通过，这是同一回答的唯一一次格式修复，不是新的用户提问或业务授权。'+JSON.stringify({segmentsWithMissingNumericSupport:missing})+
+      '保留当前问题与已有事实，只使用已提供的synthesisSources。每段数值必须由该段quote支持：需要时在该段重复引用完整原行及脚注，不用前一段引文替代。quote须逐字存在于同一sourceId原文；使用提供的citationQuote。不要删掉回答问题所需且原文确有的关键数值；没有依据的数值或推断应去除。不得调用业务工具、扩大权限、检索新资料或宣称正式完成。只提交修正后的final_response，仍按原格式区分依据、建议与未知。'};
+  }
 }
 
 /** Validate provenance and unsupported commitments, without forcing prose to equal an excerpt.
@@ -57,7 +80,12 @@ export function parseSynthesis(raw: string, sources: SynthesisSource[]): Synthes
     || !Array.isArray(value.segments) || !value.segments.length || value.segments.length > 6) fail('invalid_model_answer', 502);
   for (const s of value.segments) {
     if (!s || Object.keys(s).some(k => !['basis', 'text', 'citations'].includes(k)) || !['evidence', 'advice', 'uncertainty'].includes(s.basis)
-      || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 1200 || !Array.isArray(s.citations) || s.citations.length > 4
+      || typeof s.text !== 'string' || !s.text.trim() || s.text.length > 1200) fail('invalid_model_answer', 502);
+    // Canonicalize two meaning-preserving provider surface forms, never source quotes.
+    // A missing optional non-evidence reference list means no references, not new authority.
+    if (s.basis !== 'evidence' && !Object.prototype.hasOwnProperty.call(s,'citations')) s.citations=[];
+    s.text=canonicalConclusion(s.text);
+    if (!Array.isArray(s.citations) || s.citations.length > 4
       || (s.basis === 'evidence' && !s.citations.length)) fail('invalid_model_answer', 502);
     const cited: string[] = [];
     for (const citation of s.citations) {
@@ -82,6 +110,9 @@ export function parseSynthesis(raw: string, sources: SynthesisSource[]): Synthes
 
 export const synthesisInstructions = `
 专业综合问答（本段替代上文“知识只能选摘录、业务只能展示快照”的限制）：
+文件证据file只表示本地解析且人工核对的原段定位。DOCX按章节、段落、表行列，不编页码；PDF只使用实际page，PDF表格和图片未结构理解。表行必须连同原表头、单位、前提和脚注解释，示例/合成值不能转成施工标准、厂家参数或当前现场检测结果。quote只引用工具text中的原文；你的翻译、摘要、建议和推断不是原件内容，不能冒充原文或新权威来源。
+每一段text出现的数字，都必须逐字存在于这一段的citations.quote中；前一段引用过数值不能授权后一段再写该值。后一段若同时解释数值与脚注条件，需在该段同时引用数值原行和脚注；或者不重复数字。advice/uncertainty没有引用时不写数值，也不用数字编号。
+文件工具提供citationQuote时，它是完整且有界的原文引用，不是摘要。每个解释该文件的段落都应逐字复制citationQuote作为quote，不再缩短成半句；同一表行在多个段落解释时每段重复完整引用，从而保留型号、数值单位、条件和例外。避免把同一原行拆成多个重复段落，优先一段回应材料数值与适用条件。
 客户先问的问题先回答。专业做法、设计取舍、施工条件等自然问题应主动search_knowledge，不要求出现“你们公司”；不要把专业题退回通用入口或需求采访。通用建议可给，但明确是一般建议，不冒充本企业规定。
 专业条目附有professional与服务端applicability：applicable只表示已登记的结构条件匹配，前置检查/例外仍须核实；unknown表示missing中的条件未知，不是已经满足；not_applicable表示mismatched中的条件与当前获权事实不符，只能用来说明为何不能套用，不得当作本项目执行依据。stage使用团队登记的实际阶段key，不从提问或模型猜测。房间、材料、城市本批未自动核实，条件未定时先给条件性解释和最小缺项，不重复问已知需求。prerequisites与exceptions必须和做法一起考虑，来源authority只是依据性质，不代表正式批准或自动覆盖另一规则。同一规则主题的不同明确口径且适用范围可能重叠，工具会标unresolvedConflict，不能按上传时间、相似分数或审校时间自行择一。
 需要否定正式状态时，表述为“当前资料不能支持该结论”“依据不足，仍需核对验收资料”等，不在否定句里复述“已验收/已批准/已关闭/已付款”等完成状态；完成状态只能由真实业务回执展示。没有查到记录也不能推成现实中尚未发生或未执行。保留有据解释和最小核实项，不用完成状态措辞作修辞。

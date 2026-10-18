@@ -1,5 +1,36 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前 KB-2：企业文件入库与结构引用（限定格式，整体 Limited）
+
+原 `/assistant-knowledge` 增加企业文件类型，C01仍为同一个咨询与来源片。范围为DOCX、可提取文字PDF；合成文件验证，不批量导入混合开发目录，不向新外部解析/OCR服务发送资料。KB-1专业条目/诊断继续复用；文件知识与当前获权工地事实在原LangGraph同轮汇合，不建立新的项目事实库或把私聊/项目附件复制成企业规则。
+
+### 数据、解析、核对与发布
+
+- `0086_assistant_source_files`增加一张强制RLS的私有原件表 `assistant_knowledge_assets`，同企业/文档复合外键、SHA256、真实格式、使用许可、实际上传者和不可变bytea。原版本增加 `source_asset_id/source_file` 与发布后不可变约束；解析结构、核对人/时间/排除片段随版本hash保存。原普通条目hash兼容。开发主库及隔离库已应用；迁移/备份证据和恢复边界见本轮交接。
+- 解析使用原 `assistant_jobs` 的 `knowledge_parse`，共用管理身份、企业设置锁、并发上限、attempt、租约/取消/原键恢复与原Worker调度。原件先落库，页面关闭后可重进读取任务与结构；相同原键及同草稿相同hash复用结果，不把再次上传变成重复任务。解析失败保留原件，不自动索引/发布；本地已知失败/取消可显式重试，最多3次。旧租约、替换、撤回、操作者撤权均阻止晚到提交。外部Embedding/分块的未知结果协议不变。
+- 本地子进程解析：stdin只含获权原件，无任意URL/文件路径或继承凭据，192MB V8堆/20秒/有界输出。文件≤4MB、企业≤100份/100MB、PDF≤50页、结构≤128片、DOCX表≤64行/12列；ZIP检查路径/重复名/加密/嵌入对象、压缩率、解压总量24MB、单项8MB及选取XML的CRC，XML禁止DTD/外部实体并限制深度/节点。没有安装或运行Dify/RAGFlow整平台。
+- DOCX保留标题层级、正文段落、表格行/列/合并跨度、原表头、相邻注/例外与脚注。段落编号为正文段落次序；无固定渲染，**不生成页码**。图片、页眉页脚、修订/外链按实际警告核对，不抓外链；嵌套表/复杂容器明确失败。PDF保留实际页码及提取文字顺序，使用本地CMap/字体数据；不运行viewer/脚本/附件。无文字页明确需OCR；PDF表格结构、图示与扫描OCR未实现，不能把可提取文字当作结构理解。
+- 后台沿原720px Drawer、Ant Design/Admin Pro与共享反馈，展示原件hash/下载、任务、结构/合并信息/警告、将进入检索的文字、核对与替换入口。文件默认内部受众；需明确核对范围后才允许索引，就绪后仍须有权发布。排除片段只减少独立检索片，原章节/表头/脚注仍可能作为同文件上下文保留。原文修订须上传有出处的新文件，不允许把模型改写或手填正文覆盖原件。第一批未提供任意解析文字改写器。
+- 正文仍≤16,000字符/48,000字节。一个原段/表行连同必要原上下文必须能放进≤512-token片；超过时明确失败，不截掉前提/例外。每片保留同版本原表头/章节/脚注、blockId、真实页或表行列、原件hash/解析器、Unicode code point范围；引用回读另返回实际quote范围，重复原句保留歧义计数，不伪造唯一定位。未做通用复杂表/OCR/全格式、自由父子扩展或重排。
+
+### 路由、权限与来源
+
+- 新 `POST /api/assistant/knowledge/documents/import`：title/category/audience/fileName/fileBase64/authorization。原版本路径新增 `POST .../file`、`.../parse`、`.../cancel-parse`、`.../review`，均要求Idempotency-Key与适用expectedEditVersion；review只接受警告确认与排除blockIds，操作者/时间由服务生成。`GET .../original`下载受控二进制附件、no-store/nosniff，无裸存储URL；detail回读parse_job/source_file，原job入口包含解析任务。原index/publish/newVersion/metadata/retire复用。
+- 当前管理者三角色仍继承原知识管理授权：选定企业的admin/super_admin无需成为企业员工；enterprise_admin仍需显式知识权限。原件每次读取重验当前企业/文档/版本/身份，撤回后拒绝下载。客户端不能传projectId、任意tenant、原件URL或内部草稿范围扩大权限。此接口管理企业资料；获权项目原件仍由原业务适配器守护，不通过知识分类倒推项目/私聊读取权。
+- 普通客户只检索已核对、已索引、有效发布的customer_public版本；草稿/内部与本人管理试问边界不变。file元数据随实际工具证据到原模型，包含原件与结构定位，不包含私有许可备注/上传凭据。历史、引用、模型提交及工地上下文继续重验epoch、有效版本/hash/profile/受众/参与者；换版/收紧/撤回令派生解释失效。
+- prompt `xiaok-renovation-v32`补充文件原段/表头/单位/脚注、合成示例身份、每段数字须由该段quote支持等规则；不放宽原正式状态、引用、用量、未知调用与人工接管守卫。模型解释/翻译/推断永不成为原文依据，普通说明不创建事项、施工安排或验收决定。
+- 配置模型实跑暴露两种表面格式：advice/uncertainty省略空引用数组，以及“当前资料不支持‘已经验收’这个结论”这类明确否定句。只对模型解释做窄规范化：非依据段落缺省空数组，后者改为“当前证据不能支持该结论”。原文quote不改、依据段仍必须有有效引用、肯定式完成状态与同句夹带的完成宣称仍被原守卫拒绝；原模型checkpoint与规范化回答均留存。短文件工具另给完整有界citationQuote，帮助同段保留数值/单位/条件，未自动扩写模型引用。正式状态追问必须刷新获权工地依据；不强制给一个没有文件规则宣称的纯状态判断附无关知识引用。
+- 文件引文/分段数值支持错误可在原LangGraph内做**一次**格式修复，沿原4轮总预算/截止时间/用量/租约。只有结果已明确返回且当前获权文件存在时进入；真正的正式完成/价格承诺、权限/来源变化和未知外部调用不修复/不重发。修复轮仅提供final_response，禁止业务工具；仍用原来源和完整验证，失败即终止。validationRepairs随原checkpoint持久化，原模型结果/校验反馈/修复用量可审计，无新会话、用户消息、任务或框架checkpointer。不得把有修复的服务闭环说成单次模型全对。
+- 小程序设计映射：唯一chat台账源 `design-references/xiaok-p4b-public-sites-v1/README.md`继承C01/C02/U01。仅在原来源片版本说明之后复用 `.sheet-helper`（26rpx/1.6行高/原8–22rpx间距）显示文件名/真实定位，原来源标题30rpx、quote28rpx及其24rpx内距不变；无新页面/样式/图标/插画/导航。PPT6/15支持连续问答，18/19支持阶段/材料解释，23/38支持对应资料与缺失先核实；合成表数值并非PPT规定或真实工程标准。
+
+### 采用、复跑与边界
+
+解析器固定 `pdfjs-dist6.4.299`（Apache-2.0）、`yauzl3.4.0`（MIT）、`saxes6.0.0`（ISC）；保留原共享canvas1.0.7，PDF.js所需新canvas隔离在其依赖下。Node≥22.13，Docker构建文件使用24，未构建/部署生产镜像。参考[PDF.js API测试](https://github.com/mozilla/pdf.js/blob/master/test/unit/api_spec.js)、[官方分层API](https://mozilla.github.io/pdf.js/getting_started/)、[2026脚本安全公告](https://github.com/mozilla/pdf.js/security/advisories/GHSA-hq66-cqwq-w95j)、[yauzl资源与惰性读取](https://github.com/thejoshwolfe/yauzl)、[saxes](https://github.com/lddubeau/saxes)及[RAGFlow解析集成测试](https://github.com/infiniflow/ragflow/blob/main/internal/deepdoc/parser/pdf/parser_pipeline_integration_test.go)。采用本地有界结构提取与分层测试；保持当前PostgreSQL/pgvector、硬授权、LangGraph及持久任务，无框架迁移或新资料外传。生产镜像兼容、全量恢复、PDF复杂排版/OCR、XLSX/旧格式、任意段落语义归因及完整专业客服仍Limited/未验证。
+
+另核对已安装LangGraph1.5.0及维护中的[ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)/[对应测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)，并查[DeepSeek函数调用协议](https://api-docs.deepseek.com/guides/function_calling)。继续使用标准工具消息和原数据库恢复边界，不另造重试Agent或把所有错误交给框架重放。上述两项规范化是本配置实跑观察后的本地格式适配，不宣称是上游框架规则，也不把供应商文档例子当本项目语义质量证据。
+
+从admin复跑：`node scripts/assistant-source-file-acceptance.mjs`（真实隔离数据库/Embedding，确定性模型）；`--unit`、`--regression`、`--synthesis`、`--mini`、`--lint`、`--types`。实模/真实HTTP/Worker：`node --import tsx scripts/assistant-source-file-development.ts --development`，加 `--native` 使用既有Stable流程。固定核心为合成DOCX材料行/单位/地暖例外、连续追问、中文文字PDF检查安排（另有英文页解析单元）与当前获权防水节点，每题两轮；不是规范级工程认证。实际结果、失败尝试、语义核对、原生/构建未测项与Git状态写入交接及 `tmp/xiaok-kb2/`，不将测试工具/模拟模型混为实模通过。
+
 ## 当前 KB-1：专业条目、适用条件与检索诊断（限定闭环，整体 Limited）
 
 本批沿企业知识库专项 KB-1，使用原正文/FAQ、后台 `/assistant-knowledge` 和原 C01 聊天。没有新聊天入口或文件导入。PPT6/15的生活语言与连续追问、18的实际阶段/施工检查安排、19的铺贴前材料沟通、23的底盒/需求/图纸关联和38的缺失/不一致先核实，是本批场景来源；具体办公、铺砖前提、地暖材料与互斥规则题为标记合成验收题，不声称PPT原文包含这些专业规定，也不等于完整PPT19审美沟通或全PPT验收。

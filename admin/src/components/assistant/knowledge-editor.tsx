@@ -6,9 +6,10 @@ import { notify } from '@/components/admin/operation-feedback';
 import { AssistantMutations, assistantError, assistantRequest, audienceLabels, formatTime, statusLabels } from './client';
 import type { Audience, KnowledgeDetail, KnowledgeVersion } from './contracts';
 import { ProfessionalFields } from './professional-fields';
+import { SourceFileFields, SourceFileReview } from './source-file';
 
 type ContentValues = { body?: string; faq?: Array<{ question: string; answer: string }>; effectiveFrom?: string; effectiveTo?: string; referenceCase?: NonNullable<KnowledgeVersion['reference_case']>; professional?: KnowledgeVersion['professional'] };
-type CreateValues = ContentValues & { title: string; category?: string; sourceType: 'manual_text' | 'faq' | 'reference_case'; audience: Audience };
+type CreateValues = ContentValues & { title: string; category?: string; sourceType: 'manual_text' | 'faq' | 'reference_case' | 'file'; audience: Audience;fileName?:string;fileBase64?:string;authorization?:string };
 function CaseImageInput({ value, onChange }: { value?: string; onChange?: (value: string) => void }) {
   const [error, setError] = useState('');
   return <Space direction="vertical">
@@ -35,6 +36,7 @@ function contentBody(values: ContentValues, source: string) {
   const from = values.effectiveFrom ? new Date(values.effectiveFrom).toISOString() : undefined;
   const to = values.effectiveTo ? new Date(values.effectiveTo).toISOString() : null;
   if (from && to && from >= to) throw new Error('结束时间必须晚于开始时间。');
+  if(source==='file')return {...(from?{effectiveFrom:from}:{}),effectiveTo:to};
   const body = source !== 'faq' ? values.body || '' : '';
   const faq = source === 'faq' ? values.faq || [] : [];
   const rendered = source === 'faq' ? faq.map(item => `问：${item.question.trim()}\n答：${item.answer.trim()}`).join('\n\n') : body.trim();
@@ -45,7 +47,7 @@ function contentBody(values: ContentValues, source: string) {
 }
 function ContentFields({ source }: { source: string }) {
   return <>
-    {source !== 'reference_case' && <Collapse items={[{key:'professional',label:'专业条目、适用条件与来源审校',forceRender:true,children:<ProfessionalFields />}]} />}
+    {!['reference_case','file'].includes(source) && <Collapse items={[{key:'professional',label:'专业条目、适用条件与来源审校',forceRender:true,children:<ProfessionalFields />}]} />}
     {source === 'reference_case' && <>
       <Alert type="info" showIcon message="仅发布已取得授权的独立案例图片" description="填写原始出处及可核验的授权/许可凭据；发布前人工核实，不得使用客户私图或把参考当正式施工方案。撤回会令历史引用及图片入口失效。" />
       <Form.Item name={['referenceCase','source']} label="案例出处与作者" rules={[{ required: true, whitespace: true, max: 500 }]}><Input placeholder="原始链接/文件、作者及案例出处" maxLength={500} /></Form.Item>
@@ -53,7 +55,7 @@ function ContentFields({ source }: { source: string }) {
       <Form.Item name={['referenceCase','tags']} label="方向标签" rules={[{ required: true, type: 'array', min: 1, max: 12 }]}><Select mode="tags" tokenSeparators={['，', ',']} placeholder="如：小户型、原木、收纳；用于匹配客户方向" /></Form.Item>
       <Form.Item name={['referenceCase','imageBase64']} label="独立案例图片" rules={[{ required: true }]} extra="保存时去除元数据，转为最长边1200px、300KB以内JPEG；不上传至公共图片地址。"><CaseImageInput /></Form.Item>
     </>}
-    {source === 'faq' ? <Form.List name="faq" rules={[{ validator: async (_, items) => { if (!items?.length || items.length > 100) throw new Error('请填写 1–100 条问答'); } }]}>
+    {source === 'file' ? null : source === 'faq' ? <Form.List name="faq" rules={[{ validator: async (_, items) => { if (!items?.length || items.length > 100) throw new Error('请填写 1–100 条问答'); } }]}>
       {(fields, { add, remove }, { errors }) => <>
         {fields.map(({ key, name, ...rest }) => <div key={key}>
           <Form.Item {...rest} name={[name, 'question']} label={`问题 ${name + 1}`} rules={[{ required: true, whitespace: true, max: 500 }]}><Input maxLength={500} /></Form.Item>
@@ -88,7 +90,7 @@ export function KnowledgeEditor({ documentId, onClose, onChanged, onPreview }: {
   const mutations = useRef(new AssistantMutations());
   const lock = useRef(false);
   const version = detail?.versions.find(item => String(item.id) === selectedVersion) || detail?.versions[0];
-  const indexing = Boolean(detail?.versions.some(item => item.index_status === 'indexing'));
+  const indexing = Boolean(detail?.versions.some(item => item.index_status === 'indexing'||['queued','running'].includes(item.parse_job?.status||'')));
   const jobId = job?.id;
 
   const read = useCallback(async (signal?: AbortSignal) => {
@@ -144,12 +146,14 @@ export function KnowledgeEditor({ documentId, onClose, onChanged, onPreview }: {
   return <Drawer open width={720} title={isNew ? '新建知识' : detail?.document.title || '知识详情'} onClose={close} maskClosable={!dirty && !busy} closable={!busy}>
     <Space direction="vertical" size={20} style={{ width: '100%' }}>
       {error && <Alert type="error" showIcon message={error} action={!isNew && <Button disabled={busy} onClick={() => { if (!dirty || window.confirm('重新读取将放弃未保存修改，是否继续？')) void action(() => read(), '已重新读取资料'); }}>重新读取</Button>} />}
-      {loading ? <Skeleton active /> : isNew ? <Form form={form} layout="vertical" initialValues={{ sourceType: 'manual_text', audience: 'customer_public', faq: [{ question: '', answer: '' }] }} disabled={busy} onValuesChange={() => setDirtyArea('content')} onFinish={values => { void action(() => mutations.current.write('knowledge/documents', { title: values.title, category: values.category || '', sourceType: values.sourceType, audience: values.audience, ...contentBody(values, values.sourceType) }), '知识草稿已创建'); }}>
+      {loading ? <Skeleton active /> : isNew ? <Form form={form} layout="vertical" initialValues={{ sourceType: 'manual_text', audience: 'customer_public', faq: [{ question: '', answer: '' }] }} disabled={busy} onValuesChange={() => setDirtyArea('content')} onFinish={values => { void action(() => values.sourceType==='file'
+        ? mutations.current.write('knowledge/documents/import',{title:values.title,category:values.category||'',audience:values.audience,fileName:values.fileName,fileBase64:values.fileBase64,authorization:values.authorization})
+        : mutations.current.write('knowledge/documents', { title: values.title, category: values.category || '', sourceType: values.sourceType, audience: values.audience, ...contentBody(values, values.sourceType) }), values.sourceType==='file'?'原件已保存，解析任务已登记；请重进核对结果':'知识草稿已创建'); }}>
         <Form.Item name="title" label="标题" rules={[{ required: true, whitespace: true, max: 200 }]}><Input maxLength={200} /></Form.Item>
         <Form.Item name="category" label="分类"><Input maxLength={100} /></Form.Item>
         <Form.Item name="audience" label="使用范围"><Select options={Object.entries(audienceLabels).filter(([value]) => value !== 'all').map(([value, label]) => ({ value, label }))} /></Form.Item>
-        <Form.Item name="sourceType" label="内容类型"><Select options={[{ value: 'manual_text', label: '服务说明' }, { value: 'faq', label: '常见问答' }, { value: 'reference_case', label: '授权参考案例' }]} /></Form.Item>
-        <ContentFields source={source} />
+        <Form.Item name="sourceType" label="内容类型"><Select onChange={value=>{if(value==='file')form.setFieldValue('audience','staff_internal');}} options={[{ value: 'manual_text', label: '服务说明' }, { value: 'faq', label: '常见问答' }, { value: 'reference_case', label: '授权参考案例' },{value:'file',label:'企业文件（DOCX / 文字PDF）'}]} /></Form.Item>
+        {source==='file'?<SourceFileFields />:<ContentFields source={source} />}
         <Button type="primary" htmlType="submit" loading={busy}>保存草稿</Button>
       </Form> : detail && version && <>
         <Space wrap><Tag>{statusLabels[detail.document.status]}</Tag><Typography.Text type="secondary">最近更新 {formatTime(detail.document.updated_at)}</Typography.Text></Space>
@@ -164,6 +168,11 @@ export function KnowledgeEditor({ documentId, onClose, onChanged, onPreview }: {
         <Space wrap><Tag>{statusLabels[version.index_status]}</Tag><Typography.Text type="secondary">{version.chunk_count} 个知识片段</Typography.Text></Space>
         {job && <Alert type={job.status === 'failed' ? 'error' : 'info'} showIcon message={`索引任务：${statusLabels[job.status] || '待确认'}`} description={job.last_error ? '索引未完成，请检查服务后重新保存草稿再建立索引。' : undefined} />}
         {version.published_at && <Alert type="info" message="已发布正文只读。需要修改时，请复制为新草稿；旧版本会继续服务直到新版本发布。" />}
+        {version.source_file && <SourceFileReview version={version} path={versionPath} busy={busy||dirty||version.index_status==='indexing'||detail.document.status==='retired'}
+          onReview={excluded=>void action(()=>mutations.current.write(`${versionPath}/review`,{expectedEditVersion:version.edit_version,acknowledgeWarnings:true,excludedBlockIds:excluded}),'核对范围已保存，请重新建立索引')}
+          onParse={()=>void action(()=>mutations.current.write(`${versionPath}/parse`,{expectedEditVersion:version.edit_version}),'解析任务已确认，请查看状态')}
+          onCancel={()=>void action(()=>mutations.current.write(`${versionPath}/cancel-parse`,{expectedEditVersion:version.edit_version}),'解析已取消')}
+          onReplace={values=>void action(()=>mutations.current.write(`${versionPath}/file`,{...values,expectedEditVersion:version.edit_version}),'原件已保存，解析任务已确认')} />}
         <Form form={form} layout="vertical" disabled={busy || dirtyArea === 'metadata' || Boolean(version.published_at) || version.index_status === 'indexing'} onValuesChange={() => setDirtyArea('content')} onFinish={values => { void action(() => mutations.current.write(versionPath, { ...contentBody(values, detail.document.source_type), expectedEditVersion: version.edit_version }, 'PATCH'), '草稿正文已保存，请重新建立索引'); }}>
           <ContentFields source={detail.document.source_type} />
           {!version.published_at && <Button type="primary" htmlType="submit" loading={busy}>保存正文与有效期</Button>}
@@ -174,7 +183,7 @@ export function KnowledgeEditor({ documentId, onClose, onChanged, onPreview }: {
             await navigator.clipboard.writeText(entry.path);
           }, '已复制7天有效的小程序咨询路径；只包含授权案例来源，不包含客户对话'); }}>复制案例咨询入口</Button>}
           <Button disabled={busy || dirty} onClick={() => { void action(async () => { const draft = await mutations.current.write<KnowledgeVersion>(`knowledge/documents/${documentId}/versions`, { fromVersionId: String(version.id), expectedVersion: detail.document.version }); setSelectedVersion(String(draft.id)); }, '已复制为新草稿'); }}>复制为新草稿</Button>
-          {!version.published_at && <Button disabled={busy || dirty || detail.document.status === 'retired' || version.index_status === 'indexing'} onClick={() => { void action(async () => { const result = await mutations.current.write<{ jobId: string; status: string }>(`${versionPath}/index`, { expectedEditVersion: version.edit_version }); setJob({ id: result.jobId, status: result.status }); if (['failed', 'cancelled', 'indeterminate'].includes(result.status)) throw new Error('该草稿的索引任务未完成。请重新保存正文后建立索引，结果待核对的任务需先由管理员核对。'); }, '索引任务已确认，请查看任务状态'); }}>建立索引</Button>}
+          {!version.published_at && <Button disabled={busy || dirty || detail.document.status === 'retired' || version.index_status === 'indexing' || Boolean(version.source_file&&!version.source_file.review)} onClick={() => { void action(async () => { const result = await mutations.current.write<{ jobId: string; status: string }>(`${versionPath}/index`, { expectedEditVersion: version.edit_version }); setJob({ id: result.jobId, status: result.status }); if (['failed', 'cancelled', 'indeterminate'].includes(result.status)) throw new Error('该草稿的索引任务未完成。请重新保存正文后建立索引，结果待核对的任务需先由管理员核对。'); }, '索引任务已确认，请查看任务状态'); }}>建立索引</Button>}
           {!version.published_at && detail.document.source_type !== 'reference_case' && <Button disabled={busy || dirty || detail.document.status === 'retired' || version.index_status !== 'ready'} onClick={() => onPreview(String(version.id), detail.document.audience)}>试问此草稿</Button>}
           <Popconfirm title="将此版本用于后续回答？" description="发布后会替换当前引用依据；有效期与权限仍由服务端检查。" onConfirm={() => action(() => mutations.current.write(`${versionPath}/publish`, { expectedVersion: detail.document.version, expectedEditVersion: version.edit_version }), '知识版本已发布')}>
             <Button type="primary" disabled={busy || dirty || version.index_status !== 'ready' || (detail.document.status === 'active' && String(detail.document.published_version_id) === String(version.id))}>发布此版本</Button>

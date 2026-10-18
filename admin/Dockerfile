@@ -1,7 +1,7 @@
 # ============================================
 # Stage 1: Install dependencies
 # ============================================
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 
 # Keep Alpine's official CDN; the previous Aliyun mirror could stall
 # indefinitely while downloading the CJK font package.
@@ -14,7 +14,7 @@ RUN npm config set registry https://registry.npmmirror.com && npm ci --ignore-sc
 # ============================================
 # Stage 2: Build the application
 # ============================================
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -31,7 +31,7 @@ RUN npm run build
 # ============================================
 # Stage 3: Production runner
 # ============================================
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 
 WORKDIR /app
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
+import { readOriginal } from '@/lib/assistant/knowledge/file-service';
 export const runtime='nodejs';
 type Context={params:Promise<{path:string[]}>};
 const fields:Record<string,string[]>={
@@ -10,6 +11,9 @@ const fields:Record<string,string[]>={
   edit:['expectedEditVersion','body','faq','effectiveFrom','effectiveTo','referenceCase','professional'], index:['expectedEditVersion'],
   publish:['expectedVersion','expectedEditVersion'],retire:['expectedVersion'],
   share:['expectedVersion','entryCode'],
+  createFile:['title','category','audience','fileName','fileBase64','authorization'],
+  replaceFile:['expectedEditVersion','fileName','fileBase64','authorization'],parse:['expectedEditVersion'],cancelParse:['expectedEditVersion'],
+  reviewFile:['expectedEditVersion','acknowledgeWarnings','excludedBlockIds'],
 };
 async function handle(request:NextRequest,context:Context) {
   return withTenantRoute(request,{roles:['super_admin','admin','enterprise_admin'],requireEnterprise:true},async actor=>{
@@ -22,14 +26,22 @@ async function handle(request:NextRequest,context:Context) {
         if(p.length===2) action=method==='GET'?'detail':method==='PATCH'?'metadata':'';
         if(p.length===3 && p[2]==='retire' && method==='POST') action='retire';
         if(p.length===3 && p[2]==='share' && method==='POST') action='share';
+        if(p.length===2 && p[1]==='import' && method==='POST') {action='createFile';ids={};}
         if(p[2]==='versions') {
           if(p.length===3 && method==='POST') action='newVersion';
           if(p.length>=4) ids.versionId=p[3];
           if(p.length===4 && method==='PATCH') action='edit';
           if(p.length===5 && method==='POST' && ['index','publish'].includes(p[4])) action=p[4];
+          if(p.length===5 && method==='POST' && ['file','parse','review','cancel-parse'].includes(p[4])) action=({'file':'replaceFile','parse':'parse','review':'reviewFile','cancel-parse':'cancelParse'} as Record<string,string>)[p[4]];
+          if(p.length===5 && method==='GET' && p[4]==='original') action='original';
         }
       } else if(p[0]==='jobs' && p.length===2 && method==='GET') {action='job';ids={jobId:p[1]};}
       if(!action) fail('assistant_resource_not_found',404);
+      if(action==='original') {
+        const f=await readOriginal({enterpriseId:actor.enterpriseId!,adminId:actor.userId},ids.documentId,ids.versionId);
+        return new NextResponse(new Uint8Array(f.data as Buffer),{headers:{'Content-Type':'application/octet-stream',
+          'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent(String(f.name))}`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+      }
       let body:Record<string,unknown>={};
       if(method!=='GET') {
         let bytes=0;const chunks:Uint8Array[]=[];

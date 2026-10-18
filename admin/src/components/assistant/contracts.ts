@@ -1,7 +1,7 @@
 export type Audience = 'customer_public' | 'staff_internal';
 export type { ProfessionalKnowledge } from '@/lib/assistant/contracts/professional';
 export type KnowledgeDocument = {
-  id: string; title: string; category: string; source_type: 'manual_text' | 'faq' | 'reference_case'; audience: Audience;
+  id: string; title: string; category: string; source_type: 'manual_text' | 'faq' | 'reference_case' | 'file'; audience: Audience;
   status: 'draft' | 'active' | 'retired'; published_version_id: string | null; version: number; updated_at: string;
 };
 export type KnowledgeVersion = {
@@ -10,6 +10,8 @@ export type KnowledgeVersion = {
   effective_from: string; effective_to: string | null; chunk_count: number;
   reference_case?: { source: string; authorization: string; tags: string[]; imageBase64: string; mimeType: 'image/jpeg' } | null;
   professional?: import('@/lib/assistant/contracts/professional').ProfessionalKnowledge | null;
+  source_file?: import('@/lib/assistant/contracts/source-file').SourceFile | null;
+  parse_job?: {id:string;status:string;last_error:string|null;attempts:number}|null;
 };
 export type KnowledgeDetail = { document: KnowledgeDocument; versions: KnowledgeVersion[] };
 export type AssistantRun = {
