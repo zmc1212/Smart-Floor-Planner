@@ -72,7 +72,8 @@ export async function citationProjection(tx:PostgresTransaction,actor:ActorConte
   // still-retained knowledge source.
   if ((citation.locator as { retentionRedacted?: unknown } | null)?.retentionRedacted === true) return unavailable;
   if(!citation.chunk_id) return unavailable;
-  const source=await resolveEvidence(tx,actor,c,{ref:{type:String(citation.resource_type),id:String(citation.chunk_id),version:String(citation.document_version_id)},hash:String(citation.source_hash),text:''},true);
+  const source=await resolveEvidence(tx,actor,c,{ref:{type:String(citation.resource_type),id:String(citation.chunk_id),version:String(citation.document_version_id)},hash:String(citation.source_hash),text:''},
+    (citation.locator as { synthesis?: boolean } | null)?.synthesis !== true);
   if(!source) return unavailable;
   return {id:String(citation.id),available:true,title:source.title,version:String(citation.document_version_id),versionNumber:Number(source.version_number),
     referenceCase:source.source_type==='reference_case',

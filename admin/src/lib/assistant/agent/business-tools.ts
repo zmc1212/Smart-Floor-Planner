@@ -23,7 +23,7 @@ export const businessToolDefinitions: ModelTool[] = [
   { name: 'request_designer', description: '仅当前客户明确要求找设计师时提交真实人工接续。不是模型之间的handoff。quote须为当前消息的直接请求原话，不得用于否定/假设/引用。', parameters: {
     type: 'object', properties: { quote: { type: 'string' }, expectedVersion: { type: 'integer' } }, required: ['quote','expectedVersion'], additionalProperties: false,
   } },
-  { name: 'search_knowledge', description: '查询本企业已发布的政策/流程/服务知识。一般设计讨论无需检索。只选择直接回答当前问题的selectionId，不把一般规则当项目报价或工期。', parameters: {
+  { name: 'search_knowledge', description: '查询本企业已发布的专业设计、施工做法、适用条件及政策/流程。自然专业问题也主动检索，不要求说“你们公司”。返回可追溯原文供同轮综合解释；知识条件不证明项目已满足，不是项目报价/工期承诺。', parameters: {
     type: 'object', properties: { query: { type: 'string' } }, required: ['query'], additionalProperties: false,
   } },
 ];

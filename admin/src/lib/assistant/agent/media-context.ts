@@ -9,6 +9,8 @@ import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { publicMessageAvailable } from '@/lib/construction/public-projections';
 import { materialSnapshotAvailable, type MaterialDependency } from './materials';
 import { needIssueSnapshotAvailable, type NeedIssueDependency } from '@/lib/construction/need-issues';
+import { synthesisContextAvailable } from './synthesis-sources';
+import type { SynthesisContext } from './synthesis';
 export type MediaDependency = { type: 'assistant_media'; id: string; hash: string };
 /** Call only after conversation authorization; this does not grant conversation access. */
 export async function resolveAgentMedia(tx: PostgresTransaction, enterpriseId: string, conversationId: string, ref: MediaDependency) {
@@ -20,6 +22,17 @@ export async function resolveAgentMedia(tx: PostgresTransaction, enterpriseId: s
   return media;
 }
 export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseId: string, conversationId: string, messageId: string) {
+  const synthesis = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
+    where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_synthesis_context'`);
+  if (synthesis) {
+    const conversation = await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${enterpriseId} and id=${conversationId}`);
+    const owner = await one(tx, sql`select user_id,admin_id from app.assistant_participants where enterprise_id=${enterpriseId} and conversation_id=${conversationId} and status='active'
+      ${conversation?.purpose === 'customer_consultation' ? sql`and user_id is not null` : sql``} order by id limit 1`);
+    if (owner && !owner.user_id && !(conversation?.entry_snapshot as { preview?: unknown })?.preview) return false;
+    if (!conversation || !owner || !await synthesisContextAvailable(tx, { enterpriseId, principal: owner.user_id
+      ? { kind: 'user', userId: String(owner.user_id) } : { kind: 'admin', adminId: String(owner.admin_id) }, contextVersion: 0, capabilities: [] },
+      conversation, synthesis.source_refs as SynthesisContext)) return false;
+  }
   if (!await publicMessageAvailable(tx, enterpriseId, conversationId, messageId)) return false;
   if (!await constructionNoticeAvailable(tx, enterpriseId, conversationId, messageId)) return false;
   const construction = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id

@@ -1,5 +1,47 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前专业客服：知识与工地资料综合解释（限定范围，整体Limited）
+
+当前主线按最新整合路线图3.1/4.1/4.4推进。PPT6/14/15的先答问题、生活需求和连续追问，结合PPT18/19实际节点、PPT23资料关联及PPT38缺失/说法不一致先核实，复用C01/C02/S01/U01。专业问答已接入原Agent，而不是新建聊天入口；旧知识摘录及业务快照模式继续兼容。完整专业客服、全PPT及P5仍为Limited，未生产发布。
+
+### 行为、API与来源合同
+
+- 原`packages/assistant/chat/chat`及`/api/miniprogram/assistant/conversations/:cid/*`、`runs/:id`保留，后台仍用既有知识发布/试问/接续接口，无新增路由、菜单、表或迁移。可选择LangGraph的企业沿原配置模型、开关、配额、用量、租约、上下文版本和人工接管执行；未选择Agent的企业仍用旧执行器。
+- prompt `xiaok-renovation-v24`让自然专业问题主动`search_knowledge`，同轮向配置模型提供已发布知识完整片段和`query_materials/query_business/query_followups`获权结果。以`final_response(kind=synthesis)`逐段输出有据解释、一般建议、待核实内容；不再要求解释文字等于摘录。每段有据解释必须引用本轮sourceId和逐字支持原文；一般建议/待核实由服务端加标识。结构、引用/数字和正式承诺守卫与固定语义验收分开，引用存在本身不证明推理正确。
+- step1006 `agent_synthesis_context`在原`assistant_run_steps`保存全部实际咨询的知识候选（包括冲突、未引用候选）、业务查询/项目快照、hash/版本、精确引用段及触发原话关联。材料快照保留原咨询、本人档案、项目/房间、原始message/media、正式v4主户型和已向本人发布的记录引用；同名不等于已核实映射，正式墙图不等于电气点位图，未传入像素不声称看图。
+- 原知识citation表和C01来源片展示当前有效知识版本及支持原文；同一chunk的多段引用保存覆盖全部引文的连续原文。项目依据沿原快照/原消息/已发布记录及现有照片组件，不生成任意URL、图纸、尺寸或现场事实。普通专业解释不创建处理事项、批准、预约或通知；具体正式状态仍可用权威业务卡，模型不能据知识规则宣告现场已满足、已批准、已解决关闭、验收或付款。
+- 模型前后、工具继续、最终事务及恢复均重验实际取回的来源。综合结论和知识引用在换版、撤回、过期、受众变化、项目/资料快照变化或撤权后失效；原消息、引用访问、重进及真人资料包走同一守卫。后续仅带此前客户问题用于指代，重新查询企业/项目事实，旧生成结论不当作新事实。不存在知识索引时，服务端先核对active_index_profile_id确实缺失并返回`knowledgeStatus=not_ready`，允许标明身份的一般建议及缺项；网络/供应商未知结果仍沿既有失败/核对路径，不伪装成无资料。
+- 来源文字及工具结果仍是不可信数据，不能改变租户、本人/成员、发布、接待同意或角色权限。企业负责人/admin/super_admin管理继承、工程原件授权、source revocation、业务版本、用量与保留期保持；保留期清理同样清除新增step的source_refs/private_checkpoint。
+
+生成上下文采用`current-turn-evidence-v1`：历史先用于选择工具，取数后保留当前轮标准工具消息对和同一真实原话，去除旧话题干扰，不生成新用户消息或第二套循环。资料显式声明适用范围未核实时，`unresolvedConflict`要求首段待核实，并拒绝伪称企业主流/倾向；这不是完整自动语义矛盾识别。当前房屋绑定从服务端会话读取，不由模型自行切换到另一套本人房屋。已有房屋绑定的客户咨询，search_knowledge同时经原材料resolver重查同一房屋，即使简短追问只选了知识工具。step1400系列synthesis.bound_materials.v1如实记录服务端主动查询，不伪造模型工具调用；Bbound来源加入相同重验和保留期规则。多项目仍先澄清，授权资料缺项不证明现实不存在；未绑定/后台咨询不自动选择房屋。
+
+### 共用状态规则与设计映射
+
+| 触发 | 可见反馈及操作 | 恢复/重进与权限 |
+| --- | --- | --- |
+| 普通专业问题 | 原气泡解释及既有知识来源chip；可继续追问、改话题或找设计师 | 真实原话/回答持久保存；不自动建事项或扩大授权 |
+| 资料缺少/冲突 | 仍答有据部分；标明一般建议及一个最小待核实项，冲突保留双方 | 有效版本/条件优先，未知现场条件不补猜；重新查询 |
+| 无知识索引 | 标明一般建议及企业依据缺口 | 不声称已检索到企业规则；真实外部失败继续显示原错误/恢复态 |
+| 换版、撤回、过期或撤权 | 原U01来源不可用反馈；相关生成结论/原件不再提供 | 重进及后续上下文重验；失效旧结论不复活 |
+| 真人接管/未知调用结果 | 原等待/接管/错误反馈，AI不插话，不假报办理 | 沿原run/job/回执核对，观察到的用量保留 |
+
+设计源映射：唯一chat台账仍指向`design-references/xiaok-p4b-public-sites-v1/README.md`及继承C01/C02/U01；本轮只向已有文字气泡、来源chip/片、照片及失效态提供数据，不改WXML/Less/字号/插画/导航，无新图片或切片。动态长回答沿原消息区滚动，原生功能证据不升级完整光学/宿主/高屏/键盘还原状态。
+
+### 本轮验证与可复跑入口
+
+固定判据预先登记于`admin/scripts/assistant-synthesis-cases.ts`，核对专业要点、正确项目、实际来源、允许一般建议及禁止推断；保留逐轮工具/模型输出、结果、时延和可核验用量，费用未知记null。源码/工程和真实语义证据按下列入口分开：
+
+- `cd admin; node scripts/assistant-synthesis-acceptance.mjs`：55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS、共享advisory锁；真实事务/索引/检索，确定性模型适配器。它不算真实模型能力验收。
+- `node scripts/assistant-synthesis-acceptance.mjs --regression`：已有Agent/资料/事项及PPT23/38处理链相关回归，配置跳过保持跳过。
+- `node --import tsx scripts/assistant-synthesis-development-acceptance.ts --development`：仅已批准5432/smart_floor_planner、真实3006 HTTP/既有Worker/embedding及配置DeepSeek/deepseek-flash；清楚标记的合成企业、用户、工地、知识/墙图/记录，每个固定核心场景重复两次。
+- 同命令加`--native`：唯一副屏Stable2.02.2608080、官方automator0.13.0、SDK3.17.2/390×844；实际输入/点击、回答、引用、持久重进及撤回，恢复内存网络/身份/存储。不是微信真登录或真机验收。
+
+最终v24：真实模型核心**12/12**（6个固定组合各两次，run218–229）；Stable原生**9/9**，包含额外两轮真实模型、引用片、持久重进及撤回。数据为合成夹具，HTTP、配置模型、embedding、Worker与开发数据库真实。核心24次模型调用，observed input120862/output8139 tokens，费用未知为null。新增隔离数据库/解析**15/15**、纯单元**27/27**、Mini相关**98/98**。既有相关回归按已完成文件分组合计**71通过/9配置跳过**，原组合命令超时，不能说整组命令通过；最终Agent子组复跑12通过/7跳过。lint 0错误/30既有警告；类型检查仍失败，292条诊断与原集合完全相同。早期v21/v22语义失败、v23原生旧缺项误述、首轮服务/测试器失败均保留，不标最终通过。数据ID、实际文本及边界见本轮交接与tmp/xiaok-synthesis报告。历史构建阻塞、独立Mini打包3失败、真机/真实微信/BLE与完整发布保持原状态；完整KB-1/文件解析、未标记矛盾识别、自由建议的工程规范级评审及完整视觉/宿主/高屏/键盘核验仍Limited或未验证。
+
+### 上游对照与采用决定
+
+核对维护中的[LangGraph ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[消息/工具测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[已关闭status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，以及[OpenAI兼容工具序列化问题11490](https://github.com/langchain-ai/langchainjs/pull/11490)。借鉴[Dify将检索结果作为模型上下文](https://docs.dify.ai/en/cloud/use-dify/nodes/knowledge-retrieval)，在已有有界循环内加入来源化生成，保留数据库的权限/业务回执/任务权威，不迁移框架或另建恢复系统。11490讨论流式无效工具参数与消息序列化不一致，当前非流式适配不据此更改；继续验证实际配置模型的工具协议/解析。DeepSeek已有关闭thinking/强制final_response为供应商适配，不推广成通用规则，也不把工具status当正式办理成功。
+
 **当前P5/PPT38现场落实、正式解决关闭与原咨询回传：限定闭环Implemented，整体Limited。** 原S04以当前获同意的精确方案，关联同房间已核对发布、有完成内容且无待处理缺项的现场记录及照片原件；负责人/管理者明确记录落实，管理者分别正式解决、关闭并选择回传节选和是否开放这些原件。客户同意、普通回复、照片发布不自动推进正式状态，关闭不代表工程验收或付款。独立处理修订、原键恢复、真人延后/乱序去重、重新处理及换版/撤回/撤权守卫沿原事务/outbox/Worker，原件仅以JWT回传原授权咨询；移出或所需角色降权后再授权不复活原正式依据，member审计保留服务读取的previousRole/previousActive。prompt v20的query_followups只读实际结果并继承原施工来源链；方案决定来源按业务修订优先，晚到的原发布通知不改变当前决定的来源ID。不增表、迁移、页面、菜单、WXML、Less、插画或导航；复用批准S04/C01/C05/U01。当前接口、角色、状态、设计映射、复跑命令和验证边界见[二期当前合同](./xiaok-assistant-phase-2.zh-CN.md#当前p5ppt38现场落实与正式解决关闭)，证据tmp/xiaok-p5-resolution/。既有构建/类型/独立Mini打包限制保留，不声明完整P5、可发布或干净克隆全通过；未合并main或部署。本段当前限定范围优先于下文旧阶段“正式决定/落实关闭未交付”的描述，旧批次测试及未测记录仍按原范围保留。
 
 **前批P5正式版本、差异与客户决定：限定闭环Implemented，P5整体Limited。** 原S04有权人员明确发布图纸原件、精确版本、前版、差异及费用/工期影响；原授权咨询C05完整查看后作本版本决定。原键恢复、真人延后、换版/撤回、权限及v19来源化追问已接通；没有新表/迁移/页面/Less/插画/导航或生产变更。客户同意仍不等于现场落实、解决、关闭或验收。当前合同和最终验证见下文P5节；此前PPT23客户资料及同事项回传合同继续约束其各自范围。
