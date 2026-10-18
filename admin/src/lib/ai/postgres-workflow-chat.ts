@@ -4,22 +4,17 @@ import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
 import { AssistantError, type InvocationOwner } from '@/lib/assistant/contracts';
 import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
-import { withTenantTransaction } from '@/db/transaction';
+import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
-import { getAiProviderAdapter, listProviderRuntimes } from '@/lib/ai/provider-registry';
-import {
-  getPlatformLlmOverrideRuntime,
-  isPlatformLlmOverrideModelKey,
-} from '@/lib/platform-llm-config';
+import { getAiProviderAdapter } from '@/lib/ai/provider-registry';
+import { workflowTextRuntimes, workflowTextModel, workflowTextThinking, type WorkflowChatModelKey } from './workflow-text-runtime';
+import { assertPreviewTextConfiguration, type PreviewExecutionSnapshot } from '@/lib/assistant/core/execution-config';
 import {
   capabilityForLogicalModel,
   AiProviderError,
   isSafeProviderFallback,
   type AiChatMessage,
-  type AiLogicalModelKey,
 } from '@/lib/ai/provider-types';
-
-type WorkflowChatModelKey = Extract<AiLogicalModelKey, 'chat.general' | 'vision.reference_analysis'>;
 
 function requestFingerprint(value: unknown) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -38,36 +33,33 @@ export async function executePostgresText(input: {
   maxTokens?: number;
   metadata?: Record<string, unknown>;
   beforeProviderCall?: () => Promise<void>;
+  /** Optional pinned preview dispatch: guard/start marker and attempt commit in one tenant transaction. */
+  beforeProviderAttempt?: (tx: PostgresTransaction) => Promise<void>;
+  expectedExecution?: PreviewExecutionSnapshot;
   agent?: { config: AgentConfig; input: Omit<ModelTurnInput, 'model' | 'enableThinking'> };
 }) {
   if (input.owner.kind === 'knowledge_job') {
     throw new Error('Knowledge job invocation is unavailable until the knowledge domain is installed');
   }
   const capability = capabilityForLogicalModel(input.logicalModelKey);
-  const llmOverride = isPlatformLlmOverrideModelKey(input.logicalModelKey)
-    ? await getPlatformLlmOverrideRuntime()
-    : null;
-  const runtimes = llmOverride
-    ? [llmOverride]
-    : await listProviderRuntimes(capability, input.logicalModelKey);
+  const runtimes = await workflowTextRuntimes(input.logicalModelKey);
   if (!runtimes.length) throw new Error(`没有可用的 AI 供应商支持 ${input.logicalModelKey}`);
 
   let lastError: unknown;
   for (const runtime of runtimes) {
     // Deployment-only assistant override. Never change the shared generation model
     // or silently fall back to a reasoning model after an ambiguous invocation.
-    const remoteModel = input.owner.kind === 'assistant_run' && process.env.ASSISTANT_TEXT_MODEL?.trim()
-      ? process.env.ASSISTANT_TEXT_MODEL.trim() : runtime.modelMappings[input.logicalModelKey];
+    const remoteModel = workflowTextModel(runtime, input.logicalModelKey, input.owner.kind === 'assistant_run');
     if (!remoteModel) continue;
     if (input.agent && (input.owner.kind !== 'assistant_run' || runtime.adapterType !== 'openai_compatible'
       || input.agent.config.model !== remoteModel || input.agent.config.providerKey !== (runtime.adapterConfig?.providerPreset || runtime.key))) {
       throw new Error('Agent provider capability probe no longer matches current configuration');
     }
-    const enableThinking=input.owner.kind==='assistant_run' && process.env.ASSISTANT_TEXT_DISABLE_THINKING==='1'?false:undefined;
-    if (enableThinking !== undefined && (runtime.adapterType !== 'openai_compatible'
-      || !(runtime.adapterConfig?.providerPreset === 'siliconflow'
-        || (runtime.adapterConfig?.providerPreset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com')))) {
-      throw new Error('Assistant thinking override requires an approved SiliconFlow or official DeepSeek runtime');
+    const enableThinking = workflowTextThinking(runtime, input.owner.kind === 'assistant_run');
+    if (input.expectedExecution) {
+      if (input.owner.kind !== 'assistant_run' || input.logicalModelKey !== 'chat.general' || input.agent
+        || !input.beforeProviderAttempt || input.beforeProviderCall) throw new AssistantError('context_changed', 409);
+      assertPreviewTextConfiguration(input.expectedExecution, runtime, remoteModel, enableThinking, input);
     }
     // Local request validation must precede both the attempt and the caller's
     // provider-start checkpoint. A request that cannot be serialized was never
@@ -81,8 +73,9 @@ export async function executePostgresText(input: {
       }
     }
     const startedAt = Date.now();
-    const attempt = await withTenantTransaction(input.enterpriseId, (transaction) =>
-      new AiCreationRepository(transaction).createProviderAttempt({
+    const attempt = await withTenantTransaction(input.enterpriseId, async transaction => {
+      await input.beforeProviderAttempt?.(transaction);
+      return new AiCreationRepository(transaction).createProviderAttempt({
         enterpriseId: input.enterpriseId,
         generationId: input.owner.kind === 'generation' ? input.owner.generationId : null,
         assistantRunId: input.owner.kind === 'assistant_run' ? input.owner.runId : null,
@@ -98,8 +91,8 @@ export async function executePostgresText(input: {
         estimatedCost: resolveProviderCostEstimate(runtime, input.logicalModelKey, remoteModel),
         requestFingerprint: requestFingerprint(input.agent?.input || input.messages),
         metadata: input.owner.kind==='assistant_run'?{...input.metadata,assistantText:{enableThinking:enableThinking ?? null,maxTokens:input.maxTokens}}:input.metadata,
-      })
-    );
+      });
+    });
 
     let dispatched = false;
     try {

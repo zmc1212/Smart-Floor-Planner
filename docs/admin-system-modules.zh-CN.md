@@ -30,6 +30,20 @@
 
 冻结工程验证：核心104项及不重叠Agent19项，去重123项中121通过、2项配置实模重复路径跳过，零失败，两组源码清单均未变。73项单元已含其中，不重复累计。相关lint零错误零警告；类型基线287→287、新增0，仍非全量类型通过。Mini92/92为较早的未改客户端检查；这些检查不能替代仍失败的原生语义验收。
 
+<!-- shared-batch-execution:start -->
+
+**KB-4共享执行：Limited，内部接缝已实现，未启用生产自动批量派发。** 已原样集成核验知识基线95ff8f20：`/assistant-knowledge`沿原手动批次/case/evaluation，含`GET/POST /api/assistant/knowledge/operations/batches`、批次重进及原评测显式resume/cancel。本共享阶段无新公开路由、页面、结构、样式、素材、反馈文案、角色授权或schema。所选企业、当前管理者/敏感密码、本人批次、参与者/来源守卫保持；admin/super_admin在所选企业继承企业管理权限。
+
+`core/evaluation-execution.ts::createKnowledgeBatchSharedPort()`实现知识方准确五方法executionRevision、lookupReceipt、dispatch、observeRun、cancelRun，通过ConversationService.inTransaction沿用传入租户事务；恢复只读原create/send回执，不为找run发送。批次权威仅为原knowledge-batch-prepare、knowledge-batch-execution-prepare及规范knowledge-batch-execution-cancel回执（取消key=batchId），无第二队列/租约/取消存储或迁移。
+
+私有prepared run固定真正knowledge_preview的provider/config/model tag、公开endpoint身份、思考/超时/temperature/输出上限、实际system prompt hash、当前profile/epoch/policy及retrievalConfiguration；不含凭据，供应商未提供的model revision保持null。实际解析请求在attempt前核对；原settings/有效租约事务再查规范取消、完整manifest/evaluation/当前case revision、原操作键、消息摘要及来源/profile/policy，之后同事务提交开始标记与attempt。来源/供应商变化后仍可按当前身份/参与者权限读取或取消已知run；已开始/未知attempt及reconciling金额不清零。
+
+Prepared批次只按原操作恢复/取消，通用run retry不得绕过domain item守卫；沿既有run.retryable数据路径隐藏原Admin重试控件，普通非批次的已知重试保持。设计源为现有Ant Design/Admin Pro合同及admin/src/components/assistant/preview-panel.tsx，无新视觉方向。本项是私有知识试问固定，不是C01 Agent固定，也不是已完成用户阶段。
+
+已执行：离线158/158（含知识适配器确定性测试，不是新语义回答）；隔离PostgreSQL 14/14（11项准确合同共享服务检查及原Agent派发/费用3项回归），供应商HTTP全部模拟，真实模型/Embedding调用0。同程序类型287→287、新增0，相关lint/diff见交接。早期原型12项/双进程竞争属于旧提案ABI，不计为当前95验收。知识线继续持有真实双进程适配验收及入口注入。完整构建及真机/原生/图内识读限制不变。
+
+<!-- shared-batch-execution:end -->
+
 <!-- admin-request-compatibility:start -->
 
 共享Admin小客客户端使用每请求独立的`AbortController`和30秒计时器，覆盖JSON正文读取，不再依赖`AbortSignal.timeout/any`。调用方取消保留信号首次原因；响应头前仍返回原生fetch的取消异常。期限/网络失败仍为`network_unknown`，正文失败仍为带HTTP状态的`response_unknown`；不确定变更沿原操作键/正文重试，已知失败或成功后的主动重复清除原待确认身份。所有已结束路径清理计时器和调用方监听。路由、API、权限、错误文案、结构/样式及小程序行为不变。

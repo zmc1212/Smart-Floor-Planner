@@ -50,23 +50,26 @@
 
 共享Admin请求兼容已限定实现，v61 Agent/模型视图政策不变。每请求通过`AbortController`组合调用方取消与原30秒期限，覆盖JSON正文读取，结束后清理计时器/监听，不依赖`AbortSignal.timeout/any`。网络/正文不确定性、原生取消异常、已知错误分类和变更幂等语义保持。无API、权限、队列、schema、知识专属UI/服务、小程序结构/样式/素材或设计变更。
 
-已执行：Node14/14；本机Chrome101.0.4951.54 10/10、Edge155.0.4283.62 9/9合成HTTP传输检查，含真实30秒正文期限。旧Chrome在HTTP前TypeError已按0请求复现；浏览器透明连接重试仍计入同一合成操作键，Chrome101原生AbortError对象身份差异如实记录而不改写。未注入信号polyfill/加速时钟，无DB/模型/Embedding调用，不充作已登录页面验收。相关lint通过，同程序类型287→287/新增0，自有服务与浏览器驱动均结束。证据为独立worktree的`tmp/xiaok-fact-boundaries/chrome101/`。本项只闭环共享传输依赖；实际执行配置固定与跨进程持久取消仍待集成，整体仍**Limited**。
+已执行：Node14/14；本机Chrome101.0.4951.54 10/10、Edge155.0.4283.62 9/9合成HTTP传输检查，含真实30秒正文期限。旧Chrome在HTTP前TypeError已按0请求复现；浏览器透明连接重试仍计入同一合成操作键，Chrome101原生AbortError对象身份差异如实记录而不改写。未注入信号polyfill/加速时钟，无DB/模型/Embedding调用，不充作已登录页面验收。相关lint通过，同程序类型287→287/新增0，自有服务与浏览器驱动均结束。证据为独立worktree的`tmp/xiaok-fact-boundaries/chrome101/`。本段仅为传输证据；当前共享执行端口见下段，知识线的双进程/生产接入仍待验证，整体仍**Limited**。
 
 <!-- admin-request-compatibility:end -->
 
 <!-- shared-execution-integration:start -->
 
-下一共享集成仍**Limited / 尚未实施**。`7f4f9809`之后的源码核对确认：`core/conversation.ts:newRun`保存actor/policy/Agent配置，实际文字供应商仍在`ai/postgres-workflow-chat.ts`解析，包含平台及部署覆盖。知识线准备批次绑定case/来源epoch/profile/policy，但没有生产`EvaluationBatchPort`适配器或实际执行Revision。其`knowledge/operations.ts:resume`的评测检查、创建/关联会话、send及回写run分属多个事务。这是跨所有权接线点，不是已复现竞争或已完成整批取消的证据。
+**共享五方法已限定验证；知识线完成生产适配接线/验收前，KB-4仍Limited。** 基于正常集成4b5fb96d/bb89e54c/95ff8f20；知识专属operations.ts、batch-execution-adapter.ts、evaluation-batch.ts及专属测试保持。准确导入为`admin/src/lib/assistant/core/evaluation-execution.ts::createKnowledgeBatchSharedPort()`，返回KnowledgeBatchSharedPort<PostgresTransaction>供new KnowledgeOperations(manager,factory)使用；构造无配置读取或I/O。
 
-| 边界 | 现有权威及待接入要求 |
+| 端口/边界 | 已实现行为 |
 | --- | --- |
-| 实际执行Revision | 共享负责人复用实际供应商/模型解析路径；服务端摘要覆盖真正的knowledge_preview或Agent/现场草稿模式、provider/config/adapter及endpoint身份、部署覆盖后的model/revision、实际prompt、生成/思考/工具参数、当前索引profile及导出的retrievalConfiguration，不含凭据。现有preview系统正文可从answerMessages读取，不得标为C01 Agent prompt。准备时及实际派发前逐次对照，在新attempt/开始标记/HTTP之前拒绝变更；只算settings hash不足。 |
-| 未派发项的持久取消 | 知识负责人提供batch/evaluation/原操作绑定及唯一持久取消意图，共享负责人提供使用调用方事务的create/send/run接缝。沿企业settings锁和原run/job状态，同一事务检查取消意图和预期Revision后才建run/job/预留；供应商开始事务再查有效租约/run。不可持锁后调用另一个独立ConversationService事务。父任务协调知识专属operations.ts/适配器的修改归属，两线均不另建队列/schema。 |
-| 丢失run关联与已知run取消 | 原send已提交但评测关联丢失时，以获权只读回执恢复，不通过resume/send探测未知run。来源/policy变更后，已知run仍沿本人/参与者权限和原键取消；现有ConversationService.run(...,'cancel')不做当前来源preflight，身份/参与者检查保持。单run取消和job-queue.ts的有效租约/开始标记仍是权威；provider-started/未知attempt及reconciling费用继续待核对。 |
+| executionRevision | 原平台/部署文字解析提取到ai/workflow-text-runtime.ts，准备及实际派发共同使用。服务端摘要绑定实际knowledge_preview身份/model/生成/prompt、profile/epoch/policy及传入/当前retrievalConfiguration，不含凭据。未提供供应商model revision保持null，不承诺模型权重固定。 |
+| lookupReceipt/事务复用 | ConversationService.inTransaction在传入事务中保留身份、参与者、settings检查；originalSubmission及获权operation receipts恢复原create/send/run，不写入、不通过resume/send探测。过期不授权重复副作用；损坏或已提交但无run的回执抛错，不伪作不存在。 |
+| dispatch/provider-start | 仅用知识方准备/取消规范记录；私有run绑定精确case/evaluation快照、原键、消息摘要及取消fence。新run/job/预留沿原settings事务检查；真实解析模型配置先于attempt核对，有效租约/当前绑定/取消与开始标记及attempt同事务核对提交，无第二权威。 |
+| observeRun/cancelRun | 只读获权原run及明确用量/预留记录，不把不可得用量/账务算0。已知取消不要求来源/供应商当前配置，但保留身份/参与者和原键。Prepared项的通用retry缺少domain守卫，保持不可用；普通非批次重试保留。 |
 
-本阶段交付具体源码/文件归属核对，未实现上述新运行能力，未改知识专属文件。后续仍需双独立进程advance/cancel竞争、派发前来源/实际配置变更、send已提交而评测run关联丢失的恢复，以及未知用量/费用保留的验收。验收共用锁和浏览器AbortController均不能替代该业务契约。
+已执行：离线158/158（含知识适配器确定性测试，不是新语义回答）；隔离PostgreSQL 14/14（11项准确合同共享服务检查及原Agent派发/费用3项回归），供应商HTTP全部模拟，真实模型/Embedding调用0。同程序类型287→287、新增0，相关lint/diff见交接。早期原型12项/双进程竞争属于旧提案ABI，不计为当前95验收。知识线继续持有真实双进程适配验收及入口注入。完整构建及真机/原生/图内识读限制不变。
 
-参考决策：保留原PostgreSQL事务、租约、原回执和核对权威。[LangGraph Functional API](https://docs.langchain.com/oss/javascript/langgraph/functional-api)要求可能重放的未完成任务自行保证幂等；其[Postgres pending-send测试](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint-postgres/tests/test_sync.py)验证持久任务状态，不覆盖本产品权限或供应商账务。[Issue8702](https://github.com/langchain-ai/langgraph/issues/8702)讨论该边界，不能作为本适配器已实现的证据。[PostgreSQL行锁](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)支持原事务排序。本次不提出框架迁移或重试策略变更。
+知识95持有整批持久取消意图及cancelledBeforeDispatch观测，覆盖全未派发批次；共享代码不重造。下一责任方为知识线：内部入口注入稳定factory，接回真实PostgreSQL双进程advance/cancel、来源/实际配置变更及丢失关联验收。本项未启用生产批量路由/定时任务，未增加凭据或部署。早期语义/原生证据保持历史身份，未在此Admin共享接缝重跑。
+
+采纳决策：保持原租户事务、settings/租约排序、原回执及账务核对。[LangGraph Functional API](https://docs.langchain.com/oss/javascript/langgraph/functional-api)、其[Postgres pending-send测试](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint-postgres/tests/test_sync.py)及[issue8702](https://github.com/langchain-ai/langgraph/issues/8702)区分检查点重放与应用副作用回执；[PostgreSQL行锁](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)支持原事务排序。本次不采用框架迁移、模型重试或第二队列。
 
 <!-- shared-execution-integration:end -->
 
