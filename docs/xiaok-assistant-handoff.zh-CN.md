@@ -1,4 +1,16 @@
-# 小客接力：知识批次共享执行接缝
+# 小客接力：需求原话事实边界 v62
+
+业务修复提交 [4f4b10deff6b6c25a2ac5af456de4c4ba8f1e6e7](https://github.com/zmc1212/Smart-Floor-Planner/commit/4f4b10deff6b6c25a2ac5af456de4c4ba8f1e6e7)，分支 `codex/xiaok-need-source-context`，工作区 `G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-need-source-context`，基线 a579e512。仅修复既有路线图10.1第1/3场景的内部可靠性，不宣称完整阶段或发布验收。
+
+- 离线生产函数复现了否定/未定被截成肯定，以及客厅原话写进书房的缺陷：修复前4组中3失败。v62逐位置核对quote/value、明确房间及邻接限定词；同房间后续直接否定不能被旧命中绕过。完整否定/未定原话、明确更正及共同主语保留。既有版本/来源/幂等/整批原子写及“已保存”回执围栏不放宽，不增模型轮次。
+- 重进在原消息/工地通知获权检查后过滤同类旧误提取，只改当前可用投影；原消息、存储记忆和supersedes审计链不改。独立桌位/设备仍可用，失效更正不复活旧混合人数。词法规则、常用房间及请求房间原文是有界支持，复杂隐含更正、其他复合字段、任意房间关系仍Limited。
+- 最终离线178/178，失败/跳过/取消0；其中8项需求来源测试含真实读取函数加合成repository替身，不是DB/RLS验收。8项受影响TS文件lint无错误警告；相同程序类型287→287，新增0，不是完整类型通过。六份双语当前清单/二期合同已同步。
+- 本轮模型/Embedding/数据库/浏览器/原生新调用均0，无夹具/服务/Worker，无锁竞争。v61原生21/21及4322/4323/4324仅保留原版本证据；4324条件式一人示例仍是措辞限制。图内识读/真机/BLE/真实微信授权未验，旧AiDesignerLegacyPage导出构建问题及287项类型基线仍在；历史未知attempt/费用未处理或清零。
+- 证据 `tmp/xiaok-need-source-context/acceptance-summary.json`、`final-offline.log`、`type-comparison.json`、`original-preservation.json`；复跑命令见[二期合同](./xiaok-assistant-phase-2.zh-CN.md#当前p3bp4a客户更正与原事项接续)。原脏工作区97项、五项删除、分支和d0238543 HEAD保持。
+
+父任务已授权下一步正常合入知识稳定349cb8f2并应用其KB-4共享清单文本；当前修复先作为独立稳定提交收尾。知识线继续独占有界实模语义验收，避免重复调用，历史4242不动。不合并main、不部署、不生产启用。
+
+## 既有知识批次共享执行接缝（a579e512）
 
 共享功能提交为 [`5f49fff44161f4baca3e3da922381e98bc9945f8`](https://github.com/zmc1212/Smart-Floor-Planner/commit/5f49fff44161f4baca3e3da922381e98bc9945f8)，分支 `codex/xiaok-execution-fence`，工作区 `G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-execution-fence`。已按父任务授权正常合入知识稳定 `bb89e54c` 和准确适配合同 `95ff8f20`，集成基线为 `34d57f53`；两次合入均无文件归属冲突。本共享功能只含16项共享代码、测试/脚本及双语当前清单，没有修改知识专属文件。**共享内部接缝已验证，整体仍Limited；知识线接回真实双进程/入口验收前，不称生产自动批次完成或发布批准。**
 
