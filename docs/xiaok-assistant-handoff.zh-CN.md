@@ -1,48 +1,68 @@
-# 小客接力：团队核对与精确正式版本进入专业问答
+# 小客接力：客户更正、有效记忆与原事项接续
 
-2026-10-18。继续当前路线图3.1的P3B/P4A、PPT23/38，不新增阶段编号。**本轮限定来源与状态闭环Implemented，整体仍Limited**，未宣称完整专业客服、图纸理解或全PPT完成。分支`codex/xiaok-public-site-lifecycle`，基线`26a3664f384d478af10a0af1de2610581e849cf8`；功能提交`19af1ea7ad768317ac580a0a78b1dd6116630fb3`，最终交接提交及本地/上游/GitHub一致性见`tmp/xiaok-team-sources/git-final.json`。仅普通推送当前分支，不合并main或部署。
+2026-10-18，分支`codex/xiaok-public-site-lifecycle`。功能提交`1a485e03`，从前次交接`9db99f40`继续；前次功能`19af1ea7`的团队核对、精确正式版本和客户决定继续复用。本轮已完成限定实现、自动检查及原生闭环，**整体仍为Limited，完整专业语义未通过，不代表整份PPT、生产或发布验收。** 交接随后单独提交，普通推送后以分支远端核对记录为准。
 
-前批原件投影`11d12f41`/`26a3664f`及其`tmp/xiaok-material-projection/`成功、失败和未验项保持原记录。用户整理的双语路线图、知识完善计划、其他脏文件及原有五项组件删除均保留，未混入本轮提交。
+## 当前实际行为与边界
 
-## 当前实际行为
+- 明确更正可以紧接专业问题。既有`record_need`兼容原参数，可附最多三条`additionalNeeds`，共四个独立房间/字段；核验全部当前原话、字段及重复项后同事务保存。稳定逐条操作键让恢复不重复记忆、自动草稿或原事项进展；返回实际`savedFacts`，后续检索优先使用本轮保存回执，假设与转述建议不写成客户事实。
+- 当前字段带同字段supersedes及原话来源。针对存量desk/other把人数和位置混写的行，后续同房间明确use更正通过只读qualification限定人数，保留原话、桌型/位置、设备、其他房间和审计。当前更正来源不可用时只投影未知标记，不泄露其值、不重新认定旧人数；`query_followups`也复用有效记忆读取，不能从事项适配器绕回失效事实。单一devices复合值的任意增删、自由文本跨字段关系与长期记忆治理仍未完整实现。
+- 企业专业知识与同轮实际节点、可用材料、客户当前需求和既有事项一同进入解释。来源按原事项分别提供真实状态、等待方/负责人；来源ID和实现键留在元数据。当前私聊更正、早先主动共享需求、团队关联核对、精确正式版本及其客户决定分别表达；私聊更正不自动共享、换版、同意或落实，不制造第二条事项。
+- `xiaok-renovation-v51`与`current-turn-sources-v4`保留完整原文和权限/版本元数据，仅在模型视图共用完全相同来源的正文与别名，修复反馈按原顺序保留一次。检查点、来源重验、四轮、48,000 UTF-8文字字节及有限格式修复边界未放宽。否定句“同意不等于已经落实”不再误判为正向完成承诺；独立的正向越权完成句仍拒绝。
+- 综合与普通自由回答在最终提交事务共用真实保存操作守卫。对已记录、已按更正记为/更新为等已知回执形式，须有本轮实际提交的need/preference操作；旧记忆、引文或被拒写入不能充当保存回执。它不保证任意措辞、所声称的每个字段/值或所有推断正确。最终规则离线复放八次v51已持久回答及其真实记忆8/8，并非额外实模或完整语义证明。
 
-- 原`query_materials`及`search_knowledge`绑定房屋路径，继续复用本客户/原咨询/明确项目房间的有效共享需求、点位图、实际节点与企业知识。新增独立`team_review`、`formal_plan`来源；不新建权限、版本或知识系统，无新schema/API/菜单。
-- 团队来源仅来自经理**明确回传到原咨询**且当前仍有效的图纸关联核对，绑定回传event/客户回执、事项/修订、need/drawing grant和materialVersion。内部回复、未发布现场记录与共享会话不泄漏给客户；核对关联不冒充图内尺寸、正式决定或现场落实。
-- 正式来源复用`customerPlans/readPlan`，只读当前已送达本咨询的精确版本ID/hash、版号、修订、客户真实决定、原件hash、前版与差异/费用/工期原文。预览、待决定、稍后、未同意、要求修改、同意分别保留；新版不继承同意，撤回最新不回退旧版。所有既有源权限、换版、撤回和历史失效检查继续执行。
-- v43实模回答能说明团队核对后还缺现场尺寸，按V1差异和真实同意解释；V2改为单人办公/取消台灯时保留与客户双人办公/台灯原话的冲突，请团队核实，不自行覆盖需求。普通解释不执行决定、落实、解决或关闭。
-- 实际正式资料使旧重复DTO超过原48KB预算。`current-turn-sources-v2`只精简模型视图中的重复data/displayText及完全相同文本，保留全部来源原文、ID/版本/权限、冲突/缺项、知识条件/单位和标准tool_call配对；持久快照/检查点及提交/重进授权不变。原失败检查点52,092→39,819 UTF-8字节，原预算未提高。
-- 正式编号缺同段引文时，仅复用原有唯一一次格式修复，提供同一已引用来源的精确ID/版号标题；不自动改答案，不增加轮数或放宽数值规则。未引用费用/尺寸、同号金额、未知来源和完成承诺仍拒绝。失败原回答不算有效输出。
-- 本轮未识读图内像素，`imagePixels:false`；240×180纯色PNG只是原件/hash/权限传输合成样本，不是图纸理解证据。C01/S04未改WXML/Less/素材/文案/几何，批准设计与双语唯一路由台账已同步；不扩大视觉还原结论。
+沿用原租户/RLS、客户/原咨询/项目房间、参与者、来源修订/撤回、三类管理者继承、outbox/Worker、用量及真人模式边界。无新schema/迁移、API路由/菜单、凭证、权限、Mini结构/样式/素材/文案/导航或正式v4写入。已同步后台/小程序清单双语、二期合同双语和两份还原台账；台账每路由仍只有一个最新批准源。
 
-## 已执行检查与证据
+## 已执行检查与结果
 
-证据根目录`tmp/xiaok-team-sources/`；汇总`acceptance-summary.json`，逐轮语义审读`semantic-review.json`，原生`native.json`/`native-driver.json`/`native-visual-review.json`，开发审计`development-audit.json`/`usage-summary.json`。测试数据均明确标记合成；真实HTTP、开发数据库、原Worker、DeepSeek deepseek-flash、Embedding与索引任务实际执行。隔离服务测试的模型适配器是确定性的，不当作实模。
+证据根目录`tmp/xiaok-corrections-continuity/`，总览`acceptance-summary.json`。以下按实际运行区分，重复子集不累加：
 
-| 范围 | 实际结果与口径 |
+| 检查 | 本轮结果与范围 |
 | --- | --- |
-| 核心 | 最终整组25/25：隔离服务15＋综合解释单元10，含跨租户/客户/咨询/房间、内部未回传、换版/撤回、并发变更与接管围栏、模型视图预算及严格编号修复 |
-| 相关回归 | 首整组92项为87通过/3失败/2显式跳过；旧模拟适配器读取已从模型视图删除的重复DTO，导致一项及两项级联失败。改为读完整synthesisSources，另验持久快照来源后，材料整文件12/12复跑通过；按原标题去重90通过/2跳过，不能伪称单次92项全通过。`related-summary.json`保留计算与原始日志 |
-| Mini单元 | 92/92；仅专项目录单元，不代表全Mini业务验收 |
-| 开发实模 | 六状态各两次，共12次有效回答；逐次核验真实引用需求/企业知识/节点、独立核对与正式版本/决定，换版冲突及不继承同意。原驱动末尾单页历史断言失败；独立真实GET分页复核全部36消息，12条派生回答均失效，无模型/业务重跑；`live.json`原失败不改写，见`live-history-recheck.json` |
-| Stable原生 | 20/20；另含六次真实模型回答、两次报告草稿，实际输入/按钮/图片上传、原件/精确预览与同意、团队回传、V2冲突/撤回、参考撤回/持久重进与成员撤权。会话/网络/存储临时状态恢复、SDK断开 |
-| 工程 | 全量lint0错误/30既有警告，最终驱动增量lint0错误；同源类型诊断287→287无新增（不是全仓类型通过）；隔离工作区Webpack仅编译成功。完整构建仍在既有`AiDesignerLegacyPage`非法导出处失败，未修改该页面 |
-| 文档与保留 | 双语合同/四份模块清单与每语言两条唯一路由记录已对齐；Mini清单只暂存本轮两个段落。73个开工文件中71个字节未变，两个Mini清单撤销本轮段落后与备份一致；五项原有删除保留。未递归预哈希的原有未跟踪目录不冒称逐字节审计 |
+| 最终冻结核心 | 69项：68通过、0失败、1跳过；隔离数据库服务写入、权限/来源/更正/恢复及39项单元，源文件运行期间未变 |
+| 最终受影响Agent回归 | 19项：18通过、0失败、1跳过；与核心测试文件不重叠，源文件运行期间未变 |
+| 两组去重合计 | 88项：86通过、0失败、2跳过；拒写后虚假回执3项及单元39项已含于核心，不能再次累加 |
+| 既有Mini测试 | 92项：92通过、0失败、0跳过；本轮未改Mini运行代码，属于客户端确定性检查，不是实模 |
+| v51服务端实模 | 明确合成企业2494，八次实际配置模型回答：基线、更正、接续、撤回后未知各两次；结构/来源检查通过，逐轮审读未全部通过 |
+| Stable原生 | 22/22检查通过；合成企业2499，四次实际配置模型回答，原生真实输入/按钮、保存反馈、来源片、原件预览/精确同意、持久重进、来源撤回和成员403 |
+| lint / 类型 | 本轮相关25文件零错误零警告；同一源码程序类型诊断287→287，无新增 |
+| 完整构建 | 编译完成，随后被既有`AiDesignerLegacyPage`导出类型错误阻断；构建未通过，未改无关旧页来掩盖阻断 |
 
-最终开发实模：enterprise2482/project100/lead2958/cid319/user3394，知识document184/version186，run448/449/450/451/452/454/455/456/457/458/459/460。最终原生：enterprise2484/project102/lead2960/cid323/user3402，知识document186/version188，客户run463/464/465/466/467/468。
+核心隔离使用批准55432/`xiaok_embedding_eval`、共享锁、非superuser/non-BYPASSRLS角色；开发/原生使用批准5432/`smart_floor_planner`、`http://localhost:3006`、原Worker及配置的DeepSeek。所有本轮企业/客户/项目/知识/照片/正式版本均为明确合成夹具；旧混合行通过生产记忆校验作显式准备，不计为模型自动动作。最终服务端与原生共12次选定实模回答，准备轮、工地草稿、早期失败和中间模型样本另计于审计，不能混为12次总调用。
 
-本轮共审计8个精确合成开发企业、54个run，状态{"succeeded":49,"indeterminate":2,"failed":3}；provider attempt审计117行，状态{"succeeded":115,"unknown":2}。**attempt行不等于已证实的外部调用**；本地预算拒绝后仍有unknown行，原状态不回写。费用未知/null，索引工作另列，不编造总费用、P50/P95或产品准确率。上述企业AI写入已关闭、合成员工禁用、用户context_version递增使旧令牌失效；active_staff/runs/jobs均0，落实/解决/关闭事件均0。合成来源保留审计，不删除真实业务数据。
+C01继续使用`design-references/xiaok-p4b-public-sites-v1/README.md`，S04仍为原PPT22/38，PPT23提供材料语境；PPT15/23/37/38对应本轮专业问答与事项场景。Stable2.02.2608080、官方SDK0.13.0、基线库3.17.2，副屏先重新编译再校验SDK/页面；逐图检查精确route/stack，逻辑390×844、PNG348×752。本轮没有新增视觉还原声明。原生报告保留会话/临时传输恢复、原页面返回及断开证据，截图审读见`native-visual-review.json`。
 
-额度预留状态为{"reconciling":53,"released":1}，未将reconciling冒充已结清或释放；关闭合成企业AI只停止新写，不代表历史财务已核清。原未知attempt与费用继续按既有核账流程保留，不重试旧run或清零。
+在`admin`复跑：
 
-隔离测试固定55432/xiaok_embedding_eval、non-superuser/non-BYPASSRLS并串行共用锁。首个被外部超时中止的合成夹具只在此隔离库按本轮精确前缀清理：enterprise3377/3378；用户6405/6406/6407/6408/6409/6410/6411/6412，详见`isolated-cleanup.json`。开发库合成审计数据未删除。
+`node scripts/assistant-continuity-acceptance.mjs`、`--agent-regression`、`--mini`；`--claims`与`--unit`仅用于对应子集。开发实模`node --import tsx scripts/assistant-continuity-development.ts --development`，Stable原生加`--native`，二者串行；审计`node --import tsx scripts/assistant-continuity-audit.ts --development`；同源类型`node scripts/assistant-continuity-typecheck.mjs 9db99f40`。沿用现有环境，不配置新凭证。
 
-## 失败、限制与下一步
+## 保留的失败、账务与工作区事实
 
-- 早期测试夹具措辞未路由到报告、行断言字段错误、外部包装超时均保留原日志；本地正式上下文超预算与编号引文拒绝分别见`live.initial-provider-unknown.json`、`live.initial-numeric-header.json`和诊断。预算错误发生在本地输入校验，不冒称已证实供应商故障；unknown费用继续未知。只修复了有证据的有限原因。
-- 原生三次未通过尝试分别归档`native-first-upload-busy/`（未等上传完成）、`native-second-pre-header/`（正式编号同段引文被拒绝）、`native-third-queue-delay/`（与实模争用单Worker，测试超时清理后任务才启动）。最终串行20/20不改写这些失败。分页只读复核首次因验收脚本在环境加载前导入JWT模块而401，修正导入顺序后通过；未重启/配置凭证或放宽鉴权。
-- 已审读实际原文及来源，当前目标的核对/正式版本/决定/冲突边界可见。回答仍偏长，个别句把查询缺项表述得接近现实未核对；run459将联系电话未配置延伸为等待后才能沟通，run466将“靠窗意向”与缺少可量测的现场位置混在一起表述，容易误解。不能把结构引用或来源/状态检查通过当作完整专业语义验收。更正与旧NeedMemory、复杂多房间/多阶段矛盾仍Limited。
-- Stable2.02.2608080、automator0.13.0、base3.17.2；每图核对精确route/stack，逻辑390×844、PNG348×752。几何/功能截图不替代原PPT逐元素光学还原；preview截图位于会话末尾，完整预览仅由实际数据/下载/按钮/API验证，不能据该PNG声称完整卡片光学已验。Chrome、完整宿主/高屏/键盘、真机/真实微信授权/BLE、全Mini/全PPT、干净克隆安装与生产均未验；不转成用户必做手测或开发门槛。
+- 原始夹具路由/字段装配及类型错误、假设保存反例最初未进入工具路由、早期实模的轮次/预算/编号/否定句拒绝均保留。修正后才记最终结果；`live.initial-*.json`、`claims.initial-tool-eligibility.log`、`service.initial-fixture-and-types.log`及类型对照可复核。否定句首次缺失独立stdout的索引文件明确为派生记录，不冒充恢复的原日志。
+- 连接中断时旧核心仅跑出部分记录，没有最终退出结果，见`service.interrupted-connection.log`和`interrupted-execution.json`。只取消/清理精确匹配的自建隔离运行3911、两企业3429/3430及其夹具，重新冻结执行，不把中断或旧通过数算进最终。复用已批准SSH、两数据库/embedding转发、本地服务/Worker和唯一Stable实例，未修改远程容器、生产或凭证。
+- 原生首轮窗口不存在，在SDK/客户端动作前失败；恢复唯一已安装Stable项目后，新增共享资料使旧事项快照失效，直接核对被拒。下一轮明确重新核对成功，但待处理状态没有新回复，未投影成客户核对结果而超时。之后精确核对/回传通过，预览及原图200，但脚本错误等待不存在的fullPreview属性；已改用上一阶段验证的full/planExpanded/原图路径条件。最终通过同一事项重新核对、新设计师回复、精确图纸核对、经理明确回传及完整预览完成；没有绕过版本或人工回复边界。四份失败报告/日志在`native-initial-*`保留，失败夹具已关闭AI、禁用合成员工且无活跃任务。
+- 中间v50八次回答及`semantic-review.v50.json`保留，不作为最终完整语义验收。较早广泛回归85项：84通过、0失败、1跳过，期间有四个生产文件变化，只作中间证据；最终受影响Agent文件以上述冻结回归为准，不能把广泛回归说成最终整批已通过。
+- 最终审计覆盖15个本轮合成企业，全部AI关闭、合成员工禁用、活跃run/job为0，落实/解决/关闭事件为0。run状态{"failed":4,"succeeded":50,"indeterminate":2}，attempt状态{"succeeded":104,"unknown":2}；历史unknown/indeterminate保留、不盲重试、不清零。费用仍为null/未知，reservation按实际状态保留，查询/文字用量不含全部索引工作，未声称生产成本或百分位已验证。明细`development-audit.json`。
+- 初始97项脏/未跟踪范围中，扣除本轮唯一清单段落后95项原字节或删除状态保留；两份用户知识计划在执行中发生并行更新，已额外备份并保持其最新字节，未编辑、暂存、回滚或提交。原五项删除仍保留。两次工作区检查点、选择性暂存清单与`preservation-final.json`记录边界，不能声称97项全部仍与初始字节相同。
 
-复跑（cwd`admin`，真实Node，沿用已有环境顺序）：`node scripts/assistant-team-materials-acceptance.mjs`，相关`--regression`/`--materials`，Mini`--mini`；实模`node --import tsx scripts/assistant-team-materials-development.ts --development`，原生加`--native`且与实模**串行**；审计`node --import tsx scripts/assistant-team-materials-audit.ts --development`；同源比较`node scripts/assistant-team-materials-typecheck.mjs 26a3664f`。原生依赖既有Stable/CDP/副屏辅助脚本，不另开窗口。新增脚本使用既有批准开发/隔离库、localhost:3006、现有Worker/provider，不配置凭证或改角色/菜单权限。
+## 已知未解决项与下一步
 
-下一步仍沿原P3B/P4A专业实况主线，处理客户更正与既有记忆、未解决事项及相互冲突来源的接续，让企业知识与实际节点形成更简洁准确的解释；复用现有正式版本和处理链，不另造版本系统。按对应PPT核心场景两次实模及原生入口继续验收；图内识读需有真实同原件像素证据后才可升级，知识文件理解按原计划顺序，不凭本轮来源投影宣称已实现。无需等待人工A10/截图/确认，部署仍需单独授权。
+本轮v51真实输出仍有具体缺陷，见`semantic-review.json`，不能隐藏为全部通过：501把当前查询缺少可量测依据说得像现场确实没有依据；505在已保存单人更正后仍说“我不替你改需求”；506又要求补充已保存的人数确认；503/505/508重复“最小待核实项”，507暴露“混合行”术语。508的“常用一人、偶尔两人”为条件建议，未断言当前人数，但仍应更清楚地限定假设。原生522仍出现“最小待核实项”，524仍出现“混合行”并把查询缺项推广为“人数、桌长和插座位置都还不能定”，见`native-visual-review.json`。
+
+当前更正原话继续继承原消息及该run的工地来源依赖；共享图撤回后该链失效，当前use按未知投影、原更正记录保留。这不是客户明确撤回人数更正的决定，当前没有新增需求撤回入口；不能把保守来源过滤说成客户改变意向。
+
+图内识读仍未验，本轮投影未发送图像像素；实物尺寸、真实微信授权、真机/BLE、完整宿主光学、高屏/键盘和Chrome未验，不转为要求用户截图或手工测试的开发门槛。完整构建的旧导出错误仍为明确限制，当前没有生产部署或发布批准。
+
+下一步沿P3B/P4A处理已观察到的事实范围、更正与正式事实的措辞分离、重复追问和事项接续，按原PPT核心场景继续实模/原生回归，不另建事实库或版本系统。无需等待人工A10/截图/确认。知识计划是同一业务主线的支撑：KB-1～KB-4已有各自限定闭环，不能重做；可另支撑其余批量同题回归/进度/取消恢复，但先冻结任务载荷、source版本/撤回和usage口径，并用独立工作区。`worker`、`synthesis`、`bound-context`、`retrieval-sources`、队列/schema及双语合同/清单交由一个集成写入者；本轮只读分析该分工，未启动第二条代码线，也未修改用户知识计划/路线图。
+
+## 稳定基线后的第二知识任务
+
+用户决定为本轮稳定提交并普通推送后，由父任务启动第二对话；本轮没有自行创建第二条写入线。只读对照明细`tmp/xiaok-corrections-continuity/parallel-development-readonly.json`。
+
+- 业务线：继续P3B/P4A上述已观察专业语义缺陷，拥有当前Agent提示词/综合解释、记忆/材料投影与原事项接续，按PPT15/23/37/38及C01保存/重进/失效场景验收。
+- 知识线最优先未完成项：KB-4既有同题逐项回归之上的批量执行、逐项进度、受控并发、取消及原键恢复，保留修订失效和unknown用量。复用已有case/gap/start/resume/history/read/review/health；DOCX/文字PDF、专业元数据和混合检索已经有各自限定实现，不重做；OCR、复杂表格、旧格式、影子profile与大容量留在知识计划后续范围。
+- 知识线允许主改`admin/src/lib/assistant/knowledge/operations.ts`、相邻新批量协调模块及对应测试、既有知识运营API/获批Ant Design运营页的该流程；复用原C01引用/重进验证受影响专业场景。不另建Agent、任务权威、客户事实库或自动施工事项。
+- 禁止两线同时修改公共`agent/worker.ts`、`agent/synthesis.ts`、`agent/bound-context.ts`、检索来源重验、`infrastructure/job-queue`、schema/迁移/RLS/权限及双语合同/清单。建议父任务指定唯一集成人；当前业务线维护Agent整合，知识线提交确切公共变更需求，由集成人合入。迁移编号、DDL/RLS/授权、执行与回读验收统一归集成人，两个会话不各自建迁移或并行改共享库，不涉及生产。
+- 先冻结batch/item及case修订/hash、知识profile/source epoch、Agent prompt/model版本、每项runID与幂等/恢复键、取消/租约/撤权/来源撤回语义、完成/失败/indeterminate状态，以及usage/reservation/未知费用口径。两线各用独立分支/工作区和明确合成前缀，集成后只重复受影响回归。
+- 数据库验收统一复用`admin/scripts/assistant-acceptance-safety.mjs`的`lockAssistantAcceptance`：批准55432隔离库、非superuser/non-BYPASSRLS、空闲队列预检，整套进程持有`pg_try_advisory_lock(hashtext('assistant_isolated_acceptance'))`。另一套持锁时排队，不绕锁、不清理对方夹具；共享schema变更亦由集成人串行安排并确认无并行验收，清理只匹配各自fixture IDs/前缀。
+
+两份知识计划仍是主工作区未提交用户文件，不在本轮提交中。新工作区先只读`G:/workspace/向总/Smart-Floor-Planner/docs/xiaok-enterprise-knowledge-plan.zh-CN.md`及英文镜像；主路线图只读`G:/workspace/向总/Smart-Floor-Planner/docs/xiaok-assistant-roadmap.zh-CN.md`。本轮已将计划原字节另存`tmp/xiaok-corrections-continuity/knowledge-plan-handoff/`，清单`manifest.json`绑定功能提交`1a485e03`、原路径和SHA256（中文`498b36b66299fe188cd429d7823e1dc97075c19bf81da06fffe2a6bf2d50d968`，英文`e4a4d65d063069a7eea38d2228c553ed0ddfff60cee775dbd538442bed457235`）。后续对话可直接读取清单中的绝对副本路径；父任务正式启动知识开发后，若目标工作区缺少计划，只复制这两个明确文件并核验hash，再按用户授权编辑，保留主工作区原文及其他脏改动。
