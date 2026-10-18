@@ -1,56 +1,51 @@
-# 小K助手阶段接力记录
+# 小客开发交接：PPT38现场落实与正式解决关闭
 
-**P5正式图纸/方案精确版本、差异及客户决定的限定闭环已完成；P5整体仍Limited。** 持续开发授权有效，下一批继续现场落实证据及正式解决/关闭，不等待人工A10、截图或逐小步确认。本轮仅定向提交和普通推送开发分支，没有合并main、部署或强推。
+当前PPT38限定闭环Implemented，P5整体Limited；未生产发布。原S04/C01接通当前获同意方案→核对发布的现场记录/照片原件→明确落实→管理者分别解决、关闭→原授权咨询节选/所选原件→来源化追问及撤回。客户同意、普通回复、照片发布不自动关闭；关闭不代表验收或付款。
 
-## 本轮结果
+分支`codex/xiaok-public-site-lifecycle`，本轮起点`fe1ee601c150185def858cdb32df5178b3421ceb`。历史必要基础`148af95565defc72fe88c323779b65c171f94d27`、精确版本决定`d832c09bc8ed4840754972ea1ce4d7c0029fc71e`保留，精确范围仍见foundation-manifest。功能阶段提交：b137901d8a44508c9a388e7e8f4fbe9e47f4bb9f；普通推送后的最终HEAD/远端以`tmp/xiaok-p5-resolution/git-final.json`及git log为准；本交接另作docs提交。不合并main、不部署、不强推。
 
-1. 原S04有权设计师/管理者附本人上传图纸，明确发布绑定同事项/房间/需求授权和资料hash的不可变版本、前版、差异、费用及工期变化。客户原件、AI效果方案、量房v4和普通回复均不冒充正式版本。新版本不继承预览/决定；撤回不回退旧批准。
-2. 原咨询C01复用批准C05/U01组件，完整看图后对精确版本作同意、不同意、稍后或要求修改。稍后可重进，修改要说明；原操作键/内容/修订保留并核对丢失回包。版本冲突保留修改说明供当前页面重新编辑。员工不能代客决定，普通“好/可以”不批准；客户同意不自动落实、解决、关闭或验收。
-3. 原Worker在真人接待期间延后，只投递原需求授权咨询一次。换版、撤回、来源/成员/客户权限变化停用旧原件、回执及派生回答。原`query_followups`接入实际收到的精确版本/影响/决定，prompt为`xiaok-renovation-v19`；沿用LangGraph、事务、租约、来源、用量及提交守卫，没有新框架或批准工具。
-4. 新增原Mini bearer适配器下GET `/conversations/:cid/plans/:versionId`、GET `…/media`及POST `…/{preview,approve,decline,request-changes,defer}`；完整前缀为`/api/miniprogram/assistant`。S04沿原Mini/Admin聊天/上传API，GET versions增加plans修订。新增outbox发布/状态类型，无表/迁移/新页面/菜单，原清理覆盖。owner/admin/super_admin在所选企业继承管理权，无须成为员工或项目成员。双语二期合同、模块清单、路线图及两个受影响路由的唯一还原台账已同步；Less、插画及导航保持。
+## 当前合同与边界
 
-## 历史基础核查与提交
+- 读根/admin指令、双语模块、路线图/二期、唯一还原台账及PPT38；仓库没有.agents/skills。PPT SHA与原提取审计一致，S04主源仍PPT22/38，C01/C05/U01共享组件保持。WXML/Less/插画/导航均未改，无新设计或图片切片。
+- 新outbox evidence/lifecycle保存精确方案hash、来源/负责人与现场记录版本/hash/原件、逐次结论/正式操作者；源事项revision与处理revision分开。无新表/迁移。有效正式状态的普通回复/转交/取消/刷新先由管理者重新处理；原来源更正后可在同issueId重新核对、新版本决定、再落实/关闭，不被旧结论卡死。
+- 实际移出/observer审计防止重新加入后复活旧方案批准或证据。管理者含所选企业owner/admin/super_admin，无须就业或成员身份；普通员工不能代客批准或正式解决关闭。
+- 明确节选及回传原件是/否只授权原咨询；复用原JWT construction-records媒体GET和照片组件。独立合法记录发布仍守原授权。真人延后、过时结果dead、并发去重和原键回执重验来源；错误回执留原键，已知来源失效409保留输入供编辑。普通“关闭事项…？”仅查询。
+- LangGraph/持久任务/租约/用量/接管保持，prompt v20只读实际team_result/formal_plan并继承原construction来源链，模型无解决/关闭/付款工具。开源链接与采用决定在双语二期。
+- 方案来源按状态业务修订而非通知投递序号选择，迟到原发布不替换当前决定来源；同题工具链回归验证快照稳定及重新处理后的真实撤销，未放松来源校验。
 
-- 起点：`b9f7bc4f5f4d7352445e5c68387441b9083843e3`。仓库没有`.agents/skills`，已读根/admin指令、相关库存及已批准设计。实际已提交代码依赖大量未提交小客基础，不能因旧阶段测试通过就称干净克隆可运行。
-- 必要基础提交：`148af95565defc72fe88c323779b65c171f94d27`，376个明确文件/片段。精确名单、部分文件及排除名单在[基础清单](./xiaok-assistant-foundation-manifest.json)；导入图/起点hash在`tmp/xiaok-p5/dependency-audit.json`。范围为小客/工地/作品来源、角色/会话保护、迁移、客户端入口、Worker、清理及相关自动化。三处密钥扫描命中均为明确的合成测试值；私有连接、环境、SSH、本机DevTools配置未提交。
-- P5功能及文档提交：`d832c09bc8ed4840754972ea1ce4d7c0029fc71e`，35个本轮文件/片段，含打包测试的两个小客相关片段。独立源码小客分包预算1/1通过；没有把旧AI组件搬移/删除、素材压缩或其余打包断言整体纳入。
-- 两个提交均已普通推送并核验远端SHA。本交接文件另作docs提交；最终完整HEAD/远端核验以`tmp/xiaok-p5/git-final.json`及`git log -1`为准。
-- 原87个排除路径的工作文件内容/hash均保持，原5个AI组件删除状态保持。其中打包测试只补充暂存两段相关断言，其余原片段仍未提交。模块/台账只暂存本轮增量，未整体暂存、重置或清理工作树。
+## 最终验证
 
-## 最终实际验证
+本轮最终实际验证：服务组合47/47（真实隔离库事务/业务服务，报告与模型输出采用确定性测试适配器）；组合内恢复用例2/2（已计入组合，不另加），覆盖有效正式状态不能被普通回复/取消/重新核对绕过、来源更正后同issueId重新核对→新版本决定→重新落实关闭。组合内降权恢复1项含设计者和项目经理，已计入组合；迟到通知来源专项1/1。Agent组合24通过/9配置跳过、0失败（协议/权限测试以模拟provider为主，不计真实模型质量验收）；Mini相关110/110，精确独立源码Mini逻辑98/98。Stable原生20/20，含真实上传、人工核对、精确决定、分步解决关闭、丢包回执、真人延后、原咨询JWT原件/hash、DeepSeek/deepseek-flash、langgraph-v1下两次v20追问、重新处理、撤回与成员失效；相册/原生确认注入合成结果，HTTP/Worker/模型/持久回读为真实链路，不计真机或真实微信授权。最终enterprise2424/project31/lead2889、原咨询176、事项592、方案609、现场记录44、run158–162，7次调用有observed tokens，费用未知。最终账户禁用、签名context_version提升，active_staff=0/active_runs=0；传输/SDK/存储与临时文件已恢复。
 
-| 检查 | 结果与真实边界 |
-| --- | --- |
-| 独立源码必要基础 | 从起点归档、仅覆盖精确清单，无工作树src链接；资料服务22/22。依赖目录/隔离库连接为本机设施，不等于独立安装或完整干净克隆运行证明 |
-| 正式版本服务 | 11/11，含真实图纸/版本、预览/稍后/修改/批准/拒绝、原键恢复、同事项状态、全管理角色、租户/项目/原咨询、真人/关闭开关、并发批准与换版、来源撤销及实际Agent工具来源继承。最后复验S04能显示真实“已同意”，同时明确未落实/关闭 |
-| 相邻组合 | 40项：39通过、1配置跳过、0失败；与正式服务及资料专项重叠，不相加。日志为`plans-regression.log` |
-| Agent/资料/节点 | 33项：24通过、9配置跳过、0失败；可选真实图像/长尾语义项未开启，不计通过。本轮两次真实正式版本问法另在原生执行 |
-| Mini定向 | 109/109，含新方案卡/原件、严格回执、丢包/身份隔离、资料/图片/接续/作品/工地及当前工作树打包检查；不是全小程序套件或干净克隆打包通过 |
-| Stable原生 | 最终21/21。唯一原副屏Stable2.02.2608080、SDK0.13.0、库3.17.2、9420/9431，新编译、实际控件输入/上传/原件GET/决定/重进/丢包原键核对、真人延后、换版和撤回。V1/V2图纸内容及SHA-256不同。相册选择及确认/修改模态通过SDK注入合成结果，HTTP/JWT/业务/Worker/持久回读为真实链路；不等于真实微信或真机验证 |
-| 配置模型 | DeepSeek/deepseek-flash、langgraph-v1。最终run147/148为site-record-v1两次真实整理，149/150为v19两次原咨询追问；均读到精确V2、+500元/+2天、真实同意与尚未关闭。6次调用均有observed tokens，费用未知；不是通用文风/识图评分 |
-| 工程 | lint0错误/30既有警告；tsc292既有诊断、触及文件无诊断。规范化隔离绝对导入路径和诊断省略显示后错误集合一致。独立源码Webpack compile模式通过；跳过类型校验及静态生成，不能称完整生产构建通过 |
-| 干净源码限制 | 普通独立构建被原有AiDesignerLegacyPage等非法页面导出阻断。最终独立Mini打包12项9通过/3失败：business约2180KB、主包约2148KB超过源码预算，旧business入口断言缺项。旧素材优化、AI组件搬移及其余测试修改仍留工作树；不得宣称提交已是完整干净克隆可运行/可发布包 |
-| 未覆盖 | 全小程序套件、完整宿主/光学/高屏/键盘、真机/真实微信授权/BLE、站外投递和生产环境未重测。量房Phase0既有7通过/1失败保留、本轮未修复，不转为必须用户手测或发布批准 |
+全量lint0错误/30既有警告；tsc292条且错误集合与前批一致、触及文件无诊断。精确独立源码Webpack compile模式通过，跳过类型/静态生成，不能当完整生产构建；普通构建仍被既有AiDesignerLegacyPage非法页面导出阻断。独立Mini打包12项9通过/3既有失败（business约2180KB、主包约2148KB及旧business登记断言），工作树打包通过依赖原未提交优化，不宣称干净克隆或可发布。完整Mini、完整宿主/光学/高屏/键盘、真机/真实微信/BLE、实际Worker进程重启、外部渠道和生产未重测；量房Phase0既有7通过/1失败保留。
 
-首轮真实模型给出了正确版本内容，但缺少formal_plan的construction来源继承。已扩展原只读查询来源kind，补实际工具/检查点/换版撤销回归，再用相同两类真实问法复验；撤回后两条派生回答均不可用，没有靠改问题掩盖缺口。早期普通沙盒看不到用户桌面窗口；在获准实际用户环境核实同一原窗口后继续，未重开项目。一次误并发的隔离测试被安全锁拒绝，未执行测试/写入，不计通过。最终差异检查还修正了局部暂存断言的位置，再核对其独立源码结果。
+早期SQL数组绑定导致原生发布503，已按相同查询/场景修复复验；SDK中途超时后在原窗口新编译重连；原件预览首轮断言过早，改为等待真实异步回调后复验。首批测试负例的空versions造成同步校验异常，已修正夹具并复跑。早期不完整/失败日志分别保留，不计入最终通过，也不通过换问法或换模型隐藏问题。首轮完整服务组合44通过/1失败未保留error_code，其直接原因仍未证实。第二轮45通过/1失败及同题专项0通过/1失败已精准定位：原发布通知晚于客户决定/回答投递，customerPlans按消息seq错误替换决定来源ID，使事实不变而快照hash变化。provenance-root-cause.json将该ID换回即可精确重算原hash；修复为状态业务修订优先，保留迟到投递、同一问题和全部撤销守卫。修复后专项及完整组合按上方实际结果记录。首轮、第二轮和定位失败分别保留在service-first-combination/、service-second-combination/、provenance-before-fix/；独立场景的咨询隔离只是夹具组织，不能当首轮失败的已证实原因。多项目大历史边界仍未验证。中断隔离夹具已按明确合成prefix与ID清理；原87项无关内容及5项删除状态保留，两份原脏模块文档仅暂存本轮增量。
 
-## 数据、重复命令及证据
+原生最终同一数据：enterprise2424/project31/lead2889；staff5006/5007/5008、user3265/3266/3267、customer3268；原咨询176、事项592、方案609、现场记录44。先实际解决关闭，再重新处理并再次关闭，最终撤回现场证据后旧结果失效；不要把最后状态写成仍有效关闭。完整lifecycle/evidence ID及哈希见native.json。早期同prefix开发尝试的最终禁用/任务状态见fixtures-final.json；不是客户数据。
 
-最终开发合成数据：enterprise2420/project27/lead2885，staff4994/4995/4996与user3249/3250/3251，customer3252，原咨询168，同事项490，方案504(V1)→509(V2)。两个原件hash分别见native.json，内容从左侧点位调整为右侧。最终active_staff=0、active_runs=0；context_version提升撤销临时签名，SDK/传输/会话/存储/临时文件已恢复。早期同prefix合成尝试的最终账号/任务状态见`fixtures-final.json`；不是客户数据。
+## 复跑与证据
 
-admin目录：
+admin目录顺序执行：
 
-- `node scripts/construction-plans-acceptance.mjs`
-- `node scripts/construction-plans-acceptance.mjs --regression`
-- `node scripts/construction-plans-acceptance.mjs --agent-regression`
-- `node --import tsx scripts/construction-plans-development-acceptance.ts --development`
+- `node scripts/construction-resolution-acceptance.mjs --regression`
+- `node scripts/construction-resolution-acceptance.mjs --recovery`（两项已在服务组合执行，可单独重跑）
+- `node scripts/construction-resolution-acceptance.mjs --revocation`（本轮纳入完整组合，可单独重跑）
+- `node scripts/construction-resolution-acceptance.mjs --provenance`
+- `node scripts/construction-resolution-acceptance.mjs --agent-regression`
+- `node --import tsx scripts/construction-plans-development-acceptance.ts --development --resolution`
 
-隔离测试固定localhost55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS及共享advisory锁；DB组顺序执行。原生固定已批准localhost5432/smart_floor_planner、本地3006、既有Worker及唯一真实项目；不打开项目副本。独立源码编译使用`next build --webpack --experimental-build-mode compile`，标准构建/tsc失败另列，不能混称完整构建成功。
+DB组只用55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS及共享advisory锁；原生只用已批准5432/smart_floor_planner、3006服务/既有Worker/唯一副屏Stable项目。当前测试夹具按项目与咨询独立，单个业务链仍用同一真实数据跨角色执行，避免无关场景历史累积。
 
-证据统一在`tmp/xiaok-p5/`：`stage-validation.json`、`dependency-audit.json`、`foundation-manifest.json`、`workspace-preservation.json`、`foundation-materials.log`、`plans-service.log`、`plans-regression.log`、`plans-agent-regression.log`、`p5-mini/lint/tsc/build-compile`日志/状态、`tsc-comparison.json`、`snapshot-package-budget.log`、`snapshot-packaging-full.log`、`native.json`、`native-driver.json`、`native-plan-{pending,changes,approved,followup,withdrawn}.png`、`fixtures-final.json`及Git核验。逻辑390×844、编码348×752，路由/栈已核实并看过C05批准截图；完整光学验收仍未声称。`native-first-attempt/`、`native-model-first-attempt/`和`native-first-full-pass/`保留早期/旧限定证据，不叠加通过数。证据不写凭据。
+证据在tmp/xiaok-p5-resolution/：stage-validation、service-regression（内含两项恢复及降权恢复）/provenance/agent-regression日志与状态、mini/snapshot-mini/snapshot-packaging、lint/tsc比较、独立源码manifest和两种构建结果、native/native-driver、原生execution-record/formally-closed/customer-closed-proof/closed-agent-followup/reclosed/evidence-withdrawn截图、workspace-preservation、interrupted-fixture-cleanup、fixtures-final及git-final。native-first-attempt/runtime-attempt/async-attempt和service-prior-attempt保存失败/不完整证据，不能叠加通过数。逻辑390×844、编码348×752；已核对目标路由/栈并看过结果、照片与失效截图，未声称完整视觉还原。
 
-## 下一阶段
+## 后续
 
-继续P5/PPT38的“现场落实证据→有权人员正式解决/关闭→原咨询结果回传”。把当前有效且获客户同意的精确版本、实际落实记录/原件、结论与负责人独立关联；拒绝、换版、撤回或成员撤权不能复用旧批准；关闭不等于验收或付款。普通回复及本次客户同意都不能代替这些事实。复用批准S04/C01/C05/U01及已有outbox/来源/原键协议，完整S05资料界面、CAD/PDF、算价排程、外部通知及生产发布另守边界。
+用户最新要求已把下一重点改为“专业智能客服综合问答”，优先于P6多项目简报。先按本地最新整合版路线图1.1、3.1、4.1、4.4实施企业已发布知识＋模型理解解释＋获权实际工地事实的完整小阶段；不得退化成通用聊天入口或只展示一份displayText。用户最新委派已授权继续开发这一主线；路线图“本次只整理计划”说明计划编写轮次，不构成新的开发暂停。现有C01/来源组件可复用，新视觉方向与生产仍守原批准边界。新计划QA-01–08均未实施/未执行，本轮原生两次关闭追问只证明原业务投影及来源链，不计综合问答验收。
 
-日常继续Sol/max/fast。当前没有未定位架构阻塞；仅实际证据显示授权/撤销/租约/正式状态无法安全复用时，向父任务提供复现、冲突和方案，再考虑Astra/xhigh。不因换模型缩小验收或提前结束。
+本轮只读核对已完成：原PPT SHA9221a83057fb1b2aa691ecde6cf60a0aa2dfb0d352aad4b6eab2cb6f15209af4；5/6要求先回应客户问题、带已有信息少重复问；14/15从户型和“靠窗、偶尔两人办公”等生活语言延续；18/19分别是防水安排、铺砖纹理喜好；22/23要求已核对记录原件及按项目/房间关联资料；38要求缺失或说法不一致先向负责人核实。已查看image6/image27，不能把计划中新写的洗碗机等问题说成PPT原文。下一阶段完整来源/行号/缺口与验收切片见tmp/xiaok-p5-resolution/next-priority-audit.json。
+
+现实现核对：knowledge/answer.ts最终仍为摘录选择，agent/worker.ts业务最终仍用business.displayText；已有query_business(construction)、query_materials/query_followups和construction/need/media/reference来源守卫可复用，但尚不构成专业综合解释。新路径须记录全部实际使用的知识/业务/媒体来源及版本，模型前后/提交/历史重进复验；金额、工期、审批、验收、付款及动作成败保持真实业务权威。当前实际模型imageInput=false，未传像素不能声称看图。
+
+下一小阶段按最新3.1先补P2M.1–.3专业客服：覆盖QA-01/02/05/06/07/08及对应PPT5/6/10–15片段，正常专业解释、连续追问/更正、缺失、冲突/更新、受众/撤权及问答与真实办理分流。知识和已具备的获权工具结果进入同轮解释，不能只返摘录/displayText。按4.4登记专业要点/允许建议/禁止推断，新增语义核心在配置模型/prompt上至少执行2次，分开记录真实检索/模型/HTTP/数据库与模拟provider/选图注入，保留时延和可核验用量，未知费用不填零。随后P3B/P4A的QA-03/04再补同题不同实际节点、记录/图纸/照片专业解释，不把后期业务变成第一阶段前置门槛。使用现有C01入口和Stable自动验收。不得凭空补写PPT具体内容、把一般解释一律建事项或转人工、让模型猜现场事实。当前未交付的完整S05/CAD/PDF/自动识图、自动算价排程、工程验收/支付、外部送达及P6简报仍保持原状态。
+
+最新双语整合路线图（1.1/3.1/4.1/4.4及QA表等）由用户在本轮期间另行更新，已逐字保存并保留为未暂存改动，整合版没有追加本轮执行日志；功能提交中的路线图只取本阶段预先独立保存的PPT38增量，未混入新计划整理；原87项无关内容及5项删除也保留。下一轮应先检查这些未提交计划改动与交接，保持最新优先级，勿用Git恢复覆盖。日常Sol/max/fast；确有复杂协议/证据问题再向用户报告以便Astra/xhigh攻坚。
