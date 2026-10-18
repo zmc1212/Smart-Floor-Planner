@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { fingerprint, type ActorContext } from '../../src/lib/assistant/contracts';
 import { evaluationBatchManifest } from '../../src/lib/assistant/knowledge/evaluation-batch';
 import type { BatchExecutionContext, BatchExecutionState, BatchRunReceipt, BatchRunState } from '../../src/lib/assistant/knowledge/batch-execution-adapter';
+import type { AcceptanceEvent } from './types';
 
 type Database = { batches: Map<string, BatchExecutionState>; receipts: Map<string, BatchRunReceipt>;
   runs: Map<string, BatchRunState>; reservationStatus: Map<string, string>; markers: Set<string> };
@@ -85,11 +86,24 @@ export function createOfflineStore() {
       providerFetches: 0, runId: item.runId, conversationId: item.conversationId, createKey: item.createKey, sendKey: item.sendKey,
       runStatus: run?.status, reservationStatus: known && database.reservationStatus.get(known.runId), costMicros: null };
   }
-  function loseAssociation(batchId: string) {
-    const state = database.batches.get(batchId)!, item = state.items[0], run = database.runs.get(item.runId!)!;
-    run.status = 'indeterminate'; run.awaitingReconciliation = true;
-    database.markers.add(item.runId!);
-    database.reservationStatus.set(item.runId!, 'reconciling'); item.runId = null; item.conversationId = null;
+  async function stageUnlinkedReceipt(batchId: string, events: AcceptanceEvent[]) {
+    const state = database.batches.get(batchId)!, item = state.items[0];
+    assert.equal(item.runId, null); assert.equal(item.conversationId, null);
+    const tx = Number(await rpc('begin', {}, -1));
+    try {
+      events.push({ name: 'dispatch', pid: process.pid, index: -1, commandId: 0 });
+      const receipt = await rpc('dispatch', { tx, value: { sendKey: item.sendKey,
+        expectedExecutionRevision: state.receipt.manifest.executionRevision, batch: { batchId } } }, -1) as BatchRunReceipt;
+      await rpc('commit', { tx }, -1); return receipt;
+    } catch (error) { await rpc('rollback', { tx }, -1); throw error; }
   }
-  return { actor, prepare, rpc, snapshot, loseAssociation, activeTransactions: () => transactions.size };
+  function markOutcomeUnknown(batchId: string) {
+    const state = database.batches.get(batchId)!, item = state.items[0], receipt = database.receipts.get(item.sendKey)!;
+    assert.equal(item.runId, null); assert.equal(item.conversationId, null);
+    const run = database.runs.get(receipt.runId)!;
+    run.status = 'indeterminate'; run.awaitingReconciliation = true;
+    database.markers.add(receipt.runId);
+    database.reservationStatus.set(receipt.runId, 'reconciling');
+  }
+  return { actor, prepare, rpc, snapshot, stageUnlinkedReceipt, markOutcomeUnknown, activeTransactions: () => transactions.size };
 }

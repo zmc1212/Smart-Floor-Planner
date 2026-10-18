@@ -7,11 +7,13 @@ import { one, rows } from '../../src/db/repositories/assistant-repository';
 import { deleteAssistantData } from '../../src/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '../../src/lib/postgresql';
 import { KnowledgeOperations } from '../../src/lib/assistant/knowledge/operations';
-import { activeProfile } from '../../src/lib/assistant/knowledge/service';
+import { activeProfile, knowledgeManager } from '../../src/lib/assistant/knowledge/service';
+import { retrievalConfiguration } from '../../src/lib/assistant/knowledge/retrieval';
+import { principalKey } from '../../src/lib/assistant/contracts';
 import { claimJob, failRun } from '../../src/lib/assistant/infrastructure/job-queue';
 import type { KnowledgeBatchSharedPort, BatchCancellationIntent } from '../../src/lib/assistant/knowledge/batch-execution-adapter';
 import type { PostgresTransaction } from '../../src/db/transaction';
-import type { AcceptanceSnapshot } from './types';
+import type { AcceptanceSnapshot, AcceptanceEvent } from './types';
 
 export async function assertIsolatedRuntime() {
   const target=new URL(resolvePostgresRuntimeConfig().connectionString);
@@ -114,15 +116,38 @@ export async function createPostgresFixture(factoryModule: string, factoryExport
         reservationStatus: reservation?.status?String(reservation.status):undefined, costMicros: null };
     });
   }
-  async function loseAssociation(batchId: string) {
+  async function stageUnlinkedReceipt(batchId: string, events: AcceptanceEvent[]) {
+    const { manifest } = await operations.executionBatchAdapter().receipt(batchId), item = manifest.items[0];
+    // Commit the original shared submission while deliberately omitting the knowledge association.
+    // Never clear a previously linked immutable evaluation or bypass its database trigger.
+    const receipt = await withTenantTransaction(enterpriseId, async tx => {
+      await knowledgeManager(tx, { enterpriseId, adminId }, true);
+      const e = (await one(tx, sql`select * from app.assistant_knowledge_evaluations
+        where enterprise_id=${enterpriseId} and id=${item.evaluationId} and created_by=${adminId} for update`))!;
+      assert.equal(e.run_id, null); assert.equal(e.conversation_id, null);
+      events.push({ name: 'dispatch', pid: process.pid, index: -1, commandId: 0 });
+      return shared.dispatch(tx, operations.actor, {
+        createKey: String(e.create_key), sendKey: String(e.send_key), conversationId: null,
+        content: { version: 1, blocks: [{ type: 'text', text: String((e.snapshot as { question: string }).question) }] },
+        expectedExecutionRevision: manifest.executionRevision,
+        context: { mode: 'knowledge_preview', profile: { id: manifest.profileId, hash: manifest.profileHash }, retrievalConfiguration },
+        batch: { batchId, evaluationId: item.evaluationId, manifestHash: manifest.hash,
+          cancellation: { operation: 'knowledge-batch-execution-cancel', key: batchId,
+            principalKey: principalKey(operations.actor), manifestHash: manifest.hash } },
+      });
+    });
+    known.set(batchId, receipt); return receipt;
+  }
+  async function markOutcomeUnknown(batchId: string) {
     const { manifest } = await operations.executionBatchAdapter().receipt(batchId), item = manifest.items[0], original = known.get(batchId);
     assert.ok(original);
+    const e = await withTenantTransaction(enterpriseId, tx => one(tx, sql`select run_id,conversation_id from app.assistant_knowledge_evaluations
+      where enterprise_id=${enterpriseId} and created_by=${adminId} and id=${item.evaluationId}`));
+    assert.equal(e?.run_id, null); assert.equal(e?.conversation_id, null);
     const lease = await claimJob(); assert.ok(lease); assert.equal(lease.enterpriseId, enterpriseId); assert.equal(lease.runId, original.runId);
     // Clearly synthetic provider-boundary marker, matching the existing approved cancellation fixture. No HTTP took place.
     await withTenantTransaction(enterpriseId, tx => tx.execute(sql`update app.assistant_jobs set provider_started_at=now() where enterprise_id=${enterpriseId} and id=${lease.jobId}`));
     await failRun(lease, 'synthetic_seam_no_http_boundary', false);
-    await withTenantTransaction(enterpriseId, tx => tx.execute(sql`update app.assistant_knowledge_evaluations set conversation_id=null,run_id=null
-      where enterprise_id=${enterpriseId} and created_by=${adminId} and id=${item.evaluationId} and run_id=${original.runId}`));
   }
   async function leaseFor(batchId: string) {
     const expected = known.get(batchId); assert.ok(expected);
@@ -143,5 +168,5 @@ export async function createPostgresFixture(factoryModule: string, factoryExport
     assert.equal(response.headers.get('cache-control'),'no-store');
     return{status:response.status,error:String(body.error)};
   }
-  return { actor: operations.actor, prepare, snapshot, loseAssociation, leaseFor, routeAfterCancellation, cleanup };
+  return { actor: operations.actor, prepare, snapshot, stageUnlinkedReceipt, markOutcomeUnknown, leaseFor, routeAfterCancellation, cleanup };
 }

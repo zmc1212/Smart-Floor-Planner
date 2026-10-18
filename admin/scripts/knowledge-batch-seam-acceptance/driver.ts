@@ -82,11 +82,12 @@ async function run(config: Config) {
       assertCancellationFence(prior,now);record('existing-authenticated-route-uses-shared-factory',{route,before:prior,after:now});
     }
 
-    phase = 'recovery-prepare'; const lost = await current.prepare(); await command(0, 'resume', { evaluationId: lost.items[0].evaluationId });
-    const original = await snapshot(lost.batchId); assert.ok(original.runId && original.conversationId);
-    phase = 'recovery-remove-association'; await current.loseAssociation(lost.batchId);
+    phase = 'recovery-prepare'; const lost = await current.prepare();
+    phase = 'recovery-stage-original-receipt'; const receipt = await current.stageUnlinkedReceipt(lost.batchId, events);
+    const original = { ...await snapshot(lost.batchId), ...receipt }; assert.ok(original.runId && original.conversationId);
+    phase = 'recovery-mark-synthetic-unknown'; await current.markOutcomeUnknown(lost.batchId);
     phase = 'recovery-missing-snapshot'; const missing = await snapshot(lost.batchId);
-    report.recoverySetup = { original, missing }; save();
+    report.recoverySetup = { original, missing, bindingSource: 'Original shared create/send receipt; evaluation association was never written' }; save();
     assert.equal(missing.runId, null); assert.equal(missing.runStatus, 'indeterminate'); assert.equal(missing.reservationStatus, 'reconciling');
     phase = 'recovery-two-processes'; await Promise.all([0, 1].map(index => command(index, 'recover', { evaluationId: lost.items[0].evaluationId })));
     phase = 'recovery-oracle';
