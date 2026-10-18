@@ -9,11 +9,14 @@ if (!/^[a-f0-9]{8,40}$/.test(base)) throw Error('Expected an explicit baseline c
 const norm = file => path.resolve(file).replaceAll('\\', '/');
 const changed = ['src/lib/assistant/knowledge/operations.ts', 'src/db/__tests__/assistant-knowledge-operations.test.ts',
   'src/components/assistant/knowledge-operations.tsx', 'src/app/api/assistant/knowledge/operations/[...path]/route.ts',
-  'src/app/(admin)/(merchant)/assistant-knowledge/page.tsx'];
+  'src/app/(admin)/(merchant)/assistant-knowledge/page.tsx', 'src/lib/assistant/knowledge/context-selection.ts',
+  'src/lib/assistant/knowledge/retrieval.ts', 'src/lib/assistant/__tests__/context-selection.test.ts',
+  'src/db/__tests__/assistant-professional-knowledge.test.ts'];
 const added = new Set(['src/lib/assistant/knowledge/evaluation-batch.ts', 'src/lib/assistant/__tests__/knowledge-evaluation-batch.test.ts',
   'src/lib/assistant/knowledge/operation-batch-view.ts', 'src/components/assistant/knowledge-batch-client.ts',
   'src/components/assistant/knowledge-batches.tsx', 'src/lib/assistant/__tests__/knowledge-batch-client.test.ts',
-  'src/db/__tests__/assistant-knowledge-batches.test.ts'].map(file => norm(root + '/' + file)));
+  'src/db/__tests__/assistant-knowledge-batches.test.ts', 'src/db/__tests__/assistant-knowledge-coverage.test.ts',
+  'src/lib/assistant/__tests__/knowledge-context-coverage.test.ts', 'scripts/assistant-knowledge-coverage-cases.ts'].map(file => norm(root + '/' + file)));
 const overrides = new Map(changed.map(file => [norm(root + '/' + file), cp.execFileSync('git',
   ['-C', path.resolve(root, '..'), 'show', base + ':admin/' + file], { encoding: 'utf8', windowsHide: true })]));
 const config = ts.readConfigFile(root + '/tsconfig.json', ts.sys.readFile).config;
@@ -45,7 +48,7 @@ function difference(left, right) {
 }
 const result = { base, scope: 'Same source program; knowledge-owned changed files restored and new knowledge TS files excluded for baseline; generated Next declarations excluded in both', changed, addedFiles: [...added].map(file => file.replace(norm(root) + '/', '')),
   before: before.length, after: after.length, added: difference(after, before), removed: difference(before, after) };
-const output = path.resolve(root, '../tmp/knowledge-batch');
+const output = path.resolve(root, process.argv[3] || '../tmp/knowledge-batch');
 fs.mkdirSync(output, { recursive: true });
 fs.writeFileSync(output + '/type-comparison.json', JSON.stringify(result, null, 2));
 fs.writeFileSync(output + '/source-types.log', ts.formatDiagnosticsWithColorAndContext(after,

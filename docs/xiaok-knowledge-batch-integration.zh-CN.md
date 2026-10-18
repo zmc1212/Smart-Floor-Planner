@@ -1,6 +1,34 @@
-# KB-4 批量回归：知识线实现与集成交接
+# 企业知识：多来源覆盖与批量回归集成交接
 
-状态：**Limited；知识专属批次准备、本人历史/进度、逐项原次恢复及已关联 run 取消已接入 Admin/API，自动批量执行仍待集成。** 当前增量的实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
+状态：**Limited；多文档检索覆盖及知识专属手动批次管理已有有界实现，自动批量派发与客户语义验收仍待集成。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
+
+## 独立多来源覆盖增量
+
+稳定检查点 `b30e75d7` 后的下一节点对应计划 K-03/K-04 的具体缺口：最多五段时，v3 第一遍每份文档取两段，可能选入 A1/A2/B1/B2/C1，挤掉必需的 D，包括登记冲突的一方。新离线断言五项中三项在旧选择器失败。修复后先为每份可用文档保留一段，再按原排名补重复段；明确不适用的规则仍排在所有可用段之后，包括可用重复段，未知条件仍为未知。来源对象、原文及定位保持。超过五份可用文档、同一文档未入选的必要细节，以及原候选预算以外的资料仍有限制。
+
+`professional-hybrid-v4` 如实记录 `maxPerDocumentFirstPass:1`；维度、每路 30、RRF k60、相关度下限 0.3、最终最多五段保持，不需要重建索引。授权、当前有效/发布/受众/profile 过滤、检索签名、Evidence/引用协议及适用性不变。新诊断记录 v4，不回写历史 v3。预览和 Agent 复用的知识入口会采用新选择，但这不证明任一路径的回答语义或后续提示预算保留了全部来源。
+
+预先固定的两道合成题分别核对四来源的前提/批准边界，以及重复背景段之后的登记冲突资料，每题两轮真实分块、Embedding、隔离 PostgreSQL/RLS 检索。必需 document/version IDs 在查询前确定；内部、未发布及其他企业资料留在候选池之外，用户声称材料已知不能补齐服务端缺项。测试核对原文/hash/版本及真实分块偏移，并在真实查询 Embedding 期间下架来源，验证原 I/O 后守卫和引用解析。实际候选池的旧 v3 重放只作诊断证据，不作预期来源判定依据。未调用文字模型、配置实模 C01 Agent 或原生界面；这是来源覆盖检查，不是专业正确率评分。
+
+本节点专属文件：`knowledge/context-selection.ts`、`knowledge/retrieval.ts`、知识专属测试、固定合成题集、专项验收/类型 runner 及本文双语交接；旧专业服务测试的诊断版本预期同步为 v4，该九项服务套件本增量未重跑。已核对与业务工作区的文件归属。未改 UI 结构/样式/素材/文案、路由/API/model/权限形状、共享 Agent/队列/schema/迁移或公共引用权限代码。既有 Admin 界面保持，因此不新增浏览器/原生视觉通过声明。
+
+共享文档单点集成人需替换双语二期合同及后台清单中原 KB-3 检索段落：**Limited：professional-hybrid-v4，先覆盖每份可用文档一段，再在五段内补有用重复段；实际 K-03/04 来源覆盖证据与客户语义验收分别记录。** 本地计划的当前配置只在其另行维护的计划变更内同步；不得改写/提交复制计划、追加 UI 台账历史行，或为本后端变化升级原生还原状态。
+
+在本 worktree 的 `admin` 下复跑：
+
+```powershell
+node scripts/assistant-knowledge-coverage-acceptance.mjs
+node scripts/assistant-knowledge-coverage-acceptance.mjs --service --lock-wait-ms 1800000 --connection-file 'G:/workspace/向总/Smart-Floor-Planner/tmp/xiaok-vector/connection.private.json' --env-dir 'G:/workspace/向总/Smart-Floor-Planner/admin' --output-dir '../tmp/knowledge-coverage/live'
+node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973beb540d1511e125 ../tmp/knowledge-coverage
+```
+
+服务 runner 沿用整套 advisory lock、批准的非 superuser/non-BYPASSRLS `55432/xiaok_embedding_eval`，要求队列空闲；锁占用仅等正常释放，不重置夹具、抢锁或启动竞争 Worker。直接查询 Embedding 在测试 gateway 内完整计量，清理前与持久文档索引 attempt 分开留存；不伪造聊天 run 或 usage 行，费用保持 `null`。
+
+验证：离线 **15/15**，真实服务 **6/6**，各自失败/跳过/取消均为零，被测源码 hash 稳定；服务用时 **73.08 秒**。两题各两轮均保留四份固定必需资料。“前提/批准边界”题的实际候选池旧 v3 重放两轮均漏掉文档 `907`，v4 两轮均保留；冲突题的旧实际排名已保留双方，所以其两轮通过证明保持，不能当作新复现的真实冲突失败，单边冲突缺陷由另行离线压力样本复现。相关 ESLint 零错误/警告；同程序类型 **287 → 287，新增 0**，并非全项目零错误。不从小样本推导质量百分比或 P50/P95。
+
+删除夹具前，`KB_COVERAGE_AUDIT` 将 **10 次文档 Embedding / 4,789 输入 tokens** 与持久成功 attempt 对齐，另记 **6 次直接查询 / 362 tokens**，共 **16 次 / 5,151**，全部成功、Embedding 输入未知 0 次。另有 10 次真实分块，其输入计量未知，不混入 Embedding 总数。文字模型调用 0，费用未知，不把模拟文字生成当作语义通过。仅清理前缀 `synthetic-kb-coverage-7120ce4f-9b57-4a20-90ee-76df7615e055` 下的企业 `3483/3484`、管理员 `6861/6862`、用户 `6854/6855`；随后核对 **107** 张含 `enterprise_id` 的 app 表与精确企业/管理员/用户均零遗留。服务进程退出并释放本线锁；本轮未启动 3006 或 3007 服务。
+
+证据：`tmp/knowledge-coverage/{red-unit.log,red-unit-status.json,unit.log,unit-status.json,lint-status.json,type-comparison.json}` 及 `live/{service.log,service-status.json,coverage-summary.json,embedding-audit.json,cleanup-audit.json}`。`attempt-0-bun-runner.*` 保留合法 Node 执行前的一次运行器调用错误；`attempt-1-summary-parser.*` 保留 15 项通过但包装层摘要计数错误的运行，均不另算产品测试结果；修正后的包装层拒绝零项测试运行。整体 **Limited**，未合并/部署、未新增凭证或修改权限。
 
 ## 实现边界
 
@@ -59,7 +87,7 @@
 
 ## 共享文档与界面集成边界
 
-本线按交接不改共享双语合同/模块清单、Agent、队列、schema、迁移、引用权限或原生 UI。只修改知识专属运营服务/API、Admin 管理组件与页面入口、相邻 DTO/客户端恢复、回归及 runner；不修改共用 `components/assistant/client.ts`。原工作区对所改既有知识文件自基线无提交或未提交差异。新增接口及可见流程已超出旧清单的逐题描述，须由单一集成人合并时同步以下当前记录，本线不抢写共享文件。
+本线按交接不改共享双语合同/模块清单、Agent、队列、schema、迁移、引用权限或原生 UI。只修改知识专属检索/选择、运营服务/API、Admin 管理组件与页面入口、相邻 DTO/客户端恢复、回归及 runner；不修改共用 `components/assistant/client.ts`。原工作区对所改既有知识文件自基线无提交或未提交差异。新增接口及可见流程已超出旧清单的逐题描述，须由单一集成人合并时同步以下当前记录，本线不抢写共享文件。
 
 集成人接入时，应替换双语后台清单中现有 KB-4 当前段落，并更新二期合同的同一个 KB-4 记录，概括：
 
@@ -68,6 +96,14 @@
 单一集成人应在双语后台清单 KB-4 当前段及二期合同 KB-4 同一记录写入上述范围与实际证据；后台 UI refactor 的 `/assistant-knowledge` 单行补“批次选择/本人进度、原键恢复、已关联 run 取消”，保留原路由/API/权限边界与当前浏览器证据，不附加历史行。小程序清单/恢复账本无本轮运行界面变化，不升级状态。本文不是新视觉方案、未执行验收的证明或生产授权。
 
 具体集成依赖：① 服务端实际执行模式/provider/model revision/prompt/generation settings 固定及可验证 executionRevision；② 沿原机制串行化跨进程/多标签派发与持久取消意图；③ 真正 `EvaluationBatchPort` 适配器及取消/未知结果/并发端到端回归；④ 受影响的客户 C01/原生引用重进复验。当前知识管理子流程不依赖业务 Agent 改造，其余只提交接口提案，不越界修改共享 runtime。
+
+用户已将以下共享修改交给业务集成人，表内模块路径位于 `admin/src/lib/assistant/`，共享客户端为 `admin/src/components/assistant/client.ts`；证据相对于本 worktree：
+
+| 共享事项 | 文件/接口要求 | 证据及当前限制 |
+| --- | --- | --- |
+| 实际执行配置固定 | `knowledge/evaluation-batch.ts::EvaluationBatchPort`（`preflight/observe/resume/cancel`）及服务端 `executionRevision`，接入 `core/conversation.ts::newRun/send`、`infrastructure/model-gateway.ts::textGateway` 和 Agent worker 的 `ports.model/authorize`。含实际 preview/Agent 模式、供应商身份、model/revision、prompt/version、生成参数及 **retrievalConfiguration**，排除凭证；在原写入/派发边界固定并重验，独立前检不够，保留既有 Agent 配置守卫。 | `knowledge/operations.ts::prepareBatch` 只固定题目/来源/epoch/profile/policy；`__tests__/knowledge-evaluation-batch.test.ts` 是确定性端口模拟。尚无生产自动适配器或真实执行固定验收，是集成缺口，不是已复现的供应商故障。 |
+| 跨进程取消围栏 | 在原 `core/conversation.ts::cancelRuns/run` 和任务排序边界（`infrastructure/job-queue.ts` 的 settings 锁）内串行化持久取消意图、未启动 `resume` 及 evaluation/run 关联；取消后不得为找 run 而发送，已提交未知结果保留原键/预留。本线不新建队列/schema 权威。 | `EvaluationBatchCoordinator.requestCancel` 是实例内状态；`KnowledgeOperations.cancel` 只处理已关联 run，未关联返回 409。`tmp/knowledge-batch/admin-entry/final/service.log` 和 `assistant-knowledge-batches.test.ts` 验证这些限定行为，包括模拟已提交标记的费用核对，未验证分布式取消。 |
+| Chrome 101 请求兼容 | `components/assistant/client.ts::assistantRequest` 在 `b30e75d7` 行 38–39 于 fetch 前调用 `AbortSignal.timeout/any`。共享层增加 AbortController 回退及计时器/监听清理，保留调用者 abort、确定/不确定错误分类和 `AssistantMutations` 原键；验证超时、外部取消和失败恢复。 | Chrome 101.0.4951.54 在 HTTP 前复现 `AbortSignal.timeout is not a function`：`tmp/knowledge-batch/admin-entry/ui/attempt-3/{failure-aria.txt,failure-state.json,failure-page.png,browser-error.log}`；能力实测 `ui/browser-compatibility.json`。已通过 UI 使用 Edge 155，未注入 polyfill，不能代作 Chrome 通过。 |
 
 ## 验证与复跑
 
