@@ -61,17 +61,29 @@ node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973be
 
 第一条只跑纯离线测试及既有结构/上下文/文件定位单元，不读数据库。第二条先成功持有 `lockAssistantAcceptance` 的整套共享锁，强制批准的 `55432/xiaok_embedding_eval`、非 superuser/non-BYPASSRLS 及空闲队列，才运行知识运营服务回归；不启动独立 Worker，沿原测试驱动既有工作函数。锁失败不重置夹具、不清队列。只使用 `synthetic-kb4-<UUID>` 企业/用户及测试专用问题，清理限定为本套 fixture IDs。读取既有环境及隔离连接文件，不复制/新增凭证。
 
-证据在 worktree 的 `tmp/knowledge-batch/`，日志与 JSON 记录运行前后代码 hash、准确通过/失败/跳过及模型类别。最终离线检查 **41/41 通过、0 失败、0 跳过**，包括新增协调用例 27 项及既有单元 14 项；运行期间被测源码 hash 不变。相关六文件 ESLint 零错误/警告。同一源码程序类型诊断与基线均为 **287 项，新增 0**；不是全项目类型检查通过。
+本轮重新执行相关离线检查：**41/41 通过、0 失败、0 跳过**，包括协调用例 27 项及既有单元 14 项；被测源码 hash 稳定。相关六文件 ESLint 零错误/警告。同一源码程序类型诊断与基线均为 **287 项，新增 0**，仍不是全项目类型零错误。日志和 JSON 位于 worktree 的 `tmp/knowledge-batch/fixture-fix/`。
 
-首次隔离服务命令在 `lockAssistantAcceptance` 获取锁时退出 1，原因为 `Another assistant acceptance run holds the isolated database lock.`，该次测试子进程未启动、数据库测试 0 项执行，原始记录保留在 `service-attempt.log`、`lock-observation.json`。后续只读核对确认持有者为 PostgreSQL 后端 `457125`、角色 `sfp_app`，应用名为空，客户端 `172.18.0.1:53962`；本机业务验收父进程 `323796` 的子链仍在执行 `assistant-team-materials.test.ts`。未终止连接、删除锁、抢占或清理其他任务。15:28 UTC 观察到锁正常释放后，才通过原 helper 的目标/非特权角色/空闲队列检查重新取锁。
+已先核对文件归属：`admin/src/db/__tests__/assistant-knowledge-operations.test.ts` 是知识运营专属回归，第 14 项由本线 `782eb8ac` 新增；业务原工作区自 `d0238543` 起对该文件没有提交或未提交差异，交接的共享单一维护清单未把该知识测试列为共享 Agent/权限文件。本轮仅将夹具 `menu_permissions` 改为显式 `ARRAY['assistant-knowledge']::text[]` / `ARRAY[]::text[]`，保留所有权限断言。同文件补清理前的完整计量，`finally` 仍保证按本线 fixture IDs 清理；产品实现、API/UI、共享 runtime/队列/schema/权限均未改。
 
-在代码提交 `782eb8ac5a371d2cb64783801b1859022aa5509d` 上执行既定服务文件：**14 项，13 通过、1 失败、0 跳过、0 取消**，退出 1，用时约 170.37 秒；运行前后源码 hash 一致。原有 10 项服务回归及新增批量准备/原子回滚/修订重进 3 项通过；新增三类管理者批量权限项失败，不能写成整套已通过。运行锁由本线后端 `459405`、`sfp_app` 持有，应用名 `knowledge_batch_service_followup_20261018T1529Z`；整套仍使用既有 `lockAssistantAcceptance`，没有跳过锁检查或启动独立 Worker。
+最终服务回归为**修复后新执行的 14 项，14 通过、0 失败、0 跳过、0 取消**，退出 0，用时约 **175.34 秒**，包括第 14 项中 `enterprise_admin/admin/super_admin` 的原有全部断言。服务 runner 的源码 before/after hash 一致，另对 9 个测试/计量相关源文件校验未见变更。整套通过原 `lockAssistantAcceptance` 的批准目标、非 superuser/non-BYPASSRLS 及空闲队列检查；本线持锁后端 `460828`、角色 `sfp_app`、应用名 `knowledge_batch_fixture_fix_20261018T1544Z`。
 
-失败位于 `admin/src/db/__tests__/assistant-knowledge-operations.test.ts:184` 的合成管理员 INSERT：测试把 JS 数组插入 `menu_permissions` 后生成 `($4)::text[]`，其中 `$4` 成为裸字符串 `assistant-knowledge`。只读 `SELECT ($1)::text[]` 已复现 `22P02 / malformed array literal`；显式 `ARRAY[$1]::text[]` 和 `ARRAY[]::text[]` 的只读对照有效。第 14 项尚未到达权限断言，不能据此认定业务权限通过或越权失败。后续应修正这个测试夹具的数组 SQL，再拿共享锁重跑；本次按“只补回归/交接”的范围保留原失败，没有修改测试、产品实现、API/UI 或共享代码。
+清理钩子在删除本线夹具前输出一次完整 `KB4_SERVICE_AUDIT`，覆盖两企业全部索引 attempt、查询 Embedding usage 及 reservation，补齐了上轮仅观察运行中部分计数的限制。既有 gateway 每个有效 embed 调用只发一次 `/v1/embeddings` HTTP 请求，无自动重试或 fallback；本轮成功 attempt / observed usage 对应以下真实应用侧请求：
 
-夹具仅为企业 `3442/3443`、前缀 `synthetic-kb4-a18a2a94-9f33-4cc5-8387-260f0264ed96`。结束后只读核验企业、同前缀管理员及 13 类助手表记录全部零遗留，活跃队列为空；自有进程 `365080/455544/127880` 均已退出，本线锁 `459405` 已释放。本线没有启动独立 Worker，也没有替换或终止原开发 Worker。证据：`service.log`、`service-status.json`、`service-followup/{preparation.json,run-observation-*.json,service-final.log,service-final-status.json,failure-analysis.json,cleanup-audit.json,owned-processes.json,process-cleanup.json}`；最初锁占用记录仍保留，没有自动审批拒绝或不确定写入结果。
+| 范围 | 真实请求数 | 已知输入 token | 输入用量未知次数 |
+| --- | --- | --- | --- |
+| 文档 Embedding（succeeded embed） | 3 | 121 | 0 |
+| 查询 Embedding（observed query_embedding） | 4 | 164 | 0 |
+| 本轮合计 | **7** | **285** | **0** |
 
-离线端口中的权限/版本场景是模拟；本次服务回归使用真实隔离 PostgreSQL/RLS 和既有真实 Embedding，文字生成模型是确定性模拟。运行中快照已观察到 2 次成功 `embed`，只是当时的部分计数，不作为整套调用总数或费用；未知输入/费用仍保留。没有配置实模文字回答或客户 C01 Agent/原生语义验收。原离线 41 项、lint 和类型对照为前轮已执行证据，本次未重复跑。未改模型语义、路由或 schema，本批未运行完整构建、Chrome、Stable 原生、真机/BLE或生产发布验收，整体保持 Limited。
+另有 3 次成功 chunk 尝试、其输入用量 3 次未知，不计入上述 Embedding 请求数。费用仍为 `costMicros:null`；清理前 4 笔 reservation 为 `reconciling`、1 笔为 `released`，没有把未知费用填零或登记为已核清。仅按原测试程序删除本线合成夹具，审计先独立留存。
+
+本轮夹具为企业 `3445/3446`、8 名管理员 `6773–6780`，前缀 `synthetic-kb4-6d269aca-cda0-41e6-8330-fecd854baf0a`。15:48:50 UTC 只读核验企业、同前缀/精确 ID 管理员及 13 类助手表记录全部零遗留，本线活跃 job 为 0，共享活跃队列为空；进程 `378580/267468/345656` 均已退出，本线锁 `460828` 已释放。未启动独立 Worker、替换原开发 Worker、清理其他任务或删除/抢占其锁。
+
+原代码 `782eb8ac` 的独立运行仍是 **13 通过、1 失败**：第 14 项在原行 184 的合成管理员 INSERT 生成 `($4)::text[]`，`$4` 为裸字符串 `assistant-knowledge`，未到权限断言；只读对照复现 `22P02 / malformed array literal`。该失败未改写成通过，完整原日志/状态及根因仍在 `service-followup/` 和 `fixture-fix/previous/`。最初锁占用、0 项执行的尝试仍在 `service-attempt.log`、`lock-observation.json`，不混入最终 14 项计数。
+
+当前证据：`fixture-fix/{ownership.json,preparation.json,unit.log,unit-status.json,lint-status.json,type-comparison.json,service-final.log,service-final-status.json,embedding-audit.json,embedding-summary.json,cleanup-audit.json,owned-processes.json,process-cleanup.json,final-source-check.json}`。归档包装层曾因未规范化的 `admin/../` 路径报错，已从完整主日志/JSON恢复，见 `artifact-recovery.json`；不是额外失败或通过的测试用例。
+
+服务回归使用真实隔离 PostgreSQL/RLS 和既有真实 Embedding，文字生成模型为确定性模拟。离线端口的权限/版本场景仍为模拟，不能替代数据库与客户语义验收。未运行配置实模文字回答、C01 Agent/原生语义、完整构建、Chrome、Stable 原生、真机/BLE、生产容量/恢复或发布验收。批量 API/UI、执行版本固定及跨进程取消围栏仍待集成人接入，整体保持 **Limited**；未自动合并或部署。
 
 ## 计划来源保全
 

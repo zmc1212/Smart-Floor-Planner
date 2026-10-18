@@ -35,7 +35,30 @@ before(async()=>{
     for(let i=0;i<2;i++)admins.push(String((await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password) values(${eid},${prefix+i},'unusable-synthetic','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!.id));aid=admins[0];other=admins[1];
   });ops=new KnowledgeOperations(manager());knowledge=new KnowledgeService(manager());published=await publish('customer_public');internal=await publish('staff_internal');
 });
-after(async()=>{try{await withPlatformTransaction(async tx=>{for(const t of tenants){await deleteAssistantData(tx,BigInt(t));await tx.execute(sql`delete from app.admin_users where enterprise_id=${t}`);await tx.execute(sql`delete from app.enterprises where id=${t}`);}for(const a of admins)await tx.execute(sql`delete from app.admin_users where id=${a}`);});}finally{await closePostgresPool();}});
+after(async()=>{
+  try{
+    try{
+      const audit=await withPlatformTransaction(async tx=>{
+        const items=[];
+        for(const t of tenants)items.push({enterpriseId:t,
+          indexAttempts:await rows(tx,sql`select operation,status,count(*)::int calls,sum(input_tokens)::text known_input_tokens,
+            count(*) filter(where input_tokens is null)::int unknown_input_calls from app.assistant_knowledge_attempts
+            where enterprise_id=${t} group by operation,status order by operation,status`),
+          queryEmbedding:await rows(tx,sql`select measurement_kind,count(*)::int calls,sum(input_tokens)::text known_input_tokens,
+            count(*) filter(where input_tokens is null)::int unknown_input_calls from app.assistant_usage_records
+            where enterprise_id=${t} and category='query_embedding' group by measurement_kind order by measurement_kind`),
+          reservations:await rows(tx,sql`select status,count(*)::int count from app.assistant_quota_reservations
+            where enterprise_id=${t} group by status order by status`),
+        });
+        return items;
+      });
+      // Complete persisted call accounting before fixture cleanup; chunk/tokenization is not Embedding.
+      console.log('KB4_SERVICE_AUDIT '+JSON.stringify({fixturePrefix:prefix,tenantIds:tenants,adminIds:admins,items:audit,costMicros:null}));
+    }finally{
+      await withPlatformTransaction(async tx=>{for(const t of tenants){await deleteAssistantData(tx,BigInt(t));await tx.execute(sql`delete from app.admin_users where enterprise_id=${t}`);await tx.execute(sql`delete from app.enterprises where id=${t}`);}for(const a of admins)await tx.execute(sql`delete from app.admin_users where id=${a}`);});
+    }
+  }finally{await closePostgresPool();}
+});
 test('K11 curated question persists with predeclared required/forbidden sources, conflict and tenant guards',async()=>{
   const input={title:'测试专用 · 办公同题',question,expectation:{kind:'grounded',requiredDocumentIds:[published.documentId],forbiddenDocumentIds:[internal.documentId]},gapNote:'核对屏幕与通道；不自动批准点位'},key=randomUUID();
   saved=await ops.save(input,key);assert.deepEqual(JSON.parse(JSON.stringify(await ops.save(input,key))),JSON.parse(JSON.stringify(saved)));assert.equal((await ops.detail(String(saved.id))).revision,1);
@@ -181,8 +204,9 @@ test('KB4 batch selected-enterprise and private-owner boundaries preserve all th
   const c=await ops.save({title:'测试专用批量权限',question,expectation:{kind:'missing',requiredDocumentIds:[],forbiddenDocumentIds:[]}},randomUUID());
   const input={cases:[{caseId:String(c.id),expectedVersion:Number(c.version)}]};
   for(const role of ['enterprise_admin','admin','super_admin']){
+    const permissions=role==='enterprise_admin'?sql`ARRAY['assistant-knowledge']::text[]`:sql`ARRAY[]::text[]`;
     const a=String((await withPlatformTransaction(tx=>one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password)
-      values(${role==='enterprise_admin'?eid:null},${prefix+'batch-'+role},'unusable-synthetic',${role},'active',${role==='enterprise_admin'?['assistant-knowledge']:[]}::text[],false) returning id`)))!.id);admins.push(a);
+      values(${role==='enterprise_admin'?eid:null},${prefix+'batch-'+role},'unusable-synthetic',${role},'active',${permissions},false) returning id`)))!.id);admins.push(a);
     const service=new KnowledgeOperations({enterpriseId:eid,adminId:a}),batch=await service.prepareBatch(input,randomUUID());assert.equal(batch.items.length,1);
     await assert.rejects(ops.read(batch.items[0].evaluationId),/assistant_resource_not_found/);
     await withPlatformTransaction(tx=>tx.execute(sql`update app.admin_users set must_change_password=true where id=${a}`));
