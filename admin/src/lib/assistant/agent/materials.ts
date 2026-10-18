@@ -5,21 +5,23 @@ import { adaptSurveyGraphToRooms, parseFormalSurveyLayout } from '@/lib/survey-g
 import { customerProjects } from '@/lib/construction/customer';
 import { publishedSiteRecord } from '@/lib/construction/site-publications';
 import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
+import { sharedMaterials } from '@/lib/construction/site-materials';
 import { fail, fingerprint, id, safeText, type ActorContext } from '../contracts';
 import type { ModelTool } from '../contracts/model';
 import { availableNeedMemory } from './memory-sources';
 
 export const materialTool: ModelTool = {
   name: 'query_materials',
-  description: '按当前客户有权读取的明确房屋和房间组合原话需求、正式v4户型和已向本人发布的现场记录。找资料、回顾需求或这些内容的追问都可用，不需要特定关键词。leadId不知道用空串；room仅用明确房间名，不猜代词。多房屋/重名房间先澄清；没有点位图如实缺项，不从墙图虚构。只读，不建立进度草稿或批准。',
+  description: '按当前客户有权读取的明确房屋和房间组合本咨询原话、本人在本咨询明确共享的有效需求/点位图原件说明、正式v4户型和已向本人发布的现场记录。共享参考图不等于正式核对图纸，原件引用不代表已识读图内细节。找资料、回顾需求或追问均可用。leadId不知道用空串；room仅用明确房间名，不猜代词。多房屋/重名房间先澄清；缺项如实说明，不从墙图虚构点位。只读，不建立进度草稿或批准。',
   parameters: { type: 'object', properties: { leadId: { type: 'string' }, room: { type: 'string' } }, required: ['leadId', 'room'], additionalProperties: false },
 };
 export type MaterialQuery = { leadId: string; room: string };
 export type MaterialSource = {
-  ref: { type: 'customer_need' | 'formal_floorplan' | 'site_record'; id: string; version: string };
+  ref: { type: 'customer_need' | 'shared_need' | 'shared_drawing' | 'formal_floorplan' | 'site_record'; id: string; version: string };
   hash: string; leadId: string; projectId: string | null; roomId: string | null; roomName: string;
   sourceMessageId: string | null; mediaIds: string[]; audience: 'customer_self';
-  basis: 'owned_conversation' | 'primary_plan' | 'published_project_record'; status: 'current'; text: string;
+  basis: 'owned_conversation' | 'customer_shared_grant' | 'primary_plan' | 'published_project_record'; status: 'current'; text: string;
+  original?: { grantId: string; conversationId: string; sourceHash: string; mediaHash: string | null; authority: 'customer_reference'; imagePixels: false };
 };
 export type MaterialSnapshot = {
   query: MaterialQuery & { domain: 'materials'; conversationId: string }; customerId: string; leadIds: string[];
@@ -100,6 +102,27 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
     lines.push(`客户原话${fact.room ? '（' + fact.room + '）' : ''}：“${fact.quote}”。`);
   }
   if (!sources.length) missing.push('这次咨询中对应的有效原话需求');
+  if (project) {
+    // The project grant alone never exposes another private consultation, even
+    // for the same homeowner. Reuse the original source/revocation validator.
+    for (const room of matchingRooms.slice(0, 20)) {
+      const shared = await sharedMaterials(tx, eid, projectId!, String(room.id));
+      for (const source of shared.sources) {
+        if (source.customerId !== uid || source.conversationId !== conversationId) continue;
+        sources.push({ ref: { type: source.kind === 'need' ? 'shared_need' : 'shared_drawing', id: source.id, version: fingerprint(source) },
+          hash: fingerprint({ sourceHash: source.sourceHash, mediaHash: source.mediaHash }), leadId, projectId,
+          roomId: source.roomId, roomName: source.roomName, sourceMessageId: source.sourceMessageId,
+          mediaIds: source.mediaId ? [source.mediaId] : [], audience: 'customer_self', basis: 'customer_shared_grant', status: 'current', text: source.text,
+          original: { grantId: source.id, conversationId: source.conversationId, sourceHash: source.sourceHash, mediaHash: source.mediaHash,
+            authority: 'customer_reference', imagePixels: false } });
+        lines.push(`客户共享${source.kind === 'need' ? '需求原话' : '点位图原件说明'}（${source.roomName}）：${source.text}`);
+      }
+    }
+    if (matchingRooms.length > 20) missing.push('其余房间共享资料请指定房间查询');
+  }
+  if (sources.some(s => s.ref.type === 'shared_need')) {
+    const index = missing.indexOf('这次咨询中对应的有效原话需求'); if (index >= 0) missing.splice(index, 1);
+  }
   if (plan && layout && (!query.room || matchingPlanRooms.length === 1)) {
     sources.push({ ref: { type: 'formal_floorplan', id: String(plan.id), version: fingerprint(layout) }, hash: fingerprint(layout), leadId,
       projectId: null, roomId: query.room ? matchingPlanRooms[0].id : null, roomName: query.room, sourceMessageId: null, mediaIds: [],
@@ -123,8 +146,10 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
     }
   }
   if (!sources.some(s => s.ref.type === 'site_record')) missing.push('向本人明确发布的对应现场记录');
-  missing.push('当前有效点位图及其对应房间');
-  lines.push('来源：这次咨询原话、这套房屋的当前正式户型及团队已向你发布的记录。房间对应关系和具体点位仍需设计师核对。');
+  const drawings = sources.filter(s => s.ref.type === 'shared_drawing');
+  missing.push(drawings.length ? '点位图的正式核对、图内细节及对应现场尺寸' : '当前有效点位图及其对应房间');
+  if (drawings.length) lines.push('客户共享点位图原件和说明已关联到上述项目房间；本次工具未识读图片像素，说明仅是客户提供的参考，不证明图内位置、尺寸、设计师核对或正式批准。');
+  lines.push('来源范围：本咨询的有效原话和明确共享资料、这套房屋的当前正式户型及团队已向你发布的记录。正式户型与施工房间的映射、具体点位仍需设计师核对。');
   lines.push('待核对：' + missing.join('；') + '。这些资料尚不代表方案、费用、工期或验收已获批准。');
   return finish();
 }

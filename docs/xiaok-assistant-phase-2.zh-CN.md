@@ -1,5 +1,22 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前P3B/P4A：获权需求与点位图原件投影
+
+**限定实现，整体Limited。** 按现行路线图3.1/知识完善计划推进PPT23/38专业问答。原C01 `query_materials`和`search_knowledge`绑定房屋上下文复用`sharedMaterials`，只读取本客户、本咨询、本项目房间的有效需求和点位图原件说明。不新建知识副本、授权系统、表、迁移、路由或客户端页面；本节补齐旧批次“共享资料未进入问答、点位图一律缺项”的缺口。
+
+- `MaterialSource`增加`shared_need`/`shared_drawing`，保存精确grant ID/版本、原消息/hash、原咨询、项目/施工房间、图片ID/hash、`customer_reference`身份及`imagePixels:false`。同客户/房屋的其他咨询仍排除；同名不建立正式v4房间映射。多房屋/项目/重名房间仍澄清；全房最多20个房间，超出明确要求指定房间。
+- 原服务继续决定最新同类grant、撤回/替换、消息/图片hash、图片删除/用途、房间更名、客户归属/访问、咨询用途/参与者及保留期。最新撤回不回退旧版。原材料/业务快照守卫覆盖工具缓存、模型提交、历史/派生回答及原有任务来源检查，旧snapshot或摘要不能复活来源。
+- 原件继续使用C01私有媒体和S04获权原件API。逐字说明实际进入工具/模型上下文；当前配置文本模型未接收这些图像像素，只能解释客户说明。已有有效图时缺项改为图内识读、正式核对及现场尺寸，不再称缺图/未关联；不声称看过图内位置/尺寸或完成正式核对。图片识读/OCR和正式图纸批准仍未完成。
+- `businessSynthesisSources`保留聚合查询ID，新增逐项sourceId/原文/身份；显式查询和知识绑定路径一致。尾注按实际引用的类型/房间列来源，缺项查询单列；无发布记录的节点查询不再冒称引用记录。prompt `xiaok-renovation-v40`区分客户原话、参考图说明、企业依据、现场事实、一般建议和未知项；普通解释不建正式处理。
+
+PPT23资料原件与PPT38关键事项由团队核实映射原C01/C02/S04/U01。设计仍以唯一还原台账、C01 `design-references/xiaok-p4b-public-sites-v1/README.md`及S04原PPT22/38为准；WXML/Less、素材、字号、导航和胶囊布局未改。Stable原生自动化核对唯一副屏窗口、新编译、真实输入/点击、上传/来源片、持久重进及撤回，逻辑/编码尺寸分记；不据模拟器推断Chrome、真机/真实微信/BLE通过。
+
+在`admin`复跑：`node scripts/assistant-shared-materials-acceptance.mjs`、`--regression`、`--mini`；实模`node --import tsx scripts/assistant-shared-materials-development.ts --development`，原生加`--native`；类型同源比较`node scripts/assistant-shared-materials-typecheck.mjs a44f4c74`。隔离库固定55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS与共享锁；实模固定已批准5432/smart_floor_planner、localhost:3006及现有Worker/provider。业务/图片均为标记合成夹具，HTTP/模型/数据库真实；未知费用为null。最终检查、失败和限制记录在`tmp/xiaok-material-projection/`与[当前交接](./xiaok-assistant-handoff.zh-CN.md)，不据局部通过升级完整专业客服/PPT或发布状态。
+
+已执行核心隔离库服务17项与最终综合解释单元8项（去重25项；旧合组24项日志不改写）、Mini专项92项、配置实模六次及Stable原生20步（含另外四次实模问答）。逐段复核原件/来源身份和未知项；初轮未据原话推断旧桌型的失败保留，不计最终通过。类型同源287→287无新增，lint0错误/30既有警告；隔离编译通过，完整构建仍被既有AiDesignerLegacyPage非法导出阻断。相关回归75项：73通过、2项显式配置跳过、0失败，清理审计见当前交接和证据目录；这些数字不代表全专业客服、图像阅读或生产通过。
+
+复用原LangGraph工具消息/有界循环与业务快照，无框架迁移。实施前复核[ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[上游测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[已关闭status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)及[OpenAI兼容序列化11490](https://github.com/langchain-ai/langchainjs/pull/11490)。只补业务来源投影，工具成功不替代授权/专业结论；既有DeepSeek适配不泛化为框架规则。
+
 ## 当前P4A：同事项取消、恢复与原咨询状态回传
 
 接续总路线图3.1和KB-4交接的现有P3B/P4A优先项，补共享现场事项的取消后续；不另建阶段号。限定实现，整体仍`Limited`。PPT17/20/24/36对应原事项有下文及真实等待安排，23对应同房间底盒/需求/设计师上下文，38对应团队确认及非批准边界；合成企业做法不是PPT施工标准。原PPT哈希`9221a83057fb1b2aa691ecde6cf60a0aa2dfb0d352aad4b6eab2cb6f15209af4`，单屏853×1844映射390×844。只复用S04原输入/文字回执、C01/C02/U01消息与失效状态，未改Mini WXML/Less/素材/导航或批准源。

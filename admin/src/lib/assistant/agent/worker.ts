@@ -29,7 +29,7 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, recordNeedIssueSupplement, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { businessSynthesisSource, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict } from './synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict } from './synthesis';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
@@ -377,7 +377,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               issueSources.set(fingerprint(snapshot.query), { query: snapshot.query, customerId: snapshot.customerId, version: snapshot.version });
               for (const item of snapshot.data) if (['team_result','formal_plan'].includes(item.kind || '') && item.status !== 'invalidated' && item.sourceMessageId)
                 constructionSources.add(item.sourceMessageId);
-              return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: [businessSynthesisSource(resultKey, snapshot)], instructions: '普通状态查询用kind=business；结合知识解释时用kind=synthesis引用本轮synthesisSources。已补充、已核对、已回复分别展示，不能据此宣称已解决/批准/通知。' }) };
+              return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot), instructions: '普通状态查询用kind=business；结合知识解释时用kind=synthesis引用本轮synthesisSources。已补充、已核对、已回复分别展示，不能据此宣称已解决/批准/通知。' }) };
             });
           }
           if (name === 'query_materials') {
@@ -389,7 +389,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               if (!cached) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint,source_refs)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool','query_materials',1,'succeeded',${JSON.stringify(snapshot)}::jsonb,${JSON.stringify(snapshot.data.sources.map(s => ({ ref: s.ref, hash: s.hash })))}::jsonb)`);
               materialSources.set(fingerprint(snapshot.query), { query: snapshot.query, customerId: snapshot.customerId, version: snapshot.version });
-              return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: [businessSynthesisSource(resultKey, snapshot)], instructions: '查资料可用kind=business；专业解释用kind=synthesis并引用本轮synthesisSources。不能虚构图纸、映射、照片观察或批准。' }) };
+              return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot), instructions: '查资料可用kind=business；专业解释用kind=synthesis并引用本轮synthesisSources。不能虚构图纸、映射、照片观察或批准。' }) };
             });
           }
           if (name === 'query_business') {
@@ -403,7 +403,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               if (cached) {
                 const snapshot = cached.private_checkpoint as BusinessSnapshot;
                 if (fingerprint(snapshot.query) !== fingerprint(query) || !await businessSnapshotAvailable(tx, lease.enterpriseId, snapshot)) fail('context_changed');
-                return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: [businessSynthesisSource(resultKey, snapshot)] }) };
+                return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot) }) };
               }
               const snapshot = await queryBusiness(tx, lease.actor, query);
               if (query.domain === 'construction') {
@@ -413,7 +413,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_tool','query_business',1,'succeeded',${JSON.stringify(snapshot)}::jsonb)
                 on conflict(enterprise_id,run_id,step_seq) do nothing`);
-              return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: [businessSynthesisSource(resultKey, snapshot)] }) };
+              return { content: JSON.stringify({ resultKey, ...snapshot, synthesisSources: businessSynthesisSources(resultKey, snapshot) }) };
             });
           }
           if (name === 'search_knowledge') {
@@ -461,7 +461,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               }
               return current;
             });
-            const synthesisSources = [...knowledgeSynthesisSources(selected), ...(bound ? [bound.materials,bound.construction].map(s=>businessSynthesisSource(s.resultKey,s.snapshot)) : [])];
+            const synthesisSources = [...knowledgeSynthesisSources(selected), ...(bound ? [bound.materials,bound.construction].flatMap(s=>businessSynthesisSources(s.resultKey,s.snapshot)) : [])];
             const unresolvedConflict = unresolvedSynthesisConflict(synthesisSources);
             return { content: JSON.stringify({ knowledgeStatus, unresolvedConflict, evidence: answerExcerpts(selected), synthesisSources:synthesisSources.map(({evidence,...source})=>({...source,
               ...(evidence?.file?{file:evidence.file,...(source.text.length<=400?{citationQuote:source.text}:{})}:{}),

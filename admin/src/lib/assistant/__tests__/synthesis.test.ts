@@ -1,10 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { parseSynthesis, focusedSynthesisMessages, synthesisQuoteHints, synthesisRepairFeedback, type SynthesisSource } from '../agent/synthesis';
+import { parseSynthesis, focusedSynthesisMessages, synthesisQuoteHints, synthesisRepairFeedback, businessSynthesisSources, type SynthesisSource } from '../agent/synthesis';
 
 const sources: SynthesisSource[] = [{ sourceId: 'K1', kind: 'knowledge', title: '合成办公原则', text: '显示器避免直对窗户，先核对眩光和通道。净宽需现场核对，参考值为900毫米。' },
   { sourceId: 'B2', kind: 'project', title: '合成书房资料', text: '客户原话：书房靠窗，偶尔两人办公。正式户型含书房，缺少点位图。' }];
 const parse = (segments: unknown[]) => parseSynthesis(JSON.stringify({ kind: 'synthesis', segments }), sources);
+
+test('a missing node or record lookup is never labelled as a consulted actual stage or published record', () => {
+  for (const data of [[], [{ stageKey: null, records: [] }]]) {
+    const result = businessSynthesisSources('missing', { query: { domain: 'construction', leadId: '1' }, customerId: '1', leadIds: ['1'],
+      version: 'synthetic', queriedAt: '', displayText: '本轮未查到实际节点及已发布记录。', data });
+    assert.match(result[0].summaryTitle!, /查询范围与缺项/);
+    assert.doesNotMatch(result[0].summaryTitle!, /实际节点|已发布现场记录/);
+  }
+});
 test('synthesis explains across sources without equating generated text to an excerpt', () => {
   const answer = parse([{ basis: 'evidence', text: '靠窗的偏好可以保留，但双人使用还要同时考虑屏幕眩光和通道，不宜只按窗的位置定桌向。',
     citations: [{ sourceId: 'K1', quote: '显示器避免直对窗户，先核对眩光和通道。' }, { sourceId: 'B2', quote: '书房靠窗，偶尔两人办公。' }] },

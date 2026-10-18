@@ -4,7 +4,7 @@ import { rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, type ActorContext, type Evidence } from '../contracts';
 import { resolveEvidence } from '../knowledge/sources';
 import { businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
-import { businessSynthesisSource, knowledgeSynthesisSources, type SynthesisContext } from './synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources, type SynthesisContext } from './synthesis';
 
 /** Read only durable, authorized results of this run; never accept client/model source packets. */
 export async function currentSynthesisContext(tx: PostgresTransaction, actor: ActorContext, conversation: Row, runId: string): Promise<SynthesisContext> {
@@ -29,7 +29,7 @@ export async function currentSynthesisContext(tx: PostgresTransaction, actor: Ac
       if (!await businessSnapshotAvailable(tx, actor.enterpriseId, snapshot)) fail('context_changed');
       context.snapshots.push(snapshot);
       const seq = Number(step.step_seq) - 1200;
-      context.sources.push(businessSynthesisSource(bound?.resultKey || `${runId}:${Math.floor(seq / 10)}:${seq % 10}`, snapshot));
+      context.sources.push(...businessSynthesisSources(bound?.resultKey || `${runId}:${Math.floor(seq / 10)}:${seq % 10}`, snapshot));
     }
   }
   return context;
