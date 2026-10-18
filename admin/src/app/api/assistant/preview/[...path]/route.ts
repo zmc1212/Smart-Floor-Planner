@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { AssistantError, fail, id, key } from '@/lib/assistant/contracts';
 import { ConversationService } from '@/lib/assistant/core/conversation';
+import { readRetrievalDiagnostics } from '@/lib/assistant/knowledge/diagnostics';
 export const runtime='nodejs';
 async function handle(request:NextRequest,context:{params:Promise<{path:string[]}>}) {
   return withTenantRoute(request,{roles:['super_admin','admin','enterprise_admin'],requireEnterprise:true},async principal=>{
@@ -33,6 +34,7 @@ async function handle(request:NextRequest,context:{params:Promise<{path:string[]
         only(['clientMessageId','content']);if(requestKey()!==key(body.clientMessageId))fail('invalid_message',422);
         data=await service.send(id(p[1]),String(body.clientMessageId),body.content);status=202;
       } else if(p[0]==='runs' && p.length===2 && method==='GET') data=await service.run(id(p[1]));
+      else if(p[0]==='runs' && p.length===3 && p[2]==='diagnostics' && method==='GET') data=await readRetrievalDiagnostics(service.actor,id(p[1]));
       else if(p[0]==='runs' && p.length===3 && ['cancel','retry'].includes(p[2]) && method==='POST') {
         only([]);data=await service.run(id(p[1]),p[2] as 'cancel'|'retry',requestKey());status=p[2]==='retry'?202:200;
       } else if(p[0]==='citations' && p.length===2 && method==='GET') data=await service.citation(id(p[1]));

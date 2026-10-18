@@ -10,7 +10,14 @@ export type SynthesisAnswer = { kind: 'synthesis'; segments: SynthesisSegment[] 
 export type SynthesisContext = { version: 1; knowledge: Evidence[]; snapshots: BusinessSnapshot[]; sources: SynthesisSource[] };
 
 export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
-  return sources.some(s => s.kind === 'knowledge' && /适用范围未核实|规则存在冲突|规则出现冲突/.test(s.text));
+  if (sources.some(s => s.kind === 'knowledge' && /适用范围未核实|规则存在冲突|规则出现冲突/.test(s.text))) return true;
+  const claims=new Map<string,Set<string>>();
+  for (const s of sources) {
+    const p=s.evidence?.professional;
+    if (!p?.entry.claim || p.applicability.status==='not_applicable') continue;
+    const claim=p.entry.claim, values=claims.get(claim.key)||new Set<string>();values.add(claim.value);claims.set(claim.key,values);
+  }
+  return [...claims.values()].some(values=>values.size>1);
 }
 
 /** Keep standard tool pairs and the actual current original after tool data.
@@ -76,6 +83,8 @@ export function parseSynthesis(raw: string, sources: SynthesisSource[]): Synthes
 export const synthesisInstructions = `
 专业综合问答（本段替代上文“知识只能选摘录、业务只能展示快照”的限制）：
 客户先问的问题先回答。专业做法、设计取舍、施工条件等自然问题应主动search_knowledge，不要求出现“你们公司”；不要把专业题退回通用入口或需求采访。通用建议可给，但明确是一般建议，不冒充本企业规定。
+专业条目附有professional与服务端applicability：applicable只表示已登记的结构条件匹配，前置检查/例外仍须核实；unknown表示missing中的条件未知，不是已经满足；not_applicable表示mismatched中的条件与当前获权事实不符，只能用来说明为何不能套用，不得当作本项目执行依据。stage使用团队登记的实际阶段key，不从提问或模型猜测。房间、材料、城市本批未自动核实，条件未定时先给条件性解释和最小缺项，不重复问已知需求。prerequisites与exceptions必须和做法一起考虑，来源authority只是依据性质，不代表正式批准或自动覆盖另一规则。同一规则主题的不同明确口径且适用范围可能重叠，工具会标unresolvedConflict，不能按上传时间、相似分数或审校时间自行择一。
+需要否定正式状态时，表述为“当前资料不能支持该结论”“依据不足，仍需核对验收资料”等，不在否定句里复述“已验收/已批准/已关闭/已付款”等完成状态；完成状态只能由真实业务回执展示。没有查到记录也不能推成现实中尚未发生或未执行。保留有据解释和最小核实项，不用完成状态措辞作修辞。
 只把本轮currentQuestion作为当前要回答的问题，旧话题只帮助理解指代。第一段直接回答currentQuestion的结论和关键原因，再补依据/缺项；客户已经换题时，不先回顾或回答上一轮问题。涉及资料不足的问题，先回答现有依据能否支持本轮所问的判断，再说明已知内容和最小缺项。
 涉及“我家/当前/这个阶段/现场”的解释，先取得query_materials或query_business(construction)的当前获权事实，需要时两者一起查；不把公开工地当客户项目。承接明确房间/前轮对象，保留独立需求；必要时一次问一个最小缺项。不要为每次解释record_need、建事项或转人工。只有客户本轮明确表达的需求才可保存，明确要找人才request_designer。
 工具返回synthesisSources（sourceId、完整文字、来源标题）可在同轮组合使用。普通查列表或正式方案/事项状态仍可kind=business；知识摘录兼容kind=knowledge。解释原理、取舍、专业依据如何适用于已有需求/实际阶段时必须kind=synthesis，不能只返selections或displayText。

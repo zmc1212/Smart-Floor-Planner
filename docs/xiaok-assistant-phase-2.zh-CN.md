@@ -1,5 +1,42 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前 KB-1：专业条目、适用条件与检索诊断（限定闭环，整体 Limited）
+
+本批沿企业知识库专项 KB-1，使用原正文/FAQ、后台 `/assistant-knowledge` 和原 C01 聊天。没有新聊天入口或文件导入。PPT6/15的生活语言与连续追问、18的实际阶段/施工检查安排、19的铺贴前材料沟通、23的底盒/需求/图纸关联和38的缺失/不一致先核实，是本批场景来源；具体办公、铺砖前提、地暖材料与互斥规则题为标记合成验收题，不声称PPT原文包含这些专业规定，也不等于完整PPT19审美沟通或全PPT验收。
+
+### 数据、写入与界面
+
+- `0085_assistant_professional_knowledge`在既有 `assistant_knowledge_versions` 增加可空 `professional` JSONB、粗粒度形状约束和发布后不可变触发器；无新业务表/权限/菜单。原无专业元数据的版本/hash/索引继续有效。Drizzle Schema、journal和迁移核验脚本同步；`.gitattributes`仅固定0085为LF，保证Windows检出后仍保留已应用SQL的hash，不重写历史迁移。开发主库与55432隔离库已应用；迁移前备份/归档目录通过，完整0085恢复演练仍未验证，不据此升级生产状态。
+- 原文档 create/edit API新增 `professional`：专业类型、主题/同义表达、最多8个 `stage/room/material/city` 的 `in/not_in` 条件、前置要求、例外、出处名称/版本/实际章节、依据性质，以及可选的互斥规则主题/明确口径。服务端拒绝未知字段、空值、重复条件和超限数据；不把分类当权限。依据性质仅区分企业规则、厂家资料与参考解释，不按性质/上传时间自动裁定优先级。
+- 审校备注留在内部版本数据；实际保存操作者与时间由服务端生成，不接受客户端冒认。复制新草稿保留原审校出处，编辑时记录本次实际保存者；这是维护留痕，不是工程认证。专业元数据纳入不可变内容hash；公开条件、前置/例外和出处进入实际分块正文，内部审校备注不进入Embedding文本、客户回答或公开来源投影。引用继续使用Unicode code point定位，不伪造PDF页码或文件解析结果。
+- 原720px知识Drawer以现有Ant Design表单/折叠区域维护专业字段，仍走保存→索引→就绪→发布、共享成功/失败反馈及输入保留。正文/FAQ与专业说明合计仍受16,000字符/48,000字节上限约束；专业JSON另有限额。发布版本只读，新稿或索引失败不影响有效旧版；未来生效稿不能提前替换现行发布指针。未来首次发布仍按有效期不参与当前检索，不提供定时切换服务。
+
+### 专业检索、条件与失效
+
+- `retrieveKnowledge`成为原Agent、保守摘录包装器和后台诊断的同一检索路径：既有1024维Qwen profile、先硬授权、每路最多30候选、RRF k=60、相关度下限0.3、最多5条。未接BM25、额外重排、父子分块、OCR或新向量库。专业主题随正文索引；没有新增客户端/模型任意过滤器，不能覆盖租户、受众、发布、profile、有效期或来源撤回。
+- 专业证据附来源版本/hash、类型、条件和服务端适用结果：`applicable`仅表示登记的结构条件匹配，前置检查/例外仍待业务核实；`unknown`明确缺少哪些条件；`not_applicable`保留不匹配原因，用于解释不能套用。缺项不硬筛掉一般知识，也不表示现实不存在。原摘录执行器排除明确不适用条目；生成式Agent可解释其不适用原因，不得据此下当前项目施工指令。
+- 当前只自动核对绑定房屋、唯一获权活动项目的实际阶段，复用 `customerProjects/currentStage/readStageSettings`。未绑定/后台试问不自动选项目；房间、材料/型号、城市本批保留未知，不从提问/模型或同名房间猜事实。项目阶段/访问变化重新核对证据上下文；原业务快照继续核对正式户型、发布记录、成员/同意及版本。内部的实际阶段删除保护仍由施工服务负责，知识模块不绕过。
+- 同一已登记规则主题出现不同明确口径、且适用范围可能重叠时，服务端标记冲突并要求综合回答首段待核实，保留双方来源，不择较新上传/高分条目当企业口径。明确不适用的口径不制造同一现场的冲突。这个合同只识别登记的互斥口径和既有明确冲突标记，不声称完成自由文本语义矛盾检测。
+- prompt `xiaok-renovation-v26`在原LangGraph循环里解释条件、前置/例外、一般建议与实际事实，保留工具消息、当前原话与原咨询。专业说明不会自动建施工事项、批准、通知、验收或关闭。所有实际提供给模型的专业依据及项目快照仍在最终提交/继续/历史/引用/接续包重验；换版、到期、受众/撤回、实际阶段或参与权限变化使相关派生解释失效。新增字段不放宽原用量、租约、未知调用及人工接管协议。
+
+### 后台试问诊断与权限
+
+- 新增 `GET /api/assistant/preview/runs/:id/diagnostics`，仅本人原知识试问、当前有权的企业管理者读取；客户/普通员工、其他管理员的试问和跨企业请求不可读。`enterprise_admin/admin/super_admin`继续在选定企业继承知识管理，不要求平台管理员入职/成为项目成员。接口 `no-store`；不增加客户调试入口或无权候选缓存。
+- 原试问“本轮回答”旁的“检索诊断”Drawer展示实际检索问题、注册配置/profile、查询耗时/可用Embedding输入用量、当前受众/固定草稿、合法排除的汇总计数，以及授权候选的来源版本/hash、真实各路名次、融合顺序、入选/低相关/排序未入选、实际上下文是否使用及按预算截取的字符数、条件缺项/不适用原因、原片段。未发布/受众/有效期/索引计数可重叠；只有已授权候选有ID/正文。费用未知保持null，不填零；已知Agent查询Embedding用量写回原operation key，不重复计量。
+- 诊断复用 `knowledge.search.v1` 的原 `assistant_run_steps.input_summary`；没有第二套运行/任务表。每次打开核对当前身份、本人会话、knowledge_epoch、固定草稿、候选精确hash/版本、有效期/profile及条件上下文；旧资料失效时整份旧trace不再返回正文/标题。普通查询未检索、索引未就绪、候选未召回/低排/条件缺失与模型执行失败分别可见；手工录入不冒充已解析文件，生成语义正确性明确不自动判断。Admin试问仍是原保守摘录生成，C01是已验收的生成式综合解释；两者共享检索与授权，不把试问生成风格当线上语义验收。
+
+### 上游采用与本批验证
+
+2026-10-18复核[Haystack过滤实现](https://raw.githubusercontent.com/deepset-ai/haystack/main/haystack/components/retrievers/filter_retriever.py)及[运行时过滤测试](https://raw.githubusercontent.com/deepset-ai/haystack/main/test/components/retrievers/test_filter_retriever.py)、[LangGraph JS工具消息测试](https://raw.githubusercontent.com/langchain-ai/langgraphjs/main/libs/langgraph-core/src/tests/prebuilt.test.ts)。采用检索/生成分离、可记录条件与测试方法；上游运行时filter可覆盖默认值的行为不能覆盖本项目硬授权。保留现有LangGraph/pgvector/Worker，没有安装或迁移另一框架。[DeepSeek JSON输出文档](https://api-docs.deepseek.com/guides/json_mode/)仍列出空内容/截断注意项；本批不放宽原解析、未知结果和用量合同，不把供应商问题泛化成框架规则。
+
+本批实际执行结果、合成夹具ID、逐轮必要来源和语义核对、原生截图、静态检查及剩余阻碍见[当前交接](./xiaok-assistant-handoff.zh-CN.md)及 `tmp/xiaok-kb1/`。复跑：从admin执行 `node scripts/assistant-professional-acceptance.mjs`、`--unit`、`--regression`、`--synthesis-regression`；`node --import tsx scripts/assistant-professional-admin-acceptance.ts --development`；`node --import tsx scripts/assistant-synthesis-development-acceptance.ts --development --professional`，加 `--native` 复用稳定原生流程。只允许批准开发/隔离库建明确合成数据，沿已有凭据/模型配置。
+
+小程序仍只有 `packages/assistant/chat/chat`，复用批准C01/C02/C05/U01及唯一设计源 `design-references/xiaok-p4b-public-sites-v1/README.md` 的原气泡、引用片和不可用状态，WXML/Less/字号/插画/导航未改。后台视觉源为双语Admin UI合同及原 `/assistant-knowledge`；本环境没有可调用Chrome连接器，现有Chrome未开启CDP，认证态Chrome视觉仍未验证，不以HTTP/API代替视觉通过。原生业务截图不升级完整宿主/光学/高屏/键盘、真机/真实微信授权/BLE状态；不转人工验收门槛。
+
+完整企业知识库仍 **Limited**：文件上传/结构解析与页表定位、全部专业长尾、自动条件抽取/语义冲突、知识缺口运营队列、重排/父子补检、影子profile切换及定时替换尚未交付。KB-2文件入库与KB-3增强按专项继续，不把全格式支持当KB-1前置。历史构建/类型/打包阻碍保持实际记录，未合并main、未部署或批准发布。
+
+
+
 ## 当前专业客服：知识与工地资料综合解释（限定范围，整体Limited）
 
 当前主线按最新整合路线图3.1/4.1/4.4推进。PPT6/14/15的先答问题、生活需求和连续追问，结合PPT18/19实际节点、PPT23资料关联及PPT38缺失/说法不一致先核实，复用C01/C02/S01/U01。专业问答已接入原Agent，而不是新建聊天入口；旧知识摘录及业务快照模式继续兼容。完整专业客服、全PPT及P5仍为Limited，未生产发布。

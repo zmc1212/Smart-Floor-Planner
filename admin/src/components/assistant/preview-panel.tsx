@@ -5,6 +5,7 @@ import { Alert, Button, Card, Col, Drawer, Empty, Input, List, Modal, Popconfirm
 import { notify } from '@/components/admin/operation-feedback';
 import { AssistantMutations, AssistantRequestError, assistantError, assistantRequest, audienceLabels, formatTime, runIsActive, statusLabels } from './client';
 import type { AssistantRun, Audience, Citation, PageResult, PreviewConversation, PreviewMessage } from './contracts';
+import { RetrievalDiagnostics } from './retrieval-diagnostics';
 
 export function PreviewPanel({ seed }: { seed?: { draftId: string; audience: Audience } }) {
   const [list, setList] = useState<PreviewConversation[]>([]);
@@ -153,6 +154,7 @@ export function PreviewPanel({ seed }: { seed?: { draftId: string; audience: Aud
                 {active && <Button disabled={busy} onClick={() => { void operate(async () => { await mutations.current.write(`preview/runs/${run.id}/cancel`, {}); }, '已请求停止回答'); }}>停止回答</Button>}
                 {run.retryable && conversation.status === 'open' && <Button disabled={busy} onClick={() => { void operate(async () => { await mutations.current.write(`preview/runs/${run.id}/retry`, {}); }, '已重新发起回答'); }}>重试回答</Button>}
               </Space>} />}
+              {run && <RetrievalDiagnostics key={run.id} runId={run.id} />}
             </>}
             {pending && <Alert type="warning" message="上次发送结果尚未确认，文字已保留。重试会沿用同一提交标识。" />}
             {conversationId && <>

@@ -73,7 +73,7 @@ export async function run(ctx) {
     });
     await step('source-linked explanation survives navigation and persisted native reentry',async()=>{const p=await open();assert.ok((await p.data('messages')).find(m=>m.id===first.outputMessageId&&m.available));return{outputMessageId:first.outputMessageId};});
     await step('PPT6/15 native follow-up uses the existing subject and fresh real knowledge',()=>say(ctx.followup,'followup'));
-    await step('withdrawn site evidence invalidates the dependent explanation on actual native reentry',async()=>{
+    await step(ctx.withdrawLabel||'withdrawn site evidence invalidates the dependent explanation on actual native reentry',async()=>{
       await ctx.withdraw();const p=await open();await wait(async()=>(await p.data('messages')).find(m=>m.id===first.outputMessageId&&m.available===false),'source unavailable feedback');
       return{outputMessageId:first.outputMessageId,capture:await capture('native-withdrawn')};
     });

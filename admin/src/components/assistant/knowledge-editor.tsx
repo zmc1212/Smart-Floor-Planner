@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Divider, Drawer, Form, Image, Input, Popconfirm, Select, Skeleton, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Collapse, Divider, Drawer, Form, Image, Input, Popconfirm, Select, Skeleton, Space, Tag, Typography } from 'antd';
 import { notify } from '@/components/admin/operation-feedback';
 import { AssistantMutations, assistantError, assistantRequest, audienceLabels, formatTime, statusLabels } from './client';
 import type { Audience, KnowledgeDetail, KnowledgeVersion } from './contracts';
+import { ProfessionalFields } from './professional-fields';
 
-type ContentValues = { body?: string; faq?: Array<{ question: string; answer: string }>; effectiveFrom?: string; effectiveTo?: string; referenceCase?: NonNullable<KnowledgeVersion['reference_case']> };
+type ContentValues = { body?: string; faq?: Array<{ question: string; answer: string }>; effectiveFrom?: string; effectiveTo?: string; referenceCase?: NonNullable<KnowledgeVersion['reference_case']>; professional?: KnowledgeVersion['professional'] };
 type CreateValues = ContentValues & { title: string; category?: string; sourceType: 'manual_text' | 'faq' | 'reference_case'; audience: Audience };
 function CaseImageInput({ value, onChange }: { value?: string; onChange?: (value: string) => void }) {
   const [error, setError] = useState('');
@@ -38,10 +39,13 @@ function contentBody(values: ContentValues, source: string) {
   const faq = source === 'faq' ? values.faq || [] : [];
   const rendered = source === 'faq' ? faq.map(item => `问：${item.question.trim()}\n答：${item.answer.trim()}`).join('\n\n') : body.trim();
   if (rendered.length > 16000 || new TextEncoder().encode(rendered).length > 48000) throw new Error('完整正文最多 16,000 字符 / 48,000 字节，请精简后再保存。');
-  return { body, faq, ...(source === 'reference_case' ? { referenceCase: values.referenceCase } : {}), ...(from ? { effectiveFrom: from } : {}), effectiveTo: to };
+  const p=values.professional;
+  const professional=p?.kind?{...p,version:1,topics:p.topics||[],conditions:p.conditions||[],prerequisites:p.prerequisites||[],exceptions:p.exceptions||[],claim:p.claim?.key||p.claim?.value?p.claim:null}:null;
+  return { body, faq, ...(source === 'reference_case' ? { referenceCase: values.referenceCase } : {professional}), ...(from ? { effectiveFrom: from } : {}), effectiveTo: to };
 }
 function ContentFields({ source }: { source: string }) {
   return <>
+    {source !== 'reference_case' && <Collapse items={[{key:'professional',label:'专业条目、适用条件与来源审校',forceRender:true,children:<ProfessionalFields />}]} />}
     {source === 'reference_case' && <>
       <Alert type="info" showIcon message="仅发布已取得授权的独立案例图片" description="填写原始出处及可核验的授权/许可凭据；发布前人工核实，不得使用客户私图或把参考当正式施工方案。撤回会令历史引用及图片入口失效。" />
       <Form.Item name={['referenceCase','source']} label="案例出处与作者" rules={[{ required: true, whitespace: true, max: 500 }]}><Input placeholder="原始链接/文件、作者及案例出处" maxLength={500} /></Form.Item>
@@ -101,7 +105,7 @@ export function KnowledgeEditor({ documentId, onClose, onChanged, onPreview }: {
   useEffect(() => {
     if (!detail || !version || dirty) return;
     metadata.setFieldsValue(detail.document);
-    form.setFieldsValue({ body: version.body, faq: version.faq, referenceCase: version.reference_case || undefined, effectiveFrom: localDate(version.effective_from), effectiveTo: localDate(version.effective_to) });
+    form.setFieldsValue({ body: version.body, faq: version.faq, referenceCase: version.reference_case || undefined, professional:version.professional || {kind:undefined} as unknown as KnowledgeVersion['professional'], effectiveFrom: localDate(version.effective_from), effectiveTo: localDate(version.effective_to) });
   }, [detail, version, form, metadata, dirty]);
   useEffect(() => {
     if (!indexing) return;

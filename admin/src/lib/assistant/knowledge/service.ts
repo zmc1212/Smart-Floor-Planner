@@ -8,6 +8,7 @@ import { EMBEDDING_PROFILE } from '../infrastructure/embedding-gateway';
 import { authorizeKnowledgeManager } from './manager';
 import { prepareReferenceCase, referenceContent } from './reference-case';
 import { createContentEntry, contentChannel } from './content-entry';
+import { professionalKnowledge, professionalText } from './professional';
 
 export type KnowledgeActor = { enterpriseId: string; adminId: string };
 export function text(value: unknown, max: number, allowEmpty = false): string {
@@ -23,7 +24,7 @@ export function content(source: string, input: Row) {
   if (source === 'reference_case') {
     if (Array.isArray(input.faq) && input.faq.length) fail('invalid_reference_case', 422);
     const c = referenceContent(body, input.referenceCase ?? input.reference_case);
-    return { body, faq: [], rendered: c.rendered, hash: c.hash, reference: c.reference };
+    return { body, faq: [], rendered: c.rendered, hash: c.hash, reference: c.reference, professional: null };
   }
   if (input.referenceCase != null || input.reference_case != null) fail('invalid_reference_case', 422);
   const faq = input.faq ?? [];
@@ -33,9 +34,11 @@ export function content(source: string, input: Row) {
     return { question: text(item.question, 500), answer: text(item.answer, 4000) };
   });
   if ((source === 'manual_text' && (!body || items.length)) || (source === 'faq' && (body || !items.length))) fail('invalid_message', 422);
-  const rendered = source === 'faq' ? items.map(f => `问：${f.question}\n答：${f.answer}`).join('\n\n') : body;
+  const professional = professionalKnowledge(input.professional);
+  const original = source === 'faq' ? items.map(f => `问：${f.question}\n答：${f.answer}`).join('\n\n') : body;
+  const rendered = professional ? professionalText(professional)+'\n\n'+original : original;
   if (rendered.length > 16000 || Buffer.byteLength(rendered) > 48000) fail('invalid_message', 422);
-  return { body, faq: items, rendered, hash: fingerprint({ source, body, faq: items }), reference: null };
+  return { body, faq: items, rendered, hash: fingerprint({ source, body, faq: items, ...(professional ? {professional} : {}) }), reference: null, professional };
 }
 function validity(input: Row) {
   const date = (v: unknown): string => {
@@ -99,11 +102,12 @@ export class KnowledgeService {
         if (action === 'create') {
           const source = input.sourceType;
           if (!['faq','manual_text','reference_case'].includes(String(source)) || !['customer_public','staff_internal'].includes(String(input.audience))) fail('invalid_message',422);
-          const c = content(String(source),input), dates = validity(input);
+          if (source==='reference_case' && input.professional != null) fail('invalid_professional_knowledge',422);
+          const c = content(String(source),{...input,professional:professionalKnowledge(input.professional,{adminId:a.adminId,reviewedAt:new Date().toISOString()})}), dates = validity(input);
           const d = (await one(tx, sql`insert into app.assistant_knowledge_documents(enterprise_id,title,category,source_type,audience,created_by,updated_by)
             values(${a.enterpriseId},${text(input.title,200)},${text(input.category ?? '',100,true)},${String(source)},${String(input.audience)},${a.adminId},${a.adminId}) returning *`))!;
-          const v = (await one(tx, sql`insert into app.assistant_knowledge_versions(enterprise_id,document_id,version_number,body,faq,reference_case,content_hash,effective_from,effective_to,created_by)
-            values(${a.enterpriseId},${String(d.id)},1,${c.body},${JSON.stringify(c.faq)}::jsonb,${c.reference ? JSON.stringify(c.reference) : null}::jsonb,${c.hash},coalesce(${dates.from}::timestamptz,now()),${dates.to}::timestamptz,${a.adminId}) returning *`))!;
+          const v = (await one(tx, sql`insert into app.assistant_knowledge_versions(enterprise_id,document_id,version_number,body,faq,reference_case,professional,content_hash,effective_from,effective_to,created_by)
+            values(${a.enterpriseId},${String(d.id)},1,${c.body},${JSON.stringify(c.faq)}::jsonb,${c.reference ? JSON.stringify(c.reference) : null}::jsonb,${c.professional ? JSON.stringify(c.professional) : null}::jsonb,${c.hash},coalesce(${dates.from}::timestamptz,now()),${dates.to}::timestamptz,${a.adminId}) returning *`))!;
           return { document: d, draft: v };
         }
         const d = await one(tx, sql`select * from app.assistant_knowledge_documents where enterprise_id=${a.enterpriseId} and id=${id(input.documentId)} for update`);
@@ -139,17 +143,19 @@ export class KnowledgeService {
         if (action === 'newVersion') {
           const next = (await one(tx, sql`select max(version_number)+1 as n from app.assistant_knowledge_versions where enterprise_id=${a.enterpriseId} and document_id=${did}`))!;
           await tx.execute(sql`update app.assistant_knowledge_documents set version=version+1,updated_by=${a.adminId},updated_at=now() where enterprise_id=${a.enterpriseId} and id=${did}`);
-          return (await one(tx, sql`insert into app.assistant_knowledge_versions(enterprise_id,document_id,version_number,body,faq,reference_case,content_hash,effective_from,effective_to,created_by)
-            values(${a.enterpriseId},${did},${Number(next.n)},${String(v.body)},${JSON.stringify(v.faq)}::jsonb,${v.reference_case ? JSON.stringify(v.reference_case) : null}::jsonb,${String(v.content_hash)},${v.effective_from as Date},${v.effective_to as Date|null},${a.adminId}) returning *`))!;
+          return (await one(tx, sql`insert into app.assistant_knowledge_versions(enterprise_id,document_id,version_number,body,faq,reference_case,professional,content_hash,effective_from,effective_to,created_by)
+            values(${a.enterpriseId},${did},${Number(next.n)},${String(v.body)},${JSON.stringify(v.faq)}::jsonb,${v.reference_case ? JSON.stringify(v.reference_case) : null}::jsonb,${v.professional ? JSON.stringify(v.professional) : null}::jsonb,${String(v.content_hash)},${v.effective_from as Date},${v.effective_to as Date|null},${a.adminId}) returning *`))!;
         }
         if (expected(input.expectedEditVersion) !== Number(v.edit_version)) fail('version_conflict');
         if (action === 'edit') {
           if (v.published_at) fail('version_conflict');
-          const c = content(String(d.source_type),{body:input.body ?? v.body,faq:input.faq ?? v.faq,referenceCase:input.referenceCase ?? v.reference_case});
+          if (d.source_type==='reference_case' && input.professional != null) fail('invalid_professional_knowledge',422);
+          const c = content(String(d.source_type),{body:input.body ?? v.body,faq:input.faq ?? v.faq,referenceCase:input.referenceCase ?? v.reference_case,
+            professional:professionalKnowledge(input.professional===undefined?v.professional:input.professional,{adminId:a.adminId,reviewedAt:new Date().toISOString()})});
           const dates = validity({effectiveFrom: input.effectiveFrom ?? new Date(String(v.effective_from)).toISOString(), effectiveTo: input.effectiveTo === undefined ? (v.effective_to ? new Date(String(v.effective_to)).toISOString() : null) : input.effectiveTo});
           await tx.execute(sql`update app.assistant_jobs set status='cancelled',lease_token=null,lease_expires_at=null,last_error='context_changed',updated_at=now()
             where enterprise_id=${a.enterpriseId} and knowledge_version_id=${String(v.id)} and status in ('queued','running')`);
-          return (await one(tx, sql`update app.assistant_knowledge_versions set body=${c.body},faq=${JSON.stringify(c.faq)}::jsonb,reference_case=${c.reference ? JSON.stringify(c.reference) : null}::jsonb,content_hash=${c.hash},edit_version=edit_version+1,
+          return (await one(tx, sql`update app.assistant_knowledge_versions set body=${c.body},faq=${JSON.stringify(c.faq)}::jsonb,reference_case=${c.reference ? JSON.stringify(c.reference) : null}::jsonb,professional=${c.professional ? JSON.stringify(c.professional) : null}::jsonb,content_hash=${c.hash},edit_version=edit_version+1,
             index_status='pending',indexed_hash=null,chunk_count=0,effective_from=${dates.from}::timestamptz,effective_to=${dates.to}::timestamptz,updated_at=now()
             where enterprise_id=${a.enterpriseId} and id=${String(v.id)} returning *`))!;
         }
@@ -169,6 +175,8 @@ export class KnowledgeService {
           return {jobId:String(job.id),status:job.status};
         }
         if (action === 'publish') {
+          // A future replacement must not hide the still-effective published version.
+          if (d.published_version_id && new Date(String(v.effective_from)).getTime()>Date.now()) fail('knowledge_not_ready');
           const ready = await one(tx,sql`select id from app.assistant_knowledge_versions where enterprise_id=${a.enterpriseId} and id=${String(v.id)}
             and index_status='ready' and indexed_hash=content_hash and index_profile_id=${String(profile.id)} and chunk_count>0
             and (effective_to is null or effective_to>now())`);

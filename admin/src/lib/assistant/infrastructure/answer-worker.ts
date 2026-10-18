@@ -3,7 +3,7 @@ import { withTenantTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { AssistantError, fail, safeText, type Evidence, type KnowledgeRetriever, type TextModelGateway } from '../contracts';
-import { conversationKnowledgeRetriever } from '../knowledge/retriever';
+import { retrieveKnowledge } from '../knowledge/retrieval';
 import { answerMessages, insufficientAnswer, parseSelection } from '../knowledge/answer';
 import { completeAnswer, completeGuidance, failRun, heartbeat, markProviderStarted, runContext, type Lease } from './job-queue';
 import { configuredGuidance, conversationGuidance, guidanceProgress } from '../requirements/guidance';
@@ -95,7 +95,10 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
         where enterprise_id=${lease.enterpriseId} and operation_key=${operation} and category='query_embedding'`));
       return result;
     }};
-    const candidates=await (deps.retriever ?? conversationKnowledgeRetriever(String(context.run.conversation_id),meteredEmbedding)).retrieve(lease.actor,retrievalQuery,Number(context.run.knowledge_epoch));
+    const retrieved=deps.retriever?null:await retrieveKnowledge(String(context.run.conversation_id),lease.actor,retrievalQuery,Number(context.run.knowledge_epoch),meteredEmbedding);
+    const diagnostic=retrieved?.diagnostic;
+    const candidates=retrieved?retrieved.evidence.filter(e=>e.professional?.applicability.status!=='not_applicable')
+      :await deps.retriever!.retrieve(lease.actor,retrievalQuery,Number(context.run.knowledge_epoch));
     const evidence:Evidence[]=[];
     for(const e of candidates) {
       // Only reject near-unrelated vectors here. The selector judges answerability
@@ -109,9 +112,12 @@ export async function processAnswer(lease:Lease,deps:Dependencies={}) {
     }
     await withTenantTransaction(lease.enterpriseId,async tx=>{
       await runContext(tx,lease);
+      const contextDiagnostic=diagnostic?{...diagnostic,candidates:diagnostic.candidates.map(c=>{
+        const included=evidence.find(e=>e.ref.id===c.ref.id);return {...c,contextIncluded:!!included,contextChars:included?Array.from(included.text).length:0};
+      })}:undefined;
       await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,input_summary,source_refs,status)
         values(${lease.enterpriseId},${lease.runId},${Number(context.job.attempts)*10},'retrieval','knowledge.search.v1',1,
-        ${JSON.stringify({queryChars:query.length,candidateCount:candidates.length,promptVersion:'extractive-selection-v5-scoped-intent'})}::jsonb,
+        ${JSON.stringify({queryChars:query.length,candidateCount:candidates.length,promptVersion:'extractive-selection-v5-scoped-intent',knowledgeStatus:'ready',diagnostic:contextDiagnostic})}::jsonb,
         ${JSON.stringify(evidence.map(e=>({ref:e.ref,hash:e.hash})))}::jsonb,'succeeded')`);
     });
     if(!evidence.length) {await completeAnswer(lease,insufficientAnswer,[],null,followup);return;}

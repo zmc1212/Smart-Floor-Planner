@@ -5,9 +5,9 @@ import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 export const runtime='nodejs';
 type Context={params:Promise<{path:string[]}>};
 const fields:Record<string,string[]>={
-  create:['title','category','sourceType','audience','body','faq','effectiveFrom','effectiveTo','referenceCase'],
+  create:['title','category','sourceType','audience','body','faq','effectiveFrom','effectiveTo','referenceCase','professional'],
   metadata:['expectedVersion','title','category','audience'], newVersion:['expectedVersion','fromVersionId'],
-  edit:['expectedEditVersion','body','faq','effectiveFrom','effectiveTo','referenceCase'], index:['expectedEditVersion'],
+  edit:['expectedEditVersion','body','faq','effectiveFrom','effectiveTo','referenceCase','professional'], index:['expectedEditVersion'],
   publish:['expectedVersion','expectedEditVersion'],retire:['expectedVersion'],
   share:['expectedVersion','entryCode'],
 };

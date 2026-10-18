@@ -1,4 +1,5 @@
 const messages: Record<string, string> = {
+  invalid_professional_knowledge: '请核对专业类型、条件值、来源版本、章节及审校备注；规则主题与口径需一起填写，重复条件或过长内容请精简后再保存。',
   invalid_reference_case: '请填写案例出处、授权凭据、1–12个方向标签、400字以内说明，并选择4MB以内的JPEG/PNG独立图片。',
   reference_unavailable: '案例未发布、已撤回或不对客户开放，请重新核对当前版本。',
   assistant_disabled: '本企业尚未开启小 K，或试点额度与保留期尚未配置。',

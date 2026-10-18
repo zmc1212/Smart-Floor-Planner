@@ -16,7 +16,7 @@ import { buildAgentContext, parseAgentReply, agentPromptVersion } from './contex
 import { saveAutomaticRequirements } from '../requirements/automatic';
 import { hydrateImages, resolveAgentMedia, withoutImageBytes, type MediaDependency } from './media-context';
 import { businessToolDefinitions, queryBusiness, parseBusinessQuery, businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
-import { conversationKnowledgeRetriever } from '../knowledge/retriever';
+import { retrieveKnowledge, type RetrievalDiagnostic } from '../knowledge/retrieval';
 import { answerExcerpts, parseSelection, parseAnswer } from '../knowledge/answer';
 import { recommendReferences, saveReferencePreference, type ReferencePreference } from '../knowledge/reference-service';
 import { REFERENCE_NOTICE, NO_REFERENCE } from '../knowledge/reference-case';
@@ -413,25 +413,29 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 values(${lease.enterpriseId},${lease.runId},${'agent-search:'+resultKey},'query_embedding','unavailable') on conflict do nothing`);
             });
             let knowledgeStatus = String((cached?.input_summary as Row)?.knowledgeStatus || 'ready'), evidence: Evidence[];
+            let diagnostic=(cached?.input_summary as {diagnostic?:RetrievalDiagnostic})?.diagnostic;
             if (cached) evidence = cached.private_checkpoint as Evidence[];
             else {
               // The legacy retriever uses retrieval_unavailable for both a missing profile and network/configuration errors.
               // Distinguish only a known absent profile before I/O; never swallow real/unknown provider failures.
               const profile = await scoped(async tx => one(tx, sql`select active_index_profile_id from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`));
               if (!profile?.active_index_profile_id) { evidence = []; knowledgeStatus = 'not_ready'; }
-              else evidence = await conversationKnowledgeRetriever(String(initial.conversation.id)).retrieve(lease.actor, input.query, Number(initial.run.knowledge_epoch));
+              else {const result=await retrieveKnowledge(String(initial.conversation.id),lease.actor,input.query,Number(initial.run.knowledge_epoch));evidence=result.evidence;diagnostic=result.diagnostic;}
             }
             const selected = evidence.filter(e => e.similarity === undefined || e.similarity >= 0.3).slice(0, 5);
+            if(diagnostic)diagnostic={...diagnostic,candidates:diagnostic.candidates.map(c=>{const included=selected.find(e=>e.ref.id===c.ref.id);return {...c,contextIncluded:!!included,contextChars:included?Array.from(included.text).length:0};})};
             await scoped(async (tx, context) => {
               for (const e of selected) if (!await resolveEvidence(tx, lease.actor, context.conversation, e)) fail('context_changed');
               await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,source_refs,private_checkpoint)
                 values(${lease.enterpriseId},${lease.runId},${sequence},'retrieval','knowledge.search.v1',1,'succeeded',
                   ${JSON.stringify(selected.map(e => ({ ref: e.ref, hash: e.hash })))}::jsonb,${JSON.stringify(selected)}::jsonb)
                 on conflict(enterprise_id,run_id,step_seq) do update set status='succeeded',source_refs=excluded.source_refs,private_checkpoint=excluded.private_checkpoint`);
-              await tx.execute(sql`update app.assistant_run_steps set input_summary=${JSON.stringify({ knowledgeStatus })}::jsonb
+              await tx.execute(sql`update app.assistant_run_steps set input_summary=${JSON.stringify({ knowledgeStatus, diagnostic })}::jsonb
                 where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
               await tx.execute(sql`insert into app.assistant_usage_records(enterprise_id,run_id,operation_key,category,measurement_kind)
                 values(${lease.enterpriseId},${lease.runId},${'agent-search:'+resultKey},'query_embedding','unavailable') on conflict do nothing`);
+              if (diagnostic?.embeddingUsage) await tx.execute(sql`update app.assistant_usage_records set quantity=${diagnostic.embeddingUsage.inputTokens},input_tokens=${diagnostic.embeddingUsage.inputTokens},measurement_kind='observed',updated_at=now(),version=version+1
+                where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and operation_key=${'agent-search:'+resultKey} and category='query_embedding'`);
             });
             // A short follow-up may select only knowledge. Refresh the already-bound home here,
             // rather than letting the model turn yesterday's missing material into today's fact.
@@ -453,7 +457,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
             });
             const synthesisSources = [...knowledgeSynthesisSources(selected), ...(bound ? [businessSynthesisSource(bound.resultKey, bound.snapshot)] : [])];
             const unresolvedConflict = unresolvedSynthesisConflict(synthesisSources);
-            return { content: JSON.stringify({ knowledgeStatus, unresolvedConflict, evidence: answerExcerpts(selected), synthesisSources,
+            return { content: JSON.stringify({ knowledgeStatus, unresolvedConflict, evidence: answerExcerpts(selected), synthesisSources:synthesisSources.map(({evidence,...source})=>({...source,
+              ...(evidence?.professional?{professional:{origin:evidence.professional.entry.origin,conditions:evidence.professional.entry.conditions,prerequisites:evidence.professional.entry.prerequisites,exceptions:evidence.professional.entry.exceptions},applicability:evidence.professional.applicability,context:evidence.professional.context}: {})})),
               boundProjectContext: bound ? { resolution: bound.snapshot.data.resolution, missing: bound.snapshot.data.missing } : null,
               instructions: (unresolvedConflict ? '资料明确含尚未核实的规则冲突。综合回答第一段必须basis=uncertainty，先说明不能按企业规则择一；随后分别引述双方，不用“主流/倾向/优先”认定企业现行口径。一般建议另标身份。' : '')
                 + '解释专业原理、取舍、适用条件时用kind=synthesis，引用本轮synthesisSources。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。兼容原文查询kind=knowledge。' }) };

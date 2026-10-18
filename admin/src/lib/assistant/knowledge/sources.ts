@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, id, type ActorContext, type Evidence } from '../contracts';
+import { fail, fingerprint, id, type ActorContext, type Evidence } from '../contracts';
+import { knowledgeContext } from './applicability-context';
 import { agentMessageAvailable } from '../agent/media-context';
 import { constructionMessageActions } from '@/lib/construction/customer';
 import { siteRecordProjection, siteBusinessRecords } from '@/lib/construction/site-publications';
@@ -45,13 +46,15 @@ export const sourceReady=sql`v.index_status='ready' and v.indexed_hash=v.content
   and ip.status='active' and v.effective_from<=now() and (v.effective_to is null or v.effective_to>now())`;
 export async function resolveEvidence(tx:PostgresTransaction,actor:ActorContext,conversation:Row,evidence:Evidence,historical=false) {
   if(evidence.ref.type!=='knowledge_chunk') return undefined;
-  const row=await one(tx,sql`select c.*,d.id as document_id,d.title,d.source_type,d.published_version_id,v.published_at,v.version_number,v.edit_version
+  const row=await one(tx,sql`select c.*,d.id as document_id,d.title,d.source_type,d.published_version_id,v.published_at,v.version_number,v.edit_version,v.professional
     from app.assistant_knowledge_chunks c join app.assistant_knowledge_versions v on v.enterprise_id=c.enterprise_id and v.id=c.document_version_id
     join app.assistant_knowledge_documents d on d.enterprise_id=v.enterprise_id and d.id=v.document_id
     join app.assistant_enterprise_settings s on s.enterprise_id=c.enterprise_id
     join app.assistant_knowledge_index_profiles ip on ip.enterprise_id=c.enterprise_id and ip.id=c.index_profile_id
     where c.enterprise_id=${actor.enterpriseId} and c.id=${id(evidence.ref.id)} and v.id=${id(evidence.ref.version)}
     and c.text_hash=${evidence.hash} and ${sourceReady} and ${sourceScope(actor,conversation,historical)}`);
+  if (row && evidence.professional && (fingerprint(evidence.professional.entry)!==fingerprint(row.professional)
+    || evidence.professional.contentHash!==row.content_hash || fingerprint(evidence.professional.context)!==fingerprint(await knowledgeContext(tx,actor,conversation)))) return undefined;
   return row;
 }
 export async function validatePreviewSnapshot(tx:PostgresTransaction,actor:ActorContext,c:Row) {
@@ -78,6 +81,7 @@ export async function citationProjection(tx:PostgresTransaction,actor:ActorConte
   return {id:String(citation.id),available:true,title:source.title,version:String(citation.document_version_id),versionNumber:Number(source.version_number),
     referenceCase:source.source_type==='reference_case',
     quote:source.text?String(citation.quote_snapshot):'',locator:citation.locator,isDraft:citation.is_draft,
+    ...(source.professional ? {professional:{kind:(source.professional as Row).kind,origin:(source.professional as Row).origin,conditions:(source.professional as Row).conditions,prerequisites:(source.professional as Row).prerequisites,exceptions:(source.professional as Row).exceptions}} : {}),
     historical:String(source.published_version_id)!==String(citation.document_version_id)};
 }
 export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c:Row,message:Row) {

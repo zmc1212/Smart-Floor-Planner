@@ -1,3 +1,6 @@
 admin/*.sh text eol=lf
 admin/*.bat text eol=crlf
 admin/*.ps1 text eol=crlf
+
+# Preserve the exact bytes of the applied KB-1 migration across Windows checkouts.
+admin/drizzle/0085_assistant_professional_knowledge.sql text eol=lf
