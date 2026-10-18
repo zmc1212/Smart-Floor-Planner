@@ -1,6 +1,6 @@
 # 小K第二期：需求整理与人工交接
 
-**PPT23获权资料与同事项回传：限定闭环Implemented，P5整体Limited。** 客户在原C01咨询明确共享指定房间的需求节选，或紧接上传后明确共享点位图原件；S01接待同意不扩大为项目共享权。S04按项目/房间读取精确资料ID、原话hash与图纸原件，设计师/管理者在同一事项核对关联、回复，管理者明确编写的回传节选只投递原授权咨询。真人接待期间延后；资料替换/撤回、成员或客户撤权、记录/事项/资料版本变化约束读取、写入、回执和投递。沿用事务/outbox/Worker/原键幂等，无新表、迁移或供应商变更；团队回传接入原Agent施工来源链（prompt v18）；新增现有聊天API下的获权原件GET。既有C01/S04文字、原件网格和输入组件仅切换数据/资料标签，无样式、插画或导航更换。客户提供原件及员工关联核对不是正式出图、方案差异、已解决、批准或验收；显式命令及当前范围仍Limited。最终验收与命令见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)，证据`tmp/xiaok-ppt23-batch/`；未生产发布。
+**当前P5正式版本、差异与客户决定：限定闭环Implemented，P5整体Limited。** 原S04有权人员明确发布图纸原件、精确版本、前版、差异及费用/工期影响；原授权咨询C05完整查看后作本版本决定。原键恢复、真人延后、换版/撤回、权限及v19来源化追问已接通；没有新表/迁移/页面/Less/插画/导航或生产变更。客户同意仍不等于现场落实、解决、关闭或验收。当前合同和最终验证见下文P5节；此前PPT23客户资料及同事项回传合同继续约束其各自范围。
 
 本次聚焦复用Postgres事务、原键幂等及现有outbox/消息协议，不增编排器或框架checkpointer。已复核维护中的[LangGraph工作流](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents)、[消息/工具测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭ToolMessage问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，不以工具status代替业务回执。查询走确定性服务、不调用模型，原报告整理模型/提示版本不变。
 
