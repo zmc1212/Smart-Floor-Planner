@@ -1,4 +1,16 @@
-# 小客接力：需求原话事实边界 v62
+# 小客接力：否定/未定人数解释 v63
+
+本提交在独立分支codex/xiaok-need-interpretation、工作区G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-need-interpretation继续，基线04a85946。既有路线图10.1第1/3场景的内部可靠性增量，整体Limited，不宣称完整阶段或发布验收。
+
+- 合成离线6组修复前4失败：否定/暂定中的数字被当作确定人数，明确“人数未定”未能限定旧混合行。当前复用v62原话限定词规则；完整原话仍可用，occupancySpecified仅肯定人数为true，肯定转折引用不得借用被否定分支。明确未定人数限定旧desk/other人数部分，来源失效沿原无值标记，不恢复旧人数；位置、设备、其他房间、原文/修订链、明确更正和权限守卫不改。
+- 当前194/194离线，失败/跳过/取消0；包含历史保存回答与预算回放，新增6组合成解释反例，不是新模型回答。5项TS lint无错误警告，同程序对照04a85946为287→287、新增0。初次lint的测试辅助函数useSource被Hook规则误认，已改名并完整重跑，原失败日志保留。提示审计元数据v63，静态提示/工具文字、sources-v11、48,000字节预算及运行轮数不变。
+- 新构建诊断：Next16.2.3页面导出约束对admin/src/app/(admin)/(merchant)/ai-studio/designer/page.tsx:27复现静态TS2344，额外AiDesignerLegacyPage导出来自4487a09df。该旧函数无产品消费者、调用旧/api/ai；默认页仅重定向统一设计工作台，属于AI Studio而非小客。按父任务边界只诊断，不改该页、不执行新完整Next构建；这不是完整构建已通过。旧287类型诊断仍在。
+- 本阶段新DB/模型/Embedding/浏览器/原生调用0，无夹具、Worker或验收锁竞争。factory/队列/schema/接口、知识专属文件及客户端UI不改。原97项脏修改、5项删除、d0238543及原分支保持。历史4242/4241未知费用不改；图内识读/真机/BLE/真实微信授权和v63实际模型/原生语义未验，既有4324条件式一人示例限制未宣称消除。
+- 当前证据tmp/xiaok-need-interpretation/acceptance-summary.json、final-offline.log、type-comparison.json、original-preservation.json、build-export-diagnosis.{json,mjs}；精确规则/复跑见双语二期合同。知识先前7/7真实DB及04a85946的5组离线进程仅保留原范围，本阶段未重跑。
+
+父任务已要求保存本安全节点后优先只读诊断知识稳定347762ff的run4369/attempt1804连接失败与indeterminate/reconciling路径；不得把accepted=false自动解释为未派发，不重试4369/4242、换键或人工改费用。知识线暂补离线验收，无新真实模型调用授权。
+
+## 上一稳定业务/知识集成04a85946（v62证据）
 
 业务修复提交 [4f4b10deff6b6c25a2ac5af456de4c4ba8f1e6e7](https://github.com/zmc1212/Smart-Floor-Planner/commit/4f4b10deff6b6c25a2ac5af456de4c4ba8f1e6e7)，分支 `codex/xiaok-need-source-context`，工作区 `G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-need-source-context`，基线 a579e512。仅修复既有路线图10.1第1/3场景的内部可靠性，不宣称完整阶段或发布验收。
 

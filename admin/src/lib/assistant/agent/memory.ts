@@ -1,6 +1,7 @@
 import { AssistantError, fail } from '../contracts';
 import { referenceOnlyClause } from '../knowledge/reference-intent';
 import { needSourceContextSupported } from './need-source-context';
+import { hasNeedOccupancyUpdate } from './need-occupancy';
 
 const roomReference = /(?:那|这|另一)(?:一)?间|(?:那|这)个房间|前者|后者|前面(?:说的)?(?:那个|房间)|刚才(?:说的)?(?:那个|房间)/;
 /** A direct correction stays actionable when the customer asks a question next.
@@ -41,7 +42,7 @@ export function needInterpretations(stored: NeedMemory, available: NeedFact[]): 
   return available.flatMap(fact => {
     if (!['desk','other'].includes(fact.field) || !/(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(fact.value)) return [];
     const current = stored.facts.find(next => next.status === 'current' && next.field === 'use' && next.room === fact.room
-      && BigInt(next.sourceMessageId) > BigInt(fact.sourceMessageId) && /(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(next.value));
+      && BigInt(next.sourceMessageId) > BigInt(fact.sourceMessageId) && hasNeedOccupancyUpdate(next.value));
     return current ? [{ factId: fact.id, field: 'use' as const, currentFactId: visible.has(current.id) ? current.id : null }] : [];
   });
 }
@@ -52,7 +53,7 @@ export function needQualifications(fact: NeedFact, current: NeedFact[], original
   if (!['desk','other'].includes(fact.field) || !/(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(fact.value)) return [];
   return current.filter(next => next.status === 'current' && next.field === 'use' && next.room === fact.room
     && BigInt(next.sourceMessageId) > BigInt(fact.sourceMessageId)
-    && /(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(next.value)
+    && hasNeedOccupancyUpdate(next.value)
     && hasExplicitNeedCorrection(originals.get(next.sourceMessageId) || ''))
     .map(next => ({ factId: next.id, field: 'use' as const, value: next.value, sourceMessageId: next.sourceMessageId }));
 }
