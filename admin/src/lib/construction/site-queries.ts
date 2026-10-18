@@ -3,13 +3,14 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fingerprint, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage } from '@/lib/assistant/core/conversation';
+import type { IssueView } from './site-issues';
 
 /** Conservative, bounded routing before any record/job is created. Ambiguity has no business side effect. */
 export function siteMessageIntent(raw: string, photoCount: number): 'report' | 'query' | 'request' | 'clarify' {
-  if (/(?:帮我|请|麻烦|给我)?(?:找(?:下|一下|出)?|查(?:下|一下|询|找)?|看看|看一下|调取|检索).*(?:图纸|需求|资料|原话|照片|记录|事项)|(?:图纸|需求|资料|记录|事项).*(?:在哪|哪里|有没有|进展|状态|谁|下文)|[？?]|(?:怎么|如何|是否|能否|能不能)|(?:吗|么|呢)[。\s]*$/.test(raw)) return 'query';
+  if (/(?:帮我|请|麻烦|给我)?(?:找(?:下|一下|出)?|查(?:下|一下|询|找)?|看看|看一下|调取|检索).*(?:图纸|需求|资料|原话|照片|记录|事项)|(?:图纸|需求|资料|记录|事项).*(?:在哪|哪里|有没有|进展|状态|谁|下文)|[？?]|(?:怎么|如何|是否|能否|能不能|在等谁|有没有下文)|(?:吗|么|呢)[。\s]*$/.test(raw)) return 'query';
   if (/(?:请|帮我|麻烦).*(?:跟进|处理|转交|取消)|(?:接手|转交|取消|回复|跟进)事项|(?:这件事|这条事项).*(?:我来|转交|取消|回复)/.test(raw)) return 'request';
   if (/^(?:收到|好的?|可以|谢谢|嗯|知道了)[。！!\s]*$/.test(raw)) return 'clarify';
-  if (!raw && photoCount || /(?:今天|现场|已经|已完成|铺好|做好|装好|还没|尚未|未完成|待核对|待确认|待沟通|完成了|施工进展)/.test(raw)) return 'report';
+  if (!raw && photoCount || /(?:今天|现场|已经|已完成|铺好|做好|装好|还没|尚未|未完成|未施工|等待.{0,20}核对|待核对|待确认|待沟通|完成了|施工进展)/.test(raw)) return 'report';
   return 'clarify';
 }
 
@@ -64,7 +65,7 @@ export async function appendSiteResponse(tx: PostgresTransaction, actor: ActorCo
 }
 
 /** Revalidate derived output on every reentry; immutable source messages remain separate. */
-export async function siteResponse(tx: PostgresTransaction, eid: string, pid: string, cid: string, sourceId: string) {
+export async function siteResponse(tx: PostgresTransaction, eid: string, pid: string, cid: string, sourceId: string, issues: IssueView[] = []) {
   const response = await one(tx, sql`select m.content,e.payload from app.domain_event_outbox e join app.assistant_messages m
     on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id and m.conversation_id=${cid} and m.purpose='site.response'
     where e.enterprise_id=${eid} and e.type='construction.chat.response.v1' and e.aggregate_id=${sourceId} and e.payload->>'projectId'=${pid}`);
@@ -73,9 +74,12 @@ export async function siteResponse(tx: PostgresTransaction, eid: string, pid: st
   let text = safeText(response.content as Parameters<typeof safeText>[0]);
   if (payload.query && (await querySiteMaterials(tx, eid, pid, payload.query as SiteQuery)).version !== payload.version)
     text = '关联资料已变化，原查询结果不再沿用。请重新查询当前资料。';
-  const media = await rows(tx, sql`select id,width,height,byte_size from app.construction_site_media where enterprise_id=${eid} and project_id=${pid}
-    and id=any(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(payload.mediaIds || [])}::jsonb))::bigint[]) and deleted_at is null order by id`);
-  return { text, intent: payload.intent, media };
+  const issue = payload.issueId ? issues.find(i => i.issueId === payload.issueId) : null;
+  if (payload.issueId) text = issue?.text || '原事项已不可用，请重新核对。';
+  if (payload.issueQuery) text = issues.filter(i => !payload.issueQueryId || i.issueId === payload.issueQueryId).map(i => i.text).join('\n\n') || '本项目当前没有对应的持续事项。';
+  const media = (payload.mediaIds as string[] || []).length ? await rows(tx, sql`select id,width,height,byte_size from app.construction_site_media where enterprise_id=${eid} and project_id=${pid}
+    and id=any(ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(payload.mediaIds)}::jsonb))::bigint[]) and deleted_at is null order by id`) : [];
+  return { text, intent: payload.intent, media, issue };
 }
 
 export function sharedMediaUsed(eid: string, pid: string, mediaId: string) {

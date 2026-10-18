@@ -30,6 +30,7 @@
             <view wx:for="{{item.record.rows}}" wx:for-item="row" wx:key="label" class="record-row {{row.coordination && item.record.data.coordination ? 'coordination' : ''}}"><text class="record-label">{{row.label}}</text><text class="record-value" user-select>{{row.value}}</text></view>
             <text wx:if="{{item.record.data.note}}" class="record-note" user-select>{{item.record.data.note}}</text>
             <text class="record-helper">进展按原话整理，照片随记录保留。</text>
+            <text wx:if="{{item.issue}}" class="record-helper" user-select>{{item.issue.text}}</text>
             <text wx:if="{{item.record.updatedLabel}}" class="record-helper">最后更新：{{item.record.updatedLabel}} · 版本 {{item.record.version}}</text>
             <view wx:if="{{item.record.status === 'published'}}" class="publication"><text>发布人：{{item.record.approved_name}} · 版本 {{item.record.published_version}}</text><text>{{item.record.scopeLabel}}</text></view>
             <text wx:elif="{{item.record.status === 'withdrawn'}}" class="record-helper">撤回原因：{{item.record.withdrawal_reason}}</text>

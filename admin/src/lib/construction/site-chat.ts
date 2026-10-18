@@ -8,6 +8,7 @@ import { constructionAccess } from './service';
 import { object, text, version, type ConstructionActor } from './contracts';
 import { siteDraft } from './site-contract';
 import { appendSiteResponse, querySiteMaterials, resolveSiteQuery, sharedMediaUsed, siteMessageIntent, siteResponse } from './site-queries';
+import { handleSiteIssue, parseSiteVersions, projectSiteIssues, siteIssueCommand } from './site-issues';
 
 export function siteActor(a: ConstructionActor): ActorContext {
   return { enterpriseId: a.enterpriseId, principal: { kind: 'admin', adminId: a.adminId }, contextVersion: 1,
@@ -61,10 +62,11 @@ export class SiteChatService {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) fail('invalid_construction', 422);
     return this.scope(projectId, false, async (tx, c, p, permission) => {
       const eid = this.staff.enterpriseId;
+      const issues = await projectSiteIssues(tx, eid, projectId);
       const messages = await rows(tx, sql`select m.id,m.seq,m.author_kind,m.admin_id,m.content,m.created_at,a.display_name
         from app.assistant_messages m left join app.admin_users a on a.id=m.admin_id
         where m.enterprise_id=${eid} and m.conversation_id=${String(c.id)} and m.seq<${beforeSeq} and m.author_kind='admin' order by m.seq desc limit ${limit}`);
-      const items = [];
+      const items: { message: Row; record: Row | null; response?: Row; issue?: unknown }[] = [];
       for (const message of messages.reverse()) {
         const record = await one(tx, sql`select r.*,coalesce(a.display_name,'项目管理人员') as approved_name,q.status as run_status,q.error_code,
           coalesce(q.policy_snapshot->'agent'->>'imageInput','false')='true' as image_input,
@@ -73,7 +75,7 @@ export class SiteChatService {
           left join app.assistant_runs q on q.enterprise_id=r.enterprise_id and q.id=r.run_id
           where r.enterprise_id=${eid} and r.project_id=${projectId} and r.source_message_id=${String(message.id)}`);
         if (!record) {
-          const response = await siteResponse(tx, eid, projectId, String(c.id), String(message.id));
+          const response = await siteResponse(tx, eid, projectId, String(c.id), String(message.id), issues);
           if (response) items.push({ message, response, record: null });
           continue;
         }
@@ -81,36 +83,45 @@ export class SiteChatService {
           on a.enterprise_id=x.enterprise_id and a.project_id=x.project_id and a.id=x.media_id
           where x.enterprise_id=${eid} and x.project_id=${projectId} and x.record_id=${String(record.id)} and a.deleted_at is null order by x.position`);
         const canEdit = permission.write && (permission.manage || String(record.author_id) === this.staff.adminId);
-        items.push({ message, record: { ...record, canEdit, canPublishCustomer: permission.manage, media } });
+        items.push({ message, issue: issues.find(i => i.recordId === String(record.id)) || null,
+          record: { ...record, canEdit, canPublishCustomer: permission.manage, media } });
       }
       const settings = await one(tx, sql`select stages from app.construction_stage_settings where enterprise_id=${eid}`);
       const stage = ((settings?.stages || []) as Row[]).find(s => s.key === p.current_stage_key);
       return siteDto({ conversationId: c.id, project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access, stageName: stage?.name || '' },
         ...permission, rooms: await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} order by id`),
-        items, nextCursor: messages.length === limit ? String(messages[0].seq) : null }) as Row;
+        items, versions: { records: Object.fromEntries(items.filter(i => i.record).map(i => [String(i.record!.id), Number(i.record!.version)])),
+          issues: Object.fromEntries(issues.map(i => [i.issueId, i.revision])) },
+        nextCursor: messages.length === limit ? String(messages[0].seq) : null }) as Row;
     });
   }
   send(projectId: string, body: Row, requestKey: string) {
-    object(body, ['text', 'mediaIds']); key(requestKey);
+    object(body, ['text', 'mediaIds', 'versions']); key(requestKey);
+    const versions = parseSiteVersions(body.versions);
     const raw = text(body.text, 4000, false), mediaIds = body.mediaIds;
     if (!Array.isArray(mediaIds) || mediaIds.length > 4 || new Set(mediaIds).size !== mediaIds.length || (!raw && !mediaIds.length)) fail('invalid_construction', 422);
     mediaIds.forEach(id);
-    return this.scope(projectId, true, (tx, c) => idempotent(tx, this.actor, 'site:send:' + projectId, requestKey, body, async () => {
+    return this.scope(projectId, true, (tx, c, _p, permission) => idempotent(tx, this.actor, 'site:send:' + projectId, requestKey, body, async () => {
       const eid = this.staff.enterpriseId;
       for (const mid of mediaIds) if (!await one(tx, sql`select id from app.construction_site_media a where a.enterprise_id=${eid} and a.project_id=${projectId} and a.id=${mid}
         and a.uploader_id=${this.staff.adminId} and a.deleted_at is null and not exists(select 1 from app.construction_site_attachments x where x.enterprise_id=a.enterprise_id and x.project_id=a.project_id and x.media_id=a.id)
         and not ${sharedMediaUsed(eid, projectId, mid)} for share`)) fail('construction_media_unavailable', 422);
-      const intent = siteMessageIntent(raw, mediaIds.length);
+      const intent = siteIssueCommand(raw) ? 'request' : siteMessageIntent(raw, mediaIds.length);
       const message = await appendMessage(tx, this.actor, String(c.id), { author: 'admin', clientMessageId: requestKey, purpose: 'site.source',
         content: { version: 1, blocks: raw ? [{ type: 'text', text: raw }] : [{ type: 'notice', code: 'site_photos', fallbackText: `现场照片 · ${mediaIds.length}张` }] } });
       if (intent !== 'report') {
-        const snapshot = intent === 'query' ? await querySiteMaterials(tx, eid, projectId, await resolveSiteQuery(tx, eid, projectId, raw)) : null;
+        const issue = intent === 'request' ? await handleSiteIssue(tx, this.actor, projectId, String(message.id), raw, versions, permission.manage) : null;
+        const issueQuery = intent === 'query' && /事项|这件事|在等谁|谁.*(?:处理|回复)|有没有下文/.test(raw);
+        const issueQueryId = /事项\s*[#＃]?([1-9]\d{0,18})/.exec(raw)?.[1] || '';
+        const issueText = issueQuery ? (await projectSiteIssues(tx, eid, projectId)).filter(i => !issueQueryId || i.issueId === issueQueryId).map(i => i.text).join('\n\n') || '本项目当前没有对应的持续事项。' : '';
+        const snapshot = intent === 'query' && !issueQuery ? await querySiteMaterials(tx, eid, projectId, await resolveSiteQuery(tx, eid, projectId, raw)) : null;
         await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, intent,
-          snapshot?.text || (intent === 'request' ? '处理请求和原材料已保留，请说明要接续的现场记录及具体处理事项。当前没有自动分派、发布或批准。' : '原话已保留在本项目。需要查资料时请说明房间；现场进展可直接发文字或照片。'),
-          snapshot ? { query: snapshot.query, version: snapshot.version, queriedAt: snapshot.queriedAt,
+          issue?.text || issueText || snapshot?.text || (intent === 'request' ? '请先查对应现场记录，再说“跟进记录编号”。已有事项可以说“接手事项编号”“转交事项编号给姓名”或“回复事项编号：处理结果”；取消请说明原因。需要有权人员处理，回复不等于已解决。' : '原话已保留在本项目。需要查资料时请说明房间；现场进展可直接发文字或照片。'),
+          issue ? { issueId: issue.issueId, revision: issue.revision } : issueQuery ? { issueQuery: true, issueQueryId } : snapshot ? { query: snapshot.query, version: snapshot.version, queriedAt: snapshot.queriedAt,
             sources: snapshot.sources.map(source => ({ ref: source.ref, hash: source.hash, sourceMessageId: source.sourceMessageId,
               roomId: source.roomId, mediaIds: source.mediaIds, audience: source.audience, basis: source.basis })) } : {});
-        return { conversationId: String(c.id), messageId: String(message.id), recordId: null, runId: null, status: 'succeeded', intent };
+        return { conversationId: String(c.id), messageId: String(message.id), recordId: null, runId: null, status: 'succeeded', intent,
+          ...(issue ? { issueId: issue.issueId, revision: issue.revision } : {}) };
       }
       const result = await newRun(tx, this.actor, c, (await one(tx, sql`select * from app.assistant_enterprise_settings where enterprise_id=${eid}`))!, String(message.id), undefined,
         { kind: 'user_message', messageId: String(message.id) }, 'site.record');

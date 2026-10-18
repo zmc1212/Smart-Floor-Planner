@@ -8,6 +8,7 @@ function errorText(e) {
     construction_forbidden: '当前身份没有这项工地权限。', construction_not_found: '工地已不可访问，请返回列表。', assistant_resource_not_found: '工地或原材料已不可访问。',
     assistant_disabled: '企业暂未开放小K整理，请联系负责人。', assistant_quota_exceeded: '本次整理额度暂不可用，内容已保留。',
     site_retry_unavailable: '本次整理仍在核对结果，可先人工修改草稿。', site_review_required: '请先核对并补充本条现场内容。',
+    construction_staff_unavailable: '未找到唯一且有权接续的项目成员，请核对姓名和当前分工。',
     media_limit: '本工地图片数量已达当前上限，请联系负责人。', media_invalid: '请选择4MB以内的JPEG或PNG图片。',
     construction_media_unavailable: '照片已不可访问，请重新读取。', idempotency_conflict: '本次操作内容不一致，请重新读取。',
   })[code] || (e && e.statusCode === 403 ? '当前身份已无此工地权限，请返回工地列表。' : e && e.statusCode === 404 ? '工地或原材料已不可访问，请返回列表。' : '暂时未能完成，请保留内容后重试。');
@@ -48,14 +49,14 @@ class SiteClient {
   }
   set(p) { Object.assign(this.state, p); this.emit(p); }
   current(epoch) { const s = this.identity(); return this.visible && s.token === this.session.token && s.key === this.session.key && epoch === this.epoch; }
-  clean() { for (const path of this.paths) { try { wx.getFileSystemManager().unlink({ filePath: path, fail() {} }); } catch { /* Page teardown. */ } } this.paths.clear(); }
+  clean() { this.sourceVersions = null; for (const path of this.paths) { try { wx.getFileSystemManager().unlink({ filePath: path, fail() {} }); } catch { /* Page teardown. */ } } this.paths.clear(); }
   hide() { this.visible = false; ++this.epoch; this.clean(); this.set({ items: [], mediaPaths: {}, project: null, rooms: [], sheet: '', versions: [], edit: {}, conflict: null, write: false, draft: '', attachments: [] }); }
   async show(projectId) {
     this.clean(); this.session = this.identity(); this.projectId = projectId; this.visible = true; const epoch = ++this.epoch;
     this.base = '/miniprogram/construction/projects/' + projectId + '/chat';
     this.storageKey = 'site:pending:' + this.session.key + ':' + projectId; this.draftKey = 'site:draft:' + this.session.key + ':' + projectId;
     const saved = this.storage.get(this.draftKey) || {};
-    this.set({ loading: true, busy: false, fatal: false, error: '', conflict: null, items: [], mediaPaths: {}, sheet: '', draft: saved.text || '', attachments: saved.attachments || [], pending: this.storage.get(this.storageKey) || null });
+    this.set({ loading: true, busy: false, write: false, fatal: false, error: '', conflict: null, items: [], mediaPaths: {}, sheet: '', draft: saved.text || '', attachments: saved.attachments || [], pending: this.storage.get(this.storageKey) || null });
     await this.load(false, epoch);
     if (this.current(epoch) && !this.state.fatal && this.state.pending) await this.reconcile();
   }
@@ -67,10 +68,13 @@ class SiteClient {
     try {
       const r = await this.request(this.base + (older ? '?beforeSeq=' + this.state.nextCursor + '&limit=30' : '?limit=' + Math.min(100, Math.max(30, this.state.items.length))), 'GET', {}, { suppressUnauthorized: true });
       if (!valid()) return;
-      const data = r.data, fresh = data.items.map(decorate);
+      const { versions, ...data } = r.data, fresh = data.items.map(decorate);
       // Previously loaded history is refreshed as well: edits/revocations cannot remain as stale cards.
       let items = fresh;
       if (older) items = [...fresh, ...this.state.items.filter(i => !fresh.some(n => n.message.id === i.message.id))];
+      // Keep command revisions private: the page's `versions` field belongs to
+      // the existing record-history sheet and may be open when this read returns.
+      this.sourceVersions = { records: Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), issues: versions && versions.issues || {} };
       this.set({ ...data, items, nextCursor: data.nextCursor, loading: false, error: '', fatal: false });
       const mids = new Set([...items.flatMap(i => i.record.media.map(m => String(m.id))), ...this.state.attachments.map(String)]);
       const mediaPaths = { ...this.state.mediaPaths };
@@ -135,7 +139,8 @@ class SiteClient {
   }
   send() {
     if (!this.state.write || this.state.pending || this.state.busy || (!this.state.draft.trim() && !this.state.attachments.length)) return;
-    return this.perform({ kind: 'send', path: '/messages', key: key(), body: { text: this.state.draft.trim(), mediaIds: this.state.attachments.slice() } });
+    return this.perform({ kind: 'send', path: '/messages', key: key(), body: { text: this.state.draft.trim(), mediaIds: this.state.attachments.slice(),
+      versions: this.sourceVersions || { records: {}, issues: {} } } });
   }
   addPhoto(file) { if (!this.state.write || this.state.pending || this.state.busy || this.state.attachments.length >= 4) return; return this.perform({ kind: 'upload', key: key(), filePath: file }); }
   removePhoto(id) { if (this.state.busy || this.state.pending || !this.state.attachments.includes(String(id))) return; return this.perform({ kind: 'photo-remove', key: key(), path: '/media/' + id + '/remove', body: {} }); }
