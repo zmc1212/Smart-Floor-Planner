@@ -12,8 +12,9 @@ const KnowledgeEditor = lazy(() => import('@/components/assistant/knowledge-edit
 const PreviewPanel = lazy(() => import('@/components/assistant/preview-panel').then(module => ({ default: module.PreviewPanel })));
 const GuidanceEditor = lazy(() => import('@/components/assistant/guidance-editor').then(module => ({ default: module.GuidanceEditor })));
 const HandoffPanel = lazy(() => import('@/components/assistant/handoff-panel').then(module => ({ default: module.HandoffPanel })));
+const KnowledgeOperationsPanel = lazy(() => import('@/components/assistant/knowledge-operations').then(module => ({ default: module.KnowledgeOperationsPanel })));
 
-function KnowledgeWorkbench({ canHandoff }: { canHandoff: boolean }) {
+function KnowledgeWorkbench({ canHandoff, canUsage }: { canHandoff: boolean; canUsage:boolean }) {
   const [tab, setTab] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('preview') ? 'preview' : 'knowledge');
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [cursor, setCursor] = useState<string>();
@@ -51,6 +52,7 @@ function KnowledgeWorkbench({ canHandoff }: { canHandoff: boolean }) {
         {hasMore && <Button loading={loading} onClick={() => { setLoading(true); setCursor(String(documents.at(-1)?.id)); }}>加载更多知识</Button>}
       </Space> },
       { key: 'preview', label: '管理员试问', children: <Suspense fallback={<Skeleton active />}><PreviewPanel key={previewKey} seed={seed} /></Suspense> },
+      { key: 'operations', label: '问题集与健康', children: <Suspense fallback={<Skeleton active />}><KnowledgeOperationsPanel canUsage={canUsage}/></Suspense> },
       { key: 'guidance', label: '需求引导话术', children: <Suspense fallback={<Skeleton active />}><GuidanceEditor /></Suspense> },
       ...(canHandoff ? [{ key: 'handoffs', label: '真人接续', children: <Suspense fallback={<Skeleton active />}><HandoffPanel /></Suspense> }] : []),
     ]} />
@@ -62,6 +64,6 @@ function KnowledgeWorkbench({ canHandoff }: { canHandoff: boolean }) {
 export default function AssistantKnowledgePage() {
   const { user, isLoading, error } = useCurrentUser();
   return <div className="admin-page-frame"><PageContainer title="小 K 知识库" subTitle="维护企业资料，核对回答依据" breadcrumbRender={false} className="admin-page-container">
-    {isLoading ? <Skeleton active /> : error ? <Result status="error" title="登录信息读取失败" extra={<Button onClick={() => window.location.reload()}>重新加载</Button>} /> : !hasAssistantKnowledgeAccess(user?.role, user?.effectivePermissions) ? <Result status="403" title="尚未获得小 K 知识管理权限" subTitle="平台管理员、超级管理员及企业明确授权的负责人可维护知识和访问本人试问。" /> : !user?.enterpriseId?._id ? <Result status="info" title="请先选择企业" subTitle="通过侧栏顶部的企业选择器选择一家企业，再查看和维护该企业的小 K 知识。" /> : <KnowledgeWorkbench canHandoff={user?.role === 'enterprise_admin'} key={`${user?._id}:${user?.enterpriseId?._id}`} />}
+    {isLoading ? <Skeleton active /> : error ? <Result status="error" title="登录信息读取失败" extra={<Button onClick={() => window.location.reload()}>重新加载</Button>} /> : !hasAssistantKnowledgeAccess(user?.role, user?.effectivePermissions) ? <Result status="403" title="尚未获得小 K 知识管理权限" subTitle="平台管理员、超级管理员及企业明确授权的负责人可维护知识和访问本人试问。" /> : !user?.enterpriseId?._id ? <Result status="info" title="请先选择企业" subTitle="通过侧栏顶部的企业选择器选择一家企业，再查看和维护该企业的小 K 知识。" /> : <KnowledgeWorkbench canHandoff={user?.role === 'enterprise_admin'} canUsage={user?.role==='enterprise_admin'&&Boolean(user?.effectivePermissions?.includes('assistant-usage'))} key={`${user?._id}:${user?.enterpriseId?._id}`} />}
   </PageContainer></div>;
 }

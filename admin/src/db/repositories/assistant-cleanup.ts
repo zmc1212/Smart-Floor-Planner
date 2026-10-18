@@ -9,6 +9,7 @@ export const assistantCleanupTables = [
   'assistant_conversations', 'assistant_enterprise_settings',
   'assistant_knowledge_attempts','assistant_knowledge_chunks','assistant_knowledge_assets','assistant_knowledge_versions','assistant_knowledge_documents','assistant_knowledge_index_profiles',
   'assistant_message_citations', 'assistant_cost_reviews', 'assistant_requirement_summaries', 'assistant_media',
+  'assistant_knowledge_evaluations','assistant_knowledge_cases',
 ] as const;
 export async function assistantCounts(tx: PostgresTransaction, enterpriseId: bigint) {
   const result = [];
@@ -19,6 +20,8 @@ export async function assistantCounts(tx: PostgresTransaction, enterpriseId: big
 }
 export async function deleteAssistantData(tx: PostgresTransaction, enterpriseId: bigint) {
   const counts = await assistantCounts(tx, enterpriseId);
+  await tx.execute(sql`delete from app.assistant_knowledge_evaluations where enterprise_id=${enterpriseId}`);
+  await tx.execute(sql`delete from app.assistant_knowledge_cases where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_media where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_requirement_summaries where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_cost_reviews where enterprise_id=${enterpriseId}`);

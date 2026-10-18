@@ -610,6 +610,13 @@
       "when": 1792195215000,
       "tag": "0086_assistant_source_files",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1792195216000,
+      "tag": "0087_assistant_knowledge_operations",
+      "breakpoints": true
     }
   ]
 }

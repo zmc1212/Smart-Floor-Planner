@@ -1,5 +1,42 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前 KB-4：知识运营核心（限定闭环，整体 Limited）
+
+原`/assistant-knowledge`增加「问题集与健康」，沿用Ant Design/Admin Pro、720px Drawer、原来源诊断与共享操作反馈。范围来自最新双语企业知识计划的KB-4运营核心，对应K-06/10/11及K-05格式能力如实披露。PPT5/6/15提供自然提问/接续场景，23/38提供资料缺失、冲突和团队核实边界；PPT没有新增运营看板设计或工程标准，功能后台仍以双语Admin UI合同为批准设计源。C01/C02/C05/U01的构图、WXML/Less、素材和导航保持。
+
+### 问题、来源版本与缺口回归
+
+- `0087_assistant_knowledge_operations.sql`新增企业隔离、强制RLS的`assistant_knowledge_cases`和`assistant_knowledge_evaluations`，复用管理者引用保护，采用租户复合外键与不可变评测快照。企业重置/删除先清这两表，再清关联会话/run/知识。无新供应商、凭据、业务事实库、Worker类型、prompt或Agent循环。
+- 管理者明确整理固定问法、应有据/应缺依据、各最多5份必需/禁止文档及共享缺口备注。问题与备注是企业共享运营资料，私人咨询不会自动复制入库。编辑推进问题修订并重新打开缺口。每企业最多100题、2,000次回归记录；列表有界游标，来源选择最多展示200份。这是限定首版，不是实测生产容量或批量调度器。
+- 每次复跑固定问题修订、knowledge_epoch和必需来源当前发布版本ID/hash，只用`customer_public`、无草稿，连接操作者本人原`knowledge_preview`、`ConversationService`、任务、额度、取消和供应商计量。未发布/内部/过期/索引未就绪的必需资料不能开始客户范围回归。一次明确操作跑一道题；不能把后台摘录试问冒充绑定实际项目的客户Agent验收。
+- 服务端持久create/send键覆盖关页、丢包和已提交发送后的崩溃；恢复继续原试问/run，不新建并行模型调用。版本冲突保留输入，未知HTTP回执复用`AssistantMutations`原键。企业问题集共享不开放他人试问，回归历史只列本人执行链接。
+- 结果分开登记获权召回、最终入选、真实引用、禁止候选/引用、生成执行和必须另行核对的专业含义。缺资料预期单独计，不计正向回答覆盖；索引未就绪或诊断不完整不能算预期缺口通过，未写回执行链接只表示回执待核对。结构通过不能证明语义支持。管理者可保留缺口，确认核对需当前结构证据及明确备注，写入校验版本。发布/撤回/受众/有效期/profile/epoch及问题修订变化使旧回答、诊断、核对投影失效，知识变化后已核对缺口变为`needs_recheck`。回读证据和登记核对前再次检查精确候选/来源。
+
+### 接口、健康与权限
+
+回归重进按原outputMessageId投影回答，不依赖最新一页聊天记录。首次实模审阅还发现既有C01来源尾注缺陷：本人房屋资料为空时仍可能追加正向的户型/现场资料类别。现保留原缺项快照与不确定性证据，仅在缺资料时以`summaryTitle:null`省略该正向尾注；资料不全时只列实际返回的原话/正式户型/发布记录类别，批准回答组件保持，无新视觉模板或prompt版本。
+
+| 触发 | 可见反馈/动作 | 恢复与边界 |
+| --- | --- | --- |
+| 保存/编辑或版本冲突 | 共享成功/失败反馈，冲突保留输入 | 重读后修改，复查租户管理者权限 |
+| 排队/运行或关页 | 原run状态、本人历史 | 重进轮询原run，未完成dispatch复用原键恢复 |
+| 必需资料未就绪或额度满 | 原明确错误，不假报成功 | 修订/索引/发布或等待额度，适用时恢复同一次评测 |
+| 结构失败或专业缺口 | 召回/入选/引用/禁止项分开显示，保留缺口 | 改来源、复跑并明确核对 |
+| 问题/来源变化 | 收起旧回答/诊断/核对，缺口待复验 | 当前版重新执行，不回退旧引文 |
+| C01缺少实际房屋材料 | 原不确定性回答/合法引用，无正向户型/记录尾注 | 原聊天继续，缺项查询不提供实际尺寸/批准 |
+
+接口均在`/api/assistant/knowledge/operations`下：`GET/POST cases`、`GET/PATCH cases/:caseId`、`GET/POST cases/:caseId/evaluations`、`GET evaluations/:evaluationId`、`POST evaluations/:evaluationId/resume`、`POST evaluations/:evaluationId/review`及`GET health`。新增效果/核对写入要求原操作键及严格字段校验；resume仅恢复本人既有执行。响应no-store。所选企业`admin/super_admin`继承知识管理，本企业当前显式授权`enterprise_admin`保留原边界；停用/待改密、跨企业和他人私有回归均拒绝。
+
+健康读取真实发布索引就绪/不一致、当前profile/epoch、解析/索引队列状态/过期租约及30天attempt次数、已知输入token小计和未知次数，不是外部服务实时探测。索引费用保持`null`；企业聊天用量仍走原独立`assistant-usage`接口/授权，索引单列，未决预留不冒充实测。界面不增加平台管理者的用量或费用核对权限。原诊断改为如实披露正文/FAQ/DOCX/文字PDF能力，扫描OCR和复杂PDF表格尚不支持。扫描/复杂表格/旧格式、影子profile重建/切换/回滚和更大容量按实际材料继续，不阻塞前批限定场景。
+
+### 采用与复跑
+
+本批查阅维护中的[Haystack评测文档](https://docs.haystack.deepset.ai/docs/evaluation)、[文档召回测试](https://github.com/deepset-ai/haystack/blob/main/test/components/evaluators/test_document_recall.py)及[Dify检索测试](https://github.com/langgenius/dify/blob/main/api/tests/unit_tests/core/workflow/nodes/knowledge_retrieval/test_knowledge_retrieval_node.py)，采用检索/生成分层评测和预先声明必要来源的做法，保留本项目硬授权及撤回重验。未安装/替换框架、包或服务，不用模型自评分关闭知识缺口。
+
+在admin执行`node scripts/assistant-knowledge-operations-acceptance.mjs`运行隔离服务核心；`--unit/--regression/--synthesis/--unready/--mini/--lint/--types/--build/--compile`对应各检查。`--compile`仅验证Webpack编译/追踪，不代表完整类型或静态生成通过。构建复制源码/配置到忽略目录`tmp/xiaok-kb4-build`，不覆盖运行中`.next`。`node scripts/assistant-knowledge-operations-typecheck.mjs f2651bd6`与KB-4前基点对比同一源码程序，保留无关工作区文件，双方排除生成Next声明。迁移核验`node scripts/assistant-knowledge-operations-migration.mjs`；只有明确`--apply`才备份并迁移两个既有批准开发目标，已应用SQL不改写。
+
+实模`node --import tsx scripts/assistant-knowledge-operations-development.ts --development`，可加`--native`沿原Stable自动化。明确标记的合成企业/用户/知识，真实HTTP/Worker/Embedding及既有配置模型；后台试问与客户Agent解释分别登记，夹具中的核对写入是模拟运营操作，不是人类专业批准。当前结果、逐轮实测耗时、早期失败/修复及未验证项见[交接](./xiaok-assistant-handoff.zh-CN.md)和`tmp/xiaok-kb4/`。完整专业客服、全PPT和生产发布仍Limited。
+
 ## 当前 KB-3：实况综合检索（限定闭环，整体 Limited）
 
 本批按最新企业知识计划的KB-3，复用已交付KB-1/2，不新定义阶段。场景对应原PPT17/18的实际节点与检查安排、19的铺贴前材料沟通、23的底盒/需求/图纸关联、38的缺失/冲突先由团队核实，以及6/15的连续追问。水电/防水铺砖前提与书房摆放题是清楚标记的合成验收资料，不是PPT原文中的工程标准；本批不代表完整PPT19审美沟通、识图或P5完成。

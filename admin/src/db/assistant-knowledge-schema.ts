@@ -1,4 +1,4 @@
-import { bigint, boolean, customType, integer, jsonb, pgSchema, text, timestamp, vector } from 'drizzle-orm/pg-core';
+import { bigint, boolean, customType, integer, jsonb, pgSchema, text, timestamp, uuid, vector } from 'drizzle-orm/pg-core';
 // Migrations 0060/0063 own tenant FKs, forced RLS, manager identity guards and immutable versions.
 const app=pgSchema('app');
 const identity=()=>({id:bigint('id',{mode:'bigint'}).primaryKey().generatedAlwaysAsIdentity(),enterpriseId:bigint('enterprise_id',{mode:'bigint'}).notNull(),
@@ -41,4 +41,13 @@ export const assistantMessageCitations=app.table('assistant_message_citations',{
   sourceKind:text('source_kind').notNull(),resourceType:text('resource_type').notNull(),resourceId:text('resource_id').notNull(),resourceVersion:text('resource_version').notNull(),
   documentId:ref('document_id').notNull(),documentVersionId:ref('document_version_id').notNull(),chunkId:ref('chunk_id'),sourceHash:text('source_hash').notNull(),
   quoteSnapshot:text('quote_snapshot').notNull(),locator:jsonb('locator').notNull(),isDraft:boolean('is_draft').notNull(),
+});
+export const assistantKnowledgeCases=app.table('assistant_knowledge_cases',{
+  ...identity(),title:text('title').notNull(),question:text('question').notNull(),expectation:jsonb('expectation').notNull(),
+  revision:integer('revision').notNull(),version:integer('version').notNull(),gapStatus:text('gap_status').notNull(),gapNote:text('gap_note').notNull(),
+  verifiedEpoch:ref('verified_epoch'),createdBy:ref('created_by').notNull(),updatedBy:ref('updated_by').notNull(),updatedAt:time('updated_at').notNull(),
+});
+export const assistantKnowledgeEvaluations=app.table('assistant_knowledge_evaluations',{
+  ...identity(),caseId:ref('case_id').notNull(),caseRevision:integer('case_revision').notNull(),snapshot:jsonb('snapshot').notNull(),knowledgeEpoch:ref('knowledge_epoch').notNull(),
+  createdBy:ref('created_by').notNull(),createKey:uuid('create_key').notNull(),sendKey:uuid('send_key').notNull(),conversationId:ref('conversation_id'),runId:ref('run_id'),review:jsonb('review'),
 });

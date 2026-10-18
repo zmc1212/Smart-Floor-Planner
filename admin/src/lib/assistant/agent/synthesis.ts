@@ -4,7 +4,7 @@ import type { Evidence } from '../contracts';
 import type { BusinessSnapshot } from './business-tools';
 import type { ModelMessage } from '../contracts/model';
 
-export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project'; title: string; text: string; evidence?: Evidence; resultKey?: string; citationQuotes?: string[] };
+export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project'; title: string; text: string; evidence?: Evidence; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null };
 export type SynthesisSegment = { basis: 'evidence' | 'advice' | 'uncertainty'; text: string; citations: Array<{ sourceId: string; quote: string }> };
 export type SynthesisAnswer = { kind: 'synthesis'; segments: SynthesisSegment[] };
 export type SynthesisContext = { version: 1; knowledge: Evidence[]; snapshots: BusinessSnapshot[]; sources: SynthesisSource[] };
@@ -48,7 +48,13 @@ export function knowledgeSynthesisSources(evidence: Evidence[], titles: Record<s
 export function businessSynthesisSource(resultKey: string, snapshot: BusinessSnapshot): SynthesisSource {
   const names = { materials: '本咨询原话、正式户型与已发布现场资料', construction: '本人项目实际节点与已发布记录',
     followups: '本咨询事项及团队回传', appointments: '本人量房预约', schemes: '本人已发布方案', floorplans: '本人正式户型' };
-  return { sourceId: 'B' + resultKey, kind: 'project', title: names[snapshot.query.domain], text: snapshot.displayText, resultKey, citationQuotes:synthesisQuoteHints(snapshot.displayText) };
+  // A missing-material lookup is evidence of an unresolved scope, not proof that a drawing/record was consulted.
+  const materialSources=snapshot.query.domain==='materials'?(snapshot.data as {sources?:Array<{ref:{type:string}}>}|null)?.sources:undefined;
+  const kinds=new Set(materialSources?.map(s=>s.ref.type));
+  const labels=[['customer_need','本咨询原话'],['formal_floorplan','正式户型'],['site_record','已发布现场资料']].filter(([kind])=>kinds.has(kind)).map(([,label])=>label);
+  const summaryTitle=labels.length===3?names.materials:labels.join('、')||null;
+  return { sourceId: 'B' + resultKey, kind: 'project', title: names[snapshot.query.domain], text: snapshot.displayText, resultKey, citationQuotes:synthesisQuoteHints(snapshot.displayText),
+    ...(snapshot.query.domain==='materials'?{summaryTitle}:{}) };
 }
 function canonicalConclusion(text:string) {
   return text.replace(/(?:当前|现有)(?:资料|证据)(?:不足以|不能|无法|不)支持[“「"](?:已经|已)(?:正式)?(?:验收|批准)[”」"](?:这个|该)?结论/g,'当前证据不能支持该结论');

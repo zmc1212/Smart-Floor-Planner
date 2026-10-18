@@ -46,6 +46,6 @@ export async function readRetrievalDiagnostics(actor:ActorContext,runId:string) 
       where d.enterprise_id=${actor.enterpriseId} and d.source_type<>'reference_case'`);
     return {available:true,runId,scope:{audience:policy.audience,draftVersionIds:policy.drafts.map(d=>d.id)},traces,coverage,
       generation:{status:run.status,errorCode:run.error_code,answerKind:run.answer_kind,semanticCorrectness:'not_automatically_judged'},
-      parser:'manual_entry_only',note:'计数可重叠；未召回只指当前授权候选，生成语义需核对回答与来源。'};
+      parser:{supported:['manual_text','faq','docx','text_pdf'],ocr:false,complexPdfTables:false},note:'计数可重叠；未召回只指当前授权候选，生成语义需核对回答与来源。'};
   });
 }

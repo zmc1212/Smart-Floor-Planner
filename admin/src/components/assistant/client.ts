@@ -13,6 +13,9 @@ const messages: Record<string, string> = {
   version_conflict: '资料已被更新，请重新读取后再操作；你的输入仍保留。',
   idempotency_conflict: '提交记录冲突，请刷新后核对结果。',
   knowledge_not_ready: '该版本尚未就绪，请检查索引、有效期和试问范围。',
+  knowledge_case_limit: '问题集已达到100条上限，请先整理现有问题。',
+  knowledge_evaluation_limit: '回归记录已达到本企业上限，请联系维护人员按保留策略处理。',
+  knowledge_evaluation_not_passed: '来源结构检查尚未通过，请先处理缺口并复跑，再确认专业核对结果。',
   context_changed: '会话或知识范围已变化，请重新读取；必要时新建试问。',
   conversation_busy: '当前会话正在回答，请等待完成后再发送。',
   assistant_quota_exceeded: '本企业当前额度或请求频率已达上限，请稍后再试。',
@@ -65,5 +68,5 @@ export class AssistantMutations {
 }
 
 export const audienceLabels = { customer_public: '客户可见资料', staff_internal: '内部资料', all: '全部资料' };
-export const statusLabels: Record<string, string> = { draft: '草稿', active: '已发布', retired: '已撤回', pending: '待索引', indexing: '索引中', ready: '索引就绪', queued: '排队中', running: '处理中', succeeded: '已完成', failed: '失败', cancelled: '已取消', indeterminate: '结果待核对', open: '进行中', archived: '已归档', closed: '已关闭' };
+export const statusLabels: Record<string, string> = { dispatch_pending: '回执待核对', draft: '草稿', active: '已发布', retired: '已撤回', pending: '待索引', indexing: '索引中', ready: '索引就绪', queued: '排队中', running: '处理中', succeeded: '已完成', failed: '失败', cancelled: '已取消', indeterminate: '结果待核对', open: '进行中', archived: '已归档', closed: '已关闭' };
 export function formatTime(value: string | null) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—'; }

@@ -520,7 +520,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           blocks.push({ type: 'text', text: label && !segment.text.startsWith(label) ? label + segment.text : segment.text });
           for (const citation of segment.citations) {
             const source = evidence.sources.find(s => s.sourceId === citation.sourceId)!;
-            if (!source.evidence) { projectTitles.add(source.title); continue; }
+            if (!source.evidence) { if(source.summaryTitle!==null)projectTitles.add(source.summaryTitle??source.title); continue; }
             const e = source.evidence;
             let citationId = saved.get(e.ref.id);
             if (!citationId) {

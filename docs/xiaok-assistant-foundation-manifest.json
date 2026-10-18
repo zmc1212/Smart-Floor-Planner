@@ -411,7 +411,18 @@
     "miniprogram/test/construction-site-chat.test.js",
     "miniprogram/test/construction-site-ordering.test.js",
     "miniprogram/utils/api.js",
-    "miniprogram/utils/identity-navigation.js"
+    "miniprogram/utils/identity-navigation.js",
+    "admin/drizzle/0087_assistant_knowledge_operations.sql",
+    "admin/scripts/assistant-knowledge-operations-acceptance.mjs",
+    "admin/scripts/assistant-knowledge-operations-development.ts",
+    "admin/scripts/assistant-knowledge-operations-migration.mjs",
+    "admin/scripts/assistant-knowledge-operations-typecheck.mjs",
+    "admin/src/app/api/assistant/knowledge/operations/[...path]/route.ts",
+    "admin/src/components/assistant/knowledge-operations.tsx",
+    "admin/src/db/__tests__/assistant-knowledge-operations.test.ts",
+    "admin/src/lib/assistant/__tests__/knowledge-evaluation.test.ts",
+    "admin/src/lib/assistant/knowledge/evaluation-check.ts",
+    "admin/src/lib/assistant/knowledge/operations.ts"
   ],
   "partialPaths": [
     "admin/drizzle/meta/_journal.json",
@@ -605,5 +616,10 @@
     "scope": "Current-stage context selection and original-adapter construction/material snapshots in the existing Agent; fixed synthetic two-stage model/native acceptance. No new service, migration or UI design.",
     "evidence": "tmp/xiaok-kb3/",
     "verification": "See current handoff for executed checks and remaining limitations; original verification object remains historical."
+  },
+  "kb4Foundation": {
+    "scope": "Enterprise curated questions/gaps, immutable owner-private preview regression links, index/parse health and exact missing/partial material-source summaries. Reuses existing model/Worker/quotas and approved C01/Admin design.",
+    "evidence": "tmp/xiaok-kb4/",
+    "verification": "Current handoff owns executed synthetic/model/native checks and limits. Original verification remains historical; not a clean-clone or production-readiness claim."
   }
 }
