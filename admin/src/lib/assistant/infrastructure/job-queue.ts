@@ -9,6 +9,8 @@ import { processAnswer } from './answer-worker';
 import { resolveEvidence, validatePreviewSnapshot, previewPolicy } from '../knowledge/sources';
 import { parseAnswer, safeInsufficientContent, type GroundedAnswer } from '../knowledge/answer';
 import { agentConfig } from '../agent/config';
+import { assertPinnedRunDispatch } from '../core/evaluation-execution';
+import { previewExecutionFromPolicy } from '../core/execution-config';
 
 export const workerTiming = { providerMs: 90000, leaseMs: 150000, requestMs: 180000, heartbeatMs: 30000 };
 export type Lease = { enterpriseId: string; jobId: string; runId: string; token: string; actor: ActorContext };
@@ -93,12 +95,16 @@ export async function heartbeat(lease: Lease) {
 }
 /** Commit this marker BEFORE any provider I/O; recovery must never assume an unrecorded acceptance was free. */
 export async function markProviderStarted(lease: Lease,evidence:Evidence[]=[]) {
-  return withTenantTransaction(lease.enterpriseId, async tx => {
+  return withTenantTransaction(lease.enterpriseId, tx => markProviderStartedInTransaction(tx, lease, evidence));
+}
+/** Pinned previews commit this marker and the provider attempt under the same settings/lease lock. */
+export async function markProviderStartedInTransaction(tx: PostgresTransaction, lease: Lease, evidence: Evidence[] = [], expectedRevision?: string) {
     const { run, job } = await live(tx, lease); const c=await authorized(new AssistantRepository(tx, lease.actor), run);
+    await assertPinnedRunDispatch(tx, lease.actor, run);
+    if (expectedRevision && previewExecutionFromPolicy(run.policy_snapshot as Row)?.revision !== expectedRevision) fail('context_changed');
     for(const e of evidence) if(!await resolveEvidence(tx,lease.actor,c,e))fail('context_changed');
     if (job.provider_started_at) fail('context_changed');
     await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),version=version+1,updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
-  });
 }
 export async function completeRun(lease: Lease, result: RunResult, commit?: (tx: PostgresTransaction, run: Row, messageId: string) => Promise<void>) {
   return withTenantTransaction(lease.enterpriseId, async tx => {

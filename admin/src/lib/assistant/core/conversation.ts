@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, fingerprint, key, principalKey, requireCapability, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
+import { fail, fingerprint, key, requireCapability, userContent, type ActorContext, type MessageContent, type RunTrigger } from '../contracts';
 import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection } from '../knowledge/sources';
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
@@ -12,6 +12,9 @@ import { referenceCase } from '../knowledge/reference-case';
 import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
 import { syncConstructionReminders } from '@/lib/construction/reminders';
 import { currentConstructionContact } from '@/lib/construction/customer';
+import { idempotent, operationReceipt } from './operation-receipts';
+import { assertBatchDispatchAllowed, type PreparedExecutionPin } from './evaluation-execution';
+export { idempotent } from './operation-receipts';
 
 export const reserveTokens = 12000;
 export const reserveCostMicros = 1000000;
@@ -30,19 +33,8 @@ export function conversationDto(c: Row) {
 }
 export function runDto(r: Row) {
   return { id: String(r.id), conversationId: String(r.conversation_id), status: r.status, outputMessageId: r.output_message_id ? String(r.output_message_id) : null,
-    answerKind:r.answer_kind ?? null,errorCode: r.error_code, retryable: !r.awaiting_reconciliation && ['failed', 'cancelled'].includes(String(r.status)), nextPollMs: ['queued', 'running'].includes(String(r.status)) ? 1500 : null };
-}
-/** Retain operation results with their resources; expiry is not permission to duplicate effects. */
-export async function idempotent(tx: PostgresTransaction, actor: ActorContext, operation: string, requestKey: string, body: unknown, action: () => Promise<Row>): Promise<Row> {
-  key(requestKey);
-  const hash = fingerprint(body);
-  const old = await one(tx, sql`select * from app.assistant_idempotency_records where enterprise_id=${actor.enterpriseId}
-    and principal_key=${principalKey(actor)} and operation=${operation} and key=${requestKey}`);
-  if (old) { if (old.request_hash !== hash) fail('idempotency_conflict'); return old.result as Row; }
-  const result = await action();
-  await tx.execute(sql`insert into app.assistant_idempotency_records(enterprise_id,principal_key,operation,key,request_hash,result,expires_at)
-    values(${actor.enterpriseId},${principalKey(actor)},${operation},${requestKey},${hash},${json(result)}::jsonb,now()+interval '90 days')`);
-  return result;
+    answerKind:r.answer_kind ?? null,errorCode: r.error_code, retryable: (r.policy_snapshot as Row | undefined)?.batchExecution === undefined
+      && !r.awaiting_reconciliation && ['failed', 'cancelled'].includes(String(r.status)), nextPollMs: ['queued', 'running'].includes(String(r.status)) ? 1500 : null };
 }
 export async function appendMessage(tx: PostgresTransaction, actor: ActorContext, conversationId: string, input: {
   author: 'user' | 'admin' | 'assistant' | 'system'; content: MessageContent; clientMessageId?: string; runId?: string; eventId?: string; purpose?: string;
@@ -68,9 +60,12 @@ export async function terminalEvent(tx: PostgresTransaction, enterpriseId: strin
   await tx.execute(sql`insert into app.domain_event_deliveries(enterprise_id,event_id,consumer_key)
     values(${enterpriseId},${String(event!.id)},'assistant.run.metrics.v1') on conflict do nothing`);
 }
-export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply') {
+export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Row, settings: Row, messageId: string | null, retryOf?: string, trigger: RunTrigger = { kind: 'user_message', messageId: messageId! }, purpose = 'reply', executionPin?: PreparedExecutionPin) {
   if (c.status !== 'open' || c.mode !== 'ai') fail('context_changed');
   const agent = actor.principal.kind === 'user' || (purpose === 'site.record' && actor.capabilities.includes('assistant.project.shared')) ? agentConfig(settings.agent_config) : null;
+  const pinned = executionPin ? await assertBatchDispatchAllowed(tx, actor, executionPin) : null;
+  if (pinned && (agent || actor.principal.kind !== 'admin' || c.purpose !== 'knowledge_preview'
+    || previewPolicy(c).audience !== 'customer_public' || previewPolicy(c).drafts.length)) fail('context_changed');
   const tokenReservation = agent ? 72000 : reserveTokens;
   const rate = Number(process.env.ASSISTANT_REQUESTS_PER_MINUTE || 30);
   if (!Number.isInteger(rate) || rate < 1 || rate > 1000) fail('assistant_disabled', 403);
@@ -87,7 +82,8 @@ export async function newRun(tx: PostgresTransaction, actor: ActorContext, c: Ro
   const r = (await one(tx, sql`insert into app.assistant_runs(enterprise_id,conversation_id,trigger_kind,trigger_message_id,trigger_event_id,trigger_schedule_key,purpose,retry_of_run_id,policy_snapshot,context_revision,knowledge_epoch)
     values(${actor.enterpriseId},${String(c.id)},${trigger.kind},${trigger.kind === 'user_message' ? trigger.messageId : null},
     ${trigger.kind === 'domain_event' ? trigger.eventId : null},${trigger.kind === 'scheduled_task' ? trigger.occurrenceKey : null},${purpose},
-    ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: 2048, policyVersion: settings.policy_version, agent })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
+    ${retryOf || null},${json({ schemaVersion: 1, actor, maxTokens: 2048, policyVersion: settings.policy_version, agent,
+      ...(pinned ? { execution: pinned.execution, batchExecution: pinned.pin } : {}) })}::jsonb,${Number(c.context_revision)},${Number(settings.knowledge_epoch)}) returning *`))!;
   const runId = String(r.id);
   await tx.execute(sql`insert into app.assistant_jobs(enterprise_id,kind,run_id,dedupe_key) values(${actor.enterpriseId},'chat_turn',${runId},${'run:' + runId})`);
   await tx.execute(sql`insert into app.assistant_quota_reservations(enterprise_id,run_id,operation_key,reserved_tokens,reserved_cost_micros)
@@ -116,10 +112,40 @@ export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, c
   }
 }
 export class ConversationService {
+  private transaction?: PostgresTransaction;
   constructor(readonly actor: ActorContext) { requireCapability(actor, actor.principal.kind==='user'?'assistant.chat.self':'assistant.preview.self'); }
+  /** The caller owns commit/rollback; all ordinary authorization and settings locks still run. */
+  static inTransaction(tx: PostgresTransaction, actor: ActorContext) {
+    const service = new ConversationService(actor); service.transaction = tx; return service;
+  }
   private scoped<T>(work: (repo: AssistantRepository, settings: Row | undefined) => Promise<T>, write = false) {
-    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+    const execute = async (tx: PostgresTransaction) => {
       const repo = new AssistantRepository(tx, this.actor); const settings = await repo.settings(write); return work(repo, settings);
+    };
+    return this.transaction ? execute(this.transaction) : withTenantTransaction(this.actor.enterpriseId, execute);
+  }
+  /** Read original effects without create/send/retry or current-source preflight. Never invent a missing run. */
+  originalSubmission(input: { createKey: string; sendKey: string }) {
+    key(input.createKey); key(input.sendKey);
+    return this.scoped(async repo => {
+      const receipt = (operation: string, requestKey: string) => operationReceipt(repo.tx, this.actor, operation, requestKey);
+      const created = await receipt('create', input.createKey);
+      if (!created) return { submission: 'not_created' as const, conversationId: null, messageId: null, runId: null, run: null, awaitingReconciliation: false };
+      const conversationId = String((created.result as Row).id || '');
+      if (!/^[1-9][0-9]*$/.test(conversationId)) fail('context_changed');
+      await repo.conversation(conversationId);
+      const sent = await receipt('send:' + conversationId, input.sendKey);
+      if (!sent) return { submission: 'not_sent' as const, conversationId, messageId: null, runId: null, run: null, awaitingReconciliation: false };
+      const result = sent.result as Row;
+      if (result.conversationId !== conversationId || typeof result.messageId !== 'string' || !/^[1-9][0-9]*$/.test(result.messageId)) fail('context_changed');
+      const messageId = result.messageId;
+      if (!result.runId) return { submission: 'sent' as const, conversationId, messageId, runId: null, run: null, awaitingReconciliation: false };
+      const run = await one(repo.tx, sql`select r.*,exists(select 1 from app.assistant_quota_reservations q
+        where q.enterprise_id=r.enterprise_id and q.run_id=r.id and q.status='reconciling') as awaiting_reconciliation
+        from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${String(result.runId)}
+        and r.conversation_id=${conversationId} and r.trigger_message_id=${messageId}`);
+      if (!run) fail('assistant_resource_not_found', 404);
+      return { submission: 'sent' as const, conversationId, messageId, runId: String(run.id), run: runDto(run), awaitingReconciliation: Boolean(run.awaiting_reconciliation) };
     });
   }
   create(requestKey: string, previewInput:Row={}) {
@@ -226,7 +252,7 @@ export class ConversationService {
   send(conversationId: string, clientMessageId: string, content: unknown, interceptor?: {
     matches(content: MessageContent, conversation: Row): boolean;
     apply(tx: PostgresTransaction, actor: ActorContext, conversation: Row, message: Row): Promise<boolean>;
-  }) {
+  }, executionPin?: PreparedExecutionPin) {
     key(clientMessageId);
     return this.scoped(async (repo, settings) => {
       const c = await repo.conversation(conversationId); const safe = userContent(content, Number(settings!.max_message_chars));
@@ -279,7 +305,7 @@ export class ConversationService {
             content: { version: 1, blocks: [{ type: 'text', text: '已提交，等待企业接待团队。你可以继续补充资料，小K已暂停自动回复。' }] } });
           return { conversationId, messageId: String(message.id), runId: null, status: 'succeeded', nextPollMs: null };
         }
-        return newRun(repo.tx, this.actor, c, settings!, String(message.id));
+        return newRun(repo.tx, this.actor, c, settings!, String(message.id), undefined, undefined, 'reply', executionPin);
       });
     }, true);
   }
@@ -311,6 +337,8 @@ export class ConversationService {
             from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.id=${runId}`))!);
         }
         if (!['failed', 'cancelled'].includes(String(r.status))) fail('context_changed');
+        // Prepared items recover their original operation. A generic retry lacks the domain's frozen case/item guard.
+        if ((r.policy_snapshot as Row).batchExecution !== undefined) fail('context_changed');
         if (r.trigger_kind !== 'user_message') fail('assistant_capability_forbidden', 403);
         // Cancellation after submission may still be billed: require reconciliation before retry.
         if (await one(repo.tx, sql`select id from app.assistant_quota_reservations where enterprise_id=${this.actor.enterpriseId} and run_id=${runId} and status='reconciling'`)) fail('context_changed');
