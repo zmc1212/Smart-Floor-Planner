@@ -2,6 +2,56 @@
 
 状态：**Limited；多文档检索覆盖、知识专属手动批次管理及本地 DOCX 表头保真修复已有有界实现，自动批量派发与客户语义验收仍待集成。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+## 共享执行接缝：知识适配已写，业务实现待接
+
+业务提交 `4b5fb96d515d302751250921315a819d0c844c2f` 已核对 GitHub 分支，并普通合入本独立知识分支。相对 `d0238543`，其 41 路径与本线 36 路径无重叠，只读合并预演无冲突；导入的共享文件与该提交逐字节一致。原脏工作区/分支保留。没有合并 main、部署、重试 `4242` 或新增实模语义验收。
+
+归属明确：本线单独修改 `admin/src/lib/assistant/knowledge/operations.ts`、`knowledge/batch-execution-adapter.ts`、`knowledge/evaluation-batch.ts` 及专属 `__tests__/knowledge-batch-execution-adapter.test.ts`；业务线拥有真实共享事务 helper、供应商解析、run/job/预留及 provider-start 围栏。建议业务 factory 放在 `admin/src/lib/assistant/core/knowledge-batch-execution.ts`，**本增量没有该文件/实现**。已写知识适配接受构造注入的 `KnowledgeBatchSharedPort<PostgresTransaction>`；没有默认替身、生产端口、新 API、UI 入口、队列、schema 或迁移启用。
+
+### 准确知识服务入口
+
+| `KnowledgeOperations` 方法 | 输入/输出及持久语义 |
+| --- | --- |
+| `prepareExecutionBatch(input, requestKey)` | 仅服务端输入 `{cases:[{caseId,expectedVersion}],concurrency?:1..4}`，默认 2、1–50 唯一题。返回 `{version:1,manifest,concurrency}`；同一原租户/settings 事务写原 evaluation/create/send keys、普通准备回执、服务端真实 preview 执行 revision 及旁挂执行回执。不建 chat/run/job/预留，不派发供应商。无共享端口时 503 `batch_execution_unavailable`，固定失败整批回滚。 |
+| `executionBatchAdapter().receipt(batchId)` | 返回本人私有冻结回执；manifest 含原 batch/tenant/admin、epoch/profile ID+hash/policy、逐题 case/version/revision/evaluation/snapshot hash、服务端执行 revision 和 manifest hash；不含问题、回答或 create/send keys。 |
+| `advanceExecutionBatch(batchId)` | 按冻结并发量做一轮协调，进度仅元数据、费用 `null`、专业含义待核对；每题真实派发在原 settings 锁内重验取消、来源/profile/policy/实际执行 revision，活跃/indeterminate/reconciling run 跨控制器占槽。结构结果仍 `null`，原评测 `read/review` 保持权威。 |
+| `cancelExecutionBatch(batchId, requestKey)` | 先提交唯一整批意图，返回原 `{batchId,manifestHash,requestKey,cancelled:true}` 与 `{evaluationId,action:'not_dispatched'|'cancel_requested'|'unconfirmed'}[]`、费用未知/待核对。意图提交后逐个已知 run 各用有界事务取消，单项失败不回滚意图。来源/policy/profile/供应商变更不阻止此路；后续 advance 仍拒绝失效来源，不冒报新的完成进度。 |
+| `recoverEvaluation(evaluationId)` | 也适用旧评测；只读获权原 create/send 回执，核验 ID/当前参与者，在本事务只补 null 或相同的评测关联，返回 `{evaluationId,conversationId,runId,recovered}`；确认无回执时 `runId:null`。不通过 create/send/resume 探测 run，不重试模型。 |
+
+原 `prepareBatch` 仍是手动管理。旧手动批次不能事后加执行 pin（`batch_already_prepared`），避免旧 send 已在途；已固定评测的既有 `resume/cancel` 入口转注入适配器，没有注入就失败关闭，不退回跨事务批量发送。有注入时，旧评测恢复/取消也先走只读回执。未固定的旧手动派发继续保留原有限行为，不冒称已获得原子固定。
+
+### 准确共享端口：全部使用传入事务
+
+权威 TypeScript 签名/DTO 在 `admin/src/lib/assistant/knowledge/batch-execution-adapter.ts`。`actor` 是服务端既有租户/admin 试问身份；`context` 为知识代码提供的 `{mode:'knowledge_preview',profile:{id,hash},retrievalConfiguration}`。业务不可换成本分支合并前的 v3 检索配置，或把 C01 Agent prompt 当作 preview prompt。
+
+| 端口 | 必要输入/输出与共享责任 |
+| --- | --- |
+| `executionRevision(tx,actor,context)` | 返回 `{mode:'knowledge_preview',revision:<64位小写hex>}`，摘要覆盖真实部署 provider/config/adapter/endpoint 身份、覆盖后 model/revision、实际 preview prompt（`answerMessages`）、生成/思考/工具参数及传入索引 profile/检索配置，排除凭据。构造/lookup/cancel 不得预先要求供应商配置解析成功。 |
+| `lookupReceipt(tx,actor,{createKey,sendKey,conversationId,content})` | 只读原 create/send 结果并核对原请求体、租户/当前身份/参与者，返回 `{conversationId,runId}` 或**成功查明不存在的 `null`**；未知、不可读或权限失败须抛错，过期不代表可遗忘已提交 send。不做当前来源/配置前检，不新建、发送、重试或写额度。 |
+| `dispatch(tx,actor,{createKey,sendKey,conversationId,content,expectedExecutionRevision,context,batch})` | content 为原 `{version:1,blocks:[{type:'text',text:question}]}`；batch 为 `{batchId,evaluationId,manifestHash,cancellation:{operation,key,principalKey,manifestHash}}`。在**同一事务**再次对照真实 revision/持久意图，再复用原 create/send、run/job/预留权威，返回 `{conversationId,runId}`，知识侧同一提交前补关联。不得嵌套独立 ConversationService 事务、启动 Worker 或持锁调用外部 I/O。 |
+| `observeRun(tx,actor,{conversationId,runId})` | 重验原私有关系，只返回 `{status,awaitingReconciliation,usageKnown}`；status 为 queued/running/succeeded/failed/cancelled/indeterminate。未知/畸形读取不能当空槽，不带回答/trace/供应商错误。 |
+| `cancelRun(tx,actor,{conversationId,runId,requestKey})` | 沿原 run 取消及当前身份/参与者、原键/job/租约/用量权威，不做来源/配置前检；不靠 send 找 run，不清 indeterminate/未知用量/reconciling 预留。调用方事务提交的是本地取消请求，不保证已派发供应商请求被撤销。 |
+
+复用原幂等表三种 operation，按 tenant + `principalKey(actor)` + operation + key 限定，没有第二张批次/任务表：
+
+| Operation | Key / 请求绑定 / 结果 |
+| --- | --- |
+| `knowledge-batch-prepare` | 原 `batchId=requestKey`、有序 cases/expectedVersion，原准备回执保持。 |
+| `knowledge-batch-execution-prepare` | 同 batchId，规范 `{cases,concurrency}`，上述执行回执；同键同体返回原 ID/pin，改体冲突。 |
+| `knowledge-batch-execution-cancel` | 规范 key 固定为 **batchId**，body `{batchId,manifestHash}`；唯一意图保留第一次取消 requestKey，不同客户端取消键重进读同一意图。逐题取消键仍为 `kb-cancel:` 加 manifest hash/evaluation ID 的 fingerprint。 |
+
+业务须在原 run policy snapshot 或等价既有权威状态保存 dispatch 的预期 revision/context 和取消绑定，在原 provider-start 事务/有效租约边界再次检查，必须早于新 attempt/开始标记/HTTP。取消查询精确指向同租户/同 principal 的 `knowledge-batch-execution-cancel` / batchId 记录并匹配 manifestHash，不因名义过期而忽略。知识外层锁和浏览器取消均不能替代此 Worker 围栏。
+
+版本语义：caseVersion 用于准备时乐观检查；caseRevision+不可变 snapshotHash、来源发布版本/hash/有效期、epoch、profile ID/配置 hash 和 policy 约束后续派发，核对动作不伪造新问题 revision。manifest hash 仅做完整性，不做授权；每事务重读原本人服务器回执和逐题绑定。`cancelledBeforeDispatch:true` 仅用于持久意图+权威无 run 回执、runId 为 null、已知未派发且无待核对；本地 `requestCancel()` 无权声明此状态。
+
+### 验证与接回条件
+
+最终离线 **45/45 通过**，含 18 项新增适配合同和 27 项未改协调器检查，0 失败/跳过/取消，源码 hash 稳定。执行真实适配/协调器，事务串行化与共享端口均为**模拟**，不是 PostgreSQL、两个独立 OS 进程或供应商验收。覆盖同题/不同题控制器竞争、关联/send 同事务回滚、原键恢复、当前配置漂移及共享端口晚拒绝样例、双向取消/撤回禁用后取消、单项失败意图保留、权限/身份篡改及未知费用/用量保持。初版 40 项及随后 44 项快照均通过；初版类型发现 7 处行展开推断错误，最终修正为 **287→287，新增 0**。5 个代码文件 ESLint 0 错误/警告；无模型/Embedding/DB、锁、Worker/监听服务或原生运行。
+
+admin 复跑：`node --import tsx --test --test-reporter=tap --test-concurrency=1 src/lib/assistant/__tests__/knowledge-batch-execution-adapter.test.ts src/lib/assistant/__tests__/knowledge-evaluation-batch.test.ts`。证据 `tmp/knowledge-execution-seams/{ownership-preflight.json,merge-preview.json,unit-final.log,unit-final-status.json,final-verified/,lint-final-status.json}`；初次只读合并预演超出子进程 stdout 缓冲，扩大仅捕获缓冲后正常完成，两次预演均无 Git/tree 写入。
+
+**待业务实现，未被拒绝**：提供满足上述五方法的共享 factory，并在 provider-start 保存/重验绑定。本线随后在知识入口注入稳定 factory；协调前不增加生产批量路由。下一验收是有界真实 PostgreSQL 双进程 advance/cancel、准备后来源/真实配置变更、刻意丢失关联、原键及未核清用量，沿既有隔离验收锁、不启动竞争 Worker。新付费/原生语义场景须待后续双方同意的稳定集成范围，`4242` 保持不动。集成人须更新双语 KB-4 清单/二期接缝当前段，区分本内部适配代码与已启用生产调度；UI/恢复账本无新增视觉范围。整体 **Limited**。
+
 ## 现有样本与英文 PDF 历史选择重放
 
 `5fa13cef` 后，本轮只使用仓库已有原件、已有 PPT18/19/23/38 阶段/材料映射，以及保留的 KB-2/KB-3 失败记录。未新增企业规则、翻译原件、将手册目录入库或杜撰格式/术语功能；未重跑前批已完成测试和实模。

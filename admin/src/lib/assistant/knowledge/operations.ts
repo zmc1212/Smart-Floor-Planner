@@ -7,9 +7,12 @@ import { ConversationService, idempotent } from '../core/conversation';
 import { knowledgeManager, text, expected, type KnowledgeActor } from './service';
 import { readRetrievalDiagnostics } from './diagnostics';
 import { projectMessage, resolveEvidence, validatePreviewSnapshot } from './sources';
-import type { RetrievalDiagnostic } from './retrieval';
+import { retrievalConfiguration, type RetrievalDiagnostic } from './retrieval';
 import { checkKnowledgeEvaluation, type ExpectedSource, type KnowledgeExpectation } from './evaluation-check';
-import { evaluationBatchCases, type EvaluationBatchPreparation } from './evaluation-batch';
+import { evaluationBatchCases, evaluationBatchManifest, MAX_EVALUATION_BATCH_CONCURRENCY, type EvaluationBatchPreparation } from './evaluation-batch';
+import { KnowledgeBatchExecutionAdapter, executionPrepareOperation, executionCancelOperation,
+  type KnowledgeBatchSharedPort, type BatchExecutionReceipt, type BatchExecutionContext, type BatchExecutionState,
+  type BatchCancellationIntent, type BatchRunReceipt } from './batch-execution-adapter';
 import { knowledgeBatchCounts, knowledgeBatchStates, type KnowledgeBatchList, type KnowledgeBatchProgress,
   type KnowledgeBatchProgressItem, type KnowledgeBatchState } from './operation-batch-view';
 
@@ -32,7 +35,7 @@ function caseDto(c:Row,epoch:unknown):KnowledgeCase {
 }
 export class KnowledgeOperations {
   readonly actor:ActorContext;
-  constructor(readonly manager:KnowledgeActor) {this.actor={enterpriseId:manager.enterpriseId,principal:{kind:'admin',adminId:manager.adminId},contextVersion:1,capabilities:['assistant.preview.self']};}
+  constructor(readonly manager:KnowledgeActor,private readonly sharedExecution?:KnowledgeBatchSharedPort<PostgresTransaction>) {this.actor={enterpriseId:manager.enterpriseId,principal:{kind:'admin',adminId:manager.adminId},contextVersion:1,capabilities:['assistant.preview.self']};}
   private tx<T>(work:(tx:PostgresTransaction,settings:Row)=>Promise<T>,enabled=false) {
     return withTenantTransaction(this.manager.enterpriseId,async tx=>work(tx,await knowledgeManager(tx,this.manager,enabled)));
   }
@@ -111,8 +114,12 @@ export class KnowledgeOperations {
   /** Persists original item keys without dispatching chat/model jobs. */
   async prepareBatch(input:Row,requestKey:string):Promise<EvaluationBatchPreparation> {
     if(Object.keys(input).some(k=>k!=='cases'))fail('invalid_message',422);
+    evaluationBatchCases(input.cases);
+    return this.tx((tx,s)=>this.prepareBatchTx(tx,s,input,requestKey),true);
+  }
+  private async prepareBatchTx(tx:PostgresTransaction,s:Row,input:Row,requestKey:string) {
     const cases=evaluationBatchCases(input.cases);
-    return this.tx(async(tx,s)=>idempotent(tx,this.actor,'knowledge-batch-prepare',requestKey,input,async()=>{
+    return idempotent(tx,this.actor,'knowledge-batch-prepare',requestKey,input,async()=>{
       const n=await one(tx,sql`select count(*)::int n from app.assistant_knowledge_evaluations where enterprise_id=${this.manager.enterpriseId}`);
       if(Number(n!.n)+cases.length>2000)fail('knowledge_evaluation_limit',422);
       const profile=s.active_index_profile_id?await one(tx,sql`select id,configuration from app.assistant_knowledge_index_profiles
@@ -125,7 +132,105 @@ export class KnowledgeOperations {
       }
       return {batchId:requestKey,enterpriseId:this.manager.enterpriseId,adminId:this.manager.adminId,
         knowledgeEpoch:Number(s.knowledge_epoch),profileId:String(profile.id),profileHash:fingerprint(profile.configuration),policyVersion:Number(s.policy_version),items};
-    }),true) as Promise<EvaluationBatchPreparation>;
+    }) as Promise<EvaluationBatchPreparation>;
+  }
+  /** Server-only opt-in. No route/UI or default shared implementation is enabled here. */
+  async prepareExecutionBatch(input:Row,requestKey:string):Promise<BatchExecutionReceipt> {
+    if(!this.sharedExecution)fail('batch_execution_unavailable',503);
+    if(Object.keys(input).some(k=>!['cases','concurrency'].includes(k)))fail('invalid_message',422);
+    const cases=evaluationBatchCases(input.cases),concurrency=input.concurrency??2;
+    if(!Number.isInteger(concurrency)||Number(concurrency)<1||Number(concurrency)>MAX_EVALUATION_BATCH_CONCURRENCY)fail('invalid_message',422);
+    return this.tx(async(tx,s)=>idempotent(tx,this.actor,executionPrepareOperation,requestKey,{cases,concurrency},async()=>{
+      // Never retrofit an execution pin onto an old manual batch with a possible in-flight legacy send.
+      if(await one(tx,sql`select id from app.assistant_idempotency_records where enterprise_id=${this.manager.enterpriseId}
+        and principal_key=${principalKey(this.actor)} and operation='knowledge-batch-prepare' and key=${requestKey}`))fail('batch_already_prepared');
+      const preparation=await this.prepareBatchTx(tx,s,{cases},requestKey);
+      const context:BatchExecutionContext={mode:'knowledge_preview',profile:{id:preparation.profileId,hash:preparation.profileHash},retrievalConfiguration};
+      const execution=await this.sharedExecution!.executionRevision(tx,this.actor,context);
+      if(execution.mode!=='knowledge_preview')fail('execution_changed');
+      return {version:1 as const,manifest:evaluationBatchManifest(preparation,execution.revision),concurrency:Number(concurrency)};
+    }),true) as Promise<BatchExecutionReceipt>;
+  }
+  private async executionState(tx:PostgresTransaction,s:Row,batchId:string):Promise<BatchExecutionState> {
+    const row=await one(tx,sql`select result from app.assistant_idempotency_records where enterprise_id=${this.manager.enterpriseId}
+      and principal_key=${principalKey(this.actor)} and operation=${executionPrepareOperation} and key=${key(batchId)}`);
+    if(!row)fail('assistant_resource_not_found',404);
+    const receipt=row.result as BatchExecutionReceipt,{preparation}=await this.batchReceipt(tx,batchId);
+    if(!receipt||receipt.version!==1||!receipt.manifest||!Number.isInteger(receipt.concurrency)
+      ||receipt.concurrency<1||receipt.concurrency>MAX_EVALUATION_BATCH_CONCURRENCY
+      ||evaluationBatchManifest(preparation,receipt.manifest.executionRevision).hash!==receipt.manifest.hash)fail('invalid_batch_manifest');
+    const manifest=evaluationBatchManifest(preparation,receipt.manifest.executionRevision);
+    const evaluations=await rows(tx,sql`select e.*,c.revision current_revision from app.assistant_knowledge_evaluations e
+      left join app.assistant_knowledge_cases c on c.enterprise_id=e.enterprise_id and c.id=e.case_id
+      where e.enterprise_id=${this.manager.enterpriseId} and e.created_by=${this.manager.adminId}
+      and e.id in (${sql.join(preparation.items.map(item=>sql`${item.evaluationId}`),sql`,`)}) for update of e`);
+    const byId=new Map(evaluations.map(e=>[String(e.id),e]));
+    const items=preparation.items.map(item=>{
+      const e=byId.get(item.evaluationId);
+      if(!e||String(e.case_id)!==item.caseId||Number(e.case_revision)!==item.caseRevision
+        ||Number(e.knowledge_epoch)!==preparation.knowledgeEpoch||fingerprint(e.snapshot)!==item.snapshotHash)fail('invalid_batch_manifest');
+      return {...item,createKey:key(e.create_key),sendKey:key(e.send_key),question:String((e.snapshot as EvaluationSnapshot).question),
+        conversationId:e.conversation_id?String(e.conversation_id):null,runId:e.run_id?String(e.run_id):null};
+    });
+    const profile=s.active_index_profile_id?await one(tx,sql`select configuration from app.assistant_knowledge_index_profiles
+      where enterprise_id=${this.manager.enterpriseId} and id=${String(s.active_index_profile_id)} and status='active'`):null;
+    const required=evaluations.flatMap(e=>(e.snapshot as EvaluationSnapshot).required);
+    const published=await this.publishedSources(tx,required.map(source=>source.documentId),s);
+    const current=preparation.knowledgeEpoch===Number(s.knowledge_epoch)&&preparation.policyVersion===Number(s.policy_version)
+      &&preparation.profileId===String(s.active_index_profile_id)&&Boolean(profile)&&preparation.profileHash===fingerprint(profile?.configuration)
+      &&evaluations.every(e=>Number(e.case_revision)===Number(e.current_revision))&&this.requiredCurrent(required,published);
+    const cancelled=await one(tx,sql`select result from app.assistant_idempotency_records where enterprise_id=${this.manager.enterpriseId}
+      and principal_key=${principalKey(this.actor)} and operation=${executionCancelOperation} and key=${batchId}`);
+    const cancellation=cancelled?.result as BatchCancellationIntent|null;
+    if(cancellation&&(cancellation.batchId!==batchId||cancellation.manifestHash!==receipt.manifest.hash||cancellation.cancelled!==true))fail('invalid_batch_manifest');
+    return {receipt:{version:1,manifest,concurrency:receipt.concurrency},items,current,enabled:Boolean(s.enabled),cancellation:cancellation??null,
+      context:{mode:'knowledge_preview',profile:{id:preparation.profileId,hash:preparation.profileHash},retrievalConfiguration}};
+  }
+  private executionAdapter() {
+    if(!this.sharedExecution)fail('batch_execution_unavailable',503);
+    const settings=new Map<PostgresTransaction,Row>();
+    return new KnowledgeBatchExecutionAdapter<PostgresTransaction>({actor:this.actor,
+      transaction:work=>this.tx(async(tx,s)=>{settings.set(tx,s);try{return await work(tx);}finally{settings.delete(tx);}}),
+      load:(tx,batchId)=>this.executionState(tx,settings.get(tx)!,batchId),
+      link:(tx,binding,receipt)=>this.linkEvaluation(tx,binding,receipt),
+      persistCancellation:(tx,state,requestKey)=>idempotent(tx,this.actor,executionCancelOperation,state.receipt.manifest.batchId,
+        {batchId:state.receipt.manifest.batchId,manifestHash:state.receipt.manifest.hash},async()=>({batchId:state.receipt.manifest.batchId,
+          manifestHash:state.receipt.manifest.hash,requestKey,cancelled:true})) as Promise<BatchCancellationIntent>,
+    },this.sharedExecution);
+  }
+  private async pinnedEvaluationBatch(tx:PostgresTransaction,evaluationId:string) {
+    const row=await one(tx,sql`select key from app.assistant_idempotency_records where enterprise_id=${this.manager.enterpriseId}
+      and principal_key=${principalKey(this.actor)} and operation=${executionPrepareOperation}
+      and result->'manifest'->'items' @> ${json([{evaluationId}])}::jsonb limit 1`);
+    return row?String(row.key):null;
+  }
+  executionBatchAdapter() {return this.executionAdapter();}
+  advanceExecutionBatch(batchId:string) {return this.executionAdapter().advance(batchId);}
+  cancelExecutionBatch(batchId:string,requestKey:string) {return this.executionAdapter().cancelBatch(batchId,requestKey);}
+  private async linkEvaluation(tx:PostgresTransaction,binding:{evaluationId:string;createKey:string;sendKey:string},receipt:BatchRunReceipt) {
+    const linked=await one(tx,sql`update app.assistant_knowledge_evaluations set conversation_id=${receipt.conversationId},run_id=${receipt.runId}
+      where enterprise_id=${this.manager.enterpriseId} and created_by=${this.manager.adminId} and id=${binding.evaluationId}
+      and create_key=${binding.createKey} and send_key=${binding.sendKey}
+      and (conversation_id is null or conversation_id=${receipt.conversationId}) and (run_id is null or run_id=${receipt.runId}) returning id`);
+    if(!linked)fail('invalid_batch_receipt');
+  }
+  /** Original receipt lookup only; works for legacy evaluations without inventing an execution pin. */
+  async recoverEvaluation(evaluationId:string) {
+    if(!this.sharedExecution)fail('batch_execution_unavailable',503);
+    return this.tx(async tx=>{
+      const e=await this.evaluation(tx,evaluationId),content={version:1 as const,blocks:[{type:'text' as const,text:String((e.snapshot as EvaluationSnapshot).question)}]};
+      if(e.run_id&&!e.conversation_id)fail('invalid_batch_receipt');
+      const receipt=e.run_id&&e.conversation_id?{runId:String(e.run_id),conversationId:String(e.conversation_id)}
+        :await this.sharedExecution!.lookupReceipt(tx,this.actor,{createKey:key(e.create_key),sendKey:key(e.send_key),
+          conversationId:e.conversation_id?String(e.conversation_id):null,content});
+      if(receipt===null)return {evaluationId,runId:null,conversationId:e.conversation_id?String(e.conversation_id):null,recovered:false};
+      if(!receipt)fail('invalid_batch_receipt');
+      id(receipt.runId);id(receipt.conversationId);
+      if(e.run_id&&String(e.run_id)!==receipt.runId||e.conversation_id&&String(e.conversation_id)!==receipt.conversationId)fail('invalid_batch_receipt');
+      await this.sharedExecution!.observeRun(tx,this.actor,receipt);
+      if(!e.run_id)await this.linkEvaluation(tx,{evaluationId,createKey:key(e.create_key),sendKey:key(e.send_key)},receipt);
+      return {evaluationId,...receipt,recovered:!e.run_id};
+    });
   }
   async batchHistory(input:Row={}):Promise<KnowledgeBatchList> {
     const pagination=page(input);
@@ -202,7 +307,16 @@ export class KnowledgeOperations {
     await this.resume(String(created.evaluationId));return {evaluationId:String(created.evaluationId)};
   }
   async resume(evaluationId:string) {
-    const e=await this.tx(async(tx,s)=>{const row=await this.evaluation(tx,evaluationId);if(!await this.current(tx,row,s))fail('context_changed');return row;},true);
+    const e=await this.tx(async(tx,s)=>{const row=await this.evaluation(tx,evaluationId);if(!await this.current(tx,row,s))fail('context_changed');
+      return Object.assign(row,{executionBatchId:await this.pinnedEvaluationBatch(tx,evaluationId)});},true);
+    if(e.executionBatchId){
+      const adapter=this.executionAdapter(),receipt=await adapter.receipt(e.executionBatchId);
+      const item=receipt.manifest.items.find(item=>item.evaluationId===evaluationId);if(!item)fail('invalid_batch_manifest');
+      await adapter.resume(receipt.manifest,item);
+      const observed=await adapter.observe(receipt.manifest,item);if(!observed.runId)fail('context_changed');
+      return {evaluationId,runId:observed.runId};
+    }
+    if(this.sharedExecution){const recovered=await this.recoverEvaluation(evaluationId);if(recovered.runId)return {evaluationId,runId:recovered.runId};}
     if(e.run_id)return {evaluationId,runId:String(e.run_id)};
     const chat=new ConversationService(this.actor),snapshot=e.snapshot as Row;
     const c=await chat.create(String(e.create_key),{audience:'customer_public',draftVersionIds:[]});
@@ -214,14 +328,23 @@ export class KnowledgeOperations {
   }
   /** Only an already linked private preview run; this creates no pending-item cancellation fence. */
   async cancel(evaluationId:string,requestKey:string) {
+    if(this.sharedExecution)await this.recoverEvaluation(evaluationId);
     const e=await this.tx(async tx=>{
       const row=await this.evaluation(tx,evaluationId);
+      const executionBatchId=await this.pinnedEvaluationBatch(tx,evaluationId);
+      if(executionBatchId)return Object.assign(row,{executionBatchId});
       if(!row.run_id||!row.conversation_id)fail('context_changed');
       await new AssistantRepository(tx,this.actor).conversation(String(row.conversation_id));
       if(!await one(tx,sql`select id from app.assistant_runs where enterprise_id=${this.manager.enterpriseId}
         and id=${String(row.run_id)} and conversation_id=${String(row.conversation_id)}`))fail('assistant_resource_not_found',404);
-      return row;
+      return Object.assign(row,{executionBatchId:null});
     });
+    if(e.executionBatchId){
+      const adapter=this.executionAdapter(),receipt=await adapter.receipt(e.executionBatchId);
+      const item=receipt.manifest.items.find(item=>item.evaluationId===evaluationId);if(!item)fail('invalid_batch_manifest');
+      const run=await adapter.cancelItem(receipt.manifest,item,requestKey);
+      return {evaluationId,runId:run.runId,status:'cancel_requested'};
+    }
     // The shared service rechecks current identity/participation and owns cancellation, jobs and quota reconciliation.
     const run=await new ConversationService(this.actor).run(String(e.run_id),'cancel',requestKey);
     return {evaluationId,runId:String(e.run_id),status:run.status};
