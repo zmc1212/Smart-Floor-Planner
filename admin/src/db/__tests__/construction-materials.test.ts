@@ -190,8 +190,8 @@ test('Agent continuation inherits the exact returned result as revocable constru
     else {
       const current = JSON.parse(messages.filter(m => m.role === 'tool').at(-1)!.content as string);
       assert.equal(current.query.domain, 'followups');
-      assert.equal(current.data.find((i: Row) => i.kind === 'team_result').sourceMessageId, String(resultId));
-      assert.match(current.displayText, /底盒位置仍待现场核对/);
+      assert.equal(current.synthesisSources[0].resultKey, current.resultKey);
+      assert.match(current.synthesisSources[0].text, /底盒位置仍待现场核对/);
     }
     const resultKey = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content as string).resultKey).at(-1);
     return { text: '', toolCalls: [{ id: 'test-' + turn, name: turn === 0 ? 'query_followups' : 'final_response',
@@ -204,6 +204,9 @@ test('Agent continuation inherits the exact returned result as revocable constru
   const step = await withTenantTransaction(eids[0], tx => one(tx, sql`select source_refs from app.assistant_run_steps
     where enterprise_id=${eids[0]} and run_id=${String(sent.runId)} and kind='agent_construction_context'`));
   assert.ok((step!.source_refs as string[]).includes(String(resultId)));
+  const savedTool = await withTenantTransaction(eids[0], tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps
+    where enterprise_id=${eids[0]} and run_id=${String(sent.runId)} and capability_name='query_followups' and kind='agent_tool'`));
+  assert.equal(((savedTool!.private_checkpoint as Row).data as Row[]).find(i => i.kind === 'team_result')!.sourceMessageId, String(resultId));
   assert.equal((await privateChat.messages(cid, undefined, 100)).items.find(m => m.id === derivedMessageId)!.available, true);
 });
 

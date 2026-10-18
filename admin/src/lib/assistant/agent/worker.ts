@@ -252,7 +252,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (cached) { if (cached.status !== 'succeeded') fail('provider_outcome_unknown'); outcomeKnown = true; return cached.private_checkpoint as ModelTurnOutput; }
           const beforeProviderCall = () => scoped(async tx => {
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-              values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, promptVersion: agentPromptVersion, contextPolicy: modelMessages === messages ? 'conversation' : 'current-turn-evidence-v1' })}::jsonb)`);
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, promptVersion: agentPromptVersion, contextPolicy: modelMessages === messages ? 'conversation' : 'current-turn-sources-v2' })}::jsonb)`);
             await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
           });
           const injected = perception ? dependencies.vision : dependencies.model;

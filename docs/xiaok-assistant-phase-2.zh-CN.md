@@ -1,19 +1,27 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前P3B/P4A：获权需求与点位图原件投影
+<a id="当前p3bp4a获权需求与点位图原件投影"></a>
 
-**限定实现，整体Limited。** 按现行路线图3.1/知识完善计划推进PPT23/38专业问答。原C01 `query_materials`和`search_knowledge`绑定房屋上下文复用`sharedMaterials`，只读取本客户、本咨询、本项目房间的有效需求和点位图原件说明。不新建知识副本、授权系统、表、迁移、路由或客户端页面；本节补齐旧批次“共享资料未进入问答、点位图一律缺项”的缺口。
+## 当前P3B/P4A：团队核对与精确正式版本进入专业问答
+
+**限定实现，整体Limited。** 按现行路线图3.1/知识完善计划继续PPT23/38。原C01 `query_materials`及`search_knowledge`绑定房屋上下文，在本客户/本咨询/明确项目房间中组合有效原话、共享参考、团队明确回传的图纸核对关联和已送达的精确正式方案。复用原事项、发布/决定和来源重验服务，不新建知识副本、授权系统、表、迁移、路由或客户端页面。
 
 - `MaterialSource`增加`shared_need`/`shared_drawing`，保存精确grant ID/版本、原消息/hash、原咨询、项目/施工房间、图片ID/hash、`customer_reference`身份及`imagePixels:false`。同客户/房屋的其他咨询仍排除；同名不建立正式v4房间映射。多房屋/项目/重名房间仍澄清；全房最多20个房间，超出明确要求指定房间。
 - 原服务继续决定最新同类grant、撤回/替换、消息/图片hash、图片删除/用途、房间更名、客户归属/访问、咨询用途/参与者及保留期。最新撤回不回退旧版。原材料/业务快照守卫覆盖工具缓存、模型提交、历史/派生回答及原有任务来源检查，旧snapshot或摘要不能复活来源。
-- 原件继续使用C01私有媒体和S04获权原件API。逐字说明实际进入工具/模型上下文；当前配置文本模型未接收这些图像像素，只能解释客户说明。已有有效图时缺项改为图内识读、正式核对及现场尺寸，不再称缺图/未关联；不声称看过图内位置/尺寸或完成正式核对。图片识读/OCR和正式图纸批准仍未完成。
-- `businessSynthesisSources`保留聚合查询ID，新增逐项sourceId/原文/身份；显式查询和知识绑定路径一致。尾注按实际引用的类型/房间列来源，缺项查询单列；无发布记录的节点查询不再冒称引用记录。prompt `xiaok-renovation-v40`区分客户原话、参考图说明、企业依据、现场事实、一般建议和未知项；普通解释不建正式处理。
+- `team_review`只从`customerMaterialReviews`读取已送达原咨询、当前仍有效的管理者明确回传。复用`validResult`、当前事项修订、原共享需求/点位图、materialVersion、成员审计与实时权限；保存独立回传event ID/版本、客户回执messageId、issueId/revision、needGrantId/drawingGrantId与资料hash。内部核对/回复本身不开放给客户，只投影回传节选及关联核对身份，不复制内部原话、共享对话或未发布现场记录。
+- `formal_plan`复用`customerPlans`/`readPlan`，只读发给本客户原咨询且已经送达的当前精确正式版本。独立sourceId绑定版本ID/hash、方案号、状态修订、真实客户决定、前版ID、原件ID/hash、事项修订及资料hash；保留该版差异、费用/工期变化和原文。待决定、稍后、不同意、要求修改、同意分别保留，新版不继承旧同意，撤回最新不恢复旧版。原件继续走既有受保护方案API。
+- 原件继续使用C01私有媒体和S04获权原件API；正式图原件沿已有版本卡。当前材料投影不发送图片像素：`imagePixels:false`不关闭已有图像协议，也不证明读过图内位置/尺寸。团队关联核对、正式版决定、实际落实/解决/关闭分别溯源；实际落实与正式结束仍经`query_followups`读取明确回传，方案同意或一般解释不执行这些动作。
+- `businessSynthesisSources`对参考、`team_review`、`formal_plan`分别给逐项sourceId/原文/身份，显式与知识绑定路径一致。prompt `xiaok-renovation-v43`要求在专业解释中引用实际使用的独立核对/正式版本来源；需求与方案不一致时保留双方，不把正式差异改成客户需求或默许其生效。费用/工期只解释该版已写明的变化，不承诺总价、实际延期或完成日；事实、企业依据、一般建议和未知分开。无新来源/业务变化时保持旧材料依赖hash，避免仅因代码升级整批隐藏旧历史。
+- 真实联调发现重复工具正文使模型输入超过原48KB预算。`focusedSynthesisMessages`的`current-turn-sources-v2`仅精简模型视图：完整来源正文/ID/版本/权限元数据、冲突/缺项、知识条件/定位和标准tool_call配对保留；删除已由来源文本覆盖的重复data/displayText、相同的material.text及整段相同quote提示。持久快照/检查点、引用校验和提交/重进授权不变，不提高预算或重放未知调用。原失败入参复放由52,092降为39,819 UTF-8文字字节，并通过原输入校验；原DB保守未知状态不改写，不把本地预检失败当已证实供应商故障。
+- 逐段数值引用仍严格校验。若某段已经引用当前正式版本，仅漏在同段引用真实方案编号/版号的标题，复用原有唯一一次格式修复，提供同一来源的逐字标题或完整短原文；不自动修改回答、不增加模型轮数或放宽数值规则。此例外只涵盖精确ID/版号，未引用的费用/现场尺寸、未知来源和正式完成宣称仍拒绝。已拒绝的原输出保留为失败，不当作有效客户回答。
 
 PPT23资料原件与PPT38关键事项由团队核实映射原C01/C02/S04/U01。设计仍以唯一还原台账、C01 `design-references/xiaok-p4b-public-sites-v1/README.md`及S04原PPT22/38为准；WXML/Less、素材、字号、导航和胶囊布局未改。Stable原生自动化核对唯一副屏窗口、新编译、真实输入/点击、上传/来源片、持久重进及撤回，逻辑/编码尺寸分记；不据模拟器推断Chrome、真机/真实微信/BLE通过。
 
-在`admin`复跑：`node scripts/assistant-shared-materials-acceptance.mjs`、`--regression`、`--mini`；实模`node --import tsx scripts/assistant-shared-materials-development.ts --development`，原生加`--native`；类型同源比较`node scripts/assistant-shared-materials-typecheck.mjs a44f4c74`。隔离库固定55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS与共享锁；实模固定已批准5432/smart_floor_planner、localhost:3006及现有Worker/provider。业务/图片均为标记合成夹具，HTTP/模型/数据库真实；未知费用为null。最终检查、失败和限制记录在`tmp/xiaok-material-projection/`与[当前交接](./xiaok-assistant-handoff.zh-CN.md)，不据局部通过升级完整专业客服/PPT或发布状态。
+在`admin`复跑：`node scripts/assistant-team-materials-acceptance.mjs`、`--regression`、`--mini`；实模`node --import tsx scripts/assistant-team-materials-development.ts --development`，原生加`--native`；同源类型`node scripts/assistant-team-materials-typecheck.mjs 26a3664f`。隔离库固定55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS及共享锁；实模固定已批准5432/smart_floor_planner、localhost:3006及现有Worker/provider。场景依次比较未核对、明确回传关联、正式待决定、精确同意、新版与原话冲突及撤回；普通解释不产生落实/解决/关闭事件。业务/图片均为标记合成夹具，HTTP/模型/数据库真实；未知费用为null。实际检查、失败、截图和限制统一见`tmp/xiaok-team-sources/`及[当前交接](./xiaok-assistant-handoff.zh-CN.md)。
 
-已执行核心隔离库服务17项与最终综合解释单元8项（去重25项；旧合组24项日志不改写）、Mini专项92项、配置实模六次及Stable原生20步（含另外四次实模问答）。逐段复核原件/来源身份和未知项；初轮未据原话推断旧桌型的失败保留，不计最终通过。类型同源287→287无新增，lint0错误/30既有警告；隔离编译通过，完整构建仍被既有AiDesignerLegacyPage非法导出阻断。相关回归75项：73通过、2项显式配置跳过、0失败，清理审计见当前交接和证据目录；这些数字不代表全专业客服、图像阅读或生产通过。
+本轮已执行：隔离服务15/15＋综合解释单元10/10，最终整组25项通过；Mini单元92/92；开发实模六种状态各两次，共12/12次回答；Stable原生20/20，另含六次真实回答。实模驱动末尾单页历史断言失败，单独以真实GET分页复核全部36条消息，确认12条回答均失效；没有重跑模型/业务写入。相关回归首组87通过/3失败/2显式跳过；确定性适配器改读精简后的模型视图，并另验完整持久来源后，材料整文件12/12复跑通过；按原测试标题去重为90通过/2跳过，不伪称单次92项全通过。全量lint0错误/30既有警告；同源类型诊断287→287无新增；Webpack仅编译通过，完整构建仍被既有AiDesignerLegacyPage非法导出阻断。原本地输入预算、编号引文及测试驱动失败均保留为失败，详见交接及原始日志。
+
+上一轮原件投影17项隔离服务、8项综合单元、Mini92项、六次实模及原生20步的历史证据仍在`tmp/xiaok-material-projection/`，不改写或计作本轮检查。图内识读、复杂多房间/多阶段矛盾、完整客服/PPT、Chrome、完整宿主光学/高屏/键盘、真机/真实微信/BLE及生产边界按实际证据分别记录，不以有限通过升级状态。
 
 复用原LangGraph工具消息/有界循环与业务快照，无框架迁移。实施前复核[ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[上游测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[已关闭status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)及[OpenAI兼容序列化11490](https://github.com/langchain-ai/langchainjs/pull/11490)。只补业务来源投影，工具成功不替代授权/专业结论；既有DeepSeek适配不泛化为框架规则。
 

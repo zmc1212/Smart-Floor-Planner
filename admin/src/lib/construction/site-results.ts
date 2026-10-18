@@ -11,6 +11,8 @@ import { siteAccessRevoked } from './site-access';
 
 const resultType = 'construction.site.issue.result.v1';
 type ReturnedState = 'closed' | 'resolved' | 'awaiting_review' | 'awaiting_owner' | 'cancelled' | 'invalidated';
+export type CustomerMaterialReview = { id: string; version: string; messageId: string; projectId: string; roomId: string; roomName: string;
+  issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; text: string };
 
 /** The recipient is the original opt-in consultation, never the latest or another customer thread. */
 async function validResult(tx: PostgresTransaction, eid: string, cid: string, event: Row) {
@@ -84,13 +86,38 @@ export async function siteResultAvailable(tx: PostgresTransaction, eid: string, 
   return !event || await validResult(tx, eid, cid, event);
 }
 
-/** Original-consultation read model for query_followups. Never exposes the shared conversation or unpublished replies. */
-export async function customerSiteResults(tx: PostgresTransaction, eid: string, uid: string, cid: string) {
-  const events = await rows(tx, sql`select distinct on (e.aggregate_id) e.*,m.id::text as result_message_id
+async function latestCustomerResults(tx: PostgresTransaction, eid: string, uid: string, cid: string) {
+  return rows(tx, sql`select distinct on (e.aggregate_id) e.*,m.id::text as result_message_id
     from app.domain_event_outbox e join app.assistant_messages m on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id
     and m.conversation_id=${cid} and m.purpose='construction.result'
     where e.enterprise_id=${eid} and e.type=${resultType} and e.payload->>'customerId'=${uid} and e.payload->>'conversationId'=${cid}
     order by e.aggregate_id,e.id desc limit 30`);
+}
+
+/** Only an explicitly returned, still-current drawing association is a customer
+ * source. Never copy the shared issue's private reply or unpublished check. */
+export async function customerMaterialReviews(tx: PostgresTransaction, eid: string, uid: string, cid: string): Promise<CustomerMaterialReview[]> {
+  const result: CustomerMaterialReview[] = [];
+  for (const event of await latestCustomerResults(tx, eid, uid, cid)) {
+    const p = event.payload as Row;
+    if (p.lifecycleId || p.state && p.state !== 'awaiting_review' || typeof p.drawingGrantId !== 'string'
+      || !await validResult(tx, eid, cid, event)) continue;
+    const drawing = await sharedMaterial(tx, eid, String(p.projectId), p.drawingGrantId);
+    const issue = await readSiteIssue(tx, eid, String(p.projectId), String(p.issueId));
+    if (!drawing || drawing.kind !== 'drawing' || drawing.customerId !== uid || drawing.conversationId !== cid
+      || issue?.drawingGrantId !== drawing.id || issue.roomId !== drawing.roomId) continue;
+    const text = `团队已核对关联「${drawing.roomName}」的客户参考图，仍需结合现场尺寸核对具体点位。\n明确回传节选：${String(p.text)}\n这是图纸关联核对，不是正式方案决定、现场落实或验收结论。`;
+    result.push({ id: String(event.id), version: fingerprint({ payload: p, drawing, issueRevision: issue.revision }),
+      messageId: String(event.result_message_id), projectId: drawing.projectId, roomId: drawing.roomId, roomName: drawing.roomName,
+      issueId: String(p.issueId), issueRevision: issue.revision, needGrantId: String(p.needGrantId), drawingGrantId: drawing.id,
+      materialVersion: String(p.materialVersion), text });
+  }
+  return result;
+}
+
+/** Original-consultation read model for query_followups. Never exposes the shared conversation or unpublished replies. */
+export async function customerSiteResults(tx: PostgresTransaction, eid: string, uid: string, cid: string) {
+  const events = await latestCustomerResults(tx, eid, uid, cid);
   const projected = [];
   for (const e of events) {
     const p = e.payload as Row, available = await validResult(tx, eid, cid, e);

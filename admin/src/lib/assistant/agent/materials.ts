@@ -6,22 +6,27 @@ import { customerProjects } from '@/lib/construction/customer';
 import { publishedSiteRecord } from '@/lib/construction/site-publications';
 import { siteRecordText, type SiteDraft } from '@/lib/construction/site-contract';
 import { sharedMaterials } from '@/lib/construction/site-materials';
+import { customerMaterialReviews } from '@/lib/construction/site-results';
+import { customerPlans } from '@/lib/construction/site-plans';
 import { fail, fingerprint, id, safeText, type ActorContext } from '../contracts';
 import type { ModelTool } from '../contracts/model';
 import { availableNeedMemory } from './memory-sources';
 
 export const materialTool: ModelTool = {
   name: 'query_materials',
-  description: '按当前客户有权读取的明确房屋和房间组合本咨询原话、本人在本咨询明确共享的有效需求/点位图原件说明、正式v4户型和已向本人发布的现场记录。共享参考图不等于正式核对图纸，原件引用不代表已识读图内细节。找资料、回顾需求或追问均可用。leadId不知道用空串；room仅用明确房间名，不猜代词。多房屋/重名房间先澄清；缺项如实说明，不从墙图虚构点位。只读，不建立进度草稿或批准。',
+  description: '按当前客户有权读取的明确房屋和房间组合本咨询原话、有效共享需求/点位图说明、明确回传到本咨询的团队图纸核对关联、已送达的精确正式方案版本及客户决定、正式v4户型和已发布现场记录。客户参考、团队关联核对、正式版本决定分别溯源，均不证明现场落实。原件引用不代表识读像素。leadId不知道用空串；room仅用明确房间名。多房屋/重名房间先澄清，缺项不推成现实中未发生。只读，不建事项或批准。',
   parameters: { type: 'object', properties: { leadId: { type: 'string' }, room: { type: 'string' } }, required: ['leadId', 'room'], additionalProperties: false },
 };
 export type MaterialQuery = { leadId: string; room: string };
 export type MaterialSource = {
-  ref: { type: 'customer_need' | 'shared_need' | 'shared_drawing' | 'formal_floorplan' | 'site_record'; id: string; version: string };
+  ref: { type: 'customer_need' | 'shared_need' | 'shared_drawing' | 'team_review' | 'formal_plan' | 'formal_floorplan' | 'site_record'; id: string; version: string };
   hash: string; leadId: string; projectId: string | null; roomId: string | null; roomName: string;
   sourceMessageId: string | null; mediaIds: string[]; audience: 'customer_self';
-  basis: 'owned_conversation' | 'customer_shared_grant' | 'primary_plan' | 'published_project_record'; status: 'current'; text: string;
+  basis: 'owned_conversation' | 'customer_shared_grant' | 'returned_drawing_review' | 'delivered_formal_plan' | 'primary_plan' | 'published_project_record'; status: 'current'; text: string;
   original?: { grantId: string; conversationId: string; sourceHash: string; mediaHash: string | null; authority: 'customer_reference'; imagePixels: false };
+  review?: { issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; authority: 'team_returned_association' };
+  formal?: { issueId: string; issueRevision: number; number: number; revision: number; decision: string; previousVersionId: string | null;
+    needGrantId: string; materialVersion: string; mediaHash: string; authority: 'enterprise_published_version'; imagePixels: false };
 };
 export type MaterialSnapshot = {
   query: MaterialQuery & { domain: 'materials'; conversationId: string }; customerId: string; leadIds: string[];
@@ -123,6 +128,27 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
   if (sources.some(s => s.ref.type === 'shared_need')) {
     const index = missing.indexOf('这次咨询中对应的有效原话需求'); if (index >= 0) missing.splice(index, 1);
   }
+  if (project && (!query.room || matchingRooms.length === 1)) {
+    const inScope = (source: { projectId: string; roomId: string }) => source.projectId === projectId
+      && matchingRooms.slice(0, 20).some(room => String(room.id) === source.roomId);
+    for (const review of (await customerMaterialReviews(tx, eid, uid, conversationId)).filter(inScope)) {
+      sources.push({ ref: { type: 'team_review', id: review.id, version: review.version }, hash: review.version, leadId, projectId,
+        roomId: review.roomId, roomName: review.roomName, sourceMessageId: review.messageId, mediaIds: [], audience: 'customer_self',
+        basis: 'returned_drawing_review', status: 'current', text: review.text,
+        review: { issueId: review.issueId, issueRevision: review.issueRevision, needGrantId: review.needGrantId,
+          drawingGrantId: review.drawingGrantId, materialVersion: review.materialVersion, authority: 'team_returned_association' } });
+      lines.push(review.text);
+    }
+    for (const plan of (await customerPlans(tx, eid, uid, conversationId)).filter(inScope)) {
+      sources.push({ ref: { type: 'formal_plan', id: plan.id, version: plan.hash }, hash: plan.hash, leadId, projectId,
+        roomId: plan.roomId, roomName: plan.roomName, sourceMessageId: plan.messageId, mediaIds: [plan.mediaId], audience: 'customer_self',
+        basis: 'delivered_formal_plan', status: 'current', text: plan.text,
+        formal: { issueId: plan.issueId, issueRevision: plan.issueRevision, number: plan.number, revision: plan.revision, decision: plan.status,
+          previousVersionId: plan.previousVersionId, needGrantId: plan.needGrantId, materialVersion: plan.materialVersion, mediaHash: plan.mediaHash,
+          authority: 'enterprise_published_version', imagePixels: false } });
+      lines.push(plan.text);
+    }
+  }
   if (plan && layout && (!query.room || matchingPlanRooms.length === 1)) {
     sources.push({ ref: { type: 'formal_floorplan', id: String(plan.id), version: fingerprint(layout) }, hash: fingerprint(layout), leadId,
       projectId: null, roomId: query.room ? matchingPlanRooms[0].id : null, roomName: query.room, sourceMessageId: null, mediaIds: [],
@@ -147,10 +173,20 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
   }
   if (!sources.some(s => s.ref.type === 'site_record')) missing.push('向本人明确发布的对应现场记录');
   const drawings = sources.filter(s => s.ref.type === 'shared_drawing');
-  missing.push(drawings.length ? '点位图的正式核对、图内细节及对应现场尺寸' : '当前有效点位图及其对应房间');
-  if (drawings.length) lines.push('客户共享点位图原件和说明已关联到上述项目房间；本次工具未识读图片像素，说明仅是客户提供的参考，不证明图内位置、尺寸、设计师核对或正式批准。');
-  lines.push('来源范围：本咨询的有效原话和明确共享资料、这套房屋的当前正式户型及团队已向你发布的记录。正式户型与施工房间的映射、具体点位仍需设计师核对。');
-  lines.push('待核对：' + missing.join('；') + '。这些资料尚不代表方案、费用、工期或验收已获批准。');
+  const extended = sources.some(s => s.ref.type === 'team_review' || s.ref.type === 'formal_plan');
+  // Keep earlier material dependency hashes when no newly available source or
+  // business state has changed. A code upgrade alone must not redact history.
+  if (!drawings.length) missing.push('当前有效点位图及其对应房间');
+  else if (!extended) missing.push('点位图的正式核对、图内细节及对应现场尺寸');
+  else {
+    if (drawings.some(d => !sources.some(s => s.review?.drawingGrantId === d.ref.id))) missing.push('向本咨询明确回传的当前参考图核对关联');
+    missing.push('图内细节、对应现场尺寸及实际落实依据');
+  }
+  if (extended && !sources.some(s => s.ref.type === 'formal_plan')) missing.push('向本咨询送达的当前精确正式方案版本及决定');
+  if (drawings.length) lines.push('客户共享点位图说明只作参考；团队核对关联和正式版本分别以对应独立来源为准，不能由客户说明推断。');
+  lines.push('本次材料投影未识读图片像素，不据文字推断图内位置或尺寸；缺项仅表示本次授权范围未提供，不表示现实中未发生。');
+  lines.push('来源范围：本咨询原话/共享参考、明确回传的核对关联、已送达的精确正式版本、当前正式户型和向本人发布的记录。正式户型与施工房间的映射、具体点位仍分别核对。');
+  lines.push('待核对：' + missing.join('；') + '。客户参考与团队关联核对不替代精确正式版本决定；该版真实决定以独立正式来源为准，实际落实和验收另行核对。');
   return finish();
 }
 
