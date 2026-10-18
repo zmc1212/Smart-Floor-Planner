@@ -5,7 +5,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import { fail, type ActorContext } from '@/lib/assistant/contracts';
 import { siteRecordText, type SiteDraft } from './site-contract';
-import { deliverSiteResults, syncSiteResults } from './site-results';
+import { deliverSiteResults, returnedEvidenceRecord, syncSiteResults } from './site-results';
 import { deliverPlans, syncPlans } from './site-plans';
 
 /** Public projection: an exact publication/version/customer grant, never the internal conversation. */
@@ -47,7 +47,8 @@ export async function siteBusinessRecords(tx: PostgresTransaction, eid: string, 
 }
 export async function customerSiteMedia(tx: PostgresTransaction, actor: ActorContext, conversation: Row, recordId: string, mediaId: string, expectedVersion: number) {
   if (actor.principal.kind !== 'user' || conversation.purpose !== 'customer_consultation') fail('assistant_resource_not_found', 404);
-  const r = await publishedSiteRecord(tx, actor.enterpriseId, actor.principal.userId, recordId, expectedVersion, true);
+  const r = await publishedSiteRecord(tx, actor.enterpriseId, actor.principal.userId, recordId, expectedVersion, true)
+    || await returnedEvidenceRecord(tx, actor.enterpriseId, actor.principal.userId, String(conversation.id), recordId, expectedVersion);
   const entry = conversation.entry_snapshot as Row;
   if (!r || (entry?.kind === 'lead' && !await one(tx, sql`select id from app.construction_projects where enterprise_id=${actor.enterpriseId} and id=${String(r.project_id)} and lead_id=${String(entry.id)}`))) fail('assistant_resource_not_found', 404);
   const m = await one(tx, sql`select m.data,m.mime_type from app.construction_site_attachments a join app.construction_site_media m on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id

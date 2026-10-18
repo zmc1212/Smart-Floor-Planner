@@ -3,8 +3,10 @@ import { withPlatformTransaction, withTenantTransaction, type PostgresTransactio
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { appendMessage } from '@/lib/assistant/core/conversation';
 import type { ActorContext } from '@/lib/assistant/contracts';
-import { readSiteIssue } from './site-issues';
+import { currentRecord, readSiteIssue } from './site-issues';
 import { sharedMaterial, sharedMaterials } from './site-materials';
+import { readSiteResolution } from './site-resolution';
+import { fingerprint } from '@/lib/assistant/contracts';
 
 const resultType = 'construction.site.issue.result.v1';
 
@@ -15,7 +17,12 @@ async function validResult(tx: PostgresTransaction, eid: string, cid: string, ev
   const need = await sharedMaterial(tx, eid, String(p.projectId), String(p.needGrantId));
   if (!need || need.conversationId !== cid || need.customerId !== p.customerId) return false;
   const issue = await readSiteIssue(tx, eid, String(p.projectId), String(p.issueId));
-  if (!issue || issue.status !== 'awaiting_review' || issue.revision !== p.revision || !issue.ownerId) return false;
+  if (!issue || !issue.ownerId) return false;
+  if (p.lifecycleId) {
+    const resolution = await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId));
+    if (!resolution?.available || resolution.id !== p.lifecycleId || resolution.revision !== p.revision || resolution.state !== p.state
+      || resolution.planId !== p.planId || resolution.evidenceId !== p.evidenceId || issue.revision !== p.issueRevision) return false;
+  } else if (issue.status !== 'awaiting_review' || issue.revision !== p.revision) return false;
   const materials = await sharedMaterials(tx, eid, String(p.projectId), need.roomId);
   if (materials.version !== p.materialVersion || issue.materialVersion !== p.materialVersion) return false;
   const publisher = (event.actor_ref as Row)?.adminId;
@@ -24,6 +31,39 @@ async function validResult(tx: PostgresTransaction, eid: string, cid: string, ev
     exists(select 1 from app.construction_members where enterprise_id=${eid} and project_id=${String(p.projectId)}
       and admin_id=${publisher} and active and role='manager') as manager`);
   return permission?.role === 'owner' || (permission?.role === 'member' && permission.manager === true);
+}
+
+async function resultText(tx: PostgresTransaction, eid: string, p: Row) {
+  if (!p.lifecycleId) return String(p.text);
+  const resolution = (await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId)))!;
+  const proof = resolution.evidence!;
+  return `方案V${p.planNumber} · ${p.state === 'closed' ? '已正式关闭' : '已正式解决，尚未关闭'}。\n${p.text}`
+    + `\n依据：本次获同意方案、现场记录${proof.recordId} · 版本${proof.recordVersion}，${proof.media.length}张落实原件。`
+    + (p.shareOriginals ? '\n团队已明确向本咨询回传这些现场原件。' : '\n本次仅回传结果节选，现场原件未向本咨询开放。')
+    + '\n解决与关闭由有权人员分别确认；不代表工程验收通过、付款或结算。';
+}
+
+/** A manager's exact result grants selected originals only to the original consultation. */
+export async function siteResultRecords(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
+  const event = await one(tx, sql`select e.* from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
+    where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.id=${mid} and m.purpose='construction.result' and e.type=${resultType}`);
+  if (!event || (event.payload as Row).shareOriginals !== true || !await validResult(tx, eid, cid, event)) return [];
+  const p = event.payload as Row, resolution = (await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId)))!;
+  const e = resolution.evidence!;
+  return [{ available: true, id: e.recordId, version: e.recordVersion, assets: e.media.map(m => m.id) }];
+}
+export async function returnedEvidenceRecord(tx: PostgresTransaction, eid: string, uid: string, cid: string, recordId: string, version: number) {
+  const events = await rows(tx, sql`select e.*,m.id as result_message_id from app.domain_event_outbox e join app.assistant_messages m
+    on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id and m.conversation_id=${cid} and m.purpose='construction.result'
+    where e.enterprise_id=${eid} and e.type=${resultType} and e.payload->>'customerId'=${uid} and e.payload->>'conversationId'=${cid}
+      and e.payload->>'shareOriginals'='true' order by e.id desc limit 30`);
+  for (const event of events) {
+    if (!await validResult(tx, eid, cid, event)) continue;
+    const p = event.payload as Row, resolution = (await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId)))!;
+    if (resolution.evidence?.recordId === recordId && resolution.evidence.recordVersion === version)
+      return (await currentRecord(tx, eid, String(p.projectId), recordId))?.row || null;
+  }
+  return null;
 }
 
 export async function siteResultAvailable(tx: PostgresTransaction, eid: string, cid: string, mid: string) {
@@ -38,13 +78,14 @@ export async function customerSiteResults(tx: PostgresTransaction, eid: string, 
     from app.domain_event_outbox e join app.assistant_messages m on m.enterprise_id=e.enterprise_id and m.source_event_id=e.id
     and m.conversation_id=${cid} and m.purpose='construction.result'
     where e.enterprise_id=${eid} and e.type=${resultType} and e.payload->>'customerId'=${uid} and e.payload->>'conversationId'=${cid}
-    order by e.aggregate_id,e.aggregate_version desc limit 30`);
+    order by e.aggregate_id,e.id desc limit 30`);
   const projected = [];
   for (const e of events) {
     const p = e.payload as Row, available = await validResult(tx, eid, cid, e);
     projected.push({ issueId: String(p.issueId), revision: Number(p.revision), projectId: String(p.projectId),
-      room: available ? String(p.roomName) : '', status: available ? 'awaiting_review' as const : 'invalidated' as const,
-      messageId: String(e.result_message_id), text: available ? String(p.text) : '', sourceVersion: available ? String(p.materialVersion) : '' });
+      room: available ? String(p.roomName) : '', status: available ? p.state === 'closed' ? 'closed' as const : p.state === 'resolved' ? 'resolved' as const : 'awaiting_review' as const : 'invalidated' as const,
+      messageId: String(e.result_message_id), text: available ? await resultText(tx, eid, p) : '',
+      sourceVersion: available ? fingerprint({ materialVersion: p.materialVersion, lifecycleId: p.lifecycleId || null, text: p.text, shareOriginals: p.shareOriginals === true }) : '' });
   }
   return projected;
 }
@@ -52,6 +93,8 @@ export async function customerSiteResults(tx: PostgresTransaction, eid: string, 
 export async function syncSiteResults(tx: PostgresTransaction, actor: ActorContext, c: Row) {
   if (actor.principal.kind !== 'user' || c.status !== 'open' || c.mode !== 'ai' || c.purpose !== 'customer_consultation') return 0;
   const eid = actor.enterpriseId, cid = String(c.id), uid = actor.principal.userId;
+  if (!await one(tx, sql`select ent.id from app.enterprises ent join app.assistant_enterprise_settings s on s.enterprise_id=ent.id
+    where ent.id=${eid} and ent.status='active' and s.enabled for share of ent,s`)) return 0;
   const events = await rows(tx, sql`select e.* from app.domain_event_outbox e where e.enterprise_id=${eid} and e.type=${resultType}
     and e.payload->>'conversationId'=${cid} and e.payload->>'customerId'=${uid}
     and not exists(select 1 from app.domain_event_deliveries d where d.enterprise_id=e.enterprise_id and d.event_id=e.id and d.consumer_key=${'construction:result:' + cid})
@@ -68,8 +111,9 @@ export async function syncSiteResults(tx: PostgresTransaction, actor: ActorConte
       values(${eid},${String(event.id)},${'construction:result:' + cid},'processing') on conflict(enterprise_id,event_id,consumer_key) do nothing returning id`);
     if (!d) continue;
     const p = event.payload as Row;
+    const display = p.lifecycleId ? await resultText(tx, eid, p) : `${p.text}\n这是处理回复，仍待核对，不代表方案、费用、工期或验收批准。`;
     await appendMessage(tx, actor, cid, { author: 'system', eventId: String(event.id), purpose: 'construction.result',
-      content: { version: 1, blocks: [{ type: 'text', text: `「${p.roomName}」事项${p.issueId} · 修订${p.revision}，项目团队回传：\n${p.text}\n这是处理回复，仍待核对，不代表方案、费用、工期或验收批准。` }] } });
+      content: { version: 1, blocks: [{ type: 'text', text: `「${p.roomName}」事项${p.issueId} · 修订${p.revision}，项目团队回传：\n${display}` }] } });
     await tx.execute(sql`update app.domain_event_deliveries set status='delivered',updated_at=now() where enterprise_id=${eid} and id=${String(d.id)}`);
     delivered++;
   }

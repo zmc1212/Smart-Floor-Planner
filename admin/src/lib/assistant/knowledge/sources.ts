@@ -8,6 +8,7 @@ import { siteRecordProjection, siteBusinessRecords } from '@/lib/construction/si
 import { siteWatchProjection } from '@/lib/construction/site-watches';
 import { publicMessageProjection } from '@/lib/construction/public-projections';
 import { planMessageProjection } from '@/lib/construction/site-plans';
+import { siteResultRecords } from '@/lib/construction/site-results';
 export type PreviewPolicy={audience:'customer_public'|'staff_internal'|'all';drafts:Array<{id:string;documentId:string;hash:string;editVersion:number}>};
 export function previewPolicy(c:Row):PreviewPolicy {
   const value=(c.entry_snapshot as {preview?:PreviewPolicy})?.preview;
@@ -99,7 +100,8 @@ export async function projectMessage(tx:PostgresTransaction,actor:ActorContext,c
     constructionFollowUp: available && message.purpose === 'construction.followup',
     planDecision: available && planProjection?.available ? planProjection.planDecision : null,
     siteRecord: available && message.purpose === 'construction.record' ? await siteRecordProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
-    siteRecords: available && message.author_kind === 'assistant' ? await siteBusinessRecords(tx, actor.enterpriseId, String(c.id), String(message.id)) : [],
+    siteRecords: available && message.purpose === 'construction.result' ? await siteResultRecords(tx, actor.enterpriseId, String(c.id), String(message.id))
+      : available && message.author_kind === 'assistant' ? await siteBusinessRecords(tx, actor.enterpriseId, String(c.id), String(message.id)) : [],
     siteWatch: available && message.purpose === 'construction.watch' ? await siteWatchProjection(tx, actor.enterpriseId, String(c.id), String(message.id)) : null,
     ...(available && publicProjection?.available ? { publicConsent: publicProjection.publicConsent || null, publicContext: publicProjection.publicContext || null, publicReferences: publicProjection.publicReferences || [] } : {}),
     ...(available && actor.principal.kind === 'user' ? { constructionContacts: await constructionMessageActions(tx, actor, String(c.id), String(message.id)) } : {}),

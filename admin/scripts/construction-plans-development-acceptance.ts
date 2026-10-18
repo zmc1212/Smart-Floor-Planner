@@ -9,7 +9,8 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 
-const root = path.resolve('..'), output = path.join(root, 'tmp/xiaok-p5');
+const resolutionStage = process.argv.includes('--resolution');
+const root = path.resolve('..'), output = path.join(root, resolutionStage ? 'tmp/xiaok-p5-resolution' : 'tmp/xiaok-p5');
 fs.mkdirSync(output, { recursive: true });
 async function main() {
   loadEnvConfig(process.cwd(), true);
@@ -18,8 +19,8 @@ async function main() {
   const [{ ConstructionService }, { SiteChatService }, { signMiniProgramToken }] = await Promise.all([
     import('@/lib/construction/service'), import('@/lib/construction/site-chat'), import('@/lib/miniprogram-jwt')]);
   const roles = ['enterprise_admin','designer','construction_staff'] as const;
-  const prefix = 'synthetic-p5-plan-' + randomUUID(), staff: { userId: string; adminId: string; role: typeof roles[number] }[] = [];
-  const report: Row = { prefix, started: new Date().toISOString(), checks: [], passed: false, scope: 'PPT23/38 bounded formal drawing/version/differences/customer decision; no automatic issue closure' };
+  const prefix = (resolutionStage ? 'synthetic-p5-resolution-native-' : 'synthetic-p5-plan-') + randomUUID(), staff: { userId: string; adminId: string; role: typeof roles[number] }[] = [];
+  const report: Row = { prefix, started: new Date().toISOString(), checks: [], passed: false, scope: resolutionStage ? 'PPT38 bounded execution evidence, separate formal resolve/close and original-consultation return; no acceptance/payment' : 'PPT23/38 bounded formal drawing/version/differences/customer decision; no automatic issue closure' };
   const save = () => fs.writeFileSync(path.join(output,'native-driver.json'), JSON.stringify(report,null,2));
   let eid = '', customerId = '', projectId = '', ownerId = '', leadId = '';
   try {
@@ -66,7 +67,7 @@ async function main() {
     report.customer = {conversationId:cid,mode:'human'};save();
     const diagramBase64=(await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#ffffff"/><path d="M60 60h390v390H60z M220 60v180h160v-50H220 M70 70h110" fill="none" stroke="#283c36" stroke-width="8"/><path d="M215 70h18v28h-18z M340 250h18v28h-18z M200 440h18v28h-18z" fill="#dc4b39"/><text x="85" y="400" font-size="25">SYNTHETIC STUDY POINTS V2</text></svg>')).png().toBuffer()).toString('base64');
     const roomId=String(((await ownerChat.read(projectId)).rooms as Row[]).find(r=>r.name==='书房')!.id);
-    const native = await import('./construction-plans-native.mjs');
+    const native = resolutionStage ? await import('./construction-resolution-native.mjs') : await import('./construction-plans-native.mjs');
     const diagramV2Base64=(await sharp(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#ffffff"/><path d="M60 60h390v390H60z M220 60v180h160v-50H220 M70 70h110" fill="none" stroke="#283c36" stroke-width="8"/><path d="M390 70h18v28h-18z M340 250h18v28h-18z M200 440h18v28h-18z" fill="#dc4b39"/><text x="85" y="400" font-size="25">SYNTHETIC DRAWING B</text></svg>')).png().toBuffer()).toString('base64');
     report.native = await native.run({root,output,projectId,identities,customer,diagramBase64,diagramV2Base64,
       planState: async(versionId:string)=>{const {PlanCustomerService}=await import('@/lib/construction/site-plans');return new PlanCustomerService(customerActor,cid).read(versionId);},
@@ -77,12 +78,16 @@ async function main() {
       assertOriginalRevoked:async(grantId:string,mediaId:string)=>{await assert.rejects(ownerChat.materialMedia(projectId,grantId,mediaId));},
       resultState:()=>withTenantTransaction(eid,tx=>one(tx,sql`select c.mode,(select count(*)::integer from app.assistant_messages m where m.enterprise_id=c.enterprise_id and m.conversation_id=c.id and m.purpose='construction.result') delivered from app.assistant_conversations c where c.enterprise_id=${eid} and c.id=${cid}`)),
       deliver:()=>deliverSiteResults(),
+      resolutionState:(issueId:string)=>withTenantTransaction(eid,async tx=>(await import('@/lib/construction/site-resolution')).readSiteResolution(tx,eid,projectId,issueId)),
+      setMode:(mode:string)=>withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_conversations set mode=${mode} where enterprise_id=${eid} and id=${cid}`)),
+      proofHash:async(recordId:string)=>{const r=((await ownerChat.read(projectId,undefined,100)).items as Row[]).find(i=>String((i.record as Row)?.id)===recordId)!.record as Row;
+        const mediaId=String((r.media as Row[])[0].id);const original=await ownerChat.media(projectId,mediaId);return {mediaId,hash:createHash('sha256').update(original.data).digest('hex'),version:Number(r.version)};},
       waitRun:async(runId:string)=>{
         for(let n=0;n<180;n++){
           const run=await withTenantTransaction(eid,tx=>one(tx,sql`select r.id::text,r.status,r.output_message_id::text,m.content,
             (select s.source_refs from app.assistant_run_steps s where s.enterprise_id=r.enterprise_id and s.run_id=r.id and s.kind='agent_construction_context') refs,
             (select s.input_summary->>'promptVersion' from app.assistant_run_steps s where s.enterprise_id=r.enterprise_id and s.run_id=r.id and s.kind='agent_checkpoint' order by step_seq desc limit 1) prompt_version,
-            (select id::text from app.assistant_messages where enterprise_id=r.enterprise_id and conversation_id=r.conversation_id and purpose='construction.plan' order by id desc limit 1) result_id
+            (select id::text from app.assistant_messages where enterprise_id=r.enterprise_id and conversation_id=r.conversation_id and purpose=${resolutionStage ? 'construction.result' : 'construction.plan'} order by id desc limit 1) result_id
             from app.assistant_runs r left join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.id=r.output_message_id
             where r.enterprise_id=${eid} and r.conversation_id=${cid} and r.id=${runId}`));
           if(run && !['queued','running'].includes(String(run.status))){
@@ -104,8 +109,8 @@ async function main() {
     const runs = await withTenantTransaction(eid,tx=>rows(tx,sql`select r.id::text,r.status,r.purpose,r.created_at,r.completed_at,r.policy_snapshot->'agent' as model,
       s.input_summary,s.private_checkpoint from app.assistant_runs r left join app.assistant_run_steps s on s.enterprise_id=r.enterprise_id and s.run_id=r.id and s.step_seq=1100
       where r.enterprise_id=${eid} order by r.id`));
-    report.runs = runs; assert.equal(runs.length,4); assert.ok(runs.every(r=>r.status==='succeeded'));
-    assert.equal(runs.filter(r=>r.purpose==='site.record').length,2);assert.equal(runs.filter(r=>r.purpose==='reply').length,2);
+    report.runs = runs; assert.equal(runs.length,resolutionStage?5:4); assert.ok(runs.every(r=>r.status==='succeeded'));
+    assert.equal(runs.filter(r=>r.purpose==='site.record').length,resolutionStage?3:2);assert.equal(runs.filter(r=>r.purpose==='reply').length,2);
     report.usage = await withTenantTransaction(eid,tx=>rows(tx,sql`select run_id::text,measurement_kind,input_tokens,output_tokens from app.assistant_usage_records where enterprise_id=${eid} order by run_id`));
     report.passed = true; save();
   } finally {

@@ -1,8 +1,49 @@
 # 小K第二期：需求整理与人工交接
 
-**当前P5正式版本、差异与客户决定：限定闭环Implemented，P5整体Limited。** 原S04有权人员明确发布图纸原件、精确版本、前版、差异及费用/工期影响；原授权咨询C05完整查看后作本版本决定。原键恢复、真人延后、换版/撤回、权限及v19来源化追问已接通；没有新表/迁移/页面/Less/插画/导航或生产变更。客户同意仍不等于现场落实、解决、关闭或验收。当前合同和最终验证见下文P5节；此前PPT23客户资料及同事项回传合同继续约束其各自范围。
+**当前P5/PPT38现场落实、正式解决关闭与原咨询回传：限定闭环Implemented，整体Limited。** 原S04以当前获同意的精确方案，关联同房间已核对发布、有完成内容且无待处理缺项的现场记录及照片原件；负责人/管理者明确记录落实，管理者分别正式解决、关闭并选择回传节选和是否开放这些原件。客户同意、普通回复、照片发布不自动推进正式状态，关闭不代表工程验收或付款。独立处理修订、原键恢复、真人延后/乱序去重、重新处理及换版/撤回/撤权守卫沿原事务/outbox/Worker，原件仅以JWT回传原授权咨询；移出或所需角色降权后再授权不复活原正式依据，member审计保留服务读取的previousRole/previousActive。prompt v20的query_followups只读实际结果并继承原施工来源链；方案决定来源按业务修订优先，晚到的原发布通知不改变当前决定的来源ID。不增表、迁移、页面、菜单、WXML、Less、插画或导航；复用批准S04/C01/C05/U01。当前接口、角色、状态、设计映射、复跑命令和验证边界见[二期当前合同](./xiaok-assistant-phase-2.zh-CN.md#当前p5ppt38现场落实与正式解决关闭)，证据tmp/xiaok-p5-resolution/。既有构建/类型/独立Mini打包限制保留，不声明完整P5、可发布或干净克隆全通过；未合并main或部署。本段当前限定范围优先于下文旧阶段“正式决定/落实关闭未交付”的描述，旧批次测试及未测记录仍按原范围保留。
+
+**前批P5正式版本、差异与客户决定：限定闭环Implemented，P5整体Limited。** 原S04有权人员明确发布图纸原件、精确版本、前版、差异及费用/工期影响；原授权咨询C05完整查看后作本版本决定。原键恢复、真人延后、换版/撤回、权限及v19来源化追问已接通；没有新表/迁移/页面/Less/插画/导航或生产变更。客户同意仍不等于现场落实、解决、关闭或验收。当前合同和最终验证见下文P5节；此前PPT23客户资料及同事项回传合同继续约束其各自范围。
 
 本次聚焦复用Postgres事务、原键幂等及现有outbox/消息协议，不增编排器或框架checkpointer。已复核维护中的[LangGraph工作流](https://docs.langchain.com/oss/javascript/langgraph/workflows-agents)、[消息/工具测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭ToolMessage问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，不以工具status代替业务回执。查询走确定性服务、不调用模型，原报告整理模型/提示版本不变。
+
+## 当前P5/PPT38：现场落实与正式解决关闭
+
+本节约束本轮限定实现，优先于下方旧批次“现场落实/正式关闭未交付”的限制。当前限定闭环Implemented；P5整体仍Limited，最终执行证据见本节。PPT38要求“先整理，再由人核对”“由负责人决定，再告知客户”，沿用PPT22/38的S04、C01/C05与U01共享组件，不新增S05页面或视觉方向。
+
+原事项来源修订与独立处理修订分别管理。原来源失效并重新核对后，新事项修订可继续原有负责人处理路径；旧关闭仅留审计，不能永久覆盖新的待办状态。新outbox类型`construction.site.issue.evidence.v1`保存精确方案ID/hash及客户决定、事项/负责人、现场记录ID/版本/hash、作者/核对人、原件ID/hash和本次落实结论；`construction.site.issue.lifecycle.v1`保存implemented/resolved/closed/reopened及逐次操作者/结论。沿既有RLS与企业清理，不建表或迁移。正式方案仍按原来源修订验证，不因正式解决/关闭自动失效，也不因同意自动落实。
+
+| 原S04输入/状态 | 可见反馈与持久恢复 | 权限、来源及下一步 |
+| --- | --- | --- |
+| 附图上报完成进展，原核对弹层发布内部记录 | 保留真实原话、原件和记录版本；模型整理不等于事实已正式确认 | 原作者/经理按既有记录权限核对；不自动开放私聊或内部资料 |
+| “落实事项123方案456记录789：落实结论” | 同一事项显示implemented及处理修订、方案/现场记录/原件依据，仍待管理核对 | 当前负责人或管理者；方案须当前有效且approved。现场记录须同房间、已发布、有完成内容、无pending/coordination缺项、有未删除原件，不能使用原待处理记录或草稿 |
+| 逐行“解决事项123 / 结论：… / 回传：… / 回传原件：是或否” | 独立resolved，显示已正式解决、尚未关闭；明确节选进入原咨询outbox | 仅项目经理或所选企业owner/admin/super_admin；管理者无须成为员工/成员。必须已有当前有效落实证据，不能代客户批准 |
+| 同格式“关闭事项123” | 独立closed，关闭请求丢包保留原body/key；先核对真实回执，不重写版本 | 仅管理者，必须先resolved；结论/负责人与原件仍需有效。关闭不等于验收通过、付款、结算或整项目完工 |
+| “重新处理事项123：原因” | 同issueId新处理修订，旧结果、原件回传与派生回答不再沿用；重新提交落实、解决、关闭 | 仅管理者。原来源已变化时先沿原“重新核对事项”更新；普通回复/转交/取消/重新核对均不能绕过有效implemented/resolved/closed，先由管理者明确重新处理 |
+| 换版/拒绝/撤回、记录更正/撤回、原件删除、成员/客户撤权 | 旧正式结论变为invalidated，旧原件与来源化回答不可读；原审计保留 | 不回退旧批准。正式方案及证据检查成员移出/observer及所需角色降级审计，恢复角色也需新版本/批准或新证据。member审计增加服务读取的previousRole/previousActive，不能由请求伪造；设计者降为worker、项目经理降为非manager后恢复均不复活旧授权；普通照片/回复不能修复正式状态 |
+
+S04继续使用原Mini/Admin chat/messages/upload/operations接口；GET versions新增`resolutions[issueId]`，POST仍以既有versions及Idempotency-Key提交，精确校验原记录/事项/资料/方案/处理修订。操作回执在重放及查询时重验处理结果来源，旧成功不能复活失效事实。当前项目投影的处理修订上限100，事项/方案50，原咨询结果30；完整分页与更自然的命令理解仍待补。
+
+解决/关闭复用`construction.site.issue.result.v1`，以独立aggregate_type防止与旧回复修订碰撞，绑定精确lifecycle/evidence/plan与原需求授权咨询。只回传管理者明确写的节选，不泄露内部结论、完整记录或成员ID；“回传原件：是”单独授予这次证据照片集合，默认不能推断分享权。原Worker真人期间延后，恢复AI后只投递仍有效的当前结果；旧/乱序结果记dead，重复Worker不重复送。客户端重进或关闭页面不丢业务状态；无站外微信送达承诺。
+
+原GET `/api/miniprogram/assistant/conversations/:cid/construction-records/:recordId/media/:mediaId?version=N`复用JWT、本人咨询/参与者与no-store边界，额外接受已实际投递给该原咨询且明确开放原件的有效正式结果；不要求把内部记录整体发布给客户，不开放同客户其他咨询。独立合法记录发布授权仍按其原合同管理。客户消息复用既有原件照片网格，失效时清除缓存；没有新markup、样式或素材。query_followups的team_result显示实际resolved/closed、精确依据和未验收付款边界，并沿既有工具checkpoint/construction source guards撤销。模型无落实、解决、关闭、验收或付款写工具。
+
+设计映射：S04原文字回复/输入/核对弹层/照片网格承载新业务内容；C01原结果气泡与site-record-photos承载明确节选及所选原件。PPT单屏853×1844按宽映射390×844；两路由唯一台账保留同一批准源，原生证据不宣称完整光学/宿主还原。
+
+来源稳定性：`customerPlans`按当前版本的状态事件修订优先选来源消息，不按投递seq覆盖客户决定。原发布通知晚于决定或Agent回答送达时，事实未变则快照hash及回答可读性保持；真正换版/决定变更/重新处理/撤权仍撤销旧回答。同题回归保留迟到投递条件，未通过提前冲刷队列或放松来源校验消除失败。已用`provenance-root-cause.json`重算，唯一差异是formal_plan.sourceMessageId；修复前失败、修复后专项及完整组合分别留证。
+
+复跑：admin目录`node scripts/construction-resolution-acceptance.mjs`、`--regression`、`--revocation`、`--provenance`、`--agent-regression`；原生`node --import tsx scripts/construction-plans-development-acceptance.ts --development --resolution`。隔离库限定55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS和既有互斥锁；原生仅5432/smart_floor_planner合成企业与唯一副屏Stable项目。最终实际通过/失败/未测、数据ID、模型/用量、打包/构建和提交见本轮交接及tmp/xiaok-p5-resolution/，尚未完成项不计通过。
+
+本轮最终实际验证：服务组合47/47（真实隔离库事务/业务服务，报告与模型输出采用确定性测试适配器）；组合内恢复用例2/2（已计入组合，不另加），覆盖有效正式状态不能被普通回复/取消/重新核对绕过、来源更正后同issueId重新核对→新版本决定→重新落实关闭。组合内降权恢复1项含设计者和项目经理，已计入组合；迟到通知来源专项1/1。Agent组合24通过/9配置跳过、0失败（协议/权限测试以模拟provider为主，不计真实模型质量验收）；Mini相关110/110，精确独立源码Mini逻辑98/98。Stable原生20/20，含真实上传、人工核对、精确决定、分步解决关闭、丢包回执、真人延后、原咨询JWT原件/hash、DeepSeek/deepseek-flash、langgraph-v1下两次v20追问、重新处理、撤回与成员失效；相册/原生确认注入合成结果，HTTP/Worker/模型/持久回读为真实链路，不计真机或真实微信授权。最终enterprise2424/project31/lead2889、原咨询176、事项592、方案609、现场记录44、run158–162，7次调用有observed tokens，费用未知。最终账户禁用、签名context_version提升，active_staff=0/active_runs=0；传输/SDK/存储与临时文件已恢复。
+
+全量lint0错误/30既有警告；tsc292条且错误集合与前批一致、触及文件无诊断。精确独立源码Webpack compile模式通过，跳过类型/静态生成，不能当完整生产构建；普通构建仍被既有AiDesignerLegacyPage非法页面导出阻断。独立Mini打包12项9通过/3既有失败（business约2180KB、主包约2148KB及旧business登记断言），工作树打包通过依赖原未提交优化，不宣称干净克隆或可发布。完整Mini、完整宿主/光学/高屏/键盘、真机/真实微信/BLE、实际Worker进程重启、外部渠道和生产未重测；量房Phase0既有7通过/1失败保留。
+
+早期SQL数组绑定导致原生发布503，已按相同查询/场景修复复验；SDK中途超时后在原窗口新编译重连；原件预览首轮断言过早，改为等待真实异步回调后复验。首批测试负例的空versions造成同步校验异常，已修正夹具并复跑。早期不完整/失败日志分别保留，不计入最终通过，也不通过换问法或换模型隐藏问题。首轮完整服务组合44通过/1失败未保留error_code，其直接原因仍未证实。第二轮45通过/1失败及同题专项0通过/1失败已精准定位：原发布通知晚于客户决定/回答投递，customerPlans按消息seq错误替换决定来源ID，使事实不变而快照hash变化。provenance-root-cause.json将该ID换回即可精确重算原hash；修复为状态业务修订优先，保留迟到投递、同一问题和全部撤销守卫。修复后专项及完整组合按上方实际结果记录。首轮、第二轮和定位失败分别保留在service-first-combination/、service-second-combination/、provenance-before-fix/；独立场景的咨询隔离只是夹具组织，不能当首轮失败的已证实原因。多项目大历史边界仍未验证。中断隔离夹具已按明确合成prefix与ID清理；原87项无关内容及5项删除状态保留，两份原脏模块文档仅暂存本轮增量。
+
+消息/记忆协议17/17通过。已有自由生成承诺守卫覆盖无来源的“已落实/已解决/已关闭/已验收”；明确缺记录或否定表达仍可正常回复，正式事实只由已验证business投影显示。
+
+已复核维护中的[LangGraph持久化](https://docs.langchain.com/oss/javascript/langgraph/persistence)、[工具/消息测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭ToolMessage状态问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。保留既有LangGraph、数据库持久任务/租约、用量与真人边界；只扩展确定性业务投影，不迁移框架，不用模型/工具status/checkpoint替代正式业务回执。这是项目边界选择，不声称新的供应商缺陷。
+
+完整S05、CAD/PDF或自动识图差异、自动算价排程、工程验收/支付结算、外部通知、P6多项目简报与生产上线仍未由本轮实现。
 
 ## 当前P5：正式方案精确版本、差异与客户决定
 

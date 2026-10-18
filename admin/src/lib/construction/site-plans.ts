@@ -4,8 +4,9 @@ import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assi
 import { fail, fingerprint, id, key, requireCapability, type ActorContext } from '@/lib/assistant/contracts';
 import { appendMessage, idempotent } from '@/lib/assistant/core/conversation';
 import { object, text } from './contracts';
-import { readSiteIssue, type SiteVersions } from './site-issues';
+import { readSiteIssueBase, type SiteVersions } from './site-issues';
 import { sharedMaterial, sharedMaterials } from './site-materials';
+import { siteAccessRevoked } from './site-access';
 
 const publishedType = 'construction.plan.published.v1', statusType = 'construction.plan.status.v1';
 export type PlanData = {
@@ -34,7 +35,7 @@ export function planCommand(raw: string): PlanCommand | null {
 export const planStatusLabels: Record<string, string> = { pending_customer: '待你决定', deferred: '稍后决定', approved: '已同意这一版', declined: '未同意这一版', changes_requested: '已要求修改', withdrawn: '已撤回' };
 export function planText(p: PlanView) {
   return `方案${p.id} · V${p.number} · ${p.roomName} · ${planStatusLabels[p.status] || p.status}\n${p.title}\n差异：${p.difference}\n费用变化：${p.costDeltaCents >= 0 ? '+' : ''}${(p.costDeltaCents / 100).toFixed(2)}元；工期变化：${p.scheduleDeltaDays >= 0 ? '+' : ''}${p.scheduleDeltaDays}天。`
-    + (p.reason ? `\n客户说明：${p.reason}` : '') + '\n这是此版本的方案决定；发出、客户同意与现场落实分别记录，事项尚未关闭。';
+    + (p.reason ? `\n客户说明：${p.reason}` : '') + '\n这是此版本的方案决定；同意方案本身不会自动落实或关闭事项，处理结果另行核对。';
 }
 function customerPlanDto(p: PlanView) {
   const { id, issueId, number, previousVersionId, roomName, title, difference, costDeltaCents, scheduleDeltaDays, mediaId, revision, status, previewed, reason, hash } = p;
@@ -64,8 +65,9 @@ export async function readPlan(tx: PostgresTransaction, eid: string, versionId: 
   const event = await planEvent(tx, eid, versionId); if (!event) return null;
   const p = event.payload as PlanData, last = await latestPlan(tx, eid, p.issueId), s = await state(tx, eid, versionId);
   if (String(last?.id) !== versionId || s.status === 'withdrawn') return null;
-  const issue = await readSiteIssue(tx, eid, p.projectId, p.issueId);
+  const issue = await readSiteIssueBase(tx, eid, p.projectId, p.issueId);
   if (!issue || ['invalidated','cancelled','awaiting_owner'].includes(issue.status) || issue.revision !== p.issueRevision || !issue.ownerId) return null;
+  if (await siteAccessRevoked(tx, eid, p.projectId, [p.publisherId, issue.ownerId], event.created_at as Date, { reviewers: [p.publisherId] })) return null;
   const grant = await sharedMaterial(tx, eid, p.projectId, p.needGrantId);
   if (!grant || grant.conversationId !== p.conversationId || grant.customerId !== p.customerId || grant.roomId !== p.roomId) return null;
   const materials = await sharedMaterials(tx, eid, p.projectId, p.roomId);
@@ -100,7 +102,7 @@ export async function handlePlan(tx: PostgresTransaction, actor: ActorContext, p
     await writeState(tx, actor, cmd.versionId, s.revision + 1, { status: 'withdrawn', previewed: false, reason: cmd.reason, action: 'withdraw' }, messageId);
     return { id: cmd.versionId, text: `方案${cmd.versionId}已撤回：${cmd.reason}。不回退或恢复旧版同意，现场事项仍独立核对。` };
   }
-  const issue = await readSiteIssue(tx, eid, pid, cmd.issueId);
+  const issue = await readSiteIssueBase(tx, eid, pid, cmd.issueId);
   // Source conversations are locked by readSiteIssue before the material lock,
   // matching customer consent/decision order and avoiding a cross-chat cycle.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`site-material:${eid}:${pid}`},0))`);
@@ -149,9 +151,11 @@ export async function customerPlans(tx: PostgresTransaction, eid: string, uid: s
   const result = [];
   for (const e of events) {
     const p = await readPlan(tx, eid, String(e.id)); if (!p) continue;
+    // A delayed publication cannot replace the more recent business decision's provenance.
     const message = await one(tx, sql`select m.id::text from app.assistant_messages m join app.domain_event_outbox e on e.enterprise_id=m.enterprise_id and e.id=m.source_event_id
       where m.enterprise_id=${eid} and m.conversation_id=${cid} and m.purpose='construction.plan'
-      and (e.id=${p.id} or e.type=${statusType} and e.aggregate_id=${p.id}) order by m.seq desc limit 1`);
+      and (e.id=${p.id} or e.type=${statusType} and e.aggregate_id=${p.id})
+      order by case when e.type=${statusType} then e.aggregate_version else 1 end desc,m.seq desc limit 1`);
     if (message) result.push({ ...p, messageId: String(message.id), text: planText(p) });
   }
   return result;

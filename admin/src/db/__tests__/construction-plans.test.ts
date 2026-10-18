@@ -124,7 +124,7 @@ test('human reception defers the same publication and Worker delivery is durable
 });
 test('Agent read model contains exact published version, impacts and customer state without granting approval',async()=>{
   const snapshot=await withTenantTransaction(eids[0],tx=>queryNeedIssues(tx,privateChat.actor,cid));
-  assert.ok(snapshot.data.some(p=>p.kind==='formal_plan'&&p.sourceVersion));assert.match(snapshot.displayText,/500\.00元|\+500/);assert.match(snapshot.displayText,/事项尚未关闭/);
+  assert.ok(snapshot.data.some(p=>p.kind==='formal_plan'&&p.sourceVersion));assert.match(snapshot.displayText,/500\.00元|\+500/);assert.match(snapshot.displayText,/不会自动落实或关闭事项/);
   await decide(third,'decline');assert.equal((await view(third)).status,'declined');
   const changed=await withTenantTransaction(eids[0],tx=>queryNeedIssues(tx,privateChat.actor,cid));assert.notEqual(changed.version,snapshot.version);assert.match(changed.displayText,/未同意这一版/);
 });

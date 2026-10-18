@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { applyNeedDelta, parseNeedDelta, readMemory, needWriteFeedback } from '../agent/memory';
 import { parseAgentReply } from '../agent/context';
+
+test('formal site completion claims require a business receipt while explicit absence/denial remains usable', () => {
+  for (const text of ['已经落实。','事项已正式解决。','本事项已关闭。','关闭成功。','工程已验收。','我不能说已解决，但事项已关闭。'])
+    assert.throws(() => parseAgentReply(JSON.stringify({ kind: 'general', text })), /unsupported_model_commitment/);
+  for (const text of ['目前没有已正式关闭的记录，仍需团队核对。','我不能声称已解决。','照片不能代替验收，当前尚未关闭。'])
+    assert.equal(parseAgentReply(JSON.stringify({ kind: 'general', text })), text);
+});
 test('source-linked field corrections preserve independent facts and immutable correction chain', () => {
   let memory = readMemory({});
   for (const [i, room, field, value] of [[1,'书房','daylight','采光好'],[2,'书房','desk','单人桌'],[3,'次卧','use','客房'],[4,'书房','desk','双人桌']] as const) {

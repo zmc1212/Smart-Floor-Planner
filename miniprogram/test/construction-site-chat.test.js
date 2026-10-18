@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { SiteClient, decorate } = require('../packages/construction/chat/site-client');
+const { SiteClient, decorate, errorText } = require('../packages/construction/chat/site-client');
 const { SiteRecordMedia } = require('../packages/assistant/lib/site-records');
 const { ChatController } = require('../packages/assistant/lib/chat');
 const { messagesForView } = require('../packages/assistant/lib/client');
@@ -84,4 +84,43 @@ test('visible cancel uses the real message write during an existing run and pres
   c.visible = true; c.session = 'customer-a'; c.conversationId = '44'; c.snapshot = async () => {};
   c.set({ loading: false, canSend: true, generating: true, draft: '还没有发送的预算问题', conversation: { id: '44', mode: 'ai', status: 'open' }, messages: [{ id: '9', available: true, siteWatch: { id: '12', cancelText: '工地书房不用再提醒' } }] });
   await c.cancelSiteWatch('9'); assert.equal(sent.path, '/conversations/44/messages'); assert.equal(sent.body.content.blocks[0].text, '工地书房不用再提醒'); assert.equal(c.state.draft, '还没有发送的预算问题');
+});
+
+test('formal processing carries its independent revision, preserves a lost close request and never auto-adopts a new revision', async () => {
+  let snapshot = 3, accepted = false;
+  const s = setup(async (url, method, body) => {
+    if (method === 'POST') { assert.equal(body.versions.resolutions['12'], 3); accepted = true; throw {}; }
+    if (url.includes('/operations/')) return { data: { found: accepted, result: { conversationId: '44', messageId: '66', issueId: '12', lifecycleId: '90', lifecycleRevision: 4, evidenceId: '77' } } };
+    const value = fixture(); value.data.versions = { records: {}, issues: { 12: 4 }, materials: {}, plans: { 14: 3 }, resolutions: { 12: snapshot } }; return value;
+  });
+  await s.client.show('22'); s.client.input('关闭事项12\n结论：已核对\n回传：右侧插座落实\n回传原件：是'); await s.client.send();
+  assert.equal(s.client.state.pending.body.versions.resolutions['12'], 3);
+  snapshot = 4; s.client.hide(); await s.client.show('22');
+  assert.equal(s.writes.length, 1); assert.equal(s.client.sourceVersions.resolutions['12'], 4); assert.equal(s.client.state.pending, null);
+});
+test('formal result reuses the approved original-photo component and revocation removes every cached file', async () => {
+  const removed = []; global.wx = { getFileSystemManager: () => ({ unlink: ({ filePath }) => removed.push(filePath) }) };
+  const c = new SiteRecordMedia({ identity: () => 'customer-a', emit() {}, download: async () => ({ tempFilePath: '/returned-proof.png' }) });
+  const messages = messagesForView([{ id: '99', authorKind: 'system', available: true, content: { blocks: [{ type: 'text', text: '已正式关闭；不代表验收付款。' }] }, siteRecords: [{ available: true, id: '10', version: 3, assets: ['6'] }] }]);
+  assert.equal(messages[0].siteRecordList[0].id, '10'); await c.load('44', messages); assert.equal(Object.keys(c.paths).length, 1);
+  await c.load('44', messagesForView([{ id: '99', available: false, siteRecords: [{ available: true, id: '10', version: 3, assets: ['6'] }], content: { blocks: [] } }]));
+  assert.deepEqual(c.paths, {}); assert.ok(removed.includes('/returned-proof.png'));
+  assert.match(errorText({error:'approved_plan_required'}), /客户同意/); assert.match(errorText({error:'site_reopen_required'}), /重新处理/);
+});
+test('mismatched formal receipts preserve the original key and body; known source invalidation permits editing without replay', async () => {
+  let obsolete = false, changed = false;
+  const s = setup(async (url, method) => {
+    if (url.includes('/operations/')) { if (obsolete) throw { statusCode: 409, error: 'context_changed' }; return { data: { found: true, result: { conversationId: '44', messageId: '66', issueId: changed ? '12' : '13', lifecycleId: '90', lifecycleRevision: changed ? 9 : 1, evidenceId: '77' } } }; }
+    if (method === 'POST') return { data: { issueId: '13', lifecycleId: '90', lifecycleRevision: 1 } };
+    const value = fixture(); value.data.versions = { records: {}, issues: {}, resolutions: {} }; return value;
+  });
+  await s.client.show('22'); s.client.input('关闭事项12\n结论：已核对\n回传：右侧插座落实\n回传原件：是'); await s.client.send();
+  const pending = JSON.parse(JSON.stringify(s.client.state.pending)); assert.ok(pending); await s.client.reconcile(); assert.deepEqual(s.client.state.pending, pending);
+  changed = true; await s.client.reconcile(); assert.deepEqual(s.client.state.pending, pending);
+  obsolete = true; await s.client.reconcile(); assert.equal(s.client.state.pending, null); assert.equal(s.writes.length, 1); assert.equal(s.client.state.draft, pending.body.text); assert.match(s.client.state.error, /已变化/);
+});
+test('asking whether an issue is closed remains an ordinary query and cannot get stuck waiting for a formal receipt', async () => {
+  const s = setup(async (_url, method) => method === 'POST' ? { data: { conversationId: '44', messageId: '65', intent: 'query', runId: null } } : fixture());
+  await s.client.show('22'); s.client.input('关闭事项12？'); await s.client.send();
+  assert.equal(s.client.state.pending, null); assert.equal(s.client.state.draft, ''); assert.equal(s.writes.length, 1);
 });

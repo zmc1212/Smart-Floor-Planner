@@ -129,6 +129,7 @@ export class ConstructionService {
       return idempotent(tx, actorContext(a), 'construction:' + action + ':' + pid, requestKey!, input, async () => {
         if (version(input.expectedVersion) !== Number(p.version)) fail('version_conflict');
         let remind = false, followUp = false;
+        let auditInput = input;
         if (action === 'update') {
           if (!owner && input.customerAccess !== p.customer_access) fail('construction_forbidden', 403);
           const name = text(input.name, 80), status = choice(input.status, projectStatuses);
@@ -138,9 +139,10 @@ export class ConstructionService {
         } else if (action === 'member') {
           if (typeof input.active !== 'boolean') fail('invalid_construction', 422);
           const aid = await staff(tx, eid, input.adminId, input.active), role = choice(input.role, memberRoles);
-          const previous = await one(tx, sql`select role from app.construction_members where enterprise_id=${eid} and project_id=${pid} and admin_id=${aid}`);
+          const previous = await one(tx, sql`select role,active from app.construction_members where enterprise_id=${eid} and project_id=${pid} and admin_id=${aid}`);
           if (!owner && (role === 'manager' || previous?.role === 'manager')) fail('construction_forbidden', 403);
           const workLabel = text(input.workLabel ?? '', 50, false);
+          auditInput = { ...input, previousRole: previous?.role || null, previousActive: previous?.active === true };
           await tx.execute(sql`insert into app.construction_members(enterprise_id,project_id,admin_id,role,active,work_label) values(${eid},${pid},${aid},${role},${input.active},${workLabel})
             on conflict(enterprise_id,project_id,admin_id) do update set role=excluded.role,active=excluded.active,work_label=excluded.work_label`);
           if (!input.active) await tx.execute(sql`delete from app.construction_stage_assignments where enterprise_id=${eid} and project_id=${pid} and admin_id=${aid}`);
@@ -173,7 +175,7 @@ export class ConstructionService {
           await tx.execute(sql`update app.construction_projects set current_stage_key=${key},progress_note=${note},progress_revision=progress_revision+${changed || remind || note !== p.progress_note ? 1 : 0} where enterprise_id=${eid} and id=${pid}`);
         }
         const updated = (await one(tx, sql`update app.construction_projects set version=version+1,updated_at=now() where enterprise_id=${eid} and id=${pid} returning *`))!;
-        await audit(tx, a, pid, action, input);
+        await audit(tx, a, pid, action, auditInput);
         if ((remind || followUp) && updated.customer_access) {
           await recordStageReminder(tx, actorContext(a), updated, Number(settings.version), stageReminder(String(updated.name), currentStage(updated, stages)!, String(updated.progress_note)));
           for (const c of conversations) {

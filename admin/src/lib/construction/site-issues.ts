@@ -3,6 +3,7 @@ import type { PostgresTransaction } from '@/db/transaction';
 import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, fingerprint, id, safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { sharedMaterials } from './site-materials';
+import { readSiteResolution } from './site-resolution';
 
 type Command = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'refresh' | 'check' | 'return'; target: string; value: string };
 type Issue = { issueId: string; revision: number; projectId: string; recordId: string; recordVersion: number;
@@ -10,11 +11,11 @@ type Issue = { issueId: string; revision: number; projectId: string; recordId: s
   ownerId: string | null; state: 'awaiting_owner' | 'awaiting_review' | 'cancelled'; progressMessageId: string | null; action: string;
   materialVersion?: string; drawingGrantId?: string | null };
 export type IssueView = Issue & { status: string; ownerName: string; text: string };
-export type SiteVersions = { records: Record<string, number>; issues: Record<string, number>; materials?: Record<string, string>; plans?: Record<string, number> };
+export type SiteVersions = { records: Record<string, number>; issues: Record<string, number>; materials?: Record<string, string>; plans?: Record<string, number>; resolutions?: Record<string, number> };
 
 export function parseSiteVersions(value: unknown): SiteVersions {
   if (value === undefined) return { records: {}, issues: {} };
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['records','issues','materials','plans'].includes(k))) fail('invalid_construction', 422);
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['records','issues','materials','plans','resolutions'].includes(k))) fail('invalid_construction', 422);
   const result: SiteVersions = { records: {}, issues: {}, materials: {} };
   for (const kind of ['records','issues'] as const) {
     const map = (value as Row)[kind];
@@ -25,13 +26,13 @@ export function parseSiteVersions(value: unknown): SiteVersions {
     }
   }
   const materials = (value as Row).materials;
-  if ((value as Row).plans !== undefined) {
-    const plans = (value as Row).plans;
+  for (const kind of ['plans','resolutions'] as const) if ((value as Row)[kind] !== undefined) {
+    const plans = (value as Row)[kind];
     if (!plans || typeof plans !== 'object' || Array.isArray(plans) || Object.keys(plans).length > 100) fail('invalid_construction', 422);
-    result.plans = {};
+    result[kind] = {};
     for (const [pid, revision] of Object.entries(plans)) {
       id(pid); if (!Number.isSafeInteger(revision) || Number(revision) < 1) fail('invalid_construction', 422);
-      result.plans[pid] = Number(revision);
+      result[kind]![pid] = Number(revision);
     }
   }
   if (materials !== undefined) {
@@ -60,7 +61,7 @@ export function siteIssueCommand(raw: string): Command | null {
   return null;
 }
 
-async function currentRecord(tx: PostgresTransaction, eid: string, pid: string, rid: string) {
+export async function currentRecord(tx: PostgresTransaction, eid: string, pid: string, rid: string) {
   const r = await one(tx, sql`select r.*,m.content,room.name as current_room_name from app.construction_site_records r
     join app.assistant_messages m on m.enterprise_id=r.enterprise_id and m.conversation_id=r.conversation_id and m.id=r.source_message_id
     left join app.construction_rooms room on room.enterprise_id=r.enterprise_id and room.project_id=r.project_id and room.id=r.room_id
@@ -70,7 +71,7 @@ async function currentRecord(tx: PostgresTransaction, eid: string, pid: string, 
     on m.enterprise_id=a.enterprise_id and m.project_id=a.project_id and m.id=a.media_id
     where a.enterprise_id=${eid} and a.project_id=${pid} and a.record_id=${rid} order by a.position`);
   if (media.some(m => m.deleted_at)) return null;
-  return { row: r, hash: fingerprint({ data: r.data, content: r.content, roomId: String(r.room_id), roomName: r.room_name_snapshot, status: r.status, media }) };
+  return { row: r, media, hash: fingerprint({ data: r.data, content: r.content, roomId: String(r.room_id), roomName: r.room_name_snapshot, status: r.status, media }) };
 }
 
 async function issueData(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<Issue | null> {
@@ -96,7 +97,8 @@ async function effectiveOwner(tx: PostgresTransaction, eid: string, pid: string,
   return subject && (subject.mini_role === 'owner' || (subject.member && (access?.role === 'member' || subject.mini_role === 'member'))) ? subject : null;
 }
 
-export async function readSiteIssue(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<IssueView | null> {
+/** Source/assignment revision stays independent of formal execution/closure revisions. */
+export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<IssueView | null> {
   const issue = await issueData(tx, eid, pid, issueId); if (!issue) return null;
   const source = await currentRecord(tx, eid, pid, issue.recordId);
   const materials = issue.roomId ? await sharedMaterials(tx, eid, pid, issue.roomId) : null;
@@ -120,6 +122,15 @@ export async function readSiteIssue(tx: PostgresTransaction, eid: string, pid: s
     if (issue.action === 'return') text += '\n本次明确回复已授权回传原咨询；真人接待期间等待恢复小K后投递，投递前仍会重核来源和权限。';
   }
   return { ...issue, ownerId: owner ? issue.ownerId : null, ownerName, status, text };
+}
+
+export async function readSiteIssue(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<IssueView | null> {
+  const issue = await readSiteIssueBase(tx, eid, pid, issueId); if (!issue) return null;
+  const resolution = await readSiteResolution(tx, eid, pid, issueId, issue);
+  if (!resolution) return issue;
+  return { ...issue, status: resolution.available ? resolution.state === 'reopened' ? issue.status : resolution.state
+    : resolution.issueRevision === issue.revision ? 'invalidated' : issue.status,
+    text: issue.text.replace(/\n已有处理回复，仍待团队核对；回复不等于已解决或正式批准。/, '') + '\n' + resolution.text };
 }
 
 export async function projectSiteIssues(tx: PostgresTransaction, eid: string, pid: string) {
@@ -155,6 +166,7 @@ export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorConte
   if (versions.issues[cmd.target] !== previous.revision) fail('version_conflict');
   const view = (await readSiteIssue(tx, eid, pid, cmd.target))!;
   if (previous.state === 'cancelled' || (view.status === 'invalidated' && !['cancel','refresh'].includes(cmd.action))) fail('context_changed');
+  if (['implemented','resolved','closed'].includes(view.status)) fail('site_reopen_required', 422);
   issue = { ...previous, revision: previous.revision + 1, action: cmd.action };
   const canHandle = manage || view.ownerId === aid;
   const materials = previous.roomId ? await sharedMaterials(tx, eid, pid, previous.roomId) : null;

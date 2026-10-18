@@ -10,6 +10,11 @@ function errorText(e) {
     site_retry_unavailable: '本次整理仍在核对结果，可先人工修改草稿。', site_review_required: '请先核对并补充本条现场内容。',
     invalid_plan: '请按标题、差异、费用变化（元）、工期变化（天）逐行说明，再附上一张本次方案图纸。',
     plan_original_required: '正式方案需附上一张你本次上传的图纸原件。',
+    invalid_site_resolution: '落实请指定事项、方案和现场记录；解决或关闭请逐行写结论、回传节选、回传原件（是或否）。',
+    approved_plan_required: '请先核对当前有效且已获客户同意的精确方案。',
+    site_execution_evidence_required: '请关联同房间已核对发布、有完成内容和原件照片的落实记录，并清除待处理缺项。',
+    site_resolution_state_conflict: '处理状态已变化，请先记录落实证据，再由管理人员分别解决和关闭。',
+    site_reopen_required: '本事项已有正式处理记录，请先由管理人员说明原因并重新处理。',
     construction_staff_unavailable: '未找到唯一且有权接续的项目成员，请核对姓名和当前分工。',
     media_limit: '本工地图片数量已达当前上限，请联系负责人。', media_invalid: '请选择4MB以内的JPEG或PNG图片。',
     construction_media_unavailable: '照片已不可访问，请重新读取。', idempotency_conflict: '本次操作内容不一致，请重新读取。',
@@ -80,7 +85,7 @@ class SiteClient {
       if (older) items = [...fresh, ...this.state.items.filter(i => !fresh.some(n => n.message.id === i.message.id))];
       // Keep command revisions private: the page's `versions` field belongs to
       // the existing record-history sheet and may be open when this read returns.
-      this.sourceVersions = { records: Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), issues: versions && versions.issues || {}, materials: versions && versions.materials || {}, plans: versions && versions.plans || {} };
+      this.sourceVersions = { records: Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), issues: versions && versions.issues || {}, materials: versions && versions.materials || {}, plans: versions && versions.plans || {}, resolutions: versions && versions.resolutions || {} };
       this.set({ ...data, items, nextCursor: data.nextCursor, loading: false, error: '', fatal: false });
       const mids = new Set([...items.flatMap(i => i.record.media.map(m => String(m.id))), ...this.state.attachments.map(String)]);
       const mediaPaths = { ...this.state.mediaPaths };
@@ -124,6 +129,11 @@ class SiteClient {
   }
   async receipt(op, result, epoch) {
     if (!this.current(epoch)) return;
+    const formal = op.kind === 'send' && /^(落实|解决|关闭|重新处理)事项\s*([1-9]\d*)(?=方案|\s*\n结论[：:]|[：:])/.exec(op.body.text);
+    if (formal && (!result || result.issueId !== formal[2] || !/^[1-9]\d*$/.test(String(result.lifecycleId))
+      || !/^[1-9]\d*$/.test(String(result.messageId)) || !/^[1-9]\d*$/.test(String(result.conversationId))
+      || !Number.isSafeInteger(result.lifecycleRevision) || result.lifecycleRevision !== Number(op.body.versions?.resolutions?.[formal[2]] || 0) + 1
+      || formal[1] !== '重新处理' && !/^[1-9]\d*$/.test(String(result.evidenceId)))) throw { code: 'invalid_operation_receipt' };
     this.storage.remove(this.storageKey);
     if (op.kind === 'upload') { this.set({ attachments: [...new Set([...this.state.attachments, String(result.id)])] }); this.saveDraft(); }
     if (op.kind === 'photo-remove') { this.set({ attachments: this.state.attachments.filter(id => id !== String(result.id)) }); this.saveDraft(); }
@@ -140,7 +150,12 @@ class SiteClient {
       if (!this.current(epoch)) return;
       if (r.data.found) await this.receipt(op, r.data.result, epoch);
       else { this.set({ busy: false }); await this.perform(op, epoch); }
-    } catch (e) { if (this.current(epoch)) { this.set({ error: errorText(e) }); if ([401,403,404].includes(e.statusCode)) { this.clean(); this.set({ fatal: true, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '' }); } } }
+    } catch (e) { if (this.current(epoch)) {
+      if (e.statusCode === 409 && ['context_changed','version_conflict'].includes(e.error || e.code)) {
+        this.storage.remove(this.storageKey); this.set({ pending: null }); await this.load(false, epoch);
+      }
+      this.set({ error: errorText(e) }); if ([401,403,404].includes(e.statusCode)) { this.clean(); this.set({ fatal: true, items: [], mediaPaths: {}, project: null, rooms: [], draft: '', attachments: [], sheet: '' }); }
+    } }
     finally { if (this.current(epoch)) this.set({ busy: false }); }
   }
   send() {
