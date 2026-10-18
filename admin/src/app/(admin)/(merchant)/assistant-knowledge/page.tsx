@@ -15,7 +15,11 @@ const HandoffPanel = lazy(() => import('@/components/assistant/handoff-panel').t
 const KnowledgeOperationsPanel = lazy(() => import('@/components/assistant/knowledge-operations').then(module => ({ default: module.KnowledgeOperationsPanel })));
 
 function KnowledgeWorkbench({ canHandoff, canUsage }: { canHandoff: boolean; canUsage:boolean }) {
-  const [tab, setTab] = useState(() => typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('preview') ? 'preview' : 'knowledge');
+  const [tab, setTab] = useState(() => {
+    if (typeof window === 'undefined') return 'knowledge';
+    const query = new URLSearchParams(window.location.search);
+    return query.has('knowledgeBatch') ? 'operations' : query.has('preview') ? 'preview' : 'knowledge';
+  });
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [hasMore, setHasMore] = useState(false);

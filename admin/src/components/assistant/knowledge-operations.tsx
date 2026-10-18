@@ -1,9 +1,10 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Collapse, Descriptions, Drawer, Empty, Form, Input, List, Select, Skeleton, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Collapse, Descriptions, Drawer, Empty, Form, Input, List, Popconfirm, Select, Skeleton, Space, Table, Tag, Typography } from 'antd';
 import { notify } from '@/components/admin/operation-feedback';
 import { AssistantMutations, assistantError, assistantRequest, formatTime, statusLabels } from './client';
 import { RetrievalDiagnostics } from './retrieval-diagnostics';
+import { KnowledgeBatches } from './knowledge-batches';
 import type { KnowledgeExpectation } from '@/lib/assistant/knowledge/evaluation-check';
 import type {MessageContent} from '@/lib/assistant/contracts';
 type Case={id:string;title:string;question:string;expectation:KnowledgeExpectation;version:number;revision:number;gap_status:string;gap_note:string};
@@ -23,14 +24,18 @@ export function KnowledgeOperationsPanel({canUsage}:{canUsage:boolean}) {
   const [evaluation,setEvaluation]=useState<Evaluation|null>(null),[evaluationId,setEvaluationId]=useState<string|null>(null),[evaluationError,setEvaluationError]=useState(''),[note,setNote]=useState('');
   const [evaluationReload,setEvaluationReload]=useState(0),[reloadedQuestion,setReloadedQuestion]=useState<string|null>(null);
   const [usage,setUsage]=useState<Usage>(),[usageError,setUsageError]=useState('');
+  const [batchSelection,setBatchSelection]=useState<string[]>([]);
   const [form]=Form.useForm();const mutations=useRef(new AssistantMutations()),lock=useRef(false),selection=useRef<string|null>(null);
   const load=useCallback(async(before?:string,signal?:AbortSignal)=>{
+    if(!before)setBatchSelection([]);
     setLoading(true);setError('');
     try{const [list,h]=await Promise.all([assistantRequest<{items:Case[];nextCursor:string|null}>(base+'cases'+(before?'?beforeId='+before:''),{signal}),assistantRequest<Health>(base+'health',{signal})]);
       if(signal?.aborted)return;setItems(prev=>before?[...prev,...list.items]:list.items);setCursor(list.nextCursor);setHealth(h);
     }catch(e){if(!signal?.aborted){setError(assistantError(e));setItems([]);setHealth(null);}}
     finally{if(!signal?.aborted)setLoading(false);}
   },[]);
+  const reloadBatchCases=useCallback(()=>{setBatchSelection([]);void load();},[load]);
+  const clearBatchSelection=useCallback(()=>setBatchSelection([]),[]);
   useEffect(()=>{const c=new AbortController();void load(undefined,c.signal);return()=>c.abort();},[load]);
   useEffect(()=>{
     if(!evaluationId)return;const c=new AbortController();let timer:ReturnType<typeof setTimeout>;
@@ -64,12 +69,27 @@ export function KnowledgeOperationsPanel({canUsage}:{canUsage:boolean}) {
     setSelected(row);setEvaluation(await assistantRequest<Evaluation>(base+'evaluations/'+evaluation.id));setNote('');
   },outcome==='accepted'?'本版核对结果已保存':'缺口已保留，修订后可复跑');
   const sourceOptions=(health?.sources||[]).map(s=>({value:s.id,label:`${s.title} · ${s.audience==='customer_public'?'客户可见':'内部'} · ${statusLabels[s.status]||s.status}`}));
+  const openBatchEvaluation=async(caseId:string,id:string)=>{
+    try{const row=await assistantRequest<Case>(base+'cases/'+caseId);await select(row);if(selection.current===row.id){setEvaluationId(id);setEvaluationReload(value=>value+1);}}
+    catch(error){setError(assistantError(error));notify.error(assistantError(error));}
+  };
   const expectedKind=Form.useWatch('kind',form);
+  const cancelEvaluation=()=>operate(async()=>{
+    if(!evaluation)return;
+    await mutations.current.write(base+`evaluations/${evaluation.id}/cancel`,{});
+    setEvaluation(null);setEvaluationReload(n=>n+1);
+  },'已核对原次取消请求，请以重新读取的执行状态和用量为准');
   return <Space direction="vertical" size={20} style={{width:'100%'}}>
     <Alert type="info" showIcon message="固定问题，修订后复跑同题" description="问题由管理者整理，企业内共享；每次复跑固定当前修订及已发布来源版本，沿用仅本人可见的管理员试问和原Worker。召回、入选、引用检查通过后，仍需核对回答的专业含义；不会自动生成施工事项或企业规则。"/>
     {error&&<Alert type="error" showIcon message={error} action={<Button onClick={()=>void load()}>重新读取</Button>}/>}
-    <Space wrap><Button type="primary" disabled={busy} onClick={()=>edit('new')}>新增问题/缺口</Button><Button loading={loading} disabled={busy} onClick={()=>void load()}>刷新</Button></Space>
-    <Table<Case> rowKey="id" loading={loading} dataSource={items} pagination={false} scroll={{x:850}} locale={{emptyText:<Empty description="暂无问题集，先记录需要反复核对的真实业务问法。"/>}} columns={[
+    <Space wrap><Button type="primary" disabled={busy} onClick={()=>edit('new')}>新增问题/缺口</Button><Button loading={loading} disabled={busy} onClick={()=>void load()}>刷新</Button>
+      <KnowledgeBatches selected={batchSelection.flatMap(id=>{const item=items.find(row=>row.id===id);return item?[{id:item.id,version:item.version}]:[];})} disabled={busy||loading}
+        onPrepared={clearBatchSelection} onReloadCases={reloadBatchCases} onOpenEvaluation={openBatchEvaluation}/>
+    </Space>
+    <Table<Case> rowKey="id" loading={loading} dataSource={items} pagination={false} scroll={{x:850}} rowSelection={{selectedRowKeys:batchSelection,
+      onChange:keys=>{if(keys.length>50){notify.error('一次最多选择50道问题');return;}setBatchSelection(keys.map(String));},
+      getCheckboxProps:row=>({disabled:busy||loading||(batchSelection.length>=50&&!batchSelection.includes(row.id))})}}
+      locale={{emptyText:<Empty description="暂无问题集，先记录需要反复核对的真实业务问法。"/>}} columns={[
       {title:'问题',dataIndex:'title',render:(_,r)=><Button type="link" onClick={()=>void select(r)}>{r.title}</Button>},
       {title:'问题修订',dataIndex:'revision',width:100},{title:'缺口状态',dataIndex:'gap_status',render:v=><Tag>{gapLabel[v]||v}</Tag>},
       {title:'预期',dataIndex:'expectation',render:v=>v.kind==='grounded'?'有依据回答':'明确依据不足'},
@@ -112,6 +132,7 @@ export function KnowledgeOperationsPanel({canUsage}:{canUsage:boolean}) {
         {evaluation?.available&&<>
           <Tag>{statusLabels[evaluation.status||'']||evaluation.status}</Tag>
           {evaluation.status==='dispatch_pending'&&<Button loading={busy} onClick={()=>void operate(async()=>{await mutations.current.write(base+`evaluations/${evaluation.id}/resume`,{});setEvaluation(null);setEvaluationReload(n=>n+1);},'已用原键恢复复跑')}>恢复原次执行</Button>}
+          {['queued','running'].includes(evaluation.status||'')&&<Popconfirm title="取消本次执行？" description="已提交的调用仍可能产生用量，取消后不会自动重跑。" disabled={busy} onConfirm={cancelEvaluation}><Button disabled={busy}>取消原次执行</Button></Popconfirm>}
           {evaluation.run?.errorCode&&<Alert type="error" message={assistantError(new Error(evaluation.run.errorCode))}/>}
           {evaluation.structural&&<Alert type={evaluation.structural.passed?'success':'warning'} message={evaluation.structural.passed?'来源结构检查通过，专业含义待核对':'来源结构检查未通过或仍在执行'} description={`未召回 ${evaluation.structural.missingRecall.length} · 未入选 ${evaluation.structural.missingSelected.length} · 未引用 ${evaluation.structural.missingCitations.length} · 禁止来源 ${evaluation.structural.forbidden.length}`}/>}
           {evaluation.answer&&<Typography.Paragraph style={{whiteSpace:'pre-wrap'}}>{evaluation.answer.content.blocks.filter(b=>b.type==='text').map(b=>b.text).join('\n\n')||'请打开本人试问核对结构回答。'}</Typography.Paragraph>}

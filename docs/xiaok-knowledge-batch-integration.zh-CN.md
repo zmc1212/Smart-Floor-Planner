@@ -1,6 +1,6 @@
 # KB-4 批量回归：知识线实现与集成交接
 
-状态：**Limited，内部能力已实现，尚未接入 API/UI。** 本文是知识专项线的可审查集成提案，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
+状态：**Limited；知识专属批次准备、本人历史/进度、逐项原次恢复及已关联 run 取消已接入 Admin/API，自动批量执行仍待集成。** 当前增量的实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
 ## 实现边界
 
@@ -14,7 +14,7 @@
 
 ## 必须由业务集成人接入的端口
 
-`EvaluationBatchPort` 是明确依赖，当前没有生产适配器或路由。任何调用方都不能用浏览器状态或模型输出实现这些保证。
+`EvaluationBatchPort` 是自动协调器的明确依赖，当前没有生产适配器或自动执行路由。已授权的知识管理界面单独提供“保存批次—本人回读—手动执行原次”，不会调用协调器。任何调用方都不能用浏览器状态或模型输出实现以下自动执行保证。
 
 | 端口 | 必须满足的合同 |
 | --- | --- |
@@ -25,7 +25,25 @@
 
 执行配置的 `executionRevision` 必须由服务端使用白名单字段生成 SHA256，包括实际执行模式、供应商身份、model/revision、实际 prompt/version 和相关生成配置，逐次核对；不包含凭证。现有管理者回归走知识试问，**不是客户 C01 Agent**。不能把其 preview 配置印成 Agent prompt/model 版本，也不能把后台摘录输出算作实况语义回归。需要 Agent 路径时，版本固定及端口适配归业务集成人，本线未改共享运行时。
 
-同一协调器实例拒绝重叠 advance；同一 manifest 的跨进程/多标签推进、持久取消意图及取消与尚未派发项之间的原子围栏仍需集成人用现有机制串行接入。未接入前不能公开批量 API/UI 或声称分布式并发/持久取消已经通过；不另建队列、schema、迁移或租约来绕过该依赖。
+同一协调器实例拒绝重叠 advance；同一 manifest 的跨进程/多标签推进、持久取消意图及取消与尚未派发项之间的原子围栏仍需集成人用现有机制串行接入。在此之前不暴露自动批量派发，不宣称分布式并发或持久整批取消验收通过。独立管理 API/UI 仅准备快照、回读及显式逐项操作；准备回执内的 profile/policy hash 不是实际模型/prompt 固定承诺。不另建队列、schema、迁移或租约来绕过该依赖。
+
+## 知识专属 Admin/API 合同
+
+设计源为双语 Admin UI refactor 合同的 `/assistant-knowledge` 当前行、原 `KnowledgeOperationsPanel`、Ant Design/Admin Pro、720px Drawer 与共享操作反馈。该行允许问题/恢复工作流变化时重开；没有引入新视觉方向。新增批次选择、本人批次 Drawer 和 `?knowledgeBatch=<原键>` 重进入口，逐题结果仍复用原 Drawer，不在批次另存或回传答案。
+
+| 接口 | 行为及权限 |
+| --- | --- |
+| `POST /api/assistant/knowledge/operations/batches` | body 仅 `cases:[{caseId,expectedVersion}]`，1–50 道；原 `Idempotency-Key` 原子保存本人原评测快照，不派发模型/任务。 |
+| `GET .../batches?limit&beforeId` | 从原操作回执分页读取本人历史；数字游标精确传递，只返回批次原键、时间、题数与准备 epoch，以及服务器解析的 enterprise/admin scope。 |
+| `GET .../batches/:batchId` | 从原评测/run/额度读取元数据进度，重验本人回执、不可变 snapshot hash、case 修订、epoch、当前 profile/hash/policy、有效来源及原私有会话参与关系。无问题正文、答案、诊断、引用正文、核对备注或 usage 明细，费用未知。 |
+| `POST .../evaluations/:id/resume` | 复用既有接口与服务器原 create/send keys。已有 run 时只回读原 ID；不创建新重试 run，已取消或不确定的原次不会被此操作重跑。 |
+| `POST .../evaluations/:id/cancel` | body 仅 `{}`；只取消已关联本人私有预览的 run，由 `ConversationService.run(...,'cancel',原键)` 再验身份并更新原 job/reservation。未关联 run 时 409，不派发以“发现”run，不保存待执行项取消围栏。来源失效不妨碍所有者停止已有调用，不返回旧来源内容；参与/管理权限撤销仍拒绝。 |
+
+以上沿用 `withTenantRoute`、知识管理继承及本人私有边界：`enterprise_admin` 需当前显式菜单权限；`admin/super_admin` 在明确所选企业内继承，不要求成为员工或项目成员。客户端不提供 tenant/admin/run ID 权威，不能凭另一人的 ID 读取或取消。聊天用量独立授权不变。响应 `no-store`，字段严格限定，HTTP body 保持 24KB 上限。
+
+客户端仅将待核对准备请求的版本、服务器 scope、原键和 case ID/expectedVersion 存入按 enterprise/admin 分隔的 `sessionStorage`。先保存再发送，丢失回执后刷新仍用同键同载荷核对，已知拒绝清除当前待核对项；不同选题不能覆盖未决请求。存储受限时同实例仍保留原键，持久重进以服务器本人历史为准。浏览器存储不是授权或任务真相源；资料/问题/配置变化或权限错误后清除旧进度，不缓存答案。
+
+取消保留原共享语义：派发前释放预留，已提交边界后保留 `reconciling`，未知费用不填零。终态竞争可能返回原已完成状态，界面重新读取。不提供整批取消、持久暂停、自动并发/调度、未知调用重试或费用核清。
 
 ## 状态与恢复
 
@@ -41,13 +59,15 @@
 
 ## 共享文档与界面集成边界
 
-本线按交接不改共享双语合同/模块清单、Agent、队列、schema、迁移、引用权限或原生 UI。当前路由/API/菜单/权限及可见流程未改变；现有清单“逐题运营已交付、批量执行待接续”仍准确。本文双语记录新增内部数据/执行合同；不是一个已交付用户阶段。
+本线按交接不改共享双语合同/模块清单、Agent、队列、schema、迁移、引用权限或原生 UI。只修改知识专属运营服务/API、Admin 管理组件与页面入口、相邻 DTO/客户端恢复、回归及 runner；不修改共用 `components/assistant/client.ts`。原工作区对所改既有知识文件自基线无提交或未提交差异。新增接口及可见流程已超出旧清单的逐题描述，须由单一集成人合并时同步以下当前记录，本线不抢写共享文件。
 
 集成人接入时，应替换双语后台清单中现有 KB-4 当前段落，并更新二期合同的同一个 KB-4 记录，概括：
 
-> 内部批量准备已原子保存原评测身份，限定协调层复用原试问/run/幂等与费用协议；逐项进度、局部并发及取消/恢复端口已有离线验证。批量 API/UI、跨进程围栏、实际配置固定及客户 Agent/原生复验仍待接入，整体 Limited。
+> KB-4 继续 Limited。原问题集新增 1–50 题原子准备、服务器本人批次分页/元数据进度及批次链接重进；逐项恢复原 evaluation/create/send keys，已关联本人私有 run 可取消，沿用原 job/额度未知费用协议。沿用所选企业三类管理角色及 Ant Design/Admin Pro/720px Drawer/共享反馈，不新增 schema、队列或 Mini 布局。自动批量派发、执行模型/prompt 固定、跨进程取消围栏及客户 Agent/原生复验仍待集成，手动逐项管理不等于完整批量调度。
 
-真正接入后再按事实替换待接入项，补现有 Ant Design/Admin Pro/共享反馈流程、服务写入/重进/权限/异常验证，以及受影响 C01 引用/重进回归。不得把本文作为新的视觉方案或自动升级当前清单状态。
+单一集成人应在双语后台清单 KB-4 当前段及二期合同 KB-4 同一记录写入上述范围与实际证据；后台 UI refactor 的 `/assistant-knowledge` 单行补“批次选择/本人进度、原键恢复、已关联 run 取消”，保留原路由/API/权限边界与当前浏览器证据，不附加历史行。小程序清单/恢复账本无本轮运行界面变化，不升级状态。本文不是新视觉方案、未执行验收的证明或生产授权。
+
+具体集成依赖：① 服务端实际执行模式/provider/model revision/prompt/generation settings 固定及可验证 executionRevision；② 沿原机制串行化跨进程/多标签派发与持久取消意图；③ 真正 `EvaluationBatchPort` 适配器及取消/未知结果/并发端到端回归；④ 受影响的客户 C01/原生引用重进复验。当前知识管理子流程不依赖业务 Agent 改造，其余只提交接口提案，不越界修改共享 runtime。
 
 ## 验证与复跑
 
@@ -61,7 +81,31 @@ node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973be
 
 第一条只跑纯离线测试及既有结构/上下文/文件定位单元，不读数据库。第二条先成功持有 `lockAssistantAcceptance` 的整套共享锁，强制批准的 `55432/xiaok_embedding_eval`、非 superuser/non-BYPASSRLS 及空闲队列，才运行知识运营服务回归；不启动独立 Worker，沿原测试驱动既有工作函数。锁失败不重置夹具、不清队列。只使用 `synthetic-kb4-<UUID>` 企业/用户及测试专用问题，清理限定为本套 fixture IDs。读取既有环境及隔离连接文件，不复制/新增凭证。
 
-本轮重新执行相关离线检查：**41/41 通过、0 失败、0 跳过**，包括协调用例 27 项及既有单元 14 项；被测源码 hash 稳定。相关六文件 ESLint 零错误/警告。同一源码程序类型诊断与基线均为 **287 项，新增 0**，仍不是全项目类型零错误。日志和 JSON 位于 worktree 的 `tmp/knowledge-batch/fixture-fix/`。
+### 当前 Admin/API 增量
+
+截至当前检查，离线 **48/48 通过、0 失败/跳过/取消**（原 41 项加 7 项客户端原键恢复单元）；11 个相关代码/runner 文件 ESLint **0 错误、0 警告**；同一源码程序类型诊断 **287→287，新增 0**，不是全仓零类型错误。当前证据在 `tmp/knowledge-batch/admin-entry/{unit.log,unit-status.json,lint-status.json,type-comparison.json}`。
+
+最终服务回归重新执行 **25/25 通过、0 失败/跳过/取消**：原 14 项运营加新增 11 项批次 HTTP/进度/原次取消，用时 **363.06 秒**，退出 0，runner 被测源码前后 hash 一致。初次锁忙时退出、0 项执行；首轮 24/24 通过后，最终复查以只读常量 VALUES 复现文本输出别名造成的跨位数排序错误，改为 `order by r.id` 原 bigint 列，并增加精确游标回归，未修改 schema。原 24 项结果保留在 `admin-entry/service*`，不当作新增 25 项或最终排序修复的证据。
+
+最终以 `--lock-wait-ms 1800000` 等待正常释放，于 17:46 UTC 持锁执行，不接管锁或清理他人数据。锁后端 `472717`、角色 `sfp_app`、应用名 `knowledge_batch_final_cursor_20261018`，保持非 superuser/non-BYPASSRLS、批准目标及空闲队列前置检查，无独立 Worker。最终日志、源码 hash 和状态在 `admin-entry/final/{service.log,service-status.json,service-lock.json}`。
+
+新增三类管理继承、另一个所有者/跨企业拒绝、严格输入/原子回滚、同键重进、真实 send 丢回执后的恢复、派发前取消释放预留、模拟“已提交边界”后保留 reconciling、私有参与撤销及来源有效期失效均通过。有效期在草稿阶段设定，等待数据库真实时钟到期，不修改已发布版本或禁用其不可变触发器。提交边界标记为明确合成场景，不冒充外部模型实际调用。
+
+最终清理前完整审计：真实文档 Embedding **4 次/150 已知输入 token**，查询 Embedding **5 次/200 token**，合计 **9 次/350 token**，Embedding 输入未知次数 0；另有 4 次 chunk，输入用量 4 次未知，不混入 Embedding 数。费用 `null`；最终服务夹具清理前 `reconciling=6/released=2`，其中一笔 reconciling 来自明确合成的提交边界标记。首轮 24 项和最终 25 项两轮服务累计为 **18 次真实 Embedding/700 token**、8 次输入未知的 chunk，服务预留合计 `reconciling=12/released=4`；分轮统计独立保存，不把前次调用藏在重跑后。
+
+文字模型为确定性模拟，不是配置实模或 C01 语义验收。最终服务企业 `3476–3479`、管理员 `6840–6852`，首轮服务及全部浏览器尝试也只按各自精确 fixture IDs 清理。收尾只读审计覆盖本增量累计 **15 个合成企业/40 名管理员**，全部 107 张带 enterprise_id 的 app 基础表均无本线记录，企业/管理员无遗留，本线锁均释放。证据：`admin-entry/{embedding-audit.json,embedding-summary.json,cleanup-audit.json,numeric-cursor-control.json}`。
+
+用户已明确授权知识线使用 `localhost:3007`，原业务 `3006` 保持。最终浏览器流程在同一共享锁内，以既有 **Edge 155.0.4283.62 / Playwright**、正常合成账号登录和真实写入完成 **9 组检查**，退出 0、页面脚本错误 0、产品源码前后 hash 一致：准备提交真实成功后故意丢响应，刷新后同键/同载荷恢复；原 evaluation ID 不变；逐项原次执行及派发前取消；批次链接重进；读取精确原评测 ID 并等待原 Drawer 的恢复操作出现；另一授权管理员拒绝访问；真实改题后旧项目收起操作。最终 UI 企业 `3480`、管理员 `6853/6854`；无文字模型或 Embedding 调用，原预留为 released。只关闭本轮自建 Next 进程树（最终根 PID `217656`），未操作原服务或用户浏览器会话；数据、进程、锁均清理。
+
+以现有 Admin 源在 **1440×1000** 核对：主问题表/选题入口、本人批次、取消及资料变化状态、原同题结果 Drawer；测得批次 Drawer 宽 **720px**，未另建视觉体系。`admin-entry/ui/{operations-list.png,prepared.png,cancelled.png,changed-case.png,original-evaluation.png,ui-status.json,browser-progress.json}` 为最终证据。凭据只在内存及进程管道中使用，不保存密码、token 或会话文件。窄屏和用户原 Chrome 会话未因此升级验收。
+
+早期尝试完整保留于 `ui/attempt-1` 至 `attempt-6`：第 1 次 Windows 文本管道编码失败，显式 UTF-8 后修复；第 2/3 次证实 **Chrome 101 缺少 AbortSignal.timeout/any**，现有共享 `components/assistant/client.ts` 在发请求前报错，未修复、未注入 polyfill，也不计通过；第 4 次脚本改题漏带幂等键，被接口正确 422 拒绝，补键后恢复；第 5 次 9 组通过但原结果截图过早，第 6 次补强后页面 9 组通过但与排序修复时间重叠、源码 hash 不稳定，整体退出 1。最终另跑的稳定流程才计入上述当前结果。第 1 次默认进程清理失败后，仅本线 PID `91204` 及其子进程通过单次命令提权清理；无持久权限变更，后续自建进程均自动清理。
+
+Chrome 101 的兼容问题归共享客户端单一维护者：如需支持该浏览器，应在原 `client.ts` 提供 AbortController 超时/外部取消回退并保留既有未决请求、幂等键和错误分类语义，再做跨浏览器回归。知识线没有复制请求体系或改共享文件。整体仍 **Limited**；自动派发/实际执行配置固定/持久取消围栏、客户 Agent/原生及生产发布均未因此完成。
+
+### 已验证的前一稳定检查点 `14d3837b`
+
+前一检查点执行相关离线检查：**41/41 通过、0 失败、0 跳过**，包括协调用例 27 项及既有单元 14 项；被测源码 hash 稳定。相关六文件 ESLint 零错误/警告。同一源码程序类型诊断与基线均为 **287 项，新增 0**，仍不是全项目类型零错误。日志和 JSON 位于 worktree 的 `tmp/knowledge-batch/fixture-fix/`。
 
 已先核对文件归属：`admin/src/db/__tests__/assistant-knowledge-operations.test.ts` 是知识运营专属回归，第 14 项由本线 `782eb8ac` 新增；业务原工作区自 `d0238543` 起对该文件没有提交或未提交差异，交接的共享单一维护清单未把该知识测试列为共享 Agent/权限文件。本轮仅将夹具 `menu_permissions` 改为显式 `ARRAY['assistant-knowledge']::text[]` / `ARRAY[]::text[]`，保留所有权限断言。同文件补清理前的完整计量，`finally` 仍保证按本线 fixture IDs 清理；产品实现、API/UI、共享 runtime/队列/schema/权限均未改。
 
@@ -83,7 +127,7 @@ node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973be
 
 当前证据：`fixture-fix/{ownership.json,preparation.json,unit.log,unit-status.json,lint-status.json,type-comparison.json,service-final.log,service-final-status.json,embedding-audit.json,embedding-summary.json,cleanup-audit.json,owned-processes.json,process-cleanup.json,final-source-check.json}`。归档包装层曾因未规范化的 `admin/../` 路径报错，已从完整主日志/JSON恢复，见 `artifact-recovery.json`；不是额外失败或通过的测试用例。
 
-服务回归使用真实隔离 PostgreSQL/RLS 和既有真实 Embedding，文字生成模型为确定性模拟。离线端口的权限/版本场景仍为模拟，不能替代数据库与客户语义验收。未运行配置实模文字回答、C01 Agent/原生语义、完整构建、Chrome、Stable 原生、真机/BLE、生产容量/恢复或发布验收。批量 API/UI、执行版本固定及跨进程取消围栏仍待集成人接入，整体保持 **Limited**；未自动合并或部署。
+前一稳定检查点的服务回归使用真实隔离 PostgreSQL/RLS 和既有真实 Embedding，文字生成模型为确定性模拟。离线端口权限/版本仍为模拟，不能替代数据库与客户语义验收。当时没有批次 API/UI；当前手动管理和浏览器结果以上文增量证据为准，不复用旧通过数。执行版本固定及跨进程取消围栏仍待集成；本增量未补配置实模文字回答、C01 Agent/原生语义、完整构建、Stable 原生、真机/BLE、生产容量/恢复或发布验收。整体保持 **Limited**，未合并或部署。
 
 ## 计划来源保全
 

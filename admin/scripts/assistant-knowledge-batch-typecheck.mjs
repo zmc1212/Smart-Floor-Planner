@@ -7,8 +7,13 @@ const root = path.resolve(import.meta.dirname, '..');
 const base = process.argv[2] || 'd023854313842ef447efb2973beb540d1511e125';
 if (!/^[a-f0-9]{8,40}$/.test(base)) throw Error('Expected an explicit baseline commit hash');
 const norm = file => path.resolve(file).replaceAll('\\', '/');
-const changed = ['src/lib/assistant/knowledge/operations.ts', 'src/db/__tests__/assistant-knowledge-operations.test.ts'];
-const added = new Set(['src/lib/assistant/knowledge/evaluation-batch.ts', 'src/lib/assistant/__tests__/knowledge-evaluation-batch.test.ts'].map(file => norm(root + '/' + file)));
+const changed = ['src/lib/assistant/knowledge/operations.ts', 'src/db/__tests__/assistant-knowledge-operations.test.ts',
+  'src/components/assistant/knowledge-operations.tsx', 'src/app/api/assistant/knowledge/operations/[...path]/route.ts',
+  'src/app/(admin)/(merchant)/assistant-knowledge/page.tsx'];
+const added = new Set(['src/lib/assistant/knowledge/evaluation-batch.ts', 'src/lib/assistant/__tests__/knowledge-evaluation-batch.test.ts',
+  'src/lib/assistant/knowledge/operation-batch-view.ts', 'src/components/assistant/knowledge-batch-client.ts',
+  'src/components/assistant/knowledge-batches.tsx', 'src/lib/assistant/__tests__/knowledge-batch-client.test.ts',
+  'src/db/__tests__/assistant-knowledge-batches.test.ts'].map(file => norm(root + '/' + file)));
 const overrides = new Map(changed.map(file => [norm(root + '/' + file), cp.execFileSync('git',
   ['-C', path.resolve(root, '..'), 'show', base + ':admin/' + file], { encoding: 'utf8', windowsHide: true })]));
 const config = ts.readConfigFile(root + '/tsconfig.json', ts.sys.readFile).config;
@@ -38,7 +43,7 @@ function difference(left, right) {
     return false;
   });
 }
-const result = { base, scope: 'Same source program; only two changed files restored and two new TS files excluded for baseline; generated Next declarations excluded in both',
+const result = { base, scope: 'Same source program; knowledge-owned changed files restored and new knowledge TS files excluded for baseline; generated Next declarations excluded in both', changed, addedFiles: [...added].map(file => file.replace(norm(root) + '/', '')),
   before: before.length, after: after.length, added: difference(after, before), removed: difference(before, after) };
 const output = path.resolve(root, '../tmp/knowledge-batch');
 fs.mkdirSync(output, { recursive: true });
