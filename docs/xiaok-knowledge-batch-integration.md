@@ -2,6 +2,20 @@
 
 Status: **Limited; retrieval/manual batch management and shared-port integration have bounded evidence; no automatic production batch entry is enabled, and customer model semantics remain unaccepted.** Actual verification is recorded below; code existence is not full-stage acceptance. This is a reviewable knowledge-line handoff, not a replacement for the [phase-two contract](./xiaok-assistant-phase-2.md), [admin inventory](./admin-system-modules.md), or the user's local enterprise-knowledge plans. Baseline: `d023854313842ef447efb2973beb540d1511e125`. The original business worktree's branch and product source are not changed.
 
+<!-- knowledge-semantic-followup:start -->
+
+## Bounded live follow-up: preparation frozen, execution pending
+
+The baseline is stable `349cb8f2f04e059bc413417b2093c34f04513541`; the remote shared head is still `a579e512`. Changes are limited to knowledge acceptance tooling, with no product/UI/model-configuration/permission/schema/migration change or new runtime inventory behavior. `assistant-knowledge-semantics-followup.ts` and dedicated units accompany three mutually exclusive wrapper modes: `--followup --preflight`, `--followup --budget-only`, and `--live --followup`. Unknown/duplicate arguments, mixed paid/nonpaid modes and reused output directories fail closed. Output stays in this worktree's `tmp/`; the standing database lock covers the whole suite, and the child verifies the exact lock session and application role.
+
+Read-only preflight confirms the existing `deepseek-flash`/tools configuration and credential availability, without fixtures or external calls. Historical `4242` was checked read-only: archive hash `b35c553ee8bc382e611c207346ba649a636d308910f1134d4e90af6e4c58dc7c` retains indeterminate and unknown attempt `1762`. Its old fixture is already cleaned; a missing current row does not establish known billing. Do not repeat `study-prerequisites` or replace its key. This follow-up selects only the previously unexecuted planned `registered-conflict`: four original knowledge documents plus the bound project's actual utilities stage/formal plan/missing point-plan context, **one scene, one round**. It observes both conflict attribution and full model-source preservation without adding engineering standards or invented site records.
+
+Existing limits remain 48,000 UTF-8 bytes, four model turns, 2,048 output tokens per turn and one format repair. Additional acceptance caps are five text calls, five chunk calls and nine Embedding calls (five indexed documents plus up to four queries), without new runtime turns or semantic retries. Fixture daily quotas remain 200 requests/12,000,000 tokens/1,000,000,000 cost micros; this is not an actual-fee estimate and unavailable cost stays `null`. First run a real-PostgreSQL later-turn oversize check with explicitly simulated HTTP: retain the earlier successful attempt's unknown billing, and require preparation failure before a new attempt/marker/HTTP. Only then run the live scene. Any new uncertain result is reread through its original send/run/reservation receipts, without resending; exact index/model/reservation receipts and unknown costs are audited before cleanup.
+
+New source-audit/paid-mode gate units pass **7/7**; five-file lint passes; same-program types against `349cb8f2` are **287→287, 0 added**. One initial missing test type import was corrected and its diagnostic evidence retained. Preflight evidence is `tmp/knowledge-semantic-followup/preflight-1/`, with unit/lint/type evidence beside it. These are not new live semantic passes; this current record will be replaced by actual calls, source-bound answer review and cleanup results. Overall **Limited**.
+
+<!-- knowledge-semantic-followup:end -->
+
 <!-- knowledge-seam-integration:start -->
 
 ## Knowledge entry integration and real two-process acceptance

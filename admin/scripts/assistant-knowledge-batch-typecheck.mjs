@@ -24,10 +24,12 @@ const addedCandidates = ['src/lib/assistant/knowledge/evaluation-batch.ts', 'src
   'src/lib/assistant/__tests__/knowledge-batch-execution-adapter.test.ts',
   'scripts/knowledge-batch-seam-acceptance/process.ts', 'scripts/knowledge-batch-seam-acceptance/offline-store.ts',
   'scripts/knowledge-batch-seam-acceptance/postgres-fixture.ts', 'scripts/knowledge-batch-seam-acceptance/driver.ts',
-  'scripts/knowledge-batch-seam-acceptance/types.ts', 'src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts'];
+  'scripts/knowledge-batch-seam-acceptance/types.ts', 'src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts',
+  'scripts/assistant-knowledge-semantics-followup.ts','src/lib/assistant/__tests__/knowledge-semantic-followup.test.ts'];
 const baselineFiles = new Set(cp.execFileSync('git', ['-C', path.resolve(root, '..'), 'ls-tree', '-r', '--name-only', base, '--',
   ...addedCandidates.map(file => 'admin/' + file)], { encoding: 'utf8', windowsHide: true }).trim().split('\n'));
 const added = new Set(addedCandidates.filter(file => !baselineFiles.has('admin/' + file)).map(file => norm(root + '/' + file)));
+changed.push(...['scripts/assistant-knowledge-semantics-live.ts'].filter(file=>baselineFiles.has('admin/'+file)));
 const overrides = new Map(changed.map(file => [norm(root + '/' + file), cp.execFileSync('git',
   ['-C', path.resolve(root, '..'), 'show', base + ':admin/' + file], { encoding: 'utf8', windowsHide: true })]));
 const config = ts.readConfigFile(root + '/tsconfig.json', ts.sys.readFile).config;

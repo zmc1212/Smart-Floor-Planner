@@ -2,6 +2,20 @@
 
 状态：**Limited；检索/手动批次管理和共享端口接线已有有界证据，未开放生产自动批量入口，客户实模语义仍未验收。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+<!-- knowledge-semantic-followup:start -->
+
+## 有界实模后续验收：准备已冻结，实际结果待执行
+
+以稳定 `349cb8f2f04e059bc413417b2093c34f04513541` 为基线，远端共享头复核仍为 `a579e512`。仅扩展知识专属验收工具，不改任何产品代码、UI、模型配置、权限、schema 或迁移，因此运行模块清单无新增行为影响。新增 `assistant-knowledge-semantics-followup.ts` 以及专属单元，原 live wrapper 增加互斥的 `--followup --preflight`、`--followup --budget-only`、`--live --followup`；未知/重复参数、混合付费/非付费模式及复用输出目录均拒绝。输出限定本 worktree 的 `tmp/`，整套仍持原共享数据库锁，子进程核验准确锁会话与应用角色。
+
+只读预检已确认既有 `deepseek-flash`/工具配置与凭据可用，未创建夹具或发外部请求。历史 `4242` 仅只读核对：原归档 hash `b35c553ee8bc382e611c207346ba649a636d308910f1134d4e90af6e4c58dc7c`，保留 indeterminate 和 attempt `1762` unknown；旧夹具已清理、当前行不存在不表示费用已知。不得重跑其 `study-prerequisites` 或用新键替代。本轮只选原计划中尚未执行的 `registered-conflict`，四份知识原文加绑定项目实际水电阶段/正式户型/点位资料缺项，**一个场景、一个回合**；这同时观察冲突双边引用与完整模型来源，不新增工程标准或虚构现场记录。
+
+沿既有 48,000 UTF-8 字节、4 模型轮、每轮最多 2,048 输出 token 及一次格式修复；附加验收请求上限为文本 5、chunk 5、Embedding 9（五文档索引加最多四次查询），不增加运行时轮次或自动语义重试。夹具沿原 200 requests/12,000,000 tokens/1,000,000,000 cost micros 日配额；它不是实际费用估算，费用未提供仍 `null`。先执行真实 PostgreSQL 的超预算后轮检查，HTTP 明确模拟：保留前轮已成功但费用未知的原 attempt，只允许本轮准备失败，禁止新增 attempt/标记/HTTP；通过后才执行上述实模场景。新的不确定结果须重读原 send 回执及 run/预留，不重发；清理前保留逐项索引/模型/预留回执和未知成本。
+
+新增来源审计/付费门控单元 **7/7**、5 文件 lint 通过，同程序类型以 `349cb8f2` 对照 **287→287，新增 0**；初版缺少一个测试类型导入的 1 项新增诊断已修正，证据保留。当前预检证据为 `tmp/knowledge-semantic-followup/preflight-1/`，单元/lint/type 证据同根。上述不计为新实模成功；实际调用、逐段原文语义审读与清理结果将替换本段当前记录。整体 **Limited**。
+
+<!-- knowledge-semantic-followup:end -->
+
 <!-- knowledge-seam-integration:start -->
 
 ## 知识入口集成与真实双进程验收
