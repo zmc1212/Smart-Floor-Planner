@@ -33,20 +33,43 @@ export class AssistantRequestError extends Error {
 export function assistantError(error: unknown) { return error instanceof Error ? error.message : '操作失败，请重试。'; }
 export function runIsActive(run: { status: string } | null | undefined) { return Boolean(run && ['queued', 'running'].includes(run.status)); }
 
+/** Keep the deadline through body reads without depending on newer AbortSignal statics. */
+function requestDeadline(caller?: AbortSignal | null) {
+  const controller = new AbortController();
+  const abortFromCaller = () => {
+    if (!controller.signal.aborted) controller.abort(caller?.reason);
+  };
+  if (caller?.aborted) abortFromCaller();
+  else caller?.addEventListener('abort', abortFromCaller, { once: true });
+  const timer = setTimeout(() => {
+    if (!controller.signal.aborted) controller.abort(new DOMException('Request timed out', 'TimeoutError'));
+  }, 30000);
+  return {
+    signal: controller.signal,
+    dispose() {
+      clearTimeout(timer);
+      caller?.removeEventListener('abort', abortFromCaller);
+    },
+  };
+}
+
 export async function assistantRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  let response: Response;
-  const timeout = AbortSignal.timeout(30000);
-  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
-  try { response = await fetch(`/api/assistant/${path}`, { ...init, signal, cache: 'no-store' }); }
-  catch (error) {
-    if (init.signal?.aborted) throw error;
-    throw new AssistantRequestError('network_unknown', 0, true);
+  const deadline = requestDeadline(init.signal);
+  try {
+    let response: Response;
+    try { response = await fetch(`/api/assistant/${path}`, { ...init, signal: deadline.signal, cache: 'no-store' }); }
+    catch (error) {
+      if (init.signal?.aborted) throw error;
+      throw new AssistantRequestError('network_unknown', 0, true);
+    }
+    let payload;
+    try { payload = await response.json(); }
+    catch { throw new AssistantRequestError('response_unknown', response.status, true); }
+    if (!response.ok || !payload.success) throw new AssistantRequestError(payload.code || payload.error || 'assistant_unavailable', response.status, response.status >= 500);
+    return payload.data as T;
+  } finally {
+    deadline.dispose();
   }
-  let payload;
-  try { payload = await response.json(); }
-  catch { throw new AssistantRequestError('response_unknown', response.status, true); }
-  if (!response.ok || !payload.success) throw new AssistantRequestError(payload.code || payload.error || 'assistant_unavailable', response.status, response.status >= 500);
-  return payload.data as T;
 }
 
 /** Keep the same key after a lost response. No transcript/credentials in browser storage. */

@@ -33,6 +33,7 @@ import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, sy
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
+import { assertAnswerContinuity, assertCorrectedUseCitation } from './answer-continuity';
 
 const needProperties = { room: { type: 'string' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，daylight记录采光，devices记录设备；独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释。返回memoryVersion。', parameters: {
@@ -245,17 +246,17 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     }); };
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], perception = false): Promise<ModelTurnOutput> => {
           const modelMessages = turn > 0 && !perception ? focusedSynthesisMessages(messages, String(initial.trigger.id)) : messages;
-          await heartbeat(lease); outcomeKnown = false;
+          await heartbeat(lease); outcomeKnown = true;
           const sequence = 1100 + turn * 10;
           // A completed provider response can be replayed after a worker crash; never re-dispatch a running/unknown attempt.
           const cached = await scoped(async tx => one(tx, sql`select status,private_checkpoint from app.assistant_run_steps
             where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`));
-          if (cached) { if (cached.status !== 'succeeded') fail('provider_outcome_unknown'); outcomeKnown = true; return cached.private_checkpoint as ModelTurnOutput; }
-          const beforeProviderCall = () => scoped(async tx => {
+          if (cached) { if (cached.status !== 'succeeded') { outcomeKnown = false; fail('provider_outcome_unknown'); } return cached.private_checkpoint as ModelTurnOutput; }
+          const beforeProviderCall = async () => { await scoped(async tx => {
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, promptVersion: agentPromptVersion, contextPolicy: modelMessages === messages ? 'conversation' : 'current-turn-sources-v4' })}::jsonb)`);
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, promptVersion: agentPromptVersion, contextPolicy: modelMessages === messages ? 'conversation' : 'current-turn-sources-v11' })}::jsonb)`);
             await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
-          });
+          }); outcomeKnown = false; };
           const injected = perception ? dependencies.vision : dependencies.model;
           const output = injected ? await (async () => {
             await beforeProviderCall();
@@ -611,6 +612,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (!business) {
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
         assertRecordedReply(text, readMemory(context.conversation.entry_snapshot), lease.runId, preferences.map(p => p.operationId));
+        const synthesis = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
+        assertAnswerContinuity({ kind: 'synthesis', segments: [{ basis: 'advice', text, citations: [] }] }, synthesis.sources);
+        assertCorrectedUseCitation({ kind: 'synthesis', segments: [{ basis: 'evidence', text, citations: [] }] }, synthesis.sources);
       }
       for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
       for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');

@@ -4,14 +4,14 @@
 <a id="当前p3bp4a客户更正与原事项接续"></a>
 ## 当前P3B/P4A：客户更正与原事项接续
 
-**限定实现，整体Limited。** 沿路线图3.1及PPT15/23/37/38，复用下文获权来源、精确正式版本与处理链。当前行为为v51；下文v43及更早执行记录只保留各自范围的历史证据。
+**限定实现，整体Limited。** 沿路线图3.1及PPT15/23/37/38，复用下文获权来源、精确正式版本与处理链。当前行为为v61；下文v43及更早执行记录只保留各自范围的历史证据。
 
 - 明确更正后紧接专业提问仍可调用`record_need`，服务端绑定实际当前消息/房间，拒绝假设和转述建议。原参数兼容，新增可选`additionalNeeds`最多三条，合计四个独立房间/字段；先核验全部原话及重复字段，再同事务保存记忆、自动草稿及对应原事项进展。四条原话不必耗尽四个模型轮次，任一条不合法则全部不写。首条操作键保持，附加条目用`:need:n`；已提交批次恢复不重复事实、进展或供应商调用。单条/重进也返回`savedFacts`，高版本回执优先于开轮旧记忆，不形成正式批准。
 - 存储的`NeedMemory`更正链仍是不可变原话记录。材料的need元数据携带字段/值/supersedes及客户表达身份。只读`qualifiedBy`限定兼容desk/other混写人数与位置的旧行，仅关联同咨询/房间、后续明确且当前有效的use更正，只限定人数；原话、桌型、靠窗、设备、其他房间均保留。仅使用当前获权原话，来源失效时关系不复活旧内容。更正来源不可用时保留无值interpretation屏蔽标识，不能回退旧人数；`NeedMemory.interpretations`及材料的`need.interpretation`为只读`{ factId, field: 'use', currentFactId }`，不可用时`currentFactId: null`，不由`applyNeedDelta`持久化。`query_followups`事项也经`availableNeedMemory`读取，不能从另一适配器带回失效值，不暴露不可用更正的值或来源ID。不是第二套记忆、正式变更或共享grant。其他复合字段增删、隐含更正和复杂多房屋/跨阶段冲突仍Limited。
   可用性继续沿用原消息及其run的工地来源依赖；本轮共享图撤回使同轮更正的既有依赖链失效，当前use按未知投影，原更正链仍保留。这不是客户明确撤回其人数更正的业务决定，未新增需求撤回入口。
 - 绑定房屋的`search_knowledge`现复用`queryNeedIssues`，将`synthesis.bound_followups.v1`与原材料、实际施工快照一起持久化，保留原咨询、稳定issueId/revision、真实负责人/等待对象及来源版本。显式和绑定路径共用缓存/恢复、每次模型调用、提交、历史及接续包守卫。需求补充、团队明确回传的现场事项与正式决定分别溯源；普通解释不新建/分派事项，也不批准、落实、解决、关闭或共享。
 - 事项模型来源按业务内容描述当前状态，正文不展示内部事项编号，ID/修订仍用于来源核对。当前用途、旧混合记忆、旧共享原话、团队图纸关联及精确正式决定不混用；旧版描述不覆盖后来客户更正，更正也不改该版决定或冒称送达内部负责人。靠窗意向已知则沿用，可量测坐标/检查记录缺失只说明本轮查询未知，不认定现实没有做。电话缺失不成为原聊天沟通前置；内部负责人姓名不证明客户已获直接拨号/私聊渠道。
-- `current-turn-sources-v4`只改变模型视图：保留标准工具配对、结果键、完整原文和全部权限/版本元数据；显式与绑定查询中完全相同的来源共用一份完整正文，并保留来源ID/结果键别名映射，不合并不同版本、决定、受众或元数据。材料汇总只说明范围/缺项，不再复制全部原文。触发消息之后的修复反馈按原顺序只保留一次，压缩重复协议文案，不删引文修正数据、不增加修复轮次或放宽守卫。持久检查点/快照、来源重验及原48,000 UTF-8文字字节/四轮上限不变。被拒入参离线复放49,133→40,698文字字节，原未知attempt不重试、不回写；本地预检失败不冒称供应商故障。
+- `current-turn-sources-v11`只改变模型视图：保留标准工具配对、结果键、完整原文和全部权限/版本元数据；显式与绑定查询中完全相同的来源共用一份完整正文，并保留来源ID/结果键别名映射，不合并不同版本、决定、受众或元数据。材料汇总只说明范围/缺项，不再复制全部原文。触发消息之后的修复反馈按原顺序只保留一次，压缩重复协议文案，不删引文修正数据、不增加修复轮次或放宽守卫。持久检查点/快照、来源重验及原48,000 UTF-8文字字节/四轮上限不变。上轮v51的被拒入参49,133→40,698文字字节属于历史投影证据；本轮v56/v9离线复放26条实际历史输入，39,716–46,297文字字节，全部通过原48,000上限。原未知attempt不重试、不回写；本地预检失败不冒称供应商故障。
 - 对“同意这一版不等于现场已经落实”等紧邻否定谓语，仅等义转为“不能据此确认处理结果”；另一个分句的正面完成断言、无据数字、越权来源ID及非原文引述仍由原守卫拒绝。该窄范围处理修正已记录的误拦，不增加重试或授权正式动作。
 - 带来源综合回答及普通自由回答现于最终提交事务共用真实保存回执守卫。出现“已记录/已按你的更正记为/更新为”等已覆盖的回执形式前，须有本轮实际记忆/偏好操作，旧事实与引文不能替代；假设性写入被拒后不能发布虚假保存回执。这是必要操作检查，不保证任意回执改写，也不证明每个自然语言字段/值或推断都已有语义支持。历史需求只说沿用原记录，已存私聊更正与未改正式版本分别表述；客户说明不说成图内观察，授权查询缺项不说成现实现场尚不能施工。
 
@@ -24,9 +24,68 @@
 
 无新API路由、schema/迁移、角色/菜单、Mini WXML/Less/素材/导航或正式v4写入。C01/C02/C05/U01沿唯一批准台账，S04仍为原PPT22/38，853×1844映射390×844，PPT23提供资料语境。无整屏切片、新设计或新增视觉还原声明。原生证据逐张登记精确route/stack、副屏/重新编译、逻辑视口和PNG编码尺寸；真机/真实微信/BLE/完整宿主光学/高屏/键盘/Chrome按实际证据未验。
 
-在`admin`复跑：`node scripts/assistant-continuity-acceptance.mjs`（隔离核心）、`--unit`、`--claims`（拒写后虚假回执反例）、`--regression`、`--agent-regression`（受影响Agent来源回归）、`--mini`；实模`node --import tsx scripts/assistant-continuity-development.ts --development`，Stable原生加`--native`；审计`node --import tsx scripts/assistant-continuity-audit.ts --development`；同源类型`node scripts/assistant-continuity-typecheck.mjs 9db99f40`。隔离用55432/xiaok_embedding_eval、共享锁及非superuser/non-BYPASSRLS角色；开发/原生用批准5432/smart_floor_planner、localhost:3006、原Worker及配置DeepSeek，二者串行。全部夹具明确合成；存量混合行的显式准备复用生产记忆校验，不计作AI或客户业务动作。实际次数、被拒原输出、装配/类型失败、逐轮语义审读、来源/用量及限制统一见[交接](./xiaok-assistant-handoff.zh-CN.md)与`tmp/xiaok-corrections-continuity/acceptance-summary.json`；结构或基本原生冒烟通过不等于完整专业/PPT或发布验收。
+在本独立worktree的`admin`复跑：先设置`XIAOK_ACCEPTANCE_ENV_ROOT`指向原仓库`admin`、`XIAOK_ACCEPTANCE_CONNECTION_FILE`指向现有隔离连接私有文件、`XIAOK_ACCEPTANCE_OUTPUT`指向本任务证据目录；原生另设`XIAOK_NATIVE_PROJECT_ROOT`指向既有Stable项目。`node scripts/assistant-continuity-acceptance.mjs`执行隔离核心，`--unit`/`--claims`仅对应子集，`--agent-regression`为不重叠受影响Agent回归，`--mini`为客户端确定性检查；`node scripts/assistant-continuity-isolated.mjs`执行实模，加`--native`为Stable；`node --import tsx scripts/assistant-continuity-audit.ts --isolated`只审计本任务合成夹具；`node scripts/assistant-continuity-typecheck.mjs d0238543`做同源类型对照。当前实模/原生全过程持有共享锁，只连批准55432/xiaok_embedding_eval并启动本工作区localhost:3007服务/Worker；开发主库仅只读复用既有模板/模型配置。原3006服务/Worker不变，全部夹具明确合成。实际次数、逐轮语义审读、失败、用量与限制见[交接](./xiaok-assistant-handoff.zh-CN.md)及`tmp/xiaok-fact-boundaries/acceptance-summary.json`，不以结构或基本冒烟代替完整专业/PPT及发布验收。
 
-实施前复核[LangGraph记忆/工具消息配对](https://docs.langchain.com/oss/javascript/langgraph/add-memory)、[维护中的工具/检查点测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[已关闭ToolMessage status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。沿已安装LangGraph有界循环和标准工具消息，PostgreSQL继续掌握租户/撤回/持久任务/用量/真人权威，不迁移框架或另建记忆库，不把DeepSeek特定行为泛化；配置模型的端到端回归仍须实际执行。
+- 本轮采用决策复核了[LangGraph原始状态与提示词分离](https://docs.langchain.com/oss/javascript/langgraph/thinking-in-langgraph)、[维护中的JS工具调用/消息关联测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭ToolMessage状态问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。历史问题不等于当前供应商缺陷；[DeepSeek工具调用](https://api-docs.deepseek.com/guides/tool_calls/)沿用标准调用/结果关联，[官方JSON空内容限制](https://api-docs.deepseek.com/guides/json_mode/)不解释本轮事实措辞缺陷，也不构成盲目重试授权；本轮仅在既有有界循环内计算来源阅读投影，租户/撤回/任务/用量/真人接续仍以Postgres为权威。不新增框架、checkpointer、模型协议或供应商专属恢复补丁。
+- 回答接续现仅从本轮获权原话派生模型阅读辅助`answerContext`：同房间当前用途、原话是否确实给出人数，以及不含失效值的未知用途标记。原来源ID、原文、权限/版本元数据保持；该辅助不是证据或保存回执。已有私聊更正直接沿用，不要求客户重复确认相同人数；未改正式版本的差异仍由团队核对。仅有“用于办公”等用途不代表人数已知，其他房间仍独立。
+- 最终综合解析器及普通自由回答提交守卫拒绝已观察的内部标签、对有效已更正需求的拒改措辞、已覆盖的重复人数确认、未在当句限定查询范围的量测依据缺项断言，以及来源不可用后推荐默认人数。团队/现场原件明确记载的缺项仍可按该原文归属引用。这些是窄范围回归守卫，不是通用语义评判；不改写正文、不增加语义修复或供应商轮次；不回写或追溯重判既有保存回答，其历史投影仍按原来源可用性规则；原引用/数字/动作/真实保存/撤回守卫保留。失败或unknown尝试及未知费用继续按真实状态保留。
+- 离线夹具保留上轮十二次实际v51服务/原生回答及其当时获权来源：八个已记录缺陷被拒，四次可接受旧回答保留。这是离线回放，不是十二次新模型调用或新原生证据。本轮自动化/实模/原生结果与集成要求统一见[交接](./xiaok-assistant-handoff.zh-CN.md)及`tmp/xiaok-fact-boundaries/`。隔离协调器在本工作区临时localhost:3007服务/Worker及既有Stable原生传输全过程持有原共享锁；原localhost:3006服务/Worker及开发主库保持。无需schema/队列/任务载荷迁移，不改知识专属模块；KB批量项应固定实际执行模式/供应商/模型/prompt及来源修订；既有知识试问不是C01 Agent，v56只适用于未来接入的客户Agent路径。保留原不匹配/取消/unknown用量语义，生产端口适配及跨进程取消围栏仍待另行集成。
+
+
+- v9模型阅读辅助补充当前知识来源键及原有回复协议，不增加事实或授权。专业原因承接保留相关企业依据与真实引用；纯状态、规则无关/不适用或冲突仍守原边界。已存人数不要求继续说明，普通补充不说成送达团队；未问联系方式时不追加等待电话配置。新增三次v52保存回答4064/4066/4067的原始反例回放，当前相关单元73项通过。v52实模只完成五条选定回答，第五条检索到K940却未引用企业依据，同时仍有已知人数/电话措辞问题；后续与原生未执行。该轮保持源码不变，已停自建服务/Worker、关闭夹具、释放自有锁并保留账务；不是完整语义通过。本轮最终结果见交接，不累加中间检查。
+
+- v53保留实际被拒回答4075：正常复述“沿用你此前明确的需求”被过宽请求匹配误拦，且原输出把查询缺少尺寸扩成现场点位尚不可执行。v54离线回放区分事实复述与要求客户补充的言语行为，并在当句限定查询缺项；继续核对按企业要求及团队实际待核对记录解释。该拒绝未发布客户回答，模型尝试及费用状态照实保留。
+
+- v54实模在六条选定回答后停止：4083说明当前私聊更正，却没有引用对应use原话。v55对已覆盖的明确人数更正表述要求该当前原话，仅接受权限/版本相同的有效别名；普通自由回答最终提交同样检查，不能绕过来源。事项状态、正式版本或不相关节选不能代替，不增加语义修复或供应商重试。v54还保留了图纸进度表述过宽和插座精简建议；提示词现把图纸核对记录与整体进度分开，不从人数减少推定设备/插座应减少。六条原输出、失败及费用保留，撤回/原生未执行。
+
+- v55实模在两条选定回答后停止：4095单段五条引用超过既有四条上限，客户回答未发布。v56明确原六段/每段四条上限，按事实主题分段并保留当前更正/正式版本/企业依据的必要原文，不承诺一次核对就能定准；原输出离线回放仍拒绝，不截引用、不新增修复轮次。v53/v54/v55失败与账务保留，后续未执行场景如实记录。
+
+- 最终v57只修复解析/协议规范化，模型输入政策与current-turn-sources-v9沿用v56。过长重复引用只合并同一当前来源中已逐字有效且相邻/重叠的节选，不加入未引内容或数字支持；每条仍≤400字，规范化后每段仍≤4条。五个不同原件、坏/越权引用、额外元数据、未引间隔内容仍拒绝，不增加修复。紧邻否定“不等于现场点位已经落实”仍表示不能推定结果，独立正向落实断言继续拒绝。最终73单元含八条v56服务实模原回答及原生4109的精确回放，不冒充v57新增八次调用；v56原生15项通过后首条模型被拒，后续未执行。最终新原生/冻结证据见交接。
+
+- 历史v57原生最终尝试为17项通过、1项失败、三条实际回答：4115虽保留当前更正/企业依据/正式版本及真实等待来源，却未明确说明私聊单人与正式双人的差异，图纸关联的开头仍可能读成整体进度。后续撤回/未知人数/成员403原生未执行；不是22/22或完整专业语义通过。按最新收尾范围保留反例、冻结源码，最终核心/受影响回归及独立知识线接口见交接。
+
+- 历史v57冻结工程收尾：核心104项中103通过、1跳过，不重叠受影响Agent19项中18通过、1跳过；两组均正常退出且源码哈希未变，去重共123项、121通过、2项配置实模重复路径跳过。73项确定性单元与定点保存均属子集；Mini92/92为较早的未改客户端检查。相关lint零错误零警告，同源类型对照仍287→287、新增0，不是全量类型通过；上述原生17/1的语义验收失败独立保留，不能被工程检查覆盖。
+
+<!-- admin-request-compatibility:start -->
+
+共享Admin请求兼容已限定实现，v61 Agent/模型视图政策不变。每请求通过`AbortController`组合调用方取消与原30秒期限，覆盖JSON正文读取，结束后清理计时器/监听，不依赖`AbortSignal.timeout/any`。网络/正文不确定性、原生取消异常、已知错误分类和变更幂等语义保持。无API、权限、队列、schema、知识专属UI/服务、小程序结构/样式/素材或设计变更。
+
+已执行：Node14/14；本机Chrome101.0.4951.54 10/10、Edge155.0.4283.62 9/9合成HTTP传输检查，含真实30秒正文期限。旧Chrome在HTTP前TypeError已按0请求复现；浏览器透明连接重试仍计入同一合成操作键，Chrome101原生AbortError对象身份差异如实记录而不改写。未注入信号polyfill/加速时钟，无DB/模型/Embedding调用，不充作已登录页面验收。相关lint通过，同程序类型287→287/新增0，自有服务与浏览器驱动均结束。证据为独立worktree的`tmp/xiaok-fact-boundaries/chrome101/`。本项只闭环共享传输依赖；实际执行配置固定与跨进程持久取消仍待集成，整体仍**Limited**。
+
+<!-- admin-request-compatibility:end -->
+
+<!-- shared-execution-integration:start -->
+
+下一共享集成仍**Limited / 尚未实施**。`7f4f9809`之后的源码核对确认：`core/conversation.ts:newRun`保存actor/policy/Agent配置，实际文字供应商仍在`ai/postgres-workflow-chat.ts`解析，包含平台及部署覆盖。知识线准备批次绑定case/来源epoch/profile/policy，但没有生产`EvaluationBatchPort`适配器或实际执行Revision。其`knowledge/operations.ts:resume`的评测检查、创建/关联会话、send及回写run分属多个事务。这是跨所有权接线点，不是已复现竞争或已完成整批取消的证据。
+
+| 边界 | 现有权威及待接入要求 |
+| --- | --- |
+| 实际执行Revision | 共享负责人复用实际供应商/模型解析路径；服务端摘要覆盖真正的knowledge_preview或Agent/现场草稿模式、provider/config/adapter及endpoint身份、部署覆盖后的model/revision、实际prompt、生成/思考/工具参数、当前索引profile及导出的retrievalConfiguration，不含凭据。现有preview系统正文可从answerMessages读取，不得标为C01 Agent prompt。准备时及实际派发前逐次对照，在新attempt/开始标记/HTTP之前拒绝变更；只算settings hash不足。 |
+| 未派发项的持久取消 | 知识负责人提供batch/evaluation/原操作绑定及唯一持久取消意图，共享负责人提供使用调用方事务的create/send/run接缝。沿企业settings锁和原run/job状态，同一事务检查取消意图和预期Revision后才建run/job/预留；供应商开始事务再查有效租约/run。不可持锁后调用另一个独立ConversationService事务。父任务协调知识专属operations.ts/适配器的修改归属，两线均不另建队列/schema。 |
+| 丢失run关联与已知run取消 | 原send已提交但评测关联丢失时，以获权只读回执恢复，不通过resume/send探测未知run。来源/policy变更后，已知run仍沿本人/参与者权限和原键取消；现有ConversationService.run(...,'cancel')不做当前来源preflight，身份/参与者检查保持。单run取消和job-queue.ts的有效租约/开始标记仍是权威；provider-started/未知attempt及reconciling费用继续待核对。 |
+
+本阶段交付具体源码/文件归属核对，未实现上述新运行能力，未改知识专属文件。后续仍需双独立进程advance/cancel竞争、派发前来源/实际配置变更、send已提交而评测run关联丢失的恢复，以及未知用量/费用保留的验收。验收共用锁和浏览器AbortController均不能替代该业务契约。
+
+参考决策：保留原PostgreSQL事务、租约、原回执和核对权威。[LangGraph Functional API](https://docs.langchain.com/oss/javascript/langgraph/functional-api)要求可能重放的未完成任务自行保证幂等；其[Postgres pending-send测试](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint-postgres/tests/test_sync.py)验证持久任务状态，不覆盖本产品权限或供应商账务。[Issue8702](https://github.com/langchain-ai/langgraph/issues/8702)讨论该边界，不能作为本适配器已实现的证据。[PostgreSQL行锁](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)支持原事务排序。本次不提出框架迁移或重试策略变更。
+
+<!-- shared-execution-integration:end -->
+
+<!-- boundaries-v61:start -->
+
+- 当前v61 / `current-turn-sources-v11`保留当前私聊用途与精确正式版的明确对照，图纸关联限定于这条实际回传记录，真实施工阶段另查当前节点。原4115/4102及4235仍为反例；原4241保留多余引用字段及历史indeterminate状态。不静默剥离引用字段，不增加语义修复或模型轮次。
+
+- 仅在模型视图超限时，把可逐字定位的重复摘录正文改成完整K来源text的UTF-16起止索引`evidence.textRange`；全部选摘ID和全部已选规范片段仍保留。不同K身份不因文字及描述性元数据相同而合并。完整来源正文、条件、范围/版本元数据、结果键及来源别名保持；未知摘录元数据或无法定位的文字原样保留。可省去派生文案/阅读提示，持久工具结果、快照和授权不变。既有唯一一次格式修复只省去已验证的重复提示，严格来源/引文检查保持且不能调用业务工具。原48,000 UTF-8文字字节及四轮上限不变；确实无法容纳时按已知本地校验失败处理。
+
+- 实际解析出的Agent请求在新attempt和供应商开始标记前校验；Worker按本次派发跟踪确定性，前轮成功不把后轮本地校验失败变成远端未知。已在运行/未知的缓存调用仍不可重派。本地`agent_input_limit`保留为失败码；前轮已观测用量、不可用费用及reconciling预留保持。历史未知attempt不重试、不核销、不填写零费用。
+
+- 新增限定的最终归因守卫：对已登记的相反规则声称共有前提时，同一事实段必须逐方引用该前提原文；只有一方的两条引文仍不够，单方做法可以单独归因。这不是通用语义裁判。实际4245/4246被运行解析器与知识6b974e3d验收合同共同拒绝；补全来源的样例只证明校验规则，不算新实模答案。旧KB-1材料两答的业务边界审读结论仍保留，但其内部标签仍被当前用语守卫拒绝。
+
+- 已执行证据：v60冻结核心115项中114通过、1项配置重复路径跳过；最终v61离线94/94、隔离模拟HTTP派发/费用检查3/3、相关18文件lint无错误警告、同程序类型287→287新增0。知识6b974e3d合同自检64/64，网络/数据库/模型调用均0。实际4242按当前策略回放为44,585字节，五个片段/四份文档完整；4241格式修复47,754字节。这些是离线/工程证据，新的原生及配置实模语义结果另记交接，不据此推定。知识专属v4检索/批次仍在独立分支，本checkout不冒称已集成或自动批量派发。
+
+- 隔离业务验收使用localhost:3008及原共用advisory mutex，3007保留给知识线。可选等待仍使用同一把锁；目标/角色在等待前检查，schema/空闲队列在取锁后检查，全部先于夹具和Worker。定点原生模式各执行一次真实更正、接续和撤回后回答，明确不重复基线题。本变更不含Mini结构/样式/素材/导航、API/权限、schema/迁移或全局队列权威变更；新的Stable定点原生21/21通过，4322/4323/4324真实保存，来源/重进/撤回/成员403检查及源码哈希保持。4323闭环4115的限定人数对照/进度范围缺陷；4324保留人数未知，但末尾仍用条件式一人示例补问，为已记录的措辞限制。基线未重复。本轮只验证既有流程，不升级UI还原或生产批准。夹具3497有6条成功run、11条成功的run绑定chat attempt，6条预留仍reconciling，费用未知，索引工作不计入这个chat数量。自建进程已停、传输已恢复，原副屏窗口已无抢焦点地返回最初最小化状态。
+
+<!-- boundaries-v61:end -->
+
 <!-- continuity:end -->
 
 

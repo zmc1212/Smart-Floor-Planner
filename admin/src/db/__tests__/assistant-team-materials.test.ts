@@ -27,6 +27,8 @@ import { readMemory } from '@/lib/assistant/agent/memory';
 import { fingerprint } from '@/lib/assistant/contracts';
 import { defaultConstructionStages } from '@/lib/construction/stages';
 import { queryNeedIssues } from '@/lib/construction/need-issues';
+import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
+import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
 
 const prefix = 'synthetic-team-materials-' + randomUUID(), tenants: string[] = [], users: string[] = [], admins: string[] = [];
 let eid = '';
@@ -53,6 +55,23 @@ after(async () => {
       await tx.execute(sql`delete from app.enterprises where id=${e}`); }
     for (const uid of users) await tx.execute(sql`delete from app.users where id=${uid}`);
   }); } finally { await closePostgresPool(); }
+});
+test('oversized Agent input fails before a provider attempt, dispatch callback or network call', async () => {
+  const prior = await getPlatformLlmRuntimeConfig();
+  let dispatched = 0, network = 0;
+  const previousFetch = globalThis.fetch;
+  const count = () => withTenantTransaction(eid, tx => one(tx, sql`select count(*)::int as n from app.ai_provider_attempts where enterprise_id=${eid}`));
+  const before = await count();
+  try {
+    await savePlatformLlmConfig({ enabled: true, providerKey: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', apiKey: 'synthetic-preflight-no-network' });
+    globalThis.fetch = async () => { network++; throw Error('synthetic test forbids provider dispatch'); };
+    await assert.rejects(executePostgresText({ enterpriseId: BigInt(eid), owner: { kind: 'assistant_run', runId: BigInt(0) },
+      logicalModelKey: 'chat.general', messages: [], beforeProviderCall: async () => { dispatched++; },
+      agent: { config: { runtime: 'langgraph-v1', providerKey: 'deepseek', model: 'deepseek-flash', tools: true, imageInput: false, probeVersion: 'synthetic-preflight-v1' },
+        input: { messages: [{ role: 'user', content: [{ type: 'text', text: 'x'.repeat(48001) }] }], tools: [], maxTokens: 128 } },
+    }), /agent_input_limit/);
+    assert.equal(dispatched, 0); assert.equal(network, 0); assert.deepEqual(await count(), before);
+  } finally { globalThis.fetch = previousFetch; await savePlatformLlmConfig(prior); }
 });
 async function fixture() {
   const uid = String((await withPlatformTransaction(tx => one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`)))!.id); users.push(uid);
@@ -106,6 +125,51 @@ async function fixture() {
   return { uid, leadId, pid, roomId, actor, chat, cid, customer, say, query, command, boss, designer, drawing, issueId, check, forward, publish, decide, answer };
 }
 const available = (s: Awaited<ReturnType<typeof queryMaterials>>) => withTenantTransaction(eid, tx => materialSnapshotAvailable(tx, eid, s));
+
+test('a free-form final response cannot bypass the current-use confirmation guard after real save and retrieval', async () => {
+  const x = await fixture();
+  const send = async (text: string, model: NonNullable<Parameters<typeof processAgentAnswer>[1]>['model']) => {
+    const sent = await x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
+    const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+    await processAgentAnswer(lease!, { model }); return x.chat.run(lease!.runId);
+  };
+  const saved = await send('请记录书房单人办公。', async (_messages, _tools, turn) => !turn
+    ? call('record_need', { room: '书房', field: 'use', value: '单人办公', quote: '请记录书房单人办公。' })
+    : call('final_response', { kind: 'general', text: '已记录书房单人办公。' }));
+  assert.equal(saved.status, 'succeeded');
+  const failed = await send('那底盒还要核对什么？', async (_messages, _tools, turn) => !turn
+    ? call('query_materials', { leadId: '', room: '书房' })
+    : call('final_response', { kind: 'general', text: '你可以直接在原聊天里补充单人办公的确认信息。' }));
+  // The existing source-tool fence rejects an unsourced free-form response
+  // before the narrower continuity validator is reached.
+  assert.equal(failed.status, 'failed'); assert.equal(failed.errorCode, 'invalid_model_citation'); assert.equal(failed.outputMessageId, null);
+  const material = await x.query(); assert.ok(material.data.sources.some(s => s.need?.field === 'use' && s.need.value === '单人办公'));
+  assert.doesNotMatch(JSON.stringify((await x.chat.messages(x.cid)).items), /补充单人办公的确认信息/);
+  const corrected = await send('更正，书房双人办公。', async (_messages, _tools, turn) => !turn
+    ? call('record_need', { room: '书房', field: 'use', value: '双人办公', quote: '更正，书房双人办公。' })
+    : call('final_response', { kind: 'general', text: '已按更正记录书房双人办公。' }));
+  assert.equal(corrected.status, 'succeeded');
+  const uncited = await send('那现在沿用什么需求？', async (messages, _tools, turn) => {
+    if (!turn) return call('query_materials', { leadId: '', room: '书房' });
+    const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as SynthesisSource[];
+    const oldShared = sources.find(s => s.material?.ref.type === 'shared_need'); assert.ok(oldShared);
+    return call('final_response', { kind: 'synthesis', segments: [{ basis: 'evidence', text: '沿用你此前更正的双人办公，现场尺寸仍需核对。',
+      citations: [{ sourceId: oldShared.sourceId, quote: oldShared.text }] }] });
+  });
+  assert.equal(uncited.status, 'failed'); assert.equal(uncited.errorCode, 'invalid_model_answer'); assert.equal(uncited.outputMessageId, null);
+  await x.check(); await x.forward();
+  const drawingAnswer = (text: string) => send('这条图纸核对能说明什么？', async (messages, _tools, turn) => {
+    if (!turn) return call('query_materials', { leadId: '', room: '书房' });
+    const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as SynthesisSource[];
+    const review = sources.find(s => s.material?.ref.type === 'team_review'); assert.ok(review);
+    return call('final_response', { kind: 'synthesis', segments: [{ basis: 'evidence', text,
+      citations: [{ sourceId: review.sourceId, quote: review.text }] }] });
+  });
+  const broad = await drawingAnswer('书房这边目前只到图纸关联这一步，具体点位仍需核对。');
+  assert.equal(broad.status, 'failed'); assert.equal(broad.errorCode, 'invalid_model_answer'); assert.equal(broad.outputMessageId, null);
+  const scoped = await drawingAnswer('这条核对记录证明书房参考图已关联，具体点位仍需结合现场尺寸核对。');
+  assert.equal(scoped.status, 'succeeded'); assert.ok(scoped.outputMessageId);
+});
 
 test('QA05/06 PPT15/23 a private field correction preserves independent needs and the exact approved formal version', async () => {
   const x = await fixture(); await x.check(); await x.forward(); const planId = await x.publish(); await deliverPlans();

@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
-import { executeAgentChat } from './providers/agent-chat';
+import { agentChatBody, executeAgentChat } from './providers/agent-chat';
 import type { ModelTurnInput } from '@/lib/assistant/contracts/model';
 import type { AgentConfig } from '@/lib/assistant/agent/config';
-import type { InvocationOwner } from '@/lib/assistant/contracts';
+import { AssistantError, type InvocationOwner } from '@/lib/assistant/contracts';
 import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { withTenantTransaction } from '@/db/transaction';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
@@ -68,6 +68,17 @@ export async function executePostgresText(input: {
       || !(runtime.adapterConfig?.providerPreset === 'siliconflow'
         || (runtime.adapterConfig?.providerPreset === 'deepseek' && new URL(runtime.baseUrl).origin === 'https://api.deepseek.com')))) {
       throw new Error('Assistant thinking override requires an approved SiliconFlow or official DeepSeek runtime');
+    }
+    // Local request validation must precede both the attempt and the caller's
+    // provider-start checkpoint. A request that cannot be serialized was never
+    // dispatched; it must not turn into an unknown remote outcome.
+    if (input.agent) {
+      try { agentChatBody({ ...input.agent.input, model: remoteModel, enableThinking }, runtime.baseUrl); }
+      catch (error) {
+        if (error instanceof Error && ['agent_input_limit', 'agent_image_limit', 'agent_output_limit'].includes(error.message))
+          throw new AssistantError(error.message, 422);
+        throw error;
+      }
     }
     const startedAt = Date.now();
     const attempt = await withTenantTransaction(input.enterpriseId, (transaction) =>

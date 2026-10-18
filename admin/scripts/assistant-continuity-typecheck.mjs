@@ -4,10 +4,11 @@ import path from 'node:path';
 import cp from 'node:child_process';
 import ts from 'typescript';
 
-const root = path.resolve(import.meta.dirname, '..'), base = process.argv[2] || '9db99f40';
+const root = path.resolve(import.meta.dirname, '..'), base = process.argv[2] || 'd0238543';
 if (!/^[a-f0-9]{8,40}$/.test(base)) throw Error('Expected an explicit baseline commit');
-const previous = ["src/lib/assistant/agent/memory-sources.ts","src/lib/assistant/agent/business-tools.ts","src/lib/assistant/agent/memory.ts","src/lib/assistant/agent/materials.ts","src/lib/assistant/agent/synthesis.ts","src/lib/assistant/agent/context.ts","src/lib/assistant/agent/worker.ts","src/lib/assistant/agent/bound-context.ts","src/lib/assistant/agent/synthesis-sources.ts","src/lib/construction/need-issues.ts","src/lib/assistant/__tests__/agent-memory.test.ts","src/lib/assistant/__tests__/agent-runtime.test.ts","src/lib/assistant/__tests__/synthesis.test.ts","src/db/__tests__/assistant-synthesis.test.ts","src/db/__tests__/assistant-team-materials.test.ts","src/db/__tests__/assistant-need-issues.test.ts"];
-const added = ['scripts/assistant-continuity-development.ts','scripts/assistant-continuity-audit.ts'];
+const previous = ["src/components/assistant/client.ts","src/lib/assistant/__tests__/admin-client.test.ts","src/lib/ai/postgres-workflow-chat.ts","src/lib/assistant/agent/memory-sources.ts","src/lib/assistant/agent/business-tools.ts","src/lib/assistant/agent/memory.ts","src/lib/assistant/agent/materials.ts","src/lib/assistant/agent/synthesis.ts","src/lib/assistant/agent/context.ts","src/lib/assistant/agent/worker.ts","src/lib/assistant/agent/bound-context.ts","src/lib/assistant/agent/synthesis-sources.ts","src/lib/construction/need-issues.ts","src/lib/assistant/__tests__/agent-memory.test.ts","src/lib/assistant/__tests__/agent-runtime.test.ts","src/lib/assistant/__tests__/synthesis.test.ts","src/db/__tests__/assistant-synthesis.test.ts","src/db/__tests__/assistant-team-materials.test.ts","src/db/__tests__/assistant-need-issues.test.ts","scripts/assistant-continuity-development.ts","scripts/assistant-continuity-audit.ts"];
+const added = ['src/lib/assistant/agent/answer-continuity.ts','src/lib/assistant/__tests__/answer-continuity.test.ts','scripts/assistant-continuity-checks.ts',
+  'src/lib/assistant/agent/synthesis-projection.ts','src/lib/assistant/agent/synthesis-attribution.ts','src/lib/assistant/__tests__/knowledge-fact-boundaries.test.ts','src/db/__tests__/assistant-provider-preflight.test.ts'];
 const config = ts.readConfigFile(root + '/tsconfig.json', ts.sys.readFile).config;
 const parsed = ts.parseJsonConfigFileContent(config, ts.sys, root); parsed.options.incremental = false; parsed.options.tsBuildInfoFile = undefined;
 const norm = f => path.resolve(f).replaceAll('\\','/'), files = parsed.fileNames.filter(f => !/[\\/]\.next[\\/]/.test(f));
