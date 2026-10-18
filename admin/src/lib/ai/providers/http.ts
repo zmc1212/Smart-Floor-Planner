@@ -35,7 +35,9 @@ export async function providerFetch(
     throw new AiProviderError(
       `${label} connection failed: ${error instanceof Error ? error.message : String(error)}`,
       'PROVIDER_CONNECTION_FAILED',
-      'safe_fallback',
+      // A rejected fetch does not prove the supplier never received the request.
+      // Preserve uncertainty instead of authorizing another billable submission.
+      'unknown',
       502
     );
   }

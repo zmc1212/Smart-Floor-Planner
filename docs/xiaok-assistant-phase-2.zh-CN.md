@@ -1,22 +1,50 @@
 # 小K第二期：需求整理与人工交接
 
+<a id="当前共享供应商连接错误与结果确定性"></a>
+## 当前共享供应商连接错误与结果确定性
+
+**共享供应商连接错误：限定修复，整体Limited。** 已调用fetch后，无响应的普通连接/TypeError现归`unknown`，不再是`safe_fallback`，不能据此自动向第二供应商提交。错误码/文字/状态、配置超时及原明确HTTP响应/派发前策略保留。attempt/run/用量/预留及租户/角色/来源/租约/回执接口保持，不改表、队列、factory、API或UI。347762ff归档run4369/attempt1804仍为attempt failed/accepted=false、run indeterminate、预留reconciling及费用null；原queued发送确认和该布尔均不是供应商接收或未接收证明。不改历史行/费用/请求键，不重试4369/4242。当前230/230离线通过，含194业务/知识、32项既有供应商/账务和4组模拟传输测试（修复前1组失败）；受影响lint通过，同程序与05edc4d3对比类型287→287，新增0。无新DB/供应商/实模/Embedding/浏览器/原生调用；PostgreSQL收敛/retry守卫仅源码核验，未重跑。缺供应商结果/用量证据，原夹具也已清理，费用收敛和实模语义仍未验。准确只读证据及合同见[传输确定性](./xiaok-assistant-phase-2.zh-CN.md#当前共享供应商连接错误与结果确定性)、`tmp/xiaok-provider-certainty/`。
+
+只读原归档：操作send:4327、原键f70b08ac-26af-4e9b-8101-36bc828261ba绑定conversation4327/message21543/run4369；queued是不可变的本地准入确认，不是当前run结果或供应商回执。一次text_model客户端fetch记录transport_unknown，响应0、无输出；turn0的agent_model开始标记仍running。attempt1804真实是failed/accepted=false/actual_cost={}，不能改写成unknown attempt；该状态来自HTTP层将普通连接错误归safe_fallback。原send、供应商body及attempt的hash属于不同层，不假定彼此相同。
+
+冻结0fe63d5d相关HTTP/gateway/Worker/队列实现与诊断基线05edc4d3一致。Worker在开始事务后将outcomeKnown置false，failRun对已开始且结果未知保持indeterminate/reconciling；retry只允许failed/cancelled且无reconciling预留，accepted=false不能令原run可重试。accepted布尔是保守内部路由/审计标记，正反均不是供应商实际接收证明。未来HTTP分类改用原unknown路径，不重写1804、不结算4369；不新增对账通道、重试或模型循环。原HTTP401/429/503显式响应策略保持，也不据此声称费用0。
+
+证据tmp/xiaok-provider-certainty/incident-evidence.json记录原归档hash及回执/状态；before.log保留传输反例3/4通过、1失败，offline.log最终230/230；type-comparison.json和lint.log为本次工程结果。知识工作区原tmp/knowledge-semantic-followup/live-1/live.json的SHA256为a97df5ae9b7f4b3aed68d04082b84577096faec418961e3991363d9d4dd456a5，只读未重执行或改动。本补丁DB/实模/Embedding调用0；此前知识一轮失败文本fetch和成功索引保留各自范围，不计成本轮调用。知识原夹具已清理，当前无行不表示账单已知；仍缺供应商结果/计量证据，不重发、不换键、不填零费用。
+
+在admin/用node --import tsx --test src/lib/ai/__tests__/provider-transport.test.ts复跑模拟传输反例；原供应商/AI及194业务测试合为230项。本次未声明全仓类型干净、无关旧页面完整构建通过、实模语义或原生/真机验收。
+
+
+
+### 当前恢复证据边界
+
+知识稳定`0030eb8245c40f2fe18f5530da013eb75366a06f`仅只读核验，未合入或重跑。独立run4370真实PostgreSQL/C01撤回1组通过，向量/回答为确定性注入，5项证据断言通过；真实模型/Embedding/供应商fetch为0，107张企业表及身份清零、当次互斥锁释放。这些结果不证明4369的供应商结果，也不累加进本补丁230项离线检查。
+
+| 归档run | 已留存证据 | 缺失恢复证据 | 当前授权 |
+| --- | --- | --- | --- |
+| 4369 | 原send key/hash、failed/accepted=false attempt、indeterminate run及reconciling预留 | `originalCreateKey: null`；当前夹具行已清理 | `archive_only_wait_shared_review`、`dispatchApproved: false` |
+| 4242 | indeterminate run、unknown/accepted attempt及reconciling预留 | 原create/send key及request hash保持null；当前夹具行已清理 | `archive_only_wait_shared_review`、`dispatchApproved: false` |
+
+“最多一次未来执行”是上限，不是授权。仅send归档不是可调用`originalSubmission`的完整create/send证据；不探测、不补造键、不建立等价替代发送。仍缺可靠原身份/操作证据、有效授权恢复机制及供应商结果/计量证据；新增撤回检查和仅未来生效的连接分类均不能解除这些阻碍。源证据为知识工作区`tmp/knowledge-revocation/recovery-preparation.json`、`stage-summary.json`和`service-1/`；共享核验为`tmp/xiaok-provider-certainty/recovery-review.json`。本补充只有文档/证据影响，模块清单当前运行行为、API、角色和UI均不变。
+
 <!-- continuity:start -->
 <a id="当前p3bp4a客户更正与原事项接续"></a>
 ## 当前P3B/P4A：客户更正与原事项接续
 
-**限定实现，整体Limited。** 沿路线图3.1及PPT15/23/37/38，复用下文获权来源、精确正式版本与处理链。当前行为为v62；下文v43及更早执行记录只保留各自范围的历史证据。
+**限定实现，整体Limited。** 沿路线图3.1及PPT15/23/37/38，复用下文获权来源、精确正式版本与处理链。当前行为为v63；下文v43及更早执行记录只保留各自范围的历史证据。
 
-v62按value在原文及quote中的实际位置核验，保留邻接的明确否定/未定限定词并绑定同一明确房间主语；同房间后续直接否定不能借前面的命中绕过。沿既有`need_source_mismatch`/`not_saved`反馈保留原文，不授予无回执的“已保存”承诺。重进读取在既有原消息/工地通知权限检查后复用此有限校验，仅排除不受原话支持的当前事实投影，不改存储记忆、supersedes、原消息或回执。完整否定/未知原话、已有明确更正和共同房间主语继续可用；范围为有限措辞、既有房间词表及请求房间原文，不宣称通用语义理解或任意未命名房间关系。当前验证：178项去重离线测试通过（158共享合同＋20需求/引导），8项受影响TS文件lint无错误警告；相同程序与a579e512对比类型诊断287→287，新增0。投影数据替身不是数据库/RLS集成证据。本轮无实模/Embedding、数据库、浏览器或原生新调用，既有原生证据保留原版本/范围。客户端及视觉流程未重设计，继续以原C01/PPT22/38组件和权限/错误路径为设计依据。证据与命令：`tmp/xiaok-need-source-context/`、[二期当前合同](./xiaok-assistant-phase-2.zh-CN.md#当前p3bp4a客户更正与原事项接续)。
+v63保留v62的quote实际位置、限定词与房间校验，修正既有人数阅读辅助：被否定或暂定的人数不算已确定，完整可用原话仍为known并逐字保留；更正中的肯定分支用于原当前来源引用守卫，已知人数确认及出处围栏不放宽。明确“人数未定”也会限定旧desk/other混合行中的人数，来源不可用后沿原无值标记防止旧人数回流；原历史、桌型/位置、设备、其他房间及来源/权限检查保持。不新增事实库、schema、API、客户端状态/布局或队列。提示元数据为v63，静态提示/工具措辞、sources-v11、六段/每段四引用和48,000字节预算保持。当前194项去重离线通过（原188＋6组合成解释反例），5项受影响TS文件lint无错误警告；同程序与04a85946对比类型287→287，新增0。已保存回答/预算仅离线回放，无新实模/Embedding/DB/浏览器/原生调用，也未占用验收锁，不升级语义或原生验收。旧完整构建限制不属于本次小客修复。命令、有限措辞边界及旧页面准确诊断见[二期当前合同](./xiaok-assistant-phase-2.zh-CN.md#当前p3bp4a客户更正与原事项接续)、`tmp/xiaok-need-interpretation/`。
 
-在`admin/`复跑下列命令：首条将`XIAOK_ACCEPTANCE_OUTPUT`设为本工作区证据目录；未改动的类型助手仍写`tmp/xiaok-execution-fence/`。8项需求来源测试使用离线数据替身，不新增数据库夹具或付费调用。对应既有路线图10.1第1/3场景，仅为内部可靠性增量，不宣称完整阶段验收。
+在`admin/`复跑下列命令：首条将`XIAOK_ACCEPTANCE_OUTPUT`设为本工作区证据目录；未改动的类型助手仍写`tmp/xiaok-execution-fence/`。新增6组解释反例是合成离线测试，既有数据替身及保存回答回放也仍为离线证据，不新增数据库夹具或付费调用。对应既有路线图10.1第1/3场景，仅为内部可靠性增量，不宣称完整阶段验收。
 
 ```text
 node scripts/assistant-execution-acceptance.mjs --agent-units
-node --import tsx --test src/lib/assistant/__tests__/need-source-context.test.ts src/lib/assistant/__tests__/guidance.test.ts src/lib/assistant/__tests__/requirements.test.ts
-node scripts/assistant-execution-typecheck.mjs a579e51227294427826d49ac017e00f9c80691ad
+node --import tsx --test src/lib/assistant/__tests__/need-source-context.test.ts src/lib/assistant/__tests__/guidance.test.ts src/lib/assistant/__tests__/requirements.test.ts src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts src/lib/assistant/__tests__/need-interpretation.test.ts
+node scripts/assistant-execution-typecheck.mjs 04a85946eb63ec8418ae75877d44cc2e0c3dd4a9
 ```
 
 
+
+本次构建诊断（未改无关产品代码）：安装的Next16.2.3会拒绝`admin/src/app/(admin)/(merchant)/ai-studio/designer/page.tsx:27`额外具名导出`AiDesignerLegacyPage`。读取本机Next页面校验器的允许键，以实际模块做静态TypeScript校验，复现TS2344：该函数不能赋给never。导出来自4487a09df，无产品消费者；默认入口只重定向`/ai-studio/scenarios?view=assistant`，未使用旧函数调用`/api/ai/*`，不属于当前小客`/api/assistant`。按父任务范围仅诊断未修，该轮没有执行完整Next构建。准确诊断/脚本：`tmp/xiaok-need-interpretation/build-export-diagnosis.{json,mjs}`，不把旧构建/类型限制算通过。
 
 - 明确更正后紧接专业提问仍可调用`record_need`，服务端绑定实际当前消息/房间，拒绝假设和转述建议。原参数兼容，新增可选`additionalNeeds`最多三条，合计四个独立房间/字段；先核验全部原话及重复字段，再同事务保存记忆、自动草稿及对应原事项进展。四条原话不必耗尽四个模型轮次，任一条不合法则全部不写。首条操作键保持，附加条目用`:need:n`；已提交批次恢复不重复事实、进展或供应商调用。单条/重进也返回`savedFacts`，高版本回执优先于开轮旧记忆，不形成正式批准。
 - 存储的`NeedMemory`更正链仍是不可变原话记录。材料的need元数据携带字段/值/supersedes及客户表达身份。只读`qualifiedBy`限定兼容desk/other混写人数与位置的旧行，仅关联同咨询/房间、后续明确且当前有效的use更正，只限定人数；原话、桌型、靠窗、设备、其他房间均保留。仅使用当前获权原话，来源失效时关系不复活旧内容。更正来源不可用时保留无值interpretation屏蔽标识，不能回退旧人数；`NeedMemory.interpretations`及材料的`need.interpretation`为只读`{ factId, field: 'use', currentFactId }`，不可用时`currentFactId: null`，不由`applyNeedDelta`持久化。`query_followups`事项也经`availableNeedMemory`读取，不能从另一适配器带回失效值，不暴露不可用更正的值或来源ID。不是第二套记忆、正式变更或共享grant。其他复合字段增删、隐含更正和复杂多房屋/跨阶段冲突仍Limited。

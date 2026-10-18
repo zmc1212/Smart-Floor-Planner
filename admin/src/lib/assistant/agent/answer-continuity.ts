@@ -1,5 +1,6 @@
 import { fail } from '../contracts';
 import type { SynthesisAnswer, SynthesisSource } from './synthesis';
+import { affirmedNeedOccupancy } from './need-occupancy';
 
 type CurrentUse = { room: string; status: 'known'; sourceId: string; value: string; occupancySpecified: boolean } | { room: string; status: 'unavailable' };
 /** Authorized source keys plus the existing reply protocol. This is a reading
@@ -19,7 +20,7 @@ export function synthesisAnswerFocus(sources: SynthesisSource[]) {
     if (uses.length === 1) {
       const source = uses[0], need = source.material!.need!;
       return [{ room, status: 'known' as const, sourceId: source.sourceId, value: need.value,
-        occupancySpecified: /单人|双人|多人|[一二两三四五六七八九十\d]+(?:个)?人/.test(need.value) }];
+        occupancySpecified: affirmedNeedOccupancy(need.value) !== null }];
     }
     return unavailable || uses.length > 1 ? [{ room, status: 'unavailable' as const }] : [];
   });
@@ -45,7 +46,7 @@ export function assertCorrectedUseCitation(answer: SynthesisAnswer, sources: Syn
     if (use.status !== 'known' || !use.occupancySpecified) continue;
     const original = sources.find(s => s.sourceId === use.sourceId)!;
     if (!original.material?.need?.supersedes) continue;
-    const occupancy = use.value.match(/单人|双人|多人|[一二两三四五六七八九十\d]+(?:个)?人/)?.[0];
+    const occupancy = affirmedNeedOccupancy(use.value);
     if (!occupancy || !answer.segments.some(s => s.basis === 'evidence' && s.text.includes(occupancy)
       && (focus.currentUses.length === 1 || Boolean(use.room && s.text.includes(use.room)))
       && /更正|沿用|用途补充|当前(?:需求|用途)|(?:你|您).{0,12}(?:需求|办公)/.test(s.text))) continue;
