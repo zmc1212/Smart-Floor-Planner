@@ -2,13 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
-import { fail, id, type ActorContext } from '../contracts';
+import { fail, fingerprint, id, type ActorContext } from '../contracts';
 import { ConversationService, idempotent } from '../core/conversation';
 import { knowledgeManager, text, expected, type KnowledgeActor } from './service';
 import { readRetrievalDiagnostics } from './diagnostics';
 import { projectMessage, resolveEvidence, validatePreviewSnapshot } from './sources';
 import type { RetrievalDiagnostic } from './retrieval';
 import { checkKnowledgeEvaluation, type ExpectedSource, type KnowledgeExpectation } from './evaluation-check';
+import { evaluationBatchCases, type EvaluationBatchPreparation } from './evaluation-batch';
 
 const json=(value:unknown)=>JSON.stringify(value);
 type EvaluationSnapshot={question:string;title:string;expectation:KnowledgeExpectation;required:ExpectedSource[]};
@@ -91,15 +92,38 @@ export class KnowledgeOperations {
         values(${this.manager.enterpriseId},${title},${question},${json(e)}::jsonb,${note},${this.manager.adminId},${this.manager.adminId}) returning *`);
     }return caseDto(c!,s.knowledge_epoch);
   }));}
+  private async reserveEvaluation(tx:PostgresTransaction,s:Row,c:Row) {
+    const e=c.expectation as KnowledgeExpectation,required=await this.sources(tx,e);
+    const snapshot={question:c.question,title:c.title,expectation:e,required};
+    const row=await one(tx,sql`insert into app.assistant_knowledge_evaluations(enterprise_id,case_id,case_revision,snapshot,knowledge_epoch,created_by,create_key,send_key)
+      values(${this.manager.enterpriseId},${String(c.id)},${Number(c.revision)},${json(snapshot)}::jsonb,
+      ${Number(s.knowledge_epoch)},${this.manager.adminId},${randomUUID()},${randomUUID()}) returning id`);
+    return {caseId:String(c.id),caseVersion:Number(c.version),caseRevision:Number(c.revision),evaluationId:String(row!.id),snapshotHash:fingerprint(snapshot)};
+  }
+  /** Internal preparation seam only: persists original item keys, dispatches no chat/model jobs. */
+  async prepareBatch(input:Row,requestKey:string):Promise<EvaluationBatchPreparation> {
+    if(Object.keys(input).some(k=>k!=='cases'))fail('invalid_message',422);
+    const cases=evaluationBatchCases(input.cases);
+    return this.tx(async(tx,s)=>idempotent(tx,this.actor,'knowledge-batch-prepare',requestKey,input,async()=>{
+      const n=await one(tx,sql`select count(*)::int n from app.assistant_knowledge_evaluations where enterprise_id=${this.manager.enterpriseId}`);
+      if(Number(n!.n)+cases.length>2000)fail('knowledge_evaluation_limit',422);
+      const profile=s.active_index_profile_id?await one(tx,sql`select id,configuration from app.assistant_knowledge_index_profiles
+        where enterprise_id=${this.manager.enterpriseId} and id=${String(s.active_index_profile_id)}`):null;
+      if(!profile)fail('knowledge_not_ready');
+      const items=[];
+      for(const item of cases) {
+        const c=await this.case(tx,item.caseId);if(Number(c.version)!==item.expectedVersion)fail('version_conflict');
+        items.push(await this.reserveEvaluation(tx,s,c));
+      }
+      return {batchId:requestKey,enterpriseId:this.manager.enterpriseId,adminId:this.manager.adminId,
+        knowledgeEpoch:Number(s.knowledge_epoch),profileId:String(profile.id),profileHash:fingerprint(profile.configuration),policyVersion:Number(s.policy_version),items};
+    }),true) as Promise<EvaluationBatchPreparation>;
+  }
   async start(caseId:string,input:Row,requestKey:string) {
     const created=await this.tx(async(tx,s)=>idempotent(tx,this.actor,'knowledge-evaluate:'+caseId,requestKey,input,async()=>{
       const c=await this.case(tx,caseId);if(Number(c.version)!==expected(input.expectedVersion))fail('version_conflict');
       const n=await one(tx,sql`select count(*)::int n from app.assistant_knowledge_evaluations where enterprise_id=${this.manager.enterpriseId}`);if(Number(n!.n)>=2000)fail('knowledge_evaluation_limit',422);
-      const e=c.expectation as KnowledgeExpectation,required=await this.sources(tx,e);
-      const row=await one(tx,sql`insert into app.assistant_knowledge_evaluations(enterprise_id,case_id,case_revision,snapshot,knowledge_epoch,created_by,create_key,send_key)
-        values(${this.manager.enterpriseId},${caseId},${Number(c.revision)},${json({question:c.question,title:c.title,expectation:e,required})}::jsonb,
-        ${Number(s.knowledge_epoch)},${this.manager.adminId},${randomUUID()},${randomUUID()}) returning id`);
-      return {evaluationId:String(row!.id)};
+      const prepared=await this.reserveEvaluation(tx,s,c);return {evaluationId:prepared.evaluationId};
     }),true);
     // A crash at either boundary resumes with the same create/send keys, never a parallel model/usage pipeline.
     await this.resume(String(created.evaluationId));return {evaluationId:String(created.evaluationId)};
