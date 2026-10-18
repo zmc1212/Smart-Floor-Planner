@@ -183,8 +183,16 @@ test('Agent continuation inherits the exact returned result as revocable constru
   const sent = await say('刚才团队回传的底盒结论是什么，已经可以固定了吗？');
   const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
   await processAgentAnswer(lease!, { model: async (messages, _tools, turn) => {
-    assert.match(JSON.stringify(messages), /此前项目团队向本咨询明确回传的处理回复/);
-    assert.match(JSON.stringify(messages), /底盒位置仍待现场核对/);
+    // Bounded continuation may replace earlier assistant history with the fresh
+    // tool result. Validate that authoritative result instead of requiring the
+    // historical wrapper to remain in every provider round.
+    if (turn === 0) assert.match(JSON.stringify(messages), /此前项目团队向本咨询明确回传的处理回复/);
+    else {
+      const current = JSON.parse(messages.filter(m => m.role === 'tool').at(-1)!.content as string);
+      assert.equal(current.query.domain, 'followups');
+      assert.equal(current.data.find((i: Row) => i.kind === 'team_result').sourceMessageId, String(resultId));
+      assert.match(current.displayText, /底盒位置仍待现场核对/);
+    }
     const resultKey = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content as string).resultKey).at(-1);
     return { text: '', toolCalls: [{ id: 'test-' + turn, name: turn === 0 ? 'query_followups' : 'final_response',
       arguments: JSON.stringify(turn === 0 ? {} : { kind: 'business', resultKey }) }],

@@ -5,12 +5,12 @@ import { fail, fingerprint, id, safeText, type ActorContext } from '@/lib/assist
 import { sharedMaterials } from './site-materials';
 import { readSiteResolution } from './site-resolution';
 
-type Command = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'refresh' | 'check' | 'return'; target: string; value: string };
+type Command = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'resume' | 'refresh' | 'check' | 'return'; target: string; value: string };
 type Issue = { issueId: string; revision: number; projectId: string; recordId: string; recordVersion: number;
   sourceHash: string; sourceMessageId: string; roomId: string | null; roomName: string; openedBy: string;
   ownerId: string | null; state: 'awaiting_owner' | 'awaiting_review' | 'cancelled'; progressMessageId: string | null; action: string;
   materialVersion?: string; drawingGrantId?: string | null };
-export type IssueView = Issue & { status: string; ownerName: string; text: string };
+export type IssueView = Issue & { status: string; ownerName: string; sourceAvailable: boolean; text: string };
 export type SiteVersions = { records: Record<string, number>; issues: Record<string, number>; materials?: Record<string, string>; plans?: Record<string, number>; resolutions?: Record<string, number> };
 
 export function parseSiteVersions(value: unknown): SiteVersions {
@@ -19,7 +19,7 @@ export function parseSiteVersions(value: unknown): SiteVersions {
   const result: SiteVersions = { records: {}, issues: {}, materials: {} };
   for (const kind of ['records','issues'] as const) {
     const map = (value as Row)[kind];
-    if (!map || typeof map !== 'object' || Array.isArray(map) || Object.keys(map).length > 100) fail('invalid_construction', 422);
+    if (!map || typeof map !== 'object' || Array.isArray(map) || Object.keys(map).length > (kind === 'records' ? 150 : 100)) fail('invalid_construction', 422);
     for (const [key, version] of Object.entries(map)) {
       id(key); if (!Number.isSafeInteger(version) || Number(version) < 1) fail('invalid_construction', 422);
       result[kind][key] = Number(version);
@@ -56,8 +56,8 @@ export function siteIssueCommand(raw: string): Command | null {
   if (m) return { action: 'transfer', target: id(m[1]), value: m[2].replace(/[。！!]$/, '') };
   m = new RegExp('^' + prefix + '核对事项\\s*([1-9]\\d{0,18})图纸\\s*([1-9]\\d{0,18})[。！!\\s]*$').exec(raw);
   if (m) return { action: 'check', target: id(m[1]), value: id(m[2]) };
-  m = new RegExp('^' + prefix + '(回复|取消|重新核对|回传)事项\\s*[#＃]?([1-9]\\d{0,18})[：:]\\s*(.{1,2000})$', 's').exec(raw);
-  if (m && m[3].trim()) return { action: m[1] === '回复' ? 'reply' : m[1] === '取消' ? 'cancel' : m[1] === '回传' ? 'return' : 'refresh', target: id(m[2]), value: m[3].trim() };
+  m = new RegExp('^' + prefix + '(回复|取消|恢复|重新核对|回传)事项\\s*[#＃]?([1-9]\\d{0,18})[：:]\\s*(.{1,2000})$', 's').exec(raw);
+  if (m && m[3].trim()) return { action: m[1] === '回复' ? 'reply' : m[1] === '取消' ? 'cancel' : m[1] === '恢复' ? 'resume' : m[1] === '回传' ? 'return' : 'refresh', target: id(m[2]), value: m[3].trim() };
   return null;
 }
 
@@ -121,7 +121,8 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
     text += status === 'awaiting_review' ? '\n已有处理回复，仍待团队核对；回复不等于已解决或正式批准。' : '\n等待负责人处理；没有已确认期限，不推断逾期。';
     if (issue.action === 'return') text += '\n本次明确回复已授权回传原咨询；真人接待期间等待恢复小K后投递，投递前仍会重核来源和权限。';
   }
-  return { ...issue, ownerId: owner ? issue.ownerId : null, ownerName, status, text };
+  if (issue.action === 'resume') text += '\n已沿原事项恢复，按当前资料重新处理；旧回复、图纸核对及正式决定不自动恢复。';
+  return { ...issue, ownerId: owner ? issue.ownerId : null, ownerName, status, sourceAvailable: !!valid, text };
 }
 
 export async function readSiteIssue(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<IssueView | null> {
@@ -165,7 +166,9 @@ export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorConte
   const previous = await issueData(tx, eid, pid, cmd.target); if (!previous) fail('construction_not_found', 404);
   if (versions.issues[cmd.target] !== previous.revision) fail('version_conflict');
   const view = (await readSiteIssue(tx, eid, pid, cmd.target))!;
-  if (previous.state === 'cancelled' || (view.status === 'invalidated' && !['cancel','refresh'].includes(cmd.action))) fail('context_changed');
+  if (previous.state === 'cancelled' && !['resume','return'].includes(cmd.action)
+    || cmd.action === 'resume' && previous.state !== 'cancelled'
+    || view.status === 'invalidated' && !['cancel','refresh'].includes(cmd.action)) fail('context_changed');
   if (['implemented','resolved','closed'].includes(view.status)) fail('site_reopen_required', 422);
   issue = { ...previous, revision: previous.revision + 1, action: cmd.action };
   const canHandle = manage || view.ownerId === aid;
@@ -177,9 +180,42 @@ export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorConte
     if (view.ownerId && view.ownerId !== aid && !manage) fail('construction_forbidden', 403);
     if (!await effectiveOwner(tx, eid, pid, aid)) fail('construction_forbidden', 403);
     issue.ownerId = aid; issue.state = 'awaiting_owner';
+  } else if (cmd.action === 'resume') {
+    if (!manage && previous.openedBy !== aid) fail('construction_forbidden', 403);
+    const source = await currentRecord(tx, eid, pid, previous.recordId); if (!source) fail('context_changed');
+    const roomId = String(source.row.room_id), currentMaterials = await sharedMaterials(tx, eid, pid, roomId);
+    if (versions.records[previous.recordId] !== Number(source.row.version) || versions.materials?.[roomId] !== currentMaterials.version) fail('version_conflict');
+    // Recovery is a new revision of the same item. Never revive an old reply,
+    // drawing check, customer decision or a removed assignee's authority.
+    Object.assign(issue, { recordVersion: Number(source.row.version), sourceHash: source.hash, roomId, roomName: String(source.row.room_name_snapshot),
+      sourceMessageId: String(source.row.source_message_id), ownerId: view.ownerId, state: 'awaiting_owner', progressMessageId: null,
+      materialVersion: currentMaterials.version, drawingGrantId: null });
   } else if (cmd.action === 'cancel') {
     if (!manage && previous.openedBy !== aid) fail('construction_forbidden', 403);
-    issue.state = 'cancelled'; issue.progressMessageId = sourceMessageId;
+    issue.state = 'cancelled'; issue.progressMessageId = null; issue.drawingGrantId = null;
+    issue.materialVersion = materials?.version;
+  } else if (cmd.action === 'return') {
+    // Management explicitly discloses a bounded state/excerpt to the original
+    // consultation. Private replies and later state changes are never copied.
+    if (!manage) fail('construction_forbidden', 403);
+    const need = materials?.sources.find(s => s.kind === 'need');
+    if (!need || !view.sourceAvailable || !['awaiting_owner','awaiting_review','cancelled'].includes(view.status)) fail('site_review_required', 422);
+    const returnState = view.status as Issue['state'];
+    if (returnState === 'awaiting_review' && (!previous.progressMessageId
+      || materials?.sources.some(s => s.kind === 'drawing') && !previous.drawingGrantId)) fail('site_review_required', 422);
+    const waitingFor = returnState === 'cancelled' ? 'none' : view.ownerId ? 'team' : 'unassigned';
+    // A removed assignee cannot turn a new, explicitly unassigned return into
+    // an old awaiting-review claim, or regain that assignment merely by rejoining.
+    issue.state = returnState; issue.ownerId = view.ownerId;
+    if (returnState === 'awaiting_owner' && previous.state === 'awaiting_review') {
+      issue.progressMessageId = null; issue.drawingGrantId = null;
+    }
+    await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+      values(${eid},'construction.site.issue.result.v1','construction_site_issue',${previous.issueId},${issue.revision},${JSON.stringify(actor.principal)}::jsonb,${sourceMessageId},
+      ${JSON.stringify({ projectId: pid, issueId: previous.issueId, revision: issue.revision, conversationId: need.conversationId, customerId: need.customerId,
+        materialVersion: materials!.version, needGrantId: need.id, drawingGrantId: issue.drawingGrantId || null, text: cmd.value, roomName: previous.roomName,
+        state: returnState, ownerId: view.ownerId, ownerName: view.ownerName, waitingFor })}::jsonb)`);
+    issue.materialVersion = materials!.version;
   } else {
     if (!canHandle) fail('construction_forbidden', 403);
     if (cmd.action === 'transfer') {
@@ -200,17 +236,6 @@ export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorConte
       if (!manage && reviewer?.role !== 'designer') fail('construction_forbidden', 403);
       if (!source) fail('context_changed');
       issue.drawingGrantId = source.id; issue.materialVersion = materials!.version;
-    } else if (cmd.action === 'return') {
-      // A team reply is not a customer publication. Only this explicit owner/manager action opts in the exact excerpt.
-      if (!manage) fail('construction_forbidden', 403);
-      const need = materials?.sources.find(s => s.kind === 'need');
-      if (!need || !previous.progressMessageId || previous.state !== 'awaiting_review') fail('site_review_required', 422);
-      if (materials?.sources.some(s => s.kind === 'drawing') && !previous.drawingGrantId) fail('site_review_required', 422);
-      await tx.execute(sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
-        values(${eid},'construction.site.issue.result.v1','construction_site_issue',${previous.issueId},${issue.revision},${JSON.stringify(actor.principal)}::jsonb,${sourceMessageId},
-        ${JSON.stringify({ projectId: pid, issueId: previous.issueId, revision: issue.revision, conversationId: need.conversationId, customerId: need.customerId,
-          materialVersion: materials!.version, needGrantId: need.id, drawingGrantId: previous.drawingGrantId || null, text: cmd.value, roomName: previous.roomName })}::jsonb)`);
-      issue.materialVersion = materials!.version;
     } else {
       issue.state = 'awaiting_review'; issue.progressMessageId = sourceMessageId;
       issue.materialVersion = materials?.version;

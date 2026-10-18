@@ -147,6 +147,7 @@ test('lost response reuses original key and exact receipt, conflicts roll back a
   const count=await withTenantTransaction(eids[0],tx=>one(tx,sql`select count(*)::int n from app.domain_event_outbox where enterprise_id=${eids[0]} and type='construction.site.issue.lifecycle.v1' and aggregate_id=${f.issueId}`));assert.equal(count!.n,3);
   await assert.rejects(command(designer,'回复事项'+f.issueId+'：收到'),/site_reopen_required/);
   await assert.rejects(command(boss,'取消事项'+f.issueId+'：撤回普通跟进请求'),/site_reopen_required/);
+  await assert.rejects(command(boss,'恢复事项'+f.issueId+'：普通恢复不能绕过正式重新处理'),/context_changed|site_reopen_required/);
   await assert.rejects(command(designer,'重新核对事项'+f.issueId+'：再次核对'),/site_reopen_required/);
 });
 test('human reception and disabled assistant defer durable results; two workers skip obsolete resolve and deliver close only once',async()=>{

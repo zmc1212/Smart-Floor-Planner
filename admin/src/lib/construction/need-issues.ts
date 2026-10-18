@@ -9,11 +9,11 @@ import { customerSiteResults } from './site-results';
 import { customerPlans } from './site-plans';
 
 export const needIssueTool: ModelTool = {
-  name: 'query_followups', description: '查询当前本人咨询中节点补充事项、团队明确回传的现场落实证据及正式解决/关闭结果，以及发给本咨询的具体方案版本、差异、费用/工期变化和客户真实决定。只读；不批准方案、不解决或关闭事项，不开放内部会话或未回传内容。普通回复或客户同意不等于现场落实、解决或关闭；关闭不等于验收付款。',
+  name: 'query_followups', description: '查询当前本人咨询中节点补充事项、团队明确回传的事项取消/恢复后的等待状态与负责人、现场落实证据及正式解决/关闭结果，以及发给本咨询的具体方案版本、差异、费用/工期变化和客户真实决定。只读；不取消/恢复或批准方案、不解决或关闭事项，不开放内部会话或未回传内容。恢复不复活旧回复或批准；普通回复或客户同意不等于现场落实、解决或关闭；关闭不等于验收付款。',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
 };
 type IssueState = { issueId: string; revision: number; projectId: string; room: string; field: string;
-  status: 'awaiting_customer' | 'awaiting_review' | 'invalidated' | 'approved' | 'declined' | 'changes_requested' | 'deferred' | 'resolved' | 'closed'; waitingFor: 'customer' | 'designer' | 'unassigned' | 'team' | 'none';
+  status: 'awaiting_customer' | 'awaiting_owner' | 'awaiting_review' | 'cancelled' | 'invalidated' | 'approved' | 'declined' | 'changes_requested' | 'deferred' | 'resolved' | 'closed'; waitingFor: 'customer' | 'designer' | 'unassigned' | 'team' | 'none';
   ownerName: string; sourceMessageId: string | null; sourceFactId: string | null; lastProgress: string; question: string; value: string;
   kind?: 'team_result' | 'formal_plan'; sourceVersion?: string };
 export type NeedIssueSnapshot = { query: { domain: 'followups'; conversationId: string }; customerId: string; leadIds: string[];
@@ -103,11 +103,11 @@ export async function queryNeedIssues(tx: PostgresTransaction, actor: ActorConte
   }
   for (const result of await customerSiteResults(tx, eid, uid, cid)) {
     data.push({ issueId: result.issueId, revision: result.revision, projectId: result.projectId, room: result.room, field: 'site_result',
-      status: result.status, waitingFor: result.status === 'closed' ? 'none' : 'team', ownerName: '', sourceMessageId: result.messageId, sourceFactId: null,
-      lastProgress: result.status === 'closed' || result.status === 'resolved' ? result.status : 'team_result', question: '', value: result.text, kind: 'team_result', sourceVersion: result.sourceVersion });
+      status: result.status, waitingFor: result.waitingFor, ownerName: result.ownerName, sourceMessageId: result.messageId, sourceFactId: null,
+      lastProgress: ['closed','resolved','awaiting_owner','cancelled'].includes(result.status) ? result.status : 'team_result', question: '', value: result.text, kind: 'team_result', sourceVersion: result.sourceVersion });
     lines.push(result.status === 'invalidated' ? `事项${result.issueId}的原团队回传已失效，等待项目团队按当前资料重新核对，旧结果不能沿用。`
       : `${result.room}事项${result.issueId} · 修订${result.revision}，团队明确回传：${result.text}`
-        + (result.status === 'closed' || result.status === 'resolved' ? '' : '\n仍待项目团队核对，不代表已解决、已正式批准或可以据此施工。'));
+        + (result.status === 'awaiting_review' ? '\n仍待项目团队核对，不代表已解决、已正式批准或可以据此施工。' : ''));
   }
   for (const plan of await customerPlans(tx, eid, uid, cid)) {
     const status = plan.status === 'pending_customer' ? 'awaiting_customer' : plan.status as IssueState['status'];

@@ -7,8 +7,10 @@ import { currentRecord, readSiteIssue } from './site-issues';
 import { sharedMaterial, sharedMaterials } from './site-materials';
 import { readSiteResolution } from './site-resolution';
 import { fingerprint } from '@/lib/assistant/contracts';
+import { siteAccessRevoked } from './site-access';
 
 const resultType = 'construction.site.issue.result.v1';
+type ReturnedState = 'closed' | 'resolved' | 'awaiting_review' | 'awaiting_owner' | 'cancelled' | 'invalidated';
 
 /** The recipient is the original opt-in consultation, never the latest or another customer thread. */
 async function validResult(tx: PostgresTransaction, eid: string, cid: string, event: Row) {
@@ -17,12 +19,13 @@ async function validResult(tx: PostgresTransaction, eid: string, cid: string, ev
   const need = await sharedMaterial(tx, eid, String(p.projectId), String(p.needGrantId));
   if (!need || need.conversationId !== cid || need.customerId !== p.customerId) return false;
   const issue = await readSiteIssue(tx, eid, String(p.projectId), String(p.issueId));
-  if (!issue || !issue.ownerId) return false;
+  if (!issue || !issue.sourceAvailable) return false;
   if (p.lifecycleId) {
     const resolution = await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId));
     if (!resolution?.available || resolution.id !== p.lifecycleId || resolution.revision !== p.revision || resolution.state !== p.state
       || resolution.planId !== p.planId || resolution.evidenceId !== p.evidenceId || issue.revision !== p.issueRevision) return false;
-  } else if (issue.status !== 'awaiting_review' || issue.revision !== p.revision) return false;
+  } else if (issue.status !== (p.state || 'awaiting_review') || issue.revision !== p.revision
+    || (p.state ? issue.ownerId !== p.ownerId || issue.ownerName !== p.ownerName : !issue.ownerId)) return false;
   const materials = await sharedMaterials(tx, eid, String(p.projectId), need.roomId);
   if (materials.version !== p.materialVersion || issue.materialVersion !== p.materialVersion) return false;
   const publisher = (event.actor_ref as Row)?.adminId;
@@ -30,11 +33,20 @@ async function validResult(tx: PostgresTransaction, eid: string, cid: string, ev
   const permission = await one(tx, sql`select app.construction_actor_access(${publisher}::bigint,${eid}::bigint) as role,
     exists(select 1 from app.construction_members where enterprise_id=${eid} and project_id=${String(p.projectId)}
       and admin_id=${publisher} and active and role='manager') as manager`);
-  return permission?.role === 'owner' || (permission?.role === 'member' && permission.manager === true);
+  if (!(permission?.role === 'owner' || (permission?.role === 'member' && permission.manager === true))) return false;
+  return !await siteAccessRevoked(tx, eid, String(p.projectId),
+    [publisher, issue.ownerId].filter(Boolean) as string[], event.created_at as Date, { managers: [publisher] });
 }
 
 async function resultText(tx: PostgresTransaction, eid: string, p: Row) {
-  if (!p.lifecycleId) return String(p.text);
+  if (!p.lifecycleId) {
+    if (!p.state) return String(p.text);
+    const status = p.state === 'cancelled' ? '已取消跟进，当前没有待执行安排'
+      : p.state === 'awaiting_review' ? '已有处理回复，仍待团队核对' : '等待团队处理';
+    const waiting = p.state === 'cancelled' ? '如需继续，由有权人员沿原事项明确恢复并重新核对。'
+      : p.ownerName ? `当前负责人：${p.ownerName}。` : '尚未分配有效负责人。';
+    return `${status}。\n${p.text}\n${waiting}\n这是本次团队回传状态，不代表方案、费用、工期、现场落实或验收批准；没有已确认期限，不推断逾期。`;
+  }
   const resolution = (await readSiteResolution(tx, eid, String(p.projectId), String(p.issueId)))!;
   const proof = resolution.evidence!;
   return `方案V${p.planNumber} · ${p.state === 'closed' ? '已正式关闭' : '已正式解决，尚未关闭'}。\n${p.text}`
@@ -82,10 +94,20 @@ export async function customerSiteResults(tx: PostgresTransaction, eid: string, 
   const projected = [];
   for (const e of events) {
     const p = e.payload as Row, available = await validResult(tx, eid, cid, e);
+    const status: ReturnedState = available ? (p.state || 'awaiting_review') as ReturnedState : 'invalidated';
+    const waitingFor = !available ? 'unassigned' as const : status === 'closed' || status === 'cancelled' ? 'none' as const
+      : p.waitingFor === 'unassigned' ? 'unassigned' as const : 'team' as const;
+    // Preserve prior ordinary/formal snapshot hashes across this code upgrade.
+    // Only the new ordinary state returns add assignee/waiting dependencies.
+    const provenance = { materialVersion: p.materialVersion, lifecycleId: p.lifecycleId || null, text: p.text, shareOriginals: p.shareOriginals === true };
+    const sourceVersion = !available ? '' : !p.lifecycleId && p.state ? fingerprint({ ...provenance,
+      revision: p.revision, state: p.state, ownerId: p.ownerId || null, ownerName: p.ownerName || '', waitingFor: p.waitingFor || null }) : fingerprint(provenance);
     projected.push({ issueId: String(p.issueId), revision: Number(p.revision), projectId: String(p.projectId),
-      room: available ? String(p.roomName) : '', status: available ? p.state === 'closed' ? 'closed' as const : p.state === 'resolved' ? 'resolved' as const : 'awaiting_review' as const : 'invalidated' as const,
+      room: available ? String(p.roomName) : '', status,
+      ownerName: available && !p.lifecycleId ? String(p.ownerName || '') : '',
+      waitingFor,
       messageId: String(e.result_message_id), text: available ? await resultText(tx, eid, p) : '',
-      sourceVersion: available ? fingerprint({ materialVersion: p.materialVersion, lifecycleId: p.lifecycleId || null, text: p.text, shareOriginals: p.shareOriginals === true }) : '' });
+      sourceVersion });
   }
   return projected;
 }
@@ -111,7 +133,7 @@ export async function syncSiteResults(tx: PostgresTransaction, actor: ActorConte
       values(${eid},${String(event.id)},${'construction:result:' + cid},'processing') on conflict(enterprise_id,event_id,consumer_key) do nothing returning id`);
     if (!d) continue;
     const p = event.payload as Row;
-    const display = p.lifecycleId ? await resultText(tx, eid, p) : `${p.text}\n这是处理回复，仍待核对，不代表方案、费用、工期或验收批准。`;
+    const display = p.lifecycleId || p.state ? await resultText(tx, eid, p) : `${p.text}\n这是处理回复，仍待核对，不代表方案、费用、工期或验收批准。`;
     await appendMessage(tx, actor, cid, { author: 'system', eventId: String(event.id), purpose: 'construction.result',
       content: { version: 1, blocks: [{ type: 'text', text: `「${p.roomName}」事项${p.issueId} · 修订${p.revision}，项目团队回传：\n${display}` }] } });
     await tx.execute(sql`update app.domain_event_deliveries set status='delivered',updated_at=now() where enterprise_id=${eid} and id=${String(d.id)}`);

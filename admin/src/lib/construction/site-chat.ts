@@ -95,9 +95,17 @@ export class SiteChatService {
       const rooms = await rows(tx, sql`select id,name from app.construction_rooms where enterprise_id=${eid} and project_id=${projectId} order by id`);
       const materials: Record<string, string> = {};
       for (const room of rooms) materials[String(room.id)] = (await sharedMaterials(tx, eid, projectId, String(room.id))).version;
+      const records = Object.fromEntries(items.filter(i => i.record).map(i => [String(i.record!.id), Number(i.record!.version)]));
+      // A durable issue may outlive the latest message page. Supply its current
+      // source revision so explicit recovery does not depend on an old UI cache.
+      if (issues.length) for (const record of await rows(tx, sql`select r.id,r.version from app.construction_site_records r
+        where r.enterprise_id=${eid} and r.project_id=${projectId} and r.id in
+          (select value::bigint from jsonb_array_elements_text(${JSON.stringify(issues.map(i => i.recordId))}::jsonb)) order by r.id for share`)) {
+        records[String(record.id)] = Number(record.version);
+      }
       return siteDto({ conversationId: c.id, project: { id: p.id, name: p.name, status: p.status, customerAccess: p.customer_access, stageName: stage?.name || '' },
         ...permission, rooms, plans,
-        items, versions: { records: Object.fromEntries(items.filter(i => i.record).map(i => [String(i.record!.id), Number(i.record!.version)])),
+        items, versions: { records,
           issues: Object.fromEntries(issues.map(i => [i.issueId, i.revision])), materials,
           plans: Object.fromEntries(plans.map(p => [p.id, p.revision])), resolutions: await projectResolutionVersions(tx, eid, projectId) },
         nextCursor: messages.length === limit ? String(messages[0].seq) : null }) as Row;
@@ -131,7 +139,7 @@ export class SiteChatService {
         const issueText = issueQuery ? (await projectSiteIssues(tx, eid, projectId)).filter(i => !issueQueryId || i.issueId === issueQueryId).map(i => i.text).join('\n\n') || '本项目当前没有对应的持续事项。' : '';
         const snapshot = intent === 'query' && !issueQuery ? await querySiteMaterials(tx, eid, projectId, await resolveSiteQuery(tx, eid, projectId, raw)) : null;
         await appendSiteResponse(tx, this.actor, String(c.id), projectId, String(message.id), mediaIds, intent,
-          plan?.text || resolution?.text || issue?.text || issueText || snapshot?.text || (intent === 'request' ? '请先查对应现场记录，再说“跟进记录编号”。已有事项可以说“接手事项编号”“转交事项编号给姓名”或“回复事项编号：处理结果”；取消请说明原因。需要有权人员处理，回复不等于已解决。' : '原话已保留在本项目。需要查资料时请说明房间；现场进展可直接发文字或照片。'),
+          plan?.text || resolution?.text || issue?.text || issueText || snapshot?.text || (intent === 'request' ? '请先查对应现场记录，再说“跟进记录编号”。已有事项可以说“接手事项编号”“转交事项编号给姓名”或“回复事项编号：处理结果”；取消或恢复请说明原因。有权管理人员可明确回传本次状态，回复不等于已解决。' : '原话已保留在本项目。需要查资料时请说明房间；现场进展可直接发文字或照片。'),
           plan ? { planId: plan.id } : resolution ? { issueId: resolution.issueId, revision: resolution.revision, lifecycleId: resolution.lifecycleId } : issue ? { issueId: issue.issueId, revision: issue.revision } : issueQuery ? { issueQuery: true, issueQueryId } : snapshot ? { query: snapshot.query, version: snapshot.version, queriedAt: snapshot.queriedAt,
             sources: snapshot.sources.map(source => ({ ref: source.ref, hash: source.hash, sourceMessageId: source.sourceMessageId,
               roomId: source.roomId, mediaIds: source.mediaIds, audience: source.audience, basis: source.basis })) } : {});
