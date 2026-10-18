@@ -1,49 +1,48 @@
-# 小客交接：获权需求与点位图原件进入专业问答
+# 小客接力：团队核对与精确正式版本进入专业问答
 
-2026-10-18。继续现行路线图3.1的P3B/P4A及PPT23/38，补齐上一交接明确的原件投影缺口。**限定闭环Implemented，整体仍Limited**，不代表完整专业客服、全PPT或发布验收。当前分支`codex/xiaok-public-site-lifecycle`，基线`a44f4c74be9037241214f486cc40e778b449da04`；本轮功能提交`11d12f4188ef31cb371d62b6679aeb267b3f89a8`。最终交接提交、本地/上游/GitHub校验见`tmp/xiaok-material-projection/git-final.json`。
+2026-10-18。继续当前路线图3.1的P3B/P4A、PPT23/38，不新增阶段编号。**本轮限定来源与状态闭环Implemented，整体仍Limited**，未宣称完整专业客服、图纸理解或全PPT完成。分支`codex/xiaok-public-site-lifecycle`，基线`26a3664f384d478af10a0af1de2610581e849cf8`；功能提交`19af1ea7ad768317ac580a0a78b1dd6116630fb3`，最终交接提交及本地/上游/GitHub一致性见`tmp/xiaok-team-sources/git-final.json`。仅普通推送当前分支，不合并main或部署。
 
-上一阶段`82baf515`/`a44f4c74`的同事项取消、恢复和原咨询状态回传继续有效；[原交接](https://github.com/zmc1212/Smart-Floor-Planner/blob/a44f4c74be9037241214f486cc40e778b449da04/docs/xiaok-assistant-handoff.zh-CN.md)及`tmp/xiaok-issue-continuation/`的原始成功/失败记录未改写。现行路线图/知识完善计划保留用户原工作区状态，没有混入本轮提交。
+前批原件投影`11d12f41`/`26a3664f`及其`tmp/xiaok-material-projection/`成功、失败和未验项保持原记录。用户整理的双语路线图、知识完善计划、其他脏文件及原有五项组件删除均保留，未混入本轮提交。
 
-## 实际完成
+## 当前实际行为
 
-- 原`query_materials`和`search_knowledge`绑定房屋路径复用`sharedMaterials`，投影同客户、同原咨询、同项目/施工房间的有效共享需求与点位图原件说明。`shared_need`/`shared_drawing`携带grant ID/版本、原消息/hash、原咨询、房间、图片ID/hash和客户参考身份。不同咨询即使同客户/房屋也不继承；多房屋/项目/重名房间仍先澄清，全房最多20个房间并明确剩余查询范围。
-- 最新同类grant替换旧版，撤回最新不回退旧版；消息/图片hash、删除/用途、咨询用途/参与者、客户访问/归属、房间变更及保留期沿原服务重验。既有材料/业务快照守卫覆盖缓存、最终提交、重进、历史/派生回答及原有任务来源。原件继续走C01私有媒体和S04获权原件接口，没有新表、迁移、路由、菜单或授权系统。
-- 每份材料提供独立sourceId/逐字原文，显式和知识绑定路径一致。v40把客户参考说明、企业规则、实际节点、建议与未知分开；尾注只列实际引用类型/房间，无节点/记录时不会把缺项查询标成已查阅实况。普通解释不创建正式处理。旧人数不能被推成旧桌型的提示约束已补齐。
-- 当前配置模型未接收本轮点位图像素：原件媒体与说明确实进入授权投影，但只有说明进入文本解释，不能称看过图内细节、精确尺寸或正式核对。`imagePixels:false`描述这份投影未附像素，不关闭既有获权图像输入/观察协议；另一路图像证据须核对同一mediaId/hash。本轮未验证该图像路径。
-- 保留原C01/C02/S04/U01结构、样式、素材、字体和导航。PPT23对应原件与同房间资料，38对应关键事项由团队核实；双语合同、四份当前模块记录和两个路由的双语唯一还原台账已同步。正式v4墙图仍只读，未更改其数据/量房/分佣合同，因此未改正式量房文档。
+- 原`query_materials`及`search_knowledge`绑定房屋路径，继续复用本客户/原咨询/明确项目房间的有效共享需求、点位图、实际节点与企业知识。新增独立`team_review`、`formal_plan`来源；不新建权限、版本或知识系统，无新schema/API/菜单。
+- 团队来源仅来自经理**明确回传到原咨询**且当前仍有效的图纸关联核对，绑定回传event/客户回执、事项/修订、need/drawing grant和materialVersion。内部回复、未发布现场记录与共享会话不泄漏给客户；核对关联不冒充图内尺寸、正式决定或现场落实。
+- 正式来源复用`customerPlans/readPlan`，只读当前已送达本咨询的精确版本ID/hash、版号、修订、客户真实决定、原件hash、前版与差异/费用/工期原文。预览、待决定、稍后、未同意、要求修改、同意分别保留；新版不继承同意，撤回最新不回退旧版。所有既有源权限、换版、撤回和历史失效检查继续执行。
+- v43实模回答能说明团队核对后还缺现场尺寸，按V1差异和真实同意解释；V2改为单人办公/取消台灯时保留与客户双人办公/台灯原话的冲突，请团队核实，不自行覆盖需求。普通解释不执行决定、落实、解决或关闭。
+- 实际正式资料使旧重复DTO超过原48KB预算。`current-turn-sources-v2`只精简模型视图中的重复data/displayText及完全相同文本，保留全部来源原文、ID/版本/权限、冲突/缺项、知识条件/单位和标准tool_call配对；持久快照/检查点及提交/重进授权不变。原失败检查点52,092→39,819 UTF-8字节，原预算未提高。
+- 正式编号缺同段引文时，仅复用原有唯一一次格式修复，提供同一已引用来源的精确ID/版号标题；不自动改答案，不增加轮数或放宽数值规则。未引用费用/尺寸、同号金额、未知来源和完成承诺仍拒绝。失败原回答不算有效输出。
+- 本轮未识读图内像素，`imagePixels:false`；240×180纯色PNG只是原件/hash/权限传输合成样本，不是图纸理解证据。C01/S04未改WXML/Less/素材/文案/几何，批准设计与双语唯一路由台账已同步；不扩大视觉还原结论。
 
-## 已执行检查
+## 已执行检查与证据
 
-证据统一在`tmp/xiaok-material-projection/`，总表`acceptance-summary.json`、逐段复核`semantic-review.json`、原生`native.json`/`native-driver.json`/`native-visual-review.json`、数据/用量审计`development-audit.json`/`usage-summary.json`。
+证据根目录`tmp/xiaok-team-sources/`；汇总`acceptance-summary.json`，逐轮语义审读`semantic-review.json`，原生`native.json`/`native-driver.json`/`native-visual-review.json`，开发审计`development-audit.json`/`usage-summary.json`。测试数据均明确标记合成；真实HTTP、开发数据库、原Worker、DeepSeek deepseek-flash、Embedding与索引任务实际执行。隔离服务测试的模型适配器是确定性的，不当作实模。
 
-| 检查 | 实际结果与口径 |
+| 范围 | 实际结果与口径 |
 | --- | --- |
-| 原件核心 | 隔离服务17/17，加最终综合解释单元8/8；去重25项。早先合组日志是24项（17+旧7），保留原样，不伪造单条25/25日志 |
-| 相关回归 | 完整命令75项：73通过、2项显式配置跳过、0失败；实际包含原件、同事项恢复、正式版本/落实关闭、三类管理者继承、并发及撤权恢复 |
-| Mini专项 | 92/92，客户端单元，不是全小程序或原生业务验收 |
-| 配置实模 | 最终6/6：有效原件、需求替换、撤图三组各两次；真实HTTP/开发数据库/原Worker/DeepSeek deepseek-flash；需要实际引用当前原件及企业依据，不只检查工具返回 |
-| Stable原生 | 最终20/20，包含另外4次实模回答、真实输入/点击、图片上传、精确原件读取、来源片、持久重进、换版/撤回和成员撤权；临时网络/身份/存储恢复，SDK断开 |
-| 工程检查 | 触及文件lint0错误/0警告，全量lint0错误/30既有警告；同源类型287→287，无新增诊断；隔离Webpack编译通过；完整构建仍在既有`AiDesignerLegacyPage`非法导出失败 |
-| 文档/保留 | diff检查通过；两个路由每种语言均只有一行、唯一批准设计源不变；暂存前53项既有改动和原五项删除逐字节保留，小程序清单各只暂存一行本轮更新 |
+| 核心 | 最终整组25/25：隔离服务15＋综合解释单元10，含跨租户/客户/咨询/房间、内部未回传、换版/撤回、并发变更与接管围栏、模型视图预算及严格编号修复 |
+| 相关回归 | 首整组92项为87通过/3失败/2显式跳过；旧模拟适配器读取已从模型视图删除的重复DTO，导致一项及两项级联失败。改为读完整synthesisSources，另验持久快照来源后，材料整文件12/12复跑通过；按原标题去重90通过/2跳过，不能伪称单次92项全通过。`related-summary.json`保留计算与原始日志 |
+| Mini单元 | 92/92；仅专项目录单元，不代表全Mini业务验收 |
+| 开发实模 | 六状态各两次，共12次有效回答；逐次核验真实引用需求/企业知识/节点、独立核对与正式版本/决定，换版冲突及不继承同意。原驱动末尾单页历史断言失败；独立真实GET分页复核全部36消息，12条派生回答均失效，无模型/业务重跑；`live.json`原失败不改写，见`live-history-recheck.json` |
+| Stable原生 | 20/20；另含六次真实模型回答、两次报告草稿，实际输入/按钮/图片上传、原件/精确预览与同意、团队回传、V2冲突/撤回、参考撤回/持久重进与成员撤权。会话/网络/存储临时状态恢复、SDK断开 |
+| 工程 | 全量lint0错误/30既有警告，最终驱动增量lint0错误；同源类型诊断287→287无新增（不是全仓类型通过）；隔离工作区Webpack仅编译成功。完整构建仍在既有`AiDesignerLegacyPage`非法导出处失败，未修改该页面 |
+| 文档与保留 | 双语合同/四份模块清单与每语言两条唯一路由记录已对齐；Mini清单只暂存本轮两个段落。73个开工文件中71个字节未变，两个Mini清单撤销本轮段落后与备份一致；五项原有删除保留。未递归预哈希的原有未跟踪目录不冒称逐字节审计 |
 
-隔离检查固定55432/xiaok_embedding_eval、非superuser/non-BYPASSRLS和原共享锁。中止的首次Node测试夹具3360/3361及其九个合成用户已在该锁下清理，见`isolated-cleanup.json`，未选择开发库或客户企业。
+最终开发实模：enterprise2482/project100/lead2958/cid319/user3394，知识document184/version186，run448/449/450/451/452/454/455/456/457/458/459/460。最终原生：enterprise2484/project102/lead2960/cid323/user3402，知识document186/version188，客户run463/464/465/466/467/468。
 
-最终实模合成样本：enterprise2474/project92/lead2950/cid303/user3362，知识document176/version178，run400/401/403/405/406/407。最终原生样本：enterprise2476/project94/lead2952/cid307/user3370，知识document178/version180，客户run411–414。其他失败/早期样本2471–2475只作审计；六个开发测试企业均已关闭AI写入，测试员工账号禁用、合成用户context_version递增使本轮令牌失效，active_staff/active_runs/active_jobs均0，正式方案/落实/解决关闭事件均0。开发数据保留供溯源，不是已删除或真实工程数据。
+本轮共审计8个精确合成开发企业、54个run，状态{"succeeded":49,"indeterminate":2,"failed":3}；provider attempt审计117行，状态{"succeeded":115,"unknown":2}。**attempt行不等于已证实的外部调用**；本地预算拒绝后仍有unknown行，原状态不回写。费用未知/null，索引工作另列，不编造总费用、P50/P95或产品准确率。上述企业AI写入已关闭、合成员工禁用、用户context_version递增使旧令牌失效；active_staff/runs/jobs均0，落实/解决/关闭事件均0。合成来源保留审计，不删除真实业务数据。
 
-所有业务内容和图片均为标记合成样本；240×180纯色PNG用于验证原件传输/hash/权限，不验证图纸内容理解。HTTP、模型、Embedding、Worker和开发数据库真实；隔离库模型适配器是确定性的，不能算实模。全轮含失败尝试21个真实run/38次供应商调用，供应商调用均技术成功但不等于语义全过；observed文本tokens264,818，查询Embedding输入tokens1,394，另有5个索引任务。费用未知/null，查询用量不包含所有索引用量，不推算费用或小样本P50/P95/产品正确率。
+额度预留状态为{"reconciling":53,"released":1}，未将reconciling冒充已结清或释放；关闭合成企业AI只停止新写，不代表历史财务已核清。原未知attempt与费用继续按既有核账流程保留，不重试旧run或清零。
 
-原生复用唯一副屏Stable2.02.2608080、automator0.13.0、base3.17.2，先新编译再核对实时数据/元素；每图前检查准确route/stack。逻辑390×844，PNG348×752。已查看实际原件消息、来源片、回答和撤回失效截图；输入15px对原30rpx约15.6px，发送43px对84rpx约43.68px，品牌右边214px在原生胶囊左边296px以内。长回答在消息区滚动，完整文字另核持久/原生数据，不把尾部截图当完整光学验收。
+隔离测试固定55432/xiaok_embedding_eval、non-superuser/non-BYPASSRLS并串行共用锁。首个被外部超时中止的合成夹具只在此隔离库按本轮精确前缀清理：enterprise3377/3378；用户6405/6406/6407/6408/6409/6410/6411/6412，详见`isolated-cleanup.json`。开发库合成审计数据未删除。
 
-## 失败、限制及复跑
+## 失败、限制与下一步
 
-- 初轮6次实模虽通过来源/运行检查，run396/397/399把“双人办公”补成未确认的旧双人长桌。完整原输出`live.initial-unsupported-table.json`及`semantic-review.initial.json`保留，语义判定失败；修正提示后用相同原始夹具重跑最终六次，不更改样本掩盖问题。
-- 首次Bun包装器不能运行Node测试，改为真实Node。首次Node包装器55秒中止、测试夹具字段/软删状态问题及开发脚本在环境加载前间接导入JWT造成401，记录在`initial-failures.json`和可用日志；中止包装器的原输出不完整，不作为整组通过证据。类型初轮新增3条诊断已修复，初始比较文件保留。
-- 原生首轮沙箱看不到桌面窗口，未发生页面操作；沿已授权稳定流程在可访问桌面的环境重试。首次桌面原生因共用S04测试白名单未包含引用详情而超时，归档`native-first-citation-transport/`及对应根目录报告。测试器只放行本合成回答实际返回的citation ID，没有扩大产品权限；最终重跑20步通过。所有失败阶段及前批日志不计最终通过。
-- 当前仍为单房间固定题的限定专业解释，不是开放题、图像阅读或工程规范级建议评审。部分回答偏长、重复可选转设计师或对查询缺项表达不够精确，后续继续收敛。与旧NeedMemory、未标记矛盾、多房间/跨阶段复杂更正的广泛语义覆盖未完成；不把结构引用校验当完整语义保证。
-- 完整构建的确切失败见`build.log`，隔离编译见`compile-current.log`；没有改无关的AI Designer页面。Chrome、完整宿主/字体光学/高屏/键盘、真实微信登录、真机、BLE、全小程序打包/全量测试、干净克隆安装及生产仍保持未验或原历史失败状态，不能由本轮专项通过升级；不是要求用户手测的开发门槛。
+- 早期测试夹具措辞未路由到报告、行断言字段错误、外部包装超时均保留原日志；本地正式上下文超预算与编号引文拒绝分别见`live.initial-provider-unknown.json`、`live.initial-numeric-header.json`和诊断。预算错误发生在本地输入校验，不冒称已证实供应商故障；unknown费用继续未知。只修复了有证据的有限原因。
+- 原生三次未通过尝试分别归档`native-first-upload-busy/`（未等上传完成）、`native-second-pre-header/`（正式编号同段引文被拒绝）、`native-third-queue-delay/`（与实模争用单Worker，测试超时清理后任务才启动）。最终串行20/20不改写这些失败。分页只读复核首次因验收脚本在环境加载前导入JWT模块而401，修正导入顺序后通过；未重启/配置凭证或放宽鉴权。
+- 已审读实际原文及来源，当前目标的核对/正式版本/决定/冲突边界可见。回答仍偏长，个别句把查询缺项表述得接近现实未核对；run459将联系电话未配置延伸为等待后才能沟通，run466将“靠窗意向”与缺少可量测的现场位置混在一起表述，容易误解。不能把结构引用或来源/状态检查通过当作完整专业语义验收。更正与旧NeedMemory、复杂多房间/多阶段矛盾仍Limited。
+- Stable2.02.2608080、automator0.13.0、base3.17.2；每图核对精确route/stack，逻辑390×844、PNG348×752。几何/功能截图不替代原PPT逐元素光学还原；preview截图位于会话末尾，完整预览仅由实际数据/下载/按钮/API验证，不能据该PNG声称完整卡片光学已验。Chrome、完整宿主/高屏/键盘、真机/真实微信授权/BLE、全Mini/全PPT、干净克隆安装与生产均未验；不转成用户必做手测或开发门槛。
 
-在`admin`：`node scripts/assistant-shared-materials-acceptance.mjs`、`--regression`、`--mini`；实模`node --import tsx scripts/assistant-shared-materials-development.ts --development`，原生加`--native`；审计`node --import tsx scripts/assistant-shared-materials-audit.ts --development`；同源类型`node scripts/assistant-shared-materials-typecheck.mjs a44f4c74`。原生依赖既有本机Stable/CDP/窗口辅助脚本；复用已批准5432/smart_floor_planner、localhost:3006及现有Worker/provider，不迁移或更改SSH、凭证、角色/菜单或生产配置。首次调用本机工具时需保留真实Node与环境加载顺序。
+复跑（cwd`admin`，真实Node，沿用已有环境顺序）：`node scripts/assistant-team-materials-acceptance.mjs`，相关`--regression`/`--materials`，Mini`--mini`；实模`node --import tsx scripts/assistant-team-materials-development.ts --development`，原生加`--native`且与实模**串行**；审计`node --import tsx scripts/assistant-team-materials-audit.ts --development`；同源比较`node scripts/assistant-team-materials-typecheck.mjs 26a3664f`。原生依赖既有Stable/CDP/副屏辅助脚本，不另开窗口。新增脚本使用既有批准开发/隔离库、localhost:3006、现有Worker/provider，不配置凭证或改角色/菜单权限。
 
-功能提交只含本轮20项，双语Mini模块清单用HEAD内容加单段更新构造暂存，不夹带用户既有改动；范围与哈希见`staging-review.json`/`preservation-check.json`。本交接另作文档提交；只普通推送当前分支，不合并main、force push或部署。
-
-下一步继续原P3B/P4A专业实况主线：复用原事项的图纸核对与正式版本来源，使回答区分“客户参考图”“团队核对关联”“精确正式版本”，并补需求/资料冲突及更正的来源解释；仍按现行PPT与既有组件自动验收。完整像素理解、后续阶段和外部条件据实际能力单独记录，不另起KB-5，不等待人工A10/截图/确认。
+下一步仍沿原P3B/P4A专业实况主线，处理客户更正与既有记忆、未解决事项及相互冲突来源的接续，让企业知识与实际节点形成更简洁准确的解释；复用现有正式版本和处理链，不另造版本系统。按对应PPT核心场景两次实模及原生入口继续验收；图内识读需有真实同原件像素证据后才可升级，知识文件理解按原计划顺序，不凭本轮来源投影宣称已实现。无需等待人工A10/截图/确认，部署仍需单独授权。
