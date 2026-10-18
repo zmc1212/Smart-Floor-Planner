@@ -63,9 +63,15 @@ node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973be
 
 证据在 worktree 的 `tmp/knowledge-batch/`，日志与 JSON 记录运行前后代码 hash、准确通过/失败/跳过及模型类别。最终离线检查 **41/41 通过、0 失败、0 跳过**，包括新增协调用例 27 项及既有单元 14 项；运行期间被测源码 hash 不变。相关六文件 ESLint 零错误/警告。同一源码程序类型诊断与基线均为 **287 项，新增 0**；不是全项目类型检查通过。
 
-隔离服务命令在 `lockAssistantAcceptance` 获取锁时退出 1，原因为 `Another assistant acceptance run holds the isolated database lock.`；只读回查确认同一共享锁仍被另一进程持有，见 `service-attempt.log`、`lock-observation.json`。测试子进程未启动，数据库测试 **0 项执行**，没有本线夹具创建/重置/清理、数据写入或竞争 Worker。此项是待锁释放后执行的检查，不记成通过、失败用例或已跳过的测试结果；没有自动审批拒绝数据库验收。
+首次隔离服务命令在 `lockAssistantAcceptance` 获取锁时退出 1，原因为 `Another assistant acceptance run holds the isolated database lock.`，该次测试子进程未启动、数据库测试 0 项执行，原始记录保留在 `service-attempt.log`、`lock-observation.json`。后续只读核对确认持有者为 PostgreSQL 后端 `457125`、角色 `sfp_app`，应用名为空，客户端 `172.18.0.1:53962`；本机业务验收父进程 `323796` 的子链仍在执行 `assistant-team-materials.test.ts`。未终止连接、删除锁、抢占或清理其他任务。15:28 UTC 观察到锁正常释放后，才通过原 helper 的目标/非特权角色/空闲队列检查重新取锁。
 
-离线端口中的权限/版本场景是模拟，不是数据库 RLS 或实模验收。本轮无模型/Embedding 调用；服务测试将使用确定性文字模型，既有索引步骤届时含真实隔离数据库/Embedding。未改模型语义、路由或 schema，本批不跑完整构建、Chrome、Stable 原生、真机/BLE或生产发布验收，均不宣称已通过。
+在代码提交 `782eb8ac5a371d2cb64783801b1859022aa5509d` 上执行既定服务文件：**14 项，13 通过、1 失败、0 跳过、0 取消**，退出 1，用时约 170.37 秒；运行前后源码 hash 一致。原有 10 项服务回归及新增批量准备/原子回滚/修订重进 3 项通过；新增三类管理者批量权限项失败，不能写成整套已通过。运行锁由本线后端 `459405`、`sfp_app` 持有，应用名 `knowledge_batch_service_followup_20261018T1529Z`；整套仍使用既有 `lockAssistantAcceptance`，没有跳过锁检查或启动独立 Worker。
+
+失败位于 `admin/src/db/__tests__/assistant-knowledge-operations.test.ts:184` 的合成管理员 INSERT：测试把 JS 数组插入 `menu_permissions` 后生成 `($4)::text[]`，其中 `$4` 成为裸字符串 `assistant-knowledge`。只读 `SELECT ($1)::text[]` 已复现 `22P02 / malformed array literal`；显式 `ARRAY[$1]::text[]` 和 `ARRAY[]::text[]` 的只读对照有效。第 14 项尚未到达权限断言，不能据此认定业务权限通过或越权失败。后续应修正这个测试夹具的数组 SQL，再拿共享锁重跑；本次按“只补回归/交接”的范围保留原失败，没有修改测试、产品实现、API/UI 或共享代码。
+
+夹具仅为企业 `3442/3443`、前缀 `synthetic-kb4-a18a2a94-9f33-4cc5-8387-260f0264ed96`。结束后只读核验企业、同前缀管理员及 13 类助手表记录全部零遗留，活跃队列为空；自有进程 `365080/455544/127880` 均已退出，本线锁 `459405` 已释放。本线没有启动独立 Worker，也没有替换或终止原开发 Worker。证据：`service.log`、`service-status.json`、`service-followup/{preparation.json,run-observation-*.json,service-final.log,service-final-status.json,failure-analysis.json,cleanup-audit.json,owned-processes.json,process-cleanup.json}`；最初锁占用记录仍保留，没有自动审批拒绝或不确定写入结果。
+
+离线端口中的权限/版本场景是模拟；本次服务回归使用真实隔离 PostgreSQL/RLS 和既有真实 Embedding，文字生成模型是确定性模拟。运行中快照已观察到 2 次成功 `embed`，只是当时的部分计数，不作为整套调用总数或费用；未知输入/费用仍保留。没有配置实模文字回答或客户 C01 Agent/原生语义验收。原离线 41 项、lint 和类型对照为前轮已执行证据，本次未重复跑。未改模型语义、路由或 schema，本批未运行完整构建、Chrome、Stable 原生、真机/BLE或生产发布验收，整体保持 Limited。
 
 ## 计划来源保全
 
