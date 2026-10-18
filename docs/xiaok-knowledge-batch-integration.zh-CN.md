@@ -1,6 +1,35 @@
 # 企业知识：多来源覆盖与批量回归集成交接
 
-状态：**Limited；多文档检索覆盖及知识专属手动批次管理已有有界实现，自动批量派发与客户语义验收仍待集成。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
+状态：**Limited；多文档检索覆盖、知识专属手动批次管理及本地 DOCX 表头保真修复已有有界实现，自动批量派发与客户语义验收仍待集成。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
+
+## 完整计划复核与 KB-2 表头保真
+
+`6b974e3d` 后已通读保全的完整中文计划并对照英文版本。KB-1～4 基础已有 Limited 实现；计划副本早于本线 v4 覆盖及手动批次增量，剩余范围列不表示这些基础须重做。未完成项**并非都依赖共享综合解释修复**：
+
+| 计划剩余范围 | 真实依赖与下一有效动作 |
+| --- | --- |
+| KB-1 自动条件、自由文本语义冲突、通用术语/长尾及完整专业客服 | 部分抽取/评测可在知识线独立做。当前没有新的实测缺陷或限定语料足以支持再开实现；语义验收须有来源核对及另行允许的模型执行。已登记冲突及现有专业元数据不属于缺失基础。 |
+| KB-2 K-02/03 复杂结构及 K-05 格式/OCR 扩展 | 已支持格式的本地保真可独立推进，本轮修复下述已复现 DOCX 缺陷。PDF 表格/图示/OCR 及复杂容器仍不支持或有限；有界解析可独立试验，但须有具体样本/质量合同并按需复核依赖与资料授权。XLSX/旧格式枚举、定位及共享 schema 扩展须集成人接入。生产兼容/完整恢复尚无完整证据。 |
+| KB-3 父子补检、术语、重排/补充检索及更广图纸/项目语义 | 前组须由实际缺口驱动，部分可独立；当前无实测必要性，不为持续运行添加功能。完整项目/图纸语义须依赖原业务来源适配器/Agent 合同。v4 已有的限定覆盖通过不等于完整语义通过。 |
+| KB-4 自动批量、定时版本切换、影子 profile 重建/切换/回滚及规模 | 实际执行固定和跨进程持久取消必须进入原 run/队列事务边界；定时切换、影子构建涉及共享生命周期/任务/schema 所有权，本线不另建权威。容量/时延与生产恢复仍未实测，不能称共享修复后即已完成。 |
+| K-04/09/12 综合解释、引用及 C01/原生重进 | 等待集成人给出含完整来源预算、同段归因及派发前修复的准确集成提交和限定单测证据，再在该提交核对已有离线语义规则；实模/原生验收须另行符合当前执行指令。当前仍禁止额外实模和 `4242` 重试。 |
+
+本轮独立节点是具体的 **KB-2 K-02/K-03 表头缺陷**，没有新增格式：旧解析器把任意后代 `tblHeader` 的存在都当作启用。显式关闭的材料行、不连续的后续标记或历史 `trPrChange` 会被复制进每行上下文；合成 A/B 材料中，B 的 `7 mm` 行进入了 A 的 passage。旧解析器对 12 项新增检查得到 **4 通过 / 8 失败**，失败及原 hash 保存在 `tmp/knowledge-docx-headers/red/`。
+
+`admin/scripts/assistant-file-parser.mjs` 现只读当前直接 `trPr/tblHeader` 属性，取表格开头连续启用的前缀。空标记启用，`on/off` 按格式含义，`true/false` 和 `1/0` 为明确保留的兼容拼写；未知显式值沿既有 `knowledge_file_invalid` 失败。无开头启用行时保留原首行推断及待核对警告。[Microsoft TableHeader](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.tableheader?view=openxml-3.0.1) 说明开头连续行规则，[OnOffOnlyValues](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.onoffonlyvalues?view=openxml-3.0.1) 说明序列化 `on/off`；不把额外兼容拼写归称为这些文档的规定。
+
+仅新的 DOCX 解析标记为 `xiaok-file-v1.1:docx:yauzl3.4.0:saxes6.0.0`，PDF 仍为 `xiaok-file-v1:pdf:pdfjs6.4.299`。不重解析、重索引或改写既有不可变发布版本；采用修复须沿正常新草稿解析/核对/索引/发布，原内容 fingerprint 已含解析器标识。资源/归档/XML/布局守卫、行原文、单位、注释、Unicode 范围和来源定位合同保持。未改共享 schema、来源/引用权限、Agent、队列、API、UI 标记或样式。
+
+```powershell
+node scripts/assistant-knowledge-docx-offline.mjs --output-dir ../tmp/knowledge-docx-headers/release
+node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973beb540d1511e125 ../tmp/knowledge-docx-headers/verified
+```
+
+最终解析检查 **18/18 通过**，含 **12 项新增及 6 项未改的文件回归**，0 失败/跳过/取消，已记录源码 hash 稳定。夹具是生成的合成 DOCX 原件，不是客户文件或施工标准；执行真实本地解析器，检查材料 passage 分离、单位/条件、相邻注/脚注、Unicode 偏移及行列/block 定位。分块使用确定性回调，既有图测试为模拟模型端口；没有模型、Embedding、数据库、锁、Worker 或监听服务。5 个代码/runner 文件 ESLint 0 错误/警告，同一源码程序类型 **287→287，新增 0**，不是全项目零错误。未重跑付费或前一语义反例整套；最终证据 `tmp/knowledge-docx-headers/{red/,green/,release/,verified/}`。初次 green 早于 runner 补强来源/完整计数检查，最终以 `release/` 为准。
+
+共享文档继续单一维护。集成时在双语模块清单/二期合同的现有 KB-2 段落加入准确范围：**新 DOCX 解析按当前启用的连续开头表头行取上下文，保留首行推断核对，未知标记失败，DOCX parser 标识 v1.1；发布版本仍不可变；K-02/03 合成本地解析检查通过，数据库/C01/原生/生产兼容及新格式未在本轮复验或完成。** 纯行为修复无 UI/恢复账本更新；本线提供双语提案，不并发修改共享清单。
+
+该已测节点之后，尚无新复现的独立缺陷足以支持再开功能。接回集成验收的触发条件为集成人提供准确 SHA 与上述共享修复证据；额外实模还须用户解除当前禁令，绝不自动重试 `4242`。本轮未尝试或遭拒该复测。表中其他可独立扩展仍是计划范围，不谎称仅被综合解释阻断或已完成。整体 **Limited**。
 
 ## 离线语义反例与验收规则
 
@@ -26,7 +55,7 @@ node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973be
 
 最终离线 **64/64**，其中**新增 32 项、原相关断言 32 项**，失败/跳过/取消均 0，被测源码 hash 稳定；4 个代码文件 ESLint 零错误/警告，同程序类型 **287 → 287，新增 0**，并非全项目零错误。runner 不读取环境/连接文件、不取数据库锁、不启动 Worker，7 个进程均有 fetch/TCP/TLS 守卫；**外部网络尝试 0，模型/Embedding/数据库调用均 0**，只允许既有临时目录中当前/父进程对应的精确编译器 IPC 管道。最初两次 62 项通过后包装层退出非零，原因是过宽守卫**每次**将 12 次 `tsx` 本地管道误记网络，全部已拦截，无外部请求；诊断调用栈确认来源，原结果保留。费用围栏和后续兼容性检查另存，仅 `release/` 为最终单元结果。
 
-证据：`tmp/knowledge-semantics/offline/{fixture-provenance.json,verified/,release/}`。本轮未恢复 `4242`、未调用实模/Embedding、未写数据库或新增模型费用；模块运行行为无变化，复制计划继续独立保全。整体 **Limited**，共享综合解释/预算/派发前修复及后续集成验收仍由业务线独占；离线拒绝反例的测试通过不升级既有实模结果。本线等待该集成，不另开功能或付费复测。
+证据：`tmp/knowledge-semantics/offline/{fixture-provenance.json,verified/,release/}`。该反例增量未恢复 `4242`、未调用实模/Embedding、未写数据库或新增模型费用；当时模块运行行为无变化，复制计划继续独立保全。整体 **Limited**，共享综合解释/预算/派发前修复及后续集成验收仍由业务线独占；离线拒绝反例的测试通过不升级既有实模结果。
 
 ## 配置实模 C01 语义验收
 
