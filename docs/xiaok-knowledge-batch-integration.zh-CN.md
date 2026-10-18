@@ -4,15 +4,28 @@
 
 <!-- knowledge-semantic-followup:start -->
 
-## 有界实模后续验收：准备已冻结，实际结果待执行
+## 有界实模后续：预算围栏通过，新的不确定执行已停止
 
-以稳定 `349cb8f2f04e059bc413417b2093c34f04513541` 为基线，远端共享头复核仍为 `a579e512`。仅扩展知识专属验收工具，不改任何产品代码、UI、模型配置、权限、schema 或迁移，因此运行模块清单无新增行为影响。新增 `assistant-knowledge-semantics-followup.ts` 以及专属单元，原 live wrapper 增加互斥的 `--followup --preflight`、`--followup --budget-only`、`--live --followup`；未知/重复参数、混合付费/非付费模式及复用输出目录均拒绝。输出限定本 worktree 的 `tmp/`，整套仍持原共享数据库锁，子进程核验准确锁会话与应用角色。
+准备基线为 `349cb8f2f04e059bc413417b2093c34f04513541`，工具提交为 `4540f7e1`。实模开始前，按父任务新稳定记录核验并正常合入 `04a85946eb63ec8418ae75877d44cc2e0c3dd4a9`：15 项业务路径与本线 7 路径无重叠/冲突，冻结执行头为 `0fe63d5dfd36c11ab3c322a77e34a868a28f9bc2`，实际 prompt 为 **xiaok-renovation-v62**。共享文件与该业务头一致；本线只改验收工具/专属单元和本双语交接，无自主产品/UI/配置/权限/schema/迁移改变，因此无新的运行模块清单行为影响。共享 KB-4 清单/二期记录已由业务头应用。
 
-只读预检已确认既有 `deepseek-flash`/工具配置与凭据可用，未创建夹具或发外部请求。历史 `4242` 仅只读核对：原归档 hash `b35c553ee8bc382e611c207346ba649a636d308910f1134d4e90af6e4c58dc7c`，保留 indeterminate 和 attempt `1762` unknown；旧夹具已清理、当前行不存在不表示费用已知。不得重跑其 `study-prerequisites` 或用新键替代。本轮只选原计划中尚未执行的 `registered-conflict`，四份知识原文加绑定项目实际水电阶段/正式户型/点位资料缺项，**一个场景、一个回合**；这同时观察冲突双边引用与完整模型来源，不新增工程标准或虚构现场记录。
+只读预检确认既有 `deepseek-flash`/工具配置及凭据可用，未创建夹具或发外部请求。历史 `4242` 仅只读核对：原归档 hash `b35c553ee8bc382e611c207346ba649a636d308910f1134d4e90af6e4c58dc7c` 保持，indeterminate 和 attempt `1762` unknown 保留；旧夹具已清理、当前行不存在不表示费用已知。没有重跑其 `study-prerequisites` 或用新键替代。本轮选原计划中尚未执行的 `registered-conflict`，四份知识原文加绑定项目实际水电阶段/正式户型/点位资料缺项，**一个场景、一个回合**；未新增工程标准或虚构现场记录。
 
-沿既有 48,000 UTF-8 字节、4 模型轮、每轮最多 2,048 输出 token 及一次格式修复；附加验收请求上限为文本 5、chunk 5、Embedding 9（五文档索引加最多四次查询），不增加运行时轮次或自动语义重试。夹具沿原 200 requests/12,000,000 tokens/1,000,000,000 cost micros 日配额；它不是实际费用估算，费用未提供仍 `null`。先执行真实 PostgreSQL 的超预算后轮检查，HTTP 明确模拟：保留前轮已成功但费用未知的原 attempt，只允许本轮准备失败，禁止新增 attempt/标记/HTTP；通过后才执行上述实模场景。新的不确定结果须重读原 send 回执及 run/预留，不重发；清理前保留逐项索引/模型/预留回执和未知成本。
+| 本轮检查 | 实际结果与边界 |
+| --- | --- |
+| 超预算当前派发前拒绝 | **通过**。真实 PostgreSQL/原 Agent、HTTP 明确模拟。run `4368` 后轮 53,778 字节超过原 48,000 上限，已知失败 `agent_input_limit`；目标后轮新增 attempt/开始标记/HTTP 均 0。前轮模拟 attempt `1803` succeeded、用量 10/4 是合成值，不计实模 token；未知费用和 reconciling 预留保留。 |
+| 唯一新实模场景 | **服务失败 1，成功 0；语义待审 1，成功 0**。run `4369` 首次文本 fetch 为 TypeError / `PROVIDER_CONNECTION_FAILED`，输入 29,921 字节，未超预算。没有模型响应、检索工具上下文或回答；不能把自动缺上下文的 false 标记当作新语义反例、私料泄露或来源丢失。 |
+| 新执行原收据核实 | attempt `1804` 实际为 **failed、accepted=false、actual_cost={}**，不能误写为 unknown attempt；权威 run 仍 **indeterminate / provider_outcome_unknown**，预留 **reconciling**、settled tokens/cost 为 null。仅重读原 `send:4327` / `f70b08ac-26af-4e9b-8101-36bc828261ba` 回执，核对 runId/messageId、请求 hash 和预留。没有重发、通用 retry、换键或填零费用。 |
+| 原索引服务 | 5 次 chunk 和 5 次真实 Embedding 均返回 200，含 4 份公开文档与 1 份内部隔离样本；索引 Embedding 已观测 2,305 input tokens，chunk 的 5 份 input measurements 未提供。查询 Embedding 0；文本 fetch 发起 1、响应 0，远端实际接收/计费不据此推定。总费用仍 null。 |
+| 四来源与实际项目来源的独立离线保留检查 | **归档投影 1/1 通过**。读取原 `4242` checkpoint、保留其历史 system prompt，使用当前投影/真实请求序列化函数但不发送：四文档 5 个规范 K 与 4 个 B 来源的完整正文、条件/前提/例外及身份/版本元数据保留，41,215 字节。B 包含实际节点、正式户型及本轮资料/事项缺项，不冒称有已发布现场照片或尺寸。守卫报告 DB/fetch/socket 阻断均 0；不是新的 v62 实模回答或 `4242` 重试。 |
+| HTTP 权限与失权 | 其他合成企业/客户读原 C01 历史 404，移除参与者后读/写 404，两项通过；派生回答撤回因无成功回答 **未执行 1**。未启动监听服务/原生 UI。 |
 
-新增来源审计/付费门控单元 **7/7**、5 文件 lint 通过，同程序类型以 `349cb8f2` 对照 **287→287，新增 0**；初版缺少一个测试类型导入的 1 项新增诊断已修正，证据保留。当前预检证据为 `tmp/knowledge-semantic-followup/preflight-1/`，单元/lint/type 证据同根。上述不计为新实模成功；实际调用、逐段原文语义审读与清理结果将替换本段当前记录。整体 **Limited**。
+限额保持 48,000 UTF-8 字节、4 模型轮、每轮最多 2,048 输出 token 及一次格式修复；验收工具另封顶文本 5、chunk 5、Embedding 9，不增运行时轮次或语义重试。夹具沿原 200 requests/12,000,000 tokens/1,000,000,000 cost micros 日配额；这不是费用估算。工具三模式 `--followup --preflight`、`--followup --budget-only`、`--live --followup` 互斥，拒绝未知/重复参数及复用输出，产物只在本 worktree `tmp/`。整套锁与准确父会话、应用角色均核验；先超预算检查，再索引和唯一新场景。没有新的凭据或权限扩张。
+
+清理前保存逐项模型/索引/预留原回执及未知费用。两套明确合成企业 `3509/3510`、管理员 `6894`、用户 `6908/6909` 已按 ID 清理；**107 张企业表无残留，企业/管理员/用户三类身份计数均 0**，子进程退出、原锁释放。配置 hash 与源码 hash 均稳定。不得把本套夹具删除表述为未知费用已核销；审计中原状态未改写。
+
+新增来源审计/付费门控单元 **7/7，失败/跳过/取消 0**，5 文件 lint 通过；同程序类型分别以 `349cb8f2` 和集成业务 `04a85946` 对照均 **287→287，新增 0**。初版缺少一个测试类型导入的 1 项新增诊断已修正并留档。未重跑前批 7 组真实双进程、45/64/18 整套或原生检查。证据根 `tmp/knowledge-semantic-followup/`：`integration-baseline.json`、`ownership-04a85946.json`、`preflight-1/`、`live-1/{live.json,model-request-0.json,service-status.json,lock-release.json}`、`offline-archive/{summary.json,model-body.json}`、`offline-archive-network.json`、`types-integrated/`、`stage-summary.json`。
+
+**待核实，非权限拒绝**：继续新 `registered-conflict` 的实模双边引用与完整来源语义审读受到首次模型连接失败、权威 run `4369` 仍不确定的阻碍。虽该 attempt 显示失败/未接受，本线不自行绕过 run 围栏；先由共享责任方核实已留存的原收据、连接故障与权威状态分类，再据原执行记录确定后续有界验收方案。夹具已按授权清理，不暗示当前库仍可直接恢复原 run。当前无新模型回答可审，不能称两项语义闭环或完整专业问答通过；`4242` 保持不动。整体 **Limited**，不合并 main、不部署、不启用生产批量。
 
 <!-- knowledge-semantic-followup:end -->
 
@@ -40,9 +53,9 @@
 
 最终离线为模拟 store/共享端口 **5/5 组**；断言/门控/守卫单元 **10/10，0 失败/跳过/取消**，七个变化的工具/单元文件 ESLint 通过，产品接线此前六文件 lint 也通过。以业务 `a579e512` 做同一源码程序类型比较为 **287→287，新增 0**；这是既有诊断，不是全仓类型干净。比较只排除在所选基线尚不存在的候选文件。未重跑前批 45/64/18 整套。证据位于 `tmp/knowledge-seam-integration/`：`service-attempt-{1,2,3}/`、`recovery-fixture-offline/`、`recovery-fixture-{unit,lint}.log`、`recovery-fixture-types/`、`preservation-check.json`。原分支/HEAD/status，以及两份计划原件/副本和 roadmap hash 均保持。
 
-### 集成人单点更新的当前清单
+### 集成人已应用的清单记录（04a85946）
 
-共享双语清单/二期文档保持集成人单点所有权，本线提供以下准确 KB-4 当前记录替换文本，不并行修改共享文件：
+共享双语清单/二期文档保持集成人单点所有权。以下为本线交接的准确 KB-4 记录，已由业务 `04a85946` 应用，无需重复更新；本线未并行修改共享文件：
 
 > **Limited — 知识共享执行端口已接线，有界事务验收通过。** 原知识运营 API 惰性注入 `core/evaluation-execution.ts::createKnowledgeBatchSharedPort()` 到 `KnowledgeOperations`。路由/动作/请求体、租户/角色、私有来源/引用权限、schema 和 UI 均无新增边界；未开放生产自动批量接口或启用。真实隔离 PostgreSQL 两进程 7/7 组通过，覆盖唯一准入、跨进程持久取消、单项取消中断重进、原已认证 resume（409 batch_cancelled）、原键恢复不增派发、真实配置 pin 及 provider-start 在新 attempt/标记/HTTP 前拒绝。实模/Embedding 调用 0，恢复 unknown 标记为合成，费用保留 null。自有夹具精确清零、原互斥锁释放。付费实模语义和生产批量启用仍未验收，整体 Limited。
 
