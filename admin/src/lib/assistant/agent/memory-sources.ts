@@ -4,6 +4,7 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { safeText } from '../contracts';
 import { readMemory, needInterpretations, type NeedMemory } from './memory';
+import { needSourceContextSupported } from './need-source-context';
 
 /** Read projection only. Keep the stored correction chain intact for audit. */
 export async function availableNeedMemory(tx: PostgresTransaction, enterpriseId: string, conversationId: string, entry: unknown): Promise<NeedMemory> {
@@ -22,7 +23,7 @@ export async function availableNeedMemory(tx: PostgresTransaction, enterpriseId:
       if (!notices.has(mid)) notices.set(mid, await constructionNoticeAvailable(tx, enterpriseId, conversationId, mid, true, true));
       if (!notices.get(mid)) available = false;
     }
-    if (available) facts.push(fact);
+    if (available && needSourceContextSupported(fact, safeText(origin.content as Parameters<typeof safeText>[0]))) facts.push(fact);
   }
   const interpretations = needInterpretations(memory, facts);
   return { version: memory.version, facts, ...(interpretations.length ? { interpretations } : {}) };
