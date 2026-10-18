@@ -68,7 +68,7 @@ node scripts/assistant-execution-typecheck.mjs a579e51227294427826d49ac017e00f9c
 
 <!-- shared-execution-integration:start -->
 
-**共享五方法已限定验证；知识线完成生产适配接线/验收前，KB-4仍Limited。** 基于正常集成4b5fb96d/bb89e54c/95ff8f20；知识专属operations.ts、batch-execution-adapter.ts、evaluation-batch.ts及专属测试保持。准确导入为`admin/src/lib/assistant/core/evaluation-execution.ts::createKnowledgeBatchSharedPort()`，返回KnowledgeBatchSharedPort<PostgresTransaction>供new KnowledgeOperations(manager,factory)使用；构造无配置读取或I/O。
+**共享五方法及知识入口已集成，有界真实双进程已验证；KB-4整体仍Limited。** 知识稳定349cb8f2已正常合入当前业务分支，准确范围/证据以下文当前KB-4及知识接缝交接为准；本次集成不改共享factory。 基于正常集成4b5fb96d/bb89e54c/95ff8f20；知识专属operations.ts、batch-execution-adapter.ts、evaluation-batch.ts及专属测试保持。准确导入为`admin/src/lib/assistant/core/evaluation-execution.ts::createKnowledgeBatchSharedPort()`，返回KnowledgeBatchSharedPort<PostgresTransaction>供new KnowledgeOperations(manager,factory)使用；构造无配置读取或I/O。
 
 | 端口/边界 | 已实现行为 |
 | --- | --- |
@@ -77,9 +77,9 @@ node scripts/assistant-execution-typecheck.mjs a579e51227294427826d49ac017e00f9c
 | dispatch/provider-start | 仅用知识方准备/取消规范记录；私有run绑定精确case/evaluation快照、原键、消息摘要及取消fence。新run/job/预留沿原settings事务检查；真实解析模型配置先于attempt核对，有效租约/当前绑定/取消与开始标记及attempt同事务核对提交，无第二权威。 |
 | observeRun/cancelRun | 只读获权原run及明确用量/预留记录，不把不可得用量/账务算0。已知取消不要求来源/供应商当前配置，但保留身份/参与者和原键。Prepared项的通用retry缺少domain守卫，保持不可用；普通非批次重试保留。 |
 
-已执行：离线158/158（含知识适配器确定性测试，不是新语义回答）；隔离PostgreSQL 14/14（11项准确合同共享服务检查及原Agent派发/费用3项回归），供应商HTTP全部模拟，真实模型/Embedding调用0。同程序类型287→287、新增0，相关lint/diff见交接。早期原型12项/双进程竞争属于旧提案ABI，不计为当前95验收。知识线继续持有真实双进程适配验收及入口注入。完整构建及真机/原生/图内识读限制不变。
+已执行：离线158/158（含知识适配器确定性测试，不是新语义回答）；隔离PostgreSQL 14/14（11项准确合同共享服务检查及原Agent派发/费用3项回归），供应商HTTP全部模拟，真实模型/Embedding调用0。同程序类型287→287、新增0，相关lint/diff见交接。早期原型12项/双进程竞争属于旧提案ABI，不计为当前95验收。知识线随后在349cb8f2完成入口注入和7组真实双进程验收；这些是独立证据，见当前KB-4段，不覆盖此前失败。完整构建及真机/原生/图内识读限制不变。
 
-知识95持有整批持久取消意图及cancelledBeforeDispatch观测，覆盖全未派发批次；共享代码不重造。下一责任方为知识线：内部入口注入稳定factory，接回真实PostgreSQL双进程advance/cancel、来源/实际配置变更及丢失关联验收。本项未启用生产批量路由/定时任务，未增加凭据或部署。早期语义/原生证据保持历史身份，未在此Admin共享接缝重跑。
+知识95持有整批持久取消意图及cancelledBeforeDispatch观测，覆盖全未派发批次；共享代码不重造。入口及有界真实双进程/配置漂移/丢失关联已由知识349cb8f2交付；知识线继续负责按共享锁串行的有界真实模型语义验收，避免重复调用。本项未启用生产批量路由/定时任务，未增加凭据或部署。早期语义/原生证据保持历史身份，未在此Admin共享接缝重跑。
 
 采纳决策：保持原租户事务、settings/租约排序、原回执及账务核对。[LangGraph Functional API](https://docs.langchain.com/oss/javascript/langgraph/functional-api)、其[Postgres pending-send测试](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint-postgres/tests/test_sync.py)及[issue8702](https://github.com/langchain-ai/langgraph/issues/8702)区分检查点重放与应用副作用回执；[PostgreSQL行锁](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)支持原事务排序。本次不采用框架迁移、模型重试或第二队列。
 
@@ -169,6 +169,8 @@ GET版本快照为当前最多50项现场事项补足原记录的当前版本元
 本批复核[LangGraph持久执行](https://docs.langchain.com/oss/javascript/langgraph/durable-execution)、[维护中的工具/消息测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[历史已关闭1440问题](https://github.com/langchain-ai/langgraphjs/issues/1440)：采用幂等副作用、原键核对和标准工具/结果协议；Postgres继续负责权限、不可变事件、来源、租约与用量，工具status不代替业务成功。不迁移框架/checkpointer，不添加供应商专属补丁；历史问题不是当前版本存在缺陷的证据。实际配置模型与确定性工程测试分别登记。
 
 ## 当前 KB-4：知识运营核心（限定闭环，整体 Limited）
+
+**Limited — 知识共享执行端口已接线，有界事务验收通过。** 原知识运营 API 惰性注入 `core/evaluation-execution.ts::createKnowledgeBatchSharedPort()` 到 `KnowledgeOperations`。路由/动作/请求体、租户/角色、私有来源/引用权限、schema 和 UI 均无新增边界；未开放生产自动批量接口或启用。真实隔离 PostgreSQL 两进程7/7组通过，覆盖唯一准入、跨进程持久取消、单项取消中断重进、原已认证 resume（409 `batch_cancelled`）、原键恢复不增派发、真实配置 pin 及 provider-start 在新 attempt/标记/HTTP 前拒绝。实模/Embedding调用0，恢复 unknown 标记为合成，费用保留null。自有夹具精确清零、原互斥锁释放。付费实模语义和生产批量启用仍未验收，整体Limited。 这是知识稳定349cb8f2的既有证据，集成人只读核验原审计，不重跑数据库或付费调用；原7组不与离线单元相加。准确提交、四个run账务、109项清理及两次失败见[知识接缝交接](./xiaok-knowledge-batch-integration.zh-CN.md#知识入口集成与真实双进程验收)。
 
 原`/assistant-knowledge`增加「问题集与健康」，沿用Ant Design/Admin Pro、720px Drawer、原来源诊断与共享操作反馈。范围来自最新双语企业知识计划的KB-4运营核心，对应K-06/10/11及K-05格式能力如实披露。PPT5/6/15提供自然提问/接续场景，23/38提供资料缺失、冲突和团队核实边界；PPT没有新增运营看板设计或工程标准，功能后台仍以双语Admin UI合同为批准设计源。C01/C02/C05/U01的构图、WXML/Less、素材和导航保持。
 

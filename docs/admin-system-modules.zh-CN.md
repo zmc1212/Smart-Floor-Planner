@@ -1,6 +1,8 @@
 # 后台系统当前功能清单
 
-**KB-4知识运营核心：限定实现，整体Limited。** 原`/assistant-knowledge`增加持久化企业共享问题/缺口集，复用本人原试问/Worker/额度执行同题回归。0087新增两张强制RLS表、不可变问题/来源版本/epoch快照、租户复合外键及重置/删除清理。原键恢复复用已提交试问/run；必需/禁止召回、入选和实际引用属于结构检查，专业含义单独明确核对。知识/问题变化收起旧结果，已核对缺口待复验。`knowledge/operations/{cases,evaluations,health}`接口保持所选企业知识管理继承和本人试问私有边界，聊天用量仍单独授权。健康展示真实索引/解析队列、profile、已知token小计与未知次数/费用，不冒充供应商实时探测。功能设计源仍为Ant Design/Admin Pro、720px Drawer及共享反馈，不改Mini布局或Agent prompt。如实披露DOCX/文字PDF能力；OCR/复杂/旧格式、影子重建、批量执行及更大容量按需接续。合同/复跑/证据及当前未测边界见[KB-4合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)，未生产部署。
+**KB-4知识运营核心：限定实现，整体Limited。** 原`/assistant-knowledge`增加持久化企业共享问题/缺口集，复用本人原试问/Worker/额度执行同题回归。0087新增两张强制RLS表、不可变问题/来源版本/epoch快照、租户复合外键及重置/删除清理。原键恢复复用已提交试问/run；必需/禁止召回、入选和实际引用属于结构检查，专业含义单独明确核对。知识/问题变化收起旧结果，已核对缺口待复验。`knowledge/operations/{cases,evaluations,health}`接口保持所选企业知识管理继承和本人试问私有边界，聊天用量仍单独授权。健康展示真实索引/解析队列、profile、已知token小计与未知次数/费用，不冒充供应商实时探测。功能设计源仍为Ant Design/Admin Pro、720px Drawer及共享反馈，不改Mini布局或Agent prompt。如实披露DOCX/文字PDF能力；OCR/复杂/旧格式、影子重建、生产自动批量启用及更大容量按需接续。合同/复跑/证据及当前未测边界见[KB-4合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)，未生产部署。
+
+**Limited — 知识共享执行端口已接线，有界事务验收通过。** 原知识运营 API 惰性注入 `core/evaluation-execution.ts::createKnowledgeBatchSharedPort()` 到 `KnowledgeOperations`。路由/动作/请求体、租户/角色、私有来源/引用权限、schema 和 UI 均无新增边界；未开放生产自动批量接口或启用。真实隔离 PostgreSQL 两进程7/7组通过，覆盖唯一准入、跨进程持久取消、单项取消中断重进、原已认证 resume（409 `batch_cancelled`）、原键恢复不增派发、真实配置 pin 及 provider-start 在新 attempt/标记/HTTP 前拒绝。实模/Embedding调用0，恢复 unknown 标记为合成，费用保留null。自有夹具精确清零、原互斥锁释放。付费实模语义和生产批量启用仍未验收，整体Limited。 这是知识稳定349cb8f2的既有证据，集成人只读核验原审计，不重跑数据库或付费调用；原7组不与离线单元相加。准确提交、四个run账务、109项清理及两次失败见[知识接缝交接](./xiaok-knowledge-batch-integration.zh-CN.md#知识入口集成与真实双进程验收)。
 
 替换发布就绪判定与检索有效期统一采用数据库`now()`，应用主机时钟落后不会误拒已生效的复制版本；真正未来的替换仍拒绝，不提前隐藏当前发布。
 

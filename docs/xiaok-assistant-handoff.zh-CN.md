@@ -8,11 +8,11 @@
 - 本轮模型/Embedding/数据库/浏览器/原生新调用均0，无夹具/服务/Worker，无锁竞争。v61原生21/21及4322/4323/4324仅保留原版本证据；4324条件式一人示例仍是措辞限制。图内识读/真机/BLE/真实微信授权未验，旧AiDesignerLegacyPage导出构建问题及287项类型基线仍在；历史未知attempt/费用未处理或清零。
 - 证据 `tmp/xiaok-need-source-context/acceptance-summary.json`、`final-offline.log`、`type-comparison.json`、`original-preservation.json`；复跑命令见[二期合同](./xiaok-assistant-phase-2.zh-CN.md#当前p3bp4a客户更正与原事项接续)。原脏工作区97项、五项删除、分支和d0238543 HEAD保持。
 
-父任务已授权下一步正常合入知识稳定349cb8f2并应用其KB-4共享清单文本；当前修复先作为独立稳定提交收尾。知识线继续独占有界实模语义验收，避免重复调用，历史4242不动。不合并main、不部署、不生产启用。
+当前修复先以功能4f4b10de及交接23a85096普通推送并核验远端/GitHub；随后按父任务明确授权正常合入知识稳定349cb8f2f04e059bc413417b2093c34f04513541，merge为f918f1c28b088f6e2acd4472c5d20c67da8ff59f，零归属重叠、无冲突。知识原API现已注入稳定factory，双语Admin清单/二期KB-4当前记录已按知识交接应用。集成后离线单元188/188（178＋知识工具10，失败/跳过/取消0），模拟store/共享端口双进程5/5另列，不冒充DB验收；临时进程已退出，网络守卫报告DB/fetch/socket阻断均0。集成同程序类型287→287，新增0；10项相关TS文件lint无错误警告。知识线继续负责有界实模语义验收，避免重复调用；历史4242不动。不合并main、不部署、不生产启用。
 
 ## 既有知识批次共享执行接缝（a579e512）
 
-共享功能提交为 [`5f49fff44161f4baca3e3da922381e98bc9945f8`](https://github.com/zmc1212/Smart-Floor-Planner/commit/5f49fff44161f4baca3e3da922381e98bc9945f8)，分支 `codex/xiaok-execution-fence`，工作区 `G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-execution-fence`。已按父任务授权正常合入知识稳定 `bb89e54c` 和准确适配合同 `95ff8f20`，集成基线为 `34d57f53`；两次合入均无文件归属冲突。本共享功能只含16项共享代码、测试/脚本及双语当前清单，没有修改知识专属文件。**共享内部接缝已验证，整体仍Limited；知识线接回真实双进程/入口验收前，不称生产自动批次完成或发布批准。**
+共享功能提交为 [`5f49fff44161f4baca3e3da922381e98bc9945f8`](https://github.com/zmc1212/Smart-Floor-Planner/commit/5f49fff44161f4baca3e3da922381e98bc9945f8)，分支 `codex/xiaok-execution-fence`，工作区 `G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-execution-fence`。已按父任务授权正常合入知识稳定 `bb89e54c` 和准确适配合同 `95ff8f20`，集成基线为 `34d57f53`；两次合入均无文件归属冲突。本共享功能只含16项共享代码、测试/脚本及双语当前清单，没有修改知识专属文件。**此a579e512共享内部接缝已验证，整体仍Limited；知识349cb8f2已接回既有入口并完成下列真实双进程验收，仍不称生产自动批次完成或发布批准。**
 
 ## 知识线可直接接入的准确接口
 
@@ -44,17 +44,19 @@ const operations = new KnowledgeOperations(manager, createKnowledgeBatchSharedPo
 
 `before-95ff8f20/`与`transactions-first/`保留早期提案ABI及其12项/双进程原型证据，**不计作当前95双进程验收**。首轮准确95为10通过/1失败：他人batch已被拒绝，但在owner查询前返回manifest错误；现改为先取本人/租户回执、返回404，未放宽守卫。初期类型/夹具失败也保留，最终结果以上表为准。
 
-## 交给知识线的下一步
+## 知识线集成结果与后续责任
 
-知识线将稳定factory注入其内部知识入口，接回准确适配合同的真实PostgreSQL双独立进程advance/cancel、准备后来源/真实配置变更、刻意丢失关联、原键恢复及未核清用量验收；继续使用同一隔离验收锁，不启动竞争Worker。知识95已有 `cancelledBeforeDispatch`，未派发项不伪造runId。其双语知识交接中“待共享factory”的基线记录由知识线在接回验收后更新；当前共享状态以双语模块清单/二期合同本段为准。当前没有注入生产批量路由或定时调度。
+知识稳定349cb8f2的原入口接线和真实隔离PostgreSQL双独立进程已由知识线完成7/7组：唯一准入、advance/cancel及晚到拒绝、单项取消中断重进、原已认证resume的409 batch_cancelled、原回执恢复不增派发、真实准入配置漂移，以及真实provider-start在新attempt/标记/HTTP前拒绝。供应商HTTP/实模/Embedding均0。集成人只读复核其runner、driver、109项清理及factory精确hash，未重复连接DB或重跑付费调用。完整原证据及两次准备失败见[知识交接](./xiaok-knowledge-batch-integration.zh-CN.md#知识入口集成与真实双进程验收)及知识工作区tmp/knowledge-seam-integration/service-attempt-3/；7组不与本分支离线单元相加。
 
-复跑使用 `node scripts/assistant-execution-acceptance.mjs --agent-units`；隔离服务为 `--transactions --wait-for-lock`，读取显式 `XIAOK_ACCEPTANCE_ENV_ROOT`、`XIAOK_ACCEPTANCE_CONNECTION_FILE`，输出由 `XIAOK_ACCEPTANCE_OUTPUT`指定。类型对照为 `node scripts/assistant-execution-typecheck.mjs 34d57f53cbdb0db152df637901eda26abdc469c1`。脚本只接受批准loopback:55432/xiaok_embedding_eval，不拿锁不创建夹具。
+知识夹具4364/4365/4367清理前为cancelled、预留released；4366保留indeterminate/reconciling、settled token/cost为null，provider-start为明确合成，不是实际付费请求恢复/账单验收。两客户端先退出，109项表/身份残留全0后退出协调方，原共用互斥锁已释放。原授权、来源/版本/租约/取消围栏保持；未改知识专属文件或共享factory实现，只有正常合入其稳定分支。未开放生产自动批量入口或定时启用。
 
-没有新付费或原生语义场景。历史4242继续indeterminate，1760/4241及旧主库未知调用/费用不回写、不盲重试、不清零。新知识两题的实际语义仍由知识线与父任务按稳定范围继续，不能以单元或模拟504通过代替。
+当前本分支复跑单元：原execution --agent-units加need-source-context/guidance/requirements及knowledge-batch-seam-acceptance，合计188去重单元；模拟工具用node scripts/assistant-knowledge-batch-seam-acceptance.mjs --offline --output-dir ../tmp/下的未用目录。类型用node scripts/assistant-execution-typecheck.mjs a579e51227294427826d49ac017e00f9c80691ad。真实DB模式仅由知识线协调，必须先取得原共用锁；不得因为换分支/重进而竞争Worker或重复调用。
+
+知识线后续只在协调方确认的冻结业务基线上做有界真实模型语义场景，按原共享锁串行；集成当前v62事实边界时沿正常合入，不覆盖共享模块。历史4242、1760/4241和旧主库未知attempt/费用不回写、不盲重试、不清零。完整PPT、图内识读、真机/BLE/真实微信授权、生产批量启用和旧完整构建问题仍保留限制。
 
 ## 原业务证据、设计与限制
 
-事实边界功能 [`e01a181`](https://github.com/zmc1212/Smart-Floor-Planner/commit/e01a18188a5548a59909f26d36d841568ca2ccef) 保持 `xiaok-renovation-v61/current-turn-sources-v11`。历史原生4323已闭环4115限定的当前私聊单人与精确正式双人版本18865差异、图纸关联记录范围及查询缺项边界；4324保留人数未知，但条件式一人澄清示例仍是措辞限制。原生21/21、三条实际回答为上一阶段证据，本阶段没有重跑。来源压缩保留四文档五规范K片段、完整条件和权限/版本，48,000字节/四轮及一次格式修复保持；知识新语义未因此宣称通过。
+事实边界功能 [`e01a181`](https://github.com/zmc1212/Smart-Floor-Planner/commit/e01a18188a5548a59909f26d36d841568ca2ccef) 当时为 `xiaok-renovation-v61/current-turn-sources-v11`，当前需求工具元数据为v62，sources-v11不变。历史原生4323已闭环4115限定的当前私聊单人与精确正式双人版本18865差异、图纸关联记录范围及查询缺项边界；4324保留人数未知，但条件式一人澄清示例仍是措辞限制。原生21/21、三条实际回答为上一阶段证据，本阶段没有重跑。来源压缩保留四文档五规范K片段、完整条件和权限/版本，48,000字节/四轮及一次格式修复保持；知识新语义未因此宣称通过。
 
 共享Chrome101修复 [`7f4f9809`](https://github.com/zmc1212/Smart-Floor-Planner/commit/7f4f980987eac57e7a5fd63efdcd82ffe4e798e6) 保持。原Chrome101 10/10、Edge155 9/9实际HTTP传输和30秒正文期限是历史证据，本阶段只重跑其14项确定性客户端检查，不冒充新浏览器验收。
 
