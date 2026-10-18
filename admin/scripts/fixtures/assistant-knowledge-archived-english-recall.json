@@ -1,0 +1,482 @@
+{
+  "version": 1,
+  "scope": "Synthetic archived English-PDF failure; frozen post-authorization candidate selection only. Not a current embedding, SQL, permission or answer replay.",
+  "provenance": {
+    "archive": "tmp/xiaok-kb2/live-v31-first-failure.json",
+    "sha256": "ef9b2aad68e3f9c2d6f81c4ece4003e17950c2cbc3e3ae3a54982942ae08233d",
+    "bytes": 277706,
+    "runId": "284",
+    "promptVersion": "xiaok-renovation-v31"
+  },
+  "query": "防水阶段检查由谁安排 闭水试验验收 阶段标签是否代表检查通过",
+  "configuration": {
+    "rrfK": 60,
+    "limit": 5,
+    "parser": "manual_text_faq_or_local_file_v1",
+    "version": "professional-hybrid-v1",
+    "reranker": "none",
+    "perBranch": 30,
+    "minSimilarity": 0.3
+  },
+  "required": {
+    "documentId": "72",
+    "versionId": "72",
+    "chunkId": "125",
+    "text": "Waterproofing checks are arranged by the project team."
+  },
+  "documents": {
+    "docx": {
+      "documentId": "71",
+      "versionId": "71",
+      "sourceHash": "4fbe8509030bac21ba6c1d34200b0b70886d0eb01e55c11eca109667bf7791e0",
+      "format": "docx",
+      "parsed": {
+        "blocks": [
+          {
+            "id": "b1",
+            "kind": "heading",
+            "text": "合成资料：铺贴材料核对",
+            "section": [
+              "合成资料：铺贴材料核对"
+            ],
+            "paragraph": 1
+          },
+          {
+            "id": "b2",
+            "kind": "paragraph",
+            "text": "这是合成测试文件，数值仅用于验证原文引用，不是施工规范。",
+            "section": [
+              "合成资料：铺贴材料核对"
+            ],
+            "paragraph": 2
+          },
+          {
+            "id": "b3",
+            "kind": "paragraph",
+            "text": "铺贴前由团队核对材料型号、适用基层和检查记录；资料缺失或说法不一致时先向负责人核实。",
+            "section": [
+              "合成资料：铺贴材料核对"
+            ],
+            "paragraph": 3
+          },
+          {
+            "id": "b4",
+            "row": 1,
+            "kind": "table_row",
+            "text": "材料 | 核对要求",
+            "cells": [
+              {
+                "span": 1,
+                "text": "材料",
+                "column": 1
+              },
+              {
+                "span": 2,
+                "text": "核对要求",
+                "column": 2
+              }
+            ],
+            "notes": [
+              "注：表中示例值不代表本项目检测结果，不据此确认验收。"
+            ],
+            "table": 1,
+            "headers": [
+              "材料 | 核对要求",
+              "型号 | 示例厚度 | 前提与例外"
+            ],
+            "section": [
+              "合成资料：铺贴材料核对"
+            ]
+          },
+          {
+            "id": "b5",
+            "row": 2,
+            "kind": "table_row",
+            "text": "型号 | 示例厚度 | 前提与例外",
+            "cells": [
+              {
+                "span": 1,
+                "text": "型号",
+                "column": 1
+              },
+              {
+                "span": 1,
+                "text": "示例厚度",
+                "column": 2
+              },
+              {
+                "span": 1,
+                "text": "前提与例外",
+                "column": 3
+              }
+            ],
+            "notes": [
+              "注：表中示例值不代表本项目检测结果，不据此确认验收。"
+            ],
+            "table": 1,
+            "headers": [
+              "材料 | 核对要求",
+              "型号 | 示例厚度 | 前提与例外"
+            ],
+            "section": [
+              "合成资料：铺贴材料核对"
+            ]
+          },
+          {
+            "id": "b6",
+            "row": 3,
+            "kind": "table_row",
+            "text": "TEST-A | 2 mm | 仅合成定位数据。须先核对该型号厂家资料与实际基层；地暖场景不能直接套用。",
+            "cells": [
+              {
+                "span": 1,
+                "text": "TEST-A",
+                "column": 1
+              },
+              {
+                "span": 1,
+                "text": "2 mm",
+                "column": 2
+              },
+              {
+                "span": 1,
+                "text": "仅合成定位数据。须先核对该型号厂家资料与实际基层；地暖场景不能直接套用。",
+                "column": 3
+              }
+            ],
+            "notes": [
+              "注：表中示例值不代表本项目检测结果，不据此确认验收。"
+            ],
+            "table": 1,
+            "headers": [
+              "材料 | 核对要求",
+              "型号 | 示例厚度 | 前提与例外"
+            ],
+            "section": [
+              "合成资料：铺贴材料核对"
+            ]
+          },
+          {
+            "id": "b7",
+            "kind": "paragraph",
+            "text": "注：表中示例值不代表本项目检测结果，不据此确认验收。",
+            "section": [
+              "合成资料：铺贴材料核对"
+            ],
+            "paragraph": 4
+          },
+          {
+            "id": "b8",
+            "kind": "paragraph",
+            "text": "核对原件后再讨论具体排版。😀",
+            "notes": [
+              "合成脚注：由设计师和师傅核对，不形成正式方案决定。"
+            ],
+            "section": [
+              "合成资料：铺贴材料核对"
+            ],
+            "paragraph": 5
+          }
+        ],
+        "parser": "xiaok-file-v1:docx:yauzl3.4.0:saxes6.0.0",
+        "warnings": [
+          "docx_no_fixed_pages"
+        ]
+      }
+    },
+    "pdf": {
+      "documentId": "72",
+      "versionId": "72",
+      "sourceHash": "58dc63183468e7cc059eaf626d040a91f66c7313961ab2a8fa02cf43fc471899",
+      "format": "pdf",
+      "parsed": {
+        "pages": 1,
+        "blocks": [
+          {
+            "id": "b1",
+            "kind": "paragraph",
+            "page": 1,
+            "text": "SYNTHETIC KB2 - page 1",
+            "section": [],
+            "paragraph": 1
+          },
+          {
+            "id": "b2",
+            "kind": "paragraph",
+            "page": 1,
+            "text": "Waterproofing checks are arranged by the project team.",
+            "section": [],
+            "paragraph": 2
+          },
+          {
+            "id": "b3",
+            "kind": "paragraph",
+            "page": 1,
+            "text": "A stage label does not prove inspection passed.",
+            "section": [],
+            "paragraph": 3
+          }
+        ],
+        "parser": "xiaok-file-v1:pdf:pdfjs6.4.299",
+        "warnings": [
+          "pdf_reading_order_requires_review",
+          "pdf_tables_not_structurally_parsed",
+          "images_not_parsed"
+        ]
+      }
+    }
+  },
+  "candidates": [
+    {
+      "ref": {
+        "id": "118",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "40c74b55f9c0be76b9cb9294dd294732a8ca2317df40ecab6135cc2f19d63942",
+      "title": "合成KB2 · 合成材料核对.docx",
+      "documentId": "71",
+      "fusionRank": 1,
+      "similarity": 0.4781666450103176,
+      "contentHash": "6b01b1f21085fb03d645d0aca1afb4cfacec5b44b3ef62ae0a18630285bee171",
+      "disposition": "selected",
+      "lexicalRank": 5,
+      "contextChars": 54,
+      "semanticRank": 3,
+      "applicability": null,
+      "contextIncluded": true
+    },
+    {
+      "ref": {
+        "id": "122",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "9f1ca4d47d86efc95373c76e6c43e8bb8306803eac820a2bc438cd0409fc7889",
+      "title": "合成KB2 · 合成材料核对.docx",
+      "documentId": "71",
+      "fusionRank": 2,
+      "similarity": 0.47452152382814317,
+      "contentHash": "6b01b1f21085fb03d645d0aca1afb4cfacec5b44b3ef62ae0a18630285bee171",
+      "disposition": "selected",
+      "lexicalRank": 4,
+      "contextChars": 38,
+      "semanticRank": 4,
+      "applicability": null,
+      "contextIncluded": true
+    },
+    {
+      "ref": {
+        "id": "119",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "1164b75c8cc55ad22f68bbdcbbcea58b9c068c3cbb21545f5999e8ce9a236a2a",
+      "title": "合成KB2 · 合成材料核对.docx",
+      "documentId": "71",
+      "fusionRank": 3,
+      "similarity": 0.4119536981637867,
+      "contentHash": "6b01b1f21085fb03d645d0aca1afb4cfacec5b44b3ef62ae0a18630285bee171",
+      "disposition": "selected",
+      "lexicalRank": 1,
+      "contextChars": 66,
+      "semanticRank": 8,
+      "applicability": null,
+      "contextIncluded": true
+    },
+    {
+      "ref": {
+        "id": "120",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "1164b75c8cc55ad22f68bbdcbbcea58b9c068c3cbb21545f5999e8ce9a236a2a",
+      "title": "合成KB2 · 合成材料核对.docx",
+      "documentId": "71",
+      "fusionRank": 4,
+      "similarity": 0.4119536981637867,
+      "contentHash": "6b01b1f21085fb03d645d0aca1afb4cfacec5b44b3ef62ae0a18630285bee171",
+      "disposition": "selected",
+      "lexicalRank": 2,
+      "contextChars": 66,
+      "semanticRank": 9,
+      "applicability": null,
+      "contextIncluded": true
+    },
+    {
+      "ref": {
+        "id": "121",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "226f65f2a599e8813eb7c87927e0fb5e6b6b3de72de21e13ab623a265916418e",
+      "title": "合成KB2 · 合成材料核对.docx",
+      "documentId": "71",
+      "fusionRank": 5,
+      "similarity": 0.387440516061724,
+      "contentHash": "6b01b1f21085fb03d645d0aca1afb4cfacec5b44b3ef62ae0a18630285bee171",
+      "disposition": "selected",
+      "lexicalRank": 3,
+      "contextChars": 119,
+      "semanticRank": 10,
+      "applicability": null,
+      "contextIncluded": true
+    },
+    {
+      "ref": {
+        "id": "125",
+        "type": "knowledge_chunk",
+        "version": "72"
+      },
+      "hash": "4fd913ad77fb5595112ade0c7a9571b9c55627fce1d8e6cf1172a68e1898c623",
+      "title": "合成KB2 · 合成防水说明.pdf",
+      "documentId": "72",
+      "fusionRank": 6,
+      "similarity": 0.6153906583786186,
+      "contentHash": "506f40cd5ff7c915dbb80c317d59a1e99de32934894167ad72c05c56233c0a38",
+      "disposition": "ranked_out",
+      "lexicalRank": null,
+      "contextChars": 0,
+      "semanticRank": 1,
+      "applicability": null,
+      "contextIncluded": false
+    },
+    {
+      "ref": {
+        "id": "126",
+        "type": "knowledge_chunk",
+        "version": "72"
+      },
+      "hash": "182ced695fb1fcbc517318f021716c9729f1209eda680413d0a2e1bb4d138ee2",
+      "title": "合成KB2 · 合成防水说明.pdf",
+      "documentId": "72",
+      "fusionRank": 7,
+      "similarity": 0.5775568048554423,
+      "contentHash": "506f40cd5ff7c915dbb80c317d59a1e99de32934894167ad72c05c56233c0a38",
+      "disposition": "ranked_out",
+      "lexicalRank": null,
+      "contextChars": 0,
+      "semanticRank": 2,
+      "applicability": null,
+      "contextIncluded": false
+    },
+    {
+      "ref": {
+        "id": "123",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "82b643ff7df85ae8aee91843e60bf12642ecae64baa995d69748e6d617b59660",
+      "title": "合成KB2 · 合成材料核对.docx",
+      "documentId": "71",
+      "fusionRank": 8,
+      "similarity": 0.4678473549253095,
+      "contentHash": "6b01b1f21085fb03d645d0aca1afb4cfacec5b44b3ef62ae0a18630285bee171",
+      "disposition": "ranked_out",
+      "lexicalRank": null,
+      "contextChars": 0,
+      "semanticRank": 5,
+      "applicability": null,
+      "contextIncluded": false
+    },
+    {
+      "ref": {
+        "id": "117",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "0c5a5c6a8ddc93f1fbc9db8b2761f88bed70a24f714aa027cac293fe9edf82bb",
+      "title": "合成KB2 · 合成材料核对.docx",
+      "documentId": "71",
+      "fusionRank": 9,
+      "similarity": 0.4653365375989915,
+      "contentHash": "6b01b1f21085fb03d645d0aca1afb4cfacec5b44b3ef62ae0a18630285bee171",
+      "disposition": "ranked_out",
+      "lexicalRank": null,
+      "contextChars": 0,
+      "semanticRank": 6,
+      "applicability": null,
+      "contextIncluded": false
+    },
+    {
+      "ref": {
+        "id": "116",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "ef6eae3f4d53117e9c0bd2ff58609eafafab0beeafbea20030c93a306e64a3bd",
+      "title": "合成KB2 · 合成材料核对.docx",
+      "documentId": "71",
+      "fusionRank": 10,
+      "similarity": 0.44269148540053105,
+      "contentHash": "6b01b1f21085fb03d645d0aca1afb4cfacec5b44b3ef62ae0a18630285bee171",
+      "disposition": "ranked_out",
+      "lexicalRank": null,
+      "contextChars": 0,
+      "semanticRank": 7,
+      "applicability": null,
+      "contextIncluded": false
+    },
+    {
+      "ref": {
+        "id": "124",
+        "type": "knowledge_chunk",
+        "version": "72"
+      },
+      "hash": "13f3c35c501533ee02858a9da17b30395ec7e61b3efb9fccc8f620fa3921c878",
+      "title": "合成KB2 · 合成防水说明.pdf",
+      "documentId": "72",
+      "fusionRank": 11,
+      "similarity": 0.17118727059667815,
+      "contentHash": "506f40cd5ff7c915dbb80c317d59a1e99de32934894167ad72c05c56233c0a38",
+      "disposition": "below_similarity",
+      "lexicalRank": null,
+      "contextChars": 0,
+      "semanticRank": 11,
+      "applicability": null,
+      "contextIncluded": false
+    }
+  ],
+  "observedSelection": [
+    {
+      "ref": {
+        "id": "118",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "40c74b55f9c0be76b9cb9294dd294732a8ca2317df40ecab6135cc2f19d63942"
+    },
+    {
+      "ref": {
+        "id": "122",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "9f1ca4d47d86efc95373c76e6c43e8bb8306803eac820a2bc438cd0409fc7889"
+    },
+    {
+      "ref": {
+        "id": "119",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "1164b75c8cc55ad22f68bbdcbbcea58b9c068c3cbb21545f5999e8ce9a236a2a"
+    },
+    {
+      "ref": {
+        "id": "120",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "1164b75c8cc55ad22f68bbdcbbcea58b9c068c3cbb21545f5999e8ce9a236a2a"
+    },
+    {
+      "ref": {
+        "id": "121",
+        "type": "knowledge_chunk",
+        "version": "71"
+      },
+      "hash": "226f65f2a599e8813eb7c87927e0fb5e6b6b3de72de21e13ab623a265916418e"
+    }
+  ]
+}

@@ -2,6 +2,35 @@
 
 Status: **Limited; multi-document retrieval coverage, knowledge-specific manual batch management and a local DOCX header-fidelity repair have bounded implementations; automatic batch dispatch and customer semantic acceptance still need integration.** Actual verification is recorded below; code existence is not full-stage acceptance. This is a reviewable knowledge-line handoff, not a replacement for the [phase-two contract](./xiaok-assistant-phase-2.md), [admin inventory](./admin-system-modules.md), or the user's local enterprise-knowledge plans. Baseline: `d023854313842ef447efb2973beb540d1511e125`. The original business worktree's branch and product source are not changed.
 
+## Existing samples and archived English-PDF selection
+
+After `5fa13cef`, this audit used existing repository originals, the already documented PPT18/19/23/38 stage/material scope, and preserved KB-2/KB-3 failures. It did not create new enterprise rules, translate source documents, ingest the manual directory, or invent a format/terminology feature. The earlier fixed tests and live runs were not repeated.
+
+Five originals under `docs/装修施工标准手册制度规范/` were read by the unchanged canonical local parser; all original SHA256 values stayed unchanged. These are **format probes, not five business acceptance passes**:
+
+| Existing original (relative to that directory) | Actual local result | Evidence limit |
+| --- | --- | --- |
+| `03 进度管理/金螳螂.家施工任务节点模块.pdf` | Text extracted: 1 page / 43 blocks / 1,148 characters. | Reading order, table structure and images still require review/are unparsed. |
+| `04 质量管理/03 水电工程/水电施工标准（施工经理、水电工）.pdf` | Text extracted: 29 pages / 119 blocks / 2,697 characters. | Same warnings; extractable text does not establish figure/table completeness. |
+| `04 质量管理/05 镶贴工程/瓦工培训课件.pdf` | Text extracted: 24 pages / 93 blocks / 1,354 characters. | Same warnings; no claim that image-based measurements or conditions were understood. |
+| `04 质量管理/00 管理文件/03 金螳螂家施工工艺手册2.0.pdf` | Rejected: `knowledge_file_block_limit`. | Existing 128-block boundary remains; no truncation or higher limit was introduced. |
+| `05 信息管理/金螳螂·家业主微信群管理要求.docx` | Rejected: `knowledge_file_unsafe_archive`. | Central-directory-only inspection finds `word/embeddings/Workbook1.xlsx`; embedded objects are intentionally unsupported. No object was extracted/executed and the deny-list was not relaxed. |
+
+The new independent evidence gap was the **previously un-replayed English-PDF failure**, run `284` (`xiaok-renovation-v31` / `professional-hybrid-v1`). Its complete diagnostic contradicts a blanket “cross-language embedding failed” diagnosis: required English chunk `125` had semantic rank **1**, similarity **0.6153906583786186**, fusion rank **6** and `ranked_out`; all five delivered knowledge slots were DOCX. Its exact original passage is “Waterproofing checks are arranged by the project team.” The final Chinese-PDF review explicitly excluded that earlier English failure from its passes.
+
+`admin/scripts/fixtures/assistant-knowledge-archived-english-recall.json` freezes only the synthetic parsed originals, 11 measured candidates, query/configuration and original selected identities from `tmp/xiaok-kb2/live-v31-first-failure.json` (SHA256 `ef9b2aad68e3f9c2d6f81c4ece4003e17950c2cbc3e3ae3a54982942ae08233d`). No credentials, private review fields or production data are copied. The new dedicated test verifies all candidate hashes with the original `fingerprint(chunk.text)` contract, preserves the recorded omission, and replays the measured eligibility/fusion order through the **unchanged current v4 selector**. Chunk `125` now enters the same five-slot selection without changing scores, threshold, wording or metadata. This fills one historical selection-stage evidence gap; it is not a new runtime fix or a fresh English retrieval/translation/answer acceptance.
+
+```powershell
+node --import tsx --test --test-reporter=tap src/lib/assistant/__tests__/knowledge-archived-english-recall.test.ts
+node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973beb540d1511e125 ../tmp/knowledge-format-audit/verified
+```
+
+Final new replay: **1/1 passed, 0 failed/skipped/cancelled**, source hashes stable; two code files pass ESLint with zero warnings; same-program types **287 → 287, 0 added**. The first probe wrapper failed to compile its top-level await before any sample ran; the first replay assertion failed because the new test initially used raw-text SHA256 instead of the indexer's JSON fingerprint. Only the harness/test assumptions were corrected; both failed attempts remain archived. Neither is a reproduced production defect. No parser, retrieval service, Agent, queue, schema, permissions, API or UI behavior changed in this increment, so no runtime inventory/visual ledger update is applicable. The earlier bilingual KB-2 integration proposal still applies separately.
+
+Remaining independent evidence needs are concrete: the real manuals need page/row/cell goldens for reading order, table units/conditions and figures/OCR; having files alone supplies no ground truth for those semantics. XLSX/legacy formats still require their planned shared enum/locator integration, not a fake successful parse. The archive contains scores but **no query/document vectors**, so it cannot recompute present-day candidate recall or changed-query semantics offline; that needs a compatible frozen vector/corpus export or separately authorized real retrieval. No broad terminology/long-tail corpus with declared expected source versions was found in the inspected fixtures/failure records. The PPT interaction examples do not supply manufacturer standards or a general relevance benchmark.
+
+Evidence: `tmp/knowledge-format-audit/{sample-probe.json,docx-central-directory.json,recall-fixture-provenance.json,recall-replay-unit.log,recall-replay-status.json,verified/}`; initial wrapper/replay failures are retained beside them. This phase made **0 model / 0 Embedding / 0 database calls**, took no database lock and started no Worker/server. No new local parser defect was confirmed, so no speculative parser/format change follows. Keep this line pending the exact shared integration SHA/evidence described below; current live-call restrictions and the `4242` no-retry rule remain. Overall **Limited**.
+
 ## Full-plan audit and KB-2 header fidelity
 
 The complete preserved Chinese plan and its English counterpart were checked after `6b974e3d`. KB-1–4 foundations are already Limited; the copied plan predates this line's v4 coverage and manual batch improvements. Its remaining-scope column is not evidence that those foundations must be rebuilt. Remaining work does **not** all depend on the shared synthesis repair:

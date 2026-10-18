@@ -2,6 +2,35 @@
 
 状态：**Limited；多文档检索覆盖、知识专属手动批次管理及本地 DOCX 表头保真修复已有有界实现，自动批量派发与客户语义验收仍待集成。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+## 现有样本与英文 PDF 历史选择重放
+
+`5fa13cef` 后，本轮只使用仓库已有原件、已有 PPT18/19/23/38 阶段/材料映射，以及保留的 KB-2/KB-3 失败记录。未新增企业规则、翻译原件、将手册目录入库或杜撰格式/术语功能；未重跑前批已完成测试和实模。
+
+从 `docs/装修施工标准手册制度规范/` 选取 5 份原件，以未改的原本地解析器只读探测，原 SHA256 全部不变。这些是**格式探测，不是五项业务验收通过**：
+
+| 现有原件（相对此目录） | 本地实际结果 | 证据限制 |
+| --- | --- | --- |
+| `03 进度管理/金螳螂.家施工任务节点模块.pdf` | 提取文字：1 页 / 43 block / 1,148 字符。 | 仍提示阅读顺序待核对、表格结构及图像未解析。 |
+| `04 质量管理/03 水电工程/水电施工标准（施工经理、水电工）.pdf` | 提取文字：29 页 / 119 block / 2,697 字符。 | 同样保留警告；有文字不代表图表完整。 |
+| `04 质量管理/05 镶贴工程/瓦工培训课件.pdf` | 提取文字：24 页 / 93 block / 1,354 字符。 | 同样保留警告；未声明理解图内尺寸或条件。 |
+| `04 质量管理/00 管理文件/03 金螳螂家施工工艺手册2.0.pdf` | 拒绝：`knowledge_file_block_limit`。 | 保留既有 128 block 边界，没有截断或提高上限。 |
+| `05 信息管理/金螳螂·家业主微信群管理要求.docx` | 拒绝：`knowledge_file_unsafe_archive`。 | 仅看 ZIP 中央目录发现 `word/embeddings/Workbook1.xlsx`，嵌入对象本就不支持；未提取/执行对象或放宽拒绝清单。 |
+
+新增独立证据缺口是**此前尚未重放的英文 PDF 历史失败**：run `284`（`xiaok-renovation-v31` / `professional-hybrid-v1`）。完整诊断并不支持笼统归为“跨语言 Embedding 失败”：所需英文 chunk `125` 的语义序 **1**、相似度 **0.6153906583786186**，却在融合序 **6** 被 `ranked_out`，5 个已入选知识槽均为 DOCX。对应逐字原文为 “Waterproofing checks are arranged by the project team.”；最终中文 PDF 语义记录也明确没有把早期英文失败计为通过。
+
+`admin/scripts/fixtures/assistant-knowledge-archived-english-recall.json` 仅冻结合成解析原件、11 个真实已测候选、问题/配置及原入选标识，来源 `tmp/xiaok-kb2/live-v31-first-failure.json`（SHA256 `ef9b2aad68e3f9c2d6f81c4ece4003e17950c2cbc3e3ae3a54982942ae08233d`）；无凭据、私有审校字段或生产数据。新增专属测试按原 `fingerprint(chunk.text)` 校验所有候选原文 hash，保留当时遗漏事实，将已测资格/融合顺序传给**未改的当前 v4 选择器**。chunk `125` 现在进入同一 5 槽选择，不改分数、阈值、原文或元数据。这只补历史选择阶段的证据，不是新运行修复或新一轮英文检索/翻译/回答验收。
+
+```powershell
+node --import tsx --test --test-reporter=tap src/lib/assistant/__tests__/knowledge-archived-english-recall.test.ts
+node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973beb540d1511e125 ../tmp/knowledge-format-audit/verified
+```
+
+最终新增重放 **1/1 通过、0 失败/跳过/取消**，源码 hash 稳定；2 个代码文件 ESLint 0 错误/警告，同一源码程序类型 **287→287，新增 0**。初次探测包装器因顶层 await 在执行任何样本前编译失败；初次重放因新增测试误用裸文字 SHA256、未沿索引器 JSON fingerprint 而失败。只修正包装器/测试假设，两次失败均保留，不当作生产缺陷。该增量未改解析器、检索服务、Agent、队列、schema、权限、API 或 UI 行为，因此无运行模块清单/视觉账本影响；前一双语 KB-2 集成提案继续单独适用。
+
+剩余独立证据需求是具体的：真实手册尚缺逐页/行列可核对的阅读顺序、表格单位/条件及图示/OCR 金标准，文件存在本身不提供这些语义真值。XLSX/旧格式仍需计划中的共享枚举/定位接入，不能假成功解析。历史记录有分数但**没有查询/文档向量**，无法离线重算当前候选召回或改写后问题的语义；需要兼容的冻结向量/语料导出，或另行允许的真实检索。所查夹具/失败记录中也没有带应命中来源版本的广泛术语/长尾题集；PPT 交互样例不提供厂家标准或通用相关性基准。
+
+证据：`tmp/knowledge-format-audit/{sample-probe.json,docx-central-directory.json,recall-fixture-provenance.json,recall-replay-unit.log,recall-replay-status.json,verified/}`，初次包装器/重放失败并列保留。本轮 **模型 0 / Embedding 0 / 数据库调用 0**，无数据库锁、Worker 或监听服务；未确认新的本地解析代码缺陷，不继续推测性格式改造。保留本线等待下文准确共享集成 SHA/证据，当前实模禁令及 `4242` 不重试不变。整体 **Limited**。
+
 ## 完整计划复核与 KB-2 表头保真
 
 `6b974e3d` 后已通读保全的完整中文计划并对照英文版本。KB-1～4 基础已有 Limited 实现；计划副本早于本线 v4 覆盖及手动批次增量，剩余范围列不表示这些基础须重做。未完成项**并非都依赖共享综合解释修复**：
