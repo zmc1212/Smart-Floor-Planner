@@ -54,6 +54,22 @@
 
 <!-- admin-request-compatibility:end -->
 
+<!-- shared-execution-integration:start -->
+
+下一共享集成仍**Limited / 尚未实施**。`7f4f9809`之后的源码核对确认：`core/conversation.ts:newRun`保存actor/policy/Agent配置，实际文字供应商仍在`ai/postgres-workflow-chat.ts`解析，包含平台及部署覆盖。知识线准备批次绑定case/来源epoch/profile/policy，但没有生产`EvaluationBatchPort`适配器或实际执行Revision。其`knowledge/operations.ts:resume`的评测检查、创建/关联会话、send及回写run分属多个事务。这是跨所有权接线点，不是已复现竞争或已完成整批取消的证据。
+
+| 边界 | 现有权威及待接入要求 |
+| --- | --- |
+| 实际执行Revision | 共享负责人复用实际供应商/模型解析路径；服务端摘要覆盖真正的knowledge_preview或Agent/现场草稿模式、provider/config/adapter及endpoint身份、部署覆盖后的model/revision、实际prompt、生成/思考/工具参数、当前索引profile及导出的retrievalConfiguration，不含凭据。现有preview系统正文可从answerMessages读取，不得标为C01 Agent prompt。准备时及实际派发前逐次对照，在新attempt/开始标记/HTTP之前拒绝变更；只算settings hash不足。 |
+| 未派发项的持久取消 | 知识负责人提供batch/evaluation/原操作绑定及唯一持久取消意图，共享负责人提供使用调用方事务的create/send/run接缝。沿企业settings锁和原run/job状态，同一事务检查取消意图和预期Revision后才建run/job/预留；供应商开始事务再查有效租约/run。不可持锁后调用另一个独立ConversationService事务。父任务协调知识专属operations.ts/适配器的修改归属，两线均不另建队列/schema。 |
+| 丢失run关联与已知run取消 | 原send已提交但评测关联丢失时，以获权只读回执恢复，不通过resume/send探测未知run。来源/policy变更后，已知run仍沿本人/参与者权限和原键取消；现有ConversationService.run(...,'cancel')不做当前来源preflight，身份/参与者检查保持。单run取消和job-queue.ts的有效租约/开始标记仍是权威；provider-started/未知attempt及reconciling费用继续待核对。 |
+
+本阶段交付具体源码/文件归属核对，未实现上述新运行能力，未改知识专属文件。后续仍需双独立进程advance/cancel竞争、派发前来源/实际配置变更、send已提交而评测run关联丢失的恢复，以及未知用量/费用保留的验收。验收共用锁和浏览器AbortController均不能替代该业务契约。
+
+参考决策：保留原PostgreSQL事务、租约、原回执和核对权威。[LangGraph Functional API](https://docs.langchain.com/oss/javascript/langgraph/functional-api)要求可能重放的未完成任务自行保证幂等；其[Postgres pending-send测试](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint-postgres/tests/test_sync.py)验证持久任务状态，不覆盖本产品权限或供应商账务。[Issue8702](https://github.com/langchain-ai/langgraph/issues/8702)讨论该边界，不能作为本适配器已实现的证据。[PostgreSQL行锁](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS)支持原事务排序。本次不提出框架迁移或重试策略变更。
+
+<!-- shared-execution-integration:end -->
+
 <!-- boundaries-v61:start -->
 
 - 当前v61 / `current-turn-sources-v11`保留当前私聊用途与精确正式版的明确对照，图纸关联限定于这条实际回传记录，真实施工阶段另查当前节点。原4115/4102及4235仍为反例；原4241保留多余引用字段及历史indeterminate状态。不静默剥离引用字段，不增加语义修复或模型轮次。
