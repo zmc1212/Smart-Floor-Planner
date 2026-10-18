@@ -76,6 +76,8 @@ export type EvaluationBatchObservation = {
   awaitingReconciliation: boolean;
   usageKnown: boolean;
   structuralPassed: boolean | null;
+  /** Server-persisted whole-batch intent plus a read-only proof that no run exists. */
+  cancelledBeforeDispatch?: true;
 };
 export type EvaluationBatchProgressItem = EvaluationBatchObservation & {
   action: 'none' | 'resumed' | 'cancel_requested' | 'unconfirmed';
@@ -105,8 +107,10 @@ function observation(item: EvaluationBatchItem, value: EvaluationBatchObservatio
   if (value.evaluationId !== item.evaluationId || !statuses.includes(value.status)
     || typeof value.awaitingReconciliation !== 'boolean' || typeof value.usageKnown !== 'boolean'
     || (value.structuralPassed !== null && typeof value.structuralPassed !== 'boolean')
-    || (value.runId === null && !['dispatch_pending', 'source_changed'].includes(value.status))
+    || (value.runId === null && !['dispatch_pending', 'source_changed'].includes(value.status)
+      && !(value.status === 'cancelled' && value.cancelledBeforeDispatch === true && !value.awaitingReconciliation && value.usageKnown))
     || (value.status === 'dispatch_pending' && value.runId !== null)
+    || (value.cancelledBeforeDispatch !== undefined && (value.cancelledBeforeDispatch !== true || value.runId !== null || value.status !== 'cancelled'))
     || (knownRunId !== null && value.status !== 'source_changed' && value.runId !== knownRunId)
     || (value.structuralPassed !== null && value.status !== 'succeeded')) fail('invalid_batch_observation');
   // Whitelist fields: no answer, source, diagnostic, notes or vendor error text in a checkpoint.
@@ -116,7 +120,7 @@ function observation(item: EvaluationBatchItem, value: EvaluationBatchObservatio
   };
   return { evaluationId: item.evaluationId, runId: value.runId, status: value.status,
     awaitingReconciliation: value.awaitingReconciliation, usageKnown: value.usageKnown,
-    structuralPassed: value.structuralPassed, action: 'none' };
+    structuralPassed: value.structuralPassed, ...(value.cancelledBeforeDispatch ? { cancelledBeforeDispatch: true as const } : {}), action: 'none' };
 }
 
 async function mapLimit<T>(items: readonly T[], concurrency: number, work: (item: T, index: number) => Promise<void>) {

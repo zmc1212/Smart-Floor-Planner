@@ -20,7 +20,8 @@ const added = new Set(['src/lib/assistant/knowledge/evaluation-batch.ts', 'src/l
   'scripts/assistant-knowledge-semantics-live.ts', 'scripts/assistant-knowledge-semantic-rules.ts',
   'src/lib/assistant/__tests__/knowledge-semantic-acceptance.test.ts', 'scripts/assistant-docx-header-fixtures.ts',
   'src/lib/assistant/__tests__/knowledge-docx-headers.test.ts',
-  'src/lib/assistant/__tests__/knowledge-archived-english-recall.test.ts'].map(file => norm(root + '/' + file)));
+  'src/lib/assistant/__tests__/knowledge-archived-english-recall.test.ts', 'src/lib/assistant/knowledge/batch-execution-adapter.ts',
+  'src/lib/assistant/__tests__/knowledge-batch-execution-adapter.test.ts'].map(file => norm(root + '/' + file)));
 const overrides = new Map(changed.map(file => [norm(root + '/' + file), cp.execFileSync('git',
   ['-C', path.resolve(root, '..'), 'show', base + ':admin/' + file], { encoding: 'utf8', windowsHide: true })]));
 const config = ts.readConfigFile(root + '/tsconfig.json', ts.sys.readFile).config;
