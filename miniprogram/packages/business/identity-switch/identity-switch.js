@@ -6,6 +6,7 @@ const ROLE_LABELS = {
   enterprise_admin: '企业负责人',
   designer: '家装设计顾问',
   measurer: '家装现场顾问',
+  construction_staff: '施工员工',
   salesperson: '地推人员',
   platform_admin: '平台管理员'
 };
@@ -15,6 +16,7 @@ const IDENTITY_ICONS = {
   enterprise_admin: '/packages/business/assets/identity-switch/enterprise-admin.png',
   designer: '/packages/business/assets/identity-switch/designer.png',
   measurer: '/packages/business/assets/identity-switch/measurer.png',
+  construction_staff: '/packages/business/assets/identity-switch/role-cards/construction-tools.png',
   salesperson: '/packages/business/assets/identity-switch/salesperson.png',
   platform_admin: '/packages/business/assets/identity-switch/platform-admin.png'
 };
@@ -24,6 +26,7 @@ const ROLE_CARD_ART = {
   enterprise_admin: '/packages/business/assets/identity-switch/role-cards/enterprise-operations.png',
   designer: '/packages/business/assets/identity-switch/role-cards/designer-plan.png',
   measurer: '/packages/business/assets/identity-switch/role-cards/measurer-laser.png',
+  construction_staff: '/packages/business/assets/identity-switch/role-cards/construction-tools.png',
   salesperson: '/packages/business/assets/identity-switch/role-cards/sales-promotion.png',
   platform_admin: '/packages/business/assets/identity-switch/role-cards/platform-console.png'
 };
@@ -33,6 +36,7 @@ const ROLE_CARD_HELPERS = {
   enterprise_admin: '经营与人员协同',
   designer: '设计与方案服务',
   measurer: '量房与现场服务',
+  construction_staff: '工地分工与施工节点',
   salesperson: '客户推广服务',
   platform_admin: '平台运营管理'
 };

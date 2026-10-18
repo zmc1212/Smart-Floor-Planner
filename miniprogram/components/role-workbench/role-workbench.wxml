@@ -43,6 +43,7 @@ FORM: 负责人保留经营闭环；设计顾问与现场顾问使用同一路�
         </view>
 
         <view class="enterprise-action-hub">
+          <button wx:if="{{role === 'designer' || role === 'enterprise_admin'}}" class="assistant-handoff-entry" bindtap="openAssistantHandoffs">小K咨询接管</button>
           <text class="enterprise-action-hub-title">{{role === 'enterprise_admin' ? '获客与团队' : '获客与推广'}}</text>
           <view class="enterprise-action-layout {{activityCode ? '' : 'without-activity'}}">
             <view

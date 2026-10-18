@@ -30,6 +30,10 @@ const ROLE_ITEMS = {
     { key: 'earnings', capability: 'staff.earnings', pagePath: '/packages/business/staff-earnings/staff-earnings', text: '收益', iconPath: '/images/mine-icons/earn-g.png', selectedIconPath: '/images/mine-icons/earn-a.png' },
     { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
   ],
+  construction_staff: [
+    { key: 'projects', capability: 'construction.projects', pagePath: '/packages/construction/projects/projects', text: '工地', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
+    { key: 'mine', capability: 'account', pagePath: '/pages/mine/mine', text: '我的', tab: true, iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
+  ],
   enterprise_admin: [
     { key: 'workbench', capability: 'enterprise.operations', pagePath: '/pages/index/index', text: '工作台', tab: true, iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home-active.png' },
     { key: 'operations', capability: 'enterprise.operations', pagePath: '/pages/enterprise-operations/enterprise-operations', text: '经营', tab: true, iconPath: '/images/operations-dashboard/chart.png', selectedIconPath: '/images/operations-dashboard/chart.png' },

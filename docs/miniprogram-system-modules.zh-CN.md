@@ -8,6 +8,108 @@ C05回执与业主决定：**限定修复Implemented，P4B整体Limited。** 原
 
 P4B C03原生后续复核（2026-10-17）：用户解除窗口占用后，390×844下11个环境/业务步骤全部通过，覆盖实际输入/清空、点卡、双Tab、返回、精确版本重进、文字工地、撤回404/重试及无效版本刷新不增加请求（15→15）。原生请求13次200、2次404；仅企业2404的内存网络转向已恢复并读回false，模拟器回到首页。定向48/48、真实localhost公开HTTP8/8通过，含no-store、已知私人字段排除、JPEG及撤回/错误版本404。本批仅验证，不改运行代码/API/数据/权限合同、不写数据库；C05认证决定、完整光学/高屏/键盘/真机及生产发布仍未验证，P4B整体Limited。上批1950/1950未重跑。证据和下一精确入口见[交接](./xiaok-assistant-handoff.zh-CN.md)。
 
+**P4B公开工地限定闭环 Implemented，整体 Limited。** 用户“确认”批准C03/C05/S07后实施。C01原咨询新增真实片区推荐/浏览及具体版本决定卡；`packages/construction/public-sites/public-sites`、`packages/construction/public-site/public-site`匿名围观照片/服务节选并返回本人私聊。后台`/construction-projects`原Drawer第三个“公开材料”Tab提供来源选择/原文脱敏/照片不透明遮挡/完整预览/保存/送业主/审核公开/退回/下架真实写入。cookie所选企业`/api/construction/projects/:id/public-materials/*`、本人bearer`/api/miniprogram/assistant/conversations/:cid/public-sites/*`和匿名`/api/public/construction/:enterpriseId/*`共享版本与实时源权限；匿名不泄露私人ID/原图，独立媒体no-store。0084新增`construction_public_sites/versions/sources/media/audits`，施工20表强制RLS并覆盖企业清理。业主看全并明确同意这一版后，enterprise_admin/admin/super_admin再审核，平台管理无需入职/项目成员；管理者不代业主同意，也不获原私聊权限。新版本/撤回/来源失效收紧列表、详情、媒体、Agent和接续引用；step1003保存只读公开依赖，prompt v15。
+
+完整入口/API/数据/角色/状态/设计/手测见[总计划3.7](./xiaok-assistant-roadmap.zh-CN.md#37-p4b-公开工地具体授权与审核限定闭环)。独立ImageGen PNG`miniprogram/packages/construction/assets/xiaok-public-sites.png`为420×282、36,161字节，未切片整页。9/9注入及9/9真实DeepSeek、客户端6/6、原聊天27/27、离线编译和隔离生产构建通过；C03原生围观/恢复已按3.8验证；完整光学/高屏/键盘、C05认证决定及后台剩余验收未验证、非阻塞。无距离、自动人物识别脱敏、直播/视频/外部推送，未生产发布。
+
+**默认测试规则（用户于2026-10-17确认）：** 后续由Codex使用已验证的稳定版
+`2.02.2608080`（`D:\微信开发工具\微信web开发者工具`）、官方
+`miniprogram-automator@0.13.0`、基础库`3.17.2`及`390x844`逻辑视口执行小程序测试。
+原安装替换后已通过13/13项基础自动化检查，覆盖页面数据、元素定位、真实点击与输入、
+导航和截图；这不代表未测业务流程已验收。后续按此方式及`AGENTS.md`中的窗口、路由和
+重新编译规则执行，无需再次逐项授权自动化，也不再要求用户人工手测或提供验收截图。
+Codex自动捕获并核对受影响的原生页面；真机/BLE等无法覆盖的检查如实记为未验证，
+不转成人工手测任务。此规则取代下文早期的自动化取消和人工QA要求，历史缺失证据仍为
+未验证；产品行为与部署授权边界不变。
+
+**会话恢复：Implemented。** 服务端读取身份时的数据库异常不再被误判为登录失效。
+支持状态码的接口返回503，沿用客户端既有错误/重试路径并保留有效会话；旧登录或旧身份
+迟到返回的401也不会清除当前会话，当前会话真实无效或已撤销时仍拒绝鉴权。
+运行路径复用客户资料表单现有错误处理及`utils/api.js`请求层，
+不改变WXML、Less、素材、路由入口或权限边界。
+
+**原生回归修复：Implemented。** 客户资料保存时，小区/风格/城市的可空字段保留JSON
+`null`，不再写成字符串`"null"`并出现在线索卡片既有风格标签中。AI结果链接缺少任务ID时
+退出加载，复用既有设计Tab返回路径。员工灵感图库等待签名身份恢复，并在读取前检查既有
+`staff.design`路由能力；客户/推广人误入时返回既有角色首页且保留登录态。
+`GET /api/inspirations`支持签名设计师能力，并通过共用小程序事务限定本企业；
+客户/推广人请求返回403，后台Cookie写入保持原契约。施工身份可读取既有数字企业ID的
+公开品牌接口，线索/财务/量房/后台接口仍拒绝。设计源沿用角色壳线索卡片、结果页返回、
+身份导航、既有灵感图库和施工品牌导航；上述行为修正保留WXML、Less与素材。
+工地聊天另按PPT22/38及既有尺寸声明恢复紧凑按钮：返回`42rpx`、输入栏图标按钮`66rpx`、
+发送`70rpx`。显式Mini按钮尺寸和局部选择器避免微信默认184px按钮宽度将品牌挤入胶囊、
+将发送键挤出屏幕。不换素材/设计源，不改API、发布或权限边界。
+
+正式户型恢复另阻止在云端墙图仍加载时持久化初始化空画布，避免加载中退出后产生较新的
+空备份，并在重进时遮住已保存墙图。真实本地几何及载入后主动清空仍正常持久化；
+图校验、v4序列化和API权限保持不变。
+
+**P4A工地共享对话与发布/关注限定闭环Implemented，整体Limited。** 共用工地详情进入`packages/construction/chat/chat?projectId=…`；每工地一份成员共享对话，真实作者/原话/鉴权照片/整理草稿/版本均真实保存。`/api/miniprogram/construction/projects/:id/chat/*`覆盖消息、媒体、核对/发布/更正/撤回/重试、版本及原键回执核对。observer只读，作者只改本人，经理/负责人核对他人；向当前业主开放须获权管理者明确选择。admin/super_admin继承所选企业负责人权限，无须成为项目成员。0083新增6张施工表及project_collaboration权限适配，15表强制RLS，企业重置/删除覆盖。复用现有Worker/provider/配额/用量/未知调用恢复，模型只出草稿；原咨询查询、动态及图片重验精确发布版本，明确关注/取消有真实回执和去重outbox，页面关闭后仍由Worker写入站内咨询，人工模式不插话。更正/撤回/成员或客户撤权收紧旧资料。PPT22/38及C01/U01为设计源；独立ImageGen透明PNG为37,896字节，无整页切片。公开工地按3.7交付；ASR/视频/外部微信推送及正式批准未实现；原生390×844/高屏/键盘与人工验收待测、非阻塞，未生产发布。完整API/数据/状态/元素/验证/手测见[总计划3.5](./xiaok-assistant-roadmap.zh-CN.md#35-p4a-工地共享小k对话记录发布与关注限定闭环)及二期契约。
+
+**既有小K UI回查修正：代码Implemented，原生视觉待验收。** 用户要求检查并重做此前偏离源稿的UI；当前`packages/assistant/chat/chat`按C01/C02取消额外箭头/常驻实现说明，以品牌返回；选图直发保持，移除无入口的客户资料分类表。`packages/assistant/handoff/handoff?staff=1`按S01-01/02/B01恢复品牌/角色、接待标题/IP、队列头像/状态/实际数量/分栏空态；接手后同聊有作者/头像、独立消息滚动和胶囊输入，原话定位消息区、键盘不重复留底。接管前仍只元数据，不伪造姓名/肖像；图片按钮查已授权资料，未增加员工发图/ASR。`packages/construction/projects/projects`按PPT26 manager.png恢复品牌/角色/章节/卡内操作，保留真实节点/分工，不填示例图或开放未完成功能。路由/API/数据模型/租户/私聊/接管/项目成员/幂等及正式v4写入不变；工地共享对话单独归P4A，不复用业主私聊。场景PNG复用原独立生成文件，复制到`packages/construction/assets/xiaok-project-scene.png`（780×380、51,118字节），避免跨分包资源；无截图切片/新生成图。总计划3.6、二期及双语还原台账已同步；72项Mini回归、离线86WXML+2WXS/90样式/235JS/92JSON及24例辅助布局检查通过。原生390×844/高屏/胶囊/光学/键盘/实际操作待人工、非阻塞；未操作DevTools或部署。下方P3B“未改布局”等描述仅指其当时业务批次，当前UI以本段为准。
+
+**P3B节点补问限定闭环Implemented，整体Limited。** 继续使用`packages/assistant/chat/chat`与`packages/assistant/handoff/handoff?staff=1`；经理从原`packages/construction/projects/projects`更新实际节点，业主在本人房屋咨询收到最多一条可跳过的文字补问，可直接回复/发图、换话题或请求设计师。原服务真实保存消息/图片、来源化需求及内部核对，重进不重问；已知/暂未确定/已问需求跳过，多房屋未明确时不猜项目。后台节点`followUps`默认不配置、与到场提醒独立，无小程序新增配置页。原C01/C02/S01/U01气泡/输入/核对/恢复状态和390×844胶囊、字号、素材保持；constructionFollowUp仅切换原WXML气泡/头像状态，布局/Less/图片不变，双语还原台账记录复用来源。既有租户、本人会话、项目可见性、接续/媒体撤权、幂等及房间边界保留；等待/真人期间不插话，结束后可恢复仍有效事件，节点/配置/房间/客户撤权使旧问题及派生回复失效。工地身份不自动授予私聊，普通回答不是正式方案/费用/工期批准，无预约/正式墙图写入。合同、状态、验证与非阻塞手测见[总计划3.4](./xiaok-assistant-roadmap.zh-CN.md#34-p3b-节点需求补问与原聊天核对限定闭环)及二期；新动态/记录发布/正式决策页面仍属后续，未操作DevTools或发布生产。
+
+**P3A施工入驻与三端共用云工地基础闭环Implemented，整体Limited。** 设计师、施工员工和老板从“我的→云工地”进入同一packages/construction/projects/projects页面，施工身份登录直接进入；保留设计师/老板原工作台。前两者只读有效关联工地，老板看本企业工地；经理可更新实际节点、分配普通成员/阶段，指定经理仅限负责人。ej_员工入驻新增construction_staff及姓名/工种，复用手机号授权、真实写入、单企业冲突/重复入驻、签名身份与跨页恢复；企业名册新增施工角色，不参与量房/设计派单、获客或分佣。GET /api/miniprogram/construction/projects、GET …/:id和POST …/:id/{member,contact,progress}返回真实列表/分工/节点/权限；空态待分配，加载/失败/重试复用U01，写操作按企业/员工持久保存原expectedVersion/Idempotency-Key，未知回执重进核对，隐藏/切身份拒绝迟到数据。contact保存员工关联和明确主要联系人，聊天原“联系管家”实时重验当前有效员工电话；停用、移出、撤销分工及旧来源均不能拨号，历史手填电话不兜底。微信手机号入口无需先到Web改密，密码入口及Web改密保护保留。模型不接收号码，不写施工/量房预约，不开放客户私聊、正式墙图或财务权限；0080–0082双库核验9表强制RLS/角色约束/迁移哈希通过。设计源、935×1683源图映射、390×844元素台账、17,723字节独立透明PNG映射、状态/限制及手测见[总计划3.3](./xiaok-assistant-roadmap.zh-CN.md#construction-staff-contract)、二期及双语还原台账；P4A现场记录/照片按3.5实施；P6简报、语音/视频及外部推送仍未实现。原生390×844/高屏/胶囊与真实拨号待人工验收、非开发阻塞；未控制DevTools或部署生产。 施工身份保留本人资料/头像/密码接口及既有本人/签名校验；原生下拉刷新、冲突后读取最新版本和按token校验写回执，避免过期资料或跨身份结果。追加真实数据库8/8、身份/凭据58/58、小程序聚焦82/82及离线模板/样式编译通过；小程序全量1920/1921，唯一既有失败为开发地址断言与当前配置不一致。
+
+**P2C.1后台作品维护/审核Implemented，高德真实联调Limited；P2C.2限定客户闭环Implemented。** `/case-publishing`、`/case-publishing/[id]`沿用既有Ant Design/Admin Pro和`design-references/designer-portfolio-publishing-v1/`管理/编辑稿。独立`case-publishing`菜单允许在职设计师仅维护本企业本人作品，企业/平台管理员审核、退回、发布和下架，不授予整店知识或其他设计师资料权。效果/实拍分组、AI/样板间标记、排序/封面、许可、可选核验小区、本人作品集资料和审核版本经真实服务持久化；已发布内容修改生成新草稿，审核前旧公开版保持有效。`/api/portfolio/*`使用租户事务、当前角色/菜单重查、版本冲突与幂等。0071/0072新增8张强制RLS的`portfolio_*`表、租户/作者复合外键、公开版本/图片不可变约束、供应商计数/冷却及选填地图授权备注（0079移除原期限门槛）；企业重置/删除已包含新数据。小区查询仅服务端，经后台/map-settings维护各自独立的高德/天地图凭据、权益及测试结果，显式切换默认供应商，候选绑定供应商/配置版本。高德Implemented（真实宜昌连接返回10条候选）；天地图Limited（适配/模拟回归已实现，独立Key、权益及真实召回待测）。已保存Key并显式开启即可检索/绑定，授权备注选填且不拦截小区读取，开发高德已开启；0078区分供应商身份、日计数和冷却，短窗限流继续共享。小程序路由/UI及租户/来源撤权边界不变，相关50/50回归通过，原生/人工验收待测，无采购。会话绑定的`GET /api/miniprogram/assistant/conversations/:id/portfolio/{recommendations,designers/:authorId,works/:workId,works/:workId/assets/:assetId}`提供同小区+风格/同城+风格、最多3位去重设计师、精确当前版本私有JPEG及撤回校验；公开DTO不下发许可凭据和内部文件。客户P2C.2限定范围已Implemented：C01推荐卡/查看主页→`packages/assistant/designer/designer`→`packages/assistant/work/work`→返回同一咨询，沿用PPT2/3主页与已批准C01/共享状态。推荐无参时仅采用当前明确城市/风格记忆，歧义不猜；显式API仍支持核验小区优先。原生详情按效果图/实拍分组，标明AI/样板间；明确喜欢/不合适经POST `works/:workId/preference`写入会话`portfolioPreferences`与用户消息，保留精确公开版本、原话来源及更正链，expectedVersion和Idempotency-Key保护重试。POST `works/:workId/contact`复用站内接续并另存handoff.source.portfolio的作品/版本/作者意向，已有负责人冲突409，不改线索/归属/分佣或取得电话授权。POST `works/:workId/share`签发7天`portfolioEntry`，接收者经entry-context建立/恢复本人咨询，不携带客户、原会话、手机号或私有图片；C01/设计室/详情均固定品牌PNG转发封面。图片支持鉴权base64传输；隐藏、撤权或切换身份清理临时文件，重进/预览/分享重查当前许可。主页生成独立透明PNG（1050×553、140,866字节），图标沿用Lucide；映射、元素台账和手测见二期及双语还原台账。原生390×844/高屏视觉与人工验收待测、非阻塞；未操作Chrome/DevTools、未部署生产。新作品尚未接入旧`recommend_references`工具，也未静默迁移旧参考案例。契约、验证和待执行手测见[二期](./xiaok-assistant-phase-2.zh-CN.md#p2c1后台发布与p2c2公开读取基础)。
+
+**P2A.3授权参考：PPT4–6、14页范围Implemented；P2C：内容入口基础Limited。** 既有/assistant-knowledge支持reference_case草稿，维护出处/作者、授权凭据、标签和独立压缩JPEG，按既有权限及不可变版本索引/发布/撤回。小程序C01聊天最多推荐3例，在原引用面板读取授权图片/出处，持久化明确喜欢/不合适原话及更正链，撤回后引用和相关员工/AI衍生文本失效；浏览不等于选择或摘要收藏。新增POST /api/assistant/knowledge/documents/:id/share签发7天referenceEntry；唯一entry-context入口及原生转发保存内容/渠道来源，不携带私聊、不建线索、不改归属或分佣；失效内容回到普通咨询。当前Admin复制为公司来源，API可绑定经校验的既有活动/推广码。保留平台所选企业/显式企业负责人知识权限及S01当前接待人边界。开发主库/隔离库0070迁移哈希、列及强制RLS通过。当前运行xiaok-renovation-v10，下文v9段落是历史基线证据。原生视觉/手测待执行，未使用DevTools自动化或生产部署。后续后台先行作品实施及客户入口限制见上方P2C当前记录。测试、限制和手测见[二期契约](./xiaok-assistant-phase-2.zh-CN.md)。
+
+**P2A.3之前的P2M v9基线：Limited。** 开发环境localhost:3006／远端开发数据库的企业1454使用DeepSeek官方deepseek-flash，langgraph-v1、图片/工具启用，xiaok-renovation-v9、policy_version=3。回读一致、在途0、Worker健康200/fresh。证据：结构160/160、合成图片语义16/16、扩展会话44/44段（114/114轮）、隔离Worker19/19、纯测试63/63通过。未明确房间的指代先澄清再写记忆；通用预算/图片证据边界问答避免无谓转入企业知识检索。素材为2位作者的5张公开CC0照片及3种确定性降质变体，具有代表性的装修质量及原生人工验收仍待验证。现有路由/API/角色、C01/C02/S01/U01界面及正式量房写入保持，无生产发布。本段优先于下文历史仅规则/不能识图描述；未选择新Agent的企业仍走旧执行器。方法、证据及限制见[二期契约](./xiaok-assistant-phase-2.zh-CN.md)。
+
+当前五类提示为批准的固定话术；Admin主动引导开关继续生效，自定义开场/顺序/选项保留为兼容配置，暂不应用当前客户聊天。后台说明及保存反馈已同步，避免把兼容配置误报为已应用。
+
+P2S 第一批 C01/C02/S01/U01 的聊天与接待主链路 **Implemented**，自动理解整体 **Limited**：以用户本次明确批准的 `design-references/xiaok-assistant-chat-first-batch1-v1/single-screen/` 11张主稿和共享状态规则实施。客户 `packages/assistant/chat/chat` 直接聊天、发图、按原话自动保存草稿；五类轻引导遇到话题跳转后暂停，不自动回到未答题；回顾在聊天中按需返回。主路径不再展示摘要确认、完成率或图片分类表单，旧摘要页面/API保留兼容。识别采用有界中文规则，明确房间分开保留，含糊代词/复杂冲突仍需设计师核实，不宣称通用语义理解或客户批准。
+
+客户按钮或明确“请设计师接着聊”直接进入等待，不增加资料分享同意页；请求 API 为 `POST /api/miniprogram/assistant/conversations/:id/handoff`，普通请求只需 `{action:'request'}`。等待可补充文字/图片且不创建AI任务；接管后小K暂停；取消/结束恢复AI，员工退出回等待。正式报价/具体工期共用“请设计师接着聊”建议，普通时间用消息沟通，不创建预约。电话仍须单独明确同意；不自动建档或改变分佣。
+
+员工入口仍为 `packages/assistant/handoff/handoff?staff=1`，旧客户接续链接返回原聊天。接管前仅返回分派元数据，不开放完整聊天/摘要/图片。成功抢接后通过同会话“对话 / 需求 / 资料”回复、追溯原话、保存内部修正、图片分类/房间/授权正式户型关联，以及核对后关联已有服务档案。员工/后台 `POST .../handoffs/:id` 增加 `correct/associate/link`，带 `expectedVersion` 和幂等键；每次重验租户、当前员工、请求成员及客户/员工共同可访问的档案。修正和图片关联保存于 `entry_snapshot.handoff.packet`，附时间/操作者/原话来源；自动摘要为独立draft版本，历史confirmed不覆盖。仅写咨询关联，不改正式v4图、档案归属或佣金。后台菜单/角色权限不扩展，Web沿用Ant Design结构并随接管状态隐藏未授权资料。
+
+图片直发复用现有私有 `media` API，JPEG/PNG≤4MiB、规范到≤2400px、每会话累计20张；点击预览、长按删除，删除/来源撤回显示不可读占位。员工图片读取必须已接管且当前请求成员有效。未知写入保留原键/请求体，设备存储允许时跨页面重建恢复；切换身份或撤权隐藏私有内容。原生相册权限失败有反馈。ASR与AI读图未配置，语音入口明确提示不可用；无在线承诺或外部推送。 AI模式成功传图会在同一事务保存system收图提示，说明暂不能识图，可补充问题或找设计师；复用C01/U01既有状态，不改布局。原请求重试不重复提示、重进可见；失败不报成功，等待/人工模式不插话，不创建模型任务。首图/并发重试/重进/接续边界的真实数据库回归通过。
+
+来源/元素标尺、共享状态、功能限制、最新自动验证和分阶段手测集中维护在[二期契约](./xiaok-assistant-phase-2.zh-CN.md)。原生390×844、胶囊、键盘和长屏视觉验收待人工验证、非开发阻塞；未操作微信开发者工具、未部署生产。
+
+历史标题 **Implemented**：会话列表按同租户、本人参与者权限读取首条用户提问作为标题，合并空白并最多显示80个Unicode字符，超长加省略号；后续追问/重试不改标题，已有会话无需迁移即可生效。空会话保留原兜底，保留期清理后的会话不再从消息生成标题。当前PPT第5页与既有历史列表布局不变，仅替换标题数据。用户提供的5张1080×2400截图覆盖初始页、键盘、回答、引用、历史；可见胶囊/输入区无重叠，用户另确认历史恢复通过。用户补充的历史列表截图已确认旧会话显示各自首问，标题修复截图验收通过；首页入口截图待补；设备型号、390×844基线与重新微信登录尚未确认。DevTools自动化已取消，截图均由用户手动提供。
+
+小K一期开发收尾：小程序全量1876/1876及WCC80模板+2WXS、WCSC83样式、220JS/86JSON离线检查通过。DevTools自动化已取消；用户手工截图与历史恢复反馈见本页首段。真机重新微信登录、首页入口与新版标题仍待相应证据。范围限开发与隔离验收，详见 `docs/xiaok-assistant-phase-1.zh-CN.md` 11.5。
+
+小K回答服务的60题企业知识快照实跑与修复已完成，正式A10仍 **Limited / 待业务审核**。修复了“能否确定最终总价”的多轮追问和冒充管理员索取系统提示时误返无关公开资料的问题；保持已有依据不足状态、租户/参与者/引用权限及PPT第5页设计源，不改小程序标记、样式、素材或导航。汇总38题grounded/22题insufficient_evidence，38条引用来源核对无不匹配；19题回归、最终3题及内部权限2项探针通过。原超时一题获准复测成功，原未知结果/费用审计仍保留。详情与审核包见 [一期11.3节](./xiaok-assistant-phase-1.zh-CN.md#113-当前60题实跑与修复证据)。本次在隔离企业调用真实服务/模型，不是微信登录或原生渲染验收；双语还原台账不变，用户手工截图仍待提供。
+
+当前开发API为`http://124.70.90.30:9966/api`（`ACTIVE_API_ENVIRONMENT=local`），与远端开发记录中的现有开发配置一致，无跨环境回退。自动验收登录测试账号并切换对应身份；体验/正式发布前显式改回production。原生DevTools截图由Codex自动获取，无法覆盖的真机项目单独记为未验证。
+
+开发联调 **Implemented**：用户指定微云企业1454、微信客户645、本人项目1818（关联enterprise_admin2853）。已验证custom格式备份后，将开发主库从0059迁移至0062并启用vector0.8.2；仅此企业开启小K，额度为每日100次/1,200,000预留tokens/100,000,000费用微单位、保留90天，仅关联管理员显式授予`assistant-knowledge`。生产配置与角色默认权限不变。已发布明确标注的联调测试资料，不代表企业业务政策。小程序实际页面/controller/request代码经HTTP连接Next.js及真实Worker/Embedding/文本模型：三轮问答（两轮有依据、一轮依据不足）、响应丢失幂等重试、引用、重进/切换历史和过期身份拒绝全部通过。开发会话98/99保留6条消息供手工查看；证据为`tmp/xiaok-vector/weiyun-live-mini.json`和`weiyun-verify.json`。联调用开发环境签发的客户/管理员JWT，仅在内存使用；微信登录、原生渲染、正式业务知识质量及生产切换仍待验收。该轮链路联调未改视觉；后续截图修正见下。
+
+用户授权从`docs/装修施工标准手册制度规范/04 质量管理`整理并录入微云开发租户1454：7条业主问答已通过既有KnowledgeService创建、真实Embedding索引并发布，文档/版本ID均为2–8，受众`customer_public`、分类“质量管理·施工参考”。来源为《开工九件事》《金螳螂·家 五步放线法》《水电施工标准（工程总监、管家）》，标题保留文件与页码；内容为出处支持的交底/检查要点，未录入内部表单、具体施工数值或企业价格承诺。现有后台`/assistant-knowledge`可查看、修改草稿和撤回；这是一次受控资料整理，不新增PDF上传/OCR/批量导入功能。客户645、项目1818经真实页面/controller/HTTP/Worker/模型验证：水电开工、厨房用电、报价交底均为grounded并可打开来源，未知合同总价为insufficient_evidence；会话101–104的8条消息在重进/切换历史后保持一致。证据：`tmp/xiaok-vector/quality-import.json`、`quality-live-mini.json`、`quality-history.json`。只写入开发环境，其他租户、生产、权限和API合同不变。
+
+对话页继续以PPT第5页为唯一主设计、第14页为暖白家居材质参考；已对照PPT内嵌image4/image14与提取源逐字节核验。品牌单行、原生胶囊左侧留10px，独立Logo去除展示留白后按可见轮廓定标；固定200rpx Hero直接衔接头像/消息，历史、新对话和结束放在输入栏上方，键盘展开时隐藏此辅助行。完整历史起点保留本地欢迎语（不写入消息表），建议问题采用第14页单面板分隔行。标题44rpx、正文/输入30rpx、头像容器72rpx、发送84rpx，原有原生按钮尺寸覆盖继续保留。新增独立ImageGen透明头像与柔焦家居背景，未切割PPT或制作整页贴图。发送/历史/引用、停止/重试/归档及身份/租户/幂等合同不变。原生胶囊、光学字号、键盘/长回答/历史/引用与高屏效果仍待用户手工截图验收；本轮未操作微信开发者工具，也不以编译通过替代视觉验收。
+
+本轮验证：助手逻辑、包体及字号专项34/34通过；WCC80份WXML+2份WXS、WCSC83份Less/WXSS离线编译及220份JS/86份JSON/依赖检查通过。assistant源码包266,751字节，business为2,057,439字节，主包/business限制检查通过；新增透明PNG头像256×256/49,659字节、场景780×380/51,118字节，单图均小于300KB。证据`tmp/xiaok-vector/ppt-restoration-tests.log`、`ppt-restoration-compile.log`。本轮无后台/API或权限变更，原生视觉QA待手工截图。
+
+小K客户页已在 `packages/assistant/chat/chat` 完成代码接入（**Implemented**）；一期整体仍为 **Limited**，原生手工验收、业务知识质量验收及生产切换待完成。用户已明确批准以PPT第5页还原、第14页参考场景风格并补齐一期状态。客户 `pages/index/index` 的小K气泡现在携当前服务的 `leadId` 打开咨询，旁边的文字服务引导入口保留；专业角色首页保留既有外壳，并新增上文P2B员工咨询接管入口。新建assistant独立分包，使用原生WXML/Less/JS与独立生成插画。路由守卫采用 `customer.service`，后端仍要求有效微信customer身份（手机号非必需）、企业解析及当前会话参与者授权。
+
+页面接入 `/api/miniprogram/assistant` 的entry-context、会话创建/列表/详情/归档、历史/发送消息、run轮询/取消/重试和授权引用接口。覆盖欢迎/建议问题、历史及更早消息分页、排队/生成、停止/重试、依据不足、引用撤回、企业关闭/只读、已结束、额度/网络失败、登录失效及结果未知恢复。`latestRun`恢复服务端状态；未知写入结果沿用同一内存请求键和正文，未知费用run不可重试。切后台暂停轮询，身份变化/撤权隔离旧响应并清空敏感状态；正文与entryToken均不写客户端持久存储。entry-context改为不要求开关开启即可读配置，并返回 `canSend/maxMessageChars`，保证关闭企业仍可读授权历史；写入校验不放宽。此API契约不改变默认权限；当前开发schema/开关见上，生产未改。
+
+设计与逐元素标尺见[一期第2节](./xiaok-assistant-phase-1.zh-CN.md#1b-3-当前后台接入与小程序设计来源)和唯一双语还原台账。素材映射：主角继续使用ImageGen独立生成的`generated/xiaok-consultation.png`→`miniprogram/packages/assistant/assets/xiaok-consultation.png`（480×440/117,813字节）；新增`generated/xiaok-chat-avatar.png`→同运行目录`xiaok-chat-avatar.png`（256×256/49,659字节）、`generated/xiaok-chat-room.png`→`xiaok-chat-room.png`（780×380/51,118字节）。三个生成源均在`design-references/xiaok-assistant-phase1-ppt-v1/`，均为优化透明PNG；头像可见alpha边界x27–236/y11–253，运行68rpx图像内显示完整角色。6个本地Lucide1.8.0 PNG及现有独立品牌Logo继续复用，许可见`docs/icon-sources/assistant/README.md`。 语音/传图、户型理解、自动需求总结与人工接管仍不属于本期。
+
+小K运维监控与保留清理后端 **Implemented**，第一期整体仍 **Limited**。`GET /api/assistant/operations`仅本企业有效enterprise_admin且具显式`assistant-usage`可读，返回UTC窗口回答指标、当前队列/未知费用积压、可配置阈值告警，并如实区分心跳/provider健康未知。`npm run assistant:retention -- --enterprise-id <id> --admin-id <id>`默认预检；显式`--apply`需数据库`assistant-retention`权限及有效retention_days。每批100条，仅脱敏已过期且归档/关闭的会话正文，跳过在途、未知结果或未核对费用；ID、幂等、财务审计和知识源保留，清理后的引用不能恢复正文。没有新增UI、默认权限、生产定时任务或schema迁移。运维串行回归与独立完整恢复演练均已在隔离环境通过，当前证据及生产/A10/UI待办见[第一期第9节](./xiaok-assistant-phase-1.zh-CN.md#9-运维保留与兼容迁移)。
+
+小K当前状态：`Limited`。详见[六期规划](./xiaok-assistant-roadmap.zh-CN.md)与[第一期实施契约](./xiaok-assistant-phase-1.zh-CN.md)的1A交付记录。已新增客户入口上下文、会话创建/列表/详情/归档、消息发送/历史、run查询/取消/重试（`/api/miniprogram/assistant/*`），以及受CRON_SECRET保护的内部Worker（`/api/internal/assistant/jobs/run`）。13张新表通过0058/0059迁移、强制RLS及复合外键实现租户隔离；只允许有效微信customer身份访问本人参与的会话，无手机号可用，staff/referrer/Admin/平台身份均无默认读取权。服务码只解析和审计，不新增留资/归属/分佣。消息/run/job/幂等/额度预留同事务，支持租约恢复、未知结果保留和取消后拒绝晚到提交；企业reset/purge已纳入新增数据。
+
+1B知识后端 **Implemented**，第一期整体仍为 **Limited**：`/api/assistant/knowledge/documents`及`[id]`提供列表/创建/详情/元数据更新，`[id]/versions`复制草稿，`[id]/versions/[versionId]`编辑，`index`/`publish`执行索引/发布，`[id]/retire`撤回，`/api/assistant/knowledge/jobs/[jobId]`查询任务。写请求要求Idempotency-Key和对应expectedVersion/expectedEditVersion。仅本企业有效enterprise_admin且数据库menu_permissions显式含assistant-knowledge可访问；平台无例外，权限在索引执行前后复查。本批不新增菜单或默认授权。0060新增5张知识表（文档/版本/片段/profile/调用审计），强制RLS及复合FK；知识任务带租约/hash/edit_version保护，发布撤回提升epoch并写outbox；reset/purge已纳入。
+
+1B知识回答、结构化引用/失效校验、无依据处理及本人预览后端 **Implemented**。同一ConversationService/JobQueue在授权检索后调用现有文本模型；每段回答必须引用本次证据及逐字摘录，最终提交复查权限、epoch、hash/profile和有效期。无候选/低相关或模型明确无依据时保存固定insufficient_evidence notice；检索故障、非法引用或畸形输出不会冒充有效回答。0061新增强制RLS引用表及消息/run answer_kind；引用与最终消息、终态同事务落库，reset/purge已包含引用。后续读取会隐藏已撤回/受限/过期/draft编辑失效来源及整条依赖回答，仍获授权的旧发布版本标记historical。
+
+FAQ回答整理 **Implemented**，使用`extractive-selection-v3-faq`：问题标题仅作匹配上下文，不作为答案候选；不超过400字符的短答案保留完整条件。优先选择一条直接、完整的答案，仅补充尚未覆盖的必要信息，相同正文确定性去重。展示只去除FAQ的问答外壳，引用快照仍是连续原文；最终校验不允许新增解释或删掉答案的限制条件。已保存的旧消息不回写。开发环境企业1454/客户645/线索1818复测截图中的水电开工问题，返回一段正文和一个可用引用；conversation109/run80只有一条用户消息和一条助手消息，重新读取历史内容一致。证据：`tmp/xiaok-vector/faq-answer-live.json`；回归覆盖位于`answer-selection.test.ts`和`assistant-answers.test.ts`。路由、API、权限、小程序结构/样式/素材及已批准PPT设计不变。
+
+新增`GET /api/miniprogram/assistant/citations/[citationId]`；后台`/api/assistant/preview/conversations`及详情/归档/messages、`/runs/[runId]`和cancel/retry、`/citations/[citationId]`复用会话服务。预览只允许本企业有assistant-knowledge权限的enterprise_admin访问本人会话；平台、其他管理员和客户无权读取。创建时固定audience和最多10个ready draftVersionIds及hash/editVersion，发送不可扩大范围，引用标记isDraft，使用同一企业额度。客户定位仅返回本人参与会话的路由ID，再进行租户授权。
+
+1B usage汇总、用量统计及未知费用核对后端 **Implemented**：`GET /api/assistant/usage`按UTC日期返回文本/query Embedding用量、索引调用、provider状态、run用途/错误、费用和当前额度；默认30天、最多90天，结束日期不含，整数使用十进制字符串，未知保持null，已知小计与未知数量分列。`GET /api/assistant/usage/reconciliations`分页列待核对预留，`GET/POST /api/assistant/usage/reconciliations/:reservationId`读取安全审计详情/提交核对。当前企业在职enterprise_admin必须显式获数据库`assistant-usage`权限，提交另需`assistant-usage-reconcile`；不增加默认权限或菜单。提交要求Idempotency-Key、expectedVersion、tokens、costMicros、currency=CNY、evidenceReference和reason，已知token必须匹配；只接受终态且租约结束、dispatch已超过180秒的预留。0062新增强制RLS/复合外键核对审计、input/output token、确认额度和固定CNY预算币种；同一设置锁下幂等结算，跨日未决额度保留，核对不改变run终态、不重发、不扣客户费用，reset/purge包含审计。历史query用量不补造，本地Embedding硬件成本未计价；无法核实token或费用时保持reconciling。
+
+1C后端修复及隔离合成验收 **Implemented**，整体第一期仍 **Limited**。最终采用硅基流动免费Qwen/Qwen3.5-4B非思考模式：可答题50/50（原基线38/50）、无依据10/10，零超时/非法引用；P95为5.194秒，真实三轮及回答16/16通过，完整入口passed=true。原R1按优先要求复验后仍出现超时，失败证据保留，未启用付费备用。模型只选授权证据编号，服务端生成并严格校验原文引用；一般政策与项目承诺分开，签约查询同义表达复用旧索引。本地assistant专用模型/非思考环境配置已保存，平台默认LLM及其他AI功能未改；明确402为已知失败但仍待费用核对，未知用量/费用不补零。基础30/30、知识9/9、usage8/8通过，测试数据/队列清理为0；完整证据与局限见第一期第2节。该隔离质量测试未修改业务数据或ComfyUI；当前开发启用见上，业务A10仍待签认。
+
+开发主库迁移及微云联调情况见上。生产切换、正式业务知识质量和原生界面验收仍待完成，第一期整体仍为Limited。
+
 ## 2026-09-03 方案重新编辑参考图预览修正
 
 `scheme-studio` 从时间线点击**重新编辑**时，草稿现在会保留

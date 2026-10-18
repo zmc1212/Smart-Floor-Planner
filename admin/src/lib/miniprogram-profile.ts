@@ -13,6 +13,7 @@ const MANAGED_AVATAR_PREFIX = 'sfp-avatar:v1:';
 const AVATAR_TTL_SECONDS = 60 * 60;
 
 export const MINI_PROGRAM_ROLE_LABELS: Record<string, string> = {
+  construction_staff: '施工员工',
   salesperson: '渠道地推',
   enterprise_admin: '企业负责人',
   admin: '平台负责人',

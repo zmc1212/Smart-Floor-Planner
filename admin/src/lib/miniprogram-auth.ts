@@ -11,6 +11,8 @@ import {
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { verifyMiniProgramToken } from './miniprogram-jwt';
+import { constructionRouteAllowed } from './construction/route-access';
+import { httpError } from './http-error';
 
 interface MiniProgramUser {
   _id: string;
@@ -68,28 +70,31 @@ export async function resolveMiniProgramContext(
     return null;
   }
 
+  let userId: bigint;
+  let selection: Parameters<MiniProgramIdentityRepository['selectContext']>[1];
+  try {
+    userId = parsePostgresId(payload.sub, 'user id');
+    selection = {
+      mode: payload.mode,
+      enterpriseId: payload.enterpriseId ? parsePostgresId(payload.enterpriseId, 'enterprise id') : null,
+      staffId: payload.staffId ? parsePostgresId(payload.staffId, 'staff id') : null,
+      referrerMembershipId: payload.referrerMembershipId
+        ? parsePostgresId(payload.referrerMembershipId, 'referrer membership id') : null,
+    };
+  } catch {
+    return null;
+  }
+
   try {
     return await withPlatformTransaction(async (transaction) => {
       const identities = new MiniProgramIdentityRepository(transaction);
-      const userId = parsePostgresId(payload.sub, 'user id');
       const userRecord = await identities.findUserById(userId);
       if (!userRecord || userRecord.contextVersion !== payload.contextVersion) {
         console.warn(`[Auth] MiniProgram context version mismatch for user: ${payload.sub}`);
         return null;
       }
 
-      const selectedContext = await identities.selectContext(userId, {
-        mode: payload.mode,
-        enterpriseId: payload.enterpriseId
-          ? parsePostgresId(payload.enterpriseId, 'enterprise id')
-          : null,
-        staffId: payload.staffId
-          ? parsePostgresId(payload.staffId, 'staff id')
-          : null,
-        referrerMembershipId: payload.referrerMembershipId
-          ? parsePostgresId(payload.referrerMembershipId, 'referrer membership id')
-          : null,
-      });
+      const selectedContext = await identities.selectContext(userId, selection);
       if (!selectedContext) {
         console.warn(`[Auth] MiniProgram identity context is no longer active: ${payload.sub}`);
         return null;
@@ -100,6 +105,7 @@ export async function resolveMiniProgramContext(
             selectedContext.staffId
           )
         : null;
+      if (staffRecord?.role === 'construction_staff' && !constructionRouteAllowed(new URL(req.url).pathname, true)) return null;
       const wechatIdentity = await identities.findWechatIdentityByUserId(userId);
 
       const staff = staffRecord
@@ -155,6 +161,8 @@ export async function resolveMiniProgramContext(
     });
   } catch (error) {
     console.warn('[Auth] MiniProgram identity resolution failed', error);
-    return null;
+    // A database outage says nothing about credential validity. Returning null
+    // makes callers emit 401 and causes clients to delete a valid session.
+    throw httpError('身份服务暂时不可用，请稍后重试', 503);
   }
 }

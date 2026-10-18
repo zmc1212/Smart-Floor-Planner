@@ -5,6 +5,7 @@ export type AdminRole =
   | 'designer'
   | 'salesperson'
   | 'measurer'
+  | 'construction_staff'
   | 'viewer';
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -14,6 +15,7 @@ export const ROLE_LABELS: Record<string, string> = {
   designer: '设计师',
   salesperson: '渠道地推',
   measurer: '测量员',
+  construction_staff: '施工员工',
   viewer: '只读审计员',
 };
 
@@ -28,6 +30,7 @@ export const ALL_MENUS = [
   { key: 'enterprises', label: '企业管理' },
   { key: 'ai-providers', label: 'AI 供应商' },
   { key: 'llm-settings', label: 'LLM大模型配置' },
+  { key: 'map-settings', label: '地图服务配置' },
   { key: 'media-storage', label: '媒体存储' },
   { key: 'mini-program-code-settings', label: '小程序码环境' },
   { key: 'sms-settings', label: '短信设置' },
@@ -40,7 +43,9 @@ export const ALL_MENUS = [
   { key: 'workflow-logs', label: '通知记录' },
   { key: 'enterprise-orders', label: '成交订单' },
   { key: 'commissions', label: '提成结算中心' },
-  { key: 'leads', label: '线索转化' },
+  { key: 'leads', label: '客户线索' },
+  { key: 'case-publishing', label: '案例发布管理' },
+  { key: 'construction-projects', label: '施工项目与节点' },
   { key: 'referrer-network-operations', label: '推荐网络 / 运营工作台' },
   { key: 'referrers', label: '我的推广人' },
   { key: 'floorplans', label: '户型图库' },
@@ -69,6 +74,7 @@ export const MENU_PERMISSION_GROUPS: Array<{
       'enterprises',
       'ai-providers',
       'llm-settings',
+      'map-settings',
       'media-storage',
       'mini-program-code-settings',
       'sms-settings',
@@ -90,7 +96,7 @@ export const MENU_PERMISSION_GROUPS: Array<{
   },
   {
     title: '运营工作台',
-    keys: ['dashboard', 'leads'],
+    keys: ['dashboard', 'leads', 'case-publishing', 'construction-projects'],
   },
   {
     title: '推荐网络',
@@ -118,13 +124,23 @@ export function getMenuLabel(key: string) {
   return MENU_LABEL_BY_KEY[key] || key;
 }
 
+/** Platform administrators inherit enterprise-owner management rights in the selected tenant. */
+export function isEnterpriseManagementRole(role: string | null | undefined) {
+  return role === 'enterprise_admin' || role === 'admin' || role === 'super_admin';
+}
+
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
+  // XiaoK assistant-* capabilities require explicit account grants; do not add
+  // them to ALL_MENUS or role defaults (including super_admin).
   super_admin: ALL_MENUS.map((menu) => menu.key),
   admin: [
+    'construction-projects',
+    'case-publishing',
     'dashboard',
     'enterprises',
     'ai-providers',
     'llm-settings',
+    'map-settings',
     'media-storage',
     'mini-program-code-settings',
     'ai-credit-prices',
@@ -149,6 +165,8 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'admins',
   ],
   enterprise_admin: [
+    'construction-projects',
+    'case-publishing',
     'dashboard',
     'promotion-records',
     'leads',
@@ -163,6 +181,8 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'devices',
   ],
   designer: [
+    'construction-projects',
+    'case-publishing',
     'dashboard',
     'leads',
     'floorplans',
@@ -173,6 +193,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   ],
   salesperson: ['dashboard', 'promotion-records'],
   measurer: ['dashboard', 'leads', 'measurements', 'floorplans', 'referrers'],
+  construction_staff: ['construction-projects'],
   viewer: ['dashboard', 'floorplans', 'inspirations', 'ai-scenarios'],
 };
 

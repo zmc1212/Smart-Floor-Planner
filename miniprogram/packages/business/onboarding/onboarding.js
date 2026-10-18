@@ -76,6 +76,7 @@ function onboardingErrorMessage(error) {
   if (code === 'display_name_required') {
     return '请填写真实姓名后再加入。';
   }
+  if (code === 'invalid_construction_trades' || (error && error.error === 'invalid_construction_trades')) return '请填写1至10项工种，每项不超过30个字。';
   return '暂时无法完成入驻，请检查网络后重试或联系企业管理员。';
 }
 
@@ -113,6 +114,7 @@ Page({
     inviterDisplayName: '',
     selectedStaffRole: 'designer',
     displayName: '',
+    constructionTradesText: '',
     nameSheetVisible: false,
     submitting: false,
     errorMessage: '',
@@ -188,11 +190,14 @@ Page({
   onChooseStaffRole(event) {
     if (this.data.submitting) return;
     const role = event.currentTarget.dataset.role;
-    if (role === 'designer' || role === 'measurer') this.setData({ selectedStaffRole: role });
+    if (['designer', 'measurer', 'construction_staff'].includes(role)) this.setData({ selectedStaffRole: role });
   },
 
   onDisplayNameInput(event) {
     this.setData({ displayName: String((event.detail && event.detail.value) || '').slice(0, 30) });
+  },
+  onTradesInput(event) {
+    this.setData({ constructionTradesText: String((event.detail && event.detail.value) || '').slice(0, 200) });
   },
 
   async onGetPhoneNumber(event) {
@@ -217,7 +222,7 @@ Page({
               iv: resolved.iv
             }
       );
-      if (this.data.codeType === 'referrer') {
+      if (this.data.codeType === 'referrer' || this.data.selectedStaffRole === 'construction_staff') {
         this.setData({
           submitting: false,
           pageState: 'name',
@@ -238,6 +243,9 @@ Page({
     if (!displayName) {
       wx.showToast({ title: '请填写真实姓名', icon: 'none' });
       return;
+    }
+    if (this.data.codeType === 'staff' && this.data.selectedStaffRole === 'construction_staff' && !String(this.data.constructionTradesText || '').trim()) {
+      wx.showToast({ title: '请填写工种', icon: 'none' }); return;
     }
     this.setData({ submitting: true, pageState: 'submitting', displayName, errorMessage: '' });
     try {
@@ -264,7 +272,8 @@ Page({
     const payload = {
       token: this.data.onboardingToken,
       ...(this.data.codeType === 'staff'
-        ? { role: this.data.selectedStaffRole }
+        ? { role: this.data.selectedStaffRole, ...(this.data.selectedStaffRole === 'construction_staff'
+          ? { displayName: usableDisplayName(this.data.displayName), constructionTrades: String(this.data.constructionTradesText || '').split(/[,，、/]/).map(v => v.trim()).filter(Boolean) } : {}) }
         : { displayName: usableDisplayName(this.data.displayName) })
     };
     const response = await api.request(endpoint, 'POST', payload);
@@ -275,7 +284,7 @@ Page({
       nameSheetVisible: false,
       pageState: 'success',
       joinedLabel: this.data.codeType === 'staff'
-        ? (this.data.selectedStaffRole === 'designer' ? '家装设计顾问' : '家装现场顾问')
+        ? ({ designer: '家装设计顾问', measurer: '家装现场顾问', construction_staff: '施工员工' }[this.data.selectedStaffRole])
         : '推荐人'
     });
   },

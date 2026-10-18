@@ -19,6 +19,7 @@ import {
 } from '@/lib/referrer-network-api';
 import { getEffectivePermissions } from '@/lib/staff-access';
 import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-retry';
+import { tradesInput } from '@/lib/construction/contracts';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,16 +39,18 @@ async function onboardStaff(request: Request, log: MiniProgramRequestLog) {
     const body = await request.json();
     const token = normalizeOpaqueToken(body.token);
     if (!token) return referrerNetworkError('invalid_token');
-    if (body.role !== 'designer' && body.role !== 'measurer') {
+    if (body.role !== 'designer' && body.role !== 'measurer' && body.role !== 'construction_staff') {
       return referrerNetworkError('invalid_staff_role', {
-        message: 'role must be designer or measurer',
+        message: 'role must be designer, measurer or construction_staff',
       });
     }
-    const role: 'designer' | 'measurer' = body.role;
+    const role: 'designer' | 'measurer' | 'construction_staff' = body.role;
     const displayName =
       typeof body.displayName === 'string'
         ? body.displayName.trim().slice(0, 60)
         : '';
+    if (role === 'construction_staff' && !displayName) return referrerNetworkError('display_name_required');
+    const constructionTrades = role === 'construction_staff' ? tradesInput(body.constructionTrades) : [];
     log.stage('staff_setup');
     const [menuPermissions, passwordHash] = await Promise.all([
       getEffectivePermissions(role),
@@ -74,6 +77,7 @@ async function onboardStaff(request: Request, log: MiniProgramRequestLog) {
           displayName || authenticated.user.nickname || '微信员工',
         menuPermissions,
         passwordHash,
+        constructionTrades,
       });
       if (!onboarding.ok) {
         return { authenticated: true as const, onboarding };
@@ -107,7 +111,7 @@ async function onboardStaff(request: Request, log: MiniProgramRequestLog) {
       context: result.selected,
       source: payload.source,
     });
-    if (result.onboarding.staff.enterpriseId) {
+    if (role !== 'construction_staff' && result.onboarding.staff.enterpriseId) {
       log.stage('assignment_retry');
       await retryPendingLeadAssignmentsForEnterprise({
         enterpriseId: result.onboarding.staff.enterpriseId,

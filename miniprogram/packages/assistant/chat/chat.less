@@ -1,0 +1,161 @@
+/* Approved C01/C02 at 390x844; PPT5 is the earlier source.
+   The brand, message lanes and composer follow the current phase-two ledger. */
+page { background: #f6fcf8; }
+.consent-message { display: block; text-align: left; font-style: normal; }
+.consent-message .message-main { width: 100%; max-width: 100%; }
+.consent-message .bubble { margin-left: 88rpx; font-size: 28rpx; background: #fff; color: #14243d; }
+.owner-public-card { margin-top: 22rpx; padding: 24rpx; border-radius: 28rpx; background: #fff; color: #15273c; font-size: 26rpx; line-height: 1.6; text-align: left; }
+.owner-public-title { display: block; font-size: 38rpx; font-weight: 700; }
+.owner-public-name { display: block; margin-top: 6rpx; color: #8993b0; font-size: 30rpx; }
+.owner-public-photos { display: flex; flex-wrap: wrap; gap: 12rpx; margin: 16rpx 0; }
+.owner-public-photos image { width: calc(50% - 6rpx); height: 280rpx; border-radius: 18rpx; }
+.owner-public-count { display: block; font-size: 26rpx; }
+.owner-public-quote { padding: 18rpx 22rpx; margin-top: 18rpx; border-radius: 18rpx; background: #f5f7fc; white-space: pre-wrap; font-size: 28rpx; }
+.owner-public-quote > text { display: block; }
+.owner-public-scope { display: block; margin-top: 16rpx; font-size: 24rpx; }
+.owner-public-meta { display: block; margin-top: 12rpx; font-size: 22rpx; color: #8993ae; line-height: 1.6; }
+.chat-page .owner-public-primary { display: block; margin-top: 22rpx; padding: 18rpx 16rpx; width: 100%; border-radius: 30rpx; background: #00bb85; color: #fff; font-size: 30rpx; }
+.owner-public-options { display: flex; margin-top: 16rpx; }
+.chat-page .owner-public-options button { width: 50%; padding: 10rpx; font-size: 28rpx; color: #00ad79; }
+.public-recommendations { margin: 12rpx 0 22rpx; }
+.public-recommendation { display: flex; padding: 16rpx; gap: 20rpx; background: #fff; border-radius: 24rpx; margin-bottom: 16rpx; }
+.public-recommendation > image { width: 230rpx; height: 200rpx; border-radius: 16rpx; flex: none; }
+.public-recommendation-name { display: block; font-size: 28rpx; line-height: 1.5; font-weight: 600; }
+.portfolio-recommendations { margin: 8rpx 0 24rpx 88rpx; }
+.portfolio-recommendation { display: flex; gap: 18rpx; margin-top: 16rpx; padding: 20rpx; border: 1rpx solid #d8ebe0; border-radius: 20rpx; background: #fff; }
+.portfolio-card-cover { position: relative; width: 156rpx; height: 170rpx; flex: none; overflow: hidden; border-radius: 12rpx; background: #edf5ef; }
+.portfolio-card-cover image { width: 100%; height: 100%; }
+.portfolio-image-label { position: absolute; bottom: 6rpx; left: 6rpx; right: 6rpx; padding: 4rpx; border-radius: 6rpx; font-size: 20rpx; color: #fff; background: rgba(20,56,43,.65); }
+.portfolio-card-copy { flex: 1; min-width: 0; }
+.portfolio-designer-name { display: block; font-size: 28rpx; font-weight: 600; }
+.portfolio-work-title { display: block; margin-top: 6rpx; font-size: 24rpx; line-height: 1.5; }
+.portfolio-reason, .portfolio-notice { display: block; margin-top: 10rpx; font-size: 22rpx; line-height: 1.6; color: #7b9087; }
+/* PPT5: options below the current question, then the mint progress strip.
+   Source 853px wide: options x137/h68, strip x40/w773; scale to 750rpx. */
+.guidance-options { display: flex; flex-wrap: wrap; gap: 10rpx; margin: 4rpx 0 16rpx 88rpx; }
+.chat-page .guidance-option { flex: 1 1 150rpx; padding: 14rpx 18rpx; border: 1rpx solid #c9e7db; border-radius: 60rpx; background: #fff; font-size: 28rpx; line-height: 1.4; }
+.guidance-progress { padding: 18rpx 22rpx; margin: 0 0 20rpx; border-radius: 20rpx; background: #e8f7ef; }
+.guidance-progress-row { display: flex; align-items: flex-start; gap: 14rpx; font-size: 26rpx; line-height: 1.6; }
+.guidance-progress-row + .guidance-progress-row { margin-top: 12rpx; }
+.guidance-progress-row image { flex: none; width: 30rpx; height: 30rpx; margin-top: 4rpx; }
+.chat-page { position: relative; display: flex; flex-direction: column; overflow: hidden; color: #102c2b; background: linear-gradient(165deg, #fff 0%, #f4fdf8 58%, #fbfefc 100%); }
+.room-scene { position: absolute; top: 0; right: 0; width: 750rpx; height: 390rpx; pointer-events: none; }
+/* WeChat v2 buttons carry attribute-selector widths/padding. Keep the native
+   control semantics, but make the page's measured geometry authoritative. */
+.chat-page button { width: auto; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; font: inherit; line-height: 1.5; color: inherit; box-sizing: border-box; }
+button::after { border: 0; }
+button[disabled] { color: #82918d; background: transparent; }
+button:active { opacity: .72; }
+.chat-nav { position: relative; flex: none; padding-left: 36rpx; box-sizing: border-box; }
+.nav-lane { display: flex; align-items: center; width: 100%; min-width: 0; }
+.chat-page .brand-home { display: flex; flex: 1; align-items: center; min-width: 0; text-align: left; }
+.chat-page .icon-button { flex: none; width: 84rpx; min-width: 84rpx; max-width: 84rpx; height: 84rpx; display: flex; justify-content: center; align-items: center; }
+.icon-button image { width: 40rpx; height: 40rpx; }
+.chat-page .back-button { width: 56rpx; min-width: 56rpx; max-width: 56rpx; margin-left: -8rpx; }
+.back-button image { width: 34rpx; height: 34rpx; }
+/* The supplied standalone logo has wide white margins. Frame its complete
+   visible mark at source scale; no composite-reference pixels are used. */
+.brand-mark { position: relative; overflow: hidden; width: 72rpx; height: 84rpx; flex: none; margin-right: 10rpx; }
+.brand-logo { position: absolute; width: 96rpx; height: 96rpx; max-width: none; left: -12rpx; top: -4rpx; }
+.brand-copy { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.brand-name { display: block; font-size: 40rpx; line-height: 1.25; font-weight: 700; letter-spacing: 2rpx; white-space: nowrap; }
+.enterprise-name { display: block; margin-top: 4rpx; font-size: 22rpx; line-height: 1.35; color: #8290ae; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.chat-page .designer-entry { flex: none; width: 132rpx; min-height: 84rpx; margin-left: 8rpx; padding: 12rpx 8rpx; border-radius: 44rpx; background: #e9f8f0; color: #17483c; font-size: 26rpx; white-space: nowrap; }
+.conversation-scroll { position: relative; flex: 1; min-height: 0; height: 0; }
+.conversation-content { padding: 28rpx 36rpx 0; }
+.hero { position: relative; height: 220rpx; box-sizing: border-box; }
+.hero-copy { position: relative; z-index: 1; width: 456rpx; padding-top: 30rpx; }
+.hero-title { display: block; font-size: 48rpx; font-weight: 700; line-height: 1.3; letter-spacing: -1rpx; white-space: nowrap; }
+.hero-subtitle { display: block; width: 420rpx; margin-top: 10rpx; font-size: 28rpx; color: #828fb1; line-height: 1.55; }
+.hero-art { position: absolute; right: -4rpx; top: -12rpx; width: 256rpx; height: 246rpx; }
+.message { display: flex; align-items: flex-start; gap: 16rpx; margin-bottom: 20rpx; }
+.avatar { width: 72rpx; height: 72rpx; border: 1rpx solid #d8eee3; border-radius: 50%; background: #effcf5; flex: none; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.avatar image { width: 68rpx; height: 68rpx; }
+.message-main { min-width: 0; max-width: calc(100% - 88rpx); }
+.bubble { box-sizing: border-box; max-width: 100%; padding: 18rpx 24rpx; background: #fff; border-radius: 30rpx; font-size: 32rpx; line-height: 1.55; color: #132139; word-break: break-word; white-space: pre-wrap; }
+.assistant-message > .bubble { max-width: calc(100% - 88rpx); }
+.welcome-message .bubble { min-width: 450rpx; }
+.message-block { display: block; }
+.chat-page .construction-contact { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 84rpx; margin-top: 16rpx; padding: 16rpx 24rpx; box-sizing: border-box; border-radius: 48rpx; background: #00b979; color: #fff; font-size: 28rpx; font-weight: 600; line-height: 1.5; }
+.chat-page .construction-contact[disabled] { background: var(--action-disabled-bg, #a9d9b8); }
+.message-photo { display: block; width: 420rpx; max-width: 100%; border-radius: 18rpx; }
+.message-block + .message-block { margin-top: 12rpx; }
+.user-message { justify-content: flex-end; padding-left: 64rpx; }
+.user-message .message-main { max-width: 100%; }
+.user-message .bubble { color: #fff; background: #00b979; }
+.unavailable-bubble { color: #758379; background: #edf4ef; }
+.citations { display: flex; flex-wrap: wrap; gap: 10rpx; margin-top: 10rpx; }
+.chat-page .citation-chip { display: flex; align-items: center; gap: 8rpx; padding: 12rpx 16rpx; border-radius: 18rpx; background: #e7f6ec; font-size: 24rpx; max-width: 100%; text-align: left; min-height: 64rpx; box-sizing: border-box; }
+.citation-chip image { width: 28rpx; height: 28rpx; flex: none; }
+.citation-chip text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.citation-chip.unavailable { color: #7d8981; background: #eff2ef; }
+.starter-prompts { margin: 26rpx 0 24rpx 88rpx; padding: 24rpx; border-radius: 30rpx; background: #fff; }
+.prompt-heading { display: block; font-size: 34rpx; font-weight: 700; line-height: 1.4; margin-bottom: 8rpx; }
+.chat-page .prompt-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 16rpx; width: 100%; text-align: left; min-height: 104rpx; padding: 20rpx 0; box-sizing: border-box; font-size: 28rpx; line-height: 1.55; }
+.prompt-row + .prompt-row::before { content: ''; position: absolute; top: 0; left: 0; width: 88%; height: 1px; background: #e6eeea; transform: scaleY(.5); transform-origin: top; }
+.chevron { width: 10rpx; height: 10rpx; border-top: 2rpx solid #5c8475; border-right: 2rpx solid #5c8475; transform: rotate(45deg); flex: none; margin-right: 4rpx; }
+.notice, .run-state, .archive-note { padding: 20rpx 24rpx; border-radius: 24rpx; background: #e9f5ee; margin-bottom: 20rpx; font-size: 24rpx; line-height: 1.7; color: #4d6b5d; }
+.notice > text, .archive-note > text { display: block; }
+.chat-page .notice-action { display: inline-flex; align-items: center; min-height: 84rpx; font-size: 26rpx; color: #008b5c; font-weight: 600; padding-right: 20rpx; }
+.status-message, .run-copy { display: flex; align-items: center; gap: 14rpx; font-size: 26rpx; line-height: 1.65; }
+.status-message { padding: 24rpx 0; }
+.loading-dot { width: 12rpx; height: 12rpx; flex: none; border-radius: 50%; background: #22c55e; animation: breathe 1.4s ease-in-out infinite; }
+@keyframes breathe { 50% { opacity: .35; } }
+.chat-page .older-action { font-size: 24rpx; color: #527b69; min-height: 84rpx; margin: 0 auto 16rpx; }
+.pending-label { display: block; font-size: 22rpx; margin-top: 10rpx; }
+.pending-message { opacity: .7; }
+.conversation-end { height: 12rpx; }
+.composer-dock { position: relative; flex: none; padding: 0 24rpx calc(12rpx + env(safe-area-inset-bottom)); background: linear-gradient(0deg, #fbfefc, rgba(251,254,252,.92)); }
+.composer-dock.keyboard-open { padding-bottom: 12rpx; }
+.conversation-tools { display: flex; align-items: center; justify-content: space-between; gap: 12rpx; padding: 8rpx 4rpx; margin-bottom: 8rpx; }
+.chat-page .conversation-tools .text-action { display: flex; flex: none; align-items: center; justify-content: center; gap: 8rpx; min-height: 84rpx; padding: 0 6rpx; font-size: 28rpx; color: #365e50; white-space: nowrap; }
+.text-action image { width: 38rpx; height: 38rpx; flex: none; }
+.chat-page .end-action { flex: none; min-height: 84rpx; padding: 0 6rpx; font-size: 26rpx; color: #70837b; white-space: nowrap; }
+.composer { display: flex; align-items: flex-end; gap: 16rpx; border: 1rpx solid #e3e9e6; border-radius: 54rpx; padding: 8rpx 8rpx 8rpx 30rpx; background: #fff; box-shadow: 0 8rpx 32rpx rgba(41,73,54,.04); }
+.composer-input { flex: 1; min-width: 0; max-height: 200rpx; min-height: 48rpx; padding: 18rpx 0; font-size: 30rpx; line-height: 1.6; color: #20392e; }
+.input-placeholder { color: #899bc4; }
+.chat-page .send-button { flex: 0 0 84rpx; width: 84rpx; min-width: 84rpx; max-width: 84rpx; height: 84rpx; border-radius: 50%; background: #00b979; display: flex; align-items: center; justify-content: center; }
+.send-button image { width: 46rpx; height: 46rpx; }
+.chat-page .media-button { flex: none; width: 72rpx; height: 84rpx; display: flex; align-items: center; justify-content: center; }
+.media-button image { width: 48rpx; height: 48rpx; }
+.media-row { display: flex; align-items: center; gap: 16rpx; }
+.media-row .history-row { flex: 1; min-width: 0; }
+.media-room { display: block; width: 100%; box-sizing: border-box; min-height: 84rpx; padding: 0 24rpx; margin: 16rpx 0; border-radius: 20rpx; background: #fff; font-size: 28rpx; }
+.media-row .history-title { font-size: 32rpx; }
+.media-actions { display: flex; flex-direction: column; gap: 16rpx; }
+.chat-page .media-actions .guidance-option { display: flex; justify-content: center; width: 100%; min-height: 84rpx; font-size: 28rpx; }
+.send-button[disabled] { background: var(--action-disabled-bg, #a9d9b8) !important; color: #fff !important; }
+.composer-footer { text-align: right; font-size: 22rpx; color: #71867a; margin: 8rpx 12rpx 0; line-height: 1.5; }
+.sheet-layer { position: fixed; inset: 0; z-index: 20; }
+.sheet-mask { position: absolute; inset: 0; background: rgba(13,35,29,.32); opacity: 0; transition: opacity 240ms; }
+.sheet-panel { position: absolute; left: 0; right: 0; bottom: 0; background: #fafcf9; border-radius: 36rpx 36rpx 0 0; padding: 24rpx 32rpx calc(28rpx + env(safe-area-inset-bottom)); transform: translateY(100%); transition: transform 240ms ease-out; }
+.is-open .sheet-mask { opacity: 1; }
+.is-open .sheet-panel { transform: translateY(0); }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; font-size: 32rpx; font-weight: 600; }
+.sheet-scroll { height: 60vh; }
+.sheet-helper { display: block; font-size: 26rpx; line-height: 1.6; color: #7d8e84; margin: 8rpx 0 22rpx; }
+.sheet-state { display: block; padding: 32rpx 0; font-size: 28rpx; line-height: 1.7; }
+.chat-page .history-row { display: block; padding: 24rpx; width: 100%; text-align: left; background: #fff; border-radius: 24rpx; margin-bottom: 16rpx; }
+.history-title { display: block; font-size: 28rpx; word-break: break-word; }
+.history-meta { display: block; font-size: 22rpx; color: #839187; margin-top: 10rpx; }
+.source-title { display: block; font-size: 30rpx; font-weight: 600; margin-top: 18rpx; }
+.source-quote { display: block; padding: 24rpx; border-radius: 22rpx; background: #fff; font-size: 28rpx; line-height: 1.75; white-space: pre-wrap; word-break: break-word; }
+@media (max-width: 360px) {
+  .hero-art { width: 246rpx; right: -8rpx; }
+  .hero-title { font-size: 48rpx; }
+  .hero-subtitle { width: 416rpx; }
+  .conversation-tools { gap: 8rpx; }
+}
+.guidance-option.is-selected {
+  background: #e2faee;
+  color: #00a66c;
+  border-color: #77dbad;
+  font-weight: 600;
+}
+// Durable service transitions are notices, never simulated AI replies.
+.system-message { justify-content: center; .bubble { background: transparent; padding: 8rpx 16rpx; color: #61766e; font-size: 24rpx; text-align: center; } }
+.chat-page .consent-message { position: relative; }
+.chat-page .consent-message > .avatar { position: absolute; top: 0; left: 0; }
+.chat-page .consent-message .bubble { padding: 18rpx 24rpx; font-size: 28rpx; text-align: left; background: #fff; color: #14243d; }
+.site-record-photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12rpx; margin-top: 16rpx; }
+.site-record-photos .message-photo { width: 100%; height: 180rpx; margin: 0; }

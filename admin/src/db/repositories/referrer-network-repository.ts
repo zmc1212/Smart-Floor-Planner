@@ -798,8 +798,9 @@ export class ReferrerNetworkRepository {
     token: string;
     userId: bigint;
     contextVersion: number;
-    role: 'designer' | 'measurer';
+    role: 'designer' | 'measurer' | 'construction_staff';
     displayName: string;
+    constructionTrades?: string[];
     menuPermissions: string[];
     passwordHash: string;
   }): Promise<
@@ -876,6 +877,7 @@ export class ReferrerNetworkRepository {
         passwordHash: input.passwordHash,
         mustChangePassword: true,
         displayName: input.displayName,
+        constructionTrades: input.constructionTrades || [],
         role: input.role,
         phone: user.phone,
         menuPermissions: input.menuPermissions,

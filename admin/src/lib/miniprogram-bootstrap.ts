@@ -13,6 +13,7 @@ export type MiniProgramRole =
   | 'referrer'
   | 'designer'
   | 'measurer'
+  | 'construction_staff'
   | 'salesperson'
   | 'enterprise_admin'
   | 'platform_admin';
@@ -22,6 +23,7 @@ export const MINI_PROGRAM_ROLE_LANDINGS: Record<MiniProgramRole, string> = {
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
   designer: '/pages/index/index',
   measurer: '/pages/index/index',
+  construction_staff: '/packages/construction/projects/projects',
   salesperson: '/packages/business/promotion-records/promotion-records',
   enterprise_admin: '/pages/index/index',
   platform_admin: '/packages/platform/devices/devices',
@@ -32,6 +34,7 @@ const ROLE_LABELS: Record<MiniProgramRole, string> = {
   referrer: '推荐人',
   designer: '家装设计顾问',
   measurer: '家装现场顾问',
+  construction_staff: '施工员工',
   salesperson: '渠道地推',
   enterprise_admin: '企业负责人',
   platform_admin: '平台管理员',
@@ -40,10 +43,11 @@ const ROLE_LABELS: Record<MiniProgramRole, string> = {
 const ROLE_CAPABILITIES: Record<MiniProgramRole, string[]> = {
   customer: ['customer.service', 'customer.projects', 'account'],
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
-  designer: ['staff.leads', 'staff.data', 'staff.appointments', 'staff.design', 'staff.earnings', 'referrer.network', 'account'],
+  designer: ['staff.leads', 'staff.data', 'staff.appointments', 'staff.design', 'staff.earnings', 'construction.projects', 'referrer.network', 'account'],
   measurer: ['staff.schedule', 'staff.data', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'referrer.network', 'account'],
+  construction_staff: ['construction.projects', 'account'],
   salesperson: ['promotion.records', 'promotion.commissions', 'referrer.network', 'account'],
-  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'referrer.network', 'account'],
+  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'construction.projects', 'referrer.network', 'account'],
   platform_admin: ['platform.review', 'platform.devices', 'account'],
 };
 
@@ -62,6 +66,7 @@ export function getMiniProgramRole(
   if (context.mode === 'staff') {
     if (context.staffRole === 'designer') return 'designer';
     if (context.staffRole === 'measurer') return 'measurer';
+    if (context.staffRole === 'construction_staff') return 'construction_staff';
     if (context.staffRole === 'salesperson') return 'salesperson';
     if (context.staffRole === 'enterprise_admin') return 'enterprise_admin';
     if (context.staffRole === 'admin' || context.staffRole === 'super_admin') {

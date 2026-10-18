@@ -7,7 +7,7 @@ export interface MiniProgramJWTPayload extends jose.JWTPayload {
   sub: string;           // Base user ID
   id: string;            // Compatibility alias for the base user ID
   mode: 'customer' | 'staff' | 'referrer';
-  role: 'staff' | 'user' | 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'measurer' | 'viewer';
+  role: 'staff' | 'user' | 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'measurer' | 'construction_staff' | 'viewer';
   staffRole?: string;    // Specific role if staff
   enterpriseId?: string; // Enterprise context
   staffId?: string;

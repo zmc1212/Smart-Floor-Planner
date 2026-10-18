@@ -4,6 +4,7 @@ const ROLE_LANDING_PATHS = Object.freeze({
   staff: '/pages/index/index',
   designer: '/pages/index/index',
   measurer: '/pages/index/index',
+  construction_staff: '/packages/construction/projects/projects',
   salesperson: '/packages/business/promotion-records/promotion-records',
   enterprise_admin: '/pages/index/index',
   platform_admin: '/packages/platform/devices/devices'
@@ -12,15 +13,21 @@ const ROLE_LANDING_PATHS = Object.freeze({
 const ROLE_CAPABILITIES = Object.freeze({
   customer: ['customer.service', 'customer.projects', 'account'],
   referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
-  designer: ['staff.leads', 'staff.data', 'staff.appointments', 'staff.design', 'staff.earnings', 'referrer.network', 'account'],
+  designer: ['staff.leads', 'staff.data', 'staff.appointments', 'staff.design', 'staff.earnings', 'construction.projects', 'referrer.network', 'account'],
   measurer: ['staff.schedule', 'staff.data', 'staff.tasks', 'staff.surveying', 'staff.earnings', 'referrer.network', 'account'],
+  construction_staff: ['construction.projects', 'account'],
   salesperson: ['promotion.records', 'promotion.commissions', 'referrer.network', 'account'],
-  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'referrer.network', 'account'],
+  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'enterprise.commissions', 'construction.projects', 'referrer.network', 'account'],
   platform_admin: ['platform.review', 'platform.devices', 'account'],
   staff: ['staff.leads', 'staff.appointments', 'account']
 });
 
 const ROUTE_CAPABILITIES = Object.freeze({
+  '/packages/construction/projects/projects': 'construction.projects',
+  '/packages/construction/chat/chat': 'construction.projects',
+  '/packages/assistant/chat/chat': 'customer.service',
+  '/packages/assistant/requirements/requirements': 'customer.service',
+  '/packages/assistant/handoff/handoff': ['customer.service', 'staff.leads', 'enterprise.operations'],
   '/pages/index/index': ['customer.service', 'staff.leads', 'staff.schedule', 'enterprise.operations'],
   '/pages/enterprise-operations/enterprise-operations': ['staff.data', 'enterprise.operations'],
   '/pages/leads-management/leads-management': ['staff.leads', 'staff.tasks', 'enterprise.customers'],

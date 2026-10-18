@@ -29,6 +29,7 @@ type BadgeRole =
   | 'referrer'
   | 'designer'
   | 'measurer'
+  | 'construction_staff'
   | 'salesperson'
   | 'enterprise_admin'
   | 'platform_admin';
@@ -159,7 +160,7 @@ export async function loadMiniProgramBadgeCounts(input: {
     };
   }
 
-  if (role === 'salesperson') return {};
+  if (role === 'salesperson' || role === 'construction_staff') return {};
 
   if (role === 'platform_admin') {
     const reviewPendingCount = await new EnterpriseRepository(

@@ -1,0 +1,87 @@
+<!-- S01 calibrated standalone sources: local tabs never change the global TabBar. -->
+<view class="handoff-page {{detail.handoff.state === 'active' ? 'detail-workspace' : ''}} {{detail.handoff.state === 'active' && tab === 'chat' ? 'chat-workspace' : ''}}" style="{{detail.handoff.state === 'active' && tab === 'chat' ? 'height:' + (viewportHeight - keyboardHeight) + 'px;' : ''}}">
+  <image wx:if="{{!detail || detail.handoff.state === 'waiting'}}" class="room-scene" src="../assets/xiaok-chat-room.png" mode="aspectFit" aria-hidden="true" />
+  <view class="handoff-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
+    <view class="nav-lane" style="min-height: {{navigationHeight}}px;">
+      <block wx:if="{{!detail || detail.handoff.state === 'waiting'}}">
+        <view class="brand-mark"><image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" /></view>
+        <view class="brand-copy"><view class="brand-row"><text class="brand">家客来</text><text class="role-tag">{{portalLabel}}</text></view><text class="nav-subtitle">让好设计，走进更多家庭</text></view>
+      </block>
+      <block wx:else>
+        <button size="mini" bindtap="back" class="back" aria-label="返回接待列表"><image src="../assets/arrow-left.png" /></button>
+        <view class="brand-copy"><text class="brand">本次咨询</text><text class="nav-subtitle">接待中 · 本次咨询</text></view>
+      </block>
+    </view>
+  </view>
+  <view class="content">
+    <view wx:if="{{loading}}" class="notice">正在读取接待进度…</view>
+    <view wx:if="{{error || pending}}" class="notice"><text>{{pending ? '操作结果待确认，请核对同一次操作。' : error}}</text><button wx:if="{{!fatal}}" bindtap="retry" disabled="{{busy}}">{{pending ? '确认操作结果' : '重试'}}</button></view>
+    <text wx:if="{{feedback && !fatal}}" class="notice">{{feedback}}</text>
+    <block wx:if="{{!loading && !fatal && staff}}">
+      <block wx:if="{{!detail || detail.handoff.state === 'waiting'}}">
+        <view class="page-heading"><button class="back" bindtap="back" aria-label="返回"><image src="../assets/arrow-left.png" /></button><text>咨询接待</text></view>
+        <view class="hero"><view class="hero-copy"><text class="title">小K已整理，等你接手</text><text class="subtitle">客户希望和设计师聊一聊</text></view><image class="hero-art" src="../assets/staff-handoff.png" mode="aspectFit" /></view>
+        <view class="workspace-tabs queue-tabs"><button class="{{queueTab === 'waiting' ? 'selected' : ''}}" data-tab="waiting" bindtap="queueTab">待接待 {{queueCounts.waiting}}</button><button class="{{queueTab === 'active' ? 'selected' : ''}}" data-tab="active" bindtap="queueTab">我的接待 {{queueCounts.active}}</button></view>
+        <view wx:if="{{queueTab === 'waiting' ? !queueCounts.waiting : !queueCounts.active}}" class="card empty-queue"><text class="helper">{{queueTab === 'waiting' ? '暂无需要你接待的咨询。' : '还没有正在接待的咨询。'}}</text></view>
+        <button wx:for="{{items}}" wx:key="conversationId" wx:if="{{item.handoff.state === queueTab}}" class="card queue-item {{detail.conversationId === item.conversationId ? 'queue-selected' : ''}}" data-id="{{item.conversationId}}" bindtap="select" disabled="{{busy || pending}}">
+          <view class="queue-avatar"><image src="../assets/person.png" mode="aspectFit" /></view>
+          <view class="queue-copy"><view class="queue-heading"><text class="queue-title">{{item.title || '装修咨询'}}</text><text class="queue-status">{{item.handoff.state === 'waiting' ? '待接待' : '接待中'}}</text></view><text class="queue-recipient">{{item.handoff.recipientName || '企业接待团队'}}</text><text class="helper">{{item.handoff.state === 'waiting' ? '接手后可查看本次对话与图片' : '继续本次对话与资料核对'}}</text></view>
+          <view class="chevron"></view>
+        </button>
+        <block wx:if="{{detail.handoff.state === 'waiting'}}">
+          <view class="card claim-preview"><view class="queue-avatar"><image src="../assets/person.png" mode="aspectFit" /></view><view class="queue-copy"><text class="section-title">接待请求</text><text class="helper">客户希望和设计师聊一聊</text><text class="helper">接手后可查看本次对话与图片。</text></view></view>
+          <button class="primary" data-action="claim" bindtap="action" disabled="{{busy || pending}}">接待客户</button><button class="secondary" bindtap="back" disabled="{{busy || pending}}">稍后处理</button>
+        </block>
+      </block>
+      <block wx:elif="{{detail.handoff.state === 'active'}}">
+        <view class="workspace-tabs"><button class="{{tab === 'chat' ? 'selected' : ''}}" data-tab="chat" bindtap="switchTab">对话</button><button class="{{tab === 'requirements' ? 'selected' : ''}}" data-tab="requirements" bindtap="switchTab">需求</button><button class="{{tab === 'media' ? 'selected' : ''}}" data-tab="media" bindtap="switchTab">资料</button></view>
+        <block wx:if="{{tab === 'chat'}}">
+          <view class="conversation-context"><text>已接手，小K已暂停回复。</text><button class="more-actions" bindtap="moreActions" disabled="{{busy || pending}}">更多操作</button></view>
+          <scroll-view class="staff-thread" scroll-y enhanced show-scrollbar="{{false}}" scroll-into-view="{{staffScrollTarget}}">
+            <view wx:for="{{messages}}" wx:key="id" id="message-{{item.id}}" class="staff-message {{item.isOwn ? 'own-message' : ''}} {{item.authorKind === 'system' ? 'staff-system' : ''}}">
+              <view wx:if="{{item.authorKind !== 'system'}}" class="staff-avatar"><image src="../assets/{{item.authorKind === 'assistant' ? 'xiaok-chat-avatar' : 'person'}}.png" mode="aspectFit" /></view>
+              <view class="staff-message-body"><text class="message-author">{{item.authorKind === 'user' ? '客户' : item.isOwn ? detail.handoff.ownerName : item.authorKind === 'admin' ? '此前接待人' : item.authorKind === 'system' ? '服务提示' : '小K'}}</text><text class="chat-bubble" user-select>{{item.text}}</text></view>
+            </view>
+            <view id="staff-conversation-end"></view>
+          </scroll-view>
+          <view class="staff-composer-dock {{keyboardHeight ? 'keyboard-open' : ''}}"><view class="reply-dock"><button class="media-button" bindtap="voiceUnavailable" aria-label="语音暂未接入"><image src="../assets/microphone.png" /></button><textarea class="reply-input" auto-height adjust-position="{{false}}" show-confirm-bar="{{false}}" bindkeyboardheightchange="keyboardChange" maxlength="4000" placeholder="回复客户…" placeholder-class="input-placeholder" value="{{text}}" data-key="text" bindinput="input" disabled="{{busy || pending}}" /><button class="media-button" data-tab="media" bindtap="switchTab" aria-label="查看本次图片资料"><image src="../assets/image.png" /></button><button class="send-button" data-action="reply" bindtap="action" disabled="{{busy || pending || !text}}" aria-label="发送回复"><image src="../assets/arrow-up.png" /></button></view></view>
+        </block>
+        <block wx:elif="{{tab === 'requirements'}}">
+          <view class="card"><text class="section-title">小K整理的想法</text><text class="helper">自动整理，专业事项由你核实。</text><view wx:for="{{fields}}" wx:key="key" class="field"><image src="../assets/{{item.icon}}.png" /><text class="field-label">{{item.label}}</text><text class="field-value">{{item.text || '暂未确定'}}{{item.internal ? '（内部修正）' : ''}}</text></view><text wx:if="{{!fields.length}}" class="helper">客户还没有提供可整理的需求，不影响沟通。</text></view>
+          <view class="card"><text class="section-title">客户原话</text><block wx:for="{{fields}}" wx:key="key"><text wx:if="{{item.sourceText}}" class="quote">{{item.sourceText}}</text><button wx:if="{{item.sourceMessageId}}" class="inline-action" data-id="{{item.sourceMessageId}}" bindtap="jumpToMessage">查看对应对话</button></block></view>
+          <view wx:for="{{corrections}}" wx:key="at" class="card"><text>内部修正：{{item.text}}</text><text class="helper">{{item.at}} · 操作者 {{item.staffId}}</text><text wx:if="{{item.note}}" class="helper">{{item.note}}</text></view>
+          <button class="primary" bindtap="editRequirements" disabled="{{busy || pending || !messages.length}}">修正整理结果</button><button class="secondary" data-tab="chat" bindtap="switchTab">回到对话，继续沟通</button>
+        </block>
+        <block wx:else>
+          <text class="section-title">本次收到{{mediaItems.length}}张图片</text><text class="helper">客户发送后自动保留，不用重新上传。</text>
+          <text wx:if="{{mediaError}}" class="notice">{{mediaError}}</text><button class="inline-action" bindtap="openMedia" disabled="{{mediaLoading}}">{{mediaLoading ? '读取中…' : '刷新图片'}}</button>
+          <view class="media-grid"><view wx:for="{{mediaItems}}" wx:key="id" class="card"><image wx:if="{{mediaPaths[item.id]}}" class="media-thumb" src="{{mediaPaths[item.id]}}" mode="aspectFill" data-id="{{item.id}}" bindtap="previewMedia" /><button class="inline-action" data-id="{{item.id}}" bindtap="previewMedia">查看图片</button><text class="helper">{{detail.handoff.packet.mediaAnnotations[item.id].roomName || item.roomName || '房间暂不确定'}}</text><button class="secondary" data-id="{{item.id}}" bindtap="editMedia">分类与关联</button></view></view>
+          <view class="card"><text class="section-title">服务档案</text><text class="helper">关联前核对客户，避免重复建档；不确定可以暂不关联。</text><picker range="{{candidateLabels}}" value="{{candidateIndex}}" bindchange="candidateChange"><view class="picker">{{candidateLabels[candidateIndex]}}</view></picker><button class="secondary" bindtap="linkLead" disabled="{{busy || pending}}">核对并关联</button></view>
+          <button class="primary" data-tab="chat" bindtap="switchTab">回到对话</button>
+        </block>
+      </block>
+    </block>
+  </view>
+  <view wx:if="{{editor && !fatal}}" class="editor-layer">
+    <view class="editor-mask" bindtap="closeEditor"></view><view class="editor-panel">
+      <text class="section-title">{{editor === 'requirements' ? '修正小K的整理' : '关联这张图片'}}</text>
+      <block wx:if="{{editor === 'requirements'}}">
+        <text class="notice">只调整内部记录，不代表客户批准方案。</text>
+        <picker range="{{fieldLabels}}" value="{{fieldIndex}}" bindchange="fieldChange"><view class="picker">{{fieldLabels[fieldIndex]}}</view></picker>
+        <textarea class="input" value="{{editText}}" data-key="editText" bindinput="editInput" maxlength="1000" placeholder="整理后的内容" />
+        <picker range="{{sourceLabels}}" value="{{sourceIndex}}" bindchange="sourceChange"><view class="picker">依据：{{sourceLabels[sourceIndex] || '请选择客户原话'}}</view></picker>
+        <input class="input" value="{{editNote}}" data-key="editNote" bindinput="editInput" maxlength="1000" placeholder="补充核实说明（可选）" />
+      </block>
+      <block wx:else>
+        <image wx:if="{{mediaPaths[editingMediaId]}}" class="editor-thumb" src="{{mediaPaths[editingMediaId]}}" mode="aspectFit" />
+        <picker range="{{categoryLabels}}" value="{{categoryIndex}}" bindchange="categoryChange"><view class="picker">用途：{{categoryLabels[categoryIndex]}}</view></picker>
+        <input class="input" value="{{editRoom}}" data-key="editRoom" bindinput="editInput" maxlength="80" placeholder="所属房间（暂不确定可留空）" />
+        <picker range="{{candidateLabels}}" value="{{candidateIndex}}" bindchange="candidateChange"><view class="picker">正式户型：{{candidateLabels[candidateIndex]}}</view></picker>
+        <picker wx:if="{{roomLabels.length > 1}}" range="{{roomLabels}}" value="{{roomIndex}}" bindchange="roomChange"><view class="picker">{{roomLabels[roomIndex]}}</view></picker>
+        <text class="helper">只选择该客户和你有权限查看的正式户型。保存关联不会修改户型。</text>
+      </block>
+      <text wx:if="{{error || pending}}" class="notice">{{pending ? '正在核对原提交结果' : error}}</text>
+      <view class="editor-actions"><button class="secondary" bindtap="closeEditor" disabled="{{busy || pending}}">取消</button><button class="primary" bindtap="saveEditor" disabled="{{busy}}">{{pending ? '核对结果' : editor === 'requirements' ? '保存内部记录' : '保存关联'}}</button></view>
+    </view>
+  </view>
+</view>

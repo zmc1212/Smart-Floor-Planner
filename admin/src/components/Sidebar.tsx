@@ -3,6 +3,7 @@
 import React, { useState, useEffect, memo } from 'react';
 import NextImage from 'next/image';
 import Link from 'next/link';
+import { hasAssistantKnowledgeAccess } from '@/lib/assistant/access';
 import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, 
@@ -85,6 +86,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'ai-providers', label: 'AI 供应商', icon: Cable, href: '/ai-providers' },
         { key: 'ai-models', permissionKey: 'ai-providers', label: '生图模型', icon: Image, href: '/ai-models' },
         { key: 'llm-settings', label: 'LLM大模型配置', icon: BrainCircuit, href: '/llm-settings' },
+        { key: 'map-settings', label: '地图服务配置', icon: Map, href: '/map-settings' },
         { key: 'media-storage', label: '媒体存储', icon: HardDrive, href: '/media-storage' },
         { key: 'mini-program-code-settings', label: '小程序码环境', icon: SlidersHorizontal, href: '/mini-program-code-settings' },
         { key: 'sms-settings', label: '短信设置', icon: MessageSquareText, href: '/sms-settings' },
@@ -111,7 +113,10 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: '运营工作台',
       items: [
         { key: 'dashboard', label: '业务概览', icon: LayoutDashboard, href: '/' },
-        { key: 'leads', label: '线索转化', icon: ClipboardList, href: '/leads' },
+        { key: 'assistant-knowledge', label: '小 K 知识库', icon: ClipboardList, href: '/assistant-knowledge' },
+        { key: 'case-publishing', label: '案例发布管理', icon: ClipboardList, href: '/case-publishing' },
+        { key: 'construction-projects', label: '施工项目与节点', icon: ClipboardList, href: '/construction-projects' },
+        { key: 'leads', label: '客户线索', icon: ClipboardList, href: '/leads' },
         { key: 'lead-pool', permissionKey: 'leads', label: '线索抢单池', icon: Trophy, href: '/lead-pool' },
       ]
     },
@@ -491,6 +496,8 @@ export default function Sidebar() {
   };
 
   const hasMenuPermission = (key: string) => {
+    if (key === 'case-publishing') return Boolean(admin && ['super_admin', 'admin', 'enterprise_admin', 'designer'].includes(admin.role || '') && (['super_admin', 'admin'].includes(admin.role || '') || admin.effectivePermissions?.includes(key)));
+    if (key === 'assistant-knowledge') return hasAssistantKnowledgeAccess(admin?.role, admin?.effectivePermissions);
     if (!admin) return true;
     if (key === 'design-reports') return ['admin', 'super_admin'].includes(admin.role || '') || (['enterprise_admin', 'designer'].includes(admin.role || '') && Boolean(admin.effectivePermissions?.includes('ai-scenarios')));
     if (admin.role === 'super_admin') return true;

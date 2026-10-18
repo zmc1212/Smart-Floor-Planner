@@ -318,6 +318,7 @@ Component({
   },
 
   methods: {
+    openAssistantHandoffs() { wx.navigateTo({ url: '/packages/assistant/handoff/handoff?staff=1' }); },
     isDesignerContext() {
       return (this.properties.role || this.data.role) === 'designer';
     },

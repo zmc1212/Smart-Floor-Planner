@@ -169,6 +169,7 @@ export function adminUserToDto(
     promoterIds: (record.promoterIds ?? []).map((id) => id.toString()),
     username: record.username,
     mustChangePassword: record.mustChangePassword,
+      constructionTrades: record.constructionTrades,
     displayName: record.displayName,
     role: record.role,
     wechatId: record.wechatId,

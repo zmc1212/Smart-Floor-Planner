@@ -1,0 +1,70 @@
+/* PPT2/3 source 853x1844 -> 390x844. Measurements recorded in phase-two contract.
+   Shared case-card language also governs the grouped work-detail variant. */
+page { background: #f7fcf9; color: #082b2a; }
+.portfolio-page { padding-bottom: calc(32rpx + env(safe-area-inset-bottom)); background: linear-gradient(145deg, #fff 15%, #f3faf6 65%, #fff); }
+.portfolio-page button { width: auto; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 0; font: inherit; color: inherit; background: transparent; line-height: 1.5; box-sizing: border-box; }
+.portfolio-page button::after { border: 0; }
+.portfolio-page button[disabled] { opacity: .5; }
+.portfolio-page button:active { opacity: .75; }
+.portfolio-nav { padding-left: 24rpx; box-sizing: border-box; }
+.portfolio-nav-lane { display: flex; align-items: center; min-width: 0; }
+.portfolio-page .back { width: 48rpx; min-height: 84rpx; flex: none; display: flex; align-items: center; }
+.back image { width: 34rpx; height: 34rpx; }
+.brand-mark { position: relative; width: 72rpx; height: 84rpx; overflow: hidden; flex: none; }
+.brand-logo { position: absolute; width: 96rpx; height: 96rpx; max-width: none; top: -4rpx; left: -12rpx; }
+.brand-copy { display: flex; flex-direction: column; margin-left: 8rpx; min-width: 0; }
+.brand-name { font-size: 40rpx; font-weight: 700; line-height: 1.3; letter-spacing: 2rpx; }
+.brand-subtitle { font-size: 22rpx; color: #7c8ca2; line-height: 1.5; }
+.nav-title { font-size: 32rpx; font-weight: 600; }
+.portfolio-content { padding: 20rpx 40rpx 0; }
+.identity-row { display: flex; align-items: flex-start; gap: 18rpx; margin: 20rpx 0 28rpx; }
+.designer-initial { width: 114rpx; height: 114rpx; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; background: #e4f3ea; color: #146448; font-size: 46rpx; font-weight: 600; }
+.identity-copy { flex: 1; min-width: 0; }
+.designer-name { display: block; font-size: 32rpx; font-weight: 700; line-height: 1.35; }
+.designer-bio { display: block; color: #7c8ca2; font-size: 24rpx; line-height: 1.6; margin-top: 6rpx; overflow-wrap: break-word; }
+.city-label { display: block; color: #7c8ca2; font-size: 22rpx; line-height: 1.6; margin-top: 4rpx; }
+.portfolio-page .share-button { display: flex; align-items: center; gap: 8rpx; flex: none; border-radius: 40rpx; padding: 14rpx 18rpx; min-height: 84rpx; background: #eff7f1; font-size: 24rpx; }
+.share-button image { width: 30rpx; height: 30rpx; flex: none; }
+.studio-heading { display: block; font-size: 52rpx; line-height: 1.3; font-weight: 700; letter-spacing: -1rpx; }
+.studio-subtitle { display: block; margin-top: 10rpx; font-size: 28rpx; line-height: 1.5; color: #6e7c91; }
+.studio-art { display: block; width: 100%; height: 354rpx; margin: 8rpx 0 4rpx; }
+.portfolio-page .primary-action, .portfolio-page .secondary-action { display: flex; align-items: center; justify-content: center; gap: 16rpx; width: 100%; min-height: 84rpx; padding: 16rpx 24rpx; border-radius: 60rpx; font-size: 28rpx; font-weight: 600; text-align: center; }
+.portfolio-page .primary-action { background: #00b981; color: #fff; }
+.portfolio-page .secondary-action { margin-top: 14rpx; border: 2rpx solid #00b981; background: #fff; color: #105240; }
+.action-helper { display: block; margin: 12rpx 0 20rpx; font-size: 22rpx; line-height: 1.6; color: #82918e; }
+.works-section, .gallery-section, .preference-section { margin-top: 24rpx; padding: 24rpx; border-radius: 24rpx; background: #fff; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20rpx; margin-bottom: 18rpx; font-size: 30rpx; font-weight: 600; }
+.section-heading button { display: flex; align-items: center; gap: 12rpx; min-height: 64rpx; font-size: 24rpx; font-weight: 400; color: #8390a2; }
+.section-title { display: block; font-size: 28rpx; font-weight: 600; line-height: 1.5; margin-bottom: 16rpx; }
+.chevron { display: inline-block; width: 10rpx; height: 10rpx; border-top: 2rpx solid currentColor; border-right: 2rpx solid currentColor; transform: rotate(45deg); flex: none; }
+.portfolio-page .work-card { display: flex; gap: 20rpx; width: 100%; text-align: left; padding: 0; }
+.work-card + .work-card { margin-top: 24rpx; }
+.work-cover { position: relative; width: 47%; height: 204rpx; border-radius: 16rpx; overflow: hidden; flex: none; background: #edf3ee; }
+.work-cover image { width: 100%; height: 100%; }
+.image-loading { display: block; padding: 24rpx; font-size: 22rpx; color: #7a8884; }
+.image-badge { position: absolute; bottom: 10rpx; left: 10rpx; max-width: calc(100% - 20rpx); padding: 4rpx 10rpx; border-radius: 10rpx; color: #fff; background: rgba(19,45,37,.66); font-size: 20rpx; line-height: 1.5; }
+.work-summary { flex: 1; min-width: 0; }
+.work-title { display: block; font-size: 28rpx; font-weight: 600; line-height: 1.5; overflow-wrap: break-word; }
+.work-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 24rpx; color: #8694a6; line-height: 1.6; margin-top: 10rpx; }
+.work-metadata { display: block; font-size: 24rpx; line-height: 1.6; color: #5a7972; margin-top: 14rpx; }
+.topic-section { margin-top: 32rpx; }
+.topic-row { display: flex; flex-wrap: wrap; gap: 12rpx; }
+.portfolio-page .topic-row button { display: flex; align-items: center; justify-content: space-between; flex: 1 1 160rpx; min-height: 90rpx; padding: 16rpx; border-radius: 18rpx; background: #eaf7f0; font-size: 24rpx; gap: 12rpx; }
+.topic-row image { width: 42rpx; height: 42rpx; flex: none; }
+.studio-footer { display: flex; align-items: center; gap: 14rpx; margin-top: 28rpx; font-size: 22rpx; line-height: 1.6; color: #8192a8; }
+.studio-footer image { width: 68rpx; height: 68rpx; flex: none; }
+.notice { padding: 20rpx; margin: 18rpx 0; border-radius: 16rpx; background: #e9f6ef; font-size: 24rpx; line-height: 1.6; }
+.notice button { display: inline-block; padding: 12rpx; color: #087955; min-height: 72rpx; }
+.state-copy { display: block; padding: 24rpx 0; font-size: 24rpx; color: #7e8d88; line-height: 1.6; }
+.work-intro { padding: 10rpx 0 6rpx; }
+.detail-title { display: block; font-size: 40rpx; font-weight: 600; line-height: 1.4; }
+.detail-description { display: block; margin-top: 24rpx; font-size: 26rpx; line-height: 1.7; white-space: pre-wrap; overflow-wrap: break-word; }
+.gallery-image { position: relative; overflow: hidden; border-radius: 14rpx; background: #f0f5f1; }
+.gallery-image image { display: block; width: 100%; }
+.gallery-item + .gallery-item { margin-top: 24rpx; }
+.image-caption { display: block; margin-top: 12rpx; font-size: 24rpx; line-height: 1.6; color: #6d827c; }
+.preference-row { display: flex; flex-wrap: wrap; gap: 16rpx; }
+.portfolio-page .preference-button { flex: 1 1 180rpx; border: 2rpx solid #d2e8dc; border-radius: 44rpx; min-height: 84rpx; padding: 16rpx; font-size: 24rpx; }
+.portfolio-page .is-selected { background: #e8f7ef; color: #047b51; border-color: #00b981; }
+.portfolio-page .share-work { display: block; margin: 12rpx auto 0; min-height: 84rpx; padding: 20rpx; font-size: 24rpx; color: #6e857c; }
+@media (max-width: 360px) { .portfolio-content { padding-left: 28rpx; padding-right: 28rpx; } .identity-row { flex-wrap: wrap; } .portfolio-page .share-button { margin-left: 132rpx; } }

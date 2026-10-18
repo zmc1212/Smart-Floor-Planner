@@ -1,5 +1,8 @@
 import { and, count, eq, notInArray, sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
+import { assistantCounts, deleteAssistantData } from './assistant-cleanup';
+import { portfolioCounts, deletePortfolioData } from './portfolio-cleanup';
+import { constructionCounts, deleteConstructionData } from './construction-cleanup';
 import {
   adminUsers,
   customerAttributionLocks,
@@ -118,6 +121,9 @@ export class TenantEnterpriseResetRepository {
     const staffRows = await this.transaction.select({ value: count() }).from(adminUsers).where(staffWhere);
 
     const counts: EnterpriseResetCount[] = [
+      ...await assistantCounts(this.transaction, enterpriseId),
+      ...await portfolioCounts(this.transaction, enterpriseId),
+      ...await constructionCounts(this.transaction, enterpriseId),
       { table: 'leads', label: '线索', count: await this.countEq(leads, enterpriseId) },
       { table: 'lead_claim_windows', label: '抢单窗口', count: await this.countEq(leadClaimWindows, enterpriseId) },
       { table: 'lead_outcome_snapshots', label: '经营结果快照', count: await this.countEq(leadOutcomeSnapshots, enterpriseId) },
@@ -269,6 +275,9 @@ export class TenantEnterpriseResetRepository {
       .where(eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId));
 
     const deleted: EnterpriseResetCount[] = [];
+    deleted.push(...await deleteConstructionData(this.transaction, enterpriseId));
+    deleted.push(...await deleteAssistantData(this.transaction, enterpriseId));
+    deleted.push(...await deletePortfolioData(this.transaction, enterpriseId));
 
     deleted.push(
       await this.execDelete(

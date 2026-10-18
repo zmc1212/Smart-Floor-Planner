@@ -19,8 +19,8 @@ const {
 } = require('../../utils/account-settings-state.js');
 
 const DEFAULT_AVATAR = '/images/mine-v6/profile-avatar.jpg';
-const STAFF_MINE_ROLES = ['designer', 'measurer', 'enterprise_admin', 'salesperson', 'platform_admin'];
-const ROLE_SHELL_MINE_ROLES = ['designer', 'measurer', 'enterprise_admin', 'platform_admin'];
+const STAFF_MINE_ROLES = ['designer', 'measurer', 'construction_staff', 'enterprise_admin', 'salesperson', 'platform_admin'];
+const ROLE_SHELL_MINE_ROLES = ['designer', 'measurer', 'construction_staff', 'enterprise_admin', 'platform_admin'];
 const RESTRICTED_MINE_ROLES = ['customer', 'referrer'];
 
 function isRoleShellMineRole(role) {
@@ -475,6 +475,9 @@ Page({
     }
 
     wx.showToast({ title: '功能建设中', icon: 'none' });
+  },
+  onOpenConstruction() {
+    wx.navigateTo({ url: '/packages/construction/projects/projects' });
   },
 
   onOpenAllTodos() {

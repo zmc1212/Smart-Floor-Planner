@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as jose from 'jose';
 import { tenantStorage, TenantStore } from './tenant-context';
+import { constructionRouteAllowed } from './construction/route-access';
 
 export interface TenantContext {
   userId: string;
-  role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'measurer' | 'viewer';
+  role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'measurer' | 'construction_staff' | 'viewer';
   enterpriseId: string | null;
   username: string;
   mustChangePassword?: boolean;
@@ -34,6 +35,7 @@ export async function getTenantContext(request: Request | NextRequest): Promise<
     const audience = payload.aud;
     const audiences = Array.isArray(audience) ? audience : audience ? [audience] : [];
     if (audiences.includes('miniprogram')) return null;
+    if (payload.role === 'construction_staff' && !constructionRouteAllowed(new URL(request.url).pathname, false)) return null;
 
     let enterpriseId = payload.enterpriseId as string | null;
 

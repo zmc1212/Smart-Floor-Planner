@@ -25,13 +25,14 @@ function navigationMetrics() {
 
 function normalizeFocus(value) {
   const focus = String(value || '').trim();
-  if (focus === 'designer' || focus === 'measurer') return focus;
+  if (['designer', 'measurer', 'construction_staff'].includes(focus)) return focus;
   return 'all';
 }
 
 function emptyRoleLabel(focus) {
   if (focus === 'designer') return '可派家装设计顾问';
   if (focus === 'measurer') return '可派家装现场顾问';
+  if (focus === 'construction_staff') return '施工员工';
   return '家装设计顾问或家装现场顾问';
 }
 
@@ -62,6 +63,7 @@ Page({
       { key: 'all', label: '全部' },
       { key: 'designer', label: '家装设计顾问' },
       { key: 'measurer', label: '家装现场顾问' },
+      { key: 'construction_staff', label: '施工员工' },
     ],
     items: [],
     summaryLine: '可派 0 人',
@@ -102,7 +104,7 @@ Page({
     try {
       const focus = this.data.focus;
       const path = appendQuery('/miniprogram/enterprise-staff', {
-        role: focus === 'designer' || focus === 'measurer' ? focus : '',
+        role: ['designer', 'measurer', 'construction_staff'].includes(focus) ? focus : '',
         page,
         limit: DEFAULT_PAGE_SIZE,
       });
@@ -120,7 +122,7 @@ Page({
         page: page + 1,
         hasMore: pagination.hasMore,
         footerText: listFooterText(false, pagination.hasMore, items.length),
-        summaryLine: `可派 ${eligibleCount} 人 · 共 ${total} 人`,
+        summaryLine: focus === 'construction_staff' ? `施工员工 ${total} 人 · 按工地分配` : `可派 ${eligibleCount} 人 · 共 ${total} 人`,
         eligibleCount,
         totalCount: total,
         emptyRoleLabel: emptyRoleLabel(focus),
@@ -145,7 +147,7 @@ Page({
 
   selectChip(event) {
     const raw = event.currentTarget.dataset.key;
-    const focus = raw === 'designer' || raw === 'measurer' ? raw : 'all';
+    const focus = ['designer', 'measurer', 'construction_staff'].includes(raw) ? raw : 'all';
     if (focus === this.data.focus) return;
     this.setData({
       focus,

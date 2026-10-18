@@ -57,12 +57,12 @@
               <view class="guide-entry-chevron guide-inline-chevron" aria-hidden="true"></view>
             </view>
           </view>
-          <view class="guide-entry" bindtap="openCustomerGuide" aria-role="button" aria-label="打开装修服务向导">
+          <view class="guide-entry" bindtap="openAssistant" aria-role="button" aria-label="打开小K装修咨询">
             <view class="guide-entry-bubble">
               <text class="guide-entry-name">我是小K</text>
-              <text class="guide-entry-copy">想了解服务？</text>
+              <text class="guide-entry-copy">装修有问题？</text>
               <view class="guide-entry-action">
-                <text>点击我带你看看</text>
+                <text>和小K聊一聊</text>
                 <view class="guide-entry-chevron" aria-hidden="true"></view>
               </view>
             </view>

@@ -31,6 +31,7 @@ type StaffMember = {
   username: string;
   displayName?: string;
   phone?: string | null;
+  constructionTrades?: string[];
   role: StaffRole;
   status?: string;
   departmentId?: { _id: string; name?: string } | string | null;
@@ -42,12 +43,13 @@ type StaffMember = {
   mustChangePassword?: boolean;
 };
 
-type StaffRole = 'enterprise_admin' | 'designer' | 'measurer' | 'salesperson';
+type StaffRole = 'enterprise_admin' | 'designer' | 'measurer' | 'salesperson' | 'construction_staff';
 
 type StaffForm = {
   username?: string;
   displayName: string;
   phone?: string;
+  constructionTradesText?: string;
   role: StaffRole;
   departmentId?: string;
   wechatId?: string;
@@ -105,6 +107,7 @@ type PermissionStaff = {
 const ROLE_OPTIONS: Array<{ label: string; value: StaffRole }> = [
   { label: '设计师', value: 'designer' },
   { label: '测量员', value: 'measurer' },
+  { label: '施工员工', value: 'construction_staff' },
   { label: '渠道地推', value: 'salesperson' },
 ];
 
@@ -112,6 +115,7 @@ const ROLE_LABELS: Record<StaffRole, string> = {
   enterprise_admin: '企业负责人',
   designer: '设计师',
   measurer: '测量员',
+  construction_staff: '施工员工',
   salesperson: '渠道地推',
 };
 
@@ -119,6 +123,7 @@ const ROLE_COLORS: Record<StaffRole, string> = {
   enterprise_admin: 'purple',
   designer: 'blue',
   measurer: 'gold',
+  construction_staff: 'cyan',
   salesperson: 'green',
 };
 
@@ -361,7 +366,7 @@ export default function StaffPage() {
       const response = await fetch(isEdit ? `/api/staff/${editingStaff?._id}` : '/api/staff', {
         method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...values, departmentId: values.departmentId || '', wechatQrAssetId: wechatQrAssetId || values.wechatQrAssetId || '' }),
+        body: JSON.stringify({ ...values, constructionTrades: values.role === 'construction_staff' ? String(values.constructionTradesText || '').split(/[,，、/]/).map(s => s.trim()).filter(Boolean) : undefined, departmentId: values.departmentId || '', wechatQrAssetId: wechatQrAssetId || values.wechatQrAssetId || '' }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '保存员工失败');
@@ -818,6 +823,7 @@ export default function StaffPage() {
           username: editingStaff.username,
           displayName: editingStaff.displayName || '',
           phone: editingStaff.phone || '',
+          constructionTradesText: (editingStaff.constructionTrades || []).join('、'),
           role: editingStaff.role,
           departmentId: departmentIdOf(editingStaff) || undefined,
           wechatId: editingStaff.wechatId || undefined,
@@ -859,6 +865,7 @@ export default function StaffPage() {
           rules={[{ required: true, message: '请选择岗位角色' }]}
           fieldProps={{ onChange: (value) => setStaffRole(value as StaffRole) }}
         />
+        {staffRole === 'construction_staff' && <ProFormText name="constructionTradesText" label="施工工种 / 技能" rules={[{ required: true, whitespace: true }]} fieldProps={{ placeholder: '如水电、油漆、项目管理', maxLength: 200 }} extra="由负责人分配工地与职责，不参与设计/量房自动派单。" />}
         {['designer', 'measurer'].includes(staffRole) ? (
           <ProFormSwitch
             name="assignmentPaused"

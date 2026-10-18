@@ -116,5 +116,8 @@ test('staff APIs preserve the initial-password and forced-change contracts', () 
   assert.match(proxy, /password_change_required/);
   assert.match(proxy, /ADMIN_PASSWORD_CHANGE_API_PATHS/);
   assert.doesNotMatch(proxy, /MINI_PROGRAM_PASSWORD_CHANGE_PATHS/);
-  assert.doesNotMatch(proxy, /audience:\s*'miniprogram'/);
+  // Cookie verification keeps its existing audience contract; only the new
+  // construction Bearer boundary validates the Mini Program audience.
+  assert.match(proxy, /jose\.jwtVerify\(token, secret\)/);
+  assert.match(proxy, /if \(authHeader\?\.startsWith\('Bearer '\)\)[\s\S]*audience:\s*'miniprogram'/);
 });

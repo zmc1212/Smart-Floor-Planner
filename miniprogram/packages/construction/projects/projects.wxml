@@ -1,0 +1,76 @@
+<!-- PPT26 manager.png: project overview subset; S01/U01 sheets. No invented site photos or future report actions. -->
+<view class="construction-page">
+  <image class="room-scene" src="../assets/xiaok-project-scene.png" mode="aspectFit" aria-hidden="true" />
+  <view class="nav" style="padding-top: {{navTop}}px; min-height: {{navHeight}}px; padding-right: {{navRight}}px;">
+    <view class="brand-home" bindtap="back" aria-role="button" aria-label="返回工地列表或我的">
+      <view class="brand-mark"><image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" /></view>
+      <view class="brand-copy"><view class="brand-row"><text class="brand-name">家客来</text><text class="role-tag">{{portalLabel}}</text></view><text class="identity-name">{{name}} · 工地协作</text></view>
+    </view>
+  </view>
+  <view class="content">
+    <view class="heading"><text>{{detail ? '工地分工与节点' : '云工地项目总览'}}</text><view class="account" bindtap="openMine">我的</view></view>
+    <view wx:if="{{pending}}" class="feedback"><text>上次提交结果待核对，请核对同一次操作。</text><button loading="{{busy}}" disabled="{{busy}}" bindtap="sendPending">核对上次提交</button></view>
+    <view wx:if="{{loading}}" class="state">正在读取工地…</view>
+    <view wx:elif="{{error}}" class="state"><text>{{error}}</text><button bindtap="load">重新读取</button><button class="outline" bindtap="openIdentities">切换身份</button></view>
+    <block wx:elif="{{detail}}">
+      <view class="surface">
+        <view class="section-title">{{detail.project.name}}</view>
+        <text class="helper">{{detail.project.statusLabel}} · {{detail.roleLabel}}</text>
+        <view class="progress"><text class="label">当前实际节点</text><text class="stage-name">{{detail.project.stageName}}</text><text wx:if="{{detail.project.progress_note}}" class="body-text">{{detail.project.progress_note}}</text></view>
+        <button wx:if="{{detail.manage}}" disabled="{{busy || pending || detail.project.status !== 'active'}}" bindtap="openProgress">更新实际节点</button>
+        <button class="outline" bindtap="openChat" disabled="{{busy || pending || detail.project.status === 'archived'}}">进入工地小K对话</button>
+      </view>
+      <view class="surface">
+        <view class="section-title">阶段分工</view><text class="helper">联系管家读取本阶段主要联系人的当前有效电话</text>
+        <view wx:for="{{detail.stages}}" wx:key="key" class="stage-row">
+          <view><text class="label">{{item.name}}</text><text class="helper">{{item.assignedText}}</text></view>
+          <view wx:if="{{detail.manage && !pending}}" class="text-action" data-key="{{item.key}}" bindtap="openAssignment">分配</view>
+        </view>
+      </view>
+      <view class="surface">
+        <view class="section-heading"><text class="section-title">工地成员</text><view wx:if="{{detail.manage && !pending}}" class="text-action" bindtap="openMember">添加成员</view></view>
+        <view wx:for="{{detail.members}}" wx:key="admin_id" class="stage-row">
+          <view><text class="label">{{item.display_name}} · {{item.roleLabel}}</text><text class="helper">{{item.available ? (item.work_label || '分工待安排') : '已停用 / 移出'}}</text></view>
+          <view wx:if="{{item.canRemove && !pending}}" class="text-action" data-id="{{item.admin_id}}" bindtap="removeMember">移出</view>
+        </view>
+      </view>
+      <button class="outline" bindtap="back">返回工地列表</button>
+    </block>
+    <view wx:elif="{{!items.length}}" class="surface state"><text class="section-title">暂无分配工地</text><text class="helper">你已加入企业，请等待负责人分配工地。分配后重新读取即可查看。</text><button bindtap="load">重新读取</button></view>
+    <view wx:else class="surface">
+      <view class="section-title">{{owner ? '企业施工项目' : '我负责的项目'}}</view><text class="helper">共 {{items.length}} 个项目 · 仅展示有权限的项目</text>
+      <view wx:for="{{items}}" wx:key="id" class="project-card" data-id="{{item.id}}" bindtap="openProject" aria-role="button" aria-label="{{item.name + '，查看分工与节点'}}">
+        <view class="project-heading"><text class="project-name">{{item.name}}</text><text class="stage-tag">{{item.stageName}}</text></view>
+        <view class="helper">{{item.roleLabel}} · {{item.workLabel}}</view>
+        <view class="card-bottom"><text class="helper">{{item.statusLabel}}</text><view class="project-action"><text>查看分工与节点</text><view class="chevron forward"></view></view></view>
+      </view>
+    </view>
+  </view>
+  <view wx:if="{{sheet}}" class="overlay" bindtap="closeSheet" catchtouchmove="stop">
+    <view class="sheet" catchtap="stop">
+      <view class="section-heading"><text class="section-title">{{sheet === 'progress' ? '更新实际施工节点' : sheet === 'member' ? '添加工地成员' : stageName + ' · 阶段分工'}}</text><view class="text-action" bindtap="closeSheet">关闭</view></view>
+      <scroll-view scroll-y class="sheet-body">
+        <block wx:if="{{sheet === 'progress'}}">
+          <text class="label">当前实际节点</text><picker range="{{detail.stages}}" range-key="name" value="{{selectedStage}}" data-field="selectedStage" bindchange="onPicker"><view class="field">{{detail.stages[selectedStage].name}}</view></picker>
+          <text class="label">现场补充说明（客户可见）</text><textarea class="field textarea" value="{{note}}" maxlength="1000" data-field="note" bindinput="onInput" />
+          <view class="stage-row"><text class="label">再次发送本节点提醒</text><switch checked="{{sendReminder}}" bindchange="onReminder" color="#00C365" /></view>
+          <text class="helper">切换到开启提醒的节点会自动提醒，普通重复保存不重发。</text>
+        </block>
+        <block wx:elif="{{sheet === 'member'}}">
+          <text class="label">本企业在职员工</text><picker range="{{staffOptions}}" range-key="label" value="{{selectedStaff}}" data-field="selectedStaff" bindchange="onPicker"><view class="field">{{staffOptions[selectedStaff].label || '暂无可选员工'}}</view></picker>
+          <text class="label">工地职责</text><picker range="{{roleOptions}}" range-key="label" value="{{selectedRole}}" data-field="selectedRole" bindchange="onPicker"><view class="field">{{roleOptions[selectedRole].label}}</view></picker>
+          <text class="label">工地分工</text><input class="field" value="{{workLabel}}" maxlength="50" placeholder="如水电施工" data-field="workLabel" bindinput="onInput" />
+          <text class="helper">项目经理仅由企业负责人指定。成员权限仅限本工地。</text>
+        </block>
+        <block wx:else>
+          <text class="helper">勾选本工地负责员工。一人时自动带入；多人时指定主要联系人。</text>
+          <checkbox-group bindchange="onIds"><label wx:for="{{assignmentOptions}}" wx:key="admin_id" class="stage-row"><text class="label">{{item.display_name}}</text><checkbox value="{{item.admin_id}}" checked="{{item.selected}}" color="#00C365" /></label></checkbox-group>
+          <text wx:if="{{!assignmentOptions.length}}" class="helper">请先添加工地成员</text>
+          <text class="label">对业主公开的主要联系人</text><picker range="{{primaryOptions}}" range-key="label" value="{{selectedPrimary}}" data-field="selectedPrimary" bindchange="onPicker"><view class="field">{{primaryOptions[selectedPrimary].label}}</view></picker>
+          <text class="helper">不手填或复制电话。停用、移出工地或撤销分工后，立即停止提供该员工电话。</text>
+        </block>
+      </scroll-view>
+      <button disabled="{{busy || pending}}" loading="{{busy}}" bindtap="submit">保存</button>
+    </view>
+  </view>
+</view>

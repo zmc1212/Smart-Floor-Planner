@@ -8,6 +8,14 @@
   ],
   "subPackages": [
     {
+      "root": "packages/construction",
+      "pages": ["projects/projects", "chat/chat", "public-sites/public-sites", "public-site/public-site"]
+    },
+    {
+      "root": "packages/assistant",
+      "pages": ["chat/chat", "requirements/requirements", "handoff/handoff", "designer/designer", "work/work"]
+    },
+    {
       "root": "packages/surveying",
       "pages": ["editor/surveying-editor"]
     },

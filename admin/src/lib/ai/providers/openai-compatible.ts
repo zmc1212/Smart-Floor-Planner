@@ -1,5 +1,6 @@
 import type { AiProviderAdapter } from '@/lib/ai/provider-types';
 import { AiProviderError } from '@/lib/ai/provider-types';
+import { thinkingBody } from './thinking';
 import { bearerHeaders, extractChatContent, extractImage, listOpenAiModels, parseJson, providerFetch, providerUrl } from './http';
 
 function normalizeOpenAiImageSize(size?: string) {
@@ -19,7 +20,8 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
       {
         method: 'POST',
         headers: bearerHeaders(runtime.apiKey),
-        body: JSON.stringify({ model: input.model, messages: input.messages, temperature: input.temperature ?? 0.7, max_tokens: input.maxTokens }),
+        body: JSON.stringify({ model: input.model, messages: input.messages, temperature: input.temperature ?? 0.7, max_tokens: input.maxTokens,
+          ...thinkingBody(runtime.baseUrl, input.enableThinking) }),
       },
       runtime.timeoutMs,
       `${runtime.name} chat`

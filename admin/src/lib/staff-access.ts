@@ -1,4 +1,5 @@
 import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
+import { ASSISTANT_PERMISSIONS, assistantPermissions } from '@/lib/assistant/access';
 import { isStaffReferrerRosterRole } from '@/lib/referrer-roster-access';
 import { SystemRoleRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
@@ -45,9 +46,9 @@ export async function getRolePermissionMap() {
 }
 
 export async function getEffectivePermissions(role: string, _menuPermissions?: string[]) {
-  void _menuPermissions;
   const withRequiredOperationsAccess = (permissions: string[]) => {
-    const normalized = normalizeMenuPermissions(permissions);
+    const normalized = normalizeMenuPermissions(permissions).filter(key => !ASSISTANT_PERMISSIONS.some(value => value === key));
+    normalized.push(...assistantPermissions(role, _menuPermissions));
     if (REFERRER_NETWORK_OPERATIONS_ROLES.has(role)) {
       normalized.push('referrer-network-operations');
     }
@@ -77,6 +78,8 @@ export function getWorkbenchType(role?: string) {
       return 'sales';
     case 'measurer':
       return 'measurement';
+    case 'construction_staff':
+      return 'construction';
     case 'designer':
       return 'design';
     case 'enterprise_admin':

@@ -12,6 +12,10 @@ let isShowingAuthModal = false;
 const session = require('./session.js');
 
 function handleUnauthorized(url, token) {
+  const app = getApp();
+  const currentToken = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
+  // A response from a previous login/identity must not clear the new session.
+  if (token !== currentToken) return;
   console.warn(`Unauthorized request to ${url}, clearing session. Token present: ${!!token}`);
   session.clearSession();
 

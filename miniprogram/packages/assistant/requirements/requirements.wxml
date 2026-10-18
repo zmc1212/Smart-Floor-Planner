@@ -1,0 +1,55 @@
+<!-- Confirmed source: phase-one PPT slide 6; summary/edit/confirm subset. -->
+<view class="requirements-page">
+  <image class="room-scene" src="../assets/xiaok-chat-room.png" mode="aspectFit" aria-hidden="true" />
+  <view class="summary-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;">
+    <view class="nav-lane" style="min-height: {{navigationHeight}}px;">
+      <button class="back-button" bindtap="back" aria-label="返回"><image src="../assets/arrow-left.png" /></button>
+      <view class="brand-mark"><image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" /></view>
+      <view class="brand-copy"><text class="brand-name">家客来</text><text class="enterprise-name">{{enterpriseName ? enterpriseName + ' · 小K装修助手' : '小K · 你的装修助手'}}</text></view>
+    </view>
+  </view>
+  <view class="content">
+    <view class="hero">
+      <view class="hero-copy"><text class="hero-title">我的装修想法</text><view class="hero-subtitle"><text>已说过的先记下，</text><text>没确定的以后再补。</text></view></view>
+      <image class="hero-art" src="../assets/xiaok-requirements.png" mode="aspectFit" aria-hidden="true" />
+    </view>
+    <view wx:if="{{loading}}" class="notice">正在整理你的装修想法…</view>
+    <view wx:if="{{error}}" class="notice" role="alert">
+      <text>{{error}}</text>
+      <button wx:if="{{needsLogin}}" class="text-action" bindtap="login">去登录</button>
+      <button wx:elif="{{!fatal && !stale}}" class="text-action" bindtap="retry" disabled="{{busy || loading}}">{{pending ? '确认上次操作结果' : '重新连接'}}</button>
+    </view>
+    <block wx:if="{{!loading && !fatal}}">
+      <text wx:if="{{confirmed}}" class="save-state">已确认保存 · 随时可以修改</text>
+      <text wx:elif="{{summary && !redacted}}" class="save-state">待确认 · 请核对后保存</text>
+      <view wx:if="{{rows.length}}" class="summary-card">
+        <view wx:for="{{rows}}" wx:key="key" class="summary-row">
+          <view class="field-icon"><image src="../assets/{{item.icon}}.png" /></view>
+          <view class="field-copy">
+            <text class="field-label">{{item.label}}</text>
+            <textarea wx:if="{{editingKey === item.key}}" class="field-input" value="{{item.text}}" data-key="{{item.key}}" bindinput="input" auto-height maxlength="-1" focus cursor-spacing="100" placeholder="没确定的可以先留空" disabled="{{busy || !!pending}}" />
+            <text wx:else class="field-value {{!item.text ? 'muted' : ''}}">{{item.text || '还没确定，以后再补'}}</text>
+          </view>
+          <button wx:if="{{writable && !pending}}" class="edit-button" data-key="{{item.key}}" bindtap="edit" disabled="{{busy}}" aria-label="修改{{item.label}}"><image src="../assets/requirement-edit.png" /></button>
+        </view>
+        <view class="quote-card">
+          <text class="quote-title">你的原话 · 参考记录</text>
+          <view wx:for="{{rows}}" wx:key="key" wx:if="{{item.sourceText || editingKey === item.key}}" class="quote-row">
+            <text class="quote-label">{{item.label}}</text><text class="quote-text">{{item.sourceText || '这项还没有原话，可以补充你的想法。'}}</text>
+            <text wx:if="{{item.truncated}}" class="helper">原话较长，此处只展示部分内容，请核对后补充。</text>
+            <button wx:if="{{editingKey === item.key}}" class="text-action" bindtap="finishEdit">完成修改</button>
+          </view>
+        </view>
+      </view>
+      <text wx:if="{{redacted}}" class="notice">这份需求摘要已按保留规则清理。</text>
+      <text wx:elif="{{!summary && !error}}" class="notice">这段对话还没有需求摘要。</text>
+      <view wx:if="{{summary && !redacted}}" class="actions">
+        <button wx:if="{{writable}}" class="primary-action" bindtap="confirm" loading="{{busy}}" disabled="{{busy || !!pending || stale}}">{{confirmed ? '继续聊' : '确认摘要，继续聊'}}</button>
+        <text wx:else class="helper">当前对话仅可查看，已保存的摘要仍保留。</text>
+        <button class="secondary-action" bindtap="openHandoff" disabled="{{busy || !!pending}}">我想找设计师</button>
+        <button wx:if="{{writable && !pending}}" class="text-action" bindtap="regenerate" disabled="{{busy}}">根据最新对话重新整理</button>
+        <text class="helper">这份摘要可以随时修改。确认后保存到本次对话。</text>
+      </view>
+    </block>
+  </view>
+</view>

@@ -16,6 +16,7 @@ import { withTenantTransaction } from '@/db/transaction';
 import { httpErrorStatus } from '@/lib/http-error';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-retry';
+import { tradesInput } from '@/lib/construction/contracts';
 
 interface StaffUpdateBody {
   username?: string;
@@ -23,6 +24,7 @@ interface StaffUpdateBody {
   displayName?: string;
   role?: string;
   phone?: string;
+  constructionTrades?: string[];
   status?: string;
   promoterIds?: string[];
   departmentId?: string | null;
@@ -37,6 +39,7 @@ const BUSINESS_ROLES = [
   'designer',
   'salesperson',
   'measurer',
+  'construction_staff',
 ];
 
 export async function PUT(
@@ -64,7 +67,7 @@ export async function PUT(
         if (
           context.role === 'enterprise_admin' &&
           body.role &&
-          !['designer', 'salesperson', 'measurer'].includes(body.role)
+          !['designer', 'salesperson', 'measurer', 'construction_staff'].includes(body.role)
         ) {
           return NextResponse.json(
             { success: false, error: 'Forbidden role' },
@@ -103,6 +106,9 @@ export async function PUT(
               updateData.displayName = body.displayName.trim();
             }
             if (body.role !== undefined) updateData.role = body.role;
+            if ((body.role || current.role) === 'construction_staff' && (body.constructionTrades !== undefined || current.role !== 'construction_staff')) {
+              updateData.constructionTrades = tradesInput(body.constructionTrades);
+            }
             if (body.phone !== undefined) {
               const phone = body.phone.trim();
               if (!/^1[3-9]\d{9}$/.test(phone)) {

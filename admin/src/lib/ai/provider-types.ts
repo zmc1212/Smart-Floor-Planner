@@ -100,7 +100,7 @@ export interface AiProviderAdapter {
   type: AiProviderAdapterType;
   chat(
     runtime: AiProviderRuntimeConfig,
-    input: { model: string; messages: AiChatMessage[]; temperature?: number; maxTokens?: number }
+    input: { model: string; messages: AiChatMessage[]; temperature?: number; maxTokens?: number; enableThinking?: boolean }
   ): Promise<string>;
   submitImage(runtime: AiProviderRuntimeConfig, input: AiImageSubmitInput): Promise<AiImageProviderResult>;
   pollImage(runtime: AiProviderRuntimeConfig, remoteTaskId: string): Promise<AiImageProviderResult>;

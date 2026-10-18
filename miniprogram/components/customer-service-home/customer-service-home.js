@@ -430,6 +430,14 @@ Component({
       });
     },
 
+    openAssistant() {
+      const leadId = this.data.leadId;
+      wx.navigateTo({
+        url: '/packages/assistant/chat/chat' + (leadId ? `?leadId=${encodeURIComponent(leadId)}` : ''),
+        fail: () => wx.showToast({ title: '暂时无法打开小K咨询', icon: 'none' }),
+      });
+    },
+
     scanServiceOrInviteCode() {
       wx.scanCode({
         onlyFromCamera: false,

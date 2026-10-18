@@ -938,13 +938,13 @@ export function buildEnterpriseStaffingExceptionItem(
   };
 }
 
-const ROSTER_ROLES = ['designer', 'measurer'] as const;
+const ROSTER_ROLES = ['designer', 'measurer', 'construction_staff'] as const;
 
 export function parseEnterpriseStaffRosterRoles(value?: string | null) {
   const role = String(value || '').trim();
   if (!role) return [...ROSTER_ROLES];
-  if (role === 'designer' || role === 'measurer') return [role];
-  throw Object.assign(new Error('role 仅支持 designer 或 measurer'), { status: 400 });
+  if (role === 'designer' || role === 'measurer' || role === 'construction_staff') return [role];
+  throw Object.assign(new Error('role 仅支持 designer、measurer 或 construction_staff'), { status: 400 });
 }
 
 type RosterStaffInput = {
@@ -956,9 +956,17 @@ type RosterStaffInput = {
   assignmentPaused?: boolean | null;
   wechatId?: string | null;
   wechatQrAssetId?: string | bigint | null;
+  constructionTrades?: string[];
 };
 
 export function buildEnterpriseStaffRosterItem(member: RosterStaffInput) {
+  if (member.role === 'construction_staff') return {
+    id: String(member.id), displayName: String(member.displayName || '').trim() || '施工员工',
+    phone: String(member.phone || '').trim() || null, role: 'construction_staff', roleLabel: '施工员工',
+    constructionTrades: member.constructionTrades || [], assignmentPaused: false, assignmentEligible: false,
+    ineligibleReason: null, statusLabel: '按工地分配', statusTone: 'green', action: null, actionLabel: '',
+    helperText: (member.constructionTrades || []).join(' / ') || '由负责人或项目经理分配工地，不参与量房和设计派单。',
+  };
   const role = member.role === 'measurer' ? 'measurer' : 'designer';
   const assignmentPaused = Boolean(member.assignmentPaused);
   const assignmentEligible = isAssignmentEligibleStaff(member);

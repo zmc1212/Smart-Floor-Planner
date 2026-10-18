@@ -1,4 +1,8 @@
 import { sql } from 'drizzle-orm';
+export * from './assistant-schema';
+export * from './portfolio-schema';
+export * from './construction-schema';
+export * from './construction-public-schema';
 import {
   bigint,
   boolean,
@@ -215,6 +219,7 @@ export const adminUsers = appSchema.table(
       .default(false),
     sensitiveOperationPasswordHash: text('sensitive_operation_password_hash'),
     displayName: text('display_name').notNull().default(''),
+    constructionTrades: textArray('construction_trades').notNull().default(sql`'{}'::text[]`),
     role: text('role').notNull().default('admin'),
     wecomUserId: text('wecom_user_id'),
     wechatId: text('wechat_id'),
@@ -772,6 +777,7 @@ export const platformConfigs = appSchema.table(
     ),
     aiPromptConfig: jsonObject<Record<string, unknown>>('ai_prompt_config'),
     llmConfig: jsonObject<Record<string, unknown>>('llm_config'),
+    mapServiceConfig: jsonObject<Record<string, unknown>>('map_service_config'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -2984,6 +2990,8 @@ export const aiProviderAttempts = appSchema.table(
   'ai_provider_attempts',
   {
     id: id(),
+    assistantRunId: bigint('assistant_run_id', { mode: 'bigint' }),
+    knowledgeJobId: bigint('knowledge_job_id', { mode: 'bigint' }),
     enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
       .notNull()
       .references(() => enterprises.id, { onDelete: 'restrict' }),

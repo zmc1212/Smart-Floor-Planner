@@ -42,6 +42,7 @@ const ROLE_LABELS: Record<string, string> = {
   super_admin: '平台管理员',
   designer: '家装设计顾问',
   measurer: '家装现场顾问',
+  construction_staff: '施工员工',
 };
 
 const ACTIONS_BY_ROLE: Record<string, ActionItem[]> = {
@@ -158,6 +159,13 @@ export async function GET(request: Request) {
     }
 
     const role = staff.role || 'viewer';
+    if (role === 'construction_staff') return NextResponse.json({ success: true, data: {
+      isStaff: true, profile: { name: staff.displayName || '施工员工', avatar,
+        username: staff.username || '', enterpriseName: enterprise?.name || '',
+        phoneMasked: maskPhone(staff.phone || user.phone), roleLabel: '施工员工', role,
+        canChangePassword: true, staffId: staff._id, enterpriseId: context.enterpriseId },
+      actions: [], workbenchCards: [], unreadNotificationCount: 0, todos: [],
+    } });
     const staffId = parsePostgresId(staff._id, 'staff id');
     const month = shanghaiMonthRange();
     const workbenchCards = await withMiniProgramPostgresTransaction(

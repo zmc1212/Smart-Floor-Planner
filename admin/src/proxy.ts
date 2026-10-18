@@ -2,8 +2,18 @@ import { hasReferrersMenuPermission } from '@/lib/referrer-roster-access';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import * as jose from 'jose';
+import { constructionRouteAllowed } from '@/lib/construction/route-access';
 
 const ROUTE_PERMISSIONS: Record<string, string> = {
+  '/construction-projects': 'construction-projects',
+  '/api/construction': 'construction-projects',
+  '/case-publishing': 'case-publishing',
+  '/api/portfolio': 'case-publishing',
+  '/assistant-knowledge': 'assistant-knowledge',
+  '/api/assistant/knowledge': 'assistant-knowledge',
+  '/api/assistant/preview': 'assistant-knowledge',
+  '/api/assistant/usage': 'assistant-usage',
+  '/api/assistant/operations': 'assistant-usage',
   '/': 'dashboard',
   '/enterprises': 'enterprises',
   '/enterprise-registration-codes': 'enterprises',
@@ -11,6 +21,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/ai-models': 'ai-providers',
   '/ai-presets': 'ai-presets',
   '/llm-settings': 'llm-settings',
+  '/map-settings': 'map-settings',
   '/media-storage': 'media-storage',
   '/sms-settings': 'sms-settings',
   '/ai-credit-prices': 'ai-credit-prices',
@@ -55,6 +66,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/platform/sms-config': 'sms-settings',
   '/api/platform/sms-delivery-logs': 'sms-settings',
   '/api/platform/llm-config': 'llm-settings',
+  '/api/platform/map-config': 'map-settings',
   '/ai-studio': 'ai-scenarios',
   '/design-reports': 'ai-scenarios',
   '/api/design-reports': 'ai-scenarios',
@@ -97,6 +109,15 @@ export async function proxy(request: NextRequest) {
   const token = request.cookies.get('auth_token')?.value;
   const authHeader = request.headers.get('Authorization');
   const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
+  // Enforce the construction boundary before the shared Mini Program/Bearer bypass.
+  if (authHeader?.startsWith('Bearer ')) {
+    try {
+      const { payload } = await jose.jwtVerify(authHeader.slice(7), secret, { audience: 'miniprogram' });
+      if (payload.staffRole === 'construction_staff' && payload.mode === 'staff' && !constructionRouteAllowed(pathname, true)) {
+        return NextResponse.json({ success: false, error: 'construction_forbidden' }, { status: 403 });
+      }
+    } catch { /* Existing authentication boundaries handle invalid tokens. */ }
+  }
 
   if (pathname === '/login') {
     if (!token) return passThrough(request);
@@ -140,8 +161,10 @@ export async function proxy(request: NextRequest) {
   if (
     pathname === '/api/health' ||
     pathname.startsWith('/api/public/design-reports/') ||
+    pathname.startsWith('/api/public/construction/') ||
     pathname === '/api/internal/seed' ||
     pathname === '/api/internal/lead-claim-windows/run' ||
+    pathname === '/api/internal/assistant/jobs/run' ||
     pathname.startsWith('/api/auth/') || 
     pathname.startsWith('/api/miniprogram/')
   ) {
@@ -180,12 +203,25 @@ export async function proxy(request: NextRequest) {
     }
 
     const role = payload.role as string;
+    if (role === 'construction_staff' && !constructionRouteAllowed(pathname, false)) {
+      return pathname.startsWith('/api/') ? NextResponse.json({ success: false, error: 'construction_forbidden' }, { status: 403 })
+        : NextResponse.redirect(new URL('/construction-projects', request.url));
+    }
+    if ((pathname === '/case-publishing' || pathname.startsWith('/case-publishing/') || pathname.startsWith('/api/portfolio')) && !['super_admin', 'admin', 'enterprise_admin', 'designer'].includes(role)) {
+      return pathname.startsWith('/api/') ? NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }) : NextResponse.redirect(new URL('/', request.url));
+    }
+    if (pathname === '/assistant-knowledge' || pathname.startsWith('/assistant-knowledge/')) {
+      if (!['super_admin', 'admin', 'enterprise_admin'].includes(role)) return NextResponse.redirect(new URL('/', request.url));
+    }
     if ((pathname.startsWith('/design-reports') || pathname.startsWith('/api/design-reports')) && !['super_admin', 'admin', 'enterprise_admin', 'designer'].includes(role)) {
       return pathname.startsWith('/api/') ? NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 }) : NextResponse.redirect(new URL('/', request.url));
     }
     const userPermissions = (payload.permissions as string[]) || [];
 
     if (pathname.startsWith('/media-storage') && role !== 'super_admin' && role !== 'admin') {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+    if (pathname.startsWith('/map-settings') && role !== 'super_admin' && role !== 'admin') {
       return NextResponse.redirect(new URL('/', request.url));
     }
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { ReportEntry } from '@/components/design-reports/report-entry';
+import { constructionLeadEntry } from '@/components/construction/lead-entry';
 
 import { useCallback, useEffect, useRef, useState, type Key } from 'react';
 import {
@@ -436,6 +437,7 @@ function LeadsPage() {
   const confirmAction = useConfirmDialog();
   const { user: currentUser } = useCurrentUser();
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const constructionEntry = constructionLeadEntry(currentUser, selectedLead);
   const selectedLeadRef = useRef<Lead | null>(null);
   selectedLeadRef.current = selectedLead;
   const [newNote, setNewNote] = useState('');
@@ -1551,8 +1553,8 @@ function LeadsPage() {
       <PageContainer
         breadcrumbRender={false}
         className="admin-page-container"
-        title="客资线索管理"
-        content="跟进客户状态、查看协作归属，并衔接正式量房与方案设计。"
+        title="客户线索"
+        content="跟进客户状态、查看协作归属，并衔接正式量房、方案设计与施工项目。"
       >
         <ModuleOverview
           ariaLabel="线索概览"
@@ -2233,7 +2235,8 @@ function LeadsPage() {
         title={selectedLead ? `${selectedLead.name}的线索详情` : '线索详情'}
         onClose={closeLeadDetail}
         extra={selectedLead && canMutateLead(selectedLead) ? (
-          <Space>
+          <Space wrap>
+            {constructionEntry && <Button icon={<Plus size={16} />} href={constructionEntry}>建立工地</Button>}
             <ReportEntry leadId={selectedLead._id} />
             <Button icon={<FilePenLine size={16} />} onClick={() => openAiWorkbench(selectedLead._id)}>
               {selectedLead.floorPlanIds?.length || selectedLead.followUpRecords?.length ? '查看方案' : '开始方案'}

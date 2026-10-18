@@ -491,10 +491,13 @@ test('enterprise staff roster items expose assignment eligibility without Admin 
   assert.equal(pausedIncompleteDesigner.action, 'resume');
 });
 
-test('enterprise staff roster role query defaults to designer and measurer', () => {
-  assert.deepEqual(parseEnterpriseStaffRosterRoles(null), ['designer', 'measurer']);
+test('enterprise staff roster includes construction employees without dispatch eligibility', () => {
+  assert.deepEqual(parseEnterpriseStaffRosterRoles(null), ['designer', 'measurer', 'construction_staff']);
   assert.deepEqual(parseEnterpriseStaffRosterRoles('designer'), ['designer']);
   assert.deepEqual(parseEnterpriseStaffRosterRoles('measurer'), ['measurer']);
+  assert.deepEqual(parseEnterpriseStaffRosterRoles('construction_staff'), ['construction_staff']);
+  const worker = buildEnterpriseStaffRosterItem({ id: '90', role: 'construction_staff', constructionTrades: ['水电'] });
+  assert.equal(worker.assignmentEligible, false); assert.equal(worker.action, null); assert.equal(worker.statusLabel, '按工地分配');
   assert.throws(() => parseEnterpriseStaffRosterRoles('salesperson'), /role/);
 });
 
@@ -525,7 +528,7 @@ test('enterprise referrer roster items expose disable action only while active',
     phone: '13900002222',
     status: 'active',
     hasActivePromotionCode: true,
-    statusLabel: '活动',
+    statusLabel: '已启用',
     statusTone: 'green',
     helperText: '可出示活动推广码',
     action: 'disable',

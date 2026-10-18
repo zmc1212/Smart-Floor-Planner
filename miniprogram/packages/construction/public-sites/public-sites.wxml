@@ -1,0 +1,14 @@
+<view class="public-page">
+  <view class="public-nav" style="padding-top:{{navTop}}px;padding-right:{{navRight}}px"><button class="brand" style="min-height:{{navHeight}}px" bindtap="back"><view class="brand-mark"><image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit"/></view><view><text class="brand-name">家客来</text><text class="meta">小K · 装修服务助手</text></view></button></view>
+  <view class="public-content">
+    <view class="public-hero"><view><text class="heading">先看看附近的工地</text><text class="subtitle">真实工地，透明施工，放心装修</text></view><image src="../assets/xiaok-public-sites.png" mode="aspectFit" aria-hidden="true"/></view>
+    <view class="intro-bubble">可以先看看我们怎样服务业主。</view>
+    <view class="area-row"><picker range="{{areas}}" range-key="label" value="{{areaIndex}}" bindchange="chooseArea" disabled="{{loading}}"><view class="area-picker">当前片区：{{areaLabel}} <text>⌄</text></view></picker><text class="meta">仅展示业主授权公开的内容</text></view>
+    <view wx:if="{{loading && !items.length}}" class="state">正在读取公开工地…</view>
+    <view wx:if="{{error || publicError}}" class="state" role="alert"><text>{{error || publicError}}</text><button class="secondary" bindtap="refresh">重新读取</button></view>
+    <view wx:if="{{!loading && !error && !items.length}}" class="state">这一片区暂时没有授权公开的工地，可以先聊聊你家的装修。</view>
+    <view wx:for="{{items}}" wx:key="id" class="site-card"><view class="site-cover"><image wx:if="{{item.photos.length && publicPaths[item.photos[0].key]}}" src="{{publicPaths[item.photos[0].key]}}" mode="aspectFill"/><text wx:else class="meta">现场照片未公开</text><text class="stage">{{item.stageName}}</text></view><view class="site-copy"><text class="site-title">{{item.name}}</text><text class="meta">{{item.district}} · {{item.dateLabel}}</text><text class="site-summary">{{item.excerpts[0].text}}</text><button class="primary" data-id="{{item.id}}" bindtap="openSite">去围观 <text>›</text></button></view></view>
+    <button class="consult-row" bindtap="consult">先聊我家的装修 <text>›</text></button>
+  </view>
+  <view class="composer"><button class="icon-button" bindtap="voice" aria-label="语音输入"><image src="../assets/microphone.png"/></button><input value="{{draft}}" bindinput="input" confirm-type="send" bindconfirm="consult" placeholder="说说你的装修想法" maxlength="4000"/><button class="icon-button" bindtap="consult" aria-label="去咨询发送图片"><image src="../assets/image.png"/></button><button class="send" bindtap="consult" aria-label="开始我的装修咨询"><image src="../assets/arrow-up.png"/></button></view>
+</view>

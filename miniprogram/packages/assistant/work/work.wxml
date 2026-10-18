@@ -1,0 +1,20 @@
+<!-- PPT homepage case card extended with the approved render/photo grouping and shared states. -->
+<view class="portfolio-page">
+  <view class="portfolio-nav" style="padding-top: {{navigationTop}}px; padding-right: {{navigationRight}}px;"><view class="portfolio-nav-lane" style="min-height: {{navigationHeight}}px;"><button class="back" bindtap="back" aria-label="返回"><image src="../assets/arrow-left.png" /></button><text class="nav-title">作品详情</text></view></view>
+  <view class="portfolio-content">
+    <text wx:if="{{loading}}" class="state-copy">正在读取作品…</text>
+    <view wx:if="{{error}}" class="notice" role="alert"><text>{{error}}</text><button wx:if="{{needsLogin}}" bindtap="login">去登录</button><button wx:elif="{{pendingAction}}" bindtap="retryWrite" disabled="{{busy}}">核对操作结果</button><button wx:else bindtap="retry">重新读取</button></view>
+    <block wx:if="{{work && !unavailable}}">
+      <view class="work-intro"><text class="detail-title">{{work.title}}</text><text class="designer-bio">{{work.authorName}} · {{work.authorRole}}</text><text class="work-metadata">{{work.metadata}}</text><text class="city-label">{{work.cityName}}{{work.district ? ' · ' + work.district : ''}}{{work.community ? ' · ' + work.community.name : ''}}</text><text class="detail-description">{{work.description}}</text></view>
+      <view wx:if="{{work.renders.length}}" class="gallery-section"><text class="section-title">效果图</text><view wx:for="{{work.renders}}" wx:key="assetId" class="gallery-item"><view class="gallery-image"><image wx:if="{{images['i' + item.assetId]}}" src="{{images['i' + item.assetId]}}" mode="widthFix" data-id="{{item.assetId}}" bindtap="preview" /><text wx:else class="state-copy">图片加载中</text><text class="image-badge">{{item.label}}</text></view><text wx:if="{{item.caption}}" class="image-caption">{{item.caption}}</text></view></view>
+      <view wx:if="{{work.photos.length}}" class="gallery-section"><text class="section-title">实拍图</text><view wx:for="{{work.photos}}" wx:key="assetId" class="gallery-item"><view class="gallery-image"><image wx:if="{{images['i' + item.assetId]}}" src="{{images['i' + item.assetId]}}" mode="widthFix" data-id="{{item.assetId}}" bindtap="preview" /><text wx:else class="state-copy">图片加载中</text><text class="image-badge">{{item.label}}</text></view><text wx:if="{{item.caption}}" class="image-caption">{{item.caption}}</text></view></view>
+      <button wx:if="{{imageError}}" class="state-copy" bindtap="retryImages">{{imageError}}</button>
+      <view class="preference-section"><text class="section-title">这个方向适合你吗？</text><view class="preference-row"><button class="preference-button {{work.preference === 'like' ? 'is-selected' : ''}}" data-sentiment="like" bindtap="preference" disabled="{{busy || readOnly || pendingAction}}">喜欢这个方向</button><button class="preference-button {{work.preference === 'dislike' ? 'is-selected' : ''}}" data-sentiment="dislike" bindtap="preference" disabled="{{busy || readOnly || pendingAction}}">不太适合</button></view><text class="action-helper">只记录本次咨询偏好，随时可以更正。</text></view>
+      <view wx:if="{{feedback}}" class="notice" role="status">{{feedback}}</view>
+      <text class="action-helper">作品供方向参考，同小区不代表同户型；实拍不表示当前可预约参观。</text>
+      <button class="primary-action" bindtap="continueChat">回原咨询继续聊</button><button class="secondary-action" bindtap="contact" disabled="{{busy || readOnly || pendingAction}}">申请联系{{work.authorName}}</button>
+      <button wx:if="{{sharePath}}" class="share-work" open-type="share">分享设计室</button><button wx:else class="share-work" bindtap="retry" disabled="{{loading}}">重新准备分享</button>
+    </block>
+    <button wx:if="{{unavailable || (!loading && !work)}}" class="secondary-action" bindtap="continueChat">{{conversationId ? '回到原咨询' : '返回首页'}}</button>
+  </view>
+</view>

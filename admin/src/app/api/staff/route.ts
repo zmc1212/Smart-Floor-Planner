@@ -19,6 +19,7 @@ import {
   withTenantRoute,
 } from '@/lib/tenant-route';
 import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-retry';
+import { tradesInput } from '@/lib/construction/contracts';
 import {
   buildStaffUsername,
   hashStaffInitialPassword,
@@ -30,6 +31,7 @@ interface StaffCreateBody {
   displayName?: string;
   role: string;
   phone?: string;
+  constructionTrades?: string[];
   enterpriseId?: string;
   departmentId?: string;
   promoterIds?: string[];
@@ -43,6 +45,7 @@ const BUSINESS_ROLES = [
   'designer',
   'salesperson',
   'measurer',
+  'construction_staff',
 ];
 
 function duplicateResponse(error: unknown) {
@@ -250,7 +253,7 @@ export async function POST(request: Request) {
         }
         if (
           context.role === 'enterprise_admin' &&
-          !['designer', 'salesperson', 'measurer'].includes(role)
+          !['designer', 'salesperson', 'measurer', 'construction_staff'].includes(role)
         ) {
           return NextResponse.json(
             { success: false, error: 'Forbidden role' },
@@ -343,6 +346,7 @@ export async function POST(request: Request) {
                 mustChangePassword: true,
                 displayName: displayName?.trim() || '',
                 phone: normalizedPhone,
+                constructionTrades: role === 'construction_staff' ? tradesInput(body.constructionTrades) : [],
                 role,
                 menuPermissions,
                 enterpriseId: BigInt(targetEnterpriseId),

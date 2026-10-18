@@ -166,6 +166,7 @@ Page({
     const role = roleForIdentity(identity);
     const fallback = {
       salesperson: '/packages/business/promotion-records/promotion-records',
+      construction_staff: '/packages/construction/projects/projects',
       platform_admin: '/packages/platform/devices/devices',
     }[role];
     if (!fallback) return false;

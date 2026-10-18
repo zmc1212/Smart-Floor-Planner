@@ -126,7 +126,7 @@
         <view class="hero-leaf hero-leaf-tr" aria-hidden="true"></view>
         <view class="hero-copy">
           <text class="welcome-title">欢迎加入服务团队</text>
-          <text class="welcome-subtitle">完成身份选择后，即可开始服务客户</text>
+          <text class="welcome-subtitle">选择服务身份，加入企业团队</text>
         </view>
         <image
           class="guide-k"
@@ -170,6 +170,11 @@
               <view class="role-option-copy">承接上门量房与户型建立</view>
             </view>
             <view class="selection-mark"><view wx:if="{{selectedStaffRole === 'measurer'}}" class="selection-dot"></view></view>
+          </view>
+          <view class="role-option {{selectedStaffRole === 'construction_staff' ? 'is-selected' : ''}}" data-role="construction_staff" bindtap="onChooseStaffRole" aria-role="radio" aria-checked="{{selectedStaffRole === 'construction_staff'}}">
+            <view class="role-icon"><image src="/packages/business/assets/identity-switch/role-cards/construction-tools.png" mode="aspectFit" /></view>
+            <view class="role-text"><view class="role-option-title">施工员工</view><view class="role-option-copy">按工地分工，跟进实际施工节点</view></view>
+            <view class="selection-mark"><view wx:if="{{selectedStaffRole === 'construction_staff'}}" class="selection-dot"></view></view>
           </view>
         </view>
         <view class="enterprise-pill">
@@ -307,10 +312,11 @@
 
   <view wx:if="{{nameSheetVisible}}" class="name-overlay" catchtouchmove="preventMove">
     <view class="name-card">
-      <view class="section-title">设置推荐人姓名</view>
+      <view class="section-title">{{codeType === 'staff' ? '设置员工资料' : '设置推荐人姓名'}}</view>
       <view class="section-copy">企业会用这个姓名识别你，请填写真实姓名。</view>
       <input class="name-input" value="{{displayName}}" maxlength="30" placeholder="请输入真实姓名" placeholder-class="name-placeholder" bindinput="onDisplayNameInput" />
       <view class="name-counter">{{displayName.length}} / 30</view>
+      <input wx:if="{{codeType === 'staff'}}" class="name-input" value="{{constructionTradesText}}" maxlength="200" placeholder="工种，如水电、油漆、项目管理" placeholder-class="name-placeholder" bindinput="onTradesInput" />
       <button class="join-action {{pageState === 'submitting' ? 'is-disabled' : ''}}" loading="{{pageState === 'submitting'}}" disabled="{{pageState === 'submitting'}}" bindtap="onConfirmReferrerName">确认加入</button>
     </view>
   </view>

@@ -407,6 +407,195 @@
       "when": 1788854400000,
       "tag": "0057_design_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1792022400000,
+      "tag": "0058_assistant_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792022401000,
+      "tag": "0059_assistant_identity_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1792022402000,
+      "tag": "0060_assistant_knowledge",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1792022403000,
+      "tag": "0061_assistant_answers",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1792022404000,
+      "tag": "0062_assistant_usage",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1792022405000,
+      "tag": "0063_assistant_platform_knowledge",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1792022406000,
+      "tag": "0064_assistant_requirements",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1792022407000,
+      "tag": "0065_assistant_guidance",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1792108800000,
+      "tag": "0066_assistant_handoff_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1792108801000,
+      "tag": "0067_assistant_media",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1792108802000,
+      "tag": "0068_assistant_media_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1792108803000,
+      "tag": "0069_assistant_agent",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1792108804000,
+      "tag": "0070_assistant_reference_cases",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1792195200000,
+      "tag": "0071_designer_portfolio",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1792195201000,
+      "tag": "0072_portfolio_provider_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1792195202000,
+      "tag": "0073_construction_planning",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1792195203000,
+      "tag": "0074_construction_context_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1792195204000,
+      "tag": "0075_construction_resource_cleanup",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1792195205000,
+      "tag": "0076_platform_map_services",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1792195206000,
+      "tag": "0077_construction_stages",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1792195207000,
+      "tag": "0078_map_provider_switching",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1792195208000,
+      "tag": "0079_optional_map_authorization",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1792195209000,
+      "tag": "0080_construction_staff",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1792195210000,
+      "tag": "0081_construction_identity_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1792195211000,
+      "tag": "0082_construction_staff_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1792195212000,
+      "tag": "0083_construction_shared_chat",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1792195213000,
+      "tag": "0084_construction_public_sites",
+      "breakpoints": true
     }
   ]
 }

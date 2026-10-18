@@ -13,6 +13,7 @@ export type PlatformConfigValues = Pick<
   | 'enterpriseRegistrationCodeTemplateConfig'
   | 'aiPromptConfig'
   | 'llmConfig'
+  | 'mapServiceConfig'
 >;
 
 export class PlatformConfigRepository {

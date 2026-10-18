@@ -334,7 +334,7 @@ export async function PUT(
         if (body.name !== undefined) input.name = String(body.name).trim();
         if (body.phone !== undefined) input.phone = String(body.phone).trim();
         if (body.communityName !== undefined) {
-          input.communityName = String(body.communityName).trim() || null;
+          input.communityName = String(body.communityName ?? '').trim() || null;
         }
         if (body.area !== undefined) {
           const area = Number(body.area);
@@ -342,10 +342,10 @@ export async function PUT(
         }
         if (body.stylePreference !== undefined) {
           input.stylePreference =
-            String(body.stylePreference).trim() || null;
+            String(body.stylePreference ?? '').trim() || null;
         }
         if (body.city !== undefined) {
-          input.city = String(body.city).trim() || null;
+          input.city = String(body.city ?? '').trim() || null;
         }
         if (body.source !== undefined) input.source = String(body.source);
         if (body.status !== undefined) {
