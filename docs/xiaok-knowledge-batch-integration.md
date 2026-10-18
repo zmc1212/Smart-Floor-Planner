@@ -2,6 +2,32 @@
 
 Status: **Limited; retrieval/manual batch management and shared-port integration have bounded evidence; no automatic production batch entry is enabled, and customer model semantics remain unaccepted.** Actual verification is recorded below; code existence is not full-stage acceptance. This is a reviewable knowledge-line handoff, not a replacement for the [phase-two contract](./xiaok-assistant-phase-2.md), [admin inventory](./admin-system-modules.md), or the user's local enterprise-knowledge plans. Baseline: `d023854313842ef447efb2973beb540d1511e125`. The original business worktree's branch and product source are not changed.
 
+<!-- knowledge-provider-certainty:start -->
+
+## Formal shared conclusion integrated: offline only, historical uncertainty retained
+
+Remote `codex/xiaok-provider-certainty` was verified at `752020753774a1fc5ccae6f305c7dd26358437bb` and normally merged from knowledge stable `0030eb82`, producing `91f3c1857f429a86567be102dbb7831c8b090f8b`. From common baseline `04a85946`, the 14 business paths and nine knowledge paths had no overlap/conflict. This imports v63 occupancy interpretation and provider-certainty fix `610ec0d2` verbatim; the knowledge line did not edit shared-owned files. The fix classifies **future** fetch-without-response connection errors as unknown and prevents automatic supplier fallback, preserving explicit-response/pre-dispatch rules. It cannot prove an old request was unreceived or free.
+
+The formal conclusion retains `4369`: its queued send is local admission only; attempt `1804` remains failed/accepted=false/actual_cost={}, run indeterminate/provider_outcome_unknown, quota reconciling with null settled tokens/cost, and missing original create key. `4242` retains an unknown/accepted attempt and missing create/send keys/request hash. Old fixtures are cleaned; missing rows do not prove zero calls/fees. No fabricated keys, equivalent replacement sends, retries or manual cost convergence are allowed. Independent synthetic `4370`'s simulated-selection/real-C01 withdrawal success proves its permission boundary only, **not that `4369` succeeded, was never dispatched or is reconciled**.
+
+New knowledge-side cross-contract checks pass **4/4, 0 failed/skipped/cancelled**: future unknown connections grant no new supplier submission; the new classification does not rewrite old failed/unaccepted receipts or lift recovery fences; `4242` retains its unknown state/key gaps; and `4370` cannot substitute for `4369` evidence. One fetch is a pure mock. The actual test child's guard reports **zero DB connections, provider fetches and external socket attempts**. This increment made no database/real-model/Embedding/new provider HTTP, acceptance-lock, Worker/server or native calls. The shared 230-check suite and completed database/semantic suites were not repeated or counted as new evidence.
+
+Reviewable fixture `scripts/fixtures/assistant-knowledge-recovery-receipts.json` extracts partial states/idempotency identities from three previously executed labelled synthetic samples, with all original archive SHA256 values. It contains no credentials or real customer material; missing fields stay null without repairing history. Dedicated `knowledge-provider-certainty.test.ts` is the only new typecheck candidate. Two-file lint passes; same-program types against `75202075` are **287→287, 0 added**, not a clean repository-wide typecheck. Beyond verbatim business integration, this line only changes tests/acceptance metadata/bilingual handoff, with no new runtime module, API/role/citation permission, UI, schema/migration or production behavior.
+
+### Required recovery evidence and waiting boundary
+
+Remaining live bilateral attribution/new-answer semantics require supplier evidence and cannot safely proceed. At minimum, obtain and cross-check:
+
+1. Reliable original supplier outcome, explicit receipt/nonreceipt proof and observed usage/billing evidence. Client silence, queued admission or accepted=false cannot substitute.
+2. Complete trusted original tenant/principal/conversation/message/run identity, create/send keys, request hash and source-version/authorization evidence. Missing keys or cleaned archive-only data cannot be reconstructed through a model, test or new key.
+3. The shared owner's evidence-based authoritative-state conclusion and an existing authorized original-operation recovery mechanism. Cleaned fixtures cannot directly resume, and equivalent new sends cannot bypass indeterminate/reconciling.
+
+Even with that evidence, a subsequent explicit call scope and budget are needed before at most one controlled original-operation recovery acceptance. This ceiling is not current dispatch authorization. Any new uncertainty immediately stops and preserves the original receipt/cost state, without automatic supplier switching or replacement keys. **Waiting for supplier/complete original-operation evidence, not permission denial**; no new task or polling loop is introduced to stay active.
+
+Evidence: `tmp/knowledge-provider-certainty/{integration-preflight.json,contracts-final.log,contracts-final-status.json,network-final-runner.json,types-final/,lint-final.log}`. Original archives, plans and dirty worktree remain preserved. See the [shared transport contract](./xiaok-assistant-phase-2.md#current-shared-provider-failure-certainty) and [shared handoff](./xiaok-assistant-handoff.zh-CN.md). Overall **Limited**; no main merge, deployment, force-push, permission expansion or recovery execution.
+
+<!-- knowledge-provider-certainty:end -->
+
 <!-- knowledge-revocation-acceptance:start -->
 
 ## Withdrawal permission follow-up and original-key recovery preparation
@@ -27,7 +53,7 @@ New offline units pass **5/5, 0 failed/skipped/cancelled**: missing/tampered ide
 
 After the shared owner provides a stable conclusion and reliable original-operation evidence, verify identity, request hash, current authoritative state and the valid recovery mechanism first. Do not bypass the existing fence while indeterminate/reconciling remains unresolved. Archive-only or missing-key evidence means continued waiting, not reconstruction as an equivalent new send. Only an explicitly valid original authorized recovery mechanism can lead to **at most one** controlled execution with original-identity and attempt/HTTP deltas checked; any new uncertainty immediately stops and retains the original receipt. The preparation function never resumes, dispatches or reconciles costs and does not operate on old runs.
 
-Evidence root `tmp/knowledge-revocation/`: `pre-run.json`, `service-1/{live.json,service-status.json,network-guard.json,lock-release.json}`, `unit-complete.log`, `lint-complete.log`, `types-complete/`, `recovery-preparation.json`, `preparation-network.json`, `stage-summary.json`. Nonpaid reproduction requires the existing approved connection file, original admin environment directory and a fresh output directory in this worktree's tmp; this task does not loop the check. Independent work is complete; **waiting for the shared connection/status-classification conclusion, not permission denial**. Live conflict attribution/professional semantics remain unaccepted; overall **Limited**, with no new product feature, main merge, deployment or permission expansion.
+Evidence root `tmp/knowledge-revocation/`: `pre-run.json`, `service-1/{live.json,service-status.json,network-guard.json,lock-release.json}`, `unit-complete.log`, `lint-complete.log`, `types-complete/`, `recovery-preparation.json`, `preparation-network.json`, `stage-summary.json`. Nonpaid reproduction requires the existing approved connection file, original admin environment directory and a fresh output directory in this worktree's tmp; this task does not loop the check. The formal shared conclusion has since arrived through `75202075`; **supplier/complete original-operation evidence is still missing, not permission denial**. Live conflict attribution/professional semantics remain unaccepted; overall **Limited**, with no new product feature, main merge, deployment or permission expansion.
 
 <!-- knowledge-revocation-acceptance:end -->
 

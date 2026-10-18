@@ -26,7 +26,8 @@ const addedCandidates = ['src/lib/assistant/knowledge/evaluation-batch.ts', 'src
   'scripts/knowledge-batch-seam-acceptance/postgres-fixture.ts', 'scripts/knowledge-batch-seam-acceptance/driver.ts',
   'scripts/knowledge-batch-seam-acceptance/types.ts', 'src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts',
   'scripts/assistant-knowledge-semantics-followup.ts','src/lib/assistant/__tests__/knowledge-semantic-followup.test.ts',
-  'scripts/assistant-knowledge-revocation.ts','src/lib/assistant/__tests__/knowledge-recovery-evidence.test.ts'];
+  'scripts/assistant-knowledge-revocation.ts','src/lib/assistant/__tests__/knowledge-recovery-evidence.test.ts',
+  'src/lib/assistant/__tests__/knowledge-provider-certainty.test.ts'];
 const baselineFiles = new Set(cp.execFileSync('git', ['-C', path.resolve(root, '..'), 'ls-tree', '-r', '--name-only', base, '--',
   ...addedCandidates.map(file => 'admin/' + file)], { encoding: 'utf8', windowsHide: true }).trim().split('\n'));
 const added = new Set(addedCandidates.filter(file => !baselineFiles.has('admin/' + file)).map(file => norm(root + '/' + file)));

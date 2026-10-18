@@ -2,6 +2,32 @@
 
 状态：**Limited；检索/手动批次管理和共享端口接线已有有界证据，未开放生产自动批量入口，客户实模语义仍未验收。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+<!-- knowledge-provider-certainty:start -->
+
+## 正式共享结论已集成：仅离线接回，历史未决保留
+
+已核验远端 `codex/xiaok-provider-certainty` 的 `752020753774a1fc5ccae6f305c7dd26358437bb`，从知识稳定 `0030eb82` 正常合入，merge 为 `91f3c1857f429a86567be102dbb7831c8b090f8b`；共同基线 `04a85946`，业务 14 路径与知识 9 路径无重叠/冲突。包含原样导入的 v63 人数解释及 `610ec0d2` 供应商确定性修复，未由知识线编辑共享责任文件。该修复仅将**未来** fetch 后无响应的连接异常归为 unknown、禁止自动切换供应商，保留原明确 HTTP 响应/派发前规则；不构成旧请求未被供应商接收或没有费用的证明。
+
+正式共享结论保持：`4369` 的原 queued send 只是本地准入，attempt `1804` 仍 failed/accepted=false/actual_cost={}，run 仍 indeterminate/provider_outcome_unknown，预留 reconciling、settled tokens/cost 为 null，原 create key 缺失；`4242` 仍有 unknown/accepted attempt，原 create/send key 和 request hash 缺失。原夹具已清理，不能据缺行推定零调用/零费用。两者均不得补造原键、等价换键重发、重试或人工收敛费用。独立合成 run `4370` 的模拟选摘/真实 C01 撤回成功只证明其权限边界，**不证明 `4369` 已成功、未派发或已核销**。
+
+新增知识侧交叉契约 **4/4 通过，0 失败/跳过/取消**：未来连接 unknown 不授予新供应商提交；新分类不改旧 failed/unaccepted 收据或解除恢复阻断；`4242` 保留 unknown 与全部原键缺项；`4370` 不可替代 `4369` 的执行证据。一次 fetch 为纯 mock，实际执行测试的子进程守卫报告 **DB 连接 0、provider fetch 0、外部 socket 尝试 0**。本轮没有数据库/真实模型/Embedding/新供应商 HTTP、验收锁、Worker、监听服务或原生调用；未重跑共享 230 项及已完成的数据库/语义套件，也不把其历史结果计入本轮。
+
+可审查样本为 `scripts/fixtures/assistant-knowledge-recovery-receipts.json`：仅提取三个已执行、明确合成样本的部分状态/幂等身份，记录三份原归档 SHA256，不含凭据或真实客户资料；缺失字段保持 null，不修补历史。专属测试为 `knowledge-provider-certainty.test.ts`，类型脚本只增加该候选。2 文件 lint 通过，同程序与 `75202075` 比较 **287→287，新增 0**，不是全仓类型干净。除原样集成业务变更，本线只有测试/验收元数据/双语交接，无新增运行模块、API/角色/引用权限、UI、schema/迁移或生产功能行为。
+
+### 剩余可恢复条件与等待点
+
+剩余实模双边归因与新回答语义需要供应商证据，目前不可安全继续。至少须取得并相互核对：
+
+1. 可靠供应商原请求结果、明确接收/未接收证明及实际用量/费用依据；客户端无响应、queued、accepted=false 均不能替代。
+2. 完整可信原 tenant/principal/conversation/message/run 身份、create/send keys 与 request hash，以及原来源版本/授权；缺键或仅有清理后的归档不能由模型、测试或新键补造。
+3. 共享责任方基于这些证据确认权威状态及现有可授权的原操作恢复机制；当前已清理夹具不能直接 resume，也不得重建等价发送绕过 indeterminate/reconciling。
+
+条件齐备后仍需后续明确的调用范围和预算，才可安排至多一次受控原操作恢复验收；“至多一次”不是当前派发授权。任何新不确定立即停止、保留原收据/费用状态，不自动转供应商或换键。**当前等待供应商/完整原操作证据，非权限拒绝**；不为维持运行新增任务或循环检查。
+
+证据 `tmp/knowledge-provider-certainty/{integration-preflight.json,contracts-final.log,contracts-final-status.json,network-final-runner.json,types-final/,lint-final.log}`，原归档/计划/原脏工作区保持。共享正式合同见[二期连接确定性](./xiaok-assistant-phase-2.zh-CN.md#当前共享供应商连接错误与结果确定性)及[共享交接](./xiaok-assistant-handoff.zh-CN.md)。整体 **Limited**；未合 main、部署、强推、扩大权限或执行恢复。
+
+<!-- knowledge-provider-certainty:end -->
+
 <!-- knowledge-revocation-acceptance:start -->
 
 ## 撤回权限补验与原键恢复准备
@@ -27,7 +53,7 @@
 
 等待共享责任方给出稳定结论及可靠原操作证据后，先核对原身份、请求 hash、当前权威状态与有效恢复机制；不带未核清 indeterminate/reconciling 状态绕过既有围栏。若证据仍只有归档或缺键，继续等待，不重建一次等价新发送。只有原授权/原操作恢复机制明确可用后，才可安排**至多一次**受控执行，并对照原身份及 attempt/HTTP 增量；任何新不确定立即停止并保留原收据。准备函数不调用恢复、派发或成本收敛，不处理旧 run。
 
-证据根 `tmp/knowledge-revocation/`：`pre-run.json`、`service-1/{live.json,service-status.json,network-guard.json,lock-release.json}`、`unit-complete.log`、`lint-complete.log`、`types-complete/`、`recovery-preparation.json`、`preparation-network.json`、`stage-summary.json`。复跑非付费模式需既有批准连接文件、原 admin 环境目录和全新本 worktree tmp 输出目录；本任务不循环复跑。当前独立工作已完成，**等待共享连接/状态分类结论，非权限拒绝**。实模冲突双边引用及专业语义仍未通过，整体 **Limited**；无新功能、main 合并、部署或权限扩大。
+证据根 `tmp/knowledge-revocation/`：`pre-run.json`、`service-1/{live.json,service-status.json,network-guard.json,lock-release.json}`、`unit-complete.log`、`lint-complete.log`、`types-complete/`、`recovery-preparation.json`、`preparation-network.json`、`stage-summary.json`。复跑非付费模式需既有批准连接文件、原 admin 环境目录和全新本 worktree tmp 输出目录；本任务不循环复跑。其后共享正式结论已由 `75202075` 接回，**仍缺供应商/完整原操作证据，非权限拒绝**。实模冲突双边引用及专业语义仍未通过，整体 **Limited**；无新功能、main 合并、部署或权限扩大。
 
 <!-- knowledge-revocation-acceptance:end -->
 
