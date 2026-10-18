@@ -1,5 +1,6 @@
 import { fail } from '../contracts';
 import { referenceOnlyClause } from '../knowledge/reference-intent';
+import { explicitNeedRoomPattern } from './room-names';
 import { excerptRequirements, requirementKeys, allRequirementKeys, type ConfirmedRequirements, type RequirementKey } from './contract';
 
 export type GuidanceQuestion = { field: RequirementKey; text: string; key?: string; options?: string[]; answerType?: 'text' | 'single' | 'multiple'; skippable?: boolean };
@@ -107,7 +108,7 @@ export function chatFirstProgress(g: Guidance, messages: Array<{ id: string; tex
       for (const k of requirementKeys) if (facts[k].test(clause)) {
         fields[k] = { text: Array.from(clause).slice(0, 1000).join(''), sourceMessageId: message.id, truncated: Array.from(clause).length > 1000 }; matched = true;
       }
-      const room = clause.match(/(?:主卧|次卧|书房|客厅|卧室|厨房|阳台|卫生间)/)?.[0];
+      const room = clause.match(explicitNeedRoomPattern)?.[0];
       if (room) { rooms.set(room, { text: clause, sourceMessageId: message.id }); matched = true; }
       else if (/书桌|靠窗|设备|台灯|电脑|办公|保留/.test(clause) && rooms.size === 1) {
         const name = [...rooms.keys()][0]; rooms.set(name, { text: name + '：' + clause, sourceMessageId: message.id }); matched = true;

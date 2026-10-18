@@ -1,5 +1,6 @@
 import { AssistantError, fail } from '../contracts';
 import { referenceOnlyClause } from '../knowledge/reference-intent';
+import { needSourceContextSupported } from './need-source-context';
 
 const roomReference = /(?:那|这|另一)(?:一)?间|(?:那|这)个房间|前者|后者|前面(?:说的)?(?:那个|房间)|刚才(?:说的)?(?:那个|房间)/;
 /** A direct correction stays actionable when the customer asks a question next.
@@ -15,7 +16,7 @@ export function needWriteFeedback(error: unknown, sourceText: string) {
   if (!(error instanceof AssistantError) || !['invalid_message','need_source_mismatch','need_room_ambiguous'].includes(error.code)) return null;
   return { status: 'not_saved', error: error.code, sourceText, instructions: error.code === 'need_room_ambiguous'
     ? '房间指代尚未明确，本次没有保存任何需求。请先向客户确认具体房间；本轮不要再调用record_need，不要用空room或代词临时保存，也不能声称已记录。'
-    : 'quote和value必须逐字摘自sourceText；room必须在原文出现。假设、引用他人说法和待确认建议不能记为客户需求。请修正参数，不能声称已保存。' };
+    : 'quote和value须逐字摘自同房间的原话，保留否定和未定限定词。假设、他人说法不能记为客户需求。请修正参数，不能声称已保存。' };
 }
 
 export const factFields = ['housing', 'household', 'style', 'budget', 'timeline', 'daylight', 'desk', 'storage', 'use', 'devices', 'other'] as const;
@@ -109,6 +110,7 @@ export function applyNeedDelta(memory: NeedMemory, delta: NeedDelta, source: { i
   if (/不要记录|不用记录|别记录|不要记住/.test(source.text) || statements.every(c =>
     /如果|假如|假设|先讨论|先聊|(?:图纸|方案).{0,8}(?:写|标|建议)|(?:设计师|师傅|小K|他|她|你).{0,4}(?:说|建议)|只是引用/.test(c))) fail('need_source_mismatch', 422);
   if (/[？?]|怎么|怎样|如何|是否|要不要|能不能|先聊|讨论|填表|系统提示/.test(delta.value)) fail('need_source_mismatch', 422);
+  if (!needSourceContextSupported(delta, source.text)) fail('need_source_mismatch', 422);
   if (memory.facts.length >= 300) fail('need_memory_limit', 422);
   const prior = memory.facts.find(f => f.status === 'current' && f.room === delta.room && f.field === delta.field);
   return { version: memory.version + 1, facts: [...memory.facts.map(f => f.id === prior?.id ? { ...f, status: 'superseded' as const } : f),

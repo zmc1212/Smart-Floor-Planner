@@ -36,7 +36,7 @@ import { anchorKnowledgeQuery } from '../knowledge/query-context';
 import { assertAnswerContinuity, assertCorrectedUseCitation } from './answer-continuity';
 
 const needProperties = { room: { type: 'string' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，daylight记录采光，devices记录设备；独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } };
-export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释。返回memoryVersion。', parameters: {
+export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户明确需求，同房间逐字摘录，保留否定和未定限定词。不变字段沿用。多个独立字段用主字段加additionalNeeds原子保存（最多四条），不要逐轮保存。明确更正后又提问时先保存，等回执再查询。返回memoryVersion。', parameters: {
   type: 'object', properties: { ...needProperties, additionalNeeds: { type: 'array', maxItems: 3,
     items: { type: 'object', properties: needProperties, required: ['room','field','value','quote'], additionalProperties: false } } },
   required: ['room','field','value','quote'], additionalProperties: false,
