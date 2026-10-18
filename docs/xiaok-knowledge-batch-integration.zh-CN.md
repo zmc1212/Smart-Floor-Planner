@@ -2,6 +2,40 @@
 
 状态：**Limited；多文档检索覆盖、知识专属手动批次管理及本地 DOCX 表头保真修复已有有界实现，自动批量派发与客户语义验收仍待集成。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+## 双进程验收准备检查点
+
+本节保留接回前的工具证据；现已收到业务稳定 `a579e512`，其正常集成/真实事务结果在后续检查点另列，不能由下述模拟结果提前升级。
+
+`95ff8f20` 后，本增量只增加验收工具，生产知识适配/operations 及共享 factory/runtime 文件均未改动；等待期间不开放新产品功能或 UI/API 入口。
+
+`admin/scripts/assistant-knowledge-batch-seam-acceptance.mjs` 默认 **offline**：启动协调进程及两个不同的 Node OS 进程，以真实知识适配器连接明确模拟的事务 broker/共享端口。新增 `scripts/knowledge-batch-seam-acceptance/` 包含进程协议、模拟 store、可信计数断言、外部 I/O 守卫和待执行的真实 PostgreSQL 夹具。离线不加载环境/连接文件、factory 或数据库模块；输出必须为本 worktree `tmp/` 下未使用目录，重跑不覆盖前次失败证据。
+
+| 已准备检查 | 必须取得的证据 |
+| --- | --- |
+| 两进程恢复同一评测 | 原 run/job/预留/shared dispatch 各恰好 1，无 provider attempt/开始标记/HTTP。 |
+| advance/cancel 竞争及晚到 advance | 唯一规范意图已提交后，另一进程不新增 run/job/预留/attempt/标记或 dispatch/HTTP；整套验收互斥锁不替代这些业务事务竞争。 |
+| 意图提交后单项失败 | 人为中断单 run 取消得到 unconfirmed，但持久意图仍阻止新派发，不同客户端键读回原意图身份。 |
+| 评测关联丢失 | 只清本套可变关联，保留原 send 回执/run；并发按原键恢复，副作用/HTTP 计数不增，原 ID 及 indeterminate/reconciling 保留。 |
+| 派发前配置漂移 | 仅在一个子进程改 `ASSISTANT_TEXT_MODEL`，确认真实 revision hash 改变后，要求 execution_changed/context_changed 且无新增副作用；还原原环境值。 |
+| 真实 provider-start 漂移（仅 service） | 原夹具 run 经原 claim 得到 lease，改子进程模型覆盖后调用真实 textGateway/answerMessages，须在新 attempt/开始标记/HTTP 前拒绝；即使回归到网络边界，外部请求也一律阻断，不用注入假模型冒充该检查。 |
+
+前五组已在两个实际 OS 进程中 **5/5 通过**（最终 PID `379424/34740`），store/共享端口均为**模拟**；协调及两个执行进程守卫报告均为**数据库连接 0、fetch 尝试 0、阻断 socket 0**，三个 Node 子进程均退出，被测源码 hash 稳定。这是进程/工具证据，**不是 PostgreSQL 行锁、共享 factory 或 provider-start 验收**。新增断言/CLI/守卫单元 **9/9 通过，0 失败/跳过/取消**，与五组场景检验同组不变量，不相加冒充 14 项独立业务验收。守卫自检另有 1 次 fetch、2 次 TCP（含离线 PostgreSQL）和 1 次 TLS 的预期阻断，均未实际 I/O，不是供应商请求。11 个代码文件 ESLint 通过，同一源码程序类型 **287→287，新增 0**。
+
+初次离线启动因 Windows `--import` 需要 file URL，在任何场景前失败，日志/状态保留于 `offline-initial/`；修正后的中间五组通过在 `offline-attempt-2/`。初版类型 **287→304（新增17）** 和 lint **2 错误/1 警告** 均为工具代码问题，修正后原报告仍保留。未重跑前批 45/64/18 整套或实模场景。
+
+```powershell
+node scripts/assistant-knowledge-batch-seam-acceptance.mjs --offline --output-dir ../tmp/knowledge-seam-preparation/NEW_RUN
+node --import tsx --test --test-reporter=tap src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts
+```
+
+**尚未执行的 service 模式**必须提供 `--service`、`--business-sha <完整40位hex>`、`--factory-module <业务实际文件，相对admin>`、`--factory-export <实际零参数factory导出>` 和原批准 `--connection-file`，`--env-dir` 可指原 admin；在读私有环境/连接文件前确认 SHA 已集成、factory/共享源码与之匹配且产品源码干净。缺就绪参数已实测 `SEAM_FACTORY_NOT_READY`、无 driver、databaseOpened=false。脚本不伪造业务 factory，准确绑定继续等待业务 SHA/导出。
+
+后续该模式由父进程持有原 `assistant_isolated_acceptance` 整套锁，目标仅 loopback:55432/xiaok_embedding_eval，锁会话使用唯一 application name；协调和两个数据库客户端在夹具/动作前核验实际库、非 superuser/non-BYPASSRLS 及该准确父锁所有者。之后才创建一个明确合成企业/管理员、两道 missing-data 题和 profile 元数据；无文档/索引任务/Embedding，不新增供应商凭据，不改平台/全局模型配置。恢复夹具在原 claim 的 lease 上设置明确合成的 provider-start 标记形成 unknown 边界，**不代表原 HTTP 曾发生**；其恢复 HTTP 基线为 0，断言反例另覆盖 1→2，均不替代付费实模未知恢复验收。
+
+夹具 ID 独立留存；清理前审计 run/供应商 attempt/预留及未知费用 `null`，再精确 ID 清理并逐表核验所有带 enterprise_id 的 app 基础表及准确企业/管理员 ID。必须先停本套子进程再清理/解锁；若仍有自有 DB 客户端，结果不确定并保留父互斥锁，不能假报清理完成。不重置既有服务/Worker/锁或他人夹具。service 的 SQL、清理及 provider-start 代码目前**仅准备并通过类型检查，尚未经 PostgreSQL 运行验证**。
+
+当前证据 `tmp/knowledge-seam-preparation/{frozen-offline/,frozen-unit.log,frozen-unit-status.json,frozen-types/,frozen-lint-status.json}`，driver/runner 均保留真实检查待执行记录。本轮**实际 SQL/数据库连接 0、模型/Embedding 调用 0、外部 HTTP 0**；运行模块清单/还原账本无行为或视觉变化。**待接回，未被拒绝**：收到准确业务 SHA/factory 导出后，先复查归属/冲突并普通集成，再在约定知识入口注入，沿既有锁做有界真实验收；此前保留本任务，不另造功能、不重试 `4242` 或新增模型费用。整体 **Limited**。
+
 ## 共享执行接缝：知识适配已写，业务实现待接
 
 业务提交 `4b5fb96d515d302751250921315a819d0c844c2f` 已核对 GitHub 分支，并普通合入本独立知识分支。相对 `d0238543`，其 41 路径与本线 36 路径无重叠，只读合并预演无冲突；导入的共享文件与该提交逐字节一致。原脏工作区/分支保留。没有合并 main、部署、重试 `4242` 或新增实模语义验收。
