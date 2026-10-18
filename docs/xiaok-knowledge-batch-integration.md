@@ -2,6 +2,35 @@
 
 Status: **Limited; retrieval/manual batch management and shared-port integration have bounded evidence; no automatic production batch entry is enabled, and customer model semantics remain unaccepted.** Actual verification is recorded below; code existence is not full-stage acceptance. This is a reviewable knowledge-line handoff, not a replacement for the [phase-two contract](./xiaok-assistant-phase-2.md), [admin inventory](./admin-system-modules.md), or the user's local enterprise-knowledge plans. Baseline: `d023854313842ef447efb2973beb540d1511e125`. The original business worktree's branch and product source are not changed.
 
+<!-- knowledge-revocation-acceptance:start -->
+
+## Withdrawal permission follow-up and original-key recovery preparation
+
+Baseline `347762ff18ef5ed02f39b1b9ae6db97df8f55d77`; shared product files still match `04a85946` exactly. This increment only covers the previously unexecuted withdrawal check and knowledge-owned recovery evidence assertions. It adds no real model, Embedding or provider HTTP calls and does not repeat earlier batch/semantic suites. New `scripts/assistant-knowledge-revocation.ts` and dedicated `knowledge-recovery-evidence.test.ts` accompany the wrapper's exclusive nonpaid `--followup --revocation-only` mode. The child preloads the existing network guard, allowing only approved PostgreSQL and the tsx compiler pipe; combining `--live` or another nonpaid mode fails before connection-file access.
+
+**Real isolated PostgreSQL/C01 Request-handler withdrawal group: 1/1 passed, 0 failed/skipped.** Synthetic enterprise `3511`, admin `6895` and customer `6910` used the existing knowledge service to create/index/publish document `937`, version `1053`. The original index Worker received deterministic chunk/unit-1024-vector dependencies; the original answer Worker received deterministic retrieval/selection dependencies, each invoked once and all **simulated**. No platform configuration or credential changed. Run `4370` succeeded and its C01 history/citation `744` were initially readable. The original `retire` mutation then made history reentry and citation return `available=false`, without the synthetic original text. This is existing extractive-answer/permission acceptance, not customer Agent or professional semantic acceptance.
+
+Two concurrent read-only `originalSubmission` calls in one process returned the original conversation/message/run IDs. Create/send keys, original request hash, run/job/reservation/provider-attempt counts and simulated call counts stayed unchanged, as did reconciling/null cost. No create/send/resume was used to discover a run. This is not a new two-OS-process batch check. Guard reports show **zero provider fetches and external socket attempts**, with two PostgreSQL connections only. Real model/Embedding calls: **zero**. Simulated chunk/embedding/retrieval/model counts are one each and are not real-provider counts.
+
+After pre-cleanup audit, all 107 enterprise tables had no residual rows, all three enterprise/admin/customer identity counts were zero, the child exited and the standing mutex was released. Configuration and source hashes were stable during execution. The injected model's original Worker provider-start marker is controlled fixture behavior; reconciling/null was retained until audit, and fixture deletion is not real billing reconciliation. After execution only generic nonpaid report scope/criteria labels were corrected; the database suite was not repeated and raw artifacts were not rewritten. Use `service-status.json`, the `revocation` result and `stage-summary.json` for the actual scope.
+
+New offline units pass **5/5, 0 failed/skipped/cancelled**: missing/tampered identities/counters, added calls, zero-filled unknown fees or premature reconciliation release, failed/unaccepted not granting resend authority, and nonpaid mode unable to enable `--live`. Five-file lint passes. Same-program types against this increment's baseline are **287→287, 0 added**. Only acceptance tools/dedicated tests and this bilingual handoff change; runtime inventories, routes/APIs/permissions/UI, shared runtime/Worker/schema/migrations have no independently introduced behavior. The original worktree/plans and both archived historical receipt hashes remain preserved.
+
+### Single-execution boundary after a shared conclusion
+
+`recovery-preparation.json` is **offline preparation, not execution authorization**, with no database/network calls. Both records are `archive_only_wait_shared_review`, `dispatchApproved=false`; at most one is the future controlled-acceptance ceiling, not a newly authorized call count.
+
+| Original execution | Retained facts and missing evidence |
+| --- | --- |
+| `4369` | Original send key/request hash and failed/unaccepted attempt are retained; run remains indeterminate with reconciling quota. This line's archive lacks the create key and the database fixture is cleaned. An archived send is not complete create/send evidence for `originalSubmission`. |
+| `4242` | Indeterminate, unknown/accepted attempt and reconciling status remain. This line's archive lacks original create/send keys and request hash. Missing evidence stays null: no guessing/replacement keys or inferring no call/zero fees from missing rows. |
+
+After the shared owner provides a stable conclusion and reliable original-operation evidence, verify identity, request hash, current authoritative state and the valid recovery mechanism first. Do not bypass the existing fence while indeterminate/reconciling remains unresolved. Archive-only or missing-key evidence means continued waiting, not reconstruction as an equivalent new send. Only an explicitly valid original authorized recovery mechanism can lead to **at most one** controlled execution with original-identity and attempt/HTTP deltas checked; any new uncertainty immediately stops and retains the original receipt. The preparation function never resumes, dispatches or reconciles costs and does not operate on old runs.
+
+Evidence root `tmp/knowledge-revocation/`: `pre-run.json`, `service-1/{live.json,service-status.json,network-guard.json,lock-release.json}`, `unit-complete.log`, `lint-complete.log`, `types-complete/`, `recovery-preparation.json`, `preparation-network.json`, `stage-summary.json`. Nonpaid reproduction requires the existing approved connection file, original admin environment directory and a fresh output directory in this worktree's tmp; this task does not loop the check. Independent work is complete; **waiting for the shared connection/status-classification conclusion, not permission denial**. Live conflict attribution/professional semantics remain unaccepted; overall **Limited**, with no new product feature, main merge, deployment or permission expansion.
+
+<!-- knowledge-revocation-acceptance:end -->
+
 <!-- knowledge-semantic-followup:start -->
 
 ## Bounded follow-up: budget fence passed, new uncertain execution stopped

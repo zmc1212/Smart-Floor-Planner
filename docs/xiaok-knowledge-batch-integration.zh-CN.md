@@ -2,6 +2,35 @@
 
 状态：**Limited；检索/手动批次管理和共享端口接线已有有界证据，未开放生产自动批量入口，客户实模语义仍未验收。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+<!-- knowledge-revocation-acceptance:start -->
+
+## 撤回权限补验与原键恢复准备
+
+基线 `347762ff18ef5ed02f39b1b9ae6db97df8f55d77`，共享产品仍逐字匹配 `04a85946`。本轮只补上一轮未执行的来源撤回检查及知识专属恢复证据断言；不新增真实模型、Embedding 或供应商 HTTP，也不再执行之前已完成的批次/语义整套。新增 `scripts/assistant-knowledge-revocation.ts`、专属 `knowledge-recovery-evidence.test.ts`，原验收 wrapper 增加非付费互斥模式 `--followup --revocation-only`。子进程预加载原网络守卫，仅允许批准 PostgreSQL 和 tsx 编译管道；混用 `--live` 或其他非付费模式在读取连接文件前拒绝。
+
+**真实隔离 PostgreSQL/C01 Request handler 撤回组 1/1 通过，0 失败/跳过**。明确合成企业 `3511`、管理员 `6895`、客户 `6910` 经原知识服务创建/索引/发布文档 `937`、版本 `1053`。原索引 Worker 注入确定性 chunk/1024 维单位向量，原回答 Worker 注入确定性检索/选摘，分别调用 1 次，均为**模拟**；未修改平台配置或安装替代凭据。run `4370` 起初 succeeded，C01 历史与引用 `744` 均实际可读；原 `retire` 写入后，历史重进 `available=false`、引用 `available=false`，无合成正文外发。该路径是现有选摘回答及权限验收，不是客户 Agent 或专业语义回答通过。
+
+同一进程中并发两次只读 `originalSubmission` 返回原 conversation/message/run IDs；create/send keys、原请求 hash、run/job/预留/provider-attempt 数与模拟调用数均不增加，reconciling/null 成本状态不改变。没有用 create/send/resume 探测原 run。这里不是新的双独立进程批次验收。守卫报告 **provider fetch 0、外部 socket 尝试 0**，仅本轮 PostgreSQL 连接 2；真实模型/Embedding 调用均 **0**。实际模拟计数 chunk/embedding/retrieval/model 各 1 不混入真实调用统计。
+
+清理前审计后，107 张企业表无残留，企业/管理员/客户三类身份计数均为 0，子进程退出、原共享锁释放；配置和执行期间源码 hash 稳定。注入模型沿原 Worker 写的 provider-start 标记只是受控夹具行为，预留保持 reconciling/null 直到审计，不能把其删除称为真实费用核销。执行后仅修正非付费模式通用报告 scope/criteria 标签，未重跑数据库；原始产物不改写，以 `service-status.json`、`revocation` 结果和 `stage-summary.json` 的实际范围为准。
+
+新增离线单元 **5/5，0 失败/跳过/取消**，包含身份/计数缺失与篡改、任何新增调用、未知成本填零/提前释放对账、failed/unaccepted 不构成重发授权，以及非付费模式不得打开 `--live`。5 文件 lint 通过；相同源码程序类型以本轮基线对照 **287→287，新增 0**。只是验收工具/专属测试和双语交接变化，运行模块清单、路由/API/权限/UI、共享 runtime/Worker/schema/迁移均无本线新增行为影响；原工作区/计划和两份历史收据归档 hash 保持。
+
+### 等待共享结论后的单次验收边界
+
+`recovery-preparation.json` 为**离线准备，不是执行授权**，无数据库/网络调用。两条记录都为 `archive_only_wait_shared_review`、`dispatchApproved=false`；最多一次是未来受控验收的上限，不是新增调用次数。
+
+| 原执行 | 已留存事实与缺项 |
+| --- | --- |
+| `4369` | 原 send key/request hash 和 failed、accepted=false 的 attempt 已留存，run 仍 indeterminate、预留 reconciling。当前本线归档未留存 create key，当前库行已清理；不能把已归档 send 当作可直接调用 `originalSubmission` 的完整 create/send 证据。 |
+| `4242` | indeterminate、unknown/accepted attempt 和 reconciling 保留；本线归档未留存原 create/send key 与 request hash。缺项保持 null，不猜测、不换键、不由缺行推定未调用或费用为零。 |
+
+等待共享责任方给出稳定结论及可靠原操作证据后，先核对原身份、请求 hash、当前权威状态与有效恢复机制；不带未核清 indeterminate/reconciling 状态绕过既有围栏。若证据仍只有归档或缺键，继续等待，不重建一次等价新发送。只有原授权/原操作恢复机制明确可用后，才可安排**至多一次**受控执行，并对照原身份及 attempt/HTTP 增量；任何新不确定立即停止并保留原收据。准备函数不调用恢复、派发或成本收敛，不处理旧 run。
+
+证据根 `tmp/knowledge-revocation/`：`pre-run.json`、`service-1/{live.json,service-status.json,network-guard.json,lock-release.json}`、`unit-complete.log`、`lint-complete.log`、`types-complete/`、`recovery-preparation.json`、`preparation-network.json`、`stage-summary.json`。复跑非付费模式需既有批准连接文件、原 admin 环境目录和全新本 worktree tmp 输出目录；本任务不循环复跑。当前独立工作已完成，**等待共享连接/状态分类结论，非权限拒绝**。实模冲突双边引用及专业语义仍未通过，整体 **Limited**；无新功能、main 合并、部署或权限扩大。
+
+<!-- knowledge-revocation-acceptance:end -->
+
 <!-- knowledge-semantic-followup:start -->
 
 ## 有界实模后续：预算围栏通过，新的不确定执行已停止

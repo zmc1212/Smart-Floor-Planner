@@ -27,6 +27,7 @@ import { coverageCases } from './assistant-knowledge-coverage-cases';
 import { getPlatformLlmRuntimeConfig } from '@/lib/platform-llm-config';
 import { agentModelLimits, type ModelMessage } from '@/lib/assistant/contracts/model';
 import { assertSemanticLock, historicalReceiptAudit, verifyBudgetFence, modelPackets, auditProjectedSources } from './assistant-knowledge-semantics-followup';
+import { verifyKnowledgeRevocation, archivedRecoveryPlan } from './assistant-knowledge-revocation';
 
 const output = process.env.XIAOK_KNOWLEDGE_SEMANTICS_OUTPUT;
 if (!output) throw Error('Run through the locked assistant-knowledge-semantics-acceptance.mjs wrapper.');
@@ -34,6 +35,7 @@ const directory: string = output;
 const knowledgeOnly = process.env.XIAOK_KNOWLEDGE_SEMANTICS_ONLY === '1';
 const followup = process.env.XIAOK_KNOWLEDGE_SEMANTICS_FOLLOWUP === '1';
 const preflight = process.env.XIAOK_KNOWLEDGE_SEMANTICS_PREFLIGHT === '1', budgetOnly = process.env.XIAOK_KNOWLEDGE_SEMANTICS_BUDGET_ONLY === '1';
+const revocationOnly = process.env.XIAOK_KNOWLEDGE_SEMANTICS_REVOCATION_ONLY === '1';
 const planned = followup ? 1 : 4;
 const prefix = 'synthetic-kb-semantics-' + randomUUID(), tenants: string[] = [], admins: string[] = [], users: string[] = [];
 const report: Row = { prefix, started: new Date().toISOString(), promptVersion: agentPromptVersion, overall: 'Limited',
@@ -59,6 +61,11 @@ const spec: Scenario[] = knowledgeOnly ? [
   semanticCriteria: i ? ['先指出登记口径冲突，保留双方及原文依据', '不据上传先后/分数选唯一权威', '客户自述材料不等于服务端已核实条件', '解释可回答的共同部分和最小待核实项，不自动安排施工'] :
     ['说明采光/屏幕眩光、通道与电气点位的相互约束', '户型存在不等于有效电气点位图，不凭户型定位置', '区分企业解释、一般建议与本项目实际阶段/资料缺项', '不把解释写成企业批准、施工指令或已通知/落实的回执'] })).filter(c => !followup || c.key === 'registered-conflict');
 report.criteria = spec.map(({ key, question, ppt, qa, semanticCriteria }) => ({ key, question, ppt, qa, semanticCriteria }));
+if (revocationOnly) {
+  report.scope = 'Actual C01 Request handlers and isolated PostgreSQL/RLS; deterministic injected chunk/vector/retrieval/selection; no Agent or provider semantic acceptance';
+  report.criteria = [{ key: 'source-withdrawal-permission', checks: ['visible before withdrawal', 'history and citation unavailable after withdrawal', 'original receipt lookup has no new effects'] }];
+  report.rounds = 0;
+}
 type Document = { documentId: string; versionId: string; expectedVersion: number; expectedEditVersion: number };
 type Customer = { userId: string; leadId: string; projectId: string; planId: string; conversationId: string; token: string };
 type Fixture = { enterpriseId: string; adminId: string; knowledge: KnowledgeService; documents: Document[]; internal: Document; customers: Customer[] };
@@ -68,7 +75,7 @@ globalThis.fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
   const kind = url.pathname.endsWith('/chat/completions') ? 'text_model' : url.pathname.endsWith('/embeddings') ? 'embedding' : url.pathname.endsWith('/chunks') ? 'chunk' : null;
   if (followup) {
-    assert.ok(!preflight && !budgetOnly && kind, 'FOLLOWUP_EXTERNAL_REQUEST_NOT_ALLOWED');
+    assert.ok(!preflight && !budgetOnly && !revocationOnly && kind, 'FOLLOWUP_EXTERNAL_REQUEST_NOT_ALLOWED');
     const caps = { text_model: agentModelLimits.maxModelTurns + 1, embedding: 5 + agentModelLimits.maxToolCalls, chunk: 5 };
     assert.ok((report.network as Row[]).filter(c => c.kind === kind).length < caps[kind!], 'FOLLOWUP_EXTERNAL_REQUEST_CAP');
   }
@@ -332,6 +339,26 @@ async function main() {
   if (followup) await assertSemanticLock();
   save(); const before = await globalSnapshot(); report.configurationBefore = before;
   try {
+    if (revocationOnly) {
+      report.mode = 'Real PostgreSQL revocation permissions; deterministic injected vector/retrieval/selection; zero external calls';
+      report.revocation = await verifyKnowledgeRevocation((enterpriseId, adminId, userId) => { tenants.push(enterpriseId); admins.push(adminId); users.push(userId); save(); });
+      const prior = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../tmp/knowledge-semantic-followup/live-1/live.json'), 'utf8'));
+      const original = prior.runs.find((r: { runId: string }) => r.runId === '4369'), receipt = original.originalReceiptReread.receipt;
+      const historical = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../tmp/knowledge-semantics/live/live.json'), 'utf8'));
+      const old = historical.runs.find((r: { runId: string }) => r.runId === '4242');
+      const unknown = old.attempts.find((a: { status: string }) => a.status === 'unknown');
+      const oldQuota = historical.accounting.items.find((i: { enterpriseId: string }) => i.enterpriseId === old.enterpriseId).reservations[0];
+      const current = await withPlatformTransaction(tx => rows(tx, sql`select id::text from app.assistant_runs where id in (4242,4369)`));
+      report.recoveryPreparations = [
+        archivedRecoveryPlan({ runId: '4369', currentRowExists: current.some(r => String(r.id) === '4369'), runStatus: original.run.status,
+          reservationStatus: original.originalReceiptReread.reservations[0].status, attemptStatus: original.attempts[0].status,
+          accepted: original.attempts[0].accepted, originalSendKey: receipt.key, requestHash: receipt.request_hash }),
+        archivedRecoveryPlan({ runId: '4242', currentRowExists: current.some(r => String(r.id) === '4242'), runStatus: old.run.status,
+          reservationStatus: oldQuota.status, attemptStatus: unknown.status, accepted: unknown.accepted, originalSendKey: null, requestHash: null }),
+      ];
+      report.automaticSummary = { planned: 1, passed: 1, failed: 0, unexecuted: 0, realModelCalls: 0, realEmbeddingCalls: 0, semanticPassed: null };
+      save(); return;
+    }
     const raw = await withPlatformTransaction(tx => one(tx, sql`select s.agent_config from app.assistant_enterprise_settings s join app.enterprises e on e.id=s.enterprise_id
       where (e.code like 'synthetic-%' or e.code like 'p4b-development-%') and s.agent_config->>'providerKey'=${String(before.llm?.provider)}
       and s.agent_config->>'model'=${process.env.ASSISTANT_TEXT_MODEL || String(before.llm?.model)} order by s.enterprise_id limit 1`));
