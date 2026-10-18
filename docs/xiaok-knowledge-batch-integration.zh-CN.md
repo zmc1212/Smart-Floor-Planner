@@ -2,6 +2,50 @@
 
 状态：**Limited；多文档检索覆盖及知识专属手动批次管理已有有界实现，自动批量派发与客户语义验收仍待集成。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+## 配置实模 C01 语义验收
+
+`2f44f460` 后核对隔离库，已有启用的 DeepSeek `deepseek-flash`、原凭据投影和已验证的合成 `langgraph-v1` 模板，因此本线可在不改共享业务代码、供应商配置或凭据的情况下执行限定验收。`assistant-knowledge-semantics-acceptance.mjs --live` 显式启用真实付费调用，沿用整套串行锁，只驱动本轮原执行器租约。锁忙或队列活跃仅等待正常释放，不重置夹具或启动竞争 Worker。
+
+`assistant-knowledge-semantics-live.ts` 复用固定四来源题集，核对前提/批准边界及登记冲突，每题两轮；限定变体分别映射 PPT 6/14/15/23（QA02/04/06）与 PPT 6/23/38（QA06/07），不覆盖整份 PPT。每轮绑定合成客户/线索、真实保存的 v4 主户型及当前水电工地。用正常签发的合成 Mini token 调用原 C01 Request 处理函数，再由 `ConversationService` / `processAnswer` / 真实用户 Agent 执行，不注入文字模型或检索器。这是服务路由验收，不是监听服务、浏览器或 Stable 原生运行；未伪造图片像素、已发布现场记录或正式设计决定版本。
+
+脚本分别记录必需来源上下文、生成回答/引用持久化及独立逐段语义审读；保留真实模型 checkpoint、原文引用及全新 C01 历史回读。fetch 透明观察只记安全 host/path/model/请求正文 hash/状态，不记录 headers 或凭据，不替换响应、不重试。清理前保留索引 attempt、全部供应商 attempt、真实用量、reservation 与事项事件；结果未知时停止后续核心调用。核对原全局配置指纹及相关源码前后 hash；这不是自动批量执行版本固定或分布式取消实现。
+
+```powershell
+node scripts/assistant-knowledge-semantics-acceptance.mjs --live --lock-wait-ms 1800000 --connection-file 'G:/workspace/向总/Smart-Floor-Planner/tmp/xiaok-vector/connection.private.json' --env-dir 'G:/workspace/向总/Smart-Floor-Planner/admin' --output-dir '../tmp/knowledge-semantics/live'
+node scripts/assistant-knowledge-batch-typecheck.mjs d023854313842ef447efb2973beb540d1511e125 ../tmp/knowledge-semantics
+```
+
+四来源/工地运行结果是 **1 失败/indeterminate、3 未执行、语义通过 0**。run `4242` / conversation `4215` 的真实模型先调用 `search_knowledge`，随后真实检索完成，但没有持久最终回答。供应商 attempt `1761` 成功；`1762` 记为 unknown，未观察到第二次模型 HTTP 调用，脚本随即停止，未恢复/换键重试。全局配置与被测源码 hash 稳定。使用已保存 checkpoint 离线复放，明确复现 `agent_input_limit`：聚焦后文本 **48,553 字节**，超过 **48,000**（system 26,032、tool 22,159、两条 user 各 181）。复放模型/Embedding 请求均为零。原被测脚本副本及 hash 与 `live/{live.json,service.log,service-status.json,offline-replay.json,failure-summary.json,tested-sources/}` 一并保留。
+
+业务线最小依赖：`admin/src/lib/assistant/agent/synthesis.ts::focusedSynthesisMessages` 在保留完整已用来源/出处/条件的同时满足原预算；`admin/src/lib/assistant/agent/worker.ts::callModel` 与共享网关 `admin/src/lib/ai/postgres-workflow-chat.ts` 的原 `beforeProviderCall` 顺序，需在标记供应商派发前校验实际请求。现有限制位于 `admin/src/lib/ai/providers/agent-chat.ts::agentChatBody`。本线均不修改、不提高预算、不把 unknown 当作免费或已核清。受阻动作是该四来源绑定工地场景的第二轮模型生成，本地失败且未观察到第二次 HTTP，并非审批拒绝。
+
+失败尝试共 **1 次真实文字模型 HTTP**（输入 6,721 / 输出 49 tokens），**2 笔逻辑供应商 attempt**（1 成功、1 unknown）。真实 Embedding：**10 次文档 / 4,767 tokens**，另 **1 次查询 / 80**，合计 **11 / 4,847**，Embedding 输入未知 0 次。10 次分块输入计量未知；费用保持 `null`，清理前唯一 reservation 为 `reconciling`，事项事件 0。仅清理企业 `3486/3487`、管理员 `6866/6867`、用户 `6860`，随后 **107** 张企业表及精确身份均零遗留，锁释放。回答后的撤回/权限断言没有执行，不算通过。
+
+独立接续选择计划中既有 **KB-1 材料条件与登记冲突的实模语义验收**：复用 `professionalCases.material`（PPT 6/19/38、QA02/06/07）及 `synthesisCases.conflict`（PPT 6/23/38、QA06/07）。`--knowledge-only` 使用另外的合成企业、每题两份短公开来源，明确没有绑定工地/主户型，每题两轮。这是另一个预先确定的验收范围，不恢复/重试 `4242`，不代表四来源/工地场景通过，也不替代 KB-3 集成。
+
+```powershell
+node scripts/assistant-knowledge-semantics-acceptance.mjs --live --knowledge-only --lock-wait-ms 1800000 --connection-file 'G:/workspace/向总/Smart-Floor-Planner/tmp/xiaok-vector/connection.private.json' --env-dir 'G:/workspace/向总/Smart-Floor-Planner/admin' --output-dir '../tmp/knowledge-semantics/kb1'
+```
+
+KB-1 服务运行完成 **4/4**，失败/未执行均 0，另有 **6/6** 守卫通过：跨企业客户历史拒绝、四次来源撤回后重进、撤销参与者读/发拒绝。已核对必需来源、材料/房间条件缺项、逐字引文、引用回读与回答持久化；8 次实际模型 HTTP / 供应商 attempt 全成功。脚本的退出 0 只代表这些服务检查，并显式等待语义审读。另行逐段对照持久回答与原文，结果为 **2 项限定语义通过、2 项待修正**，不是模型自评：
+
+| 题目 / 轮次 / run | 服务 | 来源语义审读 |
+| --- | --- | --- |
+| 材料条件 / 1 / `4243` | 通过 | 限定通过：不直接套用，地暖/型号/基层/厂家前提保持未知，建议与查询缺项可区分，无虚构参数/批准/处理回执。 |
+| 材料条件 / 2 / `4244` | 通过 | 同一固定要点限定通过。两轮均附较长通用缺项列表；合成共用前提含尺寸/点位资料，因此不能扩大成广泛工程正确性通过。 |
+| 登记冲突 / 1 / `4245` | 通过 | 待修正：保留冲突及双方口径，但第 4 段把共同前提归于**两份**规则，两条引用却都只指向 `K1001`。 |
+| 登记冲突 / 2 / `4246` | 通过 | 待修正：第 4 段相同归因缺陷；逐字引用有效、开头正确标记未知，仍不足以完整通过。 |
+
+不同原件 `K1001` / `K1002` 实际均含同一前提，因此这是**逐段引用归因不完整**，不是虚假或相互矛盾的前提。反例：“两份规则共同的前提是现场尺寸、完整点位资料和团队核对都还要确认”只引 `K1001`；另一段曾引用 `K1002`，不能替代本段自身的来源支持。业务集成人负责最小共享修正：在 `agent/synthesis.ts` 的指令/修复或最终归因校验中，声称双方时引用双方，或把措辞限定在本段所引原件能支持的范围。本线不改知识协议/共享代码，不宣称完整专业语义通过。
+
+KB-1 计量：**8 次文字模型 HTTP**，输入 **60,868 / 输出 2,624 tokens**；**6 次文档 Embedding / 861 tokens**，另 **4 次查询 / 270**，共 **10 / 1,131**，Embedding 输入未知 0 次。6 次真实分块输入计量未知；4 笔 reservation 因费用未知仍为 `reconciling`，事项事件 0。企业 `3488/3489`、管理员 `6868/6869`、用户 `6861–6864` 先审计后清理，107 张企业表和精确身份均零遗留；全局配置、被测源码稳定，进程退出、锁释放，未启动 3006/3007 服务。
+
+合并本增量两次运行的计量：**9 次实际文字模型 HTTP**，已知小计输入 **67,589 / 输出 2,673 tokens**，**21 次 Embedding / 5,978 输入 tokens**，**16 次分块输入计量未知**。另有 1 笔逻辑 provider attempt 仍为 unknown、未观察到 HTTP，不算成额外实际请求，也不填零用量/费用；全部费用保持 `null`。静态检查：3 个新增/修改代码文件 ESLint 零错误/警告，同程序类型 **287 → 287，新增 0**。未新增离线单元通过数，不宣称全仓类型、完整构建、原生/浏览器或业务线代码验收通过。
+
+证据：`tmp/knowledge-semantics/{preflight.json,stage-summary.json,lint-status.json,type-comparison.json}`，受阻场景位于 `live/`，独立运行及逐段审读位于 `kb1/{live.json,service.log,service-status.json,source-freeze.json,semantic-review.json}`。实际 prompt 为本知识工作区的 `xiaok-renovation-v51`、检索 `professional-hybrid-v4`，未包含业务线后续变更；源码 hash、精确回答/引文、首轮模型输出、失败 checkpoint、全部 attempt/usage 及清理均可分别审查。共享修正后由集成人在集成源码上复跑受影响的绑定场景及两轮冲突题，不把较窄材料结果或 4/4 结构通过借作整体验收。
+
+本节点仅新增验收代码/证据，不改产品 UI、路由、API、schema 或权限行为，因此除下文 v4 集成提案之外无新增运行模块清单影响；整体保持 **Limited**。
+
 ## 独立多来源覆盖增量
 
 稳定检查点 `b30e75d7` 后的下一节点对应计划 K-03/K-04 的具体缺口：最多五段时，v3 第一遍每份文档取两段，可能选入 A1/A2/B1/B2/C1，挤掉必需的 D，包括登记冲突的一方。新离线断言五项中三项在旧选择器失败。修复后先为每份可用文档保留一段，再按原排名补重复段；明确不适用的规则仍排在所有可用段之后，包括可用重复段，未知条件仍为未知。来源对象、原文及定位保持。超过五份可用文档、同一文档未入选的必要细节，以及原候选预算以外的资料仍有限制。

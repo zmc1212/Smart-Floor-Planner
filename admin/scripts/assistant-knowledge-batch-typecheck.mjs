@@ -16,7 +16,8 @@ const added = new Set(['src/lib/assistant/knowledge/evaluation-batch.ts', 'src/l
   'src/lib/assistant/knowledge/operation-batch-view.ts', 'src/components/assistant/knowledge-batch-client.ts',
   'src/components/assistant/knowledge-batches.tsx', 'src/lib/assistant/__tests__/knowledge-batch-client.test.ts',
   'src/db/__tests__/assistant-knowledge-batches.test.ts', 'src/db/__tests__/assistant-knowledge-coverage.test.ts',
-  'src/lib/assistant/__tests__/knowledge-context-coverage.test.ts', 'scripts/assistant-knowledge-coverage-cases.ts'].map(file => norm(root + '/' + file)));
+  'src/lib/assistant/__tests__/knowledge-context-coverage.test.ts', 'scripts/assistant-knowledge-coverage-cases.ts',
+  'scripts/assistant-knowledge-semantics-live.ts'].map(file => norm(root + '/' + file)));
 const overrides = new Map(changed.map(file => [norm(root + '/' + file), cp.execFileSync('git',
   ['-C', path.resolve(root, '..'), 'show', base + ':admin/' + file], { encoding: 'utf8', windowsHide: true })]));
 const config = ts.readConfigFile(root + '/tsconfig.json', ts.sys.readFile).config;
