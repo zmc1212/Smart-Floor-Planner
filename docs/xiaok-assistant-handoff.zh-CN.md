@@ -1,52 +1,51 @@
-# 小客接力：事实边界、连续问答与共享依赖
+# 小客接力：知识批次共享执行接缝
 
-共享Chrome101请求兼容提交为 [`7f4f980987eac57e7a5fd63efdcd82ffe4e798e6`](https://github.com/zmc1212/Smart-Floor-Planner/commit/7f4f980987eac57e7a5fd63efdcd82ffe4e798e6)，在原共享事实边界提交之上普通推送，本地/上游/远端及GitHub均已核验。每请求独立AbortController与原30秒期限覆盖正文读取，不依赖缺失的AbortSignal静态方法；取消、未知回执与原操作键语义保持，结束后清理计时器/监听。仅7项共享客户端、测试及双语文档，无知识专属或Mini运行代码改动。
+共享功能提交为 [`5f49fff44161f4baca3e3da922381e98bc9945f8`](https://github.com/zmc1212/Smart-Floor-Planner/commit/5f49fff44161f4baca3e3da922381e98bc9945f8)，分支 `codex/xiaok-execution-fence`，工作区 `G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-execution-fence`。已按父任务授权正常合入知识稳定 `bb89e54c` 和准确适配合同 `95ff8f20`，集成基线为 `34d57f53`；两次合入均无文件归属冲突。本共享功能只含16项共享代码、测试/脚本及双语当前清单，没有修改知识专属文件。**共享内部接缝已验证，整体仍Limited；知识线接回真实双进程/入口验收前，不称生产自动批次完成或发布批准。**
 
-该阶段Node14/14；本机Chrome101.0.4951.54 10/10、Edge155.0.4283.62 9/9合成HTTP传输检查，正文期限分别实际等待30,008.6ms/30,015.3ms，未注入信号polyfill或测试时钟。旧Chrome HTTP前TypeError按0请求复现。Chrome原生连接透明重试归原幂等键；101返回自身AbortError而非传入对象，未改写为新的业务错误。相关npm lint通过，同程序类型287→287/新增0；自有服务、浏览器驱动均退出、临时端口已核实关闭。证据为本worktree `tmp/xiaok-fact-boundaries/chrome101/acceptance-summary.json`。前三次浏览器夹具调试失败也保留：透明重试、原生异常身份及小正文缓冲均只修正夹具，产品源码在最终浏览器检查期间未变。未访问DB/Worker/模型/Embedding，不冒充已登录KB页面或小程序验收，未知费用保持。
+## 知识线可直接接入的准确接口
 
-当前共享功能提交为 [`e01a18188a5548a59909f26d36d841568ca2ccef`](https://github.com/zmc1212/Smart-Floor-Planner/commit/e01a18188a5548a59909f26d36d841568ca2ccef)，分支 `codex/xiaok-fact-boundaries`，工作区 `G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-fact-boundaries`。已普通推送，本地/上游/远端分支一致，GitHub提交可读。当前为 `xiaok-renovation-v61` / `current-turn-sources-v11`。**4115限定缺陷已闭环，整体仍Limited；知识两题新的实模语义验收尚未执行，不代表整份PPT、通用专业正确性或生产批准。** 未合并知识线、其他分支或main，未部署、强推或新增凭据权限。
+```ts
+import { createKnowledgeBatchSharedPort } from '@/lib/assistant/core/evaluation-execution';
+const operations = new KnowledgeOperations(manager, createKnowledgeBatchSharedPort());
+```
 
-## 已完成的共享修复
+返回 `KnowledgeBatchSharedPort<PostgresTransaction>` 的准确五方法：`executionRevision`、`lookupReceipt`、`dispatch`、`observeRun`、`cancelRun`，参数/返回类型遵循 `knowledge/batch-execution-adapter.ts`，没有另一套批次端口。构造不读取配置或发I/O。知识侧 `operations.ts`、`batch-execution-adapter.ts`、`evaluation-batch.ts`及其专属测试保持95ff8f20原样；准备、推进、整批取消和关联回写继续由知识线维护。
 
-- 当前私聊用途与同房间精确正式版本确有差异时，明确解释双方具体人数和差异，保留双方原话及各自决定身份。图纸回传只说明这条关联记录，实际阶段另取当前节点；查询缺项就地限定，不扩大为现实没有量测。已存更正不要求客户重复确认，也不拒称不替客户改需求。
-- 超预算模型视图只压缩重复摘录/文案提示；`evidence.textRange`为完整K来源text的UTF-16起止索引，69条原选摘ID可逐字还原。完整正文、条件、权限/版本元数据、结果键和别名保持。不同规范K身份不能仅因文字相同而合并。未知字段/无法定位文字原样保留；持久工具结果与快照不改。仍为48,000 UTF-8文字字节、四轮和既有一次格式修复，不截来源、不降引用守卫、不添加语义重试。
-- 实际解析的Agent请求在创建新attempt、供应商开始标记和HTTP之前校验。Worker按当前派发跟踪确定性；前轮成功、后轮本地超限时正常失败，前轮费用仍待核对。运行/未知缓存仍不可重派，已派发的模拟504仍为indeterminate。
-- 对已登记相反规则的共同前提，限定守卫要求同一事实段逐方引用完整前提原文；同一方的两条引文不算双方依据。单方做法可独立归因。它不是通用NLI裁判，不能用单元通过宣称实际模型已修复。
-- 租户/RLS、当前客户/原咨询/项目房间、参与者、三类管理者继承、来源版本/撤回、真实保存回执、正式动作及费用守卫保持。无schema/迁移、API路由、菜单、全局队列或Mini结构/样式/素材/导航改动。
+- `ConversationService.inTransaction`复用传入租户事务，保留现有身份、参与者及settings锁；不嵌套ConversationService事务。全局模型配置仍沿已有私有平台解析器读取，实际选择对象在派发前核对；企业状态及副作用使用传入事务，没有新配置权威或凭据权限。
+- `executionRevision`固定真正knowledge_preview的provider/config/adapter/model tag、公开endpoint身份、思考/超时/temperature/输出上限、实际system prompt hash、当前profile/epoch/policy及retrievalConfiguration，不含凭据。未提供的供应商model revision保持null，不承诺冻结供应商模型权重，也不印成C01 Agent版本。
+- 仅使用原 `knowledge-batch-prepare`、`knowledge-batch-execution-prepare`、`knowledge-batch-execution-cancel` 权威；取消规范key为batchId，principal及manifestHash必须对应服务端actor/manifest。没有第二队列、租约、取消存储、schema或迁移。
+- 私有run保存规范manifest/evaluation绑定、原create/send键及消息摘要。实际解析模型/请求先于attempt核对；原settings/有效租约事务重验规范取消、全批冻结case/evaluation/当前revision、来源epoch、profile/policy及原send回执，然后同事务提交开始标记和attempt，之后才进入HTTP。已撤来源/失权仍不能读写或稍后送达。
+- `lookupReceipt`只读原create/send/run，已提交但缺关联可由知识store在同事务补关联；不通过resume/send探测未知run。过期不授权重复副作用，损坏或已提交却无run的回执抛错，不伪作安全缺失。`observeRun`只按明确用量/预留回执报告，不把未知费用算0。
+- 已知run的取消不要求来源/供应商配置仍新鲜，仍重验当前身份/参与者并沿原键。已开始/未知attempt及reconciling金额保持待核对。Prepared项通用retry缺少知识domain守卫，因此不可用，沿既有run.retryable路径隐藏原Admin重试控件；普通非批次已知重试保持。
 
-## 4115的新原生证据
+## 已执行检查与证据
 
-Stable2.02.2608080、SDK0.13.0、基础库3.17.2，复用原项目和原副屏窗口，逻辑390×844。一次定点序列 **21/21通过**；基线题明确不重复。实际保存4322更正、4323接续、4324撤回后回答，包含真实服务写入、来源片、重进、资料撤回、历史失效、未知投影和成员403。
+证据根目录为本worktree的 `tmp/xiaok-execution-fence/`。
 
-4323逐段审读通过4115的限定目标：引用当前私聊单人原话，明确对照精确正式方案版本18865的双人差异，图纸关联限定该记录，量测缺项限定本轮资料，两件事真实等待对象分开；无重复确认、拒改或电话前置。当前节点片段未单独引用，不能由此宣称任意阶段解释都完整。4324保留人数未知、旧共享版本身份及靠窗/设备/其他房间，但末尾仍用条件式一人示例补问；没有据此写入人数或默认布置，措辞仍Limited。流程21/21不等于完整语义批准。
-
-原PPT22/38及C01唯一批准源保持，两份还原台账各替换C01/S04的同一当前行，未升级生产还原或发布状态。两张实际回答截图已检查，PNG348×752、路由/栈与胶囊应用边界有记录；完整宿主光学、高屏、键盘、真机、真实微信授权、BLE、图内识读和Chrome Mini流程未验证，均不转为用户手工验收门槛。
-
-## 已执行检查
-
-| 检查 | 已结束结果及范围 |
+| 检查 | 已结束结果与边界 |
 | --- | --- |
-| v60冻结核心 | 115项：114通过、1配置实模重复路径跳过；哈希未变。包括真实保存/权限/来源撤回/版本及恢复状态。 |
-| 最终v61离线 | 94/94、源码稳定；实际4115/4235/4241/4245/4246反例保留。与核心有重叠，不相加计数。 |
-| 当前派发与费用围栏 | 3/3隔离真实写入、模拟HTTP：实际配置不匹配在派发前失败；前轮成功后超限不建第二attempt/标记/HTTP，前轮预留仍reconciling；已派发504保持未知且不可重试。无真实模型调用。 |
-| 知识6b974e3d合同 | 64/64离线自检，网络/Embedding/模型/DB调用0。另以本线代码接入原断言：4242当前策略44,585字节、四文档五片段完整；4241格式修复47,754字节；原双边归因错误拒绝、补足原文样例允许。样例不是新实模回答。 |
-| 原生 | 本次21/21流程，三条实际回答；4115限定语义由4323通过，4324措辞限制单列。 |
-| 工程 | 相关18文件ESLint无错误/警告；同程序类型287→287、新增0，非全项目类型通过；diff检查通过。Mini92为较早的未改客户端单元，不冒充本轮新跑。 |
+| 离线 | **158/158**，源码未变：v61事实/综合/记忆/Agent94、知识协调器/适配合同45、Admin请求14、新执行配置5；没有DB/模型/Embedding调用，不是新实模语义回答。 |
+| 隔离PostgreSQL | **14/14**，源码未变，共用锁全程持有后释放。11项准确95合同共享服务检查包含三类管理者、事务回滚、原回执补关联、全未派发取消、跨企业/他人/失权拒绝、实际配置/案例revision变化在attempt前拒绝、取消先落库不建标记/attempt，以及已派发模拟504保留未知。另3项为原Agent派发/费用回归。全部供应商HTTP模拟，没有真实模型/Embedding调用。 |
+| 工程 | 12项相关代码/测试/脚本ESLint零错误零警告；基线34d57f53同程序类型 **287→287，新增0**，不是全项目类型通过；diff检查通过。 |
 
-证据根目录为本worktree的 `tmp/xiaok-fact-boundaries/`：`native-v61/`、`stage-v61/final-gate/`、`stage-v61/knowledge-contract64/`、`stage-v61/contract-integration.json`、`stage-v61/native-review-4323.json`、`stage-v61/native-archive.json`。原生启动时相对日志路径落到另一自有tmp，结束后用原生PowerShell归档，21个文件逐一SHA一致；原运行元数据未改写，也未重跑。
+准确路径：`offline-95-final/status.json`、`transactions-95-final/status.json`、`transactions-95-final/transaction-audit.json`、`type-comparison.json`、`lint-95-stable.log`、`acceptance-summary.json`。验收子进程已退出，没有启动服务或Worker循环，锁已释放。仅本套清楚标注的模拟夹具在审计后清理；没有重置其他企业、旧夹具或实际未知费用。
 
-## 账务、清理与原工作区
+`before-95ff8f20/`与`transactions-first/`保留早期提案ABI及其12项/双进程原型证据，**不计作当前95双进程验收**。首轮准确95为10通过/1失败：他人batch已被拒绝，但在owner查询前返回manifest错误；现改为先取本人/租户回执、返回404，未放宽守卫。初期类型/夹具失败也保留，最终结果以上表为准。
 
-取同一 `assistant_isolated_acceptance` 锁完成只读审计，目标仅 loopback:55432/xiaok_embedding_eval、非superuser/非BYPASSRLS。11个精确自有夹具中60条run为55成功/4失败/1indeterminate；116条run绑定chat attempt为115成功/1未知，未知仍是1760/4241。当前夹具3497的6条run及11条chat attempt均成功，6条预留仍reconciling、金额未知；整体预留计数应按分组count求和，不能把分组行数当预留数。chat审计不含完整索引工作，不能据此计算完整费用。旧4242/1761保持知识线的原未知证据，不重试、不清零；较早主库只读账务也未回写。
+## 交给知识线的下一步
 
-所有自建进程已停、3008已关、锁已释放、原生传输已恢复，夹具AI/员工/活动run/job均停用而非宣称全部删除。原Stable窗口已回到最初最小化，正常位置仍在副屏且前台焦点未改变。原工作区97路径的存在性/字节、原分支/HEAD及五项删除保持；C01/S04六个客户端文件按EOL规范后与测试源一致。3006未动，3007仍留给知识线。
+知识线将稳定factory注入其内部知识入口，接回准确适配合同的真实PostgreSQL双独立进程advance/cancel、准备后来源/真实配置变更、刻意丢失关联、原键恢复及未核清用量验收；继续使用同一隔离验收锁，不启动竞争Worker。知识95已有 `cancelledBeforeDispatch`，未派发项不伪造runId。其双语知识交接中“待共享factory”的基线记录由知识线在接回验收后更新；当前共享状态以双语模块清单/二期合同本段为准。当前没有注入生产批量路由或定时调度。
 
-## 知识线与后续共享依赖
+复跑使用 `node scripts/assistant-execution-acceptance.mjs --agent-units`；隔离服务为 `--transactions --wait-for-lock`，读取显式 `XIAOK_ACCEPTANCE_ENV_ROOT`、`XIAOK_ACCEPTANCE_CONNECTION_FILE`，输出由 `XIAOK_ACCEPTANCE_OUTPUT`指定。类型对照为 `node scripts/assistant-execution-typecheck.mjs 34d57f53cbdb0db152df637901eda26abdc469c1`。脚本只接受批准loopback:55432/xiaok_embedding_eval，不拿锁不创建夹具。
 
-知识线当前稳定记录包含b30e75d7、2f44f460、21e4fd39、6b974e3d、5fa13cef及后续bb89e54c。其专属批次、v4检索、DOCX和材料样本文件均未由本线修改或合并。当前checkout仍不能据另一分支的实现宣称已集成KB批次/v4或自动执行。父任务可据本功能SHA准确集成后，让知识线接回四来源题与冲突题的小量新实模语义验收；本线准备的临时组合Runner尚未运行、未创建新知识夹具、未发生额外知识模型/Embedding调用。勿重试历史4242或拿64合同通过替代新答案。
+没有新付费或原生语义场景。历史4242继续indeterminate，1760/4241及旧主库未知调用/费用不回写、不盲重试、不清零。新知识两题的实际语义仍由知识线与父任务按稳定范围继续，不能以单元或模拟504通过代替。
 
-本线继续唯一持有共享runtime/worker/context/business-tools/引用权限协议。Chrome101共享传输依赖已按上述限定闭环，继续核对实际执行配置固定与跨进程取消围栏的原服务边界。当前修复尚未实现这两项；验收锁不是业务取消围栏。执行Revision必须覆盖真正的preview/Agent模式、供应商/模型及部署覆盖、prompt/生成参数和retrievalConfiguration，排除凭据；已验证单改存储model会被部署覆盖屏蔽，不能以存储配置代替实际执行配置。取消仍须沿原run/cancel及原操作键，来源失效不得挡住原调用取消，未知费用不得核销。知识专属UI/回归服务和共享服务按既定文件归属协调，不自动合并main或部署。
+## 原业务证据、设计与限制
 
-旧完整构建的AiDesignerLegacyPage导出错误仍未处理；当前类型仍有287项基线错误。一般专业语义、多房屋复杂冲突、未知人数中性澄清及实际图内识读仍Limited/未验。以上不追加人工A10、截图或手工真机推进门槛，也不构成生产发布批准。
+事实边界功能 [`e01a181`](https://github.com/zmc1212/Smart-Floor-Planner/commit/e01a18188a5548a59909f26d36d841568ca2ccef) 保持 `xiaok-renovation-v61/current-turn-sources-v11`。历史原生4323已闭环4115限定的当前私聊单人与精确正式双人版本18865差异、图纸关联记录范围及查询缺项边界；4324保留人数未知，但条件式一人澄清示例仍是措辞限制。原生21/21、三条实际回答为上一阶段证据，本阶段没有重跑。来源压缩保留四文档五规范K片段、完整条件和权限/版本，48,000字节/四轮及一次格式修复保持；知识新语义未因此宣称通过。
 
-后续执行配置/整批取消已推进到具体接缝核对，双语二期合同的`shared-execution-integration`块记录当前权威与三项接入要求：实际provider/model/prompt/generation/retrieval摘要、同事务取消意图/未派发run围栏、原send已提交而评测run关联丢失的只读恢复。现有单run取消在来源变更后仍走身份/参与者检查，不须放宽来源守卫。知识线operations.ts的resume跨多事务，因此生产适配需要父任务先协调该知识专属文件的事务接线归属；本线未改该文件，未把纯指纹函数或浏览器取消当作整批能力。状态为待跨线协调、未被拒绝；没有执行新的DB/付费验收，自动批量和实际执行固定继续Limited。
+共享Chrome101修复 [`7f4f9809`](https://github.com/zmc1212/Smart-Floor-Planner/commit/7f4f980987eac57e7a5fd63efdcd82ffe4e798e6) 保持。原Chrome101 10/10、Edge155 9/9实际HTTP传输和30秒正文期限是历史证据，本阶段只重跑其14项确定性客户端检查，不冒充新浏览器验收。
+
+本阶段对Mini模块文档**无新增影响**：没有Mini路由/API/权限、结构/样式/素材或Agent固定改动，C01唯一批准源及S04原PPT22/38、两份还原台账当前行保持。Mini92及原生证据不冒充本次重跑。原工作区97项快照零差异，原分支/HEAD d0238543、五项删除和用户计划保持；原3006与Stable窗口未动。
+
+图内识读、真机/BLE、真实微信授权及完整宿主/高屏/键盘仍未验，开发非阻断，不转为人工A10/截图/手测门槛。完整构建未重跑，旧AiDesignerLegacyPage导出错误及287项基线类型诊断仍在。未自动合并main、部署、强推或新增凭据权限；静默、内部检查通过和本交接都不代表生产批准。
