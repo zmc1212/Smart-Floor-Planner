@@ -1,58 +1,57 @@
-# 小客交接：KB-2 文件入库与结构引用限定闭环
+# 小客交接：KB-3 实况综合检索限定闭环，接续 KB-4
 
-当前分支 `codex/xiaok-public-site-lifecycle`。功能提交 `0c519236` 已普通推送 GitHub；本文件另作交接提交，最终 HEAD/上游/远端一致性见最终回复及 `tmp/xiaok-kb2/git-final.json`。未合并 main、未部署、未强推。KB-2 本批 DOCX/文字 PDF 入库、结构引用与 C01 闭环已交付；完整企业知识平台、专业客服、P5 和全 PPT 仍为 **Limited**。用户持续开发授权保持有效，下一轮从本节点继续，无需等待人工截图或“继续”。
+2026-10-18，本批按用户最新双语企业知识计划完成KB-3限定实现与对应固定场景自动验收，**完整专业客服、P5和全PPT仍Limited，不是发布就绪或生产批准**。分支`codex/xiaok-public-site-lifecycle`；功能提交`034c26ba5d4d14d01dee77d8b7f8f3f72e46fb68`，交接单独提交，最终HEAD/上游/远端核验见`tmp/xiaok-kb3/git-final.json`。未合并main、强推或部署。上一轮KB-2功能`0c519236`、交接`a1b47404`保留；用户最新双语roadmap及企业知识计划仍保留在工作区、未纳入本批提交。
 
-## 本批实现及设计来源
+## 本批行为与依据
 
-原 /assistant-knowledge 接入私有不可变原件、文件 hash/版本、原持久任务 knowledge_parse、结构与警告核对、索引/发布/换版、原件下载、失败/重试/取消与重进。DOCX 保留章节/正文段落/表行列与合并跨度、表头/单位/相邻条件/脚注；不伪造 DOCX 页码。文字 PDF 使用本地 CMap/字体，保留实际页码；图片、扫描 OCR 和 PDF 表格结构没有实现。模型生成或手填正文不能覆盖原件；修订通过有出处的新文件。
+- 先核实AGENTS/管理员嵌套指令、原模块/合同、双语最新计划、依赖及原PPT。PPT SHA256 `9221a83057fb1b2aa691ecde6cf60a0aa2dfb0d352aad4b6eab2cb6f15209af4`；17/18实际节点及检查安排、19铺贴前沟通、23底盒/需求/图纸、38缺失/冲突交团队核实，6/15自然追问。书房摆放、水电/防水政策都是明确合成验收资料，**不是PPT原文中的工程标准**。QA04/XK03本批仅原话、文字记录及正式主v4墙图片段，不宣称识图或完整点位图匹配。
+- 原共享`retrieveKnowledge`升级`professional-hybrid-v3`：硬授权/相关度之后、5片上限之前优先当前适用或未知条件、将明确不适用后移，首轮每文档最多2片再补齐。原1024维Embedding、每路30候选、RRF60、相似度0.3与最终5片保持；诊断增加selectionRank，未降低门槛、安装外部重排或另建索引/事实库。
+- v37实模暴露模型词遗漏“书房”，必需来源相似度0.297而缺失；同夹具/真实Embedding探针保留原问题后0.378。v38将服务端本次原问题和模型检索词合成一次有界查询（600/1000 UTF-16长度，不拆Unicode字符），不增加Embedding调用，不把提问当项目事实/权限。原后台试问继续直接使用原问题、共享相同检索实现。
+- `agent/bound-context.ts`复用原业务适配器，同轮持久刷新本咨询材料和实际施工节点。短追问仅查知识也能带入当前节点。`synthesis.bound_construction.v1`沿原run/短事务/租约/恢复；恢复先重验旧检查点，已供模型的来源变化即context_changed。阶段、需求、v4主户型、已发布记录、权限/版本/epoch在继续生成、提交、历史、引用及人工接续中继续重验。
+- prompt`xiaok-renovation-v38`区分企业依据、本人事实、通用建议和未知；现场记录仅限房间/对象/版本当时范围，阶段不等于检查结果，缺记录不证明现实未检查/其他部位不能检查。正式费用、工期、验收、批准与人工边界不变，不自动建处理事项。
+- 原逐字引文守卫保持，工具增加有界原文复制提示。原一次格式修复扩展到已知获权的普通知识/现场引用，并提供同源copyExactQuote；只允许final_response、原轮数/截止/用量，结果与修复次数持久化。未知来源、正式承诺、无文件数值错误、来源变化及未知调用不修复；不是自动改原文或放宽引用。
+- 发布回归查到数据库比应用快约5.4秒；替换版本的effective_from就绪检查改为数据库now，与检索一致，真正未来替换仍拒绝。显式模拟应用钟落后的定向及整组回归通过，无迁移或已应用SQL改写。
+- 维护中Dify检索节点、Haystack过滤测试、LangGraph工具/恢复测试的原始链接和采用决定在[双语二期合同](./xiaok-assistant-phase-2.zh-CN.md)。保留现有框架与服务，未新建凭据、扩大授权或向新外部服务传资料。
 
-沿用现有 PostgreSQL/pgvector、LangGraph、Job/租约、授权/受众、源版本/epoch/profile、用量和人工接管边界。admin、super_admin 选择企业后继承管理权，无需成为员工；普通员工/异租户无上传或原件读取权。默认内部文件、未核对草稿不进入客户检索。项目事实继续来自获权现有适配器，不复制到企业规则或第二套项目事实库。换版/收紧/撤回令旧引文及依赖回答失效。
+## 最终验收与证据
 
-C01 仍为同一个咨询及来源片，仅在原 .sheet-helper（26rpx/1.6）增加文件名及原段/表行列/PDF 页；原来源标题30rpx、引文28rpx/24rpx内距、样式/素材/导航未改。设计源仍为唯一 chat 台账中的 design-references/xiaok-p4b-public-sites-v1/README.md，继承 C01/C02/C05/U01。原生四张截图已看，定位正常换行，表头、单位、条件、注释保留；这不是全量视觉还原验收。双语 Admin/Mini 清单、二期合同、Admin 路由记录、唯一 chat 台账及基础 manifest 均已核对代码同步。
+主证据`tmp/xiaok-kb3/acceptance-summary.json`、`semantic-review.json`、`native-driver.json`、`native.json`与对应日志。实模使用现有DeepSeek/deepseek-flash、既有Qwen Embedding、已批准开发库5432、真实localhost:3006 HTTP及既有Worker；工程测试的模型为确定性注入，两者分别登记。全部本批资料和项目是合成样例，不是客户业务资料。
 
-原 PPT：docs/装修施工标准手册制度规范/家客来小K装修服务功能方案.pptx，SHA256 9221a83057fb1b2aa691ecde6cf60a0aa2dfb0d352aad4b6eab2cb6f15209af4。本批映射6/15连续回应与追问、18实际节点和检查安排、19材料前提沟通、23资料关联及38缺失/不一致先核实。TEST-A/2 mm 是明确标记的合成引用定位值，不是 PPT 原文或真实施工标准；未将整个混合开发资料目录入库。
-
-## 最终执行结果
-
-以下均使用明确标识的合成企业、用户、项目和 DOCX/PDF，无真实客户原件；真实模型与确定性测试分开记录。
-
-| 检查 | 最终结果与证据（tmp/xiaok-kb2/） |
+| 执行检查 | 最终结果 |
 | --- | --- |
-| 解析/引用/有界修复单元 | **6/6**：DOCX 合并表头/脚注/Unicode、重复引文歧义、中英 PDF/CMap/无文字页、格式/ZIP/XML 损坏、明确否定与肯定守卫、一次修复及断点恢复；unit.log |
-| 文件服务 | **8/8**：真实隔离数据库/Embedding＋确定性模型，覆盖上传原键/原件/重进、核对索引、表头条件定位、解析失败重试取消、失败换版保留旧发布、三管理角色/异租户/内部文件、真实本地解析中撤回晚到提交、历史来源撤回；service.log |
-| 现有 Agent 运行时 | **8/8**：已知结果恢复、工具重放授权、未知外部调用不重发、轮数/传输守卫；agent-runtime.log |
-| 知识/答案/专业/平台回归 | **35通过、4配置跳过、0失败**；regression.log |
-| 综合回答回归 | **15/15**（10项真实隔离数据库、5项纯测）；synthesis.log |
-| 小程序助手 | **73/73**（8个现有助手测试文件）；mini.log，未声称全 Mini 套件通过 |
-| 当前真实配置模型/HTTP/Worker | **6/6**：合成 DOCX 材料/地暖例外、正式状态追问、中文文字 PDF 检查安排＋当前获权防水节点，各两轮；runs286–291。使用原配置 deepseek-flash，真实开发库与真实既有 Embedding；live.json、semantic-review-input.json、semantic-review.json。逐条检查原句及实际项目来源；其中 run286 经一次受限修复后通过，不是首次模型响应全对 |
-| 原生 Stable 自动化 | **9/9**：唯一既有副屏 Stable2.02.2608080、automator0.13.0、基础库3.17.2，重新编译后核对 SDK/数据/元素；实际输入、表1第3行引文、持久重进、追问、撤回。逻辑390×844与PNG348×752分别记录；额外真实模型 runs292–293 均通过，无引用修复。native.json、native-driver.json、native-visual-review.json、native-{office,citation,followup,withdrawn}.png |
-| Lint/类型/构建 | 全量 ESLint **0错误/30警告**。同范围 source-only 类型诊断 **363→363，新增0/减少0**，两侧均排除 Next 生成声明并保留其他用户文件；不能冒充全量 tsc 通过。最终隔离 Webpack 编译31.6s成功，后续类型检查仍被历史 AiDesignerLegacyPage 非法命名导出阻断；lint.log、type-comparison.json、build-final.log。默认 tsc 也有既有生成声明问题；未修复旧 Mini 打包/量房基线问题 |
-| 文档/依赖/差异 | manifest394个基础路径、62个partial及原额外partial均存在，未宣称独立安装/干净克隆全通过。选择性提交48路径，6共享脏文件只纳入本批增量，git diff --cached --check通过，无无关暂存或删除 |
+| 配置实模固定主线 | 12/12；run 349,351,353,354,355,356,357,358,359,360,361,362。办公/追问/水电/防水/缺点位图各两轮，再对同一项目真实推进到防水后同题两轮；逐条独立阅读持久回答和来源，必要来源均真实引用，非只看脚本passed |
+| Stable原生 | 10/10功能检查，真实模型run 350,352；同项目水电→防水同题、引用面板、历史重进、阶段失效、来源撤回；不是静态页面或模拟响应 |
+| 单元 | 18/18；context-selection/synthesis/source-file兼容，unit.log |
+| 隔离服务核心 | 21/21；真实隔离数据库/Embedding，确定性模型，含阶段刷新/在途变化/跨客户与租户/撤回/接管/一次修复；service.log |
+| 修复定向 / 发布时钟定向 | 各1/1；repair.log、version.log，已包含在相关整组，不额外叠加总数 |
+| 知识/文件/回答/平台回归 | 35通过/4显式跳过/0失败；regression.log。最初时钟失败单独保留，不混为通过 |
+| 既有Agent/材料回归 | 18通过/8显式跳过/0失败；synthesis.log。跳过的实模不计通过，本批另跑真实配置 |
+| Mini助手专项 | 73/73，mini.log；不是全量Mini测试 |
+| Lint / 类型 | lint0错误/30既有警告；同范围source-only363→363，新增0/移除0，生成Next声明双方排除；不是全量tsc通过 |
 
-固定核心6次服务耗时分别36322/21461/20567/24866/26347/25137ms；run用量记录13次模型调用、77349 observed tokens及5次query embedding/195 tokens。原生另5次模型调用、28917 tokens及2次query embedding/67 tokens，服务耗时26275/37390ms。上述不含导入分块总量，cost_micros=null，没有成本或整体P50/P95结论。
+最终v38主线24次模型调用、观测token 186469，查询Embedding 12次/输入token 852；原生4次模型调用、token 32226，Embedding 2次/输入token 135。本次最终0次受限引用修复；此前失败尝试另记。计量只涵盖审计的问答run，**不包括夹具现场草稿生成、入库索引和诊断探针**；费用未知为null，不编零费用/成功率/P50/P95。逐轮耗时见summary，不把原生input/tap的feedbackMs当首token延迟。
 
-核心开发夹具：企业2446、管理者5030、用户3300、项目63、咨询234、文件文档75/76；原生夹具企业2448、管理者5032、用户3302、项目65、咨询236、文档79/80。结束后均停用助手/管理账户、推进客户context_version，active_staff=0/active_runs=0；保留合成记录用于审计，不混入真实客户验收。原生传输/存储/API/应用会话钩子已恢复，token只在内存，返回原首页并断开自动化连接。
+最终主线夹具企业2458/owner5042，原生企业2459/owner5043；项目/客户/文档版本及精确run映射见summary。两个脚本finally均关闭合成开关和账号、提升客户context_version，active_staff/active_runs均0；没有预约、正式处理/批准等处理副作用。原生内存会话/传输已恢复，transport.active=false，回原首页并断开。
 
-## 真实模型问题、修复及保留限制
+原生沿用唯一既有Stable2.02.2608080窗口、automator0.13.0/base3.17.2，核对项目和副屏位置，不新开窗口。逻辑390×844/PNG348×752；4张当前capture已查看，native-visual-review.json登记。灰绿矩形是40×32合成JPEG `#b9c4b4`，不是真实照片/质量结论，本轮未向模型提供照片像素。C01设计源仍为`design-references/xiaok-p4b-public-sites-v1/README.md`继承的C01/C02/C05/U01；WXML/Less/字号/素材/导航未改，不宣称新一轮高保真还原。双语唯一chat台账保留单路由/单当前来源。
 
-当前 prompt xiaok-renovation-v32。短文件工具给出逐字有界 citationQuote，模型每段数字仍需由该段引文支持。仅规范化模型说明中的缺省 advice/uncertainty 空引用，以及“当前资料不支持‘已经验收’这个结论”这一窄否定句；原 quote 不改，肯定式或混入正式完成/价格承诺仍拒绝。
+## 失败历史与明确限制
 
-已核对现有 LangGraph1.5.0、维护中的 ToolNode/测试及 DeepSeek 标准 function calling，决定继续使用原图。只有已明确返回、当前授权文件的引文/数值支持错误可在原图内修复一次；原4轮总预算/截止时间/租约/用量不变，修复轮禁用业务工具、只能 final_response，仍作完整验证。validationRepairs随原checkpoint持久化，原模型与校验步骤可审计。未知调度、权限或来源变化、真正正式状态/价格承诺不重发/不修复。详见双语二期合同的引用与采用记录。
+- v33引用嵌套、v34原话/引文改写被严格拒绝；v35虽12轮服务/来源断言通过，run323语义把书房底盒待核对扩大成基层/防水检查“无从谈起”，**语义验收未通过**，不列为最终成功。v36唯一修复后仍改写句号而失败，v37缺必需办公来源而失败。`live-v33-citation-failure.json`、`live-v34-missing-citation-failure.json`、`live-v35-semantic-boundary-failure.json`、`semantic-review-v35.json`、`live-v36-attempt-failure.json`、`live-v37-required-source-failure.json`、`query-anchor-probe.json`保留。v38按原固定核心复验，不靠降低门槛或把拒答算正向成功。
+- 首次普通沙箱原生枚举0窗口，未交互；提权只读核实唯一副屏窗口后沿用已批准自动化完成。初始失败保留v34-sandbox-*；无新人工验收门槛。
+- 回答仍有冗长、可选下一步提议；Codex对小样本逐条对照证据，不是人类验收或通用自动语义判定器。任意语义归因、跨语言召回、复杂PDF/OCR/XLSX/旧格式、完整点位/照片理解尚未验证或Limited，不新增为本批门槛。
+- 全量构建既有AiDesignerLegacyPage非法命名导出/类型阻碍保持；本批未改路由/schema，未重跑全量构建。source-only对比不替代构建。认证后台Chrome视觉、全宿主窗口/光学/高屏/键盘、真机/真实微信/BLE、真实Worker进程重启与完整恢复演练仍未验证，开发非阻塞，不要求用户手工补验，不把旧pending写成通过。
 
-早期失败日志保留：上传驱动字段错误返回422；v27/v28分段数值引用不完整被拦；v29/v30否定句被完成词守卫拦；v31英文PDF在中文问题中未召回（run284必要PDF断言失败）；改用本批代表性中文文字PDF后，v31一次仍缺分段数字引文（run285），随后实现有界修复。未将这些失败计入最终通过。英文页解析单元通过不等于跨语言召回通过。run291“非客户自行组织”由原件“团队安排”推断而来，不能称为原文中的明确禁止。任意段落语义归因、工程级正确性及跨语召回仍有限。
+## 复跑、依赖与工作区
 
-初次原生命令在沙箱内看不到桌面窗口，未操作页面即失败；保留 native-sandbox-window-failure.json。获准读取桌面并确认唯一原窗口/副屏边界后，以同一项目和同一流程完整复跑通过；未新开 DevTools/替换窗口。认证态后台 Chrome 连接器不可调用，/assistant-knowledge视觉仍未验证，不转成用户必须截图或手测。
+在admin运行`node scripts/assistant-context-acceptance.mjs`，可选`--unit/--regression/--synthesis/--repair/--version/--mini/--lint`。隔离模式使用已有`tmp/xiaok-vector/connection.private.json`与套件锁，目标55432/xiaok_embedding_eval，非superuser/非BYPASSRLS。实模：`node --import tsx scripts/assistant-synthesis-development-acceptance.ts --development --context`；另加`--native`使用同一已验证Stable流程，必须从能读取真实桌面窗口的授权执行环境运行。连接配置/令牌不入Git，不重建凭据或替换用户窗口。
 
-## 数据库及资源边界
+依赖只读核实PG17.10/vector0.8.2/1024维及23张相关表强制RLS，dependencies.json。foundation manifest409路径均存在、62项partial继续登记，原verification为历史记录；本批不宣称干净克隆/完整独立安装通过。0086 SQL SHA256 `659952be208cbc701c4a4ce1df14e10b1fae2cc182b4252f7d132f2e008c545f`未改，仅既有开发主库/隔离库应用。上轮备份`tmp/xiaok-kb2/development-before-0086.dump`为9,280,708字节，SHA256 `cceb87c22b0479696e05276e2d167099eb248c10844be472311ecd3e3f45ff72`；新的完整恢复演练未做。原文件4MB/企业100份100MB/PDF50页/128片/512token等限制保持。
 
-0086_assistant_source_files 已应用到已批准开发主库和55432隔离库，两库迁移hash/字段/强制RLS及应用角色非superuser/非BYPASSRLS核对通过。SQL SHA256 659952be208cbc701c4a4ce1df14e10b1fae2cc182b4252f7d132f2e008c545f，**不得改写已应用SQL**。主库迁移前备份 tmp/xiaok-kb2/development-before-0086.dump，9,280,708字节、PGDMP/归档目录已验，SHA256 cceb87c22b0479696e05276e2d167099eb248c10844be472311ecd3e3f45ff72。初次保留字authorization导致SQL失败，已确认事务回滚/无新表/仍0085，改usage_rights后应用成功；原失败日志保留。完整0086恢复演练未做。
+仅选择性提交本批27路径（25完整文件，两份共享Mini清单仅KB-3段落），交接另一次提交。48个原已修改文件哈希未变，5项原删除保持；两份共享Mini清单的原pending diff正文完全保留（不声称其原文件完整字节重建hash匹配）。用户roadmap/知识计划、其他原修改和未跟踪项未覆盖/全量暂存；staging-review.json、baseline-*可核查。没有reset、clean、stash、全量add或强推。
 
-解析依赖固定 pdfjs-dist6.4.299/yauzl3.4.0/saxes6.0.0，Node≥22.13，Docker源文件改24；原共享canvas1.0.7保留，新可选canvas在PDF.js下隔离。新增依赖公共registry漏洞查询200/无条目，整个依赖树npm报告50项，未声称全树安全或已修复。未构建/部署生产镜像，也未向新外部解析/OCR服务发送文件。限制：文件4MB、企业100份/100MB、PDF50页、128片、DOCX64行/12列、正文16000字符/48000字节、每原片连同原上下文≤512token；192MB V8堆/20秒子进程不是整个OS进程RSS限额。复杂PDF/OCR/图片/XLSX/旧格式、完整恢复、真实Worker进程重启、宿主完整窗口/光学校准/高屏/键盘、真机/真实微信/BLE和生产验收仍未验证/非开发推进门槛。
+## 下一接续
 
-## 复跑、工作区与下一轮
+按用户最新双语企业知识专项计划继续**KB-4运营与规模扩展**：可复跑问题集、知识缺口/修订回归、用量/索引健康，按真实材料需求再扩扫描/复杂表格/旧格式及影子重建。先复核当前实现和K-05/06/10/11，不自造阶段，不把全格式/OCR或额外语言长尾测评设为已交付批次门槛。已有诊断覆盖说明里若仍有manual-only旧文案，先映射真实文件能力与原批准Admin设计再修正；每批继续原后台操作、C01真实写入/可见反馈/重进、权限/失败与自动化，避免后端单交付。
 
-从admin：`node scripts/assistant-source-file-acceptance.mjs`；分组 `--unit`、`--regression`、`--synthesis`、`--mini`、`--lint`。原生/实模：`node --import tsx scripts/assistant-source-file-development.ts --development`，加`--native`走已验证Stable流程；迁移只读核对 `node scripts/assistant-source-file-migration-check.mjs`。`--types`保留全量未通过事实，同范围类型对比脚本与隔离构建helper在tmp内；构建不改dev .next，exit恢复tsconfig/next-env，本批后tsconfig无diff。不可因缺数据只测空页，不使用真实客户资料替代合成夹具。
-
-实施前原86项无关逻辑工作区、5项删除与最新双语整合/企业知识计划保留。baseline-status.txt记录97个展开路径，baseline.diff存原已跟踪差异；49个非共享已跟踪差异逐份相等、原未跟踪路径均存在。共享admin/package.json、next.config和双语Mini清单/Admin重构文档仅提交本批增量；未全量add/reset/clean/stash。两份最新roadmap与企业知识计划未暂存。manifest只把next.config的parser追踪加入partial，不把用户其他配置纳入基础。
-
-下一轮按最新[企业知识计划](./xiaok-enterprise-knowledge-plan.zh-CN.md)及其[英文镜像](./xiaok-enterprise-knowledge-plan.md)继续 **KB-3实况综合检索**：从已验证KB-1/2的问题/现有检索诊断出发，选择实际需要的父子上下文、术语、重排或有限补检，与当前获权节点/需求/图纸组合，验证同题不同阶段有据变化；不预先安装整套平台、不新建项目事实库，不把全格式/OCR或额外长尾语言评测设为前置。先核对当前源码、双语roadmap/整合计划、PPT与依赖清单，再做完整逻辑阶段/自动化/双语文档、选择性提交和普通推送。继续保留原租户/授权/来源撤回/用量/接管；新或冲突视觉遵守明确批准门槛，生产部署仍需既有授权。
+用户持续开发授权有效，无需等待手工截图、A10或确认。新/冲突设计与生产部署继续遵守既有明确授权边界；不改SSH/隧道/端点/凭据或扩大对外资料范围。接续先读取本文件、最新双语计划、模块合同和依赖，再用真实问题选择必要改动。
