@@ -6,7 +6,7 @@ import { createPreviewPolicy, previewPolicy, projectMessage, citationProjection 
 import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView } from '../requirements/guidance';
 import { requirementCheckpoint } from '../requirements/checkpoint';
 import { saveAutomaticRequirements } from '../requirements/automatic';
-import { requestsDesigner } from '../handoff/intent';
+import { requestsDesigner, cancelsWaitingHandoff } from '../handoff/intent';
 import { agentConfig } from '../agent/config';
 import { referenceCase } from '../knowledge/reference-case';
 import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
@@ -265,6 +265,11 @@ export class ConversationService {
         }
         if (c.mode === 'handoff_requested' && this.actor.principal.kind === 'user') {
           const message = intercepted || await appendMessage(repo.tx, this.actor, conversationId, { author: 'user', content: safe, clientMessageId, purpose: 'handoff.supplement' });
+          if (safe.blocks.length === 1 && safe.blocks[0].type === 'text' && cancelsWaitingHandoff(safe.blocks[0].text)) {
+            const { cancelWaitingHandoff } = await import('../handoff/service');
+            await cancelWaitingHandoff(repo, conversationId, clientMessageId);
+            return { conversationId, messageId: String(message.id), runId: null, status: 'succeeded', nextPollMs: null };
+          }
           await saveAutomaticRequirements(repo, conversationId);
           return { conversationId, messageId: String(message.id), runId: null, status: 'succeeded', nextPollMs: null };
         }

@@ -1,6 +1,10 @@
 # 小客接力：供应商连接失败确定性
 
-当前分支codex/xiaok-provider-certainty，工作区G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-provider-certainty，基线05edc4d30ddc5424d839c2d5e74e3171685b2f3e。此前人数解释修复05edc4d3已完成194项离线并普通推送，原构建问题仅诊断、未改旧AIStudio页面。当前按父任务只读核验知识稳定347762ff的run4369/attempt1804，未自动合入该知识后续分支。整体Limited，不生产启用、合main或部署。
+当前分支codex/xiaok-handoff-cancel，工作区G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-provider-certainty，基线752020753774a1fc5ccae6f305c7dd26358437bb。当前取消闭环已完成：服务7/7+原生1组、原生10/10、离线259/259；接下来优先复现修复共享AssistantMutations账号/显式键缺陷，再正常集成知识0f4fbf3c及共享KB-2清单。整体Limited，无实模/生产启用。
+
+**等待设计师时客户明确取消：整句明确文本的闭环已Implemented，整体Limited。** 原C01输入框发送“取消人工接待”或“不找设计师了”，沿原 `POST /api/miniprogram/assistant/conversations/:id/messages` 请求键及取消事务，保存原话与既有“本次接续已结束，小K恢复回复。”系统反馈、撤销接待参与者、推进上下文/版本并回到AI，不创建run或供应商调用。仅本人所属、仍open且 `handoff_requested/waiting` 的会话可改变；已进入人工接待、提问、引用、假设和拒绝取消仍是普通消息。租户、本人、来源、留存、接单竞争与幂等守卫保留。
+
+验证：离线259/259；真实隔离PostgreSQL服务7/7组加Stable C01原生1组，390×844原生10/10检查点。取消已提交但HTTP回包丢失后，重进保留原操作，“确认发送结果”沿原键恢复同一回执，再次请求/取消可用。最终源码hash稳定；本夹具run/attempt/模型开始及剩余合成企业/用户/员工均0，共用锁已释放。类型287→287、新增0，定向lint通过。产品markup/样式/资产/导航/文案均未改；唯一批准C01源仍为 `design-references/xiaok-p4b-public-sites-v1/README.md`。功能截图 `tmp/xiaok-handoff-cancel/service-native-attempt-6/native-cancelled.png` 不代表完整宿主/高屏/真机/真实微信/BLE或通用语义通过。见[当前接待合同](./xiaok-assistant-phase-2.zh-CN.md#当前明确取消等待接待)。
 
 **共享供应商连接错误：限定修复，整体Limited。** 已调用fetch后，无响应的普通连接/TypeError现归`unknown`，不再是`safe_fallback`，不能据此自动向第二供应商提交。错误码/文字/状态、配置超时及原明确HTTP响应/派发前策略保留。attempt/run/用量/预留及租户/角色/来源/租约/回执接口保持，不改表、队列、factory、API或UI。347762ff归档run4369/attempt1804仍为attempt failed/accepted=false、run indeterminate、预留reconciling及费用null；原queued发送确认和该布尔均不是供应商接收或未接收证明。不改历史行/费用/请求键，不重试4369/4242。当前230/230离线通过，含194业务/知识、32项既有供应商/账务和4组模拟传输测试（修复前1组失败）；受影响lint通过，同程序与05edc4d3对比类型287→287，新增0。无新DB/供应商/实模/Embedding/浏览器/原生调用；PostgreSQL收敛/retry守卫仅源码核验，未重跑。缺供应商结果/用量证据，原夹具也已清理，费用收敛和实模语义仍未验。准确只读证据及合同见[传输确定性](./xiaok-assistant-phase-2.zh-CN.md#当前共享供应商连接错误与结果确定性)、`tmp/xiaok-provider-certainty/`。
 

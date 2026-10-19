@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { withTenantTransaction } from '@/db/transaction';
+import { withTenantTransaction, type PostgresTransaction } from '@/db/transaction';
 import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { fail, id, safeText, userContent, type ActorContext } from '../contracts';
 import { appendMessage, cancelRuns, idempotent, conversationSource } from '../core/conversation';
@@ -12,6 +12,35 @@ type Handoff = { state: 'waiting' | 'active' | 'cancelled' | 'ended'; requestId:
   recipientName: string; ownerId?: string; ownerName?: string; mediaConsent?: boolean; contactConsent: boolean; phone: string;
   requestedAt: string; packet: Row; source: Row; leadId: string | null };
 const stateOf = (c: Row) => (c.entry_snapshot as Row)?.handoff as Handoff | undefined;
+
+/** Shared by the existing customer action and a direct waiting-cancel message.
+ * Callers retain the original scoped transaction, identity and conversation lock. */
+async function persistCustomerHandoff(tx: PostgresTransaction, actor: ActorContext, c: Row, h: Handoff,
+  action: 'request' | 'cancel' | 'end', requestKey: string, archiveConsent = false) {
+  const conversationId = String(c.id);
+  if (action !== 'request') await tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=now(),updated_at=now(),version=version+1
+    where enterprise_id=${actor.enterpriseId} and conversation_id=${conversationId} and participant_role='handoff_staff'`);
+  await cancelRuns(tx, actor, conversationId);
+  const mode = h.state === 'waiting' ? 'handoff_requested' : 'ai';
+  await tx.execute(sql`update app.assistant_conversations set mode=${mode},entry_snapshot=jsonb_set(entry_snapshot,'{handoff}',${JSON.stringify(h)}::jsonb),
+    context_revision=context_revision+1,version=version+1,updated_at=now() where enterprise_id=${actor.enterpriseId} and id=${conversationId}`);
+  const event = await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
+    values(${actor.enterpriseId},'assistant.handoff.customer.v1','assistant_conversation',${conversationId},${Number(c.version)+1},${JSON.stringify(actor.principal)}::jsonb,
+      ${requestKey},${JSON.stringify({ action, requestId:h.requestId, recipientId:h.recipientId, contactConsent:h.contactConsent, mediaConsent:h.mediaConsent===true, leadId:h.leadId, archiveConsent, source:h.source })}::jsonb) returning id`);
+  await appendMessage(tx, actor, conversationId, { author: 'system', eventId: String(event!.id), purpose: 'handoff.' + action,
+    content: { version: 1, blocks: [{ type: 'text', text: action === 'request'
+      ? '已提交，等待' + h.recipientName + '接待。你可以继续补充资料，小K已暂停自动回复。'
+      : '本次接续已结束，小K恢复回复。' }] } });
+}
+
+/** Reenter the same locked, owned conversation; never end an active reception. */
+export async function cancelWaitingHandoff(repo: AssistantRepository, conversationId: string, requestKey: string) {
+  if (repo.actor.principal.kind !== 'user') fail('assistant_capability_forbidden', 403);
+  const c = await repo.conversation(id(conversationId)), h = stateOf(c);
+  if (c.status !== 'open' || c.mode !== 'handoff_requested' || h?.state !== 'waiting'
+    || (c.entry_snapshot as Row)?.retentionRedacted) fail('context_changed');
+  await persistCustomerHandoff(repo.tx, repo.actor, c, { ...h, state: 'cancelled' }, 'cancel', requestKey);
+}
 /** Dispatch metadata is not a grant to read consultation contents. */
 export function dispatchHandoff(h: Handoff | undefined) {
   return h ? { state: h.state, requestId: h.requestId, recipientId: h.recipientId,
@@ -114,20 +143,8 @@ export class HandoffService {
         } else {
           if (!h || !['waiting','active'].includes(h.state)) fail('context_changed');
           h = {...h,state:input.action==='cancel'?'cancelled':'ended'};
-          await repo.tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=now(),updated_at=now(),version=version+1
-            where enterprise_id=${this.actor.enterpriseId} and conversation_id=${conversationId} and participant_role='handoff_staff'`);
         }
-        await cancelRuns(repo.tx,this.actor,conversationId);
-        const mode = h.state==='waiting'?'handoff_requested':'ai';
-        await repo.tx.execute(sql`update app.assistant_conversations set mode=${mode},entry_snapshot=jsonb_set(entry_snapshot,'{handoff}',${JSON.stringify(h)}::jsonb),
-          context_revision=context_revision+1,version=version+1,updated_at=now() where enterprise_id=${this.actor.enterpriseId} and id=${conversationId}`);
-        const event = await one(repo.tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
-          values(${this.actor.enterpriseId},'assistant.handoff.customer.v1','assistant_conversation',${conversationId},${Number(c.version)+1},${JSON.stringify(this.actor.principal)}::jsonb,
-            ${requestKey},${JSON.stringify({action:input.action,requestId:h.requestId,recipientId:h.recipientId,contactConsent:h.contactConsent,mediaConsent:h.mediaConsent===true,leadId:h.leadId,archiveConsent:input.archiveConsent===true,source:h.source})}::jsonb) returning id`);
-        await appendMessage(repo.tx, this.actor, conversationId, { author: 'system', eventId: String(event!.id), purpose: 'handoff.' + input.action,
-          content: { version: 1, blocks: [{ type: 'text', text: input.action === 'request'
-            ? '已提交，等待' + h.recipientName + '接待。你可以继续补充资料，小K已暂停自动回复。'
-            : '本次接续已结束，小K恢复回复。' }] } });
+        await persistCustomerHandoff(repo.tx, this.actor, c, h, input.action as 'request' | 'cancel' | 'end', requestKey, input.archiveConsent === true);
         return {conversationId};
       });
       return this.project(repo,(await repo.conversation(conversationId)));

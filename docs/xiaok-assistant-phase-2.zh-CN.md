@@ -1,5 +1,15 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前明确取消等待接待
+
+**等待设计师时客户明确取消：整句明确文本的闭环已Implemented，整体Limited。** 原C01输入框发送“取消人工接待”或“不找设计师了”，沿原 `POST /api/miniprogram/assistant/conversations/:id/messages` 请求键及取消事务，保存原话与既有“本次接续已结束，小K恢复回复。”系统反馈、撤销接待参与者、推进上下文/版本并回到AI，不创建run或供应商调用。仅本人所属、仍open且 `handoff_requested/waiting` 的会话可改变；已进入人工接待、提问、引用、假设和拒绝取消仍是普通消息。租户、本人、来源、留存、接单竞争与幂等守卫保留。
+
+验证：离线259/259；真实隔离PostgreSQL服务7/7组加Stable C01原生1组，390×844原生10/10检查点。取消已提交但HTTP回包丢失后，重进保留原操作，“确认发送结果”沿原键恢复同一回执，再次请求/取消可用。最终源码hash稳定；本夹具run/attempt/模型开始及剩余合成企业/用户/员工均0，共用锁已释放。类型287→287、新增0，定向lint通过。产品markup/样式/资产/导航/文案均未改；唯一批准C01源仍为 `design-references/xiaok-p4b-public-sites-v1/README.md`。功能截图 `tmp/xiaok-handoff-cancel/service-native-attempt-6/native-cancelled.png` 不代表完整宿主/高屏/真机/真实微信/BLE或通用语义通过。见[当前接待合同](./xiaok-assistant-phase-2.zh-CN.md#当前明确取消等待接待)。
+
+实现复用既有客户接待写入器，不增加API或另一套状态。用户原话、取消事件/系统消息、接待参与者撤销、原run取消栅栏、上下文/版本和原发送回执在同一事务提交；等待状态复查失败会回滚刚追加的消息。与员工接单竞争只留下合法的已取消或人工接待状态，取消后的迟到接单拒绝。新请求之后重放旧取消键只返旧回执，不取消新请求；同键改正文冲突。识别仅为限定中文整句，不是通用意图理解；进行中的人工接待仍需原授权操作结束。
+
+复跑：在admin执行 `node scripts/assistant-handoff-cancel-acceptance.mjs` 为2组纯意图检查；配置已批准本地连接文件/环境及指向既有Stable项目的 `XIAOK_AUTOMATION_ROOT` 后，执行 `node scripts/assistant-handoff-cancel-acceptance.mjs --service --native --wait-for-lock`，在夹具前获取共用锁，输出目录须为新的worktree tmp子目录。业务HTTP为真实响应，仅刻意丢弃一次已提交回包；不算实模证据。初次服务红测/清理、早期原生脚本错误及编译超时均留在 `tmp/xiaok-handoff-cancel/`，只有最终 `service-native-attempt-6` 作为通过交付。未恢复历史4369/4242或未知费用，未启动Worker、部署或生产启用。
+
 <a id="当前共享供应商连接错误与结果确定性"></a>
 ## 当前共享供应商连接错误与结果确定性
 
