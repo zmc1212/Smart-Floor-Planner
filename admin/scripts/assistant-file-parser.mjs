@@ -5,7 +5,7 @@ import { crc32 } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 const VERSION = 'xiaok-file-v1';
-const DOCX_VERSION = 'xiaok-file-v1.1';
+const DOCX_VERSION = 'xiaok-file-v1.3';
 const bad = code => { throw new Error(code); };
 const WORD = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 function xml(bytes) {
@@ -36,6 +36,23 @@ function rowHeader(row) {
   if (flag === undefined || ['on', 'true', '1'].includes(flag)) return true;
   if (['off', 'false', '0'].includes(flag)) return false;
   bad('knowledge_file_invalid');
+}
+function cellProperties(cell) {
+  // tcPrChange contains previous properties, not the current cell geometry.
+  const properties = children(cell, 'tcPr');
+  if (properties.length > 1) bad('knowledge_file_invalid');
+  const marker = name => {
+    const matches = properties.flatMap(p => children(p, name));
+    if (matches.length > 1) bad('knowledge_file_invalid');
+    return matches[0];
+  };
+  const gridSpan = marker('gridSpan'), rawSpan = value(gridSpan);
+  if (gridSpan && (rawSpan === undefined || !/^[+-]?\d+$/.test(rawSpan.trim()))) bad('knowledge_file_invalid');
+  const span = gridSpan ? Number(rawSpan) : 1;
+  if (!Number.isInteger(span) || span < 1 || span > 12) bad('knowledge_file_complex_table');
+  const verticalMerge = marker('vMerge'), merge = verticalMerge ? value(verticalMerge) ?? 'continue' : undefined;
+  if (merge !== undefined && !['restart', 'continue'].includes(merge)) bad('knowledge_file_invalid');
+  return { span, merge };
 }
 function plain(n) { return n.children.map(c => typeof c === 'string' ? c : plain(c)).join(''); }
 function paragraph(n) {
@@ -108,18 +125,21 @@ async function docx(bytes) {
       const parsedRows = rows.map((row, index) => {
         let column = 1;
         const cells = children(row, 'tc').map(cell => {
-          const span = Number(value(all(cell, 'gridSpan')[0]) || 1), merge = all(cell, 'vMerge')[0];
-          if (!Number.isInteger(span) || span < 1 || span > 12 || column + span > 13) bad('knowledge_file_complex_table');
-          const c = { column, span, text: all(cell, 'p').map(paragraph).filter(Boolean).join('\n'), ...(merge ? { merge: value(merge) || 'continue' } : {}) }; column += span; return c;
+          const { span, merge } = cellProperties(cell);
+          if (column + span > 13) bad('knowledge_file_complex_table');
+          const c = { column, span, text: all(cell, 'p').map(paragraph).filter(Boolean).join('\n'), ...(merge ? { merge } : {}) }; column += span; return c;
         });
         return { kind: 'table_row', table, row: index + 1, cells, text: cells.map(c => c.text).join(' | '), notes: notes(row) };
       });
       const markedHeaders = rows.map(rowHeader); let headerCount = 0;
       while (markedHeaders[headerCount]) headerCount++;
-      const headers = parsedRows.slice(0, Math.max(1, headerCount)).map(r => r.text);
+      const headerRows = parsedRows.slice(0, Math.max(1, headerCount));
+      const headers = headerRows.map(r => r.text), headerNotes = headerRows.flatMap(r => r.notes);
       if (!headerCount) warnings.push('table_first_row_header_requires_review');
       const following = nodes[i + 1]?.name === 'p' ? paragraph(nodes[i + 1]) : '';
-      for (const row of parsedRows) if (row.text.trim()) push({ ...row, headers, notes: [...row.notes, ...(/^(?:注[：:]|说明[：:]|例外|前提)/u.test(following) ? [following] : [])] });
+      // Header references qualify the copied header context; body-row notes remain local.
+      for (const row of parsedRows) if (row.text.trim()) push({ ...row, headers,
+        notes: [...new Set([...headerNotes, ...row.notes, ...(/^(?:注[：:]|说明[：:]|例外|前提)/u.test(following) ? [following] : [])])] });
     } else if (!['sectPr','bookmarkStart','bookmarkEnd'].includes(n.name)) {
       // Do not silently flatten content controls/alternate layouts and claim completeness.
       bad('knowledge_file_complex_layout');

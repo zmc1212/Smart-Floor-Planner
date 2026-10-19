@@ -24,10 +24,17 @@ const addedCandidates = ['src/lib/assistant/knowledge/evaluation-batch.ts', 'src
   'src/lib/assistant/__tests__/knowledge-batch-execution-adapter.test.ts',
   'scripts/knowledge-batch-seam-acceptance/process.ts', 'scripts/knowledge-batch-seam-acceptance/offline-store.ts',
   'scripts/knowledge-batch-seam-acceptance/postgres-fixture.ts', 'scripts/knowledge-batch-seam-acceptance/driver.ts',
-  'scripts/knowledge-batch-seam-acceptance/types.ts', 'src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts'];
+  'scripts/knowledge-batch-seam-acceptance/types.ts', 'src/lib/assistant/__tests__/knowledge-batch-seam-acceptance.test.ts',
+  'scripts/assistant-knowledge-semantics-followup.ts','src/lib/assistant/__tests__/knowledge-semantic-followup.test.ts',
+  'scripts/assistant-knowledge-revocation.ts','src/lib/assistant/__tests__/knowledge-recovery-evidence.test.ts',
+  'src/lib/assistant/__tests__/knowledge-provider-certainty.test.ts',
+  'scripts/assistant-docx-cell-fixtures.ts', 'src/lib/assistant/__tests__/knowledge-docx-cells.test.ts',
+  'scripts/assistant-docx-note-fixtures.ts', 'src/lib/assistant/__tests__/knowledge-docx-notes.test.ts',
+  'src/lib/assistant/__tests__/knowledge-batch-recovery-races.test.ts'];
 const baselineFiles = new Set(cp.execFileSync('git', ['-C', path.resolve(root, '..'), 'ls-tree', '-r', '--name-only', base, '--',
   ...addedCandidates.map(file => 'admin/' + file)], { encoding: 'utf8', windowsHide: true }).trim().split('\n'));
 const added = new Set(addedCandidates.filter(file => !baselineFiles.has('admin/' + file)).map(file => norm(root + '/' + file)));
+changed.push(...['scripts/assistant-knowledge-semantics-live.ts', 'src/components/assistant/knowledge-batch-client.ts'].filter(file=>baselineFiles.has('admin/'+file)));
 const overrides = new Map(changed.map(file => [norm(root + '/' + file), cp.execFileSync('git',
   ['-C', path.resolve(root, '..'), 'show', base + ':admin/' + file], { encoding: 'utf8', windowsHide: true })]));
 const config = ts.readConfigFile(root + '/tsconfig.json', ts.sys.readFile).config;

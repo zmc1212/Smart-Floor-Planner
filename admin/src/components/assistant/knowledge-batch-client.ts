@@ -53,10 +53,17 @@ export class KnowledgeBatchPreparationClient {
     try { this.storage?.setItem(storageKey, JSON.stringify(pending)); } catch { /* Server history remains available if storage is blocked. */ }
   }
 
-  private clear(scope: KnowledgeOperationScope) {
-    const storageKey = this.storageKey(scope);
-    this.memory.delete(storageKey);
-    try { this.storage?.removeItem(storageKey); } catch { /* No server resource is removed. */ }
+  private clear(pending: PendingPreparation) {
+    const storageKey = this.storageKey(pending.scope);
+    const matches = (current?: PendingPreparation | null) => current?.version === pending.version
+      && sameKnowledgeScope(current.scope, pending.scope) && current.requestKey === pending.requestKey
+      && JSON.stringify(current.cases) === JSON.stringify(pending.cases);
+    // An earlier page's late receipt must not erase a newer operation's recovery metadata.
+    if (matches(this.memory.get(storageKey))) this.memory.delete(storageKey);
+    try {
+      const saved = this.storage?.getItem(storageKey);
+      if (saved && matches(JSON.parse(saved))) this.storage?.removeItem(storageKey);
+    } catch { /* No server resource is removed; matching memory cleanup still works. */ }
   }
 
   async prepare(scope: KnowledgeOperationScope, cases: BatchSelection): Promise<KnowledgeBatchPreparationResult> {
@@ -67,11 +74,11 @@ export class KnowledgeBatchPreparationClient {
     this.save(pending);
     try {
       const result = await this.writer.write<KnowledgeBatchPreparationResult>('knowledge/operations/batches', { cases: pending.cases }, 'POST', pending.requestKey);
-      if (!sameKnowledgeScope(result, scope) || result.batchId !== pending.requestKey) throw new AssistantRequestError('context_changed', 409, true);
-      this.clear(scope);
+      if (!sameKnowledgeScope(result, pending.scope) || result.batchId !== pending.requestKey) throw new AssistantRequestError('context_changed', 409, true);
+      this.clear(pending);
       return result;
     } catch (error) {
-      if (error instanceof AssistantRequestError && !error.uncertain) this.clear(scope);
+      if (error instanceof AssistantRequestError && !error.uncertain) this.clear(pending);
       throw error;
     }
   }

@@ -24,16 +24,24 @@ import { GET, POST } from '@/app/api/miniprogram/assistant/[...path]/route';
 import { professionalEntry, professionalCases, professionalMaterialPolicy } from './assistant-professional-cases';
 import { synthesisCases, synthesisPolicies } from './assistant-synthesis-cases';
 import { coverageCases } from './assistant-knowledge-coverage-cases';
+import { getPlatformLlmRuntimeConfig } from '@/lib/platform-llm-config';
+import { agentModelLimits, type ModelMessage } from '@/lib/assistant/contracts/model';
+import { assertSemanticLock, historicalReceiptAudit, verifyBudgetFence, modelPackets, auditProjectedSources } from './assistant-knowledge-semantics-followup';
+import { verifyKnowledgeRevocation, archivedRecoveryPlan } from './assistant-knowledge-revocation';
 
 const output = process.env.XIAOK_KNOWLEDGE_SEMANTICS_OUTPUT;
 if (!output) throw Error('Run through the locked assistant-knowledge-semantics-acceptance.mjs wrapper.');
 const directory: string = output;
 const knowledgeOnly = process.env.XIAOK_KNOWLEDGE_SEMANTICS_ONLY === '1';
+const followup = process.env.XIAOK_KNOWLEDGE_SEMANTICS_FOLLOWUP === '1';
+const preflight = process.env.XIAOK_KNOWLEDGE_SEMANTICS_PREFLIGHT === '1', budgetOnly = process.env.XIAOK_KNOWLEDGE_SEMANTICS_BUDGET_ONLY === '1';
+const revocationOnly = process.env.XIAOK_KNOWLEDGE_SEMANTICS_REVOCATION_ONLY === '1';
+const planned = followup ? 1 : 4;
 const prefix = 'synthetic-kb-semantics-' + randomUUID(), tenants: string[] = [], admins: string[] = [], users: string[] = [];
 const report: Row = { prefix, started: new Date().toISOString(), promptVersion: agentPromptVersion, overall: 'Limited',
   scope: 'Actual C01 Request handlers and user Agent; real configured text model, chunking, Embedding and isolated PostgreSQL/RLS; no listening server/native UI',
   mode: knowledgeOnly ? 'KB-1 existing material/registered-conflict cases without a bound construction project' : 'KB-3 four-source pressure with a bound construction project',
-  rounds: 2, semanticReview: 'requires_independent_source_bound_review', fixtures: [], runs: [], guards: [], network: [], errors: [] };
+  rounds: followup ? 1 : 2, semanticReview: 'requires_independent_source_bound_review', fixtures: [], runs: [], guards: [], network: [], errors: [] };
 const save = () => fs.writeFileSync(path.join(directory, 'live.json'), JSON.stringify(report, (_key, value) => typeof value === 'bigint' ? String(value) : value, 2));
 type DocumentInput = { title: string; body: string; claim?: { key: string; value: string }; professional?: Row };
 type Scenario = { key: string; question: string; documents: readonly DocumentInput[]; ppt: readonly number[]; qa: readonly string[]; semanticCriteria: readonly string[] };
@@ -51,8 +59,13 @@ const spec: Scenario[] = knowledgeOnly ? [
       professional: { conditions: [{ field: 'room', operator: 'in', values: ['书房'] }] } }] },
 ] : coverageCases.map((c, i) => ({ ...c, ppt: i ? [6, 23, 38] : [6, 14, 15, 23], qa: i ? ['QA06', 'QA07'] : ['QA02', 'QA04', 'QA06'],
   semanticCriteria: i ? ['先指出登记口径冲突，保留双方及原文依据', '不据上传先后/分数选唯一权威', '客户自述材料不等于服务端已核实条件', '解释可回答的共同部分和最小待核实项，不自动安排施工'] :
-    ['说明采光/屏幕眩光、通道与电气点位的相互约束', '户型存在不等于有效电气点位图，不凭户型定位置', '区分企业解释、一般建议与本项目实际阶段/资料缺项', '不把解释写成企业批准、施工指令或已通知/落实的回执'] }));
+    ['说明采光/屏幕眩光、通道与电气点位的相互约束', '户型存在不等于有效电气点位图，不凭户型定位置', '区分企业解释、一般建议与本项目实际阶段/资料缺项', '不把解释写成企业批准、施工指令或已通知/落实的回执'] })).filter(c => !followup || c.key === 'registered-conflict');
 report.criteria = spec.map(({ key, question, ppt, qa, semanticCriteria }) => ({ key, question, ppt, qa, semanticCriteria }));
+if (revocationOnly) {
+  report.scope = 'Actual C01 Request handlers and isolated PostgreSQL/RLS; deterministic injected chunk/vector/retrieval/selection; no Agent or provider semantic acceptance';
+  report.criteria = [{ key: 'source-withdrawal-permission', checks: ['visible before withdrawal', 'history and citation unavailable after withdrawal', 'original receipt lookup has no new effects'] }];
+  report.rounds = 0;
+}
 type Document = { documentId: string; versionId: string; expectedVersion: number; expectedEditVersion: number };
 type Customer = { userId: string; leadId: string; projectId: string; planId: string; conversationId: string; token: string };
 type Fixture = { enterpriseId: string; adminId: string; knowledge: KnowledgeService; documents: Document[]; internal: Document; customers: Customer[] };
@@ -61,11 +74,22 @@ const originalFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
   const kind = url.pathname.endsWith('/chat/completions') ? 'text_model' : url.pathname.endsWith('/embeddings') ? 'embedding' : url.pathname.endsWith('/chunks') ? 'chunk' : null;
+  if (followup) {
+    assert.ok(!preflight && !budgetOnly && !revocationOnly && kind, 'FOLLOWUP_EXTERNAL_REQUEST_NOT_ALLOWED');
+    const caps = { text_model: agentModelLimits.maxModelTurns + 1, embedding: 5 + agentModelLimits.maxToolCalls, chunk: 5 };
+    assert.ok((report.network as Row[]).filter(c => c.kind === kind).length < caps[kind!], 'FOLLOWUP_EXTERNAL_REQUEST_CAP');
+  }
   const call: Row = { kind, host: url.hostname, path: url.pathname, started: new Date().toISOString(), status: 'dispatched' };
   if (kind) {
     if (typeof init?.body === 'string') {
       call.requestHash = createHash('sha256').update(init.body).digest('hex');
       const body = JSON.parse(init.body); call.model = body.model ?? null;
+      if (followup && kind === 'text_model') {
+        assert.ok(body.max_tokens <= agentModelLimits.maxOutputTokens, 'FOLLOWUP_OUTPUT_BUDGET_CHANGED');
+        const capture = { model: body.model, messages: body.messages, tools: body.tools, max_tokens: body.max_tokens };
+        call.requestBodyFile = 'model-request-' + (report.network as Row[]).filter(c => c.kind === kind).length + '.json';
+        fs.writeFileSync(path.join(directory, String(call.requestBodyFile)), JSON.stringify(capture, null, 2));
+      }
     }
     (report.network as Row[]).push(call); save();
   }
@@ -156,7 +180,7 @@ async function customer(f: Fixture, round: number) {
 
 async function execute(f: Fixture, i: number, round: number) {
   const c = await customer(f, round), started = Date.now(), key = randomUUID();
-  const result: Row = { key: spec[i].key, round, enterpriseId: f.enterpriseId, conversationId: c.conversationId, question: spec[i].question,
+  const result: Row = { key: spec[i].key, round, sendKey: key, enterpriseId: f.enterpriseId, conversationId: c.conversationId, question: spec[i].question,
     expectedDocuments: f.documents, automatic: {}, semanticReview: 'requires_independent_source_bound_review' };
   (report.runs as Row[]).push(result); save();
   const sent = await http(c, ['conversations', c.conversationId, 'messages'], 'POST', { clientMessageId: key,
@@ -169,7 +193,7 @@ async function execute(f: Fixture, i: number, round: number) {
   const data = await withTenantTransaction(f.enterpriseId, async tx => ({
     steps: await rows(tx, sql`select step_seq,kind,status,capability_name,input_summary,source_refs,private_checkpoint from app.assistant_run_steps
       where enterprise_id=${f.enterpriseId} and run_id=${String(sent.runId)} order by step_seq`),
-    attempts: await rows(tx, sql`select id::text,status,accepted,provider_key,remote_model,error_code,duration_ms,metadata from app.ai_provider_attempts
+    attempts: await rows(tx, sql`select id::text,status,accepted,provider_key,remote_model,error_code,duration_ms,metadata,actual_cost,request_fingerprint,remote_task_id from app.ai_provider_attempts
       where enterprise_id=${f.enterpriseId} and assistant_run_id=${String(sent.runId)} order by id`),
     usage: await rows(tx, sql`select category,measurement_kind,quantity,input_tokens,output_tokens,cost_micros from app.assistant_usage_records
       where enterprise_id=${f.enterpriseId} and run_id=${String(sent.runId)} order by id`),
@@ -191,7 +215,7 @@ async function execute(f: Fixture, i: number, round: number) {
   if (!knowledgeOnly) automatic.currentBoundProject = !!context?.snapshots.some(s => JSON.stringify(s.data).includes('"projectId":"' + c.projectId + '"'));
   if (knowledgeOnly && i === 0) automatic.materialConditionsStillUnknown = (context?.knowledge.filter(e => e.professional?.entry.kind === 'material') || []).length >= 1
     && context!.knowledge.filter(e => e.professional?.entry.kind === 'material').every(e => e.professional?.applicability.status === 'unknown');
-  if (i === 1) {
+  if (spec[i].key.includes('conflict')) {
     automatic.conflictFirst = answer?.segments[0]?.basis === 'uncertainty';
     automatic.conflictingClaimsStillUnknown = (context?.knowledge.filter(e => e.professional?.entry.claim) || []).length >= 2
       && context!.knowledge.filter(e => e.professional?.entry.claim).every(e => e.professional?.applicability.status === 'unknown');
@@ -204,7 +228,29 @@ async function execute(f: Fixture, i: number, round: number) {
     result.citationReads = sourceReads;
   } else automatic.persistedReentry = false;
   result.automatic = automatic; result.automaticPassed = Object.values(automatic).every(Boolean);
+  if (followup) {
+    const checkpoint = data.steps.find(s => s.kind === 'agent_checkpoint')?.private_checkpoint as { messages: ModelMessage[] } | undefined;
+    const outbound = (report.network as Row[]).filter(n => n.kind === 'text_model' && n.requestBodyFile)
+      .map(n => JSON.parse(fs.readFileSync(path.join(directory, String(n.requestBodyFile)), 'utf8')))
+      .filter(body => modelPackets(body.messages).length > 0).at(-1);
+    try { assert.ok(checkpoint && outbound, 'FOLLOWUP_NO_MODEL_SOURCE_PACKET');
+      result.modelSourceAudit = auditProjectedSources(checkpoint.messages, outbound.messages);
+      assert.ok((result.modelSourceAudit as { knowledge: number; project: number }).knowledge >= 4);
+      assert.ok((result.modelSourceAudit as { project: number }).project > 0);
+    } catch (error) { result.modelSourceAudit = { passed: false, code: (error as { code?: string }).code || 'FOLLOWUP_SOURCE_AUDIT_FAILED' }; }
+  }
   result.unknownProviderOutcome = data.attempts.some(a => a.status === 'unknown') || run.status === 'indeterminate';
+  if (followup && result.unknownProviderOutcome) {
+    result.originalReceiptReread = await withTenantTransaction(f.enterpriseId, async tx => {
+      const receipt = await one(tx, sql`select operation,key,request_hash,result from app.assistant_idempotency_records
+        where enterprise_id=${f.enterpriseId} and principal_key=${'user:' + c.userId} and operation=${'send:' + c.conversationId} and key=${key}`);
+      assert.equal(String((receipt?.result as Row)?.runId), String(sent.runId), 'FOLLOWUP_ORIGINAL_RECEIPT_MISSING');
+      return { action: 'read_only_original_receipt_no_retry', receipt,
+        run: await one(tx, sql`select id::text,status,error_code from app.assistant_runs where enterprise_id=${f.enterpriseId} and id=${String(sent.runId)}`),
+        reservations: await rows(tx, sql`select status,settled_tokens::text,settled_cost_micros::text from app.assistant_quota_reservations
+          where enterprise_id=${f.enterpriseId} and run_id=${String(sent.runId)}`), costMicros: null };
+    });
+  }
   result.signals = { glare: /眩光|反光|强光/.test(text), passage: /通道|走动|通行/.test(text), pointPlan: /点位图|电气/.test(text),
     conditions: /核对|核实|待|缺|未知/.test(text), conflict: /冲突|矛盾|不一致|不同/.test(text) };
   save(); console.log(JSON.stringify({ event: 'core-recorded', key: spec[i].key, round, runId: sent.runId, status: run.status,
@@ -226,11 +272,18 @@ async function guards() {
       (report.guards as Row[]).push({ name: 'source withdrawal invalidates derived answer', runId: r.runId, passed: withdrawn?.available === false, projection: withdrawn });
     }
   }
-  if (b) {
-    await withTenantTransaction(fixtures[1].enterpriseId, tx => tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=now(),version=version+1
-      where enterprise_id=${fixtures[1].enterpriseId} and conversation_id=${b.conversationId} and user_id=${b.userId}`));
-    await http(b, ['conversations', b.conversationId, 'messages'], 'GET', undefined, 404);
-    const key = randomUUID(); await http(b, ['conversations', b.conversationId, 'messages'], 'POST', { clientMessageId: key,
+  if (followup && a) {
+    const userId = users.find(id => id !== a.userId); assert.ok(userId);
+    const token = await signMiniProgramToken({ sub: userId, id: userId, mode: 'customer', role: 'user', contextVersion: 1, source: 'wechat' });
+    await http({ ...a, userId, token }, ['conversations', a.conversationId, 'messages'], 'GET', undefined, 404);
+    (report.guards as Row[]).push({ name: 'other synthetic tenant/customer cannot read C01 history', passed: true });
+  }
+  const revoked = b || (followup ? a : undefined), owner = b ? fixtures[1] : fixtures[0];
+  if (revoked) {
+    await withTenantTransaction(owner.enterpriseId, tx => tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=now(),version=version+1
+      where enterprise_id=${owner.enterpriseId} and conversation_id=${revoked.conversationId} and user_id=${revoked.userId}`));
+    await http(revoked, ['conversations', revoked.conversationId, 'messages'], 'GET', undefined, 404);
+    const key = randomUUID(); await http(revoked, ['conversations', revoked.conversationId, 'messages'], 'POST', { clientMessageId: key,
       content: { version: 1, blocks: [{ type: 'text', text: '合成撤权后拒绝发送' }] } }, 404, key);
     (report.guards as Row[]).push({ name: 'removed participant cannot read/send through C01', passed: true });
   }
@@ -243,10 +296,15 @@ async function auditAndCleanup() {
       for (const enterpriseId of tenants) result.push({ enterpriseId,
         indexAttempts: await rows(tx, sql`select operation,status,count(*)::int calls,sum(input_tokens)::text known_input_tokens,count(*) filter(where input_tokens is null)::int unknown_input_calls
           from app.assistant_knowledge_attempts where enterprise_id=${enterpriseId} group by operation,status order by operation,status`),
+        indexReceipts: await rows(tx, sql`select id::text,job_id::text,operation,batch_ordinal,profile_key,model_revision,status,input_tokens::text,error_code
+          from app.assistant_knowledge_attempts where enterprise_id=${enterpriseId} order by id`),
         usage: await rows(tx, sql`select category,measurement_kind,count(*)::int calls,sum(input_tokens)::text known_input_tokens,sum(output_tokens)::text known_output_tokens,
           count(*) filter(where input_tokens is null)::int unknown_input_calls from app.assistant_usage_records where enterprise_id=${enterpriseId} group by category,measurement_kind order by category,measurement_kind`),
-        providerAttempts: await rows(tx, sql`select id::text,assistant_run_id::text,status,accepted,provider_key,remote_model,error_code,duration_ms from app.ai_provider_attempts where enterprise_id=${enterpriseId} order by id`),
+        providerAttempts: await rows(tx, sql`select id::text,assistant_run_id::text,status,accepted,provider_key,remote_model,error_code,duration_ms,actual_cost,request_fingerprint,remote_task_id
+          from app.ai_provider_attempts where enterprise_id=${enterpriseId} order by id`),
         reservations: await rows(tx, sql`select status,count(*)::int count from app.assistant_quota_reservations where enterprise_id=${enterpriseId} group by status order by status`),
+        reservationReceipts: await rows(tx, sql`select run_id::text,operation_key,status,reserved_tokens::text,reserved_cost_micros::text,settled_tokens::text,settled_cost_micros::text
+          from app.assistant_quota_reservations where enterprise_id=${enterpriseId} order by id`),
         issueEvents: await rows(tx, sql`select type,count(*)::int count from app.domain_event_outbox where enterprise_id=${enterpriseId} and type like 'construction.%issue.%' group by type`),
       });
       return { tenantIds: tenants, adminIds: admins, userIds: users, items: result, costMicros: null };
@@ -278,17 +336,53 @@ async function auditAndCleanup() {
 async function main() {
   const target = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(['localhost', '127.0.0.1'].includes(target.hostname) && target.port === '55432' && target.pathname === '/xiaok_embedding_eval');
+  if (followup) await assertSemanticLock();
   save(); const before = await globalSnapshot(); report.configurationBefore = before;
   try {
+    if (revocationOnly) {
+      report.mode = 'Real PostgreSQL revocation permissions; deterministic injected vector/retrieval/selection; zero external calls';
+      report.revocation = await verifyKnowledgeRevocation((enterpriseId, adminId, userId) => { tenants.push(enterpriseId); admins.push(adminId); users.push(userId); save(); });
+      const prior = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../tmp/knowledge-semantic-followup/live-1/live.json'), 'utf8'));
+      const original = prior.runs.find((r: { runId: string }) => r.runId === '4369'), receipt = original.originalReceiptReread.receipt;
+      const historical = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../tmp/knowledge-semantics/live/live.json'), 'utf8'));
+      const old = historical.runs.find((r: { runId: string }) => r.runId === '4242');
+      const unknown = old.attempts.find((a: { status: string }) => a.status === 'unknown');
+      const oldQuota = historical.accounting.items.find((i: { enterpriseId: string }) => i.enterpriseId === old.enterpriseId).reservations[0];
+      const current = await withPlatformTransaction(tx => rows(tx, sql`select id::text from app.assistant_runs where id in (4242,4369)`));
+      report.recoveryPreparations = [
+        archivedRecoveryPlan({ runId: '4369', currentRowExists: current.some(r => String(r.id) === '4369'), runStatus: original.run.status,
+          reservationStatus: original.originalReceiptReread.reservations[0].status, attemptStatus: original.attempts[0].status,
+          accepted: original.attempts[0].accepted, originalSendKey: receipt.key, requestHash: receipt.request_hash }),
+        archivedRecoveryPlan({ runId: '4242', currentRowExists: current.some(r => String(r.id) === '4242'), runStatus: old.run.status,
+          reservationStatus: oldQuota.status, attemptStatus: unknown.status, accepted: unknown.accepted, originalSendKey: null, requestHash: null }),
+      ];
+      report.automaticSummary = { planned: 1, passed: 1, failed: 0, unexecuted: 0, realModelCalls: 0, realEmbeddingCalls: 0, semanticPassed: null };
+      save(); return;
+    }
     const raw = await withPlatformTransaction(tx => one(tx, sql`select s.agent_config from app.assistant_enterprise_settings s join app.enterprises e on e.id=s.enterprise_id
       where (e.code like 'synthetic-%' or e.code like 'p4b-development-%') and s.agent_config->>'providerKey'=${String(before.llm?.provider)}
       and s.agent_config->>'model'=${process.env.ASSISTANT_TEXT_MODEL || String(before.llm?.model)} order by s.enterprise_id limit 1`));
     const config = agentConfig(raw?.agent_config); assert.ok(config, 'Existing verified synthetic Agent template required; no fabricated capability probe');
     assert.equal(before.llm?.enabled, 'true'); report.agentConfiguration = config; save();
+    if (followup) {
+      const runtime = await getPlatformLlmRuntimeConfig();
+      assert.ok(runtime.enabled && runtime.apiKey && config.tools, 'FOLLOWUP_EXISTING_MODEL_CONFIGURATION_REQUIRED');
+      assert.equal(config.model, process.env.ASSISTANT_TEXT_MODEL || runtime.model);
+      const archive = path.resolve(import.meta.dirname, '../../tmp/knowledge-semantics/live/live.json');
+      const historical = await historicalReceiptAudit(archive); assert.equal(historical.nextCasePreviouslyExecuted, false);
+      report.preflight = { configuredModel: config.model, providerKey: config.providerKey, host: new URL(runtime.baseUrl).hostname,
+        hasExistingCredential: true, limits: agentModelLimits, sourceDocuments: 4, privateCanaryDocuments: 1,
+        maximumExternalCalls: { textModel: 5, chunk: 5, embedding: 9 }, plannedSemanticRuns: 1, historical,
+        fixtureBudget: { dailyRequests: 200, dailyTokens: 12000000, dailyCostMicros: 1000000000 }, costMicros: null };
+      save();
+      if (preflight) { report.mode = 'read-only preflight; no fixtures or external calls'; report.automaticSummary = { planned: 0, passed: 0, unexecuted: 1 }; return; }
+      report.budgetFence = await verifyBudgetFence(config, (enterpriseId, userId) => { tenants.push(enterpriseId); users.push(userId); save(); }); save();
+      if (budgetOnly) { report.mode = 'real PostgreSQL budget fence; HTTP simulated, no external call'; report.automaticSummary = { planned: 1, passed: 1, unexecuted: 0 }; return; }
+    }
     for (let i = 0; i < spec.length; i++) await fixture(i, config);
-    console.log(JSON.stringify({ event: 'fixtures-published', tenants, plannedCoreRuns: 4 }));
+    console.log(JSON.stringify({ event: 'fixtures-published', tenants, plannedCoreRuns: planned }));
     let stop = false;
-    for (let i = 0; i < spec.length && !stop; i++) for (const round of [1, 2]) {
+    for (let i = 0; i < spec.length && !stop; i++) for (const round of followup ? [1] : [1, 2]) {
       const result = await execute(fixtures[i], i, round); if (result.unknownProviderOutcome) { stop = true; report.stoppedForUnknownProviderOutcome = true; break; }
     }
     await guards();
@@ -300,11 +394,12 @@ async function main() {
     finally { globalThis.fetch = originalFetch; report.finished = new Date().toISOString(); save(); await closePostgresPool(); }
   }
   const runs = report.runs as Row[], guardsResult = report.guards as Row[];
-  report.automaticSummary = { planned: 4, recorded: runs.length, passed: runs.filter(r => r.automaticPassed).length,
-    failed: runs.filter(r => r.run && !r.automaticPassed).length, unexecuted: 4 - runs.filter(r => r.run).length,
+  report.automaticSummary = { planned, recorded: runs.length, passed: runs.filter(r => r.automaticPassed).length,
+    failed: runs.filter(r => r.run && !r.automaticPassed).length, unexecuted: planned - runs.filter(r => r.run).length,
     guardsExecuted: guardsResult.filter(g => g.passed !== undefined).length, guardsFailed: guardsResult.filter(g => g.passed === false).length,
     semanticPassed: null, semanticReview: 'requires_independent_source_bound_review' };
   save(); console.log(JSON.stringify({ event: 'acceptance-finished', automaticSummary: report.automaticSummary, configurationStable: report.configurationStable, overall: 'Limited' }));
-  if (runs.length !== 4 || runs.some(r => !r.automaticPassed) || guardsResult.some(g => g.passed === false) || !report.configurationStable) process.exitCode = 1;
+  if (runs.length !== planned || runs.some(r => !r.automaticPassed || followup && (r.modelSourceAudit as { passed?: boolean })?.passed !== true)
+    || guardsResult.some(g => g.passed === false) || !report.configurationStable) process.exitCode = 1;
 }
 main().catch(async error => { (report.errors as Row[]).push({ name: (error as Error).name, code: 'acceptance_cleanup_or_setup_error' }); save(); process.exitCode = 1; await closePostgresPool(); });

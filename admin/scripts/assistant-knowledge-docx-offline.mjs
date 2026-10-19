@@ -4,11 +4,15 @@ import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 
 const root = path.resolve(import.meta.dirname, '..'), args = process.argv.slice(2), focused = args.includes('--new-only'), i = args.indexOf('--output-dir');
+const cellsOnly = args.includes('--cells-only');
+const notesOnly = args.includes('--notes-only');
+if ([focused, cellsOnly, notesOnly].filter(Boolean).length > 1) throw Error('Choose one focused DOCX suite');
 if (i >= 0 && (!args[i + 1] || args[i + 1].startsWith('--'))) throw Error('Missing --output-dir value');
 const output = path.resolve(root, i < 0 ? '../tmp/knowledge-docx-headers' : args[i + 1]); fs.mkdirSync(output, { recursive: true });
-const files = ['src/lib/assistant/__tests__/knowledge-docx-headers.test.ts', ...(focused ? [] : ['src/lib/assistant/__tests__/source-file.test.ts'])];
+const files = notesOnly ? ['src/lib/assistant/__tests__/knowledge-docx-notes.test.ts'] : cellsOnly ? ['src/lib/assistant/__tests__/knowledge-docx-cells.test.ts'] : ['src/lib/assistant/__tests__/knowledge-docx-headers.test.ts',
+  ...(focused ? [] : ['src/lib/assistant/__tests__/knowledge-docx-cells.test.ts', 'src/lib/assistant/__tests__/knowledge-docx-notes.test.ts', 'src/lib/assistant/__tests__/source-file.test.ts'])];
 const sources = [...files, 'scripts/assistant-file-parser.mjs', 'scripts/assistant-file-fixtures.ts', 'scripts/assistant-docx-header-fixtures.ts', 'scripts/assistant-knowledge-docx-offline.mjs',
-  'src/lib/assistant/knowledge/source-file.ts', 'src/lib/assistant/contracts/source-file.ts'];
+  'scripts/assistant-docx-cell-fixtures.ts', 'scripts/assistant-docx-note-fixtures.ts', 'src/lib/assistant/knowledge/source-file.ts', 'src/lib/assistant/contracts/source-file.ts'];
 const hashes = () => Object.fromEntries(sources.map(file => [file, createHash('sha256').update(fs.readFileSync(path.resolve(root, file))).digest('hex')]));
 const before = hashes(), logFile = path.join(output, 'unit.log'); fs.writeFileSync(logFile, '');
 // No .env/connection read. The canonical parser additionally receives only its existing sanitized environment.

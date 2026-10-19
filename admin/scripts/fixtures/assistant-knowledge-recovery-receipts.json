@@ -1,0 +1,73 @@
+{
+  "scope": "Previously executed, labelled synthetic acceptance receipts only; partial evidence is retained, not repaired",
+  "provenance": [
+    {
+      "path": "tmp/knowledge-semantic-followup/live-1/live.json",
+      "sha256": "a97df5ae9b7f4b3aed68d04082b84577096faec418961e3991363d9d4dd456a5"
+    },
+    {
+      "path": "tmp/knowledge-semantics/live/live.json",
+      "sha256": "b35c553ee8bc382e611c207346ba649a636d308910f1134d4e90af6e4c58dc7c"
+    },
+    {
+      "path": "tmp/knowledge-revocation/service-1/live.json",
+      "sha256": "14f8cba8707f11796038f062f9443020e05002a2dd59102ba0a3955185206c2d"
+    }
+  ],
+  "failed": {
+    "runId": "4369",
+    "currentRowExists": false,
+    "runStatus": "indeterminate",
+    "reservationStatus": "reconciling",
+    "attemptStatus": "failed",
+    "accepted": false,
+    "originalCreateKey": null,
+    "originalSendKey": "f70b08ac-26af-4e9b-8101-36bc828261ba",
+    "requestHash": "63d7af8e42717d94c198d6d626bff07bcceeda0b5361040150b81594b961808b",
+    "conversationId": "4327",
+    "messageId": "21543",
+    "costMicros": null
+  },
+  "historical": {
+    "runId": "4242",
+    "currentRowExists": false,
+    "runStatus": "indeterminate",
+    "reservationStatus": "reconciling",
+    "attemptStatus": "unknown",
+    "accepted": true,
+    "originalCreateKey": null,
+    "originalSendKey": null,
+    "requestHash": null,
+    "costMicros": null
+  },
+  "independentWithdrawal": {
+    "passed": true,
+    "createKey": "fae4594a-cf11-4c59-96b0-594d3649488e",
+    "sendKey": "c139b758-1fdb-4b9f-8788-8dd856f39bf1",
+    "conversationId": "4328",
+    "messageId": "21544",
+    "runId": "4370",
+    "requestHash": "b5857b9d267b55989710ae4c9100d436321da3e6b2714b0de4f5493410db909e",
+    "counts": {
+      "runs": 1,
+      "jobs": 2,
+      "reservations": 1,
+      "providerAttempts": 0
+    },
+    "calls": {
+      "chunk": 1,
+      "embedding": 1,
+      "retrieval": 1,
+      "model": 1
+    },
+    "reservations": [
+      {
+        "status": "reconciling",
+        "settled_tokens": null,
+        "settled_cost_micros": null
+      }
+    ],
+    "costMicros": null,
+    "scope": "Independent deterministic permission fixture; not a result for either unresolved run"
+  }
+}

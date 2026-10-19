@@ -2,6 +2,163 @@
 
 状态：**Limited；检索/手动批次管理和共享端口接线已有有界证据，未开放生产自动批量入口，客户实模语义仍未验收。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+<!-- knowledge-batch-recovery-race:start -->
+
+## KB-4 / K-10：重进后晚到回执不得清掉新恢复键
+
+从稳定 `915bfbb1b060131cc1ce10d165fff5a97d26590f` 系统复核剩余计划后，优先处理原键恢复的实证缺陷，而非继续扩充解析器。旧页面准备 A 未结束，重进页面用 A 原键取得回执并开始 B；B 结果未知并已保存原键后，旧 A 的晚到成功/明确拒绝会按账号清空整个准备记录，删除 B 的持久恢复键。另一个问题是清理/回执校验使用可变调用方 scope，可能清错账号缓存或误拒原账号成功回执。这属于 K-10 关页/重进/旧结果晚到及 KB-4 原键恢复范围。
+
+`components/assistant/knowledge-batch-client.ts` 现在按提交时保存的 scope、requestKey、cases 与版本匹配后，分别清理相符内存/存储记录；旧页面的回执不能删除较新操作。回执账号校验同样绑定提交快照；未知响应及账号不符仍为 uncertain，不放宽服务端权限或自动另开请求。存储不可用时仍能清理匹配内存，服务端本人批次历史继续是持久权威。类型工具增加新测试候选，并在比较基线时真正恢复此既有客户端文件，避免用当前实现冒充 before。
+
+新增 `knowledge-batch-recovery-races.test.ts`：旧版 **6 项中 2 通过、4 失败，0 跳过/取消**；修复后新增 **6/6**，连同原客户端 7 项共 **13/13，0 失败/跳过/取消**。覆盖重进晚到成功/拒绝、账号不符仍未知、下一批原键/请求体重进恢复、可变调用方账号和存储阻断。实际执行知识准备客户端与原共享请求封装；会话存储及 **16 次本地 API fetch 全为模拟**，未连接浏览器/服务端、数据库或供应商。红测另有 14 次模拟 fetch，不混入绿测计数。3 文件 lint 0 错误/警告，同程序以 `915bfbb1` 比较 **287→287、新增 0**，源码执行 hash 稳定；没有重跑解析器、数据库或历史故障套件。
+
+路由/API/请求体/存储格式、角色/租户/来源协议、schema/迁移、runtime/Worker/队列不变；无新布局、样式、素材或反馈文案。已核对双语后台清单及 `/assistant-knowledge` 既有 Ant Design/Admin Pro、720px Drawer/共享反馈设计源，保留当前 UI；无视觉重构/还原账本变更，不宣称认证 Chrome 或原生已验。本轮只改知识客户端、专属回归、类型工具及此双语交接。原工作区、用户计划原件/副本/roadmap、三份历史收据归档保持；无真实模型/Embedding、验收锁、竞争 Worker 或供应商调用，`4369/4242` 不重试、不补键、不收敛费用。
+
+证据 `tmp/knowledge-batch-recovery/{red/,green/,lint-status.json,lint.log,types/type-comparison.json,preservation-check.json,verification.json}`。在 `admin` 运行 `node --import tsx --test --test-concurrency=1 src/lib/assistant/__tests__/knowledge-batch-recovery-races.test.ts src/lib/assistant/__tests__/knowledge-batch-client.test.ts` 可重放 13 项；归档 wrapper `tmp/knowledge-batch-recovery/run.mjs` 只用于本轮留证，不进功能提交。
+
+### 另一个已实证但待共享维护的键边界
+
+**独立探测 1 项预期未满足，不计入 13 项通过**：同一知识客户端在账号 A 的同体请求未知后，账号 B 为相同问题体准备显式 B 键，共享 `AssistantMutations.write` 却优先取签名缓存的 A 键。模拟 B 回执因此触发现有 `context_changed/uncertain`；随后原 B 键恢复，B 同一意图出现两个回执键。`shared-key-probe.ts/.json` 沿实际客户端/共享封装执行 **3 次纯模拟 API fetch**，没有实际服务端写入，不能据此声称已写出重复数据库评测。
+
+待处理动作/目标：由业务单点维护 `admin/src/components/assistant/client.ts` 的 `AssistantMutations.write` 显式键与账号上下文缓存边界。建议不能静默用旧缓存替换调用方显式原键：按原账号上下文隔离，或在显式键冲突时派发前明确失败；共享维护者选择最小方案，并保留同一原操作的未知回执恢复及晚到清理规则。验收样本为“A 未知→B 同体显式新键→B 实际发送键必须匹配或派发前拒绝”，不能使 B 在两个键下提交同一意图。**状态：待共享所有权处理，未被权限/自动审批拒绝；本线未改共享 client.ts，也未绕过它。** 当前独立晚到清理修复不宣称解决该跨账号共享键问题。
+
+共享清单仍由集成人单点更新：现有双语 KB-4 手动批次段补“浏览器恢复元数据按提交 scope/key/body 条件清理，晚到旧回执保留较新原操作；回归 13 项为真实客户端/模拟 HTTP，DB/原生未复验；共享显式键跨账号问题仍待修复”，不升级为完整 K-10/生产自动批次通过。DOCX 当前仍是上一节点 v1.3，本轮未改解析器。
+
+### 后续高价值剩余项与准确依赖
+
+| 剩余范围 | 下一有效输入/责任与验收 |
+| --- | --- |
+| KB-4/K-10 跨账号显式原键 | 上述已测共享缺陷待业务 `client.ts` 最小修复；稳定提交后复跑同一纯模拟场景，原键必须匹配，不用新真实调用证明。 |
+| KB-1 自动条件抽取、自由文本冲突、专业长尾 | 需固定获准来源/问题、条件与冲突的人工真值及具体召回/语义缺口；真实生成验收另需调用授权/预算。既有元数据、登记冲突和离线语义规则不重做。 |
+| KB-2 OCR、PDF 表格/图示、XLSX/旧格式/复杂结构 | 需具体格式样本、质量与资源目标；新依赖/外发需相应授权，格式/定位/schema 扩展由共享方接入。v1.3 保真已有证据，不以无界新解析用例充当下一阶段。 |
+| KB-3 通用父子、术语、重排与更广图纸/项目语义 | 需当前 v4 的实测缺口和固定应命中原件/问题；项目/图纸事实仍依原适配器，外部重排/生成需独立授权，不另起事实库。 |
+| KB-4 自动调度、定时版本切换、影子 profile 构建/切换/回滚及规模 | 原任务/队列/生命周期/schema 由共享方维护；容量/时延需明确工作负载和目标，再按现有锁做隔离验收，不能默认扩大 50/100/2000 限额。 |
+| K-04/09/12 实模归因/冲突、完整客户语义/原生与生产恢复 | 需要完整供应商/原操作证据及后续明确调用范围；`4369/4242` 原键缺项、夹具已清理及未知费用不能由新键或缺行补证。完整构建/真机/真实微信/生产仍保留其原依赖与未验状态。 |
+
+本轮阶段保存后，当前没有另一项同时具备具体样本、明确验收目标且属于知识独立边界的待实现能力；在上述输入或共享稳定修复到达前停止新增实现，不循环重测或制造文档进度。这不是宣称知识平台完成，也不是把所有剩余项都归因于同一历史故障。整体 **Limited**；未合 main、部署、强推或扩大权限。
+
+<!-- knowledge-batch-recovery-race:end -->
+
+<!-- knowledge-docx-header-notes:start -->
+
+## KB-2 / K-03：表头脚注随行引用保真
+
+从稳定 `30696fac5272f6366c17040d1e4ddfc3ca165db3` 继续核对完整计划：KB-4 自动调度/profile 切换仍需共享责任方，不能靠扩大本线边界推进；本轮选择实际复现的 K-03 漏项。v1.2 已解析出表头脚注，却只把表头文字复制到数据行，数据行分块丢失该脚注中的单位/适用条件。此修复不依赖 `4369/4242` 恢复或新供应商调用。
+
+**当前 DOCX parser 为 `xiaok-file-v1.3:docx:yauzl3.4.0:saxes6.0.0`**，沿同一连续开头表头集合（或已有首行推断）将其原脚注加入每行上下文；共享表头脚注、本行脚注、相邻表注按原文去重，顺序稳定。普通数据行及后置表头标记行的脚注只留在本行，不作为其他行的公共条件。首行推断核对警告、v1.2 当前单元格属性规则、行列定位、Unicode 原文范围及 PDF 标识/实现保持；不做脚注语义推断。新解析不改旧发布版本，需另建草稿、人工核对、索引和发布才采用；没有后台重解析或数据库写入。
+
+新增 `assistant-docx-note-fixtures.ts` 与 `knowledge-docx-notes.test.ts`。v1.2 红测 **8 项：1 通过、7 失败、0 跳过/取消**；修复后新增 **8/8**，并因解析器实际变化执行既有表头/单元格/文件引用/PDF **36/36**，合计 **44/44，0 失败/跳过/取消**，执行中源码 SHA256 稳定。覆盖多层连续表头、推断/显式关闭首行、后置标记、重复引用、A/B 行脚注隔离，以及数据行分块中的完整单位/条件/脚注/Unicode 引文范围。最初 ESM 探测入口在样本执行前失败，改用现有 CJS/tsx 入口后复现；该准备失败不计入上述回归。7 个代码文件 lint 0 错误/警告；同程序以 `30696fac` 比较 **287→287，新增 0**，不代表全仓类型干净。
+
+真实执行的是本地隔离 DOCX/PDF 解析器与明确合成文件；分块回调及既有 Agent 端口为模拟。没有数据库、真实模型、Embedding、供应商调用、验收锁、竞争 Worker 或浏览器/原生验收；没有重试旧请求、改原键或收敛未知费用。原用户工作区、计划原件/副本/roadmap 及三份历史收据归档保持。范围仅解析器、专属夹具/回归、运行/类型验收工具及双语交接，不改共享 DTO/runtime/Worker/队列、schema/迁移、权限/API/UI。
+
+证据 `tmp/knowledge-docx-notes/{red/,green/,lint-status.json,lint.log,types/type-comparison.json,preservation-check.json,verification.json}`；在 `admin` 执行 `node scripts/assistant-knowledge-docx-offline.mjs --notes-only --output-dir ../tmp/knowledge-docx-notes/replay` 仅跑新 8 项，去掉 `--notes-only` 为全 44 项。旧 `--new-only`/`--cells-only` 含义保留。未执行数据库/C01、真实专业语义或生产兼容验收，不把本次解析证据扩大为 K-03 整体验收。
+
+共享双语清单/二期合同仍由业务集成人单点维护。本轮准确 KB-2 更新提案为：**Limited：当前有界 DOCX v1.3 保留 v1.2 当前直接单元格属性定位；连续开头/推断首行表头的原脚注随行上下文保留，行内脚注不跨行，重复原文去重；首行推断仍需核对。合成本地解析/引用回归通过，发布版本不可变；新草稿核对/索引/发布后采用。PDF 表格/OCR、新格式、复杂布局及完整生产兼容仍未完成。** 集成时以此为当前描述，下节 v1.2 仅是上一节点证据；无需新的共享运行接口或 UI 账本变化。实模归因/冲突语义仍需后文列出的供应商与完整原操作证据，未知结果/费用保留。整体 **Limited**；未合 main、部署、强推或扩大权限。
+
+<!-- knowledge-docx-header-notes:end -->
+
+<!-- knowledge-docx-cell-fidelity:start -->
+
+## KB-2 / K-03：当前单元格属性与引用列号保真
+
+从知识稳定 `5bcc86b895d532a0f451580b3dd9cf106883dfee` 继续，在原隔离工作区/分支完成一个实际未完成的本地缺陷。原解析器递归查找 `gridSpan/vMerge`，会将 `tcPrChange` 的旧跨度/旧合并当作当前属性：原本第二列被标为第三列，或未合并单元格被标为纵向合并。格式依据是 [Open XML 单元格修订记录](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.tablecellpropertieschange?view=openxml-3.0.1)保存修订前属性；[gridSpan](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.gridspan?view=openxml-3.0.1)表示当前单元格占用的逻辑列数。
+
+`scripts/assistant-file-parser.mjs` 现在只读取当前直接 `tcPr` 的直接 `gridSpan/vMerge`。无跨度标记仍为 1 列；显式跨度必须为有界整数，保留最多 12 列限制；纵向标记保留 `restart/continue` 与省略 val 时的 continue。多份当前属性、重复跨度/合并、缺失或不合法显式值失败，不选取其中一份或猜测位置；历史值不参与当前验证。DOCX parser 标识升为 **`xiaok-file-v1.2:docx:yauzl3.4.0:saxes6.0.0`**，PDF 标识/实现不变。没有新 DTO/API、权限、schema/迁移、运行时/Worker/队列、UI 或数据库写入；原隔离进程及资源限制保持。
+
+新增明确合成 DOCX 夹具及 `knowledge-docx-cells.test.ts`。旧解析器红测 **18 项：4 通过、14 失败、0 跳过/取消**，失败证明历史属性污染及含糊属性被静默接受；修复后新增 **18/18**，并因实际解析器变化运行原表头/文件引用/PDF 回归 **18/18**，合计 **36/36，0 失败/跳过/取消**，执行期间源码 SHA256 稳定。引用检查覆盖当前列号、跨度/纵向标记、完整单位/适用条件/脚注与 Unicode 原文范围。分块回调及既有 Agent 回归端口为模拟；DOCX/PDF 解析由真实本地子进程执行。没有数据库、真实模型、Embedding、供应商请求、验收锁或竞争 Worker；没有重试 `4369/4242`，其原未知结果/费用保持。
+
+6 个代码文件 ESLint 0 错误/警告；相同源码程序以 `5bcc86b8` 比较 **287→287，新增 0**，不代表全仓类型干净。证据为 `tmp/knowledge-docx-cells/{red/unit-status.json,red/unit.log,green/unit-status.json,green/unit.log,types/type-comparison.json,preservation-check.json}`；在 `admin` 运行 `node scripts/assistant-knowledge-docx-offline.mjs --output-dir ../tmp/knowledge-docx-cells/green` 可重放全部 36 项，`--cells-only` 仅新 18 项，旧 `--new-only` 仍仅表头回归。未做数据库/C01、浏览器、原生或真实供应商兼容验收；本轮没有界面变化，UI 账本无更新范围。允许的知识浏览器端口 `localhost:3007` 未用于此后端修复。
+
+### 共享清单的单点集成记录
+
+共享双语模块清单/二期合同继续由业务集成人单点维护；本线只提交此双语准确提案，不并行改共享文件。集成时将现有 KB-2 当前解析说明更新为：**Limited：有界 DOCX v1.2 按当前直接单元格属性定位列号与合并标记，历史修订属性不改变当前定位；含糊/无效当前属性失败。K-03 合成本地解析/引用回归已通过；已发布版本不可变，采用新解析须另建草稿、人工核对、索引并发布。PDF 结构/OCR、新格式、复杂布局及生产兼容仍未完成。** 表头连续前缀规则保留，不再把 v1.1 当作当前 DOCX 解析标识。
+
+该修复不继承纵向合并首格正文、不支持新的行网格偏移/复杂结构，也不修改既有发布版本。下一步由集成人在稳定集成提交同步上述 KB-2 记录；需扩展复杂格式时先取得具体样本和质量契约。实模归因/冲突语义仍依赖下节的供应商与完整原操作证据，不能由本次解析回归替代。整体 **Limited**；未合 main、部署、强推或扩大权限。
+
+<!-- knowledge-docx-cell-fidelity:end -->
+
+<!-- knowledge-provider-certainty:start -->
+
+## 正式共享结论已集成：仅离线接回，历史未决保留
+
+已核验远端 `codex/xiaok-provider-certainty` 的 `752020753774a1fc5ccae6f305c7dd26358437bb`，从知识稳定 `0030eb82` 正常合入，merge 为 `91f3c1857f429a86567be102dbb7831c8b090f8b`；共同基线 `04a85946`，业务 14 路径与知识 9 路径无重叠/冲突。包含原样导入的 v63 人数解释及 `610ec0d2` 供应商确定性修复，未由知识线编辑共享责任文件。该修复仅将**未来** fetch 后无响应的连接异常归为 unknown、禁止自动切换供应商，保留原明确 HTTP 响应/派发前规则；不构成旧请求未被供应商接收或没有费用的证明。
+
+正式共享结论保持：`4369` 的原 queued send 只是本地准入，attempt `1804` 仍 failed/accepted=false/actual_cost={}，run 仍 indeterminate/provider_outcome_unknown，预留 reconciling、settled tokens/cost 为 null，原 create key 缺失；`4242` 仍有 unknown/accepted attempt，原 create/send key 和 request hash 缺失。原夹具已清理，不能据缺行推定零调用/零费用。两者均不得补造原键、等价换键重发、重试或人工收敛费用。独立合成 run `4370` 的模拟选摘/真实 C01 撤回成功只证明其权限边界，**不证明 `4369` 已成功、未派发或已核销**。
+
+新增知识侧交叉契约 **4/4 通过，0 失败/跳过/取消**：未来连接 unknown 不授予新供应商提交；新分类不改旧 failed/unaccepted 收据或解除恢复阻断；`4242` 保留 unknown 与全部原键缺项；`4370` 不可替代 `4369` 的执行证据。一次 fetch 为纯 mock，实际执行测试的子进程守卫报告 **DB 连接 0、provider fetch 0、外部 socket 尝试 0**。本轮没有数据库/真实模型/Embedding/新供应商 HTTP、验收锁、Worker、监听服务或原生调用；未重跑共享 230 项及已完成的数据库/语义套件，也不把其历史结果计入本轮。
+
+可审查样本为 `scripts/fixtures/assistant-knowledge-recovery-receipts.json`：仅提取三个已执行、明确合成样本的部分状态/幂等身份，记录三份原归档 SHA256，不含凭据或真实客户资料；缺失字段保持 null，不修补历史。专属测试为 `knowledge-provider-certainty.test.ts`，类型脚本只增加该候选。2 文件 lint 通过，同程序与 `75202075` 比较 **287→287，新增 0**，不是全仓类型干净。除原样集成业务变更，本线只有测试/验收元数据/双语交接，无新增运行模块、API/角色/引用权限、UI、schema/迁移或生产功能行为。
+
+### 剩余可恢复条件与等待点
+
+剩余实模双边归因与新回答语义需要供应商证据，目前不可安全继续。至少须取得并相互核对：
+
+1. 可靠供应商原请求结果、明确接收/未接收证明及实际用量/费用依据；客户端无响应、queued、accepted=false 均不能替代。
+2. 完整可信原 tenant/principal/conversation/message/run 身份、create/send keys 与 request hash，以及原来源版本/授权；缺键或仅有清理后的归档不能由模型、测试或新键补造。
+3. 共享责任方基于这些证据确认权威状态及现有可授权的原操作恢复机制；当前已清理夹具不能直接 resume，也不得重建等价发送绕过 indeterminate/reconciling。
+
+条件齐备后仍需后续明确的调用范围和预算，才可安排至多一次受控原操作恢复验收；“至多一次”不是当前派发授权。任何新不确定立即停止、保留原收据/费用状态，不自动转供应商或换键。**当前等待供应商/完整原操作证据，非权限拒绝**；不为维持运行新增任务或循环检查。
+
+证据 `tmp/knowledge-provider-certainty/{integration-preflight.json,contracts-final.log,contracts-final-status.json,network-final-runner.json,types-final/,lint-final.log}`，原归档/计划/原脏工作区保持。共享正式合同见[二期连接确定性](./xiaok-assistant-phase-2.zh-CN.md#当前共享供应商连接错误与结果确定性)及[共享交接](./xiaok-assistant-handoff.zh-CN.md)。整体 **Limited**；未合 main、部署、强推、扩大权限或执行恢复。
+
+<!-- knowledge-provider-certainty:end -->
+
+<!-- knowledge-revocation-acceptance:start -->
+
+## 撤回权限补验与原键恢复准备
+
+基线 `347762ff18ef5ed02f39b1b9ae6db97df8f55d77`，共享产品仍逐字匹配 `04a85946`。本轮只补上一轮未执行的来源撤回检查及知识专属恢复证据断言；不新增真实模型、Embedding 或供应商 HTTP，也不再执行之前已完成的批次/语义整套。新增 `scripts/assistant-knowledge-revocation.ts`、专属 `knowledge-recovery-evidence.test.ts`，原验收 wrapper 增加非付费互斥模式 `--followup --revocation-only`。子进程预加载原网络守卫，仅允许批准 PostgreSQL 和 tsx 编译管道；混用 `--live` 或其他非付费模式在读取连接文件前拒绝。
+
+**真实隔离 PostgreSQL/C01 Request handler 撤回组 1/1 通过，0 失败/跳过**。明确合成企业 `3511`、管理员 `6895`、客户 `6910` 经原知识服务创建/索引/发布文档 `937`、版本 `1053`。原索引 Worker 注入确定性 chunk/1024 维单位向量，原回答 Worker 注入确定性检索/选摘，分别调用 1 次，均为**模拟**；未修改平台配置或安装替代凭据。run `4370` 起初 succeeded，C01 历史与引用 `744` 均实际可读；原 `retire` 写入后，历史重进 `available=false`、引用 `available=false`，无合成正文外发。该路径是现有选摘回答及权限验收，不是客户 Agent 或专业语义回答通过。
+
+同一进程中并发两次只读 `originalSubmission` 返回原 conversation/message/run IDs；create/send keys、原请求 hash、run/job/预留/provider-attempt 数与模拟调用数均不增加，reconciling/null 成本状态不改变。没有用 create/send/resume 探测原 run。这里不是新的双独立进程批次验收。守卫报告 **provider fetch 0、外部 socket 尝试 0**，仅本轮 PostgreSQL 连接 2；真实模型/Embedding 调用均 **0**。实际模拟计数 chunk/embedding/retrieval/model 各 1 不混入真实调用统计。
+
+清理前审计后，107 张企业表无残留，企业/管理员/客户三类身份计数均为 0，子进程退出、原共享锁释放；配置和执行期间源码 hash 稳定。注入模型沿原 Worker 写的 provider-start 标记只是受控夹具行为，预留保持 reconciling/null 直到审计，不能把其删除称为真实费用核销。执行后仅修正非付费模式通用报告 scope/criteria 标签，未重跑数据库；原始产物不改写，以 `service-status.json`、`revocation` 结果和 `stage-summary.json` 的实际范围为准。
+
+新增离线单元 **5/5，0 失败/跳过/取消**，包含身份/计数缺失与篡改、任何新增调用、未知成本填零/提前释放对账、failed/unaccepted 不构成重发授权，以及非付费模式不得打开 `--live`。5 文件 lint 通过；相同源码程序类型以本轮基线对照 **287→287，新增 0**。只是验收工具/专属测试和双语交接变化，运行模块清单、路由/API/权限/UI、共享 runtime/Worker/schema/迁移均无本线新增行为影响；原工作区/计划和两份历史收据归档 hash 保持。
+
+### 等待共享结论后的单次验收边界
+
+`recovery-preparation.json` 为**离线准备，不是执行授权**，无数据库/网络调用。两条记录都为 `archive_only_wait_shared_review`、`dispatchApproved=false`；最多一次是未来受控验收的上限，不是新增调用次数。
+
+| 原执行 | 已留存事实与缺项 |
+| --- | --- |
+| `4369` | 原 send key/request hash 和 failed、accepted=false 的 attempt 已留存，run 仍 indeterminate、预留 reconciling。当前本线归档未留存 create key，当前库行已清理；不能把已归档 send 当作可直接调用 `originalSubmission` 的完整 create/send 证据。 |
+| `4242` | indeterminate、unknown/accepted attempt 和 reconciling 保留；本线归档未留存原 create/send key 与 request hash。缺项保持 null，不猜测、不换键、不由缺行推定未调用或费用为零。 |
+
+等待共享责任方给出稳定结论及可靠原操作证据后，先核对原身份、请求 hash、当前权威状态与有效恢复机制；不带未核清 indeterminate/reconciling 状态绕过既有围栏。若证据仍只有归档或缺键，继续等待，不重建一次等价新发送。只有原授权/原操作恢复机制明确可用后，才可安排**至多一次**受控执行，并对照原身份及 attempt/HTTP 增量；任何新不确定立即停止并保留原收据。准备函数不调用恢复、派发或成本收敛，不处理旧 run。
+
+证据根 `tmp/knowledge-revocation/`：`pre-run.json`、`service-1/{live.json,service-status.json,network-guard.json,lock-release.json}`、`unit-complete.log`、`lint-complete.log`、`types-complete/`、`recovery-preparation.json`、`preparation-network.json`、`stage-summary.json`。复跑非付费模式需既有批准连接文件、原 admin 环境目录和全新本 worktree tmp 输出目录；本任务不循环复跑。其后共享正式结论已由 `75202075` 接回，**仍缺供应商/完整原操作证据，非权限拒绝**。实模冲突双边引用及专业语义仍未通过，整体 **Limited**；无新功能、main 合并、部署或权限扩大。
+
+<!-- knowledge-revocation-acceptance:end -->
+
+<!-- knowledge-semantic-followup:start -->
+
+## 有界实模后续：预算围栏通过，新的不确定执行已停止
+
+准备基线为 `349cb8f2f04e059bc413417b2093c34f04513541`，工具提交为 `4540f7e1`。实模开始前，按父任务新稳定记录核验并正常合入 `04a85946eb63ec8418ae75877d44cc2e0c3dd4a9`：15 项业务路径与本线 7 路径无重叠/冲突，冻结执行头为 `0fe63d5dfd36c11ab3c322a77e34a868a28f9bc2`，实际 prompt 为 **xiaok-renovation-v62**。共享文件与该业务头一致；本线只改验收工具/专属单元和本双语交接，无自主产品/UI/配置/权限/schema/迁移改变，因此无新的运行模块清单行为影响。共享 KB-4 清单/二期记录已由业务头应用。
+
+只读预检确认既有 `deepseek-flash`/工具配置及凭据可用，未创建夹具或发外部请求。历史 `4242` 仅只读核对：原归档 hash `b35c553ee8bc382e611c207346ba649a636d308910f1134d4e90af6e4c58dc7c` 保持，indeterminate 和 attempt `1762` unknown 保留；旧夹具已清理、当前行不存在不表示费用已知。没有重跑其 `study-prerequisites` 或用新键替代。本轮选原计划中尚未执行的 `registered-conflict`，四份知识原文加绑定项目实际水电阶段/正式户型/点位资料缺项，**一个场景、一个回合**；未新增工程标准或虚构现场记录。
+
+| 本轮检查 | 实际结果与边界 |
+| --- | --- |
+| 超预算当前派发前拒绝 | **通过**。真实 PostgreSQL/原 Agent、HTTP 明确模拟。run `4368` 后轮 53,778 字节超过原 48,000 上限，已知失败 `agent_input_limit`；目标后轮新增 attempt/开始标记/HTTP 均 0。前轮模拟 attempt `1803` succeeded、用量 10/4 是合成值，不计实模 token；未知费用和 reconciling 预留保留。 |
+| 唯一新实模场景 | **服务失败 1，成功 0；语义待审 1，成功 0**。run `4369` 首次文本 fetch 为 TypeError / `PROVIDER_CONNECTION_FAILED`，输入 29,921 字节，未超预算。没有模型响应、检索工具上下文或回答；不能把自动缺上下文的 false 标记当作新语义反例、私料泄露或来源丢失。 |
+| 新执行原收据核实 | attempt `1804` 实际为 **failed、accepted=false、actual_cost={}**，不能误写为 unknown attempt；权威 run 仍 **indeterminate / provider_outcome_unknown**，预留 **reconciling**、settled tokens/cost 为 null。仅重读原 `send:4327` / `f70b08ac-26af-4e9b-8101-36bc828261ba` 回执，核对 runId/messageId、请求 hash 和预留。没有重发、通用 retry、换键或填零费用。 |
+| 原索引服务 | 5 次 chunk 和 5 次真实 Embedding 均返回 200，含 4 份公开文档与 1 份内部隔离样本；索引 Embedding 已观测 2,305 input tokens，chunk 的 5 份 input measurements 未提供。查询 Embedding 0；文本 fetch 发起 1、响应 0，远端实际接收/计费不据此推定。总费用仍 null。 |
+| 四来源与实际项目来源的独立离线保留检查 | **归档投影 1/1 通过**。读取原 `4242` checkpoint、保留其历史 system prompt，使用当前投影/真实请求序列化函数但不发送：四文档 5 个规范 K 与 4 个 B 来源的完整正文、条件/前提/例外及身份/版本元数据保留，41,215 字节。B 包含实际节点、正式户型及本轮资料/事项缺项，不冒称有已发布现场照片或尺寸。守卫报告 DB/fetch/socket 阻断均 0；不是新的 v62 实模回答或 `4242` 重试。 |
+| HTTP 权限与失权 | 其他合成企业/客户读原 C01 历史 404，移除参与者后读/写 404，两项通过；派生回答撤回因无成功回答 **未执行 1**。未启动监听服务/原生 UI。 |
+
+限额保持 48,000 UTF-8 字节、4 模型轮、每轮最多 2,048 输出 token 及一次格式修复；验收工具另封顶文本 5、chunk 5、Embedding 9，不增运行时轮次或语义重试。夹具沿原 200 requests/12,000,000 tokens/1,000,000,000 cost micros 日配额；这不是费用估算。工具三模式 `--followup --preflight`、`--followup --budget-only`、`--live --followup` 互斥，拒绝未知/重复参数及复用输出，产物只在本 worktree `tmp/`。整套锁与准确父会话、应用角色均核验；先超预算检查，再索引和唯一新场景。没有新的凭据或权限扩张。
+
+清理前保存逐项模型/索引/预留原回执及未知费用。两套明确合成企业 `3509/3510`、管理员 `6894`、用户 `6908/6909` 已按 ID 清理；**107 张企业表无残留，企业/管理员/用户三类身份计数均 0**，子进程退出、原锁释放。配置 hash 与源码 hash 均稳定。不得把本套夹具删除表述为未知费用已核销；审计中原状态未改写。
+
+新增来源审计/付费门控单元 **7/7，失败/跳过/取消 0**，5 文件 lint 通过；同程序类型分别以 `349cb8f2` 和集成业务 `04a85946` 对照均 **287→287，新增 0**。初版缺少一个测试类型导入的 1 项新增诊断已修正并留档。未重跑前批 7 组真实双进程、45/64/18 整套或原生检查。证据根 `tmp/knowledge-semantic-followup/`：`integration-baseline.json`、`ownership-04a85946.json`、`preflight-1/`、`live-1/{live.json,model-request-0.json,service-status.json,lock-release.json}`、`offline-archive/{summary.json,model-body.json}`、`offline-archive-network.json`、`types-integrated/`、`stage-summary.json`。
+
+**待核实，非权限拒绝**：继续新 `registered-conflict` 的实模双边引用与完整来源语义审读受到首次模型连接失败、权威 run `4369` 仍不确定的阻碍。虽该 attempt 显示失败/未接受，本线不自行绕过 run 围栏；先由共享责任方核实已留存的原收据、连接故障与权威状态分类，再据原执行记录确定后续有界验收方案。夹具已按授权清理，不暗示当前库仍可直接恢复原 run。当前无新模型回答可审，不能称两项语义闭环或完整专业问答通过；`4242` 保持不动。整体 **Limited**，不合并 main、不部署、不启用生产批量。
+
+<!-- knowledge-semantic-followup:end -->
+
 <!-- knowledge-seam-integration:start -->
 
 ## 知识入口集成与真实双进程验收
@@ -26,9 +183,9 @@
 
 最终离线为模拟 store/共享端口 **5/5 组**；断言/门控/守卫单元 **10/10，0 失败/跳过/取消**，七个变化的工具/单元文件 ESLint 通过，产品接线此前六文件 lint 也通过。以业务 `a579e512` 做同一源码程序类型比较为 **287→287，新增 0**；这是既有诊断，不是全仓类型干净。比较只排除在所选基线尚不存在的候选文件。未重跑前批 45/64/18 整套。证据位于 `tmp/knowledge-seam-integration/`：`service-attempt-{1,2,3}/`、`recovery-fixture-offline/`、`recovery-fixture-{unit,lint}.log`、`recovery-fixture-types/`、`preservation-check.json`。原分支/HEAD/status，以及两份计划原件/副本和 roadmap hash 均保持。
 
-### 集成人单点更新的当前清单
+### 集成人已应用的清单记录（04a85946）
 
-共享双语清单/二期文档保持集成人单点所有权，本线提供以下准确 KB-4 当前记录替换文本，不并行修改共享文件：
+共享双语清单/二期文档保持集成人单点所有权。以下为本线交接的准确 KB-4 记录，已由业务 `04a85946` 应用，无需重复更新；本线未并行修改共享文件：
 
 > **Limited — 知识共享执行端口已接线，有界事务验收通过。** 原知识运营 API 惰性注入 `core/evaluation-execution.ts::createKnowledgeBatchSharedPort()` 到 `KnowledgeOperations`。路由/动作/请求体、租户/角色、私有来源/引用权限、schema 和 UI 均无新增边界；未开放生产自动批量接口或启用。真实隔离 PostgreSQL 两进程 7/7 组通过，覆盖唯一准入、跨进程持久取消、单项取消中断重进、原已认证 resume（409 batch_cancelled）、原键恢复不增派发、真实配置 pin 及 provider-start 在新 attempt/标记/HTTP 前拒绝。实模/Embedding 调用 0，恢复 unknown 标记为合成，费用保留 null。自有夹具精确清零、原互斥锁释放。付费实模语义和生产批量启用仍未验收，整体 Limited。
 
