@@ -1,10 +1,16 @@
 # 小客接力：供应商连接失败确定性
 
-当前分支codex/xiaok-handoff-cancel，工作区G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-provider-certainty，基线752020753774a1fc5ccae6f305c7dd26358437bb。当前取消闭环已完成：服务7/7+原生1组、原生10/10、离线259/259；共享AssistantMutations显式原键/迟到清理已修复，新增9项及既有21项共30/30通过；接下来正常集成知识0f4fbf3c及共享KB-2清单。整体Limited，无实模/生产启用。
+## 当前知识集成与复验输入
+
+正常合并 `157c98c1` 纳入知识 `0f4fbf3c`（含DOCX `915bfbb1`/`30696fac`），此前共享键修复 `e383a3eb`、等待取消修复 `b7bd7243` 已稳定提交。未替换共享factory/DTO/runtime/Worker/队列、schema、API角色边界或Mini UI。联合复跑：客户端/恢复36/36、真实本地解析44/44、供应商确定性/恢复证据/语义续问协议16/16；后者协议及解析chunk/Agent适配均为模拟，无服务端/数据库/模型/Embedding调用。知识侧历史live/撤回结果仅沿用原证据，不冒称本业务线新跑。
+
+知识线可在 `admin` 执行 `node --import tsx --test --test-concurrency=1 src/lib/assistant/__tests__/admin-mutation-identity.test.ts src/lib/assistant/__tests__/admin-client.test.ts src/lib/assistant/__tests__/knowledge-batch-client.test.ts src/lib/assistant/__tests__/knowledge-batch-recovery-races.test.ts`（36项）。调用方恢复字段与共享方法签名不变，继续提交企业/管理员绑定的原键和原正文，不以分配替代键消除未知操作。知识交接里归档的共享探测失败由后续共享提交修复，不改原归档。生产自动批量/profile切换和通用实模语义仍Limited，历史4369/4242及未知费用未动。
+
+当前分支codex/xiaok-handoff-cancel，工作区G:\workspace\向总\Smart-Floor-Planner\tmp\worktrees\xiaok-provider-certainty，基线752020753774a1fc5ccae6f305c7dd26358437bb。当前取消闭环已完成：服务7/7+原生1组、原生10/10、离线259/259；共享AssistantMutations显式原键/迟到清理已修复，新增9项及既有Admin/知识27项共36/36通过；已正常集成知识0f4fbf3c（合并提交157c98c1），同步当前DOCX v1.3与KB-4恢复边界。整体Limited，无实模/生产启用。
 
 **共享Admin原操作键：限定修复已Implemented，整体Limited。** `AssistantMutations.write` 原样发送调用方显式键，与隐式内存重试缓存分离。已知成功/拒绝仅能清理仍属于本键的隐式缓存，迟到回执不能删除较新操作。知识调用方继续按企业/管理员隔离恢复记录，并核对原正文、回执账号范围与batchId；恢复必须提供原键。共享封装不为旧隐式调用自动识别账号切换。原服务端租户/角色/来源/幂等守卫、未知结果及费用仍为权威；无API/schema/权限或产品markup/样式/文案改动。
 
-验证：新增6/6共享反例修复前失败；修复后新增共享/调用链9项、既有Admin14项与知识客户端7项共30/30通过。实际知识客户端覆盖A未知→B同体请求→沿B原键重进恢复，分别检查账号及租户变化；B已知成功后不派发多余恢复。所有fetch均为模拟，只证明请求头/恢复记录行为，不证明真实数据库重复写入或模型执行。类型287→287、新增0，定向lint通过；全量 `npm run lint` 退出0，保留30项既有warning。证据 `tmp/xiaok-mutation-identity/{before.log,after-caller.log,type-comparison.json,lint-final.log,lint-repository.log}`。Mini客户端/runtime及批准UI无影响。见[共享请求键合同](./xiaok-assistant-phase-2.zh-CN.md#当前admin原操作键边界)。
+验证：新增6/6共享反例修复前失败；修复后新增共享/调用链9项、既有Admin14项与知识客户端/迟到恢复13项，在正常集成 `0f4fbf3c` 后共36/36通过。实际知识客户端覆盖A未知→B同体请求→沿B原键重进恢复，分别检查账号及租户变化；B已知成功后不派发多余恢复。所有fetch均为模拟，只证明请求头/恢复记录行为，不证明真实数据库重复写入或模型执行。类型287→287、新增0，定向lint通过；全量 `npm run lint` 退出0，保留30项既有warning。修复前证据 `tmp/xiaok-mutation-identity/before.log`；联合证据 `tmp/xiaok-shared-integration/{clients.log,type-comparison.json,lint-repository.log}`，定向lint见 `tmp/xiaok-mutation-identity/lint-final.log`。Mini客户端/runtime及批准UI无影响。见[共享请求键合同](./xiaok-assistant-phase-2.zh-CN.md#当前admin原操作键边界)。
 
 **等待设计师时客户明确取消：整句明确文本的闭环已Implemented，整体Limited。** 原C01输入框发送“取消人工接待”或“不找设计师了”，沿原 `POST /api/miniprogram/assistant/conversations/:id/messages` 请求键及取消事务，保存原话与既有“本次接续已结束，小K恢复回复。”系统反馈、撤销接待参与者、推进上下文/版本并回到AI，不创建run或供应商调用。仅本人所属、仍open且 `handoff_requested/waiting` 的会话可改变；已进入人工接待、提问、引用、假设和拒绝取消仍是普通消息。租户、本人、来源、留存、接单竞争与幂等守卫保留。
 

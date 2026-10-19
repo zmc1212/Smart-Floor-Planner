@@ -1,10 +1,16 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前知识集成与复验输入
+
+正常合并 `157c98c1` 纳入知识 `0f4fbf3c`（含DOCX `915bfbb1`/`30696fac`），此前共享键修复 `e383a3eb`、等待取消修复 `b7bd7243` 已稳定提交。未替换共享factory/DTO/runtime/Worker/队列、schema、API角色边界或Mini UI。联合复跑：客户端/恢复36/36、真实本地解析44/44、供应商确定性/恢复证据/语义续问协议16/16；后者协议及解析chunk/Agent适配均为模拟，无服务端/数据库/模型/Embedding调用。知识侧历史live/撤回结果仅沿用原证据，不冒称本业务线新跑。
+
+知识线可在 `admin` 执行 `node --import tsx --test --test-concurrency=1 src/lib/assistant/__tests__/admin-mutation-identity.test.ts src/lib/assistant/__tests__/admin-client.test.ts src/lib/assistant/__tests__/knowledge-batch-client.test.ts src/lib/assistant/__tests__/knowledge-batch-recovery-races.test.ts`（36项）。调用方恢复字段与共享方法签名不变，继续提交企业/管理员绑定的原键和原正文，不以分配替代键消除未知操作。知识交接里归档的共享探测失败由后续共享提交修复，不改原归档。生产自动批量/profile切换和通用实模语义仍Limited，历史4369/4242及未知费用未动。
+
 ## 当前Admin原操作键边界
 
 **共享Admin原操作键：限定修复已Implemented，整体Limited。** `AssistantMutations.write` 原样发送调用方显式键，与隐式内存重试缓存分离。已知成功/拒绝仅能清理仍属于本键的隐式缓存，迟到回执不能删除较新操作。知识调用方继续按企业/管理员隔离恢复记录，并核对原正文、回执账号范围与batchId；恢复必须提供原键。共享封装不为旧隐式调用自动识别账号切换。原服务端租户/角色/来源/幂等守卫、未知结果及费用仍为权威；无API/schema/权限或产品markup/样式/文案改动。
 
-验证：新增6/6共享反例修复前失败；修复后新增共享/调用链9项、既有Admin14项与知识客户端7项共30/30通过。实际知识客户端覆盖A未知→B同体请求→沿B原键重进恢复，分别检查账号及租户变化；B已知成功后不派发多余恢复。所有fetch均为模拟，只证明请求头/恢复记录行为，不证明真实数据库重复写入或模型执行。类型287→287、新增0，定向lint通过；全量 `npm run lint` 退出0，保留30项既有warning。证据 `tmp/xiaok-mutation-identity/{before.log,after-caller.log,type-comparison.json,lint-final.log,lint-repository.log}`。Mini客户端/runtime及批准UI无影响。见[共享请求键合同](./xiaok-assistant-phase-2.zh-CN.md#当前admin原操作键边界)。
+验证：新增6/6共享反例修复前失败；修复后新增共享/调用链9项、既有Admin14项与知识客户端/迟到恢复13项，在正常集成 `0f4fbf3c` 后共36/36通过。实际知识客户端覆盖A未知→B同体请求→沿B原键重进恢复，分别检查账号及租户变化；B已知成功后不派发多余恢复。所有fetch均为模拟，只证明请求头/恢复记录行为，不证明真实数据库重复写入或模型执行。类型287→287、新增0，定向lint通过；全量 `npm run lint` 退出0，保留30项既有warning。修复前证据 `tmp/xiaok-mutation-identity/before.log`；联合证据 `tmp/xiaok-shared-integration/{clients.log,type-comparison.json,lint-repository.log}`，定向lint见 `tmp/xiaok-mutation-identity/lint-final.log`。Mini客户端/runtime及批准UI无影响。见[共享请求键合同](./xiaok-assistant-phase-2.zh-CN.md#当前admin原操作键边界)。
 
 ## 当前明确取消等待接待
 
@@ -292,7 +298,7 @@ GET版本快照为当前最多50项现场事项补足原记录的当前版本元
 - `0086_assistant_source_files`增加一张强制RLS的私有原件表 `assistant_knowledge_assets`，同企业/文档复合外键、SHA256、真实格式、使用许可、实际上传者和不可变bytea。原版本增加 `source_asset_id/source_file` 与发布后不可变约束；解析结构、核对人/时间/排除片段随版本hash保存。原普通条目hash兼容。开发主库及隔离库已应用；迁移/备份证据和恢复边界见本轮交接。
 - 解析使用原 `assistant_jobs` 的 `knowledge_parse`，共用管理身份、企业设置锁、并发上限、attempt、租约/取消/原键恢复与原Worker调度。原件先落库，页面关闭后可重进读取任务与结构；相同原键及同草稿相同hash复用结果，不把再次上传变成重复任务。解析失败保留原件，不自动索引/发布；本地已知失败/取消可显式重试，最多3次。旧租约、替换、撤回、操作者撤权均阻止晚到提交。外部Embedding/分块的未知结果协议不变。
 - 本地子进程解析：stdin只含获权原件，无任意URL/文件路径或继承凭据，192MB V8堆/20秒/有界输出。文件≤4MB、企业≤100份/100MB、PDF≤50页、结构≤128片、DOCX表≤64行/12列；ZIP检查路径/重复名/加密/嵌入对象、压缩率、解压总量24MB、单项8MB及选取XML的CRC，XML禁止DTD/外部实体并限制深度/节点。没有安装或运行Dify/RAGFlow整平台。
-- DOCX保留标题层级、正文段落、表格行/列/合并跨度、原表头、相邻注/例外与脚注。段落编号为正文段落次序；无固定渲染，**不生成页码**。图片、页眉页脚、修订/外链按实际警告核对，不抓外链；嵌套表/复杂容器明确失败。PDF保留实际页码及提取文字顺序，使用本地CMap/字体数据；不运行viewer/脚本/附件。无文字页明确需OCR；PDF表格结构、图示与扫描OCR未实现，不能把可提取文字当作结构理解。
+- DOCX保留标题层级、正文段落、表格行/列/合并跨度、原表头、相邻注/例外与脚注。段落编号为正文段落次序；无固定渲染，**不生成页码**。图片、页眉页脚、修订/外链按实际警告核对，不抓外链；嵌套表/复杂容器明确失败。PDF保留实际页码及提取文字顺序，使用本地CMap/字体数据；不运行viewer/脚本/附件。无文字页明确需OCR；PDF表格结构、图示与扫描OCR未实现，不能把可提取文字当作结构理解。 当前限定DOCX解析器 `xiaok-file-v1.3:docx:yauzl3.4.0:saxes6.0.0` 保留v1.2当前单元格属性定位；连续开头/推断表头的原脚注随数据行上下文保留，正文及后置表头脚注仅留本行，同文去重。推断表头仍须核对。真实合成本地解析/引用44/44通过，chunk回调及Agent端口为模拟。已发布版本不可变，采用新解析须另建已核对/索引/发布的草稿，无后台重解析。PDF表格/OCR、新格式、复杂排版及完整生产兼容仍未完成。
 - 后台沿原720px Drawer、Ant Design/Admin Pro与共享反馈，展示原件hash/下载、任务、结构/合并信息/警告、将进入检索的文字、核对与替换入口。文件默认内部受众；需明确核对范围后才允许索引，就绪后仍须有权发布。排除片段只减少独立检索片，原章节/表头/脚注仍可能作为同文件上下文保留。原文修订须上传有出处的新文件，不允许把模型改写或手填正文覆盖原件。第一批未提供任意解析文字改写器。
 - 正文仍≤16,000字符/48,000字节。一个原段/表行连同必要原上下文必须能放进≤512-token片；超过时明确失败，不截掉前提/例外。每片保留同版本原表头/章节/脚注、blockId、真实页或表行列、原件hash/解析器、Unicode code point范围；引用回读另返回实际quote范围，重复原句保留歧义计数，不伪造唯一定位。未做通用复杂表/OCR/全格式、自由父子扩展或重排。
 
@@ -347,7 +353,7 @@ GET版本快照为当前最多50项现场事项补足原记录的当前版本元
 
 小程序仍只有 `packages/assistant/chat/chat`，复用批准C01/C02/C05/U01及唯一设计源 `design-references/xiaok-p4b-public-sites-v1/README.md` 的原气泡、引用片和不可用状态，WXML/Less/字号/插画/导航未改。后台视觉源为双语Admin UI合同及原 `/assistant-knowledge`；本环境没有可调用Chrome连接器，现有Chrome未开启CDP，认证态Chrome视觉仍未验证，不以HTTP/API代替视觉通过。原生业务截图不升级完整宿主/光学/高屏/键盘、真机/真实微信授权/BLE状态；不转人工验收门槛。
 
-完整企业知识库仍 **Limited**：文件上传/结构解析与页表定位、全部专业长尾、自动条件抽取/语义冲突、知识缺口运营队列、重排/父子补检、影子profile切换及定时替换尚未交付。KB-2文件入库与KB-3增强按专项继续，不把全格式支持当KB-1前置。历史构建/类型/打包阻碍保持实际记录，未合并main、未部署或批准发布。
+完整企业知识库仍 **Limited**：当前KB-2已交付限定DOCX/文字PDF入库及定位，OCR/复杂排版/其他格式、全部专业长尾、自动条件抽取/语义冲突、知识缺口运营队列、重排/父子补检、影子profile切换及定时替换尚未交付。KB-2文件入库与KB-3增强按专项继续，不把全格式支持当KB-1前置。历史构建/类型/打包阻碍保持实际记录，未合并main、未部署或批准发布。
 
 
 

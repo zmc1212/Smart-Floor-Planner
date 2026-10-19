@@ -2,7 +2,7 @@
 
 **共享Admin原操作键：限定修复已Implemented，整体Limited。** `AssistantMutations.write` 原样发送调用方显式键，与隐式内存重试缓存分离。已知成功/拒绝仅能清理仍属于本键的隐式缓存，迟到回执不能删除较新操作。知识调用方继续按企业/管理员隔离恢复记录，并核对原正文、回执账号范围与batchId；恢复必须提供原键。共享封装不为旧隐式调用自动识别账号切换。原服务端租户/角色/来源/幂等守卫、未知结果及费用仍为权威；无API/schema/权限或产品markup/样式/文案改动。
 
-验证：新增6/6共享反例修复前失败；修复后新增共享/调用链9项、既有Admin14项与知识客户端7项共30/30通过。实际知识客户端覆盖A未知→B同体请求→沿B原键重进恢复，分别检查账号及租户变化；B已知成功后不派发多余恢复。所有fetch均为模拟，只证明请求头/恢复记录行为，不证明真实数据库重复写入或模型执行。类型287→287、新增0，定向lint通过；全量 `npm run lint` 退出0，保留30项既有warning。证据 `tmp/xiaok-mutation-identity/{before.log,after-caller.log,type-comparison.json,lint-final.log,lint-repository.log}`。Mini客户端/runtime及批准UI无影响。见[共享请求键合同](./xiaok-assistant-phase-2.zh-CN.md#当前admin原操作键边界)。
+验证：新增6/6共享反例修复前失败；修复后新增共享/调用链9项、既有Admin14项与知识客户端/迟到恢复13项，在正常集成 `0f4fbf3c` 后共36/36通过。实际知识客户端覆盖A未知→B同体请求→沿B原键重进恢复，分别检查账号及租户变化；B已知成功后不派发多余恢复。所有fetch均为模拟，只证明请求头/恢复记录行为，不证明真实数据库重复写入或模型执行。类型287→287、新增0，定向lint通过；全量 `npm run lint` 退出0，保留30项既有warning。修复前证据 `tmp/xiaok-mutation-identity/before.log`；联合证据 `tmp/xiaok-shared-integration/{clients.log,type-comparison.json,lint-repository.log}`，定向lint见 `tmp/xiaok-mutation-identity/lint-final.log`。Mini客户端/runtime及批准UI无影响。见[共享请求键合同](./xiaok-assistant-phase-2.zh-CN.md#当前admin原操作键边界)。
 
 **等待设计师时客户明确取消：整句明确文本的闭环已Implemented，整体Limited。** 原C01输入框发送“取消人工接待”或“不找设计师了”，沿原 `POST /api/miniprogram/assistant/conversations/:id/messages` 请求键及取消事务，保存原话与既有“本次接续已结束，小K恢复回复。”系统反馈、撤销接待参与者、推进上下文/版本并回到AI，不创建run或供应商调用。仅本人所属、仍open且 `handoff_requested/waiting` 的会话可改变；已进入人工接待、提问、引用、假设和拒绝取消仍是普通消息。租户、本人、来源、留存、接单竞争与幂等守卫保留。
 
@@ -18,7 +18,7 @@
 
 **KB-3实况综合检索：限定实现，整体Limited。** 原知识管理/试问与C01共用`professional-hybrid-v3`：硬授权后在5片上下文上限前将明确不适用阶段后移、优先覆盖不同文档；未知条件仍为未知。诊断保留融合序并增加选择序。绑定房屋的Agent知识查询将原材料及实际施工快照写入同轮持久检查点，短追问也能取得当前阶段；节点、需求、正式v4户型及向本人发布的现场记录仍以原业务适配器为准。prompt v38解释当前条件，不推断验收/批准、不自动建处理事项。恢复、模型继续/提交、历史/引用及接续包重验原来源、项目版本与权限。无新路由、迁移、角色、解析格式、模型服务或界面布局；`/assistant-knowledge`、三类管理者继承边界与共享反馈保持。PPT17/18/19/23/38及6/15限定映射、实模/模拟证据和限制见[KB-3合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)。合成规则不冒充PPT工程标准；完整专业客服、认证后台视觉与生产仍Limited/未验证。 当前原问题与模型检索词组成一次有界查询，保留明确对象，仅影响召回/排序，不把提问当项目事实或权限。
 
-**KB-2企业文件与结构引用：DOCX/文字PDF限定实现，整体Limited。** 原`/assistant-knowledge`增加私有原件上传/hash/下载、本地持久解析/重试/取消、结构/警告/核对，再沿原索引发布与替换。0086新增强制RLS原件表与不可变版本文件出处；原任务、管理者继承、租户/受众/当前版本/epoch及未知外部调用边界保持。默认内部受众，不接受URL抓取、任意改写原文、扩大项目权限或整目录导入。C01获得真实原段、DOCX章节/段落/表行列或PDF实际页及Unicode引文范围，当前获权工地事实继续走原适配器。PDF表格/图示/OCR、XLSX/旧格式及完整专业客服仍Limited。限定PPT6/15/18/19/23/38、真实/确定性模型与合成数据、资源/依赖/Node要求及类型/构建/原生/Chrome未测边界查[二期KB-2合同](./xiaok-assistant-phase-2.zh-CN.md)和[交接](./xiaok-assistant-handoff.zh-CN.md)；未生产部署。
+**KB-2企业文件与结构引用：DOCX/文字PDF限定实现，整体Limited。** 原`/assistant-knowledge`增加私有原件上传/hash/下载、本地持久解析/重试/取消、结构/警告/核对，再沿原索引发布与替换。0086新增强制RLS原件表与不可变版本文件出处；原任务、管理者继承、租户/受众/当前版本/epoch及未知外部调用边界保持。默认内部受众，不接受URL抓取、任意改写原文、扩大项目权限或整目录导入。C01获得真实原段、DOCX章节/段落/表行列或PDF实际页及Unicode引文范围，当前获权工地事实继续走原适配器。PDF表格/图示/OCR、XLSX/旧格式及完整专业客服仍Limited。限定PPT6/15/18/19/23/38、真实/确定性模型与合成数据、资源/依赖/Node要求及类型/构建/原生/Chrome未测边界查[二期KB-2合同](./xiaok-assistant-phase-2.zh-CN.md)和[交接](./xiaok-assistant-handoff.zh-CN.md)；未生产部署。 当前限定DOCX解析器 `xiaok-file-v1.3:docx:yauzl3.4.0:saxes6.0.0` 保留v1.2当前单元格属性定位；连续开头/推断表头的原脚注随数据行上下文保留，正文及后置表头脚注仅留本行，同文去重。推断表头仍须核对。真实合成本地解析/引用44/44通过，chunk回调及Agent端口为模拟。已发布版本不可变，采用新解析须另建已核对/索引/发布的草稿，无后台重解析。PDF表格/OCR、新格式、复杂排版及完整生产兼容仍未完成。
 
 **KB-1专业条目与检索诊断：限定实现，整体Limited。** 原 `/assistant-knowledge` 正文/FAQ和C01继续使用同一知识服务、配置模型与LangGraph。0085在原知识版本增加不可变专业类型、主题、适用条件、前置/例外、来源版本/章节和服务端审校留痕，旧普通条目/hash兼容；后台原Drawer维护、索引、发布，未来稿不提前覆盖有效旧版。原混合检索在硬授权后提供匹配/缺失/明确不适用结果，当前只自动核对绑定房屋唯一获权活动项目的实际阶段，其他条件保持未知；登记的互斥口径冲突保留双方，不按上传时间择一。v26把企业依据、本人原话、正式v4主户型、当前节点和已发布现场记录共同用于自然解释，事实/建议/未知分开，普通说明不自动建事项或形成正式承诺。新 GET `/api/assistant/preview/runs/:id/diagnostics` 仅本人试问的当前管理者可读，回读实际候选/排名/上下文、配置、条件和合法排除计数；每次重验epoch、来源/profile/有效期/受众、草稿及实际阶段，变更后不外发旧诊断/派生结论。管理者三角色继承、租户/参与者/原件、原任务/用量/真人接管边界保持。小程序仍复用批准C01/C02/C05/U01气泡/来源片/失效态，不改WXML/Less/字号/插画/导航；后台沿原Ant Design/Admin Pro及共享反馈。限定PPT6/15/18/19/23/38映射、真实/模拟/合成证据及未测项查[二期KB-1合同](./xiaok-assistant-phase-2.zh-CN.md)和[交接](./xiaok-assistant-handoff.zh-CN.md)。文件入库/OCR/完整专业客服与P5仍Limited，构建/类型/独立打包阻碍不升级为发布通过。
 
@@ -46,7 +46,7 @@ v63保留v62的quote实际位置、限定词与房间校验，修正既有人数
 
 <!-- shared-batch-execution:start -->
 
-**KB-4共享执行：Limited，内部接缝已实现，未启用生产自动批量派发。** 已原样集成核验知识基线95ff8f20：`/assistant-knowledge`沿原手动批次/case/evaluation，含`GET/POST /api/assistant/knowledge/operations/batches`、批次重进及原评测显式resume/cancel。本共享阶段无新公开路由、页面、结构、样式、素材、反馈文案、角色授权或schema。所选企业、当前管理者/敏感密码、本人批次、参与者/来源守卫保持；admin/super_admin在所选企业继承企业管理权限。
+**KB-4共享执行：Limited，内部接缝已实现，未启用生产自动批量派发。** 共享执行合同保持，最新知识 `0f4fbf3c` 已正常集成：`/assistant-knowledge`沿原手动批次/case/evaluation，含`GET/POST /api/assistant/knowledge/operations/batches`、批次重进及原评测显式resume/cancel。本共享阶段无新公开路由、页面、结构、样式、素材、反馈文案、角色授权或schema。所选企业、当前管理者/敏感密码、本人批次、参与者/来源守卫保持；admin/super_admin在所选企业继承企业管理权限。
 
 `core/evaluation-execution.ts::createKnowledgeBatchSharedPort()`实现知识方准确五方法executionRevision、lookupReceipt、dispatch、observeRun、cancelRun，通过ConversationService.inTransaction沿用传入租户事务；恢复只读原create/send回执，不为找run发送。批次权威仅为原knowledge-batch-prepare、knowledge-batch-execution-prepare及规范knowledge-batch-execution-cancel回执（取消key=batchId），无第二队列/租约/取消存储或迁移。
 
