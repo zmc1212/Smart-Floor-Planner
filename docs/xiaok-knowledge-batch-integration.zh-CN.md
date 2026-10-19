@@ -2,6 +2,26 @@
 
 状态：**Limited；检索/手动批次管理和共享端口接线已有有界证据，未开放生产自动批量入口，客户实模语义仍未验收。** 实际验证见下文，代码存在不等于整批验收通过。本文是知识专项线的可审查交接，不替代[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)或用户本地的企业知识计划。基线 `d023854313842ef447efb2973beb540d1511e125`；原业务分支不切换、不写产品代码。
 
+<!-- knowledge-docx-cell-fidelity:start -->
+
+## KB-2 / K-03：当前单元格属性与引用列号保真
+
+从知识稳定 `5bcc86b895d532a0f451580b3dd9cf106883dfee` 继续，在原隔离工作区/分支完成一个实际未完成的本地缺陷。原解析器递归查找 `gridSpan/vMerge`，会将 `tcPrChange` 的旧跨度/旧合并当作当前属性：原本第二列被标为第三列，或未合并单元格被标为纵向合并。格式依据是 [Open XML 单元格修订记录](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.tablecellpropertieschange?view=openxml-3.0.1)保存修订前属性；[gridSpan](https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.wordprocessing.gridspan?view=openxml-3.0.1)表示当前单元格占用的逻辑列数。
+
+`scripts/assistant-file-parser.mjs` 现在只读取当前直接 `tcPr` 的直接 `gridSpan/vMerge`。无跨度标记仍为 1 列；显式跨度必须为有界整数，保留最多 12 列限制；纵向标记保留 `restart/continue` 与省略 val 时的 continue。多份当前属性、重复跨度/合并、缺失或不合法显式值失败，不选取其中一份或猜测位置；历史值不参与当前验证。DOCX parser 标识升为 **`xiaok-file-v1.2:docx:yauzl3.4.0:saxes6.0.0`**，PDF 标识/实现不变。没有新 DTO/API、权限、schema/迁移、运行时/Worker/队列、UI 或数据库写入；原隔离进程及资源限制保持。
+
+新增明确合成 DOCX 夹具及 `knowledge-docx-cells.test.ts`。旧解析器红测 **18 项：4 通过、14 失败、0 跳过/取消**，失败证明历史属性污染及含糊属性被静默接受；修复后新增 **18/18**，并因实际解析器变化运行原表头/文件引用/PDF 回归 **18/18**，合计 **36/36，0 失败/跳过/取消**，执行期间源码 SHA256 稳定。引用检查覆盖当前列号、跨度/纵向标记、完整单位/适用条件/脚注与 Unicode 原文范围。分块回调及既有 Agent 回归端口为模拟；DOCX/PDF 解析由真实本地子进程执行。没有数据库、真实模型、Embedding、供应商请求、验收锁或竞争 Worker；没有重试 `4369/4242`，其原未知结果/费用保持。
+
+6 个代码文件 ESLint 0 错误/警告；相同源码程序以 `5bcc86b8` 比较 **287→287，新增 0**，不代表全仓类型干净。证据为 `tmp/knowledge-docx-cells/{red/unit-status.json,red/unit.log,green/unit-status.json,green/unit.log,types/type-comparison.json,preservation-check.json}`；在 `admin` 运行 `node scripts/assistant-knowledge-docx-offline.mjs --output-dir ../tmp/knowledge-docx-cells/green` 可重放全部 36 项，`--cells-only` 仅新 18 项，旧 `--new-only` 仍仅表头回归。未做数据库/C01、浏览器、原生或真实供应商兼容验收；本轮没有界面变化，UI 账本无更新范围。允许的知识浏览器端口 `localhost:3007` 未用于此后端修复。
+
+### 共享清单的单点集成记录
+
+共享双语模块清单/二期合同继续由业务集成人单点维护；本线只提交此双语准确提案，不并行改共享文件。集成时将现有 KB-2 当前解析说明更新为：**Limited：有界 DOCX v1.2 按当前直接单元格属性定位列号与合并标记，历史修订属性不改变当前定位；含糊/无效当前属性失败。K-03 合成本地解析/引用回归已通过；已发布版本不可变，采用新解析须另建草稿、人工核对、索引并发布。PDF 结构/OCR、新格式、复杂布局及生产兼容仍未完成。** 表头连续前缀规则保留，不再把 v1.1 当作当前 DOCX 解析标识。
+
+该修复不继承纵向合并首格正文、不支持新的行网格偏移/复杂结构，也不修改既有发布版本。下一步由集成人在稳定集成提交同步上述 KB-2 记录；需扩展复杂格式时先取得具体样本和质量契约。实模归因/冲突语义仍依赖下节的供应商与完整原操作证据，不能由本次解析回归替代。整体 **Limited**；未合 main、部署、强推或扩大权限。
+
+<!-- knowledge-docx-cell-fidelity:end -->
+
 <!-- knowledge-provider-certainty:start -->
 
 ## 正式共享结论已集成：仅离线接回，历史未决保留
