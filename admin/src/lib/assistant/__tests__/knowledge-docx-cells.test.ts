@@ -65,6 +65,6 @@ test('current cell positions reach row citations with complete units, conditions
   assert.match(row.file.label, /表1·第2行/); assert.match(row.file.label, /列1、2$/); assert.doesNotMatch(row.file.label, /列1–2、3/);
   assert.match(row.text, /示例厚度（mm）/); assert.match(row.text, /2 mm，须核对厂家资料/);
   assert.match(row.text, /仅适用合成A基层/); assert.match(row.text, /合成脚注😀/); assert.match(row.text, /不形成验收或施工批准/);
-  assert.equal(row.file.parser, 'xiaok-file-v1.2:docx:yauzl3.4.0:saxes6.0.0'); assert.equal(row.file.page, undefined);
+  assert.equal(row.file.parser, 'xiaok-file-v1.3:docx:yauzl3.4.0:saxes6.0.0'); assert.equal(row.file.page, undefined);
   assert.equal(Array.from(fileContent(file).body).slice(row.start, row.end).join(''), row.text);
 });

@@ -5,7 +5,7 @@ import { crc32 } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 const VERSION = 'xiaok-file-v1';
-const DOCX_VERSION = 'xiaok-file-v1.2';
+const DOCX_VERSION = 'xiaok-file-v1.3';
 const bad = code => { throw new Error(code); };
 const WORD = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 function xml(bytes) {
@@ -133,10 +133,13 @@ async function docx(bytes) {
       });
       const markedHeaders = rows.map(rowHeader); let headerCount = 0;
       while (markedHeaders[headerCount]) headerCount++;
-      const headers = parsedRows.slice(0, Math.max(1, headerCount)).map(r => r.text);
+      const headerRows = parsedRows.slice(0, Math.max(1, headerCount));
+      const headers = headerRows.map(r => r.text), headerNotes = headerRows.flatMap(r => r.notes);
       if (!headerCount) warnings.push('table_first_row_header_requires_review');
       const following = nodes[i + 1]?.name === 'p' ? paragraph(nodes[i + 1]) : '';
-      for (const row of parsedRows) if (row.text.trim()) push({ ...row, headers, notes: [...row.notes, ...(/^(?:注[：:]|说明[：:]|例外|前提)/u.test(following) ? [following] : [])] });
+      // Header references qualify the copied header context; body-row notes remain local.
+      for (const row of parsedRows) if (row.text.trim()) push({ ...row, headers,
+        notes: [...new Set([...headerNotes, ...row.notes, ...(/^(?:注[：:]|说明[：:]|例外|前提)/u.test(following) ? [following] : [])])] });
     } else if (!['sectPr','bookmarkStart','bookmarkEnd'].includes(n.name)) {
       // Do not silently flatten content controls/alternate layouts and claim completeness.
       bad('knowledge_file_complex_layout');

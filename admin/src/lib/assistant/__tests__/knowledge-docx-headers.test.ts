@@ -34,7 +34,7 @@ test('an unrecognized explicit header value fails honestly rather than inventing
 });
 test('correct headers prevent another material from entering a row passage while retaining units, notes and locators', async () => {
   const parsed = await parseSourceFile(headerDocx([{ cells: headerCells, header: 'default' }, { cells: materialA, header: 'off', footnote: true }, { cells: materialB, header: 'off' }]), 'docx');
-  assert.equal(parsed.parser, 'xiaok-file-v1.2:docx:yauzl3.4.0:saxes6.0.0');
+  assert.equal(parsed.parser, 'xiaok-file-v1.3:docx:yauzl3.4.0:saxes6.0.0');
   const file: SourceFile = { version: 1, assetId: 'synthetic', hash: 'a'.repeat(64), name: '合成材料.docx', format: 'docx', parsed,
     review: { adminId: '1', at: '2026-10-18T00:00:00Z', excluded: [] } };
   const chunks = await fileChunks(file, async text => [{ text, start: 0, end: Array.from(text).length, tokens: 100 }]);
