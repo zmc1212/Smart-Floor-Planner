@@ -1,5 +1,11 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前Admin原操作键边界
+
+**共享Admin原操作键：限定修复已Implemented，整体Limited。** `AssistantMutations.write` 原样发送调用方显式键，与隐式内存重试缓存分离。已知成功/拒绝仅能清理仍属于本键的隐式缓存，迟到回执不能删除较新操作。知识调用方继续按企业/管理员隔离恢复记录，并核对原正文、回执账号范围与batchId；恢复必须提供原键。共享封装不为旧隐式调用自动识别账号切换。原服务端租户/角色/来源/幂等守卫、未知结果及费用仍为权威；无API/schema/权限或产品markup/样式/文案改动。
+
+验证：新增6/6共享反例修复前失败；修复后新增共享/调用链9项、既有Admin14项与知识客户端7项共30/30通过。实际知识客户端覆盖A未知→B同体请求→沿B原键重进恢复，分别检查账号及租户变化；B已知成功后不派发多余恢复。所有fetch均为模拟，只证明请求头/恢复记录行为，不证明真实数据库重复写入或模型执行。类型287→287、新增0，定向lint通过；全量 `npm run lint` 退出0，保留30项既有warning。证据 `tmp/xiaok-mutation-identity/{before.log,after-caller.log,type-comparison.json,lint-final.log,lint-repository.log}`。Mini客户端/runtime及批准UI无影响。见[共享请求键合同](./xiaok-assistant-phase-2.zh-CN.md#当前admin原操作键边界)。
+
 ## 当前明确取消等待接待
 
 **等待设计师时客户明确取消：整句明确文本的闭环已Implemented，整体Limited。** 原C01输入框发送“取消人工接待”或“不找设计师了”，沿原 `POST /api/miniprogram/assistant/conversations/:id/messages` 请求键及取消事务，保存原话与既有“本次接续已结束，小K恢复回复。”系统反馈、撤销接待参与者、推进上下文/版本并回到AI，不创建run或供应商调用。仅本人所属、仍open且 `handoff_requested/waiting` 的会话可改变；已进入人工接待、提问、引用、假设和拒绝取消仍是普通消息。租户、本人、来源、留存、接单竞争与幂等守卫保留。

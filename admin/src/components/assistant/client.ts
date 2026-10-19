@@ -72,19 +72,22 @@ export async function assistantRequest<T>(path: string, init: RequestInit = {}):
   }
 }
 
-/** Keep the same key after a lost response. No transcript/credentials in browser storage. */
+/** Keep implicit retries in memory; explicit keys belong to the caller's original-operation journal. */
 export class AssistantMutations {
   private pending = new Map<string, string>();
   async write<T>(path: string, body: object, method = 'POST', explicitKey?: string): Promise<T> {
     const signature = JSON.stringify([method, path, body]);
-    const key = this.pending.get(signature) || explicitKey || crypto.randomUUID();
-    this.pending.set(signature, key);
+    const key = explicitKey ?? this.pending.get(signature) ?? crypto.randomUUID();
+    if (explicitKey === undefined) this.pending.set(signature, key);
+    const forget = () => {
+      if (explicitKey === undefined && this.pending.get(signature) === key) this.pending.delete(signature);
+    };
     try {
       const result = await assistantRequest<T>(path, { method, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': key }, body: JSON.stringify(body) });
-      this.pending.delete(signature);
+      forget();
       return result;
     } catch (error) {
-      if (error instanceof AssistantRequestError && !error.uncertain) this.pending.delete(signature);
+      if (error instanceof AssistantRequestError && !error.uncertain) forget();
       throw error;
     }
   }
