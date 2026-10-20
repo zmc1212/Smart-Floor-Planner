@@ -50,6 +50,7 @@ export type LlmCatalogModel = {
 };
 
 const SILICONFLOW_MODEL_PLAZA_URL = 'https://cloud.siliconflow.cn/open/models';
+const SILICONFLOW_PRICING_URL = 'https://www.siliconflow.cn/pricing';
 const NON_CHAT_MODEL_MARKERS = [
   'ocr', 'bge-', 'embed', 'rerank', 'asr', 'tts', 'whisper', 'sensevoice',
   'kolors', 'stable-diffusion', 'flux-1', 'flux.1', 'hunyuanvideo', 'index-tts',
@@ -441,18 +442,48 @@ export function parseSiliconFlowFreeModelIds(html: string) {
   return freeIds;
 }
 
-async function fetchSiliconFlowFreeModelIds() {
+/** Rendered tariff rows override the plaza's sometimes stale/default zero prices. */
+export function parseSiliconFlowPricingPage(html: string) {
+  const text = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
+  const entries = [...text.matchAll(/<a\b[^>]*\btitle="([\w./-]+)"[^>]*>/g)];
+  const prices = new Map<string, boolean>();
+  entries.forEach((entry, index) => {
+    const id = entry[1];
+    if (!id.includes('/')) return;
+    const start = entry.index || 0;
+    const end = Math.min(entries[index + 1]?.index ?? text.length, start + 8_000);
+    const section = text.slice(start, end);
+    const rates = [...section.matchAll(/[¥￥]\s*([\d,]+(?:\.\d+)?)/g)]
+      .map(match => Number(match[1].replaceAll(',', '')));
+    const paid = rates.some(rate => rate > 0);
+    const free = rates.length >= 2 && rates.every(rate => rate === 0)
+      || (section.match(/>\s*(?:免费|Free)\s*</gi)?.length ?? 0) >= 2;
+    if (paid || free) prices.set(id, prices.get(id) === false || paid ? false : true);
+  });
+  return prices;
+}
+
+export function mergeSiliconFlowModelPrices(plazaHtml: string, pricingHtml: string) {
+  const prices = new Map([...parseSiliconFlowFreeModelIds(plazaHtml)].map(id => [id, true]));
+  for (const [id, free] of parseSiliconFlowPricingPage(pricingHtml)) {
+    if (free === false || !prices.has(id)) prices.set(id, free);
+  }
+  return prices;
+}
+
+async function fetchSiliconFlowModelPrices() {
   try {
-    const response = await fetch(SILICONFLOW_MODEL_PLAZA_URL, {
+    const responses = await Promise.all([SILICONFLOW_MODEL_PLAZA_URL, SILICONFLOW_PRICING_URL].map(url => fetch(url, {
       headers: { Accept: 'text/html', 'User-Agent': 'Smart-Floor-Planner' },
       redirect: 'error',
       cache: 'no-store',
       signal: AbortSignal.timeout(20_000),
-    });
-    if (!response.ok) return null;
-    const html = await response.text();
-    const ids = parseSiliconFlowFreeModelIds(html);
-    return ids.size || /"modelName"\s*:/.test(html.replace(/\\"/g, '"')) ? ids : null;
+    })));
+    if (responses.some(response => !response.ok)) return null;
+    const [plazaHtml, pricingHtml] = await Promise.all(responses.map(response => response.text()));
+    // A missing/unrecognizable tariff page cannot validate the plaza's zero prices.
+    if (!parseSiliconFlowPricingPage(pricingHtml).size) return null;
+    return mergeSiliconFlowModelPrices(plazaHtml, pricingHtml);
   } catch {
     return null;
   }
@@ -498,11 +529,12 @@ export async function listPlatformLlmModels(input: LlmConnectionInput) {
   const local = isLocalLlmBaseUrl(baseUrl);
   let siliconFlowPlazaAvailable = false;
   if (baseUrl.includes('siliconflow.cn')) {
-    const freeIds = await fetchSiliconFlowFreeModelIds();
-    siliconFlowPlazaAvailable = freeIds !== null;
+    const prices = await fetchSiliconFlowModelPrices();
+    siliconFlowPlazaAvailable = prices !== null;
     allModels = allModels
       .filter((item) => !NON_CHAT_MODEL_MARKERS.some((marker) => item.id.toLowerCase().includes(marker)))
-      .map((item) => freeIds?.has(item.id) ? { ...item, free: true } : item);
+      .map((item) => prices?.has(item.id)
+        ? { ...item, free: item.free === false || prices.get(item.id) === false ? false : true } : item);
   }
   const models = local
     ? allModels.map((model) => ({ ...model, free: true }))

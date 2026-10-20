@@ -7,6 +7,8 @@ import {
   normalizeLlmProviderRuntimeBaseUrl,
   parseLlmModelCatalog,
   parseSiliconFlowFreeModelIds,
+  parseSiliconFlowPricingPage,
+  mergeSiliconFlowModelPrices,
   PLATFORM_LLM_CHAT_TIMEOUT_MS,
 } from '../platform-llm-config';
 import { isShorterModelPrefix, shouldShowLlmModelOption } from '../llm-model-options';
@@ -69,6 +71,27 @@ test('SiliconFlow public catalog parser keeps price-zero active models only', ()
     {"modelName":"Qwen/Offline","status":"offline","price":"0"}
   `);
   assert.deepEqual([...ids], ['Qwen/Free']);
+});
+
+test('rendered SiliconFlow tariffs override conflicting zero plaza prices without leaking adjacent rows', () => {
+  const plaza = '{"modelName":"zai-org/GLM-5.3-Flash","price":"0"}{"modelName":"Qwen/Free","price":"0"}';
+  const pricing = `<script><a title="Qwen/Free">¥ 99</a></script>
+    <a title="zai-org/GLM-5.3-Flash">GLM-5.3-Flash</a><span>¥ 0.80</span><span>¥ 2.80</span><span>¥ 0.23</span>
+    <a title="XingChenAGI/Xing4.0-29B">Xing4.0-29B</a><span>免费</span><span>免费</span>
+    <a title="Qwen/Partial">partial</a><span>免费</span>
+    <a title="Qwen/Zero">zero</a><span>¥ 0.00</span><span>¥ 0</span>
+    <a title="Qwen/Conflict">conflict</a><span>免费</span><span>免费</span><span>¥ 1.00</span>
+    <a title="Qwen/Zero">duplicate</a><span>¥ 1,000.00</span><span>¥ 0</span>`;
+  assert.deepEqual(Object.fromEntries(parseSiliconFlowPricingPage(pricing)), {
+    'zai-org/GLM-5.3-Flash': false, 'XingChenAGI/Xing4.0-29B': true,
+    'Qwen/Zero': false, 'Qwen/Conflict': false,
+  });
+  const merged = mergeSiliconFlowModelPrices(plaza, pricing);
+  assert.equal(merged.get('zai-org/GLM-5.3-Flash'), false);
+  assert.equal(merged.get('Qwen/Free'), true);
+  assert.equal(merged.has('Qwen/Partial'), false);
+  assert.equal(merged.get('XingChenAGI/Xing4.0-29B'), true);
+  assert.equal(parseSiliconFlowPricingPage('unavailable').size, 0);
 });
 
 test('model catalog normalizes OpenAI rows and honors explicit free metadata', () => {
