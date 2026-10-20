@@ -141,7 +141,7 @@ The compact stage-commit index retains scope/results while phase two holds detai
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| AG-02/05 v95 chat recap/legacy correction view (development stopped, Limited) | Final275 units/98 Mini/lint pass, types0/292; final service/compat/native cancelled before start; earlier1149/1150 succeed but1151 fails, no batch pass | `pending-v95-closeout` |
+| AG-02/05 v95 chat recap/legacy correction view (development stopped, Limited) | Final275 units/98 Mini/lint pass, types0/292; final service/compat/native cancelled before start; earlier1149/1150 succeed but1151 fails, no batch pass | `740f955d0e4f050f1eddcb04d2524fa12cbf0ac9` |
 | AG-02/05 v94 authoritative pure-record receipts (bounded internal fix) | 266 units/18 services+7 skips/4 compatibility/98 Mini/lint; two native GLM9 runs, one call each, truthful partial receipt and complete batch/reentry; F-04/overall Limited | `f56789df195334396574cba3a6d04019697d181a` |
 | AG-05 v93 pending-human-review completion entry (internal fix) | 262 units/12 construction services/8 Agent compatibility/98 Mini/lint; GLM9 run1144/record205 native draft, review/edit, internal publication/reentry; overall Limited | `efe0e34a89daa3673564c308768d08365ed2d7fe` |
 | AG-02/05 v92 conditional recording clarification (internal fix) | 262 units/8 targeted services/73 Mini/lint; fresh GLM9 C01 run1143 delivered/reentered, no need write; original failures retained; overall Limited | `77892bbeaa6c6c1e65d40b0871bbc4df7ef7762b` |
