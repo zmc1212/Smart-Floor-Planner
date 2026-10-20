@@ -1,6 +1,6 @@
 # 远端开发连接记录
 
-当前LLM开发配置（2026-10-20）：用户已在后台改为智谱官方`zhipu / glm-4.7-flash`，并明确要求后续测试使用它。v89只读核对主开发配置，在隔离测试子进程显式替换旧Qwen模型覆盖并使用当前供应商默认思考设置，不修改`.env.local`、部署文件、凭据或业务企业1454的能力记录。新run6212的一次请求返回HTTP_429，未产首稿/交付，应用unknown保留、不重放；隔离配置/供应商投影已精确恢复并完成单独夹具清理，详见双语二期及`tmp/xiaok-bound-read-v89/manifest.json`。原Qwen探针/失败属于历史证据，不升级成GLM能力通过。本变更未改变SSH、隧道、数据库/Embedding/生图服务或生产边界。
+当前LLM开发配置（2026-10-20）：按用户免费模型授权，后台已保存`siliconflow / THUDM/GLM-4-9B-0414`作为免费文字开发测试基线，普通连接探针成功；旧`ASSISTANT_TEXT_MODEL`覆盖已置空，原`ASSISTANT_TEXT_DISABLE_THINKING=1`保留。仅重载已核实的本地Next开发服务，原HTTP Worker持续健康。v91保留259单元/13隔离服务/73 Mini检查及GLM9两组新夹具4题审读正确，v90原初筛、失败及unknown单独保留。173文件核心窗口在独立配置/重载窗口前结束，后续环境变化不回填核心评分。独立VLM、企业1454历史Qwen能力探针、授权及额度未改，该探针不授权GLM9或图片输入；后续Agent验收使用明确标记、匹配新模型且仅文字的合成能力夹具。证据见`tmp/xiaok-denial-v91/core-freeze.json`、`configuration-selection.json`、`configuration-post.json`、`development-reload.json`。已明确释放独立测试窗口，期间冻结源码/测试/配置。复用现有凭据且不输出，原unknown与费用不重放/核清；SSH、隧道、数据库、Embedding/生图及生产边界不变。该文字小样本不证明图片能力、完整专业质量或原生/PPT验收通过，详见双语二期合同。
 
 KB-4有界批量开发扩展：`0089_assistant_knowledge_batches`已应用开发主库`smart_floor_planner`及55432隔离`xiaok_embedding_eval`，SQL SHA256 `5448116bb90626a4322e5ff961d526ad064b0f6c13ce724f8a7fd21ac237c9d8`、两张批次/关联表的强制RLS及应用角色non-BYPASS已核验。仅以本人私有批次分组既有evaluation/run，原Worker/租约/用量/取消与管理角色边界沿用；非第二套模型任务队列。迁移前2026-10-19T06-06-59-739Z的主库16,427,580字节、隔离8,318,824字节custom备份在`tmp/xiaok-kb4-batches/`，PGDMP/归档目录及受限ACL通过；首次归档目录流提前结束的SSH EOF在DDL之前，失败保留为`migration-attempt-1.json`，已改为完整接收后核对。完整0089恢复演练及生产镜像兼容仍未验证。SSH、端口/隧道、身份文件、供应商及生产部署均未改变；实施/实测以二期KB-4合同和`migration.json`为准。
 

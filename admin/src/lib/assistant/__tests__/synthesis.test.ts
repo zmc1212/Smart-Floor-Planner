@@ -5,10 +5,33 @@ import { agentChatBody } from '@/lib/ai/providers/agent-chat';
 import type { ModelMessage } from '../contracts/model';
 import type { MaterialSnapshot } from '../agent/materials';
 import type { NeedIssueSnapshot } from '@/lib/construction/need-issues';
+import { parseAgentReply } from '../agent/context';
 
 const sources: SynthesisSource[] = [{ sourceId: 'K1', kind: 'knowledge', title: '合成办公原则', text: '显示器避免直对窗户，先核对眩光和通道。净宽需现场核对，参考值为900毫米。' },
   { sourceId: 'B2', kind: 'project', title: '合成书房资料', text: '客户原话：书房靠窗，偶尔两人办公。正式户型含书房，缺少点位图。' }];
 const parse = (segments: unknown[]) => parseSynthesis(JSON.stringify({ kind: 'synthesis', segments }), sources);
+
+test('explicit completion denials preserve source wording without inventing a completion receipt', () => {
+  const original = '厨房设备调整须先核对电器尺寸、插座位置与通道条件；若处在水电施工阶段，还需核对当前点位图和现场记录。客户提出保留冰箱只表示需求，不证明点位已落实或通过验收。未查到图纸或现场记录时不能据此认定现实没有，也不承诺更改日期。';
+  for (const text of [original, '客户的表达只是一条需求，不代表点位已落实。',
+    '这不证明项目已经正式批准。', '尚需核对，因此不能说明项目已验收。']) {
+    assert.equal(parseAgentReply(JSON.stringify({ kind: 'general', text })), text);
+  }
+  const result = parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'evidence', text: original,
+    citations: [{ sourceId: 'K-denial', quote: original }] }] }), [{ sourceId: 'K-denial', kind: 'knowledge', title: '合成厨房核对规程', text: original }]);
+  assert.equal(result.segments[0].text, original);
+  assert.equal(result.segments[0].citations[0].quote, original);
+});
+
+test('completion-denial projection never hides a separate action, price, double negation or rhetorical assertion', () => {
+  for (const text of ['不证明点位已落实，但我们已联系设计师。', '并非不证明点位已落实。',
+    '不证明点位已落实或已正式批准。', '不证明点位已落实。项目已解决。', '这不代表点位已落实吗？',
+    '不证明点位已落实，保证房屋承重安全。', '不证明点位已落实，承诺总价在预算内。']) {
+    assert.throws(() => parseAgentReply(JSON.stringify({ kind: 'general', text })), /unsupported_model_commitment/, text);
+  }
+  assert.throws(() => parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'evidence', text: '不证明点位已落实。',
+    citations: [{ sourceId: 'foreign', quote: '不证明点位已落实。' }] }] }), sources), /invalid_model_citation/);
+});
 
 test('current field identity is separate from old compound quotes and the scope source does not duplicate originals', () => {
   const original = '书房靠窗，偶尔双人办公，电脑和台灯。';

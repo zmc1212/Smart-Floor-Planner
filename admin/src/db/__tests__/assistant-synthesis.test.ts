@@ -72,6 +72,32 @@ async function fixture(targetEid = eid, bound = true) {
   return { actor, chat, cid, send, leadId, uid };
 }
 
+test('explicit completion denials persist exact knowledge and reentry while a separate positive claim stays rejected', async () => {
+  const body = '厨房设备调整须先核对电器尺寸、插座位置与通道条件；若处在水电施工阶段，还需核对当前点位图和现场记录。客户提出保留冰箱只表示需求，不证明点位已落实或通过验收。未查到图纸或现场记录时不能据此认定现实没有，也不承诺更改日期。';
+  const doc = await publish('合成否定完工边界厨房规程', body), x = await fixture();
+  const model = (positive: boolean): NonNullable<Parameters<typeof processAgentAnswer>[1]>['model'] => async (messages, _tools, turn) => {
+    if (!turn) return call('search_knowledge', { query: '合成否定完工边界厨房规程' });
+    assert.equal(turn, 1, 'An explicit denial must not consume a repair');
+    const source = results(messages).find(s => s.text === body); assert.ok(source?.citationOptions.length);
+    return synth([{ basis: 'evidence', text: body + (positive ? '\n项目已批准。' : ''),
+      citations: [{ citationId: source.citationOptions[0].citationId }] }]);
+  };
+  const accepted = await x.send('结合企业规程解释厨房保留冰箱需要核对哪些前提。', model(false));
+  assert.equal(accepted.run.status, 'succeeded', JSON.stringify(accepted.run));
+  const message = (await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === accepted.run.outputMessageId)!;
+  assert.ok(message.available); assert.ok(JSON.stringify(message.content).includes(body)); assert.equal(message.citations.length, 1);
+  const citation = await x.chat.citation(message.citations[0].id); assert.ok('quote' in citation); assert.equal(citation.quote, body);
+  const validations = await withTenantTransaction(eid, tx => rows(tx, sql`select id from app.assistant_run_steps
+    where enterprise_id=${eid} and run_id=${accepted.runId} and kind='agent_validation'`));
+  assert.equal(validations.length, 0);
+  const rejected = await x.send('再解释这些厨房前提，不要替我确认项目状态。', model(true));
+  assert.equal(rejected.run.status, 'failed'); assert.equal(rejected.run.errorCode, 'unsupported_model_commitment');
+  assert.equal(rejected.run.outputMessageId, null);
+  await knowledge.execute('retire', { documentId: doc.documentId, expectedVersion: 2 }, randomUUID());
+  assert.equal((await x.chat.citation(message.citations[0].id)).available, false);
+  assert.equal((await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === message.id)?.available, false);
+});
+
 test('QA01/06: an enterprise without a knowledge index still receives labelled general advice and an honest knowledge gap', async () => {
   const x = await fixture(tenants[1]);
   const a = await x.send('书房靠窗办公为什么要考虑反光？', async (m,_t,turn) => {

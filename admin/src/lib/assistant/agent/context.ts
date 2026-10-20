@@ -36,6 +36,10 @@ export function parseAgentReply(text: string) {
   // Formal commitments always come from a business service, never free-form generation.
   // Project explicit absence/denial/question predicates, retaining other claims.
   const completionClaims = result.text
+    // Deny only the immediately scoped completion predicate. A policy saying
+    // "不证明点位已落实" is not a completion receipt; later actions, double
+    // negation and a rhetorical "吗" remain visible to the original guard.
+    .replace(/(^|[，。；！？\n—])\s*(?:但|但是|因此|所以)?(?:这(?:一点)?|客户需求|需求记录|当前资料|该记录)?(?:并)?(?:不代表|不证明|不能证明|不足以证明|不能说明|不意味着)(?:点位|项目|现场|方案|事项)?已(?:经)?(?:成功)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)(?=$|[，。；！？\n—]|或通过验收)/g, '$1不能据此确认操作状态')
     // Project only the immediately queried predicate, never its surrounding
     // clause: a second completed action in that clause must still be rejected.
     .replace(/是否已(?:经)?(?:成功)?(?:正式)?(?:预约|付款|退款|批准|签约|派单|联系|提交|落实|解决|关闭|验收)/g, '是否办妥')
