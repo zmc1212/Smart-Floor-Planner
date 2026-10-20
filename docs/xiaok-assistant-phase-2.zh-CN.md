@@ -19,7 +19,19 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前v92：条件记录澄清
+## 当前v93：完成记录待人工核对入口
+
+**内部限定修复Implemented，整体Limited。** 独立F-03原句“合成手测：书房本次调整已按当前获同意方案完成，待人工核对记录”被分为clarify而无草稿。`construction/site-queries.ts`只将已有`待核对`谓词扩展为`待(?:人工)?核对`；查询、跟进请求、普通确认优先级保持，图片不变成自动完成/正式同意依据。现有Mini/Admin项目chat API仍返回recordId/runId，沿原Worker、内部draft、作者/管理者编辑、版本与显式发布合同；不增表、迁移、接口或权限。
+
+修复前两项因果红测失败；修复后262单元、12施工服务、8 Agent兼容服务、98 Mini及涉及文件/全仓lint通过，本批类型0/全仓292。889项源码/测试/配置全窗一致，隔离服务及主库原生窗口沿共享验收锁/空闲队列。`node tmp/xiaok-completion-v93/check.mjs <unit|service|compat|mini|lint|lint-full|types>`与`node tmp/xiaok-completion-v93/native.mjs`为本批重复入口；仅新标记合成夹具，不重放旧run。
+
+Stable2.02.2608080/SDK0.13.0/基础库3.17.2副屏新编译，390×844下精确`packages/construction/chat/chat` route/stack；原生真实选图上传、输入原句后免费文字GLM9一次调用生成run1144/record205内部草稿，设计师重进同记录且无编辑权，管理者经既有“修改内容”核对再显式内部发布v4并重进。observer读200/写403、合法跨企业正控后目标404、客户内部会话403。模型把整句放在completed、pending空，字段语义整理质量不计通过；照片仅保留原件，不声称图片理解或正式方案批准/落实/解决/客户发布。相册与合成发布确认的SDK替身范围单列。
+
+批准设计仍为原PPT22/38、853×1844→390×844及既有S04组件；两张原生草稿/发布截图已审看，PNG348×752。不改Mini结构、样式、素材、文案、导航或恢复台账。原生helper只增加可选定向exercise和可输入状态等待，默认原场景保持。首轮响应断言错误与上传后输入前超时在attempt-1保留；当时无消息POST、run或provider调用，不算模型失败。
+
+原F-03消息9636仍无草稿；旧1092仍失败、1132/3196仍indeterminate/unknown，预留reconciling、结算null。新2640/2641企业AI关闭，3677–3683身份context撤销、员工停用、active0/unknown0，配置完全一致。证据`tmp/xiaok-completion-v93/core-freeze.json`（558ea394dad78612ba555d2b9141970eae5881ec025451ebcc29d016312f9c75）、`semantic-review.json`、`original-audit.json`；305文件独立manifest不改。下一步处理F-01/F-04需求更正与真实保存覆盖，再处理F-02/F-06/F-07；两计划、完整PPT/真机/生产及全仓类型仍Limited/未通过。
+
+## 历史v92：条件记录澄清
 
 **内部技术修复Implemented，整体Limited。** 独立F-05/run1092证明`assertRecordedReply`将条件未来动作误当保存完成。当前只在句界分析投影中识别完整条件能力/后续动作需求谓词，原回复/引文和同run持久操作ID不改。已覆盖的完成后缀、反问/双重否定、无条件回执和独立真实保存声明仍校验；来源/租户/人工围栏、预算、prompt版本、schema、公开API和批准UI保持。参考已检视的[LangGraph工具消息测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)和[Agents SDK输出守卫测试](https://github.com/openai/openai-agents-js/blob/main/packages/agents-core/test/guardrail.test.ts)，保留应用端领域校验，不迁移框架或新增判官循环。
 

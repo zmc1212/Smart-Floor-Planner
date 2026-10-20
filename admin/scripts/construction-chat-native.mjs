@@ -27,7 +27,9 @@ export async function run(ctx){
  async function open(){await mp.redirectTo('/'+route+'?projectId='+projectId);return waitFor(async()=>{const p=await current(),d=await p.data();return !d.loading&&d.project?.id===projectId&&d.write&&!d.fatal?p:null;},'shared project reentry');}
  async function identity(i){await mp.evaluate(s=>{const app=getApp();app.globalData.token=s.token;app.globalData.bootstrap={current:{mode:'staff',role:s.role,capabilities:['construction.projects'],context:{enterpriseId:s.enterpriseId,staffId:s.adminId,staffRole:s.role}}};app.__qaShared.memory.set('token',s.token);},identities[i]);return open();}
  async function send(text,drop=false){
-  const p=await current(),before=new Set((await p.data('items')).map(i=>i.message.id));
+  const p=await current();
+  await waitFor(async()=>{const d=await p.data();return d.write&&!d.loading&&!d.busy&&!d.pending&&!d.fatal;},'interactive composer before input');
+  const before=new Set((await p.data('items')).map(i=>i.message.id));
   if(drop)await mp.evaluate(()=>{getApp().__qaShared.dropNext=true;});
   const input=await p.$('.composer-input');assert.ok(input);await input.input(text);await waitFor(async()=>await p.data('draft')===text,'composer input');
   await(await p.$('.send')).tap();
@@ -45,6 +47,10 @@ export async function run(ctx){
    if(cid){wx.chooseMedia=o=>{if(!s.photoPath)throw Error('No synthetic photo was selected');o.success?.({tempFiles:[{tempFilePath:s.photoPath,size:s.photoSize}]});};wx.previewImage=o=>{s.previewed=o.urls;o.success?.({});};}
    for(const method of ['request','downloadFile','uploadFile'])wx[method]=function(o){const raw=String(o.url),i=raw.indexOf('/api/'),p=i<0?'':raw.slice(i),base='/api/miniprogram/construction/projects/'+pid+'/chat',assistant='/api/miniprogram/assistant',allowedCustomer=cid&&(p.startsWith(assistant+'/conversations/'+cid+'/')||p===assistant+'/conversations/'+cid||p===assistant+'/conversations'||p===assistant+'/entry-context'&&String(o.data?.conversationId)===cid||p.startsWith(assistant+'/runs/')&&s.runIds.has(p.slice((assistant+'/runs/').length)));if(!(p===base||p.startsWith(base+'?')||p.startsWith(base+'/')||allowedCustomer)){o.fail?.({errMsg:'Synthetic-only transport refused request'});return{abort(){}};}const row={path:p,verb:o.method||(method==='uploadFile'?'POST':'GET'),status:null};s.requests.push(row);const success=o.success;return s[method].call(wx,{...o,url:'http://localhost:3006'+p,success(r){row.status=r.statusCode;if(cid&&p===assistant+'/conversations/'+cid+'/messages'&&o.method==='POST'&&r.data?.data?.runId)s.runIds.add(String(r.data.data.runId));if(s.dropNext&&o.method==='POST'&&p.endsWith('/messages')&&r.statusCode===200){s.dropNext=false;row.simulatedLostReceipt=true;o.fail?.({errMsg:'Synthetic response-loss injection'});return;}success?.(r);}});};return {installed:true,credentialsPersisted:false};},projectId,ctx.customer?.conversationId||'');installed=true;return result;});
   await identity(2);
+  if(ctx.exercise){
+   await step('scoped native S04 scenario through the existing controls',()=>ctx.exercise({mp,step,send,identity,open,capture,current,waitFor}));
+   report.passed=true;return report;
+  }
   const first=await step('PPT22 native original report and actual configured Worker draft',async()=>{const row=await send('书房线管今天铺好了，底盒还没固定，等设计师核对位置。');assert.ok(row.record.id);return {messageId:row.message.id,recordId:row.record.id};});
   await step('record-history sheet remains independent of command revision snapshots',async()=>{const p=await current();await(await p.$('.record-links .text-button')).tap();const versions=await waitFor(async()=>{const d=await p.data();return d.sheet==='versions'&&!d.versionsLoading&&Array.isArray(d.versions)&&d.versions.length?d.versions:null;},'original record versions');assert.ok(versions.every(v=>Number.isInteger(v.version)));assert.ok((await p.$$('.version-row')).length);await(await p.$('.sheet-heading .text-button')).tap();await waitFor(async()=>!(await p.data('sheet')),'history sheet close');return {recordId:first.recordId,versions:versions.map(v=>v.version)};});
   await step('repeat configured report path on independent original',async()=>{const row=await send('书房线管今天已经铺好，底盒尚未固定，需要设计师核对位置。');assert.ok(row.record.id);return {messageId:row.message.id,recordId:row.record.id};});

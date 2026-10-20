@@ -81,6 +81,47 @@ after(async () => {
   }); } finally { await closePostgresPool(); }
 });
 
+test('manual completion observation routes pending human review to a report while queries and acknowledgements retain priority', () => {
+  const text = '合成手测：书房本次调整已按当前获同意方案完成，待人工核对记录';
+  for (const photos of [0, 1]) assert.equal(siteMessageIntent(text, photos), 'report');
+  assert.equal(siteMessageIntent('书房待人工核对的记录在哪里？', 1), 'query');
+  assert.equal(siteMessageIntent('书房本次调整完成了吗？', 1), 'query');
+  assert.equal(siteMessageIntent('请帮我跟进书房待人工核对的事项', 1), 'request');
+  assert.equal(siteMessageIntent('收到', 1), 'clarify');
+  assert.equal(siteMessageIntent('', 1), 'report');
+});
+
+test('manual completion observation creates a durable editable internal draft without automatic publication', async () => {
+  const original = '合成手测：书房本次调整已按当前获同意方案完成，待人工核对记录';
+  const lead = await withTenantTransaction(eids[0], tx => one(tx, sql`select lead_id from app.construction_projects where enterprise_id=${eids[0]} and id=${pid}`));
+  const created = await act('create', { leadId: String(lead!.lead_id), name: '合成待人工核对入口', managerId: aids[0], rooms: ['书房'] });
+  const target = String(created.id);
+  for (let n = 0; n < 3; n++) {
+    const detail = await owner.execute('detail', { projectId: target });
+    await act('member', { projectId: target, expectedVersion: (detail.project as Row).version, adminId: members[n], role: ['worker','designer','observer'][n], active: true, workLabel: '' });
+  }
+  const photo = await worker.upload(target, randomUUID(), await sharp({ create: { width: 48, height: 40, channels: 3, background: '#d9eddd' } }).png().toBuffer());
+  const key = randomUUID(), body = { text: original, mediaIds: [String(photo.id)] };
+  const sent = await worker.send(target, body, key);
+  assert.ok(sent.recordId); assert.ok(sent.runId);
+  assert.deepEqual(await worker.send(target, body, key), sent);
+  const room = ((await boss.read(target)).rooms as Row[]).find(r => r.name === '书房')!;
+  const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
+  await processSiteRecord(lease!, async () => ({ text: JSON.stringify({ title: '书房调整待核对', roomId: String(room.id), completed: '本次调整已按当前获同意方案完成', pending: '待人工核对记录', coordination: '', note: '' }),
+    toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 120, outputTokens: 60 } }));
+  const stored = await withTenantTransaction(eids[0], tx => one(tx, sql`select version,status,audience,approved_by,published_version,data,source_message_id::text from app.construction_site_records where enterprise_id=${eids[0]} and id=${String(sent.recordId)}`));
+  assert.equal(stored?.status, 'draft'); assert.equal(stored?.audience, 'internal'); assert.equal(stored?.approved_by, null); assert.equal(stored?.published_version, null);
+  assert.equal((stored!.data as Row).pending, '待人工核对记录');
+  const source = await withTenantTransaction(eids[0], tx => one(tx, sql`select content from app.assistant_messages where enterprise_id=${eids[0]} and id=${String(stored!.source_message_id)}`));
+  assert.equal(((source!.content as Row).blocks as Row[])[0].text, original);
+  const returned = await new SiteChatService(designer.staff).read(target);
+  assert.ok((returned.items as Row[]).some(i => String((i.record as Row)?.id) === String(sent.recordId)));
+  const observer = new SiteChatService({ enterpriseId: eids[0], adminId: members[2] }); await observer.read(target);
+  await assert.rejects(observer.send(target, { text: original, mediaIds: [] }, randomUUID()), /construction_forbidden/);
+  await assert.rejects(designer.mutate(target, String(sent.recordId), 'edit', { expectedVersion: Number(stored!.version), data: stored!.data }, randomUUID()), /construction_forbidden/);
+  await assert.rejects(new SiteChatService({ enterpriseId: eids[1], adminId: aids[1] }).read(target));
+});
+
 test('PPT23 query preserves same shared originals, exact record version and missing sources without creating a draft/job', async () => {
   const before = await counts(), key = randomUUID(), body = { text: '书房底盒待核对，帮我找对应图纸和需求', mediaIds: [] };
   const result = await designer.send(pid, body, key);
