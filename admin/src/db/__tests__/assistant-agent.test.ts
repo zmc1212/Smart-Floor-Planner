@@ -178,6 +178,51 @@ test('invalid memory extraction receives bounded feedback and writes only the co
   assert.deepEqual(readMemory(c?.entry_snapshot).facts.map(f => f.value), ['双人桌']);
 });
 
+test('conditional recording clarification persists unchanged without a save while an independent completion remains blocked', async () => {
+  const text = "把另一间的书桌也改一下，先确认具体房间再记录", clarification = "您提到需要修改另一间的书桌，但尚未明确具体是哪一间。请先告诉我具体是哪一间房间的书桌需要修改，我才能帮您记录需求。";
+  const a = await start(text); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async () => { calls++; return response(clarification); } });
+  const run = await a.chat.run(a.lease.runId);
+  assert.equal(run.status, 'succeeded', JSON.stringify(run)); assert.equal(calls, 1);
+  const persisted = await new ConversationService(actor).messages(a.c);
+  const answer = persisted.items.find(m => m.id === run.outputMessageId);
+  assert.ok(answer?.available); assert.ok(JSON.stringify(answer.content).includes(clarification));
+  const row = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
+  assert.deepEqual(readMemory(row?.entry_snapshot), { version: 0, facts: [] });
+  const writes = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select id from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${a.lease.runId} and kind in ('agent_need_write','agent_validation')`));
+  assert.equal(writes.length, 0);
+  await assert.rejects(new ConversationService(stranger).messages(a.c), /assistant_resource_not_found/);
+  const b = await start(text);
+  await processAgentAnswer(b.lease, { model: async () => response(clarification + '我已记录预算。') });
+  const blocked = await b.chat.run(b.lease.runId);
+  assert.equal(blocked.status, 'failed'); assert.equal(blocked.errorCode, 'unsupported_model_commitment'); assert.equal(blocked.outputMessageId, null);
+});
+test('conditional recording transition wording is delivered without a save or extra model repair', async () => {
+  const text = '请先确认具体是哪一间房间的书桌需要改动，然后我们可以帮您记录需求。';
+  const a = await start('把另一间的书桌也改一下，先确认具体房间再记录'); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async () => { calls++; return response(text); } });
+  const run = await a.chat.run(a.lease.runId);
+  assert.equal(run.status, 'succeeded', JSON.stringify(run)); assert.equal(calls, 1);
+  const answer = (await new ConversationService(actor).messages(a.c)).items.find(m => m.id === run.outputMessageId);
+  assert.ok(answer?.available); assert.ok(JSON.stringify(answer.content).includes(text));
+  const row = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
+  assert.deepEqual(readMemory(row?.entry_snapshot), { version: 0, facts: [] });
+});
+test('conditional recording clarification follows an actually rejected ambiguous write without saving or repair', async () => {
+  const text = "把另一间的书桌也改一下，先确认具体房间再记录", clarification = "您提到需要修改另一间的书桌，但尚未明确具体是哪一间。请先告诉我具体是哪一间房间的书桌需要修改，我才能帮您记录需求。";
+  const a = await start(text); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (messages, _tools, turn) => {
+    calls++; if (!turn) return { ...response(), text: '', toolCalls: [{ id: 'ambiguous', name: 'record_need',
+      arguments: JSON.stringify({ room: '', field: 'desk', value: '书桌', quote: text }) }] };
+    assert.equal(turn, 1); assert.match(JSON.stringify(messages), /need_room_ambiguous/); return response(clarification);
+  } });
+  const run = await a.chat.run(a.lease.runId);
+  assert.equal(run.status, 'succeeded', JSON.stringify(run)); assert.equal(calls, 2);
+  const row = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
+  assert.deepEqual(readMemory(row?.entry_snapshot), { version: 0, facts: [] });
+  const answer = (await new ConversationService(actor).messages(a.c)).items.find(m => m.id === run.outputMessageId);
+  assert.ok(answer?.available); assert.ok(JSON.stringify(answer.content).includes(clarification));
+});
 test('ambiguous room write is rejected without mutation and clarification is delivered', async () => {
   const a = await start('那间房改成三人书桌，请记录。');
   await processAgentAnswer(a.lease, { model: async (messages,_tools,turn) => {

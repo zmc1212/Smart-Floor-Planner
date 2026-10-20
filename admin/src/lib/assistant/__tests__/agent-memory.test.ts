@@ -85,6 +85,33 @@ test('a save acknowledgement requires this run committed memory or preference op
   assertRecordedReply('沿用原工作记录，正式方案仍另行核对。', saved, '90');
   assertRecordedReply('当前正式方案已更新为新版本。', empty, '90');
 });
+test('conditional recording clarification does not claim a completed save', () => {
+  const empty = readMemory({});
+  for (const text of ["您提到需要修改另一间的书桌，但尚未明确具体是哪一间。请先告诉我具体是哪一间房间的书桌需要修改，我才能帮您记录需求。",
+    '请先告诉我具体房间，我才会帮你保存这条需求。', '先说明是哪间房，小K才能帮您记录对应需求。']) {
+    assert.doesNotThrow(() => assertRecordedReply(text, empty, '90'), text);
+  }
+});
+test('conditional recording transition wording is future scoped and retains a separate save claim', () => {
+  const empty = readMemory({});
+  for (const text of ['请先确认具体是哪一间房间的书桌需要改动，然后我们可以帮您记录需求。',
+    '先确认房间，所以我们就能帮您记录对应需求。', '明确房间后，再帮您记录这条需求。']) {
+    assert.doesNotThrow(() => assertRecordedReply(text, empty, '90'), text);
+    assert.throws(() => assertRecordedReply(text + '我已保存预算。', empty, '90'), /unsupported_model_commitment/);
+  }
+  for (const text of ['然后我们已经帮您记录需求。', '然后我们可以帮您记录好了需求。',
+    '然后我们可以帮您记录需求吗？', '并不是然后我们可以帮您记录需求。']) {
+    assert.throws(() => assertRecordedReply(text, empty, '90'), /unsupported_model_commitment/, text);
+  }
+});
+test('conditional recording projection preserves independent completed saves and unscoped claims', () => {
+  const empty = readMemory({}), conditional = "您提到需要修改另一间的书桌，但尚未明确具体是哪一间。请先告诉我具体是哪一间房间的书桌需要修改，我才能帮您记录需求。";
+  for (const text of [conditional + '我已记录预算。', '我已经保存需求。' + conditional,
+    '并不是我才能帮您记录需求。', '我才能帮您记录需求吗？', '我才能帮您记录好了需求。',
+    '我会帮您记录需求。', '帮您保存需求。']) {
+    assert.throws(() => assertRecordedReply(text, empty, '90'), /unsupported_model_commitment/, text);
+  }
+});
 test('not asking again about saved needs does not acknowledge a new save or hide an independent write claim', () => {
   const source = { id: '1', text: '书房单人办公' }, empty = readMemory({});
   const saved = applyNeedDelta(empty, parseNeedDelta({ room: '书房', field: 'use', value: '单人办公', quote: source.text,

@@ -77,7 +77,12 @@ export function assertRecordedReply(text: string, memory: NeedMemory, runId: str
   // A negative request to re-confirm an existing need is not a new save receipt.
   // Normalize only that adjacent attributive phrase; independent save claims
   // still require this run's operation. Source guards own the fact's availability.
-  const claims = text.replace(/(?:无需|不用|不必)(?:你|您)?(?:再|重复)?(?:确认|补充|说明)已(?:经)?(?:保存|记录)的/g, '沿用原需求');
+  const claims = text
+    .replace(/(?:无需|不用|不必)(?:你|您)?(?:再|重复)?(?:确认|补充|说明)已(?:经)?(?:保存|记录)的/g, '沿用原需求')
+    // Conditional ability/next-action predicates do not acknowledge a save.
+    // Project only a complete future predicate at its clause boundary;
+    // independent claims, completed suffixes and rhetorical forms stay guarded.
+    .replace(/(^|[，,。；;！？!?\n])\s*(?:(?:然后|之后|这样|因此|所以)\s*)?(?:我们|我|小K)?(?:才能|才会|就能|就会|可以|再)(?:帮你|帮您)(?:记下|记住|记录|保存|记为)(?:这(?:条|些)|您(?:的)?|你(?:的)?|具体|相关|对应)?需求(?=$|[，,。；;！？!?\n])/g, '$1待条件明确后再处理需求');
   if (!/(?:已(?:经)?|帮你|帮您)(?:按(?:你|您)的更正)?(?:记下|记住|记录|保存|记为)|已(?:经)?按(?:你|您)的更正更新(?:为|了)?|记下了|记住了|记录好了/.test(claims)) return;
   const prefix = runId + ':';
   if (!memory.facts.some(f => f.id.startsWith(prefix)) && !otherOperationIds.some(id => id.startsWith(prefix))) fail('unsupported_model_commitment', 502);

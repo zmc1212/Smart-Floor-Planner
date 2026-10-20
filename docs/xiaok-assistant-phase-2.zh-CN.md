@@ -19,7 +19,17 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前v91：明确否定完成谓词与免费模型复测
+## 当前v92：条件记录澄清
+
+**内部技术修复Implemented，整体Limited。** 独立F-05/run1092证明`assertRecordedReply`将条件未来动作误当保存完成。当前只在句界分析投影中识别完整条件能力/后续动作需求谓词，原回复/引文和同run持久操作ID不改。已覆盖的完成后缀、反问/双重否定、无条件回执和独立真实保存声明仍校验；来源/租户/人工围栏、预算、prompt版本、schema、公开API和批准UI保持。参考已检视的[LangGraph工具消息测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)和[Agents SDK输出守卫测试](https://github.com/openai/openai-agents-js/blob/main/packages/agents-core/test/guardrail.test.ts)，保留应用端领域校验，不迁移框架或新增判官循环。
+
+262单元、8定向隔离服务、73 Mini、涉及文件/全仓lint通过，本批类型0/全仓292，889项源码/测试/配置稳定。原句及过渡表达真实持久/重进，无写入/修复；独立完成声明仍拒绝，实际歧义写入被拒后可交付澄清，租户/引用/撤回保持。两个红测窗口分别保留。`attempt-1/`为驱动导入前置失败，尚无夹具/模型/原生派发；`attempt-2/`保留首版工程检查和实模1142因“然后我们可以帮您记录需求”仍失败的结果，不追认通过。
+
+最终新文字GLM9 C01 run1143共4次模型调用，交付“请先确认具体是哪一间房间的书桌需要改动，然后我们才能为您记录需求。”需求仍version0/空，无成功写入；真实重进、合法同企业其他客户/跨企业客户的拒绝及各自咨询正控通过。新稿用“为您”，被拒“帮您”形式的因果验证来自纯/服务，不是1092/1142的反事实原生通过。Stable2.02.2608080/automator0.13.0/基础库3.17.2核副屏、新编译、精确C01 route，逻辑390×844、PNG348×752，已按`design-references/xiaok-p4b-public-sites-v1/README.md`审看截图，无Mini源码或新还原变更。共用helper泛称容量/更正/历史/撤回的步骤本批只执行传入的F-05澄清/重进，不能推定这些额外原生业务通过。
+
+新合成企业AI关闭、身份context撤销、active0/unknown0，配置前后精确一致。原独立305文件manifest、未覆盖用例与整体未通过结论分开保留；只读审计确认1092仍失败、1132/3196仍indeterminate/unknown且预留reconciling/结算null，不重放或核清为0。证据`tmp/xiaok-clarification-v92/core-freeze.json`、`semantic-review.json`、`original-audit.json`。重复被拒工具和其余六项发现仍未解决，下一步沿既有S04组件修复F-03完成记录分流；完整PPT/图片/真机/生产及全仓类型不升级通过。
+
+## 历史v91：明确否定完成谓词与免费模型复测
 
 **内部技术子阶段Implemented，整体Limited。** `parseAgentReply`原有完成承诺守卫将资料原文“不证明点位已落实”误认为现场完成。先用v90 GLM9原稿对应的纯函数反例复现`unsupported_model_commitment`，记录`tmp/xiaok-denial-v91/red.log`。当前仅在明确句界投影有限主语后的“不代表/不证明/不能证明/不足以证明/不能说明/不意味着”及其紧邻完成谓词；原回复、引用和数据不改写。后续独立动作、双重否定、反问“吗”、报价/安全承诺继续交给原守卫，来源归属、原文、适用条件、撤回、租户和真实操作回执不放宽。没有新Agent、框架迁移、知识管线或权限解析器。
 
