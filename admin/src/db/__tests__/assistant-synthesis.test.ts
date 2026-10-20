@@ -19,7 +19,7 @@ import type { ModelTurnOutput, ModelMessage } from '@/lib/assistant/contracts/mo
 import { agentMessageAvailable } from '@/lib/assistant/agent/media-context';
 import { synthesisRepairBase } from '@/lib/assistant/agent/synthesis-repair';
 import { synthesisRepairProjectionVersion, synthesisRepairTask } from '@/lib/assistant/agent/synthesis';
-import { readToolInputProtocol } from '@/lib/assistant/agent/read-tool-input';
+import { readToolInputProtocol, readToolContext } from '@/lib/assistant/agent/read-tool-input';
 
 const prefix = 'synthetic-synthesis-' + randomUUID(), tenants: string[] = [], users: string[] = [];
 let eid: string, ownerId: string, knowledge: KnowledgeService;
@@ -58,12 +58,12 @@ async function publish(title: string, body: string, audience = 'customer_public'
   const result = await knowledge.execute('job', { jobId: job.jobId }); assert.equal(result.status, 'succeeded', JSON.stringify(result));
   await knowledge.execute('publish', d, randomUUID()); return d;
 }
-async function fixture(targetEid = eid) {
+async function fixture(targetEid = eid, bound = true) {
   const uid = await withPlatformTransaction(async tx => { const u = String((await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix},1) returning id`))!.id); users.push(u);
     await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${u},${prefix+u})`); return u; });
   const leadId = String((await withTenantTransaction(targetEid, tx => one(tx, sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source,community_name)
     values(${targetEid},${uid},'合成综合问答客户','13800000000','natural','合成书房之家') returning id`)))!.id);
-  const actor: ActorContext = { enterpriseId: targetEid, principal: { kind: 'user', userId: uid }, contextVersion: 1, capabilities: ['assistant.chat.self'], entry: { kind: 'lead', id: leadId } };
+  const actor: ActorContext = { enterpriseId: targetEid, principal: { kind: 'user', userId: uid }, contextVersion: 1, capabilities: ['assistant.chat.self'], ...(bound ? { entry: { kind: 'lead' as const, id: leadId } } : {}) };
   const chat = new ConversationService(actor), cid = String((await chat.create(randomUUID())).id);
   const send = async (text: string, model: NonNullable<Parameters<typeof processAgentAnswer>[1]>['model']) => {
     const sent = await chat.send(cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] }); const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
@@ -132,7 +132,7 @@ test('AG05/07: a source change before a repeated read blocks reuse and delivery'
 
 test('AG05 read-input recovery preserves real knowledge, queries once with a corrected string ID and revokes on reentry', async () => {
   const doc = await publish('合成参数恢复甲', '书房参数恢复甲：屏幕可比较侧向布置，避免直对强光窗户。');
-  const x = await fixture();
+  const x = await fixture(eid, false);
   assert.ok(Number.isSafeInteger(Number(x.leadId)));
   let calls = 0;
   const a = await x.send('书房参数恢复甲怎样避免反光，核对现场资料？', async (messages, _tools, turn) => {
@@ -214,7 +214,7 @@ test('QA02/05 PPT6/15: real retrieval plus authorized originals produces persist
   const a = await x.send('书房靠窗办公为什么还要考虑桌子的朝向？', async (m,tools,turn) => {
     answerCalls++;
     assert.doesNotMatch(JSON.stringify(m), /PRIVATE_ONLY_NEVER_SEND/);
-    if (turn === 0) { const a = call('search_knowledge', { query: '书房靠窗办公 屏幕眩光 双人桌' }); a.toolCalls.push(...call('query_materials', { leadId: '', room: '书房' }).toolCalls); return a; }
+    if (turn === 0) { const a = call('search_knowledge', { query: '书房靠窗办公 屏幕眩光 双人桌' }); a.toolCalls.push(...call('query_materials', { room: '书房' }).toolCalls); return a; }
     const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!, b = s.find(s => s.sourceId.includes(':customer_need:'))!;
     if (turn === 2) { assert.equal(tools.length, 0); assert.match(JSON.stringify(m), /unscoped_measurement_gap/); }
     return synth([{ basis: 'evidence', text: '你希望靠窗并偶尔两人办公，可以保留采光偏好，但桌向需要同时照顾屏幕眩光和共用通道，因此先比较侧向摆放更有讨论价值。',
@@ -474,13 +474,101 @@ test('QA03/07: a bound consultation scopes natural business reads to this home e
     values(${eid},${x.uid},'另一套合成房屋','13800000000','natural','OTHER_OWNED_HOME') returning id`)))!.id);
   const a = await x.send('那现在呢？', async (m,tools,turn) => {
     assert.ok(tools.some(t => t.name === 'query_business'));
-    if (!turn) return call('query_business', { domain: 'construction', leadId: '' });
+    if (!turn) return call('query_business', { domain: 'construction' });
     const source = m.find(m => m.role === 'tool'); assert.ok(source && source.role === 'tool');
     const result = JSON.parse(source.content); assert.deepEqual(result.leadIds, [x.leadId]); assert.equal(result.query.leadId, x.leadId);
     return call('final_response', { kind: 'business', resultKey: result.resultKey });
   }); assert.equal(a.run.status, 'succeeded');
   const b = await x.send('切换到另一套现场资料', async () => call('query_business', { domain: 'construction', leadId: otherLead }));
   assert.notEqual(b.run.status, 'succeeded');
+});
+
+test('AG05 bound-read injects the same home for material and business reads, persists originals and revokes knowledge on reentry', async () => {
+  const doc = await publish('合成身份绑定甲', '厨房身份绑定甲：设备布置先核对通道和使用条件，不从需求原话推断现场已完成。');
+  const x = await fixture();
+  const seed = await x.send('请记录厨房保留冰箱。', async (_messages, _tools, turn) => !turn
+    ? call('record_need', { room: '厨房', field: 'devices', value: '冰箱', quote: '厨房保留冰箱' })
+    : call('final_response', { kind: 'general', text: '已记录厨房保留冰箱。' }));
+  assert.equal(seed.run.status, 'succeeded', JSON.stringify(seed.run));
+  let calls = 0;
+  const answer = await x.send('查询我家厨房需求和施工资料，结合厨房身份绑定甲解释核对条件。', async (messages, tools, turn) => {
+    calls++;
+    if (!turn) {
+      for (const name of ['query_materials', 'query_business']) {
+        const tool = tools.find(t => t.name === name)!; assert.ok(tool);
+        assert.equal(Object.hasOwn(tool.parameters.properties as object, 'leadId'), false);
+        assert.equal((tool.parameters.required as string[]).includes('leadId'), false);
+      }
+      const output = call('query_materials', { room: '厨房' });
+      output.toolCalls.push(...call('query_business', { domain: 'construction' }).toolCalls,
+        ...call('search_knowledge', { query: '厨房身份绑定甲 通道 使用条件' }).toolCalls);
+      return output;
+    }
+    const packets = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content));
+    for (const packet of packets.filter(p => ['materials', 'construction'].includes(p.query?.domain))) {
+      assert.deepEqual(packet.leadIds, [x.leadId]); assert.equal(packet.query.leadId, x.leadId);
+    }
+    const knowledge = results(messages).find(s => s.kind === 'knowledge' && s.text.includes('厨房身份绑定甲'))!;
+    const need = results(messages).find(s => s.kind === 'project' && s.text.includes('厨房保留冰箱'))!;
+    assert.ok(knowledge && need);
+    return synth([
+      { basis: 'evidence', text: '资料要求核对通道和使用条件，不能据需求判断现场已完成。', citations: [{ citationId: knowledge.citationOptions[0].citationId }] },
+      { basis: 'evidence', text: '你这次咨询的需求原话是厨房保留冰箱。', citations: [{ citationId: need.citationOptions[0].citationId }] },
+    ]);
+  });
+  assert.equal(answer.run.status, 'succeeded', JSON.stringify(answer.run)); assert.equal(calls, 2);
+  const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,capability_name,input_summary,private_checkpoint
+    from app.assistant_run_steps where enterprise_id=${eid} and run_id=${answer.runId}`));
+  for (const step of steps.filter(s => ['agent_model', 'agent_checkpoint'].includes(String(s.kind))))
+    assert.deepEqual((step.input_summary as Row).readContext, readToolContext({ kind: 'lead', id: x.leadId }));
+  assert.equal(steps.filter(s => ['query_materials', 'query_business'].includes(String(s.capability_name))).length, 2);
+  const reply = (await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === answer.run.outputMessageId)!;
+  assert.equal(reply.available, true); assert.equal(reply.citations.length, 1, 'public citation IDs contain knowledge; project originals use the existing synthesis source contract');
+  const durable = steps.find(s => s.kind === 'agent_synthesis_context')!.private_checkpoint as { segments: Array<{ citations: Array<{ sourceId: string; quote: string }> }> };
+  const citations = durable.segments.flatMap(s => s.citations);
+  assert.equal(citations.length, 2);
+  assert.ok(citations.some(c => c.sourceId.startsWith('K') && c.quote.includes('厨房身份绑定甲')));
+  assert.ok(citations.some(c => c.sourceId.startsWith('B') && c.quote.includes('厨房保留冰箱')));
+  await knowledge.execute('retire', { documentId: doc.documentId, expectedVersion: 2 }, randomUUID());
+  assert.equal((await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === reply.id)!.available, false);
+  assert.ok((await Promise.all(reply.citations.map(c => x.chat.citation(c.id)))).some(c => !c.available));
+});
+
+test('AG05 bound-read recovers cached new and legacy provider outputs without replaying the completed model call', async () => {
+  for (const legacy of [false, true]) {
+    const x = await fixture();
+    const sent = await x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '查询我家厨房资料。' }] });
+    const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
+    const cached = call('query_materials', legacy ? { leadId: x.leadId, room: '厨房' } : { room: '厨房' });
+    const summary = legacy ? { fixture: true } : { fixture: true, readContext: readToolContext({ kind: 'lead', id: x.leadId }) };
+    await withTenantTransaction(eid, tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint)
+      values(${eid},${lease.runId},1100,'agent_model','succeeded',${JSON.stringify(summary)}::jsonb,${JSON.stringify(cached)}::jsonb)`));
+    let calls = 0;
+    await processAgentAnswer(lease, { model: async (messages, tools, turn) => {
+      calls++; assert.equal(turn, 1);
+      assert.equal(Object.hasOwn(tools.find(t => t.name === 'query_materials')!.parameters.properties as object, 'leadId'), legacy);
+      const packet = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content)).find(p => p.query?.domain === 'materials');
+      assert.equal(packet.query.leadId, x.leadId);
+      return call('final_response', { kind: 'business', resultKey: packet.resultKey });
+    } });
+    assert.equal((await x.chat.run(lease.runId)).status, 'succeeded'); assert.equal(calls, 1);
+    const checkpoint = await withTenantTransaction(eid, tx => one(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${lease.runId} and kind='agent_checkpoint'`));
+    assert.equal(Object.hasOwn(checkpoint!.input_summary as object, 'readContext'), !legacy);
+  }
+});
+
+test('AG05 bound-read detects a changed conversation home before executing a tool or returning an answer', async () => {
+  const x = await fixture();
+  const a = await x.send('查询我家厨房资料。', async () => {
+    await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_conversations
+      set entry_snapshot=jsonb_set(entry_snapshot,'{id}',to_jsonb('999999999999'::text)) where enterprise_id=${eid} and id=${x.cid}`));
+    return call('query_materials', { room: '厨房' });
+  });
+  assert.notEqual(a.run.status, 'succeeded');
+  const reads = await withTenantTransaction(eid, tx => rows(tx, sql`select id from app.assistant_run_steps
+    where enterprise_id=${eid} and run_id=${a.runId} and capability_name='query_materials'`));
+  assert.equal(reads.length, 0);
+  assert.equal((await x.chat.messages(x.cid)).items.filter(m => m.authorKind === 'assistant' && m.available).length, 0);
 });
 
 test('QA08 PPT10/11: takeover during synthesis stops the late answer but retains originals and observed usage', async () => {

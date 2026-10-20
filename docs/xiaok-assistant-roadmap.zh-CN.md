@@ -120,7 +120,7 @@ AG-04/05对“明确前句更正、随后独立提问”补入有界接续：复
 
 ### 3.2 已确认的业务接入边界
 
-2026-10-20 v88可信字段诊断为AG-05/09内部技术子阶段Implemented，整体Limited。read-input-v2在原严格解析拒绝后，只投影可信schema的path/expected/received类型，不复述参数值/未知字段名；旧v1 checkpoint错误身份兼容，仍一次参数纠正/四轮/一次最终修复/16000及原来源权限。232单元/8定向隔离服务/73 Mini/全仓lint通过，本批类型0/全仓292，79项source/test与92项provider/环境文件无漂移。首次服务准备因18089隧道缺失使索引未知，业务断言未执行，保留attempt-1后恢复既有隧道并用新夹具；不重放原任务。独立受控实模run6116当前Qwen3.5-4B仅1调用，输入6069/输出42仍重复数字ID，读取/交付0，active/unknown0，配置/供应商投影精确恢复。原v87失败及v85交付0/5、完整条件0/3、1073 unknown、16项attempt/四份员工发布/2567保持。知识接口/解析/检索/发布、公开API/schema/权限/批准UI不变，无新增KB/原生/生产通过。下一项核对会话绑定身份的服务端注入，话题/修复编辑/完整条件仍待补。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-input-diagnostics-v88/manifest.json。
+2026-10-20 v89会话绑定身份为AG-05/09内部技术子阶段Implemented，整体Limited。新运行的conversation-read-v1把绑定房屋ID保存在原模型步骤/checkpoint元数据中，query_materials/query_business只让模型提供room/domain；任何模型leadId仍拒绝，服务端注入后走原严格解析与权限。无绑定及旧无标记任务保留原合同，绑定漂移停止；一次参数纠正/四轮/唯一最终修复/16000不变。最终235单元、12定向隔离服务、73 Mini及全仓lint通过，本批类型0/全仓292；172项源码/测试、94项供应商/环境与711项Mini文件无漂移。旧完整窗口57通过/1测试预期错误/7跳过及配置漂移均独立保留，不计入新通过数。用户指定智谱官方zhipu / glm-4.7-flash后，新企业3883/run6212仅1次实模请求，HTTP_429且无首稿/查询/交付，第二题未执行；原unknown不重放、不核清未知费用。原始夹具清理状态值错误保留，独立补清理确认AI关闭、管理员disabled、资料retired、active0/unknown1，运行配置/两份供应商投影精确恢复。历史16次调用/四份员工发布/2567资料及原v85/v87/v88评分保持。知识接口/解析/检索/发布、公开API/schema/权限/批准UI不变，无新增专业/PPT/原生/生产通过。下一批沿当前GLM在可受理时建新夹具，再补话题/修复编辑/完整条件。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-bound-read-v89/manifest.json。
 
 <!-- 保留已有文档的章节入口；当前有效规则与实施证据以本节及第2节链接为准。 -->
 <a id="31-p2c-当前范围与小区检索"></a>

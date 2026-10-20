@@ -40,7 +40,7 @@ import { citationProtocolVersion } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
 import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
-import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol } from './read-tool-input';
+import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, type ReadToolContext } from './read-tool-input';
 
 const needProperties = { room: { type: 'string' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，daylight记录采光，devices记录设备；独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -119,6 +119,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
   const issueSources = new Map<string, NeedIssueDependency>();
   const historySources = new Map<string, HistoryRef>();
   let summarySources: HistoryRef[] = [];
+  let readContext: ReadToolContext | undefined;
   const validateConstructionSources = async (tx: Parameters<typeof runContext>[0], cid: string) => {
     for (const mid of constructionSources) if (!await constructionNoticeAvailable(tx, lease.enterpriseId, cid, mid, true, true)) fail('context_changed');
     for (const ref of publicSources.values()) if (!await publicContextAvailable(tx, lease.enterpriseId, ref)) fail('context_changed');
@@ -130,6 +131,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
   const scoped = <T>(fn: (tx: Parameters<typeof runContext>[0], context: Awaited<ReturnType<typeof runContext>>) => Promise<T>) =>
     withTenantTransaction(lease.enterpriseId, async tx => {
       const context = await runContext(tx, lease);
+      if (readContext) readToolContext(context.conversation.entry_snapshot as Row, { readContext });
       await validateConstructionSources(tx, String(context.conversation.id));
       if (!await needRunSourcesAvailable(tx, lease.enterpriseId, String(context.conversation.id), lease.runId)) fail('context_changed');
       return fn(tx, context);
@@ -300,6 +302,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       const saved = await one(tx, sql`select private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and step_seq=${checkpointSeq} and status='succeeded'`);
       if (saved && (saved.input_summary as Row)?.promptVersion !== agentPromptVersion) fail('context_changed');
+      const previousModel = !saved && await one(tx, sql`select input_summary from app.assistant_run_steps
+        where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and kind='agent_model' order by step_seq limit 1`);
+      readContext = readToolContext(context.conversation.entry_snapshot as Row,
+        (saved ? saved.input_summary : previousModel ? previousModel.input_summary : undefined) as Row | undefined);
       const resume = saved?.private_checkpoint as AgentCheckpoint | undefined;
       const savedConstruction = await one(tx, sql`select source_refs from app.assistant_run_steps where enterprise_id=${lease.enterpriseId}
         and run_id=${lease.runId} and kind='agent_construction_context'`);
@@ -351,7 +357,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' && synthesisRepairBase(focused) ? synthesisRepairProtocol : null,
                   repairProjection: purpose === 'answer' && focused !== messages && synthesisRepairBase(focused) ? synthesisRepairProjectionVersion : null,
-                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
+                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, readContext, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
                   finalOnly: purpose === 'answer' && tools.length === 0,
                   responseScope: modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(availabilityScopeHintPrefix))) ? 'unavailable_occupancy_evidence' : null })}::jsonb)`);
             await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
@@ -389,7 +395,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     // This first extractive digest is read-only. A current write/handoff must not
     // inherit a prior memory revision or reinterpret history as authorization.
     const summaryWrites = ['record_need','request_designer','record_reference_preference'];
-    const initialTools = agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools);
+    const initialTools = readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools), readContext);
     if (!initial.resume && initial.savedSummary?.status === 'succeeded') {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
     } else if (!initial.resume && !initial.savedSummary && initial.config.tools && (!dependencies.model || dependencies.summary)
@@ -439,13 +445,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     }
     const businessFollowup = (initial.conversation.entry_snapshot as Row).kind === 'lead'
       || initial.messages.some(m => m.role === 'assistant' && (m.content.includes('此前查询过业务记录') || m.content.includes('此前围绕这个客户问题作过综合解释')));
-    const result = await runRenovationAgent({ messages: initial.messages, tools: agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools, businessFollowup), resume: initial.resume,
+    const result = await runRenovationAgent({ messages: initial.messages, tools: readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools, businessFollowup), readContext), resume: initial.resume,
       ports: {
         authorize,
         checkpoint: state => scoped(async tx => {
           for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
           await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary,private_checkpoint,source_refs)
-            values(${lease.enterpriseId},${lease.runId},${checkpointSeq},'agent_checkpoint','succeeded',${JSON.stringify({ promptVersion: agentPromptVersion })}::jsonb,
+            values(${lease.enterpriseId},${lease.runId},${checkpointSeq},'agent_checkpoint','succeeded',${JSON.stringify({ promptVersion: agentPromptVersion, readContext })}::jsonb,
               ${JSON.stringify({ ...state, messages: withoutImageBytes(state.messages) })}::jsonb,${JSON.stringify(initial.mediaRefs)}::jsonb)
             on conflict(enterprise_id,run_id,step_seq) do update set private_checkpoint=excluded.private_checkpoint,source_refs=excluded.source_refs,updated_at=now(),version=app.assistant_run_steps.version+1`);
           if (initial.referenceEvidence.length) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs)
@@ -518,9 +524,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           });
         },
         model: callModel,
-        validateTool: readToolInputIssue,
+        validateTool: (name, args) => readToolInputIssue(name, args, readContext),
         tool: async (turn, index, name, args) => {
-          const input = JSON.parse(args);
+          const input = bindReadToolInput(name, JSON.parse(args), readContext) as Row;
           const sequence = 1200 + turn * 10 + index, resultKey = `${lease.runId}:${turn}:${index}`;
           if (name === 'recall_history') {
             const query = parseHistoryQuery(input);

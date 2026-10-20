@@ -17,8 +17,8 @@ export const businessToolDefinitions: ModelTool[] = [
   { name: 'record_reference_preference', description: '记录客户对最近一次推荐中某个案例明确说出的喜欢/不合适。ordinal为该次推荐的1到3顺序；多例但指代不明时先询问。quote逐字摘自本轮原话。浏览/点击不是选择。', parameters: {
     type: 'object', properties: { ordinal: { type: 'integer' }, quote: { type: 'string' }, sentiment: { type: 'string', enum: ['like','dislike'] } }, required: ['ordinal','quote','sentiment'], additionalProperties: false,
   } },
-  { name: 'query_business', description: '只查当前客户本人本企业的量房预约、已发布方案、正式户型或实际施工节点/到场注意事项/本阶段电话联系人及向本人明确发布的现场记录。现场记录不等于正式验收或变更批准。客户想去现场时查询construction，电话沟通，不记录施工预约。没有记录就返回没有；不编造进度。leadId为空列本人档案，多个项目分开。', parameters: {
-    type: 'object', properties: { domain: { type: 'string', enum: ['appointments','schemes','floorplans','construction'] }, leadId: { type: 'string' } }, required: ['domain','leadId'], additionalProperties: false,
+  { name: 'query_business', description: '只查当前客户本人本企业的量房预约、已发布方案、正式户型或实际施工节点/到场注意事项/本阶段电话联系人及向本人明确发布的现场记录。现场记录不等于正式验收或变更批准。客户想去现场时查询construction，电话沟通，不记录施工预约。没有记录就返回没有；不编造进度。多个项目分开。', parameters: {
+    type: 'object', properties: { domain: { type: 'string', enum: ['appointments','schemes','floorplans','construction'] }, leadId: { type: 'string', description: '明确获权房屋ID；为空列本人档案，不猜ID。' } }, required: ['domain','leadId'], additionalProperties: false,
   } },
   { name: 'request_designer', description: '仅当前客户明确要求找设计师时提交真实人工接续。不是模型之间的handoff。quote须为当前消息的直接请求原话，不得用于否定/假设/引用。', parameters: {
     type: 'object', properties: { quote: { type: 'string' }, expectedVersion: { type: 'integer' } }, required: ['quote','expectedVersion'], additionalProperties: false,

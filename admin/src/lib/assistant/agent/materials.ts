@@ -15,8 +15,8 @@ import { needQualifications, type NeedFact, type NeedQualification, type NeedInt
 
 export const materialTool: ModelTool = {
   name: 'query_materials',
-  description: '按当前客户有权读取的明确房屋和房间组合本咨询原话、有效共享需求/点位图说明、明确回传到本咨询的团队图纸核对关联、已送达的精确正式方案版本及客户决定、正式v4户型和已发布现场记录。客户参考、团队关联核对、正式版本决定分别溯源，均不证明现场落实。原件引用不代表识读像素。leadId不知道用空串；room仅用明确房间名。多房屋/重名房间先澄清，缺项不推成现实中未发生。只读，不建事项或批准。',
-  parameters: { type: 'object', properties: { leadId: { type: 'string' }, room: { type: 'string' } }, required: ['leadId', 'room'], additionalProperties: false },
+  description: '按当前客户有权读取的明确房屋和房间组合本咨询原话、有效共享需求/点位图说明、明确回传到本咨询的团队图纸核对关联、已送达的精确正式方案版本及客户决定、正式v4户型和已发布现场记录。客户参考、团队关联核对、正式版本决定分别溯源，均不证明现场落实。原件引用不代表识读像素。room仅用明确房间名。多房屋/重名房间先澄清，缺项不推成现实中未发生。只读，不建事项或批准。',
+  parameters: { type: 'object', properties: { leadId: { type: 'string', description: '明确获权房屋ID；不知道用空字符串，不猜ID。' }, room: { type: 'string' } }, required: ['leadId', 'room'], additionalProperties: false },
 };
 export type MaterialQuery = { leadId: string; room: string };
 export type MaterialSource = {

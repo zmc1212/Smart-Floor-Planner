@@ -19,7 +19,19 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前v88：可信字段诊断
+## 当前v89：会话绑定身份的只读工具上下文
+
+**AG-05/09内部技术子阶段Implemented，整体Limited。** 新运行的`conversation-read-v1`从获权咨询`entry_snapshot`取得房屋身份。绑定咨询向模型提供的`query_materials`仅要求`room`、`query_business`仅要求`domain`；模型携带的任何`leadId`（数字、字符串、空串或本人ID）均按额外字段拒绝，不丢弃或转换后执行。服务端在原工具适配器内注入绑定字符串ID，再走原严格应用解析器与租户/本人/参与者/来源校验；未绑定咨询继续使用原严格`leadId`合同，房间歧义和多项目规则保持。
+
+模型派发记录和原应用checkpoint的`input_summary.readContext`保存协议及绑定；模型派发后、预检/工具、来源校验、检查点与交付沿原`scoped`重复核对当前绑定。已派发但尚无checkpoint的恢复从原`agent_model`标记恢复相同格式；旧运行没有标记时保留原模型参数/缓存响应，不把旧数字ID自动转型。绑定变化或未知标记按`context_changed`停止；原同run读取复用、一次参数纠正、四轮、唯一最终修复和16000预算不变。知识`KnowledgeRetriever`/`Evidence`、原文/条件/版本/epoch/受众/撤回及公开API、schema、角色和批准UI保持。
+
+采用决定：对照[LangChain ToolRuntime注入测试](https://github.com/langchain-ai/langchain/blob/master/libs/langchain_v1/tests/unit_tests/agents/test_injected_runtime_create_agent.py)和[OpenAI Agents本地上下文](https://openai.github.io/openai-agents-js/guides/context/)的运行身份注入/模型参数分离方式，在现有应用ports与Postgres恢复基础内实施。现有[无效工具参数序列化问题11490](https://github.com/langchain-ai/langchainjs/pull/11490)主要涉及流式适配；本次应用侧绑定不是某供应商的自动转型或重试补丁，不迁移框架，不另建权限、记忆、知识或判官链路。v87/v88原数字ID实模失败及历史unknown证据保持。
+
+最终证据在`tmp/xiaok-bound-read-v89/manifest.json`：235单元/12定向隔离服务/73 Mini及涉及文件/全仓lint通过，类型本批0/全仓292；172项源码/测试、94项供应商/环境及711项Mini文件无漂移。早期完整窗口57通过/1失败/7跳过遇到配置层源码漂移，且新增组合测试误将项目来源计入公开知识引用列表；原结果在attempt-1保留排除。用例改为分别验证原综合来源合同内的K/B逐字依据和公开知识引用，新旧恢复、绑定漂移、真实需求/业务/知识组合、租户及撤回均在最终12项通过。attempt-2的235单元有两项配置文件漂移，attempt-3早于最终用例hash，也独立排除；不合并这些窗口的统计。新GLM企业3883/咨询5982/run6212仅一次真实请求，attempt1807为failed/accepted=false/HTTP_429，应用run/job仍按原合同保留indeterminate，未读取资料、未产首稿/交付，第二题未执行；不重放、不改旧费用结论，不是专业语义失败率或模型比较。隔离运行配置与两份供应商投影精确恢复。原自动清理错误使用inactive账号状态导致事务回滚，该错误仍保留在live.json；独立cleanup-restoration.json绑定原报告hash并按实际active/disabled CHECK禁用唯一合成管理员，确认AI关闭、资料retired、active0/unknown1、原job不变，不新增模型调用。原16项attempt、四份员工发布及2567内部原件均未变，v85/v87/v88报告不刷新。无新原生/完整构建/全仓类型/生产通过，批准C01及Mini结构/样式/素材/固定文案/API/导航保持。
+
+本窗口内用户明确把后续测试模型改为后台当前的智谱官方`zhipu / glm-4.7-flash`。自然实模启动前只读核对主开发配置，再将该配置临时投影到隔离库；测试子进程显式覆盖旧Qwen测试模型值，并移除只适用原供应商的关闭思考覆盖，使用当前供应商默认设置，保留16000/2048及原调用预算。不改主开发凭据、企业能力记录或部署配置；实际remote_model、首稿、调用用量和恢复凭证分别落盘，旧Qwen报告不重评、不混作模型比较。配置层另一任务的源码变化使此前完整回归窗口失效；保留原结果后在稳定集成上重跑受影响的兼容/租户/撤回检查。
+
+## 历史v88：可信字段诊断
 
 **AG-05/09内部技术子阶段Implemented，整体Limited。** v87受控模型收到整份schema后仍重复数字ID，v88沿原read-input恢复增加只来自已注册工具schema的issues：可信字段path、错误类型、expected及received类型，不复述参数值或未知字段名；应用解析器仍唯一判定有效性，超出schema的业务拒绝只给application_contract，不猜ID/房间。`read-input-v2`显式说明JSON字符串需双引号，旧v1 checkpoint错误身份兼容。仍一次参数纠正/原四轮/唯一最终修复/16000预算，不转换ID、不新增来源或工具，既有租户/来源撤回与KnowledgeRetriever/Evidence保持。新配置窗口先保存受限ACL下的原始加密配置及投影，再精确恢复，避免沿保存接口重加密漂移；原v87报告及模型失败保持。
 

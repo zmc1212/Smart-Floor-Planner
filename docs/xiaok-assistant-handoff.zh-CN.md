@@ -1,12 +1,24 @@
 # 小K接力：统一实施、查询恢复与来源质量
 
-2026-10-20 v88可信字段诊断为AG-05/09内部技术子阶段Implemented，整体Limited。read-input-v2在原严格解析拒绝后，只投影可信schema的path/expected/received类型，不复述参数值/未知字段名；旧v1 checkpoint错误身份兼容，仍一次参数纠正/四轮/一次最终修复/16000及原来源权限。232单元/8定向隔离服务/73 Mini/全仓lint通过，本批类型0/全仓292，79项source/test与92项provider/环境文件无漂移。首次服务准备因18089隧道缺失使索引未知，业务断言未执行，保留attempt-1后恢复既有隧道并用新夹具；不重放原任务。独立受控实模run6116当前Qwen3.5-4B仅1调用，输入6069/输出42仍重复数字ID，读取/交付0，active/unknown0，配置/供应商投影精确恢复。原v87失败及v85交付0/5、完整条件0/3、1073 unknown、16项attempt/四份员工发布/2567保持。知识接口/解析/检索/发布、公开API/schema/权限/批准UI不变，无新增KB/原生/生产通过。下一项核对会话绑定身份的服务端注入，话题/修复编辑/完整条件仍待补。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-input-diagnostics-v88/manifest.json。
+2026-10-20 v89会话绑定身份为AG-05/09内部技术子阶段Implemented，整体Limited。新运行的conversation-read-v1把绑定房屋ID保存在原模型步骤/checkpoint元数据中，query_materials/query_business只让模型提供room/domain；任何模型leadId仍拒绝，服务端注入后走原严格解析与权限。无绑定及旧无标记任务保留原合同，绑定漂移停止；一次参数纠正/四轮/唯一最终修复/16000不变。最终235单元、12定向隔离服务、73 Mini及全仓lint通过，本批类型0/全仓292；172项源码/测试、94项供应商/环境与711项Mini文件无漂移。旧完整窗口57通过/1测试预期错误/7跳过及配置漂移均独立保留，不计入新通过数。用户指定智谱官方zhipu / glm-4.7-flash后，新企业3883/run6212仅1次实模请求，HTTP_429且无首稿/查询/交付，第二题未执行；原unknown不重放、不核清未知费用。原始夹具清理状态值错误保留，独立补清理确认AI关闭、管理员disabled、资料retired、active0/unknown1，运行配置/两份供应商投影精确恢复。历史16次调用/四份员工发布/2567资料及原v85/v87/v88评分保持。知识接口/解析/检索/发布、公开API/schema/权限/批准UI不变，无新增专业/PPT/原生/生产通过。下一批沿当前GLM在可受理时建新夹具，再补话题/修复编辑/完整条件。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-bound-read-v89/manifest.json。
 
 ## 新对话接续入口与停止点
 
 统一实施的两项计划仍是[Agent专项](./xiaok-agent-engineering-plan.zh-CN.md)和[企业知识专项](./xiaok-enterprise-knowledge-plan.zh-CN.md)，按依赖选择完整业务批次，不要求两边平均改动。先读仓库/最近AGENTS、本交接、两计划、总路线图、二期合同和受影响模块中英清单，再检查dirty diff与实际证据；不要覆盖、回退或提交混杂改动。当前已由本对话单独接续，不同时启动另一写入者，完成限定闭环后按授权继续；新设计方向和生产发布仍须原授权。
 
-### 当前v88：可信字段诊断
+### 当前v89：会话绑定身份与GLM接续
+
+本阶段源码提交：待本地阶段提交；整体Limited，不push/部署。
+
+新运行conversation-read-v1在原模型步骤及checkpoint元数据绑定咨询房屋，模型只填room/domain；带leadId仍拒绝，原解析器/租户/本人/参与者/来源/一次纠正/四轮/唯一修复/16000保持。未绑定与无标记旧任务用原格式；缓存新旧派发恢复不重发模型，绑定变化先停止。没有新知识管线、事实库、公开API/schema/权限或UI。
+
+最终235单元/12定向隔离服务/73 Mini/lint通过，本批类型0/全仓292；172项源码/测试、94项供应商/环境及711项Mini文件无漂移。早期完整窗口57通过/1错误测试预期/7跳过和配置漂移、两次中间检查分别在attempt-1/2/3保留排除；最终测试按原K/B来源合同核对项目原话与公开知识引用，不把旧窗口拼成通过数。实际命令是node tmp/xiaok-bound-read-v89/non-db.mjs、check.mjs service及mini-scope.mjs；它们是本批执行记录，后续复制到新目录/新前缀，不覆盖本批证据。
+
+用户已指定后续实模使用后台当前智谱官方zhipu / glm-4.7-flash，不切回旧Qwen。驱动只读主开发配置，测试子进程覆盖旧Qwen模型环境值并移除原供应商关闭思考覆盖；未改部署文件或业务企业探针，预算保持。企业3883/咨询5982/run6212只一次调用，attempt1807为failed/accepted=false/HTTP_429；应用job8035仍indeterminate，无读取/首稿/交付，第二题未执行。不重放6212或1073，不推定零费用，不做模型质量比较。配置与两份供应商投影精确恢复。原清理账号inactive错误完整保留；独立cleanup-restoration.json按active/disabled CHECK禁用唯一合成账号，确认AI关闭、资料retired、active0/unknown1及job不变。后续新夹具应直接使用disabled，不能覆盖原live.ts/live.json来补写成功。
+
+manifest、原始报告、逐题未执行说明及补清理凭证均在tmp/xiaok-bound-read-v89/。原16项调用、四份员工发布、2567内部原件及v85/v87/v88报告/评分均未改。当前窗口结束；下一批在GLM可受理时建新唯一夹具完成剩余自然题，再沿原话题/显式修复编辑/完整条件缺项推进。旧未知保留，无新增专业/PPT/原生/真机/生产通过，C01与知识接口保持。
+
+### 历史v88：可信字段诊断
 
 本阶段源码提交：`10a7e3843f02d4292366f33601c150ce34653001`；四计划索引同步回填，整体Limited，不push/部署。
 

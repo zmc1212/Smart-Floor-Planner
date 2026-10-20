@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { runRenovationAgent, type AgentCheckpoint, type AgentRuntimePorts } from '../agent/runtime';
 import { fail } from '../contracts';
-import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol } from '../agent/read-tool-input';
+import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext } from '../agent/read-tool-input';
+import { materialTool, parseMaterialQuery } from '../agent/materials';
+import { businessToolDefinitions } from '../agent/business-tools';
 import type { ModelMessage, ModelTool, ModelTurnOutput } from '../contracts/model';
 
 const messages: ModelMessage[] = [{ role: 'user', content: [{ type: 'text', text: '核对厨房现场资料。' }] }];
@@ -185,4 +187,53 @@ test('read-input feedback identifies trusted field paths and actual types withou
   const beyondSchema = feedback('query_materials', { leadId: '0', room: '厨房' });
   assert.deepEqual(beyondSchema.issues, [{ path: '$', code: 'application_contract' }], 'the existing parser remains the semantic authority');
   assert.equal(beyondSchema.arguments, undefined);
+});
+
+test('bound reads remove model identity fields without changing the registered service schemas or unrelated tools', () => {
+  const context = readToolContext({ kind: 'lead', id: '1072' });
+  const originals = [materialTool, ...businessToolDefinitions];
+  const before = JSON.stringify(originals), projected = readToolsForContext(originals, context);
+  for (const tool of projected) {
+    if (!['query_materials', 'query_business'].includes(tool.name)) { assert.equal(tool, originals.find(t => t.name === tool.name)); continue; }
+    assert.equal(Object.hasOwn(tool.parameters.properties as object, 'leadId'), false);
+    assert.equal((tool.parameters.required as string[]).includes('leadId'), false);
+    assert.equal(tool.parameters.additionalProperties, false);
+    assert.match(tool.description, /服务器/);
+  }
+  assert.equal(JSON.stringify(originals), before);
+  assert.deepEqual(parseMaterialQuery(bindReadToolInput('query_materials', { room: '厨房' }, context)), { leadId: '1072', room: '厨房' });
+  assert.equal(readToolInputIssue('query_materials', '{"room":"厨房"}', context), null);
+  assert.equal(readToolInputIssue('query_business', '{"domain":"construction"}', context), null);
+});
+
+test('bound reads reject numeric, string, empty and foreign model identities instead of discarding or coercing them', () => {
+  const context = readToolContext({ kind: 'lead', id: '1072' });
+  for (const value of [1072, '1072', '', '9999', null]) {
+    const input = { room: '厨房', leadId: value };
+    assert.throws(() => bindReadToolInput('query_materials', input, context), /invalid_message/);
+    const feedback = JSON.parse(readToolInputIssue('query_materials', JSON.stringify(input), context)!.feedback);
+    assert.deepEqual(feedback.issues, [{ path: '$', code: 'additionalProperties', expected: false }]);
+    assert.equal(Object.hasOwn(feedback.parameters.properties, 'leadId'), false);
+    assert.doesNotMatch(feedback.instructions, /双引号/);
+  }
+  assert.deepEqual(JSON.parse(readToolInputIssue('query_materials', '{"room":12}', context)!.feedback).issues,
+    [{ path: 'room', code: 'type', expected: 'string', received: 'number' }]);
+  assert.ok(readToolInputIssue('query_business', '{"domain":"private"}', context));
+  assert.ok(readToolInputIssue('query_materials', '{"room":"那间房"}', context));
+});
+
+test('unbound and legacy runs keep strict identity selection, while persisted contexts cannot switch homes', () => {
+  const bound = { kind: 'lead', id: '1072' }, current = readToolContext(bound);
+  assert.deepEqual(readToolContext(bound, { readContext: current }), current);
+  assert.equal(readToolContext(bound, { promptVersion: 'legacy' }), undefined);
+  assert.equal(readToolsForContext([materialTool], undefined)[0], materialTool);
+  const unbound = readToolContext({ kind: 'general' });
+  assert.equal(readToolsForContext([materialTool], unbound)[0], materialTool);
+  assert.equal(readToolInputIssue('query_materials', '{"leadId":"1072","room":"厨房"}', unbound), null);
+  assert.ok(readToolInputIssue('query_materials', '{"room":"厨房"}', unbound));
+  for (const entry of [{ kind: 'lead', id: '1073' }, { kind: 'general' }, { kind: 'lead', id: 1072 }, { kind: 'lead', id: '0' }])
+    assert.throws(() => readToolContext(entry, { readContext: current }), /context_changed/);
+  assert.throws(() => readToolContext(bound, { readContext: unbound }), /context_changed/);
+  for (const saved of [null, {}, { ...current, protocol: 'future' }, { ...current, extra: true }])
+    assert.throws(() => readToolContext(bound, { readContext: saved }), /context_changed/);
 });

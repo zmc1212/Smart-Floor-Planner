@@ -1,6 +1,6 @@
 # 远端开发连接记录
 
-当前LLM开发配置（2026-10-20）：用户明确恢复硅基流动`Qwen/Qwen3.5-4B`，已保存硅基流动凭据保留。平台LLM、本机Git忽略的助手覆盖及批准开发企业1454已一致，policy_version=4，原图片/工具开关保持。3项合成能力探针通过；后续v81因原件索引及现场草稿准备失败，未执行咨询核心题，详见双语二期合同与`tmp/xiaok-bounded-edits-v81/manifest.json`。SSH/隧道/数据库端点/Embedding服务/图片生成供应商及生产边界均未改变。凭据和`.env.local`不入Git，未生产发布。
+当前LLM开发配置（2026-10-20）：用户已在后台改为智谱官方`zhipu / glm-4.7-flash`，并明确要求后续测试使用它。v89只读核对主开发配置，在隔离测试子进程显式替换旧Qwen模型覆盖并使用当前供应商默认思考设置，不修改`.env.local`、部署文件、凭据或业务企业1454的能力记录。新run6212的一次请求返回HTTP_429，未产首稿/交付，应用unknown保留、不重放；隔离配置/供应商投影已精确恢复并完成单独夹具清理，详见双语二期及`tmp/xiaok-bound-read-v89/manifest.json`。原Qwen探针/失败属于历史证据，不升级成GLM能力通过。本变更未改变SSH、隧道、数据库/Embedding/生图服务或生产边界。
 
 KB-4有界批量开发扩展：`0089_assistant_knowledge_batches`已应用开发主库`smart_floor_planner`及55432隔离`xiaok_embedding_eval`，SQL SHA256 `5448116bb90626a4322e5ff961d526ad064b0f6c13ce724f8a7fd21ac237c9d8`、两张批次/关联表的强制RLS及应用角色non-BYPASS已核验。仅以本人私有批次分组既有evaluation/run，原Worker/租约/用量/取消与管理角色边界沿用；非第二套模型任务队列。迁移前2026-10-19T06-06-59-739Z的主库16,427,580字节、隔离8,318,824字节custom备份在`tmp/xiaok-kb4-batches/`，PGDMP/归档目录及受限ACL通过；首次归档目录流提前结束的SSH EOF在DDL之前，失败保留为`migration-attempt-1.json`，已改为完整接收后核对。完整0089恢复演练及生产镜像兼容仍未验证。SSH、端口/隧道、身份文件、供应商及生产部署均未改变；实施/实测以二期KB-4合同和`migration.json`为准。
 
