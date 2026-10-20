@@ -141,7 +141,7 @@ The compact stage-commit index retains scope/results while phase two holds detai
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| KB-2/AG v82 original checks (internal technical substage) |198 units/23 services/73 Mini/lint pass; two74-passage indexes succeed;0/8 customer questions; broader KB remains Limited | pending stage commit |
+| KB-2/AG v82 original checks (internal technical substage) |198 units/23 services/73 Mini/lint pass; two74-passage indexes succeed;0/8 customer questions; broader KB remains Limited | `a88ed26d8969f4bb76d252b0b5128bcf3731dbff` |
 | AG-08 v81 interface continuity (internal substage; no new KB capability) |138 units/8 services/50 knowledge units/73 Mini/lint pass; original indexing/site-draft setup fails,0/8 customer questions, business not passed | `0ff9f22961e8d887e0e92887f0e43d350555b157` |
 
 On 2026-10-20 the user explicitly authorized automatic local Git commits for every completed development stage across both plans, recording scope, executed validation and the commit ID here and in the Agent plan without repeated confirmation. Stage only the related recoverable dependency set, preserve unrelated dirty changes, and use English Conventional Commits; do not automatically push or deploy. Internal technical substages must retain unverified model/native checks and overall Limited status. A commit is not business acceptance; a following documentation commit records the actual stage commit ID.
