@@ -1,8 +1,9 @@
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
-import { fail } from '../contracts';
+import { fail, fingerprint } from '../contracts';
 import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
 
-export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; exhaustedTools?: string[] };
+type ReadReceipt = { name: string; argumentsHash: string; messageIndex: number };
+export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[] };
 export type AgentToolResult = { content: string; stop?: boolean; exhausted?: boolean };
 export type AgentRuntimePorts = {
   /** Must check lease, actor, mode, revision and source availability on every call. */
@@ -22,7 +23,39 @@ const State = Annotation.Root({
   output: Annotation<ModelTurnOutput | null>(), stop: Annotation<boolean>(),
   validationRepairs: Annotation<number>(),
   exhaustedTools: Annotation<string[]>(),
+  readReceipts: Annotation<ReadReceipt[]>(),
 });
+export const agentReadProtocol = 'same-run-read-v1';
+// Only these application-owned reads may reuse a completed result. Writes and
+// newly introduced tools always execute through their existing durable ports.
+const readTools = new Set(['search_knowledge', 'recall_history', 'query_materials', 'query_business', 'query_followups', 'recommend_references']);
+function readArgumentsHash(name: string, args: string): string | null {
+  if (!readTools.has(name)) return null;
+  try {
+    const value = JSON.parse(args);
+    return value && typeof value === 'object' && !Array.isArray(value) ? fingerprint(value) : null;
+  } catch { return null; }
+}
+function validateReadReceipts(saved: AgentCheckpoint, names: Set<string>) {
+  const receipts = saved.readReceipts;
+  if (receipts === undefined) return; // Legacy checkpoints retain their original behavior.
+  if (!Array.isArray(receipts) || receipts.length > agentModelLimits.maxModelTurns * agentModelLimits.maxToolCalls) fail('invalid_agent_checkpoint', 409);
+  const seen = new Set<string>();
+  for (const receipt of receipts) {
+    if (!receipt || Object.keys(receipt).some(key => !['name', 'argumentsHash', 'messageIndex'].includes(key))
+      || !names.has(receipt.name) || !readTools.has(receipt.name) || !Number.isInteger(receipt.messageIndex)
+      || receipt.messageIndex < 1 || receipt.messageIndex >= saved.messages.length) fail('invalid_agent_checkpoint', 409);
+    const result = saved.messages[receipt.messageIndex];
+    let index = receipt.messageIndex - 1;
+    while (index >= 0 && saved.messages[index].role === 'tool') index--;
+    const request = saved.messages[index];
+    const call = request?.role === 'assistant' && result.role === 'tool'
+      ? request.toolCalls?.find(call => call.id === result.callId) : undefined;
+    const key = receipt.name + ':' + receipt.argumentsHash;
+    if (!call || call.name !== receipt.name || readArgumentsHash(call.name, call.arguments) !== receipt.argumentsHash || seen.has(key)) fail('invalid_agent_checkpoint', 409);
+    seen.add(key);
+  }
+}
 const exhaustedToolContent = JSON.stringify({ status: 'tool_exhausted', instructions: '本轮该项有界查询已结束，不再换词重复查询。未命中不代表客户没有说过或现实没有发生；只使用仍有效的资料回答有据部分，必要时说明本次范围限制并作最小澄清。' });
 const finalTurnInstructions = '本轮为收尾轮，仅提交最终回答，不再调用查询、保存或业务工具。使用已经取得且仍有效的来源；没有命中不代表客户没说过或现实没有发生。回答有据部分，对无法确认的部分说明本次范围限制，必要时作最小澄清。不得编造来源、恢复失效值或声称操作成功。';
 
@@ -48,32 +81,41 @@ export async function runRenovationAgent(input: {
       const availableNames = new Set(availableTools.map(tool => tool.name));
       if (output.toolCalls.length > agentModelLimits.maxToolCalls || output.toolCalls.some(c => !availableNames.has(c.name))) fail('assistant_capability_forbidden', 403);
       if(state.validationRepairs&&output.toolCalls.length)fail('assistant_capability_forbidden',403);
-      await ports.checkpoint({ version: 1, turn: state.turn, messages: state.messages, output,validationRepairs:state.validationRepairs, exhaustedTools: state.exhaustedTools });
+      await ports.checkpoint({ version: 1, turn: state.turn, messages: state.messages, output,validationRepairs:state.validationRepairs, exhaustedTools: state.exhaustedTools, readReceipts: state.readReceipts });
       return { output };
     })
     .addNode('tools', async state => {
       const output = state.output!;
       const messages: ModelMessage[] = [...state.messages, { role: 'assistant', content: output.text, toolCalls: output.toolCalls }];
       const exhaustedTools = new Set(state.exhaustedTools);
+      let readReceipts = [...state.readReceipts];
       let stop = false;
       for (const [index, call] of output.toolCalls.entries()) {
         await ports.authorize();
+        const argumentsHash = readArgumentsHash(call.name, call.arguments);
+        const previous = argumentsHash && readReceipts.find(receipt => receipt.name === call.name && receipt.argumentsHash === argumentsHash);
+        const original = previous ? messages[previous.messageIndex] : undefined;
         const result: AgentToolResult = exhaustedTools.has(call.name) ? { content: exhaustedToolContent }
+          : original?.role === 'tool' ? { content: JSON.stringify({ status: 'already_queried', tool: call.name, previousCallId: original.callId,
+            instructions: '相同参数的查询已成功返回，完整结果仍在上方对应工具消息中，不再执行或复制。直接使用仍有效的原来源回答；确有不同范围才改参数补查，不把未命中当现实不存在，不新增事实或操作。' }) }
           : await ports.tool(state.turn, index, call.name, call.arguments);
         // Handoff intentionally invalidates the AI lease. Do not ask a model to speak after it.
         if (result.stop) { stop = true; break; }
         await ports.authorize();
+        // A write may change the meaning of an earlier read even in this run.
+        if (!readTools.has(call.name)) readReceipts = [];
+        else if (argumentsHash && !previous && !exhaustedTools.has(call.name)) readReceipts.push({ name: call.name, argumentsHash, messageIndex: messages.length });
         if (result.exhausted) exhaustedTools.add(call.name);
         messages.push({ role: 'tool', callId: call.id, content: result.content });
       }
-      if (!stop) await ports.checkpoint({ version: 1, turn: state.turn + 1, messages, output: null,validationRepairs:state.validationRepairs, exhaustedTools: [...exhaustedTools] });
-      return { messages, turn: state.turn + 1, output: null, stop, exhaustedTools: [...exhaustedTools] };
+      if (!stop) await ports.checkpoint({ version: 1, turn: state.turn + 1, messages, output: null,validationRepairs:state.validationRepairs, exhaustedTools: [...exhaustedTools], readReceipts });
+      return { messages, turn: state.turn + 1, output: null, stop, exhaustedTools: [...exhaustedTools], readReceipts };
     })
     .addNode('validate',async state=>{
       await ports.authorize();
       const output = { ...state.output! };
       if (ports.resolveFinal) output.text = await ports.resolveFinal(output.text, { version: 1, turn: state.turn,
-        messages: state.messages, output: state.output, validationRepairs: state.validationRepairs, exhaustedTools: state.exhaustedTools });
+        messages: state.messages, output: state.output, validationRepairs: state.validationRepairs, exhaustedTools: state.exhaustedTools, readReceipts: state.readReceipts });
       const issue=await ports.validateFinal?.(output.text,state.turn);
       // Keep the original provider output in the durable checkpoint. A crash
       // replays deterministic reconstruction, never a new provider dispatch.
@@ -81,7 +123,7 @@ export async function runRenovationAgent(input: {
       if(state.validationRepairs>=1 || state.turn+1>=agentModelLimits.maxModelTurns)fail(issue.code,502);
       const messages:ModelMessage[]=[...state.messages,{role:'assistant',content:state.output!.text},
         {role:'system',content:[{type:'text',text:issue.feedback}]}];
-      const next={version:1 as const,turn:state.turn+1,messages,output:null,validationRepairs:1,exhaustedTools:state.exhaustedTools};
+      const next={version:1 as const,turn:state.turn+1,messages,output:null,validationRepairs:1,exhaustedTools:state.exhaustedTools,readReceipts:state.readReceipts};
       await ports.authorize();await ports.checkpoint(next);return next;
     })
     .addNode('resume', async () => { await ports.authorize(); return {}; })
@@ -100,6 +142,7 @@ export async function runRenovationAgent(input: {
     || saved.exhaustedTools.some(name => !names.has(name)) || new Set(saved.exhaustedTools).size !== saved.exhaustedTools.length)) fail('invalid_agent_checkpoint', 409);
   if (saved?.output?.toolCalls.some(call => saved.exhaustedTools?.includes(call.name)
     || saved.turn === agentModelLimits.maxModelTurns - 1)) fail('assistant_capability_forbidden', 403);
-  return graph.invoke({ turn: saved?.turn ?? 0, messages: saved?.messages ?? input.messages, output: saved?.output ?? null, stop: false,validationRepairs:saved?.validationRepairs??0, exhaustedTools: saved?.exhaustedTools ?? [] },
+  if (saved) validateReadReceipts(saved, names);
+  return graph.invoke({ turn: saved?.turn ?? 0, messages: saved?.messages ?? input.messages, output: saved?.output ?? null, stop: false,validationRepairs:saved?.validationRepairs??0, exhaustedTools: saved?.exhaustedTools ?? [], readReceipts: saved?.readReceipts ?? [] },
     { recursionLimit: 12 });
 }

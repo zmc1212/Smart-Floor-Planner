@@ -8,7 +8,7 @@ import { agentModelLimits, type ModelTool, type ModelTurnOutput, type ModelMessa
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sources';
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
-import { runRenovationAgent, type AgentCheckpoint } from './runtime';
+import { runRenovationAgent, agentReadProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig } from './config';
 import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, onlyChatHistoryRequested, needReconfirmationFeedback } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
@@ -336,7 +336,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' && synthesisRepairBase(focused) ? synthesisRepairProtocol : null,
-                  transportProtocol: agentChatProtocolVersion, activeToolNames: dispatchTools.map(tool => tool.name),
+                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, activeToolNames: dispatchTools.map(tool => tool.name),
                   finalOnly: purpose === 'answer' && tools.length === 0,
                   responseScope: modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(availabilityScopeHintPrefix))) ? 'unavailable_occupancy_evidence' : null })}::jsonb)`);
             await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);

@@ -19,7 +19,17 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前v82：有界原段校验与严格现场草稿
+## 当前v83：同一获权运行内复用成功只读查询
+
+**AG-05/09内部技术子阶段Implemented，整体Limited。** `xiaok-renovation-v83` / `same-run-read-v1`只识别现有应用明确列出的只读工具。查询成功后，私有checkpoint绑定工具名称、规范JSON参数hash及完整结果消息位置；相同调用收到指向原结果的`already_queried`工具回执，原文、条件、定位、引用和消息配对完整保留。不同参数或工具仍可查询。明确只读列表之外的操作正常执行，成功后清空已有读回执。不跨run缓存，不新增证据来源。
+
+复用前后、模型派发和最终投递仍逐次授权；原知识版本/epoch/受众及项目/历史来源检查可撤销复用。恢复时回执须匹配实际工具请求及配对结果；无回执的旧checkpoint保持可读，只在之后新成功查询时建立回执。失败/结果未知不标记完成。原4次模型调用/1次修复/16,000估算输入/48,000文字字节不变；模型诊断记录读协议，embedding/服务用量只按实际执行记录。参考[LangChain工具调用次数约束](https://docs.langchain.com/oss/javascript/langchain/middleware/built-in#tool-call-limit)及[LangGraph工具消息/恢复测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)，保留已装StateGraph与应用持久化，不另建运行器；上游[DeepSeek问题10883](https://github.com/langchain-ai/langchainjs/issues/10883)是独立供应商问题，不作为本缺陷的证明。
+
+KnowledgeRetriever/Evidence、解析/检索/发布及既有C01/C02/C05/U01/S04批准UI、公开API、角色和schema保持。固定验收覆盖同批/跨轮重复、不同查询、写入、恢复、撤权、损坏回执、旧checkpoint及原修复/未知结果边界；隔离服务须真实知识写入、单次检索、回复/引用持久重进和正式退役撤回。配置实模沿原两场景、每个合成项目各两次，首稿/末稿与未改原件证据分别保留。证据归`tmp/xiaok-read-dedupe-v83/manifest.json`。本批只收口内部确定性检查；新实模与原生未执行，下一最终协议组合窗口单独留证，不新增业务评分、真机或生产通过。
+
+最终收口：211/211单元、3/3定向隔离服务、73/73 Mini及全仓lint通过，类型本批0/全仓292；最终源码/测试与92项供应商适配/环境文件hash无漂移。真实知识创建/索引/发布、单次检索、完整引用/重进、正式退役和复用前撤权均已执行；三条旧超限原记录只离线回放，请求预算估算17,877–17,881降至15,860–15,864，原原件/报告/评分不变。`attempt-1/`保留旧预算测试漏用既有可信投影的210/211失败；`attempt-2/`保留51服务通过/1条新增断言错误/7跳过，错误把撤回引用应返回available=false写成抛错。按原接口合同校正后新稳定窗口3服务通过，不混算旧组。复现见本目录`final-checks.mjs`；已提交固定入口为`node scripts/assistant-memory-acceptance.mjs --unit --source-integrity --evidence=<new-prefix>`及带隔离锁的`--source-integrity --wait-for-lock`。没有新开发库实模夹具或配置实模业务问答、没有切换模型或修改旧未知job；原8B评分与原生限制独立保持。下一批接续最终输出kind及引用，并统一跑组合后的稳定版本。
+
+## 历史v82：有界原段校验与严格现场草稿
 
 **内部技术子阶段Implemented，整体Limited。** 由当前唯一集成人共同修改知识原段校验和Agent现场草稿序列化。`fileChunks`最多并发校验4个独立原段，结束后恢复原顺序、Unicode偏移、完整正文/条件及文件定位；首个失败停止新增派发，等待已在途校验结束后返回失败。每次原回调仍重验当前企业/job/版本并持久记录attempt；原80秒chunk/110秒embedding派发时限、租约、profile及未知调用不重放保持。未增加OCR、分块策略、第二检索器或发布能力。
 

@@ -82,6 +82,52 @@ test('QA01/06: an enterprise without a knowledge index still receives labelled g
   assert.match(JSON.stringify(message.content), /一般建议/); assert.match(JSON.stringify(message.content), /尚未就绪/); assert.equal(message.citations.length, 0);
 });
 
+test('AG05/09: duplicate knowledge reads execute once, retain real citations and revoke on persisted reentry', async () => {
+  const doc = await publish('合成重复读甲', '书房遮光补查甲：屏幕可比较侧向布置，避免直对强光窗户。');
+  const x = await fixture();
+  const a = await x.send('书房遮光补查甲怎样避免反光？', async (messages, _tools, turn) => {
+    if (!turn) return { ...call('search_knowledge', { query: '书房遮光补查甲' }), toolCalls: [
+      { id: 'original', name: 'search_knowledge', arguments: '{"query":"书房遮光补查甲"}' },
+      { id: 'same-batch', name: 'search_knowledge', arguments: '{ "query": "书房遮光补查甲" }' },
+    ] };
+    if (turn === 1) return call('search_knowledge', { query: '书房遮光补查甲' });
+    const packets = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content));
+    assert.equal(packets.filter(p => p.status === 'already_queried').length, 2);
+    const source = results(messages).find(s => s.kind === 'knowledge' && s.text.includes('书房遮光补查甲'))!;
+    assert.ok(source);
+    return synth([{ basis: 'evidence', text: '这份资料建议比较侧向布置，避免直对强光窗户。', citations: [{ citationId: source.citationOptions[0].citationId }] }]);
+  });
+  assert.equal(a.run.status, 'succeeded', JSON.stringify(a.run));
+  const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,capability_name,private_checkpoint,input_summary
+    from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
+  assert.equal(steps.filter(s => s.capability_name === 'knowledge.search.v1').length, 1);
+  const checkpoint = steps.find(s => s.kind === 'agent_checkpoint')!.private_checkpoint as { readReceipts: unknown[] };
+  assert.equal(checkpoint.readReceipts.length, 1);
+  assert.ok(steps.filter(s => s.kind === 'agent_model').every(s => (s.input_summary as Row).readProtocol === 'same-run-read-v1'));
+  const history = await x.chat.messages(x.cid), reply = history.items.find(m => m.id === a.run.outputMessageId)!;
+  assert.ok(reply.available); assert.equal(reply.citations.length, 1);
+  const citationId = reply.citations[0].id;
+  assert.equal((await x.chat.citation(citationId)).available, true);
+  await knowledge.execute('retire', { documentId: doc.documentId, expectedVersion: 2 }, randomUUID());
+  assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === reply.id)!.available, false);
+  assert.equal((await x.chat.citation(citationId)).available, false);
+});
+
+test('AG05/07: a source change before a repeated read blocks reuse and delivery', async () => {
+  const doc = await publish('合成重复读乙', '书房遮光补查乙：屏幕可比较侧向布置，避免直对强光窗户。');
+  const x = await fixture();
+  const a = await x.send('书房遮光补查乙怎样避免反光？', async (messages, _tools, turn) => {
+    if (!turn) return call('search_knowledge', { query: '书房遮光补查乙' });
+    assert.ok(results(messages).some(s => s.kind === 'knowledge' && s.text.includes('书房遮光补查乙')));
+    await knowledge.execute('retire', { documentId: doc.documentId, expectedVersion: 2 }, randomUUID());
+    return call('search_knowledge', { query: '书房遮光补查乙' });
+  });
+  assert.notEqual(a.run.status, 'succeeded');
+  const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select capability_name from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
+  assert.equal(steps.filter(s => s.capability_name === 'knowledge.search.v1').length, 1);
+  assert.equal((await x.chat.messages(x.cid)).items.some(m => m.authorKind === 'assistant' && m.available), false);
+});
+
 test('QA02/05 PPT6/15: real retrieval plus authorized originals produces persisted explanatory prose without a handling side effect', async () => {
   const x = await fixture();
   const save = await x.send('请记录书房靠窗，偶尔两人办公', async (_m,_t,turn) => turn === 0
