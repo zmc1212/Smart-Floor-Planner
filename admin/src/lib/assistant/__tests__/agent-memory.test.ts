@@ -1,6 +1,25 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, needWriteFeedback, hasExplicitNeedCorrection, needQualifications, needInterpretations, assertRecordedReply, needReconfirmationFeedback, type NeedFact, type NeedMemory } from '../agent/memory';
+import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, needWriteFeedback, hasExplicitNeedCorrection, needQualifications, needInterpretations, assertRecordedReply, needReconfirmationFeedback, explicitNeedRecordOnly, recordedNeedReceipt, type NeedFact, type NeedMemory } from '../agent/memory';
+
+test('direct receipt intent is confined to explicit pure recording and excludes mixed or untrusted actions', () => {
+  for (const text of ['请记下：书房书桌靠窗，书房需要收纳', '更正：书房书桌改为靠内墙；全屋预算改为18万元。其他需求保持原样。']) {
+    assert.equal(explicitNeedRecordOnly(text), true, text);
+  }
+  for (const text of ['把另一间的书桌也改一下，先确认具体房间再记录', '请记下书桌靠窗，可以吗？', '请记下：如果书房要办公就靠窗', '请记下：书房书桌靠窗；另外插座怎么确定？', '请记录设计师说书桌靠窗', '请记下：书桌靠窗，不要记录预算', '请记录其他客户的预算', '请记下：书房书桌靠窗，并发布正式方案', '只回顾本次聊天原话', '请记录：先确认具体房间再保存']) {
+    assert.equal(explicitNeedRecordOnly(text), false, text);
+  }
+});
+
+test('direct receipt lists only current authorized facts from this exact run and trigger', () => {
+  const fact: NeedFact = { id: '9:0:0', room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗', sourceMessageId: '2', provenance: 'customer_statement', status: 'current', supersedes: null, createdAt: 'now' };
+  const memory: NeedMemory = { version: 4, facts: [fact, { ...fact, id: '90:0:0', value: '收纳' }, { ...fact, id: '9:0:1', sourceMessageId: '1', value: '预算18万元' }, { ...fact, id: '9:0:2', status: 'superseded', value: '靠内墙' }] };
+  const actual = recordedNeedReceipt(memory, '9', '2');
+  assert.deepEqual(actual?.facts, [fact]); assert.match(actual!.text, /书房：书桌靠窗/);
+  assert.doesNotMatch(actual!.text, /收纳|18万元|靠内墙/); assert.match(actual!.text, /未列出的内容不视为已保存/);
+  assert.equal(recordedNeedReceipt({ version: 4, facts: [] }, '9', '2'), null);
+  assert.equal(recordedNeedReceipt(memory, '8', '2'), null);
+});
 import { parseAgentReply } from '../agent/context';
 
 test('formal site completion claims require a business receipt while explicit absence/denial remains usable', () => {

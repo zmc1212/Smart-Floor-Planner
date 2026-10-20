@@ -8,9 +8,9 @@ import { agentModelLimits, type ModelTool, type ModelTurnOutput, type ModelMessa
 import { appendMessage, terminalEvent } from '../core/conversation';
 import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sources';
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
-import { runRenovationAgent, agentReadProtocol, type AgentCheckpoint } from './runtime';
+import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig } from './config';
-import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, onlyChatHistoryRequested, needReconfirmationFeedback } from './memory';
+import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, onlyChatHistoryRequested, needReconfirmationFeedback, explicitNeedRecordOnly, recordedNeedReceipt } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
 import { buildAgentContext, parseAgentReply, agentPromptVersion } from './context';
@@ -52,6 +52,7 @@ const checkpointSeq = 1000;
 /** Questions/meta-conversation stay conversational; only explicit statements are eligible for memory writes. */
 export function agentToolsForMessage(text: string, enabled: boolean, businessFollowup = false): ModelTool[] {
   if (!enabled) return [];
+  if (explicitNeedRecordOnly(text)) return [needTool];
   // A question about saving a preceding explicit correction is not a hypothetical need.
   // Match the complete two-clause intent, never a quoted snippet or a proposed change.
   const correctionAcknowledgement = hasExplicitNeedCorrection(text);
@@ -472,6 +473,24 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           if (historySources.size) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs)
             values(${lease.enterpriseId},${lease.runId},1007,'agent_history_context','succeeded',${JSON.stringify([...historySources.values()])}::jsonb)
             on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs`);
+        }),
+        resolveToolReply: state => scoped(async (tx, context) => {
+          const question = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
+          if (!explicitNeedRecordOnly(question) || state.messages.at(-1)?.role !== 'tool') return null;
+          let index = state.messages.length - 1;
+          while (state.messages[index]?.role === 'tool') index--;
+          const request = state.messages[index];
+          if (request?.role !== 'assistant' || !request.toolCalls?.length || request.toolCalls.some(call => call.name !== 'record_need')) return null;
+          const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
+          const receipt = recordedNeedReceipt(memory, lease.runId, String(initial.trigger.id));
+          if (!receipt) return null;
+          const refs = await needSourceRefs(tx, lease.enterpriseId, String(context.conversation.id), { version: memory.version, facts: receipt.facts });
+          await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
+            values(${lease.enterpriseId},${lease.runId},1010,'agent_need_receipt','succeeded',${JSON.stringify(refs)}::jsonb,
+              ${JSON.stringify({ protocol: agentToolReplyProtocol, factIds: receipt.facts.map(f => f.id), text: receipt.text })}::jsonb,
+              ${JSON.stringify({ protocol: agentToolReplyProtocol, triggerMessageId: String(initial.trigger.id), providerDispatch: false, formalApproval: false })}::jsonb)
+            on conflict(enterprise_id,run_id,step_seq) do update set source_refs=excluded.source_refs,private_checkpoint=excluded.private_checkpoint`);
+          return JSON.stringify({ kind: 'general', text: receipt.text });
         }),
         resolveFinal: (raw, state) => scoped(async (tx, context) => {
           // Provider/checkpoint output retains the edit response; deterministic

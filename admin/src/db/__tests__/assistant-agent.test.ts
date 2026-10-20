@@ -85,6 +85,51 @@ test('source-linked semantic memory writes once, survives reentry and preserves 
   const stored = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where id=${c!}`));
   assert.equal(readMemory(stored?.entry_snapshot).facts.filter(f => f.status === 'current').length, 3);
 });
+test('explicit record-only partial save returns only durable facts without a model acknowledgement round', async () => {
+  const a = await start('请记下：书房书桌靠窗，书房需要收纳'); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async () => {
+    calls++;
+    return calls === 1 ? { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗' }) }] }
+      : response('已记录您的需求：书房的书桌需要靠窗摆放，并且书房需要收纳功能。');
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
+  const items = (await new ConversationService(actor).messages(a.c)).items;
+  const reply = items.filter(m => m.authorKind === 'assistant').at(-1)!;
+  const serialized = JSON.stringify(reply.content);
+  assert.match(serialized, /本次实际保存/); assert.match(serialized, /书桌靠窗/); assert.doesNotMatch(serialized, /收纳/);
+  assert.match(serialized, /未列出的内容不视为已保存/); assert.equal(calls, 1);
+  const saved = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
+  assert.equal(readMemory(saved?.entry_snapshot).facts.filter(f => f.status === 'current').length, 1);
+  const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind='agent_need_receipt'`));
+  assert.equal(steps.length, 1);
+  await assert.rejects(new ConversationService(stranger).messages(a.c), /assistant_resource_not_found/);
+});
+test('explicit record-only atomic batch confirms each durable field once and retains its own operation evidence', async () => {
+  const a = await start('请记下：书房书桌靠窗，书房需要收纳'); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (_messages, tools) => {
+    calls++; assert.deepEqual(tools.map(t => t.name), ['record_need']);
+    return { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗', additionalNeeds: [{ room: '书房', field: 'storage', value: '需要收纳', quote: '书房需要收纳' }] }) }] };
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 1);
+  const items = (await new ConversationService(actor).messages(a.c)).items;
+  const reply = JSON.stringify(items.filter(m => m.authorKind === 'assistant').at(-1)!.content);
+  assert.match(reply, /书桌靠窗/); assert.match(reply, /需要收纳/);
+  const stored = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
+  const facts = readMemory(stored?.entry_snapshot).facts; assert.equal(facts.length, 2);
+  assert.ok(facts.every(f => f.id.startsWith(String(a.sent.runId) + ':')));
+  const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind in ('agent_model','agent_need_write','agent_need_receipt')`));
+  assert.equal(steps.filter(s => s.kind === 'agent_model').length, 1); assert.equal(steps.filter(s => s.kind === 'agent_need_write').length, 1); assert.equal(steps.filter(s => s.kind === 'agent_need_receipt').length, 1);
+});
+test('mixed explicit correction and professional question retains the existing model answer path', async () => {
+  const a = await start('更正：书房书桌改为靠内墙，另外插座怎么确定？'); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (_messages, _tools, turn) => {
+    calls++;
+    return turn === 0 ? { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '书房书桌改为靠内墙' }) }] }
+      : response('已记录书桌改为靠内墙；插座位置仍需结合设备与现场尺寸核对。');
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 2);
+  const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select id from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind='agent_need_receipt'`)); assert.equal(steps.length, 0);
+});
 test('takeover during provider call suppresses late AI and checkpoint; usage remains auditable', async () => {
   const a = await start();
   await processAgentAnswer(a.lease, { model: async () => { await new HandoffService(actor).customerWrite(a.c, randomUUID(), { action: 'request' }); return response(); } });

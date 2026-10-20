@@ -6,7 +6,7 @@
 
 ## 1. 当前判断与可复用基础
 
-2026-10-20 v93完成“待人工核对”施工记录入口修复，内部限定Implemented，两个计划整体Limited。原S04/PPT22/38会话沿现有API将该措辞及照片生成内部可编辑草稿，查询/跟进/确认消息优先级与作者/管理者/observer/跨租户权限保持。262单元、12施工服务、8 Agent兼容服务、98 Mini及涉及文件/全仓lint通过；类型本批0/全仓292，889项源码/测试/配置全窗稳定。当前免费文字GLM9新run1144/record205经原生输入、真实Worker、设计师重进、管理者修改和显式内部发布通过；模型将整句放在完成栏，字段整理质量及图片理解不升级通过。原F-03消息9636仍无草稿，首轮断言错误/输入前超时独立保留，旧1132/3196仍unknown/reconciling、结算null。LLM/VLM、知识管线和批准UI未改。F-01/F-02/F-04/F-06/F-07及完整PPT/真机/生产仍未通过。证据见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-completion-v93/core-freeze.json。
+2026-10-20 v94纯记录实际回执为内部限定Implemented，F-04与两个计划整体Limited。明确纯记录请求仅开放record_need，整组工具配对完成后由服务器读取本run、当前触发原话、仍有效的实际保存字段生成清单；标记finalFromTools的持久检查点在校验/恢复时重新授权重建，不重放写入或模型，不伪造用量。混合提问、来源综合、接管及KnowledgeRetriever/Evidence不改。266单元、18服务通过/7 opt-in跳过、4知识/施工兼容、98 Mini及涉及文件/全仓lint通过；本批类型0/全仓292，889项全窗稳定。当前免费文字GLM9 C01新run1145/1146各一次调用、原生重进通过：首条只保存靠窗，回执不再虚认收纳；次条两次写入完成后合并确认靠内墙/18万元。收纳漏提取、混合问答回执和旧错键/复合记录回读仍未解决。旧1084/1086错误原稿、1132/3196unknown/reconciling与结算null保留。LLM/VLM/1454探针、API/schema、知识管线和批准UI不改。证据见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-receipts-v94/core-freeze.json；完整PPT/真机/生产未通过。
 
 一期的人工正文/FAQ、权限、版本、任务和引用基础已被KB-1～KB-4继续扩展：专业条目与诊断、文件入库、实况综合检索和知识运营核心均已有代码及限定验收记录。下表区分已交付范围与后续缺口，不把工作包编号推进到KB-4等同于完整知识平台完成。当前XLSX显示、文件上下文及指定PDF原件增量验证见二期KB-2合同，其他历史验收结论保持原状态。
 
@@ -141,6 +141,7 @@ KB-1～KB-4已沿此链路扩展Next.js、现有PostgreSQL/pgvector、KnowledgeS
 
 | 阶段 | 实际结果 | Git提交 |
 | --- | --- | --- |
+| AG-02/05 v94纯记录实际回执（内部限定修复） | 266单元/18服务+7跳过/4兼容/98 Mini/lint；GLM9两条原生各一次调用，部分保存不虚认、完整批次合并及重进；F-04/整体Limited | `pending-v94-commit` |
 | AG-05 v93施工完成记录待人工核对入口（内部修复） | 262单元/12施工服务/8 Agent兼容/98 Mini/lint；GLM9 run1144/record205原生草稿、核对修改、内部发布/重进；整体Limited | `efe0e34a89daa3673564c308768d08365ed2d7fe` |
 | AG-02/05 v92条件记录澄清（内部修复） | 262单元/8定向服务/73 Mini/lint；GLM9新C01 run1143交付/重进且无需求写入，原失败保留；整体Limited | `77892bbeaa6c6c1e65d40b0871bbc4df7ef7762b` |
 | AG-05/09 v91明确否定完成谓词与免费文字基线（内部技术子阶段） | 259单元/13服务/73 Mini/lint；GLM9两夹具4题审读通过，独立配置窗口及旧结果分别保留，整体Limited | `3182ee5c817092e03d19d1477927e85d0fbb2067` |

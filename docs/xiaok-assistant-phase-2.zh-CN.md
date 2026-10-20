@@ -19,7 +19,19 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前v93：完成记录待人工核对入口
+## 当前v94：纯记录请求的实际保存回执
+
+**内部限定Implemented，F-04及整体仍Limited。** 原F-04/run1084三次只保存靠窗，却由模型确认收纳也保存。新路径只处理当前明确、无问题/其他动作/引用/假设的纯记录请求：仅开放`record_need`，先执行完整工具批次并保留调用/结果配对，再由服务器从已有、仍获权的NeedMemory读取本run/本触发原话的current事实，列出实际保存内容，注明未列出内容不视为保存；不替模型补写缺项。混合更正+专业问题沿旧综合流程，不由此宣称其回执已修复。
+
+参考已检视的[LangGraph returnDirect实现](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/react_agent_executor.ts)、[工具协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[Agents SDK工具结束策略](https://openai.github.io/openai-agents-js/guides/agents/#forcing-tool-use)，采用工具结果可直接结束这一通用协议。保留现有Graph/PG租约、原键、来源撤回、用量和接管围栏，新增可选`resolveToolReply`与`durable-tool-reply-v1`、`finalFromTools`检查点标记和`agent_need_receipt`审计步骤；校验/恢复时重新授权读取，来源不再可用则拒绝，不回模型修复、不重放写入。服务器结果的provider/usage均null，原真实模型步骤/用量另存；不把它算作一次模型生成或免费结清。不是GLM专属reasoning补丁，也不迁移框架/增加Agent、facts库或引用管线。
+
+原问题在修复前红测重现；最终266单元、完整Agent服务18通过/7 opt-in实模跳过、4知识引用/撤回/租户及施工兼容、98 Mini、涉及文件/全仓lint通过，本批类型0/全仓292。包含部分保存、原子批量、混合提问保留、整组配对、恢复不重放、撤权和服务器结果不转模型修复的检查。889项源码/测试/配置前后一致；早期263单元窗口单列，不混源码计算成功率。重复入口`node tmp/xiaok-receipts-v94/check.mjs <unit|service|compat|mini|lint|lint-full|types>`及`node tmp/xiaok-receipts-v94/native.mjs`，沿共享隔离验收锁与双库空闲队列，仅新合成夹具。
+
+Stable2.02.2608080/SDK0.13.0/基础库3.17.2、副屏新编译、精确C01 route/stack和390×844下，真实免费文字GLM9 run1145/1146各一次provider调用并重进。第一条只实际写desk=靠窗，服务器未虚认收纳；第二条同轮两次record_need均完成后合并确认desk=靠内墙和budget=18万元，旧desk有真实supersedes。回复是持久实际操作反馈，不是模型首稿正确率；收纳仍漏提取，F-04不能整体关闭。合法本人200、同企业其他客户和跨企业先验证本人咨询后目标404。两张348×752原生截图已审看；原C01批准气泡/输入区数据路径不改结构、样式、素材、导航或恢复台账。helper通用容量/历史/撤回标签本批仅覆盖上述两次回执/更正写入/重进，不能计为其他原生场景通过。
+
+新2642/2643企业AI关闭，3684–3686身份context撤销、active0/unknown0，配置完全一致。只读复核原1084/1086及错误回复9639未改，1092仍失败、1132/3196仍unknown/reconciling且结算null，原F-03消息9636仍无草稿；305文件独立manifest不改。证据`tmp/xiaok-receipts-v94/core-freeze.json`（136631409fbed99be9623db1bd87997ad46e1b490eda83707cb79fbb3a05a66d）、`semantic-review.json`、`original-audit.json`。下一步仍处理F-01旧错键/复合记录更正投影及F-04提取完整性/混合问答，再推进F-02/F-06/F-07；完整PPT、图片理解、真机/BLE/微信授权、全仓类型和生产未通过。
+
+## 历史v93：完成记录待人工核对入口
 
 **内部限定修复Implemented，整体Limited。** 独立F-03原句“合成手测：书房本次调整已按当前获同意方案完成，待人工核对记录”被分为clarify而无草稿。`construction/site-queries.ts`只将已有`待核对`谓词扩展为`待(?:人工)?核对`；查询、跟进请求、普通确认优先级保持，图片不变成自动完成/正式同意依据。现有Mini/Admin项目chat API仍返回recordId/runId，沿原Worker、内部draft、作者/管理者编辑、版本与显式发布合同；不增表、迁移、接口或权限。
 

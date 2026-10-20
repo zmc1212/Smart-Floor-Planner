@@ -33,6 +33,22 @@ export function hasExplicitNeedCorrection(text: string) {
 export function onlyChatHistoryRequested(text: string) {
   return /只(?:回顾|回读|谈|聊).{0,10}(?:聊天|原话)/.test(text) && /不查.{0,12}(?:图纸|进度|工地|业务资料)/.test(text);
 }
+/** Narrow direct-receipt intent only. Mixed questions/actions keep the model
+ * path; this never extracts a need or authorizes a write by itself. */
+export function explicitNeedRecordOnly(text: string) {
+  return /^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|记一下|更正|纠正)/.test(text.trim())
+    && !noNeedWrite.test(text) && !proposedNeed.test(text) && !reportedNeed.test(text)
+    && !/[？?]|怎么|怎样|如何|什么|哪些|是否|要不要|能不能|先确认|先聊|讨论|问题|回顾|查询|帮我查|转人工|设计师|发布|批准|转交|忽略|系统提示|其他客户|别人的|保证|假装|冒充/.test(text)
+    && !/(?:吗|呢)[。！!\s]*$/.test(text);
+}
+/** Caller supplies the existing source-authorized read projection. No model
+ * receipt, previous run or superseded row can expand this actual saved list. */
+export function recordedNeedReceipt(memory: NeedMemory, runId: string, sourceMessageId: string) {
+  const facts = memory.facts.filter(f => f.status === 'current' && f.id.startsWith(runId + ':') && f.sourceMessageId === sourceMessageId);
+  if (!facts.length) return null;
+  return { facts, text: '本次实际保存：\n' + facts.map(f => `${f.room ? f.room + '：' : ''}${f.value}`).join('\n')
+    + '\n只确认以上内容；未列出的内容不视为已保存。' };
+}
 /** Historical wording is not a conflict with an available current correction.
  * Bounded to the observed desk-position comparison; formal choices and missing
  * sources still need their own real business evidence. Uses the one existing

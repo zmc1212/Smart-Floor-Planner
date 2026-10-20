@@ -4,7 +4,7 @@
 
 ## 1. 范围与优先级
 
-2026-10-20 v93完成“待人工核对”施工记录入口修复，内部限定Implemented，两个计划整体Limited。原S04/PPT22/38会话沿现有API将该措辞及照片生成内部可编辑草稿，查询/跟进/确认消息优先级与作者/管理者/observer/跨租户权限保持。262单元、12施工服务、8 Agent兼容服务、98 Mini及涉及文件/全仓lint通过；类型本批0/全仓292，889项源码/测试/配置全窗稳定。当前免费文字GLM9新run1144/record205经原生输入、真实Worker、设计师重进、管理者修改和显式内部发布通过；模型将整句放在完成栏，字段整理质量及图片理解不升级通过。原F-03消息9636仍无草稿，首轮断言错误/输入前超时独立保留，旧1132/3196仍unknown/reconciling、结算null。LLM/VLM、知识管线和批准UI未改。F-01/F-02/F-04/F-06/F-07及完整PPT/真机/生产仍未通过。证据见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-completion-v93/core-freeze.json。
+2026-10-20 v94纯记录实际回执为内部限定Implemented，F-04与两个计划整体Limited。明确纯记录请求仅开放record_need，整组工具配对完成后由服务器读取本run、当前触发原话、仍有效的实际保存字段生成清单；标记finalFromTools的持久检查点在校验/恢复时重新授权重建，不重放写入或模型，不伪造用量。混合提问、来源综合、接管及KnowledgeRetriever/Evidence不改。266单元、18服务通过/7 opt-in跳过、4知识/施工兼容、98 Mini及涉及文件/全仓lint通过；本批类型0/全仓292，889项全窗稳定。当前免费文字GLM9 C01新run1145/1146各一次调用、原生重进通过：首条只保存靠窗，回执不再虚认收纳；次条两次写入完成后合并确认靠内墙/18万元。收纳漏提取、混合问答回执和旧错键/复合记录回读仍未解决。旧1084/1086错误原稿、1132/3196unknown/reconciling与结算null保留。LLM/VLM/1454探针、API/schema、知识管线和批准UI不改。证据见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-receipts-v94/core-freeze.json；完整PPT/真机/生产未通过。
 
 实现事实以当前代码、[二期契约](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)和[小程序清单](./miniprogram-system-modules.zh-CN.md)为准。下列状态是静态核对后的限定范围，不是本次重跑验收：`Implemented`须有对应闭环证据；`Limited`表示已有部分能力；`Placeholder`表示所注明能力未交付。保留已有实现，不能把整个工作包列为从零开发。
 
@@ -51,7 +51,7 @@ Agent单元/服务先用固定Evidence夹具验证，再用真实知识适配器
 
 ### AG-05 工具合同、错误与真实回执｜P0 · 每批触达工具，P2M→P5
 
-当前v93修复F-03的既有S04完成记录分流，原句与照片生成内部可编辑草稿，人工核对/显式内部发布和重进实测；不自动批准正式方案。下一步处理F-01/F-04需求当前值/保存覆盖及F-02/F-06/F-07，证据与限制见首段和[二期合同](./xiaok-assistant-phase-2.zh-CN.md)，不新增Agent或整体通过声明。
+当前v94沿原Agent增加纯记录的实际工具回执，完整批次完成后按服务器持久事实确认，避免模型扩大保存范围或重复回执轮；不补写提取漏项，混合问题保持原流程。F-01旧错键/复合记录和F-04提取/混合回执等仍待处理。实际检查及边界见首段和[二期合同](./xiaok-assistant-phase-2.zh-CN.md)，不新增Agent或整体通过声明。
 
 - **已有：Limited。** [运行器](../admin/src/lib/assistant/agent/runtime.ts)、Worker及业务服务已有工具白名单、参数/版本校验、稳定操作键、真实保存回执和部分可恢复反馈；跨业务统一错误与恢复策略仍待完善。
 - **待补：** 在既有能力合同中明确只读/写入/正式决定、权限、确认条件、超时/预算、幂等键、结果来源/版本及错误类型。参数错误可有限修正；冲突先重查；拒绝不得靠模型换措辞绕过；未知执行结果按原operationId核对，不能重发副作用。普通答疑不增加确认门槛。
@@ -108,6 +108,7 @@ Agent单元/服务先用固定Evidence夹具验证，再用真实知识适配器
 
 | 阶段 | 实际结果 | Git提交 |
 | --- | --- | --- |
+| AG-02/05 v94纯记录实际回执（内部限定修复） | 266单元/18服务+7跳过/4兼容/98 Mini/lint；GLM9两条原生各一次调用，部分保存不虚认、完整批次合并及重进；F-04/整体Limited | `pending-v94-commit` |
 | AG-05 v93施工完成记录待人工核对入口（内部修复） | 262单元/12施工服务/8 Agent兼容/98 Mini/lint；GLM9 run1144/record205原生草稿、核对修改、内部发布/重进；整体Limited | `efe0e34a89daa3673564c308768d08365ed2d7fe` |
 | AG-02/05 v92条件记录澄清（内部修复） | 262单元/8定向服务/73 Mini/lint；GLM9新C01 run1143交付/重进且无需求写入，原失败保留；整体Limited | `77892bbeaa6c6c1e65d40b0871bbc4df7ef7762b` |
 | AG-05/09 v91明确否定完成谓词与免费文字基线（内部技术子阶段） | 259单元/13服务/73 Mini/lint；GLM9两夹具4题审读通过，独立配置窗口及旧结果分别保留，整体Limited | `3182ee5c817092e03d19d1477927e85d0fbb2067` |

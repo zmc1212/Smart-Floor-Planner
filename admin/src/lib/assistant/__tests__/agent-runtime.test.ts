@@ -31,6 +31,35 @@ test('graph denies tool output and final response after revocation', async () =>
   const g = fixture(); g.ports.tool = async () => { g.revoke(); return { content: 'private' }; };
   await assert.rejects(g.run(), /revoked/); assert.equal(g.calls(), 1);
 });
+test('authoritative tool reply completes the whole paired batch and resumes without model or write replay', async () => {
+  const f = fixture();
+  f.ports.model = async () => ({ ...answer, text: '', toolCalls: ['a','b'].map(id => ({ id, name: 'lookup', arguments: '{}' })) });
+  let models = 0, reads = 0;
+  const model = f.ports.model; f.ports.model = async (...args) => { models++; return model(...args); };
+  Object.assign(f.ports, { resolveToolReply: async (state: AgentCheckpoint) => {
+    reads++; assert.equal(state.messages.filter(m => m.role === 'tool').length, 2);
+    assert.equal(f.operations.size, 2); return '实际工具回执';
+  } });
+  assert.equal((await f.run()).output?.text, '实际工具回执');
+  assert.equal(models, 1); assert.ok(reads >= 2);
+  const checkpoint = f.saved.at(-1)!; assert.equal(checkpoint.output?.text, '实际工具回执');
+  f.ports.model = async () => { throw Error('provider must not replay'); };
+  f.ports.tool = async () => { throw Error('write must not replay'); };
+  assert.equal((await f.run(checkpoint)).output?.text, '实际工具回执');
+  Object.assign(f.ports, { resolveToolReply: async () => null });
+  await assert.rejects(f.run(checkpoint), /context_changed/);
+});
+test('direct tool replies reauthorize and never fall into a model repair after a server-result validation error', async () => {
+  const f = fixture(); let calls = 0;
+  f.ports.model = async () => { calls++; return { ...answer, toolCalls: [{ id: 'a', name: 'lookup', arguments: '{}' }] }; };
+  f.ports.resolveToolReply = async () => 'durable result';
+  f.ports.validateFinal = async () => ({ code: 'context_changed', feedback: 'do not rewrite' });
+  await assert.rejects(f.run(), /context_changed/); assert.equal(calls, 1);
+  const g = fixture(); g.ports.resolveToolReply = async () => { g.revoke(); return 'private'; };
+  await assert.rejects(g.run(), /revoked/); assert.equal(g.calls(), 1);
+  const h = fixture(); h.ports.resolveToolReply = async () => { throw Error('read-only source check failed'); };
+  await assert.rejects(h.run(), /source check failed/); assert.equal(h.calls(), 1);
+});
 test('handoff stops immediately; timeout and unknown outcomes never auto-retry', async () => {
   const f = fixture(); f.ports.tool = async () => { f.revoke(); return { content: 'waiting', stop: true }; };
   assert.equal((await f.run()).stop, true); assert.equal(f.calls(), 1);

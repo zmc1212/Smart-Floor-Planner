@@ -1,12 +1,22 @@
 # 小K接力：统一实施、查询恢复与来源质量
 
-2026-10-20 v93完成“待人工核对”施工记录入口修复，内部限定Implemented，两个计划整体Limited。原S04/PPT22/38会话沿现有API将该措辞及照片生成内部可编辑草稿，查询/跟进/确认消息优先级与作者/管理者/observer/跨租户权限保持。262单元、12施工服务、8 Agent兼容服务、98 Mini及涉及文件/全仓lint通过；类型本批0/全仓292，889项源码/测试/配置全窗稳定。当前免费文字GLM9新run1144/record205经原生输入、真实Worker、设计师重进、管理者修改和显式内部发布通过；模型将整句放在完成栏，字段整理质量及图片理解不升级通过。原F-03消息9636仍无草稿，首轮断言错误/输入前超时独立保留，旧1132/3196仍unknown/reconciling、结算null。LLM/VLM、知识管线和批准UI未改。F-01/F-02/F-04/F-06/F-07及完整PPT/真机/生产仍未通过。证据见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-completion-v93/core-freeze.json。
+2026-10-20 v94纯记录实际回执为内部限定Implemented，F-04与两个计划整体Limited。明确纯记录请求仅开放record_need，整组工具配对完成后由服务器读取本run、当前触发原话、仍有效的实际保存字段生成清单；标记finalFromTools的持久检查点在校验/恢复时重新授权重建，不重放写入或模型，不伪造用量。混合提问、来源综合、接管及KnowledgeRetriever/Evidence不改。266单元、18服务通过/7 opt-in跳过、4知识/施工兼容、98 Mini及涉及文件/全仓lint通过；本批类型0/全仓292，889项全窗稳定。当前免费文字GLM9 C01新run1145/1146各一次调用、原生重进通过：首条只保存靠窗，回执不再虚认收纳；次条两次写入完成后合并确认靠内墙/18万元。收纳漏提取、混合问答回执和旧错键/复合记录回读仍未解决。旧1084/1086错误原稿、1132/3196unknown/reconciling与结算null保留。LLM/VLM/1454探针、API/schema、知识管线和批准UI不改。证据见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-receipts-v94/core-freeze.json；完整PPT/真机/生产未通过。
 
 ## 新对话接续入口与停止点
 
 统一实施的两项计划仍是[Agent专项](./xiaok-agent-engineering-plan.zh-CN.md)和[企业知识专项](./xiaok-enterprise-knowledge-plan.zh-CN.md)，按依赖选择完整业务批次，不要求两边平均改动。先读仓库/最近AGENTS、本交接、两计划、总路线图、二期合同和受影响模块中英清单，再检查dirty diff与实际证据；不要覆盖、回退或提交混杂改动。当前已由本对话单独接续，不同时启动另一写入者，完成限定闭环后按授权继续；新设计方向和生产发布仍须原授权。
 
-### 当前v93：原完成措辞的S04草稿与内部核对发布
+### 当前v94：纯记录实际回执与恢复
+
+v94为内部限定修复，源码提交待本批登记，F-04及整体仍Limited。明确纯记录只开放record_need，完整工具批次配对后以本run/触发原话/仍有效current事实生成服务器实际清单。`resolveToolReply`/`durable-tool-reply-v1`、`finalFromTools`检查点和`agent_need_receipt`复用现有Graph/PG/记忆；校验/恢复重新授权，不重放模型或写入，不增加Agent/facts库/引用管线，服务器结果不伪装模型用量。混合问题、知识综合和接管路径保持。
+
+266单元、18服务通过/7 opt-in跳过、4知识/施工兼容、98 Mini及涉及文件/全仓lint通过，本批类型0/全仓292；889项全窗稳定。原红测确实复现“只存靠窗却确认收纳”。当前免费文字GLM9 C01 run1145/1146各一次调用，原生真实输入/反馈/重进：第一条仅保存靠窗且不虚认收纳；第二条两次写入均完成后合并回执靠内墙/18万元，旧desk真实superseded。收纳仍漏提取，纯回执值片段展示和混合提问不升级完整能力。批准C01组件/原生副屏/新编译/390×844与两张348×752截图已审看，Mini代码不改。
+
+新2642/2643 AI关闭、3684–3686 context撤销、active0/unknown0，LLM/VLM/1454探针/授权/配额及配置未改。原1084/1086/回复9639、1092失败、1132/3196unknown/reconciling/null结算及F-03旧消息无草稿均保留，独立305文件manifest不改。验收窗口已结束，无SDK占用；证据`tmp/xiaok-receipts-v94/core-freeze.json`、`semantic-review.json`、`original-audit.json`，绑定实际脏工作树，单一提交不是干净基线。
+
+下一步继续F-01旧错键/复合需求的当前更正投影、F-04提取完整性/混合回执及F-02/F-06/F-07来源域/输入预算。完整PPT/图片理解/真机/生产仍未通过，不用人工手测或截图作推进门槛。
+
+### 历史v93：原完成措辞的S04草稿与内部核对发布
 
 v93为限定入口修复，源码提交`efe0e34a89daa3673564c308768d08365ed2d7fe`。`待(?:人工)?核对`沿已有report分流；查询/请求/确认优先级、原件、内部draft及作者/管理者/observer权限保持。262单元/12施工服务/8 Agent兼容服务/98 Mini、涉及文件与全仓lint通过，本批类型0/全仓292；889项全窗稳定。红测两项因果失败，首轮断言错误/发送前输入超时独立保留，未触发模型。
 
