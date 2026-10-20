@@ -8,6 +8,8 @@
 
 ### 当前v87：只读查询参数恢复
 
+本阶段源码提交：`5e85e14582150ddf34092ae0e5e1117c9b07e440`；四计划索引同步回填，整体Limited，不push/部署。
+
 query_materials/query_business/recall_history执行前复用原严格解析器，非法参数收到配对tool反馈，不执行、不转型、不写成功读回执。每run一次参数反馈，argumentFailures随原checkpoint恢复；保留四轮、唯一最终格式修复、16000预算、每次授权/来源重验和未知结果不重放。仅非法读取时可沿原组件最小澄清，已有真实来源仍限制最终kind。知识接口/解析/检索/发布、公开API/schema和批准UI不变。
 
 本批231单元/55隔离服务（另7可选实模跳过）/73 Mini/全仓lint通过，类型本批0/全仓292；79项source/test与92项provider/环境文件无漂移。旧1072原调用纯预检返回invalid_arguments，原报告/失败/评分保持。新受控参数故障run6104使用当前Qwen3.5-4B，一次真实调用6017输入/42输出仍重复数字ID而终止，查询/交付0，active/unknown0，不算自然首稿或专业问答通过。最初恢复断言失败与原live.json保持；仅在完整运行哈希精确匹配后恢复隔离LLM配置，证明restoration.json，不回滚数据库。隧道中断按现有脚本恢复，无SSH/端点配置改变。旧16项attempt/原job状态、四份员工发布、2567内部资料未变，1073 unknown不重试。证据tmp/xiaok-tool-input-v87/manifest.json及双语二期，窗口结束；按既有规则本地提交并回填实际hash，不push/部署。下一批先补具体字段诊断，再接续话题、显式修复编辑及完整条件覆盖。
