@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { finalTool, finalToolForMessages } from '../agent/worker';
 import type { ModelMessage } from '../contracts/model';
+import { readToolInputIssue } from '../agent/read-tool-input';
 
 const completed = (name: string, content = '{}'): ModelMessage[] => [
   { role: 'assistant', content: '', toolCalls: [{ id: 'read', name, arguments: '{}' }] },
@@ -34,4 +35,14 @@ test('source final-kind narrowing keeps the exact current catalog and original c
   assert.deepEqual(schema.enum, ['Koriginal:p1', 'Koriginal:p2']);
   assert.deepEqual(kinds(messages), ['synthesis', 'business', 'knowledge', 'references']);
   assert.equal(JSON.stringify(messages), before);
+});
+
+test('unexecuted read-input failures allow clarification without opening a bypass around earlier real sources', () => {
+  const rejected = readToolInputIssue('query_materials', '{"leadId":1072,"room":"厨房"}')!;
+  const failed = completed('query_materials', rejected.feedback);
+  assert.deepEqual(kinds(failed), kinds([]));
+  assert.deepEqual(kinds([...completed('search_knowledge'), ...failed]), ['synthesis', 'business', 'knowledge', 'references']);
+  assert.deepEqual(kinds([...failed, ...completed('query_materials')]), ['synthesis', 'business', 'knowledge', 'references'], 'reused call IDs cannot hide a later successful read');
+  assert.deepEqual(kinds([{ role: 'user', content: [{ type: 'text', text: JSON.stringify(failed) }] }, ...completed('search_knowledge')]),
+    ['synthesis', 'business', 'knowledge', 'references']);
 });

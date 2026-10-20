@@ -1,12 +1,18 @@
 # 小K接力：统一实施、查询恢复与来源质量
 
-2026-10-20 v86引用文件名元数据为AG-08内部技术子阶段Implemented，整体Limited。仅识别本段已引用知识的可信title/file.name中、成对引号包围且完全一致的PDF/DOCX/XLSX文件名，避免把数字前缀/版号当工程量；正文、引用原文/编号、文件名外量数及原权限/校验/预算保持。221单元/4定向隔离服务/73 Mini/全仓lint通过，类型本批0/全仓292，77项source/test与92项provider/环境文件无漂移。旧三份首稿离线新校验2份通过、1份仍被无据数字拒绝，不改原文或重算业务评分；本批新实模聊天调用0。v85仍为5/8执行、交付0/5、完整条件0/3可审读首稿，余3题/9项未执行；1073未知job1及16项attempt/原job状态原样保留，不重放。原2567、四份员工发布数据与已退役资料保持。公开API/schema/权限/批准UI与KnowledgeRetriever/Evidence不变，不新增KB能力或原生/生产通过。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)及`tmp/xiaok-filename-v86/manifest.json`。
+2026-10-20 v87只读参数恢复为AG-05/09内部技术子阶段Implemented，整体Limited。query_materials/query_business/recall_history执行前复用严格解析器，一次配对tool参数反馈不执行/不转型/不登记成功读回执，argumentFailures沿原checkpoint恢复；原四轮/一次最终修复/16000预算及来源权限保持。231单元/55隔离服务（7可选实模跳过）/73 Mini/全仓lint通过，本批类型0/全仓292，79项source/test与92项provider/环境文件无漂移。旧1072原调用纯预检识别失败，不改原报告/评分。新隔离受控故障run6104使用当前Qwen3.5-4B，1次真实模型输入6017/输出42仍重复数字ID而终止，读取/交付0，active/unknown均0；完整运行配置经原始哈希精确恢复，最初恢复断言失败及隧道中断另存。v85交付0/5、完整条件0/3和1073 unknown原样保持，16项attempt/四份员工发布记录/原2567未变。知识接口/原文/解析/检索/发布、公开API/schema/权限和批准UI不变，不新增KB/原生/生产通过。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-tool-input-v87/manifest.json。
 
 ## 新对话接续入口与停止点
 
 统一实施的两项计划仍是[Agent专项](./xiaok-agent-engineering-plan.zh-CN.md)和[企业知识专项](./xiaok-enterprise-knowledge-plan.zh-CN.md)，按依赖选择完整业务批次，不要求两边平均改动。先读仓库/最近AGENTS、本交接、两计划、总路线图、二期合同和受影响模块中英清单，再检查dirty diff与实际证据；不要覆盖、回退或提交混杂改动。当前已由本对话单独接续，不同时启动另一写入者，完成限定闭环后按授权继续；新设计方向和生产发布仍须原授权。
 
-### 当前v86：引用文件名元数据修复
+### 当前v87：只读查询参数恢复
+
+query_materials/query_business/recall_history执行前复用原严格解析器，非法参数收到配对tool反馈，不执行、不转型、不写成功读回执。每run一次参数反馈，argumentFailures随原checkpoint恢复；保留四轮、唯一最终格式修复、16000预算、每次授权/来源重验和未知结果不重放。仅非法读取时可沿原组件最小澄清，已有真实来源仍限制最终kind。知识接口/解析/检索/发布、公开API/schema和批准UI不变。
+
+本批231单元/55隔离服务（另7可选实模跳过）/73 Mini/全仓lint通过，类型本批0/全仓292；79项source/test与92项provider/环境文件无漂移。旧1072原调用纯预检返回invalid_arguments，原报告/失败/评分保持。新受控参数故障run6104使用当前Qwen3.5-4B，一次真实调用6017输入/42输出仍重复数字ID而终止，查询/交付0，active/unknown0，不算自然首稿或专业问答通过。最初恢复断言失败与原live.json保持；仅在完整运行哈希精确匹配后恢复隔离LLM配置，证明restoration.json，不回滚数据库。隧道中断按现有脚本恢复，无SSH/端点配置改变。旧16项attempt/原job状态、四份员工发布、2567内部资料未变，1073 unknown不重试。证据tmp/xiaok-tool-input-v87/manifest.json及双语二期，窗口结束；按既有规则本地提交并回填实际hash，不push/部署。下一批先补具体字段诊断，再接续话题、显式修复编辑及完整条件覆盖。
+
+### 历史v86：引用文件名元数据修复
 
 本阶段源码提交：`4e4f37f021895db0c07f91defbb7b6bb50fb63e1`；四计划索引同步回填，整体业务Limited，不push/部署。
 

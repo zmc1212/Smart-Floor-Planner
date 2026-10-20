@@ -19,7 +19,19 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前v86：引用文件名与工程量分离
+## 当前v87：执行前的只读参数恢复
+
+**AG-05/09内部技术子阶段Implemented，整体Limited。** v85 run1072的数字leadId反例继续保留。新增`read-input-v1`仅在query_materials、query_business和recall_history执行前复用现有严格解析器；JSON/字段/ID/房间/历史长度错误返回带原工具schema的配对tool错误，不自动转型、补ID或执行查询，不新增成功读回执。一个run最多接收一次此类错误反馈，`argumentFailures`沿原私有checkpoint持久化，恢复不重置；仍用原四轮模型预算和原一次最终格式修复，最后一轮只收尾。写操作、执行后的任何错误、越权/撤权/未知供应商结果不进入该恢复。
+
+非法查询不再被视为已取得来源，可沿原general组件最小澄清；同轮已有真实来源时仍收窄最终kind，不能借参数错误绕过来源校验。服务端原有参数、租户、本人项目、来源版本/撤回、原键/租约/用量检查继续执行。Agent消费知识Evidence的接口、解析/检索/发布、公开API/schema和批准UI均未改；无新增视觉设计，沿原C01/C02聊天与状态组件，本批不新增原生/真机/生产通过。
+
+参考并采用[LangChain工具错误反馈](https://docs.langchain.com/oss/javascript/langchain/tools#error-handling)、[结构校验错误](https://docs.langchain.com/oss/javascript/langchain/structured-output#schema-validation-error)与[LangGraph工具/消息测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)中的配对错误消息及有界继续模式，未安装/迁移框架或运行上游套件。当前直接使用已固定LangGraph StateGraph和应用PostgreSQL恢复；因此复用应用解析器的纯执行前端口，不照搬会捕获执行后异常、重试副作用的宽泛中间件。此能力是供应商无关的输入校验；Qwen4B的可信system投影仍仅限既有已验证型号，1073未知结果不重放。配置实模执行与失败范围如下，不由上游示例推定通过。
+
+稳定源码通过231/231单元、55/55隔离服务（另7可选实模未启用）、73/73 Mini及全仓lint；类型本批0/全仓292。79项source/test与92项provider/环境文件hash一致。服务真实创建/发布/检索知识并保存引用，参数纠正后只读一次、重进可见、撤回失效；连续错参不执行，纠正为其他客户/租户ID仍拒绝。纯离线预检识别1072原调用，原报告hash/评分不改。此验收窗口已结束。
+
+独立配置实模使用隔离企业3869/咨询5879：固定Provider先真实保存一条“厨房保留冰箱”需求，随后新run6104由明确标记的数字ID故障checkpoint起步，不算模型自然首稿。当前硅基流动Qwen3.5-4B仅一次真实调用，输入6017/输出42，收到反馈仍重复数字leadId，被第二次错误终止；查询/交付0，active/unknown均0，模型纠正未通过。旧1073不重放，旧16项attempt/原job状态、四份员工发布和2567内部原件前后相同。配置脚本最初重新保存导致临时profile/密文hash漂移，原失败报告保留；在原互斥锁内用既有隔离备份候选重建且完整哈希精确匹配后，仅恢复LLM配置，不回滚整库。中途5432/55432隧道中断，按既有remote-dev/tunnel.ps1恢复，端点/SSH配置未改；无新模型请求。原始报告、恢复证明、锁等待失败与manifest独立保存在tmp/xiaok-tool-input-v87/。下一批具体字段诊断、话题/修复编辑及完整条件仍待接续，历史业务评分不升级；原生/真机/完整build/全仓类型/生产仍未通过或未验。
+
+## 历史v86：引用文件名与工程量分离
 
 **AG-08内部技术子阶段Implemented，整体Limited。**
 

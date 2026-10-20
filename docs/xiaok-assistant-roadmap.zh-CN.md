@@ -120,7 +120,7 @@ AG-04/05对“明确前句更正、随后独立提问”补入有界接续：复
 
 ### 3.2 已确认的业务接入边界
 
-2026-10-20 v86引用文件名元数据为AG-08内部技术子阶段Implemented，整体Limited。仅识别本段已引用知识的可信title/file.name中、成对引号包围且完全一致的PDF/DOCX/XLSX文件名，避免把数字前缀/版号当工程量；正文、引用原文/编号、文件名外量数及原权限/校验/预算保持。221单元/4定向隔离服务/73 Mini/全仓lint通过，类型本批0/全仓292，77项source/test与92项provider/环境文件无漂移。旧三份首稿离线新校验2份通过、1份仍被无据数字拒绝，不改原文或重算业务评分；本批新实模聊天调用0。v85仍为5/8执行、交付0/5、完整条件0/3可审读首稿，余3题/9项未执行；1073未知job1及16项attempt/原job状态原样保留，不重放。原2567、四份员工发布数据与已退役资料保持。公开API/schema/权限/批准UI与KnowledgeRetriever/Evidence不变，不新增KB能力或原生/生产通过。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)及`tmp/xiaok-filename-v86/manifest.json`。
+2026-10-20 v87只读参数恢复为AG-05/09内部技术子阶段Implemented，整体Limited。query_materials/query_business/recall_history执行前复用严格解析器，一次配对tool参数反馈不执行/不转型/不登记成功读回执，argumentFailures沿原checkpoint恢复；原四轮/一次最终修复/16000预算及来源权限保持。231单元/55隔离服务（7可选实模跳过）/73 Mini/全仓lint通过，本批类型0/全仓292，79项source/test与92项provider/环境文件无漂移。旧1072原调用纯预检识别失败，不改原报告/评分。新隔离受控故障run6104使用当前Qwen3.5-4B，1次真实模型输入6017/输出42仍重复数字ID而终止，读取/交付0，active/unknown均0；完整运行配置经原始哈希精确恢复，最初恢复断言失败及隧道中断另存。v85交付0/5、完整条件0/3和1073 unknown原样保持，16项attempt/四份员工发布记录/原2567未变。知识接口/原文/解析/检索/发布、公开API/schema/权限和批准UI不变，不新增KB/原生/生产通过。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-tool-input-v87/manifest.json。
 
 <!-- 保留已有文档的章节入口；当前有效规则与实施证据以本节及第2节链接为准。 -->
 <a id="31-p2c-当前范围与小区检索"></a>

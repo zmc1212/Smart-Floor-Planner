@@ -40,6 +40,7 @@ import { citationProtocolVersion } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
 import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
+import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol } from './read-tool-input';
 
 const needProperties = { room: { type: 'string' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，daylight记录采光，devices记录设备；独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -81,8 +82,13 @@ const sourceQueryTools = new Set(['query_business', 'query_materials', 'query_fo
 /** The provider sees the same current catalog as the validator. Schema enums
  * assist generation; authorized server lookup remains the acceptance boundary. */
 export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
-  const queriedSources = messages.some(message => message.role === 'assistant'
-    && message.toolCalls?.some(call => sourceQueryTools.has(call.name)));
+  const queriedSources = messages.some((message, index) => {
+    if (message.role !== 'tool' || isReadToolInputFailure(message.content)) return false;
+    let requestIndex = index - 1;
+    while (requestIndex >= 0 && messages[requestIndex].role === 'tool') requestIndex--;
+    const request = messages[requestIndex];
+    return request?.role === 'assistant' && request.toolCalls?.some(call => call.id === message.callId && sourceQueryTools.has(call.name));
+  });
   const ids=[...new Set(messages.flatMap(message=>{
     if(message.role!=='tool')return [];
     try{const packet=JSON.parse(message.content);return (Array.isArray(packet?.synthesisSources)?packet.synthesisSources:[])
@@ -345,7 +351,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' && synthesisRepairBase(focused) ? synthesisRepairProtocol : null,
                   repairProjection: purpose === 'answer' && focused !== messages && synthesisRepairBase(focused) ? synthesisRepairProjectionVersion : null,
-                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
+                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
                   finalOnly: purpose === 'answer' && tools.length === 0,
                   responseScope: modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(availabilityScopeHintPrefix))) ? 'unavailable_occupancy_evidence' : null })}::jsonb)`);
             await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);
@@ -512,6 +518,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           });
         },
         model: callModel,
+        validateTool: readToolInputIssue,
         tool: async (turn, index, name, args) => {
           const input = JSON.parse(args);
           const sequence = 1200 + turn * 10 + index, resultKey = `${lease.runId}:${turn}:${index}`;

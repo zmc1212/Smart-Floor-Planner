@@ -19,6 +19,7 @@ import type { ModelTurnOutput, ModelMessage } from '@/lib/assistant/contracts/mo
 import { agentMessageAvailable } from '@/lib/assistant/agent/media-context';
 import { synthesisRepairBase } from '@/lib/assistant/agent/synthesis-repair';
 import { synthesisRepairProjectionVersion, synthesisRepairTask } from '@/lib/assistant/agent/synthesis';
+import { readToolInputProtocol } from '@/lib/assistant/agent/read-tool-input';
 
 const prefix = 'synthetic-synthesis-' + randomUUID(), tenants: string[] = [], users: string[] = [];
 let eid: string, ownerId: string, knowledge: KnowledgeService;
@@ -127,6 +128,79 @@ test('AG05/07: a source change before a repeated read blocks reuse and delivery'
   const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select capability_name from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
   assert.equal(steps.filter(s => s.capability_name === 'knowledge.search.v1').length, 1);
   assert.equal((await x.chat.messages(x.cid)).items.some(m => m.authorKind === 'assistant' && m.available), false);
+});
+
+test('AG05 read-input recovery preserves real knowledge, queries once with a corrected string ID and revokes on reentry', async () => {
+  const doc = await publish('合成参数恢复甲', '书房参数恢复甲：屏幕可比较侧向布置，避免直对强光窗户。');
+  const x = await fixture();
+  assert.ok(Number.isSafeInteger(Number(x.leadId)));
+  let calls = 0;
+  const a = await x.send('书房参数恢复甲怎样避免反光，核对现场资料？', async (messages, _tools, turn) => {
+    calls++;
+    if (!turn) {
+      const first = call('search_knowledge', { query: '书房参数恢复甲' });
+      first.toolCalls.push(...call('query_materials', { leadId: Number(x.leadId), room: '书房' }).toolCalls);
+      return first;
+    }
+    const packets = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content));
+    assert.equal(packets.filter(p => p.protocol === readToolInputProtocol && p.status === 'invalid_arguments').length, 1);
+    const source = results(messages).find(s => s.kind === 'knowledge' && s.text.includes('书房参数恢复甲'))!;
+    assert.ok(source, 'complete authorized knowledge survives the parameter error');
+    assert.deepEqual(((finalToolForMessages(messages).parameters.properties as Row).kind as Row).enum,
+      ['synthesis', 'business', 'knowledge', 'references'], 'an input error cannot bypass an earlier real source');
+    if (turn === 1) return call('query_materials', { leadId: x.leadId, room: '书房' });
+    assert.ok(results(messages).some(s => s.kind === 'project'));
+    return synth([{ basis: 'evidence', text: '这份资料建议比较侧向布置，避免直对强光窗户。', citations: [{ citationId: source.citationOptions[0].citationId }] }]);
+  });
+  assert.equal(a.run.status, 'succeeded', JSON.stringify(a.run)); assert.equal(calls, 3);
+  const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,capability_name,private_checkpoint,input_summary
+    from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
+  const reads = steps.filter(s => s.capability_name === 'query_materials');
+  assert.equal(reads.length, 1);
+  assert.equal((reads[0].private_checkpoint as Row).query && ((reads[0].private_checkpoint as Row).query as Row).leadId, x.leadId);
+  const checkpoint = steps.find(s => s.kind === 'agent_checkpoint')!.private_checkpoint as Row;
+  assert.equal(checkpoint.argumentFailures, 1); assert.equal((checkpoint.readReceipts as unknown[]).length, 2);
+  assert.ok(steps.filter(s => s.kind === 'agent_model').every(s => (s.input_summary as Row).readInputProtocol === readToolInputProtocol));
+  const reply = (await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === a.run.outputMessageId)!;
+  assert.ok(reply.available); assert.equal(reply.citations.length, 1);
+  await assert.rejects(new ConversationService((await fixture(tenants[1])).actor).messages(x.cid), /assistant_resource_not_found/);
+  await knowledge.execute('retire', { documentId: doc.documentId, expectedVersion: 2 }, randomUUID());
+  assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === reply.id)!.available, false);
+  assert.equal((await x.chat.citation(reply.citations[0].id)).available, false);
+});
+
+test('AG05 read-input failure permits honest clarification, while repeated malformed reads execute nothing', async () => {
+  for (const repeat of [false, true]) {
+    const x = await fixture(); let calls = 0;
+    const a = await x.send('核对厨房现场资料？', async (messages, _tools, turn) => {
+      calls++;
+      if (!turn || repeat) return call('query_materials', { leadId: Number(x.leadId), room: '厨房' });
+      assert.equal(results(messages).length, 0);
+      const schema = finalToolForMessages(messages).parameters.properties as Row;
+      assert.ok(((schema.kind as Row).enum as string[]).includes('general'));
+      return call('final_response', { kind: 'general', text: '请先明确要核对的房屋。' });
+    });
+    assert.equal(calls, 2);
+    assert.equal(a.run.status === 'succeeded', !repeat, JSON.stringify(a.run));
+    const reads = await withTenantTransaction(eid, tx => rows(tx, sql`select id from app.assistant_run_steps
+      where enterprise_id=${eid} and run_id=${a.runId} and capability_name='query_materials'`));
+    assert.equal(reads.length, 0);
+    const replies = (await x.chat.messages(x.cid)).items.filter(m => m.authorKind === 'assistant' && m.available);
+    assert.equal(replies.length, repeat ? 0 : 1);
+  }
+});
+
+test('AG05 read-input correction never grants a foreign customer or tenant resource', async () => {
+  const x = await fixture();
+  for (const targetEid of [eid, tenants[1]]) {
+    const other = await fixture(targetEid); let calls = 0;
+    const a = await x.send('核对厨房现场资料？', async (_messages, _tools, turn) => {
+      calls++;
+      return call('query_materials', { leadId: turn === 0 ? Number(other.leadId) : other.leadId, room: '厨房' });
+    });
+    assert.equal(calls, 2); assert.notEqual(a.run.status, 'succeeded');
+    assert.equal((await x.chat.messages(x.cid)).items.some(m => m.authorKind === 'assistant' && m.available), false);
+  }
 });
 
 test('QA02/05 PPT6/15: real retrieval plus authorized originals produces persisted explanatory prose without a handling side effect', async () => {
