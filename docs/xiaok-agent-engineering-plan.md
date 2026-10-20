@@ -108,7 +108,7 @@ The compact stage-commit index does not replace the phase-two contract. This che
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| AG-05 v93 pending-human-review completion entry (internal fix) | 262 units/12 construction services/8 Agent compatibility/98 Mini/lint; GLM9 run1144/record205 native draft, review/edit, internal publication/reentry; overall Limited | `pending-v93-commit` |
+| AG-05 v93 pending-human-review completion entry (internal fix) | 262 units/12 construction services/8 Agent compatibility/98 Mini/lint; GLM9 run1144/record205 native draft, review/edit, internal publication/reentry; overall Limited | `efe0e34a89daa3673564c308768d08365ed2d7fe` |
 | AG-02/05 v92 conditional recording clarification (internal fix) | 262 units/8 targeted services/73 Mini/lint; fresh GLM9 C01 run1143 delivered/reentered, no need write; original failures retained; overall Limited | `77892bbeaa6c6c1e65d40b0871bbc4df7ef7762b` |
 | AG-05/09 v91 explicit denials and free text baseline (internal substage) | 259 units/13 services/73 Mini/lint; GLM9 four reviewed-correct questions across two fixtures, separate setup window and originals retained; overall Limited | `3182ee5c817092e03d19d1477927e85d0fbb2067` |
 | v90 free-model tariff verification | Official tariffs override conflicting zero prices; 257 units/12 targeted services/73 Mini/lint; screens and original failures recorded separately | `7b6068654abd10ad1f01c560bd48cbd695f408c5` |
