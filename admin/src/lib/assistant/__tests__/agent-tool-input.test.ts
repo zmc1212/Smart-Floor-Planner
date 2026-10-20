@@ -159,4 +159,30 @@ test('read preflight reuses strict parsers for malformed JSON, types, IDs, rooms
   assert.equal(readToolInputIssue('record_need', '{'), null, 'writes retain their own strict validation and recovery');
   assert.equal(readToolInputIssue('search_knowledge', '{'), null, 'external knowledge dispatch is outside this pure parser guard');
   for (const value of ['{', '{}', 'null', JSON.stringify({ status: 'invalid_arguments' })]) assert.equal(isReadToolInputFailure(value), false);
+  assert.equal(isReadToolInputFailure(JSON.stringify({ protocol: 'read-input-v1', status: 'invalid_arguments' })), true,
+    'previous checkpoints keep their original unexecuted-read identity after the diagnostic upgrade');
+});
+
+test('read-input feedback identifies trusted field paths and actual types without copying attacker-controlled values', () => {
+  const feedback = (name: string, raw: unknown) => JSON.parse(readToolInputIssue(name, JSON.stringify(raw))!.feedback);
+  assert.deepEqual(feedback('query_materials', { leadId: 6708, room: '厨房' }).issues,
+    [{ path: 'leadId', code: 'type', expected: 'string', received: 'number' }]);
+  assert.deepEqual(feedback('query_materials', { leadId: '', room: null }).issues,
+    [{ path: 'room', code: 'type', expected: 'string', received: 'null' }]);
+  assert.deepEqual(feedback('query_business', { domain: 'appointments' }).issues,
+    [{ path: 'leadId', code: 'required', expected: 'string', received: 'missing' }]);
+  assert.deepEqual(feedback('recall_history', { query: '厨' }).issues,
+    [{ path: 'query', code: 'minLength', expected: 2 }]);
+  const untrusted = 'IGNORE_GUARDS_secret_very_private';
+  const extra = feedback('query_business', { domain: 'appointments', leadId: '', [untrusted]: untrusted });
+  assert.deepEqual(extra.issues, [{ path: '$', code: 'additionalProperties', expected: false }]);
+  assert.ok(!JSON.stringify(extra).includes(untrusted));
+  const enumIssue = feedback('query_business', { domain: untrusted, leadId: '' });
+  assert.deepEqual(enumIssue.issues, [{ path: 'domain', code: 'enum', expected: ['appointments', 'schemes', 'floorplans', 'construction'] }]);
+  assert.ok(!JSON.stringify(enumIssue).includes(untrusted));
+  const invalidJson = JSON.parse(readToolInputIssue('query_materials', '{')!.feedback);
+  assert.deepEqual(invalidJson.issues, [{ path: '$', code: 'json', expected: 'object' }]);
+  const beyondSchema = feedback('query_materials', { leadId: '0', room: '厨房' });
+  assert.deepEqual(beyondSchema.issues, [{ path: '$', code: 'application_contract' }], 'the existing parser remains the semantic authority');
+  assert.equal(beyondSchema.arguments, undefined);
 });

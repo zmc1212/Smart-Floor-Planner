@@ -120,7 +120,7 @@ AG-04/05对“明确前句更正、随后独立提问”补入有界接续：复
 
 ### 3.2 已确认的业务接入边界
 
-2026-10-20 v87只读参数恢复为AG-05/09内部技术子阶段Implemented，整体Limited。query_materials/query_business/recall_history执行前复用严格解析器，一次配对tool参数反馈不执行/不转型/不登记成功读回执，argumentFailures沿原checkpoint恢复；原四轮/一次最终修复/16000预算及来源权限保持。231单元/55隔离服务（7可选实模跳过）/73 Mini/全仓lint通过，本批类型0/全仓292，79项source/test与92项provider/环境文件无漂移。旧1072原调用纯预检识别失败，不改原报告/评分。新隔离受控故障run6104使用当前Qwen3.5-4B，1次真实模型输入6017/输出42仍重复数字ID而终止，读取/交付0，active/unknown均0；完整运行配置经原始哈希精确恢复，最初恢复断言失败及隧道中断另存。v85交付0/5、完整条件0/3和1073 unknown原样保持，16项attempt/四份员工发布记录/原2567未变。知识接口/原文/解析/检索/发布、公开API/schema/权限和批准UI不变，不新增KB/原生/生产通过。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-tool-input-v87/manifest.json。
+2026-10-20 v88可信字段诊断为AG-05/09内部技术子阶段Implemented，整体Limited。read-input-v2在原严格解析拒绝后，只投影可信schema的path/expected/received类型，不复述参数值/未知字段名；旧v1 checkpoint错误身份兼容，仍一次参数纠正/四轮/一次最终修复/16000及原来源权限。232单元/8定向隔离服务/73 Mini/全仓lint通过，本批类型0/全仓292，79项source/test与92项provider/环境文件无漂移。首次服务准备因18089隧道缺失使索引未知，业务断言未执行，保留attempt-1后恢复既有隧道并用新夹具；不重放原任务。独立受控实模run6116当前Qwen3.5-4B仅1调用，输入6069/输出42仍重复数字ID，读取/交付0，active/unknown0，配置/供应商投影精确恢复。原v87失败及v85交付0/5、完整条件0/3、1073 unknown、16项attempt/四份员工发布/2567保持。知识接口/解析/检索/发布、公开API/schema/权限/批准UI不变，无新增KB/原生/生产通过。下一项核对会话绑定身份的服务端注入，话题/修复编辑/完整条件仍待补。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-input-diagnostics-v88/manifest.json。
 
 <!-- 保留已有文档的章节入口；当前有效规则与实施证据以本节及第2节链接为准。 -->
 <a id="31-p2c-当前范围与小区检索"></a>

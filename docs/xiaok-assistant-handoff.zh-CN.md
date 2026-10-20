@@ -1,12 +1,18 @@
 # 小K接力：统一实施、查询恢复与来源质量
 
-2026-10-20 v87只读参数恢复为AG-05/09内部技术子阶段Implemented，整体Limited。query_materials/query_business/recall_history执行前复用严格解析器，一次配对tool参数反馈不执行/不转型/不登记成功读回执，argumentFailures沿原checkpoint恢复；原四轮/一次最终修复/16000预算及来源权限保持。231单元/55隔离服务（7可选实模跳过）/73 Mini/全仓lint通过，本批类型0/全仓292，79项source/test与92项provider/环境文件无漂移。旧1072原调用纯预检识别失败，不改原报告/评分。新隔离受控故障run6104使用当前Qwen3.5-4B，1次真实模型输入6017/输出42仍重复数字ID而终止，读取/交付0，active/unknown均0；完整运行配置经原始哈希精确恢复，最初恢复断言失败及隧道中断另存。v85交付0/5、完整条件0/3和1073 unknown原样保持，16项attempt/四份员工发布记录/原2567未变。知识接口/原文/解析/检索/发布、公开API/schema/权限和批准UI不变，不新增KB/原生/生产通过。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-tool-input-v87/manifest.json。
+2026-10-20 v88可信字段诊断为AG-05/09内部技术子阶段Implemented，整体Limited。read-input-v2在原严格解析拒绝后，只投影可信schema的path/expected/received类型，不复述参数值/未知字段名；旧v1 checkpoint错误身份兼容，仍一次参数纠正/四轮/一次最终修复/16000及原来源权限。232单元/8定向隔离服务/73 Mini/全仓lint通过，本批类型0/全仓292，79项source/test与92项provider/环境文件无漂移。首次服务准备因18089隧道缺失使索引未知，业务断言未执行，保留attempt-1后恢复既有隧道并用新夹具；不重放原任务。独立受控实模run6116当前Qwen3.5-4B仅1调用，输入6069/输出42仍重复数字ID，读取/交付0，active/unknown0，配置/供应商投影精确恢复。原v87失败及v85交付0/5、完整条件0/3、1073 unknown、16项attempt/四份员工发布/2567保持。知识接口/解析/检索/发布、公开API/schema/权限/批准UI不变，无新增KB/原生/生产通过。下一项核对会话绑定身份的服务端注入，话题/修复编辑/完整条件仍待补。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与tmp/xiaok-input-diagnostics-v88/manifest.json。
 
 ## 新对话接续入口与停止点
 
 统一实施的两项计划仍是[Agent专项](./xiaok-agent-engineering-plan.zh-CN.md)和[企业知识专项](./xiaok-enterprise-knowledge-plan.zh-CN.md)，按依赖选择完整业务批次，不要求两边平均改动。先读仓库/最近AGENTS、本交接、两计划、总路线图、二期合同和受影响模块中英清单，再检查dirty diff与实际证据；不要覆盖、回退或提交混杂改动。当前已由本对话单独接续，不同时启动另一写入者，完成限定闭环后按授权继续；新设计方向和生产发布仍须原授权。
 
-### 当前v87：只读查询参数恢复
+### 当前v88：可信字段诊断
+
+read-input-v2只给可信schema字段/期望/实际类型，不复述参数值或未知字段名，旧v1错误身份兼容；原应用解析/一次纠正/四轮/唯一最终修复/16000/租户来源校验保持。稳定232单元/8定向服务/73 Mini/lint通过，类型本批0/全仓292，79项source/test和92项provider/环境hash一致。首次服务准备因18089隧道缺失索引unknown，8条hook失败/业务未执行保留attempt-1；既有脚本恢复后用新夹具通过，不重放原任务，不继承v87的55服务数。
+
+新隔离企业3874/咨询5893/run6116受控注入数字ID，当前Qwen3.5-4B一次6069输入/42输出仍重复数字6722；查询/交付0，active/unknown0。运行配置/两份供应商投影已用原始受限快照精确恢复。原v87失败报告、v85的16项attempt/原job/四份员工发布/2567及1073 unknown均保持，不核清未知费用。证据tmp/xiaok-input-diagnostics-v88/manifest.json；稳定窗口结束，本地阶段提交后回填hash，不push/部署。下一接续检查服务端注入会话已绑定身份，避免模型重复生成ID，不通过自动转型放宽；话题/显式修复编辑/完整条件继续Limited。公开API/schema/权限/KnowledgeRetriever/Evidence及批准UI未改，无原生/真机/生产新通过。
+
+### 历史v87：只读查询参数恢复
 
 本阶段源码提交：`5e85e14582150ddf34092ae0e5e1117c9b07e440`；四计划索引同步回填，整体Limited，不push/部署。
 

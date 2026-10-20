@@ -144,6 +144,8 @@ test('AG05 read-input recovery preserves real knowledge, queries once with a cor
     }
     const packets = messages.filter(m => m.role === 'tool').map(m => JSON.parse(m.content));
     assert.equal(packets.filter(p => p.protocol === readToolInputProtocol && p.status === 'invalid_arguments').length, 1);
+    assert.deepEqual(packets.find(p => p.protocol === readToolInputProtocol).issues,
+      [{ path: 'leadId', code: 'type', expected: 'string', received: 'number' }]);
     const source = results(messages).find(s => s.kind === 'knowledge' && s.text.includes('书房参数恢复甲'))!;
     assert.ok(source, 'complete authorized knowledge survives the parameter error');
     assert.deepEqual(((finalToolForMessages(messages).parameters.properties as Row).kind as Row).enum,
