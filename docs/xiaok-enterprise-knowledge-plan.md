@@ -141,7 +141,7 @@ The compact stage-commit index retains scope/results while phase two holds detai
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| AG-08 v86 cited filename metadata (internal substage) | 221 units/4 services/73 Mini/lint;offline validation2/3 passes with real quantity failures retained;new live0,prior0/5 and unknown1 unchanged | Recorded after stage commit |
+| AG-08 v86 cited filename metadata (internal substage) | 221 units/4 services/73 Mini/lint;offline validation2/3 passes with real quantity failures retained;new live0,prior0/5 and unknown1 unchanged | `4e4f37f021895db0c07f91defbb7b6bb50fb63e1` |
 | AG-05/08/09 v85 bound repair task (internal substage) | 217 units/4 services/73 Mini/lint;5/8 live questions,delivery0/5,complete conditions0/3 drafts;3 questions/9 checks unexecuted;unknown1 retained | `d849d722f79796609bfcea090858b258d9a9b858` |
 | AG-05/08/09 v84 source final kinds/question fixtures (internal substage) | 214 units/3 services/73 Mini/lint;4 staff records;8 synthesis drafts,delivery/semantics0/8;1 setup check/8 unexecuted;cleanup/configuration preserved | `712bb59e697a062a3eaa13487ede1a8893fb48c3` |
 | AG-05/09 v83 knowledge compatibility (no new KB capability) | 211 units/3 targeted isolated services/73 Mini/lint pass; scoped types 0/whole 292; three offline traces fit 16000; new model acceptance unexecuted | `911414332078fbef564e08b3faebc7407331ed66` |
