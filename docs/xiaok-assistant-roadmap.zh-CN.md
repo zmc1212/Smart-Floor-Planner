@@ -120,7 +120,7 @@ AG-04/05对“明确前句更正、随后独立提问”补入有界接续：复
 
 ### 3.2 已确认的业务接入边界
 
-当前已实现同run成功只读查询复用及来源查询后最终kind约束，保留原文、目录、权限、四轮/一次修复及批准UI。v84配置实模8份首稿均按synthesis提交，但交付/原文语义0/8，整体专业客服仍Limited；当前首要缺口是有界修复对正文/引用及未知条件的处理。具体实现、稳定检查、未执行的后续隔离断言及历史失败统一见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)，知识与部署边界保持。
+2026-10-20 v85绑定修复任务投影为AG-05/08/09内部技术子阶段Implemented，整体Limited。217单元/4定向隔离服务/73 Mini/全仓lint通过，类型本批0/全仓292；八份旧checkpoint离线确认原问题末尾重复，新投影仅对hash绑定修复改为固定任务，原文/反馈/目录/工具配对和预算保持。新4B窗口计划8题、执行5题，交付0/5，三份可审读首稿完整条件覆盖0/3；三次修复仍复制并重复add原引用，另有invalid_message及HTTP_503后provider_outcome_unknown各一题。余3题及9项后续实模断言未执行。两企业AI关闭/资料retired，活动员工/run/job/客户可读资料均0，保留unknown job1不重放；原2567及四份员工发布数据、80项source/test、92项provider/环境和运行配置保持。公开API/schema/权限/批准UI与KnowledgeRetriever/Evidence不变。文件名03/2.0误判已纯函数复现，后续定点修复；旧评分独立。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与`tmp/xiaok-repair-tail-v85/manifest.json`。
 
 <!-- 保留已有文档的章节入口；当前有效规则与实施证据以本节及第2节链接为准。 -->
 <a id="31-p2c-当前范围与小区检索"></a>

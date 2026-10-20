@@ -13,6 +13,7 @@ import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { agentPromptVersion } from '@/lib/assistant/agent/context';
 import { agentReadProtocol } from '@/lib/assistant/agent/runtime';
 import { agentSourceFinalProtocol } from '@/lib/assistant/agent/worker';
+import { synthesisRepairProjectionVersion } from '@/lib/assistant/agent/synthesis';
 import type { SynthesisAnswer, SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { writeAcceptanceReport } from './assistant-acceptance-report.mjs';
 import { expectedManualRunCount, manualScenarioNames, manualBatchComplete } from './assistant-manual-cases.mjs';
@@ -252,6 +253,7 @@ async function main(){
           assert.equal(runtime.promptVersion, agentPromptVersion, 'Running HTTP Worker must use this source version');
           assert.equal(runtime.readProtocol, agentReadProtocol);
           assert.equal(runtime.finalProtocol, agentSourceFinalProtocol);
+          if (runtime.repairProtocol === 'synthesis-edit-v1') assert.equal(runtime.repairProjection, synthesisRepairProjectionVersion);
         }
         assert.equal(run.status,'succeeded',JSON.stringify({runId,error:run.error_code}));assert.ok(message?.available);
         entry.text=safeText(message.content);for(const citation of message.citations)entry.sources.push(await request('miniprogram/assistant/citations/'+citation.id,'GET',undefined,200,customerToken));

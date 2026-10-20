@@ -29,7 +29,7 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict, availabilityScopeHintPrefix } from './synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion } from './synthesis';
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
@@ -340,10 +340,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           const beforeProviderCall = () => scoped(async tx => {
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, promptVersion: agentPromptVersion, contextPolicy: focused === messages ? 'conversation' : 'current-turn-sources-v7', budget: bounded.diagnostic,
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, promptVersion: agentPromptVersion, contextPolicy: focused === messages ? 'conversation' : 'current-turn-sources-v8', budget: bounded.diagnostic,
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' && synthesisRepairBase(focused) ? synthesisRepairProtocol : null,
+                  repairProjection: purpose === 'answer' && focused !== messages && synthesisRepairBase(focused) ? synthesisRepairProjectionVersion : null,
                   transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
                   finalOnly: purpose === 'answer' && tools.length === 0,
                   responseScope: modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(availabilityScopeHintPrefix))) ? 'unavailable_occupancy_evidence' : null })}::jsonb)`);

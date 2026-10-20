@@ -19,7 +19,21 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前v84：来源查询后的最终kind与问答隔离夹具
+## 当前v85：模型投影末尾的绑定修复任务
+
+**AG-05/08/09内部技术子阶段Implemented，整体Limited。** `xiaok-renovation-v85` / `bound-repair-tail-v1`仅修改hash绑定的目录引用修复在模型视图中的末尾提醒。被拒绝的首稿、完整反馈、客户原问题、获权来源原文/目录及工具配对保持；固定应用任务明确要求纠正文稿，不再重复原问题。提醒不插入用户/工具值、不授新权限、不创建客户消息或run；普通回答、不可信控制副本及旧式修复保留原末尾。编辑解析器、全部校验、四次调用/一次修复及16000/48000预算不变。实际Worker步骤仅在应用时记录`current-turn-sources-v8`与修复投影版本。
+
+对八份未修改v84 checkpoint的离线投影确认：Qwen3.5适配将可信控制移到首部后，八次旧修复仍以原问题收尾；新投影保持绑定任务最后、完整反馈仍在。这是可复现的输入问题，不证明它导致所有业务失败。沿用[维护中的LangChain结构化输出指南](https://docs.langchain.com/oss/javascript/langchain/structured-output)中将具体验证反馈作为下一次模型任务的原则；本次定点修改保留现有权限、持久任务、未知费用及引用边界，不迁移框架或新增循环。
+
+技术收口：217/217单元、4/4定向隔离服务、73/73 Mini及全仓lint通过，类型本批0/全仓292，最终80项source/test hash一致。定向服务首轮3/4，一个旧有界编辑用例单独运行时缺少前序用例配置的施工阶段；现已通过原服务创建本用例的标记阶段夹具，首次失败独立保留，稳定源码重新通过全部受影响检查。
+
+窗口`2026-10-20T05:49:19.880Z–05:57:25.931Z`使用新企业2624(A)/2623(B)，各74原段/10向量批、两份员工编辑/发布观察，四个现场job取消且现场provider调用0。实际执行A1067/1071/1073、B1070/1072，计划8题中仅5题执行，交付/自动首稿0/5；三份可审读synthesis首稿完整条件覆盖0/3。三次修复均实际应用bound-repair-tail-v1/current-turn-sources-v8，却仍复制原文并重复add已有引用。两份防水首稿保留主要量数及检查/漏水处理，但漏事先联系楼下；厨房首稿将未量测屏蔽说成不完整、比较/数字建议未选本段引用，并写入无据记录199/版本3。文件名中的03/2.0误判已纯函数复现，不冒充工程量错误，下一批定点修复。完整原文、逐题审读与原修复见`review-view.json`/`semantic-review.json`。
+
+1072未产首稿：模型先在厨房问题查防水检索词，再用数字leadId调用query_materials，被原字符串ID合同拒绝为invalid_message，不转型ID；1073第三次模型调用HTTP_503，attempt为failed/accepted=false，运行仍以provider_outcome_unknown/indeterminate保留，未重放、不推定无费用。16次模型attempt中15次已知成功、1次503；请求预算峰值15271/16000，无输入超限。已知输入109581/输出2576，查询embedding483输入token，费用及一个unknown job未核清。父级9项实模租户/独立撤回断言全部未执行，不能拿清理当通过。两企业AI关闭、资料retired，活动员工/run/job/客户可读资料为0；四份员工数据及原2567内部原件保持。最终80项source/test、92项provider/环境与运行配置hash一致。证据`tmp/xiaok-repair-tail-v85/manifest.json`；阶段源码与四计划索引按原规则本地提交，不push/部署。
+
+公开API、schema、权限、`KnowledgeRetriever`/`Evidence`与批准的C01/C02/C05/U01/S04 UI保持。本批不新增原生/真机/真实微信/BLE/build/全仓类型或生产通过，v84/v82原始尝试和评分各自独立。
+
+## 历史v84：来源查询后的最终kind与问答隔离夹具
 
 **AG-05/08/09内部技术子阶段Implemented，整体Limited。** `xiaok-renovation-v84` / `source-final-kind-v1`将来源查询后的模型最终响应枚举与原服务端合同对齐：保留synthesis/business/knowledge/references；普通聊天、历史、记忆和图片仍保留general/vision/unavailable。当前引用目录ID、旧结果展示形式、完整原文、来源重验、四次调用/一次修复预算及全部服务端校验保持。沿既有[LangChain结构化输出参考](https://docs.langchain.com/oss/javascript/langchain/structured-output)对当前运行器作有界约束，不把schema当供应商遵循或语义保证。公开API、数据库schema、权限和批准UI保持。
 

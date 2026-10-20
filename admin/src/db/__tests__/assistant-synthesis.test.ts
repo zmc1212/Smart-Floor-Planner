@@ -18,6 +18,7 @@ import type { ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput, ModelMessage } from '@/lib/assistant/contracts/model';
 import { agentMessageAvailable } from '@/lib/assistant/agent/media-context';
 import { synthesisRepairBase } from '@/lib/assistant/agent/synthesis-repair';
+import { synthesisRepairProjectionVersion, synthesisRepairTask } from '@/lib/assistant/agent/synthesis';
 
 const prefix = 'synthetic-synthesis-' + randomUUID(), tenants: string[] = [], users: string[] = [];
 let eid: string, ownerId: string, knowledge: KnowledgeService;
@@ -271,6 +272,11 @@ test('AG08 bounded citation edits preserve knowledge while adding actual-stage s
   const document = await publish('合成有界修复阶段边界', '有界修复测试：铺砖前须核对检查记录，节点标记不能代替检查结果。');
   const x = await fixture(), service = new ConstructionService({ enterpriseId: eid, adminId: ownerId });
   const projectId = String((await service.execute('create', { leadId: x.leadId, name: '合成有界修复工地', managerId: ownerId, rooms: ['书房'] }, randomUUID())).id);
+  const settings = await service.execute('stages');
+  if (!(settings.stages as Array<Row>).some(stage => stage.key === 'waterproofing')) {
+    await service.execute('saveStages', { expectedVersion: settings.version, stages: [...settings.stages as Array<Row>,
+      { key: 'waterproofing', name: '防水阶段', visitReminder: false, visitReason: '', watchPoints: '' }] }, randomUUID());
+  }
   const detail = await service.execute('detail', { projectId });
   await service.execute('progress', { projectId, expectedVersion: (detail.project as Row).version, stageKey: 'waterproofing', note: '', sendReminder: false }, randomUUID());
   let calls = 0, firstId = '', stageId = '';
@@ -286,6 +292,7 @@ test('AG08 bounded citation edits preserve knowledge while adding actual-stage s
     }
     assert.equal(tools.length, 0);
     const base = synthesisRepairBase(messages)!; assert.ok(base);
+    assert.deepEqual(messages.at(-1), { role: 'user', content: [{ type: 'text', text: synthesisRepairTask }] });
     assert.match(JSON.stringify(finalToolForMessages(messages)), /synthesis_repair/);
     return call('final_response', { kind: 'synthesis_repair', baseHash: base.baseHash, edits: [{ segment: 0, addCitationIds: [stageId] }] });
   });
@@ -303,6 +310,8 @@ test('AG08 bounded citation edits preserve knowledge while adding actual-stage s
   assert.ok(persisted.segments[0].citations.some(citation => citation.sourceId.startsWith('Bstage:')));
   const provider = steps.filter(step => step.kind === 'agent_model'); assert.equal(provider.length, 3);
   const repair = provider.find(step => (step.input_summary as Row).repairProtocol === 'synthesis-edit-v1')!; assert.ok(repair);
+  assert.equal((repair.input_summary as Row).repairProjection, synthesisRepairProjectionVersion);
+  assert.equal((repair.input_summary as Row).contextPolicy, 'current-turn-sources-v8');
   assert.equal(JSON.parse((repair.private_checkpoint as Row).text as string).kind, 'synthesis_repair');
   assert.ok(steps.some(step => step.kind === 'agent_checkpoint' && (step.private_checkpoint as Row).validationRepairs === 1
     && JSON.parse(((step.private_checkpoint as Row).output as Row).text as string).kind === 'synthesis_repair'));

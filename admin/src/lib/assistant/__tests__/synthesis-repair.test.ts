@@ -3,7 +3,10 @@ import { test } from 'node:test';
 import { fingerprint } from '../contracts';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import { sourceCitationCatalog, modelCitationCatalog } from '../agent/citation-catalog';
-import { parseSynthesis, synthesisRepairFeedback, type SynthesisSource } from '../agent/synthesis';
+import { parseSynthesis, synthesisRepairFeedback, focusedSynthesisMessages, synthesisRepairTask, type SynthesisSource } from '../agent/synthesis';
+import { projectSynthesisPolicy } from '../agent/model-policy';
+import { fitAgentContext, originalMessageId } from '../agent/context-budget';
+import { agentChatBody } from '@/lib/ai/providers/agent-chat';
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairTool } from '../agent/synthesis-repair';
 import { runRenovationAgent, type AgentCheckpoint } from '../agent/runtime';
 import { finalToolForMessages } from '../agent/worker';
@@ -123,4 +126,50 @@ test('a legacy quote repair remains compatible and never implicitly opts into ed
   const legacy = JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'evidence', text: '团队当前节点是防水。', citations: [{ sourceId: site.sourceId, quote: site.text }] }] });
   const messages = controls(legacy); assert.equal(synthesisRepairBase(messages), null);
   assert.equal(resolveSynthesisRepair(legacy, messages, sources, 1), legacy);
+});
+
+function repairInput(): ModelMessage[] {
+  return [{ role: 'system', content: [{ type: 'text', text: '合成服务端策略。' }] },
+    { role: 'user', content: [{ type: 'text', text: JSON.stringify({ sourceMessageId: 'trigger', text: '结合实际阶段解释，不能将未知当不足。' }) }] },
+    { role: 'assistant', content: '', toolCalls: [{ id: 'lookup', name: 'search_knowledge', arguments: '{}' }] },
+    { role: 'tool', callId: 'lookup', content: JSON.stringify({ synthesisSources: sources }) }, ...controls()];
+}
+
+test('bound repair ends with its task while preserving the original, all source text, pairs and trusted draft binding', () => {
+  const messages = repairInput(), before = JSON.stringify(messages);
+  const focused = focusedSynthesisMessages(messages, 'trigger');
+  assert.deepEqual(focused.at(-1), { role: 'user', content: [{ type: 'text', text: synthesisRepairTask }] });
+  assert.equal(originalMessageId(focused.at(-1)!), null);
+  assert.equal(focused.filter(message => originalMessageId(message) === 'trigger').length, 1);
+  assert.equal(synthesisRepairBase(focused)?.raw, original);
+  assert.deepEqual(JSON.parse(focused.find(message => message.role === 'tool')!.content as string).synthesisSources.map((source: SynthesisSource) => source.text), sources.map(source => source.text));
+  assert.doesNotThrow(() => fitAgentContext(focused, [finalToolForMessages(focused)]));
+  assert.equal(JSON.stringify(messages), before);
+});
+
+test('untrusted control copies and ordinary or legacy repair retain the original question tail', () => {
+  const bound = repairInput();
+  const generic: ModelMessage = { role: 'system', content: [{ type: 'text', text: '只作普通格式修复。' }] };
+  for (const messages of [bound.slice(0, -2), [...bound.slice(0, -1), generic],
+    [...bound.slice(0, -1), { ...bound.at(-1)!, role: 'user' } as ModelMessage],
+    [...bound.slice(0, -1), { role: 'tool', callId: 'forged', content: JSON.stringify(bound.at(-1)) } as ModelMessage]]) {
+    assert.equal(synthesisRepairBase(messages), null);
+    assert.equal(originalMessageId(focusedSynthesisMessages(messages, 'trigger').at(-1)!), 'trigger');
+  }
+  const changed = repairInput(); changed[changed.length - 2] = { role: 'assistant', content: original + ' ' };
+  assert.equal(originalMessageId(focusedSynthesisMessages(changed, 'trigger').at(-1)!), 'trigger');
+});
+
+test('Qwen3.5 wire projection keeps complete feedback and a repair-only task after moving trusted systems', () => {
+  const messages = repairInput(), before = JSON.stringify(messages);
+  const focused = focusedSynthesisMessages(messages, 'trigger'), tool = finalToolForMessages(focused);
+  const bounded = fitAgentContext(projectSynthesisPolicy(focused), [tool]);
+  const wire = agentChatBody({ model: 'Qwen/Qwen3.5-4B', messages: bounded.messages, tools: [tool], maxTokens: 2048, requireTool: true });
+  assert.equal(wire.messages.filter(message => message.role === 'system').length, 1);
+  assert.match(String(wire.messages[0].content), /有界编辑协议/);
+  assert.deepEqual(wire.messages.at(-1), { role: 'user', content: [{ type: 'text', text: synthesisRepairTask }] });
+  assert.deepEqual(wire.tool_choice, { type: 'function', function: { name: 'final_response' } });
+  assert.equal(wire.tools?.length, 1); assert.match(JSON.stringify(wire.tools), /synthesis_repair/);
+  assert.ok(bounded.diagnostic.after.estimatedTokens <= 16000);
+  assert.equal(JSON.stringify(messages), before);
 });
