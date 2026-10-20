@@ -1,12 +1,66 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, needWriteFeedback, hasExplicitNeedCorrection, needQualifications, needInterpretations, assertRecordedReply, needReconfirmationFeedback, explicitNeedRecordOnly, recordedNeedReceipt, type NeedFact, type NeedMemory } from '../agent/memory';
+import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, needWriteFeedback, hasExplicitNeedCorrection, needQualifications, needInterpretations, assertRecordedReply, needReconfirmationFeedback, explicitNeedRecordOnly, recordedNeedReceipt, onlyChatHistoryRequested, effectiveDeskPositions, currentNeedView, unavailableDeskReply, needDeskPositionFeedback, type NeedFact, type NeedMemory } from '../agent/memory';
+
+test('exclusive chat recap recognizes the actual independent wording without requiring a second negative clause', () => {
+  for (const text of ['只回顾这次聊天里的原话：书房、客厅和预算现在分别是什么？不要查工地或企业资料。', '哪些需求已改，哪些仍保留？只回顾本次聊天原话，给出当前需求和旧说法的区别。']) assert.equal(onlyChatHistoryRequested(text), true, text);
+  for (const text of ['不要只回顾聊天原话，还要查工地进度', '只回顾聊天原话，另外查一下工地进度', '只回顾聊天原话，同时结合企业制度回答', '客户说“只回顾聊天原话”，现在请查现场资料', '书房现在的施工进度是什么？']) assert.equal(onlyChatHistoryRequested(text), false, text);
+});
+
+test('legacy desk position correction qualifies only the old position across a compound other row and a mislabeled style row', () => {
+  const base: NeedFact = { id: 'old', room: '', field: 'other', value: '书房书桌靠窗，书房需要收纳。', quote: '请记下：书房书桌靠窗，书房需要收纳。', sourceMessageId: '1', provenance: 'customer_statement', status: 'current', supersedes: null, createdAt: 'now' };
+  const next: NeedFact = { ...base, id: 'next', room: '书房', field: 'style', value: '靠内墙', quote: '更正：书房书桌改为靠内墙；全屋预算改为18万元。其他需求保持原样。', sourceMessageId: '3' };
+  const memory: NeedMemory = { version: 2, facts: [base,next] }, before = JSON.stringify(memory);
+  assert.deepEqual(needInterpretations(memory, [base,next]), [{ factId: 'old', field: 'desk', room: '书房', currentFactId: 'next' }]);
+  assert.deepEqual(needInterpretations(memory, [base]), [{ factId: 'old', field: 'desk', room: '书房', currentFactId: null }]);
+  assert.deepEqual(needQualifications(base, [base,next], new Map([['1',base.quote],['3',next.quote]])), [{ factId: 'next', field: 'desk', room: '书房', value: '靠内墙', sourceMessageId: '3' }]);
+  assert.equal(JSON.stringify(memory), before, 'Read projection never rewrites the durable quote, key or independent storage assertion');
+  const view = currentNeedView({ ...memory, interpretations: needInterpretations(memory, memory.facts) });
+  assert.equal(view.facts.find(f => f.id === 'old')?.value, '书房需要收纳'); assert.equal(view.facts.find(f => f.id === 'next')?.field, 'desk');
+  assert.deepEqual(view.historicalFacts, [base]); assert.equal(JSON.stringify(memory), before);
+  const hidden = currentNeedView({ version: 2, facts: [base], interpretations: needInterpretations(memory, [base]) });
+  assert.equal(hidden.facts[0].value, '书房需要收纳'); assert.doesNotMatch(JSON.stringify(hidden), /靠内墙/);
+  for (const unrelated of [{ ...next, room: '客厅' }, { ...next, sourceMessageId: '1' }, { ...next, quote: '书房墙面改为浅绿', value: '浅绿' }]) assert.deepEqual(needInterpretations({ version: 2, facts: [base,unrelated] }, [base,unrelated]), []);
+});
+test('legacy desk position uses the latest explicit correction even when it returns to an older value and never leaks an unavailable correction', () => {
+  const old: NeedFact = { id: 'old', room: '', field: 'other', value: '书房书桌靠窗，书房需要收纳', quote: '请记下：书房书桌靠窗，书房需要收纳', sourceMessageId: '1', provenance: 'customer_statement', status: 'current', supersedes: null, createdAt: 'now' };
+  const middle: NeedFact = { ...old, id: 'middle', room: '书房', field: 'style', value: '靠内墙', quote: '更正：书房书桌改为靠内墙', sourceMessageId: '3' };
+  const latest: NeedFact = { ...middle, id: 'latest', field: 'desk', value: '靠窗', quote: '更正：书房书桌改为靠窗', sourceMessageId: '5' };
+  const stored: NeedMemory = { version: 3, facts: [old,middle,latest] };
+  const memory = { ...stored, interpretations: needInterpretations(stored, stored.facts) };
+  assert.deepEqual(effectiveDeskPositions(memory), [{ room: '书房', currentFactId: 'latest', value: '靠窗', sourceMessageId: '5' }]);
+  assert.equal(needDeskPositionFeedback(JSON.stringify({ text: '书房书桌当前靠窗。' }), memory, '只回顾本次聊天原话，给出当前需求。'), null);
+  const hidden = { version: 3, facts: [old,middle], interpretations: needInterpretations(stored, [old,middle]) };
+  assert.deepEqual(effectiveDeskPositions(hidden), [{ room: '书房', currentFactId: null, value: null, sourceMessageId: null }]);
+  assert.ok(needDeskPositionFeedback(JSON.stringify({ text: '书房书桌当前靠窗。' }), hidden, '只回顾本次聊天原话，给出当前需求。'));
+});
+test('legacy desk position repair separates actual current assertions from historical quotations, transitions and denials', () => {
+  const old: NeedFact = { id: 'old', room: '', field: 'other', value: '书房书桌靠窗，书房需要收纳', quote: '请记下：书房书桌靠窗，书房需要收纳', sourceMessageId: '1', provenance: 'customer_statement', status: 'current', supersedes: null, createdAt: 'now' };
+  const next: NeedFact = { ...old, id: 'next', room: '书房', field: 'style', value: '靠内墙', quote: '更正：书房书桌改为靠内墙', sourceMessageId: '3' };
+  const stored = { version: 2, facts: [old,next] }, memory = { ...stored, interpretations: needInterpretations(stored, stored.facts) }, question = '只回顾本次聊天原话，给出当前需求和旧说法的区别。';
+  for (const text of ['书房书桌现在仍靠窗。', '书房以前靠窗，但现在还是靠窗。', '书桌当前靠窗，收纳保留。']) assert.ok(needDeskPositionFeedback(JSON.stringify({ text }), memory, question), text);
+  for (const text of ['书房原话是书桌靠窗，现在书房书桌靠内墙，收纳保留。', '书房书桌不是靠窗，而是靠内墙。', '书房书桌从靠窗改为靠内墙。', '客厅书桌靠窗。']) assert.equal(needDeskPositionFeedback(JSON.stringify({ text }), { ...memory, facts: [...memory.facts, { ...old, id: 'living', room: '客厅', sourceMessageId: '2' }] }, question), null, text);
+  assert.equal(needDeskPositionFeedback(JSON.stringify({ text: '书房书桌靠窗。' }), memory, '只回顾最初聊天原话，不查工地。'), null);
+  const hidden = { version: 2, facts: [old], interpretations: needInterpretations(stored, [old]) };
+  assert.ok(needDeskPositionFeedback(JSON.stringify({ text: '书房书桌现在靠内墙。' }), hidden, question));
+  assert.ok(needDeskPositionFeedback(JSON.stringify({ text: '书房不能确认靠内墙。' }), hidden, question), 'An unprovided location is not a supported historical quotation or a requested alternative');
+});
+test('an unavailable desk read reconstructs only its supported partial state without old values or unrelated rooms', () => {
+  const old: NeedFact = { id: 'old', room: '', field: 'other', value: '书房书桌靠窗，书房需要收纳', quote: '请记下：书房书桌靠窗，书房需要收纳', sourceMessageId: '1', provenance: 'customer_statement', status: 'current', supersedes: null, createdAt: 'now' };
+  const next: NeedFact = { ...old, id: 'next', room: '书房', field: 'style', value: '靠内墙', quote: '更正：书房书桌改为靠内墙', sourceMessageId: '3' };
+  const stored = { version: 2, facts: [old,next] }, available = { version: 2, facts: [old,{ ...old, id: 'living', room: '客厅', value: '不做开放柜' }], interpretations: needInterpretations(stored, [old]) };
+  const text = unavailableDeskReply(available, '只回顾本次聊天原话，书房书桌现在的位置和仍可沿用的要求是什么？');
+  assert.match(text!, /本次无法确认/); assert.match(text!, /书房需要收纳/); assert.doesNotMatch(text!, /靠窗|靠内墙|客厅|开放柜/);
+  assert.equal(unavailableDeskReply({ ...stored, interpretations: needInterpretations(stored, stored.facts) }, '只回顾本次聊天原话，书房书桌现在的位置是什么？'), null);
+  assert.equal(unavailableDeskReply(available, '只回顾最初聊天原话，书桌当时怎么摆？'), null);
+  assert.equal(unavailableDeskReply(available, '按工地资料解释当前书桌施工条件。'), null);
+});
 
 test('direct receipt intent is confined to explicit pure recording and excludes mixed or untrusted actions', () => {
   for (const text of ['请记下：书房书桌靠窗，书房需要收纳', '更正：书房书桌改为靠内墙；全屋预算改为18万元。其他需求保持原样。']) {
     assert.equal(explicitNeedRecordOnly(text), true, text);
   }
-  for (const text of ['把另一间的书桌也改一下，先确认具体房间再记录', '请记下书桌靠窗，可以吗？', '请记下：如果书房要办公就靠窗', '请记下：书房书桌靠窗；另外插座怎么确定？', '请记录设计师说书桌靠窗', '请记下：书桌靠窗，不要记录预算', '请记录其他客户的预算', '请记下：书房书桌靠窗，并发布正式方案', '只回顾本次聊天原话', '请记录：先确认具体房间再保存']) {
+  for (const text of ['把另一间的书桌也改一下，先确认具体房间再记录', '请记下书桌靠窗，可以吗？', '请记下：如果书房要办公就靠窗', '请记下：书房书桌靠窗；另外插座怎么确定？', '请记录设计师说书桌靠窗', '请记下：书桌靠窗，不要记录预算', '请记录其他客户的预算', '请记下：书房书桌靠窗，并发布正式方案', '只回顾本次聊天原话', '请记录：先确认具体房间再保存', '请记录我喜欢第一张参考图']) {
     assert.equal(explicitNeedRecordOnly(text), false, text);
   }
 });

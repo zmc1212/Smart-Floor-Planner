@@ -120,7 +120,7 @@ AG-04/05对“明确前句更正、随后独立提问”补入有界接续：复
 
 ### 3.2 已确认的业务接入边界
 
-2026-10-20 v94纯记录实际回执为内部限定Implemented，F-04与两个计划整体Limited。明确纯记录请求仅开放record_need，整组工具配对完成后由服务器读取本run、当前触发原话、仍有效的实际保存字段生成清单；标记finalFromTools的持久检查点在校验/恢复时重新授权重建，不重放写入或模型，不伪造用量。混合提问、来源综合、接管及KnowledgeRetriever/Evidence不改。266单元、18服务通过/7 opt-in跳过、4知识/施工兼容、98 Mini及涉及文件/全仓lint通过；本批类型0/全仓292，889项全窗稳定。当前免费文字GLM9 C01新run1145/1146各一次调用、原生重进通过：首条只保存靠窗，回执不再虚认收纳；次条两次写入完成后合并确认靠内墙/18万元。收纳漏提取、混合问答回执和旧错键/复合记录回读仍未解决。旧1084/1086错误原稿、1132/3196unknown/reconciling与结算null保留。LLM/VLM/1454探针、API/schema、知识管线和批准UI不改。证据见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-receipts-v94/core-freeze.json；完整PPT/真机/生产未通过。
+2026-10-20 v95按用户“这个阶段收尾下，停止开发”封存，两个计划及本批状态为Limited，停止后续开发。代码已加入仅回顾本次聊天的工具范围、旧复合/错键书桌更正的只读当前值投影、提前final_response延后到真实工具结果、来源失效时的受限服务器反馈；不回填原记忆，不新增Agent/知识管线。最终889项源码/测试/配置绑定下275单元、98 Mini、涉及文件/全仓lint通过；本批类型0/全仓292。最终服务、兼容和原生验收仍在等锁，已按用户指令取消且未启动，不能沿用旧版本通过记录。独立旧窗口GLM9 run1149/1150原生回顾成功，1151来源失效后的回答被围栏阻止，整批未通过；新增受限反馈仅完成单元验证，尚无最终服务/原生证明。v93完成记录和v94实际回执的既有证据保留，F-01/F-02/F-04/F-06/F-07及完整PPT/真机/生产仍未关闭。免费文字GLM9、LLM/VLM/1454配置、租户/撤权边界、KnowledgeRetriever/Evidence与批准UI保持；1132/3196仍unknown/reconciling、结算null。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-current-needs-v95/interruption-closeout.json。
 
 <!-- 保留已有文档的章节入口；当前有效规则与实施证据以本节及第2节链接为准。 -->
 <a id="31-p2c-当前范围与小区检索"></a>

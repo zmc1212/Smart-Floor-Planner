@@ -8,13 +8,13 @@ import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction
 import { one, rows } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
-import { ConversationService } from '@/lib/assistant/core/conversation';
+import { ConversationService, appendMessage } from '@/lib/assistant/core/conversation';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer } from '@/lib/assistant/agent/worker';
 import { HandoffService } from '@/lib/assistant/handoff/service';
 import type { ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
-import { readMemory } from '@/lib/assistant/agent/memory';
+import { readMemory, type NeedFact, type NeedMemory } from '@/lib/assistant/agent/memory';
 import sharp from 'sharp';
 import { AssistantMediaService } from '@/lib/assistant/media/service';
 import { getPlatformLlmRuntimeConfig, savePlatformLlmConfig } from '@/lib/platform-llm-config';
@@ -66,6 +66,70 @@ async function diagnostic(runId: string) {
   return withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,status,private_checkpoint->'text' as output,private_checkpoint->'toolCalls' as calls
     from app.assistant_run_steps where run_id=${runId} and kind='agent_model' order by step_seq`));
 }
+async function legacyDeskFixture(unavailableCorrection = false) {
+  const chat = new ConversationService(actor), c = String((await chat.create(randomUUID())).id);
+  const originals = ['请记下：书房书桌靠窗，书房需要收纳。', '客厅不做开放柜，全屋预算28万元。', '更正：书房书桌改为靠内墙；全屋预算改为18万元。其他需求保持原样。'];
+  const memory = await withTenantTransaction(actor.enterpriseId, async tx => {
+    const ids: string[] = [];
+    for (const text of originals) ids.push(String((await appendMessage(tx, actor, c, { author: 'user', purpose: 'synthetic.legacy-original', content: { version: 1, blocks: [{ type: 'text', text }] } })).id));
+    const fact = (id: string, room: string, field: NeedFact['field'], value: string, index: number): NeedFact => ({ id, room, field, value, quote: originals[index], sourceMessageId: ids[index], provenance: 'customer_statement', status: 'current', supersedes: null, createdAt: new Date().toISOString() });
+    const stored: NeedMemory = { version: 5, facts: [fact('synthetic-v95-old','', 'other', '书房书桌靠窗，书房需要收纳。',0), fact('synthetic-v95-living','客厅','storage','不做开放柜',1), { ...fact('synthetic-v95-old-budget','','budget','28万元',1), status: 'superseded' }, fact('synthetic-v95-position','书房','style','靠内墙',2), { ...fact('synthetic-v95-budget','','budget','18万元',2), supersedes: 'synthetic-v95-old-budget' }] };
+    await tx.execute(sql`update app.assistant_conversations set entry_snapshot=jsonb_set(entry_snapshot,'{agentMemory}',${JSON.stringify(stored)}::jsonb) where enterprise_id=${actor.enterpriseId} and id=${c}`);
+    if (unavailableCorrection) await tx.execute(sql`update app.assistant_messages set content=${JSON.stringify({ version: 1, blocks: [{ type: 'text', text: '合成fixture：该更正原话当前不可用。' }] })}::jsonb where enterprise_id=${actor.enterpriseId} and id=${ids[2]}`);
+    return stored;
+  });
+  return { c, chat, memory };
+}
+test('legacy desk position current recap repairs stale assertions without rewriting originals or querying business domains', async () => {
+  const fixture = await legacyDeskFixture(), a = await start('只回顾这次聊天里的原话：书房、客厅和预算现在分别是什么？不要查工地或企业资料。', fixture.c); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (messages, tools, turn) => {
+    calls++; assert.match(JSON.stringify(messages), /effectiveDeskPositions/);
+    if (turn === 0) { assert.deepEqual(tools.map(t => t.name), ['recall_history']); return { ...response(), text: '', toolCalls: [{ id: 'history', name: 'recall_history', arguments: JSON.stringify({ query: '书房 客厅 预算' }) }] }; }
+    if (turn === 1) {
+      const result = messages.filter(m => m.role === 'tool').at(-1)!; assert.ok(result.role === 'tool');
+      const view = JSON.parse(result.content).currentNeedView;
+      assert.equal(view.facts.find((f: { id: string }) => f.id === 'synthetic-v95-old').value, '书房需要收纳');
+      assert.equal(view.facts.find((f: { id: string }) => f.id === 'synthetic-v95-position').field, 'desk');
+      assert.match(JSON.stringify(view.historicalFacts), /书房书桌靠窗，书房需要收纳/);
+      return response('书房书桌现在仍靠窗，书房需要收纳。');
+    }
+    assert.equal(turn, 2); assert.equal(tools.length, 0);
+    return response('书房书桌当前靠内墙，收纳保留；客厅不做开放柜，预算为18万元。书房旧原话是书桌靠窗。');
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 3);
+  const reply = JSON.stringify((await new ConversationService(actor).messages(a.c)).items.filter(m => m.authorKind === 'assistant').at(-1)!.content); assert.match(reply, /靠内墙/); assert.match(reply, /收纳保留/);
+  const stored = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`)); assert.deepEqual(readMemory(stored?.entry_snapshot), fixture.memory);
+  const forbidden = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select id from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and (kind='agent_need_write' or capability_name in ('query_materials','query_business','query_followups','knowledge.search.v1'))`)); assert.equal(forbidden.length, 0);
+  await assert.rejects(new ConversationService(stranger).messages(a.c), /assistant_resource_not_found/);
+});
+test('legacy desk position unavailable correction reconstructs its supported partial read while retaining the rejected model draft', async () => {
+  const fixture = await legacyDeskFixture(true), a = await start('只回顾本次聊天原话，书房书桌现在的位置和仍可沿用的要求是什么？', fixture.c); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (messages, _tools, turn) => {
+    calls++; assert.doesNotMatch(JSON.stringify(messages), /靠内墙|18万元/);
+    assert.equal(turn, 0); return response('书房书桌当前靠窗。');
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 1);
+  const reply = JSON.stringify((await new ConversationService(actor).messages(a.c)).items.filter(m => m.authorKind === 'assistant').at(-1)!.content); assert.doesNotMatch(reply, /靠窗|靠内墙|18万元/); assert.match(reply, /无法确认/); assert.match(reply, /收纳/);
+  const audit = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind in ('agent_model','agent_need_unavailable_reply')`));
+  assert.match(JSON.stringify(audit.find(s => s.kind === 'agent_model')!.private_checkpoint), /书房书桌当前靠窗/);
+  assert.equal(audit.filter(s => s.kind === 'agent_need_unavailable_reply').length, 1);
+  const stored = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`)); assert.deepEqual(readMemory(stored?.entry_snapshot), fixture.memory);
+});
+test('legacy desk position mixed read and final envelope retains the provider packet and waits for authorized originals', async () => {
+  const fixture = await legacyDeskFixture(), a = await start('只回顾本次聊天原话，书房书桌现在在哪里？', fixture.c); let calls = 0;
+  const premature = 'premature-v95-unread-final';
+  await processAgentAnswer(a.lease, { model: async (messages, _tools, turn) => {
+    calls++;
+    if (!turn) return { ...response(), text: '', toolCalls: [{ id: 'read', name: 'recall_history', arguments: JSON.stringify({ query: '书房 书桌' }) }, { id: 'final', name: 'final_response', arguments: JSON.stringify({ kind: 'general', text: premature }) }] };
+    assert.equal(turn, 1); assert.match(JSON.stringify(messages), /提前回答未交付/); assert.doesNotMatch(JSON.stringify(messages), /premature-v95-unread-final/);
+    return response('书房书桌当前靠内墙，收纳要求仍保留；旧原话中书桌靠窗。');
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 2);
+  const model = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and step_seq=1100`));
+  const stored = model?.private_checkpoint as { toolCalls: unknown[]; providerOutput: { toolCalls: unknown[] } };
+  assert.equal(stored.toolCalls.length, 1); assert.equal(stored.providerOutput.toolCalls.length, 2); assert.match(JSON.stringify(stored.providerOutput), /premature-v95-unread-final/);
+  assert.doesNotMatch(JSON.stringify((await new ConversationService(actor).messages(a.c)).items.filter(m => m.authorKind === 'assistant')), /premature-v95-unread-final/);
+});
 test('natural conversation persists/reenters without knowledge and includes both sides of history', async () => {
   const a = await start(); await processAgentAnswer(a.lease, { model: async () => response() });
   assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');

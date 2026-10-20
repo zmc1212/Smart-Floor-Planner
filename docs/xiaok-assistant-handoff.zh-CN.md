@@ -1,12 +1,22 @@
 # 小K接力：统一实施、查询恢复与来源质量
 
-2026-10-20 v94纯记录实际回执为内部限定Implemented，F-04与两个计划整体Limited。明确纯记录请求仅开放record_need，整组工具配对完成后由服务器读取本run、当前触发原话、仍有效的实际保存字段生成清单；标记finalFromTools的持久检查点在校验/恢复时重新授权重建，不重放写入或模型，不伪造用量。混合提问、来源综合、接管及KnowledgeRetriever/Evidence不改。266单元、18服务通过/7 opt-in跳过、4知识/施工兼容、98 Mini及涉及文件/全仓lint通过；本批类型0/全仓292，889项全窗稳定。当前免费文字GLM9 C01新run1145/1146各一次调用、原生重进通过：首条只保存靠窗，回执不再虚认收纳；次条两次写入完成后合并确认靠内墙/18万元。收纳漏提取、混合问答回执和旧错键/复合记录回读仍未解决。旧1084/1086错误原稿、1132/3196unknown/reconciling与结算null保留。LLM/VLM/1454探针、API/schema、知识管线和批准UI不改。证据见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-receipts-v94/core-freeze.json；完整PPT/真机/生产未通过。
+2026-10-20 v95按用户“这个阶段收尾下，停止开发”封存，两个计划及本批状态为Limited，停止后续开发。代码已加入仅回顾本次聊天的工具范围、旧复合/错键书桌更正的只读当前值投影、提前final_response延后到真实工具结果、来源失效时的受限服务器反馈；不回填原记忆，不新增Agent/知识管线。最终889项源码/测试/配置绑定下275单元、98 Mini、涉及文件/全仓lint通过；本批类型0/全仓292。最终服务、兼容和原生验收仍在等锁，已按用户指令取消且未启动，不能沿用旧版本通过记录。独立旧窗口GLM9 run1149/1150原生回顾成功，1151来源失效后的回答被围栏阻止，整批未通过；新增受限反馈仅完成单元验证，尚无最终服务/原生证明。v93完成记录和v94实际回执的既有证据保留，F-01/F-02/F-04/F-06/F-07及完整PPT/真机/生产仍未关闭。免费文字GLM9、LLM/VLM/1454配置、租户/撤权边界、KnowledgeRetriever/Evidence与批准UI保持；1132/3196仍unknown/reconciling、结算null。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、[交接](./xiaok-assistant-handoff.zh-CN.md)及tmp/xiaok-current-needs-v95/interruption-closeout.json。
 
 ## 新对话接续入口与停止点
 
 统一实施的两项计划仍是[Agent专项](./xiaok-agent-engineering-plan.zh-CN.md)和[企业知识专项](./xiaok-enterprise-knowledge-plan.zh-CN.md)，按依赖选择完整业务批次，不要求两边平均改动。先读仓库/最近AGENTS、本交接、两计划、总路线图、二期合同和受影响模块中英清单，再检查dirty diff与实际证据；不要覆盖、回退或提交混杂改动。当前已由本对话单独接续，不同时启动另一写入者，完成限定闭环后按授权继续；新设计方向和生产发布仍须原授权。
 
-### 当前v94：纯记录实际回执与恢复
+### 当前v95：阶段收尾，停止开发
+
+按用户最新指令停止开发和下一阶段推进；v95为Limited，源码提交待本批登记。最终275单元、98 Mini、涉及文件/全仓lint通过；本批类型0/全仓292，889项源码/测试/配置稳定。最终服务/兼容/原生均在等共享锁，尚未启动用例即取消；本批等待进程及对应数据库等待连接已清理，不触碰其他聊天的锁、Worker和进程。
+
+已保留仅聊天回顾、旧复合/错键书桌更正的只读投影、提前final_response延后及失效来源的受限反馈代码；不回填原事实，不新增知识管线，不改批准UI。上一独立274单元源码窗口run1149/1150成功、1151来源失效回答被阻止，整批未通过；最终受限反馈只有单元覆盖，不能记为最终服务/真实模型/原生通过。不同版本证据和失败原稿继续分目录保留。v93完成记录和v94实际保存回执已执行的检查见历史段落。
+
+模型继续保留免费文字GLM9（siliconflow/THUDM/GLM-4-9B-0414），LLM/VLM/1454配置未修改。已执行窗口合成企业AI关闭、context撤销、active0/unknown0；最终排队原生没有新夹具。只读复核原失败及unknown1132/3196/reconciling/null结算未变，不重放、不结零。收尾证据为`tmp/xiaok-current-needs-v95/interruption-closeout.json`及其manifest，技术合同见[二期](./xiaok-assistant-phase-2.zh-CN.md)。
+
+未完成保留：F-01最终更正/失效恢复验收，F-02测量缺项，F-04收纳提取及混合回执，F-06其他来源域，F-07输入预算；全量PPT、图片理解、真机/BLE/微信授权、全仓类型和生产未通过。未经新的用户要求，不继续开发或重启本批验收。当前仓库另有其他聊天未提交改动，已保留；本批提交不代表干净集成基线，未推送或部署。
+
+### 历史v94：纯记录实际回执与恢复
 
 v94为内部限定修复，源码提交`f56789df195334396574cba3a6d04019697d181a`，F-04及整体仍Limited。明确纯记录只开放record_need，完整工具批次配对后以本run/触发原话/仍有效current事实生成服务器实际清单。`resolveToolReply`/`durable-tool-reply-v1`、`finalFromTools`检查点和`agent_need_receipt`复用现有Graph/PG/记忆；校验/恢复重新授权，不重放模型或写入，不增加Agent/facts库/引用管线，服务器结果不伪装模型用量。混合问题、知识综合和接管路径保持。
 

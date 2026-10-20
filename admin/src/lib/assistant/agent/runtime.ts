@@ -90,12 +90,16 @@ export async function runRenovationAgent(input: {
       const availableNames = new Set(availableTools.map(tool => tool.name));
       if (output.toolCalls.length > agentModelLimits.maxToolCalls || output.toolCalls.some(c => !availableNames.has(c.name))) fail('assistant_capability_forbidden', 403);
       if(state.validationRepairs&&output.toolCalls.length)fail('assistant_capability_forbidden',403);
+      if (output.toolProtocolFeedback && (output.toolProtocolFeedback.code !== 'mixed_final_response'
+        || typeof output.toolProtocolFeedback.text !== 'string' || !output.toolProtocolFeedback.text.trim()
+        || output.toolProtocolFeedback.text.length > 1000 || state.turn + 1 >= agentModelLimits.maxModelTurns)) fail('invalid_model_answer', 502);
       await ports.checkpoint({ version: 1, turn: state.turn, messages: state.messages, output,validationRepairs:state.validationRepairs, argumentFailures: state.argumentFailures, exhaustedTools: state.exhaustedTools, readReceipts: state.readReceipts });
       return { output, finalFromTools: false };
     })
     .addNode('tools', async state => {
       const output = state.output!;
-      const messages: ModelMessage[] = [...state.messages, { role: 'assistant', content: output.text, toolCalls: output.toolCalls }];
+      const messages: ModelMessage[] = output.toolCalls.length
+        ? [...state.messages, { role: 'assistant', content: output.text, toolCalls: output.toolCalls }] : [...state.messages];
       const exhaustedTools = new Set(state.exhaustedTools);
       let readReceipts = [...state.readReceipts];
       let argumentFailures = state.argumentFailures;
@@ -135,6 +139,8 @@ export async function runRenovationAgent(input: {
           next.output = { text, toolCalls: [], finishReason: null, providerRequestId: null, usage: null };
           next.finalFromTools = true;
         }
+        if (!next.output && output.toolProtocolFeedback) next.messages = [...next.messages,
+          { role: 'system', content: [{ type: 'text', text: output.toolProtocolFeedback.text }] }];
         await ports.checkpoint(next);
       }
       return { ...next, stop };
@@ -163,8 +169,8 @@ export async function runRenovationAgent(input: {
     })
     .addNode('resume', async () => { await ports.authorize(); return {}; })
     .addEdge(START, 'resume')
-    .addConditionalEdges('resume', state => state.output ? (state.output.toolCalls.length ? 'tools' : 'validate') : 'model')
-    .addConditionalEdges('model', state => state.output?.toolCalls.length ? 'tools' : 'validate')
+    .addConditionalEdges('resume', state => state.output ? (state.output.toolCalls.length || state.output.toolProtocolFeedback ? 'tools' : 'validate') : 'model')
+    .addConditionalEdges('model', state => state.output?.toolCalls.length || state.output?.toolProtocolFeedback ? 'tools' : 'validate')
     .addConditionalEdges('validate',state=>state.output?END:'model')
     .addConditionalEdges('tools', state => state.stop ? END : state.output ? 'validate' : 'model')
     .compile();

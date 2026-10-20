@@ -28,7 +28,7 @@ export type MaterialSource = {
   review?: { issueId: string; issueRevision: number; needGrantId: string; drawingGrantId: string; materialVersion: string; authority: 'team_returned_association' };
   formal?: { issueId: string; issueRevision: number; number: number; revision: number; decision: string; previousVersionId: string | null;
     needGrantId: string; materialVersion: string; mediaHash: string; authority: 'enterprise_published_version'; imagePixels: false };
-  need?: { field: NeedFact['field']; value: string; supersedes: string | null; authority: 'customer_statement'; formalApproval: false; qualifiedBy?: NeedQualification[]; interpretation?: NeedInterpretation };
+  need?: { field: NeedFact['field']; value: string; supersedes: string | null; authority: 'customer_statement'; formalApproval: false; qualifiedBy?: NeedQualification[]; interpretation?: NeedInterpretation; positionInterpretations?: NeedInterpretation[] };
 };
 export type MaterialSnapshot = {
   query: MaterialQuery & { domain: 'materials'; conversationId: string }; customerId: string; leadIds: string[];
@@ -112,18 +112,23 @@ export async function queryMaterials(tx: PostgresTransaction, actor: ActorContex
     const origin = origins.get(fact.sourceMessageId);
     if (!origin || !safeText(origin.content as Parameters<typeof safeText>[0]).includes(fact.quote)) continue;
     const qualifiedBy = needQualifications(fact, currentNeeds, originalTexts);
-    const interpretation = memory.interpretations?.find(i => i.factId === fact.id);
+    const interpretation = memory.interpretations?.find(i => i.factId === fact.id && i.field === 'use');
+    const positionInterpretations = memory.interpretations?.filter(i => i.factId === fact.id && i.field === 'desk') || [];
     sources.push({ ref: { type: 'customer_need', id: fact.id, version: fingerprint(fact) }, hash: fingerprint(origin.content), leadId,
       projectId: null, roomId: null, roomName: fact.room, sourceMessageId: fact.sourceMessageId, mediaIds: [], audience: 'customer_self',
       basis: 'owned_conversation', status: 'current', text: fact.quote,
       need: { field: fact.field, value: fact.value, supersedes: fact.supersedes, authority: 'customer_statement', formalApproval: false,
-        ...(qualifiedBy.length ? { qualifiedBy } : {}), ...(interpretation ? { interpretation } : {}) } });
+        ...(qualifiedBy.length ? { qualifiedBy } : {}), ...(interpretation ? { interpretation } : {}), ...(positionInterpretations.length ? { positionInterpretations } : {}) } });
     lines.push(`客户原话${fact.room ? '（' + fact.room + '）' : ''}：“${fact.quote}”。`);
     if (interpretation) lines.push(interpretation.currentFactId
       ? '这条混合原话的人数只作历史背景，以当前有效用途更正为准；位置、桌型和设备仍分别保留。'
       : '这条混合原话的人数已有后续更正，但更正来源当前不可用；不能恢复旧人数，位置、桌型和设备仍按有效原话分别核对。');
+    for (const position of positionInterpretations) lines.push(position.currentFactId
+      ? '早先所说的书桌位置已有后续更正，以当前有效更正为准；该更正只涉及位置，其他内容按各自有效原话核对。'
+      : '早先所说的书桌位置已有更正，但更正来源这次不可用，不能恢复旧位置；其他内容按各自有效原话核对。');
   }
-  if (memory.interpretations?.some(i => i.currentFactId === null && currentNeeds.some(f => f.id === i.factId))) missing.push('当前有效的办公人数更正来源');
+  if (memory.interpretations?.some(i => i.field === 'use' && i.currentFactId === null && currentNeeds.some(f => f.id === i.factId))) missing.push('当前有效的办公人数更正来源');
+  if (memory.interpretations?.some(i => i.field === 'desk' && i.currentFactId === null && currentNeeds.some(f => f.id === i.factId))) missing.push('当前有效的书桌位置更正来源');
   if (!sources.length) missing.push('这次咨询中对应的有效原话需求');
   if (project) {
     // The project grant alone never exposes another private consultation, even

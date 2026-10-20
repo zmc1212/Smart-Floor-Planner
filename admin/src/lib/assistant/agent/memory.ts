@@ -31,13 +31,19 @@ export function hasExplicitNeedCorrection(text: string) {
   return needCorrectionContext(text) !== null;
 }
 export function onlyChatHistoryRequested(text: string) {
-  return /只(?:回顾|回读|谈|聊).{0,10}(?:聊天|原话)/.test(text) && /不查.{0,12}(?:图纸|进度|工地|业务资料)/.test(text);
+  const intent = text.replace(/[“「"][^”」"\n]*[”」"]/g, '');
+  if (/(?:不要|不用|不必|不能|别)只(?:回顾|回读|谈|聊)/.test(intent)
+    || !/(?:只|仅)(?:回顾|回读|谈|聊).{0,14}(?:聊天|原话)/.test(intent)) return false;
+  // An exclusive recall already supplies its scope; a second negative clause
+  // is not required. Separately requested live evidence keeps its normal path.
+  return !intent.split(/[，,。；;\n]/).some(clause => /^(?:另外|此外|还要|也要|同时|然后|再|也|并)(?:请|帮我)?(?:查|查询|看看|核对|结合|依据|回答).{0,24}(?:工地|现场|施工|企业|制度|规程|图纸|资料)/.test(clause.trim()));
 }
 /** Narrow direct-receipt intent only. Mixed questions/actions keep the model
  * path; this never extracts a need or authorizes a write by itself. */
 export function explicitNeedRecordOnly(text: string) {
   return /^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|记一下|更正|纠正)/.test(text.trim())
     && !noNeedWrite.test(text) && !proposedNeed.test(text) && !reportedNeed.test(text)
+    && !/参考|案例|效果图|风格图|第[一二三123](?:个|款|张|套|例)|这(?:个|张|款|套)|那(?:个|张|款|套)/.test(text)
     && !/[？?]|怎么|怎样|如何|什么|哪些|是否|要不要|能不能|先确认|先聊|讨论|问题|回顾|查询|帮我查|转人工|设计师|发布|批准|转交|忽略|系统提示|其他客户|别人的|保证|假装|冒充/.test(text)
     && !/(?:吗|呢)[。！!\s]*$/.test(text);
 }
@@ -54,7 +60,8 @@ export function recordedNeedReceipt(memory: NeedMemory, runId: string, sourceMes
  * sources still need their own real business evidence. Uses the one existing
  * final-response repair, never another write or model-judge loop. */
 export function needReconfirmationFeedback(raw: string, memory: NeedMemory, question: string) {
-  if (!onlyChatHistoryRequested(question) || !memory.facts.some(f => f.status === 'current' && f.field === 'desk' && f.supersedes)) return null;
+  if (!onlyChatHistoryRequested(question) || (!memory.facts.some(f => f.status === 'current' && f.field === 'desk' && f.supersedes)
+    && !effectiveDeskPositions(memory).some(p => p.currentFactId))) return null;
   let reply: { text?: string; segments?: Array<{ text?: string }> };
   try { reply = JSON.parse(raw); } catch { return null; }
   if (!reply || typeof reply !== 'object') return null;
@@ -76,7 +83,7 @@ export function needWriteFeedback(error: unknown, sourceText: string) {
 export const factFields = ['housing', 'household', 'style', 'budget', 'timeline', 'daylight', 'desk', 'storage', 'use', 'devices', 'other'] as const;
 export type NeedFact = { id: string; room: string; field: typeof factFields[number]; value: string; quote: string; sourceMessageId: string;
   provenance: 'customer_statement'; status: 'current' | 'superseded'; supersedes: string | null; createdAt: string };
-export type NeedInterpretation = { factId: string; field: 'use'; currentFactId: string | null };
+export type NeedInterpretation = { factId: string; field: 'use' | 'desk'; currentFactId: string | null; room?: string };
 export type NeedMemory = { version: number; facts: NeedFact[]; /** Read projection only; never persisted by applyNeedDelta. */ interpretations?: NeedInterpretation[] };
 export const needMemoryPolicy = { version: 'need-memory-archive-v1', maxCurrentFacts: 300, compactAfterFacts: 300 } as const;
 /** Archive only replaced assertions, never evict an independent current need.
@@ -105,28 +112,159 @@ export function assertRecordedReply(text: string, memory: NeedMemory, runId: str
 }
 export type NeedDelta = { room: string; field: NeedFact['field']; value: string; quote: string; sourceMessageId: string; expectedVersion: number };
 export type NeedWrite = Pick<NeedDelta, 'room' | 'field' | 'value' | 'quote'>;
-export type NeedQualification = { factId: string; field: 'use'; value: string; sourceMessageId: string };
+export type NeedQualification = { factId: string; field: 'use' | 'desk'; value: string; sourceMessageId: string; room?: string };
+
+/** Bounded observed desk-position vocabulary. Match an explicit room+furniture
+ * clause and the actually saved value, never a room-name substring or a style
+ * preference. The full original remains available and unchanged. */
+function deskPositionForRoom(fact: NeedFact, room: string) {
+  if (!room || (fact.room && fact.room !== room) || !['desk','style','other'].includes(fact.field)) return null;
+  for (const clause of fact.quote.split(/[，,。；;\n]/)) {
+    const index = clause.indexOf(room); if (index < 0) continue;
+    const prefix = clause.slice(0,index).trim();
+    if (prefix && !/^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|更正|纠正)(?:一下)?[：:\s]*$/.test(prefix)) continue;
+    const match = /^的?(?:书桌|桌子|桌位)(?:位置)?(改为|改成|调整为|换成|需要|要)?(靠内墙|靠窗)/.exec(clause.slice(index + room.length));
+    if (match && fact.value.includes(match[2])) return { value: match[2], correction: /改为|改成|调整为|换成/.test(match[1] || '') };
+  }
+  return null;
+}
+function legacyDeskCorrections(fact: NeedFact, stored: NeedFact[]) {
+  const byRoom = new Map<string, NeedFact>();
+  for (const next of stored.filter(f => f.status === 'current' && f.room && BigInt(f.sourceMessageId) > BigInt(fact.sourceMessageId))) {
+    const old = deskPositionForRoom(fact, next.room), current = deskPositionForRoom(next, next.room);
+    if (!old || !current?.correction) continue;
+    const previous = byRoom.get(next.room);
+    if (!previous || BigInt(next.sourceMessageId) > BigInt(previous.sourceMessageId)) byRoom.set(next.room, next);
+  }
+  return [...byRoom.values()];
+}
 /** An unavailable correction is not permission to revive occupancy from an
  * older mixed row. This tombstone exposes no unavailable value/message/ID. */
 export function needInterpretations(stored: NeedMemory, available: NeedFact[]): NeedInterpretation[] {
   const visible = new Set(available.map(f => f.id));
   return available.flatMap(fact => {
-    if (!['desk','other'].includes(fact.field) || !/(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(fact.value)) return [];
+    const result: NeedInterpretation[] = legacyDeskCorrections(fact, stored.facts)
+      .map(next => ({ factId: fact.id, field: 'desk', room: next.room, currentFactId: visible.has(next.id) ? next.id : null }));
+    if (!['desk','other'].includes(fact.field) || !/(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(fact.value)) return result;
     const current = stored.facts.find(next => next.status === 'current' && next.field === 'use' && next.room === fact.room
       && BigInt(next.sourceMessageId) > BigInt(fact.sourceMessageId) && /(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(next.value));
-    return current ? [{ factId: fact.id, field: 'use' as const, currentFactId: visible.has(current.id) ? current.id : null }] : [];
+    if (current) result.push({ factId: fact.id, field: 'use', currentFactId: visible.has(current.id) ? current.id : null });
+    return result;
   });
+}
+/** Canonical aspect metadata, never a persisted replacement fact. An
+ * unavailable correction exposes neither its value nor its source ID. */
+export function effectiveDeskPositions(memory: NeedMemory) {
+  const byRoom = new Map<string, { room: string; currentFactId: string | null; value: string | null; sourceMessageId: string | null }>();
+  for (const interpretation of memory.interpretations || []) {
+    if (interpretation.field !== 'desk' || !interpretation.room) continue;
+    const fact = memory.facts.find(f => f.id === interpretation.currentFactId && f.status === 'current');
+    const position = fact && deskPositionForRoom(fact, interpretation.room);
+    byRoom.set(interpretation.room, { room: interpretation.room, currentFactId: fact?.id || null, value: position?.value || null, sourceMessageId: fact?.sourceMessageId || null });
+  }
+  return [...byRoom.values()];
+}
+/** A derived model read view, never input to a memory write. Remove only a
+ * bounded location-only fragment from the current aspect; preserve the entire
+ * stored row/quote in historicalFacts and all independent current fragments. */
+export function currentNeedView(memory: NeedMemory) {
+  const positions = effectiveDeskPositions(memory), historicalFacts: NeedFact[] = [];
+  const facts = memory.facts.filter(f => f.status === 'current').flatMap(fact => {
+    const qualified = memory.interpretations?.filter(i => i.factId === fact.id && i.field === 'desk' && i.room) || [];
+    let value = fact.value;
+    if (qualified.length) {
+      historicalFacts.push(fact);
+      value = fact.value.split(/[，,。；;\n]/).filter(part => {
+        const text = part.trim(); if (!text) return false;
+        return !qualified.some(i => {
+          const room = i.room!;
+          let fragment = text.replace(/^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|更正|纠正)(?:一下)?[：:\s]*/, '');
+          if (fragment.startsWith(room)) fragment = fragment.slice(room.length).replace(/^的/, '');
+          return /^(?:(?:书桌|桌子|桌位)(?:位置)?(?:需要|要|改为|改成|调整为|换成)?)?(?:靠窗|靠内墙)$/.test(fragment);
+        });
+      }).join('，');
+    }
+    if (!value.trim()) return [];
+    const currentPosition = positions.find(p => p.currentFactId === fact.id && p.value);
+    return [{ id: fact.id, room: fact.room, field: currentPosition ? 'desk' as const : fact.field, value,
+      sourceMessageId: fact.sourceMessageId, supersedes: fact.supersedes, provenance: fact.provenance }];
+  });
+  return { memoryVersion: memory.version, facts, historicalFacts, effectiveDeskPositions: positions };
+}
+/** A source-unavailable state is authoritative data, not a model guess. Keep
+ * the original draft in its provider checkpoint and reconstruct only this
+ * bounded partial read; never invent a replacement position or save. */
+export function unavailableDeskReply(memory: NeedMemory, question: string) {
+  if (!onlyChatHistoryRequested(question) || !/书桌|桌子|桌位/.test(question) || !/现在|当前|目前|位置/.test(question)) return null;
+  const view = currentNeedView(memory);
+  const missing = view.effectiveDeskPositions.filter(p => p.currentFactId === null && p.value === null
+    && (question.includes(p.room) || view.effectiveDeskPositions.length === 1));
+  if (!missing.length) return null;
+  const related = view.facts.filter(f => missing.some(p => f.room === p.room || !f.room && f.value.includes(p.room)));
+  const kept: string[] = []; let size = 0;
+  for (const fact of related) {
+    const text = fact.room && !fact.value.includes(fact.room) ? fact.room + '：' + fact.value : fact.value;
+    if (kept.length >= 6 || size + text.length > 3000) break;
+    kept.push(text); size += text.length;
+  }
+  return missing.map(p => `${p.room}书桌当前位置本次无法确认：当前更正原话不可用，不能沿用旧位置。`).join('\n')
+    + (kept.length ? '\n仍有原话依据的相关要求' + (kept.length < related.length ? '（部分）' : '') + '：\n' + kept.join('\n') : '');
+}
+/** Use the existing single response repair for the observed stale-position
+ * assertion. Historical quotations and scoped denials stay intact; this is
+ * not a general semantic judge or a new source of customer facts. */
+export function needDeskPositionFeedback(raw: string, memory: NeedMemory, question: string) {
+  if (!onlyChatHistoryRequested(question) || !/现在|当前|目前|哪些需求已改|仍保留|区别|更正后/.test(question)) return null;
+  let reply: { text?: string; segments?: Array<{ text?: string }> };
+  try { reply = JSON.parse(raw); } catch { return null; }
+  if (!reply || typeof reply !== 'object') return null;
+  const texts = [reply.text, ...(Array.isArray(reply.segments) ? reply.segments.map(s => s?.text) : [])].filter((t): t is string => typeof t === 'string');
+  const positions = effectiveDeskPositions(memory), knownRooms = [...new Set([...memory.facts.map(f => f.room), ...positions.map(p => p.room)].filter(Boolean))];
+  const clauses = texts.flatMap(text => {
+    let topicRoom: string | null = null;
+    return text.split(/[，,。；;\n]/).map(clause => {
+      const mentioned = knownRooms.filter(room => clause.includes(room));
+      if (mentioned.length === 1) topicRoom = mentioned[0]; else if (mentioned.length > 1) topicRoom = null;
+      return { clause, topicRoom };
+    });
+  });
+  for (const position of positions) {
+    const older = memory.interpretations?.filter(i => i.field === 'desk' && i.room === position.room).flatMap(i => {
+      const fact = memory.facts.find(f => f.id === i.factId); const old = fact && deskPositionForRoom(fact, position.room);
+      return old ? [old.value] : [];
+    }) || [];
+    for (const { clause, topicRoom } of clauses) {
+      const scoped = clause.includes(position.room) || (topicRoom === position.room || positions.length === 1 && /书桌|桌子|桌位/.test(clause))
+        && !knownRooms.some(room => room !== position.room && clause.includes(room));
+      if (!scoped) continue;
+      const targets = position.value ? new Set(older) : new Set(['靠窗','靠内墙']);
+      for (const match of clause.matchAll(/靠内墙|靠窗/g)) {
+        const old = match[0]; if (!targets.has(old) || old === position.value) continue;
+        const prefix = clause.slice(0,match.index), tail = clause.slice(match.index + old.length);
+        const history = [...prefix.matchAll(/原来|以前|之前|当时|最初|旧说法|旧记录|旧原话|曾经|原话/g)].at(-1)?.index ?? -1;
+        const current = [...prefix.matchAll(/现在|当前|目前|仍|还是/g)].at(-1)?.index ?? -1;
+        const unsupportedLocation = !position.value && !older.includes(old) && !question.includes(old);
+        if (!unsupportedLocation && older.includes(old) && history > current && prefix.length - history <= 18) continue;
+        if (!unsupportedLocation && /(?:不再|不是|不能|不应|不用|无需|不)(?:按|沿用|采用|恢复|当作|说成)?[^，,。；;\n]{0,5}$/.test(prefix)) continue;
+        if (position.value && /(?:从|由)[^，,。；;\n]{0,3}$/.test(prefix) && tail.includes('改为' + position.value)) continue;
+        return { code: 'ungrounded_response_scope', feedback: '本轮明确只回顾当前需求与旧原话。已有获权的书桌位置更正关系，不能把旧位置当成现在仍沿用，也不能让客户重选。只修复当前回答：以effectiveDeskPositions所指仍可用的更正说明当前位置；value/currentFactId为null时只说本次无法确认，不恢复旧值。旧原话可逐字保留作历史，并保留收纳等独立需求。保留原引用，不新增查询、写入、正式批准或解释未经询问的施工条件；仍沿现有唯一一次修复。' };
+      }
+    }
+  }
+  return null;
 }
 /** Old desk/other rows sometimes mix location and occupancy. A later explicit
  * occupancy correction qualifies that part only; never rewrite the old quote
  * or discard its independent furniture/location information. Read projection. */
 export function needQualifications(fact: NeedFact, current: NeedFact[], originals: Map<string, string>): NeedQualification[] {
-  if (!['desk','other'].includes(fact.field) || !/(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(fact.value)) return [];
-  return current.filter(next => next.status === 'current' && next.field === 'use' && next.room === fact.room
+  const desk: NeedQualification[] = legacyDeskCorrections(fact, current).filter(next => hasExplicitNeedCorrection(originals.get(next.sourceMessageId) || ''))
+    .map(next => ({ factId: next.id, field: 'desk', room: next.room, value: deskPositionForRoom(next, next.room)!.value, sourceMessageId: next.sourceMessageId }));
+  if (!['desk','other'].includes(fact.field) || !/(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(fact.value)) return desk;
+  return [...desk, ...current.filter(next => next.status === 'current' && next.field === 'use' && next.room === fact.room
     && BigInt(next.sourceMessageId) > BigInt(fact.sourceMessageId)
     && /(?:单人|一人|双人|两人|多人).{0,6}(?:办公|使用)/.test(next.value)
     && hasExplicitNeedCorrection(originals.get(next.sourceMessageId) || ''))
-    .map(next => ({ factId: next.id, field: 'use' as const, value: next.value, sourceMessageId: next.sourceMessageId }));
+    .map(next => ({ factId: next.id, field: 'use' as const, value: next.value, sourceMessageId: next.sourceMessageId }))];
 }
 /** Existing single-write arguments remain valid. A bounded batch is one atomic
  * customer statement operation, never a way to select another source/tenant. */

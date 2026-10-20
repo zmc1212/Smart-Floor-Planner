@@ -3,9 +3,34 @@ import { test } from 'node:test';
 import { runRenovationAgent, type AgentCheckpoint, type AgentRuntimePorts } from '../agent/runtime';
 import { agentChatBody, parseAgentChat } from '@/lib/ai/providers/agent-chat';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
-import { agentToolsForMessage } from '../agent/worker';
+import { agentToolsForMessage, projectFinalToolOutput } from '../agent/worker';
 
 const answer: ModelTurnOutput = { text: '建议', toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: null };
+test('exclusive chat recap exposes only its original-history read, never unrelated writes or business sources', () => {
+  for (const text of ['只回顾这次聊天里的原话：书房、客厅和预算现在分别是什么？不要查工地或企业资料。', '哪些需求已改，哪些仍保留？只回顾本次聊天原话，给出当前需求和旧说法的区别。']) assert.deepEqual(agentToolsForMessage(text, true).map(t => t.name), ['recall_history']);
+});
+test('an explicit reference preference retains its dedicated capability instead of the pure-need-only optimization', () => {
+  assert.ok(agentToolsForMessage('请记录我喜欢第一张参考图', true).some(t => t.name === 'record_reference_preference'));
+});
+test('mixed structured final is deferred while the actual tool batch stays paired and the original packet stays unchanged', async () => {
+  const raw = { ...answer, text: 'premature prose', toolCalls: [{ id: 'read', name: 'lookup', arguments: '{}' }, { id: 'final', name: 'final_response', arguments: '{"kind":"general","text":"premature answer"}' }] };
+  const before = JSON.stringify(raw), normalized = projectFinalToolOutput(raw); assert.equal(JSON.stringify(raw), before);
+  assert.deepEqual(normalized.toolCalls.map(c => c.id), ['read']); assert.equal(normalized.text, ''); assert.equal(normalized.toolProtocolFeedback?.code, 'mixed_final_response');
+  const f = fixture(); let calls = 0;
+  f.ports.model = async (_turn, messages) => { calls++; if (calls === 1) return normalized;
+    assert.equal(messages.filter(m => m.role === 'tool').length, 1); assert.ok(messages.some(m => m.role === 'system' && JSON.stringify(m).includes('提前回答未交付')));
+    assert.doesNotMatch(JSON.stringify(messages), /premature answer|premature prose/); return answer;
+  };
+  assert.equal((await f.run()).output?.text, answer.text); assert.equal(calls, 2); assert.equal(f.operations.size, 1);
+});
+test('multiple final-only envelopes use bounded feedback without fake tool execution and cannot exceed four provider rounds', async () => {
+  const output = projectFinalToolOutput({ ...answer, toolCalls: ['a','b'].map(id => ({ id, name: 'final_response', arguments: '{"kind":"general","text":"premature"}' })) });
+  const f = fixture(); let calls = 0;
+  f.ports.model = async () => { calls++; return calls === 1 ? output : answer; };
+  assert.equal((await f.run()).output?.text, answer.text); assert.equal(calls, 2); assert.equal(f.operations.size, 0);
+  const g = fixture(); let repeated = 0; g.ports.model = async () => { repeated++; return output; };
+  await assert.rejects(g.run(), /invalid_model_answer/); assert.equal(repeated, 4); assert.equal(g.operations.size, 0);
+});
 function fixture() {
   const saved: AgentCheckpoint[] = [], operations = new Map<string, string>();
   let allowed = true, calls = 0;

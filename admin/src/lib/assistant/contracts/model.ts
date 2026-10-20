@@ -18,6 +18,8 @@ export type ModelTurnInput = {
 export type ModelTurnOutput = {
   text: string; toolCalls: ModelToolCall[]; finishReason: string | null; providerRequestId: string | null;
   usage: { inputTokens: number; outputTokens: number } | null;
+  /** Application bridge metadata; never parsed from provider-controlled fields. */
+  toolProtocolFeedback?: { code: 'mixed_final_response'; text: string };
 };
 export interface AgentModelGateway {
   readonly capabilities: ModelCapabilities;

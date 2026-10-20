@@ -19,7 +19,21 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前v94：纯记录请求的实际保存回执
+## 当前v95：按用户指令收尾并停止开发
+
+**Limited；代码封存，最终服务/原生验收未完成。** 用户要求“这个阶段收尾下，停止开发”。不再推进下一阶段，也不自动重启排队测试。原v93/v94已执行证据继续有效；本批不能作为完整用户阶段或生产验收。
+
+现有NeedMemory增加只读当前视图：有明确书房/书桌/位置及后续更正原话时，把旧复合记录中的位置片段与独立收纳要求分开；历史保留完整原话，不修改持久事实或补写缺项。覆盖旧other/style错键、再次更正回旧值及来源失效；显式仅回顾本次聊天不开放施工/企业知识工具。失效更正不泄露隐藏的新值或复活旧位置，当前书桌问题只返回经重新授权的受限服务器反馈，并记录`agent_need_unavailable_reply`，原模型输出、provider用量和失败证据单独保留。引用偏好请求仍保留`record_reference_preference`能力，不被纯记录回执抢占。
+
+参照[LangChain结构化输出实现](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/nodes/AgentNode.ts)、[结构化输出合同](https://github.com/langchain-ai/docs/blob/main/src/oss/langchain/structured-output.mdx)和[LangGraph工具协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)，在现有桥接层处理实际读工具与虚拟`final_response`同包：保留原provider包，只执行并配对真实工具，再反馈最终输出协议；不提前交付同包答案，不新增循环/预算或重放。只在应用桥接层生成`toolProtocolFeedback`，不把provider任意字段当可信控制信号。仍用原Graph、租约、来源撤回、租户、用量及接管围栏；KnowledgeRetriever/Evidence、知识版本/epoch/audience/原始定位器及发布操作均不改。未迁移框架，也不把观察到的同包输出推广为所有GLM问题的原因。
+
+最终275单元、98 Mini、涉及文件/全仓lint通过，889项源码/测试/配置前后一致；本批类型0，全仓292与v94错误集合一致。最终服务、兼容、原生三个进程均等待共享隔离锁，没有子用例启动，按停止指令取消并清除仅本批数据库等待连接。旧版本9服务/4兼容通过不能算作最终275单元源码的服务证明。早期红测、失败与不同源码窗口保留在`attempt-1`至`attempt-4`，不合并成功率。
+
+独立的上一原生窗口（274单元源码，免费文字GLM9）中，run1149当前需求、run1150当前与旧说法分别成功并重进；run1151在合成更正原话失效后仍提出旧靠窗，被围栏阻止，整批未通过。新增受限反馈只获得最终单元覆盖，未再运行最终服务/真实模型/原生验收。该窗口新2648/2649企业AI关闭，3693–3695身份context撤销，active0/unknown0，配置不变；最终排队原生未创建新夹具。批准C01及S04设计、Mini结构/样式/素材/导航/恢复台账未修改，旧截图只作对应旧源码的功能证据，不能代替本批最终渲染验收。
+
+收尾只读审计保留原1078/1080/1081/1084/1086/1092/1100/1132、错误回复9639与F-03原消息9636无草稿的状态；原3196仍unknown、reservation reconciling且结算null，不重放或结零。独立305文件manifest不改，其他聊天持有的锁/Worker/进程未终止。证据入口`tmp/xiaok-current-needs-v95/interruption-closeout.json`、`stopped-queues.json`、`stopped-database-waits.json`和`original-audit.json`。F-01最终当前值/失效恢复、F-02测量缺项、F-04提取完整性/混合回执、F-06其余来源域及F-07输入预算保留未完成；完整PPT、图片理解、真机/BLE/微信授权、全仓类型和生产均未通过。后续仅在用户重新要求后恢复。
+
+## 历史v94：纯记录请求的实际保存回执
 
 **内部限定Implemented，F-04及整体仍Limited。** 原F-04/run1084三次只保存靠窗，却由模型确认收纳也保存。新路径只处理当前明确、无问题/其他动作/引用/假设的纯记录请求：仅开放`record_need`，先执行完整工具批次并保留调用/结果配对，再由服务器从已有、仍获权的NeedMemory读取本run/本触发原话的current事实，列出实际保存内容，注明未列出内容不视为保存；不替模型补写缺项。混合更正+专业问题沿旧综合流程，不由此宣称其回执已修复。
 
