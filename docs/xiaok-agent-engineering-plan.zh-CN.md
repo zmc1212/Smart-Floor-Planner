@@ -4,7 +4,7 @@
 
 ## 1. 范围与优先级
 
-2026-10-20 v82完成AG-08/09内部准备子阶段：有界原段校验、严格现场输出及精确型号的Qwen system兼容。198单元/23隔离服务（另1实模照片未执行）/73 Mini/全仓lint通过，类型本批0/全仓292。2615/2616原件索引成功、现场HTTP400失败；最终2617/2618导入超时，模型未调用，咨询0/8、新实模隔离0项，业务未过。夹具关闭AI、存在资料retired，历史2条未知job保留隔离且有拒绝审计；最终源码/测试/provider hash稳定。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)及`tmp/xiaok-setup-v82/manifest.json`。窗口后本地3006已恢复。用户要求的免费纯文本Qwen3-8B草稿/工具往返探针通过，下一批用新窗口做8B业务对照。当前4B配置、整体Limited、职责/设计/生产边界及第5节自动阶段提交保持。
+2026-10-20 v82内部AG-08/09准备子阶段维持Implemented，整体Limited。同源码198单元/23隔离服务（1实模照片跳过）/73 Mini/全仓lint通过，类型本批0/全仓292。独立的用户授权Qwen/Qwen3-8B批次完成两份74原段/10向量批索引及4份真实现场草稿，咨询交付0/8（协议2、引用2、输入超限3、供应商结果未知1）。新实模隔离/撤回断言未执行。两夹具关闭AI/资料retired、活动计数0，新增未知job保留隔离且未重放；原2567及源码/测试/provider hash保持。平台/环境精确恢复原4B及凭据/视觉配置。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、tmp/xiaok-qwen8-v82/manifest.json及restore-proof.json。旧4B准备/探针结果独立保留；未做同条件4B质量排行，不新增UI/原生或生产通过声明。下一Agent增量处理重复只读工具/输入增长、最终协议及引用；KnowledgeRetriever/Evidence、设计/生产边界及第5节自动阶段提交保持。
 
 实现事实以当前代码、[二期契约](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)和[小程序清单](./miniprogram-system-modules.zh-CN.md)为准。下列状态是静态核对后的限定范围，不是本次重跑验收：`Implemented`须有对应闭环证据；`Limited`表示已有部分能力；`Placeholder`表示所注明能力未交付。保留已有实现，不能把整个工作包列为从零开发。
 

@@ -31,9 +31,19 @@
 
 v82收口于`tmp/xiaok-setup-v82/manifest.json`：198/198单元、23隔离服务通过/1实模照片跳过、73/73 Mini/全仓lint通过，类型本批0/全仓292，源码/测试/provider首尾及收口hash一致。中途类型收窄修改造成漂移的服务批次保留并排除，只计final-*。2615/2616各74原段/10向量批成功但现场HTTP400失败，AI关闭/资料retired，历史2条保守未知job保留，provider实际failed/accepted=false。最终2617/2618导入超时，无文档/模型调用，咨询0/8、新实模隔离0项，活动/未知/客户可读计数全0。原2567未变，窗口2026-10-20T03:19:41.306Z结束释放，businessBatchPassed=false。窗口后核对队列/近期调用为空及进程身份，以原命令/配置恢复本地3006，鉴权401/56ms，未操作生产进程。
 
-用户要求的免费8B实际为`Qwen/Qwen3-8B`，不是Qwen3.5-8B。[官方价格/目录](https://www.siliconflow.cn/pricing)本次无3.5-8B，3.5-9B收费，3-8B仅文本且支持工具。`tmp/xiaok-free-model-comparison/`单独保留Xing默认思考90s未知、4B数字房间ID拒绝，以及8B严格草稿和2个配对只读调用后的最终回答成功。旧probe单次lookup断言比既有最多4调用合同更窄，原失败manifest保持；只接续明确已返回的lookup，不重发provider。探针未改配置、不证明专业质量胜负。当前4B保持，下一新开发窗口测试8B后恢复原配置。
+用户要求的免费8B实际为Qwen/Qwen3-8B，不是Qwen3.5-8B。[官方目录](https://www.siliconflow.cn/pricing)列3-8B免费/仅文本/支持工具，无3.5-8B，3.5-9B收费。tmp/xiaok-free-model-comparison/独立保留Xing默认思考90s未知、4B数字roomId拒绝及8B草稿/工具往返探针成功。原单次lookup断言比既有最多4调用合同更窄，失败manifest保持；只接续明确已返回的lookup，未重放provider。探针未改配置或证明质量排行；后续明确8B业务窗口与原4B精确恢复记录如下。
 
 技术复现：在admin运行`node ../tmp/xiaok-setup-v82/check.mjs <mode> --final`，mode分别取unit、service、mini、lint-full或types；service沿既有隔离锁/角色/空闲守卫。相应测试源码已提交，包括`src/lib/__tests__/construction-site-contract.test.ts`及Agent运行器/文件测试；实模沿带守卫驱动、唯一新夹具及原文/模型边界。
+
+## v82接续：Qwen3-8B业务验证
+
+**独立验证、源码未改；业务未过，整体Limited。** 用户授权的硅基流动Qwen/Qwen3-8B临时文本模型试验以a88ed26d实现为基础，同时绑定实际工作树/provider/测试hash，不宣称全仓洁净重建；旧4B准备失败和探针独立保留。受控窗口2026-10-20T03:34:51.509Z–03:50:13.551Z持有共享隔离验收/开发锁，核验非super/非BYPASS角色及初始空闲队列。新2619/2620各用同一原件完成74完整段/10向量批索引；4份原生final_response现场草稿均为获权string房间ID、每份恰1次成功provider调用，再经合成企业主明确编辑/核对/发布。原响应/版本保留，不自动发布或转型ID。
+
+计划内8次客户请求均执行，固定/首稿通过0/8，未交付答案：1044/1048为invalid_model_answer；1047/1051为invalid_model_citation；1046/1049/1052为agent_input_limit；1050为indeterminate/provider_outcome_unknown。原4次调用/1次修复/16,000估算输入/48,000文字字节/6段/每段4引用保持。相同只读查询重复累积输入；两条kind=general防水原稿保留48h/20mm/24h/楼下检查/漏水停止等条款，但混用项目与手册而没有必需目录引用，也未明确带出记录中完工/保养未核实的限制。semantic-review.json直接核对原文/原稿；其他6次没有有效最终正文。0/8是集成通过数，不是通用智力排行或所有原句均错，未做独立人工认证或同条件完整4B业务对照。
+
+B的未知调用使其在parent隔离屏障前停止，计划9项实模跨企/引用/独立撤回断言实际执行0项，保持未验。provider attempt2953在91,165ms后记PROVIDER_TIMEOUT；原run1050/job1454保留未知，不重试或清零。两合成企业关闭AI/退役唯一文档/停用员工/撤销测试用户context；活动员工/run/job/客户可读资料全0，2620新增1条未知job保留。原2567和历史2615/2616未知job未动。实际用量保留，未知token/费用未核销；含排队耗时不冒充provider时延或P50/P95。
+
+tmp/xiaok-qwen8-v82/manifest.json绑定首尾稳定源码/测试/provider及原始输出；窗口释放后model-trial-restored.json/restore-proof.json验证平台原Qwen/Qwen3.5-4B配置及完整环境文件hash精确恢复、凭据/视觉保持、后续源码无漂移，重载后鉴权401。上文同hash的198单元/23隔离服务/73 Mini/lint技术检查沿用；本次未改源码/UI/API/角色/schema/知识边界，未新增原生/真机/微信/BLE/build/全仓类型/生产通过。下一Agent AG-05/08/09增量处理重复读工具/输入增长与最终协议/引用，本结果未建立新的KB解析/召回缺陷。
 
 ## v81历史AG-08：唯一修复中的显式来源编辑
 
