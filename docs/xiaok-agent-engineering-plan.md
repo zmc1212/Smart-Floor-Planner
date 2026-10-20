@@ -108,7 +108,7 @@ The compact stage-commit index does not replace the phase-two contract. This che
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| AG-05/09 v91 explicit denials and free text baseline (internal substage) | 259 units/13 services/73 Mini/lint; GLM9 four reviewed-correct questions across two fixtures, separate setup window and originals retained; overall Limited | Pending local stage commit |
+| AG-05/09 v91 explicit denials and free text baseline (internal substage) | 259 units/13 services/73 Mini/lint; GLM9 four reviewed-correct questions across two fixtures, separate setup window and originals retained; overall Limited | `3182ee5c817092e03d19d1477927e85d0fbb2067` |
 | v90 free-model tariff verification | Official tariffs override conflicting zero prices; 257 units/12 targeted services/73 Mini/lint; screens and original failures recorded separately | `7b6068654abd10ad1f01c560bd48cbd695f408c5` |
 | AG-05/09 v89 conversation-bound identity (internal substage) | 235 units/12 targeted services/73 Mini/lint; first GLM request429/no draft, unknown retained; exact restoration and supplemental cleanup verified | `951bac67a053323e747fddbd1f94ec2ff8d52d94` |
 | AG-05/09 v87 read-input recovery (internal substage) |231 units/55 services/73 Mini/lint;one controlled live call repeats numeric ID and fails,delivery0/unknown0;exact config restored,old1073 retained | `5e85e14582150ddf34092ae0e5e1117c9b07e440` |
