@@ -481,7 +481,8 @@ test('KB3 legacy full-source citation selection persists canonical quotes withou
 
 test('KB3 catalog citation first draft persists exact originals with typed document metadata and revokes on reentry',async()=>{
   const body='合成引用目录：参考间距310mm，须先核对适用前提；不代表现场结论。😀';
-  const document=await publish('合成引用目录v3.2',body),x=await fixture();
+  const filename='03 合成引用目录v3.2.pdf';
+  const document=await publish(filename,body),x=await fixture();
   const a=await x.send('请解释资料中的间距要求与前提，不要只摘录。',async(messages,_tools,turn)=>{
     if(!turn)return call('search_knowledge',{query:'合成引用目录 参考间距310mm 适用前提'});
     assert.equal(turn,1,'The catalog protocol must not require a format repair');
@@ -489,9 +490,11 @@ test('KB3 catalog citation first draft persists exact originals with typed docum
     assert.deepEqual(kinds, ['synthesis', 'business', 'knowledge', 'references']);
     const source=results(messages).find(s=>s.text===body) as {citationOptions?:Array<{citationId:string}>}|undefined;
     assert.ok(source?.citationOptions?.length);assert.doesNotMatch(JSON.stringify(messages),/PRIVATE_ONLY_NEVER_SEND/);
-    return synth([{basis:'evidence',text:'引用目录 v3.2要求把310mm与适用前提一起核对，不能只凭间距作现场结论。',citations:[{citationId:source!.citationOptions![0].citationId}]}]);
+    return synth([{basis:'evidence',text:'《'+filename+'》要求把310mm与适用前提一起核对，不能只凭间距作现场结论。',citations:[{citationId:source!.citationOptions![0].citationId}]}]);
   });assert.equal(a.run.status,'succeeded',JSON.stringify(a.run));
   const message=(await x.chat.messages(x.cid)).items.find(m=>m.id===a.run.outputMessageId)!;assert.equal(message.available,true);
+  assert.match(JSON.stringify(message.content),/03 合成引用目录v3\.2\.pdf/);
+  assert.doesNotMatch(JSON.stringify(message.content),/文档名称/);
   const citation=await x.chat.citation(message.citations[0].id);assert.equal(citation.available,true);assert.ok('quote' in citation);assert.equal(citation.quote,body);
   const steps=await withTenantTransaction(eid,tx=>rows(tx,sql`select kind,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
   for (const step of steps.filter(s => s.kind === 'agent_model')) assert.equal((step.input_summary as Row).finalProtocol, agentSourceFinalProtocol);

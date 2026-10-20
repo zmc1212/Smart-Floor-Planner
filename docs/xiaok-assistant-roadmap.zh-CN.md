@@ -120,7 +120,7 @@ AG-04/05对“明确前句更正、随后独立提问”补入有界接续：复
 
 ### 3.2 已确认的业务接入边界
 
-2026-10-20 v85绑定修复任务投影为AG-05/08/09内部技术子阶段Implemented，整体Limited。217单元/4定向隔离服务/73 Mini/全仓lint通过，类型本批0/全仓292；八份旧checkpoint离线确认原问题末尾重复，新投影仅对hash绑定修复改为固定任务，原文/反馈/目录/工具配对和预算保持。新4B窗口计划8题、执行5题，交付0/5，三份可审读首稿完整条件覆盖0/3；三次修复仍复制并重复add原引用，另有invalid_message及HTTP_503后provider_outcome_unknown各一题。余3题及9项后续实模断言未执行。两企业AI关闭/资料retired，活动员工/run/job/客户可读资料均0，保留unknown job1不重放；原2567及四份员工发布数据、80项source/test、92项provider/环境和运行配置保持。公开API/schema/权限/批准UI与KnowledgeRetriever/Evidence不变。文件名03/2.0误判已纯函数复现，后续定点修复；旧评分独立。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)与`tmp/xiaok-repair-tail-v85/manifest.json`。
+2026-10-20 v86引用文件名元数据为AG-08内部技术子阶段Implemented，整体Limited。仅识别本段已引用知识的可信title/file.name中、成对引号包围且完全一致的PDF/DOCX/XLSX文件名，避免把数字前缀/版号当工程量；正文、引用原文/编号、文件名外量数及原权限/校验/预算保持。221单元/4定向隔离服务/73 Mini/全仓lint通过，类型本批0/全仓292，77项source/test与92项provider/环境文件无漂移。旧三份首稿离线新校验2份通过、1份仍被无据数字拒绝，不改原文或重算业务评分；本批新实模聊天调用0。v85仍为5/8执行、交付0/5、完整条件0/3可审读首稿，余3题/9项未执行；1073未知job1及16项attempt/原job状态原样保留，不重放。原2567、四份员工发布数据与已退役资料保持。公开API/schema/权限/批准UI与KnowledgeRetriever/Evidence不变，不新增KB能力或原生/生产通过。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)及`tmp/xiaok-filename-v86/manifest.json`。
 
 <!-- 保留已有文档的章节入口；当前有效规则与实施证据以本节及第2节链接为准。 -->
 <a id="31-p2c-当前范围与小区检索"></a>

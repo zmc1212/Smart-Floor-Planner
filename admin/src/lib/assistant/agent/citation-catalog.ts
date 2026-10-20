@@ -65,14 +65,16 @@ export function resolveCatalogCitation(citation: Record<string, unknown>, source
   return { sourceId: matches[0].sourceId, quote: matches[0].quote };
 }
 
-/** Only a named document-version mention supported by a cited knowledge
+/** Only an exact quoted filename or named document-version mention supported by a cited knowledge
  * source's trusted metadata is exempt from engineering-number matching.
  * Original prose still reaches commitment/scope guards. A bare number or a
  * quantity (including one glued to a document label) is never exempted. */
 export function engineeringClaimText(text: string, citedSources: SynthesisSource[]) {
   const aliases = new Map<string, { name: string; version: string }>();
+  const filenames = new Set<string>();
   for (const source of citedSources.filter(s => s.kind === 'knowledge')) {
     for (const label of [source.title, source.evidence?.file?.name].filter((s): s is string => !!s)) {
+      if (/^[^\r\n《》“”"']+\.(?:pdf|docx|xlsx)$/iu.test(label)) filenames.add(label);
       for (const match of label.matchAll(/([\p{L}][\p{L}\p{Zs}\t·_-]{1,80}?)([vV]?\d+(?:\.\d+){1,3})(?=$|[\s·_—\-（）()\[\]【】]|\.(?:pdf|docx|xlsx)$|版)/gu)) {
         // A spaced quantity in the trusted filename/title is still a quantity,
         // not an edition. File extensions identify the document format only.
@@ -89,6 +91,14 @@ export function engineeringClaimText(text: string, citedSources: SynthesisSource
   }
   let result = text;
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const filename of [...filenames].sort((a, b) => b.length - a.length)) {
+    // Exact paired quoting distinguishes a trusted filename (including its
+    // numeric prefix/extension) from engineering quantities outside that name.
+    // This is a claim-analysis view only; original prose and quotes stay intact.
+    const expression = new RegExp([['《', '》'], ['“', '”'], ['"', '"'], ["'", "'"]]
+      .map(([open, close]) => escape(open + filename + close)).join('|'), 'gu');
+    result = result.replace(expression, match => match[0] + '文档名称' + match.at(-1));
+  }
   for (const alias of [...aliases.values()].sort((a, b) => b.name.length - a.name.length)) {
     // Only horizontal layout space between the trusted name and edition may
     // vary. Never normalize originals, split version digits, or cross a line.

@@ -106,6 +106,44 @@ test('trusted edition layout spaces do not become engineering claims or license 
   assert.match(engineeringClaimText('未知指南 9.1要求执行。', [s]), /9\.1/);
 });
 
+test('quoted verified filename metadata excludes its numeric prefix and extension edition without changing the original answer', () => {
+  const filename = '03 金螳螂家施工工艺手册2.0.pdf';
+  const s = { ...source('防水施工完毕保养48小时后进行蓄水试验，蓄水深度不小于20mm，蓄水时间不少于24小时。', 'Kfilename', '负责人核对的外部手册'),
+    evidence: { file: { name: filename } } } as SynthesisSource;
+  const text = '根据《' + filename + '》，防水施工完毕保养48小时后才进行蓄水试验，蓄水深度不小于20mm，时间不少于24小时。';
+  const before = JSON.stringify(s), catalog = sourceCitationCatalog(s);
+  assert.doesNotMatch(engineeringClaimText(text, [s]), /03|2\.0/);
+  const parsed = parseSynthesis(answer(s, text), [s]);
+  assert.equal(parsed.segments[0].text, text);
+  assert.deepEqual(parsed.segments[0].citations, [{ sourceId: s.sourceId, quote: s.text }]);
+  assert.deepEqual(sourceCitationCatalog(s), catalog); assert.equal(JSON.stringify(s), before);
+});
+
+test('exact quoted filenames support known formats, literal punctuation and paired quotation marks only', () => {
+  for (const extension of ['pdf', 'DOCX', 'xlsx']) for (const [open, close] of [['《', '》'], ['“', '”'], ['"', '"'], ["'", "'"]]) {
+    const filename = '03 设备[参考](复核)+3.2.' + extension, s = source('施工前须核对适用条件。', 'Kliteral', filename);
+    assert.doesNotThrow(() => parseSynthesis(answer(s, open + filename + close + '明确施工前须核对适用条件。'), [s]));
+    assert.match(engineeringClaimText(open + filename.replace('03 ', '04 ') + close + '要求执行。', [s]), /04/);
+  }
+});
+
+test('filename metadata never licenses quantities outside the name or uncited, project, partial or altered names', () => {
+  const filename = '03 设备安装指南3.2.pdf', s = source('施工前须核对适用条件。', 'Kfilename-guard', filename);
+  for (const text of ['《' + filename + '》规定厚度3.2mm。', '《' + filename + '》规定必须等待48小时。', '《' + filename + '》预算03元。'])
+    assert.throws(() => parseSynthesis(answer(s, text), [s]), /unsupported_model_commitment/);
+  for (const text of [filename + '要求执行。', '《设备安装指南3.2.pdf》要求执行。', '《03 设备安装指南3.3.pdf》要求执行。', '《03\n设备安装指南3.2.pdf》要求执行。'])
+    assert.match(engineeringClaimText(text, [s]), /03|3\.2|3\.3/);
+  assert.match(engineeringClaimText('《' + filename + '》要求执行。', []), /03/);
+  assert.match(engineeringClaimText('《' + filename + '》要求执行。', [{ ...s, kind: 'project' }]), /03/);
+});
+
+test('a verified filename remains metadata and cannot bypass formal completion or mutate source prose', () => {
+  const s = source('施工前须核对适用条件。', 'Kfilename-action', '03 工艺3.2.pdf');
+  const text = '《03 工艺3.2.pdf》说明已经验收通过。';
+  assert.throws(() => parseSynthesis(answer(s, text), [s]), /unsupported_model_commitment/);
+  assert.equal(s.text, '施工前须核对适用条件。');
+});
+
 test('model catalog/schema references only current sources, preserves full originals and public canonical reply shape', () => {
   const s = knowledgeSynthesisSources([{ ref: { id: '7' }, text: '原文：完整条件及 310 mm，😀不改空格。' } as never])[0];
   const messages: ModelMessage[] = [{ role: 'system', content: [{ type: 'text', text: '既有规则' }] },
