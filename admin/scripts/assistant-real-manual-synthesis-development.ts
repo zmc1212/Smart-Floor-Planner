@@ -11,6 +11,8 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { agentPromptVersion } from '@/lib/assistant/agent/context';
+import { agentReadProtocol } from '@/lib/assistant/agent/runtime';
+import { agentSourceFinalProtocol } from '@/lib/assistant/agent/worker';
 import type { SynthesisAnswer, SynthesisContext } from '@/lib/assistant/agent/synthesis';
 import { writeAcceptanceReport } from './assistant-acceptance-report.mjs';
 import { expectedManualRunCount, manualScenarioNames, manualBatchComplete } from './assistant-manual-cases.mjs';
@@ -26,6 +28,8 @@ const caseSet=process.argv.find(a=>a.startsWith('--case-set='))?.slice('--case-s
 const selectedCaseNames=manualScenarioNames(caseSet),expectedRuns=expectedManualRunCount(caseSet);
 const observed=profile==='b'?{shower:'1600',basin:'1100',spacing:'200'}:{shower:'1500',basin:'1000',spacing:'100'};
 const requireFirstDraft=process.argv.includes('--require-first-draft');
+const manualSiteFixtures = process.argv.includes('--manual-site-fixtures');
+const siteFixtureMode = manualSiteFixtures ? 'manual_staff_edit' : 'model_draft';
 const coordination=process.argv.find(a=>a.startsWith('--coordinate='))?.slice('--coordinate='.length);
 if(coordination)assert.match(coordination,/^xiaok-[a-z0-9-]{1,80}$/);
 const batchId=process.argv.find(a=>a.startsWith('--batch='))?.slice('--batch='.length);
@@ -46,13 +50,14 @@ type RunRecord = { name:string;round:number;conversationId:string;runId:string;e
   outputMessageId:string;message:Message|undefined;steps:Row[];usage:Row[];sources:Row[];text?:string;answer?:SynthesisAnswer;fullSourceSelections?:number;fixedChecksPassed?:boolean;caseFailure?:string;
   firstDraftText?:string;firstDraftKind?:string;firstDraftCatalog?:boolean;firstDraftPassed?:boolean;repairCount?:number;validationFailureCount?:number;repairAttempts?:number;firstDraftError?:unknown };
 type Report = { started:string;promptVersion:string;source:{path:string;sha256:string};scope:string;checks:{name:string;passed:boolean}[];
-  caseSet:string;
+  caseSet:string;siteFixtureMode?:string;
   runs:RunRecord[];passed:boolean;fixture?:Row;document?:{documentId:string;versionId:string;parseJobId:string;indexJobId?:string};
   records:Row[];conversationIds:string[];finalState?:Row|null;originalEnterprise?:Row[];finished?:string;error?:string;
   codeHashes?:Record<string,string>;codeHashesAfter?:Record<string,string>;readyForIsolation?:boolean;retiredForIsolation?:boolean;batchId?:string };
 const report:Report = { started:new Date().toISOString(),promptVersion:agentPromptVersion,source:{path:source,sha256:sourceHash},
-  caseSet,
-  scope:'single original only; real configured customer Agent/HTTP/Worker; synthetic project/observations, no real homeowner facts; temporary test-only customer-readable copy, retired and disabled at end; existing internal enterprise2567 unchanged',
+  caseSet,siteFixtureMode,
+  scope:'single original only; real configured customer Agent/HTTP/Worker; synthetic project/observations, no real homeowner facts; temporary test-only customer-readable copy, retired and disabled at end; existing internal enterprise2567 unchanged'
+    + (manualSiteFixtures ? '; site records explicitly edited/published through existing staff services as fixtures; generative site drafting ungraded, actual attempts/cancellations retained' : ''),
   checks:[],runs:[],records:[],conversationIds:[],passed:false,codeHashes:codeHashes(),batchId };
 const previous:Report|null=(recheck||process.argv.includes('--resume'))?JSON.parse(fs.readFileSync(path.join(output,'live.json'),'utf8')):null;
 const save = () => writeAcceptanceReport(path.join(output, 'live.json'), report);
@@ -86,6 +91,7 @@ async function main(){
   fs.mkdirSync(output,{recursive:true});
   if(previous){
     assert.equal(previous.caseSet||'all',caseSet,'Cannot mix acceptance case sets');
+    assert.equal(previous.siteFixtureMode || 'model_draft', siteFixtureMode, 'Cannot mix model drafts and manual staff fixtures');
     assert.ok(previous.finished&&(recheck?previous.passed:!previous.passed)&&previous.finalState?.active_runs==='0');
     assert.equal(previous.source.sha256,sourceHash);assert.ok(previous.fixture&&previous.document);
     assert.ok(previous.runs.every(r=>!['queued','running','indeterminate'].includes(String(r.status))));
@@ -194,12 +200,17 @@ async function main(){
         assert.equal(current?.status,'published');assert.equal(String(current.room_id),roomId);assert.deepEqual(current.data,existing.data);continue;}
       const sent=await site.send(projectId,{text:[observation.room,observation.completed,observation.pending,observation.coordination,note].join(' '),mediaIds:[]},randomUUID());
       assert.ok(sent.recordId,'Expected actual site-record workflow');const recordId=String(sent.recordId);
-      const draft=await wait(async()=>{const record=await withTenantTransaction(eid,tx=>one(tx,sql`select status,version,run_id from app.construction_site_records where enterprise_id=${eid} and id=${recordId}`));
+      // The optional fixture mode uses the existing authorized edit-during-
+      // generation path. It never coerces/accepts a provider draft or scores
+      // site generation as passed; edit cancels that record's queued work.
+      const currentRecord = () => withTenantTransaction(eid,tx=>one(tx,sql`select status,version,run_id from app.construction_site_records where enterprise_id=${eid} and id=${recordId}`));
+      const draft=manualSiteFixtures ? await currentRecord() : await wait(async()=>{const record=await currentRecord();
         if(record?.status==='draft')return record;if(record?.run_id){const run=await withTenantTransaction(eid,tx=>one(tx,sql`select status,error_code from app.assistant_runs where enterprise_id=${eid} and id=${String(record.run_id)}`));if(run&&['failed','cancelled','indeterminate'].includes(String(run.status)))throw Error(JSON.stringify(run));}return null;},'real site draft '+recordId);
+      assert.ok(draft);
       const data={title:observation.title,roomId,completed:observation.completed,pending:observation.pending,coordination:observation.coordination,note};
       const edited=await site.mutate(projectId,recordId,'edit',{expectedVersion:Number(draft.version),data},randomUUID());
       await site.mutate(projectId,recordId,'publish',{expectedVersion:Number(edited.version),audience:'customer'},randomUUID());
-      report.records.push({recordId,roomId,room:observation.room,data});save();
+      report.records.push({recordId,roomId,room:observation.room,data,siteFixtureMode});save();
     }
     check('real service-created project/stage and two explicitly reviewed published synthetic observations; no additional knowledge documents');
     const actor:ActorContext={enterpriseId:eid,principal:{kind:'user',userId:uid},contextVersion,capabilities:['assistant.chat.self'],entry:{kind:'lead',id:leadId}};
@@ -236,6 +247,12 @@ async function main(){
           }catch{/* Invalid first drafts stay failures, not silently repaired by this harness. */}
         }
         entry.firstDraftPassed=false;save();
+        for (const step of steps.filter(s => s.kind === 'agent_model' && (s.input_summary as Row)?.purpose === 'answer')) {
+          const runtime = step.input_summary as Row;
+          assert.equal(runtime.promptVersion, agentPromptVersion, 'Running HTTP Worker must use this source version');
+          assert.equal(runtime.readProtocol, agentReadProtocol);
+          assert.equal(runtime.finalProtocol, agentSourceFinalProtocol);
+        }
         assert.equal(run.status,'succeeded',JSON.stringify({runId,error:run.error_code}));assert.ok(message?.available);
         entry.text=safeText(message.content);for(const citation of message.citations)entry.sources.push(await request('miniprogram/assistant/citations/'+citation.id,'GET',undefined,200,customerToken));
         const synthesis=steps.find(s=>s.kind==='agent_synthesis_context');assert.ok(synthesis,'Expected original customer Agent natural synthesis, not Admin excerpts');

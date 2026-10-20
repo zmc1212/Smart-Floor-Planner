@@ -76,9 +76,13 @@ export const finalTool: ModelTool = { name: 'final_response', description: '最�
       citations: { type: 'array', maxItems: 4, items: { type: 'object', properties: { citationId: { type: 'string', description:'只选本轮来源citationOptions中的完整citationId。服务端装配原文，不提供sourceId、quote或引用模式。' } }, required: ['citationId'], additionalProperties: false } } },
       required: ['basis','text','citations'], additionalProperties: false } } }, required: ['kind'], additionalProperties: false,
 } };
+export const agentSourceFinalProtocol = 'source-final-kind-v1';
+const sourceQueryTools = new Set(['query_business', 'query_materials', 'query_followups', 'search_knowledge', 'recommend_references']);
 /** The provider sees the same current catalog as the validator. Schema enums
  * assist generation; authorized server lookup remains the acceptance boundary. */
 export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
+  const queriedSources = messages.some(message => message.role === 'assistant'
+    && message.toolCalls?.some(call => sourceQueryTools.has(call.name)));
   const ids=[...new Set(messages.flatMap(message=>{
     if(message.role!=='tool')return [];
     try{const packet=JSON.parse(message.content);return (Array.isArray(packet?.synthesisSources)?packet.synthesisSources:[])
@@ -87,11 +91,15 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
   }))];
   const repairTool = synthesisRepairTool(messages, ids);
   if (repairTool) return repairTool;
-  if(!ids.length)return finalTool;
-  const parameters=structuredClone(finalTool.parameters);let schema=parameters;
-  for(const key of ['properties','segments','items','properties','citations','items','properties','citationId'])schema=schema[key] as Record<string,unknown>;
-  schema.enum=ids;
-  return {...finalTool,parameters};
+  if(!ids.length&&!queriedSources)return finalTool;
+  const parameters=structuredClone(finalTool.parameters);
+  if (queriedSources) (parameters.properties as Record<string, unknown>).kind = { type: 'string', enum: ['synthesis', 'business', 'knowledge', 'references'] };
+  if (ids.length) {
+    let schema=parameters;
+    for(const key of ['properties','segments','items','properties','citations','items','properties','citationId'])schema=schema[key] as Record<string,unknown>;
+    schema.enum=ids;
+  }
+  return {...finalTool,parameters,...(queriedSources ? { description: '本轮已查询来源。专业解释用synthesis及segments/本轮citationId；原结果展示可用business/knowledge/references。不能用general/vision/unavailable绕过来源校验。' } : {})};
 }
 export async function processAgentAnswer(lease: Lease, dependencies: {
   model?: (messages: ModelMessage[], tools: ModelTool[], turn: number) => Promise<ModelTurnOutput>;
@@ -336,7 +344,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' && synthesisRepairBase(focused) ? synthesisRepairProtocol : null,
-                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, activeToolNames: dispatchTools.map(tool => tool.name),
+                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
                   finalOnly: purpose === 'answer' && tools.length === 0,
                   responseScope: modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(availabilityScopeHintPrefix))) ? 'unavailable_occupancy_evidence' : null })}::jsonb)`);
             await tx.execute(sql`update app.assistant_jobs set provider_started_at=now(),updated_at=now() where enterprise_id=${lease.enterpriseId} and id=${lease.jobId}`);

@@ -120,7 +120,7 @@ Current v74 delivers bounded finalization after empty history through the origin
 
 ### 3.2 Confirmed business boundaries
 
-Current AG-05/09 implements reuse of successful reads within one authorized run, retaining complete sources, distinct queries, write invalidation and per-use revocation. Internal technical evidence and historical failures remain in [phase two](./xiaok-assistant-phase-2.md). Professional service stays Limited; continue final-output/citation work and new configured-model acceptance on the combined stable version, preserving approved UI, KnowledgeRetriever/Evidence and design/deployment boundaries.
+Current same-run read reuse and source-aware final-kind constraints retain originals/catalogs/permissions/four turns/one repair and approved UI. All eight v84 configured-model first drafts use synthesis, but delivery/direct semantic acceptance remains 0/8 and professional service Limited. Prioritize bounded repair of text/citations and unknown prerequisites. Implementation, stable checks, unexecuted later isolation assertions and historical failures remain in [phase two](./xiaok-assistant-phase-2.md), preserving knowledge/deployment boundaries.
 
 <!-- Preserve existing section links; this section and section2 references own current rules/evidence. -->
 <a id="31-current-p2c-scope-and-community-search"></a>

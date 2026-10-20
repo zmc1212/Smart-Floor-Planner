@@ -17,19 +17,21 @@ import { manualScenarioNames } from './assistant-manual-cases.mjs';
 const root=path.resolve('..'),name=process.argv.find(arg=>arg.startsWith('--evidence='))?.slice('--evidence='.length)||'xiaok-citation-protocol',directory=path.join(root,'tmp',name);
 assert.match(name,/^xiaok-[a-z0-9-]{1,80}$/);
 const firstDraftRequired=!process.argv.includes('--allow-bounded-repair');
+const manualSiteFixtures=process.argv.includes('--manual-site-fixtures');
+const siteFixtureMode=manualSiteFixtures?'manual_staff_edit':'model_draft';
 const caseSet=process.argv.find(arg=>arg.startsWith('--case-set='))?.slice('--case-set='.length)||'all';
 manualScenarioNames(caseSet);
 const coordination='xiaok-citation-control-'+Date.now(),control=path.join(root,'tmp',coordination);
 const batchId=randomUUID();
-type Live={started:string;finished?:string;passed:boolean;error?:string;promptVersion:string;readyForIsolation?:boolean;retiredForIsolation?:boolean;batchId?:string;
+type Live={started:string;finished?:string;passed:boolean;error?:string;promptVersion:string;siteFixtureMode?:string;readyForIsolation?:boolean;retiredForIsolation?:boolean;batchId?:string;
   source:{sha256:string};fixture:{enterpriseId:string;ownerId:string;userId:string;profile:string;providerKey?:string;model?:string};document:{documentId:string;versionId:string};
   conversationIds:string[];codeHashes:Record<string,string>;codeHashesAfter?:Record<string,string>;finalState?:Record<string,string>;
   runs:Array<{runId:string;conversationId:string;status:string;fixedChecksPassed?:boolean;firstDraftPassed?:boolean;firstDraftCatalog?:boolean;repairCount?:number;
     outputMessageId:string;message?:{citations:Array<{id:string}>};caseFailure?:string}>};
 const report:{started:string;finished?:string;passed:boolean;checks:Array<{name:string;passed:boolean;status?:number}>;
   children:Array<{evidence:string;profile:string;exit?:number;enterpriseId?:string}>;firstDrafts?:{passed:number;total:number};
-  delivered?:{passed:number;total:number};quality:string;firstDraftRequired:boolean;error?:string;sourceHash?:string;reportHashes?:Record<string,string>}=
-  {started:new Date().toISOString(),passed:false,checks:[],children:[],quality:'pending independent prose review',firstDraftRequired};
+  delivered?:{passed:number;total:number};quality:string;firstDraftRequired:boolean;siteFixtureMode:string;error?:string;sourceHash?:string;reportHashes?:Record<string,string>}=
+  {started:new Date().toISOString(),passed:false,checks:[],children:[],quality:'pending independent prose review',firstDraftRequired,siteFixtureMode};
 const save=()=>writeAcceptanceReport(path.join(directory, 'evaluation.json'), report);
 const live=(evidence:string):Live=>JSON.parse(fs.readFileSync(path.join(root,'tmp',evidence,'live.json'),'utf8'));
 const signal=(evidence:string,phase:'retire'|'cleanup')=>fs.writeFileSync(path.join(control,`${evidence}-${phase}.json`),'{}');
@@ -49,7 +51,7 @@ async function main(){
   }
   const children= ['a','b'].map(profile=>{
     const evidence=name+'-'+profile,p=path.join(root,'tmp',evidence,'live.json'),args=['--import','tsx','scripts/assistant-real-manual-synthesis-development.ts',
-      '--development',...(firstDraftRequired?['--require-first-draft']:[]),'--case-set='+caseSet,'--profile='+profile,'--evidence='+evidence,'--coordinate='+coordination,'--batch='+batchId];
+      '--development',...(firstDraftRequired?['--require-first-draft']:[]),...(manualSiteFixtures?['--manual-site-fixtures']:[]),'--case-set='+caseSet,'--profile='+profile,'--evidence='+evidence,'--coordinate='+coordination,'--batch='+batchId];
     if(fs.existsSync(p)){const old=live(evidence);assert.ok(old.finished&&old.finalState?.active_runs==='0','Previous child must finish cleanup before reuse');
       args.push(old.passed?'--recheck':'--resume');}
     const entry:{evidence:string;profile:string;exit?:number;enterpriseId?:string}={evidence,profile};report.children.push(entry);
@@ -66,6 +68,8 @@ async function main(){
       return states.every(s=>s?.batchId===batchId&&s?.readyForIsolation)?states as Live[]:false;
     },'both independent registered-case batches');
     const [a,b]=children.map(c=>live(c.evidence));
+    assert.equal(a.siteFixtureMode || 'model_draft', siteFixtureMode);
+    assert.equal(b.siteFixtureMode || 'model_draft', siteFixtureMode);
     assert.notEqual(a.fixture.enterpriseId,b.fixture.enterpriseId);assert.notEqual(a.fixture.userId,b.fixture.userId);
     assert.notEqual(a.document.documentId,b.document.documentId);assert.notEqual(a.document.versionId,b.document.versionId);
     assert.equal(a.source.sha256,b.source.sha256);assert.deepEqual(a.codeHashes,b.codeHashes);
