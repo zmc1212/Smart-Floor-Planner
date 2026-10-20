@@ -10,6 +10,47 @@ import { runRenovationAgent, type AgentCheckpoint } from '../agent/runtime';
 import { assertToolPairs } from '../agent/context-budget';
 import type { ModelMessage } from '../contracts/model';
 
+const passageFixture = (count = 9): SourceFile => ({ version: 1, assetId: '1', hash: 'a'.repeat(64), name: '合成并发.docx', format: 'docx',
+  parsed: { parser: 'synthetic-passages-v1', warnings: [], blocks: Array.from({ length: count }, (_, index) => ({ id: 'p'+index,
+    kind: 'paragraph', section: [], paragraph: index + 1, text: `合成原段${index}😀，前提和例外必须保留。` })) },
+  review: { adminId: '1', at: '2026-10-20T00:00:00Z', excluded: [] } });
+
+test('file passage checks use at most four concurrent calls and preserve Unicode source order and locators', async () => {
+  const file = passageFixture(), before = JSON.stringify(file); let active = 0, maximum = 0;
+  const completed: number[] = [];
+  const chunks = await fileChunks(file, async text => {
+    const index = Number(/原段(\d+)/.exec(text)![1]); active++; maximum = Math.max(maximum, active);
+    await new Promise(resolve => setTimeout(resolve, (10-index)*2)); completed.push(index); active--;
+    return [{ text, start: 0, end: Array.from(text).length, tokens: 30 }];
+  });
+  assert.equal(maximum, 4); assert.equal(active, 0); assert.notDeepEqual(completed, [...completed].sort((a,b)=>a-b));
+  assert.deepEqual(chunks.map(chunk=>chunk.file.blockId), file.parsed!.blocks.map(block=>block.id));
+  for (const chunk of chunks) assert.equal(Array.from(fileContent(file).body).slice(chunk.start,chunk.end).join(''),chunk.text);
+  assert.equal(JSON.stringify(file), before);
+});
+
+test('a failed passage stops new dispatches and drains the already in-flight checks before returning failure', async () => {
+  const gates: Array<()=>void> = []; let calls = 0, active = 0, settled = false;
+  const pending = fileChunks(passageFixture(12), async text => {
+    calls++; if (calls === 1) throw Error('source_revoked');
+    active++; await new Promise<void>(resolve => gates.push(resolve)); active--;
+    return [{text,start:0,end:Array.from(text).length,tokens:30}];
+  });
+  const observed = pending.then(()=>{settled=true;}, error=>{settled=true;throw error;});
+  const rejected = assert.rejects(observed,/source_revoked/);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(calls,4); assert.equal(active,3); assert.equal(settled,false);
+  gates.forEach(release=>release()); await rejected;
+  assert.equal(active,0); assert.equal(calls,4);
+});
+
+test('concurrent validation still refuses clipped conditions and enforces original block bounds before dispatch', async () => {
+  let calls = 0;
+  await assert.rejects(fileChunks(passageFixture(),async text=>{calls++;return [{text:text.slice(0,-1),start:0,end:Array.from(text).length-1,tokens:30}];}),/knowledge_file_block_limit/);
+  assert.ok(calls<=4);
+  calls=0;await assert.rejects(fileChunks(passageFixture(129),async()=>{calls++;return [];}),/knowledge_file_block_limit/);assert.equal(calls,0);
+});
+
 test('DOCX keeps chapters/merged headers/cells/footnotes/Unicode without invented pages',async()=>{
   const parsed=await parseSourceFile(syntheticDocx({image:true}),'docx');
   const row=parsed.blocks.find(b=>b.text.includes('TEST-A'))!;assert.ok(row);assert.equal(row.table,1);assert.equal(row.row,3);assert.deepEqual(row.cells?.map(c=>c.column),[1,2,3]);

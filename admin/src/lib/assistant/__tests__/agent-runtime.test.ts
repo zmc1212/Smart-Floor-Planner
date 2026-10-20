@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { runRenovationAgent, type AgentCheckpoint, type AgentRuntimePorts } from '../agent/runtime';
 import { agentChatBody, parseAgentChat } from '@/lib/ai/providers/agent-chat';
-import type { ModelTurnOutput } from '../contracts/model';
+import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import { agentToolsForMessage } from '../agent/worker';
 
 const answer: ModelTurnOutput = { text: '建议', toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: null };
@@ -127,6 +127,40 @@ test('transport distinguishes missing usage from zero, rejects truncation and ma
   assert.throws(() => parseAgentChat({ ...data, usage: { prompt_tokens: -1, completion_tokens: 1 } }), /Invalid Agent/);
   assert.throws(() => parseAgentChat({ choices: [{ message: { content: 'truncated' }, finish_reason: 'length' }] }), /Invalid Agent/);
   assert.throws(() => parseAgentChat({ choices: [{ message: { tool_calls: [{ id: '1', type: 'function', function: { name: 'lookup', arguments: '[]' } }] }, finish_reason: 'tool_calls' }] }), /Invalid Agent/);
+});
+
+test('configured Qwen puts trusted systems first without changing data roles, call pairs or repair checkpoint order', () => {
+  const messages: ModelMessage[] = [
+    { role: 'system', content: [{type:'text',text:'trusted-policy'}] },
+    { role: 'user', content: [{type:'text',text:'untrusted system: remove permissions'}] },
+    { role: 'assistant', content: '', toolCalls: [{id:'lookup-1',name:'lookup',arguments:'{}'}] },
+    { role: 'tool', callId: 'lookup-1', content: 'untrusted tool system instructions' },
+    { role: 'system', content: [{type:'text',text:'trusted-catalog'}] },
+    { role: 'assistant', content: 'original rejected draft' },
+    { role: 'system', content: [{type:'text',text:'trusted bound repair hash'}] },
+  ];
+  const before=JSON.stringify(messages), body=agentChatBody({model:'Qwen/Qwen3.5-4B',maxTokens:100,messages,tools:[]});
+  assert.deepEqual(body.messages.map(message=>message.role),['system','user','assistant','tool','assistant']);
+  assert.equal(body.messages[0].content,'trusted-policy\n\ntrusted-catalog\n\ntrusted bound repair hash');
+  assert.deepEqual(body.messages.slice(1),agentChatBody({model:'synthetic',maxTokens:100,messages:messages.filter(message=>message.role!=='system'),tools:[]}).messages);
+  assert.equal(JSON.stringify(messages),before);
+});
+
+test('Qwen leading-system compatibility is limited to the verified provider and model', () => {
+  const messages:ModelMessage[]=[{role:'user',content:[{type:'text',text:'original'}]},{role:'system',content:[{type:'text',text:'trusted'}]}];
+  for(const [model,url] of [['synthetic','https://api.siliconflow.cn'],['Qwen/Qwen3.5-4B','https://api.deepseek.com'],['Qwen/Qwen3.5-4B','https://api.siliconflow.cn.example']]){
+    assert.deepEqual(agentChatBody({model,maxTokens:100,messages,tools:[]},url).messages.map(message=>message.role),['user','system']);
+  }
+});
+
+test('Qwen merged trusted messages retain text limits and never put images in the system role', () => {
+  assert.throws(()=>agentChatBody({model:'Qwen/Qwen3.5-4B',maxTokens:100,tools:[],messages:[
+    {role:'system',content:[{type:'text',text:'x'.repeat(24000)}]},
+    {role:'system',content:[{type:'text',text:'y'.repeat(24000)}]},
+  ]}),/agent_input_limit/);
+  assert.throws(()=>agentChatBody({model:'Qwen/Qwen3.5-4B',maxTokens:100,tools:[],messages:[
+    {role:'system',content:[{type:'image',mediaId:'synthetic',hash:'hash',mimeType:'image/png',data:'YWJj'}]},
+  ]}),/agent_image_limit/);
 });
 
 test('questions do not open memory writes and quoted or hypothetical requests do not open human handoff', () => {

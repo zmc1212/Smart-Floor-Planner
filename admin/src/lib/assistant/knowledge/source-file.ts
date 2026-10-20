@@ -39,13 +39,30 @@ export function fileContent(file: SourceFile) {
 }
 export async function fileChunks(file: SourceFile, chunk: (s: string) => Promise<Chunk[]>) {
   if (!file.parsed || !file.review) fail('knowledge_file_review_required');
+  const passages = filePassages(file);
+  if (!passages.length || passages.length > 128) fail('knowledge_file_block_limit', 422);
+  // Each callback keeps its existing authorization/dispatch audit. Bound the
+  // latency of independent original-passage checks without changing chunks,
+  // ordinals, deadlines or source locators. Drain in-flight calls on failure.
+  const validated: Chunk[] = new Array(passages.length);
+  let next = 0, failed = false, failure: unknown;
+  await Promise.all(Array.from({ length: Math.min(4, passages.length) }, async () => {
+    while (!failed && next < passages.length) {
+      const index = next++, text = passages[index].text;
+      try {
+        const pieces = await chunk(text);
+        if (pieces.length !== 1 || !Number.isInteger(pieces[0].tokens) || pieces[0].tokens < 1 || pieces[0].tokens > 512 || pieces[0].start !== 0 || pieces[0].end !== Array.from(text).length || pieces[0].text !== text) fail('knowledge_file_block_limit', 422);
+        validated[index] = pieces[0];
+      } catch (error) { if (!failed) { failed = true; failure = error; } }
+    }
+  }));
+  if (failed) throw failure;
   let offset = 0;
   const result: Array<Chunk & { file: FileLocator }> = [];
-  for (const { block, text } of filePassages(file)) {
-    const pieces = await chunk(text);
+  for (const [index, { block, text }] of passages.entries()) {
+    const piece = validated[index];
     // First batch keeps each original passage and its conditions together.
-    if (pieces.length !== 1 || !Number.isInteger(pieces[0].tokens) || pieces[0].tokens < 1 || pieces[0].tokens > 512 || pieces[0].start !== 0 || pieces[0].end !== Array.from(text).length || pieces[0].text !== text) fail('knowledge_file_block_limit', 422);
-    result.push({ ...pieces[0], start: offset, end: offset + pieces[0].end, file: {
+    result.push({ ...piece, start: offset, end: offset + piece.end, file: {
       assetId: file.assetId, sourceHash: file.hash, name: file.name, format: file.format, parser: file.parsed.parser,
       blockId: block.id, kind: block.kind, section: block.section, ...(block.page ? { page: block.page } : {}),
       ...(block.paragraph ? { paragraph: block.paragraph } : {}), ...(block.table ? { table: block.table } : {}),

@@ -1,17 +1,31 @@
 import { AiProviderError, type AiProviderRuntimeConfig } from '../provider-types';
-import { agentModelLimits, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
+import { agentModelLimits, type ModelMessage, type ModelTurnInput, type ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from './http';
 import { thinkingBody } from './thinking';
 
 const invalid = () => { throw new AiProviderError('Invalid Agent model response', 'INVALID_PROVIDER_RESPONSE', 'unknown', 502); };
 export const agentChatProtocolVersion = 'final-tool-choice-v1';
+export const qwenSystemProtocolVersion = 'qwen35-leading-system-v1';
+function leadingSystems(messages: ModelMessage[]): ModelMessage[] {
+  const systems = messages.flatMap(message => message.role === 'system' ? [message] : []);
+  if (!systems.length || (systems.length === 1 && messages[0].role === 'system')) return messages;
+  // Only trusted system-role messages move. Original user/tool/assistant data,
+  // call pairs and application checkpoints retain their order and identity.
+  return [{ role: 'system', content: systems.flatMap((message, index) => [
+    ...(index ? [{ type: 'text' as const, text: '\n\n' }] : []), ...message.content,
+  ]) }, ...messages.filter(message => message.role !== 'system')];
+}
 export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.siliconflow.cn') {
   if (!Number.isInteger(input.maxTokens) || input.maxTokens < 1 || input.maxTokens > agentModelLimits.maxOutputTokens) throw Error('agent_input_limit');
   let images = 0, textBytes = 0;
-  const messages = input.messages.map(message => {
-    if (message.role === 'system' && new URL(baseUrl).origin === 'https://api.deepseek.com') {
+  // Verified SiliconFlow Qwen3.5 template rejects any later system message.
+  // This wire-only compatibility rule does not rewrite the runtime's trusted
+  // repair control/draft adjacency or promote retrieved data into instructions.
+  const qwen = new URL(baseUrl).origin === 'https://api.siliconflow.cn' && input.model === 'Qwen/Qwen3.5-4B';
+  const messages = (qwen ? leadingSystems(input.messages) : input.messages).map(message => {
+    if (message.role === 'system' && (qwen || new URL(baseUrl).origin === 'https://api.deepseek.com')) {
       if (message.content.some(part => part.type !== 'text')) throw Error('agent_image_limit');
-      const content = message.content.map(part => part.type === 'text' ? part.text : '').join('\n');
+      const content = message.content.map(part => part.type === 'text' ? part.text : '').join(qwen ? '' : '\n');
       textBytes += Buffer.byteLength(content);
       return { role: 'system', content };
     }

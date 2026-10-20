@@ -5,8 +5,9 @@ import { AssistantError, fail, safeText } from '@/lib/assistant/contracts';
 import type { ModelMessage, ModelTurnOutput } from '@/lib/assistant/contracts/model';
 import { agentConfig } from '@/lib/assistant/agent/config';
 import { executePostgresText } from '@/lib/ai/postgres-workflow-chat';
+import { isSafeProviderFallback } from '@/lib/ai/provider-types';
 import { completeRun, failRun, heartbeat, runContext, type Lease } from '@/lib/assistant/infrastructure/job-queue';
-import { siteDraftPrompt, sitePromptVersion, parseSiteDraft, siteRecordText } from './site-contract';
+import { siteDraftPrompt, sitePromptVersion, parseSiteDraft, siteRecordText, siteDraftTool, siteDraftOutput } from './site-contract';
 import { recordVersion } from './site-chat';
 import { constructionAccess } from './service';
 
@@ -61,7 +62,8 @@ export async function processSiteRecord(lease: Lease, model?: Model) {
         const result = await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
           logicalModelKey: 'chat.general', maxTokens: 2048, temperature: 0,
           messages: initial.messages.map(m => ({ role: m.role as 'system' | 'user', content: Array.isArray(m.content) ? m.content.filter(p => p.type === 'text').map(p => p.text).join('\n') : m.content })),
-          ...(initial.config ? { agent: { config: initial.config, input: { messages: initial.messages, tools: [], maxTokens: 2048, jsonOutput: true } } } : {}),
+          ...(initial.config ? { agent: { config: initial.config, input: { messages: initial.messages,
+            tools: [siteDraftTool(initial.rooms.map(room => String(room.id)))], maxTokens: 2048, requireTool: true } } } : {}),
           metadata: { promptVersion: sitePromptVersion, projectId: String(initial.r.project_id) }, beforeProviderCall: before });
         attemptId = String(result.attemptId);
         output = result.agentOutput || { text: result.content, toolCalls: [], finishReason: null, providerRequestId: null, usage: null };
@@ -74,8 +76,7 @@ export async function processSiteRecord(lease: Lease, model?: Model) {
       await scoped(async tx => { await tx.execute(sql`update app.assistant_run_steps set status='succeeded',provider_attempt_id=${attemptId},private_checkpoint=${JSON.stringify(output)}::jsonb
         where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=1100`); });
     } else returned = true;
-    if (output.toolCalls.length || output.finishReason === 'length') fail('invalid_model_answer', 502);
-    const draft = parseSiteDraft(output.text, initial.rooms.map(r => String(r.id)));
+    const draft = parseSiteDraft(siteDraftOutput(output), initial.rooms.map(r => String(r.id)));
     await scoped(async tx => {
       if (draft.roomId && !await one(tx, sql`select id from app.construction_rooms where enterprise_id=${lease.enterpriseId} and project_id=${String(initial.r.project_id)} and id=${draft.roomId} and name=${String(initial.rooms.find(r => r.id === draft.roomId)?.name)}`)) fail('context_changed');
     });
@@ -91,7 +92,7 @@ export async function processSiteRecord(lease: Lease, model?: Model) {
       await recordVersion(tx, lease.enterpriseId, updated, lease.actor.principal.kind === 'admin' ? lease.actor.principal.adminId : '', 'organized');
     });
   } catch (error) {
-    try { await failRun(lease, error instanceof AssistantError ? error.code : 'site_organization_failed', returned); }
+    try { await failRun(lease, error instanceof AssistantError ? error.code : 'site_organization_failed', returned || isSafeProviderFallback(error)); }
     catch (e) { if (!(e instanceof AssistantError && e.code === 'context_changed')) throw e; }
   }
 }

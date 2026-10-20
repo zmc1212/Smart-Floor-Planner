@@ -36,6 +36,8 @@ const codeHashes=()=>Object.fromEntries([
   ...fs.readdirSync(codeRoot).filter(f=>f.endsWith('.ts')).map(f=>'src/lib/assistant/agent/'+f),
   'src/lib/assistant/contracts/index.ts','src/lib/assistant/contracts/model.ts','src/lib/assistant/contracts/source-file.ts',
   'src/lib/assistant/knowledge/retrieval.ts','src/lib/assistant/knowledge/sources.ts','src/lib/ai/providers/agent-chat.ts',
+  'src/lib/assistant/knowledge/source-file.ts','src/lib/assistant/knowledge/index-worker.ts','src/lib/assistant/knowledge/chunk-gateway.ts',
+  'src/lib/construction/site-contract.ts','src/lib/construction/site-worker.ts',
   'scripts/assistant-real-manual-synthesis-development.ts','scripts/assistant-citation-protocol-development.ts','scripts/assistant-acceptance-report.mjs',
   'scripts/assistant-manual-cases.mjs',
 ].sort().map(file=>[file,createHash('sha256').update(fs.readFileSync(file)).digest('hex')]));

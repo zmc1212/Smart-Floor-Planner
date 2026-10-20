@@ -19,7 +19,23 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前AG-08：唯一修复中的显式来源编辑
+## 当前v82：有界原段校验与严格现场草稿
+
+**内部技术子阶段Implemented，整体Limited。** 由当前唯一集成人共同修改知识原段校验和Agent现场草稿序列化。`fileChunks`最多并发校验4个独立原段，结束后恢复原顺序、Unicode偏移、完整正文/条件及文件定位；首个失败停止新增派发，等待已在途校验结束后返回失败。每次原回调仍重验当前企业/job/版本并持久记录attempt；原80秒chunk/110秒embedding派发时限、租约、profile及未知调用不重放保持。未增加OCR、分块策略、第二检索器或发布能力。
+
+`xiaok-site-record-v2`复用既有明确指定`final_response`的输出传输，5个文本字段必填，`roomId`是当前获权项目的可选string枚举。没有明确房间时省略字段，序列化明确解码为既有null状态，不转型数字、不猜名称/外企ID；无房间的项目schema不暴露该属性。只解码一次同名输出调用，仍交给原严格`parseSiteDraft`，额外字段、未知/多个调用和截断均拒绝。持久checkpoint保留原provider响应，兼容历史纯JSON checkpoint，恢复不重发provider。这里只序列化，不执行业务工具、自动核对/发布或重试。已知安全拒绝标记终态失败，真实未知受理继续隔离；不为清零而改写历史1039/1040未知job。原作者/经理/成员、租户、来源和用量围栏保持。
+
+咨询prompt升级`xiaok-renovation-v82`，综合policy/catalog/transport/repair沿`trusted-synthesis-v10` / `source-catalog-v1` / `final-tool-choice-v1` / `synthesis-edit-v1`及全部原预算。沿用[LangChain结构化输出合同](https://docs.langchain.com/oss/javascript/langchain/structured-output)和[Qwen模型工具输出合同](https://huggingface.co/Qwen/Qwen3.5-4B)，不新增运行器，不把provider schema当授权或语义证明。未改Mini/Admin结构、样式、素材、固定文案、导航、路由、公开API、角色或schema。既有C01/C02/C05/U01、PPT22/38 S04及真实写入/核对/失败/重试/重进仍是客户端基线，不新增原生或部署通过声明。
+
+`tmp/xiaok-setup-v82/`首个准备批次的两份74段原件均索引成功，但新增末尾system指令引发硅基流动HTTP400/20015，咨询题0/8。独立合成探针保留精确拒绝，[Qwen官方模板](https://huggingface.co/Qwen/Qwen3.5-4B/blob/main/chat_template.jinja)确认system只能在开头。`qwen35-leading-system-v1`仅在已验证供应商/型号发送层合并可信system，不改运行器checkpoint/修复相邻关系、完整原文、其他角色或工具配对，不把user/tool内容升格。合并后仍验完整文本预算，其他模型/供应商保持原路径；这是provider/template兼容，不替换编排。nullable与纯string schema均保留数字ID失败，也有一次纯string成功；schema不能保证模型/provider始终遵循。[维护中的vLLM解析器测试](https://github.com/vllm-project/vllm/blob/main/tests/tool_parsers/test_qwen3coder_tool_parser.py)覆盖此类类型转换。硅基流动实际服务版本/解析器未知，不能断言它采用了某个上游bug。
+
+v82收口于`tmp/xiaok-setup-v82/manifest.json`：198/198单元、23隔离服务通过/1实模照片跳过、73/73 Mini/全仓lint通过，类型本批0/全仓292，源码/测试/provider首尾及收口hash一致。中途类型收窄修改造成漂移的服务批次保留并排除，只计final-*。2615/2616各74原段/10向量批成功但现场HTTP400失败，AI关闭/资料retired，历史2条保守未知job保留，provider实际failed/accepted=false。最终2617/2618导入超时，无文档/模型调用，咨询0/8、新实模隔离0项，活动/未知/客户可读计数全0。原2567未变，窗口2026-10-20T03:19:41.306Z结束释放，businessBatchPassed=false。窗口后核对队列/近期调用为空及进程身份，以原命令/配置恢复本地3006，鉴权401/56ms，未操作生产进程。
+
+用户要求的免费8B实际为`Qwen/Qwen3-8B`，不是Qwen3.5-8B。[官方价格/目录](https://www.siliconflow.cn/pricing)本次无3.5-8B，3.5-9B收费，3-8B仅文本且支持工具。`tmp/xiaok-free-model-comparison/`单独保留Xing默认思考90s未知、4B数字房间ID拒绝，以及8B严格草稿和2个配对只读调用后的最终回答成功。旧probe单次lookup断言比既有最多4调用合同更窄，原失败manifest保持；只接续明确已返回的lookup，不重发provider。探针未改配置、不证明专业质量胜负。当前4B保持，下一新开发窗口测试8B后恢复原配置。
+
+技术复现：在admin运行`node ../tmp/xiaok-setup-v82/check.mjs <mode> --final`，mode分别取unit、service、mini、lint-full或types；service沿既有隔离锁/角色/空闲守卫。相应测试源码已提交，包括`src/lib/__tests__/construction-site-contract.test.ts`及Agent运行器/文件测试；实模沿带守卫驱动、唯一新夹具及原文/模型边界。
+
+## v81历史AG-08：唯一修复中的显式来源编辑
 
 **v81内部技术子阶段，整体专业客服仍Limited。** 当前`xiaok-renovation-v81`沿既有`trusted-synthesis-v10` / `source-catalog-v1` / `final-tool-choice-v1`加入`synthesis-edit-v1`。仅在本轮结构有效的目录式综合首稿已被原校验拒绝、且进入原唯一修复时，服务端控制消息与前一份完整首稿的hash绑定。模型按原段落下标显式修改text/basis、增删citationId、删除段落或追加必要段落；没有指明修改的正文和引用保持原值，不整体替换引用数组，不自动拼接候选。目录之外、换版/歧义ID、错误baseHash、重复段落编辑、越界、额外字段和首轮伪造修复均拒绝。
 

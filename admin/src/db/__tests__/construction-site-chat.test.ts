@@ -10,6 +10,7 @@ import { ConstructionService } from '@/lib/construction/service';
 import { SiteChatService } from '@/lib/construction/site-chat';
 import { siteChatHttp } from '@/lib/construction/site-http';
 import { processSiteRecord } from '@/lib/construction/site-worker';
+import { AiProviderError } from '@/lib/ai/provider-types';
 import { claimJob, markProviderStarted } from '@/lib/assistant/infrastructure/job-queue';
 import { ConversationService } from '@/lib/assistant/core/conversation';
 import { siteWatchInterceptor } from '@/lib/construction/site-watches';
@@ -129,7 +130,13 @@ test('real source and job commit once; configured model contract produces a shar
   await assert.rejects(site().send(pid, { ...body, text: '另一个内容' }, k));
   const lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
   const room = ((await read()).rooms as Row[]).find(r => r.name === '书房')!;
-  await processSiteRecord(lease!, async messages => { assert.ok(JSON.stringify(messages).includes('image/jpeg')); return output(String(room.id)); });
+  let calls = 0;
+  await processSiteRecord(lease!, async messages => { calls++; assert.ok(JSON.stringify(messages).includes('image/jpeg'));
+    const draft = output(String(room.id)); return { ...draft, text: '', finishReason: 'tool_calls',
+      toolCalls: [{ id: 'synthetic-site-draft', name: 'final_response', arguments: draft.text }] }; });
+  assert.equal(calls, 1);
+  const provider = await withTenantTransaction(eids[0], tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${eids[0]} and run_id=${String(sent.runId)} and step_seq=1100`));
+  assert.equal(((provider!.private_checkpoint as Row).toolCalls as Row[])[0].name, 'final_response');
   const r = await record(); assert.equal(r.status, 'draft'); assert.equal((r.data as Row).pending, '底盒还没固定'); assert.equal(r.audience, 'internal');
   assert.equal(((await site(0, 1).read(pid)).items as Row[]).length, 1); assert.ok((await site(0, 1).media(pid, mediaId)).data.length);
 });
@@ -210,6 +217,14 @@ test('membership removal during a provider call prevents late draft writes and p
   assert.equal(result!.status, 'failed'); assert.equal(Number(result!.usage), 1);
   await act('member', { projectId: pid, expectedVersion: await pv(), adminId: staffIds[0][0], role: 'worker', active: true, workLabel: '' });
 });
+test('a definitive provider rejection fails once while ambiguous dispatches remain fenced', async () => {
+  const sent=await site().send(pid,{text:'合成现场资料，等待核对。',mediaIds:[]},randomUUID()),lease=await claimJob();
+  assert.equal(lease?.runId,sent.runId);let calls=0;
+  await processSiteRecord(lease!,async()=>{calls++;throw new AiProviderError('Synthetic protocol rejection','HTTP_400','safe_fallback',400);});
+  const result=await withTenantTransaction(eids[0],tx=>one(tx,sql`select r.status,j.status job_status from app.assistant_runs r join app.assistant_jobs j on j.enterprise_id=r.enterprise_id and j.run_id=r.id where r.enterprise_id=${eids[0]} and r.id=${String(sent.runId)}`));
+  assert.equal(calls,1);assert.equal(result!.status,'failed');assert.equal(result!.job_status,'failed');
+});
+
 test('a provider outcome that is unknown is not dispatched again after a worker restart', async () => {
   const sent = await site().send(pid, { text: '现场补充，等待核对。', mediaIds: [] }, randomUUID()), lease = await claimJob(); assert.equal(lease?.runId, sent.runId);
   await markProviderStarted(lease!);
