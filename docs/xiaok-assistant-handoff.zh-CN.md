@@ -8,7 +8,7 @@
 
 ### 当前v94：纯记录实际回执与恢复
 
-v94为内部限定修复，源码提交待本批登记，F-04及整体仍Limited。明确纯记录只开放record_need，完整工具批次配对后以本run/触发原话/仍有效current事实生成服务器实际清单。`resolveToolReply`/`durable-tool-reply-v1`、`finalFromTools`检查点和`agent_need_receipt`复用现有Graph/PG/记忆；校验/恢复重新授权，不重放模型或写入，不增加Agent/facts库/引用管线，服务器结果不伪装模型用量。混合问题、知识综合和接管路径保持。
+v94为内部限定修复，源码提交`f56789df195334396574cba3a6d04019697d181a`，F-04及整体仍Limited。明确纯记录只开放record_need，完整工具批次配对后以本run/触发原话/仍有效current事实生成服务器实际清单。`resolveToolReply`/`durable-tool-reply-v1`、`finalFromTools`检查点和`agent_need_receipt`复用现有Graph/PG/记忆；校验/恢复重新授权，不重放模型或写入，不增加Agent/facts库/引用管线，服务器结果不伪装模型用量。混合问题、知识综合和接管路径保持。
 
 266单元、18服务通过/7 opt-in跳过、4知识/施工兼容、98 Mini及涉及文件/全仓lint通过，本批类型0/全仓292；889项全窗稳定。原红测确实复现“只存靠窗却确认收纳”。当前免费文字GLM9 C01 run1145/1146各一次调用，原生真实输入/反馈/重进：第一条仅保存靠窗且不虚认收纳；第二条两次写入均完成后合并回执靠内墙/18万元，旧desk真实superseded。收纳仍漏提取，纯回执值片段展示和混合提问不升级完整能力。批准C01组件/原生副屏/新编译/390×844与两张348×752截图已审看，Mini代码不改。
 
