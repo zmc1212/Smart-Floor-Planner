@@ -108,7 +108,7 @@ The compact stage-commit index does not replace the phase-two contract. This che
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| AG-05/08/09 v85 bound repair task (internal substage) | 217 units/4 services/73 Mini/lint;5/8 live questions,delivery0/5,complete conditions0/3 drafts;3 questions/9 checks unexecuted;unknown1 retained | Recorded after stage commit |
+| AG-05/08/09 v85 bound repair task (internal substage) | 217 units/4 services/73 Mini/lint;5/8 live questions,delivery0/5,complete conditions0/3 drafts;3 questions/9 checks unexecuted;unknown1 retained | `d849d722f79796609bfcea090858b258d9a9b858` |
 | AG-05/08/09 v84 source final kinds/question fixtures (internal substage) | 214 units/3 services/73 Mini/lint;4 staff records;8 synthesis drafts,delivery/semantics0/8;1 setup check/8 unexecuted;cleanup/configuration preserved | `712bb59e697a062a3eaa13487ede1a8893fb48c3` |
 | AG-05/09 v83 same-run read reuse (internal substage) | 211 units/3 targeted isolated services/73 Mini/lint pass; scoped types 0/whole 292; three offline traces fit 16000; new model acceptance unexecuted | `911414332078fbef564e08b3faebc7407331ed66` |
 | v82 Qwen3-8B separate validation (source unchanged) | Two original indexes/4 drafts pass; customer delivery 0/8, 9 live isolation checks unexecuted; 1 unknown job quarantined, original 4B configuration restored exactly | `7108d40547fb9b0943dcef7f65ac15ccc92c8bee` |
