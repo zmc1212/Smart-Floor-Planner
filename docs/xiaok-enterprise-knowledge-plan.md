@@ -141,7 +141,7 @@ The compact stage-commit index retains scope/results while phase two holds detai
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| AG-05/08/09 v84 source final kinds/question fixtures (internal substage) | 214 units/3 services/73 Mini/lint;4 staff records;8 synthesis drafts,delivery/semantics0/8;1 setup check/8 unexecuted;cleanup/configuration preserved | Recorded after stage commit |
+| AG-05/08/09 v84 source final kinds/question fixtures (internal substage) | 214 units/3 services/73 Mini/lint;4 staff records;8 synthesis drafts,delivery/semantics0/8;1 setup check/8 unexecuted;cleanup/configuration preserved | `712bb59e697a062a3eaa13487ede1a8893fb48c3` |
 | AG-05/09 v83 knowledge compatibility (no new KB capability) | 211 units/3 targeted isolated services/73 Mini/lint pass; scoped types 0/whole 292; three offline traces fit 16000; new model acceptance unexecuted | `911414332078fbef564e08b3faebc7407331ed66` |
 | v82 Qwen3-8B separate validation (source unchanged) | Two original indexes/4 drafts pass; customer delivery 0/8, 9 live isolation checks unexecuted; 1 unknown job quarantined, original 4B configuration restored exactly | `7108d40547fb9b0943dcef7f65ac15ccc92c8bee` |
 | KB-2/AG v82 original checks (internal technical substage) |198 units/23 services/73 Mini/lint pass; two74-passage indexes succeed;0/8 customer questions; broader KB remains Limited | `a88ed26d8969f4bb76d252b0b5128bcf3731dbff` |
