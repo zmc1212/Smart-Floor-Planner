@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { applyNeedDelta, parseNeedDelta, parseNeedWrites, readMemory, needWriteFeedback, hasExplicitNeedCorrection, needQualifications, needInterpretations, assertRecordedReply, type NeedFact } from '../agent/memory';
+import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, needWriteFeedback, hasExplicitNeedCorrection, needQualifications, needInterpretations, assertRecordedReply, needReconfirmationFeedback, type NeedFact, type NeedMemory } from '../agent/memory';
 import { parseAgentReply } from '../agent/context';
 
 test('formal site completion claims require a business receipt while explicit absence/denial remains usable', () => {
@@ -19,6 +19,59 @@ test('source-linked field corrections preserve independent facts and immutable c
   assert.deepEqual(memory.facts.filter(f => f.status === 'current').map(f => f.value), ['采光好','客房','双人桌']);
   assert.equal(memory.facts[3].supersedes, '2'); assert.equal(memory.facts[1].value, '单人桌');
 });
+
+test('repeated corrections cross the old cumulative 300 limit without dropping independent current needs or history', () => {
+  let memory = readMemory({});
+  const archived: NeedFact[] = [];
+  for (let i = 1; i <= 650; i++) {
+    const room = i === 1 ? '厨房' : '书房', field = i === 1 ? 'devices' : 'desk', value = `方案${i}号桌`;
+    const text = `${room}要${value}`;
+    const next = applyNeedDelta(memory, { room, field, value, quote: text, sourceMessageId: String(i), expectedVersion: memory.version },
+      { id: String(i), text }, `op:${i}`, '2026-10-19');
+    const compacted = compactNeedMemory(next); archived.push(...compacted.archivedFacts); memory = compacted.memory;
+    assert.ok(memory.facts.length <= needMemoryPolicy.compactAfterFacts);
+  }
+  const all = [...archived, ...memory.facts];
+  assert.equal(all.length, 650); assert.equal(memory.version, 650);
+  assert.deepEqual(memory.facts.filter(f => f.status === 'current').map(f => f.id), ['op:1', 'op:650']);
+  assert.equal(new Set(all.map(f => f.id)).size, 650);
+  for (let i = 3; i <= 650; i++) assert.equal(all.find(f => f.id === `op:${i}`)!.supersedes, `op:${i - 1}`);
+  assert.ok(archived.every(f => f.status === 'superseded' && f.quote === `书房要${f.value}`));
+});
+
+test('a full current projection permits corrections but rejects the 301st distinct key without eviction', () => {
+  const facts: NeedFact[] = Array.from({ length: 300 }, (_, i) => ({ id: `old:${i}`, room: `房间${i}`, field: 'desk', value: '靠窗',
+    quote: `房间${i}靠窗`, sourceMessageId: String(i + 1), provenance: 'customer_statement', status: 'current', supersedes: null, createdAt: '' }));
+  const memory: NeedMemory = { version: 300, facts };
+  const text = '房间0改为靠门';
+  const updated = applyNeedDelta(memory, { room: '房间0', field: 'desk', value: '靠门', quote: text, sourceMessageId: '301', expectedVersion: 300 },
+    { id: '301', text }, 'new', '');
+  const compacted = compactNeedMemory(updated);
+  assert.equal(compacted.memory.facts.length, 300); assert.deepEqual(compacted.archivedFacts, [{ ...facts[0], status: 'superseded' }]);
+  assert.equal(compacted.memory.facts.at(-1)!.supersedes, facts[0].id);
+  assert.deepEqual(memory, { version: 300, facts });
+  const extra = '新房间靠窗';
+  assert.throws(() => applyNeedDelta(memory, { room: '新房间', field: 'desk', value: '靠窗', quote: extra, sourceMessageId: '301', expectedVersion: 300 },
+    { id: '301', text: extra }, 'extra', ''), /need_memory_limit/);
+  assert.equal(compactNeedMemory(memory).memory, memory);
+});
+
+test('current desk corrections are not reopened as a conflict with historical wording during chat-only recall', () => {
+  const memory: NeedMemory = { version: 302, facts: [{ id: 'new', room: '书房', field: 'desk', value: '靠内墙', quote: '书房书桌靠内墙',
+    sourceMessageId: '302', provenance: 'customer_statement', status: 'current', supersedes: 'old', createdAt: '' }] };
+  const question = '请只回顾聊天原话，不查图纸或项目进度：书房书桌原来和现在的位置有什么差别？';
+  for (const text of ['书桌位置以哪一版为准，需要您确认后再由团队核对。',
+    '现在书房书桌是靠内墙，与更正时说的靠门表述不一致，这一处需要您确认以哪个为准。']) {
+    assert.ok(needReconfirmationFeedback(JSON.stringify({ kind: 'general', text }), memory, question));
+    assert.ok(needReconfirmationFeedback(JSON.stringify({ kind: 'synthesis', segments: [{ text }] }), memory, question));
+  }
+  for (const text of ['书桌现在靠内墙，早先靠窗的需求已被更正，不用您再次确认。',
+    '书桌的正式方案需要您确认以哪一版为准。', '现在的位置暂无获权原话，仍需核对。'])
+    assert.equal(needReconfirmationFeedback(JSON.stringify({ text }), memory, question), null);
+  const repeated = JSON.stringify({ text: '书桌位置以哪一版为准，需要您确认。' });
+  assert.equal(needReconfirmationFeedback(repeated, { version: 302, facts: [] }, question), null);
+  assert.equal(needReconfirmationFeedback(repeated, memory, '请查正式图纸需要同意哪一版？'), null);
+});
 test('a save acknowledgement requires this run committed memory or preference operation', () => {
   const source = { id: '1', text: '书房单人办公' }, empty = readMemory({});
   const saved = applyNeedDelta(empty, parseNeedDelta({ room: '书房', field: 'use', value: '单人办公', quote: source.text,
@@ -31,6 +84,17 @@ test('a save acknowledgement requires this run committed memory or preference op
   }
   assertRecordedReply('沿用原工作记录，正式方案仍另行核对。', saved, '90');
   assertRecordedReply('当前正式方案已更新为新版本。', empty, '90');
+});
+test('not asking again about saved needs does not acknowledge a new save or hide an independent write claim', () => {
+  const source = { id: '1', text: '书房单人办公' }, empty = readMemory({});
+  const saved = applyNeedDelta(empty, parseNeedDelta({ room: '书房', field: 'use', value: '单人办公', quote: source.text,
+    sourceMessageId: source.id, expectedVersion: 0 }), source, '9:0:0', '');
+  const reference = '暂时不用你重复确认已保存的单人办公、靠窗和设备需求。';
+  assertRecordedReply(reference, saved, '90');
+  for (const text of [reference + '我已保存新的需求。', '我已记录。' + reference,
+    '不用你重复确认，我已保存。', '不用你确认已保存。', '我已经保存的书房需求是单人办公。'])
+    assert.throws(() => assertRecordedReply(text, saved, '90'), /unsupported_model_commitment/);
+  assertRecordedReply(reference + '我已保存新的需求。', saved, '9');
 });
 
 test('a direct correction before a new professional question is distinct from a proposal or another speaker', () => {
@@ -47,6 +111,41 @@ test('bounded memory batches reject duplicate fields, nested authority and more 
   assert.equal(parseNeedWrites({ ...first, additionalNeeds: [{ ...first, field: 'devices' }] }).length, 2);
   for (const additionalNeeds of [[first], [{ ...first, field: 'devices', tenantId: '2' }], Array.from({ length: 4 }, () => first)])
     assert.throws(() => parseNeedWrites({ ...first, additionalNeeds }), /invalid_message/);
+});
+
+test('an explicit correction before a separate comma-delimited question remains writable without saving that question', () => {
+  const text = '更正一下，书房改为单人办公，书房书桌改为靠内墙，另外如果厨房加洗碗机，水电要怎么核对？';
+  assert.equal(hasExplicitNeedCorrection(text), true);
+  assert.equal(hasExplicitNeedCorrection('更正一下，书房改为单人办公，另外如果厨房加洗碗机，进排水一般要考虑什么？'), true);
+  assert.equal(hasExplicitNeedCorrection('更正一下，书房改为单人办公，另外厨房加洗碗机对进排水的影响？'), true);
+  let memory = readMemory({});
+  for (const [field, value, quote] of [
+    ['use', '单人办公', '书房改为单人办公'], ['desk', '靠内墙', '书房书桌改为靠内墙'],
+  ] as const) {
+    memory = applyNeedDelta(memory, { room: '书房', field, value, quote, sourceMessageId: '1', expectedVersion: memory.version },
+      { id: '1', text }, `mixed:${field}`, '');
+  }
+  assert.deepEqual(memory.facts.map(f => f.value), ['单人办公', '靠内墙']);
+  for (const quote of ['厨房加洗碗机', text]) {
+    assert.throws(() => applyNeedDelta(memory, { room: '厨房', field: 'devices', value: '洗碗机', quote,
+      sourceMessageId: '1', expectedVersion: memory.version }, { id: '1', text }, 'hypothesis', ''), /need_source_mismatch/);
+  }
+  assert.throws(() => applyNeedDelta(memory, { room: '厨房', field: 'use', value: '单人办公', quote: '书房改为单人办公',
+    sourceMessageId: '1', expectedVersion: memory.version }, { id: '1', text }, 'wrong-room', ''), /need_source_mismatch/);
+});
+
+test('separate-question boundaries never strip a condition, quotation or refusal from the correction itself', () => {
+  for (const text of [
+    '更正一下，如果预算允许，书房改为单人办公，另外厨房水电怎么核对？',
+    '更正一下，设计师说书房改为单人办公，另外厨房水电怎么核对？',
+    '更正一下，书房可以改为单人办公吗，另外厨房水电怎么核对？',
+    '更正一下，书房改为单人办公，另外如果预算允许才按刚才的更正，可以吗？',
+    '更正一下，书房改为单人办公，另外厨房水电怎么核对？不要记录。',
+  ]) {
+    assert.equal(hasExplicitNeedCorrection(text), false, text);
+    assert.throws(() => applyNeedDelta(readMemory({}), { room: '书房', field: 'use', value: '单人办公', quote: '书房改为单人办公',
+      sourceMessageId: '1', expectedVersion: 0 }, { id: '1', text }, 'not-authorized', ''), /need_source_mismatch/, text);
+  }
 });
 
 test('a later explicit use correction qualifies only occupancy in an older mixed desk statement', () => {

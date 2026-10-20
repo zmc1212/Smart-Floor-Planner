@@ -143,6 +143,14 @@ test('retention uses tenant admin auth, dry-run, bounded redaction, replay-safe 
     enterprise_id,run_id,step_seq,kind,capability_name,capability_version,input_summary,source_refs,status,private_checkpoint)
     values(${actor.enterpriseId},${first.runId},1,'retrieval','assistant.knowledge',1,
       '{"private":"PRIVATE_STEP_SUMMARY"}'::jsonb,'[{"private":"PRIVATE_STEP_REF"}]'::jsonb,'succeeded','{"text":"PRIVATE_AGENT_CHECKPOINT"}'::jsonb)`));
+  await withTenantTransaction(actor.enterpriseId, (tx) => tx.execute(sql`insert into app.assistant_run_steps(
+    enterprise_id,run_id,step_seq,kind,capability_name,capability_version,status,private_checkpoint)
+    values(${actor.enterpriseId},${first.runId},1200,'agent_need_write','record_need',1,'succeeded',
+      '{"policy":"need-memory-archive-v1","receipt":{"savedFacts":[{"value":"PRIVATE_NEED_RECEIPT"}]},"archivedFacts":[{"value":"PRIVATE_NEED_ARCHIVE"}]}'::jsonb)`));
+  await withTenantTransaction(actor.enterpriseId, (tx) => tx.execute(sql`insert into app.assistant_run_steps(
+    enterprise_id,run_id,step_seq,kind,status,source_refs,input_summary)
+    values(${actor.enterpriseId},${first.runId},1009,'agent_need_context','succeeded',
+      ${JSON.stringify([{ messageId: first.messageId, hash: 'PRIVATE_NEED_SOURCE_HASH' }])}::jsonb,'{"policy":"need-memory-sources-v1"}'::jsonb)`));
 
   const service = new ConversationService(actor);
   const retryRunId = first.retryRunId!;
@@ -271,6 +279,9 @@ test('retention uses tenant admin auth, dry-run, bounded redaction, replay-safe 
   assert.equal((redacted.steps[0]?.input_summary as Row).retentionRedacted, true);
   assert.deepEqual(redacted.steps[0]?.source_refs, []);
   assert.equal(redacted.steps[0]?.private_checkpoint, null);
+  assert.equal(redacted.steps.length, 3);
+  assert.ok(redacted.steps.every(step => step.private_checkpoint === null && (step.input_summary as Row).retentionRedacted === true && JSON.stringify(step.source_refs) === '[]'));
+  assert.doesNotMatch(JSON.stringify(redacted.steps), /PRIVATE_NEED_RECEIPT|PRIVATE_NEED_ARCHIVE|PRIVATE_NEED_SOURCE_HASH/);
   assert.ok(redacted.runs.every((run) => (run.policy_snapshot as Row).retentionRedacted === true));
   assert.equal((redacted.event!.payload as Row).private, 'SHARED_EVENT_SECRET');
   assert.ok(redacted.idempotency.length >= 5);

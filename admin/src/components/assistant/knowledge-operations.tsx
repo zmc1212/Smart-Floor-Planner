@@ -4,6 +4,7 @@ import { Alert, Button, Collapse, Descriptions, Drawer, Empty, Form, Input, List
 import { notify } from '@/components/admin/operation-feedback';
 import { AssistantMutations, assistantError, assistantRequest, formatTime, statusLabels } from './client';
 import { RetrievalDiagnostics } from './retrieval-diagnostics';
+import { KnowledgeBatchesPanel } from './knowledge-batches';
 import type { KnowledgeExpectation } from '@/lib/assistant/knowledge/evaluation-check';
 import type {MessageContent} from '@/lib/assistant/contracts';
 type Case={id:string;title:string;question:string;expectation:KnowledgeExpectation;version:number;revision:number;gap_status:string;gap_note:string};
@@ -23,6 +24,8 @@ export function KnowledgeOperationsPanel({canUsage}:{canUsage:boolean}) {
   const [evaluation,setEvaluation]=useState<Evaluation|null>(null),[evaluationId,setEvaluationId]=useState<string|null>(null),[evaluationError,setEvaluationError]=useState(''),[note,setNote]=useState('');
   const [evaluationReload,setEvaluationReload]=useState(0),[reloadedQuestion,setReloadedQuestion]=useState<string|null>(null);
   const [usage,setUsage]=useState<Usage>(),[usageError,setUsageError]=useState('');
+  const [picked,setPicked]=useState<Case[]>([]);
+  const [openingCase,setOpeningCase]=useState<string|null>(null);
   const [form]=Form.useForm();const mutations=useRef(new AssistantMutations()),lock=useRef(false),selection=useRef<string|null>(null);
   const load=useCallback(async(before?:string,signal?:AbortSignal)=>{
     setLoading(true);setError('');
@@ -69,7 +72,10 @@ export function KnowledgeOperationsPanel({canUsage}:{canUsage:boolean}) {
     <Alert type="info" showIcon message="固定问题，修订后复跑同题" description="问题由管理者整理，企业内共享；每次复跑固定当前修订及已发布来源版本，沿用仅本人可见的管理员试问和原Worker。召回、入选、引用检查通过后，仍需核对回答的专业含义；不会自动生成施工事项或企业规则。"/>
     {error&&<Alert type="error" showIcon message={error} action={<Button onClick={()=>void load()}>重新读取</Button>}/>}
     <Space wrap><Button type="primary" disabled={busy} onClick={()=>edit('new')}>新增问题/缺口</Button><Button loading={loading} disabled={busy} onClick={()=>void load()}>刷新</Button></Space>
-    <Table<Case> rowKey="id" loading={loading} dataSource={items} pagination={false} scroll={{x:850}} locale={{emptyText:<Empty description="暂无问题集，先记录需要反复核对的真实业务问法。"/>}} columns={[
+    <KnowledgeBatchesPanel targets={picked} onClear={()=>setPicked([])} onEvaluation={(caseId,evaluationId)=>{selection.current=caseId;setSelected(null);setEvaluationId(null);setEvaluation(null);setOpeningCase(caseId);void (async()=>{
+      try{const row=await assistantRequest<Case>(base+'cases/'+caseId);if(selection.current!==caseId)return;await select(row);if(selection.current!==caseId)return;setEvaluationId(evaluationId);setEvaluationReload(n=>n+1);}catch(e){if(selection.current===caseId){setError(assistantError(e));notify.error(assistantError(e));}}finally{setOpeningCase(current=>current===caseId?null:current);}
+    })();}}/>
+    <Table<Case> rowKey="id" rowSelection={{selectedRowKeys:picked.map(r=>r.id),preserveSelectedRowKeys:true,onChange:(_,rows)=>setPicked(rows)}} loading={loading} dataSource={items} pagination={false} scroll={{x:850}} locale={{emptyText:<Empty description="暂无问题集，先记录需要反复核对的真实业务问法。"/>}} columns={[
       {title:'问题',dataIndex:'title',render:(_,r)=><Button type="link" onClick={()=>void select(r)}>{r.title}</Button>},
       {title:'问题修订',dataIndex:'revision',width:100},{title:'缺口状态',dataIndex:'gap_status',render:v=><Tag>{gapLabel[v]||v}</Tag>},
       {title:'预期',dataIndex:'expectation',render:v=>v.kind==='grounded'?'有依据回答':'明确依据不足'},
@@ -80,7 +86,7 @@ export function KnowledgeOperationsPanel({canUsage}:{canUsage:boolean}) {
       <Descriptions column={2} items={[{key:'profile',label:'当前索引',children:health.profile?.profile_key||'尚未建立'},{key:'epoch',label:'知识修订',children:String(health.knowledgeEpoch)},
         {key:'documents',label:'知识文档',children:health.indexes.documents},{key:'ready',label:'当前有效且索引就绪',children:health.indexes.effective_ready},
         {key:'files',label:'文件文档',children:health.indexes.files},{key:'mismatch',label:'发布索引不一致',children:health.indexes.index_mismatch}]}/>
-      <Typography.Text type="secondary">{health.note} 当前支持DOCX/文字PDF，扫描OCR及复杂PDF表格尚未支持。问题最多100条，每条固定最多5份必需/禁止来源；此处来源选项最多显示200份。</Typography.Text>
+      <Typography.Text type="secondary">{health.note} 当前支持DOCX/文字PDF及有界XLSX（含固定小数、千位分隔、百分比及明确单位），公式、日期、复杂数字格式、扫描OCR及复杂PDF表格尚未支持。问题最多100条，每条固定最多5份必需/禁止来源；此处来源选项最多显示200份。</Typography.Text>
       <Table rowKey={r=>r.kind+':'+r.status} size="small" pagination={false} dataSource={health.jobs} columns={[{title:'任务',dataIndex:'kind'},{title:'状态',dataIndex:'status',render:v=>statusLabels[v]||v},{title:'数量',dataIndex:'count'},{title:'过期租约',dataIndex:'expired_leases'},{title:'最早创建',dataIndex:'oldest_at',render:formatTime}]}/>
       <Table rowKey={r=>r.operation+':'+r.status} size="small" pagination={false} dataSource={health.attempts} columns={[{title:'近30天索引调用',dataIndex:'operation'},{title:'状态',dataIndex:'status'},{title:'次数',dataIndex:'calls'},{title:'已知输入tokens',dataIndex:'known_input_tokens',render:v=>v??'未知'},{title:'输入用量未知次数',dataIndex:'unknown_input_calls'}]}/>
       <Typography.Text type="secondary">费用未知。索引调用不等于聊天用量，健康计数不代表外部服务实时连通。</Typography.Text>
@@ -100,8 +106,9 @@ export function KnowledgeOperationsPanel({canUsage}:{canUsage:boolean}) {
         <Form.Item name="gapNote" label="专业核对重点 / 当前缺口"><Input.TextArea rows={4} maxLength={2000}/></Form.Item>
       </Form><Alert type="info" message="复跑时固定必需来源的当前已发布有效版本；未发布或索引失败时会提示处理，原有效旧版保持。修改问法或预期后生成新修订，旧结果不自动沿用。"/>
     </Drawer>
-    <Drawer title="同题回归与缺口核对" open={!!selected} width={720} onClose={()=>{selection.current=null;setSelected(null);setHistory([]);setEvaluationId(null);setEvaluation(null);}}>
-      {selected&&<Space direction="vertical" size={20} style={{width:'100%'}}><Typography.Title level={5}>{selected.title}</Typography.Title><Typography.Paragraph>{selected.question}</Typography.Paragraph>
+    <Drawer title="同题回归与缺口核对" open={!!selected||!!openingCase} width={720} onClose={()=>{selection.current=null;setOpeningCase(null);setSelected(null);setHistory([]);setEvaluationId(null);setEvaluation(null);}}>
+      {openingCase&&<Skeleton active/>}
+      {selected&&!openingCase&&<Space direction="vertical" size={20} style={{width:'100%'}}><Typography.Title level={5}>{selected.title}</Typography.Title><Typography.Paragraph>{selected.question}</Typography.Paragraph>
         <Typography.Paragraph type="secondary">{gapLabel[selected.gap_status]} · {selected.gap_note}</Typography.Paragraph><Button loading={busy} onClick={()=>void start(selected)}>按当前有效资料复跑</Button>
         <List dataSource={history} locale={{emptyText:'本人尚未复跑此题'}} renderItem={r=><List.Item><Button type="link" onClick={()=>{setEvaluation(null);setEvaluationId(r.id);setEvaluationReload(n=>n+1);setNote('');}}>问题修订 {r.case_revision} · {formatTime(r.created_at)}</Button></List.Item>}/>
         {historyCursor&&<Button onClick={()=>void select(selected,historyCursor)}>加载更早复跑</Button>}

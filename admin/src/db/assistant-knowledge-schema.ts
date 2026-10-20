@@ -51,3 +51,12 @@ export const assistantKnowledgeEvaluations=app.table('assistant_knowledge_evalua
   ...identity(),caseId:ref('case_id').notNull(),caseRevision:integer('case_revision').notNull(),snapshot:jsonb('snapshot').notNull(),knowledgeEpoch:ref('knowledge_epoch').notNull(),
   createdBy:ref('created_by').notNull(),createKey:uuid('create_key').notNull(),sendKey:uuid('send_key').notNull(),conversationId:ref('conversation_id'),runId:ref('run_id'),review:jsonb('review'),
 });
+export const assistantKnowledgeBatches=app.table('assistant_knowledge_batches',{
+  ...identity(),createdBy:ref('created_by').notNull(),title:text('title').notNull(),state:text('state').notNull(),
+  concurrency:integer('concurrency').notNull(),configuration:jsonb('configuration').notNull(),knowledgeEpoch:ref('knowledge_epoch').notNull(),
+  indexProfileId:ref('index_profile_id').notNull(),version:integer('version').notNull(),lastError:text('last_error'),updatedAt:time('updated_at').notNull(),
+});
+export const assistantKnowledgeBatchItems=app.table('assistant_knowledge_batch_items',{
+  id:ref('id').primaryKey().generatedAlwaysAsIdentity(),enterpriseId:ref('enterprise_id').notNull(),batchId:ref('batch_id').notNull(),
+  ordinal:integer('ordinal').notNull(),evaluationId:ref('evaluation_id').notNull(),state:text('state').notNull(),
+});

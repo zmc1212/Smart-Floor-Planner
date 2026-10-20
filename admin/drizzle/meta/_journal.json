@@ -617,6 +617,20 @@
       "when": 1792195216000,
       "tag": "0087_assistant_knowledge_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1792195217000,
+      "tag": "0088_assistant_spreadsheet_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1792195218000,
+      "tag": "0089_assistant_knowledge_batches",
+      "breakpoints": true
     }
   ]
 }

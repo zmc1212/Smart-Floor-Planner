@@ -1,0 +1,181 @@
+# 远端开发连接记录
+
+当前LLM开发配置（2026-10-20）：用户明确恢复硅基流动`Qwen/Qwen3.5-4B`，已保存硅基流动凭据保留。平台LLM、本机Git忽略的助手覆盖及批准开发企业1454已一致，policy_version=4，原图片/工具开关保持。3项合成能力探针通过；后续v81因原件索引及现场草稿准备失败，未执行咨询核心题，详见双语二期合同与`tmp/xiaok-bounded-edits-v81/manifest.json`。SSH/隧道/数据库端点/Embedding服务/图片生成供应商及生产边界均未改变。凭据和`.env.local`不入Git，未生产发布。
+
+KB-4有界批量开发扩展：`0089_assistant_knowledge_batches`已应用开发主库`smart_floor_planner`及55432隔离`xiaok_embedding_eval`，SQL SHA256 `5448116bb90626a4322e5ff961d526ad064b0f6c13ce724f8a7fd21ac237c9d8`、两张批次/关联表的强制RLS及应用角色non-BYPASS已核验。仅以本人私有批次分组既有evaluation/run，原Worker/租约/用量/取消与管理角色边界沿用；非第二套模型任务队列。迁移前2026-10-19T06-06-59-739Z的主库16,427,580字节、隔离8,318,824字节custom备份在`tmp/xiaok-kb4-batches/`，PGDMP/归档目录及受限ACL通过；首次归档目录流提前结束的SSH EOF在DDL之前，失败保留为`migration-attempt-1.json`，已改为完整接收后核对。完整0089恢复演练及生产镜像兼容仍未验证。SSH、端口/隧道、身份文件、供应商及生产部署均未改变；实施/实测以二期KB-4合同和`migration.json`为准。
+
+KB-2 XLSX开发扩展：0088_assistant_spreadsheet_sources已应用开发主库`smart_floor_planner`与55432隔离`xiaok_embedding_eval`，SQL哈希`b0d9aed4b60e62686eabfb9ee8a3fca009d3ff718363799a3c69e63f09f2d4c2`、两条格式CHECK、原强制RLS及应用角色non-BYPASS核验通过。只扩原件/版本格式，不增加表、端点、角色或发布通道。迁移前custom备份位于`tmp/xiaok-kb2-xlsx/`：`development-before-0088-2026-10-19T04-53-13.866Z.dump`为15,205,315字节，`evaluation-before-0088-2026-10-19T04-53-10.680Z.dump`为8,188,026字节，两者PGDMP/归档目录已校验；0088完整恢复演练仍未验证。复用原SSH/两个数据库隧道、Embedding、开发服务与Worker，未改凭据、供应商或生产。范围与实测见二期KB-2合同及`tmp/xiaok-kb2-xlsx/migration.json`。
+
+P4B开发迁移：0084_construction_public_sites已应用smart_floor_planner及55432隔离xiaok_embedding_eval，两库SQL哈希及施工20表强制RLS通过。迁移前备份`tmp/xiaok-vector/phase2-pre-migration-2026-10-17T13-28-19-728Z.dump`为6,998,135字节，PGDMP/归档目录验证通过；0084完整恢复演练待执行。公开副本/业主精确同意/企业审核/撤回与真实模型隔离回归见3.7，原企业/项目资料未自动转为公开。开发服务/Worker、SSH/隧道/端点/凭证/生产边界不变。
+
+P4A开发迁移：0083_construction_shared_chat已应用smart_floor_planner及55432隔离xiaok_embedding_eval，两库SQL哈希、独立共享会话用途/5参数实时权限适配及15张施工表强制RLS核验通过。迁移前备份`tmp/xiaok-vector/phase2-pre-migration-2026-10-17T11-16-22-729Z.dump`为6,955,847字节，PGDMP签名与归档目录校验通过；0083完整恢复演练待执行。项目共享对话、原材料/版本、明确业主发布、关注/取消和站内outbox见总计划3.5；原生/人工仍待测。复用现有本地开发服务与Worker，未改SSH、隧道、端点、凭据、供应商或生产部署。
+
+地图服务配置：0076/0078/0079_optional_map_authorization已应用开发主库/隔离库，哈希、配置/供应商列、多供应商身份约束及8张强制RLS表核验通过。0079仅取消地图绑定必须有到期日的约束，保留备注/日期，缺失或到期不拦截搜索/绑定/公开匹配。0079前备份`tmp/map-services-before-2026-10-17T08-30-07-041Z.dump`为6,471,097字节，通过PGDMP/归档检查，新0079恢复演练待执行。另同步共享代码已有0080_construction_staff至两开发库，使当前admin_users字段与鉴权/清理回归一致；0080前备份`tmp/map-services-before-2026-10-17T08-34-43-072Z.dump`为6,470,898字节，归档核验通过。高德仍为默认，原加密Key/选填备注保留，现已显式开启；宜昌真实连接返回10条候选、不存POI，鉴权保存/回读200、匿名401及Key无明文回传通过。相关地图/作品50/50回归及全量ESLint通过，人工视觉、天地图真实召回及新恢复演练待测。未改变生产、端点、SSH、隧道或采购。
+
+P3A当前开发范围：0080_construction_staff、0081_construction_identity_scope、0082_construction_staff_role已应用smart_floor_planner及55432隔离库xiaok_embedding_eval。npm run check:construction核对施工迁移SQL哈希、9张强制RLS表、员工/成员列、施工角色约束及唯一4参数实时会话函数通过；已应用0080保留原哈希，修复用0081/0082追加迁移。备份tmp/xiaok-vector/phase2-pre-migration-2026-10-17T08-41-01-322Z.dump为6,475,951字节，通过PGDMP/归档核验；0082完整恢复演练待测。设计师/施工员工/老板共用云工地及员工资料实时拨号见总计划3.3。已按既有tunnel.ps1恢复5432/55432转发，复用3006开发服务（健康200）并恢复隐藏assistant Worker（healthcheck退出0）；SSH、转发配置、端点、凭据及生产未改，无供应商采购。
+
+P2C.1开发更新：0071_designer_portfolio和0072_portfolio_provider_guard已应用开发主库/隔离库，npm run check:portfolio核对SQL哈希、8张作品表强制RLS及保护列通过。迁移前主库备份tmp/xiaok-vector/phase2-pre-migration-2026-10-16T16-36-04-388Z.dump为6,389,460字节，PGDMP/归档目录校验通过；新0072恢复演练待执行。管理员/设计师角色默认增加独立case-publishing菜单，不增加assistant-knowledge权限。未核实商业/绑定权益前高德业务检索保持关闭；已保存Key的连接诊断现走/map-settings，无供应商采购。SSH、隧道、端点、凭据和生产边界保持；实施及待接客户链路见二期契约。
+
+P2A.3/P2C开发更新：0070_assistant_reference_cases已应用开发主库及隔离评测库，SQL哈希/reference_case列/强制RLS校验通过。迁移前主库备份tmp/xiaok-vector/phase2-pre-migration-2026-10-16T14-46-57-548Z.dump（6,387,541字节）通过PGDMP/目录校验；0070恢复演练待执行。运行提示词v10，配置保留原v9启用证据标记；未改生产、供应商、端点或SSH边界，未导入无授权客户案例。详见二期契约。
+
+**P2A.3之前的P2M v9基线：Limited。** 开发环境localhost:3006／远端开发数据库的企业1454使用DeepSeek官方deepseek-flash，langgraph-v1、图片/工具启用，xiaok-renovation-v9、policy_version=3。回读一致、在途0、Worker健康200/fresh。证据：结构160/160、合成图片语义16/16、扩展会话44/44段（114/114轮）、隔离Worker19/19、纯测试63/63通过。未明确房间的指代先澄清再写记忆；通用预算/图片证据边界问答避免无谓转入企业知识检索。素材为2位作者的5张公开CC0照片及3种确定性降质变体，具有代表性的装修质量及原生人工验收仍待验证。现有路由/API/角色、C01/C02/S01/U01界面及正式量房写入保持，无生产发布。本段优先于下文历史仅规则/不能识图描述；未选择新Agent的企业仍走旧执行器。方法、证据及限制见[二期契约](./xiaok-assistant-phase-2.zh-CN.md)。
+
+开发切换仅改变平台LLM/助手覆盖及企业1454的agent_config。SSH、隧道、数据库端点、凭据与图片生成供应商保持。admin/scripts/assistant-p2m-dev.ts --disable恢复旧执行器；不含凭据的模型回滚记录为tmp/xiaok-vector/p2m-model-before-deepseek.json。
+
+小K主动引导更新：0065_assistant_guidance已应用开发主库与隔离评估库；SQL哈希、guidance_config字段及现有强制RLS验证通过，迁移表ID72。迁移前备份 `tmp/xiaok-vector/phase2-pre-migration-2026-10-15T15-35-08-179Z.dump` 已验证。原0064恢复演练证据仍为历史结果，不冒充0065新演练。未改变SSH、端口或生产。 小K P2A开发更新：开发主库smart_floor_planner及隔离评估库xiaok_embedding_eval均已应用0064_assistant_requirements，并按SQL文件SHA-256与新增表强制RLS逐项复核。主库迁移前custom备份为 `tmp/xiaok-vector/phase2-pre-migration-2026-10-15T14-54-11-848Z.dump`，已验证可读取。恢复演练现按0058–0064实际SQL哈希检查，不再把迁移表自增ID当作文件编号；23张相关表恢复校验及克隆清理通过。未改变SSH、端口、服务配置或生产环境。
+
+这是远端开发电脑的项目内长期记录。进行任何远端核验、Docker 环境配置、
+Embedding 维护或进程操作前，先阅读本文件及英文镜像。端点、身份文件路径、
+服务边界或部署状态变化时，必须同步更新中英文两份记录。
+
+## SSH 连接
+
+- 目标：`Administrator@192.168.10.54`，端口 `22`；主机标识：
+  `User-2026PKPRRP`。
+- 远端系统：Windows 11。已安装 Docker Desktop `4.34.3`。
+- SSH 身份文件路径（只记录路径，禁止读取、复制或提交私钥）：
+  `C:/Users/Administrator/.ssh/toonflow_remote_ed25519`。
+- 已验证选项：`BatchMode=yes`、`StrictHostKeyChecking=yes`、
+  `ConnectTimeout=8`。
+- 最近验证：2026-10-15。历史上下文：
+  `codex://threads/01a13d52-6fdd-7421-b3aa-9eb54f8170e1`。
+
+确认本机 SSH known-hosts 已存在该主机密钥后，可直接复制以下 PowerShell
+命令：
+
+```powershell
+$RemoteTarget = 'Administrator@192.168.10.54'
+$RemoteIdentity = 'C:/Users/Administrator/.ssh/toonflow_remote_ed25519'
+$SshOptions = @(
+  '-i', $RemoteIdentity,
+  '-p', '22',
+  '-o', 'BatchMode=yes',
+  '-o', 'StrictHostKeyChecking=yes',
+  '-o', 'ConnectTimeout=8'
+)
+
+ssh @SshOptions $RemoteTarget 'hostname'
+ssh @SshOptions $RemoteTarget 'docker version'
+ssh @SshOptions $RemoteTarget 'docker info'
+```
+
+现有本地 Embedding 隧道需要临时前台运行时使用以下安全命令。先确认
+`127.0.0.1:18089` 空闲；如果维护隧道已经运行，不要重复启动以免占用同一端口：
+
+```powershell
+ssh @SshOptions -N `
+  -o 'ExitOnForwardFailure=yes' `
+  -o 'ServerAliveInterval=15' `
+  -o 'ServerAliveCountMax=3' `
+  -L '127.0.0.1:18089:127.0.0.1:8089' `
+  $RemoteTarget
+```
+
+远端验收 PostgreSQL 端口同样只绑定回环地址。本地
+`127.0.0.1:15432` 空闲时，使用以下独立前台隧道：
+
+```powershell
+ssh @SshOptions -N `
+  -o 'ExitOnForwardFailure=yes' `
+  -o 'ServerAliveInterval=15' `
+  -o 'ServerAliveCountMax=3' `
+  -L '127.0.0.1:15432:127.0.0.1:15432' `
+  $RemoteTarget
+```
+
+## 当前状态与部署边界
+
+- 开发迁移状态：截至2026-10-15，隔离远端开发环境为 `Implemented`。这表示数据库恢复、
+  对比核验和本机连接交接已完成；不表示小K产品发布、真实企业切换或生产就绪。
+- 独立远端 Embedding 服务位于 `D:/XiaoK-Embedding/`，仅监听远端
+  `127.0.0.1:8089`；本地应用通过 `127.0.0.1:18089` 访问。仓库维护入口为
+  `admin/scripts/xiaok-embedding/tunnel.ps1`，本次未修改该隧道；迁移后带认证的健康检查返回200。
+  本次未操作 ComfyUI 环境或进程。
+- 远端 Windows 11 的 Docker Desktop 报告 server `27.2.0`、Linux 容器和 WSL2 后端。
+  Windows `com.docker.service` 为 `Stopped` 不代表 WSL2 不可用；以 `docker info` 为准。
+  专用任务 `SFP-Docker-Desktop` 以 `Administrator`、`Interactive` 登录方式和
+  `Highest` 运行级别启动，现已增加 `Administrator` 登录触发器；可用
+  `Start-ScheduledTask -TaskName SFP-Docker-Desktop` 重用。该账户登录后会启动 Docker。
+  尚未实机重启验收，因此不保证 Windows 登录前可用。
+- 远端开发目录为 `D:/Smart-Floor-Planner-Dev/`，当前有两个隔离容器，均使用固定镜像
+  `pgvector/pgvector:0.8.2-pg17@sha256:feb68f4f15446397d8cac7f4fe48fe4586de83160d1fc48b46283312d1a33966`：
+  `sfp-remote-dev-postgres` 仅暴露 `127.0.0.1:15432`，使用数据卷
+  `sfp_remote_dev_postgres_data`；`sfp-remote-dev-vector` 仅暴露 `127.0.0.1:15433`，使用数据卷
+  `sfp_remote_dev_vector_data`。
+- compose 源文件为 `admin/docker-compose.remote-dev.yml`，已按同名文件复制到远端目录；当前仓库源
+  SHA256 为 `375AA7B1A7FEDE04FE97DFE4585D1D25227E5D28C4A908B51B517181EC491B37`。
+- 主库`smart_floor_planner`在微云开发联调中由0059升级至0062，平台管理员知识访问修复进一步将主库及评估库升级至0063；恢复库仍0059，均保留vector `0.8.2`。迁移前已验证新的custom备份`tmp/xiaok-vector/before-0063-20261015.dump`（6,361,933字节；容器副本`/tmp/xiaok-before-0063-20261015.dump`），SHA256 `19809E8A77A6213D93A4CA1CFD4FA2E5C755767C06B55C8CA04B96A03EF4042A`。18张助手表全部强制RLS。仅企业1454启用；enterprise_admin2853保留显式知识授权，平台admin/super_admin按选定企业管理知识及本人试问，其他小K授权不变。开发super_admin16实际页面/API与真实模型回答/引用/历史通过，客户645/项目1818既有联调见一期契约。生产部署不变。
+- source dump 带 owner/grants，角色已恢复；主库 `sfp_owner` 保留新的随机 bootstrap 密码，
+  app/migrator 密码不变；eval 保留原角色密码，原 `connection.private.json` 未改。密码及文件内容
+  不写入本记录。
+- 备份证据位于本机 `tmp/remote-dev-migration-20261015/` 和远端
+  `D:/Smart-Floor-Planner-Dev/backup-20261015/`：3个 dump 加2个 `roles.private.sql` 文件；5个
+  SHA256 传输校验一致。访问仅限用户、`SYSTEM` 和 `Administrators`。
+- 逐表对比的 data 摘要、sequence、列语义顺序、constraints、indexes、functions、triggers、
+  grants、DB settings 和 RLS 均匹配：主库 `93表/72张force-RLS表/125条策略/2882行`；eval
+  `101/80/133/2952`；restore `94/73/126/2945`。
+- 本机 `npm run db:check` 在本机 Docker 关闭/隧道重连前后均使用 `sfp_app` 成功。只读 RLS 探针显示两个租户各自只能看到自己的2行，
+  未设置租户上下文时可见0行，跨租户可见0行，使用的是非 superuser、非 BYPASSRLS 角色。既有服务端 platform flag
+  信任模型未变；本记录不宣称额外加固。
+- 本机两个源容器已停止，卷 `admin_postgres_data`、`xiaok_vector_eval_data` 保留。
+  `.env.production`、eval配置及应用`DATABASE_URL`保持不变。后续本地联调仅向`.env.local`
+  增加独立随机`CRON_SECRET`，`worker:assistant`按Next开发模式读取；`npm run dev`默认
+  Webpack，避开当前Windows的Turbopack pg目录链接错误。小程序开发连接用户配置的
+  局域网地址`http://124.70.90.30:9966/api`，发布前须恢复production。
+- `admin/scripts/remote-dev/install-tunnel.ps1 -Start` 已安装当前用户 Startup 快捷方式
+  `SFP-Remote-Dev-Tunnel.lnk`。`tunnel.ps1` 常驻维护 `127.0.0.1:5432 -> 远端15432` 和
+  `127.0.0.1:55432 -> 远端15433` 两条回环转发，断线重连，并用 Mutex 防止重复。最终交接时只主动
+  终止了命令行已核实的专用数据库 SSH 进程，约7秒后新 PID 自动重连，两个本机端口仍由 SSH 监听；
+  它与未改动的 Embedding 隧道独立。
+- 本机 SSH config 已建立 `Host sfp-remote-dev`，Docker context `sfp-remote-dev` 指向
+  `ssh://sfp-remote-dev`，默认 Docker context 现为 `sfp-remote-dev`，独立查询已通过。本机 Docker
+  Desktop 已执行 `docker desktop stop`（普通等待后使用受支持的 `--force --timeout 30` 兜底），
+  `LOCAL_DOCKER_PROCESSES=0`；`docker version` 报告远端 server `27.2.0`/Linux，`docker ps` 显示
+  远端两个容器均为 healthy。本机 Docker 的 `AutoStart` 原值已为 `false`，保持不变。
+- 原业务库仍是回滚快照，不得直接替换其卷、不得用本地 `G:` 路径运行全栈 Compose，也不得让应用
+  长期使用 superuser `sfp_owner`。凭据、Bearer token 和私钥内容必须留在 Git 之外。
+
+日常远端 compose 运维必须经 SSH 使用远端真实目录；remote context 的 bind mount 指向远端路径，
+不能从本地 checkout 路径解析：
+
+SSH 登录会话无法使用远端 Docker Desktop 的桌面凭据助手。专用
+`docker-cli/config.json` 只为 Docker Hub 配置匿名公共镜像入口，维护命令通过 `--config`
+显式使用它；未修改用户原有 Docker 登录配置。运行时密码保存在受 ACL 保护的
+`.env.remote-dev`，不进入仓库。
+
+```powershell
+ssh @SshOptions $RemoteTarget 'docker --config D:/Smart-Floor-Planner-Dev/docker-cli compose --env-file D:/Smart-Floor-Planner-Dev/.env.remote-dev -f D:/Smart-Floor-Planner-Dev/docker-compose.remote-dev.yml up -d'
+ssh @SshOptions $RemoteTarget 'docker --config D:/Smart-Floor-Planner-Dev/docker-cli compose --env-file D:/Smart-Floor-Planner-Dev/.env.remote-dev -f D:/Smart-Floor-Planner-Dev/docker-compose.remote-dev.yml ps'
+docker context use sfp-remote-dev
+docker --context sfp-remote-dev info
+```
+
+## 运维与回滚
+
+小K隔离恢复验收使用 `XIAOK_RESTORE_TARGET=remote-dev npm run test:assistant:restore`（PowerShell先设置同名环境变量，从admin运行）。脚本固定Docker context/SSH端点、评估容器及127.0.0.1:15433绑定，使用既有55432应用隧道获取互斥锁；不访问开发主库或原卷。最新实跑0058–0063恢复、22表摘要、权限/引用/用量检查及随机克隆库/dump清理均通过，证据 `tmp/xiaok-vector/assistant-restore-acceptance.json`。这不是生产回滚或无人登录连通性验收。
+
+1. 用 `docker info` 核对远端引擎，再通过 SSH 在 `D:/Smart-Floor-Planner-Dev/` 维护 compose；
+   不得使用本地 `G:` bind path 运行全栈 Compose。
+2. 回滚先移除当前用户 Startup 中的 `SFP-Remote-Dev-Tunnel.lnk`，核实命令行后先停止运行
+   `admin/scripts/remote-dev/tunnel.ps1` 的专用 PowerShell 父进程，再停止其 SSH 子进程；
+   只杀 SSH 会触发自动重连。确认5432/55432端口已释放，不得触碰 Embedding 隧道。
+3. 启动本机 Docker Desktop，执行 `docker context use desktop-linux`，使用保留卷启动原有容器；
+   不删除远端卷。
+4. 若远端已有写入，切回前必须先备份并迁回这些写入；本机旧源库只是切换时快照，不能直接无损回滚。
+
+停止或重启任何进程前，先核实 PID、可执行文件路径、命令行、所有者以及任务/容器归属。
+只操作已确认属于专用服务的进程；禁止按通用进程名匹配 Python、SSH、Docker 或 ComfyUI。
+
+## 小K P2B / P2A.2 开发库迁移
+
+P2M：0069_assistant_agent已应用于开发主库及隔离评估库，迁移哈希、agent_config/private_checkpoint字段与两表强制RLS核验通过（admin/scripts/assistant-p2m-migration-check.mjs）。主库迁移前备份 tmp/xiaok-vector/phase2-pre-migration-2026-10-16T11-59-26-864Z.dump，6,387,371 bytes，PGDMP及归档列表检查通过。0069完整恢复演练待执行；新Agent默认关闭，未向现有客户启用视觉，无生产变更。
+
+P2A.2：同一授权边界内将 `0067_assistant_media.sql`、`0068_assistant_media_source.sql` 应用于开发主库和隔离评估库，两库迁移哈希、强制RLS及source_ref核验通过。0067前主库custom备份 `tmp/xiaok-vector/phase2-pre-migration-2026-10-16T06-46-19-997Z.dump`（6,336,913 bytes）通过PGDMP签名及归档列表检查。证据：`tmp/xiaok-vector/media-migrations.json`。恢复验收脚本已更新为0058–0068及媒体字段；尚未执行新的0068恢复演练。无生产部署。
+
+2026-10-16：按本记录既有开发授权，将 `admin/drizzle/0066_assistant_handoff_guard.sql` 应用于开发主库及隔离评估库；两库迁移哈希和两个成员/消息触发器函数核验通过。主库迁移前 custom 备份 `tmp/xiaok-vector/phase2-pre-migration-2026-10-15T16-55-06-791Z.dump`，6,330,414 bytes，归档校验通过。保留强制RLS，无生产部署或连接权限扩展。流程见[二期契约](./xiaok-assistant-phase-2.zh-CN.md)。
+
+## 相关项目记录
+
+- [小K第一期实施契约](./xiaok-assistant-phase-1.zh-CN.md)
+- [英文远端开发连接记录](./remote-development.md)
+- `admin/scripts/xiaok-embedding/`

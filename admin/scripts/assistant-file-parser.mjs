@@ -3,17 +3,25 @@ import yauzl from 'yauzl';
 import { SaxesParser } from 'saxes';
 import { crc32 } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import { parseXlsx } from './assistant-xlsx-parser.mjs';
 
 const VERSION = 'xiaok-file-v1';
 const bad = code => { throw new Error(code); };
 const WORD = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+const OFFICE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
 function xml(bytes) {
   const parser = new SaxesParser({ xmlns: true }), root = { children: [] }, stack = [root];
   let nodes = 0;
   parser.on('doctype', () => bad('knowledge_file_unsafe_archive'));
   parser.on('opentag', tag => {
     if (++nodes > 50000 || stack.length > 64) bad('knowledge_file_resource_limit');
-    const node = { name: tag.local, uri: tag.uri, attrs: Object.fromEntries(Object.values(tag.attributes).map(a => [a.local, a.value])), children: [] };
+    const attributes = Object.values(tag.attributes);
+    // Unrecognized namespaces cannot replace a standard coordinate/value by
+    // sharing its local name. Word attributes are qualified; SpreadsheetML,
+    // content-type and package-relationship attributes are unqualified.
+    const node = { name: tag.local, uri: tag.uri,
+      attrs: Object.fromEntries(attributes.filter(a => a.uri === (tag.uri === WORD ? WORD : '')).map(a => [a.local, a.value])),
+      relationshipId: attributes.find(a => a.uri === OFFICE_REL && a.local === 'id')?.value, children: [] };
     stack.at(-1).children.push(node); stack.push(node);
   });
   parser.on('text', text => stack.at(-1).children.push(text));
@@ -36,7 +44,7 @@ function paragraph(n) {
   }
   return read(n).trim();
 }
-async function unzip(bytes) {
+async function unzip(bytes, format = 'docx') {
   return new Promise((resolve, reject) => {
     yauzl.fromBuffer(bytes, { lazyEntries: true, strictFileNames: true, validateEntrySizes: true }, (error, zip) => {
       if (error) return reject(new Error('knowledge_file_parse_failed'));
@@ -50,7 +58,11 @@ async function unzip(bytes) {
         names.add(name); expanded += entry.uncompressedSize;
         if (expanded > 24 * 1024 * 1024 || entry.uncompressedSize > 8 * 1024 * 1024
           || entry.uncompressedSize > Math.max(65536, entry.compressedSize * 200)) return stop('knowledge_file_resource_limit');
-        if (!['[Content_Types].xml','word/document.xml','word/styles.xml','word/footnotes.xml','word/_rels/document.xml.rels'].includes(name)) return zip.readEntry();
+        const selected = format === 'xlsx'
+          ? ['[Content_Types].xml','_rels/.rels','xl/workbook.xml','xl/_rels/workbook.xml.rels','xl/sharedStrings.xml','xl/styles.xml'].includes(name)
+            || /^xl\/worksheets\/[\w.-]+\.xml$/.test(name) || /^xl\/worksheets\/_rels\/[\w.-]+\.xml\.rels$/.test(name)
+          : ['[Content_Types].xml','word/document.xml','word/styles.xml','word/footnotes.xml','word/_rels/document.xml.rels'].includes(name);
+        if (!selected) return zip.readEntry();
         zip.openReadStream(entry, (e, stream) => {
           if (e) return stop('knowledge_file_parse_failed');
           const chunks = []; let length = 0;
@@ -114,6 +126,36 @@ async function docx(bytes) {
   if (!blocks.length) bad('knowledge_file_no_text');
   return { parser: VERSION + ':docx:yauzl3.4.0:saxes6.0.0', blocks, warnings: [...new Set(warnings)] };
 }
+/** PDF EOLs are layout lines, not paragraph boundaries. Join only adjacent
+ * horizontal flow, retaining complete numbered clauses, headings and pages.
+ * This is bounded text grouping, not table/column or document understanding. */
+function pdfParagraphs(lines) {
+  const heading = text => /^(?:[一二三四五六七八九十]+[、.．]|[A-Z][、.．])/.test(text);
+  const numbered = text => /^(?:[（(]?\d{1,3}[、.．)）](?!\d)|[a-z][)）、.．])/.test(text);
+  const adjacent = (a, b) => a && !a.rotated && !b.rotated
+    && a.y > b.y && a.y - b.y <= Math.max(a.height, b.height) * 2.6
+    && Math.abs(a.x - b.x) <= Math.max(a.height, b.height) * 3
+    && Math.abs(a.height - b.height) <= Math.max(a.height, b.height) * 0.12;
+  const paragraphs = []; let current = null;
+  for (const line of lines) {
+    const hard = !adjacent(current?.last, line) || heading(line.text) || heading(current?.first.text || '');
+    if (current && !hard && !numbered(line.text)) {
+      current.text += ' ' + line.text; current.last = line;
+    } else {
+      current = { text: line.text, first: line, last: line, hard };
+      paragraphs.push(current);
+    }
+  }
+  // Pack short neighboring complete clauses; never split/truncate an original
+  // clause to fit. Existing file/chunk/token limits still reject oversize input.
+  const packed = []; let previous = null;
+  for (const paragraph of paragraphs) {
+    const text = previous ? previous.text + '\n' + paragraph.text : paragraph.text;
+    if (previous && !paragraph.hard && text.length <= 300) previous.text = text;
+    else { previous = { text: paragraph.text }; packed.push(previous); }
+  }
+  return packed.map(p => p.text);
+}
 async function pdf(bytes) {
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const task = getDocument({ data: new Uint8Array(bytes), isEvalSupported: false, useSystemFonts: false, disableFontFace: true,
@@ -127,14 +169,28 @@ async function pdf(bytes) {
     const blocks = [], warnings = ['pdf_reading_order_requires_review','pdf_tables_not_structurally_parsed','images_not_parsed'];
     for (let page = 1; page <= document.numPages; page++) {
       const p = await document.getPage(page), content = await p.getTextContent();
-      let line = '', paragraph = 0;
-      const push = () => { if (line.trim()) { if (blocks.length >= 128 || line.length > 6000) bad('knowledge_file_block_limit'); blocks.push({ id: `b${blocks.length + 1}`, kind: 'paragraph', text: line.trim(), section: [], page, paragraph: ++paragraph }); } line = ''; };
-      for (const item of content.items) if ('str' in item) { line += item.str; if (item.hasEOL) push(); }
-      push(); p.cleanup();
+      let line = '', metrics = null, paragraph = 0; const lines = [];
+      const push = () => { if (line.trim()) lines.push({ text: line.trim(), ...metrics }); line = ''; metrics = null; };
+      for (const item of content.items) if ('str' in item) {
+        line += item.str;
+        if (item.str.trim()) {
+          const [a, b, c, d, x, y] = item.transform, height = Math.hypot(c, d);
+          if (![a,b,c,d,x,y,height].every(Number.isFinite) || height <= 0) bad('knowledge_file_parse_failed');
+          if (!metrics) metrics = { x, y, height, rotated: Math.abs(b) > 0.001 || Math.abs(c) > 0.001 };
+          else { metrics.height = Math.max(metrics.height, height); metrics.rotated ||= Math.abs(b) > 0.001 || Math.abs(c) > 0.001; }
+        }
+        if (item.hasEOL) push();
+      }
+      push();
+      for (const text of pdfParagraphs(lines)) {
+        if (blocks.length >= 128 || text.length > 6000) bad('knowledge_file_block_limit');
+        blocks.push({ id: `b${blocks.length + 1}`, kind: 'paragraph', text, section: [], page, paragraph: ++paragraph });
+      }
+      p.cleanup();
       if (!blocks.some(b => b.page === page)) bad('knowledge_file_ocr_required');
     }
     if (!blocks.length) bad('knowledge_file_no_text');
-    return { parser: VERSION + ':pdf:pdfjs6.4.299', blocks, warnings, pages: document.numPages };
+    return { parser: VERSION + ':pdf:pdfjs6.4.299:flow-paragraphs-v1', blocks, warnings, pages: document.numPages };
   } finally { await task.destroy(); }
 }
 let stdin = '';
@@ -142,7 +198,8 @@ try {
   for await (const c of process.stdin) { stdin += c; if (stdin.length > 5600000) bad('knowledge_file_resource_limit'); }
   const input = JSON.parse(stdin), bytes = Buffer.from(input.base64, 'base64');
   if (!bytes.length || bytes.length > 4 * 1024 * 1024) bad('knowledge_file_invalid');
-  const result = input.format === 'docx' ? await docx(bytes) : input.format === 'pdf' ? await pdf(bytes) : bad('knowledge_file_invalid');
+  const result = input.format === 'docx' ? await docx(bytes) : input.format === 'pdf' ? await pdf(bytes)
+    : input.format === 'xlsx' ? await parseXlsx(bytes, { unzip, xml }) : bad('knowledge_file_invalid');
   const text = result.blocks.map(b => b.text).join('\n\n');
   if (text.includes('\0') || text.length > 16000 || Buffer.byteLength(text) > 48000) bad('knowledge_file_text_limit');
   process.stdout.write(JSON.stringify(result));

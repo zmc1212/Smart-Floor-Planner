@@ -9,6 +9,7 @@ import { readRetrievalDiagnostics } from './diagnostics';
 import { projectMessage, resolveEvidence, validatePreviewSnapshot } from './sources';
 import type { RetrievalDiagnostic } from './retrieval';
 import { checkKnowledgeEvaluation, type ExpectedSource, type KnowledgeExpectation } from './evaluation-check';
+import { KnowledgeBatches } from './batches';
 
 const json=(value:unknown)=>JSON.stringify(value);
 type EvaluationSnapshot={question:string;title:string;expectation:KnowledgeExpectation;required:ExpectedSource[]};
@@ -33,8 +34,8 @@ export class KnowledgeOperations {
   private tx<T>(work:(tx:PostgresTransaction,settings:Row)=>Promise<T>,enabled=false) {
     return withTenantTransaction(this.manager.enterpriseId,async tx=>work(tx,await knowledgeManager(tx,this.manager,enabled)));
   }
-  private async case(tx:PostgresTransaction,caseId:unknown) {
-    const c=await one(tx,sql`select * from app.assistant_knowledge_cases where enterprise_id=${this.manager.enterpriseId} and id=${id(caseId)} for update`);
+  private async case(tx:PostgresTransaction,caseId:unknown,lock=true) {
+    const c=await one(tx,sql`select * from app.assistant_knowledge_cases where enterprise_id=${this.manager.enterpriseId} and id=${id(caseId)} ${lock?sql`for update`:sql``}`);
     if(!c)fail('assistant_resource_not_found',404);return c;
   }
   private async evaluation(tx:PostgresTransaction,evaluationId:unknown) {
@@ -58,8 +59,8 @@ export class KnowledgeOperations {
     }
     return required;
   }
-  private async current(tx:PostgresTransaction,e:Row,settings:Row) {
-    const c=await this.case(tx,String(e.case_id));
+  private async current(tx:PostgresTransaction,e:Row,settings:Row,lock=true) {
+    const c=await this.case(tx,String(e.case_id),lock);
     if(Number(e.knowledge_epoch)!==Number(settings.knowledge_epoch)||Number(e.case_revision)!==Number(c.revision))return false;
     // Epoch is the broad fence. Exact required-version/hash checks also reject corrupt or mismatched pointers.
     for(const source of (e.snapshot as {required:ExpectedSource[]}).required) {
@@ -95,24 +96,34 @@ export class KnowledgeOperations {
     const created=await this.tx(async(tx,s)=>idempotent(tx,this.actor,'knowledge-evaluate:'+caseId,requestKey,input,async()=>{
       const c=await this.case(tx,caseId);if(Number(c.version)!==expected(input.expectedVersion))fail('version_conflict');
       const n=await one(tx,sql`select count(*)::int n from app.assistant_knowledge_evaluations where enterprise_id=${this.manager.enterpriseId}`);if(Number(n!.n)>=2000)fail('knowledge_evaluation_limit',422);
-      const e=c.expectation as KnowledgeExpectation,required=await this.sources(tx,e);
-      const row=await one(tx,sql`insert into app.assistant_knowledge_evaluations(enterprise_id,case_id,case_revision,snapshot,knowledge_epoch,created_by,create_key,send_key)
-        values(${this.manager.enterpriseId},${caseId},${Number(c.revision)},${json({question:c.question,title:c.title,expectation:e,required})}::jsonb,
-        ${Number(s.knowledge_epoch)},${this.manager.adminId},${randomUUID()},${randomUUID()}) returning id`);
-      return {evaluationId:String(row!.id)};
+      return {evaluationId:await this.allocateEvaluation(tx,c,s)};
     }),true);
     // A crash at either boundary resumes with the same create/send keys, never a parallel model/usage pipeline.
     await this.resume(String(created.evaluationId));return {evaluationId:String(created.evaluationId)};
   }
-  async resume(evaluationId:string) {
-    const e=await this.tx(async(tx,s)=>{const row=await this.evaluation(tx,evaluationId);if(!await this.current(tx,row,s))fail('context_changed');return row;},true);
+  private async allocateEvaluation(tx:PostgresTransaction,c:Row,s:Row) {
+    const e=c.expectation as KnowledgeExpectation,required=await this.sources(tx,e);
+    const row=await one(tx,sql`insert into app.assistant_knowledge_evaluations(enterprise_id,case_id,case_revision,snapshot,knowledge_epoch,created_by,create_key,send_key)
+      values(${this.manager.enterpriseId},${String(c.id)},${Number(c.revision)},${json({question:c.question,title:c.title,expectation:e,required})}::jsonb,
+      ${Number(s.knowledge_epoch)},${this.manager.adminId},${randomUUID()},${randomUUID()}) returning id`);
+    return String(row!.id);
+  }
+  batches() { return new KnowledgeBatches(this.manager,this.actor,{
+    allocate:(tx,c,s)=>this.allocateEvaluation(tx,c,s),dispatch:(evaluationId,tx)=>this.resumeOriginal(evaluationId,tx),
+    current:(tx,e,s)=>this.current(tx,e,s,false),
+  }); }
+  async resume(evaluationId:string) {return this.batches().resumeEvaluation(evaluationId,tx=>this.resumeOriginal(evaluationId,tx));}
+  private async resumeOriginal(evaluationId:string,transaction?:PostgresTransaction) {
+    const scoped=<T>(work:(tx:PostgresTransaction,s:Row)=>Promise<T>,enabled=false):Promise<T>=>transaction?
+      knowledgeManager(transaction,this.manager,enabled).then(s=>work(transaction,s)):this.tx(work,enabled);
+    const e=await scoped(async(tx,s)=>{const row=await this.evaluation(tx,evaluationId);if(!await this.current(tx,row,s))fail('context_changed');return row;},true);
     if(e.run_id)return {evaluationId,runId:String(e.run_id)};
-    const chat=new ConversationService(this.actor),snapshot=e.snapshot as Row;
+    const chat=new ConversationService(this.actor,transaction),snapshot=e.snapshot as Row;
     const c=await chat.create(String(e.create_key),{audience:'customer_public',draftVersionIds:[]});
-    await this.tx(async(tx,s)=>{const row=await this.evaluation(tx,evaluationId);if(!await this.current(tx,row,s))fail('context_changed');
+    await scoped(async(tx,s)=>{const row=await this.evaluation(tx,evaluationId);if(!await this.current(tx,row,s))fail('context_changed');
       await tx.execute(sql`update app.assistant_knowledge_evaluations set conversation_id=${String(c.id)} where enterprise_id=${this.manager.enterpriseId} and id=${evaluationId}`);});
     const sent=await chat.send(String(c.id),String(e.send_key),{version:1,blocks:[{type:'text',text:String(snapshot.question)}]});
-    await this.tx(async tx=>{await this.evaluation(tx,evaluationId);await tx.execute(sql`update app.assistant_knowledge_evaluations set run_id=${String(sent.runId)} where enterprise_id=${this.manager.enterpriseId} and id=${evaluationId}`);});
+    await scoped(async tx=>{await this.evaluation(tx,evaluationId);await tx.execute(sql`update app.assistant_knowledge_evaluations set run_id=${String(sent.runId)} where enterprise_id=${this.manager.enterpriseId} and id=${evaluationId}`);});
     return {evaluationId,runId:String(sent.runId)};
   }
   async history(caseId:string,input:Row={}) {const p=page(input);return this.tx(async tx=>{
@@ -121,9 +132,11 @@ export class KnowledgeOperations {
     return {items:items.slice(0,p.limit),nextCursor:items.length>p.limit?String(items[p.limit-1].id):null};
   });}
   async read(evaluationId:string) {
+    const batch=await this.batches().evaluationState(evaluationId);
+    if(!batch.available)return {id:evaluationId,available:false,reason:'source_changed'};
     const e=await this.tx(async(tx,s)=>{const e=await this.evaluation(tx,evaluationId);return await this.current(tx,e,s)?e:null;});
     if(!e)return {id:evaluationId,available:false,reason:'source_changed'};
-    if(!e.run_id)return {id:evaluationId,available:true,status:'dispatch_pending',snapshot:e.snapshot as EvaluationSnapshot};
+    if(!e.run_id)return {id:evaluationId,available:true,status:batch.state==='cancelled'?'cancelled':'dispatch_pending',snapshot:e.snapshot as EvaluationSnapshot};
     const chat=new ConversationService(this.actor),run=await chat.run(String(e.run_id));
     const diagnostic=await readRetrievalDiagnostics(this.actor,String(e.run_id));
     const detail=await chat.detail(String(e.conversation_id));
@@ -147,7 +160,7 @@ export class KnowledgeOperations {
     const usage=await this.tx(tx=>rows(tx,sql`select category,measurement_kind,quantity::text,input_tokens::text,output_tokens::text,cost_micros::text from app.assistant_usage_records where enterprise_id=${this.manager.enterpriseId} and run_id=${String(e.run_id)} order by id`));
     // Recheck after every asynchronous read before returning any stored answer/trace/review.
     const current=await this.tx(async(tx,s)=>await this.current(tx,e,s)&&await this.validCandidates(tx,e,candidates));
-    if(!current || !diagnostic.available || (answer&&!answer.available))return {id:evaluationId,available:false,reason:'source_changed'};
+    if(!current || !diagnostic.available || (answer&&!answer.available) || !(await this.batches().evaluationState(evaluationId)).available)return {id:evaluationId,available:false,reason:'source_changed'};
     return {id:evaluationId,available:true,status:run.status,run,conversationId:String(e.conversation_id),snapshot,
       caseRevision:e.case_revision,answer:answer??null,structural:{...structural,forbidden},diagnostic,usage,review:e.review as EvaluationReview|null,
       knowledgeEpoch:e.knowledge_epoch,previewScope:detail.previewScope,costMicros:null};
@@ -191,7 +204,7 @@ export class KnowledgeOperations {
       from app.assistant_knowledge_attempts where enterprise_id=${eid} and started_at>=now()-interval '30 days' group by operation,status order by operation,status`);
     const profile=await one(tx,sql`select id::text,profile_key,status,configuration->>'dimensions' dimensions,configuration->>'revision' model_revision
       from app.assistant_knowledge_index_profiles where enterprise_id=${eid} and id=${s.active_index_profile_id??null}`);
-    return {sources,indexes,jobs,attempts,profile:profile??null,knowledgeEpoch:s.knowledge_epoch,costMicros:null,windowDays:30,parser:{supported:['docx','text_pdf'],ocr:false,complexPdfTables:false},
+    return {sources,indexes,jobs,attempts,profile:profile??null,knowledgeEpoch:s.knowledge_epoch,costMicros:null,windowDays:30,parser:{supported:['docx','text_pdf','xlsx'],xlsxNumberDisplay:'decimal-v1',ocr:false,complexPdfTables:false},
       limits:{cases:100,evaluations:2000,sourcesShown:200},note:'健康计数不是外部服务实时探测；索引调用单列，未知用量与费用不记零。'};
   });}
 }

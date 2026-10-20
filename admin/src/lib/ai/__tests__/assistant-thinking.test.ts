@@ -16,6 +16,6 @@ test('OpenAI-compatible thinking toggle is opt-in; existing chat bodies stay unc
     assert.equal('enable_thinking' in bodies[2], false);
     const agent = agentChatBody({ model: 'deepseek-flash', messages: [], tools: [{ name: 'final_response', description: 'answer', parameters: { type: 'object' } }], maxTokens: 128, requireTool: true, enableThinking: false }, 'https://api.deepseek.com/v1');
     assert.deepEqual(agent.thinking, { type: 'disabled' });
-    assert.equal(agent.tool_choice, 'required');
+    assert.deepEqual(agent.tool_choice, { type: 'function', function: { name: 'final_response' } });
   }finally{globalThis.fetch=previous;}
 });

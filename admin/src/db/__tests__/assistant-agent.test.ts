@@ -109,7 +109,8 @@ test('first image schedules one recoverable run; withdrawal hides derived answer
     assert.ok(messages.some(m => m.role === 'user' && m.content.some(p => p.type === 'image' && p.data.length > 100)));
     return { ...response(), text: JSON.stringify({ kind: 'vision', text: '图中可见一片红色，暂时看不到房间细节。你想咨询哪部分？' }) };
   } });
-  assert.equal((await chat.run(lease.runId)).status, 'succeeded');
+  const imageRun = await chat.run(lease.runId);
+  assert.equal(imageRun.status, 'succeeded', JSON.stringify(imageRun));
   const saved = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps where run_id=${lease.runId} and kind='agent_checkpoint'`));
   assert.match(JSON.stringify(saved), /"data":""/);
   const handoff = new HandoffService(actor);

@@ -6,6 +6,7 @@ import { processAssistantRun } from '@/lib/assistant/application/worker';
 import { deliverSiteNotifications } from '@/lib/construction/site-publications';
 import { deliverPublicConsents } from '@/lib/construction/public-projections';
 import { workerRuntimeSnapshot } from '@/lib/assistant/operations';
+import { advanceKnowledgeBatches } from '@/lib/assistant/knowledge/batch-worker';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 180;
 export async function GET(request: Request) {
@@ -20,8 +21,9 @@ export async function POST(request: Request) {
     if ((await request.text()).trim() && (request.headers.get('content-length') !== '0')) {
       return NextResponse.json({ success: false, code: 'invalid_message', requestId }, { status: 422 });
     }
+    const knowledgeBatchChecks=await advanceKnowledgeBatches();
     const data = await processAssistantJob(processAssistantRun), inAppDeliveries = await deliverSiteNotifications() + await deliverPublicConsents();
-    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || inAppDeliveries > 0, inAppDeliveries }, requestId });
+    return NextResponse.json({ success: true, data: { ...data, claimed: data.claimed || inAppDeliveries > 0, inAppDeliveries, knowledgeBatchChecks }, requestId });
   } catch {
     return NextResponse.json({ success: false, code: 'assistant_unavailable', requestId }, { status: 503 });
   }

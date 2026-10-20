@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { PostgresTransaction } from '@/db/transaction';
-import { one } from '@/db/repositories/assistant-repository';
+import { one, rows } from '@/db/repositories/assistant-repository';
 import { fail, type ActorContext, type Evidence } from '../contracts';
 import { resolveEvidence } from '../knowledge/sources';
 import type { ModelMessage, ModelPart } from '../contracts/model';
@@ -11,6 +11,8 @@ import { materialSnapshotAvailable, type MaterialDependency } from './materials'
 import { needIssueSnapshotAvailable, type NeedIssueDependency } from '@/lib/construction/need-issues';
 import { synthesisContextAvailable } from './synthesis-sources';
 import type { SynthesisContext } from './synthesis';
+import { historyRefsAvailable, type HistoryRef } from './history';
+import { needSourcesAvailable, type NeedSourceRef } from './memory-sources';
 export type MediaDependency = { type: 'assistant_media'; id: string; hash: string };
 /** Call only after conversation authorization; this does not grant conversation access. */
 export async function resolveAgentMedia(tx: PostgresTransaction, enterpriseId: string, conversationId: string, ref: MediaDependency) {
@@ -22,6 +24,14 @@ export async function resolveAgentMedia(tx: PostgresTransaction, enterpriseId: s
   return media;
 }
 export async function agentMessageAvailable(tx: PostgresTransaction, enterpriseId: string, conversationId: string, messageId: string) {
+  const needs = await rows(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
+    where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId}
+      and s.kind in ('agent_need_context','agent_need_write') and s.status='succeeded'`);
+  for (const need of needs) if (!await needSourcesAvailable(tx, enterpriseId, conversationId, need.source_refs as NeedSourceRef[])) return false;
+  const histories = await rows(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
+    where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId}
+      and s.kind in ('agent_history_context','agent_summary_context') and s.status='succeeded'`);
+  for (const history of histories) if (!await historyRefsAvailable(tx, enterpriseId, conversationId, history.source_refs as HistoryRef[])) return false;
   const synthesis = await one(tx, sql`select s.source_refs from app.assistant_run_steps s join app.assistant_messages m on m.enterprise_id=s.enterprise_id and m.run_id=s.run_id
     where m.enterprise_id=${enterpriseId} and m.conversation_id=${conversationId} and m.id=${messageId} and s.kind='agent_synthesis_context'`);
   if (synthesis) {

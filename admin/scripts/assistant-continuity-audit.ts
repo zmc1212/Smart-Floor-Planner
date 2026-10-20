@@ -7,13 +7,14 @@ import { sql } from 'drizzle-orm';
 import { withPlatformTransaction } from '@/db/transaction';
 import { rows } from '@/db/repositories/assistant-repository';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { continuityEvidenceDirectory } from './assistant-continuity-evidence.mjs';
 
 async function main() {
   loadEnvConfig(process.cwd(), true);
   const target = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(process.argv.includes('--development') && ['localhost','127.0.0.1'].includes(target.hostname)
     && target.port === '5432' && target.pathname === '/smart_floor_planner');
-  const output = path.resolve('../tmp/xiaok-corrections-continuity');
+  const output = continuityEvidenceDirectory();
   const paths = fs.readdirSync(output).filter(f => /^(?:live|native-driver).*\.json$/.test(f)).map(f => path.join(output,f));
   for (const dir of fs.readdirSync(output, { withFileTypes: true }).filter(d => d.isDirectory() && d.name.startsWith('native-')).map(d => d.name)) {
     const archivedNative = path.join(output, dir, 'native-driver.json');
@@ -22,7 +23,8 @@ async function main() {
   const reports = paths.map(f => JSON.parse(fs.readFileSync(f,'utf8'))).filter(r => r.fixture?.enterpriseId && r.prefix);
   const expected = new Map<string,string>(reports.map(r => [String(r.fixture.enterpriseId),String(r.prefix)]));
   assert.ok(expected.size>0&&expected.size<=16);
-  for(const [eid,prefix] of expected){assert.match(eid,/^[1-9]\d{0,18}$/);assert.ok(prefix.startsWith('synthetic-continuity-live-'));}
+  const fixturePrefix = process.argv.includes('--history') ? 'synthetic-history-live-' : 'synthetic-continuity-live-';
+  for(const [eid,prefix] of expected){assert.match(eid,/^[1-9]\d{0,18}$/);assert.ok(prefix.startsWith(fixturePrefix));}
   const ids = JSON.stringify([...expected.keys()]);
   try {
     const result = await withPlatformTransaction(async tx => {

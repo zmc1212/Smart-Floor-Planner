@@ -4,6 +4,7 @@ import { bearerHeaders, parseJson, providerFetch, providerUrl, asObject } from '
 import { thinkingBody } from './thinking';
 
 const invalid = () => { throw new AiProviderError('Invalid Agent model response', 'INVALID_PROVIDER_RESPONSE', 'unknown', 502); };
+export const agentChatProtocolVersion = 'final-tool-choice-v1';
 export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.siliconflow.cn') {
   if (!Number.isInteger(input.maxTokens) || input.maxTokens < 1 || input.maxTokens > agentModelLimits.maxOutputTokens) throw Error('agent_input_limit');
   let images = 0, textBytes = 0;
@@ -33,7 +34,14 @@ export function agentChatBody(input: ModelTurnInput, baseUrl = 'https://api.sili
   return { model: input.model, messages, temperature: 0, max_tokens: input.maxTokens,
     ...(input.jsonOutput ? { response_format: { type: 'json_object' } } : {}),
     ...thinkingBody(baseUrl, input.enableThinking),
-    ...(input.tools.length ? { tools: input.tools.map(tool => ({ type: 'function', function: tool })), tool_choice: input.requireTool ? 'required' : 'auto', parallel_tool_calls: false } : {}) };
+    ...(input.tools.length ? { tools: input.tools.map(tool => ({ type: 'function', function: tool })),
+      // A final-only dispatch must select that function explicitly. Some
+      // providers still emit a previous, removed tool when given "required".
+      // The runtime independently rejects anything outside its active list.
+      tool_choice: input.requireTool
+        ? input.tools.length === 1 && input.tools[0].name === 'final_response'
+          ? { type: 'function', function: { name: 'final_response' } } : 'required'
+        : 'auto', parallel_tool_calls: false } : {}) };
 }
 
 export function parseAgentChat(payload: Record<string, unknown>, requestId: string | null = null): ModelTurnOutput {

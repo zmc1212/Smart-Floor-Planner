@@ -11,13 +11,15 @@ import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import type { SynthesisContext, SynthesisAnswer } from '@/lib/assistant/agent/synthesis';
+import { reviewSynthesisResponse } from '@/lib/assistant/agent/synthesis-review';
 import { readMemory, applyNeedDelta, parseNeedDelta, type NeedFact } from '@/lib/assistant/agent/memory';
 import { defaultConstructionStages } from '@/lib/construction/stages';
+import { continuityEvidenceDirectory } from './assistant-continuity-evidence.mjs';
 
-const root = path.resolve('..'), output = path.join(root, 'tmp/xiaok-corrections-continuity'), native = process.argv.includes('--native');
-const sourceFiles = [...['memory-sources','business-tools','memory','materials','context','worker','bound-context','synthesis','synthesis-sources']
+const root = path.resolve('..'), output = continuityEvidenceDirectory(), native = process.argv.includes('--native'), focusWithdrawal = process.argv.includes('--withdrawal');
+const sourceFiles = [...['memory-sources','business-tools','memory','materials','context','worker','bound-context','synthesis','synthesis-review','synthesis-sources']
   .map(f => 'src/lib/assistant/agent/' + f + '.ts'), 'src/lib/construction/need-issues.ts',
-  'scripts/assistant-continuity-development.ts', 'scripts/assistant-continuity-native.mjs'];
+  'scripts/assistant-continuity-development.ts', 'scripts/assistant-continuity-native.mjs', 'scripts/construction-chat-native.mjs', 'scripts/assistant-continuity-evidence.mjs'];
 const sourceHash = (file: string) => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const prefix = 'synthetic-continuity-live-' + randomUUID();
 export const initialNeeds = '请记录：书房书桌靠窗；书房偶尔双人办公；书房使用电脑和台灯；厨房为封闭式。';
@@ -28,10 +30,16 @@ export const withdrawnQuestion = '结合当前可用资料和企业专业做法�
 type Expected = { phase: string; versionId: string; single: boolean };
 let expected: Expected = { phase: 'baseline', versionId: '', single: false };
 const report: Row = { started: new Date().toISOString(), prefix, passed: false, requests: [], runs: [], checks: [],
+  selection: focusWithdrawal ? 'two withdrawal answers plus one prerequisite correction; other scenes are not counted' : 'original full continuity scenarios',
   preregistered: ['baseline: expressed window preference is known; site dimensions remain unverified; no phone dependency',
     'mixed-correction: save use before retrieval, retain desk/devices/other room; preserve shared original and exact approved version',
     'continuation: current need and same unresolved issue/owner survive reentry; enterprise rule and actual stage explain the remaining gap',
-    'withdrawal: dependent historical answers unavailable; no formal action or disclosure caused by private correction'],
+    'withdrawal: dependent historical answers unavailable; no formal action or disclosure caused by private correction',
+    'language: scope each missing-evidence claim to this query; do not infer real-world absence or introduce guessed occupancy',
+    'language: continue already expressed needs without asking to confirm them again; distinguish private correction from unchanged formal version',
+    'language: unavailable occupancy is not undecided intent; no unsolicited occupancy reentry or point-reservation advice',
+    'language: unassigned remains pending; waiting for verification alone does not establish real-world inactivity or a construction blocker',
+    'language: no storage/migration jargon or internal minimum-checklist labels; source and semantic reviews remain separate'],
   reality: { factsAndMedia: 'clearly labelled synthetic; no real customer or engineering data', http: 'localhost:3006',
     database: 'approved development5432', worker: 'existing real Worker', model: 'configured DeepSeek/deepseek-flash', imagePixels: false, costMicros: null } };
 const save = () => { fs.mkdirSync(output, { recursive: true }); fs.writeFileSync(path.join(output, native ? 'native-driver.json' : 'live.json'), JSON.stringify(report, null, 2)); };
@@ -100,7 +108,8 @@ const staffSend = async (index: number, text: string, mediaIds: string[] = []) =
   const current = await http(base(), staff[index].token);
   return http(base() + '/messages', staff[index].token, 'POST', { text, mediaIds, versions: current.versions });
 };
-async function audit(runId: string, label: string, started: number, withdrawn = false) {
+async function audit(runId: string, label: string, started: number, withdrawn = false,
+  timing?: { firstFeedbackMs: number; scope: 'http_accepted_message' | 'native_persisted_run' }) {
   const run = await wait(async () => { const r = await withTenantTransaction(eid, tx => one(tx, sql`select id::text,status,error_code,output_message_id::text
     from app.assistant_runs where enterprise_id=${eid} and id=${runId}`)); return r && !['queued','running'].includes(String(r.status)) ? r : false; }, 'configured-model answer');
   const history = await mini('/messages'), snapshot = await materials(), message = history.items.find((m: Row) => String(m.id) === run.output_message_id);
@@ -111,7 +120,9 @@ async function audit(runId: string, label: string, started: number, withdrawn = 
     from app.assistant_message_citations where enterprise_id=${eid} and run_id=${runId}`));
   const usage = await withTenantTransaction(eid, tx => rows(tx, sql`select category,measurement_kind,quantity::text,input_tokens::text,output_tokens::text,cost_micros::text
     from app.assistant_usage_records where enterprise_id=${eid} and run_id=${runId} order by id`));
-  const result = { runId, label, ...run, elapsedMs: Date.now() - started, expected: { ...expected }, message, text: message ? safeText(message.content) : '',
+  const result = { runId, label, ...run, elapsedMs: Date.now() - started,
+    firstFeedbackMs: timing?.firstFeedbackMs ?? null, firstFeedbackScope: timing?.scope ?? null,
+    expected: { ...expected }, message, text: message ? safeText(message.content) : '',
     steps, citations, usage, currentMaterialSnapshot: snapshot, currentMemory, currentFollowups, outputMessageId: String(run.output_message_id), costMicros: null };
   (report.runs as Row[]).push(result); save(); assert.equal(run.status, 'succeeded', JSON.stringify(run)); assert.equal(message?.available, true);
   const checkpoints = steps.filter(s => ['agent_checkpoint','agent_synthesis_context'].includes(String(s.kind)));
@@ -120,6 +131,9 @@ async function audit(runId: string, label: string, started: number, withdrawn = 
   assert.ok(citations.some(c => c.document_id === did && c.document_version_id === vid), 'actual answer cites effective enterprise rule');
   const context = steps.find(s => s.kind === 'agent_synthesis_context')?.source_refs as SynthesisContext;
   const answer = steps.find(s => s.kind === 'agent_synthesis_context')?.private_checkpoint as SynthesisAnswer; assert.ok(context && answer);
+  const currentQuestion = withdrawn ? withdrawnQuestion : expected.phase === 'mixed-correction' ? correction
+    : expected.phase === 'continuation' ? continuation : question;
+  assert.deepEqual(reviewSynthesisResponse(answer, context.sources, { currentQuestion }), [], 'same current-question/source review survives persisted reentry');
   const cited = answer.segments.flatMap(s => s.citations).map(c => context.sources.find(s => s.sourceId === c.sourceId)!);
   assert.ok(context.snapshots.some(s => s.query.domain === 'construction'), 'current real project stage enters the same answer');
   assert.ok(context.snapshots.some(s => s.query.domain === 'followups'), 'same-run original followups are revalidated');
@@ -161,6 +175,7 @@ async function audit(runId: string, label: string, started: number, withdrawn = 
 async function main() {
   loadEnvConfig(process.cwd(), true); const target = new URL(resolvePostgresRuntimeConfig().connectionString);
   assert.ok(process.argv.includes('--development') && ['localhost','127.0.0.1'].includes(target.hostname) && target.port === '5432' && target.pathname === '/smart_floor_planner');
+  assert.ok(!native || !focusWithdrawal, '--withdrawal is a service-only focus; native retains its original full flow');
   report.promptVersion = (await import('@/lib/assistant/agent/context')).agentPromptVersion;
   report.sourceManifest = sourceFiles.map(file => ({ file, sha256: sourceHash(file) }));
   const [{ signMiniProgramToken }, { ConstructionService }, { ConversationService }, { KnowledgeService }] = await Promise.all([
@@ -246,13 +261,16 @@ async function main() {
       const first = await publish(); await decide(first, 'preview'); await decide(first, 'approve');
       const disclosureBefore = await withTenantTransaction(eid, tx => rows(tx, sql`select id::text,type from app.domain_event_outbox where enterprise_id=${eid}
         and (type like 'construction.plan.%' or type='construction.material.shared.v1') order by id`));
-      for (const phase of ['baseline','mixed-correction','continuation']) {
+      for (const phase of focusWithdrawal ? ['mixed-correction'] : ['baseline','mixed-correction','continuation']) {
         setExpected({ phase, versionId: first, single: phase !== 'baseline' });
-        for (let n = 1; n <= 2; n++) {
+        for (let n = 1; n <= (focusWithdrawal ? 1 : 2); n++) {
           const started = Date.now(), text = phase === 'mixed-correction' ? correction : phase === 'continuation' ? continuation : question;
-          const sent = await mini('/messages', 'POST', text); await audit(String(sent.runId), phase + '-' + n, started);
+          const sent = await mini('/messages', 'POST', text), firstFeedbackMs = Date.now() - started;
+          const result = await audit(String(sent.runId), phase + '-' + n, started, false, { firstFeedbackMs, scope: 'http_accepted_message' });
+          if (focusWithdrawal) { Object.assign(result, { prerequisite: true }); save(); }
         }
-        check(phase + ': two actual configured-model answers; current need, original issues, actual stage and enterprise rule checked');
+        check(phase + (focusWithdrawal ? ': one actual prerequisite correction' : ': two actual configured-model answers')
+          + '; current need, original issues, actual stage and enterprise rule checked');
       }
       const disclosureAfter = await withTenantTransaction(eid, tx => rows(tx, sql`select id::text,type from app.domain_event_outbox where enterprise_id=${eid}
         and (type like 'construction.plan.%' or type='construction.material.shared.v1') order by id`));
@@ -268,8 +286,8 @@ async function main() {
       for (const r of report.runs as Row[]) assert.equal(allMessages.find((m: Row) => m.id === r.outputMessageId)?.available, false);
       check('reference withdrawal invalidates all persisted dependent explanations; no old formal source revives');
       for (let n = 1; n <= 2; n++) {
-        const started = Date.now(), sent = await mini('/messages', 'POST', withdrawnQuestion);
-        await audit(String(sent.runId), 'withdrawn-no-fallback-' + n, started, true);
+        const started = Date.now(), sent = await mini('/messages', 'POST', withdrawnQuestion), firstFeedbackMs = Date.now() - started;
+        await audit(String(sent.runId), 'withdrawn-no-fallback-' + n, started, true, { firstFeedbackMs, scope: 'http_accepted_message' });
       }
       check('two real answers after withdrawal keep the unavailable correction private and never revive old occupancy');
     }

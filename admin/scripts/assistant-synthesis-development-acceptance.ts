@@ -12,12 +12,14 @@ import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresq
 import { safeText, type ActorContext } from '@/lib/assistant/contracts';
 import { synthesisCases, synthesisPolicies } from './assistant-synthesis-cases';
 import { agentPromptVersion } from '@/lib/assistant/agent/context';
-import { professionalEntry, professionalCases, professionalMaterialPolicy } from './assistant-professional-cases';
+import { professionalEntry, professionalCases, professionalMaterialPolicy, professionalTerminologyPolicy } from './assistant-professional-cases';
 import { contextCases, contextPolicies } from './assistant-context-cases';
 
-const contextMode=process.argv.includes('--context'),professionalMode=process.argv.includes('--professional')||contextMode;
+const contextMode=process.argv.includes('--context'),terminologyMode=process.argv.includes('--terminology'),professionalMode=process.argv.includes('--professional')||contextMode||terminologyMode;
+const fusionMode=process.argv.includes('--fusion');
+type CaseName = keyof typeof synthesisCases | keyof typeof professionalCases;
 const cases=contextMode?{...synthesisCases,...contextCases}:synthesisCases;
-const output = path.resolve(contextMode?'../tmp/xiaok-kb3':professionalMode?'../tmp/xiaok-kb1':'../tmp/xiaok-synthesis'), delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+const output = path.resolve(fusionMode?'../tmp/xiaok-kb3-fusion':terminologyMode?'../tmp/xiaok-kb1-terminology':contextMode?'../tmp/xiaok-kb3':professionalMode?'../tmp/xiaok-kb1':'../tmp/xiaok-synthesis'), delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function wait<T>(work: () => Promise<T | null | false>, label: string): Promise<T> {
   for (let i = 0; i < 240; i++) { const result = await work(); if (result) return result; await delay(500); }
   throw Error('Timeout: ' + label);
@@ -35,7 +37,7 @@ async function main() {
   const report: Row = { prefix, started: new Date().toISOString(), promptVersion: agentPromptVersion, model: 'configured existing DeepSeek/deepseek-flash',
     reality: { model: 'real', retrieval: 'real existing embedding service', database: 'approved development', http: 'real localhost:3006', worker: 'existing real Worker',
       fixtures: 'clearly labelled synthetic enterprise/users/projects/policies/formal graph/records', photos: 'synthetic JPEG, no image pixels sent to current model' },
-    criteria: contextMode?contextCases:professionalMode?{...synthesisCases,...professionalCases}:synthesisCases, checks: [], runs: [], passed: false };
+    criteria: terminologyMode?{terminology:professionalCases.terminology}:contextMode?contextCases:professionalMode?{...synthesisCases,...professionalCases}:synthesisCases, checks: [], runs: [], passed: false };
   const save = () => fs.writeFileSync(path.join(output, native ? 'native-driver.json' : 'live.json'), JSON.stringify(report, null, 2));
   let eid = '', aid = '';
   const customers: Array<{ uid: string; leadId: string; projectId: string; planId: string; cid: string; token: string; recordId: string; stage: string }> = [];
@@ -54,7 +56,7 @@ async function main() {
     await wait(async () => { const r = await knowledge.execute('job', { jobId: j.jobId }); if (['failed','indeterminate'].includes(String(r.status))) throw Error(JSON.stringify(r)); return r.status === 'succeeded' ? r : null; }, 'real knowledge index');
     await knowledge.execute('publish', input, randomUUID()); return input;
   };
-  const audit = async (c: typeof customers[number], runId: string, caseName: keyof typeof synthesisCases|'material', round: number, started: number) => {
+  const audit = async (c: typeof customers[number], runId: string, caseName: CaseName, round: number, started: number) => {
     const run = await wait(async () => {
       const r = await withTenantTransaction(eid, tx => one(tx, sql`select id,status,error_code,output_message_id from app.assistant_runs where enterprise_id=${eid} and id=${runId} and conversation_id=${c.cid}`));
       return r && !['queued','running'].includes(String(r.status)) ? r : null;
@@ -74,9 +76,22 @@ async function main() {
     const ctx = synthesis.source_refs as { knowledge: unknown[]; snapshots: Array<{ query: { domain: string }; data: unknown }> };
     assert.ok(ctx.knowledge.length, 'Expected real published enterprise knowledge');
     assert.ok(message.citations.length, 'Expected usable knowledge citations');
+    if(fusionMode){
+      const traces=steps.filter(s=>s.capability_name==='knowledge.search.v1').map(s=>(s.input_summary as Row)?.diagnostic as Row).filter(Boolean);
+      assert.ok(traces.length);
+      for(const trace of traces){
+        assert.equal((trace.configuration as Row).version,'professional-hybrid-v5');assert.equal((trace.configuration as Row).fusion,'actual_branch_ranks_v1');
+        const candidates=trace.candidates as Row[];assert.ok(candidates.length<=60);
+        assert.equal(new Set(candidates.map(c=>(c.ref as Row).id)).size,candidates.length);
+        for(const key of ['semanticRank','lexicalRank']){
+          const ranks=candidates.map(c=>c[key]).filter(r=>r!==null);assert.ok(ranks.length<=30);assert.ok(ranks.every(r=>Number.isInteger(r)&&Number(r)>0&&Number(r)<=30));
+        }
+        assert.ok(candidates.every(c=>c.semanticRank!==null||c.lexicalRank!==null));
+      }
+    }
     if(professionalMode){
       assert.ok((ctx.knowledge as Row[]).some(e=>e.professional),'Expected structured professional entry in real model evidence');assert.ok(steps.some(s=>s.capability_name==='knowledge.search.v1'&&(s.input_summary as Row)?.diagnostic),'Expected actual shared retrieval diagnostic');
-      const documents=report.documents as Row,required=caseName==='stage'?[documents.stage]:caseName==='material'?[documents.material]:caseName==='conflict'?[documents.office,report.conflict]:[documents.office];
+      const documents=report.documents as Row,required=caseName==='terminology'?[documents.terminology]:caseName==='stage'?[documents.stage]:caseName==='material'?[documents.material]:caseName==='conflict'?[documents.office,report.conflict]:[documents.office];
       for(const document of required as Row[]){assert.ok((ctx.knowledge as Row[]).some(e=>String((e.ref as Row).version)===String(document.versionId)),'Required published source must reach synthesis');assert.ok(message.citations.some((c:Row)=>String(c.version)===String(document.versionId)),'Required source must support actual answer citations');}
       if(contextMode){
         assert.ok(steps.some(s=>s.capability_name==='synthesis.bound_construction.v1'),'Current actual node must be included even for a knowledge-only follow-up');
@@ -103,6 +118,15 @@ async function main() {
     else if (caseName === 'conflict') {
       assert.match(text, /不一致|冲突|矛盾|两份|不同说法/);
       assert.equal((synthesis.private_checkpoint as {segments:Array<{basis:string}>}).segments[0].basis,'uncertainty');
+    } else if(caseName==='terminology') {
+      assert.match(text,/厂家|产品|型号/);assert.match(text,/核对|确认/);
+      const target=(report.documents as Row).terminology as Row;
+      const evidence=(ctx.knowledge as Row[]).find(e=>(e.ref as Row).version===target.versionId)!;
+      assert.equal(((evidence.professional as Row).applicability as Row).status,'unknown','Query wording cannot verify an actual project material');
+      const traces=steps.filter(s=>s.capability_name==='knowledge.search.v1').map(s=>(s.input_summary as Row)?.diagnostic as Row).filter(Boolean);
+      assert.ok(traces.some(t=>((t.expansion as Row)?.matches as Row[]|undefined)?.some(m=>m.rule==='tile_adhesive')),'The real current-question retrieval must record its spelling expansion');
+      assert.ok(traces.some(t=>/C 2 T E/i.test(String(t.query))&&(t.terms as string[]).includes('c2te')),'The original spaced designation and its complete canonical term must survive current-question anchoring');
+      assert.ok(traces.every(t=>(t.candidates as Row[]).every(candidate=>((candidate.ref as Row).version)!==((report.documents as Row).private as Row).versionId)),'Internal documents cannot become candidates through spelling expansion');
     } else if(caseName==='material') {
       assert.match(text,/地暖/);assert.match(text,/型号|材料/);assert.match(text,/核对|确认|未知|不能直接/);
       assert.ok((ctx.knowledge as Row[]).some(e=>((e.professional as Row)?.applicability as Row)?.status==='unknown'),'Unknown material condition must remain unknown');
@@ -127,19 +151,20 @@ async function main() {
         values(${eid},true,200,12000000,1000000000,30,${JSON.stringify({...config,imageInput:false})}::jsonb)`);
     });
     report.fixture = { enterpriseId: eid, ownerId: aid }; save(); knowledge = new KnowledgeService({enterpriseId:eid,adminId:aid});
-    report.documents = { office:await publish('合成企业办公规则',synthesisPolicies.office,'customer_public',professionalMode?professionalEntry({kind:'explanation',topics:['书房','办公桌','显示器','眩光'],conditions:[{field:'room',operator:'in',values:['书房']}],claim:{key:'书房屏幕朝向',value:'避免正对强光，比较侧向'}}):undefined),
+    report.documents = terminologyMode?{private:await publish('合成内部术语资料','PRIVATE_SYNTHESIS_DO_NOT_SEND '+professionalTerminologyPolicy,'staff_internal')}:{ office:await publish('合成企业办公规则',synthesisPolicies.office,'customer_public',professionalMode?professionalEntry({kind:'explanation',topics:['书房','办公桌','显示器','眩光'],conditions:[{field:'room',operator:'in',values:['书房']}],claim:{key:'书房屏幕朝向',value:'避免正对强光，比较侧向'}}):undefined),
       stage:await publish('合成企业铺砖前提',synthesisPolicies.stage,'customer_public',professionalMode?professionalEntry({topics:['铺贴','瓷砖','防水','水电'],conditions:[{field:'stage',operator:'in',values:['utilities','waterproofing']}]}):undefined),
       private:await publish('合成内部不可信资料',synthesisPolicies.private,'staff_internal') };
-    if(professionalMode){(report.documents as Row).material=await publish('合成地暖型粘结材料适用说明',professionalMaterialPolicy,'customer_public',professionalEntry({kind:'material',topics:['地暖型粘结材料','地砖','瓷砖铺贴'],conditions:[{field:'material',operator:'in',values:['地暖型粘结材料']}]}));
+    if(professionalMode&&!terminologyMode){(report.documents as Row).material=await publish('合成地暖型粘结材料适用说明',professionalMaterialPolicy,'customer_public',professionalEntry({kind:'material',topics:['地暖型粘结材料','地砖','瓷砖铺贴'],conditions:[{field:'material',operator:'in',values:['地暖型粘结材料']}]}));
       (report.documents as Row).waterproofOnly=await publish('合成防水节点检查安排','本条仅说明防水阶段的施工和闭水检查安排，水电阶段不适用本条作为当前施工指令。进入防水节点仍不证明施工或检查完成。','customer_public',professionalEntry({conditions:[{field:'stage',operator:'in',values:['waterproofing']}]}));} save();
     if(contextMode){
       for(const stage of ['utilities','waterproofing'] as const)(report.documents as Row)[stage]=await publish('合成KB3阶段依据 · '+stage,contextPolicies[stage],'customer_public',professionalEntry({topics:['铺砖','施工阶段','检查安排'],conditions:[{field:'stage',operator:'in',values:[stage]}]}));
       save();
     }
+    if(terminologyMode){(report.documents as Row).terminology=await publish('合成专业术语与完整型号说明',professionalTerminologyPolicy,'customer_public',professionalEntry({kind:'material',topics:['瓷砖胶','完整型号'],conditions:[{field:'material',operator:'in',values:['C2TE']}]}));save();}
     const service = new ConstructionService({enterpriseId:eid,adminId:aid}), site = new SiteChatService(service.actor);
     const settings = await service.execute('stages');
     await service.execute('saveStages',{expectedVersion:settings.version,stages:[{key:'utilities',name:'水电',visitReminder:false,visitReason:'',watchPoints:''},{key:'waterproofing',name:'防水',visitReminder:false,visitReason:'',watchPoints:''}]},randomUUID());
-    for (const stage of (native&&contextMode?['utilities']:['utilities','waterproofing'])) {
+    for (const stage of (terminologyMode||native&&contextMode?['utilities']:['utilities','waterproofing'])) {
       const uid = await withPlatformTransaction(async tx=>{const u=String((await one(tx,sql`insert into app.users(nickname,context_version) values('合成综合问答业主',1) returning id`))!.id);await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${u},${prefix+u})`);return u;});
       const layout={version:4,measurementMode:'surveying',surveyGraph:{kind:'survey-wall-graph',activeFloorId:'f',floors:[{id:'f',name:'一层',ceilingHeightMm:2800,nodes:[{id:'a',xMm:0,yMm:0},{id:'b',xMm:4000,yMm:0},{id:'c',xMm:4000,yMm:3000},{id:'d',xMm:0,yMm:3000}],walls:[{id:'ab',startNodeId:'a',endNodeId:'b'},{id:'bc',startNodeId:'b',endNodeId:'c'},{id:'cd',startNodeId:'c',endNodeId:'d'},{id:'da',startNodeId:'d',endNodeId:'a'}],openings:[],spaces:[{id:'study',name:'书房',closed:true,wallIds:['ab','bc','cd','da']}]}]}};
       const {leadId,planId}=await withTenantTransaction(eid,async tx=>{const l=String((await one(tx,sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source,community_name) values(${eid},${uid},'合成综合问答客户','13800000000','natural',${'合成'+stage+'之家'}) returning id`))!.id);const p=String((await one(tx,sql`insert into app.floor_plans(enterprise_id,creator_id,name,source,status,layout_data) values(${eid},${uid},'合成书房正式户型','manual','completed',${JSON.stringify(layout)}::jsonb) returning id`))!.id);await tx.execute(sql`update app.leads set primary_floor_plan_id=${p} where enterprise_id=${eid} and id=${l}`);return{leadId:l,planId:p};});
@@ -156,20 +181,29 @@ async function main() {
       customers.push({uid,leadId,planId,cid,token,projectId,recordId,stage});
       report.customers=customers.map(c=>({uid:c.uid,leadId:c.leadId,projectId:c.projectId,planId:c.planId,cid:c.cid,recordId:c.recordId,stage:c.stage})); save();
     }
-    const execute = async (c: typeof customers[number], name: keyof typeof synthesisCases|'material', round: number) => {
-      const started=Date.now(),sent=await request(c,'/messages','POST',name==='material'?professionalCases.material.question:cases[name].question);return audit(c,String(sent.runId),name,round,started);
+    const execute = async (c: typeof customers[number], name: CaseName, round: number) => {
+      const question=name==='terminology'?(round===1?professionalCases.terminology.question:professionalCases.terminology.followup):name==='material'?professionalCases.material.question:cases[name].question;
+      const started=Date.now(),sent=await request(c,'/messages','POST',question);return audit(c,String(sent.runId),name,round,started);
     };
     if (native) {
       const {run}=await import('./assistant-synthesis-native.mjs');
       report.native=await run({root:path.resolve('..'),output,customer:{...customers[0],enterpriseId:eid},
-        question:contextMode?cases.stage.question:cases.office.question,followup:contextMode?cases.stage.question:cases.followup.question,
-        firstLabel:contextMode?'PPT17/18 native actual utilities stage and enterprise prerequisites':undefined,
-        followupLabel:contextMode?'PPT18/19 same native question uses changed actual waterproofing stage':undefined,
-        withdrawTarget:contextMode?'followup':undefined,
+        question:terminologyMode?professionalCases.terminology.question:contextMode?cases.stage.question:cases.office.question,followup:terminologyMode?professionalCases.terminology.followup:contextMode?cases.stage.question:cases.followup.question,
+        firstLabel:terminologyMode?'K01 native alternate material spelling and complete designation retrieve the original published source':contextMode?'PPT17/18 native actual utilities stage and enterprise prerequisites':undefined,
+        followupLabel:terminologyMode?'K01 native second spelling retains source version and unknown actual material':contextMode?'PPT18/19 same native question uses changed actual waterproofing stage':undefined,
+        withdrawTarget:contextMode||terminologyMode?'followup':undefined,
         beforeFollowup:contextMode?async()=>{const c=customers[0],d=await service.execute('detail',{projectId:c.projectId});await service.execute('progress',{projectId:c.projectId,expectedVersion:(d.project as Row).version,stageKey:'waterproofing',note:'合成原生KB3实际阶段变更，检查结果待核对',sendReminder:false},randomUUID());c.stage='waterproofing';return{projectId:c.projectId,stage:c.stage};}:undefined,
         withdrawLabel:contextMode?'stage-specific knowledge withdrawal invalidates native derived answer':professionalMode?'withdrawn professional knowledge invalidates dependent explanation on actual native reentry':undefined,
-        audit:(id:string,name:'office'|'followup',started:number)=>audit(customers[0],id,contextMode?'stage':name,1,started),
-        withdraw:async()=>{if(professionalMode){await knowledge.execute('retire',{documentId:((report.documents as Row)[contextMode?'waterproofing':'office'] as Row).documentId,expectedVersion:2},randomUUID());return;}const r=(await withTenantTransaction(eid,tx=>one(tx,sql`select version from app.construction_site_records where enterprise_id=${eid} and id=${customers[0].recordId}`)))!;await site.mutate(customers[0].projectId,customers[0].recordId,'withdraw',{expectedVersion:Number(r.version),reason:'合成自动验收撤回'},randomUUID());}}); save();
+        audit:(id:string,name:'office'|'followup',started:number)=>audit(customers[0],id,terminologyMode?'terminology':contextMode?'stage':name,1,started),
+        citationId:terminologyMode?()=>{const runs=report.runs as Row[],message=runs[runs.length-1].message as Row;return(message.citations as Row[]).find(c=>c.version===((report.documents as Row).terminology as Row).versionId)?.id;}:undefined,
+        citationCheck:terminologyMode?(citation:Row)=>{assert.equal(citation.version,((report.documents as Row).terminology as Row).versionId);assert.match(String(citation.quote),/瓷砖胶|C2TE/);}:undefined,
+        withdraw:async()=>{if(professionalMode){await knowledge.execute('retire',{documentId:((report.documents as Row)[terminologyMode?'terminology':contextMode?'waterproofing':'office'] as Row).documentId,expectedVersion:2},randomUUID());return;}const r=(await withTenantTransaction(eid,tx=>one(tx,sql`select version from app.construction_site_records where enterprise_id=${eid} and id=${customers[0].recordId}`)))!;await site.mutate(customers[0].projectId,customers[0].recordId,'withdraw',{expectedVersion:Number(r.version),reason:'合成自动验收撤回'},randomUUID());}}); save();
+    } else if(terminologyMode){
+      for(let round=1;round<=2;round++)await execute(customers[0],'terminology',round);
+      const old=(report.runs as Row[]).map(r=>r.outputMessageId),current=await request(customers[0],'/messages');assert.ok(old.every(id=>current.items.find((m:Row)=>m.id===id)?.available));
+      await knowledge.execute('retire',{documentId:((report.documents as Row).terminology as Row).documentId,expectedVersion:2},randomUUID());
+      const reread=await request(customers[0],'/messages');assert.ok(old.every(id=>reread.items.find((m:Row)=>m.id===id)?.available===false));
+      (report.checks as Row[]).push({name:'Both real terminology answers persist then invalidate on source withdrawal',passed:true});
     } else if(contextMode){
       for(let round=1;round<=2;round++){await execute(customers[0],'office',round);await execute(customers[0],'followup',round);for(const c of customers)await execute(c,'stage',round);await execute(customers[0],'missing',round);}
       const c=customers[0],old=(report.runs as Row[]).filter(r=>r.conversationId===c.cid).map(r=>r.outputMessageId);

@@ -22,7 +22,7 @@ export async function run(ctx) {
         app.globalData.bootstrap = { current: { mode: 'customer', role: 'user', context: { enterpriseId: s.enterpriseId } } }; app.__qaShared.memory.set('token', s.token);
       }, ctx.customer);
       await mp.redirectTo('/' + route + '?conversationId=' + ctx.customer.conversationId);
-      return waitFor(async () => { const p = await mp.currentPage(); assert.equal(p.path, route); const d = await p.data(); return !d.loading && !d.fatal && d.canSend ? p : null; }, 'original C01 live reentry');
+      return waitFor(async () => { const p = await mp.currentPage(); if (p.path !== route) return null; const d = await p.data(); return !d.loading && !d.fatal && d.canSend ? p : null; }, 'original C01 live reentry');
     }
     async function say(text) {
       const p = await mp.currentPage(); assert.equal(p.path, route); await (await p.$('.composer-input')).input(text);
@@ -45,7 +45,8 @@ export async function run(ctx) {
     async function ask(label, text = ctx.question, withdrawn = false) {
       const p = await customer(), prior = (await p.data('run'))?.id, started = Date.now(); await say(text);
       const run = await waitFor(async () => { const d = await p.data(); return d.run?.id && d.run.id !== prior ? d.run : null; }, 'real configured run');
-      const result = await ctx.audit(run.id, label, started, withdrawn); outputs.push(result.outputMessageId);
+      const result = await ctx.audit(run.id, label, started, withdrawn,
+        { firstFeedbackMs: Date.now() - started, scope: 'native_persisted_run' }); outputs.push(result.outputMessageId);
       await mp.evaluate(ids => { for (const id of ids) getApp().__qaShared.teamCitationIds.add(String(id)); }, result.citations.map(c => c.id));
       await waitFor(async () => { const d = await p.data(); return !d.busy && !d.generating && d.messages.some(m => m.id === result.outputMessageId && m.available); }, 'actual explanation');
       const reopened = await customer(); assert.ok((await reopened.data('messages')).some(m => m.id === result.outputMessageId && m.available));

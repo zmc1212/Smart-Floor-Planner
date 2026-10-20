@@ -29,12 +29,12 @@ export function syntheticDocx(options:{second?:boolean;unsafe?:boolean;image?:bo
     ...(options.unsafe?{'../escape.xml':'forbidden'}:{}),
   });
 }
-export function syntheticPdf(empty=false,pages=1) {
+export function syntheticPdf(empty=false,pages=1,lines?:string[]) {
   const objects=['<< /Type /Catalog /Pages 2 0 R >>','', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
   const kids:string[]=[];
   for(let page=1;page<=pages;page++) {
     const id=objects.length+1;kids.push(`${id} 0 R`);
-    const text=empty?'q 10 0 0 10 0 0 cm Q':`BT /F1 12 Tf 40 750 Td (SYNTHETIC KB2 - page ${page}) Tj 0 -22 Td (Waterproofing checks are arranged by the project team.) Tj 0 -22 Td (A stage label does not prove inspection passed.) Tj ET`;
+    const text=empty?'q 10 0 0 10 0 0 cm Q':lines?`BT /F1 12 Tf 40 750 Td ${lines.map((s,i)=>`${i?'0 -16 Td ':''}(${s.replace(/[\\()]/g,'\\$&')}) Tj`).join(' ')} ET`:`BT /F1 12 Tf 40 750 Td (SYNTHETIC KB2 - page ${page}) Tj 0 -22 Td (Waterproofing checks are arranged by the project team.) Tj 0 -22 Td (A stage label does not prove inspection passed.) Tj ET`;
     objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 3 0 R >> >> /Contents ${id+1} 0 R >>`,`<< /Length ${Buffer.byteLength(text)} >>\nstream\n${text}\nendstream`);
   }
   objects[1]=`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pages} >>`;
@@ -55,3 +55,85 @@ export function syntheticChinesePdf() {
   let result='%PDF-1.7\n';const offsets:number[]=[];for(const[i,o]of objects.entries()){offsets.push(Buffer.byteLength(result));result+=`${i+1} 0 obj\n${o}\nendobj\n`;}
   const at=Buffer.byteLength(result);result+=`xref\n0 7\n0000000000 65535 f \n${offsets.map(o=>String(o).padStart(10,'0')+' 00000 n \n').join('')}trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n${at}\n%%EOF\n`;return Buffer.from(result);
 }
+
+/** Minimal conventional OOXML, with real shared/inline strings, numeric cells and merges. */
+export function syntheticXlsxEntries(second = false): Record<string,string> {
+  const main='http://schemas.openxmlformats.org/spreadsheetml/2006/main',rel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const shared=['材料型号','合成示例厚度与单位','适用与例外','数值','单位','mm','仅合成定位数据。须先核对厂家资料与实际基层；地暖场景不能直接套用。','TEST-B','注：合成示例不是施工规范或本项目检测结果，不据此确认验收。😀'];
+  const s=(ref:string,index:number)=>`<c r="${ref}" t="s"><v>${index}</v></c>`;
+  return {
+    '[Content_Types].xml':'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
+    '_rels/.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="book" Type="${rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    'xl/workbook.xml':`<workbook xmlns="${main}" xmlns:r="${rel}"><sheets><sheet name="材料核对" sheetId="1" r:id="one"/><sheet name="检查安排" sheetId="2" r:id="two"/></sheets></workbook>`,
+    'xl/_rels/workbook.xml.rels':`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="one" Type="${rel}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="two" Type="${rel}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="strings" Type="${rel}/sharedStrings" Target="sharedStrings.xml"/><Relationship Id="styles" Type="${rel}/styles" Target="styles.xml"/></Relationships>`,
+    'xl/sharedStrings.xml':`<sst xmlns="${main}" count="11" uniqueCount="${shared.length}">${shared.map(t=>`<si><t>${esc(t)}</t></si>`).join('')}</sst>`,
+    'xl/styles.xml':`<styleSheet xmlns="${main}"><cellStyleXfs count="1"><xf numFmtId="0"/></cellStyleXfs><cellXfs count="1"><xf numFmtId="0" xfId="0"/></cellXfs></styleSheet>`,
+    'xl/worksheets/sheet1.xml':`<worksheet xmlns="${main}"><sheetData><row r="1">${s('A1',0)}${s('B1',1)}${s('D1',2)}</row><row r="2">${s('B2',3)}${s('C2',4)}</row><row r="3"><c r="A3" t="inlineStr"><is><r><t>TEST-</t></r><r><t>${second?'B':'A'}</t></r><rPh sb="0" eb="4"><t>not-source</t></rPh></is></c><c r="B3"><v>${second?'3':'2'}</v></c>${s('C3',5)}${s('D3',6)}</row><row r="4">${s('A4',7)}<c r="B4"><v>3.5</v></c>${s('C4',5)}${s('D4',6)}</row><row r="5">${s('A5',8)}</row></sheetData><mergeCells count="4"><mergeCell ref="A1:A2"/><mergeCell ref="B1:C1"/><mergeCell ref="D1:D2"/><mergeCell ref="A5:D5"/></mergeCells></worksheet>`,
+    'xl/worksheets/sheet2.xml':`<worksheet xmlns="${main}"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>事项</t></is></c><c r="B1" t="inlineStr"><is><t>执行说明</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>防水检查</t></is></c><c r="B2" t="inlineStr"><is><t>合成资料：由获权团队按实际记录安排，阶段标签不证明检查通过。</t></is></c></row></sheetData></worksheet>`,
+  };
+}
+export function syntheticXlsx(second = false) { return syntheticZip(syntheticXlsxEntries(second)); }
+
+/** Display values differ intentionally from raw values; never a real policy. */
+export function syntheticFormattedXlsxEntries(): Record<string,string> {
+  const entries = syntheticXlsxEntries();
+  entries['xl/styles.xml'] = entries['xl/styles.xml']
+    .replace('<cellStyleXfs', '<numFmts count="1"><numFmt numFmtId="164" formatCode="0.00&quot; mm&quot;"/></numFmts><cellStyleXfs')
+    .replace('<cellXfs count="1"><xf numFmtId="0" xfId="0"/></cellXfs>', '<cellXfs count="3"><xf numFmtId="0" xfId="0"/><xf numFmtId="10" xfId="0"/><xf numFmtId="164" xfId="0"/></cellXfs>');
+  entries['xl/sharedStrings.xml'] = entries['xl/sharedStrings.xml']
+    .replace('合成示例厚度与单位', '合成示例比例与用量').replace('>数值<', '>参考比例<').replace('>单位<', '>参考用量<');
+  entries['xl/worksheets/sheet1.xml'] = entries['xl/worksheets/sheet1.xml']
+    .replace('<c r="B3"><v>2</v></c>', '<c r="B3" s="1"><v>0.125</v></c>')
+    .replace('<c r="C3" t="s"><v>5</v></c>', '<c r="C3" s="2"><v>2.345</v></c>')
+    .replace('<c r="B4"><v>3.5</v></c>', '<c r="B4" s="1"><v>0.075</v></c>')
+    .replace('<c r="C4" t="s"><v>5</v></c>', '<c r="C4" s="2"><v>3.1</v></c>');
+  return entries;
+}
+export function syntheticFormattedXlsx() { return syntheticZip(syntheticFormattedXlsxEntries()); }
+
+/** Explicit dates are labelled sample dates, never an actual project schedule. */
+export function syntheticDateXlsxEntries(dateSystem: '1900' | '1904' = '1900', compact = false): Record<string,string> {
+  const entries = syntheticXlsxEntries();
+  entries['xl/workbook.xml'] = entries['xl/workbook.xml'].replace('<sheets>', `<workbookPr date1904="${dateSystem === '1904' ? '1' : '0'}"/><sheets>`);
+  entries['xl/styles.xml'] = entries['xl/styles.xml']
+    .replace('<cellStyleXfs', '<numFmts count="2"><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/><numFmt numFmtId="165" formatCode="yyyy&quot;年&quot;m&quot;月&quot;d&quot;日&quot;"/></numFmts><cellStyleXfs')
+    .replace('<cellXfs count="1"><xf numFmtId="0" xfId="0"/></cellXfs>', '<cellXfs count="3"><xf numFmtId="0" xfId="0"/><xf numFmtId="164" xfId="0"/><xf numFmtId="165" xfId="0"/></cellXfs>');
+  entries['xl/sharedStrings.xml'] = entries['xl/sharedStrings.xml']
+    .replace('合成示例厚度与单位', '合成参考日期').replace('>数值<', '>参考日期一<').replace('>单位<', '>参考日期二<');
+  const serial = dateSystem === '1904' ? 44852 : 46314; // 2026-10-19, 1,462 days apart.
+  entries['xl/worksheets/sheet1.xml'] = entries['xl/worksheets/sheet1.xml']
+    .replace('<c r="B3"><v>2</v></c>', `<c r="B3" s="1"><v>${serial}</v></c>`)
+    .replace('<c r="C3" t="s"><v>5</v></c>', `<c r="C3" s="2"><v>${serial + 1}</v></c>`)
+    .replace('<c r="B4"><v>3.5</v></c>', `<c r="B4" s="1"><v>${serial + 2}</v></c>`)
+    .replace('<c r="C4" t="s"><v>5</v></c>', `<c r="C4" s="2"><v>${serial + 3}</v></c>`);
+  if (compact) {
+    // A separate two-row live-model case; broad merged/multi-sheet coverage
+    // remains in the original fixture and service suite, not silently dropped.
+    entries['xl/workbook.xml'] = entries['xl/workbook.xml'].replace(/<sheet name="检查安排"[^>]+\/>/, '');
+    entries['xl/_rels/workbook.xml.rels'] = entries['xl/_rels/workbook.xml.rels'].replace(/<Relationship Id="two"[^>]+\/>/, '');
+    entries['[Content_Types].xml'] = entries['[Content_Types].xml'].replace(/<Override PartName="\/xl\/worksheets\/sheet2.xml"[^>]+\/>/, '');
+    delete entries['xl/worksheets/sheet2.xml'];
+    const inline = (ref:string,text:string)=>`<c r="${ref}" t="inlineStr"><is><t>${esc(text)}</t></is></c>`;
+    entries['xl/worksheets/sheet1.xml'] = `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1">${inline('A1','合成材料')}${inline('B1','参考日期一')}${inline('C1','参考日期二')}${inline('D1','适用与例外')}</row><row r="3">${inline('A3','TEST-A')}<c r="B3" s="1"><v>${serial}</v></c><c r="C3" s="2"><v>${serial+1}</v></c>${inline('D3','合成示例日期，不代表项目安排或检查结果；地暖场景不能直接套用，须核对厂家资料与实际基层。')}</row></sheetData></worksheet>`;
+  }
+  return entries;
+}
+export function syntheticDateXlsx(dateSystem: '1900' | '1904' = '1900', compact = false) { return syntheticZip(syntheticDateXlsxEntries(dateSystem, compact)); }
+
+/** Local reference clocks, never an actual appointment, duration or timezone. */
+export function syntheticTimeXlsxEntries(dateSystem: '1900' | '1904' = '1900'): Record<string,string> {
+  const entries = syntheticDateXlsxEntries(dateSystem);
+  entries['xl/styles.xml'] = entries['xl/styles.xml']
+    .replace('formatCode="yyyy-mm-dd"', 'formatCode="yyyy-mm-dd hh:mm:ss"')
+    .replace('formatCode="yyyy&quot;年&quot;m&quot;月&quot;d&quot;日&quot;"', 'formatCode="hh:mm:ss"');
+  entries['xl/sharedStrings.xml'] = entries['xl/sharedStrings.xml']
+    .replace('合成参考日期', '合成参考时刻').replace('参考日期一', '参考日期时刻').replace('参考日期二', '参考时间');
+  const serial = dateSystem === '1904' ? 44852 : 46314;
+  entries['xl/worksheets/sheet1.xml'] = entries['xl/worksheets/sheet1.xml']
+    .replace(`<v>${serial}</v>`, `<v>${serial}.395833333336</v>`)
+    .replace(`<v>${serial + 1}</v>`, '<v>0.5625</v>')
+    .replace(`<v>${serial + 2}</v>`, `<v>${serial + 2}.375</v>`)
+    .replace(`<v>${serial + 3}</v>`, '<v>0.5</v>');
+  return entries;
+}
+export function syntheticTimeXlsx(dateSystem: '1900' | '1904' = '1900') { return syntheticZip(syntheticTimeXlsxEntries(dateSystem)); }

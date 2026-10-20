@@ -24,12 +24,12 @@ export function readOriginal(actor: KnowledgeActor, documentId: string, versionI
 export async function storeOriginal(tx: PostgresTransaction, actor: KnowledgeActor, documentId: string, input: Row): Promise<SourceFile> {
   const f = uploadedFile(input), old = await one(tx, sql`select id,name,format from app.assistant_knowledge_assets
     where enterprise_id=${actor.enterpriseId} and document_id=${documentId} and source_hash=${f.hash}`);
-  if (old) return { version: 1, assetId: String(old.id), hash: f.hash, name: String(old.name), format: old.format as 'docx' | 'pdf', parsed: null, review: null };
+  if (old) return { version: 1, assetId: String(old.id), hash: f.hash, name: String(old.name), format: old.format as SourceFile['format'], parsed: null, review: null };
   const quota = (await one(tx, sql`select count(*) n,coalesce(sum(octet_length(data)),0) bytes from app.assistant_knowledge_assets where enterprise_id=${actor.enterpriseId}`))!;
   if (Number(quota.n) >= 100 || Number(quota.bytes) + f.data.length > 100 * 1024 * 1024) fail('knowledge_file_storage_limit', 429);
   const asset = (await one(tx, sql`insert into app.assistant_knowledge_assets(enterprise_id,document_id,name,format,source_hash,usage_rights,data,uploaded_by)
     values(${actor.enterpriseId},${documentId},${f.name},${f.format},${f.hash},${f.authorization},${f.data},${actor.adminId}) returning id`))!;
-  return { version: 1, assetId: String(asset.id), hash: f.hash, name: f.name, format: f.format as 'docx' | 'pdf', parsed: null, review: null };
+  return { version: 1, assetId: String(asset.id), hash: f.hash, name: f.name, format: f.format, parsed: null, review: null };
 }
 export async function queueFileParse(tx: PostgresTransaction, actor: KnowledgeActor, v: Row) {
   const dedupe = `parse:${v.id}:${v.edit_version}:${v.content_hash}`;

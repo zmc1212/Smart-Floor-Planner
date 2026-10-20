@@ -94,13 +94,19 @@ test('an advice or uncertainty label cannot bypass formal-action guards', () => 
   assert.equal(parse([{ basis: 'advice', text: '可以先比较侧向和正对窗的眩光感受。', citations: [] }]).segments.length, 1);
 });
 test('a denial of completion inference stays negative without hiding a separate positive claim', () => {
-  const text = '你同意这一版也不等于现场已经落实，处理结果要另行核对。';
-  const answer = parse([{ basis: 'uncertainty', text, citations: [] }]);
-  assert.equal(answer.segments[0].text, '你同意这一版也不能据此确认处理结果，处理结果要另行核对。');
-  for (const suffix of ['但现场已落实。', '事项已经正式关闭。', '已验收合格。'])
-    assert.throws(() => parse([{ basis: 'uncertainty', text: text + suffix, citations: [] }]), /unsupported_model_commitment/);
-  for (const positive of ['不等于没有落实，现场已经落实。', '不能证明有问题，事项已解决。', '现场已经落实。'])
+  for (const subject of ['现场', '现场点位', '点位']) {
+    const text = `你同意这一版也不等于${subject}已经落实，处理结果要另行核对。`;
+    const answer = parse([{ basis: 'uncertainty', text, citations: [] }]);
+    assert.equal(answer.segments[0].text, '你同意这一版也不能据此确认处理结果，处理结果要另行核对。');
+    for (const suffix of ['但现场已落实。', '现场点位已经落实。', '点位已经落实。', '事项已经正式关闭。', '已验收合格。'])
+      assert.throws(() => parse([{ basis: 'uncertainty', text: text + suffix, citations: [] }]), /unsupported_model_commitment/);
+  }
+  for (const positive of ['不等于没有落实，现场已经落实。', '不能证明有问题，事项已解决。', '现场已经落实。', '现场点位已经落实。'])
     assert.throws(() => parse([{ basis: 'uncertainty', text: positive, citations: [] }]), /unsupported_model_commitment/);
+  const negative = '也不把这一版当作已落实。';
+  assert.equal(parse([{ basis: 'uncertainty', text: negative, citations: [] }]).segments[0].text, '也仍需核对处理结果。');
+  for (const text of [negative + '现场已落实。', '不是不把这一版当作已落实。', '并非不等于现场已落实。', '不能不把该方案视为已落实。'])
+    assert.throws(() => parse([{ basis: 'uncertainty', text, citations: [] }]), /unsupported_model_commitment/);
 });
 test('final model context retains current tool pairs and original but drops old topics', () => {
   const context = focusedSynthesisMessages([{role:'system',content:[{type:'text',text:'policy'}]},

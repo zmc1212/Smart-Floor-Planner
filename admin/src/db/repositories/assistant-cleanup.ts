@@ -9,17 +9,25 @@ export const assistantCleanupTables = [
   'assistant_conversations', 'assistant_enterprise_settings',
   'assistant_knowledge_attempts','assistant_knowledge_chunks','assistant_knowledge_assets','assistant_knowledge_versions','assistant_knowledge_documents','assistant_knowledge_index_profiles',
   'assistant_message_citations', 'assistant_cost_reviews', 'assistant_requirement_summaries', 'assistant_media',
-  'assistant_knowledge_evaluations','assistant_knowledge_cases',
+  'assistant_knowledge_batch_items','assistant_knowledge_batches','assistant_knowledge_evaluations','assistant_knowledge_cases',
 ] as const;
 export async function assistantCounts(tx: PostgresTransaction, enterpriseId: bigint) {
   const result = [];
-  for (const table of assistantCleanupTables) result.push({
+  const batches=(await rows(tx,sql`select to_regclass('app.assistant_knowledge_batches') is not null as ready`))[0].ready;
+  for (const table of assistantCleanupTables) {
+    if(!batches&&['assistant_knowledge_batch_items','assistant_knowledge_batches'].includes(table))continue;
+    result.push({
     table, label: table, count: Number((await rows(tx, sql`select count(*) as n from ${sql.identifier('app')}.${sql.identifier(table)} where enterprise_id=${enterpriseId}`))[0].n),
   });
+  }
   return result;
 }
 export async function deleteAssistantData(tx: PostgresTransaction, enterpriseId: bigint) {
   const counts = await assistantCounts(tx, enterpriseId);
+  if(counts.some(c=>c.table==='assistant_knowledge_batches')) {
+    await tx.execute(sql`delete from app.assistant_knowledge_batch_items where enterprise_id=${enterpriseId}`);
+    await tx.execute(sql`delete from app.assistant_knowledge_batches where enterprise_id=${enterpriseId}`);
+  }
   await tx.execute(sql`delete from app.assistant_knowledge_evaluations where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_knowledge_cases where enterprise_id=${enterpriseId}`);
   await tx.execute(sql`delete from app.assistant_media where enterprise_id=${enterpriseId}`);

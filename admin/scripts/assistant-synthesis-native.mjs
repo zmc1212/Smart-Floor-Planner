@@ -18,13 +18,17 @@ export async function run(ctx) {
   async function step(name,work) { try { const result=await work();report.checks.push({name,passed:true,result});console.log(name+': PASS');return result; }
     catch(e){report.checks.push({name,passed:false,error:e.message});throw e;} finally{save();} }
   async function compile() {
-    const targets=(await(await fetch('http://127.0.0.1:9431/json/list')).json()).filter(t=>t.url.includes('electron-project.html')); assert.equal(targets.length,1);
-    const target=new URL(targets[0].url); assert.equal(path.win32.normalize(target.searchParams.get('projectpath')),path.win32.normalize(path.join(root,'miniprogram')));assert.equal(target.searchParams.get('appVersion'),'2.02.2608080');
-    const c=await connect('electron-project.html');try{const point=await c.evaluate(`(()=>{const b=[...document.querySelectorAll('[title="编译"]')].filter(e=>e.getBoundingClientRect().width>0);if(b.length!==1)throw Error('Compile action not unique');const r=b[0].getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2};})()`);
-      for(const type of ['mousePressed','mouseReleased'])await c.call('Input.dispatchMouseEvent',{type,button:'left',clickCount:1,...point});await delay(6000);return 'ws://127.0.0.1:'+target.searchParams.get('autoPort');
+    const expected=path.win32.normalize(path.join(root,'miniprogram'));
+    const targets=(await(await fetch('http://127.0.0.1:9431/json/list')).json()).filter(t=>{
+      if(!t.url.includes('electron-project.html'))return false;
+      try{return path.win32.normalize(new URL(t.url).searchParams.get('projectpath')||'')===expected;}catch{return false;}
+    });assert.equal(targets.length,1);
+    const target=new URL(targets[0].url);assert.equal(target.searchParams.get('appVersion'),'2.02.2608080');assert.equal(target.searchParams.get('autoPort'),'9420');
+    const c=await connect(targets[0].url);try{assert.equal(c.target.id,targets[0].id);await c.evaluate(`(()=>{const b=[...document.querySelectorAll('[title="编译"]')].filter(e=>e.getBoundingClientRect().width>0);if(b.length!==1)throw Error('Compile action not unique');b[0].click();return{compileRequested:true};})()`);
+      await delay(6000);return 'ws://127.0.0.1:'+target.searchParams.get('autoPort');
     }finally{c.close();}
   }
-  async function open() { await mp.redirectTo('/'+route+'?conversationId='+customer.cid);return wait(async()=>{const p=await mp.currentPage();assert.equal(p.path,route);const d=await p.data();return !d.loading&&!d.fatal&&d.canSend&&d.conversation?.id===customer.cid?p:null;},'exact original consultation'); }
+  async function open() { await mp.redirectTo('/'+route+'?conversationId='+customer.cid);return wait(async()=>{const p=await mp.currentPage();if(p.path!==route)return null;const d=await p.data();return !d.loading&&!d.fatal&&d.canSend&&d.conversation?.id===customer.cid?p:null;},'exact original consultation'); }
   async function capture(name) {
     const p=await mp.currentPage(),stack=await mp.evaluate(()=>getCurrentPages().map(p=>p.route));assert.equal(p.path,route);assert.equal(stack.at(-1),route);
     await(await p.$('.conversation-scroll')).scrollTo(0,100000);await delay(400);const target=path.join(output,name+'.png');await mp.screenshot({path:target});const b=fs.readFileSync(target);assert.equal(b.subarray(1,4).toString(),'PNG');
@@ -41,8 +45,8 @@ export async function run(ctx) {
   }
   try {
     await step('unique verified Stable project remains on the secondary monitor',async()=>{
-      const info=JSON.parse(cp.execFileSync(pwsh,['-NoProfile','-File',path.join(root,'tmp/wechat-devtools-version-test/window.ps1'),'-Action','Inspect','-IncludeHidden'],{encoding:'utf8',windowsHide:true}));assert.equal(info.ProjectWindows,1);assert.equal(info.OnSecondary,true);
-      const count=cp.execFileSync(pwsh,['-NoProfile','-Command','@(Get-NetTCPConnection -LocalPort 9420 -State Established -ErrorAction SilentlyContinue).Count'],{encoding:'utf8',windowsHide:true}).trim();assert.equal(Number(count),0);return info;
+      const info=JSON.parse(cp.execFileSync(pwsh,['-NoProfile','-File',path.join(root,'tmp/wechat-devtools-version-test/window.ps1'),'-ExecutableRoot','D:/微信开发工具/微信web开发者工具','-Action','Inspect','-IncludeHidden'],{encoding:'utf8',windowsHide:true}));assert.equal(info.ProjectWindows,1);assert.equal(info.OnSecondary,true);
+      await wait(async()=>{const count=cp.execFileSync(pwsh,['-NoProfile','-Command','@(Get-NetTCPConnection -LocalPort 9420 -State Established -ErrorAction SilentlyContinue).Count'],{encoding:'utf8',windowsHide:true}).trim();return Number(count)===0;},'existing native controller to finish before compiling');return info;
     });
     await step('fresh compilation then live SDK, viewport, nonempty page data and positive element queries',async()=>{
       let endpoint=await compile();mp=await sdk.connect({wsEndpoint:endpoint});let info;

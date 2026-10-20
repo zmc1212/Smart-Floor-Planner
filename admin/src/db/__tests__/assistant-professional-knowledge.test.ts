@@ -9,7 +9,7 @@ import { deleteConstructionData } from '@/db/repositories/construction-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
-import { retrieveKnowledge } from '@/lib/assistant/knowledge/retrieval';
+import { retrieveKnowledge, retrievalConfiguration } from '@/lib/assistant/knowledge/retrieval';
 import { resolveEvidence } from '@/lib/assistant/knowledge/sources';
 import { readRetrievalDiagnostics } from '@/lib/assistant/knowledge/diagnostics';
 import { ConversationService } from '@/lib/assistant/core/conversation';
@@ -17,7 +17,7 @@ import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAnswer } from '@/lib/assistant/infrastructure/answer-worker';
 import { ConstructionService } from '@/lib/construction/service';
 import { embeddingGateway } from '@/lib/assistant/infrastructure/embedding-gateway';
-import type { ActorContext, TextModelGateway } from '@/lib/assistant/contracts';
+import type { ActorContext, EmbeddingGateway, TextModelGateway } from '@/lib/assistant/contracts';
 import { professionalEntry } from '../../../scripts/assistant-professional-cases';
 
 const prefix='synthetic-kb1-'+randomUUID(),tenants:string[]=[],users:string[]=[],globalAdmins:string[]=[];
@@ -34,6 +34,7 @@ async function index(d:Row) {const queued=await op('index',d),lease=await claimK
 before(async()=>{
   const target=new URL(resolvePostgresRuntimeConfig().connectionString);assert.equal(target.port,'55432');assert.equal(target.pathname,'/xiaok_embedding_eval');
   await withPlatformTransaction(async tx=>{
+    const role=await one(tx,sql`select rolsuper,rolbypassrls from pg_roles where rolname=current_user`);assert.equal(role?.rolsuper,false);assert.equal(role?.rolbypassrls,false);
     for(let i=0;i<2;i++)tenants.push(String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!.id));eid=tenants[0];
     for(const t of tenants)await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days) values(${t},true,1000,12000000,1000000000,30)`);
     aid=String((await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password) values(${eid},${prefix},'unusable-synthetic','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!.id);
@@ -78,6 +79,74 @@ test('K08 real stage changes invalidate prior applicability and refresh the same
   const after=await retrieveKnowledge(cid,actor,'防水铺砖前提',await epoch());assert.equal(after.evidence.find(e=>e.ref.version===published.versionId)?.professional?.applicability.status,'applicable');
 });
 
+test('K01/07/08 bounded spelling expansion uses real indexes, weighted SQL ranks and current source authorization',async()=>{
+  const question='等电位连接和 C 2 T E 瓷砖黏结剂需要核对什么？';
+  const input={title:'合成术语回归资料',sourceType:'manual_text',audience:'customer_public',
+    body:'合成检索样例：等电位联结与瓷砖胶 C2TE 资料须核对原设计、厂家和完整型号。此条不是项目选材批准或验收结论。',
+    professional:professionalEntry({conditions:[{field:'material',operator:'in',values:['C2TE']}]})};
+  const publishEntry=async(service:KnowledgeService,value:Row)=>{
+    const r=await service.execute('create',value,randomUUID()),d={documentId:String((r.document as Row).id),versionId:String((r.draft as Row).id),expectedVersion:1,expectedEditVersion:1};
+    const queued=await service.execute('index',d,randomUUID()),lease=await claimKnowledgeJob();assert.ok(lease);assert.equal(lease.jobId,queued.jobId);await runKnowledgeJob(lease);
+    assert.equal((await service.execute('job',{jobId:lease.jobId})).status,'succeeded');await service.execute('publish',d,randomUUID());return d;
+  };
+  const target=await publishEntry(knowledge,input);
+  const exact=await publishEntry(knowledge,{...input,body:'合成检索样例：等电位连接和 C2TE 瓷砖黏结剂需要核对原设计、厂家和完整型号。此条不是项目选材批准或验收结论。'});
+  const internal=await publishEntry(knowledge,{...input,audience:'staff_internal',body:'PRIVATE_TERM_FIXTURE '+input.body});
+  const other=await publishEntry(new KnowledgeService({enterpriseId:tenants[1],adminId:globalAdmins[0]}),{...input,body:'OTHER_TENANT_TERM_FIXTURE '+input.body});
+  let calls=0;const real=embeddingGateway();
+  const result=await retrieveKnowledge(cid,actor,question,await epoch(),{profile:real.profile,embed:async(texts,purpose)=>{
+    calls++;assert.deepEqual(texts,[question]);assert.equal(purpose,'query');return real.embed(texts,purpose);
+  }});
+  assert.equal(calls,1,'Expansion must not add model/embedding calls');
+  assert.equal(result.diagnostic.query,question);
+  assert.equal(result.diagnostic.expansion.version,'renovation-terms-v1');
+  for(const rule of ['tile_adhesive','equipotential_bonding','adhesive_designation_spacing'])assert.ok(result.diagnostic.expansion.matches.some(m=>m.rule===rule));
+  assert.ok(result.diagnostic.terms.includes('c2te'));
+  const canonical=result.diagnostic.candidates.find(c=>c.ref.version===target.versionId)!,literal=result.diagnostic.candidates.find(c=>c.ref.version===exact.versionId)!;
+  assert.ok(canonical&&literal);assert.ok(literal.lexicalRank!<canonical.lexicalRank!,'Original spellings retain priority in the actual SQL branch');
+  const evidence=result.evidence.find(e=>e.ref.version===target.versionId)!;assert.ok(evidence);
+  assert.equal(evidence.professional?.applicability.status,'unknown','A designation in a question is not a verified project material');
+  assert.ok(result.diagnostic.candidates.every(c=>c.ref.version!==internal.versionId&&c.ref.version!==other.versionId));
+  assert.doesNotMatch(JSON.stringify(result),/PRIVATE_TERM_FIXTURE|OTHER_TENANT_TERM_FIXTURE/);
+  await op('metadata',{documentId:target.documentId,expectedVersion:2,audience:'staff_internal'});
+  const after=await retrieveKnowledge(cid,actor,question,await epoch());assert.ok(after.diagnostic.candidates.every(c=>c.ref.version!==target.versionId));
+  assert.equal(await withTenantTransaction(eid,async tx=>resolveEvidence(tx,actor,(await one(tx,sql`select * from app.assistant_conversations where enterprise_id=${eid} and id=${cid}`))!,evidence)),undefined);
+});
+
+test('K01/11 real SQL preserves two disjoint thirty-result branches without phantom RRF votes',async t=>{
+  const anchor='fusionprobe'+randomUUID().replaceAll('-',''),query=anchor+'a '+anchor+'b';
+  const lines=Array.from({length:60},(_,i)=>i<30?`合成向量候选原文 ${anchor}a 序${String(i).padStart(2,'0')}。`:`合成词法候选原文 ${query} 序${String(i-30).padStart(2,'0')}。`);
+  const created=await op('create',{title:'合成测试专用 · 双路融合边界',sourceType:'manual_text',audience:'customer_public',body:lines.join('\n')});
+  const d={documentId:String((created.document as Row).id),versionId:String((created.draft as Row).id),expectedVersion:1,expectedEditVersion:1};
+  t.diagnostic(JSON.stringify({fixture:'synthetic-hybrid-fusion',enterpriseId:eid,documentId:d.documentId,versionId:d.versionId,query,chunks:60,embedding:'deterministic injected',target:'isolated evaluation; removed by suite cleanup'}));
+  const vector=(similarity:number)=>[similarity,Math.sqrt(1-similarity*similarity),...Array(1022).fill(0)];
+  let queries=0;
+  // Controlled vectors/chunk boundaries test SQL and fusion, not model quality.
+  const gateway:EmbeddingGateway={profile:embeddingGateway().profile,embed:async(texts,purpose)=>{
+    if(purpose==='query'){queries++;assert.deepEqual(texts,[query]);return{vectors:[vector(1)],usage:null};}
+    return{vectors:texts.map(t=>vector((t.includes('向量')?.95:.75)-Number(t.match(/序(\d+)/)![1])/10000)),usage:null};
+  }};
+  const job=await op('index',d),lease=await claimKnowledgeJob();assert.ok(lease);assert.equal(lease.jobId,job.jobId);
+  await runKnowledgeJob(lease,{embedding:gateway,chunk:async original=>{
+    assert.equal(original,lines.join('\n'));let offset=0;
+    return original.match(/[^\n]+(?:\n|$)/g)!.map(value=>{const start=offset;offset+=[...value].length;return{text:value,start,end:offset,tokens:20};});
+  }});
+  assert.equal((await op('job',{jobId:lease.jobId})).status,'succeeded');await op('publish',d);
+  try{
+    const r=await retrieveKnowledge(cid,actor,query,await epoch(),gateway),c=r.diagnostic.candidates;
+    assert.equal(queries,1);assert.equal(c.length,60);assert.equal(new Set(c.map(x=>x.ref.id)).size,60);
+    assert.ok(c.every(x=>x.ref.version===d.versionId));
+    const semantic=c.filter(x=>x.semanticRank!==null),lexical=c.filter(x=>x.lexicalRank!==null);
+    assert.equal(semantic.length,30);assert.equal(lexical.length,30);
+    assert.ok(semantic.every(x=>x.lexicalRank===null));assert.ok(lexical.every(x=>x.semanticRank===null));
+    assert.deepEqual(semantic.map(x=>x.semanticRank).sort((a,b)=>a!-b!),Array.from({length:30},(_,i)=>i+1));
+    assert.deepEqual(lexical.map(x=>x.lexicalRank).sort((a,b)=>a!-b!),Array.from({length:30},(_,i)=>i+1));
+    assert.ok(c[0].semanticRank===1||c[0].lexicalRank===1,'A real branch winner leads the fused pool');
+    assert.ok(r.evidence.some(e=>e.text.includes('向量'))&&r.evidence.some(e=>e.text.includes('词法')),'Both original branches reach final context');
+    assert.equal(r.diagnostic.configuration.fusion,'actual_branch_ranks_v1');
+  }finally{await op('retire',{documentId:d.documentId,expectedVersion:2});}
+});
+
 test('KB3 K01/04/09 eligible rules survive a crowded wrong-stage candidate pool',async()=>{
   const docs:Row[]=[];
   for(let i=0;i<7;i++){
@@ -93,12 +162,13 @@ test('KB3 K01/04/09 eligible rules survive a crowded wrong-stage candidate pool'
 test('K07/11 actual preview Worker stores authorized candidates and reentry diagnostic, no internal text leaks',async()=>{
   const secret=await create(professionalEntry(),'staff_internal');await index(secret);await op('publish',secret);
   const preview=new ConversationService(manager);previewCid=String((await preview.create(randomUUID(),{audience:'customer_public',draftVersionIds:[]})).id);
-  const sent=await preview.send(previewCid,randomUUID(),{version:1,blocks:[{type:'text',text:'防水铺砖前提有哪些？'}]}),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);previewRun=lease.runId;
+  const sent=await preview.send(previewCid,randomUUID(),{version:1,blocks:[{type:'text',text:'蓄水测试与防水铺砖前提有哪些？'}]}),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);previewRun=lease.runId;
   let modelFailure='';
   const model:TextModelGateway={capabilities:{streaming:false,toolCalling:false,usage:false},generate:async input=>{try{assert.doesNotMatch(JSON.stringify(input.messages),/INTERNAL_KB_REVIEW_NOTE/);const e=JSON.parse(input.messages[1].content).evidence;return{text:JSON.stringify({selections:[e[0].selectionId]}),attemptId:'',usage:null,finishReason:null,providerRequestId:null};}catch(e){modelFailure=(e as Error).message;throw e;}}};
   await processAnswer(lease,{model});const execution=await preview.run(previewRun);assert.equal(execution.status,'succeeded',JSON.stringify({execution,modelFailure}));
   const diagnostic=await readRetrievalDiagnostics(manager,previewRun);assert.equal(diagnostic.available,true);
-  if ('traces' in diagnostic) {assert.ok(diagnostic.traces.length);const t=diagnostic.traces[0] as Row;assert.ok((t.candidates as Row[]).every(c=>c.documentId!==secret.documentId));assert.ok((t.candidates as Row[]).some(c=>c.contextIncluded&&Number(c.contextChars)>0));assert.equal((t.configuration as Row).version,'professional-hybrid-v3');assert.ok((diagnostic.coverage as Row).audience_filtered);}
+  if ('traces' in diagnostic) {assert.ok(diagnostic.traces.length);const t=diagnostic.traces[0] as Row;assert.ok((t.candidates as Row[]).every(c=>c.documentId!==secret.documentId));assert.ok((t.candidates as Row[]).some(c=>c.contextIncluded&&Number(c.contextChars)>0));assert.equal((t.configuration as Row).version,retrievalConfiguration.version);assert.ok((diagnostic.coverage as Row).audience_filtered);}
+  if ('traces' in diagnostic) assert.ok(((diagnostic.traces[0] as Row).expansion as {matches:Array<{rule:string}>}).matches.some(m=>m.rule==='water_retention_test'));
   await assert.rejects(readRetrievalDiagnostics(actor,previewRun),/assistant_capability_forbidden/);
   const other={...manager,principal:{kind:'admin' as const,adminId:globalAdmins[0]}};await assert.rejects(readRetrievalDiagnostics(other,previewRun),/assistant_resource_not_found/);
 });

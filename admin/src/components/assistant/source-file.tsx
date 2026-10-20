@@ -8,11 +8,11 @@ import { notify } from '@/components/admin/operation-feedback';
 function FilePicker({ value, onChange }: { value?: string; onChange?: (value: string) => void }) {
   const form=Form.useFormInstance();
   const selection=useRef(0);
-  return <Input type="file" accept=".docx,.pdf" aria-label="知识原件" onChange={async e=>{
+  return <Input type="file" accept=".docx,.pdf,.xlsx" aria-label="知识原件" onChange={async e=>{
     const f=e.target.files?.[0]; if(!f)return;
     const current=++selection.current;onChange?.('');form.setFieldValue('fileName',undefined);
     try {
-      if(f.size>4*1024*1024 || !/\.(docx|pdf)$/i.test(f.name))throw new Error('请选择4MB以内的DOCX或可提取文字PDF。');
+      if(f.size>4*1024*1024 || !/\.(docx|pdf|xlsx)$/i.test(f.name))throw new Error('请选择4MB以内的DOCX、可提取文字PDF或XLSX。');
       let binary='';for(const b of new Uint8Array(await f.arrayBuffer()))binary+=String.fromCharCode(b);
       if(current!==selection.current)return;
       form.setFieldValue('fileName',f.name);onChange?.(btoa(binary));
@@ -21,19 +21,29 @@ function FilePicker({ value, onChange }: { value?: string; onChange?: (value: st
 }
 export function SourceFileFields() {
   return <>
-    <Alert type="info" showIcon message="文件先解析核对，再索引发布" description="首批限DOCX和文字PDF，4MB以内、PDF最多50页、最多128片，正文仍限16,000字符/48,000字节。扫描、复杂版式、图示及PDF表格结构不自动理解。内部资料不会自动对客户开放。" />
+    <Alert type="info" showIcon message="文件先解析核对，再索引发布" description="支持DOCX、文字PDF和有界XLSX（文字、普通数值、固定小数、千位分隔、百分比、明确单位、完整年月日及24小时时刻），4MB以内、PDF最多50页、XLSX最多8张表且各限A1:L64、总计128片，正文仍限16,000字符/48,000字节。日期支持明确的yyyy-mm-dd、yyyy/m/d、yyyy.mm.dd或中文年月日；时刻支持h:mm/ hh:mm（整分钟）和h:mm:ss/ hh:mm:ss，也可接在完整日期后；不推断时区。公式、隐藏内容、累计时长、跨午夜舍入、区域短日期、条件及复杂多段格式暂不支持；扫描、图示及PDF表格结构不自动理解。内部资料不会自动对客户开放。" />
     <Form.Item name="fileBase64" label="知识原件" rules={[{required:true}]}><FilePicker /></Form.Item>
     <Form.Item name="fileName" label="文件名" rules={[{required:true}]}><Input readOnly /></Form.Item>
     <Form.Item name="authorization" label="出处与使用许可" rules={[{required:true,whitespace:true,max:500}]}><Input.TextArea rows={2} maxLength={500} placeholder="原始出处、版本与可核验的使用许可；不要上传无权处理的私人资料" /></Form.Item>
   </>;
 }
 const warningCopy:Record<string,string>={
+  xlsx_headers_and_notes_require_review:'XLSX首个非标题行及其合并续行作为表头；注/说明/备注/例外/前提行保留为同表上下文，须逐行核对，复杂多表布局请先整理原件。',
+  xlsx_formatting_not_interpreted:'XLSX按原单元格值与坐标定位，不还原列宽、字体、颜色、打印页或图示；历史解析以当时记录的格式范围为准。',
+  xlsx_number_display_requires_review:'已按受支持的数字格式保留显示值（固定小数最多6位、数值最多15位有效数字）；请核对百分比、精度和单位，底层值与格式代码可在原件结构中追溯。',
+  xlsx_date_display_requires_review:'已按原件明确的完整年月日格式和1900/1904日期系统转换；请对照原件核对日期及适用含义。原始序列值、格式代码和日期系统保留在原件结构中；日期文字不证明项目安排或验收。',
+  xlsx_time_display_requires_review:'已按明确的24小时时刻格式显示（序列最多17位有效数字、秒按十进制舍入，分钟格式仅接受整分钟）；请核对原值、精度和适用含义。纯时刻不能隐藏整日，跨午夜舍入不支持；不推断时区、累计时长、项目安排或检查结果。',
+  xlsx_filters_not_applied:'XLSX筛选不作为资料排除条件，所有已解析行均需核对。',xlsx_empty_sheets_not_indexed:'空工作表没有进入检索。',
   docx_no_fixed_pages:'DOCX无固定页码，按章节、段落、表行列定位。',images_not_parsed:'图片和图示未解析，不能据此推断图中数值或事实。',
   pdf_reading_order_requires_review:'PDF文字顺序需对照原件核对。',pdf_tables_not_structurally_parsed:'PDF未识别表格结构，不将排列文字冒充已核实表格。',
   table_first_row_header_requires_review:'表格首行暂作表头上下文，须核对合并单元格、条件和单位。',headers_footers_not_indexed:'页眉页脚未进入检索。',
   tracked_changes_visible_text_only:'仅提取修订后的可见文字，删除内容未索引。',external_links_not_fetched:'外部链接未抓取。',
 };
 const failureCopy:Record<string,string>={
+  knowledge_file_complex_spreadsheet:'XLSX含未支持的结构、编码转义文字、批注或超出A1:L64范围，请保留完整条件后整理原件。',
+  knowledge_file_spreadsheet_formula:'XLSX含公式，本批不执行计算，也不把缓存结果作为已核实原值。请提供有出处、核对过的纯值副本。',
+  knowledge_file_spreadsheet_hidden:'XLSX含隐藏工作表、行或列，请先明确资料范围并提供可核对的副本。',
+  knowledge_file_spreadsheet_number_format:'XLSX含未支持或有歧义的数字/日期/时刻格式（如累计时长、分钟格式含非零秒、跨午夜舍入、区域短日期、条件、多段格式或无效日期序列），不能把底层数值冒充显示值；请核对后提供保留日期、时间、单位与完整条件的文字副本。',
   knowledge_file_parse_failed:'文件未能完整解析，请核对原件是否损坏。',knowledge_file_ocr_required:'PDF有无可提取文字的页面，本批未启用OCR。',
   knowledge_file_password:'PDF需要密码，请在有权处理的前提下提供可读取副本。',knowledge_file_timeout:'解析超过本批时限，请核对或拆分原文件。',
   knowledge_file_resource_limit:'文件超过解压、页数或结构资源范围。',knowledge_file_unsafe_archive:'压缩包结构、加密或嵌入对象不在本批支持范围。',
@@ -64,10 +74,10 @@ export function SourceFileReview({version,path,busy,onReview,onParse,onCancel,on
       <Alert type="warning" showIcon message="请对照原件核对完整条件、表头、单位与例外" description={file.parsed.warnings.map(w=>warningCopy[w]||w).join(' ')} />
       <Collapse items={[{key:'blocks',label:`原件结构：${file.parsed.blocks.length}片`,children:<Space direction="vertical" style={{width:'100%'}}>{file.parsed.blocks.map(b=><div key={b.id}>
         <Checkbox disabled={busy||readOnly} checked={!excluded.includes(b.id)} onChange={e=>{setAck(false);setExcluded(e.target.checked?excluded.filter(id=>id!==b.id):[...excluded,b.id]);}}>
-          {b.id} · {b.page?`PDF第${b.page}页`:b.section.join(' / ')} · {b.table?`表${b.table}第${b.row}行`:`段落${b.paragraph}`}
+          {b.id} · {b.sheet?`工作表「${b.sheet}」 · ${b.range}`:b.page?`PDF第${b.page}页`:b.section.join(' / ')} · {b.sheet?`第${b.row}行`:b.table?`表${b.table}第${b.row}行`:`段落${b.paragraph}`}
         </Checkbox>
         <Typography.Paragraph style={{whiteSpace:'pre-wrap',marginTop:8}}>{b.text}</Typography.Paragraph>
-        {b.cells && <Typography.Text type="secondary">{b.cells.map(c=>`列${c.column}（跨度${c.span}${c.merge?'，合并'+c.merge:''}）`).join(' · ')}</Typography.Text>}
+        {b.cells && <Typography.Text type="secondary">{b.cells.map(c=>`${c.ref||'列'+c.column}（跨度${c.span}${c.rowSpan&&c.rowSpan>1?'，跨'+c.rowSpan+'行':''}${c.merge?'，合并'+c.merge:''}${c.numberFormat?'，底层值'+c.numberFormat.raw+'，格式'+c.numberFormat.code+(c.numberFormat.dateSystem?'，日期系统'+c.numberFormat.dateSystem:''):''}）`).join(' · ')}</Typography.Text>}
         {(b.notes||[]).map((note,i)=><Typography.Paragraph key={i} type="secondary">{note}</Typography.Paragraph>)}
       </div>)}</Space>},
       {key:'index',label:'当前将进入检索的文字',children:<Typography.Paragraph style={{whiteSpace:'pre-wrap'}}>{version.body}</Typography.Paragraph>}]} />

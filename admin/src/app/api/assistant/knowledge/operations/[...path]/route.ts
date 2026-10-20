@@ -4,7 +4,7 @@ import { AssistantError, fail } from '@/lib/assistant/contracts';
 import { KnowledgeOperations } from '@/lib/assistant/knowledge/operations';
 export const runtime='nodejs';
 type Context={params:Promise<{path:string[]}>};
-const fields:Record<string,string[]>={save:['title','question','expectation','gapNote'],edit:['title','question','expectation','gapNote','expectedVersion'],start:['expectedVersion'],resume:[],review:['expectedVersion','outcome','note']};
+const fields:Record<string,string[]>={save:['title','question','expectation','gapNote'],edit:['title','question','expectation','gapNote','expectedVersion'],start:['expectedVersion'],resume:[],review:['expectedVersion','outcome','note'],batchCreate:['title','cases','concurrency'],batchCancel:['expectedVersion'],batchResume:['expectedVersion']};
 async function handle(request:NextRequest,context:Context) {
   return withTenantRoute(request,{roles:['super_admin','admin','enterprise_admin'],requireEnterprise:true},async actor=>{
     try{
@@ -20,6 +20,11 @@ async function handle(request:NextRequest,context:Context) {
         if(p.length===2&&method==='GET')action='read';
         if(p.length===3&&method==='POST'&&['resume','review'].includes(p[2]))action=p[2];
       }
+      if(p[0]==='batches'){
+        if(p.length===1)action=method==='GET'?'batchList':method==='POST'?'batchCreate':'';
+        if(p.length===2&&method==='GET')action='batchRead';
+        if(p.length===3&&method==='POST'&&['cancel','resume'].includes(p[2]))action=p[2]==='cancel'?'batchCancel':'batchResume';
+      }
       if(!action)fail('assistant_resource_not_found',404);
       let body:Record<string,unknown>={};
       if(method==='GET'){
@@ -34,7 +39,9 @@ async function handle(request:NextRequest,context:Context) {
         if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!fields[action]?.includes(k)))fail('invalid_message',422);
       }
       const key=request.headers.get('idempotency-key')??'';
-      const result=action==='health'?await service.health():action==='list'?await service.list(body):action==='detail'?await service.detail(p[1]):
+      const result=action==='batchList'?await service.batches().list():action==='batchCreate'?await service.batches().create(body,key):
+        action==='batchRead'?await service.batches().read(p[1]):action==='batchCancel'||action==='batchResume'?await service.batches().command(p[1],action==='batchCancel'?'cancel':'resume',body,key):
+        action==='health'?await service.health():action==='list'?await service.list(body):action==='detail'?await service.detail(p[1]):
         action==='save'?await service.save(body,key):action==='edit'?await service.save(body,key,p[1]):
         action==='history'?await service.history(p[1],body):action==='start'?await service.start(p[1],body,key):
         action==='read'?await service.read(p[1]):action==='resume'?await service.resume(p[1]):await service.review(p[1],body,key);

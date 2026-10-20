@@ -11,10 +11,18 @@ import { one,rows,type Row } from '@/db/repositories/assistant-repository';
 import { closePostgresPool,resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { safeText,type ActorContext } from '@/lib/assistant/contracts';
 import { agentPromptVersion } from '@/lib/assistant/agent/context';
-import { syntheticDocx,syntheticChinesePdf } from './assistant-file-fixtures';
+import { syntheticDocx,syntheticChinesePdf,syntheticXlsx,syntheticFormattedXlsx,syntheticDateXlsx,syntheticTimeXlsx } from './assistant-file-fixtures';
 
-const native=process.argv.includes('--native'),output=path.resolve('../tmp/xiaok-kb2'),filename=native?'native-driver.json':'live.json';
-const report:Row={started:new Date().toISOString(),promptVersion:agentPromptVersion,reality:{model:'real existing configured deepseek-flash',embedding:'real existing embedding service',database:'approved development',http:'real localhost:3006',worker:'real existing worker',data:'labelled synthetic enterprise/users/project/original DOCX/PDF; no customer corpus'},checks:[],runs:[],passed:false};
+const native=process.argv.includes('--native'),timeFormats=process.argv.includes('--time-formats'),dateFormats=process.argv.includes('--date-formats'),numberFormats=process.argv.includes('--number-formats'),spreadsheet=process.argv.includes('--xlsx')||numberFormats||dateFormats||timeFormats;
+const multiBlock=process.argv.includes('--multiblock');
+const freshRounds=process.argv.includes('--fresh-rounds');
+if(native&&freshRounds)throw Error('--fresh-rounds is an HTTP core-case mode');
+if(multiBlock&&!dateFormats&&!timeFormats)throw Error('--multiblock requires --date-formats or --time-formats');
+if([timeFormats,dateFormats,numberFormats].filter(Boolean).length>1)throw Error('Choose one display-format fixture');
+const evidence=process.argv.find(a=>a.startsWith('--evidence='))?.slice('--evidence='.length);
+if(evidence&&!/^xiaok-[a-z0-9-]{1,80}$/.test(evidence))throw Error('Invalid XiaoK evidence directory name');
+const output=path.resolve('../tmp',evidence||(timeFormats?'xiaok-kb2-time-formats':dateFormats?'xiaok-kb2-date-formats':numberFormats?'xiaok-kb2-number-formats':spreadsheet?'xiaok-kb2-xlsx':'xiaok-kb2')),filename=native?'native-driver.json':'live.json';
+const report:Row={started:new Date().toISOString(),promptVersion:agentPromptVersion,reality:{model:'real existing configured deepseek-flash',embedding:'real existing embedding service',database:'approved development',http:'real localhost:3006',worker:'real existing worker',data:`labelled synthetic enterprise/users/project/original ${spreadsheet?'XLSX':'DOCX'}/PDF; no customer corpus`},checks:[],runs:[],passed:false};
 const save=()=>fs.writeFileSync(path.join(output,filename),JSON.stringify(report,null,2));
 const pause=(ms:number)=>new Promise(r=>setTimeout(r,ms));
 async function wait<T>(work:()=>Promise<T|null|false>,label:string):Promise<T>{for(let i=0;i<360;i++){const r=await work();if(r)return r;await pause(500);}throw Error('Timeout: '+label);}
@@ -47,14 +55,17 @@ async function main(){
   await withPlatformTransaction(async tx=>{
    const template=await one(tx,sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=2404`);assert.ok(template);
    const cfg=template.agent_config as Row;assert.equal(cfg.providerKey,'deepseek');assert.equal(cfg.model,'deepseek-flash');assert.equal(cfg.runtime,'langgraph-v1');
-   eid=String((await one(tx,sql`insert into app.enterprises(name,code,status) values('测试专用 · KB2文件资料',${prefix},'active') returning id`))!.id);
+   eid=String((await one(tx,sql`insert into app.enterprises(name,code,status) values(${timeFormats?'测试专用 · KB2时刻显示':dateFormats?'测试专用 · KB2日期显示':'测试专用 · KB2文件资料'},${prefix},'active') returning id`))!.id);
    aid=String((await one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password) values(${eid},${prefix},'unusable-synthetic','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`))!.id);
    uid=String((await one(tx,sql`insert into app.users(nickname,context_version) values('合成KB2业主',1) returning id`))!.id);await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${uid},${prefix})`);
    await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config) values(${eid},true,100,12000000,1000000000,30,${JSON.stringify({...cfg,imageInput:false})}::jsonb)`);
   });
   report.fixture={enterpriseId:eid,ownerId:aid,userId:uid};save();
   adminToken=await new SignJWT({id:aid,enterpriseId:eid,role:'enterprise_admin'}).setProtectedHeader({alg:'HS256'}).setExpirationTime('1h').sign(new TextEncoder().encode(process.env.JWT_SECRET!));
-  const docx=await importFile(syntheticDocx(),'合成材料核对.docx'),pdf=await importFile(syntheticChinesePdf(),'合成防水说明.pdf');report.documents={docx,pdf};save();
+  const material=await importFile(timeFormats?syntheticTimeXlsx('1904'):dateFormats?syntheticDateXlsx('1904',!multiBlock):numberFormats?syntheticFormattedXlsx():spreadsheet?syntheticXlsx():syntheticDocx(),spreadsheet?'合成材料核对.xlsx':'合成材料核对.docx'),pdf=await importFile(syntheticChinesePdf(),'合成防水说明.pdf');report.documents={material,pdf};report.dateFixture=timeFormats?'full multi-sheet/multi-block with local clocks':dateFormats?(multiBlock?'full multi-sheet/multi-block':'compact single-sheet'):null;save();
+  if(numberFormats){const row=material.parsed.blocks.find((b:Row)=>b.sheet==='材料核对'&&b.row===3);assert.equal(row.cells[1].text,'12.50%');assert.equal(row.cells[1].numberFormat.raw,'0.125');assert.equal(row.cells[2].text,'2.35 mm');assert.equal(row.cells[2].numberFormat.raw,'2.345');check('persisted displayed percentages/units and raw format provenance');}
+  if(dateFormats){const row=material.parsed.blocks.find((b:Row)=>b.sheet==='材料核对'&&b.row===3);assert.equal(row.cells[1].text,'2026-10-19');assert.equal(row.cells[1].numberFormat.raw,'44852');assert.equal(row.cells[1].numberFormat.dateSystem,'1904');assert.equal(row.cells[2].text,'2026年10月20日');check('persisted explicit date displays and original 1904-system provenance');}
+  if(timeFormats){const row=material.parsed.blocks.find((b:Row)=>b.sheet==='材料核对'&&b.row===3);assert.equal(row.cells[1].text,'2026-10-19 09:30:00');assert.equal(row.cells[1].numberFormat.raw,'44852.395833333336');assert.equal(row.cells[1].numberFormat.dateSystem,'1904');assert.equal(row.cells[2].text,'13:30:00');assert.equal(row.cells[2].numberFormat.raw,'0.5625');assert.equal(row.cells[2].numberFormat.dateSystem,undefined);check('persisted local date/time and pure clock displays with original precision and epoch');}
   const leadId=String((await withTenantTransaction(eid,tx=>one(tx,sql`insert into app.leads(enterprise_id,customer_user_id,name,phone,source) values(${eid},${uid},'合成KB2客户','13800000000','natural') returning id`)))!.id);
   const construction=new ConstructionService({enterpriseId:eid,adminId:aid}),settings=await construction.execute('stages');
   await construction.execute('saveStages',{expectedVersion:settings.version,stages:[{key:'waterproofing',name:'防水',visitReminder:false,visitReason:'',watchPoints:''}]},randomUUID());
@@ -76,26 +87,42 @@ async function main(){
    // irrelevant knowledge citation when the answer makes no enterprise-file claim.
    if(name!=='followup'){
     assert.ok((refs.knowledge as Row[]).some(e=>e.file),'Expected actual parsed original in model context');
-    const required=name==='stage'?pdf:docx;assert.ok(message.citations.some((c:Row)=>c.version===required.versionId),'Required file must actually be cited');
+    const required=name==='stage'?pdf:material;assert.ok(message.citations.some((c:Row)=>c.version===required.versionId),'Required file must actually be cited');
    }else assert.ok((refs.snapshots as Row[]).some(s=>(s.query as Row).domain==='construction'),'Formal-state judgment requires fresh authorized project facts');
    const sources=[];for(const c of message.citations)sources.push(await request('miniprogram/assistant/citations/'+c.id,'GET',undefined,200,customerToken));entry.sources=sources;
    for(const source of sources){assert.equal(source.available,true);assert.ok(source.sourceFile?.sourceHash);assert.ok(source.sourceLocation);}
-   if(name==='office'){assert.match(text,/2\s*(?:mm|毫米)/i);assert.match(text,/地暖/);assert.match(text,/合成|示例|测试/);assert.match(text,/核对|不能直接|不可直接/);assert.ok(sources.some(s=>s.sourceFile.table===1&&s.sourceFile.row===3));}
+   if(name==='office'){
+    if(timeFormats){
+     assert.match(text,/2026(?:年|[-/.])10(?:月|[-/.])19/);
+     assert.match(text,/(?:0?9[:：]30|9[点时]30|九点半|9点半)/);assert.match(text,/(?:13[:：]30|13[点时]30|下午[一1]点半)/);
+     assert.doesNotMatch(text,/44852|395833333336|0\.5625/);
+     const quoted=sources.map(s=>String(s.quote)).join('\n');assert.match(quoted,/2026-10-19 09:30:00/);assert.match(quoted,/13:30:00/);
+    }else if(dateFormats){assert.match(text,/2026(?:年|[-/.])10(?:月|[-/.])19/);assert.match(text,/2026(?:年|[-/.])10(?:月|[-/.])20/);assert.doesNotMatch(text,/44852|44853/);const quoted=sources.map(s=>String(s.quote)).join('\n');assert.match(quoted,/2026-10-19/);assert.match(quoted,/2026年10月20日/);}
+    else if(numberFormats){assert.match(text,/12\.5(?:0)?\s*[%％]/);assert.match(text,/2\.35\s*(?:mm|毫米)/i);assert.doesNotMatch(text,/0\.125\s*[%％]|2\.345\s*(?:mm|毫米)/i);const quoted=sources.map(s=>String(s.quote)).join('\n');assert.match(quoted,/12\.50%/);assert.match(quoted,/2\.35 mm/);}
+    else assert.match(text,/2\s*(?:mm|毫米)/i);
+    assert.match(text,/地暖/);assert.match(text,/合成|示例|测试/);assert.match(text,/核对|不能直接|不可直接/);assert.ok(sources.some(s=>s.sourceFile.row===3&&(spreadsheet?s.sourceFile.sheet==='材料核对'&&s.sourceFile.range==='A3:D3':s.sourceFile.table===1)));
+   }
    else if(name==='stage'){assert.match(text,/防水/);assert.match(text,/团队/);assert.match(text,/不能|不代表|不足|待|核对/);assert.ok((refs.snapshots as Row[]).some(s=>(s.query as Row).domain==='construction'));assert.ok(sources.some(s=>s.version===pdf.versionId&&s.sourceFile.page===1));}
    else{assert.match(text,/不能|不足|待|核对/);assert.match(text,/验收|检查/);}
    assert.doesNotMatch(text,/已验收|已批准|已经安排铺砖/);entry.semanticAssertions='fixed points passed; independent prose review required';save();return entry;
   };
-  const questions={office:'材料表里的TEST-A示例厚度是什么，地暖能直接套用吗？请按原文件解释。',followup:'那能据此认定我家已经验收，直接安排铺砖吗？',stage:'我家现在防水阶段，文件说检查是谁安排？这个阶段标签能证明检查通过吗？'};
+  const questions={office:timeFormats?'表里的TEST-A合成参考日期时刻和参考时间各是什么，地暖能直接套用吗？请按原文件的日期和24小时时间解释，不要把示例时刻当成我家安排或推断时区。':dateFormats?'表里的TEST-A合成参考日期一和参考日期二各是哪天，地暖能直接套用吗？请按原文件显示的年月日解释，不要把示例日期当成我家安排。':numberFormats?'表里的TEST-A合成参考比例和参考用量各是多少，地暖能直接套用吗？请按文件的显示值和单位解释。':'材料表里的TEST-A示例厚度是什么，地暖能直接套用吗？请按原文件解释。',followup:'那能据此认定我家已经验收，直接安排铺砖吗？',stage:'我家现在防水阶段，文件说检查是谁安排？这个阶段标签能证明检查通过吗？'};
   const send=async(name:keyof typeof questions,round:number)=>{const key=randomUUID(),started=Date.now(),sent=await mini('/messages','POST',{clientMessageId:key,content:{version:1,blocks:[{type:'text',text:questions[name]}]}},202,key);return audit(String(sent.runId),name,started,round);};
   if(native){const {run}=await import('./assistant-synthesis-native.mjs');report.native=await run({root:path.resolve('..'),output,customer:{token:customerToken,enterpriseId:eid,cid},question:questions.office,followup:questions.followup,audit,
-    citationId:()=>{const runs=report.runs as Row[],sources=runs[runs.length-1].sources as Row[];return sources.find(s=>(s.sourceFile as Row)?.table===1&&(s.sourceFile as Row)?.row===3)?.id;},
-    citationCheck:(c:Row)=>{assert.match(String(c.sourceLocation),/合成材料核对.docx/);assert.equal((c.sourceFile as Row)?.table,1);assert.equal((c.sourceFile as Row)?.row,3);},
-    withdrawLabel:'file withdrawal invalidates native derived answers and source locators',withdraw:()=>admin(docx.base+'/retire','POST',{expectedVersion:2})});save();}
+    citationId:()=>{const runs=report.runs as Row[],sources=runs[runs.length-1].sources as Row[];return sources.find(s=>(s.sourceFile as Row)?.row===3&&(spreadsheet?(s.sourceFile as Row)?.sheet==='材料核对':(s.sourceFile as Row)?.table===1))?.id;},
+    citationCheck:(c:Row)=>{assert.ok(String(c.sourceLocation).includes(spreadsheet?'合成材料核对.xlsx':'合成材料核对.docx'));assert.equal((c.sourceFile as Row)?.row,3);if(spreadsheet){assert.equal((c.sourceFile as Row)?.sheet,'材料核对');assert.equal((c.sourceFile as Row)?.range,'A3:D3');}else assert.equal((c.sourceFile as Row)?.table,1);},
+    withdrawLabel:'file withdrawal invalidates native derived answers and source locators',withdraw:()=>admin(material.base+'/retire','POST',{expectedVersion:2})});save();}
   else{
-   for(let round=1;round<=2;round++){await send('office',round);await send('followup',round);await send('stage',round);}
-   const before=await mini('/messages'),dependent=before.items.filter((m:Row)=>m.authorKind==='assistant');await admin(docx.base,'PATCH',{expectedVersion:2,audience:'staff_internal'});
-   const after=await mini('/messages');assert.ok(dependent.filter((m:Row)=>(m.citations as Row[]).some(c=>c.version===docx.versionId)).every((m:Row)=>after.items.find((n:Row)=>n.id===m.id)?.available===false));check('real audience revocation invalidates old file citations and dependent answers');
-   await admin(docx.vpath,'PATCH',{expectedEditVersion:3,body:'LLM rewrite as original'},409);check('published file text cannot be replaced by generated/manual text');
+   const conversations=[cid];report.roundScope=freshRounds?'two independent three-turn conversations; not a six-turn context acceptance':'two rounds in one conversation';report.conversationIds=conversations;save();
+   for(let round=1;round<=2;round++){
+    if(freshRounds&&round>1){cid=String((await new ConversationService(actor).create(randomUUID())).id);conversations.push(cid);save();}
+    await send('office',round);await send('followup',round);await send('stage',round);
+   }
+   const histories=[];for(const id of conversations){const messages=await request(`miniprogram/assistant/conversations/${id}/messages`,'GET',undefined,200,customerToken);histories.push({id,items:messages.items});}
+   const before=await mini('/messages'),dependent=before.items.filter((m:Row)=>m.authorKind==='assistant');await admin(material.base,'PATCH',{expectedVersion:2,audience:'staff_internal'});
+   const after=await mini('/messages');assert.ok(dependent.filter((m:Row)=>(m.citations as Row[]).some(c=>c.version===material.versionId)).every((m:Row)=>after.items.find((n:Row)=>n.id===m.id)?.available===false));check('real audience revocation invalidates old file citations and dependent answers');
+   for(const history of histories){const reentry=await request(`miniprogram/assistant/conversations/${history.id}/messages`,'GET',undefined,200,customerToken);assert.ok(history.items.filter((m:Row)=>m.authorKind==='assistant'&&(m.citations as Row[]).some(c=>c.version===material.versionId)).every((m:Row)=>reentry.items.find((n:Row)=>n.id===m.id)?.available===false));}check('all core conversations persist and invalidate on revoked reentry');
+   await admin(material.vpath,'PATCH',{expectedEditVersion:3,body:'LLM rewrite as original'},409);check('published file text cannot be replaced by generated/manual text');
   }
   const effects=await withTenantTransaction(eid,tx=>rows(tx,sql`select type from app.domain_event_outbox where enterprise_id=${eid} and type like 'construction.%issue.%'`));assert.equal(effects.length,0);check('professional file explanations do not create construction handling effects');report.passed=true;
  }finally{

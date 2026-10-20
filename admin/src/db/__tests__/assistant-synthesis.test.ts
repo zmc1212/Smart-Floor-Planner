@@ -12,11 +12,12 @@ import { HandoffService } from '@/lib/assistant/handoff/service';
 import { KnowledgeService } from '@/lib/assistant/knowledge/service';
 import { claimKnowledgeJob, runKnowledgeJob } from '@/lib/assistant/knowledge/index-worker';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
-import { processAgentAnswer } from '@/lib/assistant/agent/worker';
+import { processAgentAnswer, finalToolForMessages } from '@/lib/assistant/agent/worker';
 import { ConstructionService } from '@/lib/construction/service';
 import type { ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput, ModelMessage } from '@/lib/assistant/contracts/model';
 import { agentMessageAvailable } from '@/lib/assistant/agent/media-context';
+import { synthesisRepairBase } from '@/lib/assistant/agent/synthesis-repair';
 
 const prefix = 'synthetic-synthesis-' + randomUUID(), tenants: string[] = [], users: string[] = [];
 let eid: string, ownerId: string, knowledge: KnowledgeService;
@@ -24,7 +25,7 @@ const office = '书房靠窗办公需同时考虑自然采光、屏幕眩光和�
 const waterproof = '防水阶段先核对基层和施工条件，施工与检查由项目团队安排。闭水检查前不能把进入防水节点当作防水完成；铺砖前须核对检查记录。客户到场时间以管家实际沟通为准，不承诺固定日期。';
 const call = (name: string, args: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: randomUUID(), name, arguments: JSON.stringify(args) }],
   usage: { inputTokens: 30, outputTokens: 30 }, finishReason: 'tool_calls', providerRequestId: null });
-const results = (messages: ModelMessage[]) => messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as Array<{ sourceId: string; kind: string; text: string }>;
+const results = (messages: ModelMessage[]) => messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as Array<{ sourceId: string; kind: string; text: string; citationOptions: Array<{ citationId: string }> }>;
 const synth = (segments: unknown[]) => call('final_response', { kind: 'synthesis', segments });
 
 before(async () => {
@@ -86,15 +87,23 @@ test('QA02/05 PPT6/15: real retrieval plus authorized originals produces persist
   const save = await x.send('请记录书房靠窗，偶尔两人办公', async (_m,_t,turn) => turn === 0
     ? call('record_need', { room: '书房', field: 'desk', value: '靠窗，偶尔两人办公', quote: '请记录书房靠窗，偶尔两人办公' })
     : call('final_response', { kind: 'general', text: '已记录，可以继续聊。' })); assert.equal(save.run.status, 'succeeded');
-  const a = await x.send('书房靠窗办公为什么还要考虑桌子的朝向？', async (m,_t,turn) => {
+  let answerCalls = 0;
+  const a = await x.send('书房靠窗办公为什么还要考虑桌子的朝向？', async (m,tools,turn) => {
+    answerCalls++;
     assert.doesNotMatch(JSON.stringify(m), /PRIVATE_ONLY_NEVER_SEND/);
     if (turn === 0) { const a = call('search_knowledge', { query: '书房靠窗办公 屏幕眩光 双人桌' }); a.toolCalls.push(...call('query_materials', { leadId: '', room: '书房' }).toolCalls); return a; }
     const s = results(m), k = s.find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!, b = s.find(s => s.sourceId.includes(':customer_need:'))!;
+    if (turn === 2) { assert.equal(tools.length, 0); assert.match(JSON.stringify(m), /unscoped_measurement_gap/); }
     return synth([{ basis: 'evidence', text: '你希望靠窗并偶尔两人办公，可以保留采光偏好，但桌向需要同时照顾屏幕眩光和共用通道，因此先比较侧向摆放更有讨论价值。',
       citations: [{ sourceId: k.sourceId, quote: '显示器避免直对强光窗户，可比较侧向布置。' }, { sourceId: b.sourceId, quote: '靠窗，偶尔两人办公' }] },
-    { basis: 'uncertainty', text: '目前缺少有效点位图和现场尺寸，需要设计师核对后再确定位置。', citations: [] }]);
+    { basis: 'uncertainty', text: turn === 1 ? '目前缺少有效点位图和现场尺寸，需要设计师核对后再确定位置。'
+      : '本次查询未包含有效点位图和现场尺寸，需要设计师核对后再确定位置。', citations: [] }]);
   });
   assert.equal(a.run.status, 'succeeded', JSON.stringify(a.run));
+  assert.equal(answerCalls, 3);
+  const repairs = await withTenantTransaction(eid, tx => rows(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId} and kind='agent_validation'`));
+  assert.equal(repairs.length, 1);
+  assert.equal((repairs[0].input_summary as Row).scope, 'authorized_response_scope');
   const msgs = await new ConversationService(x.actor).messages(x.cid), reply = msgs.items.find(m => m.id === a.run.outputMessageId)!;
   assert.equal(reply.available, true); assert.match(JSON.stringify(reply), /同时照顾屏幕眩光/); assert.ok(reply.citations.length);
   const state = await withTenantTransaction(eid, tx => one(tx, sql`select source_refs,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId} and kind='agent_synthesis_context'`));
@@ -109,7 +118,9 @@ test('QA02/05 PPT6/15: real retrieval plus authorized originals produces persist
     assert.ok(results(m).some(s => s.kind === 'project' && s.sourceId.startsWith('Bbound:') && s.text.includes('打印机')),
       'A knowledge-only follow-up must receive fresh authorized home material, not the old missing-data snapshot');
     const k = results(m).find(s => s.kind === 'knowledge' && s.text.includes('屏幕眩光'))!;
-    return synth([{ basis: 'evidence', text: '侧向是为了比较采光与屏幕眩光的取舍，并不是仅凭靠窗偏好就决定你家的最终桌向。', citations: [{ sourceId: k.sourceId, quote: '显示器避免直对强光窗户，可比较侧向布置。' }] }]);
+    const need = results(m).find(s => s.kind === 'project' && s.sourceId.startsWith('Bbound:') && s.text.includes('打印机'))!;
+    return synth([{ basis: 'evidence', text: '侧向是为了比较采光与屏幕眩光的取舍，并不是仅凭靠窗偏好就决定你家的最终桌向。你不用重复确认已保存的书房需求。',
+      citations: [{ sourceId: k.sourceId, quote: '显示器避免直对强光窗户，可比较侧向布置。' }, { sourceId: need.sourceId, quote: need.text.split('\n')[0] }] }]);
   }); assert.equal(follow.run.status, 'succeeded');
   const refreshed = await withTenantTransaction(eid, tx => one(tx, sql`select source_refs from app.assistant_run_steps where enterprise_id=${eid} and run_id=${follow.runId} and kind='agent_synthesis_context'`));
   assert.match(JSON.stringify(refreshed?.source_refs), /打印机/);
@@ -165,7 +176,8 @@ test('KB3 citation repair uses the same authorized originals and persists one re
     modelCalls++;
     if(!turn)return call('search_knowledge',{query:'书房靠窗办公 屏幕眩光'});
     const k=results(m).find(s=>s.kind==='knowledge'&&s.text.includes('屏幕眩光'))!;assert.ok(k);
-    if(turn===2){assert.equal(tools.length,0);assert.match(JSON.stringify(m),/唯一一次格式修复/);assert.match(JSON.stringify(m),/copyExactQuote/);}
+    if(turn===2){assert.equal(tools.length,0);assert.match(JSON.stringify(m),/唯一一次格式修复/);assert.match(JSON.stringify(m),/copyExact(?:Quote|SourceText)/);
+      assert.ok(k.text.includes('显示器避免直对强光窗户，可比较侧向布置。'),'The same exact authorized original must remain in the projected repair context');}
     return synth([{basis:'evidence',text:'可以比较侧向布置，兼顾采光和屏幕眩光。',citations:[{sourceId:k.sourceId,
       quote:turn===1?'显示器避免正对强光窗户，可比较侧向布置。':'显示器避免直对强光窗户，可比较侧向布置。'}]}]);
   });assert.equal(a.run.status,'succeeded',JSON.stringify(a.run));assert.equal(modelCalls,3);
@@ -173,6 +185,101 @@ test('KB3 citation repair uses the same authorized originals and persists one re
   assert.equal(steps.filter(s=>s.kind==='agent_validation').length,1);
   assert.ok(steps.some(s=>s.kind==='agent_checkpoint'&&(s.private_checkpoint as Row).validationRepairs===1));
   assert.equal((await new ConversationService(x.actor).messages(x.cid)).items.filter(m=>m.authorKind==='assistant').length,1);
+});
+
+test('AG08 source grounding repair persists one scoped reply, keeps real action claims closed and revokes on reentry', async () => {
+  const document = await publish('合成管路间距核对', '强弱电管线平行间距不得小于300mm。交叉处需要屏蔽，现场长度另行核实。');
+  const x = await fixture(); let modelCalls = 0;
+  const response = await x.send('管路间距和交叉屏蔽应该怎样核对？', async (messages, tools, turn) => {
+    modelCalls++;
+    if (!turn) return call('search_knowledge', { query: '强弱电管线平行间距 交叉屏蔽' });
+    const source = results(messages).find(s => s.kind === 'knowledge' && s.text.includes('300mm'))!; assert.ok(source);
+    if (turn === 1) return synth([{ basis: 'evidence', text: '现场记录平行间距200mm符合手册300mm的要求。记录只看到一小段包裹。主要风险是长期干扰和检修困难。还要再等两天。',
+      citations: [{ sourceId: source.sourceId, quote: source.text }] }]);
+    assert.equal(tools.length, 0);
+    for (const code of ['misattributed_project_quantity', 'misattributed_project_observation', 'unsupported_evidence_mechanism'])
+      assert.match(JSON.stringify(messages), new RegExp(code));
+    assert.match(JSON.stringify(messages), /两天/); assert.match(JSON.stringify(messages), /最多6段/);
+    return synth([{ basis: 'evidence', text: '手册要求平行间距不得小于300mm，交叉处需要屏蔽。', citations: [{ sourceId: source.sourceId, quote: source.text }] },
+      { basis: 'advice', text: '一般风险可从信号干扰和后期检修角度考虑，具体影响仍需现场核对。', citations: [] },
+      { basis: 'uncertainty', text: '本次资料不能核实现场间距和屏蔽长度。楼下是否已联系，本次资料没有记录。', citations: [] }]);
+  });
+  assert.equal(response.run.status, 'succeeded', JSON.stringify(response.run)); assert.equal(modelCalls, 3);
+  const reentry = await new ConversationService(x.actor).messages(x.cid);
+  const reply = reentry.items.find(m => m.id === response.run.outputMessageId)!;
+  assert.equal(reply.available, true); assert.match(JSON.stringify(reply.content), /一般建议.*干扰/);
+  assert.match(JSON.stringify(reply.content), /楼下是否已联系/);
+  const validation = await withTenantTransaction(eid, tx => rows(tx, sql`select input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${response.runId} and kind='agent_validation'`));
+  assert.equal(validation.length, 1);
+  let rejectedCalls = 0;
+  const rejected = await x.send('楼下联系状态可以确认了吗？', async () => {
+    rejectedCalls++; return call('final_response', { kind: 'general', text: '楼下是否已联系尚未核实，但我已付款。' });
+  });
+  assert.notEqual(rejected.run.status, 'succeeded'); assert.equal(rejectedCalls, 1);
+  assert.equal((await x.chat.messages(x.cid)).items.filter(m => m.authorKind === 'assistant').length, 1);
+  await knowledge.execute('retire', { documentId: document.documentId, expectedVersion: 2 }, randomUUID());
+  assert.equal((await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === response.run.outputMessageId)?.available, false);
+});
+
+test('AG08 bounded citation edits preserve knowledge while adding actual-stage support, persist originals and revoke on reentry', async () => {
+  const document = await publish('合成有界修复阶段边界', '有界修复测试：铺砖前须核对检查记录，节点标记不能代替检查结果。');
+  const x = await fixture(), service = new ConstructionService({ enterpriseId: eid, adminId: ownerId });
+  const projectId = String((await service.execute('create', { leadId: x.leadId, name: '合成有界修复工地', managerId: ownerId, rooms: ['书房'] }, randomUUID())).id);
+  const detail = await service.execute('detail', { projectId });
+  await service.execute('progress', { projectId, expectedVersion: (detail.project as Row).version, stageKey: 'waterproofing', note: '', sendReminder: false }, randomUUID());
+  let calls = 0, firstId = '', stageId = '';
+  const response = await x.send('结合实际阶段解释有界修复测试的铺砖前提', async (messages, tools, turn) => {
+    calls++;
+    if (!turn) return call('search_knowledge', { query: '有界修复测试 铺砖前 核对检查记录' });
+    const all = results(messages) as Array<{ sourceId: string; text: string; citationOptions: Array<{ citationId: string }> }>;
+    const knowledge = all.find(source => source.text.includes('有界修复测试：'))!;
+    const stage = all.find(source => source.sourceId.startsWith('Bstage:'))!; assert.ok(knowledge && stage);
+    if (turn === 1) {
+      firstId = knowledge.citationOptions[0].citationId; stageId = stage.citationOptions[0].citationId;
+      return synth([{ basis: 'evidence', text: '铺砖前须核对检查记录，团队当前节点是防水。', citations: [{ citationId: firstId }] }]);
+    }
+    assert.equal(tools.length, 0);
+    const base = synthesisRepairBase(messages)!; assert.ok(base);
+    assert.match(JSON.stringify(finalToolForMessages(messages)), /synthesis_repair/);
+    return call('final_response', { kind: 'synthesis_repair', baseHash: base.baseHash, edits: [{ segment: 0, addCitationIds: [stageId] }] });
+  });
+  assert.equal(response.run.status, 'succeeded', JSON.stringify(response.run)); assert.equal(calls, 3);
+  const reply = (await new ConversationService(x.actor).messages(x.cid)).items.find(message => message.id === response.run.outputMessageId)!;
+  // The existing C01 contract exposes knowledge citation cards; project
+  // provenance is retained in synthesis context and its ordinary source text.
+  assert.equal(reply.available, true); assert.equal(reply.citations.length, 1);
+  const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,capability_name,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${response.runId}`));
+  assert.equal(steps.filter(step => step.kind === 'agent_validation').length, 1);
+  assert.equal(steps.filter(step => step.capability_name === 'knowledge.search.v1').length, 1);
+  const persisted = steps.find(step => step.kind === 'agent_synthesis_context')!.private_checkpoint as { segments: Array<{ citations: Array<{ sourceId: string }> }> };
+  assert.equal(persisted.segments[0].citations.length, 2);
+  assert.ok(persisted.segments[0].citations.some(citation => citation.sourceId.startsWith('K')));
+  assert.ok(persisted.segments[0].citations.some(citation => citation.sourceId.startsWith('Bstage:')));
+  const provider = steps.filter(step => step.kind === 'agent_model'); assert.equal(provider.length, 3);
+  const repair = provider.find(step => (step.input_summary as Row).repairProtocol === 'synthesis-edit-v1')!; assert.ok(repair);
+  assert.equal(JSON.parse((repair.private_checkpoint as Row).text as string).kind, 'synthesis_repair');
+  assert.ok(steps.some(step => step.kind === 'agent_checkpoint' && (step.private_checkpoint as Row).validationRepairs === 1
+    && JSON.parse(((step.private_checkpoint as Row).output as Row).text as string).kind === 'synthesis_repair'));
+  assert.notEqual(firstId, stageId);
+  await knowledge.execute('retire', { documentId: document.documentId, expectedVersion: 2 }, randomUUID());
+  assert.equal((await new ConversationService(x.actor).messages(x.cid)).items.find(message => message.id === response.run.outputMessageId)?.available, false);
+});
+
+test('AG08 bounded citation edits cannot deliver a cached original after source revocation during repair', async () => {
+  const document = await publish('合成有界修复撤回', '有界修复撤回测试：现场尺寸须按有效资料核对。');
+  const x = await fixture(); let calls = 0;
+  const response = await x.send('有界修复撤回测试应怎样核对尺寸？', async (messages, tools, turn) => {
+    calls++;
+    if (!turn) return call('search_knowledge', { query: '有界修复撤回测试 现场尺寸' });
+    const source = results(messages).find(s => s.text.includes('有界修复撤回测试：'));
+    assert.ok(source);
+    if (turn === 1) return synth([{ basis: 'uncertainty', text: '目前缺少现场尺寸，需要核对。', citations: [{ citationId: source.citationOptions[0].citationId }] }]);
+    assert.equal(tools.length, 0); const base = synthesisRepairBase(messages)!; assert.ok(base);
+    await knowledge.execute('retire', { documentId: document.documentId, expectedVersion: 2 }, randomUUID());
+    return call('final_response', { kind: 'synthesis_repair', baseHash: base.baseHash, edits: [{ segment: 0, text: '本次可用资料还不足以核实现场尺寸。' }] });
+  });
+  assert.notEqual(response.run.status, 'succeeded'); assert.equal(calls, 3);
+  assert.equal((await x.chat.messages(x.cid)).items.filter(message => message.authorKind === 'assistant').length, 0);
 });
 
 test('QA06/07: consulted but uncited conflict candidates remain dependencies; withdrawal hides synthesis and human packets', async () => {
@@ -272,4 +379,67 @@ test('QA07: loss of the customer participant hides synthesis instead of treating
     await tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=now(),version=version+1 where enterprise_id=${eid} and conversation_id=${x.cid} and user_id=${x.uid}`);
     assert.equal(await agentMessageAvailable(tx,eid,x.cid,String(a.run.outputMessageId)),false);
   });
+});
+
+test('KB3 projected legacy selection writes exact original citations and revokes them on reentry',async()=>{
+  const body=office+'\n😀合成选择定位：仅核对原文，不表示项目安排。';
+  const document=await publish('合成投影摘录',body),x=await fixture();let selectedQuote='';
+  const a=await x.send('请只摘录书房靠窗办公的原文，不做综合解释。',async(messages,_tools,turn)=>{
+    if(!turn)return call('search_knowledge',{query:'书房靠窗办公 屏幕眩光 自然采光 通道'});
+    const packets=messages.filter(m=>m.role==='tool').map(m=>JSON.parse(m.content));
+    const source=packets.flatMap(p=>p.synthesisSources||[]).find(s=>s.text===body);
+    assert.ok(source?.selectionLines,'The actual model request must use the compact selection map');
+    assert.equal(source.text,body);assert.doesNotMatch(JSON.stringify(messages),/PRIVATE_ONLY_NEVER_SEND/);
+    const choice=Object.entries(source.selectionLines as Record<string,number|number[]>).find(([,span])=>{
+      const line=source.text.split('\n')[(Array.isArray(span)?span[0]:span)-1];
+      const quote=Array.isArray(span)?line.slice(span[1],span[2]):line;
+      if(!quote.includes('显示器避免直对'))return false;selectedQuote=quote;return true;
+    });assert.ok(choice);return call('final_response',{kind:'knowledge',selections:[choice[0]]});
+  });
+  assert.equal(a.run.status,'succeeded',JSON.stringify(a.run));
+  const message=(await x.chat.messages(x.cid)).items.find(m=>m.id===a.run.outputMessageId)!;
+  assert.equal(message.available,true);assert.match(JSON.stringify(message.content),/显示器避免直对/);
+  assert.equal(message.citations.length,1);const citationId=message.citations[0].id;
+  const citation=await x.chat.citation(citationId);assert.equal(citation.available,true);assert.ok('quote' in citation);assert.equal(citation.quote,selectedQuote);
+  await knowledge.execute('retire',{documentId:document.documentId,expectedVersion:2},randomUUID());
+  assert.equal((await x.chat.citation(citationId)).available,false);
+  assert.equal((await x.chat.messages(x.cid)).items.find(m=>m.id===message.id)?.available,false);
+});
+
+test('KB3 legacy full-source citation selection persists canonical quotes without advertising the legacy wire format',async()=>{
+  const body='合成完整引用：主卫参考高度1800mm，须先核对基层；观察不等于验收。😀';
+  const document=await publish('合成整段引用选择',body),x=await fixture();
+  const a=await x.send('请结合原资料解释主卫高度和核对前提，不要只返回摘录。',async(messages,_tools,turn)=>{
+    if(!turn)return call('search_knowledge',{query:'主卫 参考高度1800mm 核对基层'});
+    const source=results(messages).find(s=>s.text===body) as {sourceId:string;text:string;citationOptions?:unknown[]}|undefined;
+    assert.ok(source?.citationOptions?.length);assert.doesNotMatch(JSON.stringify(messages),/PRIVATE_ONLY_NEVER_SEND/);
+    return synth([{basis:'evidence',text:'参考高度1800mm应和基层前提一起核对，观察本身不能替代检查结论。',citations:[{sourceId:source!.sourceId,quoteFromSource:true}]}]);
+  });assert.equal(a.run.status,'succeeded',JSON.stringify(a.run));
+  const message=(await x.chat.messages(x.cid)).items.find(m=>m.id===a.run.outputMessageId)!;assert.equal(message.available,true);assert.equal(message.citations.length,1);
+  const citation=await x.chat.citation(message.citations[0].id);assert.equal(citation.available,true);assert.ok('quote' in citation);assert.equal(citation.quote,body);
+  const durable=await withTenantTransaction(eid,tx=>one(tx,sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId} and kind='agent_synthesis_context'`));
+  assert.match(JSON.stringify(durable?.private_checkpoint),/合成完整引用/);assert.doesNotMatch(JSON.stringify(durable?.private_checkpoint),/quoteFromSource/);
+  await knowledge.execute('retire',{documentId:document.documentId,expectedVersion:2},randomUUID());
+  assert.equal((await x.chat.citation(message.citations[0].id)).available,false);
+  assert.equal((await x.chat.messages(x.cid)).items.find(m=>m.id===message.id)?.available,false);
+});
+
+test('KB3 catalog citation first draft persists exact originals with typed document metadata and revokes on reentry',async()=>{
+  const body='合成引用目录：参考间距310mm，须先核对适用前提；不代表现场结论。😀';
+  const document=await publish('合成引用目录v3.2',body),x=await fixture();
+  const a=await x.send('请解释资料中的间距要求与前提，不要只摘录。',async(messages,_tools,turn)=>{
+    if(!turn)return call('search_knowledge',{query:'合成引用目录 参考间距310mm 适用前提'});
+    assert.equal(turn,1,'The catalog protocol must not require a format repair');
+    const source=results(messages).find(s=>s.text===body) as {citationOptions?:Array<{citationId:string}>}|undefined;
+    assert.ok(source?.citationOptions?.length);assert.doesNotMatch(JSON.stringify(messages),/PRIVATE_ONLY_NEVER_SEND/);
+    return synth([{basis:'evidence',text:'引用目录 v3.2要求把310mm与适用前提一起核对，不能只凭间距作现场结论。',citations:[{citationId:source!.citationOptions![0].citationId}]}]);
+  });assert.equal(a.run.status,'succeeded',JSON.stringify(a.run));
+  const message=(await x.chat.messages(x.cid)).items.find(m=>m.id===a.run.outputMessageId)!;assert.equal(message.available,true);
+  const citation=await x.chat.citation(message.citations[0].id);assert.equal(citation.available,true);assert.ok('quote' in citation);assert.equal(citation.quote,body);
+  const steps=await withTenantTransaction(eid,tx=>rows(tx,sql`select kind,private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
+  assert.equal(steps.filter(s=>s.kind==='agent_validation').length,0);
+  assert.doesNotMatch(JSON.stringify(steps.find(s=>s.kind==='agent_synthesis_context')?.private_checkpoint),/citationId/);
+  await knowledge.execute('retire',{documentId:document.documentId,expectedVersion:2},randomUUID());
+  assert.equal((await x.chat.citation(message.citations[0].id)).available,false);
+  assert.equal((await x.chat.messages(x.cid)).items.find(m=>m.id===message.id)?.available,false);
 });

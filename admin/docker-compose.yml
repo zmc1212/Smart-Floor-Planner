@@ -57,6 +57,26 @@ services:
       retries: 3
       start_period: 15s
 
+  assistant-worker:
+    image: ${SFP_ADMIN_IMAGE:-zmc1212/sfp-admin:latest}
+    build: .
+    profiles: ["assistant"]
+    restart: unless-stopped
+    env_file:
+      - ${SFP_RUNTIME_ENV_FILE:-.env.production}
+    environment:
+      - NODE_ENV=production
+      - ASSISTANT_WORKER_ENDPOINT=http://admin:3005/api/internal/assistant/jobs/run
+    depends_on:
+      - admin
+    command: ["node", "scripts/assistant-worker.mjs"]
+    healthcheck:
+      test: ["CMD", "node", "scripts/assistant-worker-healthcheck.mjs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
   postgres:
     image: postgres:17
     container_name: smart-floor-planner-postgres

@@ -152,7 +152,7 @@ export function KnowledgeEditor({ documentId, onClose, onChanged, onPreview }: {
         <Form.Item name="title" label="标题" rules={[{ required: true, whitespace: true, max: 200 }]}><Input maxLength={200} /></Form.Item>
         <Form.Item name="category" label="分类"><Input maxLength={100} /></Form.Item>
         <Form.Item name="audience" label="使用范围"><Select options={Object.entries(audienceLabels).filter(([value]) => value !== 'all').map(([value, label]) => ({ value, label }))} /></Form.Item>
-        <Form.Item name="sourceType" label="内容类型"><Select onChange={value=>{if(value==='file')form.setFieldValue('audience','staff_internal');}} options={[{ value: 'manual_text', label: '服务说明' }, { value: 'faq', label: '常见问答' }, { value: 'reference_case', label: '授权参考案例' },{value:'file',label:'企业文件（DOCX / 文字PDF）'}]} /></Form.Item>
+        <Form.Item name="sourceType" label="内容类型"><Select onChange={value=>{if(value==='file')form.setFieldValue('audience','staff_internal');}} options={[{ value: 'manual_text', label: '服务说明' }, { value: 'faq', label: '常见问答' }, { value: 'reference_case', label: '授权参考案例' },{value:'file',label:'企业文件（DOCX / 文字PDF / XLSX）'}]} /></Form.Item>
         {source==='file'?<SourceFileFields />:<ContentFields source={source} />}
         <Button type="primary" htmlType="submit" loading={busy}>保存草稿</Button>
       </Form> : detail && version && <>

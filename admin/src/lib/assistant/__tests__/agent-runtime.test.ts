@@ -37,11 +37,70 @@ test('handoff stops immediately; timeout and unknown outcomes never auto-retry',
   const g = fixture(); let n = 0; g.ports.model = async () => { n++; throw Error('unknown'); };
   await assert.rejects(g.run(), /unknown/); assert.equal(n, 1);
 });
-test('bounded graph refuses unknown tools and endless loops', async () => {
+test('bounded graph refuses unknown tools and reserves its last call for an answer', async () => {
   const f = fixture(); f.ports.model = async () => ({ ...answer, toolCalls: [{ id: 'a', name: 'shell', arguments: '{}' }] });
   await assert.rejects(f.run(), /assistant_capability_forbidden/); assert.equal(f.operations.size, 0);
-  const g = fixture(); g.ports.model = async () => ({ ...answer, toolCalls: [{ id: 'a', name: 'lookup', arguments: '{}' }] });
-  await assert.rejects(g.run(), /agent_iteration_limit/); assert.equal(g.operations.size, 4);
+  const g = fixture(); let calls = 0;
+  g.ports.model = async (_turn, messages, tools) => {
+    calls++;
+    if (tools.length) return { ...answer, toolCalls: [{ id: 'a' + calls, name: 'lookup', arguments: '{}' }] };
+    assert.match(JSON.stringify(messages), /收尾轮/);
+    return answer;
+  };
+  assert.equal((await g.run()).output?.text, answer.text);
+  assert.equal(g.operations.size, 3); assert.equal(calls, 4);
+  const h = fixture(); h.ports.model = async () => ({ ...answer, toolCalls: [{ id: 'a', name: 'lookup', arguments: '{}' }] });
+  await assert.rejects(h.run(), /assistant_capability_forbidden/); assert.equal(h.operations.size, 3);
+});
+
+test('an exhausted read closes for this run, pairs duplicate calls, and stays closed after checkpoint recovery', async () => {
+  const f = fixture(); let reads = 0;
+  f.ports.tool = async () => { reads++; return { content: '{"sources":[],"hasMore":true}', exhausted: true }; };
+  f.ports.model = async (turn, messages, tools) => {
+    if (!turn) return { ...answer, toolCalls: ['a', 'b'].map(id => ({ id, name: 'lookup', arguments: '{}' })) };
+    assert.deepEqual(tools, []);
+    assert.match(JSON.stringify(messages.filter(m => m.role === 'system')), /收尾轮/);
+    assert.deepEqual(messages.filter(m => m.role === 'tool').map(m => m.callId), ['a', 'b']);
+    assert.match(JSON.stringify(messages), /tool_exhausted/);
+    return answer;
+  };
+  await f.run(); assert.equal(reads, 1);
+  const checkpoint = f.saved.find(s => s.turn === 1 && !s.output)!;
+  assert.deepEqual(checkpoint.exhaustedTools, ['lookup']);
+  const g = fixture();
+  g.ports.model = async (_turn, _messages, tools) => { assert.deepEqual(tools, []); return answer; };
+  await g.run(checkpoint); assert.equal(g.operations.size, 0);
+  g.ports.model = async () => ({ ...answer, toolCalls: [{ id: 'again', name: 'lookup', arguments: '{"query":"different"}' }] });
+  await assert.rejects(g.run(checkpoint), /assistant_capability_forbidden/);
+  await assert.rejects(g.run({ ...checkpoint, exhaustedTools: ['shell'] }), /invalid_agent_checkpoint/);
+  await assert.rejects(g.run({ ...checkpoint, exhaustedTools: ['lookup', 'lookup'] }), /invalid_agent_checkpoint/);
+});
+
+test('exhausting one read preserves other authorized tools and the existing one-repair budget', async () => {
+  const f = fixture(); const seen: string[][] = []; let repaired = false;
+  f.ports.model = async (turn, _messages, tools) => {
+    seen.push(tools.map(t => t.name));
+    return !turn ? { ...answer, toolCalls: [{ id: 'a', name: 'lookup', arguments: '{}' }] } : answer;
+  };
+  f.ports.tool = async () => ({ content: 'empty', exhausted: true });
+  f.ports.validateFinal = async () => repaired ? null : (repaired = true, { code: 'invalid_answer', feedback: '修复格式，不再调用工具。' });
+  await runRenovationAgent({ messages: [{ role: 'user', content: [{ type: 'text', text: '查询' }] }],
+    tools: ['lookup', 'other'].map(name => ({ name, description: name, parameters: { type: 'object' } })), ports: f.ports });
+  assert.deepEqual(seen, [['lookup', 'other'], ['other'], []]);
+  assert.deepEqual(f.saved.at(-1)?.exhaustedTools, ['lookup']);
+  assert.equal(f.saved.at(-1)?.validationRepairs, 1);
+});
+
+test('a nonempty read can be refined before an empty read closes the tool for the rest of the run', async () => {
+  const f = fixture(); let reads = 0;
+  f.ports.tool = async () => ++reads === 1 ? { content: '{"sources":["earlier question"],"hasMore":true}' }
+    : { content: '{"sources":[],"hasMore":true}', exhausted: true };
+  f.ports.model = async (turn, _messages, tools) => {
+    assert.equal(tools.length, turn < 2 ? 1 : 0);
+    return turn < 2 ? { ...answer, toolCalls: [{ id: 'q' + turn, name: 'lookup', arguments: '{}' }] } : answer;
+  };
+  assert.equal((await f.run()).output?.text, answer.text);
+  assert.equal(reads, 2);
 });
 test('transport accepts text, private images and tool round trips, rejects image URLs/oversize', () => {
   const input = { model: 'probe', maxTokens: 100, tools: [], messages: [{ role: 'user' as const, content: [{ type: 'image' as const,
@@ -49,6 +108,17 @@ test('transport accepts text, private images and tool round trips, rejects image
   assert.match(JSON.stringify(agentChatBody(input)), /data:image\/png;base64,YWJj/);
   assert.throws(() => agentChatBody({ ...input, messages: [{ role: 'user', content: [{ ...input.messages[0].content[0], data: 'https://private/' }] }] }), /agent_image_limit/);
   assert.throws(() => agentChatBody({ ...input, maxTokens: 99999 }), /agent_input_limit/);
+});
+
+test('final-only transport explicitly selects final_response without changing ordinary or optional tool dispatch', () => {
+  const final = { name: 'final_response', description: 'reply', parameters: { type: 'object' } };
+  const lookup = { ...final, name: 'lookup' };
+  const input = { model: 'probe', maxTokens: 100, messages: [], tools: [final], requireTool: true };
+  assert.deepEqual(agentChatBody(input).tool_choice, { type: 'function', function: { name: 'final_response' } });
+  assert.equal(agentChatBody({ ...input, tools: [lookup, final] }).tool_choice, 'required');
+  assert.equal(agentChatBody({ ...input, tools: [lookup] }).tool_choice, 'required');
+  assert.equal(agentChatBody({ ...input, requireTool: false }).tool_choice, 'auto');
+  assert.equal(agentChatBody({ ...input, tools: [] }).tool_choice, undefined);
 });
 test('transport distinguishes missing usage from zero, rejects truncation and malformed calls', () => {
   const data = { choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] };

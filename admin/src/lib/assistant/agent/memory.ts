@@ -2,13 +2,52 @@ import { AssistantError, fail } from '../contracts';
 import { referenceOnlyClause } from '../knowledge/reference-intent';
 
 const roomReference = /(?:那|这|另一)(?:一)?间|(?:那|这)个房间|前者|后者|前面(?:说的)?(?:那个|房间)|刚才(?:说的)?(?:那个|房间)/;
+const noNeedWrite = /不要记录|不用记录|别记录|不要记住/;
+const reportedNeed = /(?:图纸|方案).{0,8}(?:写|标|建议)|(?:设计师|师傅|小K|他|她|你).{0,4}(?:说|建议)|只是引用/;
+const proposedNeed = /如果|假如|假设|可能|考虑|是否|是不是|要不要|能不能|可不可以|会不会|可以|不改|[“”「」"]/;
+/** Only an explicitly separate follow-up question may be excluded from a
+ * leading assertion. Keep antecedent conditions and reported speech intact;
+ * a trailing qualification referring back to the change never opens a write. */
+function needCorrectionContext(text: string) {
+  if (!/^(?:更正|纠正)(?:一下)?[，,:：\s]/.test(text.trim()) || noNeedWrite.test(text)) return null;
+  let statement = text.trim().split(/[。！？?；;\n]/)[0];
+  const questionMark = /[？?]/.test(text.trim()[statement.length] || '');
+  const separate = /[，,](?:另外|此外|顺便|再问(?:一下)?|还有(?:一个|个)问题)/.exec(statement);
+  let separatedQuestion = false;
+  if (separate) {
+    const question = statement.slice(separate.index);
+    if ((questionMark || /怎么|怎样|如何|什么|哪些|是否|是不是|要不要|能不能|会不会|(?:吗|呢)\s*$/.test(question))
+      && !/刚才|前面|上述|以上|这(?:个|样|次)|才(?:按|改|执行)|仅(?:当|在)|只(?:在|有)/.test(question)) {
+      statement = statement.slice(0, separate.index);
+      separatedQuestion = true;
+    }
+  }
+  return /(?:改成|改为|调整为|换成)/.test(statement) && !proposedNeed.test(statement) && !reportedNeed.test(statement)
+    ? { statement, separatedQuestion } : null;
+}
 /** A direct correction stays actionable when the customer asks a question next.
  * Proposals, reported speech and quoted examples never open a memory write. */
 export function hasExplicitNeedCorrection(text: string) {
-  if (!/^(?:更正|纠正)(?:一下)?[，,:：\s]/.test(text.trim()) || /不要记录|不用记录|别记录|不要记住/.test(text)) return false;
-  const statement = text.trim().split(/[。！？?；;\n]/)[0];
-  return /(?:改成|改为|调整为|换成)/.test(statement)
-    && !/如果|假如|假设|可能|考虑|是否|是不是|要不要|能不能|可以|不改|[“”「」"]/.test(statement);
+  return needCorrectionContext(text) !== null;
+}
+export function onlyChatHistoryRequested(text: string) {
+  return /只(?:回顾|回读|谈|聊).{0,10}(?:聊天|原话)/.test(text) && /不查.{0,12}(?:图纸|进度|工地|业务资料)/.test(text);
+}
+/** Historical wording is not a conflict with an available current correction.
+ * Bounded to the observed desk-position comparison; formal choices and missing
+ * sources still need their own real business evidence. Uses the one existing
+ * final-response repair, never another write or model-judge loop. */
+export function needReconfirmationFeedback(raw: string, memory: NeedMemory, question: string) {
+  if (!onlyChatHistoryRequested(question) || !memory.facts.some(f => f.status === 'current' && f.field === 'desk' && f.supersedes)) return null;
+  let reply: { text?: string; segments?: Array<{ text?: string }> };
+  try { reply = JSON.parse(raw); } catch { return null; }
+  if (!reply || typeof reply !== 'object') return null;
+  const texts = [reply.text, ...(Array.isArray(reply.segments) ? reply.segments.map(s => s?.text) : [])].filter((s): s is string => typeof s === 'string');
+  const repeated = texts.flatMap(text => text.split(/[。！？!?；;\n]/)).some(sentence =>
+    /书桌|桌子|桌位/.test(sentence) && /(?:需要|还需|请|等待)(?:你|您|客户).{0,8}(?:确认|选择)|(?:你|您).{0,6}(?:确认|选择)/.test(sentence)
+    && /哪(?:一)?(?:个|版|种).{0,6}为准|(?:再次|重新).{0,6}(?:确认|选择)/.test(sentence)
+    && !/无需|不用|不必|不需要|正式方案|正式版本|费用|工期|批准/.test(sentence));
+  return repeated ? { code: 'ungrounded_response_scope', feedback: '当前有效的书桌需求更正已经明确。旧原话与当前工作记录不同是更正链，不是待客户重新选版本的冲突。只修复本轮回顾：沿用当前有效工作记录，区分旧原话和现在记录，不让客户再次确认书桌位置；这不等于正式方案批准。保留已获权逐字引文，不新增来源或业务操作。' } : null;
 }
 /** Shared production/evaluation feedback: an unresolved reference is not a global fact. */
 export function needWriteFeedback(error: unknown, sourceText: string) {
@@ -23,10 +62,23 @@ export type NeedFact = { id: string; room: string; field: typeof factFields[numb
   provenance: 'customer_statement'; status: 'current' | 'superseded'; supersedes: string | null; createdAt: string };
 export type NeedInterpretation = { factId: string; field: 'use'; currentFactId: string | null };
 export type NeedMemory = { version: number; facts: NeedFact[]; /** Read projection only; never persisted by applyNeedDelta. */ interpretations?: NeedInterpretation[] };
+export const needMemoryPolicy = { version: 'need-memory-archive-v1', maxCurrentFacts: 300, compactAfterFacts: 300 } as const;
+/** Archive only replaced assertions, never evict an independent current need.
+ * The caller must persist archivedFacts atomically with this projection. */
+export function compactNeedMemory(memory: NeedMemory): { memory: NeedMemory; archivedFacts: NeedFact[] } {
+  if (memory.facts.length <= needMemoryPolicy.compactAfterFacts) return { memory, archivedFacts: [] };
+  const archivedFacts = memory.facts.filter(f => f.status === 'superseded');
+  return archivedFacts.length ? { memory: { version: memory.version, facts: memory.facts.filter(f => f.status === 'current') }, archivedFacts }
+    : { memory, archivedFacts: [] };
+}
 /** Free-form acknowledgements require a committed operation, including sourced
  * synthesis. Old facts/citations cannot stand in for this run's save receipt. */
 export function assertRecordedReply(text: string, memory: NeedMemory, runId: string, otherOperationIds: string[] = []) {
-  if (!/(?:已(?:经)?|帮你|帮您)(?:按(?:你|您)的更正)?(?:记下|记住|记录|保存|记为)|已(?:经)?按(?:你|您)的更正更新(?:为|了)?|记下了|记住了|记录好了/.test(text)) return;
+  // A negative request to re-confirm an existing need is not a new save receipt.
+  // Normalize only that adjacent attributive phrase; independent save claims
+  // still require this run's operation. Source guards own the fact's availability.
+  const claims = text.replace(/(?:无需|不用|不必)(?:你|您)?(?:再|重复)?(?:确认|补充|说明)已(?:经)?(?:保存|记录)的/g, '沿用原需求');
+  if (!/(?:已(?:经)?|帮你|帮您)(?:按(?:你|您)的更正)?(?:记下|记住|记录|保存|记为)|已(?:经)?按(?:你|您)的更正更新(?:为|了)?|记下了|记住了|记录好了/.test(claims)) return;
   const prefix = runId + ':';
   if (!memory.facts.some(f => f.id.startsWith(prefix)) && !otherOperationIds.some(id => id.startsWith(prefix))) fail('unsupported_model_commitment', 502);
 }
@@ -103,14 +155,18 @@ export function applyNeedDelta(memory: NeedMemory, delta: NeedDelta, source: { i
     || /先确认(?:一下)?(?:具体)?房间再记录/.test(source.text)) fail('need_room_ambiguous', 422);
   if (source.id !== delta.sourceMessageId || !source.text.includes(delta.quote) || !delta.quote.includes(delta.value)
     || (delta.room && !source.text.includes(delta.room))) fail('need_source_mismatch', 422);
-  const clauses = source.text.split(/[，,。；;\n]/).map(c=>c.trim()).filter(c=>c.includes(delta.value));
+  const correction = needCorrectionContext(source.text);
+  const useCorrection = correction?.separatedQuestion && correction.statement.includes(delta.quote);
+  if (useCorrection && delta.room && !correction.statement.includes(delta.room)) fail('need_source_mismatch', 422);
+  const assertion = useCorrection ? correction.statement : source.text;
+  const clauses = assertion.split(/[，,。；;\n]/).map(c=>c.trim()).filter(c=>c.includes(delta.value));
   if (clauses.length && clauses.every(referenceOnlyClause)) fail('need_source_mismatch',422);
-  const statements = statementContexts(source.text, delta.value);
-  if (/不要记录|不用记录|别记录|不要记住/.test(source.text) || statements.every(c =>
-    /如果|假如|假设|先讨论|先聊|(?:图纸|方案).{0,8}(?:写|标|建议)|(?:设计师|师傅|小K|他|她|你).{0,4}(?:说|建议)|只是引用/.test(c))) fail('need_source_mismatch', 422);
+  const statements = statementContexts(assertion, delta.value);
+  if (noNeedWrite.test(source.text) || statements.every(c =>
+    /如果|假如|假设|先讨论|先聊|是否|是不是|要不要|能不能|可不可以|会不会|可以.{0,20}吗/.test(c) || reportedNeed.test(c))) fail('need_source_mismatch', 422);
   if (/[？?]|怎么|怎样|如何|是否|要不要|能不能|先聊|讨论|填表|系统提示/.test(delta.value)) fail('need_source_mismatch', 422);
-  if (memory.facts.length >= 300) fail('need_memory_limit', 422);
   const prior = memory.facts.find(f => f.status === 'current' && f.room === delta.room && f.field === delta.field);
+  if (!prior && memory.facts.filter(f => f.status === 'current').length >= needMemoryPolicy.maxCurrentFacts) fail('need_memory_limit', 422);
   return { version: memory.version + 1, facts: [...memory.facts.map(f => f.id === prior?.id ? { ...f, status: 'superseded' as const } : f),
     { id: operationId, room: delta.room, field: delta.field, value: delta.value, quote: delta.quote, sourceMessageId: source.id,
       provenance: 'customer_statement', status: 'current', supersedes: prior?.id ?? null, createdAt: now }] };

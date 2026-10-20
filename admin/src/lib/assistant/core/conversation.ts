@@ -116,11 +116,12 @@ export async function cancelRuns(tx: PostgresTransaction, actor: ActorContext, c
   }
 }
 export class ConversationService {
-  constructor(readonly actor: ActorContext) { requireCapability(actor, actor.principal.kind==='user'?'assistant.chat.self':'assistant.preview.self'); }
+  constructor(readonly actor: ActorContext, private transaction?: PostgresTransaction) { requireCapability(actor, actor.principal.kind==='user'?'assistant.chat.self':'assistant.preview.self'); }
   private scoped<T>(work: (repo: AssistantRepository, settings: Row | undefined) => Promise<T>, write = false) {
-    return withTenantTransaction(this.actor.enterpriseId, async tx => {
+    const execute = async (tx: PostgresTransaction) => {
       const repo = new AssistantRepository(tx, this.actor); const settings = await repo.settings(write); return work(repo, settings);
-    });
+    };
+    return this.transaction ? execute(this.transaction) : withTenantTransaction(this.actor.enterpriseId, execute);
   }
   create(requestKey: string, previewInput:Row={}) {
     return this.scoped(async (repo, settings) => {

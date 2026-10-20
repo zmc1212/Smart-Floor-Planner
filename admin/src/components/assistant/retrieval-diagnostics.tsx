@@ -20,7 +20,7 @@ export function RetrievalDiagnostics({runId}:{runId:string}) {
     <Button onClick={()=>{setResult(null);setError('');setOpen(true);}}>检索诊断</Button>
     <Drawer title="本轮检索诊断" open={open} width={720} onClose={()=>{setOpen(false);setResult(null);}} extra={<Button onClick={()=>{setResult(null);setError('');setReload(n=>n+1);}}>重新读取</Button>}>
       {error?<Alert type="error" showIcon message={error}/>:!result?<Skeleton active/>:!result.available?<Alert type="warning" showIcon message="资料或试问范围已变化，请重新试问" description="旧候选与片段不再展示。"/>:<Space direction="vertical" size={20} style={{width:'100%'}}>
-        <Alert showIcon type="info" message="查看实际检索依据，再核对回答" description="与原聊天使用相同检索配置。支持已核对的正文、FAQ、DOCX及文字PDF；扫描OCR和复杂PDF表格尚未支持。诊断不自动判断专业答案正确。"/>
+        <Alert showIcon type="info" message="查看实际检索依据，再核对回答" description="与原聊天使用相同检索配置。支持已核对的正文、FAQ、DOCX、文字PDF及文字/普通数值XLSX；扫描OCR和复杂PDF表格尚未支持。诊断不自动判断专业答案正确。"/>
         <Descriptions column={1} size="small" items={[{key:'scope',label:'试问范围',children:`${result.scope?.audience} · ${result.scope?.draftVersionIds.length?'含固定草稿':'仅发布知识'}`},
           {key:'generation',label:'回答执行',children:`${result.generation?.status}${result.generation?.errorCode?' · '+result.generation.errorCode:''}`}]} />
         <Space wrap>{Object.entries(result.coverage||{}).map(([key,value])=><Tag key={key}>{labels[key]||key} {value}</Tag>)}</Space>

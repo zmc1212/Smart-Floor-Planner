@@ -206,6 +206,42 @@ test('QA05 legacy mixed desk memory retains its original and devices while the l
   assert.equal(surviving.need!.qualifiedBy, undefined); assert.equal(surviving.text, original);
   const followups = await withTenantTransaction(eid, tx => queryNeedIssues(tx, x.actor, x.cid));
   assert.ok(!JSON.stringify(followups).includes('单人办公'), 'no unavailable correction can return through the followup adapter');
+  const beforeEffects = await withTenantTransaction(eid, async tx => ({
+    memory: (await one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`))!.entry_snapshot,
+    events: (await one(tx, sql`select count(*)::int n from app.domain_event_outbox where enterprise_id=${eid} and type like 'construction.%'`))!.n,
+    terminal: (await one(tx, sql`select count(*)::int n from app.domain_event_outbox where enterprise_id=${eid} and type='assistant.run.terminal.v1'`))!.n,
+  }));
+  for (const compare of [false, true]) {
+    const text = compare ? '如果书房改为双人办公，点位怎么考虑？' : '现在书房办公人数还能确定吗，哪些需求仍可沿用？';
+    const sent = await x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
+    const lease = await claimJob(); assert.equal(lease?.runId, sent.runId); let calls = 0;
+    await processAgentAnswer(lease!, { model: async (messages, tools, turn) => {
+      calls++;
+      if (!turn) return call('query_materials', { leadId: '', room: '书房' });
+      const sources = messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as SynthesisSource[];
+      assert.ok(sources.some(s => s.material?.need?.interpretation?.currentFactId === null));
+      assert.ok(!JSON.stringify(sources).includes('单人办公'));
+      if (turn === 2) { assert.equal(tools.length, 0); assert.match(JSON.stringify(messages), /reopened_unavailable_need|unsolicited_unknown_plan/); }
+      return call('final_response', { kind: 'synthesis', segments: [{ basis: compare ? 'advice' : 'uncertainty', citations: [],
+        text: compare ? '可以先按电脑和台灯安排插座点位，具体位置仍需团队现场核对。'
+          : turn === 1 ? '如果只是偶尔有人陪坐，也可以按一人主用、预留一个备用插座来考虑。你希望书房按哪种使用方式来定？'
+            : '这次无法确认书房办公人数；书桌靠窗和电脑、台灯需求仍可沿用。' }] });
+    } });
+    const run = await x.chat.run(lease!.runId); assert.equal(run.status, 'succeeded', JSON.stringify(run));
+    assert.equal(calls, compare ? 2 : 3, 'only unsolicited reopening requires the original single repair');
+    const reentry = await new ConversationService(x.actor).messages(x.cid);
+    const reply = reentry.items.find(m => m.id === run.outputMessageId)!; assert.equal(reply.available, true);
+    assert.match(JSON.stringify(reply.content), compare ? /具体位置仍需团队现场核对/ : /这次无法确认/);
+    if (!compare) assert.doesNotMatch(JSON.stringify(reply.content), /需要你重新|人数没定|需求预留/);
+  }
+  const afterEffects = await withTenantTransaction(eid, async tx => ({
+    memory: (await one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`))!.entry_snapshot,
+    events: (await one(tx, sql`select count(*)::int n from app.domain_event_outbox where enterprise_id=${eid} and type like 'construction.%'`))!.n,
+    terminal: (await one(tx, sql`select count(*)::int n from app.domain_event_outbox where enterprise_id=${eid} and type='assistant.run.terminal.v1'`))!.n,
+  }));
+  assert.deepEqual(afterEffects.memory, beforeEffects.memory, 'repair and hypothetical discussion do not save needs');
+  assert.equal(afterEffects.events, beforeEffects.events, 'repair and hypothetical discussion do not dispatch construction work');
+  assert.equal(Number(afterEffects.terminal), Number(beforeEffects.terminal) + 2, 'each real answer has exactly one terminal audit event, including the repaired run');
 });
 
 test('PPT23 private reply and drawing check do not grant the customer an internal conversation', async () => {

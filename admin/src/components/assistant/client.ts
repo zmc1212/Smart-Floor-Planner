@@ -1,5 +1,5 @@
 const messages: Record<string, string> = {
-  knowledge_file_invalid:'请选择4MB以内、扩展名和实际格式一致的DOCX或文字PDF，并填写出处与使用许可。',
+  knowledge_file_invalid:'请选择4MB以内、扩展名和实际格式一致的DOCX、文字PDF或XLSX，并填写出处与使用许可。',
   knowledge_file_review_required:'请先对照原件核对解析结果和限制，再保存核对范围。',
   knowledge_file_text_limit:'解析文字超过本批16,000字符/48,000字节范围，请上传有出处的较小文件。',
   knowledge_file_block_limit:'原段或表行超过512 tokens，或片段超过128片；请核对并拆分源文件，不截断条件或例外。',
@@ -16,6 +16,7 @@ const messages: Record<string, string> = {
   knowledge_case_limit: '问题集已达到100条上限，请先整理现有问题。',
   knowledge_evaluation_limit: '回归记录已达到本企业上限，请联系维护人员按保留策略处理。',
   knowledge_evaluation_not_passed: '来源结构检查尚未通过，请先处理缺口并复跑，再确认专业核对结果。',
+  dispatch_unavailable: '本题提交尚未完成，批次已保留；请用原键恢复本批，不要重复新建。',
   context_changed: '会话或知识范围已变化，请重新读取；必要时新建试问。',
   conversation_busy: '当前会话正在回答，请等待完成后再发送。',
   assistant_quota_exceeded: '本企业当前额度或请求频率已达上限，请稍后再试。',
