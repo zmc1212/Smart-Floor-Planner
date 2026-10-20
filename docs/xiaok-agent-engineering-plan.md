@@ -108,7 +108,7 @@ The compact stage-commit index does not replace the phase-two contract. This che
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| AG-08 v81 explicit source edits (internal technical substage) |138 units/8 services/50 knowledge units/73 Mini/lint pass; scoped types0/whole292; model setup fails,0/8 customer questions, business not passed | Filled after this stage commit |
+| AG-08 v81 explicit source edits (internal technical substage) |138 units/8 services/50 knowledge units/73 Mini/lint pass; scoped types0/whole292; model setup fails,0/8 customer questions, business not passed | `0ff9f22961e8d887e0e92887f0e43d350555b157` |
 
 On 2026-10-20 the user explicitly authorized an automatic local Git commit after each completed development stage across both plans, recording scope, executed validation and the commit ID in both plans without another confirmation. Stage only the related recoverable dependency set; use concise English Conventional Commit subjects, with no automatic push or deployment. A deterministic internal substage may be committed while explicitly retaining unverified model/native checks and overall Limited status; a commit is not business acceptance. Record the actual implementation commit ID in a separate documentation commit rather than claiming a self-referential hash.
 
