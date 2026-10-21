@@ -41,7 +41,7 @@ import { citationProtocolVersion } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
 import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
-import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, type ReadToolContext } from './read-tool-input';
+import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, sourceReadProtocol, type ReadToolContext } from './read-tool-input';
 
 const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -241,6 +241,19 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
     ? (!ids.length ? '本轮没有可用引用。只用kind=synthesis及segments，每段basis只能advice或uncertainty，citations必须是空数组[]。说明本次资料缺口，可给标明身份的一般建议；不能用evidence或编造默认引用编号，不能把未查到当作现实没有记录。'
       : '本轮知识结果用kind=synthesis，顶层仅kind和segments，每段basis/text/citations。原文查询也在段落中保留对应引用；不要输出kind=knowledge或顶层text/resultKey/selections。引用只选本轮citationId，服务端继续校验全部来源与正文。')
     : '本轮已查询来源。专业解释用synthesis及segments/本轮citationId；原结果展示可用business/knowledge/references。不能用general/vision/unavailable绕过来源校验。' } : {})};
+}
+/** Defer the existing structured final until an explicitly requested original
+ * has actually been read. Separate authorized writes/handoff retain their own
+ * contracts. Exhaustion/disabled tools can only explain unavailability. */
+export function agentToolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[] {
+  if (!knowledgeReadPending(question, messages, triggerId)) return [...needToolsForRetry(messages, tools), finalToolForMessages(messages)];
+  if (tools.some(tool => tool.name === 'search_knowledge')) return needToolsForRetry(messages, tools)
+    .filter(tool => ['search_knowledge', 'request_designer', 'record_reference_preference'].includes(tool.name)
+      || tool.name === 'record_need' && Boolean(explicitNeedWriteStatement(question)));
+  const parameters = structuredClone(finalTool.parameters);
+  parameters.properties = { kind: { type: 'string', enum: ['unavailable'] }, text: { type: 'string' } };
+  parameters.required = ['kind', 'text'];
+  return [{ ...finalTool, parameters, description: '本轮指定的原文尚未读取且当前无可用读取工具。只说明本次无法依据原文回答，不解释或猜测文件内容，不据此断言文件不存在或现实没有发生。' }];
 }
 export async function processAgentAnswer(lease: Lease, dependencies: {
   model?: (messages: ModelMessage[], tools: ModelTool[], turn: number, requestTools?: ModelTool[]) => Promise<ModelTurnOutput>;
@@ -472,7 +485,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     }); };
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: 'answer' | 'vision' | 'summary' = 'answer'): Promise<ModelTurnOutput> => {
           const focused = turn > 0 && purpose === 'answer' ? focusedSynthesisMessages(messages, String(initial.trigger.id)) : messages;
-          const dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' ? tools : [...needToolsForRetry(focused, tools), finalToolForMessages(focused)];
+          const dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' ? tools : agentToolsForTurn(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), focused, tools, String(initial.trigger.id));
           const policyView=purpose==='answer'?projectSynthesisPolicy(focused):focused;
           const bounded = fitAgentContext(policyView, dispatchTools);
           const modelMessages = bounded.messages;
@@ -493,7 +506,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' ? synthesisRepairBase(focused) ? synthesisRepairProtocol : finalAnswerRepairBase(focused) ? finalAnswerRepairProtocol : null : null,
                   repairProjection: purpose === 'answer' && focused !== messages && (synthesisRepairBase(focused) || finalAnswerRepairBase(focused)) ? synthesisRepairProjectionVersion : null,
-                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, readContext, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, needQuoteProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') && needOriginalQuotes(reviewContext.currentQuestion).length ? agentNeedQuoteProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
+                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, readContext, sourceReadProtocol: purpose === 'answer' ? sourceReadProtocol : null, sourceReadPending: purpose === 'answer' && knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id)), finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, needQuoteProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') && needOriginalQuotes(reviewContext.currentQuestion).length ? agentNeedQuoteProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
                   needInputProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') ? agentNeedInputProtocol : null,
                   finalOnly: purpose === 'answer' && tools.length === 0,
                   responseScope: modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(availabilityScopeHintPrefix))) ? 'unavailable_occupancy_evidence' : null })}::jsonb)`);
@@ -533,6 +546,10 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 needBatchCallIds: needBatchProjected ? providerOutput.toolCalls.filter(call => call.name === 'record_need').map(call => call.id) : [] })}::jsonb
               where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
           });
+          // Persist raw output and usage first, then enforce the exact active
+          // schema even when a provider ignores required tool selection.
+          if (purpose === 'answer' && providerOutput.toolCalls.some(call => !dispatchTools.some(tool => tool.name === call.name)))
+            fail(knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id)) ? 'source_read_required' : 'assistant_capability_forbidden', 502);
           return output.agentOutput;
     };
     // This first extractive digest is read-only. A current write/handoff must not
@@ -635,6 +652,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           return JSON.stringify({ kind: 'general', text: receipt.text });
         }),
         resolveFinal: (raw, state) => scoped(async (tx, context) => {
+          if (knowledgeReadPending(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), state.messages, String(initial.trigger.id))) {
+            let kind: unknown;
+            try { kind = JSON.parse(raw).kind; } catch { /* Plaintext cannot bypass the source read. */ }
+            if (initial.config.tools || kind !== 'unavailable') fail('source_read_required', 502);
+          }
           const available = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
           const partial = unavailableDeskReply(available, safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
           if (partial) {

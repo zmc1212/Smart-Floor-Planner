@@ -66,6 +66,74 @@ async function diagnostic(runId: string) {
   return withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,status,private_checkpoint->'text' as output,private_checkpoint->'toolCalls' as calls
     from app.assistant_run_steps where run_id=${runId} and kind='agent_model' order by step_seq`));
 }
+test('named original bypass drafts are blocked before delivery and a real empty read closes once without writes', async () => {
+  const question = '合成点位说明第二节如何区分方案同意和关闭？';
+  for (const text of [
+    '方案同意和关闭是两个不同的阶段：方案同意是客户对团队提供的具体版本（如V3、V4）表示认可，但并不意味着现场已落实或事项已解决；关闭则是团队正式回传该事项已解决、有现场落实证据或客户已明确决定，并通知客户可以关闭。方案同意不等于现场落实，现场落实不等于正式关闭。',
+    '方案同意和关闭是两个不同的业务状态：\n\n1. 方案同意：客户对某个版本（如V3或V4）表示认可，但这仅代表客户对方案内容的认可，并不代表该方案已经实施或验收通过。\n\n2. 关闭：通常指某个事项或阶段已经按照既定流程完成，包括现场落实、验收通过、费用结算等。关闭意味着该事项或阶段已经正式结束，不再需要进一步跟进。\n\n在实际操作中，方案同意并不等同于关闭，需要按照既定流程进行后续操作，如现场落实、验收等，才能正式关闭。',
+  ]) for (const mode of ['text', 'final_tool', 'unoffered_read']) {
+    const a = await start(question); let calls = 0;
+    await processAgentAnswer(a.lease, { model: async (_messages, _tools, _turn, dispatch) => {
+      calls++; assert.deepEqual(dispatch!.map(t => t.name), ['search_knowledge']);
+      if (mode === 'text') return response(text);
+      return { ...response(), text: '', toolCalls: [{ id: 'bypass', name: mode === 'final_tool' ? 'final_response' : 'query_materials',
+        arguments: mode === 'final_tool' ? JSON.stringify({ kind: 'general', text }) : '{"leadId":"","room":""}' }] };
+    } });
+    const run = await a.chat.run(a.lease.runId);
+    assert.equal(run.status, 'failed'); assert.equal(calls, 1);
+    assert.equal(run.outputMessageId, null);
+    const steps = await diagnostic(a.lease.runId); assert.equal(steps.length, 1);
+    const stored = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select error_code from app.assistant_runs where id=${a.lease.runId}`));
+    assert.equal(stored?.error_code, 'source_read_required');
+    assert.ok(!(await a.chat.messages(a.c)).items.some(m => m.authorKind === 'assistant'));
+    const effects = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${a.lease.runId} and kind in ('retrieval','agent_business','agent_need_write','agent_validation')`));
+    assert.deepEqual(effects, []);
+  }
+  const a = await start(question); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (messages, _tools, _turn, dispatch) => {
+    if (++calls === 1) {
+      assert.deepEqual(dispatch!.map(t => t.name), ['search_knowledge']);
+      return { ...response(), text: '', toolCalls: [{ id: 'original-read', name: 'search_knowledge', arguments: '{"query":"合成点位说明 第二节 方案同意 关闭"}' }] };
+    }
+    assert.ok(dispatch!.some(t => t.name === 'final_response'));
+    const packet = JSON.parse((messages.findLast(m => m.role === 'tool') as {content:string}).content);
+    assert.equal(packet.knowledgeStatus, 'not_ready'); assert.deepEqual(packet.synthesisSources, []);
+    return { ...response(), text: JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'uncertainty', text: '本次尚未取得这份说明的可用原文，无法据此区分两种状态。', citations: [] }] }) };
+  } });
+  assert.equal((await a.chat.run(a.lease.runId)).status, 'succeeded'); assert.equal(calls, 2);
+  const reentry = await new ConversationService(actor).messages(a.c);
+  assert.ok(reentry.items.some(m => m.authorKind === 'assistant'));
+  const effects = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,count(*)::int count from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${a.lease.runId} and kind in ('retrieval','agent_need_write','agent_validation') group by kind`));
+  assert.deepEqual(effects.map(e => [e.kind,e.count]), [['retrieval',1]]);
+  const stored = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where id=${a.c}`));
+  assert.equal(readMemory(stored?.entry_snapshot).facts.length, 0);
+  await assert.rejects(new ConversationService(stranger).messages(a.c), /assistant_resource_not_found/);
+  // The source-read gate must not redirect an unrelated current-budget read
+  // into enterprise knowledge or resurrect a withdrawn saved original.
+  const saved = await start('请记录：全屋预算18万元。');
+  await processAgentAnswer(saved.lease, { model: async () => ({ ...response(), text: '', toolCalls: [{ id: 'budget-save', name: 'record_need',
+    arguments: '{"room":"全屋","field":"budget","value":"18万元","quote":"全屋预算18万元","additionalNeeds":[]}' }] }) });
+  assert.equal((await saved.chat.run(saved.lease.runId)).status, 'succeeded');
+  const questionBudget = '只回顾聊天原话：现在记住的预算是多少？';
+  const recap = await start(questionBudget, saved.c);
+  await processAgentAnswer(recap.lease, { model: async (_messages, tools, _turn, dispatch) => {
+    assert.deepEqual(tools.map(t => t.name), ['recall_history']);
+    assert.ok(dispatch!.some(t => t.name === 'final_response'));
+    return response('当前记住的预算是18万元。');
+  } });
+  const recapRun = await saved.chat.run(recap.lease.runId); assert.equal(recapRun.status, 'succeeded');
+  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages set content='{"version":1,"blocks":[{"type":"text","text":"合成预算原话撤回"}]}'::jsonb where enterprise_id=${actor.enterpriseId} and conversation_id=${saved.c} and id=${saved.sent.messageId}`));
+  assert.equal((await saved.chat.messages(saved.c)).items.find(m => m.id === recapRun.outputMessageId)!.available, false);
+  const withdrawn = await start(questionBudget, saved.c);
+  await processAgentAnswer(withdrawn.lease, { model: async (messages, tools, _turn, dispatch) => {
+    assert.deepEqual(tools.map(t => t.name), ['recall_history']); assert.doesNotMatch(JSON.stringify(messages), /18万元/);
+    assert.ok(dispatch!.some(t => t.name === 'final_response'));
+    return response('本次无法确认当前预算。');
+  } });
+  assert.equal((await saved.chat.run(withdrawn.lease.runId)).status, 'succeeded');
+  const writes = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id in (${recap.lease.runId},${withdrawn.lease.runId}) and kind in ('agent_need_write','retrieval')`));
+  assert.deepEqual(writes, []);
+});
 test('ordinary inquiry and explicit no-change remain read-only through service writes and persisted reentry', async () => {
   const saved = await start('请记下：书房书桌靠窗');
   await processAgentAnswer(saved.lease, { model: async () => ({ ...response(), text: '', toolCalls: [{ id: 'initial-need', name: 'record_need',
