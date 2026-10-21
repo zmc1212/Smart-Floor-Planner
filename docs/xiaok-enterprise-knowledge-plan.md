@@ -149,6 +149,7 @@ The compact stage-commit index retains scope/results while phase two holds detai
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
+| AG-04/05 v105 free-Qwen continuation (internal; native failed) | Unchanged core source; confirmed-free Qwen3.5-4B1309/1310 select exact quotes but omit complete atomic batch,0writes; F-04 pending | `7955d14346e6b2badb669b63232391551b1b05b2` |
 | AG-04/05 v105 original quote choices (internal; provider rejected) | Stable344 units/25 services/8 compatibility/98 Mini/scoped lint;1307/1308 rejected by HTTP402 before generation, F-04 pending | `188933b86015c2ff3ff5ca85b36ff4ad24f81ff5` |
 | AG-04/05 v104 authorized current recap (internal; native failed) | Stable341 units/24 services/8 compatibility/98 Mini/lint; GLM9/Stable1305/1306 save nothing and false completions are blocked; F-04 pending | `0fd7d2254825e9eae632cedbcde977818f31bacc` |
 | AG-04/05 v103 mixed-reply checkpoint (F-04 unfinished) | Stable338 units/22 services/8 compatibility/98 Mini; separate test-narrowing1/lint/scoped types0; read-only recap/native pending | `0028465062cc7603637bf6b1976141757663f403` |
