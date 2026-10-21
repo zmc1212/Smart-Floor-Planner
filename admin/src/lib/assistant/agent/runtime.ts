@@ -1,6 +1,7 @@
 import { Annotation, END, START, StateGraph } from '@langchain/langgraph';
 import { fail, fingerprint } from '../contracts';
 import { agentModelLimits, type ModelMessage, type ModelTool, type ModelTurnOutput } from '../contracts/model';
+import { finalAnswerRepairControl } from './synthesis-repair';
 
 type ReadReceipt = { name: string; argumentsHash: string; messageIndex: number };
 export type AgentCheckpoint = { version: 1; turn: number; messages: ModelMessage[]; output: ModelTurnOutput | null; validationRepairs?:number; argumentFailures?: number; exhaustedTools?: string[]; readReceipts?: ReadReceipt[]; finalFromTools?: boolean };
@@ -163,7 +164,7 @@ export async function runRenovationAgent(input: {
       if (state.finalFromTools) fail(issue.code, 502);
       if(state.validationRepairs>=1 || state.turn+1>=agentModelLimits.maxModelTurns)fail(issue.code,502);
       const messages:ModelMessage[]=[...state.messages,{role:'assistant',content:state.output!.text},
-        {role:'system',content:[{type:'text',text:issue.feedback}]}];
+        {role:'system',content:[{type:'text',text:issue.feedback},finalAnswerRepairControl(state.output!.text)]}];
       const next={version:1 as const,turn:state.turn+1,messages,output:null,validationRepairs:1,argumentFailures:state.argumentFailures,exhaustedTools:state.exhaustedTools,readReceipts:state.readReceipts,finalFromTools:false};
       await ports.authorize();await ports.checkpoint(next);return next;
     })

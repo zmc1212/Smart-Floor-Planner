@@ -31,7 +31,7 @@ import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
 import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion } from './synthesis';
-import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool } from './synthesis-repair';
+import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
 import { anchorKnowledgeQuery } from '../knowledge/query-context';
@@ -472,8 +472,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, promptVersion: agentPromptVersion, contextPolicy: focused === messages ? 'conversation' : 'current-turn-sources-v8', budget: bounded.diagnostic,
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
-                  repairProtocol: purpose === 'answer' && synthesisRepairBase(focused) ? synthesisRepairProtocol : null,
-                  repairProjection: purpose === 'answer' && focused !== messages && synthesisRepairBase(focused) ? synthesisRepairProjectionVersion : null,
+                  repairProtocol: purpose === 'answer' ? synthesisRepairBase(focused) ? synthesisRepairProtocol : finalAnswerRepairBase(focused) ? finalAnswerRepairProtocol : null : null,
+                  repairProjection: purpose === 'answer' && focused !== messages && (synthesisRepairBase(focused) || finalAnswerRepairBase(focused)) ? synthesisRepairProjectionVersion : null,
                   transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, readContext, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, needQuoteProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') && needOriginalQuotes(reviewContext.currentQuestion).length ? agentNeedQuoteProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
                   needInputProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') ? agentNeedInputProtocol : null,
                   finalOnly: purpose === 'answer' && tools.length === 0,

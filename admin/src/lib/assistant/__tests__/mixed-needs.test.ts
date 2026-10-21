@@ -13,6 +13,8 @@ const mixed = '更正：书房书桌改为靠内墙；预算改为18万元。另
 const falseBudgetAbsence = [
   '根据现有记录，我们目前没有保存您的具体预算金额。预算属于需要单独记录的重要信息，可能是在之前的沟通中口头提及但未正式录入系统，或者尚未确定。\n\n为了给您提供准确的预算参考或进行下一步方案规划，能否请您告知一下您心中预期的预算范围？这样我可以帮您评估不同装修方案的可能性。',
   '根据我们目前的咨询记录，系统里并没有保存您关于“当前预算”的具体金额或数字。\n\n虽然您之前询问过这个问题，但相关的预算数值并未在正式的工作记录中录入。如果您有具体的预算数字想要记录，或者想确认之前的某个报价，请告诉我，我可以帮您核实或补充。',
+  '根据现有记录，目前系统中尚未保存您的预算金额信息。如果您之前提到过预算，可能未录入系统或已被更正。如需确认具体数值，建议直接提供当前意向金额，以便我们为您匹配更合适的方案。',
+  '根据现有记录，目前系统中尚未保存您的预算信息。预算属于项目关键数据，通常在量房或方案阶段由您提供，或由我们根据项目情况协助您规划。\n\n如果您之前口头提及过预算，但系统未录入，建议我们尽快确认，以便为您匹配合适的方案。您方便透露一个大概的预算范围吗？',
 ];
 
 test('current budget recall distinguishes current unavailability from unsupported never-saved explanations', () => {
@@ -63,6 +65,19 @@ test('current budget recall repair rejects empty schemes and unavailable amounts
 });
 
 const budgetOnly = '更正：全屋预算改为18万元。';
+test('current budget recall rejects run1345 unsupported correction dates while preserving sourced dates', () => {
+  const question = '我当前预算记的是多少？';
+  const memory = applyNeedDelta(readMemory({}), {...budget,sourceMessageId:'1',expectedVersion:0}, {id:'1',text:budget.quote}, 'run:0:0', '2026-10-21T11:00:00Z');
+  for (const text of ['根据您之前的记录，您最初提到全屋预算为20万元，后在10月27日更正为18万元。目前系统保存的有效预算为18万元。',
+    '您在2026-10-27更正预算，目前是18万元。','10月21日保存的当前预算是18万元。']) {
+    for (const reply of [{kind:'general',text}, {kind:'synthesis',segments:[{basis:'evidence',text,citations:[]}]}]) {
+      assert.equal(currentBudgetRecallFeedback(JSON.stringify(reply), memory, question)?.code, 'ungrounded_response_scope');
+    }
+  }
+  const quote = '10月20日全屋预算改为18万元';
+  const dated = applyNeedDelta(readMemory({}), {...budget,quote,sourceMessageId:'2',expectedVersion:0}, {id:'2',text:quote}, 'run:1:0', '2026-10-21T11:00:00Z');
+  assert.equal(currentBudgetRecallFeedback(JSON.stringify({kind:'general',text:'您提及10月20日预算改为18万元，当前沿用18万元。'}), dated, question), null);
+});
 const staleDesk = { room: '书房', field: 'desk' as const, value: '靠内墙', quote: '更正：全屋预算改为18万元', additionalNeeds: [] };
 function rejectedCurrentSource() {
   const feedback = needWriteFeedback(new AssistantError('need_source_mismatch', 422), budgetOnly, staleDesk)!;

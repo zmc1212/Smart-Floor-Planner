@@ -8,7 +8,7 @@ import type { IssueState, NeedIssueSnapshot } from '@/lib/construction/need-issu
 import { reviewSynthesisResponse, synthesisComparisonRepairData, synthesisStatusCitationCandidates, unavailableOccupancyRooms, occupancyDiscussionRequested, occupancyReentryRequested, type SynthesisReviewContext } from './synthesis-review';
 import type { HistorySnapshot, HistoryRef } from './history';
 import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText } from './citation-catalog';
-import { withSynthesisRepairProtocol, synthesisRepairBase } from './synthesis-repair';
+import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase } from './synthesis-repair';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'> };
@@ -16,8 +16,9 @@ export type SynthesisSegment = { basis: 'evidence' | 'advice' | 'uncertainty'; t
 export type SynthesisAnswer = { kind: 'synthesis'; segments: SynthesisSegment[] };
 export type SynthesisContext = { version: 1; knowledge: Evidence[]; snapshots: BusinessSnapshot[]; sources: SynthesisSource[]; history?: HistorySnapshot[] };
 export const availabilityScopeHintPrefix = '本轮回答范围（仅约束表达';
-export const synthesisRepairProjectionVersion = 'bound-repair-tail-v1';
+export const synthesisRepairProjectionVersion = 'bound-repair-tail-v2';
 export const synthesisRepairTask = '当前任务是修复上一份被拒绝的首稿。逐段落实已有诊断，必要时修改正文或引用；未改字段保留。已有引用不重复add，仅返回final_response要求的synthesis_repair编辑结构。';
+export const finalAnswerRepairTask = '当前任务是修复上一份被拒绝的最终回复。按可信校验诊断改写有误表述，不能重复被拒绝的推断；只提交final_response所要求的最终回答结构，不调用查询或保存工具，不新增事实、原因、金额、日期或来源。保留仍有依据的内容；不能确认的部分按本次可用性表达。';
 
 export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
   if (sources.some(s => s.kind === 'knowledge' && /适用范围未核实|规则存在冲突|规则出现冲突/.test(s.text))) return true;
@@ -35,11 +36,12 @@ export function unresolvedSynthesisConflict(sources: SynthesisSource[]) {
  * remains before the sources, never rewritten or persisted as a new turn.
  * Model context only: no new user message/run or second agent loop. */
 export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: string): ModelMessage[] {
+  const repairTask = synthesisRepairBase(messages) ? synthesisRepairTask : finalAnswerRepairBase(messages) ? finalAnswerRepairTask : null;
   const hasEvidence = messages.some(m => {
     if (m.role !== 'tool') return false;
     try { return Array.isArray(JSON.parse(m.content).synthesisSources); } catch { return false; }
   });
-  if (!hasEvidence) return messages;
+  if (!hasEvidence) return repairTask ? [...messages, { role: 'user', content: [{ type: 'text', text: repairTask }] }] : messages;
   const index = messages.findIndex(m => m.role === 'user' && m.content.some(p => {
     if (p.type !== 'text') return false;
     try { return JSON.parse(p.text).sourceMessageId === triggerId; } catch { return false; }
@@ -73,8 +75,8 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   const originals = new Map<string, string>();
   // Only the trusted, hash-bound control authorizes this task projection.
   // No user/tool text, citation or provider-selected value enters the reminder.
-  const tail: ModelMessage = synthesisRepairBase(messages)
-    ? { role: 'user', content: [{ type: 'text', text: synthesisRepairTask }] } : messages[index];
+  const tail: ModelMessage = repairTask
+    ? { role: 'user', content: [{ type: 'text', text: repairTask }] } : messages[index];
   return [...systems, ...images, messages[index], ...messages.slice(index + 1).map(message => synthesisModelProjection(message, originals)), tail];
 }
 

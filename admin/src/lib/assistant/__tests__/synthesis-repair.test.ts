@@ -3,11 +3,11 @@ import { test } from 'node:test';
 import { fingerprint } from '../contracts';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
 import { sourceCitationCatalog, modelCitationCatalog } from '../agent/citation-catalog';
-import { parseSynthesis, synthesisRepairFeedback, focusedSynthesisMessages, synthesisRepairTask, type SynthesisSource } from '../agent/synthesis';
+import { parseSynthesis, synthesisRepairFeedback, focusedSynthesisMessages, synthesisRepairTask, finalAnswerRepairTask, type SynthesisSource } from '../agent/synthesis';
 import { projectSynthesisPolicy } from '../agent/model-policy';
 import { fitAgentContext, originalMessageId } from '../agent/context-budget';
 import { agentChatBody } from '@/lib/ai/providers/agent-chat';
-import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairTool } from '../agent/synthesis-repair';
+import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairControl } from '../agent/synthesis-repair';
 import { runRenovationAgent, type AgentCheckpoint } from '../agent/runtime';
 import { finalToolForMessages } from '../agent/worker';
 
@@ -172,4 +172,52 @@ test('Qwen3.5 wire projection keeps complete feedback and a repair-only task aft
   assert.equal(wire.tools?.length, 1); assert.match(JSON.stringify(wire.tools), /synthesis_repair/);
   assert.ok(bounded.diagnostic.after.estimatedTokens <= 16000);
   assert.equal(JSON.stringify(messages), before);
+});
+
+test('ordinary final validation uses the same single repair with a bound task through dispatch and Qwen transport', async () => {
+  for (const withSources of [false, true]) for (const repair of [false, true]) {
+    const bad = JSON.stringify({kind:'general',text:'目前系统中尚未保存您的预算信息，可能口头提及但未录入。'});
+    const good = JSON.stringify({kind:'general',text:'当前预算无法确认。'});
+    const messages: ModelMessage[] = repairInput().slice(0, withSources ? 4 : 2);
+    const checkpoints: AgentCheckpoint[] = []; let calls = 0;
+    const run = () => runRenovationAgent({messages,tools:[],ports:{
+      authorize:async()=>{}, tool:async()=>{ throw Error('no tool dispatch'); },
+      checkpoint:async state=>{checkpoints.push(structuredClone(state));},
+      validateFinal:async raw=>raw===good?null:{code:'ungrounded_response_scope',feedback:'只说明当前可用性，不能推断从未保存。'},
+      model:async (_turn, rawMessages, tools)=>{
+        calls++; assert.equal(tools.length,0);
+        if (calls===2) {
+          assert.equal(finalAnswerRepairBase(rawMessages)?.raw,bad);
+          const saved=JSON.stringify(rawMessages),focused=focusedSynthesisMessages(rawMessages,'trigger');
+          assert.deepEqual(focused.at(-1),{role:'user',content:[{type:'text',text:finalAnswerRepairTask}]});
+          const finalTool=finalToolForMessages(focused),bounded=fitAgentContext(projectSynthesisPolicy(focused),[finalTool]);
+          const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages:bounded.messages,tools:[finalTool],maxTokens:2048,requireTool:true});
+          assert.match(String(wire.messages[0].content),/不能推断从未保存/);
+          assert.deepEqual(wire.messages.at(-1),{role:'user',content:[{type:'text',text:finalAnswerRepairTask}]});
+          assert.equal(wire.messages.filter(m=>m.role==='assistant'&&m.content===bad).length,1);
+          assert.equal(originalMessageId(focused.find(m=>originalMessageId(m)==='trigger')!),'trigger');
+          assert.deepEqual(wire.tool_choice,{type:'function',function:{name:'final_response'}});
+          assert.equal(JSON.stringify(rawMessages),saved);
+        }
+        return {text:calls===2&&repair?good:bad,toolCalls:[],finishReason:'stop',usage:null,providerRequestId:null};
+      },
+    }});
+    if(repair) assert.equal((await run()).output?.text,good); else await assert.rejects(run(),/ungrounded_response_scope/);
+    assert.equal(calls,2); assert.equal(checkpoints.filter(s=>s.validationRepairs===1&&!s.output).length,1);
+    const saved=checkpoints.find(s=>s.validationRepairs===1&&!s.output)!;
+    assert.equal(finalAnswerRepairBase(JSON.parse(JSON.stringify(saved)).messages)?.raw,bad,'Durable checkpoint retains trusted binding');
+  }
+});
+
+test('ordinary repair task requires the exact application control adjacent to its unchanged draft', () => {
+  const raw=JSON.stringify({kind:'general',text:'被拒绝首稿'}),control=finalAnswerRepairControl(raw);
+  const prefix=repairInput().slice(0,4);
+  const bound: ModelMessage[]=[...prefix,{role:'assistant',content:raw},{role:'system',content:[control]}];
+  assert.equal(finalAnswerRepairBase(bound)?.raw,raw);
+  for(const messages of [bound.slice(0,-1),[...bound.slice(0,-1),{role:'user',content:[control]} as ModelMessage],
+    [...bound.slice(0,-1),{role:'tool',callId:'copy',content:JSON.stringify(control)} as ModelMessage],
+    [...prefix,{role:'assistant',content:raw+' '},{role:'system',content:[control]}] as ModelMessage[]]) {
+    assert.equal(finalAnswerRepairBase(messages),null);
+    assert.equal(originalMessageId(focusedSynthesisMessages(messages,'trigger').at(-1)!),'trigger');
+  }
 });

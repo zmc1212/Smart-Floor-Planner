@@ -10,7 +10,8 @@ import { ConversationService } from '@/lib/assistant/core/conversation';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer, agentNeedBatchProtocol, agentNeedQuoteProtocol, agentNeedInputProtocol } from '@/lib/assistant/agent/worker';
 import { agentChatBody } from '@/lib/ai/providers/agent-chat';
-import { synthesisRepairBase } from '@/lib/assistant/agent/synthesis-repair';
+import { synthesisRepairBase, finalAnswerRepairBase, finalAnswerRepairProtocol } from '@/lib/assistant/agent/synthesis-repair';
+import { finalAnswerRepairTask } from '@/lib/assistant/agent/synthesis';
 import { persistNeedWrites } from '@/lib/assistant/agent/memory-store';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import type { ActorContext } from '@/lib/assistant/contracts';
@@ -69,6 +70,8 @@ test('current budget recall preserves real saves and revocation despite prior bu
   const falseAbsence = [
     '根据现有记录，我们目前没有保存您的具体预算金额。预算属于需要单独记录的重要信息，可能是在之前的沟通中口头提及但未正式录入系统，或者尚未确定。\n\n为了给您提供准确的预算参考或进行下一步方案规划，能否请您告知一下您心中预期的预算范围？这样我可以帮您评估不同装修方案的可能性。',
     '根据我们目前的咨询记录，系统里并没有保存您关于“当前预算”的具体金额或数字。\n\n虽然您之前询问过这个问题，但相关的预算数值并未在正式的工作记录中录入。如果您有具体的预算数字想要记录，或者想确认之前的某个报价，请告诉我，我可以帮您核实或补充。',
+    '根据现有记录，目前系统中尚未保存您的预算金额信息。如果您之前提到过预算，可能未录入系统或已被更正。如需确认具体数值，建议直接提供当前意向金额，以便我们为您匹配更合适的方案。',
+    '根据现有记录，目前系统中尚未保存您的预算信息。预算属于项目关键数据，通常在量房或方案阶段由您提供，或由我们根据项目情况协助您规划。\n\n如果您之前口头提及过预算，但系统未录入，建议我们尽快确认，以便为您匹配合适的方案。您方便透露一个大概的预算范围吗？',
   ];
   for (const badText of [null, ...falseAbsence]) for (const repair of [true, false]) {
     const a = await start('请查看我的已发布方案。'); let businessCalls = 0;
@@ -99,7 +102,7 @@ test('current budget recall preserves real saves and revocation despite prior bu
     const withdrawn = await a.chat.send(a.c, randomUUID(), {version:1,blocks:[{type:'text',text:question}]});
     const withdrawnLease = await claimJob(); assert.ok(withdrawnLease); assert.equal(withdrawnLease.runId, withdrawn.runId);
     let calls = 0;
-    await processAgentAnswer(withdrawnLease, { model:async (messages,tools) => {
+    await processAgentAnswer(withdrawnLease, { model:async (messages,tools,_turn,dispatch) => {
       calls++;
       assert.doesNotMatch(JSON.stringify(messages), /18万元/);
       if (calls === 1) {
@@ -116,6 +119,9 @@ test('current budget recall preserves real saves and revocation despite prior bu
         return finalText(badText);
       }
       assert.equal(calls,badText?3:2); assert.equal(tools.length,0);
+      assert.ok(finalAnswerRepairBase(messages));
+      const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages,tools:dispatch!,maxTokens:2048,requireTool:true});
+      assert.deepEqual(wire.messages.at(-1),{role:'user',content:[{type:'text',text:finalAnswerRepairTask}]});
       assert.match(JSON.stringify(messages), /当前需求没有budget字段/);
       if (badText) assert.match(JSON.stringify(messages), /不能.*从未/);
       return finalText(repair ? '本次没有可用的当前预算记录，无法确认金额。' : badText || '目前没有查到你在本企业的已发布方案记录。');
@@ -132,6 +138,35 @@ test('current budget recall preserves real saves and revocation despite prior bu
     } else { assert.equal(result.errorCode,'ungrounded_response_scope'); assert.equal(result.outputMessageId,null); }
     const rejected=await validations(String(withdrawn.runId)); assert.equal(rejected.length,repair?1:2);
     assert.ok(rejected.every(row=>(row.input_summary as Row).scope==='current_budget_read_scope'));
+  }
+});
+
+test('current budget recall repairs or rejects run1345 unsupported dates with no additional writes', async () => {
+  for(const repair of [true,false]) {
+    const a=await start('更正：全屋预算改为18万元。');
+    await processAgentAnswer(a.lease,{model:async()=>call({...budget,quote:'更正：全屋预算改为18万元'})});
+    const saved=await memory(a.c),question='我当前预算记的是多少？';
+    const sent=await a.chat.send(a.c,randomUUID(),{version:1,blocks:[{type:'text',text:question}]});
+    const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
+    const bad='根据您之前的记录，您最初提到全屋预算为20万元，后在10月27日更正为18万元。目前系统保存的有效预算为18万元。';
+    let calls=0;
+    await processAgentAnswer(lease,{model:async(messages,tools,_turn,dispatch)=>{
+      calls++;
+      if(calls===2){
+        assert.equal(tools.length,0);assert.equal(finalAnswerRepairBase(messages)?.raw,JSON.stringify({kind:'general',text:bad}));
+        const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages,tools:dispatch!,maxTokens:2048,requireTool:true});
+        assert.deepEqual(wire.messages.at(-1),{role:'user',content:[{type:'text',text:finalAnswerRepairTask}]});
+      }
+      return finalText(calls===2&&repair?'沿用原记录，当前预算为18万元。':bad);
+    }});
+    assert.equal(calls,2);assert.equal((await writes(String(sent.runId))).length,0);assert.deepEqual(await memory(a.c),saved);
+    const result=await a.chat.run(String(sent.runId));assert.equal(result.status,repair?'succeeded':'failed');
+    if(!repair){assert.equal(result.errorCode,'ungrounded_response_scope');assert.equal(result.outputMessageId,null);}
+    assert.equal((await validations(String(sent.runId))).length,repair?1:2);
+    const steps=await withTenantTransaction(actor.enterpriseId,tx=>rows(tx,sql`select input_summary from app.assistant_run_steps
+      where enterprise_id=${actor.enterpriseId} and run_id=${String(sent.runId)} and kind='agent_model' order by step_seq`));
+    assert.equal((steps.at(-1)!.input_summary as Row).repairProtocol,finalAnswerRepairProtocol);
+    assert.equal((steps.at(-1)!.input_summary as Row).repairProjection,'bound-repair-tail-v2');
   }
 });
 
@@ -423,7 +458,10 @@ test('mixed correction failed arguments cannot acknowledge completed updates and
     calls++;
     if (calls === 1) return call({ ...complete, quote: '书房书桌改为靠内墙。预算改为18万元' });
     if (calls === 2) return finalText('书桌位置已更改为靠内墙，预算也调整为18万元。后面是假设，不保存。');
-    assert.equal(tools.length, 0); assert.match(JSON.stringify(messages.at(-1)), /\\"savedFacts\\":\[\]/);
+    assert.equal(tools.length, 0);
+    assert.match(JSON.stringify(messages.findLast(message=>message.role==='system')), /\\"savedFacts\\":\[\]/);
+    assert.deepEqual(messages.at(-1),{role:'user',content:[{type:'text',text:finalAnswerRepairTask}]});
+    assert.ok(finalAnswerRepairBase(messages));
     assert.deepEqual(await memory(a.c), { version: 0, facts: [] });
     return finalText('本次没有保存成功。一般建议：靠窗能利用自然采光，但直射光容易造成屏幕反光，也要留出开窗空间。');
   } });

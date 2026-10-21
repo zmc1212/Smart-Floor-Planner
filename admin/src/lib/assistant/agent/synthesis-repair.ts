@@ -4,11 +4,34 @@ import { resolveCatalogCitation } from './citation-catalog';
 import type { SynthesisSource } from './synthesis';
 
 export const synthesisRepairProtocol = 'synthesis-edit-v1';
+export const finalAnswerRepairProtocol = 'final-answer-repair-v1';
+const finalRepairPrefix = '最终校验修复绑定：';
 const prefix = '\n有界编辑协议：';
 const suffix = '\n仅返回synthesis_repair及匹配的baseHash。edits按原segments下标独立定位，每段最多一项；text/basis仅改指定字段，addCitationIds/removeCitationIds明确增删已有引用，未提及的正文和引用保留。remove=true删除该段且不能带其他修改；append仅新增必要段。不能整体替换citations，不自动采用任何候选。最终完整回答仍须通过全部来源、数值、承诺与范围校验，原六段/每段四引用/唯一修复和调用预算保持。';
 type Draft = { kind: 'synthesis'; segments: Array<{ basis: 'evidence' | 'advice' | 'uncertainty'; text: string; citations: Array<{ citationId: string }> }> };
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const keys = (value: Record<string, unknown>, allowed: string[]) => Object.keys(value).every(key => allowed.includes(key));
+
+/** Application control for the existing one final repair, including ordinary
+ * and legacy replies. It supplies no answer, source or edit selection. */
+export function finalAnswerRepairControl(raw: string) {
+  return { type: 'text' as const, text: finalRepairPrefix + JSON.stringify({ protocol: finalAnswerRepairProtocol, baseHash: fingerprint(raw) }) };
+}
+export function finalAnswerRepairBase(messages: ModelMessage[]) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const control = messages[index], previous = messages[index - 1];
+    if (control.role !== 'system' || previous?.role !== 'assistant' || previous.toolCalls?.length) continue;
+    for (const part of control.content) {
+      if (part.type !== 'text' || !part.text.startsWith(finalRepairPrefix)) continue;
+      try {
+        const value: unknown = JSON.parse(part.text.slice(finalRepairPrefix.length));
+        if (object(value) && keys(value, ['protocol', 'baseHash']) && value.protocol === finalAnswerRepairProtocol
+          && value.baseHash === fingerprint(previous.content)) return { raw: previous.content, baseHash: value.baseHash as string };
+      } catch { /* Unrecognized controls never authorize a repair projection. */ }
+    }
+  }
+  return null;
+}
 
 /** Only catalog drafts use edits. Legacy quote repairs retain their wire
  * contract. This checks shape, not support for the rejected draft's claims. */
