@@ -116,6 +116,7 @@ The compact stage-commit index does not replace the phase-two contract. This che
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
+| AG-04/05 v103 mixed-reply checkpoint (F-04 unfinished) | Stable338 units/22 services/8 compatibility/98 Mini; separate test-narrowing1/lint/scoped types0; read-only recap/native pending | `0028465062cc7603637bf6b1976141757663f403` |
 | AG-04/05 v102 atomic mixed corrections (internal; native failed) | 330 units/17 services/8 compatibility/98 Mini/lint; current recap/withdrawal pass, mixed answers fail | `de1a0df8d96fe87260d5fae8c98dc6f0ee5f4929` |
 | AG-04/08 v101 empty citation catalog (bounded internal fix) | 325 units/13 services/8 compatibility/98 Mini/lint; native 3/3, sources/withdrawal/empty-catalog reentry pass, overall Limited | `c75863f08fbb299f1dbc32ae8e48b5330ed15874` |
 | AG-04/08 v100 knowledge final schema (bounded internal fix) | 323 units/12 services/8 compatibility/98 Mini/lint; native PDF2 pass,source/withdrawal pass,empty evidence1 citation failure,overall Limited | `229a090fb8d41ddf6df9f61b748fe40f6ea1b65f` |
