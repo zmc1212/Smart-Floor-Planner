@@ -1,0 +1,132 @@
+import assert from 'node:assert/strict';
+import { before, after, test } from 'node:test';
+import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
+import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
+import { AssistantRepository, one, rows, type Row } from '@/db/repositories/assistant-repository';
+import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
+import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { ConversationService } from '@/lib/assistant/core/conversation';
+import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
+import { processAgentAnswer, agentNeedBatchProtocol } from '@/lib/assistant/agent/worker';
+import { persistNeedWrites } from '@/lib/assistant/agent/memory-store';
+import { readMemory } from '@/lib/assistant/agent/memory';
+import type { ActorContext } from '@/lib/assistant/contracts';
+import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
+
+const prefix = 'synthetic-mixed-needs-' + randomUUID(), tenants: string[] = [], users: string[] = [];
+let actor: ActorContext, stranger: ActorContext;
+const text = '更正：书房书桌改为靠内墙；预算改为18万元。另外，如果仍靠窗会有哪些取舍？后面是假设，不要保存。';
+const desk = { room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '书房书桌改为靠内墙' };
+const budget = { room: '', field: 'budget', value: '18万元', quote: '预算改为18万元' };
+const complete = { ...desk, additionalNeeds: [budget] };
+const answer = (): ModelTurnOutput => ({ text: JSON.stringify({ kind: 'general', text: '本次已记录书桌改为靠内墙和预算18万元。关于假设仍靠窗的取舍，一般建议考虑自然光与屏幕反光，具体布置仍需核对现场尺寸。' }),
+  toolCalls: [], usage: { inputTokens: 100, outputTokens: 20 }, finishReason: 'stop', providerRequestId: null });
+const call = (args: unknown, id = 'need') => ({ ...answer(), text: '', toolCalls: [{ id, name: 'record_need', arguments: JSON.stringify(args) }] });
+before(async () => {
+  const url = new URL(resolvePostgresRuntimeConfig().connectionString);
+  assert.equal(url.port, '55432'); assert.equal(url.pathname, '/xiaok_embedding_eval');
+  await withPlatformTransaction(async tx => {
+    for (let i = 0; i < 2; i++) {
+      const e = (await one(tx, sql`insert into app.enterprises(name,code,status) values(${prefix+i},${prefix+i},'active') returning id`))!; tenants.push(String(e.id));
+      await tx.execute(sql`insert into app.assistant_enterprise_settings(enterprise_id,enabled,daily_requests,daily_tokens,daily_cost_micros,retention_days,agent_config)
+        values(${tenants[i]},true,1000,12000000,1000000000,30,${JSON.stringify({ runtime: 'langgraph-v1', model: 'Qwen/Qwen3.5-4B', providerKey: 'siliconflow', imageInput: true, tools: true, probeVersion: 'p2m0-synthetic-v1' })}::jsonb)`);
+      const u = (await one(tx, sql`insert into app.users(nickname,context_version) values(${prefix+i},1) returning id`))!; users.push(String(u.id));
+      await tx.execute(sql`insert into app.wechat_identities(user_id,openid) values(${users[i]},${prefix+i})`);
+    }
+  });
+  actor = { enterpriseId: tenants[0], principal: { kind: 'user', userId: users[0] }, contextVersion: 1, capabilities: ['assistant.chat.self'] };
+  stranger = { ...actor, enterpriseId: tenants[1], principal: { kind: 'user', userId: users[1] } };
+});
+after(async () => {
+  try { await withPlatformTransaction(async tx => {
+    for (const t of tenants) { await deleteAssistantData(tx, BigInt(t)); await tx.execute(sql`delete from app.enterprises where id=${t}`); }
+    for (const u of users) await tx.execute(sql`delete from app.users where id=${u}`);
+  }); } finally { await closePostgresPool(); }
+});
+async function start() {
+  const chat = new ConversationService(actor), c = String((await chat.create(randomUUID())).id);
+  const sent = await chat.send(c, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
+  const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
+  return { chat, c, sent, lease };
+}
+async function memory(c: string) {
+  return readMemory((await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${c}`)))?.entry_snapshot);
+}
+async function writes(runId: string) {
+  return withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select step_seq,input_summary,private_checkpoint from app.assistant_run_steps
+    where enterprise_id=${actor.enterpriseId} and run_id=${runId} and kind='agent_need_write' order by step_seq`));
+}
+
+test('mixed correction incomplete proposals roll back then save one complete batch before answering the separate question', async () => {
+  const a = await start(); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (messages, tools) => {
+    calls++;
+    if (calls === 1) return call(desk);
+    if (calls === 2) {
+      const feedback = JSON.parse((messages.at(-1) as { content: string }).content);
+      assert.equal(feedback.error, 'need_write_incomplete'); assert.equal(feedback.batchCommitted, false);
+      assert.deepEqual(feedback.missingStatements, ['预算改为18万元']); assert.deepEqual(await memory(a.c), { version: 0, facts: [] });
+      return call(complete, 'complete');
+    }
+    assert.equal(tools.some(t => t.name === 'record_need'), false, 'A completed bounded statement no longer offers a repeated save');
+    return answer();
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 3);
+  const state = await memory(a.c); assert.equal(state.version, 2); assert.equal(state.facts.length, 2);
+  assert.deepEqual(state.facts.map(f => [f.room, f.field, f.value]), [['书房','desk','书桌改为靠内墙'],['','budget','18万元']]);
+  assert.equal((await writes(String(a.sent.runId))).length, 1);
+  const reply = (await new ConversationService(actor).messages(a.c)).items.filter(m => m.authorKind === 'assistant').at(-1)!;
+  assert.equal(reply.available, true); assert.match(JSON.stringify(reply.content), /取舍|反光/);
+  assert.equal(state.facts.some(f => f.value === '靠窗'), false);
+});
+
+test('mixed correction parallel model-selected needs become one atomic batch and keep the complete raw provider packet', async () => {
+  const a = await start(); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async () => {
+    calls++;
+    return calls === 1 ? { ...answer(), text: '', toolCalls: [...call(desk, 'desk').toolCalls, ...call(budget, 'budget').toolCalls] } : answer();
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 2);
+  assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(a.sent.runId))).length, 1);
+  const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,input_summary,private_checkpoint from app.assistant_run_steps
+    where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)}`));
+  const model = steps.find(s => (s.input_summary as Row)?.needBatchProtocol === agentNeedBatchProtocol)!;
+  assert.ok(model); assert.deepEqual((model.input_summary as Row).needBatchCallIds, ['desk','budget']);
+  const packet = model.private_checkpoint as { providerOutput: { toolCalls: unknown[] }; toolCalls: unknown[] };
+  assert.equal(packet.providerOutput.toolCalls.length, 2); assert.equal(packet.toolCalls.length, 1);
+  assert.equal(steps.filter(s => s.kind === 'agent_need_receipt').length, 0, 'Mixed questions retain the model answer path');
+});
+
+test('mixed correction rejects an unrelated budget room before committing any field and retains tenant isolation', async () => {
+  const a = await start();
+  await assert.rejects(withTenantTransaction(actor.enterpriseId, async tx => {
+    const conversation = await new AssistantRepository(tx, actor).conversation(a.c);
+    await persistNeedWrites(tx, actor, conversation, { runId: String(a.sent.runId), turn: 0, index: 0, sourceMessageId: String(a.sent.messageId) },
+      { ...desk, additionalNeeds: [{ ...budget, room: '书房' }] });
+  }), /need_source_mismatch/);
+  assert.deepEqual(await memory(a.c), { version: 0, facts: [] });
+  await assert.rejects(new ConversationService(stranger).messages(a.c), /not_found/);
+  let calls = 0;
+  await processAgentAnswer(a.lease, { model: async () => ++calls === 1 ? call(complete) : answer() });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal((await memory(a.c)).version, 2);
+});
+
+test('mixed correction repeated calls reuse current facts across turns and original-key replay without advancing versions', async () => {
+  const a = await start();
+  const persist = (turn: number) => withTenantTransaction(actor.enterpriseId, async tx => {
+    const conversation = await new AssistantRepository(tx, actor).conversation(a.c);
+    return persistNeedWrites(tx, actor, conversation, { runId: String(a.sent.runId), turn, index: 0, sourceMessageId: String(a.sent.messageId) }, complete);
+  });
+  const first = JSON.parse((await persist(0)).content), second = JSON.parse((await persist(1)).content);
+  assert.deepEqual(second, first); assert.deepEqual(JSON.parse((await persist(1)).content), first);
+  const state = await memory(a.c); assert.equal(state.version, 2); assert.equal(state.facts.length, 2);
+  const saved = await writes(String(a.sent.runId)); assert.equal(saved.length, 2);
+  assert.equal((saved[1].input_summary as Row).fromVersion, 2); assert.equal((saved[1].input_summary as Row).toVersion, 2);
+  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages set content='{"version":1,"blocks":[{"type":"text","text":"合成来源已撤回"}]}'::jsonb
+    where enterprise_id=${actor.enterpriseId} and id=${String(a.sent.messageId)}`));
+  await assert.rejects(persist(2), /need_source_mismatch/);
+  await processAgentAnswer(a.lease, { model: async () => answer() });
+  assert.notEqual((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
+  assert.equal((await new ConversationService(actor).messages(a.c)).items.filter(m => m.authorKind === 'assistant' && m.available).length, 0);
+});

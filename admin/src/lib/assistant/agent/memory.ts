@@ -10,15 +10,15 @@ const proposedNeed = /如果|假如|假设|可能|考虑|是否|是不是|要不
  * a trailing qualification referring back to the change never opens a write. */
 function needCorrectionContext(text: string) {
   if (!/^(?:更正|纠正)(?:一下)?[，,:：\s]/.test(text.trim()) || noNeedWrite.test(text)) return null;
-  let statement = text.trim().split(/[。！？?；;\n]/)[0];
-  const questionMark = /[？?]/.test(text.trim()[statement.length] || '');
-  const separate = /[，,](?:另外|此外|顺便|再问(?:一下)?|还有(?:一个|个)问题)/.exec(statement);
+  const original = text.trim();
+  let statement = original.split(/[。！？?；;\n]/)[0];
+  const separate = /[，,。；;\n]\s*(?:另外|此外|顺便|再问(?:一下)?|还有(?:一个|个)问题)/.exec(original);
   let separatedQuestion = false;
   if (separate) {
-    const question = statement.slice(separate.index);
-    if ((questionMark || /怎么|怎样|如何|什么|哪些|是否|是不是|要不要|能不能|会不会|(?:吗|呢)\s*$/.test(question))
-      && !/刚才|前面|上述|以上|这(?:个|样|次)|才(?:按|改|执行)|仅(?:当|在)|只(?:在|有)/.test(question)) {
-      statement = statement.slice(0, separate.index);
+    const question = original.slice(separate.index);
+    if (/[？?]|怎么|怎样|如何|什么|哪些|是否|是不是|要不要|能不能|会不会|(?:吗|呢)\s*$/.test(question)) {
+      if (/刚才|前面|上述|以上|这(?:个|样|次)|才(?:按|改|执行)|仅(?:当|在)|只(?:在|有)/.test(question)) return null;
+      statement = original.slice(0, separate.index);
       separatedQuestion = true;
     }
   }
@@ -47,6 +47,13 @@ export function explicitNeedRecordOnly(text: string) {
     && !/[？?]|怎么|怎样|如何|什么|哪些|是否|要不要|能不能|先确认|先聊|讨论|问题|回顾|查询|帮我查|转人工|设计师|发布|批准|转交|忽略|系统提示|其他客户|别人的|保证|假装|冒充/.test(text)
     && !/(?:吗|呢)[。！!\s]*$/.test(text);
 }
+/** A bounded assertion block, not extracted facts or independent permission.
+ * The separate question remains in the conversation/model input unchanged. */
+export function explicitNeedWriteStatement(text: string) {
+  if (explicitNeedRecordOnly(text)) return text;
+  const correction = needCorrectionContext(text);
+  return correction?.separatedQuestion ? correction.statement : null;
+}
 /** Caller supplies the existing source-authorized read projection. No model
  * receipt, previous run or superseded row can expand this actual saved list. */
 export function recordedNeedReceipt(memory: NeedMemory, runId: string, sourceMessageId: string) {
@@ -59,11 +66,12 @@ export class NeedWriteIncompleteError extends AssistantError {
   constructor(readonly missingStatements: string[]) { super('need_write_incomplete', 422); }
 }
 /** Coverage is a pre-commit check, not a second extractor. Only explicitly
- * scoped clauses in a pure recording request participate; the model still
+ * scoped clauses in an explicit recording/correction block participate; the model still
  * supplies every field/value/quote through the original write contract. */
 export function uncoveredNeedStatements(sourceText: string, writes: NeedWrite[]) {
-  if (!explicitNeedRecordOnly(sourceText)) return [];
-  const clauses = sourceText.trim().replace(/^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|记一下|更正|纠正)(?:一下)?[：:，,\s]*/, '')
+  const statement = explicitNeedWriteStatement(sourceText);
+  if (!statement) return [];
+  const clauses = statement.trim().replace(/^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|记一下|更正|纠正)(?:一下)?[：:，,\s]*/, '')
     .split(/[，,。；;\n]/).map(s => s.trim()).filter(Boolean);
   // Keep the same four-write bound. Complex/unscoped sentences retain their
   // existing validation rather than inferring objects or dropping fragments.
@@ -102,7 +110,7 @@ export function needWriteFeedback(error: unknown, sourceText: string) {
   if (error instanceof NeedWriteIncompleteError) return {
     status: 'not_saved', error: error.code, batchCommitted: false, sourceText,
     missingStatements: error.missingStatements.filter(clause => sourceText.includes(clause)).slice(0, 4),
-    instructions: '整个批次均未保存。missingStatements是本次原话中未被同一房间/全屋范围的value覆盖的分句；quote里出现不等于已保存。保留原主字段，把缺失的独立字段加入additionalNeeds，一次重交完整批次（最多四条），不能只重发相同参数或只提交遗漏字段。书桌位置用desk，收纳用storage，预算用budget；明确房间逐字填room。value/quote均逐字来自当前原话，不新增推断、需求或批准，不能声称已经保存。',
+    instructions: '整个批次均未保存。missingStatements是当前明确记录/更正段中未被同一房间/全屋范围的value覆盖的分句；quote里出现不等于已保存，后面的独立问题/假设不参与保存。保留原主字段，把缺失的独立字段加入additionalNeeds，一次重交完整批次（最多四条），不能只重发相同参数或只提交遗漏字段。书桌位置用desk，收纳用storage，预算用budget；明确房间逐字填room，仅预算或全屋预算不能借用其他分句的房间。value/quote均逐字来自当前原话，不新增推断、需求或批准，不能声称已经保存。',
   };
   if (!(error instanceof AssistantError) || !['invalid_message','need_source_mismatch','need_room_ambiguous'].includes(error.code)) return null;
   return { status: 'not_saved', error: error.code, sourceText, instructions: error.code === 'need_room_ambiguous'
@@ -351,6 +359,14 @@ export function applyNeedDelta(memory: NeedMemory, delta: NeedDelta, source: { i
   const assertion = useCorrection ? correction.statement : source.text;
   const clauses = assertion.split(/[，,。；;\n]/).map(c=>c.trim()).filter(c=>c.includes(delta.value));
   if (clauses.length && clauses.every(referenceOnlyClause)) fail('need_source_mismatch',422);
+  if (delta.field === 'budget' && delta.room) {
+    const scopes = clauses.flatMap(clause => {
+      const normalized = clause.replace(/^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|记一下|更正|纠正)(?:一下)?[：:，,\s]*/, '');
+      const match = /^(全屋|全家|家里|[\p{Script=Han}A-Za-z0-9]{0,8}?(?:卫生间|卧室|阳台|房|厅|卧|卫|室))?的?预算/u.exec(normalized);
+      return match ? [match[1] || ''] : [];
+    });
+    if (scopes.length && !scopes.includes(delta.room)) fail('need_source_mismatch', 422);
+  }
   const statements = statementContexts(assertion, delta.value);
   if (noNeedWrite.test(source.text) || statements.every(c =>
     /如果|假如|假设|先讨论|先聊|是否|是不是|要不要|能不能|可不可以|会不会|可以.{0,20}吗/.test(c) || reportedNeed.test(c) || isNeedInquiry(c))) fail('need_source_mismatch', 422);

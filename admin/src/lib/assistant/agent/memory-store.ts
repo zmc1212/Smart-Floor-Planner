@@ -43,6 +43,11 @@ export async function persistNeedWrites(tx: PostgresTransaction, actor: ActorCon
     const operationId = `${operation.runId}:${operation.turn}:${operation.index}` + (position ? `:need:${position}` : '');
     const delta = parseNeedDelta({ ...write, sourceMessageId: operation.sourceMessageId, expectedVersion: next.version });
     const updated = applyNeedDelta(next, delta, { id: operation.sourceMessageId, text: sourceText }, operationId, new Date().toISOString());
+    // Validate every attempt first, then reuse a current receipt for the same
+    // run/source/key/value/quote. A later model turn is not a new customer edit.
+    if (next.facts.some(f => f.status === 'current' && f.id.startsWith(operation.runId + ':')
+      && f.sourceMessageId === operation.sourceMessageId && f.room === write.room && f.field === write.field
+      && f.value === write.value && f.quote === write.quote)) continue;
     if (updated !== next) changedFacts.push(updated.facts.find(f => f.id === operationId)!);
     next = updated;
   }

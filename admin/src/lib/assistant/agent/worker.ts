@@ -10,7 +10,7 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig } from './config';
-import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, onlyChatHistoryRequested, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, recordedNeedReceipt, parseNeedWrites } from './memory';
+import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, onlyChatHistoryRequested, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
@@ -82,7 +82,7 @@ export const finalTool: ModelTool = { name: 'final_response', description: '最�
 } };
 export const agentSourceFinalProtocol = 'source-final-kind-v3';
 export const agentToolFinalProtocol = 'deferred-structured-final-v1';
-export const agentNeedBatchProtocol = 'same-turn-need-batch-v1';
+export const agentNeedBatchProtocol = 'same-turn-need-batch-v2';
 /** Adapt independent model-selected calls to the existing atomic schema.
  * Raw provider output remains intact. No cross-turn accumulation, field
  * inference, mixed actions or expansion beyond the four-write contract. */
@@ -442,7 +442,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const providerOutput = output.agentOutput;
           const finalProjected = purpose === 'answer' ? projectFinalToolOutput(providerOutput) : providerOutput;
           output.agentOutput = purpose === 'answer' ? projectNeedBatchOutput(finalProjected,
-            explicitNeedRecordOnly(safeText(initial.trigger.content as Parameters<typeof safeText>[0]))) : finalProjected;
+            Boolean(explicitNeedWriteStatement(safeText(initial.trigger.content as Parameters<typeof safeText>[0])))) : finalProjected;
           const needBatchProjected = output.agentOutput !== finalProjected;
           await scoped(async tx => {
             await tx.execute(sql`update app.assistant_run_steps set status='succeeded',provider_attempt_id=${output.attemptId ? String(output.attemptId) : null},
@@ -782,9 +782,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               { runId: lease.runId, turn, index, sourceMessageId: String(initial.trigger.id) }, input);
             const conversation = await new AssistantRepository(tx, lease.actor).conversation(String(context.conversation.id));
             const evidence = await currentSynthesisContext(tx, lease.actor, conversation, lease.runId);
-            return { content: JSON.stringify({ ...JSON.parse(result.content),
+            return { exhausted: Boolean(explicitNeedWriteStatement(safeText(initial.trigger.content as Parameters<typeof safeText>[0]))), content: JSON.stringify({ ...JSON.parse(result.content),
               synthesisSources: evidence.sources.filter(source => source.history?.messageId === String(initial.trigger.id)),
-              instructions: '这是本轮实际保存回执。只确认savedFacts中的字段；后面的假设问题没有因此保存。后续专业解释沿现有synthesis/citationOptions协议，保存结果的原话可引用本轮提供的来源；一般建议与企业/项目事实分开，原话不是正式批准。' }) };
+              instructions: '这是本轮实际保存回执。只确认savedFacts中的字段；后面的假设问题没有因此保存。当前明确记录/更正段已完整保存后，不再调用record_need；继续回答客户另问的问题，需要当前依据时再查询。后续专业解释沿现有synthesis/citationOptions协议，保存结果的原话可引用本轮提供的来源；一般建议与企业/项目事实分开，原话不是正式批准。' }) };
           }); } catch (error) {
             const feedback = needWriteFeedback(error, safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
             if (!feedback) throw error;

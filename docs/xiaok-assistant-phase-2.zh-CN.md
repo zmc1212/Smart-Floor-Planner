@@ -1,6 +1,29 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v101：空引用目录的身份与引用约束
+## 当前v102：混合更正原子写入，原生业务验收未通过
+
+**内部限定改进；F-01/F-04及整体Limited。** 明确更正块在“另外/此外/顺便”等独立问题前可跨分号/句号保留多条断言；完整性仅检查该块，不保存假设尾句。模型仍须提交逐字value/quote及字段，服务器不补写漏项。同包全是record_need时沿原四字段原子合并，原provider包单独保存。预算只取自身分句作用域，拒绝借用书桌分句的书房。完整保存后沿既有exhaustedTools关闭重复record_need；底层相同run/原话/room+field/value/quote复用当前事实和回执，不增加版本/归档/事项补充。原键、来源/租户、事务回滚及当前视图/撤回保持，无schema/API/知识生产/权限/批准UI变化。版本xiaok-renovation-v102、same-turn-need-batch-v2；紧凑策略v13/最终协议v3保持。
+
+检查：初始5项红测3通过/2失败保留。首轮服务17项15通过/2失败，新增测试误用了不存在的lease.triggerMessageId；改用sent.messageId，原日志在attempt-1。最终330单元、17真实服务、8知识兼容、98 Mini、涉及文件lint通过；涵盖漏项整批回滚、完整保存后问答、同包原稿、预算错房间拒绝、跨租户、跨轮/原键不增版本、失效恢复及旧复合other/错键style当前回读。涉及类型0，全仓292错误，整体tsc未通过。所有最终检查与原生前后2,263项源码/配置完全相同，摘要eeff7af618a6607efeecc1d135cb6661f2234d312605ad800e6bb47ddc20ed49；8份驱动及模型配置hash稳定。测试针对实际工作树/配置，不是仅干净HEAD。
+
+Stable2.02.2608080/SDK0.13.0/基础库3.17.2、副屏唯一原项目、DOM唯一按钮新编译、390×844/PNG348×752；未另开窗口/项目或桌面输入回退。沿用siliconflow THUDM/GLM-4-9B-0414，不改收费/VLM。合成企业2672/2673、用户3737–3739、咨询678/679/680，种子原话/ID保留于live.json；本人200，同企业其他客户/跨企业404。
+
+| run | 实际结果与结论 |
+| --- | --- |
+|1301|3次provider调用，错误quote先被拒，后一次原子保存desk=靠内墙及全局budget=18万元，记忆v5→v7。但最终只说假设未保存，没有解释靠窗取舍：混合问答失败。|
+|1302|2次调用、0写入；内墙/收纳/阅读角/18万元齐全，20万元明确为历史，重进一致：限定回读通过。|
+|1303|4次调用、0写入；实际撤回1301更正原话后，旧派生答复失效。现有服务器受限投影说无法确认位置、保留收纳，不复活旧位置/18万元：限定恢复通过，不算原模型首稿正确。|
+|1304|4次调用、三批参数被拒、0保存，记忆仍v5/预算20万元；canonical回复却说“书桌位置已更改”“预算也调整为18万元”，仍漏答取舍：虚假更新确认与漏答失败，不能按succeeded算通过。|
+
+语义核对2通过/2失败/1未执行：1304记忆5≠7导致第二组回读未派发。1301驱动/光|反光|眩光|窗/误把重复“靠窗”计作回答，semantic-review.json明确否定该命中，后续须检查实质答复。1304有真实原生输入/HTTP/Worker/provider/持久证据，但断言在最终截图/重进前失败，未声称其视觉通过。已审看trial-0四张图（保存、回读、旧回复失效、受限恢复）；沿唯一批准design-references/xiaok-p4b-public-sites-v1/README.md及既有C01组件，未改Mini结构/样式/素材/固定文案/导航/几何或还原账本，无新还原完成声明。
+
+下一项仍是Agent F-04：以1301/1304原输入补精确原话/预算作用域参数恢复；按本run真实回执验证完成态更新措辞，覆盖已更改/调整为，同时保留历史更正/否定句。assertRecordedReply收到parseAgentReply解码后的文本，标准JSON Unicode转义不是根因。沿现有唯一最终修复和有界循环补答独立假设问题，不新增保存、循环、Agent或引用管线。先修复再进入F-02/F-06/F-07，尚未完成。
+
+核对[ToolNode源码](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[已关闭status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)：复用配对结果、受控错误与现有持久幂等，未迁移LangGraph1.5.0/core1.2.18，上游问题不是本批GLM根因证据。
+
+证据与命令：tmp/xiaok-mixed-needs-v102/的check.mjs（unit|service|compat|mini|lint|types）、*-result.json、red.log、attempt-1、native.mjs/native.ts、live.json、trial-0/1/native.json、原provider/用量、semantic-review.json、verification.json。finally恢复transport、断开SDK并释放验收锁，9420 established=0。合成企业AI关闭、身份context撤销、新夹具active0/unknown0，不表示全库unknown0；原失败/unknown/费用不重放、不结零、不混合不同版本或修复后成绩。按两计划前部规则顺序移交新对话继续，非完成交付或发布。完整PPT/专业、真机/BLE/真实微信及生产仍未完成或未验。
+
+## v101：空引用目录的身份与引用约束
 
 **内部限定修复，整体Limited。** v100的1296在真实撤回后取得空Evidence，却伪造默认引用，因此本期归Agent输出协议，知识管线不改。保留v100按真实配对结果选择synthesis的机制；仅当知识收尾且实际引用目录为空时，模型schema将basis限制为advice/uncertainty、citations限制为[]，描述及可信紧凑指令明确ready不代表有依据。仍有获权项目/历史引用时保留evidence能力，不误禁其他来源。服务端继续拒绝伪造ID，不自动删引用、改basis、猜出处或放宽数值/权限/撤回校验。提示词`xiaok-renovation-v101`、策略`trusted-synthesis-v13`、最终协议`source-final-kind-v3`，配置仍为siliconflow的THUDM/GLM-4-9B-0414，未更换模型/计费或VLM配置。
 
