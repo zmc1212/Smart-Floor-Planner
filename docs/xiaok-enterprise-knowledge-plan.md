@@ -149,6 +149,7 @@ The compact stage-commit index retains scope/results while phase two holds detai
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
+| AG-04/05 v104 authorized current recap (internal; native failed) | Stable341 units/24 services/8 compatibility/98 Mini/lint; GLM9/Stable1305/1306 save nothing and false completions are blocked; F-04 pending | `0fd7d2254825e9eae632cedbcde977818f31bacc` |
 | AG-04/05 v103 mixed-reply checkpoint (F-04 unfinished) | Stable338 units/22 services/8 compatibility/98 Mini; separate test-narrowing1/lint/scoped types0; read-only recap/native pending | `0028465062cc7603637bf6b1976141757663f403` |
 | AG-04/05 v102 atomic mixed corrections (internal; native failed) | 330 units/17 services/8 compatibility/98 Mini/lint; current recap/withdrawal pass, mixed answers fail | `de1a0df8d96fe87260d5fae8c98dc6f0ee5f4929` |
 | AG-04/08 v101 empty citation catalog (bounded internal fix) | 325 units/13 services/8 compatibility/98 Mini/lint; native 3/3, sources/withdrawal/empty-catalog reentry pass, overall Limited | `c75863f08fbb299f1dbc32ae8e48b5330ed15874` |
