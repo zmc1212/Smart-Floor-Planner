@@ -27,7 +27,7 @@ const office = '书房靠窗办公需同时考虑自然采光、屏幕眩光和�
 const waterproof = '防水阶段先核对基层和施工条件，施工与检查由项目团队安排。闭水检查前不能把进入防水节点当作防水完成；铺砖前须核对检查记录。客户到场时间以管家实际沟通为准，不承诺固定日期。';
 const call = (name: string, args: unknown): ModelTurnOutput => ({ text: '', toolCalls: [{ id: randomUUID(), name, arguments: JSON.stringify(args) }],
   usage: { inputTokens: 30, outputTokens: 30 }, finishReason: 'tool_calls', providerRequestId: null });
-const results = (messages: ModelMessage[]) => messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as Array<{ sourceId: string; kind: string; text: string; citationOptions: Array<{ citationId: string }> }>;
+const results = (messages: ModelMessage[]) => messages.filter(m => m.role === 'tool').flatMap(m => JSON.parse(m.content).synthesisSources || []) as Array<{ sourceId: string; kind: string; title: string; text: string; citationOptions: Array<{ citationId: string }> }>;
 const synth = (segments: unknown[]) => call('final_response', { kind: 'synthesis', segments });
 
 before(async () => {
@@ -47,6 +47,8 @@ before(async () => {
 after(async () => {
   try { await withPlatformTransaction(async tx => {
     for (const e of tenants) { await deleteConstructionData(tx, BigInt(e)); await deleteAssistantData(tx, BigInt(e));
+      await tx.execute(sql`update app.leads set primary_floor_plan_id=null where enterprise_id=${e}`);
+      await tx.execute(sql`delete from app.floor_plans where enterprise_id=${e}`);
       await tx.execute(sql`delete from app.leads where enterprise_id=${e}`); await tx.execute(sql`delete from app.admin_users where enterprise_id=${e}`); await tx.execute(sql`delete from app.enterprises where id=${e}`); }
     for (const u of users) await tx.execute(sql`delete from app.users where id=${u}`);
   }); } finally { await closePostgresPool(); }
@@ -71,6 +73,69 @@ async function fixture(targetEid = eid, bound = true) {
   };
   return { actor, chat, cid, send, leadId, uid };
 }
+
+test('material numeric repair preserves real need receipts, cited originals, one-repair limits and revocation', async () => {
+  const x = await fixture();
+  const saved = await x.send('请记录预算18万元。', async (_m, _t, turn) => !turn
+    ? call('record_need', { room: '', field: 'budget', value: '18万元', quote: '请记录预算18万元。' })
+    : call('final_response', { kind: 'general', text: '已记录预算意向。' }));
+  assert.equal(saved.run.status, 'succeeded', JSON.stringify(saved.run));
+  // Same bounded v4 wall-graph shape as the existing materials contract fixture.
+  const layout = { version: 4, measurementMode: 'surveying', surveyGraph: { kind: 'survey-wall-graph', activeFloorId: 'f', floors: [{
+    id: 'f', name: '一层', ceilingHeightMm: 2800,
+    nodes: [{ id: 'a', xMm: 0, yMm: 0 }, { id: 'b', xMm: 4000, yMm: 0 }, { id: 'c', xMm: 4000, yMm: 3000 }, { id: 'd', xMm: 0, yMm: 3000 }],
+    walls: [{ id: 'ab', startNodeId: 'a', endNodeId: 'b' }, { id: 'bc', startNodeId: 'b', endNodeId: 'c' }, { id: 'cd', startNodeId: 'c', endNodeId: 'd' }, { id: 'da', startNodeId: 'd', endNodeId: 'a' }],
+    openings: [], spaces: [{ id: 'study', name: '书房', closed: true, wallIds: ['ab', 'bc', 'cd', 'da'] }],
+  }] } };
+  await withTenantTransaction(eid, async tx => {
+    const plan = await one(tx, sql`insert into app.floor_plans(enterprise_id,creator_id,name,source,status,layout_data)
+      values(${eid},${x.uid},'合成主正式v4户型，非实机量测','manual','completed',${JSON.stringify(layout)}::jsonb) returning id`);
+    await tx.execute(sql`update app.leads set primary_floor_plan_id=${String(plan!.id)} where enterprise_id=${eid} and id=${x.leadId}`);
+  });
+  const delivered: Array<{ id: string }> = [];
+  for (const mode of ['material', 'advice', 'ignored']) {
+    let calls = 0;
+    const answer = await x.send(mode === 'advice' ? '书房柔和照明，请给一个一般选择建议。这是独立问题，不新增或修改我的需求。' : '现有户型资料能说明什么，现场尺寸是否已核实？', async (messages, tools, turn) => {
+      try {
+      calls++;
+      if (!turn) return call(mode === 'advice' ? 'search_knowledge' : 'query_materials', mode === 'advice' ? { query: '书房柔和照明' } : { room: '' });
+      const all = results(messages), scope = all.find(s => s.title === '本次材料查询范围与缺项') || all[0]; assert.ok(scope);
+      const budget = all.find(s => s.text.includes('预算18万元')); assert.ok(budget);
+      const plan = all.find(s => s.text.includes('合成主正式v4户型')); assert.ok(plan);
+      if (turn === 1) return synth([{ basis: mode === 'advice' ? 'advice' : 'evidence',
+        text: mode === 'advice' ? '书房主灯可选3000K色温，配合可调光台灯。' : '现有资料包含正式v4户型和预算意向18万元；这次不能据此核实现场尺寸。',
+        citations: mode === 'advice' ? [] : [{ citationId: scope.citationOptions[0].citationId }] }]);
+      assert.equal(turn, 2); assert.equal(tools.length, 0);
+      const repair = synthesisRepairBase(messages);
+      assert.ok(repair, JSON.stringify(messages.filter(m => m.role === 'system').at(-1)));
+      const baseHash = repair.baseHash;
+      if (mode === 'ignored') return call('final_response', { kind: 'synthesis_repair', baseHash, edits: [{ segment: 0, basis: 'uncertainty' }] });
+      return call('final_response', { kind: 'synthesis_repair', baseHash, edits: [mode === 'advice'
+        ? { segment: 0, text: '可用均匀的基础照明搭配可调台灯，选择防眩光灯具，阅读时避开直射。' }
+        : { segment: 0, addCitationIds: [budget.citationOptions[0].citationId, plan.citationOptions[0].citationId] }] });
+      } catch (error) { console.error('material numeric injected callback', mode, turn, error); throw error; }
+    });
+    assert.equal(calls, 3);
+    if (mode === 'ignored') { assert.equal(answer.run.status, 'failed'); assert.equal(answer.run.errorCode, 'unsupported_model_commitment'); assert.equal(answer.run.outputMessageId, null); continue; }
+    assert.equal(answer.run.status, 'succeeded', JSON.stringify({ mode, calls, run: answer.run }));
+    const message = (await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === answer.run.outputMessageId)!; assert.ok(message.available);
+    if (mode === 'material') {
+      assert.match(JSON.stringify(message.content), /18万元/); assert.match(JSON.stringify(message.content), /本轮依据：.*正式户型/);
+      const bound = await withTenantTransaction(eid, tx => one(tx, sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${answer.runId} and kind='agent_synthesis_context'`));
+      const citations = ((bound!.private_checkpoint as Row).segments as Array<{ citations: Array<{sourceId:string;quote:string}> }>).flatMap(s => s.citations);
+      assert.ok(citations.some(c => c.quote.includes('预算18万元'))); assert.ok(citations.some(c => c.quote.includes('非实机量测')));
+      delivered.push({ id: message.id });
+    }
+    else { assert.doesNotMatch(JSON.stringify(message.content), /3000|kind.*general/); assert.match(JSON.stringify(message.content), /防眩光/); }
+    const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind from app.assistant_run_steps where enterprise_id=${eid} and run_id=${answer.runId}`));
+    assert.equal(steps.filter(s => s.kind === 'agent_validation').length, 1); assert.equal(steps.filter(s => s.kind === 'agent_need_write').length, 0);
+  }
+  for (const foreign of [await fixture(eid, false), await fixture(tenants[1], false)]) {
+    await assert.rejects(foreign.chat.messages(x.cid), /assistant_resource_not_found/);
+  }
+  await withTenantTransaction(eid, tx => tx.execute(sql`update app.leads set primary_floor_plan_id=null where enterprise_id=${eid} and id=${x.leadId}`));
+  assert.equal((await x.chat.messages(x.cid)).items.find(m => m.id === delivered[0].id)?.available, false);
+});
 
 test('original model context repairs retained1369/1370 drafts once with real writes, reentry and revocation', async () => {
   const body = '第二节 状态区别 客户同意某版方案不等于已经落实，也不等于事项关闭或工程验收通过。\n第一节 点位调整 点位调整需先核对现场尺寸，未核对不能视为已批准。';

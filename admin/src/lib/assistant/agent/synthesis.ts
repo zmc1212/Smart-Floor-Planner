@@ -503,7 +503,18 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
         + '旧金额与新金额比较须分别有对应原话；不能借相邻段引用、推算差值或把客户预算说成正式报价、现场事实或企业承诺。未知数字不能靠汉字或换单位绕过。'
         + repairLayoutInstructions + '只返回final_response。' };
     }
-    if(error.code==='unsupported_model_commitment'&&!hasFile&&!sources.some(s=>s.material?.ref.type==='formal_plan'))throw error;
+    // Current material originals already pass the existing ownership/version
+    // revalidation. A missing citation is diagnosable without accepting it:
+    // evidence gaps must have every number in those originals; unsupported
+    // advice quantities may only be removed or independently supported.
+    const materialOriginals = sources.filter(source => source.kind === 'project'
+      && (source.material?.ref.type === 'customer_need' && source.material.need?.authority === 'customer_statement' && source.material.need.formalApproval === false
+        || source.material?.ref.type === 'formal_floorplan' && source.material.basis === 'primary_plan'));
+    const materialNumericRepair = error.code === 'unsupported_model_commitment' && quotesVerified && numericGaps.length > 0 && materialOriginals.length > 0
+      && numericGaps.every(gap => value.segments[gap.segment - 1].basis === 'advice'
+        || gap.unsupportedNumbers.every(number => numericSourceCandidates(gap.unsupportedNumbers, materialOriginals).some(candidate => candidate.valuesInOriginal.includes(number))));
+    if (materialNumericRepair) checkedSynthesis(raw, sources, context, []);
+    if(error.code==='unsupported_model_commitment'&&!hasFile&&!sources.some(s=>s.material?.ref.type==='formal_plan')&&!materialNumericRepair)throw error;
     const missing=numericGaps.map(gap=>gap.segment);
     const numericTextPaths=numericGaps.map(gap=>({path:`segments[${gap.segment-1}].text`,removeUnsupportedNumbers:gap.unsupportedNumbers,
       permittedQuoteNumbers:[...new Set(value.segments[gap.segment-1].citations.flatMap(c=>typeof c.quote==='string'?c.quote.match(/\d+(?:\.\d+)?/g)||[]:[]))],
@@ -527,7 +538,7 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
       const supported = new Set(quote.match(/\d+(?:\.\d+)?/g) || []);
       return absent.every(n => supported.has(n)) ? [{ segment, sourceId: source.sourceId, copyExactQuote: quote }] : [];
     });
-    if(missing.length&&!hasFile&&numericQuoteCorrections.length!==missing.length)fail('unsupported_model_commitment',502);
+    if(missing.length&&!hasFile&&numericQuoteCorrections.length!==missing.length&&!materialNumericRepair)fail('unsupported_model_commitment',502);
     if(error.code==='unsupported_model_commitment'&&!missing.length)throw error;
     const catalogAnswer=value.segments.some(s=>s.citations.some(c=>Object.hasOwn(c,'citationId')))||raw.includes('"citationId"');
     if(catalogAnswer)return {code:error.code,feedback:'这是同轮唯一一次引用/依据修复，不调用业务工具、不新增来源或动作。引用仍只选已有citationOptions的citationId，不复制quote、不切换旧格式。核对以下正文路径和numericSourceCandidates，候选仅供定位，不证明任意主张。原文确实支持本段对象/单位时补引用保留正确数值，没有依据再删除；汉字量数不能绕过或换算：'+JSON.stringify(numericTextPaths)+'。所引用文件的可信名称/版号仅作元数据，不作为工程数值或采用依据；条件和一般建议身份保留。'+repairLayoutInstructions+'只返回final_response。'};
