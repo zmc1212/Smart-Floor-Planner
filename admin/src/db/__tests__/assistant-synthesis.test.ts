@@ -175,7 +175,7 @@ test('AG05 read-input recovery preserves real knowledge, queries once with a cor
     const source = results(messages).find(s => s.kind === 'knowledge' && s.text.includes('书房参数恢复甲'))!;
     assert.ok(source, 'complete authorized knowledge survives the parameter error');
     assert.deepEqual(((finalToolForMessages(messages).parameters.properties as Row).kind as Row).enum,
-      ['synthesis', 'business', 'knowledge', 'references'], 'an input error cannot bypass an earlier real source');
+      turn === 1 ? ['synthesis'] : ['synthesis', 'business', 'knowledge', 'references'], 'a rejected read cannot widen earlier knowledge; a real business result preserves its display protocol');
     if (turn === 1) return call('query_materials', { leadId: x.leadId, room: '书房' });
     assert.ok(results(messages).some(s => s.kind === 'project'));
     return synth([{ basis: 'evidence', text: '这份资料建议比较侧向布置，避免直对强光窗户。', citations: [{ citationId: source.citationOptions[0].citationId }] }]);
@@ -677,7 +677,7 @@ test('KB3 catalog citation first draft persists exact originals with typed docum
     if(!turn)return call('search_knowledge',{query:'合成引用目录 参考间距310mm 适用前提'});
     assert.equal(turn,1,'The catalog protocol must not require a format repair');
     const kinds = (finalToolForMessages(messages).parameters.properties as Record<string, { enum: string[] }>).kind.enum;
-    assert.deepEqual(kinds, ['synthesis', 'business', 'knowledge', 'references']);
+    assert.deepEqual(kinds, ['synthesis']);
     const source=results(messages).find(s=>s.text===body) as {citationOptions?:Array<{citationId:string}>}|undefined;
     assert.ok(source?.citationOptions?.length);assert.doesNotMatch(JSON.stringify(messages),/PRIVATE_ONLY_NEVER_SEND/);
     return synth([{basis:'evidence',text:'《'+filename+'》要求把310mm与适用前提一起核对，不能只凭间距作现场结论。',citations:[{citationId:source!.citationOptions![0].citationId}]}]);
@@ -693,4 +693,21 @@ test('KB3 catalog citation first draft persists exact originals with typed docum
   await knowledge.execute('retire',{documentId:document.documentId,expectedVersion:2},randomUUID());
   assert.equal((await x.chat.citation(message.citations[0].id)).available,false);
   assert.equal((await x.chat.messages(x.cid)).items.find(m=>m.id===message.id)?.available,false);
+});
+
+test('AG08 knowledge-only mixed final envelopes remain rejected despite real current citations',async()=>{
+ const body='合成最终协议：检查安排由项目团队核对，阶段标签不证明检查通过。';
+ await publish('合成最终协议',body);const x=await fixture();let calls=0;
+ const sent=await x.send('请解释企业资料中的检查安排和阶段标签含义。',async(messages,_tools,turn,requestTools)=>{
+  calls++;if(!turn)return call('search_knowledge',{query:'合成最终协议 检查安排 阶段标签'});
+  const final=requestTools?.find(t=>t.name==='final_response');assert.ok(final);
+  assert.deepEqual((final.parameters.properties as Row).kind,{type:'string',enum:['synthesis']});
+  const source=results(messages).find(s=>s.text===body);assert.ok(source);
+  return call('final_response',{kind:'knowledge',text:body,segments:[{basis:'evidence',text:body,citations:[{citationId:source.citationOptions[0].citationId}]}]});
+ });assert.equal(calls,2);assert.equal(sent.run.status,'failed');assert.equal(sent.run.errorCode,'invalid_model_answer');assert.equal(sent.run.outputMessageId,null);
+ const steps=await withTenantTransaction(eid,tx=>rows(tx,sql`select kind,private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${sent.runId}`));
+ assert.equal(steps.filter(s=>s.kind==='agent_need_write').length,0);
+ const checkpoint=steps.filter(s=>s.kind==='agent_model').at(-1)!.private_checkpoint as Row;
+ const raw=JSON.parse(String(((checkpoint.providerOutput as Row).toolCalls as Row[])[0].arguments));
+ assert.equal(raw.kind,'knowledge');assert.equal(raw.text,body);assert.equal(raw.segments[0].text,body);
 });

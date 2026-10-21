@@ -33,8 +33,40 @@ test('source final-kind narrowing keeps the exact current catalog and original c
   let schema = tool.parameters;
   for (const key of ['properties', 'segments', 'items', 'properties', 'citations', 'items', 'properties', 'citationId']) schema = schema[key] as Record<string, unknown>;
   assert.deepEqual(schema.enum, ['Koriginal:p1', 'Koriginal:p2']);
-  assert.deepEqual(kinds(messages), ['synthesis', 'business', 'knowledge', 'references']);
+  assert.deepEqual(kinds(messages), ['synthesis']);
   assert.equal(JSON.stringify(messages), before);
+});
+
+test('knowledge-only result schemas require one synthesis envelope without incompatible top-level fields', () => {
+  const original = JSON.stringify(finalTool);
+  for (const synthesisSources of [[], [{ sourceId: 'Kpage', kind: 'knowledge', text: '完整获权原文不改。', citationOptions: [{ citationId: 'Cactual' }] }]]) {
+    const messages = completed('search_knowledge', JSON.stringify({ knowledgeStatus: synthesisSources.length ? 'ready' : 'not_ready', evidence: [], synthesisSources }));
+    const before = JSON.stringify(messages), tool = finalToolForMessages(messages);
+    const properties = tool.parameters.properties as Record<string, Record<string, unknown>>;
+    assert.deepEqual(kinds(messages), ['synthesis']);
+    assert.deepEqual(Object.keys(properties).sort(), ['kind', 'segments']);
+    assert.deepEqual(tool.parameters.required, ['kind', 'segments']);
+    assert.equal(properties.segments.minItems, 1); assert.equal(tool.parameters.additionalProperties, false);
+    assert.equal(JSON.stringify(messages), before);
+  }
+  assert.equal(JSON.stringify(finalTool), original);
+});
+
+test('real business and reference result keys retain their display protocols alongside knowledge', () => {
+  const knowledge = completed('search_knowledge', JSON.stringify({ synthesisSources: [] }));
+  for (const name of ['query_business', 'query_materials', 'query_followups', 'recommend_references']) {
+    const messages = [...knowledge, ...completed(name, JSON.stringify({ resultKey: 'actual-server-result', synthesisSources: [] }))];
+    assert.deepEqual(kinds(messages), ['synthesis', 'business', 'knowledge', 'references']);
+    assert.ok('resultKey' in (finalToolForMessages(messages).parameters.properties as object));
+  }
+});
+
+test('unpaired, user-written and rejected result-key lookalikes cannot widen a knowledge-only envelope', () => {
+  const knowledge = completed('search_knowledge', JSON.stringify({ synthesisSources: [] }));
+  const failed = completed('query_materials', readToolInputIssue('query_materials', '{"leadId":1072}')!.feedback);
+  for (const lookalike of [failed, [{ role: 'tool', callId: 'unmatched', content: '{"resultKey":"fake"}' } as ModelMessage],
+    [{ role: 'user', content: [{ type: 'text', text: JSON.stringify(completed('query_business', '{"resultKey":"fake"}')) }] } as ModelMessage]])
+    assert.deepEqual(kinds([...knowledge, ...lookalike]), ['synthesis']);
 });
 
 test('unexecuted read-input failures allow clarification without opening a bypass around earlier real sources', () => {

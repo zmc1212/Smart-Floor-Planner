@@ -1,6 +1,20 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v99：可信PDF实际页码与工程数值分离
+## 当前v100：知识结果使用一个适用的最终结构
+
+**内部限定修复，整体Limited。** 1292/1293真实原稿取得正确PDF Evidence却混用knowledge/segments，故归Agent，不改知识管线。`finalToolForMessages`只根据当轮已配对的真实工具结果收紧生成schema：search_knowledge具有synthesisSources且没有其他真实业务/案例resultKey时，顶层只保留kind=synthesis与必需的segments，至少一段；专业解释和原文查询共用原引用段落。空结果也沿这个结构保留一般建议/待核实能力。已有真实展示resultKey继续保留原格式；用户文本、未配对消息和未执行的参数失败不能扩大格式。唯一修复的synthesis_repair仍优先，当前citationOptions原ID和完整来源不改。服务器的旧格式兼容、引用/数值/承诺/租户/撤回校验保持，不把模型选择当授权，不把错误kind改名、猜ID或丢弃顶层未校验正文后交付。
+
+prompt v100 / trusted-synthesis-v12 / source-final-kind-v2同步工具结果、紧凑合同和最终schema；同轮所引实际PDF页码继续与工程量分开。新测试通过可选第四参数requestTools观察真实provider收到的最终/修复工具，原前三参数的业务工具含义保留；真实provider路径无额外测试适配。最终323单元、12服务、8兼容、98 Mini和涉及文件lint通过，本次类型0/全仓292；各窗2,261项源码/测试/配置无漂移，最终组合版本检查已重跑。12服务含真实两页PDF的解析/核对/embedding/发布/召回、页码交付/重进/撤回、无据工程量拒绝、参数错误恢复/真实展示键和原稿混合格式仍拒绝。命令`node tmp/xiaok-final-envelope-v100/check.mjs <unit|service|compat|mini|lint|types>`。
+
+最初schema红测3失败；服务首轮10通过/2失败来自新增测试误用旧注入参数读取final_response，回调在返回结果前断言抛错，Worker保守标unknown。这些注入回调未调用远端文字模型，真实embedding仍执行；原日志、状态与hash保留在service-attempt-1，不回填成功，不重放历史unknown。修正测试观察接口后使用新夹具完整重跑；原测试after清理只作用隔离合成资料。较早8兼容和最终8兼容分别记录，不混作一次结果。
+
+Stable2.02.2608080 / SDK0.13.0 / 基础库3.17.2、副屏、同仓唯一项目、新编译、精确C01及390×844（PNG348×752）。最终2664/2665企业、3725–3727用户、665–667会话；文档360/版本366、原件102、片2787只提供人工核对的实际第2页，quote没有数字2。1294/1295为与v99相同的两条询问，各3次provider调用、首个最终答复均只有kind/segments且0修复，正文与来源面板实际第2页、逐字原文和重进通过。真实退役后两条旧回复/引用均不可用，原生来源面板和撤回截图已审看。1296再问一般布置：两次实际检索均ready但Evidence=0，模型仍把通用建议标evidence并捏造current_citation_1，4次调用后invalid_model_citation失败；错误截图/原稿/用量保留，整批2/3，不能算原生全部通过。三题0需求写入、记忆v0不变；本人200，同企业其他客户/跨企业先正控再404。AI关闭、context撤销，active0/unknown0，原件退役，传输恢复；LLM配置、源码、两驱动前后相同。
+
+原生attempt-1仅窗口前置失败，未发新模型请求：同一项目处于最小化，尺寸守卫误计0，不是项目关闭。验证CDP路径/Stable版本和唯一exe/句柄后恢复原窗口，没有关闭/重建其他窗口。2662/2663身份已撤销/AI关闭，文档359追加真实退役一次；清理首断言误以为published指针清空，原失败保留，随后只读审计确认status=retired/v3、历史指针365保留，未重复退役或重发任务。最终使用新夹具与固定驱动。证据`tmp/xiaok-final-envelope-v100/live.json`、`native.json`、attempt-1及各结果。原C01批准`design-references/xiaok-p4b-public-sites-v1/README.md`保持，无Mini结构/样式/素材/固定文案/导航或还原台账变更。
+
+参考[OpenAI Agents JS工具schema/输入校验源码](https://github.com/openai/openai-agents-js/blob/main/packages/agents-core/src/tool.ts)及[测试](https://github.com/openai/openai-agents-js/blob/main/packages/agents-core/test/tool.test.ts)：采用适用object schema与独立服务校验的边界，复用原Gateway/LangGraph与持久步骤；未迁移SDK、未给当前供应商增加未经验证的strict/联合schema参数。已验证配置GLM9的上述有限结果，不推断其他模型可靠性。下一有界修复是Agent在当前引用目录为空时仍可选择evidence/伪造引用的生成约束；知识返回0条正确，不能放宽引用校验或另建管线。F-01/02/04/06/07、完整PPT/专业质量、真机/BLE/真实微信与生产仍保持原未验/未完成状态。
+
+## 历史v99：可信PDF实际页码与工程数值分离
 
 **内部限定修复，整体Limited。** 真实故障是PDF定位页码不在原段文字中，却被当成无依据工程量。Agent的`engineeringClaimText`仅从本段实际引用的knowledge Evidence中读取`format=pdf`和有效正整数`file.page`，识别精确“第N页”（允许横向排版空白）；不把页码加入quote或通用数字白名单，不改原文、引用ID、原始定位和公开DTO。无引用、其他来源/格式、非法页码、不同页码及裸数/尺寸/金额/时长仍沿原校验；不声称字面数值校验已解决所有语义归因。提示词v99同步这一区别。知识解析、索引、检索、发布和撤回无生产代码变动。
 

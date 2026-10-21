@@ -80,7 +80,7 @@ export const finalTool: ModelTool = { name: 'final_response', description: '最�
       citations: { type: 'array', maxItems: 4, items: { type: 'object', properties: { citationId: { type: 'string', description:'只选本轮来源citationOptions中的完整citationId。服务端装配原文，不提供sourceId、quote或引用模式。' } }, required: ['citationId'], additionalProperties: false } } },
       required: ['basis','text','citations'], additionalProperties: false } } }, required: ['kind'], additionalProperties: false,
 } };
-export const agentSourceFinalProtocol = 'source-final-kind-v1';
+export const agentSourceFinalProtocol = 'source-final-kind-v2';
 export const agentToolFinalProtocol = 'deferred-structured-final-v1';
 export const agentNeedBatchProtocol = 'same-turn-need-batch-v1';
 /** Adapt independent model-selected calls to the existing atomic schema.
@@ -110,13 +110,22 @@ const sourceQueryTools = new Set(['query_business', 'query_materials', 'query_fo
 /** The provider sees the same current catalog as the validator. Schema enums
  * assist generation; authorized server lookup remains the acceptance boundary. */
 export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
-  const queriedSources = messages.some((message, index) => {
-    if (message.role !== 'tool' || isReadToolInputFailure(message.content)) return false;
+  let queriedSources = false, knowledgeResult = false, otherDisplayResult = false;
+  for (const [index, message] of messages.entries()) {
+    if (message.role !== 'tool' || isReadToolInputFailure(message.content)) continue;
     let requestIndex = index - 1;
     while (requestIndex >= 0 && messages[requestIndex].role === 'tool') requestIndex--;
     const request = messages[requestIndex];
-    return request?.role === 'assistant' && request.toolCalls?.some(call => call.id === message.callId && sourceQueryTools.has(call.name));
-  });
+    const call = request?.role === 'assistant' ? request.toolCalls?.find(call => call.id === message.callId && sourceQueryTools.has(call.name)) : undefined;
+    if (!call) continue;
+    queriedSources = true;
+    try {
+      const packet = JSON.parse(message.content);
+      if (!packet || typeof packet !== 'object' || Array.isArray(packet)) continue;
+      if (call.name === 'search_knowledge' && Array.isArray(packet.synthesisSources)) knowledgeResult = true;
+      if (call.name !== 'search_knowledge' && typeof packet.resultKey === 'string' && packet.resultKey) otherDisplayResult = true;
+    } catch { /* Unknown result shapes retain the existing source-kind boundary. */ }
+  }
   const ids=[...new Set(messages.flatMap(message=>{
     if(message.role!=='tool')return [];
     try{const packet=JSON.parse(message.content);return (Array.isArray(packet?.synthesisSources)?packet.synthesisSources:[])
@@ -127,18 +136,29 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
   if (repairTool) return repairTool;
   if(!ids.length&&!queriedSources)return finalTool;
   const parameters=structuredClone(finalTool.parameters);
-  if (queriedSources) (parameters.properties as Record<string, unknown>).kind = { type: 'string', enum: ['synthesis', 'business', 'knowledge', 'references'] };
+  const knowledgeOnly = knowledgeResult && !otherDisplayResult;
+  const properties = parameters.properties as Record<string, Record<string, unknown>>;
+  if (queriedSources) properties.kind = { type: 'string', enum: knowledgeOnly ? ['synthesis'] : ['synthesis', 'business', 'knowledge', 'references'] };
+  if (knowledgeOnly) {
+    // One current output envelope, using the provider's existing object schema.
+    // Legacy display formats remain accepted by server validation; advertise
+    // them only when an actual business/reference result supplies that format.
+    for (const field of ['text', 'resultKey', 'selections']) delete properties[field];
+    parameters.required = ['kind', 'segments']; properties.segments.minItems = 1;
+  }
   if (ids.length) {
     let schema=parameters;
     for(const key of ['properties','segments','items','properties','citations','items','properties','citationId'])schema=schema[key] as Record<string,unknown>;
     schema.enum=ids;
   }
-  return {...finalTool,parameters,...(queriedSources ? { description: '本轮已查询来源。专业解释用synthesis及segments/本轮citationId；原结果展示可用business/knowledge/references。不能用general/vision/unavailable绕过来源校验。' } : {})};
+  return {...finalTool,parameters,...(queriedSources ? { description: knowledgeOnly
+    ? '本轮知识结果用kind=synthesis，顶层仅kind和segments，每段basis/text/citations。原文查询也在段落中保留对应引用；不要输出kind=knowledge或顶层text/resultKey/selections。引用只选本轮citationId，服务端继续校验全部来源与正文。'
+    : '本轮已查询来源。专业解释用synthesis及segments/本轮citationId；原结果展示可用business/knowledge/references。不能用general/vision/unavailable绕过来源校验。' } : {})};
 }
 export async function processAgentAnswer(lease: Lease, dependencies: {
-  model?: (messages: ModelMessage[], tools: ModelTool[], turn: number) => Promise<ModelTurnOutput>;
-  vision?: (messages: ModelMessage[], tools: ModelTool[], turn: number) => Promise<ModelTurnOutput>;
-  summary?: (messages: ModelMessage[], tools: ModelTool[], turn: number) => Promise<ModelTurnOutput>;
+  model?: (messages: ModelMessage[], tools: ModelTool[], turn: number, requestTools?: ModelTool[]) => Promise<ModelTurnOutput>;
+  vision?: (messages: ModelMessage[], tools: ModelTool[], turn: number, requestTools?: ModelTool[]) => Promise<ModelTurnOutput>;
+  summary?: (messages: ModelMessage[], tools: ModelTool[], turn: number, requestTools?: ModelTool[]) => Promise<ModelTurnOutput>;
 } = {}) {
   let outcomeKnown = false;
   const constructionSources = new Set<string>();
@@ -393,7 +413,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           const injected = purpose === 'vision' ? dependencies.vision : purpose === 'summary' ? dependencies.summary : dependencies.model;
           const output = injected ? await (async () => {
             await beforeProviderCall();
-            return { agentOutput: await injected(modelMessages, tools, turn), attemptId: null };
+            // Preserve legacy business-tools callbacks while allowing tests to
+            // observe the exact final/repair schema sent to the real provider.
+            return { agentOutput: await injected(modelMessages, tools, turn, dispatchTools), attemptId: null };
           })() : await executePostgresText({ enterpriseId: BigInt(lease.enterpriseId), owner: { kind: 'assistant_run', runId: BigInt(lease.runId) },
             logicalModelKey: 'chat.general', messages: [], maxTokens: agentModelLimits.maxOutputTokens,
             agent: { config: initial.config, input: { messages: modelMessages, tools: dispatchTools, maxTokens: agentModelLimits.maxOutputTokens, requireTool: purpose !== 'vision' } },
@@ -743,7 +765,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               ...(evidence?.professional?{professional:{origin:evidence.professional.entry.origin,conditions:evidence.professional.entry.conditions,prerequisites:evidence.professional.entry.prerequisites,exceptions:evidence.professional.entry.exceptions},applicability:evidence.professional.applicability,context:evidence.professional.context}: {})})),
               boundProjectContext: bound ? { resolution: bound.materials.snapshot.data.resolution, missing: bound.materials.snapshot.data.missing, constructionQueriedAt: bound.construction.snapshot.queriedAt } : null,
               instructions: (unresolvedConflict ? '资料明确含尚未核实的规则冲突。综合回答第一段必须basis=uncertainty，先说明不能按企业规则择一；随后分别引述双方，不用“主流/倾向/优先”认定企业现行口径。一般建议另标身份。' : '')
-                + '解释专业原理、取舍、适用条件时用kind=synthesis，引用本轮synthesisSources。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。兼容原文查询kind=knowledge。'
+                + '解释专业原理、取舍、适用条件时用kind=synthesis和segments，引用本轮synthesisSources；原文查询也用该段落结构保留引用，不输出kind=knowledge或顶层text/selections。冲突保留双方并说明待核实；缺知识仍可给标明身份的一般建议。不得编造企业或现场事实。其他独立业务/案例展示结果沿其真实resultKey与原协议。'
                   + '当前问题若问验收或完成状态，直接用“当前证据不足以支持该结论，仍需核对实际检查记录”等措辞回答判断。text中禁止复述完成词，包括否定句、引号与举例中的“已验收”“已经验收”“已批准”“已经批准”“已完成验收”；不要写“不能认定已经验收/不支持已经验收”，改为“当前证据不能支持该结论”。原文quote仍须逐字保留，不能改写。' }) };
           }
           if (name !== 'record_need') fail('assistant_capability_forbidden', 403);

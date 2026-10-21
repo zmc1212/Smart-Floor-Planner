@@ -111,10 +111,11 @@ test('AG08/K06 actual parsed PDF page survives Agent validation, durable reentry
  const sources=(messages:ModelMessage[])=>messages.filter(m=>m.role==='tool').flatMap(m=>JSON.parse(m.content).synthesisSources||[]) as Array<{sourceId:string;text:string;file?:{page?:number};citationOptions:Array<{citationId:string}>}>;
  const send=async(quantity:boolean)=>{
   const sent=await chat.send(agentCid,randomUUID(),{version:1,blocks:[{type:'text',text:'请解释企业合成PDF页码定位资料中的检查安排和阶段标签。'}]}),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
-  await processAgentAnswer(lease,{model:async(messages,_tools,turn)=>{
+  await processAgentAnswer(lease,{model:async(messages,_tools,turn,requestTools)=>{
    if(!turn)return call('search_knowledge',{query:'合成PDF页码定位 Waterproofing checks project team stage inspection'});
    if(quantity&&turn>1){const base=synthesisRepairBase(messages);assert.ok(base);return call('final_response',{kind:'synthesis_repair',baseHash:base.baseHash,edits:[{segment:0,text:base.original.segments[0].text}]});}
    const selected=sources(messages).find(s=>s.file?.page===2&&s.text.includes('Waterproofing checks'));assert.ok(selected,'The page must come from real PDF parsing/indexing/retrieval');assert.doesNotMatch(selected.text,/2/);
+   const final=requestTools?.find(tool=>tool.name==='final_response');assert.ok(final);assert.deepEqual((final.parameters.properties as Row).kind,{type:'string',enum:['synthesis']});assert.deepEqual(final.parameters.required,['kind','segments']);
    if(!quantity)assert.equal(turn,1,'A valid actual page must not consume a repair');
    return call('final_response',{kind:'synthesis',segments:[{basis:'evidence',text:'企业资料第2页说明施工检查由项目团队安排，阶段标签不代表检查通过。'+(quantity?'厚度要求2mm。':''),citations:[{citationId:selected.citationOptions[0].citationId}]}]});
   }});return{run:await chat.run(lease.runId),runId:lease.runId};
