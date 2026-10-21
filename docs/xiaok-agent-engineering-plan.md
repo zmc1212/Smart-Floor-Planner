@@ -118,6 +118,7 @@ The compact stage-commit index does not replace the phase-two contract. This che
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
+| AG-04/05 v111 current-original input/retry (internal; withdrawal pending) |361 units/29 isolated services/8 compatibility/98 Mini/lint; free Qwen1330/1333 saves,1331/1334 exact budget recaps and2 U01 recoveries pass;1332 withdrawn-budget reply wrongly selects schemes, overall Limited; full tsc292/scoped0 | `0d91aee6c36749f072ac3cec8ae0acc15d0cb178` |
 | AG-04/05 v107 current-original numeric recovery (internal; Limited) |352 units/27 services/8 compatibility/98 Mini/lint; free Qwen1314–1318 native5/5 and2 U01 reconnects; withdrawal raw error uses existing partial view; numeric repair natural branch untriggered | `e1c8ff1de79a77800356575a4ae098ab80f9d77e` |
 | AG-04/05 v106 explicit atomic envelopes (internal; native partial failure) |347 units/26 services/8 compatibility/98 Mini/lint; free Qwen1311/1312 save both needs,1311 numeric final fails,1312/1313 and one U01 recovery pass; F-04 pending | `75538c72f2733125faaf363294f31dc45fe57069` |
 | AG-04/05 v105 free-Qwen continuation (internal; native failed) | Unchanged core source; confirmed-free Qwen3.5-4B1309/1310 select exact quotes but omit complete atomic batch,0writes; F-04 pending | `7955d14346e6b2badb669b63232391551b1b05b2` |
