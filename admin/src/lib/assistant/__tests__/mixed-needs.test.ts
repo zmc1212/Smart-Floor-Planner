@@ -65,6 +65,18 @@ test('current budget recall repair rejects empty schemes and unavailable amounts
 });
 
 const budgetOnly = '更正：全屋预算改为18万元。';
+test('current budget recall rejects run1348 internal message references without changing the budget', () => {
+  const question='我当前预算记的是多少？';
+  const memory=applyNeedDelta(readMemory({}),{...budget,sourceMessageId:'10292',expectedVersion:0},{id:'10292',text:budget.quote},'run:0:0','2026-10-21T11:00:00Z');
+  const before=JSON.stringify(memory);
+  for(const text of ['根据您之前的记录，您当前确认的全屋预算为18万元。此前曾提到过20万元，但已在10292消息中更正为18万元。',
+    '当前预算为18万元，来源消息ID为10292。','当前预算18万元，sourceMessageId为10292。']) {
+    const issue=currentBudgetRecallFeedback(JSON.stringify({kind:'general',text}),memory,question);
+    assert.equal(issue?.code,'ungrounded_response_scope');assert.equal(issue?.responseScope,'current_budget_available');
+  }
+  assert.equal(currentBudgetRecallFeedback(JSON.stringify({kind:'general',text:'当前预算为18万元，沿用原记录。'}),memory,question),null);
+  assert.equal(JSON.stringify(memory),before);
+});
 test('current budget recall rejects run1345 unsupported correction dates while preserving sourced dates', () => {
   const question = '我当前预算记的是多少？';
   const memory = applyNeedDelta(readMemory({}), {...budget,sourceMessageId:'1',expectedVersion:0}, {id:'1',text:budget.quote}, 'run:0:0', '2026-10-21T11:00:00Z');

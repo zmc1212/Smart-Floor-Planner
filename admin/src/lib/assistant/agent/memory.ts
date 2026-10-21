@@ -65,6 +65,7 @@ export function currentBudgetRecallFeedback(raw: string, memory: NeedMemory, que
   // budget assertion; history and unrelated facts cannot supply a timeline.
   const unsupportedDate = (text.match(/\d{4}[-/年]\d{1,2}[-/月]\d{1,2}(?:日|号)?|\d{1,2}月\d{1,2}(?:日|号)/g) || [])
     .some(date => !budgetFacts.some(fact => fact.value.includes(date) || fact.quote.includes(date)));
+  const internalReference = /sourceMessageId|sourceId|factId|currentNeedView|agentMemory|memoryVersion|(?:消息|来源|记录)\s*(?:ID|id|编号)|\d{3,20}\s*(?:号|条)?消息/.test(text);
   // A warning against inferring absence is not itself an absence assertion.
   const assertions = text.replace(/(?:不能|无法|不可|不应)(?:据此)?(?:判断|认定|断言|推断|证明|声称)[^。！？!?；;\n]*/g, '')
     .replace(/(?:并?不代表|不等于|不意味着)[^。！？!?；;\n]*/g, '');
@@ -72,11 +73,13 @@ export function currentBudgetRecallFeedback(raw: string, memory: NeedMemory, que
   const currentUnavailable = /预算/.test(text) && /当前|本次|本轮|目前|现在|暂时/.test(text)
     && /(?:无法|不能|未能)(?:确认|确定|核实|读取)|不可用|没有可用|没有有效/.test(text);
   if (['general','unavailable','synthesis'].includes(reply.kind || '')
-    && !unsupportedDate && (!missing || currentUnavailable && !unsupportedAbsence
+    && !unsupportedDate && !internalReference && (!missing || currentUnavailable && !unsupportedAbsence
       && !/\d+(?:\.\d+)?\s*(?:万元|万|元)/.test(text))) return null;
-  return { code: 'ungrounded_response_scope', feedback: '只修复本轮最终回复，仍限现有唯一一次修复，不调用工具、不保存或恢复需求。客户询问已记录预算的当前状态，已发布方案、报价或其他业务空列表不能回答这个问题。依据本轮仍获权的当前需求回答；历史原话不能覆盖当前有效记录，已失效来源或旧预算不能恢复。'
+  return { code: 'ungrounded_response_scope', responseScope: missing ? 'current_budget_unavailable' as const : 'current_budget_available' as const,
+    feedback: '只修复本轮最终回复，仍限现有唯一一次修复，不调用工具、不保存或恢复需求。客户询问已记录预算的当前状态，已发布方案、报价或其他业务空列表不能回答这个问题。依据本轮仍获权的当前需求回答；历史原话不能覆盖当前有效记录，已失效来源或旧预算不能恢复。不向客户展示消息编号、内部ID、字段名或工具名。'
     + (missing ? '本轮获权当前需求没有budget字段，只能说明本次无法确认当前预算，不输出金额。当前不可读取不证明从未保存；不能断言客户从未记录、系统没有保存/录入，也不能猜测口头提及、未正式入库或尚未确定等原因。召回仅有问题、无结果或hasMore=false/oversized=false都只限定该次查询，不能据此作历史不存在的结论。不能把未查到方案说成未查到预算。' : '保留当前需求身份，不把客户意向当作正式报价或本轮新保存回执。只回答当前预算，不附加当前预算原话没有支持的日期或时间线；存储时间不是客户更正日期。')
-    + '若本轮已经查询来源，沿既有synthesis格式用uncertainty段和空citations说明缺项；否则沿general/unavailable。答案由你生成，不新增来源或正式批准。' };
+    + (missing ? '本次修复只沿final_response的synthesis格式，用一个uncertainty段和空citations说明当前可用性。' : '本次修复只沿final_response的general格式，简洁回答当前有效预算，不追加历史时间线或内部定位编号。')
+    + '答案由你生成，不新增来源或正式批准。' };
 }
 /** Narrow direct-receipt intent only. Mixed questions/actions keep the model
  * path; this never extracts a need or authorizes a write by itself. */

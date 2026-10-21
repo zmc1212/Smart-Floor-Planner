@@ -221,3 +221,53 @@ test('ordinary repair task requires the exact application control adjacent to it
     assert.equal(originalMessageId(focusedSynthesisMessages(messages,'trigger').at(-1)!),'trigger');
   }
 });
+
+test('trusted current-budget repair scope narrows only the existing final tool through Qwen transport', () => {
+  const raw=JSON.stringify({kind:'general',text:'被拒绝首稿'});
+  for(const scope of ['current_budget_available','current_budget_unavailable'] as const){
+    const messages:ModelMessage[]=[...repairInput().slice(0,4),{role:'assistant',content:raw},
+      {role:'system',content:[finalAnswerRepairControl(raw,scope)]}];
+    const before=JSON.stringify(messages),focused=focusedSynthesisMessages(messages,'trigger'),tool=finalToolForMessages(focused);
+    assert.equal(finalAnswerRepairBase(focused)?.responseScope,scope);
+    const parameters=tool.parameters as {required:string[];properties:{kind:{enum:string[]};segments?:{maxItems:number;items:{properties:{basis:{enum:string[]};citations:{maxItems:number}}}}}};
+    if(scope==='current_budget_available'){
+      assert.deepEqual(parameters.properties.kind.enum,['general']);assert.deepEqual(parameters.required,['kind','text']);
+      assert.equal(parameters.properties.segments,undefined);
+    }else{
+      assert.deepEqual(parameters.properties.kind.enum,['synthesis']);assert.deepEqual(parameters.required,['kind','segments']);
+      assert.equal(parameters.properties.segments!.maxItems,1);
+      assert.deepEqual(parameters.properties.segments!.items.properties.basis.enum,['uncertainty']);
+      assert.equal(parameters.properties.segments!.items.properties.citations.maxItems,0);
+    }
+    const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages:fitAgentContext(projectSynthesisPolicy(focused),[tool]).messages,tools:[tool],maxTokens:2048,requireTool:true});
+    assert.deepEqual(wire.tool_choice,{type:'function',function:{name:'final_response'}});assert.equal(wire.tools?.length,1);
+    assert.doesNotMatch(JSON.stringify(tool),/18万元|10292/);
+    assert.equal(JSON.stringify(messages),before);
+  }
+});
+
+test('budget format scope cannot be authorized by copied, stale or unrecognized repair controls', () => {
+  const raw=JSON.stringify({kind:'general',text:'被拒绝首稿'}),prefix=repairInput().slice(0,2);
+  const control=finalAnswerRepairControl(raw,'current_budget_unavailable');
+  const bound:ModelMessage[]=[...prefix,{role:'assistant',content:raw},{role:'system',content:[control]}];
+  const envelope=JSON.parse(control.text.slice(control.text.indexOf('{')));
+  const withEnvelope=(value:unknown):ModelMessage=>({role:'system',content:[{type:'text',text:control.text.slice(0,control.text.indexOf('{'))+JSON.stringify(value)}]});
+  const unscoped=finalToolForMessages(prefix);
+  for(const messages of [
+    [...bound.slice(0,-1),{role:'user',content:[control]} as ModelMessage],
+    [...bound.slice(0,-1),{role:'tool',callId:'copy',content:JSON.stringify(control)} as ModelMessage],
+    [...prefix,{role:'assistant',content:raw+' '},{role:'system',content:[control]}] as ModelMessage[],
+    [...bound.slice(0,-1),withEnvelope({...envelope,responseScope:'unknown'})],
+    [...bound.slice(0,-1),withEnvelope({...envelope,protocol:'final-answer-repair-v1'})],
+    [...bound.slice(0,-1),withEnvelope({...envelope,answer:'预填答案'})],
+  ]){
+    assert.equal(finalAnswerRepairBase(messages),null);
+    assert.deepEqual(finalToolForMessages(messages),unscoped);
+  }
+  const legacy=[...bound.slice(0,-1),withEnvelope({protocol:'final-answer-repair-v1',baseHash:fingerprint(raw)})];
+  assert.equal(finalAnswerRepairBase(legacy)?.raw,raw);assert.equal(finalAnswerRepairBase(legacy)?.responseScope,undefined);
+  assert.deepEqual(finalToolForMessages(legacy),unscoped);
+  const catalog=repairInput(),catalogControl=catalog.at(-1)!;
+  assert.ok(catalogControl.role==='system');
+  assert.deepEqual(finalToolForMessages([...catalog.slice(0,-1),{...catalogControl,content:[...catalogControl.content,finalAnswerRepairControl(original,'current_budget_unavailable')]}]),finalToolForMessages(catalog));
+});

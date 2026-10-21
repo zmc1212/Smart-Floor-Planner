@@ -194,6 +194,25 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
   }))];
   const repairTool = synthesisRepairTool(messages, ids);
   if (repairTool) return repairTool;
+  const responseScope=finalAnswerRepairBase(messages)?.responseScope;
+  if(responseScope){
+      // The trusted validator supplies a format scope, never an answer/value.
+      // Keep the same final tool and one repair; all original data and final
+      // source/need/receipt validation still apply to the model's own text.
+      const parameters=structuredClone(finalTool.parameters),properties=parameters.properties as Record<string,Record<string,unknown>>;
+      delete properties.resultKey;delete properties.selections;
+      if(responseScope==='current_budget_available'){
+        properties.kind.enum=['general'];parameters.required=['kind','text'];delete properties.segments;
+        properties.text.description='由你依据仍有效的当前预算生成简洁答复，不附加历史时间线、消息编号、内部ID或新保存回执。';
+      }else{
+        properties.kind.enum=['synthesis'];parameters.required=['kind','segments'];delete properties.text;
+        properties.segments.minItems=1;properties.segments.maxItems=1;
+        const segment=(properties.segments.items as Record<string,unknown>).properties as Record<string,Record<string,unknown>>;
+        segment.basis.enum=['uncertainty'];segment.citations.maxItems=0;
+        segment.text.description='由你说明本次能否确认当前预算；不可据此推断从未保存或猜测口头/未录入等原因，不输出金额或内部编号。';
+      }
+    return{...finalTool,description:'对被拒绝的当前预算答复作既有唯一一次修复；按本工具结构生成回答，不查询或保存。',parameters};
+  }
   if(!ids.length&&!queriedSources)return finalTool;
   const parameters=structuredClone(finalTool.parameters);
   const knowledgeOnly = knowledgeResult && !otherDisplayResult;

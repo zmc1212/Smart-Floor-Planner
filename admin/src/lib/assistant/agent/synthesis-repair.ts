@@ -4,7 +4,8 @@ import { resolveCatalogCitation } from './citation-catalog';
 import type { SynthesisSource } from './synthesis';
 
 export const synthesisRepairProtocol = 'synthesis-edit-v1';
-export const finalAnswerRepairProtocol = 'final-answer-repair-v1';
+export const finalAnswerRepairProtocol = 'final-answer-repair-v2';
+export type FinalAnswerRepairScope = 'current_budget_available' | 'current_budget_unavailable';
 const finalRepairPrefix = '最终校验修复绑定：';
 const prefix = '\n有界编辑协议：';
 const suffix = '\n仅返回synthesis_repair及匹配的baseHash。edits按原segments下标独立定位，每段最多一项；text/basis仅改指定字段，addCitationIds/removeCitationIds明确增删已有引用，未提及的正文和引用保留。remove=true删除该段且不能带其他修改；append仅新增必要段。不能整体替换citations，不自动采用任何候选。最终完整回答仍须通过全部来源、数值、承诺与范围校验，原六段/每段四引用/唯一修复和调用预算保持。';
@@ -14,8 +15,8 @@ const keys = (value: Record<string, unknown>, allowed: string[]) => Object.keys(
 
 /** Application control for the existing one final repair, including ordinary
  * and legacy replies. It supplies no answer, source or edit selection. */
-export function finalAnswerRepairControl(raw: string) {
-  return { type: 'text' as const, text: finalRepairPrefix + JSON.stringify({ protocol: finalAnswerRepairProtocol, baseHash: fingerprint(raw) }) };
+export function finalAnswerRepairControl(raw: string, responseScope?: FinalAnswerRepairScope) {
+  return { type: 'text' as const, text: finalRepairPrefix + JSON.stringify({ protocol: finalAnswerRepairProtocol, baseHash: fingerprint(raw), ...(responseScope ? { responseScope } : {}) }) };
 }
 export function finalAnswerRepairBase(messages: ModelMessage[]) {
   for (let index = messages.length - 1; index >= 0; index--) {
@@ -25,8 +26,12 @@ export function finalAnswerRepairBase(messages: ModelMessage[]) {
       if (part.type !== 'text' || !part.text.startsWith(finalRepairPrefix)) continue;
       try {
         const value: unknown = JSON.parse(part.text.slice(finalRepairPrefix.length));
-        if (object(value) && keys(value, ['protocol', 'baseHash']) && value.protocol === finalAnswerRepairProtocol
-          && value.baseHash === fingerprint(previous.content)) return { raw: previous.content, baseHash: value.baseHash as string };
+        if (!object(value) || !keys(value, ['protocol', 'baseHash', 'responseScope'])
+          || ![finalAnswerRepairProtocol, 'final-answer-repair-v1'].includes(String(value.protocol))
+          || value.baseHash !== fingerprint(previous.content)) continue;
+        if (Object.hasOwn(value,'responseScope') && (value.protocol !== finalAnswerRepairProtocol
+          || !['current_budget_available','current_budget_unavailable'].includes(String(value.responseScope)))) continue;
+        return { raw: previous.content, baseHash: value.baseHash as string, responseScope: value.responseScope as FinalAnswerRepairScope | undefined };
       } catch { /* Unrecognized controls never authorize a repair projection. */ }
     }
   }

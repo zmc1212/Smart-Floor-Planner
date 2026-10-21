@@ -119,12 +119,19 @@ test('current budget recall preserves real saves and revocation despite prior bu
         return finalText(badText);
       }
       assert.equal(calls,badText?3:2); assert.equal(tools.length,0);
-      assert.ok(finalAnswerRepairBase(messages));
+      assert.equal(finalAnswerRepairBase(messages)?.responseScope,'current_budget_unavailable');
       const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages,tools:dispatch!,maxTokens:2048,requireTool:true});
       assert.deepEqual(wire.messages.at(-1),{role:'user',content:[{type:'text',text:finalAnswerRepairTask}]});
+      const schema=wire.tools!.find(t=>t.function.name==='final_response')!.function.parameters as {
+        required:string[];properties:{kind:{enum:string[]};segments:{maxItems:number;items:{properties:{basis:{enum:string[]};citations:{maxItems:number}}}}};
+      };
+      assert.deepEqual(schema.properties.kind.enum,['synthesis']);assert.deepEqual(schema.required,['kind','segments']);
+      assert.equal(schema.properties.segments.maxItems,1);assert.deepEqual(schema.properties.segments.items.properties.basis.enum,['uncertainty']);
+      assert.equal(schema.properties.segments.items.properties.citations.maxItems,0);
       assert.match(JSON.stringify(messages), /当前需求没有budget字段/);
       if (badText) assert.match(JSON.stringify(messages), /不能.*从未/);
-      return finalText(repair ? '本次没有可用的当前预算记录，无法确认金额。' : badText || '目前没有查到你在本企业的已发布方案记录。');
+      return repair ? {...answer(),text:JSON.stringify({kind:'synthesis',segments:[{basis:'uncertainty',text:'本次没有可用的当前预算记录，无法确认金额。',citations:[]}]})}
+        : finalText(badText || '目前没有查到你在本企业的已发布方案记录。');
     } });
     assert.equal(calls,badText?3:2); assert.equal((await writes(String(withdrawn.runId))).length,0);
     assert.deepEqual(await memory(a.c),saved);
@@ -141,21 +148,26 @@ test('current budget recall preserves real saves and revocation despite prior bu
   }
 });
 
-test('current budget recall repairs or rejects run1345 unsupported dates with no additional writes', async () => {
-  for(const repair of [true,false]) {
+test('current budget recall repairs or rejects unsupported dates and internal IDs with no additional writes', async () => {
+  for(const bad of [
+    '根据您之前的记录，您最初提到全屋预算为20万元，后在10月27日更正为18万元。目前系统保存的有效预算为18万元。',
+    '您之前记录的全屋预算为20万元，后已在10292消息中更正为18万元。当前系统保存的有效预算为18万元。',
+  ]) for(const repair of [true,false]) {
     const a=await start('更正：全屋预算改为18万元。');
     await processAgentAnswer(a.lease,{model:async()=>call({...budget,quote:'更正：全屋预算改为18万元'})});
     const saved=await memory(a.c),question='我当前预算记的是多少？';
     const sent=await a.chat.send(a.c,randomUUID(),{version:1,blocks:[{type:'text',text:question}]});
     const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
-    const bad='根据您之前的记录，您最初提到全屋预算为20万元，后在10月27日更正为18万元。目前系统保存的有效预算为18万元。';
     let calls=0;
     await processAgentAnswer(lease,{model:async(messages,tools,_turn,dispatch)=>{
       calls++;
       if(calls===2){
         assert.equal(tools.length,0);assert.equal(finalAnswerRepairBase(messages)?.raw,JSON.stringify({kind:'general',text:bad}));
+        assert.equal(finalAnswerRepairBase(messages)?.responseScope,'current_budget_available');
         const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages,tools:dispatch!,maxTokens:2048,requireTool:true});
         assert.deepEqual(wire.messages.at(-1),{role:'user',content:[{type:'text',text:finalAnswerRepairTask}]});
+        const schema=wire.tools!.find(t=>t.function.name==='final_response')!.function.parameters as {required:string[];properties:{kind:{enum:string[]};segments?:unknown}};
+        assert.deepEqual(schema.properties.kind.enum,['general']);assert.deepEqual(schema.required,['kind','text']);assert.equal(schema.properties.segments,undefined);
       }
       return finalText(calls===2&&repair?'沿用原记录，当前预算为18万元。':bad);
     }});
