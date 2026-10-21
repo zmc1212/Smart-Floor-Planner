@@ -647,7 +647,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           return scoped(async(tx,context)=>{
             const evidence=await currentSynthesisContext(tx,lease.actor,context.conversation,lease.runId);
-            const issue=synthesisRepairFeedback(raw,evidence.sources,reviewContext);
+            const memory=await availableNeedMemory(tx,lease.enterpriseId,String(context.conversation.id),context.conversation.entry_snapshot);
+            const originals=await needSourceRefs(tx,lease.enterpriseId,String(context.conversation.id),memory);
+            const currentNeeds={version:memory.version,facts:memory.facts.filter(f=>f.status==='current').flatMap(fact=>{
+              const source=originals.find(ref=>ref.messageId===fact.sourceMessageId);
+              return source?[{sourceMessageId:source.messageId,sourceHash:source.hash,quote:fact.quote,value:fact.value}]:[];
+            })};
+            const issue=synthesisRepairFeedback(raw,evidence.sources,{...reviewContext,currentNeeds});
             if(issue)await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
               values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:issue.code==='ungrounded_response_scope'?'authorized_response_scope':'authorized_citation_only',noBusinessTools:true})}::jsonb)
               on conflict(enterprise_id,run_id,step_seq) do nothing`);

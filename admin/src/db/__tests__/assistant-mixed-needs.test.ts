@@ -399,3 +399,63 @@ test('mixed correction exclusive current recap rejects a new acknowledgement and
     assert.deepEqual(await memory(a.c), before); assert.equal((await writes(String(recap.sent.runId))).length, 0);
   }
 });
+
+test('mixed correction current need numeric recovery binds prior saved budget originals without another write', async () => {
+  for (const mode of ['cite', 'remove', 'still-invalid', 'withdrawn-source']) {
+    const a = await start('请记住：全屋预算20万元。');
+    await processAgentAnswer(a.lease, { model: async () => call({ room: '', field: 'budget', value: '20万元', quote: '全屋预算20万元', additionalNeeds: [] }) });
+    assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
+    const changed = await a.chat.send(a.c, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '更正：预算改为18万元。' }] });
+    const changeLease = await claimJob(); assert.ok(changeLease); assert.equal(changeLease.runId, changed.runId);
+    await processAgentAnswer(changeLease, { model: async () => call({ ...budget, additionalNeeds: [] }) });
+    assert.equal((await a.chat.run(String(changed.runId))).status, 'succeeded');
+    const before = await memory(a.c); assert.equal(before.version, 2);
+    const sent = await a.chat.send(a.c, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '我当前预算记的是多少？' }] });
+    const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId); let calls = 0; let modelError: unknown;
+    await processAgentAnswer(lease, { model: async (messages, tools, _turn, dispatch) => {
+      try {
+      calls++;
+      if (calls === 1) return { ...answer(), text: '', toolCalls: [{ id: 'budget-history', name: 'recall_history', arguments: '{"query":"预算"}' }] };
+      const sources = messages.flatMap(m => m.role === 'tool' ? [JSON.parse(m.content)] : [])
+        .flatMap(packet => Array.isArray(packet.synthesisSources) ? packet.synthesisSources : []);
+      const current = sources.find((s: Row) => s.sourceId === 'H' + changed.messageId), old = sources.find((s: Row) => s.sourceId === 'H' + a.sent.messageId);
+      assert.ok(current?.citationOptions?.length); assert.ok(old?.citationOptions?.length);
+      if (calls === 2) return { ...answer(), text: JSON.stringify({ kind: 'synthesis', segments: [
+        { basis: 'evidence', text: '根据您在本咨询中的记录，当前预算为18万元。', citations: [{ citationId: current.citationOptions[0].citationId }] },
+        { basis: 'advice', text: '此前曾记录过20万元预算，后已更正为18万元。', citations: [{ citationId: old.citationOptions[0].citationId }] },
+      ] }) };
+      assert.equal(calls, 3); assert.equal(tools.length, 0); assert.ok(dispatch?.every(t => t.name === 'final_response'));
+      const base = synthesisRepairBase(messages); assert.ok(base);
+      assert.match(messages.flatMap(m => m.role === 'system' ? m.content.filter(p => p.type === 'text').map(p => p.text) : []).join('\n'), /currentNeedNumericPaths/);
+      if (mode === 'withdrawn-source') await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages
+        set content='{"version":1,"blocks":[{"type":"text","text":"合成预算来源撤回"}]}'::jsonb
+        where enterprise_id=${actor.enterpriseId} and conversation_id=${a.c} and id=${String(changed.messageId)}`));
+      const edit = mode === 'remove' ? { segment: 1, remove: true } : mode === 'still-invalid'
+        ? { segment: 1, text: '此前预算20万元，当前预算为30万元。', addCitationIds: [current.citationOptions[0].citationId] }
+        : { segment: 1, addCitationIds: [current.citationOptions[0].citationId] };
+      return { ...answer(), text: JSON.stringify({ kind: 'synthesis_repair', baseHash: base.baseHash, edits: [edit] }) };
+      } catch (error) { modelError = error; throw error; }
+    } });
+    assert.equal(modelError, undefined, modelError instanceof Error ? modelError.stack : String(modelError));
+    const result = await a.chat.run(String(sent.runId)); assert.equal(calls, 3);
+    assert.equal((await writes(String(a.sent.runId))).length, 1); assert.equal((await writes(String(changed.runId))).length, 1);
+    assert.equal((await writes(String(sent.runId))).length, 0); assert.deepEqual(await memory(a.c), before);
+    assert.equal((await validations(String(sent.runId))).length, 1);
+    const reentry = await a.chat.messages(a.c);
+    if (mode === 'cite' || mode === 'remove') {
+      assert.equal(result.status, 'succeeded');
+      const reply = reentry.items.find(m => m.id === result.outputMessageId)!; assert.equal(reply.available, true);
+      assert.match(JSON.stringify(reply.content), /当前预算为18万元/);
+      await assert.rejects(new ConversationService(stranger).messages(a.c), /not_found/);
+      if (mode === 'cite') {
+        await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages
+          set content='{"version":1,"blocks":[{"type":"text","text":"合成预算来源撤回"}]}'::jsonb
+          where enterprise_id=${actor.enterpriseId} and conversation_id=${a.c} and id=${String(changed.messageId)}`));
+        assert.equal((await a.chat.messages(a.c)).items.find(m => m.id === result.outputMessageId)!.available, false);
+      }
+    } else {
+      assert.equal(result.status, 'failed'); assert.equal(result.outputMessageId, null);
+      assert.equal(result.errorCode, mode === 'still-invalid' ? 'unsupported_model_commitment' : 'context_changed');
+    }
+  }
+});

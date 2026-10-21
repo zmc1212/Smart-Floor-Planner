@@ -450,6 +450,31 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
         + '不能把客户原话改成企业规则或现场实况，不借其他段引用，不用汉字量数绕过校验。'
         + repairLayoutInstructions + '只返回final_response。' };
     }
+    // A later recap has a different trigger. Bind recovery to server-resolved
+    // current need values and their exact consulted originals, not any old
+    // history digit or a full original's unrelated hypothetical quantity.
+    const currentNeedPaths = numericGaps.map(gap => {
+      const numbers = gap.unsupportedNumbers.filter(number => /^\d/.test(number));
+      const originals = sources.filter(source => source.kind === 'history' && source.history
+        && source.sourceId === 'H' + source.history.messageId && source.history.memoryVersion === context.currentNeeds?.version
+        && sources.filter(other => other.sourceId === source.sourceId).length === 1
+        && context.currentNeeds?.facts.some(fact => fact.sourceMessageId === source.history!.messageId
+          && fact.sourceHash === source.history!.hash && source.text.includes(fact.quote) && fact.quote.includes(fact.value)
+          && numbers.some(number => new Set(fact.value.match(/\d+(?:\.\d+)?/g) || []).has(number))));
+      const supported = numbers.filter(number => context.currentNeeds?.facts.some(fact =>
+        originals.some(source => source.history!.messageId === fact.sourceMessageId && source.history!.hash === fact.sourceHash)
+        && new Set(fact.value.match(/\d+(?:\.\d+)?/g) || []).has(number)));
+      return { path: `segments[${gap.segment - 1}].text`, numbersToSupportOrRemove: gap.unsupportedNumbers,
+        numericSourceCandidates: numericSourceCandidates(supported, originals) };
+    });
+    if (error.code === 'unsupported_model_commitment' && quotesVerified && currentNeedPaths.length
+      && currentNeedPaths.every(path => path.numericSourceCandidates.length)) {
+      return { code: error.code, feedback: '本段缺少当前已记录需求数值的原话引用。仍只用同轮唯一一次最终修复，不调用工具、不重新保存或新增业务动作。'
+        + 'currentNeedNumericPaths：' + JSON.stringify(currentNeedPaths)
+        + '。候选绑定本咨询仍有效的当前需求值、原消息hash与记忆版本，只用于定位已有citationOptions。模型须明确选择支持本段对象/单位/需求身份的citationId，或删除无据附加比较段；当前预算等主要问题仍须回答。'
+        + '旧金额与新金额比较须分别有对应原话；不能借相邻段引用、推算差值或把客户预算说成正式报价、现场事实或企业承诺。未知数字不能靠汉字或换单位绕过。'
+        + repairLayoutInstructions + '只返回final_response。' };
+    }
     if(error.code==='unsupported_model_commitment'&&!hasFile&&!sources.some(s=>s.material?.ref.type==='formal_plan'))throw error;
     const missing=numericGaps.map(gap=>gap.segment);
     const numericTextPaths=numericGaps.map(gap=>({path:`segments[${gap.segment-1}].text`,removeUnsupportedNumbers:gap.unsupportedNumbers,

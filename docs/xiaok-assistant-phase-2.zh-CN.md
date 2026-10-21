@@ -1,6 +1,20 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v108：原始F-02追问在未改动v107上复测通过
+## 当前v110：数值恢复绑定仍获权的当前需求原话
+
+**当前v110：当前需求数值恢复已内部实现，原生预算验收失败，Limited。** 既有单次最终修复现将缺数字候选绑定仍获权当前需求value、原消息/hash及记忆版本；由模型明确补引或删除附加比较，数值/承诺/来源/租户/回执校验、写入/轮数预算及KnowledgeRetriever/Evidence保持。稳定357/28/8/98项单元/隔离服务/知识兼容/Mini与lint通过；全仓tsc仍失败292/涉及0，完整诊断与v107相同。新增5单元及定向服务四分支为子集。新免费Qwen/Stable1328/1329均在预算单项保存失败：三次错误书桌提案被need_source_mismatch拒绝，随后无据保存确认也被拦截，0写入。两道原预算回顾、撤回和两项U01恢复均未执行。8次attempt3681–3688全部成功accepted=true，8条observed token费用null；真实数值修复分支未触发。本批仍为内部检查点，原1223/1326/1327及所有原稿分开保留。2张失败反馈截图已审看，逻辑390x844/PNG348x752；批准UI/路由/API/角色/schema保持，夹具AI关闭/身份撤权/自有锁释放。下一沿既有成对工具/schema修复本轮原话字段/value恢复，再完成两组预算闭环、F-06宽度/文件原题与F-07。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、`tmp/xiaok-current-need-numeric-v110/`；无push/部署，不宣称完整PPT/专业/真机/生产通过。
+
+服务端仅经availableNeedMemory与needSourceRefs构建内部currentNeeds；history来源须匹配H+消息ID、完整原话hash、当前记忆版本，包含实际保存quote/value，且value确有本段缺失的阿拉伯数字。原话其他位置的假设量数或相同单位不能开启恢复。来源仍由currentSynthesisContext读取重验，不信任模型/客户端包。模型沿既有synthesis-edit-v1明确编辑被拒稿；最终全量校验、四次模型/四项写入/一次修复、真实回执、撤回与持久计量保持，不增加事实库或知识职责。
+
+原未改动v107批次先真实保存1325；1326虽读对18万元，却在附加20→18比较段漏引当前原话，最终unsupported_model_commitment无交付。1327在预算单项保存中反复带入无关书桌参数，0写入，未执行安排的预算回读；两故障分开，原批HTTP恢复/撤回均未执行。保留1326 raw hash c92c354abab5defc12edd1f62a2d7fcf0f3f93224dd1ef822a19b206f323ccf3，离线诊断仍拒绝同一原稿、仅给反馈，无provider/业务重放或改分。初始单元2/5红测、两次服务callback/夹具失败和涉及类型2/全仓294均保留，最终证据另绑定。新增测试措辞“当前记录的预算”触发了既有现场记录范围守卫；服务夹具已改为1326逐字原句，因此本批不证明该额外措辞已通过。
+
+新开发企业2688/2689、用户3762–3764、咨询703–705按原1223前五项canonical desk/storage/客厅/budget准备记忆v5，并提供真实获权正式v4户型；为新夹具准备，不重放旧模型run。两次真实预算更正1328/1329均在预算原话下反复选择desk/靠内墙，need_source_mismatch整体拒绝；最后原稿错误暗示已保存，被unsupported_model_commitment阻止，0写入/记忆v5。两道原预算回顾未派发，撤回/U01及新当前需求数值修复真实分支均未执行。本人200/同企其他客户404/跨企404和既有失败UI独立通过。8次provider attempt全成功，非供应商连接故障。下一原话字段恢复归Agent AG-04/05，不改知识解析，保留唯一工具/schema协议及原写入权限。
+
+真实答复run attempts3681,3682,3683,3684,3685,3686,3687,3688状态{"succeeded":8}，observed用量{"tokens":8}，其他用量{}，费用全null。原失败及unknown1132/3196、1184/3327未重放或重新审计。2265项源码/测试/配置摘要eb8004a653820bcd2622f6ec955ce40494b8956f267e59f04a61747da522b3f2，六项完整检查与原生首尾同源。Mini markup/styles/artwork/固定文案/导航/几何及还原台账无变；本失败批次U01恢复未执行。
+
+复查维护中的[ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，沿成对工具/结果、模型显式选择及已有绑定编辑；Postgres仍负责权限/来源/job/计量。安装LangGraph1.5.0/core1.2.18保持。1440为历史问题，非本provider根因；API403检索已回退实际问题页。
+
+## 历史v108：原始F-02追问在未改动v107上复测通过
 
 **当前v108验收记录：F-02原始缺尺寸追问两次通过，整体Limited。** 产品源码与prompt保持xiaok-renovation-v107，包括其绑定本轮原话的数值恢复。新免费Qwen/Stable1321/1324在两次书房原题后，各一次模型调用回答同一道原始追问：无现场尺寸不能直接确定插座位置，无编造点位/验收或需求写入。新合成企业2684/2685复现原KA/KB正文及v4墙图，不重放旧完整夹具。历史GLM1242首败/1243通过分开保留；旧范围拒绝分支本轮未触发，不重评分。6次安排的原生对话/重进、2次HTTP U01重连、本人/同企业其他客户/跨企业隔离及实际知识退役通过；11张截图均已审看，逻辑390x844/PNG348x752。10次Qwen attempt3663–3672均成功accepted，答复run含10条observed token及4条observed query_embedding记录，费用全null；索引job用量不在该合计。2264项摘要0a954f285087bb47140b44e86f0d5069ebed6a52a8d94a2c5ee322969cb06c54未变，352单元/27服务/8兼容/98 Mini/lint明确复用v107结果、没有重跑；全仓tsc仍失败292/涉及0。KnowledgeRetriever/Evidence、路由/API/角色/schema及批准C01/U01 markup/styles/assets/固定文案/导航/几何保持，无还原台账影响。夹具AI关闭/身份撤权、队列0/自有锁释放。无新产品功能，不宣称完整F-02/F-04/PPT/专业/真机/生产完成，无push/部署。下一F-06原始预算/宽度与验收/指定文件题，再F-07。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、`tmp/xiaok-missing-dimensions-v108/`。
 
