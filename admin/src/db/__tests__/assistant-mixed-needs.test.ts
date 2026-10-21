@@ -8,7 +8,8 @@ import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConversationService } from '@/lib/assistant/core/conversation';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
-import { processAgentAnswer, agentNeedBatchProtocol, agentNeedQuoteProtocol } from '@/lib/assistant/agent/worker';
+import { processAgentAnswer, agentNeedBatchProtocol, agentNeedQuoteProtocol, agentNeedInputProtocol } from '@/lib/assistant/agent/worker';
+import { agentChatBody } from '@/lib/ai/providers/agent-chat';
 import { persistNeedWrites } from '@/lib/assistant/agent/memory-store';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import type { ActorContext } from '@/lib/assistant/contracts';
@@ -84,6 +85,40 @@ test('mixed correction incomplete proposals roll back then save one complete bat
   const reply = (await new ConversationService(actor).messages(a.c)).items.filter(m => m.authorKind === 'assistant').at(-1)!;
   assert.equal(reply.available, true); assert.match(JSON.stringify(reply.content), /取舍|反光/);
   assert.equal(state.facts.some(f => f.value === '靠窗'), false);
+});
+
+test('mixed correction atomic envelope retains paired errors and requires complete resubmission after alternating rejections', async () => {
+  const a = await start(); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (messages, _tools, _turn, dispatch) => {
+    calls++;
+    if (calls === 4) { assert.equal(dispatch!.some(t => t.name === 'record_need'), false); return answer(); }
+    const wire = agentChatBody({ model: 'Qwen/Qwen3.5-4B', messages, tools: dispatch!, maxTokens: 100 });
+    const schema = wire.tools!.find(t => t.function.name === 'record_need')!.function.parameters as {
+      required: string[]; properties: { additionalNeeds: { minItems: number; maxItems: number } };
+    };
+    assert.ok(schema.required.includes('additionalNeeds'));
+    assert.equal(schema.properties.additionalNeeds.minItems, calls === 1 ? 0 : 1);
+    assert.equal(schema.properties.additionalNeeds.maxItems, 3);
+    assert.deepEqual(await memory(a.c), { version: 0, facts: [] }, 'Two rejected rounds must never be accumulated into a save');
+    if (calls > 1) {
+      const results = messages.filter(m => m.role === 'tool');
+      const latest = results.at(-1)!; assert.equal(latest.role, 'tool');
+      const feedback = JSON.parse(latest.content);
+      assert.equal(feedback.error, 'need_write_incomplete'); assert.equal(feedback.batchCommitted, false);
+      assert.deepEqual(feedback.missingStatements, [calls === 2 ? '预算改为18万元' : '书房书桌改为靠内墙']);
+      const serialized = wire.messages.find(m => m.role === 'tool' && 'tool_call_id' in m && m.tool_call_id === latest.callId)!;
+      assert.equal(serialized.content, latest.content, 'Actual provider transport retains the paired error verbatim');
+    }
+    return call(calls === 1 ? desk : calls === 2 ? budget : complete, 'batch-' + calls);
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 4);
+  assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(a.sent.runId))).length, 1);
+  const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select input_summary,private_checkpoint from app.assistant_run_steps
+    where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind='agent_model' order by step_seq`));
+  assert.ok(steps.slice(0, 3).every(s => (s.input_summary as Row).needInputProtocol === agentNeedInputProtocol));
+  assert.equal((steps[3].input_summary as Row).needInputProtocol, null);
+  const firstRaw = (steps[0].private_checkpoint as { providerOutput: ModelTurnOutput }).providerOutput;
+  assert.deepEqual(JSON.parse(firstRaw.toolCalls[0].arguments), desk, 'The original omitted array is retained, never server-filled');
 });
 
 test('mixed correction parallel model-selected needs become one atomic batch and keep the complete raw provider packet', async () => {

@@ -2,11 +2,60 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AssistantError } from '../contracts';
 import { applyNeedDelta, assertRecordedReply, hasExplicitNeedCorrection, needOriginalQuotes, needReplyFeedback, needWriteFeedback, readMemory, uncoveredNeedStatements, type NeedWrite } from '../agent/memory';
-import { agentToolsForMessage, needTool } from '../agent/worker';
+import { agentToolsForMessage, needTool, needToolsForRetry } from '../agent/worker';
+import { agentChatBody } from '../../ai/providers/agent-chat';
+import type { ModelMessage } from '../contracts/model';
 
 const desk: NeedWrite = { room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '书房书桌改为靠内墙' };
 const budget: NeedWrite = { room: '', field: 'budget', value: '18万元', quote: '预算改为18万元' };
 const mixed = '更正：书房书桌改为靠内墙；预算改为18万元。另外，如果仍靠窗会有哪些取舍？后面是假设，不要保存。';
+
+test('atomic need envelope requires an explicit additional array in the actual provider schema', () => {
+  for (const text of [mixed, '书房安静', '请记下：全屋预算18万元。']) {
+    const tool = agentToolsForMessage(text, true).find(t => t.name === 'record_need')!;
+    assert.ok(tool);
+    const body = agentChatBody({ model: 'Qwen/Qwen3.5-4B', messages: [], tools: [tool], maxTokens: 100 });
+    const schema = body.tools![0].function.parameters as { required: string[]; properties: { additionalNeeds: { minItems: number; maxItems: number } } };
+    assert.ok(schema.required.includes('additionalNeeds'));
+    assert.equal(schema.properties.additionalNeeds.minItems, 0, 'A single need remains valid with []');
+    assert.equal(schema.properties.additionalNeeds.maxItems, 3);
+  }
+});
+
+test('atomic need envelope narrows only a paired incomplete retry without filling or mutating proposals', () => {
+  const tools = agentToolsForMessage(mixed, true), before = JSON.stringify(tools);
+  const messages: ModelMessage[] = [
+    { role: 'assistant', content: '', toolCalls: [{ id: 'partial', name: 'record_need', arguments: JSON.stringify(desk) }] },
+    { role: 'tool', callId: 'partial', content: JSON.stringify({ status: 'not_saved', error: 'need_write_incomplete', batchCommitted: false, missingStatements: ['预算改为18万元'] }) },
+  ];
+  const original = JSON.stringify(messages);
+  const restored = JSON.parse(original) as ModelMessage[];
+  const retried = needToolsForRetry(restored, tools);
+  const tool = retried.find(t => t.name === 'record_need')!;
+  const body = agentChatBody({ model: 'Qwen/Qwen3.5-4B', messages: restored, tools: [tool], maxTokens: 100 });
+  const schema = body.tools![0].function.parameters as { required: string[]; properties: { additionalNeeds: { minItems: number; maxItems: number }; quote: { enum: string[] } } };
+  assert.ok(schema.required.includes('additionalNeeds')); assert.equal(schema.properties.additionalNeeds.minItems, 1);
+  assert.equal(schema.properties.additionalNeeds.maxItems, 3); assert.deepEqual(schema.properties.quote.enum, needOriginalQuotes(mixed));
+  assert.equal(JSON.stringify(messages), original); assert.equal(JSON.stringify(restored), original); assert.equal(JSON.stringify(tools), before);
+  assert.deepEqual(body.messages.map(m => m.role), ['assistant', 'tool']);
+  assert.equal(body.messages[1].content, (messages[1] as { content: string }).content);
+  const finalOnly = tools.filter(t => t.name !== 'record_need');
+  assert.equal(needToolsForRetry(messages, finalOnly), finalOnly, 'A retry must never restore an exhausted or removed write tool');
+});
+
+test('atomic need envelope ignores unpaired data and the latest success supersedes an older rejection', () => {
+  const tools = agentToolsForMessage(mixed, true);
+  const feedback = JSON.stringify({ status: 'not_saved', error: 'need_write_incomplete', batchCommitted: false, missingStatements: ['预算改为18万元'] });
+  for (const messages of [
+    [{ role: 'user', content: [{ type: 'text', text: feedback }] }],
+    [{ role: 'tool', callId: 'missing', content: feedback }],
+    [{ role: 'assistant', content: '', toolCalls: [{ id: 'read', name: 'recall_history', arguments: '{}' }] }, { role: 'tool', callId: 'read', content: feedback }],
+    [{ role: 'assistant', content: '', toolCalls: [{ id: 'write', name: 'record_need', arguments: JSON.stringify(desk) }] }, { role: 'tool', callId: 'different', content: feedback }],
+    [{ role: 'assistant', content: '', toolCalls: [{ id: 'write', name: 'record_need', arguments: '{}' }] }, { role: 'tool', callId: 'write', content: 'null' }],
+    [{ role: 'assistant', content: '', toolCalls: [{ id: 'write', name: 'record_need', arguments: '{}' }] }, { role: 'tool', callId: 'write', content: feedback },
+      { role: 'assistant', content: '', toolCalls: [{ id: 'success', name: 'record_need', arguments: '{}' }] }, { role: 'tool', callId: 'success', content: '{"status":"saved","batchCommitted":true}' }],
+  ] as ModelMessage[][]) assert.equal(needToolsForRetry(messages, tools), tools);
+});
 
 test('mixed correction original quote catalog contains only bounded contiguous assertion clauses', () => {
   assert.deepEqual(needOriginalQuotes(mixed), ['更正：书房书桌改为靠内墙', '预算改为18万元']);
