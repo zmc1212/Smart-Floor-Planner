@@ -14,7 +14,7 @@
 
 ## 1. 当前判断与可复用基础
 
-**当前v107：绑定本轮原话的数值恢复，F-04及整体Limited。** prompt xiaok-renovation-v107仅扩既有单次最终修复：缺引用数字须匹配已保存本轮原话的trigger ID/hash/完整文字。模型明确选择已有citationId或删除无据主张，最终校验继续拒绝无引数值、承诺、外部/失效来源及额外业务动作。相同稳定源码352 Agent单元、27隔离真实服务、8知识兼容、98 Mini与定向lint通过；涉及类型0/全仓292，完整诊断与v106相同（全仓tsc失败）。新免费Qwen/Stable1314/1317各一次完整保存两项、v5→v7并回答通用靠窗取舍，1315/1318回顾、两项U01读取重连及撤回交付通过。1316模型原稿错误沿用已撤回书桌，既有unavailable-desk-view-v1仅交付获权部分视图，不给模型原稿改分。两组均未触发数值修复或不完整重试，相关分支为离线/服务覆盖，非真实provider分支通过。12条实测token与2条unavailable query_embedding记录费用均null；两条需求写入步骤另计。KnowledgeRetriever/Evidence、API/角色/DB schema和批准C01/U01 UI保持。下一F-02，再F-06/07；完整F-04/PPT/专业/真机/生产验收未完成。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、`tmp/xiaok-current-numeric-v107/`，无push/部署。
+**当前v108验收记录：F-02原始缺尺寸追问两次通过，整体Limited。** 产品源码与prompt保持xiaok-renovation-v107，包括其绑定本轮原话的数值恢复。新免费Qwen/Stable1321/1324在两次书房原题后，各一次模型调用回答同一道原始追问：无现场尺寸不能直接确定插座位置，无编造点位/验收或需求写入。新合成企业2684/2685复现原KA/KB正文及v4墙图，不重放旧完整夹具。历史GLM1242首败/1243通过分开保留；旧范围拒绝分支本轮未触发，不重评分。6次安排的原生对话/重进、2次HTTP U01重连、本人/同企业其他客户/跨企业隔离及实际知识退役通过；11张截图均已审看，逻辑390x844/PNG348x752。10次Qwen attempt3663–3672均成功accepted，答复run含10条observed token及4条observed query_embedding记录，费用全null；索引job用量不在该合计。2264项摘要0a954f285087bb47140b44e86f0d5069ebed6a52a8d94a2c5ee322969cb06c54未变，352单元/27服务/8兼容/98 Mini/lint明确复用v107结果、没有重跑；全仓tsc仍失败292/涉及0。KnowledgeRetriever/Evidence、路由/API/角色/schema及批准C01/U01 markup/styles/assets/固定文案/导航/几何保持，无还原台账影响。夹具AI关闭/身份撤权、队列0/自有锁释放。无新产品功能，不宣称完整F-02/F-04/PPT/专业/真机/生产完成，无push/部署。下一F-06原始预算/宽度与验收/指定文件题，再F-07。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、`tmp/xiaok-missing-dimensions-v108/`。
 
 一期的人工正文/FAQ、权限、版本、任务和引用基础已被KB-1～KB-4继续扩展：专业条目与诊断、文件入库、实况综合检索和知识运营核心均已有代码及限定验收记录。下表区分已交付范围与后续缺口，不把工作包编号推进到KB-4等同于完整知识平台完成。当前XLSX显示、文件上下文及指定PDF原件增量验证见二期KB-2合同，其他历史验收结论保持原状态。
 
