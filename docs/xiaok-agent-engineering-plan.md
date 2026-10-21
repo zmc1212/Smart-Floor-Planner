@@ -116,6 +116,7 @@ The compact stage-commit index does not replace the phase-two contract. This che
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
+| AG-04/05 v106 explicit atomic envelopes (internal; native partial failure) |347 units/26 services/8 compatibility/98 Mini/lint; free Qwen1311/1312 save both needs,1311 numeric final fails,1312/1313 and one U01 recovery pass; F-04 pending | `75538c72f2733125faaf363294f31dc45fe57069` |
 | AG-04/05 v105 free-Qwen continuation (internal; native failed) | Unchanged core source; confirmed-free Qwen3.5-4B1309/1310 select exact quotes but omit complete atomic batch,0writes; F-04 pending | `7955d14346e6b2badb669b63232391551b1b05b2` |
 | AG-04/05 v105 original quote choices (internal; provider rejected) | Stable344 units/25 services/8 compatibility/98 Mini/scoped lint;1307/1308 rejected by HTTP402 before generation, F-04 pending | `188933b86015c2ff3ff5ca85b36ff4ad24f81ff5` |
 | AG-04/05 v104 authorized current recap (internal; native failed) | Stable341 units/24 services/8 compatibility/98 Mini/lint; GLM9/Stable1305/1306 save nothing and false completions are blocked; F-04 pending | `0fd7d2254825e9eae632cedbcde977818f31bacc` |
