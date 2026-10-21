@@ -149,7 +149,7 @@ The compact stage-commit index retains scope/results while phase two holds detai
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| AG-04/08 v101 empty citation catalog (bounded internal fix) | 325 units/13 services/8 compatibility/98 Mini/lint; native 3/3, sources/withdrawal/empty-catalog reentry pass, overall Limited | `LOCAL_V101_COMMIT` |
+| AG-04/08 v101 empty citation catalog (bounded internal fix) | 325 units/13 services/8 compatibility/98 Mini/lint; native 3/3, sources/withdrawal/empty-catalog reentry pass, overall Limited | `c75863f08fbb299f1dbc32ae8e48b5330ed15874` |
 | AG-04/08 v100 knowledge final schema (bounded internal fix) | 323 units/12 services/8 compatibility/98 Mini/lint; native PDF2 pass,source/withdrawal pass,empty evidence1 citation failure,overall Limited | `229a090fb8d41ddf6df9f61b748fe40f6ea1b65f` |
 | AG-08 / KB-2 v99 trusted PDF page validation (bounded internal fix) | 320 units/9 file services/8 compatibility/98 Mini/lint; native2 format failures,0 need writes,source sheet unexecuted,overall Limited | `34d6d55570dbab0eb9280d50d3c1306a8d8d3c90` |
 | AG-04/05 v98 inquiry/write completeness compatibility (bounded internal fix) | 317 units/5 targeted services/8 compatibility/98 Mini/lint; native4 reads0 writes,3 deliveries1 citation failure, overall Limited | `48d81c465cf35e61bb85077665d628446ab776ca` |
