@@ -212,3 +212,57 @@ test('mixed correction a later historical recap keeps the actual old update with
   assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(sent.runId))).length, 0);
   assert.equal((await validations(String(sent.runId))).length, 0);
 });
+
+const recapQuestion = '只回顾本次聊天原话，书桌和预算当前是什么？';
+const currentRecap = '当前工作记录：书桌位置已更改为靠内墙，预算已调整为18万元。';
+async function storedConversation() {
+  const a = await start(); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async () => ++calls === 1 ? call(complete) : answer() });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
+  return a;
+}
+async function nextRecap(a: Awaited<ReturnType<typeof start>>) {
+  const sent = await a.chat.send(a.c, randomUUID(), { version: 1, blocks: [{ type: 'text', text: recapQuestion }] });
+  const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
+  return { sent, lease };
+}
+
+test('mixed correction an exclusive current recap passes both final submission paths with no new write', async () => {
+  for (const synthesis of [false, true]) {
+    const a = await storedConversation(), before = await memory(a.c), recap = await nextRecap(a); let calls = 0;
+    await processAgentAnswer(recap.lease, { model: async (messages) => {
+      calls++;
+      if (!synthesis) return finalText(currentRecap);
+      if (calls === 1) return { ...answer(), text: '', toolCalls: [{ id: 'history', name: 'recall_history', arguments: JSON.stringify({ query: '书桌 预算' }) }] };
+      const source = messages.flatMap(m => m.role === 'tool' ? [JSON.parse(m.content)] : [])
+        .flatMap(packet => Array.isArray(packet.synthesisSources) ? packet.synthesisSources : [])
+        .find((s: Row) => s.sourceId === 'H' + a.sent.messageId);
+      assert.ok(source?.citationOptions?.length);
+      return { ...answer(), text: JSON.stringify({ kind: 'synthesis', segments: [{ basis: 'evidence', text: currentRecap,
+        citations: [{ citationId: source.citationOptions[0].citationId }] }] }) };
+    } });
+    const result = await new ConversationService(actor).run(String(recap.sent.runId));
+    assert.equal(result.status, 'succeeded'); assert.equal(calls, synthesis ? 2 : 1);
+    assert.deepEqual(await memory(a.c), before); assert.equal((await writes(String(recap.sent.runId))).length, 0);
+    assert.equal((await validations(String(recap.sent.runId))).length, 0);
+    const reply = (await new ConversationService(actor).messages(a.c)).items.find(m => m.id === result.outputMessageId)!;
+    assert.equal(reply.available, true); assert.match(JSON.stringify(reply.content), /预算已调整为18万元/);
+    await assert.rejects(new ConversationService(stranger).messages(a.c));
+  }
+});
+
+test('mixed correction exclusive current recap rejects a new acknowledgement and unavailable source at commit', async () => {
+  for (const mode of ['new-action', 'withdrawn-source']) {
+    const a = await storedConversation();
+    if (mode === 'withdrawn-source') await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages
+      set content='{"version":1,"blocks":[{"type":"text","text":"合成原话已撤回"}]}'::jsonb
+      where enterprise_id=${actor.enterpriseId} and conversation_id=${a.c} and id=${String(a.sent.messageId)}`));
+    const recap = await nextRecap(a), before = await memory(a.c); let calls = 0;
+    await processAgentAnswer(recap.lease, { model: async () => { calls++; return finalText(mode === 'new-action'
+      ? '本轮预算已调整为18万元。' : '当前工作记录：预算已调整为18万元。'); } });
+    const result = await a.chat.run(String(recap.sent.runId));
+    assert.equal(result.status, 'failed'); assert.equal(result.errorCode, 'unsupported_model_commitment');
+    assert.equal(calls, 1); assert.equal(result.outputMessageId, null);
+    assert.deepEqual(await memory(a.c), before); assert.equal((await writes(String(recap.sent.runId))).length, 0);
+  }
+});

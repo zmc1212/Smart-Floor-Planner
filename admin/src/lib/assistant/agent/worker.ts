@@ -10,7 +10,7 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig } from './config';
-import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
+import { factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
@@ -807,8 +807,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         const evidence = await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
         const answer = parseSynthesis(result.output?.text || '', evidence.sources,reviewContext);
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
-        assertRecordedReply(answer.segments.map(s => s.text).join('\n'), readMemory(context.conversation.entry_snapshot), lease.runId,
-          preferences.map(p => p.operationId));
+        const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
+        assertRecordedReply(answer.segments.map(s => s.text).join('\n'), memory, lease.runId,
+          preferences.map(p => p.operationId), safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
         // Persist the full consulted set, including conflict candidates and missing-data snapshots.
         await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,source_refs,private_checkpoint,input_summary)
           values(${lease.enterpriseId},${lease.runId},1006,'agent_synthesis_context','succeeded',${JSON.stringify(evidence)}::jsonb,${JSON.stringify(answer)}::jsonb,
@@ -898,7 +899,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     await scoped(async (tx, context) => {
       if (!business) {
         const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
-        assertRecordedReply(text, readMemory(context.conversation.entry_snapshot), lease.runId, preferences.map(p => p.operationId));
+        const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
+        assertRecordedReply(text, memory, lease.runId, preferences.map(p => p.operationId), safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
       }
       for (const ref of initial.mediaRefs) if (!await resolveAgentMedia(tx, lease.enterpriseId, String(initial.conversation.id), ref)) fail('context_changed');
       for (const ref of initial.referenceEvidence) if (!await resolveEvidence(tx, lease.actor, context.conversation, ref, true)) fail('context_changed');

@@ -146,11 +146,11 @@ export function compactNeedMemory(memory: NeedMemory): { memory: NeedMemory; arc
 }
 /** Free-form acknowledgements require a committed operation, including sourced
  * synthesis. Old facts/citations cannot stand in for this run's save receipt. */
-export function assertRecordedReply(text: string, memory: NeedMemory, runId: string, otherOperationIds: string[] = []) {
+export function assertRecordedReply(text: string, memory: NeedMemory, runId: string, otherOperationIds: string[] = [], question = '') {
   // A negative request to re-confirm an existing need is not a new save receipt.
   // Normalize only that adjacent attributive phrase; independent save claims
   // still require this run's operation. Source guards own the fact's availability.
-  const claims = assertNeedUpdateReply(text, memory, runId)
+  const claims = assertNeedUpdateReply(text, memory, runId, question)
     .replace(/(?:无需|不用|不必)(?:你|您)?(?:再|重复)?(?:确认|补充|说明)已(?:经)?(?:保存|记录)的/g, '沿用原需求')
     // Conditional ability/next-action predicates do not acknowledge a save.
     // Project only a complete future predicate at its clause boundary;
@@ -165,10 +165,11 @@ export function assertRecordedReply(text: string, memory: NeedMemory, runId: str
  * receipt for another field/preference is not a receipt for this target. Carry
  * explicit historical scope across comma clauses only; a new current claim,
  * sentence or denial cannot borrow it. This does not infer or persist facts. */
-function assertNeedUpdateReply(text: string, memory: NeedMemory, runId: string) {
+function assertNeedUpdateReply(text: string, memory: NeedMemory, runId: string, question: string) {
+  const readOnly = onlyChatHistoryRequested(question);
   let projected = text;
   for (const sentence of text.split(/[。！？!?；;\n]/)) {
-    let historical = false;
+    let historical = false, newOperation = false;
     for (const clause of sentence.split(/[，,]/)) {
       const fields = [/(?:书桌|桌子|桌位|桌型)/.test(clause) ? 'desk' : null, /预算/.test(clause) ? 'budget' : null].filter(Boolean);
       const update = /(?:已(?:经)?(?:按(?:你|您)的更正)?)?(?:更改|调整|更新|修改)(?:为|成|到)|已(?:经)?改(?:为|成|到)|改(?:为|成)了|已(?:经)?(?:更改|调整|更新|修改)(?:好了|了)?/.exec(clause);
@@ -176,21 +177,25 @@ function assertNeedUpdateReply(text: string, memory: NeedMemory, runId: string) 
       const previous = [...prefix.matchAll(/之前|以前|此前|上次|当时|历史|原工作记录|原记录/g)].at(-1)?.index ?? -1;
       const current = [...prefix.matchAll(/这次|本次|本轮|刚刚|现在|当前/g)].at(-1)?.index ?? -1;
       if (previous >= 0 || current >= 0) historical = previous > current;
+      // An exclusive recap permits existing state, never a claim that the
+      // assistant performed an action now. Carry action scope across commas.
+      if (/这次|本次|本轮|刚刚|刚才|(?:我|小K)已|(?:替|帮)(?:你|您)/.test(prefix)) newOperation = true;
       if (!update || !fields.length) continue;
       if (/尚未|没有|还没|并未|未曾|不能|不会|不代表|不等于|不是|(?:未|没)(?:被|再)?\s*$/.test(prefix)
-        || /如果|假如|假设|建议|打算|计划|将|待|(?:才能|才会|就会|会|可以|再)[^，,。；;\n]{0,8}$/.test(prefix)) continue;
+        || /如果|假如|假设|建议|打算|计划|将|待|(?:才能|才会|就会|会|可以|再)[^，,。；;\n]{0,8}$/.test(prefix.replace(/已(?:经)?将/g, ''))) continue;
       const transition = /(?:从|由)[^，,。；;\n]{1,40}$/.test(prefix) && !/本次|这次|本轮|刚刚|我已|小K已/.test(prefix);
       const target = clause.slice(update.index + update[0].length).replace(/^(?:了|为|成|到)\s*/, '').split(/并且|同时|但|还需|仍需/)[0].trim();
       for (const field of fields) {
         const scopedTarget = (field === 'budget' ? /\d+(?:\.\d+)?\s*(?:万元|万|元)/ : /靠内墙|靠窗/).exec(target)?.[0] || target;
         const supported = memory.facts.some(fact => (fact.field === field || field === 'desk' && Boolean(deskPositionForRoom(fact, fact.room)))
           && (!scopedTarget || fact.value.includes(scopedTarget) || scopedTarget.includes(fact.value))
-          && (historical || fact.status === 'current' && (transition || fact.id.startsWith(runId + ':'))));
+          && (historical || fact.status === 'current' && (transition || fact.id.startsWith(runId + ':')
+            || readOnly && !newOperation && Boolean(scopedTarget))));
         if (!supported) fail('unsupported_model_commitment', 502);
       }
       // The bounded update is already checked against actual history. Do not
       // let the legacy generic save predicate relabel it as a new operation.
-      if (historical || transition) projected = projected.replace(clause, clause.replace(update[0], '沿用原记录'));
+      if (historical || transition || readOnly && !newOperation) projected = projected.replace(clause, clause.replace(update[0], '沿用原记录'));
     }
   }
   return projected;
@@ -202,7 +207,7 @@ function assertNeedUpdateReply(text: string, memory: NeedMemory, runId: string) 
  * acceptance. Uses the existing single final repair and never writes. */
 export function needReplyFeedback(text: string, memory: NeedMemory, runId: string, question: string, otherOperationIds: string[] = []) {
   let unsupported = false;
-  try { assertRecordedReply(text, memory, runId, otherOperationIds); }
+  try { assertRecordedReply(text, memory, runId, otherOperationIds, question); }
   catch (error) { if (!(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error; unsupported = true; }
   const correction = needCorrectionContext(question);
   const independent = correction?.separatedQuestion ? correction.question : '';

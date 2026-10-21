@@ -62,6 +62,40 @@ test('mixed correction completed update predicates require a real receipt from t
   assert.doesNotThrow(() => assertRecordedReply(text, savedMixed(), '9'));
 });
 
+const recapQuestion = '只回顾本次聊天原话，书桌和预算当前是什么？';
+const currentRecap = '当前工作记录：书桌位置已更改为靠内墙，预算已调整为18万元。';
+
+test('mixed correction exclusive current recap describes authorized existing targets without a new receipt', () => {
+  const memory = savedMixed(), before = JSON.stringify(memory);
+  assert.doesNotThrow(() => assertRecordedReply(currentRecap, memory, '90', [], recapQuestion));
+  assert.equal(needReplyFeedback(currentRecap, memory, '90', recapQuestion), null);
+  memory.facts[0].field = 'style';
+  assert.doesNotThrow(() => assertRecordedReply(currentRecap, memory, '90', [], recapQuestion));
+  memory.facts[0].field = 'desk'; assert.equal(JSON.stringify(memory), before);
+});
+
+test('mixed correction exclusive current recap cannot borrow historical, unavailable or wrong targets', () => {
+  for (const memory of [readMemory({}), { ...savedMixed(), facts: savedMixed().facts.filter(f => f.field !== 'budget') },
+    { ...savedMixed(), facts: savedMixed().facts.map(f => ({ ...f, status: 'superseded' as const })) }]) {
+    assert.throws(() => assertRecordedReply(currentRecap, memory, '90', [], recapQuestion), /unsupported_model_commitment/);
+  }
+  for (const text of ['当前预算已调整为19万元。', '当前书桌位置已更改为靠窗。']) {
+    assert.throws(() => assertRecordedReply(text, savedMixed(), '90', [], recapQuestion), /unsupported_model_commitment/);
+  }
+});
+
+test('mixed correction exclusive recap never authorizes a new action acknowledgement or generic save claim', () => {
+  for (const text of ['本次书桌位置已更改为靠内墙，预算已调整为18万元。',
+    '本轮预算已调整为18万元。', '刚刚替你把书桌位置更改为靠内墙。',
+    '我已将预算调整为18万元。', '书桌位置已更改为靠内墙，预算已调整为18万元。已保存。',
+    '本次已记录书桌和预算。']) {
+    assert.throws(() => assertRecordedReply(text, savedMixed(), '90', [], recapQuestion), /unsupported_model_commitment/, text);
+  }
+  for (const question of [mixed, '书桌和预算是什么？', '不要只回顾本次聊天原话，帮我更正预算。']) {
+    assert.throws(() => assertRecordedReply(currentRecap, savedMixed(), '90', [], question), /unsupported_model_commitment/, question);
+  }
+});
+
 test('mixed correction a desk save or unrelated preference cannot authorize an unsaved budget update', () => {
   const memory = savedMixed();
   memory.facts = memory.facts.filter(f => f.field === 'desk');
