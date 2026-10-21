@@ -41,7 +41,7 @@ import { citationProtocolVersion } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
 import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
-import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, sourceReadProtocol, type ReadToolContext } from './read-tool-input';
+import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, sourceReadProtocol, sourceAnswerProtocol, type ReadToolContext } from './read-tool-input';
 
 const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -169,7 +169,8 @@ export function projectFinalToolOutput(output: ModelTurnOutput): ModelTurnOutput
 const sourceQueryTools = new Set(['query_business', 'query_materials', 'query_followups', 'search_knowledge', 'recommend_references']);
 /** The provider sees the same current catalog as the validator. Schema enums
  * assist generation; authorized server lookup remains the acceptance boundary. */
-export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
+export function finalToolForMessages(messages:ModelMessage[], question = ''):ModelTool {
+  const sourceOnly = originalAnswerOnly(question);
   let queriedSources = false, knowledgeResult = false, otherDisplayResult = false;
   for (const [index, message] of messages.entries()) {
     if (message.role !== 'tool' || isReadToolInputFailure(message.content)) continue;
@@ -186,14 +187,34 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
       if (call.name !== 'search_knowledge' && typeof packet.resultKey === 'string' && packet.resultKey) otherDisplayResult = true;
     } catch { /* Unknown result shapes retain the existing source-kind boundary. */ }
   }
-  const ids=[...new Set(messages.flatMap(message=>{
+  const allIds=[...new Set(messages.flatMap(message=>{
     if(message.role!=='tool')return [];
     try{const packet=JSON.parse(message.content);return (Array.isArray(packet?.synthesisSources)?packet.synthesisSources:[])
       .flatMap((source:{citationOptions?:Array<{citationId?:unknown}>})=>Array.isArray(source.citationOptions)?source.citationOptions:[])
       .map((option:{citationId?:unknown})=>option.citationId).filter((id:unknown):id is string=>typeof id==='string');}catch{return [];}
   }))];
-  const repairTool = synthesisRepairTool(messages, ids);
-  if (repairTool) return repairTool;
+  const ids = sourceOnly ? [...new Set(messages.flatMap(message => {
+    if (message.role !== 'tool') return [];
+    try { const packet = JSON.parse(message.content); return (Array.isArray(packet?.synthesisSources) ? packet.synthesisSources : [])
+      .filter((source:{kind?:unknown}) => source.kind === 'knowledge')
+      .flatMap((source:{citationOptions?:Array<{citationId?:unknown}>}) => Array.isArray(source.citationOptions) ? source.citationOptions : [])
+      .map((option:{citationId?:unknown}) => option.citationId).filter((id:unknown):id is string => typeof id === 'string'); } catch { return []; }
+  }))] : allIds;
+  const repairTool = synthesisRepairTool(messages, allIds);
+  if (repairTool) {
+    if (!sourceOnly) return repairTool;
+    const properties = repairTool.parameters.properties as Record<string, Record<string, unknown>>;
+    for (const key of ['edits', 'append']) {
+      const segment = (properties[key].items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
+      segment.basis.enum = ids.length ? ['evidence', 'uncertainty'] : ['uncertainty'];
+      if (key === 'edits') (segment.addCitationIds.items as Record<string, unknown>).enum = ids;
+      else {
+        const citation = ((segment.citations.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>).citationId;
+        citation.enum = ids;
+      }
+    }
+    return { ...repairTool, description: repairTool.description + ' 本题只解释指定原文；移除自行添加的建议/流程/关闭前提，不能仅改basis保留无据内容。' };
+  }
   const responseScope=finalAnswerRepairBase(messages)?.responseScope;
   if(responseScope){
       // The trusted validator supplies a format scope, never an answer/value.
@@ -215,7 +236,7 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
   }
   if(!ids.length&&!queriedSources)return finalTool;
   const parameters=structuredClone(finalTool.parameters);
-  const knowledgeOnly = knowledgeResult && !otherDisplayResult;
+  const knowledgeOnly = sourceOnly || knowledgeResult && !otherDisplayResult;
   const properties = parameters.properties as Record<string, Record<string, unknown>>;
   if (queriedSources) properties.kind = { type: 'string', enum: knowledgeOnly ? ['synthesis'] : ['synthesis', 'business', 'knowledge', 'references'] };
   if (knowledgeOnly) {
@@ -224,11 +245,16 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
     // them only when an actual business/reference result supplies that format.
     for (const field of ['text', 'resultKey', 'selections']) delete properties[field];
     parameters.required = ['kind', 'segments']; properties.segments.minItems = 1;
+    if (sourceOnly) {
+      const segment = (properties.segments.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
+      segment.basis.enum = ids.length ? ['evidence', 'uncertainty'] : ['uncertainty'];
+      segment.text.description = '只解释指定原文有据内容；不等同关系不推出关闭/完成条件。原文未说明的部分仅限本次未知，不另加一般建议、办理前提或项目流程。';
+    }
     if (!ids.length) {
       // Retrieval readiness is not evidence. Other authorized source kinds
       // remain citable when their actual catalog has entries.
       const segment = (properties.segments.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
-      segment.basis.enum = ['advice', 'uncertainty']; segment.citations.maxItems = 0;
+      segment.basis.enum = sourceOnly ? ['uncertainty'] : ['advice', 'uncertainty']; segment.citations.maxItems = 0;
       segment.citations.description = '本轮没有可用引用，必须是空数组[]，不能填默认或猜测的编号。';
     }
   }
@@ -237,6 +263,7 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
     for(const key of ['properties','segments','items','properties','citations','items','properties','citationId'])schema=schema[key] as Record<string,unknown>;
     schema.enum=ids;
   }
+  if (sourceOnly) return { ...finalTool, parameters, description: '只回答指定原文内容，kind=synthesis，每段evidence或uncertainty。仅选支持本段的知识citationId；不追加advice、项目流程或原文没有的业务条件。原文未说明则说明本次范围限制。正文与引用由你选择，仍须完整校验。' };
   return {...finalTool,parameters,...(queriedSources ? { description: knowledgeOnly
     ? (!ids.length ? '本轮没有可用引用。只用kind=synthesis及segments，每段basis只能advice或uncertainty，citations必须是空数组[]。说明本次资料缺口，可给标明身份的一般建议；不能用evidence或编造默认引用编号，不能把未查到当作现实没有记录。'
       : '本轮知识结果用kind=synthesis，顶层仅kind和segments，每段basis/text/citations。原文查询也在段落中保留对应引用；不要输出kind=knowledge或顶层text/resultKey/selections。引用只选本轮citationId，服务端继续校验全部来源与正文。')
@@ -246,7 +273,7 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
  * has actually been read. Separate authorized writes/handoff retain their own
  * contracts. Exhaustion/disabled tools can only explain unavailability. */
 export function agentToolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[] {
-  if (!knowledgeReadPending(question, messages, triggerId)) return [...needToolsForRetry(messages, tools), finalToolForMessages(messages)];
+  if (!knowledgeReadPending(question, messages, triggerId)) return [...needToolsForRetry(messages, tools), finalToolForMessages(messages, question)];
   if (tools.some(tool => tool.name === 'search_knowledge')) return needToolsForRetry(messages, tools)
     .filter(tool => ['search_knowledge', 'request_designer', 'record_reference_preference'].includes(tool.name)
       || tool.name === 'record_need' && Boolean(explicitNeedWriteStatement(question)));
@@ -506,7 +533,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' ? synthesisRepairBase(focused) ? synthesisRepairProtocol : finalAnswerRepairBase(focused) ? finalAnswerRepairProtocol : null : null,
                   repairProjection: purpose === 'answer' && focused !== messages && (synthesisRepairBase(focused) || finalAnswerRepairBase(focused)) ? synthesisRepairProjectionVersion : null,
-                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, readContext, sourceReadProtocol: purpose === 'answer' ? sourceReadProtocol : null, sourceReadPending: purpose === 'answer' && knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id)), finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, needQuoteProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') && needOriginalQuotes(reviewContext.currentQuestion).length ? agentNeedQuoteProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
+                  transportProtocol: agentChatProtocolVersion, readProtocol: agentReadProtocol, readInputProtocol: readToolInputProtocol, readContext, sourceReadProtocol: purpose === 'answer' ? sourceReadProtocol : null, sourceReadPending: purpose === 'answer' && knowledgeReadPending(reviewContext.currentQuestion, focused, String(initial.trigger.id)), sourceAnswerProtocol: purpose === 'answer' && originalAnswerOnly(reviewContext.currentQuestion) ? sourceAnswerProtocol : null, finalProtocol: purpose === 'answer' ? agentSourceFinalProtocol : null, needQuoteProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') && needOriginalQuotes(reviewContext.currentQuestion).length ? agentNeedQuoteProtocol : null, activeToolNames: dispatchTools.map(tool => tool.name),
                   needInputProtocol: purpose === 'answer' && dispatchTools.some(tool => tool.name === 'record_need') ? agentNeedInputProtocol : null,
                   finalOnly: purpose === 'answer' && tools.length === 0,
                   responseScope: modelMessages.some(m => m.role === 'system' && m.content.some(p => p.type === 'text' && p.text.startsWith(availabilityScopeHintPrefix))) ? 'unavailable_occupancy_evidence' : null })}::jsonb)`);

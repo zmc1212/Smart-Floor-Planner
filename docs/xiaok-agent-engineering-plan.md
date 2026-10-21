@@ -12,7 +12,7 @@
 
 ## 1. Scope and priorities
 
-**Current delivery: professional consultation within the assigned P2M.1–.3 PPT/QA/XK scope; overall Limited.** v116 adds bounded original-source reads. Runs1363/1366 actually read and cite the PDF but add unsupported closing conditions;1364/1367 fail material-citation composition, and1365/1368 over-retrieve for independent advice and introduce unsupported quantities. Native source dialogs and full F-07 long-chat/compaction remain unverified or incomplete. Bounded v115 budget-recovery passes remain separate. Detailed results, original failures and unknown usage remain in [phase two](./xiaok-assistant-phase-2.md), `tmp/xiaok-source-read-v116/` and original evidence. This planning change adds no acceptance pass.
+**Current delivery: professional consultation within assigned P2M.1–.3 PPT/QA/XK scope; overall Limited.** v117 adds an original-only scope guard; stable379/4 targeted services/8 compatibility/98 Mini/lint pass, tsc292/scoped0. New Qwen/Stable1369/1370 still add page1 and project prose beyond correct page2 evidence; existing commitment checks reject them before feedback repair, with no delivery. Source sheets/native withdrawal are unreached. Fix actual original-context/relevance and existing feedback first, then1364/1367 citation composition,1365/1368 independent advice and assigned F-07 long-chat/compaction. v115 passes and all original failures/unknown outcomes/costs remain separate. Small repairs/actual validation: [phase two](./xiaok-assistant-phase-2.md), `tmp/xiaok-answer-scope-v117/`; no expanded progression gates or completed business-batch claim.
 
 **Required in the current stage:**
 

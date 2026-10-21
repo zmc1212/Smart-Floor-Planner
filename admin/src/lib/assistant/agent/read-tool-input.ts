@@ -4,12 +4,14 @@ import { historyTool, parseHistoryQuery } from './history';
 import { materialTool, parseMaterialQuery } from './materials';
 import type { ModelMessage, ModelTool } from '../contracts/model';
 import { originalMessageId } from './context-budget';
+import { explicitNeedWriteStatement } from './memory';
 
 export const sourceReadProtocol = 'original-source-read-v1';
+export const sourceAnswerProtocol = 'original-answer-scope-v1';
 /** Select an existing read contract, never a document, query or answer. Only
  * the actual current request is inspected; quoted history/tool data cannot
  * establish an executed read. Authorization remains with the existing port. */
-export function knowledgeReadPending(question: string, messages: ModelMessage[], triggerId: string): boolean {
+export function knowledgeOriginalRequested(question: string): boolean {
   if (/不(?:用|要|必)?(?:查|检索|读取|查阅)[^。；\n]{0,16}(?:原文|文件|文档|资料)/.test(question)) return false;
   if (/(?:聊天|我(?:的|说|之前|早先)|客户)[^。；\n]{0,20}(?:原文|原话)/.test(question)
     && !/文件|文档|手册|第[一二三四五六七八九十百零〇两\d]{1,8}(?:页|章|节)|\.(?:pdf|docx|xlsx)/i.test(question)) return false;
@@ -17,7 +19,19 @@ export function knowledgeReadPending(question: string, messages: ModelMessage[],
   const locator = /第[一二三四五六七八九十百零〇两\d]{1,8}(?:页|章|节|段落?|条款?|行)/.test(question);
   const source = /原文|原件|文件|文档|手册|说明|条款|《[^》\n]{1,160}》/;
   const file = /\.(?:pdf|docx|xlsx|txt|md)(?:\b|[”」》])/i.test(question);
-  if (!asks || !(file || locator && source.test(question) || /原文|原件|《[^》\n]{1,160}》/.test(question))) return false;
+  return asks && Boolean(file || locator && source.test(question) || /原文|原件|《[^》\n]{1,160}》/.test(question));
+}
+
+/** A source-content question does not request new project procedures or advice.
+ * Explicit joint application/advice keeps the existing synthesis contract. This
+ * is a bounded intent scope, not source selection or semantic entailment. */
+export function originalAnswerOnly(question: string): boolean {
+  return knowledgeOriginalRequested(question) && !explicitNeedWriteStatement(question)
+    && !/(?:结合|针对)(?:我|本|当前|现有|这个)|(?:另外|此外|顺便|也请|同时|再给)[^。；\n]{0,40}(?:建议|取舍|现场|我家|项目)|(?:一般|通用)(?:的|选择)?建议/.test(question);
+}
+
+export function knowledgeReadPending(question: string, messages: ModelMessage[], triggerId: string): boolean {
+  if (!knowledgeOriginalRequested(question)) return false;
   const start = messages.findIndex(message => originalMessageId(message) === triggerId);
   if (start < 0) return true;
   return !messages.some((message, index) => {

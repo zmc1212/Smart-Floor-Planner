@@ -1,10 +1,12 @@
 import type { SynthesisAnswer, SynthesisSource } from './synthesis';
 import { resolveCatalogCitation, sourceCitationCatalog } from './citation-catalog';
+import { originalAnswerOnly } from './read-tool-input';
 
 export type ResponseReviewIssue = { segment: number; code: 'unscoped_measurement_gap' | 'repeated_known_need' | 'internal_wording'
   | 'reopened_unavailable_need' | 'unsolicited_unknown_plan' | 'unsupported_work_absence' | 'unscoped_work_readiness' | 'misattributed_shared_need'
   | 'misattributed_project_quantity' | 'misattributed_project_observation' | 'unsupported_evidence_mechanism'
-  | 'contradictory_measurement_comparison' | 'unmeasured_compliance_claim' | 'misattributed_rule_comparison' | 'misattributed_project_status' };
+  | 'contradictory_measurement_comparison' | 'unmeasured_compliance_claim' | 'misattributed_rule_comparison' | 'misattributed_project_status'
+  | 'source_answer_scope' | 'unsupported_source_condition' };
 export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal?: { messageId: string; hash: string };
   currentNeeds?: { version: number; facts: Array<{ sourceMessageId: string; sourceHash: string; quote: string; value: string }> } };
 
@@ -30,6 +32,26 @@ function actualRecordCitations(citations: Citations, sources: SynthesisSource[])
 
 function nonassertive(clause: string) {
   return /如果|假如|假设|是否|能否|无法|不能|不足以|尚不能|示例|例如|譬如|(?:不足|不够|不符合|不达标)时/u.test(clause);
+}
+
+/** Original-only explanations may preserve a cited business condition, never
+ * add one under advice/uncertainty or borrow an unrelated real citation. Only
+ * explicit obligation/condition language is checked; this is not an arbitrary
+ * passage entailment score. Preserve exact relation wording for such claims. */
+function unsupportedSourceCondition(text: string, citations: Citations, sources: SynthesisSource[]) {
+  const normalize = (value: string) => value.replace(/[\s\p{P}]/gu, '');
+  const originals = citations.filter(c => sources.some(s => s.sourceId === c.sourceId && s.kind === 'knowledge')).map(c => normalize(c.quote));
+  return text.split(/[。！？!?；;\n]/u).some(sentence => {
+    const claim = sentence.trim().replace(/^(?:根据)?(?:原文|文件|手册|该段|说明)(?:中)?(?:规定|要求|写明|明确)?[：:]/u, '');
+    // A statement that the original does not specify a condition is a gap,
+    // not a new positive requirement. Later clauses still get their own check.
+    return claim.split(/[，,]|但是|不过|然而|但|并(?=要求|必须|需|须|应当|依赖)/u).some(clause => {
+      if (/^(?:(?:本次|本轮|这次)(?:可用)?)?(?:原文|文件|该段|资料)(?:中)?(?:未|没有)(?:说明|写明|规定|给出|明确)/u.test(clause.trim())) return false;
+      if (!/必须|需(?!求)|须|应当|依赖|前提|只有|才能|要求|建议|最好|不妨|以[^。；\n]{1,32}为准/u.test(clause)) return false;
+      const normalized = normalize(clause);
+      return !originals.some(original => original.includes(normalized));
+    });
+  });
 }
 
 /** A prescription cannot stand in for an explicitly attributed observation,
@@ -309,11 +331,17 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
     return mentioned.length ? mentioned.includes(room) : questionRooms.length === 1 ? questionRooms[0] === room : rooms.length === 1;
   };
   const issues: ResponseReviewIssue[] = [];
+  const sourceOnly = originalAnswerOnly(context.currentQuestion || '');
   for (const [index, segment] of answer.segments.entries()) {
     const codes = new Set<ResponseReviewIssue['code']>();
     // Final validation receives canonical references; bounded repair can read
     // the original model catalog IDs. Resolve both through the same catalog.
     const citations = segment.citations.map(citation => resolveCatalogCitation(citation as unknown as Record<string, unknown>, sources) || citation);
+    if (sourceOnly) {
+      if (segment.basis === 'advice' || citations.some(c => !sources.some(s => s.sourceId === c.sourceId && s.kind === 'knowledge')))
+        codes.add('source_answer_scope');
+      if (unsupportedSourceCondition(segment.text, citations, sources)) codes.add('unsupported_source_condition');
+    }
     if (unsupportedProjectQuantity(segment.text, citations, sources)) codes.add('misattributed_project_quantity');
     if (unsupportedProjectObservation(segment.text, citations, sources)) codes.add('misattributed_project_observation');
     if (unsupportedRecordGap(segment.text, citations, sources)) codes.add('misattributed_project_observation');

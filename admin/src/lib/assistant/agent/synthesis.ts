@@ -9,6 +9,7 @@ import { reviewSynthesisResponse, synthesisComparisonRepairData, synthesisStatus
 import type { HistorySnapshot, HistoryRef } from './history';
 import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText } from './citation-catalog';
 import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase } from './synthesis-repair';
+import { originalAnswerOnly } from './read-tool-input';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'> };
@@ -333,7 +334,7 @@ export function synthesisRepairFeedback(raw:string,sources:SynthesisSource[],con
 function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
   try { parseSynthesis(raw,sources,context); return null; }
   catch(error) {
-    if (error instanceof AssistantError && error.code === 'ungrounded_response_scope' && sources.length) {
+    if (error instanceof AssistantError && error.code === 'ungrounded_response_scope' && (sources.length || originalAnswerOnly(context.currentQuestion || ''))) {
       // parseSynthesis has already checked every quote, number and commitment.
       // Share the original single repair allowance; no new tool or model loop.
       const issues = reviewSynthesisResponse(JSON.parse(raw) as SynthesisAnswer, sources, context);
@@ -347,6 +348,8 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
         unscoped_work_readiness: '删除断言现场不能施工、底盒和插座没法往下走的扩展结论。只说明团队回传的具体待核对内容和企业要求的先后关系；不能从查询缺项或等待核对推断现实施工停滞。确需假设时明确条件，不把假设说成当前事实。',
         misattributed_shared_need: '历史共享原文只把具体尺寸列为待核对，不能改说原文的人数和尺寸都标待核对。保留当时共享的人数身份，同时说明它不能替代这次不可用的当前人数；不改原引文，不重开人数决定。',
         misattributed_project_quantity: projectQuantityRepairInstructions,
+        source_answer_scope: '本题只解释指定原文。删除未被请求的一般建议、办理流程和本人项目段；有据内容用evidence及相应知识引用，原文未说明的部分仅作本次范围内uncertainty。不把advice直接改名为evidence保留推断，不添加项目/历史引用背书。',
+        unsupported_source_condition: '标记段落添加了所引原文未写明的业务条件。删除这些条件或说明原文未说明；原文确有要求时保留其完整原关系并引用该段。真实引用不授权新前提，不从不等同推断完成/关闭/验收的必要或充分条件，不补流程、报告、结算或签字。',
         ...groundingRepairInstructions,
       };
       const locations = issues.map(issue => ({ path: `segments[${issue.segment - 1}].text`, code: issue.code }));
@@ -561,6 +564,7 @@ export function parseSynthesis(raw: string, sources: SynthesisSource[], context:
 
 export const synthesisInstructions = `
 专业综合问答（本段替代上文“知识只能选摘录、业务只能展示快照”的限制）：
+仅问指定文件/原文内容时，只解释该原文，不主动追加一般建议或本人项目流程。只用evidence及对应知识引用、必要的uncertainty；不能以advice或真实引用补原文未写的业务前提。否定等同关系不推出完成/关闭/验收的条件，原文未写就说明本次未说明。明确另问一般建议或结合本人实况时才沿相应综合范围。
 绑定房屋的search_knowledge会同时返回本轮当前需求/正式户型/已发布记录、实际施工节点和原咨询事项的synthesisSources。这些已是原业务适配器实时查询，不必重复查询同一状态。先用当前实际阶段解释影响，再结合需求和图纸说明最小缺项；同一问题随阶段变化只能据本轮快照改变，不能继承历史进度或把阶段当完工。没有绑定房屋/唯一项目时如实澄清，不拼接不同项目。
 专业做法加本人实况/事项的问题，先只调用search_knowledge，取得绑定来源后直接综合解释；除工具明确缺失相关范围外，不再并行/重复查同一房屋的材料、节点或事项。仅找资料、查列表/精确状态仍沿原专用工具。
 每个citations数组元素只能是平铺的{"sourceId":"某个来源ID","quote":"该来源逐字原文"}。一段组合两份依据就在该段citations数组并列放两个这样的元素；不能在引用元素里嵌套text、citations或整段解释，也不能省略quote。text和basis只属于segments数组中的段落。

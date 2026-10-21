@@ -72,6 +72,64 @@ async function fixture(targetEid = eid, bound = true) {
   return { actor, chat, cid, send, leadId, uid };
 }
 
+test('original answer scope rejects retained unsupported conditions and uses one repair with real sources, permissions and revocation', async () => {
+  const body = '第二节 状态区别 客户同意某版方案不等于已经落实，也不等于事项关闭或工程验收通过。';
+  const doc = await publish('合成手测点位说明', body), x = await fixture(eid, false);
+  const question = '合成点位说明第二节如何区分方案同意和关闭？';
+  const originals = [
+    '方案同意仅表示客户认可设计版本，而关闭需团队提供现场落实证据、正式解决记录或客户明确决定，三者不可混同。',
+    '方案同意仅表示客户认可该版本内容，但现场落实、节点验收、费用结算及正式关闭需依赖团队实际施工记录、验收报告及客户明确签署的关闭确认。',
+  ];
+  const delivered: Array<{ id: string; citationId: string }> = [];
+  for (const text of originals) for (const basis of ['advice', 'evidence', 'uncertainty']) {
+    let calls = 0;
+    const a = await x.send(question, async (messages, tools, turn, dispatch) => {
+      calls++;
+      if (!turn) { assert.deepEqual(dispatch!.map(t => t.name), ['search_knowledge']); return call('search_knowledge', { query: '合成点位说明 第二节 方案同意 关闭' }); }
+      const source = results(messages).find(s => s.text === body); assert.ok(source);
+      const citations = [{ citationId: source.citationOptions[0].citationId }];
+      if (turn === 1) return synth([
+        { basis: 'evidence', text: '客户同意某版方案，不等于已经落实，也不等于事项关闭或工程验收通过。', citations },
+        { basis, text, citations },
+      ]);
+      assert.equal(turn, 2); assert.equal(tools.length, 0);
+      const base = synthesisRepairBase(messages); assert.ok(base);
+      assert.match(JSON.stringify(messages), /unsupported_source_condition|source_answer_scope/);
+      assert.deepEqual(((dispatch![0].parameters.properties as Row).kind as Row).enum, ['synthesis_repair']);
+      return call('final_response', { kind: 'synthesis_repair', baseHash: base.baseHash, edits: [{ segment: 1, remove: true }] });
+    });
+    assert.equal(a.run.status, 'succeeded', JSON.stringify(a.run)); assert.equal(calls, 3);
+    const message = (await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === a.run.outputMessageId)!;
+    assert.ok(message.available); assert.equal(message.citations.length, 1);
+    assert.doesNotMatch(JSON.stringify(message.content), /现场落实证据|正式解决记录|费用结算|验收报告|签署|一般建议/);
+    const citation = await x.chat.citation(message.citations[0].id); assert.ok('quote' in citation); assert.equal(citation.quote, body);
+    delivered.push({ id: message.id, citationId: message.citations[0].id });
+    const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
+    assert.equal(steps.filter(s => s.kind === 'agent_validation').length, 1);
+    assert.equal(steps.filter(s => s.kind === 'retrieval').length, 1);
+    assert.equal(steps.filter(s => s.kind === 'agent_need_write').length, 0);
+    assert.ok(steps.filter(s => s.kind === 'agent_model').every(s => (s.input_summary as Row).sourceAnswerProtocol === 'original-answer-scope-v1'));
+  }
+  const other = await fixture(eid, false), cross = await fixture(tenants[1], false);
+  for (const foreign of [other, cross]) {
+    await assert.rejects(foreign.chat.messages(x.cid), /assistant_resource_not_found/);
+    await assert.rejects(foreign.chat.citation(delivered[0].citationId), /assistant_resource_not_found/);
+  }
+  const ignored = await x.send(question, async (messages, _tools, turn) => {
+    if (!turn) return call('search_knowledge', { query: '合成点位说明 第二节' });
+    const source = results(messages).find(s => s.text === body); assert.ok(source);
+    if (turn === 1) return synth([{ basis: 'evidence', text: originals[0], citations: [{ citationId: source.citationOptions[0].citationId }] }]);
+    return call('final_response', { kind: 'synthesis_repair', baseHash: synthesisRepairBase(messages)!.baseHash, edits: [{ segment: 0, basis: 'uncertainty' }] });
+  });
+  assert.equal(ignored.run.status, 'failed'); assert.equal(ignored.run.errorCode, 'ungrounded_response_scope'); assert.equal(ignored.run.outputMessageId, null);
+  await knowledge.execute('retire', { documentId: doc.documentId, expectedVersion: 2 }, randomUUID());
+  const reopened = await new ConversationService(x.actor).messages(x.cid);
+  for (const message of delivered) {
+    assert.equal(reopened.items.find(m => m.id === message.id)?.available, false);
+    assert.equal((await x.chat.citation(message.citationId)).available, false);
+  }
+});
+
 test('explicit completion denials persist exact knowledge and reentry while a separate positive claim stays rejected', async () => {
   const body = '厨房设备调整须先核对电器尺寸、插座位置与通道条件；若处在水电施工阶段，还需核对当前点位图和现场记录。客户提出保留冰箱只表示需求，不证明点位已落实或通过验收。未查到图纸或现场记录时不能据此认定现实没有，也不承诺更改日期。';
   const doc = await publish('合成否定完工边界厨房规程', body), x = await fixture();
