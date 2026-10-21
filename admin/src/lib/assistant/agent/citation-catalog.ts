@@ -65,14 +65,18 @@ export function resolveCatalogCitation(citation: Record<string, unknown>, source
   return { sourceId: matches[0].sourceId, quote: matches[0].quote };
 }
 
-/** Only an exact quoted filename or named document-version mention supported by a cited knowledge
+/** Only an exact quoted filename, named edition or actual PDF page supported by a cited knowledge
  * source's trusted metadata is exempt from engineering-number matching.
  * Original prose still reaches commitment/scope guards. A bare number or a
  * quantity (including one glued to a document label) is never exempted. */
 export function engineeringClaimText(text: string, citedSources: SynthesisSource[]) {
   const aliases = new Map<string, { name: string; version: string }>();
   const filenames = new Set<string>();
+  const pdfPages = new Set<number>();
   for (const source of citedSources.filter(s => s.kind === 'knowledge')) {
+    const file = source.evidence?.file;
+    if (file?.format === 'pdf' && typeof file.page === 'number' && Number.isSafeInteger(file.page) && file.page > 0)
+      pdfPages.add(file.page);
     for (const label of [source.title, source.evidence?.file?.name].filter((s): s is string => !!s)) {
       if (/^[^\r\n《》“”"']+\.(?:pdf|docx|xlsx)$/iu.test(label)) filenames.add(label);
       for (const match of label.matchAll(/([\p{L}][\p{L}\p{Zs}\t·_-]{1,80}?)([vV]?\d+(?:\.\d+){1,3})(?=$|[\s·_—\-（）()\[\]【】]|\.(?:pdf|docx|xlsx)$|版)/gu)) {
@@ -90,6 +94,11 @@ export function engineeringClaimText(text: string, citedSources: SynthesisSource
     }
   }
   let result = text;
+  for (const page of pdfPages) {
+    // Coordinates describe this segment's cited original, not quantities in
+    // its prose. Never trust a display label, another segment or a bare number.
+    result = result.replace(new RegExp('第[\\p{Zs}\\t]*' + page + '[\\p{Zs}\\t]*页', 'gu'), '原文页');
+  }
   const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   for (const filename of [...filenames].sort((a, b) => b.length - a.length)) {
     // Exact paired quoting distinguishes a trusted filename (including its

@@ -1,6 +1,16 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v98：只读咨询、需求完整性与知识兼容
+## 当前v99：可信PDF实际页码与工程数值分离
+
+**内部限定修复，整体Limited。** 真实故障是PDF定位页码不在原段文字中，却被当成无依据工程量。Agent的`engineeringClaimText`仅从本段实际引用的knowledge Evidence中读取`format=pdf`和有效正整数`file.page`，识别精确“第N页”（允许横向排版空白）；不把页码加入quote或通用数字白名单，不改原文、引用ID、原始定位和公开DTO。无引用、其他来源/格式、非法页码、不同页码及裸数/尺寸/金额/时长仍沿原校验；不声称字面数值校验已解决所有语义归因。提示词v99同步这一区别。知识解析、索引、检索、发布和撤回无生产代码变动。
+
+分窗证据为320单元、9真实文件服务、8知识/Agent兼容、98 Mini及涉及文件lint通过，执行窗内2,261项源码/测试/配置均无漂移。本次类型0、全仓292，不能声明全仓类型通过。最初新增页码红测1失败/2通过；服务前置隧道断开时未执行数据库操作；类型首轮新测试可选字段1错修复为String断言后，最终9服务/lint/types重跑通过。单元/兼容窗早于该测试断言的类型修正，生产实现相同，保留各窗hash，不拼为一次未执行的全仓结果。命令`node tmp/xiaok-pdf-page-v99/check.mjs <unit|service|compat|mini|lint|types>`。新服务用实际两页PDF的无数字原文，经过上传/本地解析/核对/真实embedding/发布/召回，交付第2页、重进和撤回；附加“厚度2mm”在原一次合法修复后仍失败且0需求写入；原K02/03/06/07/08覆盖继续通过。
+
+Stable2.02.2608080 / SDK0.13.0 / 基础库3.17.2，唯一同仓项目/副屏/新编译/精确C01路由/390×844（PNG348×752）。新2660/2661企业、3719–3721用户、659–661会话，真实知识358/364、原件100、片2785仅含人工核对的实际第2页（排除原第1页b1），quote不含数字2。配置GLM9的1292/1293均已检索到正确原文和页码，最终却输出`kind=knowledge`与`segments/text`混合结构，以`invalid_model_answer`失败，分别3/2次provider调用；原稿/尝试/用量保留，不记成页码守卫失败、成功首稿或整批业务通过。两个预定题均只提交一次，0需求写入、记忆v0不变。原生来源面板和成功答复撤回因无成功答复未执行；仅完成夹具真实退役与错误反馈/重进截图，不能以空循环补成撤回验收。本人200、同企业其他客户/跨企业正控后404；fixture AI关闭、context撤销，active0/unknown0；传输恢复，LLM配置、源码与两份驱动前后相同。证据`tmp/xiaok-pdf-page-v99/live.json`、`native.json`及各结果，已审看错误截图。
+
+原C01批准设计`design-references/xiaok-p4b-public-sites-v1/README.md`继续权威；Mini结构、样式、素材、固定文案、导航和还原台账均无修改。核对[LlamaIndex节点元数据/正文源码](https://github.com/run-llama/llama_index/blob/main/llama-index-core/llama_index/core/schema.py)和[对应schema测试](https://github.com/run-llama/llama_index/blob/main/llama-index-core/tests/schema/test_schema.py)：参考元数据与正文分离，保留本项目Evidence/权限/撤回/持久任务/用量，不引入框架或把定位拼进原文。上游元数据分隔回归不是GLM格式失败的根因证据。下一有界工作归Agent最终回复协议，处理本批真实`knowledge+synthesis`混用；知识返回正确，不另建检索、权限或引用管线。历史unknown、F-01/02/04/06/07、完整PPT/专业质量、真机/BLE/真实微信和生产保持原状态。
+
+## 历史v98：只读咨询、需求完整性与知识兼容
 
 **限定内部修复，整体Limited。** 2026-10-21按用户要求恢复统一推进。`need-write-intent.ts`共用“不新增或修改我的需求”“我想问/了解”等已登记表达，工具列表与`applyNeedDelta`同时拒绝错误写入；原话quote/value不能绕过。保留明确保存与先更正再提问，沿原Graph/PG步骤、原键、租户/参与者、来源撤回和用量。已有未提交的同轮四字段原子投影、缺项整批回滚/反馈作为相关依赖一并纳入；完整复合value可把room单列，不能因此漏掉另一房间。当前提示词v98针对咨询补充一般建议/知识证据的区别，不放宽引用或数值守卫。
 

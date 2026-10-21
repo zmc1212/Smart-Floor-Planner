@@ -1,13 +1,59 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText } from '../agent/citation-catalog';
-import { knowledgeSynthesisSources, parseSynthesis, focusedSynthesisMessages, type SynthesisSource } from '../agent/synthesis';
+import { knowledgeSynthesisSources, parseSynthesis, synthesisRepairFeedback, focusedSynthesisMessages, type SynthesisSource } from '../agent/synthesis';
 import { finalToolForMessages } from '../agent/worker';
 import type { ModelMessage } from '../contracts/model';
 
 const source = (text: string, sourceId = 'K1', title = '施工指南2.0'): SynthesisSource => ({ sourceId, kind: 'knowledge', title, text });
 const answer = (s: SynthesisSource, text: string, basis = 'evidence') => JSON.stringify({ kind: 'synthesis',
   segments: [{ basis, text, citations: [{ citationId: sourceCitationCatalog(s)[0].citationId }] }] });
+const pdfSource = (): SynthesisSource => {
+  const s = source('施工与检查由项目团队安排，阶段标签不代表检查通过。', 'Kpdf-page', '合成阶段.pdf');
+  return { ...s, evidence: { ref: { type: 'knowledge_chunk', id: 'synthetic-chunk', version: 'synthetic-version' },
+    text: s.text, hash: 'synthetic-hash', file: { assetId: 'synthetic-asset', sourceHash: 'synthetic-file-hash',
+      name: s.title, format: 'pdf', parser: 'synthetic-pdf', blockId: 'p2', kind: 'paragraph', section: [], page: 2, label: '第2页' } } };
+};
+
+test('a cited PDF actual page is locator metadata without rewriting the answer, quote or repair', () => {
+  const s = pdfSource(), before = JSON.stringify(s), catalog = sourceCitationCatalog(s);
+  assert.doesNotMatch(s.text, /2/);
+  for (const gap of ['', ' ', '\t', '\u3000', '\u00a0']) {
+    const text = `这份PDF第${gap}2${gap}页说明施工与检查由项目团队安排，阶段标签不代表检查通过。`;
+    const raw = answer(s, text);
+    assert.doesNotMatch(engineeringClaimText(text, [s]), /2/);
+    const parsed = parseSynthesis(raw, [s]);
+    assert.equal(parsed.segments[0].text, text);
+    assert.deepEqual(parsed.segments[0].citations, [{ sourceId: s.sourceId, quote: s.text }]);
+    assert.equal(synthesisRepairFeedback(raw, [s]), null);
+  }
+  assert.equal(JSON.stringify(s), before); assert.deepEqual(sourceCitationCatalog(s), catalog);
+});
+
+test('PDF locator metadata never licenses a different page, bare number, quantity or completion', () => {
+  const s = pdfSource();
+  for (const text of ['第3页说明施工与检查由团队安排。', '第02页说明施工与检查由团队安排。',
+    '第2.0页说明施工与检查由团队安排。', '第\n2页说明施工与检查由团队安排。',
+    '第2页说明厚度2mm。', '第2页说明应等待2小时。', '需要2。', '第2页说明已经验收通过。'])
+    assert.throws(() => parseSynthesis(answer(s, text), [s]), /unsupported_model_commitment/);
+  const feedback = synthesisRepairFeedback(answer(s, '第2页说明厚度2mm。'), [s]);
+  assert.ok(feedback); assert.match(feedback.feedback, /removeUnsupportedNumbers.*2/);
+});
+
+test('PDF page permission is segment-local and comes from the actual numeric locator only', () => {
+  const s = pdfSource(), text = '第2页说明施工与检查由团队安排。';
+  for (const item of [{ ...s, kind: 'project' as const }, { ...s, kind: 'history' as const },
+    { ...s, evidence: undefined }, ...['docx', 'xlsx'].map(format => ({ ...s, evidence: { ...s.evidence!, file: { ...s.evidence!.file!, format } } })),
+    ...[undefined, 0, -2, 2.5, '2', NaN, Infinity].map(page => ({ ...s, evidence: { ...s.evidence!, file: { ...s.evidence!.file!, page } } }))])
+    assert.match(engineeringClaimText(text, [item as SynthesisSource]), /2/);
+  assert.match(engineeringClaimText(text, []), /2/);
+  assert.throws(() => parseSynthesis(JSON.stringify({ kind: 'synthesis', segments: [
+    { basis: 'evidence', text, citations: [{ citationId: sourceCitationCatalog(s)[0].citationId }] },
+    { basis: 'advice', text, citations: [] },
+  ] }), [s]), /unsupported_model_commitment/);
+  const other = source('另一条真实来源不包含页码或数字。', 'Kother-page');
+  assert.throws(() => parseSynthesis(answer(other, text), [s, other]), /unsupported_model_commitment/);
+});
 
 test('one catalog protocol resolves exact original Unicode/spacing without model-written quotes or length modes', () => {
   const s = source('原句：间距不小于 310 mm；条件成立才适用。😀');

@@ -18,6 +18,9 @@ import { syntheticDocx,syntheticPdf } from '../../../scripts/assistant-file-fixt
 import { parseSourceFile } from '@/lib/assistant/knowledge/source-file';
 import { chunkDocument } from '@/lib/assistant/knowledge/chunk-gateway';
 import { embeddingGateway } from '@/lib/assistant/infrastructure/embedding-gateway';
+import { processAgentAnswer } from '@/lib/assistant/agent/worker';
+import { synthesisRepairBase } from '@/lib/assistant/agent/synthesis-repair';
+import type { ModelMessage,ModelTurnOutput } from '@/lib/assistant/contracts/model';
 
 const prefix='synthetic-kb2-'+randomUUID(),tenants:string[]=[],admins:string[]=[];
 let eid:string,aid:string,uid:string,service:KnowledgeService,customer:ConversationService,cid:string,actor:ActorContext;
@@ -93,4 +96,34 @@ test('K08 answer and original source projection survive reentry and invalidate o
  const cite=await customer.citation(citationId);assert.equal(cite.available,true);assert.ok('sourceLocation' in cite && 'sourceFile' in cite && 'quote' in cite);assert.match(String(cite.sourceLocation),/合成材料.docx/);assert.ok(cite.sourceFile);assert.match(String(cite.quote),/TEST-A|2 mm/);
  await op('retire',{documentId:published.documentId,expectedVersion:2});assert.equal((await customer.citation(citationId)).available,false);assert.equal(((await customer.messages(cid)).items as Row[]).find(m=>m.id===messageId)?.available,false);
  await assert.rejects(readOriginal(service.actor,String(published.documentId),String(published.versionId)),/assistant_resource_not_found/);
+});
+
+test('AG08/K06 actual parsed PDF page survives Agent validation, durable reentry and withdrawal without licensing quantities',async()=>{
+ const created=await op('createFile',{...upload(syntheticPdf(false,2,[
+  'Waterproofing checks are arranged by the project team.',
+  'A stage label does not prove inspection passed.',
+ ]),'合成页码定位.pdf'),title:'合成PDF页码定位'});
+ const d={documentId:String((created.document as Row).id),versionId:String((created.draft as Row).id),expectedVersion:1,expectedEditVersion:1,jobId:created.jobId};
+ await ready(d);await op('publish',d);
+ await withTenantTransaction(eid,tx=>tx.execute(sql`update app.assistant_enterprise_settings set agent_config='{"runtime":"langgraph-v1","providerKey":"deepseek","model":"deepseek-flash","tools":true,"imageInput":false,"probeVersion":"synthetic-pdf-page-v99"}'::jsonb where enterprise_id=${eid}`));
+ const chat=new ConversationService(actor),agentCid=String((await chat.create(randomUUID())).id);
+ const call=(name:string,args:unknown):ModelTurnOutput=>({text:'',toolCalls:[{id:randomUUID(),name,arguments:JSON.stringify(args)}],usage:{inputTokens:30,outputTokens:30},finishReason:'tool_calls',providerRequestId:null});
+ const sources=(messages:ModelMessage[])=>messages.filter(m=>m.role==='tool').flatMap(m=>JSON.parse(m.content).synthesisSources||[]) as Array<{sourceId:string;text:string;file?:{page?:number};citationOptions:Array<{citationId:string}>}>;
+ const send=async(quantity:boolean)=>{
+  const sent=await chat.send(agentCid,randomUUID(),{version:1,blocks:[{type:'text',text:'请解释企业合成PDF页码定位资料中的检查安排和阶段标签。'}]}),lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
+  await processAgentAnswer(lease,{model:async(messages,_tools,turn)=>{
+   if(!turn)return call('search_knowledge',{query:'合成PDF页码定位 Waterproofing checks project team stage inspection'});
+   if(quantity&&turn>1){const base=synthesisRepairBase(messages);assert.ok(base);return call('final_response',{kind:'synthesis_repair',baseHash:base.baseHash,edits:[{segment:0,text:base.original.segments[0].text}]});}
+   const selected=sources(messages).find(s=>s.file?.page===2&&s.text.includes('Waterproofing checks'));assert.ok(selected,'The page must come from real PDF parsing/indexing/retrieval');assert.doesNotMatch(selected.text,/2/);
+   if(!quantity)assert.equal(turn,1,'A valid actual page must not consume a repair');
+   return call('final_response',{kind:'synthesis',segments:[{basis:'evidence',text:'企业资料第2页说明施工检查由项目团队安排，阶段标签不代表检查通过。'+(quantity?'厚度要求2mm。':''),citations:[{citationId:selected.citationOptions[0].citationId}]}]});
+  }});return{run:await chat.run(lease.runId),runId:lease.runId};
+ };
+ const accepted=await send(false);assert.equal(accepted.run.status,'succeeded',JSON.stringify(accepted.run));
+ const history=await new ConversationService(actor).messages(agentCid),message=history.items.find(m=>m.id===accepted.run.outputMessageId)!;assert.ok(message?.available);assert.match(JSON.stringify(message.content),/第2页/);assert.equal(message.citations.length,1);
+ const cite=await chat.citation(message.citations[0].id);assert.ok('quote' in cite&&'sourceLocation' in cite&&'sourceFile' in cite);assert.doesNotMatch(cite.quote,/2/);assert.match(String(cite.sourceLocation),/PDF第2页/);assert.equal((cite.sourceFile as Row).page,2);
+ const rejected=await send(true);assert.equal(rejected.run.status,'failed');assert.equal(rejected.run.errorCode,'unsupported_model_commitment');assert.equal(rejected.run.outputMessageId,null);
+ const steps=await withTenantTransaction(eid,tx=>rows(tx,sql`select kind from app.assistant_run_steps where enterprise_id=${eid} and run_id in (${accepted.runId},${rejected.runId})`));assert.ok(steps.every(s=>s.kind!=='agent_need_write'));
+ const foreign={...actor,enterpriseId:tenants[1]};await assert.rejects(new ConversationService(foreign).messages(agentCid),/assistant_resource_not_found/);
+ await op('retire',{documentId:d.documentId,expectedVersion:2});assert.equal((await chat.citation(message.citations[0].id)).available,false);assert.equal((await new ConversationService(actor).messages(agentCid)).items.find(m=>m.id===message.id)?.available,false);
 });
