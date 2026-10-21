@@ -1,6 +1,24 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v105：原文quote选项内部已验证，原生被供应商拒绝
+## 当前v105免费模型接续：原文选对，原子提交未完成
+
+**内部配置/验收检查点；F-04及整体Limited。** 用户确认已充值、授权试其他模型并明确只用免费模型。当前官方免费目录有8个候选，仅调用Qwen/Qwen3.5-4B；独立未保存配置连接探针HTTP200/收到后，经原平台配置服务将其保存为开发chat模型。凭据、独立VLM/配置投影及企业1454能力探针/配额核实保持。没有付费/pro备用、购买或生产变更。目录/探针/选模证据在 `tmp/xiaok-model-switch-v105/`；官方来源：[模型API](https://docs.siliconflow.cn/docs/api/models-get)、[模型广场](https://cloud.siliconflow.cn/open/models)、[价格](https://www.siliconflow.cn/pricing)。旧HTTP402记录保留，不因充值重计。
+
+| 核验 | 实际结果 |
+| --- | --- |
+| 源码/配置 | 产品仍xiaok-renovation-v105/need-original-quotes-v1；2,263项源码/测试/配置摘要 `ef6276d00135ae565b3b688e67fe13948ba873b16b7e674d233c333e0677b49a`未变。此前344单元/25服务/8兼容/98 Mini/定向lint及类型涉及0/全仓292仅沿用同源证据，非本次重新执行或模型成绩。8份原生驱动及数据库模型配置hash `b8e4c1e06526f9ec6ad9552b56ebcad81488e8eb641f952587811fd044c47ef7`前后稳定 |
+| 真实模型 | Stable1309/1310，attempt3635–3642均succeeded/accepted=true，实际remote_model Qwen/Qwen3.5-4B。每run前三轮均书桌单项→预算单项→书桌单项；quote均为原文连续逐字字符串，未提议保存假设尾句，但每次完整原子批次仍need_write_incomplete |
+| 原始反馈 | 原private checkpoint保留每run三条成对错误：not_saved/batchCommitted=false、missingStatements预算/书桌/预算、两个quoteOptions、submitted quoteIsOriginal=true且validationError=null。既有反馈要求保留原主项并把缺项加入additionalNeeds。模型未照完整批次重交；未经传输核实不归因为工具结果缺失 |
+| 交付/语义 | 0写入、memoryv5/预算20万元、output_message_id=null。1309最终错误确认两项已存并含通用取舍文字，1310错误确认两项已存且表示以后再讨论；两者均被unsupported_model_commitment拦截。原生题0通过/2失败/3未执行（recap-0/withdrawn-0/recap-1），两项预备读取/重连未执行 |
+| 原生/设计/权限 | 唯一Stable2.02.2608080/SDK0.13.0/base3.17.2、副屏、新鲜DOM编译、SDK/system/page正控。两张精确C01 route/stack390x844、PNG348x752失败图已审看：既有“这次回答没有完成”，无虚假成功稿。批准来源 `design-references/xiaok-p4b-public-sites-v1/README.md` C01/U01及Mini markup/styles/assets/固定文案/导航/几何/还原状态保持。本咨询200/同企业其他客户404/跨企业404 |
+| 启动/清理 | 恢复时未把过早关闭检查失败作为后续auto阻断，产生重复项目窗口，已停止原生操作；用户明确同意关闭旧窗口。按精确反斜杠路径关闭旧target1D045805BEAC2651D3CA81E0BDDAE0F4，保留9420 target6660E3B6449F230CCCFD1CC45FF26D4F，核唯一窗口/副屏后才测试。启动错误单列，不算验收。新enterprise2678/2679 AI关闭、user3746–3748上下文撤权、咨询687–689保留证据；仅新fixture active0/unknown0。session/transport恢复、SDK断开、验收锁释放 |
+| 用量 | 8次已知成功业务attempt实测tokens完整保留，cost_micros仍null；独立连接探针不并入8次。免费标识不等于可填费用0或核清历史1132/3196/1184/3327，本轮未重放或重新审计 |
+
+本次换模未修改产品源码、KnowledgeRetriever/Evidence、API/schema/权限/UI。重新进入时开发服务/隧道均已不在，按批准既有路径恢复；SSH身份/端点/生产保持。首次探针导入失败与保存前错误列查询分别保留，均未派发Agent run或改配置；随后保存/回读核实VLM及enterprise1454边界。
+
+**下一有界项仍Agent F-04：** 先核实际模型工具结果/传输，再加强现有schema/反馈中的完整原子批次提交与恢复。required批次信封/additionalNeeds仅候选；不得推断字段、填参、跨轮拼接被拒提议、放宽完整性/原话/房间/租户/回执或加工具/轮数/Agent/事实库/引用管线。保留当前确认免费模型及单次final修复，独立假设仍须实际回答。新代码需自己的稳定完整检查及两组新免费Qwen/Stable，再F-02/06/07。1309/1310与GLM原稿全部保留，不将修复稿并首稿。证据：`tmp/xiaok-original-quotes-v105-qwen4b/`的native/live/semantic-review/verification、原checkpoint及截图；配置证据 `tmp/xiaok-model-switch-v105/`。接近容量按两计划顺序单owner换新聊天，不建worktree/并行测试或竞争聊天、不push/部署；完整PPT/专业/真机/BLE/真实微信/生产验收仍未完成。
+
+## 历史v105：原文quote选项内部已验证，原生被供应商拒绝
 
 **内部可恢复检查点；F-04及整体仍Limited。** prompt `xiaok-renovation-v105` / `need-original-quotes-v1`从已有明确断言块提供最多四个连续原分句、每句最多1,000字符；主字段与additionalNeeds的quote使用同一字符串enum，已有错误反馈返回quoteOptions。既有断言范围排除独立假设问题。每项room/field/value/quote仍由模型选择；未修正参数、补缺项、推断事实或增加工具/轮数/Agent/存储/引用管线。超界/无明确块输入沿原自由quote schema及独立持久校验。原四项原子/原话/值/房间/租户/版本/回执、完成断言后耗尽写工具与单次最终修复保持。
 
