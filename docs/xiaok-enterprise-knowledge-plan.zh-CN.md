@@ -149,6 +149,7 @@ KB-1～KB-4已沿此链路扩展Next.js、现有PostgreSQL/pgvector、KnowledgeS
 
 | 阶段 | 实际结果 | Git提交 |
 | --- | --- | --- |
+| AG-04/05 v102混合更正原子写入（内部；原生未通过） | 330单元/17服务/8兼容/98 Mini/lint；当前回读/撤回通过，混合问答失败 | `de1a0df8d96fe87260d5fae8c98dc6f0ee5f4929` |
 | AG-04/08 v101空引用目录（内部限定修复） | 325单元/13服务/8兼容/98 Mini/lint；原生3/3、来源/撤回/空目录重进通过，整体Limited | `c75863f08fbb299f1dbc32ae8e48b5330ed15874` |
 | AG-04/08 v100知识收尾schema（内部限定修复） | 323单元/12服务/8兼容/98 Mini/lint；原生PDF2通过、来源/撤回通过，空证据1引用失败，整体Limited | `229a090fb8d41ddf6df9f61b748fe40f6ea1b65f` |
 | AG-08 / KB-2 v99可信PDF页码校验（内部限定修复） | 320单元/9文件服务/8兼容/98 Mini/lint；原生2次格式失败、0需求写入，来源面板未执行，整体Limited | `34d6d55570dbab0eb9280d50d3c1306a8d8d3c90` |
