@@ -69,6 +69,27 @@ test('unpaired, user-written and rejected result-key lookalikes cannot widen a k
     assert.deepEqual(kinds([...knowledge, ...lookalike]), ['synthesis']);
 });
 
+test('an empty catalog advertises advice or uncertainty and an empty citation array even when knowledge is ready', () => {
+  for (const knowledgeStatus of ['ready', 'not_ready']) {
+    const messages = completed('search_knowledge', JSON.stringify({ knowledgeStatus, evidence: [], synthesisSources: [] }));
+    const before = JSON.stringify(messages), properties = finalToolForMessages(messages).parameters.properties as Record<string, Record<string, unknown>>;
+    const segment = (properties.segments.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
+    assert.deepEqual(segment.basis.enum, ['advice', 'uncertainty']);
+    assert.equal(segment.citations.maxItems, 0);
+    assert.match(String(segment.citations.description), /空数组/);
+    assert.equal(JSON.stringify(messages), before);
+  }
+});
+
+test('available project citations keep evidence enabled when the enterprise knowledge evidence is empty', () => {
+  const messages = completed('search_knowledge', JSON.stringify({ knowledgeStatus: 'ready', evidence: [],
+    synthesisSources: [{ sourceId: 'Bcurrent', kind: 'project', text: '当前已发布状态仍须按实际记录核对。', citationOptions: [{ citationId: 'Cproject' }] }] }));
+  const properties = finalToolForMessages(messages).parameters.properties as Record<string, Record<string, unknown>>;
+  const segment = (properties.segments.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
+  assert.ok((segment.basis.enum as string[]).includes('evidence')); assert.equal(segment.citations.maxItems, 4);
+  assert.deepEqual((((segment.citations.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>).citationId).enum, ['Cproject']);
+});
+
 test('unexecuted read-input failures allow clarification without opening a bypass around earlier real sources', () => {
   const rejected = readToolInputIssue('query_materials', '{"leadId":1072,"room":"厨房"}')!;
   const failed = completed('query_materials', rejected.feedback);

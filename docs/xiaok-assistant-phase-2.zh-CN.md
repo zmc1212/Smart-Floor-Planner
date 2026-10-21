@@ -1,6 +1,18 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v100：知识结果使用一个适用的最终结构
+## 当前v101：空引用目录的身份与引用约束
+
+**内部限定修复，整体Limited。** v100的1296在真实撤回后取得空Evidence，却伪造默认引用，因此本期归Agent输出协议，知识管线不改。保留v100按真实配对结果选择synthesis的机制；仅当知识收尾且实际引用目录为空时，模型schema将basis限制为advice/uncertainty、citations限制为[]，描述及可信紧凑指令明确ready不代表有依据。仍有获权项目/历史引用时保留evidence能力，不误禁其他来源。服务端继续拒绝伪造ID，不自动删引用、改basis、猜出处或放宽数值/权限/撤回校验。提示词`xiaok-renovation-v101`、策略`trusted-synthesis-v13`、最终协议`source-final-kind-v3`，配置仍为siliconflow的THUDM/GLM-4-9B-0414，未更换模型/计费或VLM配置。
+
+**已执行检查。** 先保留红测2条中1条失败；最终325单元、13真实服务、8知识兼容、98 Mini和lint全部通过。服务覆盖企业未ready与实际创建/索引/发布/退役后的ready空Evidence、持久化/重进、伪造ID仍invalid_model_citation、跨租户拒绝及0需求写入。受影响类型错误0，全仓292个既有错误，不能声明全仓tsc通过。各检查窗前后源码/测试/配置清单均稳定，并与最终原生窗同一2261项版本一致。
+
+**Stable原生与实模3/3限定通过。** 企业2670/2671、用户3734/3735/3736、会话675/676/677；真实两页PDF文档363/版本369/原件105/块2790，第1页排除、第2页实际索引，引用原文不靠数字2凑页码。原C01 `packages/assistant/chat/chat` 的run1298/1299分别3次供应商调用，原稿均synthesis、顶层仅kind/segments、basis=evidence及真实ID；来源面板显示实际第2页/原文，重进保持，真实退役后旧答复和引用失效。run1300在撤回后4次调用，原稿synthesis、basis=advice、citations=[]，标明一般建议并说明企业资料缺口，回复持久化且重进保持。三条均0修复、0需求写入，需求记忆前后v0/facts=[]；此三题不代表完整PPT或专业语义全部通过。
+
+**原生前置失败与恢复。** attempt-1在fresh compile的Input.dispatchMouseEvent超时；attempt-2遇窗口最小化而guard计0；两次均0新文字模型请求、三题未执行，原日志和夹具保留，不并入最终业务分母。随后先核验唯一同仓project/CDP与已验证exe/title，程序化恢复其最小化窗口到副屏，再通过唯一“编译”按钮DOM click进行fresh compile，SDK systemInfo/page.data正控通过。临时native-helper仅替换原编译点击方式，产品脚本与UI未改，不关闭/重启其他窗口、不新建项目副本。Stable 2.02.2608080、SDK 0.13.0、base 3.17.2、逻辑390×844/PNG348×752；前后7份驱动及配置hash相同、2261项源码无漂移，真实provider step均绑定v101/v13/v3。单controller与既有锁仍在finally释放。最终夹具active0/unknown0、AI关闭、身份上下文撤销、资料已退役，transport restored；这不改变全库历史unknown。
+
+证据：`tmp/xiaok-empty-catalog-v101/`中的`*-result.json`、`live.json`、`native.json`、截图、前后manifest、provider原稿/用量、`attempt-1/`、`attempt-2/`及`recompile.json`；命令为`node tmp/xiaok-empty-catalog-v101/check.mjs <unit|service|compat|mini|lint|types>`和`node tmp/xiaok-empty-catalog-v101/native.mjs`，使用既有隔离锁与开发合成夹具。旧1296及更早失败/unknown保留，不重放、不结零、不与修复后成绩混算。C01批准设计源与既有渲染组件保持，本期仅约束模型数据，未改markup/styles/assets/固定文案/导航或恢复账本；已检查原生一般建议状态，无伪来源chip，来源/撤回状态按既有路径通过。KnowledgeRetriever/Evidence、解析/检索/发布/权限/API保持，无生产发布。下一有界任务回到Agent的F-01/F-04更正与混合问答完整性，再处理F-02/F-06/F-07；完整PPT、专业质量、真机/BLE/真实微信与生产仍未完成或未验。上下文轮换按两个计划前部的用户新指令顺序移交新对话。
+
+## 历史v100：知识结果使用一个适用的最终结构
 
 **内部限定修复，整体Limited。** 1292/1293真实原稿取得正确PDF Evidence却混用knowledge/segments，故归Agent，不改知识管线。`finalToolForMessages`只根据当轮已配对的真实工具结果收紧生成schema：search_knowledge具有synthesisSources且没有其他真实业务/案例resultKey时，顶层只保留kind=synthesis与必需的segments，至少一段；专业解释和原文查询共用原引用段落。空结果也沿这个结构保留一般建议/待核实能力。已有真实展示resultKey继续保留原格式；用户文本、未配对消息和未执行的参数失败不能扩大格式。唯一修复的synthesis_repair仍优先，当前citationOptions原ID和完整来源不改。服务器的旧格式兼容、引用/数值/承诺/租户/撤回校验保持，不把模型选择当授权，不把错误kind改名、猜ID或丢弃顶层未校验正文后交付。
 

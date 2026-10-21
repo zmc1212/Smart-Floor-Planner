@@ -80,7 +80,7 @@ export const finalTool: ModelTool = { name: 'final_response', description: '最�
       citations: { type: 'array', maxItems: 4, items: { type: 'object', properties: { citationId: { type: 'string', description:'只选本轮来源citationOptions中的完整citationId。服务端装配原文，不提供sourceId、quote或引用模式。' } }, required: ['citationId'], additionalProperties: false } } },
       required: ['basis','text','citations'], additionalProperties: false } } }, required: ['kind'], additionalProperties: false,
 } };
-export const agentSourceFinalProtocol = 'source-final-kind-v2';
+export const agentSourceFinalProtocol = 'source-final-kind-v3';
 export const agentToolFinalProtocol = 'deferred-structured-final-v1';
 export const agentNeedBatchProtocol = 'same-turn-need-batch-v1';
 /** Adapt independent model-selected calls to the existing atomic schema.
@@ -145,6 +145,13 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
     // them only when an actual business/reference result supplies that format.
     for (const field of ['text', 'resultKey', 'selections']) delete properties[field];
     parameters.required = ['kind', 'segments']; properties.segments.minItems = 1;
+    if (!ids.length) {
+      // Retrieval readiness is not evidence. Other authorized source kinds
+      // remain citable when their actual catalog has entries.
+      const segment = (properties.segments.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
+      segment.basis.enum = ['advice', 'uncertainty']; segment.citations.maxItems = 0;
+      segment.citations.description = '本轮没有可用引用，必须是空数组[]，不能填默认或猜测的编号。';
+    }
   }
   if (ids.length) {
     let schema=parameters;
@@ -152,7 +159,8 @@ export function finalToolForMessages(messages:ModelMessage[]):ModelTool {
     schema.enum=ids;
   }
   return {...finalTool,parameters,...(queriedSources ? { description: knowledgeOnly
-    ? '本轮知识结果用kind=synthesis，顶层仅kind和segments，每段basis/text/citations。原文查询也在段落中保留对应引用；不要输出kind=knowledge或顶层text/resultKey/selections。引用只选本轮citationId，服务端继续校验全部来源与正文。'
+    ? (!ids.length ? '本轮没有可用引用。只用kind=synthesis及segments，每段basis只能advice或uncertainty，citations必须是空数组[]。说明本次资料缺口，可给标明身份的一般建议；不能用evidence或编造默认引用编号，不能把未查到当作现实没有记录。'
+      : '本轮知识结果用kind=synthesis，顶层仅kind和segments，每段basis/text/citations。原文查询也在段落中保留对应引用；不要输出kind=knowledge或顶层text/resultKey/selections。引用只选本轮citationId，服务端继续校验全部来源与正文。')
     : '本轮已查询来源。专业解释用synthesis及segments/本轮citationId；原结果展示可用business/knowledge/references。不能用general/vision/unavailable绕过来源校验。' } : {})};
 }
 export async function processAgentAnswer(lease: Lease, dependencies: {

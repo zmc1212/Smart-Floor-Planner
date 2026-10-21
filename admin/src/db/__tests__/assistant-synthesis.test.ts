@@ -711,3 +711,28 @@ test('AG08 knowledge-only mixed final envelopes remain rejected despite real cur
  const raw=JSON.parse(String(((checkpoint.providerOutput as Row).toolCalls as Row[])[0].arguments));
  assert.equal(raw.kind,'knowledge');assert.equal(raw.text,body);assert.equal(raw.segments[0].text,body);
 });
+
+test('AG08 zero-evidence final schema persists advice before and after retirement while fabricated citations still fail',async()=>{
+ const x=await fixture(tenants[1],false);
+ const send=async(fabricated:boolean,knowledgeStatus:string)=>x.send('请查询企业资料，说明书房靠窗办公的一般布置思路；没有依据时说明缺口，不要记录需求。',async(messages,_tools,turn,requestTools)=>{
+  if(!turn)return call('search_knowledge',{query:'合成空目录边界 书房靠窗办公'});
+  assert.equal(turn,1,'Empty evidence needs no extra read or repair');
+  const packet=messages.filter(m=>m.role==='tool').map(m=>JSON.parse(m.content)).find(p=>Array.isArray(p.synthesisSources));
+  assert.equal(packet.knowledgeStatus,knowledgeStatus);assert.equal(packet.synthesisSources.length,0);
+  const final=requestTools?.find(t=>t.name==='final_response');assert.ok(final);
+  const properties=(final.parameters.properties as Row).segments as Row,segment=(properties.items as Row).properties as Row;
+  assert.deepEqual((segment.basis as Row).enum,['advice','uncertainty']);assert.equal((segment.citations as Row).maxItems,0);
+  return synth([{basis:'advice',text:'可先比较书桌侧向与正对窗的反光，兼顾采光和通道，具体布置需结合实际条件。',citations:fabricated?[{citationId:'current_citation_1'}]:[]},
+    {basis:'uncertainty',text:'本次企业资料没有可用依据，企业做法仍需核实。',citations:[]}]);
+ });
+ const check=async(status:string)=>{const answer=await send(false,status);assert.equal(answer.run.status,'succeeded',JSON.stringify(answer.run));const message=(await new ConversationService(x.actor).messages(x.cid)).items.find(m=>m.id===answer.run.outputMessageId)!;assert.ok(message.available);assert.equal(message.citations.length,0);assert.match(JSON.stringify(message.content),/一般建议/);return answer;};
+ const unready=await check('not_ready');
+ const adminId=String((await withPlatformTransaction(tx=>one(tx,sql`insert into app.admin_users(enterprise_id,username,password_hash,role,status,menu_permissions,must_change_password) values(${tenants[1]},${prefix+'empty'},'unusable-synthetic','enterprise_admin','active',ARRAY['assistant-knowledge'],false) returning id`)))!.id);
+ const ops=new KnowledgeService({enterpriseId:tenants[1],adminId}),created=await ops.execute('create',{title:'合成空目录边界',body:'合成办公资料仅用于撤回边界验证，布局仍由获权团队核对。',audience:'customer_public',sourceType:'manual_text'},randomUUID());
+ const doc={documentId:String((created.document as Row).id),versionId:String((created.draft as Row).id),expectedVersion:1,expectedEditVersion:1};
+ const indexed=await ops.execute('index',doc,randomUUID()),job=await claimKnowledgeJob();assert.ok(job);assert.equal(job.jobId,indexed.jobId);await runKnowledgeJob(job);assert.equal((await ops.execute('job',{jobId:job.jobId},randomUUID())).status,'succeeded');
+ await ops.execute('publish',doc,randomUUID());await ops.execute('retire',{documentId:doc.documentId,expectedVersion:2},randomUUID());assert.equal(((await ops.execute('detail',{documentId:doc.documentId},randomUUID())).document as Row).status,'retired');
+ const retired=await check('ready'),bad=await send(true,'ready');assert.equal(bad.run.status,'failed');assert.equal(bad.run.errorCode,'invalid_model_citation');assert.equal(bad.run.outputMessageId,null);
+ const steps=await withTenantTransaction(tenants[1],tx=>rows(tx,sql`select kind from app.assistant_run_steps where enterprise_id=${tenants[1]} and run_id in (${unready.runId},${retired.runId},${bad.runId})`));assert.equal(steps.filter(s=>s.kind==='agent_need_write').length,0);
+ await assert.rejects(new ConversationService((await fixture()).actor).messages(x.cid),/assistant_resource_not_found/);
+});
