@@ -12,7 +12,9 @@
 
 ## 1. 范围与优先级
 
-**当前v110：当前需求数值恢复已内部实现，原生预算验收失败，Limited。** 既有单次最终修复现将缺数字候选绑定仍获权当前需求value、原消息/hash及记忆版本；由模型明确补引或删除附加比较，数值/承诺/来源/租户/回执校验、写入/轮数预算及KnowledgeRetriever/Evidence保持。稳定357/28/8/98项单元/隔离服务/知识兼容/Mini与lint通过；全仓tsc仍失败292/涉及0，完整诊断与v107相同。新增5单元及定向服务四分支为子集。新免费Qwen/Stable1328/1329均在预算单项保存失败：三次错误书桌提案被need_source_mismatch拒绝，随后无据保存确认也被拦截，0写入。两道原预算回顾、撤回和两项U01恢复均未执行。8次attempt3681–3688全部成功accepted=true，8条observed token费用null；真实数值修复分支未触发。本批仍为内部检查点，原1223/1326/1327及所有原稿分开保留。2张失败反馈截图已审看，逻辑390x844/PNG348x752；批准UI/路由/API/角色/schema保持，夹具AI关闭/身份撤权/自有锁释放。下一沿既有成对工具/schema修复本轮原话字段/value恢复，再完成两组预算闭环、F-06宽度/文件原题与F-07。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、`tmp/xiaok-current-need-numeric-v110/`；无push/部署，不宣称完整PPT/专业/真机/生产通过。
+**当前v111：本轮原话参数与成对重试，原生预算验收仍有失败，整体Limited。** 模型原话现区分current_request/history_original，当前quote先于其他参数选择；成对need_source_mismatch标出具体sourceIssues，仅排除所有当前quote选项均不包含的失败room/value原字符串。field/room/value/quote仍由模型选择，不由服务器填需求/引用，不放宽围栏、不增加工具/轮数或换模型。稳定361/29/8/98项Agent单元/隔离服务/知识兼容/Mini及定向lint通过；全仓tsc仍失败292/涉及0，完整诊断与v107一致。新免费Qwen/Stable预算保存1330/1333成功2/2；原题回顾1331/1334成功2/2；撤回1332，U01 HTTP恢复2组。6次attempt状态{"succeeded":6}，observed{"tokens":6}、其他{}，费用全null。原稿、原1223/1326–1329及初次测试自身失败分开保留；真实数值修复run无、来源重试run无，不以确定性覆盖推定真实分支通过。10张路由核实截图已审看，逻辑390x844/PNG348x752。C01/U01 markup/styles/assets/固定文案/导航/几何、API/角色/schema、KnowledgeRetriever/Evidence及来源/租户/计费边界保持，无还原台账影响；夹具AI关闭/身份撤权/自有锁释放。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、`tmp/xiaok-need-source-retry-v111/`。下一定位保留的新失败，先完成两组原预算闭环，再F-06宽度/文件与F-07。无push/部署，不宣称完整PPT/专业/真机/生产验收通过。
+
+**仍存当前预算撤回失败。** run1332技术状态succeeded，但真实答复“目前没有查到你在本企业的已发布方案记录。”没有回答当前预算；来源撤回已屏蔽先前派生答复，也没有交付旧金额，转而查询已发布方案仍属读域错误，不算业务验收通过。
 
 实现事实以当前代码、[二期契约](./xiaok-assistant-phase-2.zh-CN.md)、[后台清单](./admin-system-modules.zh-CN.md)和[小程序清单](./miniprogram-system-modules.zh-CN.md)为准。下列状态是静态核对后的限定范围，不是本次重跑验收：`Implemented`须有对应闭环证据；`Limited`表示已有部分能力；`Placeholder`表示所注明能力未交付。保留已有实现，不能把整个工作包列为从零开发。
 

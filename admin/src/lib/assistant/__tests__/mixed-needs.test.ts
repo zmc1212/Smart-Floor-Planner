@@ -5,10 +5,67 @@ import { applyNeedDelta, assertRecordedReply, hasExplicitNeedCorrection, needOri
 import { agentToolsForMessage, needTool, needToolsForRetry } from '../agent/worker';
 import { agentChatBody } from '../../ai/providers/agent-chat';
 import type { ModelMessage } from '../contracts/model';
+import { buildAgentContext } from '../agent/context';
 
 const desk: NeedWrite = { room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '书房书桌改为靠内墙' };
 const budget: NeedWrite = { room: '', field: 'budget', value: '18万元', quote: '预算改为18万元' };
 const mixed = '更正：书房书桌改为靠内墙；预算改为18万元。另外，如果仍靠窗会有哪些取舍？后面是假设，不要保存。';
+
+const budgetOnly = '更正：全屋预算改为18万元。';
+const staleDesk = { room: '书房', field: 'desk' as const, value: '靠内墙', quote: '更正：全屋预算改为18万元', additionalNeeds: [] };
+function rejectedCurrentSource() {
+  const feedback = needWriteFeedback(new AssistantError('need_source_mismatch', 422), budgetOnly, staleDesk)!;
+  const messages: ModelMessage[] = [
+    { role: 'assistant', content: '', toolCalls: [{ id: 'stale-desk', name: 'record_need', arguments: JSON.stringify(staleDesk) }] },
+    { role: 'tool', callId: 'stale-desk', content: JSON.stringify(feedback) },
+  ];
+  return { feedback, messages };
+}
+
+test('current source retry foregrounds the current original without selecting a field or filling arguments', () => {
+  const turns = [{ id: 'old', role: 'user' as const, text: '更正：书房书桌改为靠内墙。' }, { id: 'now', role: 'user' as const, text: budgetOnly }];
+  const messages = buildAgentContext(turns, readMemory({}));
+  const originals = messages.filter(m => m.role === 'user').map(m => JSON.parse((m.content[0] as { text: string }).text));
+  assert.deepEqual(originals.map(m => m.sourceRole), ['history_original', 'current_request']);
+  assert.deepEqual(originals.map(m => [m.sourceMessageId, m.text]), turns.map(t => [t.id,t.text]));
+  const schema = agentToolsForMessage(budgetOnly,true).find(t => t.name === 'record_need')!.parameters as { properties: Record<string, { enum?: string[] }> };
+  assert.equal(Object.keys(schema.properties)[0], 'quote');
+  assert.deepEqual(schema.properties.field.enum, needTool.parameters.properties && (needTool.parameters.properties as typeof schema.properties).field.enum);
+  assert.equal('enum' in schema.properties.value, false);
+});
+
+test('current source retry diagnoses stale room and value while preserving the actual rejected packet', () => {
+  const original=JSON.stringify(staleDesk), {feedback}=rejectedCurrentSource();
+  assert.deepEqual(feedback.sourceIssues, [{ index: 0, property: 'room', reason: 'not_in_current_original' }, { index: 0, property: 'value', reason: 'not_in_selected_quote' }]);
+  assert.equal(feedback.batchCommitted,false);assert.equal(feedback.submittedWrites![0].quoteIsOriginal,true);
+  assert.equal(JSON.stringify(staleDesk),original);
+  assert.match(feedback.instructions,/field.*quote/);
+  assert.throws(()=>applyNeedDelta(readMemory({}),{...staleDesk,sourceMessageId:'now',expectedVersion:0},{id:'now',text:budgetOnly},'run:0:0',''),/need_source_mismatch/);
+});
+
+test('current source retry schema excludes only lexically impossible proposals in a matched error pair', () => {
+  const {messages}=rejectedCurrentSource(), tools=agentToolsForMessage(budgetOnly,true), before=JSON.stringify({messages,tools});
+  const retried=needToolsForRetry(messages,tools), tool=retried.find(t=>t.name==='record_need')!;
+  const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages,tools:[tool],maxTokens:100});
+  const p=wire.tools![0].function.parameters.properties as Record<string,{not?:{enum:string[]};enum?:string[];items?:{properties:unknown}} >;
+  assert.deepEqual(p.room.not,{enum:['书房']});assert.deepEqual(p.value.not,{enum:['靠内墙']});
+  assert.equal(p.field.not,undefined);assert.deepEqual(p.quote.enum,needOriginalQuotes(budgetOnly));
+  assert.deepEqual(p.additionalNeeds.items!.properties,Object.fromEntries(Object.entries(p).filter(([key])=>key!=='additionalNeeds')));
+  assert.equal(JSON.stringify({messages,tools}),before);assert.equal(wire.messages[1].content,(messages[1] as {content:string}).content);
+  assert.equal(needToolsForRetry(messages,[]).length,0);
+});
+
+test('current source retry does not suppress an original from another valid clause or trust mismatched feedback', () => {
+  const {messages}=rejectedCurrentSource();
+  const mixedTools=agentToolsForMessage(mixed,true);
+  assert.equal(needToolsForRetry(messages,mixedTools),mixedTools,'A different current-source catalog cannot be rebound by old feedback');
+  const source='更正：全屋预算改为18万元；书房书桌靠内墙。',tools=agentToolsForMessage(source,true);
+  const failed={...staleDesk,quote:'更正：全屋预算改为18万元'};
+  const feedback=needWriteFeedback(new AssistantError('need_source_mismatch',422),source,failed)!;
+  const paired:ModelMessage[]=[{role:'assistant',content:'',toolCalls:[{id:'bad',name:'record_need',arguments:JSON.stringify(failed)}]}, {role:'tool',callId:'bad',content:JSON.stringify(feedback)}];
+  assert.equal(needToolsForRetry(paired,tools),tools,'Values supported by a different valid clause still need model-selected matching quote');
+  assert.equal(needToolsForRetry([{role:'tool',callId:'stale-desk',content:JSON.stringify(feedback)}],tools),tools);
+});
 
 test('atomic need envelope requires an explicit additional array in the actual provider schema', () => {
   for (const text of [mixed, '书房安静', '请记下：全屋预算18万元。']) {

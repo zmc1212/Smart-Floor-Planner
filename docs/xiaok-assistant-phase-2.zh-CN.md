@@ -1,16 +1,22 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v110：数值恢复绑定仍获权的当前需求原话
+## 当前v111：本轮原话参数与成对来源恢复
 
-**当前v110：当前需求数值恢复已内部实现，原生预算验收失败，Limited。** 既有单次最终修复现将缺数字候选绑定仍获权当前需求value、原消息/hash及记忆版本；由模型明确补引或删除附加比较，数值/承诺/来源/租户/回执校验、写入/轮数预算及KnowledgeRetriever/Evidence保持。稳定357/28/8/98项单元/隔离服务/知识兼容/Mini与lint通过；全仓tsc仍失败292/涉及0，完整诊断与v107相同。新增5单元及定向服务四分支为子集。新免费Qwen/Stable1328/1329均在预算单项保存失败：三次错误书桌提案被need_source_mismatch拒绝，随后无据保存确认也被拦截，0写入。两道原预算回顾、撤回和两项U01恢复均未执行。8次attempt3681–3688全部成功accepted=true，8条observed token费用null；真实数值修复分支未触发。本批仍为内部检查点，原1223/1326/1327及所有原稿分开保留。2张失败反馈截图已审看，逻辑390x844/PNG348x752；批准UI/路由/API/角色/schema保持，夹具AI关闭/身份撤权/自有锁释放。下一沿既有成对工具/schema修复本轮原话字段/value恢复，再完成两组预算闭环、F-06宽度/文件原题与F-07。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、`tmp/xiaok-current-need-numeric-v110/`；无push/部署，不宣称完整PPT/专业/真机/生产通过。
+**当前v111：本轮原话参数与成对重试，原生预算验收仍有失败，整体Limited。** 模型原话现区分current_request/history_original，当前quote先于其他参数选择；成对need_source_mismatch标出具体sourceIssues，仅排除所有当前quote选项均不包含的失败room/value原字符串。field/room/value/quote仍由模型选择，不由服务器填需求/引用，不放宽围栏、不增加工具/轮数或换模型。稳定361/29/8/98项Agent单元/隔离服务/知识兼容/Mini及定向lint通过；全仓tsc仍失败292/涉及0，完整诊断与v107一致。新免费Qwen/Stable预算保存1330/1333成功2/2；原题回顾1331/1334成功2/2；撤回1332，U01 HTTP恢复2组。6次attempt状态{"succeeded":6}，observed{"tokens":6}、其他{}，费用全null。原稿、原1223/1326–1329及初次测试自身失败分开保留；真实数值修复run无、来源重试run无，不以确定性覆盖推定真实分支通过。10张路由核实截图已审看，逻辑390x844/PNG348x752。C01/U01 markup/styles/assets/固定文案/导航/几何、API/角色/schema、KnowledgeRetriever/Evidence及来源/租户/计费边界保持，无还原台账影响；夹具AI关闭/身份撤权/自有锁释放。见[二期合同](./xiaok-assistant-phase-2.zh-CN.md)、`tmp/xiaok-need-source-retry-v111/`。下一定位保留的新失败，先完成两组原预算闭环，再F-06宽度/文件与F-07。无push/部署，不宣称完整PPT/专业/真机/生产验收通过。
+
+**仍存当前预算撤回失败。** run1332技术状态succeeded，但真实答复“目前没有查到你在本企业的已发布方案记录。”没有回答当前预算；来源撤回已屏蔽先前派生答复，也没有交付旧金额，转而查询已发布方案仍属读域错误，不算业务验收通过。
+
+运行协议need-source-input-v2、prompt xiaok-renovation-v111复用原调用/结果配对与单一Agent循环。sourceRole由服务器构建为模型上下文元数据，不是客户端写权限或持久事实。重试只接受相互匹配的record_need调用/结果、not_saved/batchCommitted=false及相同当前quote目录；不配对/外来目录、房间歧义、成功或耗尽工具不获得新重试路径。仅确实不属于任何当前quote的失败原字符串进入主字段及additional位置的JSON Schema not.enum；field保留原完整枚举，不提供替换参数。原来源/房间/租户/版本/回执、原子回滚及四次调用/四需求/一次最终修复保持。新增4单元和新服务用例的两分支均属于上述总数子集。初次callback预期三调用，但既有纯记录回执在第二次成功后直接结束；已修正该测试预期和测试field字面量类型错误，并保留初败后在稳定最终版本重跑。
+
+真实范围：1330:succeeded/1写入/v6；1333:succeeded/1写入/v6。回顾1331:succeeded；1334:succeeded；撤回1332:succeeded。真实来源重试反馈run无、数值修复run无与单元/服务分支覆盖分开记录。attempts 3689,3690,3691,3692,3693,3694；无付费备用或重放。源码/测试/配置2265项，摘要f835fab2e2bc8a6c977ff6d4cd34fc09a3c08dbcedf7d6011acd3555f93a39b4，最终检查/原生前后相同；模型配置b8e4c1e06526f9ec6ad9552b56ebcad81488e8eb641f952587811fd044c47ef7。C01/U01截图核对已有批准框架及真实反馈/重进，不宣称新视觉还原。真机/BLE/真实微信、完整原多域题及生产仍未验证。
 
 服务端仅经availableNeedMemory与needSourceRefs构建内部currentNeeds；history来源须匹配H+消息ID、完整原话hash、当前记忆版本，包含实际保存quote/value，且value确有本段缺失的阿拉伯数字。原话其他位置的假设量数或相同单位不能开启恢复。来源仍由currentSynthesisContext读取重验，不信任模型/客户端包。模型沿既有synthesis-edit-v1明确编辑被拒稿；最终全量校验、四次模型/四项写入/一次修复、真实回执、撤回与持久计量保持，不增加事实库或知识职责。
 
 原未改动v107批次先真实保存1325；1326虽读对18万元，却在附加20→18比较段漏引当前原话，最终unsupported_model_commitment无交付。1327在预算单项保存中反复带入无关书桌参数，0写入，未执行安排的预算回读；两故障分开，原批HTTP恢复/撤回均未执行。保留1326 raw hash c92c354abab5defc12edd1f62a2d7fcf0f3f93224dd1ef822a19b206f323ccf3，离线诊断仍拒绝同一原稿、仅给反馈，无provider/业务重放或改分。初始单元2/5红测、两次服务callback/夹具失败和涉及类型2/全仓294均保留，最终证据另绑定。新增测试措辞“当前记录的预算”触发了既有现场记录范围守卫；服务夹具已改为1326逐字原句，因此本批不证明该额外措辞已通过。
 
-新开发企业2688/2689、用户3762–3764、咨询703–705按原1223前五项canonical desk/storage/客厅/budget准备记忆v5，并提供真实获权正式v4户型；为新夹具准备，不重放旧模型run。两次真实预算更正1328/1329均在预算原话下反复选择desk/靠内墙，need_source_mismatch整体拒绝；最后原稿错误暗示已保存，被unsupported_model_commitment阻止，0写入/记忆v5。两道原预算回顾未派发，撤回/U01及新当前需求数值修复真实分支均未执行。本人200/同企其他客户404/跨企404和既有失败UI独立通过。8次provider attempt全成功，非供应商连接故障。下一原话字段恢复归Agent AG-04/05，不改知识解析，保留唯一工具/schema协议及原写入权限。
+历史v110失败证据。新开发企业2688/2689、用户3762–3764、咨询703–705按原1223前五项canonical desk/storage/客厅/budget准备记忆v5，并提供真实获权正式v4户型；为新夹具准备，不重放旧模型run。两次真实预算更正1328/1329均在预算原话下反复选择desk/靠内墙，need_source_mismatch整体拒绝；最后原稿错误暗示已保存，被unsupported_model_commitment阻止，0写入/记忆v5。两道原预算回顾未派发，撤回/U01及新当前需求数值修复真实分支均未执行。本人200/同企其他客户404/跨企404和既有失败UI独立通过。8次provider attempt全成功，非供应商连接故障。下一原话字段恢复归Agent AG-04/05，不改知识解析，保留唯一工具/schema协议及原写入权限。
 
-真实答复run attempts3681,3682,3683,3684,3685,3686,3687,3688状态{"succeeded":8}，observed用量{"tokens":8}，其他用量{}，费用全null。原失败及unknown1132/3196、1184/3327未重放或重新审计。2265项源码/测试/配置摘要eb8004a653820bcd2622f6ec955ce40494b8956f267e59f04a61747da522b3f2，六项完整检查与原生首尾同源。Mini markup/styles/artwork/固定文案/导航/几何及还原台账无变；本失败批次U01恢复未执行。
+历史v110失败证据。真实答复run attempts3681,3682,3683,3684,3685,3686,3687,3688状态{"succeeded":8}，observed用量{"tokens":8}，其他用量{}，费用全null。原失败及unknown1132/3196、1184/3327未重放或重新审计。2265项源码/测试/配置摘要eb8004a653820bcd2622f6ec955ce40494b8956f267e59f04a61747da522b3f2，六项完整检查与原生首尾同源。Mini markup/styles/artwork/固定文案/导航/几何及还原台账无变；本失败批次U01恢复未执行。
 
 复查维护中的[ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，沿成对工具/结果、模型显式选择及已有绑定编辑；Postgres仍负责权限/来源/job/计量。安装LangGraph1.5.0/core1.2.18保持。1440为历史问题，非本provider根因；API403检索已回退实际问题页。
 

@@ -259,6 +259,47 @@ test('mixed correction exact original and budget scope diagnostics recover the f
   assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(a.sent.runId))).length, 1);
 });
 
+test('mixed correction current source retry recovers a budget-only write without copying the earlier desk', async () => {
+  for (const recover of [true,false]) {
+    const a=await start();let prepared=false;
+    await processAgentAnswer(a.lease,{model:async()=>{if(!prepared){prepared=true;return call(complete);}return answer();}});
+    const before=await memory(a.c);assert.equal(before.version,2);
+    const question='更正：全屋预算改为18万元。';
+    const sent=await a.chat.send(a.c,randomUUID(),{version:1,blocks:[{type:'text',text:question}]});
+    const lease=await claimJob();assert.ok(lease);assert.equal(lease.runId,sent.runId);
+    const rejected={room:'书房',field:'desk',value:'靠内墙',quote:'更正：全屋预算改为18万元',additionalNeeds:[]};
+    let calls=0;
+    await processAgentAnswer(lease,{model:async(messages,_tools,_turn,dispatch)=>{
+      calls++;
+      if(calls===1)return call(rejected,'stale');
+      if(calls===2){
+        assert.deepEqual(await memory(a.c),before);assert.equal((await writes(String(sent.runId))).length,0);
+        const feedback=JSON.parse((messages.at(-1) as {content:string}).content);
+        assert.equal(feedback.error,'need_source_mismatch');assert.equal(feedback.batchCommitted,false);
+        assert.deepEqual(feedback.sourceIssues,[{index:0,property:'room',reason:'not_in_current_original'},{index:0,property:'value',reason:'not_in_selected_quote'}]);
+        const wire=agentChatBody({model:'Qwen/Qwen3.5-4B',messages,tools:dispatch!,maxTokens:100});
+        const p=wire.tools!.find(t=>t.function.name==='record_need')!.function.parameters.properties as Record<string,{not?:{enum:string[]}}>;
+        assert.deepEqual(p.room.not,{enum:['书房']});assert.deepEqual(p.value.not,{enum:['靠内墙']});assert.equal(p.field.not,undefined);
+        if(recover)return call({...budget,quote:'更正：全屋预算改为18万元',additionalNeeds:[]},'budget-only');
+      }
+      if(!recover && calls<4)return call(rejected,'still-stale-'+calls);
+      return finalText('本次已记录预算18万元。');
+    }});
+    const run=await a.chat.run(String(sent.runId));
+    const after=await memory(a.c),committed=await writes(String(sent.runId));
+    assert.equal(run.status,recover?'succeeded':'failed');assert.equal(committed.length,recover?1:0);
+    if(recover){
+      assert.equal(calls,2,'The existing record-only receipt needs no extra final model call');assert.equal(after.version,3);
+      const current=after.facts.filter(f=>f.status==='current');assert.equal(current.find(f=>f.field==='budget')!.sourceMessageId,String(sent.messageId));
+      assert.deepEqual(current.find(f=>f.field==='desk'),before.facts.find(f=>f.field==='desk'));
+      assert.match(JSON.stringify((await new ConversationService(actor).messages(a.c)).items.find(m=>m.id===run.outputMessageId)!.content),/18万元/);
+      await assert.rejects(new ConversationService(stranger).messages(a.c),/not_found/);
+    }else{assert.deepEqual(after,before);assert.equal(run.errorCode,'unsupported_model_commitment');assert.equal(run.outputMessageId,null);}
+    const models=await withTenantTransaction(actor.enterpriseId,tx=>rows(tx,sql`select private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(sent.runId)} and kind='agent_model' order by step_seq`));
+    assert.deepEqual(JSON.parse((models[0].private_checkpoint as {providerOutput:ModelTurnOutput}).providerOutput.toolCalls[0].arguments),rejected,'The rejected actual model packet is retained unchanged');
+  }
+});
+
 test('mixed correction original quote catalog reaches dispatch and recovers rejected raw proposals without server-filled needs', async () => {
   for (const injectBadQuote of [false, true]) {
     const a = await start(); let calls = 0;
