@@ -1,6 +1,22 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v102：混合更正原子写入，原生业务验收未通过
+## 当前v103：混合答复守卫检查点，F-04未闭环
+
+**内部代码检查点，不是客户阶段验收完成。** prompt `xiaok-renovation-v103`保留原四字段/原子记忆合同、有界Agent与唯一最终修复。写入失败沿原校验返回精确更正段及逐项提交诊断，不推断或补写缺项。书桌/预算完成态措辞（含已更改/调整为）校验实际run、字段和目标，保留限定的历史/否定/未来表达及旧书桌键。明确更正后的独立问题不能只回保存回执、重复问题或“假设不保存”；无回执确认与漏答在同一次修复中反馈。这只是仅确认/漏答的负向覆盖检查，不是语义裁判；再次失败就失败，不加工具、保存或模型轮数。
+
+完整稳定窗口338 Agent单元、22隔离真实服务、8知识兼容、98 Mini及lint通过；摘要`1251d5277fcc485b051258a589cb1c6d2ce71c857e86dc02df761683b920975d`。该窗口类型检查295项，其中新测试的系统消息提取有3项。随后仅把该测试表达式收窄到flatMap内部；另一个当前窗口定向服务1及lint通过，涉及类型0/全仓292，整体tsc未通过。当前2,263项摘要`ba849a44fae97dea26fad0e77a6d149886d39d568d9e2a4bc38b0a072ced6aaa`，两个窗口生产代码hash相同，不跨版本合并成绩。`verification.json`分别绑定，`attempt-2/`保留原完整窗口。
+
+首轮服务20/22：一项是纯记录请求多做了一次修复；另一项是新回调断言误以为修复系统消息排最后，造成注入式indeterminate，不能称为真实供应商失败。已保留纯记录原拒绝路径，并改查实际系统消息。最初red9项5通过/4失败，但原日志被绿色重跑误覆盖；`initial-red-observation.json`只保留聊天实际返回的命令结果，不伪造原始日志。`attempt-1/`保留首轮服务失败。
+
+**仍可复现的边界：** `read-boundary.json`是合成离线校验探针，无客户端/供应商/数据库写入。“只回顾本次聊天原话，书桌和预算当前是什么？”中，前run的有效当前值为靠内墙/18万元，但“当前工作记录：书桌位置已更改为靠内墙，预算已调整为18万元。”仍触发unsupported_model_commitment；完成态更新校验缺少真实只读问题作用域。下一项把当前问题/作用域传入原校验及两个最终提交路径，仅在明确只回顾时允许描述有获权依据的当前目标；本次/本轮新操作确认、错值和失效来源仍须拒绝。补有意义的单元/服务对照，再按完整新快照重跑受影响检查。
+
+`native.mjs/native.ts`已准备两组同配置GLM9/Stable夹具，但**尚未执行**。驱动核真实原子写入、实际采光收益/风险而非/光|窗/命中、重进、租户隔离与来源撤回，并尽可能采集失败页面；下次代码更改后须重绑。沿批准`design-references/xiaok-p4b-public-sites-v1/README.md`的C01/U01及唯一Stable项目、新编译/副屏/自有验收锁/finally清理。本检查点无新原生夹具、文字实模尝试、截图或视觉验收。Mini结构/样式/素材/固定文案/导航/几何及还原账本未改。
+
+上游复核：安装版本LangGraph1.5.0/core1.2.18，查阅[ToolNode实现](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[已关闭issue1440](https://github.com/langchain-ai/langgraphjs/issues/1440)与[结构化输出指南](https://docs.langchain.com/oss/javascript/langchain/structured-output)。沿成对工具结果、应用层明确失败反馈及既有有界最终修复，不迁移框架；该issue不能推定为GLM根因。租户/来源/租约/用量/人工接续及KnowledgeRetriever/Evidence保持权威，无API/schema/知识生产/权限变化。
+
+命令与证据：`tmp/xiaok-mixed-reply-v103/check.mjs`（unit|service|target|compat|mini|lint|types）、`checkpoint.mjs`、`verification.json`、`read-boundary.ts/json`、原attempt目录及已备原生驱动。按上下文规则顺序接续的新对话成为唯一负责人，先修此F-04边界并完成两组新实模/原生，再进入F-02/06/07。v102原始失败/unknown用量不改；完整F-01/F-04/PPT/专业/真机/BLE/真实微信/生产仍Limited或未验。
+
+## 历史v102：混合更正原子写入，原生业务验收未通过
 
 **内部限定改进；F-01/F-04及整体Limited。** 明确更正块在“另外/此外/顺便”等独立问题前可跨分号/句号保留多条断言；完整性仅检查该块，不保存假设尾句。模型仍须提交逐字value/quote及字段，服务器不补写漏项。同包全是record_need时沿原四字段原子合并，原provider包单独保存。预算只取自身分句作用域，拒绝借用书桌分句的书房。完整保存后沿既有exhaustedTools关闭重复record_need；底层相同run/原话/room+field/value/quote复用当前事实和回执，不增加版本/归档/事项补充。原键、来源/租户、事务回滚及当前视图/撤回保持，无schema/API/知识生产/权限/批准UI变化。版本xiaok-renovation-v102、same-turn-need-batch-v2；紧凑策略v13/最终协议v3保持。
 

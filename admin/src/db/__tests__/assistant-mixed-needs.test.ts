@@ -44,9 +44,9 @@ after(async () => {
     for (const u of users) await tx.execute(sql`delete from app.users where id=${u}`);
   }); } finally { await closePostgresPool(); }
 });
-async function start() {
+async function start(question = text) {
   const chat = new ConversationService(actor), c = String((await chat.create(randomUUID())).id);
-  const sent = await chat.send(c, randomUUID(), { version: 1, blocks: [{ type: 'text', text }] });
+  const sent = await chat.send(c, randomUUID(), { version: 1, blocks: [{ type: 'text', text: question }] });
   const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
   return { chat, c, sent, lease };
 }
@@ -56,6 +56,11 @@ async function memory(c: string) {
 async function writes(runId: string) {
   return withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select step_seq,input_summary,private_checkpoint from app.assistant_run_steps
     where enterprise_id=${actor.enterpriseId} and run_id=${runId} and kind='agent_need_write' order by step_seq`));
+}
+const finalText = (text: string): ModelTurnOutput => ({ ...answer(), text: JSON.stringify({ kind: 'general', text }) });
+async function validations(runId: string) {
+  return withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select input_summary from app.assistant_run_steps
+    where enterprise_id=${actor.enterpriseId} and run_id=${runId} and kind='agent_validation' order by step_seq`));
 }
 
 test('mixed correction incomplete proposals roll back then save one complete batch before answering the separate question', async () => {
@@ -129,4 +134,81 @@ test('mixed correction repeated calls reuse current facts across turns and origi
   await processAgentAnswer(a.lease, { model: async () => answer() });
   assert.notEqual((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
   assert.equal((await new ConversationService(actor).messages(a.c)).items.filter(m => m.authorKind === 'assistant' && m.available).length, 0);
+});
+
+test('mixed correction a saved receipt alone receives one final repair that must answer the independent hypothesis', async () => {
+  const a = await start(); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (messages, tools) => {
+    calls++;
+    if (calls === 1) return call(complete);
+    if (calls === 2) return finalText('本次已记录书桌改为靠内墙和预算18万元。后面的假设不保存。');
+    assert.equal(tools.length, 0);
+    const feedback = messages.flatMap(m => m.role === 'system' ? m.content.filter(p => p.type === 'text').map(p => p.text) : []).join('\n');
+    assert.match(feedback, /不取消回答/); assert.match(feedback, /savedFacts/);
+    return answer();
+  } });
+  const result = await new ConversationService(actor).run(String(a.sent.runId));
+  assert.equal(result.status, 'succeeded'); assert.equal(calls, 3);
+  assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(a.sent.runId))).length, 1);
+  assert.equal((await validations(String(a.sent.runId))).length, 1);
+  const reply = (await new ConversationService(actor).messages(a.c)).items.find(m => m.id === result.outputMessageId)!;
+  assert.equal(reply.available, true); assert.match(JSON.stringify(reply.content), /自然光与屏幕反光/);
+});
+
+test('mixed correction exact original and budget scope diagnostics recover the full atomic batch', async () => {
+  const a = await start(); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (messages) => {
+    calls++;
+    if (calls === 1) return call({ ...desk, quote: '书房书桌改为靠内墙。预算改为18万元', additionalNeeds: [{ ...budget, room: '书房' }] });
+    if (calls === 2) {
+      const feedback = JSON.parse((messages.at(-1) as { content: string }).content);
+      assert.equal(feedback.batchCommitted, false); assert.equal(feedback.assertionText, '更正：书房书桌改为靠内墙；预算改为18万元');
+      assert.deepEqual(feedback.submittedWrites.map((w: Row) => [w.quoteIsOriginal,w.validationError]), [[false,'need_source_mismatch'],[true,'need_source_mismatch']]);
+      assert.deepEqual(await memory(a.c), { version: 0, facts: [] });
+      return call(complete);
+    }
+    return answer();
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 3);
+  assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(a.sent.runId))).length, 1);
+});
+
+test('mixed correction failed arguments cannot acknowledge completed updates and the final repair never saves them', async () => {
+  const a = await start(); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async (messages, tools) => {
+    calls++;
+    if (calls === 1) return call({ ...complete, quote: '书房书桌改为靠内墙。预算改为18万元' });
+    if (calls === 2) return finalText('书桌位置已更改为靠内墙，预算也调整为18万元。后面是假设，不保存。');
+    assert.equal(tools.length, 0); assert.match(JSON.stringify(messages.at(-1)), /\\"savedFacts\\":\[\]/);
+    assert.deepEqual(await memory(a.c), { version: 0, facts: [] });
+    return finalText('本次没有保存成功。一般建议：靠窗能利用自然采光，但直射光容易造成屏幕反光，也要留出开窗空间。');
+  } });
+  const result = await a.chat.run(String(a.sent.runId)); assert.equal(result.status, 'succeeded'); assert.equal(calls, 3);
+  assert.deepEqual(await memory(a.c), { version: 0, facts: [] }); assert.equal((await writes(String(a.sent.runId))).length, 0);
+  const failed = await validations(String(a.sent.runId)); assert.equal((failed[0].input_summary as Row).code, 'unsupported_model_commitment');
+  const reply = (await new ConversationService(actor).messages(a.c)).items.find(m => m.id === result.outputMessageId)!;
+  assert.match(JSON.stringify(reply.content), /没有保存成功/); assert.doesNotMatch(JSON.stringify(reply.content), /已更改|调整为18/);
+});
+
+test('mixed correction repeated receipt-only replies fail after the single repair without an extra model loop', async () => {
+  const a = await start(); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async () => {
+    calls++; return calls === 1 ? call(complete) : finalText('已记录书桌和预算。后面的假设不保存。');
+  } });
+  const result = await a.chat.run(String(a.sent.runId)); assert.equal(result.status, 'failed'); assert.equal(result.errorCode, 'ungrounded_response_scope');
+  assert.equal(calls, 3); assert.equal(result.outputMessageId, null); assert.equal((await memory(a.c)).version, 2);
+  assert.equal((await writes(String(a.sent.runId))).length, 1); assert.equal((await validations(String(a.sent.runId))).length, 2);
+  assert.equal((await new ConversationService(actor).messages(a.c)).items.filter(m => m.authorKind === 'assistant' && m.available).length, 0);
+});
+
+test('mixed correction a later historical recap keeps the actual old update without claiming a new save', async () => {
+  const a = await start(); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async () => ++calls === 1 ? call(complete) : answer() });
+  const sent = await a.chat.send(a.c, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '只回顾本次聊天原话，书桌和预算当前是什么？' }] });
+  const lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
+  let recaps = 0;
+  await processAgentAnswer(lease, { model: async () => { recaps++; return finalText('之前书桌位置已更改为靠内墙，预算也调整为18万元。当前沿用原工作记录。'); } });
+  assert.equal((await a.chat.run(String(sent.runId))).status, 'succeeded'); assert.equal(recaps, 1);
+  assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(sent.runId))).length, 0);
+  assert.equal((await validations(String(sent.runId))).length, 0);
 });

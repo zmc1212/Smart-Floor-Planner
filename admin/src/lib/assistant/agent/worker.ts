@@ -10,7 +10,7 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig } from './config';
-import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, onlyChatHistoryRequested, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
+import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
@@ -43,7 +43,7 @@ import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, hi
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
 import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, type ReadToolContext } from './read-tool-input';
 
-const needProperties = { room: { type: 'string' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } };
+const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
   type: 'object', properties: { ...needProperties, additionalNeeds: { type: 'array', maxItems: 3,
     items: { type: 'object', properties: needProperties, required: ['room','field','value','quote'], additionalProperties: false } } },
@@ -572,8 +572,23 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           return resolveSynthesisRepair(raw, state.messages, evidence.sources, state.validationRepairs || 0);
         }),
         validateFinal:async(raw,turn)=>{
-          let candidate:{kind?:string};try{candidate=JSON.parse(raw);}catch{return null;}
+          let candidate:{kind?:string;text?:unknown;segments?:Array<{text?:unknown}>};try{candidate=JSON.parse(raw);}catch{return null;}
           const question = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
+          if (candidate && !['business','knowledge','references'].includes(candidate.kind || '')
+            && (candidate.kind === 'synthesis' || Boolean(explicitNeedWriteStatement(question)) && !explicitNeedRecordOnly(question))) {
+            const text = [candidate.text, ...(Array.isArray(candidate.segments) ? candidate.segments.map(s => s?.text) : [])]
+              .filter((s): s is string => typeof s === 'string').join('\n');
+            const issue = await scoped(async (tx, context) => {
+              const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
+              const preferences = ((context.conversation.entry_snapshot as Row)?.referencePreferences || []) as ReferencePreference[];
+              const found = needReplyFeedback(text, memory, lease.runId, question, preferences.map(p => p.operationId));
+              if (found) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+                values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',
+                  ${JSON.stringify({ code: found.code, scope: 'current_need_receipt_and_question', noBusinessTools: true })}::jsonb) on conflict do nothing`);
+              return found;
+            });
+            if (issue) return issue;
+          }
           if (onlyChatHistoryRequested(question)) {
             const issue = await scoped(async (tx, context) => {
               const current = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
@@ -593,23 +608,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           return scoped(async(tx,context)=>{
             const evidence=await currentSynthesisContext(tx,lease.actor,context.conversation,lease.runId);
-            let issue=synthesisRepairFeedback(raw,evidence.sources,reviewContext),receiptWordingRepair=false;
-            if(!issue){
-              const memory=readMemory(context.conversation.entry_snapshot);
-              const currentIds=new Set(memory.facts.filter(f=>f.status==='current').map(f=>f.sourceMessageId));
-              const hasCurrentOriginal=evidence.sources.some(s=>s.history&&currentIds.has(s.history.messageId));
-              if(hasCurrentOriginal){
-                const preferences=((context.conversation.entry_snapshot as Row)?.referencePreferences||[]) as ReferencePreference[];
-                try { assertRecordedReply((JSON.parse(raw) as {segments:Array<{text:string}>}).segments.map(s=>s.text).join('\n'),memory,lease.runId,preferences.map(p=>p.operationId)); }
-                catch(error){
-                  if(!(error instanceof AssistantError)||error.code!=='unsupported_model_commitment')throw error;
-                  receiptWordingRepair=true;
-                  issue={code:error.code,feedback:'本轮没有新的需求保存回执，不能把历史回顾写成“已保存”“已记录”“已经记下”等本次操作成功。只修复这一个回答的措辞：基于本轮已有、仍有效的原话引用说明“当前工作记录中的表达是……”或直接复述客户需求；删除保存成功措辞，不新增保存、批准或处理结果，不重做写入，不调用工具。保留已有sourceId及逐字quote；原话和当前需求不能代替本轮保存回执。沿原segments/citations格式提交最终回答。这仍是现有唯一一次修复。'};
-                }
-              }
-            }
+            const issue=synthesisRepairFeedback(raw,evidence.sources,reviewContext);
             if(issue)await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-              values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:receiptWordingRepair?'current_need_receipt_wording':issue.code==='ungrounded_response_scope'?'authorized_response_scope':'authorized_citation_only',noBusinessTools:true})}::jsonb)
+              values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',${JSON.stringify({code:issue.code,scope:issue.code==='ungrounded_response_scope'?'authorized_response_scope':'authorized_citation_only',noBusinessTools:true})}::jsonb)
               on conflict(enterprise_id,run_id,step_seq) do nothing`);
             return issue;
           });
@@ -786,7 +787,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
               synthesisSources: evidence.sources.filter(source => source.history?.messageId === String(initial.trigger.id)),
               instructions: '这是本轮实际保存回执。只确认savedFacts中的字段；后面的假设问题没有因此保存。当前明确记录/更正段已完整保存后，不再调用record_need；继续回答客户另问的问题，需要当前依据时再查询。后续专业解释沿现有synthesis/citationOptions协议，保存结果的原话可引用本轮提供的来源；一般建议与企业/项目事实分开，原话不是正式批准。' }) };
           }); } catch (error) {
-            const feedback = needWriteFeedback(error, safeText(initial.trigger.content as Parameters<typeof safeText>[0]));
+            const feedback = needWriteFeedback(error, safeText(initial.trigger.content as Parameters<typeof safeText>[0]), input);
             if (!feedback) throw error;
             await authorize();
             return { content: JSON.stringify(feedback) };
