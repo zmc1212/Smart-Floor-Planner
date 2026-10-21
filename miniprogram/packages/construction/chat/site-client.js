@@ -85,7 +85,9 @@ class SiteClient {
       if (older) items = [...fresh, ...this.state.items.filter(i => !fresh.some(n => n.message.id === i.message.id))];
       // Keep command revisions private: the page's `versions` field belongs to
       // the existing record-history sheet and may be open when this read returns.
-      this.sourceVersions = { records: Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), issues: versions && versions.issues || {}, materials: versions && versions.materials || {}, plans: versions && versions.plans || {}, resolutions: versions && versions.resolutions || {} };
+      // Server revisions also cover an issue's source record outside this page.
+      // Only future commands use this refresh; an existing pending body stays frozen.
+      this.sourceVersions = { records: { ...Object.fromEntries(items.filter(i => i.record.id).map(i => [i.record.id, i.record.version])), ...(versions && versions.records || {}) }, issues: versions && versions.issues || {}, materials: versions && versions.materials || {}, plans: versions && versions.plans || {}, resolutions: versions && versions.resolutions || {} };
       this.set({ ...data, items, nextCursor: data.nextCursor, loading: false, error: '', fatal: false });
       const mids = new Set([...items.flatMap(i => i.record.media.map(m => String(m.id))), ...this.state.attachments.map(String)]);
       const mediaPaths = { ...this.state.mediaPaths };

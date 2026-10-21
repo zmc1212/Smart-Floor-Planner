@@ -74,15 +74,15 @@ after(async () => {
     for (const aid of platform) await tx.execute(sql`delete from app.admin_users where id=${aid}`);
   }); } finally { await closePostgresPool(); }
 });
-async function open() {
+async function open(request = '待核对底盒') {
   const source = await send(worker, '书房底盒还没固定，等设计师核对位置。');
   const lease = await claimJob(); assert.equal(lease?.runId, source.runId);
   await processSiteRecord(lease!, async () => ({ text: JSON.stringify({ title: '合成现场记录', roomId, completed: '', pending: '底盒未固定', coordination: '等设计师核对', note: '' }),
     toolCalls: [], finishReason: 'stop', providerRequestId: null, usage: { inputTokens: 100, outputTokens: 30 } }));
-  const opened = await send(worker, '跟进记录' + source.recordId + '：待核对底盒');
+  const opened = await send(worker, '跟进记录' + source.recordId + '：' + request);
   const iid = String(opened.issueId); await send(boss, '转交事项' + iid + '给合成设计师');
   await send(designer, '回复事项' + iid + '：PRIVATE_INTERNAL_REPLY 须现场核对，尚无正式批准。');
-  return { iid, rid: String(source.recordId) };
+  return { iid, rid: String(source.recordId), requestMessageId: String(opened.messageId) };
 }
 const cancel = (iid: string) => send(boss, '取消事项' + iid + '：暂缓本次核对，未安排施工。');
 const resume = (iid: string, service = boss) => send(service, '恢复事项' + iid + '：继续按当前资料核对。');
@@ -92,6 +92,37 @@ test('explicit restore command has exact identity and reason; questions, quotati
   assert.deepEqual(siteIssueCommand('恢复事项123：继续核对'), { action: 'resume', target: '123', value: '继续核对' });
   for (const raw of ['恢复事项123','恢复事项123：  ','能恢复事项123吗？','如果恢复事项123：继续核对','“恢复事项123：继续核对”','好','收到']) assert.equal(siteIssueCommand(raw), null);
 });
+test('P4A explicit request survives transfer and paging as the same source-bound issue without leaking into customer results', async () => {
+  const request = 'PRIVATE_EXPLICIT_REQUEST 请核对书桌右侧插座与显示器线缆，不要改成确认点位已批准。';
+  const { iid, rid, requestMessageId } = await open(request);
+  const initial = await view(iid);
+  assert.equal(initial.requestText, request); assert.equal(initial.requestMessageId, requestMessageId);
+  assert.equal(initial.status, 'awaiting_review'); assert.match(initial.text, /PRIVATE_EXPLICIT_REQUEST/);
+  const sharedCid = String((await boss.read(pid)).conversationId);
+  await withTenantTransaction(eid, async tx => {
+    await tx.execute(sql`select id from app.assistant_conversations where enterprise_id=${eid} and id=${sharedCid} for update`);
+    for (let i = 0; i < 31; i++) await appendMessage(tx, boss.actor, sharedCid, { author: 'admin', clientMessageId: randomUUID(), purpose: 'site.source',
+      content: { version: 1, blocks: [{ type: 'text', text: '合成后续消息，非处理请求' + i }] } });
+  });
+  const fresh = new SiteChatService(designer.staff), page = await fresh.read(pid);
+  assert.ok(!(page.items as Row[]).some(i => String((i.message as Row).id) === requestMessageId));
+  const query = await send(fresh, '事项' + iid + '在等谁核对？');
+  const readback = await fresh.read(pid), response = (readback.items as Row[]).find(i => String((i.message as Row).id) === query.messageId)!.response as Row;
+  assert.match(String(response.text), /PRIVATE_EXPLICIT_REQUEST/); assert.match(String(response.text), /合成设计师/);
+  await send(boss, '跟进记录' + rid + '：另一段文字不得覆盖原请求');
+  assert.equal((await view(iid)).requestText, request);
+  await publish(iid); await deliverSiteResults();
+  const result = (await followups()).data.find(i => i.issueId === iid)!;
+  assert.ok(result); assert.doesNotMatch(JSON.stringify(result), /PRIVATE_EXPLICIT_REQUEST|PRIVATE_INTERNAL_REPLY/);
+  await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_messages set content='{"version":1,"blocks":[{"type":"text","text":"合成不可用请求"}]}'::jsonb
+    where enterprise_id=${eid} and id=${requestMessageId}`));
+  const unavailable = await view(iid); assert.equal(unavailable.status, 'invalidated'); assert.doesNotMatch(unavailable.text, /PRIVATE_EXPLICIT_REQUEST/);
+  assert.equal(unavailable.requestText, '');
+  assert.equal((await followups()).data.find(i => i.issueId === iid)!.status, 'invalidated');
+  await assert.rejects(publish(iid), /context_changed|site_review_required/);
+  await cancel(iid); assert.equal((await view(iid)).status, 'cancelled');
+});
+
 test('cancelled state returns only a manager-selected excerpt and truthful waiting state to the original consultation', async () => {
   const { iid } = await open(); await publish(iid); await deliverSiteResults();
   const old = (await followups()).data.find(x => x.issueId === iid)!; assert.equal(old.status, 'awaiting_review');

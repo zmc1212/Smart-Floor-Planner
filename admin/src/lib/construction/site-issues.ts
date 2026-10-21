@@ -9,7 +9,8 @@ type Command = { action: 'open' | 'claim' | 'transfer' | 'reply' | 'cancel' | 'r
 type Issue = { issueId: string; revision: number; projectId: string; recordId: string; recordVersion: number;
   sourceHash: string; sourceMessageId: string; roomId: string | null; roomName: string; openedBy: string;
   ownerId: string | null; state: 'awaiting_owner' | 'awaiting_review' | 'cancelled'; progressMessageId: string | null; action: string;
-  materialVersion?: string; drawingGrantId?: string | null };
+  materialVersion?: string; drawingGrantId?: string | null;
+  requestMessageId?: string; requestHash?: string; requestText?: string };
 export type IssueView = Issue & { status: string; ownerName: string; sourceAvailable: boolean; text: string };
 export type SiteVersions = { records: Record<string, number>; issues: Record<string, number>; materials?: Record<string, string>; plans?: Record<string, number>; resolutions?: Record<string, number> };
 
@@ -102,7 +103,13 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
   const issue = await issueData(tx, eid, pid, issueId); if (!issue) return null;
   const source = await currentRecord(tx, eid, pid, issue.recordId);
   const materials = issue.roomId ? await sharedMaterials(tx, eid, pid, issue.roomId) : null;
-  const valid = source && Number(source.row.version) === issue.recordVersion && source.hash === issue.sourceHash
+  const request = issue.requestMessageId ? await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c
+    on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id where m.enterprise_id=${eid} and c.project_id=${pid}
+      and m.id=${issue.requestMessageId} and m.author_kind='admin' and m.admin_id=${issue.openedBy} for share of m`) : null;
+  // Legacy items have no request binding. New items retain the explicit action
+  // separately from the onsite report; changed originals cannot revive it.
+  const requestAvailable = !issue.requestMessageId || !!request && fingerprint(request.content) === issue.requestHash;
+  const valid = requestAvailable && source && Number(source.row.version) === issue.recordVersion && source.hash === issue.sourceHash
     && (!issue.materialVersion || materials?.version === issue.materialVersion);
   const owner = issue.ownerId ? await effectiveOwner(tx, eid, pid, issue.ownerId) : null;
   const ownerName = owner ? String(owner.display_name || owner.username) : '';
@@ -112,6 +119,7 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
   else if (status === 'invalidated') text += '原材料或房间已变化，等待有权人员重新核对，旧处理结果不再沿用。';
   else {
     text += `${issue.roomName}，${ownerName ? '当前负责人：' + ownerName : '尚未分配有效负责人'}。`;
+    if (issue.requestText) text += '\n跟进请求原话：' + issue.requestText;
     if (issue.drawingGrantId) text += `\n图纸资料${issue.drawingGrantId}已核对关联，仍需结合现场尺寸核对点位；这不是方案批准。`;
     if (issue.progressMessageId) {
       const reply = await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id
@@ -122,7 +130,8 @@ export async function readSiteIssueBase(tx: PostgresTransaction, eid: string, pi
     if (issue.action === 'return') text += '\n本次明确回复已授权回传原咨询；真人接待期间等待恢复小K后投递，投递前仍会重核来源和权限。';
   }
   if (issue.action === 'resume') text += '\n已沿原事项恢复，按当前资料重新处理；旧回复、图纸核对及正式决定不自动恢复。';
-  return { ...issue, ownerId: owner ? issue.ownerId : null, ownerName, status, sourceAvailable: !!valid, text };
+  return { ...issue, ...(issue.requestMessageId && !requestAvailable ? { requestText: '' } : {}),
+    ownerId: owner ? issue.ownerId : null, ownerName, status, sourceAvailable: !!valid, text };
 }
 
 export async function readSiteIssue(tx: PostgresTransaction, eid: string, pid: string, issueId: string): Promise<IssueView | null> {
@@ -156,9 +165,14 @@ export async function handleSiteIssue(tx: PostgresTransaction, actor: ActorConte
     if (versions.records[cmd.target] !== Number(source.row.version)) fail('version_conflict');
     const data = source.row.data as Row;
     if (!String(data.pending || '').trim() && !String(data.coordination || '').trim()) fail('site_review_required', 422);
+    const request = await one(tx, sql`select m.content from app.assistant_messages m join app.construction_chats c
+      on c.enterprise_id=m.enterprise_id and c.conversation_id=m.conversation_id where m.enterprise_id=${eid} and c.project_id=${pid}
+        and m.id=${sourceMessageId} and m.author_kind='admin' and m.admin_id=${aid} for share of m`);
+    if (!request) fail('context_changed');
     issue = { issueId: '', revision: 1, projectId: pid, recordId: cmd.target, recordVersion: Number(source.row.version), sourceHash: source.hash,
       sourceMessageId: String(source.row.source_message_id), roomId: String(source.row.room_id), roomName: String(source.row.room_name_snapshot),
-      openedBy: aid, ownerId: null, state: 'awaiting_owner', progressMessageId: null, action: 'open' };
+      openedBy: aid, ownerId: null, state: 'awaiting_owner', progressMessageId: null, action: 'open',
+      requestMessageId: sourceMessageId, requestHash: fingerprint(request.content), requestText: cmd.value.trim() };
     const event = (await one(tx, sql`insert into app.domain_event_outbox(enterprise_id,type,aggregate_type,aggregate_id,aggregate_version,actor_ref,correlation_id,payload)
       values(${eid},'construction.site.issue.opened.v1','construction_site_record',${cmd.target},1,${JSON.stringify(actor.principal)}::jsonb,${sourceMessageId},${JSON.stringify(issue)}::jsonb) returning id`))!;
     return (await readSiteIssue(tx, eid, pid, String(event.id)))!;

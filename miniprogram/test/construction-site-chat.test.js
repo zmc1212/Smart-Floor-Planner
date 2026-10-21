@@ -33,6 +33,22 @@ test('a version conflict preserves edits, refreshes current records and never su
   assert.equal(s.client.state.edit.title, '原核对输入'); assert.equal(s.client.state.sheet, 'edit'); assert.match(s.client.state.error, /已被更新/); assert.equal(s.client.state.pending, null);
   assert.equal(s.client.state.conflict.version, 4); assert.equal(s.client.state.conflict.data.title, '其他成员的最新内容'); assert.equal(s.writes[0].body.expectedVersion, 3);
 });
+
+test('paged-out record command uses current server revision while a lost receipt keeps its original revision across reentry', async () => {
+  let revision = 4, accepted = false;
+  const s = setup(async (url, method, body) => {
+    if (method === 'POST') { assert.equal(body.versions.records['6'], 4); accepted = true; throw {}; }
+    if (url.includes('/operations/')) return { data: { found: accepted, result: { conversationId: '44', messageId: '61', issueId: '12', revision: 3 } } };
+    const value = fixture(); value.data.versions = { records: { 6: revision }, issues: { 12: 2 }, materials: {} }; return value;
+  });
+  await s.client.show('22'); assert.equal(s.client.state.items.length, 0);
+  s.client.set({ sheet: 'versions', versions: [{ version: 1 }] });
+  s.client.input('重新核对事项12：按更正后的记录处理'); await s.client.send();
+  assert.ok(accepted); assert.equal(s.client.state.pending.body.versions.records['6'], 4);
+  revision = 5; s.client.hide(); await s.client.show('22');
+  assert.equal(s.writes.length, 1); assert.equal(s.writes[0].body.versions.records['6'], 4);
+  assert.equal(s.client.sourceVersions.records['6'], 5); assert.equal(s.client.state.pending, null);
+});
 test('late receipts after hiding cannot clear the persisted operation and the next show reconciles it', async () => {
   let finish;
   const s = setup(async (url, method) => { if (method === 'POST') return new Promise(resolve => { finish = resolve; }); if (url.includes('/operations/')) return { data: { found: true, result: { id: '8' } } }; return fixture(); });
