@@ -72,6 +72,59 @@ async function fixture(targetEid = eid, bound = true) {
   return { actor, chat, cid, send, leadId, uid };
 }
 
+test('original model context repairs retained1369/1370 drafts once with real writes, reentry and revocation', async () => {
+  const body = '第二节 状态区别 客户同意某版方案不等于已经落实，也不等于事项关闭或工程验收通过。\n第一节 点位调整 点位调整需先核对现场尺寸，未核对不能视为已批准。';
+  const doc = await publish('合成原文上下文点位说明', body), x = await fixture();
+  const question = '合成原文上下文点位说明第二节如何区分方案同意和关闭？';
+  const delivered: Array<{ id: string; citationId: string }> = [];
+  for (const ignoreRepair of [false, false, true]) {
+    let calls = 0;
+    const a = await x.send(question, async (messages, tools, turn, dispatch) => {
+      calls++;
+      assert.doesNotMatch(JSON.stringify(messages.filter(m => m.role === 'system')), /施工节点与到场|先用当前实际阶段/);
+      if (!turn) return call('search_knowledge', { query: '合成原文上下文点位说明 第二节 方案同意 关闭' });
+      assert.ok(results(messages).every(s => s.kind === 'knowledge'));
+      const source = results(messages).find(s => s.text.includes('第二节 状态区别')); assert.ok(source);
+      const citations = [{ citationId: source.citationOptions[0].citationId }];
+      if (turn === 1) return synth([
+        { basis: 'evidence', text: '客户同意某版方案不等于已经落实，也不等于事项关闭或工程验收通过。', citations },
+        { basis: 'evidence', text: '点位调整需先核对现场尺寸，未核对不能视为已批准。', citations },
+        { basis: 'uncertainty', text: delivered.length ? '当前咨询中暂无团队明确回传的节点补充事项或已解决/关闭结果，具体事项状态需查询实时业务记录。'
+          : '当前咨询中暂无团队明确回传的节点补充事项或已解决/关闭结果，具体事项状态需查询本咨询的待办事项列表确认。', citations: [] },
+      ]);
+      assert.equal(turn, 2); assert.equal(tools.length, 0);
+      assert.match(JSON.stringify(messages), /rejectedTextPaths/);
+      assert.deepEqual(((dispatch![0].parameters.properties as Row).kind as Row).enum, ['synthesis_repair']);
+      return call('final_response', { kind: 'synthesis_repair', baseHash: synthesisRepairBase(messages)!.baseHash,
+        edits: ignoreRepair ? [{ segment: 1, basis: 'uncertainty' }] : [{ segment: 1, remove: true }, { segment: 2, remove: true }] });
+    });
+    assert.equal(calls, 3);
+    if (ignoreRepair) {
+      assert.equal(a.run.status, 'failed'); assert.equal(a.run.errorCode, 'unsupported_model_commitment'); assert.equal(a.run.outputMessageId, null);
+      continue;
+    }
+    assert.equal(a.run.status, 'succeeded', JSON.stringify(a.run));
+    const message = (await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === a.run.outputMessageId)!;
+    assert.ok(message.available); assert.equal(message.citations.length, 1);
+    assert.doesNotMatch(JSON.stringify(message.content), /第一节|暂无团队|待办事项/);
+    delivered.push({ id: message.id, citationId: message.citations[0].id });
+    const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${a.runId}`));
+    assert.equal(steps.filter(s => s.kind === 'agent_validation').length, 1);
+    assert.equal(steps.filter(s => s.kind === 'agent_need_write').length, 0);
+    assert.ok(steps.some(s => s.kind === 'agent_material_context'));
+  }
+  for (const foreign of [await fixture(eid, false), await fixture(tenants[1], false)]) {
+    await assert.rejects(foreign.chat.messages(x.cid), /assistant_resource_not_found/);
+    await assert.rejects(foreign.chat.citation(delivered[0].citationId), /assistant_resource_not_found/);
+  }
+  await knowledge.execute('retire', { documentId: doc.documentId, expectedVersion: 2 }, randomUUID());
+  const reentry = await x.chat.messages(x.cid);
+  for (const item of delivered) {
+    assert.equal(reentry.items.find(m => m.id === item.id)?.available, false);
+    assert.equal((await x.chat.citation(item.citationId)).available, false);
+  }
+});
+
 test('original answer scope rejects retained unsupported conditions and uses one repair with real sources, permissions and revocation', async () => {
   const body = '第二节 状态区别 客户同意某版方案不等于已经落实，也不等于事项关闭或工程验收通过。';
   const doc = await publish('合成手测点位说明', body), x = await fixture(eid, false);

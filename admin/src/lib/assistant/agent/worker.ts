@@ -41,7 +41,7 @@ import { citationProtocolVersion } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
 import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
-import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, sourceReadProtocol, sourceAnswerProtocol, type ReadToolContext } from './read-tool-input';
+import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, explicitHumanHandoffRequested, sourceReadProtocol, sourceAnswerProtocol, type ReadToolContext } from './read-tool-input';
 
 const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -123,7 +123,7 @@ export function agentToolsForMessage(text: string, enabled: boolean, businessFol
   const authorityRequest = /保证|假装|冒充|忽略.{0,8}指令|系统提示|其他客户|别人的/.test(text);
   const businessIntent = /预约|已发布|正式户型|施工|工地|现场|到场|安排|计划|管家|施工人员|施工师傅|想去看看|(?:查询|查一下|查看|查|我的|本人|已有).{0,12}(?:方案|户型|发布记录)|方案.{0,8}(?:发布|记录)/.test(text)
     || businessFollowup;
-  const humanIntent = /找.{0,3}设计师|转人工|让设计师|设计师接着聊/.test(text) && !/不要|不想|不用|别|如果|假如|能否|是不是|“|「|"/.test(text);
+  const humanIntent = explicitHumanHandoffRequested(text);
   const browsingOnly = text.split(/[，,。；;\n]/).map(c=>c.trim()).filter(Boolean).every(referenceOnlyClause);
   // An explicit original-speech-only request narrows reads, never grants an
   // operation. Keep separately authorized current saves/human handoff usable.

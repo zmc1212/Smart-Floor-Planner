@@ -78,21 +78,30 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   // No user/tool text, citation or provider-selected value enters the reminder.
   const tail: ModelMessage = repairTask
     ? { role: 'user', content: [{ type: 'text', text: repairTask }] } : messages[index];
-  return [...systems, ...images, messages[index], ...messages.slice(index + 1).map(message => synthesisModelProjection(message, originals)), tail];
+  return [...systems, ...images, messages[index], ...messages.slice(index + 1).map(message => synthesisModelProjection(message, originals, originalAnswerOnly(question))), tail];
 }
 
 /** Model view only. Keep full original text and readable source locations;
  * duplicate quote hints and opaque file identity stay in the durable result.
  * Snapshots and commit/reentry authorization use the original full metadata. */
-function synthesisModelProjection(message: ModelMessage, originals: Map<string, string>): ModelMessage {
+function synthesisModelProjection(message: ModelMessage, originals: Map<string, string>, sourceOnly = false): ModelMessage {
   if (message.role !== 'tool') return message;
   let packet: Record<string, unknown>;
   try { packet = JSON.parse(message.content); } catch { return message; }
   if (!Array.isArray(packet?.synthesisSources)) return message;
   const projected = { ...packet };
   delete projected.data; delete projected.displayText;
+  if (sourceOnly) {
+    // The original packet and consulted business dependencies remain durable.
+    // Do not let automatic project cards turn a document question into a status
+    // answer. Keep EVERY knowledge original, condition and locator available.
+    delete projected.boundProjectContext;
+    delete projected.currentNeedView;
+    projected.instructions = '本轮只解释当前问题所问的原文内容。完整知识text与条件均保留，由模型选择相关章节及citationId；不追加本人项目状态、缺项、查询建议或业务流程。';
+  }
   const aliases: Array<{ sourceId: string; canonicalSourceId: string; resultKey?: string }> = [];
   projected.synthesisSources = packet.synthesisSources.flatMap((source: SynthesisSource & Record<string, unknown>) => {
+    if (sourceOnly && source.kind !== 'knowledge') return [];
     const copy: Record<string, unknown> = { ...source };
     if (source.material?.text === source.text) {
       const material: Record<string, unknown> = { ...source.material }; delete material.text; copy.material = material;
@@ -334,6 +343,20 @@ export function synthesisRepairFeedback(raw:string,sources:SynthesisSource[],con
 function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:SynthesisReviewContext = {}) {
   try { parseSynthesis(raw,sources,context); return null; }
   catch(error) {
+    if (error instanceof AssistantError && error.code === 'unsupported_model_commitment' && originalAnswerOnly(context.currentQuestion || '')) {
+      // Diagnostics do not accept/normalize a commitment. Check the complete
+      // envelope and authorized citations first; unknown IDs remain closed.
+      // The existing hash-bound edit repair must pass the unchanged final gate.
+      const rejected: Array<{ path: string; code: string }> = [];
+      const draft = checkedSynthesis(raw, sources, context, rejected);
+      const issues = reviewSynthesisResponse(draft, sources, context);
+      return { code: error.code, feedback: '这是同轮唯一一次最终回答修复，不调用查询、保存或其他业务工具。原稿仍被拒绝，以下仅是诊断：'
+        + JSON.stringify({ rejectedTextPaths: rejected, responseScopePaths: issues.map(issue => ({ path: `segments[${issue.segment - 1}].text`, code: issue.code })) })
+        + '。只回答本轮指定原文的问题。删除无关章节、本人项目状态/缺项及查询建议；保留实际支持本题的解释与引用。'
+        + '完成表述和无据量数必须删去或按原文关系重新解释，不能复述被拒完成词、换单位、用汉字量数或换basis绕过。'
+        + '原文前提/例外不改写为新条件；引用仅选择本轮已有且支持本段的citationId，真实引文不授权批准、关闭或其他业务动作。'
+        + repairLayoutInstructions + '修复后仍逐段执行全部来源、数值、承诺和范围校验；只返回final_response。' };
+    }
     if (error instanceof AssistantError && error.code === 'ungrounded_response_scope' && (sources.length || originalAnswerOnly(context.currentQuestion || ''))) {
       // parseSynthesis has already checked every quote, number and commitment.
       // Share the original single repair allowance; no new tool or model loop.
@@ -515,6 +538,12 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
 /** Validate provenance and unsupported commitments, without forcing prose to equal an excerpt.
  * Quote membership is a structural check; semantic support is also exercised by fixed live scenarios. */
 export function parseSynthesis(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext = {}): SynthesisAnswer {
+  return checkedSynthesis(raw, sources, context);
+}
+/** A diagnostic collector is private to the existing repair feedback. It never
+ * yields an accepted answer or bypasses structural/source/conflict validation. */
+function checkedSynthesis(raw: string, sources: SynthesisSource[], context: SynthesisReviewContext,
+  rejected?: Array<{ path: string; code: string }>): SynthesisAnswer {
   if (Buffer.byteLength(raw) > 24000) fail('invalid_model_answer', 502);
   let value: SynthesisAnswer;
   try { value = JSON.parse(raw); } catch { return fail('invalid_model_answer', 502); }
@@ -549,16 +578,21 @@ export function parseSynthesis(raw: string, sources: SynthesisSource[], context:
     // the original unmodified prose still pass the existing commitment guards.
     const claimText=engineeringClaimText(s.text,sources.filter(source=>s.citations.some(c=>c.sourceId===source.sourceId)));
     const numericText = citedClock ? claimText.replace(/24\s*小时制/g, '') : claimText;
-    if ((numericText.match(/\d+(?:\.\d+)?/g) || []).some(n => !numbers.has(n))) fail('unsupported_model_commitment', 502);
-    if (unsupportedWordQuantities(numericText, cited.join('\n')).length) fail('unsupported_model_commitment', 502);
-    parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }));
+    try {
+      if ((numericText.match(/\d+(?:\.\d+)?/g) || []).some(n => !numbers.has(n))) fail('unsupported_model_commitment', 502);
+      if (unsupportedWordQuantities(numericText, cited.join('\n')).length) fail('unsupported_model_commitment', 502);
+      parseAgentReply(JSON.stringify({ kind: 'general', text: s.text }));
+    } catch (error) {
+      if (!rejected || !(error instanceof AssistantError) || error.code !== 'unsupported_model_commitment') throw error;
+      rejected.push({ path: `segments[${value.segments.indexOf(s)}].text`, code: error.code });
+    }
   }
   if (unresolvedSynthesisConflict(sources)) {
     if (value.segments[0].basis !== 'uncertainty') fail('unresolved_evidence_conflict', 502);
     for (const s of value.segments) if (s.basis === 'evidence' && /主流做法|(?:企业资料|企业规则|企业口径).{0,8}(?:倾向|优先)|按现有企业资料[，,]?倾向/.test(s.text)) fail('unresolved_evidence_conflict', 502);
   }
   if (value.segments.reduce((n, s) => n + s.text.length, 0) > 4000) fail('invalid_model_answer', 502);
-  if (reviewSynthesisResponse(value, sources, context).length) fail('ungrounded_response_scope', 502);
+  if (!rejected && reviewSynthesisResponse(value, sources, context).length) fail('ungrounded_response_scope', 502);
   return value;
 }
 

@@ -26,8 +26,14 @@ export function knowledgeOriginalRequested(question: string): boolean {
  * Explicit joint application/advice keeps the existing synthesis contract. This
  * is a bounded intent scope, not source selection or semantic entailment. */
 export function originalAnswerOnly(question: string): boolean {
-  return knowledgeOriginalRequested(question) && !explicitNeedWriteStatement(question)
+  return knowledgeOriginalRequested(question) && !explicitNeedWriteStatement(question) && !explicitHumanHandoffRequested(question)
     && !/(?:结合|针对)(?:我|本|当前|现有|这个)|(?:另外|此外|顺便|也请|同时|再给)[^。；\n]{0,40}(?:建议|取舍|现场|我家|项目)|(?:一般|通用)(?:的|选择)?建议/.test(question);
+}
+
+/** Share the existing current-turn handoff gate with answer-scope projection.
+ * Do not create a competing permission or reinterpret quoted/negative requests. */
+export function explicitHumanHandoffRequested(text: string): boolean {
+  return /找.{0,3}设计师|转人工|让设计师|设计师接着聊/.test(text) && !/不要|不想|不用|别|如果|假如|能否|是不是|“|「|"/.test(text);
 }
 
 export function knowledgeReadPending(question: string, messages: ModelMessage[], triggerId: string): boolean {
