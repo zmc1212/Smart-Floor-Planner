@@ -141,7 +141,7 @@ The compact stage-commit index retains scope/results while phase two holds detai
 
 | Stage | Actual result | Git commit |
 | --- | --- | --- |
-| AG-08 / KB-2 v99 trusted PDF page validation (bounded internal fix) | 320 units/9 file services/8 compatibility/98 Mini/lint; native2 format failures,0 need writes,source sheet unexecuted,overall Limited | `LOCAL_V99_COMMIT` |
+| AG-08 / KB-2 v99 trusted PDF page validation (bounded internal fix) | 320 units/9 file services/8 compatibility/98 Mini/lint; native2 format failures,0 need writes,source sheet unexecuted,overall Limited | `34d6d55570dbab0eb9280d50d3c1306a8d8d3c90` |
 | AG-04/05 v98 inquiry/write completeness compatibility (bounded internal fix) | 317 units/5 targeted services/8 compatibility/98 Mini/lint; native4 reads0 writes,3 deliveries1 citation failure, overall Limited | `48d81c465cf35e61bb85077665d628446ab776ca` |
 | AG-02/05 v95 chat recap/legacy correction view (development stopped, Limited) | Final275 units/98 Mini/lint pass, types0/292; final service/compat/native cancelled before start; earlier1149/1150 succeed but1151 fails, no batch pass | `740f955d0e4f050f1eddcb04d2524fa12cbf0ac9` |
 | AG-02/05 v94 authoritative pure-record receipts (bounded internal fix) | 266 units/18 services+7 skips/4 compatibility/98 Mini/lint; two native GLM9 runs, one call each, truthful partial receipt and complete batch/reentry; F-04/overall Limited | `f56789df195334396574cba3a6d04019697d181a` |
