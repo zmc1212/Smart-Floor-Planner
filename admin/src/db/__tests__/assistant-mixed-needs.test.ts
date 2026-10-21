@@ -8,7 +8,7 @@ import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConversationService } from '@/lib/assistant/core/conversation';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
-import { processAgentAnswer, agentNeedBatchProtocol } from '@/lib/assistant/agent/worker';
+import { processAgentAnswer, agentNeedBatchProtocol, agentNeedQuoteProtocol } from '@/lib/assistant/agent/worker';
 import { persistNeedWrites } from '@/lib/assistant/agent/memory-store';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import type { ActorContext } from '@/lib/assistant/contracts';
@@ -171,6 +171,53 @@ test('mixed correction exact original and budget scope diagnostics recover the f
   } });
   assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 3);
   assert.equal((await memory(a.c)).version, 2); assert.equal((await writes(String(a.sent.runId))).length, 1);
+});
+
+test('mixed correction original quote catalog reaches dispatch and recovers rejected raw proposals without server-filled needs', async () => {
+  for (const injectBadQuote of [false, true]) {
+    const a = await start(); let calls = 0;
+    const bad = { ...desk, quote: '更正：书房书桌改为靠内墙。', additionalNeeds: [{ ...budget, quote: '更正：预算改为18万元。' }] };
+    await processAgentAnswer(a.lease, { model: async (messages, tools, _turn, dispatch) => {
+      calls++;
+      const active = tools.find(t => t.name === 'record_need');
+      if (calls === (injectBadQuote ? 3 : 2)) { assert.equal(active, undefined); return answer(); }
+      const schema = dispatch!.find(t => t.name === 'record_need')!.parameters as {
+        properties: { quote: { enum: string[] }; additionalNeeds: { items: { properties: { quote: { enum: string[] } } } } };
+      };
+      const options = schema.properties.quote.enum;
+      assert.deepEqual(options, ['更正：书房书桌改为靠内墙', '预算改为18万元']);
+      assert.deepEqual(schema.properties.additionalNeeds.items.properties.quote.enum, options);
+      if (injectBadQuote && calls === 1) return call(bad, 'bad-original');
+      assert.deepEqual(await memory(a.c), { version: 0, facts: [] });
+      if (injectBadQuote) {
+        const result = messages.find(m => m.role === 'tool' && m.callId === 'bad-original');
+        assert.ok(result && result.role === 'tool');
+        const feedback = JSON.parse(result.content);
+        assert.equal(feedback.batchCommitted, false); assert.deepEqual(feedback.quoteOptions, options);
+        assert.ok(feedback.submittedWrites.every((w: Row) => w.quoteIsOriginal === false && w.validationError === 'need_source_mismatch'));
+      }
+      return call({ ...desk, quote: options[0], additionalNeeds: [{ ...budget, quote: options[1] }] }, 'selected-originals');
+    } });
+    const result = await new ConversationService(actor).run(String(a.sent.runId));
+    assert.equal(result.status, 'succeeded'); assert.equal(calls, injectBadQuote ? 3 : 2);
+    const state = await memory(a.c); assert.equal(state.version, 2); assert.equal(state.facts.length, 2);
+    assert.deepEqual(state.facts.map(f => [f.room, f.field, f.value, f.quote]), [
+      ['书房','desk',desk.value,'更正：书房书桌改为靠内墙'], ['', 'budget', '18万元', '预算改为18万元'],
+    ]);
+    assert.equal((await writes(String(a.sent.runId))).length, 1);
+    const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,input_summary,private_checkpoint from app.assistant_run_steps
+      where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} order by step_seq`));
+    assert.ok(steps.filter(s => s.kind === 'agent_model').some(s => (s.input_summary as Row).needQuoteProtocol === agentNeedQuoteProtocol));
+    if (injectBadQuote) {
+      const original = steps.find(s => s.kind === 'agent_model')!.private_checkpoint as { toolCalls: Array<{ arguments: string }> };
+      assert.deepEqual(JSON.parse(original.toolCalls[0].arguments), bad, 'Invalid raw parameters are retained, never rewritten');
+    }
+    const reentry = await new ConversationService(actor).messages(a.c);
+    const reply = reentry.items.find(m => m.id === result.outputMessageId)!;
+    assert.equal(reply.available, true); assert.match(JSON.stringify(reply.content), /自然光与屏幕反光/);
+    await assert.rejects(new ConversationService(stranger).messages(a.c), /not_found/);
+    assert.deepEqual(await memory(a.c), state);
+  }
 });
 
 test('mixed correction failed arguments cannot acknowledge completed updates and the final repair never saves them', async () => {

@@ -1,6 +1,24 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v104：获权当前回顾已验证，混合原生验收失败
+## 当前v105：原文quote选项内部已验证，原生被供应商拒绝
+
+**内部可恢复检查点；F-04及整体仍Limited。** prompt `xiaok-renovation-v105` / `need-original-quotes-v1`从已有明确断言块提供最多四个连续原分句、每句最多1,000字符；主字段与additionalNeeds的quote使用同一字符串enum，已有错误反馈返回quoteOptions。既有断言范围排除独立假设问题。每项room/field/value/quote仍由模型选择；未修正参数、补缺项、推断事实或增加工具/轮数/Agent/存储/引用管线。超界/无明确块输入沿原自由quote schema及独立持久校验。原四项原子/原话/值/房间/租户/版本/回执、完成断言后耗尽写工具与单次最终修复保持。
+
+| 核验 | 实际结果 |
+| --- | --- |
+| 稳定源码 | 2,263项源码/测试/配置，SHA256 `ef6276d00135ae565b3b688e67fe13948ba873b16b7e674d233c333e0677b49a`；六类检查及原生前后相同，8份原生驱动及数据库模型配置hash未变 |
+| 自动检查 | 344 Agent单元、25隔离服务、8知识兼容、98 Mini及定向lint通过；涉及类型0/全仓292，整体tsc未通过。新增服务验证真实原子写入/重进、两个schema位置实际派发、改写原话拒绝、原始错误参数保留及无服务器填参的恢复 |
+| 红测证据 | 首次19项16过/3败仅保留工具输出计数：后次调用误覆盖首次原始red日志，不声称已重建原始日志。修后red19/19、定向服务1与完整检查分别记录；定向1已含在25内，不累加 |
+| 原生执行 | 唯一Stable2.02.2608080、SDK0.13.0、base3.17.2；实际项目路径/可执行文件/标题、副屏、新鲜DOM编译及SDK正控已核实。C01真实输入1307/1308（trigger10149/10150）各一次provider attempt3633/3634被拒绝：HTTP_402、accepted=false，应用provider_payment_required。请求模型仍THUDM/GLM-4-9B-0414，不证明模型已执行 |
+| 结果 | 无模型稿、实测用量记录、需求写入或助手交付；两咨询记忆仍v5/预算20万元。原生题0通过/2失败/3未执行（recap-0/withdrawn-0/recap-1）；两项预备读取故障/重连未执行。没有可评语义答复；供应商拒绝与v104原始语义失败分开 |
+| 客户端/权限 | 本人HTTP200、同企业其他客户404、跨企业404。两张精确route/stack、390x844/PNG348x752失败图已审看：既有“这次回答没有完成”，无虚假成功。批准来源 `design-references/xiaok-p4b-public-sites-v1/README.md` C01/U01及既有markup/styles/assets/固定文案/导航/几何保持，未作新视觉还原或台账修改 |
+| 清理/用量 | 合成enterprise2676/2677 AI关闭、user3743–3745上下文撤权、咨询684–686保留为标记证据，仅fixture active0/unknown0。session/transport恢复、SDK断开、验收锁释放。attempt estimated_cost/actual_cost为空对象且无用量记录，不推断零tokens/费用/结算。旧1132/3196及1184/3327未重放或重新审计 |
+
+复核[LangChain工具schema转换](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/utils/function_calling.ts)、[LangGraph ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)与[已关闭issue1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，并检查已安装LangGraph1.5.0/core1.2.18及当前传输。复用JSON Schema、成对可控错误和独立服务校验；不假设供应商严格遵守schema，不把上游issue归为GLM根因；未迁移框架/配置/供应商。
+
+证据：`tmp/xiaok-original-quotes-v105/`的baseline/check/validate/verify、六类result manifest、initial-red-observation.json、native.mjs/ts、live.json、semantic-review.json、provider-rejection.json及两trial目录。v1041305/1306原稿、v103/v102失败与未知账务分别保留。下一项仍Agent F-04：须供应商实际恢复（或用户明确指定新配置），再用新证据目录/新夹具执行两组同配置GLM9/Stable；不重放1307/1308、不自动重试HTTP402、不自行换模型/购买或仅凭单元宣布验收。先完成原子保存、实用采光收益+风险、持久回顾/撤回、权限及U01恢复，再F-02/06/07。已告知用户外部恢复条件，未回复不算恢复。接近容量按两计划顺序轮换新聊天；完整PPT/专业/真机/BLE/真实微信/生产验收仍未完成。
+
+## 历史v104：获权当前回顾已验证，混合原生验收失败
 
 **内部可恢复检查点；F-04及整体仍Limited。** prompt `xiaok-renovation-v104`把真实当前问题传给原完成态更新守卫，普通与synthesis两个最终提交均用`availableNeedMemory`。明确只回顾聊天原话时，允许描述前run仍获权的当前书桌/预算目标；“本次/本轮/刚刚”、助手代办、错误/失效目标及通用“已保存/已记录”不能借只读作用域放行。“已将”完成态与“将”未来表达区分。保留已有有界历史/否定/未来与旧书桌键控制，不新增事实抽取/存储/引用管线；原四字段原子合同、来源/租户、同run幂等回执、工具关闭及唯一最终修复保持。
 

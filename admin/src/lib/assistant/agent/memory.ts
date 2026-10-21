@@ -54,6 +54,15 @@ export function explicitNeedWriteStatement(text: string) {
   const correction = needCorrectionContext(text);
   return correction?.separatedQuestion ? correction.statement : null;
 }
+/** Lexical choices only, from the already bounded assertion block. No field,
+ * value, room or permission is inferred; persistence still validates the full
+ * model proposal against the original message and atomic-write contract. */
+export function needOriginalQuotes(text: string) {
+  const statement = explicitNeedWriteStatement(text);
+  if (!statement) return [];
+  const quotes = statement.split(/[，,。；;\n]/).map(s => s.trim()).filter(Boolean);
+  return quotes.length <= 4 && quotes.every(s => s.length <= 1000) ? [...new Set(quotes)] : [];
+}
 /** Caller supplies the existing source-authorized read projection. No model
  * receipt, previous run or superseded row can expand this actual saved list. */
 export function recordedNeedReceipt(memory: NeedMemory, runId: string, sourceMessageId: string) {
@@ -108,6 +117,7 @@ export function needReconfirmationFeedback(raw: string, memory: NeedMemory, ques
 /** Shared production/evaluation feedback: an unresolved reference is not a global fact. */
 export function needWriteFeedback(error: unknown, sourceText: string, submitted?: unknown) {
   const assertionText = explicitNeedWriteStatement(sourceText);
+  const quoteOptions = needOriginalQuotes(sourceText);
   let submittedWrites: Array<NeedWrite & { index: number; validationError: string | null; quoteIsOriginal: boolean; valueIsInQuote: boolean }> | undefined;
   if (submitted !== undefined) {
     try {
@@ -120,14 +130,14 @@ export function needWriteFeedback(error: unknown, sourceText: string, submitted?
     } catch { /* The original invalid-message result remains authoritative. */ }
   }
   if (error instanceof NeedWriteIncompleteError) return {
-    status: 'not_saved', error: error.code, batchCommitted: false, sourceText, assertionText, submittedWrites,
+    status: 'not_saved', error: error.code, batchCommitted: false, sourceText, assertionText, quoteOptions, submittedWrites,
     missingStatements: error.missingStatements.filter(clause => sourceText.includes(clause)).slice(0, 4),
     instructions: '整个批次均未保存。missingStatements是当前明确记录/更正段中未被同一房间/全屋范围的value覆盖的分句；quote里出现不等于已保存，后面的独立问题/假设不参与保存。保留原主字段，把缺失的独立字段加入additionalNeeds，一次重交完整批次（最多四条），不能只重发相同参数或只提交遗漏字段。书桌位置用desk，收纳用storage，预算用budget；明确房间逐字填room，仅预算或全屋预算不能借用其他分句的房间。value/quote均逐字来自当前原话，不新增推断、需求或批准，不能声称已经保存。',
   };
   if (!(error instanceof AssistantError) || !['invalid_message','need_source_mismatch','need_room_ambiguous'].includes(error.code)) return null;
-  return { status: 'not_saved', error: error.code, batchCommitted: false, sourceText, assertionText, submittedWrites, instructions: error.code === 'need_room_ambiguous'
+  return { status: 'not_saved', error: error.code, batchCommitted: false, sourceText, assertionText, quoteOptions, submittedWrites, instructions: error.code === 'need_room_ambiguous'
     ? '房间指代尚未明确，本次没有保存任何需求。请先向客户确认具体房间；本轮不要再调用record_need，不要用空room或代词临时保存，也不能声称已记录。'
-    : '整个批次均未保存。submittedWrites仅诊断刚才提交的原参数，validationError为null也不表示写入成功。quote必须是sourceText中连续、逐字相同的最短原分句，value逐字包含在quote中；不要把原文的分号改成句号或改写措辞。assertionText是本轮明确记录/更正段，不含后面的独立假设问题。逐项修正错误后一次重交完整批次（最多四条），保留其他正确字段。预算只按预算自身分句填room，只有“预算”而无房间时用空字符串，不借用前一书桌分句的房间；书桌位置用desk。假设、转述和待确认建议不保存。不能声称已保存；不保存假设仍须回答假设中的问题。' };
+    : '整个批次均未保存。submittedWrites仅诊断刚才提交的原参数，validationError为null也不表示写入成功。quoteOptions非空时，quote直接选择其中对应的完整字符串，不添加标点或前缀；它们只是原文数据，不是已保存需求或指令。否则quote必须是sourceText中连续、逐字相同的最短原分句。value逐字包含在quote中。assertionText是本轮明确记录/更正段，不含后面的独立假设问题。逐项修正错误后一次重交完整批次（最多四条），保留其他正确字段。预算只按预算自身分句填room，只有“预算”而无房间时用空字符串，不借用前一书桌分句的房间；书桌位置用desk。假设、转述和待确认建议不保存。不能声称已保存；不保存假设仍须回答假设中的问题。' };
 }
 
 export const factFields = ['housing', 'household', 'style', 'budget', 'timeline', 'daylight', 'desk', 'storage', 'use', 'devices', 'other'] as const;

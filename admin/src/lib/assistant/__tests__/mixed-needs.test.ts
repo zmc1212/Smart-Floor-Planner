@@ -1,11 +1,48 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AssistantError } from '../contracts';
-import { applyNeedDelta, assertRecordedReply, hasExplicitNeedCorrection, needReplyFeedback, needWriteFeedback, readMemory, uncoveredNeedStatements, type NeedWrite } from '../agent/memory';
+import { applyNeedDelta, assertRecordedReply, hasExplicitNeedCorrection, needOriginalQuotes, needReplyFeedback, needWriteFeedback, readMemory, uncoveredNeedStatements, type NeedWrite } from '../agent/memory';
+import { agentToolsForMessage, needTool } from '../agent/worker';
 
 const desk: NeedWrite = { room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '书房书桌改为靠内墙' };
 const budget: NeedWrite = { room: '', field: 'budget', value: '18万元', quote: '预算改为18万元' };
 const mixed = '更正：书房书桌改为靠内墙；预算改为18万元。另外，如果仍靠窗会有哪些取舍？后面是假设，不要保存。';
+
+test('mixed correction original quote catalog contains only bounded contiguous assertion clauses', () => {
+  assert.deepEqual(needOriginalQuotes(mixed), ['更正：书房书桌改为靠内墙', '预算改为18万元']);
+  for (const quote of needOriginalQuotes(mixed)) assert.ok(mixed.includes(quote));
+  for (const text of ['更正：如果书房书桌改为靠内墙。另外插座怎么确定？',
+    '设计师说“更正：书房书桌改为靠内墙”。另外插座怎么确定？',
+    '更正：书房书桌改为靠内墙。另外如果预算允许才按刚才的更正，可以吗？',
+    '更正：书房书桌改为靠内墙。另外插座怎么确定？不要记录。',
+    '只回顾本次聊天原话，书桌和预算当前是什么？',
+    '请记下：' + '书房'.repeat(501),
+    '请记下：书房靠窗，客厅阅读，厨房封闭，卧室安静，阳台种花。']) assert.deepEqual(needOriginalQuotes(text), [], text.slice(0,80));
+  const punctuated = '  请记下：书房桌子靠内墙,预算18万元\n客厅保留阅读角。  ';
+  assert.deepEqual(needOriginalQuotes(punctuated), ['请记下：书房桌子靠内墙', '预算18万元', '客厅保留阅读角']);
+});
+
+test('mixed correction original quote catalog scopes both atomic schema positions without mutating the shared tool', () => {
+  const before = JSON.stringify(needTool);
+  const selected = agentToolsForMessage(mixed, true).find(tool => tool.name === 'record_need')!;
+  const schema = selected.parameters as { properties: { quote: { enum: string[] }; additionalNeeds: { items: { properties: { quote: { enum: string[] } } } } } };
+  assert.deepEqual(schema.properties.quote.enum, needOriginalQuotes(mixed));
+  assert.deepEqual(schema.properties.additionalNeeds.items.properties.quote.enum, needOriginalQuotes(mixed));
+  assert.equal(JSON.stringify(needTool), before);
+  assert.equal(agentToolsForMessage('书房安静', true).find(tool => tool.name === 'record_need'), needTool);
+  assert.deepEqual(agentToolsForMessage(mixed, false), []);
+});
+
+test('mixed correction original quote choices remain data and never fix or authorize submitted parameters', () => {
+  const invalid = { ...desk, quote: '更正：书房书桌改为靠内墙。' };
+  const feedback = needWriteFeedback(new AssistantError('need_source_mismatch', 422), mixed, invalid)!;
+  assert.deepEqual(feedback.quoteOptions, needOriginalQuotes(mixed));
+  assert.equal(feedback.batchCommitted, false);
+  assert.throws(() => applyNeedDelta(readMemory({}), { ...invalid, sourceMessageId: '2', expectedVersion: 0 },
+    { id: '2', text: mixed }, '9:0:0', 'now'), /need_source_mismatch/);
+  assert.throws(() => applyNeedDelta(readMemory({}), { ...budget, room: '书房', sourceMessageId: '2', expectedVersion: 0 },
+    { id: '2', text: mixed }, '9:0:0', 'now'), /need_source_mismatch/);
+});
 
 test('mixed correction coverage requires the whole explicit block but excludes the separately introduced hypothetical question', () => {
   assert.equal(hasExplicitNeedCorrection(mixed), true);
