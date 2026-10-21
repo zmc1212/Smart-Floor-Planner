@@ -7,6 +7,7 @@ import { allRequirementKeys } from '../requirements/contract';
 import { adaptSurveyGraphToRooms, parseFormalSurveyLayout } from '@/lib/survey-graph';
 import { agentMessageAvailable } from '../agent/media-context';
 import { recordNeedIssueReview } from '@/lib/construction/need-issues';
+import { currentHandoffOwner } from './owner';
 
 type Handoff = { state: 'waiting' | 'active' | 'cancelled' | 'ended'; requestId: string; recipientId: string | null;
   recipientName: string; ownerId?: string; ownerName?: string; mediaConsent?: boolean; contactConsent: boolean; phone: string;
@@ -49,7 +50,7 @@ export class HandoffService {
   }
   private async project(repo: AssistantRepository, c: Row) {
     const h = stateOf(c);
-    const staff = h?.ownerId ? await this.eligible(repo, h.ownerId) : null;
+    const staff = await currentHandoffOwner(repo.tx, this.actor.enterpriseId, String(c.id), h);
     const ownerAvailable = h?.state !== 'active' || !!staff;
     const entry = c.entry_snapshot as Row;
     let leadId = h?.leadId || (entry.kind === 'lead' ? String(entry.id) : null);
@@ -140,7 +141,8 @@ export class HandoffService {
       const list=await rows(repo.tx,sql`select * from app.assistant_conversations where enterprise_id=${this.actor.enterpriseId} and purpose='customer_consultation'
         and status='open' and ((entry_snapshot->'handoff'->>'state'='waiting' and (entry_snapshot->'handoff'->>'recipientId' is null or entry_snapshot->'handoff'->>'recipientId'=${staffId}))
           or (entry_snapshot->'handoff'->>'state'='active' and entry_snapshot->'handoff'->>'ownerId'=${staffId} and exists(select 1 from app.assistant_participants p
-            where p.enterprise_id=app.assistant_conversations.enterprise_id and p.conversation_id=app.assistant_conversations.id and p.admin_id=${staffId} and p.status='active' and p.participant_role='handoff_staff'))) order by updated_at desc limit 100`);
+            where p.enterprise_id=app.assistant_conversations.enterprise_id and p.conversation_id=app.assistant_conversations.id and p.admin_id=${staffId} and p.status='active' and p.participant_role='handoff_staff'
+              and p.grant_basis->>'requestId'=app.assistant_conversations.entry_snapshot->'handoff'->>'requestId'))) order by updated_at desc limit 100`);
       return {items:list.map(c=>({conversationId:String(c.id),title:c.title || '装修咨询',handoff:dispatchHandoff(stateOf(c)),version:Number(c.version)}))};
     });
   }
@@ -150,8 +152,7 @@ export class HandoffService {
     const h=c && stateOf(c), staffId=String(staff.id);
     if (!c || c.status!=='open' || !h || !['waiting','active'].includes(h.state) || (h.state==='waiting' && h.recipientId && h.recipientId!==staffId)
       || (h.state==='active' && h.ownerId!==staffId)) fail('assistant_resource_not_found',404);
-    if(h.state==='active' && !await one(repo.tx,sql`select id from app.assistant_participants where enterprise_id=${this.actor.enterpriseId}
-      and conversation_id=${conversationId} and admin_id=${staffId} and participant_role='handoff_staff' and status='active'`)) fail('assistant_resource_not_found',404);
+    if(h.state==='active' && !await currentHandoffOwner(repo.tx,this.actor.enterpriseId,conversationId,h)) fail('assistant_resource_not_found',404);
     return {c,h,staff};
   }
   private async candidates(repo: AssistantRepository, conversationId: string, staff: Row) {

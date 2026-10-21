@@ -8,6 +8,7 @@ import { availableNeedMemory } from '@/lib/assistant/agent/memory-sources';
 import { constructionNoticeAvailable } from './customer';
 import { customerSiteResults } from './site-results';
 import { customerPlans } from './site-plans';
+import { currentHandoffOwner } from '@/lib/assistant/handoff/owner';
 
 export const needIssueTool: ModelTool = {
   name: 'query_followups', description: '查询当前本人咨询中节点补充事项、团队明确回传的事项取消/恢复后的等待状态与负责人、现场落实证据及正式解决/关闭结果，以及发给本咨询的具体方案版本、差异、费用/工期变化和客户真实决定。只读；不取消/恢复或批准方案、不解决或关闭事项，不开放内部会话或未回传内容。恢复不复活旧回复或批准；普通回复或客户同意不等于现场落实、解决或关闭；关闭不等于验收付款。',
@@ -89,10 +90,7 @@ export async function queryNeedIssues(tx: PostgresTransaction, actor: ActorConte
       data.push(state); lines.push('有一项补充来源已更正或不可用，需重新核对，不能沿用旧结果。'); continue;
     }
     const handoff = (conversation.entry_snapshot as Row).handoff as Row | undefined;
-    const owner = handoff?.state === 'active' && handoff.ownerId ? await one(tx, sql`select a.display_name,a.username from app.admin_users a
-      join app.assistant_participants p on p.enterprise_id=a.enterprise_id and p.admin_id=a.id and p.conversation_id=${cid} and p.status='active' and p.participant_role='handoff_staff'
-      where a.enterprise_id=${eid} and a.id=${String(handoff.ownerId)} and a.status='active' and a.role in ('designer','enterprise_admin')
-        and not a.must_change_password and p.grant_basis->>'requestId'=${String(handoff.requestId)}`) : null;
+    const owner = await currentHandoffOwner(tx, eid, cid, handoff);
     Object.assign(state, { room: String(payload.room), field: String(payload.field), question: String(payload.question), value: fact?.value || '',
       status: fact ? 'awaiting_review' : 'awaiting_customer', waitingFor: fact ? owner ? 'designer' : 'unassigned' : 'customer',
       ownerName: owner ? String(owner.display_name || owner.username) : '', sourceMessageId: fact?.sourceMessageId || null, sourceFactId: fact?.id || null,

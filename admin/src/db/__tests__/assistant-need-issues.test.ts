@@ -190,6 +190,55 @@ test('XK04 S01 consent gates review; a reviewed item and a human reply are not a
   await assert.rejects(worker.staffRead(x.cid), /not_found|forbidden/);
   assert.equal(Number((await withTenantTransaction(eid, tx => one(tx, sql`select count(*) n from app.assistant_requirement_summaries where enterprise_id=${eid} and conversation_id=${x.cid} and status='confirmed'`)))!.n), 0);
 });
+test('P3B owner continuity: revoked current grant cannot leave a false owner; reconsent resumes the same issue and original chat', async () => {
+  const x = await fixture(); await x.progress(); await x.save('需要显示器插座');
+  await x.customer.customerWrite(x.cid, randomUUID(), { action: 'request', recipientId: designerId });
+  await x.staff.staffWrite(x.cid, randomUUID(), { action: 'claim' });
+  const before = await x.query(), issue = before.data[0];
+  assert.equal(issue.waitingFor, 'designer'); assert.ok(issue.ownerName);
+  // Age only this synthetic consultation, then reenter through fresh services.
+  await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_conversations set updated_at=now()-interval '2 days' where enterprise_id=${eid} and id=${x.cid}`));
+  assert.equal((await new ConversationService(x.actor).detail(x.cid)).ownerAvailable, true);
+  await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_participants set status='revoked',revoked_at=now(),version=version+1
+    where enterprise_id=${eid} and conversation_id=${x.cid} and admin_id=${designerId} and participant_role='handoff_staff'`));
+  await assert.rejects(x.staff.staffRead(x.cid), /assistant_resource_not_found/);
+  await assert.rejects(x.staff.staffWrite(x.cid, randomUUID(), { action: 'reply', text: '无权回复不应写入' }), /assistant_resource_not_found/);
+  assert.equal((await new HandoffService(x.actor).customerRead(x.cid)).handoff?.ownerAvailable, false);
+  assert.equal((await new ConversationService(x.actor).detail(x.cid)).ownerAvailable, false);
+  const revoked = await x.query();
+  assert.equal(revoked.data[0].issueId, issue.issueId); assert.equal(revoked.data[0].revision, issue.revision);
+  assert.equal(revoked.data[0].waitingFor, 'unassigned'); assert.equal(revoked.data[0].ownerName, '');
+  assert.equal(await withTenantTransaction(eid, tx => needIssueSnapshotAvailable(tx, eid, before)), false);
+  await assert.rejects(x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '不能投递到已撤权接待人' }] }), /context_changed/);
+  await x.customer.customerWrite(x.cid, randomUUID(), { action: 'end' });
+  await x.customer.customerWrite(x.cid, randomUUID(), { action: 'request', recipientId: designerId });
+  assert.equal((await x.query()).data[0].waitingFor, 'unassigned');
+  await x.staff.staffWrite(x.cid, randomUUID(), { action: 'claim' });
+  const replyKey = randomUUID(), reply = { action: 'reply', text: '已接续原书房插座事项，仍在核对，方案尚未批准。' };
+  await x.staff.staffWrite(x.cid, replyKey, reply); await x.staff.staffWrite(x.cid, replyKey, reply);
+  const current = (await x.query()).data[0];
+  assert.equal(current.issueId, issue.issueId); assert.equal(current.revision, issue.revision);
+  assert.equal(current.waitingFor, 'designer'); assert.equal(current.status, 'awaiting_review');
+  assert.equal((await new ConversationService(x.actor).messages(x.cid)).items.filter(m => m.authorKind === 'admin' && JSON.stringify(m.content).includes(reply.text)).length, 1);
+  assert.equal((await x.chat.detail(x.cid)).ownerAvailable, true);
+});
+
+test('P3B owner continuity: a previous-request grant cannot authorize current text reads, sends or waiting status', async () => {
+  const x = await fixture(); await x.progress(); await x.save('需要台灯插座');
+  await x.customer.customerWrite(x.cid, randomUUID(), { action: 'request', recipientId: designerId });
+  await x.staff.staffWrite(x.cid, randomUUID(), { action: 'claim' });
+  // Simulate durable metadata advancing while an older participant grant remains.
+  await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_conversations
+    set entry_snapshot=jsonb_set(entry_snapshot,'{handoff,requestId}',${JSON.stringify(randomUUID())}::jsonb) where enterprise_id=${eid} and id=${x.cid}`));
+  assert.equal((await x.customer.customerRead(x.cid)).handoff?.ownerAvailable, false);
+  assert.equal((await x.chat.detail(x.cid)).ownerAvailable, false);
+  assert.equal((await x.query()).data[0].waitingFor, 'unassigned');
+  assert.ok(!(await x.staff.staffList()).items.some(item => item.conversationId === x.cid));
+  await assert.rejects(x.staff.staffRead(x.cid), /assistant_resource_not_found/);
+  await assert.rejects(x.staff.staffWrite(x.cid, randomUUID(), { action: 'reply', text: '旧授权不得用于本次接续' }), /assistant_resource_not_found/);
+  await assert.rejects(x.chat.send(x.cid, randomUUID(), { version: 1, blocks: [{ type: 'text', text: '旧授权不能接收这条消息' }] }), /context_changed/);
+});
+
 test('XK07/08 stage changes invalidate pending sources, derived history and memory before further model calls', async () => {
   const x = await fixture(); await x.progress(); await x.save('需要台灯插座');
   const prior = await x.query(), answered = await x.ask(); assert.equal(answered.run.status, 'succeeded');

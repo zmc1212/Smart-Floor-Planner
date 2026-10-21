@@ -7,6 +7,7 @@ import { configuredGuidance, conversationGuidance, guidanceOpening, guidanceView
 import { requirementCheckpoint } from '../requirements/checkpoint';
 import { saveAutomaticRequirements } from '../requirements/automatic';
 import { requestsDesigner } from '../handoff/intent';
+import { currentHandoffOwner } from '../handoff/owner';
 import { agentConfig } from '../agent/config';
 import { referenceCase } from '../knowledge/reference-case';
 import { contentEntrySource, contentGreeting, type ContentEntry } from '../knowledge/content-entry';
@@ -176,10 +177,8 @@ export class ConversationService {
         from app.assistant_runs r where r.enterprise_id=${this.actor.enterpriseId} and r.conversation_id=${conversationId}
         order by r.id desc limit 1`);
       const preview = this.actor.principal.kind === 'admin' ? previewPolicy(c) : null;
-      const ownerId = ((c.entry_snapshot as Row)?.handoff as Row)?.ownerId;
-      const ownerAvailable = c.mode !== 'human' || !!(ownerId && await one(repo.tx, sql`select id from app.admin_users
-        where enterprise_id=${this.actor.enterpriseId} and id=${String(ownerId)} and status='active'
-        and role in ('designer','enterprise_admin') and must_change_password=false`));
+      const handoff = (c.entry_snapshot as Row)?.handoff as Row | undefined;
+      const ownerAvailable = c.mode !== 'human' || !!await currentHandoffOwner(repo.tx, this.actor.enterpriseId, conversationId, handoff);
       const entry=c.entry_snapshot as Row;
       const contentEntry=['reference_content','reference_unavailable'].includes(String(entry.kind));
       const source=entry.kind==='reference_content'?await contentEntrySource(repo.tx,entry as ContentEntry):null;
@@ -245,10 +244,7 @@ export class ConversationService {
         }
         if (c.mode === 'human' && this.actor.principal.kind === 'user') {
           const h = (c.entry_snapshot as Row)?.handoff as Row;
-          if (!h || h.state !== 'active' || !h.ownerId || !await one(repo.tx,sql`select a.id from app.admin_users a
-            join app.assistant_participants p on p.enterprise_id=a.enterprise_id and p.admin_id=a.id
-            where a.enterprise_id=${this.actor.enterpriseId} and a.id=${String(h.ownerId)} and a.status='active' and a.role in ('designer','enterprise_admin')
-              and p.conversation_id=${conversationId} and p.status='active' and p.participant_role='handoff_staff' for share of a,p`)) fail('context_changed');
+          if (!await currentHandoffOwner(repo.tx,this.actor.enterpriseId,conversationId,h)) fail('context_changed');
           const message=intercepted || await appendMessage(repo.tx,this.actor,conversationId,{author:'user',content:safe,clientMessageId,purpose:'human.reply'});
           await saveAutomaticRequirements(repo, conversationId);
           return {conversationId,messageId:String(message.id),runId:null,status:'succeeded',nextPollMs:null};
