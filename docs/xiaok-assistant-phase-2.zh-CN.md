@@ -1,24 +1,23 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前v106：显式原子输入已验证，数值引用的最终恢复未完成
+## 当前v107：绑定已保存本轮原话的数值恢复
 
-**有界内部修复，F-04及整体Limited。** prompt xiaok-renovation-v106 / need-batch-input-v1要求面向模型的既有additionalNeeds数组（单项填[]）；最近一条成对record_need not_saved/need_write_incomplete结果将重试数组收紧为minItems1。仅改变发给模型的schema，不改模型原参数、持久层或权限。旧参数解析、精确原话、原子完整性、房间/字段/来源/租户/版本/回执、四项/四轮及单次最终修复保持。不填参、不跨轮拼被拒提议，不加工具/Agent/事实库/引用管线或数据库迁移；C01 packages/assistant/chat/chat及/api/miniprogram/assistant/*保持。
+**有界内部实现，F-04及整体Limited。** prompt xiaok-renovation-v107将服务端已知trigger ID/content hash加入内部综合校验上下文。只有唯一获权history来源与本轮ID、hash、完整问题一致，且每个数值缺引段都有原话实际出现的缺失数字，才进入既有单次最终修复；“万元”单位相同不能开启恢复。来源仍为既有保存回执的原话，经过currentSynthesisContext重新校验，不以标题或旧历史授权。反馈定位正文路径/已有citationOptions，由模型明确补引或删除无据旧金额/附加段，并保留独立取舍回答。不服务器选引、不改稿/引文、不重放保存、不加工具/轮数/Agent/事实库/引用管线或DB/API schema。原最终数值/承诺/来源/租户/房间/版本/回执校验保持。
 
-已复查[LangGraph ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[成对/错误协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)、[LangChain schema转换](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/utils/function_calling.ts)及[已关闭issue1440](https://github.com/langchain-ai/langgraphjs/issues/1440)。复用JSON Schema与真实成对错误，服务继续独立校验，不假定provider严格遵守schema；安装LangGraph1.5.0/core1.2.18及框架保持，不把1440当本provider根因。
+已复查维护中的[LangGraph ToolNode](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[已关闭issue1440](https://github.com/langchain-ai/langgraphjs/issues/1440)，继续标准成对工具结果、JSON Schema与既有有界编辑最终协议；安装LangGraph1.5.0/core1.2.18及框架保持，不把1440当本provider已证根因。初次错仓库1440检索已弃用。
 
 | 核验 | 实际结果 |
 | --- | --- |
-| 稳定完整检查 |2,263项源码/测试/配置摘要`51a463b2c5434376e743ca39d36290ca13877d844cc9bfeafd25d358a8f646f8`，347 Agent单元、26隔离真实服务、8知识兼容、98 Mini、定向lint通过。全仓tsc退出2/292项错误，涉及0，完整诊断集与v105相同；定向22属于单元子集，不额外累加。原红测/漂移/实模失败分别保留 |
-| 免费模型/配置 |只读实时官方目录确认Qwen/Qwen3.5-4B为8个免费候选之一；本轮未做连接/模型探针或配置写入。siliconflow开发chat、凭据/VLM/投影与服务/隧道保持；模型配置hash b8e4c1e06526f9ec6ad9552b56ebcad81488e8eb641f952587811fd044c47ef7及8驱动前后稳定 |
-| 原子写入 |新Stable1311/1312均首调用完整提交原文书房desk靠内墙+全局budget18万元，各1条agent_need_write，v5→v7，无假设需求。重试schema已由服务/真实传输序列化验证，但两组实模未触发不完整重试 |
-| 最终交付 |1311 unsupported_model_commitment，output_message_id=null；原稿无数值的取舍段离线校验通过，额外“预算从20万元调整为18万元”建议段引用为空，被数值校验正确拒绝；既有非文件/非正式图纯数值路径在唯一最终修复前重抛。1312交付有界采光/布置通用取舍及现场未知，1313重进回顾当前书桌/独立收纳/客厅阅读角/18万元，无新写入。原生题2通过/1失败/2未执行（recap-0、withdrawn-0），整体native.passed=false |
-| 恢复/权限 |trial1注入一次合成HTTP读取失败，显示既有U01“网络连接暂时中断，请重新连接。”及真实“重新连接”动作，恢复持久历史且无新run/写入；trial0恢复未执行。本咨询200/同企业其他客户404/跨企业404。未执行来源撤回，不记通过 |
-| 原生/设计 |复用副屏唯一Stable2.02.2608080/automator0.13.0/base3.17.2，新鲜DOM编译、SDK/system/page正控及精确C01 route/stack；5图均已审看，逻辑390x844/PNG348x752，含既有失败/答复/回顾/U01。批准来源design-references/xiaok-p4b-public-sites-v1/README.md C01/U01，Mini markup/styles/assets/固定文案/几何/导航未改，无还原台账影响，不引入新视觉审批 |
-| 用量/清理 |attempt3643–3650均succeeded/accepted=true/实际Qwen/Qwen3.5-4B，8条实测tokens与2条need操作记录分开，费用全部null。enterprise2680/2681 AI关闭，user3749–3751上下文撤权，咨询690–692保留证据；其active0/unknown0不代表审计全库。session/transport恢复、SDK断开、自有验收锁释放；历史1132/3196及1184/3327未重放/重新审计 |
+| 稳定检查 |2,264项源码/测试/配置摘要`0a954f285087bb47140b44e86f0d5069ebed6a52a8d94a2c5ee322969cb06c54`，352 Agent单元、27隔离真实服务、8知识兼容、98 Mini和定向lint通过。全仓tsc退出2/292，涉及0，完整诊断集与v106相同；定向5项为单元子集，不另累加；初始/中间红测分别保留 |
+| 定向恢复 |原1311首稿hash4eb0b6b3adb42338fb2250f8015fead24ca1a1720acaed8df7cb676bf3020f66仍被数值校验拒绝；离线v107现返回绑定当前原话的反馈，无provider/业务重放或旧run改分。真实服务补引/删段/仍非法/撤回分支保留取舍，仅提交一个两项批次，非法交付被拦；错误身份/hash/文字、无关量数、正向承诺仍关闭 |
+| 免费模型/原生 |再次只读实时官方目录确认Qwen/Qwen3.5-4B为8免费候选之一，0连接探针/配置写入。新Stable1314/1317各一次按原文提交书房desk靠内墙+全局budget18万元、v5→v7，交付有界通用取舍与现场未知；1315/1318重进回顾书桌/收纳/阅读角/预算，0新写入。5项题均通过，0未执行。两组自然混合题均未触发数值最终修复/不完整重试，不称真实provider相应分支已通过 |
+| 撤回/恢复 |1316模型原稿在撤回后错误保留“靠内墙”；既有step1011/unavailable-desk-view-v1重建获权部分视图，仅交付书桌当前位置无法确认和独立收纳。首稿/实际交付分开：运行交付通过，不给原模型语义改分。重进后旧依赖答复已隐藏。两组各注入一次HTTP读取失败，用真实U01重连恢复持久历史，无新run/写入；不是provider故障恢复。本咨询200/同企业他人404/跨企业404 |
+| 原生/设计 |复用副屏唯一Stable2.02.2608080/automator0.13.0/base3.17.2窗口，新鲜DOM编译及SDK/system/page正控。10图全部实际审看，C01精确route/stack、逻辑390x844/PNG348x752；批准来源design-references/xiaok-p4b-public-sites-v1/README.md C01/U01。Mini markup/styles/assets/固定文案/几何/导航保持，无视觉还原或台账影响 |
+| 用量/清理 |attempt3651–3662均succeeded/accepted=true/实际Qwen/Qwen3.5-4B；12条实测token+2条query_embedding(unavailable)，费用全null，两条agent_need_write另计。v106交接此前把2条query_embedding误称需求操作用量；原始v106实为8 token+2 query_embedding和独立2写入步骤，原证据不覆盖。enterprise2682/2683 AI关闭，user3752–3754上下文撤权，咨询693–695保留；fixture active0/unknown0不是全库审计。session/transport恢复、SDK断开、自有锁释放；模型配置hash b8e4c1e06526f9ec6ad9552b56ebcad81488e8eb641f952587811fd044c47ef7及8驱动稳定 |
 
-v105 Qwen1309/1310完整批次失败、GLM1307/1308 HTTP402及更早语义失败继续保留在tmp/xiaok-original-quotes-v105-qwen4b/、tmp/xiaok-original-quotes-v105/与既有历史，不改分或并修复稿到首稿。两项初始本地驱动准备失败如实记于setup-observations.json，均未派发模型/业务run。证据tmp/xiaok-atomic-envelope-v106/的baseline、六类result manifest、live/native、semantic-review、全部截图、diagnosis及verification；diagnosis仅按原稿/原来源离线校验，不是修复后的客户答复。
+证据tmp/xiaok-current-numeric-v107/的baseline、各次原始红测、六类检查manifest、live/native、diagnosis、semantic-review和verification。历史v1061311失败、v105/模型失败及未知1132/3196、1184/3327分别保留，不重放、不改分、不把未知费用补0。KnowledgeRetriever/Evidence、API/角色/DB schema及部署环境保持。
 
-**下一有界Agent项：** 仅沿既有单次最终修复，补已定位的当前原话数值引用缺项恢复；不接受无引数值、不服务器选引用、不重放已提交保存、不加工具/轮数/付费模型。新版本稳定检查及含撤回的两组新免费Qwen/Stable后继续F-02/06/07；接近容量按两计划顺序接续唯一负责人。完整PPT/专业/真机/BLE/真实微信/生产验收仍未完成，无push/部署。
+**下一有界项：** F-02原缺少现场尺寸的追问，再F-06/07；保留1242首败和1243通过，继续已授权单owner流程，容量轮换按两计划执行。完整F-04/PPT/专业/真机/BLE/真实微信/生产验收未完成，无push/部署。
 
 ## 历史v105：原文quote选项内部已验证，原生被供应商拒绝
 

@@ -431,6 +431,25 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
         + (raw.includes('"citationId"') ? '引用仅选择本轮已有citationOptions的citationId，不复制quote或切换旧格式。' : '保留原segments/citations格式，quote逐字匹配已有来源。')
         + '只返回final_response。' };
     }
+    // The existing saved-need source is revalidated against its real receipt,
+    // original hash and memory version by currentSynthesisContext. Only that
+    // exact current trigger can open this numeric-only recovery, not a title,
+    // matching digit in old history, or a model/client source packet.
+    const currentOriginal = context.currentOriginal && sources.filter(source => source.kind === 'history'
+      && source.sourceId === 'H' + context.currentOriginal!.messageId
+      && source.history?.messageId === context.currentOriginal!.messageId && source.history.hash === context.currentOriginal!.hash
+      && source.text === context.currentQuestion);
+    if (error.code === 'unsupported_model_commitment' && quotesVerified && numericGaps.length && currentOriginal?.length === 1
+      && numericGaps.every(gap => numericSourceCandidates(gap.unsupportedNumbers.filter(number => /^\d/.test(number)), currentOriginal).length)) {
+      const paths = numericGaps.map(gap => ({ path: `segments[${gap.segment - 1}].text`,
+        numbersToSupportOrRemove: gap.unsupportedNumbers, numericSourceCandidates: numericSourceCandidates(gap.unsupportedNumbers, currentOriginal) }));
+      return { code: error.code, feedback: '本轮客户原话的数值缺少本段引用。沿用同轮唯一一次最终修复，不调用工具、不重新保存或新增业务动作。'
+        + 'currentOriginalNumericPaths：' + JSON.stringify(paths)
+        + '。只核对已有citationOptions，选择实际支持本段对象、单位与意向身份的citationId；候选只定位原话，不证明现场、报价、承诺或新旧金额比较。'
+        + '原话没有的旧金额、差值或推论必须删去；无关预算附加段可整段删除，但必须保留并实际回答客户独立的假设/取舍问题。'
+        + '不能把客户原话改成企业规则或现场实况，不借其他段引用，不用汉字量数绕过校验。'
+        + repairLayoutInstructions + '只返回final_response。' };
+    }
     if(error.code==='unsupported_model_commitment'&&!hasFile&&!sources.some(s=>s.material?.ref.type==='formal_plan'))throw error;
     const missing=numericGaps.map(gap=>gap.segment);
     const numericTextPaths=numericGaps.map(gap=>({path:`segments[${gap.segment-1}].text`,removeUnsupportedNumbers:gap.unsupportedNumbers,

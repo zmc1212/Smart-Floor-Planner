@@ -5,7 +5,7 @@ export type ResponseReviewIssue = { segment: number; code: 'unscoped_measurement
   | 'reopened_unavailable_need' | 'unsolicited_unknown_plan' | 'unsupported_work_absence' | 'unscoped_work_readiness' | 'misattributed_shared_need'
   | 'misattributed_project_quantity' | 'misattributed_project_observation' | 'unsupported_evidence_mechanism'
   | 'contradictory_measurement_comparison' | 'unmeasured_compliance_claim' | 'misattributed_rule_comparison' | 'misattributed_project_status' };
-export type SynthesisReviewContext = { currentQuestion?: string };
+export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal?: { messageId: string; hash: string } };
 
 function quantityTokens(text: string) {
   const units: Record<string, string> = { '毫米': 'mm', '㎜': 'mm', '厘米': 'cm', '公分': 'cm', '米': 'm' };

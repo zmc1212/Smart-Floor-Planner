@@ -10,6 +10,7 @@ import { ConversationService } from '@/lib/assistant/core/conversation';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
 import { processAgentAnswer, agentNeedBatchProtocol, agentNeedQuoteProtocol, agentNeedInputProtocol } from '@/lib/assistant/agent/worker';
 import { agentChatBody } from '@/lib/ai/providers/agent-chat';
+import { synthesisRepairBase } from '@/lib/assistant/agent/synthesis-repair';
 import { persistNeedWrites } from '@/lib/assistant/agent/memory-store';
 import { readMemory } from '@/lib/assistant/agent/memory';
 import type { ActorContext } from '@/lib/assistant/contracts';
@@ -188,6 +189,56 @@ test('mixed correction a saved receipt alone receives one final repair that must
   assert.equal((await validations(String(a.sent.runId))).length, 1);
   const reply = (await new ConversationService(actor).messages(a.c)).items.find(m => m.id === result.outputMessageId)!;
   assert.equal(reply.available, true); assert.match(JSON.stringify(reply.content), /自然光与屏幕反光/);
+});
+
+test('mixed correction current original numeric recovery repairs only the answer after one committed batch', async () => {
+  for (const mode of ['cite', 'remove', 'still-invalid', 'withdrawn-source']) {
+    const a = await start(); let calls = 0;
+    const first = { kind: 'synthesis', segments: [{ basis: 'advice', text: '如果仍靠窗，一般可利用自然光，但要注意屏幕反光，具体布置仍需核对现场。', citations: [] },
+      { basis: 'advice', text: '预算从20万元调整为18万元，建议优先保证基础质量。', citations: [] }] };
+    await processAgentAnswer(a.lease, { model: async (messages, tools, _turn, dispatch) => {
+      calls++;
+      if (calls === 1) return call(complete);
+      if (calls === 2) return { ...answer(), text: JSON.stringify(first) };
+      assert.equal(calls, 3); assert.equal(tools.length, 0);
+      const base = synthesisRepairBase(messages); assert.ok(base);
+      const feedback = messages.flatMap(m => m.role === 'system' ? m.content.filter(p => p.type === 'text').map(p => p.text) : []).join('\n');
+      assert.match(feedback, /currentOriginalNumericPaths/);
+      assert.ok(dispatch?.every(t => t.name === 'final_response'));
+      const source = messages.flatMap(m => m.role === 'tool' ? [JSON.parse(m.content)] : [])
+        .flatMap(packet => Array.isArray(packet.synthesisSources) ? packet.synthesisSources : [])
+        .find((s: Row) => s.sourceId === 'H' + a.sent.messageId);
+      assert.ok(source?.citationOptions?.length);
+      if (mode === 'withdrawn-source') await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages
+        set content='{"version":1,"blocks":[{"type":"text","text":"合成原话撤回"}]}'::jsonb
+        where enterprise_id=${actor.enterpriseId} and conversation_id=${a.c} and id=${String(a.sent.messageId)}`));
+      const edit = mode === 'remove' ? { segment: 1, remove: true } : { segment: 1,
+        text: mode === 'still-invalid' ? '预算从20万元调整为18万元。' : '本轮客户原话把预算更正为18万元。',
+        addCitationIds: [source.citationOptions[0].citationId] };
+      return { ...answer(), text: JSON.stringify({ kind: 'synthesis_repair', baseHash: base.baseHash, edits: [edit] }) };
+    } });
+    const result = await new ConversationService(actor).run(String(a.sent.runId));
+    assert.equal(calls, 3); assert.equal((await writes(String(a.sent.runId))).length, 1);
+    const state = await memory(a.c); assert.equal(state.version, 2); assert.equal(state.facts.length, 2);
+    assert.equal((await validations(String(a.sent.runId))).length, 1);
+    const reentry = await new ConversationService(actor).messages(a.c);
+    if (mode === 'cite' || mode === 'remove') {
+      assert.equal(result.status, 'succeeded');
+      const reply = reentry.items.find(m => m.id === result.outputMessageId)!; assert.equal(reply.available, true);
+      assert.match(JSON.stringify(reply.content), /自然光.*屏幕反光/); assert.doesNotMatch(JSON.stringify(reply.content), /20万元/);
+      await assert.rejects(new ConversationService(stranger).messages(a.c), /not_found/);
+      if (mode === 'cite') {
+        await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages
+          set content='{"version":1,"blocks":[{"type":"text","text":"合成原话撤回"}]}'::jsonb
+          where enterprise_id=${actor.enterpriseId} and conversation_id=${a.c} and id=${String(a.sent.messageId)}`));
+        assert.equal((await new ConversationService(actor).messages(a.c)).items.find(m => m.id === result.outputMessageId)!.available, false);
+      }
+    } else {
+      assert.equal(result.status, 'failed'); assert.equal(result.outputMessageId, null);
+      assert.equal(result.errorCode, mode === 'still-invalid' ? 'unsupported_model_commitment' : 'context_changed');
+    }
+    assert.deepEqual(await memory(a.c), state);
+  }
 });
 
 test('mixed correction exact original and budget scope diagnostics recover the full atomic batch', async () => {

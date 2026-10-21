@@ -418,7 +418,8 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       if (resume) resume.messages = await hydrateImages(tx, lease.enterpriseId, String(context.conversation.id), resume.messages);
       return { ...context, config, trigger, messages, mediaRefs: [...dependencies.values()], referenceEvidence, resume, savedSummary };
     });
-    const reviewContext = { currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]) };
+    const reviewContext = { currentQuestion: safeText(initial.trigger.content as Parameters<typeof safeText>[0]),
+      currentOriginal: { messageId: String(initial.trigger.id), hash: fingerprint(initial.trigger.content) } };
     const authorize = async () => { await scoped(async (tx, context) => {
       if (Date.now() - new Date(String(initial.run.created_at)).getTime() > 300_000) fail('agent_deadline_exceeded', 422);
       const setting = await one(tx, sql`select agent_config from app.assistant_enterprise_settings where enterprise_id=${lease.enterpriseId}`);
