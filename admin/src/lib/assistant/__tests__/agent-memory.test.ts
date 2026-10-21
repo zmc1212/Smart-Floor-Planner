@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { uncoveredNeedStatements, NeedWriteIncompleteError } from '../agent/memory';
 import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, needWriteFeedback, hasExplicitNeedCorrection, needQualifications, needInterpretations, assertRecordedReply, needReconfirmationFeedback, explicitNeedRecordOnly, recordedNeedReceipt, onlyChatHistoryRequested, effectiveDeskPositions, currentNeedView, unavailableDeskReply, needDeskPositionFeedback, type NeedFact, type NeedMemory } from '../agent/memory';
 
 test('exclusive chat recap recognizes the actual independent wording without requiring a second negative clause', () => {
@@ -38,8 +39,8 @@ test('legacy desk position repair separates actual current assertions from histo
   const old: NeedFact = { id: 'old', room: '', field: 'other', value: '书房书桌靠窗，书房需要收纳', quote: '请记下：书房书桌靠窗，书房需要收纳', sourceMessageId: '1', provenance: 'customer_statement', status: 'current', supersedes: null, createdAt: 'now' };
   const next: NeedFact = { ...old, id: 'next', room: '书房', field: 'style', value: '靠内墙', quote: '更正：书房书桌改为靠内墙', sourceMessageId: '3' };
   const stored = { version: 2, facts: [old,next] }, memory = { ...stored, interpretations: needInterpretations(stored, stored.facts) }, question = '只回顾本次聊天原话，给出当前需求和旧说法的区别。';
-  for (const text of ['书房书桌现在仍靠窗。', '书房以前靠窗，但现在还是靠窗。', '书桌当前靠窗，收纳保留。']) assert.ok(needDeskPositionFeedback(JSON.stringify({ text }), memory, question), text);
-  for (const text of ['书房原话是书桌靠窗，现在书房书桌靠内墙，收纳保留。', '书房书桌不是靠窗，而是靠内墙。', '书房书桌从靠窗改为靠内墙。', '客厅书桌靠窗。']) assert.equal(needDeskPositionFeedback(JSON.stringify({ text }), { ...memory, facts: [...memory.facts, { ...old, id: 'living', room: '客厅', sourceMessageId: '2' }] }, question), null, text);
+  for (const text of ['书房书桌现在仍靠窗。', '书房以前靠窗，但现在还是靠窗。', '书桌当前靠窗，收纳保留。', '书房书桌从靠窗改为了靠内墙，但书桌目前还是靠窗。']) assert.ok(needDeskPositionFeedback(JSON.stringify({ text }), memory, question), text);
+  for (const text of ['书房原话是书桌靠窗，现在书房书桌靠内墙，收纳保留。', '书房书桌不是靠窗，而是靠内墙。', '书房书桌从靠窗改为靠内墙。', '书房的书桌位置从靠窗改为了靠内墙。', '书房书桌由靠窗改成了靠内墙。', '客厅书桌靠窗。']) assert.equal(needDeskPositionFeedback(JSON.stringify({ text }), { ...memory, facts: [...memory.facts, { ...old, id: 'living', room: '客厅', sourceMessageId: '2' }] }, question), null, text);
   assert.equal(needDeskPositionFeedback(JSON.stringify({ text: '书房书桌靠窗。' }), memory, '只回顾最初聊天原话，不查工地。'), null);
   const hidden = { version: 2, facts: [old], interpretations: needInterpretations(stored, [old]) };
   assert.ok(needDeskPositionFeedback(JSON.stringify({ text: '书房书桌现在靠内墙。' }), hidden, question));
@@ -73,6 +74,22 @@ test('direct receipt lists only current authorized facts from this exact run and
   assert.doesNotMatch(actual!.text, /收纳|18万元|靠内墙/); assert.match(actual!.text, /未列出的内容不视为已保存/);
   assert.equal(recordedNeedReceipt({ version: 4, facts: [] }, '9', '2'), null);
   assert.equal(recordedNeedReceipt(memory, '8', '2'), null);
+});
+
+test('explicit scoped recording rejects missing values without extracting or authorizing new needs', () => {
+  const desk = { room: '书房', field: 'desk' as const, value: '书桌靠窗', quote: '书房书桌靠窗' };
+  const source = '请记下：书房书桌靠窗，书房需要收纳。';
+  assert.deepEqual(uncoveredNeedStatements(source, [desk]), ['书房需要收纳']);
+  assert.deepEqual(uncoveredNeedStatements(source, [{ ...desk, quote: source }]), ['书房需要收纳'], 'A broad quote cannot conceal a missing persisted value');
+  const feedback = needWriteFeedback(new NeedWriteIncompleteError(['书房需要收纳', '非当前来源']), source);
+  assert.equal(feedback?.batchCommitted, false);
+  assert.deepEqual(feedback?.missingStatements, ['书房需要收纳']);
+  assert.deepEqual(uncoveredNeedStatements(source, [desk, { room: '书房', field: 'storage', value: '需要收纳', quote: '书房需要收纳' }]), []);
+  assert.deepEqual(uncoveredNeedStatements('请记录：书房书桌靠窗，客厅不做开放柜，全屋预算18万元', [desk]), ['客厅不做开放柜', '全屋预算18万元']);
+  assert.deepEqual(uncoveredNeedStatements('请记下：书房书桌靠窗，客厅书桌靠窗', [desk]), ['客厅书桌靠窗'], 'The same value in a different room is independently required');
+  assert.deepEqual(uncoveredNeedStatements('请记录：主卧室需要衣柜，客厅需要餐厅收纳', [{ room: '主卧室', field: 'storage', value: '需要衣柜', quote: '主卧室需要衣柜' }, { room: '客厅', field: 'storage', value: '需要餐厅收纳', quote: '客厅需要餐厅收纳' }]), [], 'A later noun cannot change the explicit leading room');
+  assert.deepEqual(uncoveredNeedStatements('请记下：书房书桌靠窗。其他需求保持原样。', [desk]), []);
+  for (const text of ['书房书桌靠窗，书房需要收纳吗？', '请记下：如果书房书桌靠窗，书房需要收纳', '请记下：书房书桌靠窗，另外插座怎么确定？', '请记录设计师说书房需要收纳', '请记下：书房书桌靠窗，不要记录预算']) assert.deepEqual(uncoveredNeedStatements(text, [desk]), [], text);
 });
 import { parseAgentReply } from '../agent/context';
 

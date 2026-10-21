@@ -10,9 +10,10 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig } from './config';
-import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, onlyChatHistoryRequested, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, recordedNeedReceipt } from './memory';
+import { readMemory, factFields, needWriteFeedback, hasExplicitNeedCorrection, assertRecordedReply, onlyChatHistoryRequested, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
+import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
 import { buildAgentContext, parseAgentReply, agentPromptVersion } from './context';
 import { hydrateImages, resolveAgentMedia, withoutImageBytes, type MediaDependency } from './media-context';
 import { businessToolDefinitions, queryBusiness, parseBusinessQuery, businessSnapshotAvailable, type BusinessSnapshot } from './business-tools';
@@ -42,7 +43,7 @@ import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, hi
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
 import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, type ReadToolContext } from './read-tool-input';
 
-const needProperties = { room: { type: 'string' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，daylight记录采光，devices记录设备；独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } };
+const needProperties = { room: { type: 'string' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '逐字摘自本次客户消息，不增删字。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
   type: 'object', properties: { ...needProperties, additionalNeeds: { type: 'array', maxItems: 3,
     items: { type: 'object', properties: needProperties, required: ['room','field','value','quote'], additionalProperties: false } } },
@@ -56,8 +57,9 @@ export function agentToolsForMessage(text: string, enabled: boolean, businessFol
   // A question about saving a preceding explicit correction is not a hypothetical need.
   // Match the complete two-clause intent, never a quoted snippet or a proposed change.
   const correctionAcknowledgement = hasExplicitNeedCorrection(text);
-  const explicit = (/请记住|请记录|记一下|帮我记录/.test(text) || correctionAcknowledgement) && !/不要记录|不用记录|别记录|不要记住/.test(text);
-  const discussion = /[？?]|怎么|怎样|如何|是否|能不能|要不要|(?:吗|呢)[。！!]?\s*$|先聊|讨论|填表|不说预算|不要记录|不用记录|别记录/.test(text);
+  const explicit = (/请记住|请记录|记一下|帮我记录/.test(text) || correctionAcknowledgement) && !needWriteProhibition.test(text);
+  const discussion = /[？?]|怎么|怎样|如何|是否|能不能|要不要|(?:吗|呢)[。！!]?\s*$|先聊|讨论|填表|不说预算/.test(text)
+    || needWriteProhibition.test(text) || isNeedInquiry(text);
   const authorityRequest = /保证|假装|冒充|忽略.{0,8}指令|系统提示|其他客户|别人的/.test(text);
   const businessIntent = /预约|已发布|正式户型|施工|工地|现场|到场|安排|计划|管家|施工人员|施工师傅|想去看看|(?:查询|查一下|查看|查|我的|本人|已有).{0,12}(?:方案|户型|发布记录)|方案.{0,8}(?:发布|记录)/.test(text)
     || businessFollowup;
@@ -80,6 +82,20 @@ export const finalTool: ModelTool = { name: 'final_response', description: '最�
 } };
 export const agentSourceFinalProtocol = 'source-final-kind-v1';
 export const agentToolFinalProtocol = 'deferred-structured-final-v1';
+export const agentNeedBatchProtocol = 'same-turn-need-batch-v1';
+/** Adapt independent model-selected calls to the existing atomic schema.
+ * Raw provider output remains intact. No cross-turn accumulation, field
+ * inference, mixed actions or expansion beyond the four-write contract. */
+export function projectNeedBatchOutput(output: ModelTurnOutput, recordOnly: boolean): ModelTurnOutput {
+  if (!recordOnly || output.toolCalls.length < 2 || output.toolCalls.some(call => call.name !== 'record_need')) return output;
+  let writes: ReturnType<typeof parseNeedWrites>;
+  try { writes = output.toolCalls.flatMap(call => parseNeedWrites(JSON.parse(call.arguments))); }
+  catch { return output; }
+  if (writes.length > 4 || new Set(writes.map(write => JSON.stringify([write.room, write.field]))).size !== writes.length) return output;
+  return { ...output, toolCalls: [{ ...output.toolCalls[0],
+    arguments: JSON.stringify({ ...writes[0], additionalNeeds: writes.slice(1) }) }] };
+}
+
 /** final_response is the application's structured-output envelope, not a
  * business action. Do not accept it before same-round tools have returned.
  * Preserve the provider output separately; all actual tool calls stay paired. */
@@ -394,11 +410,16 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
                 ${output.agentOutput!.usage ? 'observed' : 'unavailable'},${output.agentOutput!.usage?.inputTokens ?? null},${output.agentOutput!.usage?.outputTokens ?? null}) on conflict do nothing`);
           });
           const providerOutput = output.agentOutput;
-          if (purpose === 'answer') output.agentOutput = projectFinalToolOutput(providerOutput);
+          const finalProjected = purpose === 'answer' ? projectFinalToolOutput(providerOutput) : providerOutput;
+          output.agentOutput = purpose === 'answer' ? projectNeedBatchOutput(finalProjected,
+            explicitNeedRecordOnly(safeText(initial.trigger.content as Parameters<typeof safeText>[0]))) : finalProjected;
+          const needBatchProjected = output.agentOutput !== finalProjected;
           await scoped(async tx => {
             await tx.execute(sql`update app.assistant_run_steps set status='succeeded',provider_attempt_id=${output.attemptId ? String(output.attemptId) : null},
               private_checkpoint=${JSON.stringify({ ...output.agentOutput, providerOutput })}::jsonb,
-              input_summary=input_summary || ${JSON.stringify({ toolFinalProtocol: agentToolFinalProtocol })}::jsonb
+              input_summary=input_summary || ${JSON.stringify({ toolFinalProtocol: agentToolFinalProtocol,
+                needBatchProtocol: needBatchProjected ? agentNeedBatchProtocol : null,
+                needBatchCallIds: needBatchProjected ? providerOutput.toolCalls.filter(call => call.name === 'record_need').map(call => call.id) : [] })}::jsonb
               where enterprise_id=${lease.enterpriseId} and run_id=${lease.runId} and step_seq=${sequence}`);
           });
           return output.agentOutput;

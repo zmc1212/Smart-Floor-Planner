@@ -3,9 +3,27 @@ import { test } from 'node:test';
 import { runRenovationAgent, type AgentCheckpoint, type AgentRuntimePorts } from '../agent/runtime';
 import { agentChatBody, parseAgentChat } from '@/lib/ai/providers/agent-chat';
 import type { ModelMessage, ModelTurnOutput } from '../contracts/model';
-import { agentToolsForMessage, projectFinalToolOutput } from '../agent/worker';
+import { agentToolsForMessage, projectFinalToolOutput, projectNeedBatchOutput } from '../agent/worker';
 
 const answer: ModelTurnOutput = { text: '建议', toolCalls: [], usage: null, finishReason: 'stop', providerRequestId: null };
+
+test('same-turn independent needs preserve raw calls and atomic bounds without granting another action', () => {
+  const selected = [{ room: '书房', field: 'desk', value: '靠窗', quote: '书房书桌靠窗' },
+    { room: '书房', field: 'storage', value: '需要收纳', quote: '书房需要收纳' }];
+  const raw = { ...answer, toolCalls: selected.map((args, i) => ({ id: 'selected-' + i, name: 'record_need', arguments: JSON.stringify(args) })) };
+  const before = JSON.stringify(raw), projected = projectNeedBatchOutput(raw, true);
+  assert.equal(JSON.stringify(raw), before); assert.equal(projected.toolCalls.length, 1);
+  assert.equal(projected.toolCalls[0].id, raw.toolCalls[0].id);
+  assert.deepEqual(JSON.parse(projected.toolCalls[0].arguments), { ...selected[0], additionalNeeds: [selected[1]] });
+  assert.equal(projectNeedBatchOutput(raw, false), raw);
+  const duplicate = { ...raw, toolCalls: [raw.toolCalls[0], raw.toolCalls[0]] };
+  const mixed = { ...raw, toolCalls: [raw.toolCalls[0], { id: 'other', name: 'query_business', arguments: '{}' }] };
+  const malformed = { ...raw, toolCalls: [raw.toolCalls[0], { id: 'bad', name: 'record_need', arguments: '{bad' }] };
+  const foreign = { ...raw, toolCalls: [raw.toolCalls[0], { id: 'bad', name: 'record_need', arguments: JSON.stringify({ ...selected[1], enterpriseId: '2' }) }] };
+  const overflow = { ...raw, toolCalls: Array.from({ length: 5 }, (_, i) => ({ id: 'n' + i, name: 'record_need', arguments: JSON.stringify({ ...selected[0], room: '房间' + i }) })) };
+  for (const output of [duplicate, mixed, malformed, foreign, overflow]) assert.equal(projectNeedBatchOutput(output, true), output);
+});
+
 test('exclusive chat recap exposes only its original-history read, never unrelated writes or business sources', () => {
   for (const text of ['只回顾这次聊天里的原话：书房、客厅和预算现在分别是什么？不要查工地或企业资料。', '哪些需求已改，哪些仍保留？只回顾本次聊天原话，给出当前需求和旧说法的区别。']) assert.deepEqual(agentToolsForMessage(text, true).map(t => t.name), ['recall_history']);
 });

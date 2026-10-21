@@ -1,8 +1,8 @@
 import { AssistantError, fail } from '../contracts';
 import { referenceOnlyClause } from '../knowledge/reference-intent';
+import { isNeedInquiry, needWriteProhibition as noNeedWrite } from './need-write-intent';
 
 const roomReference = /(?:那|这|另一)(?:一)?间|(?:那|这)个房间|前者|后者|前面(?:说的)?(?:那个|房间)|刚才(?:说的)?(?:那个|房间)/;
-const noNeedWrite = /不要记录|不用记录|别记录|不要记住/;
 const reportedNeed = /(?:图纸|方案).{0,8}(?:写|标|建议)|(?:设计师|师傅|小K|他|她|你).{0,4}(?:说|建议)|只是引用/;
 const proposedNeed = /如果|假如|假设|可能|考虑|是否|是不是|要不要|能不能|可不可以|会不会|可以|不改|[“”「」"]/;
 /** Only an explicitly separate follow-up question may be excluded from a
@@ -55,6 +55,31 @@ export function recordedNeedReceipt(memory: NeedMemory, runId: string, sourceMes
   return { facts, text: '本次实际保存：\n' + facts.map(f => `${f.room ? f.room + '：' : ''}${f.value}`).join('\n')
     + '\n只确认以上内容；未列出的内容不视为已保存。' };
 }
+export class NeedWriteIncompleteError extends AssistantError {
+  constructor(readonly missingStatements: string[]) { super('need_write_incomplete', 422); }
+}
+/** Coverage is a pre-commit check, not a second extractor. Only explicitly
+ * scoped clauses in a pure recording request participate; the model still
+ * supplies every field/value/quote through the original write contract. */
+export function uncoveredNeedStatements(sourceText: string, writes: NeedWrite[]) {
+  if (!explicitNeedRecordOnly(sourceText)) return [];
+  const clauses = sourceText.trim().replace(/^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|记一下|更正|纠正)(?:一下)?[：:，,\s]*/, '')
+    .split(/[，,。；;\n]/).map(s => s.trim()).filter(Boolean);
+  // Keep the same four-write bound. Complex/unscoped sentences retain their
+  // existing validation rather than inferring objects or dropping fragments.
+  if (clauses.length > 4) return [];
+  return clauses.filter(clause => {
+    if (/^(?:其他|其余)|保持原样|保持不变|不变$/.test(clause)) return false;
+    const room = /^([\p{Script=Han}A-Za-z0-9]{0,8}?(?:卫生间|卧室|阳台|房|厅|卧|卫|室))/u.exec(clause)?.[1];
+    const global = /^(全屋|全家|家里|预算)/.exec(clause)?.[1];
+    if (!room && !global) return false;
+    // room is carried separately by the write contract. A complete compound
+    // value may omit that prefix without omitting the scoped assertion itself.
+    const scopedText = room ? clause.slice(room.length) : clause;
+    return !writes.some(write => (room ? write.room ? clause.startsWith(write.room) : write.value.includes(room) : !write.room || write.room === global)
+      && (clause.includes(write.value) || write.value.includes(clause) || scopedText.length > 1 && write.value.includes(scopedText)));
+  });
+}
 /** Historical wording is not a conflict with an available current correction.
  * Bounded to the observed desk-position comparison; formal choices and missing
  * sources still need their own real business evidence. Uses the one existing
@@ -74,6 +99,11 @@ export function needReconfirmationFeedback(raw: string, memory: NeedMemory, ques
 }
 /** Shared production/evaluation feedback: an unresolved reference is not a global fact. */
 export function needWriteFeedback(error: unknown, sourceText: string) {
+  if (error instanceof NeedWriteIncompleteError) return {
+    status: 'not_saved', error: error.code, batchCommitted: false, sourceText,
+    missingStatements: error.missingStatements.filter(clause => sourceText.includes(clause)).slice(0, 4),
+    instructions: '整个批次均未保存。missingStatements是本次原话中未被同一房间/全屋范围的value覆盖的分句；quote里出现不等于已保存。保留原主字段，把缺失的独立字段加入additionalNeeds，一次重交完整批次（最多四条），不能只重发相同参数或只提交遗漏字段。书桌位置用desk，收纳用storage，预算用budget；明确房间逐字填room。value/quote均逐字来自当前原话，不新增推断、需求或批准，不能声称已经保存。',
+  };
   if (!(error instanceof AssistantError) || !['invalid_message','need_source_mismatch','need_room_ambiguous'].includes(error.code)) return null;
   return { status: 'not_saved', error: error.code, sourceText, instructions: error.code === 'need_room_ambiguous'
     ? '房间指代尚未明确，本次没有保存任何需求。请先向客户确认具体房间；本轮不要再调用record_need，不要用空room或代词临时保存，也不能声称已记录。'
@@ -246,7 +276,8 @@ export function needDeskPositionFeedback(raw: string, memory: NeedMemory, questi
         const unsupportedLocation = !position.value && !older.includes(old) && !question.includes(old);
         if (!unsupportedLocation && older.includes(old) && history > current && prefix.length - history <= 18) continue;
         if (!unsupportedLocation && /(?:不再|不是|不能|不应|不用|无需|不)(?:按|沿用|采用|恢复|当作|说成)?[^，,。；;\n]{0,5}$/.test(prefix)) continue;
-        if (position.value && /(?:从|由)[^，,。；;\n]{0,3}$/.test(prefix) && tail.includes('改为' + position.value)) continue;
+        if (position.value && /(?:从|由)[^，,。；;\n]{0,3}$/.test(prefix)
+          && ['改为','改为了','改成','改成了'].some(verb => tail.includes(verb + position.value))) continue;
         return { code: 'ungrounded_response_scope', feedback: '本轮明确只回顾当前需求与旧原话。已有获权的书桌位置更正关系，不能把旧位置当成现在仍沿用，也不能让客户重选。只修复当前回答：以effectiveDeskPositions所指仍可用的更正说明当前位置；value/currentFactId为null时只说本次无法确认，不恢复旧值。旧原话可逐字保留作历史，并保留收纳等独立需求。保留原引用，不新增查询、写入、正式批准或解释未经询问的施工条件；仍沿现有唯一一次修复。' };
       }
     }
@@ -322,7 +353,7 @@ export function applyNeedDelta(memory: NeedMemory, delta: NeedDelta, source: { i
   if (clauses.length && clauses.every(referenceOnlyClause)) fail('need_source_mismatch',422);
   const statements = statementContexts(assertion, delta.value);
   if (noNeedWrite.test(source.text) || statements.every(c =>
-    /如果|假如|假设|先讨论|先聊|是否|是不是|要不要|能不能|可不可以|会不会|可以.{0,20}吗/.test(c) || reportedNeed.test(c))) fail('need_source_mismatch', 422);
+    /如果|假如|假设|先讨论|先聊|是否|是不是|要不要|能不能|可不可以|会不会|可以.{0,20}吗/.test(c) || reportedNeed.test(c) || isNeedInquiry(c))) fail('need_source_mismatch', 422);
   if (/[？?]|怎么|怎样|如何|是否|要不要|能不能|先聊|讨论|填表|系统提示/.test(delta.value)) fail('need_source_mismatch', 422);
   const prior = memory.facts.find(f => f.status === 'current' && f.room === delta.room && f.field === delta.field);
   if (!prior && memory.facts.filter(f => f.status === 'current').length >= needMemoryPolicy.maxCurrentFacts) fail('need_memory_limit', 422);

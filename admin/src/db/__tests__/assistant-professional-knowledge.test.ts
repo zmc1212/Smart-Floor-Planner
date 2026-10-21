@@ -184,7 +184,12 @@ test('K06 metadata-only draft edits reindex and future replacement keeps the eff
 });
 test('K08 retrieval cannot finish with a retired source after external embedding I/O',async()=>{
   const oldEpoch=await epoch(),real=embeddingGateway();
-  await assert.rejects(retrieveKnowledge(cid,actor,'防水铺砖前提',oldEpoch,{profile:real.profile,embed:async(...args)=>{const result=await real.embed(...args);await op('retire',{documentId:published.documentId,expectedVersion:4});return result;}}),/context_changed/);
+  const before=(await op('detail',{documentId:published.documentId})).document as Row;
+  assert.equal(String(before.published_version_id),String(published.versionId));
+  const expectedVersion=Number(before.version);let retirements=0;
+  await assert.rejects(retrieveKnowledge(cid,actor,'防水铺砖前提',oldEpoch,{profile:real.profile,embed:async(...args)=>{const result=await real.embed(...args);await op('retire',{documentId:published.documentId,expectedVersion});retirements++;return result;}}),/context_changed/);
+  assert.equal(retirements,1,'The source must actually retire before checking the post-I/O fence');
+  assert.equal(Number(((await op('detail',{documentId:published.documentId})).document as Row).version),expectedVersion+1);
 });
 test('K09 active-stage removal is refused and cannot corrupt applicability',async()=>{
   const d=await create();await index(d);await op('publish',d);

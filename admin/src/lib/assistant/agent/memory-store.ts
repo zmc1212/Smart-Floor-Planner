@@ -4,7 +4,7 @@ import { AssistantRepository, one, type Row } from '@/db/repositories/assistant-
 import { recordNeedIssueSupplement } from '@/lib/construction/need-issues';
 import { fail, fingerprint, safeText, type ActorContext } from '../contracts';
 import { saveAutomaticRequirements } from '../requirements/automatic';
-import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, type NeedFact } from './memory';
+import { applyNeedDelta, compactNeedMemory, needMemoryPolicy, parseNeedDelta, parseNeedWrites, readMemory, uncoveredNeedStatements, NeedWriteIncompleteError, type NeedFact } from './memory';
 
 type NeedReceipt = { status: 'saved'; memoryVersion: number; conversationVersion: number; formalApproval: false;
   savedFacts: Array<Pick<NeedFact, 'id' | 'room' | 'field' | 'value' | 'supersedes'>> };
@@ -46,6 +46,10 @@ export async function persistNeedWrites(tx: PostgresTransaction, actor: ActorCon
     if (updated !== next) changedFacts.push(updated.facts.find(f => f.id === operationId)!);
     next = updated;
   }
+  // Nothing durable has changed yet. Reject the complete proposed batch so a
+  // retry cannot leave the first field saved while silently omitting the next.
+  const missingStatements = uncoveredNeedStatements(sourceText, writes);
+  if (missingStatements.length) throw new NeedWriteIncompleteError(missingStatements);
   const compacted = compactNeedMemory(next);
   const receipt: NeedReceipt = { status: 'saved', memoryVersion: next.version,
     conversationVersion: Number(conversation.version) + (next === memory ? 0 : 1), formalApproval: false,

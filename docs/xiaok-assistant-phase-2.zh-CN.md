@@ -1,5 +1,17 @@
 # 小K第二期：需求整理与人工交接
 
+## 当前v98：只读咨询、需求完整性与知识兼容
+
+**限定内部修复，整体Limited。** 2026-10-21按用户要求恢复统一推进。`need-write-intent.ts`共用“不新增或修改我的需求”“我想问/了解”等已登记表达，工具列表与`applyNeedDelta`同时拒绝错误写入；原话quote/value不能绕过。保留明确保存与先更正再提问，沿原Graph/PG步骤、原键、租户/参与者、来源撤回和用量。已有未提交的同轮四字段原子投影、缺项整批回滚/反馈作为相关依赖一并纳入；完整复合value可把room单列，不能因此漏掉另一房间。当前提示词v98针对咨询补充一般建议/知识证据的区别，不放宽引用或数值守卫。
+
+最终工作区分窗记录317单元、5定向服务、8知识/Agent兼容、98 Mini及涉及文件lint通过；本批类型0、全仓292。每窗2,261项源码/测试/配置前后无漂移；原生另绑定两份驱动。早期26服务通过/7实模开关跳过仅属于早期版本；原红测、合法复合原话红测及前置缺失/旧版号导致的兼容失败分别保留，不拼成最终全量成绩。K08夹具改为实际读取文档版本，保持必须`context_changed`，另断言真正撤回一次和版本+1；知识生产服务及权限未改。重复入口`node tmp/xiaok-write-intent-v98/check.mjs <unit|service-final|compat|mini|lint|types>`与`native.mjs`。
+
+Stable 2.02.2608080 / SDK 0.13.0 / 基础库3.17.2、副屏新编译、精确C01路由、390×844（PNG348×752）中，GLM9 run1287实际保存书桌靠窗；1288/1289“不改需求”、1290/1291普通询问均0需求写入，工作记录版本始终1。1288/1290/1291交付并重进；1289捏造`current_citation`，以`invalid_model_citation`失败，原错误反馈/重进截图保留，不能算整批业务通过。已审看原生一般建议和错误反馈，原C01气泡/输入/来源组件及批准`design-references/xiaok-p4b-public-sites-v1/README.md`保持，无Mini结构、样式、素材、固定文案、导航或还原台账变化。本人200、同企业其他客户/跨企业先正控再目标404。新2658/2659企业AI关闭、3716–3718身份context撤销，active0/unknown0，LLM配置一致。
+
+原1283不当证据/数值失败保留在attempt-1；1284–1286窗口因队列切换期间驱动修改仅作诊断，1286格式失败及未执行题不覆盖。固定驱动最终窗口前后源码、配置和驱动均一致，四题全部执行；不混入上述漂移窗口。证据`tmp/xiaok-write-intent-v98/live.json`、`native.json`、各`*-result.json`、`compound-red.log`和attempt-1/2。历史1132/1184等unknown不重放、不结零。正式图、知识版本/epoch/audience/原始定位器、KnowledgeRetriever/Evidence、原API/菜单/角色与生产保持。
+
+核对[LangGraph ToolNode源码](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[工具协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[历史status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)：沿现有受控工具和真实结果协议，不把模型选择或状态字段当授权，也不将旧上游问题认作GLM根因。未迁移框架或增加Agent/事实库/知识管线。F-01/02/04/06/07、引用/收尾稳定性、完整PPT/专业质量/真机/BLE/真实微信及生产仍未关闭；下一有界修复是可信PDF页码被当成工程量。
+
 ## Agent与知识库的开发边界
 
 **当前分工合同；代码物理解耦尚未完成。** 用户已授权本对话统一负责两个专项的持续实施、共享接口、集成和验收；Agent与知识划分保留为领域边界，不再分配给两个并行聊天。按用户确认的方向保留同一产品、仓库、主线、数据库与既有权限/任务基础。现有`KnowledgeRetriever`、`Evidence`、`conversationKnowledgeRetriever`及知识来源重验是接口基础，不另起一套Agent、知识事实库或任务系统。按实际依赖完成业务批次后继续，不新增逐批确认；设计与生产部署仍守原授权。
@@ -19,7 +31,7 @@
 
 失败归属：原文解析/条件/版本/召回不对归知识库；正确Evidence已返回却未用、答错、引错、丢上下文、错误操作或反复调用工具归Agent；来源撤回则知识侧撤销证据、Agent侧停止派生使用并验证兼容。两域使用独立夹具/输出，隔离库仍沿既有互斥锁与空闲队列；不增加接口服务部署或生产授权。
 
-## 当前v95：按用户指令收尾并停止开发
+## 历史v95：按用户指令收尾并停止开发
 
 **Limited；代码封存，最终服务/原生验收未完成。** 用户要求“这个阶段收尾下，停止开发”。不再推进下一阶段，也不自动重启排队测试。原v93/v94已执行证据继续有效；本批不能作为完整用户阶段或生产验收。
 

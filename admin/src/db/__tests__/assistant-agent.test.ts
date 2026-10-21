@@ -5,12 +5,12 @@ import { before, after, test } from 'node:test';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
-import { one, rows } from '@/db/repositories/assistant-repository';
+import { one, rows, type Row } from '@/db/repositories/assistant-repository';
 import { deleteAssistantData } from '@/db/repositories/assistant-cleanup';
 import { closePostgresPool, resolvePostgresRuntimeConfig } from '@/lib/postgresql';
 import { ConversationService, appendMessage } from '@/lib/assistant/core/conversation';
 import { claimJob } from '@/lib/assistant/infrastructure/job-queue';
-import { processAgentAnswer } from '@/lib/assistant/agent/worker';
+import { processAgentAnswer, agentNeedBatchProtocol } from '@/lib/assistant/agent/worker';
 import { HandoffService } from '@/lib/assistant/handoff/service';
 import type { ActorContext } from '@/lib/assistant/contracts';
 import type { ModelTurnOutput } from '@/lib/assistant/contracts/model';
@@ -66,6 +66,51 @@ async function diagnostic(runId: string) {
   return withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,status,private_checkpoint->'text' as output,private_checkpoint->'toolCalls' as calls
     from app.assistant_run_steps where run_id=${runId} and kind='agent_model' order by step_seq`));
 }
+test('ordinary inquiry and explicit no-change remain read-only through service writes and persisted reentry', async () => {
+  const saved = await start('请记下：书房书桌靠窗');
+  await processAgentAnswer(saved.lease, { model: async () => ({ ...response(), text: '', toolCalls: [{ id: 'initial-need', name: 'record_need',
+    arguments: JSON.stringify({ room: '书房', field: 'desk', value: '靠窗', quote: '书房书桌靠窗' }) }] }) });
+  assert.equal((await saved.chat.run(saved.lease.runId)).status, 'succeeded');
+  const getMemory = () => withTenantTransaction(actor.enterpriseId, async tx => readMemory((await one(tx,
+    sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${saved.c}`))?.entry_snapshot));
+  const before = await getMemory(); assert.equal(before.facts.length, 1);
+  for (const text of ['手测追问03：关于书桌收纳分类，请给一个一般选择建议。这是独立问题，不新增或修改我的需求。', '我想问客厅阅读灯的选择']) {
+    const a = await start(text, saved.c);
+    await processAgentAnswer(a.lease, { model: async (_messages, tools) => {
+      assert.ok(!tools.some(t => t.name === 'record_need'));
+      return response('一般可以按用途比较，并结合日常使用习惯选择。');
+    } });
+    assert.equal((await a.chat.run(a.lease.runId)).status, 'succeeded');
+    assert.deepEqual(await getMemory(), before);
+    const reentry = await new ConversationService(actor).messages(saved.c);
+    assert.ok(reentry.items.some(m => m.id === a.sent.messageId));
+    const writes = await withTenantTransaction(actor.enterpriseId, tx => rows(tx,
+      sql`select id from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${a.lease.runId} and kind='agent_need_write'`));
+    assert.equal(writes.length, 0);
+  }
+  await assert.rejects(new ConversationService(stranger).messages(saved.c), /assistant_resource_not_found/);
+});
+
+test('durable need storage rejects no-change and inquiry even when called with a selected quote', async () => {
+  const { persistNeedWrites } = await import('@/lib/assistant/agent/memory-store');
+  for (const [text, room, value] of [
+    ['书房需要收纳；不要新增或修改我的需求。', '书房', '收纳'],
+    ['我想问客厅阅读灯的选择', '客厅', '阅读灯'],
+  ]) {
+    const a = await start(text);
+    await assert.rejects(withTenantTransaction(actor.enterpriseId, async tx => {
+      const conversation = (await one(tx, sql`select * from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`))!;
+      await persistNeedWrites(tx, actor, conversation,
+        { runId: a.lease.runId, turn: 0, index: 0, sourceMessageId: String(a.sent.messageId) },
+        { room, field: 'devices', value, quote: value });
+    }), /need_source_mismatch/);
+    await processAgentAnswer(a.lease, { model: async () => response('可以先比较使用方式。') });
+    assert.equal((await a.chat.run(a.lease.runId)).status, 'succeeded');
+    const persisted = await withTenantTransaction(actor.enterpriseId, tx => one(tx,
+      sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
+    assert.deepEqual(readMemory(persisted?.entry_snapshot), { version: 0, facts: [] });
+  }
+});
 async function legacyDeskFixture(unavailableCorrection = false) {
   const chat = new ConversationService(actor), c = String((await chat.create(randomUUID())).id);
   const originals = ['请记下：书房书桌靠窗，书房需要收纳。', '客厅不做开放柜，全屋预算28万元。', '更正：书房书桌改为靠内墙；全屋预算改为18万元。其他需求保持原样。'];
@@ -149,25 +194,71 @@ test('source-linked semantic memory writes once, survives reentry and preserves 
   const stored = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where id=${c!}`));
   assert.equal(readMemory(stored?.entry_snapshot).facts.filter(f => f.status === 'current').length, 3);
 });
-test('explicit record-only partial save returns only durable facts without a model acknowledgement round', async () => {
+test('explicit record-only missing independent need is corrected before one atomic durable batch', async () => {
   const a = await start('请记下：书房书桌靠窗，书房需要收纳'); let calls = 0;
-  await processAgentAnswer(a.lease, { model: async () => {
+  await processAgentAnswer(a.lease, { model: async (messages) => {
     calls++;
-    return calls === 1 ? { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗' }) }] }
-      : response('已记录您的需求：书房的书桌需要靠窗摆放，并且书房需要收纳功能。');
+    if (calls === 1) return { ...response(), text: '', toolCalls: [{ id: 'need', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗' }) }] };
+    const feedback = JSON.parse((messages.at(-1) as { content: string }).content);
+    assert.equal(feedback.status, 'not_saved'); assert.equal(feedback.error, 'need_write_incomplete');
+    assert.equal(feedback.batchCommitted, false); assert.deepEqual(feedback.missingStatements, ['书房需要收纳']);
+    const before = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
+    assert.equal(readMemory(before?.entry_snapshot).facts.length, 0, 'The rejected batch cannot partially persist');
+    return { ...response(), text: '', toolCalls: [
+      { id: 'complete-desk', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗' }) },
+      { id: 'complete-storage', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'storage', value: '需要收纳', quote: '书房需要收纳' }) },
+    ] };
   } });
   assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
   const items = (await new ConversationService(actor).messages(a.c)).items;
   const reply = items.filter(m => m.authorKind === 'assistant').at(-1)!;
   const serialized = JSON.stringify(reply.content);
-  assert.match(serialized, /本次实际保存/); assert.match(serialized, /书桌靠窗/); assert.doesNotMatch(serialized, /收纳/);
-  assert.match(serialized, /未列出的内容不视为已保存/); assert.equal(calls, 1);
+  assert.match(serialized, /本次实际保存/); assert.match(serialized, /书桌靠窗/); assert.match(serialized, /需要收纳/);
+  assert.match(serialized, /未列出的内容不视为已保存/); assert.equal(calls, 2);
   const saved = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
-  assert.equal(readMemory(saved?.entry_snapshot).facts.filter(f => f.status === 'current').length, 1);
+  assert.equal(readMemory(saved?.entry_snapshot).facts.filter(f => f.status === 'current').length, 2);
   const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind='agent_need_receipt'`));
   assert.equal(steps.length, 1);
+  const writes = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select id from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind='agent_need_write'`));
+  assert.equal(writes.length, 1);
   await assert.rejects(new ConversationService(stranger).messages(a.c), /assistant_resource_not_found/);
 });
+test('explicit record-only parallel inputs retain source checks and never persist a partial foreign quote', async () => {
+  const a = await start('请记下：书房书桌靠窗，书房需要收纳。'); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async messages => {
+    if (++calls === 1) return { ...response(), text: '', toolCalls: [
+      { id: 'desk', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '靠窗', quote: '书房书桌靠窗' }) },
+      { id: 'storage', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'storage', value: '需要收纳', quote: '另一个客户的书房需要收纳' }) },
+    ] };
+    const feedback = JSON.parse((messages.at(-1) as { content: string }).content);
+    assert.equal(feedback.status, 'not_saved'); assert.equal(feedback.error, 'need_source_mismatch');
+    return response('这两项需求暂未保存，请核对本次原话。');
+  } });
+  assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded'); assert.equal(calls, 2);
+  const state = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
+  assert.deepEqual(readMemory(state!.entry_snapshot), { version: 0, facts: [] });
+  const steps = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select kind,input_summary,private_checkpoint from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)}`));
+  assert.equal(steps.filter(s => ['agent_need_write','agent_need_receipt'].includes(String(s.kind))).length, 0);
+  const model = steps.find(s => (s.input_summary as Row)?.needBatchProtocol === agentNeedBatchProtocol)!;
+  assert.ok(model); assert.deepEqual((model.input_summary as Row).needBatchCallIds, ['desk','storage']);
+  const packet = model.private_checkpoint as { providerOutput: { toolCalls: unknown[] }; toolCalls: unknown[] };
+  assert.equal(packet.providerOutput.toolCalls.length, 2); assert.equal(packet.toolCalls.length, 1);
+});
+
+test('explicit record-only rejected incomplete batch cannot be acknowledged or leave a partial memory', async () => {
+  const a = await start('请记下：书房书桌靠窗，书房需要收纳'); let calls = 0;
+  await processAgentAnswer(a.lease, { model: async () => {
+    calls++;
+    return calls === 1 ? { ...response(), text: '', toolCalls: [{ id: 'partial', name: 'record_need', arguments: JSON.stringify({ room: '书房', field: 'desk', value: '书桌靠窗', quote: '书房书桌靠窗，书房需要收纳' }) }] }
+      : response('已记录书桌靠窗和书房需要收纳。');
+  } });
+  const run = await a.chat.run(String(a.sent.runId));assert.equal(run.status, 'failed');assert.equal(run.errorCode, 'unsupported_model_commitment');assert.equal(calls, 2);
+  const saved = await withTenantTransaction(actor.enterpriseId, tx => one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${a.c}`));
+  assert.equal(readMemory(saved?.entry_snapshot).facts.length, 0);
+  assert.equal((await a.chat.messages(a.c)).items.filter(m => m.authorKind === 'assistant').length, 0);
+  const writes = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select id from app.assistant_run_steps where enterprise_id=${actor.enterpriseId} and run_id=${String(a.sent.runId)} and kind in ('agent_need_write','agent_need_receipt')`));assert.equal(writes.length, 0);
+});
+
 test('explicit record-only atomic batch confirms each durable field once and retains its own operation evidence', async () => {
   const a = await start('请记下：书房书桌靠窗，书房需要收纳'); let calls = 0;
   await processAgentAnswer(a.lease, { model: async (_messages, tools) => {
