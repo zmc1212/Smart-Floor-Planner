@@ -10,6 +10,28 @@ import { buildAgentContext } from '../agent/context';
 const desk: NeedWrite = { room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '书房书桌改为靠内墙' };
 const budget: NeedWrite = { room: '', field: 'budget', value: '18万元', quote: '预算改为18万元' };
 const mixed = '更正：书房书桌改为靠内墙；预算改为18万元。另外，如果仍靠窗会有哪些取舍？后面是假设，不要保存。';
+const falseBudgetAbsence = [
+  '根据现有记录，我们目前没有保存您的具体预算金额。预算属于需要单独记录的重要信息，可能是在之前的沟通中口头提及但未正式录入系统，或者尚未确定。\n\n为了给您提供准确的预算参考或进行下一步方案规划，能否请您告知一下您心中预期的预算范围？这样我可以帮您评估不同装修方案的可能性。',
+  '根据我们目前的咨询记录，系统里并没有保存您关于“当前预算”的具体金额或数字。\n\n虽然您之前询问过这个问题，但相关的预算数值并未在正式的工作记录中录入。如果您有具体的预算数字想要记录，或者想确认之前的某个报价，请告诉我，我可以帮您核实或补充。',
+];
+
+test('current budget recall distinguishes current unavailability from unsupported never-saved explanations', () => {
+  const memory = readMemory({}), question = '我当前预算记的是多少？';
+  for (const text of [...falseBudgetAbsence, '当前预算无法确认，因为您从未记录预算。',
+    '本次无法确认预算，可能您只在口头提及，没有正式录入。', '当前预算无法确认，因为预算数值并未在正式记录中录入。',
+    '目前没有预算记录。', '当前预算无法确认，此前是18万元。']) {
+    for (const reply of [{kind:'general',text}, {kind:'synthesis',segments:[{basis:'uncertainty',text,citations:[]}]}]) {
+      const issue = currentBudgetRecallFeedback(JSON.stringify(reply), memory, question);
+      assert.equal(issue?.code, 'ungrounded_response_scope', text);
+      assert.match(issue!.feedback, /不能.*从未/);
+    }
+  }
+  for (const text of ['当前预算无法确认。', '本次没有可用的当前预算记录，无法确认金额。',
+    '目前无法读取预算来源，不能确定当前金额。', '当前预算没有有效记录可供核实。', '预算金额暂时无法确定。',
+    '本次无法确认当前预算；这不代表您从未记录过预算。']) {
+    assert.equal(currentBudgetRecallFeedback(JSON.stringify({kind:'general',text}), memory, question), null, text);
+  }
+});
 
 test('current budget recall keeps saved-need reads narrow despite business followup history', () => {
   for (const question of ['我当前预算记的是多少？','我现在记录的预算是多少？','保存的预算现在是多少？']) {

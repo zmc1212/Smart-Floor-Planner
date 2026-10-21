@@ -66,7 +66,11 @@ async function validations(runId: string) {
 }
 
 test('current budget recall preserves real saves and revocation despite prior business results, with one final repair', async () => {
-  for (const repair of [true, false]) {
+  const falseAbsence = [
+    '根据现有记录，我们目前没有保存您的具体预算金额。预算属于需要单独记录的重要信息，可能是在之前的沟通中口头提及但未正式录入系统，或者尚未确定。\n\n为了给您提供准确的预算参考或进行下一步方案规划，能否请您告知一下您心中预期的预算范围？这样我可以帮您评估不同装修方案的可能性。',
+    '根据我们目前的咨询记录，系统里并没有保存您关于“当前预算”的具体金额或数字。\n\n虽然您之前询问过这个问题，但相关的预算数值并未在正式的工作记录中录入。如果您有具体的预算数字想要记录，或者想确认之前的某个报价，请告诉我，我可以帮您核实或补充。',
+  ];
+  for (const badText of [null, ...falseAbsence]) for (const repair of [true, false]) {
     const a = await start('请查看我的已发布方案。'); let businessCalls = 0;
     await processAgentAnswer(a.lease, { model: async messages => {
       if (++businessCalls === 1) return { ...answer(), text:'', toolCalls:[{id:'schemes',name:'query_business',arguments:'{"domain":"schemes","leadId":""}'}] };
@@ -100,13 +104,23 @@ test('current budget recall preserves real saves and revocation despite prior bu
       assert.doesNotMatch(JSON.stringify(messages), /18万元/);
       if (calls === 1) {
         assert.deepEqual(tools.map(t=>t.name), ['recall_history']);
-        return { ...answer(),text:JSON.stringify({kind:'business',resultKey:'unrelated:0:0'}) };
+        return badText ? { ...answer(),text:'',toolCalls:[{id:'budget-history',name:'recall_history',arguments:'{"query":"预算 金额 记录"}'}] }
+          : { ...answer(),text:JSON.stringify({kind:'business',resultKey:'unrelated:0:0'}) };
       }
-      assert.equal(calls,2); assert.equal(tools.length,0);
+      if (badText && calls === 2) {
+        assert.deepEqual(tools.map(t=>t.name), ['recall_history']);
+        const recalled=JSON.parse((messages.findLast(m=>m.role==='tool') as {content:string}).content);
+        assert.equal(recalled.hasMore,false); assert.equal(recalled.oversized,false);
+        assert.deepEqual(recalled.sources.map((s:{text:string})=>s.text),[question]);
+        assert.ok(recalled.currentNeedView.facts.every((f:{field:string})=>f.field!=='budget'));
+        return finalText(badText);
+      }
+      assert.equal(calls,badText?3:2); assert.equal(tools.length,0);
       assert.match(JSON.stringify(messages), /当前需求没有budget字段/);
-      return finalText(repair ? '本次没有可用的当前预算记录，无法确认金额。' : '目前没有查到你在本企业的已发布方案记录。');
+      if (badText) assert.match(JSON.stringify(messages), /不能.*从未/);
+      return finalText(repair ? '本次没有可用的当前预算记录，无法确认金额。' : badText || '目前没有查到你在本企业的已发布方案记录。');
     } });
-    assert.equal(calls,2); assert.equal((await writes(String(withdrawn.runId))).length,0);
+    assert.equal(calls,badText?3:2); assert.equal((await writes(String(withdrawn.runId))).length,0);
     assert.deepEqual(await memory(a.c),saved);
     const result = await a.chat.run(String(withdrawn.runId));
     assert.equal(result.status,repair?'succeeded':'failed');
