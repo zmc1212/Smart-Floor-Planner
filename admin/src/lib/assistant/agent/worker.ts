@@ -10,7 +10,7 @@ import { projectMessage, resolveEvidence, previewPolicy } from '../knowledge/sou
 import { runContext, failRun, heartbeat, completeAnswer, type Lease } from '../infrastructure/job-queue';
 import { runRenovationAgent, agentReadProtocol, agentToolReplyProtocol, type AgentCheckpoint } from './runtime';
 import { agentConfig } from './config';
-import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
+import { factFields, needWriteFeedback, needOriginalQuotes, hasExplicitNeedCorrection, assertRecordedReply, needReplyFeedback, onlyChatHistoryRequested, currentBudgetRecallRequested, currentBudgetRecallFeedback, needReconfirmationFeedback, needDeskPositionFeedback, currentNeedView, unavailableDeskReply, explicitNeedRecordOnly, explicitNeedWriteStatement, recordedNeedReceipt, parseNeedWrites } from './memory';
 import { availableNeedMemory, needMemoryNoticeRefs, unavailableNeedMessageIds, needContextStep, needSourceRefs, needRunSourcesAvailable } from './memory-sources';
 import { persistNeedWrites } from './memory-store';
 import { isNeedInquiry, needWriteProhibition } from './need-write-intent';
@@ -636,6 +636,15 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         validateFinal:async(raw,turn)=>{
           let candidate:{kind?:string;text?:unknown;segments?:Array<{text?:unknown}>};try{candidate=JSON.parse(raw);}catch{return null;}
           const question = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
+          const budgetIssue = currentBudgetRecallRequested(question) && await scoped(async (tx, context) => {
+            const memory = await availableNeedMemory(tx, lease.enterpriseId, String(context.conversation.id), context.conversation.entry_snapshot);
+            const found = currentBudgetRecallFeedback(raw, memory, question);
+            if (found) await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+              values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',
+                ${JSON.stringify({ code: found.code, scope: 'current_budget_read_scope', noBusinessTools: true })}::jsonb) on conflict do nothing`);
+            return found;
+          });
+          if (budgetIssue) return budgetIssue;
           if (candidate && !['business','knowledge','references'].includes(candidate.kind || '')
             && (candidate.kind === 'synthesis' || Boolean(explicitNeedWriteStatement(question)) && !explicitNeedRecordOnly(question))) {
             const text = [candidate.text, ...(Array.isArray(candidate.segments) ? candidate.segments.map(s => s?.text) : [])]

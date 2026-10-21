@@ -30,13 +30,41 @@ function needCorrectionContext(text: string) {
 export function hasExplicitNeedCorrection(text: string) {
   return needCorrectionContext(text) !== null;
 }
+/** A saved-budget lookup reads customer needs, not schemes or quotations.
+ * Mixed business questions retain their normal tools. This only narrows reads;
+ * it does not extract a budget, choose a write field or authorize a save. */
+export function currentBudgetRecallRequested(text: string) {
+  const intent = text.replace(/[“「"][^”」"\n]*[”」"]/g, '');
+  return /预算/.test(intent) && /记(?:的|得|着|了|是)|记录|保存|存(?:的|着|了)|记忆/.test(intent)
+    && /多少|什么|哪|有没有|是否|能否/.test(intent)
+    && !/更正|纠正|请记住|请记录|帮我记录|改为|改成|调整|另外|此外|同时|还要|顺便|以及|报价|费用|方案|户型|施工|现场|工地|预约|企业|制度|收费|设计师|转人工/.test(intent);
+}
 export function onlyChatHistoryRequested(text: string) {
+  if (currentBudgetRecallRequested(text)) return true;
   const intent = text.replace(/[“「"][^”」"\n]*[”」"]/g, '');
   if (/(?:不要|不用|不必|不能|别)只(?:回顾|回读|谈|聊)/.test(intent)
     || !/(?:只|仅)(?:回顾|回读|谈|聊).{0,14}(?:聊天|原话)/.test(intent)) return false;
   // An exclusive recall already supplies its scope; a second negative clause
   // is not required. Separately requested live evidence keeps its normal path.
   return !intent.split(/[，,。；;\n]/).some(clause => /^(?:另外|此外|还要|也要|同时|然后|再|也|并)(?:请|帮我)?(?:查|查询|看看|核对|结合|依据|回答).{0,24}(?:工地|现场|施工|企业|制度|规程|图纸|资料)/.test(clause.trim()));
+}
+/** Reject only the observed wrong read domain or an unsupported available-
+ * budget claim. The existing single final repair still generates the answer;
+ * an absent current original never restores a superseded budget from history. */
+export function currentBudgetRecallFeedback(raw: string, memory: NeedMemory, question: string) {
+  if (!currentBudgetRecallRequested(question)) return null;
+  let reply: { kind?: string; text?: unknown; segments?: Array<{ text?: unknown }> };
+  try { reply = JSON.parse(raw); } catch { return null; }
+  if (!reply || typeof reply !== 'object') return null;
+  const text = [reply.text, ...(Array.isArray(reply.segments) ? reply.segments.map(s => s?.text) : [])]
+    .filter((s): s is string => typeof s === 'string').join('\n');
+  const missing = !currentNeedView(memory).facts.some(fact => fact.field === 'budget');
+  if (['general','unavailable','synthesis'].includes(reply.kind || '')
+    && (!missing || /预算/.test(text) && /无法|不能|未|没有|不可用|不确定|缺少/.test(text)
+      && !/\d+(?:\.\d+)?\s*(?:万元|万|元)/.test(text))) return null;
+  return { code: 'ungrounded_response_scope', feedback: '只修复本轮最终回复，仍限现有唯一一次修复，不调用工具、不保存或恢复需求。客户询问已记录预算的当前状态，已发布方案、报价或其他业务空列表不能回答这个问题。依据本轮仍获权的当前需求回答；历史原话不能覆盖当前有效记录，已失效来源或旧预算不能恢复。'
+    + (missing ? '本轮获权当前需求没有budget字段，须明确说明当前预算无法确认，不输出金额，也不能把未查到方案说成未查到预算。' : '保留当前需求身份，不把客户意向当作正式报价或本轮新保存回执。')
+    + '若本轮已经查询来源，沿既有synthesis格式用uncertainty段和空citations说明缺项；否则沿general/unavailable。答案由你生成，不新增来源或正式批准。' };
 }
 /** Narrow direct-receipt intent only. Mixed questions/actions keep the model
  * path; this never extracts a need or authorizes a write by itself. */

@@ -65,6 +65,62 @@ async function validations(runId: string) {
     where enterprise_id=${actor.enterpriseId} and run_id=${runId} and kind='agent_validation' order by step_seq`));
 }
 
+test('current budget recall preserves real saves and revocation despite prior business results, with one final repair', async () => {
+  for (const repair of [true, false]) {
+    const a = await start('请查看我的已发布方案。'); let businessCalls = 0;
+    await processAgentAnswer(a.lease, { model: async messages => {
+      if (++businessCalls === 1) return { ...answer(), text:'', toolCalls:[{id:'schemes',name:'query_business',arguments:'{"domain":"schemes","leadId":""}'}] };
+      const packet = JSON.parse((messages.findLast(m => m.role === 'tool') as {content:string}).content);
+      return { ...answer(), text:JSON.stringify({kind:'business',resultKey:packet.resultKey}) };
+    } });
+    assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');
+    const save = await a.chat.send(a.c, randomUUID(), {version:1,blocks:[{type:'text',text:'更正：全屋预算改为18万元。'}]});
+    const saveLease = await claimJob(); assert.ok(saveLease); assert.equal(saveLease.runId, save.runId);
+    let saveCalls = 0;
+    await processAgentAnswer(saveLease, { model:async () => { saveCalls++; return call({...budget,quote:'更正：全屋预算改为18万元'}); } });
+    assert.equal(saveCalls, 1); assert.equal((await writes(String(save.runId))).length, 1);
+    const saved = await memory(a.c); assert.equal(saved.version, 1);
+    const question = '我当前预算记的是多少？';
+    const recap = await a.chat.send(a.c, randomUUID(), {version:1,blocks:[{type:'text',text:question}]});
+    const recapLease = await claimJob(); assert.ok(recapLease); assert.equal(recapLease.runId, recap.runId);
+    await processAgentAnswer(recapLease, { model:async (_messages,tools) => {
+      assert.deepEqual(tools.map(t=>t.name), ['recall_history']);
+      return finalText('沿用原工作记录，当前预算为18万元。');
+    } });
+    const recapRun = await a.chat.run(String(recap.runId)); assert.equal(recapRun.status, 'succeeded');
+    await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages
+      set content='{"version":1,"blocks":[{"type":"text","text":"合成预算原话撤回"}]}'::jsonb
+      where enterprise_id=${actor.enterpriseId} and conversation_id=${a.c} and id=${String(save.messageId)}`));
+    assert.equal((await a.chat.messages(a.c)).items.find(m=>m.id===recapRun.outputMessageId)!.available, false);
+    const withdrawn = await a.chat.send(a.c, randomUUID(), {version:1,blocks:[{type:'text',text:question}]});
+    const withdrawnLease = await claimJob(); assert.ok(withdrawnLease); assert.equal(withdrawnLease.runId, withdrawn.runId);
+    let calls = 0;
+    await processAgentAnswer(withdrawnLease, { model:async (messages,tools) => {
+      calls++;
+      assert.doesNotMatch(JSON.stringify(messages), /18万元/);
+      if (calls === 1) {
+        assert.deepEqual(tools.map(t=>t.name), ['recall_history']);
+        return { ...answer(),text:JSON.stringify({kind:'business',resultKey:'unrelated:0:0'}) };
+      }
+      assert.equal(calls,2); assert.equal(tools.length,0);
+      assert.match(JSON.stringify(messages), /当前需求没有budget字段/);
+      return finalText(repair ? '本次没有可用的当前预算记录，无法确认金额。' : '目前没有查到你在本企业的已发布方案记录。');
+    } });
+    assert.equal(calls,2); assert.equal((await writes(String(withdrawn.runId))).length,0);
+    assert.deepEqual(await memory(a.c),saved);
+    const result = await a.chat.run(String(withdrawn.runId));
+    assert.equal(result.status,repair?'succeeded':'failed');
+    if (repair) {
+      const reply=(await new ConversationService(actor).messages(a.c)).items.find(m=>m.id===result.outputMessageId)!;
+      assert.equal(reply.available,true); assert.match(JSON.stringify(reply.content), /预算.*无法确认/);
+      assert.doesNotMatch(JSON.stringify(reply.content), /18|方案/);
+      await assert.rejects(new ConversationService(stranger).messages(a.c), /not_found/);
+    } else { assert.equal(result.errorCode,'ungrounded_response_scope'); assert.equal(result.outputMessageId,null); }
+    const rejected=await validations(String(withdrawn.runId)); assert.equal(rejected.length,repair?1:2);
+    assert.ok(rejected.every(row=>(row.input_summary as Row).scope==='current_budget_read_scope'));
+  }
+});
+
 test('mixed correction incomplete proposals roll back then save one complete batch before answering the separate question', async () => {
   const a = await start(); let calls = 0;
   await processAgentAnswer(a.lease, { model: async (messages, tools) => {

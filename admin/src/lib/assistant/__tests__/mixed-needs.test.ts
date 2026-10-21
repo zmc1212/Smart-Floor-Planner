@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AssistantError } from '../contracts';
-import { applyNeedDelta, assertRecordedReply, hasExplicitNeedCorrection, needOriginalQuotes, needReplyFeedback, needWriteFeedback, readMemory, uncoveredNeedStatements, type NeedWrite } from '../agent/memory';
+import { applyNeedDelta, assertRecordedReply, currentBudgetRecallRequested, currentBudgetRecallFeedback, hasExplicitNeedCorrection, needOriginalQuotes, needReplyFeedback, needWriteFeedback, readMemory, uncoveredNeedStatements, type NeedWrite } from '../agent/memory';
 import { agentToolsForMessage, needTool, needToolsForRetry } from '../agent/worker';
 import { agentChatBody } from '../../ai/providers/agent-chat';
 import type { ModelMessage } from '../contracts/model';
@@ -10,6 +10,35 @@ import { buildAgentContext } from '../agent/context';
 const desk: NeedWrite = { room: '书房', field: 'desk', value: '书桌改为靠内墙', quote: '书房书桌改为靠内墙' };
 const budget: NeedWrite = { room: '', field: 'budget', value: '18万元', quote: '预算改为18万元' };
 const mixed = '更正：书房书桌改为靠内墙；预算改为18万元。另外，如果仍靠窗会有哪些取舍？后面是假设，不要保存。';
+
+test('current budget recall keeps saved-need reads narrow despite business followup history', () => {
+  for (const question of ['我当前预算记的是多少？','我现在记录的预算是多少？','保存的预算现在是多少？']) {
+    assert.equal(currentBudgetRecallRequested(question), true);
+    assert.deepEqual(agentToolsForMessage(question, true, true).map(t => t.name), ['recall_history']);
+  }
+  for (const question of ['请记录预算18万元。','我当前预算够不够？','我当前预算记的是多少？另外查一下已发布方案。','当前预算与企业报价有什么区别？','“我当前预算记的是多少？”这只是引用。']) {
+    assert.equal(currentBudgetRecallRequested(question), false);
+  }
+  assert.ok(agentToolsForMessage('请查看我的已发布方案。', true, true).some(t => t.name === 'query_business'));
+});
+
+test('current budget recall repair rejects empty schemes and unavailable amounts without generating an answer', () => {
+  const question = '我当前预算记的是多少？', memory = readMemory({});
+  for (const reply of [{kind:'business',resultKey:'old:0:0'}, {kind:'general',text:'目前没有查到你在本企业的已发布方案记录。'},
+    {kind:'general',text:'当前预算没有变化，仍是18万元。'}]) {
+    const issue = currentBudgetRecallFeedback(JSON.stringify(reply), memory, question);
+    assert.equal(issue?.code, 'ungrounded_response_scope');
+    assert.match(issue!.feedback, /当前需求没有budget字段/);
+    assert.ok(!issue!.feedback.includes('18'));
+  }
+  for (const reply of [{kind:'general',text:'本次没有可用的当前预算记录，无法确认金额。'},
+    {kind:'synthesis',segments:[{basis:'uncertainty',text:'当前预算无法确认。',citations:[]}]}]) {
+    assert.equal(currentBudgetRecallFeedback(JSON.stringify(reply), memory, question), null);
+  }
+  const available = applyNeedDelta(memory, { ...budget, sourceMessageId:'1', expectedVersion:0 }, {id:'1',text:budget.quote}, 'run:0:0', '2026-10-21T11:00:00Z');
+  assert.equal(currentBudgetRecallFeedback(JSON.stringify({kind:'general',text:'沿用原记录，当前预算为18万元。'}), available, question), null);
+  assert.equal(currentBudgetRecallFeedback(JSON.stringify({kind:'business'}), memory, '请查看已发布方案。'), null);
+});
 
 const budgetOnly = '更正：全屋预算改为18万元。';
 const staleDesk = { room: '书房', field: 'desk' as const, value: '靠内墙', quote: '更正：全屋预算改为18万元', additionalNeeds: [] };
