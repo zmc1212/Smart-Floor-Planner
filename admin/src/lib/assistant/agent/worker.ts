@@ -30,7 +30,7 @@ import { visionContext, withVisionObservations } from './vision';
 import { constructionNoticeAvailable } from '@/lib/construction/customer';
 import { materialTool, parseMaterialQuery, queryMaterials, materialSnapshotAvailable, type MaterialDependency, type MaterialSnapshot } from './materials';
 import { needIssueTool, queryNeedIssues, needIssueSnapshotAvailable, type NeedIssueDependency, type NeedIssueSnapshot } from '@/lib/construction/need-issues';
-import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion } from './synthesis';
+import { businessSynthesisSources, knowledgeSynthesisSources, parseSynthesis, synthesisInstructions, synthesisRepairFeedback, focusedSynthesisMessages, unresolvedSynthesisConflict, availabilityScopeHintPrefix, synthesisRepairProjectionVersion, synthesisContextProjectionVersion } from './synthesis';
 import { resolveSynthesisRepair, synthesisRepairBase, synthesisRepairProtocol, synthesisRepairTool, finalAnswerRepairBase, finalAnswerRepairProtocol } from './synthesis-repair';
 import { currentSynthesisContext } from './synthesis-sources';
 import { boundKnowledgeContext } from './bound-context';
@@ -41,7 +41,9 @@ import { citationProtocolVersion } from './citation-catalog';
 import { agentChatProtocolVersion } from '@/lib/ai/providers/agent-chat';
 import { historyTool, parseHistoryQuery, recallHistory, historyRefsAvailable, historySynthesisSources, type HistoryRef, type HistorySnapshot } from './history';
 import { historySummaryPolicy, historySummaryCapability, historySummaryStep, summaryInput, summaryRequest, selectedSummary, summaryTool, withHistorySummary } from './summary';
-import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, explicitHumanHandoffRequested, sourceReadProtocol, sourceAnswerProtocol, type ReadToolContext } from './read-tool-input';
+import { isReadToolInputFailure, readToolInputIssue, readToolInputProtocol, bindReadToolInput, readToolContext, readToolsForContext, knowledgeReadPending, originalAnswerOnly, independentAdviceRequested, explicitHumanHandoffRequested, sourceReadProtocol, sourceAnswerProtocol, type ReadToolContext } from './read-tool-input';
+import { currentMessageOnlyRequested, currentMessageView, currentMessageFinalTool, currentMessageReplyFeedback, currentMessageScopeProtocol } from './current-message-scope';
+import { independentAdviceView, independentAdviceContextProtocol } from './independent-advice-context';
 
 const needProperties = { room: { type: 'string', description: '仅填该字段自身分句中的明确房间；仅写预算而无房间时填空字符串，不借用相邻分句的房间。' }, field: { type: 'string', enum: factFields, description: 'use记录用途/人数，desk记录桌型/书桌位置，storage记录收纳/柜体要求，budget记录预算，daylight记录采光，devices记录设备；style只记录装修风格，不存书桌位置或收纳。独立字段分别保存，不用更正人数覆盖设备或位置。' }, value: { type: 'string', description: '逐字摘自quote，不改写。' }, quote: { type: 'string', description: '该字段的最短完整原分句，逐字摘自本次客户消息，标点也不改写；不拼接多句。' } };
 export const needTool: ModelTool = { name: 'record_need', description: '保存当前客户消息中明确说出的需求，只摘原话。不变字段沿用原记录。同一消息有多个独立字段时，主字段加additionalNeeds一次原子保存（合计最多四条），不要逐轮单独保存。明确更正后又提问时先保存，等回执再查询解释；逗号后以另外/此外/顺便另问的独立问题不取消前面的明确更正，quote只摘更正原句，不带后面的假设/问题，也不保存问题中的设备或房间。更正本身附条件、转述或客户说不记录时不保存。返回memoryVersion。', parameters: {
@@ -113,6 +115,8 @@ const checkpointSeq = 1000;
 /** Questions/meta-conversation stay conversational; only explicit statements are eligible for memory writes. */
 export function agentToolsForMessage(text: string, enabled: boolean, businessFollowup = false): ModelTool[] {
   if (!enabled) return [];
+  if (currentMessageOnlyRequested(text)) return [];
+  if (independentAdviceRequested(text)) return businessToolDefinitions.filter(tool => tool.name === 'search_knowledge');
   if (explicitNeedRecordOnly(text)) return [needToolForMessage(text)];
   // A question about saving a preceding explicit correction is not a hypothetical need.
   // Match the complete two-clause intent, never a quoted snippet or a proposed change.
@@ -170,7 +174,10 @@ const sourceQueryTools = new Set(['query_business', 'query_materials', 'query_fo
 /** The provider sees the same current catalog as the validator. Schema enums
  * assist generation; authorized server lookup remains the acceptance boundary. */
 export function finalToolForMessages(messages:ModelMessage[], question = ''):ModelTool {
+  if (currentMessageOnlyRequested(question)) return currentMessageFinalTool;
   const sourceOnly = originalAnswerOnly(question);
+  const independentAdvice = independentAdviceRequested(question);
+  const knowledgeScoped = sourceOnly || independentAdvice;
   let queriedSources = false, synthesisResult = false, otherDisplayResult = false;
   for (const [index, message] of messages.entries()) {
     if (message.role !== 'tool' || isReadToolInputFailure(message.content)) continue;
@@ -199,7 +206,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
       .flatMap((source:{citationOptions?:Array<{citationId?:unknown}>})=>Array.isArray(source.citationOptions)?source.citationOptions:[])
       .map((option:{citationId?:unknown})=>option.citationId).filter((id:unknown):id is string=>typeof id==='string');}catch{return [];}
   }))];
-  const ids = sourceOnly ? [...new Set(messages.flatMap(message => {
+  const ids = knowledgeScoped ? [...new Set(messages.flatMap(message => {
     if (message.role !== 'tool') return [];
     try { const packet = JSON.parse(message.content); return (Array.isArray(packet?.synthesisSources) ? packet.synthesisSources : [])
       .filter((source:{kind?:unknown}) => source.kind === 'knowledge')
@@ -208,18 +215,23 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
   }))] : allIds;
   const repairTool = synthesisRepairTool(messages, allIds);
   if (repairTool) {
-    if (!sourceOnly) return repairTool;
+    if (!knowledgeScoped) return repairTool;
     const properties = repairTool.parameters.properties as Record<string, Record<string, unknown>>;
     for (const key of ['edits', 'append']) {
       const segment = (properties[key].items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>;
-      segment.basis.enum = ids.length ? ['evidence', 'uncertainty'] : ['uncertainty'];
-      if (key === 'edits') (segment.addCitationIds.items as Record<string, unknown>).enum = ids;
+      segment.basis.enum = sourceOnly ? (ids.length ? ['evidence', 'uncertainty'] : ['uncertainty'])
+        : (ids.length ? ['evidence', 'advice', 'uncertainty'] : ['advice', 'uncertainty']);
+      // The original repair schema shares its ID object across add/remove.
+      // Only addition is scoped: rejected original IDs must remain removable.
+      if (key === 'edits') segment.addCitationIds.items = { type: 'string', enum: ids };
       else {
         const citation = ((segment.citations.items as Record<string, unknown>).properties as Record<string, Record<string, unknown>>).citationId;
-        citation.enum = ids;
+        segment.citations.items = { ...(segment.citations.items as Record<string, unknown>), properties: { citationId: { ...citation, enum: ids } } };
       }
     }
-    return { ...repairTool, description: repairTool.description + ' 本题只解释指定原文；移除自行添加的建议/流程/关闭前提，不能仅改basis保留无据内容。' };
+    return { ...repairTool, description: repairTool.description + (sourceOnly
+      ? ' 本题只解释指定原文；移除自行添加的建议/流程/关闭前提，不能仅改basis保留无据内容。'
+      : ' 本题为独立一般建议；移除无关项目/历史引用，不把客户原话当作技术依据。') };
   }
   const responseScope=finalAnswerRepairBase(messages)?.responseScope;
   if(responseScope){
@@ -240,11 +252,11 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
       }
     return{...finalTool,description:'对被拒绝的当前预算答复作既有唯一一次修复；按本工具结构生成回答，不查询或保存。',parameters};
   }
-  if(!ids.length&&!queriedSources)return finalTool;
+  if(!ids.length&&!queriedSources&&!independentAdvice)return finalTool;
   const parameters=structuredClone(finalTool.parameters);
-  const knowledgeOnly = sourceOnly || synthesisResult && !otherDisplayResult;
+  const knowledgeOnly = knowledgeScoped || synthesisResult && !otherDisplayResult;
   const properties = parameters.properties as Record<string, Record<string, unknown>>;
-  if (queriedSources) properties.kind = { type: 'string', enum: knowledgeOnly ? ['synthesis'] : ['synthesis', 'business', 'knowledge', 'references'] };
+  if (queriedSources || independentAdvice) properties.kind = { type: 'string', enum: knowledgeOnly ? ['synthesis'] : ['synthesis', 'business', 'knowledge', 'references'] };
   if (knowledgeOnly) {
     // One current output envelope, using the provider's existing object schema.
     // Legacy display formats remain accepted by server validation; advertise
@@ -270,6 +282,7 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
     schema.enum=ids;
   }
   if (sourceOnly) return { ...finalTool, parameters, description: '只回答指定原文内容，kind=synthesis，每段evidence或uncertainty。仅选支持本段的知识citationId；不追加advice、项目流程或原文没有的业务条件。原文未说明则说明本次范围限制。正文与引用由你选择，仍须完整校验。' };
+  if (independentAdvice) return { ...finalTool, parameters, description: '回答本轮明确请求的独立一般建议，沿kind=synthesis区分有据内容与一般建议。客户需求/历史不作为技术依据；只选实际支持本段的知识引用，无知识引用时用advice/uncertainty和空citations。不新增量数、业务回执或个人项目结论。' };
   return {...finalTool,parameters,...(queriedSources ? { description: knowledgeOnly
     ? (!ids.length ? '本轮没有可用引用。只用kind=synthesis及segments，每段basis只能advice或uncertainty，citations必须是空数组[]。说明本次资料缺口，可给标明身份的一般建议；不能用evidence或编造默认引用编号，不能把未查到当作现实没有记录。'
       : '本轮资料结果用kind=synthesis回答当前问题，顶层仅kind和segments，每段basis/text/citations。查询回执不代替解释；不要输出kind=knowledge或顶层text/resultKey/selections。引用只选本轮citationId，服务端继续校验全部来源与正文。')
@@ -279,6 +292,8 @@ export function finalToolForMessages(messages:ModelMessage[], question = ''):Mod
  * has actually been read. Separate authorized writes/handoff retain their own
  * contracts. Exhaustion/disabled tools can only explain unavailability. */
 export function agentToolsForTurn(question: string, messages: ModelMessage[], tools: ModelTool[], triggerId: string): ModelTool[] {
+  if (currentMessageOnlyRequested(question)) return [currentMessageFinalTool];
+  if (independentAdviceRequested(question)) return [...needToolsForRetry(messages, tools).filter(tool => tool.name === 'search_knowledge'), finalToolForMessages(messages, question)];
   if (!knowledgeReadPending(question, messages, triggerId)) return [...needToolsForRetry(messages, tools), finalToolForMessages(messages, question)];
   if (tools.some(tool => tool.name === 'search_knowledge')) return needToolsForRetry(messages, tools)
     .filter(tool => ['search_knowledge', 'request_designer', 'record_reference_preference'].includes(tool.name)
@@ -517,7 +532,11 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
       await currentSynthesisContext(tx, lease.actor, context.conversation, lease.runId);
     }); };
     const callModel = async (turn: number, messages: ModelMessage[], tools: ModelTool[], purpose: 'answer' | 'vision' | 'summary' = 'answer'): Promise<ModelTurnOutput> => {
-          const focused = turn > 0 && purpose === 'answer' ? focusedSynthesisMessages(messages, String(initial.trigger.id)) : messages;
+          const messageScoped = purpose === 'answer' && currentMessageOnlyRequested(reviewContext.currentQuestion);
+          const adviceScoped = purpose === 'answer' && !messageScoped && independentAdviceRequested(reviewContext.currentQuestion);
+          const focused = messageScoped ? currentMessageView(messages, String(initial.trigger.id), reviewContext.currentQuestion)
+            : adviceScoped ? independentAdviceView(messages, String(initial.trigger.id), reviewContext.currentQuestion)
+            : turn > 0 && purpose === 'answer' ? focusedSynthesisMessages(messages, String(initial.trigger.id)) : messages;
           const dispatchTools = purpose === 'vision' ? [] : purpose === 'summary' ? tools : agentToolsForTurn(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), focused, tools, String(initial.trigger.id));
           const policyView=purpose==='answer'?projectSynthesisPolicy(focused):focused;
           const bounded = fitAgentContext(policyView, dispatchTools);
@@ -534,7 +553,9 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           }
           const beforeProviderCall = () => scoped(async tx => {
             await tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
-                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, promptVersion: agentPromptVersion, contextPolicy: focused === messages ? 'conversation' : 'current-turn-sources-v8', budget: bounded.diagnostic,
+                values(${lease.enterpriseId},${lease.runId},${sequence},'agent_model','running',${JSON.stringify({ turn, purpose, summaryRequestHash, promptVersion: agentPromptVersion, contextPolicy: messageScoped ? currentMessageScopeProtocol : adviceScoped ? independentAdviceContextProtocol : focused === messages ? 'conversation' : synthesisContextProjectionVersion, budget: bounded.diagnostic,
+                  currentMessageScope: messageScoped ? currentMessageScopeProtocol : null,
+                  independentAdviceContext: adviceScoped ? independentAdviceContextProtocol : null,
                   policyProjection:policyView===focused?null:modelPolicyProjectionVersion,
                   citationProtocol:purpose==='answer'?citationProtocolVersion:null,
                   repairProtocol: purpose === 'answer' ? synthesisRepairBase(focused) ? synthesisRepairProtocol : finalAnswerRepairBase(focused) ? finalAnswerRepairProtocol : null : null,
@@ -591,7 +612,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
     const initialTools = readToolsForContext(agentToolsForMessage(safeText(initial.trigger.content as Parameters<typeof safeText>[0]), initial.config.tools), readContext);
     if (!initial.resume && initial.savedSummary?.status === 'succeeded') {
       initial.messages = withHistorySummary(initial.messages, initial.savedSummary.private_checkpoint as HistorySnapshot);
-    } else if (!initial.resume && !initial.savedSummary && initial.config.tools && (!dependencies.model || dependencies.summary)
+    } else if (!initial.resume && !initial.savedSummary && initial.config.tools && !currentMessageOnlyRequested(reviewContext.currentQuestion) && !independentAdviceRequested(reviewContext.currentQuestion) && (!dependencies.model || dependencies.summary)
       && !initialTools.some(t => summaryWrites.includes(t.name))) {
       const bounded = fitAgentContext(projectSynthesisPolicy(initial.messages), [...initialTools, finalTool]);
       const first = bounded.messages.map(originalMessageId).find(Boolean);
@@ -628,7 +649,7 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
         }
       }
     }
-    const perception = initial.config.providerKey === 'deepseek' && (!dependencies.model || dependencies.vision) ? visionContext(initial.messages) : null;
+    const perception = !currentMessageOnlyRequested(reviewContext.currentQuestion) && initial.config.providerKey === 'deepseek' && (!dependencies.model || dependencies.vision) ? visionContext(initial.messages) : null;
     if (perception && !initial.resume) {
       await authorize();
       const observed = await callModel(-1, perception, [], 'vision');
@@ -708,6 +729,13 @@ export async function processAgentAnswer(lease: Lease, dependencies: {
           return resolveSynthesisRepair(raw, state.messages, evidence.sources, state.validationRepairs || 0);
         }),
         validateFinal:async(raw,turn)=>{
+          const messageIssue = currentMessageReplyFeedback(raw, reviewContext.currentQuestion);
+          if (messageIssue) {
+            await scoped(tx => tx.execute(sql`insert into app.assistant_run_steps(enterprise_id,run_id,step_seq,kind,status,input_summary)
+              values(${lease.enterpriseId},${lease.runId},${1300+turn},'agent_validation','failed',
+                ${JSON.stringify({ code: messageIssue.code, scope: currentMessageScopeProtocol, noBusinessTools: true })}::jsonb) on conflict do nothing`));
+            return messageIssue;
+          }
           let candidate:{kind?:string;text?:unknown;segments?:Array<{text?:unknown}>};try{candidate=JSON.parse(raw);}catch{return null;}
           const question = safeText(initial.trigger.content as Parameters<typeof safeText>[0]);
           const budgetIssue = currentBudgetRecallRequested(question) && await scoped(async (tx, context) => {

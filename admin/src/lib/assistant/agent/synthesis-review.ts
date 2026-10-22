@@ -1,12 +1,12 @@
 import type { SynthesisAnswer, SynthesisSource } from './synthesis';
 import { resolveCatalogCitation, sourceCitationCatalog } from './citation-catalog';
-import { originalAnswerOnly } from './read-tool-input';
+import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 
 export type ResponseReviewIssue = { segment: number; code: 'unscoped_measurement_gap' | 'repeated_known_need' | 'internal_wording'
   | 'reopened_unavailable_need' | 'unsolicited_unknown_plan' | 'unsupported_work_absence' | 'unscoped_work_readiness' | 'misattributed_shared_need'
   | 'misattributed_project_quantity' | 'misattributed_project_observation' | 'unsupported_evidence_mechanism'
   | 'contradictory_measurement_comparison' | 'unmeasured_compliance_claim' | 'misattributed_rule_comparison' | 'misattributed_project_status'
-  | 'source_answer_scope' | 'unsupported_source_condition' };
+  | 'source_answer_scope' | 'independent_advice_scope' | 'unsupported_source_condition' };
 export type SynthesisReviewContext = { currentQuestion?: string; currentOriginal?: { messageId: string; hash: string };
   currentNeeds?: { version: number; facts: Array<{ sourceMessageId: string; sourceHash: string; quote: string; value: string }> } };
 
@@ -332,11 +332,14 @@ export function reviewSynthesisResponse(answer: SynthesisAnswer, sources: Synthe
   };
   const issues: ResponseReviewIssue[] = [];
   const sourceOnly = originalAnswerOnly(context.currentQuestion || '');
+  const independentAdvice = independentAdviceRequested(context.currentQuestion || '');
   for (const [index, segment] of answer.segments.entries()) {
     const codes = new Set<ResponseReviewIssue['code']>();
     // Final validation receives canonical references; bounded repair can read
     // the original model catalog IDs. Resolve both through the same catalog.
     const citations = segment.citations.map(citation => resolveCatalogCitation(citation as unknown as Record<string, unknown>, sources) || citation);
+    if (independentAdvice && citations.some(c => !sources.some(s => s.sourceId === c.sourceId && s.kind === 'knowledge')))
+      codes.add('independent_advice_scope');
     if (sourceOnly) {
       if (segment.basis === 'advice' || citations.some(c => !sources.some(s => s.sourceId === c.sourceId && s.kind === 'knowledge')))
         codes.add('source_answer_scope');

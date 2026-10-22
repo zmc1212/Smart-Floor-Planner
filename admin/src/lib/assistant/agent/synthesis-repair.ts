@@ -102,7 +102,8 @@ export function synthesisRepairTool(messages: ModelMessage[], citationIds: strin
         segment: { type: 'integer', minimum: 0, maximum: base.original.segments.length - 1 },
         text: { type: 'string', minLength: 1, maxLength: 1200 }, basis,
         addCitationIds: { type: 'array', maxItems: 4, uniqueItems: true, items: id },
-        removeCitationIds: { type: 'array', maxItems: 4, uniqueItems: true, items: id }, remove: { type: 'boolean', enum: [true] },
+        removeCitationIds: { type: 'array', maxItems: 4, uniqueItems: true,
+          items: { type: 'string', enum: [...new Set(base.original.segments.flatMap(segment => segment.citations.map(c => c.citationId)))] } }, remove: { type: 'boolean', enum: [true] },
       } } },
       append: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['basis', 'text', 'citations'], properties: {
         basis, text: { type: 'string', minLength: 1, maxLength: 1200 },

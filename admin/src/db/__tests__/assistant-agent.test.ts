@@ -243,6 +243,30 @@ test('legacy desk position mixed read and final envelope retains the provider pa
   assert.equal(stored.toolCalls.length, 1); assert.equal(stored.providerOutput.toolCalls.length, 2); assert.match(JSON.stringify(stored.providerOutput), /premature-v95-unread-final/);
   assert.doesNotMatch(JSON.stringify((await new ConversationService(actor).messages(a.c)).items.filter(m => m.authorKind === 'assistant')), /premature-v95-unread-final/);
 });
+test('explicit designer request declining only a summary enters waiting once without an Agent dispatch', async () => {
+  const chat = new ConversationService(actor), c = String((await chat.create(randomUUID())).id), requestKey = randomUUID();
+  const content = { version: 1 as const, blocks: [{ type: 'text' as const, text: '请找设计师接着聊，不用先做摘要。' }] };
+  const sent = await chat.send(c, requestKey, content);
+  assert.equal(sent.runId, null);
+  assert.equal(sent.status, 'succeeded');
+  assert.deepEqual(await chat.send(c, requestKey, content), sent);
+  assert.equal((await chat.detail(c)).mode, 'handoff_requested');
+  const history = await chat.messages(c);
+  assert.equal(history.items.filter(m => m.authorKind === 'system' && JSON.stringify(m.content).includes('等待企业接待团队')).length, 1);
+  assert.match(JSON.stringify(history.items), /等待企业接待团队/);
+  await withTenantTransaction(actor.enterpriseId, async tx => {
+    const stored = await one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${actor.enterpriseId} and id=${c}`);
+    assert.deepEqual(readMemory(stored!.entry_snapshot), { version: 0, facts: [] });
+    assert.equal((await one(tx, sql`select count(*)::int n from app.assistant_runs where enterprise_id=${actor.enterpriseId} and conversation_id=${c}`))!.n, 0);
+    const handoff = (stored!.entry_snapshot as { handoff: { contactConsent: boolean; phone: string } }).handoff;
+    assert.equal(handoff.contactConsent, false);
+    assert.equal(handoff.phone, '');
+  });
+  await assert.rejects(new ConversationService(stranger).detail(c), /assistant_resource_not_found/);
+  await new HandoffService(actor).customerWrite(c, randomUUID(), { action: 'cancel' });
+  assert.equal((await chat.detail(c)).mode, 'ai');
+});
+
 test('natural conversation persists/reenters without knowledge and includes both sides of history', async () => {
   const a = await start(); await processAgentAnswer(a.lease, { model: async () => response() });
   assert.equal((await a.chat.run(String(a.sent.runId))).status, 'succeeded');

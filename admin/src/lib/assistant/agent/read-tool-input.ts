@@ -7,7 +7,7 @@ import { originalMessageId } from './context-budget';
 import { explicitNeedWriteStatement } from './memory';
 
 export const sourceReadProtocol = 'original-source-read-v1';
-export const sourceAnswerProtocol = 'original-answer-scope-v1';
+export const sourceAnswerProtocol = 'question-source-scope-v2';
 /** Select an existing read contract, never a document, query or answer. Only
  * the actual current request is inspected; quoted history/tool data cannot
  * establish an executed read. Authorization remains with the existing port. */
@@ -28,6 +28,19 @@ export function knowledgeOriginalRequested(question: string): boolean {
 export function originalAnswerOnly(question: string): boolean {
   return knowledgeOriginalRequested(question) && !explicitNeedWriteStatement(question) && !explicitHumanHandoffRequested(question)
     && !/(?:结合|针对)(?:我|本|当前|现有|这个)|(?:另外|此外|顺便|也请|同时|再给)[^。；\n]{0,40}(?:建议|取舍|现场|我家|项目)|(?:一般|通用)(?:的|选择)?建议/.test(question);
+}
+
+/** Explicit standalone advice does not ask to apply the customer's stored
+ * project/history. This is a bounded source scope, not an entailment detector:
+ * mixed requests and explicit factual premises retain the full contract. */
+export function independentAdviceRequested(question: string): boolean {
+  if (explicitNeedWriteStatement(question) || explicitHumanHandoffRequested(question) || knowledgeOriginalRequested(question)) return false;
+  if (!/(?:一般|通用)(?:的|选择)?建议/.test(question) || !/(?:独立问题|独立提问|单独问|不结合(?:我|本)|不针对(?:我|本))/.test(question)) return false;
+  const remaining = question.replace(/不(?:结合|针对)(?:我家|我的项目|本人项目|本项目|我|本人)/g, '');
+  // Do not discard a supplied premise, current fact, requested recall or
+  // hypothetical comparison merely because the turn also says "independent".
+  return !/结合|针对|根据|基于|考虑到|如果|假如|假设|我家|我的|本人|本项目|现场|当前需求|之前|原话|原记录|请记|更正|改为/.test(
+    remaining.replace(/不(?:新增|修改|变更)(?:(?:或|和)(?:新增|修改|变更))?(?:我(?:的)?)?需求/g, ''));
 }
 
 /** Share the existing current-turn handoff gate with answer-scope projection.

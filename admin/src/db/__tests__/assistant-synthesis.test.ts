@@ -19,7 +19,10 @@ import type { ModelTurnOutput, ModelMessage } from '@/lib/assistant/contracts/mo
 import { agentMessageAvailable } from '@/lib/assistant/agent/media-context';
 import { synthesisRepairBase } from '@/lib/assistant/agent/synthesis-repair';
 import { synthesisRepairProjectionVersion, synthesisRepairTask } from '@/lib/assistant/agent/synthesis';
-import { readToolInputProtocol, readToolContext } from '@/lib/assistant/agent/read-tool-input';
+import { readToolInputProtocol, readToolContext, sourceAnswerProtocol } from '@/lib/assistant/agent/read-tool-input';
+import { currentMessageScopeProtocol } from '@/lib/assistant/agent/current-message-scope';
+import { independentAdviceContextProtocol } from '@/lib/assistant/agent/independent-advice-context';
+import { readMemory } from '@/lib/assistant/agent/memory';
 
 const prefix = 'synthetic-synthesis-' + randomUUID(), tenants: string[] = [], users: string[] = [];
 let eid: string, ownerId: string, knowledge: KnowledgeService;
@@ -74,6 +77,110 @@ async function fixture(targetEid = eid, bound = true) {
   return { actor, chat, cid, send, leadId, uid };
 }
 
+test('current-message scope preserves real memory and reentry while dispatching only the exact current original', async () => {
+  const x = await fixture(eid, false), quote = '请记下：书房需要收纳。';
+  const saved = await x.send(quote, async () => call('record_need', { room: '书房', field: 'storage', value: '需要收纳', quote, additionalNeeds: [] }));
+  assert.equal(saved.run.status, 'succeeded', JSON.stringify(saved.run));
+  const memory = () => withTenantTransaction(eid, async tx => readMemory((await one(tx, sql`select entry_snapshot from app.assistant_conversations where enterprise_id=${eid} and id=${x.cid}`))?.entry_snapshot));
+  const beforeMemory = await memory();
+  assert.ok(beforeMemory.facts.some(fact => fact.value === '需要收纳'), 'verify the real persisted agentMemory rather than a missing JSON key');
+  const question = '我睡前读的是纸质书，手机不是睡前最常用的东西。请只回应我这一段的意思，用一两句就好；这轮不保存新需求，也不查询资料或工地。';
+  const requestKey = randomUUID(), content = { version: 1 as const, blocks: [{ type: 'text' as const, text: question }] };
+  const sent = await x.chat.send(x.cid, requestKey, content), lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
+  let calls = 0;
+  await processAgentAnswer(lease, { model: async (messages, tools, _turn, dispatched) => {
+    calls++; assert.deepEqual(tools, []); assert.deepEqual(dispatched!.map(t => t.name), ['final_response']);
+    assert.deepEqual(messages.flatMap(m => m.role === 'user' ? m.content.flatMap(p => p.type === 'text' ? [p.text] : []) : []), [question]);
+    assert.doesNotMatch(JSON.stringify(messages), /书房需要收纳|本次实际保存|memoryVersion|H\d+|query_materials/);
+    return call('final_response', { kind: 'general', text: '你睡前读的是纸质书，谈的是阅读习惯。' });
+  } });
+  const run = await x.chat.run(lease.runId); assert.equal(run.status, 'succeeded', JSON.stringify(run)); assert.equal(calls, 1);
+  assert.deepEqual(await memory(), beforeMemory);
+  assert.equal((await x.chat.send(x.cid, requestKey, content)).runId, sent.runId);
+  const reentry = await new ConversationService(x.actor).messages(x.cid);
+  assert.ok(reentry.items.find(m => m.id === run.outputMessageId)?.available);
+  assert.ok(reentry.items.some(m => JSON.stringify(m.content).includes(quote)));
+  const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,capability_name,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${lease.runId}`));
+  assert.equal(steps.filter(s => ['agent_tool','agent_need_write','agent_summary_context'].includes(String(s.kind))).length, 0);
+  assert.equal((steps.find(s => s.kind === 'agent_model')!.input_summary as Row).currentMessageScope, currentMessageScopeProtocol);
+  for (const foreign of [await fixture(eid, false), await fixture(tenants[1], false)]) await assert.rejects(foreign.chat.messages(x.cid), /assistant_resource_not_found/);
+  const recalled = await x.send('只回顾聊天原话，书房原来说了什么？', async (messages, tools, turn) => {
+    assert.ok(tools.some(t => t.name === 'recall_history'));
+    if (!turn) return call('recall_history', { query: '书房收纳' });
+    assert.ok(JSON.stringify(messages).includes(quote));
+    return call('final_response', { kind: 'general', text: '你之前说书房需要收纳。' });
+  });
+  assert.equal(recalled.run.status, 'succeeded', JSON.stringify(recalled.run));
+});
+
+test('current-message scope rejects unadvertised read and save calls before either port executes', async () => {
+  for (const name of ['query_materials', 'record_need']) {
+    const x = await fixture(eid, false);
+    const result = await x.send('我睡前读纸质书。请只回应我这一段的意思，不保存，也不查询资料或工地。', async () => call(name,
+      name === 'query_materials' ? { leadId: 1398, room: '卧室' } : { room: '卧室', field: 'use', value: '读纸质书', quote: '我睡前读纸质书。', additionalNeeds: [] }));
+    assert.equal(result.run.status, 'failed'); assert.equal(result.run.errorCode, 'assistant_capability_forbidden');
+    const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,private_checkpoint from app.assistant_run_steps where enterprise_id=${eid} and run_id=${result.runId}`));
+    assert.equal(steps.filter(s => ['agent_tool','agent_need_write'].includes(String(s.kind))).length, 0);
+    assert.ok(JSON.stringify(steps.find(s => s.kind === 'agent_model')!.private_checkpoint).includes(name), 'raw rejected provider output is retained');
+    const usage = await withTenantTransaction(eid, tx => rows(tx, sql`select category from app.assistant_usage_records where enterprise_id=${eid} and run_id=${result.runId}`));
+    assert.equal(usage.filter(u => u.category === 'tokens').length, 1);
+  }
+});
+
+test('current-message scope repairs a forged source envelope once without reads or new writes', async () => {
+  const x = await fixture(eid, false); let calls = 0;
+  const result = await x.send('我只是临时在餐桌拆快递，用完就收。请只回应我这一段的意思，不保存，也不查询资料或工地。', async (_messages, tools, turn, dispatched) => {
+    calls++; assert.deepEqual(tools, []); assert.deepEqual(dispatched!.map(t => t.name), ['final_response']);
+    return turn ? call('final_response', { kind: 'general', text: '你说的是用完就收的临时用途，没有决定长期改变餐桌用途。' })
+      : synth([{ basis: 'advice', text: '未交付的错误格式', citations: [] }]);
+  });
+  assert.equal(result.run.status, 'succeeded', JSON.stringify(result.run)); assert.equal(calls, 2);
+  const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${result.runId}`));
+  assert.equal(steps.filter(s => s.kind === 'agent_validation' && (s.input_summary as Row).scope === currentMessageScopeProtocol).length, 1);
+  assert.equal(steps.filter(s => ['agent_tool','agent_need_write'].includes(String(s.kind))).length, 0);
+});
+
+test('independent advice narrows the entire task, repairs once and preserves real writes, reentry, idempotency and revocation', async () => {
+  const x = await fixture(eid, false), quote = '请记下：书房需要收纳。';
+  const saved = await x.send(quote, async (_m, _t, turn) => !turn
+    ? call('record_need', { room: '书房', field: 'storage', value: '需要收纳', quote })
+    : call('final_response', { kind: 'general', text: '已记录书房收纳需求。' }));
+  assert.equal(saved.run.status, 'succeeded', JSON.stringify(saved.run));
+  const original = await withTenantTransaction(eid, tx => one(tx, sql`select trigger_message_id::text id from app.assistant_runs where enterprise_id=${eid} and id=${saved.runId}`));
+  const question = '关于书房柔和照明，请给一个一般选择建议。这是独立问题，不新增或修改我的需求。';
+  const text = '可先比较光线方向与屏幕反光，选择使用时舒适的布置。';
+  const forbidden = await x.send(question, async () => call('recall_history', { query: '书房收纳' }));
+  assert.equal(forbidden.run.status, 'failed'); assert.equal(forbidden.run.errorCode, 'assistant_capability_forbidden');
+  const forbiddenReads = await withTenantTransaction(eid, tx => rows(tx, sql`select id from app.assistant_run_steps where enterprise_id=${eid} and run_id=${forbidden.runId} and kind='agent_history_context'`));
+  assert.deepEqual(forbiddenReads, [], 'a provider cannot expand the scoped read capabilities');
+  const requestKey = randomUUID(), content = { version: 1 as const, blocks: [{ type: 'text' as const, text: question }] };
+  const sent = await x.chat.send(x.cid, requestKey, content), lease = await claimJob(); assert.ok(lease); assert.equal(lease.runId, sent.runId);
+  let calls = 0;
+  await processAgentAnswer(lease, { model: async (messages, _tools, turn, dispatch) => {
+    calls++;
+    assert.ok(dispatch?.every(tool => ['search_knowledge', 'final_response'].includes(tool.name)));
+    assert.doesNotMatch(JSON.stringify(messages), /已记录书房收纳需求|请记下：书房需要收纳/);
+    if (!turn) return call('search_knowledge', { query: office });
+    assert.ok(results(messages).every(source => source.kind === 'knowledge'));
+    assert.ok(results(messages).some(source => source.text === office), 'the numeric-repair case requires the actual published original, not an assumed nonempty retrieval');
+    if (turn === 1) return synth([{ basis: 'advice', text: '建议选3000K光源。', citations: [] }]);
+    const base = synthesisRepairBase(messages); assert.ok(base);
+    return call('final_response', { kind: 'synthesis_repair', baseHash: base.baseHash, edits: [{ segment: 0, text }] });
+  } });
+  const run = await x.chat.run(lease.runId); assert.equal(run.status, 'succeeded', JSON.stringify(run)); assert.equal(calls, 3);
+  assert.equal((await x.chat.send(x.cid, requestKey, content)).runId, sent.runId);
+  const message = (await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === run.outputMessageId)!;
+  assert.ok(message.available); assert.match(JSON.stringify(message.content), /一般建议/); assert.doesNotMatch(JSON.stringify(message.content), /本轮依据|需要收纳/);
+  const steps = await withTenantTransaction(eid, tx => rows(tx, sql`select kind,source_refs,private_checkpoint,input_summary from app.assistant_run_steps where enterprise_id=${eid} and run_id=${lease.runId}`));
+  assert.equal(steps.filter(s => s.kind === 'agent_validation').length, 1);
+  assert.equal(steps.filter(s => s.kind === 'agent_need_write').length, 0);
+  assert.equal(steps.filter(s => s.kind === 'agent_history_context').length, 0);
+  assert.ok(steps.filter(s => s.kind === 'agent_model').every(s => (s.input_summary as Row).contextPolicy === independentAdviceContextProtocol));
+  for (const foreign of [await fixture(eid, false), await fixture(tenants[1], false)]) await assert.rejects(foreign.chat.messages(x.cid), /assistant_resource_not_found/);
+  await withTenantTransaction(eid, tx => tx.execute(sql`update app.assistant_messages set content='{"version":1,"blocks":[{"type":"text","text":"合成原话撤回"}]}'::jsonb where enterprise_id=${eid} and id=${String(original!.id)}`));
+  assert.equal((await new ConversationService(x.actor).messages(x.cid)).items.find(m => m.id === message.id)?.available, false);
+});
+
 test('material numeric repair preserves real need receipts, cited originals, one-repair limits and revocation', async () => {
   const x = await fixture();
   const saved = await x.send('请记录预算18万元。', async (_m, _t, turn) => !turn
@@ -114,8 +221,10 @@ test('material numeric repair preserves real need receipts, cited originals, one
       if (turn === 1) assert.deepEqual((dispatch?.find(tool => tool.name === 'final_response')!.parameters.properties as Row).kind,
         { type: 'string', enum: ['synthesis'] });
       const all = results(messages), scope = all.find(s => s.title === '本次材料查询范围与缺项') || all[0]; assert.ok(scope);
-      const budget = all.find(s => s.text.includes('预算18万元')); assert.ok(budget);
-      const plan = all.find(s => s.text.includes('合成主正式v4户型')); assert.ok(plan);
+      const budget = all.find(s => s.text.includes('预算18万元'));
+      const plan = all.find(s => s.text.includes('合成主正式v4户型'));
+      if (mode === 'advice') assert.ok(all.every(source => source.kind === 'knowledge'));
+      else { assert.ok(budget); assert.ok(plan); }
       if (turn === 1) return synth([{ basis: mode === 'advice' ? 'advice' : 'evidence',
         text: mode === 'advice' ? '书房主灯可选3000K色温，配合可调光台灯。' : '现有资料包含正式v4户型和预算意向18万元；这次不能据此核实现场尺寸。',
         citations: mode === 'advice' ? [] : [{ citationId: scope.citationOptions[0].citationId }] }]);
@@ -127,7 +236,7 @@ test('material numeric repair preserves real need receipts, cited originals, one
       if (mode === 'ignored') return call('final_response', { kind: 'synthesis_repair', baseHash, edits: [{ segment: 0, basis: 'uncertainty' }] });
       return call('final_response', { kind: 'synthesis_repair', baseHash, edits: [mode === 'advice'
         ? { segment: 0, text: '可用均匀的基础照明搭配可调台灯，选择防眩光灯具，阅读时避开直射。' }
-        : { segment: 0, addCitationIds: [budget.citationOptions[0].citationId, plan.citationOptions[0].citationId] }] });
+        : { segment: 0, addCitationIds: [budget!.citationOptions[0].citationId, plan!.citationOptions[0].citationId] }] });
       } catch (error) { console.error('material numeric injected callback', mode, turn, error); throw error; }
     });
     assert.equal(calls, 3);
@@ -241,7 +350,7 @@ test('original answer scope rejects retained unsupported conditions and uses one
     assert.equal(steps.filter(s => s.kind === 'agent_validation').length, 1);
     assert.equal(steps.filter(s => s.kind === 'retrieval').length, 1);
     assert.equal(steps.filter(s => s.kind === 'agent_need_write').length, 0);
-    assert.ok(steps.filter(s => s.kind === 'agent_model').every(s => (s.input_summary as Row).sourceAnswerProtocol === 'original-answer-scope-v1'));
+    assert.ok(steps.filter(s => s.kind === 'agent_model').every(s => (s.input_summary as Row).sourceAnswerProtocol === sourceAnswerProtocol));
   }
   const other = await fixture(eid, false), cross = await fixture(tenants[1], false);
   for (const foreign of [other, cross]) {

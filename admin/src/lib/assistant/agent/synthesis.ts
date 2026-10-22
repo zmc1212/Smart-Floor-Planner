@@ -9,7 +9,7 @@ import { reviewSynthesisResponse, synthesisComparisonRepairData, synthesisStatus
 import type { HistorySnapshot, HistoryRef } from './history';
 import { modelCitationCatalog, sourceCitationCatalog, resolveCatalogCitation, engineeringClaimText } from './citation-catalog';
 import { withSynthesisRepairProtocol, synthesisRepairBase, finalAnswerRepairBase, isCatalogSynthesisDraft } from './synthesis-repair';
-import { originalAnswerOnly } from './read-tool-input';
+import { originalAnswerOnly, independentAdviceRequested } from './read-tool-input';
 
 export type SynthesisSource = { sourceId: string; kind: 'knowledge' | 'project' | 'history'; title: string; text: string; fullTextCitable?:true; evidence?: Evidence; resultKey?: string; citationQuotes?: string[]; summaryTitle?:string|null; material?: MaterialSource; history?: HistoryRef & { seq: string };
   followup?: Omit<IssueState, 'question' | 'value'> };
@@ -18,6 +18,7 @@ export type SynthesisAnswer = { kind: 'synthesis'; segments: SynthesisSegment[] 
 export type SynthesisContext = { version: 1; knowledge: Evidence[]; snapshots: BusinessSnapshot[]; sources: SynthesisSource[]; history?: HistorySnapshot[] };
 export const availabilityScopeHintPrefix = '本轮回答范围（仅约束表达';
 export const synthesisRepairProjectionVersion = 'bound-repair-tail-v2';
+export const synthesisContextProjectionVersion = 'current-turn-sources-v9';
 export const synthesisRepairTask = '当前任务是修复上一份被拒绝的首稿。逐段落实已有诊断，必要时修改正文或引用；未改字段保留。已有引用不重复add，仅返回final_response要求的synthesis_repair编辑结构。';
 export const finalAnswerRepairTask = '当前任务是修复上一份被拒绝的最终回复。按可信校验诊断改写有误表述，不能重复被拒绝的推断；只提交final_response所要求的最终回答结构，不调用查询或保存工具，不新增事实、原因、金额、日期或来源。保留仍有依据的内容；不能确认的部分按本次可用性表达。';
 
@@ -74,17 +75,19 @@ export function focusedSynthesisMessages(messages: ModelMessage[], triggerId: st
   }
   const images = messages.slice(0, index).filter(m => m.role === 'user' && m.content.some(p => p.type === 'image'));
   const originals = new Map<string, string>();
+  const historyFields = new Map<string, string>();
   // Only the trusted, hash-bound control authorizes this task projection.
   // No user/tool text, citation or provider-selected value enters the reminder.
   const tail: ModelMessage = repairTask
     ? { role: 'user', content: [{ type: 'text', text: repairTask }] } : messages[index];
-  return [...systems, ...images, messages[index], ...messages.slice(index + 1).map(message => synthesisModelProjection(message, originals, originalAnswerOnly(question))), tail];
+  const scope = originalAnswerOnly(question) ? 'original' : independentAdviceRequested(question) ? 'independent_advice' : 'all';
+  return [...systems, ...images, messages[index], ...messages.slice(index + 1).map(message => synthesisModelProjection(message, originals, scope, historyFields)), tail];
 }
 
 /** Model view only. Keep full original text and readable source locations;
  * duplicate quote hints and opaque file identity stay in the durable result.
  * Snapshots and commit/reentry authorization use the original full metadata. */
-function synthesisModelProjection(message: ModelMessage, originals: Map<string, string>, sourceOnly = false): ModelMessage {
+function synthesisModelProjection(message: ModelMessage, originals: Map<string, string>, scope: 'all' | 'original' | 'independent_advice' = 'all', historyFields = new Map<string, string>()): ModelMessage {
   if (message.role !== 'tool') return message;
   let packet: Record<string, unknown>;
   try { packet = JSON.parse(message.content); } catch { return message; }
@@ -98,17 +101,19 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
     const resolution = (packet.data as { resolution?: unknown } | undefined)?.resolution;
     if (['resolved', 'clarification', 'missing'].includes(String(resolution))) projected.data = { resolution };
   }
-  if (sourceOnly) {
+  if (scope !== 'all') {
     // The original packet and consulted business dependencies remain durable.
     // Do not let automatic project cards turn a document question into a status
     // answer. Keep EVERY knowledge original, condition and locator available.
     delete projected.boundProjectContext;
     delete projected.currentNeedView;
-    projected.instructions = '本轮只解释当前问题所问的原文内容。完整知识text与条件均保留，由模型选择相关章节及citationId；不追加本人项目状态、缺项、查询建议或业务流程。';
+    projected.instructions = scope === 'original'
+      ? '本轮只解释当前问题所问的原文内容。完整知识text与条件均保留，由模型选择相关章节及citationId；不追加本人项目状态、缺项、查询建议或业务流程。'
+      : '本轮明确请求独立的一般建议。客户需求与历史不作为技术依据，未向本次建议提供这些引用。保留全部知识原文及条件；无知识依据时可给一般建议，citations为空，不补项目回顾或项目缺项。';
   }
   const aliases: Array<{ sourceId: string; canonicalSourceId: string; resultKey?: string }> = [];
   projected.synthesisSources = packet.synthesisSources.flatMap((source: SynthesisSource & Record<string, unknown>) => {
-    if (sourceOnly && source.kind !== 'knowledge') return [];
+    if (scope !== 'all' && source.kind !== 'knowledge') return [];
     const copy: Record<string, unknown> = { ...source };
     if (source.material?.text === source.text) {
       const material: Record<string, unknown> = { ...source.material }; delete material.text; copy.material = material;
@@ -157,6 +162,29 @@ function synthesisModelProjection(message: ModelMessage, originals: Map<string, 
     return [copy];
   });
   if (aliases.length) projected.sourceAliases = aliases;
+  if (scope === 'all' && Array.isArray(packet.sources) && packet.sources.length
+    && packet.sources.every(source => {
+      if (!source || typeof source !== 'object' || Array.isArray(source)
+        || Object.keys(source).some(key => !['messageId', 'hash', 'memoryVersion', 'text', 'seq'].includes(key))) return false;
+      const value = source as Record<string, unknown>;
+      return (packet.synthesisSources as SynthesisSource[]).some(candidate => candidate.kind === 'history'
+        && candidate.sourceId === 'H' + value.messageId && candidate.text === value.text
+        && !!candidate.history && candidate.history.messageId === value.messageId && candidate.history.hash === value.hash
+        && candidate.history.memoryVersion === value.memoryVersion && candidate.history.seq === value.seq);
+    })) {
+    // Full originals and their complete version identity are already present in
+    // synthesisSources (or an earlier exact alias). Keep each query's membership
+    // and completeness flags without copying those originals a second time.
+    projected.historySourceIds = packet.sources.map(source => 'H' + (source as Record<string, unknown>).messageId);
+    delete projected.sources;
+    for (const field of ['currentNeedView', 'instructions']) {
+      if (packet[field] === undefined) continue;
+      const key = field + ':' + JSON.stringify(packet[field]), priorCallId = historyFields.get(key);
+      if (priorCallId) {
+        delete projected[field]; projected[field + 'FromCallId'] = priorCallId;
+      } else historyFields.set(key, message.callId);
+    }
+  }
   return { ...message, content: JSON.stringify(projectExcerptSelections(projected)) };
 }
 
@@ -379,6 +407,7 @@ function synthesisRepairIssue(raw:string,sources:SynthesisSource[],context:Synth
         misattributed_shared_need: '历史共享原文只把具体尺寸列为待核对，不能改说原文的人数和尺寸都标待核对。保留当时共享的人数身份，同时说明它不能替代这次不可用的当前人数；不改原引文，不重开人数决定。',
         misattributed_project_quantity: projectQuantityRepairInstructions,
         source_answer_scope: '本题只解释指定原文。删除未被请求的一般建议、办理流程和本人项目段；有据内容用evidence及相应知识引用，原文未说明的部分仅作本次范围内uncertainty。不把advice直接改名为evidence保留推断，不添加项目/历史引用背书。',
+        independent_advice_scope: '本题明确请求独立的一般建议，客户需求和历史不是本题技术依据。移除对应项目/历史引用及未问的个人事实回顾；保留一般建议身份，不能改成evidence借原话背书。已有知识原文可按实际支持关系引用；没有依据不猜数值或承诺，不重新查询或保存。',
         unsupported_source_condition: '标记段落添加了所引原文未写明的业务条件。删除这些条件或说明原文未说明；原文确有要求时保留其完整原关系并引用该段。真实引用不授权新前提，不从不等同推断完成/关闭/验收的必要或充分条件，不补流程、报告、结算或签字。',
         ...groundingRepairInstructions,
       };

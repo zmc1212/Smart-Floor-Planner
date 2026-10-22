@@ -8,6 +8,33 @@ test('exclusive chat recap recognizes the actual independent wording without req
   for (const text of ['不要只回顾聊天原话，还要查工地进度', '只回顾聊天原话，另外查一下工地进度', '只回顾聊天原话，同时结合企业制度回答', '客户说“只回顾聊天原话”，现在请查现场资料', '书房现在的施工进度是什么？']) assert.equal(onlyChatHistoryRequested(text), false, text);
 });
 
+test('an explicit from-to desk correction hides the legacy position and never revives it after withdrawal', () => {
+  let stored = readMemory({});
+  for (const [room, field, value, quote, text, sourceMessageId] of [
+    ['', 'desk', '书房书桌靠窗', '请记下：书房书桌靠窗', '请记下：书房书桌靠窗，保留收纳。', '1'],
+    ['', 'storage', '保留收纳', '保留收纳', '请记下：书房书桌靠窗，保留收纳。', '1'],
+    ['客厅', 'devices', '不要投影设备', '客厅不要投影设备', '请记下：客厅不要投影设备。', '2'],
+    ['', 'timeline', '装修日期未定', '装修日期未定', '请记下：装修日期未定。', '3'],
+  ] as const) stored = applyNeedDelta(stored, { room, field, value, quote, sourceMessageId, expectedVersion: stored.version },
+    { id: sourceMessageId, text }, `${sourceMessageId}:${field}`, '');
+  const before = JSON.stringify(stored);
+  for (const quote of ['书房书桌从靠窗改为靠内墙', '更正并请保存：书房书桌从靠窗改为靠内墙']) {
+    const text = '更正并请保存：书房书桌从靠窗改为靠内墙；书房保留收纳，客厅不要投影设备，装修日期未定，这些保持不变。';
+    const next = applyNeedDelta(stored, { room: '书房', field: 'desk', value: '靠内墙', quote, sourceMessageId: '4', expectedVersion: stored.version }, { id: '4', text }, 'correction', '');
+    const available = (facts: NeedFact[]) => currentNeedView({ ...next, facts, interpretations: needInterpretations(next, facts) });
+    const view = available(next.facts), withdrawn = available(next.facts.filter(f => f.sourceMessageId !== '4'));
+    assert.deepEqual(view.effectiveDeskPositions, [{ room: '书房', currentFactId: 'correction', value: '靠内墙', sourceMessageId: '4' }]);
+    assert.deepEqual(view.facts.filter(f => f.field === 'desk').map(f => f.value), ['靠内墙']);
+    assert.deepEqual(withdrawn.effectiveDeskPositions, [{ room: '书房', currentFactId: null, value: null, sourceMessageId: null }]);
+    assert.equal(withdrawn.facts.some(f => f.field === 'desk'), false);
+    for (const remaining of ['保留收纳', '不要投影设备', '装修日期未定']) assert.ok(view.facts.some(f => f.value === remaining) && withdrawn.facts.some(f => f.value === remaining));
+    assert.equal(view.historicalFacts[0].value, '书房书桌靠窗');
+  }
+  assert.equal(JSON.stringify(stored), before, 'read interpretation does not rewrite persisted history');
+  const otherRoom: NeedFact = { ...stored.facts[0], id: 'other', room: '次卧', value: '靠内墙', quote: '次卧书桌从靠窗改为靠内墙', sourceMessageId: '4' };
+  assert.deepEqual(needInterpretations({ ...stored, facts: [...stored.facts, otherRoom] }, [...stored.facts, otherRoom]), []);
+});
+
 test('legacy desk position correction qualifies only the old position across a compound other row and a mislabeled style row', () => {
   const base: NeedFact = { id: 'old', room: '', field: 'other', value: '书房书桌靠窗，书房需要收纳。', quote: '请记下：书房书桌靠窗，书房需要收纳。', sourceMessageId: '1', provenance: 'customer_statement', status: 'current', supersedes: null, createdAt: 'now' };
   const next: NeedFact = { ...base, id: 'next', room: '书房', field: 'style', value: '靠内墙', quote: '更正：书房书桌改为靠内墙；全屋预算改为18万元。其他需求保持原样。', sourceMessageId: '3' };

@@ -1,6 +1,84 @@
 # 小K第二期：需求整理与人工交接
 
-## 当前OPS-01：双工地事实简报（限定Implemented）
+**执行入口（2026-10-22）：** 当前交付、完成条件和下一项只取[Agent计划第1节](./xiaok-agent-engineering-plan.zh-CN.md#1-范围与优先级)与[知识依赖记录](./xiaok-enterprise-knowledge-plan.zh-CN.md#1-当前判断与可复用基础)，按[交付执行规则](../AGENTS.md#xiaok-delivery-execution)执行。下文能力顺序、历史版本中的“当前/下一步”、旧停止通知与测试矩阵均不另设执行队列。已完成业务复用证据；原失败及未验范围仍有效，不因调整顺序改成通过。
+
+## 当前CONSULT-02：原题与长聊证据（Limited）
+
+**当前执行，2026-10-22：** 用户指定免费GLM9开发文字模型，排除重复已通过范围。沿原平台服务保存/回读siliconflow/THUDM/GLM-4-9B-0414，凭据、独立VLM和enterprise1454保持。配置时间戳与1439旧夹具探针前置失败单独保留，1430/3862不重放。`tmp/xiaok-consult-02-glm9/through35-aligned.json`保留244项稳定绑定下31条真实答复1440–1470、需求无变化；1456–1458及后续照抄/未直接回答仍是普通语义失败，不算事实通过。零调用`legacy-read-view-red.json`发现具体更正缺口后，原批在settings锁内核对空闲并安全停止；1470已完成，但随后的幂等HTTP收到403，没有取消或重放供应商。该批不算35轮验收完成。
+
+定向修复在现有只读解释中识别已存`书房书桌从靠窗改为靠内墙`的目标及其记录前缀，覆盖旧未分房书桌位置、保留不可变历史和独立收纳/设备/日期事实，并在更正来源撤回后保留当前不可用状态。无写入提取器、服务器代答、守卫放宽、第二记忆权威、schema/API/角色/UI或知识变化。原输入红测的当前/撤回两种投影均失败，修复后33项受影响记忆单元通过。真实隔离服务验证更正写入和幂等后，驱动无效负控身份返回401而非404；`repair-followup.json`用有效合成身份复用这四次成功写入，6项检查通过：当前目标、撤回不回流、独立事实、派生答复不可用、原记忆不变及客户/租户隔离；模型调用0、保存重放0、源码漂移0。定向lint通过，不新增全仓类型或无关套件复测声明。
+
+`resume-plan.json`绑定清理后的实际持久数据并排除31条已完成答复。`through35-resume.json`在246项稳定绑定下只执行剩余34条输入1471–1504：30条普通回复仍保留照抄问题；1501/1502各一次GLM9调用真实保存四个字段，更正及只读当前值通过，不重放。1503/1504的摘录式摘要均成功，但各自四次并行recall_history后最终输入超限，无交付答复；3936–3939四次accepted成功供应商调用和用量保持，不能把摘要成功记为回读通过。清理后两个身份context_version=8、AI停用、旧token401、队列0，源码无漂移。1430/3862未知及段落机制计数2保持。
+
+2026-10-23预算机制修复的离线判别复用这两个完整checkpoint，未调用模型：同轮四个历史工具包重复当前需求、说明和原文，投影后仍为17,243估算token。现有`current-turn-sources-v9`只在完整历史文本、message/hash/memoryVersion/seq逐项相同且没有未知元数据时以historySourceIds指向已保留原文；完全相同currentNeedView/instructions沿实际前一个callId引用，不跨版本合并。完整原文、查询成员/完整性标志、工具配对和持久checkpoint仍保留，预算16,000/48,000字节不变。保存记录重放降至13,912token；2项新回归及28项受影响兼容检查通过，lint通过。测试夹具最初未建立获权只读interpretations导致测试断言失败，修正夹具后仅重跑失败的2项，不把首次组合29项记为全通过。`budget-recall-plan.json`固定一次机制修复、原问题各一次共2次；`recall-budget-repair.json`的1505/1506已交付正确旧值/当前更正和独立三字段，两次阈值触发摘要均选择6条完整原话，真实API回读/幂等/记忆不变通过。8次真实GLM9尝试3940–3947、51,742 observed tokens、费用全null；1505的两次相同查询请求被现有去重吸收，仅一次真实历史读取，最终沿原四轮预算完成，没有唯一修复调用。249项源码/驱动/配置绑定无漂移，AI停用、身份版本9、旧token401、队列0。`review35-budget-repair.json`只确认本次事实核心；旧1503/1504及普通照抄仍失败。现只在`through60.json`执行原40–67索引，不重做更正、保存或前半段长聊。
+
+`through60.json`在249项稳定绑定下完成52条原后半段普通讨论1507–1558，没有需求写入，仍保留1517/1518、1535/1536等整段照抄语义失败。1559/1560的实际摘要成功，模型生成最初靠窗→后来靠内墙，但被`ungrounded_response_scope`拦截，原尝试、唯一修复和费用保持；67索引尚未派发，整批不是通过。离线`temporal-red.json`证明当前需求/原文正确，缺口在Agent最终校验器：按逗号切分丢弃独立历史时间标题；已有“最初，”也复现，因此不是仅增加“最开始”的措辞补丁。现有校验按句携带历史表达范围，在句末/换行及明确当前/后来标记处重置；仍须命中实际获权旧值，撤回和当前旧值不放行。2项新时间范围用例、2项受影响预算投影用例及7项既有书桌兼容通过，lint通过。补显式history空值保护后，6根定向TypeScript程序从3项可空诊断到0；非全仓tsc声明。4个保存checkpoint的模型请求投影哈希逐字节不变，`temporal-green.json`仅离线证明误拦截修复，不重标旧run成功。
+
+`final-recall-plan.json`固定书桌原话/当前更正链路修复计数2（预算机制另计1，普通段落机制原计数2不重开）：只在`recall-final-repair.json`重验原66题各一次及从未派发的67题各一次，共4条；若仍失败，第三轮前停止。52条讨论、1501/1502更正和1505/1506事实回读/压缩全部复用。新批与前批分别绑定，不缩小或追改旧绑定。恢复时DB/Next/Worker按批准开发路径/端点恢复，无付费兜底或生产变化。复核维护中的[LangGraph记忆](https://docs.langchain.com/oss/javascript/langgraph/add-memory)及[协议/恢复测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)，保留编排/checkpoint与来源/租户/账务权威，不迁移框架或新增知识权威。原C01/还原台账不变；本批原生仍待完成。
+
+**本轮最终限定结果，2026-10-23：** `recall-final-repair.json`在251项稳定绑定下交付1561–1564，四次实际摘要、记忆v8不变、0需求写入、API回读/幂等及原16,000/48,000字节预算均通过；20次真实GLM9尝试4010–4029、134053 observed tokens、费用null，未调用最终修复。旧1559/1560仍是原误拦截失败。`review60.json`仅接受初始/当前书桌及当前收纳/设备/日期核心；1561/1562前半段未单列最初客厅说法，完整历史叙述不记通过。离线`history-coverage-audit.json`确认原始客厅消息存在，但四原文结果由旧书桌、当前更正和重复问题占满；原客厅字面得分2，重复原题得分39。归Agent历史选择，无KnowledgeRetriever/Evidence缺陷。已完成机制判别，不启动第三轮措辞/正则/提示采样；后续需先证明同一来源/字节预算下的历史覆盖机制。
+
+原生复用Stable2.02.2608080/SDK0.13.0/基础库3.17.2、副屏原项目、9420/9431及新编译。两咨询C01实际重进、异客户/跨企业拒绝、更正来源撤回后相关答复不可用均完成；4张路由确认图已逐张查看，逻辑390×844/编码348×752。首次启动路径斜杠比较、CLI关闭成功但未关闭的拼写问题均在保护检查处停止，使用已登记的正斜杠路径确认旧窗口消失后才auto，无重复窗口；证据分别保留。第一咨询全项及第二咨询重进已通过，随后第二负控沿用了已被第一咨询清理递增的身份版本，401不是404通过；`native-final.json`读取真实版本只补第二负控和撤回，0模型调用、供应商尝试集合不变、独立绑定无漂移。最终AI停用、身份版本12/13、队列0、transport/auth/controller/锁清理。批准C01/台账、路由/API/角色/schema/VLM/1454均未改；无新视觉还原、全仓类型、真机/真实微信授权/完整宿主光学或生产通过声明，也不设人工手测门槛。当前CONSULT-02仍Limited：普通照抄与完整历史叙述保留未通过，已验证的长聊、更正回读和压缩范围不再重跑。
+
+## 前序独立建议与候选证据（历史绑定）
+
+前序限定改动为原Agent循环中的`independent-advice-context-v1`。明确独立的一般建议从首调用起仅投影任务规则、当前原话及同轮知识/修复，完整原检查点和来源依赖仍权威；工具收窄为search_knowledge/final_response，系统规则6030→517字。不代写答案、不删数放行、不放宽守卫，不新增Agent/存储/知识管线；混合及有事实前提的请求保持原路径。批准C01组件/设计源、路由/API/角色、Mini文件和还原台账状态不变。以下原35/60等未完成表述保留其当时绑定，不替代本节当前结果。
+
+当前证据统一见`tmp/xiaok-consult-02/task-context-final-review.json`：241项真实依赖稳定下67单元/lint通过；全量tsc294/涉及0（较原292新增3/移除1条，涉及无关camera测试和生成类型，不称全仓通过）。早期check-03的7项服务观察、1项空检索修复前提失败及外部源码漂移独立保留，不算组合通过。用例已改为读取实际发布的完整办公原文并移除无用导入，但不虚报补修后的宽套件通过：共享施工清理已引用55432尚不存在的摄像头表。后续真实链路用独立标记夹具且不依赖该无关清理，不丢弃历史必需失败。
+
+当前配置Qwen1431/1432均完成真实知识查询后仍补无据色温（2700–3000K/3000–3500K），被守卫阻止且无客户答复；4次accepted尝试/4515 observed tokens及2条query_embedding，费用null，241项稳定。说明收窄上下文不足以解决本题，不推断模型普遍能力。用户明确选择评估现有渠道其他免费模型后，固定独立对照中：Xing1433/1434为畸形空白结构（协议失败）；Qwen2.5-7B1435/1436选择继续查询（非终态，不判专业语义失败）；GLM91437/1438给出有用的非量化建议，无无据量数。6次调用的首稿、实际计量及null费用均保留；目录/配置URL/适配表示前置失败均为0推理调用，分别保留。
+
+选定GLM9在隔离正常服务8666/8668沿原持久Agent/Provider/配额执行，验证答复实写/重进/幂等、已存需求不变、同企业异客户/跨企业拒绝及原需求来源撤回。两次各2条真实provider attempt，共4次/4250 observed tokens/费用null，无最终修复，245项源码/测试/驱动/配置稳定。初始化record_need明确标为确定性合成夹具，不冒充模型提取。两稿照明建议核心切题且非量化；第二稿附带的“增加私密性”无单独来源，保留措辞质量限制，不证明完整专业语义。`glm-integration-resources.json`证明隔离LLM配置及托管投影精确恢复，共享开发模型/VLM/1454未改；两合成企业AI关闭/context2/active0/unknown0。无新原生验收或阶段提交。
+
+参考采用[LangChain临时模型上下文](https://docs.langchain.com/oss/javascript/langchain/context-engineering)及其[中间件覆盖测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/tests/middleware.test.ts)，沿原按调用投影而不迁移框架。[issue9426](https://github.com/langchain-ai/langchainjs/issues/9426)仅提醒schema重试边界，不证明本供应商故障原因；[硅基当前价目](https://www.siliconflow.cn/pricing)与实时目录共同限定免费候选，Xing官方支持工具不代表当前托管适配已可用。原本段计数2、旧数值/8B失败、1430/3862 unknown/reconciling及未验长聊/原生全部保留。下一先核对GLM9接入涉及的既有探针、工具/图片/VLM边界，再只固定剩余事实输入，不再扩大候选矩阵或改措辞重测。
+
+### 当前事实前置与有界恢复
+
+先读AG-01，再固定`tmp/xiaok-consult-02/normal-history-plan.json`：两条全新咨询、三条初始原话、61条独立正常客户讨论、持久更正、35/60轮回顾与重进，以及固定的新咨询隔离题。每条客户消息均真实HTTP发送并等待现有Worker，不插入历史或模拟答复。首批在讨论前停止：1392–1395保存书桌/收纳及客厅否定要求；1396/1397各把空room的timeline拆成两次写入，整批被拒后又重复两次，最后假称已记录，均被unsupported_model_commitment拦截。日期0/2、记忆v3未变。12次供应商尝试/12条observed token记录/75021 tokens、费用全null，无unknown。源码/配置首尾稳定，2734/2735已停AI、身份撤权、active0。这是正常聊天前置失败，不是35/60轮、更正、压缩或原生验收通过。
+
+Agent负责的`need-batch-conflicts-v1`是这项故障的第1次机制修复。原needWriteFeedback重新解析已拒绝的整个批次，导致提交参数的诊断也丢失。现用仍为invalid_message422的类型化错误，只保留逐项结构已合法的模型参数和重复room/field的精确位置；沿原配对工具结果返回批次冲突，区别于原话子串错误。重复批次仍原子失败，任何修正参数仍由模型选择；无自动合并、推断字段/值/房间、放宽quote枚举、增加工具/轮次、第二Agent/存储、回执绕过或知识改动。原日期题及旧建议失败全部保留。
+
+各版本证据分别保留：normal-check.json绑定70/70单元、9项服务通过，另2项测试断言失败原样保存（现有保存回执快路径实际2次调用却期待3次；旧断言依赖“更正”文案词）。normal-check-02.json的修正后两项服务、涉及lint和tsc基线比较通过：292项原有错误/涉及0，诊断行与advice-types.log完全相同。仅修正这两处断言及尚未派发的r1驱动入口；70单元和9项未改服务正文通过影响核对复用，不合并成新一批11/11。两批源码无漂移、供应商调用0；更早未绑定的70单元观察不加入统计。
+
+原输入不变、预定两次的normal-history-r1-plan.json已在固定配对1410/1411失败后结束；不重启脚本、不替换采样。这是诊断修复迭代1，日期恢复2/2，1396/1397及跨聊天计数不清零。CONSULT-02/KDEP-CONSULT-02保持Limited且未提交，1390/1391数值建议及用尽的8B对照继续停。无UI/API/角色/模型/设计/部署变化，C01沿唯一批准design-references/xiaok-p4b-public-sites-v1/README.md组件，还原台账完成状态不变。
+
+r1最终14个run：12个技术终态成功、2个失败，不能称12个语义通过。日期1402/1403最终恢复2/2、首提案0/2；各拒绝两次重复键提案后，在原第3次调用选择一条合法timeline写入，记忆v3→v4、各一次实写和真实回执（仅两日期共6 attempts/39046 tokens）。随后每咨询只完成3条正常讨论。1410/1411当前段落明确不保存、不查资料/工地，却各两次query_materials，把数字1398/1399（历史run号）填作leadId，invalid_message失败、无答复/写入。1409虽技术成功仍追加未请求的固定插座/灯光/收纳前提，范围语义失败；1408只部分切题、超句数并附加假设判据，不算语义通过。整批23 attempts/23 observed token记录/149219 tokens、费用null、unknown0，源码/配置稳定。2736/2737已停AI/身份撤权，active jobs/锁/自有进程0。35/60阈值、更正、压缩、原生均未验。工具/来源投影及1408/1409原稿已在current-message-review.json审读；本批结束，不重启或归因知识。详见normal-history-r1.json和normal-conflict-review.json。
+
+当前实现为`current-message-scope-v2`：明确仅回应本条消息时，不开放查询/保存/转人工；临时模型视图用实际user角色逐字传递当前原话，来源编号/原始包装和完整历史仍留服务端；保留同轮修复、general格式、租户/租约/来源重验、真实回执、用量及原预算，混合请求沿原路径，不派发无关摘要/视觉调用。最新`current-message-check-03.json`通过79单元、3项当前范围服务、lint及原292项类型基线/涉及0，首尾无漂移；7项未变兼容按原绑定复用，不称新10项全跑。check.json的首批7项测试类型错误及错误JSON键/空值记忆断言，与check-02修正后3服务分别保留。
+
+固定v1前段1412–1425已结束：6项真实需求保存、8项范围守卫通过，usage-process及钥匙题各2/2，餐桌1422/1423仅部分切题，纸质书1424/1425均答成人、语义0/2。18 attempts/18 observed token行/68161 tokens，费用null、unknown0，2289项源码/配置稳定。随后只改变当前原话的角色呈现，未改客户字句；v2固定原题1426–1429均技术成功、无查询/写入/摘要且记忆未变，餐桌仍部分，纸质书1428/1429仍答成人、0/2。4 attempts/4 observed行/2903 tokens，费用null、unknown0，2298项源码/配置稳定。去掉JSON包装不是充分原因；保留读者/所读内容二义性与模型理解假设，不以此断言通用能力。当前段落机制修复计数2，停止第三轮措辞/正则/呈现/模型采样；两批原稿和各自版本不合并，原prefix/tail语义gate仍false。
+
+测试夹具撤权声明另有真实校正：current-message-raw.json在身份前置处停止、模型调用0，租户事务看不到app.users，旧identityRevoked=true并非更新证明。`fixture-context-repair.json`核对2730–2739的精确合成企业/昵称后，在平台事务用RETURNING将context1→2，并真实HTTP验证10个旧令牌均401；历史报告保留并由此记录纠正。v2最终2738/2739平台回收至context3，postflight再验context2令牌401，2730–2737保持context2；全部AI关闭、队列/验收锁/controller0，无真实客户或业务内容修改。
+
+CONSULT-02/KDEP-CONSULT-02保持Limited。顺序owner01a162a7-3655-7743-9ca6-fb9530b58f3f核对咨询776/777实际持久记录：各9 runs/18消息/4个不同话题/记忆v4的4项事实，core2282/e1328e98及继承源码/文档无漂移。旧失败段落无读写、不提供所存事实，因此以`factual-history-plan-02.json`另固定剩余原话、更正/35/60回读各两次；不重开旧r1/prefix/tail的false gate、不改旧失败判定。零调用前置失败保留：审计最初遇到继承的已删除文件；数据前置随后发现pg Date毫秒与repository PostgreSQL微秒时间戳表示不同。递归比对仅created_at/updated_at存在等价表示差异，新绑定保留repository完整数据，不删除字段。
+
+首个新输入为原计划index7/discussion-4/run1430，仅产生1次accepted模型尝试3862；91415ms后`PROVIDER_TIMEOUT`，结果为`unknown`/`provider_outcome_unknown`/`indeterminate`，无输出消息、无observed计量。实际token和费用未知；reconciling的1请求/72000 tokens/1000000 cost_micros是预留，不是实际费用。批次立即停止，第二次及后续输入均未派发。`factual-history-through35-02.json`绑定2308项源码/测试/配置/数据且首尾不变，平台配置和记忆不变。没有回答不能判语义通过或失败，35/60、更正/回读/压缩仍未验。
+
+`unknown-recovery.json`在2310项稳定绑定下通过9项真实HTTP、模型调用0：run/会话/消息重进仍为同一unknown且retryable=false；同键重试两次409，异租户读取404，实际平台RETURNING/回读撤权后两组旧令牌401。runs/attempts/usage/记忆前后逐字等价。2738/2739最终AI关闭/context5，2730–2737仍context2。原生仅做只读前置：精确原项目Stable CDP目标/9420/9431仍在，但screenX/Y=-32000、outer160×28表明窗口最小化，无法确认副屏窗口；未接入SDK controller、编译、导航或截图。真机/真实微信仍未验且非开发阻塞。产品源码/UI/API/角色/知识/Evidence/模型配置及还原状态不变，未阶段提交、push或生产部署。
+
+当前证据与后续边界见`tmp/xiaok-consult-02/factual-final-review.json`，旧语义计数2/失败仍见`current-message-final-review.json`。两个已结束驱动不重跑、1430不重放、不无据消除reconciling或补采替代双次。未来获权事实接续须按实际持久数据仅固定未执行输入/核心次数，保留诊断重复、失败和版本分离。原生待精确原项目恢复到可核对的副屏窗口，不复制项目、不设置例行人工验收。知识未发现缺陷，不重建入库/检索。输入形式参考[Qwen官方消息示例](https://huggingface.co/Qwen/Qwen3.5-4B)，不据此证明故障原因。
+
+参考采用：已检查[LangGraph ToolInvocationError与模型可控参数诊断](https://github.com/langchain-ai/langgraph/blob/main/libs/prebuilt/langgraph/prebuilt/tool_node.py)、其[错误处理/注入参数测试](https://github.com/langchain-ai/langgraph/blob/main/libs/prebuilt/tests/test_tool_node.py)及此前记录的[schema重试issue9426](https://github.com/langchain-ai/langchainjs/issues/9426)。沿原持久工具循环保留精确参数诊断，注入身份不进入模型参数；采用校验实践，不迁移框架，也不推断Qwen具有该issue。实际配置模型行为仍以本项目原稿为准。完整I/O、用量、边界与下一命令见`tmp/xiaok-consult-02/normal-conflict-review.json`。
+
+当前范围还检查[LangChain上下文工程](https://docs.langchain.com/oss/javascript/langchain/context-engineering)、[AgentNode工具身份校验](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/nodes/AgentNode.ts)及[中间件测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/tests/middleware.test.ts)，沿现有端口采用每次模型调用的临时上下文/工具投影；不迁移框架、增加Agent/存储或重试。schema服从仍由服务端核验，issue9426不证明本次Qwen故障原因。
+
+| 已执行范围 | 结果与边界 |
+| --- | --- |
+| 当前history/budget依赖 | 11/11单元、8/8真实隔离服务通过，服务注入模型适配器，无供应商调用。保存的1381/1383步骤无摘要/裁剪：估算11996→13871→14173/14125，消息未变、omitted IDs为空；两次检索均ready/零来源且低于0.3，未证实KnowledgeRetriever/Evidence缺陷。 |
+| 配置Qwen3.5-4B历史 | 两个固定合成归档各105行、各两次触发阈值的提问：1384–1387均保留不拆墙/夜间不用音箱/比较不代表同意。每次选到recent60之外早期原文、裁去11条近期消息；四稿都另用recall_history，不能把成功单独归于摘要。两次摘要还选入无关厨房原文。实写回读、同键重发、重进及原文撤回通过；未测更正写入或原生。12次尝试/12条observed usage/79785 tokens，费用全null。 |
+| 明确授权Qwen3-8B对照 | 严格两次固定合成原输入，重建后匹配1381/1383首稿指纹；仅改model，不执行工具、修复调用或客户交付。1388通过解析器，却把收纳/阅读角/书桌位置/预算原话引用到LED/调光建议，语义失败；1389仍编造3000K，被unsupported_model_commitment拒绝，另有台灯建议自相矛盾。语义0/2，不替代默认模型验收。2次尝试/2条observed usage/17122 tokens，费用null；目录免费不等于账单已证实为零。 |
+
+预期与实际：保存的1388用真实但无关的客户原话给LED/调光建议背书。`question-source-scope-v2`仅对明确独立的一般建议排除未经请求的历史/项目引用，模型投影、最终schema和服务端审查共用该范围；明确事实前提、混合请求及结合项目条件的建议保留原路径，知识原文/条件和已查来源撤回保持。这是有界来源范围，不是任意语义蕴含判断。唯一有界修复可在目录收窄后移除原错误ID，不增加来源或重试；离线重放1388现被`ungrounded_response_scope`拒绝。
+
+已执行65/65单元；integrated-02的五项兼容服务通过，新增服务仅因测试错误地在history source_refs寻找全文而失败。修正后分别检查消息/hash依赖和独立synthesis快照，service-03单项通过真实写入、唯一修复、幂等、重进、异客户/租户拒绝及原话撤回。不同版本不合并成一批六项全通过。受影响lint通过；tsc仍292项基线错误/受影响0，与OPS-01错误行完全一致。原测试失败及版本绑定保持。
+
+预先固定的配置Qwen3.5-4B两稿1390/1391（attempt3803/3804）复用原1381/1383合成回答输入，仅应用新投影/策略/schema。两稿均已空引用，但仍编造色温/照度/亮度数值，均被`unsupported_model_commitment`拒绝，语义0/2。无工具执行、修复调用、客户交付、补采或替代样本；2 attempts/2条observed usage/9373 tokens，费用null，全局配置未改，原输出不覆盖。来源收窄修复了独立归因缺陷，却不是无据量数的共同原因。保留v119/v120首稿/唯一修复及已用尽的8B对照；停止这条补丁/重测循环，不继续措辞/照明正则变体或第三次采样。
+
+CONSULT-02内下一独立范围：沿获权个人事实完成正常35/60轮、持久更正和原话回顾；它不依赖自由技术建议，之前四稿配置模型合成历史结果只支持该有限独立性，不是正常长聊验收。先读AG-01并固定有界试验再执行，不重跑归档历史代替正常对话。KDEP仍无需知识代码改动。未取得新控制器/原生证据，无付费fallback、push或生产；交付未完成，相关变更不提交，无关脏改动保留。
+
+实现参考：已检查维护中的[LangChain结构化输出](https://docs.langchain.com/oss/javascript/langchain/structured-output)、[响应策略](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/responses.ts)、[对应测试](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain/src/agents/tests/responses.test.ts)及[schema修复问题9426](https://github.com/langchain-ai/langchainjs/issues/9426)。复用既有工具schema、应用校验和一次修复；框架结构有效不证明语义支持，不迁移框架、不新增引用管线或重试循环。历史issue仅作参考，不声称当前Qwen发生同一供应商缺陷；配置模型事实以1390/1391为准。
+
+## 已交付OPS-01：双工地事实简报（限定Implemented）
 
 经理从原项目总览进入`packages/construction/brief/brief`，比较获权工地的实际节点、最新已发布记录和持续事项，再进入原S04明确发送“事项编号现在在等谁？为什么？”。接手、转交、回复、核对与正式处理沿原命令；简报重读同一事实。GET `/api/miniprogram/construction/brief`复用ConstructionService租户及管理权限，admin/super_admin继承所选企业owner；普通成员不获管理简报。最多20项目/各50事项并标明截断，no-store。最新记录署名取原作者，不能把发布管理者显示成作者。
 
@@ -200,6 +278,26 @@ Stable 2.02.2608080 / SDK 0.13.0 / 基础库3.17.2、副屏新编译、精确C01
 原1283不当证据/数值失败保留在attempt-1；1284–1286窗口因队列切换期间驱动修改仅作诊断，1286格式失败及未执行题不覆盖。固定驱动最终窗口前后源码、配置和驱动均一致，四题全部执行；不混入上述漂移窗口。证据`tmp/xiaok-write-intent-v98/live.json`、`native.json`、各`*-result.json`、`compound-red.log`和attempt-1/2。历史1132/1184等unknown不重放、不结零。正式图、知识版本/epoch/audience/原始定位器、KnowledgeRetriever/Evidence、原API/菜单/角色与生产保持。
 
 核对[LangGraph ToolNode源码](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/prebuilt/tool_node.ts)、[工具协议测试](https://github.com/langchain-ai/langgraphjs/blob/main/libs/langgraph-core/src/tests/prebuilt.test.ts)及[历史status问题1440](https://github.com/langchain-ai/langgraphjs/issues/1440)：沿现有受控工具和真实结果协议，不把模型选择或状态字段当授权，也不将旧上游问题认作GLM根因。未迁移框架或增加Agent/事实库/知识管线。F-01/02/04/06/07、引用/收尾稳定性、完整PPT/专业质量/真机/BLE/真实微信及生产仍未关闭；下一有界修复是可信PDF页码被当成工程量。
+
+## 独立自动化接续收尾（2026-10-21）
+
+**2026-10-21独立自动化接续已收尾，整体仍为Limited。** 当前HEAD为`f1f40339cde71238c3601321ed3e74b0e6cb4d37`，1693项相关源码/测试/配置绑定摘要`b339d685e11ddcfe6c880a92d7911186aab7077dc1c7103a2c9c193528b3bc1f`，沿用siliconflow / `THUDM/GLM-4-9B-0414`。有效子窗口首尾及模型配置无漂移；父调度文件曾发生短暂独立驱动编辑，原启动字节已恢复，D10明确不声称父窗口连续hash未变，各子窗口独立绑定。未纳入另一工作树的v96开发。后端纯测试316/316、Mini客户端单元98/98；31/31维护服务文件337通过/18失败/16跳过。当前合同副本、诊断及补充控制单列，不覆盖维护断言或并入其通过数；本轮未重跑lint/全仓类型，旧批次记录不充作新检查。
+
+实际Stable2.02.2608080 / automator0.13.0 / 基础库3.17.2在390×844执行原生输入、上传、引用、重进、接待及已记录业务分支；后台知识运营补充使用真实HTTP，不冒充Chrome页面操作。逐次客户run 126、管理员摘录run 0、现场记录run 4分层审读；技术终态不等于语义通过，生成前取消不计实模调用。146条完整索引的当前状态为failed=40、passed=31、not_executed=6、partial=30、area_regression_only=36、driver_failure=3，未覆盖条件逐例保留，未宣称全部146例或整PPT验收通过。已确认普通问询/明确不改仍写需求、多字段保存/更正漏项，以及历史顺序、引用支撑、阶段适用性、答复完整性和协议收尾问题；旧失败/原稿/驱动失败全部保留。详见`tmp/xiaok-auto-20261020-01a159e6/report.zh-CN.md`、`case-results.zh-CN.md`、`findings.zh-CN.md`及`model-run-results.zh-CN.md`。
+
+两个补充HTTP运营模式在空闲队列预检阻断，0/2派发；当前修复协议/读后补问对照、历史attempt4及遗漏分支的新原生窗口也未执行，准备文件不计成绩。详见本轮deferred-work.json。
+
+最终只读核对中的provider结果未知run为1132/1184；原1132/3196及本轮1184/3327不重放，不把未知费用填0。结果已确定但账务仍reconciling的run另列，不计为供应商结果未知。结束时队列/共享验收锁/DevTools连接为0，合成企业AI及员工已停用、上下文撤权，正式v4图hash未变；前轮305份原始文件逐份hash保留。真机、BLE、真实微信授权、语音转写/OCR、实际跨日及未触发条件维持未验证，不转为强制用户手测。此次文档仅登记独立测试事实，无产品源码、UI、API、模型、权限、数据合同、设计恢复或发布变更。
+
+## 独立自动化中断收尾（2026-10-20）
+
+**本轮未通过，且未完成全量用例；不是新的实现或发布批次。** 按`docs/manuals/xiaok-stage-tests/automation.zh-CN.md`在明确标记的开发/隔离夹具上执行，沿用siliconflow / `THUDM/GLM-4-9B-0414`。889项相关源码、测试及配置绑定摘要为`59c110642cd8659587f6483a4d6cb487e3a527e7f0e01f454138c55a8ebd12c0`，有效窗口首尾无漂移。独立后端纯测试300/300、Mini客户端单元98/98、4/31个服务文件62通过/7个实模选择项跳过/0失败，lint通过；全仓类型检查仍292处错误、40文件。这些数字不并入其他批次，也不替代Stable原生或实模语义验收。
+
+实际Stable页面输入、上传、引用、重进、共享、真人接续、精确V1/V2决定与原键恢复已执行。S04人工核对发布、同事项回传，以及另一明确完成措辞下的落实→解决→关闭→原件回传和撤回通过；原手册完成措辞被路由为`clarify`、没有草稿的失败仍保留。7项问题（3项P1）包括纠正后旧值回读、部分字段未保存却全量确认、完成原话无草稿、普通问答未交付、条件式澄清误拒、读取域偏离问题和`agent_input_limit`。全部原稿、人工改稿、版本和首次失败分别保留；未修改产品源码、UI、API、权限、设计或模型配置来覆盖失败，整体状态保持`Limited`。
+
+长聊只派发5/61条：4条输入预算失败，run`1132`/真实触发消息`9716`/provider attempt`3196`为`indeterminate/unknown`，未重放，预留保持`reconciling`、结算用量/费用为null。剩余56条、更正/历史依赖分支、后续阶段变更及27个服务文件未执行；584内被该未决运行阻断的后续尝试没有新消息或run，不能算模型回答失败或无泄漏通过。中断后在服务文件边界退出，主库/隔离库queued、running及共享验收锁为0；合成企业AI关闭、5名合成员工停用、上下文撤权，正式v4图哈希未改。真机、BLE、真实微信授权及未触发分支不升级为通过。
+
+本轮持久索引：`tmp/xiaok-auto-20261020-01a15876/`中的`report.zh-CN.md`、`case-results.json`、`findings.json`、`run-input-index.json`、`interruption-closeout.json`与`evidence-manifest.json`。触发消息以数据库`trigger_message_id`索引为准，原分页audit.input误取旧消息的元数据原样保留并单列纠正；不得据此重放模型。服务/单元、原生、配置实模、驱动故障和未执行范围分开记录，不宣称全部146条手册用例完成或整PPT验收通过。此次模块清单更新仅登记测试事实，无运行合同变更。
 
 ## Agent与知识库的开发边界
 

@@ -165,7 +165,11 @@ export function needWriteFeedback(error: unknown, sourceText: string, submitted?
   let submittedWrites: Array<NeedWrite & { index: number; validationError: string | null; quoteIsOriginal: boolean; valueIsInQuote: boolean }> | undefined;
   if (submitted !== undefined) {
     try {
-      submittedWrites = parseNeedWrites(submitted).map((write, index) => {
+      // A key conflict is a batch error after each individual argument passed
+      // structural validation. Re-parsing that same rejected batch would throw
+      // again and discard precisely the arguments the model needs to diagnose.
+      const writes = error instanceof NeedWriteBatchConflictError ? error.writes : parseNeedWrites(submitted);
+      submittedWrites = writes.map((write, index) => {
         let validationError: string | null = null;
         try { applyNeedDelta(readMemory({}), { ...write, sourceMessageId: '1', expectedVersion: 0 }, { id: '1', text: sourceText }, 'diagnostic', ''); }
         catch (error) { if (!(error instanceof AssistantError)) throw error; validationError = error.code; }
@@ -176,6 +180,11 @@ export function needWriteFeedback(error: unknown, sourceText: string, submitted?
       });
     } catch { /* The original invalid-message result remains authoritative. */ }
   }
+  if (error instanceof NeedWriteBatchConflictError) return {
+    status: 'not_saved', error: error.code, batchCommitted: false, sourceText, assertionText, quoteOptions, sourceIssues, submittedWrites,
+    diagnosticProtocol: 'need-batch-conflicts-v1', batchConflicts: error.conflicts,
+    instructions: '整个批次均未保存。batchConflicts逐项给出同一room+field重复的参数位置（indices从0开始，0为主字段，其后依次为additionalNeeds）。这些参数逐项结构合法，但同一批次不能多次写同一个room+field；validationError为null不表示批次已保存。请依据当前原话重新选择一个不冲突的字段写入，保留该字段的限定和否定；其他独立字段仍须完整保留。不能为绕过冲突而把field或room改成无关对象，也不能原样重发同一批次。quote/value仍逐字取自当前原话，quoteOptions仍是原有选项；不能完整表达或原话本身有歧义时如实说明并作必要澄清，不能丢掉条件、假称保存、推断日期或执行新操作。',
+  };
   if (error instanceof NeedWriteIncompleteError) return {
     status: 'not_saved', error: error.code, batchCommitted: false, sourceText, assertionText, quoteOptions, sourceIssues, submittedWrites,
     missingStatements: error.missingStatements.filter(clause => sourceText.includes(clause)).slice(0, 4),
@@ -295,8 +304,15 @@ function deskPositionForRoom(fact: NeedFact, room: string) {
   for (const clause of fact.quote.split(/[，,。；;\n]/)) {
     const index = clause.indexOf(room); if (index < 0) continue;
     const prefix = clause.slice(0,index).trim();
-    if (prefix && !/^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|更正|纠正)(?:一下)?[：:\s]*$/.test(prefix)) continue;
-    const match = /^的?(?:书桌|桌子|桌位)(?:位置)?(改为|改成|调整为|换成|需要|要)?(靠内墙|靠窗)/.exec(clause.slice(index + room.length));
+    if (prefix && !/^(?:请(?:帮我)?(?:记下|记住|记录)|帮我(?:记下|记住|记录)|(?:更正|纠正)(?:并请保存)?)(?:一下)?[：:\s]*$/.test(prefix)) continue;
+    const position = clause.slice(index + room.length);
+    // The destination of an explicit from/to correction is the current aspect.
+    // This is a read interpretation of a validated stored original, never a
+    // write extractor. In particular the old unscoped row remains historical
+    // even after this correction's source is withdrawn.
+    const transition = /^的?(?:书桌|桌子|桌位)(?:位置)?从(?:靠窗|靠内墙)(?:改为|改成|调整为|换成)(靠内墙|靠窗)/.exec(position);
+    if (transition && fact.value.includes(transition[1])) return { value: transition[1], correction: true };
+    const match = /^的?(?:书桌|桌子|桌位)(?:位置)?(改为|改成|调整为|换成|需要|要)?(靠内墙|靠窗)/.exec(position);
     if (match && fact.value.includes(match[2])) return { value: match[2], correction: /改为|改成|调整为|换成/.test(match[1] || '') };
   }
   return null;
@@ -393,12 +409,22 @@ export function needDeskPositionFeedback(raw: string, memory: NeedMemory, questi
   if (!reply || typeof reply !== 'object') return null;
   const texts = [reply.text, ...(Array.isArray(reply.segments) ? reply.segments.map(s => s?.text) : [])].filter((t): t is string => typeof t === 'string');
   const positions = effectiveDeskPositions(memory), knownRooms = [...new Set([...memory.facts.map(f => f.room), ...positions.map(p => p.room)].filter(Boolean))];
+  const historicalMarkers = '原来|以前|之前|当时|最初|最开始|旧说法|旧记录|旧原话|曾经|原话';
+  const currentMarkers = '现在|当前|目前|仍|还是|后来|更正后';
   const clauses = texts.flatMap(text => {
-    let topicRoom: string | null = null;
-    return text.split(/[，,。；;\n]/).map(clause => {
+    let topicRoom: string | null = null, historicalHeader = false;
+    return text.split(/([，,。；;\n])/).flatMap(clause => {
+      // A standalone temporal header scopes the remainder of its sentence,
+      // including comma-separated room lists. It cannot cross a sentence or
+      // an explicit current/later marker. This is expression scope only;
+      // authorization still requires the exact available historical value.
+      if (/^[。\n]$/.test(clause)) { historicalHeader = false; return []; }
+      if (/^[，,；;]$/.test(clause)) return [];
+      if (new RegExp('^(?:' + historicalMarkers + ')[：:\\s]*$').test(clause.trim())) historicalHeader = true;
+      if (new RegExp(currentMarkers).test(clause)) historicalHeader = false;
       const mentioned = knownRooms.filter(room => clause.includes(room));
       if (mentioned.length === 1) topicRoom = mentioned[0]; else if (mentioned.length > 1) topicRoom = null;
-      return { clause, topicRoom };
+      return [{ clause, topicRoom, historicalHeader }];
     });
   });
   for (const position of positions) {
@@ -406,7 +432,7 @@ export function needDeskPositionFeedback(raw: string, memory: NeedMemory, questi
       const fact = memory.facts.find(f => f.id === i.factId); const old = fact && deskPositionForRoom(fact, position.room);
       return old ? [old.value] : [];
     }) || [];
-    for (const { clause, topicRoom } of clauses) {
+    for (const { clause, topicRoom, historicalHeader } of clauses) {
       const scoped = clause.includes(position.room) || (topicRoom === position.room || positions.length === 1 && /书桌|桌子|桌位/.test(clause))
         && !knownRooms.some(room => room !== position.room && clause.includes(room));
       if (!scoped) continue;
@@ -414,10 +440,11 @@ export function needDeskPositionFeedback(raw: string, memory: NeedMemory, questi
       for (const match of clause.matchAll(/靠内墙|靠窗/g)) {
         const old = match[0]; if (!targets.has(old) || old === position.value) continue;
         const prefix = clause.slice(0,match.index), tail = clause.slice(match.index + old.length);
-        const history = [...prefix.matchAll(/原来|以前|之前|当时|最初|旧说法|旧记录|旧原话|曾经|原话/g)].at(-1)?.index ?? -1;
-        const current = [...prefix.matchAll(/现在|当前|目前|仍|还是/g)].at(-1)?.index ?? -1;
+        const history = [...prefix.matchAll(new RegExp(historicalMarkers, 'g'))].at(-1)?.index ?? -1;
+        const current = [...prefix.matchAll(new RegExp(currentMarkers, 'g'))].at(-1)?.index ?? -1;
         const unsupportedLocation = !position.value && !older.includes(old) && !question.includes(old);
         if (!unsupportedLocation && older.includes(old) && history > current && prefix.length - history <= 18) continue;
+        if (!unsupportedLocation && older.includes(old) && historicalHeader && current < 0) continue;
         if (!unsupportedLocation && /(?:不再|不是|不能|不应|不用|无需|不)(?:按|沿用|采用|恢复|当作|说成)?[^，,。；;\n]{0,5}$/.test(prefix)) continue;
         if (position.value && /(?:从|由)[^，,。；;\n]{0,3}$/.test(prefix)
           && ['改为','改为了','改成','改成了'].some(verb => tail.includes(verb + position.value))) continue;
@@ -442,6 +469,17 @@ export function needQualifications(fact: NeedFact, current: NeedFact[], original
 }
 /** Existing single-write arguments remain valid. A bounded batch is one atomic
  * customer statement operation, never a way to select another source/tenant. */
+class NeedWriteBatchConflictError extends AssistantError {
+  readonly writes: NeedWrite[];
+  readonly conflicts: Array<{ reason: 'duplicate_room_field'; room: string; field: NeedWrite['field']; indices: number[] }>;
+  constructor(writes: NeedWrite[], conflicts: NeedWriteBatchConflictError['conflicts']) {
+    super('invalid_message', 422);
+    // Only individually validated model arguments enter diagnostics; no injected
+    // tenant, participant, source ID or rejected unknown property is retained.
+    this.writes = writes.map(({ room, field, value, quote }) => ({ room, field, value, quote }));
+    this.conflicts = conflicts.map(conflict => ({ ...conflict, indices: [...conflict.indices] }));
+  }
+}
 export function parseNeedWrites(raw: unknown): NeedWrite[] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('invalid_message', 422);
   const { additionalNeeds, ...first } = raw as NeedWrite & { additionalNeeds?: unknown };
@@ -451,7 +489,15 @@ export function parseNeedWrites(raw: unknown): NeedWrite[] {
     if (!write || typeof write !== 'object' || Array.isArray(write) || Object.keys(write).some(k => !['room','field','value','quote'].includes(k))) fail('invalid_message', 422);
     parseNeedDelta({ ...write, sourceMessageId: '1', expectedVersion: 0 });
   }
-  if (new Set(writes.map(w => JSON.stringify([w.room, w.field]))).size !== writes.length) fail('invalid_message', 422);
+  const keys = new Map<string, { room: string; field: NeedWrite['field']; indices: number[] }>();
+  writes.forEach((write, index) => {
+    const key = JSON.stringify([write.room, write.field]);
+    const group = keys.get(key) || { room: write.room, field: write.field, indices: [] };
+    group.indices.push(index); keys.set(key, group);
+  });
+  const conflicts = [...keys.values()].filter(group => group.indices.length > 1)
+    .map(group => ({ reason: 'duplicate_room_field' as const, ...group }));
+  if (conflicts.length) throw new NeedWriteBatchConflictError(writes, conflicts);
   return writes;
 }
 export function readMemory(entry: unknown): NeedMemory {

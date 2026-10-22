@@ -1,5 +1,7 @@
 # XiaoK Assistant Roadmap
 
+**Execution entry (2026-10-22):** Only [Agent plan section 1](./xiaok-agent-engineering-plan.md#1-scope-and-priorities) and the [knowledge dependency record](./xiaok-enterprise-knowledge-plan.md#1-current-assessment-and-reusable-foundations) select the current delivery, exit criteria and successor under the [delivery execution rules](../AGENTS.md#xiaok-delivery-execution). Capability ordering, historical current/next passages, old stop notices and test matrices below do not create another queue. Reuse delivered evidence; original failures/unverified scope remain and are not passed by changing order.
+
 **Current effective plan | consolidated 2026-10-19.** This document maintains one product direction, capability gaps, implementation order and acceptance scope. Existing phase IDs identify capabilities; reuse delivered foundations. Section2 links historical proposals, migrations, model/prompt versions, execution counts and batch results instead of appending “current batch” logs here.
 
 This document maintains development direction and acceptance scope without substituting plans for implementation evidence. Current code, tests and module inventories establish implementation facts; PPT and each route's one latest approved design establish visual authority. Production rollout requires separate authorization.

@@ -1,7 +1,10 @@
 /** Deliberately explicit: a quoted suggestion, refusal or hypothetical must not
  * grant a human participant access to a customer's consultation. */
 export function requestsDesigner(text: string) {
-  return /^(?:请|帮我|我要|我想|想|麻烦)?(?:找(?:个|一位)?设计师(?:聊聊|聊|接着聊)?|让设计师(?:接着聊|接手|接待)|设计师接着聊|转人工)[吧呀啊。！!\s]*$/.test(text.trim());
+  // Declining a preparatory summary does not decline the explicit handoff.
+  // Keep the entire message anchored: other negations, quoted/conditional
+  // requests and an additional contradictory clause still grant no access.
+  return /^(?:请|帮我|我要|我想|想|麻烦)?(?:找(?:个|一位)?设计师(?:聊聊|聊|接着聊)?|让设计师(?:接着聊|接手|接待)|设计师接着聊|转人工)(?:[，,；;]\s*(?:不用|无需|不必|不要)(?:先)?(?:做|写|整理|生成)?(?:摘要|总结))?[吧呀啊。！!\s]*$/.test(text.trim());
 }
 export const designerSuggestion = '这部分需要设计师结合本次情况继续沟通。你愿意的话，可以请设计师接着聊。';
 export function needsDesignerSuggestion(text: string) {

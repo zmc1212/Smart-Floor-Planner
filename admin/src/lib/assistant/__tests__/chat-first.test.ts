@@ -28,6 +28,16 @@ test('direct human intent never accepts refusal, hypotheticals or quoted request
   assert.equal(needsDesignerSuggestion('我想要正式报价'), true);
   assert.equal(needsDesignerSuggestion('具体工期是多少'), true);
 });
+test('declining only a summary preserves a direct handoff without accepting contradictory consent', () => {
+  for (const text of ['请找设计师接着聊，不用先做摘要。', '转人工，无需摘要', '帮我找个设计师聊聊；不要先总结']) {
+    assert.equal(requestsDesigner(text), true, text);
+  }
+  for (const text of ['不要找设计师，不用先做摘要。', '如果找设计师接着聊，不用先做摘要。',
+    '他说“请找设计师接着聊”，不用先做摘要。', '请找设计师接着聊，不要转人工。',
+    '请找设计师接着聊，不用先做摘要，但先别联系。', '请找设计师接着聊，不用先做摘要吗？']) {
+    assert.equal(requestsDesigner(text), false, text);
+  }
+});
 test('dispatch projection never leaks packet, phone, summary or image consent before claim', () => {
   const h = { state: 'waiting' as const, requestId: '1', recipientId: null, recipientName: '团队', requestedAt: '',
     packet: { messages: ['private'], summary: 'secret' }, contactConsent: true, phone: '13800000000', source: {}, leadId: '4', mediaConsent: true };

@@ -85,6 +85,48 @@ const mixedText = '更正一下，书房改为单人办公，书房书桌改为�
 const mixedInput = { room: '书房', field: 'use', value: '单人办公', quote: '书房改为单人办公',
   additionalNeeds: [{ room: '书房', field: 'desk', value: '靠内墙', quote: '书房书桌改为靠内墙' }] };
 
+test('AG02: duplicate room-field diagnostics preserve atomic rollback, one recovered write, replay and source withdrawal', async () => {
+  const id = String((await chat().create(randomUUID())).id), key = randomUUID();
+  const original = '请记下：先不确定装修日期，不要替我定日期。';
+  const valid = { room: '', field: 'timeline', value: '先不确定装修日期', quote: '请记下：先不确定装修日期' };
+  const duplicate = { ...valid, additionalNeeds: [{ room: '', field: 'timeline', value: '不要替我定日期', quote: '不要替我定日期' }] };
+  const body = { version: 1 as const, blocks: [{ type: 'text' as const, text: original }] };
+  const sent = await chat().send(id, key, body), lease = await claimJob();
+  assert.ok(lease); assert.equal(lease.runId, sent.runId);
+  let calls = 0;
+  await processAgentAnswer(lease, { model: async (messages, _tools, turn) => {
+    calls++;
+    if (turn === 1) {
+      const feedback = JSON.parse(String(messages.findLast(message => message.role === 'tool')?.content));
+      assert.equal(feedback.diagnosticProtocol, 'need-batch-conflicts-v1');
+      assert.deepEqual(feedback.batchConflicts, [{ reason: 'duplicate_room_field', room: '', field: 'timeline', indices: [0, 1] }]);
+      assert.equal(feedback.batchCommitted, false);
+      assert.equal(readMemory((await conversation(id))!.entry_snapshot).version, 0, 'Rejected batch cannot partially save');
+      return { ...response(), text: '', toolCalls: [{ id: 'corrected', name: 'record_need', arguments: JSON.stringify(valid) }] };
+    }
+    return turn === 0 ? { ...response(), text: '', toolCalls: [{ id: 'conflict', name: 'record_need', arguments: JSON.stringify(duplicate) }] }
+      : response('已记录装修日期暂不确定，不会替你设定日期。');
+  } });
+  assert.equal((await chat().run(String(sent.runId))).status, 'succeeded');
+  assert.equal(calls, 2, 'One rejected call and one recovered write use the existing receipt fast path');
+  const saved = readMemory((await conversation(id))!.entry_snapshot);
+  assert.equal(saved.version, 1); assert.equal(saved.facts.length, 1);
+  assert.equal(saved.facts[0].value, valid.value); assert.equal(saved.facts[0].sourceMessageId, String(sent.messageId));
+  const writes = await withTenantTransaction(actor.enterpriseId, tx => rows(tx, sql`select id from app.assistant_run_steps
+    where enterprise_id=${actor.enterpriseId} and run_id=${String(sent.runId)} and kind='agent_need_write'`));
+  assert.equal(writes.length, 1);
+  assert.equal(String((await chat().send(id, key, body)).runId), String(sent.runId));
+  assert.equal(readMemory((await conversation(id))!.entry_snapshot).version, 1);
+  const outputId = String((await chat().run(String(sent.runId))).outputMessageId);
+  assert.ok((await chat().messages(id)).items.some(message => message.id === outputId && message.available));
+  await assert.rejects(new ConversationService({ ...actor, principal: other.principal }).messages(id));
+  await assert.rejects(new ConversationService(other).messages(id));
+  await withTenantTransaction(actor.enterpriseId, tx => tx.execute(sql`update app.assistant_messages
+    set content='{"version":1,"blocks":[{"type":"text","text":"合成撤回：日期原话已移除"}]}'::jsonb
+    where enterprise_id=${actor.enterpriseId} and conversation_id=${id} and id=${String(sent.messageId)}`));
+  assert.equal((await chat().messages(id)).items.find(message => message.id === outputId)?.available, false);
+});
+
 test('AG04: a comma-delimited follow-up preserves one atomic explicit correction, independent needs and persisted replay', async () => {
   const a = await fixture(), result = await write(a.id, mixedText, mixedInput);
   assert.equal(result.run.status, 'succeeded');
@@ -149,7 +191,10 @@ test('AG02: real Worker crosses 300, atomically archives complete superseded ass
   assert.equal(archive.length, 299);
   assert.deepEqual(archive, a.facts.slice(1).map(f => ({ ...f, status: 'superseded' })));
   assert.equal((step!.input_summary as Row).archivedCount, 299);
-  const history = await chat().messages(a.id); assert.ok(history.items.some(m => m.available && safeText(m.content as Parameters<typeof safeText>[0]).includes('更正')));
+  const history = await chat().messages(a.id);
+  assert.ok(history.items.some(m => m.id === result.run.outputMessageId && m.available
+    && safeText(m.content as Parameters<typeof safeText>[0]).includes('靠门')
+    && safeText(m.content as Parameters<typeof safeText>[0]).includes('电脑和台灯')));
   assert.deepEqual(readMemory((await conversation(a.id))!.entry_snapshot), memory);
 });
 
